@@ -1,3 +1,4 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {expect,type Page} from '@playwright/test';
 import {Value} from '@sinclair/typebox/value';
 import {ProjectFileCheckSchema,type ProjectFileCheck} from '@bondbuddy/contracts';
@@ -23,6 +24,7 @@ export type HistoryState=ReturnType<typeof historyFixture>;
 export async function mount(page:Page,s=historyFixture()){
   await page.setViewportSize({width:1440,height:960});await install(page,s);
   await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const request=route.request(),url=new URL(request.url()),path=url.pathname.slice('/api/v1'.length);
     if(request.method()!=='GET'||path!==base+'/checks'&&path!==individualPath)return route.fallback();
     s.calls.push({method:'GET',path,search:url.search,body:null});

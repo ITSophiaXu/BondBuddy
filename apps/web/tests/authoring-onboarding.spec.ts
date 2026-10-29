@@ -1,3 +1,5 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import { emptyUpdateDetails, schemas } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
@@ -5,7 +7,7 @@ import { FormatRegistry } from '@sinclair/typebox';
 import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Dto } from '../src/api';
+import type { Dto } from './billing-fixture-wire';
 import { taskPage } from './collection-fixtures';
 
 // Synthetic public HTTP boundary in Chromium. This does not accept real parsing, billing, models or Word output.
@@ -42,9 +44,9 @@ function checked<T extends keyof typeof schemas>(name: T, value: unknown): asser
 }
 async function reply<T extends keyof typeof schemas>(route: Route, name: T, body: Dto<T>, status = 200) {
   checked(name, body);
-  await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+  await route.fulfill({ status, contentType: 'application/json', body: fixtureJson(route,body) });
 }
-const errorReply = (route: Route, status: number, code: string) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify({ code }) });
+const errorReply = (route: Route, status: number, code: string) => route.fulfill({ status, contentType: 'application/json', body: fixtureJson(route,{ code }) });
 const writes = (state: State) => state.calls.filter(call => call.method !== 'GET');
 function expectNoExecution(state: State) {
   expect(state.locked).toHaveLength(0); expect(state.preflights).toHaveLength(0);
@@ -55,9 +57,10 @@ async function install(page: Page, state = fixture()) {
   installed.set(page, state);
   page.on('pageerror', error => state.errors.push(error.message));
   await page.context().route('**/api/v1/**', async route => {
+    if(await serveDisabledBillingCatalog(route))return;
     const request = route.request(), url = new URL(request.url());
     const path = url.pathname.replace('/api/v1', ''), method = request.method();
-    const body: unknown = request.headers()['content-type']?.includes('application/json') && request.postData() ? request.postDataJSON() : undefined;
+    const body: unknown = request.headers()['content-type']?.includes('application/json') && request.postData() ? fixtureRequest(request) : undefined;
     state.calls.push({ method, path, ...(body === undefined ? {} : { body: structuredClone(body) }) });
     if (method === 'GET' && path === '/me') return reply(route, 'MeResponse', { user_id: 'synthetic-owner', session_status: 'active' });
     if (method === 'GET' && path === '/account') return reply(route, 'AccountResponse', {
@@ -66,7 +69,7 @@ async function install(page: Page, state = fixture()) {
       self_service_recovery: 'unavailable', support_contact: null
     });
     if (method === 'GET' && path === '/credits/balance') return reply(route, 'CreditBalanceResponse', { enabled: true, available: 1, frozen: 0 });
-    if (method === 'GET' && path === '/m4/topics') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ topics: [] }) });
+    if (method === 'GET' && path === '/m4/topics') return route.fulfill({ contentType: 'application/json', body: fixtureJson(route,{ topics: [] }) });
     if (path === '/projects' && method === 'POST') {
       checked('ProjectCreateRequest', body); state.created.push(structuredClone(body));
       const { creation_request_id: _creationRequestId, ...fields } = body;

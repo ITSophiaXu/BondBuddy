@@ -17,7 +17,7 @@ const pin=():M4MaterialPin=>({source_project_id:'project',material_id:'evidence-
 const draft=():IntegrityDraft=>({subjects:[{id:'company-1',kind:'company',name:'示例公司',identifier:'91310000123456789A',role:'发行人',province:'上海',city:''},
   {id:'person-1',kind:'person',name:'张三',identifier:'',role:'董事',province:'',city:''}],site_ids:['credit-china','local-csrc'],notes:'核对主体身份与日期'});
 const value=():IntegrityRecoveryValue=>({revision:4,draft:draft(),sourceRun:'viewed-historical-export'});
-const check=(id='check-request'):IntegrityRecoveryValue=>({...value(),pending:{kind:'check',request:{request_id:id,expected_revision:4,expected_points:5000,price_version:INTEGRITY_PRICE.version}}});
+const check=(id='check-request'):IntegrityRecoveryValue=>({...value(),pending:{kind:'check',request:{request_id:id,expected_revision:4,expected_points:"5000",price_version:INTEGRITY_PRICE.version}}});
 const savingDraft=():IntegrityRecoveryValue=>({...value(),pending:{kind:'draft',request:{expected_revision:4,draft:draft()}}});
 const exporting=(id='export-request'):IntegrityRecoveryValue=>({...value(),pending:{kind:'export',roundId:'original-round',request:{request_id:id,expected_evidence_ids:['evidence-2','evidence-1']}}});
 const evidence=(id='evidence-request'):IntegrityRecoveryValue=>({...value(),pending:{kind:'evidence',roundId:'original-round',request:{request_id:id,

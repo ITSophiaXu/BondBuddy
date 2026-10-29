@@ -1,3 +1,4 @@
+import {int64,serializeInt64,shortageInt64,encodeBillingDto,type BillingWireDto} from '@bondbuddy/contracts';
 import {workpaperPreview} from './workpaper-preview.js';
 import {loadWorkpaperTemplate} from './workpaper-templates.js';
 import {registerWorkpaperLibrary} from './workpaper-library.js';
@@ -13,8 +14,9 @@ import {project,transaction,uid,conflict,missing,Problem,date,digest,assertCanon
 import {inputManifestHash} from './production-rule-pin.js';
 import {readM4MaterialPin,startPinnedM4Run} from './m4-workspace.js';
 import {quoteM4} from './m4-billing.js';
-import {creditBalance} from './billing.js';
+import {creditBalanceExact} from './billing.js';
 import {resolveAutomaticTaskPriceVersion} from './automatic-price-versions.js';
+import {loadAutomaticTaskTariff} from './automatic-tariff-repository.js';
 import {projectFileSource,readProjectFileAsset,workpaperFileVersions} from './project-file-storage.js';
 import {importProspectusMaterial} from './prospectus-import.js';
 import {loadWorkpaperKnowledge} from './m4-knowledge.js';
@@ -61,7 +63,7 @@ async function ownedBatch(db:Db,owner:string,id:string,batch:string,lock=false){
   await project(db,owner,id);const row=(await db.query(`SELECT * FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 ${lock?'FOR UPDATE':''}`,[owner,id,batch])).rows[0];
   if(!row)throw missing();return row;
 }
-export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:string):Promise<WorkpaperBatch>{
+export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:string):Promise<BillingWireDto<WorkpaperBatch,'workpaperBatch'>>{
   const b=await ownedBatch(db,owner,id,batch);
   const items=(await db.query(`SELECT i.*,r.state run_state,r.stage,w.decision AS output_decision,coalesce(i.explanation,w.explanation) AS delivered_explanation FROM bb_workpaper_items i LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
     LEFT JOIN bb_workpaper_item_results w ON w.owner_user_id=i.owner_user_id AND w.run_id=i.run_id AND r.state='succeeded'
@@ -72,20 +74,20 @@ export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:stri
   const charged=(await db.query(`SELECT coalesce(sum(CASE WHEN c.state='released' THEN 0 ELSE coalesce(c.charged_points,CASE WHEN c.state='settled' THEN c.points ELSE 0 END) END),0) amount
     FROM bb_workpaper_attempts a JOIN bb_credit_reservations c ON c.owner_user_id=a.owner_user_id AND c.run_id=a.run_id WHERE a.owner_user_id=$1 AND a.batch_id=$2`,[owner,batch])).rows[0];
   const remaining=items.filter(i=>i.state==='queued').length;
-  const required=b.state==='paused'&&b.pause_reason==='credits_insufficient'&&isAutomaticPriceVersion(b.price_version)&&remaining?remaining*automaticTaskTariff(b.price_version).workpaper.points:0;
-  const balance=required?await creditBalance(db,owner):null;
+  const required=b.state==='paused'&&b.pause_reason==='credits_insufficient'&&isAutomaticPriceVersion(b.price_version)&&remaining?remaining*(await loadAutomaticTaskTariff(db,b.price_version)).workpaper.points:0;
+  const balance=required?await creditBalanceExact(db,owner):null;
   const files=await workpaperFileVersions(db,owner,id);
-  return {batch_id:b.id,topic_id:b.topic_id,catalogue_id:b.catalogue_id,state:b.state,revision:b.revision,source:b.source,total_points:Number(b.total_points),charged_points:Number(charged.amount),created_at:date(b.created_at),error:b.error,start_mode:b.start_mode,
-    ...(balance?{billing_resume:{price_version:b.price_version,required_points:required,available_points:balance.available,shortage:Math.max(0,required-balance.available)}}:{}),
+  return {batch_id:b.id,topic_id:b.topic_id,catalogue_id:b.catalogue_id,state:b.state,revision:b.revision,source:b.source,total_points:serializeInt64(b.total_points),charged_points:serializeInt64(charged.amount),created_at:date(b.created_at),error:b.error,start_mode:b.start_mode,
+    ...(balance?{billing_resume:{price_version:b.price_version,required_points:serializeInt64(required),available_points:serializeInt64(balance.available),shortage:serializeInt64(shortageInt64(required,balance.available))}}:{}),
     items:items.map(i=>{const file=files.get(batch+':'+i.item_id),current=file?.current;return {entry:i.manifest.input.workpaper.entry,decision:i.output_decision??i.manifest.input.workpaper.decision,...(i.delivered_explanation?{explanation:{filename:i.delivered_explanation.filename,sha256:i.delivered_explanation.sha256}}:{}),...(file?{file}:{}),run_id:i.run_id,state:i.run_state??(i.state==='succeeded'?'succeeded':b.state==='cancelled'?'cancelled':i.state),stage:i.stage??null,attempt:i.attempt,error:i.error,
       artifacts:current?.asset.kind==='artifact'?[{kind:'document' as const,filename:current.filename,pin:current.asset.pin}]:artifacts.filter(a=>a.run_id===i.run_id&&!i.delivered_explanation).map(a=>({kind:a.kind,filename:a.filename,pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}))};})};
 }
-export async function readWorkpapers(db:Db,owner:string,id:string):Promise<WorkpaperWorkspace>{
+export async function readWorkpapers(db:Db,owner:string,id:string):Promise<BillingWireDto<WorkpaperWorkspace,'workpaperWorkspace'>>{
   await project(db,owner,id);
   const cats=(await db.query('SELECT * FROM bb_workpaper_catalogues WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 10',[owner,id])).rows;
   const batches=(await db.query('SELECT id FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 10',[owner,id])).rows;
   const version=automaticBillingEnabled(db)?await resolveAutomaticTaskPriceVersion(db,owner):null;
-  return {price:version?{version,points:automaticTaskTariff(version).workpaper.points,auto_charge:true}:WORKPAPER_PRICE,assessments:await readWorkpaperAssessments(db,owner,id),catalogues:cats.map(catalogueDto),batches:await Promise.all(batches.map(b=>readWorkpaperBatch(db,owner,id,b.id)))};
+  return encodeBillingDto('workpaperWorkspace',{price:version?{version,points:(await loadAutomaticTaskTariff(db,version)).workpaper.points,auto_charge:true}:WORKPAPER_PRICE,assessments:await readWorkpaperAssessments(db,owner,id),catalogues:cats.map(catalogueDto),batches:await Promise.all(batches.map(b=>readWorkpaperBatch(db,owner,id,b.id)))});
 }
 
 /** A batch is an ordered queue of independent, immutable M4 runs. A failed file does not discard siblings. */
@@ -119,7 +121,7 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
       const topic=(await c.query('SELECT * FROM bb_m4_topics WHERE owner_user_id=$1 AND id=$2',[b.owner_user_id,b.topic_id])).rows[0];if(!topic)throw missing();
       const auto=isAutomaticPriceVersion(b.price_version);
       const quote=await withAutomaticBilling(c,auto,()=>quoteM4(c,b.owner_user_id,topic.id,m.billing_task,inputManifestHash(m),m,auto),auto?b.price_version:undefined);
-      if(quote.quote.points!==(auto?automaticTaskTariff(b.price_version).workpaper.points:WORKPAPER_PRICE.points)||quote.quote.price_version!==b.price_version)throw conflict('QUOTE_CHANGED','文件生成费用已变化，请重新核对。');
+      if(quote.quote.points!==(auto?(await loadAutomaticTaskTariff(c,b.price_version)).workpaper.points:WORKPAPER_PRICE.points)||quote.quote.price_version!==b.price_version)throw conflict('QUOTE_CHANGED','文件生成费用已变化，请重新核对。');
       const run=await startPinnedM4Run(c,b.owner_user_id,topic,`workpaper:${b.id}:${next.item_id}:${next.attempt}`,inputManifestHash({batch:b.id,item:next.item_id,attempt:next.attempt}),m,quote.quote.quote_id,inputManifestHash(m),true);
       await c.query("UPDATE bb_workpaper_items SET run_id=$3,state='running',error=NULL WHERE batch_id=$1 AND item_id=$2",[b.id,next.item_id,run.id]);
       await c.query('INSERT INTO bb_workpaper_attempts(owner_user_id,batch_id,item_id,attempt,run_id) VALUES($1,$2,$3,$4,$5)',[b.owner_user_id,b.id,next.item_id,next.attempt,run.id]);
@@ -185,7 +187,7 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
       if(decisions.length!==selected.length||new Set(decisions.map(d=>d.item_id)).size!==selected.length||selected.some(e=>!decisions.some(d=>d.item_id===e.id)))throw conflict('INPUT_REVISION_CONFLICT','判断清单不完整，请重新判断。');
       }
       const generatable=direct?selected.length:decisions.filter(d=>d.status==='generate').length;
-      const auto=automaticBillingEnabled(c),version=auto?await resolveAutomaticTaskPriceVersion(c,user):null,unit=version?automaticTaskTariff(version).workpaper.points:WORKPAPER_PRICE.points;
+      const auto=automaticBillingEnabled(c),version=auto?await resolveAutomaticTaskPriceVersion(c,user):null,unit=version?(await loadAutomaticTaskTariff(c,version)).workpaper.points:WORKPAPER_PRICE.points;
       if(b.price_version!==(version??WORKPAPER_PRICE.version)||b.expected_points!==generatable*unit)throw conflict('QUOTE_CHANGED','文件数量或任务版本已变化，请刷新当前目录。');
       if(auto)await requireFileUpdateCredits(c,user,b.expected_points,true);
       if((await c.query("SELECT 1 FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 AND state IN ('queued','running','paused')",[user,id])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','本项目已有底稿文件包待完成，请先继续或结束原文件包。');
@@ -236,7 +238,7 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
       if(billing){
         if(row.state!=='paused'||row.pause_reason!=='credits_insufficient'||!isAutomaticPriceVersion(row.price_version)||billing.price_version!==row.price_version)throw conflict('INPUT_REVISION_CONFLICT','本批次已不处于原余额不足状态，请查看当前进度。');
         const remaining=Number((await c.query("SELECT count(*) n FROM bb_workpaper_items WHERE owner_user_id=$1 AND batch_id=$2 AND state='queued'",[user,batch])).rows[0].n);
-        const points=remaining*automaticTaskTariff(row.price_version).workpaper.points;
+        const points=remaining*(await loadAutomaticTaskTariff(c,row.price_version)).workpaper.points;
         if(points<=0||billing.expected_points!==points)throw conflict('QUOTE_CHANGED','本批剩余底稿范围已变化，请刷新进度。');
         await withAutomaticBilling(c,true,()=>requireFileUpdateCredits(c,user,points,true),row.price_version);
       }
@@ -317,6 +319,6 @@ async function explanationBytes(db:Db,blobs:PrivateBlobs,owner:string,id:string,
  if(!row?.explanation)throw missing();const bytes=await blobs.getIfExistsBounded(row.explanation.key,1024*1024);
  if(!bytes||digest(bytes)!==row.explanation.sha256)throw new Problem(503,'DATA_UNAVAILABLE','说明文件暂不可读取，请重试。');return bytes;
 }
-import {automaticTaskTariff,isAutomaticPriceVersion} from '@bondbuddy/contracts';
+import {isAutomaticPriceVersion} from '@bondbuddy/contracts';
 import {automaticBillingEnabled,withAutomaticBilling} from './automatic-billing-context.js';
 import {requireFileUpdateCredits} from './project-file-billing.js';

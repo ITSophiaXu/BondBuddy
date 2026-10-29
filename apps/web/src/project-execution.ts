@@ -1,3 +1,4 @@
+import {int64} from '@bondbuddy/contracts';
 import {isAutomaticCharge} from './commerce';
 import {UserFacingError} from './user-facing-error.js';
 import { ArtifactPage } from './artifact-page';
@@ -408,7 +409,7 @@ export class ProjectExecution {
     this.actions.closest('.authoring-actions')?.classList.toggle('is-preparing', !this.restoring && !activeRun && (!this.run || this.nextRequested));
     const block = this.startBlock(), blocked = block.reason;
     this.button('complete-source-information').hidden = !block.sourceGap || !this.materialsEditable;
-    this.button('execute-input').disabled = Boolean(blocked) || scopePending(this.quote?.quote) || Boolean(this.quote && (!isAutomaticCharge(this.quote.quote)&&(isCnyPrice(this.quote.quote)?this.quote.shortage>0:this.quote.balance.available === 0)));
+    this.button('execute-input').disabled = Boolean(blocked) || scopePending(this.quote?.quote) || Boolean(this.quote && (!isAutomaticCharge(this.quote.quote)&&(isCnyPrice(this.quote.quote)?int64(this.quote.shortage)>0n:int64(this.quote.balance.available)===0n)));
     this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始更新' : '正在提交…')
       : this.materialsEditable && this.materialBlock() ? '等待材料保存完成'
       : this.awaitingCredits ? '继续更新'
@@ -416,13 +417,13 @@ export class ProjectExecution {
     let quoteHost=this.actions.querySelector<HTMLElement>('#fixed-quote');
     if(!quoteHost){quoteHost=document.createElement('div');quoteHost.id='fixed-quote';quoteHost.setAttribute('aria-live','polite');this.actions.prepend(quoteHost);}
     const q=this.quote;
-    const insufficient=!!q&&(isCnyPrice(q.quote)?q.shortage>0:q.balance.available===0);
+    const insufficient=!!q&&(isCnyPrice(q.quote)?int64(q.shortage)>0n:int64(q.balance.available)===0n);
     quoteHost.hidden=(!insufficient&&!scopePending(q?.quote))||Boolean(activeRun)||Boolean(this.run&&!this.nextRequested);
     quoteHost.innerHTML=scopePending(q?.quote)?`<div class="fixed-quote"><h3>${esc(scopeStatusLabel(q?.quote))}</h3>${scopeLifecycleHtml(q?.quote)}<button type="button" class="text-button" id="refresh-quote">刷新范围报价</button></div>`:insufficient?`<div class="fixed-quote"><h3>${isCnyPrice(q?.quote)?'服务余额不足':'积分不足'}，请充值后继续更新</h3><p>${isCnyPrice(q?.quote)?'本次总价 '+displayPrice(q?.quote)+'。':''}项目材料与补充要求已保留，当前没有启动更新任务。</p><a class="btn primary" href="${esc(this.rechargeLink())}">${isCnyPrice(q?.quote)?'按需充值':'充值积分'}</a><button type="button" class="text-button" id="refresh-quote">刷新余额</button></div>`:'';
     quoteHost.querySelector<HTMLButtonElement>('#refresh-quote')?.addEventListener('click',()=>{void this.action(()=>this.loadQuote(),'other','read');});
     let billingHint = this.actions.querySelector<HTMLElement>('#execution-credit-hint');
     if (!billingHint) { billingHint = document.createElement('p'); billingHint.id = 'execution-credit-hint'; billingHint.className = 'muted'; this.actions.querySelector('.start-buttons')!.before(billingHint); }
-    billingHint.hidden = Boolean(activeRun || this.run && !this.nextRequested || q && q.balance.available === 0);
+    billingHint.hidden = Boolean(activeRun || this.run && !this.nextRequested || q && int64(q.balance.available)===0n);
     billingHint.textContent = this.automaticBilling?'发起任务后自动锁价并预留积分，成功交付后扣费；平台重试不重复收费。':this.commerceEnabled?'按成果付费；开始前显示本次范围与人民币总价，确认后预留，交付结算。':this.paidEnabled === false ? '当前为试用编制，本次不扣积分。'
       : '有积分即可开始，处理时按进度扣减；积分用完暂停，充值到账后继续。';
     this.node('#start-disabled-reason').textContent = blocked;
@@ -591,8 +592,8 @@ export class ProjectExecution {
       // Backend admission is authoritative; uncertainty alone does not add an upload review step.
       if (this.preflight.status === 'blocked') return;
       if(this.preflight.billing_mode==='fixed_credits'||this.commerceEnabled){
-        if(!this.quote || scopePending(this.quote.quote) || this.quote.balance.available === 0)await this.action(()=>this.loadQuote(),'other','read');
-        if(!this.quote?.enabled || !this.quote.quote || scopePending(this.quote.quote) || (!isAutomaticCharge(this.quote.quote)&&(isCnyPrice(this.quote.quote)?this.quote.shortage>0:this.quote.balance.available === 0)))return;
+        if(!this.quote || scopePending(this.quote.quote) || int64(this.quote.balance.available)===0n)await this.action(()=>this.loadQuote(),'other','read');
+        if(!this.quote?.enabled || !this.quote.quote || scopePending(this.quote.quote) || (!isAutomaticCharge(this.quote.quote)&&(isCnyPrice(this.quote.quote)?int64(this.quote.shortage)>0n:int64(this.quote.balance.available)===0n)))return;
         if(isCnyPrice(this.quote.quote)){
           const input=this.input,quote=this.quote;
           if(!await confirmCnyTask('确认募集书任务费用',quote.quote!,`按已保存材料与要求执行，输入版本 ${input.input_revision}。本次仅处理所确认的目标和范围，生成工作稿。`))return;
@@ -607,7 +608,7 @@ export class ProjectExecution {
     const generation=this.generation,input=this.input;
     const quote=await this.api.creditQuote(this.id,{input_revision:input.input_revision,input_hash:input.input_hash},this.controller.signal);
     if(!quote.enabled||!quote.quote)throw new ApiError(409,'QUOTE_REQUIRED');
-    if(this.active&&generation===this.generation){this.quote=quote;if(quote.balance.available === 0)this.awaitingCredits=true;this.render();}
+    if(this.active&&generation===this.generation){this.quote=quote;if(int64(quote.balance.available)===0n)this.awaitingCredits=true;this.render();}
   }
   private async changeRun(action: 'cancel' | 'resume' | 'pause') {
     if (!this.run || action === 'resume' && !(this.run.state === 'running' && this.charge?.progress?.pause_requested) && this.run.stage !== 'user_paused' && this.run.stage !== 'credits_exhausted' && (!this.resumeVerified || this.run.stage !== 'capability_not_ready')) return;

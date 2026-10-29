@@ -1,10 +1,11 @@
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Pool} from 'pg';
 import type {Static} from '@sinclair/typebox';
-import {COMMERCE_RULES,OUTCOME_CATALOG,OUTCOME_PRICE_VERSION,automaticTaskTariff,AUTOMATIC_BILLING_RULES,AUTOMATIC_PRICE_VERSION,schemas,type CommerceTopup} from '@bondbuddy/contracts';
+import {COMMERCE_RULES,OUTCOME_CATALOG,OUTCOME_PRICE_VERSION,AUTOMATIC_BILLING_RULES,AUTOMATIC_TASK_TERMS,LEGACY_AUTOMATIC_PRICE_VERSION,schemas,type AutomaticTaskSku,type CommerceTopup} from '@bondbuddy/contracts';
+import {loadAutomaticTaskTariff} from './automatic-tariff-repository.js';
 import {automaticBillingEnabled} from './automatic-billing-context.js';
 import {resolveAutomaticTaskPriceVersion} from './automatic-price-versions.js';
-import {creditBalance} from './billing.js';
+import {creditBalanceExact} from './billing.js';
 import {createServiceTopup,rechargeDto,refreshRecharge,type PaymentProvider} from './payments.js';
 import {digest,missing,Problem,transaction,uid} from './data.js';
 import {readScopeQuotations,readScopeQuotation,declineScopeQuotation,requoteScopeQuotation} from './scope-quotations.js';
@@ -23,14 +24,13 @@ export function installCommerce(app:FastifyInstance,pool:Pool,owner:(r:FastifyRe
     if(automaticBillingEnabled(pool)){
       const version=await resolveAutomaticTaskPriceVersion(pool,user);
       return{enabled:true,currency:'CNY',version,model:'subscription_and_topup',
-      items:Object.entries(automaticTaskTariff(version)).map(([code,item])=>({code,label:item.label+(code==='full_review'&&version!==AUTOMATIC_PRICE_VERSION?'（本期原价）':''),unit:item.unit,price_fen:item.points,price_points:item.points,capability:'limited',
-        scope:code==='full_review'?['一份募集说明书与锁定材料的一轮全面复核，覆盖财务、交叉一致性、规则与格式，交付复核报告及批注。','另行委托的差异复核、原文修订各按14,900积分独立计费。']:[code==='integrity'?'每轮至多5个主体、每主体至多20个适用官网；按明确名单和截至时间执行':'用户明确提出并锁定的独立业务范围'],
-        included:code==='full_review'?['本轮复核报告与批注的修复、平台重试包含在任务内。']:['原范围必要检查、修复、支撑材料及平台重试包含在任务内']})),rules:AUTOMATIC_BILLING_RULES};
+      items:Object.entries(await loadAutomaticTaskTariff(pool,version)).map(([code,item])=>({code,label:item.label+(code==='full_review'&&version===LEGACY_AUTOMATIC_PRICE_VERSION?'（本期原价）':''),unit:item.unit,price_fen:item.points,price_points:item.points,capability:'limited',
+        ...AUTOMATIC_TASK_TERMS[code as AutomaticTaskSku]})),rules:AUTOMATIC_BILLING_RULES};
     }
     return{enabled,currency:'CNY',version:OUTCOME_PRICE_VERSION,model:'pay_as_you_go',items:OUTCOME_CATALOG,rules:COMMERCE_RULES};
   });
   app.get('/api/v1/commerce/account',{schema:{response:{200:schemas.CommerceAccountResponse}}},async r=>{
-    const balance=await creditBalance(pool,await owner(r)),automatic=automaticBillingEnabled(pool),payable=enabled||automatic;
+    const balance=await creditBalanceExact(pool,await owner(r)),automatic=automaticBillingEnabled(pool),payable=enabled||automatic;
     return{available_fen:balance.available,held_fen:balance.frozen,...(automatic?{available_points:balance.available,held_points:balance.frozen}:{}),
       payment_enabled:payable&&providers.length>0,providers:payable?providers.map(p=>p.name):[],
       legacy_balance_notice:automatic?'余额为可用积分，包含订阅额度及充值权益，不等于可退现金。旧批次权益继续有效，现金退款按原支付订单核算。':'旧余额权益继续有效，按原账本单位抵扣；历史任务保留原计费规则。'};

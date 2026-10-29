@@ -1,7 +1,21 @@
 import {workpaperOpenApiPaths} from './workpapers.js';
 import {commerceSchemas} from './commerce.js';
+import {billingPriceAdminSchemas} from './billing-price-admin.js';
+export * from './billing-price-admin.js';
 import {subscriptionSchemas} from './subscriptions.js';
+import {billingPermissionSchemas} from './billing-permissions.js';
+export * from './billing-permissions.js';
+export * from './billing-integers.js';
+export * from './billing-wire.js';
+export * from './billing-wire-routes.js';
+import {transformBillingOpenApi} from './billing-wire-routes.js';
+import {taskRefundSchemas,taskRefundOpenApiPaths} from './task-refunds.js';
+export * from './task-refunds.js';
 export * from './subscriptions.js';
+import {subscriptionOrderDetailSchemas,subscriptionOrderDetailOpenApiPaths} from './subscription-order-detail.js';
+export * from './subscription-order-detail.js';
+import {projectFileCheckBatchSchemas,projectFileCheckBatchOpenApiPaths} from './project-file-check-batches.js';
+export * from './project-file-check-batches.js';
 import {paymentRefundSchemas,paymentRefundOpenApiPaths} from './payment-refunds.js';
 export * from './payment-refunds.js';
 export * from './commerce.js';
@@ -209,7 +223,12 @@ const InternalObservabilityEventSchema = obj({ event_id: id, schema_version: Typ
 const materialResponseSchema = obj({ material_id: id, material_version: revision, upload_id: id, role: materialRole, filename: Type.String(), media_type: uploadMediaType, byte_size: Type.Integer({ minimum: 1 }), sha256: hash, state: materialState, persisted_at: utc, error: nullable(Type.String()), signature_assessment: Type.Optional(nullable(SignatureAssessmentSchema)), parse_snapshot_id: Type.Optional(nullable(id)) });
 export const schemas = {
   ...commerceSchemas,
+  ...billingPriceAdminSchemas,
   ...subscriptionSchemas,
+  ...billingPermissionSchemas,
+  ...taskRefundSchemas,
+  ...subscriptionOrderDetailSchemas,
+  ...projectFileCheckBatchSchemas,
   ...paymentRefundSchemas,
   ...prospectusVersionSchemas,
   ...m4Schemas,
@@ -375,6 +394,14 @@ export type SchemaName = keyof typeof schemas;
 export type Operation = { method: 'get' | 'post' | 'patch' | 'delete'; path: string; summary: string; request?: SchemaName; response: SchemaName; status: number; errors?: number[]; headers?: Record<string, string> };
 const op = (method: Operation['method'], path: string, summary: string, response: SchemaName, status = 200, request?: SchemaName, errors: number[] = []): Operation => ({ method, path, summary, request, response, status, errors });
 export const operations: readonly Operation[] = [
+  op('get','/billing/permissions','Read the current user explicit billing permissions','BillingPermissionsResponse'),
+  op('get','/admin/cost-versions','Read immutable planned-cost versions','BillingCostVersionsResponse'),
+  op('post','/admin/cost-versions','Freeze all twelve attributable planned costs and their sources','BillingCostVersionResponse',201,'BillingCostVersionCreateRequest',[404,409,422]),
+  op('get','/admin/price-versions','Read published tariffs and draft comparisons','BillingPriceVersionsResponse'),
+  op('post','/admin/price-versions','Create an immutable tariff draft','BillingPriceVersionResponse',201,'BillingPriceDraftCreateRequest',[404,409,422]),
+  op('get','/admin/price-versions/{price_version_id}','Read a tariff and its twelve-row comparison','BillingPriceVersionResponse'),
+  op('post','/admin/price-versions/{price_version_id}/validate','Validate the exact tariff checksum','BillingPriceVersionResponse',200,'BillingPriceValidateRequest',[404,409,422]),
+  op('post','/admin/price-versions/{price_version_id}/publish','Schedule a validated tariff while preserving accepted prices','BillingPriceVersionResponse',200,'BillingPricePublishRequest',[404,409,422]),
   op('get','/subscriptions/catalog','Read monthly plans and actual recurring-payment capabilities','SubscriptionCatalogResponse'),
   op('get','/subscriptions/account','Read subscription periods and the existing wallet projections','SubscriptionAccountResponse'),
   op('post','/subscriptions','Purchase one monthly subscription period','SubscriptionCheckoutResponse',201,'SubscriptionCheckoutRequest',[409,422,503]),
@@ -632,9 +659,15 @@ export function openApiDocument() {
   Object.assign(paths, qaOpenApiPaths());
   Object.assign(paths, workpaperOpenApiPaths());
   Object.assign(paths, paymentRefundOpenApiPaths());
+  for(const operation of operations.filter(o=>o.path==='/billing/permissions'||o.path.startsWith('/admin/cost-versions')||o.path.startsWith('/admin/price-versions'))){
+    (paths[`/api/v1${operation.path}`][operation.method] as Record<string,unknown>)['x-implementation-status']='implemented; independent-billing-permission; immutable-history; future-price-publication';
+  }
+  for (const [path,definition] of Object.entries(taskRefundOpenApiPaths())) paths[`/api/v1${path}`]=definition;
+  for (const [path,definition] of Object.entries(subscriptionOrderDetailOpenApiPaths())) paths[`/api/v1${path}`]=definition;
+  for (const [path,definition] of Object.entries(projectFileCheckBatchOpenApiPaths())) paths[`/api/v1${path}`]=definition;
   Object.assign(paths, trialOpenApiPaths(ref)); // #35 trial guard
   Object.assign(paths, agreementOpenApiPaths(ref)); // #7 registration agreement
-  return { openapi: '3.1.0', info: { title: 'BondBuddy M1 public contract', version: '0.3.0', description: 'Username/password registration and login use PostgreSQL Argon2id credentials; legacy SMS routes are absent and fail closed. PostgreSQL-backed sessions bind personal routes to a verified user. Durable queue submission/cancel/resume are available only by explicit in-process synthetic-test injection; production returns 501 until #16 provider reconciliation, #79 logs and checked Word delivery. Other capability routes return 501. UTC timestamps end in Z. Nullable means explicitly unknown/not yet available; 0 is a known measured zero. Cursor is opaque and null at end. All personal resources require owner checks; unknown and foreign IDs share 404. Browser closes do not cancel server runs. Access and rotating refresh tokens use HttpOnly Secure SameSite cookies; bb_csrf is a readable SameSite cookie and mutations require its X-BB-CSRF echo plus exact allowed Origin.' }, servers: [{ url: '/' }], components: { schemas: publicSchemas, securitySchemes: { sessionCookie: { type: 'apiKey', in: 'cookie', name: 'bb_session', description: 'Server-set HttpOnly, Secure, SameSite access cookie.' }, refreshCookie: { type:'apiKey', in:'cookie', name:'bb_refresh', description:'Rotating HttpOnly, Secure, SameSite refresh cookie with absolute lifetime.' } } }, paths };
+  return transformBillingOpenApi({ openapi: '3.1.0', info: { title: 'BondBuddy M1 public contract', version: '0.3.0', description: 'Username/password registration and login use PostgreSQL Argon2id credentials; legacy SMS routes are absent and fail closed. PostgreSQL-backed sessions bind personal routes to a verified user. Durable queue submission/cancel/resume are available only by explicit in-process synthetic-test injection; production returns 501 until #16 provider reconciliation, #79 logs and checked Word delivery. Other capability routes return 501. UTC timestamps end in Z. Nullable means explicitly unknown/not yet available; 0 is a known measured zero. Cursor is opaque and null at end. All personal resources require owner checks; unknown and foreign IDs share 404. Browser closes do not cancel server runs. Access and rotating refresh tokens use HttpOnly Secure SameSite cookies; bb_csrf is a readable SameSite cookie and mutations require its X-BB-CSRF echo plus exact allowed Origin.' }, servers: [{ url: '/' }], components: { schemas: publicSchemas, securitySchemes: { sessionCookie: { type: 'apiKey', in: 'cookie', name: 'bb_session', description: 'Server-set HttpOnly, Secure, SameSite access cookie.' }, refreshCookie: { type:'apiKey', in:'cookie', name:'bb_refresh', description:'Rotating HttpOnly, Secure, SameSite refresh cookie with absolute lifetime.' } } }, paths });
 }
 
 export { reportingWindow } from './reporting-window.js';

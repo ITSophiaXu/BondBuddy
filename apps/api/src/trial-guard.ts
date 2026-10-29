@@ -1,3 +1,4 @@
+import {int64,serializeInt64,addInt64} from '@bondbuddy/contracts';
 import { createHash } from 'node:crypto';
 import { hostname } from 'node:os';
 import type { Pool, PoolClient } from 'pg';
@@ -83,17 +84,17 @@ const ACTIVE_RUN_STATES = "('preparing','queued','running','validating','deliver
 
 /** Platform safety budget only: observed tokens plus a conservative allowance for unknown usage. */
 export async function tokensSince(db: Db, config: TrialConfig, userId: string, since: Date) {
-  const q = await db.query(`SELECT COALESCE(sum(tokens),0)::bigint AS tokens FROM (
+  const q = await db.query(`SELECT COALESCE(sum(tokens),0)::text AS tokens FROM (
     SELECT CASE WHEN a.status='confirmed_not_sent' THEN 0
-      WHEN e.usage_status='measured' THEN e.input_tokens+e.output_tokens ELSE $3::bigint END AS tokens
+      WHEN e.usage_status='measured' THEN e.input_tokens::numeric+e.output_tokens ELSE $3::bigint END AS tokens
     FROM bb_model_call_attempts a JOIN bb_call_usage_effective e ON e.attempt_id=a.id
     WHERE a.owner_user_id=$1 AND a.created_at>=$2
     UNION ALL
     SELECT CASE WHEN status='confirmed_not_sent' THEN 0
-      WHEN usage_status='measured' THEN input_tokens+output_tokens ELSE $3::bigint END AS tokens
+      WHEN usage_status='measured' THEN input_tokens::numeric+output_tokens ELSE $3::bigint END AS tokens
     FROM bb_review_assistant_attempts WHERE owner_user_id=$1 AND created_at>=$2
   ) usage_budget`, [userId, since, config.unknown_usage_tokens_per_attempt]);
-  return Number(q.rows[0].tokens);
+  return int64(q.rows[0].tokens);
 }
 
 async function countAdmissions(db: Db, column: 'owner_user_id' | 'source_hash', value: string, kind: string, since: Date | string) {
@@ -285,8 +286,8 @@ export async function trialStatus(pool: Pool, config: TrialConfig, actorId: stri
   });
 }
 
-type UsageRow = { day: string; user_id: string | null; runs_created: number; runs_finished: number; run_duration_ms: number; attempts: number; measured_attempts: number; unresolved_attempts: number; model_call_duration_ms: number; measured_tokens: { input_tokens: number; output_tokens: number; cached_input_tokens: number; reasoning_tokens: number }; conservative_tokens: number; upload_bytes: number; pricing_status: 'unknown' };
-const emptyRow = (day: string, user: string | null): UsageRow => ({ day, user_id: user, runs_created: 0, runs_finished: 0, run_duration_ms: 0, attempts: 0, measured_attempts: 0, unresolved_attempts: 0, model_call_duration_ms: 0, measured_tokens: { input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, reasoning_tokens: 0 }, conservative_tokens: 0, upload_bytes: 0, pricing_status: 'unknown' });
+type UsageRow = { day: string; user_id: string | null; runs_created: string; runs_finished: string; run_duration_ms: string; attempts: string; measured_attempts: string; unresolved_attempts: string; model_call_duration_ms: string; measured_tokens: { input_tokens: string; output_tokens: string; cached_input_tokens: string; reasoning_tokens: string }; conservative_tokens: string; upload_bytes: string; pricing_status: 'unknown' };
+const emptyRow = (day: string, user: string | null): UsageRow => ({ day, user_id: user, runs_created: '0', runs_finished: '0', run_duration_ms: '0', attempts: '0', measured_attempts: '0', unresolved_attempts: '0', model_call_duration_ms: '0', measured_tokens: { input_tokens: '0', output_tokens: '0', cached_input_tokens: '0', reasoning_tokens: '0' }, conservative_tokens: '0', upload_bytes: '0', pricing_status: 'unknown' });
 
 /** Daily aggregates per user and in total, grouped by the trial accounting day. */
 export async function trialUsage(pool: Pool, config: TrialConfig, actorId: string, query: Record<string, unknown>) {
@@ -305,26 +306,26 @@ export async function trialUsage(pool: Pool, config: TrialConfig, actorId: strin
     const rows = new Map<string, UsageRow>();
     const row = (day: string, u: string) => { const key = `${day}|${u}`; let r = rows.get(key); if (!r) rows.set(key, r = emptyRow(day, u)); return r; };
     const dayText = (column: string) => `to_char((${column} AT TIME ZONE $1)::date,'YYYY-MM-DD')`;
-    for (const r of (await client.query(`SELECT ${dayText('created_at')} d,owner_user_id u,count(*)::int n FROM bb_runs WHERE ${range('created_at')} GROUP BY 1,2`, args)).rows) row(r.d, r.u).runs_created = r.n;
-    for (const r of (await client.query(`SELECT ${dayText('updated_at')} d,owner_user_id u,count(*)::int n,COALESCE(sum(EXTRACT(EPOCH FROM updated_at-created_at)*1000),0)::bigint ms FROM bb_runs WHERE state IN ('succeeded','test_completed','failed','cancelled') AND ${range('updated_at')} GROUP BY 1,2`, args)).rows) { const x = row(r.d, r.u); x.runs_finished = r.n; x.run_duration_ms = Number(r.ms); }
-    for (const r of (await client.query(`SELECT ${dayText('created_at')} d,owner_user_id u,count(*)::int n,
-        count(*) FILTER (WHERE usage_status='measured')::int measured,
-        count(*) FILTER (WHERE usage_status<>'measured' AND call_status<>'confirmed_not_sent')::int unresolved,
-        COALESCE(sum(duration_ms),0)::bigint ms,
-        COALESCE(sum(input_tokens) FILTER (WHERE usage_status='measured'),0)::bigint i, COALESCE(sum(output_tokens) FILTER (WHERE usage_status='measured'),0)::bigint o,
-        COALESCE(sum(cached_input_tokens) FILTER (WHERE usage_status='measured'),0)::bigint c, COALESCE(sum(reasoning_tokens) FILTER (WHERE usage_status='measured'),0)::bigint rsn,
-        COALESCE(sum(CASE WHEN call_status='confirmed_not_sent' THEN 0 WHEN usage_status='measured' THEN input_tokens+output_tokens ELSE $5::bigint END),0)::bigint cons
+    for (const r of (await client.query(`SELECT ${dayText('created_at')} d,owner_user_id u,count(*)::text n FROM bb_runs WHERE ${range('created_at')} GROUP BY 1,2`, args)).rows) row(r.d, r.u).runs_created = r.n;
+    for (const r of (await client.query(`SELECT ${dayText('updated_at')} d,owner_user_id u,count(*)::text n,COALESCE(sum(EXTRACT(EPOCH FROM updated_at-created_at)*1000),0)::bigint::text ms FROM bb_runs WHERE state IN ('succeeded','test_completed','failed','cancelled') AND ${range('updated_at')} GROUP BY 1,2`, args)).rows) { const x = row(r.d, r.u); x.runs_finished = r.n; x.run_duration_ms = serializeInt64(r.ms); }
+    for (const r of (await client.query(`SELECT ${dayText('created_at')} d,owner_user_id u,count(*)::text n,
+        count(*) FILTER (WHERE usage_status='measured')::text measured,
+        count(*) FILTER (WHERE usage_status<>'measured' AND call_status<>'confirmed_not_sent')::text unresolved,
+        COALESCE(sum(duration_ms),0)::bigint::text ms,
+        COALESCE(sum(input_tokens) FILTER (WHERE usage_status='measured'),0)::bigint::text i, COALESCE(sum(output_tokens) FILTER (WHERE usage_status='measured'),0)::bigint::text o,
+        COALESCE(sum(cached_input_tokens) FILTER (WHERE usage_status='measured'),0)::bigint::text c, COALESCE(sum(reasoning_tokens) FILTER (WHERE usage_status='measured'),0)::bigint::text rsn,
+        COALESCE(sum(CASE WHEN call_status='confirmed_not_sent' THEN 0 WHEN usage_status='measured' THEN input_tokens::numeric+output_tokens ELSE $5::bigint END),0)::bigint::text cons
       FROM bb_platform_cost_ledger WHERE ${range('created_at')} GROUP BY 1,2`, [...args, config.unknown_usage_tokens_per_attempt])).rows) {
-      const x = row(r.d, r.u); x.attempts = r.n; x.measured_attempts = r.measured; x.unresolved_attempts = r.unresolved; x.model_call_duration_ms = Number(r.ms);
-      x.measured_tokens = { input_tokens: Number(r.i), output_tokens: Number(r.o), cached_input_tokens: Number(r.c), reasoning_tokens: Number(r.rsn) }; x.conservative_tokens = Number(r.cons);
+      const x = row(r.d, r.u); x.attempts = r.n; x.measured_attempts = r.measured; x.unresolved_attempts = r.unresolved; x.model_call_duration_ms = serializeInt64(r.ms);
+      x.measured_tokens = { input_tokens: serializeInt64(r.i), output_tokens: serializeInt64(r.o), cached_input_tokens: serializeInt64(r.c), reasoning_tokens: serializeInt64(r.rsn) }; x.conservative_tokens = serializeInt64(r.cons);
     }
-    for (const r of (await client.query(`SELECT ${dayText('created_at')} d,owner_user_id u,COALESCE(sum(byte_size),0)::bigint b FROM bb_trial_admissions WHERE kind='upload_create' AND ${range('created_at')} GROUP BY 1,2`, args)).rows) row(r.d, r.u).upload_bytes = Number(r.b);
+    for (const r of (await client.query(`SELECT ${dayText('created_at')} d,owner_user_id u,COALESCE(sum(byte_size),0)::bigint::text b FROM bb_trial_admissions WHERE kind='upload_create' AND ${range('created_at')} GROUP BY 1,2`, args)).rows) row(r.d, r.u).upload_bytes = serializeInt64(r.b);
     const perUser = [...rows.values()].sort((a, b) => a.day.localeCompare(b.day) || a.user_id!.localeCompare(b.user_id!));
     const totals = new Map<string, UsageRow>();
     for (const r of perUser) {
       const t = totals.get(r.day) ?? emptyRow(r.day, null); totals.set(r.day, t);
-      for (const k of ['runs_created', 'runs_finished', 'run_duration_ms', 'attempts', 'measured_attempts', 'unresolved_attempts', 'model_call_duration_ms', 'conservative_tokens', 'upload_bytes'] as const) t[k] += r[k];
-      for (const k of ['input_tokens', 'output_tokens', 'cached_input_tokens', 'reasoning_tokens'] as const) t.measured_tokens[k] += r.measured_tokens[k];
+      for (const k of ['runs_created', 'runs_finished', 'run_duration_ms', 'attempts', 'measured_attempts', 'unresolved_attempts', 'model_call_duration_ms', 'conservative_tokens', 'upload_bytes'] as const) t[k] = addInt64(t[k],r[k]).toString();
+      for (const k of ['input_tokens', 'output_tokens', 'cached_input_tokens', 'reasoning_tokens'] as const) t.measured_tokens[k] = addInt64(t.measured_tokens[k],r.measured_tokens[k]).toString();
     }
     return { from, to, day_time_zone: tz, pricing_status: 'unknown' as const, per_user: perUser, totals: [...totals.values()] };
   });
@@ -353,8 +354,8 @@ export async function costLedger(pool: Pool, config: TrialConfig, actorId: strin
       ORDER BY created_at,attempt_id LIMIT $6`, [user ?? null, from ?? null, to ?? null, after?.[0] ?? null, after?.[1] ?? null, limit + 1]);
     const page = q.rows.slice(0, limit);
     const items = page.map(r => ({ attempt_id: r.attempt_id, user_id: r.owner_user_id, job_id: r.job_id, run_id: r.run_id ?? null, logical_call_id: r.logical_call_id, attempt_no: r.attempt_no, model_id: r.model_id ?? null, model_provider: r.model_provider ?? null,
-      call_status: r.call_status, usage_status: r.usage_status, input_tokens: r.input_tokens, output_tokens: r.output_tokens, cached_input_tokens: r.cached_input_tokens, reasoning_tokens: r.reasoning_tokens,
-      conservative_tokens: r.call_status === 'confirmed_not_sent' ? 0 : r.usage_status === 'measured' ? r.input_tokens + r.output_tokens : config.unknown_usage_tokens_per_attempt,
+      call_status: r.call_status, usage_status: r.usage_status, input_tokens: r.input_tokens===null?null:serializeInt64(r.input_tokens), output_tokens: r.output_tokens===null?null:serializeInt64(r.output_tokens), cached_input_tokens: r.cached_input_tokens===null?null:serializeInt64(r.cached_input_tokens), reasoning_tokens: r.reasoning_tokens===null?null:serializeInt64(r.reasoning_tokens),
+      conservative_tokens: r.call_status === 'confirmed_not_sent' ? '0' : r.usage_status === 'measured' ? addInt64(r.input_tokens,r.output_tokens).toString() : serializeInt64(config.unknown_usage_tokens_per_attempt),
       duration_ms: r.duration_ms ?? null, billable: r.billable, cost_bearer: r.cost_bearer, rate_ref: r.rate_ref ?? null,
       pricing_status: r.pricing_status, cost_amount: r.cost_amount ?? null, currency: r.pricing_status === 'priced' ? r.currency : null, created_at: iso(r.created_at)! }));
     const last = page.at(-1);

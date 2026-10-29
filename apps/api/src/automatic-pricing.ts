@@ -1,12 +1,12 @@
 import type {PoolClient} from 'pg';
-import {AUTOMATIC_PRICE_VERSION,automaticTaskTariff,isAutomaticPriceVersion,type AutomaticPriceVersion,type AutomaticTaskSku,type ScopeLine} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,automaticTaskTariff,isAutomaticPriceVersion,type AutomaticPriceVersion,type AutomaticTaskSku,type AutomaticTaskTariff,type ScopeLine} from '@bondbuddy/contracts';
 import {classifyFixedPrice} from './billing-classification.js';
 import {Problem} from './data.js';
 
 export type AutomaticPrice={version:AutomaticPriceVersion;sku:AutomaticTaskSku|'differential_review'|'review_revision';lines:ScopeLine[];points:number;source_quote_ids:string[]};
 const unsupported=(message:string):never=>{throw new Problem(422,'SCOPE_UNSUPPORTED',message);};
 /** Only trusted, owned workflow snapshots enter here. It does not interpret prices supplied by a user or a model. */
-export function resolveAutomaticTaskPrice(action:string,snapshot:any,version:AutomaticPriceVersion=AUTOMATIC_PRICE_VERSION):AutomaticPrice{
+export function resolveAutomaticTaskPrice(action:string,snapshot:any,version:AutomaticPriceVersion=AUTOMATIC_PRICE_VERSION,tariff:AutomaticTaskTariff=automaticTaskTariff(version)):AutomaticPrice{
   if(!isAutomaticPriceVersion(version))return unsupported('当前任务价格版本不受支持。');
   let sku:AutomaticPrice['sku'],units:{id:string;label?:string}[]=[{id:action}],sources:string[]=[],override:number|undefined;
   if(!snapshot||typeof snapshot!=='object')return unsupported('任务范围缺失，请补充业务目标。');
@@ -54,19 +54,29 @@ export function resolveAutomaticTaskPrice(action:string,snapshot:any,version:Aut
     else if(snapshot.task==='differential_review'||snapshot.task==='review_revision')sku=snapshot.task;
     else return unsupported('请选择独立全面复核、差异复核或复核后原文修订。');
   }else return unsupported('当前业务操作尚未配置自动计费范围。');
-  const entry=sku==='differential_review'?{points:14900,label:'差异复核',unit:'次'}:sku==='review_revision'?{points:14900,label:'复核后原文修订',unit:'次'}:automaticTaskTariff(version)[sku];
+  const entry=sku==='differential_review'?{points:14900,label:'差异复核',unit:'次'}:sku==='review_revision'?{points:14900,label:'复核后原文修订',unit:'次'}:tariff[sku];
   const lines=units.map(({id,label})=>({key:id,label:label??entry.label,quantity:1,unit:entry.unit,unit_price_fen:override??entry.points,amount_fen:override??entry.points,evidence:[`服务端已锁定${action}的材料、目标和成果范围；必要修复包含在原任务内。`]}));
-  return{version,sku,lines,points:lines.reduce((s,l)=>s+l.amount_fen,0),source_quote_ids:[...new Set(sources)]};
+  const points=lines.reduce((s,l)=>s+l.amount_fen,0);
+  if(!Number.isSafeInteger(points)||points>999999999)return unsupported('本批次超出当前计费执行范围，请缩小本次独立任务范围。');
+  return{version,sku,lines,points,source_quote_ids:[...new Set(sources)]};
 }
 
 /** Paid coverage is rechecked at execution, including quality reversals; snapshot IDs are never proof by themselves. */
-export async function assertAutomaticPriceSources(c:PoolClient,owner:string,price:AutomaticPrice){
+export async function assertAutomaticPriceSources(c:PoolClient,owner:string,price:AutomaticPrice,snapshot?:any){
+  if(price.source_quote_ids.length&&snapshot?.manifest?.source){
+    const {paidFileCheckEvidence}=await import('./project-file-billing.js');
+    const current=await paidFileCheckEvidence(c,owner,snapshot.manifest.source),allowed=new Set(price.source_quote_ids);
+    const required:string[]=snapshot.manifest.file_version_id?[snapshot.manifest.file_version_id]:
+      (snapshot.manifest.files??[]).filter((f:any)=>!(snapshot.charged_file_versions??[]).includes(f.file_version_id)).map((f:any)=>f.file_version_id);
+    if(required.some(file=>!current.some(p=>allowed.has(p.quote_id)&&p.charged_file_versions.includes(file))))throw new Problem(409,'QUOTE_CHANGED','本次复用的检查项目已退回，请刷新当前任务。');
+    return;
+  }
   for(const id of price.source_quote_ids){
     const paid=(await c.query(`SELECT 1 FROM bb_project_file_check_quotes q
       JOIN bb_runs r ON r.id=q.run_id AND r.owner_user_id=q.owner_user_id
       JOIN bb_credit_reservations h ON h.run_id=r.id AND h.owner_user_id=r.owner_user_id AND h.quote_id=q.id
       WHERE q.owner_user_id=$1 AND q.id=$2 AND r.state='succeeded' AND h.state='settled' AND h.charged_points=q.points
-      AND NOT EXISTS(SELECT 1 FROM bb_credit_events e WHERE e.owner_user_id=q.owner_user_id AND e.reservation_id=h.id AND e.kind='correction')`,[owner,id])).rowCount;
+      AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements_text(q.charged_file_versions) f(value) WHERE bb_task_item_was_refunded(q.owner_user_id,q.run_id,f.value))`,[owner,id])).rowCount;
     if(!paid)throw new Problem(409,'QUOTE_CHANGED','原检查权益已退回或不可用，请刷新当前任务。');
   }
 }
@@ -81,6 +91,6 @@ export async function assertAutomaticScopeAvailable(c:PoolClient,owner:string,sc
 export async function bindAutomaticScopeRun(c:PoolClient,owner:string,scope:any,runId:string){
   if((await c.query('SELECT 1 FROM bb_automatic_scope_runs WHERE owner_user_id=$1 AND scope_quote_id=$2 AND run_id=$3',[owner,scope.id,runId])).rowCount)return;
   await assertAutomaticScopeAvailable(c,owner,scope.id,runId);
-  await assertAutomaticPriceSources(c,owner,scope.automatic_price);
+  await assertAutomaticPriceSources(c,owner,scope.automatic_price,scope.snapshot);
   await c.query('INSERT INTO bb_automatic_scope_runs(owner_user_id,scope_quote_id,run_id) VALUES($1,$2,$3)',[owner,scope.id,runId]);
 }

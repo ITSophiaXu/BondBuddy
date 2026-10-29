@@ -27,12 +27,12 @@ test('synthetic signed provider: forged/mismatched/replayed callbacks and query-
     const request={request_id:'synthetic-order-1',provider:'alipay',pack_id:'cny500'};
     const first=await send('POST','/api/v1/credits/recharge-orders',request);assert.equal(first.statusCode,201,first.body);
     const historyPending=await send('GET','/api/v1/credits/recharge-history');assert.equal(historyPending.statusCode,200,historyPending.body);assert.equal(historyPending.json().items[0].state,'pending');assert.ok(historyPending.json().items[0].created_at);
-    const order=first.json();assert.equal(order.amount_fen,50000);assert.equal(order.points,52500);
+    const order=first.json();assert.equal(order.amount_fen,"50000");assert.equal(order.points,"52500");
     await assert.rejects(()=>pool.query('UPDATE bb_recharge_orders SET points=1 WHERE id=$1',[order.order_id]),/values are locked/);
     assert.equal((await send('POST','/api/v1/credits/recharge-orders',request)).json().order_id,order.order_id);assert.equal(creates,1);
     assert.equal((await send('POST','/api/v1/credits/recharge-orders',{...request,pack_id:'cny200'})).statusCode,409);
     const config=(await send('GET','/api/v1/credits/recharge-config')).json();
-    assert.deepEqual(config.packs[0],{id:'cny200',amount_fen:20000,points:20000});
+    assert.deepEqual(config.packs[0],{id:'cny200',amount_fen:'20000',points:'20000'});
     assert.equal(config.pack_version,'recharge-20261006-v2');
     assert.equal((await send('POST','/api/v1/credits/recharge-orders',{...request,request_id:'retired-pack',pack_id:'cny50'})).statusCode,422);
     assert.equal(creates,1);
@@ -46,7 +46,7 @@ test('synthetic signed provider: forged/mismatched/replayed callbacks and query-
     await callback({...paid,state:'expired'});
     assert.equal((await send('GET',`/api/v1/credits/recharge-orders/${order.order_id}`)).json().state,'paid');
     const second=(await send('POST','/api/v1/credits/recharge-orders',{...request,request_id:'synthetic-order-2',pack_id:'cny200'})).json();
-    assert.equal(second.amount_fen,20000);assert.equal(second.points,20000);
+    assert.equal(second.amount_fen,"20000");assert.equal(second.points,"20000");
     const paid2={...receipts.get(second.order_id)!,state:'paid' as const,transactionId:'synthetic-txn-2'};
     await pool.query("CREATE FUNCTION synthetic_payment_fault() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic ledger failure'; END; $$; CREATE TRIGGER synthetic_payment_fault BEFORE INSERT ON bb_credit_events FOR EACH ROW EXECUTE FUNCTION synthetic_payment_fault()");
     try{assert.equal((await callback(paid2)).statusCode,500);}finally{await pool.query('DROP TRIGGER synthetic_payment_fault ON bb_credit_events');}
@@ -57,7 +57,7 @@ test('synthetic signed provider: forged/mismatched/replayed callbacks and query-
     assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_runs')).rows[0].n),0);
     assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_credit_lots')).rows[0].n),2);
     const history=(await send('GET','/api/v1/credits/recharge-history')).json();assert.equal(history.items.length,2);
-    assert.equal(history.items.reduce((sum:number,r:any)=>sum+(r.state==='paid'?r.points:0),0),72500);
+    assert.equal(history.items.reduce((sum:bigint,r:any)=>sum+(r.state==='paid'?BigInt(r.points):0n),0n),72500n);
     assert.ok(history.items.every((r:any)=>r.credited_at&&r.state==='paid'));
     assert.ok(!JSON.stringify(history).includes('merchant')&&!JSON.stringify(history).includes('checkout'));
     const head=(await send('GET','/api/v1/credits/recharge-history?limit=1')).json();assert.ok(head.page.next_cursor);
@@ -101,8 +101,8 @@ test('subscription mode closes legacy bonus-pack sales while replaying original 
     receipts.set(pending.order_id,{...receipts.get(pending.order_id)!,state:'paid',transactionId:'synthetic-transition-pending'});
     assert.equal((await send('POST',`/api/v1/credits/recharge-orders/${pending.order_id}/refresh`,{})).json().state,'paid');
     assert.deepEqual(await creditBalance(pool,actor),{available:52500+220000,frozen:0},'the accepted old bonuses remain intact');
-    const topup=await send('POST','/api/v1/commerce/topups',{request_id:randomUUID(),provider:'alipay',amount_fen:50000});assert.equal(topup.statusCode,201,topup.body);
-    assert.equal(topup.json().amount_fen,50000);assert.equal(topup.json().points,50000,'all new topups use one yuan per 100 points');
+    const topup=await send('POST','/api/v1/commerce/topups',{request_id:randomUUID(),provider:'alipay',amount_fen:'50000'});assert.equal(topup.statusCode,201,topup.body);
+    assert.equal(topup.json().amount_fen,"50000");assert.equal(topup.json().points,"50000",'all new topups use one yuan per 100 points');
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_recharge_orders WHERE owner_user_id=$1',[actor])).rows[0].n,3);
   }finally{await app.close();await pool.end();}
 });

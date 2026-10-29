@@ -1,7 +1,7 @@
 import { M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, M4_DOCUMENT_TYPES, M4DraftRequestSchema, M4MaterialPinSchema, M4RequirementSchema,
   M4TemplateCreateRequestSchema, M4ViewStateSchema, M4MessageRequestSchema, M4ExecuteRequestSchema, MARKETS, MARKET_OFFERINGS, schemas,
   type M4Draft, type M4DraftInput, type M4DraftRequest, type M4MaterialPin, type M4Requirement, type M4Template,
-  type M4TemplateCreateRequest, type M4Workspace } from '@bondbuddy/contracts';
+  type M4TemplateCreateRequest, type M4Workspace } from './billing-types.js';
 import { Value } from '@sinclair/typebox/value';
 import { UserFacingError } from './user-facing-error.js';
 import { ApiError, type Dto } from './api.js';

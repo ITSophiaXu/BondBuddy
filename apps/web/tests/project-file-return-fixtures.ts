@@ -1,14 +1,17 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
 import {Value} from '@sinclair/typebox/value';
 import {PROJECT_DOCUMENT_CATALOG,ProjectFileVersionSchema,schemas,type ProjectFileVersion} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {fixture as originalsFixture,install as installOriginals,assertFixture as assertOriginals,checkId,cacheKey,
   filesRoute,checkRoute,ids,docx,editedFile,hash,mime} from './consistency-originals-fixtures';
 import {appendMaterial,businessCalls,now} from './word-roundtrip-fixtures';
 
 export {checkId,cacheKey,filesRoute,checkRoute,ids,editedFile};
 export const otherProject='return-second-root',fileKey='project-file:'+ids.family;
-const json=(route:Route,status:number,value:unknown)=>route.fulfill({status,json:value});
+const json=(route:Route,status:number,value:unknown)=>route.fulfill({status,json:fixtureBody(route,value)});
 const failure=(route:Route,status=503)=>json(route,status,{code:status===401?'SESSION_EXPIRED':status===404?'NOT_FOUND':'DATA_UNAVAILABLE',
   message:'Synthetic return fixture response',retryable:status>=500,correlation_id:'project-file-return',field_errors:[]});
 type FileRow=Dto<'ProjectFilesResponse'>['items'][number];
@@ -65,12 +68,13 @@ function emptyFiles(project:string):Dto<'ProjectFilesResponse'>{return {project_
 export async function install(page:Page,s=fixture()){
   await installOriginals(page,s);
   await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const request=route.request(),url=new URL(request.url()),path=url.pathname.slice('/api/v1'.length),method=request.method();
     const foreign=path.startsWith('/projects/'+otherProject)||s.owner!==ids.owner&&path.startsWith('/projects/'+ids.otherRoot);
     const handled=method==='GET'&&['/me','/projects','/auth/recovery/info'].includes(path)||method==='POST'&&['/auth/login','/auth/logout'].includes(path)||foreign||
       method==='GET'&&[...['/files','/tasks','/prospectus-versions'].map(t=>'/projects/'+ids.root+t)].includes(path);
     if(!handled)return route.fallback();
-    const body=method==='POST'&&request.postData()?request.postDataJSON():null;
+    const body=method==='POST'&&request.postData()?fixtureRequest(request):null;
     s.calls.push({owner:s.owner,method,path,search:url.search,body:structuredClone(body)});
     try{
       if(path==='/auth/recovery/info')return json(route,200,{enabled:false,support_contact:null,link_minutes:30});

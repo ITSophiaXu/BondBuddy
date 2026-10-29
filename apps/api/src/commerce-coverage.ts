@@ -21,10 +21,8 @@ export async function readOwnedCommerceCoverage(c:PoolClient,owner:string,covera
      JOIN bb_commerce_scope_source_quotes(b.owner_user_id,b.scope_quote_id,b.run_id) q ON q.quote_id=res.quote_id
      WHERE res.id=r.reservation_id AND res.owner_user_id=b.owner_user_id AND res.run_id=r.id
       AND res.state='settled' AND res.points=s.amount_fen AND res.charged_points=s.amount_fen) AS paid,
-    EXISTS(SELECT 1 FROM bb_credit_events e JOIN bb_credit_lots l ON l.owner_user_id=e.owner_user_id AND l.id=e.lot_id
-     WHERE e.owner_user_id=b.owner_user_id AND e.run_id=b.run_id AND e.kind='correction'
-      AND e.reservation_id=r.reservation_id
-      AND left(l.source_key,length('settlement-correction:'||r.reservation_id||':'))='settlement-correction:'||r.reservation_id||':') AS corrected
+    ARRAY(SELECT item->>'key' FROM jsonb_array_elements(b.pricing_items) item
+      WHERE bb_task_item_was_refunded(b.owner_user_id,b.run_id,item->>'key')) AS corrected_keys
    FROM bb_commerce_scope_runs b JOIN bb_scope_quotations s ON s.owner_user_id=b.owner_user_id AND s.id=b.scope_quote_id
    JOIN bb_runs r ON r.owner_user_id=b.owner_user_id AND r.id=b.run_id
    WHERE b.owner_user_id=$1 AND r.state='succeeded' AND EXISTS(SELECT 1 FROM jsonb_array_elements(b.pricing_items) item WHERE item->>'coverage_key'=ANY($2::text[]))
@@ -39,7 +37,7 @@ export async function readOwnedCommerceCoverage(c:PoolClient,owner:string,covera
     const found=candidates.get(id);
     if(!found||visiting.has(id))return null;
     const {row,item}=found;
-    if(row.state!=='succeeded'||!row.exact_source||row.corrected||Number(row.amount_fen)>0&&!row.paid){resolved.set(id,null);return null;}
+    if(row.state!=='succeeded'||!row.exact_source||row.corrected_keys.includes(item.key)||Number(row.amount_fen)>0&&!row.paid){resolved.set(id,null);return null;}
     visiting.add(id);
     const needsParents=Number(row.amount_fen)===0||item.family==='included'||item.due_fen===0||item.owned_coverage_ids?.length>0;
     let parents:OutcomeOwnedCoverage[]=[];

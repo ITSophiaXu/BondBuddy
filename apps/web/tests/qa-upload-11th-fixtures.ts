@@ -1,8 +1,11 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
 import {createHash} from 'node:crypto';
 import {schemas} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {fixture,install,assertFixture,projectId,ownerId,now} from './project-qa-continuation-fixtures';
 
 export {projectId,ownerId,otherOwnerId} from './project-qa-continuation-fixtures';
@@ -14,14 +17,15 @@ export function qaUploadFixture(){return {qa:fixture(),uploads:new Map<string,Up
  lostPut:true,completeUnavailable:true,dropBeforeReceive:false,deduplicate:false,parseEnrichment:false,completeGate:undefined as (()=>Promise<void>)|undefined,activeCompletes:0};}
 export type QaUploadState=ReturnType<typeof qaUploadFixture>;
 function checked<K extends keyof typeof schemas>(name:K,v:unknown):asserts v is Dto<K>{expect(Value.Check(schemas[name],v),`${name}: ${JSON.stringify([...Value.Errors(schemas[name],v)])}`).toBe(true);}
-async function reply<K extends keyof typeof schemas>(route:Route,name:K,body:Dto<K>,status=200){checked(name,body);return route.fulfill({status,json:body});}
+async function reply<K extends keyof typeof schemas>(route:Route,name:K,body:Dto<K>,status=200){checked(name,body);return route.fulfill({status,json:fixtureBody(route,body)});}
 function problem(route:Route,status:number,code:Dto<'Error'>['code']){return reply(route,'Error',{code,message:'Synthetic QA upload fault',retryable:status>=500,correlation_id:'synthetic-qa-upload-11th',field_errors:[]},status);}
 export async function installQaUpload11th(page:Page,state=qaUploadFixture()){
  await install(page,state.qa);
  await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
   const req=route.request(),url=new URL(req.url()),path=url.pathname.slice('/api/v1'.length),method=req.method(),owner=state.qa.owner;
   const match=path.match(new RegExp(`^/projects/${projectId}/materials/(uploads(?:/[^/]+/(?:bytes|complete))?|[^/]+)$`));if(!match)return route.fallback();
-  const body:unknown=method==='POST'?req.postDataJSON():undefined;state.calls.push({owner,method,path,search:url.search,...(body===undefined?{}:{body})});
+  const body:unknown=method==='POST'?fixtureRequest(req):undefined;state.calls.push({owner,method,path,search:url.search,...(body===undefined?{}:{body})});
   if(owner!==ownerId)return problem(route,404,'NOT_FOUND');
   if(method==='POST'&&match[1]==='uploads'){
    checked('UploadCreateRequest',body);expect(body.role).toBe('other');const id=`qa-upload-11th-${state.uploads.size+1}`;state.uploads.set(id,{id,owner,declaration:structuredClone(body),received:false});

@@ -1,8 +1,11 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
 import {schemas} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import {createHash} from 'node:crypto';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {taskPage} from './collection-fixtures';
 import {fixture as handoffFixture,install as installHandoff,assertFixture as assertHandoff,ids,artifactId,oldTime,newTime} from './result-handoff-authoring-fixtures';
 export {ids,artifactId,oldTime,newTime,downloadBytes} from './result-handoff-authoring-fixtures';
@@ -34,8 +37,8 @@ export type State=ReturnType<typeof fixture>;
 const installed=new WeakMap<Page,State>();
 async function waitForGate(state:State,waiting:Gate){state.waitingGates.add(waiting);waiting.entered=true;try{await waiting.wait;}finally{state.waitingGates.delete(waiting);}}
 function checked<K extends keyof typeof schemas>(name:K,value:unknown):asserts value is Dto<K>{expect(Value.Check(schemas[name],value),name+': '+JSON.stringify([...Value.Errors(schemas[name],value)])).toBe(true);}
-function dto<K extends keyof typeof schemas>(route:Route,name:K,value:Dto<K>,status=200){checked(name,value);return route.fulfill({status,json:value});}
-const problem=(route:Route,status:number,code:string)=>route.fulfill({status,json:{code,message:'Synthetic '+code,retryable:status>=500,field_errors:[],correlation_id:'authoring-next-layout'}});
+function dto<K extends keyof typeof schemas>(route:Route,name:K,value:Dto<K>,status=200){checked(name,value);return route.fulfill({status,json:fixtureBody(route,value)});}
+const problem=(route:Route,status:number,code:string)=>route.fulfill({status,json:fixtureBody(route,{code,message:'Synthetic '+code,retryable:status>=500,field_errors:[],correlation_id:'authoring-next-layout'})});
 export const writes=(state:State)=>state.calls.filter(call=>call.method!=='GET');
 export function oldSnapshot(state:State){const run=state.runs.get(ids.oldRun)!;return structuredClone({input:state.inputs.get(run.input_revision),run,artifacts:[...state.artifacts].filter(([,value])=>value.metadata.run_id===run.run_id).map(([id,value])=>({id,metadata:value.metadata,bytes_sha256:createHash('sha256').update(value.bytes).digest('hex')}))});}
 export const selectedPin=(state:State,round:2|3)=>{const saved=state.artifacts.get(artifactId(round,'clean'))!.metadata;return {artifact_id:saved.artifact_id,artifact_version:saved.version,sha256:saved.sha256};};
@@ -43,6 +46,7 @@ export async function install(page:Page,state=fixture()){
  installed.set(page,state);
  await installHandoff(page,state);
  await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
   const req=route.request(),url=new URL(req.url()),path=url.pathname.slice('/api/v1'.length),method=req.method(),base='/projects/'+ids.project;
   const metadata=path.match(/^\/artifacts\/([^/]+)$/),held=state.metadataGate;
   if(method==='GET'&&metadata&&held?.id===metadata[1]){state.metadataGate=undefined;await waitForGate(state,held.gate);return route.fallback();}
@@ -50,7 +54,7 @@ export async function install(page:Page,state=fixture()){
   const handled=method==='GET'&&['/projects',base+'/tasks',base+'/prospectus-versions'].includes(path)||method==='POST'&&[base+'/input-revisions',base+'/preflight',base+'/credit-quote','/runs/execute'].includes(path)||method==='POST'&&!!action||method==='GET'&&!!charge&&state.receipts.size>0;
   if(!handled)return route.fallback();
   try{
-   const body:unknown=req.postData()?req.postDataJSON():null;state.calls.push({method,path,body:structuredClone(body)});
+   const body:unknown=req.postData()?fixtureRequest(req):null;state.calls.push({method,path,body:structuredClone(body)});
    if(method==='GET'&&path==='/projects'){const sorted=[...state.runs.values()].sort((a,b)=>Date.parse(b.updated_at)-Date.parse(a.updated_at)),latest=sorted[0],successful=sorted.find(run=>run.state==='succeeded'&&run.artifact_id&&state.artifacts.has(run.artifact_id)),artifact=successful?.artifact_id?state.artifacts.get(successful.artifact_id):undefined;return dto(route,'ProjectListResponse',{items:[{project_id:ids.project,name:state.project.name,kind:state.project.kind,issuer_name:state.project.issuer_name,market:state.project.market,offering:state.project.offering,draft_revision:state.project.draft_revision,updated_at:state.project.updated_at,latest_run:latest?{run_id:latest.run_id,state:latest.state,updated_at:latest.updated_at}:null,latest_artifact:artifact?{artifact_id:artifact.metadata.artifact_id,run_id:artifact.metadata.run_id,version:artifact.metadata.version,created_at:successful!.updated_at}:null}],page:{has_more:false,next_cursor:null}});}
    if(method==='GET'&&path===base+'/tasks'){const runs=[...state.runs.values()].sort((a,b)=>Date.parse(b.updated_at)-Date.parse(a.updated_at));expect(runs.filter(run=>!terminal.has(run.state)).length).toBeLessThanOrEqual(1);const response=taskPage(ids.project,runs),waiting=state.tasksGate;if(waiting){state.tasksGate=undefined;await waitForGate(state,waiting);}return dto(route,'ProjectTasksResponse',response);}
    if(method==='GET'&&path===base+'/prospectus-versions'){state.versionReads++;const response=structuredClone(state.versions),waiting=state.versionsGate;if(waiting){state.versionsGate=undefined;await waitForGate(state,waiting);}return dto(route,'ProspectusVersionsResponse',response);}

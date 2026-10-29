@@ -1,4 +1,5 @@
-import type {M4Task, RunEvent} from '@bondbuddy/contracts';
+import {formatPoints} from '@bondbuddy/contracts';
+import type {M4Task, RunEvent} from './billing-types.js';
 import {authoringCreditReceipt, authoringEventLabel, authoringStatus} from './authoring-progress';
 import {m4ProgressLabel} from './m4-workspace-state';
 import {esc} from './ui';
@@ -47,7 +48,7 @@ export function materialLiveStatus(task:M4Task){
 }
 export function materialCreditReceipt(task:M4Task){
   const charge=task.credit_charge,p=charge?.progress;
-  if(charge?.quote&&(!p||p.policy==='on_delivery'))return `<section class="material-legacy-credit" aria-label="积分消耗"><strong>本轮沿用原计费规则</strong><p>${charge.quote.points.toLocaleString('zh-CN')} 积分 · ${{held:'已预留，成功交付后扣费',settled:'已扣费',released:'已返还，本次不扣费'}[charge.state??'held']}</p></section>`;
+  if(charge?.quote&&(!p||p.policy==='on_delivery'))return `<section class="material-legacy-credit" aria-label="积分消耗"><strong>本轮沿用原计费规则</strong><p>${formatPoints(charge.quote.points)} 积分 · ${{held:'已预留，成功交付后扣费',settled:'已扣费',released:'已返还，本次不扣费'}[charge.state??'held']}</p></section>`;
   const receipt=materialWords(authoringCreditReceipt(task.run,p,charge?.quote?{...charge.quote,state:charge.state??'held'}:undefined));
-  return p?.policy==='authoring_balance_v2'&&charge?.quote?receipt.replace('全程不超过原任务价格。',`本次完整交付共 ${charge.quote.points.toLocaleString('zh-CN')} 积分，任务完成时结清剩余积分。`):receipt;
+  return p?.policy==='authoring_balance_v2'&&charge?.quote?receipt.replace('全程不超过原任务价格。',`本次完整交付共 ${formatPoints(charge.quote.points)} 积分，任务完成时结清剩余积分。`):receipt;
 }

@@ -1,0 +1,21 @@
+✔ monthly read-only report observes actual paid lots without recording prepayments or expiry as earned revenue (321.1226ms)
+✔ refunded reopening is a new retained purchase, calendar repurchase requires a matured subsequent period (18.1434ms)
+✔ prepayment, original-lot consideration, quality returns, cash refunds and expiry remain separate (0.8209ms)
+✔ missing proof remains unknown and empty cohorts never imply zero retention (0.413ms)
+✔ incomplete or duplicate settlement allocations cannot appear as exact earned revenue (0.4723ms)
+▶ task quality returns preserve frozen item/lot evidence, original cash rights and independent approval
+  ✔ int64 issuance overflow rolls back the whole approval and preserves the original pending request (630.727ms)
+  ✔ acceptance commits independent units and cross-lot slices before any refund read; strings and no free approval (1164.1714ms)
+  ✔ concurrent whole repair and partial approval cannot exceed original charge (324.4248ms)
+  ✔ missing independent delivery, held work and rejected requests never issue a return (348.9615ms)
+  ✔ legacy whole-task refund revokes every dependent item, without inventing separate historic allocations (169.3006ms)
+  ✔ HTTP rejects client-supplied amounts, isolates owners, and permissions revoke independently (3612.4273ms)
+✔ task quality returns preserve frozen item/lot evidence, original cash rights and independent approval (6388.4188ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 26315.7966

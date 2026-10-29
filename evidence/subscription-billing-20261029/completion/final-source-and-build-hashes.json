@@ -1,0 +1,893 @@
+{
+  "created_at": "2026-10-29T13:48:58.801Z",
+  "base_commit": "f85702bba5e4eeaf0e4edf52aba8f42974b0ed4b",
+  "note": "Uncommitted source hashes at final validation; the delivery commit contains these source files. Synthetic tests only.",
+  "sources": [
+    {
+      "path": "apps/api/src/authoring-credit-debit.ts",
+      "sha256": "b7afdbab941fe5e38e345e2afbb29dc83bae7c4d8c9e6ab9db3be57eb174358f"
+    },
+    {
+      "path": "apps/api/src/authoring-progress.ts",
+      "sha256": "afd441161ce547e2d806bc99d54716998a230ccbc8837d20cca75e25383ad3e9"
+    },
+    {
+      "path": "apps/api/src/automatic-file-billing.pg.test.ts",
+      "sha256": "0de7b70a75bd5f2ec234ef13c64e7008d948cc506ae4704b102306f6542fb60e"
+    },
+    {
+      "path": "apps/api/src/automatic-price-versions.ts",
+      "sha256": "f55e6eb6d1234453b66bf96eef9fefd956e71d33c343348cf48a35fb0d664762"
+    },
+    {
+      "path": "apps/api/src/automatic-pricing.ts",
+      "sha256": "e5708baa0838c2920efc7b7867e15a65453c92e6ce935f49b23f4c9a98bd7bd7"
+    },
+    {
+      "path": "apps/api/src/automatic-review-billing.pg.test.ts",
+      "sha256": "9cbd9fc57dad05a1d9b39fa6c62fd5e7cbd44e8b74e6ef108fc91ee9a18aa298"
+    },
+    {
+      "path": "apps/api/src/automatic-tariff-repository.ts",
+      "sha256": "a8adda385102e27d11f9990f728d68aa2f10f056350f8f46f9ff7dcfd79a6560"
+    },
+    {
+      "path": "apps/api/src/billing-audit.ts",
+      "sha256": "a589a464e2a74157247e38aa962fb1206df6d414bb9d722d65106d07e15e4d20"
+    },
+    {
+      "path": "apps/api/src/billing-int64.pg.test.ts",
+      "sha256": "2edd8f14e47841d817582b84c32fa953ea44bd3d34f973b86eda5b7724538888"
+    },
+    {
+      "path": "apps/api/src/billing-int64.test.ts",
+      "sha256": "1ece4b233e75536fdc615367dc707d7b887f1c49ba2764086091cafd713bb7d8"
+    },
+    {
+      "path": "apps/api/src/billing-ops.ts",
+      "sha256": "5a8c4da23ed03d913f4a9afe1aa3cf0202c040c8f079867f290055258619d7d2"
+    },
+    {
+      "path": "apps/api/src/billing-permissions.pg.test.ts",
+      "sha256": "1275e441892b8936768b2a4cf61e10c78f7b58cbd99ebfafeaf20a6340d0d7af"
+    },
+    {
+      "path": "apps/api/src/billing-permissions.ts",
+      "sha256": "f2f5bcb5e435c5158b11b233cd645f1d0b17828145ef7690a0c63992f2420235"
+    },
+    {
+      "path": "apps/api/src/billing-price-admin.pg.test.ts",
+      "sha256": "b9816c42d5e5ef786544547a1c5dae02a9bac230a58dbdd1cf442807ab226310"
+    },
+    {
+      "path": "apps/api/src/billing-price-admin.ts",
+      "sha256": "33b31f91321ee6b09ae3b92945819e5614dd07354d1c9b7e7201c61fbcd3a5b0"
+    },
+    {
+      "path": "apps/api/src/billing-safety-integration.pg.test.ts",
+      "sha256": "33cd2240ea651d848f2a8169fd812c2d759458bbde5efeb138b5d49111233b45"
+    },
+    {
+      "path": "apps/api/src/billing-safety.pg.test.ts",
+      "sha256": "ad87ec426e003d0cf996fe7a71268df80e0ea075069ca8ceec2c8b1b223081b7"
+    },
+    {
+      "path": "apps/api/src/billing-safety.ts",
+      "sha256": "05f160c98cb60bf78ce551a1de553c637a4f776ecfa7243fa858dbe60cb2ea3a"
+    },
+    {
+      "path": "apps/api/src/billing-wire.test.ts",
+      "sha256": "ead8990794ca3f60973ac877ab3d2e6ce232f204596e0efbf4955a1e32ce0952"
+    },
+    {
+      "path": "apps/api/src/billing-wire.ts",
+      "sha256": "062d329202fb6f2063477c9efee2c07589233867f4cda89243643237fcc3d4f4"
+    },
+    {
+      "path": "apps/api/src/billing.pg.test.ts",
+      "sha256": "5a8d969a1d25bf88405d021d5c9cc594c5626c4f6eddcc384cad7fd678b3d810"
+    },
+    {
+      "path": "apps/api/src/billing.ts",
+      "sha256": "4f81c970eebfdc57d53945882f7fbc1fb61f255b144cf1dff25fdbd5738ed452"
+    },
+    {
+      "path": "apps/api/src/commerce-coverage.ts",
+      "sha256": "ba07a76c3195855759fe11c6a1e486f452775709834d8beacc405b28bceb7bb2"
+    },
+    {
+      "path": "apps/api/src/commerce.ts",
+      "sha256": "f4356e4867229fd661eb80339e74bfcc34330a794d6d62da7ccd368649b94aaa"
+    },
+    {
+      "path": "apps/api/src/credit-history.test.ts",
+      "sha256": "6cfe6243ca55e9d1fa8a4027658c1b46ba063feb8c525a7c46f31bcbc5a6328d"
+    },
+    {
+      "path": "apps/api/src/credit-history.ts",
+      "sha256": "f33cd603d1969fcf91a4eccbaccba82b33e42e21e8953ab8c77f76189abca4d7"
+    },
+    {
+      "path": "apps/api/src/integrity.ts",
+      "sha256": "ff154359e7012c6276351e278fe3ebb38631d5233be0d9a64615a38dffb7243e"
+    },
+    {
+      "path": "apps/api/src/log-ops.ts",
+      "sha256": "d9e3025c9032e141d3077e9b8547fbc3e22caa56105fb9a3d124e4b202b3026f"
+    },
+    {
+      "path": "apps/api/src/m4-billing.ts",
+      "sha256": "d31961a80f676f0855fea9e6406012e86845169c26fe14e995d37f6c9fca9a9f"
+    },
+    {
+      "path": "apps/api/src/m4-workspace.ts",
+      "sha256": "8218628e2d7423597fe88341536de0bbf0047bdb1ae720d601e467af59a89a2a"
+    },
+    {
+      "path": "apps/api/src/outcome-pricing.ts",
+      "sha256": "26b1bf84557f72eaeb290389ba042a305d527c2171353bb8b1f2e31fe148f09a"
+    },
+    {
+      "path": "apps/api/src/payment-reconciliation.ts",
+      "sha256": "06fa24ad77ff01e0f07e492060b65b488473256e1b4a978036e3a2f109d1afd3"
+    },
+    {
+      "path": "apps/api/src/payment-refunds.pg.test.ts",
+      "sha256": "5580b34941af2f7b81598d0eacfb420d8352ac58371d323c8e154fa6f8786740"
+    },
+    {
+      "path": "apps/api/src/payment-refunds.ts",
+      "sha256": "7c9adb06f7695b9d4ecd3f5f0fa55f40b81446474a8070ad594d2660f22a226e"
+    },
+    {
+      "path": "apps/api/src/payments.pg.test.ts",
+      "sha256": "2b477cc6929c8ba2ff70663c13e867369f93c797267a4ca111cea0a093a0720b"
+    },
+    {
+      "path": "apps/api/src/payments.ts",
+      "sha256": "fc853463fd259c2188f7f45bfa51080c381f0ea2a60435f1f522af5d3b4dcdb1"
+    },
+    {
+      "path": "apps/api/src/project-assistant.ts",
+      "sha256": "c9ac5f1bf9cccbfd5e7fd6f58850a9bba799d3d5ed9c0ce33ed1a7ac0dddd826"
+    },
+    {
+      "path": "apps/api/src/project-file-billing.ts",
+      "sha256": "07acd307c27d607f95f802161627780a5f7428e2c22d81f65ae5513c8ae88288"
+    },
+    {
+      "path": "apps/api/src/project-file-check-batches.ts",
+      "sha256": "607eb5ee0c936d679e0208e028447329b009a7cbe1e19274f5f42f285aa27efa"
+    },
+    {
+      "path": "apps/api/src/project-file-consistency.ts",
+      "sha256": "17bc985780f25d33bdbde75e78dcb7ee8c00dc9b512a01b65d15c1a4cba95701"
+    },
+    {
+      "path": "apps/api/src/project-qa.ts",
+      "sha256": "7a429dcee28b04e1c18ffc890fc8fb268f56980d467903398bb42bf549709989"
+    },
+    {
+      "path": "apps/api/src/queue.ts",
+      "sha256": "ce8615f53b62b9b5786fc6fd34d03b09dc56a88fc83101d7c45dfedfca87b085"
+    },
+    {
+      "path": "apps/api/src/review-workspace.ts",
+      "sha256": "7f87d9da557fcae675b4975c61968ded955c57eb04a7662acc4e63384a7040cd"
+    },
+    {
+      "path": "apps/api/src/scope-quotations.ts",
+      "sha256": "38017da2c679bc9b4b9033473b3e36ce2176faf0464dc2a6e5423928342e8460"
+    },
+    {
+      "path": "apps/api/src/server.ts",
+      "sha256": "d41bb7c26b5a07ce93049bbb41db1f85fcd8cbb5b69e52caaed3a727f1fcf9fc"
+    },
+    {
+      "path": "apps/api/src/subscription-facts-report.pg.test.ts",
+      "sha256": "68816f0275abbde41512031f42e633990a9fc43cf1837b52c703be6cbb89d95e"
+    },
+    {
+      "path": "apps/api/src/subscription-facts-report.test.ts",
+      "sha256": "904f5a1c3080c28b832faff76b230be4a3ea4259e7f4430f6dd510789cf532c4"
+    },
+    {
+      "path": "apps/api/src/subscription-facts-report.ts",
+      "sha256": "ed1b668cb22b5b44cd57201449f4269c8128f357bfa3fea556eaa2460f0d4045"
+    },
+    {
+      "path": "apps/api/src/subscription-order-detail.pg.test.ts",
+      "sha256": "ebaaaf913fb7a94f8fa3196a4b13382c5c6fba56bfdcbdd766f28193531bfbac"
+    },
+    {
+      "path": "apps/api/src/subscription-order-detail.ts",
+      "sha256": "9e05e3f8cb06df759e31e1c0c1f2a51f5e4523090871e839e34bc907873eacce"
+    },
+    {
+      "path": "apps/api/src/subscriptions.pg.test.ts",
+      "sha256": "8e8571e4a9963277655035b8f2ba64500e43ad3a77a3f5a915940c77bef4d5f5"
+    },
+    {
+      "path": "apps/api/src/subscriptions.ts",
+      "sha256": "706288677cc2bed35574c179918511259fd6caccf56e9af5133f83cff5676b4c"
+    },
+    {
+      "path": "apps/api/src/task-refunds.pg.test.ts",
+      "sha256": "4d0de7b589496953b135928c13f00777d17c01cfb9550e64d67a3fbf4f2fe229"
+    },
+    {
+      "path": "apps/api/src/task-refunds.ts",
+      "sha256": "2e2227dd549b7409f3c5471c33d8735e9797643121515108db4fe31a78e69dfb"
+    },
+    {
+      "path": "apps/api/src/trial-guard.ts",
+      "sha256": "2f665ca011b70e745aeca873d11cdd04a702bf0fc0f0e8ade4988e307c166237"
+    },
+    {
+      "path": "apps/api/src/workpapers.ts",
+      "sha256": "d5ed041a53d0fb2873e764065ea8051bd7947720de1a107ff6194512ba2d5d4f"
+    },
+    {
+      "path": "apps/api/src/zz_trial_guard.test.ts",
+      "sha256": "a269962e15d65eda7af2335afc270a56c12e39382db115c3313c3efd4eea0987"
+    },
+    {
+      "path": "apps/web/src/account.ts",
+      "sha256": "9202cb7ea537770c0e8f034f5031ffb66030412569b3f2bab509fd0fe44b3420"
+    },
+    {
+      "path": "apps/web/src/api.ts",
+      "sha256": "65298de5d971eb148d39da0e1a29d1bf10ac36b8e0ae6594b34b9fef99bd2846"
+    },
+    {
+      "path": "apps/web/src/assistant-project-copy-recovery.test.ts",
+      "sha256": "b2c9965fa9648898010a49fd813b903d90cecec5b6ff23ec14ab91846937d558"
+    },
+    {
+      "path": "apps/web/src/assistant-project-copy-recovery.ts",
+      "sha256": "714f5329c3513908ac6121aa5933f5c58619802c6428a9d6694ac13926ccbfcb"
+    },
+    {
+      "path": "apps/web/src/assistant-template-upload-recovery.test.ts",
+      "sha256": "502cb0b13d18b2ea20661bb20a02605b62719cf315f1f8c10ee46a55110c409c"
+    },
+    {
+      "path": "apps/web/src/assistant-template-upload-recovery.ts",
+      "sha256": "f7e2ce9c8f71ccde42f1a1ecc6de0764896465f74bcf5550aac16c4dad7635cf"
+    },
+    {
+      "path": "apps/web/src/assistant-upload-recovery.test.ts",
+      "sha256": "ff6988e41af99ad600a67582b276c13537ebe35cb419e3b6965788fa54394ca5"
+    },
+    {
+      "path": "apps/web/src/assistant-upload-recovery.ts",
+      "sha256": "8627f4c238bc494d1d40b3b0b91a18b289c4a4cc11e7adaa17dec8abdebbb991"
+    },
+    {
+      "path": "apps/web/src/authoring-progress.test.ts",
+      "sha256": "00de730c1ce5ecf282b06ad0305a32527fe62e24728048eb6ea3fd2137fb394e"
+    },
+    {
+      "path": "apps/web/src/authoring-progress.ts",
+      "sha256": "5d6192e37a9b0877f347c459181560ef91c6039680581bb7c6a854ad83523bfb"
+    },
+    {
+      "path": "apps/web/src/billing-page.ts",
+      "sha256": "08e06f08eb3f34eb937d7a3cf580c338e9841cd1ef39f334e3796a29a00e7d2f"
+    },
+    {
+      "path": "apps/web/src/billing-price-admin.css",
+      "sha256": "35472b9c55fa2620d5f10737b8c94081868286c130446176f6a8a9e44891e6d1"
+    },
+    {
+      "path": "apps/web/src/billing-price-admin.ts",
+      "sha256": "d4c020d22df055920778a461169ce529a57d08cf5c7701550ae2f92a9cf5facb"
+    },
+    {
+      "path": "apps/web/src/billing-task-recovery.test.ts",
+      "sha256": "0600877df770f2c91a3c8b6649d7f0261de9820724cb012cb571464ca6830735"
+    },
+    {
+      "path": "apps/web/src/billing-task-recovery.ts",
+      "sha256": "fe20227623b1b8a639d77350921966d1118f007597797345d6e50c6fa23a4e1e"
+    },
+    {
+      "path": "apps/web/src/billing-types.ts",
+      "sha256": "c46af4ac1b436c03d89108b82391eda8083f8944b49c7f0b84f00eb83f4907ef"
+    },
+    {
+      "path": "apps/web/src/checkout-intent.test.ts",
+      "sha256": "d4306df3b4bbfe3c00ed748c31d1a4a9883bd7688bd9a53b02821b7b402caf49"
+    },
+    {
+      "path": "apps/web/src/checkout-intent.ts",
+      "sha256": "fbf6b3288a4bf24448d0efd63535bc88b878f84fed465158a5a43d1597ddc25c"
+    },
+    {
+      "path": "apps/web/src/commerce-price.ts",
+      "sha256": "d99d1ec188fd3340ec2415c5702f11732107c18a6f61a64c197c93565f7d6f52"
+    },
+    {
+      "path": "apps/web/src/commerce-quotations.ts",
+      "sha256": "b4238646c2c4949aa8cdb32cb2785fb128b67e5f5234fb65731986641a43b423"
+    },
+    {
+      "path": "apps/web/src/commerce-refunds.ts",
+      "sha256": "47caf7a3c51f898e8a71cc0e6871bcfde8f6e199f19bb5d96ef930821fdc49b9"
+    },
+    {
+      "path": "apps/web/src/commerce.ts",
+      "sha256": "3a550d4e65960ed5b19c562fc45be2cf3f88707acbda266a8f087598174905d8"
+    },
+    {
+      "path": "apps/web/src/consistency-confirmation.test.ts",
+      "sha256": "f86c0df1c93aabbe1a3d7188e39804fd519e2711b31c9dbb61e5ff56800369ac"
+    },
+    {
+      "path": "apps/web/src/consistency-confirmation.ts",
+      "sha256": "c1ceceaa4ad62abf0d4ed418878bc584a129eea3d27fa7de735bed2f44915f1d"
+    },
+    {
+      "path": "apps/web/src/consistency-history.ts",
+      "sha256": "10aee2752c54a2cd0df82fd798df77a8d95e1ff4b793f7b1e93d07c117d61ed2"
+    },
+    {
+      "path": "apps/web/src/credit-history.ts",
+      "sha256": "99f4ebb9121bb4983209eaf00db066331f7089fdf5490e8ac0f1dc6d81c440b1"
+    },
+    {
+      "path": "apps/web/src/credit-wallet.ts",
+      "sha256": "79a92f9e67f988849e76f212add36702df84f22278b3023205f412a43781b577"
+    },
+    {
+      "path": "apps/web/src/file-consistency.ts",
+      "sha256": "98828ab273b9322358a39cdf133858db936c19881283e9a7b8fcfec7d0431c59"
+    },
+    {
+      "path": "apps/web/src/file-generation-cache.ts",
+      "sha256": "086bd670e56fb21974afbf4046ac4364f2f6953b8d2998fe6713aaf826c380a2"
+    },
+    {
+      "path": "apps/web/src/file-workspace.ts",
+      "sha256": "00b5c49711e1ee130cbd204f7759fafa116bfac7d4696ba755382d510f820cbb"
+    },
+    {
+      "path": "apps/web/src/form-model.ts",
+      "sha256": "e1d521d2b2c12080f982a1e3dab03d296b57fd941d04f040927a6a91bfa71bec"
+    },
+    {
+      "path": "apps/web/src/integrity-continuation.test.ts",
+      "sha256": "f78ed25ec926a70b4a645e17880f7340344f6d366e95000df02c12acba2bc417"
+    },
+    {
+      "path": "apps/web/src/integrity-continuation.ts",
+      "sha256": "113a9ce68a2459a273976da263d110d1176108cad7b581fed0ed9b63cadbe39a"
+    },
+    {
+      "path": "apps/web/src/integrity-recovery.test.ts",
+      "sha256": "a331f1f82411d71f86512be1ef8ce9e450df6cec53a09ed1a4b8a8d49ccf40db"
+    },
+    {
+      "path": "apps/web/src/integrity-recovery.ts",
+      "sha256": "8642a37c9d08030976e0998975e02067e4a40909e5c9a8dc6a10b60c0441c7ec"
+    },
+    {
+      "path": "apps/web/src/integrity-workspace.ts",
+      "sha256": "07414fa7715fe05f59240067c25f6f5ec8fb154fc13128346eb7123f54909012"
+    },
+    {
+      "path": "apps/web/src/m4-api.ts",
+      "sha256": "3fb06e006c140ec0c0eeeedee19c406ab8f7182fc4ed4964227820556018134f"
+    },
+    {
+      "path": "apps/web/src/m4-template-upload-recovery.test.ts",
+      "sha256": "5e558dab5b31482a157030e134290ebcf245d94ee17ee7774f3257553494e57f"
+    },
+    {
+      "path": "apps/web/src/m4-template-upload-recovery.ts",
+      "sha256": "e4fca8cdd61c7928da0e696b760bed8d99266b6454bf5a87530b2025824bcf35"
+    },
+    {
+      "path": "apps/web/src/m4-upload-recovery.test.ts",
+      "sha256": "696691113ef53cbc0187a8cfecfad1186f7397fceb527dd56a120eeb99c13bb5"
+    },
+    {
+      "path": "apps/web/src/m4-upload-recovery.ts",
+      "sha256": "42dd3d5711d2fcc1ae5fb149adf7b5a0eb87d03e9bebe55ae29aedb989a845bc"
+    },
+    {
+      "path": "apps/web/src/main.ts",
+      "sha256": "60c8bc1293ffecafcf8d204a58a19a93593abb98349936cfc85ad07294a71537"
+    },
+    {
+      "path": "apps/web/src/material-prior-result.ts",
+      "sha256": "a90d74fbeaa7a4451b751362d474d3b8fbbd9de558f0934079ad402b90f97edb"
+    },
+    {
+      "path": "apps/web/src/material-progress.ts",
+      "sha256": "faf6a713acd206a3d651db47df447f25aa064521afb1c0e6269c0c31f21868ea"
+    },
+    {
+      "path": "apps/web/src/material-workspace.ts",
+      "sha256": "8443f93124d0b38421aa331b7fa76bd5926251f12107bdceff91326e8756eb05"
+    },
+    {
+      "path": "apps/web/src/project-assistant.ts",
+      "sha256": "662088f6982be8dfda4dd49bd8e556c2b21c089dd2d2c469cc04a52050bcf0dc"
+    },
+    {
+      "path": "apps/web/src/project-execution.ts",
+      "sha256": "e07d3dc6b0da21b6025cb5acd0b064f40c116ef61f73b3b07342385ba2203ebc"
+    },
+    {
+      "path": "apps/web/src/project-file-check-batches.css",
+      "sha256": "06b3f94dac55c8b177abc562be6e761c85ab9b46c346a31ec632d0d3d9e09e2f"
+    },
+    {
+      "path": "apps/web/src/project-file-check-batches.ts",
+      "sha256": "d9d4d7367016b425ae7bc29b2f76d54fd75085983a2ab62f301580a15c6ba6bb"
+    },
+    {
+      "path": "apps/web/src/project-files.ts",
+      "sha256": "822c608a8ed543d5d3e34de0377eb461aa1df983102a8d00b04e59f9af5e06ca"
+    },
+    {
+      "path": "apps/web/src/project-qa-workspace.ts",
+      "sha256": "f5325958264807cc9613d4f2051ec7aac28135ef15429e45f3b3acbe8bb088d2"
+    },
+    {
+      "path": "apps/web/src/project-task-refresh.ts",
+      "sha256": "228e870d0c0d03efea17a70727f29cf5a3f6d03fb25a726388bc68cec9e963bf"
+    },
+    {
+      "path": "apps/web/src/qa-continuation.test.ts",
+      "sha256": "7b017be60e294e53acd65b3976f6de59c4b446d8dd72dfeda40d978236364e1e"
+    },
+    {
+      "path": "apps/web/src/qa-continuation.ts",
+      "sha256": "43f984267629e8b18ab93313b60eba091b3d7aaf957d5832ebd5e44513379675"
+    },
+    {
+      "path": "apps/web/src/qa-recovery-cache.test.ts",
+      "sha256": "c47982e88509dbe95c2869a092abe76a78f21e2e531fbed264b4f93f76d19b67"
+    },
+    {
+      "path": "apps/web/src/qa-recovery-cache.ts",
+      "sha256": "31781b3d48e4373d47bccdd02f82148e1ce5e94a225c7573a0ba3f7ddb5eaac9"
+    },
+    {
+      "path": "apps/web/src/qa-recovery-journal.test.ts",
+      "sha256": "7f9b0cd220df2c53f8e8fe14e604df66b8c59811aca6dc9fb11334208b9922b3"
+    },
+    {
+      "path": "apps/web/src/qa-reference-materials.ts",
+      "sha256": "61a6f41e688e43b05155b2c8694ff8df93818286d53768e99fb402d84c82e371"
+    },
+    {
+      "path": "apps/web/src/qa-upload-recovery.ts",
+      "sha256": "f377e7552ba082066c8fe9ff187a63c1fb3ba655f1020535e4fc6239705d23a2"
+    },
+    {
+      "path": "apps/web/src/refund-input.test.ts",
+      "sha256": "a1712444d55b7ef962abf790db2b8eb6373cb9753bcc22bff736a3fb26a0b4ad"
+    },
+    {
+      "path": "apps/web/src/refund-input.ts",
+      "sha256": "e0fb0fb644bdd0582d8bc2f3f04b377e5b46f6e10583b68d1952811ae5e8d877"
+    },
+    {
+      "path": "apps/web/src/review-editor.ts",
+      "sha256": "54cd8ffc27afaa06d361af9548ab970aee5e096d1bb6361dae424af12fb39ee4"
+    },
+    {
+      "path": "apps/web/src/review-progress.ts",
+      "sha256": "96ee9e20c052ac1fff24e01b5e46b941a8b38ad66007fe5390dd667bd42f5988"
+    },
+    {
+      "path": "apps/web/src/review-upload-recovery.ts",
+      "sha256": "88530c8e41e7e24d37d779c5c95218dd9532e5fe71ff92ebdbe5a06411b42927"
+    },
+    {
+      "path": "apps/web/src/review-workspace.ts",
+      "sha256": "fe44a5dbef0e79dbd1ae76553b4e4430c2043301fc457b3df477d9f2c5cb9888"
+    },
+    {
+      "path": "apps/web/src/subscription-billing-page.css",
+      "sha256": "d39b1cebd2384db7ac8c59c23a7c9924ed77d8f1b75f64203c11fafcade6e089"
+    },
+    {
+      "path": "apps/web/src/subscription-billing-page.ts",
+      "sha256": "5407bc8291b3f0dc81dbf9c9be074ea50d202a4e14dfa1e1927c1b88843883ec"
+    },
+    {
+      "path": "apps/web/src/task-refund-admin-page.ts",
+      "sha256": "6d844106d71406f4296d5b41ffc50a3e8cbfd880bfe1c753b49ecd800f3350a6"
+    },
+    {
+      "path": "apps/web/src/task-refunds.css",
+      "sha256": "84c8ef68bc79561cf473f30bb279a0ca50ca08b203280b4e2bdcb4a2447ed8f0"
+    },
+    {
+      "path": "apps/web/src/task-refunds.ts",
+      "sha256": "36a3d11c6405c6b984647e89bc5c252ac05b8c17d26f8daa55f0ebf52a74026f"
+    },
+    {
+      "path": "apps/web/src/update-form.ts",
+      "sha256": "190ee2d2cf9cbc577673f0d6320c7f39c8eb4930b28954debeb21bf74b2ea345"
+    },
+    {
+      "path": "apps/web/src/upload-recovery.ts",
+      "sha256": "f263fc771babf4e0638fb3e6e60cd0c51ff7aaaab3085747e769e7d2707b7048"
+    },
+    {
+      "path": "apps/web/src/workpaper-library.ts",
+      "sha256": "909bb86fd22df8c0f0bb3aad3123576c4285e7c4825d23262ef297cdc42d1750"
+    },
+    {
+      "path": "apps/web/src/workpaper-panel.ts",
+      "sha256": "0d411dee15db7448b81ad56045605a5bb38f20926fc99928859fa34ff0f57595"
+    },
+    {
+      "path": "apps/web/tests/assistant-project-copy-sixteenth-fixtures.ts",
+      "sha256": "7ac75ff11b106e9d24e217596dd64360627bfb799a9abab082e5346f6136b8f5"
+    },
+    {
+      "path": "apps/web/tests/assistant-template-fifteenth-fixtures.ts",
+      "sha256": "171311b16ad709a046470861056b3cbd4df47cc00864b1cc3dc51c822550bfea"
+    },
+    {
+      "path": "apps/web/tests/assistant-upload-11th-fixtures.ts",
+      "sha256": "669f29d56cd72ea75bc0d3f51dbfb1d605b579c2967a90da4874e8436d0942c8"
+    },
+    {
+      "path": "apps/web/tests/authoring-continuation.spec.ts",
+      "sha256": "734a907d4f457caab34d276611b08f542c5cecd7b8f8bfa20fcae5a6e627478c"
+    },
+    {
+      "path": "apps/web/tests/authoring-next-layout-fixtures.ts",
+      "sha256": "24f47f4c3e481f8a0143e29f3b217a5be5e9814e88ac79cd59e9dfd18a00f46e"
+    },
+    {
+      "path": "apps/web/tests/authoring-onboarding.spec.ts",
+      "sha256": "eb1982b4da9d818cd509a78aa5facdd6c087d900d16f6dd159cec9990e2ca098"
+    },
+    {
+      "path": "apps/web/tests/authoring-source-guide-fixtures.ts",
+      "sha256": "b665c9fd4a7f045fb568f5babf517acb2949942de3011370d549d5cff4c81991"
+    },
+    {
+      "path": "apps/web/tests/batch-delivery-fixtures.ts",
+      "sha256": "c6de1d7407af0284d6a12881c492a1ecaee32a31f074299ca3480087e134769a"
+    },
+    {
+      "path": "apps/web/tests/billing-fixture-wire.spec.ts",
+      "sha256": "8471ee762d93b97be8b7f9266eddc6c02e58e6c41da0972bc7527a432b132c12"
+    },
+    {
+      "path": "apps/web/tests/billing-fixture-wire.ts",
+      "sha256": "2bf74ed8b3ecd4968e7d3249e543dc6a395abd86d68afd6b3da40f3817652a0e"
+    },
+    {
+      "path": "apps/web/tests/billing-price-admin.spec.ts",
+      "sha256": "aa61615b233e874aff5c950fa62f819c0daa53f8de726b79764917789bd9ad73"
+    },
+    {
+      "path": "apps/web/tests/collection-fixtures.ts",
+      "sha256": "609a14ae6fa039a99b78c69ddef91d47a278bd7124175f3ca4711b11ed8ee0a1"
+    },
+    {
+      "path": "apps/web/tests/commerce-lifecycle.spec.ts",
+      "sha256": "2bf082f545200bc71ebbce7cd805c9f9590c9818306c35d00b82a92ef9ce294b"
+    },
+    {
+      "path": "apps/web/tests/consistency-confirmation-fixtures.ts",
+      "sha256": "0a73561b6f7bcba76e2f570a4e0ff498e01a5a8a087ed53b891e9b175c941123"
+    },
+    {
+      "path": "apps/web/tests/consistency-manual-reading-fixtures.ts",
+      "sha256": "1fefd1b093f1c20770a9aac4c8ba38f5c76ede9aac3b5d9ad86ac6f5ab2edadd"
+    },
+    {
+      "path": "apps/web/tests/consistency-originals-fixtures.ts",
+      "sha256": "84367c59e680d89712f4e73eb9b3285f2d0100789793bd167a32452781b6bb8c"
+    },
+    {
+      "path": "apps/web/tests/consistency-reading-fixtures.ts",
+      "sha256": "e130c4c8592fd812cf8037c7de836c6ddc09ca86b76277bee1aa35ca09070efa"
+    },
+    {
+      "path": "apps/web/tests/consistency-selection-fixtures.ts",
+      "sha256": "638e0f7b1c3b891a59ad86a69702d594e0d1b8de6801ad699fd1361f77a53e9b"
+    },
+    {
+      "path": "apps/web/tests/consistency-task-fixtures.ts",
+      "sha256": "888c6d3145be657e50fad9a05dacf75016c724ede4e2ebcc4c8c115bd6878128"
+    },
+    {
+      "path": "apps/web/tests/consistency-update-history-fixtures.ts",
+      "sha256": "1eecbea928456728d44e4b5fe9c135ccb268dad0610b2a19a160200f9e79ddbe"
+    },
+    {
+      "path": "apps/web/tests/desktop-file-workflow-fixtures.ts",
+      "sha256": "4d24b11fe5f28790598cd9a9faff1a77a7ac162ef6800578ed33f1ff1a40a00a"
+    },
+    {
+      "path": "apps/web/tests/generation-entry-fixtures.ts",
+      "sha256": "01aec9b1b2a77f3dabfe2cb9b14daaba4d82c2acf4e9e435e422381f23b1ac69"
+    },
+    {
+      "path": "apps/web/tests/generation-source-fixtures.ts",
+      "sha256": "6c71703151765a6c6bd50c7f27bdc95c5c41940fde6ba9033fcfc3499bc0fbdd"
+    },
+    {
+      "path": "apps/web/tests/integrity-continuation-fixtures.ts",
+      "sha256": "781e29c19d0b0398dc25aaeecdca5b01b7d75091e056c11930f2a536dd895264"
+    },
+    {
+      "path": "apps/web/tests/integrity-delivery-fixtures.ts",
+      "sha256": "4ff5e1bafbf5de94908615ead3562f7009358c99bc17473e63ae3458c3838634"
+    },
+    {
+      "path": "apps/web/tests/integrity-upload-eleventh-fixtures.ts",
+      "sha256": "735b670669bea70f10a592e151da2ec470418797dc56a6b2874d34f1ba023b71"
+    },
+    {
+      "path": "apps/web/tests/m4-template-fourteenth-fixtures.ts",
+      "sha256": "1eed3bc72fa59089601cf25633414825a6fecd21aad389fd58269035e6bcf645"
+    },
+    {
+      "path": "apps/web/tests/m4-upload-thirteenth-fixtures.ts",
+      "sha256": "ee210c954aeca8bab08489aaa95ab619440dcb8d8783060dad64a53f79526f74"
+    },
+    {
+      "path": "apps/web/tests/material-reference-picker-fixtures.ts",
+      "sha256": "e87a5255c935a6816c05bd802ed49e42a123ea60405779fd5d32576e4e8b005b"
+    },
+    {
+      "path": "apps/web/tests/material-task-draft-fixtures.ts",
+      "sha256": "6e473616b11283be2645268c4a4ba7f1db832de56fae709f0d6c9ce745d3de62"
+    },
+    {
+      "path": "apps/web/tests/ordinary-file-check-batches.spec.ts",
+      "sha256": "e1a97416522886977929befeb429dbecfe038da3a51d25d3602568d029ef5026"
+    },
+    {
+      "path": "apps/web/tests/parallel-projects-fixtures.ts",
+      "sha256": "832b12ae77550c4c59eb9d56b0235c2c912257a43dab568c5fcf652b44f532e6"
+    },
+    {
+      "path": "apps/web/tests/project-execution.spec.ts",
+      "sha256": "13951e589365f5329b62bc6a3b86a3c40832e944250bed80dd04014a30da4389"
+    },
+    {
+      "path": "apps/web/tests/project-file-return-fixtures.ts",
+      "sha256": "8a5f28131a47baf67bc342c10724f8a745100a4718d98be0f3684c0a1e6eb133"
+    },
+    {
+      "path": "apps/web/tests/project-file-status-fixtures.ts",
+      "sha256": "51093eb01ba9f9be9bcd47a2696953b16f561f8317d5004b26cf131f1e275960"
+    },
+    {
+      "path": "apps/web/tests/project-qa-continuation-fixtures.ts",
+      "sha256": "1c97acbe6825e44dfa363194913d18018ca8f9ee2c89da614fc0720bd5560a4a"
+    },
+    {
+      "path": "apps/web/tests/project-qa-recovery.spec.ts",
+      "sha256": "5ccc6aef465c64bd2961c787c7d7a41d3fdd7d5c146108df00901ecf59156c19"
+    },
+    {
+      "path": "apps/web/tests/prospectus-saved-reentry-fixtures.ts",
+      "sha256": "bbbe9b429797e6d440c85766db7d5302316d7f5edd16bbe66f4c7d27f1fce372"
+    },
+    {
+      "path": "apps/web/tests/qa-reference-materials-fixtures.ts",
+      "sha256": "26686c10d9f41a5aa9ec76fe4c821aca7fe66ae9ca35e9fa3e0c3c173ed51c43"
+    },
+    {
+      "path": "apps/web/tests/qa-result-next-fixtures.ts",
+      "sha256": "5db6ea0ae13009442c9a85be592915844d12859e8f4ea681ceeae33a74ad4b2d"
+    },
+    {
+      "path": "apps/web/tests/qa-upload-11th-fixtures.ts",
+      "sha256": "69a8dc5b42de6757bfec62b795d420b7751b06120fd8bc48fb7991c567fd1978"
+    },
+    {
+      "path": "apps/web/tests/result-handoff-authoring-fixtures.ts",
+      "sha256": "b75492e168900d33dcc84b8da1939de3607e512ffe2c231dd1d337dbab16bd23"
+    },
+    {
+      "path": "apps/web/tests/result-handoff-download-fixtures.ts",
+      "sha256": "95ef6ecb7004c7bdb8742491cdc80af61fc229ff6ba22efc68c06e39c7c991d5"
+    },
+    {
+      "path": "apps/web/tests/review-flow-reader-fixtures.ts",
+      "sha256": "80bd5188c4261aed9c25df63ede66959c33151367b2b5d8cd44490c2ced8fce4"
+    },
+    {
+      "path": "apps/web/tests/review-followup-fixtures.ts",
+      "sha256": "2e83d4f3f1fcc35e453937df20a01d97782f63d9fa57d700a1a04dd1611897f8"
+    },
+    {
+      "path": "apps/web/tests/review-upload-twelfth-fixtures.ts",
+      "sha256": "3ea591255da7a49ef9e6155a8f855f75fbb247c26be958688dcafb8a58ca3e8d"
+    },
+    {
+      "path": "apps/web/tests/subscription-account.spec.ts",
+      "sha256": "ae2d8ae8525c1b403c25a74cea58c7a9d1517639ebd51f3b7b73351592edcd6c"
+    },
+    {
+      "path": "apps/web/tests/task-refunds.spec.ts",
+      "sha256": "4dea4126a04c0e4d4e045bbee0216cbe5cece9269ff649ae039fa95e2a7ff162"
+    },
+    {
+      "path": "apps/web/tests/upload-session-recovery-fixtures.ts",
+      "sha256": "d2dae48ac4bcfd453ce5d3b8fb2c4110a21fd4aadc42df82f943ab55e12e3e19"
+    },
+    {
+      "path": "apps/web/tests/word-roundtrip-fixtures.ts",
+      "sha256": "379e1efb9749023f109630aec2665968555031c773eba4cfc2f69148c159e833"
+    },
+    {
+      "path": "apps/worker/src/ordinary-file-check-batches.pg.test.ts",
+      "sha256": "02b75b87fd2c9c873a493077ff2d5a6826a859a66360f46c09feff1c051ebc2b"
+    },
+    {
+      "path": "db/migrations/0145_billing_operator_permissions.sql",
+      "sha256": "155c0dd29865f01417240582691bffb4c37cb1a11fb700f28f753137f2c5da5a"
+    },
+    {
+      "path": "db/migrations/0146_billing_price_admin.sql",
+      "sha256": "b259174571b73ecc07a9279268c1032373e5b6105f0bc4985a7c863a8fcc1f0a"
+    },
+    {
+      "path": "db/migrations/0147_task_quality_refunds.sql",
+      "sha256": "e5e69198664d8e727f081c0066fb13fdbfc04d4035a0250b8ddd1ce796e81b99"
+    },
+    {
+      "path": "db/migrations/0148_billing_price_creation_idempotency.sql",
+      "sha256": "8d031d2dd522814cae7f6f22fdf725cac1c1fcdc51c25e4332574ee3a5104ad1"
+    },
+    {
+      "path": "db/migrations/0149_task_refund_legacy_coverage.sql",
+      "sha256": "ef8d53c75a361f913a53d5bf2c74911a23ecde5df6b1880eb3375166b885219e"
+    },
+    {
+      "path": "db/migrations/0150_billing_safety_isolation.sql",
+      "sha256": "21bb85def870932ca0f71aa10441f4e7fb73a4e2493f0b3003c9f299c4811dab"
+    },
+    {
+      "path": "db/migrations/0151_billing_safety_sql_writers.sql",
+      "sha256": "04a0b21a73741f23c522a4683ee05d35a4341f428909136349f3a06feca6bc05"
+    },
+    {
+      "path": "db/migrations/0152_project_file_check_batches.sql",
+      "sha256": "b12b99dcc0856ca7f0b7a84f51e867b01bbddc613ff567b390e592d0b7b14bc8"
+    },
+    {
+      "path": "db/migrations/0153_billing_safety_alert_kind.sql",
+      "sha256": "c1b54bde724c766e3f26c3976b9e731a156d73fce2f6b07173617c83e3445fcf"
+    },
+    {
+      "path": "db/migrations/0154_billing_safety_refund_schedule.sql",
+      "sha256": "22a0f1d2e8ebbecb161a7a39b70e9072a21551793b8e56cad9370dcb5dedaacb"
+    },
+    {
+      "path": "db/migrations/0155_file_check_batch_reuse.sql",
+      "sha256": "97f46dcf2c834fdf2ecbb0576eba2464aa7bdbc3a30597da7c91ca59e33d94b2"
+    },
+    {
+      "path": "packages/contracts/src/automatic-pricing.ts",
+      "sha256": "22748b2c1b5366b6a722ebbab7007f1d721840fa57a45975f842f5afce57d310"
+    },
+    {
+      "path": "packages/contracts/src/billing-integers.test.ts",
+      "sha256": "bbae89b6683b7de3a16d8d85fbdf6fef2b3474b7c8bade3c8272677f1be9dcca"
+    },
+    {
+      "path": "packages/contracts/src/billing-integers.ts",
+      "sha256": "0828bf24a39bb4a92e8c2ccbe47d9a241bba3388b98cc6c05460ab4300f62726"
+    },
+    {
+      "path": "packages/contracts/src/billing-permissions.ts",
+      "sha256": "5a377cfdd7522111d2b61c2c49c3d5138f0f2617a9047ecd8fad5d5acd3b64a1"
+    },
+    {
+      "path": "packages/contracts/src/billing-price-admin.test.ts",
+      "sha256": "489a5198fdd5b09cf9bca6a7859ae0b050e96ffbd193811ef61ba4135a3cb98c"
+    },
+    {
+      "path": "packages/contracts/src/billing-price-admin.ts",
+      "sha256": "5bca009f7cdae754f36b4f5cddb3e062eaaf22ea368c94090d512cedcc309618"
+    },
+    {
+      "path": "packages/contracts/src/billing-wire-routes.ts",
+      "sha256": "c1afb77e1644e3218307f78fd129255960b659ecab347b40537d1e6de027ce62"
+    },
+    {
+      "path": "packages/contracts/src/billing-wire.test.ts",
+      "sha256": "b93bfbdf7c8697d6f6091ccd5418954c824be84ee22c1b1543794ed1ab8cd2f2"
+    },
+    {
+      "path": "packages/contracts/src/billing-wire.ts",
+      "sha256": "669189be9236555077f76b5a429a365f76350cb0225c7c38616477db8adb41f7"
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "sha256": "11c3ed5f194201fa5735d3f6c7a9efc9df9be1b5ebda36e7b1b4771d73239e12"
+    },
+    {
+      "path": "packages/contracts/src/outcome-pricing.ts",
+      "sha256": "d75f0ad7204c7243292b4a56f4cf3900a5683712e47d8da61b1c1ddc73cd1565"
+    },
+    {
+      "path": "packages/contracts/src/project-file-check-batches.ts",
+      "sha256": "02ca1b8a2cb1c6ab4b67418e0c1cae42ae28f98fd7dd6c3b11133e483b7dec85"
+    },
+    {
+      "path": "packages/contracts/src/subscription-order-detail.ts",
+      "sha256": "19af0bef6180d7ea33b322319df0da40f05c7fd771426464fccdf6dd495c641c"
+    },
+    {
+      "path": "packages/contracts/src/task-refunds.ts",
+      "sha256": "21b4a293136af03f48a6e81d7424193eb5ac493b13f668c21c16cc94ad1c46f5"
+    },
+    {
+      "path": "product-prototype/public/account-credits.html",
+      "sha256": "21daa716e3bab8a87c0bbfb6c626319bc790b0189bcd073bd0d42622c7fd0ab1"
+    },
+    {
+      "path": "product-prototype/public/billing-price-admin-prototype.js",
+      "sha256": "8c3a9eed512aa03985cbb0e2877355ebd4687afc5dcbb550669213ba39a24640"
+    },
+    {
+      "path": "product-prototype/public/billing-price-admin.css",
+      "sha256": "f7902d20594242cb2bbdc23d96d0b4ad55a0bb4d660841320c811e4e404b16da"
+    },
+    {
+      "path": "product-prototype/public/file-check-batches.js",
+      "sha256": "8512485910b4d5fc39e507a7450186bb33ded752bc3525d34d8cb38a8e33b2ae"
+    },
+    {
+      "path": "product-prototype/public/prospectus-panel.html",
+      "sha256": "e9e20fcb2c5fe3222646379522474feb5ff3a0eed03622c25dd392cad0f3fdbb"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "packages/contracts/dist/index.js",
+      "sha256": "3b4a9a673dd0a2a72ddc46bd508f8eab8c139ab6c0eb30dc6d0ad5a3696e34bb"
+    },
+    {
+      "path": "apps/api/dist/server.js",
+      "sha256": "6fbce087c343dd4601b9c423a1b723e5eab90d9c1a3aebea256ad9e458770689"
+    },
+    {
+      "path": "apps/api/dist/billing.js",
+      "sha256": "cfbddfdb319ba3c915719fe83b59ddd15a973f6c848739db44c353d065190eb7"
+    },
+    {
+      "path": "apps/api/dist/billing-wire.js",
+      "sha256": "a39508b8119b6ccaa83485d851b70d965548c006784d2ffc7adbb2d51c8cf8ff"
+    },
+    {
+      "path": "apps/api/dist/billing-safety.js",
+      "sha256": "92934621df2ed58c648b79a5a5fd442d08b12190ce30a8eb800c9cc5e09d09ab"
+    },
+    {
+      "path": "apps/api/dist/project-file-check-batches.js",
+      "sha256": "bd4a4859533fc4b7bbcd91e8fbf99b3a87a9c61c048429b11cf1cdd7b655ff51"
+    },
+    {
+      "path": "apps/worker/dist/ordinary-file-check-batches.pg.test.js",
+      "sha256": "b90ef4ed20b94d05dcdc1dfab0aa0e877b9978689be243b235c8d7a903b5d125"
+    },
+    {
+      "path": "apps/web/dist/assets/index-CmYOZgX6.js",
+      "sha256": "65758bd160a4b103241d97525a98a1184a5136215ec75ee80a5aa865c66de197"
+    },
+    {
+      "path": "apps/web/dist/assets/index-CxvMWZPF.css",
+      "sha256": "748a6f90e371491c02f8b1c59c3e2b13af6251504163f44220fb84405573c52a"
+    }
+  ]
+}

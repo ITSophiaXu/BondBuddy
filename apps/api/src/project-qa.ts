@@ -5,7 +5,7 @@ import type {Static} from '@sinclair/typebox';
 import {QA_HISTORY_CAPABILITY,PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,qaSchemas,qaProspectusIssue,type QaDraft,type QaInput,type QaResult,type QaWorkspace,type QaQuestion} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,Problem,date,assertCanonicalBusinessRunIdle} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
-import {creditBalance,lockCreditAccount} from './billing.js';
+import {creditBalanceExact,lockCreditAccount,reserveCreditLots} from './billing.js';
 import {enqueue} from './queue.js';
 import {outcomeMetadata} from './outcome-pricing.js';
 import {readProjectFileAsset,projectFileSource} from './project-file-storage.js';
@@ -59,7 +59,7 @@ export async function validateIncludedQaFollowup(db:Db,owner:string,projectId:st
  JOIN bb_project_qa_quotes price ON price.id=res.quote_id AND price.run_id=q.run_id AND price.owner_user_id=q.owner_user_id
  WHERE q.owner_user_id=$1 AND q.project_id=$2 AND q.run_id=$3 AND q.operation='answer' AND run.state='succeeded'
  AND res.state='settled' AND res.charged_points=price.points AND price.scope_quote_id IS NOT NULL AND price.points>0
- AND NOT EXISTS(SELECT 1 FROM bb_credit_events e WHERE e.owner_user_id=q.owner_user_id AND e.reservation_id=res.id AND e.kind='correction')`,[owner,projectId,parentId])).rows[0];
+ AND NOT EXISTS(SELECT 1 FROM unnest($4::text[]) requested(key) WHERE bb_task_item_was_refunded(q.owner_user_id,q.run_id,requested.key))`,[owner,projectId,parentId,questions.map(q=>q.id)])).rows[0];
  if(!parent||!isOutcomePriceVersion(parent.price_version)||parent.manifest.requirements!==requirements||inputManifestHash(parent.manifest.source.asset)!==inputManifestHash(source.asset)
  ||!questions.length||questions.some(q=>!parent.manifest.questions.some((old:QaQuestion)=>inputManifestHash(old)===inputManifestHash(q))))
    throw conflict('INPUT_REVISION_CONFLICT','原范围续做须引用本人同项目已付成功任务，保持原问题、原要求和问题清单；新增范围请单独报价。');
@@ -79,13 +79,11 @@ export async function reserveQaCredits(c:PoolClient,owner:string,run:any,input:Q
  if(input.included_followup_of&&points===0)return;
  if(commercial&&points===0){await bindCommerceScopeRun(c,owner,scope!.scope_quote_id,run.id);return;}
  await lockCreditAccount(c,owner);
- const balance=await creditBalance(c,owner);
- if(balance.available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',isAutomaticPriceVersion(input.price_version)?`本轮 ${input.questions.length} 个问题需要 ${points.toLocaleString('zh-CN')} 积分，当前可用 ${balance.available.toLocaleString('zh-CN')} 积分，还差 ${(points-balance.available).toLocaleString('zh-CN')} 积分；问题与材料已保留，补足后自动继续。`:commercial?`本轮 ${input.questions.length} 个问题需要 ¥${(points/100).toFixed(2)}；问题与材料已保留。`:`本轮 ${input.questions.length} 个问题需要 ${points} 积分；问题与材料已保留。`);
+ const balance=await creditBalanceExact(c,owner);
+ if(balance.available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',isAutomaticPriceVersion(input.price_version)?`本轮 ${input.questions.length} 个问题需要 ${points.toLocaleString('zh-CN')} 积分，当前可用 ${balance.available.toLocaleString('zh-CN')} 积分，还差 ${(BigInt(points)-balance.available).toLocaleString('zh-CN')} 积分；问题与材料已保留，补足后自动继续。`:commercial?`本轮 ${input.questions.length} 个问题需要 ¥${(points/100).toFixed(2)}；问题与材料已保留。`:`本轮 ${input.questions.length} 个问题需要 ${points} 积分；问题与材料已保留。`);
  const reservation=uid();
  await c.query("INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy) VALUES($1,$2,$3,$4,$5,'on_delivery')",[reservation,owner,run.id,quote,points]);
- const lots=(await c.query("SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND remaining>frozen AND (expires_at IS NULL OR expires_at>now()) ORDER BY CASE WHEN source='purchase' THEN 1 ELSE 0 END,expires_at ASC NULLS LAST,created_at,id FOR UPDATE",[owner])).rows;
- let left=points;for(const lot of lots){const take=Math.min(left,Number(lot.remaining)-Number(lot.frozen));await c.query('UPDATE bb_credit_lots SET frozen=frozen+$2 WHERE id=$1',[lot.id,take]);await c.query('INSERT INTO bb_credit_allocations(reservation_id,lot_id,points) VALUES($1,$2,$3)',[reservation,lot.id,take]);left-=take;if(!left)break;}
- if(left)throw new Problem(503,'DATA_UNAVAILABLE','Q&A credit allocation mismatch');
+ await reserveCreditLots(c,owner,reservation,BigInt(points));
  await c.query("INSERT INTO bb_credit_events(id,owner_user_id,event_key,kind,points,reservation_id,run_id,actor,reason) VALUES($1,$2,$3,'reserve',$4,$5,$6,$2,'project_qa_questions_confirmed')",[uid(),owner,'reserve:'+reservation,points,reservation,run.id]);
  await c.query("UPDATE bb_runs SET billing_mode='fixed_credits',reservation_id=$2 WHERE id=$1",[run.id,reservation]);
  run.billing_mode='fixed_credits';run.reservation_id=reservation;

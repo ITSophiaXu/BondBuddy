@@ -1,0 +1,14 @@
+▶ ordinary file batches settle independent outputs, retain original price on failed-only retries and isolate requests
+  ✔ native strings are required before AJV coercion and insufficient total funds leave no children or holds (112.6919ms)
+  ✔ concurrent original requests freeze the full obligation once in independent children (388.035ms)
+  ✔ one successful Word is delivered and billed even when another file fails (5031.3863ms)
+  ✔ failed-only retry and same-owner second-project create share safe lock order; original successful work is never rerun (5911.9352ms)
+✔ ordinary file batches settle independent outputs, retain original price on failed-only retries and isolate requests (13435.9401ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 46316.9162

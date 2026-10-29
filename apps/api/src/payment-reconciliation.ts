@@ -3,11 +3,22 @@ import type {Pool} from 'pg';
 import {applyVerifiedPayment,paymentOrder,closeRecharge,type PaymentProvider} from './payments.js';
 import {refreshPaymentRefund} from './payment-refunds.js';
 import {raiseAlert} from './evidence-gate.js';
+import {scanAndIsolateBilling} from './billing-safety.js';
 
 /** Recover persisted authorised intents only. Never creates another order, mandate, refund ID or business task. */
 export async function reconcilePendingPayments(pool:Pool,providers:readonly PaymentProvider[],limit=20,shouldStop:()=>boolean=()=>false){
   if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw new RangeError('Invalid reconciliation limit');
   const counts={payments_checked:0,payments_paid:0,refunds_checked:0,refunds_terminal:0,unknown:0,alert_failures:0};
+  if(shouldStop())return counts;
+  // The audit uses separate committed transactions, including when no merchant
+  // is configured. Unknown provider responses never create isolation incidents.
+  const safety=await scanAndIsolateBilling(pool);
+  for(const result of safety.results.filter(row=>row.status==='isolated')){
+    try{await raiseAlert(pool,{kind:'billing_safety_isolated',severity:'critical',scope:result.incidentId!,
+      detail:{incident_id:result.incidentId!,scope_kind:result.scope.kind},bucketSeconds:3600});}
+    catch{counts.alert_failures++;}
+  }
+  counts.alert_failures+=safety.errors.length;
   if(!providers.length||shouldStop())return counts;
   const unresolved=async(kind:'payment'|'refund',row:any)=>{
     // Only server-owned identifiers/counters. Never persist raw provider errors, bodies or credentials.
@@ -71,7 +82,6 @@ async function parallel<T>(rows:T[],work:(row:T)=>Promise<void>,shouldStop:()=>b
 }
 
 export function installPaymentReconciliation(app:FastifyInstance,pool:Pool,providers:readonly PaymentProvider[]){
-  if(!providers.length)return;
   let timer:ReturnType<typeof setInterval>|undefined,running:Promise<void>|undefined,stopping=false;
   const tick=()=>{
     if(running||stopping)return;

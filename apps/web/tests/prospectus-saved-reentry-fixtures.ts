@@ -1,3 +1,6 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {createHash} from 'node:crypto';
 import {expect,type Page,type Route} from '@playwright/test';
 import {FormatRegistry,Type} from '@sinclair/typebox';
@@ -6,7 +9,7 @@ import {M4_DOCUMENT_TYPES,M4DocumentManifestSchema,M4DraftInputSchema,M4ViewStat
   ProjectFileSourceSchema,ProjectFileVersionSchema,schemas,type M4DocumentType,type M4Draft,
   type M4DraftInput,type M4Workspace,type ProjectFileSource,type ProjectFileVersion,
   type ProjectFileWorkspace,type ProspectusVersion,type ProspectusVersions,type Run} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 
 // One closed synthetic HTTP producer serves the actual main.ts routes throughout
 // each desktop journey. No root HTML override, component mount, worker or ledger.
@@ -69,28 +72,29 @@ export const fixedSnapshot=(s:State)=>structuredClone({tasks:s.workspace.tasks,d
 export function check<K extends keyof typeof schemas>(name:K,value:unknown):asserts value is Dto<K>{expect([...Value.Errors(schemas[name],value)].map(e=>({path:e.path,message:e.message})),name).toEqual([]);}
 const registrySchema=Type.Object({files:Type.Array(ProjectFileVersionSchema)},{additionalProperties:false});
 function assertState(s:State){check('ProjectResponse',s.project);check('ProspectusVersionsResponse',projection(s));check('ProjectFilesResponse',collection(s));for(const m of s.materials.values()){check('MaterialResponse',m.dto);expect(hash(m.bytes)).toBe(m.dto.sha256);expect(m.bytes.length).toBe(m.dto.byte_size);}for(const draft of Object.values(s.workspace.drafts))expect([...Value.Errors(M4DraftInputSchema,inputOf(draft))]).toEqual([]);for(const task of s.workspace.tasks)expect([...Value.Errors(M4DocumentManifestSchema,task.manifest)]).toEqual([]);const{version:_v,...view}=s.workspace.view;expect([...Value.Errors(M4ViewStateSchema,view)]).toEqual([]);expect([...Value.Errors(registrySchema,{files:s.files})]).toEqual([]);const source=currentSource(s);if(source)expect([...Value.Errors(ProjectFileSourceSchema,source)]).toEqual([]);}
-async function reply<K extends keyof typeof schemas>(route:Route,name:K,value:Dto<K>,status=200){check(name,value);return route.fulfill({status,json:structuredClone(value)});}
-const failure=(route:Route,status=409)=>route.fulfill({status,json:{code:status===409?'INPUT_REVISION_CONFLICT':'NOT_FOUND',message:'Synthetic saved-source response',retryable:false,correlation_id:'saved-reentry',field_errors:[]}});
+async function reply<K extends keyof typeof schemas>(route:Route,name:K,value:Dto<K>,status=200){check(name,value);return route.fulfill({status,json:fixtureBody(route,structuredClone(value))});}
+const failure=(route:Route,status=409)=>route.fulfill({status,json:fixtureBody(route,{code:status===409?'INPUT_REVISION_CONFLICT':'NOT_FOUND',message:'Synthetic saved-source response',retryable:false,correlation_id:'saved-reentry',field_errors:[]})});
 const installed=new WeakMap<Page,State>();
 export async function install(page:Page,s=fixture()){
   assertState(s);installed.set(page,s);page.on('pageerror',error=>s.errors.push(error.message));
   await page.clock.install({time:new Date(now)});await page.clock.pauseAt(new Date(Date.parse(now)+1000));
   await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const request=route.request(),url=new URL(request.url()),path=url.pathname.slice('/api/v1'.length),method=request.method();
-    const body:unknown=request.headers()['content-type']?.includes('application/json')&&request.postData()?request.postDataJSON():null;s.calls.push({method,path,search:url.search,body:structuredClone(body)});
+    const body:unknown=request.headers()['content-type']?.includes('application/json')&&request.postData()?fixtureRequest(request):null;s.calls.push({method,path,search:url.search,body:structuredClone(body)});
     if(method==='GET'&&path==='/me')return reply(route,'MeResponse',{user_id:ids.owner,session_status:'active'});
     if(method==='GET'&&path==='/account')return reply(route,'AccountResponse',{user_id:ids.owner,username:'synthetic_saved_source',phone_masked:null,status:'active',created_at:now,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});
     if(method==='GET'&&path==='/credits/balance')return reply(route,'CreditBalanceResponse',s.balance);
-    if(method==='GET'&&path==='/m4/topics')return route.fulfill({json:{topics:[]}});
+    if(method==='GET'&&path==='/m4/topics')return route.fulfill({json:fixtureBody(route,{topics:[]})});
     if(method==='GET'&&path==='/projects')return reply(route,'ProjectListResponse',{items:[{project_id:ids.project,name:s.project.name,kind:s.project.kind,issuer_name:s.project.issuer_name,market:s.project.market,offering:s.project.offering,draft_revision:s.project.draft_revision,updated_at:now,file_count:collection(s).items.length,latest_run:null,latest_artifact:null,status:'draft'}],page:{has_more:false,next_cursor:null}});
     const base='/projects/'+ids.project;
-    if(method==='GET'&&path===base+'/workpapers/library')return route.fulfill({json:{items:[],total:0,offset:0,limit:100,source:currentSource(s),checks:[]}});
+    if(method==='GET'&&path===base+'/workpapers/library')return route.fulfill({json:fixtureBody(route,{items:[],total:0,offset:0,limit:100,source:currentSource(s),checks:[]})});
     if(method==='GET'&&path===base)return reply(route,'ProjectResponse',s.project);
-    if(method==='GET'&&path===base+'/workpapers/library')return route.fulfill({json:{items:[],total:0,offset:0,limit:60,source:null,checks:[]}});
+    if(method==='GET'&&path===base+'/workpapers/library')return route.fulfill({json:fixtureBody(route,{items:[],total:0,offset:0,limit:60,source:null,checks:[]})});
     if(method==='GET'&&path===base+'/tasks')return reply(route,'ProjectTasksResponse',{project_id:ids.project,items:[{run_id:ids.originalRun,project_id:ids.execution,kind:'generation',state:'failed',stage:'completed',artifact_id:null,created_at:now,updated_at:now,report_id:null,topic_id:ids.topic,document_type:'init',operation:null}],page:{has_more:false,next_cursor:null}});
     if(method==='GET'&&path===base+'/files'){s.filesReads++;return reply(route,'ProjectFilesResponse',collection(s));}
-    if(method==='GET'&&path===base+'/project-files'){expect([...Value.Errors(registrySchema,{files:s.files})]).toEqual([]);return route.fulfill({json:{files:structuredClone(s.files)}});}
-    if(method==='GET'&&path===base+'/project-files/workspace'){assertState(s);const value:ProjectFileWorkspace={project_id:ids.project,source:currentSource(s),workspace:s.workspace,files:s.files,batches:[]};return route.fulfill({json:structuredClone(value)});}
+    if(method==='GET'&&path===base+'/project-files'){expect([...Value.Errors(registrySchema,{files:s.files})]).toEqual([]);return route.fulfill({json:fixtureBody(route,{files:structuredClone(s.files)})});}
+    if(method==='GET'&&path===base+'/project-files/workspace'){assertState(s);const value:ProjectFileWorkspace={project_id:ids.project,source:currentSource(s),workspace:s.workspace,files:s.files,batches:[]};return route.fulfill({json:fixtureBody(route,structuredClone(value))});}
     if(method==='GET'&&path===base+'/prospectus-versions'){s.versionReads++;return reply(route,'ProspectusVersionsResponse',projection(s));}
     if(method==='POST'&&path===base+'/materials/uploads'){
       check('UploadCreateRequest',body);expect(body).toEqual({filename:s.candidate.filename,media_type:mime,byte_size:newBytes.length,sha256:hash(newBytes),role:'historical'});

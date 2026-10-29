@@ -1,0 +1,12 @@
+✔ refunded reopening is a new retained purchase, calendar repurchase requires a matured subsequent period (18.3175ms)
+✔ prepayment, original-lot consideration, quality returns, cash refunds and expiry remain separate (0.9125ms)
+✔ missing proof remains unknown and empty cohorts never imply zero retention (0.3289ms)
+✔ incomplete or duplicate settlement allocations cannot appear as exact earned revenue (0.4868ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1718.0147

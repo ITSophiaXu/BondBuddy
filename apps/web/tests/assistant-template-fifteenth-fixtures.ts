@@ -1,3 +1,6 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import { expect, type Page, type Route } from '@playwright/test';
 import { FormatRegistry, type TSchema } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
@@ -8,7 +11,7 @@ import { resolve } from 'node:path';
 import { schemas, emptyUpdateDetails, M4_DOCUMENT_TYPES, M4DraftInputSchema, M4MaterialPinSchema, M4ViewStateSchema, M4ViewRequestSchema,
   M4TemplateCreateRequestSchema, QaWorkspaceSchema, PROJECT_QA_PRICE, type M4Workspace, type M4ViewState, type M4Template,
   type M4TemplateCreateRequest, type M4ViewRequest, type M4MaterialPin, type M4ArtifactPin, type AssistantCard, type QaWorkspace } from '@bondbuddy/contracts';
-import type { Dto } from '../src/api';
+import type { Dto } from './billing-fixture-wire';
 
 export const now = '2026-10-25T12:00:00Z', ids = { owner: 'assistant-template-15-owner', otherOwner: 'assistant-template-15-owner-b',
   project: 'assistant-template-15-associated', scope: 'assistant-template-15-actual', topic: 'assistant-template-15-original',
@@ -66,7 +69,7 @@ export const uploads = (state: State, stage: 'create' | 'bytes' | 'complete') =>
 export function noBusiness(state: State) { expect(writes(state).filter(value => /\/(?:drafts\/[^/]+|messages|quote|execute|cards|handoffs\/bind|qa\/(?:draft|runs|prepare))$/.test(value.path) || value.path === '/projects' || value.method === 'PATCH')).toEqual([]); expect(writes(state).filter(value => value.path.startsWith('/m4/topics/') && !value.path.startsWith('/m4/topics/' + ids.topic + '/'))).toEqual([]); expect(writes(state).filter(value => value.path.startsWith('/projects/') && !value.path.startsWith('/projects/' + ids.scope + '/materials/uploads'))).toEqual([]); expect(state.unexpected).toEqual([]); expect(state.errors).toEqual([]); }
 export async function install(page: Page, state = fixture()) {
   page.on('pageerror', error => state.errors.push(error.message)); await page.clock.install({ time: new Date(now) });
-  const reply = (route: Route, status: number, value: unknown) => route.fulfill({ status, json: value });
+  const reply = (route: Route, status: number, value: unknown) => route.fulfill({ status, json: fixtureBody(route,value) });
   const problem = (route: Route, status: number, code: Dto<'Error'>['code']) => { const value: Dto<'Error'> = { code, message: 'Synthetic assistant template fault', retryable: status >= 500, correlation_id: 'assistant-template-15-trace', field_errors: [] }; check(schemas.Error, value); return reply(route, status, value); };
   const readable = (p: M4MaterialPin) => state.materials.get(pinKey(p));
   const snapshot = (value: M4Workspace) => {
@@ -74,7 +77,8 @@ export async function install(page: Page, state = fixture()) {
     result.templates = state.templates.filter(t => !!readable(t.material)).map(t => structuredClone(t)); check(M4ViewStateSchema, viewOf(result)); for (const p of result.materials) check(M4MaterialPinSchema, p); return result;
   };
   await page.route('**/api/v1/**', async route => {
-    const request = route.request(), url = new URL(request.url()), path = url.pathname.slice('/api/v1'.length), method = request.method(), body = request.postData() && !path.endsWith('/bytes') ? request.postDataJSON() : undefined;
+    if(await serveDisabledBillingCatalog(route))return;
+    const request = route.request(), url = new URL(request.url()), path = url.pathname.slice('/api/v1'.length), method = request.method(), body = request.postData() && !path.endsWith('/bytes') ? fixtureRequest(request) : undefined;
     state.calls.push({ owner: state.owner, method, path, search: url.search, ...(body === undefined ? {} : { body: structuredClone(body) }) });
     if (state.owner !== ids.owner) return problem(route, 404, 'NOT_FOUND');
     if (path === '/m4/topics' && method === 'GET') return reply(route, 200, { topics: [...state.work.values()].map(value => value.topic) });

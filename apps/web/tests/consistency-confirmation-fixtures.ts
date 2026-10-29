@@ -1,10 +1,13 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {createHash} from 'node:crypto';
 import {expect,type Page} from '@playwright/test';
 import {Value} from '@sinclair/typebox/value';
 import {PROJECT_DOCUMENT_CATALOG,PROJECT_FILE_UPDATE_PRICE,ProjectFileCheckSchema,ProjectFileVersionSchema,
   ProjectFileSourceSchema,schemas,resultFilename,type ProjectFileAsset,type ProjectFileCheck,type ProjectFileFinding,
   type ProjectFileVersion} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {fixture as selectionFixture,install as installSelection,assertFixture as assertSelection,
   ids,base,cacheKey,fileIds,checkId,writes,serverSnapshot} from './consistency-selection-fixtures';
 import {docx,now,mime} from './consistency-task-fixtures';
@@ -124,6 +127,7 @@ export async function install(page:Page,s=fixture()){
   // Layer only semantic checks over the original closed producer. The original
   // receipt-before-freshness ordering and its actual dropped response survive.
   await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     try{
       const request=route.request(),url=new URL(request.url()),p=url.pathname.slice('/api/v1'.length);
       if(request.method()==='GET')assertData(s);
@@ -132,10 +136,10 @@ export async function install(page:Page,s=fixture()){
         // readable old check. Its original receipt and immutable confirmation
         // remain available; do not recreate a check from that cached snapshot.
         s.calls.push({method:'GET',path:p,search:url.search,body:null});
-        return route.fulfill({status:404,json:{code:'NOT_FOUND',message:'Synthetic original check is not individually readable',retryable:false,correlation_id:'consistency-confirmation',field_errors:[]}});
+        return route.fulfill({status:404,json:fixtureBody(route,{code:'NOT_FOUND',message:'Synthetic original check is not individually readable',retryable:false,correlation_id:'consistency-confirmation',field_errors:[]})});
       }
       if(request.method()==='POST'&&p===base+'/checks/'+checkId+'/updates'){
-        const body=request.postDataJSON() as Dto<'ProjectFileUpdateRequest'>;
+        const body=fixtureRequest(request) as Dto<'ProjectFileUpdateRequest'>;
         const prior=s.receipts.get(body.request_id);
         if(prior)expect({checkId,body}).toEqual(prior.post);
         else{
@@ -145,7 +149,7 @@ export async function install(page:Page,s=fixture()){
           s.validatedNewEnvelopes.push({checkId,body:structuredClone(body)});
         }
       }
-    }catch(error){s.errors.push(error instanceof Error?error.message:String(error));return route.fulfill({status:500,json:{code:'DATA_UNAVAILABLE',message:'Synthetic confirmation producer assertion failed',retryable:true,correlation_id:'consistency-confirmation',field_errors:[]}});}
+    }catch(error){s.errors.push(error instanceof Error?error.message:String(error));return route.fulfill({status:500,json:fixtureBody(route,{code:'DATA_UNAVAILABLE',message:'Synthetic confirmation producer assertion failed',retryable:true,correlation_id:'consistency-confirmation',field_errors:[]})});}
     return route.fallback();
   });
   return s;

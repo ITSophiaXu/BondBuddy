@@ -1,4 +1,4 @@
-import {projectFileSchemas,ProjectDocumentTypeSchema,PROJECT_DOCUMENT_CATALOG,type ProjectDocumentType} from '@bondbuddy/contracts';
+import {projectFileSchemas,ProjectDocumentTypeSchema,PROJECT_DOCUMENT_CATALOG,type ProjectDocumentType} from './billing-types.js';
 import type {Static} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
 

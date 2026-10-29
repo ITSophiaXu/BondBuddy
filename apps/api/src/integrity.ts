@@ -6,7 +6,7 @@ import {OUTCOME_PRICE_VERSION,commerceMetadata,INTEGRITY_PRICE,INTEGRITY_SITES,i
 import {project,transaction,uid,conflict,Problem,date,assertCanonicalBusinessRunIdle,digest,type PrivateBlobs} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {enqueue} from './queue.js';
-import {creditBalance,lockCreditAccount} from './billing.js';
+import {creditBalanceExact,lockCreditAccount,reserveCreditLots} from './billing.js';
 import {readProjectFileAsset} from './project-file-storage.js';
 import {requestScope,assertScopeQuote,scopePriceMetadata,workScopeHash} from './scope-quotations.js';
 import {bindCommerceScopeRun} from './commerce-coverage.js';
@@ -31,18 +31,12 @@ async function event(c:PoolClient,owner:string,id:string,type:string,payload:unk
 async function reserve(c:PoolClient,owner:string,run:any,manifest:IntegrityInput,scopeHash?:string){
  await lockCreditAccount(c,owner);
  const points=manifest.points;
- const balance=await creditBalance(c,owner);
- if(balance.available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',isAutomaticPriceVersion(manifest.price_version)?`本轮诚信核查需要 ${points.toLocaleString('zh-CN')} 积分，当前可用 ${balance.available.toLocaleString('zh-CN')} 积分，还差 ${(points-balance.available).toLocaleString('zh-CN')} 积分；名单已保留，补足后自动继续。`:manifest.pricing_mode?'服务余额不足，请补充本次已确认金额；名单已保留。':'每轮诚信核查需要 5,000 积分，请补充积分后开始；名单已保留。');
+ const balance=await creditBalanceExact(c,owner);
+ if(balance.available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',isAutomaticPriceVersion(manifest.price_version)?`本轮诚信核查需要 ${points.toLocaleString('zh-CN')} 积分，当前可用 ${balance.available.toLocaleString('zh-CN')} 积分，还差 ${(BigInt(points)-balance.available).toLocaleString('zh-CN')} 积分；名单已保留，补足后自动继续。`:manifest.pricing_mode?'服务余额不足，请补充本次已确认金额；名单已保留。':'每轮诚信核查需要 5,000 积分，请补充积分后开始；名单已保留。');
  const quote=uid(),reservation=uid();
  await c.query('INSERT INTO bb_integrity_quotes(id,owner_user_id,run_id,input_hash,points,price_version,scope_quote_id,scope_lines,scope_work_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',[quote,owner,run.id,run.input_hash,points,manifest.price_version,manifest.scope_quote_id??null,JSON.stringify(manifest.scope_lines??[]),scopeHash??null]);
  await c.query("INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy) VALUES($1,$2,$3,$4,$5,'on_delivery')",[reservation,owner,run.id,quote,points]);
- const lots=(await c.query('SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND remaining>frozen AND (expires_at IS NULL OR expires_at>now()) ORDER BY CASE WHEN source=\'purchase\' THEN 1 ELSE 0 END,expires_at ASC NULLS LAST,created_at,id FOR UPDATE',[owner])).rows;
- let left:number=points;
- for(const lot of lots){const take=Math.min(left,Number(lot.remaining)-Number(lot.frozen));
-  await c.query('UPDATE bb_credit_lots SET frozen=frozen+$2 WHERE id=$1',[lot.id,take]);
-  await c.query('INSERT INTO bb_credit_allocations(reservation_id,lot_id,points) VALUES($1,$2,$3)',[reservation,lot.id,take]);left-=take;if(!left)break;
- }
- if(left)throw new Problem(503,'DATA_UNAVAILABLE','Integrity credit allocation mismatch');
+ await reserveCreditLots(c,owner,reservation,BigInt(points));
  await c.query("INSERT INTO bb_credit_events(id,owner_user_id,event_key,kind,points,reservation_id,run_id,actor,reason) VALUES($1,$2,$3,'reserve',$4,$5,$6,$2,'integrity_round_confirmed')",[uid(),owner,'reserve:'+reservation,points,reservation,run.id]);
  await c.query("UPDATE bb_runs SET billing_mode='fixed_credits',reservation_id=$2 WHERE id=$1",[run.id,reservation]);
  if(manifest.scope_quote_id)await bindCommerceScopeRun(c,owner,manifest.scope_quote_id,run.id);

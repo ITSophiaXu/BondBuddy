@@ -1,8 +1,11 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
 import {Value} from '@sinclair/typebox/value';
 import {M4_DOCUMENT_BILLING_TASKS,M4DocumentManifestSchema,PROJECT_DOCUMENT_CATALOG,ProjectFileBatchSchema,ProjectFileVersionSchema,projectFileSchemas,schemas,
   type M4Artifact,type ProjectDocumentType as M4DocumentType,type M4Task,type ProjectFileBatch,type ProjectFileVersion,type ProjectFileWorkspace,type Run} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import type {FileGenerationBatchRequest} from '../src/file-generation-cache';
 import {assertFixture,fixture,ids,mime,now,type State as EntryState} from './generation-entry-fixtures';
 import {docx,hash} from './word-roundtrip-fixtures';
@@ -18,7 +21,7 @@ type HeldRead={snapshot:ProjectFileWorkspace;release:()=>void};
 type Delivery={requests:Map<string,{body:FileGenerationBatchRequest;batch:ProjectFileBatch;manifests:M4Task['manifest'][]}>;
   artifacts:Map<string,Artifact>;reads:number;failReads:number;holdNextRead:boolean;held:HeldRead[];actions:{batch_id:string;action:string}[]};
 export type State=EntryState&{delivery:Delivery};
-const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,json:body});
+const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,json:fixtureBody(route,body)});
 export const workspace=(s:State)=>s.workspaces.get(ids.api)!;
 export const batch=(s:State)=>workspace(s).batches[0];
 export const artifacts=(s:State)=>[...s.delivery.artifacts.values()];
@@ -102,10 +105,11 @@ export function seed(s:State,state:ProjectFileBatch['state']='running',second:Ru
 export async function deliveryFixture(page:Page){
   const s=Object.assign(await fixture(page),{delivery:{requests:new Map(),artifacts:new Map(),reads:0,failReads:0,holdNextRead:false,held:[],actions:[]} as Delivery});
   await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const req=route.request(),path=new URL(req.url()).pathname.slice('/api/v1'.length),method=req.method();
     const owns=path===base+'/workspace'&&method==='GET'||path===base+'/batches'&&method==='POST'||path.startsWith(base+'/batches/')&&path.endsWith('/actions')&&method==='POST'||path.startsWith('/artifacts/');
     if(!owns)return route.fallback();
-    const body=req.postData()?req.postDataJSON():undefined;s.calls.push({path,method,body});
+    const body=req.postData()?fixtureRequest(req):undefined;s.calls.push({path,method,body});
     if(path===base+'/workspace'){
       s.delivery.reads++;
       if(s.delivery.failReads){s.delivery.failReads--;return json(route,503,{code:'DATA_UNAVAILABLE'});}

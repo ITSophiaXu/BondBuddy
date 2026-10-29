@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
-import {AUTOMATIC_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,OUTCOME_PRICE_VERSION,type ProjectFileCheckResult,type ProjectFileFinding,type WorkpaperEntry} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,OUTCOME_PRICE_VERSION,safeBillingNumber,type ProjectFileCheckResult,type ProjectFileFinding,type WorkpaperEntry} from '@bondbuddy/contracts';
 import {creditBalance,grantCredits} from './billing.js';
 import {transaction,type PrivateBlobs} from './data.js';
 import {makeSyntheticDocxFixture} from './docx-fixtures.js';
@@ -13,6 +13,10 @@ import {inputManifestHash} from './production-rule-pin.js';
 import {checkpointStage,claim,finish,promoteWordArtifact} from './queue.js';
 import {createServer} from './server.js';
 import {isolatedTestDatabase} from './test-database.js';
+import {taskRefundEligibility,createTaskRefund,decideTaskRefund} from './task-refunds.js';
+import {grantBillingPermission} from './billing-permissions.js';
+import {paidFileCheckEvidence} from './project-file-billing.js';
+import {assertScopeQuote} from './scope-quotations.js';
 
 // Real HTTP handlers, an isolated PostgreSQL clone and synthetic delivery evidence.
 // No real customer materials, payment provider or model invocation is involved.
@@ -55,16 +59,17 @@ async function counts(pool:Pool,owner:string){
     (SELECT count(*)::int FROM bb_project_file_update_batches WHERE owner_user_id=$1) AS updates,
     (SELECT count(*)::int FROM bb_workpaper_batches WHERE owner_user_id=$1) AS workpapers`,[owner])).rows[0];
 }
-async function deliverCheck(pool:Pool,runId:string,version:string){
+async function deliverCheck(pool:Pool,runId:string,version:string|string[]){
   const finding:ProjectFileFinding={id:'synthetic-conflict',kind:'conflict',target_span_id:'target-1',original:'100',replacement:'120',source_span_id:'source-1',source_quote:'120',source_location:'Synthetic source page 1',target_location:'Synthetic target page 1',reason:'Synthetic amount changed',field:'Synthetic amount',period:'2026',unit:'CNY'};
-  const result:ProjectFileCheckResult={version:'project-file-check-v1',files:[{file_version_id:version,status:'conflict',coverage:'Synthetic amount only',findings:[finding],links:[]}]},hash=inputManifestHash(result);
+  const versions=Array.isArray(version)?version:[version];
+  const result:ProjectFileCheckResult={version:'project-file-check-v1',files:versions.map(file_version_id=>({file_version_id,status:'conflict',coverage:'Synthetic amount only',findings:[finding],links:[]}))},hash=inputManifestHash(result);
   await pool.query('UPDATE bb_project_file_operations SET result=$2,result_hash=$3 WHERE run_id=$1',[runId,result,hash]);
   // This API-only fixture supplies explicit synthetic host coverage; the worker
   // suite separately verifies real Word extraction and untrusted proposals.
   await pool.query(`INSERT INTO bb_project_file_check_evidence(owner_user_id,run_id,file_version_id,input_hash,source_sha256,target_sha256,checked_spans,total_spans)
-    SELECT r.owner_user_id,r.id,$2,r.input_hash,o.manifest#>>'{source,asset,pin,sha256}',f#>>'{asset,pin,sha256}',1,1
+    SELECT r.owner_user_id,r.id,f->>'file_version_id',r.input_hash,o.manifest#>>'{source,asset,pin,sha256}',f#>>'{asset,pin,sha256}',1,1
     FROM bb_runs r JOIN bb_project_file_operations o ON o.run_id=r.id, jsonb_array_elements(o.manifest->'files') f
-    WHERE r.id=$1 AND f->>'file_version_id'=$2`,[runId,version]);
+    WHERE r.id=$1 AND f->>'file_version_id'=ANY($2::text[])`,[runId,versions]);
   const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,runId);
   const blobs=memoryBlobs(),report=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic consistency report'}),blobs,'generated_review_v1');
   await finish(pool,lease,'succeeded',{artifactId:report.artifactId,artifactVersion:1,blobs});
@@ -95,9 +100,9 @@ for(const legacy of [false,true])test(legacy
       await fund(pool,f.owner,20000);
       const request={request_id:randomUUID(),expected_source_version_id:f.sourceVersion,file_version_ids:[f.version]};
       const quoted=await app.inject({method:'POST',url:base+'/checks/quote',headers:{origin},payload:request});
-      assert.equal(quoted.statusCode,200,quoted.body);assert.equal(quoted.json().points,checkPoints);assert.equal(quoted.json().quote_status,'ready');
+      assert.equal(quoted.statusCode,200,quoted.body);assert.equal(quoted.json().points,String(checkPoints));assert.equal(quoted.json().quote_status,'ready');
       assert.equal(quoted.json().price_version,legacy?OUTCOME_PRICE_VERSION:AUTOMATIC_PRICE_VERSION);
-      const started=await app.inject({method:'POST',url:base+'/checks',headers:{origin},payload:{...request,expected_points:checkPoints,price_version:quoted.json().price_version,scope_quote_id:quoted.json().scope_quote_id}});
+      const started=await app.inject({method:'POST',url:base+'/checks',headers:{origin},payload:{...request,expected_points:String(checkPoints),price_version:quoted.json().price_version,scope_quote_id:quoted.json().scope_quote_id}});
       assert.equal(started.statusCode,200,started.body);const check=started.json().run_id,checkHash=await deliverCheck(pool,check,f.version);
       assert.deepEqual(await creditBalance(pool,f.owner),{available:20000-checkPoints,frozen:0});
       const paid=(await pool.query('SELECT state,charged_points FROM bb_credit_reservations WHERE run_id=$1',[check])).rows[0];
@@ -107,11 +112,11 @@ for(const legacy of [false,true])test(legacy
       const updateRequest={expected_check_sha256:checkHash,files:[{file_version_id:f.version}]},url=base+'/checks/'+check+'/updates';
       const upgrade=await app.inject({method:'POST',url:url+'/quote',headers:{origin},payload:updateRequest});
       assert.equal(upgrade.statusCode,200,upgrade.body);const q=upgrade.json();
-      assert.equal(q.quote_status,'ready');assert.equal(q.price_version,AUTOMATIC_PRICE_VERSION);assert.equal(q.points,upgradePoints);
+      assert.equal(q.quote_status,'ready');assert.equal(q.price_version,AUTOMATIC_PRICE_VERSION);assert.equal(q.points,String(upgradePoints));
       const scopeId=q.items[0].scope_quote_id,scope=(await pool.query('SELECT * FROM bb_scope_quotations WHERE id=$1',[scopeId])).rows[0];
       assert.equal(scope.snapshot.paid_check.run_id,check);assert.equal(Number(scope.snapshot.paid_check.points),checkPoints);
       assert.equal(scope.snapshot.paid_check.price_version,legacy?OUTCOME_PRICE_VERSION:AUTOMATIC_PRICE_VERSION);
-      const acceptedRequest={...updateRequest,request_id:randomUUID(),price_version:AUTOMATIC_PRICE_VERSION,expected_points:upgradePoints,files:[{file_version_id:f.version,scope_quote_id:scopeId}]};
+      const acceptedRequest={...updateRequest,request_id:randomUUID(),price_version:AUTOMATIC_PRICE_VERSION,expected_points:String(upgradePoints),files:[{file_version_id:f.version,scope_quote_id:scopeId}]};
       const accepted=await app.inject({method:'POST',url,headers:{origin},payload:acceptedRequest});
       assert.equal(accepted.statusCode,200,accepted.body);
       const duplicate=await app.inject({method:'POST',url,headers:{origin},payload:acceptedRequest});
@@ -132,8 +137,8 @@ for(const legacy of [false,true])test(legacy
         const repairedVersion=await deliverPatch(pool,f,item.run_id),beforeRecheck=await counts(pool,f.owner);
         const recheckRequest={request_id:randomUUID(),expected_source_version_id:f.sourceVersion,file_version_ids:[repairedVersion]};
         const recheck=await app.inject({method:'POST',url:base+'/checks/quote',headers:{origin},payload:recheckRequest});
-        assert.equal(recheck.statusCode,200,recheck.body);assert.equal(recheck.json().points,0);assert.equal(recheck.json().price_version,AUTOMATIC_PRICE_VERSION);
-        const rechecked=await app.inject({method:'POST',url:base+'/checks',headers:{origin},payload:{...recheckRequest,expected_points:0,price_version:AUTOMATIC_PRICE_VERSION,scope_quote_id:recheck.json().scope_quote_id}});
+        assert.equal(recheck.statusCode,200,recheck.body);assert.equal(recheck.json().points,'0');assert.equal(recheck.json().price_version,AUTOMATIC_PRICE_VERSION);
+        const rechecked=await app.inject({method:'POST',url:base+'/checks',headers:{origin},payload:{...recheckRequest,expected_points:'0',price_version:AUTOMATIC_PRICE_VERSION,scope_quote_id:recheck.json().scope_quote_id}});
         assert.equal(rechecked.statusCode,200,rechecked.body);await deliverCheck(pool,rechecked.json().run_id,repairedVersion);
         assert.equal((await counts(pool,f.owner)).reservations,beforeRecheck.reservations);
         assert.deepEqual(await creditBalance(pool,f.owner),{available:20000-checkPoints,frozen:0});
@@ -144,12 +149,43 @@ for(const legacy of [false,true])test(legacy
         const imported=await app.inject({method:'POST',url:base+'/imports',headers:{origin},payload:{request_id:randomUUID(),document_type:'init',material:uploaded.pin,expected_latest_version_id:repairedVersion}});
         assert.equal(imported.statusCode,200,imported.body);const uploadedVersion=imported.json().files.find((file:any)=>file.latest).version_id;
         const newCheck=await app.inject({method:'POST',url:base+'/checks/quote',headers:{origin},payload:{request_id:randomUUID(),expected_source_version_id:f.sourceVersion,file_version_ids:[uploadedVersion]}});
-        assert.equal(newCheck.statusCode,200,newCheck.body);assert.equal(newCheck.json().points,checkPoints);
+        assert.equal(newCheck.statusCode,200,newCheck.body);assert.equal(newCheck.json().points,String(checkPoints));
       }
       await pool.query("UPDATE bb_project_file_update_batches SET state='cancelled' WHERE id=$1",[batch.id]);
       assert.deepEqual(await creditBalance(pool,f.owner),{available:20000-checkPoints,frozen:0});
     }finally{await app.close();await pool.end();}
   });
+
+test('partial file-check quality refund revokes only that file and rejects only its stale included-maintenance quote',{skip:!database,timeout:120000},async()=>{
+  const pool=new Pool({connectionString:database}),f=await fixture(pool),app=server(pool,f),base=`/api/v1/projects/${f.project}/project-files`;
+  try{
+    const secondFile=randomUUID(),secondVersion=randomUUID(),target=await material(pool,f.owner,f.project,'Synthetic second target.docx');
+    await pool.query("INSERT INTO bb_project_files(id,owner_user_id,project_id,document_type) VALUES($1,$2,$3,'resolution')",[secondFile,f.owner,f.project]);
+    await pool.query("INSERT INTO bb_project_file_versions(id,owner_user_id,file_id,sequence,filename,asset,source_version_id) VALUES($1,$2,$3,1,'Synthetic second target.docx',$4,$5)",[secondVersion,f.owner,secondFile,target,f.sourceVersion]);
+    await pool.query('UPDATE bb_project_files SET latest_version_id=$2 WHERE id=$1',[secondFile,secondVersion]);
+    await fund(pool,f.owner,30000);
+    const input={request_id:randomUUID(),expected_source_version_id:f.sourceVersion,file_version_ids:[f.version,secondVersion]};
+    const quoted=await app.inject({method:'POST',url:base+'/checks/quote',headers:{origin},payload:input});assert.equal(quoted.statusCode,200,quoted.body);
+    assert.equal(quoted.json().points,String(AUTOMATIC_TASK_TARIFF.check.points*2));
+    const started=await app.inject({method:'POST',url:base+'/checks',headers:{origin},payload:{...input,expected_points:quoted.json().points,price_version:quoted.json().price_version,scope_quote_id:quoted.json().scope_quote_id}});assert.equal(started.statusCode,200,started.body);
+    const run=started.json().run_id,hash=await deliverCheck(pool,run,[f.version,secondVersion]),stale:any[]=[];
+    for(const version of [f.version,secondVersion]){
+      const q=await app.inject({method:'POST',url:base+'/checks/'+run+'/updates/quote',headers:{origin},payload:{expected_check_sha256:hash,files:[{file_version_id:version}]}});assert.equal(q.statusCode,200,q.body);assert.equal(q.json().points,'0');
+      stale.push((await pool.query('SELECT * FROM bb_scope_quotations WHERE id=$1',[q.json().items[0].scope_quote_id])).rows[0]);
+    }
+    const reviewer=randomUUID();await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[reviewer,'refund_file_'+reviewer.slice(0,8)]);
+    await grantBillingPermission(pool,{requestId:randomUUID(),userId:reviewer,permission:'task_refund_approve',actor:'synthetic',reason:'Synthetic partial maintenance regression'});
+    const eligibility=await taskRefundEligibility(pool,f.owner,run),unit=eligibility.units.find(u=>u.source_item_key===secondVersion);assert.ok(unit);
+    const refund=await createTaskRefund(pool,f.owner,run,{request_id:randomUUID(),item_ids:[unit.item_id],reason:'Synthetic second-file quality claim'});
+    await decideTaskRefund(pool,reviewer,refund.refund_request_id,{request_id:randomUUID(),item_ids:[unit.item_id],reason:'Synthetic approved exact file return'});
+    const source=(await pool.query('SELECT manifest FROM bb_project_file_operations WHERE run_id=$1',[run])).rows[0].manifest.source;
+    const remaining=await transaction(pool,c=>paidFileCheckEvidence(c,f.owner,source));assert.deepEqual(remaining.flatMap(r=>r.charged_file_versions),[f.version]);
+    await transaction(pool,c=>assertScopeQuote(c,stale[0].id,f.owner,f.project,'project_file_patch',stale[0].input_hash.trim(),0));
+    await assert.rejects(transaction(pool,c=>assertScopeQuote(c,stale[1].id,f.owner,f.project,'project_file_patch',stale[1].input_hash.trim(),0)),{code:'QUOTE_CHANGED'});
+    const reprice=await app.inject({method:'POST',url:base+'/checks/quote',headers:{origin},payload:{...input,request_id:randomUUID()}});assert.equal(reprice.statusCode,200,reprice.body);
+    assert.equal(reprice.json().points,String(AUTOMATIC_TASK_TARIFF.check.points),'only the returned file becomes chargeable again');
+  }finally{await app.close();await pool.end();}
+});
 
 test('HTTP project file batch carries automatic tariff metadata and accepts the matching executable quote',{skip:!database,timeout:120000},async()=>{
   const pool=new Pool({connectionString:database}),f=await fixture(pool),app=server(pool,f),base=`/api/v1/projects/${f.project}/project-files`;
@@ -165,15 +201,15 @@ test('HTTP project file batch carries automatic tariff metadata and accepts the 
     const request={request_id:randomUUID(),source_version_id:f.sourceVersion,expected_selection_revision:1,documents:[{document_type:'private_summary',draft_version:saved.json().draft.version}]};
     const quoted=await send('POST',base+'/batches/quote',request);assert.equal(quoted.statusCode,200,quoted.body);const q=quoted.json();
     assert.equal(q.quote_status,'ready');assert.equal(q.price_version,AUTOMATIC_PRICE_VERSION);assert.equal(q.auto_charge,true);
-    assert.equal(q.points,AUTOMATIC_TASK_TARIFF.related.points);assert.equal(q.documents[0].price_version,AUTOMATIC_PRICE_VERSION);assert.equal(q.documents[0].auto_charge,true);
+    assert.equal(q.points,String(AUTOMATIC_TASK_TARIFF.related.points));assert.equal(q.documents[0].price_version,AUTOMATIC_PRICE_VERSION);assert.equal(q.documents[0].auto_charge,true);
     const internalQuote=(await pool.query('SELECT expires_at FROM bb_m4_quotes WHERE owner_user_id=$1 AND scope_quote_id=$2 ORDER BY created_at DESC LIMIT 1',[f.owner,q.documents[0].scope_quote_id])).rows[0];
     assert.ok(new Date(internalQuote.expires_at).getTime()>Date.now()+6*86400000,'automatic quote retains its locked scope during a payment return, instead of expiring after five minutes');
-    await fund(pool,f.owner,q.points);
+    await fund(pool,f.owner,safeBillingNumber(q.points));
     const accepted=await send('POST',base+'/batches',{...request,price_version:q.price_version,expected_points:q.points,documents:[{...request.documents[0],scope_quote_id:q.documents[0].scope_quote_id}]});
     assert.equal(accepted.statusCode,200,accepted.body);assert.equal(accepted.json().state,'queued');
     assert.equal(accepted.json().items[0].price_version,AUTOMATIC_PRICE_VERSION);assert.equal(accepted.json().items[0].auto_charge,true);
     const batch=(await pool.query('SELECT * FROM bb_project_file_batches WHERE id=$1',[accepted.json().batch_id])).rows[0];
-    assert.equal(batch.items[0].points,q.points);assert.ok(batch.items[0].scope_acceptance_id);
+    assert.equal(String(batch.items[0].points),q.points);assert.ok(batch.items[0].scope_acceptance_id);
     await pool.query("UPDATE bb_project_file_batches SET state='cancelled' WHERE id=$1",[batch.id]);
   }finally{await app.close();await pool.end();}
 });
@@ -186,7 +222,7 @@ test('HTTP automatic workpaper generation returns 402 without creating a batch o
     const workspace=await app.inject({method:'GET',url:`/api/v1/projects/${f.project}/workpapers`,headers:{origin}});
     assert.equal(workspace.statusCode,200,workspace.body);assert.equal(workspace.json().price.version,AUTOMATIC_PRICE_VERSION);assert.equal(workspace.json().price.auto_charge,true);
     const points=AUTOMATIC_TASK_TARIFF.workpaper.points;await fund(pool,f.owner,points-1);const before=await counts(pool,f.owner);
-    const response=await app.inject({method:'POST',url:`/api/v1/projects/${f.project}/workpapers/batches`,headers:{origin},payload:{request_id:randomUUID(),catalogue_id:catalogue,catalogue_sha256:sha,item_ids:[entry.id],source_version_id:f.sourceVersion,source_selection_revision:1,requirements:'Synthetic fixture only',start_mode:'direct',price_version:AUTOMATIC_PRICE_VERSION,expected_points:points}});
+    const response=await app.inject({method:'POST',url:`/api/v1/projects/${f.project}/workpapers/batches`,headers:{origin},payload:{request_id:randomUUID(),catalogue_id:catalogue,catalogue_sha256:sha,item_ids:[entry.id],source_version_id:f.sourceVersion,source_selection_revision:1,requirements:'Synthetic fixture only',start_mode:'direct',price_version:AUTOMATIC_PRICE_VERSION,expected_points:String(points)}});
     assert.equal(response.statusCode,402,response.body);assert.equal(response.json().code,'CREDITS_INSUFFICIENT');
     assert.deepEqual(await counts(pool,f.owner),before);assert.deepEqual(await creditBalance(pool,f.owner),{available:points-1,frozen:0});
   }finally{await app.close();await pool.end();}
@@ -210,9 +246,9 @@ test('asynchronous workpaper shortage resumes only the original batch once and n
     const before=await counts(pool,f.owner);
     assert.equal(await advanceWorkpaperBatch(pool),true);
     const paused=(await send('GET','/batches/'+batch)).json();
-    assert.equal(paused.state,'paused');assert.deepEqual(paused.billing_resume,{price_version:AUTOMATIC_PRICE_VERSION,required_points:points,available_points:0,shortage:points});
+    assert.equal(paused.state,'paused');assert.deepEqual(paused.billing_resume,{price_version:AUTOMATIC_PRICE_VERSION,required_points:String(points),available_points:'0',shortage:String(points)});
     assert.deepEqual(await counts(pool,f.owner),before,'failed child admission creates neither run nor reservation');
-    const request={action:'resume',billing_resume:true,request_id:randomUUID(),expected_revision:paused.revision,price_version:AUTOMATIC_PRICE_VERSION,expected_points:points};
+    const request={action:'resume',billing_resume:true,request_id:randomUUID(),expected_revision:paused.revision,price_version:AUTOMATIC_PRICE_VERSION,expected_points:String(points)};
     const shortage=await send('POST','/batches/'+batch+'/actions',request);assert.equal(shortage.statusCode,402,shortage.body);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_workpaper_billing_resumes WHERE owner_user_id=$1',[f.owner])).rows[0].n,0);
     await fund(pool,f.owner,points);
@@ -220,7 +256,7 @@ test('asynchronous workpaper shortage resumes only the original batch once and n
     for(const response of results){assert.equal(response.statusCode,200,response.body);assert.equal(response.json().state,'queued');}
     const resumed=results[0].json();assert.equal(resumed.revision,paused.revision+1);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_workpaper_billing_resumes WHERE owner_user_id=$1',[f.owner])).rows[0].n,1);
-    const changed=await send('POST','/batches/'+batch+'/actions',{...request,expected_points:points+1});assert.equal(changed.statusCode,409);assert.equal(changed.json().code,'IDEMPOTENCY_CONFLICT');
+    const changed=await send('POST','/batches/'+batch+'/actions',{...request,expected_points:String(points+1)});assert.equal(changed.statusCode,409);assert.equal(changed.json().code,'IDEMPOTENCY_CONFLICT');
     const manuallyPaused=await send('POST','/batches/'+batch+'/actions',{action:'pause',expected_revision:resumed.revision});assert.equal(manuallyPaused.statusCode,200,manuallyPaused.body);assert.equal(manuallyPaused.json().billing_resume,undefined);
     const replay=await send('POST','/batches/'+batch+'/actions',request);assert.equal(replay.statusCode,200);assert.equal(replay.json().state,'paused','old payment return cannot undo a later manual pause');
     const forged=await send('POST','/batches/'+batch+'/actions',{...request,request_id:randomUUID(),expected_revision:manuallyPaused.json().revision});assert.equal(forged.statusCode,409);

@@ -14,7 +14,7 @@ import { registerGeneratedProspectus } from './prospectus-versions.js';
 import { registerProjectFileOutcome } from './project-file-storage.js';
 
 import { syncAuthoringProgress } from './authoring-progress.js';
-import { creditBalance,lockCreditAccount } from './billing.js';
+import { creditBalanceExact,lockCreditAccount } from './billing.js';
 import { debitAuthoringCredits } from './authoring-credit-debit.js';
 
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
@@ -276,7 +276,7 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
     }
     if(kind==='resume'&&j.credit_pause_requested){
       await lockCreditAccount(client,owner);
-      if((await creditBalance(client,owner)).available<1)throw new Problem(402,'CREDITS_INSUFFICIENT','积分已用完，请充值后继续本次任务。');
+      if((await creditBalanceExact(client,owner)).available<1n)throw new Problem(402,'CREDITS_INSUFFICIENT','积分已用完，请充值后继续本次任务。');
       if(r.state==='running')throw new Problem(409,'INPUT_REVISION_CONFLICT','正在保存当前进度，保存后自动继续。');
       await client.query('UPDATE bb_jobs SET credit_pause_requested=false WHERE id=$1',[j.id]);
     }
@@ -753,14 +753,14 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
     if(reason==='credits_recharged'){
       if(r.stage!=='credits_exhausted'||!j.credit_pause_requested||j.user_pause_requested)return false;
       await lockCreditAccount(client,owner);
-      if((await creditBalance(client,owner)).available<1)return false;
+      if((await creditBalanceExact(client,owner)).available<1n)return false;
     }else if(j.user_pause_requested)return false;
     if(await providerCallNeedsReconciliation(client,j.id))return false;
     // Another blocker may have won while the in-flight result was being saved.
     // Once it clears, retain the credit blocker rather than strand the run in that old stage.
     if(j.credit_pause_requested&&reason!=='credits_recharged'){
       await lockCreditAccount(client,owner);
-      if((await creditBalance(client,owner)).available<1){
+      if((await creditBalanceExact(client,owner)).available<1n){
         await client.query("UPDATE bb_jobs SET stage='credits_exhausted',updated_at=now() WHERE id=$1",[j.id]);
         await event(client,r,'paused','credits_exhausted','credits_exhausted','CREDITS_INSUFFICIENT');
         return false;

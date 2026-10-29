@@ -1,12 +1,13 @@
+import {fixtureBody,fixtureRequest} from './billing-fixture-wire';
 import {mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {expect,test,type Page,type Route} from '@playwright/test';
 import {commerceMetadata,LEGACY_OUTCOME_PRICE_VERSION,OUTCOME_PRICE_VERSION,type PaymentRefund,type PaymentRefundEligibility,type ScopeLine,type ScopeQuoteStatus} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 
 // Owner-scoped synthetic HTTP, never a real payment, refund, model call or financial ledger.
 const now='2026-10-28T04:00:00Z',future='2030-01-01T00:00:00Z',past='2020-01-01T00:00:00Z';
-const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,json:body});
+const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,json:fixtureBody(route,body)});
 type Quotation=Dto<'CommerceScopeQuotationsResponse'>['items'][number];
 type RequestCall={method:string;path:string;body:any};
 const quote=(id:string,status:ScopeQuoteStatus,amount=12340,pricing?:ScopeLine['pricing']):Quotation=>({id,project_id:'synthetic-owned-project',action:'question_answer',input_hash:'a'.repeat(64),quote_status:status,price_version:LEGACY_OUTCOME_PRICE_VERSION,amount_fen:amount,scope_lines:[{key:'reply',label:'核对两项业务依据及关联披露',quantity:2,unit:'项',unit_price_fen:amount/2,amount_fen:amount,evidence:['锁定原问题和材料版本。'],pricing}],reason:status==='unavailable'?'当前要求超出可承接范围。':'按已确认的问题与材料范围报价。',created_at:now,published_at:status==='pending_scope'?null:now,expires_at:status==='expired'?past:future,closed_at:status==='declined'?now:null,decline_reason:status==='declined'?'当前范围过大':'',closure_reason:'',revision:1,previous_quote_id:null});
@@ -19,7 +20,7 @@ async function setup(page:Page,options:{uncertainDecline?:boolean;uncertainRefun
   const refunds:PaymentRefund[]=[];let declineAttempts=0,refundAttempts=0;
   const eligibility=():PaymentRefundEligibility=>({order_id:'owned-order',currency:'CNY',order_amount_fen:order.amount_fen,paid_amount_fen:options.noCashEvidence?null:order.amount_fen,original_points:order.points,request_unit:options.legacyBonus?'points':'amount_fen',refundable_points:options.noCashEvidence?0:(options.legacyBonus?42000:6000)-refunds.filter(r=>r.state!=='failed').reduce((n,r)=>n+r.credit_points,0),refunded_points:refunds.filter(r=>r.state==='succeeded').reduce((n,r)=>n+r.credit_points,0),refundable_fen:options.noCashEvidence?0:(options.legacyBonus?40000:6000)-refunds.filter(r=>r.state!=='failed').reduce((n,r)=>n+r.amount_fen,0),held_refund_fen:refunds.filter(r=>['requested','processing'].includes(r.state)).reduce((n,r)=>n+r.amount_fen,0),refunded_fen:refunds.filter(r=>r.state==='succeeded').reduce((n,r)=>n+r.amount_fen,0),enabled:!options.noCashEvidence,reason:options.noCashEvidence?'历史实付证据待核实，暂不支持自助原路退款。':'仅本单未消费现金余额可申请。',refunds});
   await page.route('**/api/v1/**',async route=>{
-    const request=route.request(),path=new URL(request.url()).pathname.replace('/api/v1',''),method=request.method(),body=request.postData()?request.postDataJSON():undefined;calls.push({method,path,body});
+    const request=route.request(),path=new URL(request.url()).pathname.replace('/api/v1',''),method=request.method(),body=request.postData()?fixtureRequest(request):undefined;calls.push({method,path,body});
     if(path==='/me')return json(route,200,{user_id:'lifecycle-owner',session_status:'active'});
     if(path==='/account')return json(route,200,{user_id:'lifecycle-owner',username:'sample_user',phone_masked:null,status:'active',created_at:now,accepted_terms_version:'terms-1',current_terms_version:'terms-1',password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});
     if(path==='/account/sessions')return json(route,200,{items:[]});
@@ -138,7 +139,7 @@ test('legacy bonus credits refund original cash proportion and retain the exact 
 for(const mismatch of ['amount','points'])test(`refund acknowledgement with mismatched ${mismatch} remains unconfirmed with its original durable request`,async({page})=>{
   await setup(page,{legacyBonus:true});const requests:any[]=[];
   await page.route('**/api/v1/commerce/topups/owned-order/refunds',route=>{
-    const body=route.request().postDataJSON();requests.push(body);
+    const body=fixtureRequest(route.request());requests.push(body);
     return json(route,202,{refund_id:'wrong-refund',order_id:'owned-order',currency:'CNY',amount_fen:mismatch==='amount'?40001:40000,credit_points:mismatch==='points'?42001:42000,state:'requested',created_at:now,updated_at:now,completed_at:null,failure_code:null});
   });
   await page.goto('/#/account?order=owned-order');await page.locator('[data-refund-amount]').fill('42000');await page.getByRole('button',{name:'核对原路退款申请',exact:true}).click();
@@ -150,7 +151,7 @@ for(const mismatch of ['amount','points'])test(`refund acknowledgement with mism
 test('a definite pre-admission refund quote change permits a fresh request while uncertain failures do not',async({page})=>{
   await setup(page,{legacyBonus:true});const requests:any[]=[];
   await page.route('**/api/v1/commerce/topups/owned-order/refunds',route=>{
-    const body=route.request().postDataJSON();requests.push(body);
+    const body=fixtureRequest(route.request());requests.push(body);
     if(requests.length===1)return json(route,409,{code:'QUOTE_CHANGED'});
     return json(route,202,{refund_id:'requote-refund',order_id:'owned-order',currency:'CNY',amount_fen:40000,credit_points:42000,state:'requested',created_at:now,updated_at:now,completed_at:null,failure_code:null});
   });

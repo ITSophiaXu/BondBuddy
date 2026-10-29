@@ -78,14 +78,20 @@ import { installProductionReviewLedgerRoutes } from './production-review-ledger.
 import { installProductionRulePackReleaseRoutes } from './production-rule-pack-releases.js';
 import { configuredUploadInspectionException, uploadInspectionExceptionMatches } from './upload-inspection-exception.js';
 
-import { creditBalance, quoteCredits, reserveCredits, quoteDto } from './billing.js';
+import { creditBalanceExact, quoteCreditsExact, reserveCredits, quoteDto } from './billing.js';
+import {installBillingWire} from './billing-wire.js';
 import { classifyFixedPrice } from './billing-classification.js';
 import { installPayments, type PaymentProvider } from './payments.js';
 import {installCommerce} from './commerce.js';
 import {installSubscriptions} from './subscriptions.js';
+import {installBillingPermissions} from './billing-permissions.js';
+import {installBillingPriceAdmin} from './billing-price-admin.js';
+import {installTaskRefunds} from './task-refunds.js';
+import {installSubscriptionOrderDetail} from './subscription-order-detail.js';
 import {configureAutomaticBilling} from './automatic-billing-context.js';
 import {paymentProvidersFromEnv} from './payment-provider-config.js';
 import {installPaymentReconciliation} from './payment-reconciliation.js';
+import {installProjectFileCheckBatches} from './project-file-check-batches.js';
 
 export type Principal = { userId: string; csrfVerified: boolean; sessionId?: string };
 export type Settings = { enableSubscriptionBilling?: boolean; enableOutcomePricing?: boolean; paymentProviders?: readonly PaymentProvider[]; enablePaidAuthoring?: boolean; enablePaidReview?: boolean; pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
@@ -178,6 +184,7 @@ export function createServer(settings: Settings = {}) {
     request.log.error(error);
     return reply.code(500).send({ code: 'DATA_UNAVAILABLE', message: 'Internal error', retryable: true, field_errors: [], correlation_id: request.id });
   });
+  installBillingWire(app,{db,owner});
   installAuth(app,auth);
   installAccountRecovery(app,auth);
   // #17: the worker runtime executes queued runs; the synthetic flag remains for older tests.
@@ -300,6 +307,11 @@ export function createServer(settings: Settings = {}) {
     return bytes;
   }
   installAdminRoutes(app,{db,blobs:blob,owner,promptViewDeadlineMs:settings.promptViewDeadlineMs});
+  installBillingPermissions(app,{db,owner});
+  installBillingPriceAdmin(app,db,owner);
+  installTaskRefunds(app,{db,owner});
+  installSubscriptionOrderDetail(app,{db,owner});
+  installProjectFileCheckBatches(app,{db,owner});
   installBrowserErrorRoutes(app,{db,owner,sessionId:async request=>{
     const principal=await (settings.principal ? settings.principal(request) : sessionPrincipal(request,auth));
     if(!principal?.sessionId)throw new Problem(401,'UNAUTHENTICATED','Session required');
@@ -1345,7 +1357,7 @@ export function createServer(settings: Settings = {}) {
   });
   installCreditHistory(app,db,owner);
   app.get('/api/v1/credits/balance',{schema:{response:{200:schemas.CreditBalanceResponse}}},async request=>{
-    const user=await owner(request);return {enabled:paidAuthoring,...await creditBalance(db(),user)};
+    const user=await owner(request);return {enabled:paidAuthoring,...await creditBalanceExact(db(),user)};
   });
   app.get('/api/v1/runs/:run_id/credit-charge',{schema:{response:{200:schemas.RunCreditChargeResponse}}},async request=>{
     const user=await owner(request),r=await run(db(),user,param(request,'run_id'));
@@ -1360,8 +1372,8 @@ export function createServer(settings: Settings = {}) {
     await project(db(),user,id);
     const b=body<{input_revision:number;input_hash:string}>(request);
     if(!isPgInputRevision(b.input_revision))throw new Problem(422,'VALIDATION_FAILED','Invalid input revision');
-    if(!paidAuthoring)return {enabled:false,quote:null,balance:await creditBalance(db(),user),shortage:0,reason:null};
-    return quoteCredits(db(),user,id,b.input_revision,b.input_hash,commercial);
+    if(!paidAuthoring)return {enabled:false,quote:null,balance:await creditBalanceExact(db(),user),shortage:0n,reason:null};
+    return quoteCreditsExact(db(),user,id,b.input_revision,b.input_hash,commercial);
   });
   app.post('/api/v1/runs/execute',{schema:{body:schemas.ExecuteRequest}},async (request,reply)=>{
     const user=await owner(request);

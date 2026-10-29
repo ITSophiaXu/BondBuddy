@@ -1,4 +1,5 @@
-import {PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,QaDraftSchema,ProjectFileAssetSchema,qaSchemas,type QaDraft,type ProjectFileAsset} from '@bondbuddy/contracts';
+import {int64} from '@bondbuddy/contracts';
+import {PROJECT_QA_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,QaDraftSchema,ProjectFileAssetSchema,qaSchemas,type QaDraft,type ProjectFileAsset} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
 import type {Dto} from './api.js';
 
@@ -47,6 +48,9 @@ function validDraft(value:unknown):value is QaDraft{
 }
 const sameDraft=(a:QaDraft,b:QaDraft)=>JSON.stringify(copyDraft(a))===JSON.stringify(copyDraft(b));
 function validValue(value:unknown,project:string,allowUndefinedOptional=false):value is QaRecoveryValue{
+  try{return validValueInner(value,project,allowUndefinedOptional);}catch{return false;}
+}
+function validValueInner(value:unknown,project:string,allowUndefinedOptional=false):value is QaRecoveryValue{
   if(!exact(value,['revision','draft'],['needsKnowledgeChoice','sourceRun','pending'])||!nonnegativeInteger(value.revision)||!validDraft(value.draft))return false;
   if(Object.hasOwn(value,'needsKnowledgeChoice')&&!(allowUndefinedOptional&&value.needsKnowledgeChoice===undefined)&&typeof value.needsKnowledgeChoice!=='boolean')return false;
   if(Object.hasOwn(value,'sourceRun')&&!(allowUndefinedOptional&&value.sourceRun===undefined)&&!validId(value.sourceRun))return false;
@@ -64,8 +68,8 @@ function validValue(value:unknown,project:string,allowUndefinedOptional=false):v
   if(pending.kind==='answer'){
     return Value.Check(qaSchemas.QaAnswerRequest,pending.request)&&validId(pending.request.request_id)&&pending.request.expected_revision===value.revision&&
       value.draft.preparation_id!==null&&value.draft.questions.length>0&&
-      (isOutcomePriceVersion(pending.request.price_version)?nonnegativeInteger(pending.request.expected_points)&&pending.request.included_followup_of===value.draft.included_followup_of&&(pending.request.expected_points===0&&!!value.draft.included_followup_of||validId(pending.request.scope_quote_id)):
-      pending.request.expected_points===value.draft.questions.length*PROJECT_QA_PRICE.points&&pending.request.price_version===PROJECT_QA_PRICE.version);
+      (isOutcomePriceVersion(pending.request.price_version)?typeof pending.request.expected_points==='string'&&pending.request.included_followup_of===value.draft.included_followup_of&&(int64(pending.request.expected_points)===0n&&!!value.draft.included_followup_of||validId(pending.request.scope_quote_id)):
+      int64(pending.request.expected_points)===BigInt(value.draft.questions.length)*BigInt(PROJECT_QA_PRICE.points)&&pending.request.price_version===PROJECT_QA_PRICE.version);
   }
   return false;
 }

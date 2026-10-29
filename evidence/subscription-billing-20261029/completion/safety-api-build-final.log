@@ -1,0 +1,14 @@
+
+> @bondbuddy/api@0.1.0 build
+> tsc -p tsconfig.json
+
+src/project-file-check-batches.ts(66,74): error TS2353: Object literal may only specify known properties, and 'price_version' does not exist in type '{ items: { state: string; file_version_id: string; filename: string; scope_quote_id: string | null; points: string; run_id: string; charged_points: string; attempt: number; }[]; state: string; created_at: string; source: { ...; }; points: string; charged_points: string; batch_id: string; }'.
+src/project-file-check-batches.ts(104,33): error TS2339: Property 'price_version' does not exist on type '{ request_id: string; expected_attempts: { file_version_id: string; run_id: string; }[]; }'.
+src/project-file-check-batches.ts(104,64): error TS2339: Property 'expected_points' does not exist on type '{ request_id: string; expected_attempts: { file_version_id: string; run_id: string; }[]; }'.
+npm error Lifecycle script `build` failed with error:
+npm error code 2
+npm error path C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\api
+npm error workspace @bondbuddy/api@0.1.0
+npm error location C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\api
+npm error command failed
+npm error command C:\Windows\system32\cmd.exe /d /s /c tsc -p tsconfig.json

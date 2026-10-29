@@ -1,7 +1,8 @@
 import type {Pool, PoolClient} from 'pg';
-import type {AuthoringProgress} from '@bondbuddy/contracts';
+import type {AuthoringProgress,BillingWireDto} from '@bondbuddy/contracts';
+import {encodeBillingDto,serializeInt64} from '@bondbuddy/contracts';
 import {date} from './data.js';
-import {creditBalance} from './billing.js';
+import {creditBalanceExact} from './billing.js';
 import {debitAuthoringCredits,DYNAMIC_AUTHORING_POLICY} from './authoring-credit-debit.js';
 
 /** Billing progress is not a claimed document completion percentage. */
@@ -35,15 +36,15 @@ export async function syncAuthoringProgress(c:PoolClient,r:any,next?:{state:stri
     : Math.max(Number(m.accrued_points),calculated);
   const debit=reservation?.billing_policy===DYNAMIC_AUTHORING_POLICY
     ? await debitAuthoringCredits(c,r,j.credit_pause_requested?Number(m.accrued_points):amount) : null;
-  const exhausted=!!debit && debit.available===0 && debit.charged<debit.ceiling;
+  const exhausted=!!debit && debit.available===0n && debit.charged<debit.ceiling;
   // Freeze the meter immediately; the worker saves its current operation before releasing its lease.
   if(exhausted && !j.credit_pause_requested && !['failed','cancelled','rejected'].includes(next?.state??r.state))
     await c.query('UPDATE bb_jobs SET credit_pause_requested=true WHERE id=$1',[j.id]);
   const running=(next?.state??r.state)==='running'&&j.state==='running'&&!j.user_pause_requested&&!j.credit_pause_requested&&!exhausted;
   await c.query('UPDATE bb_authoring_progress SET active_ms=$2,work_bps=$3,accrued_points=$4,clock_at=$6,lease_until=$5 WHERE run_id=$1',
-    [r.id,active,work,debit?.charged??amount,running?j.lease_until:null,m.sampled_at]);
+    [r.id,active,work,serializeInt64(debit?.charged??amount),running?j.lease_until:null,m.sampled_at]);
 }
-export async function readAuthoringProgress(db:Pool|PoolClient,owner:string,runId:string):Promise<AuthoringProgress|undefined>{
+export async function readAuthoringProgress(db:Pool|PoolClient,owner:string,runId:string):Promise<BillingWireDto<AuthoringProgress,'authoringProgress'>|undefined>{
   const row=(await db.query(`SELECT r.state,j.state AS job_state,j.created_at AS queued_at,j.user_pause_requested,j.credit_pause_requested,
     m.active_ms,m.work_bps,m.accrued_points,m.clock_at,m.lease_until,m.last_activity_at,
     c.billing_policy,c.points,c.state AS charge_state,c.charged_points,now() AS sampled_at,
@@ -58,10 +59,10 @@ export async function readAuthoringProgress(db:Pool|PoolClient,owner:string,runI
   const terminal=['succeeded','test_completed','failed','cancelled','rejected'].includes(row.state);
   const charged=row.charge_state==='released'||row.billing_policy===DYNAMIC_AUTHORING_POLICY&&['failed','rejected'].includes(row.state)?0:Number(row.charged_points??(row.charge_state==='settled'?points:0));
   const dynamic=row.billing_policy===DYNAMIC_AUTHORING_POLICY;
-  return {...(dynamic?{credit_exhausted:row.credit_pause_requested,available_points:(await creditBalance(db,owner)).available}:{}),policy:row.billing_policy??'on_delivery',active_ms:active,
+  return encodeBillingDto('authoringProgress',{...(dynamic?{credit_exhausted:row.credit_pause_requested,available_points:(await creditBalanceExact(db,owner)).available}:{}),policy:row.billing_policy??'on_delivery',active_ms:active,
     accrued_points:terminal||dynamic?charged:Math.max(Number(row.accrued_points??0),accruedAuthoringPoints(points,active,Number(row.work_bps??0))),
     charged_points:charged,released_points:!dynamic&&row.charge_state&&row.charge_state!=='held'?points-charged:0,
     pause_requested:row.user_pause_requested,queued_at:date(row.queued_at),sampled_at:date(row.sampled_at),
     last_activity_at:row.last_activity_at?date(row.last_activity_at):null,queue_ahead:row.queue_ahead,
-    clock_running:!terminal&&row.state==='running'&&!row.user_pause_requested&&!row.credit_pause_requested&&!!row.lease_until&&new Date(row.lease_until)>new Date(row.sampled_at)};
+    clock_running:!terminal&&row.state==='running'&&!row.user_pause_requested&&!row.credit_pause_requested&&!!row.lease_until&&new Date(row.lease_until)>new Date(row.sampled_at)});
 }

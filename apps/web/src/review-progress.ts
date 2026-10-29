@@ -1,4 +1,5 @@
-import type {AuthoringProgress, ReviewTask, Run, RunEvent} from '@bondbuddy/contracts';
+import {formatPoints} from '@bondbuddy/contracts';
+import type {AuthoringProgress, ReviewTask, Run, RunEvent} from './billing-types.js';
 import type {Dto} from './api';
 import {esc} from './ui';
 import {authoringCreditReceipt, elapsedLabel} from './authoring-progress';
@@ -38,7 +39,7 @@ export function reviewProgressPage(run:Run,task:ReviewTask|undefined,charge:Dto<
   const exporting=task?.export_only===true,revision=task?.operation==='revision'||charge?.quote?.task_type==='review_revision',verb=exporting?'导出':revision?'修订':'复核';
   if(revision){status.title=status.title.replaceAll('复核','修订');status.summary=status.summary.replaceAll('复核','修订');}
   const legacy=run.billing_mode==='fixed_credits'&&charge?.quote&&!isCnyPrice(charge.quote)&&(!p||p.policy==='on_delivery');
-  const credits=exporting?'<p class="review-muted" role="status">本次仅导出处理结果，不调用 AI，不消耗积分。</p>':legacy?`<section class="review-legacy-credit" aria-label="积分消耗"><strong>本轮沿用原计费规则</strong><p>${charge.quote!.points.toLocaleString('zh-CN')} 积分 · ${{held:'已预留，成功交付后扣费',settled:'已扣费',released:'已返还，本次不扣费'}[charge.state??'held']}</p></section>`:authoringCreditReceipt(run,p,charge?.quote?{...charge.quote,state:charge.state??'held'}:undefined,options.chargeError);
+  const credits=exporting?'<p class="review-muted" role="status">本次仅导出处理结果，不调用 AI，不消耗积分。</p>':legacy?`<section class="review-legacy-credit" aria-label="积分消耗"><strong>本轮沿用原计费规则</strong><p>${formatPoints(charge.quote!.points)} 积分 · ${{held:'已预留，成功交付后扣费',settled:'已扣费',released:'已返还，本次不扣费'}[charge.state??'held']}</p></section>`:authoringCreditReceipt(run,p,charge?.quote?{...charge.quote,state:charge.state??'held'}:undefined,options.chargeError);
   const canPause=!exporting&&active&&['queued','running'].includes(run.state)&&!p?.pause_requested&&!p?.credit_exhausted;
   const canResume=!exporting&&active&&(p?.pause_requested||run.state==='paused'&&['user_paused','credits_exhausted'].includes(run.stage??''));
   return `<div class="review-live-workspace"><header class="review-live-heading"><div><h2>${active?verb+'进度':'本轮'+verb}</h2><p>${revision?'按已选问题修订 · 完成后可另行复核':task?.operation==='differential_review'?'重核本轮选定问题 · 保留未涉及的原结论':exporting?'按已保存选择导出 · 保留旧版':'财务数据 · 勾稽关系 · 政策重点提示 · 格式与标点'}</p></div><span class="review-tag">${task?`第 ${task.version} 轮`:'本轮任务'}</span></header>${taskProgress(run,exporting?'export':revision?'revision':'review',status)}${credits}${options.chargeError&&charge?'<p class="review-muted" role="status">积分状态暂未同步，上方保留最近一次记录；恢复连接后自动更新。</p>':''}

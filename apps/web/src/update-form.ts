@@ -1,4 +1,4 @@
-import { reportingWindow, schemas, updateDetailsErrors, FUNDING_PURPOSES, MARKET_LABELS, MARKET_OFFERINGS, MARKETS, MONEY_UNITS, OFFERING_LABELS, PROJECT_FIELD_LIMITS, type Money, type Offering, type UpdateDetails } from '@bondbuddy/contracts';
+import { reportingWindow, schemas, updateDetailsErrors, FUNDING_PURPOSES, MARKET_LABELS, MARKET_OFFERINGS, MARKETS, MONEY_UNITS, OFFERING_LABELS, PROJECT_FIELD_LIMITS, type Money, type Offering, type UpdateDetails } from './billing-types.js';
 import { Value } from '@sinclair/typebox/value';
 import { prototypeIcon as icon } from './prototype-design.js';
 import { QUARTER_ENDS, cutoffSelection, quarterCutoff } from './reporting-cutoff.js';

@@ -1,9 +1,11 @@
+import {int64} from '@bondbuddy/contracts';
+import {formatPoints} from '@bondbuddy/contracts';
 import { ApiClient, type Dto } from './api';
 import { rechargeHref } from './project-navigation';
 import { esc } from './ui';
 import {readCommerce,cny} from './commerce';
-import type {CommerceAccount} from '@bondbuddy/contracts';
-import type {SubscriptionAccount} from '@bondbuddy/contracts';
+import type {CommerceAccount} from './billing-types.js';
+import type {SubscriptionAccount} from './billing-types.js';
 import {readSubscriptionCatalog} from './subscription-billing-page';
 
 /** One wallet per signed-in session; route rendering never owns or clears the balance. */
@@ -29,19 +31,19 @@ export class CreditWallet {
   }
   private draw() {
     if(this.subscription){
-      const account=this.subscriptionAccount,amount=this.unavailable?'—':account?(account.available_points+account.held_points).toLocaleString('zh-CN'):'…',href=esc(rechargeHref());
+      const account=this.subscriptionAccount,amount=this.unavailable?'—':account?formatPoints(int64(account.available_points)+int64(account.held_points)):'…',href=esc(rechargeHref());
       document.querySelectorAll<HTMLElement>('.top-plan-link').forEach(e=>{e.textContent='订阅与充值';});
-      for(const host of document.querySelectorAll<HTMLElement>('[data-credit-wallet]')){host.setAttribute('aria-label','积分余额');host.innerHTML=host.dataset.creditWallet==='compact'?`<a href="${href}" aria-label="积分余额 ${amount}，查看我的账号"><span>积分</span> <strong aria-live="polite">${amount}</strong></a>`:`<div class="wallet-heading"><span>积分余额</span><button type="button" class="wallet-refresh" aria-label="刷新积分余额" ${this.loading?'disabled':''}>刷新</button></div><div class="wallet-value" aria-live="polite"><strong>${amount}</strong><a href="${href}" aria-label="查看订阅与充值">充值 ↗</a></div><p class="wallet-note">${this.unavailable?'积分暂未同步，请刷新':account?`可用 ${account.available_points.toLocaleString('zh-CN')} · 已预留 ${account.held_points.toLocaleString('zh-CN')} 积分`:'正在读取积分'}</p>`;host.querySelector('button')?.addEventListener('click',()=>void this.refresh());}
+      for(const host of document.querySelectorAll<HTMLElement>('[data-credit-wallet]')){host.setAttribute('aria-label','积分余额');host.innerHTML=host.dataset.creditWallet==='compact'?`<a href="${href}" aria-label="积分余额 ${amount}，查看我的账号"><span>积分</span> <strong aria-live="polite">${amount}</strong></a>`:`<div class="wallet-heading"><span>积分余额</span><button type="button" class="wallet-refresh" aria-label="刷新积分余额" ${this.loading?'disabled':''}>刷新</button></div><div class="wallet-value" aria-live="polite"><strong>${amount}</strong><a href="${href}" aria-label="查看订阅与充值">充值 ↗</a></div><p class="wallet-note">${this.unavailable?'积分暂未同步，请刷新':account?`可用 ${formatPoints(account.available_points)} · 已预留 ${formatPoints(account.held_points)} 积分`:'正在读取积分'}</p>`;host.querySelector('button')?.addEventListener('click',()=>void this.refresh());}
       return;
     }
     if(this.commerce){
-      const amount=this.unavailable?'—':this.account?cny(this.account.available_fen+this.account.held_fen):'…',href=esc(rechargeHref());
+      const amount=this.unavailable?'—':this.account?cny(int64(this.account.available_fen)+int64(this.account.held_fen)):'…',href=esc(rechargeHref());
       document.querySelectorAll<HTMLElement>('.top-plan-link').forEach(e=>{e.textContent='按成果付费 · 无月费';});
       for(const host of document.querySelectorAll<HTMLElement>('[data-credit-wallet]')){host.setAttribute('aria-label','人民币服务余额');host.innerHTML=host.dataset.creditWallet==='compact'?`<a href="${href}" aria-label="服务余额 ${amount}，查看我的账号"><span>余额</span> <strong aria-live="polite">${amount}</strong></a>`:`<div class="wallet-heading"><span>服务余额</span><button type="button" class="wallet-refresh" aria-label="刷新服务余额" ${this.loading?'disabled':''}>刷新</button></div><div class="wallet-value" aria-live="polite"><strong>${amount}</strong><a href="${href}" aria-label="查看余额与按需充值">充值 ↗</a></div><p class="wallet-note">${this.unavailable?'余额暂未同步，请刷新':this.account?`可用 ${cny(this.account.available_fen)} · 已预留 ${cny(this.account.held_fen)}`:'正在读取余额'}</p>`;host.querySelector('button')?.addEventListener('click',()=>void this.refresh());}
       return;
     }
     // Reserved credits still belong to the user until delivery settles the task.
-    const amount = this.unavailable ? '—' : this.balance ? (this.balance.available + this.balance.frozen).toLocaleString('zh-CN') : '…';
+    const amount = this.unavailable ? '—' : this.balance ? formatPoints(int64(this.balance.available)+int64(this.balance.frozen)) : '…';
     const accountHref=esc(rechargeHref());
     for (const host of document.querySelectorAll<HTMLElement>('[data-credit-wallet]')) {
       const compact = host.dataset.creditWallet === 'compact';
@@ -49,7 +51,7 @@ export class CreditWallet {
         ? `<a href="${accountHref}" aria-label="积分余额 ${amount}，查看我的账号"><span>积分</span> <strong aria-live="polite">${amount}</strong></a>`
         : `<div class="wallet-heading"><span>积分余额</span><button type="button" class="wallet-refresh" aria-label="刷新积分余额" ${this.loading ? 'disabled' : ''}>刷新</button></div>
           <div class="wallet-value" aria-live="polite"><strong>${amount}</strong><a href="${accountHref}" aria-label="查看积分与充值">充值 <span aria-hidden="true">↗</span></a></div>
-          <p class="wallet-note">${this.unavailable ? '余额暂未同步，请刷新重试' : this.balance ? this.balance.frozen ? `可用 ${this.balance.available.toLocaleString('zh-CN')} · 任务已预留 ${this.balance.frozen.toLocaleString('zh-CN')} 积分` : '暂无预留积分' : '正在读取余额'}</p>`;
+          <p class="wallet-note">${this.unavailable ? '余额暂未同步，请刷新重试' : this.balance ? int64(this.balance.frozen)>0n ? `可用 ${formatPoints(this.balance.available)} · 任务已预留 ${formatPoints(this.balance.frozen)} 积分` : '暂无预留积分' : '正在读取余额'}</p>`;
       host.querySelector('button')?.addEventListener('click', () => { void this.refresh(); });
     }
   }

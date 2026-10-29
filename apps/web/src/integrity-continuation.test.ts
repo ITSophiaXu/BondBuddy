@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {INTEGRITY_PRICE,type IntegrityDraft,type IntegrityEvidence,type IntegrityManual,type IntegrityRecord,type IntegrityRound,type IntegritySubject} from '@bondbuddy/contracts';
+import {INTEGRITY_PRICE,type IntegrityDraft,type IntegrityEvidence,type IntegrityManual,type IntegrityRecord,type IntegrityRound,type IntegritySubject} from './billing-types.js';
 import {integritySameDraft,integrityRoundFor,integrityWorkItems,integrityManualReadback} from './integrity-continuation.js';
 
 const at='2026-10-25T00:00:00Z',sha='a'.repeat(64);
@@ -12,10 +12,10 @@ const manual=(patch:Partial<IntegrityManual>={}):IntegrityManual=>({request_id:'
   note:'已按主体名称和识别信息核对',conclusion:'unresolved',material:{source_project_id:'project-1',material_id:'evidence-file',material_version:2,sha256:sha},...patch});
 const evidence=(patch:Partial<IntegrityEvidence>={}):IntegrityEvidence=>({...manual(),id:'evidence-1',created_at:at,...patch});
 const check=(patch:Partial<IntegrityRound>={}):IntegrityRound=>({run_id:'original-check',round_id:'original-check',operation:'check',sequence:2,state:'succeeded',stage:'completed',created_at:at,
-  manifest:{version:'integrity-round-v1',operation:'check',round_id:'original-check',project_name:'测试项目',draft:draft(),price_version:INTEGRITY_PRICE.version,points:5000,records:[],evidence_ids:[],collector:'official-browser-v1'},
-  records:records(),evidence:[evidence()],artifact_id:'company-word',artifacts:[{kind:'company',artifact_id:'company-word',artifact_version:1},{kind:'person',artifact_id:'person-word',artifact_version:1}],charged_points:5000,reserved_points:0,...patch});
+  manifest:{version:'integrity-round-v1',operation:'check',round_id:'original-check',project_name:'测试项目',draft:draft(),price_version:INTEGRITY_PRICE.version,points:"5000",records:[],evidence_ids:[],collector:'official-browser-v1'},
+  records:records(),evidence:[evidence()],artifact_id:'company-word',artifacts:[{kind:'company',artifact_id:'company-word',artifact_version:1},{kind:'person',artifact_id:'person-word',artifact_version:1}],charged_points:"5000",reserved_points:"0",...patch});
 const exported=(patch:Partial<IntegrityRound>={}):IntegrityRound=>{const original=check();return {...original,run_id:'export-run',operation:'export',sequence:3,
-  manifest:{...original.manifest,operation:'export',points:0,records:original.records,evidence_ids:['evidence-1']},charged_points:0,...patch};};
+  manifest:{...original.manifest,operation:'export',points:"0",records:original.records,evidence_ids:['evidence-1']},charged_points:"0",...patch};};
 function blocked(round:IntegrityRound){const result=integrityWorkItems(round);assert.ok(result.error);assert.deepEqual(result.items,[]);}
 function noRound(round:IntegrityRound,all:IntegrityRound[]=[check()]){const result=integrityRoundFor(round,all);assert.ok(result.error);assert.equal(result.roundId,undefined);assert.equal(result.original,undefined);}
 
@@ -42,7 +42,7 @@ test('integrity round resolution uses the exact check identity and never selects
 test('integrity check resolution rejects mismatched operation, round ID, charge snapshot and malformed envelopes',()=>{
   const original=check(),m=original.manifest;
   for(const invalid of [check({round_id:'other'}),check({run_id:'other'}),check({operation:'export'}),check({manifest:{...m,operation:'export'}}),check({manifest:{...m,round_id:'other'}}),
-    check({manifest:{...m,points:0}}),check({manifest:{...m,records:records()}}),check({manifest:{...m,evidence_ids:['evidence-1']}}),check({sequence:Number.MAX_SAFE_INTEGER+1}),
+    check({manifest:{...m,points:"0"}}),check({manifest:{...m,records:records()}}),check({manifest:{...m,evidence_ids:['evidence-1']}}),check({sequence:Number.MAX_SAFE_INTEGER+1}),
     {...original,extra:true} as IntegrityRound,{...original,manifest:{...m,extra:true}} as IntegrityRound])noRound(invalid);
 });
 test('integrity export resolution binds writes to the original check round ID',()=>{
@@ -57,7 +57,7 @@ test('integrity export binding rejects a present unrelated original or changed i
   const original=check(),run=exported();
   for(const parent of [check({operation:'export'}),check({round_id:'other'}),check({state:'running'}),check({manifest:{...original.manifest,draft:draft({notes:'different'})}}),
     check({manifest:{...original.manifest,project_name:'另一个项目'}}),check({manifest:{...original.manifest,collector:undefined}}),check({records:records().slice(0,3)})])noRound(run,[parent]);
-  noRound(exported({manifest:{...run.manifest,points:5000}}));noRound(exported({run_id:'original-check'}));noRound(exported({charged_points:5000}));noRound(exported({reserved_points:5000}));
+  noRound(exported({manifest:{...run.manifest,points:"5000"}}));noRound(exported({run_id:'original-check'}));noRound(exported({charged_points:"5000"}));noRound(exported({reserved_points:"5000"}));
 });
 test('integrity resolution rejects duplicate original identities and a conflicting check snapshot in the history list',()=>{
   noRound(exported(),[check(),check()]);const original=check();noRound(original,[check({manifest:{...original.manifest,draft:draft({notes:'changed'})}})]);

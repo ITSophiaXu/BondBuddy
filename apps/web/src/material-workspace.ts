@@ -1,10 +1,12 @@
+import {int64} from '@bondbuddy/contracts';
+import {formatPoints} from '@bondbuddy/contracts';
 import {isAutomaticCharge} from './commerce';
 import {UserFacingError} from './user-facing-error.js';
 import { duplicateUploadNotices, isReusedUpload, type DuplicateUploadNotice } from './duplicate-upload';
 import { MARKETS, MARKET_LABELS, MARKET_OFFERINGS, OFFERING_LABELS, M4_DOCUMENT_MARKETS, m4DocumentScopeSupported, M4_CASE_TEMPLATES, m4DocumentInputIssues, type M4InputIssue, type M4InputField, M4_DOCUMENT_LABELS, M4_DOCUMENT_TYPES, M4DraftInputSchema, M4ViewStateSchema, M4MessageRequestSchema, M4ExecuteRequestSchema,
   M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, type M4Topic, type M4Workspace, type M4DocumentType, type M4DraftInput,
   type M4MaterialPin, type M4ArtifactPin, type M4Artifact, type M4MessageContext, type M4ViewState,
-  type M4MessageRequest, type M4ExecuteRequest, type M4QuoteResponse, type M4Task } from '@bondbuddy/contracts';
+  type M4MessageRequest, type M4ExecuteRequest, type M4QuoteResponse, type M4Task } from './billing-types.js';
 import { Value } from '@sinclair/typebox/value';
 import { projectListContext, projectBackLink, projectSection, withProjectContext, rechargeHref } from './project-navigation';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
@@ -461,7 +463,7 @@ export class MaterialWorkspace {
   }
   private libraryHtml(){return `<section class="m4-section"><h3>工作区材料</h3><p class="m4-muted">可引用已保存材料提问；选择材料类型后出现对应上传区。</p><ul class="m4-file-list">${(this.workspace?.materials??[]).map(p=>this.materialHtml(p,true)).join('')||'<li class="m4-muted">暂未添加材料。可直接向助手提问，或选择制作材料。</li>'}</ul><button class="btn secondary" data-m4-action="project-picker" data-picker-purpose="material">从已有项目选择材料</button></section>`;}
   private artifactsListHtml(){const latest=[...(this.workspace?.tasks??[])].reverse().find(t=>t.manifest.kind==='document'&&!t.artifacts.some(a=>a.kind==='document'));return (latest?`<p class="m4-recent-run"><span>${latest.manifest.kind==='document'?M4_DOCUMENT_LABELS[latest.manifest.input.document_type]:''} · ${runStateLabel[latest.run.state]}</span><button class="text-btn" data-m4-action="task" data-run="${esc(latest.run.run_id)}">${isActiveRun(latest.run)?'查看生成进度':'查看本轮任务'}</button></p>`:'')+(this.workspace?.artifacts.some(a=>a.kind!=='qa_text')?`<section class="m4-section m4-results"><h3>已有成果</h3><ul class="m4-history">${[...this.workspace!.artifacts].filter(a=>a.kind!=='qa_text').reverse().map(a=>`<li><button class="text-btn" data-m4-action="artifact" data-artifact="${esc(artKey(a))}">${esc(artifactTitle(a))}</button><p class="m4-muted">${a.kind==='document'?'可编辑 Word':a.kind==='preparation_note'?'独立制作说明':'对话文本'}${a.base_artifact?` · 基于 ${esc(this.artifactRefTitle(a.base_artifact))}`:''}</p></li>`).join('')}</ul></section>`:'');}
-  private quoteHtml(response:M4QuoteResponse){const fixed=response.quote.billing_method==='fixed';return `<div class="m4-price"><strong>${response.quote.points.toLocaleString('zh-CN')}</strong> 积分${fixed?' · 固定价':response.quote.points?'预留上限 B':' · 免费'}<p>可用 ${response.balance.available} 积分。${esc(response.quote.reason)}</p>${response.quote.points?`<p>${response.quote.billing_policy==='authoring_balance_v2'?'有积分即可开始；排队和暂停不扣积分，重复下载不另收费。':fixed?'确认后冻结本次积分；内部重试和重复下载不另收费。':'按实际用量结算，上限为本次预留积分；未使用部分释放。'}</p>`:''}${response.shortage?`<p class="m4-warning">还缺 ${response.shortage} 积分。充值后需重新确认，不会自动执行。</p><a class="text-btn" href="${esc(rechargeHref(this.workspace?.topic.project_id))}">前往充值</a>`:''}</div>`;}
+  private quoteHtml(response:M4QuoteResponse){const fixed=response.quote.billing_method==='fixed';return `<div class="m4-price"><strong>${formatPoints(response.quote.points)}</strong> 积分${fixed?' · 固定价':int64(response.quote.points)>0n?'预留上限 B':' · 免费'}<p>可用 ${response.balance.available} 积分。${esc(response.quote.reason)}</p>${int64(response.quote.points)>0n?`<p>${response.quote.billing_policy==='authoring_balance_v2'?'有积分即可开始；排队和暂停不扣积分，重复下载不另收费。':fixed?'确认后冻结本次积分；内部重试和重复下载不另收费。':'按实际用量结算，上限为本次预留积分；未使用部分释放。'}</p>`:''}${int64(response.shortage)>0n?`<p class="m4-warning">还缺 ${response.shortage} 积分。充值后需重新确认，不会自动执行。</p><a class="text-btn" href="${esc(rechargeHref(this.workspace?.topic.project_id))}">前往充值</a>`:''}</div>`;}
   /** Resolve only an unambiguous task in this workspace; a run's billing scope may be its linked root project. */
   private currentDocumentTask(runId:string){
     const w=this.workspace,matches=w?.tasks.filter(t=>t.run.run_id===runId)??[];
@@ -595,7 +597,7 @@ export class MaterialWorkspace {
           if(!this.qaQuote||this.qaQuote.signature!==signature||Date.parse(this.qaQuote.response.quote.expires_at)<=Date.now()){
             this.qaQuote={response:await this.m4.quote(this.topicId!,{kind:'qa',content,context:this.view.unsent_context}),signature};
             if(!this.live()||this.uploadInputBlocked(false))return;if(this.qaQuote.response.shortage&&!isAutomaticCharge(this.qaQuote.response.quote)){this.message('积分不足，原问题与引用已保留。',true);return;}
-            if(this.qaQuote.response.quote.points>0&&!isAutomaticCharge(this.qaQuote.response.quote)){this.message('本次问答报价已显示，请确认并发送。');return;}
+            if(int64(this.qaQuote.response.quote.points)>0n&&!isAutomaticCharge(this.qaQuote.response.quote)){this.message('本次问答报价已显示，请确认并发送。');return;}
           }
           if(this.qaQuote.response.shortage&&!isAutomaticCharge(this.qaQuote.response.quote))return;quoteId=this.qaQuote.response.quote.quote_id;
         }

@@ -1,3 +1,4 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {expect,type Locator,type Page} from '@playwright/test';
 import {Value} from '@sinclair/typebox/value';
 import {ProjectFileCheckSchema,ProjectFileVersionSchema,type ProjectFileFinding,type ProjectFileUpdateBatches} from '@bondbuddy/contracts';
@@ -66,6 +67,7 @@ const installed=new WeakMap<Page,State>();
 export async function install(page:Page,s=fixture()){
   assertFixture(s);await installOriginals(page,s);installed.set(page,s);
   await page.route('**/api/v1/**',async intercepted=>{
+    if(await serveDisabledBillingCatalog(intercepted))return;
     const req=intercepted.request(),url=new URL(req.url()),path=url.pathname.slice('/api/v1'.length);
     const kind=path===base+'/project-files/checks'?'checks':path===base+'/project-files'?'files':
       path===base+'/project-files/workspace'?'workspace':path===base+'/project-files/updates'?'updates':undefined;

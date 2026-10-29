@@ -1,3 +1,4 @@
+import {int64} from '@bondbuddy/contracts';
 import {isAutomaticCharge} from './commerce';
 import { reviewSteps } from './review-steps';
 import { duplicateUploadMessage, duplicateUploadNotices, isReusedUpload, type DuplicateUploadNotice } from './duplicate-upload';
@@ -23,7 +24,7 @@ import { executionIdentity, isActiveRun, runStateLabel } from './review-state';
 import { esc } from './ui';
 import { isTypedReviewProposal, reviewTaskNotice, reviewTaskProgress, reviewRunProgress, reviewEmptyResultText, uniqueReviewTimeline, reviewTaskHtml } from './review-timeline';
 import { Value } from '@sinclair/typebox/value';
-import { schemas } from '@bondbuddy/contracts';
+import { schemas } from './billing-types.js';
 import { reviewFollowupText, type ReviewFollowupSource } from './review-followup';
 import { ReviewUploadRecovery, reviewUploadRecordMatches, type ReviewUploadEnvelope, type ReviewUploadResult } from './review-upload-recovery';
 import { UploadRecoveryNeedsFileError } from './upload-recovery';
@@ -890,7 +891,7 @@ export class ReviewWorkspace {
     if(!quote.quote)throw new ApiError(503,'BILLING_NOT_READY');
     if(scopePending(quote.quote)){this.openDialog(scopeStatusLabel(quote.quote),scopeLifecycleHtml(quote.quote),[{label:'刷新范围报价',primary:true,action:()=>this.execute(request)}]);return false;}
     if(isAutomaticCharge(quote.quote)){request.quote_id=quote.quote.quote_id;return true;}
-    if(isCnyPrice(quote.quote)?quote.shortage>0:quote.quote.task_type in DYNAMIC_REVIEW_BILLING_TASKS?quote.balance.available<1:quote.shortage>0){
+    if(isCnyPrice(quote.quote)?int64(quote.shortage)>0n:quote.quote.task_type in DYNAMIC_REVIEW_BILLING_TASKS?int64(quote.balance.available)<1n:int64(quote.shortage)>0n){
       if(isCnyPrice(quote.quote)){
         this.openDialog('服务余额不足',`<p>本次总价 ${esc(displayPrice(quote.quote))}，当前余额不足。材料和问题范围已保留，尚未开始。</p><a class="btn primary" href="${esc(rechargeHref(this.projectId))}" id="review-recharge-link">按需充值</a>`,[]);return false;
       }

@@ -1,6 +1,7 @@
+import {fixtureBody,fixtureRequest} from './billing-fixture-wire';
 import {expect,test,type Page} from '@playwright/test';
 import {PROJECT_QA_PRICE} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {QaRecoveryCache,type QaRecoveryValue} from '../src/qa-recovery-cache';
 import {answerId,assertFixture,checked,fixture,historicalRecords,install,newMaterial,oldArtifact,oldMaterial,originalDraft,ownerId,projectId,
   qaWrites,workspaceReads,writes,type State} from './project-qa-continuation-fixtures';
@@ -56,7 +57,7 @@ async function failPersistenceAfterPost(page:Page,kind:'draft'|'answer'|'prepare
   const capture:{value?:QaRecoveryValue;body?:unknown}={},suffix=kind==='answer'?'runs':kind;
   await page.route(`**/api/v1/projects/${projectId}/qa/${suffix}`,async route=>{
     if(route.request().method()!=='POST'||capture.value)return route.fallback();
-    const body:unknown=route.request().postDataJSON();checked(kind==='draft'?'QaDraftRequest':kind==='answer'?'QaAnswerRequest':'QaPrepareRequest',body);
+    const body:unknown=fixtureRequest(route.request());checked(kind==='draft'?'QaDraftRequest':kind==='answer'?'QaAnswerRequest':'QaPrepareRequest',body);
     capture.body=structuredClone(body);capture.value=await readRecovery(page);expect(capture.value.pending?.kind).toBe(kind);expect(capture.value.pending?.request).toEqual(body);
     await blockStorageWrites(page);await route.fallback();
   });return capture;
@@ -98,8 +99,8 @@ for(const code of ['CSRF_DENIED','NOT_FOUND'] as const)test(`an unknown accepted
   const original=await readRecovery(page),body=structuredClone(state.answers[0]),rejected:Dto<'QaAnswerRequest'>[]=[];let once=true;
   await page.route(`**/api/v1/projects/${projectId}/qa/runs`,async route=>{
     if(route.request().method()!=='POST'||!once)return route.fallback();once=false;
-    const request:unknown=route.request().postDataJSON();checked('QaAnswerRequest',request);rejected.push(structuredClone(request));
-    return route.fulfill({status:code==='CSRF_DENIED'?403:404,json:{code}});
+    const request:unknown=fixtureRequest(route.request());checked('QaAnswerRequest',request);rejected.push(structuredClone(request));
+    return route.fulfill({status:code==='CSRF_DENIED'?403:404,json:fixtureBody(route,{code})});
   });
   await page.locator('#qa-retry-pending').click();await expect.poll(()=>rejected.length).toBe(1);await expect(page.locator('#qa-retry-pending')).toBeEnabled();await frozen(page);
   expect(rejected).toEqual([body]);expect(await readRecovery(page)).toEqual(original);expect(state.accepted.size).toBe(1);expect(state.drafts).toHaveLength(1);
@@ -187,10 +188,10 @@ test('a delayed active-run poll cannot replace the draft while supplementary upl
   let releaseRead!:()=>void,releaseUpload!:()=>void;const readGate=new Promise<void>(resolve=>{releaseRead=resolve;}),uploadGate=new Promise<void>(resolve=>{releaseUpload=resolve;});
   await page.route(`**/api/v1/projects/${projectId}/qa`,async route=>{
     if(route.request().method()!=='GET'||heldRead)return route.fallback();const old=structuredClone(state.workspace);checked('QaWorkspaceResponse',old);heldRead=true;
-    await readGate;await route.fulfill({json:old});readDelivered=true;
+    await readGate;await route.fulfill({json:fixtureBody(route,old)});readDelivered=true;
   });
   await page.route(`**/api/v1/projects/${projectId}/materials/uploads/*/complete`,async route=>{
-    if(route.request().method()!=='POST')return route.fallback();const body:unknown=route.request().postDataJSON();checked('UploadCompleteRequest',body);heldUpload=true;await uploadGate;await route.fallback();
+    if(route.request().method()!=='POST')return route.fallback();const body:unknown=fixtureRequest(route.request());checked('UploadCompleteRequest',body);heldUpload=true;await uploadGate;await route.fallback();
   });
   try{
     await expect.poll(()=>heldRead,{timeout:10000}).toBe(true);await page.locator('#qa-requirements').evaluate(node=>(node as HTMLElement).dataset.syntheticDraftMarker='before-poll');
@@ -218,7 +219,7 @@ test('an acknowledged answer stays confirmed when journal removal succeeds but i
   const state=await open(page);await adopt(page);let armed=false;
   await page.route(`**/api/v1/projects/${projectId}/qa/runs`,async route=>{
     if(route.request().method()!=='POST'||armed)return route.fallback();armed=true;
-    const body:unknown=route.request().postDataJSON();checked('QaAnswerRequest',body);
+    const body:unknown=fixtureRequest(route.request());checked('QaAnswerRequest',body);
     await page.evaluate(()=>{
       const target=window as Window&{__syntheticQaRemovalCount?:number;__syntheticQaReadFailureCount?:number};
       target.__syntheticQaRemovalCount=0;target.__syntheticQaReadFailureCount=0;

@@ -1,7 +1,8 @@
+import {shortageInt64,formatFen} from '@bondbuddy/contracts';
 import {isAutomaticPriceVersion} from '@bondbuddy/contracts';
 import type { Pool, PoolClient } from 'pg';
 import { M4_BILLING_TASKS, M4_DOCUMENT_BILLING_TASKS, M4_DOCUMENT_FIXED_PRICE,isOutcomePriceVersion, type M4BillingTask, type M4Quote } from '@bondbuddy/contracts';
-import { creditBalance, lockCreditAccount } from './billing.js';
+import { creditBalanceExact,reserveCreditLots, lockCreditAccount } from './billing.js';
 import { date, Problem, transaction, uid } from './data.js';
 import { DYNAMIC_AUTHORING_POLICY } from './authoring-credit-debit.js';
 import { readAuthoringProgress } from './authoring-progress.js';
@@ -91,7 +92,7 @@ export async function quoteM4(c:PoolClient,owner:string,topic:string,task:M4Bill
     if(scope.quote_status!=='ready'){
       const now=new Date(),placeholder={id:scope.scope_quote_id,topic_id:topic,intent_hash:intentHash,task_type:task,reserve_points:0,multiplier:1,
         pricing_mode:OUTCOME_MODE,billing_policy:'on_delivery',fixed_price_version:scope.price_version,billing_method:'fixed',created_at:now,expires_at:new Date(now.getTime()+300000),...scope};
-      return {quote:{...m4QuoteDto(placeholder),reason:'本次范围待核实；核定处理范围与交付明细后，请再确认费用。'},balance:await creditBalance(c,owner),shortage:0};
+      return {quote:{...m4QuoteDto(placeholder),reason:'本次范围待核实；核定处理范围与交付明细后，请再确认费用。'},balance:await creditBalanceExact(c,owner),shortage:0};
     }
   }
   const fixed=isDocumentTask(task)||!!qaPrice||outcome;
@@ -110,7 +111,7 @@ export async function quoteM4(c:PoolClient,owner:string,topic:string,task:M4Bill
   }
   const row=(await c.query(`INSERT INTO bb_m4_quotes(id,owner_user_id,topic_id,intent_hash,task_type,config_id,reserve_points,multiplier,snapshot,expires_at,billing_method,fixed_price_version,billing_policy,pricing_mode,scope_quote_id,scope_lines,scope_acceptance_id)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($17::timestamptz,now()+interval '5 minutes'),$10,$11,$12,$13,$14,$15,$16) RETURNING *`,[uid(),owner,topic,intentHash,task,config?.id??null,points,multiplier,snapshot,fixed?'fixed':'metered_capped',fixedVersion,!outcome&&isDocumentTask(task)?DYNAMIC_AUTHORING_POLICY:'on_delivery',outcome?OUTCOME_MODE:'legacy_credit',scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[]),accepted?.scope_acceptance_id??null,isAutomaticPriceVersion(fixedVersion)?scope?.scope_expires_at:null])).rows[0];
-  const balance=await creditBalance(c,owner);return {quote:m4QuoteDto({...row,...scope}),balance,shortage:Math.max(0,(!outcome&&isDocumentTask(task)?1:points)-balance.available)};
+  const balance=await creditBalanceExact(c,owner);return {quote:m4QuoteDto({...row,...scope}),balance,shortage:shortageInt64(!outcome&&isDocumentTask(task)?1:points,balance.available)};
 }
 export async function reserveM4(c:PoolClient,owner:string,run:any,quoteId:string|undefined,topicId:string,intentHash:string) {
   if(!quoteId)throw new Problem(409,'QUOTE_REQUIRED','请先查看本次费用，再明确执行。');
@@ -139,18 +140,14 @@ export async function reserveM4(c:PoolClient,owner:string,run:any,quoteId:string
       if(config?.id!==q.config_id)throw new Problem(409,'QUOTE_CHANGED','M4成本配置已更新，请重新查看预留上限。');
     }
   }
-  await lockCreditAccount(c,owner);const points=Number(q.reserve_points),balance=await creditBalance(c,owner);
+  await lockCreditAccount(c,owner);const points=Number(q.reserve_points),balance=await creditBalanceExact(c,owner);
   const dynamic=q.billing_policy===DYNAMIC_AUTHORING_POLICY;
   if(dynamic&&(!fixed||!isDocumentTask(q.task_type)))throw new Problem(409,'QUOTE_CHANGED','材料计费规则与报价不一致。');
-  if(balance.available<(dynamic?1:points))throw new Problem(402,'CREDITS_INSUFFICIENT',isAutomaticPriceVersion(q.fixed_price_version)?`本次任务需要 ${points.toLocaleString('zh-CN')} 积分，当前可用 ${balance.available.toLocaleString('zh-CN')} 积分，还差 ${(points-balance.available).toLocaleString('zh-CN')} 积分；通过原任务入口补足后自动继续。`:outcome?`本次预留 ¥${(points/100).toFixed(2)}，当前可用 ¥${(balance.available/100).toFixed(2)}，请充值后确认执行。`:dynamic?'积分已用完，请充值后开始生成。':`本次预留 ${points} 积分，当前可用 ${balance.available} 积分，请充值后明确执行。`);
+  if(balance.available<(dynamic?1:points))throw new Problem(402,'CREDITS_INSUFFICIENT',isAutomaticPriceVersion(q.fixed_price_version)?`本次任务需要 ${points.toLocaleString('zh-CN')} 积分，当前可用 ${balance.available.toLocaleString('zh-CN')} 积分，还差 ${(BigInt(points)-balance.available).toLocaleString('zh-CN')} 积分；通过原任务入口补足后自动继续。`:outcome?`本次预留 ¥${(points/100).toFixed(2)}，当前可用 ${formatFen(balance.available)}，请充值后确认执行。`:dynamic?'积分已用完，请充值后开始生成。':`本次预留 ${points} 积分，当前可用 ${balance.available} 积分，请充值后明确执行。`);
   if((await c.query('SELECT 1 FROM bb_credit_reservations WHERE quote_id=$1',[q.id])).rowCount)throw new Problem(409,'IDEMPOTENCY_CONFLICT','This M4 quotation was already consumed');
   const rid=uid();await c.query('INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy,charged_points) VALUES($1,$2,$3,$4,$5,$6,$7)',[rid,owner,run.id,q.id,points,dynamic?DYNAMIC_AUTHORING_POLICY:'on_delivery',dynamic?0:null]);
   if(!dynamic){
-  const lots=(await c.query(`SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND remaining>frozen AND (expires_at IS NULL OR expires_at>now())
-    ORDER BY CASE WHEN source='purchase' THEN 1 ELSE 0 END,expires_at ASC NULLS LAST,created_at,id FOR UPDATE`,[owner])).rows;
-  let left=points;for(const l of lots){const take=Math.min(left,Number(l.remaining)-Number(l.frozen));await c.query('UPDATE bb_credit_lots SET frozen=frozen+$2 WHERE id=$1',[l.id,take]);
-    await c.query('INSERT INTO bb_credit_allocations(reservation_id,lot_id,points) VALUES($1,$2,$3)',[rid,l.id,take]);left-=take;if(!left)break;}
-  if(left)throw new Problem(503,'DATA_UNAVAILABLE','M4 allocation mismatch');
+  await reserveCreditLots(c,owner,rid,BigInt(points));
   await c.query(`INSERT INTO bb_credit_events(id,owner_user_id,event_key,kind,points,reservation_id,run_id,actor,reason) VALUES($1,$2,$3,'reserve',$4,$5,$6,$2,$7)`,[uid(),owner,`reserve:${rid}`,points,rid,run.id,fixed?'m4_confirmed_fixed_price':'m4_confirmed_reservation_cap']);
   }
   run.billing_mode=fixed?'fixed_credits':'metered_credits';run.reservation_id=rid;
@@ -187,7 +184,7 @@ export async function settleM4Metering(db:Db,owner:string,runId:string):Promise<
 }
 
 /** Workspace polling reads the immutable quote and authoritative ledger together. */
-export async function readM4CreditCharge(db:Db,owner:string,runId:string):Promise<M4CreditCharge>{
+export async function readM4CreditCharge(db:Db,owner:string,runId:string){
   const q=(await db.query(`SELECT q.*,c.state AS charge_state FROM bb_runs r
     JOIN bb_credit_reservations c ON c.id=r.reservation_id AND c.owner_user_id=r.owner_user_id
     JOIN bb_m4_quotes q ON q.id=c.quote_id AND q.owner_user_id=c.owner_user_id

@@ -1,5 +1,5 @@
 import {UserFacingError} from './user-facing-error.js';
-import {schemas,type ProjectFileAsset} from '@bondbuddy/contracts';
+import {schemas,type ProjectFileAsset} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
 import type {Dto} from './api.js';
 import {QaRecoveryCache,type QaRecoveryValue,type QaRecoveryCacheStorage} from './qa-recovery-cache.js';
