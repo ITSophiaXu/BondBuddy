@@ -1,7 +1,8 @@
+import {fixtureBody} from './billing-fixture-wire';
 import {expect,type Page} from '@playwright/test';
 import {QaRunSchema} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {answerId,assertFixture as assertBaseFixture,checked,completed,fixture as baseFixture,install as installBase,otherAnswerId,ownerId,
   projectId,type State as BaseState} from './project-qa-continuation-fixtures';
 import {docx,hash} from './word-roundtrip-fixtures';
@@ -65,7 +66,7 @@ export async function install(page:Page,s=fixture()){
     const request=intercepted.request(),url=new URL(request.url()),path=url.pathname.slice('/api/v1'.length),method=request.method();
     s.calls.push({method,path,search:url.search});
     const match=path.match(/^\/artifacts\/([^/]+)(\/download)?$/),stored=match&&s.words.artifacts.get(match[1]);
-    if(method!=='GET'||!stored||s.owner!==ownerId){s.unexpected.push(`${method} ${path}`);return intercepted.fulfill({status:404,json:{code:'NOT_FOUND'}});}
+    if(method!=='GET'||!stored||s.owner!==ownerId){s.unexpected.push(`${method} ${path}`);return intercepted.fulfill({status:404,json:fixtureBody(intercepted,{code:'NOT_FOUND'})});}
     if(match![2]){
       s.words.downloads.push(stored.artifact_id);return intercepted.fulfill({status:200,contentType:mime,body:stored.bytes});
     }
@@ -74,7 +75,7 @@ export async function install(page:Page,s=fixture()){
     const metadata=structuredClone(stored.metadata),other=word(s,otherAnswerId);
     if(s.words.fault==='artifact_id'){metadata.artifact_id=other.artifact_id;metadata.download_url=other.metadata.download_url;}
     if(s.words.fault==='run_id')metadata.run_id=other.run_id;
-    checked('ArtifactResponse',metadata);return intercepted.fulfill({status:200,json:metadata});
+    checked('ArtifactResponse',metadata);return intercepted.fulfill({status:200,json:fixtureBody(intercepted,metadata)});
   });
   return s;
 }

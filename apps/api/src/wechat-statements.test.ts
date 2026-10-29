@@ -19,7 +19,7 @@ test('statement capability defaults off and signed manifest binds an authenticat
     if(calls===1){assert.equal(target.pathname,'/v3/bill/tradebill');assert.equal(target.searchParams.get('bill_type'),'ALL');assert.equal(target.searchParams.has('tar_type'),false);return f.response(manifest);}
     assert.equal(headers.get('accept-encoding'),'identity');return new Response(bytes); // Official file response intentionally has no response signature.
   }});
-  const result=await provider.downloadStatements!(input);assert.equal(calls,2);assert.equal(result.sha1,manifest.hash_value);assert.equal(result.totals.nominalFen,10000);
+  const result=await provider.downloadStatements!(input);assert.equal(calls,2);assert.equal(result.provider,'wechat');assert.equal(result.sha1,manifest.hash_value);assert.equal(result.totals!.nominalFen,10000);
 });
 test('statement URL restrictions prevent forwarding merchant authorization to redirects, external hosts or other API paths',async()=>{
   for(const url of ['https://evil.example/v3/billdownload/file?token=x','https://api.mch.weixin.qq.com.evil.example/v3/billdownload/file?token=x',

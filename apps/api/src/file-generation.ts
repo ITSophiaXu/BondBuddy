@@ -4,9 +4,10 @@ import {type Static} from '@sinclair/typebox';
 import {FilePreparationSaveSchema,FileGenerationSubmitSchema,FileBuiltinAdoptSchema,FileTemplateImportQuerySchema,FileTemplateCombineSchema,FileTemplateMatchQuerySchema,FileTemplatePinSchema,emptyFileGenerationPreparation,M4_DOCUMENT_FIXED_PRICE,PROJECT_DOCUMENT_CATALOG,
  type FileGenerationPreparation,type FileGenerationSubmit,type FileGenerationBatch,type FileGenerationWorkspace,type FileGenerationQuote,type FileTemplateChoice,type M4DocumentType,type M4MaterialPin,type M4TemplateRef,type WorkpaperEntry} from '@bondbuddy/contracts';
 import {project,transaction,uid,date,conflict,missing,digest,Problem,type PrivateBlobs} from './data.js';
-import {automaticTaskTariff,isOutcomePriceVersion,OUTCOME_PRICE_VERSION,type FileGenerationPricing} from '@bondbuddy/contracts';
+import {encodeBillingDto,serializeInt64,isOutcomePriceVersion,OUTCOME_PRICE_VERSION,type BillingWireDto,type FileGenerationPricing} from '@bondbuddy/contracts';
 import {automaticBillingEnabled} from './automatic-billing-context.js';
 import {resolveAutomaticTaskPriceVersion} from './automatic-price-versions.js';
+import {loadAutomaticTaskTariff} from './automatic-tariff-repository.js';
 import {requireFileUpdateCredits} from './project-file-billing.js';
 import {quoteM4} from './m4-billing.js';
 import {inputManifestHash} from './production-rule-pin.js';
@@ -33,7 +34,7 @@ async function validateChoice(db:Db,user:string,id:string,choice:FileTemplateCho
 }
 async function pricing(db:Db,user:string,commercial:boolean):Promise<FileGenerationPricing>{
  if(automaticBillingEnabled(db)){
-  const version=await resolveAutomaticTaskPriceVersion(db,user),tariff=automaticTaskTariff(version);
+  const version=await resolveAutomaticTaskPriceVersion(db,user),tariff=await loadAutomaticTaskTariff(db,version);
   return {mode:'automatic',price_version:version,workpaper_points:tariff.workpaper.points,document_points:tariff.related.points};
  }
  return {mode:commercial?'scope':'legacy',price_version:commercial?OUTCOME_PRICE_VERSION:M4_DOCUMENT_FIXED_PRICE.version,workpaper_points:M4_DOCUMENT_FIXED_PRICE.points,document_points:commercial?null:M4_DOCUMENT_FIXED_PRICE.points};
@@ -79,16 +80,16 @@ async function quote(db:PoolClient,blobs:PrivateBlobs,user:string,id:string,b:Fi
  }
  return {quote:{count,points,price_version:price.price_version,omitted,...(commercial?{auto_charge:price.mode==='automatic',quote_status:ready?'ready':'pending_scope',documents}: {})},pricing:price,prep:p,cat,source};
 }
-async function batchDto(db:Db,user:string,id:string,row:any):Promise<FileGenerationBatch>{
+async function batchDto(db:Db,user:string,id:string,row:any):Promise<BillingWireDto<FileGenerationBatch,'fileGenerationBatch'>>{
  const docs=row.document_batch_id?(await db.query('SELECT * FROM bb_project_file_batches WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,row.document_batch_id])).rows[0]:null;
- return {batch_id:row.id,created_at:date(row.created_at),points:Number(row.points),workpapers:row.workpaper_batch_id?await readWorkpaperBatch(db,user,id,row.workpaper_batch_id):null,documents:docs?await projectFileBatchDto(db,user,docs):null};
+ return {batch_id:row.id,created_at:date(row.created_at),points:serializeInt64(row.points),workpapers:row.workpaper_batch_id?await readWorkpaperBatch(db,user,id,row.workpaper_batch_id):null,documents:docs?await projectFileBatchDto(db,user,docs):null};
 }
 export function registerFileGeneration(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs,commercial=false){
  const base='/api/v1/projects/:project_id/file-generation',id=(r:FastifyRequest)=>(r.params as {project_id:string}).project_id;
  app.get(base,async r=>{
   const user=await owner(r),projectId=id(r),saved=await preparation(db(),user,projectId),bundle=await builtinBundle();
   const rows=(await db().query('SELECT * FROM bb_file_generation_batches WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 20',[user,projectId])).rows;
-  return {...saved,pricing:await pricing(db(),user,commercial),sets:await readTemplateSets(db(),user,projectId),builtin:{name:'光大证券模板',version:bundle?.version??'',available:!!bundle},batches:await Promise.all(rows.map(row=>batchDto(db(),user,projectId,row)))} satisfies FileGenerationWorkspace;
+  return encodeBillingDto('fileGenerationWorkspace',{...saved,pricing:await pricing(db(),user,commercial),sets:await readTemplateSets(db(),user,projectId),builtin:{name:'光大证券模板',version:bundle?.version??'',available:!!bundle},batches:await Promise.all(rows.map(row=>batchDto(db(),user,projectId,row)))} satisfies Omit<FileGenerationWorkspace,'batches'> & {batches:BillingWireDto<FileGenerationBatch,'fileGenerationBatch'>[]});
  });
  app.put(base+'/preparation',{schema:{body:FilePreparationSaveSchema}},async r=>{
   const user=await owner(r),projectId=id(r),b=r.body as Static<typeof FilePreparationSaveSchema>;

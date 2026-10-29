@@ -22,8 +22,9 @@ function readProtectedFile(path: string): string {
 }
 /** No merchant config or invalid config yields no payable channel. Never includes secret values/errors in the result. */
 export function paymentProvidersFromEnv(env: NodeJS.ProcessEnv = process.env, dependencies: PaymentProviderConfigDependencies = {}): PaymentProviderConfiguration {
-  const wechat=env.BB_WECHAT_PAY_ENABLED??'0',alipay=env.BB_ALIPAY_PAY_ENABLED??'0';
-  if(!['0','1'].includes(wechat)||!['0','1'].includes(alipay))return {providers:[],status:'invalid'};
+  const wechat=env.BB_WECHAT_PAY_ENABLED??'0',alipay=env.BB_ALIPAY_PAY_ENABLED??'0',alipayStatements=env.BB_ALIPAY_PAY_STATEMENTS_ENABLED??'0';
+  if(!['0','1'].includes(wechat)||!['0','1'].includes(alipay)||!['0','1'].includes(alipayStatements)
+    ||alipayStatements==='1'&&alipay!=='1')return {providers:[],status:'invalid'};
   if(wechat==='0'&&alipay==='0')return {providers:[],status:'disabled'};
   try {
     const required = (key: string) => { const value = env[key]?.trim(); if (!value) throw new Error('Incomplete payment configuration'); return value; };
@@ -64,6 +65,7 @@ export function paymentProvidersFromEnv(env: NodeJS.ProcessEnv = process.env, de
       providers.push(createAlipayPayProvider({appId:required('BB_ALIPAY_APP_ID'),merchantId:required('BB_ALIPAY_SELLER_ID'),
         webProduct:required('BB_ALIPAY_WEB_PRODUCT') as AlipayWebProduct,appPrivateKeyPem:secret('BB_ALIPAY_APP_PRIVATE_KEY'),alipayPublicKeyPem:secret('BB_ALIPAY_PUBLIC_KEY'),
         notifyUrl:required('BB_ALIPAY_NOTIFY_URL'),returnUrl:required('BB_ALIPAY_RETURN_URL'),refundsEnabled:env.BB_ALIPAY_REFUND_ENABLED==='1',
+        statementsEnabled:alipayStatements==='1',
         timeoutMs:timeoutText===undefined?undefined:Number(timeoutText)},dependencies));
     }
     return { providers, status: 'ready' };

@@ -102,3 +102,35 @@ test('Alipay deployment needs its exact gateway, one explicit Web product and an
   failed(value,'alipay_refund_configuration');
   value.services.api.environment.BB_ALIPAY_PAY_ENABLED='true';failed(value,'alipay_switch_explicit');
 });
+
+test('Alipay daily statements remain off by default and cannot bypass a disabled merchant or invalid switch',()=>{
+  const value=config();
+  assert.equal(checkPaymentDeployment(value).passed,true);
+  for(const enabled of ['true','yes','2','',' 1']){
+    value.services.api.environment.BB_ALIPAY_PAY_STATEMENTS_ENABLED=enabled;
+    failed(value,'alipay_statement_configuration');
+  }
+  value.services.api.environment.BB_ALIPAY_PAY_STATEMENTS_ENABLED='1';
+  failed(value,'alipay_statement_configuration');
+  value.services.api.environment.BB_ALIPAY_PAY_ENABLED='0';
+  failed(value,'alipay_statement_configuration');
+  value.services.api.environment.BB_ALIPAY_PAY_STATEMENTS_ENABLED='0';
+  assert.equal(checkPaymentDeployment(value).passed,true);
+});
+
+test('Alipay statement downloads require the exact official host through the enforced proxy',()=>{
+  const value=config();
+  Object.assign(value.services.api.environment,{BB_ALIPAY_PAY_ENABLED:'1',BB_ALIPAY_WEB_PRODUCT:'page',BB_ALIPAY_PAY_STATEMENTS_ENABLED:'1'});
+  const baseline='api.deepseek.com,openapi.alipay.com';
+  value.services.egress.environment.BB_EGRESS_ALLOW=baseline;
+  failed(value,'alipay_statement_host_when_enabled');
+  for(const host of ['alipay.com','*.alipay.com','.alipay.com','dwbillcenter.alipay.com.attacker.test','https://dwbillcenter.alipay.com']){
+    value.services.egress.environment.BB_EGRESS_ALLOW=`${baseline},${host}`;
+    failed(value,'alipay_statement_host_when_enabled');
+  }
+  value.services.egress.environment.BB_EGRESS_ALLOW=`${baseline},dwbillcenter.alipay.com`;
+  assert.equal(checkPaymentDeployment(value).passed,true);
+  value.services.api.environment.NO_PROXY+=',dwbillcenter.alipay.com';
+  value.services.api.environment.no_proxy=value.services.api.environment.NO_PROXY;
+  failed(value,'api_internal_proxy_bypass');
+});

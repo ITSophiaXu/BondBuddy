@@ -19,6 +19,7 @@ product-prototype
 !product-prototype/public/project-workspace.css
 !product-prototype/public/credits.css
 !product-prototype/public/subscription-billing.css
+!product-prototype/public/billing-price-admin.css
 !product-prototype/public/workpaper-entry.css
 !product-prototype/public/material-results.css
 !product-prototype/public/source-prospectus.css

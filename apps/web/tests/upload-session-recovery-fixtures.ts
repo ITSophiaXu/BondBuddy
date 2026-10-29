@@ -1,9 +1,12 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import { expect, type Page, type Route } from '@playwright/test';
 import { FormatRegistry } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import { emptyUpdateDetails, schemas, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
-import type { Dto } from '../src/api';
+import type { Dto } from './billing-fixture-wire';
 
 // HTTP/browser acceptance fixtures, not live Blob inspection, parsing or generation.
 // Read-only source base (after Round 9), develop ffd637fac6c1fdf1581112e728f21ec29a94c67c:
@@ -64,7 +67,7 @@ export function seedMaterial(state: State, file: FilePayload, options: { project
   return material;
 }
 async function reply<K extends keyof typeof schemas>(route: Route, name: K, body: Dto<K>, status = 200) {
-  checked(name, body); return route.fulfill({ status, json: body });
+  checked(name, body); return route.fulfill({ status, json: fixtureBody(route,body) });
 }
 function problem(route: Route, status: number, code: Dto<'Error'>['code'], reason?: UploadInspectionPublicReason) {
   return reply(route, 'Error', { code, message: `Synthetic ${code}`, retryable: status >= 500,
@@ -76,8 +79,9 @@ export async function install(page: Page, state = fixture()) {
   installed.set(page, state); const pageId = `tab-${++state.pages}`;
   page.on('pageerror', error => state.errors.push(`${pageId}: ${error.message}`));
   await page.route('**/api/v1/**', async route => {
+    if(await serveDisabledBillingCatalog(route))return;
     const req = route.request(), url = new URL(req.url()), path = url.pathname.slice('/api/v1'.length), method = req.method();
-    const owner = state.owner, body = method !== 'GET' && method !== 'PUT' && req.postData() ? req.postDataJSON() : undefined;
+    const owner = state.owner, body = method !== 'GET' && method !== 'PUT' && req.postData() ? fixtureRequest(req) : undefined;
     state.calls.push({ page: pageId, owner, method, path, ...(method === 'GET' && url.search ? { search: url.search } : {}), ...(body === undefined ? {} : { body }) });
     if (method === 'POST' && path === '/auth/login') {
       checked('LoginRequest', body);
@@ -172,7 +176,7 @@ export async function install(page: Page, state = fixture()) {
             if (state.receiptFault === 'state') malformed.state = 'uploading';
             if (state.receiptFault === 'schema') delete malformed.material_version;
             else checked('MaterialResponse', malformed);
-            return route.fulfill({ status: 200, json: malformed });
+            return route.fulfill({ status: 200, json: fixtureBody(route,malformed) });
           }
           state.materials.set(material.material_id, { owner, project: projectId, material }); upload.materialId = material.material_id;
           if (!existing) upload.state = 'completed'; // Reuse has its own receipt, not a new material.

@@ -1,7 +1,9 @@
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
 import {PROJECT_QA_PRICE,type ProjectFileAsset,type QaDraft,type QaInput,type QaRun} from '@bondbuddy/contracts';
 import {isDeepStrictEqual} from 'node:util';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {QaRecoveryCache,type QaRecoveryValue} from '../src/qa-recovery-cache';
 import {fixture as baseFixture,install as installBase,assertFixture as assertBase,checked,sha,now,
   oldMaterial,newMaterial,oldArtifact,source,questions,projectId,ownerId,prepareId,answerId,writes,workspaceReads,historicalRecords} from './project-qa-continuation-fixtures';
@@ -45,8 +47,8 @@ function validateDraft(s:State,d:QaDraft){
   let end=-1;for(const q of d.questions){expect(q.start).toBeGreaterThan(end);expect(q.end).toBeGreaterThanOrEqual(q.start);expect(q.id).toBe('q'+q.start);expect(q.question).toBe(p.result!.snapshot.spans.slice(q.start,q.end+1).map(span=>span.text).join('\n').trim());end=q.end;}
   return p;
 }
-const problem=(r:Route,status:number,code:string)=>r.fulfill({status,json:{code}});
-function record(s:State,r:Route){const req=r.request(),url=new URL(req.url()),body=req.postDataJSON();s.calls.push({method:req.method(),path:url.pathname.slice('/api/v1'.length),search:url.search,body:structuredClone(body)});return body;}
+const problem=(r:Route,status:number,code:string)=>r.fulfill({status,json:fixtureBody(r,{code})});
+function record(s:State,r:Route){const req=r.request(),url=new URL(req.url()),body=fixtureRequest(req);s.calls.push({method:req.method(),path:url.pathname.slice('/api/v1'.length),search:url.search,body:structuredClone(body)});return body;}
 
 /** Real main.ts route and original HTTP fixture, with stricter independent service assertions.
  * This is synthetic HTTP; it does not run PostgreSQL, a worker, a model, Word or real billing. */
@@ -60,11 +62,11 @@ export async function install(page:Page,s=fixture()){
     s.serviceChecks.push({kind:'draft',materials:body.draft.materials.map(assetKey),revision:body.expected_revision});
     s.workspace.draft=structuredClone(body.draft);s.workspace.revision++;
     if(s.dropDraft){s.dropDraft=false;return intercepted.abort('connectionreset');}
-    checked('QaWorkspaceResponse',s.workspace);return intercepted.fulfill({json:s.workspace});
+    checked('QaWorkspaceResponse',s.workspace);return intercepted.fulfill({json:fixtureBody(intercepted,s.workspace)});
   });
   await page.route(`**/api/v1/projects/${projectId}/qa/runs`,async intercepted=>{
     if(intercepted.request().method()!=='POST')return intercepted.fallback();const body:unknown=record(s,intercepted);checked('QaAnswerRequest',body);s.answers.push(structuredClone(body));
-    const token='answer:'+body.request_id,old=s.accepted.get(token);if(old){expect(isDeepStrictEqual(old.body,body)).toBe(true);return intercepted.fulfill({json:{run_id:old.run.run_id}});}
+    const token='answer:'+body.request_id,old=s.accepted.get(token);if(old){expect(isDeepStrictEqual(old.body,body)).toBe(true);return intercepted.fulfill({json:fixtureBody(intercepted,{run_id:old.run.run_id})});}
     const drop=s.dropAnswer;s.dropAnswer=undefined;if(drop==='before')return intercepted.abort('connectionreset');
     if(s.rejectAnswer){const code=s.rejectAnswer;s.rejectAnswer=undefined;s.rejected.push(code);return problem(intercepted,code==='CREDITS_INSUFFICIENT'?402:409,code);}
     expect(body.expected_revision).toBe(s.workspace.revision);expect(body.expected_points).toBe(s.workspace.draft.questions.length*60);expect(body.price_version).toBe(PROJECT_QA_PRICE.version);expect(s.available).toBeGreaterThanOrEqual(body.expected_points);
@@ -74,7 +76,7 @@ export async function install(page:Page,s=fixture()){
     const run:QaRun={run_id,sequence,operation:'answer',state:'queued',stage:'queued',created_at:now,manifest,result:null,artifact_id:null,reserved_points:body.expected_points,charged_points:0};
     const generic:Dto<'RunResponse'>={run_id,execution_request_id:'qa-answer:'+body.request_id,project_id:projectId,input_revision:100+sequence,input_hash:sha(JSON.stringify(manifest)),channel:'production',test_grant_id:null,uncovered_items:[],state:'queued',stage:'queued',event_cursor:0,billing_mode:'fixed_credits',reservation_id:'synthetic-r38-reservation-'+sequence,artifact_id:null,prompt_snapshot_ref:null,updated_at:now};
     checked('RunResponse',generic);s.workspace.runs.unshift(run);s.accepted.set(token,{body:structuredClone(body),run,generic});s.reservations.push({run_id,points:body.expected_points});s.serviceChecks.push({kind:'answer',materials:d.materials.map(assetKey),revision:body.expected_revision});
-    if(drop==='after')return intercepted.abort('connectionreset');return intercepted.fulfill({json:{run_id}});
+    if(drop==='after')return intercepted.abort('connectionreset');return intercepted.fulfill({json:fixtureBody(intercepted,{run_id})});
   });return s;
 }
 export async function assertFixture(page:Page){await assertBase(page);}

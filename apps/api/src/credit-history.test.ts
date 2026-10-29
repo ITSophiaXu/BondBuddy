@@ -13,7 +13,7 @@ test('history whitelist, ledger totals, microsecond pagination and owner-scoped 
   const app=createServer({pool,principal:async()=>({userId:owner,csrfVerified:true}),allowedOrigin:'http://test.invalid'});
   try{
     const first=await app.inject('/api/v1/credits/consumption-history?limit=1');assert.equal(first.statusCode,200,first.body);
-    const data=first.json();assert.equal(data.items.length,1);assert.equal(data.items[0].charged_points,12000);assert.equal(data.items[0].released_points,5900);assert.equal(data.items[0].task_name,'一期更新');
+    const data=first.json();assert.equal(data.items.length,1);assert.equal(data.items[0].charged_points,'12000');assert.equal(data.items[0].released_points,'5900');assert.equal(data.items[0].task_name,'一期更新');
     assert.ok(!first.body.includes('owner_user_id')&&!first.body.includes('secret'));assert.equal(first.headers['cache-control'],'private, no-store');
     assert.equal((await app.inject('/api/v1/credits/consumption-history?cursor='+data.page.next_cursor)).statusCode,200);
     assert.equal(queries.at(-1)?.[1],now);assert.equal(queries.at(-1)?.[2],'hold-2');

@@ -1,0 +1,248 @@
+{"revision":"279f13a0f086ca1048b38058fcc94703763f8b5a","tag":"bondbuddy-billing-api-local:279f13a0f086-20261029","target":"api","builder":"existing legacy builder","startedAt":"2026-10-29T14:14:06.814Z","timeoutSeconds":1800,"includesCodexIntermediateStage":true,"buildsWorkerBrowserOcrStages":false}
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            BuildKit is currently disabled; enable it by removing the DOCKER_BUILDKIT=0
+            environment-variable.
+
+Sending build context to Docker daemon  31.91MB
+Step 1/69 : ARG NODE_IMAGE=node:22-bookworm-slim
+Step 2/69 : FROM ${NODE_IMAGE} AS build
+ ---> 4b150b48b411
+Step 3/69 : WORKDIR /app
+ ---> Using cache
+ ---> 6390b2551519
+Step 4/69 : COPY package.json package-lock.json ./
+ ---> Using cache
+ ---> 58c8fa358ab8
+Step 5/69 : COPY packages/contracts/package.json packages/contracts/
+ ---> Using cache
+ ---> 571ca9470d65
+Step 6/69 : COPY packages/domain/package.json packages/domain/
+ ---> Using cache
+ ---> 94d20a52aa35
+Step 7/69 : COPY packages/rule-pack-registry/package.json packages/rule-pack-registry/
+ ---> Using cache
+ ---> 3fe5f66086d4
+Step 8/69 : COPY packages/rule-applicability-context/package.json packages/rule-applicability-context/
+ ---> Using cache
+ ---> c30f607648d2
+Step 9/69 : COPY apps/api/package.json apps/api/
+ ---> Using cache
+ ---> 407d12fd6935
+Step 10/69 : COPY apps/worker/package.json apps/worker/
+ ---> Using cache
+ ---> 653b94d58584
+Step 11/69 : COPY apps/web/package.json apps/web/
+ ---> Using cache
+ ---> e3f337540676
+Step 12/69 : RUN npm ci --no-audit --no-fund
+ ---> Using cache
+ ---> c0fd76a69e12
+Step 13/69 : COPY packages packages
+ ---> Using cache
+ ---> f6999e390783
+Step 14/69 : COPY product-prototype/public/workpaper-entry.css product-prototype/public/
+ ---> Using cache
+ ---> 144dd9db1c27
+Step 15/69 : COPY product-prototype/public/subscription-billing.css product-prototype/public/billing-price-admin.css product-prototype/public/
+ ---> Using cache
+ ---> 10190fc80653
+Step 16/69 : COPY apps apps
+ ---> afb819c490bc
+Step 17/69 : COPY scripts/local-integration/config.mjs scripts/local-integration/config.d.mts scripts/local-integration/
+ ---> 4f316ba3d42b
+Step 18/69 : COPY product-prototype/public/styles.css product-prototype/public/project-workspace.css product-prototype/public/credits.css product-prototype/public/material-results.css product-prototype/public/source-prospectus.css product-prototype/public/duplicate-upload-feedback.css product-prototype/public/optional-materials.css product-prototype/public/prospectus-panel.css product-prototype/public/file-generation-ux.css product-prototype/public/workpaper-entry.css product-prototype/public/project-entry.css product-prototype/public/workspace-typography.css product-prototype/public/workpaper-task.css product-prototype/public/
+ ---> 7784b9c1e4d9
+Step 19/69 : COPY knowledge/exchange-bonds/drafts/sse-private/rule-pack.json knowledge/exchange-bonds/drafts/sse-private/chapter-template.json knowledge/exchange-bonds/drafts/sse-private/coverage.json knowledge/exchange-bonds/drafts/sse-private/
+ ---> 2fe060e5f1b5
+Step 20/69 : COPY knowledge/exchange-bonds/drafts/ knowledge/exchange-bonds/drafts/
+ ---> a86e1798181f
+Step 21/69 : COPY knowledge/exchange-bonds/共通方法与差异.md knowledge/exchange-bonds/冲突与未覆盖项.md knowledge/exchange-bonds/
+ ---> 92d5cdc7c557
+Step 22/69 : COPY knowledge/nafmii/APPLICABILITY.md knowledge/nafmii/APPLICABILITY.md
+ ---> 2732e0a52775
+Step 23/69 : COPY knowledge/nafmii/drafts/ knowledge/nafmii/drafts/
+ ---> 1e015ad8b2f0
+Step 24/69 : COPY product-prototype/knowledge/*-review.md product-prototype/knowledge/
+ ---> 99b97ec4e52f
+Step 25/69 : COPY knowledge/audit-reconciliation/METHODS.md knowledge/audit-reconciliation/METHODS.md
+ ---> 75aac7b8083f
+Step 26/69 : COPY knowledge/material-drafting/2026-10-07/catalog.json knowledge/material-drafting/2026-10-07/catalog.json
+ ---> 42f9f030f383
+Step 27/69 : COPY knowledge/material-drafting/2026-10-07/packs/ knowledge/material-drafting/2026-10-07/packs/
+ ---> 3169698b5461
+Step 28/69 : COPY knowledge/material-drafting/2026-10-15/catalog.json knowledge/material-drafting/2026-10-15/catalog.json
+ ---> fca6f3f99855
+Step 29/69 : COPY knowledge/material-drafting/2026-10-15/templates/ knowledge/material-drafting/2026-10-15/templates/
+ ---> ef535cc12e7a
+Step 30/69 : COPY knowledge/workpaper-templates/2026-10-27/ knowledge/workpaper-templates/2026-10-27/
+ ---> d6c2a8e7aede
+Step 31/69 : RUN npm run build && node apps/worker/dist/verify-sse-private-candidate-assets.js  && npm prune --omit=dev --no-audit --no-fund  && rm -rf apps/*/src apps/web/tests apps/web/node_modules packages/*/src
+ ---> Running in 337e664a25dc
+
+> build
+> npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/domain && npm run build -w @bondbuddy/rule-pack-registry && npm run build -w @bondbuddy/rule-applicability-context && npm run build -w @bondbuddy/api && npm run build -w @bondbuddy/worker && npm run build -w @bondbuddy/web
+
+
+> @bondbuddy/contracts@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/domain@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/rule-pack-registry@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/rule-applicability-context@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/api@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/worker@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/web@0.1.0 build
+> tsc --noEmit && vite build
+
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 531 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.74 kB │ gzip:   0.52 kB
+dist/assets/index-CxvMWZPF.css    393.85 kB │ gzip:  72.16 kB
+dist/assets/index-CmYOZgX6.js   1,899.30 kB │ gzip: 523.32 kB
+
+[91m[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[0m✓ built in 581ms
+{"status":"candidate_only","rule_pack":{"id":"sse-private","version":"2026.09.27-draft.6","contentSha256":"283dbccfc944c9baecb010c758ec82587658b79ab7c4f702fdf447b4a4df47a3","scope":{"market":"sse","offering":"private","instruments":["ordinary-company-bond"],"documentStages":["registration","issuance"],"issuerScopes":["domestic-company"]}},"taxonomy":{"dictionaryVersion":"sse-private-applicability-v3","reviewTaxonomyVersion":"bondbuddy-applicability-sse-private-v3","contentSha256":"d3feccf27a5a4c833402cbc1dd08bb96edcc35cad2f0ed00626b986a663b1c95"},"template":{"id":"sse-private-chapters","version":"2026.09.27-draft.6","rawSha256":"e5a2cb613648c1dd2e16e8ab6642e927f707309387a1af39079f2d904c7fb30b"},"coverage":{"id":"sse-private-coverage","version":"2026.09.27-draft.6","sha256":"bc92432cd2b62a4c33712e5fd4d61884254a728325a2a4ec37f26d23c05a498a","items":32,"uncovered":31,"not_applicable":1,"open_blockers":4}}
+
+up to date in 1s
+ ---> Removed intermediate container 337e664a25dc
+ ---> 42cce524ae84
+Step 32/69 : COPY db db
+ ---> 8031714849f2
+Step 33/69 : COPY deploy/m1/config/review-prices-20261009.json deploy/m1/config/review-prices-20261009.json
+ ---> c6b2f051396d
+Step 34/69 : COPY python python
+ ---> 27f6bffe3190
+Step 35/69 : COPY deploy/m1/scripts/blob-snapshot.mjs deploy/m1/scripts/backup-offhost.mjs deploy/m1/scripts/backup-stream.mjs deploy/m1/scripts/
+ ---> f29eee9ccd28
+Step 36/69 : COPY deploy/m1/nginx/default.conf deploy/m1/nginx/security-headers.conf deploy/m1/nginx/
+ ---> 73570e98eb77
+Step 37/69 : RUN find /app/python -name __pycache__ -prune -exec rm -rf {} +  && find /app -type d ! -perm -005 -exec chmod a+rx {} +  && find /app -type f ! -perm -004 -exec chmod a+r {} +  && find /app -perm /022 -exec chmod go-w {} +
+ ---> Running in bd0a486f47fe
+ ---> Removed intermediate container bd0a486f47fe
+ ---> 421205175343
+Step 38/69 : FROM ${NODE_IMAGE} AS codex
+ ---> 4b150b48b411
+Step 39/69 : ARG CODEX_VERSION=0.154.0
+ ---> Running in 7847de36b2c9
+ ---> Removed intermediate container 7847de36b2c9
+ ---> f1258aaa4c6f
+Step 40/69 : ARG CODEX_INTEGRITY_LINUX_X64=sha512-a4FI3A8sGtwGrOqltrPbrS2hajrHQG591EwmRfiRoLMb10VxdBtUGW4gu6IJVYENiYGA7k3P4jlRHEoCZU/s9Q==
+ ---> Running in 98571ecddcd0
+ ---> Removed intermediate container 98571ecddcd0
+ ---> 5f4abda68222
+Step 41/69 : ARG CODEX_INTEGRITY_LINUX_ARM64=sha512-KmTCB6ST484zeYlPpKP/K5P/gRaYmt6TihVD+zotoe6O9q0JSBP+FYvCz4A/zZXR7xDOHURTSjHp0sD8wWS0YQ==
+ ---> Running in e9124966829d
+ ---> Removed intermediate container e9124966829d
+ ---> e0c314840862
+Step 42/69 : ARG TARGETARCH
+ ---> Running in 8c005dfd1ac2
+ ---> Removed intermediate container 8c005dfd1ac2
+ ---> 54ed2dc256d1
+Step 43/69 : WORKDIR /tmp/codex
+ ---> Running in f16dfac17008
+ ---> Removed intermediate container f16dfac17008
+ ---> 79d6601bea1d
+Step 44/69 : RUN set -eu;  case "${TARGETARCH:-amd64}" in    amd64) pkg=linux-x64; triple=x86_64-unknown-linux-musl; want="$CODEX_INTEGRITY_LINUX_X64" ;;    arm64) pkg=linux-arm64; triple=aarch64-unknown-linux-musl; want="$CODEX_INTEGRITY_LINUX_ARM64" ;;    *) echo "unsupported arch ${TARGETARCH}" >&2; exit 1 ;;  esac;  npm pack "@openai/codex@${CODEX_VERSION}-${pkg}" --silent >/dev/null;  tgz="openai-codex-${CODEX_VERSION}-${pkg}.tgz";  got="sha512-$(node -e "process.stdout.write(require('crypto').createHash('sha512').update(require('fs').readFileSync(process.argv[1])).digest('base64'))" "$tgz")";  [ "$got" = "$want" ] || { echo "codex tarball integrity mismatch" >&2; exit 1; };  tar xzf "$tgz"; v="package/vendor/$triple";  install -d -m 0755 /opt/codex/bin /opt/codex/codex-resources;  install -m 0755 "$v/bin/codex" /opt/codex/bin/codex;  install -m 0755 "$v/codex-resources/bwrap" /opt/codex/codex-resources/bwrap;  install -m 0644 "$v/codex-package.json" /opt/codex/codex-package.json;  [ "$(/opt/codex/bin/codex --version)" = "codex-cli ${CODEX_VERSION}" ];  rm -rf /tmp/codex /root/.npm
+ ---> Running in 1d96e9e462b5
+ ---> Removed intermediate container 1d96e9e462b5
+ ---> aed881933cb8
+Step 45/69 : FROM ${NODE_IMAGE} AS node-runtime
+ ---> 4b150b48b411
+Step 46/69 : ENV NODE_ENV=production
+ ---> Running in 6d1cc915827d
+ ---> Removed intermediate container 6d1cc915827d
+ ---> a37945f577ad
+Step 47/69 : WORKDIR /app
+ ---> Running in d1579f9a0a31
+ ---> Removed intermediate container d1579f9a0a31
+ ---> af99fe760ce2
+Step 48/69 : COPY --from=build --chown=root:root /app/package.json /app/package-lock.json ./
+ ---> 78f1cd381015
+Step 49/69 : COPY --from=build --chown=root:root /app/node_modules node_modules
+ ---> a1072162307e
+Step 50/69 : COPY --from=build --chown=root:root /app/packages packages
+ ---> a3993872fa38
+Step 51/69 : COPY --from=build --chown=root:root /app/apps/api apps/api
+ ---> 131840a3c32c
+Step 52/69 : COPY --from=build --chown=root:root /app/apps/worker apps/worker
+ ---> 92ca84aac317
+Step 53/69 : COPY --from=build --chown=root:root /app/db db
+ ---> 8211d2c5e1ac
+Step 54/69 : COPY --from=build --chown=root:root /app/deploy/m1/config/review-prices-20261009.json deploy/m1/config/review-prices-20261009.json
+ ---> c3969d48264a
+Step 55/69 : COPY --from=build --chown=root:root /app/knowledge knowledge
+ ---> 5c82afa780dd
+Step 56/69 : COPY --from=build --chown=root:root /app/product-prototype/knowledge product-prototype/knowledge
+ ---> 8cfc942f7353
+Step 57/69 : COPY --from=build --chown=root:root /app/deploy/m1/scripts/blob-snapshot.mjs deploy/m1/scripts/blob-snapshot.mjs
+ ---> b917dabad542
+Step 58/69 : COPY --from=build --chown=root:root /app/deploy/m1/scripts/backup-offhost.mjs deploy/m1/scripts/backup-offhost.mjs
+ ---> 94612433d56a
+Step 59/69 : COPY --from=build --chown=root:root /app/deploy/m1/scripts/backup-stream.mjs deploy/m1/scripts/backup-stream.mjs
+ ---> 5ef105e55ad1
+Step 60/69 : FROM node-runtime AS api
+ ---> 5ef105e55ad1
+Step 61/69 : ARG BB_RELEASE_SHA=unknown
+ ---> Running in 79952877952b
+ ---> Removed intermediate container 79952877952b
+ ---> 9e3b49e41413
+Step 62/69 : ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} HOST=0.0.0.0 PORT=3000 BB_UPLOAD_SPOOL_DIR=/var/lib/bondbuddy/upload-spool
+ ---> Running in c407c67b986d
+ ---> Removed intermediate container c407c67b986d
+ ---> 8583782c4851
+Step 63/69 : RUN mkdir -p /var/lib/bondbuddy/upload-spool && chown node:node /var/lib/bondbuddy/upload-spool && chmod 0700 /var/lib/bondbuddy/upload-spool
+ ---> Running in da800cab7741
+ ---> Removed intermediate container da800cab7741
+ ---> 335b7fcb4d06
+Step 64/69 : USER node
+ ---> Running in 38a60928e350
+ ---> Removed intermediate container 38a60928e350
+ ---> 7790047aec1e
+Step 65/69 : EXPOSE 3000
+ ---> Running in 1ac105b6e45e
+ ---> Removed intermediate container 1ac105b6e45e
+ ---> 56efa2677af1
+Step 66/69 : HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD ["node","-e","fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+ ---> Running in 313fed530c46
+ ---> Removed intermediate container 313fed530c46
+ ---> d12967e81dba
+Step 67/69 : CMD ["node","apps/api/dist/server.js"]
+ ---> Running in cdba9d21474c
+ ---> Removed intermediate container cdba9d21474c
+ ---> eee8968b2524
+Step 68/69 : LABEL bondbuddy.local.synthetic-validation=subscription-billing-20261029
+ ---> Running in f7abd78d2338
+ ---> Removed intermediate container f7abd78d2338
+ ---> 1af8a715503f
+Step 69/69 : LABEL org.opencontainers.image.revision=279f13a0f086ca1048b38058fcc94703763f8b5a
+ ---> Running in f593c5805e58
+ ---> Removed intermediate container f593c5805e58
+ ---> 1ecf1c3b1296
+Successfully built 1ecf1c3b1296
+Successfully tagged bondbuddy-billing-api-local:279f13a0f086-20261029
+{"revision":"279f13a0f086ca1048b38058fcc94703763f8b5a","tag":"bondbuddy-billing-api-local:279f13a0f086-20261029","target":"api","builder":"existing legacy builder","startedAt":"2026-10-29T14:14:06.814Z","timeoutSeconds":1800,"includesCodexIntermediateStage":true,"buildsWorkerBrowserOcrStages":false,"endedAt":"2026-10-29T14:21:46.253Z","exitCode":0,"timedOut":false}
+{"imageId":"sha256:1ecf1c3b12966ffa986716dfdde891d1d31b25f2bcdfa20fde4061c780d421d2"}

@@ -14,7 +14,7 @@ const source=():ProjectFileAsset=>({kind:'material',pin:{source_project_id:'proj
 const draft=():QaDraft=>({preparation_id:'prepare-run',questions:[{id:'q0',start:0,end:2,question:'请说明债券的偿付安排。'},{id:'q4',start:4,end:4,question:'补充最新财务指标。'}],
   materials:[{kind:'material',pin:{source_project_id:'member-project',material_id:'financial-report',material_version:3,sha256:otherSha}},
     {kind:'artifact',pin:{source_project_id:'project',artifact_id:'prospectus',artifact_version:5,sha256:sha}}],requirements:'逐项标记缺失的证据',use_knowledge:false});
-const value=():QaRecoveryValue=>({revision:7,draft:draft(),needsKnowledgeChoice:false,sourceRun:'viewed-answer-run',pending:{kind:'answer',request:{request_id:'same-answer-request',expected_revision:7,expected_points:120,price_version:PROJECT_QA_PRICE.version}}});
+const value=():QaRecoveryValue=>({revision:7,draft:draft(),needsKnowledgeChoice:false,sourceRun:'viewed-answer-run',pending:{kind:'answer',request:{request_id:'same-answer-request',expected_revision:7,expected_points:"120",price_version:PROJECT_QA_PRICE.version}}});
 const pendingDraft=():QaRecoveryValue=>{const saved=value();return {...saved,pending:{kind:'draft',request:{expected_revision:saved.revision,draft:draft()}}};};
 const pendingPrepare=():QaRecoveryValue=>({...value(),needsKnowledgeChoice:true,pending:{kind:'prepare',request:{request_id:'same-prepare-request',source:source()}}});
 const wrapper=(saved:unknown)=>({version:'qa-recovery-cache-v1',owner:'owner',project:'project',value:saved});
@@ -23,7 +23,7 @@ function put(storage:MemoryStorage,saved:unknown){const raw=JSON.stringify(wrapp
 test('CNY pending answer recovery keeps the exact historical/current scope and request without treating fen as legacy credits',()=>{
  for(const version of [LEGACY_OUTCOME_PRICE_VERSION,OUTCOME_PRICE_VERSION]){
   const cache=new QaRecoveryCache('owner','project',new MemoryStorage()),saved=value();
-  saved.pending={kind:'answer',request:{request_id:'same-answer-request',expected_revision:7,expected_points:3900,price_version:version,scope_quote_id:'exact-accepted-scope'}};
+  saved.pending={kind:'answer',request:{request_id:'same-answer-request',expected_revision:7,expected_points:"3900",price_version:version,scope_quote_id:'exact-accepted-scope'}};
   assert.equal(cache.save(saved).status,'valid');assert.deepEqual(cache.read(),{status:'valid',value:saved});
   const missingScope=structuredClone(saved);if(missingScope.pending?.kind==='answer')delete missingScope.pending.request.scope_quote_id;
   assert.equal(cache.save(missingScope).status,'invalid');
@@ -239,7 +239,7 @@ test('QA recovery accepts contract text and count boundaries without confusing e
     pending:{kind:'draft',request:{expected_revision:Number.MAX_SAFE_INTEGER,draft:{preparation_id:'prepare-run',questions,requirements:'\u0000'.repeat(16000),use_knowledge:true,
       materials:Array.from({length:50},(_,i)=>({kind:'material',pin:{source_project_id:'member-project',material_id:`material-${i}`,material_version:1,sha256:sha}}))}}}};
   assert.deepEqual(cache.save(full),{status:'valid',value:full});assert.deepEqual(cache.read(),{status:'valid',value:full});
-  const answer={...full,pending:{kind:'answer' as const,request:{request_id:'max-count-answer',expected_revision:full.revision,expected_points:12000,price_version:PROJECT_QA_PRICE.version}}};
+  const answer={...full,pending:{kind:'answer' as const,request:{request_id:'max-count-answer',expected_revision:full.revision,expected_points:'12000',price_version:PROJECT_QA_PRICE.version}}};
   assert.equal(cache.save(answer,full).status,'valid');
 });
 

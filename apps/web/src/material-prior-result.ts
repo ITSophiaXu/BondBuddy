@@ -1,4 +1,4 @@
-import {M4ArtifactPinSchema,type M4Artifact,type M4ArtifactPin,type M4Task,type M4Workspace} from '@bondbuddy/contracts';
+import {M4ArtifactPinSchema,type M4Artifact,type M4ArtifactPin,type M4Task,type M4Workspace} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
 
 export type MaterialPriorResult={mode:'base'|'history'|'none';artifact?:M4Artifact;pin?:M4ArtifactPin;reason?:string};

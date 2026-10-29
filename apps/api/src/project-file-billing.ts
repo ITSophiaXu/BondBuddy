@@ -1,6 +1,6 @@
 import type {PoolClient} from 'pg';
-import {AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION,isAutomaticPriceVersion,PROJECT_FILE_UPDATE_PRICE,LEGACY_OUTCOME_PRICE_VERSION,isOutcomePriceVersion,type OutcomeWorkPlan,type ProjectFileOperation} from '@bondbuddy/contracts';
-import {creditBalance,lockCreditAccount} from './billing.js';
+import {isAutomaticPriceVersion,PROJECT_FILE_UPDATE_PRICE,LEGACY_OUTCOME_PRICE_VERSION,isOutcomePriceVersion,int64,formatFen,type OutcomeWorkPlan,type ProjectFileOperation} from '@bondbuddy/contracts';
+import {creditBalanceExact,lockCreditAccount,reserveCreditLots} from './billing.js';
 import {Problem,uid} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {requestScope,assertScopeQuote,assertAcceptedScope} from './scope-quotations.js';
@@ -19,9 +19,13 @@ export async function paidFileCheckEvidence(c:PoolClient,owner:string,source:Che
     JOIN bb_credit_reservations r ON r.quote_id=q.id AND r.owner_user_id=q.owner_user_id AND r.run_id=q.run_id
     JOIN bb_runs run ON run.id=q.run_id AND run.owner_user_id=q.owner_user_id
     WHERE q.owner_user_id=$1 AND q.source_fingerprint=$2 AND r.state='settled' AND r.charged_points=q.points AND run.state='succeeded'
-      AND NOT EXISTS(SELECT 1 FROM bb_credit_events e WHERE e.owner_user_id=q.owner_user_id AND e.reservation_id=r.id AND e.kind='correction')
+      AND EXISTS(SELECT 1 FROM jsonb_array_elements_text(q.charged_file_versions) f(value) WHERE NOT bb_task_item_was_refunded(q.owner_user_id,q.run_id,f.value))
     ORDER BY q.created_at,q.id`,
     [owner,fileCheckFingerprint({operation:'check',version:'project-file-operation-v1',source,files:[]})])).rows;
+  for(const row of rows){
+    const retained=(await c.query('SELECT value FROM jsonb_array_elements_text($3::jsonb) WHERE NOT bb_task_item_was_refunded($1,$2,value)',[owner,row.run_id,JSON.stringify(row.charged_file_versions)])).rows;
+    row.charged_file_versions=retained.map(r=>r.value);
+  }
   if(!automaticBillingEnabled(c))return rows;
   // Revalidation follows only platform-produced repairs from this paid maintenance round.
   // User uploads and edits have no such lineage, so they create a new paid scope.
@@ -32,11 +36,11 @@ export async function paidFileCheckEvidence(c:PoolClient,owner:string,source:Che
       SELECT v.id FROM covered parent
       JOIN bb_project_file_operations op ON op.owner_user_id=$1 AND op.operation='patch' AND op.manifest->>'file_version_id'=parent.version_id
       JOIN bb_runs run ON run.owner_user_id=op.owner_user_id AND run.id=op.run_id AND run.state='succeeded'
-      JOIN bb_project_file_update_quotes q ON q.owner_user_id=op.owner_user_id AND q.run_id=op.run_id AND q.points=0 AND q.price_version=ANY($5::text[])
-      JOIN bb_scope_quotations scope ON scope.owner_user_id=q.owner_user_id AND scope.id=q.scope_quote_id AND scope.automatic_price->'source_quote_ids' ? $6
+      JOIN bb_project_file_update_quotes q ON q.owner_user_id=op.owner_user_id AND q.run_id=op.run_id AND q.points=0 AND bb_is_automatic_price_version(q.price_version)
+      JOIN bb_scope_quotations scope ON scope.owner_user_id=q.owner_user_id AND scope.id=q.scope_quote_id AND scope.automatic_price->'source_quote_ids' ? $5
       JOIN bb_project_file_versions v ON v.owner_user_id=op.owner_user_id AND v.run_id=op.run_id AND v.file_id=op.manifest->>'file_id'
       WHERE op.manifest->'source'->>'version_id'=$3 AND op.manifest->'source'->'asset'=$4::jsonb
-    ) SELECT version_id FROM covered ORDER BY version_id`,[owner,JSON.stringify(row.charged_file_versions),source.version_id,JSON.stringify(source.asset),[LEGACY_AUTOMATIC_PRICE_VERSION,AUTOMATIC_PRICE_VERSION],row.quote_id])).rows;
+    ) SELECT version_id FROM covered ORDER BY version_id`,[owner,JSON.stringify(row.charged_file_versions),source.version_id,JSON.stringify(source.asset),row.quote_id])).rows;
     const original=new Set<string>(row.charged_file_versions);
     row.charged_file_versions=[...row.charged_file_versions,...covered.map(r=>r.version_id).filter(id=>!original.has(id))];
   }
@@ -59,24 +63,22 @@ async function hold(c:PoolClient,owner:string,run:any,quote:string,points:number
   await requireFileUpdateCredits(c,owner,points,true);
   const reservation=uid();
   await c.query(`INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy) VALUES($1,$2,$3,$4,$5,'on_delivery')`,[reservation,owner,run.id,quote,points]);
-  const lots=(await c.query(`SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND remaining>frozen AND (expires_at IS NULL OR expires_at>now())
-    ORDER BY CASE WHEN source='purchase' THEN 1 ELSE 0 END,expires_at ASC NULLS LAST,created_at,id FOR UPDATE`,[owner])).rows;
-  let left=points;
-  for(const lot of lots){const take=Math.min(left,Number(lot.remaining)-Number(lot.frozen));
-    await c.query('UPDATE bb_credit_lots SET frozen=frozen+$2 WHERE id=$1',[lot.id,take]);
-    await c.query('INSERT INTO bb_credit_allocations(reservation_id,lot_id,points) VALUES($1,$2,$3)',[reservation,lot.id,take]);left-=take;if(!left)break;}
-  if(left)throw new Problem(503,'DATA_UNAVAILABLE','File credit allocation mismatch');
+  await reserveCreditLots(c,owner,reservation,int64(points));
   await c.query(`INSERT INTO bb_credit_events(id,owner_user_id,event_key,kind,points,reservation_id,run_id,actor,reason) VALUES($1,$2,$3,'reserve',$4,$5,$6,$2,$7)`,[uid(),owner,'reserve:'+reservation,points,reservation,run.id,reason]);
   await c.query("UPDATE bb_runs SET billing_mode='fixed_credits',reservation_id=$2 WHERE id=$1",[run.id,reservation]);
   run.billing_mode='fixed_credits';run.reservation_id=reservation;
 }
-export async function reserveFileCheck(c:PoolClient,owner:string,run:any,input:Check,expectedPoints:number,scopeQuoteId?:string){
-  const price=await fileCheckPrice(c,owner,input,run.project_id);
-  if(price.scope_quote_id){const scope=await assertScopeQuote(c,scopeQuoteId,owner,run.project_id,'project_file_check',price.scope_hash,expectedPoints);if(scope.price_version!==price.price_version)throw new Problem(409,'QUOTE_CHANGED','人民币检查规则版本已变化。');}
+export async function reserveFileCheck(c:PoolClient,owner:string,run:any,input:Check,expectedPoints:number,scopeQuoteId?:string,acceptanceId?:string){
+  const accepted=acceptanceId?(await c.query(`SELECT i.price_snapshot FROM bb_scope_acceptances a JOIN bb_project_file_check_batch_items i
+    ON i.owner_user_id=a.owner_user_id AND i.batch_id=a.context_id AND i.ordinal=a.item_index AND i.scope_quote_id=a.scope_quote_id
+    WHERE a.id=$1 AND a.owner_user_id=$2 AND a.context='file_check_batch'`,[acceptanceId,owner])).rows[0]:null;
+  if(acceptanceId&&!accepted)throw new Problem(409,'QUOTE_CHANGED','原逐份检查范围接受凭据不可用。');
+  const price:Awaited<ReturnType<typeof fileCheckPrice>>=accepted?.price_snapshot??await fileCheckPrice(c,owner,input,run.project_id);
+  if(price.scope_quote_id){const scope=acceptanceId?await assertAcceptedScope(c,acceptanceId,scopeQuoteId,owner,run.project_id,'project_file_check',price.scope_hash,expectedPoints,input):await assertScopeQuote(c,scopeQuoteId,owner,run.project_id,'project_file_check',price.scope_hash,expectedPoints);if(scope.price_version!==price.price_version)throw new Problem(409,'QUOTE_CHANGED','人民币检查规则版本已变化。');}
   if(price.points!==expectedPoints)throw new Problem(409,'QUOTE_CHANGED','已付检查范围已变化，请刷新人民币报价。');
   const quote=uid();
-  await c.query(`INSERT INTO bb_project_file_check_quotes(id,owner_user_id,project_id,run_id,input_hash,source_fingerprint,file_versions,charged_file_versions,points,price_version,scope_quote_id,scope_lines,scope_work_hash)
-    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,[quote,owner,run.project_id,run.id,run.input_hash,price.source_fingerprint,JSON.stringify(input.files.map(f=>f.file_version_id)),JSON.stringify(price.charged_file_versions),price.points,price.price_version,price.scope_quote_id??null,JSON.stringify(price.scope_lines),price.scope_quote_id?price.scope_hash:null]);
+  await c.query(`INSERT INTO bb_project_file_check_quotes(id,owner_user_id,project_id,run_id,input_hash,source_fingerprint,file_versions,charged_file_versions,points,price_version,scope_quote_id,scope_lines,scope_work_hash,scope_acceptance_id)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,[quote,owner,run.project_id,run.id,run.input_hash,price.source_fingerprint,JSON.stringify(input.files.map(f=>f.file_version_id)),JSON.stringify(price.charged_file_versions),price.points,price.price_version,price.scope_quote_id??null,JSON.stringify(price.scope_lines),price.scope_quote_id?price.scope_hash:null,acceptanceId??null]);
   // An all-reused scope has no new sale or hold. Its previous paid evidence remains authoritative.
   if(price.points)await hold(c,owner,run,quote,price.points,'outcome_file_check_confirmed');
   if(price.scope_quote_id)await bindCommerceScopeRun(c,owner,price.scope_quote_id,run.id);
@@ -94,10 +96,10 @@ export async function fileUpdatePrice(c:PoolClient,owner:string,input:Extract<Pr
 
 export async function requireFileUpdateCredits(c:PoolClient,owner:string,points:number,commercial=false){
   await lockCreditAccount(c,owner);
-  const balance=await creditBalance(c,owner);
-  if(balance.available<points)throw new Problem(402,'CREDITS_INSUFFICIENT',
+  const balance=await creditBalanceExact(c,owner);
+  if(balance.available<int64(points))throw new Problem(402,'CREDITS_INSUFFICIENT',
     automaticBillingEnabled(c)?`本次任务需要 ${points.toLocaleString('zh-CN')} 积分，当前可用 ${balance.available.toLocaleString('zh-CN')} 积分；补足后继续原任务。`:
-    commercial?`本次确认范围需要 ¥${(points/100).toFixed(2)}，当前可用 ¥${(balance.available/100).toFixed(2)}；检查结果与原文件已保留。`:
+    commercial?`本次确认范围需要 ${formatFen(points)}，当前可用 ${formatFen(balance.available)}；检查结果与原文件已保留。`:
     `本次更新需要 ${points.toLocaleString('zh-CN')} 积分，当前可用 ${balance.available.toLocaleString('zh-CN')} 积分，请充值后更新；检查结果与原文件已保留。`);
 }
 
@@ -120,16 +122,7 @@ export async function reserveFileUpdate(c:PoolClient,owner:string,run:any,input:
   const reservation=uid();
   await c.query(`INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,billing_policy)
     VALUES($1,$2,$3,$4,$5,'on_delivery')`,[reservation,owner,run.id,quote,points]);
-  const lots=(await c.query(`SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND remaining>frozen AND (expires_at IS NULL OR expires_at>now())
-    ORDER BY CASE WHEN source='purchase' THEN 1 ELSE 0 END,expires_at ASC NULLS LAST,created_at,id FOR UPDATE`,[owner])).rows;
-  let left:number=points;
-  for(const lot of lots){
-    const take=Math.min(left,Number(lot.remaining)-Number(lot.frozen));
-    await c.query('UPDATE bb_credit_lots SET frozen=frozen+$2 WHERE id=$1',[lot.id,take]);
-    await c.query('INSERT INTO bb_credit_allocations(reservation_id,lot_id,points) VALUES($1,$2,$3)',[reservation,lot.id,take]);
-    left-=take;if(!left)break;
-  }
-  if(left)throw new Problem(503,'DATA_UNAVAILABLE','File update credit allocation mismatch');
+  await reserveCreditLots(c,owner,reservation,int64(points));
   await c.query(`INSERT INTO bb_credit_events(id,owner_user_id,event_key,kind,points,reservation_id,run_id,actor,reason)
     VALUES($1,$2,$3,'reserve',$4,$5,$6,$2,'project_file_update_confirmed')`,[uid(),owner,'reserve:'+reservation,points,reservation,run.id]);
   await c.query("UPDATE bb_runs SET billing_mode='fixed_credits',reservation_id=$2 WHERE id=$1",[run.id,reservation]);

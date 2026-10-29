@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {expect,test,type Page,type Locator} from '@playwright/test';
-import {PROJECT_FILE_UPDATE_PRICE} from '@bondbuddy/contracts';
+import {PROJECT_FILE_UPDATE_PRICE,encodeBillingDto} from '@bondbuddy/contracts';
 import type {Dto} from '../src/api';
 import {fixture,open,assertFixture,expected,typeName,resultHash,completeReceipt,changeLive,forgetOriginalCheck,
   selectedVersions,sharedFilename,excludedFilename,ids,base,cacheKey,fileIds,checkId,writes,serverSnapshot,type State} from './consistency-confirmation-fixtures';
@@ -83,14 +83,19 @@ async function readSelectedDifferences(page:Page,s:State){
   }
 }
 async function startUnknown(page:Page,s=fixture({dropUpdateOnce:true})){
+  const wireBodies:unknown[]=[];
+  page.on('request',request=>{if(request.method()==='POST'&&new URL(request.url()).pathname==='/api/v1'+base+'/checks/'+checkId+'/updates')wireBodies.push(request.postDataJSON());});
   await open(page,s);await chooseDirect(page);await page.locator('#fc-accept-top').click();
   await assertBusinessScope(page,s);await modal(page).locator('#fc-confirm-update').click();
   await expect.poll(()=>s.posts.length).toBe(1);await expect(page.locator('#fc-pending-action')).toBeVisible();
   const original=structuredClone(s.posts[0]);expect(s.receipts.size).toBe(1);expect(s.batches).toHaveLength(1);
+  // The producer keeps small domain numbers; browser storage and HTTP use int64 strings.
+  // Compare each layer with its own immutable envelope, including the actual wire replay.
+  expect(wireBodies).toEqual([encodeBillingDto('projectFileUpdateRequest',original.body)]);
   const saved=await cached(page);expect(saved?.pendingUpdate.confirmation).toBeDefined();
   await modal(page).getByRole('button',{name:'返回调整',exact:true}).click();
   await page.locator('[data-fc-clear-selection]').click();expect((await cached(page))?.chosen).toEqual([]);
-  return {s,original,confirmation:structuredClone(saved!.pendingUpdate.confirmation)};
+  return {s,original,wireBodies,confirmation:structuredClone(saved!.pendingUpdate.confirmation)};
 }
 
 test.afterEach(async({page})=>assertFixture(page));
@@ -147,22 +152,23 @@ test('consistency confirmation: incomplete manual projection says item details w
 });
 
 for(const missing of [false,true])test('consistency confirmation: unknown receipt restores the original scope after delivery and live changes'+(missing?' even when the original check leaves the recent list':''),async({page})=>{
-  const {s,original,confirmation}=await startUnknown(page);completeReceipt(s,original.body.request_id);changeLive(s);
+  const {s,original,wireBodies,confirmation}=await startUnknown(page);completeReceipt(s,original.body.request_id);changeLive(s);
   s.rootProject.name='合成后来变更的项目名称';if(missing)forgetOriginalCheck(s);
   await page.reload();await expect(page.locator('#fc-pending-action')).toBeVisible();
   if(missing)expect(s.calls.filter(call=>call.method==='GET'&&call.path===base+'/checks/'+checkId)).toHaveLength(1);
-  expect((await cached(page))?.pendingUpdate.body).toEqual(original.body);
+  expect((await cached(page))?.pendingUpdate.body).toEqual(wireBodies[0]);
   expect((await cached(page))?.pendingUpdate.confirmation).toEqual(confirmation);
   await page.locator('#fc-pending-action').click();await assertBusinessScope(page,s);await assertFullScope(page,s);
   await expect(modal(page)).not.toContainText(s.source.filename);await expect(modal(page)).not.toContainText('合成后来保存的财务新稿.docx');
   await exactIdentity(page,'请求编号',original.body.request_id);await modal(page).locator('#fc-confirm-update').click();
   await expect.poll(()=>s.posts.length).toBe(2);expect(s.posts[1]).toEqual(original);
+  expect(wireBodies).toEqual([wireBodies[0],wireBodies[0]]);
   expect(s.receipts.size).toBe(1);expect(s.batches).toHaveLength(1);expect(s.validatedNewEnvelopes).toHaveLength(1);
   expect(s.files.find(f=>f.latest&&f.document_type==='financial')!.sequence).toBe(6);
 });
 
 for(const mode of ['legacy','foreign-binding','partial-files'] as const)test('consistency confirmation: '+mode+' pending snapshot degrades honestly while retrying the unchanged original envelope',async({page})=>{
-  const {s,original}=await startUnknown(page);completeReceipt(s,original.body.request_id);changeLive(s);forgetOriginalCheck(s);
+  const {s,original,wireBodies}=await startUnknown(page);completeReceipt(s,original.body.request_id);changeLive(s);forgetOriginalCheck(s);
   await page.evaluate(({key,mode})=>{
     const value=JSON.parse(sessionStorage.getItem(key)!);
     if(mode==='legacy')delete value.pendingUpdate.confirmation;
@@ -180,9 +186,10 @@ for(const mode of ['legacy','foreign-binding','partial-files'] as const)test('co
   await scope(page).locator('summary').click();await exactIdentity(page,'检查编号',original.checkId);await exactIdentity(page,'检查结果 hash',original.body.expected_check_sha256);
   await exactIdentity(page,'请求编号',original.body.request_id);
   await exactIdentity(page,'文件 1 版本编号',selectedVersions[0]);await exactIdentity(page,'文件 2 版本编号',selectedVersions[1]);
-  expect((await cached(page))?.pendingUpdate.body).toEqual(original.body);
+  expect((await cached(page))?.pendingUpdate.body).toEqual(wireBodies[0]);
   await modal(page).locator('#fc-confirm-update').click();await expect.poll(()=>s.posts.length).toBe(2);
   expect(s.posts[1]).toEqual(original);expect(s.receipts.size).toBe(1);expect(s.batches).toHaveLength(1);
+  expect(wireBodies).toEqual([wireBodies[0],wireBodies[0]]);
 });
 
 test('consistency confirmation: twelve selected catalogue files keep a keyboard-scrollable review body and reachable fixed fee controls',async({page})=>{

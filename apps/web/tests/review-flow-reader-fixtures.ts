@@ -1,9 +1,11 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
 import { expect, type Page, type Route } from '@playwright/test';
 import { FormatRegistry } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import { ReviewDraftInputSchema, ReviewReadableReportSchema, schemas, type ReviewHistoryEntry, type ReviewWorkspace, type Run } from '@bondbuddy/contracts';
-import type { Dto } from '../src/api';
+import type { Dto } from './billing-fixture-wire';
 import { taskPage } from './collection-fixtures';
 import { docx, downloadBytes } from './word-roundtrip-fixtures';
 export { downloadBytes };
@@ -88,8 +90,8 @@ function workspace(state: State): ReviewWorkspace {
       origin: { version: 'review-execution-origin-v1', entrypoint: 'quick_action', accepted_proposal: null, context_report_ref: null }, artifacts: entry.artifacts, events: [] } })) };
 }
 const installed = new WeakMap<Page, State>();
-async function dto<K extends keyof typeof schemas>(route: Route, name: K, value: Dto<K>) { checked(name, value); return route.fulfill({ status: 200, json: value }); }
-const failure = (route: Route) => route.fulfill({ status: 503, json: { code: 'DATA_UNAVAILABLE', message: 'Synthetic read failure', retryable: true, field_errors: [], correlation_id: 'review-flow-reader' } });
+async function dto<K extends keyof typeof schemas>(route: Route, name: K, value: Dto<K>) { checked(name, value); return route.fulfill({ status: 200, json: fixtureBody(route,value) }); }
+const failure = (route: Route) => route.fulfill({ status: 503, json: fixtureBody(route,{ code: 'DATA_UNAVAILABLE', message: 'Synthetic read failure', retryable: true, field_errors: [], correlation_id: 'review-flow-reader' }) });
 export async function install(page: Page, state = fixture()) {
   expect(installed.has(page)).toBe(false); installed.set(page, state); page.on('pageerror', error => state.errors.push(error.message));
   checked('ProjectResponse', state.project); checked('MaterialResponse', state.material);
@@ -98,6 +100,7 @@ export async function install(page: Page, state = fixture()) {
   for (const [id, value] of state.metadata) { checked('ArtifactResponse', value); expect(value.artifact_id).toBe(id); expect(hash(state.bytes.get(id)!)).toBe(value.sha256); }
   for (const value of state.readable.values()) expect(Value.Check(ReviewReadableReportSchema, value)).toBe(true);
   await page.route('**/api/v1/**', async route => {
+    if(await serveDisabledBillingCatalog(route))return;
     const request = route.request(), url = new URL(request.url()), path = url.pathname.slice('/api/v1'.length), method = request.method();
     state.calls.push({ method, path });
     if (method === 'GET') {
@@ -105,16 +108,16 @@ export async function install(page: Page, state = fixture()) {
       if (path === '/account') return dto(route, 'AccountResponse', { user_id: owner, username: 'reader_owner', phone_masked: null, status: 'active', created_at: now,
         accepted_terms_version: 'v1', current_terms_version: 'v1', password_updated_at: null, self_service_recovery: 'unavailable', support_contact: null });
       if (path === '/credits/balance') return dto(route, 'CreditBalanceResponse', { enabled: false, available: 0, frozen: 0 });
-      if (path === '/m4/topics') return route.fulfill({ status: 200, json: { topics: [] } });
+      if (path === '/m4/topics') return route.fulfill({ status: 200, json: fixtureBody(route,{ topics: [] }) });
       const base = '/projects/' + projectId;
       if (path === base) return dto(route, 'ProjectResponse', state.project);
       if (path === base + '/tasks') return dto(route, 'ProjectTasksResponse', taskPage(projectId, state.history.map(entry => entry.run), 'review'));
       if (path === base + '/prospectus-versions') return dto(route, 'ProspectusVersionsResponse', { project_id: projectId, current_version_id: null, selection_revision: 0, inactive_material_ids: [], versions: [] });
-      if (path === base + '/review-workspace') return route.fulfill({ status: 200, json: workspace(state) });
-      if (path === base + '/review-history') return route.fulfill({ status: 200, json: { items: state.history } });
-      if (path === base + '/review-draft') return route.fulfill({ status: 200, json: { draft: state.draft, message_drafts: [] } });
+      if (path === base + '/review-workspace') return route.fulfill({ status: 200, json: fixtureBody(route,workspace(state)) });
+      if (path === base + '/review-history') return route.fulfill({ status: 200, json: fixtureBody(route,{ items: state.history }) });
+      if (path === base + '/review-draft') return route.fulfill({ status: 200, json: fixtureBody(route,{ draft: state.draft, message_drafts: [] }) });
       const readable = path.match(new RegExp('^' + base + '/review-executions/([^/]+)/readable-report$'));
-      if (readable && state.readable.has(readable[1])) { state.readableReads.push(readable[1]); return state.failReadable ? failure(route) : route.fulfill({ status: 200, json: state.readable.get(readable[1]) }); }
+      if (readable && state.readable.has(readable[1])) { state.readableReads.push(readable[1]); return state.failReadable ? failure(route) : route.fulfill({ status: 200, json: fixtureBody(route,state.readable.get(readable[1])) }); }
       const run = path.match(/^\/runs\/([^/]+)(?:\/(credit-charge|stream))?$/), entry = run && state.history.find(item => item.run.run_id === run[1]);
       if (run && entry) {
         if (run[2] === 'credit-charge') return dto(route, 'RunCreditChargeResponse', { quote: null, state: null });

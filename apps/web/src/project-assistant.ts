@@ -1,3 +1,5 @@
+import {formatPoints} from '@bondbuddy/contracts';
+import {int64} from '@bondbuddy/contracts';
 import {isAutomaticCharge,displayCharge} from './commerce';
 import {isCnyPrice,displayPrice,cny,confirmCnyTask,scopePending,scopeLinesHtml,scopeLifecycleHtml,scopeStatusLabel} from './commerce';
 import { duplicateUploadMessage, isReusedUpload } from './duplicate-upload';
@@ -5,7 +7,7 @@ import { artifactFilename } from './artifact-download';
 import { M4_DOCUMENT_TYPES,M4_DOCUMENT_LABELS,M4_DOCUMENT_MARKETS,MARKETS,MARKET_LABELS,MARKET_OFFERINGS,OFFERING_LABELS,emptyUpdateDetails,reportingWindow,
   sourceProspectusInputGaps,M1_UPLOAD_MIME_TYPES,M1_UPLOAD_LIMITS,
   type AssistantAction,type AssistantCard,type AssistantCardRequest,type AssistantResult,type M4Workspace,type M4Topic,
-  type M4Message,type M4MessageContext,type M4ViewState,type M4QuoteResponse,type M4DocumentType,type M4MaterialPin,type Market,type Offering } from '@bondbuddy/contracts';
+  type M4Message,type M4MessageContext,type M4ViewState,type M4QuoteResponse,type M4DocumentType,type M4MaterialPin,type Market,type Offering } from './billing-types.js';
 import { ApiClient,ApiError,friendlyError,type Dto } from './api';
 import { UserFacingError, type ErrorOperation } from './user-facing-error';
 import { M4Api } from './m4-api';
@@ -365,8 +367,8 @@ export class ProjectAssistant {
     if(this.workspace.messages.some(m=>m.role==='user'&&!['completed','failed'].includes(m.reply_status)))throw new AssistantInputError('请等待本轮回复后继续。');
     if(this.currentUploads().some(u=>!uploadReady(u)))throw new AssistantInputError('请先确认附件已保存并加入原对话，或停止本机追踪。');
     await this.flush();const id=this.workspace.topic.topic_id,content=this.text.trim(),context=this.context();
-    if(!this.qaQuote||this.qaQuote.content!==content||scopePending(this.qaQuote.value.quote)){const value=await this.businessWrite(id,()=>this.m4.quote(id,{kind:'qa',content,context}));this.qaQuote={value,content,key:this.qaQuote?.content===content?this.qaQuote.key:crypto.randomUUID()};this.runtimeGeneration++;this.cache();if(!isAutomaticCharge(value.quote)&&(value.quote.points>0||scopePending(value.quote)))return;}
-    const q=this.qaQuote;if(q.value.shortage>0&&!isAutomaticCharge(q.value.quote))throw new AssistantInputError(isCnyPrice(q.value.quote)?'服务余额不足，请核对本次总价并按需充值。':'积分不足，请充值后重新发送。');
+    if(!this.qaQuote||this.qaQuote.content!==content||scopePending(this.qaQuote.value.quote)){const value=await this.businessWrite(id,()=>this.m4.quote(id,{kind:'qa',content,context}));this.qaQuote={value,content,key:this.qaQuote?.content===content?this.qaQuote.key:crypto.randomUUID()};this.runtimeGeneration++;this.cache();if(!isAutomaticCharge(value.quote)&&(int64(value.quote.points)>0n||scopePending(value.quote)))return;}
+    const q=this.qaQuote;if(int64(q.value.shortage)>0n&&!isAutomaticCharge(q.value.quote))throw new AssistantInputError(isCnyPrice(q.value.quote)?'服务余额不足，请核对本次总价并按需充值。':'积分不足，请充值后重新发送。');
     if(isCnyPrice(q.value.quote)&&!await confirmCnyTask('确认本次回答费用',q.value.quote,'按当前问题和已选材料回答；新增问题或范围须另行确认。'))return;
     await this.businessWrite(id,()=>this.m4.message(id,{submission_request_id:q.key,content,context,quote_id:q.value.quote.quote_id}));
     this.text='';this.qaQuote=undefined;this.changed();await this.flush();await this.poll();
@@ -453,7 +455,7 @@ export class ProjectAssistant {
       const refreshed=c.operation==='update'?await this.api.creditQuote(c.project_id,{input_revision:c.input_revision!,input_hash:c.input_hash!},this.controller.signal):c.operation==='review'?await new ReviewApi(this.api,c.project_id,this.controller.signal).quoteExecution(this.reviewRequest(c)):await this.m4.quote(topic,{kind:'document',document_type:c.document_type as M4DocumentType,expected_draft_version:c.expected_draft_version!});
       if(!refreshed.quote)throw new ApiError(503,'BILLING_NOT_READY');c.quote=refreshed.quote;c.balance=refreshed.balance;c.quote_id=refreshed.quote.quote_id;
       if(scopePending(c.quote)){this.status=scopeStatusLabel(c.quote)+'，尚未收费。准备内容保留，可查看账户报价明细或返回调整。';return;}
-      if(refreshed.shortage>0&&!isAutomaticCharge(refreshed.quote))throw new AssistantInputError('服务余额不足，请核对本次总价并按需充值。');
+      if(int64(refreshed.shortage)>0n&&!isAutomaticCharge(refreshed.quote))throw new AssistantInputError('服务余额不足，请核对本次总价并按需充值。');
     }
     if(isCnyPrice(c.quote)){if(!await confirmCnyTask('确认'+businessName(c.operation)+'费用',c.quote!,`${c.project_name} · ${c.operation==='update'?'材料版本 '+c.input_revision:c.operation==='review'?'复核输入版本 '+c.expected_input_version:'文件草稿版本 '+c.expected_draft_version} · 按任务卡所列要求和材料执行。`))return;if(!this.live||this.staleCard(c))throw new AssistantInputError('输入已变化，请重新核对本次任务和费用。');}
     if(c.operation==='update'){
@@ -598,7 +600,7 @@ export class ProjectAssistant {
       document_type:c.document_type??null,operation:null};
     return `<a data-assistant-task-run="${esc(r.run_id)}" href="${esc(taskHref(task))}">${esc(taskView(task).action)}</a>`;
   }
-  private card(c:AssistantCard){const stale=!c.run&&this.staleCard(c),r=c.run,price=c.quote?.points??0,insufficient=!isAutomaticCharge(c.quote)&&c.balance.available<price;
+  private card(c:AssistantCard){const stale=!c.run&&this.staleCard(c),r=c.run,price=c.quote?.points??0,insufficient=!isAutomaticCharge(c.quote)&&int64(c.balance.available)<int64(price);
     return `<section class="ba-task ${r?'ba-committed':''}" data-card="${esc(c.card_id)}"><div class="ba-card-head"><strong>${businessName(c.operation)}</strong><span>${r?runLabel(r.state):stale?'已保留旧方案':'待确认'}</span></div><p>${esc(c.project_name)}</p><p>${esc([c.target?.issuer_name,MARKET_LABELS[c.target?.market as Market],OFFERING_LABELS[c.target?.offering as Offering],c.document_type?M4_DOCUMENT_LABELS[c.document_type as M4DocumentType]:null,c.target?.reporting_cutoff?`最新报告期 ${c.target.reporting_cutoff}`:null].filter(Boolean).join(' · '))}</p>
       <details${!r?' open':''}><summary>${c.baseline?'基于已选成果继续修改':'任务材料与要求'}</summary><p>${c.baseline?'保留旧成果，生成新的文件版本。':''}</p><ul>${c.material_names.map(n=>`<li>${esc(n)}</li>`).join('')}</ul><p class="ba-text">${esc(c.requirements||'按所选材料和对应编制要求处理。')}</p></details>
       ${c.operation==='update'&&!r&&!isCnyPrice(c.quote)?'':`<div class="ba-credits">${r?'本次任务费用':'本次总价'} <strong>${displayPrice(c.quote,price)}</strong>${!r?`<small>可用 ${displayCharge(c.quote,c.balance.available)}</small>`:''}</div>`}
@@ -640,7 +642,7 @@ export class ProjectAssistant {
     this.host.querySelectorAll<HTMLElement>('[data-copy-recovery]').forEach(el=>el.innerHTML=this.copyRecovery());
     const uploads=this.host.querySelector<HTMLElement>('[data-uploads]');if(uploads)uploads.innerHTML=this.currentUploads().map(u=>{const reused=uploadReady(u)&&uploadReused(u),recoverable=u.kind==='material'&&!!u.recovery&&!uploadReady(u);return `<div role="status" data-assistant-upload="${esc(u.id)}" data-upload-kind="${u.kind}" data-associated="${u.associated===true}" class="${reused?'duplicate-upload-notice':''}">${reused?'':esc(u.filename)+' · '}${esc(u.status)}${u.error?`<p>${esc(u.error)}</p>`:''}${recoverable?`<button data-a="retry-upload" data-id="${esc(u.id)}"${this.busy?' disabled':''}>确认保存并加入对话</button>${u.needsFile?`<label class="ba-attach">重新选择原文件<input type="file" data-assistant-reselect="${esc(u.id)}"></label>`:''}<button data-a="remove-upload" data-id="${esc(u.id)}"${this.busy?' disabled':''}>移除此待办</button><small>将加入“${esc(this.workspace?.topic.name??'原对话')}”。确认不会发送消息或开始任务；移除待办会保留服务器已收到的文件。</small>`:u.error?`${u.kind==='template'?'<small>模板创建与采用尚不支持跨刷新恢复，请核对原模板；此处不能只重试上传后显示模板成功。</small>':`<button data-a="retry-upload" data-id="${esc(u.id)}">重试保存</button>`}<button data-a="remove-upload" data-id="${esc(u.id)}">移除本机项</button>`:''}</div>`;}).join('');
     const quote=this.host.querySelector<HTMLElement>('[data-qa-price]');if(quote){const q=this.qaQuote?.value.quote;
-      quote.textContent=scopePending(q)?scopeStatusLabel(q)+'，尚未收费；输入与材料保留，可返回调整或查看账户范围报价。':q?.points?(isCnyPrice(q)?`本次回答总价 ${displayPrice(q,q.points)}，原范围澄清与平台重试包含。再次点击发送确认。`:q.billing_method==='fixed'?`本次回答 ${q.points.toLocaleString()} 积分，回答成功后扣费，失败不扣费。再次点击发送确认。`:`本次回答最多 ${q.points.toLocaleString()} 积分，按实际用量结算。再次点击发送确认。`):'';}
+      quote.textContent=scopePending(q)?scopeStatusLabel(q)+'，尚未收费；输入与材料保留，可返回调整或查看账户范围报价。':q&&int64(q.points)>0n?(isCnyPrice(q)?`本次回答总价 ${displayPrice(q,q.points)}，原范围澄清与平台重试包含。再次点击发送确认。`:q.billing_method==='fixed'?`本次回答 ${formatPoints(q.points)} 积分，回答成功后扣费，失败不扣费。再次点击发送确认。`:`本次回答最多 ${formatPoints(q.points)} 积分，按实际用量结算。再次点击发送确认。`):'';}
     const send=this.host.querySelector<HTMLButtonElement>('[data-a="send"]');if(send)send.disabled=this.busy||!this.workspace||!this.text.trim();
   }
   private sizeComposer(){const input=this.host.querySelector<HTMLTextAreaElement>('[data-composer]');if(input){input.style.height='auto';input.style.height=`${Math.min(160,input.scrollHeight)}px`;}}

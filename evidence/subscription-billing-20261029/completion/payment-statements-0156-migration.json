@@ -1,0 +1,22 @@
+{
+  "synthetic": true,
+  "template": "bb_billing_complete_20261029_v3",
+  "target": "bb_billing_complete_20261029_v4",
+  "checks": [
+    {
+      "database": "bb_billing_complete_20261029_v4",
+      "mode": "upgrade-from-0155",
+      "count": 157,
+      "latest": "0156_payment_statement_provenance.sql",
+      "migrationExit": 0
+    },
+    {
+      "database": "bb_billing_empty_0156_check_20261029",
+      "mode": "empty-install",
+      "count": 157,
+      "latest": "0156_payment_statement_provenance.sql",
+      "migrationExit": 0
+    }
+  ],
+  "freshCleanup": true
+}

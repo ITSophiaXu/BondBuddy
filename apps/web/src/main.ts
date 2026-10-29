@@ -10,6 +10,8 @@ import { renderFinancialUploadGuidance } from './financial-upload-guidance';
 import { OPTIONAL_MATERIAL_GUIDANCE, OPTIONAL_MATERIAL_FORMATS } from './optional-materials';
 import { ProjectFiles, clearProjectFileViews } from './project-files';
 import { BillingPage } from './billing-page';
+import { BillingPriceAdminPage } from './billing-price-admin';
+import { TaskRefundAdminPage } from './task-refund-admin-page';
 import { CreditWallet } from './credit-wallet';
 import { ProjectAssistant } from './project-assistant';
 import { projectListContext, withProjectContext, projectBackLink, projectSection, navigationProjectContext, projectWorkHref, rechargeHref } from './project-navigation';
@@ -84,6 +86,8 @@ let updateEntry:UpdateEntry|undefined;
 let prospectusPanel:ProspectusPanel|undefined;
 let projectFiles: ProjectFiles | undefined;
 let billingPage: BillingPage | undefined;
+let billingPriceAdmin: BillingPriceAdminPage | undefined;
+let taskRefundAdmin: TaskRefundAdminPage | undefined;
 let creditWallet: CreditWallet | undefined;
 let globalAssistant: ProjectAssistant | undefined;
 let artifactPage: ArtifactPage | undefined;
@@ -145,6 +149,8 @@ function clearPrivateState() {
   projectFiles?.dispose(); projectFiles = undefined;
   clearProjectFileViews();
   billingPage?.dispose(); billingPage = undefined;
+  billingPriceAdmin?.dispose(); billingPriceAdmin=undefined;
+  taskRefundAdmin?.dispose(); taskRefundAdmin=undefined;
   artifactPage?.dispose(); artifactPage = undefined;
   projectExecution?.dispose(); projectExecution = undefined;
   projectConversation?.dispose(); projectConversation = undefined;
@@ -440,6 +446,8 @@ async function renderRoute() {
   }
   if (!raw || legacyDashboard) history.replaceState(null,'',location.pathname+location.search+'#tasks'+(raw.includes('?')?'?'+raw.split('?')[1]:''));
   if (/^review(\?|$)/.test(requested)) { const query=new URLSearchParams(requested.split('?')[1]??''); if(query.has('new'))renderNewReview(api,shell,()=>token===epoch,query);else{reviewEntry=new ReviewEntry(api,shell,()=>token===epoch);await reviewEntry.render(query.get('project')??undefined);}return; }
+  if(requested==='/billing/prices'){billingPriceAdmin=new BillingPriceAdminPage(api,shell,()=>token===epoch,identity);await billingPriceAdmin.render();return;}
+  if(requested==='/billing/task-refunds'){taskRefundAdmin=new TaskRefundAdminPage(api,shell,()=>token===epoch,identity);await taskRefundAdmin.render();return;}
   if(requested==='/account'||requested.startsWith('/account?')||requested==='billing'||requested.startsWith('billing?')||requested.startsWith('payment/')||requested==='/data-policy'){
     const query=new URLSearchParams(requested.split('?')[1]??'');
     const project=query.get('project')??undefined;

@@ -1,7 +1,7 @@
 import {Type} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
 import {schemas,ProjectFileCheckSchema,ProjectFileSourceSchema,ProjectFileVersionSchema,ProjectFileAssetSchema,
-  ProjectDocumentTypeSchema,type ProjectFileCheck,type ProjectFileSource,type ProjectFileVersion,type ProjectFileAsset} from '@bondbuddy/contracts';
+  ProjectDocumentTypeSchema,type ProjectFileCheck,type ProjectFileSource,type ProjectFileVersion,type ProjectFileAsset} from './billing-types.js';
 import type {Dto} from './api.js';
 
 export type ConfirmationBinding={owner?:string;project:string;checkId:string;body:Dto<'ProjectFileUpdateRequest'>;filenames:string[]};

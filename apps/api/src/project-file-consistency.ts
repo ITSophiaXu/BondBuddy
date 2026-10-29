@@ -2,7 +2,7 @@ import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
-import {PROJECT_FILE_UPDATE_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,projectFileSchemas,ProjectFilePatchInputSchema,type ProjectFileOperation,type ProjectFileCheck,type ProjectFileFinding} from '@bondbuddy/contracts';
+import {PROJECT_FILE_UPDATE_PRICE,safeBillingNumber,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,projectFileSchemas,ProjectFilePatchInputSchema,type ProjectFileOperation,type ProjectFileCheck,type ProjectFileFinding} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,missing,Problem,date,assertCanonicalBusinessRunIdle} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {projectFileSource,projectFileVersions,readProjectFileAsset} from './project-file-storage.js';
@@ -35,12 +35,21 @@ async function createOperation(c:PoolClient,owner:string,id:string,key:string,re
     VALUES($1,$2,$3,$4,$5,$6,'generation',$7,'queued') RETURNING *`,[batchRun??uid(),owner,id,revision,hash,key,requestHash])).rows[0];
   await c.query('INSERT INTO bb_project_file_operations(run_id,owner_user_id,project_id,operation,manifest,input_hash) VALUES($1,$2,$3,$4,$5,$6)',[run.id,owner,id,manifest.operation,manifest,hash]);
   if(manifest.operation==='patch')await reserveFileUpdate(c,owner,run,manifest,commercial,expectedPoints,scopeQuoteId,acceptanceId);
-  else if(commercial)await reserveFileCheck(c,owner,run,manifest,expectedPoints!,scopeQuoteId);
+  else if(commercial)await reserveFileCheck(c,owner,run,manifest,expectedPoints!,scopeQuoteId,acceptanceId);
   await enqueue(c,run,'project_file_v1');await event(c,owner,id,'project.file_'+manifest.operation+'_started',{run_id:run.id});
   return run;
 }
 /** Only a pre-persisted immutable batch item can bypass the one-file API preflight. */
 export async function createBatchedFileCheck(c:PoolClient,owner:string,id:string,runId:string,manifest:Extract<ProjectFileOperation,{operation:'check'}>){
+  const ordinary=(await c.query(`SELECT i.*,a.attempt,s.id AS acceptance_id FROM bb_project_file_check_attempts a JOIN bb_project_file_check_batch_items i
+    ON i.owner_user_id=a.owner_user_id AND i.batch_id=a.batch_id AND i.ordinal=a.ordinal
+    JOIN bb_project_file_check_batches b ON b.owner_user_id=i.owner_user_id AND b.id=i.batch_id
+    LEFT JOIN bb_scope_acceptances s ON s.owner_user_id=i.owner_user_id AND s.context='file_check_batch' AND s.context_id=i.batch_id AND s.item_index=i.ordinal
+    WHERE a.owner_user_id=$1 AND a.run_id=$2 AND b.project_id=$3`,[owner,runId,id])).rows[0];
+  if(ordinary){
+    if(manifest.files.length!==1||manifest.files[0].file_version_id!==ordinary.file_version_id||inputManifestHash(ordinary.manifest)!==inputManifestHash(manifest)||ordinary.scope_quote_id&&!ordinary.acceptance_id)throw missing();
+    return createOperation(c,owner,id,'ordinary-file-check:'+ordinary.batch_id+':'+ordinary.ordinal+':'+ordinary.attempt,inputManifestHash(manifest),manifest,true,safeBillingNumber(ordinary.points),ordinary.scope_quote_id,ordinary.acceptance_id,runId);
+  }
   const item=(await c.query(`SELECT i.*,b.source,b.project_id FROM bb_workpaper_paid_check_items i JOIN bb_workpaper_paid_check_batches b
     ON b.owner_user_id=i.owner_user_id AND b.id=i.batch_id WHERE i.owner_user_id=$1 AND i.run_id=$2 AND b.project_id=$3`,[owner,runId,id])).rows[0];
   if(!item||manifest.files.length!==1||manifest.files[0].file_version_id!==item.file_version_id||inputManifestHash(item.source)!==inputManifestHash(manifest.source))throw missing();

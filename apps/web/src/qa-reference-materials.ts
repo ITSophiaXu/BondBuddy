@@ -1,4 +1,4 @@
-import type {ProjectFileAsset,QaWorkspace} from '@bondbuddy/contracts';
+import type {ProjectFileAsset,QaWorkspace} from './billing-types.js';
 import {qaAssetKey as key} from './qa-continuation';
 import {esc} from './ui';
 import './qa-reference-materials.css';

@@ -1,0 +1,141 @@
+{"revision":"e2773211da4c17a98195e9099ec3f1931be84b35","tag":"bondbuddy-billing-api-local:e2773211da4c-20261029","target":"api","builder":"existing legacy builder","startedAt":"2026-10-29T14:05:36.465Z","timeoutSeconds":1800,"includesCodexIntermediateStage":true,"buildsWorkerBrowserOcrStages":false}
+DEPRECATED: The legacy builder is deprecated and will be removed in a future release.
+            BuildKit is currently disabled; enable it by removing the DOCKER_BUILDKIT=0
+            environment-variable.
+
+Sending build context to Docker daemon   31.9MB
+Step 1/68 : ARG NODE_IMAGE=node:22-bookworm-slim
+Step 2/68 : FROM ${NODE_IMAGE} AS build
+22-bookworm-slim: Pulling from library/node
+0bee45faafff: Pulling fs layer
+df736340692d: Pulling fs layer
+3c5439d0ae62: Pulling fs layer
+709e8267cebf: Pulling fs layer
+d22dd8aef508: Pulling fs layer
+0253b7b3b1f5: Download complete
+709e8267cebf: Download complete
+0bee45faafff: Download complete
+f67d0db1810f: Download complete
+d22dd8aef508: Download complete
+3c5439d0ae62: Download complete
+df736340692d: Download complete
+709e8267cebf: Pull complete
+3c5439d0ae62: Pull complete
+df736340692d: Pull complete
+d22dd8aef508: Pull complete
+0bee45faafff: Pull complete
+Digest: sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da
+Status: Downloaded newer image for node:22-bookworm-slim
+ ---> 4b150b48b411
+Step 3/68 : WORKDIR /app
+ ---> Running in c66d975e658f
+ ---> Removed intermediate container c66d975e658f
+ ---> 6390b2551519
+Step 4/68 : COPY package.json package-lock.json ./
+ ---> 58c8fa358ab8
+Step 5/68 : COPY packages/contracts/package.json packages/contracts/
+ ---> 571ca9470d65
+Step 6/68 : COPY packages/domain/package.json packages/domain/
+ ---> 94d20a52aa35
+Step 7/68 : COPY packages/rule-pack-registry/package.json packages/rule-pack-registry/
+ ---> 3fe5f66086d4
+Step 8/68 : COPY packages/rule-applicability-context/package.json packages/rule-applicability-context/
+ ---> c30f607648d2
+Step 9/68 : COPY apps/api/package.json apps/api/
+ ---> 407d12fd6935
+Step 10/68 : COPY apps/worker/package.json apps/worker/
+ ---> 653b94d58584
+Step 11/68 : COPY apps/web/package.json apps/web/
+ ---> e3f337540676
+Step 12/68 : RUN npm ci --no-audit --no-fund
+ ---> Running in 307e6fdc1327
+
+added 251 packages in 20s
+[91mnpm notice
+npm notice New major version of npm available! 10.9.9 -> 12.2.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+npm notice To update run: npm install -g npm@12.2.1
+npm notice
+[0m ---> Removed intermediate container 307e6fdc1327
+ ---> c0fd76a69e12
+Step 13/68 : COPY packages packages
+ ---> f6999e390783
+Step 14/68 : COPY product-prototype/public/workpaper-entry.css product-prototype/public/
+ ---> 144dd9db1c27
+Step 15/68 : COPY product-prototype/public/subscription-billing.css product-prototype/public/billing-price-admin.css product-prototype/public/
+ ---> 10190fc80653
+Step 16/68 : COPY apps apps
+ ---> 534306dc6303
+Step 17/68 : COPY product-prototype/public/styles.css product-prototype/public/project-workspace.css product-prototype/public/credits.css product-prototype/public/material-results.css product-prototype/public/source-prospectus.css product-prototype/public/duplicate-upload-feedback.css product-prototype/public/optional-materials.css product-prototype/public/prospectus-panel.css product-prototype/public/file-generation-ux.css product-prototype/public/workpaper-entry.css product-prototype/public/project-entry.css product-prototype/public/workspace-typography.css product-prototype/public/workpaper-task.css product-prototype/public/
+ ---> 2f5ccd72175d
+Step 18/68 : COPY knowledge/exchange-bonds/drafts/sse-private/rule-pack.json knowledge/exchange-bonds/drafts/sse-private/chapter-template.json knowledge/exchange-bonds/drafts/sse-private/coverage.json knowledge/exchange-bonds/drafts/sse-private/
+ ---> 5cb9d933d39a
+Step 19/68 : COPY knowledge/exchange-bonds/drafts/ knowledge/exchange-bonds/drafts/
+ ---> 22ac3468052a
+Step 20/68 : COPY knowledge/exchange-bonds/共通方法与差异.md knowledge/exchange-bonds/冲突与未覆盖项.md knowledge/exchange-bonds/
+ ---> 1131196dd902
+Step 21/68 : COPY knowledge/nafmii/APPLICABILITY.md knowledge/nafmii/APPLICABILITY.md
+ ---> 1f82372f97ec
+Step 22/68 : COPY knowledge/nafmii/drafts/ knowledge/nafmii/drafts/
+ ---> 86510c75ddf3
+Step 23/68 : COPY product-prototype/knowledge/*-review.md product-prototype/knowledge/
+ ---> 6e640242816c
+Step 24/68 : COPY knowledge/audit-reconciliation/METHODS.md knowledge/audit-reconciliation/METHODS.md
+ ---> 706113d30717
+Step 25/68 : COPY knowledge/material-drafting/2026-10-07/catalog.json knowledge/material-drafting/2026-10-07/catalog.json
+ ---> 6701900d379d
+Step 26/68 : COPY knowledge/material-drafting/2026-10-07/packs/ knowledge/material-drafting/2026-10-07/packs/
+ ---> f596f3c76042
+Step 27/68 : COPY knowledge/material-drafting/2026-10-15/catalog.json knowledge/material-drafting/2026-10-15/catalog.json
+ ---> aad509038000
+Step 28/68 : COPY knowledge/material-drafting/2026-10-15/templates/ knowledge/material-drafting/2026-10-15/templates/
+ ---> 1bc5e6d84c27
+Step 29/68 : COPY knowledge/workpaper-templates/2026-10-27/ knowledge/workpaper-templates/2026-10-27/
+ ---> 8f23dcd60999
+Step 30/68 : RUN npm run build && node apps/worker/dist/verify-sse-private-candidate-assets.js  && npm prune --omit=dev --no-audit --no-fund  && rm -rf apps/*/src apps/web/tests apps/web/node_modules packages/*/src
+ ---> Running in b0348385d958
+
+> build
+> npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/domain && npm run build -w @bondbuddy/rule-pack-registry && npm run build -w @bondbuddy/rule-applicability-context && npm run build -w @bondbuddy/api && npm run build -w @bondbuddy/worker && npm run build -w @bondbuddy/web
+
+
+> @bondbuddy/contracts@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/domain@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/rule-pack-registry@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/rule-applicability-context@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/api@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/worker@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/web@0.1.0 build
+> tsc --noEmit && vite build
+
+tests/local-material-dynamic.spec.ts(9,35): error TS2307: Cannot find module '../../../scripts/local-integration/config.mjs' or its corresponding type declarations.
+tests/local-material-input.spec.ts(7,35): error TS2307: Cannot find module '../../../scripts/local-integration/config.mjs' or its corresponding type declarations.
+tests/local-review-live.spec.ts(9,35): error TS2307: Cannot find module '../../../scripts/local-integration/config.mjs' or its corresponding type declarations.
+[91mnpm error Lifecycle script `build` failed with error:
+npm error code 2
+npm error path /app/apps/web
+[0m[91mnpm error workspace @bondbuddy/web@0.1.0
+npm error location /app/apps/web
+[0m[91mnpm error command failed
+npm error command sh -c tsc --noEmit && vite build
+[0m ---> Removed intermediate container b0348385d958
+The command '/bin/sh -c npm run build && node apps/worker/dist/verify-sse-private-candidate-assets.js  && npm prune --omit=dev --no-audit --no-fund  && rm -rf apps/*/src apps/web/tests apps/web/node_modules packages/*/src' returned a non-zero code: 2
+{"revision":"e2773211da4c17a98195e9099ec3f1931be84b35","tag":"bondbuddy-billing-api-local:e2773211da4c-20261029","target":"api","builder":"existing legacy builder","startedAt":"2026-10-29T14:05:36.465Z","timeoutSeconds":1800,"includesCodexIntermediateStage":true,"buildsWorkerBrowserOcrStages":false,"endedAt":"2026-10-29T14:11:18.379Z","exitCode":2,"timedOut":false}

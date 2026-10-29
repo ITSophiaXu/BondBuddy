@@ -21,6 +21,7 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
   const blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const v=bytes.get(k);assert.ok(v);return v;},
     getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bound');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
   const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true,enablePaidAuthoring:true});
+  const failures:string[]=[];app.addHook('onError',async(_request,_reply,error)=>{failures.push(String(error)+' '+((error as any).where??''));});
   const send=(method:string,url:string,payload?:any,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test',...headers}});
   const fund=(points:number,key:string=randomUUID(),expiresAt:string|null=null)=>transaction(pool,c=>grantCredits(c,{owner,points,key,source:expiresAt?'existing_grant':'purchase',expiresAt,actor:'synthetic-test',reason:'synthetic-only'}));
   const newInput=async(role='audit')=>{
@@ -46,7 +47,7 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
       assert.equal(saved.statusCode,200,saved.body);draftRevision=saved.json().draft_revision;
     }
     const input=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:draftRevision,prospectus_selection_revision:selectionRevision,material_versions:[{material_id:material.json().material_id,material_version:1}],requirement_message_ids:[]});
-    assert.equal(input.statusCode,201,input.body);return input.json();
+    assert.equal(input.statusCode,201,input.body+' '+failures.join('\n'));return input.json();
   };
   const quote=async(i:any)=>{const q=await send('POST',`/api/v1/projects/${i.project_id}/credit-quote`,{input_revision:i.input_revision,input_hash:i.input_hash});assert.equal(q.statusCode,200,q.body);return q.json();};
   const request=(i:any,q:any,key=randomUUID())=>({execution_request_id:key,project_id:i.project_id,input_revision:i.input_revision,input_hash:i.input_hash,task_kind:'update',input_manifest_ref:i.input_hash,storage_origin:'cloud',workspace_id:i.project_id,quote_id:q.quote.quote_id});
@@ -54,9 +55,9 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
   try{
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'synthetic_billing']);
     await publishPrices(pool,{id:'test-v1',prices:INITIAL_FIXED_PRICES,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic-test',reason:'synthetic-only'});
-    const i=await newInput(),q=await quote(i),P=q.quote.points;
+    const i=await newInput(),q=await quote(i),P=159900;
     assert.equal((await send('POST',`/api/v1/projects/${i.project_id}/credit-quote`,{input_revision:i.input_revision,input_hash:i.input_hash,points:1})).statusCode,422);
-    assert.equal(P,159900);assert.equal(q.shortage,P);
+    assert.equal(q.quote.points,String(P));assert.equal(q.shortage,String(P));
     const req=request(i,q);
     assert.equal((await send('POST','/api/v1/runs/execute',{...req,quote_id:undefined})).statusCode,409);
     const tooPoor=await send('POST','/api/v1/runs/execute',req);assert.equal(tooPoor.statusCode,402,tooPoor.body);
@@ -72,7 +73,7 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
     assert.equal(await count('bb_credit_reservations'),1);assert.deepEqual(await creditBalance(pool,owner),{available:P,frozen:0});
     const id=both[0].json().run_id;
     const heldHistory=await send('GET','/api/v1/credits/consumption-history');assert.equal(heldHistory.statusCode,200,heldHistory.body);
-    assert.deepEqual(heldHistory.json().items.map((r:any)=>[r.run_id,r.state,r.reserved_points,r.charged_points]),[[id,'held',0,0]]);
+    assert.deepEqual(heldHistory.json().items.map((r:any)=>[r.run_id,r.state,r.reserved_points,r.charged_points]),[[id,'held','0','0']]);
     assert.equal(heldHistory.headers['cache-control'],'private, no-store');
     const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,id);
     const prompt=Buffer.from('Synthetic billing prompt'),objectKey=`users/${owner}/projects/${i.project_id}/snapshots/synthetic-billing`;
@@ -95,14 +96,14 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
     assert.deepEqual(await creditBalance(pool,owner),{available:0,frozen:0});
     assert.equal((await pool.query("SELECT sum(points)::int AS points FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[id])).rows[0].points,P);
     const settledHistory=(await send('GET','/api/v1/credits/consumption-history')).json().items;
-    assert.equal(settledHistory[0].state,'settled');assert.equal(settledHistory[0].charged_points,P);assert.ok(settledHistory[0].finalized_at);
+    assert.equal(settledHistory[0].state,'settled');assert.equal(settledHistory[0].charged_points,String(P));assert.ok(settledHistory[0].finalized_at);
     const settlementCount=(await pool.query("SELECT count(*)::int AS n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[id])).rows[0].n;
     // Late supplier usage is an internal cost observation, not another task transition.
     await observeUsage(pool,{owner,attemptId:callId,source:'provider',sourceEventId:'synthetic-late-usage',status:'measured',inputTokens:10,outputTokens:4});
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[id])).rows[0].n,settlementCount);
     assert.equal((await send('POST','/api/v1/runs/execute',req)).json().run_id,id);
     assert.equal((await send('POST',`/api/v1/runs/${id}/cancel`,{reason:'late'})).statusCode,409);
-    const next=await newInput(),q2=await quote(next);assert.equal(q2.quote.points,P+10);
+    const next=await newInput(),q2=await quote(next);assert.equal(q2.quote.points,String(P+10));
     await publishPrices(pool,{id:'test-v3',prices:{...INITIAL_FIXED_PRICES,new_authoring:P+20},effectiveAt:'2026-03-01T00:00:00Z',actor:'synthetic-test',reason:'stale-preview-test'});
     const stale=await send('POST','/api/v1/runs/execute',request(next,q2));assert.equal(stale.json().code,'QUOTE_CHANGED',stale.body);
     const q3=await quote(next);await fund(P+20,'second-funds');
@@ -175,10 +176,10 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
     assert.ok(raceFinal.length>=1);assert.equal((await creditBalance(pool,owner)).frozen,0);
     const audit=await auditCredits(pool);assert.equal(audit.consistent,true,JSON.stringify(audit));
     const all=(await send('GET','/api/v1/credits/consumption-history')).json().items;
-    assert.equal(all.find((r:any)=>r.run_id===id).corrected_points,P);
+    assert.equal(all.find((r:any)=>r.run_id===id).corrected_points,String(P));
     const failedReceipt=all.find((r:any)=>r.run_id===lastRun.json().run_id);
-    assert.equal(failedReceipt.charged_points-failedReceipt.corrected_points,0);
-    assert.equal(all.find((r:any)=>r.run_id===lastRun.json().run_id).released_points,0);
+    assert.equal(BigInt(failedReceipt.charged_points)-BigInt(failedReceipt.corrected_points),0n);
+    assert.equal(all.find((r:any)=>r.run_id===lastRun.json().run_id).released_points,'0');
     let cursor:string|undefined;const paged:string[]=[];do{const page=await send('GET','/api/v1/credits/consumption-history?limit=2'+(cursor?'&cursor='+cursor:''));assert.equal(page.statusCode,200,page.body);paged.push(...page.json().items.map((r:any)=>r.reservation_id));cursor=page.json().page.next_cursor??undefined;}while(cursor);
     assert.deepEqual(paged,all.map((r:any)=>r.reservation_id));assert.equal(new Set(paged).size,paged.length);
     assert.equal((await send('GET','/api/v1/credits/recharge-history')).json().items.length,0,'manual/legacy grants are not payment orders');
@@ -189,7 +190,7 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
     actor=owner;
     actor='foreign';assert.equal((await send('GET',`/api/v1/runs/${id}`)).statusCode,404);
     assert.equal((await send('POST',`/api/v1/projects/${i.project_id}/credit-quote`,{input_revision:1,input_hash:i.input_hash})).statusCode,404);
-    assert.deepEqual((await send('GET','/api/v1/credits/balance')).json(),{enabled:true,available:0,frozen:0});
+    assert.deepEqual((await send('GET','/api/v1/credits/balance')).json(),{enabled:true,available:'0',frozen:'0'});
     await assert.rejects(()=>pool.query("UPDATE bb_credit_events SET reason='changed' WHERE owner_user_id=$1",[owner]),/append only/);
   }finally{await app.close();await pool.end();}
 });

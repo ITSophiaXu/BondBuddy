@@ -1,9 +1,10 @@
-import {isOutcomePriceVersion} from '@bondbuddy/contracts';
+import {int64,formatPoints} from '@bondbuddy/contracts';
+import {isOutcomePriceVersion} from './billing-types.js';
 import {isAutomaticCharge} from './commerce';
 import {UserFacingError} from './user-facing-error.js';
 import { ProjectEntry } from './project-entry';
 import {PROJECT_DOCUMENT_CATALOG,MARKET_LABELS,OFFERING_LABELS,MARKET_OFFERINGS,M1_UPLOAD_MIME_TYPES,M1_UPLOAD_LIMITS,M4_DOCUMENT_FIXED_PRICE,OUTCOME_PRICE_VERSION,
-  ProjectFileBatchSchema,M4DraftRequestSchema,M4TemplateCreateRequestSchema,type M4DraftRequest,type M4TemplateCreateRequest,type ProjectDocumentType as M4DocumentType,type M4Template,type M4MaterialPin,type ProjectFileBatch} from '@bondbuddy/contracts';
+  ProjectFileBatchSchema,M4DraftRequestSchema,M4TemplateCreateRequestSchema,type M4DraftRequest,type M4TemplateCreateRequest,type ProjectDocumentType as M4DocumentType,type M4Template,type M4MaterialPin,type ProjectFileBatch} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
 import {ApiClient,ApiError,friendlyError,type Dto} from './api';
 import {ArtifactDownloads} from './artifact-download';
@@ -24,7 +25,7 @@ import '../../../product-prototype/public/workpaper-entry.css';
 import './generation-flow.css';
 import {isCnyPrice,displayPrice,cny,scopeLinesHtml,scopeStatus,scopeStatusLabel,scopeLifecycleHtml,guardScopeExpiry} from './commerce';
 
-type Workspace=import('@bondbuddy/contracts').ProjectFileWorkspace;
+type Workspace=import('./billing-types.js').ProjectFileWorkspace;
 export type UploadFileMaterialState={
   file?:File;projectId?:string;operationId?:string;recovery?:UploadRecovery;
   material?:Awaited<ReturnType<ApiClient['completeUpload']>>;
@@ -64,7 +65,7 @@ export async function uploadFileMaterial(api:ApiClient,id:string,file:File|undef
 
 export class FileWorkspace {
   private fileUnitPrice(){return this.state?.price?.points??M4_DOCUMENT_FIXED_PRICE.points;}
-  private filePrice(count=1){return isCnyPrice(this.state?.price)?'依本次范围报价':(count*this.fileUnitPrice()).toLocaleString()+' 积分';}
+  private filePrice(count=1){return isCnyPrice(this.state?.price)?'依本次范围报价':formatPoints(BigInt(count)*int64(this.fileUnitPrice()))+' 积分';}
 
   private workpapers?:WorkpaperPanel|WorkpaperTaskPanel|FileGenerationPanel;
   private downloads=new ArtifactDownloads();private controller=new AbortController();private m4:M4Api;private panel?:ProspectusPanel;private dialog?:HTMLDialogElement;
@@ -491,7 +492,7 @@ export class FileWorkspace {
     if(quote){
       if(quote.documents.length!==documents.length||documents.some(doc=>!quote.documents.some(item=>item.document_type===doc.document_type&&item.draft_version===doc.draft_version)))throw new ApiError(0,'DATA_UNAVAILABLE');
       if(scopeStatus(quote)!=='ready'||quote.documents.some(item=>scopeStatus(item)!=='ready')){const blocked=quote.documents.find(item=>scopeStatus(item)!=='ready')??quote;const pending=this.modal(scopeStatusLabel(blocked),scopeLifecycleHtml(blocked)+'<button class="btn primary" id="pf-refresh-scope">刷新范围报价</button>');pending.querySelector('#pf-refresh-scope')!.addEventListener('click',()=>{pending.close();void this.prepareGeneration();});return;}
-      if(quote.documents.some(item=>!item.scope_quote_id)||quote.documents.reduce((n,item)=>n+item.points,0)!==quote.points)throw new ApiError(0,'DATA_UNAVAILABLE');
+      if(quote.documents.some(item=>!item.scope_quote_id)||quote.documents.reduce((n,item)=>n+int64(item.points),0n)!==int64(quote.points))throw new ApiError(0,'DATA_UNAVAILABLE');
       const priceVersion=quote.documents[0]?.price_version??OUTCOME_PRICE_VERSION;
       if(!isOutcomePriceVersion(priceVersion))throw new ApiError(0,'DATA_UNAVAILABLE');
       body={...body,price_version:priceVersion,expected_points:quote.points,documents:documents.map(doc=>({...doc,scope_quote_id:quote.documents.find(item=>item.document_type===doc.document_type)!.scope_quote_id!}))};

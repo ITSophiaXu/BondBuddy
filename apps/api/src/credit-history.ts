@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Static } from '@sinclair/typebox';
-import { BILLING_TASKS, M4_BILLING_TASKS, schemas,isOutcomePriceVersion,commerceMetadata } from '@bondbuddy/contracts';
+import { BILLING_TASKS, M4_BILLING_TASKS, schemas,serializeInt64,isOutcomePriceVersion,commerceMetadata } from '@bondbuddy/contracts';
 import { date, digest, Problem } from './data.js';
 
 type Query=Static<typeof schemas.CreditHistoryQuery>;
@@ -55,7 +55,7 @@ export async function consumptionHistory(db:Pool,owner:string,query:Query){
   return {page:result.page,items:result.items.map(r=>({...(r.outcome_cny?commerceMetadata(Number(r.points),Number(r.points),1,r.outcome_price_version):{}),reservation_id:r.id,run_id:r.run_id,
     project_id:r.deleted_at||r.project_kind==='qa'?null:r.project_id,project_name:r.deleted_at?'已删除项目':r.project_name,
     task_name:labels[r.task_type]??'项目任务',created_at:date(r.created_at),finalized_at:r.finalized_at?date(r.finalized_at):null,
-    state:r.state,billing_policy:r.billing_policy,reserved_points:r.billing_policy==='authoring_balance_v2'?0:Number(r.points),charged_points:Number(r.charged),released_points:Number(r.released),corrected_points:Number(r.corrected)}))};
+    state:r.state,billing_policy:r.billing_policy,reserved_points:r.billing_policy==='authoring_balance_v2'?'0':serializeInt64(r.points),charged_points:serializeInt64(r.charged),released_points:serializeInt64(r.released),corrected_points:serializeInt64(r.corrected)}))};
 }
 export async function rechargeHistory(db:Pool,owner:string,query:Query){
   const limit=Number(query.limit??20),after=historyPosition(query.cursor,owner,'recharge');
@@ -65,7 +65,7 @@ export async function rechargeHistory(db:Pool,owner:string,query:Query){
     AND ($2::timestamptz IS NULL OR (created_at,id)<($2::timestamptz,$3::text))
     ORDER BY created_at DESC,id DESC LIMIT $4`,[owner,after?.time??null,after?.id??null,limit+1])).rows;
   const result=page(rows,limit,owner,'recharge');
-  return {page:result.page,items:result.items.map(r=>({...(r.pack_id==='service_balance'&&isOutcomePriceVersion(r.pack_version)?commerceMetadata(Number(r.amount_fen),Number(r.amount_fen),1,r.pack_version):{}),order_id:r.id,provider:r.provider,state:r.state,amount_fen:Number(r.amount_fen),points:Number(r.points),created_at:date(r.created_at),credited_at:r.credited_at?date(r.credited_at):null}))};
+  return {page:result.page,items:result.items.map(r=>({...(r.pack_id==='service_balance'&&isOutcomePriceVersion(r.pack_version)?commerceMetadata(Number(r.amount_fen),Number(r.amount_fen),1,r.pack_version):{}),order_id:r.id,provider:r.provider,state:r.state,amount_fen:serializeInt64(r.amount_fen),points:serializeInt64(r.points),created_at:date(r.created_at),credited_at:r.credited_at?date(r.credited_at):null}))};
 }
 export function installCreditHistory(app:FastifyInstance,db:()=>Pool,owner:(request:FastifyRequest)=>Promise<string>){
   app.get('/api/v1/credits/consumption-history',{schema:{querystring:schemas.CreditHistoryQuery,response:{200:schemas.CreditConsumptionHistoryResponse}}},async(request,reply)=>{

@@ -1,0 +1,16 @@
+✔ durable wallet isolation, exact authorized projection repair and separate resumption preserve original facts (754.4429ms)
+✔ exclusive recheck waits for an in-flight writer and never isolates a legitimate intermediate state (505.6764ms)
+✔ channel mismatch blocks only that merchant; no verifier, unknown and malformed evidence cannot resume (340.578ms)
+✔ committed payment/credit mismatch isolates wallet and channel and rejects projection-only repair (329.1811ms)
+✔ committed dispatch holds shared safety through external work; isolation stops later dispatch but keeps exit controls available (383.2958ms)
+✔ direct SQL finalization observes safety before wallet lock for original and M4 task families (897.1814ms)
+✔ isolated refund permits schedule metadata but rejects state or credit changes without blocking other wallets (386.3767ms)
+✔ projection repair cannot restore individually valid lots into an overflowing account total (267.8609ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11329.7392

@@ -1,4 +1,5 @@
-import {INTEGRITY_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,CommercePriceMetadataSchema,type CommercePriceMetadata,INTEGRITY_SITES,INTEGRITY_SITE_LIMIT,M4MaterialPinSchema,integritySchemas,type IntegrityDraft,type M4MaterialPin} from '@bondbuddy/contracts';
+import {int64} from '@bondbuddy/contracts';
+import {INTEGRITY_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,CommercePriceMetadataSchema,type CommercePriceMetadata,INTEGRITY_SITES,INTEGRITY_SITE_LIMIT,M4MaterialPinSchema,integritySchemas,type IntegrityDraft,type M4MaterialPin} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
 import type {Dto} from './api.js';
 
@@ -63,6 +64,9 @@ function copyDraft(draft:IntegrityDraft):IntegrityDraft{
 const copyPin=(pin:M4MaterialPin):M4MaterialPin=>({source_project_id:pin.source_project_id,material_id:pin.material_id,material_version:pin.material_version,sha256:pin.sha256});
 const sameDraft=(a:IntegrityDraft,b:IntegrityDraft)=>JSON.stringify(copyDraft(a))===JSON.stringify(copyDraft(b));
 function validValue(value:unknown,project:string,allowUndefined=false):value is IntegrityRecoveryValue{
+  try{return validValueInner(value,project,allowUndefined);}catch{return false;}
+}
+function validValueInner(value:unknown,project:string,allowUndefined=false):value is IntegrityRecoveryValue{
   if(!exact(value,['revision','draft'],['sourceRun','evidenceDraft','pending'])||!integer(value.revision)||!validDraft(value.draft))return false;
   if(Object.hasOwn(value,'sourceRun')&&!(allowUndefined&&value.sourceRun===undefined)&&!validId(value.sourceRun))return false;
   if(Object.hasOwn(value,'evidenceDraft')&&!(allowUndefined&&value.evidenceDraft===undefined)&&!validForm(value.evidenceDraft,project,allowUndefined))return false;
@@ -75,7 +79,7 @@ function validValue(value:unknown,project:string,allowUndefined=false):value is 
     if(!exact(pending,['kind','request'],['price'])||(Object.hasOwn(pending,'price')&&!Value.Check(CommercePriceMetadataSchema,pending.price)))return false;
     const price=pending.price as CommercePriceMetadata|undefined;
     return Value.Check(integritySchemas.IntegrityRunRequest,pending.request)&&validId(pending.request.request_id)&&pending.request.expected_revision===value.revision&&(price?.pricing_mode==='outcome_cny_v1'?isOutcomePriceVersion(pending.request.price_version)&&pending.request.price_version===(price.price_version??OUTCOME_PRICE_VERSION):pending.request.price_version===INTEGRITY_PRICE.version)&&
-      (price?.pricing_mode==='outcome_cny_v1'?price.quote_status==='ready'&&price.amount_fen===pending.request.expected_points&&validId(pending.request.scope_quote_id):pending.request.expected_points===INTEGRITY_PRICE.points)&&validDraft(value.draft,true,true);
+      (price?.pricing_mode==='outcome_cny_v1'?price.quote_status==='ready'&&price.amount_fen===pending.request.expected_points&&validId(pending.request.scope_quote_id):int64(pending.request.expected_points)===BigInt(INTEGRITY_PRICE.points))&&validDraft(value.draft,true,true);
   }
   if(pending.kind==='export')return exact(pending,['kind','roundId','request'])&&validId(pending.roundId)&&
     Value.Check(integritySchemas.IntegrityExportRequest,pending.request)&&validId(pending.request.request_id)&&pending.request.expected_evidence_ids.every(validId);

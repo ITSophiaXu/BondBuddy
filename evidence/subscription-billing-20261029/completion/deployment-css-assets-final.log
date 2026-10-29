@@ -1,0 +1,10 @@
+✔ prototype styles imported by the browser are included in the production build context and COPY inputs (455.6806ms)
+✔ local E2E script imports remain available during production container type checking (433.8873ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1073.153

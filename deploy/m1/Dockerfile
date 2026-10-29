@@ -16,11 +16,10 @@ COPY apps/web/package.json apps/web/
 RUN npm ci --no-audit --no-fund
 COPY packages packages
 COPY product-prototype/public/workpaper-entry.css product-prototype/public/
+COPY product-prototype/public/subscription-billing.css product-prototype/public/billing-price-admin.css product-prototype/public/
 COPY apps apps
-# Web type-checking includes local integration specs. Keep their shared public
-# configuration available during the build; it is not copied into runtime images.
+# Web type checking includes opt-in local E2E imports; these synthetic config sources stay in the build stage.
 COPY scripts/local-integration/config.mjs scripts/local-integration/config.d.mts scripts/local-integration/
-COPY product-prototype/public/subscription-billing.css product-prototype/public/
 # The web workspace imports these prototype stylesheets as its layout baseline (#361, M2).
 COPY product-prototype/public/styles.css product-prototype/public/project-workspace.css product-prototype/public/credits.css product-prototype/public/material-results.css product-prototype/public/source-prospectus.css product-prototype/public/duplicate-upload-feedback.css product-prototype/public/optional-materials.css product-prototype/public/prospectus-panel.css product-prototype/public/file-generation-ux.css product-prototype/public/workpaper-entry.css product-prototype/public/project-entry.css product-prototype/public/workspace-typography.css product-prototype/public/workpaper-task.css product-prototype/public/
 # Copy only the pinned public research assets, never source documents or test materials.

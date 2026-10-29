@@ -1,9 +1,12 @@
+import {int64,encodeBillingDto,type BillingWireDto} from '@bondbuddy/contracts';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Pool,PoolClient} from 'pg';
-import {SUBSCRIPTION_PLANS,SUBSCRIPTION_CATALOG_VERSION,SUBSCRIPTION_TASK_PRICE_VERSION,schemas,
+import {SUBSCRIPTION_PLANS,SUBSCRIPTION_CATALOG_VERSION,schemas,
   type Subscription,type SubscriptionAccount,type SubscriptionCheckoutRequest,type SubscriptionCheckout,type SubscriptionAutoRenew,type SubscriptionAutoRenewRequest} from '@bondbuddy/contracts';
 import {date,digest,missing,Problem,transaction,uid} from './data.js';
-import {creditBalance,grantCredits,lockCreditAccount} from './billing.js';
+import {currentAutomaticPriceVersion} from './automatic-tariff-repository.js';
+import {creditBalanceExact,grantCredits,lockCreditAccount,lockCreditAccountForControl} from './billing.js';
+import {assertChannelWritable,withBillingDispatch} from './billing-safety.js';
 import {applyVerifiedPayment,openCheckout,paymentOrder,refreshRecharge,type PaymentOrder,type PaymentProvider,type VerifiedPayment} from './payments.js';
 
 export type MandateRequest={requestId:string;subscriptionId:string;merchantId:string;amountFen:number;currency:'CNY';interval:'month';mandateId:string|null};
@@ -19,7 +22,7 @@ export interface RecurringPaymentProvider {
 export const supportsAutomaticRenewal=(p:PaymentProvider):boolean=>!!p.recurring&&
   ['createMandate','queryMandate','cancelMandate','charge'].every(k=>typeof (p.recurring as any)[k]==='function');
 const invalid=(message:string)=>new Problem(409,'PAYMENT_INVALID',message);
-const safePoints=(value:unknown)=>{const n=Number(value);if(!Number.isSafeInteger(n)||n<0)throw new Problem(503,'DATA_UNAVAILABLE','积分分项仍在核对，请稍后读取。');return n;};
+const safePoints=(value:unknown)=>{try{return int64(value);}catch{throw new Problem(503,'DATA_UNAVAILABLE','积分分项仍在核对，请稍后读取。');}};
 const unavailable=()=>new Problem(503,'PAYMENT_UNAVAILABLE','当前渠道未配置经核验的自动续费能力，可手动开通或续订月度方案。');
 const plan=(id:string)=>{const p=SUBSCRIPTION_PLANS.find(p=>p.id===id);if(!p)throw new Problem(422,'VALIDATION_FAILED','未知订阅方案。');return p;};
 const adapter=(ps:readonly PaymentProvider[],name:string,merchant?:string)=>{const p=ps.find(p=>p.name===name&&(!merchant||p.merchantId===merchant));if(!p)throw unavailable();return p;};
@@ -37,11 +40,11 @@ export async function resolveActiveSubscriptionPrice(c:Pool|PoolClient,owner:str
     AND starts_at<=now() AND ends_at>now() ORDER BY starts_at DESC,id DESC LIMIT 1`,[owner])).rows[0];
   return row?.task_price_version??null;
 }
-export async function subscriptionAccount(pool:Pool,owner:string):Promise<SubscriptionAccount>{
+export async function subscriptionAccount(pool:Pool,owner:string):Promise<BillingWireDto<SubscriptionAccount,'subscriptionAccount'>>{
   return transaction(pool,async c=>{
     await c.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY');
     const s=(await c.query('SELECT * FROM bb_subscriptions WHERE owner_user_id=$1',[owner])).rows[0];
-    const balance=await creditBalance(c,owner);
+    const balance=await creditBalanceExact(c,owner);
     const b=(await c.query(`SELECT
       COALESCE(sum(remaining-frozen) FILTER(WHERE source='subscription' AND (expires_at IS NULL OR expires_at>now())),0)::text subscription,
       COALESCE(sum(remaining-frozen) FILTER(WHERE source='purchase' AND (expires_at IS NULL OR expires_at>now())),0)::text topup,
@@ -53,24 +56,25 @@ export async function subscriptionAccount(pool:Pool,owner:string):Promise<Subscr
         WHERE a.lot_id=l.id AND a.owner_user_id=p.owner_user_id AND r.state IN ('requested','processing')) refund_held
       FROM bb_subscription_periods p LEFT JOIN bb_credit_lots l ON l.id=p.lot_id AND l.owner_user_id=p.owner_user_id WHERE p.owner_user_id=$1 ORDER BY p.cycle_index DESC LIMIT 50`,[owner])).rows;
     const refundHeld=safePoints(b.refund_held),subscriptionAvailable=safePoints(b.subscription),topupAvailable=safePoints(b.topup);
-    return {subscription:s?subscriptionDto(s):null,available_points:balance.available,held_points:balance.frozen,
+    return encodeBillingDto('subscriptionAccount',{subscription:s?subscriptionDto(s):null,available_points:balance.available,held_points:balance.frozen,
       task_held_points:safePoints(balance.frozen-refundHeld),refund_held_points:refundHeld,
       subscription_available_points:subscriptionAvailable,topup_available_points:topupAvailable,other_available_points:safePoints(balance.available-subscriptionAvailable-topupAvailable),
       periods:periods.map(p=>({id:p.id,order_id:p.order_id,plan_id:p.plan_id,status:p.status,amount_fen:Number(p.amount_fen),points:Number(p.points),
-        available_points:p.unexpired?safePoints(Number(p.remaining??0)-Number(p.frozen??0)):0,held_points:safePoints(p.frozen??0),
-        task_held_points:safePoints(Number(p.frozen??0)-safePoints(p.refund_held)),refund_held_points:safePoints(p.refund_held),
+        available_points:p.unexpired?safePoints(int64(p.remaining??0)-int64(p.frozen??0)):0,held_points:safePoints(p.frozen??0),
+        task_held_points:safePoints(int64(p.frozen??0)-safePoints(p.refund_held)),refund_held_points:safePoints(p.refund_held),
         starts_at:p.starts_at?date(p.starts_at):null,ends_at:p.ends_at?date(p.ends_at):null,credits_expires_at:p.credits_expires_at?date(p.credits_expires_at):null,
-        refundable_until:p.starts_at?new Date(new Date(p.starts_at).getTime()+7*86400000).toISOString():null}))};
+        refundable_until:p.starts_at?new Date(new Date(p.starts_at).getTime()+7*86400000).toISOString():null}))});
   });
 }
 async function insertPeriod(c:PoolClient,s:any,p:ReturnType<typeof plan>,provider:PaymentProvider,requestId:string,hash:string,automatic:boolean){
+  const taskPriceVersion=await currentAutomaticPriceVersion(c);
   const cycle=Number((await c.query('SELECT COALESCE(max(cycle_index),0)+1 n FROM bb_subscription_periods WHERE subscription_id=$1',[s.id])).rows[0].n);
   const order=(await c.query(`INSERT INTO bb_recharge_orders(id,owner_user_id,request_id,request_hash,provider,pack_id,pack_version,amount_fen,points,currency,merchant_id,expires_at,order_kind)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'CNY',$10,now()+interval '30 minutes','subscription') RETURNING *`,
     [uid().replaceAll('-',''),s.owner_user_id,requestId,hash,provider.name,`subscription_${p.id}`,SUBSCRIPTION_CATALOG_VERSION,p.amount_fen,p.points,provider.merchantId])).rows[0];
   const period=(await c.query(`INSERT INTO bb_subscription_periods(id,owner_user_id,subscription_id,cycle_index,order_id,plan_id,catalog_version,amount_fen,points,task_price_version,automatic)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-    [uid(),s.owner_user_id,s.id,cycle,order.id,p.id,SUBSCRIPTION_CATALOG_VERSION,p.amount_fen,p.points,SUBSCRIPTION_TASK_PRICE_VERSION,automatic])).rows[0];
+    [uid(),s.owner_user_id,s.id,cycle,order.id,p.id,SUBSCRIPTION_CATALOG_VERSION,p.amount_fen,p.points,taskPriceVersion,automatic])).rows[0];
   await subscriptionEvent(c,s,'subscription.payment_requested',{period_id:period.id,order_id:order.id,automatic});
   return {order,period};
 }
@@ -84,6 +88,7 @@ export async function createSubscriptionCheckout(pool:Pool,owner:string,input:Su
   if(pending&&new Date(pending.expires_at).getTime()<=Date.now())
     try{await refreshRecharge(pool,owner,pending.id,providers);}catch{/* Unknown stays pending and the transaction below rejects another purchase. */}
   const result=await transaction(pool,async c=>{
+    await assertChannelWritable(c,provider.name,provider.merchantId);
     await lockCreditAccount(c,owner);
     const previous=(await c.query('SELECT * FROM bb_recharge_orders WHERE owner_user_id=$1 AND request_id=$2',[owner,input.request_id])).rows[0];
     if(previous){
@@ -92,16 +97,17 @@ export async function createSubscriptionCheckout(pool:Pool,owner:string,input:Su
       return {subscription:old,order:previous};
     }
     let s=(await c.query('SELECT * FROM bb_subscriptions WHERE owner_user_id=$1 FOR UPDATE',[owner])).rows[0];
+    const taskPriceVersion=await currentAutomaticPriceVersion(c);
     if(subscriptionId&&s?.id!==subscriptionId)throw missing();
     if(s){
       if(s.current_period_end&&new Date(s.current_period_end).getTime()>Date.now())throw invalid('当前订阅周期尚未结束；额度不足可直接充值，下周期再调整方案。');
       if((await c.query("SELECT 1 FROM bb_subscription_periods WHERE subscription_id=$1 AND status='pending'",[s.id])).rowCount)throw invalid('已有订阅付款待核对，请继续原订单，避免重复付款。');
       if(s.mandate_status==='active'||s.mandate_status==='pending'||s.mandate_status==='cancel_pending')throw invalid('请先关闭并核实原自动续费授权，再手动开通下一周期。');
       s=(await c.query(`UPDATE bb_subscriptions SET plan_id=$2,provider=$3,merchant_id=$4,status='pending',auto_renew=false,auto_renew_requested=false,
-        task_price_version=$5,updated_at=now() WHERE id=$1 RETURNING *`,[s.id,p.id,provider.name,provider.merchantId,SUBSCRIPTION_TASK_PRICE_VERSION])).rows[0];
+        task_price_version=$5,updated_at=now() WHERE id=$1 RETURNING *`,[s.id,p.id,provider.name,provider.merchantId,taskPriceVersion])).rows[0];
     }else{
       s=(await c.query(`INSERT INTO bb_subscriptions(id,owner_user_id,plan_id,provider,merchant_id,task_price_version)
-        VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,[uid(),owner,p.id,provider.name,provider.merchantId,SUBSCRIPTION_TASK_PRICE_VERSION])).rows[0];
+        VALUES($1,$2,$3,$4,$5,$6) RETURNING *`,[uid(),owner,p.id,provider.name,provider.merchantId,taskPriceVersion])).rows[0];
     }
     const made=await insertPeriod(c,s,p,provider,input.request_id,hash,false);return {subscription:s,order:made.order};
   });
@@ -135,7 +141,7 @@ async function recordAction(c:PoolClient,s:any,requestId:string,operation:string
 function mandateRequest(s:any):MandateRequest{return{requestId:s.mandate_request_id,subscriptionId:s.id,merchantId:s.merchant_id,amountFen:plan(s.plan_id).amount_fen,currency:'CNY',interval:'month',mandateId:s.mandate_ref};}
 async function applyMandate(pool:Pool,owner:string,id:string,receipt:VerifiedMandate):Promise<any>{
   return transaction(pool,async c=>{
-    await lockCreditAccount(c,owner);
+    await lockCreditAccountForControl(c,owner);
     const s=(await c.query('SELECT * FROM bb_subscriptions WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[id,owner])).rows[0];if(!s)throw missing();
     if(receipt.requestId!==s.mandate_request_id||receipt.subscriptionId!==id||receipt.merchantId!==s.merchant_id||receipt.currency!=='CNY'||receipt.amountFen!==plan(s.plan_id).amount_fen||
       !['pending','active','cancelled'].includes(receipt.state)||receipt.state==='active'&&(!receipt.mandateId||receipt.mandateId.length>128)||s.mandate_ref&&receipt.mandateId&&s.mandate_ref!==receipt.mandateId)throw invalid('自动续费授权回执不匹配。');
@@ -158,7 +164,11 @@ export async function refreshSubscriptionMandate(pool:Pool,owner:string,id:strin
 }
 export async function setSubscriptionAutoRenew(pool:Pool,owner:string,id:string,input:SubscriptionAutoRenewRequest,providers:readonly PaymentProvider[]):Promise<SubscriptionAutoRenew>{
   const result=await transaction(pool,async c=>{
-    await lockCreditAccount(c,owner);
+    if(input.enabled){
+      const channel=(await c.query('SELECT provider,merchant_id FROM bb_subscriptions WHERE id=$1 AND owner_user_id=$2',[id,owner])).rows[0];if(!channel)throw missing();
+      await assertChannelWritable(c,channel.provider,channel.merchant_id);
+      await lockCreditAccount(c,owner);
+    }else await lockCreditAccountForControl(c,owner);
     let s=(await c.query('SELECT * FROM bb_subscriptions WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[id,owner])).rows[0];if(!s)throw missing();
     const provider=adapter(providers,s.provider,s.merchant_id);if(!supportsAutomaticRenewal(provider))throw unavailable();
     if(!await recordAction(c,s,input.request_id,'auto_renew',input.enabled))return{s,provider,create:false};
@@ -177,7 +187,7 @@ export async function setSubscriptionAutoRenew(pool:Pool,owner:string,id:string,
     return{s,provider,create:false};
   });
   if(result.create){
-    let response:{authorizationUrl:string};try{response=await result.provider.recurring!.createMandate(mandateRequest(result.s));}catch{return{subscription:subscriptionDto(result.s),authorization_url:null};}
+    let response:{authorizationUrl:string};try{response=await withBillingDispatch(pool,owner,result.provider.name,result.provider.merchantId,()=>result.provider.recurring!.createMandate(mandateRequest(result.s)));}catch{return{subscription:subscriptionDto(result.s),authorization_url:null};}
     if(!/^https:\/\//.test(response.authorizationUrl)||response.authorizationUrl.length>4096)throw unavailable();
     await pool.query("UPDATE bb_subscriptions SET mandate_url=$3 WHERE id=$1 AND mandate_request_id=$2 AND auto_renew_requested",[id,result.s.mandate_request_id,response.authorizationUrl]);
     return{subscription:subscriptionDto(result.s),authorization_url:response.authorizationUrl};
@@ -186,7 +196,7 @@ export async function setSubscriptionAutoRenew(pool:Pool,owner:string,id:string,
 }
 export async function cancelSubscription(pool:Pool,owner:string,id:string,requestId:string,providers:readonly PaymentProvider[]):Promise<Subscription>{
   const s=await transaction(pool,async c=>{
-    await lockCreditAccount(c,owner);
+    await lockCreditAccountForControl(c,owner);
     const row=(await c.query('SELECT * FROM bb_subscriptions WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[id,owner])).rows[0];if(!row)throw missing();
     if(!await recordAction(c,row,requestId,'cancel',true))return row;
     const updated=(await c.query(`UPDATE bb_subscriptions SET status='cancelled',auto_renew=false,auto_renew_requested=false,
@@ -203,6 +213,8 @@ export async function processDueSubscriptionRenewals(pool:Pool,providers:readonl
   const ids=(await pool.query("SELECT id,owner_user_id FROM bb_subscriptions WHERE auto_renew AND status='active' AND current_period_end<=now() ORDER BY current_period_end,id LIMIT $1",[Math.max(1,Math.min(limit,100))])).rows;
   for(const target of ids){
     const claimed=await transaction(pool,async c=>{
+      const channel=(await c.query('SELECT provider,merchant_id FROM bb_subscriptions WHERE id=$1',[target.id])).rows[0];if(!channel)return null;
+      await assertChannelWritable(c,channel.provider,channel.merchant_id);
       await lockCreditAccount(c,target.owner_user_id);
       const s=(await c.query('SELECT * FROM bb_subscriptions WHERE id=$1 FOR UPDATE',[target.id])).rows[0];
       const provider=eligible.find(p=>p.name===s.provider&&p.merchantId===s.merchant_id);
@@ -217,10 +229,10 @@ export async function processDueSubscriptionRenewals(pool:Pool,providers:readonl
       const create=!period.payment_dispatch_started_at;
       if(create)await c.query('UPDATE bb_subscription_periods SET payment_dispatch_started_at=now() WHERE id=$1',[period.id]);
       return{provider,order,mandateId:s.mandate_ref,create};
-    });
+    }).catch(error=>{if(error instanceof Problem&&error.code==='BILLING_NOT_READY')return null;throw error;});
     if(!claimed)continue;
     try{
-      const receipt=claimed.create?await claimed.provider.recurring!.charge({...paymentOrder(claimed.order),mandateId:claimed.mandateId}):await claimed.provider.query(paymentOrder(claimed.order));
+      const receipt=claimed.create?await withBillingDispatch(pool,target.owner_user_id,claimed.provider.name,claimed.provider.merchantId,()=>claimed.provider.recurring!.charge({...paymentOrder(claimed.order),mandateId:claimed.mandateId})):await claimed.provider.query(paymentOrder(claimed.order));
       await applyVerifiedPayment(pool,claimed.provider,receipt);
     }catch{
       // Unknown payment or a mismatched receipt leaves the same intent pending for query/reconciliation.

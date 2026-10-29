@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type {AuthoringActivity,AuthoringProgress,Run,RunEvent} from '@bondbuddy/contracts';
+import type {AuthoringActivity,AuthoringProgress,Run,RunEvent} from './billing-types.js';
 import {authoringEventLabel,authoringStatus,authoringVisibleEvents,retainAuthoringEvents} from './authoring-progress.js';
 
 const at='2026-10-14T05:41:00Z';

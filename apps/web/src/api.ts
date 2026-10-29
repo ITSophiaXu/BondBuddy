@@ -1,9 +1,10 @@
 import {runRecoverableBillingRequest,observeAutomaticQuotes} from './billing-task-recovery.js';
+import {BILLING_WIRE_HEADER,BILLING_WIRE_VERSION,LEGACY_BILLING_WIRE_VERSION,billingWireRoute,encodeBillingDto,validateBillingDto} from '@bondbuddy/contracts';
 import { UserFacingError, unknownErrorText, type ErrorOperation } from './user-facing-error.js';
 import type { Static } from '@sinclair/typebox';
-import type { schemas, SchemaName, DataPolicy, AgreementResponse } from '@bondbuddy/contracts';
+import type { schemas, SchemaName, DataPolicy, AgreementResponse } from './billing-types.js';
 import type { FactDecisionRequest } from '@bondbuddy/contracts';
-import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest,SubscriptionCheckout,Subscription,SubscriptionAutoRenewRequest,SubscriptionAutoRenew} from '@bondbuddy/contracts';
+import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest,SubscriptionCheckout,Subscription,SubscriptionAutoRenewRequest,SubscriptionAutoRenew} from './billing-types.js';
 import { isUploadInspectionPublicReason, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
@@ -162,9 +163,19 @@ export class ApiClient {
   }
 
   async request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal): Promise<T> {
+    headers={[BILLING_WIRE_HEADER]:BILLING_WIRE_VERSION,...headers};
+    const family=billingWireRoute(method,path);
+    if(family?.request&&body!==undefined&&headers[BILLING_WIRE_HEADER]!==LEGACY_BILLING_WIRE_VERSION)body=encodeBillingDto(family.request,body);
     const value=await runRecoverableBillingRequest(method,path,body,headers,async()=>{
       const response=await this.response(method,path,body,headers,signalOverride);
-      return response.status===204?undefined as T:await response.json() as T;
+      if(response.status===204)return undefined as T;
+      let payload:unknown=await response.json();
+      if(family?.response){
+        // Legacy replay receipts may be narrowed numbers; normalize only the returned view.
+        if(headers[BILLING_WIRE_HEADER]===LEGACY_BILLING_WIRE_VERSION)payload=encodeBillingDto(family.response,payload);
+        else try{validateBillingDto(family.response,payload);}catch{throw new ApiError(0,'DATA_UNAVAILABLE');}
+      }
+      return payload as T;
     });
     observeAutomaticQuotes(value);
     // Refresh the signed-in wallet after charge/quote reads and explicit execution/payment changes.

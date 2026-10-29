@@ -1,9 +1,11 @@
+import {safeBillingNumber} from '@bondbuddy/contracts';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Pool } from 'pg';
 import type { Static } from '@sinclair/typebox';
 import { RECHARGE_PACKS, RECHARGE_PACK_VERSION, OUTCOME_PRICE_VERSION, schemas, type CommerceTopup } from '@bondbuddy/contracts';
 import { date, digest, missing, Problem, project, transaction, uid } from './data.js';
-import { grantCredits,lockCreditAccount } from './billing.js';
+import { grantCredits,lockCreditAccount,lockCreditAccountForControl } from './billing.js';
+import {assertChannelWritable,assertWalletWritable,withBillingDispatch} from './billing-safety.js';
 import { installPaymentRefunds,recordPaymentCashProof,type PaymentRefundProvider } from './payment-refunds.js';
 import {activateSubscriptionPayment,markSubscriptionPaymentFailed,type RecurringPaymentProvider} from './subscriptions.js';
 import type {PaymentStatementRequest,VerifiedPaymentStatement} from './payment-statements-format.js';
@@ -21,6 +23,9 @@ export interface PaymentProvider {
   closePayment?(order:PaymentOrder):Promise<VerifiedPayment>;
   /** Present only when authenticated daily statement downloading is explicitly enabled. */
   downloadStatements?(request:PaymentStatementRequest):Promise<VerifiedPaymentStatement>;
+  readonly statementKinds?:readonly ('trade'|'funds')[];
+  /** Configured request application, not evidence that each merchant bill row belongs to it. */
+  readonly statementAppId?:string;
   readonly statementAccounts?:readonly ('BASIC'|'OPERATION'|'FEES')[];
   verifyCallback(headers:FastifyRequest['headers'],rawBody:string):Promise<VerifiedPayment>;
   acknowledgement:object|string;
@@ -28,9 +33,9 @@ export interface PaymentProvider {
   /** Present only for a implemented, authenticated mandate adapter. Native checkout alone is not recurring payment. */
   readonly recurring?:RecurringPaymentProvider;
 }
-export function paymentOrder(row:any):PaymentOrder{return {id:row.id,merchant_id:row.merchant_id,amount_fen:Number(row.amount_fen),currency:row.currency,expires_at:date(row.expires_at)};}
+export function paymentOrder(row:any):PaymentOrder{return {id:row.id,merchant_id:row.merchant_id,amount_fen:safeBillingNumber(row.amount_fen),currency:row.currency,expires_at:date(row.expires_at)};}
 export function rechargeDto(row:any):Static<typeof schemas.RechargeOrderResponse>{return {order_id:row.id,provider:row.provider,state:row.state,
-  amount_fen:Number(row.amount_fen),points:Number(row.points),currency:row.currency,checkout_url:row.checkout_url,
+  amount_fen:safeBillingNumber(row.amount_fen),points:safeBillingNumber(row.points),currency:row.currency,checkout_url:row.checkout_url,
   project_id:row.project_id,expires_at:date(row.expires_at),credited_at:row.credited_at?date(row.credited_at):null};}
 const unavailable=()=>new Problem(503,'PAYMENT_UNAVAILABLE','Payment channel is not configured');
 function adapter(providers:readonly PaymentProvider[],name:string,merchantId?:string){
@@ -39,11 +44,14 @@ function adapter(providers:readonly PaymentProvider[],name:string,merchantId?:st
 export async function applyVerifiedPayment(pool:Pool,provider:PaymentProvider,receipt:VerifiedPayment){
   return transaction(pool,async c=>{
     const pointer=(await c.query('SELECT owner_user_id FROM bb_recharge_orders WHERE id=$1',[receipt.orderId])).rows[0];if(!pointer)throw missing();
-    await lockCreditAccount(c,pointer.owner_user_id);
+    if(receipt.state==='paid'){
+      await assertChannelWritable(c,provider.name,provider.merchantId);
+      await lockCreditAccount(c,pointer.owner_user_id);
+    }else await lockCreditAccountForControl(c,pointer.owner_user_id);
     const order=(await c.query('SELECT * FROM bb_recharge_orders WHERE id=$1 FOR UPDATE',[receipt.orderId])).rows[0];
     if(!order)throw missing();
     if(order.provider!==provider.name||order.merchant_id!==provider.merchantId||receipt.merchantId!==order.merchant_id||
-      receipt.currency!==order.currency||receipt.amountFen!==Number(order.amount_fen)||
+      receipt.currency!==order.currency||receipt.amountFen!==safeBillingNumber(order.amount_fen)||
       !Number.isSafeInteger(receipt.amountFen)||!['pending','paid','expired','failed'].includes(receipt.state)||receipt.state==='paid'&&(!receipt.transactionId||receipt.transactionId.length>128))
       throw new Problem(422,'PAYMENT_INVALID','Verified payment does not match the locked order');
     if(order.provider_txn_id&&receipt.transactionId&&order.provider_txn_id!==receipt.transactionId)
@@ -55,7 +63,7 @@ export async function applyVerifiedPayment(pool:Pool,provider:PaymentProvider,re
         // A historical paid replay may add independently verified cash evidence,
         // but must never manufacture a missing original lot or reissue credits.
         const lot=(await c.query('SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND source_key=$2',[order.owner_user_id,`recharge:${order.id}`])).rows[0];
-        if(!lot||Number(lot.original_points)!==Number(order.points)||lot.source!==(order.order_kind==='subscription'?'subscription':'purchase'))
+        if(!lot||safeBillingNumber(lot.original_points)!==safeBillingNumber(order.points)||lot.source!==(order.order_kind==='subscription'?'subscription':'purchase'))
           throw new Problem(503,'DATA_UNAVAILABLE','Original paid credit lot requires reconciliation');
         await recordPaymentCashProof(c,order,lot.id,receipt.payerCash);
         if(receipt.paidAt&&!order.provider_paid_at)await c.query('UPDATE bb_recharge_orders SET provider_paid_at=$2 WHERE id=$1',[order.id,receipt.paidAt]);
@@ -68,7 +76,7 @@ export async function applyVerifiedPayment(pool:Pool,provider:PaymentProvider,re
       await c.query("UPDATE bb_recharge_orders SET state='paid',provider_txn_id=$2,credited_at=COALESCE(credited_at,now()),provider_paid_at=COALESCE(provider_paid_at,$3) WHERE id=$1",[order.id,receipt.transactionId,receipt.paidAt??null]);
       const lotId=order.order_kind==='subscription'
         ?await activateSubscriptionPayment(c,order,`payment:${provider.name}`)
-        :await grantCredits(c,{owner:order.owner_user_id,source:'purchase',key:`recharge:${order.id}`,points:Number(order.points),expiresAt:null,actor:`payment:${provider.name}`,reason:`verified_order:${order.id}`});
+        :await grantCredits(c,{owner:order.owner_user_id,source:'purchase',key:`recharge:${order.id}`,points:safeBillingNumber(order.points),expiresAt:null,actor:`payment:${provider.name}`,reason:`verified_order:${order.id}`});
       await recordPaymentCashProof(c,{...order,state:'paid',provider_txn_id:receipt.transactionId},lotId,receipt.payerCash);
     }else if(order.state!=='paid'&&receipt.state!=='pending'){
       await c.query("UPDATE bb_recharge_orders SET state=$2,close_confirmed_at=CASE WHEN $2='expired' AND close_requested_at IS NOT NULL THEN COALESCE(close_confirmed_at,now()) ELSE close_confirmed_at END WHERE id=$1",[order.id,receipt.state]);
@@ -89,6 +97,8 @@ export async function createRecharge(pool:Pool,owner:string,input:OrderRequest,p
     // order's immutable consideration or its idempotent payment recovery.
     if(!allowNewOrders)throw unavailable();
     const p=adapter(providers,input.provider);
+    await assertChannelWritable(c,p.name,p.merchantId);
+    await assertWalletWritable(c,owner);
     if(input.project_id)await project(c,owner,input.project_id);
     return (await c.query(`INSERT INTO bb_recharge_orders(id,owner_user_id,request_id,request_hash,provider,pack_id,pack_version,amount_fen,points,currency,project_id,merchant_id,expires_at)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'CNY',$10,$11,now()+interval '30 minutes') RETURNING *`,
@@ -105,6 +115,8 @@ export async function createServiceTopup(pool:Pool,owner:string,input:CommerceTo
     await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`recharge:${owner}:${input.request_id}`]);
     const old=(await c.query('SELECT * FROM bb_recharge_orders WHERE owner_user_id=$1 AND request_id=$2',[owner,input.request_id])).rows[0];
     if(old){if(old.request_hash.trim()!==hash)throw new Problem(409,'IDEMPOTENCY_CONFLICT','Payment key already used');return old;}
+    await assertChannelWritable(c,p.name,p.merchantId);
+    await assertWalletWritable(c,owner);
     return (await c.query(`INSERT INTO bb_recharge_orders(id,owner_user_id,request_id,request_hash,provider,pack_id,pack_version,amount_fen,points,currency,project_id,merchant_id,expires_at)
       VALUES($1,$2,$3,$4,$5,'service_balance',$6,$7,$7,'CNY',$8,$9,now()+interval '30 minutes') RETURNING *`,
       [uid().replaceAll('-',''),owner,input.request_id,hash,p.name,OUTCOME_PRICE_VERSION,input.amount_fen,input.project_id??null,p.merchantId])).rows[0];
@@ -118,7 +130,8 @@ export async function openCheckout(pool:Pool,owner:string,order:any,providers:re
   if(new Date(order.expires_at).getTime()<=Date.now())return refreshRecharge(pool,owner,order.id,providers);
   const originalProvider=adapter(providers,order.provider,order.merchant_id);
   let checkoutUrl:string;
-  try{({checkoutUrl}=await originalProvider.create(paymentOrder(order)));}catch{throw unavailable();}
+  try{({checkoutUrl}=await withBillingDispatch(pool,owner,originalProvider.name,originalProvider.merchantId,()=>originalProvider.create(paymentOrder(order))));}
+  catch(error){if(error instanceof Problem)throw error;throw unavailable();}
   if(checkoutUrl.length>4096||!(/^https:\/\//.test(checkoutUrl)||/^weixin:\/\/wxpay\/bizpayurl\?/.test(checkoutUrl)))throw unavailable();
   const saved=await pool.query("UPDATE bb_recharge_orders SET checkout_url=COALESCE(checkout_url,$3) WHERE id=$1 AND owner_user_id=$2 RETURNING *",[order.id,owner,checkoutUrl]);
   return rechargeDto(saved.rows[0]);
@@ -135,13 +148,16 @@ export async function refreshRecharge(pool:Pool,owner:string,id:string,providers
   if(order.order_kind==='subscription'&&(await pool.query('SELECT automatic FROM bb_subscription_periods WHERE order_id=$1',[order.id])).rows[0]?.automatic)
     return updated; // A mandate charge must never turn into an additional interactive checkout.
   // Recover the same payment intent after a create timeout, rather than asking for another payment.
-  if(updated.state==='pending'&&!updated.checkout_url&&new Date(order.expires_at).getTime()>Date.now())return openCheckout(pool,owner,order,providers);
+  if(updated.state==='pending'&&!updated.checkout_url&&new Date(order.expires_at).getTime()>Date.now()){
+    try{return await openCheckout(pool,owner,order,providers);}
+    catch(error){if(error instanceof Problem&&error.code==='BILLING_NOT_READY')return updated;throw error;}
+  }
   return updated;
 }
 /** The original purchase owner (or expiry recovery) can close this same immutable intent. */
 export async function closeRecharge(pool:Pool,owner:string,id:string,providers:readonly PaymentProvider[],expiredOnly=false):Promise<Static<typeof schemas.RechargeOrderResponse>>{
   const order=await transaction(pool,async c=>{
-    await lockCreditAccount(c,owner);
+    await lockCreditAccountForControl(c,owner);
     const row=(await c.query('SELECT * FROM bb_recharge_orders WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[id,owner])).rows[0];if(!row)throw missing();
     if(row.state==='paid'||row.close_confirmed_at)return row;
     if(expiredOnly&&!row.close_requested_at&&new Date(row.expires_at).getTime()>Date.now())throw new Problem(409,'PAYMENT_INVALID','Original checkout has not expired');

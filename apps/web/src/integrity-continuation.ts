@@ -1,5 +1,6 @@
+import {int64,parseInt64} from '@bondbuddy/contracts';
 import {INTEGRITY_PRICE,INTEGRITY_SITES,IntegrityDraftSchema,IntegrityEvidenceSchema,IntegrityManualSchema,IntegrityRoundSchema,
-  type IntegrityDraft,type IntegrityEvidence,type IntegrityManual,type IntegrityRecord,type IntegrityRound,type IntegritySubject} from '@bondbuddy/contracts';
+  type IntegrityDraft,type IntegrityEvidence,type IntegrityManual,type IntegrityRecord,type IntegrityRound,type IntegritySubject} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
 
 export type IntegrityRoundChoice={roundId?:string;original?:IntegrityRound;originalMissing?:boolean;error?:string};
@@ -50,17 +51,18 @@ function evidenceError(evidence:readonly IntegrityEvidence[]):string|undefined{
     ids.add(item.id);requests.add(item.request_id);
   }
 }
+function validPoints(v:unknown){try{parseInt64(v);return true;}catch{return false;}}
 function roundError(value:unknown):string|undefined{
   if(!Value.Check(IntegrityRoundSchema,value)||![value.run_id,value.round_id,value.manifest.round_id].every(validId)||!validDraft(value.manifest.draft)||
     !value.manifest.draft.subjects.length||!value.manifest.draft.site_ids.length||!safeInteger(value.sequence)||
-    !safeInteger(value.charged_points)||!safeInteger(value.reserved_points)||!Number.isFinite(Date.parse(value.created_at))||
+    !validPoints(value.charged_points)||!validPoints(value.reserved_points)||!Number.isFinite(Date.parse(value.created_at))||
     value.artifacts.some(artifact=>!validId(artifact.artifact_id)||!safeInteger(artifact.artifact_version))||
     value.artifact_id!==null&&!validId(value.artifact_id))return '本轮核查记录不完整，请重新读取后再继续。';
   if(value.operation!==value.manifest.operation||value.round_id!==value.manifest.round_id)return '本轮核查身份与执行快照不一致，请重新读取后再继续。';
   if(value.operation==='check'){
-    if(value.run_id!==value.round_id||value.manifest.points!==(value.manifest.pricing_mode==='outcome_cny_v1'?value.manifest.amount_fen:INTEGRITY_PRICE.points)||value.manifest.records.length||value.manifest.evidence_ids.length)
+    if(value.run_id!==value.round_id||int64(value.manifest.points)!==int64(value.manifest.pricing_mode==='outcome_cny_v1'?value.manifest.amount_fen:INTEGRITY_PRICE.points)||value.manifest.records.length||value.manifest.evidence_ids.length)
       return '原核查轮次与收费快照不一致，请重新读取后再继续。';
-  }else if(value.run_id===value.round_id||value.manifest.points!==0||value.charged_points!==0||value.reserved_points!==0)
+  }else if(value.run_id===value.round_id||int64(value.manifest.points)!==0n||int64(value.charged_points)!==0n||int64(value.reserved_points)!==0n)
     return '免费导出与原核查轮次不一致，请重新读取后再继续。';
 }
 

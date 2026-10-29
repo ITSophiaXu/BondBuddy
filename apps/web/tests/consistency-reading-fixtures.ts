@@ -1,7 +1,10 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page} from '@playwright/test';
 import {Value} from '@sinclair/typebox/value';
 import {ProjectFileCheckSchema,ProjectFileSourceSchema,ProjectFileVersionSchema,PROJECT_FILE_UPDATE_PRICE,schemas,type ProjectFileFinding} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {fixture as selectionFixture,install as installSelection,assertFixture as assertSelection,
   ids,base,cacheKey,fileIds,checkId,routeFor as selectionRoute,changeSource,writes,serverSnapshot} from './consistency-selection-fixtures';
 import {now,seedCache,hash} from './consistency-task-fixtures';
@@ -86,16 +89,17 @@ const installed=new WeakMap<Page,State>();
 export async function install(page:Page,s=fixture()){
   assertData(s);await installSelection(page,s);installed.set(page,s);
   await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const req=route.request(),url=new URL(req.url()),path=url.pathname.slice('/api/v1'.length);
     if(req.method()==='POST'&&path===`/runs/${patchRun}/pause`&&s.allowPause){
-      const body=req.postDataJSON();s.calls.push({method:'POST',path,search:url.search,body:structuredClone(body)});
+      const body=fixtureRequest(req);s.calls.push({method:'POST',path,search:url.search,body:structuredClone(body)});
       try{
         expect(Value.Check(schemas.RunActionRequest,body),'Existing explicit run action request schema').toBe(true);expect(body).toEqual({reason:'user_paused'});
         const task=s.tasks.find(t=>t.run_id===patchRun)!;expect(task.state).toBe('running');task.state='paused';task.stage='paused';
         for(const check of s.checks)for(const update of check.updates)if(update.run_id===patchRun)update.state='paused';s.runActions.push({run:patchRun,action:'pause',body:structuredClone(body)});
         const result:Dto<'RunResponse'>={run_id:patchRun,execution_request_id:'prior-'+patchRun,project_id:ids.root,input_revision:4,input_hash:hash(patchRun),state:'paused',stage:'paused',event_cursor:0,channel:'production',test_grant_id:null,uncovered_items:[],billing_mode:'fixed_credits',reservation_id:null,artifact_id:null,prompt_snapshot_ref:null,updated_at:now};
-        expect(Value.Check(schemas.RunResponse,result),'Existing explicit run action response schema').toBe(true);return route.fulfill({status:200,json:result});
-      }catch(error){s.errors.push(error instanceof Error?error.message:String(error));return route.fulfill({status:500,json:{code:'DATA_UNAVAILABLE',message:'Synthetic explicit pause failed',retryable:true,correlation_id:'consistency-reading',field_errors:[]}});}
+        expect(Value.Check(schemas.RunResponse,result),'Existing explicit run action response schema').toBe(true);return route.fulfill({status:200,json:fixtureBody(route,result)});
+      }catch(error){s.errors.push(error instanceof Error?error.message:String(error));return route.fulfill({status:500,json:fixtureBody(route,{code:'DATA_UNAVAILABLE',message:'Synthetic explicit pause failed',retryable:true,correlation_id:'consistency-reading',field_errors:[]})});}
     }
     const kind:ReadKind|undefined=path===base+'/checks'?'checks':path===base?'files':path===base+'/workspace'?'workspace':path===base+'/updates'?'updates':undefined;
     if(req.method()!=='GET'||!kind)return route.fallback();
@@ -107,9 +111,9 @@ export async function install(page:Page,s=fixture()){
       const payload=structuredClone(kind==='checks'?{checks:s.checks}:kind==='files'?{files:s.files}:kind==='updates'?{batches:s.batches}:{project_id:ids.root,source:s.source,workspace:s.workspace,files:s.files,batches:[]});
       const record:Read={kind,generation,order:s.reads.length,state:s.checks[0]?.state??'missing',source:s.source?.version_id??null,fileCount:s.files.length,replied:false,failed:false};s.reads.push(record);
       const held=s.heldRead;if(held&&held.kind===kind&&held.generation===generation){held.arrived.release();await held.held.promise;}
-      const failure=s.failRead;if(failure&&failure.kind===kind&&failure.generation===generation){s.failRead=undefined;record.failed=true;record.replied=true;return route.fulfill({status:503,json:{code:'DATA_UNAVAILABLE',message:'Synthetic scheduled reading refresh failure',retryable:true,correlation_id:'consistency-reading',field_errors:[]}});}
-      record.replied=true;return route.fulfill({status:200,json:payload});
-    }catch(error){s.errors.push(error instanceof Error?error.message:String(error));return route.fulfill({status:500,json:{code:'DATA_UNAVAILABLE',message:'Synthetic reading fixture assertion failed',retryable:true,correlation_id:'consistency-reading',field_errors:[]}});}
+      const failure=s.failRead;if(failure&&failure.kind===kind&&failure.generation===generation){s.failRead=undefined;record.failed=true;record.replied=true;return route.fulfill({status:503,json:fixtureBody(route,{code:'DATA_UNAVAILABLE',message:'Synthetic scheduled reading refresh failure',retryable:true,correlation_id:'consistency-reading',field_errors:[]})});}
+      record.replied=true;return route.fulfill({status:200,json:fixtureBody(route,payload)});
+    }catch(error){s.errors.push(error instanceof Error?error.message:String(error));return route.fulfill({status:500,json:fixtureBody(route,{code:'DATA_UNAVAILABLE',message:'Synthetic reading fixture assertion failed',retryable:true,correlation_id:'consistency-reading',field_errors:[]})});}
   });return s;
 }
 export async function open(page:Page,s=fixture(),file?:string){await page.setViewportSize({width:1440,height:960});await install(page,s);await page.goto(routeFor(file));await expect(page.locator('.fc-results')).toBeVisible();return s;}

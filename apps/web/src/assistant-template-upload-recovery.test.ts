@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHash } from 'node:crypto';
-import { type M4MaterialPin, type M4Template, type M4TemplateCreateRequest, type M4ViewRequest, type M4ViewState, type M4Workspace } from '@bondbuddy/contracts';
+import { type M4MaterialPin, type M4Template, type M4TemplateCreateRequest, type M4ViewRequest, type M4ViewState, type M4Workspace } from './billing-types.js';
 import { ApiError, type Dto } from './api.js';
 import { AssistantTemplateUploadRecovery, AssistantTemplateUploadRecoveryError, assistantTemplateUploadContext, assistantTemplateUploadRecordMatches } from './assistant-template-upload-recovery.js';
 import { AssistantViewCache, assistantDigest, assistantSame, type AssistantViewSnapshot } from './assistant-view-cache.js';

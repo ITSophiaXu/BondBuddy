@@ -16,7 +16,7 @@ import {storeTemplateMaterial} from './file-template-library.js';
 import {readM4MaterialPin} from './m4-workspace.js';
 import {readProjectFileAsset} from './project-file-storage.js';
 import {qaMaterials} from './project-qa.js';
-import {emptyFileGenerationPreparation,M4_DOCUMENT_FIXED_PRICE,type FileTemplateSet} from '@bondbuddy/contracts';
+import {emptyFileGenerationPreparation,M4_DOCUMENT_FIXED_PRICE,billingWireRoute,encodeBillingDto,safeBillingNumber,BILLING_WIRE_HEADER,LEGACY_BILLING_WIRE_VERSION,type FileTemplateSet} from '@bondbuddy/contracts';
 for(const automatic of [false,true]){
 const connection=await isolatedTestDatabase(undefined,'file-generation-'+(automatic?'automatic':'legacy'));
 test(`real PostgreSQL (${automatic?'automatic':'legacy'}): private import, builtin adoption, redacted previews, immutable mixed batch and rollback`,{skip:!connection},async()=>{
@@ -24,7 +24,7 @@ test(`real PostgreSQL (${automatic?'automatic':'legacy'}): private import, built
  const memory=new Map<string,Buffer>();const blobs:PrivateBlobs={put:async(k,b)=>{memory.set(k,Buffer.from(b));},get:async k=>memory.get(k)!,getIfExists:async k=>memory.get(k)??null,getIfExistsBounded:async(k,max)=>{const b=memory.get(k);return b&&b.length<=max?b:null;},exists:async k=>memory.has(k),delete:async k=>{memory.delete(k);}};
  const app=createServer({pool,blobs,enableSubscriptionBilling:automatic,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true})});
  const errors:string[]=[];app.addHook('onError',async(_req,_reply,error)=>{errors.push(error.message);});
- const send=(method:string,path:string,body?:unknown)=>app.inject({method:method as any,url:path,payload:body as any,headers:{origin:'http://bondbuddy.test',...(Buffer.isBuffer(body)?{'content-type':'application/octet-stream'}:{})}});
+ const send=(method:string,path:string,body?:unknown)=>{const family=billingWireRoute(method,path);return app.inject({method:method as any,url:path,payload:(family?.request&&body!==undefined?encodeBillingDto(family.request,body):body) as any,headers:{origin:'http://bondbuddy.test',...(Buffer.isBuffer(body)?{'content-type':'application/octet-stream'}:{})}});};
  const ok=async(method:string,path:string,body?:unknown)=>{const r=await send(method,path,body);assert.ok(r.statusCode<300,`${r.statusCode}: ${r.body}; ${errors.join(' | ')}`);return r.json();};
  const oldBundle=process.env.BB_FILE_TEMPLATE_BUNDLE,temporary=await mkdtemp(join(tmpdir(),'bb-template-fixture-'));
  try{
@@ -54,9 +54,9 @@ test(`real PostgreSQL (${automatic?'automatic':'legacy'}): private import, built
   const quoted=await ok('POST',base+'/quote',request);assert.equal(quoted.count,2);assert.equal(quoted.omitted.length,2);
   const grant=async(points:number)=>transaction(pool,c=>grantCredits(c,{owner,points,key:randomUUID(),source:'purchase',expiresAt:null,actor:'synthetic-test',reason:'isolated mixed billing regression'}));
   if(automatic){
-   assert.equal(workspace.pricing.mode,'automatic');assert.equal(workspace.pricing.workpaper_points,3458);assert.equal(workspace.pricing.document_points,7965);
-   assert.equal(quoted.points,11423);assert.equal(quoted.auto_charge,true);
-   request={...request,expected_points:quoted.points,price_version:quoted.price_version,document_quotes:quoted.documents.map((d:any)=>({document_type:d.document_type,draft_version:d.draft_version,scope_quote_id:d.scope_quote_id}))};
+   assert.equal(workspace.pricing.mode,'automatic');assert.equal(workspace.pricing.workpaper_points,'3458');assert.equal(workspace.pricing.document_points,'7965');
+   assert.equal(quoted.points,'11423');assert.equal(quoted.auto_charge,true);
+   request={...request,expected_points:safeBillingNumber(quoted.points),price_version:quoted.price_version,document_quotes:quoted.documents.map((d:any)=>({document_type:d.document_type,draft_version:d.draft_version,scope_quote_id:d.scope_quote_id}))};
    const repeated=await ok('POST',base+'/quote',request);assert.deepEqual(repeated.documents.map((d:any)=>[d.draft_version,d.scope_quote_id]),quoted.documents.map((d:any)=>[d.draft_version,d.scope_quote_id]),'quote retry pins the same drafts and scopes');
    await grant(7965); // enough for either child, insufficient for their combined scope
    assert.equal((await send('POST',base+'/batches',request)).statusCode,402);
@@ -75,7 +75,7 @@ test(`real PostgreSQL (${automatic?'automatic':'legacy'}): private import, built
   await pool.query('DROP TRIGGER bb_test_fail_document_batch ON bb_project_file_batches; DROP FUNCTION bb_test_fail_document_batch()');
   const results=await Promise.all([ok('POST',base+'/batches',request),ok('POST',base+'/batches',request)]);assert.equal(results[0].batch_id,results[1].batch_id);assert.ok(results[0].workpapers);assert.ok(results[0].documents);
   if(automatic){
-   assert.equal(results[0].points,11423);
+   assert.equal(results[0].points,'11423');
    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_scope_acceptances')).rows[0].n,1,'one document scope accepted across concurrent replay');
    const child=(await pool.query('SELECT items FROM bb_project_file_batches WHERE id=$1',[results[0].documents.batch_id])).rows[0].items[0];
    assert.equal(child.points,7965);assert.ok(child.scope_acceptance_id);
@@ -92,6 +92,13 @@ test(`real PostgreSQL (${automatic?'automatic':'legacy'}): private import, built
   const abandoned={...request,request_id:randomUUID()};assert.equal((await ok('POST',base+'/stop-submission',abandoned)).batch,null);assert.equal((await send('POST',base+'/batches',abandoned)).statusCode,409,'a delayed retry cannot create a cancelled submission');
   await ok('PUT',base+'/preparation',{expected_revision:1,preparation:{...prep,requirements:'new preparation'}});
   assert.equal((await ok('POST',base+'/batches',request)).batch_id,results[0].batch_id,'receipt replays before consulting the changed preparation');
+  const legacy=(body:unknown)=>app.inject({method:'POST',url:base+'/batches',payload:body as any,headers:{origin:'http://bondbuddy.test',[BILLING_WIRE_HEADER]:LEGACY_BILLING_WIRE_VERSION}});
+  const replay=await legacy(request);assert.equal(replay.statusCode,200);assert.equal(replay.json().batch_id,results[0].batch_id);assert.equal(replay.json().points,request.expected_points);
+  assert.equal((await legacy({...request,expected_points:request.expected_points+1})).statusCode,409,'legacy replay preserves the original immutable amount/hash');
+  assert.equal((await legacy({...request,request_id:randomUUID()})).json().code,'BILLING_PROTOCOL_REPLAY_ONLY','legacy protocol cannot admit a new batch');
+  owner='foreign-'+randomUUID();assert.equal((await legacy(request)).json().code,'BILLING_PROTOCOL_REPLAY_ONLY','legacy replay is owner scoped');owner=originalOwner;
+  assert.equal((await app.inject({method:'POST',url:base+'/batches',payload:request,headers:{origin:'http://bondbuddy.test'}})).statusCode,422,'current wire rejects raw numeric money before handler');
+  const view=await ok('GET',base);assert.equal(typeof view.batches[0].points,'string');assert.equal(typeof view.batches[0].workpapers.total_points,'string');assert.equal(typeof view.revision,'number');
   assert.equal((await send('POST',base+'/batches',{...request,expected_revision:2})).statusCode,409);
   assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1',[owner])).rows[0].n,automatic?2:0,'preparation and task submission do not fake a charge');
  }finally{if(oldBundle===undefined)delete process.env.BB_FILE_TEMPLATE_BUNDLE;else process.env.BB_FILE_TEMPLATE_BUNDLE=oldBundle;await app.close();await pool.end();if(relative(resolve(tmpdir()),resolve(temporary)).startsWith('bb-template-fixture-'))await rm(temporary,{recursive:true,force:true});}

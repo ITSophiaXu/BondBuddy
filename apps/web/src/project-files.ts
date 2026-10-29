@@ -1,5 +1,5 @@
 import {WorkpaperLibraryPanel} from './workpaper-library';
-import {PROJECT_DOCUMENT_CATALOG,M1_UPLOAD_LIMITS,resultFilename,type ProjectFileVersion,type ProjectFileCheck,type ProjectDocumentType,type ProjectFileSource,type ProjectFileWorkspace,type M4Workspace,type M4MaterialPin} from '@bondbuddy/contracts';
+import {PROJECT_DOCUMENT_CATALOG,M1_UPLOAD_LIMITS,resultFilename,type ProjectFileVersion,type ProjectFileCheck,type ProjectDocumentType,type ProjectFileSource,type ProjectFileWorkspace,type M4Workspace,type M4MaterialPin} from './billing-types.js';
 import {uploadFileMaterial,type UploadFileMaterialState} from './file-workspace';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
 import { UserFacingError } from './user-facing-error';

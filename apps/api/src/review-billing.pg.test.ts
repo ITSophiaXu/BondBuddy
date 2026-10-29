@@ -32,7 +32,7 @@ test('paid review: quote only, insufficient/concurrent submissions, immutable pr
     const request={execution_request_id:uid(),operation:'full_review',expected_input_version:1,source_report_id:null,expected_plan_version:null,finding_ids:[]};
     await publishPrices(pool,{id:'review-prices-v1',prices,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic',reason:'test'});
     const quote=ok(await send('POST',`${base}/review-executions/quote`,request));
-    assert.equal(quote.quote.points,300);assert.equal(quote.shortage,300);
+    assert.equal(quote.quote.points,'300');assert.equal(quote.shortage,'300');
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[p.project_id])).rows[0].n,0);
     assert.equal((await send('POST',`${base}/review-executions`,request)).json().code,'QUOTE_REQUIRED');
     const paid={...request,quote_id:quote.quote.quote_id};
@@ -49,7 +49,7 @@ test('paid review: quote only, insufficient/concurrent submissions, immutable pr
     const report=await syntheticReviewPair(pool,lease,blobs);
     await finish(pool,lease,'succeeded',{artifactId:report.artifactId,artifactVersion:1,blobs});
     assert.deepEqual(await creditBalance(pool,owner),{available:4700,frozen:0});
-    const receipt=ok(await send('GET',`/api/v1/runs/${run.run_id}/credit-charge`));assert.equal(receipt.state,'settled');assert.equal(receipt.quote.points,300);
+    const receipt=ok(await send('GET',`/api/v1/runs/${run.run_id}/credit-charge`));assert.equal(receipt.state,'settled');assert.equal(receipt.quote.points,'300');
     assert.equal(ok(await send('POST',`${base}/review-executions`,paid)).run_id,run.run_id);
     const update={execution_request_id:uid(),source_run_id:run.run_id,requirements:'Synthetic revision'};
     const uq=ok(await send('POST',`${base}/review-updates/quote`,update));assert.equal(uq.quote.task_type,'review_revision');
@@ -58,7 +58,7 @@ test('paid review: quote only, insufficient/concurrent submissions, immutable pr
     await pool.query("UPDATE bb_runs SET state='failed' WHERE id=$1",[updateRun.run_id]);
     assert.deepEqual(await creditBalance(pool,owner),{available:4700,frozen:0});
     const next={...request,execution_request_id:uid()};
-    const nq=ok(await send('POST',`${base}/review-executions/quote`,next));assert.equal(nq.quote.points,350);
+    const nq=ok(await send('POST',`${base}/review-executions/quote`,next));assert.equal(nq.quote.points,'350');
     await publishPrices(pool,{id:'review-prices-v3',prices,effectiveAt:'2026-01-03T00:00:00Z',actor:'synthetic',reason:'test update'});
     assert.equal((await send('POST',`${base}/review-executions`,{...next,quote_id:nq.quote.quote_id})).json().code,'QUOTE_CHANGED');
     const fresh=ok(await send('POST',`${base}/review-executions/quote`,next));

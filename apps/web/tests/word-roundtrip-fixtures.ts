@@ -1,3 +1,6 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {expect,type Download,type Page,type Route} from '@playwright/test';
@@ -7,7 +10,7 @@ import {M4_DOCUMENT_TYPES,M4_DOCUMENT_BILLING_TASKS,M4_DOCUMENT_FIXED_PRICE,M4Dr
   type M4Artifact,type M4ArtifactPin,type M4DocumentType,type M4Draft,type M4DraftRequest,
   type M4ExecuteRequest,type M4QuoteRequest,type M4QuoteResponse,type M4Task,type M4ViewRequest,
   type ProjectFileCheck,type ProjectFileVersion,type ProjectFileWorkspace,type Run} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 
 // A synthetic owner-scoped HTTP server projection. All UI uses the real main.ts
 // route and native controls. It models immutable bytes, imports CAS/idempotency,
@@ -45,7 +48,7 @@ type ImportBody=Dto<'ProjectFileImportRequest'>;
 type Material={owner:string;project:string;dto:Dto<'MaterialResponse'>;bytes:Buffer};
 type Session={owner:string;project:string;declaration:Dto<'UploadCreateRequest'>;bytes?:Buffer;material?:Material};
 type Options={mismatch?:'hash'|'version'|'project'|'missing-run'|'file-patch'|'plain-topic';registryFailure?:boolean;workspaceFailure?:boolean};
-const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,json:body});
+const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,json:fixtureBody(route,body)});
 const failure=(route:Route,status:number,code='DATA_UNAVAILABLE')=>json(route,status,{code,message:'Synthetic '+code,retryable:status>=500,correlation_id:'word-roundtrip-test',field_errors:[]});
 const project=(id:string,name:string):Dto<'ProjectResponse'>=>({project_id:id,name,kind:'generation',issuer_name:'合成往返发行人',market:'sse',offering:'private',draft_revision:1,input_revision:null,input_hash:null,updated_at:now});
 export function fixture(options:Options={}){
@@ -100,8 +103,9 @@ function collection(s:State):Dto<'ProjectFilesResponse'>{
 export async function install(page:Page,s=fixture()){
   page.on('pageerror',error=>s.errors.push(error.message));
   await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const req=route.request(),url=new URL(req.url()),path=url.pathname.slice('/api/v1'.length),method=req.method(),owner=s.owner;
-    const body=method!=='GET'&&method!=='PUT'||method==='PUT'&&!path.endsWith('/bytes')?req.postData()?req.postDataJSON():null:null;
+    const body=method!=='GET'&&method!=='PUT'||method==='PUT'&&!path.endsWith('/bytes')?req.postData()?fixtureRequest(req):null:null;
     s.calls.push({owner,method,path,search:url.search,body});
     if(path==='/me')return json(route,200,{user_id:owner,session_status:'active'});
     if(path==='/account')return json(route,200,{user_id:owner,username:owner===ids.owner?'roundtrip_owner_a':'roundtrip_owner_b'});

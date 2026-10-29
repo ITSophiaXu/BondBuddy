@@ -1,0 +1,19 @@
+✔ task recovery rejects a different owner, tampered input, expired intent and arbitrary routes (36.6656ms)
+✔ native-string file-check batches and explicit retries preserve the same durable request (5.8049ms)
+✔ payment resumes only the named original task with identical request and clears its receipt once (6.4086ms)
+✔ 402 is recoverable, unknown results do not automatically restart, and old pricing is untouched (4.6229ms)
+✔ a changed body cannot reuse a pending original request key (1.6885ms)
+✔ reload after resuming or an unknown response replays the original request once, including concurrent returns (3.9541ms)
+✔ quote-only requests retain a hashed points requirement without changing the execution body (1.6806ms)
+✔ silent storage loss prevents the initial task submission (1.3832ms)
+✔ payment-assisted batch recovery requires a named billing resume and preserves other paused batches (4.0665ms)
+✔ legacy numeric envelope and digest are retained while nested resume uses explicit replay transport (3.0873ms)
+✔ current envelopes reject numeric monetary bodies and preserve exact large requirements (1.3682ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4302.5778

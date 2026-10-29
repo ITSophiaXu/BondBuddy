@@ -1,5 +1,6 @@
+import {shortageInt64} from '@bondbuddy/contracts';
 import { artifactNameColumns, artifactNameJoins, artifactDownloadName } from './artifact-filename.js';
-import { activePrice, creditBalance, quoteDto, reserveCredits } from './billing.js';
+import { activePrice, creditBalanceExact, quoteDto, reserveCredits } from './billing.js';
 import { billingSchemas, type BillingTask } from '@bondbuddy/contracts';
 import { ReviewUpdateRequestSchema, type ReviewUpdateRequest, type ReviewResultPin } from '@bondbuddy/contracts';
 import { loadAuthoringKnowledge } from './unified-authoring.js';
@@ -346,7 +347,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
     app.post(`/api/v1/projects/:project_id/${kind}/quote`, {schema:{body:kind==='review-executions'?ReviewExecutionRequestSchema:ReviewUpdateRequestSchema,response:{200:billingSchemas.FixedQuoteResponse}}}, async request => {
       const user=await owner(request),id=projectId(request),b=request.body as ReviewExecutionRequest | ReviewUpdateRequest;
       return transaction(db(),async client=>{
-        const p=await requireReview(client,user,id,true),balance=await creditBalance(client,user);
+        const p=await requireReview(client,user,id,true),balance=await creditBalanceExact(client,user);
         if(!paidReview)return {enabled:false,quote:null,balance,shortage:0,reason:null};
         if('operation' in b){const d=await draft(client,user,id);if(d.version!==b.expected_input_version)stale();if(!d.source_material_ref)invalid('Select the reviewed source');await pins(client,user,id,d.material_versions);}
         else {const source=(await client.query("SELECT 1 FROM bb_runs r JOIN bb_review_executions e ON e.run_id=r.id WHERE r.id=$1 AND r.owner_user_id=$2 AND r.project_id=$3 AND r.state='succeeded' AND e.operation IN ('full_review','differential_review')",[b.source_run_id,user,id])).rowCount;if(!source)throw missing();}
@@ -362,7 +363,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
         const row=(await client.query(`INSERT INTO bb_credit_quotes(id,owner_user_id,project_id,input_revision,input_hash,price_version,task_type,points,reason,intent_hash,pricing_mode,scope_quote_id,scope_lines)
           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$5,$10,$11,$12) ON CONFLICT DO NOTHING RETURNING *`,[uid(),user,id,p.draft_revision,hash,priceVersion,task,points,commercial?'按本次已核实的复核范围明细锁定人民币总价；交付后结算，失败或取消释放。':'按本次已确认的任务范围收取固定积分；系统重试不重复收费。',commercial?'outcome_cny_v1':'legacy_credit',scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[])])).rows[0]
           ??(await client.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND project_id=$2 AND intent_hash=$3 AND price_version=$4 AND scope_quote_id IS NOT DISTINCT FROM $5::text',[user,id,hash,priceVersion,scope?.scope_quote_id??null])).rows[0];
-        return {enabled:true,quote:quoteDto({...row,...scope}),balance,shortage:Math.max(0,points-balance.available),reason:null};
+        return {enabled:true,quote:quoteDto({...row,...scope}),balance,shortage:shortageInt64(points,balance.available),reason:null};
       });
     });
   }

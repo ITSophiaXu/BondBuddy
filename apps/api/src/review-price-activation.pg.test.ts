@@ -42,7 +42,7 @@ test('approved review prices: zero/one-point start, concurrency, delivered settl
   await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[trial.run_id]);
   await app.close();paid=true;app=makeApp();assert.equal(ok(await send('POST',`${base}/review-executions`,request)).billing_mode,'platform_trial');
   assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE run_id=$1',[trial.run_id])).rows[0].n,0);
-  const fresh={...request,execution_request_id:uid()},quote=ok(await send('POST',`${base}/review-executions/quote`,fresh));assert.equal(quote.quote.points,13900);
+  const fresh={...request,execution_request_id:uid()},quote=ok(await send('POST',`${base}/review-executions/quote`,fresh));assert.equal(quote.quote.points,'13900');
   const fund=(points:number,key:string)=>transaction(pool,c=>grantCredits(c,{owner,source:'existing_grant',key,points,expiresAt:null,actor:'synthetic',reason:'isolated test'}));
   const body={...fresh,quote_id:quote.quote.quote_id};
   assert.equal((await send('POST',`${base}/review-executions`,body)).statusCode,402);assert.deepEqual(await creditBalance(pool,owner),{available:0,frozen:0});
@@ -65,12 +65,12 @@ test('approved review prices: zero/one-point start, concurrency, delivered settl
   await fund(1200,'local-review');
   for(const state of ['cancelled','failed']){
    const next={...fresh,execution_request_id:uid(),operation:'differential_review',source_report_id:report.report_id,finding_ids:['F1']};
-   const q=ok(await send('POST',`${base}/review-executions/quote`,next));assert.equal(q.quote.points,1200);
+   const q=ok(await send('POST',`${base}/review-executions/quote`,next));assert.equal(q.quote.points,'1200');
    const nextRun=ok(await send('POST',`${base}/review-executions`,{...next,quote_id:q.quote.quote_id}));assert.deepEqual(await creditBalance(pool,owner),{available:1200,frozen:0});
    await pool.query('UPDATE bb_runs SET state=$2 WHERE id=$1',[nextRun.run_id,state]);assert.deepEqual(await creditBalance(pool,owner),{available:1200,frozen:0});
   }
   const history=ok(await send('GET','/api/v1/credits/consumption-history'));
-  assert.equal(history.items.find((i:any)=>i.run_id===run.run_id).charged_points,13900);
+  assert.equal(history.items.find((i:any)=>i.run_id===run.run_id).charged_points,'13900');
   assert.equal((await pool.query("SELECT sum(points)::int n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[run.run_id])).rows[0].n,13900,'progress debits must total the locked quote exactly once');
   assert.equal((await auditCredits(pool)).consistent,true);
   active=uid();assert.equal((await send('GET',`/api/v1/runs/${run.run_id}/credit-charge`)).statusCode,404);

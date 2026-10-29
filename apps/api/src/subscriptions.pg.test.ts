@@ -64,14 +64,14 @@ test('synthetic subscriptions share the wallet, retain original cash rights, ref
       const receipt:VerifiedPayment={...payments.get(a.order.order_id)!,state:'paid',transactionId:'synthetic-'+a.order.order_id,payerCash:{amountFen:19900,currency:'CNY'}};
       await assert.rejects(applyVerifiedPayment(pool,provider,{...receipt,amountFen:1}));
       await Promise.all([applyVerifiedPayment(pool,provider,receipt),applyVerifiedPayment(pool,provider,receipt)]);
-      let account=await subscriptionAccount(pool,who);assert.equal(account.available_points,21000);assert.equal(account.subscription_available_points,21000);assert.equal(account.periods.length,1);
+      let account=await subscriptionAccount(pool,who);assert.equal(account.available_points,"21000");assert.equal(account.subscription_available_points,"21000");assert.equal(account.periods.length,1);
       const p=account.periods[0];assert.equal(new Date(p.credits_expires_at!).getTime()-new Date(p.starts_at!).getTime(),90*86400000);
       const lot=(await pool.query('SELECT * FROM bb_credit_lots WHERE source_key=$1',[`recharge:${a.order.order_id}`])).rows[0];
       assert.equal(lot.source,'subscription');assert.equal(Number(lot.cash_basis_fen),19900);assert.equal(Number(lot.cash_basis_points),21000);
       assert.equal(await transaction(pool,c=>resolveActiveSubscriptionPrice(c,who)),SUBSCRIPTION_TASK_PRICE_VERSION);
       audit=await auditCredits(pool);assert.equal(audit.consistent,true,JSON.stringify(audit));
       await cancelSubscription(pool,who,a.subscription.id,uid(),[provider]);account=await subscriptionAccount(pool,who);
-      assert.equal(account.subscription!.status,'cancelled');assert.equal(account.available_points,21000);assert.equal(account.periods[0].credits_expires_at,p.credits_expires_at);
+      assert.equal(account.subscription!.status,'cancelled');assert.equal(account.available_points,"21000");assert.equal(account.periods[0].credits_expires_at,p.credits_expires_at);
       assert.equal(await transaction(pool,c=>resolveActiveSubscriptionPrice(c,who)),SUBSCRIPTION_TASK_PRICE_VERSION);
       audit=await auditCredits(pool);assert.equal(audit.consistent,true,JSON.stringify(audit));
       await assert.rejects(cancelSubscription(pool,await owner(),a.subscription.id,uid(),[provider]));
@@ -109,15 +109,15 @@ test('synthetic subscriptions share the wallet, retain original cash rights, ref
       const input={request_id:uid(),amount_fen:19900};const r=await requestPaymentRefund(pool,who,a.order.order_id,input,[provider]);assert.equal(r.state,'processing');
       assert.deepEqual(await creditBalance(pool,who),{available:0,frozen:21000});
       const heldAccount=await subscriptionAccount(pool,who);
-      assert.equal(heldAccount.task_held_points,0);assert.equal(heldAccount.refund_held_points,21000);
-      assert.equal(heldAccount.periods[0].task_held_points,0);assert.equal(heldAccount.periods[0].refund_held_points,21000);
+      assert.equal(heldAccount.task_held_points,"0");assert.equal(heldAccount.refund_held_points,"21000");
+      assert.equal(heldAccount.periods[0].task_held_points,"0");assert.equal(heldAccount.periods[0].refund_held_points,"21000");
       assert.equal((await requestPaymentRefund(pool,who,a.order.order_id,input,[provider])).refund_id,r.refund_id);
       await assert.rejects(requestPaymentRefund(pool,who,a.order.order_id,{...input,request_id:uid()},[provider]));
       const receipt={...refunds.get(r.refund_id)!,state:'succeeded' as const};refunds.set(r.refund_id,receipt);
       await Promise.all([applyVerifiedRefund(pool,provider,receipt),refreshPaymentRefund(pool,who,r.refund_id,[provider])]);
       assert.deepEqual(await creditBalance(pool,who),{available:0,frozen:0});
       const account=await subscriptionAccount(pool,who);assert.equal(account.periods[0].status,'refunded');assert.equal(account.subscription!.status,'cancelled');
-      assert.equal(account.task_held_points,0);assert.equal(account.refund_held_points,0);
+      assert.equal(account.task_held_points,"0");assert.equal(account.refund_held_points,"0");
       assert.equal(await transaction(pool,c=>resolveActiveSubscriptionPrice(c,who)),null);
       assert.equal(Number((await pool.query("SELECT count(*) n FROM bb_credit_events WHERE owner_user_id=$1 AND kind='refund_settle'",[who])).rows[0].n),1);
       await applyVerifiedPayment(pool,provider,a.receipt);assert.equal((await creditBalance(pool,who)).available,0,'late payment callback never reissues a refunded period');
@@ -133,10 +133,10 @@ test('synthetic subscriptions share the wallet, retain original cash rights, ref
       await settleFixture(who,lot.id,200,true);
       await requestPaymentRefund(pool,who,a.order.order_id,{request_id:uid(),amount_fen:19900},[provider]);
       const account=await subscriptionAccount(pool,who);
-      assert.equal(account.available_points,800);assert.equal(account.held_points,21200);
-      assert.equal(account.task_held_points,200);assert.equal(account.refund_held_points,21000);
-      assert.equal(account.periods[0].held_points,21000);assert.equal(account.periods[0].task_held_points,0);assert.equal(account.periods[0].refund_held_points,21000);
-      const other=await subscriptionAccount(pool,await owner());assert.equal(other.task_held_points,0);assert.equal(other.refund_held_points,0);
+      assert.equal(account.available_points,"800");assert.equal(account.held_points,"21200");
+      assert.equal(account.task_held_points,"200");assert.equal(account.refund_held_points,"21000");
+      assert.equal(account.periods[0].held_points,"21000");assert.equal(account.periods[0].task_held_points,"0");assert.equal(account.periods[0].refund_held_points,"21000");
+      const other=await subscriptionAccount(pool,await owner());assert.equal(other.task_held_points,"0");assert.equal(other.refund_held_points,"0");
       const audit=await auditCredits(pool);assert.equal(audit.consistent,true,JSON.stringify(audit));
     });
     await t.test('consumption prevents subscription cash refund; expired correction preserves original paid ratio',async()=>{
@@ -166,7 +166,7 @@ test('synthetic subscriptions share the wallet, retain original cash rights, ref
       const topup=await createServiceTopup(pool,who,{request_id:uid(),provider:'wechat',amount_fen:1000},[provider]);
       const receipt:VerifiedPayment={...payments.get(topup.order_id)!,state:'paid',transactionId:'synthetic-'+topup.order_id,payerCash:{amountFen:1000,currency:'CNY'}};
       await applyVerifiedPayment(pool,provider,receipt);const account=await subscriptionAccount(pool,who);
-      assert.equal(account.available_points,56000);assert.equal(account.topup_available_points,1000);assert.equal(account.subscription_available_points,55000);
+      assert.equal(account.available_points,"56000");assert.equal(account.topup_available_points,"1000");assert.equal(account.subscription_available_points,"55000");
       const lot=(await pool.query('SELECT * FROM bb_credit_lots WHERE source_key=$1',[`recharge:${topup.order_id}`])).rows[0];assert.equal(lot.expires_at,null);assert.equal(Number(lot.cash_basis_fen),1000);assert.equal(Number(lot.cash_basis_points),1000);
       assert.equal((await paymentRefundEligibility(pool,who,topup.order_id,[provider])).refundable_fen,1000);assert.ok(a.subscription.id);
     });
@@ -182,7 +182,7 @@ test('synthetic subscriptions share the wallet, retain original cash rights, ref
       await pool.query("UPDATE bb_subscriptions SET current_period_start=now()-interval '1 month 1 second',current_period_end=now()-interval '1 second' WHERE id=$1",[a.subscription.id]);
       chargeTimeout=true;await processDueSubscriptionRenewals(pool,[provider]);assert.equal(charges,1);
       await Promise.all([processDueSubscriptionRenewals(pool,[provider]),processDueSubscriptionRenewals(pool,[provider])]);
-      assert.equal(charges,1);const account=await subscriptionAccount(pool,who);assert.equal(account.periods.length,2);assert.equal(account.available_points,228000);
+      assert.equal(charges,1);const account=await subscriptionAccount(pool,who);assert.equal(account.periods.length,2);assert.equal(account.available_points,"228000");
       await cancelSubscription(pool,who,a.subscription.id,uid(),[provider]);assert.equal((await subscriptionAccount(pool,who)).subscription!.auto_renew,false);
       await processDueSubscriptionRenewals(pool,[provider]);assert.equal(charges,1);
       assert.equal(SUBSCRIPTION_PLANS.find(p=>p.id==='intensive')!.points,114000);

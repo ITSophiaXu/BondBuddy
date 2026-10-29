@@ -1,0 +1,19 @@
+✔ disabled default and explicit merchant configuration pass without credentials (2.3118ms)
+✔ a worker missing the billing switch cannot pass the release check (0.2465ms)
+✔ HTTPS_PROXY alone is insufficient for Node fetch (0.1908ms)
+✔ production case mismatch and merchant proxy bypass fail (0.3613ms)
+✔ merchant enabled without its exact allowed hostname fails (0.2059ms)
+✔ wildcard, suffix and URL allow-list entries fail (0.3296ms)
+✔ API cannot acquire an internet network or lose its egress dependency (0.2349ms)
+✔ checker output contains no other resolved configuration values (0.2039ms)
+✔ malformed Compose JSON produces a redacted CLI failure (126.775ms)
+✔ statement enablement requires the merchant channel and an explicit supported account list (0.5733ms)
+✔ Alipay deployment needs its exact gateway, one explicit Web product and an enabled parent for refunds (1.4122ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 294.1056

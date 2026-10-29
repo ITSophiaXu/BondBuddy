@@ -1,0 +1,11 @@
+✔ every supported project material is stored opaquely without content parsing (16.4677ms)
+✔ both authorized qx audit originals retain their exact bytes and need no signature profile (63.4083ms)
+✔ raw material public upload preserves bytes, ownership, idempotency and old signature records without starting parsing (4776.1888ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 33211.4288

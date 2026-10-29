@@ -1,6 +1,7 @@
+import {fixtureBody} from './billing-fixture-wire';
 import {expect,type Page} from '@playwright/test';
 import type {IntegrityDraft,IntegrityEvidence,IntegrityRecord,IntegrityRound} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {assertFixture as assertBaseFixture,checkId,checked,exportId,fixture as baseFixture,install as installBase,ownerId,projectId,type State as BaseState} from './integrity-continuation-fixtures';
 import {docx,hash,mime} from './word-roundtrip-fixtures';
 
@@ -85,7 +86,7 @@ export async function install(page:Page,s=fixture()){
     const match=path.match(/^\/artifacts\/([^/]+)(\/download)?$/);if(!match)return intercepted.fallback();
     const stored=[...s.words.artifacts.values()].find(item=>item.artifact_id===match[1]);if(!stored)return intercepted.fallback();
     s.calls.push({method,path,search:url.search});
-    if(method!=='GET'||s.owner!==ownerId){s.unexpected.push(`${method} ${path}`);return intercepted.fulfill({status:404,json:{code:'NOT_FOUND'}});}
+    if(method!=='GET'||s.owner!==ownerId){s.unexpected.push(`${method} ${path}`);return intercepted.fulfill({status:404,json:fixtureBody(intercepted,{code:'NOT_FOUND'})});}
     if(match[2]){s.words.downloads.push(stored.artifact_id);return intercepted.fulfill({status:200,contentType:mime,body:stored.bytes});}
     s.words.metadata.push(stored.artifact_id);let metadata=structuredClone(stored.metadata);
     // The functional ID fault changes only artifact identity: another kind in
@@ -95,7 +96,7 @@ export async function install(page:Page,s=fixture()){
     if(s.words.fault==='comparison_cross_run')metadata=structuredClone(word(s,checkId,stored.kind).metadata);
     if(s.words.fault==='version')metadata.version=stored.version+1;
     if(s.words.fault==='run_id')metadata.run_id=checkId;
-    checked('ArtifactResponse',metadata);s.words.responses.push(structuredClone(metadata));return intercepted.fulfill({status:200,json:metadata});
+    checked('ArtifactResponse',metadata);s.words.responses.push(structuredClone(metadata));return intercepted.fulfill({status:200,json:fixtureBody(intercepted,metadata)});
   });return s;
 }
 export async function assertFixture(page:Page){await assertBaseFixture(page);}

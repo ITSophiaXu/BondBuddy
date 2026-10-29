@@ -8,6 +8,7 @@ import {readOwnedCommerceCoverage} from './commerce-coverage.js';
 import {isAutomaticPriceVersion} from '@bondbuddy/contracts';
 import {automaticBillingEnabled} from './automatic-billing-context.js';
 import {resolveAutomaticTaskPriceVersion} from './automatic-price-versions.js';
+import {loadAutomaticTaskTariff} from './automatic-tariff-repository.js';
 import {resolveAutomaticTaskPrice,assertAutomaticPriceSources,assertAutomaticScopeAvailable} from './automatic-pricing.js';
 
 export type ScopePrice={scope_quote_id:string;quote_status:ScopeQuoteStatus;amount_fen:number;scope_lines:ScopeLine[];scope_expires_at:string|null;price_version:OutcomePriceVersion};
@@ -29,7 +30,7 @@ async function pricePlan(c:PoolClient,owner:string,plan:OutcomeWorkPlan){
   try{return calculateOutcomePrice({...plan,owned_coverage:owned});}catch{throw new Problem(422,'VALIDATION_FAILED','Business work plan is inconsistent with valid owned coverage');}
 }
 async function assertCurrentCoverage(c:PoolClient,row:any){
-  if(row.automatic_price){await assertAutomaticPriceSources(c,row.owner_user_id,row.automatic_price);await assertAutomaticScopeAvailable(c,row.owner_user_id,row.id);return;}
+  if(row.automatic_price){await assertAutomaticPriceSources(c,row.owner_user_id,row.automatic_price,row.snapshot);await assertAutomaticScopeAvailable(c,row.owner_user_id,row.id);return;}
   if(!row.work_plan)return;
   const priced=await pricePlan(c,row.owner_user_id,row.work_plan);
   if(priced.status!=='ready'||priced.amount_fen!==Number(row.amount_fen)||priced.price_version!==row.price_version||canonical(priced.pricing_items)!==canonical(row.pricing_items))throw new Problem(409,'QUOTE_CHANGED','已购覆盖已变化，请关闭旧报价并重新报价。');
@@ -97,8 +98,8 @@ async function requestAutomaticScope(c:PoolClient,owner:string,projectId:string,
     if(bound)return dto(old);
   }
   const priceVersion=await resolveAutomaticTaskPriceVersion(c,owner);
-  const price=resolveAutomaticTaskPrice(action,snapshot,priceVersion);
-  await assertAutomaticPriceSources(c,owner,price);
+  const price=resolveAutomaticTaskPrice(action,snapshot,priceVersion,await loadAutomaticTaskTariff(c,priceVersion));
+  await assertAutomaticPriceSources(c,owner,price,snapshot);
   if(old&&['pending','quoted'].includes(old.status))await c.query("UPDATE bb_scope_quotations SET status='unavailable',closed_at=clock_timestamp(),closure_reason='未受理范围由当前自动计费规则替换。' WHERE id=$1",[old.id]);
   const row=(await c.query(`INSERT INTO bb_scope_quotations(id,owner_user_id,project_id,action,input_hash,snapshot,price_version,revision,previous_quote_id,
     status,lines,amount_fen,approved_by,reason,published_at,expires_at,automatic_price)
@@ -157,7 +158,7 @@ export async function readScopeQuotations(db:Pool,owner:string){
   return transaction(db,async c=>{await expire(c,owner);return {items:(await c.query('SELECT * FROM bb_scope_quotations WHERE owner_user_id=$1 ORDER BY created_at DESC,id DESC LIMIT 100',[owner])).rows.map(quotationDto)};});
 }
 export async function readScopeQuotation(db:Pool,owner:string,id:string){return transaction(db,async c=>{await expire(c,owner,id);const r=(await c.query('SELECT * FROM bb_scope_quotations WHERE owner_user_id=$1 AND id=$2',[owner,id])).rows[0];if(!r)throw missing();return {quotation:quotationDto(r)};});}
-export type ScopeAcceptanceContext='file_generation_batch'|'file_update_batch';
+export type ScopeAcceptanceContext='file_generation_batch'|'file_update_batch'|'file_check_batch';
 /** Internal only. The DB checks the persisted owned batch item and exact approved manifest. */
 export async function acceptScopeBatch(c:PoolClient,owner:string,scopeId:string,context:ScopeAcceptanceContext,contextId:string,index:number,manifest:unknown){
   await coverageLock(c,owner);
@@ -171,9 +172,15 @@ export async function assertAcceptedScope(c:PoolClient,acceptanceId:string,id:st
   const row=(await c.query(`SELECT s.*,a.context,a.context_id,a.item_index,a.manifest AS accepted_manifest FROM bb_scope_acceptances a JOIN bb_scope_quotations s ON s.id=a.scope_quote_id AND s.owner_user_id=a.owner_user_id
     WHERE a.id=$1 AND a.owner_user_id=$2 AND s.id=$3 AND s.project_id=$4 AND s.action=$5 AND s.input_hash=$6 AND s.amount_fen=$7 FOR UPDATE OF s`,[acceptanceId,owner,id??null,projectId,action,inputHash,amountFen])).rows[0];
   if(!row||canonical(row.accepted_manifest)!==canonical(manifest))throw new Problem(409,'QUOTE_CHANGED','已接受的批次范围与本次任务不一致。');
-  const table=row.context==='file_generation_batch'?'bb_project_file_batches':'bb_project_file_update_batches';
-  const b=(await c.query(`SELECT items,state FROM ${table} WHERE owner_user_id=$1 AND id=$2`,[owner,row.context_id])).rows[0],item=b?.items[row.item_index];
-  if(!item||b.state==='cancelled'||item.scope_acceptance_id!==acceptanceId||item.scope_quote_id!==id||item.points!==amountFen||canonical(item.manifest)!==canonical(manifest))throw new Problem(409,'QUOTE_CHANGED','原批次接受凭据不可用。');
+  if(row.context==='file_check_batch'){
+    const item=(await c.query(`SELECT i.* FROM bb_project_file_check_batch_items i JOIN bb_project_file_check_batches b ON b.owner_user_id=i.owner_user_id AND b.id=i.batch_id
+      WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.ordinal=$3 AND b.project_id=$4`,[owner,row.context_id,row.item_index,projectId])).rows[0];
+    if(!item||item.scope_quote_id!==id||String(item.points)!==String(amountFen)||canonical(item.manifest)!==canonical(manifest))throw new Problem(409,'QUOTE_CHANGED','原逐份检查接受凭据不可用。');
+  }else{
+    const table=row.context==='file_generation_batch'?'bb_project_file_batches':'bb_project_file_update_batches';
+    const b=(await c.query(`SELECT items,state FROM ${table} WHERE owner_user_id=$1 AND id=$2`,[owner,row.context_id])).rows[0],item=b?.items[row.item_index];
+    if(!item||b.state==='cancelled'||item.scope_acceptance_id!==acceptanceId||item.scope_quote_id!==id||item.points!==amountFen||canonical(item.manifest)!==canonical(manifest))throw new Problem(409,'QUOTE_CHANGED','原批次接受凭据不可用。');
+  }
   await assertCurrentCoverage(c,row);return {...dto(row),quote_status:'ready'};
 }
 export async function markScopeUnavailable(pool:Pool,input:{id:string;expected_input_hash:string;actor:string;reason:string}){

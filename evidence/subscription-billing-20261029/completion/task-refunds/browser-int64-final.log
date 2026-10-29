@@ -1,0 +1,32 @@
+
+Running 25 tests using 1 worker
+
+(node:41036) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 tests\subscription-account.spec.ts:72:1 › subscription account shows point rights and disables unavailable payment capabilities (3.9s)
+  ok  2 tests\subscription-account.spec.ts:98:1 › subscription quotation deep link shows its original scope and point amount without a purchase confirmation (1.3s)
+  ok  3 tests\subscription-account.spec.ts:112:34 › server-confirmed payment polling automatically resumes the named task once (2.3s)
+  ok  4 tests\subscription-account.spec.ts:112:34 › server-confirmed payment polling preserves cancelled waiting task (1.5s)
+  ok  5 tests\subscription-account.spec.ts:136:1 › checkout retries one selected plan and never sends a client-controlled price or grants points on return (1.6s)
+  ok  6 tests\subscription-account.spec.ts:152:1 › current catalog lists all twelve tasks and full-review history stays in points (1.5s)
+  ok  7 tests\subscription-account.spec.ts:164:1 › a protected paid v2 month displays the original full-review price and historical points (1.4s)
+  ok  8 tests\subscription-account.spec.ts:174:1 › small topup uses exact fen and preserves the non-subscription entry (1.4s)
+  ok  9 tests\subscription-account.spec.ts:186:1 › unknown topup survives reload and another tab; changing the amount cannot create a replacement (4.2s)
+  ok 10 tests\subscription-account.spec.ts:205:1 › manual renewal uses the renewal endpoint and restores its original plan after an unknown response (3.5s)
+  ok 11 tests\subscription-account.spec.ts:215:1 › a paid storage event does not turn a stale tab retry into a second topup (2.7s)
+  ok 12 tests\subscription-account.spec.ts:232:1 › wallet and subscription period distinguish task holds from pending cash-refund credits (1.8s)
+  ok 13 tests\subscription-account.spec.ts:246:1 › stopping automatic renewal preserves the current period and all remaining credits (1.6s)
+  ok 14 tests\subscription-account.spec.ts:256:1 › subscription payment and task points remain distinct during an eligible full-period refund (2.5s)
+  ok 15 tests\subscription-account.spec.ts:268:1 › a mandate authorization link is not displayed as a completed automatic renewal (1.5s)
+  ok 16 tests\subscription-account.spec.ts:278:1 › a verified paid order returns only to its valid named waiting task without another amount click (1.5s)
+  ok 17 tests\subscription-account.spec.ts:296:1 › a paid order does not resume a task owned by another account (1.3s)
+  ok 18 tests\subscription-account.spec.ts:310:1 › subscription preview shares the account layout and never enables payment actions (933ms)
+  ok 19 tests\subscription-account.spec.ts:331:1 › quote-only authoring recovery pre-fills the exact topup gap in yuan without rewriting the task (1.4s)
+  ok 20 tests\subscription-account.spec.ts:343:1 › pending cancellation refreshes the original mandate across reload and forbids reauthorization until confirmed (2.6s)
+  ok 21 tests\subscription-account.spec.ts:359:1 › each task exposes its own scope and included work, and expanded details survive wallet refreshes (2.6s)
+  ok 22 tests\subscription-account.spec.ts:375:1 › a zero-point task stays visible as zero with its scope instead of unavailable (1.3s)
+  ok 23 tests\task-refunds.spec.ts:48:1 › customer selects original items, retries unknown response with the same request and reads approved progress (1.8s)
+  ok 24 tests\task-refunds.spec.ts:60:1 › independent reviewer approves selected subset; unknown response preserves the original decision (1.5s)
+  ok 25 tests\task-refunds.spec.ts:68:1 › a reviewer without the separate permission cannot see or approve customer requests (1.0s)
+
+  25 passed (55.1s)

@@ -31,11 +31,11 @@ test('full review locks 27195 points, settles once on report delivery, and relea
     ok(await send('PUT',`${base}/review-draft`,{kind:'input',expected_version:0,input:{source_material_ref:pin,material_versions:[pin],requirements:[],as_of:null}}));
     const intent={execution_request_id:uid(),operation:'full_review',expected_input_version:1,source_report_id:null,expected_plan_version:null,finding_ids:[]};
     const quote=ok(await send('POST',`${base}/review-executions/quote`,intent)).quote;
-    assert.equal(quote.points,27195);assert.equal(quote.price_version,AUTOMATIC_PRICE_VERSION);assert.equal(quote.auto_charge,true);
+    assert.equal(quote.points,'27195');assert.equal(quote.price_version,AUTOMATIC_PRICE_VERSION);assert.equal(quote.auto_charge,true);
     assert.equal(quote.scope_lines[0].label,'独立全面复核');
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[project])).rows[0].n,0);
     const request={...intent,quote_id:quote.quote_id};
-    const short=await send('POST',`${base}/review-executions`,request);assert.equal(short.statusCode,402,short.body);
+    const short=await send('POST',`${base}/review-executions`,request);assert.equal(short.statusCode,402,short.body+' '+failures.join('\n'));
     assert.deepEqual(await creditBalance(pool,owner),{available:0,frozen:0});
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[project])).rows[0].n,0);
     await transaction(pool,c=>grantCredits(c,{owner,source:'purchase',key:'synthetic-funding',points:60000,expiresAt:null,actor:'synthetic',reason:'test only'}));
@@ -45,11 +45,11 @@ test('full review locks 27195 points, settles once on report delivery, and relea
     const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,run.run_id);
     const report=await syntheticReviewPair(pool,lease,blobs);await finish(pool,lease,'succeeded',{artifactId:report.artifactId,artifactVersion:1,blobs});
     assert.deepEqual(await creditBalance(pool,owner),{available:32805,frozen:0});
-    const receipt=ok(await send('GET',`/api/v1/runs/${run.run_id}/credit-charge`));assert.equal(receipt.state,'settled');assert.equal(receipt.quote.points,27195);
+    const receipt=ok(await send('GET',`/api/v1/runs/${run.run_id}/credit-charge`));assert.equal(receipt.state,'settled');assert.equal(receipt.quote.points,'27195');
     assert.equal(ok(await send('POST',`${base}/review-executions`,request)).run_id,run.run_id);
     const followupIntent={execution_request_id:uid(),source_run_id:run.run_id,requirements:'Separately commissioned source revision'};
     const followup=ok(await send('POST',`${base}/review-updates/quote`,followupIntent));
-    assert.equal(followup.quote.points,14900);assert.equal(followup.quote.scope_lines[0].label,'复核后原文修订');
+    assert.equal(followup.quote.points,'14900');assert.equal(followup.quote.scope_lines[0].label,'复核后原文修订');
     const next={...intent,execution_request_id:uid()},nextQuote=ok(await send('POST',`${base}/review-executions/quote`,next)).quote;
     const failed=ok(await send('POST',`${base}/review-executions`,{...next,quote_id:nextQuote.quote_id}));
     assert.deepEqual(await creditBalance(pool,owner),{available:5610,frozen:27195});

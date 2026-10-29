@@ -1,3 +1,4 @@
+import {safeBillingNumber} from '@bondbuddy/contracts';
 import assert from 'node:assert/strict';
 import {randomUUID,createHash} from 'node:crypto';
 import test from 'node:test';
@@ -18,10 +19,12 @@ import {enqueuePaymentStatement,reconcileDailyStatements} from './payment-statem
 import {parsePaymentStatement} from './payment-statements-format.js';
 import {syntheticTradeStatement,statementFixtureDate} from './test-payment-statements.js';
 
-const database=await isolatedTestDatabase(undefined,'original-cash-refunds');
+const database=process.env.BB_TEST_DATABASE_URL;
 
 async function setup(isolationKey?:string){
-  const pool=new Pool({connectionString:isolationKey?await isolatedTestDatabase(undefined,isolationKey):database}),f=syntheticWechatFixture(Date.now()),owner=randomUUID();let actor:string=owner,creates=0,queries=0;
+  // Each merchant-day statement must see only this case's channel population.
+  const isolated=await isolatedTestDatabase(undefined,isolationKey??'original-cash-refunds-'+randomUUID());
+  const pool=new Pool({connectionString:isolated}),f=syntheticWechatFixture(Date.now()),owner=randomUUID();let actor:string=owner,creates=0,queries=0;
   await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'synthetic_refund_'+owner.slice(0,8)]);
   await publishPrices(pool,{id:'synthetic-refund-price',prices:INITIAL_FIXED_PRICES,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic-test',reason:'Synthetic isolated refund-allocation price fixture'});
   const channel=new Map<string,any>(),orders=new Map<string,any>(),refundIds=new Set<string>();let mode:'processing'|'timeout'|'success'|'closed'='processing';
@@ -49,14 +52,15 @@ async function setup(isolationKey?:string){
     }});
   const app=createServer({pool,enableOutcomePricing:true,paymentProviders:[provider],allowedOrigin:'http://refund.test',principal:async()=>({userId:actor,csrfVerified:true})});
   const send=(method:string,url:string,payload?:any,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload,headers:{origin:'http://refund.test',...headers}});
-  const paymentCallback=async(order:any,payer:number|null=order.amount_fen)=>{
+  const paymentCallback=async(order:any,payer:number|null=safeBillingNumber(order.amount_fen))=>{
+    order={...order,amount_fen:safeBillingNumber(order.amount_fen),points:safeBillingNumber(order.points)};
     const transactionId='txn_'+order.order_id,amount={total:order.amount_fen,currency:'CNY',...(payer===null?{}:{payer_total:payer,payer_currency:'CNY'})};
     orders.set(transactionId,order);
-    const envelope=f.envelope({...f.paid,out_trade_no:order.order_id,transaction_id:transactionId,amount});
+    const envelope=f.envelope({...f.paid,out_trade_no:order.order_id,transaction_id:transactionId,amount,success_time:statementFixtureDate+'T12:00:00+08:00'});
     const response=await send('POST','/api/v1/payments/wechat/callback',envelope.raw,{'content-type':'application/json',...envelope.headers as Record<string,string>});assert.equal(response.statusCode,200,response.body);return envelope;
   };
   const topup=async(amount:number,payer:number|null=amount)=>{
-    const response=await send('POST','/api/v1/commerce/topups',{request_id:randomUUID(),provider:'wechat',amount_fen:amount});assert.equal(response.statusCode,201,response.body);
+    const response=await send('POST','/api/v1/commerce/topups',{request_id:randomUUID(),provider:'wechat',amount_fen:String(amount)});assert.equal(response.statusCode,201,response.body);
     const order=response.json(),envelope=await paymentCallback(order,payer);return {...order,envelope};
   };
   const refundCallback=(id:string,changes:Record<string,unknown>={},valid=true)=>{
@@ -65,8 +69,8 @@ async function setup(isolationKey?:string){
     const envelope=f.envelope(value,{event_type:`REFUND.${value.refund_status}`},{original_type:'refund'});
     return send('POST','/api/v1/payments/wechat/refund-callback',envelope.raw,{'content-type':'application/json',...envelope.headers as Record<string,string>,...(!valid?{'wechatpay-signature':'invalid'}:{})});
   };
-  const request=(order:string,amount:number,key=randomUUID())=>send('POST',`/api/v1/commerce/topups/${order}/refunds`,{request_id:key,amount_fen:amount});
-  const requestPoints=(order:string,points:number,key=randomUUID(),expected?:number)=>send('POST',`/api/v1/commerce/topups/${order}/refunds`,{request_id:key,points,...(expected===undefined?{}:{expected_amount_fen:expected})});
+  const request=(order:string,amount:number,key=randomUUID())=>send('POST',`/api/v1/commerce/topups/${order}/refunds`,{request_id:key,amount_fen:String(amount)});
+  const requestPoints=(order:string,points:number,key=randomUUID(),expected?:number)=>send('POST',`/api/v1/commerce/topups/${order}/refunds`,{request_id:key,points:String(points),...(expected===undefined?{}:{expected_amount_fen:String(expected)})});
   const eligibility=(id:string)=>send('GET',`/api/v1/commerce/topups/${id}/refund-eligibility`);
   const readLot=async(id:string)=>(await pool.query("SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND source_key='recharge:'||$2",[owner,id])).rows[0];
   return {pool,f,owner,provider,app,send,topup,paymentCallback,refundCallback,request,requestPoints,eligibility,readLot,channel,orders,
@@ -117,8 +121,8 @@ test('synthetic signed cash refunds bind original payment/lot, exclude consumed/
     const old=await createRecharge(h.pool,h.owner,{request_id:randomUUID(),provider:'wechat',pack_id:'cny500'},[h.provider]);await h.paymentCallback(old,null);
     const firstLot=await h.readLot(first.order_id),secondLot=await h.readLot(second.order_id);
     await syntheticTask(h.pool,h.owner,firstLot.id,2000,'settled');const held=await syntheticTask(h.pool,h.owner,firstLot.id,3000);
-    assert.equal((await h.eligibility(first.order_id)).json().refundable_fen,5000);
-    assert.equal((await h.eligibility(discount.order_id)).json().enabled,false);assert.equal((await h.eligibility(discount.order_id)).json().paid_amount_fen,1);
+    assert.equal((await h.eligibility(first.order_id)).json().refundable_fen,"5000");
+    assert.equal((await h.eligibility(discount.order_id)).json().enabled,false);assert.equal((await h.eligibility(discount.order_id)).json().paid_amount_fen,"1");
     assert.equal((await h.eligibility(unknown.order_id)).json().paid_amount_fen,null);assert.equal((await h.eligibility(old.order_id)).json().enabled,false);
     assert.equal((await h.request(discount.order_id,1)).statusCode,409);assert.equal((await h.request(unknown.order_id,1)).statusCode,409);assert.equal((await h.request(old.order_id,1)).statusCode,409);
     assert.equal((await h.request(first.order_id,5001)).statusCode,409,'Other paid lots and gifts cannot replace original unused balance');
@@ -141,7 +145,7 @@ test('synthetic signed cash refunds bind original payment/lot, exclude consumed/
     assert.equal((await h.readLot(second.order_id)).remaining,secondLot.remaining);assert.equal((await h.pool.query('SELECT remaining FROM bb_credit_lots WHERE id=$1',[grantLot])).rows[0].remaining,'777');
     await h.send('POST','/api/v1/payments/wechat/callback',first.envelope.raw,{'content-type':'application/json',...first.envelope.headers});assert.equal((await h.readLot(first.order_id)).remaining,'4000','Paid callback replay cannot reissue refunded credit');
     assert.equal((await h.send('GET',`/api/v1/commerce/topups/${first.order_id}`)).json().state,'paid');
-    await h.pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[held]);assert.equal((await h.eligibility(first.order_id)).json().refundable_fen,4000);
+    await h.pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[held]);assert.equal((await h.eligibility(first.order_id)).json().refundable_fen,"4000");
     h.setMode('success');const rest=await h.request(first.order_id,4000);assert.equal(rest.json().state,'succeeded',rest.body);assert.equal((await h.readLot(first.order_id)).remaining,'0');
     const report=await auditCredits(h.pool);assert.equal(report.consistent,true,JSON.stringify(report));
     await assert.rejects(()=>h.pool.query('UPDATE bb_payment_refunds SET amount_fen=1 WHERE id=$1',[refund.refund_id]),/locked/);
@@ -202,8 +206,8 @@ test('historical bonus package refunds consumed remainder at original A/Q and qu
     assert.equal(lot.original_points,'52500');assert.equal(lot.cash_basis_fen,'50000');
     const run=await syntheticTask(h.pool,h.owner,lot.id,10500,'settled');
     let eligibility=(await h.eligibility(order.order_id)).json();
-    assert.equal(eligibility.enabled,true);assert.equal(eligibility.request_unit,'points');assert.equal(eligibility.original_points,52500);
-    assert.equal(eligibility.refundable_points,42000);assert.equal(eligibility.refundable_fen,40000);
+    assert.equal(eligibility.enabled,true);assert.equal(eligibility.request_unit,'points');assert.equal(eligibility.original_points,"52500");
+    assert.equal(eligibility.refundable_points,"42000");assert.equal(eligibility.refundable_fen,"40000");
     assert.equal((await h.request(order.order_id,40000)).statusCode,409,'Bonus package requests must name credits, not pretend cash equals credits');
     const changedKey=randomUUID(),changedQuote=await h.requestPoints(order.order_id,42000,changedKey,50000);
     assert.equal(changedQuote.statusCode,409,'Server checks the cash preview against original consideration');assert.equal(changedQuote.json().code,'QUOTE_CHANGED');
@@ -216,7 +220,7 @@ test('historical bonus package refunds consumed remainder at original A/Q and qu
       FROM bb_recharge_orders o JOIN bb_payment_cash_proofs p ON p.order_id=o.id WHERE o.id=$4`,[randomUUID().replaceAll('-',''),randomUUID(),'a'.repeat(64),order.order_id]);
     await assert.rejects(insertWrong,/original A\/Q/);
     h.setMode('timeout');const key=randomUUID(),created=await h.requestPoints(order.order_id,42000,key,40000);assert.equal(created.statusCode,202,created.body);
-    const refund=created.json();assert.equal(refund.amount_fen,40000);assert.equal(refund.credit_points,42000);assert.equal(refund.state,'processing');
+    const refund=created.json();assert.equal(refund.amount_fen,"40000");assert.equal(refund.credit_points,"42000");assert.equal(refund.state,'processing');
     assert.equal((await h.readLot(order.order_id)).frozen,'42000');assert.equal((await h.readLot(order.order_id)).remaining,'42000');
     const repeats=await Promise.all([h.requestPoints(order.order_id,42000,key,40000),h.requestPoints(order.order_id,42000,key,40000)]);
     repeats.forEach(r=>assert.equal(r.json().refund_id,refund.refund_id));assert.equal(h.counts().creates,1);
@@ -232,10 +236,10 @@ test('historical bonus package refunds consumed remainder at original A/Q and qu
     const restored=await correctSettlement(h.pool,{runId:run,actor:'synthetic-quality-review',reason:'Synthetic quality correction preserves paid consideration'});
     const quality=(await h.pool.query('SELECT * FROM bb_credit_lots WHERE id=$1',[restored[0]])).rows[0];
     assert.equal(quality.remaining,'10500');assert.equal(quality.cash_origin_lot_id,lot.id);assert.equal(quality.cash_basis_fen,'50000');assert.equal(quality.cash_basis_points,'52500');
-    eligibility=(await h.eligibility(order.order_id)).json();assert.equal(eligibility.refunded_fen,40000);assert.equal(eligibility.refunded_points,42000);
-    assert.equal(eligibility.refundable_points,10500);assert.equal(eligibility.refundable_fen,10000);
+    eligibility=(await h.eligibility(order.order_id)).json();assert.equal(eligibility.refunded_fen,"40000");assert.equal(eligibility.refunded_points,"42000");
+    assert.equal(eligibility.refundable_points,"10500");assert.equal(eligibility.refundable_fen,"10000");
     h.setMode('success');const final=await h.requestPoints(order.order_id,10500,randomUUID(),10000);assert.equal(final.statusCode,202,final.body);
-    assert.equal(final.json().amount_fen,10000);assert.equal(final.json().credit_points,10500);assert.equal(final.json().state,'succeeded');
+    assert.equal(final.json().amount_fen,"10000");assert.equal(final.json().credit_points,"10500");assert.equal(final.json().state,'succeeded');
     assert.equal((await h.pool.query('SELECT remaining,frozen FROM bb_credit_lots WHERE id=$1',[quality.id])).rows[0].remaining,'0');
     assert.equal((await h.readLot(order.order_id)).remaining,'0','Original exhausted lot is never debited for restored-source credits');
     const allocations=(await h.pool.query('SELECT lot_id,points FROM bb_payment_refund_allocations WHERE refund_id=$1',[final.json().refund_id])).rows;
@@ -267,8 +271,8 @@ test('historical package cumulative one-cent rounding preserves sub-cent credits
     for(const q of [2,...Array(19).fill(1),52479]){
       const expected=Number(BigInt(50000)*BigInt(points+q)/BigInt(52500))-cash;
       const response=await h.requestPoints(order.order_id,q,randomUUID(),expected);assert.equal(response.statusCode,202,response.body);
-      assert.equal(response.json().state,'succeeded');assert.equal(response.json().amount_fen,expected);points+=q;cash+=expected;
-      const current=(await h.eligibility(order.order_id)).json();assert.equal(current.refunded_points,points);assert.equal(current.refunded_fen,cash);
+      assert.equal(response.json().state,'succeeded');assert.equal(response.json().amount_fen,String(expected));points+=q;cash+=expected;
+      const current=(await h.eligibility(order.order_id)).json();assert.equal(current.refunded_points,String(points));assert.equal(current.refunded_fen,String(cash));
     }
     assert.equal(points,52500);assert.equal(cash,50000);assert.equal((await h.readLot(order.order_id)).remaining,'0');
     const report=await auditCredits(h.pool);assert.equal(report.consistent,true,JSON.stringify(report));
@@ -314,7 +318,10 @@ test('cash refunds allocate only authenticated original-source family and serial
     const statementJob=await enqueuePaymentStatement(h.pool,statementProvider,{billDate:statementFixtureDate,kind:'trade'});assert.ok(statementJob);
     assert.equal((await reconcileDailyStatements(h.pool,[statementProvider],{now:new Date('2026-10-28T01:00:00Z')})).completed,1);
     const checks=(await h.pool.query('SELECT difference_count FROM bb_payment_statement_checks WHERE job_id=$1',[statementJob])).rows;
-    assert.deepEqual(checks,[{difference_count:0}]);
+    const differences=(await h.pool.query(`SELECT d.kind,d.line_no,d.reference_id,d.unit,d.expected_value::text,d.observed_value::text
+      FROM bb_payment_statement_differences d JOIN bb_payment_statement_checks c ON c.id=d.check_id WHERE c.job_id=$1
+      ORDER BY d.kind,d.line_no,d.reference_id`,[statementJob])).rows;
+    assert.deepEqual(checks,[{difference_count:0}],JSON.stringify(differences));
     assert.deepEqual(await creditBalance(h.pool,h.owner),balanceBefore);assert.equal((await h.pool.query('SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1',[h.owner])).rows[0].n,ledgerBefore);
     const originalRefund=(await h.pool.query('SELECT amount_fen,credit_points FROM bb_payment_refunds WHERE id=$1',[refundId])).rows[0];
     assert.deepEqual(originalRefund,{amount_fen:'50000',credit_points:'52500'});

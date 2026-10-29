@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import type {VerifiedAlipayStatement} from './alipay-statements.js';
 
 export type StatementAccount='BASIC'|'OPERATION'|'FEES';
 export type PaymentStatementRequest={billDate:string;kind:'trade'|'funds';accountType?:StatementAccount};
@@ -10,8 +11,9 @@ export type FundStatementEntry={kind:'funds';line:number;eventAt:string;business
 export type StatementEntry=TradeStatementEntry|FundStatementEntry;
 export type StatementTotals={count:number;nominalFen:number;settlementFen:number;refundRequestedFen:number;refundSettlementFen:number;refundCouponFen:number;feeFen:number;incomeCount:number;incomeFen:number;expenseCount:number;expenseFen:number};
 /** Only a signed application response plus matching downloaded SHA1 can create an available statement. */
-export type VerifiedPaymentStatement={provider:'wechat';merchantId:string;appId:string;billDate:string;kind:'trade'|'funds';accountType:StatementAccount|null;
+export type VerifiedWechatStatement={provider:'wechat';merchantId:string;appId:string;billDate:string;kind:'trade'|'funds';accountType:StatementAccount|null;
   availability:'available'|'absent';sha1:string|null;sha256:string|null;byteLength:number;verifiedAt:string;entries:StatementEntry[];totals:StatementTotals};
+export type VerifiedPaymentStatement=VerifiedWechatStatement|VerifiedAlipayStatement;
 export const emptyStatementTotals=():StatementTotals=>({count:0,nominalFen:0,settlementFen:0,refundRequestedFen:0,refundSettlementFen:0,refundCouponFen:0,feeFen:0,incomeCount:0,incomeFen:0,expenseCount:0,expenseFen:0});
 export class StatementFormatError extends Error {constructor(){super('Payment statement format or totals invalid');this.name='StatementFormatError';}}
 const invalid=():never=>{throw new StatementFormatError();};
@@ -43,7 +45,7 @@ const row=(headers:string[],line:string)=>{
 const uniqueHeaders=(line:string)=>{const header=fields(line);if(header.at(-1)==='')header.pop();if(!header.length||header.length>64||new Set(header).size!==header.length||header.some(h=>!h))return invalid();return header;};
 
 /** Modern API-v3 ALL / fundflow CSV only. Unknown historical formats stay unresolved. */
-export function parsePaymentStatement(bytes:Uint8Array,input:PaymentStatementRequest&{merchantId:string;appId:string;sha1:string;verifiedAt:string}):VerifiedPaymentStatement{
+export function parsePaymentStatement(bytes:Uint8Array,input:PaymentStatementRequest&{merchantId:string;appId:string;sha1:string;verifiedAt:string}):VerifiedWechatStatement{
   statementDate(input.billDate);
   if(bytes.byteLength>10*1024*1024||bytes.byteLength===0)return invalid();
   let content:string;try{content=new TextDecoder('utf-8',{fatal:true}).decode(bytes).replace(/^\uFEFF/,'');}catch{return invalid();}

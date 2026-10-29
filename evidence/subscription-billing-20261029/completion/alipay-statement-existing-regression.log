@@ -1,0 +1,64 @@
+✔ official-SDK synthetic form callback credits once, acknowledges plain text after commit, and query repairs a failed commit (4734.5546ms)
+✔ Alipay refund integration preserves its hold without buyer cash evidence, then settles the original refund once after authenticated repair (825.1474ms)
+✔ lost payment callbacks reconcile once without a browser, another charge, or another task (491.9904ms)
+✔ query timeout and mismatched identity keep original payment pending and back off (409.5894ms)
+✔ accepted refund with a lost response completes by querying its original ID; unknown holds stay frozen (345.0685ms)
+✔ a crash after refund freeze but before dispatch resumes the same authorised request once (437.1534ms)
+✔ pre-send dispatch crash uses only documented same-request recovery; unknown or mismatched receipts never release held points (355.6674ms)
+✔ a matching callback arriving during a failed query prevents needless same-request resubmission (311.1104ms)
+✔ shutdown stops starting claimed rows; unfinished original orders remain recoverable (617.2919ms)
+✔ synthetic signed cash refunds bind original payment/lot, exclude consumed/held/noncash money and settle once under callback/query concurrency (7969.7052ms)
+✔ synthetic timeout/unknown retains freeze, reconciles same refund ID, and explicit CLOSED releases without reusing a failed request (6671.9973ms)
+✔ synthetic task/refund races serialize on original account and rollback cannot send cash before a durable freeze (6949.0423ms)
+✔ historical bonus package refunds consumed remainder at original A/Q and quality restoration keeps the same cash ceiling (7955.8604ms)
+✔ historical package cumulative one-cent rounding preserves sub-cent credits and strict request units (8215.4775ms)
+✖ cash refunds allocate only authenticated original-source family and serialize races with consumption (7442.9305ms)
+✔ modern ALL statement separates gross sale, refund application, fees and historical refund status (3.2922ms)
+✔ funds statement preserves accounting direction separately from user credits (1.6601ms)
+✔ integer CNY parsing rejects exponents, excess precision, negatives and unbounded values (0.5773ms)
+✔ foreign merchant, wrong currency, duplicate rows, unsupported headers and inconsistent totals stay unresolved (1.0726ms)
+✔ paid historical proof refresh reuses the exact existing lot without granting credits again (277.2447ms)
+✔ close intent survives unknown response, blocks reopening, and cannot erase a verified payment (245.1692ms)
+✔ historical statement keeps gross issuance and refund cash separate from current balance and later refund success (351.8204ms)
+✔ statement-only receipt raises persisted differences without creating payment credit, and concurrent scans claim once (199.4182ms)
+✔ refund reverse coverage needs authenticated application-date evidence and detects a later missing row without mutating wallets (364.4062ms)
+✔ mismatched statement identity and unavailable provider keep the job recoverable and alert without private error data (156.497ms)
+✔ statement capability defaults off and signed manifest binds an authenticated bounded download (29.9298ms)
+✔ statement URL restrictions prevent forwarding merchant authorization to redirects, external hosts or other API paths (16.9994ms)
+✔ unsigned manifests, hash mismatches, compressed payloads and HTTP redirects are never accepted as statement evidence (13.2472ms)
+✔ download stops on its first excessive chunk and authenticated absence differs from unsigned failure (8.0718ms)
+✔ close signs the original merchant order, verifies 204, and preserves a payment that wins the close race (10.56ms)
+ℹ tests 30
+ℹ suites 0
+ℹ pass 29
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 111696.0847
+
+✖ failing tests:
+
+test at apps\api\dist\payment-refunds.pg.test.js:438:1
+✖ cash refunds allocate only authenticated original-source family and serialize races with consumption (7442.9305ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+    [
+      {
+  +     difference_count: 1
+  -     difference_count: 0
+      }
+    ]
+
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payment-refunds.pg.test.js:489:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ { difference_count: 1 } ],
+    expected: [ { difference_count: 0 } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

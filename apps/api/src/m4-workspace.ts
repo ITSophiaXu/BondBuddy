@@ -1,3 +1,4 @@
+import {encodeBillingDto,type BillingWireDto} from '@bondbuddy/contracts';
 import { artifactNameColumns, artifactNameJoins, artifactDownloadName } from './artifact-filename.js';
 import { contentDisposition } from './material-download.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -364,7 +365,7 @@ export async function completeM4Qa(db:Db,owner:string,runId:string,reply:M4Assis
     VALUES($1,$2,$3,$4,1,'qa_text','项目问答.txt',$5,$6,$7,$7) ON CONFLICT DO NOTHING`,[owner,e.topic_id,runId,artifactId,bytes,e.input_hash,textContent]);
   await topicEvent(db,owner,t.id,'m4.reply_completed',{message_id:messageId,run_id:runId});return {artifactId,artifactVersion:1};
 }
-async function workspace(db:Db,owner:string,id:string):Promise<M4Workspace>{
+async function workspace(db:Db,owner:string,id:string):Promise<BillingWireDto<M4Workspace,'m4Workspace'>>{
   const t=await requireTopic(db,owner,id),p=await project(db,owner,t.project_id),materials=await sharedMaterials(db,owner,id);
   const material_details=await Promise.all(materials.map(async pin=>{const m=await readM4MaterialPin(db,owner,pin);return {...pin,filename:m.filename,state:m.state,media_type:m.media_type,role:m.role};}));
   const messages=(await db.query(`SELECT m.*,r.state AS run_state FROM bb_m4_messages m LEFT JOIN bb_runs r ON r.id=m.run_id AND r.owner_user_id=m.owner_user_id
@@ -385,8 +386,8 @@ async function workspace(db:Db,owner:string,id:string):Promise<M4Workspace>{
   const pending_requirements=(await db.query(`SELECT requirement_id,text,message_id,message_version FROM bb_m4_pending_requirements
     WHERE owner_user_id=$1 AND topic_id=$2 AND consumed_document_type IS NULL ORDER BY created_at,requirement_id`,[owner,id])).rows;
   const drafts=Object.fromEntries(await Promise.all(M4_DOCUMENT_TYPES.map(async type=>[type,await readDraft(db,owner,id,type)]))) as M4Workspace['drafts'];
-  return {topic:topicDto(t),project:projectDto(p),drafts,
-    materials,material_details,templates,messages,tasks,artifacts,pending_requirements,view:{...(view?.view??emptyM4View()),version:view?.version??0},active_run:[...tasks].reverse().find(t=>t.manifest.kind==='document' && !terminal.includes(t.run.state))?.run??null};
+  return encodeBillingDto('m4Workspace',{topic:topicDto(t),project:projectDto(p),drafts,
+    materials,material_details,templates,messages,tasks,artifacts,pending_requirements,view:{...(view?.view??emptyM4View()),version:view?.version??0},active_run:[...tasks].reverse().find(t=>t.manifest.kind==='document' && !terminal.includes(t.run.state))?.run??null});
 }
 export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs,queueEnabled:boolean,commercial=false){
   const base=M4_API_BASE;

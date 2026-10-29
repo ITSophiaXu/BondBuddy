@@ -1,8 +1,10 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
 import {Type} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
 import {ProjectFileCheckSchema,ProjectFileVersionSchema,schemas,type ProjectDocumentType,type ProjectFileVersion} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {fixture as returnFixture,install as installReturn,collection as returnCollection,assertFixture as assertReturn,
   assertNoBusiness as assertReturnNoBusiness,editedFile,fileKey,filesRoute,gate,ids,navigate,ready,uploadJournal} from './project-file-return-fixtures';
 import {businessCalls,hash} from './word-roundtrip-fixtures';
@@ -13,7 +15,7 @@ export const checkingRun='status-current-underwriter-check';
 type Collection=Dto<'ProjectFilesResponse'>;
 type ApiStatus=ProjectFileVersion['consistency']['status'];
 const registryResponse=Type.Object({files:Type.Array(ProjectFileVersionSchema)},{additionalProperties:false});
-const json=(route:Route,status:number,value:unknown)=>route.fulfill({status,json:value});
+const json=(route:Route,status:number,value:unknown)=>route.fulfill({status,json:fixtureBody(route,value)});
 const failure=(route:Route)=>json(route,503,{code:'DATA_UNAVAILABLE',message:'Synthetic file status read unavailable',retryable:true,
   correlation_id:'project-file-status',field_errors:[]});
 
@@ -63,6 +65,7 @@ export function deliveredManual(s:State){
 export async function install(page:Page,s=fixture()){
   await installReturn(page,s);
   await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const request=route.request(),url=new URL(request.url()),path=url.pathname.slice('/api/v1'.length);
     if(request.method()==='GET'&&path===`/projects/${ids.root}/project-files/checks/status-check-older-than-public-window`){
       s.calls.push({owner:s.owner,method:'GET',path,search:url.search,body:null});
