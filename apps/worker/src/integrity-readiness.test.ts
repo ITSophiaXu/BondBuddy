@@ -1,3 +1,4 @@
+// Accelerated observation windows for legacy fixtures; production durations have dedicated regressions.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
@@ -11,7 +12,7 @@ const site=INTEGRITY_SITES.find(s=>s.id==='credit-china')!;
 const form='<input id="keyword" placeholder="企业名称"><a id="submit">查询</a><main>请输入名称</main>';
 const submit=`document.querySelector('#submit').onclick=async()=>{const q=document.querySelector('input').value;await fetch('/query?q='+encodeURIComponent(q));document.querySelector('main').textContent='本次查询 '+q+' 共0条';};`;
 const html=(body:string,script='')=>`<!doctype html><html><meta charset="utf-8"><title>synthetic official fixture</title><body>${body}<script>${script}</script></body></html>`;
-const options={waitMs:2200,maxPages:1,attempts:1};
+const options={resultStableMs:150,zeroConfirmMs:300,waitMs:2200,maxPages:1,attempts:1};
 
 test('region inference reuses explicit registration and does not infer from personal names',()=>{
  assert.deepEqual(inferIntegrityRegion(subject),{province:'河南',city:''});

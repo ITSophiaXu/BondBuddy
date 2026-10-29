@@ -8,10 +8,13 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {integrityDiagnosticLabel,type IntegrityDiagnostic,type IntegrityBrowser,type IntegritySite,type IntegritySubject} from '@bondbuddy/contracts';
 import {integrityProxy,integrityBrowserUrlAllowed} from './integrity-browser-network.js';
 import {startIntegrityDesktop,type IntegrityDesktop} from './integrity-desktop.js';
-import {visibleFrames,visibleText,activeStylesheet,firstVisible,challenge as blocker,pageErrors as errors,pageFailure,loadingOnly,searchInput,searchButton,queryReflected,courtRegion,resultsLoading,companyNameCondition,creditChinaVerification,domReady} from './integrity-browser-page.js';
+import {visibleFrames,visibleText,activeStylesheet,firstVisible,challenge as blocker,pageErrors as errors,pageFailure,loadingOnly,searchInput,searchButton,queryReflected,courtRegion,resultsLoading,resultAreaText,companyNameCondition,creditChinaVerification,domReady} from './integrity-browser-page.js';
+import {observeIntegrityQuery,integrityRequestCarriesQuery,INTEGRITY_RESULT_STABLE_MS,INTEGRITY_ZERO_CONFIRM_MS} from './integrity-query-readiness.js';
 
 export type BrowserCapture={kind:'result'|'detail'|'blocker';url:string;title:string;captured_at:string;page:number;text:string;screenshot:Buffer};
-export type BrowserCollection={query:string;search_performed:boolean;outcome:IntegrityBrowser['outcome'];scope:string;limitation:string;reason:string;captures:BrowserCapture[];diagnostic?:IntegrityDiagnostic};
+// Internal batch audit, persisted by saveBatch; not part of the public strict DTO.
+type QueryTiming={query_started_at:string;response_completed_at?:string;captured_at?:string;wait_ms:number;result_stable_ms:number;zero_confirm_ms:number;discarded_captures:number};
+export type BrowserCollection={query:string;search_performed:boolean;outcome:IntegrityBrowser['outcome'];scope:string;limitation:string;reason:string;captures:BrowserCapture[];diagnostic?:IntegrityDiagnostic;timing?:QueryTiming};
 export type IntegrityCollector=(site:IntegritySite,subject:Pick<IntegritySubject,'name'|'kind'|'province'|'city'>,signal:AbortSignal,options?:{captchaRecognizer?:IntegrityCaptchaRecognizer})=>Promise<BrowserCollection>;
 export function integrityBrowserEnvironment(cacheDirectory:string){
  const env:Record<string,string>={XDG_CACHE_HOME:cacheDirectory};
@@ -24,7 +27,7 @@ const clean=(s:string)=>s.replace(/\s+/g,' ').trim();
 // Official search pages load their form, configuration and results sequentially.
 // The Beijing runtime observed a valid tax response after the former 18s limit.
 const collectionLimits={waitMs:90000,maxPages:3,attempts:2};
-type CollectionLimits={waitMs:number;maxPages:number;attempts?:number;captchaRecognizer?:IntegrityCaptchaRecognizer;screenCapture?:(page:Page)=>Promise<Buffer>};
+type CollectionLimits={waitMs:number;maxPages:number;attempts?:number;captchaRecognizer?:IntegrityCaptchaRecognizer;screenCapture?:(page:Page)=>Promise<Buffer>;resultStableMs?:number;zeroConfirmMs?:number};
 /** Retry transient transport/server failures, never repeat a rejected or insecure request. */
 export function retryIntegrityCollection(result:BrowserCollection){
  if(!['failed','unverified'].includes(result.outcome))return false;
@@ -38,7 +41,8 @@ export function integritySearchQuery(site:IntegritySite,subject:Pick<IntegritySu
  const exactName=['credit-china','execution-dishonest','execution-debtor','execution-restriction'].includes(site.id);
  return [subject.name,...(!exactName?site.queryTerms?.slice(0,1)??[]:[]),...(site.id==='local-csrc'?[subject.province]:[])].filter(Boolean).join(' ');
 }
-async function capture(page:Page,kind:BrowserCapture['kind'],pageNo:number,screenCapture?:(page:Page)=>Promise<Buffer>,query?:string,site?:IntegritySite):Promise<BrowserCapture>{
+async function capture(page:Page,kind:BrowserCapture['kind'],pageNo:number,screenCapture?:(page:Page)=>Promise<Buffer>,query?:string,site?:IntegritySite,verify?:()=>Promise<boolean>):Promise<BrowserCapture>{
+ if(verify&&!await verify())throw Error('OFFICIAL_QUERY_CHANGED_DURING_CAPTURE');
  let text=await visibleText(page);
  if(loadingOnly(text))throw Error('EMPTY_OFFICIAL_PAGE');
  // A portal shell can contain plenty of text while its result area is still blank.
@@ -49,7 +53,7 @@ async function capture(page:Page,kind:BrowserCapture['kind'],pageNo:number,scree
  if(height>20000)throw Error('BROWSER_PAGE_TOO_LONG');
  const screenshot=screenCapture?await screenCapture(page):await page.screenshot({type:'png',fullPage:true,timeout:10000});
  text=await visibleText(page);
- if(query&&(await blocker(page,text)||!await queryReflected(page,query,text)||await resultsLoading(page)||outcome(text,query,await structuredResultSignature(page,site))==='unverified'))throw Error('OFFICIAL_QUERY_CHANGED_DURING_CAPTURE');
+ if(query&&(await blocker(page,text)||!await queryReflected(page,query,text)||await resultsLoading(page)||outcome(text,query,await structuredResultSignature(page,site))==='unverified')||verify&&!await verify())throw Error('OFFICIAL_QUERY_CHANGED_DURING_CAPTURE');
  return {kind,url:page.url(),title:(await page.title()).slice(0,200),captured_at:new Date().toISOString(),page:pageNo,text,screenshot};
 }
 async function structuredResultSignature(page:Page,site?:IntegritySite){
@@ -70,7 +74,7 @@ async function structuredResultSignature(page:Page,site?:IntegritySite){
   return [];
  }).join('\n'));
 }
-function outcome(text:string,query:string,structured=''){
+function outcome(text:string,query:string,structured=''):BrowserCollection['outcome']{
  if(errors.test(text))return 'failed';
  // A confirmed query can return fuzzy matches without echoing the name in body text.
  // Response, changed results and query reflection are checked by the caller; subject
@@ -125,12 +129,15 @@ export async function collectInContext(context:BrowserContext,site:IntegritySite
  return result;
 }
 async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:Pick<IntegritySubject,'name'|'kind'|'province'|'city'>,signal:AbortSignal,limits:CollectionLimits,entry:string,captchaSession:IntegrityCaptchaSession):Promise<BrowserCollection>{
- const capturePage=(page:Page,kind:BrowserCapture['kind'],n:number)=>capture(page,kind,n,limits.screenCapture,kind==='result'?query:undefined,site);
+ const capturePage=(page:Page,kind:BrowserCapture['kind'],n:number,verify?:()=>Promise<boolean>)=>capture(page,kind,n,limits.screenCapture,kind==='result'?query:undefined,site,verify);
  const query=integritySearchQuery(site,subject);
  const result:BrowserCollection={query,search_performed:false,outcome:'unverified',scope:`${site.name}官网站内查询；查询词：${query}。${site.topic}。`,limitation:(limits.screenCapture?'截图保留采集时的完整屏幕内容；仅覆盖屏幕可见区域。':'')+'仅覆盖实际截图的查询页面及已打开正文；不含登录后信息、未展示页或附件。全文搜索不等同于专项数据库核查，不能据此认定不存在违法失信。',reason:'未取得可核对的查询结果，无需上传补充证据。',captures:[]};
  let page=await context.newPage();page.setDefaultTimeout(Math.min(limits.waitMs,15000));page.setDefaultNavigationTimeout(limits.waitMs);
  let onResponse:((response:Response)=>void)|undefined,onRequestFailed:((request:Request)=>void)|undefined,onRequest:((request:Request)=>void)|undefined,onRequestFinished:((request:Request)=>void)|undefined;
  let phase:IntegrityDiagnostic['phase']='open';
+ let queryObserver:ReturnType<typeof observeIntegrityQuery>|undefined;
+ let acceptedAt=0,completedAt=0,recaptures=0;
+ const stableMs=limits.resultStableMs??INTEGRITY_RESULT_STABLE_MS,zeroMs=limits.zeroConfirmMs??INTEGRITY_ZERO_CONFIRM_MS;
  type StyleFailure={frame:Frame;document:string;url:string;source:string;error?:string;status?:number};
  const pendingScripts=new Set<Request>(),styleRequests=new WeakMap<Request,StyleFailure>(),failedStyles=new Map<Request,StyleFailure>(),latestStyles=new WeakMap<Frame,Map<string,Request>>();
  const scriptStarted=(request:Request)=>{
@@ -232,21 +239,24 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
   if(site.id.startsWith('execution-')){const region=await courtRegion(page,subject);if(region){result.scope+=` 执行法院范围：${region}。`;if(region!=='全国')result.limitation+=` 官网要求选择地区，本次仅查询${region}，不覆盖其他地区执行案件。`;}}
   await form.input.fill(query);
   const baseline=resultSignature(await visibleText(page),query,await structuredResultSignature(page,site));
-  const beforePages=context.pages(),beforeUrl=page.url(),pendingRequests=new Set<Request>(),freshQueryFrames=new Map<Frame,string>();let changedResponse=false,queryStatus=0,queryNetworkError='',queryFailureAt=0,submitCount=0,submittedAt=0;
-  const carriesQuery=(request:Request)=>{try{
-   // Analytics images/scripts can echo the query and fail independently. They
-   // are neither a submitted search nor its result response.
-   if(!['document','xhr','fetch'].includes(request.resourceType())||!integrityBrowserUrlAllowed(site,request.url()))return false;
-   let body=request.postData()??'';try{body=JSON.stringify(JSON.parse(body));}catch{}return decodeURIComponent((request.url()+' '+body).replace(/\+/g,' ')).includes(query);
-  }catch{return false;}};
+  const beforePages=context.pages(),beforeUrl=page.url(),pendingRequests=new Set<Request>();let queryStatus=0,queryNetworkError='',queryFailureAt=0,submitCount=0,submittedAt=0;
+   const carriesQuery=(request:Request)=>integrityRequestCarriesQuery(request,site,query);
   onRequest=(request:Request)=>{if(['document','xhr','fetch'].includes(request.resourceType()))pendingRequests.add(request);if(carriesQuery(request))result.search_performed=true;};context.on('request',onRequest);
   onRequestFinished=request=>{pendingRequests.delete(request);};context.on('requestfinished',onRequestFinished);context.on('requestfailed',onRequestFinished);
-  onResponse=(response:Response)=>{if(carriesQuery(response.request())){queryStatus=response.status();changedResponse=response.ok();queryNetworkError='';queryFailureAt=response.ok()?0:Date.now();if(response.ok()&&response.request().isNavigationRequest())try{freshQueryFrames.set(response.frame(),response.url());}catch{/* Detached navigation is not visible evidence. */}}};context.on('response',onResponse);
-  onRequestFailed=(request:Request)=>{if(carriesQuery(request)){queryNetworkError=request.failure()?.errorText.match(/net::[A-Z_]+/)?.[0]??'查询请求未完成';changedResponse=false;queryFailureAt=Date.now();}};context.on('requestfailed',onRequestFailed);
+  onResponse=(response:Response)=>{if(carriesQuery(response.request())){queryStatus=response.status();queryNetworkError='';queryFailureAt=response.ok()?0:Date.now();}};context.on('response',onResponse);
+  onRequestFailed=(request:Request)=>{if(carriesQuery(request)){queryNetworkError=request.failure()?.errorText.match(/net::[A-Z_]+/)?.[0]??'查询请求未完成';queryFailureAt=Date.now();}};context.on('requestfailed',onRequestFailed);
   const submit=async()=>{submitCount++;submittedAt=Date.now();const current=await searchInput(page);if(!current)return;await current.input.fill(query);const button=await searchButton(current.frame,current.input);if(button)await button.click({noWaitAfter:true});else await current.input.press('Enter',{noWaitAfter:true});};
-  await submit();
+   queryObserver=observeIntegrityQuery(context,site,query);
+   await submit();
   phase='results';
-  const deadline=Date.now()+limits.waitMs;let previous='',stable=0,verified=false;
+   const deadline=Date.now()+limits.waitMs;let previous='',stableSince=0,verified=false;
+   const snapshot=async()=>{
+    const body=await visibleText(page),structured=await structuredResultSignature(page,site),area=await resultAreaText(page,body);
+    const network=queryObserver!.snapshot(await visibleFrames(page));
+    if(!acceptedAt)completedAt=network.finishedAt;
+    const candidate=outcome(body,query,structured);
+    return {body,network,candidate,signature:JSON.stringify([page.url(),resultSignature(body,query,structured),area,network.revision,candidate])};
+   };
   while(Date.now()<deadline+captchaWaitMs){
    signal.throwIfAborted();await page.waitForTimeout(600);
    const opened=context.pages().filter(p=>!beforePages.includes(p)&&!p.isClosed());if(opened.length)page=opened.at(-1)!;
@@ -264,41 +274,70 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
     else mark({code:'network_error',phase,detail:queryNetworkError});
     break;
    }
-   const reflected=await queryReflected(page,query,text);
-   const structured=await structuredResultSignature(page,site),compact=resultSignature(text,query,structured),candidate=outcome(text,query,structured);
-   stable=compact===previous?stable+1:0;previous=compact;
+    const reflected=await queryReflected(page,query,text);
+    const current=await snapshot(),{network,candidate}=current;
+    const compact=resultSignature(text,query,await structuredResultSignature(page,site));
    // Some portals render enabled controls before attaching their delayed scripts.
    // Retry that inert click once; never resubmit a request already in flight.
    if(!result.search_performed&&!pendingRequests.size&&!pendingScripts.size&&submitCount<2&&Date.now()-submittedAt>=1500&&Date.now()+1800<deadline&&page.url()===beforeUrl&&context.pages().length===beforePages.length&&compact===baseline&&!await resultsLoading(page))await submit();
-   // A new query document can legitimately repeat the empty-search zero (CNSALT).
-   // In-place responses still require changed results; a stale zero cannot pass.
-   const freshQueryDocument=(await visibleFrames(page)).some(frame=>freshQueryFrames.get(frame)===frame.url());
-   if(changedResponse&&(compact!==baseline||freshQueryDocument)&&reflected&&candidate!=='unverified'&&stable>=2&&!await resultsLoading(page)){result.outcome=candidate;verified=true;break;}
+   // A completed new document or explicit API zero can legitimately repeat the
+   // empty-search zero. An unchanged old label alone remains unverified.
+    if(network.failed&&!network.pending){
+     if(network.httpStatus&&network.httpStatus>=400)mark(pageFailure(text,network.httpStatus,phase));
+     else mark({code:'network_error',phase,...(network.error?{detail:network.error}:{})},'failed','本次结果请求未能完整成功返回。');
+     break;
+    }
+    const ready=network.ready&&(compact!==baseline||network.freshDocument||candidate==='no_results'&&network.explicitZero)&&reflected&&['results','no_results'].includes(candidate)&&!network.countConflict&&(candidate==='no_results'?network.zeroAllowed:network.positiveAllowed)&&!await resultsLoading(page);
+    if(!ready){stableSince=0;previous='';continue;}
+    if(current.signature!==previous){previous=current.signature;stableSince=Date.now();}
+    if(Date.now()-stableSince<stableMs+(candidate==='no_results'?zeroMs:0))continue;
+    const verify=async()=>{
+     const after=await snapshot();
+     return after.signature===current.signature&&after.network.ready&&Date.now()<deadline+captchaWaitMs&&await queryReflected(page,query,after.body)&&!await resultsLoading(page)&&!await blocker(page,after.body)&&await domReady(page);
+    };
+    try{
+     const captured=await capturePage(page,'result',1,verify);
+     result.captures.push(captured);result.outcome=candidate;acceptedAt=Date.parse(captured.captured_at);completedAt=network.finishedAt;verified=true;break;
+    }catch(error){
+     if(!(error instanceof Error)||!['OFFICIAL_QUERY_CHANGED_DURING_CAPTURE','OFFICIAL_PAGE_STILL_LOADING','EMPTY_OFFICIAL_PAGE'].includes(error.message))throw error;
+     recaptures++;stableSince=0;previous='';
+    }
   }
   context.off('response',onResponse);
   if(result.outcome==='blocked'||result.outcome==='failed'){await diagnostic();return result;}
-  if(!verified){const status=queryStatus>=400?queryStatus:navigationStatuses.get(page)??0,loading=loadingOnly(text)||await resultsLoading(page)||!await domReady(page);
+   if(!verified){const status=queryStatus>=400?queryStatus:navigationStatuses.get(page)??0,loading=loadingOnly(text)||await resultsLoading(page)||!await domReady(page)||queryObserver.snapshot(await visibleFrames(page)).pending;
    if(!result.search_performed)mark({code:'operation_failed',phase:'query'},'unverified','查询控件尚未触发可确认的请求。');
    else if(queryNetworkError)mark({code:'network_error',phase,detail:queryNetworkError});
    else if(status>=400)mark(pageFailure(text,status,phase));
    else mark({code:!text.trim()?'blank_page_timeout':loading?'result_load_timeout':'result_unverified',phase},'unverified',`已提交查询，等待 ${limits.waitMs/1000} 秒后${loading?'页面仍未加载完成':'仍无法确认页面对应本次查询'}。`);
    await diagnostic();return result;}
   result.diagnostic={code:result.outcome==='no_results'?'no_results':'results',phase,...(optionalPbcStyleFailed?{detail:'OPTIONAL_PBC_WIDGET_STYLESHEET_HTTP_404'}:{})};
-  result.captures.push(await capturePage(page,'result',1));
   result.reason=result.outcome==='no_results'?'搜索无返回结果：官网已响应本次查询，页面明确显示无结果；仅限所列查询词和页面范围，不代表无风险。':'搜索返回结果：官网已响应本次查询，具体事项与主体关联见下方记录。';
   if(result.outcome==='no_results')return result;
   // Preserve subsequent pages when the site exposes a normal next-page control.
   for(let n=2;n<=limits.maxPages;n++){
-   const next=await firstVisible(page.getByRole('link',{name:/^(下一页|下页|Next)\s*(?:>>|»|›)?$/i}).or(page.getByRole('button',{name:/^(下一页|下页|Next)\s*(?:>>|»|›)?$/i})));
-   if(!next)break;const old=clean(await visibleText(page));await next.click({noWaitAfter:true});
-   let updated=false,last='',steady=0;for(let i=0;i<20;i++){
+    const next=await firstVisible(page.getByRole('link',{name:/^(下一页|下页|Next)\s*(?:>>|»|›)?$/i}).or(page.getByRole('button',{name:/^(下一页|下页|Next)\s*(?:>>|»|›)?$/i})));
+    if(!next)break;const old=await resultAreaText(page,await visibleText(page));await next.click({noWaitAfter:true});
+    const pageDeadline=Date.now()+limits.waitMs;let updated=false,last='',steadySince=0;
+    while(Date.now()<pageDeadline){
     signal.throwIfAborted();await page.waitForTimeout(600);text=await visibleText(page);
     if(await blocker(page,text)||errors.test(text)){result.limitation+=' 翻页受限，后续页未完成查询。';result.captures.push(await capturePage(page,'blocker',n));break;}
-    const current=clean(text);steady=current===last?steady+1:0;last=current;
-    const echo=await page.locator('input:visible').evaluateAll((nodes,q)=>nodes.some(n=>(n as HTMLInputElement).value===q),query);
-    if(current!==old&&echo&&outcome(text,query,await structuredResultSignature(page,site))==='results'&&steady>=2){updated=true;break;}
+     const current=await snapshot();
+     if(current.network.failed)break;
+     if(!current.network.ready||current.network.countConflict||!current.network.positiveAllowed||current.candidate!=='results'||!await queryReflected(page,query,text)||await resultsLoading(page)||!await domReady(page)||await resultAreaText(page,text)===old){last='';steadySince=0;continue;}
+     if(current.signature!==last){last=current.signature;steadySince=Date.now();}
+     if(Date.now()-steadySince<stableMs)continue;
+     try{
+      const captured=await capturePage(page,'result',n,async()=>{
+       const after=await snapshot();return after.signature===current.signature&&after.network.ready&&Date.now()<pageDeadline&&await queryReflected(page,query,after.body)&&!await resultsLoading(page)&&!await blocker(page,after.body)&&await domReady(page);
+      });
+      result.captures.push(captured);updated=true;break;
+     }catch(error){
+      if(!(error instanceof Error)||!['OFFICIAL_QUERY_CHANGED_DURING_CAPTURE','OFFICIAL_PAGE_STILL_LOADING','EMPTY_OFFICIAL_PAGE'].includes(error.message))throw error;
+      recaptures++;last='';steadySince=0;
+     }
    }
-   if(!updated)break;result.captures.push(await capturePage(page,'result',n));
+    if(!updated){result.limitation+=' 后续页结果未能确认，未保存为有效查询截图。';break;}
   }
   // Open at most three result links whose visible surrounding text contains the full subject.
   const links=await page.locator('a[href]').evaluateAll((nodes,name)=>nodes.filter(n=>{const e=n as HTMLAnchorElement;return (e.innerText+' '+(e.parentElement?.innerText??'')).includes(name)&&e.innerText.trim().length>5;}).map(n=>({url:(n as HTMLAnchorElement).href,title:(n as HTMLAnchorElement).innerText})),subject.name);
@@ -315,5 +354,8 @@ async function collectAttempt(context:BrowserContext,site:IntegritySite,subject:
   if(status>=400||errors.test(text))mark(pageFailure(text,status,phase));
   else mark({code:network?'network_error':error instanceof Error&&error.name==='TimeoutError'?(!text.trim()?'blank_page_timeout':phase==='open'?'page_load_timeout':phase==='results'?'result_load_timeout':'operation_failed'):'operation_failed',phase,...(network?{detail:network}:{})});
   await diagnostic();return result;}
- finally{captchaImages.close();context.off('request',scriptStarted);context.off('requestfinished',scriptFinished);context.off('requestfailed',resourceFailed);context.off('response',resourceResponse);context.off('response',onNavigation);if(onResponse)context.off('response',onResponse);if(onRequestFailed)context.off('requestfailed',onRequestFailed);if(onRequest)context.off('request',onRequest);if(onRequestFinished){context.off('requestfinished',onRequestFinished);context.off('requestfailed',onRequestFinished);}await Promise.all(context.pages().map(p=>p.close().catch(()=>{})));}
+  finally{
+   if(queryObserver)result.timing={query_started_at:new Date(queryObserver.startedAt).toISOString(),...(completedAt?{response_completed_at:new Date(completedAt).toISOString()}:{}),...(acceptedAt?{captured_at:new Date(acceptedAt).toISOString()}:{}),wait_ms:(acceptedAt||Date.now())-queryObserver.startedAt,result_stable_ms:stableMs,zero_confirm_ms:zeroMs,discarded_captures:recaptures};
+   queryObserver?.close();captchaImages.close();context.off('request',scriptStarted);context.off('requestfinished',scriptFinished);context.off('requestfailed',resourceFailed);context.off('response',resourceResponse);context.off('response',onNavigation);if(onResponse)context.off('response',onResponse);if(onRequestFailed)context.off('requestfailed',onRequestFailed);if(onRequest)context.off('request',onRequest);if(onRequestFinished){context.off('requestfinished',onRequestFinished);context.off('requestfailed',onRequestFinished);}await Promise.all(context.pages().map(p=>p.close().catch(()=>{})));
+  }
 }

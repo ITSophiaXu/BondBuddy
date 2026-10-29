@@ -1,3 +1,4 @@
+// Accelerated observation windows for legacy fixtures; production durations have dedicated regressions.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
@@ -30,7 +31,7 @@ test('Credit China verification is detected while unrelated resources are incomp
    });
    try{
     const start=Date.now();
-    const result=await collectInContext(context,site,subject,new AbortController().signal,{waitMs:12000,attempts:2,maxPages:1,screenCapture:async()=>Buffer.from('synthetic screenshot')});
+    const result=await collectInContext(context,site,subject,new AbortController().signal,{resultStableMs:150,zeroConfirmMs:300,waitMs:12000,attempts:2,maxPages:1,screenCapture:async()=>Buffer.from('synthetic screenshot')});
     assert.equal(result.outcome,'blocked');assert.equal(result.diagnostic?.code,'captcha_required');
     assert.equal(result.diagnostic?.phase,phase);assert.equal(result.diagnostic?.attempts,1);
     assert.equal(result.search_performed,phase==='results');assert.equal(attempts,phase==='results'?1:0);
@@ -48,7 +49,7 @@ test('Credit China verification is detected while unrelated resources are incomp
     return route.fulfill({contentType:'text/html; charset=utf-8',body:html(body)});
    });
    try{
-    const result=await collectInContext(context,site,subject,new AbortController().signal,{waitMs:1200,attempts:1,maxPages:1,screenCapture:async()=>Buffer.from('synthetic screenshot')});
+    const result=await collectInContext(context,site,subject,new AbortController().signal,{resultStableMs:150,zeroConfirmMs:300,waitMs:1200,attempts:1,maxPages:1,screenCapture:async()=>Buffer.from('synthetic screenshot')});
     assert.equal(result.outcome,'unverified');assert.equal(result.diagnostic?.code,phase==='open'?'page_load_timeout':'result_load_timeout');
     assert.equal(result.captures.some(c=>c.kind==='result'),false);
    }finally{await context.close();}
@@ -68,7 +69,7 @@ test('Credit China verification is detected while unrelated resources are incomp
    const context=await browser.newContext();
    await context.route('**/*',route=>route.fulfill({contentType:'text/html; charset=utf-8',body:new URL(route.request().url()).pathname==='/query'?'ok':html(form+'<script>document.querySelector("#submit").onclick=async()=>{const q=document.querySelector("input").value;await fetch("/query?q="+encodeURIComponent(q));document.querySelector("main").textContent=q+" 共0条";};</script>')}));
    try{
-    const result=await collectInContext(context,site,subject,new AbortController().signal,{waitMs:6000,attempts:1,maxPages:1,screenCapture:async page=>{
+    const result=await collectInContext(context,site,subject,new AbortController().signal,{resultStableMs:150,zeroConfirmMs:300,waitMs:6000,attempts:1,maxPages:1,screenCapture:async page=>{
      await page.locator('body').evaluate((body,markup)=>body.insertAdjacentHTML('beforeend',markup),modal);
      return Buffer.from('synthetic screenshot');
     }});

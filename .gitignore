@@ -37,6 +37,7 @@ docs/product-decisions/*
 !docs/product-decisions/2026-10-28-workpaper-shared-batch.md
 !docs/acceptance/
 docs/acceptance/*
+!docs/acceptance/integrity-result-wait-20261029.md
 !docs/acceptance/project-qa-prospectus-first-20261029.md
 !docs/acceptance/workpaper-shared-batch-20261028.md
 !docs/acceptance/issue-718/
