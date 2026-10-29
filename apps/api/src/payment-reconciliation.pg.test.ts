@@ -8,6 +8,7 @@ import {auditCredits} from './billing-ops.js';
 import {reconcilePendingPayments} from './payment-reconciliation.js';
 import {applyVerifiedPayment,type PaymentProvider,type VerifiedPayment} from './payments.js';
 import {applyVerifiedRefund,requestPaymentRefund,refreshPaymentRefund,type VerifiedRefund} from './payment-refunds.js';
+import {createServer} from './server.js';
 
 const connection=await isolatedTestDatabase(undefined,'payment-reconciliation');
 async function owner(pool:Pool){const id=uid();await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[id,'synthetic_rec_'+id.slice(0,8)]);return id;}
@@ -152,4 +153,34 @@ test('shutdown stops starting claimed rows; unfinished original orders remain re
     assert.equal((await reconcilePendingPayments(pool,[provider])).payments_paid,5);
     assert.deepEqual(await creditBalance(pool,user),{available:60000,frozen:0});assert.equal((await auditCredits(pool)).consistent,true);
   }finally{await pool.end();}
+});
+
+test('server-owned database remains open until an in-flight payment query is applied',{skip:!connection,timeout:60000},async()=>{
+  const pool=new Pool({connectionString:connection}),merchant=uid(),previousDatabase=process.env.DATABASE_URL;
+  let queried!:()=>void,release!:()=>void,closeEntered!:()=>void,queries=0;
+  const inQuery=new Promise<void>(resolve=>{queried=resolve;}),response=new Promise<void>(resolve=>{release=resolve;});
+  const closingStarted=new Promise<void>(resolve=>{closeEntered=resolve;});
+  const provider:PaymentProvider={name:'wechat',merchantId:merchant,acknowledgement:{code:'SUCCESS'},
+    create:async()=>{throw Error('Shutdown must not create a payment');},verifyCallback:async()=>{throw Error('No callback');},
+    query:async o=>{queries++;queried();await response;return paid(o.id,merchant);}};
+  process.env.DATABASE_URL=connection!;
+  const app=createServer({paymentProviders:[provider],enableSubscriptionBilling:false,enableOutcomePricing:false});
+  // Fastify executes this last-registered close hook first. Let the actual
+  // application hooks start while the authenticated provider query is pending.
+  app.addHook('onClose',async()=>{closeEntered();});
+  try{
+    const user=await owner(pool),id=await order(pool,user,merchant);
+    await app.listen({host:'127.0.0.1',port:0});await inQuery;
+    const closing=app.close();await closingStarted;
+    await new Promise<void>(resolve=>setImmediate(resolve));
+    release();await closing;
+    assert.equal(queries,1);
+    assert.equal((await pool.query('SELECT state FROM bb_recharge_orders WHERE id=$1',[id])).rows[0].state,'paid');
+    assert.deepEqual(await creditBalance(pool,user),{available:10000,frozen:0});
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_lots WHERE owner_user_id=$1 AND source_key=$2',[user,`recharge:${id}`])).rows[0].n,1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1',[user])).rows[0].n,0);
+  }finally{
+    release();await app.close();await pool.end();
+    if(previousDatabase===undefined)delete process.env.DATABASE_URL;else process.env.DATABASE_URL=previousDatabase;
+  }
 });

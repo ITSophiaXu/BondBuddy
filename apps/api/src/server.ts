@@ -147,6 +147,9 @@ export function createServer(settings: Settings = {}) {
   // Preflight jobs persist request IDs; keep them unique across server restarts.
   const app = Fastify({ logger: false, genReqId: uid, trustProxy: process.env.BB_TRUSTED_PROXY_CIDR ?? false, bodyLimit: MAX_BYTES + 1024, ajv: { customOptions: { removeAdditional: false, coerceTypes: false } } });
   const pool = settings.pool ?? new Pool({ connectionString: process.env.DATABASE_URL });
+  // Fastify runs onClose hooks in reverse registration order. Register the
+  // owned pool first so in-flight payment/statement reconciliation drains first.
+  if(!settings.pool)app.addHook('onClose',async()=>{await pool.end();});
   const subscriptionBilling=settings.enableSubscriptionBilling??process.env.BB_SUBSCRIPTION_BILLING_ENABLED==='1';
   configureAutomaticBilling(pool,subscriptionBilling);
   const commercial = subscriptionBilling || (settings.enableOutcomePricing ?? process.env.BB_OUTCOME_PRICING_ENABLED === '1');
@@ -1905,8 +1908,6 @@ export function createServer(settings: Settings = {}) {
     return reply.header('cache-control','no-store').send(result);
   });
   app.post('/api/v1/conversations/:conversation_id/messages',async request=>{await owner(request);throw unavailable();});
-  // Reconciliation's onClose hook drains before a server-owned connection pool closes.
-  if(!settings.pool)app.addHook('onClose',async()=>{await pool.end();});
   return app;
 }
 

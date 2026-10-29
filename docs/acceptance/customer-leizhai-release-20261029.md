@@ -104,6 +104,31 @@ are still required. The PR's REQUIREMENT-AUDIT.md documents broader unfinished p
 and administration requirements; neither this integration nor synthetic payment
 tests establish real merchant capability or complete business acceptance.
 
+The complete worker, API and web Dockerfile targets subsequently built from
+`8610ee7f`. All 4,725 exported files were checked against raw Git blobs, avoiding
+Windows line-ending conversion. OCR, file sandbox, TLS and pinned-package
+integrity guards remained enabled. Their backend tests are still running.
+
+Review found that Fastify executes close hooks in reverse registration order:
+the owned database pool closed before pending payment reconciliation drained.
+The pool hook is now registered first so it executes last. An isolated PostgreSQL
+regression starts the actual API with its own pool, holds a synthetic provider
+query during shutdown, and verifies one paid order, one credit lot, 10,000 test
+points and no business run. It failed on the original server (pending instead of
+paid); the repaired complete reconciliation suite passed all eight tests with
+the rebuilt server/test mounted read-only into the existing API image. TypeScript
+compilation and diff checks passed. The final images must include this repair;
+the earlier `8610ee7f` images do not contain it.
+
+The latest #814 full Git diff contains 309 changed files. Semantic review is
+ongoing. A separate compatibility gate concerns old nonterminal file-check runs
+with a completed model response but no newly required coverage evidence. The
+new delivery check can reject their replay. A read-only inventory query is ready,
+but has not yet been run against production; the historical count of 27 paused
+runs cannot exclude exposure. Before migration, establish whether affected runs
+exist and validate any needed compatibility path without inventing evidence,
+repeating completed model calls or altering customer run state.
+
 ## Real-model and release gates
 
 A separate database, storage and test account contain only a newly generated
@@ -133,6 +158,8 @@ for that sensitive payload and destination. No original-template model call
 was made. The exact three-template request is recorded locally; it must not be
 retried without new human authorization. Synthetic tests cannot satisfy this
 original-template gate.
+The exact payload/destination permission question has been asked; no human
+answer has been received. Automated heartbeats do not grant that permission.
 
 `BB_SUBSCRIPTION_BILLING_ENABLED` remains off for production until an applicable
 configuration decision is validated. No real signing, automatic debit, payment,
