@@ -1,0 +1,8 @@
+
+Running 1 test using 1 worker
+
+(node:32516) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\automatic-task-billing.spec.ts:73:1 › insufficient balance preserves only the original task and payment return replays its exact key and body (2.8s)
+
+  1 passed (6.8s)

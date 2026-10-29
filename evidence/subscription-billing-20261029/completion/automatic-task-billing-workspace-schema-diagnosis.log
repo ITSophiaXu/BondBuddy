@@ -1,0 +1,1 @@
+{"unshadowedQaWorkspacePriceSchemaErrors":[{"path":"/amount_fen","message":"Expected integer","value":"0"},{"path":"/unit_amount_fen","message":"Expected integer","value":"0"},{"path":"/units","message":"Expected integer","value":"1"},{"path":"/points","message":"Expected integer","value":"0"}],"wrappedWireSchemaPasses":true}

@@ -1,0 +1,28 @@
+
+Running 7 tests using 1 worker
+
+(node:50308) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\automatic-task-billing.spec.ts:16:1 › independent full review uses its locked points quote and executes once without a price confirmation (2.8s)
+  ok 2 tests\automatic-task-billing.spec.ts:32:1 › QA one business click submits exactly once without an amount confirmation (1.8s)
+  ok 3 tests\automatic-task-billing.spec.ts:40:84 › QA uncertain bb-task-price-170-20261029-v3 task keeps points in its durable recovery panel (2.2s)
+  ok 4 tests\automatic-task-billing.spec.ts:40:84 › QA uncertain bb-task-price-170-20261029-v2 task keeps points in its durable recovery panel (2.3s)
+  ok 5 tests\automatic-task-billing.spec.ts:57:1 › integrity starts once from its business action and keeps the immutable revision (1.3s)
+  ok 6 tests\automatic-task-billing.spec.ts:65:1 › consistency updates directly after selection, including zero-cost included scope (1.5s)
+  x  7 tests\automatic-task-billing.spec.ts:73:1 › insufficient balance preserves only the original task and payment return replays its exact key and body (1.4s)
+
+
+  1) tests\automatic-task-billing.spec.ts:73:1 › insufficient balance preserves only the original task and payment return replays its exact key and body
+
+    Error: page.evaluate: TypeError: Cannot read properties of null (reading 'owner')
+        at eval (eval at evaluate (:311:30), <anonymous>:5:48)
+        at async <anonymous>:337:30
+        at eval (eval at evaluate (:311:30), <anonymous>:5:48)
+        at async <anonymous>:337:30
+        at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\web\tests\automatic-task-billing.spec.ts:80:29
+
+    Error Context: ..\..\.tmp\automatic-task-billing-workspace-fixed\automatic-task-billing-ins-db005-lays-its-exact-key-and-body\error-context.md
+
+  1 failed
+    tests\automatic-task-billing.spec.ts:73:1 › insufficient balance preserves only the original task and payment return replays its exact key and body
+  6 passed (17.6s)

@@ -1,17 +1,28 @@
 import {expect,test,type Page,type Route} from '@playwright/test';
-import {AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,commerceMetadata} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,commerceMetadata,schemas} from '@bondbuddy/contracts';
+import {Value} from '@sinclair/typebox/value';
 import {fixture as qaFixture,install as installQa,projectId as qaProject,ownerId as qaOwner} from './project-qa-continuation-fixtures';
 import {fixture as integrityFixture,install as installIntegrity,projectId as integrityProject} from './integrity-continuation-fixtures';
 import {fixture as consistencyFixture,install as installConsistency,ids,base,checkId,fileIds} from './consistency-confirmation-fixtures';
 import {fixture as reviewFixture,install as installReview,projectId as reviewProject,hash as reviewHash,now as reviewNow} from './review-followup-fixtures';
 import {fixtureBody,fixtureRequest} from './billing-fixture-wire';
 
+const pageErrors=new WeakMap<Page,string[]>();
+test.beforeEach(async({page})=>{const errors:string[]=[];pageErrors.set(page,errors);page.on('pageerror',error=>errors.push(error.message));});
+test.afterEach(async({page})=>{expect(pageErrors.get(page),'automatic billing must not hide unhandled browser errors').toEqual([]);});
+
 const json=(route:Route,body:unknown,status=200)=>route.fulfill({status,json:fixtureBody(route,body)});
 // Validate the real HTTP wire while preserving decimal strings in captured requests.
 const rawRequest=(route:Route)=>{fixtureRequest(route.request());return route.request().postDataJSON();};
 const quote=(points:number)=>({...commerceMetadata(points),auto_charge:true,price_version:AUTOMATIC_PRICE_VERSION,points,quote_status:'ready' as const,scope_quote_id:'scope-automatic',scope_lines:[]});
 const price=()=>({...quote(0),version:AUTOMATIC_PRICE_VERSION,quote_status:'pending_scope' as const});
-async function commerce(page:Page){await page.route('**/api/v1/commerce/**',route=>json(route,{enabled:true,currency:'CNY',version:AUTOMATIC_PRICE_VERSION,model:'pay_as_you_go',items:[],rules:[]}));}
+async function commerce(page:Page){
+  const catalog={enabled:true,currency:'CNY',version:AUTOMATIC_PRICE_VERSION,model:'pay_as_you_go',items:[],rules:[]};
+  const account={available_fen:100000,held_fen:0,payment_enabled:false,providers:[],legacy_balance_notice:'合成自动扣费测试余额'};
+  expect(Value.Check(schemas.CommerceCatalogResponse,catalog)).toBe(true);expect(Value.Check(schemas.CommerceAccountResponse,account)).toBe(true);
+  await page.route('**/api/v1/commerce/catalog',route=>json(route,catalog));
+  await page.route('**/api/v1/commerce/account',route=>json(route,account));
+}
 
 test('independent full review uses its locked points quote and executes once without a price confirmation',async({page})=>{
   const state=reviewFixture();await installReview(page,state);await commerce(page);const quotes:any[]=[];
