@@ -1,6 +1,7 @@
 import {Type,type Static} from '@sinclair/typebox';
 import {ProjectFileAssetSchema,ProjectFileSourceSchema,ProjectFileTextSchema,type ProjectFileAsset,type ProjectFileSource} from './project-file-workspace.js';
 
+export const QA_HISTORY_CAPABILITY={header:'x-bb-qa-history',value:'answer-sequence-v1'} as const;
 export const PROJECT_QA_PRICE={points:60,version:'project-qa-question-60-v1'} as const;
 const obj=<T extends Parameters<typeof Type.Object>[0]>(p:T)=>Type.Object(p,{additionalProperties:false});
 const id=Type.String({minLength:1,maxLength:128}),short=Type.String({maxLength:250}),text=Type.String({maxLength:16000});
@@ -22,7 +23,8 @@ export const QaDocumentSchema=obj({key:Type.String({maxLength:4096}),sha256:hash
 export const QaEvidenceTextSchema=obj({...ProjectFileTextSchema.properties,format:Type.Union(['docx','pdf','doc','xlsx','unreadable'].map(x=>Type.Literal(x)))});
 export const QaResultSchema=obj({version:Type.Literal('project-qa-result-v1'),input_hash:hash,document:QaDocumentSchema,snapshot:ProjectFileTextSchema,questions:Type.Array(QaQuestionSchema,{maxItems:200}),answers:Type.Array(QaAnswerSchema,{maxItems:200}),warnings:Type.Array(text,{maxItems:300}),evidence:Type.Array(obj({filename:short,snapshot:QaEvidenceTextSchema}),{maxItems:50})});
 export type QaResult=Static<typeof QaResultSchema>;
-export const QaRunSchema=obj({run_id:id,sequence:Type.Integer({minimum:1}),operation:Type.Union([Type.Literal('prepare'),Type.Literal('answer')]),state:short,stage:nullable(short),error_code:Type.Optional(nullable(short)),created_at:short,manifest:QaInputSchema,result:nullable(QaResultSchema),artifact_id:nullable(id),reserved_points:Type.Integer({minimum:0}),charged_points:Type.Integer({minimum:0})});
+// sequence is the immutable task order; answer_sequence counts only answer attempts across the full project history.
+export const QaRunSchema=obj({run_id:id,sequence:Type.Integer({minimum:1}),answer_sequence:Type.Optional(Type.Integer({minimum:1})),operation:Type.Union([Type.Literal('prepare'),Type.Literal('answer')]),state:short,stage:nullable(short),error_code:Type.Optional(nullable(short)),created_at:short,manifest:QaInputSchema,result:nullable(QaResultSchema),artifact_id:nullable(id),reserved_points:Type.Integer({minimum:0}),charged_points:Type.Integer({minimum:0})});
 export type QaRun=Static<typeof QaRunSchema>;
 export const QaWorkspaceSchema=obj({draft:QaDraftSchema,revision:Type.Integer({minimum:0}),runs:Type.Array(QaRunSchema),materials:Type.Array(QaAssetSchema),prospectus:Type.Optional(nullable(ProjectFileSourceSchema)),price:obj({points:Type.Literal(60),version:Type.Literal(PROJECT_QA_PRICE.version)})});
 export type QaWorkspace=Static<typeof QaWorkspaceSchema>;

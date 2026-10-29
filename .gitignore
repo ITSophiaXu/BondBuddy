@@ -32,6 +32,7 @@ docs/product-decisions/*
 !docs/product-decisions/2026-10-15-bondbuddy-brand-name.md
 !docs/product-decisions/2026-10-27-project-qa-document-ux.md
 !docs/product-decisions/2026-10-28-project-qa-materials.md
+!docs/product-decisions/2026-10-29-project-qa-single-start.md
 !docs/product-decisions/2026-10-28-workpaper-shared-batch.md
 !docs/acceptance/
 docs/acceptance/*

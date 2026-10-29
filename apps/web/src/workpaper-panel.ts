@@ -2,7 +2,7 @@ import {defaultWorkpaperIds,WORKPAPER_PRICE,WORKPAPER_LIMITS,WorkpaperStartSchem
 import {Value} from '@sinclair/typebox/value';
 import {ApiClient,ApiError,friendlyError} from './api';
 import {UserFacingError} from './user-facing-error';
-import {ArtifactDownloads} from './artifact-download';
+import {ArtifactDownloads,artifactError,boundedDownload} from './artifact-download';
 import {uploadFileMaterial,type UploadFileMaterialState} from './file-workspace';
 import {UploadRecovery} from './upload-recovery';
 import {esc,date} from './ui';
@@ -16,6 +16,7 @@ export class WorkpaperPanel {
   private controller=new AbortController();private downloads=new ArtifactDownloads();private timer?:ReturnType<typeof setTimeout>;
   private data:WorkpaperWorkspace={catalogues:[],batches:[],assessments:[]};private selected=new Set<string>();private catalogue?:WorkpaperCatalogue;
   private progressBatch?:string;private expandedBatches=new Map<string,boolean>();
+  private downloadFeedback?:{node:HTMLElement;target:Record<string,string|undefined>};
   private pending?:WorkpaperStart;private busy=false;private status='';private requirements='';private filter='';private upload:UploadFileMaterialState={};private storageError=false;
   private view:'prepare'|'confirm'|'results'='prepare';
   private expandedFolders=new Set<string>();
@@ -141,6 +142,19 @@ export class WorkpaperPanel {
     }catch{node.textContent='原上传记录无法读取，请恢复浏览器存储后刷新。';}
   }
   private async act(fn:()=>Promise<void>){if(this.busy)return;this.busy=true;this.paintConfirm();this.paintConfirmationPage();try{await fn();}catch(e){this.status=friendlyError(e,'submit');}finally{this.busy=false;if(this.live()){this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=this.status);this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();}}}
+  private async download(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number)=>void)=>Promise<{bytes:Blob;filename:string}>){
+    if(this.busy)return;this.busy=true;
+    const feedback=this.downloadFeedback?.node??document.createElement('p');
+    feedback.id='wp-download-feedback';feedback.setAttribute('role','status');
+    this.downloadFeedback={node:feedback,target:{...button.dataset}};button.closest('.wp-actions')!.append(feedback);
+    feedback.textContent='正在准备下载，请稍候…';
+    const buttons=[...this.host.querySelectorAll<HTMLButtonElement>('#wp-batches button')].map(b=>({b,disabled:b.disabled}));
+    const text=button.textContent;buttons.forEach(({b})=>b.disabled=true);button.textContent='正在准备下载…';button.setAttribute('aria-busy','true');
+    const progress=(received:number)=>{if(this.live())feedback.textContent=`正在下载文件包，已接收 ${(received/1024/1024).toFixed(2)} MB…`;};
+    try{const file=await boundedDownload(this.controller.signal,signal=>read(signal,progress),button.hasAttribute('data-wp-zip')?20*60_000:120_000);if(this.live())this.downloads.save(file.bytes,file.filename,feedback);}
+    catch(e){if(this.live())feedback.textContent=artifactError(e);}
+    finally{this.busy=false;buttons.forEach(({b,disabled})=>b.disabled=disabled);button.textContent=text;button.removeAttribute('aria-busy');}
+  }
   private async importFile(file?:File,operation?:string){
     if(this.pending||this.busy)return;
     await this.act(async()=>{
@@ -172,16 +186,17 @@ export class WorkpaperPanel {
       <details data-batch="${esc(b.batch_id)}" ${(this.expandedBatches.get(b.batch_id)??b.batch_id===this.progressBatch)?'open':''}><summary>查看逐份状态与下载</summary><ul class="wp-items">${b.items.map(i=>`<li><div><strong>${esc(i.entry.code)} ${esc(i.entry.title)}</strong><small>${esc(runStateLabel[i.state as keyof typeof runStateLabel]??stateNames[i.state]??i.state)}${i.explanation?' · 已生成不适用说明':''}${i.error?' · '+esc(i.error):''}</small></div><div class="wp-actions">${i.explanation?'<button class="text-button" data-wp-explanation="'+esc(i.entry.id)+'" data-batch="'+esc(b.batch_id)+'">下载不适用说明</button>':''}${i.artifacts.filter(a=>a.kind==='document').map(a=>`<button class="text-button" data-wp-art="${esc(a.pin.artifact_id)}" data-wp-batch="${esc(b.batch_id)}">${a.kind==='document'?'下载底稿':'编制说明'}</button>`).join('')}</div></li>`).join('')}</ul></details></article>`;}).join('')}`;
     node.querySelectorAll<HTMLDetailsElement>('details[data-batch]').forEach(el=>el.addEventListener('toggle',()=>{if(el.isConnected)this.expandedBatches.set(el.dataset.batch!,el.open);}));
     node.querySelectorAll<HTMLElement>('[data-wp-action]').forEach(el=>el.onclick=()=>void this.act(async()=>{const b=this.data.batches.find(b=>b.batch_id===el.dataset.batch)!;const changed=await this.request<WorkpaperBatch>('POST',`/batches/${encodeURIComponent(b.batch_id)}/actions`,{action:el.dataset.wpAction,expected_revision:b.revision});this.data.batches=this.data.batches.map(b=>b.batch_id===changed.batch_id?changed:b);this.paintBatches();this.poll();}));
-    node.querySelectorAll<HTMLElement>('[data-wp-zip]').forEach(el=>el.onclick=()=>void this.act(async()=>{const bytes=await this.api.workpaperZip(this.project,el.dataset.wpZip!,this.controller.signal);if(this.live())this.downloads.save(bytes,'底稿文件包.zip');}));
-    node.querySelectorAll<HTMLElement>('[data-wp-explanation]').forEach(el=>el.onclick=()=>void this.act(async()=>{
+    node.querySelectorAll<HTMLButtonElement>('[data-wp-zip]').forEach(el=>el.onclick=()=>void this.download(el,async (signal,progress)=>({bytes:await this.api.workpaperZip(this.project,el.dataset.wpZip!,signal,progress),filename:'底稿文件包.zip'})));
+    node.querySelectorAll<HTMLButtonElement>('[data-wp-explanation]').forEach(el=>el.onclick=()=>void this.download(el,async signal=>{
       const batch=this.data.batches.find(b=>b.batch_id===el.dataset.batch)!,item=batch.items.find(i=>i.entry.id===el.dataset.wpExplanation)!;
-      const bytes=await this.api.workpaperExplanation(this.project,batch.batch_id,item.entry.id,this.controller.signal);
-      if(this.live())this.downloads.save(bytes,item.explanation!.filename);
+      return {bytes:await this.api.workpaperExplanation(this.project,batch.batch_id,item.entry.id,signal),filename:item.explanation!.filename};
     }));
-    node.querySelectorAll<HTMLElement>('[data-wp-art]').forEach(el=>el.onclick=()=>void this.act(async()=>{const batch=this.data.batches.find(b=>b.batch_id===el.dataset.wpBatch)!,artifact=batch.items.flatMap(i=>i.artifacts).find(a=>a.pin.artifact_id===el.dataset.wpArt)!;const metadata=await this.api.request<import('./api').Dto<'ArtifactResponse'>>('GET',`/artifacts/${encodeURIComponent(artifact.pin.artifact_id)}?version=${artifact.pin.artifact_version}`,undefined,{},this.controller.signal);const bytes=await this.api.artifactBytes(metadata,this.controller.signal);if(this.live())this.downloads.save(bytes,artifact.filename);}));
+    node.querySelectorAll<HTMLButtonElement>('[data-wp-art]').forEach(el=>el.onclick=()=>void this.download(el,async signal=>{const batch=this.data.batches.find(b=>b.batch_id===el.dataset.wpBatch)!,artifact=batch.items.flatMap(i=>i.artifacts).find(a=>a.pin.artifact_id===el.dataset.wpArt)!;const metadata=await this.api.request<import('./api').Dto<'ArtifactResponse'>>('GET',`/artifacts/${encodeURIComponent(artifact.pin.artifact_id)}?version=${artifact.pin.artifact_version}`,undefined,{},signal);return {bytes:await this.api.artifactBytes(metadata,signal),filename:artifact.filename};}));
+    const feedback=this.downloadFeedback;
+    if(feedback){const button=[...node.querySelectorAll<HTMLButtonElement>('button')].find(b=>Object.entries(feedback.target).every(([key,value])=>b.dataset[key]===value));button?.closest('.wp-actions')?.append(feedback.node);}
   }
   private poll(){clearTimeout(this.timer);if(!this.live())return;this.timer=setTimeout(()=>void(async()=>{
-    try{if(!this.busy){const data=await this.readWorkspace();if(this.live()){
+    try{if(!this.busy){const data=await this.readWorkspace();if(this.live()&&!this.busy){
       // Keep the submit control stable while batch availability is unchanged.
       const confirmationState=()=>this.data.batches.some(b=>['queued','running','paused'].includes(b.state));
       const previous=confirmationState();this.data=data;this.paintBatches();if(previous!==confirmationState())this.paintConfirm();

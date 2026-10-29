@@ -47,17 +47,15 @@
 .qa-page p,.qa-answer p{white-space:pre-wrap;overflow-wrap:anywhere}
 .qa-page fieldset{border:0;padding:0;margin:0;min-width:0}
 .qa-page fieldset:disabled{opacity:.72}
-.qa-question-list article,.qa-case-list article{padding:16px 0;border-bottom:1px solid #e2e9e3}
+.qa-question-list article{padding:16px 0;border-bottom:1px solid #e2e9e3}
 .qa-question-list article>div{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .qa-question-list small{color:#6b7a70;flex:1}
 .qa-question-list p{margin:8px 0}
 .qa-actions{display:flex;gap:12px;justify-content:space-between;flex-wrap:wrap;margin-top:24px}
 .qa-field,.qa-modal form label{display:grid;gap:8px;margin:16px 0}
 .qa-materials{margin:24px 0}
-.qa-materials>label:not(.btn),.qa-knowledge-choice>label,.qa-followup fieldset>label{display:flex;gap:10px;align-items:start;margin:12px 0;overflow-wrap:anywhere}
-.qa-materials input[type=checkbox],.qa-knowledge-choice input,.qa-followup input[type=checkbox]{width:18px;min-height:18px;flex-shrink:0;margin-top:4px}
-.qa-knowledge-choice{padding-top:8px;border-top:1px solid #e2e9e3}
-.qa-knowledge-choice h3{margin-bottom:8px}
+.qa-materials>label:not(.btn),.qa-followup fieldset>label{display:flex;gap:10px;align-items:start;margin:12px 0;overflow-wrap:anywhere}
+.qa-materials input[type=checkbox],.qa-followup input[type=checkbox]{width:18px;min-height:18px;flex-shrink:0;margin-top:4px}
 .qa-warning{background:#fff8e9;padding:14px;border-radius:8px;line-height:1.7}
 .qa-recovery{background:#f3f8f4;border:1px solid #cbdcd0;border-radius:12px;padding:20px;margin-bottom:24px}
 .qa-recovery h2{font-size:20px}
@@ -82,8 +80,6 @@
 .qa-range-list>label{display:grid;grid-template-columns:24px minmax(0,1fr) 100px;align-items:start;gap:10px;padding:12px 0;border-bottom:1px solid #eee}
 .qa-range-list>label>input{width:18px}
 .qa-range-list span{white-space:pre-wrap;overflow-wrap:anywhere}
-.qa-case-list{margin:20px 0;max-height:50vh;overflow:auto}
-.qa-case-list p{white-space:pre-wrap}
 .qa-page .pf-source-strip{margin-bottom:24px}
 .qa-page #qa-history{max-width:220px}.qa-page h2{margin-top:0}
 @media(max-width:700px){.qa-deliverables{grid-template-columns:minmax(0,1fr);gap:20px;padding:4px}.qa-download-card{align-items:stretch;flex-direction:column;padding:18px}.qa-missing-list{padding:18px}.qa-page .page-head{align-items:start}.qa-page .page-head>a{white-space:nowrap}.qa-upload-compact .qa-upload-icon{display:none}}
@@ -126,8 +122,10 @@
 .qa-prepared-heading h3{margin:12px 0 6px}.qa-prepared-heading p{color:#647366}
 .qa-candidate-list{padding:0 0 0 24px;margin:20px 0;max-height:420px;overflow:auto;scrollbar-gutter:stable}.qa-candidate-list li{padding:14px 12px 14px 4px;border-bottom:1px solid #e8ede7}.qa-candidate-list p{margin:0 0 6px}.qa-candidate-list small{color:#647366}
 .qa-actions{align-items:center}.qa-actions>p{font-size:13px;color:#647366}.qa-round-summary{padding:14px 18px;background:#f4f7f1;border-radius:8px;margin-bottom:16px}
-.qa-page .qa-reference-panel{background:#fafcf9}.qa-page .qa-reference-row label{margin:0}.qa-page .qa-reference-row :is(input[type=checkbox],input[type=radio]),.qa-page .qa-knowledge-choice input{width:18px;height:18px;min-height:18px;padding:0;margin:3px 0 0;accent-color:#285d48}
+.qa-page .qa-reference-panel{background:#fafcf9}.qa-page .qa-reference-row label{margin:0}.qa-page .qa-reference-row :is(input[type=checkbox],input[type=radio]){width:18px;height:18px;min-height:18px;padding:0;margin:3px 0 0;accent-color:#285d48}
 .qa-page .qa-field textarea{width:100%;padding:12px 14px;border:1px solid #cbd6cc;border-radius:8px;resize:vertical}
 .qa-page .qa-answer{padding:18px 0}.qa-page .qa-answer summary{font-size:14px;line-height:1.8}.qa-page .qa-answer>p{margin-top:16px}
 .qa-modal .panel{box-shadow:none}.qa-modal #qa-prospectus-panel{margin-top:16px}.qa-modal #qa-prospectus-panel p{white-space:normal}
 @media(max-width:760px){.qa-layout:has(.qa-upload-empty){grid-template-columns:minmax(0,1fr)}.qa-page .qa-project-materials,.qa-page .qa-document{padding:20px}.qa-project-materials header{flex-wrap:wrap}.qa-prospectus-row{flex-wrap:wrap}.qa-prospectus-row>.btn{width:100%}.qa-workflow{gap:12px;justify-content:space-between;font-size:12px}.qa-workflow li{flex:1;align-items:start;gap:6px}.qa-workflow span{width:22px;height:22px}.qa-page h1{font-size:25px}.qa-page .page-head{align-items:start;gap:12px}.qa-project-materials footer{flex-wrap:wrap}.qa-page .qa-toolbar{justify-content:space-between}.qa-page .qa-toolbar label{margin:0}.qa-page .qa-toolbar select{max-width:70%;font-size:12px}}
+
+.qa-start-summary{padding:18px 20px;margin-top:24px;background:#f4f7f1;border:1px solid #dfe7dc;border-radius:10px}.qa-start-summary h3{margin:0 0 8px}.qa-start-summary p{margin:8px 0 0;color:#647366;font-size:13px}.qa-question-list{max-height:420px;overflow:auto;scrollbar-gutter:stable;margin-bottom:16px}

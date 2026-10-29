@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { schemas } from '@bondbuddy/contracts';
+import { schemas, PROJECT_TASK_COUNTS_CAPABILITY } from '@bondbuddy/contracts';
 import type { Static } from '@sinclair/typebox';
 import { date, project, Problem } from './data.js';
 import { artifactDownloadName, artifactNameColumns, artifactNameJoins } from './artifact-filename.js';
@@ -16,10 +16,12 @@ export const memberProjectsSql = (alias:string) => `
      AND (t.source_project_id=${alias}.id OR t.source_project_id IN(SELECT update_project_id FROM bb_update_workspaces WHERE owner_user_id=${alias}.owner_user_id AND source_project_id=${alias}.id))))
 `;
 export const collectionTasksSql = `
- SELECT r.*, CASE WHEN e.run_id IS NOT NULL THEN 'review' ELSE r.task_kind END AS display_kind,
+ SELECT r.id,r.project_id,r.state,r.stage,r.created_at,r.updated_at,r.artifact_id,
+   CASE WHEN e.run_id IS NOT NULL THEN 'review' ELSE r.task_kind END AS display_kind,
    coalesce('qa_'||pqa.operation,CASE WHEN ir.operation='check' THEN 'integrity_check' WHEN ir.operation='export' THEN 'integrity_export' END,e.operation,CASE WHEN pf.operation='check' THEN 'file_check' WHEN pf.operation='patch' THEN 'file_patch' END,CASE WHEN wa.run_id IS NOT NULL THEN 'workpaper_assessment' WHEN wc.run_id IS NOT NULL THEN 'workpaper_check' END) AS operation, t.id AS topic_id, me.manifest#>>'{input,document_type}' AS document_type,
    (SELECT id FROM bb_review_reports rep WHERE rep.owner_user_id=r.owner_user_id AND rep.run_id=r.id LIMIT 1) AS report_id,
-   wb.id AS workpaper_batch_id, wb.project_id AS workpaper_project_id,
+   NULL::text AS workpaper_batch_id, NULL::text AS workpaper_project_id,
+   NULL::int AS workpaper_total,NULL::int AS workpaper_completed,
    row_number() OVER(PARTITION BY r.project_id,CASE WHEN e.run_id IS NOT NULL THEN 'review' ELSE r.task_kind END,
      coalesce(me.manifest#>>'{input,document_type}',pf.operation,'qa_'||pqa.operation,'integrity_'||ir.operation,CASE WHEN wa.run_id IS NOT NULL THEN 'workpaper_assessment' WHEN wc.run_id IS NOT NULL THEN 'workpaper_check' END,'') ORDER BY r.created_at DESC,r.id DESC) AS lane_rank
  FROM bb_runs r
@@ -37,14 +39,35 @@ export const collectionTasksSql = `
    AND wb.topic_id=t.id AND t.project_id=r.project_id AND wb.project_id IN(SELECT id FROM members)
  WHERE r.owner_user_id=$1 AND r.project_id IN(SELECT id FROM members)
    AND (t.id IS NULL OR t.surface<>'assistant')
+   AND wb.id IS NULL
+ UNION ALL
+ -- A batch is one user task, including before its first run and after retries.
+ -- Its child runs remain available only in the batch's per-file history.
+ SELECT b.id,b.project_id,
+   CASE b.state WHEN 'complete' THEN 'succeeded' WHEN 'partial' THEN 'failed'
+     ELSE b.state END AS state,
+   NULL::text AS stage,b.created_at,b.updated_at,NULL::text AS artifact_id,
+   'generation' AS display_kind,'workpaper_batch' AS operation,b.topic_id,'workpaper' AS document_type,
+   NULL::text AS report_id,b.id AS workpaper_batch_id,b.project_id AS workpaper_project_id,
+   counts.total AS workpaper_total,counts.completed AS workpaper_completed,1::bigint AS lane_rank
+ FROM bb_workpaper_batches b
+ JOIN bb_m4_topics t ON t.owner_user_id=b.owner_user_id AND t.id=b.topic_id
+   AND t.surface<>'assistant' AND t.project_id IN(SELECT id FROM members)
+ CROSS JOIN LATERAL (
+   SELECT count(*)::int AS total,
+     count(*) FILTER(WHERE coalesce(r.state,i.state)='succeeded')::int AS completed
+   FROM bb_workpaper_items i LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
+   WHERE i.owner_user_id=b.owner_user_id AND i.batch_id=b.id
+ ) counts
+ WHERE b.owner_user_id=$1 AND b.project_id IN(SELECT id FROM members)
 `;
 export const activeTaskSql = "('preparing','queued','running','validating','delivering','settlement_pending')";
 export const terminalTaskSql = "('succeeded','test_completed','failed','cancelled','rejected')";
-export const taskDto = (r:any) => r ? ({
+export const taskDto = (r:any, counts=false) => r ? ({
   run_id:r.id,project_id:r.project_id,kind:r.display_kind,state:r.state,stage:r.stage,
   created_at:date(r.created_at),updated_at:date(r.updated_at),artifact_id:r.artifact_id??null,
   report_id:r.report_id??null,topic_id:r.topic_id??null,document_type:r.document_type??null,operation:r.operation??null,
-  ...(r.workpaper_batch_id?{workpaper_batch:{batch_id:r.workpaper_batch_id,project_id:r.workpaper_project_id}}:{})
+  ...(r.workpaper_batch_id?{workpaper_batch:{batch_id:r.workpaper_batch_id,project_id:r.workpaper_project_id,...(counts?{total:r.workpaper_total,completed:r.workpaper_completed}:{})}}:{})
 }) : null;
 
 // One entry per immutable file version. Only successful delivered artifacts are shown;
@@ -110,7 +133,8 @@ export function registerProjectCollection(app:FastifyInstance,db:()=>Pool,owner:
       WHERE ($3::timestamptz IS NULL OR (created_at,id)<($3::timestamptz,$4::text))
       ORDER BY created_at DESC,id DESC LIMIT $5`,[user,id,cursor?.time??null,cursor?.id??null,limit+1])).rows;
     const page=rows.slice(0,limit),last=page.at(-1);
-    return {project_id:id,items:page.map(taskDto),page:{has_more:rows.length>limit,next_cursor:rows.length>limit?Buffer.from(JSON.stringify({project:id,time:last.cursor_time,id:last.id})).toString('base64url'):null}};
+    const counts=request.headers[PROJECT_TASK_COUNTS_CAPABILITY.header]===PROJECT_TASK_COUNTS_CAPABILITY.value;
+    return {project_id:id,items:page.map(row=>taskDto(row,counts)),page:{has_more:rows.length>limit,next_cursor:rows.length>limit?Buffer.from(JSON.stringify({project:id,time:last.cursor_time,id:last.id})).toString('base64url'):null}};
   });
   app.get('/api/v1/projects/:project_id/files',{schema:{response:{200:schemas.ProjectFilesResponse}}},async request=>{
     const user=await owner(request),id=(request.params as {project_id:string}).project_id,scope=await collectionScope(db(),user,id);

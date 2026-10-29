@@ -8,7 +8,7 @@ import { memberProjectsSql, collectionTasksSql, collectionFilesSql, activeTaskSq
 type Query = Static<typeof schemas.ProjectListQuery>;
 const invalidCursor = () => new Problem(422, 'VALIDATION_FAILED', 'Invalid project cursor; refresh the list');
 
-export async function listProjects(pool: Pool, owner: string, query: Query) {
+export async function listProjects(pool: Pool, owner: string, query: Query, taskCounts=false) {
   let boundary: { time: string; id: string } | null = null;
   if (query.cursor) {
     try {
@@ -74,7 +74,7 @@ export async function listProjects(pool: Pool, owner: string, query: Query) {
   const last = page.at(-1);
   return {
     items: page.map(p => ({ project_id:p.id,name:p.name,draft_revision:p.draft_revision,updated_at:date(p.activity_at),
-      file_count:p.file_count,task_summary:{active:p.active,attention:p.total?p.attention:1,completed:p.completed,total:p.total,latest:taskDto(p.latest),recent_result:taskDto(p.recent_result)},
+      file_count:p.file_count,task_summary:{active:p.active,attention:p.total?p.attention:1,completed:p.completed,total:p.total,latest:taskDto(p.latest,taskCounts),recent_result:taskDto(p.recent_result,taskCounts)},
       update_project_id:p.update_project_id??null,has_prospectus:p.has_prospectus,kind:p.kind,issuer_name:p.issuer_name,market:p.market,offering:p.offering,status:p.latest?.state ?? 'draft',
       archived_at:p.archived_at ? date(p.archived_at) : null,
       latest_run:p.latest ? {run_id:p.latest.id,state:p.latest.state,updated_at:date(p.latest.updated_at)} : null,

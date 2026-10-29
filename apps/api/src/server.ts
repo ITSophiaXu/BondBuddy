@@ -21,7 +21,7 @@ import { registerM4Routes } from './m4-workspace.js';
 import { registerProjectAssistant } from './project-assistant.js';
 import { registerReadableReview } from './review-readable.js';
 import { Value } from '@sinclair/typebox/value';
-import { ReviewRevisionHandlingSchema, reportingWindow } from '@bondbuddy/contracts';
+import { ReviewRevisionHandlingSchema, reportingWindow, PROJECT_TASK_COUNTS_CAPABILITY } from '@bondbuddy/contracts';
 import { Pool, type PoolClient } from 'pg';
 import { GENERATION_ISSUER_MATERIAL_ROLES, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, MARKET_OFFERINGS, openApiDocument, schemas, emptyUpdateDetails, updateDetailsErrors, type GenerationIssuerBindingRef, type ProjectMessageSetRef, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
 import { assertCanonicalBusinessRunIdle, autoTestExecutionKeyStorage, azureBlobs, canonical, checkedPair, conflict, date, digest, executionKeyStorage, inputDto, material, materialDto, missing, Problem, project, projectDto, publicProblem, putBlobFile, readBlobToFile, run, runDto, transaction, uid, unavailable, verifiedMediaFile, verifiedMediaFileDetailed, type PrivateBlobs } from './data.js';
@@ -314,7 +314,7 @@ export function createServer(settings: Settings = {}) {
   installProductionReviewLedgerRoutes(app,{db,actor:owner});
   installProductionRulePackReleaseRoutes(app,{db,actor:owner});
   app.get('/api/v1/projects',{schema:{querystring:schemas.ProjectListQuery,response:{200:schemas.ProjectListResponse}}},async request =>
-    listProjects(db(),await owner(request),request.query as import('@sinclair/typebox').Static<typeof schemas.ProjectListQuery>));
+    listProjects(db(),await owner(request),request.query as import('@sinclair/typebox').Static<typeof schemas.ProjectListQuery>,request.headers[PROJECT_TASK_COUNTS_CAPABILITY.header]===PROJECT_TASK_COUNTS_CAPABILITY.value));
   registerProspectusRoutes(app,db,owner,blob);
   registerProjectCollection(app,db,owner);
   registerProjectFileWorkspace(app,db,owner,blob);

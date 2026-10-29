@@ -26,30 +26,30 @@ for(const width of [1440,390,320])test(`project materials and readable preparati
  expect(writes(s)).toEqual([]);expect(s.errors).toEqual([]);expect(s.unexpected).toEqual([]);
 });
 
-test('only an adopted, selected prospectus enables paid answer; fee confirmation names it',async({page})=>{
+test('only an adopted, selected prospectus enables paid answer; inline fees name it',async({page})=>{
  const s=fixture();s.workspace.prospectus=prospectus;
  await install(page,s);await page.goto(route(null));
  await expect(page.locator('#qa-start')).toBeDisabled();await expect(page.locator('#qa-required-material')).toContainText('尚未选入');
  await page.locator('#qa-select-prospectus').click();await expect(page.locator('#qa-start')).toBeEnabled();
- await page.locator('#qa-start').click();await expect(page.locator('.qa-modal')).toContainText('合成募集书_清洁版_v4.docx · V4');
- expect(writes(s)).toEqual([]);await page.locator('.qa-modal [data-close]').click();
+ await expect(page.locator('.qa-start-summary')).toContainText('合成募集书_清洁版_v4.docx · V4');
+ expect(writes(s)).toEqual([]);
  s.workspace.prospectus=null;await page.locator('#qa-refresh-materials').click();await expect(page.locator('#qa-start')).toBeDisabled();
  expect(s.answers).toEqual([]);
 });
 
 test('prepared questions are previewed in-page; even old conversion artifacts have no download',async({page})=>{
- const s=fixture();s.workspace.prospectus=prospectus;const prep=s.workspace.runs.find(r=>r.run_id===prepareId)!;prep.artifact_id='legacy-conversion';
- await install(page,s);await page.goto(route(prepareId));await expect(page.locator('.qa-candidate-list li')).toHaveCount(prep.result!.questions.length);
- await expect(page.locator('#qa-download')).toHaveCount(0);await expect(page.locator('.qa-prepared')).toContainText('尚未开始回答');
+ const s=fixture();s.workspace.prospectus=prospectus;s.workspace.draft={preparation_id:null,questions:[],materials:[],requirements:'',use_knowledge:false};const prep=s.workspace.runs.find(r=>r.run_id===prepareId)!;prep.artifact_id='legacy-conversion';
+ await install(page,s);await page.goto(route(prepareId));await expect(page.locator('.qa-question-list article')).toHaveCount(prep.result!.questions.length);
+ await expect(page.locator('#qa-download')).toHaveCount(0);await expect(page.locator('.qa-document')).toContainText('尚未开始回答');
  await expectConsistentType(page);
  const dir=process.env.BB_UX_EVIDENCE_DIR;if(dir)await page.screenshot({path:join(dir,'questions-1440.png'),fullPage:true});
- await page.locator('#qa-use-preparation').click();await expect(page.locator('#qa-start')).toBeEnabled();expect(s.answers).toEqual([]);
+ await expect(page.locator('#qa-use-preparation')).toHaveCount(0);await expect(page.locator('#qa-start')).toBeEnabled();expect(s.answers).toEqual([]);
 });
 
 test('zero candidates directs to manual selection and cannot answer',async({page})=>{
- const s=fixture();s.workspace.prospectus=prospectus;const prep=s.workspace.runs.find(r=>r.run_id===prepareId)!;prep.result!.questions=[];
+ const s=fixture();s.workspace.prospectus=prospectus;s.workspace.draft={preparation_id:null,questions:[],materials:[],requirements:'',use_knowledge:false};const prep=s.workspace.runs.find(r=>r.run_id===prepareId)!;prep.result!.questions=[];
  await install(page,s);await page.goto(route(prepareId));await expect(page.getByRole('heading',{name:'未识别到明确的问题'})).toBeVisible();
- await page.getByRole('button',{name:'从原文选择问题'}).click();await expect(page.locator('#qa-start')).toBeDisabled();await page.locator('#qa-ranges').click();await expect(page.locator('.qa-range-list')).toBeVisible();
+ await expect(page.locator('#qa-start')).toBeDisabled();await page.locator('#qa-ranges').click();await expect(page.locator('.qa-range-list')).toBeVisible();
  expect(writes(s)).toEqual([]);
 });
 

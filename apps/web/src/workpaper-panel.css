@@ -2,3 +2,4 @@
 
 .wp-prepare label.wp-review{display:flex;align-items:flex-start;gap:10px;margin:18px 0}.wp-prepare label.wp-review input[type=checkbox]{width:18px;height:18px;min-width:18px;flex:0 0 18px;padding:0;margin:3px 0}.wp-assessment{max-height:520px;overflow:auto}.wp-table td{overflow-wrap:anywhere}
 .wp-batch{scroll-margin-top:88px}
+#wp-download-feedback{flex-basis:100%;margin:4px 0;overflow-wrap:anywhere}
