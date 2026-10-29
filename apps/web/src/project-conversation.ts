@@ -30,16 +30,24 @@ export class ProjectConversation {
   private history?: Message;
   private readGeneration = 0;
   private savedAwaitingRead = false;
+  private savedComposer = '';
+  private saveTimer?: ReturnType<typeof setTimeout>;
+  private savePromise?: Promise<void>;
+  private composing = false;
+  private saveFailed = false;
+  private rendering = false;
+  private retryOnline = () => { if (this.hasUnsent) void this.flush(); };
 
   constructor(private api: ApiClient, private projectId: string, private onChange: () => void, initial = '', private saveInitialNote?: (text: string) => Promise<boolean>) {
     this.composer = initial;
   }
-  get hasUnsent() { return Boolean(this.composer.trim() || this.pending || this.saving); }
+  private get dirty() { return this.composer.trim() !== this.savedComposer; }
+  get hasUnsent() { return this.dirty || Boolean(this.pending || this.saving); }
   get hasMessages() { return Boolean(this.ref?.message_ids.length); }
   get ready() { return !!this.ref && !this.loading; }
   get blockReason() {
-    if (this.saving || this.pending) return '补充说明尚未确认保存，请先重试或重新读取。';
-    if (this.composer.trim()) return '有尚未保存的补充，请先保存或清空。';
+    if (this.saveFailed || this.pending && !this.saving) return '补充说明自动保存失败，内容已保留，请重试。';
+    if (this.dirty && !this.composer.trim()) return '补充说明不能为空，请填写内容。';
     if (!this.ready) return '项目补充要求尚未读取，请在材料页末尾重新读取。';
     return '';
   }
@@ -49,20 +57,27 @@ export class ProjectConversation {
     host.addEventListener('input', event => {
       if ((event.target as HTMLElement).id !== 'project-message') return;
       this.composer = (event.target as HTMLTextAreaElement).value;
+      this.status = '正在自动保存…';
+      this.saveFailed = false;
       this.onChange();
       this.controls();
+      this.scheduleSave();
     });
+    host.addEventListener('compositionstart', () => { this.composing = true; clearTimeout(this.saveTimer); });
+    host.addEventListener('compositionend', () => { this.composing = false; this.scheduleSave(); });
+    host.addEventListener('focusout', event => { if ((event.target as HTMLElement).id === 'project-message' && !this.composing && !this.rendering) void this.flush(); });
+    window.addEventListener('online', this.retryOnline);
     host.addEventListener('click', event => {
       const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button');
       if (!button) return;
       if (button.id === 'edit-initial-note' && !this.saving && !this.pending) {
-        if (this.composer.trim() && !window.confirm('替换尚未保存的说明？')) return;
-        this.edit = undefined; this.editingInitial = true; this.composer = this.host.dataset.legacy ?? ''; this.status = ''; this.render(); this.onChange();
+        if (this.dirty && !window.confirm('替换尚未保存的说明？')) return;
+        clearTimeout(this.saveTimer); this.edit = undefined; this.editingInitial = true; this.composer = this.host.dataset.legacy ?? ''; this.savedComposer = this.composer.trim(); this.status = ''; this.render(); this.onChange();
       } else if (button.id === 'send-project-message') void this.send();
       else if (button.id === 'reload-project-messages') void this.refresh();
       else if (button.id === 'more-project-messages') void this.more();
       else if (button.dataset.editMessage) this.selectEdit(button.dataset.editMessage);
-      else if (button.id === 'cancel-message-edit' && !this.pending) { this.edit = undefined; this.editingInitial = false; this.composer = ''; this.status = '编辑已取消；服务器上的版本未更改。'; this.onChange(); this.render(); }
+      else if (button.id === 'new-project-message' && !this.hasUnsent) { this.edit = undefined; this.editingInitial = false; this.composer = ''; this.savedComposer = ''; this.status = ''; this.render(); this.host.querySelector<HTMLTextAreaElement>('#project-message')?.focus(); }
       else if (button.id === 'restore-message-request' && this.pending &&
         window.confirm('当前输入会被待确认请求的原文替换，以便按同一请求重试。是否继续？')) {
         this.composer = this.pending.body; this.render();
@@ -74,15 +89,20 @@ export class ProjectConversation {
   }
   private render(value?: ProjectCreate) {
     if (this.controller.signal.aborted) return;
+    this.rendering = true;
+    const active = this.host.querySelector<HTMLTextAreaElement>('#project-message');
+    const selection = active && active === document.activeElement ? { start: active.selectionStart, end: active.selectionEnd } : undefined;
     const legacy = value?.update_details?.supplementary_notes ?? this.host.dataset.legacy ?? '';
     this.host.dataset.legacy = legacy;
     this.host.innerHTML = `<section class="panel project-cowork supplement-panel" aria-label="补充要求"><div class="cowork-heading">${icon('file')}<h2>募集书更新补充说明 <span class="optional">选填</span></h2></div>
-      <div class="cowork-messages" aria-live="polite">${this.items.length ? this.items.map(item => `<article class="cowork-message" data-message-id="${esc(item.message_id)}"><p>${esc(item.body).replaceAll('\n', '<br>')}</p><small>已保存 · 版本 ${item.message_version} · ${esc(date(item.created_at))}</small><div class="cowork-message-actions"><button type="button" data-edit-message="${esc(item.message_id)}">修改</button>${item.message_version > 1 ? `<button type="button" data-message-version="${esc(item.message_id)}" data-version="${item.message_version - 1}">查看旧版本</button>` : ''}</div></article>`).join('') : `<p class="cowork-guidance">${this.loading ? '正在读取项目补充要求…' : this.ref ? '' : '补充要求尚未读取，请重试。'}</p>`}</div>
+      <div class="cowork-messages" aria-live="polite">${this.items.length ? this.items.filter(item => item.message_id !== this.edit?.id || item.message_version !== this.edit.version || this.saveFailed).map(item => `<article class="cowork-message" data-message-id="${esc(item.message_id)}"><p>${esc(item.body).replaceAll('\n', '<br>')}</p><small>已保存 · 版本 ${item.message_version} · ${esc(date(item.created_at))}</small><div class="cowork-message-actions"><button type="button" data-edit-message="${esc(item.message_id)}">修改</button>${item.message_version > 1 ? `<button type="button" data-message-version="${esc(item.message_id)}" data-version="${item.message_version - 1}">查看旧版本</button>` : ''}</div></article>`).join('') : `<p class="cowork-guidance">${this.loading ? '正在读取项目补充要求…' : this.ref ? '' : '补充要求尚未读取，请重试。'}</p>`}</div>
       ${this.cursor ? '<button id="more-project-messages" class="text-button" type="button">加载更多补充要求</button>' : ''}
       ${this.history ? `<section class="message-history" aria-label="补充要求历史版本"><h3>历史版本 ${this.history.message_version} · 用户提供（未核验）</h3><p>${esc(this.history.body).replaceAll('\n', '<br>')}</p><small>${esc(date(this.history.created_at))} · ${this.history.material_versions.length} 份精确材料引用</small><div class="cowork-message-actions">${this.history.message_version > 1 ? `<button type="button" data-message-version="${esc(this.history.message_id)}" data-version="${this.history.message_version - 1}">更早版本</button>` : ''}<button type="button" id="close-message-history">关闭</button></div></section>` : ''}
-      ${legacy ? `<article class="cowork-message cowork-initial"><p>${esc(legacy).replaceAll('\n', '<br>')}</p><small>已保存</small><div class="cowork-message-actions"><button id="edit-initial-note" type="button">修改创建时的补充说明</button></div></article>` : ''}
-      <div class="cowork-composer"><textarea id="project-message" aria-label="补充募集书更新说明" maxlength="${this.editingInitial ? 6000 : 12000}" rows="3" placeholder="如有额外的募集书更新要求，可在此补充">${esc(this.composer)}</textarea><div class="supplement-footer"><div class="supplement-feedback"><p id="conversation-status" role="status"></p><button id="reload-project-messages" class="text-button" type="button">重新读取补充要求</button></div><div class="supplement-save-actions">${(this.edit || this.editingInitial) && !this.pending ? '<button class="text-button" id="cancel-message-edit" type="button">取消编辑</button>' : ''}${this.pending ? '<button class="text-button" id="restore-message-request" type="button">恢复原请求以重试</button>' : ''}<button class="btn secondary small cowork-save" id="send-project-message" type="button">保存补充说明</button></div></div></div></section>`;
+      ${legacy && !this.editingInitial ? `<article class="cowork-message cowork-initial"><p>${esc(legacy).replaceAll('\n', '<br>')}</p><small>已保存</small><div class="cowork-message-actions"><button id="edit-initial-note" type="button">修改创建时的补充说明</button></div></article>` : ''}
+      <div class="cowork-composer"><textarea id="project-message" aria-label="补充募集书更新说明" maxlength="${this.editingInitial ? 6000 : 12000}" rows="3" placeholder="如有额外的募集书更新要求，可在此补充">${esc(this.composer)}</textarea><div class="supplement-footer"><div class="supplement-feedback"><p id="conversation-status" role="status"></p><button id="reload-project-messages" class="text-button" type="button">重新读取补充要求</button></div><div class="supplement-save-actions">${(this.edit || this.editingInitial) && !this.hasUnsent ? '<button class="text-button" id="new-project-message" type="button">添加另一条说明</button>' : ''}${this.pending ? '<button class="text-button" id="restore-message-request" type="button">恢复原请求以重试</button>' : ''}<button class="text-button" id="send-project-message" type="button" hidden>重试</button></div></div></div></section>`;
     this.controls();
+    if (selection) { const field = this.host.querySelector<HTMLTextAreaElement>('#project-message')!; field.focus({ preventScroll: true }); field.setSelectionRange(selection.start, selection.end); }
+    this.rendering = false;
   }
   setEditingVisible(visible: boolean) { if (this.host) this.host.hidden = !visible; }
   setContext(value: ProjectCreate) {
@@ -95,11 +115,11 @@ export class ProjectConversation {
     if (!this.host?.isConnected) return;
     const send = this.host.querySelector<HTMLButtonElement>('#send-project-message')!;
     const stale = this.ref && this.edit && this.items.find(item => item.message_id === this.edit?.id)?.message_version !== this.edit.version;
-    send.disabled = this.saving || this.loading || !this.composer.trim() || !!stale || !this.ref && !this.pending ||
-      !!this.pending && this.composer.trim() !== this.pending.body;
-    send.textContent = this.saving ? '正在保存…' : this.pending ? '按同一请求重试保存' : '保存补充说明';
+    send.hidden = !this.saveFailed;
+    send.disabled = this.saving || this.loading || !!stale || !this.ref && !this.pending;
+    send.textContent = '重试';
     this.host.querySelector('#conversation-status')!.textContent = stale ? '这条补充要求已有新版本。请重新选择最新版本后再编辑；原文仍保留在输入框。' : this.status;
-    this.host.querySelector<HTMLTextAreaElement>('#project-message')!.disabled = this.saving;
+    this.host.querySelector<HTMLTextAreaElement>('#project-message')!.disabled = false;
     this.host.querySelector<HTMLButtonElement>('#restore-message-request')?.toggleAttribute('disabled', this.saving);
     this.host.querySelector<HTMLButtonElement>('#restore-message-request')?.toggleAttribute('hidden', this.composer.trim() === this.pending?.body);
     this.host.querySelector<HTMLButtonElement>('#more-project-messages')?.toggleAttribute('disabled', this.loading);
@@ -126,14 +146,14 @@ export class ProjectConversation {
       this.items = result.items; this.cursor = result.next_cursor;
       this.ref = result.project_message_set_ref;
       this.savedAwaitingRead = false;
-      this.status = this.pending ? '此前保存结果未确认；可按同一请求重试，或确认当前列表后再操作。' : '';
+      this.status = this.pending ? '自动保存未完成，内容已保留。' : this.dirty ? '正在自动保存…' : this.savedComposer ? '已自动保存' : '输入后自动保存';
     } catch (error) {
       if (this.controller.signal.aborted) return;
       this.ref = undefined; this.items = []; this.cursor = null;
       this.status = this.savedAwaitingRead
         ? `补充要求已保存，但列表读取失败：${readError(error)} 请重新读取；无需重复保存。`
         : `补充要求读取失败：${readError(error)} 请重新读取。`;
-    } finally { if (!this.controller.signal.aborted) { this.loading = false; this.render(); this.onChange(); } }
+    } finally { if (!this.controller.signal.aborted) { this.loading = false; this.render(); this.onChange(); if (!this.saveFailed && !this.pending) this.scheduleSave(); } }
   }
   private async more() {
     if (!this.cursor || this.loading || !this.ref) return;
@@ -155,10 +175,11 @@ export class ProjectConversation {
   private selectEdit(id: string) {
     const message = this.items.find(item => item.message_id === id);
     if (!message || this.pending || this.saving) return;
-    if (this.composer.trim() && !window.confirm('当前尚未保存的文字会被这条补充要求的内容替换，是否继续？')) return;
+    if (this.dirty && !window.confirm('当前尚未保存的文字会被这条补充要求的内容替换，是否继续？')) return;
+    clearTimeout(this.saveTimer);
     this.editingInitial = false;
     this.edit = { id, version: message.message_version };
-    this.composer = message.body; this.status = `正在编辑版本 ${message.message_version}；原版本将保留可查。`;
+    this.composer = message.body; this.savedComposer = message.body.trim(); this.saveFailed = false; this.status = '修改后自动保存';
     this.onChange(); this.render();
     this.host.querySelector<HTMLTextAreaElement>('#project-message')?.focus();
   }
@@ -173,16 +194,42 @@ export class ProjectConversation {
       this.status = `旧版本读取失败：${readError(error)}`; this.controls();
     }
   }
-  private async send() {
-    if (this.saving || this.loading || !this.composer.trim() || !this.ref && !this.pending) return;
+  private scheduleSave() {
+    clearTimeout(this.saveTimer);
+    if (!this.dirty || this.composing || this.saveFailed || this.controller.signal.aborted) return;
+    this.saveTimer = setTimeout(() => void this.flush(), 650);
+  }
+  async flush(): Promise<boolean> {
+    clearTimeout(this.saveTimer);
+    if (this.composing) return false;
+    if (this.savePromise) await this.savePromise;
+    if (this.controller.signal.aborted || this.loading || !this.ref && !this.pending) return false;
+    while (this.dirty || this.pending) {
+      await this.send();
+      if (this.saveFailed || this.loading || this.controller.signal.aborted) break;
+      if (this.edit && this.items.find(item => item.message_id === this.edit?.id)?.message_version !== this.edit.version) break;
+    }
+    return !this.hasUnsent && !this.saveFailed;
+  }
+  private send(): Promise<void> {
+    if (this.savePromise) return this.savePromise;
+    const promise = this.persist(); this.savePromise = promise;
+    void promise.finally(() => { if (this.savePromise === promise) this.savePromise = undefined; });
+    return promise;
+  }
+  private async persist() {
+    if (this.saving || this.loading || !this.ref && !this.pending || !this.dirty && !this.pending) return;
+    if (!this.composer.trim() && !this.pending) { this.saveFailed = true; this.status = '补充说明不能为空，已保存的内容仍保留。'; this.controls(); return; }
+    this.saveFailed = false;
+    const sent = this.composer.trim();
     if (this.editingInitial && this.saveInitialNote) {
       this.saving = true; this.status = '正在保存补充说明…'; this.controls();
       try {
-        if (await this.saveInitialNote(this.composer.trim())) {
-          this.host.dataset.legacy = this.composer.trim(); this.composer = ''; this.editingInitial = false; this.status = '补充说明已保存。';
-        } else this.status = '补充说明保存失败，文字仍保留，请重试。';
-      } catch { this.status = '补充说明保存失败，文字仍保留，请重试。'; }
-      finally { this.saving = false; this.render(); this.onChange(); }
+        if (await this.saveInitialNote(sent)) {
+          this.host.dataset.legacy = sent; this.savedComposer = sent; this.status = '已自动保存';
+        } else { this.saveFailed = true; this.status = '自动保存失败，内容已保留。'; }
+      } catch { this.saveFailed = true; this.status = '自动保存失败，内容已保留。'; }
+      finally { this.saving = false; this.render(); this.onChange(); if (!this.saveFailed) this.scheduleSave(); }
       return;
     }
     const stale = this.edit && this.items.find(item => item.message_id === this.edit?.id)?.message_version !== this.edit.version;
@@ -191,7 +238,6 @@ export class ProjectConversation {
       message_id: this.edit?.id ?? crypto.randomUUID(), submission_request_id: crypto.randomUUID(),
       expected_message_version: this.edit?.version ?? null, body: this.composer.trim(), material_versions: []
     };
-    if (this.composer.trim() !== this.pending.body) { this.controls(); return; }
     const request = this.pending;
     this.saving = true; this.status = '正在保存用户补充要求…'; this.controls(); this.onChange();
     try {
@@ -204,14 +250,15 @@ export class ProjectConversation {
           saved.source_status !== 'user_asserted' || saved.intent_status !== 'not_classified') throw invalid();
       if (!saved.is_current) throw new ApiError(409, 'INPUT_REVISION_CONFLICT');
       this.ref = saved.project_message_set_ref;
-      this.pending = undefined; this.edit = undefined; this.composer = '';
+      this.pending = undefined; this.edit = { id: saved.message_id, version: saved.message_version }; this.savedComposer = request.body;
       this.savedAwaitingRead = true;
-      this.status = '已保存用户补充；未核验，不会自动开始编制。';
+      this.status = '已自动保存';
       this.onChange();
       this.saving = false;
       await this.refresh();
     } catch (error) {
       if (this.controller.signal.aborted) return;
+      this.saveFailed = true;
       if (error instanceof ApiError && error.status === 409) {
         this.pending = undefined;
         this.status = '补充要求版本或请求冲突。正在重新读取服务器版本；输入原文保留，不会覆盖。';
@@ -220,9 +267,10 @@ export class ProjectConversation {
       } else {
         this.status = `保存结果尚未确认：${friendlyError(error, 'save')} 原文保留，可按同一请求重试。`;
       }
-    } finally { this.saving = false; this.render(); this.onChange(); }
+    } finally { this.saving = false; this.render(); this.onChange(); if (!this.saveFailed) this.scheduleSave(); }
   }
   async currentRef(): Promise<ProjectMessageSetRef> {
+    if (!await this.flush()) throw new ApiError(409, 'INPUT_REVISION_CONFLICT');
     if (this.blockReason) throw new ApiError(409, 'INPUT_REVISION_CONFLICT');
     const page = await this.page();
     const ref = page.project_message_set_ref;
@@ -233,5 +281,5 @@ export class ProjectConversation {
     }
     return ref;
   }
-  dispose() { this.controller.abort(); this.readGeneration++; this.items = []; this.ref = undefined; this.pending = undefined; this.composer = ''; }
+  dispose() { clearTimeout(this.saveTimer); window.removeEventListener('online', this.retryOnline); this.controller.abort(); this.readGeneration++; this.items = []; this.ref = undefined; this.pending = undefined; this.composer = ''; }
 }
