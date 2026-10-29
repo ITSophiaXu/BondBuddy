@@ -175,6 +175,10 @@ test('paid file checks settle only complete report and new update scope includes
   await assert.rejects(finish(pool,lease,'succeeded',{artifactId:report.artifactId,artifactVersion:1,blobs}),/Delivered immutable consistency report/);
   const result={version:'project-file-check-v1',files:[{file_version_id:version,status:'conflict',coverage:'Synthetic coverage',findings:[],links:[]}]};
   await pool.query('UPDATE bb_project_file_operations SET result=$2,result_hash=$3 WHERE run_id=$1',[s.run.id,result,inputManifestHash(result)]);
+  await assert.rejects(finish(pool,lease,'succeeded',{artifactId:report.artifactId,artifactVersion:1,blobs}),/Delivered immutable consistency report/,'a structured ordinary-file report alone is not completed coverage');
+  assert.deepEqual(await creditBalance(pool,owner),{available:10000-price.points,frozen:price.points});
+  await pool.query(`INSERT INTO bb_project_file_check_evidence(owner_user_id,run_id,file_version_id,input_hash,source_sha256,target_sha256,checked_spans,total_spans)
+    VALUES($1,$2,$3,$4,$5,$6,1,1)`,[owner,s.run.id,version,s.hash,input.source.asset.pin.sha256,asset.pin.sha256]);
   await finish(pool,lease,'succeeded',{artifactId:report.artifactId,artifactVersion:1,blobs});await pool.query("UPDATE bb_runs SET state='succeeded' WHERE id=$1",[s.run.id]);
   assert.deepEqual(await creditBalance(pool,owner),{available:10000-price.points,frozen:0});
   const reused=await transaction(pool,c=>fileCheckPrice(c,owner,{...input,source:{...input.source,selection_revision:2}}));assert.equal(reused.points,0);

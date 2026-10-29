@@ -12,7 +12,7 @@ import {codexModelStage,type RunStage,type StageContext} from './run-pipeline.js
 import {loadCodexAdapterConfig} from './codex-adapter.js';
 import {loadProjectFileInput} from './project-file-input.js';
 import {inspectProjectFile,projectFilePython,projectFilesRoot,publishProjectFileLinks} from './project-file-tools.js';
-import {verifiedFileCheck,fileAnchor,verifiedFileLinks} from './project-file-evidence.js';
+import {completedFileCheck,fileAnchor,verifiedFileLinks} from './project-file-evidence.js';
 import {checkedM4File,verifyM4Originals,M4_FILE_MAX} from './m4-file-workspace.js';
 
 const DOCX='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -70,16 +70,23 @@ export function projectFileModelStage(options:{model?:typeof codexModelStage}={}
         });
         return {kind:'done',value:result,checkpoint:{project_file_result:result}};
       }
-      const workpaperIds=new Set((await ctx.pool.query(`SELECT v.id FROM bb_project_file_versions v JOIN bb_project_files f ON f.owner_user_id=v.owner_user_id AND f.id=v.file_id
-        WHERE v.owner_user_id=$1 AND v.id=ANY($2::text[]) AND f.document_type='workpaper'`,[ctx.run.owner_user_id,input.files.map(f=>f.file_version_id)])).rows.map(r=>r.id));
-      const sourcePath=await copyAsset(ctx,input.source.asset,directory,'source'),sourceText=await inspectProjectFile(ctx,sourcePath,workpaperIds.size>0);
+      const sourcePath=await copyAsset(ctx,input.source.asset,directory,'source'),sourceText=await inspectProjectFile(ctx,sourcePath,true);
       const files:ProjectFileCheckResult['files']=[];
       for(const file of input.files){
-        const targetPath=await copyAsset(ctx,file.asset,directory,'target-'+file.file_version_id.replace(/[^a-zA-Z0-9-]/g,'')),targetText=await inspectProjectFile(ctx,targetPath,workpaperIds.has(file.file_version_id));
-        const workpaper=workpaperIds.has(file.file_version_id),nonempty=targetText.spans.filter(s=>s.text.trim());
-        let verifiedCoverage=workpaper?!!(await ctx.pool.query(`SELECT 1 FROM bb_workpaper_check_evidence WHERE owner_user_id=$1 AND run_id=$2 AND file_version_id=$3
-          AND input_hash=$4 AND source_sha256=$5 AND target_sha256=$6 AND checked_spans=$7 AND total_spans=$7`,[ctx.run.owner_user_id,ctx.run.id,file.file_version_id,ctx.run.input_hash.trim(),sourceText.sha256,targetText.sha256,nonempty.length])).rowCount:false;
-        if(workpaper&&(sourceText.coverage!=='complete'||targetText.coverage!=='complete'||!sourceText.spans.some(s=>s.text.trim())||!nonempty.length))throw Error('FILE_CHECK_INCOMPLETE');
+        const targetPath=await copyAsset(ctx,file.asset,directory,'target-'+file.file_version_id.replace(/[^a-zA-Z0-9-]/g,'')),targetText=await inspectProjectFile(ctx,targetPath,true);
+        const nonempty=targetText.spans.filter(s=>s.text.trim());
+        let verifiedCoverage=!!(await ctx.pool.query(`SELECT 1 FROM bb_project_file_check_evidence WHERE owner_user_id=$1 AND run_id=$2 AND file_version_id=$3
+          AND input_hash=$4 AND source_sha256=$5 AND target_sha256=$6 AND checked_spans=$7 AND total_spans=$7`,[ctx.run.owner_user_id,ctx.run.id,file.file_version_id,ctx.run.input_hash.trim(),sourceText.sha256,targetText.sha256,nonempty.length])).rowCount;
+        if(sourceText.coverage!=='complete'||targetText.coverage!=='complete'||!sourceText.spans.some(s=>s.text.trim())||!nonempty.length)throw Error('FILE_CHECK_INCOMPLETE');
+        const persistCoverage=async()=>{
+          const parameters=[ctx.run.owner_user_id,ctx.run.id,file.file_version_id,ctx.run.input_hash.trim(),sourceText.sha256,targetText.sha256,nonempty.length];
+          await ctx.pool.query(`INSERT INTO bb_project_file_check_evidence(owner_user_id,run_id,file_version_id,input_hash,source_sha256,target_sha256,checked_spans,total_spans)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$7) ON CONFLICT(run_id,file_version_id) DO NOTHING`,parameters);
+          const matched=await ctx.pool.query(`SELECT 1 FROM bb_project_file_check_evidence WHERE owner_user_id=$1 AND run_id=$2 AND file_version_id=$3
+            AND input_hash=$4 AND source_sha256=$5 AND target_sha256=$6 AND checked_spans=$7 AND total_spans=$7`,parameters);
+          if(!matched.rowCount)throw Error('INPUT_REVISION_CONFLICT');
+          verifiedCoverage=true;
+        };
         let originals=new Map<string,string>();
         const result=await (options.model??codexModelStage)({name:'project_file_check_v1',logicalCallId:'file-check-'+file.file_version_id,
           config:{...loadCodexAdapterConfig(),max_output_bytes:8*1024*1024},buildPrompt:async()=>prompt,schema:{},
@@ -94,23 +101,16 @@ export function projectFileModelStage(options:{model?:typeof codexModelStage}={}
             await verifyM4Originals(cwd,originals);
             const bytes=await checkedM4File(join(cwd,'output'),'check.json',8*1024*1024);
             const proposal=JSON.parse(bytes.toString('utf8'));
-            const checked=verifiedFileCheck(file.file_version_id,sourceText,targetText,proposal);
-            if(workpaper){
-              const spans=new Set(Array.isArray(proposal.checked_span_ids)?proposal.checked_span_ids:[]);
-              if(!Array.isArray(proposal.findings)||nonempty.some(s=>!spans.has(s.id))||!checked.links.length&&!checked.findings.some(f=>fileAnchor(targetText,f.target_span_id,f.original)&&f.reason.trim()))throw Error('FILE_CHECK_INCOMPLETE');
-              verifiedCoverage=true;
-              for(const finding of checked.findings)if(finding.kind==='conflict'&&!/^p\d+$/.test(finding.target_span_id)){finding.kind='manual';finding.replacement=null;finding.reason+='；位于页眉、页脚或附注，请人工修订此处。';}
-              checked.status=checked.findings.some(f=>f.kind==='conflict')?'conflict':checked.findings.length?'manual':'consistent';
-            }
+            const checked=completedFileCheck(file.file_version_id,sourceText,targetText,proposal);
+            // The durable adapter stores its completed result after collect.
+            // Save evidence first so a crash immediately after that observation
+            // can reuse the same result without losing the right to settle.
+            await persistCoverage();
             return {version:'project-file-check-v1',files:[checked]} as ProjectFileCheckResult;
           }}}).run(ctx);
         if(result.kind!=='done')return result;
         const checked=result.value as ProjectFileCheckResult;if(!Value.Check(ProjectFileCheckResultSchema,checked))throw Error('FILE_CHECK_INVALID');
-        if(workpaper){
-          if(!verifiedCoverage)throw Error('FILE_CHECK_INCOMPLETE');
-          await ctx.pool.query(`INSERT INTO bb_workpaper_check_evidence(owner_user_id,run_id,file_version_id,input_hash,source_sha256,target_sha256,checked_spans,total_spans)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$7) ON CONFLICT(run_id,file_version_id) DO NOTHING`,[ctx.run.owner_user_id,ctx.run.id,file.file_version_id,ctx.run.input_hash.trim(),sourceText.sha256,targetText.sha256,nonempty.length]);
-        }
+        if(!verifiedCoverage)throw Error('FILE_CHECK_INCOMPLETE');
         files.push(...checked.files);
       }
       const result:ProjectFileCheckResult={version:'project-file-check-v1',files},hash=inputManifestHash(result);

@@ -22,12 +22,12 @@ export const SubscriptionSchema=obj({id,plan_id:planId,
   current_period_start:nullableDate,current_period_end:nullableDate,task_price_version:id});
 export const SubscriptionPeriodSchema=obj({id,order_id:id,plan_id:planId,
   status:Type.Union(['pending','active','refunded','failed'].map(x=>Type.Literal(x))),amount_fen:amount,points:amount,
-  available_points:amount,held_points:amount,starts_at:nullableDate,ends_at:nullableDate,credits_expires_at:nullableDate,refundable_until:nullableDate});
+  available_points:amount,held_points:amount,task_held_points:amount,refund_held_points:amount,starts_at:nullableDate,ends_at:nullableDate,credits_expires_at:nullableDate,refundable_until:nullableDate});
 export const subscriptionSchemas={
   SubscriptionCatalogResponse:obj({enabled:Type.Boolean(),version:id,
     plans:Type.Array(obj({id:planId,label:Type.String(),amount_fen:amount,points:amount,period_months:Type.Literal(1),credit_valid_days:Type.Literal(90)})),
     providers:Type.Array(provider),auto_renew_available:Type.Boolean()}),
-  SubscriptionAccountResponse:obj({subscription:Type.Union([SubscriptionSchema,Type.Null()]),available_points:amount,held_points:amount,
+  SubscriptionAccountResponse:obj({subscription:Type.Union([SubscriptionSchema,Type.Null()]),available_points:amount,held_points:amount,task_held_points:amount,refund_held_points:amount,
     subscription_available_points:amount,topup_available_points:amount,other_available_points:amount,periods:Type.Array(SubscriptionPeriodSchema)}),
   SubscriptionCheckoutRequest:obj({request_id:id,plan_id:planId,provider}),
   SubscriptionCheckoutResponse:obj({subscription:SubscriptionSchema,order:billingSchemas.RechargeOrderResponse}),

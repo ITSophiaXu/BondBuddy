@@ -49,6 +49,11 @@ export function checkPaymentDeployment(config) {
   const accounts=String(apiEnv.BB_WECHAT_PAY_STATEMENT_ACCOUNTS??'BASIC').split(',').map(value=>value.trim());
   record('wechat_statement_configuration', ['0','1'].includes(statementSwitch)&&(statementSwitch!=='1'||wechatSwitch==='1')
     &&accounts.length>0&&new Set(accounts).size===accounts.length&&accounts.every(value=>['BASIC','OPERATION','FEES'].includes(value)));
+  const alipaySwitch=String(apiEnv.BB_ALIPAY_PAY_ENABLED??'0'),alipayRefundSwitch=String(apiEnv.BB_ALIPAY_REFUND_ENABLED??'0');
+  record('alipay_switch_explicit',['0','1'].includes(alipaySwitch));
+  record('alipay_host_when_enabled',alipaySwitch!=='1'||allowedHosts.includes('openapi.alipay.com'));
+  record('alipay_web_product',alipaySwitch!=='1'||['page','wap'].includes(String(apiEnv.BB_ALIPAY_WEB_PRODUCT)));
+  record('alipay_refund_configuration',['0','1'].includes(alipayRefundSwitch)&&(alipayRefundSwitch!=='1'||alipaySwitch==='1'));
   return { passed: checks.every(check => check.passed), checks };
 }
 

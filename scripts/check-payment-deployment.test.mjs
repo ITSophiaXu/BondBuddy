@@ -91,3 +91,14 @@ test('statement enablement requires the merchant channel and an explicit support
   value.services.api.environment.BB_WECHAT_PAY_STATEMENT_ACCOUNTS='BASIC,UNKNOWN';
   failed(value,'wechat_statement_configuration');
 });
+
+test('Alipay deployment needs its exact gateway, one explicit Web product and an enabled parent for refunds',()=>{
+  const value=config();Object.assign(value.services.api.environment,{BB_ALIPAY_PAY_ENABLED:'1',BB_ALIPAY_WEB_PRODUCT:'page',BB_ALIPAY_REFUND_ENABLED:'0'});
+  failed(value,'alipay_host_when_enabled');value.services.egress.environment.BB_EGRESS_ALLOW+=',openapi.alipay.com';
+  assert.equal(checkPaymentDeployment(value).passed,true);
+  value.services.api.environment.BB_ALIPAY_WEB_PRODUCT='wap';assert.equal(checkPaymentDeployment(value).passed,true);
+  value.services.api.environment.BB_ALIPAY_WEB_PRODUCT='app';failed(value,'alipay_web_product');
+  value.services.api.environment.BB_ALIPAY_WEB_PRODUCT='page';value.services.api.environment.BB_ALIPAY_REFUND_ENABLED='1';value.services.api.environment.BB_ALIPAY_PAY_ENABLED='0';
+  failed(value,'alipay_refund_configuration');
+  value.services.api.environment.BB_ALIPAY_PAY_ENABLED='true';failed(value,'alipay_switch_explicit');
+});

@@ -23,7 +23,7 @@ export interface PaymentProvider {
   downloadStatements?(request:PaymentStatementRequest):Promise<VerifiedPaymentStatement>;
   readonly statementAccounts?:readonly ('BASIC'|'OPERATION'|'FEES')[];
   verifyCallback(headers:FastifyRequest['headers'],rawBody:string):Promise<VerifiedPayment>;
-  acknowledgement:object;
+  acknowledgement:object|string;
   readonly refunds?:PaymentRefundProvider;
   /** Present only for a implemented, authenticated mandate adapter. Native checkout alone is not recurring payment. */
   readonly recurring?:RecurringPaymentProvider;
@@ -177,6 +177,7 @@ export function installPayments(app:FastifyInstance,pool:Pool,owner:(r:FastifyRe
   app.register(async child=>{
     child.removeContentTypeParser('application/json');
     child.addContentTypeParser('application/json',{parseAs:'string',bodyLimit:65536},(_r,body,done)=>done(null,body));
+    child.addContentTypeParser('application/x-www-form-urlencoded',{parseAs:'string',bodyLimit:65536},(_r,body,done)=>done(null,body));
     child.post('/api/v1/payments/:provider/callback',{bodyLimit:65536},async r=>{
       const p=adapter(providers,(r.params as {provider:string}).provider);
       let receipt:VerifiedPayment;try{receipt=await p.verifyCallback(r.headers,r.body as string);}catch{throw new Problem(401,'PAYMENT_INVALID','Payment signature verification failed');}
