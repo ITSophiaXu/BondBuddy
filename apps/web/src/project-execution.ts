@@ -169,7 +169,7 @@ export class ProjectExecution {
   private generation = 0;
   private inputRejected = false;
   private quote?: Dto<'FixedQuoteResponse'>;
-  private commerceEnabled=false;
+  private commerceEnabled=false;private automaticBilling=false;
   private charge?: Dto<'RunCreditChargeResponse'>;
   private chargeRun?: string;
   private chargeRetryTimer?: ReturnType<typeof setTimeout>;
@@ -225,7 +225,7 @@ export class ProjectExecution {
     this.button('recheck-input').addEventListener('click', () => { void this.recheck(); });
     this.sync([], false, '正在读取已保存材料…');
     void this.restore();
-    void readCommerce(this.api,this.controller.signal).then(c=>{if(this.active){this.commerceEnabled=c?.enabled===true;this.render();}}).catch(()=>{});
+    void readCommerce(this.api,this.controller.signal).then(c=>{if(this.active){this.commerceEnabled=c?.enabled===true;this.automaticBilling=c?.model==='subscription_and_topup';this.render();}}).catch(()=>{});
     void this.api.creditBalance(this.controller.signal).then(balance => {
       if (this.active) { this.paidEnabled = balance.enabled; this.render(); }
     }).catch(() => {});
@@ -423,7 +423,7 @@ export class ProjectExecution {
     let billingHint = this.actions.querySelector<HTMLElement>('#execution-credit-hint');
     if (!billingHint) { billingHint = document.createElement('p'); billingHint.id = 'execution-credit-hint'; billingHint.className = 'muted'; this.actions.querySelector('.start-buttons')!.before(billingHint); }
     billingHint.hidden = Boolean(activeRun || this.run && !this.nextRequested || q && q.balance.available === 0);
-    billingHint.textContent = this.commerceEnabled?'按成果付费；开始前显示本次范围与人民币总价，确认后预留，交付结算。':this.paidEnabled === false ? '当前为试用编制，本次不扣积分。'
+    billingHint.textContent = this.automaticBilling?'发起任务后自动锁价并预留积分，成功交付后扣费；平台重试不重复收费。':this.commerceEnabled?'按成果付费；开始前显示本次范围与人民币总价，确认后预留，交付结算。':this.paidEnabled === false ? '当前为试用编制，本次不扣积分。'
       : '有积分即可开始，处理时按进度扣减；积分用完暂停，充值到账后继续。';
     this.node('#start-disabled-reason').textContent = blocked;
     this.node('#execution-message').textContent = this.message;

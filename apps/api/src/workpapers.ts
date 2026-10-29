@@ -13,6 +13,7 @@ import {project,transaction,uid,conflict,missing,Problem,date,digest,assertCanon
 import {inputManifestHash} from './production-rule-pin.js';
 import {readM4MaterialPin,startPinnedM4Run} from './m4-workspace.js';
 import {quoteM4} from './m4-billing.js';
+import {creditBalance} from './billing.js';
 import {resolveAutomaticTaskPriceVersion} from './automatic-price-versions.js';
 import {projectFileSource,readProjectFileAsset} from './project-file-storage.js';
 import {importProspectusMaterial} from './prospectus-import.js';
@@ -70,7 +71,11 @@ export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:stri
     WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND a.kind='document' AND v.delivery_status='available' AND v.quality_status='passed'`,[owner,batch])).rows;
   const charged=(await db.query(`SELECT coalesce(sum(CASE WHEN c.state='released' THEN 0 ELSE coalesce(c.charged_points,CASE WHEN c.state='settled' THEN c.points ELSE 0 END) END),0) amount
     FROM bb_workpaper_attempts a JOIN bb_credit_reservations c ON c.owner_user_id=a.owner_user_id AND c.run_id=a.run_id WHERE a.owner_user_id=$1 AND a.batch_id=$2`,[owner,batch])).rows[0];
+  const remaining=items.filter(i=>i.state==='queued').length;
+  const required=b.state==='paused'&&b.pause_reason==='credits_insufficient'&&isAutomaticPriceVersion(b.price_version)&&remaining?remaining*automaticTaskTariff(b.price_version).workpaper.points:0;
+  const balance=required?await creditBalance(db,owner):null;
   return {batch_id:b.id,topic_id:b.topic_id,catalogue_id:b.catalogue_id,state:b.state,revision:b.revision,source:b.source,total_points:Number(b.total_points),charged_points:Number(charged.amount),created_at:date(b.created_at),error:b.error,start_mode:b.start_mode,
+    ...(balance?{billing_resume:{price_version:b.price_version,required_points:required,available_points:balance.available,shortage:Math.max(0,required-balance.available)}}:{}),
     items:items.map(i=>({entry:i.manifest.input.workpaper.entry,decision:i.output_decision??i.manifest.input.workpaper.decision,...(i.delivered_explanation?{explanation:{filename:i.delivered_explanation.filename,sha256:i.delivered_explanation.sha256}}:{}),run_id:i.run_id,state:i.run_state??(i.state==='succeeded'?'succeeded':b.state==='cancelled'?'cancelled':i.state),stage:i.stage??null,attempt:i.attempt,error:i.error,
       artifacts:artifacts.filter(a=>a.run_id===i.run_id&&!i.delivered_explanation).map(a=>({kind:a.kind,filename:a.filename,pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}))}))};
 }
@@ -122,7 +127,7 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
     }catch(error){
       await c.query('ROLLBACK TO SAVEPOINT workpaper_start');
       if(error instanceof Problem&&error.code==='PROJECT_RUN_ACTIVE'||['55P03','40P01'].includes((error as {code?:string}).code??''))return false;
-      await c.query("UPDATE bb_workpaper_batches SET state='paused',revision=revision+1,error=$2 WHERE id=$1",[b.id,error instanceof Problem?error.message:'底稿任务暂未启动，请刷新后继续。']);return true;
+      await c.query("UPDATE bb_workpaper_batches SET state='paused',revision=revision+1,error=$2,pause_reason=$3 WHERE id=$1",[b.id,error instanceof Problem?error.message:'底稿任务暂未启动，请刷新后继续。',error instanceof Problem&&error.code==='CREDITS_INSUFFICIENT'?'credits_insufficient':null]);return true;
     }
   });
 }
@@ -219,7 +224,21 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
     const user=await owner(r),{project_id:id,batch_id:batch}=params(r),b=r.body as Static<typeof WorkpaperActionSchema>;
     await transaction(db(),async c=>{
       await project(c,user,id,true);const row=await ownedBatch(c,user,id,batch,true);
+      const billing='billing_resume' in b?b:null;
+      const hash=billing?inputManifestHash({project_id:id,batch_id:batch,...billing}):null;
+      if(billing){
+        await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[user+':workpaper-billing-resume:'+billing.request_id]);
+        const previous=(await c.query('SELECT batch_id,request_hash FROM bb_workpaper_billing_resumes WHERE owner_user_id=$1 AND request_id=$2',[user,billing.request_id])).rows[0];
+        if(previous){if(previous.batch_id!==batch||previous.request_hash.trim()!==hash)throw conflict('IDEMPOTENCY_CONFLICT','此恢复请求已用于其他底稿范围。');return;}
+      }
       if(row.revision!==b.expected_revision)throw conflict('INPUT_REVISION_CONFLICT','底稿任务状态已变化，请刷新后重试。');
+      if(billing){
+        if(row.state!=='paused'||row.pause_reason!=='credits_insufficient'||!isAutomaticPriceVersion(row.price_version)||billing.price_version!==row.price_version)throw conflict('INPUT_REVISION_CONFLICT','本批次已不处于原余额不足状态，请查看当前进度。');
+        const remaining=Number((await c.query("SELECT count(*) n FROM bb_workpaper_items WHERE owner_user_id=$1 AND batch_id=$2 AND state='queued'",[user,batch])).rows[0].n);
+        const points=remaining*automaticTaskTariff(row.price_version).workpaper.points;
+        if(points<=0||billing.expected_points!==points)throw conflict('QUOTE_CHANGED','本批剩余底稿范围已变化，请刷新进度。');
+        await withAutomaticBilling(c,true,()=>requireFileUpdateCredits(c,user,points,true),row.price_version);
+      }
       if(['resume','retry_failed'].includes(b.action)&&(await c.query("SELECT 1 FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 AND id<>$3 AND state IN ('queued','running','paused')",[user,id,batch])).rowCount)
         throw conflict('PROJECT_RUN_ACTIVE','本项目已有其他底稿文件包待完成，请先处理该文件包。');
       let state:string;
@@ -233,7 +252,8 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
         await c.query(`UPDATE bb_workpaper_items i SET run_id=NULL,state='queued',attempt=attempt+1,error=NULL FROM bb_runs r
           WHERE i.batch_id=$1 AND r.id=i.run_id AND r.owner_user_id=i.owner_user_id AND r.state=ANY($2::text[])`,[batch,['failed','cancelled','rejected','test_completed']]);state='queued';
       }else throw conflict('INPUT_REVISION_CONFLICT','当前状态不支持该操作。');
-      await c.query('UPDATE bb_workpaper_batches SET state=$2,revision=revision+1,error=NULL,updated_at=now() WHERE id=$1',[batch,state]);
+      await c.query('UPDATE bb_workpaper_batches SET state=$2,revision=revision+1,error=NULL,pause_reason=NULL,updated_at=now() WHERE id=$1',[batch,state]);
+      if(billing)await c.query('INSERT INTO bb_workpaper_billing_resumes(owner_user_id,request_id,batch_id,request_hash) VALUES($1,$2,$3,$4)',[user,billing.request_id,batch,hash]);
       await event(c,user,id,'workpaper.batch_'+b.action,{batch_id:batch});
     });return readWorkpaperBatch(db(),user,id,batch);
   });

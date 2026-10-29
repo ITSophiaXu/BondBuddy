@@ -14,7 +14,29 @@ Everything lives in `deploy/m1/`. This runbook covers target-host requirements, 
 | `egress` | `bondbuddy-m1-egress:<sha>` | squid allow-list forward proxy, the **only** route out of `backend` |
 | `web` | `bondbuddy-m1-web:<sha>` | unprivileged nginx on :8080: static web build at `/`, `/api/v1/` → api, `/healthz` → api `/health` |
 
-`backend` is a Docker `internal` network (no gateway). The worker gets `HTTPS_PROXY=http://egress:3128`; squid only accepts `CONNECT host:443` for names in `BB_EGRESS_ALLOW` (default `api.deepseek.com`). In production add the Blob host, for example `BB_EGRESS_ALLOW=api.deepseek.com,<account>.blob.core.windows.net`. `scripts/egress-test.sh` proves the policy from inside the worker container: direct TCP fails, non-listed hosts get 403, the provider host gets a tunnel (closed at once; no TLS or model request is sent).
+`backend` is a Docker `internal` network (no gateway). API, workers and ops get `HTTPS_PROXY=http://egress:3128`; squid only accepts `CONNECT host:443` for names in `BB_EGRESS_ALLOW` (default `api.deepseek.com`). In production add the Blob host, for example `BB_EGRESS_ALLOW=api.deepseek.com,<account>.blob.core.windows.net`. `scripts/egress-test.sh` proves the policy from inside the worker container: direct TCP fails, non-listed hosts get 403, the provider host gets a tunnel (closed at once; no TLS or model request is sent).
+
+### Subscription billing and payment egress
+
+`BB_SUBSCRIPTION_BILLING_ENABLED` defaults to `0` and is shared by API, authoring/review/parse workers and ops. Keep it off until the same release and all its migrations (including subscription, price-version and recovery migrations 0131–0137) are installed and verified. The production and optional integrity overlays inherit this flag. It is independent of merchant configuration. WeChat Native checkout purchases one subscription period; it does not authorize recurring deductions from the customer's payment account.
+
+The API recovers existing payment and refund intents every 60 seconds, with per-record backoff up to one hour and database claims across replicas. It also processes authorised refunds whose hold committed before the first dispatch. A configured refund adapter may retry the same immutable refund request only with a documented channel idempotency guarantee; WeChat uses the original `out_refund_no`, transaction and amount. Unknown responses retain the hold. This is intent recovery, not channel statement download or next-day statement reconciliation.
+
+Unresolved payment queries, invalid refund receipts, and refunds still unresolved after three scheduled attempts raise an hourly-deduplicated `payment_reconciliation_unresolved` warning in the existing operator alerts view. Its detail contains only intent kind/ID, provider and attempt count. Resolve against the original payment/refund facts; do not edit wallet balances or create a new channel refund number to clear a warning. An alert is a historical event, so check the current original-order state before taking action.
+
+API SIGTERM/SIGINT triggers Fastify close: reconciliation stops starting subsequent rows, waits for in-flight work and then closes a server-owned database pool. The base API service grants 90 seconds before forced termination. Rows not completed remain scheduled in PostgreSQL; a forced kill must not be interpreted as payment/refund failure. Real release-image/container shutdown and merchant acceptance still require a release-host check.
+
+API and ops set `NODE_USE_ENV_PROXY=1` as well as both uppercase/lowercase `HTTPS_PROXY` and `NO_PROXY`. Merely choosing a `node:22` tag is insufficient: the release baseline for the current Node 22 images is **22.23.3 or later within the 22.x line**, followed by a local proxy probe using the exact release image. This baseline uses the already recorded 22.23.3 proxy rehearsal; it is not a claim that every Node 22 version supports environment proxies. Record `node --version` and the image digest. The probe must observe an HTTPS CONNECT through a local recording proxy, reject an unreachable proxy without falling back to a direct connection, and honor the internal/loopback `NO_PROXY` entries. The existing `Node 22 environment HTTPS proxy` case in `apps/worker/src/library-sources.test.ts` exercises those three behaviors with synthetic local servers. Do not use a merchant transaction as this runtime probe.
+
+When enabling `BB_WECHAT_PAY_ENABLED=1`, append the exact host `api.mch.weixin.qq.com` to the existing `BB_EGRESS_ALLOW` list, for example `api.deepseek.com,<account>.blob.core.windows.net,api.mch.weixin.qq.com`. Keep existing approved Blob/model hosts. Do not use a wildcard, a suffix such as `.weixin.qq.com`, or add the merchant host to `BB_NO_PROXY`. No payment domain is opened by default. API stays on `backend` only and depends on the allow-list egress service. API callbacks still require the separately configured public HTTPS notify route.
+
+Before release, validate the fully merged Compose configuration, including any optional overlay, without printing private environment values. From the repository root, pipe Compose's JSON directly to the redacted checker:
+
+```sh
+docker compose --env-file deploy/m1/.env -f deploy/m1/compose.yaml -f deploy/m1/compose.prod.yaml config --format json | node scripts/check-payment-deployment.mjs
+```
+
+The checker reports only named pass/fail checks for the shared billing switch, API proxy, private network, and exact payment allow-list rule. It does not contact a provider or validate credentials. Keep the runtime probe, merchant configuration, and real payment acceptance as separate release evidence; a passing configuration check is not payment acceptance. Never save or paste the raw Compose JSON because it contains private environment values.
 
 ### Worker runtime and shutdown (#17)
 

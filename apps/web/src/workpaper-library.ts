@@ -36,12 +36,15 @@ export class WorkpaperLibraryPanel {
   private scheduleRefresh(){clearTimeout(this.timer);if(this.live())this.timer=setTimeout(()=>{if(this.busy||this.dialog?.open)this.scheduleRefresh();else void this.refresh();},10000);}
   private paint(){
     const data=this.data!;
+    let capability=this.host.querySelector<HTMLElement>('.wl-check-capability');
+    if(!capability){capability=document.createElement('p');capability.className='wl-check-capability';capability.setAttribute('role','status');this.host.querySelector('.wl-checks')!.before(capability);}
+    capability.textContent=data.check_capability?.enabled===false?data.check_capability.reason:'';capability.hidden=!capability.textContent;
     const list=this.host.querySelector('.wl-list')!,opened=new Set([...list.querySelectorAll<HTMLDetailsElement>('details[open]')].map(e=>e.dataset.key));
     list.innerHTML=data.items.length?data.items.map((i,n)=>{
       const key=i.batch_id+':'+i.entry.id,status=i.check_stale?'需用新版检查':i.impact?labels[i.impact.status]:i.state==='succeeded'?'未检查':i.state==='failed'?'生成失败':'生成中';
       return `<details class="wl-file" data-key="${esc(key)}" ${opened.has(key)?'open':''}><summary><span class="wl-name">${esc(i.explanation?.filename??i.entry.path.split('/').at(-1)!)}</span><span class="wl-status">${esc(status)}</span><small>${i.explanation?'不适用说明':'可生成文件'} · 募集书 V${i.source.sequence}${i.latest?' · 当前底稿':' · 历史底稿'}</small></summary>
       <div class="wl-details"><p>${esc(i.entry.folder||'尽职调查文件')} · ${date(i.created_at)} · ${i.version_count} 个批次版本</p><p>${esc(i.impact?.reason??i.decision?.reason??'生成后可检查与新版募集书的关联内容。')}</p>
-      <div class="wl-actions">${i.explanation||i.artifacts.length?`<button class="btn secondary" data-preview="${n}">预览正文</button><button class="btn secondary" data-download="${n}">下载文件</button>`:''}<button class="text-button" data-zip="${n}">下载所在批次 ZIP</button><button class="text-button" data-check="${n}" ${!data.source?'disabled':''}>检查本批底稿</button>${i.impact&&i.impact.status!=='current'&&!i.check_stale?`<a class="text-button" href="#generate?project=${encodeURIComponent(this.project)}&step=workpapers&workpaper_batch=${encodeURIComponent(i.batch_id)}&return_project=${encodeURIComponent(this.project)}">重新编制受影响底稿</a>`:''}</div>
+      <div class="wl-actions">${i.explanation||i.artifacts.length?`<button class="btn secondary" data-preview="${n}">预览正文</button><button class="btn secondary" data-download="${n}">下载文件</button>`:''}<button class="text-button" data-zip="${n}">下载所在批次 ZIP</button><button class="text-button" data-check="${n}" ${!data.source||data.check_capability?.enabled===false?'disabled':''}>检查本批底稿</button>${i.impact&&i.impact.status!=='current'&&!i.check_stale?`<a class="text-button" href="#generate?project=${encodeURIComponent(this.project)}&step=workpapers&workpaper_batch=${encodeURIComponent(i.batch_id)}&return_project=${encodeURIComponent(this.project)}">重新编制受影响底稿</a>`:''}</div>
       ${i.check_stale&&i.impact?'<p>以下为旧检查记录，尚未对当前募集书生效。</p>':''}
       ${(i.impact?.changes??[]).map(c=>`<div class="wl-change"><strong>${esc(c.fields.join('；')||'披露内容变更')}</strong><p>底稿位置：${esc(c.target_locations.join('；')||'需重新判断适用性')}</p><dl><div><dt>原募集书</dt><dd>${esc(c.before||'无')}</dd></div><div><dt>新募集书</dt><dd>${esc(c.after||'已删除')}</dd></div></dl></div>`).join('')}</div></details>`;
     }).join(''):'<p class="collection-empty">没有符合条件的底稿文件。</p>';
@@ -67,6 +70,7 @@ export class WorkpaperLibraryPanel {
   }
   private async perform(action:string,item:WorkpaperLibraryItem,button:HTMLButtonElement){
     if(action==='check'){
+      if(this.data?.check_capability?.enabled===false){this.message(this.data.check_capability.reason);return;}
       const source=this.data!.source!;
       const key=item.batch_id+':'+source.version_id+':'+source.selection_revision;const request=this.checkRequests.get(key)??crypto.randomUUID();this.checkRequests.set(key,request);
       await this.api.request('POST',this.base+`/batches/${encodeURIComponent(item.batch_id)}/checks`,{request_id:request,source_version_id:source.version_id,source_selection_revision:source.selection_revision},{},this.abort.signal);

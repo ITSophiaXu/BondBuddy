@@ -21,7 +21,9 @@ services:
       # (3 concurrent 100 MiB uploads plus completion re-checks).
       BB_UPLOAD_SPOOL_MAX_BYTES: ${BB_UPLOAD_SPOOL_MAX_BYTES:-524288000}
       HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
       NO_PROXY: ${BB_NO_PROXY:-postgres,api,localhost,127.0.0.1}
+      no_proxy: ${BB_NO_PROXY:-postgres,api,localhost,127.0.0.1}
     # 512M: full pdf.js inspection of a ~96 MiB scanned PDF measured at ~390 MiB peak (single-flight).
     deploy: {resources: {limits: {cpus: '0.75', memory: 512M}}}
   worker:

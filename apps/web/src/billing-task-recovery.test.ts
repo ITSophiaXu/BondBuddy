@@ -72,3 +72,14 @@ test('silent storage loss prevents the initial task submission',async()=>{
  const store=memory(),lossy={...store,setItem:()=>{}};
  await assert.rejects(createBillingTask('owner',endpoint,body,{},route,lossy),/任务尚未提交/);
 });
+
+test('payment-assisted batch recovery requires a named billing resume and preserves other paused batches',async()=>{
+ const store=memory(),path='/projects/p1/workpapers/batches/batch-one/actions',returnTo='#generate?project=p1&step=workpapers&view=results&batch=batch-one';
+ const request={action:'resume',billing_resume:true,request_id:'wp-one',expected_revision:4,price_version:AUTOMATIC_PRICE_VERSION,expected_points:20341};
+ for(const action of ['pause','cancel','retry_failed'])await assert.rejects(createBillingTask('owner',path,{...request,action},{},returnTo,store));
+ await assert.rejects(createBillingTask('owner',path,{...request,billing_resume:false},{},returnTo,store));
+ const one=await createBillingTask('owner',path,request,{},returnTo,store),two=await createBillingTask('owner','/projects/p1/workpapers/batches/batch-two/actions',{...request,request_id:'wp-two'},{},'#generate?project=p1&step=workpapers&view=results&batch=batch-two',store);
+ waiting(store,one.id);waiting(store,two.id);let calls=0;
+ await resumeBillingTask('owner',one.id,returnTo,async(p,b)=>{calls++;assert.equal(p,path);assert.deepEqual(b,request);},store);
+ assert.equal(calls,1);assert.equal((await readBillingTask('owner',two.id,store))?.state,'needs_funds');
+});

@@ -42,6 +42,49 @@ test('synthetic refund mock HTTP signs original transaction, exact nominal total
   }finally{server.closeAllConnections();await new Promise<void>((resolve,reject)=>server.close(e=>e?reject(e):resolve()));}
 });
 
+test('same-request recovery preserves the original refund payload after either pre-send crash or lost response',async()=>{
+  for(const originalWasSent of [false,true]){
+    const bodies:string[]=[];
+    const p=createWechatPayProvider(options,{now:()=>f.now,fetch:async(url,init)=>{
+      assert.equal(String(url),'https://api.mch.weixin.qq.com/v3/refund/domestic/refunds');
+      assert.equal(init?.method,'POST');
+      bodies.push(String(init?.body));
+      if(originalWasSent&&bodies.length===1)throw Error('Synthetic request accepted but response lost');
+      return f.response(value);
+    }});
+    assert.ok(p.refunds?.recoverSameRequest);
+    if(originalWasSent)await assert.rejects(()=>p.refunds!.create(order),rejected);
+    const recovered=await p.refunds.recoverSameRequest(order);
+    assert.equal(recovered.refundId,order.id);
+    assert.equal(recovered.providerRefundId,value.refund_id);
+    assert.deepEqual(await p.refunds.recoverSameRequest(order),recovered);
+    const expected=JSON.stringify({transaction_id:order.provider_transaction_id,out_refund_no:order.id,
+      notify_url:options.refundNotifyUrl,amount:{refund:order.amount_fen,total:order.order_amount_fen,currency:'CNY'}});
+    assert.equal(bodies.length,originalWasSent?3:2);
+    assert.ok(bodies.every(body=>body===expected),'recovery must never generate another refund number or change the locked amount/transaction');
+  }
+});
+
+test('refund recovery retains authenticated matching response requirements and never turns a missing order into failure',async()=>{
+  const missing=JSON.stringify({code:'RESOURCE_NOT_EXISTS',message:'Synthetic missing refund'});
+  for(const response of [
+    ()=>new Response(missing,{status:404,headers:{'content-type':'application/json'}}),
+    ()=>new Response(missing,{status:404,headers:{'content-type':'application/json',...f.signed(missing) as Record<string,string>}}),
+    ()=>new Response(JSON.stringify(value),{headers:{'content-type':'application/json'}}),
+    ()=>f.response(value,{key:f.merchant.privateKey}),
+    ()=>f.response({...value,out_refund_no:'foreign_refund'}),
+    ()=>f.response({...value,amount:{...value.amount,refund:1}}),
+  ]){
+    const p=createWechatPayProvider(options,{now:()=>f.now,fetch:async()=>response()});
+    await assert.rejects(()=>p.refunds!.query(order),rejected);
+    await assert.rejects(()=>p.refunds!.recoverSameRequest!(order),rejected);
+  }
+  const timeout=createWechatPayProvider({...options,timeoutMs:20},{now:()=>f.now,fetch:async()=>new Promise(()=>{})});
+  await assert.rejects(()=>timeout.refunds!.recoverSameRequest!(order),rejected);
+  const invalid=createWechatPayProvider(options,{now:()=>f.now,fetch:async()=>{throw Error('Invalid original orders must not reach fetch');}});
+  await assert.rejects(()=>invalid.refunds!.recoverSameRequest!({...order,merchant_id:'foreign-merchant'}),error=>error instanceof WechatPayError&&error.code==='ORDER_INVALID');
+});
+
 test('refund status mapping retains ABNORMAL as unresolved and only CLOSED is explicit failure',async()=>{
   for(const [status,state] of [['SUCCESS','succeeded'],['PROCESSING','processing'],['ABNORMAL','processing'],['CLOSED','failed']]){
     const p=createWechatPayProvider(options,{now:()=>f.now,fetch:async()=>f.response({...value,status})});
@@ -87,7 +130,7 @@ test('refund capability defaults off; explicit verified configuration enables it
     BB_WECHAT_PAY_API_V3_KEY:f.options.apiV3Key,BB_WECHAT_PAY_NOTIFY_URL:f.options.notifyUrl,BB_WECHAT_PAY_PLATFORM_SERIAL:f.platformSerial,
     BB_WECHAT_PAY_PLATFORM_PUBLIC_KEY:f.options.platformKeys[0].publicKeyPem,BB_WECHAT_PAY_REFUND_NOTIFY_URL:options.refundNotifyUrl};
   assert.equal(paymentProvidersFromEnv(env,{now:()=>f.now}).providers[0]?.refunds,undefined);
-  assert.ok(paymentProvidersFromEnv({...env,BB_WECHAT_PAY_REFUND_ENABLED:'1'},{now:()=>f.now}).providers[0]?.refunds);
+  assert.ok(paymentProvidersFromEnv({...env,BB_WECHAT_PAY_REFUND_ENABLED:'1'},{now:()=>f.now}).providers[0]?.refunds?.recoverSameRequest);
   for(const response of [()=>new Response('not found',{status:404}),()=>new Response('private provider error',{status:500}),()=>new Response('{}',{headers:{'content-type':'application/json'}})]){
     const p=createWechatPayProvider(options,{now:()=>f.now,fetch:async()=>response()});await assert.rejects(()=>p.refunds!.query(order),rejected);
   }

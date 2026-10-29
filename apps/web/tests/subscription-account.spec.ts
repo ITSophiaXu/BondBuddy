@@ -1,7 +1,10 @@
 import {mkdir,readFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {expect,test,type Page,type Route} from '@playwright/test';
-import {AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION,automaticTaskTariff,DATA_POLICY_VERSION,DELETION_PURGED_CONTENT,DELETION_RETAINED_METADATA,type AutomaticPriceVersion,type DataPolicy} from '@bondbuddy/contracts';
+import Fastify from 'fastify';
+import type {Pool} from 'pg';
+import {installSubscriptions} from '../../api/dist/subscriptions.js';
+import {AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION,automaticTaskTariff,DATA_POLICY_VERSION,DELETION_PURGED_CONTENT,DELETION_RETAINED_METADATA,type AutomaticPriceVersion,type DataPolicy,type SubscriptionCatalog} from '@bondbuddy/contracts';
 
 // Synthetic HTTP and UI evidence. No merchant, mandate, cash transfer or professional task is executed.
 const now='2026-10-29T04:00:00Z',end='2026-11-29T04:00:00Z',expiry='2027-01-27T04:00:00Z';
@@ -9,7 +12,7 @@ const plans=[{id:'light',label:'轻量',amount_fen:19900,points:21000,period_mon
 const policy:DataPolicy={policy_version:DATA_POLICY_VERSION,storage_location:'platform_private_cloud',server_side_processing:true,model_provider_processing:true,active_retention:'until_user_deletes',purge_enabled:false,deleted_content_purge_days:null,orphan_upload_purge_hours:null,log_content_retention_days:30,backup_retention_days:null,pinned_by_active_run:'retained_until_run_ends',purged_content:[...DELETION_PURGED_CONTENT],retained_metadata:[...DELETION_RETAINED_METADATA]};
 const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 async function evidence(page:Page,name:string){const directory=process.env.BB_UX_EVIDENCE_DIR;if(!directory)return;await mkdir(directory,{recursive:true});await page.screenshot({path:join(directory,name),fullPage:true});}
-async function setup(page:Page,options:{payment?:boolean;active?:boolean;renewal?:boolean;manualActive?:boolean;uncertainCheckout?:boolean;orderPaid?:boolean;priceVersion?:AutomaticPriceVersion}={}){
+async function setup(page:Page,options:{payment?:boolean;active?:boolean;renewal?:boolean;manualActive?:boolean;uncertainCheckout?:boolean;orderPaid?:boolean;priceVersion?:AutomaticPriceVersion;subscriptionCatalog?:SubscriptionCatalog}={}){
   const calls:{method:string;path:string;body:any}[]=[];let attempts=0;
   const priceVersion=options.priceVersion??AUTOMATIC_PRICE_VERSION,tariff=automaticTaskTariff(priceVersion);
   let subscription:any=options.active?{id:'subscription-1',plan_id:'light',status:'active',auto_renew:!!options.renewal&&!options.manualActive,mandate_status:options.renewal&&!options.manualActive?'active':'none',current_period_start:now,current_period_end:end,task_price_version:priceVersion}:null;
@@ -24,9 +27,10 @@ async function setup(page:Page,options:{payment?:boolean;active?:boolean;renewal
     if(path==='/account/sessions')return json(route,200,{items:[{session_id:'session-1',current:true,created_at:now,last_refreshed_at:now,refresh_expires_at:'2030-01-01T00:00:00Z'}]});
     if(path==='/account/recovery')return json(route,200,{enabled:false,support_operator:false,current:null,pending:null});
     if(path==='/data-policy')return json(route,200,policy);
-    if(path==='/subscriptions/catalog')return json(route,200,{enabled:true,version:'bb-subscriptions-20261029-v1',plans,providers:options.payment?['wechat']:[],auto_renew_available:!!options.renewal});
+    if(path==='/subscriptions/catalog')return json(route,200,options.subscriptionCatalog??{enabled:true,version:'bb-subscriptions-20261029-v1',plans,providers:options.payment?['wechat']:[],auto_renew_available:!!options.renewal});
     if(path==='/subscriptions/account')return json(route,200,{subscription,available_points:subscription&&order.state==='paid'?22000:19782,held_points:subscription&&order.state==='paid'?0:1218,subscription_available_points:subscription&&order.state==='paid'?21000:0,topup_available_points:subscription&&order.state==='paid'?1000:19782,other_available_points:0,periods:subscription?[period()]:[]});
     if(path==='/commerce/catalog')return json(route,200,{enabled:true,currency:'CNY',version:priceVersion,model:'subscription_and_topup',items:Object.entries(tariff).map(([code,item])=>({code,label:item.label+(code==='full_review'&&priceVersion===LEGACY_AUTOMATIC_PRICE_VERSION?'（本期原价）':''),unit:item.unit,price_fen:item.points,price_points:item.points,capability:'limited',scope:code==='full_review'?['一份募集说明书与锁定材料的一轮全面复核，交付复核报告及批注。','另行委托的差异复核、原文修订各按14,900积分独立计费。']:['独立业务范围'],included:code==='full_review'?['本轮报告与批注的修复、平台重试包含。']:['原范围修订']})),rules:[]});
+    if(path==='/commerce/quotations')return json(route,200,{items:[]});
     if(path==='/credits/consumption-history')return json(route,200,{items:[
       {reservation_id:'response-settled',run_id:'response-run',project_id:'project-1',project_name:'合成项目',task_name:'问题回复',created_at:now,finalized_at:now,state:'settled',reserved_points:1218,charged_points:1218,released_points:0,corrected_points:0,pricing_mode:'outcome_cny_v1',price_version:priceVersion,currency:'CNY',amount_fen:1218},
       {reservation_id:'full-review-settled',run_id:'full-review-run',project_id:'project-1',project_name:'合成项目',task_name:'独立全面复核',created_at:now,finalized_at:now,state:'settled',reserved_points:tariff.full_review.points,charged_points:tariff.full_review.points,released_points:0,corrected_points:0,pricing_mode:'outcome_cny_v1',price_version:priceVersion,currency:'CNY',amount_fen:tariff.full_review.points}],page:{next_cursor:null,has_more:false}});
@@ -46,13 +50,20 @@ async function setup(page:Page,options:{payment?:boolean;active?:boolean;renewal
     if(path==='/commerce/topups/'+order.order_id||path==='/commerce/topups/'+order.order_id+'/refresh')return json(route,200,order);
     return json(route,404,{code:'NOT_FOUND'});
   });
-  return{calls};
+  return{calls,settle:()=>{order={...order,state:'paid',credited_at:now};}};
 }
 
 test.beforeEach(async({page})=>page.setViewportSize({width:1440,height:960}));
 
 test('subscription account shows point rights and disables unavailable payment capabilities',async({page})=>{
-  const {calls}=await setup(page);await page.goto('/#/account');
+  // Use the real API route response here: a mocked enabled:true formerly hid
+  // the API's provider-dependent fallback to the old cash-balance page.
+  const app=Fastify();
+  installSubscriptions(app,{} as Pool,async()=> 'subscription-owner',true,[]);
+  let subscriptionCatalog:SubscriptionCatalog;
+  try{const response=await app.inject({method:'GET',url:'/api/v1/subscriptions/catalog'});expect(response.statusCode).toBe(200);subscriptionCatalog=response.json();}finally{await app.close();}
+  expect(subscriptionCatalog).toMatchObject({enabled:true,providers:[],auto_renew_available:false});
+  const {calls}=await setup(page,{subscriptionCatalog});await page.goto('/#/account');
   await expect(page.locator('#account-balance-title')).toHaveText('可用积分');
   await expect(page.locator('.account-balance-value')).toHaveText('19,782积分');
   await expect(page.locator('.subscription-balance-sources')).toContainText('充值额度19,782 积分');
@@ -68,6 +79,44 @@ test('subscription account shows point rights and disables unavailable payment c
   await page.setViewportSize({width:390,height:844});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await evidence(page,'subscription-account-390.png');
+});
+
+test('subscription quotation deep link shows its original scope and point amount without a purchase confirmation',async({page})=>{
+  const {calls}=await setup(page);
+  const original={id:'original-scope',project_id:'project-1',action:'review',input_hash:'a'.repeat(64),price_version:AUTOMATIC_PRICE_VERSION,quote_status:'ready',amount_fen:27195,scope_lines:[{key:'review',label:'锁定募集说明书与材料',quantity:1,unit:'轮',unit_price_fen:27195,amount_fen:27195,evidence:['原材料版本保持不变']}],reason:'本次范围记录',created_at:now,published_at:now,expires_at:end,closed_at:null,decline_reason:'',closure_reason:'',revision:1,previous_quote_id:null};
+  await page.route('**/api/v1/commerce/quotations',route=>json(route,200,{items:[original,{...original,id:'expired-scope',quote_status:'expired',closure_reason:'原范围已过期'}]}));
+  await page.goto('/#/account?quotation=original-scope');
+  await expect(page.locator('#subscription-quotation-details')).toHaveAttribute('open','');
+  const selected=page.locator('[data-quotation="original-scope"]');
+  await expect(selected.locator('[data-quotation-details]')).toHaveAttribute('open','');
+  await expect(selected).toContainText('27,195 积分');await expect(selected).toContainText('原材料版本保持不变');await expect(selected).not.toContainText('¥271.95');
+  await expect(page.locator('[data-quotation="expired-scope"]')).toContainText('原范围已过期');
+  await expect(page.locator('[data-decline-quote],[data-requote],[data-commerce-accept]')).toHaveCount(0);
+  expect(calls.filter(call=>call.method==='POST')).toEqual([]);
+});
+
+for(const cancel of [false,true])test(`server-confirmed payment polling ${cancel?'preserves cancelled waiting task':'automatically resumes the named task once'}`,async({page})=>{
+  const fixture=await setup(page,{payment:true}),resumes:any[]=[];
+  await page.route('**/api/v1/projects/original-project/qa/runs',route=>{resumes.push(route.request().postDataJSON());return json(route,200,{run_id:'original-run'});});
+  await page.goto('/#/account');
+  const task=await page.evaluate(async()=>{
+    const recovery=await import('/src/'+'billing-task-recovery.ts');
+    const body={request_id:'paid-original-answer',expected_revision:7,price_version:'bb-task-price-170-20261029-v3',expected_points:1218,scope_quote_id:'original-scope'};
+    const task=await recovery.createBillingTask('subscription-owner','/projects/original-project/qa/runs',body,{},'#qa?project=original-project');
+    localStorage.setItem('bondbuddy:billing-task:v1:'+task.id,JSON.stringify({...task,state:'needs_funds'}));return task;
+  });
+  await page.goto('/#/account?'+new URLSearchParams({order:'subscription-order-1',return_to:task.returnTo,resume_request:task.id}));
+  await expect(page.getByRole('heading',{name:'等待支付确认',exact:true})).toBeVisible();expect(resumes).toEqual([]);
+  if(cancel)await page.getByRole('button',{name:'取消这次等待任务'}).click();
+  fixture.settle();await page.clock.fastForward(15_100);
+  if(cancel){
+    await expect(page.getByRole('heading',{name:'积分已到账',exact:true})).toBeVisible();await expect(page).toHaveURL(/#\/account\?/);expect(resumes).toEqual([]);
+    await page.evaluate(()=>window.dispatchEvent(new Event('bondbuddy:credits-changed')));expect(resumes).toEqual([]);
+  }else{
+    await expect.poll(()=>resumes.length).toBe(1);expect(resumes[0]).toEqual(task.body);
+    await expect(page).toHaveURL(/#qa\?project=original-project$/);await page.reload();expect(resumes).toHaveLength(1);
+  }
+  expect(fixture.calls.filter(call=>call.method==='POST'&&call.path.endsWith('/refresh'))).toEqual([]);
 });
 
 test('checkout retries one selected plan and never sends a client-controlled price or grants points on return',async({page})=>{

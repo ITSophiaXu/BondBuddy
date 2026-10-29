@@ -13,6 +13,8 @@ export type VerifiedRefund={refundId:string;orderId:string;merchantId:string;tra
 export interface PaymentRefundProvider{
   create(order:RefundOrder):Promise<VerifiedRefund>;
   query(order:RefundOrder):Promise<VerifiedRefund>;
+  /** Only adapters with a documented identical-request idempotency guarantee may expose this. */
+  recoverSameRequest?(order:RefundOrder):Promise<VerifiedRefund>;
   verifyCallback(headers:FastifyRequest['headers'],rawBody:string):Promise<VerifiedRefund>;
 }
 const unavailable=()=>new Problem(503,'PAYMENT_UNAVAILABLE','原支付渠道暂未开放自动退款，请联系支持核实原单。');
@@ -157,7 +159,7 @@ export async function refreshPaymentRefund(pool:Pool,owner:string,refundId:strin
     await c.query('SELECT id FROM bb_credit_lots WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[pointer.lot_id,owner]);
     const row=(await c.query('SELECT * FROM bb_payment_refunds WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[refundId,owner])).rows[0];
     if(row.dispatch_started_at||terminal(row.state))return {row,create:false};
-    // Commit the attempt BEFORE leaving the database. A timeout/crash resumes only by querying this same out_refund_no.
+    // Commit BEFORE leaving the database. Recovery uses this same immutable refund ID.
     const updated=(await c.query("UPDATE bb_payment_refunds SET state='processing',dispatch_started_at=now(),updated_at=now() WHERE id=$1 RETURNING *",[row.id])).rows[0];
     await event(c,updated,'dispatch');return {row:updated,create:true};
   });
@@ -165,9 +167,17 @@ export async function refreshPaymentRefund(pool:Pool,owner:string,refundId:strin
   let receipt:VerifiedRefund;
   try{receipt=await provider.refunds![claimed.create?'create':'query'](refundOrder(claimed.row));}
   catch{
-    // Transport errors, unsigned errors, NOT_FOUND and ABNORMAL are never proof of a failed refund.
-    return refundDto((await pool.query('SELECT * FROM bb_payment_refunds WHERE id=$1 AND owner_user_id=$2',[refundId,owner])).rows[0]);
+    // A process can die after dispatch_started_at commits but before sending the request.
+    // Never infer failure/absence from a transport error or an unsigned 404. A capable
+    // adapter may resend the exact same authorised request under its same-key guarantee.
+    const latest=(await pool.query('SELECT * FROM bb_payment_refunds WHERE id=$1 AND owner_user_id=$2',[refundId,owner])).rows[0];
+    if(terminal(latest.state))return refundDto(latest);
+    if(!claimed.create&&provider.refunds!.recoverSameRequest){
+      try{receipt=await provider.refunds!.recoverSameRequest(refundOrder(claimed.row));}
+      catch{return refundDto((await pool.query('SELECT * FROM bb_payment_refunds WHERE id=$1 AND owner_user_id=$2',[refundId,owner])).rows[0]);}
+    }else return refundDto((await pool.query('SELECT * FROM bb_payment_refunds WHERE id=$1 AND owner_user_id=$2',[refundId,owner])).rows[0]);
   }
+  if(receipt.refundId!==claimed.row.id||receipt.orderId!==claimed.row.order_id)throw invalid();
   return applyVerifiedRefund(pool,provider,receipt);
 }
 

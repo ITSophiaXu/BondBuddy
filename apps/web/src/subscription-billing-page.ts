@@ -4,6 +4,7 @@ import {AUTOMATIC_PRICE_VERSION,isAutomaticPriceVersion} from '@bondbuddy/contra
 import {ApiClient,ApiError,friendlyError,type Dto} from './api';
 import {CreditHistory} from './credit-history';
 import {CommerceRefunds} from './commerce-refunds';
+import {CommerceQuotations} from './commerce-quotations';
 import {cny} from './commerce';
 import {date,esc} from './ui';
 import {rechargeHref,workReturnTo} from './project-navigation';
@@ -38,20 +39,22 @@ export class SubscriptionBillingPage{
   private checkoutRequest?:SubscriptionCheckoutRequest;private topupRequest?:Dto<'CommerceTopupRequest'>;
   private cancelRequest?:{id:string;request_id:string};private renewRequest?:{id:string;request_id:string;enabled:boolean};
   private authorizationUrl?:string;private qr?:{url:string;data:string};private qrPending?:string;
-  private history:CreditHistory;private refunds:CommerceRefunds;
+  private history:CreditHistory;private refunds:CommerceRefunds;private quotations:CommerceQuotations;
+  private quotationsOpen=new URLSearchParams(location.hash.split('?')[1]).has('quotation');
   private resumeRequest=new URLSearchParams(location.hash.split('?')[1]).get('resume_request');
-  private pendingTask?:BillingTask;
+  private pendingTask?:BillingTask;private returnStarted=false;
   private returnTo=workReturnTo(new URLSearchParams(location.hash.split('?')[1]).get('return_to'));
   private onCredits=()=>{if(!document.hidden)void this.refreshAccount();};
   constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private active:()=>boolean,
     private catalog:SubscriptionCatalog,private projectId?:string,private orderId?:string,private owner?:string){
     this.history=new CreditHistory(api,active,()=>true,()=>true);
     this.refunds=new CommerceRefunds(api,active,owner,()=>!!this.paymentPeriod());
+    this.quotations=new CommerceQuotations(api,active,true);
     this.subscriptionProvider=catalog.providers[0];this.topupProvider=catalog.providers[0];
     window.addEventListener('bondbuddy:credits-changed',this.onCredits);window.addEventListener('focus',this.onCredits);
     document.addEventListener('visibilitychange',this.onCredits);
   }
-  dispose(){this.controller.abort();clearTimeout(this.timer);this.history.dispose();this.refunds.dispose();
+  dispose(){this.controller.abort();clearTimeout(this.timer);this.history.dispose();this.refunds.dispose();this.quotations.dispose();
     window.removeEventListener('bondbuddy:credits-changed',this.onCredits);window.removeEventListener('focus',this.onCredits);document.removeEventListener('visibilitychange',this.onCredits);}
   private live(){return this.active()&&!this.controller.signal.aborted;}
   async render(){
@@ -74,7 +77,15 @@ export class SubscriptionBillingPage{
   private schedule(){clearTimeout(this.timer);if(this.live())this.timer=setTimeout(()=>void this.refreshAccount(),15_000);}
   private async refreshAccount(){
     if(!this.live()||this.loading||this.busy){this.schedule();return;}this.loading=true;
-    try{const [account,commerce]=await Promise.all([this.api.subscriptionAccount(this.controller.signal),this.api.commerceCatalog(this.controller.signal)]);if(this.live()){this.account=account;this.commerce=commerce;this.draw();}}
+    const orderId=this.order?.order_id;
+    try{
+      const [account,commerce,order]=await Promise.all([this.api.subscriptionAccount(this.controller.signal),this.api.commerceCatalog(this.controller.signal),orderId?this.api.commerceOrder(orderId,this.controller.signal):Promise.resolve(undefined)]);
+      if(this.live()){
+        this.account=account;this.commerce=commerce;
+        if(order&&orderId===this.order?.order_id){if(order.order_id!==orderId)throw new Error('Unexpected payment order');this.order=order;}
+        if(!await this.returnToPaidTask()&&this.live())this.draw();
+      }
+    }
     catch(error){if(this.live()){this.error=friendlyError(error,'read');this.draw();}}
     finally{this.loading=false;this.schedule();}
   }
@@ -110,8 +121,10 @@ export class SubscriptionBillingPage{
     const focused=document.activeElement instanceof HTMLInputElement?{id:document.activeElement.id,start:document.activeElement.selectionStart,end:document.activeElement.selectionEnd}:undefined;
     const account=this.account;
     const heading=document.querySelector('.account-page-heading p');if(heading)heading.textContent='账户信息、订阅与积分';
-    this.shell(`<section class="credit-overview" aria-labelledby="account-balance-title"><h2 id="account-balance-title">可用积分</h2><p class="account-balance-value">${account?points(account.available_points):'—'}<span>积分</span></p><p class="account-balance-note">发起任务后自动预留，成功交付后自动扣费</p>${account?.held_points?`<p class="credit-reservation">进行中任务预留 <strong>${points(account.held_points)}</strong> 积分</p>`:''}${account?`<dl class="subscription-balance-sources"><div><dt>订阅额度</dt><dd>${points(account.subscription_available_points)} 积分</dd></div><div><dt>充值额度</dt><dd>${points(account.topup_available_points)} 积分</dd></div>${account.other_available_points?`<div><dt>其他有效额度</dt><dd>${points(account.other_available_points)} 积分</dd></div>`:''}</dl>`:''}</section><div class="account-billing-content subscription-account">${this.error?`<p class="account-billing-error" role="alert">${esc(this.error)}</p>`:''}${this.message?`<p class="subscription-message" role="status">${esc(this.message)}</p>`:''}${this.returnTo||this.projectId?`<section class="notice"><p>${this.pendingTask?'已保存本次任务。当前页面确认到账后，将自动返回并继续同一任务；关闭页面不会在后台启动。':'已提交任务的材料与范围保留。到账后可返回原工作查看任务状态。'}</p><a class="btn secondary" href="${esc(this.back())}">返回刚才的工作</a>${this.pendingTask?'<button class="text-button" type="button" id="subscription-cancel-waiting">取消这次等待任务</button>':''}</section>`:''}${this.order?this.payment():''}${this.plans()}${this.topup()}${this.periods()}${this.taskPrices()}<div id="subscription-credit-history"></div><details class="billing-faq"><summary>订阅、扣费与退款规则</summary><div class="billing-faq-body"><p>提出明确业务任务即可执行，后台锁价并预留积分，合格成果交付后自动扣费；失败或有效取消释放预留，不按模型重试追加费用。</p><p>订阅积分每批有效90天，优先使用符合任务权限且即将到期的额度；充值积分永久有效。停止续费不会提前清除已经到账的有效积分。</p><p>每期付款后7天内，该期积分完全未使用且无冻结时，可申请整期退款。已使用周期的普通停订只停止未来续费；平台责任及依法应退情形按对应规则处理。</p><p>充值退款只针对原订单可退实付；任务返分与现金退款分别记录。积分余额表示可用任务额度，不是可提现现金。</p></div></details></div>`,'billing');
+    this.shell(`<section class="credit-overview" aria-labelledby="account-balance-title"><h2 id="account-balance-title">可用积分</h2><p class="account-balance-value">${account?points(account.available_points):'—'}<span>积分</span></p><p class="account-balance-note">发起任务后自动预留，成功交付后自动扣费</p>${account?.held_points?`<p class="credit-reservation">进行中任务预留 <strong>${points(account.held_points)}</strong> 积分</p>`:''}${account?`<dl class="subscription-balance-sources"><div><dt>订阅额度</dt><dd>${points(account.subscription_available_points)} 积分</dd></div><div><dt>充值额度</dt><dd>${points(account.topup_available_points)} 积分</dd></div>${account.other_available_points?`<div><dt>其他有效额度</dt><dd>${points(account.other_available_points)} 积分</dd></div>`:''}</dl>`:''}</section><div class="account-billing-content subscription-account">${this.error?`<p class="account-billing-error" role="alert">${esc(this.error)}</p>`:''}${this.message?`<p class="subscription-message" role="status">${esc(this.message)}</p>`:''}${this.returnTo||this.projectId?`<section class="notice"><p>${this.pendingTask?'已保存本次任务。当前页面确认到账后，将自动返回并继续同一任务；关闭页面不会在后台启动。':'已提交任务的材料与范围保留。到账后可返回原工作查看任务状态。'}</p><a class="btn secondary" href="${esc(this.back())}">返回刚才的工作</a>${this.pendingTask?'<button class="text-button" type="button" id="subscription-cancel-waiting">取消这次等待任务</button>':''}</section>`:''}${this.order?this.payment():''}${this.plans()}${this.topup()}${this.periods()}${this.taskPrices()}<details id="subscription-quotation-details" ${this.quotationsOpen?'open':' '}><summary>任务范围与历史报价</summary><div id="subscription-quotations"></div></details><div id="subscription-credit-history"></div><details class="billing-faq"><summary>订阅、扣费与退款规则</summary><div class="billing-faq-body"><p>提出明确业务任务即可执行，后台锁价并预留积分，合格成果交付后自动扣费；失败或有效取消释放预留，不按模型重试追加费用。</p><p>订阅积分每批有效90天，优先使用符合任务权限且即将到期的额度；充值积分永久有效。停止续费不会提前清除已经到账的有效积分。</p><p>每期付款后7天内，该期积分完全未使用且无冻结时，可申请整期退款。已使用周期的普通停订只停止未来续费；平台责任及依法应退情形按对应规则处理。</p><p>充值退款只针对原订单可退实付；任务返分与现金退款分别记录。积分余额表示可用任务额度，不是可提现现金。</p></div></details></div>`,'billing');
     this.history.mount(document.querySelector<HTMLElement>('#subscription-credit-history')!);
+    const quotations=document.querySelector<HTMLElement>('#subscription-quotations');if(quotations)this.quotations.mount(quotations);
+    document.querySelector<HTMLDetailsElement>('#subscription-quotation-details')?.addEventListener('toggle',event=>{this.quotationsOpen=(event.currentTarget as HTMLDetailsElement).open;});
     const refundHost=document.querySelector<HTMLElement>('#subscription-payment-refunds');if(refundHost&&this.order)this.refunds.mount(refundHost,this.order.order_id);
     document.querySelector<HTMLSelectElement>('#subscription-provider')?.addEventListener('change',event=>{this.subscriptionProvider=(event.target as HTMLSelectElement).value as Provider;});
     document.querySelector<HTMLSelectElement>('#subscription-topup-provider')?.addEventListener('change',event=>{this.topupProvider=(event.target as HTMLSelectElement).value as Provider;});
@@ -129,13 +142,16 @@ export class SubscriptionBillingPage{
   }
   private orderLink(id:string){const query=new URLSearchParams(rechargeHref(this.projectId).split('?')[1]);query.set('order',id);if(this.resumeRequest&&this.pendingTask)query.set('resume_request',this.resumeRequest);return '#/account?'+query;}
   private async returnToPaidTask(){
-    if(!this.live()||this.order?.state!=='paid'||!this.owner||!this.resumeRequest||!this.pendingTask)return false;
-    const target=await billingTaskReturnTo(this.owner,this.resumeRequest);
-    if(!target||!this.live())return false;location.hash=target;return true;
+    if(!this.live()||this.returnStarted||this.order?.state!=='paid'||!this.owner||!this.resumeRequest||!this.pendingTask)return false;
+    const owner=this.owner,request=this.resumeRequest,orderId=this.order.order_id;
+    const target=await billingTaskReturnTo(owner,request);
+    if(!target||!this.live()||this.returnStarted||!this.pendingTask||this.resumeRequest!==request||this.owner!==owner||this.order?.order_id!==orderId||this.order.state!=='paid')return false;
+    this.returnStarted=true;location.hash=target;return true;
   }
   private async cancelWaitingTask(){
     if(!this.owner||!this.resumeRequest||!this.pendingTask)return;
-    await cancelBillingTask(this.owner,this.resumeRequest);this.pendingTask=undefined;this.message='已取消这次等待补款的任务，不影响已有积分或支付订单。';this.draw();
+    const owner=this.owner,request=this.resumeRequest;this.pendingTask=undefined;this.resumeRequest=null;
+    await cancelBillingTask(owner,request);if(this.live()){this.message='已取消这次等待补款的任务，不影响已有积分或支付订单。';this.draw();}
   }
   private async buySubscription(planId:SubscriptionCheckoutRequest['plan_id']){
     const provider=this.subscriptionProvider;if(!this.canBuy()||!provider||this.currentPeriodOpen(this.account?.subscription))return;

@@ -1,11 +1,12 @@
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
-import {WorkpaperCheckRequestSchema,type WorkpaperCheck,type WorkpaperLibrary,type WorkpaperLibraryItem,type WorkpaperChangeInput} from '@bondbuddy/contracts';
+import {WorkpaperCheckRequestSchema,WORKPAPER_CHECK_UNAVAILABLE,type WorkpaperCheck,type WorkpaperLibrary,type WorkpaperLibraryItem,type WorkpaperChangeInput} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,missing,Problem,date,assertCanonicalBusinessRunIdle} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {projectFileSource,readProjectFileAsset} from './project-file-storage.js';
 import {enqueue} from './queue.js';
+import {automaticBillingEnabled} from './automatic-billing-context.js';
 type Db=Pool|PoolClient;
 export async function readWorkpaperChecks(db:Db,owner:string,id:string):Promise<WorkpaperCheck[]>{
   await project(db,owner,id);const source=await projectFileSource(db,owner,id);
@@ -57,7 +58,8 @@ export async function readWorkpaperLibrary(db:Db,owner:string,id:string,q:{offse
     JOIN bb_artifact_versions v ON v.owner_user_id=a.owner_user_id AND v.id=a.artifact_id AND v.version=a.artifact_version
     WHERE a.owner_user_id=$1 AND a.run_id=ANY($2::text[]) AND a.kind='document' AND v.delivery_status='available' AND v.quality_status='passed'`,[owner,items.map(i=>i.run_id).filter(Boolean)])).rows;
   for(const item of items)item.artifacts=artifacts.filter(a=>a.run_id===item.run_id&&!item.explanation).map(a=>({kind:'document',filename:a.filename,pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}));
-  return {items,total:filtered.length,offset:q.offset,limit:q.limit,source,checks:checks.slice(0,30).map(c=>({...c,result:null}))};
+  const automatic=automaticBillingEnabled(db);
+  return {items,total:filtered.length,offset:q.offset,limit:q.limit,source,checks:checks.slice(0,30).map(c=>({...c,result:null})),check_capability:{enabled:!automatic,reason:automatic?WORKPAPER_CHECK_UNAVAILABLE:''}};
 }
 export function registerWorkpaperLibrary(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>){
   const base='/api/v1/projects/:project_id/workpapers';
@@ -78,6 +80,9 @@ export function registerWorkpaperLibrary(app:FastifyInstance,db:()=>Pool,owner:(
       await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[user+':'+key]);
       const old=(await c.query('SELECT id,request_hash FROM bb_runs WHERE owner_user_id=$1 AND execution_request_id=$2',[user,key])).rows[0];
       if(old){if(old.request_hash.trim()!==requestHash)throw conflict('IDEMPOTENCY_CONFLICT','此检查请求已使用。');return old.id;}
+      // The old source-diff report has no per-file delivery or paid-scope coverage
+      // receipts. Do not silently run it free or charge a full check SKU for it.
+      if(automaticBillingEnabled(c))throw new Problem(409,'BILLING_NOT_READY',WORKPAPER_CHECK_UNAVAILABLE);
       if(p.archived_at)throw conflict('INPUT_REVISION_CONFLICT','请先恢复项目。');
       await assertCanonicalBusinessRunIdle(c,user,p);
       const row=(await c.query('SELECT * FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,batch])).rows[0];

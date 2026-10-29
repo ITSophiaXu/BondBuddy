@@ -1,5 +1,5 @@
 import {expect,test,type Page,type Route} from '@playwright/test';
-import {AUTOMATIC_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,commerceMetadata} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,commerceMetadata} from '@bondbuddy/contracts';
 import {fixture as qaFixture,install as installQa,projectId as qaProject} from './project-qa-continuation-fixtures';
 import {fixture as integrityFixture,install as installIntegrity,projectId as integrityProject} from './integrity-continuation-fixtures';
 import {fixture as consistencyFixture,install as installConsistency,ids,base,checkId,fileIds} from './consistency-confirmation-fixtures';
@@ -32,6 +32,22 @@ test('QA one business click submits exactly once without an amount confirmation'
   await page.route(`**/api/v1/projects/${qaProject}/qa/runs`,route=>{starts.push(route.request().postDataJSON());return json(route,{run_id:'automatic-qa'});});
   await page.goto(`/#qa?project=${qaProject}`);await page.locator('#qa-start').click();await expect.poll(()=>starts.length).toBe(1);
   expect(starts[0]).toMatchObject({price_version:AUTOMATIC_PRICE_VERSION,expected_points:1218,scope_quote_id:'scope-automatic'});await expect(page.locator('#qa-confirm,[data-commerce-confirm]')).toHaveCount(0);
+});
+
+for(const priceVersion of [AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION])test(`QA uncertain ${priceVersion} task keeps points in its durable recovery panel`,async({page})=>{
+  const state=qaFixture();state.workspace.price={...price(),version:priceVersion,price_version:priceVersion};state.workspace.draft.materials.push(structuredClone(state.workspace.prospectus!.asset));
+  await installQa(page,state);await commerce(page);const starts:any[]=[];
+  await page.route(`**/api/v1/projects/${qaProject}/qa/quote`,route=>json(route,{...quote(1218),price_version:priceVersion}));
+  await page.route(`**/api/v1/projects/${qaProject}/qa/runs`,route=>{starts.push(route.request().postDataJSON());return json(route,{code:'DATA_UNAVAILABLE'},503);});
+  await page.goto(`/#qa?project=${qaProject}`);await page.locator('#qa-start').click();
+  await expect.poll(()=>starts.length).toBe(1);
+  await expect(page.locator('.qa-recovery')).toContainText('1,218 积分');
+  await expect(page.locator('.qa-recovery')).not.toContainText('¥12.18');
+  await page.reload();
+  await expect(page.locator('.qa-recovery')).toContainText('1,218 积分');
+  await expect(page.locator('.qa-recovery')).not.toContainText('¥12.18');
+  expect(starts).toHaveLength(1);
+  await expect(page.locator('#qa-confirm,[data-commerce-confirm]')).toHaveCount(0);
 });
 
 test('integrity starts once from its business action and keeps the immutable revision',async({page})=>{

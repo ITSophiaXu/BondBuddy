@@ -20,7 +20,8 @@ export function observeAutomaticQuotes(value:unknown){
   if(isAutomaticPriceVersion(row.price_version)&&Number.isSafeInteger(points)&&Number(points)>=0)for(const key of ['quote_id','scope_quote_id'])if(typeof row[key]==='string'){automaticQuoteIds.add(row[key]);quotePoints.set(row[key],Number(points));}
   for(const key of ['quote','documents','items'])if(row[key])observeAutomaticQuotes(row[key]);
 }
-export function automaticTaskPath(path:string){return /^\/runs\/execute$/.test(path)||/^\/projects\/[^/?#]+\/(?:review-executions|review-updates|qa\/runs|integrity\/runs|workpapers\/batches|project-files\/(?:batches|checks(?:\/[^/?#]+\/updates)?))$/.test(path)||/^\/m4\/topics\/[^/?#]+\/(?:messages|execute)$/.test(path);}
+export function automaticTaskPath(path:string){return /^\/runs\/execute$/.test(path)||/^\/projects\/[^/?#]+\/(?:review-executions|review-updates|qa\/runs|integrity\/runs|workpapers\/batches(?:\/[^/?#]+\/actions)?|project-files\/(?:batches|checks(?:\/[^/?#]+\/updates)?))$/.test(path)||/^\/m4\/topics\/[^/?#]+\/(?:messages|execute)$/.test(path);}
+function recoverableAction(path:string,body:Record<string,unknown>){return !path.endsWith('/actions')||body.action==='resume'&&body.billing_resume===true;}
 function requestKey(body:Record<string,unknown>){for(const key of ['execution_request_id','request_id','submission_request_id'])if(typeof body[key]==='string'&&body[key])return body[key] as string;return undefined;}
 function canonical(value:unknown):string{if(Array.isArray(value))return '['+value.map(canonical).join(',')+']';if(value&&typeof value==='object')return '{'+Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>JSON.stringify(k)+':'+canonical(v)).join(',')+'}';return JSON.stringify(value);}
 async function hash(value:unknown){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonical(value))))].map(n=>n.toString(16).padStart(2,'0')).join('');}
@@ -29,7 +30,7 @@ function storage(){return localStorage;}
 export function cleanBillingReturn(hashValue:string){const [path,query='']=hashValue.split('?'),params=new URLSearchParams(query);params.delete('resume_request');return path+(params.size?'?'+params:'');}
 export async function createBillingTask(owner:string,path:string,body:Record<string,unknown>,headers:Record<string,string>,returnTo:string,store:StorageLike=storage(),now=Date.now(),requiredPoints?:number):Promise<BillingTask>{
   const requestId=requestKey(body),safeReturn=workReturnTo(cleanBillingReturn(returnTo));
-  if(!owner||!automaticTaskPath(path)||!requestId||!safeReturn)throw new Error('无法安全保存本次任务，请返回任务工作区后重试。');
+  if(!owner||!automaticTaskPath(path)||!recoverableAction(path,body)||!requestId||!safeReturn)throw new Error('无法安全保存本次任务，请返回任务工作区后重试。');
   const id=await hash([owner,path,requestId]),existing=await readBillingTask(owner,id,store,now);
   const snapshot=JSON.parse(JSON.stringify(body)) as Record<string,unknown>;
   if(existing){if(canonical(existing.body)!==canonical(snapshot)||canonical(existing.headers)!==canonical(headers))throw new Error('原任务输入已变化，请返回工作区重新开始。');return existing;}
@@ -42,6 +43,7 @@ export async function readBillingTask(owner:string,id:string,store:StorageLike=s
   if(!/^[a-f0-9]{64}$/.test(id))return;
   try{const raw=store.getItem(prefix+id);if(!raw)return;const task=JSON.parse(raw) as BillingTask;
     if(task.version!==1||!['attempting','needs_funds','unknown','resuming'].includes(task.state)||(task.requiredPoints!==undefined&&(!Number.isSafeInteger(task.requiredPoints)||task.requiredPoints<0))||task.id!==id||task.owner!==owner||!automaticTaskPath(task.path)||!task.body||requestKey(task.body)!==task.requestId||!workReturnTo(task.returnTo)||task.expiresAt<=now||task.createdAt>now||task.expiresAt-task.createdAt!==ttl||task.digest!==await hash(identity(task)))return;
+    if(!recoverableAction(task.path,task.body))return;
     return task;
   }catch{return;}
 }
@@ -56,7 +58,7 @@ async function submitTask<T>(task:BillingTask,submit:()=>Promise<T>,store:Storag
 /** Captures only a user-created task with a new server quote; it never creates payments. */
 export async function runRecoverableBillingRequest<T>(method:string,path:string,body:unknown,headers:Record<string,string>,submit:()=>Promise<T>):Promise<T>{
   const owner=ownerProvider(),row=body&&typeof body==='object'&&!Array.isArray(body)?body as Record<string,unknown>:undefined;
-  if(method!=='POST'||!owner||!automaticTaskPath(path)||!row||!requestKey(row)||!(isAutomaticPriceVersion(row.price_version)||typeof row.quote_id==='string'&&automaticQuoteIds.has(row.quote_id)||typeof row.scope_quote_id==='string'&&automaticQuoteIds.has(row.scope_quote_id)))return submit();
+  if(method!=='POST'||!owner||!automaticTaskPath(path)||!row||!recoverableAction(path,row)||!requestKey(row)||!(isAutomaticPriceVersion(row.price_version)||typeof row.quote_id==='string'&&automaticQuoteIds.has(row.quote_id)||typeof row.scope_quote_id==='string'&&automaticQuoteIds.has(row.scope_quote_id)))return submit();
   const fallback=path.match(/^\/m4\/topics\/([^/]+)\//),project=typeof row.project_id==='string'?row.project_id:path.match(/^\/projects\/([^/]+)\//)?.[1],returnTo=workReturnTo(location.hash)??(fallback?'#generate?topic='+fallback[1]:project?'#/projects/'+encodeURIComponent(project):null);
   if(!returnTo)throw new Error('请打开本次任务工作区后开始。');
   const quoteId=typeof row.quote_id==='string'?row.quote_id:typeof row.scope_quote_id==='string'?row.scope_quote_id:undefined;

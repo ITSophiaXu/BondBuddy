@@ -21,18 +21,20 @@ async function setup(){
   const pool=new Pool({connectionString:database}),f=syntheticWechatFixture(Date.now()),owner=randomUUID();let actor:string=owner,creates=0,queries=0;
   await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'synthetic_refund_'+owner.slice(0,8)]);
   await publishPrices(pool,{id:'synthetic-refund-price',prices:INITIAL_FIXED_PRICES,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic-test',reason:'Synthetic isolated refund-allocation price fixture'});
-  const channel=new Map<string,any>(),orders=new Map<string,any>();let mode:'processing'|'timeout'|'success'|'closed'='processing';
+  const channel=new Map<string,any>(),orders=new Map<string,any>(),refundIds=new Set<string>();let mode:'processing'|'timeout'|'success'|'closed'='processing';
   const provider=createWechatPayProvider({...f.options,refundNotifyUrl:'https://bondbuddy.example/api/v1/payments/wechat/refund-callback'},
     {now:()=>f.now,fetch:async(url,init)=>{
       const path=new URL(String(url)).pathname;
       if(path==='/v3/pay/transactions/native')return f.response({code_url:'weixin://wxpay/bizpayurl?pr=synthetic-refund-payment'});
       if(init?.method==='POST'){
         assert.equal(path,'/v3/refund/domestic/refunds');creates++;
-        const body=JSON.parse(String(init.body)),original=orders.get(body.transaction_id);assert.ok(original);
+        const body=JSON.parse(String(init.body)),original=orders.get(body.transaction_id);assert.ok(original);refundIds.add(body.out_refund_no);
         const stored=(await pool.query('SELECT * FROM bb_payment_refunds WHERE id=$1',[body.out_refund_no])).rows[0];assert.equal(stored.state,'processing');assert.ok(stored.dispatch_started_at);
         const lot=(await pool.query('SELECT * FROM bb_credit_lots WHERE id=$1',[stored.lot_id])).rows[0];assert.ok(Number(lot.frozen)>=body.amount.refund,'Freeze commits before any external request');
         assert.equal(body.amount.total,original.amount_fen);assert.equal(body.amount.currency,'CNY');
-        const receipt={out_refund_no:body.out_refund_no,out_trade_no:original.order_id,transaction_id:body.transaction_id,refund_id:'wx_'+body.out_refund_no.slice(0,27),
+        const prior=channel.get(body.out_refund_no);
+        if(prior){assert.equal(prior.transaction_id,body.transaction_id);assert.equal(prior.amount.refund,body.amount.refund);assert.equal(prior.amount.total,body.amount.total);}
+        const receipt=prior??{out_refund_no:body.out_refund_no,out_trade_no:original.order_id,transaction_id:body.transaction_id,refund_id:'wx_'+body.out_refund_no.slice(0,27),
           channel:'ORIGINAL',status:mode==='success'?'SUCCESS':mode==='closed'?'CLOSED':'PROCESSING',
           amount:{total:original.amount_fen,refund:body.amount.refund,payer_total:original.amount_fen,payer_refund:body.amount.refund,currency:'CNY'}};
         channel.set(body.out_refund_no,receipt);if(mode==='timeout')throw Error('Synthetic accepted request with lost response');return f.response(receipt);
@@ -62,7 +64,7 @@ async function setup(){
   const eligibility=(id:string)=>send('GET',`/api/v1/commerce/topups/${id}/refund-eligibility`);
   const readLot=async(id:string)=>(await pool.query("SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND source_key='recharge:'||$2",[owner,id])).rows[0];
   return {pool,f,owner,provider,app,send,topup,paymentCallback,refundCallback,request,eligibility,readLot,channel,orders,
-    setActor:(value:string)=>{actor=value;},setMode:(value:typeof mode)=>{mode=value;},counts:()=>({creates,queries}),close:async()=>{await app.close();await pool.end();}};
+    setActor:(value:string)=>{actor=value;},setMode:(value:typeof mode)=>{mode=value;},counts:()=>({creates,queries,refundIds:[...refundIds]}),close:async()=>{await app.close();await pool.end();}};
 }
 
 function memoryBlobs():PrivateBlobs{
@@ -153,11 +155,12 @@ test('synthetic timeout/unknown retains freeze, reconciles same refund ID, and e
     const receipt={out_refund_no:row.id,out_trade_no:row.order_id,transaction_id:row.provider_txn_id,refund_id:'wx_'+row.id.slice(0,27),status:'ABNORMAL',
       amount:{total:1000,refund:600,payer_total:1000,payer_refund:600,currency:'CNY'}};h.channel.set(row.id,receipt);
     assert.equal((await h.send('POST',`/api/v1/commerce/refunds/${row.id}/refresh`,{})).json().state,'processing');assert.equal((await h.readLot(order.order_id)).frozen,'600');
-    receipt.status='SUCCESS';const recovered=await h.send('POST',`/api/v1/commerce/refunds/${row.id}/refresh`,{});assert.equal(recovered.json().state,'succeeded',recovered.body);assert.deepEqual(await creditBalance(h.pool,h.owner),{available:400,frozen:0});assert.equal(h.counts().creates,1);
+    receipt.status='SUCCESS';const recovered=await h.send('POST',`/api/v1/commerce/refunds/${row.id}/refresh`,{});assert.equal(recovered.json().state,'succeeded',recovered.body);assert.deepEqual(await creditBalance(h.pool,h.owner),{available:400,frozen:0});
+    assert.equal(h.counts().creates,2,'Unknown query permits one same-request resend, not another refund ID');assert.deepEqual(h.counts().refundIds,[row.id]);
     h.setMode('closed');const failedKey=randomUUID(),failed=await h.request(order.order_id,300,failedKey);assert.equal(failed.json().state,'failed',failed.body);assert.equal(failed.json().failure_code,'CLOSED');assert.deepEqual(await creditBalance(h.pool,h.owner),{available:400,frozen:0});
-    assert.equal((await h.request(order.order_id,300,failedKey)).json().refund_id,failed.json().refund_id);assert.equal(h.counts().creates,2);
+    assert.equal((await h.request(order.order_id,300,failedKey)).json().refund_id,failed.json().refund_id);assert.equal(h.counts().creates,3);assert.equal(h.counts().refundIds.length,2);
     assert.equal((await h.request(order.order_id,301,failedKey)).statusCode,409);
-    h.setMode('success');const explicit=await h.request(order.order_id,300);assert.equal(explicit.json().state,'succeeded',explicit.body);assert.equal(h.counts().creates,3);assert.deepEqual(await creditBalance(h.pool,h.owner),{available:100,frozen:0});
+    h.setMode('success');const explicit=await h.request(order.order_id,300);assert.equal(explicit.json().state,'succeeded',explicit.body);assert.equal(h.counts().creates,4);assert.equal(h.counts().refundIds.length,3);assert.deepEqual(await creditBalance(h.pool,h.owner),{available:100,frozen:0});
     assert.equal((await h.refundCallback(failed.json().refund_id,{refund_status:'SUCCESS'})).statusCode,409,'Conflicting terminal outcome needs reconciliation, not another debit');
     const report=await auditCredits(h.pool);assert.equal(report.consistent,true,JSON.stringify(report));
     const disabled=createServer({pool:h.pool,enableOutcomePricing:true,paymentProviders:[{...h.provider,refunds:undefined}],allowedOrigin:'http://refund.test',principal:async()=>({userId:h.owner,csrfVerified:true})});

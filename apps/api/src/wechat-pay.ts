@@ -198,7 +198,7 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
     const perform = async () => {
       const response = await fetcher(API_ORIGIN + path, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: authorization, 'User-Agent': 'BondBuddy-WechatPay/1' }, body: method === 'POST' ? body : undefined, redirect: 'error', signal: controller.signal });
       // Only a signed, exact Native-order query error can establish absence. In
-      // particular an unsigned 404, transport failure, or refund NOT_FOUND is unknown.
+      // particular an unsigned 404, transport failure, or refund RESOURCE_NOT_EXISTS is unknown.
       if (response.status !== 200 && !(authenticatedMissingOrder && method === 'GET' && response.status === 404)) { await response.body?.cancel(); return fail('HTTP_ERROR'); }
       if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '')) return fail('PAYLOAD_INVALID');
       const raw = await boundedBody(response);
@@ -211,14 +211,21 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
     catch (error) { if (error instanceof WechatPayError) throw error; return fail(controller.signal.aborted ? 'TIMEOUT' : 'TRANSPORT_ERROR'); }
     finally { if (timer !== undefined) clearTimeout(timer); }
   }
+  async function submitOriginalRefund(order:RefundOrder):Promise<VerifiedRefund>{
+    assertRefund(order);
+    if(!refundNotifyUrl)return fail('CONFIG_INVALID');
+    return refundReceipt(await request('POST','/v3/refund/domestic/refunds',{transaction_id:order.provider_transaction_id,out_refund_no:order.id,
+      notify_url:refundNotifyUrl,amount:{refund:order.amount_fen,total:order.order_amount_fen,currency:'CNY'}}),order);
+  }
   return {
     name: 'wechat', merchantId, acknowledgement: { code: 'SUCCESS', message: '成功' },
     ...(refundNotifyUrl?{refunds:{
-      async create(order:RefundOrder){
-        assertRefund(order);
-        return refundReceipt(await request('POST','/v3/refund/domestic/refunds',{transaction_id:order.provider_transaction_id,out_refund_no:order.id,
-          notify_url:refundNotifyUrl,amount:{refund:order.amount_fen,total:order.order_amount_fen,currency:'CNY'}}),order);
-      },
+      create:submitOriginalRefund,
+      // Verified 2026-10-29: https://pay.weixin.qq.com/doc/v3/merchant/4012791883
+      // Repeated out_refund_no requests refund only once; retries must preserve the
+      // original number/parameters. Core calls this only for an authorised durable
+      // intent. It does not depend on interpreting a missing/unsigned 404 as failure.
+      recoverSameRequest:submitOriginalRefund,
       async query(order:RefundOrder){
         assertRefund(order);return refundReceipt(await request('GET',`/v3/refund/domestic/refunds/${encodeURIComponent(order.id)}`),order);
       },

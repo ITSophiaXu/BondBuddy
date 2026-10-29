@@ -223,7 +223,7 @@ export async function processDueSubscriptionRenewals(pool:Pool,providers:readonl
 }
 export function installSubscriptions(app:FastifyInstance,pool:Pool,owner:(r:FastifyRequest)=>Promise<string>,enabled:boolean,providers:readonly PaymentProvider[]){
   app.get('/api/v1/subscriptions/catalog',{schema:{response:{200:schemas.SubscriptionCatalogResponse}}},async r=>{
-    await owner(r);return{enabled:enabled&&providers.length>0,version:SUBSCRIPTION_CATALOG_VERSION,plans:SUBSCRIPTION_PLANS,
+    await owner(r);return{enabled,version:SUBSCRIPTION_CATALOG_VERSION,plans:SUBSCRIPTION_PLANS,
       providers:enabled?providers.map(p=>p.name):[],auto_renew_available:enabled&&providers.some(supportsAutomaticRenewal)};
   });
   app.get('/api/v1/subscriptions/account',{schema:{response:{200:schemas.SubscriptionAccountResponse}}},async r=>subscriptionAccount(pool,await owner(r)));
