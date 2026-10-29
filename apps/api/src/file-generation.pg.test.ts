@@ -28,6 +28,7 @@ test(`real PostgreSQL (${automatic?'automatic':'legacy'}): private import, built
  const ok=async(method:string,path:string,body?:unknown)=>{const r=await send(method,path,body);assert.ok(r.statusCode<300,`${r.statusCode}: ${r.body}; ${errors.join(' | ')}`);return r.json();};
  const oldBundle=process.env.BB_FILE_TEMPLATE_BUNDLE,temporary=await mkdtemp(join(tmpdir(),'bb-template-fixture-'));
  try{
+  await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'synthetic_fg_'+randomUUID().slice(0,8)]);
   const project=(await ok('POST','/api/v1/projects',{name:'Synthetic mixed files',kind:'generation',issuer_name:'Synthetic issuer',market:'sse',offering:'private'})).project_id,base=`/api/v1/projects/${project}/file-generation`;
   const word=await workpaperDocx('Secret Enterprise Sentinel',['项目名称：Secret Project','姓名：Secret Person','联系电话：13800001111','核查结论']),xlsx=await headerlessCatalogueXlsx();
   await writeFile(join(temporary,'template.docx'),word);await writeFile(join(temporary,'catalogue.xlsx'),xlsx);

@@ -73,6 +73,10 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
         const saved=await send('POST',`/api/v1/projects/${project}/messages`,message);
         assert.equal(saved.statusCode,201,saved.body);
         const lockResponse=async(edit_base?:{artifact_id:string;artifact_version:number;sha256:string}|null)=>{
+          // Delivery adopts the new project prospectus and advances its draft.
+          // A new user action reads that current revision before locking inputs.
+          const current=await send('GET',`/api/v1/projects/${project}`);
+          assert.equal(current.statusCode,200,current.body);draftRevision=current.json().draft_revision;
           const messagePage=await send('GET',`/api/v1/projects/${project}/messages`);
           assert.equal(messagePage.statusCode,200,messagePage.body);
           const messages=messagePage.json().project_message_set_ref;
