@@ -336,7 +336,7 @@ export class ProjectQaWorkspace {
   let content=this.pending&&prepared?this.draft(prepared):requested&&!run?`<div class="collection-empty"><h3>无法读取指定的问答版本</h3><p>此版本可能已移除或暂不可用。没有改用其他版本。</p><a href="${esc(this.href())}">返回本项目准备内容与历史</a></div>`:run?this.result(run):prepared?this.draft(prepared):`<div class="collection-empty"><h3>让回答留在问题旁边</h3><p>上传问题清单 → 核对问题与费用 → 回填回答与待补材料 → 下载 Word</p>${this.state.draft.preparation_id?`<p role="alert">${esc(check.error??'当前准备依据无法核实，请重新读取。')} 现有输入仍保留。</p>`:''}</div>`;
   if((run||!prepared)&&this.uploadEnvelopes.some(e=>e.kind==='supplement'))content+=`<details class="qa-materials" open><summary>原准备的补充材料</summary>${this.uploadRows('supplement')}</details>`;
   const empty=!run&&!requested&&!prepared;
-  const history=this.state.runs;
+  const history=this.state.runs.filter(r=>r.operation==='answer').sort((a,b)=>b.sequence-a.sequence);
   const sourceName=run?.manifest.source.filename??prepared?.manifest.source.filename;
   const upload=`<section class="panel qa-upload ${empty?'qa-upload-empty':'qa-upload-compact'}" aria-label="问题清单上传">
    <div class="qa-upload-icon" aria-hidden="true">${prototypeIcon('file')}</div><div class="qa-upload-copy"><h2>${empty?'上传问题清单':'问题清单'}</h2><p>${sourceName?esc(sourceName):'选择 Word 或 PDF，结合本项目材料逐题回答。'}</p></div>
@@ -346,7 +346,7 @@ export class ProjectQaWorkspace {
    ${empty?'<p class="qa-format-note">支持可检索的 PDF；扫描页请补充可提取文字的文件。</p>':''}
   </section>`;
   this.shell(`<div class="qa-page">${this.header()}<p id="project-qa-status" role="status">${esc(this.message)}</p>${this.recovery()}${this.activeTasks()}
-   <div class="qa-toolbar" ${!history.length?'hidden':''}><label for="qa-history">历史记录</label><select id="qa-history" aria-label="问答历史版本" ${locked?'disabled':''}><option value="">准备下一轮</option>${history.map(r=>`<option value="${esc(r.run_id)}" ${r.run_id===run?.run_id?'selected':''}>第 ${r.sequence} 次 · ${r.operation==='prepare'?'识别问题':'回答问题'} · ${esc(runStateLabel[r.state as keyof typeof runStateLabel]??'状态待核对')} · ${esc(date(r.created_at))}</option>`).join('')}</select></div>
+   <div class="qa-toolbar" ${!history.length?'hidden':''}><label for="qa-history">历史记录</label><select id="qa-history" aria-label="问答历史版本" ${locked?'disabled':''}><option value="">准备下一轮</option>${history.map(r=>`<option value="${esc(r.run_id)}" ${r.run_id===run?.run_id?'selected':''}>${r.answer_sequence?`第 ${r.answer_sequence} 次 · `:''}回答问题 · ${esc(runStateLabel[r.state as keyof typeof runStateLabel]??'状态待核对')} · ${esc(date(r.created_at))}</option>`).join('')}</select></div>
    ${this.workflow(run,prepared)}<div class="qa-layout">${this.projectMaterials(run)}${upload}${empty?`<div class="qa-deliverables"><div><span aria-hidden="true">${prototypeIcon('file')}</span><div><h3>回答完成后下载 Word</h3><p>先在页面审阅回答，再下载包含回答、依据和补件要求的文件。</p></div></div><div><span aria-hidden="true">${prototypeIcon('check')}</span><div><h3>待补材料清单</h3><p>逐题列出缺少的材料，补齐后可继续生成新版本。</p></div></div></div>${this.state.draft.preparation_id||this.uploadEnvelopes.some(e=>e.kind==='supplement')?content:''}`:`<section class="panel qa-document"><h2>${run?run.operation==='prepare'?'识别问题清单':'回答文档':'核对问题并生成文档'}</h2><div id="qa-document-body">${content}</div></section>`}</div></div>`,'qa');
   document.querySelector('#qa-manage-prospectus')?.addEventListener('click',()=>void this.manageProspectus());
   document.querySelector('#qa-select-prospectus')?.addEventListener('click',()=>this.selectProspectus());

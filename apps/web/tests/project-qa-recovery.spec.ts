@@ -157,7 +157,8 @@ test('an unavailable historical material version remains selected and blocks ans
 });
 
 test('unchanged owner project and draft revision produce the same execution key across pages and one accepted run',async({page})=>{
-  const state=await open(page,fixture(),null),old=historicalRecords(state);await expect(page.locator('#qa-start')).toBeEnabled();await start(page);await expect.poll(()=>state.answers.length).toBe(1);await expect(page.locator('#qa-confirm')).toHaveCount(0);
+  const ready=fixture();ready.workspace.draft.materials.push(structuredClone(oldArtifact));
+  const state=await open(page,ready,null),old=historicalRecords(state);await expect(page.locator('#qa-start')).toBeEnabled();await start(page);await expect.poll(()=>state.answers.length).toBe(1);await expect(page.locator('#qa-confirm')).toHaveCount(0);
   const body=structuredClone(state.answers[0]);expect(body.expected_revision).toBe(10);expect(body.expected_points).toBe(PROJECT_QA_PRICE.points);expect(state.drafts).toEqual([]);expect(state.accepted.size).toBe(1);
   const second=await secondary(page,state);
   try{

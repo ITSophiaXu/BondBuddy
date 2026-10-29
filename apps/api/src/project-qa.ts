@@ -75,17 +75,23 @@ async function createRun(c:PoolClient,owner:string,p:any,key:string,requestHash:
 }
 export async function readQa(db:Pool,owner:string,id:string,requested?:string):Promise<QaWorkspace>{
  const materials=await qaMaterials(db,owner,id),d=(await db.query('SELECT * FROM bb_project_qa_drafts WHERE owner_user_id=$1 AND project_id=$2',[owner,id])).rows[0];
- const rows=(await db.query(`WITH selected AS (
+ const rows=(await db.query(`WITH answers AS (
+ SELECT run_id,row_number() OVER(ORDER BY sequence) AS answer_sequence FROM bb_project_qa_runs
+ WHERE owner_user_id=$1 AND project_id=$2 AND operation='answer'
+ ), selected AS (
  SELECT run_id FROM bb_project_qa_runs WHERE owner_user_id=$1 AND project_id=$2 ORDER BY sequence DESC LIMIT 100
+ ), answer_history AS (
+ SELECT run_id FROM answers ORDER BY answer_sequence DESC LIMIT 100
  ), included AS (
- SELECT run_id FROM selected UNION SELECT $3::text UNION SELECT $4::text
+ SELECT run_id FROM selected UNION SELECT run_id FROM answer_history UNION SELECT $3::text UNION SELECT $4::text
  UNION SELECT manifest->>'preparation_id' FROM bb_project_qa_runs WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3
- ) SELECT q.*,r.state,r.stage,r.artifact_id,c.points,c.charged_points,c.state reservation_state,
+ ) SELECT q.*,a.answer_sequence,r.state,r.stage,r.artifact_id,c.points,c.charged_points,c.state reservation_state,
  (SELECT j.error_code FROM bb_jobs j WHERE j.owner_user_id=q.owner_user_id AND j.run_id=q.run_id AND j.subtype='project_qa_v1' LIMIT 1) AS error_code FROM bb_project_qa_runs q
  JOIN bb_runs r ON r.id=q.run_id AND r.owner_user_id=q.owner_user_id LEFT JOIN bb_credit_reservations c ON c.run_id=r.id
+ LEFT JOIN answers a ON a.run_id=q.run_id
  WHERE q.owner_user_id=$1 AND q.project_id=$2 AND q.run_id IN(SELECT run_id FROM included)
  ORDER BY (q.run_id=$3) DESC NULLS LAST,q.sequence DESC`,[owner,id,requested??null,d?.draft?.preparation_id??null])).rows;
- return {draft:d?.draft??empty(),revision:d?.revision??0,materials,prospectus:await projectFileSource(db,owner,id),price:PROJECT_QA_PRICE,runs:rows.map(r=>({run_id:r.run_id,sequence:r.sequence,operation:r.operation,state:r.state,stage:r.stage??null,error_code:r.error_code??null,created_at:date(r.created_at),manifest:r.manifest,result:r.result??null,artifact_id:r.state==='succeeded'&&r.operation==='answer'?r.artifact_id:null,reserved_points:r.reservation_state==='held'?Number(r.points):0,charged_points:r.reservation_state==='settled'?Number(r.charged_points??r.points):0}))};
+ return {draft:d?.draft??empty(),revision:d?.revision??0,materials,prospectus:await projectFileSource(db,owner,id),price:PROJECT_QA_PRICE,runs:rows.map(r=>({run_id:r.run_id,sequence:r.sequence,...(r.operation==='answer'?{answer_sequence:Number(r.answer_sequence)}:{}),operation:r.operation,state:r.state,stage:r.stage??null,error_code:r.error_code??null,created_at:date(r.created_at),manifest:r.manifest,result:r.result??null,artifact_id:r.state==='succeeded'&&r.operation==='answer'?r.artifact_id:null,reserved_points:r.reservation_state==='held'?Number(r.points):0,charged_points:r.reservation_state==='settled'?Number(r.charged_points??r.points):0}))};
 }
 export function registerProjectQa(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>){
  const base='/api/v1/projects/:project_id/qa',id=(r:FastifyRequest)=>(r.params as {project_id:string}).project_id;
