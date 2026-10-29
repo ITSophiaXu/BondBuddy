@@ -129,6 +129,21 @@ for(const entry of entries)test(`primary action passes the selected project into
     if(entry.hash==='#review'||entry.hash==='#/update')expect(state.opens).toHaveLength(1);
 });
 
+for(const width of [1440,390])test('review context stays above the selector during slow entry '+width,async({page})=>{
+  await page.setViewportSize({width,height:960});
+  const state=await setup(page,'#review');state.hold=true;
+  await page.goto('/#review?project=synthetic-entry-1&from=projects&return_project=synthetic-entry-1');
+  await expect(page.locator('#continue-review')).toHaveText('正在打开…');
+  const context=await page.locator('.project-context').boundingBox(),entry=await page.locator('.project-entry-page').boundingBox();
+  if(process.env.BB_ENTRY_EVIDENCE){await mkdir(process.env.BB_ENTRY_EVIDENCE,{recursive:true});await page.screenshot({path:`${process.env.BB_ENTRY_EVIDENCE}/review-context-${width}.png`});}
+  expect(context).not.toBeNull();expect(entry).not.toBeNull();
+  expect(entry!.y).toBeGreaterThanOrEqual(context!.y+context!.height-1);
+  expect(Math.abs(entry!.x-context!.x)).toBeLessThan(2);
+  expect(Math.abs(entry!.width-context!.width)).toBeLessThan(2);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  state.release?.();
+});
+
 test('interactive project selector reference matches the implemented desktop and phone layout',async({page})=>{
   const root=process.cwd().replaceAll('\\','/').replace(/\/apps\/web$/,'');
   for(const width of [1440,390]){

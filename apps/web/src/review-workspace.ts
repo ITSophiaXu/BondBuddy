@@ -12,7 +12,7 @@ import { ReadableReview } from './review-readable';
 import { taskProgress } from './task-progress';
 import { reviewLiveStatus, reviewProgressPage } from './review-progress';
 import { DYNAMIC_REVIEW_BILLING_TASKS } from '@bondbuddy/contracts';
-import { projectListContext, withProjectContext, projectBackLink, projectSection, rechargeHref } from './project-navigation';
+import { projectListContext, withProjectContext, projectBackLink, rechargeHref } from './project-navigation';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
 import { QUARTER_ENDS, cutoffSelection, quarterCutoff } from './reporting-cutoff';
 import { blankDraft, generatedProjectName, validateDraft } from './form-model';
@@ -228,7 +228,7 @@ export class ReviewWorkspace {
   }
 
   async render() {
-    this.shell(`<div class="review-workspace" id="review-workspace"><p role="status">正在读取复核项目…</p></div>`,projectSection('review'));
+    this.shell(`<div class="review-workspace" id="review-workspace"><p role="status">正在读取复核项目…</p></div>`,'review');
     this.page=document.querySelector<HTMLElement>('#review-workspace')!;
     const generation=++this.readGeneration;
     try {
@@ -545,7 +545,7 @@ export class ReviewWorkspace {
     host.querySelector('#review-materials-before')!.innerHTML=`${this.projectInfo()}${reviewScope(this.workspace.project.market,this.workspace.project.offering)}${this.inputConflictVersion!==undefined?'<div class="review-notice error">其他页面已修改材料与要求，本页内容已保留。<button class="text-btn" data-review-action="reload-input">采用服务器版本</button><button class="text-btn" data-review-action="adopt-local-input">核对本页内容</button></div>':''}<div class="panel-heading materials-heading"><div><h2>材料与要求</h2><p class="muted">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。上传过程中可继续添加文件。</p></div></div><p class="review-upload-summary" role="${this.uploadRecoveryProblem?'alert':'status'}">${esc(uploadNotice)}${this.uploadRecoveryProblem?'<button type="button" class="text-button" data-review-recovery-action="reload">重新读取上传记录</button>':''}</p>${running?'<p class="review-muted">当前任务使用的材料已锁定；请先停止任务，停止完成后可删除误传文件并重新上传。</p>':''}`;
     const groupsHost=host.querySelector('#review-upload-groups')!;
     const template=document.createElement('template');
-    template.innerHTML=groups.map(g=>`<section class="material-partition"><h3>${g.title}</h3><p class="review-muted">${g.help}</p>${g.primary==='historical'?`<fieldset class="review-source-modes"><legend class="sr-only">提供待复核募集说明书的方式</legend><label><input type="radio" name="review-source-mode" value="upload" aria-controls="review-source-upload">上传新募集说明书</label><label><input type="radio" name="review-source-mode" value="project" aria-controls="review-source-existing">选择项目已有募集说明书</label></fieldset><div id="review-source-upload"><ul class="material-role-list">${role(g.primary,g.roles)}</ul></div><div id="review-source-existing" data-project-source></div><div data-review-selected-source></div>`:`<ul class="material-role-list">${role(g.primary,g.roles)}</ul>`}</section>`).join('');
+    template.innerHTML=groups.map(g=>`<section class="material-partition"><h3>${g.title}</h3><p class="review-muted" ${g.primary==='historical'?'data-review-source-help':''}>${g.help}</p>${g.primary==='historical'?`<fieldset class="review-source-modes" hidden><legend class="sr-only">提供待复核募集说明书的方式</legend><label><input type="radio" name="review-source-mode" value="upload" aria-controls="review-source-upload">上传新募集说明书</label><label><input type="radio" name="review-source-mode" value="project" aria-controls="review-source-existing">选择项目已有募集说明书</label></fieldset><div data-review-source-status></div><div id="review-source-upload"><ul class="material-role-list">${role(g.primary,g.roles)}</ul></div><div id="review-source-existing" data-project-source></div><div data-review-selected-source></div>`:`<ul class="material-role-list">${role(g.primary,g.roles)}</ul>`}</section>`).join('');
     if(!groupsHost.childElementCount)groupsHost.append(template.content);
     else{
       // Keep file inputs connected while the native chooser is open.
@@ -575,13 +575,18 @@ export class ReviewWorkspace {
     const versions=this.sourceVersions?.versions??[];
     const matched=versions.find(v=>v.version_id===this.selectedSourceVersion&&v.sha256===pin?.sha256)??versions.find(v=>v.material_id===pin?.material_id)??versions.find(v=>v.sha256===pin?.sha256);
     const value=matched?'v:'+matched.version_id:pin?'m:'+pin.material_id:'';
-    const mode=this.sourceMode??(pin||sources.length||versions.length?'project':'upload');
+    const hasSources=versions.length>0||sources.length>0;
+    const mode=hasSources?(this.sourceMode??'project'):'upload';
+    this.page!.querySelector<HTMLFieldSetElement>('.review-source-modes')!.hidden=!hasSources;
+    this.page!.querySelector<HTMLElement>('[data-review-source-help]')!.textContent=hasSources?'选择一种方式，确定一份本次待复核稿。':'上传本次待复核的募集说明书。';
+    const status=this.page!.querySelector<HTMLElement>('[data-review-source-status]')!;
+    status.innerHTML=this.sourceVersionsError?'<p class="review-warning" role="alert">募集说明书版本暂时读取失败。<button type="button" class="text-btn" data-review-source-retry>重新读取</button></p>':this.sourceVersionsLoading&&!hasSources?'<p class="review-muted" role="status">正在读取项目募集说明书，可先上传待复核稿。</p>':'';
+    status.querySelector<HTMLButtonElement>('[data-review-source-retry]')?.addEventListener('click',()=>{this.sourceVersionsKey='';this.sourceVersionsError='';this.renderProjectSource();});
     const blocked=isActiveRun(this.workspace.active_run)||this.uploading||this.uploadRows.size>0||this.uploadRecordsPresent||!!this.uploadRecoveryProblem||this.selectingSource;
     this.page!.querySelectorAll<HTMLInputElement>('[name="review-source-mode"]').forEach(radio=>{radio.checked=radio.value===mode;radio.disabled=!!blocked;});
     this.page!.querySelector<HTMLElement>('#review-source-upload')!.hidden=mode!=='upload';box.hidden=mode!=='project';
     const empty=!this.sourceVersionsLoading&&!versions.length&&!sources.length;
-    box.innerHTML=`<label for="review-project-source">选择募集说明书版本</label><select id="review-project-source" class="review-source-select" ${this.sourceVersionsLoading||blocked||empty?'disabled':''}><option value="">${this.sourceVersionsLoading?'正在读取募集书版本…':'请选择募集说明书版本'}</option>${versions.map(v=>`<option value="v:${esc(v.version_id)}" ${value==='v:'+v.version_id?'selected':''}>V${v.sequence} · ${esc(v.filename)}${v.version_id===this.sourceVersions?.current_version_id?' · 项目当前版本':''}</option>`).join('')}${sources.filter(m=>!versions.some(v=>v.material_id===m.material_id||v.sha256===m.sha256)).map(m=>`<option value="m:${esc(m.material_id)}" ${value==='m:'+m.material_id?'selected':''}>${esc(m.filename)} · 上传 V${m.material_version}</option>`).join('')}</select>${this.sourceVersionsError?`<p class="review-warning" role="alert">募集说明书版本暂时读取失败。<button type="button" class="text-btn" data-review-source-retry>重新读取</button></p>`:empty?'<p class="review-muted">项目还没有可选的募集说明书，请切换到“上传新募集说明书”。</p>':''}<p class="review-muted">所选版本只用于本轮复核。PDF 将转换为 Word，版式、表格和分页可能与原 PDF 不同。</p>`;
-    box.querySelector<HTMLButtonElement>('[data-review-source-retry]')?.addEventListener('click',()=>{this.sourceVersionsKey='';this.renderProjectSource();});
+    box.innerHTML=`<label for="review-project-source">选择募集说明书版本</label><select id="review-project-source" class="review-source-select" ${this.sourceVersionsLoading||blocked||empty?'disabled':''}><option value="">${this.sourceVersionsLoading?'正在读取募集书版本…':'请选择募集说明书版本'}</option>${versions.map(v=>`<option value="v:${esc(v.version_id)}" ${value==='v:'+v.version_id?'selected':''}>V${v.sequence} · ${esc(v.filename)}${v.version_id===this.sourceVersions?.current_version_id?' · 项目当前版本':''}</option>`).join('')}${sources.filter(m=>!versions.some(v=>v.material_id===m.material_id||v.sha256===m.sha256)).map(m=>`<option value="m:${esc(m.material_id)}" ${value==='m:'+m.material_id?'selected':''}>${esc(m.filename)} · 上传 V${m.material_version}</option>`).join('')}</select><p class="review-muted">所选版本只用于本轮复核。PDF 将转换为 Word，版式、表格和分页可能与原 PDF 不同。</p>`;
     box.querySelector<HTMLSelectElement>('select')!.onchange=async e=>{
       const field=e.target as HTMLSelectElement,v=field.value;if(!v){this.renderProjectSource();return;}if(this.uploadActionBlocked()||this.selectingSource){this.renderProjectSource();return;}this.selectingSource=true;this.renderProjectSource();
       try{
