@@ -1,5 +1,17 @@
-import { ApiError, friendlyError, type Dto } from './api';
+import { ApiError, friendlyError, type Dto } from './api.js';
 import { resultFilename } from '@bondbuddy/contracts';
+import { UserFacingError } from './user-facing-error.js';
+
+/** Bound the entire read, including the response body, not just HTTP headers. */
+export async function boundedDownload<T>(parent:AbortSignal,read:(signal:AbortSignal)=>Promise<T>,timeoutMs=120_000):Promise<T>{
+  const controller=new AbortController();let timedOut=false;
+  const cancel=()=>controller.abort(parent.reason);
+  if(parent.aborted)cancel();else parent.addEventListener('abort',cancel,{once:true});
+  const timer=setTimeout(()=>{timedOut=true;controller.abort();},timeoutMs);
+  try{return await read(controller.signal);}
+  catch(error){if(timedOut&&!parent.aborted)throw new UserFacingError('下载准备超时，请重试。已生成文件仍保留，无需重新生成。');throw error;}
+  finally{clearTimeout(timer);parent.removeEventListener('abort',cancel);}
+}
 
 export function artifactFilename(artifact: Dto<'ArtifactResponse'>): string {
   return artifact.filename ?? resultFilename({ kind: artifact.word_delivery ? ({revision:'募集书修订版',clean:'募集书清洁版',baseline:'募集书基线版'} as const)[artifact.word_delivery.variant] : '成果', version:artifact.display_version ?? artifact.version, mediaType:artifact.media_type });
@@ -18,13 +30,19 @@ export function artifactError(error: unknown): string {
 export class ArtifactDownloads {
   private objectUrls = new Map<string, ReturnType<typeof setTimeout>>();
 
-  save(bytes: Blob, filename: string) {
+  save(bytes: Blob, filename: string, fallbackHost?:HTMLElement) {
     const url = URL.createObjectURL(bytes);
     const link = document.createElement('a');
     link.href = url;
     link.download = filename.replace(/[\\/:*?"<>|\x00-\x1f]/g, '_');
-    document.body.append(link); link.click(); link.remove();
-    this.objectUrls.set(url, setTimeout(() => { URL.revokeObjectURL(url); this.objectUrls.delete(url); }, 60_000));
+    if(fallbackHost){
+      // Some browsers suppress a synthetic download after a long async ZIP read.
+      // Keep a real, user-clickable link to the same bytes; retrying it is free.
+      fallbackHost.replaceChildren(document.createTextNode('文件已准备好。如未自动下载，请点击：'));
+      link.className='text-button';link.textContent='保存文件';fallbackHost.append(link);
+    }else document.body.append(link);
+    link.click();if(!fallbackHost)link.remove();
+    this.objectUrls.set(url, setTimeout(() => { URL.revokeObjectURL(url); this.objectUrls.delete(url);if(fallbackHost?.contains(link))fallbackHost.replaceChildren(document.createTextNode('保存链接已过期，请重新点击下载。')); }, fallbackHost?300_000:60_000));
   }
 
   dispose() {

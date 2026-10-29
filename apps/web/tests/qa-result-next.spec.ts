@@ -14,7 +14,6 @@ const follow=(page:Page,id:string)=>page.locator(`[data-qa-followup][value="${id
 const answer=(page:Page,id:string)=>page.locator(`details[data-qa-answer-question="${id}"]`);
 const selected=(page:Page)=>page.locator('[data-qa-followup]:checked').evaluateAll(nodes=>nodes.map(node=>(node as HTMLInputElement).value));
 const preparedIds=(page:Page)=>page.locator('[data-remove-q]').evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.removeQ));
-const knowledge=(page:Page,value=false)=>page.locator(`[data-qa-knowledge-choice][value="${value}"]`);
 test.beforeEach(async({page})=>{await page.setViewportSize({width:1440,height:900});page.on('dialog',dialog=>void dialog.accept());});
 test.afterEach(async({page})=>{await assertFixture(page);});
 
@@ -28,7 +27,7 @@ async function navigationSnapshot(page:Page,s:State){return {hash:await page.eva
 async function withinViewport(locator:Locator){await expect.poll(()=>locator.evaluate(node=>{const r=node.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;})).toBe(true);}
 async function isOpen(locator:Locator){return locator.evaluate(node=>(node as HTMLDetailsElement).open);}
 async function adopt(page:Page){if(await page.locator('.qa-followup').getAttribute('open')===null)await page.locator('.qa-followup>summary').click();await page.locator('#qa-continue').click();await expect(page.locator('#qa-requirements')).toBeVisible();}
-async function start(page:Page){await page.locator('#qa-start').click();await expect(page.locator('#qa-confirm')).toBeVisible();await page.locator('#qa-confirm').click();}
+async function start(page:Page){await page.locator('#qa-start').click();}
 async function download(page:Page){const pending=page.waitForEvent('download');await page.locator('#qa-download').click();const receipt=await pending;return {filename:receipt.suggestedFilename(),bytes:await downloadBytes(receipt)};}
 async function exactWord(page:Page,s:State,runId:string){
   const expected=word(s,runId),receipt=await download(page);expect(receipt.filename).toBe(expected.metadata.filename);expect(receipt.bytes).toEqual(expected.bytes);
@@ -81,12 +80,12 @@ test('qa result next: no missing work has no missing shortcut, while invalid fol
 test('qa result next: exact historical questions, supplement and 120-credit confirmation progress to new and old synthetic Word without merging rounds',async({page})=>{
   test.setTimeout(45000);const s=await open(page),old=historicalRecords(s),serverDraft=structuredClone(s.workspace.draft),originalWord=word(s).bytes;
   await page.locator('#qa-view-missing').click();await page.locator('#qa-prepare-next').click();await expect.poll(()=>selected(page)).toEqual(['q2','q7']);expect(writes(s)).toEqual([]);
-  await adopt(page);expect(await preparedIds(page)).toEqual(['q2','q7']);expect(s.workspace.draft).toEqual(serverDraft);await expect(knowledge(page,true)).not.toBeChecked();await expect(knowledge(page,false)).not.toBeChecked();
+  await adopt(page);expect(await preparedIds(page)).toEqual(['q2','q7']);expect(s.workspace.draft).toEqual(serverDraft);await expect(page.locator('[data-qa-knowledge-choice]')).toHaveCount(0);await expect(page.locator('[data-qa-knowledge-choice]')).toHaveCount(0);
   const requirements=historical(s).manifest.requirements;await expect(page.locator('#qa-requirements')).toHaveValue(requirements);s.allowUploads=true;
   const supplement=docx('合成补充材料：本轮仍需人工核对偿债资金和关联交易依据。');
   await page.locator('#qa-supplement').setInputFiles({name:'合成问答续轮补充.docx',mimeType:mime,buffer:supplement});await expect.poll(()=>s.uploads.length).toBe(1);await expect.poll(()=>s.uploadBytes).toBe(1);await expect(page.locator('.qa-materials')).toContainText('合成问答续轮补充.docx');
-  expect(qaWrites(s)).toEqual([]);await expect(page.locator('#qa-start')).toBeDisabled();await knowledge(page,false).check();await expect(page.locator('#qa-start')).toBeEnabled();
-  await page.locator('#qa-start').click();await expect(page.locator('.qa-modal')).toContainText('120');expect(qaWrites(s)).toEqual([]);await page.locator('#qa-confirm').click();await expect.poll(()=>s.answers.length).toBe(1);
+  expect(qaWrites(s)).toEqual([]);await expect(page.locator('#qa-start')).toBeEnabled();
+  await expect(page.locator('.qa-start-summary')).toContainText('120');expect(qaWrites(s)).toEqual([]);await page.locator('#qa-start').click();await expect.poll(()=>s.answers.length).toBe(1);
   const uploaded=s.uploadMaterial!,material={kind:'material' as const,pin:{source_project_id:projectId,material_id:uploaded.material_id,material_version:uploaded.material_version,sha256:uploaded.sha256}};
   expect(s.drafts).toEqual([{expected_revision:10,draft:{preparation_id:prepareId,questions:[questions[0],questions[2]],materials:[oldMaterial,oldArtifact,material],requirements,use_knowledge:false}}]);
   expect(s.answers[0]).toEqual({request_id:expect.any(String),expected_revision:11,expected_points:2*PROJECT_QA_PRICE.points,price_version:PROJECT_QA_PRICE.version});
@@ -120,7 +119,7 @@ test('qa result next: busy navigation cannot adopt or move, and an unknown answe
     await page.locator('#qa-view-missing').dispatchEvent('click');await page.locator('#qa-prepare-next').dispatchEvent('click');await page.locator('#qa-continue').dispatchEvent('click');
     expect(await navigationSnapshot(page,s)).toEqual(before);expect(await page.evaluate(()=>scrollY)).toBe(scroll);await expect(page.locator('#qa-requirements')).toHaveCount(0);held.release();expect(await downloadBytes(await pending)).toEqual(word(s).bytes);
   }finally{held.release();}
-  await expect(page.locator('#qa-prepare-next')).toBeEnabled();await adopt(page);await knowledge(page,false).check();s.dropAnswer='after';await start(page);await expect(page.locator('#qa-retry-pending')).toBeVisible();
+  await expect(page.locator('#qa-prepare-next')).toBeEnabled();await adopt(page);s.dropAnswer='after';await start(page);await expect(page.locator('#qa-retry-pending')).toBeVisible();
   const body=structuredClone(s.answers[0]),draft=structuredClone(s.drafts[0]);await page.goto(route(answerId));await expect(page.locator('#qa-retry-pending')).toBeVisible();
   await expect(page.locator('#qa-history')).toBeDisabled();await expect(page.locator('#qa-start')).toBeDisabled();await expect(page.locator('#qa-prepare-next')).toHaveCount(0);await expect(page.locator('#qa-view-missing')).toHaveCount(0);await expect(page.locator('#qa-continue')).toHaveCount(0);
   await expect(page.locator('#qa-preparation-controls')).toHaveJSProperty('disabled',true);await page.waitForTimeout(3400);expect(s.answers).toEqual([body]);expect(s.drafts).toEqual([draft]);expect(s.accepted.size).toBe(1);expect(s.prepares).toEqual([]);

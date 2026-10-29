@@ -35,6 +35,14 @@ test('batch member links open the exact source-project batch for active, complet
   assert.equal(taskHref({...task('running','generation'),topic_id:'ordinary-topic',document_type:'issuer'}),'#generate?from=projects&run=exact-run&topic=ordinary-topic');
 });
 
+test('one batch task reports aggregate progress and the batch result',()=>{
+ const batch={...task('succeeded','generation'),operation:'workpaper_batch',workpaper_batch:{batch_id:'batch',project_id:'project 1',total:248,completed:248}};
+ assert.equal(taskLabel(batch),'批量生成底稿');assert.equal(taskView(batch).tone,'done');
+ assert.match(taskView(batch).detail,/248 \/ 248 份完成/);
+ assert.equal(taskView({...batch,state:'failed'}).label,'部分完成');
+ assert.match(taskHref(batch),/batch=batch/);
+});
+
 test('historical file-update task links retain the original run independently of check identity',()=>{
   const patch={...task('succeeded','generation'),operation:'file_patch' as const,project_id:'project / 债券',run_id:'patch?old&run=1'};
   const target=taskHref(patch),query=new URLSearchParams(target.split('?')[1]);
