@@ -856,6 +856,7 @@ test('review navigation retains the app scale while keeping its own layout',asyn
   await page.setViewportSize({width,height:width===390?844:900});await page.goto('/#/new');
   await expect(page.getByRole('heading',{name:'更新募集说明书',exact:true})).toBeVisible();const update=await measure();
   const updateCard=await page.locator('.form-panel').boundingBox();
+  const updateStepsBottom=await page.locator('.stepper').evaluate(el=>el.getBoundingClientRect().bottom);
   const updateSteps=await page.locator('.stepper').evaluate(el=>({font:getComputedStyle(el).fontSize,gap:getComputedStyle(el).gap,height:el.getBoundingClientRect().height}));
   const output=process.env.BB_SCALE_EVIDENCE;if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/update-entry-${width}.png`,fullPage:true});}
   if(width===390)await page.getByRole('button',{name:'打开菜单',exact:true}).click();
@@ -864,8 +865,9 @@ test('review navigation retains the app scale while keeping its own layout',asyn
   await expect(page.getByRole('heading',{name:'准备复核项目'})).toBeVisible();const review=await measure();expect(review).toEqual(update);
   const reviewCard=await page.locator('#review-create-form').boundingBox();
   expect(reviewCard!.x).toBeCloseTo(updateCard!.x,0);expect(reviewCard!.width).toBeCloseTo(updateCard!.width,0);
-  // The review-only free badge adds a row to the mobile topbar.
-  if(width>=760)expect(reviewCard!.y).toBeCloseTo(updateCard!.y,0);
+  // Intro copy may wrap differently; compare the form's spacing below the shared steps.
+  const reviewStepsBottom=await page.locator('.stepper').evaluate(el=>el.getBoundingClientRect().bottom);
+  if(width>=760)expect(reviewCard!.y-reviewStepsBottom).toBeCloseTo(updateCard!.y-updateStepsBottom,0);
   expect(await page.locator('.stepper').evaluate(el=>({font:getComputedStyle(el).fontSize,gap:getComputedStyle(el).gap,height:el.getBoundingClientRect().height}))).toEqual(updateSteps);
   if(output){await page.screenshot({path:`${output}/review-entry-${width}.png`,fullPage:true});await writeFile(`${output}/scale-${width}.json`,JSON.stringify({viewport:width,update,review,updateCard,reviewCard},null,2)+'\n');}
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
