@@ -48,6 +48,11 @@ def prepare(source, output, result):
         text = span['text'].strip()
         if text.startswith('【待补充：原 PDF 第') and '无法提取文字' in text:
             continue
+        # A numbered section title is not a billable question. Some review templates
+        # use one custom list style for both the title and its substantive children.
+        heading = re.sub(r'^(?:[一二三四五六七八九十百\d]+[、.．）)]|[（(][一二三四五六七八九十百\d]+[)）])\s*', '', text)
+        if re.fullmatch(r'(?:对)?(?:申报材料|申请材料|内核申请材料)?(?:的)?(?:审核意见|审查意见|反馈意见|问询问题|问题清单)', heading):
+            continue
         node = paragraphs[i] if i < len(paragraphs) else None
         style = node.find('./' + q('pPr') + '/' + q('pStyle')) if node is not None else None
         style_id = style.get(q('val'), '') if style is not None else ''
@@ -67,22 +72,28 @@ def prepare(source, output, result):
     Path(result).write_text(json.dumps(dict(snapshot=snapshot, questions=questions, warnings=warnings + extra), ensure_ascii=False), encoding='utf8')
 
 
-def paragraph(text, bold=False):
+def paragraph(text, bold=False, markdown=False):
     p = etree.Element(q('p'))
     prop = etree.SubElement(p, q('pPr'))
     etree.SubElement(prop, q('spacing'), {q('after'): '120', q('line'): '276', q('lineRule'): 'auto'})
-    run = etree.SubElement(p, q('r'))
-    rp = etree.SubElement(run, q('rPr'))
-    etree.SubElement(rp, q('rFonts'), {q('ascii'): 'Arial', q('hAnsi'): 'Arial', q('eastAsia'): '宋体'})
-    etree.SubElement(rp, q('sz'), {q('val'): '22'})
-    if bold:
-        etree.SubElement(rp, q('b'))
-    for i, line in enumerate(text.split('\n')):
-        if i:
-            etree.SubElement(run, q('br'))
-        t = etree.SubElement(run, q('t'))
-        t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
-        t.text = line
+    # Model answers share Markdown with the web view. Render simple emphasis as
+    # native Word runs instead of exposing literal ** markers in formal replies.
+    for segment in re.split(r'(\*\*[^*\n]+\*\*)', text) if markdown else [text]:
+        if not segment:
+            continue
+        emphasis = markdown and segment.startswith('**') and segment.endswith('**') and len(segment) > 4
+        run = etree.SubElement(p, q('r'))
+        rp = etree.SubElement(run, q('rPr'))
+        etree.SubElement(rp, q('rFonts'), {q('ascii'): 'Arial', q('hAnsi'): 'Arial', q('eastAsia'): '宋体'})
+        etree.SubElement(rp, q('sz'), {q('val'): '22'})
+        if bold or emphasis:
+            etree.SubElement(rp, q('b'))
+        for i, line in enumerate((segment[2:-2] if emphasis else segment).split('\n')):
+            if i:
+                etree.SubElement(run, q('br'))
+            t = etree.SubElement(run, q('t'))
+            t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+            t.text = line
     return p
 
 
@@ -105,7 +116,7 @@ def answer_blocks(text):
             pending.append(lines[index]); index += 1
             continue
         if '\n'.join(pending).strip():
-            yield paragraph('\n'.join(pending).strip())
+            yield paragraph('\n'.join(pending).strip(), markdown=True)
         pending = []
         rows = [header]; index += 2
         while index < len(lines) and '|' in lines[index] and lines[index].strip():
@@ -134,10 +145,10 @@ def answer_blocks(text):
                 etree.SubElement(cp, q('tcW'), {q('w'): str(5000//columns), q('type'): 'pct'})
                 if number == 0:
                     etree.SubElement(cp, q('shd'), {q('fill'): 'EDF2EF'})
-                cell.append(paragraph(value, bold=number == 0))
+                cell.append(paragraph(value, bold=number == 0, markdown=True))
         yield table
     if '\n'.join(pending).strip():
-        yield paragraph('\n'.join(pending).strip())
+        yield paragraph('\n'.join(pending).strip(), markdown=True)
 
 
 def evidence(source, result):
