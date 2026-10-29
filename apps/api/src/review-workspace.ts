@@ -180,7 +180,9 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
     const chosen = requestedReport ?? (artifactRun?.operation === 'revision' ? artifactRun.source_report_id
       : reports.find(r => r.run_id === artifactRun?.run_id)?.report_id);
     const selected = requested ?? (chosen ? await readReviewReport(db(), user, id, chosen) : null);
-    const active = (await db().query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND task_kind IN (\'review\',\'update\') AND NOT(state=ANY($3::text[])) ORDER BY created_at DESC LIMIT 1', [user, id, finalStates])).rows[0];
+    // A shared project can be updating while review is still only a draft.
+    // The execution mutex remains cross-task; progress here belongs to review only.
+    const active = (await db().query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND task_kind=\'review\' AND NOT(state=ANY($3::text[])) ORDER BY created_at DESC LIMIT 1', [user, id, finalStates])).rows[0];
     const messages = (await db().query('SELECT * FROM bb_review_messages WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at,id', [user, id])).rows.map(messageDto);
     const accepted = (await db().query('SELECT acceptance FROM bb_review_proposal_adoptions WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at,id', [user, id])).rows.map(row => acceptedProposalDto(row.acceptance)).filter(value => value !== null);
     return { project: projectDto(p), materials: materials.map(materialDto), draft: await draft(db(), user, id), message_drafts: await messageDrafts(db(), user, id), active_run: active ? runDto(active) : null,

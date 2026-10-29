@@ -8,10 +8,14 @@
 .prototype-app .shell:has(.project-entry-page) > .topbar { flex-shrink: 0; }
 body .prototype-app .shell main:has(> .project-entry-page.update-entry) {
   display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
   width: 100%;
   padding-bottom: 24px;
+}
+body .prototype-app .shell main:has(> .project-entry-page.update-entry) > .project-context {
+  flex-shrink: 0;
 }
 .project-entry-page.update-entry {
   display: flex;
