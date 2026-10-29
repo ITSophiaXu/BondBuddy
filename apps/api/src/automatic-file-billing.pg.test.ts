@@ -4,13 +4,15 @@ import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {AUTOMATIC_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,OUTCOME_PRICE_VERSION,type ProjectFileCheckResult,type ProjectFileFinding,type WorkpaperEntry} from '@bondbuddy/contracts';
 import {creditBalance,grantCredits} from './billing.js';
-import {transaction,type PrivateBlobs} from './data.js';
+import {digest,transaction,type PrivateBlobs} from './data.js';
 import {makeSyntheticDocxFixture} from './docx-fixtures.js';
 import {emptyM4Draft} from './m4-workspace.js';
 import {advanceProjectFileUpdates} from './project-file-consistency.js';
 import {advanceWorkpaperBatch} from './workpapers.js';
 import {inputManifestHash} from './production-rule-pin.js';
-import {checkpointStage,claim,finish,promoteWordArtifact} from './queue.js';
+import {checkpointStage,claim,finish,promoteWordArtifact,recordPotentialCall} from './queue.js';
+import {saveSnapshotRef} from './observability.js';
+import {persistProviderResultObject,recordProviderCallObservation,readCheckpointedProviderResult,type ProviderCallObservation} from './provider-results.js';
 import {createServer} from './server.js';
 import {isolatedTestDatabase} from './test-database.js';
 
@@ -71,7 +73,31 @@ async function deliverCheck(pool:Pool,runId:string,version:string){
   return hash;
 }
 async function deliverPatch(pool:Pool,f:Fixture,runId:string){
-  const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,runId);const blobs=memoryBlobs();
+  let lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,runId);const blobs=memoryBlobs();
+  // A paid check includes its repair. Delayed metering must not pause that
+  // zero-price repair or force another model call after a worker lease expires.
+  const run=(await pool.query('SELECT * FROM bb_runs WHERE id=$1',[runId])).rows[0];
+  assert.equal(run.reservation_id,null);assert.equal(run.billing_mode,'platform_trial');
+  const prompt=Buffer.from('Synthetic automatic included repair'),objectKey=`users/${f.owner}/projects/${f.project}/snapshots/${randomUUID()}`;
+  await blobs.put(objectKey,prompt,'text/plain');
+  const promptRef=await saveSnapshotRef(pool,{owner:f.owner,projectId:f.project,runId,kind:'model_request',version:1,objectKey,sha256:digest(prompt),redactionVersion:'synthetic_redaction_v1',inputRevision:run.input_revision,inputHash:run.input_hash.trim(),blobs});
+  const intent={owner_user_id:f.owner,project_id:f.project,job_id:lease.jobId,run_id:runId,trace_id:runId,logical_call_id:'synthetic-auto-repair',call_id:randomUUID(),attempt_no:1,model_id:'synthetic-model',model_config_version:'synthetic-model-v1',prompt_snapshot_ref:promptRef};
+  await recordPotentialCall(pool,lease,intent.logical_call_id,1,{callId:intent.call_id,modelId:intent.model_id,promptSnapshotId:promptRef});
+  const valid=(v:unknown)=>typeof v==='object'&&v!==null&&(v as {ok?:unknown}).ok===true;
+  const result=await persistProviderResultObject({blobs,intent,bytes:Buffer.from('{"ok":true}'),resultSchemaVersion:'synthetic-auto-repair-v1',validate:valid});
+  const observation:ProviderCallObservation={...intent,...result,provider_request_id:'synthetic-local-only',outcome:'pending_reconcile',finish_reason:'stop',error_code:'MODEL_USAGE_PENDING',usage:{status:'pending',input_tokens:null,cached_input_tokens:null,output_tokens:null,reasoning_tokens:null,total_tokens:null}};
+  const recorded=await recordProviderCallObservation(pool,blobs,observation,valid,{lease,source:'provider'});
+  assert.equal(recorded.attempt_status,'completed');assert.equal(recorded.usage_status,'pending');
+  assert.deepEqual((await readCheckpointedProviderResult({pool,blobs,lease,logicalCallId:intent.logical_call_id,attemptNo:1,validateResult:valid}))?.value,{ok:true});
+  await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE id=$1",[lease.jobId]);
+  lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,runId);
+  assert.deepEqual((await readCheckpointedProviderResult({pool,blobs,lease,logicalCallId:intent.logical_call_id,attemptNo:1,validateResult:valid}))?.value,{ok:true});
+  assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE owner_user_id=$1 AND job_id=$2',[f.owner,lease.jobId])).rows[0].n,1);
+  const measured:ProviderCallObservation={...observation,outcome:'completed',error_code:null,usage:{status:'measured',input_tokens:11,cached_input_tokens:0,output_tokens:5,reasoning_tokens:0,total_tokens:16}};
+  const reconciled=await recordProviderCallObservation(pool,blobs,measured,valid,{lease,source:'provider'});
+  assert.equal(reconciled.attempt_status,'completed');assert.equal(reconciled.usage_status,'measured');
+  assert.equal((await recordProviderCallObservation(pool,blobs,measured,valid,{lease,source:'provider'})).idempotent,true);
+  assert.equal((await pool.query('SELECT count(*)::int n FROM bb_provider_result_refs WHERE run_id=$1',[runId])).rows[0].n,1);
   const revision=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic tracked correction: 100 to 120'}),blobs,'generated_pair_v1');
   const clean=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic clean correction: 120'}),blobs,'generated_pair_v1');
   await checkpointStage(pool,lease,'word_delivery_pair',{revision_artifact_id:revision.artifactId,clean_artifact_id:clean.artifactId});

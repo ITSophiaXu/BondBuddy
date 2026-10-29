@@ -107,7 +107,9 @@ tests establish real merchant capability or complete business acceptance.
 The complete worker, API and web Dockerfile targets subsequently built from
 `8610ee7f`. All 4,725 exported files were checked against raw Git blobs, avoiding
 Windows line-ending conversion. OCR, file sandbox, TLS and pinned-package
-integrity guards remained enabled. Their backend tests are still running.
+integrity guards remained enabled. The complete worker/CLI suite passed 62/62
+and the complete API suite passed 177/177, with no skips. These use real isolated
+Linux/PostgreSQL and DOCX processing with synthetic provider responses.
 
 Review found that Fastify executes close hooks in reverse registration order:
 the owned database pool closed before pending payment reconciliation drained.
@@ -119,6 +121,26 @@ paid); the repaired complete reconciliation suite passed all eight tests with
 the rebuilt server/test mounted read-only into the existing API image. TypeScript
 compilation and diff checks passed. The final images must include this repair;
 the earlier `8610ee7f` images do not contain it.
+
+The next compatibility regression reproduced an included automatic repair
+pausing when provider usage arrives late. Provider observation, durable-result
+reuse and queue recovery only recognized the older commerce scope binding.
+They now also recognize an owned automatic scope binding with a zero accepted
+amount and a stored automatic price. Ordinary unbound trial runs still require
+usage reconciliation; included Word repairs still require both delivery files.
+The regression creates the paid check and included repair through the actual
+API, reclaims an expired lease, reuses the same model attempt and result, and
+verifies late measured/duplicate observations plus no additional hold.
+
+The original regression failed with pending_reconcile instead of completed.
+A provider-only repair still failed queue reclaim. The next run exposed an
+incorrect test query (model attempts belong to a job, not a run column), with
+the following fixture cascading; correcting that query retained all assertions.
+The complete automatic-file and scope-standard suites then passed 11/11 with
+no skips. Compiled repair and test modules were mounted read-only into the
+fixed `8610ee7f` API image; final images must still include this code. This test
+uses synthetic observations and isolated PostgreSQL, with no real model or
+payment calls.
 
 The latest #814 full Git diff contains 309 changed files. Semantic review is
 ongoing. A separate compatibility gate concerns old nonterminal file-check runs

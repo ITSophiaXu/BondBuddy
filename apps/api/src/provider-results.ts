@@ -158,9 +158,14 @@ async function verifyObservationResult(blobs: PrivateBlobs, observation: Provide
 }
 
 async function lockIdentity(client: PoolClient, observation: ProviderCallObservation, lease?: Lease) {
-  const r = (await client.query(`SELECT r.*,EXISTS(SELECT 1 FROM bb_commerce_scope_runs coverage
+  // Both binding tables prove an accepted included task. A zero amount without
+  // that owned binding must not relax reconciliation for ordinary trial runs.
+  const r = (await client.query(`SELECT r.*,(EXISTS(SELECT 1 FROM bb_commerce_scope_runs coverage
     JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
-    WHERE coverage.owner_user_id=r.owner_user_id AND coverage.run_id=r.id AND scope.amount_fen=0) AS covered_zero_outcome
+    WHERE coverage.owner_user_id=r.owner_user_id AND coverage.run_id=r.id AND scope.amount_fen=0)
+    OR EXISTS(SELECT 1 FROM bb_automatic_scope_runs coverage
+    JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
+    WHERE coverage.owner_user_id=r.owner_user_id AND coverage.run_id=r.id AND scope.amount_fen=0 AND scope.automatic_price IS NOT NULL)) AS covered_zero_outcome
     FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id
     WHERE r.owner_user_id=$1 AND r.id=$2 AND p.deleted_at IS NULL FOR UPDATE OF r`,[observation.owner_user_id,observation.run_id])).rows[0];
   if(!r)throw missing();
@@ -391,8 +396,10 @@ export async function readCheckpointedProviderResult(input: {
   const activeLease=await input.pool.query("SELECT 1 FROM bb_jobs WHERE owner_user_id=$1 AND id=$2 AND run_id=$3 AND state='running' AND lease_token=$4 AND lease_until>now()",[input.lease.owner,input.lease.jobId,input.lease.runId,input.lease.token]);
   if (!activeLease.rowCount) throw new Problem(409,'CAPABILITY_NOT_READY','Provider result reuse requires the active worker lease');
   const q=await input.pool.query(`SELECT a.id,a.status,a.logical_call_id,a.attempt_no,j.checkpoint,j.subtype,u.usage_status,u.conflicting_measurements,r.billing_mode,
-    EXISTS(SELECT 1 FROM bb_commerce_scope_runs coverage JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
-      WHERE coverage.owner_user_id=r.owner_user_id AND coverage.run_id=r.id AND scope.amount_fen=0) AS covered_zero_outcome
+    (EXISTS(SELECT 1 FROM bb_commerce_scope_runs coverage JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
+      WHERE coverage.owner_user_id=r.owner_user_id AND coverage.run_id=r.id AND scope.amount_fen=0)
+    OR EXISTS(SELECT 1 FROM bb_automatic_scope_runs coverage JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
+      WHERE coverage.owner_user_id=r.owner_user_id AND coverage.run_id=r.id AND scope.amount_fen=0 AND scope.automatic_price IS NOT NULL)) AS covered_zero_outcome
     FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id JOIN bb_runs r ON r.id=j.run_id JOIN bb_call_usage u ON u.attempt_id=a.id
     WHERE a.owner_user_id=$1 AND a.job_id=$2 AND j.run_id=$3 AND a.logical_call_id=$4 AND a.attempt_no=$5`,[input.lease.owner,input.lease.jobId,input.lease.runId,input.logicalCallId,input.attemptNo]);
   const attempt=q.rows[0];

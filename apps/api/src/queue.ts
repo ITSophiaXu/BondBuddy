@@ -39,7 +39,12 @@ async function event(client:PoolClient, r:any, state:string, stage:string|null, 
 }
 
 // Used by claim, the operator queue and resolve so no paused attempt is invisible.
-const fixedPriceRun = "EXISTS(SELECT 1 FROM bb_runs billing_run WHERE billing_run.id=j.run_id AND (billing_run.billing_mode='fixed_credits' OR billing_run.billing_mode='metered_credits' AND j.subtype IN ('m4_document_v1','m4_qa_v1') OR EXISTS(SELECT 1 FROM bb_commerce_scope_runs coverage JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id WHERE coverage.owner_user_id=billing_run.owner_user_id AND coverage.run_id=billing_run.id AND scope.amount_fen=0)))";
+const fixedPriceRun = `EXISTS(SELECT 1 FROM bb_runs billing_run WHERE billing_run.id=j.run_id AND (
+  billing_run.billing_mode='fixed_credits' OR billing_run.billing_mode='metered_credits' AND j.subtype IN ('m4_document_v1','m4_qa_v1')
+  OR EXISTS(SELECT 1 FROM bb_commerce_scope_runs coverage JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
+    WHERE coverage.owner_user_id=billing_run.owner_user_id AND coverage.run_id=billing_run.id AND scope.amount_fen=0)
+  OR EXISTS(SELECT 1 FROM bb_automatic_scope_runs coverage JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
+    WHERE coverage.owner_user_id=billing_run.owner_user_id AND coverage.run_id=billing_run.id AND scope.amount_fen=0 AND scope.automatic_price IS NOT NULL)))`;
 const needsProviderReconciliation = `(
   a.status='pending_reconcile'
   OR (a.status='failed' AND NOT (COALESCE(j.checkpoint->'operator_reconciliations','{}'::jsonb) ? a.id) AND (
@@ -552,9 +557,12 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
     const {r,j}=await lockedLease(client,lease);
     // Charge the remaining locked price only when delivery is ready. Insufficient funds preserve the pair.
     if(outcome==='succeeded'&&!j.user_pause_requested){
-      const coveredZero=(await client.query(`SELECT EXISTS(SELECT 1 FROM bb_commerce_scope_runs coverage
+      const coveredZero=(await client.query(`SELECT (EXISTS(SELECT 1 FROM bb_commerce_scope_runs coverage
         JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
-        WHERE coverage.owner_user_id=$1 AND coverage.run_id=$2 AND scope.amount_fen=0) AS covered`,[r.owner_user_id,r.id])).rows[0].covered;
+        WHERE coverage.owner_user_id=$1 AND coverage.run_id=$2 AND scope.amount_fen=0)
+        OR EXISTS(SELECT 1 FROM bb_automatic_scope_runs coverage
+        JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
+        WHERE coverage.owner_user_id=$1 AND coverage.run_id=$2 AND scope.amount_fen=0 AND scope.automatic_price IS NOT NULL)) AS covered`,[r.owner_user_id,r.id])).rows[0].covered;
       if(j.subtype==='m4_document_v1'){
         const ready=await client.query(`SELECT a.kind,v.id FROM bb_m4_artifacts a
           JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id
