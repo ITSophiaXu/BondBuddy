@@ -8,7 +8,8 @@ test('prototype styles imported by the browser are included in the production bu
   const included=new Set(readFileSync(resolve(root,'deploy/m1/Dockerfile.dockerignore'),'utf8').split(/\r?\n/).filter(line=>line.startsWith('!')).map(line=>line.slice(1)));
   const copied=new Set(docker.split(/\r?\n/).filter(line=>line.startsWith('COPY product-prototype/')).flatMap(line=>line.trim().split(/\s+/).slice(1,-1)));
   const assets=new Set<string>();
-  for(const name of readdirSync('src').filter(name=>name.endsWith('.ts'))){
+  // CSS can import the prototype baseline through a page stylesheet, without a direct TS import.
+  for(const name of readdirSync('src').filter(name=>/\.(?:ts|css)$/.test(name))){
     const source=readFileSync(resolve('src',name),'utf8');
     for(const match of source.matchAll(/import ['"]\.\.\/\.\.\/\.\.\/(product-prototype\/public\/[^'"]+\.css)['"]/g))assets.add(match[1]);
   }
