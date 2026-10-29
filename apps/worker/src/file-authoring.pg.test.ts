@@ -65,8 +65,18 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
           // Deliberately do not run parsing: original bytes must reach the CLI immediately.
           assert.equal((await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE project_id=$1 AND job_type='parse'",[project])).rows[0].n,0);
         }
+        if(completeSource){
+          const versions=await send('GET',`/api/v1/projects/${project}/prospectus-versions`);
+          assert.equal(versions.statusCode,200,versions.body);
+          const selected=versions.json().versions.find((v:any)=>v.material_id===completeSource!.material_id);
+          assert.ok(selected);
+          const adopted=await send('POST',`/api/v1/projects/${project}/prospectus-versions/current`,{request_id:randomUUID(),version_id:selected.version_id,expected_selection_revision:versions.json().selection_revision});
+          assert.equal(adopted.statusCode,200,adopted.body);
+        }
         const details={...created.json().update_details,source_prospectuses:source?[source]:[]};
-        const patched=await send('PATCH',`/api/v1/projects/${project}`,{update_details:details},{'if-match':'1'});
+        const currentDraft=await send('GET',`/api/v1/projects/${project}`);
+        assert.equal(currentDraft.statusCode,200,currentDraft.body);
+        const patched=await send('PATCH',`/api/v1/projects/${project}`,{update_details:details},{'if-match':String(currentDraft.json().draft_revision)});
         assert.equal(patched.statusCode,200,patched.body);
         let draftRevision=patched.json().draft_revision;
         const message={message_id:randomUUID(),submission_request_id:randomUUID(),expected_message_version:null,body:'合成要求：明确2025年信息，缺项标待确认。',material_versions:[]};
