@@ -1,4 +1,4 @@
-import type {WorkpaperLibrary,WorkpaperLibraryItem} from '@bondbuddy/contracts';
+import {workpaperDownloadFilename,type WorkpaperLibrary,type WorkpaperLibraryItem} from '@bondbuddy/contracts';
 import {ApiClient,friendlyError,type Dto} from './api';
 import {ArtifactDownloads,artifactError,boundedDownload} from './artifact-download';
 import {esc,date} from './ui';
@@ -39,7 +39,7 @@ export class WorkpaperLibraryPanel {
     const list=this.host.querySelector('.wl-list')!,opened=new Set([...list.querySelectorAll<HTMLDetailsElement>('details[open]')].map(e=>e.dataset.key));
     list.innerHTML=data.items.length?data.items.map((i,n)=>{
       const key=i.batch_id+':'+i.entry.id,status=i.check_stale?'需用新版检查':i.impact?labels[i.impact.status]:i.state==='succeeded'?'未检查':i.state==='failed'?'生成失败':'生成中';
-      return `<details class="wl-file" data-key="${esc(key)}" ${opened.has(key)?'open':''}><summary><span class="wl-name">${esc(i.explanation?.filename??i.entry.path.split('/').at(-1)!)}</span><span class="wl-status">${esc(status)}</span><small>${i.explanation?'不适用说明':'可生成文件'} · 募集书 V${i.source.sequence}${i.latest?' · 当前底稿':' · 历史底稿'}</small></summary>
+      return `<details class="wl-file" data-key="${esc(key)}" ${opened.has(key)?'open':''}><summary><span class="wl-name">${esc(i.explanation?.filename??workpaperDownloadFilename(i.entry))}</span><span class="wl-status">${esc(status)}</span><small>${i.explanation?'不适用说明':'可生成文件'} · 募集书 V${i.source.sequence}${i.latest?' · 当前底稿':' · 历史底稿'}</small></summary>
       <div class="wl-details"><p>${esc(i.entry.folder||'尽职调查文件')} · ${date(i.created_at)} · ${i.version_count} 个批次版本</p><p>${esc(i.impact?.reason??i.decision?.reason??'生成后可检查与新版募集书的关联内容。')}</p>
       <div class="wl-actions">${i.explanation||i.artifacts.length?`<button class="btn secondary" data-preview="${n}">预览正文</button><button class="btn secondary" data-download="${n}">下载文件</button>`:''}<button class="text-button" data-zip="${n}">下载所在批次 ZIP</button><button class="text-button" data-check="${n}" ${!data.source?'disabled':''}>检查本批底稿</button>${i.impact&&i.impact.status!=='current'&&!i.check_stale?`<a class="text-button" href="#generate?project=${encodeURIComponent(this.project)}&step=workpapers&workpaper_batch=${encodeURIComponent(i.batch_id)}&return_project=${encodeURIComponent(this.project)}">重新编制受影响底稿</a>`:''}</div>
       ${i.check_stale&&i.impact?'<p>以下为旧检查记录，尚未对当前募集书生效。</p>':''}
@@ -76,12 +76,12 @@ export class WorkpaperLibraryPanel {
     if(action==='preview'){
       const result=await this.api.request<{text:string}>('GET',this.base+`/batches/${encodeURIComponent(item.batch_id)}/items/${encodeURIComponent(item.entry.id)}/preview`,undefined,{},this.abort.signal);
       if(!this.live())return;this.dialog?.remove();const d=document.createElement('dialog');this.dialog=d;d.className='wl-preview';
-      d.innerHTML=`<header><h2>${esc(item.explanation?.filename??item.entry.path.split('/').at(-1)!)}</h2><button class="btn secondary">关闭</button></header><p>正文文本预览；Word 文件保留完整排版。</p><pre>${esc(result.text)}</pre>`;
+      d.innerHTML=`<header><h2>${esc(item.explanation?.filename??workpaperDownloadFilename(item.entry))}</h2><button class="btn secondary">关闭</button></header><p>正文文本预览；Word 文件保留完整排版。</p><pre>${esc(result.text)}</pre>`;
       document.body.append(d);d.querySelector('button')!.onclick=()=>d.close();d.onclose=()=>{if(this.live())void this.refresh();};d.showModal();return;
     }
     if(action==='zip'){await this.saveFile(button,async (signal,progress)=>({bytes:await this.api.workpaperZip(this.project,item.batch_id,signal,progress),filename:'尽职调查底稿.zip'}),true);return;}
     if(item.explanation){await this.saveFile(button,async signal=>({bytes:await this.api.workpaperExplanation(this.project,item.batch_id,item.entry.id,signal),filename:item.explanation!.filename}));return;}
     await this.saveFile(button,async signal=>{const a=item.artifacts[0]!;const meta=await this.api.request<Dto<'ArtifactResponse'>>('GET',`/artifacts/${encodeURIComponent(a.pin.artifact_id)}?version=${a.pin.artifact_version}`,undefined,{},signal);
-      return {bytes:await this.api.artifactBytes(meta,signal),filename:item.entry.path.split('/').at(-1)!};});
+      return {bytes:await this.api.artifactBytes(meta,signal),filename:meta.filename??workpaperDownloadFilename(item.entry)};});
   }
 }

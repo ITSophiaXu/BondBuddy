@@ -5,6 +5,13 @@ const row={id:'r',version:1,media_type:'application/vnd.openxmlformats-officedoc
 test('workpaper download keeps original catalogue number and compact name; version stays metadata',()=>{
   assert.deepEqual(artifactDownloadName({...row,naming_m4_kind:'document',naming_m4_revision:4,naming_m4_manifest:{input:{workpaper:{entry:{path:'尽职调查/1-3 资产分析.docx'}}}}}),{filename:'1-3 资产分析.docx',display_version:4});
 });
+
+test('old workpaper metadata removes flattened annotations from the locked original title',()=>{
+  const entry={code:'2-4-5',title:'受限资产说明（包括明细、原因与影响）',path:'2-4-5 受限资产说明及明细、原因与影响.docx'};
+  const input={...row,naming_m4_kind:'document',naming_m4_revision:243,naming_m4_manifest:{input:{workpaper:{entry}}}};
+  assert.deepEqual(artifactDownloadName(input),{filename:'2-4-5 受限资产说明.docx',display_version:243});
+  assert.equal(entry.path,'2-4-5 受限资产说明及明细、原因与影响.docx');
+});
 test('authoring names use pinned input and variant, not mutable project fields or artifact version 1',()=>{
   assert.deepEqual(artifactDownloadName({...row,name:'已改名'}),{filename:'冻结项目名_募集书修订版_V5_20261009.docx',display_version:5});
   assert.equal(artifactDownloadName({...row,id:'c'}).filename,'冻结项目名_募集书清洁版_V5_20261009.docx');

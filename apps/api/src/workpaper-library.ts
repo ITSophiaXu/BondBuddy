@@ -1,7 +1,7 @@
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
-import {WorkpaperCheckRequestSchema,type WorkpaperCheck,type WorkpaperLibrary,type WorkpaperLibraryItem,type WorkpaperChangeInput} from '@bondbuddy/contracts';
+import {WorkpaperCheckRequestSchema,workpaperDownloadFilename,type WorkpaperCheck,type WorkpaperLibrary,type WorkpaperLibraryItem,type WorkpaperChangeInput} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,missing,Problem,date,assertCanonicalBusinessRunIdle} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {projectFileSource,readProjectFileAsset} from './project-file-storage.js';
@@ -46,7 +46,7 @@ export async function readWorkpaperLibrary(db:Db,owner:string,id:string,q:{offse
   const latestChecks=new Map<string,WorkpaperCheck>();for(const check of checks)if(!latestChecks.has(check.batch_id))latestChecks.set(check.batch_id,check);
   const all:WorkpaperLibraryItem[]=rows.map(r=>{
     const check=latestChecks.get(r.batch_id),run=runs.get(r.run_id),task=r.task;
-    return {entry:task.entry,decision:r.output_decision??task.decision,...(r.explanation?{explanation:{filename:r.explanation.filename,sha256:r.explanation.sha256}}:{}),
+    return {entry:task.entry,decision:r.output_decision??task.decision,...(r.explanation?{explanation:{filename:workpaperDownloadFilename(task.entry,{explanation:true}),sha256:r.explanation.sha256}}:{}),
       run_id:r.run_id,state:run?.state??r.state,stage:run?.stage??null,attempt:r.attempt,error:r.error,artifacts:[],batch_id:r.batch_id,catalogue_id:r.catalogue_id,created_at:date(r.created_at),source:r.source,
       latest:Number(r.position)===1,version_count:r.version_count,links_count:links.get(r.run_id)??0,
       impact:check?.result?.items.find(i=>i.item_id===r.item_id)??null,check_stale:check?check.stale:source?.version_id!==r.source.version_id||source?.selection_revision!==r.source.selection_revision};
@@ -56,7 +56,7 @@ export async function readWorkpaperLibrary(db:Db,owner:string,id:string,q:{offse
   const artifacts=(await db.query(`SELECT a.*,v.sha256,r.project_id FROM bb_m4_artifacts a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id AND r.state='succeeded'
     JOIN bb_artifact_versions v ON v.owner_user_id=a.owner_user_id AND v.id=a.artifact_id AND v.version=a.artifact_version
     WHERE a.owner_user_id=$1 AND a.run_id=ANY($2::text[]) AND a.kind='document' AND v.delivery_status='available' AND v.quality_status='passed'`,[owner,items.map(i=>i.run_id).filter(Boolean)])).rows;
-  for(const item of items)item.artifacts=artifacts.filter(a=>a.run_id===item.run_id&&!item.explanation).map(a=>({kind:'document',filename:a.filename,pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}));
+  for(const item of items)item.artifacts=artifacts.filter(a=>a.run_id===item.run_id&&!item.explanation).map(a=>({kind:'document',filename:workpaperDownloadFilename(item.entry),pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}));
   return {items,total:filtered.length,offset:q.offset,limit:q.limit,source,checks:checks.slice(0,30).map(c=>({...c,result:null}))};
 }
 export function registerWorkpaperLibrary(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>){

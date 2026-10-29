@@ -1,4 +1,5 @@
 import {workpaperPreview} from './workpaper-preview.js';
+import {contentDisposition} from './material-download.js';
 import {loadWorkpaperTemplate} from './workpaper-templates.js';
 import {registerWorkpaperLibrary} from './workpaper-library.js';
 import type {Pool,PoolClient} from 'pg';
@@ -7,7 +8,7 @@ import type {Static} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
 import {ZipFile} from 'yazl';
 import {PassThrough,Readable} from 'node:stream';
-import {WorkpaperImportSchema,WorkpaperStartSchema,WorkpaperActionSchema,WorkpaperDecisionSchema,WORKPAPER_LIMITS,WORKPAPER_PRICE,
+import {WorkpaperImportSchema,WorkpaperStartSchema,WorkpaperActionSchema,WorkpaperDecisionSchema,WORKPAPER_LIMITS,WORKPAPER_PRICE,workpaperDownloadFilename,workpaperZipPath,
   type WorkpaperDecision,type WorkpaperCatalogue,type WorkpaperWorkspace,type WorkpaperBatch,type WorkpaperEntry,type M4DocumentManifest,type Market,type Offering} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,missing,Problem,date,digest,assertCanonicalBusinessRunIdle,type PrivateBlobs} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
@@ -70,8 +71,8 @@ export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:stri
   const charged=(await db.query(`SELECT coalesce(sum(CASE WHEN c.state='released' THEN 0 ELSE coalesce(c.charged_points,CASE WHEN c.state='settled' THEN c.points ELSE 0 END) END),0) amount
     FROM bb_workpaper_attempts a JOIN bb_credit_reservations c ON c.owner_user_id=a.owner_user_id AND c.run_id=a.run_id WHERE a.owner_user_id=$1 AND a.batch_id=$2`,[owner,batch])).rows[0];
   return {batch_id:b.id,topic_id:b.topic_id,catalogue_id:b.catalogue_id,state:b.state,revision:b.revision,source:b.source,total_points:Number(b.total_points),charged_points:Number(charged.amount),created_at:date(b.created_at),error:b.error,start_mode:b.start_mode,
-    items:items.map(i=>({entry:i.manifest.input.workpaper.entry,decision:i.output_decision??i.manifest.input.workpaper.decision,...(i.delivered_explanation?{explanation:{filename:i.delivered_explanation.filename,sha256:i.delivered_explanation.sha256}}:{}),run_id:i.run_id,state:i.run_state??(i.state==='succeeded'?'succeeded':b.state==='cancelled'?'cancelled':i.state),stage:i.stage??null,attempt:i.attempt,error:i.error,
-      artifacts:artifacts.filter(a=>a.run_id===i.run_id&&!i.delivered_explanation).map(a=>({kind:a.kind,filename:a.filename,pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}))}))};
+    items:items.map(i=>({entry:i.manifest.input.workpaper.entry,decision:i.output_decision??i.manifest.input.workpaper.decision,...(i.delivered_explanation?{explanation:{filename:workpaperDownloadFilename(i.manifest.input.workpaper.entry,{explanation:true}),sha256:i.delivered_explanation.sha256}}:{}),run_id:i.run_id,state:i.run_state??(i.state==='succeeded'?'succeeded':b.state==='cancelled'?'cancelled':i.state),stage:i.stage??null,attempt:i.attempt,error:i.error,
+      artifacts:artifacts.filter(a=>a.run_id===i.run_id&&!i.delivered_explanation).map(a=>({kind:a.kind,filename:workpaperDownloadFilename(i.manifest.input.workpaper.entry),pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}))}))};
 }
 export async function readWorkpapers(db:Db,owner:string,id:string):Promise<WorkpaperWorkspace>{
   await project(db,owner,id);
@@ -234,13 +235,14 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
   });
   app.get(base+'/batches/:batch_id/explanations/:item_id',async(r,reply)=>{
     const user=await owner(r),{project_id:id,batch_id:batch}=params(r),item=(r.params as {item_id:string}).item_id;
-    return reply.header('Cache-Control','private, no-store').header('Content-Disposition','attachment; filename="explanation.docx"').type('application/vnd.openxmlformats-officedocument.wordprocessingml.document').send(await explanationBytes(db(),blobs(),user,id,batch,item));
+    const file=await explanationFile(db(),blobs(),user,id,batch,item);
+    return reply.header('Cache-Control','private, no-store').header('Content-Disposition',contentDisposition(file.filename)).type('application/vnd.openxmlformats-officedocument.wordprocessingml.document').send(file.bytes);
   });
   app.get(base+'/batches/:batch_id/items/:item_id/preview',async(r,reply)=>{
     const user=await owner(r),{project_id:id,batch_id:batch}=params(r),itemId=(r.params as {item_id:string}).item_id;
     const data=await readWorkpaperBatch(db(),user,id,batch),item=data.items.find(i=>i.entry.id===itemId);if(!item)throw missing();
     let bytes:Buffer;
-    if(item.explanation)bytes=await explanationBytes(db(),blobs(),user,id,batch,itemId);
+    if(item.explanation)bytes=(await explanationFile(db(),blobs(),user,id,batch,itemId)).bytes;
     else{const a=item.artifacts.find(a=>a.kind==='document');if(!a)throw missing();const row=await readProjectFileAsset(db(),user,{kind:'artifact',pin:a.pin});
       const stored=await blobs().getIfExistsBounded(row.object_key,64*1024*1024);if(!stored||digest(stored)!==a.pin.sha256)throw new Problem(503,'DATA_UNAVAILABLE','文件暂不可读取。');bytes=stored;}
     try{return reply.header('Cache-Control','private, no-store').send({text:workpaperPreview(bytes)});}catch{throw new Problem(422,'DATA_UNAVAILABLE','正文暂无法预览，请下载原文件查看。');}
@@ -248,7 +250,7 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
   app.get(base+'/batches/:batch_id/download',async(r,reply)=>{
     const user=await owner(r),{project_id:id,batch_id:batch}=params(r),data=await readWorkpaperBatch(db(),user,id,batch);
     if(!data.items.some(i=>i.artifacts.length||i.explanation))throw new Problem(422,'INPUT_REQUIRED','尚无已完成底稿可打包。');
-    const zip=new ZipFile(),stream=new PassThrough();let activeInput:PassThrough|undefined,abortEntry:(()=>void)|undefined;
+    const zip=new ZipFile(),stream=new PassThrough(),usedPaths=new Set<string>();let activeInput:PassThrough|undefined,abortEntry:(()=>void)|undefined;
     zip.outputStream.on('error',e=>stream.destroy(e));zip.outputStream.pipe(stream);
     stream.on('close',()=>{activeInput?.destroy();abortEntry?.();(zip.outputStream as Readable).destroy();});
     // At most one bounded Blob is held at a time; ZIP backpressure keeps hundreds of files bounded.
@@ -262,8 +264,8 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
           });await finished;activeInput=undefined;abortEntry=undefined;
         };
         for(const item of data.items)if(item.explanation){
-          const bytes=await explanationBytes(db(),blobs(),user,id,batch,item.entry.id);
-          await append('不适用说明/'+item.entry.path.replace(/\.docx$/i,'-不适用说明.docx'),bytes);
+          const {bytes}=await explanationFile(db(),blobs(),user,id,batch,item.entry.id);
+          await append(workpaperZipPath(item.entry,true,usedPaths),bytes);
         }
         for(const item of data.items)for(const artifact of item.artifacts.filter(a=>a.kind==='document')){
           if(stream.destroyed)return;
@@ -271,7 +273,7 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
           const bytes=await blobs().getIfExistsBounded(row.object_key,64*1024*1024);
           if(stream.destroyed)return;
           if(!bytes||digest(bytes)!==artifact.pin.sha256)throw Error('WORKPAPER_DOWNLOAD_UNAVAILABLE');
-          const path='可生成文件/'+item.entry.path;
+          const path=workpaperZipPath(item.entry,false,usedPaths);
           // addReadStreamLazy avoids buffering the entire batch in yazl.
           await append(path,bytes);
         }
@@ -282,12 +284,13 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
   });
 }
 
-async function explanationBytes(db:Db,blobs:PrivateBlobs,owner:string,id:string,batch:string,item:string){
+async function explanationFile(db:Db,blobs:PrivateBlobs,owner:string,id:string,batch:string,item:string){
  await ownedBatch(db,owner,id,batch);
- const row=(await db.query(`SELECT coalesce(i.explanation,w.explanation) AS explanation FROM bb_workpaper_items i
+ const row=(await db.query(`SELECT coalesce(i.explanation,w.explanation) AS explanation,i.manifest FROM bb_workpaper_items i
   LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
   LEFT JOIN bb_workpaper_item_results w ON w.owner_user_id=i.owner_user_id AND w.run_id=i.run_id AND r.state='succeeded'
   WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3`,[owner,batch,item])).rows[0];
  if(!row?.explanation)throw missing();const bytes=await blobs.getIfExistsBounded(row.explanation.key,1024*1024);
- if(!bytes||digest(bytes)!==row.explanation.sha256)throw new Problem(503,'DATA_UNAVAILABLE','说明文件暂不可读取，请重试。');return bytes;
+ if(!bytes||digest(bytes)!==row.explanation.sha256)throw new Problem(503,'DATA_UNAVAILABLE','说明文件暂不可读取，请重试。');
+ return {bytes,filename:workpaperDownloadFilename(row.manifest.input.workpaper.entry,{explanation:true})};
 }
