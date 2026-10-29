@@ -56,3 +56,20 @@ test('check request retry is idempotent and prior impact cannot appear current a
   await expect(panel.getByRole('link',{name:'重新编制受影响底稿'})).toHaveCount(0);
   await expect(panel).toContainText('以下为旧检查记录');
 });
+
+test('legacy library download uses the corrected metadata filename and retains document bytes',async({page})=>{
+  const state=await setup(page),entry=state.entries[0]!;
+  entry.entry.title='资产说明（包括明细、原因及偿债影响）';
+  entry.entry.path='1 尽职调查文件/1-0 资产说明及明细、原因及偿债影响.docx';
+  const expected='1-0 资产说明.docx',bytes=docx('Synthetic retained document bytes.'),sha=hash(bytes);
+  await page.route('**/api/v1/artifacts/artifact-0**',route=>route.request().url().includes('/download')
+    ?route.fulfill({body:bytes,contentType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'})
+    :route.fulfill({json:{artifact_id:'artifact-0',run_id:entry.run_id,version:1,filename:expected,media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',sha256:sha,quality_status:'passed',delivery_status:'available',download_url:'/api/v1/artifacts/artifact-0/download',expires_at:'2099-01-01T00:00:00Z'}}));
+  await openFiles(page);const panel=page.locator('#pw-workpaper-library');
+  await panel.locator('summary').first().click();
+  await expect(panel.locator('.wl-name').first()).toHaveText(expected);
+  const downloaded=page.waitForEvent('download');await panel.getByRole('button',{name:'下载文件'}).first().click();
+  const file=await downloaded;expect(file.suggestedFilename()).toBe(expected);
+  const stream=await file.createReadStream();const chunks:Buffer[]=[];for await(const chunk of stream!)chunks.push(Buffer.from(chunk));
+  expect(hash(Buffer.concat(chunks))).toBe(sha);
+});

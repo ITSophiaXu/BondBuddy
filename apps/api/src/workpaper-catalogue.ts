@@ -1,6 +1,6 @@
 import {XMLParser,XMLValidator} from 'fast-xml-parser';
 import {posix} from 'node:path';
-import {WORKPAPER_LIMITS,workpaperPathPart,workpaperFilenameTitle,type WorkpaperEntry} from '@bondbuddy/contracts';
+import {WORKPAPER_LIMITS,workpaperPathPart,workpaperFilenameTitle,workpaperFolderPath,workpaperRelativePath,type WorkpaperEntry} from '@bondbuddy/contracts';
 import {readBoundedOfficeParts} from './docx-inspector.js';
 import {Problem} from './data.js';
 const invalid=(message:string):never=>{throw new Problem(422,'VALIDATION_FAILED',message);};
@@ -38,7 +38,8 @@ export function parseCatalogueRows(sheets:CatalogueSheet[]):{entries:WorkpaperEn
       if(sheets.length>1)folder.unshift(workpaperPathPart(sheet.name));
       item.folder=folder.join('/');
       if(item.folder.length>600)invalid(`“${sheet.name}”第 ${item.row} 行保存目录过长，请缩短目录名称。`);
-      item.path=[...folder,workpaperPathPart([item.code,workpaperFilenameTitle(item.title)].filter(Boolean).join(' '))+(item.kind==='file'?'.docx':'')].join('/');
+      try{item.path=item.kind==='file'?workpaperRelativePath(item):workpaperFolderPath([...folder,[item.code,item.title].filter(Boolean).join(' ')].join('/'));}
+      catch{invalid(`“${sheet.name}”第 ${item.row} 行编号过长，无法生成兼容的文件名。`);}
       if(item.path.length>950)invalid(`“${sheet.name}”第 ${item.row} 行目录层级过长。`);
       entries.push(item);if(item.kind==='folder')stack.push(item);
     }
@@ -47,7 +48,7 @@ export function parseCatalogueRows(sheets:CatalogueSheet[]):{entries:WorkpaperEn
   if(!files.length)invalid('未识别到可生成文件。请设置“底稿名称”或“文件名称”列，并在“类型”列用“目录”标明文件夹。');
   if(files.length>WORKPAPER_LIMITS.items)invalid('每批最多支持 1,000 份文件，请拆分目录。');
   const used=new Set<string>();
-  for(const e of files){let path=e.path;let suffix=1;while(used.has(path.toLowerCase()))path=e.path.replace(/\.docx$/i,` (${++suffix}).docx`);
+  for(const e of files){let path=e.path;let suffix=1;while(used.has(path.toLowerCase()))path=workpaperRelativePath(e,{suffix:` (${++suffix})`});
     if(path!==e.path)warnings.push(`“${e.sheet}”第 ${e.row} 行与其他文件重名，下载时使用“${path}”。`);e.path=path;used.add(path.toLowerCase());}
   return {entries,warnings};
 }

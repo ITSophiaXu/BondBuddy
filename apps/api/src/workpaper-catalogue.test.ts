@@ -64,3 +64,17 @@ test('audit checklist 项目 headers and numbered summary records are retained',
   assert.match(parsed.entries.at(-1)!.path,/批准或备案文件\.docx$/);
   assert.match(parsed.entries.at(-1)!.title,/如有/);
 });
+
+test('import keeps complete requirements but bounds download names and resolves annotation collisions',()=>{
+  const title='受限资产说明（包括明细、原因、状态及偿债影响）';
+  const long='治理机构设置说明。'+'补充核查要求'.repeat(35);
+  const parsed=parseCatalogueRows([{name:'1 尽职调查文件',rows:[
+    {row:1,cells:['编号','文件名称','编制要求']},
+    {row:2,cells:['2-4-5',title,'完整核查要求']},
+    {row:3,cells:['2-4-5','受限资产说明（含其他举例）']},
+    {row:4,cells:['1-5-2',long]},
+  ]}]);
+  assert.deepEqual(parsed.entries.map(e=>e.path),['2-4-5 受限资产说明.docx','2-4-5 受限资产说明 (2).docx','1-5-2 治理机构设置说明.docx']);
+  assert.equal(parsed.entries[0]!.title,title);assert.equal(parsed.entries[0]!.instructions,'完整核查要求');
+  assert.equal(parsed.entries[2]!.title,long);assert.ok(parsed.warnings.some(w=>w.includes('重名')));
+});
