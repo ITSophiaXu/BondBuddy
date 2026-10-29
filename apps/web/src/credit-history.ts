@@ -1,4 +1,5 @@
 import type { ApiClient, Dto } from './api';
+import {isAutomaticPriceVersion} from '@bondbuddy/contracts';
 import { friendlyError } from './api';
 import { date, esc } from './ui';
 import {cny,isCnyPrice} from './commerce';
@@ -49,7 +50,7 @@ export class CreditHistory {
     finally{state.loading=false;if(this.live()){this.draw();if(state.refreshPending){state.refreshPending=false;void this.load(kind);}}}
   }
   private consumptionRow(r:Consumption){
-    const commercial=isCnyPrice(r),creditPriced=r.price_version==='bb-task-price-170-20261029-v2',amount=(n:number)=>commercial&&!creditPriced?cny(n):number(n)+' 积分';
+    const commercial=isCnyPrice(r),creditPriced=isAutomaticPriceVersion(r.price_version),amount=(n:number)=>commercial&&!creditPriced?cny(n):number(n)+' 积分';
     const dynamic=!commercial&&r.billing_policy==='authoring_balance_v2';
     const status=dynamic?(r.state==='held'?'按进度扣费中':r.corrected_points?'已退回扣费':'已结算'):r.state==='held'?'预留中 · 未扣费':r.state==='released'?'已释放 · 未扣费':r.corrected_points?'已扣费 · 有冲正返还':'已扣费';
     const feedback=this.feedback.get(r.run_id);

@@ -13,6 +13,7 @@ import {project,transaction,uid,conflict,missing,Problem,date,digest,assertCanon
 import {inputManifestHash} from './production-rule-pin.js';
 import {readM4MaterialPin,startPinnedM4Run} from './m4-workspace.js';
 import {quoteM4} from './m4-billing.js';
+import {resolveAutomaticTaskPriceVersion} from './automatic-price-versions.js';
 import {projectFileSource,readProjectFileAsset} from './project-file-storage.js';
 import {importProspectusMaterial} from './prospectus-import.js';
 import {loadWorkpaperKnowledge} from './m4-knowledge.js';
@@ -77,7 +78,8 @@ export async function readWorkpapers(db:Db,owner:string,id:string):Promise<Workp
   await project(db,owner,id);
   const cats=(await db.query('SELECT * FROM bb_workpaper_catalogues WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 10',[owner,id])).rows;
   const batches=(await db.query('SELECT id FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 10',[owner,id])).rows;
-  return {price:automaticBillingEnabled(db)?{version:AUTOMATIC_PRICE_VERSION,points:AUTOMATIC_TASK_TARIFF.workpaper.points,auto_charge:true}:WORKPAPER_PRICE,assessments:await readWorkpaperAssessments(db,owner,id),catalogues:cats.map(catalogueDto),batches:await Promise.all(batches.map(b=>readWorkpaperBatch(db,owner,id,b.id)))};
+  const version=automaticBillingEnabled(db)?await resolveAutomaticTaskPriceVersion(db,owner):null;
+  return {price:version?{version,points:automaticTaskTariff(version).workpaper.points,auto_charge:true}:WORKPAPER_PRICE,assessments:await readWorkpaperAssessments(db,owner,id),catalogues:cats.map(catalogueDto),batches:await Promise.all(batches.map(b=>readWorkpaperBatch(db,owner,id,b.id)))};
 }
 
 /** A batch is an ordered queue of independent, immutable M4 runs. A failed file does not discard siblings. */
@@ -110,8 +112,8 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
       for(const pin of [m.input.source_material!,...m.input.materials])await readM4MaterialPin(c,b.owner_user_id,pin);
       const topic=(await c.query('SELECT * FROM bb_m4_topics WHERE owner_user_id=$1 AND id=$2',[b.owner_user_id,b.topic_id])).rows[0];if(!topic)throw missing();
       const auto=isAutomaticPriceVersion(b.price_version);
-      const quote=await withAutomaticBilling(c,auto,()=>quoteM4(c,b.owner_user_id,topic.id,m.billing_task,inputManifestHash(m),m,auto));
-      if(quote.quote.points!==(auto?AUTOMATIC_TASK_TARIFF.workpaper.points:WORKPAPER_PRICE.points)||quote.quote.price_version!==b.price_version)throw conflict('QUOTE_CHANGED','文件生成费用已变化，请重新核对。');
+      const quote=await withAutomaticBilling(c,auto,()=>quoteM4(c,b.owner_user_id,topic.id,m.billing_task,inputManifestHash(m),m,auto),auto?b.price_version:undefined);
+      if(quote.quote.points!==(auto?automaticTaskTariff(b.price_version).workpaper.points:WORKPAPER_PRICE.points)||quote.quote.price_version!==b.price_version)throw conflict('QUOTE_CHANGED','文件生成费用已变化，请重新核对。');
       const run=await startPinnedM4Run(c,b.owner_user_id,topic,`workpaper:${b.id}:${next.item_id}:${next.attempt}`,inputManifestHash({batch:b.id,item:next.item_id,attempt:next.attempt}),m,quote.quote.quote_id,inputManifestHash(m),true);
       await c.query("UPDATE bb_workpaper_items SET run_id=$3,state='running',error=NULL WHERE batch_id=$1 AND item_id=$2",[b.id,next.item_id,run.id]);
       await c.query('INSERT INTO bb_workpaper_attempts(owner_user_id,batch_id,item_id,attempt,run_id) VALUES($1,$2,$3,$4,$5)',[b.owner_user_id,b.id,next.item_id,next.attempt,run.id]);
@@ -177,8 +179,8 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
       if(decisions.length!==selected.length||new Set(decisions.map(d=>d.item_id)).size!==selected.length||selected.some(e=>!decisions.some(d=>d.item_id===e.id)))throw conflict('INPUT_REVISION_CONFLICT','判断清单不完整，请重新判断。');
       }
       const generatable=direct?selected.length:decisions.filter(d=>d.status==='generate').length;
-      const auto=automaticBillingEnabled(c),unit=auto?AUTOMATIC_TASK_TARIFF.workpaper.points:WORKPAPER_PRICE.points;
-      if(b.price_version!==(auto?AUTOMATIC_PRICE_VERSION:WORKPAPER_PRICE.version)||b.expected_points!==generatable*unit)throw conflict('QUOTE_CHANGED','文件数量或任务版本已变化，请刷新当前目录。');
+      const auto=automaticBillingEnabled(c),version=auto?await resolveAutomaticTaskPriceVersion(c,user):null,unit=version?automaticTaskTariff(version).workpaper.points:WORKPAPER_PRICE.points;
+      if(b.price_version!==(version??WORKPAPER_PRICE.version)||b.expected_points!==generatable*unit)throw conflict('QUOTE_CHANGED','文件数量或任务版本已变化，请刷新当前目录。');
       if(auto)await requireFileUpdateCredits(c,user,b.expected_points,true);
       if((await c.query("SELECT 1 FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 AND state IN ('queued','running','paused')",[user,id])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','本项目已有底稿文件包待完成，请先继续或结束原文件包。');
       const source=await projectFileSource(c,user,id);
@@ -294,6 +296,6 @@ async function explanationBytes(db:Db,blobs:PrivateBlobs,owner:string,id:string,
  if(!row?.explanation)throw missing();const bytes=await blobs.getIfExistsBounded(row.explanation.key,1024*1024);
  if(!bytes||digest(bytes)!==row.explanation.sha256)throw new Problem(503,'DATA_UNAVAILABLE','说明文件暂不可读取，请重试。');return bytes;
 }
-import {AUTOMATIC_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,isAutomaticPriceVersion} from '@bondbuddy/contracts';
+import {automaticTaskTariff,isAutomaticPriceVersion} from '@bondbuddy/contracts';
 import {automaticBillingEnabled,withAutomaticBilling} from './automatic-billing-context.js';
 import {requireFileUpdateCredits} from './project-file-billing.js';

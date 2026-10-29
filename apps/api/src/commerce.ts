@@ -1,8 +1,9 @@
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Pool} from 'pg';
 import type {Static} from '@sinclair/typebox';
-import {COMMERCE_RULES,OUTCOME_CATALOG,OUTCOME_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,AUTOMATIC_BILLING_RULES,AUTOMATIC_PRICE_VERSION,schemas,type CommerceTopup} from '@bondbuddy/contracts';
+import {COMMERCE_RULES,OUTCOME_CATALOG,OUTCOME_PRICE_VERSION,automaticTaskTariff,AUTOMATIC_BILLING_RULES,AUTOMATIC_PRICE_VERSION,schemas,type CommerceTopup} from '@bondbuddy/contracts';
 import {automaticBillingEnabled} from './automatic-billing-context.js';
+import {resolveAutomaticTaskPriceVersion} from './automatic-price-versions.js';
 import {creditBalance} from './billing.js';
 import {createServiceTopup,rechargeDto,refreshRecharge,type PaymentProvider} from './payments.js';
 import {digest,missing,Problem,transaction,uid} from './data.js';
@@ -17,12 +18,15 @@ export function installCommerce(app:FastifyInstance,pool:Pool,owner:(r:FastifyRe
   });
   app.post('/api/v1/commerce/quotations/:quotation_id/decline',{schema:{body:schemas.CommerceScopeDeclineRequest,response:{200:schemas.CommerceScopeQuotationResponse}}},async r=>declineScopeQuotation(pool,await owner(r),(r.params as {quotation_id:string}).quotation_id,r.body as Static<typeof schemas.CommerceScopeDeclineRequest>));
   app.post('/api/v1/commerce/quotations/:quotation_id/requote',{schema:{body:schemas.CommerceScopeRequoteRequest,response:{200:schemas.CommerceScopeQuotationResponse}}},async r=>requoteScopeQuotation(pool,await owner(r),(r.params as {quotation_id:string}).quotation_id,r.body as Static<typeof schemas.CommerceScopeRequoteRequest>));
-  app.get('/api/v1/commerce/catalog',{schema:{response:{200:schemas.CommerceCatalogResponse}}},async r=>{
-    await owner(r);
-    if(automaticBillingEnabled(pool))return{enabled:true,currency:'CNY',version:AUTOMATIC_PRICE_VERSION,model:'subscription_and_topup',
-      items:Object.entries(AUTOMATIC_TASK_TARIFF).map(([code,item])=>({code,label:item.label,unit:item.unit,price_fen:item.points,price_points:item.points,capability:'limited',
-        scope:[code==='integrity'?'每轮至多5个主体、每主体至多20个适用官网；按明确名单和截至时间执行':'用户明确提出并锁定的独立业务范围'],
-        included:['原范围必要检查、修复、支撑材料及平台重试包含在任务内']})),rules:AUTOMATIC_BILLING_RULES};
+  app.get('/api/v1/commerce/catalog',{schema:{response:{200:schemas.CommerceCatalogResponse}}},async(r,reply)=>{
+    const user=await owner(r);reply.header('cache-control','private, no-store');
+    if(automaticBillingEnabled(pool)){
+      const version=await resolveAutomaticTaskPriceVersion(pool,user);
+      return{enabled:true,currency:'CNY',version,model:'subscription_and_topup',
+      items:Object.entries(automaticTaskTariff(version)).map(([code,item])=>({code,label:item.label+(code==='full_review'&&version!==AUTOMATIC_PRICE_VERSION?'（本期原价）':''),unit:item.unit,price_fen:item.points,price_points:item.points,capability:'limited',
+        scope:code==='full_review'?['一份募集说明书与锁定材料的一轮全面复核，覆盖财务、交叉一致性、规则与格式，交付复核报告及批注。','另行委托的差异复核、原文修订各按14,900积分独立计费。']:[code==='integrity'?'每轮至多5个主体、每主体至多20个适用官网；按明确名单和截至时间执行':'用户明确提出并锁定的独立业务范围'],
+        included:code==='full_review'?['本轮复核报告与批注的修复、平台重试包含在任务内。']:['原范围必要检查、修复、支撑材料及平台重试包含在任务内']})),rules:AUTOMATIC_BILLING_RULES};
+    }
     return{enabled,currency:'CNY',version:OUTCOME_PRICE_VERSION,model:'pay_as_you_go',items:OUTCOME_CATALOG,rules:COMMERCE_RULES};
   });
   app.get('/api/v1/commerce/account',{schema:{response:{200:schemas.CommerceAccountResponse}}},async r=>{

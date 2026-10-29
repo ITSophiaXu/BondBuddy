@@ -1,13 +1,13 @@
 import {Type,type Static} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
-import {AUTOMATIC_PRICE_VERSION} from './automatic-pricing.js';
+import {AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION,isAutomaticPriceVersion} from './automatic-pricing.js';
 import type {ScopeLine} from './commerce.js';
 
 export const LEGACY_OUTCOME_PRICE_VERSION='outcome-cny-20261028-v1' as const;
 export const OUTCOME_PRICE_VERSION='outcome-cny-20261028-v2' as const;
-export const OutcomePriceVersionSchema=Type.Union([Type.Literal(LEGACY_OUTCOME_PRICE_VERSION),Type.Literal(OUTCOME_PRICE_VERSION),Type.Literal(AUTOMATIC_PRICE_VERSION)]);
+export const OutcomePriceVersionSchema=Type.Union([Type.Literal(LEGACY_OUTCOME_PRICE_VERSION),Type.Literal(OUTCOME_PRICE_VERSION),Type.Literal(LEGACY_AUTOMATIC_PRICE_VERSION),Type.Literal(AUTOMATIC_PRICE_VERSION)]);
 export type OutcomePriceVersion=Static<typeof OutcomePriceVersionSchema>;
-export const isOutcomePriceVersion=(value:unknown):value is OutcomePriceVersion=>value===OUTCOME_PRICE_VERSION||value===LEGACY_OUTCOME_PRICE_VERSION||value===AUTOMATIC_PRICE_VERSION;
+export const isOutcomePriceVersion=(value:unknown):value is OutcomePriceVersion=>value===OUTCOME_PRICE_VERSION||value===LEGACY_OUTCOME_PRICE_VERSION||isAutomaticPriceVersion(value);
 
 /** Trial-03 business units, in integer CNY fen. This is not a semantic scope recognizer. */
 export const OUTCOME_RATE_CARD={fact_reply:980,fact_revision:3900,calculation_reply:3900,argument_revision:9900,argument_reply:9900,new_disclosure:9900,period:24900,financial_restatement:24900,financial_group:49900,template:1990,check:990,sync:1990,review:14900} as const;

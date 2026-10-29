@@ -1,4 +1,4 @@
-import {AUTHORING_ACTIVITY_LABELS,type Run,type RunEvent,type AuthoringProgress} from '@bondbuddy/contracts';
+import {AUTHORING_ACTIVITY_LABELS,isAutomaticPriceVersion,type Run,type RunEvent,type AuthoringProgress} from '@bondbuddy/contracts';
 import {esc} from './ui.js';
 const ended=(r:Run)=>['succeeded','test_completed','failed','rejected','cancelled'].includes(r.state);
 export function elapsedLabel(ms:number){const s=Math.floor(ms/1000);return s<60?s+'秒':Math.floor(s/60)+'分'+String(s%60).padStart(2,'0')+'秒';}
@@ -55,7 +55,7 @@ export function authoringStatus(run:Run,events:RunEvent[],p?:AuthoringProgress){
   return {title,summary,phase:(run.stage==='claimed'||run.stage==='input_lock'||run.stage==='materials_ready'?1:run.stage?.includes('word_delivery')?3:2) as 1|2|3};
 }
 export function authoringCreditReceipt(run:Run,p?:AuthoringProgress,legacy?:{points:number;state:string}&CommercePriceMetadata,error=false):string{
-  if(isCnyPrice(legacy))return `<section class="authoring-credit-meter" aria-label="人民币任务费用"><div><span>${legacy!.state==='settled'?'本次已结算':legacy!.state==='released'?'预留已释放':'本次已预留'}</span><strong role="status">${displayPrice(legacy)}</strong></div><p>按确认范围交付结算；未交付部分释放。原范围修正与平台重试包含，不按内部轮次加收。</p></section>`;
+  if(isCnyPrice(legacy))return `<section class="authoring-credit-meter" aria-label="${isAutomaticPriceVersion(legacy?.price_version)?'任务积分费用':'人民币任务费用'}"><div><span>${legacy!.state==='settled'?'本次已结算':legacy!.state==='released'?'预留已释放':'本次已预留'}</span><strong role="status">${displayPrice(legacy)}</strong></div><p>按确认范围交付结算；未交付部分释放。原范围修正与平台重试包含，不按内部轮次加收。</p></section>`;
   if(run.billing_mode!=='fixed_credits')return '<p class="task-credit-receipt">本次任务按提交时的试用规则执行，不扣积分。</p>';
   if(!p){
     if(legacy&&legacy.state!=='held')return '<p class="task-credit-receipt">'+(legacy.state==='settled'?'已扣费 '+legacy.points.toLocaleString('zh-CN')+' 积分':'已返还，本次不扣费')+'</p>';

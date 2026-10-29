@@ -1,7 +1,7 @@
 import {mkdir,readFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {expect,test,type Page,type Route} from '@playwright/test';
-import {DATA_POLICY_VERSION,DELETION_PURGED_CONTENT,DELETION_RETAINED_METADATA,type DataPolicy} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION,automaticTaskTariff,DATA_POLICY_VERSION,DELETION_PURGED_CONTENT,DELETION_RETAINED_METADATA,type AutomaticPriceVersion,type DataPolicy} from '@bondbuddy/contracts';
 
 // Synthetic HTTP and UI evidence. No merchant, mandate, cash transfer or professional task is executed.
 const now='2026-10-29T04:00:00Z',end='2026-11-29T04:00:00Z',expiry='2027-01-27T04:00:00Z';
@@ -9,9 +9,10 @@ const plans=[{id:'light',label:'轻量',amount_fen:19900,points:21000,period_mon
 const policy:DataPolicy={policy_version:DATA_POLICY_VERSION,storage_location:'platform_private_cloud',server_side_processing:true,model_provider_processing:true,active_retention:'until_user_deletes',purge_enabled:false,deleted_content_purge_days:null,orphan_upload_purge_hours:null,log_content_retention_days:30,backup_retention_days:null,pinned_by_active_run:'retained_until_run_ends',purged_content:[...DELETION_PURGED_CONTENT],retained_metadata:[...DELETION_RETAINED_METADATA]};
 const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
 async function evidence(page:Page,name:string){const directory=process.env.BB_UX_EVIDENCE_DIR;if(!directory)return;await mkdir(directory,{recursive:true});await page.screenshot({path:join(directory,name),fullPage:true});}
-async function setup(page:Page,options:{payment?:boolean;active?:boolean;renewal?:boolean;manualActive?:boolean;uncertainCheckout?:boolean;orderPaid?:boolean}={}){
+async function setup(page:Page,options:{payment?:boolean;active?:boolean;renewal?:boolean;manualActive?:boolean;uncertainCheckout?:boolean;orderPaid?:boolean;priceVersion?:AutomaticPriceVersion}={}){
   const calls:{method:string;path:string;body:any}[]=[];let attempts=0;
-  let subscription:any=options.active?{id:'subscription-1',plan_id:'light',status:'active',auto_renew:!!options.renewal&&!options.manualActive,mandate_status:options.renewal&&!options.manualActive?'active':'none',current_period_start:now,current_period_end:end,task_price_version:'bb-task-price-170-20261029-v2'}:null;
+  const priceVersion=options.priceVersion??AUTOMATIC_PRICE_VERSION,tariff=automaticTaskTariff(priceVersion);
+  let subscription:any=options.active?{id:'subscription-1',plan_id:'light',status:'active',auto_renew:!!options.renewal&&!options.manualActive,mandate_status:options.renewal&&!options.manualActive?'active':'none',current_period_start:now,current_period_end:end,task_price_version:priceVersion}:null;
   let order={order_id:'subscription-order-1',provider:'wechat',state:options.orderPaid||options.active?'paid':'pending',amount_fen:19900,points:21000,currency:'CNY',checkout_url:'weixin://wxpay/bizpayurl?pr=synthetic-subscription',project_id:null,expires_at:end,credited_at:options.orderPaid||options.active?now:null};
   const period=()=>({id:'period-1',order_id:order.order_id,plan_id:subscription?.plan_id??'light',status:order.state==='paid'?'active':'pending',amount_fen:order.amount_fen,points:order.points,available_points:order.state==='paid'?order.points:0,held_points:0,starts_at:order.state==='paid'?now:null,ends_at:order.state==='paid'?end:null,credits_expires_at:order.state==='paid'?expiry:null,refundable_until:order.state==='paid'?'2026-11-05T04:00:00Z':null});
   const refunds:any[]=[];
@@ -25,13 +26,15 @@ async function setup(page:Page,options:{payment?:boolean;active?:boolean;renewal
     if(path==='/data-policy')return json(route,200,policy);
     if(path==='/subscriptions/catalog')return json(route,200,{enabled:true,version:'bb-subscriptions-20261029-v1',plans,providers:options.payment?['wechat']:[],auto_renew_available:!!options.renewal});
     if(path==='/subscriptions/account')return json(route,200,{subscription,available_points:subscription&&order.state==='paid'?22000:19782,held_points:subscription&&order.state==='paid'?0:1218,subscription_available_points:subscription&&order.state==='paid'?21000:0,topup_available_points:subscription&&order.state==='paid'?1000:19782,other_available_points:0,periods:subscription?[period()]:[]});
-    if(path==='/commerce/catalog')return json(route,200,{enabled:true,currency:'CNY',version:'bb-task-price-170-20261029-v2',model:'subscription_and_topup',items:[{code:'response',label:'问题回复',unit:'题',price_fen:1218,capability:'standard',scope:['独立问题'],included:['原范围修订']}],rules:[]});
-    if(path==='/credits/consumption-history')return json(route,200,{items:[{reservation_id:'response-settled',run_id:'response-run',project_id:'project-1',project_name:'合成项目',task_name:'问题回复',created_at:now,finalized_at:now,state:'settled',reserved_points:1218,charged_points:1218,released_points:0,corrected_points:0,pricing_mode:'outcome_cny_v1',price_version:'bb-task-price-170-20261029-v2',currency:'CNY',amount_fen:1218}],page:{next_cursor:null,has_more:false}});
+    if(path==='/commerce/catalog')return json(route,200,{enabled:true,currency:'CNY',version:priceVersion,model:'subscription_and_topup',items:Object.entries(tariff).map(([code,item])=>({code,label:item.label+(code==='full_review'&&priceVersion===LEGACY_AUTOMATIC_PRICE_VERSION?'（本期原价）':''),unit:item.unit,price_fen:item.points,price_points:item.points,capability:'limited',scope:code==='full_review'?['一份募集说明书与锁定材料的一轮全面复核，交付复核报告及批注。','另行委托的差异复核、原文修订各按14,900积分独立计费。']:['独立业务范围'],included:code==='full_review'?['本轮报告与批注的修复、平台重试包含。']:['原范围修订']})),rules:[]});
+    if(path==='/credits/consumption-history')return json(route,200,{items:[
+      {reservation_id:'response-settled',run_id:'response-run',project_id:'project-1',project_name:'合成项目',task_name:'问题回复',created_at:now,finalized_at:now,state:'settled',reserved_points:1218,charged_points:1218,released_points:0,corrected_points:0,pricing_mode:'outcome_cny_v1',price_version:priceVersion,currency:'CNY',amount_fen:1218},
+      {reservation_id:'full-review-settled',run_id:'full-review-run',project_id:'project-1',project_name:'合成项目',task_name:'独立全面复核',created_at:now,finalized_at:now,state:'settled',reserved_points:tariff.full_review.points,charged_points:tariff.full_review.points,released_points:0,corrected_points:0,pricing_mode:'outcome_cny_v1',price_version:priceVersion,currency:'CNY',amount_fen:tariff.full_review.points}],page:{next_cursor:null,has_more:false}});
     if(path==='/credits/recharge-history')return json(route,200,{items:[{order_id:order.order_id,provider:'wechat',state:'paid',amount_fen:19900,points:21000,created_at:now,credited_at:now,pricing_mode:'outcome_cny_v1',price_version:'bb-task-price-170-20261029-v2',currency:'CNY'}],page:{next_cursor:null,has_more:false}});
     if(path==='/subscriptions'&&method==='POST'){
       attempts++;if(options.uncertainCheckout&&attempts===1)return json(route,500,{code:'INTERNAL_ERROR'});
       const plan=plans.find(plan=>plan.id===body.plan_id)!;order={...order,amount_fen:plan.amount_fen,points:plan.points};
-      subscription={id:'subscription-1',plan_id:plan.id,status:'pending',auto_renew:false,mandate_status:'none',current_period_start:null,current_period_end:null,task_price_version:'bb-task-price-170-20261029-v2'};
+      subscription={id:'subscription-1',plan_id:plan.id,status:'pending',auto_renew:false,mandate_status:'none',current_period_start:null,current_period_end:null,task_price_version:AUTOMATIC_PRICE_VERSION};
       return json(route,201,{subscription,order});
     }
     if(path==='/subscriptions/subscription-1/cancel'&&method==='POST'){subscription={...subscription,status:'cancelled',auto_renew:false,mandate_status:'cancelled'};return json(route,200,subscription);}
@@ -81,6 +84,28 @@ test('checkout retries one selected plan and never sends a client-controlled pri
   await expect(page.locator('.subscription-payment')).toContainText('55,000 积分');
   await expect(page.locator('.subscription-payment')).not.toContainText('积分已到账');
   expect(calls.filter(call=>call.path.includes('auto-renew'))).toEqual([]);
+});
+
+test('current catalog lists all twelve tasks and full-review history stays in points',async({page})=>{
+  await setup(page);await page.goto('/#/account');
+  await page.locator('.subscription-price-list summary').click();
+  await expect(page.locator('[data-task-price]')).toHaveCount(12);
+  await expect(page.locator('[data-task-price="full_review"]')).toHaveText('独立全面复核 / 份／轮27,195 积分');
+  await expect(page.locator('[data-record="full-review-settled"] .credit-history-amount')).toContainText('消耗 27,195 积分');
+  await expect(page.locator('[data-record="full-review-settled"] .credit-history-amount')).not.toContainText('¥');
+  await expect(page.locator('.subscription-review-scope')).toContainText('交付复核报告及批注');
+  await expect(page.locator('.subscription-review-scope')).toContainText('原文修订各按14,900积分独立计费');
+  await evidence(page,'subscription-full-review-v3-1440.png');
+});
+
+test('a protected paid v2 month displays the original full-review price and historical points',async({page})=>{
+  await setup(page,{active:true,priceVersion:LEGACY_AUTOMATIC_PRICE_VERSION});await page.goto('/#/account');
+  await page.locator('.subscription-price-list summary').click();
+  await expect(page.locator('.subscription-price-list')).toContainText('本期锁定的任务积分价格');
+  await expect(page.locator('[data-task-price="full_review"]')).toHaveText('独立全面复核（本期原价） / 份／轮14,900 积分');
+  await expect(page.locator('[data-record="full-review-settled"] .credit-history-amount')).toContainText('消耗 14,900 积分');
+  await expect(page.locator('[data-record="full-review-settled"] .credit-history-amount')).not.toContainText('¥');
+  await evidence(page,'subscription-full-review-v2-protected-1440.png');
 });
 
 test('small topup uses exact fen and preserves the non-subscription entry',async({page})=>{
@@ -169,6 +194,10 @@ test('subscription preview shares the account layout and never enables payment a
   await page.goto('/prototype-subscription/account-credits.html?subscription=1');
   await expect(page.locator('.subscription-plan-grid .credit-pack')).toHaveCount(3);
   await expect(page.getByRole('button',{name:'开通专业',exact:true})).toBeDisabled();
+  await page.locator('.subscription-price-list summary').click();
+  await expect(page.locator('.subscription-price-list li')).toHaveCount(12);
+  await expect(page.locator('.subscription-price-list')).toContainText('独立全面复核');
+  await expect(page.locator('.subscription-price-list')).toContainText('27,195 积分');
   await evidence(page,'subscription-account-prototype-1440.png');
   await page.setViewportSize({width:390,height:844});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

@@ -1,12 +1,13 @@
 import type {PoolClient} from 'pg';
-import {AUTOMATIC_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,type AutomaticTaskSku,type ScopeLine} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,automaticTaskTariff,isAutomaticPriceVersion,type AutomaticPriceVersion,type AutomaticTaskSku,type ScopeLine} from '@bondbuddy/contracts';
 import {classifyFixedPrice} from './billing-classification.js';
 import {Problem} from './data.js';
 
-export type AutomaticPrice={version:typeof AUTOMATIC_PRICE_VERSION;sku:AutomaticTaskSku|'review';lines:ScopeLine[];points:number;source_quote_ids:string[]};
+export type AutomaticPrice={version:AutomaticPriceVersion;sku:AutomaticTaskSku|'differential_review'|'review_revision';lines:ScopeLine[];points:number;source_quote_ids:string[]};
 const unsupported=(message:string):never=>{throw new Problem(422,'SCOPE_UNSUPPORTED',message);};
 /** Only trusted, owned workflow snapshots enter here. It does not interpret prices supplied by a user or a model. */
-export function resolveAutomaticTaskPrice(action:string,snapshot:any):AutomaticPrice{
+export function resolveAutomaticTaskPrice(action:string,snapshot:any,version:AutomaticPriceVersion=AUTOMATIC_PRICE_VERSION):AutomaticPrice{
+  if(!isAutomaticPriceVersion(version))return unsupported('当前任务价格版本不受支持。');
   let sku:AutomaticPrice['sku'],units:{id:string;label?:string}[]=[{id:action}],sources:string[]=[],override:number|undefined;
   if(!snapshot||typeof snapshot!=='object')return unsupported('任务范围缺失，请补充业务目标。');
   if(action==='authoring'){
@@ -45,15 +46,17 @@ export function resolveAutomaticTaskPrice(action:string,snapshot:any):AutomaticP
     if(snapshot.paid_check){
       sources=[snapshot.paid_check.quote_id];
       // A new maintenance round includes repair. Older paid checks retain their original upgrade price.
-      override=snapshot.paid_check.price_version===AUTOMATIC_PRICE_VERSION?0:1000;
+      override=isAutomaticPriceVersion(snapshot.paid_check.price_version)?0:1000;
     }
   }else if(action==='review'){
-    // Existing independent financial review remains a separate product; it is not sold as a cheap file check.
-    sku='review';override=14900;
+    // Full review is a distinct deliverable; separately commissioned follow-up operations keep their original price.
+    if(snapshot.task==='full_review')sku='full_review';
+    else if(snapshot.task==='differential_review'||snapshot.task==='review_revision')sku=snapshot.task;
+    else return unsupported('请选择独立全面复核、差异复核或复核后原文修订。');
   }else return unsupported('当前业务操作尚未配置自动计费范围。');
-  const entry=sku==='review'?{points:14900,label:'独立财务组复核',unit:'次'}:AUTOMATIC_TASK_TARIFF[sku];
+  const entry=sku==='differential_review'?{points:14900,label:'差异复核',unit:'次'}:sku==='review_revision'?{points:14900,label:'复核后原文修订',unit:'次'}:automaticTaskTariff(version)[sku];
   const lines=units.map(({id,label})=>({key:id,label:label??entry.label,quantity:1,unit:entry.unit,unit_price_fen:override??entry.points,amount_fen:override??entry.points,evidence:[`服务端已锁定${action}的材料、目标和成果范围；必要修复包含在原任务内。`]}));
-  return{version:AUTOMATIC_PRICE_VERSION,sku,lines,points:lines.reduce((s,l)=>s+l.amount_fen,0),source_quote_ids:[...new Set(sources)]};
+  return{version,sku,lines,points:lines.reduce((s,l)=>s+l.amount_fen,0),source_quote_ids:[...new Set(sources)]};
 }
 
 /** Paid coverage is rechecked at execution, including quality reversals; snapshot IDs are never proof by themselves. */

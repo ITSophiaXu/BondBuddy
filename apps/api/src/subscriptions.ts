@@ -31,7 +31,7 @@ async function subscriptionEvent(c:PoolClient,s:any,type:string,payload:object={
     VALUES($1,$2,'subscription',$3,$4,$5)`,[uid(),s.owner_user_id,s.id,type,JSON.stringify({subscription_id:s.id,...payload})]);
 }
 /** Current paid month pins task tariffs even after renewal cancellation. The credits themselves live for 90 days. */
-export async function resolveActiveSubscriptionPrice(c:PoolClient,owner:string):Promise<string|null>{
+export async function resolveActiveSubscriptionPrice(c:Pool|PoolClient,owner:string):Promise<string|null>{
   const row=(await c.query(`SELECT task_price_version FROM bb_subscription_periods WHERE owner_user_id=$1 AND status='active'
     AND starts_at<=now() AND ends_at>now() ORDER BY starts_at DESC,id DESC LIMIT 1`,[owner])).rows[0];
   return row?.task_price_version??null;

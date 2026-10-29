@@ -1,13 +1,30 @@
 import {expect,test,type Page,type Route} from '@playwright/test';
-import {AUTOMATIC_PRICE_VERSION,commerceMetadata} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,commerceMetadata} from '@bondbuddy/contracts';
 import {fixture as qaFixture,install as installQa,projectId as qaProject} from './project-qa-continuation-fixtures';
 import {fixture as integrityFixture,install as installIntegrity,projectId as integrityProject} from './integrity-continuation-fixtures';
 import {fixture as consistencyFixture,install as installConsistency,ids,base,checkId,fileIds} from './consistency-confirmation-fixtures';
+import {fixture as reviewFixture,install as installReview,projectId as reviewProject,hash as reviewHash,now as reviewNow} from './review-followup-fixtures';
 
 const json=(route:Route,body:unknown,status=200)=>route.fulfill({status,json:body});
 const quote=(points:number)=>({...commerceMetadata(points),auto_charge:true,price_version:AUTOMATIC_PRICE_VERSION,points,quote_status:'ready' as const,scope_quote_id:'scope-automatic',scope_lines:[]});
 const price=()=>({...quote(0),version:AUTOMATIC_PRICE_VERSION,quote_status:'pending_scope' as const});
 async function commerce(page:Page){await page.route('**/api/v1/commerce/**',route=>json(route,{enabled:true,currency:'CNY',version:AUTOMATIC_PRICE_VERSION,model:'pay_as_you_go',items:[],rules:[]}));}
+
+test('independent full review uses its locked points quote and executes once without a price confirmation',async({page})=>{
+  const state=reviewFixture();await installReview(page,state);await commerce(page);const quotes:any[]=[];
+  const points=AUTOMATIC_TASK_TARIFF.full_review.points;
+  const reviewQuote={...quote(points),quote_id:'independent-full-review-quote',project_id:reviewProject,input_revision:state.draft.version,input_hash:reviewHash('locked full-review input'),task_type:'full_review',reason:'独立全面复核',created_at:reviewNow};
+  await page.route(`**/api/v1/projects/${reviewProject}/review-executions/quote`,route=>{quotes.push(route.request().postDataJSON());return json(route,{enabled:true,quote:reviewQuote,balance:{available:55000,frozen:0},shortage:0,reason:null});});
+  await page.route('**/api/v1/runs/followup-run-3/credit-charge',route=>json(route,{quote:reviewQuote,state:'held'}));
+  await page.goto(`/#/projects/${reviewProject}/review?tab=materials`);
+  await page.getByRole('button',{name:'开始复核',exact:true}).click();
+  await expect.poll(()=>state.executions.length).toBe(1);expect(quotes).toHaveLength(1);
+  expect(state.executions[0]).toMatchObject({operation:'full_review',quote_id:'independent-full-review-quote',expected_input_version:state.draft.version});
+  await expect(page.getByRole('dialog',{name:'确认本次任务费用',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'确认总价并开始',exact:true})).toHaveCount(0);
+  await expect(page.locator('#review-making-panel')).toContainText(points.toLocaleString('zh-CN')+' 积分');
+  expect(state.executions).toHaveLength(1);
+});
 
 test('QA one business click submits exactly once without an amount confirmation',async({page})=>{
   const state=qaFixture();state.workspace.price=price();state.workspace.draft.materials.push(structuredClone(state.workspace.prospectus!.asset));await installQa(page,state);await commerce(page);const starts:any[]=[];

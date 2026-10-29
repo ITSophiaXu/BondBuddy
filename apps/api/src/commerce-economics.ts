@@ -75,7 +75,7 @@ async function load(c:PoolClient,runId:string){
     UNION ALL SELECT 1 FROM bb_automatic_scope_runs WHERE owner_user_id=$2 AND run_id=$1
     UNION ALL SELECT 1 FROM bb_credit_quotes WHERE owner_user_id=$2 AND scope_quote_id IS NOT NULL AND id IN(SELECT quote_id FROM bb_credit_reservations WHERE run_id=$1)
     UNION ALL SELECT 1 FROM bb_m4_quotes WHERE owner_user_id=$2 AND scope_quote_id IS NOT NULL AND id IN(SELECT quote_id FROM bb_credit_reservations WHERE run_id=$1)
-    UNION ALL SELECT 1 FROM bb_project_qa_quotes WHERE owner_user_id=$2 AND run_id=$1 AND price_version IN ('outcome-cny-20261028-v1','outcome-cny-20261028-v2','bb-task-price-170-20261029-v2')
+    UNION ALL SELECT 1 FROM bb_project_qa_quotes WHERE owner_user_id=$2 AND run_id=$1 AND price_version IN ('outcome-cny-20261028-v1','outcome-cny-20261028-v2','bb-task-price-170-20261029-v2','bb-task-price-170-20261029-v3')
     UNION ALL SELECT 1 FROM bb_project_file_check_quotes WHERE owner_user_id=$2 AND run_id=$1
     UNION ALL SELECT 1 FROM bb_project_file_update_quotes WHERE owner_user_id=$2 AND run_id=$1 AND scope_quote_id IS NOT NULL
     UNION ALL SELECT 1 FROM bb_integrity_quotes WHERE owner_user_id=$2 AND run_id=$1 AND scope_quote_id IS NOT NULL) ok`,[runId,run.owner_user_id])).rows[0].ok;

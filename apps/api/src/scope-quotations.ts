@@ -5,8 +5,9 @@ import {Value} from '@sinclair/typebox/value';
 import {OUTCOME_PRICE_VERSION,ScopeLineSchema,OutcomeWorkPlanSchema,calculateOutcomePrice,type OutcomeWorkPlan,type OutcomePriceVersion,type ScopeLine,type CommercePriceMetadata,type ScopeQuoteStatus} from '@bondbuddy/contracts';
 import {digest,missing,Problem,project,transaction,uid} from './data.js';
 import {readOwnedCommerceCoverage} from './commerce-coverage.js';
-import {AUTOMATIC_PRICE_VERSION,isAutomaticPriceVersion} from '@bondbuddy/contracts';
+import {isAutomaticPriceVersion} from '@bondbuddy/contracts';
 import {automaticBillingEnabled} from './automatic-billing-context.js';
+import {resolveAutomaticTaskPriceVersion} from './automatic-price-versions.js';
 import {resolveAutomaticTaskPrice,assertAutomaticPriceSources,assertAutomaticScopeAvailable} from './automatic-pricing.js';
 
 export type ScopePrice={scope_quote_id:string;quote_status:ScopeQuoteStatus;amount_fen:number;scope_lines:ScopeLine[];scope_expires_at:string|null;price_version:OutcomePriceVersion};
@@ -95,17 +96,14 @@ async function requestAutomaticScope(c:PoolClient,owner:string,projectId:string,
       LIMIT 1`,[owner,old.id])).rowCount;
     if(bound)return dto(old);
   }
-  const price=resolveAutomaticTaskPrice(action,snapshot);
+  const priceVersion=await resolveAutomaticTaskPriceVersion(c,owner);
+  const price=resolveAutomaticTaskPrice(action,snapshot,priceVersion);
   await assertAutomaticPriceSources(c,owner,price);
-  // Period price protection is a stored contract, not a second client confirmation.
-  const {resolveActiveSubscriptionPrice}=await import('./subscriptions.js');
-  const periodVersion=await resolveActiveSubscriptionPrice(c,owner);
-  if(periodVersion&&periodVersion!==AUTOMATIC_PRICE_VERSION)throw new Problem(503,'BILLING_NOT_READY','本订阅周期的计费版本尚未加载，暂不执行。');
   if(old&&['pending','quoted'].includes(old.status))await c.query("UPDATE bb_scope_quotations SET status='unavailable',closed_at=clock_timestamp(),closure_reason='未受理范围由当前自动计费规则替换。' WHERE id=$1",[old.id]);
   const row=(await c.query(`INSERT INTO bb_scope_quotations(id,owner_user_id,project_id,action,input_hash,snapshot,price_version,revision,previous_quote_id,
     status,lines,amount_fen,approved_by,reason,published_at,expires_at,automatic_price)
     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'quoted',$10,$11,'service:automatic-tariff','已锁定用户委托范围；成功交付后自动扣费。',clock_timestamp(),clock_timestamp()+interval '7 days',$12) RETURNING *`,
-    [uid(),owner,projectId,action,inputHash,snapshot,AUTOMATIC_PRICE_VERSION,old?old.revision+1:1,old?.id??null,JSON.stringify(price.lines),price.points,JSON.stringify(price)])).rows[0];
+    [uid(),owner,projectId,action,inputHash,snapshot,priceVersion,old?old.revision+1:1,old?.id??null,JSON.stringify(price.lines),price.points,JSON.stringify(price)])).rows[0];
   await event(c,row,'quoted',{auto_charge:true,points:price.points,price_version:row.price_version});
   return dto(row);
 }

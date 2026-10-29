@@ -1,5 +1,5 @@
 import type {PoolClient} from 'pg';
-import {AUTOMATIC_PRICE_VERSION,PROJECT_FILE_UPDATE_PRICE,LEGACY_OUTCOME_PRICE_VERSION,isOutcomePriceVersion,type OutcomeWorkPlan,type ProjectFileOperation} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION,isAutomaticPriceVersion,PROJECT_FILE_UPDATE_PRICE,LEGACY_OUTCOME_PRICE_VERSION,isOutcomePriceVersion,type OutcomeWorkPlan,type ProjectFileOperation} from '@bondbuddy/contracts';
 import {creditBalance,lockCreditAccount} from './billing.js';
 import {Problem,uid} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
@@ -25,18 +25,18 @@ export async function paidFileCheckEvidence(c:PoolClient,owner:string,source:Che
   if(!automaticBillingEnabled(c))return rows;
   // Revalidation follows only platform-produced repairs from this paid maintenance round.
   // User uploads and edits have no such lineage, so they create a new paid scope.
-  for(const row of rows.filter(r=>r.price_version===AUTOMATIC_PRICE_VERSION)){
+  for(const row of rows.filter(r=>isAutomaticPriceVersion(r.price_version))){
     const covered=(await c.query(`WITH RECURSIVE covered(version_id) AS (
       SELECT jsonb_array_elements_text($2::jsonb)
       UNION
       SELECT v.id FROM covered parent
       JOIN bb_project_file_operations op ON op.owner_user_id=$1 AND op.operation='patch' AND op.manifest->>'file_version_id'=parent.version_id
       JOIN bb_runs run ON run.owner_user_id=op.owner_user_id AND run.id=op.run_id AND run.state='succeeded'
-      JOIN bb_project_file_update_quotes q ON q.owner_user_id=op.owner_user_id AND q.run_id=op.run_id AND q.points=0 AND q.price_version=$5
+      JOIN bb_project_file_update_quotes q ON q.owner_user_id=op.owner_user_id AND q.run_id=op.run_id AND q.points=0 AND q.price_version=ANY($5::text[])
       JOIN bb_scope_quotations scope ON scope.owner_user_id=q.owner_user_id AND scope.id=q.scope_quote_id AND scope.automatic_price->'source_quote_ids' ? $6
       JOIN bb_project_file_versions v ON v.owner_user_id=op.owner_user_id AND v.run_id=op.run_id AND v.file_id=op.manifest->>'file_id'
       WHERE op.manifest->'source'->>'version_id'=$3 AND op.manifest->'source'->'asset'=$4::jsonb
-    ) SELECT version_id FROM covered ORDER BY version_id`,[owner,JSON.stringify(row.charged_file_versions),source.version_id,JSON.stringify(source.asset),AUTOMATIC_PRICE_VERSION,row.quote_id])).rows;
+    ) SELECT version_id FROM covered ORDER BY version_id`,[owner,JSON.stringify(row.charged_file_versions),source.version_id,JSON.stringify(source.asset),[LEGACY_AUTOMATIC_PRICE_VERSION,AUTOMATIC_PRICE_VERSION],row.quote_id])).rows;
     const original=new Set<string>(row.charged_file_versions);
     row.charged_file_versions=[...row.charged_file_versions,...covered.map(r=>r.version_id).filter(id=>!original.has(id))];
   }
