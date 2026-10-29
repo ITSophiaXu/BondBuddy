@@ -16,6 +16,31 @@ export async function catalogueXlsx(rows:number=500,extra='',numericEntities?:'d
   for(const [name,text] of Object.entries(parts))zip.addBuffer(Buffer.from(numericEntities?text.replace(/[^\x00-\x7f]/gu,c=>numericEntities==='hex'?'&#x'+c.codePointAt(0)!.toString(16)+';':'&#'+c.codePointAt(0)+';'):text),name,{compress:true});zip.end();return complete;
 }
 
+test('headerless numbered due-diligence lists retain the first item and summary rows',()=>{
+  const parsed=parseCatalogueRows([{name:'目录',rows:[
+    {row:1,cells:['合成公司私募债券尽调清单']},
+    {row:2,cells:['1','发行人基本情况调查']},
+    {row:3,cells:['1-1','历史沿革和股权结构']},
+    {row:4,cells:['1-1-1','发行人工商信息相关文件']},
+    {row:5,cells:['2','业务调查']},
+    {row:6,cells:['2-1','主要业务情况']},
+  ]}]);
+  assert.deepEqual(parsed.entries.map(e=>[e.code,e.title,e.row]),[
+    ['1','发行人基本情况调查',2],['1-1','历史沿革和股权结构',3],
+    ['1-1-1','发行人工商信息相关文件',4],['2','业务调查',5],['2-1','主要业务情况',6],
+  ]);
+  assert.ok(parsed.entries.every(e=>e.kind==='file'));
+  assert.ok(parsed.warnings.some(w=>w.includes('未设置表头')));
+});
+
+test('headerless detection requires unambiguous repeated code/name pairs',()=>{
+  assert.throws(()=>parseCatalogueRows([{name:'说明',rows:[{row:1,cells:['2026','年度说明']},{row:2,cells:['其他说明']}]}]),/未识别/);
+  assert.throws(()=>parseCatalogueRows([{name:'说明',rows:[{row:1,cells:['1','只有一条不明确的说明']}]}]),/未识别/);
+  assert.throws(()=>parseCatalogueRows([{name:'并列',rows:[{row:1,cells:['1','左侧','1','右侧']},{row:2,cells:['2','左侧二','2','右侧二']}]}]),/未识别/);
+  const parsed=parseCatalogueRows([{name:'目录',rows:[{row:1,cells:['','','合成清单']},{row:2,cells:['','1.1','营业执照']},{row:3,cells:['','1.2','公司章程']}]}]);
+  assert.deepEqual(parsed.entries.map(e=>e.code),['1.1','1.2']);
+});
+
 for(const encoding of ['decimal','hex'] as const)test(`Chinese XML ${encoding} references preserve catalogue headers, cells and sheet names`,async()=>{
   const parsed=parseWorkpaperXlsx(await catalogueXlsx(1,'<row r="3"><c r="B3" t="inlineStr"><is><t>&amp;#24213;</t></is></c></row>',encoding));
   assert.equal(parsed.entries.length,2);
