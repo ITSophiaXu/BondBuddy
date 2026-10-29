@@ -151,6 +151,25 @@ runs cannot exclude exposure. Before migration, establish whether affected runs
 exist and validate any needed compatibility path without inventing evidence,
 repeating completed model calls or altering customer run state.
 
+## Complete ac1 image validation and history fixtures
+
+All three original Dockerfile targets built successfully from the byte-verified
+`ac1a2ac56763aec4a8cdf5e5a1aab045132e9a11` export. Its complete worker/CLI suite
+passed 62/62 and the main API suite passed 178/178, without skips. The worker
+proxy regression passed 1/1 on actual Node 22.23.2 using synthetic loopback
+servers. Providers in these suites were synthetic; databases and storage were
+isolated from production.
+
+Six additional changed API suites were also run. Their first pass was 32/51:
+19 cases stopped because two strict history-test SQL fixtures did not include
+the new `AND NOT internal_template` filter. Only those two exact expected SQL
+strings were corrected. Production code, query restrictions and all existing
+assertions were retained. TypeScript compilation passed; all six suites then
+passed 51/51 with the two rebuilt test modules mounted read-only into the ac1
+API image. This is not an unmodified-image result for those two fixtures.
+Initial invocation and failing test logs are retained alongside the successful
+rerun. No further production code changed in this fixture repair.
+
 ## Real-model and release gates
 
 A separate database, storage and test account contain only a newly generated
@@ -200,8 +219,9 @@ restore. Never signal a worker that still has model work. Migration 0144 changes
 an old table to a compatibility view that cannot accept an old worker's
 `INSERT ON CONFLICT`; old and new workers must not overlap. Any rollback must
 also understand controlled-docx-v1 durable operation logs and avoid replaying
-completed model work. Migration/rollback rehearsal and the final fixed-version
-API/worker/web image checks remain outstanding.
+completed model work. Migration/rollback rehearsal remains outstanding. The
+complete ac1 image results above supersede earlier pending image checks; the
+final merged production version must still be identified and verified.
 
 GitHub source-PR CI was previously prevented by account billing/usage limits;
 local evidence above is not a claim that GitHub CI passed. No production release

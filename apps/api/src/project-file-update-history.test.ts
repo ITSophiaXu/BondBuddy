@@ -75,7 +75,7 @@ function harness(options:Options={}){
     if(sql.startsWith('SELECT v.*,s.revision AS selection_revision FROM bb_prospectus_versions v'))return rows([
       {id:'synthetic-current-source-v2',project_id:projectId,selection_revision:2,sequence:2,filename:'Synthetic current prospectus.docx',
         sha256:sha,material_id:'synthetic-current-source-material',material_version:2}]);
-    if(sql==='SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL'){
+    if(sql==='SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL AND NOT internal_template'){
       assert.deepEqual(values,[owner,projectId,'synthetic-current-source-material',2]);return rows([{sha256:sha}]);
     }
     if(sql.startsWith('SELECT o.*,r.state,r.stage,')&&sql.includes('FROM bb_project_file_operations o JOIN bb_runs r')){
