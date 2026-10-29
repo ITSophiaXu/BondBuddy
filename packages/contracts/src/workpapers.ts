@@ -12,7 +12,10 @@ export * from './workpaper-assessment.js';
 export * from './workpaper-shared-plan.js';
 import {WorkpaperAssessSchema,type WorkpaperAssessment} from './workpaper-assessment.js';
 import type {WorkpaperDecision} from './workpaper-entry.js';
-export const WorkpaperImportSchema=obj({request_id:id,material:M4MaterialPinSchema,scope:Type.Optional(Type.Union([Type.Literal('due_diligence'),Type.Literal('all')]))});
+import {WorkpaperMappingsSchema,WorkpaperPreviewSchema} from './workpaper-import.js';
+export * from './workpaper-import.js';
+export const WorkpaperImportSchema=obj({request_id:id,material:M4MaterialPinSchema,scope:Type.Optional(Type.Union([Type.Literal('due_diligence'),Type.Literal('all')])),mapping:Type.Optional(WorkpaperMappingsSchema)});
+export type WorkpaperImport=Static<typeof WorkpaperImportSchema>;
 const workpaperStartFields={request_id:id,catalogue_id:id,catalogue_sha256:Type.String({pattern:'^[a-f0-9]{64}$'}),
  item_ids:Type.Array(id,{minItems:1,maxItems:WORKPAPER_LIMITS.items,uniqueItems:true}),source_version_id:id,
  source_selection_revision:Type.Integer({minimum:0}),requirements:Type.String({maxLength:12000}),price_version:id,expected_points:Type.Integer({minimum:0})};
@@ -39,7 +42,7 @@ export function workpaperOpenApiPaths(){
   const base='/api/v1/projects/{project_id}/workpapers';
   const route=(schema?:unknown,batch=false,item=false)=>({security:[{sessionCookie:[]}],parameters:(batch?['project_id','batch_id',...(item?['item_id']:[])]:['project_id']).map(name=>({name,in:'path',required:true,schema:{type:'string'}})),
     ...(schema?{requestBody:{required:true,content:{'application/json':{schema}}}}:{}),responses:{200:{description:'Owner-scoped workpaper catalogue or batch'},404:{description:'Not found'}}});
-  return {[base]:{get:route()},[base+'/library']:{get:route()},[base+'/checks']:{get:route()},[base+'/batches/{batch_id}/checks']:{post:route(WorkpaperCheckRequestSchema,true)},[base+'/batches/{batch_id}/items/{item_id}/preview']:{get:route(undefined,true,true)},[base+'/catalogues']:{post:route(WorkpaperImportSchema)},[base+'/assessments']:{post:route(WorkpaperAssessSchema)},[base+'/assessments/{run_id}']:{get:{...route(),parameters:[...route().parameters,{name:'run_id',in:'path',required:true,schema:{type:'string'}}]}},[base+'/batches']:{post:route(WorkpaperStartSchema)},
+  return {[base]:{get:route()},[base+'/library']:{get:route()},[base+'/checks']:{get:route()},[base+'/batches/{batch_id}/checks']:{post:route(WorkpaperCheckRequestSchema,true)},[base+'/batches/{batch_id}/items/{item_id}/preview']:{get:route(undefined,true,true)},[base+'/catalogue-preview']:{post:route(WorkpaperPreviewSchema)},[base+'/catalogues']:{post:route(WorkpaperImportSchema)},[base+'/assessments']:{post:route(WorkpaperAssessSchema)},[base+'/assessments/{run_id}']:{get:{...route(),parameters:[...route().parameters,{name:'run_id',in:'path',required:true,schema:{type:'string'}}]}},[base+'/batches']:{post:route(WorkpaperStartSchema)},
     [base+'/batches/{batch_id}']:{get:route(undefined,true)},[base+'/catalogues/{catalogue_id}']:{get:{...route(),parameters:[...route().parameters,{name:'catalogue_id',in:'path',required:true,schema:{type:'string'}}]}},
     [base+'/batches/{batch_id}/actions']:{post:route(WorkpaperActionSchema,true)},[base+'/batches/{batch_id}/download']:{get:route(undefined,true)},[base+'/batches/{batch_id}/explanations/{item_id}']:{get:route(undefined,true,true)}};
 }

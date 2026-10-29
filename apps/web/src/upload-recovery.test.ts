@@ -72,6 +72,15 @@ test('journal reads isolate owner, actual project and purpose', () => {
   assert.equal(h.store.length, 4); for (const record of h.make().list()) { assert.equal(record.owner, 'owner-a'); assert.equal(record.projectId, 'project-a'); assert.equal(record.purpose, 'purpose-a'); }
 });
 
+test('conditional context updates cannot overwrite another tab confirmation with a stale preview',async()=>{
+  const h=harness(),first=h.make(),second=h.make();first.begin(declaration(),undefined,'op-a');
+  const pending={request:{request_id:'fixed',mapping:['A','B']}};
+  await first.updateContext('op-a',pending,{context:undefined});
+  await assert.rejects(second.updateContext('op-a',{draft:{mapping:['C']}},{context:undefined}),UploadRecoveryConflictError);
+  assert.deepEqual(second.list()[0].context,pending);
+  await second.updateContext('op-a',pending,{context:pending});assert.deepEqual(methods(h),[]);
+});
+
 test('fresh explicit resume does create PUT complete in order and persists each identity before writes', async () => {
   const h = harness(), r = h.make(); r.begin(declaration(), undefined, 'op-a');
   h.state.create = async () => { assert.equal(r.list()[0].stage, 'creating'); return session(); };

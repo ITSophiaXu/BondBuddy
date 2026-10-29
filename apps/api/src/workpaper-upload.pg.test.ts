@@ -25,6 +25,10 @@ test('real upload and catalogue persistence accept headerless XLSX, replay once,
     await ok('PUT',upload.upload_url,bytes);
     const material=await ok('POST',`/api/v1/projects/${project}/materials/uploads/${upload.upload_id}/complete`,{byte_size:bytes.length,sha256:declaration.sha256});
     const request={request_id:randomUUID(),material:{source_project_id:project,material_id:material.material_id,material_version:material.material_version,sha256:material.sha256}};
+    const previewUrl=`/api/v1/projects/${project}/workpapers/catalogue-preview`;
+    const preview=await ok('POST',previewUrl,{material:request.material});assert.equal(preview.needs_review,false);
+    assert.equal(preview.entries.length,Number(process.env.BB_TEST_WORKPAPER_EXPECTED_ITEMS??3));
+    assert.equal((await ok('GET',`/api/v1/projects/${project}/workpapers`)).catalogues.length,0,'preview is read-only');
     const url=`/api/v1/projects/${project}/workpapers/catalogues`,catalogue=await ok('POST',url,request);
     assert.equal(catalogue.entries.length,Number(process.env.BB_TEST_WORKPAPER_EXPECTED_ITEMS??3));
     assert.equal(catalogue.entries[0].code,'1');assert.equal(catalogue.entries[0].row,2);
@@ -32,8 +36,22 @@ test('real upload and catalogue persistence accept headerless XLSX, replay once,
     assert.equal((await ok('GET',`/api/v1/projects/${project}/workpapers`)).catalogues.length,1);
     const downloaded=await send('GET',`/api/v1/projects/${project}/materials/${material.material_id}/download?version=1`);
     assert.equal(digest(downloaded.rawPayload),declaration.sha256);
+    const flexible=await headerlessCatalogueXlsx([['任意标题'],['许可文件','提供盖章版本'],['章程','最新版']]);
+    const flexibleDeclaration={...declaration,filename:'合成任意布局.xlsx',byte_size:flexible.length,sha256:digest(flexible)};
+    const second=await ok('POST',`/api/v1/projects/${project}/materials/uploads`,flexibleDeclaration);await ok('PUT',second.upload_url,flexible);
+    const saved=await ok('POST',`/api/v1/projects/${project}/materials/uploads/${second.upload_id}/complete`,{byte_size:flexible.length,sha256:flexibleDeclaration.sha256});
+    const pin={source_project_id:project,material_id:saved.material_id,material_version:saved.material_version,sha256:saved.sha256};
+    const uncertain=await ok('POST',previewUrl,{material:pin});assert.equal(uncertain.needs_review,true);
+    const flexibleRequest={request_id:randomUUID(),material:pin};assert.equal((await send('POST',url,flexibleRequest)).statusCode,422);
+    const mapping=[{sheet:'目录',first_row:2,last_row:3,title_column:0,folder_columns:[],instruction_columns:[1],split_code:false}];
+    const proposed=await ok('POST',previewUrl,{material:pin,mapping});assert.equal(proposed.entries.length,2);assert.equal(proposed.entries[0].instructions,'提供盖章版本');
+    assert.equal((await ok('GET',`/api/v1/projects/${project}/workpapers`)).catalogues.length,1,'repeated previews must not import');
+    const confirmed={...flexibleRequest,mapping},mapped=await ok('POST',url,confirmed);
+    assert.deepEqual(mapped.entries.map((e:any)=>[e.code,e.title,e.instructions,e.row]),[['','许可文件','提供盖章版本',2],['','章程','最新版',3]]);
+    assert.equal((await ok('POST',url,confirmed)).catalogue_id,mapped.catalogue_id);
+    assert.equal((await send('POST',url,{...confirmed,mapping:[{...mapping[0],first_row:1}]})).statusCode,409,'a committed request cannot change meaning');
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1',[owner])).rows[0].n,0,'import must not start a generation run');
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1',[owner])).rows[0].n,0,'import must not charge credits');
-    owner='foreign-'+randomUUID();assert.equal((await send('POST',url,request)).statusCode,404);
+    owner='foreign-'+randomUUID();assert.equal((await send('POST',url,request)).statusCode,404);assert.equal((await send('POST',previewUrl,{material:pin})).statusCode,404);
   }finally{await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}
 });
