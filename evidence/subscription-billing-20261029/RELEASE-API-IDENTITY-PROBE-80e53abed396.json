@@ -1,0 +1,81 @@
+{
+  "revision": "80e53abed396299dda33f63041c1c5f8a46780f8",
+  "imageId": "sha256:c1cc516ce0bac1928a1cb6bcc835ca1294e630538a6c2c665c0bfebe218478cc",
+  "tag": "bondbuddy-billing-api-local:80e53abed396-20261029",
+  "time": "2026-10-29T15:19:12.720Z",
+  "metadata": {
+    "id": "sha256:c1cc516ce0bac1928a1cb6bcc835ca1294e630538a6c2c665c0bfebe218478cc",
+    "revision": "80e53abed396299dda33f63041c1c5f8a46780f8",
+    "user": "node",
+    "workdir": "/app"
+  },
+  "probe": {
+    "node": "v22.23.4",
+    "releaseSha": "80e53abed396299dda33f63041c1c5f8a46780f8",
+    "scope": "runtime version and source identity only"
+  },
+  "containerId": "617f36222e84a01fb0ffefb533f8b93f22f6d8b8c11dbe45cc7b7fb4c41ede58",
+  "runLabel": "identity-80e53abed396-1793287151738",
+  "network": "none",
+  "readonly": true,
+  "hostPorts": [],
+  "mounts": [],
+  "merchantRequests": 0,
+  "modelRequests": 0,
+  "before": {
+    "containers": [
+      "092ea90a1cbb00a3035ff8e60d5e1875c0201368ef64aa1da171c7ac4a384753|bb-m3-agent-progress-pg-20261004|exited",
+      "15da210403a4b78773c1fa395c08c88cd391a80102b770d3b17cad2e194784d8|bb-m4-pg-20261006|exited",
+      "1b6d7db12a1185903229f7e88d34c7db13aea52e93d390469cadf1167bb6bcc7|bbm3-local-infra-postgres-1|exited",
+      "35d3a8171f1363ed2bc019fbc79717679c37d88c405d0cfc754e7f6ef0201963|bb-m3-agent-progress-azurite-20261004|exited",
+      "558531c2f52176585b2f521f50565a9042e1d344338223cc06239df4c4deeb7d|bondbuddy-agent-qa-pg|exited",
+      "6537774d1d72f2677acbace7510d483c7af8cf4bf5a66829a24ee70983c2db46|bb-m3-lease-regression-20261004|exited",
+      "65aec9d26dc065c355ef865c35cfcd99610e067d1d585dc9609c015840faa1c6|bb-template-azurite-20261029|exited",
+      "6848668318eab8d247cfa16156bc4f30bb43995971a5e64937693a3f7b300871|bb-template-pg-20261029|exited",
+      "6e67c1b2aaaf19ac0f86255b3280b0b2eeedea56611d0be6fb011eddabf84174|bondbuddy-agent-qa-blob|exited",
+      "92da45aca5d81e6e36300863a7e795b23d909cb7965c078ba0d8a8c2cba84999|bbm3-local-infra-azurite-1|exited",
+      "c4eedf436b6d66e52f8350f3386c3f287fe09bbf42cc2ac4d02ed1f819415fec|bb-m3-lease-azurite-regression-20261004|exited",
+      "d16bbf508cd8f115b417eae429391788b26048e20f1410c78f65833576a0a35a|bb-m4-azurite-20261006|exited"
+    ],
+    "volumes": [
+      "1e9a1c67e9ef0c961a5e4b7372e5d9c5f1d5f1ab25fa15e910aab071d473a8d6",
+      "2d2157bf4786d212e0582fd454024d571cd1c02cc0b3057ce073f1bb8fd1305d",
+      "3dbcc9819c4d629196af964fcedf5c1faa3d46faaf83f7118c1ffd1a08fde275",
+      "6d5ce19cf159e3ec8effbe6423220100f3bb934daeb675c77fc0db8ed807ee5f",
+      "7bd84b22755ad59638b9cc7ee62998ffc26287c96df120fe218c64de794bff6b",
+      "7d7a2a3029477f0bac21039f15ff0d91ca115a722104137ae791b8f1e6590581",
+      "e0611d12b1e548424f3f3fff061f18a2c2e44be269c81ce785da79f399c334b3",
+      "efa3780ddf68059eb7d88c09ab88265110b58585ee2b7b270e366208bfd476dd"
+    ]
+  },
+  "after": {
+    "containers": [
+      "092ea90a1cbb00a3035ff8e60d5e1875c0201368ef64aa1da171c7ac4a384753|bb-m3-agent-progress-pg-20261004|exited",
+      "15da210403a4b78773c1fa395c08c88cd391a80102b770d3b17cad2e194784d8|bb-m4-pg-20261006|exited",
+      "1b6d7db12a1185903229f7e88d34c7db13aea52e93d390469cadf1167bb6bcc7|bbm3-local-infra-postgres-1|exited",
+      "35d3a8171f1363ed2bc019fbc79717679c37d88c405d0cfc754e7f6ef0201963|bb-m3-agent-progress-azurite-20261004|exited",
+      "558531c2f52176585b2f521f50565a9042e1d344338223cc06239df4c4deeb7d|bondbuddy-agent-qa-pg|exited",
+      "6537774d1d72f2677acbace7510d483c7af8cf4bf5a66829a24ee70983c2db46|bb-m3-lease-regression-20261004|exited",
+      "65aec9d26dc065c355ef865c35cfcd99610e067d1d585dc9609c015840faa1c6|bb-template-azurite-20261029|exited",
+      "6848668318eab8d247cfa16156bc4f30bb43995971a5e64937693a3f7b300871|bb-template-pg-20261029|exited",
+      "6e67c1b2aaaf19ac0f86255b3280b0b2eeedea56611d0be6fb011eddabf84174|bondbuddy-agent-qa-blob|exited",
+      "92da45aca5d81e6e36300863a7e795b23d909cb7965c078ba0d8a8c2cba84999|bbm3-local-infra-azurite-1|exited",
+      "c4eedf436b6d66e52f8350f3386c3f287fe09bbf42cc2ac4d02ed1f819415fec|bb-m3-lease-azurite-regression-20261004|exited",
+      "d16bbf508cd8f115b417eae429391788b26048e20f1410c78f65833576a0a35a|bb-m4-azurite-20261006|exited"
+    ],
+    "volumes": [
+      "1e9a1c67e9ef0c961a5e4b7372e5d9c5f1d5f1ab25fa15e910aab071d473a8d6",
+      "2d2157bf4786d212e0582fd454024d571cd1c02cc0b3057ce073f1bb8fd1305d",
+      "3dbcc9819c4d629196af964fcedf5c1faa3d46faaf83f7118c1ffd1a08fde275",
+      "6d5ce19cf159e3ec8effbe6423220100f3bb934daeb675c77fc0db8ed807ee5f",
+      "7bd84b22755ad59638b9cc7ee62998ffc26287c96df120fe218c64de794bff6b",
+      "7d7a2a3029477f0bac21039f15ff0d91ca115a722104137ae791b8f1e6590581",
+      "e0611d12b1e548424f3f3fff061f18a2c2e44be269c81ce785da79f399c334b3",
+      "efa3780ddf68059eb7d88c09ab88265110b58585ee2b7b270e366208bfd476dd"
+    ]
+  },
+  "existingContainersAndVolumesUnchanged": true,
+  "exitCode": 0,
+  "stderr": "",
+  "cleanupSucceeded": true
+}

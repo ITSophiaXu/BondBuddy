@@ -32,6 +32,8 @@
 
 换行内存修复、缺时间coverage语义和全部夹具修正后，统一API编译再次通过，见[最终API构建](completion/alipay-statement-api-final-build.log)。独立复核覆盖proof的SQL NULL防护、int64比较、商户隔离、错误行覆盖和有界解包。官方协议及未核实字段范围见[协议依据](ALIPAY-STATEMENT-EVIDENCE.md)，配置和PG详细断言见[专项记录](ALIPAY-CONFIG-AND-PG-VALIDATION.md)。
 
+源码提交`80e53ab`的原发布API镜像也已构建成功，Node22全工作区编译完成；精确镜像内七个测试文件46/46通过、0跳过，测试无网络、无真实密钥或商户请求，临时容器清理后原容器/卷清单不变。[成品镜像记录](RELEASE-API-80e53abed396-VALIDATION.md)与早期镜像分开保存。
+
 ## 未完成条件
 
 需取得可追溯的支付宝trade CSV字段说明或经许可脱敏的正式格式样本，再实现逐行金额、身份、日期及汇总校验，并完成真实商户验收。该证据缺口不能由合成夹具或支付成功回调替代。自动续费签约/代扣也仍为独立的未实现渠道能力。
