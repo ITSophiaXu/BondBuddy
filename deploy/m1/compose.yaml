@@ -87,6 +87,18 @@ services:
       # M2 stays off until the official payment adapter and release acceptance are complete.
       BB_PAID_AUTHORING_ENABLED: ${BB_PAID_AUTHORING_ENABLED:-0}
       BB_PAID_REVIEW_ENABLED: ${BB_PAID_REVIEW_ENABLED:-0}
+      BB_OUTCOME_PRICING_ENABLED: ${BB_OUTCOME_PRICING_ENABLED:-0}
+      BB_WECHAT_PAY_ENABLED: ${BB_WECHAT_PAY_ENABLED:-0}
+      BB_WECHAT_PAY_MERCHANT_ID: ${BB_WECHAT_PAY_MERCHANT_ID:-}
+      BB_WECHAT_PAY_APP_ID: ${BB_WECHAT_PAY_APP_ID:-}
+      BB_WECHAT_PAY_MERCHANT_CERT_SERIAL: ${BB_WECHAT_PAY_MERCHANT_CERT_SERIAL:-}
+      BB_WECHAT_PAY_PRIVATE_KEY_FILE: ${BB_WECHAT_PAY_PRIVATE_KEY_FILE:-}
+      BB_WECHAT_PAY_API_V3_KEY_FILE: ${BB_WECHAT_PAY_API_V3_KEY_FILE:-}
+      BB_WECHAT_PAY_PLATFORM_KEYS_FILE: ${BB_WECHAT_PAY_PLATFORM_KEYS_FILE:-}
+      BB_WECHAT_PAY_NOTIFY_URL: ${BB_WECHAT_PAY_NOTIFY_URL:-}
+      BB_WECHAT_PAY_REFUND_ENABLED: ${BB_WECHAT_PAY_REFUND_ENABLED:-0}
+      BB_WECHAT_PAY_REFUND_NOTIFY_URL: ${BB_WECHAT_PAY_REFUND_NOTIFY_URL:-}
+      BB_WECHAT_PAY_TIMEOUT_MS: ${BB_WECHAT_PAY_TIMEOUT_MS:-10000}
       BB_TERMS_VERSION: ${BB_TERMS_VERSION:?set in .env}
       BB_SUPPORT_CONTACT: ${BB_SUPPORT_CONTACT:-}
       BB_TRUSTED_PROXY_CIDR: ${BB_WEB_IP:-10.231.0.10}/32
@@ -94,7 +106,9 @@ services:
       # The API caps in-flight spool bytes and deletes each file after the request.
       BB_UPLOAD_SPOOL_DIR: /var/lib/bondbuddy/upload-spool
       BB_UPLOAD_SPOOL_MAX_BYTES: ${BB_UPLOAD_SPOOL_MAX_BYTES:-1073741824}
-    volumes: [uploadspool:/var/lib/bondbuddy/upload-spool]
+    volumes:
+      - uploadspool:/var/lib/bondbuddy/upload-spool
+      - ${BB_PAYMENT_SECRETS_DIR:-./secrets/payments}:/run/bondbuddy-payments:ro
     networks: [backend]
     depends_on:
       postgres: {condition: service_healthy}

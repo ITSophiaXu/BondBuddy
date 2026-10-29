@@ -22,6 +22,8 @@ import { lockReviewFileDelivery } from './review-file-knowledge.js';
 import { recordOperation } from './observability.js';
 import { runEventPayloadDto } from './run-event-dto.js';
 import { reviewNonEvidenceMaterialIds, withoutWorkflowMaterials } from './review-materials.js';
+import {requestScope} from './scope-quotations.js';
+import {outcomeMetadata} from './outcome-pricing.js';
 
 type Db = Pool | PoolClient;
 const finalStates = ['succeeded', 'test_completed', 'failed', 'cancelled', 'rejected'];
@@ -162,7 +164,7 @@ async function timeline(db: Db, user: string, id: string, messages: ReviewMessag
     .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.entry_id.localeCompare(b.entry_id));
 }
 
-export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner: (request: FastifyRequest) => Promise<string>, paidReview = false) {
+export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner: (request: FastifyRequest) => Promise<string>, paidReview = false, commercial=false) {
   const projectId = (request: FastifyRequest) => (request.params as { project_id: string }).project_id;
   app.get('/api/v1/projects/:project_id/review-workspace', async request => {
     const user = await owner(request), id = projectId(request), p = await requireReview(db(), user, id);
@@ -349,13 +351,18 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
         if('operation' in b){const d=await draft(client,user,id);if(d.version!==b.expected_input_version)stale();if(!d.source_material_ref)invalid('Select the reviewed source');await pins(client,user,id,d.material_versions);}
         else {const source=(await client.query("SELECT 1 FROM bb_runs r JOIN bb_review_executions e ON e.run_id=r.id WHERE r.id=$1 AND r.owner_user_id=$2 AND r.project_id=$3 AND r.state='succeeded' AND e.operation IN ('full_review','differential_review')",[b.source_run_id,user,id])).rowCount;if(!source)throw missing();}
         const task:BillingTask='operation' in b?(b.operation==='revision'?'review_revision':b.operation):'review_revision';
-        const price=await activePrice(client),points=price.prices[task];
-        if(!Number.isSafeInteger(points)||points<=0)throw new Problem(503,'BILLING_NOT_READY','该任务的积分价格尚未配置。');
         const hash=await intentHash(client,user,id,p,b);
-        const row=(await client.query(`INSERT INTO bb_credit_quotes(id,owner_user_id,project_id,input_revision,input_hash,price_version,task_type,points,reason,intent_hash)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$5) ON CONFLICT DO NOTHING RETURNING *`,[uid(),user,id,p.draft_revision,hash,price.id,task,points,'按本次已确认的任务范围收取固定积分；系统重试不重复收费。'])).rows[0]
-          ??(await client.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND project_id=$2 AND intent_hash=$3 AND price_version=$4',[user,id,hash,price.id])).rows[0];
-        return {enabled:true,quote:quoteDto(row),balance,shortage:Math.max(0,points-balance.available),reason:null};
+        const {quote_id:_quote,...scopeRequest}=b;
+        const price=await activePrice(client,commercial),scope=commercial?await requestScope(client,user,id,'review',hash,{task,request:scopeRequest,...('operation' in b?{review_draft:await draft(client,user,id)}:{})}):null;
+        if(scope&&scope.quote_status!=='ready')return {enabled:true,quote:{quote_id:scope.scope_quote_id,project_id:id,input_revision:p.draft_revision,input_hash:hash,task_type:task,points:0,
+          reason:'本次复核范围待核实；核定覆盖范围及所需成果后，才能确认费用并执行。',created_at:new Date().toISOString(),...outcomeMetadata(0),...scope},balance,shortage:0,reason:'本次范围待核实，尚未形成可执行报价。'};
+        const points=scope?.amount_fen??price.prices[task];
+        if(!Number.isSafeInteger(points)||points<0||points===0&&!scope)throw new Problem(503,'BILLING_NOT_READY','该任务的价格尚未核定。');
+        const priceVersion=scope?.price_version??price.id;
+        const row=(await client.query(`INSERT INTO bb_credit_quotes(id,owner_user_id,project_id,input_revision,input_hash,price_version,task_type,points,reason,intent_hash,pricing_mode,scope_quote_id,scope_lines)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$5,$10,$11,$12) ON CONFLICT DO NOTHING RETURNING *`,[uid(),user,id,p.draft_revision,hash,priceVersion,task,points,commercial?'按本次已核实的复核范围明细锁定人民币总价；交付后结算，失败或取消释放。':'按本次已确认的任务范围收取固定积分；系统重试不重复收费。',commercial?'outcome_cny_v1':'legacy_credit',scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[])])).rows[0]
+          ??(await client.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND project_id=$2 AND intent_hash=$3 AND price_version=$4 AND scope_quote_id IS NOT DISTINCT FROM $5::text',[user,id,hash,priceVersion,scope?.scope_quote_id??null])).rows[0];
+        return {enabled:true,quote:quoteDto({...row,...scope}),balance,shortage:Math.max(0,points-balance.available),reason:null};
       });
     });
   }
@@ -430,7 +437,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       const r = (await client.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued') RETURNING *`, [runId, user, id, inputRevision, inputHash, key, revision ? 'update' : 'review', requestHash])).rows[0];
       await client.query('INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,source_report_id,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7)', [runId, user, id, version, b.operation, b.source_report_id, { input, input_version: inputVersion, finding_ids: b.finding_ids, plan, origin, context_messages: discussion }]);
-      if(paidReview)await reserveCredits(client,user,r,b.quote_id,null,p,await intentHash(client,user,id,p,b));
+      if(paidReview)await reserveCredits(client,user,r,b.quote_id,null,p,await intentHash(client,user,id,p,b),commercial);
       await recordOperation(client, { owner: user, projectId: id, runId, requestId: request.id, traceId: runId, kind: 'execute', status: 'submitted', inputRevision, inputHash });
       await enqueue(client, r, RUN_PIPELINE_SUBTYPE);
       return runDto({ ...r, stage: 'queued', event_cursor: 1 });
@@ -479,7 +486,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       const report=(await client.query('SELECT id FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3',[user,id,b.source_run_id])).rows[0];
       const origin:ReviewExecutionOrigin={version:'review-execution-origin-v1',entrypoint:'quick_action',accepted_proposal:null,context_report_ref:null};
       await client.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,source_report_id,snapshot) VALUES($1,$2,$3,$4,'revision',$5,$6)`,[runId,user,id,version,report?.id??null,{input,input_version:source.snapshot.input_version,finding_ids:[],plan:null,origin,context_messages:[],source_run_id:b.source_run_id}]);
-      if(paidReview)await reserveCredits(client,user,run,b.quote_id,null,p,await intentHash(client,user,id,p,b));
+      if(paidReview)await reserveCredits(client,user,run,b.quote_id,null,p,await intentHash(client,user,id,p,b),commercial);
       await recordOperation(client,{owner:user,projectId:id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:revision,inputHash});
       await enqueue(client,run,RUN_PIPELINE_SUBTYPE);return runDto({...run,stage:'queued',event_cursor:1});
     });

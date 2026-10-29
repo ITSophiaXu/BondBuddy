@@ -1,3 +1,4 @@
+import {isAutomaticCharge} from './commerce';
 import { reviewSteps } from './review-steps';
 import { duplicateUploadMessage, duplicateUploadNotices, isReusedUpload, type DuplicateUploadNotice } from './duplicate-upload';
 import { MARKET_LABELS, MARKET_OFFERINGS, OFFERING_LABELS, M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, ReviewDraftInputSchema, ReviewExecutionRequestSchema,
@@ -900,12 +901,22 @@ export class ReviewWorkspace {
   private applyCredits(quote:Dto<'FixedQuoteResponse'>,request:ReviewExecutionRequest):boolean {
     if(!quote.enabled)return true;
     if(!quote.quote)throw new ApiError(503,'BILLING_NOT_READY');
-    if(quote.quote.task_type in DYNAMIC_REVIEW_BILLING_TASKS?quote.balance.available<1:quote.shortage>0){
+    if(scopePending(quote.quote)){this.openDialog(scopeStatusLabel(quote.quote),scopeLifecycleHtml(quote.quote),[{label:'刷新范围报价',primary:true,action:()=>this.execute(request)}]);return false;}
+    if(isAutomaticCharge(quote.quote)){request.quote_id=quote.quote.quote_id;return true;}
+    if(isCnyPrice(quote.quote)?quote.shortage>0:quote.quote.task_type in DYNAMIC_REVIEW_BILLING_TASKS?quote.balance.available<1:quote.shortage>0){
+      if(isCnyPrice(quote.quote)){
+        this.openDialog('服务余额不足',`<p>本次总价 ${esc(displayPrice(quote.quote))}，当前余额不足。材料和问题范围已保留，尚未开始。</p><a class="btn primary" href="${esc(rechargeHref(this.projectId))}" id="review-recharge-link">按需充值</a>`,[]);return false;
+      }
       this.openDialog('积分不足',`<p>积分不足，请充值后继续任务。</p><p>本次材料、要求与问题范围已保留。充值到账后请返回项目明确开始，任务不会自动执行。</p><a class="btn primary" href="${esc(rechargeHref(this.projectId))}" id="review-recharge-link">充值积分</a>`,[]);
       this.dialog?.querySelector('#review-recharge-link')?.addEventListener('click',()=>this.dialog?.close());
       return false;
     }
     request.quote_id=quote.quote.quote_id;
+    if(isCnyPrice(quote.quote)){
+      this.openDialog('确认本次任务费用',`<p>本次总价 <strong>${esc(displayPrice(quote.quote))}</strong></p>${scopeLinesHtml(quote.quote)}<p>固定材料输入 V${request.expected_input_version}，${request.operation==='full_review'?'按所确认材料与范围独立实质复核；结果列实际覆盖和待确认项。':request.operation==='revision'?'按所选问题和固定原稿修订，旧稿保留；修订完成不等于复核通过。':'仅核验本次选定范围，未涉及项沿用原报告说明。'}</p><p>${esc(priceScope(quote.quote))}</p>${scopeLifecycleHtml(quote.quote)}`, [{label:'确认总价并开始',primary:true,action:()=>{if(!scopeReady(quote.quote))throw new ApiError(409,'QUOTE_EXPIRED');return this.execute(request,request);}}]);
+      if(this.dialog)guardScopeExpiry(this.dialog,[quote.quote],'[data-dialog-action]');
+      return false;
+    }
     return true;
   }
   private renderCharge(){
@@ -1265,3 +1276,4 @@ export function renderNewReview(api:ApiClient,shell:(html:string,section:string)
   form.addEventListener('change',event=>{if(['market','offering'].includes((event.target as HTMLSelectElement).name)){const value=read();form.querySelector('[data-review-rule-scope]')!.innerHTML=reviewRuleScope(value.market,value.offering);}});
   form.addEventListener('submit',async event=>{event.preventDefault();const button=form.querySelector<HTMLButtonElement>('[type=submit]')!;if(button.disabled)return;const value=read(),status=form.querySelector('#review-create-status')!,errors=value.issuer_name?validateDraft(value):['请填写发行人全称。'];if(errors.length){status.textContent=errors.join(' ');return;}button.disabled=true;status.textContent='正在创建项目…';try{const project=await api.create(value);if(current())location.hash=`/projects/${encodeURIComponent(project.project_id)}/review?tab=materials${carryHandoff(handoffQuery)}`;}catch(error){if(current())status.textContent=friendlyError(error,'save');}finally{button.disabled=false;}});
 }
+import {isCnyPrice,displayPrice,priceScope,scopePending,scopeReady,scopeLinesHtml,scopeLifecycleHtml,scopeStatusLabel,guardScopeExpiry} from './commerce';

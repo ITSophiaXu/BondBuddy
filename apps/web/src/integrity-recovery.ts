@@ -1,4 +1,4 @@
-import {INTEGRITY_PRICE,INTEGRITY_SITES,INTEGRITY_SITE_LIMIT,M4MaterialPinSchema,integritySchemas,type IntegrityDraft,type M4MaterialPin} from '@bondbuddy/contracts';
+import {INTEGRITY_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,CommercePriceMetadataSchema,type CommercePriceMetadata,INTEGRITY_SITES,INTEGRITY_SITE_LIMIT,M4MaterialPinSchema,integritySchemas,type IntegrityDraft,type M4MaterialPin} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import type {Dto} from './api.js';
 
@@ -9,7 +9,7 @@ export type IntegrityEvidenceDraft={roundId:string;subjectId:string;siteId:strin
   conclusion:'records_found'|'no_records'|'unresolved';registration?:{province:string;city:string};material?:M4MaterialPin;uploadOperationId?:string};
 export type IntegrityRecoveryPending=
   | {kind:'draft';request:Dto<'IntegrityDraftRequest'>}
-  | {kind:'check';request:Dto<'IntegrityRunRequest'>}
+  | {kind:'check';request:Dto<'IntegrityRunRequest'>;price?:CommercePriceMetadata}
   | {kind:'export';roundId:string;request:Dto<'IntegrityExportRequest'>}
   | {kind:'evidence';roundId:string;request:Dto<'IntegrityManualRequest'>};
 export type IntegrityRecoveryValue={revision:number;draft:IntegrityDraft;sourceRun?:string;evidenceDraft?:IntegrityEvidenceDraft;pending?:IntegrityRecoveryPending};
@@ -71,9 +71,12 @@ function validValue(value:unknown,project:string,allowUndefined=false):value is 
   if(!record(pending))return false;
   if(pending.kind==='draft')return exact(pending,['kind','request'])&&Value.Check(integritySchemas.IntegrityDraftRequest,pending.request)&&
     pending.request.expected_revision===value.revision&&validDraft(pending.request.draft,true)&&sameDraft(value.draft,pending.request.draft);
-  if(pending.kind==='check')return exact(pending,['kind','request'])&&Value.Check(integritySchemas.IntegrityRunRequest,pending.request)&&
-    validId(pending.request.request_id)&&pending.request.expected_revision===value.revision&&pending.request.price_version===INTEGRITY_PRICE.version&&
-    pending.request.expected_points===INTEGRITY_PRICE.points&&validDraft(value.draft,true,true);
+  if(pending.kind==='check'){
+    if(!exact(pending,['kind','request'],['price'])||(Object.hasOwn(pending,'price')&&!Value.Check(CommercePriceMetadataSchema,pending.price)))return false;
+    const price=pending.price as CommercePriceMetadata|undefined;
+    return Value.Check(integritySchemas.IntegrityRunRequest,pending.request)&&validId(pending.request.request_id)&&pending.request.expected_revision===value.revision&&(price?.pricing_mode==='outcome_cny_v1'?isOutcomePriceVersion(pending.request.price_version)&&pending.request.price_version===(price.price_version??OUTCOME_PRICE_VERSION):pending.request.price_version===INTEGRITY_PRICE.version)&&
+      (price?.pricing_mode==='outcome_cny_v1'?price.quote_status==='ready'&&price.amount_fen===pending.request.expected_points&&validId(pending.request.scope_quote_id):pending.request.expected_points===INTEGRITY_PRICE.points)&&validDraft(value.draft,true,true);
+  }
   if(pending.kind==='export')return exact(pending,['kind','roundId','request'])&&validId(pending.roundId)&&
     Value.Check(integritySchemas.IntegrityExportRequest,pending.request)&&validId(pending.request.request_id)&&pending.request.expected_evidence_ids.every(validId);
   if(pending.kind==='evidence'){
@@ -90,8 +93,8 @@ function validValue(value:unknown,project:string,allowUndefined=false):value is 
 function clone(value:IntegrityRecoveryValue):IntegrityRecoveryValue{
   let pending:IntegrityRecoveryPending|undefined;
   if(value.pending?.kind==='draft')pending={kind:'draft',request:{expected_revision:value.pending.request.expected_revision,draft:copyDraft(value.pending.request.draft)}};
-  if(value.pending?.kind==='check')pending={kind:'check',request:{request_id:value.pending.request.request_id,expected_revision:value.pending.request.expected_revision,
-    price_version:value.pending.request.price_version,expected_points:value.pending.request.expected_points}};
+  if(value.pending?.kind==='check')pending={kind:'check',...(value.pending.price?{price:structuredClone(value.pending.price)}:{}),request:{request_id:value.pending.request.request_id,expected_revision:value.pending.request.expected_revision,
+    price_version:value.pending.request.price_version,...(value.pending.request.scope_quote_id?{scope_quote_id:value.pending.request.scope_quote_id}:{}),expected_points:value.pending.request.expected_points}};
   if(value.pending?.kind==='export')pending={kind:'export',roundId:value.pending.roundId,request:{request_id:value.pending.request.request_id,expected_evidence_ids:[...value.pending.request.expected_evidence_ids]}};
   if(value.pending?.kind==='evidence'){
     const r=value.pending.request;pending={kind:'evidence',roundId:value.pending.roundId,request:{request_id:r.request_id,subject_id:r.subject_id,site_id:r.site_id,

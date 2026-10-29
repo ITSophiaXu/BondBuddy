@@ -1,5 +1,6 @@
+import {isAutomaticCharge} from './commerce';
 import {UserFacingError} from './user-facing-error.js';
-import {PROJECT_DOCUMENT_CATALOG,PROJECT_FILE_UPDATE_PRICE,schemas,type ProjectFileCheck,type ProjectFileVersion,type ProjectFileSource,type ProjectFileFinding,type ProjectFileAsset} from '@bondbuddy/contracts';
+import {PROJECT_DOCUMENT_CATALOG,PROJECT_FILE_UPDATE_PRICE,OUTCOME_PRICE_VERSION,isOutcomePriceVersion,schemas,type ProjectFileCheck,type ProjectFileVersion,type ProjectFileSource,type ProjectFileFinding,type ProjectFileAsset} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import {ApiClient,ApiError,friendlyError,type Dto} from './api';
 import {withProjectContext,rechargeHref} from './project-navigation';
@@ -16,6 +17,7 @@ import './consistency-originals.css';
 import './consistency-manual-reading.css';
 import './consistency-file-search.css';
 import './consistency-confirmation.css';
+import {readCommerce,isCnyPrice,cny,displayPrice,confirmCnyTask,scopeLinesHtml,scopeStatus,scopeStatusLabel,scopeLifecycleHtml,guardScopeExpiry} from './commerce';
 type Updates=import('@bondbuddy/contracts').ProjectFileUpdateBatches;
 type FileFreshness={checked:ProjectFileCheck['files'][number];current?:ProjectFileVersion;state:'same'|'changed'|'delivered'|'missing'};
 type UpdateTarget={run:string;check:ProjectFileCheck;update:ProjectFileCheck['updates'][number];file:ProjectFileCheck['files'][number]};
@@ -28,9 +30,11 @@ type ReadingTarget={kind:'file'|'select'|'detail'|'finding'|'coverage'|'manual-n
   {kind:'nav';href:string;label:string};
 type ReadingSnapshot={context:string;filter:string;query:string;anchor?:{target:ReadingTarget;top:number};focus?:ReadingTarget};
 type RenderedView={host:HTMLElement;context:string;filter:string;query:string;check?:ProjectFileCheck};
-type PendingUpdate={checkId:string;body:Dto<'ProjectFileUpdateRequest'>;filenames:string[];attempted:boolean;confirmation?:ConfirmationSnapshot};
+type PendingUpdate={checkId:string;body:Dto<'ProjectFileUpdateRequest'>;filenames:string[];attempted:boolean;confirmation?:ConfirmationSnapshot;quote?:Dto<'ProjectFileUpdateQuoteResponse'>};
 const active=new Set(['queued','preparing','running','validating','delivering','settlement_pending']);
 export class FileConsistency {
+  private commerce=false;
+  private updateTotal(c:ProjectFileCheck,files:ProjectFileCheck['files']){if(!this.commerce)return files.length*PROJECT_FILE_UPDATE_PRICE.points;if(files.some(file=>!Number.isSafeInteger(file.update_points)))throw new ApiError(503,'BILLING_NOT_READY');return files.reduce((total,file)=>total+file.update_points!,0);}
   private abort=new AbortController();private timer?:ReturnType<typeof setTimeout>;private busy=false;private downloads=new ArtifactDownloads();
   private checks:ProjectFileCheck[]=[];private files:ProjectFileVersion[]=[];private updates:Updates['batches']=[];private source:ProjectFileSource|null=null;
   private linkedHistory?:string;private historyReadError='';
@@ -63,7 +67,7 @@ export class FileConsistency {
       if(Value.Check(schemas.ProjectFileCheckRequest,cached.checkRequest))this.checkRequest=cached.checkRequest;
       const pending=cached.pendingUpdate;
       if(pending?.attempted===true&&typeof pending.checkId==='string'&&pending.checkId.length>0&&pending.checkId.length<=128&&Value.Check(schemas.ProjectFileUpdateRequest,pending.body)&&Array.isArray(pending.filenames)&&pending.filenames.length===pending.body.files.length&&pending.filenames.every((n:unknown)=>typeof n==='string'&&n.length<=200)){
-        this.pendingUpdate={checkId:pending.checkId,body:pending.body,filenames:pending.filenames,attempted:true};
+        this.pendingUpdate={checkId:pending.checkId,body:pending.body,filenames:pending.filenames,attempted:true,...(Value.Check(schemas.ProjectFileUpdateQuoteResponse,pending.quote)?{quote:pending.quote}:{})};
         this.pendingUpdate.confirmation=restoreConfirmationSnapshot(pending.confirmation,this.confirmationBinding(this.pendingUpdate));
       }
       if(this.checkRequest||this.pendingUpdate)this.message='已恢复上次尚未确认的提交，请重试核对同一请求。';
@@ -81,7 +85,7 @@ export class FileConsistency {
   async render(){
     if(!this.id){this.shell('<h1>检查文件一致性</h1><p>请从任务进度与结果选择需要检查的项目。</p><a class="btn primary" href="#tasks">选择项目</a>','projects');return;}
     this.shell('<p role="status">正在读取文件与检查记录…</p>','projects');
-    try{const p=await this.api.project(this.id,this.abort.signal);this.name=p.name;await this.reload();}
+    try{const [p,catalog]=await Promise.all([this.api.project(this.id,this.abort.signal),readCommerce(this.api,this.abort.signal)]);this.commerce=catalog?.enabled===true;this.name=p.name;await this.reload();}
     catch(e){if(this.live())this.shell(`<h1>文件一致性检查</h1><p role="alert">${esc(friendlyError(e,'read'))}</p><a class="btn secondary" href="#/projects/${encodeURIComponent(this.id)}/files">返回项目文件</a>`,'projects');}
   }
   private updateTarget():UpdateTarget|null|undefined{
@@ -364,7 +368,7 @@ export class FileConsistency {
     const changes=scope.files.filter(f=>f.state!=='same'),counts=[['changed','份文件已换版'],['delivered','份已有本轮交付新稿'],['missing','份原文件的当前版本暂不可读']] as const;
     const summary=counts.map(([state,label])=>{const count=changes.filter(f=>f.state===state).length;return count?count+' '+label:'';}).filter(Boolean);if(scope.added.length)summary.push(scope.added.length+' 份新增文件未在本轮检查');
     const next=this.checkRequest?'原检查提交结果尚未确认，请先继续确认原请求和原范围；确认后再按当前文件重新检查。':this.pendingUpdate?.attempted?'原文件更新提交结果尚未确认，请先确认原更新；确认后再按当前文件重新检查。':source?'重新检查将使用当前募集书 '+source.filename+'（V'+source.sequence+'）及本项目全部 '+this.files.filter(f=>f.latest).length+' 份当前文件。':'请先确认当前募集书，再检查全部当前项目文件。';
-    return `<section class="fc-freshness" aria-label="当前文件与本轮检查范围"><h2>当前范围需要重新核对</h2><p>本轮结论仅对应检查时固定的版本。当前有以下范围变化，需要重新核对的文件不能沿用旧结论。</p>${scope.sourceChanged?'<p class="fc-source-freshness">'+esc(sourceMessage)+'</p>':''}${summary.length?'<p class="fc-freshness-counts">'+esc(summary.join('；'))+'。</p>':''}<p>${esc(next)}只有明确点击检查才会开始，检查免费。</p>${changes.length||scope.added.length?`<details data-fc-freshness-detail ${this.freshnessDetailOpen?'open':''}><summary>查看文件范围变化（${changes.length+scope.added.length} 份）</summary><ul>${changes.map(f=>'<li data-fc-current-state="'+f.state+'"><strong>'+esc(f.checked.filename)+'</strong>：'+esc(this.freshnessText(f))+'</li>').join('')}${scope.added.map(f=>'<li data-fc-current-state="added"><strong>'+esc(f.filename)+'</strong> · 当前 V'+f.sequence+'，本轮未覆盖。</li>').join('')}</ul></details>`:''}<a class="text-button" href="#/projects/${encodeURIComponent(this.id)}/files">回到项目文件核对</a></section>`;
+    return `<section class="fc-freshness" aria-label="当前文件与本轮检查范围"><h2>当前范围需要重新核对</h2><p>本轮结论仅对应检查时固定的版本。当前有以下范围变化，需要重新核对的文件不能沿用旧结论。</p>${scope.sourceChanged?'<p class="fc-source-freshness">'+esc(sourceMessage)+'</p>':''}${summary.length?'<p class="fc-freshness-counts">'+esc(summary.join('；'))+'。</p>':''}<p>${esc(next)}只有明确确认后才会开始。${this.commerce?'主动检查按文件收费，开始前显示总价；有效已付范围复用。':'检查免费。'}</p>${changes.length||scope.added.length?`<details data-fc-freshness-detail ${this.freshnessDetailOpen?'open':''}><summary>查看文件范围变化（${changes.length+scope.added.length} 份）</summary><ul>${changes.map(f=>'<li data-fc-current-state="'+f.state+'"><strong>'+esc(f.checked.filename)+'</strong>：'+esc(this.freshnessText(f))+'</li>').join('')}${scope.added.map(f=>'<li data-fc-current-state="added"><strong>'+esc(f.filename)+'</strong> · 当前 V'+f.sequence+'，本轮未覆盖。</li>').join('')}</ul></details>`:''}<a class="text-button" href="#/projects/${encodeURIComponent(this.id)}/files">回到项目文件核对</a></section>`;
   }
   private batchItem(item:Updates['batches'][number]['items'][number]){
     const update=item.run_id?this.checks.flatMap(c=>c.updates).find(u=>u.run_id===item.run_id):undefined,state=update?.state;
@@ -406,10 +410,10 @@ export class FileConsistency {
     if(!this.checkRequest&&!this.pendingUpdate?.attempted){if(this.selectionCheck&&this.selectionCheck!==c?.run_id){this.chosen.clear();this.needsCredits=false;}this.selectionCheck=c?.run_id;}
     const open=new Set([...this.detailStates].filter(([,opened])=>opened).map(([version])=>version));
     const source=base?`<div class="pf-source-strip fc-original-source">${ico('file')}<div><strong>${esc(base.filename)}</strong><small>${c?'本轮固定使用':'本项目正在使用'} · V${base.sequence} · ${esc(this.name)}</small></div><span class="pf-chip">${c?'本轮依据':'当前募集书'}</span>${c?'<button type="button" class="btn secondary" data-fc-source-download '+(this.busy?'disabled':'')+'>下载本轮募集书依据</button>':''}${c&&target===undefined?'<button type="button" class="text-button" data-fc-refresh '+(this.busy?'disabled':'')+'>重新读取记录</button>':''}</div>${c?'<p class="fc-original-status" role="status" data-fc-original-status="'+esc('source:'+c.run_id)+'">'+esc(this.originalMessages.get('source:'+c.run_id)??'')+'</p>':''}`:'';
-    const start=`<button class="btn ${this.checkRequest||scope?.changed||!c?'primary':'secondary'}" data-fc-start ${this.busy||!!this.pendingUpdate?.attempted||!this.checkRequest&&(checking||!this.source||!latest.length)?'disabled':''}>${this.checkRequest?'重试确认检查结果（免费）':scope?.changed?'按当前全部文件重新检查（免费）':c?'重新检查（免费）':'开始检查（免费）'}</button>`;
+    const start=`<button class="btn ${this.checkRequest||scope?.changed||!c?'primary':'secondary'}" data-fc-start ${this.busy||!!this.pendingUpdate?.attempted||!this.checkRequest&&(checking||!this.source||!latest.length)?'disabled':''}>${this.checkRequest?'重试确认原检查':scope?.changed?(this.commerce?'核对当前范围与费用':'按当前全部文件重新检查（免费）'):c?(this.commerce?'核对重新检查费用':'重新检查（免费）'):(this.commerce?'查看检查总价':'开始检查（免费）')}</button>`;
     const filesHref='#/projects/'+encodeURIComponent(this.id)+'/files',emptyAction=this.checkRequest?start:!this.source?start+' <a class="btn primary" href="'+filesHref+'">添加并采用募集书</a> <a class="btn secondary" href="'+filesHref+'">上传关联文件</a> <a class="btn secondary" href="#generate?project='+encodeURIComponent(this.id)+'">生成关联文件</a>':!latest.length?'<a class="btn primary" href="'+filesHref+'">上传已有项目文件</a>':start;
     const html=`<a class="back-link" href="#tasks">← 返回任务进度与结果</a><div class="page-head"><div><div class="eyebrow">FILE CONSISTENCY</div><h1 id="fc-page-heading" tabindex="-1">${checking?'正在检查文件一致性':'文件一致性检查'}</h1><p>${esc(this.name)} · 核对关联文件与募集书，查看差异后选择是否生成修订版与清洁版。</p></div><a class="btn secondary" href="${filesHref}">返回项目文件</a></div>${source}
-      <p id="fc-status" role="status">${esc(this.message)}</p>${this.pendingUpdate?.attempted?'<section class="fc-warning"><p>上次更新提交结果尚未确认。请沿用原范围确认，避免重复创建批次。</p><button class="btn secondary" id="fc-pending-action" data-fc-confirm-pending>重试确认上次更新</button></section>':''}${this.needsCredits?`<p><a class="text-button" href="${esc(rechargeHref(this.id))}">查看积分与充值</a> · 检查结果和选择保留，充值后需重新确认更新。</p>`:''}
+      <p id="fc-status" role="status">${esc(this.message)}</p>${this.pendingUpdate?.attempted?'<section class="fc-warning"><p>上次更新提交结果尚未确认。请沿用原范围确认，避免重复创建批次。</p><button class="btn secondary" id="fc-pending-action" data-fc-confirm-pending>重试确认上次更新</button></section>':''}${this.needsCredits?`<p><a class="text-button" href="${esc(rechargeHref(this.id))}">${this.commerce?'查看余额与按需充值':'查看积分与充值'}</a> · 检查结果和选择保留，充值后需重新确认更新。</p>`:''}
       ${!this.source?'<div id="fc-prospectus"></div>':''}
       ${target!==undefined?this.updateTaskHtml(target):''}
       ${this.checks.length?`<div class="pf-section-head"><label>检查记录 <select id="fc-history">${!c?'<option value="" selected disabled>指定的检查记录不可读</option>':''}${this.checks.map(x=>`<option value="${esc(x.run_id)}" ${x.run_id===c?.run_id?'selected':''}>${x.run_id===this.linkedHistory?'链接指定记录 · ':''}${esc(date(x.created_at))} · ${esc(runStateLabel[x.state as keyof typeof runStateLabel]??x.state)}</option>`).join('')}</select></label>${start}</div>${this.linkedHistory?'<p class="fc-history-scope">已读取链接指定的历史检查；下拉列表另含最近 30 轮，不代表全部历史记录。</p>':''}`:''}
@@ -418,12 +422,23 @@ export class FileConsistency {
       ${target===null?'':!c&&new URLSearchParams(location.hash.split('?')[1]).has('run')?`<section class="panel fc-empty"><h2>指定的检查记录暂时无法读取</h2><p>${esc(this.historyReadError||'检查链接不完整、无效或无法唯一对应记录。')} 没有自动切换到其他一轮。</p><button class="btn secondary" data-fc-refresh>重新读取原检查</button> <button class="btn secondary" data-fc-latest>查看最近检查记录</button>${start}</section>`:!c?`<section class="panel fc-empty"><h2>${!this.source?'请先添加募集说明书':!latest.length?'还没有可检查的关联文件':'准备检查项目文件'}</h2><p>${!this.source?'先回到项目文件保存募集书，并明确采用为当前依据；已有项目文件保留。':!latest.length?'已有 Word 或 PDF 可以直接上传到项目文件，无需重新生成。':'扫描项目每份关联文件的当前版本；历史版本保留。'}</p><p>本次范围：${latest.length} 份文件</p>${emptyAction} ${!latest.length&&this.source?'<a class="btn secondary" href="#generate?project='+this.id+'">生成关联文件</a>':''}</section>`:
         checking?`<section class="panel fc-progress"><span class="fc-spinner" aria-hidden="true"></span><h2>${c.stage==='queued'?'等待检查':c.stage?.includes('word')?'正在整理检查报告':'正在核对文件内容'}</h2><p>本轮已固定 ${c.files.length} 份关联文件，核对数据、期间、单位、发行安排和披露内容。</p><ol><li>固定募集书与文件版本</li><li>比对内容与原文依据</li><li>整理冲突位置和修改建议</li></ol><p>关闭页面后任务继续处理，完成后可返回查看。</p><button class="btn secondary" data-fc-control="pause" data-run="${c.run_id}">暂停检查</button></section>`:
         c.result?this.results(c,open):`<section class="panel fc-empty"><h2>${esc(runStateLabel[c.state as keyof typeof runStateLabel]??c.state)}</h2><p>本次检查尚未完成，已保存的输入与历史文件保留。</p>${['paused','awaiting_input'].includes(c.state)?`<button class="btn primary" data-fc-control="resume" data-run="${c.run_id}">继续检查</button> <button class="btn secondary" data-fc-control="cancel" data-run="${c.run_id}">结束检查</button>`:start}</section>`}
-      ${this.updates.filter(b=>['queued','running','paused'].includes(b.state)).map(b=>`<section class="panel fc-update"><h2>${b.state==='paused'?'文件更新需要处理':'正在生成新版本'}</h2>${b.items.map(i=>this.batchItem(i)).join('')}${b.state==='paused'?`<button class="btn primary" data-fc-retry="${b.batch_id}">重试未完成文件 · 4,500 积分/份</button>`:''}<button class="btn secondary" data-fc-stop="${b.batch_id}">停止后续文件更新</button><p class="muted">已经启动的任务不会被批次停止按钮取消；可按任务当前状态单独处理，已生成版本保留。</p></section>`).join('')}`;
+      ${this.updates.filter(b=>['queued','running','paused'].includes(b.state)).map(b=>`<section class="panel fc-update"><h2>${b.state==='paused'?'文件更新需要处理':'正在生成新版本'}</h2>${b.items.map(i=>this.batchItem(i)).join('')}${b.state==='paused'?`<button class="btn primary" data-fc-retry="${b.batch_id}">重试原批次未完成文件</button>`:''}<button class="btn secondary" data-fc-stop="${b.batch_id}">停止后续文件更新</button><p class="muted">已经启动的任务不会被批次停止按钮取消；可按任务当前状态单独处理，已生成版本保留。</p></section>`).join('')}`;
     const workspace=document.querySelector<HTMLElement>('#fc-workspace');
     if(localOnly&&workspace)workspace.innerHTML=html;else this.shell('<div id="fc-workspace">'+html+'</div>','projects');
     this.mountProspectus();
     document.querySelectorAll('[data-fc-start]').forEach(b=>b.addEventListener('click',()=>void this.act(async()=>{
-      this.checkRequest??={request_id:crypto.randomUUID(),expected_source_version_id:this.source!.version_id};this.cache();let r:{run_id:string};
+      if(!this.checkRequest){
+        const request:Dto<'ProjectFileCheckRequest'>={request_id:crypto.randomUUID(),expected_source_version_id:this.source!.version_id};
+        if(this.commerce){
+          const quote=await this.request<Dto<'ProjectFileCheckQuoteResponse'>>('POST','/checks/quote',request);
+          const price={...quote,price_version:quote.price_version??undefined};
+          if(!isCnyPrice(price))throw new ApiError(503,'BILLING_NOT_READY');
+          if(!await confirmCnyTask('确认一致性检查费用',price,`${this.name} · 募集书 ${this.source!.filename} V${this.source!.sequence} · 本次固定 ${quote.file_version_ids.length} 份当前关联文件。相同有效范围已付结果复用，以本次报价为准。`))return;
+          Object.assign(request,{price_version:quote.price_version,expected_points:quote.points,file_version_ids:quote.file_version_ids,...(quote.scope_quote_id?{scope_quote_id:quote.scope_quote_id}:{})});
+        }
+        this.checkRequest=request;
+      }
+      this.cache();let r:{run_id:string};
       try{r=await this.request<{run_id:string}>('POST','/checks',this.checkRequest);}
       catch(e){if(e instanceof ApiError&&e.status>=400&&e.status<500&&![408,429].includes(e.status)){this.checkRequest=undefined;this.cache();try{await this.reload();}catch{}}throw e;}
       this.checkRequest=undefined;this.cache();this.message='检查已提交，关闭页面后仍会继续处理。';
@@ -574,7 +589,7 @@ export class FileConsistency {
       return matches&&(this.filter==='all'||(this.filter==='selected'?this.chosen.has(f.file_version_id):this.filter==='manual'?manual(f):this.filter==='updated'?revised(f.file_version_id):state(f.file_version_id)===this.filter));
     });
     return `<div id="fc-results-view"><p class="fc-history-scope">以下统计与筛选只描述本轮检查时的 ${c.files.length} 份文件。同一文件可同时有差异、人工事项或已交付新稿；各类数量不相加。${this.updateTarget()?'下方为整轮检查汇总，包含其他更新与重试；原任务状态和本次交付见上方任务区。':''}${scope.changed?'当前新稿及新增文件的范围见上方提示。':''}</p><div class="fc-summary" aria-label="本轮检查时版本统计">${Object.entries(counts).map(([k,v])=>`<button type="button" data-fc-filter="${k}" aria-pressed="${this.filter===k}" aria-controls="fc-result-list"><span>${labels[k as keyof typeof labels]}</span><strong>${v}<small> 份文件</small></strong><small>查看这些文件</small></button>`).join('')}</div>
-      <section class="panel fc-results"><div class="pf-section-head"><div><h2 id="fc-results-heading" tabindex="-1">${scope.changed?'本轮历史检查结果':'文件检查结果'}</h2><p>检查免费。每份更新 4,500 积分，生成全部可确认差异的修订版和清洁版；存疑内容保留批注，旧版保留。每份文件分别结算：成功交付后扣款，失败或取消的文件不扣费。检查范围内未发现差异不等于内容全部正确。</p></div><select id="fc-filter" aria-label="筛选文件状态"><option value="all" ${this.filter==='all'?'selected':''}>全部文件</option>${Object.entries(labels).map(([k,v])=>`<option value="${k}" ${this.filter===k?'selected':''}>${v}</option>`).join('')}<option value="selected" ${this.filter==='selected'?'selected':''}>已选文件</option></select></div>
+      <section class="panel fc-results"><div class="pf-section-head"><div><h2 id="fc-results-heading" tabindex="-1">${scope.changed?'本轮历史检查结果':'文件检查结果'}</h2><p>${this.commerce?'主动检查收费；同步按服务端逐份范围报价，复用有效已付同版本检查，避免重复收费。':'检查免费。每份更新 4,500 积分，'}生成全部可确认差异的修订版和清洁版；存疑内容保留批注，旧版保留。每份文件分别结算：成功交付后扣款，失败或取消的文件不扣费。检查范围内未发现差异不等于内容全部正确。</p></div><select id="fc-filter" aria-label="筛选文件状态"><option value="all" ${this.filter==='all'?'selected':''}>全部文件</option>${Object.entries(labels).map(([k,v])=>`<option value="${k}" ${this.filter===k?'selected':''}>${v}</option>`).join('')}<option value="selected" ${this.filter==='selected'?'selected':''}>已选文件</option></select></div>
       <div class="fc-file-search"><label for="fc-file-search">按本轮文件名查找</label><div><input type="search" id="fc-file-search" maxlength="200" autocomplete="off" value="${esc(this.query)}" aria-describedby="fc-file-search-help fc-file-search-count" aria-controls="fc-result-list" placeholder="输入文件名中的文字"/><button type="button" class="text-button" data-fc-clear-search ${!this.query?'disabled':''}>清除查找</button><button type="button" class="text-button" data-fc-show-all="toolbar">查看全部文件</button></div><p id="fc-file-search-help">只影响显示，不改变本轮检查范围或已选文件；按检查时的文件名查找。</p><p id="fc-file-search-count" data-fc-search-count role="status">当前显示 ${visible.length} 份 / 本轮 ${c.result!.files.length} 份文件${this.filter!=='all'?'（已叠加状态筛选）':''}。</p></div>
       <div class="fc-selection-toolbar" aria-label="本轮文件选择"><p data-fc-selection></p><div><button type="button" class="text-button" data-fc-show-selected>查看已选文件</button><button type="button" class="text-button" data-fc-clear-selection>清空选择</button><button type="button" class="btn primary" id="fc-accept-top" data-fc-accept disabled>更新所选文件</button></div></div>
       <label class="fc-select-all"><input type="checkbox" id="fc-all"/> 选择当前显示的可更新文件</label><div id="fc-result-list">
@@ -582,12 +597,12 @@ export class FileConsistency {
         const checked=c.files.find(x=>x.file_version_id===f.file_version_id)!,pending=this.pending(c,f.file_version_id),blocked=this.blocked(c,f.file_version_id),status=state(f.file_version_id);
         const updated=this.files.filter(x=>c.updates.some(u=>u.new_version_id===x.version_id&&u.file_version_id===f.file_version_id)).sort((a,b)=>b.sequence-a.sequence)[0],fresh=scope.files.find(x=>x.checked.file_version_id===f.file_version_id)!,historical=scope.sourceChanged||fresh.state!=='same',hasManual=manual(f);
         const manualItems=f.findings.filter(i=>this.isManual(i)),automaticItems=f.findings.filter(i=>!this.isManual(i)),duplicateManual=manualItems.some(i=>f.findings.filter(x=>x.id===i.id).length!==1);
-        return `<article class="fc-file" tabindex="-1" data-fc-result-version="${esc(f.file_version_id)}"><div class="pf-template-row"><input type="checkbox" data-fc-select="${f.file_version_id}" aria-label="选择更新 ${esc(checked.filename)}" ${this.chosen.has(f.file_version_id)?'checked':''} ${!pending.length||blocked||this.busy?'disabled':''}/><span class="collection-file-icon">${ico('file')}</span><div><strong>${esc(checked.filename)}</strong><small>检查时 V${checked.sequence} · 基于募集书 V${c.source.sequence} · ${manualItems.length} 项需人工确认</small></div><span class="pf-chip ${historical||['conflict','manual'].includes(status)?'attention':''}">${historical?'原 V'+checked.sequence+' 结论：':''}${labels[status]}${pending.length?' · '+pending.length+' 处':''}</span>${pending.length?`<button class="btn primary" data-fc-file="${f.file_version_id}" ${blocked||this.busy||!!this.checkRequest||!!this.pendingUpdate?.attempted?'disabled':''}>更新文件 · 4,500 积分</button>`:''}</div>
+        return `<article class="fc-file" tabindex="-1" data-fc-result-version="${esc(f.file_version_id)}"><div class="pf-template-row"><input type="checkbox" data-fc-select="${f.file_version_id}" aria-label="选择更新 ${esc(checked.filename)}" ${this.chosen.has(f.file_version_id)?'checked':''} ${!pending.length||blocked||this.busy?'disabled':''}/><span class="collection-file-icon">${ico('file')}</span><div><strong>${esc(checked.filename)}</strong><small>检查时 V${checked.sequence} · 基于募集书 V${c.source.sequence} · ${manualItems.length} 项需人工确认</small></div><span class="pf-chip ${historical||['conflict','manual'].includes(status)?'attention':''}">${historical?'原 V'+checked.sequence+' 结论：':''}${labels[status]}${pending.length?' · '+pending.length+' 处':''}</span>${pending.length?`<button class="btn primary" data-fc-file="${f.file_version_id}" ${blocked||this.busy||!!this.checkRequest||!!this.pendingUpdate?.attempted?'disabled':''}>${this.commerce?'核对本文件范围报价':'更新文件 · 4,500 积分'}</button>`:''}</div>
           ${historical?'<p class="fc-file-freshness" data-fc-current-state="'+fresh.state+'">'+esc(this.freshnessText(fresh))+'</p>':''}
           ${blocked&&(pending.length||this.chosen.has(f.file_version_id))?'<p class="muted">'+esc(this.blockReason(c,f.file_version_id))+'</p>':''}
           ${updated?`<div class="fc-downloads"><span>${this.updateTarget()?'本轮检查汇总成果 · ':''}已保存 V${updated.sequence}${this.updateTarget()?'（可能来自其他更新或重试）':''}</span><button class="btn secondary" data-fc-download="${updated.version_id}" data-variant="revision">下载修订版</button><button class="btn secondary" data-fc-download="${updated.version_id}" data-variant="clean">下载清洁版</button></div>`:''}
           <div class="fc-originals"><button type="button" class="text-button" data-fc-original="${esc(f.file_version_id)}" ${!this.originalVersion(c,f.file_version_id)||this.busy?'disabled':''}>下载检查时 V${checked.sequence}</button>${!hasManual?'<a class="text-button" href="'+esc(this.fileHref(c,f.file_version_id))+'">回到此文件核对</a>':''}</div><p class="fc-original-status" role="status" data-fc-original-status="${esc('file:'+c.run_id+':'+f.file_version_id)}">${esc(this.originalMessages.get('file:'+c.run_id+':'+f.file_version_id)??(!this.originalVersion(c,f.file_version_id)?'检查时原稿暂不可确认，请重新读取记录后核对。':''))}</p>
-          ${hasManual?'<p class="fc-manual-next">下一步：下载原稿并核实原文依据；如需修改，在本地处理后，<a class="text-button" href="'+esc(this.fileHref(c,f.file_version_id))+'">'+(fresh.state==='same'?'回到此文件上传修改稿':'回到此文件核对当前稿')+'</a>，再免费重新检查。需人工确认的事项继续保留。</p>':''}
+          ${hasManual?'<p class="fc-manual-next">下一步：下载原稿并核实原文依据；如需修改，在本地处理后，<a class="text-button" href="'+esc(this.fileHref(c,f.file_version_id))+'">'+(fresh.state==='same'?'回到此文件上传修改稿':'回到此文件核对当前稿')+'</a>，再重新申请检查，费用以当前范围报价为准。需人工确认的事项继续保留。</p>':''}
           ${manualItems.length?'<div class="fc-manual-entry">'+this.manualButton(c,f.file_version_id,'first','查看人工事项（'+manualItems.length+'）',undefined,manualItems[0])+'<span>逐项核实原文依据；阅读不会标记为已处理。</span></div>':''}
           ${hasManual&&!manualItems.length?'<p class="fc-warning" data-fc-manual-unavailable>本轮标记需人工核实，但未提供逐项信息。请结合原稿与核对范围确认。</p>':''}
           ${duplicateManual?'<p class="fc-warning" data-fc-manual-unavailable>部分人工事项的记录编号重复，相关定位暂不可用。请直接展开原文核对。</p>':''}
@@ -607,7 +622,8 @@ export class FileConsistency {
     const selected=c?.files.filter(f=>this.chosen.has(f.file_version_id)).length??0;
     const displayed=new Set([...document.querySelectorAll<HTMLInputElement>('[data-fc-select]')].map(control=>control.dataset.fcSelect));
     const hidden=eligible.filter(file=>!displayed.has(file.file_version_id)).length;
-    const text='已选择 '+count+' 份文件 · 共 '+(count*PROJECT_FILE_UPDATE_PRICE.points).toLocaleString('zh-CN')+' 积分'+(hidden?'（含 '+hidden+' 份筛选外文件）':'')+(selected>count?'；另有 '+(selected-count)+' 份已选文件当前不可更新，未计入费用。':'');
+    const amount=this.commerce?'确认范围后报价': (count*PROJECT_FILE_UPDATE_PRICE.points).toLocaleString('zh-CN')+' 积分';
+    const text='已选择 '+count+' 份文件 · 共 '+amount+(hidden?'（含 '+hidden+' 份筛选外文件）':'')+(selected>count?'；另有 '+(selected-count)+' 份已选文件当前不可更新，未计入费用。':'');
     document.querySelectorAll('#fc-selection,[data-fc-selection]').forEach(s=>s.textContent=text);
     document.querySelectorAll<HTMLButtonElement>('#fc-accept,[data-fc-accept]').forEach(b=>b.disabled=!count||this.busy||!!this.checkRequest||!!this.pendingUpdate?.attempted);
     document.querySelectorAll<HTMLButtonElement>('[data-fc-show-selected],[data-fc-clear-selection]').forEach(b=>b.disabled=!selected||this.busy);
@@ -625,23 +641,30 @@ export class FileConsistency {
       '<p class="fc-confirm-unavailable" role="note">原确认的版本与修改明细无法完整恢复。以下保留原文件名、版本编号与费用，重试仍沿用原请求；请勿将当前页面的新稿视为本次依据。</p>';
     return `<p class="fc-confirm-project">${esc(snapshot?.projectName??this.name)}</p>${source}<h3>将更新的 ${pending.body.files.length} 份文件</h3><ul class="fc-confirm-files">${rows}</ul><p>更新范围：本轮检查中可确认的差异；需人工判断的内容保留批注。原稿保留，每份生成修订版和清洁版。</p><details class="fc-confirm-scope"><summary>核对完整版本编号与本次请求</summary><dl>${identity('检查编号',pending.checkId)}${identity('检查结果 hash',pending.body.expected_check_sha256)}${identity('请求编号',pending.body.request_id)}${snapshot?identity('募集书项目编号',snapshot.source.project_id)+identity('募集书版本编号',snapshot.source.version_id)+identity('募集书文件引用',snapshot.source.asset):''}${pending.body.files.map((file,index)=>identity('文件 '+(index+1)+' 版本编号',file.file_version_id)+(snapshot?identity('文件 '+(index+1)+' 文件族编号',snapshot.files[index].fileId)+identity('文件 '+(index+1)+' 原稿引用',snapshot.files[index].asset??'原稿引用未确认'):'')).join('')}</dl></details>`;
   }
-  private confirmUpdate(c?:ProjectFileCheck,file?:string){
-    if(this.busy)return;
+  private confirmUpdate(c?:ProjectFileCheck,file?:string){if(this.busy)return;void this.act(()=>this.prepareUpdate(c,file));}
+  private async prepareUpdate(c?:ProjectFileCheck,file?:string){
     if(this.checkRequest){this.message='请先重试确认上次检查结果，再提交文件更新。';this.status();return;}
     if(!this.pendingUpdate?.attempted){
       if(!c?.sha256)return;
       const files=c.files.filter(f=>!file||f.file_version_id===file).filter(f=>!this.blocked(c,f.file_version_id)&&this.pending(c,f.file_version_id).length&&(file||this.chosen.has(f.file_version_id)));
       if(!files.length){this.message='请先选择可更新的文件。';this.status();return;}
-      this.pendingUpdate={checkId:c.run_id,body:{request_id:crypto.randomUUID(),expected_check_sha256:c.sha256,price_version:PROJECT_FILE_UPDATE_PRICE.version,expected_points:files.length*PROJECT_FILE_UPDATE_PRICE.points,files:files.map(f=>({file_version_id:f.file_version_id}))},filenames:files.map(f=>f.filename),attempted:false};
+      const quote=this.commerce?await this.request<Dto<'ProjectFileUpdateQuoteResponse'>>('POST','/checks/'+encodeURIComponent(c.run_id)+'/updates/quote',{expected_check_sha256:c.sha256,files:files.map(f=>({file_version_id:f.file_version_id}))}):undefined;
+      if(quote&&(scopeStatus(quote)!=='ready'||quote.items.some(item=>scopeStatus(item)!=='ready'))){this.closeDialog();const pending=document.createElement('dialog');this.dialog=pending;pending.className='pf-modal commerce-confirm';const blocked=quote.items.find(item=>scopeStatus(item)!=='ready')??quote;pending.innerHTML='<h2>'+esc(scopeStatusLabel(blocked))+'</h2>'+scopeLifecycleHtml(blocked)+'<button class="btn secondary" data-close>返回准备</button><button class="btn primary" id="fc-refresh-scope">刷新范围报价</button>';pending.querySelector('[data-close]')!.addEventListener('click',()=>this.closeDialog());pending.querySelector('#fc-refresh-scope')!.addEventListener('click',()=>{this.closeDialog();this.confirmUpdate(c,file);});document.body.append(pending);pending.showModal();return;}
+      if(quote&&(quote.items.length!==files.length||files.some(f=>!quote.items.some(item=>item.file_version_id===f.file_version_id&&item.scope_quote_id))||quote.items.reduce((n,item)=>n+item.points,0)!==quote.points))throw new ApiError(0,'DATA_UNAVAILABLE');
+      const priceVersion=quote?.items[0]?.price_version??(this.commerce?OUTCOME_PRICE_VERSION:PROJECT_FILE_UPDATE_PRICE.version);
+      if(!isOutcomePriceVersion(priceVersion)&&priceVersion!==PROJECT_FILE_UPDATE_PRICE.version)throw new ApiError(0,'DATA_UNAVAILABLE');
+      this.pendingUpdate={checkId:c.run_id,body:{request_id:crypto.randomUUID(),expected_check_sha256:c.sha256,price_version:priceVersion,expected_points:quote?.points??this.updateTotal(c,files),files:files.map(f=>({file_version_id:f.file_version_id,...(quote?{scope_quote_id:quote.items.find(item=>item.file_version_id===f.file_version_id)!.scope_quote_id!}:{})}))},filenames:files.map(f=>f.filename),attempted:false,...(quote?{quote}: {})};
       this.pendingUpdate.confirmation=createConfirmationSnapshot(this.confirmationBinding(this.pendingUpdate),c,this.files,files.map(f=>this.pending(c,f.file_version_id).length),this.name);
     }
     const pending=this.pendingUpdate;if(!pending)return;
+    if(pending.quote?.items.every(isAutomaticCharge)){await this.submitUpdateRequest(pending);return;}
     this.closeDialog();const d=document.createElement('dialog');this.dialog=d;d.className='pf-modal fc-confirm';d.setAttribute('aria-labelledby','fc-confirm-heading');
-    d.innerHTML=`<header><h2 id="fc-confirm-heading">确认更新这些文件</h2><button class="icon-btn" data-close aria-label="关闭费用确认">${ico('close')}</button></header><div class="fc-confirm-body" tabindex="0" aria-label="更新范围与版本明细">${this.confirmationContent(pending)}</div><footer><p class="fc-confirm-total">${pending.body.files.length} 份 × 4,500 积分 = <strong>${pending.body.expected_points.toLocaleString('zh-CN')} 积分</strong></p><p>确认时需余额覆盖本批总额。每份分别结算，成功交付后扣费；失败或取消的文件不扣费。</p><p id="fc-confirm-status" role="status">${pending.attempted?'上次提交结果尚未确认。重试沿用同一份已确认请求，不创建新的重复批次。':''}</p><div class="pf-footer"><button class="btn secondary" data-close>返回调整</button><button class="btn primary" id="fc-confirm-update">${pending.attempted?'重试确认提交结果':'确认更新'}</button></div></footer>`;
+    d.innerHTML=`<header><h2 id="fc-confirm-heading">确认更新这些文件</h2><button class="icon-btn" data-close aria-label="关闭费用确认">${ico('close')}</button></header><div class="fc-confirm-body" tabindex="0" aria-label="更新范围与版本明细">${this.confirmationContent(pending)}${pending.quote?pending.quote.items.map(item=>scopeLinesHtml(item)+scopeLifecycleHtml(item)).join(''):''}</div><footer><p class="fc-confirm-total">${isOutcomePriceVersion(pending.body.price_version)?`${pending.body.files.length} 份 · 本次总价 <strong>${cny(pending.body.expected_points)}</strong>`:`${pending.body.files.length} 份 × ${PROJECT_FILE_UPDATE_PRICE.points.toLocaleString('zh-CN')} 积分 = <strong>${pending.body.expected_points.toLocaleString('zh-CN')} 积分</strong>`}${isOutcomePriceVersion(pending.body.price_version)?'<small>已按服务端核实的各文件工作项报价合计；原范围修正与平台重试包含。</small>':''}</p><p>确认时需余额覆盖本批总额。每份分别结算，成功交付后扣费；失败或取消的文件不扣费。</p><p id="fc-confirm-status" role="status">${pending.attempted?'上次提交结果尚未确认。重试沿用同一份已确认请求，不创建新的重复批次。':''}</p><div class="pf-footer"><button class="btn secondary" data-close>返回调整</button><button class="btn primary" id="fc-confirm-update">${pending.attempted?'重试确认提交结果':'确认更新'}</button></div></footer>`;
     const dismiss=()=>{if(this.busy)return;this.closeDialog();if(!pending.attempted)this.pendingUpdate=undefined;};
-    d.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',dismiss));d.addEventListener('cancel',e=>{e.preventDefault();dismiss();});d.querySelector('#fc-confirm-update')!.addEventListener('click',()=>void this.submitUpdate());document.body.append(d);d.showModal();
+    d.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',dismiss));d.addEventListener('cancel',e=>{e.preventDefault();dismiss();});d.querySelector('#fc-confirm-update')!.addEventListener('click',()=>void this.submitUpdate());document.body.append(d);if(pending.quote&&!pending.attempted)guardScopeExpiry(d,pending.quote.items,'#fc-confirm-update');d.showModal();
   }
-  private async submitUpdate(){const pending=this.pendingUpdate;if(!pending)return;await this.act(async()=>{
+  private async submitUpdate(){const pending=this.pendingUpdate;if(!pending)return;if(!pending.attempted&&pending.quote&&pending.quote.items.some(item=>scopeStatus(item)!=='ready')){this.message='报价已过期，未开始；选择与准备保留，请返回重新核对。';this.status();return;}await this.act(()=>this.submitUpdateRequest(pending));}
+  private async submitUpdateRequest(pending:NonNullable<FileConsistency['pendingUpdate']>){
     pending.attempted=true;this.cache();this.dialog?.querySelectorAll<HTMLButtonElement>('button').forEach(b=>b.disabled=true);
     try{await this.request('POST','/checks/'+encodeURIComponent(pending.checkId)+'/updates',pending.body);}
     catch(e){
@@ -650,6 +673,6 @@ export class FileConsistency {
       throw e;
     }finally{this.dialog?.querySelectorAll<HTMLButtonElement>('button').forEach(b=>b.disabled=false);}
     this.pendingUpdate=undefined;this.needsCredits=false;window.dispatchEvent(new Event('bondbuddy:credits-changed'));this.closeDialog();this.chosen.clear();this.cache();this.message='已提交所选文件更新。每份分别交付、分别结算；存疑事项保留，原稿保留。';await this.reload();
-  });}
+  }
 }
 

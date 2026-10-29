@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Value } from '@sinclair/typebox/value';
-import { schemas, INTEGRITY_PRICE, ReviewDraftRequestSchema, ReviewExecutionRequestSchema, ReviewMessageRequestSchema, ReviewPlanRequestSchema, isReviewReport,
+import { commerceMetadata, OUTCOME_PRICE_VERSION, schemas, INTEGRITY_PRICE, ReviewDraftRequestSchema, ReviewExecutionRequestSchema, ReviewMessageRequestSchema, ReviewPlanRequestSchema, isReviewReport,
   type ReviewWorkspace, type ReviewDraftInput, type ReviewReport, type ReviewEvidenceRef, type ReviewContext, type ReviewMessageRequest,
   type ReviewExecutionRequest, type ReviewPlanRequest, type ReviewProposal, type ReviewProposalV2, type ReviewProposalAdoptionRequest, type ReviewProposalAdoptionResponse, type ReviewHistoryEntry, type ReviewRevisionHandling, type Run, type RunEvent } from '@bondbuddy/contracts';
 import type { Dto } from '../src/api';
@@ -1258,4 +1258,12 @@ test('after review, integrity can create a blank project or explicitly use a dif
   await clickTaskEntry(page,'诚信核查');
   await expect(page.locator('.update-project-option input:checked')).toHaveCount(0);
   await expect(page.getByRole('button',{name:'下一步：名单与网站范围',exact:true})).toBeDisabled();
+});
+
+test('commercial scope review refreshes pending work and requires explicit total confirmation',async({page})=>{
+ const state=await setup(page,fixture(),`#/projects/${id}/review?tab=materials`);let ready=false;
+ await page.route('**/review-executions/quote',route=>reply(route,200,{enabled:true,quote:{quote_id:'commercial-review-quote',task_type:'full_review',points:ready?26800:0,price_version:OUTCOME_PRICE_VERSION,reason:'按独立实质复核工作项报价',...commerceMetadata(ready?26800:0),quote_status:ready?'ready':'pending_scope',scope_quote_id:'scope-review',scope_lines:ready?[{key:'review-input',label:'核对选定材料的财务披露及引用',quantity:1,unit:'组',unit_price_fen:26800,amount_fen:26800,evidence:['固定待复核募集书和已选审计报告版本。']}]:[]},balance:{available:100000,frozen:0},shortage:0,reason:null}));
+ await page.getByRole('button',{name:'开始复核',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('本次范围报价待确认，尚未收费');await expect(page.getByRole('button',{name:'确认总价并开始',exact:true})).toHaveCount(0);expect(state.executes).toEqual([]);
+ ready=true;await page.getByRole('button',{name:'刷新范围报价',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('¥268.00');await expect(page.getByRole('dialog')).toContainText('核对选定材料的财务披露及引用');expect(state.executes).toEqual([]);
+ await page.getByRole('button',{name:'确认总价并开始',exact:true}).click();await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('commercial-review-quote');
 });

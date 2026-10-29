@@ -32,16 +32,20 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
     assert.equal((await send('PUT',u.json().upload_url,b,{'content-type':'application/octet-stream'})).statusCode,204);
     const material=await send('POST',`/api/v1/projects/${id}/materials/uploads/${u.json().upload_id}/complete`,d);
     assert.equal(material.statusCode,200,material.body);
-    let draftRevision=1;
+    let draftRevision=1,selectionRevision=0;
     if(role==='historical'){
-      const incomplete=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:1,material_versions:[{material_id:material.json().material_id,material_version:1}],requirement_message_ids:[]});
+      // Uploads are available history until explicitly adopted as the current prospectus.
+      const selected=await send('POST',`/api/v1/projects/${id}/prospectus-versions`,{request_id:randomUUID(),expected_selection_revision:0,material_id:material.json().material_id,material_version:1,sha256:d.sha256});
+      assert.equal(selected.statusCode,200,selected.body);selectionRevision=selected.json().selection_revision;
+      const current=await send('GET',`/api/v1/projects/${id}`);assert.equal(current.statusCode,200,current.body);draftRevision=current.json().draft_revision;
+      const incomplete=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:draftRevision,prospectus_selection_revision:selectionRevision,material_versions:[{material_id:material.json().material_id,material_version:1}],requirement_message_ids:[]});
       assert.equal(incomplete.statusCode,422,incomplete.body);assert.equal(incomplete.json().code,'INPUT_REQUIRED');
       assert.equal((await pool.query('SELECT count(*)::int n FROM bb_input_revisions WHERE project_id=$1',[id])).rows[0].n,0);
-      const saved=await send('PATCH',`/api/v1/projects/${id}`,{update_details:{...c.json().update_details,
-        source_prospectuses:[{material_id:material.json().material_id,material_version:1,sha256:d.sha256,issuer_name:'Synthetic issuer',relation:'same_issuer',market:'sse',offering:'private',reporting_periods:reportingWindow('sse','private','2025-12-31'),status:'user_asserted'}]}},{'if-match':'1'});
+      const saved=await send('PATCH',`/api/v1/projects/${id}`,{update_details:{...current.json().update_details,
+        source_prospectuses:[{material_id:material.json().material_id,material_version:1,sha256:d.sha256,issuer_name:'Synthetic issuer',relation:'same_issuer',market:'sse',offering:'private',reporting_periods:reportingWindow('sse','private','2025-12-31'),status:'user_asserted'}]}},{'if-match':String(draftRevision)});
       assert.equal(saved.statusCode,200,saved.body);draftRevision=saved.json().draft_revision;
     }
-    const input=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:draftRevision,material_versions:[{material_id:material.json().material_id,material_version:1}],requirement_message_ids:[]});
+    const input=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:draftRevision,prospectus_selection_revision:selectionRevision,material_versions:[{material_id:material.json().material_id,material_version:1}],requirement_message_ids:[]});
     assert.equal(input.statusCode,201,input.body);return input.json();
   };
   const quote=async(i:any)=>{const q=await send('POST',`/api/v1/projects/${i.project_id}/credit-quote`,{input_revision:i.input_revision,input_hash:i.input_hash});assert.equal(q.statusCode,200,q.body);return q.json();};
