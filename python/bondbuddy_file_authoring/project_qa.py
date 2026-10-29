@@ -48,6 +48,11 @@ def prepare(source, output, result):
         text = span['text'].strip()
         if text.startswith('【待补充：原 PDF 第') and '无法提取文字' in text:
             continue
+        # A numbered section title is not a billable question. Some review templates
+        # use one custom list style for both the title and its substantive children.
+        heading = re.sub(r'^(?:[一二三四五六七八九十百\d]+[、.．）)]|[（(][一二三四五六七八九十百\d]+[)）])\s*', '', text)
+        if re.fullmatch(r'(?:对)?(?:申报材料|申请材料|内核申请材料)?(?:的)?(?:审核意见|审查意见|反馈意见|问询问题|问题清单)', heading):
+            continue
         node = paragraphs[i] if i < len(paragraphs) else None
         style = node.find('./' + q('pPr') + '/' + q('pStyle')) if node is not None else None
         style_id = style.get(q('val'), '') if style is not None else ''
@@ -67,23 +72,83 @@ def prepare(source, output, result):
     Path(result).write_text(json.dumps(dict(snapshot=snapshot, questions=questions, warnings=warnings + extra), ensure_ascii=False), encoding='utf8')
 
 
-def paragraph(text, bold=False):
+def paragraph(text, bold=False, markdown=False):
     p = etree.Element(q('p'))
     prop = etree.SubElement(p, q('pPr'))
     etree.SubElement(prop, q('spacing'), {q('after'): '120', q('line'): '276', q('lineRule'): 'auto'})
-    run = etree.SubElement(p, q('r'))
-    rp = etree.SubElement(run, q('rPr'))
-    etree.SubElement(rp, q('rFonts'), {q('ascii'): 'Arial', q('hAnsi'): 'Arial', q('eastAsia'): '宋体'})
-    etree.SubElement(rp, q('sz'), {q('val'): '22'})
-    if bold:
-        etree.SubElement(rp, q('b'))
-    for i, line in enumerate(text.split('\n')):
-        if i:
-            etree.SubElement(run, q('br'))
-        t = etree.SubElement(run, q('t'))
-        t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
-        t.text = line
+    # Model answers share Markdown with the web view. Render simple emphasis as
+    # native Word runs instead of exposing literal ** markers in formal replies.
+    for segment in re.split(r'(\*\*[^*\n]+\*\*)', text) if markdown else [text]:
+        if not segment:
+            continue
+        emphasis = markdown and segment.startswith('**') and segment.endswith('**') and len(segment) > 4
+        run = etree.SubElement(p, q('r'))
+        rp = etree.SubElement(run, q('rPr'))
+        etree.SubElement(rp, q('rFonts'), {q('ascii'): 'Arial', q('hAnsi'): 'Arial', q('eastAsia'): '宋体'})
+        etree.SubElement(rp, q('sz'), {q('val'): '22'})
+        if bold or emphasis:
+            etree.SubElement(rp, q('b'))
+        for i, line in enumerate((segment[2:-2] if emphasis else segment).split('\n')):
+            if i:
+                etree.SubElement(run, q('br'))
+            t = etree.SubElement(run, q('t'))
+            t.set('{http://www.w3.org/XML/1998/namespace}space', 'preserve')
+            t.text = line
     return p
+
+
+def answer_blocks(text):
+    """Render quoted Markdown tables as editable Word tables, preserving all cell text.
+
+    Unknown markup remains literal text. No HTML, links or remote resources are executed.
+    Percentage widths also work when the original question lives inside a table cell.
+    """
+    def cells(line):
+        return [s.strip().replace(r'\|', '|') for s in re.split(r'(?<!\\)\|', line.strip().strip('|'))]
+
+    lines = text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+    index, pending = 0, []
+    while index < len(lines):
+        header = cells(lines[index])
+        separator = cells(lines[index+1]) if index+1 < len(lines) else []
+        if ('|' not in lines[index] or len(header) < 2 or len(separator) != len(header)
+                or not all(re.fullmatch(r':?-{3,}:?', c) for c in separator)):
+            pending.append(lines[index]); index += 1
+            continue
+        if '\n'.join(pending).strip():
+            yield paragraph('\n'.join(pending).strip(), markdown=True)
+        pending = []
+        rows = [header]; index += 2
+        while index < len(lines) and '|' in lines[index] and lines[index].strip():
+            rows.append(cells(lines[index])); index += 1
+        columns = max(len(row) for row in rows)
+        table = etree.Element(q('tbl'))
+        prop = etree.SubElement(table, q('tblPr'))
+        etree.SubElement(prop, q('tblW'), {q('w'): '5000', q('type'): 'pct'})
+        etree.SubElement(prop, q('tblLayout'), {q('type'): 'fixed'})
+        borders = etree.SubElement(prop, q('tblBorders'))
+        for side in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+            etree.SubElement(borders, q(side), {q('val'): 'single', q('sz'): '4', q('color'): 'B8C2BD'})
+        margins = etree.SubElement(prop, q('tblCellMar'))
+        for side in ('top', 'left', 'bottom', 'right'):
+            etree.SubElement(margins, q(side), {q('w'): '80', q('type'): 'dxa'})
+        grid = etree.SubElement(table, q('tblGrid'))
+        for _ in range(columns):
+            etree.SubElement(grid, q('gridCol'))
+        for number, row in enumerate(rows):
+            tr = etree.SubElement(table, q('tr'))
+            if number == 0:
+                trprop = etree.SubElement(tr, q('trPr'))
+                etree.SubElement(trprop, q('tblHeader'))
+            for value in row + [''] * (columns-len(row)):
+                cell = etree.SubElement(tr, q('tc')); cp = etree.SubElement(cell, q('tcPr'))
+                etree.SubElement(cp, q('tcW'), {q('w'): str(5000//columns), q('type'): 'pct'})
+                if number == 0:
+                    etree.SubElement(cp, q('shd'), {q('fill'): 'EDF2EF'})
+                cell.append(paragraph(value, bold=number == 0, markdown=True))
+        yield table
+    if '\n'.join(pending).strip():
+        yield paragraph('\n'.join(pending).strip(), markdown=True)
 
 
 def evidence(source, result):
@@ -114,11 +179,11 @@ def evidence(source, result):
         with tempfile.TemporaryDirectory(prefix='bb-qa-evidence-') as tmp:
             output, meta = Path(tmp) / 'converted.docx', Path(tmp) / 'parsed.json'
             prepare(source, output, meta)
-            data = json.loads(meta.read_text(encoding='utf8'))['snapshot']
+            data = inspect(output, complete=True)
             data.update(format='doc', sha256=hashlib.sha256(source.read_bytes()).hexdigest(), coverage='partial')
             data['warnings'].append('DOC 已转换后提取，定位请对照原稿核对。')
     else:
-        data = inspect(source)
+        data = inspect(source, complete=True)
     Path(result).write_text(json.dumps(data, ensure_ascii=False), encoding='utf8')
 
 
@@ -162,10 +227,14 @@ def fill(source, request, output):
             if ancestor.tag == q('tr'):
                 for height in list(ancestor.findall('./' + q('trPr') + '/' + q('trHeight'))):
                     height.getparent().remove(height)
-        for text, bold in content:
-            new = paragraph(text, bold)
-            anchor.addnext(new)
-            anchor = new
+        for index, (text, bold) in enumerate(content):
+            blocks = answer_blocks(text) if index == 1 else [paragraph(text, bold)]
+            for new in blocks:
+                anchor.addnext(new)
+                anchor = new
+        # A Word cell must end in a paragraph, including when its last answer is a table.
+        if anchor.tag == q('tbl') and anchor.getparent().tag == q('tc'):
+            anchor.addnext(paragraph(''))
     if request.get('warnings'):
         body = root.find(q('body'))
         section = body.find(q('sectPr'))
