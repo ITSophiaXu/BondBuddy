@@ -64,7 +64,7 @@ if(!baseline){
 
   test('contextual errors: lost QA submit receipt retains original identity and explicit retry causes one reservation',async({page})=>{
     const s=await install(page,fixture());s.dropAnswer='after';await page.goto(route());await expect(page.locator('#qa-start')).toBeVisible();
-    await page.locator('#qa-start').click();await page.locator('#qa-confirm').click();
+    await page.locator('#qa-start').click();
     await expect(page.locator('#project-qa-status')).toHaveText('提交结果暂未确认，请先重新读取状态后再继续。');
     const pending=(await recovery(page)).pending;expect(pending?.kind).toBe('answer');expect(s.answers).toHaveLength(1);expect(s.reservations).toHaveLength(1);
     await expect(page.locator('#qa-start')).toBeDisabled();await page.locator('#project-qa-status').scrollIntoViewIfNeeded();
