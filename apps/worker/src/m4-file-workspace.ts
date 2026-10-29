@@ -29,7 +29,9 @@ export async function m4ToolHashes() {
 }
 export function m4AuthorizedSources(input:M4WorkerInput) {
   const template=input.manifest.kind==='document'?input.manifest.template_material:null;
-  return [...input.materials.filter(file=>!template||inputManifestHash(file.pin)!==inputManifestHash(template)).map(file=>({kind:'material',id:file.pin.material_id,project_id:file.pin.source_project_id,
+  const source=input.manifest.kind==='document'?input.manifest.input.source_material:null;
+  return [...input.materials.filter(file=>!template||inputManifestHash(file.pin)!==inputManifestHash(template)
+    ||!!source&&inputManifestHash(file.pin)===inputManifestHash(source)).map(file=>({kind:'material',id:file.pin.material_id,project_id:file.pin.source_project_id,
     version:file.pin.material_version,sha256:file.pin.sha256})),
   ...input.artifacts.map(file=>({kind:'artifact',id:file.pin.artifact_id,project_id:file.pin.source_project_id,
     version:file.pin.artifact_version,sha256:file.pin.sha256}))];
@@ -97,7 +99,10 @@ export async function prepareM4Files(ctx: StageContext, input: M4WorkerInput, sk
     await writeFile(join(cwd,path),content,{mode:0o400});originals.set(path,pin.sha256);
     knowledge={...metadata,path,...(template?{template_id:template.id,template_version:template.version,template_sha256:template.sha256,template_path}:{})};
   }
-  const chosen=material.find(m=>m.purpose==='template');
+  // A single immutable material can be explicitly selected as both source and template.
+  const selectedPin=input.manifest.kind==='document'?input.manifest.template_material:null;
+  const chosen=selectedPin?material.find(m=>m.source_project_id===selectedPin.source_project_id
+    &&m.material_id===selectedPin.material_id&&m.material_version===selectedPin.material_version&&m.sha256===selectedPin.sha256):undefined;
   let selected_template=null;
   if(input.manifest.kind==='document'&&input.manifest.input.template){
     if(!chosen)throw Error('INPUT_REVISION_CONFLICT');
