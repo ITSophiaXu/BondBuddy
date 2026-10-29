@@ -99,3 +99,12 @@ test('a unique verbatim quote repairs a locator typo, but ambiguous or invented 
  assert.equal(qaHasGroundedCitations({...proposal,citations:[]},evidence),false);
  assert.equal(qaHasGroundedCitations({...proposal,citations:[{asset_index:0,span_id:'p0',quote:'募集资金5亿元偿还到期债务。保证不存在风险。'}]},evidence),false);
 });
+
+test('an unanswered question retains local requests and discards all uncited model prose',()=>{
+ const evidence=[snapshot([{text:'募集资金5亿元偿还到期债务。'}])],input={cases:[]} as unknown as QaInput;
+ const proposal={question_id:q.id,answer:'无依据的结论：回款率100%。',status:'missing' as const,missing_materials:['2026年10月末实际回款金额。'],citations:[],case_ids:[],approach:''};
+ const result=groundedQaAnswer(proposal,q,input,evidence);
+ assert.equal(result.status,'missing');assert.deepEqual(result.citations,[]);
+ assert.deepEqual(result.missing_materials,proposal.missing_materials);
+ assert.match(result.answer,/暂无法形成有依据的回答/);assert.doesNotMatch(result.answer,/100%|引文未能|合同|审计报告/);
+});
