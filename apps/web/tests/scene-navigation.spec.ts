@@ -30,6 +30,7 @@ async function expectScope(page:Page,work:string,run:string|null,apiProject=exec
 
 test('scene navigation keeps the original project through QA history and next-round preparation',async({page})=>{
   const state=qaFixture();state.otherProject.name='原债券项目';await installQa(page,state);await page.goto(`/#qa?project=${qaExecution}&run=${qaAnswer}&return_project=${qaOriginal}`);
+  await page.getByRole('button',{name:'准备下一轮',exact:true}).click();
   await expect(page.locator('#qa-continue')).toBeVisible();
   await expect(page.getByRole('link',{name:'项目文件 →'})).toHaveAttribute('href',`#/projects/${qaOriginal}/files?folder=4.2`);
   await page.locator('#qa-continue').click();await expectScope(page,'qa',null,qaExecution,qaOriginal);

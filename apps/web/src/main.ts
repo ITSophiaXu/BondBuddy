@@ -11,7 +11,7 @@ import { ProjectFiles, clearProjectFileViews } from './project-files';
 import { BillingPage } from './billing-page';
 import { CreditWallet } from './credit-wallet';
 import { ProjectAssistant } from './project-assistant';
-import { projectListContext, withProjectContext, projectBackLink, projectSection, navigationProjectContext, projectWorkHref, rechargeHref, type ProjectWork } from './project-navigation';
+import { projectListContext, withProjectContext, projectBackLink, projectSection, navigationProjectContext, projectWorkHref, rechargeHref } from './project-navigation';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
 import { renderRecoveryPage } from './recovery';
 import { ProjectBrowser } from './project-browser';
@@ -309,11 +309,10 @@ function mountAccountIdentity() {
 
 function shell(content: string, section: string) {
   const context=navigationProjectContext(location.hash);
-  const work=(kind:ProjectWork)=>context?projectWorkHref(kind,context.projectId).slice(1):kind;
   const nav = (route: string, ico: string, label: string, active: boolean, pending = false) => `<a href="#${route}" class="nav-item ${active ? 'active' : ''}" ${active ? 'aria-current="page"' : ''}>${prototypeIcon(ico)}<span>${label}</span>${pending ? '<small class="nav-pending">未开放</small>' : ''}</a>`;
   root.innerHTML = `<div class="prototype-app"><aside class="sidebar" id="sidebar"><button class="mobile-menu-close icon-btn" id="close-menu" aria-label="关闭菜单">${prototypeIcon('close')}</button><a class="brand" href="#tasks"><img src="/favicon.svg" alt=""/>bondbuddy<small>BETA</small></a>
     <div class="workspace"><div class="workspace-icon">${prototypeIcon('building')}</div><div><strong>我的工作空间</strong><small>PERSONAL WORKSPACE</small></div></div>
-    <nav aria-label="主导航">${nav('tasks','folder','全部项目',section === 'projects')}<div class="nav-label">${context?'继续这个项目':'开始工作'}</div>${nav(work('update'),'update','更新募集书',section === 'new' || section === 'workspace')}${nav(work('review'),'review','复核募集书',section === 'review')}${nav(work('generate'),'spark','文件生成',section === 'generate')}${nav(work('integrity'),'shield','诚信核查',section === 'integrity')}${nav(work('qa'),'chat','项目问答',section === 'qa')}</nav>
+    <nav aria-label="主导航">${nav('tasks','folder','全部项目',section === 'projects')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','文件生成',section === 'generate')}${nav('integrity','shield','诚信核查',section === 'integrity')}${nav('qa','chat','项目问答',section === 'qa')}</nav>
     <div class="sidebar-bottom"><section class="credit-wallet" data-credit-wallet="sidebar" aria-label="积分余额"></section><nav aria-label="账号">${nav(rechargeHref().slice(1),'settings','我的账号',section === 'account')}</nav><div class="user account"><span class="avatar" aria-hidden="true">我</span><strong data-account-name aria-label="当前登录账号">当前账号</strong><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
     <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '文件生成' : section === 'integrity' ? '诚信核查' : section === 'qa' ? '项目问答' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '积分与充值' : '全部项目'}</span></div><div class="top-actions"><span class="top-plan-link">按任务使用积分</span><div class="mobile-credit-wallet" data-credit-wallet="compact"></div></div></header>
     <main id="main" tabindex="-1">${context?`<section class="project-context" aria-label="当前项目"><div><small>正在处理</small><strong data-project-context-name>${esc(projectNames.get(context.projectId)??'当前项目')}</strong></div><a href="${projectWorkHref('files',context.projectId)}">返回本项目文件</a></section>`:''}${content}</main></div></div>`;

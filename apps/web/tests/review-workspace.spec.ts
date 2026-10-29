@@ -2,8 +2,9 @@ import { taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Value } from '@sinclair/typebox/value';
-import { schemas, ReviewDraftRequestSchema, ReviewExecutionRequestSchema, ReviewMessageRequestSchema, ReviewPlanRequestSchema, isReviewReport,
+import { schemas, INTEGRITY_PRICE, ReviewDraftRequestSchema, ReviewExecutionRequestSchema, ReviewMessageRequestSchema, ReviewPlanRequestSchema, isReviewReport,
   type ReviewWorkspace, type ReviewDraftInput, type ReviewReport, type ReviewEvidenceRef, type ReviewContext, type ReviewMessageRequest,
   type ReviewExecutionRequest, type ReviewPlanRequest, type ReviewProposal, type ReviewProposalV2, type ReviewProposalAdoptionRequest, type ReviewProposalAdoptionResponse, type ReviewHistoryEntry, type ReviewRevisionHandling, type Run, type RunEvent } from '@bondbuddy/contracts';
 import type { Dto } from '../src/api';
@@ -1146,4 +1147,76 @@ test('old browser draft cannot reintroduce a question file omitted by the review
   await page.locator('#review-requirements').fill('保留本机补充要求');await page.getByRole('button',{name:'保存要求',exact:true}).click();
   await expect.poll(()=>state.workspace.draft.requirements).toEqual(['保留本机补充要求']);
   expect(state.workspace.draft.material_versions.map(m=>m.material_id)).toEqual(['material-0','material-1']);
+});
+
+const taskEntries=[
+  {route:'integrity',label:'诚信核查',next:'下一步：名单与网站范围'},
+  {route:'update',label:'更新募集书',next:'进入更新募集书'},
+  {route:'review',label:'复核募集书',next:'下一步：材料与要求'},
+  {route:'generate',label:'文件生成',next:'打开文件生成'},
+  {route:'qa',label:'项目问答',next:'下一步：确认项目资料'},
+];
+const finishedReview=`#/projects/${id}/review?tab=results&report_id=report-v1&from=projects&return_project=${id}`;
+async function installTaskEntryProjects(page:Page){
+  const other={...fixture().workspace.project,project_id:'another-task-project',name:'另一个核查项目',issuer_name:'另一家发行人'};
+  await page.route('**/api/v1/projects?*',route=>reply(route,200,{items:[fixture().workspace.project,other],page:{next_cursor:null,has_more:false}}));
+  await page.route(`**/api/v1/projects/${other.project_id}`,route=>reply(route,200,other));
+  await page.route(`**/api/v1/projects/${other.project_id}/integrity`,route=>reply(route,200,{draft:{subjects:[],site_ids:[],notes:''},revision:1,price:INTEGRITY_PRICE,rounds:[]}));
+  return other;
+}
+async function clickTaskEntry(page:Page,label:string){
+  if(page.viewportSize()!.width<960)await page.getByRole('button',{name:'打开菜单',exact:true}).click();
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('link',{name:label,exact:true}).click();
+}
+
+for(const width of [1440,390])test(`completed review starts every sidebar task with no selected project (${width}px)`,async({page})=>{
+  test.setTimeout(60000);
+  await page.setViewportSize({width,height:width===1440?960:844});
+  await setup(page,fixture(),finishedReview);await installTaskEntryProjects(page);
+  const writes:string[]=[];page.on('request',request=>{if(request.url().includes('/api/v1/')&&!['GET','HEAD'].includes(request.method()))writes.push(request.url());});
+  for(const entry of taskEntries){
+    await expect(page.locator('.review-findings')).toBeVisible();
+    await clickTaskEntry(page,entry.label);
+    await expect.poll(()=>page.evaluate(()=>location.hash)).toBe('#'+entry.route);
+    await expect(page.locator('.project-context')).toHaveCount(0);
+    if(entry.route==='update')await page.locator('details.update-entry-existing > summary').click();
+    await expect(page.locator('.update-project-option')).toHaveCount(2);
+    await expect(page.locator('.update-project-option input:checked')).toHaveCount(0);
+    await expect(page.locator('#project-entry-selection')).toHaveText('请选择一个项目');
+    await expect(page.getByRole('button',{name:entry.next,exact:true})).toBeDisabled();
+    await expect(page.getByRole(entry.route==='update'||entry.route==='review'?'link':'button',{name:'＋ 新建项目',exact:true})).toBeVisible();
+    if(process.env.BB_TASK_ENTRY_EVIDENCE&&entry.route==='integrity'){
+      await page.screenshot({path:join(process.env.BB_TASK_ENTRY_EVIDENCE,`implementation-${width}.png`)});
+      if(width<960){
+        await page.getByRole('button',{name:'打开菜单',exact:true}).click();
+        await page.screenshot({path:join(process.env.BB_TASK_ENTRY_EVIDENCE,`menu-${width}.png`)});
+        await page.locator('#close-menu').click();
+      }
+    }
+    await page.goBack();
+    await expect.poll(()=>page.evaluate(()=>({path:location.hash.split('?')[0],...Object.fromEntries(new URLSearchParams(location.hash.split('?')[1]))}))).toEqual({path:`#/projects/${id}/review`,tab:'results',report_id:'report-v1',run:'run-1',from:'projects',return_project:id});
+  }
+  await expect(page.locator('.review-findings')).toBeVisible();expect(writes).toEqual([]);
+});
+
+test('after review, integrity can create a blank project or explicitly use a different project',async({page})=>{
+  await setup(page,fixture(),finishedReview);const other=await installTaskEntryProjects(page);
+  const reads:string[]=[];page.on('request',request=>{if(request.url().includes('/integrity'))reads.push(new URL(request.url()).pathname);});
+  await clickTaskEntry(page,'诚信核查');
+  await page.getByRole('button',{name:'＋ 新建项目',exact:true}).click();
+  const dialog=page.getByRole('dialog');
+  await expect(dialog.getByLabel('项目名称',{exact:true})).toHaveValue('');
+  await expect(dialog.getByLabel('发行人全称',{exact:true})).toHaveValue('');
+  await page.keyboard.press('Escape');
+  await page.locator(`.update-project-option input[value="${other.project_id}"]`).check();
+  await page.getByRole('button',{name:'下一步：名单与网站范围',exact:true}).click();
+  await expect(page.locator('.pf-project-strip strong')).toHaveText(other.name);
+  await expect.poll(()=>page.evaluate(()=>location.hash)).toBe('#integrity?project='+other.project_id);
+  expect(reads).toEqual([`/api/v1/projects/${other.project_id}/integrity`]);
+  await expect(page.getByRole('link',{name:'返回本项目文件',exact:true})).toHaveAttribute('href',`#/projects/${other.project_id}/files`);
+  await clickTaskEntry(page,'项目问答');
+  await expect(page.locator('#project-entry-selection')).toHaveText('请选择一个项目');
+  await clickTaskEntry(page,'诚信核查');
+  await expect(page.locator('.update-project-option input:checked')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'下一步：名单与网站范围',exact:true})).toBeDisabled();
 });
