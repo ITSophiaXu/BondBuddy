@@ -86,6 +86,7 @@ import {installCommerce} from './commerce.js';
 import {installSubscriptions} from './subscriptions.js';
 import {configureAutomaticBilling} from './automatic-billing-context.js';
 import {paymentProvidersFromEnv} from './payment-provider-config.js';
+import {installPaymentReconciliation} from './payment-reconciliation.js';
 
 export type Principal = { userId: string; csrfVerified: boolean; sessionId?: string };
 export type Settings = { enableSubscriptionBilling?: boolean; enableOutcomePricing?: boolean; paymentProviders?: readonly PaymentProvider[]; enablePaidAuthoring?: boolean; enablePaidReview?: boolean; pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
@@ -199,6 +200,7 @@ export function createServer(settings: Settings = {}) {
   registerQaKnowledge(app, db, owner);
   registerReadableReview(app, db, owner, blob);
   installPayments(app,pool,owner,paidAuthoring&&!commercial,paymentProviders);
+  installPaymentReconciliation(app,pool,paymentProviders);
   installCommerce(app,pool,owner,commercial,paymentProviders);
   installSubscriptions(app,pool,owner,subscriptionBilling,paymentProviders);
   app.post('/api/v1/projects/:project_id/target-period-evidence-decisions',{
@@ -1903,6 +1905,8 @@ export function createServer(settings: Settings = {}) {
     return reply.header('cache-control','no-store').send(result);
   });
   app.post('/api/v1/conversations/:conversation_id/messages',async request=>{await owner(request);throw unavailable();});
+  // Reconciliation's onClose hook drains before a server-owned connection pool closes.
+  if(!settings.pool)app.addHook('onClose',async()=>{await pool.end();});
   return app;
 }
 
@@ -1916,5 +1920,9 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid PORT');
   // Spool files left by a killed process are never resumed; clear them before accepting uploads.
   await clearSpoolDirectory();
+  let closing=false;
+  const shutdown=()=>{if(closing)return;closing=true;void app.close().catch(()=>{process.exitCode=1;});};
+  process.once('SIGTERM',shutdown);
+  process.once('SIGINT',shutdown);
   app.listen({host:process.env.HOST??'127.0.0.1',port}).catch(error=>{app.log.error(error);process.exitCode=1;});
 }

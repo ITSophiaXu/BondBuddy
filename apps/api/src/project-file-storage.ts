@@ -36,7 +36,7 @@ export async function projectFileFamily(c:PoolClient,owner:string,id:string,type
   if(!PROJECT_DOCUMENT_CATALOG.some(d=>d.id===type))throw new Problem(422,'VALIDATION_FAILED','请选择文件清单中的类型。');
   const p=await project(c,owner,id,true);if(p.archived_at)throw conflict('INPUT_REVISION_CONFLICT','请先恢复已归档项目。');
   return (await c.query(`INSERT INTO bb_project_files(id,owner_user_id,project_id,document_type) VALUES($1,$2,$3,$4)
-    ON CONFLICT(project_id,document_type) DO UPDATE SET document_type=EXCLUDED.document_type RETURNING *`,[uid(),owner,id,type])).rows[0];
+    ON CONFLICT(project_id,document_type,identity_key) DO UPDATE SET document_type=EXCLUDED.document_type RETURNING *`,[uid(),owner,id,type])).rows[0];
 }
 
 export async function appendProjectFile(c:PoolClient,owner:string,family:any,input:{filename:string;asset:ProjectFileAsset;revision_asset?:ProjectFileAsset;
@@ -54,7 +54,7 @@ export async function appendProjectFile(c:PoolClient,owner:string,family:any,inp
   return v;
 }
 
-export async function projectFileVersions(db:Db,owner:string,id:string):Promise<ProjectFileVersion[]>{
+export async function projectFileVersions(db:Db,owner:string,id:string,includeWorkpapers=false):Promise<ProjectFileVersion[]>{
   await project(db,owner,id);const source=await projectFileSource(db,owner,id);
   const checks=(await db.query(`SELECT o.*,r.state FROM bb_project_file_operations o JOIN bb_runs r ON r.owner_user_id=o.owner_user_id AND r.id=o.run_id
     WHERE o.owner_user_id=$1 AND o.project_id=$2 AND o.operation='check' ORDER BY o.created_at DESC`,[owner,id])).rows;
@@ -69,7 +69,7 @@ export async function projectFileVersions(db:Db,owner:string,id:string):Promise<
     JOIN bb_project_file_versions v ON v.owner_user_id=f.owner_user_id AND v.file_id=f.id
     LEFT JOIN bb_prospectus_versions s ON s.owner_user_id=v.owner_user_id AND s.id=v.source_version_id
     LEFT JOIN bb_runs r ON r.owner_user_id=v.owner_user_id AND r.id=v.run_id
-    WHERE f.owner_user_id=$1 AND f.project_id=$2 AND (v.run_id IS NULL OR r.state='succeeded') ORDER BY v.created_at DESC,v.id DESC`,[owner,id])).rows;
+    WHERE f.owner_user_id=$1 AND f.project_id=$2 AND ($3 OR f.document_type<>'workpaper') AND (v.run_id IS NULL OR r.state='succeeded') ORDER BY v.created_at DESC,v.id DESC`,[owner,id,includeWorkpapers])).rows;
   return rows.map(row=>{
     const check=checks.find(c=>c.manifest.files.some((f:any)=>f.file_id===row.file_id));
     let status:ProjectFileVersion['consistency']['status']=row.source_version_id&&row.source_version_id!==source?.version_id?'stale':'unchecked',count=0;
@@ -93,12 +93,49 @@ export async function projectFileVersions(db:Db,owner:string,id:string):Promise<
   });
 }
 
+/** Current maintenance descendants never replace another batch's original pin. */
+export async function workpaperFileVersions(db:Db,owner:string,id:string){
+  const versions=await projectFileVersions(db,owner,id,true),byId=new Map(versions.map(v=>[v.version_id,v]));
+  const rows=(await db.query(`WITH RECURSIVE descendants AS (
+    SELECT b.batch_id,b.item_id,b.original_version_id,b.original_version_id AS version_id,b.file_id
+    FROM bb_workpaper_file_bindings b JOIN bb_project_files f ON f.owner_user_id=b.owner_user_id AND f.id=b.file_id
+    WHERE b.owner_user_id=$1 AND f.project_id=$2
+    UNION
+    SELECT d.batch_id,d.item_id,d.original_version_id,v.id,d.file_id FROM descendants d
+    JOIN bb_project_file_operations o ON o.owner_user_id=$1 AND o.operation='patch' AND o.manifest->>'file_version_id'=d.version_id
+    JOIN bb_runs r ON r.owner_user_id=o.owner_user_id AND r.id=o.run_id AND r.state='succeeded'
+    JOIN bb_project_file_versions v ON v.owner_user_id=o.owner_user_id AND v.run_id=o.run_id AND v.file_id=d.file_id
+  ) SELECT DISTINCT ON(d.batch_id,d.item_id) d.* FROM descendants d JOIN bb_project_file_versions v ON v.owner_user_id=$1 AND v.id=d.version_id
+  JOIN bb_project_files family ON family.owner_user_id=v.owner_user_id AND family.id=v.file_id
+  ORDER BY d.batch_id,d.item_id,(v.id=family.latest_version_id) DESC,v.sequence DESC`,[owner,id])).rows;
+  return new Map(rows.flatMap(r=>{const original=byId.get(r.original_version_id),current=byId.get(r.version_id);return original&&current?[[r.batch_id+':'+r.item_id,{original,current}] as const]:[];}));
+}
+
+async function registerWorkpaperFile(c:PoolClient,run:any,artifact:{id:string;version:number}){
+  const owner=run.owner_user_id,item=(await c.query(`SELECT i.*,b.project_id,b.source FROM bb_workpaper_items i
+    JOIN bb_workpaper_batches b ON b.owner_user_id=i.owner_user_id AND b.id=i.batch_id
+    LEFT JOIN bb_workpaper_item_results w ON w.owner_user_id=i.owner_user_id AND w.run_id=i.run_id
+    WHERE i.owner_user_id=$1 AND i.run_id=$2 AND coalesce(i.explanation,w.explanation) IS NULL`,[owner,run.id])).rows[0];
+  if(!item)return;
+  const delivered=(await c.query(`SELECT a.* FROM bb_artifact_versions a WHERE a.owner_user_id=$1 AND a.run_id=$2 AND a.id=$3 AND a.version=$4
+    AND a.delivery_status='available' AND a.quality_status='passed' AND a.media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'`,[owner,run.id,artifact.id,artifact.version])).rows[0];
+  if(!delivered)throw missing();
+  const entry=item.manifest.input.workpaper.entry;
+  await project(c,owner,item.project_id,true);
+  const family=(await c.query(`INSERT INTO bb_project_files(id,owner_user_id,project_id,document_type,identity_key)
+    VALUES($1,$2,$3,'workpaper',bb_workpaper_identity_key($4::jsonb))
+    ON CONFLICT(project_id,document_type,identity_key) DO UPDATE SET document_type=EXCLUDED.document_type RETURNING *`,[uid(),owner,item.project_id,entry])).rows[0];
+  const asset:ProjectFileAsset={kind:'artifact',pin:{source_project_id:run.project_id,artifact_id:delivered.id,artifact_version:delivered.version,sha256:delivered.sha256.trim()}};
+  const metadata=(await c.query('SELECT result,result_hash FROM bb_project_file_generation_links WHERE owner_user_id=$1 AND run_id=$2',[owner,run.id])).rows[0];
+  const links=metadata&&inputManifestHash(metadata.result)===metadata.result_hash.trim()&&metadata.result.source_sha256===item.source.asset.pin.sha256&&metadata.result.target_sha256===asset.pin.sha256?metadata.result.links:[];
+  const version=await appendProjectFile(c,owner,family,{filename:entry.path.split('/').at(-1),asset,source_version_id:item.source.version_id,run_id:run.id,links});
+  await c.query(`INSERT INTO bb_workpaper_file_bindings(owner_user_id,batch_id,item_id,file_id,original_version_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT(batch_id,item_id) DO NOTHING`,[owner,item.batch_id,item.item_id,family.id,version.id]);
+}
+
 /** Runs inside queue.finish's locked transaction; failed/unpublished outputs never replace a current file. */
 export async function registerProjectFileOutcome(c:PoolClient,run:any,artifact:{id:string;version:number},pair:any){
   const input=(await c.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[run.owner_user_id,run.project_id,run.input_revision])).rows[0]?.manifest;
-  // Catalogue items have independent identities in bb_workpaper_items; they are not
-  // successive versions of the twelve fixed project document families.
-  if(input?.version==='m4-document-input-v1'&&input.input?.document_type==='workpaper')return;
+  if(input?.version==='m4-document-input-v1'&&input.input?.document_type==='workpaper')return registerWorkpaperFile(c,run,artifact);
   const link=input?.kind==='document'?input.input?.project_file:null;
   const operation=input?.version==='project-file-operation-v1'?input:null;
   if(!link&&operation?.operation!=='patch'&&!(input?.kind==='document'&&input?.version==='m4-document-input-v1'))return;

@@ -1,0 +1,26 @@
+✔ Chinese XML decimal references preserve catalogue headers, cells and sheet names (21.9451ms)
+✔ Chinese XML hex references preserve catalogue headers, cells and sheet names (6.8871ms)
+✔ 500 real XLSX rows, shared strings and merged classification cells retain exact ordering (56.4007ms)
+✔ directories, duplicate paths, unsafe characters and multiple worksheets (0.8147ms)
+✔ formula titles are never executed or treated as cached facts (6.9213ms)
+✔ unnumbered directory groups retain following files; duplicate row IDs are rejected (7.1262ms)
+✔ empty, oversized catalogues and malformed ZIP fail explicitly (6.8324ms)
+✔ audit checklist 项目 headers and numbered summary records are retained (1.3665ms)
+✔ real API/PG: generation → library/preview/ZIP → changed prospectus → mapped impact, stale check and owner isolation (synthetic model) (8351.5318ms)
+✔ Chinese XML decimal references preserve catalogue headers, cells and sheet names (31.5694ms)
+✔ Chinese XML hex references preserve catalogue headers, cells and sheet names (9.0987ms)
+✔ 500 real XLSX rows, shared strings and merged classification cells retain exact ordering (52.8634ms)
+✔ directories, duplicate paths, unsafe characters and multiple worksheets (0.7166ms)
+✔ formula titles are never executed or treated as cached facts (6.8586ms)
+✔ unnumbered directory groups retain following files; duplicate row IDs are rejected (4.705ms)
+✔ empty, oversized catalogues and malformed ZIP fail explicitly (6.2818ms)
+✔ audit checklist 项目 headers and numbered summary records are retained (1.1563ms)
+✔ workpapers: real per-file paid batch, atomic shortage, partial delivery, maintenance, version identity and isolation (19654.835ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28309.6462

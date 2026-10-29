@@ -38,17 +38,18 @@ test('synthetic subscriptions share the wallet, retain original cash rights, ref
   };
   // This is explicitly a synthetic delivered-allocation fixture, not a generated
   // document or provider-quality test. It exercises the real immutable money rules.
-  const settleFixture=async(who:string,lotId:string,points:number)=>transaction(pool,async c=>{
+  const settleFixture=async(who:string,lotId:string,points:number,held=false)=>transaction(pool,async c=>{
     await lockCreditAccount(c,who);const project=uid(),run=uid(),quote=uid(),reservation=uid(),hash='a'.repeat(64);
     const version=(await c.query("SELECT id FROM bb_credit_price_versions WHERE pricing_mode='legacy_credit' ORDER BY effective_at LIMIT 1")).rows[0].id;
     await c.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic allocation fixture','generation')",[project,who]);
     await c.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,1,$2,1,$3,'{}','[]','[]')",[project,who,hash]);
     await c.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,1,$4,$1,'generation',$4,'queued')",[run,who,project,hash]);
     await c.query("INSERT INTO bb_credit_quotes(id,owner_user_id,project_id,input_revision,input_hash,price_version,task_type,points,reason) VALUES($1,$2,$3,1,$4,$5,'annual',$6,'synthetic settled allocation fixture')",[quote,who,project,hash,version,points]);
-    await c.query("INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,charged_points,state,finalized_at,billing_policy) VALUES($1,$2,$3,$4,$5,$5,'settled',now(),'on_delivery')",[reservation,who,run,quote,points]);
-    await c.query('INSERT INTO bb_credit_allocations(reservation_id,lot_id,points,charged_points) VALUES($1,$2,$3,$3)',[reservation,lotId,points]);
-    await c.query('UPDATE bb_credit_lots SET remaining=remaining-$2 WHERE id=$1',[lotId,points]);
-    await c.query("INSERT INTO bb_credit_events(id,owner_user_id,event_key,kind,points,lot_id,reservation_id,run_id,actor,reason) VALUES($1,$2,$1,'settle',$3,$4,$5,$6,'synthetic','synthetic delivered allocation')",[uid(),who,points,lotId,reservation,run]);
+    await c.query("INSERT INTO bb_credit_reservations(id,owner_user_id,run_id,quote_id,points,charged_points,state,finalized_at,billing_policy) VALUES($1,$2,$3,$4,$5,$6,$7,CASE WHEN $7='settled' THEN now() ELSE NULL END,'on_delivery')",[reservation,who,run,quote,points,held?null:points,held?'held':'settled']);
+    if(held)await c.query("UPDATE bb_runs SET billing_mode='fixed_credits',reservation_id=$2 WHERE id=$1",[run,reservation]);
+    await c.query('INSERT INTO bb_credit_allocations(reservation_id,lot_id,points,charged_points) VALUES($1,$2,$3,$4)',[reservation,lotId,points,held?null:points]);
+    await c.query(held?'UPDATE bb_credit_lots SET frozen=frozen+$2 WHERE id=$1':'UPDATE bb_credit_lots SET remaining=remaining-$2 WHERE id=$1',[lotId,points]);
+    await c.query("INSERT INTO bb_credit_events(id,owner_user_id,event_key,kind,points,lot_id,reservation_id,run_id,actor,reason) VALUES($1,$2,$1,$7,$3,$4,$5,$6,'synthetic','synthetic allocation')",[uid(),who,points,lotId,reservation,run,held?'reserve':'settle']);
     return{run,reservation};
   });
   try{
@@ -107,18 +108,36 @@ test('synthetic subscriptions share the wallet, retain original cash rights, ref
       await assert.rejects(requestPaymentRefund(pool,who,a.order.order_id,{request_id:uid(),amount_fen:1},[provider]));
       const input={request_id:uid(),amount_fen:19900};const r=await requestPaymentRefund(pool,who,a.order.order_id,input,[provider]);assert.equal(r.state,'processing');
       assert.deepEqual(await creditBalance(pool,who),{available:0,frozen:21000});
+      const heldAccount=await subscriptionAccount(pool,who);
+      assert.equal(heldAccount.task_held_points,0);assert.equal(heldAccount.refund_held_points,21000);
+      assert.equal(heldAccount.periods[0].task_held_points,0);assert.equal(heldAccount.periods[0].refund_held_points,21000);
       assert.equal((await requestPaymentRefund(pool,who,a.order.order_id,input,[provider])).refund_id,r.refund_id);
       await assert.rejects(requestPaymentRefund(pool,who,a.order.order_id,{...input,request_id:uid()},[provider]));
       const receipt={...refunds.get(r.refund_id)!,state:'succeeded' as const};refunds.set(r.refund_id,receipt);
       await Promise.all([applyVerifiedRefund(pool,provider,receipt),refreshPaymentRefund(pool,who,r.refund_id,[provider])]);
       assert.deepEqual(await creditBalance(pool,who),{available:0,frozen:0});
       const account=await subscriptionAccount(pool,who);assert.equal(account.periods[0].status,'refunded');assert.equal(account.subscription!.status,'cancelled');
+      assert.equal(account.task_held_points,0);assert.equal(account.refund_held_points,0);
       assert.equal(await transaction(pool,c=>resolveActiveSubscriptionPrice(c,who)),null);
       assert.equal(Number((await pool.query("SELECT count(*) n FROM bb_credit_events WHERE owner_user_id=$1 AND kind='refund_settle'",[who])).rows[0].n),1);
       await applyVerifiedPayment(pool,provider,a.receipt);assert.equal((await creditBalance(pool,who)).available,0,'late payment callback never reissues a refunded period');
       eligibility=await paymentRefundEligibility(pool,who,a.order.order_id,[provider]);assert.equal(eligibility.enabled,false);
       const replacement=await createSubscriptionCheckout(pool,who,{request_id:uid(),plan_id:'professional',provider:'wechat'},[provider]);
       assert.equal(replacement.order.amount_fen,49900,'refunded period must not prevent a new purchase for another month');
+    });
+    await t.test('task and cash-refund holds are separate in the same wallet and each period',async()=>{
+      const who=await owner(),a=await buy(who);refundMode='processing';
+      const topup=await createServiceTopup(pool,who,{request_id:uid(),provider:'wechat',amount_fen:1000},[provider]);
+      await applyVerifiedPayment(pool,provider,{...payments.get(topup.order_id)!,state:'paid',transactionId:'synthetic-'+topup.order_id,payerCash:{amountFen:1000,currency:'CNY'}});
+      const lot=(await pool.query('SELECT id FROM bb_credit_lots WHERE source_key=$1',[`recharge:${topup.order_id}`])).rows[0];
+      await settleFixture(who,lot.id,200,true);
+      await requestPaymentRefund(pool,who,a.order.order_id,{request_id:uid(),amount_fen:19900},[provider]);
+      const account=await subscriptionAccount(pool,who);
+      assert.equal(account.available_points,800);assert.equal(account.held_points,21200);
+      assert.equal(account.task_held_points,200);assert.equal(account.refund_held_points,21000);
+      assert.equal(account.periods[0].held_points,21000);assert.equal(account.periods[0].task_held_points,0);assert.equal(account.periods[0].refund_held_points,21000);
+      const other=await subscriptionAccount(pool,await owner());assert.equal(other.task_held_points,0);assert.equal(other.refund_held_points,0);
+      const audit=await auditCredits(pool);assert.equal(audit.consistent,true,JSON.stringify(audit));
     });
     await t.test('consumption prevents subscription cash refund; expired correction preserves original paid ratio',async()=>{
       const who=await owner(),a=await buy(who),lot=(await pool.query('SELECT * FROM bb_credit_lots WHERE source_key=$1',[`recharge:${a.order.order_id}`])).rows[0];

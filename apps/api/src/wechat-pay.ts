@@ -1,7 +1,8 @@
-import { createDecipheriv, createPrivateKey, createPublicKey, randomBytes, sign, verify, X509Certificate, type KeyObject } from 'node:crypto';
+import { createDecipheriv, createHash, createPrivateKey, createPublicKey, randomBytes, sign, verify, X509Certificate, type KeyObject } from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 import type { PaymentOrder, PaymentProvider, VerifiedPayment } from './payments.js';
 import type { RefundOrder,VerifiedRefund } from './payment-refunds.js';
+import {parsePaymentStatement,statementDate,emptyStatementTotals,type PaymentStatementRequest,type StatementAccount,type VerifiedPaymentStatement} from './payment-statements-format.js';
 
 const API_ORIGIN = 'https://api.mch.weixin.qq.com';
 const MAX_BODY_BYTES = 65536;
@@ -18,6 +19,8 @@ export type WechatPayOptions = {
   notifyUrl: string;
   /** Explicitly configured original-payment refund callback; absent means refunds remain disabled. */
   refundNotifyUrl?: string;
+  statementsEnabled?:boolean;
+  statementAccounts?:readonly StatementAccount[];
   /** Out-of-band trusted pins, never loaded from a callback or response URL. */
   platformKeys: readonly WechatPayPlatformKey[];
   timeoutMs?: number;
@@ -27,7 +30,7 @@ export type WechatPayDependencies = {
   fetch?: typeof globalThis.fetch;
   now?: () => number;
 };
-type FailureCode = 'CONFIG_INVALID' | 'ORDER_INVALID' | 'SIGNATURE_INVALID' | 'PAYLOAD_INVALID' | 'RECEIPT_INVALID' | 'HTTP_ERROR' | 'ORDER_NOT_FOUND' | 'TIMEOUT' | 'TRANSPORT_ERROR';
+type FailureCode = 'CONFIG_INVALID' | 'ORDER_INVALID' | 'SIGNATURE_INVALID' | 'PAYLOAD_INVALID' | 'RECEIPT_INVALID' | 'HTTP_ERROR' | 'ORDER_NOT_FOUND' | 'STATEMENT_NOT_FOUND' | 'STATEMENT_INVALID' | 'TIMEOUT' | 'TRANSPORT_ERROR';
 /** Messages/codes contain no request body, provider error body, key material or credentials. */
 export class WechatPayError extends Error {
   constructor(readonly code: FailureCode) { super(`WeChat Pay ${code}`); this.name = 'WechatPayError'; }
@@ -111,6 +114,8 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
         notify.username || notify.password || notify.hash || notify.search ||
         refundNotify&&(refundNotify.protocol!=='https:'||!refundNotify.hostname||refundNotify.username||refundNotify.password||refundNotify.hash||refundNotify.search)||
         !Number.isInteger(timeoutMs) || timeoutMs < 10 || timeoutMs > 30000 ||
+        options.statementsEnabled!==undefined&&typeof options.statementsEnabled!=='boolean'||
+        options.statementAccounts!==undefined&&(!Array.isArray(options.statementAccounts)||!options.statementAccounts.length||options.statementAccounts.some(a=>!['BASIC','OPERATION','FEES'].includes(a))||new Set(options.statementAccounts).size!==options.statementAccounts.length)||
         !Array.isArray(options.platformKeys) || options.platformKeys.length < 1 || options.platformKeys.length > 8 || typeof fetcher !== 'function') return fail('CONFIG_INVALID');
     merchantKey = rsa(createPrivateKey(options.merchantPrivateKeyPem));
     pins = new Map(options.platformKeys.map(value => pin(value, now())));
@@ -119,6 +124,7 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
   } catch { return fail('CONFIG_INVALID'); }
   // Capture primitive configuration; later mutation of an injected options object cannot change the merchant.
   const merchantId = options.merchantId, appId = options.appId, merchantSerial = options.merchantCertificateSerial.toUpperCase(), notifyUrl = options.notifyUrl,refundNotifyUrl=options.refundNotifyUrl;
+  const statementsEnabled=options.statementsEnabled===true,statementAccounts=Object.freeze([...(options.statementAccounts??['BASIC'])]) as readonly StatementAccount[];
   function verifyMessage(headers: FastifyRequest['headers'] | Headers, rawBody: string) {
     if (typeof rawBody !== 'string' || Buffer.byteLength(rawBody, 'utf8') > MAX_BODY_BYTES) return fail('SIGNATURE_INVALID');
     const timestamp = header(headers, 'wechatpay-timestamp'), nonce = header(headers, 'wechatpay-nonce');
@@ -151,7 +157,9 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
       if(!Number.isSafeInteger(amount.payer_total)||Number(amount.payer_total)<0||Number(amount.payer_total)>Number(amount.total)||amount.payer_currency!=='CNY')return fail('RECEIPT_INVALID');
       payerCash={amountFen:Number(amount.payer_total),currency:'CNY'};
     }
-    return { orderId, merchantId, amountFen: Number(amount.total), currency: 'CNY', transactionId, state,...(payerCash?{payerCash}:{}) };
+    let paidAt:string|undefined;
+    if(state==='paid'&&value.success_time!==undefined){if(typeof value.success_time!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/.test(value.success_time)||!Number.isFinite(Date.parse(value.success_time)))return fail('RECEIPT_INVALID');paidAt=new Date(value.success_time).toISOString();}
+    return { orderId, merchantId, amountFen: Number(amount.total), currency: 'CNY', transactionId, state,...(payerCash?{payerCash}:{}),...(paidAt?{paidAt}:{}) };
   }
   function assertRefund(order:RefundOrder){
     if(!orderIdPattern.test(order.id)||!orderIdPattern.test(order.order_id)||order.merchant_id!==merchantId||order.currency!=='CNY'||
@@ -188,37 +196,105 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
       return {event,value:json(plaintext)};
     }catch{return fail('PAYLOAD_INVALID');}
   }
-  async function request(method: 'POST' | 'GET', path: string, payload?: JsonObject, authenticatedMissingOrder = false): Promise<JsonObject> {
-    const body = payload ? JSON.stringify(payload) : '', timestamp = String(Math.floor(now() / 1000)), nonce = randomBytes(16).toString('hex');
+  function authorization(method:string,path:string,body:string){
+    const timestamp = String(Math.floor(now() / 1000)), nonce = randomBytes(16).toString('hex');
     const signature = sign('RSA-SHA256', Buffer.from(`${method}\n${path}\n${timestamp}\n${nonce}\n${body}\n`), merchantKey).toString('base64');
-    const authorization = `WECHATPAY2-SHA256-RSA2048 mchid="${merchantId}",nonce_str="${nonce}",timestamp="${timestamp}",serial_no="${merchantSerial}",signature="${signature}"`;
+    return `WECHATPAY2-SHA256-RSA2048 mchid="${merchantId}",nonce_str="${nonce}",timestamp="${timestamp}",serial_no="${merchantSerial}",signature="${signature}"`;
+  }
+  async function request(method: 'POST' | 'GET', path: string, payload?: JsonObject, mode:'json'|'missing_order'|'empty'|'statement'='json'): Promise<JsonObject> {
+    const body = payload ? JSON.stringify(payload) : '';
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => { controller.abort(); reject(new WechatPayError('TIMEOUT')); }, timeoutMs); });
     const perform = async () => {
-      const response = await fetcher(API_ORIGIN + path, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: authorization, 'User-Agent': 'BondBuddy-WechatPay/1' }, body: method === 'POST' ? body : undefined, redirect: 'error', signal: controller.signal });
+      const response = await fetcher(API_ORIGIN + path, { method, headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: authorization(method,path,body), 'User-Agent': 'BondBuddy-WechatPay/1' }, body: method === 'POST' ? body : undefined, redirect: 'error', signal: controller.signal });
+      if(mode==='empty'){
+        if(response.status!==204){await response.body?.cancel();return fail('HTTP_ERROR');}
+        verifyMessage(response.headers,'');return {};
+      }
       // Only a signed, exact Native-order query error can establish absence. In
-      // particular an unsigned 404, transport failure, or refund NOT_FOUND is unknown.
-      if (response.status !== 200 && !(authenticatedMissingOrder && method === 'GET' && response.status === 404)) { await response.body?.cancel(); return fail('HTTP_ERROR'); }
+      // particular an unsigned 404, transport failure, or refund RESOURCE_NOT_EXISTS is unknown.
+      if (response.status !== 200 && !(mode==='missing_order' && method === 'GET' && response.status === 404)&&!(mode==='statement'&&method==='GET'&&response.status===400)) { await response.body?.cancel(); return fail('HTTP_ERROR'); }
       if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type') ?? '')) return fail('PAYLOAD_INVALID');
       const raw = await boundedBody(response);
       verifyMessage(response.headers, raw);
       const value=json(raw);
-      if(response.status!==200)return fail(value.code==='ORDER_NOT_EXIST'?'ORDER_NOT_FOUND':'HTTP_ERROR');
+      if(response.status!==200)return fail(mode==='missing_order'&&value.code==='ORDER_NOT_EXIST'?'ORDER_NOT_FOUND':mode==='statement'&&value.code==='NO_STATEMENT_EXIST'?'STATEMENT_NOT_FOUND':'HTTP_ERROR');
       return value;
     };
     try { return await Promise.race([perform(), timeout]); }
     catch (error) { if (error instanceof WechatPayError) throw error; return fail(controller.signal.aborted ? 'TIMEOUT' : 'TRANSPORT_ERROR'); }
     finally { if (timer !== undefined) clearTimeout(timer); }
   }
+  async function submitOriginalRefund(order:RefundOrder):Promise<VerifiedRefund>{
+    assertRefund(order);
+    if(!refundNotifyUrl)return fail('CONFIG_INVALID');
+    return refundReceipt(await request('POST','/v3/refund/domestic/refunds',{transaction_id:order.provider_transaction_id,out_refund_no:order.id,
+      notify_url:refundNotifyUrl,amount:{refund:order.amount_fen,total:order.order_amount_fen,currency:'CNY'}}),order);
+  }
+  async function queryOriginal(order:PaymentOrder):Promise<VerifiedPayment>{
+    assertOrder(order);
+    try{return receipt(await request('GET',`/v3/pay/transactions/out-trade-no/${encodeURIComponent(order.id)}?mchid=${encodeURIComponent(merchantId)}`,undefined,'missing_order'),order);}
+    catch(error){
+      if(error instanceof WechatPayError&&error.code==='ORDER_NOT_FOUND'&&Date.parse(order.expires_at)<=now())
+        return{orderId:order.id,merchantId,amountFen:order.amount_fen,currency:order.currency,transactionId:null,state:'expired'};
+      throw error;
+    }
+  }
+  async function downloadStatements(input:PaymentStatementRequest):Promise<VerifiedPaymentStatement>{
+    if(!statementsEnabled)return fail('CONFIG_INVALID');
+    try{statementDate(input.billDate);}catch{return fail('ORDER_INVALID');}
+    const today=new Date(now()+8*3600000).toISOString().slice(0,10),age=Date.parse(today)-Date.parse(input.billDate);
+    if(age<86400000||age>90*86400000||!['trade','funds'].includes(input.kind)||input.kind==='trade'&&input.accountType!==undefined
+      ||input.kind==='funds'&&!statementAccounts.includes(input.accountType??'BASIC'))return fail('ORDER_INVALID');
+    const started=Date.now(),account=input.kind==='funds'?(input.accountType??'BASIC'):null;
+    let manifest:JsonObject;
+    try{manifest=await request('GET',input.kind==='trade'?`/v3/bill/tradebill?bill_date=${input.billDate}&bill_type=ALL`:`/v3/bill/fundflowbill?bill_date=${input.billDate}&account_type=${account}`,undefined,'statement');}
+    catch(error){
+      if(error instanceof WechatPayError&&error.code==='STATEMENT_NOT_FOUND')return{provider:'wechat',merchantId,appId,billDate:input.billDate,kind:input.kind,accountType:account,availability:'absent',sha1:null,sha256:null,byteLength:0,verifiedAt:new Date(now()).toISOString(),entries:[],totals:emptyStatementTotals()};
+      throw error;
+    }
+    if(manifest.hash_type!=='SHA1'||typeof manifest.hash_value!=='string'||!/^[a-f0-9]{40}$/i.test(manifest.hash_value))return fail('STATEMENT_INVALID');
+    let url:URL;try{url=new URL(text(manifest.download_url,2048));}catch{return fail('STATEMENT_INVALID');}
+    // Official docs use both paths. Never forward merchant authorization to any other host,
+    // redirect, arbitrary path, caller-supplied URL, or an unverified manifest.
+    if(url.origin!==API_ORIGIN||url.username||url.password||url.hash||!['/v3/bill/downloadurl','/v3/billdownload/file'].includes(url.pathname)
+      ||!url.searchParams.get('token')||url.searchParams.getAll('token').length!==1||[...url.searchParams.keys()].some(key=>key!=='token'))return fail('STATEMENT_INVALID');
+    const controller=new AbortController(),remaining=30000-(Date.now()-started);if(remaining<=0)return fail('TIMEOUT');
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    const timeout=new Promise<never>((_resolve,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new WechatPayError('TIMEOUT'));},remaining);});
+    const perform=async()=>{
+      const path=url.pathname+url.search;
+      const response=await fetcher(url.href,{method:'GET',headers:{Authorization:authorization('GET',path,''),Accept:'application/octet-stream','Accept-Encoding':'identity'},redirect:'error',signal:controller.signal});
+      if(response.status!==200||response.headers.get('content-encoding')&&response.headers.get('content-encoding')!=='identity'||Number(response.headers.get('content-length'))>10*1024*1024){await response.body?.cancel();return fail('STATEMENT_INVALID');}
+      if(!response.body)return fail('STATEMENT_INVALID');
+      const reader=response.body.getReader(),chunks:Uint8Array[]= [];let length=0;
+      try{for(;;){const {value,done}=await reader.read();if(done)break;length+=value.byteLength;if(length>10*1024*1024){await reader.cancel();return fail('STATEMENT_INVALID');}chunks.push(value);}}finally{reader.releaseLock();}
+      const bytes=Buffer.concat(chunks);if(createHash('sha1').update(bytes).digest('hex')!==String(manifest.hash_value).toLowerCase())return fail('STATEMENT_INVALID');
+      // Download responses intentionally have no signature (official 4012791889).
+      // Their integrity is bound to the SHA1 in the already verified application response.
+      try{return parsePaymentStatement(bytes,{...input,merchantId,appId,sha1:String(manifest.hash_value).toLowerCase(),verifiedAt:new Date(now()).toISOString()});}catch{return fail('STATEMENT_INVALID');}
+    };
+    try{return await Promise.race([perform(),timeout]);}catch(error){if(error instanceof WechatPayError)throw error;return fail(controller.signal.aborted?'TIMEOUT':'TRANSPORT_ERROR');}
+    finally{if(timer)clearTimeout(timer);}
+  }
   return {
     name: 'wechat', merchantId, acknowledgement: { code: 'SUCCESS', message: '成功' },
+    ...(statementsEnabled?{downloadStatements,statementAccounts}:{}),
+    async closePayment(order){
+      assertOrder(order);
+      // A close failure can mean an in-flight payment won the race. Query the same
+      // order in either case; only that authenticated result controls local state.
+      try{await request('POST',`/v3/pay/transactions/out-trade-no/${encodeURIComponent(order.id)}/close`,{mchid:merchantId},'empty');}catch{}
+      return queryOriginal(order);
+    },
     ...(refundNotifyUrl?{refunds:{
-      async create(order:RefundOrder){
-        assertRefund(order);
-        return refundReceipt(await request('POST','/v3/refund/domestic/refunds',{transaction_id:order.provider_transaction_id,out_refund_no:order.id,
-          notify_url:refundNotifyUrl,amount:{refund:order.amount_fen,total:order.order_amount_fen,currency:'CNY'}}),order);
-      },
+      create:submitOriginalRefund,
+      // Verified 2026-10-29: https://pay.weixin.qq.com/doc/v3/merchant/4012791883
+      // Repeated out_refund_no requests refund only once; retries must preserve the
+      // original number/parameters. Core calls this only for an authorised durable
+      // intent. It does not depend on interpreting a missing/unsigned 404 as failure.
+      recoverSameRequest:submitOriginalRefund,
       async query(order:RefundOrder){
         assertRefund(order);return refundReceipt(await request('GET',`/v3/refund/domestic/refunds/${encodeURIComponent(order.id)}`),order);
       },
@@ -239,18 +315,7 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
       if (parsed.protocol !== 'weixin:' || parsed.host !== 'wxpay' || parsed.pathname !== '/bizpayurl' || parsed.username || parsed.password || parsed.hash || !parsed.searchParams.get('pr') || /\s/.test(checkoutUrl)) return fail('PAYLOAD_INVALID');
       return { checkoutUrl };
     },
-    async query(order) {
-      assertOrder(order);
-      try{
-        return receipt(await request('GET', `/v3/pay/transactions/out-trade-no/${encodeURIComponent(order.id)}?mchid=${encodeURIComponent(merchantId)}`,undefined,true), order);
-      }catch(error){
-        // After its immutable channel deadline an absent Native order cannot be
-        // created/payable. A new purchase may follow only this verified outcome.
-        if(error instanceof WechatPayError&&error.code==='ORDER_NOT_FOUND'&&Date.parse(order.expires_at)<=now())
-          return{orderId:order.id,merchantId,amountFen:order.amount_fen,currency:order.currency,transactionId:null,state:'expired'};
-        throw error;
-      }
-    },
+    query:queryOriginal,
     async verifyCallback(headers, rawBody) {
       const {event,value}=decryptEvent(headers,rawBody,'transaction');
       if(event.event_type!=='TRANSACTION.SUCCESS')return fail('PAYLOAD_INVALID');

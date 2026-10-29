@@ -9,11 +9,11 @@ export {cny,isCnyPrice,isAutomaticCharge,displayCharge,includedPrice,displayPric
 export function scopeReady(price:CommercePriceMetadata|undefined|null){return isCnyPrice(price)&&scopeStatus(price)==='ready';}
 export function scopePending(price:CommercePriceMetadata|undefined|null){return isCnyPrice(price)&&!scopeReady(price);}
 export function quotationHref(price:{scope_quote_id?:string}|undefined|null){return '#/account'+(price?.scope_quote_id?'?quotation='+encodeURIComponent(price.scope_quote_id):'');}
-export function scopeLifecycleHtml(price:(ScopeLifecycle&{scope_quote_id?:string})|undefined|null){
+export function scopeLifecycleHtml(price:(ScopeLifecycle&{scope_quote_id?:string;price_version?:string})|undefined|null){
   if(!price?.quote_status)return '';
   const status=scopeStatus(price),message=status==='ready'?price.amount_fen===0?'本次为原范围包含／已购覆盖，无需充值或新增预留。核对范围后可返回原工作继续。':'尚未开始、尚未扣费。核对报价后可返回原工作确认。':status==='pending_scope'?'本次范围报价待确认，尚未收费。准备材料与要求保留，可返回准备或稍后刷新同一范围报价。':status==='unavailable'?'当前范围暂无法承接，尚未收费。准备材料与要求保留，可查看原因、调整范围或退出本次报价。':status==='declined'?'已拒绝本报价，本次未开始、未扣费。准备材料与要求保留；如需继续，可重新申请范围报价。':'本报价已过期，不能开始，本次未扣费。准备材料与要求保留，请重新申请范围报价。';
   const expires=price.scope_expires_at??price.expires_at;
-  return `<section class="commerce-quote-lifecycle" data-commerce-scope-state="${esc(status)}"><p role="status">${esc(message)}</p>${status==='ready'&&expires?`<p>报价有效至 ${esc(new Date(expires).toLocaleString('zh-CN'))}</p>`:''}${price.scope_quote_id?`<a class="text-button" href="${esc(quotationHref(price))}">${status==='ready'?'查看报价／拒价反馈':'查看报价状态与明细'}</a>`:''}</section>`;
+  return `<section class="commerce-quote-lifecycle" data-commerce-scope-state="${esc(status)}"><p role="status">${esc(message)}</p>${status==='ready'&&expires?`<p>报价有效至 ${esc(new Date(expires).toLocaleString('zh-CN'))}</p>`:''}${price.scope_quote_id?`<a class="text-button" href="${esc(quotationHref(price))}">${status==='ready'?isAutomaticPriceVersion(price.price_version)?'查看任务范围与明细':'查看报价／拒价反馈':'查看报价状态与明细'}</a>`:''}</section>`;
 }
 /** Local expiry blocks a confirmation even while its dialog remains open. Server admission stays authoritative. */
 export function guardScopeExpiry(dialog:HTMLDialogElement,prices:ScopeLifecycle[],selector:string){

@@ -1,0 +1,15 @@
+✔ unknown checkout retains its original key and body across reload, time and general errors (9.1561ms)
+✔ concurrent tabs reuse one intent; a changed plan, provider or amount never reuses its key (0.9499ms)
+✔ subscription renewal recovery keeps the original subscription endpoint and plan (0.615ms)
+✔ an accepted subscription order keeps its historical amount and points across catalog changes (0.4746ms)
+✔ recovery from another task keeps the first payment task context (0.8379ms)
+✔ only a matching server-confirmed terminal order permits a new explicitly observed purchase (0.8218ms)
+✔ corrupted or lossy storage and mismatched acknowledgements do not permit another payment (0.8288ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 861.3933

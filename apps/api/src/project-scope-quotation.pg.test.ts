@@ -104,6 +104,10 @@ test('file HTTP quotes use 9.9 check and a 10-yuan same-version sync upgrade, re
   const finding:ProjectFileFinding={id:'synthetic-conflict',kind:'conflict',target_span_id:'target-1',original:'100',replacement:'120',source_span_id:'source-1',source_quote:'120',source_location:'Synthetic source page 1',target_location:'Synthetic target page 1',reason:'Synthetic period amount changed',field:'Synthetic amount',period:'2026',unit:'CNY'};
   const result:ProjectFileCheckResult={version:'project-file-check-v1',files:[{file_version_id:version,status:'conflict',coverage:'Synthetic amount only',findings:[finding],links:[]}]},checkHash=inputManifestHash(result);
   await pool.query('UPDATE bb_project_file_operations SET result=$2,result_hash=$3 WHERE run_id=$1',[check,result,checkHash]);
+  await pool.query(`INSERT INTO bb_project_file_check_evidence(owner_user_id,run_id,file_version_id,input_hash,source_sha256,target_sha256,checked_spans,total_spans)
+    SELECT r.owner_user_id,r.id,$2,r.input_hash,o.manifest#>>'{source,asset,pin,sha256}',f#>>'{asset,pin,sha256}',1,1
+    FROM bb_runs r JOIN bb_project_file_operations o ON o.run_id=r.id, jsonb_array_elements(o.manifest->'files') f
+    WHERE r.id=$1 AND f->>'file_version_id'=$2`,[check,version]);
   const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,check);
   const report=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic consistency report'}),blobs,'generated_review_v1');
   await finish(pool,lease,'succeeded',{artifactId:report.artifactId,artifactVersion:1,blobs});

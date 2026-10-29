@@ -31,8 +31,9 @@ export async function auditCredits(pool:Pool){
       SELECT a.*,r.state,r.billing_policy,EXISTS(SELECT 1 FROM bb_credit_lots compensation
         WHERE compensation.source_key='failure:'||r.id||':'||a.lot_id AND compensation.owner_user_id=r.owner_user_id) AS compensated
       FROM bb_credit_allocations a JOIN bb_credit_reservations r ON r.id=a.reservation_id), refunds AS (
-      SELECT lot_id,COALESCE(sum(credit_points) FILTER(WHERE state IN ('requested','processing')),0) held,
-        COALESCE(sum(credit_points) FILTER(WHERE state='succeeded'),0) refunded FROM bb_payment_refunds GROUP BY lot_id)
+      SELECT a.lot_id,COALESCE(sum(a.points) FILTER(WHERE r.state IN ('requested','processing')),0) held,
+        COALESCE(sum(a.points) FILTER(WHERE r.state='succeeded'),0) refunded FROM bb_payment_refund_allocations a
+        JOIN bb_payment_refunds r ON r.id=a.refund_id GROUP BY a.lot_id)
       SELECT l.id,l.owner_user_id,l.remaining::text,l.frozen::text,
         (COALESCE(sum(a.points) FILTER(WHERE a.state='held' AND a.billing_policy<>'authoring_balance_v2'),0)+COALESCE(refunds.held,0))::text AS expected_frozen,
         (l.original_points-COALESCE(sum(CASE WHEN a.compensated THEN a.points ELSE COALESCE(a.charged_points,CASE WHEN a.state='settled' THEN a.points ELSE 0 END) END),0)-COALESCE(refunds.refunded,0))::text AS expected_remaining
@@ -60,6 +61,8 @@ export async function auditCredits(pool:Pool){
           OR l.expires_at IS DISTINCT FROM sp.credits_expires_at))))
       OR (o.state<>'paid' AND l.id IS NOT NULL)`)).rows;
     const refundDrift=(await c.query(`SELECT r.id,r.state FROM bb_payment_refunds r WHERE
+      r.credit_points<>(SELECT COALESCE(sum(a.points),0) FROM bb_payment_refund_allocations a WHERE a.refund_id=r.id)
+      OR
       NOT EXISTS(SELECT 1 FROM bb_payment_refund_events e WHERE e.refund_id=r.id AND e.kind='requested' AND e.amount_fen=r.amount_fen)
       OR (r.dispatch_started_at IS NOT NULL AND NOT EXISTS(SELECT 1 FROM bb_payment_refund_events e WHERE e.refund_id=r.id AND e.kind='dispatch'))
       OR (r.state='succeeded' AND r.amount_fen<>(SELECT COALESCE(sum(e.cash_refunded_fen),0) FROM bb_payment_refund_events e WHERE e.refund_id=r.id))

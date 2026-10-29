@@ -22,7 +22,7 @@ const failure=(route:Route)=>json(route,503,{code:'DATA_UNAVAILABLE',message:'Sy
  * registry, checks and mixed collection remain distinct HTTP resources. */
 export function fixture(){
   const s=returnFixture();s.rootProject.name='合成项目文件状态项目';
-  const statuses:Record<ProjectDocumentType,ApiStatus>={init:'conflict',issuer:'manual',financial:'unchecked',credit:'stale',proceeds:'updated',
+  const statuses:Record<ProjectFileVersion['document_type'],ApiStatus>={workpaper:'unchecked',init:'conflict',issuer:'manual',financial:'unchecked',credit:'stale',proceeds:'updated',
     underwriter:'checking',legal:'consistent',application:'conflict',recommendation:'manual',private_summary:'consistent',annual:'unchecked',semiannual:'consistent'};
   for(const v of s.registry)v.consistency={status:statuses[v.document_type],count:statuses[v.document_type]==='conflict'?1:0,
     check_run_id:['unchecked','updated'].includes(statuses[v.document_type])?null:s.check.run_id};

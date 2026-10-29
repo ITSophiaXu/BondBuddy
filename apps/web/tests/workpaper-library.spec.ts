@@ -1,5 +1,6 @@
 import {test,expect,type Page} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
+import {join} from 'node:path';
 import type {WorkpaperLibrary,WorkpaperLibraryItem} from '@bondbuddy/contracts';
 import {fixture,install,openFiles,ids,now,hash,docx} from './word-roundtrip-fixtures';
 
@@ -14,7 +15,7 @@ async function setup(page:Page){
     latest:i!==60,version_count:i===60?2:1,links_count:i%2?0:3,check_stale:false,
     impact:{item_id:'wp-'+i,status:i%2?'manual':'needs_update',reason:i%2?'尚缺少签章原件。':'总资产披露已改变。',changes:i%2?[]:[{source_span_id:'p0',before:'总资产100万元',after:'总资产200万元',source_location:'资产负债表',target_locations:['表格1 / 行2 / 列2'],fields:['总资产 · 2025年末 · 万元'],reason:'关联披露变化'}]}
   }));
-  const requests:unknown[]=[];let fail=false;
+  const requests:unknown[]=[];let fail=false;const check_capability={enabled:true,reason:''};
   await page.route('**/api/v1/projects/*/workpapers/**',async route=>{
     const url=new URL(route.request().url()),body=route.request().method()==='POST'?route.request().postDataJSON():null;
     if(url.pathname.endsWith('/library')){
@@ -22,13 +23,13 @@ async function setup(page:Page){
       const rows=entries.filter(i=>(q.get('history')==='true'||i.latest)&&(!q.get('search')||i.entry.path.includes(q.get('search')!))
         &&(q.get('category')==='all'||(q.get('category')==='explanation')===!!i.explanation)
         &&(q.get('status')==='all'||q.get('status')==='stale'&&i.check_stale||q.get('status')===i.impact?.status&&!i.check_stale));
-      const result:WorkpaperLibrary={items:rows.slice(offset,offset+limit),offset,limit,total:rows.length,source,checks:[]};return route.fulfill({json:result});
+      const result:WorkpaperLibrary={items:rows.slice(offset,offset+limit),offset,limit,total:rows.length,source,checks:[],check_capability};return route.fulfill({json:result});
     }
     if(url.pathname.endsWith('/preview'))return route.fulfill({json:{text:'总资产为200万元。\n<script>window.BAD=true</script>'}});
     if(url.pathname.endsWith('/checks')){requests.push(body);if(fail){fail=false;return route.abort('failed');}return route.fulfill({json:{run_id:'check'}});}
     if(url.pathname.includes('/explanations/')||url.pathname.endsWith('/download'))return route.fulfill({body:bytes,contentType:url.pathname.endsWith('/download')?'application/zip':'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
     return route.fulfill({status:404,json:{code:'NOT_FOUND'}});
-  });return {s,entries,requests,failOnce(){fail=true;}};
+  });return {s,entries,requests,failOnce(){fail=true;},disableChecks(){check_capability.enabled=false;check_capability.reason='底稿变更检查暂未开放，已有文件和历史检查记录仍可查看、下载。';}};
 }
 for(const width of [1440,390])test(`library ${width}: paging, classifications, old/new positions, preview and download`,async({page})=>{
   const state=await setup(page);await page.setViewportSize({width,height:960});await openFiles(page);
@@ -72,4 +73,18 @@ test('legacy library download uses the corrected metadata filename and retains d
   const file=await downloaded;expect(file.suggestedFilename()).toBe(expected);
   const stream=await file.createReadStream();const chunks:Buffer[]=[];for await(const chunk of stream!)chunks.push(Buffer.from(chunk));
   expect(hash(Buffer.concat(chunks))).toBe(sha);
+});
+
+test('unavailable automatic batch checks keep original files and history readable without a free execution',async({page})=>{
+  await page.setViewportSize({width:1440,height:960});
+  const state=await setup(page);state.disableChecks();await openFiles(page);const panel=page.locator('#pw-workpaper-library');
+  await expect(panel.locator('.wl-check-capability')).toContainText('底稿变更检查暂未开放');
+  await panel.getByLabel('查找底稿').fill('资产核查0');await expect(panel.locator('.wl-file')).toHaveCount(1);
+  await panel.locator('summary').first().click();
+  await expect(panel.getByRole('button',{name:'检查本批底稿'}).first()).toBeDisabled();
+  await expect(panel.getByRole('button',{name:'预览正文'}).first()).toBeEnabled();await expect(panel.getByRole('button',{name:'下载文件'}).first()).toBeEnabled();
+  await expect(panel).toContainText('总资产100万元');await expect(panel).toContainText('总资产200万元');
+  if(process.env.BB_UX_EVIDENCE_DIR){await mkdir(process.env.BB_UX_EVIDENCE_DIR,{recursive:true});await page.evaluate(()=>window.scrollTo(0,0));await expect.poll(()=>page.evaluate(()=>scrollY)).toBe(0);await page.screenshot({path:join(process.env.BB_UX_EVIDENCE_DIR,'workpaper-check-unavailable-1440.png'),fullPage:true});}
+  await panel.getByRole('button',{name:'预览正文'}).first().click();await expect(page.locator('dialog[open]')).toContainText('200万元');
+  expect(state.requests).toEqual([]);
 });

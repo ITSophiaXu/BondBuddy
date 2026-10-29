@@ -8,6 +8,7 @@ import {transaction,type PrivateBlobs} from './data.js';
 import {makeSyntheticDocxFixture} from './docx-fixtures.js';
 import {emptyM4Draft} from './m4-workspace.js';
 import {advanceProjectFileUpdates} from './project-file-consistency.js';
+import {advanceWorkpaperBatch} from './workpapers.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {checkpointStage,claim,finish,promoteWordArtifact} from './queue.js';
 import {createServer} from './server.js';
@@ -58,6 +59,12 @@ async function deliverCheck(pool:Pool,runId:string,version:string){
   const finding:ProjectFileFinding={id:'synthetic-conflict',kind:'conflict',target_span_id:'target-1',original:'100',replacement:'120',source_span_id:'source-1',source_quote:'120',source_location:'Synthetic source page 1',target_location:'Synthetic target page 1',reason:'Synthetic amount changed',field:'Synthetic amount',period:'2026',unit:'CNY'};
   const result:ProjectFileCheckResult={version:'project-file-check-v1',files:[{file_version_id:version,status:'conflict',coverage:'Synthetic amount only',findings:[finding],links:[]}]},hash=inputManifestHash(result);
   await pool.query('UPDATE bb_project_file_operations SET result=$2,result_hash=$3 WHERE run_id=$1',[runId,result,hash]);
+  // This API-only fixture supplies explicit synthetic host coverage; the worker
+  // suite separately verifies real Word extraction and untrusted proposals.
+  await pool.query(`INSERT INTO bb_project_file_check_evidence(owner_user_id,run_id,file_version_id,input_hash,source_sha256,target_sha256,checked_spans,total_spans)
+    SELECT r.owner_user_id,r.id,$2,r.input_hash,o.manifest#>>'{source,asset,pin,sha256}',f#>>'{asset,pin,sha256}',1,1
+    FROM bb_runs r JOIN bb_project_file_operations o ON o.run_id=r.id, jsonb_array_elements(o.manifest->'files') f
+    WHERE r.id=$1 AND f->>'file_version_id'=$2`,[runId,version]);
   const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,runId);
   const blobs=memoryBlobs(),report=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic consistency report'}),blobs,'generated_review_v1');
   await finish(pool,lease,'succeeded',{artifactId:report.artifactId,artifactVersion:1,blobs});
@@ -182,5 +189,66 @@ test('HTTP automatic workpaper generation returns 402 without creating a batch o
     const response=await app.inject({method:'POST',url:`/api/v1/projects/${f.project}/workpapers/batches`,headers:{origin},payload:{request_id:randomUUID(),catalogue_id:catalogue,catalogue_sha256:sha,item_ids:[entry.id],source_version_id:f.sourceVersion,source_selection_revision:1,requirements:'Synthetic fixture only',start_mode:'direct',price_version:AUTOMATIC_PRICE_VERSION,expected_points:points}});
     assert.equal(response.statusCode,402,response.body);assert.equal(response.json().code,'CREDITS_INSUFFICIENT');
     assert.deepEqual(await counts(pool,f.owner),before);assert.deepEqual(await creditBalance(pool,f.owner),{available:points-1,frozen:0});
+  }finally{await app.close();await pool.end();}
+});
+
+test('asynchronous workpaper shortage resumes only the original batch once and never overrides a later manual pause',{skip:!database,timeout:120000},async()=>{
+  const pool=new Pool({connectionString:database}),f=await fixture(pool),app=server(pool,f),catalogue=randomUUID(),batch=randomUUID();
+  const base=`/api/v1/projects/${f.project}/workpapers`,send=(method:'GET'|'POST',path:string,payload?:any)=>app.inject({method,url:base+path,headers:{origin},payload});
+  try{
+    // A synthetic already-admitted batch with no remaining wallet balance models
+    // competing spend between child admissions. No model or Word result is fabricated.
+    const topicResponse=await app.inject({method:'POST',url:'/api/v1/m4/topics',headers:{origin},payload:{creation_request_id:randomUUID(),name:'Synthetic workpaper recovery',source_project_id:f.project}});
+    assert.ok(topicResponse.statusCode<300,topicResponse.body);const topic=topicResponse.json().topic;
+    const entry:WorkpaperEntry={id:'recovery-item',code:'1.1',title:'Synthetic recovery item',folder:'Synthetic',instructions:'Synthetic only',sheet:'Synthetic',row:1,kind:'file',path:'Synthetic recovery.docx'};
+    const source={project_id:f.project,version_id:f.sourceVersion,selection_revision:1,sequence:1,filename:'Synthetic source.docx',asset:f.source};
+    await pool.query("INSERT INTO bb_workpaper_catalogues(id,owner_user_id,project_id,request_id,request_hash,material,filename,entries,warnings,sha256) VALUES($1,$2,$3,$1,$4,$5,'Synthetic.xlsx',$6,'[]',$4)",[catalogue,f.owner,f.project,sha,f.source.pin,JSON.stringify([entry])]);
+    const points=AUTOMATIC_TASK_TARIFF.workpaper.points;
+    await pool.query("INSERT INTO bb_workpaper_batches(id,owner_user_id,project_id,topic_id,catalogue_id,request_id,request_hash,source,state,total_points,price_version,start_mode) VALUES($1,$2,$3,$4,$5,$1,$6,$7,'queued',$8,$9,'direct')",[batch,f.owner,f.project,topic.topic_id,catalogue,sha,source,points,AUTOMATIC_PRICE_VERSION]);
+    const manifest={version:'m4-document-input-v1',kind:'document',topic_id:topic.topic_id,execution_scope_project_id:f.project,project_name:'Synthetic batch',draft_version:1,market:'sse',offering:'private',billing_task:'m4_workpaper',template_material:null,input:{document_type:'workpaper',workpaper:{batch_id:batch,catalogue_id:catalogue,entry,mode:'direct'},source_material:f.source.pin,materials:[],template:null,edit_base:null,scope:'whole',fields:{},requirements:[],supplemental_requirements:''}};
+    await pool.query('INSERT INTO bb_workpaper_items(owner_user_id,batch_id,item_id,ordinal,manifest) VALUES($1,$2,$3,1,$4)',[f.owner,batch,entry.id,manifest]);
+    const before=await counts(pool,f.owner);
+    assert.equal(await advanceWorkpaperBatch(pool),true);
+    const paused=(await send('GET','/batches/'+batch)).json();
+    assert.equal(paused.state,'paused');assert.deepEqual(paused.billing_resume,{price_version:AUTOMATIC_PRICE_VERSION,required_points:points,available_points:0,shortage:points});
+    assert.deepEqual(await counts(pool,f.owner),before,'failed child admission creates neither run nor reservation');
+    const request={action:'resume',billing_resume:true,request_id:randomUUID(),expected_revision:paused.revision,price_version:AUTOMATIC_PRICE_VERSION,expected_points:points};
+    const shortage=await send('POST','/batches/'+batch+'/actions',request);assert.equal(shortage.statusCode,402,shortage.body);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_workpaper_billing_resumes WHERE owner_user_id=$1',[f.owner])).rows[0].n,0);
+    await fund(pool,f.owner,points);
+    const results=await Promise.all([send('POST','/batches/'+batch+'/actions',request),send('POST','/batches/'+batch+'/actions',request)]);
+    for(const response of results){assert.equal(response.statusCode,200,response.body);assert.equal(response.json().state,'queued');}
+    const resumed=results[0].json();assert.equal(resumed.revision,paused.revision+1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_workpaper_billing_resumes WHERE owner_user_id=$1',[f.owner])).rows[0].n,1);
+    const changed=await send('POST','/batches/'+batch+'/actions',{...request,expected_points:points+1});assert.equal(changed.statusCode,409);assert.equal(changed.json().code,'IDEMPOTENCY_CONFLICT');
+    const manuallyPaused=await send('POST','/batches/'+batch+'/actions',{action:'pause',expected_revision:resumed.revision});assert.equal(manuallyPaused.statusCode,200,manuallyPaused.body);assert.equal(manuallyPaused.json().billing_resume,undefined);
+    const replay=await send('POST','/batches/'+batch+'/actions',request);assert.equal(replay.statusCode,200);assert.equal(replay.json().state,'paused','old payment return cannot undo a later manual pause');
+    const forged=await send('POST','/batches/'+batch+'/actions',{...request,request_id:randomUUID(),expected_revision:manuallyPaused.json().revision});assert.equal(forged.statusCode,409);
+    const continued=await send('POST','/batches/'+batch+'/actions',{action:'resume',expected_revision:manuallyPaused.json().revision});assert.equal(continued.statusCode,200,continued.body);
+    assert.equal(await advanceWorkpaperBatch(pool),true);assert.equal(await advanceWorkpaperBatch(pool),false);
+    const after=await counts(pool,f.owner);assert.equal(after.runs,before.runs+1);assert.equal(after.reservations,before.reservations+1);
+    assert.deepEqual(await creditBalance(pool,f.owner),{available:0,frozen:points});
+  }finally{await app.close();await pool.end();}
+});
+
+test('retired source-diff route remains replayable while automatic workpaper checks use independent paid files',{skip:!database,timeout:120000},async()=>{
+  const pool=new Pool({connectionString:database}),f=await fixture(pool),app=server(pool,f),batch=randomUUID();
+  const base=`/api/v1/projects/${f.project}/workpapers`,body={request_id:randomUUID(),source_version_id:f.sourceVersion,source_selection_revision:1};
+  const send=(payload:{request_id:string;source_version_id:string;source_selection_revision:number})=>app.inject({method:'POST',url:base+'/batches/'+batch+'/checks',headers:{origin},payload});
+  try{
+    await fund(pool,f.owner,50000);const before=await counts(pool,f.owner);
+    const library=await app.inject({method:'GET',url:base+'/library',headers:{origin}});assert.equal(library.statusCode,200,library.body);assert.equal(library.json().check_capability.enabled,true);assert.equal(library.json().check_capability.mode,'per_file');
+    for(const input of [body,{...body,request_id:randomUUID(),source_version_id:'new-unconnected-source'}]){
+      const response=await send(input);assert.equal(response.statusCode,409,response.body);assert.equal(response.json().code,'BILLING_NOT_READY');
+    }
+    assert.deepEqual(await counts(pool,f.owner),before);assert.deepEqual(await creditBalance(pool,f.owner),{available:50000,frozen:0});
+    // An immutable pre-existing failed task is a replay fixture, not a successful
+    // result or a new free admission under automatic billing.
+    const old=randomUUID(),requestHash=inputManifestHash({id:f.project,batch,...body});
+    await pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,1,$2,1,$3,'{}','[]','[]')",[f.project,f.owner,sha]);
+    await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,1,$4,$5,'generation',$6,'failed')",[old,f.owner,f.project,sha,'workpaper-change:'+body.request_id,requestHash]);
+    const replay=await send(body);assert.equal(replay.statusCode,200,replay.body);assert.deepEqual(replay.json(),{run_id:old});
+    const changed=await send({...body,source_version_id:'another-source'});assert.equal(changed.statusCode,409);assert.equal(changed.json().code,'IDEMPOTENCY_CONFLICT');
+    const after=await counts(pool,f.owner);assert.equal(after.runs,before.runs+1);assert.equal(after.reservations,before.reservations);
   }finally{await app.close();await pool.end();}
 });

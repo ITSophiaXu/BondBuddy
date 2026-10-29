@@ -66,7 +66,7 @@ export type ProjectFileBatch=Static<typeof ProjectFileBatchSchema>;
 export type ProjectFileCheck=Static<typeof ProjectFileCheckSchema>;
 
 const status=Type.Union((['unchecked','checking','conflict','manual','consistent','stale','updated'] as const).map(s=>Type.Literal(s)));
-export const ProjectFileVersionSchema=obj({version_id:id,file_id:id,document_type:ProjectDocumentTypeSchema,filename:short,sequence:Type.Integer({minimum:1}),
+export const ProjectFileVersionSchema=obj({version_id:id,file_id:id,document_type:Type.Union([ProjectDocumentTypeSchema,Type.Literal('workpaper')]),filename:short,sequence:Type.Integer({minimum:1}),
  asset:ProjectFileAssetSchema,revision_asset:nullable(ProjectFileAssetSchema),source_version_id:nullable(id),template_id:nullable(id),template_version:nullable(Type.Integer({minimum:1})),
  source_name:nullable(short),source_sequence:nullable(Type.Integer({minimum:1})),created_at:Type.String(),run_id:nullable(id),links:Type.Array(ProjectFileLinkSchema),
  latest:Type.Boolean(),version_count:Type.Integer({minimum:1}),consistency:obj({status,count:Type.Integer({minimum:0}),check_run_id:nullable(id)})});

@@ -32,7 +32,7 @@ test('synthetic cost evidence is immutable/idempotent; missing and late costs bl
    await reserveCredits(c,owner,r,quote.quote_id,{revision:1,manifest},p,undefined,true);
   });
   await pool.query("UPDATE bb_runs SET state='failed' WHERE id=$1",[run]);
-  let report=await readRunEconomics(pool,run);assert.equal(report.cost_complete,false);assert.equal(report.delivered_service_charge_fen,0);
+  let report=await readRunEconomics(pool,run);assert.equal(report.cost_complete,false);assert.equal(report.delivered_service_charge_fen,'0');
   const evidence=(category:typeof EXPENSE_CATEGORIES[number],i:number)=>({run_id:run,event_key:'cost-'+i,category,amount_fen:i===0?300:0,within_fixed_budget:false,incurred_at:'2026-10-28T00:00:00Z',source_ref:'synthetic://local-cost-proof',evidence_sha256:'a'.repeat(64),actor:'synthetic-cost-reviewer',reason:'Synthetic expense or explicit no incremental expense'});
   const first=evidence(EXPENSE_CATEGORIES[0],0),id=await recordExpenseEvidence(pool,first);
   assert.equal(await recordExpenseEvidence(pool,first),id);
@@ -42,14 +42,21 @@ test('synthetic cost evidence is immutable/idempotent; missing and late costs bl
   for(let i=1;i<EXPENSE_CATEGORIES.length;i++)await recordExpenseEvidence(pool,evidence(EXPENSE_CATEGORIES[i],i));
   assert.equal(Number((await pool.query("SELECT count(*) n FROM bb_outbox WHERE owner_user_id=$1 AND event_type='commerce.cost_evidence_recorded'",[owner])).rows[0].n),6);
   report=await readRunEconomics(pool,run);
+  const legacyHash='b'.repeat(64);
+  await pool.query(`INSERT INTO bb_commerce_cost_reviews(id,owner_user_id,run_id,snapshot_hash,model_required,actor,reason,source_ref)
+    VALUES($1,$2,$3,$4,false,'synthetic-legacy-reviewer','Synthetic previous-algorithm review remains immutable','synthetic://legacy-cost-review')`,[randomUUID(),owner,run,legacyHash]);
+  report=await readRunEconomics(pool,run);assert.equal(report.cost_complete,false);assert.deepEqual(report.review_history.stale_snapshot_hashes,[legacyHash]);
   const review={run_id:run,expected_snapshot_hash:report.snapshot_hash,model_required:false,actor:'synthetic-cost-reviewer',reason:'Failed before sending a model request; all incremental categories accounted',source_ref:'synthetic://local-cost-review'};
   await assert.rejects(reviewRunCosts(pool,{...review,model_required:true}),e=>(e as any).code==='VALIDATION_FAILED');
-  const closed=await reviewRunCosts(pool,review);assert.equal(closed.cost_complete,true);assert.equal(closed.variable_cost_cny,3);assert.equal(closed.contribution_cny,-3);assert.equal(closed.after_tax_net_margin,null);
+  await assert.rejects(reviewRunCosts(pool,{...review,expected_snapshot_hash:legacyHash}),e=>(e as any).code==='INPUT_REVISION_CONFLICT');
+  const closed=await reviewRunCosts(pool,review);assert.equal(closed.cost_complete,true);assert.equal(closed.variable_cost_cny,'3');assert.deepEqual(closed.contribution_cny,{numerator:'-3',denominator:'1'});assert.equal(closed.after_tax_net_margin,null);
+  assert.equal(closed.actual_supplier_invoice_cost,null);assert.deepEqual(closed.review_history.stale_snapshot_hashes,[legacyHash]);
+  assert.equal((await pool.query('SELECT snapshot_hash FROM bb_commerce_cost_reviews WHERE run_id=$1 AND snapshot_hash=$2',[run,legacyHash])).rowCount,1);
   assert.equal((await reviewRunCosts(pool,review)).cost_complete,true);
   await assert.rejects(reviewRunCosts(pool,{...review,reason:'different'}),e=>(e as any).code==='IDEMPOTENCY_CONFLICT');
   assert.equal(Number((await pool.query("SELECT count(*) n FROM bb_outbox WHERE owner_user_id=$1 AND event_type='commerce.cost_reviewed'",[owner])).rows[0].n),1);
   await recordExpenseEvidence(pool,{...evidence('support_extra',8),amount_fen:500});
-  report=await readRunEconomics(pool,run);assert.equal(report.cost_complete,false);assert.equal(report.extra_cost_fen,800);assert.equal(report.variable_cost_cny,null);
+  report=await readRunEconomics(pool,run);assert.equal(report.cost_complete,false);assert.equal(report.extra_cost_fen,'800');assert.equal(report.variable_cost_cny,null);
   await assert.rejects(reviewRunCosts(pool,review),e=>(e as any).code==='INPUT_REVISION_CONFLICT');
  }finally{await pool.end();}
 });

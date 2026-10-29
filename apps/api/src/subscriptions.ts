@@ -19,6 +19,7 @@ export interface RecurringPaymentProvider {
 export const supportsAutomaticRenewal=(p:PaymentProvider):boolean=>!!p.recurring&&
   ['createMandate','queryMandate','cancelMandate','charge'].every(k=>typeof (p.recurring as any)[k]==='function');
 const invalid=(message:string)=>new Problem(409,'PAYMENT_INVALID',message);
+const safePoints=(value:unknown)=>{const n=Number(value);if(!Number.isSafeInteger(n)||n<0)throw new Problem(503,'DATA_UNAVAILABLE','积分分项仍在核对，请稍后读取。');return n;};
 const unavailable=()=>new Problem(503,'PAYMENT_UNAVAILABLE','当前渠道未配置经核验的自动续费能力，可手动开通或续订月度方案。');
 const plan=(id:string)=>{const p=SUBSCRIPTION_PLANS.find(p=>p.id===id);if(!p)throw new Problem(422,'VALIDATION_FAILED','未知订阅方案。');return p;};
 const adapter=(ps:readonly PaymentProvider[],name:string,merchant?:string)=>{const p=ps.find(p=>p.name===name&&(!merchant||p.merchantId===merchant));if(!p)throw unavailable();return p;};
@@ -43,14 +44,21 @@ export async function subscriptionAccount(pool:Pool,owner:string):Promise<Subscr
     const balance=await creditBalance(c,owner);
     const b=(await c.query(`SELECT
       COALESCE(sum(remaining-frozen) FILTER(WHERE source='subscription' AND (expires_at IS NULL OR expires_at>now())),0)::text subscription,
-      COALESCE(sum(remaining-frozen) FILTER(WHERE source='purchase' AND (expires_at IS NULL OR expires_at>now())),0)::text topup
+      COALESCE(sum(remaining-frozen) FILTER(WHERE source='purchase' AND (expires_at IS NULL OR expires_at>now())),0)::text topup,
+      (SELECT COALESCE(sum(a.points),0)::text FROM bb_payment_refund_allocations a JOIN bb_payment_refunds r ON r.id=a.refund_id AND r.owner_user_id=a.owner_user_id
+        WHERE a.owner_user_id=$1 AND r.state IN ('requested','processing')) refund_held
       FROM bb_credit_lots WHERE owner_user_id=$1`,[owner])).rows[0];
-    const periods=(await c.query(`SELECT p.*,l.remaining,l.frozen,(l.expires_at>now()) unexpired FROM bb_subscription_periods p
-      LEFT JOIN bb_credit_lots l ON l.id=p.lot_id AND l.owner_user_id=p.owner_user_id WHERE p.owner_user_id=$1 ORDER BY p.cycle_index DESC LIMIT 50`,[owner])).rows;
+    const periods=(await c.query(`SELECT p.*,l.remaining,l.frozen,(l.expires_at>now()) unexpired,
+      (SELECT COALESCE(sum(a.points),0)::text FROM bb_payment_refund_allocations a JOIN bb_payment_refunds r ON r.id=a.refund_id AND r.owner_user_id=a.owner_user_id
+        WHERE a.lot_id=l.id AND a.owner_user_id=p.owner_user_id AND r.state IN ('requested','processing')) refund_held
+      FROM bb_subscription_periods p LEFT JOIN bb_credit_lots l ON l.id=p.lot_id AND l.owner_user_id=p.owner_user_id WHERE p.owner_user_id=$1 ORDER BY p.cycle_index DESC LIMIT 50`,[owner])).rows;
+    const refundHeld=safePoints(b.refund_held),subscriptionAvailable=safePoints(b.subscription),topupAvailable=safePoints(b.topup);
     return {subscription:s?subscriptionDto(s):null,available_points:balance.available,held_points:balance.frozen,
-      subscription_available_points:Number(b.subscription),topup_available_points:Number(b.topup),other_available_points:balance.available-Number(b.subscription)-Number(b.topup),
+      task_held_points:safePoints(balance.frozen-refundHeld),refund_held_points:refundHeld,
+      subscription_available_points:subscriptionAvailable,topup_available_points:topupAvailable,other_available_points:safePoints(balance.available-subscriptionAvailable-topupAvailable),
       periods:periods.map(p=>({id:p.id,order_id:p.order_id,plan_id:p.plan_id,status:p.status,amount_fen:Number(p.amount_fen),points:Number(p.points),
-        available_points:p.unexpired?Number(p.remaining??0)-Number(p.frozen??0):0,held_points:Number(p.frozen??0),
+        available_points:p.unexpired?safePoints(Number(p.remaining??0)-Number(p.frozen??0)):0,held_points:safePoints(p.frozen??0),
+        task_held_points:safePoints(Number(p.frozen??0)-safePoints(p.refund_held)),refund_held_points:safePoints(p.refund_held),
         starts_at:p.starts_at?date(p.starts_at):null,ends_at:p.ends_at?date(p.ends_at):null,credits_expires_at:p.credits_expires_at?date(p.credits_expires_at):null,
         refundable_until:p.starts_at?new Date(new Date(p.starts_at).getTime()+7*86400000).toISOString():null}))};
   });
@@ -223,7 +231,7 @@ export async function processDueSubscriptionRenewals(pool:Pool,providers:readonl
 }
 export function installSubscriptions(app:FastifyInstance,pool:Pool,owner:(r:FastifyRequest)=>Promise<string>,enabled:boolean,providers:readonly PaymentProvider[]){
   app.get('/api/v1/subscriptions/catalog',{schema:{response:{200:schemas.SubscriptionCatalogResponse}}},async r=>{
-    await owner(r);return{enabled:enabled&&providers.length>0,version:SUBSCRIPTION_CATALOG_VERSION,plans:SUBSCRIPTION_PLANS,
+    await owner(r);return{enabled,version:SUBSCRIPTION_CATALOG_VERSION,plans:SUBSCRIPTION_PLANS,
       providers:enabled?providers.map(p=>p.name):[],auto_renew_available:enabled&&providers.some(supportsAutomaticRenewal)};
   });
   app.get('/api/v1/subscriptions/account',{schema:{response:{200:schemas.SubscriptionAccountResponse}}},async r=>subscriptionAccount(pool,await owner(r)));

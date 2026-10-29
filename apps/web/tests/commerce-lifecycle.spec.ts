@@ -13,11 +13,11 @@ const quote=(id:string,status:ScopeQuoteStatus,amount=12340,pricing?:ScopeLine['
 async function evidence(page:Page,name:string,selector:string){const directory=process.env.BB_UX_EVIDENCE_DIR;if(!directory)return;await mkdir(directory,{recursive:true});await page.locator(selector).scrollIntoViewIfNeeded();await page.screenshot({path:join(directory,name),fullPage:false});}
 test.beforeEach(async({page})=>page.setViewportSize({width:1440,height:960}));
 
-async function setup(page:Page,options:{uncertainDecline?:boolean;uncertainRefund?:boolean;noCashEvidence?:boolean;foreignOrder?:boolean;legacy?:boolean;scopePricing?:ScopeLine['pricing']}={}){
+async function setup(page:Page,options:{uncertainDecline?:boolean;uncertainRefund?:boolean;noCashEvidence?:boolean;foreignOrder?:boolean;legacy?:boolean;legacyBonus?:boolean;scopePricing?:ScopeLine['pricing']}={}){
   const calls:RequestCall[]=[],quotes=[quote('owned-ready','ready',options.scopePricing?.due_fen??12340,options.scopePricing),quote('owned-pending','pending_scope',0),quote('owned-unavailable','unavailable'),quote('owned-declined','declined'),quote('owned-expired','expired')];
-  const order={order_id:'owned-order',provider:'wechat',state:'paid',amount_fen:10000,points:10000,currency:'CNY',checkout_url:null,project_id:null,expires_at:future,credited_at:now};
+  const order={order_id:'owned-order',provider:'wechat',state:'paid',amount_fen:options.legacyBonus?50000:10000,points:options.legacyBonus?52500:10000,currency:'CNY',checkout_url:null,project_id:null,expires_at:future,credited_at:now};
   const refunds:PaymentRefund[]=[];let declineAttempts=0,refundAttempts=0;
-  const eligibility=():PaymentRefundEligibility=>({order_id:'owned-order',currency:'CNY',order_amount_fen:10000,paid_amount_fen:options.noCashEvidence?null:10000,refundable_fen:options.noCashEvidence?0:6000-refunds.filter(r=>r.state!=='failed').reduce((n,r)=>n+r.amount_fen,0),held_refund_fen:refunds.filter(r=>['requested','processing'].includes(r.state)).reduce((n,r)=>n+r.amount_fen,0),refunded_fen:refunds.filter(r=>r.state==='succeeded').reduce((n,r)=>n+r.amount_fen,0),enabled:!options.noCashEvidence,reason:options.noCashEvidence?'历史实付证据待核实，暂不支持自助原路退款。':'仅本单未消费现金余额可申请。',refunds});
+  const eligibility=():PaymentRefundEligibility=>({order_id:'owned-order',currency:'CNY',order_amount_fen:order.amount_fen,paid_amount_fen:options.noCashEvidence?null:order.amount_fen,original_points:order.points,request_unit:options.legacyBonus?'points':'amount_fen',refundable_points:options.noCashEvidence?0:(options.legacyBonus?42000:6000)-refunds.filter(r=>r.state!=='failed').reduce((n,r)=>n+r.credit_points,0),refunded_points:refunds.filter(r=>r.state==='succeeded').reduce((n,r)=>n+r.credit_points,0),refundable_fen:options.noCashEvidence?0:(options.legacyBonus?40000:6000)-refunds.filter(r=>r.state!=='failed').reduce((n,r)=>n+r.amount_fen,0),held_refund_fen:refunds.filter(r=>['requested','processing'].includes(r.state)).reduce((n,r)=>n+r.amount_fen,0),refunded_fen:refunds.filter(r=>r.state==='succeeded').reduce((n,r)=>n+r.amount_fen,0),enabled:!options.noCashEvidence,reason:options.noCashEvidence?'历史实付证据待核实，暂不支持自助原路退款。':'仅本单未消费现金余额可申请。',refunds});
   await page.route('**/api/v1/**',async route=>{
     const request=route.request(),path=new URL(request.url()).pathname.replace('/api/v1',''),method=request.method(),body=request.postData()?request.postDataJSON():undefined;calls.push({method,path,body});
     if(path==='/me')return json(route,200,{user_id:'lifecycle-owner',session_status:'active'});
@@ -43,7 +43,7 @@ async function setup(page:Page,options:{uncertainDecline?:boolean;uncertainRefun
     if(path==='/commerce/topups/owned-order/refund-eligibility')return json(route,200,eligibility());
     if(path==='/commerce/topups/owned-order/refunds'){
       refundAttempts++;if(options.uncertainRefund&&refundAttempts===1)return json(route,500,{code:'INTERNAL_ERROR'});
-      if(!refunds.length)refunds.push({refund_id:'owned-refund',order_id:'owned-order',currency:'CNY',amount_fen:body.amount_fen,state:'requested',created_at:now,updated_at:now,completed_at:null,failure_code:null});
+      if(!refunds.length)refunds.push({refund_id:'owned-refund',order_id:'owned-order',currency:'CNY',amount_fen:body.expected_amount_fen??body.amount_fen,credit_points:body.points??body.amount_fen,state:'requested',created_at:now,updated_at:now,completed_at:null,failure_code:null});
       return json(route,202,refunds[0]);
     }
     if(path==='/commerce/refunds/owned-refund/refresh'){
@@ -119,4 +119,43 @@ test('missing verified cash evidence exposes no refund command and a foreign ord
 test('legacy mode has no quotation or cash-refund traffic',async({page})=>{
   const {calls}=await setup(page,{legacy:true});await page.goto('/#/account');await expect(page.locator('#account-balance-title')).toHaveText('可用积分');await expect(page.locator('.account-balance-value')).toContainText('4,500');await expect(page.locator('#commerce-quotations')).toHaveCount(0);await expect(page.locator('#commerce-refunds')).toHaveCount(0);
   expect(calls.filter(c=>c.path.startsWith('/commerce/')&&c.path!=='/commerce/catalog')).toEqual([]);expect(mutations(calls)).toEqual([]);
+});
+
+test('legacy bonus credits refund original cash proportion and retain the exact points request across reload',async({page})=>{
+  const {calls}=await setup(page,{legacyBonus:true,uncertainRefund:true});await page.goto('/#/account?order=owned-order');
+  await expect(page.locator('[data-refundable]')).toHaveText('¥400.00');
+  await page.locator('[data-refund-amount]').fill('42000');await expect(page.locator('[data-refund-preview]')).toContainText('预计原路退回 ¥400.00');
+  await page.getByRole('button',{name:'核对原路退款申请',exact:true}).click();await expect(page.locator('dialog[open]')).toContainText('42,000 积分，对应 ¥400.00');
+  await page.locator('[data-refund-submit]').click();await expect(page.locator('[data-refund-submit-status]')).toContainText('原申请结果尚未确认');
+  await page.reload();await expect(page.locator('[data-refund-amount]')).toHaveValue('42000');await expect(page.locator('[data-refund-amount]')).toHaveAttribute('readonly','');
+  await page.getByRole('button',{name:'重试确认原退款申请',exact:true}).click();await page.locator('[data-refund-submit]').click();
+  await expect(page.locator('[data-refund="owned-refund"]')).toContainText('¥400.00 · 申请已受理');await expect(page.locator('[data-refund="owned-refund"]')).toContainText('对应 42,000 积分');
+  const requests=mutations(calls).filter(c=>c.path.endsWith('/refunds'));expect(requests).toHaveLength(2);expect(requests[0].body).toEqual(requests[1].body);
+  expect(requests[0].body).toEqual({request_id:expect.any(String),points:42000,expected_amount_fen:40000});
+  await evidence(page,'legacy-proportional-refund-1440.png','#commerce-refunds');
+});
+
+for(const mismatch of ['amount','points'])test(`refund acknowledgement with mismatched ${mismatch} remains unconfirmed with its original durable request`,async({page})=>{
+  await setup(page,{legacyBonus:true});const requests:any[]=[];
+  await page.route('**/api/v1/commerce/topups/owned-order/refunds',route=>{
+    const body=route.request().postDataJSON();requests.push(body);
+    return json(route,202,{refund_id:'wrong-refund',order_id:'owned-order',currency:'CNY',amount_fen:mismatch==='amount'?40001:40000,credit_points:mismatch==='points'?42001:42000,state:'requested',created_at:now,updated_at:now,completed_at:null,failure_code:null});
+  });
+  await page.goto('/#/account?order=owned-order');await page.locator('[data-refund-amount]').fill('42000');await page.getByRole('button',{name:'核对原路退款申请',exact:true}).click();
+  await page.locator('[data-refund-submit]').click();await expect(page.locator('[data-refund-submit-status]')).toContainText('原申请结果尚未确认');
+  await page.locator('[data-refund-submit]').click();await expect.poll(()=>requests.length).toBe(2);expect(requests[1]).toEqual(requests[0]);
+  await expect(page.locator('[data-refund="wrong-refund"]')).toHaveCount(0);
+});
+
+test('a definite pre-admission refund quote change permits a fresh request while uncertain failures do not',async({page})=>{
+  await setup(page,{legacyBonus:true});const requests:any[]=[];
+  await page.route('**/api/v1/commerce/topups/owned-order/refunds',route=>{
+    const body=route.request().postDataJSON();requests.push(body);
+    if(requests.length===1)return json(route,409,{code:'QUOTE_CHANGED'});
+    return json(route,202,{refund_id:'requote-refund',order_id:'owned-order',currency:'CNY',amount_fen:40000,credit_points:42000,state:'requested',created_at:now,updated_at:now,completed_at:null,failure_code:null});
+  });
+  await page.goto('/#/account?order=owned-order');await page.locator('[data-refund-amount]').fill('42000');await page.getByRole('button',{name:'核对原路退款申请',exact:true}).click();await page.locator('[data-refund-submit]').click();
+  await expect(page.locator('.commerce-refunds [role="alert"]')).toContainText('本次申请未受理、未冻结积分');await expect(page.locator('[data-refund-amount]')).not.toHaveAttribute('readonly','');
+  await page.getByRole('button',{name:'核对原路退款申请',exact:true}).click();await page.locator('[data-refund-submit]').click();await expect.poll(()=>requests.length).toBe(2);
+  expect(requests[0].request_id).not.toBe(requests[1].request_id);expect(requests[1].points).toBe(42000);expect(requests[1].expected_amount_fen).toBe(40000);
 });

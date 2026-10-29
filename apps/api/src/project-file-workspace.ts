@@ -153,7 +153,7 @@ export function registerProjectFileWorkspace(app:FastifyInstance,db:()=>Pool,own
     const user=await owner(r),projectId=id(r);await transaction(db(),c=>ensureProjectFileWorkspace(c,user,projectId));return readProjectFileWorkspace(db(),user,projectId,commercial);
   });
   app.get(base+'/workspace',async r=>readProjectFileWorkspace(db(),await owner(r),id(r),commercial));
-  app.get(base,async r=>({files:await projectFileVersions(db(),await owner(r),id(r))}));
+  app.get(base,async r=>({files:await projectFileVersions(db(),await owner(r),id(r),(r.query as {include_workpapers?:string}).include_workpapers==='true')}));
   app.post(base+'/batches/quote',{schema:{body:projectFileSchemas.ProjectFileBatchRequest}},async r=>{
     const user=await owner(r),projectId=id(r),b=r.body as Static<typeof projectFileSchemas.ProjectFileBatchRequest>;
     return transaction(db(),async c=>{

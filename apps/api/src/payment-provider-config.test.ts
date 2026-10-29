@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import test from 'node:test';
 import { paymentProvidersFromEnv } from './payment-provider-config.js';
 import { syntheticWechatFixture } from './test-wechat-pay-fixtures.js';
+import {syntheticAlipayFixture} from './test-alipay-pay-fixtures.js';
 
 const f = syntheticWechatFixture();
 const env = (): NodeJS.ProcessEnv => ({ BB_WECHAT_PAY_ENABLED: '1', BB_WECHAT_PAY_MERCHANT_ID: f.options.merchantId,
@@ -63,4 +64,22 @@ test('factory reads bounded regular files; on POSIX rejects loose permissions an
     writeFileSync(key, 'x'.repeat(65537)); assert.equal(paymentProvidersFromEnv(fileEnv, dependencies).status, 'invalid');
     assert.equal(paymentProvidersFromEnv({ ...fileEnv, BB_WECHAT_PAY_PRIVATE_KEY_FILE: dir }, dependencies).status, 'invalid');
   } finally { if (linked) unlinkSync(link); for (const path of [key, api, platform]) unlinkSync(path); rmdirSync(dir); }
+});
+
+test('Alipay is independently disabled, requires an explicit contracted Web product and never exposes a mandate',()=>{
+  const a=syntheticAlipayFixture(),alipayEnv:NodeJS.ProcessEnv={BB_ALIPAY_PAY_ENABLED:'1',BB_ALIPAY_APP_ID:a.options.appId,BB_ALIPAY_SELLER_ID:a.options.merchantId,
+    BB_ALIPAY_WEB_PRODUCT:'page',BB_ALIPAY_APP_PRIVATE_KEY:a.options.appPrivateKeyPem,BB_ALIPAY_PUBLIC_KEY:a.options.alipayPublicKeyPem,
+    BB_ALIPAY_NOTIFY_URL:a.options.notifyUrl,BB_ALIPAY_RETURN_URL:a.options.returnUrl};
+  for(const webProduct of ['page','wap']){
+    const result=paymentProvidersFromEnv({...alipayEnv,BB_ALIPAY_WEB_PRODUCT:webProduct},{now:()=>a.now});
+    assert.equal(result.status,'ready');assert.deepEqual(result.providers.map(p=>p.name),['alipay']);assert.equal(result.providers[0].recurring,undefined);assert.equal(result.providers[0].refunds,undefined);
+    assert.equal(JSON.stringify(result).includes('BEGIN'),false);
+  }
+  const combined=paymentProvidersFromEnv({...env(),...alipayEnv},dependencies);assert.equal(combined.status,'ready');assert.deepEqual(combined.providers.map(p=>p.name),['wechat','alipay']);
+  for(const changes of [{BB_ALIPAY_WEB_PRODUCT:undefined},{BB_ALIPAY_WEB_PRODUCT:'app'},{BB_ALIPAY_PAY_ENABLED:'true'},{BB_ALIPAY_APP_ID:undefined},
+    {BB_ALIPAY_SELLER_ID:undefined},{BB_ALIPAY_PUBLIC_KEY:undefined},{BB_ALIPAY_APP_PRIVATE_KEY_FILE:resolve('ambiguous-alipay.pem')},
+    {BB_ALIPAY_REFUND_ENABLED:'yes'},{BB_ALIPAY_PAY_TIMEOUT_MS:'30001'},{BB_ALIPAY_NOTIFY_URL:'https://synthetic.test/incorrect-callback'}])
+    assert.deepEqual(paymentProvidersFromEnv({...alipayEnv,...changes},{now:()=>a.now}),{providers:[],status:'invalid'});
+  assert.deepEqual(paymentProvidersFromEnv({...alipayEnv,BB_ALIPAY_PAY_ENABLED:'0'},{readSecretFile:()=>{throw Error('Do not read disabled Alipay files');}}),{providers:[],status:'disabled'});
+  assert.ok(paymentProvidersFromEnv({...alipayEnv,BB_ALIPAY_REFUND_ENABLED:'1'},{now:()=>a.now}).providers[0].refunds);
 });
