@@ -47,6 +47,22 @@ function text(value: unknown, max = 128): string {
   if (typeof value !== 'string' || value.length < 1 || value.length > max || /[\r\n\0]/.test(value)) return fail('PAYLOAD_INVALID');
   return value;
 }
+function refundTimestamp(value:unknown):string{
+  // The documented refund fields have second precision and an explicit RFC3339
+  // offset. Date.parse alone silently normalizes impossible calendar dates.
+  if(typeof value!=='string')return fail('RECEIPT_INVALID');
+  const parts=/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(Z|([+-])(\d{2}):(\d{2}))$/.exec(value);
+  if(!parts||parts[0]!==value)return fail('RECEIPT_INVALID');
+  const year=Number(parts[1]),month=Number(parts[2]),day=Number(parts[3]),hour=Number(parts[4]),minute=Number(parts[5]),second=Number(parts[6]);
+  const days=[31,year%4===0&&(year%100!==0||year%400===0)?29:28,31,30,31,30,31,31,30,31,30,31];
+  if(year<1||month<1||month>12||day<1||day>days[month-1]||hour>23||minute>59||second>59||
+    parts[7]==='-00:00'||parts[7]!=='Z'&&(Number(parts[9])>23||Number(parts[10])>59))return fail('RECEIPT_INVALID');
+  const instant=Date.parse(value);
+  if(!Number.isFinite(instant))return fail('RECEIPT_INVALID');
+  const normalized=new Date(instant).toISOString();
+  if(!/^\d{4}-/.test(normalized)||normalized.startsWith('0000-'))return fail('RECEIPT_INVALID');
+  return normalized;
+}
 function base64(value: unknown, maxBytes: number): Buffer {
   const encoded = text(value, Math.ceil(maxBytes / 3) * 4);
   if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) return fail('PAYLOAD_INVALID');
@@ -179,8 +195,14 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
     const state:VerifiedRefund['state']=status==='SUCCESS'?'succeeded':status==='CLOSED'?'failed':status==='PROCESSING'||status==='ABNORMAL'?'processing':fail('RECEIPT_INVALID');
     if(expected&&(refundId!==expected.id||orderId!==expected.order_id||transactionId!==expected.provider_transaction_id||
       Number(amount.total)!==expected.order_amount_fen||Number(amount.refund)!==expected.amount_fen))return fail('RECEIPT_INVALID');
+    // API create_time is refund acceptance. A callback has no such resource
+    // field; its envelope create_time is only notification creation time.
+    const providerCreatedAt=callback?undefined:refundTimestamp(value.create_time);
+    const providerSucceededAt=value.success_time===undefined?undefined:refundTimestamp(value.success_time);
+    if(providerSucceededAt&&(state!=='succeeded'||providerCreatedAt&&providerSucceededAt<providerCreatedAt))return fail('RECEIPT_INVALID');
     return {refundId,orderId,merchantId,transactionId,providerRefundId,currency:'CNY',orderAmountFen:Number(amount.total),amountFen:Number(amount.refund),
-      payerTotalFen:Number(amount.payer_total),payerRefundFen:Number(amount.payer_refund),state,...(state==='failed'?{failureCode:'CLOSED'}:{})};
+      payerTotalFen:Number(amount.payer_total),payerRefundFen:Number(amount.payer_refund),state,...(state==='failed'?{failureCode:'CLOSED'}:{}),
+      ...(providerCreatedAt?{providerCreatedAt}:{}),...(providerSucceededAt?{providerSucceededAt}:{})};
   }
   function decryptEvent(headers:FastifyRequest['headers'],rawBody:string,originalType:'transaction'|'refund'){
     verifyMessage(headers,rawBody);

@@ -1,7 +1,7 @@
 import type {FastifyInstance} from 'fastify';
 import type {Pool} from 'pg';
 import {applyVerifiedPayment,paymentOrder,closeRecharge,type PaymentProvider} from './payments.js';
-import {refreshPaymentRefund} from './payment-refunds.js';
+import {refreshPaymentRefund,refundDatesIncomplete} from './payment-refunds.js';
 import {raiseAlert} from './evidence-gate.js';
 import {scanAndIsolateBilling} from './billing-safety.js';
 
@@ -56,7 +56,9 @@ export async function reconcilePendingPayments(pool:Pool,providers:readonly Paym
   },shouldStop);
   if(shouldStop())return counts;
   const refunds=(await pool.query(`WITH due AS (
-    SELECT r.id FROM bb_payment_refunds r WHERE r.state IN ('requested','processing')
+    SELECT r.id FROM bb_payment_refunds r WHERE (r.state IN ('requested','processing')
+      OR r.provider='wechat' AND r.state IN ('succeeded','failed')
+        AND (r.provider_created_at IS NULL OR r.state='succeeded' AND r.provider_succeeded_at IS NULL))
       AND r.next_reconcile_at<=now() AND r.updated_at<=now()-interval '30 seconds'
       AND EXISTS(SELECT 1 FROM jsonb_to_recordset($1::jsonb) AS p(provider text,merchant_id text,refunds boolean)
         WHERE p.provider=r.provider AND p.merchant_id=r.merchant_id AND p.refunds)
@@ -70,7 +72,11 @@ export async function reconcilePendingPayments(pool:Pool,providers:readonly Paym
       // A crash after the authorised freeze committed may precede the first dispatch.
       // refresh serialises that dispatch with browser refreshes and other API instances.
       const applied=await refreshPaymentRefund(pool,row.owner_user_id,row.id,providers);
-      if(applied.state==='succeeded'||applied.state==='failed')counts.refunds_terminal++;
+      if(applied.state==='succeeded'||applied.state==='failed'){
+        counts.refunds_terminal++;
+        const proof=(await pool.query('SELECT provider,state,provider_created_at,provider_succeeded_at FROM bb_payment_refunds WHERE id=$1',[row.id])).rows[0];
+        if(refundDatesIncomplete(proof)){counts.unknown++;if(Number(row.reconcile_attempts)>=3)await unresolved('refund',row);}
+      }
       else {counts.unknown++;if(Number(row.reconcile_attempts)>=3)await unresolved('refund',row);}
     }catch{counts.unknown++;await unresolved('refund',row);} // Refund-held points stay held until an authenticated matching terminal receipt.
   },shouldStop);

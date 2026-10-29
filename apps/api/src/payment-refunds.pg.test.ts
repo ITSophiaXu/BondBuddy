@@ -43,7 +43,7 @@ async function setup(){
         const prior=channel.get(body.out_refund_no);
         if(prior){assert.equal(prior.transaction_id,body.transaction_id);assert.equal(prior.amount.refund,body.amount.refund);assert.equal(prior.amount.total,body.amount.total);}
         const receipt=prior??{out_refund_no:body.out_refund_no,out_trade_no:original.order_id,transaction_id:body.transaction_id,refund_id:'wx_'+body.out_refund_no.slice(0,27),
-          channel:'ORIGINAL',status:mode==='success'?'SUCCESS':mode==='closed'?'CLOSED':'PROCESSING',
+          channel:'ORIGINAL',status:mode==='success'?'SUCCESS':mode==='closed'?'CLOSED':'PROCESSING',create_time:statementFixtureDate+'T13:00:00+08:00',
           amount:{total:original.amount_fen,refund:body.amount.refund,payer_total:original.amount_fen,payer_refund:body.amount.refund,currency:'CNY'}};
         channel.set(body.out_refund_no,receipt);if(mode==='timeout')throw Error('Synthetic accepted request with lost response');return f.response(receipt);
       }
@@ -162,7 +162,7 @@ test('synthetic timeout/unknown retains freeze, reconciles same refund ID, and e
     assert.deepEqual(await creditBalance(h.pool,h.owner),{available:400,frozen:600});assert.equal((await h.request(order.order_id,600,key)).json().refund_id,refund.refund_id);assert.equal(h.counts().creates,1);
     h.channel.delete(refund.refund_id);assert.equal((await h.send('POST',`/api/v1/commerce/refunds/${refund.refund_id}/refresh`,{})).json().state,'processing');assert.deepEqual(await creditBalance(h.pool,h.owner),{available:400,frozen:600});
     const row=(await h.pool.query('SELECT * FROM bb_payment_refunds WHERE id=$1',[refund.refund_id])).rows[0];
-    const receipt={out_refund_no:row.id,out_trade_no:row.order_id,transaction_id:row.provider_txn_id,refund_id:'wx_'+row.id.slice(0,27),status:'ABNORMAL',
+    const receipt={out_refund_no:row.id,out_trade_no:row.order_id,transaction_id:row.provider_txn_id,refund_id:'wx_'+row.id.slice(0,27),status:'ABNORMAL',create_time:statementFixtureDate+'T13:00:00+08:00',
       amount:{total:1000,refund:600,payer_total:1000,payer_refund:600,currency:'CNY'}};h.channel.set(row.id,receipt);
     assert.equal((await h.send('POST',`/api/v1/commerce/refunds/${row.id}/refresh`,{})).json().state,'processing');assert.equal((await h.readLot(order.order_id)).frozen,'600');
     receipt.status='SUCCESS';const recovered=await h.send('POST',`/api/v1/commerce/refunds/${row.id}/refresh`,{});assert.equal(recovered.json().state,'succeeded',recovered.body);assert.deepEqual(await creditBalance(h.pool,h.owner),{available:400,frozen:0});
@@ -306,13 +306,26 @@ test('cash refunds allocate only authenticated original-source family and serial
     // A cash statement must reconcile the whole 52,500-point source allocation,
     // including the quality-restored lot, while keeping cash at 50,000 fen.
     const refundId=combined.json().refund_id,channelReceipt=h.channel.get(refundId);
-    const csv=syntheticTradeStatement({merchant:h.provider.merchantId,appId:h.f.options.appId,orderId:order.order_id,transactionId:'txn_'+order.order_id,
-      refund:true,refundId,providerRefundId:channelReceipt.refund_id,refundStatus:'PROCESSING'})
-      .replaceAll('100.00','500.00').replaceAll('25.00','500.00').replaceAll('0.60','3.00').replaceAll('-0.15','-3.00').replaceAll('0.45','0.00');
+    const parts=syntheticTradeStatement({merchant:h.provider.merchantId,appId:h.f.options.appId,orderId:order.order_id,transactionId:'txn_'+order.order_id,
+      refund:true,refundId,providerRefundId:channelReceipt.refund_id,refundStatus:'PROCESSING'}).trim().split(/\r?\n/);
+    const columns=parts[0].split(','),cell=(cells:string[],name:string,value:string)=>{cells[columns.indexOf(name)]=String.fromCharCode(96)+value;};
+    const amount=(fen:number)=>(fen/100).toFixed(2),accepted=[...h.channel.values()].filter(r=>r.out_trade_no===order.order_id);
+    // ALL includes accepted applications subsequently CLOSED, as well as the
+    // successful original-family refund. Every application time matches its API proof.
+    const refundRows=accepted.map(r=>{
+      const cells=parts[2].split(',');cell(cells,'微信退款单号',r.refund_id);cell(cells,'商户退款单号',r.out_refund_no);
+      cell(cells,'退款状态',r.status==='CLOSED'?'FAIL':'PROCESSING');cell(cells,'申请退款金额',amount(r.amount.refund));
+      cell(cells,'退款金额',r.status==='CLOSED'?'0.00':amount(r.amount.refund));cell(cells,'手续费',r.status==='CLOSED'?'0.00':'-3.00');
+      return cells.join(',');
+    });
+    const requested=accepted.reduce((sum,r)=>sum+r.amount.refund,0);
+    const csv=[parts[0],parts[1].replaceAll('100.00','500.00').replaceAll('0.60','3.00'),...refundRows,parts[3],
+      [accepted.length+1,'500.00','500.00','0.00','0.00','500.00',amount(requested)].join(',')].join('\n')+'\n';
     const statementProvider:PaymentProvider={...h.provider,downloadStatements:async request=>parsePaymentStatement(Buffer.from(csv),{
       ...request,merchantId:h.provider.merchantId,appId:h.f.options.appId,sha1:createHash('sha1').update(csv).digest('hex'),verifiedAt:'2026-10-28T04:00:00Z'})};
     const balanceBefore=await creditBalance(h.pool,h.owner),ledgerBefore=(await h.pool.query('SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1',[h.owner])).rows[0].n;
-    const statementJob=await enqueuePaymentStatement(h.pool,statementProvider,{billDate:statementFixtureDate,kind:'trade'});assert.ok(statementJob);
+    await enqueuePaymentStatement(h.pool,statementProvider,{billDate:statementFixtureDate,kind:'trade'});
+    const statementJob=(await h.pool.query("SELECT id FROM bb_payment_statement_jobs WHERE provider='wechat' AND merchant_id=$1 AND bill_date=$2 AND kind='trade'",[h.provider.merchantId,statementFixtureDate])).rows[0].id;
     assert.equal((await reconcileDailyStatements(h.pool,[statementProvider],{now:new Date('2026-10-28T01:00:00Z')})).completed,1);
     const checks=(await h.pool.query('SELECT difference_count FROM bb_payment_statement_checks WHERE job_id=$1',[statementJob])).rows;
     const differences=(await h.pool.query(`SELECT d.kind,d.line_no,d.reference_id,d.unit,d.expected_value::text,d.observed_value::text

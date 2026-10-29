@@ -11,7 +11,7 @@ const f=syntheticWechatFixture(),options={...f.options,refundNotifyUrl:'https://
 const order:RefundOrder={id:'synthetic_refund_1',order_id:f.order.id,merchant_id:options.merchantId,
   provider_transaction_id:f.paid.transaction_id,currency:'CNY',order_amount_fen:10000,amount_fen:3000};
 const value={out_refund_no:order.id,out_trade_no:order.order_id,transaction_id:order.provider_transaction_id,refund_id:'synthetic_channel_refund_1',
-  status:'PROCESSING',channel:'ORIGINAL',amount:{total:10000,refund:3000,payer_total:10000,payer_refund:3000,currency:'CNY'}};
+  status:'PROCESSING',channel:'ORIGINAL',create_time:'2026-10-28T23:59:58+08:00',amount:{total:10000,refund:3000,payer_total:10000,payer_refund:3000,currency:'CNY'}};
 const rejected=(error:unknown)=>error instanceof WechatPayError;
 const callback=(v:Record<string,unknown>={...value,mchid:options.merchantId,refund_status:'SUCCESS'},event='REFUND.SUCCESS')=>f.envelope(v,{event_type:event},{original_type:'refund'});
 
@@ -92,6 +92,64 @@ test('refund status mapping retains ABNORMAL as unresolved and only CLOSED is ex
   }
   const p=createWechatPayProvider(options,{now:()=>f.now,fetch:async()=>{throw Error('must not fetch');}});
   for(const changes of [{amount_fen:0},{amount_fen:10001},{order_amount_fen:1.5},{merchant_id:'1900000002'},{order_id:'../foreign'},{id:'../foreign'},{provider_transaction_id:''}])await assert.rejects(()=>p.refunds!.create({...order,...changes}),rejected);
+});
+
+test('authenticated API application and success times normalize separately across offsets and bill days',async()=>{
+  for(const [create_time,success_time,created,succeeded] of [
+    ['2026-10-28T23:59:58+08:00','2026-10-29T00:00:02+08:00','2026-10-28T15:59:58.000Z','2026-10-28T16:00:02.000Z'],
+    ['2026-10-28T23:59:58Z','2026-10-29T00:00:02+00:00','2026-10-28T23:59:58.000Z','2026-10-29T00:00:02.000Z'],
+    ['2026-10-28T20:00:00-04:00','2026-10-29T08:01:00+08:00','2026-10-29T00:00:00.000Z','2026-10-29T00:01:00.000Z'],
+    ['2024-02-29T12:00:00+08:00','2024-02-29T12:00:00+08:00','2024-02-29T04:00:00.000Z','2024-02-29T04:00:00.000Z'],
+  ]){
+    const p=createWechatPayProvider(options,{now:()=>f.now,fetch:async()=>f.response({...value,status:'SUCCESS',create_time,success_time})});
+    for(const result of [await p.refunds!.create(order),await p.refunds!.query(order)]){
+      assert.equal(result.providerCreatedAt,created);assert.equal(result.providerSucceededAt,succeeded);
+    }
+  }
+  const p=createWechatPayProvider(options,{now:()=>f.now,fetch:async()=>f.response({...value,status:'SUCCESS'})});
+  const result=await p.refunds!.query(order);
+  assert.equal(result.providerCreatedAt,'2026-10-28T15:59:58.000Z');assert.equal(result.providerSucceededAt,undefined,'success_time is optional in the official schema');
+});
+
+test('API refund dates reject missing acceptance, impossible calendars, unknown offsets and conflicting chronology',async()=>{
+  const invalidDates:unknown[]=[undefined,null,0,'','2026-10-28','2026-10-28T23:59:58','2026-02-29T10:00:00+08:00',
+    '2026-04-31T10:00:00+08:00','1900-02-29T10:00:00+08:00','2026-00-01T10:00:00+08:00','2026-13-01T10:00:00+08:00',
+    '2026-10-00T10:00:00+08:00','2026-10-28T24:00:00+08:00','2026-10-28T23:60:00+08:00','2026-10-28T23:59:60+08:00',
+    '2026-10-28T23:59:58+24:00','2026-10-28T23:59:58+08:60','2026-10-28T23:59:58-00:00','0000-01-01T00:00:00Z',
+    '0001-01-01T00:00:00+08:00','2026-10-28T23:59:58+08:00\n'];
+  for(const create_time of invalidDates){
+    const p=createWechatPayProvider(options,{now:()=>f.now,fetch:async()=>f.response({...value,create_time})});
+    await assert.rejects(()=>p.refunds!.query(order),error=>error instanceof WechatPayError&&error.code==='RECEIPT_INVALID');
+  }
+  for(const success_time of [...invalidDates.filter(date=>date!==undefined),'2026-10-28T15:59:57Z']){
+    const p=createWechatPayProvider(options,{now:()=>f.now,fetch:async()=>f.response({...value,status:'SUCCESS',success_time})});
+    await assert.rejects(()=>p.refunds!.query(order),error=>error instanceof WechatPayError&&error.code==='RECEIPT_INVALID');
+  }
+  for(const status of ['PROCESSING','ABNORMAL','CLOSED']){
+    const p=createWechatPayProvider(options,{now:()=>f.now,fetch:async()=>f.response({...value,status,success_time:'2026-10-29T00:00:02+08:00'})});
+    await assert.rejects(()=>p.refunds!.query(order),error=>error instanceof WechatPayError&&error.code==='RECEIPT_INVALID');
+  }
+});
+
+test('callback refund dates use only decrypted success_time and never notification or undocumented application time',async()=>{
+  const p=createWechatPayProvider(options,{now:()=>f.now,fetch:async()=>{throw Error('Callbacks must not fetch');}});
+  const base={...value,mchid:options.merchantId,refund_status:'SUCCESS',success_time:'2026-10-29T00:00:02+08:00'};
+  for(const create_time of [undefined,'2025-01-01T00:00:00Z','not an API field']){
+    const envelope=f.envelope({...base,create_time},{event_type:'REFUND.SUCCESS',create_time:'2026-10-29T09:30:00+08:00'},{original_type:'refund'});
+    const result=await p.refunds!.verifyCallback(envelope.headers,envelope.raw);
+    assert.equal(result.providerCreatedAt,undefined);assert.equal(result.providerSucceededAt,'2026-10-28T16:00:02.000Z');
+  }
+  const withoutSuccess=callback({...base,create_time:undefined,success_time:undefined});
+  const result=await p.refunds!.verifyCallback(withoutSuccess.headers,withoutSuccess.raw);
+  assert.equal(result.providerCreatedAt,undefined);assert.equal(result.providerSucceededAt,undefined);
+  for(const success_time of [null,'2026-02-29T00:00:00+08:00','2026-10-29T00:00:00']){
+    const envelope=callback({...base,success_time});
+    await assert.rejects(()=>p.refunds!.verifyCallback(envelope.headers,envelope.raw),rejected);
+  }
+  const closed=callback({...base,refund_status:'CLOSED'},'REFUND.CLOSED');
+  await assert.rejects(()=>p.refunds!.verifyCallback(closed.headers,closed.raw),rejected);
+  const unsigned=callback(base);
+  await assert.rejects(()=>p.refunds!.verifyCallback({...unsigned.headers,'wechatpay-signature':'invalid'},unsigned.raw),rejected);
 });
 
 test('RSA/AES refund callbacks validate event/status, merchant, channel identities and payer cash fields',async()=>{
