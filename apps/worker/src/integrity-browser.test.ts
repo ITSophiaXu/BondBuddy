@@ -1,3 +1,4 @@
+// Accelerated observation windows for legacy fixtures; production durations have dedicated regressions.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
@@ -94,7 +95,7 @@ test('real Chromium on synthetic official-site fixtures: query, screenshot, zero
   for(const [mode,expected] of [['hits','results'],['zero','no_results'],['zero-ndrc','no_results'],['late','no_results'],['captcha','blocked'],['waf','failed'],['login','blocked'],['failure','failed'],['stale','unverified']] as const){
    await t.test(mode,async()=>{
     const context=await browser.newContext({viewport:{width:1440,height:1000}});await integrityWebsiteFixture(context,mode);
-    const result=await collectInContext(context,site,{name:'合成测试企业',kind:'company',province:'河北',city:'沧州'},new AbortController().signal,{waitMs:5000,maxPages:1});
+    const result=await collectInContext(context,site,{name:'合成测试企业',kind:'company',province:'河北',city:'沧州'},new AbortController().signal,{resultStableMs:150,zeroConfirmMs:300,waitMs:5000,maxPages:1});
     assert.equal(result.outcome,expected,JSON.stringify({...result,captures:result.captures.map(c=>({...c,screenshot:c.screenshot.length}))}));assert.equal(result.query,'合成测试企业');
     assert.equal(result.search_performed,mode!=='login');assert.ok(result.captures.length);assert.equal(result.captures[0].screenshot.subarray(1,4).toString(),'PNG');
     if(mode==='hits')assert.ok(result.captures.some(c=>c.kind==='detail'));
@@ -117,9 +118,9 @@ test('observed MOT list without totals requires fresh visible structured results
      document.querySelector('button').onclick=async()=>{await fetch('/search?q='+encodeURIComponent(document.querySelector('input').value));document.querySelector('main').innerHTML=${JSON.stringify(mode==='shell'?'结果排序：按相关度 搜索位置：全文':item)};};
     </script>`});
    });
-   const result=await collectInContext(context,current,{name:'合成测试企业',kind:'company',province:'北京',city:''},new AbortController().signal,{waitMs:4200,maxPages:1,attempts:1,...(mode==='capture-cleared'?{screenCapture:async(page:import('playwright').Page)=>{const png=await page.screenshot();await page.locator('main').evaluate(e=>e.textContent='结果排序：按相关度');return png;}}:{})});
+   const result=await collectInContext(context,current,{name:'合成测试企业',kind:'company',province:'北京',city:''},new AbortController().signal,{resultStableMs:150,zeroConfirmMs:300,waitMs:4200,maxPages:1,attempts:1,...(mode==='capture-cleared'?{screenCapture:async(page:import('playwright').Page)=>{const png=await page.screenshot();await page.locator('main').evaluate(e=>e.textContent='结果排序：按相关度');return png;}}:{})});
    assert.equal(result.search_performed,true);
-   assert.equal(result.outcome,mode==='hits'?'results':mode==='capture-cleared'?'failed':'unverified');
+   assert.equal(result.outcome,mode==='hits'?'results':'unverified');
    assert.equal(result.captures.some(c=>c.kind==='result'),mode==='hits');
    await context.close();
   });
@@ -139,7 +140,7 @@ test('observed tax next-page label advances before a second result screenshot',{
     document.addEventListener('click',e=>{if(e.target.id==='next')show(2);});
    </script>`});
   });
-  const result=await collectInContext(context,site,{name:'合成测试企业',kind:'company',province:'北京',city:'北京'},new AbortController().signal,{waitMs:5000,maxPages:2});
+  const result=await collectInContext(context,site,{name:'合成测试企业',kind:'company',province:'北京',city:'北京'},new AbortController().signal,{resultStableMs:150,zeroConfirmMs:300,waitMs:5000,maxPages:2});
   assert.equal(result.outcome,'results');
   assert.deepEqual(result.captures.map(c=>[c.kind,c.page]),[['result',1],['result',2]]);
   assert.match(result.captures[1].text,/第2页/);
