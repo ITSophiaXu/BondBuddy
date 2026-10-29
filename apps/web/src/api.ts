@@ -51,7 +51,7 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
   const reference = errorReference(error);
   switch (error.code) {
     case 'INPUT_REVISION_CONFLICT': return '这个项目已在其他页面修改。你的输入仍保留，请查看最新版本后再修改。';
-    case 'PROJECT_RUN_ACTIVE': return '同一来源项目已有任务正在执行。本次未开始，草稿保留。请在全部项目查看任务，等待完成或停止后明确执行。';
+    case 'PROJECT_RUN_ACTIVE': return '同一来源项目已有任务正在执行。本次未开始，草稿保留。请在任务进度与结果查看任务，等待完成或停止后明确执行。';
     case 'UNAUTHENTICATED': return '登录已失效，请重新登录。';
     case 'NOT_FOUND': return '无法访问这个项目，它可能已移除或不属于当前账号。';
     case 'RATE_LIMITED': return '尝试次数过多，请稍后再试。';

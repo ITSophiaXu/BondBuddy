@@ -12,7 +12,7 @@ export function withProjectContext(query:URLSearchParams, fromList=projectListCo
   return query;
 }
 export function projectBackLink() {
-  return '<a class="back-link" href="#tasks">← 返回全部项目</a>';
+  return '<a class="back-link" href="#tasks">← 返回任务进度与结果</a>';
 }
 
 export type ProjectWork='files'|'update'|'review'|'generate'|'integrity'|'qa'|'consistency';

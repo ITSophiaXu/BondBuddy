@@ -1296,10 +1296,10 @@ test('all-projects update keeps its list context through progress, edit and refr
  const state=fixture();state.checkStatus='ready';state.runState='running';state.runStage='file_authoring';state.runReason='';
  await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#execution-progress .task-progress')).toContainText('编制募集书');
  await openListedRun(page,[...state.runs.values()][0]);
- await expect(page.locator('.sidebar a.active')).toContainText('全部项目');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
- await page.getByRole('button',{name:'编辑项目信息',exact:true}).click();await expect(page).toHaveURL(/from=projects/);await expect(page.locator('.sidebar a.active')).toContainText('全部项目');
+ await expect(page.locator('.sidebar a.active')).toContainText('任务进度与结果');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
+ await page.getByRole('button',{name:'编辑项目信息',exact:true}).click();await expect(page).toHaveURL(/from=projects/);await expect(page.locator('.sidebar a.active')).toContainText('任务进度与结果');
  await page.getByRole('button',{name:/保存并继续/}).click();await page.reload();
- await expect(page.locator('.sidebar a.active')).toContainText('全部项目');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
+ await expect(page.locator('.sidebar a.active')).toContainText('任务进度与结果');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
  expect(state.executes).toHaveLength(1);
 });
 
@@ -1423,10 +1423,10 @@ test('dashboard update preserves filtered workbench context through execution, e
  const state=fixture();state.checkStatus='ready';state.runState='running';state.runStage='file_authoring';state.runReason='';
  await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#execution-progress .task-progress')).toContainText('编制募集书');
  await page.goto('/#dashboard');await page.locator('[data-tasks]').click();await page.locator('.collection-task a').click();
- await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
+ await expect(page.locator('.nav-item.active')).toHaveText('任务进度与结果');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
  await page.getByRole('button',{name:'编辑项目信息',exact:true}).click();await page.getByRole('button',{name:/保存并继续/}).click();await page.reload();
- await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
- await page.getByRole('link',{name:'返回全部项目'}).click();await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();expect(state.executes).toHaveLength(1);
+ await expect(page.locator('.nav-item.active')).toHaveText('任务进度与结果');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
+ await page.getByRole('link',{name:'返回任务进度与结果'}).click();await expect(page.getByRole('heading',{name:'任务进度与结果',exact:true})).toBeVisible();expect(state.executes).toHaveLength(1);
 });
 
 

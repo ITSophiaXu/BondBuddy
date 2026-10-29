@@ -37,7 +37,7 @@ test('real login -> project -> autosave -> reload -> relogin; account B cannot r
   await page.reload();
   await expect(page.getByLabel('发行人全称')).toHaveValue('浏览器验收合成发行人有限公司');
   await expect(page.getByLabel('项目名称 必填', { exact: true })).toHaveValue('合成验收 · 已重命名项目');
-  await page.getByRole('link', { name: '全部项目', exact: true }).click();
+  await page.getByRole('link', { name: '任务进度与结果', exact: true }).click();
   await expect(page.getByRole('heading', { name: '合成验收 · 已重命名项目', exact: true })).toBeVisible();
   await page.getByLabel('搜索项目名称或发行人').fill('不存在');
   await expect(page.getByRole('heading', { name: '没有找到匹配的项目' })).toBeVisible();
@@ -70,7 +70,7 @@ test('server 409 retains input, blocks navigation and reloads only after an expl
   await page.getByLabel('项目名称 必填', { exact: true }).fill('本页尚未保存的修改');
   await expect(page.locator('#save-state')).toHaveText('有版本冲突');
   await expect(page.getByLabel('项目名称 必填', { exact: true })).toHaveValue('本页尚未保存的修改');
-  await page.getByRole('link', { name: '全部项目', exact: true }).click();
+  await page.getByRole('link', { name: '任务进度与结果', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/projects/${id}$`));
   await expect(page.getByLabel('项目名称 必填', { exact: true })).toHaveValue('本页尚未保存的修改');
   page.once('dialog', dialog => dialog.accept());
@@ -100,7 +100,7 @@ test('logout from another tab clears project data without needing a reload', asy
   await createProject(page, '合成跨页会话样本');
   const other = await context.newPage();
   await other.goto('/');
-  await expect(other.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
+  await expect(other.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
   await other.getByRole('button', { name: '退出', exact: true }).click();
   await expect(page.getByRole('heading', { name: '登录工作区' })).toBeVisible();
   await expect(page.getByText('合成跨页会话样本', { exact: true })).toHaveCount(0);

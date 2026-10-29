@@ -85,7 +85,7 @@ test('mobile assistant keeps focus inside and restores navigation and logout aft
 test('global launcher preserves unsent text across navigation, collapse, reload and history; questions never create document jobs',async({page})=>{
  const s=await setup(page);await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toBeVisible();
  await page.locator('[data-composer]').fill('这种表述是否合适？');await expect.poll(()=>s.w.view.unsent_content).toBe('这种表述是否合适？');
- await page.locator('.ba-header [data-a=toggle]').click();await page.locator('.sidebar').getByRole('link',{name:'全部项目',exact:true}).click();await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toHaveValue('这种表述是否合适？');
+ await page.locator('.ba-header [data-a=toggle]').click();await page.locator('.sidebar').getByRole('link',{name:'任务进度与结果',exact:true}).click();await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toHaveValue('这种表述是否合适？');
  await page.reload();await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toHaveValue('这种表述是否合适？');
  await page.locator('[data-a=send]').click();await expect(page.locator('.ba-message.assistant')).toContainText('可先说明');expect(s.messages).toHaveLength(1);expect(s.executions).toHaveLength(0);await expect(page.locator('.ba-task')).toHaveCount(0);
  await page.locator('[data-a=history]').click();await expect(page.locator('.ba-history')).toContainText('BondBuddy');
@@ -245,7 +245,7 @@ test('desktop pages reflow beside the assistant at standard and wide widths',asy
  await setup(page);await page.setViewportSize({width:1440,height:960});await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();
  for(const width of [1440,1280,1120,1024,961]){
   await page.setViewportSize({width,height:960});
-  for(const [route,label] of [['dashboard','全部项目'],['tasks','全部项目'],['update','更新募集书'],['review','复核募集书'],['generate?new=1','文件生成'],['/account','我的账号']]){
+  for(const [route,label] of [['dashboard','任务进度与结果'],['tasks','任务进度与结果'],['update','更新募集书'],['review','复核募集书'],['generate?new=1','文件生成'],['/account','我的账号']]){
    await page.evaluate(route=>{location.hash=route;},route);await expect(page.locator('.shell main')).toBeVisible();
    await expect(page.locator('.breadcrumb>span').last()).toHaveText(label);
    if(route==='/account')await expect(page.locator('.credit-pack')).toHaveCount(4);
