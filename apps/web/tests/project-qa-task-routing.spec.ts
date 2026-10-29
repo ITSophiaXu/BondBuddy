@@ -38,7 +38,8 @@ for(const operation of ['prepare','answer'] as const)for(const status of ['pause
       if(visit)await page.reload();
       await expect(page).toHaveURL(new RegExp(`#qa\\?project=${projectId}&run=${runId}$`));
       await expect(page.getByRole('heading',{name:'项目问答',exact:true})).toBeVisible();
-      await expect(page.locator('#qa-history')).toHaveValue(runId);
+      await expect(page.locator('#qa-history')).toHaveValue(operation==='answer'?runId:'');
+      await expect(page.locator(`#qa-history option[value="${prepareId}"]`)).toHaveCount(0);
       if(operation==='prepare'&&status==='succeeded'){
         await expect(page.locator('.qa-prepared')).toContainText('候选问题');
         await expect(page.locator('#qa-download')).toHaveCount(0);

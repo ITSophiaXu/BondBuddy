@@ -75,7 +75,9 @@ test('history selection adopts the selected run requirements and exact material 
   const state=await open(page),old=historicalRecords(state);await page.locator('#qa-history').selectOption(otherAnswerId);
   await expect(page.locator('#qa-history')).toHaveValue(otherAnswerId);await expect(followup(page,'q2')).toBeChecked();await adopt(page);
   await expectLocal(page,['q2','q7'],'另一历史轮要求：核对业务报告第三版。');expect(qaWrites(state)).toEqual([]);
-  await chooseKnowledge(page,true);await page.locator('#qa-save').click();await expect.poll(()=>state.drafts.length).toBe(1);
+  await knowledge(page,true).check();await expect(page.locator('#qa-save')).toBeEnabled();
+  // This historical round has no adopted prospectus; saving its exact materials is allowed, answering is blocked.
+  await expect(page.locator('#qa-start')).toBeDisabled();await page.locator('#qa-save').click();await expect.poll(()=>state.drafts.length).toBe(1);
   expect(state.drafts[0].draft).toEqual({preparation_id:prepareId,questions:missingQuestions(),materials:[newMaterial],requirements:'另一历史轮要求：核对业务报告第三版。',use_knowledge:true});
   expect(historicalRecords(state)).toEqual(old);expect(state.prepares).toEqual([]);expect(state.uploads).toEqual([]);
 });
@@ -92,7 +94,7 @@ test('successful preparation is read-only until the user explicitly adopts its d
   const state=await open(page,fixture(),prepareId),before=structuredClone(state.workspace.draft);await expect(page.locator('#qa-use-preparation')).toBeVisible();
   await expect(page.locator('#qa-save')).toHaveCount(0);await expect(page.locator('#qa-start')).toHaveCount(0);expect(state.workspace.draft).toEqual(before);expect(writes(state)).toEqual([]);
   await page.locator('#qa-use-preparation').click();await expect.poll(()=>selectedIds(page)).toEqual(['q2','q4','q7']);
-  await expect(knowledge(page,true)).not.toBeChecked();await expect(knowledge(page,false)).not.toBeChecked();await expect(page.locator('#qa-save')).toBeDisabled();expect(writes(state)).toEqual([]);
+  await expect(knowledge(page,true)).not.toBeChecked();await expect(knowledge(page,false)).toBeChecked();await expect(page.locator('#qa-save')).toBeEnabled();expect(writes(state)).toEqual([]);
 });
 
 test('explicit confirmation sends only the exact selected draft and a 120-credit answer envelope, preserving history',async({page})=>{
