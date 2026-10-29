@@ -11,6 +11,10 @@ import {prototypeIcon as ico} from './prototype-design';
 import {withProjectContext} from './project-navigation';
 import {runStateLabel} from './review-state';
 import './workpaper-panel.css';
+import {WorkpaperImportSchema,WorkpaperPreviewSchema,type WorkpaperImport,type WorkpaperCataloguePreview,type WorkpaperColumnMapping,type M4MaterialPin} from '@bondbuddy/contracts';
+import {WorkpaperImportReview} from './workpaper-import-review';
+import type {UploadRecoveryJson} from './upload-recovery';
+type CatalogueUploadContext={draft?:{scope:'due_diligence'|'all';mapping?:WorkpaperColumnMapping[]};request?:WorkpaperImport};
 
 const stateNames:Record<string,string>={queued:'等待生成',running:'正在生成',paused:'已暂停',partial:'部分完成',complete:'已完成',cancelled:'已结束排队'};
 export class WorkpaperPanel {
@@ -22,9 +26,10 @@ export class WorkpaperPanel {
   private view:'prepare'|'confirm'|'results'='prepare';
   private expandedFolders=new Set<string>();
   private uploadNeedsFile=new Set<string>();
+  private importReview?:WorkpaperImportReview;private uploadContextSnapshot?:UploadRecoveryJson;
   constructor(private api:ApiClient,private host:HTMLElement,private project:string,private owner:string,private source:ProjectFileSource|null,private current:()=>boolean,private stepChanged:(step:number)=>void=()=>{}){}
   private get key(){return `bb-workpapers-v1:${this.owner}:${this.project}`;}
-  get hasUnconfirmed(){return this.busy||!!this.pending||this.storageError;}
+  get hasUnconfirmed(){return this.busy||!!this.pending||!!this.importReview||this.storageError;}
   async beforeLeave(){return !this.busy&&!this.storageError;}
   dispose(){this.controller.abort();clearTimeout(this.timer);this.downloads.dispose();}
   private live(){return !this.controller.signal.aborted&&this.current()&&this.host.isConnected;}
@@ -78,7 +83,7 @@ export class WorkpaperPanel {
     this.stepChanged(this.view==='prepare'?2:this.view==='confirm'?3:4);
     const sourceHref='#generate?'+withProjectContext(new URLSearchParams({project:this.project,step:'source',mode:'workpapers'}));
     this.host.innerHTML=`<div class="wp-source-context ${this.source?'':'wp-source-missing'}" ${this.view!=='prepare'?'hidden':''}><span class="wp-source-icon">${ico('file')}</span><div class="wp-source-info"><small>生成依据 · 募集说明书</small><div class="wp-source-file"><strong>${this.source?esc(this.source.filename):'请先上传并采用募集说明书'}</strong>${this.source?`<span class="wp-source-version">V${this.source.sequence}</span>`:''}</div></div><a class="text-button" href="${esc(sourceHref)}">更换</a></div>
-      <section class="panel wp-prepare" aria-label="按底稿目录批量生成" ${this.view!=='prepare'?'hidden':''}><h2>选择要生成的文件</h2>${this.catalogue?`<div class="wp-directory-current">${ico('folder')}<div><strong>${esc(this.catalogue.filename)}</strong><small>${this.catalogue.entries.filter(e=>e.kind==='file').length} 份文件已识别</small></div><button class="text-button" id="wp-change-directory" ${this.pending||this.busy?'disabled':''}>更换目录</button></div><div id="wp-directory-editor" hidden><label>选择项目已有目录<select id="wp-catalogue" ${this.pending||this.busy?'disabled':''}>${this.data.catalogues.map(c=>`<option value="${esc(c.catalogue_id)}" ${this.catalogue?.catalogue_id===c.catalogue_id?'selected':''}>${esc(c.filename)}</option>`).join('')}</select></label><label>上传新目录<input id="wp-upload" type="file" accept=".xlsx" aria-label="上传底稿目录（XLSX，10 MB 以内）" ${this.pending||this.busy?'disabled':''}></label><p class="muted">XLSX · 10 MB 以内</p></div>`:`<div class="wp-upload-zone"><span class="wp-upload-icon">${ico('upload')}</span><h2>添加底稿目录</h2><p>默认生成“1 尽职调查文件”；可以在清单中调整范围。</p><label class="wp-upload-picker"><span class="btn primary">${ico('plus')}选择 Excel 底稿目录</span><input id="wp-upload" type="file" accept=".xlsx" aria-label="上传底稿目录（XLSX，10 MB 以内）" aria-describedby="wp-upload-help" ${this.pending||this.busy?'disabled':''}></label><small id="wp-upload-help">XLSX · 10 MB 以内 · 最多 ${WORKPAPER_LIMITS.items.toLocaleString()} 份文件</small></div><details class="wp-format-help"><summary>Excel 目录怎么准备？</summary><p>支持带“底稿名称”或“文件名称”表头的表格，也支持“1、1-1”式编号与名称的无表头清单；可提供“目录路径、类型、编制要求”。文件夹在“类型”列填写“目录”。旧版 XLS 请另存为 XLSX。</p></details>`}
+      <section class="panel wp-prepare" aria-label="按底稿目录批量生成" ${this.view!=='prepare'?'hidden':''}><h2>选择要生成的文件</h2>${this.catalogue?`<div class="wp-directory-current">${ico('folder')}<div><strong>${esc(this.catalogue.filename)}</strong><small>${this.catalogue.entries.filter(e=>e.kind==='file').length} 份文件已识别</small></div><button class="text-button" id="wp-change-directory" ${this.pending||this.busy?'disabled':''}>更换目录</button></div><div id="wp-directory-editor" hidden><label>选择项目已有目录<select id="wp-catalogue" ${this.pending||this.busy?'disabled':''}>${this.data.catalogues.map(c=>`<option value="${esc(c.catalogue_id)}" ${this.catalogue?.catalogue_id===c.catalogue_id?'selected':''}>${esc(c.filename)}</option>`).join('')}</select></label><label>上传新目录<input id="wp-upload" type="file" accept=".xlsx" aria-label="上传底稿目录（XLSX，10 MB 以内）" ${this.pending||this.busy?'disabled':''}></label><p class="muted">XLSX · 10 MB 以内</p></div>`:`<div class="wp-upload-zone"><span class="wp-upload-icon">${ico('upload')}</span><h2>添加底稿目录</h2><p>默认生成“1 尽职调查文件”；可以在清单中调整范围。</p><label class="wp-upload-picker"><span class="btn primary">${ico('plus')}选择 Excel 底稿目录</span><input id="wp-upload" type="file" accept=".xlsx" aria-label="上传底稿目录（XLSX，10 MB 以内）" aria-describedby="wp-upload-help" ${this.pending||this.busy?'disabled':''}></label><small id="wp-upload-help">XLSX · 10 MB 以内 · 最多 ${WORKPAPER_LIMITS.items.toLocaleString()} 份文件</small></div><details class="wp-format-help"><summary>Excel 目录怎么准备？</summary><p>不要求固定表头或列顺序。系统结合内容识别名称、编号和编制要求；没有表头或编号也可在上传后的预览中调整列和行范围，无需修改原表。当前支持 XLSX；旧版 XLS 请先另存为 XLSX。</p></details>`}
       <div id="wp-upload-recovery"></div><p id="wp-status" role="status">${esc(this.status)}</p>
       ${this.catalogue?`<details ${this.catalogue.warnings.length?'open':''}><summary>目录识别提示（${this.catalogue.warnings.length}）</summary>${this.catalogue.warnings.map(w=>`<p>${esc(w)}</p>`).join('')}</details>
       <div class="wp-controls"><label>查找底稿<span class="wp-search-field">${ico('search')}<input id="wp-filter" type="search" value="${esc(this.filter)}" placeholder="搜索编号或名称"></span></label><div class="wp-selection-actions" role="group" aria-label="底稿选择操作"><button class="btn secondary" id="wp-all" ${this.pending||this.busy?'disabled':''}>选择全部文件</button><button class="btn secondary" id="wp-none" ${this.pending||this.busy?'disabled':''}>清空选择</button></div></div><div id="wp-entries"></div>
@@ -111,11 +116,12 @@ export class WorkpaperPanel {
       node.querySelector('#wp-start')?.addEventListener('click',()=>void this.start());return;
     }
     const count=this.selected.size,active=this.data.batches.some(b=>['queued','running','paused'].includes(b.state));
-    const disabled=!count||!this.source||this.busy||this.storageError||active;
+    const disabled=!count||!this.source||this.busy||this.storageError||active||!!this.importReview;
     const hint=this.storageError?'浏览器未能保存请求，请恢复存储后重试。'
       :active?'已有底稿文件包正在处理，请在下方查看进度或继续原文件包。'
       :!this.source?'请先上传并采用募集说明书，再开始批量生成。'
       :!count?'请先在目录中勾选需要生成的底稿。'
+      :this.importReview?'请先完成上方目录识别核对。'
       :this.busy?'正在提交，请稍候。'
       :'先核对生成范围和费用，确认后开始逐份编制。';
     const focusId=node.contains(document.activeElement)?document.activeElement?.id:undefined;
@@ -148,9 +154,12 @@ export class WorkpaperPanel {
       node.querySelectorAll<HTMLInputElement>('[data-wp-reselect]').forEach(b=>b.onchange=()=>void this.importFile(b.files?.[0],b.dataset.wpReselect));
       node.querySelectorAll<HTMLElement>('[data-wp-forget]').forEach(b=>b.onclick=()=>void this.act(async()=>{
         const id=b.dataset.wpForget!;await new UploadRecovery(this.api,this.owner,this.project,'workpaper-catalogue',()=>this.live()).forget(id);
-        if(this.upload.operationId===id)this.upload={};this.uploadNeedsFile.delete(id);this.status='已移除本机待办，服务器文件仍保留。';
+        if(this.upload.operationId===id){this.upload={};this.importReview=undefined;}this.uploadNeedsFile.delete(id);this.status='已移除本机待办，服务器文件仍保留。';
       }));
     }catch{node.textContent='原上传记录无法读取，请恢复浏览器存储后刷新。';}
+    let review=this.host.querySelector<HTMLElement>('#wp-import-review');
+    if(!review){review=document.createElement('div');review.id='wp-import-review';node.after(review);}
+    if(this.importReview)this.importReview.render(review,disabled);else review.replaceChildren();
   }
   private async act(fn:()=>Promise<void>){if(this.busy)return;this.busy=true;this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();try{await fn();}catch(e){this.status=friendlyError(e,'submit');}finally{this.busy=false;if(this.live()){this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=this.status);this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();}}}
   private async download(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number)=>void)=>Promise<{bytes:Blob;filename:string}>){
@@ -174,7 +183,7 @@ export class WorkpaperPanel {
         const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].map(x=>x.toString(16).padStart(2,'0')).join('');
         if(!this.live())return;
         const records=new UploadRecovery(this.api,this.owner,this.project,'workpaper-catalogue',()=>this.live()).list();
-        operation=records.find(r=>r.context===undefined&&r.declaration.filename===file.name&&r.declaration.byte_size===file.size&&r.declaration.sha256===hash)?.id;
+        operation=records.find(r=>r.declaration.filename===file.name&&r.declaration.byte_size===file.size&&r.declaration.sha256===hash)?.id;
         if(!operation)this.upload={};
       }
       if(operation&&operation!==this.upload.operationId)this.upload={operationId:operation,projectId:this.project};
@@ -183,19 +192,61 @@ export class WorkpaperPanel {
       try{pin=await uploadFileMaterial(this.api,this.project,file,this.controller.signal,status,this.upload,this.owner,'workpaper-catalogue',undefined,()=>this.live());}
       catch(e){if(e instanceof UploadRecoveryNeedsFileError&&this.upload.operationId)this.uploadNeedsFile.add(this.upload.operationId);throw new UserFacingError(uploadErrorMessage(e));}
       this.uploadNeedsFile.delete(this.upload.operationId!);status('Excel 已上传，正在识别底稿目录…');
+      this.importReview=undefined;
+      const context=this.uploadContext(pin);
+      if(context.request){await this.commitCatalogue(context.request);return;}
+      await this.previewCatalogue(pin,context.draft?.mapping,context.draft?.scope??'due_diligence',!context.draft);
+    });
+  }
+  private uploadContext(pin:M4MaterialPin):CatalogueUploadContext{
+    const raw=this.upload.recovery!.list().find(r=>r.id===this.upload.operationId)?.context;
+    this.uploadContextSnapshot=raw;
+    if(raw===undefined)return {};
+    if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new UserFacingError('原目录确认记录无法核实，请保留待办。');
+    const context=raw as unknown as CatalogueUploadContext;
+    if(context.request&&(!Value.Check(WorkpaperImportSchema,context.request)||context.request.request_id!==this.upload.operationId||JSON.stringify(context.request.material)!==JSON.stringify(pin)))throw new UserFacingError('原目录确认记录与文件不一致，请保留待办。');
+    if(context.draft&&!Value.Check(WorkpaperPreviewSchema,{material:pin,...context.draft}))throw new UserFacingError('原目录识别范围无效，请保留待办。');
+    return context;
+  }
+  private async saveUploadContext(context:CatalogueUploadContext){
+    const updated=await this.upload.recovery!.updateContext(this.upload.operationId!,JSON.parse(JSON.stringify(context)) as UploadRecoveryJson,{context:this.uploadContextSnapshot});
+    this.uploadContextSnapshot=updated.context;
+  }
+  private async previewCatalogue(pin:M4MaterialPin,mapping?:WorkpaperColumnMapping[],scope:'due_diligence'|'all'='due_diligence',auto=false){
+    const request={material:pin,scope,...(mapping?{mapping}:{})};
+    if(!Value.Check(WorkpaperPreviewSchema,request)||mapping?.some(m=>m.first_row>m.last_row||new Set([m.title_column,m.code_column,m.kind_column,...m.folder_columns,...m.instruction_columns].filter(c=>c!==undefined)).size!==[m.title_column,m.code_column,m.kind_column,...m.folder_columns,...m.instruction_columns].filter(c=>c!==undefined).length))throw new UserFacingError('请核对行范围，每一列只能用于一种用途。');
+    let preview:WorkpaperCataloguePreview;
+    try{preview=await this.request<WorkpaperCataloguePreview>('POST','/catalogue-preview',request);}
+    catch(e){throw new UserFacingError('Excel 已上传，但目录未识别成功。原文件已保留，可继续识别目录；若文件损坏或为旧版 XLS，请另存为 XLSX。'+friendlyError(e,'save'));}
+    await this.saveUploadContext({draft:{scope,...(mapping?{mapping}:{})}});
+    if(auto&&!preview.needs_review){await this.commitCatalogue({request_id:this.upload.operationId!,material:pin});return;}
+    this.importReview=new WorkpaperImportReview(preview,scope,
+      (next,nextScope)=>void this.act(async()=>this.previewCatalogue(pin,next,nextScope)),
+      (next,nextScope)=>void this.act(async()=>this.commitCatalogue({request_id:this.upload.operationId!,material:pin,mapping:next,scope:nextScope})));
+    this.status='目录已上传，请核对识别结果；调整后更新预览，再确认目录。';
+  }
+  private async commitCatalogue(request:WorkpaperImport){
+      const context=this.uploadContext(request.material);
+      if(context.request&&JSON.stringify(context.request)!==JSON.stringify(request))throw new UserFacingError('此目录已在其他页面确认，请先继续原待办，核实保存结果。');
+      await this.saveUploadContext({...context,request});
       let cat:WorkpaperCatalogue;
-      try{cat=await this.request<WorkpaperCatalogue>('POST','/catalogues',{request_id:this.upload.operationId,material:pin});}
-      catch(e){throw new UserFacingError(e instanceof ApiError&&e.status===422&&e.code==='VALIDATION_FAILED'
-        ?'Excel 已上传，但目录未识别成功。请检查文件格式，并提供“底稿名称／文件名称”表头，或“1、1-1”式编号与名称清单。'+errorReference(e)
-        :'Excel 已上传，目录识别结果尚未确认。可继续识别目录，无需重新上传。'+friendlyError(e,'save'));}
+      try{cat=await this.request<WorkpaperCatalogue>('POST','/catalogues',request);}
+      catch(e){
+        if(e instanceof ApiError&&e.status===422&&e.code==='VALIDATION_FAILED'){
+          await this.saveUploadContext({draft:context.draft});
+          await this.previewCatalogue(request.material,request.mapping,request.scope??'due_diligence');
+          throw new UserFacingError('目录未识别成功，请在预览中核对列和行范围。'+errorReference(e));
+        }
+        this.importReview=undefined;
+        throw new UserFacingError('Excel 已上传，目录保存结果尚未确认。请继续识别目录，将按原确认内容重试，无需重新上传。'+friendlyError(e,'save'));
+      }
       // Older screens created a new journal for every selection of the same file.
       // Clean only receipts for the exact material just imported; never delete bytes.
-      const recovery=this.upload.recovery!,duplicates=recovery.list().filter(r=>r.context===undefined&&r.material?.material_id===pin.material_id&&r.material.material_version===pin.material_version&&r.material.sha256===pin.sha256);
+      const pin=request.material,recovery=this.upload.recovery!,duplicates=recovery.list().filter(r=>(r.id===this.upload.operationId||r.context===undefined)&&r.material?.material_id===pin.material_id&&r.material.material_version===pin.material_version&&r.material.sha256===pin.sha256);
       let cleanupPending=false;
       for(const record of duplicates){try{await recovery.forget(record.id);}catch{cleanupPending=true;}}
-      this.upload={};this.catalogue=cat;
+      this.upload={};this.importReview=undefined;this.catalogue=cat;
       this.data.catalogues=[cat,...this.data.catalogues.filter(c=>c.catalogue_id!==cat.catalogue_id)];this.selected=new Set(defaultWorkpaperIds(cat.entries));this.status=cleanupPending?'目录已识别，本机仍有待办未清理，可稍后移除。':'目录已保存，选好文件后即可开始批量生成。';this.save();this.paint();
-    });
   }
   private async start(){await this.act(async()=>{
     if(!this.pending){if(!this.catalogue||!this.source||!this.selected.size)return;

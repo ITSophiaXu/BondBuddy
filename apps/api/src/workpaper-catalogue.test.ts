@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ZipFile} from 'yazl';
-import {parseCatalogueRows,parseWorkpaperXlsx} from './workpaper-catalogue.js';
+import {parseCatalogueRows,parseWorkpaperXlsx,previewCatalogueRows} from './workpaper-catalogue.js';
 import {workpaperPathPart,WORKPAPER_LIMITS} from '@bondbuddy/contracts';
 export async function catalogueXlsx(rows:number=500,extra='',numericEntities?:'decimal'|'hex'){
   const zip=new ZipFile(),chunks:Buffer[]=[];
@@ -33,10 +33,10 @@ test('headerless numbered due-diligence lists retain the first item and summary 
   assert.ok(parsed.warnings.some(w=>w.includes('未设置表头')));
 });
 
-test('headerless detection requires unambiguous repeated code/name pairs',()=>{
-  assert.throws(()=>parseCatalogueRows([{name:'说明',rows:[{row:1,cells:['2026','年度说明']},{row:2,cells:['其他说明']}]}]),/未识别/);
-  assert.throws(()=>parseCatalogueRows([{name:'说明',rows:[{row:1,cells:['1','只有一条不明确的说明']}]}]),/未识别/);
-  assert.throws(()=>parseCatalogueRows([{name:'并列',rows:[{row:1,cells:['1','左侧','1','右侧']},{row:2,cells:['2','左侧二','2','右侧二']}]}]),/未识别/);
+test('uncertain and competing layouts require review rather than guessing silently',()=>{
+  assert.equal(previewCatalogueRows([{name:'说明',rows:[{row:1,cells:['2026','年度说明']},{row:2,cells:['其他说明']}]}]).needs_review,true);
+  assert.equal(previewCatalogueRows([{name:'说明',rows:[{row:1,cells:['1','只有一条不明确的说明']}]}]).needs_review,true);
+  assert.equal(previewCatalogueRows([{name:'并列',rows:[{row:1,cells:['1','左侧','1','右侧']},{row:2,cells:['2','左侧二','2','右侧二']}]}]).needs_review,true);
   const parsed=parseCatalogueRows([{name:'目录',rows:[{row:1,cells:['','','合成清单']},{row:2,cells:['','1.1','营业执照']},{row:3,cells:['','1.2','公司章程']}]}]);
   assert.deepEqual(parsed.entries.map(e=>e.code),['1.1','1.2']);
 });
