@@ -212,11 +212,11 @@ test('review API exposes pending scope without a charge and executes only the ap
   const pin={material_id:material,material_version:1,sha256:h};
   ok(await send('PUT',base+'/review-draft',{kind:'input',expected_version:0,input:{source_material_ref:pin,material_versions:[pin],requirements:[],as_of:null}}));
   const request={execution_request_id:randomUUID(),operation:'full_review',expected_input_version:1,source_report_id:null,expected_plan_version:null,finding_ids:[]};
-  const pending=ok(await send('POST',base+'/review-executions/quote',request));assert.equal(pending.quote.quote_status,'pending_scope');assert.equal(pending.quote.points,0);
+  const pending=ok(await send('POST',base+'/review-executions/quote',request));assert.equal(pending.quote.quote_status,'pending_scope');assert.equal(pending.quote.points,'0');
   const pendingAttempt=await send('POST',base+'/review-executions',{...request,quote_id:pending.quote.quote_id});assert.equal(pendingAttempt.statusCode,409,pendingAttempt.body);
   assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[p.project_id])).rows[0].n,0);
   await approve(pool,pending.quote.scope_quote_id,pending.quote.input_hash,64213);
-  const quoted=ok(await send('POST',base+'/review-executions/quote',request));assert.equal(quoted.quote.points,64213);assert.equal(quoted.quote.quote_status,'ready');
+  const quoted=ok(await send('POST',base+'/review-executions/quote',request));assert.equal(quoted.quote.points,'64213');assert.equal(quoted.quote.quote_status,'ready');
   await fund(pool,owner,64212);assert.equal((await send('POST',base+'/review-executions',{...request,quote_id:quoted.quote.quote_id})).statusCode,402);
   await fund(pool,owner,1);const run=ok(await send('POST',base+'/review-executions',{...request,quote_id:quoted.quote.quote_id}));
   assert.deepEqual(await creditBalance(pool,owner),{available:0,frozen:64213});

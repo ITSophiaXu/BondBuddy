@@ -98,7 +98,7 @@ test('ordinary paid checks release incomplete coverage and unverified replay, re
     let version=imported.files.find((f:any)=>f.latest).version_id;
     const start=async()=>{
       const request={request_id:randomUUID(),expected_source_version_id:source.current_version_id,file_version_ids:[version]},quote=await ok('POST',files+'/checks/quote',request);
-      assert.equal(quote.points,AUTOMATIC_TASK_TARIFF.check.points);
+      assert.equal(quote.points,String(AUTOMATIC_TASK_TARIFF.check.points));
       return (await ok('POST',files+'/checks',{...request,expected_points:quote.points,price_version:quote.price_version,scope_quote_id:quote.scope_quote_id})).run_id as string;
     };
     for(const selected of ['incomplete','replayed'] as const){

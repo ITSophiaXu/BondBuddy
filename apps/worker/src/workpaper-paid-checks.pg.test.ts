@@ -81,7 +81,7 @@ test('workpapers: real per-file paid batch, atomic shortage, partial delivery, m
       return {kind:'done',value:{decisions:data.entries.map((e:WorkpaperEntry,i:number)=>({item_id:e.id,status:i===2?'not_applicable':'generate',reason:i===2?'本项目不涉及境外投资。':'总资产可形成分析。',missing_materials:[],citations:[{span_id:'p0',quote:text}]}))}};
     }});
     await ok('POST',wp+'/assessments',request);assert.equal(await execute([workpaperAssessmentStage({model:assessor,config:()=>loadCodexAdapterConfig({})}),workpaperAssessmentDelivery()]),'succeeded');
-    const assessment=(await ok('GET',wp)).assessments[0],generationRequest={...request,request_id:randomUUID(),assessment_id:assessment.assessment_id,assessment_hash:assessment.result_hash,price_version:WORKPAPER_PRICE.version,expected_points:WORKPAPER_PRICE.points*2};
+    const assessment=(await ok('GET',wp)).assessments[0],generationRequest={...request,request_id:randomUUID(),assessment_id:assessment.assessment_id,assessment_hash:assessment.result_hash,price_version:WORKPAPER_PRICE.version,expected_points:String(WORKPAPER_PRICE.points*2)};
     const batch=await ok('POST',wp+'/batches',generationRequest);
     const generate=()=>execute([{name:'model_generation',run:async ctx=>{
       const files:Record<string,{key:string;sha256:string;byte_size:number}>={};
@@ -98,15 +98,15 @@ test('workpapers: real per-file paid batch, atomic shortage, partial delivery, m
     source=await ok('POST',base+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:source.selection_revision,version_id:versions.versions.find((v:any)=>v.material_id===next.material_id).version_id});
     await app.close();app=server(true);
     const quoteRequest={request_id:randomUUID(),workpaper_batch_id:batch.batch_id,source_version_id:source.current_version_id,source_selection_revision:source.selection_revision};
-    const quote=await ok('POST',wp+'/check-batches/quote',quoteRequest);assert.equal(quote.items.length,2);assert.equal(quote.excluded.length,1);assert.equal(quote.points,2*AUTOMATIC_TASK_TARIFF.check.points);
+    const quote=await ok('POST',wp+'/check-batches/quote',quoteRequest);assert.equal(quote.items.length,2);assert.equal(quote.excluded.length,1);assert.equal(quote.points,String(2*AUTOMATIC_TASK_TARIFF.check.points));
     const start={...quoteRequest,file_version_ids:quote.items.map((i:any)=>i.file_version_id),price_version:quote.price_version,expected_points:quote.points,scopes:quote.items.map((i:any)=>({file_version_id:i.file_version_id,scope_quote_id:i.scope_quote_id}))};
-    const before=await creditBalance(pool,user);assert.equal(before.available,quote.points-1);
-    const shortage=await send('POST',wp+'/check-batches',start);assert.equal(shortage.statusCode,402,shortage.body);assert.match(shortage.body,new RegExp(quote.points.toLocaleString('zh-CN')));
+    const before=await creditBalance(pool,user);assert.equal(before.available,2*AUTOMATIC_TASK_TARIFF.check.points-1);
+    const shortage=await send('POST',wp+'/check-batches',start);assert.equal(shortage.statusCode,402,shortage.body);assert.match(shortage.body,new RegExp((2*AUTOMATIC_TASK_TARIFF.check.points).toLocaleString('zh-CN')));
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_workpaper_paid_check_batches WHERE owner_user_id=$1',[user])).rows[0].n,0);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_project_file_check_quotes WHERE owner_user_id=$1',[user])).rows[0].n,0);
     await fund(1);const funded=before.available+1;
     const accepted=await ok('POST',wp+'/check-batches',start),again=await ok('POST',wp+'/check-batches',start);assert.equal(again.batch_id,accepted.batch_id);assert.equal(accepted.items.length,2);
-    assert.deepEqual(await creditBalance(pool,user),{available:funded-quote.points,frozen:quote.points});
+    assert.deepEqual(await creditBalance(pool,user),{available:funded-2*AUTOMATIC_TASK_TARIFF.check.points,frozen:2*AUTOMATIC_TASK_TARIFF.check.points});
     const allocations=(await pool.query(`SELECT a.reservation_id,a.lot_id,a.points FROM bb_credit_allocations a JOIN bb_credit_reservations r ON r.id=a.reservation_id WHERE r.run_id=ANY($1::text[]) ORDER BY a.reservation_id,a.lot_id`,[accepted.items.map((i:any)=>i.run_id)])).rows;
     assert.equal(new Set(allocations.map(a=>a.reservation_id)).size,2);
     assert.equal(await checks(),'succeeded');incomplete=true;assert.equal(await checks(),'failed');incomplete=false;
@@ -117,8 +117,8 @@ test('workpapers: real per-file paid batch, atomic shortage, partial delivery, m
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_workpaper_check_evidence WHERE run_id=$1',[failed.run_id])).rows[0].n,0);
     assert.equal((await pool.query('SELECT state FROM bb_credit_reservations WHERE run_id=$1',[failed.run_id])).rows[0].state,'released');
     const check=(await ok('GET',base+'/project-files/checks/'+paid.run_id)).check,patchRequest={expected_check_sha256:check.sha256,files:[{file_version_id:paid.file_version_id}]};
-    const patchQuote=await ok('POST',base+'/project-files/checks/'+paid.run_id+'/updates/quote',patchRequest);assert.equal(patchQuote.points,0);
-    const update=await ok('POST',base+'/project-files/checks/'+paid.run_id+'/updates',{...patchRequest,request_id:randomUUID(),price_version:patchQuote.price_version,expected_points:0,files:patchQuote.items.map((i:any)=>({file_version_id:i.file_version_id,scope_quote_id:i.scope_quote_id}))});
+    const patchQuote=await ok('POST',base+'/project-files/checks/'+paid.run_id+'/updates/quote',patchRequest);assert.equal(patchQuote.points,'0');
+    const update=await ok('POST',base+'/project-files/checks/'+paid.run_id+'/updates',{...patchRequest,request_id:randomUUID(),price_version:patchQuote.price_version,expected_points:'0',files:patchQuote.items.map((i:any)=>({file_version_id:i.file_version_id,scope_quote_id:i.scope_quote_id}))});
     await advanceProjectFileUpdates(pool);assert.equal(await checks(),'succeeded');await advanceProjectFileUpdates(pool);
     const maintained=(await ok('GET',wp+'/library')).items.find((i:any)=>i.file?.original.version_id===paid.file_version_id);
     assert.notEqual(maintained.file.current.version_id,paid.file_version_id);assert.equal(maintained.file.original.version_id,paid.file_version_id);
@@ -131,15 +131,15 @@ test('workpapers: real per-file paid batch, atomic shortage, partial delivery, m
     const unpromoted=(await ok('GET',wp+'/library')).items.find((i:any)=>i.entry.id===maintained.entry.id);
     assert.equal(unpromoted.file.current.version_id,paid.file_version_id);
     await pool.query('UPDATE bb_project_files SET latest_version_id=$2 WHERE id=$1',[maintained.file.current.file_id,maintained.file.current.version_id]);
-    const covered=await ok('POST',wp+'/check-batches/quote',{...quoteRequest,request_id:randomUUID(),file_version_ids:[maintained.file.current.version_id]});assert.equal(covered.points,0,'platform repair descendants retain paid maintenance');
+    const covered=await ok('POST',wp+'/check-batches/quote',{...quoteRequest,request_id:randomUUID(),file_version_ids:[maintained.file.current.version_id]});assert.equal(covered.points,'0','platform repair descendants retain paid maintenance');
     actor=randomUUID();assert.equal((await send('GET',wp+'/check-batches/'+accepted.batch_id)).statusCode,404);assert.equal((await send('POST',wp+'/check-batches/quote',quoteRequest)).statusCode,404);actor=user;
     await assert.rejects(pool.query('UPDATE bb_workpaper_file_bindings SET original_version_id=$2 WHERE original_version_id=$1',[paid.file_version_id,maintained.file.current.version_id]),/immutable/);
     // A later business source is a new paid scope even for the repaired target.
     const third=await upload(id,'synthetic-v3.docx',makeSyntheticDocxFixture({text:text.replace('100','300')}),docx,'historical');versions=await ok('GET',base+'/prospectus-versions');
     const thirdSelected=await ok('POST',base+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:source.selection_revision,version_id:versions.versions.find((v:any)=>v.material_id===third.material_id).version_id});
-    const newQuote=await ok('POST',wp+'/check-batches/quote',{...quoteRequest,request_id:randomUUID(),source_version_id:thirdSelected.current_version_id,source_selection_revision:thirdSelected.selection_revision,file_version_ids:[maintained.file.current.version_id]});assert.equal(newQuote.points,AUTOMATIC_TASK_TARIFF.check.points);
+    const newQuote=await ok('POST',wp+'/check-batches/quote',{...quoteRequest,request_id:randomUUID(),source_version_id:thirdSelected.current_version_id,source_selection_revision:thirdSelected.selection_revision,file_version_ids:[maintained.file.current.version_id]});assert.equal(newQuote.points,String(AUTOMATIC_TASK_TARIFF.check.points));
     const replay=await ok('POST',wp+'/check-batches',start);assert.equal(replay.batch_id,accepted.batch_id,'source changes never change the accepted original request');
-    const changed=await send('POST',wp+'/check-batches',{...start,expected_points:1});assert.equal(changed.statusCode,409);assert.equal(changed.json().code,'IDEMPOTENCY_CONFLICT');
+    const changed=await send('POST',wp+'/check-batches',{...start,expected_points:'1'});assert.equal(changed.statusCode,409);assert.equal(changed.json().code,'IDEMPOTENCY_CONFLICT');
     assert.equal(update.batch_id.length>0,true);
     // Real image bytes trigger the complete inspector's unread-content warning.
     // The accepted per-file hold releases without treating a text-only report as a
@@ -159,7 +159,7 @@ test('workpapers: real per-file paid batch, atomic shortage, partial delivery, m
     const nextRequest={...request,request_id:randomUUID(),item_ids:[maintained.entry.id],source_selection_revision:adopted.selection_revision};
     await ok('POST',wp+'/assessments',nextRequest);assert.equal(await execute([workpaperAssessmentStage({model:assessor,config:()=>loadCodexAdapterConfig({})}),workpaperAssessmentDelivery()]),'succeeded');
     const assessment2=(await ok('GET',wp)).assessments[0];
-    const generation2=await ok('POST',wp+'/batches',{...nextRequest,request_id:randomUUID(),assessment_id:assessment2.assessment_id,assessment_hash:assessment2.result_hash,price_version:WORKPAPER_PRICE.version,expected_points:WORKPAPER_PRICE.points});
+    const generation2=await ok('POST',wp+'/batches',{...nextRequest,request_id:randomUUID(),assessment_id:assessment2.assessment_id,assessment_hash:assessment2.result_hash,price_version:WORKPAPER_PRICE.version,expected_points:String(WORKPAPER_PRICE.points)});
     await advanceWorkpaperBatch(pool);assert.equal(await generate(),'succeeded');await advanceWorkpaperBatch(pool);
     const history=(await ok('GET',wp+'/library?history=true')).items,newItem=history.find((i:any)=>i.batch_id===generation2.batch_id),oldItem=history.find((i:any)=>i.batch_id===batch.batch_id&&i.entry.id===maintained.entry.id);
     assert.equal(newItem.file.current.file_id,oldItem.file.current.file_id);assert.notEqual(newItem.file.original.version_id,oldItem.file.original.version_id);

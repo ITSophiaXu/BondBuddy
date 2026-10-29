@@ -93,10 +93,10 @@ test('mixed workpaper batch retains settled v1 check rights at zero and reserves
     const original=(await pool.query('SELECT * FROM bb_project_file_check_quotes WHERE id=$1',[quote])).rows[0];
     const path=`/api/v1/projects/${project}/workpapers/check-batches`,request={request_id:randomUUID(),workpaper_batch_id:batch,source_version_id:sourceVersion,source_selection_revision:1};
     const priced=await ok('POST',path+'/quote',request);
-    assert.equal(priced.price_version,AUTOMATIC_PRICE_VERSION);assert.equal(priced.points,newPoints);assert.equal(priced.items.length,2);
+    assert.equal(priced.price_version,AUTOMATIC_PRICE_VERSION);assert.equal(priced.points,String(newPoints));assert.equal(priced.items.length,2);
     const legacy=priced.items.find((i:any)=>i.file_version_id===files[0].file_version_id),fresh=priced.items.find((i:any)=>i.file_version_id===files[1].file_version_id);
-    assert.equal(legacy.points,0);assert.equal(legacy.price_version,LEGACY_OUTCOME_PRICE_VERSION);assert.equal(legacy.scope_quote_id,undefined);
-    assert.equal(fresh.points,newPoints);assert.equal(fresh.price_version,AUTOMATIC_PRICE_VERSION);assert.ok(fresh.scope_quote_id);
+    assert.equal(legacy.points,'0');assert.equal(legacy.price_version,LEGACY_OUTCOME_PRICE_VERSION);assert.equal(legacy.scope_quote_id,undefined);
+    assert.equal(fresh.points,String(newPoints));assert.equal(fresh.price_version,AUTOMATIC_PRICE_VERSION);assert.ok(fresh.scope_quote_id);
     const start={...request,file_version_ids:files.map(f=>f.file_version_id),price_version:priced.price_version,expected_points:priced.points,
       scopes:priced.items.filter((i:any)=>i.scope_quote_id).map((i:any)=>({file_version_id:i.file_version_id,scope_quote_id:i.scope_quote_id}))};
     const accepted=await ok('POST',path,start),replay=await ok('POST',path,start);assert.equal(replay.batch_id,accepted.batch_id);

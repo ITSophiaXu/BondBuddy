@@ -55,7 +55,7 @@ test('case templates: real API -> exact worker input -> native Word pair -> one 
       const input={...emptyM4Draft(entry.document_type),source_material:pin,fields:{market:entry.market,offering:entry.offering,case_template_id:entry.id}};
       await ok('PUT',`${url}/drafts/${entry.document_type}`,{expected_version:0,input});
       const quote=(await ok('POST',`${url}/quote`,{kind:'document',document_type:entry.document_type,expected_draft_version:1})).quote;
-      assert.equal(quote.points,4500);assert.equal(quote.billing_policy,'authoring_balance_v2');
+      assert.equal(quote.points,'4500');assert.equal(quote.billing_policy,'authoring_balance_v2');
       const request={execution_request_id:uid(),document_type:entry.document_type,expected_draft_version:1,quote_id:quote.quote_id,entrypoint:'workspace'};
       const run=(await ok('POST',`${url}/execute`,request)).run;
       assert.equal((await ok('POST',`${url}/execute`,request)).run.run_id,run.run_id);
@@ -66,7 +66,7 @@ test('case templates: real API -> exact worker input -> native Word pair -> one 
         model_generation:modelGenerationRouter({m4Document:m4DocumentStage({config:loadCodexAdapterConfig({}),model})}),word_delivery:historicalWordDeliveryStage()}),onUnexpectedError:e=>assert.fail(JSON.stringify(e))});
       assert.equal(result,'succeeded',JSON.stringify((await ok('GET',`${url}/workspace`)).tasks[0].events));
       const task=(await ok('GET',`${url}/workspace`)).tasks[0];assert.equal(task.artifacts.length,2);assert.deepEqual(task.manifest,before);
-      assert.equal(task.credit_charge.progress.charged_points,4500);
+      assert.equal(task.credit_charge.progress.charged_points,'4500');
       actor='foreign-owner';assert.equal((await send('GET',`${url}/workspace`)).statusCode,404);actor=owner;
     }
     assert.equal(calls,6);assert.equal((await creditBalance(pool,owner)).available,3000);

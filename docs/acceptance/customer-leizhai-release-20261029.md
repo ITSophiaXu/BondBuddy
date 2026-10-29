@@ -2,6 +2,51 @@
 
 Status: integration in progress, not deployed, user acceptance not recorded.
 
+## Current validation at 4da8b930
+
+The integrated product source includes #814 `f818d860`, #804 `c7ba5c51` and
+#815 `2aaf596f`. All three complete Linux images build successfully from an
+export of 4,949 files individually verified against the pinned Git blobs.
+The database template has 160 migrations. A separate synthetic historical
+database was restored and upgraded from 148 to 160 migrations: counts and
+hashes of ten core tables stayed identical, the source database stayed intact,
+the billing audit was consistent, and rerunning migrations was a no-op.
+This is not a production backup/restore result; that fixture has zero task
+refund units and does not prove historical per-item refund migration.
+
+- Local compilation and Vite passed; contracts 97/97, web unit 933/933,
+  Fastify wire tests 6/6 with a mocked database, and 80/80 mocked-HTTP browser
+  tests passed. The original cwd and Chromium launch failures remain recorded.
+- Worker first run: 67/70 passed, no skips. Three fixtures still expected
+  numeric HTTP money. The repaired files passed 14/14 targeted tests, including
+  actual PostgreSQL reservations, Word extraction, partial delivery, maintenance,
+  immutable original versions and owner isolation, with synthetic model output.
+- API main run: 280/284 passed; supplemental run: 50/51 passed; no skips.
+  The five failing files used the old numeric HTTP contract. Repaired files
+  passed all 10 targeted tests, retaining strict assertions, legacy domain
+  balances, native WeChat notification integers, and original-price coverage.
+  The rechecks mounted only compiled test modules read-only into the fixed
+  4da8b930 images. Product code and security guards were not changed.
+- An additional Edge browser regression passed for mixed file generation:
+  a 402 stores the original int64 request, the simulated funding return replays
+  the identical body once, one batch is created, reload does not resubmit, and
+  no payment request is sent. This uses mocked HTTP, not a real payment.
+
+Initial failures and rechecks are separate runs and must not be added together
+as independent tests or described as a clean first run. The complete CLI uses
+real Linux sandbox/DOCX handling with a synthetic provider; private-original
+model verification is still blocked by the prior approval rejection. No new
+permission to transmit those files has arrived. Original-file model calls
+remain zero. Full incremental semantic review, production compatibility
+inventory, current production backup/restore and compatible rollback are
+unfinished. There has been no production switch or feature-flag activation.
+
+Current shared receipts: `images-4da8b930-receipt.json`,
+`synthetic-upgrade-4da8b930-receipt.json`, `worker-4da8b930-exit.json`,
+`worker-wire-repair-4da8b930-exit.json`, `api-4da8b930-exit.json`,
+`api-supplement-4da8b930-exit.json`, `api-wire-repair-4da8b930-exit.json`,
+and `browser-file-generation-funding.log`.
+
 The release combines the real file preparation implementation in PR #815 with
 source-format preservation in #804 and subscription billing in #814. Supporting
 completed changes are #805, #807, #808, #809, #810, #811 and #812; #815 already

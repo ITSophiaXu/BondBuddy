@@ -82,3 +82,27 @@ test('automatic mixed package uses server tariffs and starts without an amount c
  await expect(page.getByRole('dialog')).toHaveCount(0);expect(state.submissions).toHaveLength(1);
  expect(state.submissions[0]).toMatchObject({expected_points:14881,price_version:AUTOMATIC_PRICE_VERSION,document_quotes:[{document_type:'annual',draft_version:5,scope_quote_id:'scope-annual'}]});
 });
+
+test('mixed package funding return replays the exact original request without a second batch or payment',async({page})=>{
+ const state=await setup(page,true),requests:string[]=[],payments:string[]=[];
+ await page.route('**/api/v1/projects/*/file-generation/batches',async route=>{
+  requests.push(route.request().postData()!);
+  if(requests.length===1)return route.fulfill({status:402,json:{code:'CREDITS_INSUFFICIENT'}});
+  return route.fallback();
+ });
+ await page.route('**/api/v1/subscriptions',route=>{payments.push(route.request().postData()??'');return route.fulfill({status:500,json:{code:'MUST_NOT_PAY'}});});
+ await page.getByRole('button',{name:'直接使用光大整套'}).click();
+ await page.locator('#fg-match-toggle').click();await page.getByRole('button',{name:'采用单一候选建议'}).click();
+ await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
+ await page.getByRole('button',{name:'开始生成',exact:true}).click();
+ const link=page.locator('#billing-task-notice').getByRole('link',{name:'订阅或充值，继续原任务',exact:true});await expect(link).toBeVisible();
+ expect(requests).toHaveLength(1);expect(state.submissions).toHaveLength(0);
+ const resumeId=new URLSearchParams((await link.getAttribute('href'))!.split('?')[1]).get('resume_request')!;
+ const saved=await page.evaluate(async({owner,id})=>{const recovery=await import('/src/'+'billing-task-recovery.ts');return {task:await recovery.readBillingTask(owner,id),returnTo:await recovery.billingTaskReturnTo(owner,id)};},{owner:ids.owner,id:resumeId});
+ expect(saved.task).toMatchObject({version:2,state:'needs_funds',requiredPoints:'14881',body:JSON.parse(requests[0])});
+ expect(saved.returnTo).toBeTruthy();await page.goto('/'+saved.returnTo);
+ await expect.poll(()=>requests.length).toBe(2);expect(requests[1]).toBe(requests[0]);expect(state.submissions).toHaveLength(1);
+ await expect(page.locator('.fg-history')).toContainText('其他文件 0/1');
+ await page.reload();await expect(page.locator('.fg-history')).toContainText('其他文件 0/1');
+ expect(requests).toHaveLength(2);expect(state.submissions).toHaveLength(1);expect(payments).toEqual([]);
+});
