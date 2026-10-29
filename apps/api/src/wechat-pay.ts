@@ -280,7 +280,7 @@ export function createWechatPayProvider(options: WechatPayOptions, dependencies:
   }
   return {
     name: 'wechat', merchantId, acknowledgement: { code: 'SUCCESS', message: '成功' },
-    ...(statementsEnabled?{downloadStatements,statementAccounts}:{}),
+    ...(statementsEnabled?{downloadStatements,statementAccounts,statementAppId:appId,statementKinds:['trade','funds'] as const}:{}),
     async closePayment(order){
       assertOrder(order);
       // A close failure can mean an in-flight payment won the race. Query the same

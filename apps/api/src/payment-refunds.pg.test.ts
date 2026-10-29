@@ -56,7 +56,7 @@ async function setup(){
     order={...order,amount_fen:safeBillingNumber(order.amount_fen),points:safeBillingNumber(order.points)};
     const transactionId='txn_'+order.order_id,amount={total:order.amount_fen,currency:'CNY',...(payer===null?{}:{payer_total:payer,payer_currency:'CNY'})};
     orders.set(transactionId,order);
-    const envelope=f.envelope({...f.paid,out_trade_no:order.order_id,transaction_id:transactionId,amount});
+    const envelope=f.envelope({...f.paid,out_trade_no:order.order_id,transaction_id:transactionId,amount,success_time:statementFixtureDate+'T12:00:00+08:00'});
     const response=await send('POST','/api/v1/payments/wechat/callback',envelope.raw,{'content-type':'application/json',...envelope.headers as Record<string,string>});assert.equal(response.statusCode,200,response.body);return envelope;
   };
   const topup=async(amount:number,payer:number|null=amount)=>{
@@ -315,7 +315,10 @@ test('cash refunds allocate only authenticated original-source family and serial
     const statementJob=await enqueuePaymentStatement(h.pool,statementProvider,{billDate:statementFixtureDate,kind:'trade'});assert.ok(statementJob);
     assert.equal((await reconcileDailyStatements(h.pool,[statementProvider],{now:new Date('2026-10-28T01:00:00Z')})).completed,1);
     const checks=(await h.pool.query('SELECT difference_count FROM bb_payment_statement_checks WHERE job_id=$1',[statementJob])).rows;
-    assert.deepEqual(checks,[{difference_count:0}]);
+    const differences=(await h.pool.query(`SELECT d.kind,d.line_no,d.reference_id,d.unit,d.expected_value::text,d.observed_value::text
+      FROM bb_payment_statement_differences d JOIN bb_payment_statement_checks c ON c.id=d.check_id WHERE c.job_id=$1
+      ORDER BY d.kind,d.line_no,d.reference_id`,[statementJob])).rows;
+    assert.deepEqual(checks,[{difference_count:0}],JSON.stringify(differences));
     assert.deepEqual(await creditBalance(h.pool,h.owner),balanceBefore);assert.equal((await h.pool.query('SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1',[h.owner])).rows[0].n,ledgerBefore);
     const originalRefund=(await h.pool.query('SELECT amount_fen,credit_points FROM bb_payment_refunds WHERE id=$1',[refundId])).rows[0];
     assert.deepEqual(originalRefund,{amount_fen:'50000',credit_points:'52500'});

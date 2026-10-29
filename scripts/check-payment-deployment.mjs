@@ -54,6 +54,9 @@ export function checkPaymentDeployment(config) {
   record('alipay_host_when_enabled',alipaySwitch!=='1'||allowedHosts.includes('openapi.alipay.com'));
   record('alipay_web_product',alipaySwitch!=='1'||['page','wap'].includes(String(apiEnv.BB_ALIPAY_WEB_PRODUCT)));
   record('alipay_refund_configuration',['0','1'].includes(alipayRefundSwitch)&&(alipayRefundSwitch!=='1'||alipaySwitch==='1'));
+  const alipayStatementSwitch=String(apiEnv.BB_ALIPAY_PAY_STATEMENTS_ENABLED??'0');
+  record('alipay_statement_configuration',['0','1'].includes(alipayStatementSwitch)&&(alipayStatementSwitch!=='1'||alipaySwitch==='1'));
+  record('alipay_statement_host_when_enabled',alipayStatementSwitch!=='1'||allowedHosts.includes('dwbillcenter.alipay.com'));
   return { passed: checks.every(check => check.passed), checks };
 }
 

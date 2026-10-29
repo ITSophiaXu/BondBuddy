@@ -72,7 +72,7 @@ test('Alipay is independently disabled, requires an explicit contracted Web prod
     BB_ALIPAY_NOTIFY_URL:a.options.notifyUrl,BB_ALIPAY_RETURN_URL:a.options.returnUrl};
   for(const webProduct of ['page','wap']){
     const result=paymentProvidersFromEnv({...alipayEnv,BB_ALIPAY_WEB_PRODUCT:webProduct},{now:()=>a.now});
-    assert.equal(result.status,'ready');assert.deepEqual(result.providers.map(p=>p.name),['alipay']);assert.equal(result.providers[0].recurring,undefined);assert.equal(result.providers[0].refunds,undefined);
+    assert.equal(result.status,'ready');assert.deepEqual(result.providers.map(p=>p.name),['alipay']);assert.equal(result.providers[0].recurring,undefined);assert.equal(result.providers[0].refunds,undefined);assert.equal(result.providers[0].downloadStatements,undefined);
     assert.equal(JSON.stringify(result).includes('BEGIN'),false);
   }
   const combined=paymentProvidersFromEnv({...env(),...alipayEnv},dependencies);assert.equal(combined.status,'ready');assert.deepEqual(combined.providers.map(p=>p.name),['wechat','alipay']);
@@ -82,4 +82,30 @@ test('Alipay is independently disabled, requires an explicit contracted Web prod
     assert.deepEqual(paymentProvidersFromEnv({...alipayEnv,...changes},{now:()=>a.now}),{providers:[],status:'invalid'});
   assert.deepEqual(paymentProvidersFromEnv({...alipayEnv,BB_ALIPAY_PAY_ENABLED:'0'},{readSecretFile:()=>{throw Error('Do not read disabled Alipay files');}}),{providers:[],status:'disabled'});
   assert.ok(paymentProvidersFromEnv({...alipayEnv,BB_ALIPAY_REFUND_ENABLED:'1'},{now:()=>a.now}).providers[0].refunds);
+});
+
+test('Alipay statements default off, require explicit merchant enablement and reject malformed switches before reading secrets',()=>{
+  const a=syntheticAlipayFixture(),alipayEnv:NodeJS.ProcessEnv={BB_ALIPAY_PAY_ENABLED:'1',BB_ALIPAY_APP_ID:a.options.appId,BB_ALIPAY_SELLER_ID:a.options.merchantId,
+    BB_ALIPAY_WEB_PRODUCT:'page',BB_ALIPAY_APP_PRIVATE_KEY:a.options.appPrivateKeyPem,BB_ALIPAY_PUBLIC_KEY:a.options.alipayPublicKeyPem,
+    BB_ALIPAY_NOTIFY_URL:a.options.notifyUrl,BB_ALIPAY_RETURN_URL:a.options.returnUrl};
+  const calls:{files:number;requests:number}={files:0,requests:0};
+  const noExternal={now:()=>a.now,readSecretFile:()=>{calls.files++;throw Error('must not read disabled credentials');},
+    fetch:(async()=>{calls.requests++;throw Error('must not contact a merchant');}) as typeof fetch};
+  for(const enabled of [undefined,'0']){
+    const result=paymentProvidersFromEnv({...alipayEnv,BB_ALIPAY_PAY_STATEMENTS_ENABLED:enabled},noExternal);
+    assert.equal(result.status,'ready');assert.equal(result.providers[0].downloadStatements,undefined);
+  }
+  const enabled=paymentProvidersFromEnv({...alipayEnv,BB_ALIPAY_PAY_STATEMENTS_ENABLED:'1'},noExternal);
+  assert.equal(enabled.status,'ready');assert.equal(typeof enabled.providers[0].downloadStatements,'function');
+  assert.equal(enabled.providers[0].refunds,undefined);assert.equal(enabled.providers[0].recurring,undefined);
+  for(const switchValue of ['true','yes','2','',' 1'])for(const parent of [undefined,'0','1']){
+    const result=paymentProvidersFromEnv({...alipayEnv,BB_ALIPAY_PAY_ENABLED:parent,BB_ALIPAY_PAY_STATEMENTS_ENABLED:switchValue},noExternal);
+    assert.deepEqual(result,{providers:[],status:'invalid'});
+  }
+  for(const parent of [undefined,'0']){
+    assert.deepEqual(paymentProvidersFromEnv({BB_ALIPAY_PAY_ENABLED:parent,BB_ALIPAY_PAY_STATEMENTS_ENABLED:'1'},noExternal),{providers:[],status:'invalid'});
+    assert.deepEqual(paymentProvidersFromEnv({...env(),BB_ALIPAY_PAY_ENABLED:parent,BB_ALIPAY_PAY_STATEMENTS_ENABLED:'1'},noExternal),{providers:[],status:'invalid'});
+  }
+  assert.deepEqual(paymentProvidersFromEnv({BB_ALIPAY_PAY_ENABLED:'0',BB_ALIPAY_PAY_STATEMENTS_ENABLED:'0'},noExternal),{providers:[],status:'disabled'});
+  assert.deepEqual(calls,{files:0,requests:0});
 });

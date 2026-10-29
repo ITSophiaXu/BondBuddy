@@ -116,6 +116,7 @@ services:
       BB_ALIPAY_RETURN_URL: ${BB_ALIPAY_RETURN_URL:-}
       BB_ALIPAY_REFUND_ENABLED: ${BB_ALIPAY_REFUND_ENABLED:-0}
       BB_ALIPAY_PAY_TIMEOUT_MS: ${BB_ALIPAY_PAY_TIMEOUT_MS:-10000}
+      BB_ALIPAY_PAY_STATEMENTS_ENABLED: ${BB_ALIPAY_PAY_STATEMENTS_ENABLED:-0}
       # Native payment requests use Node fetch. Require the verified Node proxy runtime
       # from docs/runbooks/m1-deploy.md; the internal network still has no direct route.
       NODE_USE_ENV_PROXY: '1'

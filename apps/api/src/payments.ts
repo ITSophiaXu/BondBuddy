@@ -23,6 +23,9 @@ export interface PaymentProvider {
   closePayment?(order:PaymentOrder):Promise<VerifiedPayment>;
   /** Present only when authenticated daily statement downloading is explicitly enabled. */
   downloadStatements?(request:PaymentStatementRequest):Promise<VerifiedPaymentStatement>;
+  readonly statementKinds?:readonly ('trade'|'funds')[];
+  /** Configured request application, not evidence that each merchant bill row belongs to it. */
+  readonly statementAppId?:string;
   readonly statementAccounts?:readonly ('BASIC'|'OPERATION'|'FEES')[];
   verifyCallback(headers:FastifyRequest['headers'],rawBody:string):Promise<VerifiedPayment>;
   acknowledgement:object|string;
