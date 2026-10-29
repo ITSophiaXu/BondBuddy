@@ -23,6 +23,14 @@ async function setup(page:Page,{versions=false,purpose='update',retry=false}={})
     const request=route.request(),path=new URL(request.url()).pathname,method=request.method();
     const body=method==='POST'?request.postDataJSON():null;calls.push({method,path,body});
     if(path===base+'/prospectus-versions'&&method==='GET')return reply(route,'ProspectusVersionsResponse',structuredClone(state));
+    if(method==='GET'&&path.startsWith(base+'/materials/')){
+      const download=path.endsWith('/download'),materialId=path.split('/').at(download?-2:-1);
+      const v=state.versions.find(v=>v.material_id===materialId);
+      if(v)return download?route.fulfill({contentType:mime,body:bytes}):reply(route,'MaterialResponse',{
+        material_id:v.material_id!,material_version:v.material_version!,upload_id:`upload-${v.material_id}`,role:'historical',filename:v.filename,
+        media_type:mime,byte_size:bytes.length,sha256:v.sha256,state:'persisted',persisted_at:now,error:null,
+      });
+    }
     if(method==='DELETE'&&path.startsWith(base+'/materials/')){
       const materialId=path.split('/').at(-1);state.versions=state.versions.filter(v=>v.material_id!==materialId);return route.fulfill({status:204});
     }
@@ -50,21 +58,21 @@ async function setup(page:Page,{versions=false,purpose='update',retry=false}={})
     return route.fulfill({status:404,json:{code:'NOT_FOUND'}});
   });
   await page.route('**/panel-harness',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body><main style="max-width:1160px;margin:0 auto;padding:32px 20px"><div id="panel"></div></main></body></html>'}));
-  await page.goto('/panel-harness');
+  const reenter=async()=>{await page.goto('/panel-harness');
   await page.evaluate(async({purpose,prototypeRoot})=>{
     const load=(path:string)=>import(path);await load('/src/style.css');await load('/src/update-entry.css');await load(prototypeRoot+'styles.css');await load(prototypeRoot+'project-workspace.css');await load('/src/prototype-adapter.css');
     const {ProspectusPanel}=await load('/src/prospectus-panel.ts'),{ApiClient}=await load('/src/api.ts');
     const panel=new ProspectusPanel(new ApiClient(()=>{}),'synthetic-panel-project',document.querySelector('#panel'),async()=>true,async()=>{},()=>{},purpose,'synthetic-owner');
     await panel.refresh();Object.assign(window,{panelFixture:{refresh:()=>panel.refresh()}});
   },{purpose,prototypeRoot});
-  await expect(page.locator('[data-prospectus-heading]')).toBeVisible();return{state,calls};
+  await expect(page.locator('[data-prospectus-heading]')).toBeVisible();};await reenter();return{state,calls,reenter};
 }
 const history=(page:Page)=>page.locator('[data-prospectus-history]');
 async function selectFile(page:Page,name='合成新稿.docx'){const chooser=page.waitForEvent('filechooser');await page.locator('#choose-prospectus-version').click();await(await chooser).setFiles({name,mimeType:name.endsWith('.txt')?'text/plain':mime,buffer:bytes});}
 async function adopt(page:Page,id:string){await history(page).evaluate(el=>(el as HTMLDetailsElement).open=true);await page.locator('[data-use-version="'+id+'"]').click();await expect(page.locator('dialog[open]')).toBeVisible();}
 
 test('empty state exposes upload, has no saved history entries, and fits phone widths',async({page})=>{
-  await setup(page);await expect(page.getByRole('button',{name:/^(上传募集说明书|上传历史／参考稿)$/})).toBeVisible();await expect(history(page).locator('[data-prospectus-version]')).toHaveCount(0);await expect(page.getByText('没有参考稿也可以继续')).toBeVisible();
+  await setup(page);await expect(page.getByRole('button',{name:/^(上传募集说明书|上传历史／参考稿)$/})).toBeVisible();await expect(history(page).locator('[data-prospectus-version]')).toHaveCount(0);await expect(page.locator('.reference-empty')).toContainText('没有参考稿也可以继续');
   const chooser=page.waitForEvent('filechooser');await page.getByRole('button',{name:/^(上传募集说明书|上传历史／参考稿)$/}).click();await chooser;
   for(const width of [1440,390,320]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);const card=await page.locator('.prospectus-panel').boundingBox(),heading=await page.locator('[data-prospectus-heading]').boundingBox();expect(heading!.x-card!.x).toBeGreaterThanOrEqual(18);}
 });
@@ -88,13 +96,13 @@ test('unknown upload receipt retries the original session without reupload and s
   const f=await setup(page,{retry:true});await selectFile(page);await expect(page.locator('[data-resume-prospectus]')).toBeVisible();await expect(page.locator('.prospectus-selected-file')).toContainText('合成新稿.docx');
   await page.getByRole('button',{name:'确认原上传',exact:true}).click();await expect(page.locator('#prospectus-status')).toContainText(/已保存.*尚未采用/);expect(f.state.current_version_id).toBeNull();expect(f.state.selection_revision).toBe(0);expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(0);
   expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.calls.filter(c=>c.path.endsWith('/materials/uploads'))).toHaveLength(1);const completions=f.calls.filter(c=>c.path.endsWith('/complete'));expect(completions).toHaveLength(2);expect(completions[0].body).toEqual(completions[1].body);
-  await adopt(page,'v3');expect(f.state.current_version_id).toBeNull();await page.locator('#confirm-prospectus-selection').click();await expect(page.locator('.prospectus-current-file')).toContainText('当前版本 · V3');expect(f.state.current_version_id).toBe('v3');
+  await adopt(page,'v3');expect(f.state.current_version_id).toBeNull();await page.locator('#confirm-prospectus-selection').click();await expect(page.locator('.reference-file.is-selected')).toContainText('本次更新已选用');expect(f.state.current_version_id).toBe('v3');
 });
 
 test('current version downloads, history disclosure survives refresh, and adoption needs confirmation',async({page})=>{
-  const f=await setup(page,{versions:true});const download=page.waitForEvent('download');await page.locator('.prospectus-current-file').getByRole('button',{name:'下载清洁版'}).click();expect((await download).suggestedFilename()).toBe('募集说明书_V2_清洁版.docx');
-  await history(page).locator(':scope > summary').focus();await page.keyboard.press('Enter');await expect(history(page)).toHaveAttribute('open','');await page.evaluate(()=>window.panelFixture.refresh());await expect(history(page)).toHaveAttribute('open','');
-  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await adopt(page,'v1');expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(0);await page.locator('#confirm-prospectus-selection').click();await expect(page.locator('.prospectus-current-file')).toContainText('当前版本 · V1');expect(f.calls.find(c=>c.path.endsWith('/prospectus-versions/current'))!.body).toMatchObject({version_id:'v1',expected_selection_revision:2});
+  const f=await setup(page,{versions:true});const download=page.waitForEvent('download');await page.locator('.reference-file.is-selected').getByRole('button',{name:'下载清洁版'}).click();expect((await download).suggestedFilename()).toBe('募集说明书_V2_清洁版.docx');
+  await expect(history(page)).toBeHidden();const details=page.locator('[data-prospectus-version="v1"] [data-prospectus-ref]');await details.locator('summary').focus();await page.keyboard.press('Enter');await page.evaluate(()=>window.panelFixture.refresh());await expect(details).toHaveAttribute('open','');await expect(details.locator('summary')).toBeFocused();
+  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await adopt(page,'v1');expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(0);await page.locator('#confirm-prospectus-selection').click();await expect(page.locator('.reference-file.is-selected')).toContainText('本次更新已选用');expect(f.calls.find(c=>c.path.endsWith('/prospectus-versions/current'))!.body).toMatchObject({version_id:'v1',expected_selection_revision:2});
 });
 
 test('generation guidance and same-size visual evidence',async({page})=>{
@@ -147,7 +155,7 @@ test('used and current uploads explain why deletion is unavailable',async({page}
   await history(page).evaluate(el=>(el as HTMLDetailsElement).open=true);
   await expect(page.locator('[data-prospectus-version="v1"]')).toContainText('已被任务或关联文件使用');await expect(page.locator('[data-delete-version]')).toHaveCount(0);
   f.state.current_version_id='v1';f.state.selection_revision++;f.state.versions[1].delete_block_reason='current';await page.evaluate(()=>window.panelFixture.refresh());
-  await expect(page.locator('[data-prospectus-version="v1"]')).toContainText('正在使用');await expect(page.locator('[data-delete-version]')).toHaveCount(0);
+  await expect(page.locator('[data-prospectus-version="v1"]')).toContainText('本次更新已选用');await expect(page.locator('[data-delete-version]')).toHaveCount(0);
 });
 
 test('concurrent adoption blocks deletion and reconciles the current version',async({page})=>{
@@ -157,8 +165,40 @@ test('concurrent adoption blocks deletion and reconciles the current version',as
     f.state.current_version_id='v1';f.state.selection_revision++;f.state.versions[1].delete_block_reason='current';
     return route.fulfill({status:409,json:{code:'INPUT_REVISION_CONFLICT',message:'changed'}});
   });
-  await page.locator('[data-confirm-delete]').click();await expect(page.locator('#prospectus-status')).toContainText('不能删除');await expect(page.locator('.prospectus-current-file')).toContainText('合成历史募集书');
+  await page.locator('[data-confirm-delete]').click();await expect(page.locator('#prospectus-status')).toContainText('不能删除');await expect(page.locator('.reference-file.is-selected')).toContainText('合成历史募集书');
   await expect(page.locator('[data-delete-version="v1"]')).toHaveCount(0);
+});
+
+test('uploaded references remain visible on reentry and only previous generated outputs collapse',async({page})=>{
+  const f=await setup(page,{versions:true});
+  const longName='相似业务企业2025年度第一期公司债券募集说明书_含财务报表及附注_供本次结构参考.docx';
+  f.state.versions.push({...version(1),version_id:'v4',sequence:4,material_id:'material-4',filename:longName});
+  f.state.versions.push({...version(2),version_id:'v3',sequence:3});
+  f.state.current_version_id=null;await f.reenter();
+  await expect(page.locator('[data-prospectus-files] [data-prospectus-version]')).toHaveCount(2);
+  await expect(page.locator('[data-prospectus-saved-notice]')).toHaveCount(0);
+  await expect(page.locator('.prospectus-upload-editor')).toBeHidden();
+  for(const id of ['v1','v4']){
+    const row=page.locator(`[data-prospectus-version="${id}"]`);
+    await expect(row).toBeVisible();await expect(row.getByRole('button',{name:'用于本次更新'})).toBeVisible();
+    await expect(row.getByRole('button',{name:'下载原文件'})).toBeVisible();await expect(row.getByRole('button',{name:'删除',exact:true})).toBeVisible();
+  }
+  await expect(history(page)).not.toHaveAttribute('open','');await expect(history(page).locator('[data-prospectus-version]')).toHaveCount(2);
+  await history(page).locator(':scope > summary').click();await expect(history(page).locator('[data-prospectus-version="v3"]')).toBeVisible();
+  await history(page).locator(':scope > summary').click();await expect(history(page).locator('[data-prospectus-version="v3"]')).toBeHidden();
+  expect(f.calls.filter(c=>c.method!=='GET')).toEqual([]);
+  const downloaded=page.waitForEvent('download');await page.locator('[data-prospectus-version="v4"]').getByRole('button',{name:'下载原文件'}).click();
+  const original=await downloaded;expect(original.suggestedFilename()).toBe(longName);
+  const stream=await original.createReadStream(),chunks:Buffer[]=[];for await(const chunk of stream)chunks.push(Buffer.from(chunk));expect(Buffer.concat(chunks)).toEqual(bytes);
+  await page.locator('[data-use-version="v1"]').click();await page.locator('#cancel-prospectus-selection').click();expect(f.state.current_version_id).toBeNull();
+  await page.locator('[data-use-version="v1"]').click();await page.locator('#confirm-prospectus-selection').click();
+  await f.reenter();await expect(page.locator('[data-prospectus-files] [data-prospectus-version]').first()).toHaveAttribute('data-prospectus-version','v1');
+  await expect(page.locator('[data-prospectus-version="v1"] [data-prospectus-selection-state]')).toHaveText('本次更新已选用');
+  await expect(page.locator('[data-prospectus-version="v4"]')).toBeVisible();
+  for(const width of [1440,900,390,320]){
+    await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    if(process.env.BB_REFERENCE_EVIDENCE)await page.locator('.prospectus-panel').screenshot({path:`${process.env.BB_REFERENCE_EVIDENCE}/implementation-multiple-${width}.png`});
+  }
 });
 
 test('reference upload visual comparison at desktop and mobile widths',async({page})=>{
