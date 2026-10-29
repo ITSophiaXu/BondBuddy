@@ -1,0 +1,245 @@
+
+Running 75 tests using 1 worker
+
+(node:47344) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 apps\web\tests\consistency-confirmation.spec.ts:98:1 › consistency confirmation: native file entry reviews differences and confirms only two of three actionable original files (7.8s)
+  ok  2 apps\web\tests\consistency-confirmation.spec.ts:136:1 › consistency confirmation: a direct file update shows one exact original with its own 4,500 point scope (2.5s)
+  ok  3 apps\web\tests\consistency-confirmation.spec.ts:142:1 › consistency confirmation: incomplete manual projection says item details were not supplied instead of claiming zero remaining work (2.0s)
+  x   4 apps\web\tests\consistency-confirmation.spec.ts:149:35 › consistency confirmation: unknown receipt restores the original scope after delivery and live changes (3.4s)
+(node:45500) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   5 apps\web\tests\consistency-confirmation.spec.ts:149:35 › consistency confirmation: unknown receipt restores the original scope after delivery and live changes even when the original check leaves the recent list (4.4s)
+(node:33244) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   6 apps\web\tests\consistency-confirmation.spec.ts:164:73 › consistency confirmation: legacy pending snapshot degrades honestly while retrying the unchanged original envelope (4.5s)
+(node:30088) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   7 apps\web\tests\consistency-confirmation.spec.ts:164:73 › consistency confirmation: foreign-binding pending snapshot degrades honestly while retrying the unchanged original envelope (3.6s)
+(node:6692) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x   8 apps\web\tests\consistency-confirmation.spec.ts:164:73 › consistency confirmation: partial-files pending snapshot degrades honestly while retrying the unchanged original envelope (4.7s)
+(node:52228) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  9 apps\web\tests\consistency-confirmation.spec.ts:188:1 › consistency confirmation: twelve selected catalogue files keep a keyboard-scrollable review body and reachable fixed fee controls (3.6s)
+  -  10 apps\web\tests\consistency-confirmation.spec.ts:222:1 › consistency confirmation current collector: same-name selection and twelve-file desktop review
+  ok 11 apps\web\tests\file-consistency.spec.ts:64:1 › empty check page exposes upload and both related-file paths on desktop and phone (1.1s)
+  ok 12 apps\web\tests\file-consistency.spec.ts:68:33 › docx saves without adoption and only checks after separate adoption and explicit start (1.7s)
+  ok 13 apps\web\tests\file-consistency.spec.ts:68:33 › pdf saves without adoption and only checks after separate adoption and explicit start (1.7s)
+  ok 14 apps\web\tests\file-consistency.spec.ts:73:1 › source alone does not enable checking without related files (1.8s)
+  ok 15 apps\web\tests\file-consistency.spec.ts:74:1 › unknown completion preserves the chosen file and retries the same upload without sending bytes twice (1.9s)
+  ok 16 apps\web\tests\file-consistency.spec.ts:77:1 › failed source read offers retry; a saved version needs confirmed adoption without upload (1.4s)
+  ok 17 apps\web\tests\file-consistency.spec.ts:80:1 › repaint retains an automatically saved file; leaving the page disposes its uploader (1.3s)
+  ok 18 apps\web\tests\file-consistency.spec.ts:81:1 › capture matching empty-state prototype and implementation (288ms)
+  ok 19 apps\web\tests\prospectus-panel.spec.ts:66:1 › empty state exposes upload, has no saved history entries, and fits phone widths (1.1s)
+  ok 20 apps\web\tests\prospectus-panel.spec.ts:72:47 › update automatically uploads a corrected selection without adopting or starting work (1.1s)
+  ok 21 apps\web\tests\prospectus-panel.spec.ts:72:47 › consistency automatically uploads a corrected selection without adopting or starting work (1.3s)
+  ok 22 apps\web\tests\prospectus-panel.spec.ts:81:47 › update drops one file and ignores a second selection event while uploading (1.0s)
+  ok 23 apps\web\tests\prospectus-panel.spec.ts:81:47 › consistency drops one file and ignores a second selection event while uploading (1.1s)
+  ok 24 apps\web\tests\prospectus-panel.spec.ts:87:1 › unknown upload receipt retries the original session without reupload and saving does not adopt (1.4s)
+  ok 25 apps\web\tests\prospectus-panel.spec.ts:94:1 › current version downloads, history disclosure survives refresh, and adoption needs confirmation (1.5s)
+  ok 26 apps\web\tests\prospectus-panel.spec.ts:100:1 › generation guidance and same-size visual evidence (991ms)
+  ok 27 apps\web\tests\prospectus-panel.spec.ts:106:1 › generation drop zone validates files and automatically saves one valid file (1.2s)
+  ok 28 apps\web\tests\prospectus-panel.spec.ts:121:1 › generation upload recovery auto-selects saved source using the original receipt (1.2s)
+  ok 29 apps\web\tests\prospectus-panel.spec.ts:132:1 › mistaken saved upload can be cancelled, deleted, refreshed away and replaced (1.9s)
+  ok 30 apps\web\tests\prospectus-panel.spec.ts:145:1 › used and current uploads explain why deletion is unavailable (1.3s)
+  ok 31 apps\web\tests\prospectus-panel.spec.ts:153:1 › concurrent adoption blocks deletion and reconciles the current version (1.4s)
+  ok 32 apps\web\tests\prospectus-panel.spec.ts:164:1 › reference upload visual comparison at desktop and mobile widths (319ms)
+  ok 33 apps\web\tests\prospectus-saved-reentry.spec.ts:52:3 › prospectus saved reentry native desktop journeys › saved prospectus reentry: upload V2, leave through all projects, return through the real project title, review and cancel without writes, then explicitly adopt once and reload (4.0s)
+  ok 34 apps\web\tests\prospectus-saved-reentry.spec.ts:65:3 › prospectus saved reentry native desktop journeys › saved prospectus reentry: a first saved version remains without a current selection across native project reentry (3.0s)
+  ok 35 apps\web\tests\prospectus-saved-reentry.spec.ts:71:3 › prospectus saved reentry native desktop journeys › saved prospectus reentry: a deliberate rollback keeps V1 current and describes later retained versions as not current without inferring they were never adopted (2.2s)
+  ok 36 apps\web\tests\prospectus-saved-reentry.spec.ts:78:3 › prospectus saved reentry native desktop journeys › saved prospectus reentry: retaining only earlier versions does not imply a newer saved candidate when the highest sequence is current (2.3s)
+  ok 37 apps\web\tests\prospectus-saved-reentry.spec.ts:83:3 › prospectus saved reentry native desktop journeys › saved prospectus reentry: equal filenames retain distinct version, material version and hash references and download the exact old and new OOXML bytes (3.7s)
+  ok 38 apps\web\tests\prospectus-saved-reentry.spec.ts:90:3 › prospectus saved reentry native desktop journeys › saved prospectus reentry: a generated saved version exposes its exact artifact version and hash without inventing a material identity (2.5s)
+  ok 39 apps\web\tests\prospectus-saved-reentry.spec.ts:95:3 › prospectus saved reentry native desktop journeys › saved prospectus reentry: the native generation source step discovers the same retained candidate without preparing drafts or starting generation (2.9s)
+  ok 40 apps\web\tests\prospectus-saved-reentry.spec.ts:102:3 › prospectus saved reentry native desktop journeys › saved prospectus reentry: unchanged native scheduled refresh retains history, exact reference disclosure and its keyboard focus (2.3s)
+  ok 41 apps\web\tests\prospectus-saved-reentry.spec.ts:108:71 › prospectus saved reentry native desktop journeys › saved prospectus reentry: a public-schema-valid foreign-project version projection does not claim a verified saved candidate or exact reference (1.9s)
+  ok 42 apps\web\tests\prospectus-saved-reentry.spec.ts:108:71 › prospectus saved reentry native desktop journeys › saved prospectus reentry: a public-schema-valid duplicate-version version projection does not claim a verified saved candidate or exact reference (1.8s)
+  ok 43 apps\web\tests\prospectus-saved-reentry.spec.ts:115:1 › saved prospectus reentry component comparison: exact R42 and current save the same V2 then leave and reenter through native all-projects navigation at 1440 (3.4s)
+  ok 44 apps\web\tests\prospectus-selection.spec.ts:148:1 › upload saves a new version without adopting it or rebuilding its parent (1.0s)
+  ok 45 apps\web\tests\prospectus-selection.spec.ts:162:1 › the first saved upload also remains unadopted until an explicit decision (1.2s)
+  ok 46 apps\web\tests\prospectus-selection.spec.ts:173:1 › a later adoption shows its target and effect, can be cancelled, and only submits on confirmation (1.2s)
+  ok 47 apps\web\tests\prospectus-selection.spec.ts:191:1 › a temporary completion failure retries the saved upload session without retransmitting bytes (1.1s)
+  ok 48 apps\web\tests\prospectus-selection.spec.ts:200:1 › a lost completion receipt reconciles the same session without a second byte transfer (1.1s)
+  ok 49 apps\web\tests\prospectus-selection.spec.ts:211:1 › an uncertain adoption retries the identical selection envelope instead of adopting twice (1.3s)
+  ok 50 apps\web\tests\prospectus-selection.spec.ts:225:1 › a selection conflict refreshes the actual current version while keeping the candidate saved (1.1s)
+  ok 51 apps\web\tests\prospectus-selection.spec.ts:237:1 › saving a file neither invents source declarations nor claims automatic identification (935ms)
+  ok 52 apps\web\tests\prospectus-selection.spec.ts:247:1 › an acknowledged adoption remains adopted when its following parent refresh fails (1.1s)
+  ok 53 apps\web\tests\prospectus-selection.spec.ts:256:1 › disposing during the preceding draft save removes the dialog and cannot start an adoption (1.1s)
+  ok 54 apps\web\tests\prospectus-selection.spec.ts:269:1 › a background version refresh preserves the automatically uploaded version (1.2s)
+  ok 55 apps\web\tests\prospectus-selection.spec.ts:278:1 › another page clearing a confirmed upload does not misreport the saved prospectus version (899ms)
+  ok 56 apps\web\tests\review-editor-recovery.spec.ts:48:1 › unknown export receipt freezes decisions and explicitly retries the identical envelope after reopen (1.9s)
+  ok 57 apps\web\tests\review-editor-recovery.spec.ts:65:1 › unavailable recovery storage prevents submitting a fresh export (1.2s)
+  ok 58 apps\web\tests\review-editor-recovery.spec.ts:72:1 › legacy complete pending receipt keeps its request id and cannot auto submit on mount (1.1s)
+  ok 59 apps\web\tests\review-editor-recovery.spec.ts:78:1 › explicit history callback follows successful exact load only (1.1s)
+  ok 60 apps\web\tests\review-editor-recovery.spec.ts:84:1 › dirty preview retains downloads of the pinned saved Word (1.3s)
+  ok 61 apps\web\tests\review-editor-recovery.spec.ts:90:1 › late 401 after export cannot restore private editor or submitted callback (1.0s)
+  ok 62 apps\web\tests\review-editor-recovery.spec.ts:95:1 › malformed pending receipt is preserved and blocks fresh export instead of replacing its key (965ms)
+  ok 63 apps\web\tests\review-editor-recovery.spec.ts:103:1 › busy receipt blocks leaving and acknowledged cached dirty preview can leave (1.3s)
+  ok 64 apps\web\tests\review-editor-recovery.spec.ts:112:1 › download metadata with a substituted artifact id never requests bytes (1.0s)
+  ok 65 apps\web\tests\review-editor-recovery.spec.ts:117:1 › another tab pending envelope cannot overwrite or replace this page uncertain request (1.3s)
+  ok 66 apps\web\tests\review-editor.spec.ts:30:1 › review editor downloads all variants and exposes progress and recoverable failures (1.3s)
+  ok 67 apps\web\tests\review-editor.spec.ts:51:1 › unmodified historical output is downloadable without claiming it contains revisions (886ms)
+  ok 68 apps\web\tests\review-editor.spec.ts:60:1 › corrupt download fails visibly and retry reauthorizes and downloads verified bytes (1.5s)
+  ok 69 apps\web\tests\review-flow-editor.spec.ts:14:1 › review flow: discard restores viewed V1, clears only its cache and unlocks followup/history without export (2.4s)
+  ok 70 apps\web\tests\review-flow-editor.spec.ts:34:1 › review flow: manual return to baseline keeps caret and controls in sync, while nonmanual hidden draft survives reload clean (3.0s)
+  ok 71 apps\web\tests\review-flow-editor.spec.ts:52:1 › review flow: category selects the visible finding and export retains every decision across category changes (1.8s)
+  ok 72 apps\web\tests\review-flow-editor.spec.ts:64:1 › review flow: switching historical editions resets an absent category and editing never targets a filtered-out finding (1.9s)
+  ok 73 apps\web\tests\review-flow-editor.spec.ts:76:1 › review flow: own baseline-equivalent pending stays locked and another page pending is recovered instead of discarded (7.7s)
+  ok 74 apps\web\tests\review-flow-editor.spec.ts:91:1 › review flow: failed scoped cache clear keeps manual work and blocks continuation until storage recovery and explicit discard (1.7s)
+  ok 75 apps\web\tests\review-flow-editor.spec.ts:101:1 › review flow desktop component comparison shows the same historical edition, filtered detail and trial exit against exact R26 (2.5s)
+
+
+  1) apps\web\tests\consistency-confirmation.spec.ts:149:35 › consistency confirmation: unknown receipt restores the original scope after delivery and live changes
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 1
+
+    @@ -1,8 +1,8 @@
+      Object {
+        "expected_check_sha256": "2660028eef4396d27219c2a828c34cd69adb4dca41604bcfaefad77ceb83ab10",
+    -   "expected_points": 9000,
+    +   "expected_points": "9000",
+        "files": Array [
+          Object {
+            "file_version_id": "consistency-selection-issuer-v1",
+          },
+          Object {
+
+      152 |   await page.reload();await expect(page.locator('#fc-pending-action')).toBeVisible();
+      153 |   if(missing)expect(s.calls.filter(call=>call.method==='GET'&&call.path===base+'/checks/'+checkId)).toHaveLength(1);
+    > 154 |   expect((await cached(page))?.pendingUpdate.body).toEqual(original.body);
+          |                                                    ^
+      155 |   expect((await cached(page))?.pendingUpdate.confirmation).toEqual(confirmation);
+      156 |   await page.locator('#fc-pending-action').click();await assertBusinessScope(page,s);await assertFullScope(page,s);
+      157 |   await expect(modal(page)).not.toContainText(s.source.filename);await expect(modal(page)).not.toContainText('合成后来保存的财务新稿.docx');
+        at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\web\tests\consistency-confirmation.spec.ts:154:52
+
+    Error Context: ..\..\..\AppData\Local\Temp\bondbuddy-web-test-results\consistency-confirmation-c-ee1e9-r-delivery-and-live-changes\error-context.md
+
+  2) apps\web\tests\consistency-confirmation.spec.ts:149:35 › consistency confirmation: unknown receipt restores the original scope after delivery and live changes even when the original check leaves the recent list
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 1
+
+    @@ -1,8 +1,8 @@
+      Object {
+        "expected_check_sha256": "2660028eef4396d27219c2a828c34cd69adb4dca41604bcfaefad77ceb83ab10",
+    -   "expected_points": 9000,
+    +   "expected_points": "9000",
+        "files": Array [
+          Object {
+            "file_version_id": "consistency-selection-issuer-v1",
+          },
+          Object {
+
+      152 |   await page.reload();await expect(page.locator('#fc-pending-action')).toBeVisible();
+      153 |   if(missing)expect(s.calls.filter(call=>call.method==='GET'&&call.path===base+'/checks/'+checkId)).toHaveLength(1);
+    > 154 |   expect((await cached(page))?.pendingUpdate.body).toEqual(original.body);
+          |                                                    ^
+      155 |   expect((await cached(page))?.pendingUpdate.confirmation).toEqual(confirmation);
+      156 |   await page.locator('#fc-pending-action').click();await assertBusinessScope(page,s);await assertFullScope(page,s);
+      157 |   await expect(modal(page)).not.toContainText(s.source.filename);await expect(modal(page)).not.toContainText('合成后来保存的财务新稿.docx');
+        at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\web\tests\consistency-confirmation.spec.ts:154:52
+
+    Error Context: ..\..\..\AppData\Local\Temp\bondbuddy-web-test-results\consistency-confirmation-c-67b9c-heck-leaves-the-recent-list\error-context.md
+
+  3) apps\web\tests\consistency-confirmation.spec.ts:164:73 › consistency confirmation: legacy pending snapshot degrades honestly while retrying the unchanged original envelope
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 1
+
+    @@ -1,8 +1,8 @@
+      Object {
+        "expected_check_sha256": "2660028eef4396d27219c2a828c34cd69adb4dca41604bcfaefad77ceb83ab10",
+    -   "expected_points": 9000,
+    +   "expected_points": "9000",
+        "files": Array [
+          Object {
+            "file_version_id": "consistency-selection-issuer-v1",
+          },
+          Object {
+
+      181 |   await exactIdentity(page,'请求编号',original.body.request_id);
+      182 |   await exactIdentity(page,'文件 1 版本编号',selectedVersions[0]);await exactIdentity(page,'文件 2 版本编号',selectedVersions[1]);
+    > 183 |   expect((await cached(page))?.pendingUpdate.body).toEqual(original.body);
+          |                                                    ^
+      184 |   await modal(page).locator('#fc-confirm-update').click();await expect.poll(()=>s.posts.length).toBe(2);
+      185 |   expect(s.posts[1]).toEqual(original);expect(s.receipts.size).toBe(1);expect(s.batches).toHaveLength(1);
+      186 | });
+        at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\web\tests\consistency-confirmation.spec.ts:183:52
+
+    Error Context: ..\..\..\AppData\Local\Temp\bondbuddy-web-test-results\consistency-confirmation-c-52dcb-unchanged-original-envelope\error-context.md
+
+  4) apps\web\tests\consistency-confirmation.spec.ts:164:73 › consistency confirmation: foreign-binding pending snapshot degrades honestly while retrying the unchanged original envelope
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 1
+
+    @@ -1,8 +1,8 @@
+      Object {
+        "expected_check_sha256": "2660028eef4396d27219c2a828c34cd69adb4dca41604bcfaefad77ceb83ab10",
+    -   "expected_points": 9000,
+    +   "expected_points": "9000",
+        "files": Array [
+          Object {
+            "file_version_id": "consistency-selection-issuer-v1",
+          },
+          Object {
+
+      181 |   await exactIdentity(page,'请求编号',original.body.request_id);
+      182 |   await exactIdentity(page,'文件 1 版本编号',selectedVersions[0]);await exactIdentity(page,'文件 2 版本编号',selectedVersions[1]);
+    > 183 |   expect((await cached(page))?.pendingUpdate.body).toEqual(original.body);
+          |                                                    ^
+      184 |   await modal(page).locator('#fc-confirm-update').click();await expect.poll(()=>s.posts.length).toBe(2);
+      185 |   expect(s.posts[1]).toEqual(original);expect(s.receipts.size).toBe(1);expect(s.batches).toHaveLength(1);
+      186 | });
+        at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\web\tests\consistency-confirmation.spec.ts:183:52
+
+    Error Context: ..\..\..\AppData\Local\Temp\bondbuddy-web-test-results\consistency-confirmation-c-e4cac-unchanged-original-envelope\error-context.md
+
+  5) apps\web\tests\consistency-confirmation.spec.ts:164:73 › consistency confirmation: partial-files pending snapshot degrades honestly while retrying the unchanged original envelope
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 1
+
+    @@ -1,8 +1,8 @@
+      Object {
+        "expected_check_sha256": "2660028eef4396d27219c2a828c34cd69adb4dca41604bcfaefad77ceb83ab10",
+    -   "expected_points": 9000,
+    +   "expected_points": "9000",
+        "files": Array [
+          Object {
+            "file_version_id": "consistency-selection-issuer-v1",
+          },
+          Object {
+
+      181 |   await exactIdentity(page,'请求编号',original.body.request_id);
+      182 |   await exactIdentity(page,'文件 1 版本编号',selectedVersions[0]);await exactIdentity(page,'文件 2 版本编号',selectedVersions[1]);
+    > 183 |   expect((await cached(page))?.pendingUpdate.body).toEqual(original.body);
+          |                                                    ^
+      184 |   await modal(page).locator('#fc-confirm-update').click();await expect.poll(()=>s.posts.length).toBe(2);
+      185 |   expect(s.posts[1]).toEqual(original);expect(s.receipts.size).toBe(1);expect(s.batches).toHaveLength(1);
+      186 | });
+        at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\web\tests\consistency-confirmation.spec.ts:183:52
+
+    Error Context: ..\..\..\AppData\Local\Temp\bondbuddy-web-test-results\consistency-confirmation-c-00f31-unchanged-original-envelope\error-context.md
+
+  5 failed
+    apps\web\tests\consistency-confirmation.spec.ts:149:35 › consistency confirmation: unknown receipt restores the original scope after delivery and live changes
+    apps\web\tests\consistency-confirmation.spec.ts:149:35 › consistency confirmation: unknown receipt restores the original scope after delivery and live changes even when the original check leaves the recent list
+    apps\web\tests\consistency-confirmation.spec.ts:164:73 › consistency confirmation: legacy pending snapshot degrades honestly while retrying the unchanged original envelope
+    apps\web\tests\consistency-confirmation.spec.ts:164:73 › consistency confirmation: foreign-binding pending snapshot degrades honestly while retrying the unchanged original envelope
+    apps\web\tests\consistency-confirmation.spec.ts:164:73 › consistency confirmation: partial-files pending snapshot degrades honestly while retrying the unchanged original envelope
+  1 skipped
+  69 passed (2.8m)

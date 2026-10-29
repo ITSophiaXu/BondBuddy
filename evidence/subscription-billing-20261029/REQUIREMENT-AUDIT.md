@@ -31,6 +31,13 @@
 
 原稿的现金退款、付费任务、运营预算和标准成本台账始终是不同计量对象，不能将一个对象测试通过当作另一对象也已完成。
 
-部署文档与源码配置检查已补充；本机没有Docker，未宣称实际Compose展开、发布镜像Node代理探针、容器启动或商户联网通过。正式商户配置位置已询问用户，当前没有提供，不请求或记录聊天明文密钥。
+部署文档与源码配置检查已补充。原Windows环境没有Docker CLI；继续验收时已找到本地BondBuddyM3 WSL的Docker，并补做真实Compose合成配置解析，镜像构建与探针另有独立证据。此类本地验证不证明生产容器或商户联网通过。正式商户配置位置已询问用户，当前没有提供，不请求或记录聊天明文密钥。
+
+## 继续目标时核实的外部条件
+
+- 当前开发提交的GitHub Actions并未执行。`172b6a4`对应的六个CI作业均因GitHub账户付款失败或支出上限问题在启动前结束，不能将它们表述为代码测试失败或已通过。官方注释见[CI证据](completion/github-ci-172b6a4.json)；恢复Actions需仓库账户责任人处理Billing & plans，当前未修改付款或额度设置。
+- 原Desktop工作流的八个浏览器文件已在本地Edge补验75/75、无跳过。与Linux/Chromium及GitHub运行环境仍分别计量，见[Desktop补验](DESKTOP-CI-LOCAL-VALIDATION.md)。
+- 原Dockerfile的API目标已在本地Linux构建；精确`279f13a`镜像、Node v22.23.4的四项代理探针通过。同一镜像完成空库迁移、M2四个worker测试及API进程/路由启动，临时容器及网络已清理。详见[镜像证据](RELEASE-API-LOCAL-VALIDATION.md)、[M2补验](M2-CI-LOCAL-VALIDATION.md)。这些结果不替代完整worker/OCR镜像、生产网络或真实商户验收。
+- 已补充[盈利决策门槛](../../docs/finance/subscription-20261029/盈利决策门槛.md)，保持现有需求和预算，未改变主预测。它给出经营保本、历史回收及60%目标的收入门槛和成本上限；不是客户愿意支付这些价格的证据。后续调整已认可价表或预算的方向仍待用户决定。
 
 参考：[Spec](../../docs/product-decisions/2026-10-29-subscription-auto-billing.md)、[24个月条件估算](../../docs/finance/subscription-20261029/24个月条件估算.md)、[全面复核验证](FULL-REVIEW-V3-VALIDATION.md)、[部署检查](DEPLOYMENT-VALIDATION.md)。

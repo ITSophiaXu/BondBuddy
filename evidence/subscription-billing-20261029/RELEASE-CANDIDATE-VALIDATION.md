@@ -50,7 +50,22 @@
 
 复验普通文件链路使用`node --test --test-concurrency=1 apps/worker/dist/ordinary-file-check-batches.pg.test.js`，并配置上述Word Python变量。浏览器测试为`apps/web/tests/ordinary-file-check-batches.spec.ts`，配置`BB_E2E_BROWSER_CHANNEL=msedge`。公共构建命令为`npm run build`，契约命令为`npm run check:contracts`。
 
-本机没有Docker，未验证实际容器启动、发布镜像网络代理或生产Node运行时。Vite保留约1.90MB主JS分块警告，构建成功；该性能优化不属于本次资金正确性验收。
+初轮Windows环境没有Docker CLI，未验证实际容器启动、发布镜像网络代理或生产Node运行时。继续验收时已找到本地BondBuddyM3 WSL内的隔离Docker，新增验证及实际发现的构建问题见下节，不能把初轮环境限制继续表述为本机没有可用容器。Vite保留约1.90MB主JS分块警告，构建成功；该性能优化不属于本次资金正确性验收。
+
+## 继续目标后的补验
+
+- 远端`172b6a4`的六个CI作业全部在启动前因GitHub账户账单/支出限制结束，`steps=[]`；未产生代码执行结果。[官方注释](completion/github-ci-172b6a4.json)保留原原因，没有调高账户支出限额或重写工作流。
+- Desktop工作流对应八个文件在本地Edge补验75/75、无跳过。修正了5个把HTTP字符串缓存与领域数字夹具错层比较的断言，并新增首发/重放原始HTTP body相同的验证；详见[Desktop补验](DESKTOP-CI-LOCAL-VALIDATION.md)。
+- M2剩余契约/API初轮55次执行中46通过、9失败；4个旧金额断言已迁移，5个缺失原样本的测试补齐原哈希材料后全部定向复验通过，没有宣称单次55/55。详见[M2补验](M2-CI-LOCAL-VALIDATION.md)。
+- M4核心七个API文件初轮17项中13通过、4个旧金额断言失败；三个修改文件复验10/10，其余四文件7项初轮通过，17个独立测试均有通过证据。详见[M4补验](M4-CI-LOCAL-VALIDATION.md)。
+- 当前部署静态检查器11/11通过。真实Docker Compose合成配置矩阵24/24按预期通过，WSL Node v24.14.0本地HTTPS代理四项探针通过；这些不是发布镜像或真实商户证据。
+- 实际API镜像构建发现两处发布输入缺口：订阅/价管CSS未被复制；Web类型检查依赖的本地测试配置及声明未被复制。分别在`e277321`、`279f13a`修复，保留完整类型检查；动态发现实际CSS/测试脚本依赖的打包检查2/2通过。首次实际构建失败日志保留，修复后镜像结果以独立构建证据为准。
+- `279f13a0f086ca1048b38058fcc94703763f8b5a`的原Dockerfile API目标构建成功，镜像`sha256:1ecf1c3b12966ffa986716dfdde891d1d31b25f2bcdfa20fde4061c780d421d2`、Node v22.23.4。精确Git白名单构建上下文不含客户样本、运行目录或真实密钥；全工作区构建在镜像内通过。以该不可变镜像运行的HTTPS CONNECT、代理故障不直连、NO_PROXY及正常证书验证探针4/4通过，见[镜像构建与探针](RELEASE-API-LOCAL-VALIDATION.md)。
+- 同一镜像在无外网出口、无宿主端口的临时Docker内网完成空库156个迁移至0155，M2四个worker测试4/4、无跳过；只读挂载经哈希核实的合成CLI夹具。实际API入口启动后`/health`返回200，仅证明进程及路由启动。临时容器及网络按精确ID清理成功，见[隔离worker专项](M2-WORKER-IMAGE-VALIDATION.md)。未构建完整worker/OCR镜像，未验证生产商户或完整发布环境。
+
+以上补验增加了工程证据，但未解除真实商户、完整标准成本源、专业成果验收、经营条件及远端CI账户问题。初轮哈希文件仍对应初轮验证时的源码；后续提交及镜像证据分别记录其精确版本，不混用为同一次验证。
+
+镜像固定在`279f13a`；后续交付新增M4测试的int64断言与文档、财务诊断及验收证据，没有改动生产运行代码。后续提交不等于已重新构建该提交的镜像。
 
 ## 发布及经营边界
 

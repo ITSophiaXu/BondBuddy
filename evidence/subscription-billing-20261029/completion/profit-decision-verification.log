@@ -1,0 +1,34 @@
+{
+  "checks": 34,
+  "failures": 0,
+  "targets": [
+    {
+      "id": "operating_break_even",
+      "revenue": 2625377.2201878414,
+      "factor": 1.1022997547872553,
+      "costCeiling": 2340229.52508919
+    },
+    {
+      "id": "recovery_break_even",
+      "revenue": 3242333.428836527,
+      "factor": 1.3530367970064165,
+      "costCeiling": 1731962.8584225234
+    },
+    {
+      "id": "operating_margin_60",
+      "revenue": 13922456.720158804,
+      "factor": 5.69354344409489,
+      "costCeiling": 441300.36879799253
+    },
+    {
+      "id": "recovery_margin_60",
+      "revenue": 17194194.604945518,
+      "factor": 7.023209745605321,
+      "costCeiling": -166966.2978686741
+    }
+  ],
+  "output": [
+    "profit-decision.json",
+    "盈利决策门槛.md"
+  ]
+}

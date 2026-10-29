@@ -1,0 +1,11 @@
+✔ authorized rq-202509 historical DOCX passes both inspection paths at its recorded hash (4343.4719ms)
+✔ authorized rq-202509 financial XLSX passes both inspection paths at its recorded hash (3094.1953ms)
+✔ all four registered XLSX originals retain their recorded hashes and pass inspection (11584.883ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20954.5027

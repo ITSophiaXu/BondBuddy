@@ -30,19 +30,19 @@ test('M4 dynamic credits: one-point start, real debit, pause, durable delivery, 
     const pin={source_project_id:project,material_id:material,material_version:1,sha256:sha};
     ok(await send('PUT',`${base}/drafts/underwriter`,{expected_version:0,input:{...emptyM4Draft('underwriter'),materials:[pin],fields:{market:'sse',issuer_name:'Synthetic issuer'}}}));
     const q=ok(await send('POST',`${base}/quote`,{kind:'document',document_type:'underwriter',expected_draft_version:1}));
-    assert.equal(q.quote.points,4500);assert.equal(q.quote.billing_policy,'authoring_balance_v2');
+    assert.equal(q.quote.points,'4500');assert.equal(q.quote.billing_policy,'authoring_balance_v2');
     const request={execution_request_id:uid(),document_type:'underwriter',expected_draft_version:1,quote_id:q.quote.quote_id,entrypoint:'workspace'};
     return {base,q,start:()=>send('POST',`${base}/execute`,request),workspace:async()=>ok(await send('GET',`${base}/workspace`))};
   };
   try{
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'m4_dynamic_test']);
-    const prepared=await prepare();assert.equal(prepared.q.shortage,1);assert.equal((await prepared.start()).statusCode,402);
+    const prepared=await prepare();assert.equal(prepared.q.shortage,'1');assert.equal((await prepared.start()).statusCode,402);
     await fund(1);const concurrent=await Promise.all([prepared.start(),prepared.start()]),run=ok(concurrent[0]).run;
     assert.equal(ok(concurrent[1]).run.run_id,run.run_id);assert.deepEqual(await creditBalance(pool,owner),{available:1,frozen:0});
     const task=async()=> (await prepared.workspace()).tasks[0];
-    assert.equal((await task()).credit_charge.progress.charged_points,0);
+    assert.equal((await task()).credit_charge.progress.charged_points,'0');
     const lease=await claim(pool);assert.ok(lease);
-    await checkpointStage(pool,lease,'input_lock',{synthetic:true});assert.equal((await task()).credit_charge.progress.charged_points,1);
+    await checkpointStage(pool,lease,'input_lock',{synthetic:true});assert.equal((await task()).credit_charge.progress.charged_points,'1');
     assert.equal(await pauseAtCheckpoint(pool,lease),true);assert.equal((await task()).run.stage,'credits_exhausted');
     assert.equal((await act(run.run_id,'resume')).statusCode,402);
     ok(await act(run.run_id,'pause'));await fund(1500);
@@ -70,18 +70,18 @@ test('M4 dynamic credits: one-point start, real debit, pause, durable delivery, 
     await fund(6000);assert.equal(await resumePausedRun(pool,owner,run.run_id,'credits_recharged'),true);
     const resumed=await claim(pool);assert.ok(resumed);assert.equal((resumed.checkpoint.stages as any).word_delivery.artifact,doc.artifactId);
     await finish(pool,resumed,'succeeded',{artifactId:doc.artifactId,artifactVersion:doc.artifactVersion,blobs});
-    assert.equal((await task()).credit_charge.progress.charged_points,4500);assert.equal((await prepared.workspace()).artifacts.length,2);
+    assert.equal((await task()).credit_charge.progress.charged_points,'4500');assert.equal((await prepared.workspace()).artifacts.length,2);
     assert.equal(digest((await send('GET',bytesUrl)).rawPayload),digest(documentBytes));
     assert.equal((await act(run.run_id,'cancel')).statusCode,409);
     assert.equal(Number((await pool.query("SELECT sum(points) n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[run.run_id])).rows[0].n),4500);
     const cancelled=await prepare(),cancelRun=ok(await cancelled.start()).run,work=await claim(pool);assert.ok(work);
     await age(cancelRun.run_id);await renew(pool,work);const beforeCancel=(await creditBalance(pool,owner)).available;
     ok(await act(cancelRun.run_id,'cancel'));assert.ok((await creditBalance(pool,owner)).available<=beforeCancel);
-    const consumed=(await cancelled.workspace()).tasks[0].credit_charge.progress.charged_points;assert.ok(consumed>0&&consumed<4500);
+    const consumed=BigInt((await cancelled.workspace()).tasks[0].credit_charge.progress.charged_points);assert.ok(consumed>0n&&consumed<4500n);
     const beforeFailure=await creditBalance(pool,owner),failed=await prepare(),failedRun=ok(await failed.start()).run,failing=await claim(pool);assert.ok(failing);
     await age(failedRun.run_id);await renew(pool,failing);assert.ok((await creditBalance(pool,owner)).available<beforeFailure.available);
     await finish(pool,failing,'failed',{errorCode:'DATA_UNAVAILABLE'});assert.deepEqual(await creditBalance(pool,owner),beforeFailure);
-    assert.equal((await failed.workspace()).tasks[0].credit_charge.progress.charged_points,0);
+    assert.equal((await failed.workspace()).tasks[0].credit_charge.progress.charged_points,'0');
     actor='foreign-'+uid();assert.equal((await send('GET',`${prepared.base}/workspace`)).statusCode,404);assert.equal((await send('GET',bytesUrl)).statusCode,404);actor=owner;
     assert.equal((await auditCredits(pool)).consistent,true);
   }finally{await app.close();await pool.end();}

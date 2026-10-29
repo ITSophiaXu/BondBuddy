@@ -1,0 +1,14 @@
+{
+  "revision": "279f13a0f086ca1048b38058fcc94703763f8b5a",
+  "imageId": "sha256:1ecf1c3b12966ffa986716dfdde891d1d31b25f2bcdfa20fde4061c780d421d2",
+  "tag": "bondbuddy-billing-api-local:279f13a0f086-20261029",
+  "time": "2026-10-29T14:22:28.605Z",
+  "exitCode": 0,
+  "timedOut": false,
+  "output": "{\"node\":\"v22.23.4\",\"releaseSha\":\"279f13a0f086ca1048b38058fcc94703763f8b5a\",\"passed\":true,\"checks\":{\"httpsConnect\":true,\"unavailableProxyRejectsWithoutDirectFallback\":true,\"noProxyLoopback\":true,\"syntheticCertificateValidated\":true},\"connects\":1,\"originHits\":2,\"externalRequests\":0}\n",
+  "stderr": "",
+  "existingContainersAndVolumesUnchanged": true,
+  "network": "none",
+  "readonly": true,
+  "merchantRequests": 0
+}
