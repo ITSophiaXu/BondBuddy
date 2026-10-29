@@ -65,9 +65,42 @@ files have been resolved in `8647fda4`. The fresh full workspace build, contract
 legacy downloads, paid checks, subscriptions and file preparation using mocked
 HTTP responses; they do not validate the new backend implementation.
 
-Fresh API/worker PostgreSQL, migration and full image validation are still
-required. Earlier image/test results must not be relabeled as covering this
-increment. The PR's REQUIREMENT-AUDIT.md documents broader unfinished payment
+The full API and web Dockerfile targets passed at `1ae0d1d3`. The first worker
+image attempt failed downloading the public Codex package because the official
+npm endpoint rejected its TLS handshake. A public npm mirror was checked with
+TLS verification enabled; the unchanged Dockerfile is being rebuilt with that
+registry and still checks the pinned Codex SHA-512. No file sandbox guard or
+package integrity assertion was removed.
+
+Latest API tests initially passed 174 of 177 executions. Two upload cases lacked
+the writable spool setting in the read-only test container; both passed with a
+private test spool. The remaining refund case shared merchant-wide statement
+coverage with earlier refund fixtures, producing 27 legitimate coverage gaps.
+Its complete-statement fixture now uses a separate database; the full six-case
+refund rerun passed after recompilation, with the corrected test file mounted
+read-only into the fixed API image. Production payment code was unchanged.
+Together the initial suite and affected reruns validate all 177 executions;
+overlapping cases are not added as new tests. An initial local
+rebuild could not find npm.cmd, and an unchanged compiled-test rerun reproduced
+the same failure; these are retained and not counted as passing validation.
+
+The new empty database migrated through 0144 (148 migration records). A snapshot
+of the completed synthetic model database was restored into another isolated
+database and upgraded from 138 to 148 records. Accounts, projects, materials,
+artifact versions, runs, credit lots/allocations/events/reservations and model
+attempts retained identical counts and content digests. Exactly one genuine
+workpaper acquired a file binding; the missing-original explanation did not.
+Repeating migrations was a no-op. The first rehearsal referenced a nonexistent
+bb_artifacts table; the corrected snapshot uses the actual artifact-version
+table and resumed the same restored database. This is synthetic-data upgrade
+evidence, not a production backup or production rollback rehearsal.
+
+Deployment configuration checks passed 11 tests; financial recomputation and
+price-table agreement passed 953 and 23 checks respectively. These do not
+establish actual revenue, costs or merchant acceptance.
+
+Latest worker/CLI validation and final production restore/rollback preparation
+are still required. The PR's REQUIREMENT-AUDIT.md documents broader unfinished payment
 and administration requirements; neither this integration nor synthetic payment
 tests establish real merchant capability or complete business acceptance.
 
@@ -77,9 +110,21 @@ A separate database, storage and test account contain only a newly generated
 synthetic prospectus and three newly generated synthetic Word templates. Actual
 page upload/adoption, catalogue confirmation, individual template mappings,
 structure/layout previews and one-click submission passed. The original
-three-file batch is running through the real model; the annual-document run has
-succeeded and the first workpaper is running. Final delivery/format/hash
-verification is pending. No production account was created, credited or charged.
+three-file batch completed through the real model without resubmission: one
+substantive workpaper, one missing-original explanation and one annual report
+were downloaded. Three durable model attempts completed, each at attempt 1.
+The annual report settled 7,965 synthetic points and the workpaper settled 3,458;
+the explanation released its 3,458-point reservation. Total charged was 11,423,
+with one final event per reservation. All seven rendered pages were inspected
+and had no clipping, overlap or missing glyphs. Both substantive documents kept
+the synthetic template styles and section properties; expanded tables contain
+the disclosed three-year financial detail. The model outputs were not manually
+edited. The Windows renderer lacked bundled LibreOffice, so the documents were
+rendered with the isolated Linux worker's LibreOffice and bundled Poppler.
+
+This real-model run used the earlier integration runtime, before the latest
+#814 increment; it is not relabeled as final-version validation. No production
+account was created, credited or charged.
 
 Original private templates are a separate unmet gate. Automatic approval review
 rejected transmitting them to GitHub Copilot Enterprise because they contain

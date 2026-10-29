@@ -20,8 +20,8 @@ import {syntheticTradeStatement,statementFixtureDate} from './test-payment-state
 
 const database=await isolatedTestDatabase(undefined,'original-cash-refunds');
 
-async function setup(){
-  const pool=new Pool({connectionString:database}),f=syntheticWechatFixture(Date.now()),owner=randomUUID();let actor:string=owner,creates=0,queries=0;
+async function setup(isolationKey?:string){
+  const pool=new Pool({connectionString:isolationKey?await isolatedTestDatabase(undefined,isolationKey):database}),f=syntheticWechatFixture(Date.now()),owner=randomUUID();let actor:string=owner,creates=0,queries=0;
   await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'synthetic_refund_'+owner.slice(0,8)]);
   await publishPrices(pool,{id:'synthetic-refund-price',prices:INITIAL_FIXED_PRICES,effectiveAt:'2026-01-01T00:00:00Z',actor:'synthetic-test',reason:'Synthetic isolated refund-allocation price fixture'});
   const channel=new Map<string,any>(),orders=new Map<string,any>(),refundIds=new Set<string>();let mode:'processing'|'timeout'|'success'|'closed'='processing';
@@ -276,7 +276,10 @@ test('historical package cumulative one-cent rounding preserves sub-cent credits
 });
 
 test('cash refunds allocate only authenticated original-source family and serialize races with consumption',{skip:!database,timeout:120000},async()=>{
-  const h=await setup();
+  // Statements cover the whole merchant. Earlier cases deliberately leave
+  // successful refunds without statement evidence, so use a separate database
+  // for this complete-statement assertion instead of hiding those differences.
+  const h=await setup('original-cash-refunds-complete-statement');
   try{
     const order=await createRecharge(h.pool,h.owner,{request_id:randomUUID(),provider:'wechat',pack_id:'cny500'},[h.provider]);await h.paymentCallback(order);
     const lot=await h.readLot(order.order_id);
