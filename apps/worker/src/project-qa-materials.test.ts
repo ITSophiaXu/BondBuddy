@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {qaMissingMaterials,qaPromptEvidence,groundedQaAnswer} from './project-qa-stage.js';
+import {qaMissingMaterials,qaPromptEvidence,groundedQaAnswer,qaHasGroundedCitations} from './project-qa-stage.js';
 import {PROJECT_QA_PRICE,type QaInput,type QaResult} from '@bondbuddy/contracts';
-import {qaEvidenceContext,qaAnswerInstructions} from './project-qa-evidence.js';
+import {qaEvidenceContext,qaModelEvidenceContext,qaAnswerInstructions} from './project-qa-evidence.js';
 const q={id:'q0',start:0,end:0,question:'请说明关联交易定价依据及偿债资金安排。'};
 test('missing evidence yields question-specific requests and suppresses unsupported conclusion',()=>{
  const input={cases:[],price_version:PROJECT_QA_PRICE.version} as unknown as QaInput;
@@ -32,6 +32,15 @@ test('a short prospectus with over 400 cells remains complete including its last
 test('table blanks remain distinct from zero and a dash in selected evidence',()=>{
  const evidence=[snapshot(['项目','2024年','2025年','应收款','0',''].map((text,i)=>({text,location:`表格 1 / 行 ${Math.floor(i/3)+1} / 列 ${i%3+1}`})).concat([{text:'-',location:'表格 1 / 行 3 / 列 2'}]))];
  assert.deepEqual(qaPromptEvidence(q,evidence).map(s=>s.text),['项目','2024年','2025年','应收款','0','','-']);
+});
+
+test('model evidence removes repeated metadata without losing cells, locators or asset identity',()=>{
+ const facts=snapshot(['项目','2024年','2025年','应收款','0',''].map((text,i)=>({text,location:`表格 1 / 行 ${Math.floor(i/3)+1} / 列 ${i%3+1}`})));
+ const second=snapshot([{text:'附注：金额含税。'}]);
+ const full=qaEvidenceContext(q,[facts,second],0),compact=qaModelEvidenceContext(q,[facts,second],0);
+ assert.deepEqual(compact.selection,full.selection);
+ assert.deepEqual(compact.materials.flatMap(e=>e.spans.map(([id,location,text])=>({asset_index:e.asset_index,id,location,text}))),full.materials.map(({asset_index,id,location,text})=>({asset_index,id,location,text})));
+ assert.ok(JSON.stringify(compact).length<JSON.stringify(full).length/2);
 });
 
 test('long documents retain complete matching tables, units, notes and distant explanations',()=>{
@@ -78,11 +87,15 @@ test('a unique verbatim quote repairs a locator typo, but ambiguous or invented 
  const evidence=[snapshot([{text:'募集资金5亿元偿还到期债务。'},{text:'重复文字'},{text:'重复文字'}])],input={cases:[]} as unknown as QaInput;
  const proposal={question_id:q.id,answer:'募集资金5亿元偿还到期债务。',status:'draft' as const,missing_materials:[],citations:[{asset_index:0,span_id:'wrong',quote:'募集资金5亿元偿还到期债务。'}],case_ids:[],approach:''};
  const repaired=groundedQaAnswer(proposal,q,input,evidence);
+ assert.equal(qaHasGroundedCitations(proposal,evidence),true);
  assert.equal(repaired.status,'draft');assert.equal(repaired.citations[0].span_id,'p0');assert.deepEqual(repaired.missing_materials,[]);
  for(const quote of ['重复文字','募集资金9亿元',' ']){
+  assert.equal(qaHasGroundedCitations({...proposal,citations:[{asset_index:0,span_id:'wrong',quote}]},evidence),false);
   const rejected=groundedQaAnswer({...proposal,citations:[{asset_index:0,span_id:'wrong',quote}]},q,input,evidence);
   assert.equal(rejected.status,'missing');assert.equal(rejected.citations.length,0);
   assert.match(rejected.missing_materials[0],/不代表该事项未披露/);
   assert.doesNotMatch(rejected.missing_materials.join(' '),/合同|审计报告|凭证/);
  }
+ assert.equal(qaHasGroundedCitations({...proposal,citations:[]},evidence),false);
+ assert.equal(qaHasGroundedCitations({...proposal,citations:[{asset_index:0,span_id:'p0',quote:'募集资金5亿元偿还到期债务。保证不存在风险。'}]},evidence),false);
 });

@@ -12,7 +12,7 @@ import {codexModelStage,type RunStage,type StageContext} from './run-pipeline.js
 import {composeContainedPrompt,loadCodexAdapterConfig} from './codex-adapter.js';
 import {loadProjectQaInput} from './project-qa-input.js';
 import {projectFilesRoot} from './project-file-tools.js';
-import {qaEvidenceContext,qaAnswerInstructions} from './project-qa-evidence.js';
+import {qaModelEvidenceContext,qaAnswerInstructions} from './project-qa-evidence.js';
 export {qaPromptEvidence} from './project-qa-evidence.js';
 const prefix=(ctx:StageContext)=>`owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/qa/`;
 const max=100*1024*1024;
@@ -20,8 +20,8 @@ async function python(ctx:StageContext,args:string[]){await promisify(execFile)(
 async function store(ctx:StageContext,path:string){const bytes=await readFile(path);if(!bytes.length||bytes.length>max)throw Error('FILE_OUTPUT_STORE_FAILED');const sha256=digest(bytes),key=prefix(ctx)+sha256+'/document.docx';await ctx.blobs.put(key,bytes,'application/vnd.openxmlformats-officedocument.wordprocessingml.document');const readback=await ctx.blobs.getIfExistsBounded(key,max);if(!readback||digest(readback)!==sha256)throw Error('FILE_OUTPUT_STORE_FAILED');return {key,sha256,byte_size:bytes.length};}
 async function sourceBytes(ctx:StageContext,asset:QaInput['source']['asset']){const row=await readProjectFileAsset(ctx.pool,ctx.run.owner_user_id,asset),bytes=await ctx.blobs.getIfExistsBounded(row.object_key,max);if(!bytes||digest(bytes)!==asset.pin.sha256)throw Error('INPUT_REVISION_CONFLICT');return {bytes,media:row.media_type};}
 async function lock(ctx:StageContext,c:import('pg').PoolClient){const row=await c.query("SELECT 1 FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE r.id=$1 AND r.owner_user_id=$2 AND j.id=$3 AND j.lease_token=$4 AND j.state='running' AND j.lease_until>now() AND NOT r.state=ANY($5::text[]) FOR UPDATE OF r,j",[ctx.run.id,ctx.run.owner_user_id,ctx.lease.jobId,ctx.lease.token,['cancelled','failed','succeeded']]);if(!row.rowCount)throw Error('LEASE_LOST');}
-export function groundedQaAnswer(proposal:QaAnswer,q:QaQuestion,input:QaInput,evidence:QaResult['evidence']):QaAnswer{
- const valid=proposal.citations.flatMap(c=>{
+function resolvedQaCitations(proposal:QaAnswer,evidence:QaResult['evidence']){
+ return proposal.citations.flatMap(c=>{
   if(!c.quote.trim())return [];
   const spans=evidence[c.asset_index]?.snapshot.spans??[];
   if(spans.some(s=>s.id===c.span_id&&s.text.includes(c.quote)))return [c];
@@ -29,7 +29,15 @@ export function groundedQaAnswer(proposal:QaAnswer,q:QaQuestion,input:QaInput,ev
   // A locator typo is not a reason to ask the user to supply facts already disclosed.
   const matches=spans.filter(s=>s.text.includes(c.quote));
   return matches.length===1?[{...c,span_id:matches[0].id}]:[];
- }),cases=proposal.case_ids.filter(id=>input.cases.some(c=>c.id===id));
+ });
+}
+/** A model-authored quotation error is a generation error, not missing issuer material.
+ * Reject it at model validation so the existing durable schema re-ask can repair it. */
+export function qaHasGroundedCitations(proposal:QaAnswer,evidence:QaResult['evidence']){
+ return proposal.citations.length>0&&resolvedQaCitations(proposal,evidence).length===proposal.citations.length;
+}
+export function groundedQaAnswer(proposal:QaAnswer,q:QaQuestion,input:QaInput,evidence:QaResult['evidence']):QaAnswer{
+ const valid=resolvedQaCitations(proposal,evidence),cases=proposal.case_ids.filter(id=>input.cases.some(c=>c.id===id));
  const unreliable=valid.length!==proposal.citations.length||!valid.length;
  const missing=[...proposal.missing_materials];
  const hasReadableEvidence=evidence.some(e=>e.snapshot.spans.some(s=>s.text.trim()));
@@ -86,9 +94,9 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
      // Question IDs may contain punctuation and exceed the checkpoint's 64-character limit.
      // Keep the durable logical call ID unchanged; reserve room for the `_prompt` suffix.
      const outcome=await (options.model??codexModelStage)({name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:'project-qa-prospectus-first-v2',resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,
-      validate:(v):v is QaAnswer=>Value.Check(QaAnswerSchema,v)&&v.question_id===question.id,
+      validate:(v):v is QaAnswer=>Value.Check(QaAnswerSchema,v)&&v.question_id===question.id&&qaHasGroundedCitations(v,evidence),
       config:()=>({...((options.config??loadCodexAdapterConfig)()),web_search:'disabled',timeout_ms:600000}),
-      buildPrompt:async()=>composeContainedPrompt({instructions:qaAnswerInstructions,materials:[{ref:'project-qa-input',text:JSON.stringify({project:input.project_name,project_context:projectContext,question,requirements:input.requirements,...qaEvidenceContext(question,evidence,prospectusIndex),extraction_warnings:warnings,cases:questionCases.map(c=>({id:c.id,...c.content})),coverage:'优先读取募集说明书；正文、完整表格及相邻说明按字符预算选入，不按单元格数截断。selection 中区分提取限制与选文遗漏。项目概况仅帮助理解主体，结论引用 materials 的原文；先写充分的事实答复，仅标注本题真正无法确定的部分。'})}]})}).run(ctx);
+      buildPrompt:async()=>composeContainedPrompt({instructions:qaAnswerInstructions,materials:[{ref:'project-qa-input',text:JSON.stringify({project:input.project_name,project_context:projectContext,question,requirements:input.requirements,...qaModelEvidenceContext(question,evidence,prospectusIndex),extraction_warnings:warnings,cases:questionCases.map(c=>({id:c.id,...c.content})),coverage:'优先读取募集说明书；正文、完整表格及相邻说明按字符预算选入，不按单元格数截断。selection 中区分提取限制与选文遗漏。项目概况仅帮助理解主体，结论引用 materials 的原文；先写充分的事实答复，仅标注本题真正无法确定的部分。'})}]})}).run(ctx);
      if(outcome.kind!=='done')return outcome;
      const answer=groundedQaAnswer(outcome.value as QaAnswer,question,{...input,cases:questionCases},evidence);
      await transaction(ctx.pool,async c=>{await lock(ctx,c);await c.query('INSERT INTO bb_project_qa_answers(owner_user_id,run_id,question_id,answer,sha256) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[ctx.run.owner_user_id,ctx.run.id,question.id,answer,inputManifestHash(answer)]);});answers.push(answer);
