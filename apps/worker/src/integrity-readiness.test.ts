@@ -44,7 +44,9 @@ test('page readiness, query conditions, retries and honest results in real Chrom
    assert.equal(r.outcome,'no_results');assert.equal(r.diagnostic?.code,'no_results');assert.match(r.captures[0].text,/河南合成测试企业/);
   });
   await t.test('same-site visible iframe form and results',async()=>{
-   const r=await run(url=>url.pathname==='/query'?'ok':url.pathname==='/frame'?html(form,submit):html('<iframe src="/frame" style="width:900px;height:500px"></iframe>'));
+   // Include the real screenshot and post-capture checks across both frames.
+   // A 2.2-second budget can expire during capture even after a stable result.
+   const r=await run(url=>url.pathname==='/query'?'ok':url.pathname==='/frame'?html(form,submit):html('<iframe src="/frame" style="width:900px;height:500px"></iframe>'),{...options,waitMs:5000});
    assert.equal(r.outcome,'no_results');assert.match(r.captures[0].text,/共0条/);
   });
   await t.test('automatic interstitial navigation is allowed to finish after a non-200 initial response',async()=>{
