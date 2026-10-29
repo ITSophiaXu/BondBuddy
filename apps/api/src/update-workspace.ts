@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Pool, PoolClient } from 'pg';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { schemas, emptyUpdateDetails, M1_UPLOAD_LIMITS } from '@bondbuddy/contracts';
+import { schemas, emptyUpdateDetails, M1_UPLOAD_LIMITS, sameFormatTemplate } from '@bondbuddy/contracts';
 import { project, transaction, uid, missing, Problem, conflict, readBlobToFile, putBlobFile, type PrivateBlobs } from './data.js';
 import { reserveSpool, spoolDirectory, discardSpool } from './upload-spool.js';
 import { registerUploadedProspectus, changed } from './prospectus-versions.js';
@@ -26,7 +26,7 @@ async function copyMaterial(pool:Pool,blobs:PrivateBlobs,owner:string,target:str
     await c.query(`INSERT INTO bb_update_material_copies(owner_user_id,project_id,source_project_id,source_material_id,source_material_version,upload_id) VALUES($1,$2,$3,$4,$5,$6)`,[owner,target,sourceId,materialId,version,upload]);
   });
   await transaction(pool,async c=>{
-    await project(c,owner,target,true);const source=await project(c,owner,sourceId);
+    const targetProject=await project(c,owner,target,true);const source=await project(c,owner,sourceId);
     const receipt=(await c.query('SELECT * FROM bb_update_material_copies WHERE project_id=$1 AND source_material_id=$2 AND source_material_version=$3 FOR UPDATE',[target,materialId,version])).rows[0];
     if(receipt.material_id)return;
     const m=(await c.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL FOR SHARE',[owner,sourceId,materialId,version])).rows[0];
@@ -55,6 +55,10 @@ async function copyMaterial(pool:Pool,blobs:PrivateBlobs,owner:string,target:str
     await c.query('UPDATE bb_update_material_copies SET material_id=$4 WHERE project_id=$1 AND source_material_id=$2 AND source_material_version=$3',[target,materialId,version,id]);
     const profile=source.update_details?.source_prospectuses?.find((s:any)=>s.material_id===materialId&&s.material_version===version&&s.sha256===m.sha256.trim());
     if(profile)await c.query(`UPDATE bb_projects SET update_details=jsonb_set(update_details,'{source_prospectuses}',COALESCE(update_details->'source_prospectuses','[]'::jsonb)||$3::jsonb),draft_revision=draft_revision+1 WHERE owner_user_id=$1 AND id=$2`,[owner,target,JSON.stringify([{...profile,material_id:id,material_version:1}])]);
+    if(!Object.hasOwn(targetProject.update_details??{},'format_template') &&
+      sameFormatTemplate(source.update_details?.format_template,{material_id:materialId,material_version:version,sha256:m.sha256.trim()}))
+      await c.query(`UPDATE bb_projects SET update_details=jsonb_set(update_details,'{format_template}',$3::jsonb),draft_revision=draft_revision+1 WHERE owner_user_id=$1 AND id=$2`,
+        [owner,target,JSON.stringify({material_id:id,material_version:1,sha256:m.sha256.trim()})]);
     await event(c,owner,target,id,Number(m.byte_size));
     if(m.role==='historical')await registerUploadedProspectus(c,owner,target,{...m,id,version:1});
     await c.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,'update.material_copied',$4)`,[uid(),owner,target,{source_project_id:sourceId,source_material_id:materialId,source_material_version:version,material_id:id}]);
@@ -70,7 +74,7 @@ export function registerUpdateWorkspace(app:FastifyInstance,db:()=>Pool,owner:(r
       if(p.kind==='update')return id;
       const prior=(await c.query('SELECT update_project_id FROM bb_update_workspaces WHERE owner_user_id=$1 AND source_project_id=$2',[user,id])).rows[0];
       if(prior){await project(c,user,prior.update_project_id);return prior.update_project_id as string;}
-      const updateId=uid(),details={...emptyUpdateDetails(),...p.update_details,authoring_mode:'unified_v1',source_prospectuses:[]};
+      const updateId=uid(),details={...emptyUpdateDetails(),...p.update_details,authoring_mode:'unified_v1',source_prospectuses:[],format_template:undefined};
       await c.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,update_details,execution_scope_project_id)
         VALUES($1,$2,$3,'update',$4,$5,$6,$7,$8)`,[updateId,user,p.name,p.issuer_name,p.market,p.offering,details,p.execution_scope_project_id||p.id]);
       await c.query('INSERT INTO bb_update_workspaces(owner_user_id,source_project_id,update_project_id) VALUES($1,$2,$3)',[user,id,updateId]);

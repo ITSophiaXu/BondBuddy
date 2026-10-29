@@ -1,4 +1,4 @@
-import { ReviewResultPinSchema, type ReviewResultPin } from '@bondbuddy/contracts';
+import { ReviewResultPinSchema, SourceFormatPolicySchema, sameFormatTemplate, type ReviewResultPin } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { isUnifiedInput, isMarketOffering, UpdateDetailsSchema, isReviewReport, isReviewRevisionPin, executableRevisionFinding,
   type ReviewRevisionPin, type ReviewEvidenceRef, type UnifiedAuthoringInput, type UpdateDetails, type Market, type Offering } from '@bondbuddy/contracts';
@@ -84,6 +84,18 @@ export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevi
   const m = input.manifest as UnifiedManifest;
   if (!Value.Check(UpdateDetailsSchema, m.update_details) || m.update_details.authoring_mode !== 'unified_v1' ||
       !Array.isArray(m.materials) || !Array.isArray(m.authoring.source_prospectuses) || !Array.isArray(m.authoring.knowledge) || !Array.isArray(m.authoring.requirements)) return fail;
+  const format=m.authoring.format_policy;
+  if(Object.hasOwn(m.authoring,'format_policy')){
+    if(!Value.Check(SourceFormatPolicySchema,format))return fail;
+    if(format.template?.kind==='artifact'){
+      const {kind,...pin}=format.template;
+      if(!m.authoring.previous_output || inputManifestHash(pin)!==inputManifestHash(m.authoring.previous_output))return fail;
+    }else if(format.template?.kind==='material'){
+      if(!m.materials.some(pin=>sameFormatTemplate(pin,format.template as import('@bondbuddy/contracts').FormatTemplatePin)))return fail;
+      if(format.selection==='explicit' && !sameFormatTemplate(format.template,m.update_details.format_template))return fail;
+      if(format.selection==='review_source' && !sameFormatTemplate(format.template,m.authoring.review_result?.source_material))return fail;
+    }
+  }
   const result=m.authoring.review_result;
   const report=result?await reviewResultArtifact(pool,run,result):null;
   if(Object.hasOwn(m.authoring,'review_result')&&(!report||m.authoring.review_revision||m.authoring.previous_output))return fail;
@@ -99,8 +111,12 @@ export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevi
     return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_target_information_required' };
   if (!m.materials.length) return { kind: 'pause', stage: 'awaiting_materials', reason: 'authoring_issuer_materials_required' };
   for (const pin of m.materials) {
-    const material = (await pool.query('SELECT role,sha256 FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL', [run.owner_user_id, run.project_id, pin.material_id, pin.material_version])).rows[0];
+    const material = (await pool.query('SELECT role,sha256,media_type FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL', [run.owner_user_id, run.project_id, pin.material_id, pin.material_version])).rows[0];
     if (!material || material.role !== pin.role || String(material.sha256).trim() !== pin.sha256) return fail;
+    if(format?.template?.kind==='material' && sameFormatTemplate(format.template,pin)){
+      if(!['historical','reference'].includes(material.role) && format.selection!=='review_source')return fail;
+      if(material.media_type!==(format.mode==='preserve_docx'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/pdf'))return fail;
+    }
   }
   if (revision && (!m.materials.some(pin => pin.material_id === revision.source_material.material_id
       && pin.material_version === revision.source_material.material_version && pin.sha256 === revision.source_material.sha256)

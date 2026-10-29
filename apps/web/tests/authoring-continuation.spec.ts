@@ -333,6 +333,23 @@ async function screenshotAtTop(page: Page, directory: string, filename: string) 
   await page.screenshot({ path: join(directory, filename), fullPage: true });
 }
 
+test('template fidelity: continuation inherits the exact result format and restores source choices for an uploaded basis', async ({ page }) => {
+  const state = await openCompleted(page); await prepare(page);
+  await expect(page.locator('[data-format-template-result]')).toBeVisible();
+  await expect(page.locator('[data-format-template-result]')).toHaveText('沿用所选成果格式，参考原稿仅用于补充内容。');
+  const source = page.locator('[data-format-template="synthetic-historical-current"]');
+  await expect(source).toBeHidden(); await expect(source).toBeDisabled();
+  await source.evaluate(node => { (node as HTMLInputElement).checked = true; node.dispatchEvent(new Event('change', { bubbles: true })); });
+  expect(state.patches).toEqual([]); expectNoExecution(state);
+  await page.reload(); await expectSummary(page);
+  await expect(page.locator('[data-format-template-result]')).toBeVisible(); await expect(source).toBeDisabled();
+  state.versions.current_version_id = 'synthetic-upload-version-2'; state.versions.selection_revision++;
+  await basis(page).selectOption('current');
+  await expect(page.locator('[data-format-template-result]')).toBeHidden();
+  await expect(source).toBeVisible(); await expect(source).toBeEnabled();
+  expect(state.patches).toEqual([]); expectNoExecution(state);
+});
+
 for (const width of [1440, 390]) test(`${width}: continue and refresh restore only preparation intent with the exact saved summary`, async ({ page }) => {
   await page.setViewportSize({ width, height: width === 390 ? 844 : 960 }); const state = await openCompleted(page); const old = oldRecords(state);
   const evidence = process.env.BB_UX_EVIDENCE_DIR;

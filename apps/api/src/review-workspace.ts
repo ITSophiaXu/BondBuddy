@@ -461,11 +461,15 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       const version=Number((await client.query('SELECT COALESCE(max(version),0)+1 next FROM bb_review_executions WHERE owner_user_id=$1 AND project_id=$2',[user,id])).rows[0].next);
       const revision=Number((await client.query('SELECT COALESCE(max(revision),0)+1 next FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2',[user,id])).rows[0].next);
       const sourceProject={issuer_name:source.manifest.issuer_name,market:source.manifest.market,offering:source.manifest.offering};
+      const formatSource=materialRows.find(m=>m.id===pin.source_material.material_id&&m.version===pin.source_material.material_version)!;
+      const formatPolicy:import('@bondbuddy/contracts').SourceFormatPolicy={version:'source-format-v1',
+        mode:formatSource.media_type==='application/vnd.openxmlformats-officedocument.wordprocessingml.document'?'preserve_docx':'reconstruct_pdf',
+        template:{kind:'material',...pin.source_material},selection:'review_source'};
       const input={...original,requirements:pin.requirements?[pin.requirements]:[]};
       const manifest={project_kind:'review',name:p.name,draft_revision:p.draft_revision,...sourceProject,
         update_details:{...emptyUpdateDetails(),...source.manifest.update_details,authoring_mode:'unified_v1',supplementary_notes:pin.requirements||null},
         materials:materialRows.map(m=>({material_id:m.id,material_version:m.version,sha256:m.sha256.trim(),role:m.role})),
-        authoring:{version:'unified_v1',source_prospectuses:[],requirements:[],knowledge:await loadAuthoringKnowledge(sourceProject),knowledge_status:'authoring_reference_not_compliance_approval',review_result:pin}};
+        authoring:{version:'unified_v1',source_prospectuses:[],requirements:[],knowledge:await loadAuthoringKnowledge(sourceProject),knowledge_status:'authoring_reference_not_compliance_approval',review_result:pin,format_policy:formatPolicy}};
       const inputHash=inputManifestHash(manifest),runId=uid();
       await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,$4,$5,$6,$7,'[]')`,[id,revision,user,p.draft_revision,inputHash,manifest,JSON.stringify(manifest.materials)]);
       await client.query('UPDATE bb_projects SET latest_input_revision=$3,updated_at=now() WHERE owner_user_id=$1 AND id=$2',[user,id,revision]);

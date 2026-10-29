@@ -16,6 +16,7 @@ import { fileAuthoringStage,fileAuthoringDeliveryStage } from './file-authoring-
 import {fileURLToPath} from 'node:url';
 import { requeueGeneratedWordDelivery, promoteWordArtifact } from '@bondbuddy/api/queue';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
+import { runFormatDiagnosticOnce } from './word-format-diagnostic.js';
 
 const database = await isolatedTestDatabase(undefined,'file-authoring');
 const connection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
@@ -158,6 +159,19 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
           const file=(await send('GET',`/api/v1/artifacts/${artifact.word_delivery[`${variant}_artifact_id`]}`)).json();
           const response=await send('GET',file.download_url);
           assert.equal(response.statusCode,200,response.body);assert.equal(digest(response.rawPayload),file.sha256);
+        }
+        if(relation || missingMetadata){
+          const diagnostic=async()=>(await pool.query("SELECT checkpoint #> '{stages,word_delivery_pair,format_diagnostic}' AS report FROM bb_jobs WHERE run_id=$1",[run.run_id])).rows[0].report;
+          // Downloads already succeeded before the independent diagnostic is claimed.
+          assert.equal((await diagnostic()).status,'pending');
+          for(let i=0;i<20 && (await diagnostic()).status==='pending';i++)
+            await Promise.all([runFormatDiagnosticOnce({pool,blobs}),runFormatDiagnosticOnce({pool,blobs})]);
+          const completed=await diagnostic();
+          assert.equal(completed.status,'passed',JSON.stringify(completed));
+          const bytes=await blobs.getIfExistsBounded(completed.report.key,32*1024*1024);
+          assert.ok(bytes);assert.equal(digest(bytes),completed.report.sha256);
+          assert.equal((await send('GET',`/api/v1/runs/${run.run_id}`)).json().state,'succeeded');
+          assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=(SELECT id FROM bb_jobs WHERE run_id=$1)',[run.run_id])).rows[0].n,1);
         }
         if(!relation&&!missingMetadata){
           const next=await lock();

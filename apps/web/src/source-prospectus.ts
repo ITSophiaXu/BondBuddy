@@ -2,6 +2,7 @@ import { MARKET_LABELS, MARKET_OFFERINGS, MARKETS, OFFERING_LABELS, SOURCE_RELAT
 import type { Dto } from './api.js';
 import { esc } from './ui.js';
 import { cutoffSelection, quarterCutoff, QUARTER_ENDS } from './reporting-cutoff.js';
+import { formatTemplateChoice, type SourceFormatContext } from './source-format-template.js';
 
 const option = (value: string, label: string, active: unknown) => `<option value="${esc(value)}"${value === active ? ' selected' : ''}>${esc(label)}</option>`;
 const key = (m: Dto<'MaterialResponse'>) => `${m.material_id}/${m.material_version}/${m.sha256}`;
@@ -14,13 +15,13 @@ export const sourceRequiredMessage = (source?: SourceProspectus) => {
   const missing = sourceProspectusMissingFields(source);
   return missing.length ? `请补齐${missing.join('、')}后继续。` : '原稿信息已填写完整。';
 };
-export function sourceFields(material: Dto<'MaterialResponse'>, sources: readonly SourceProspectus[] = []) {
+export function sourceFields(material: Dto<'MaterialResponse'>, sources: readonly SourceProspectus[] = [], format?: SourceFormatContext) {
   if (!['historical', 'reference'].includes(material.role)) return '';
   const source = sources.find(s => s.material_id === material.material_id && s.material_version === material.material_version && s.sha256 === material.sha256);
   const cutoff = source?.reporting_periods.map(p => p.end).filter((end): end is string => !!end).sort().at(-1) ?? null;
   const saved = cutoffSelection(cutoff), transient = selections.get(key(material));
   const selection = transient?.signature === JSON.stringify(source?.reporting_periods ?? []) ? transient : saved;
-  return `<fieldset class="source-prospectus" data-source-material="${esc(material.material_id)}" data-source-material-version="${material.material_version}" data-source-sha256="${esc(material.sha256)}"><legend>原稿信息（上传后必填）</legend><div class="source-fields">
+  return `<fieldset class="source-prospectus" data-source-material="${esc(material.material_id)}" data-source-material-version="${material.material_version}" data-source-sha256="${esc(material.sha256)}"><legend>原稿信息（上传后必填）</legend>${format ? formatTemplateChoice(material, format) : ''}<div class="source-fields">
     <label>与目标发行人的关系<select aria-label="与目标发行人的关系" data-source-field="relation" required><option value="">请选择</option>${Object.entries(SOURCE_RELATIONS).map(([key, label]) => option(key, label, source?.relation)).join('')}</select></label>
     <label>原发行市场<select aria-label="原发行市场" data-source-field="market" required><option value="">请选择</option>${MARKETS.map(key => option(key, MARKET_LABELS[key], source?.market)).join('')}</select></label>
     <label>原品种<select aria-label="原品种" data-source-field="offering" required><option value="">请选择</option>${(source?.market ? MARKET_OFFERINGS[source.market] : []).map(key => option(key, OFFERING_LABELS[key], source?.offering)).join('')}</select></label>
