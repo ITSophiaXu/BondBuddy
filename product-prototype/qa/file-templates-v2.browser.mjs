@@ -32,11 +32,26 @@ try {
     for (const e of fixture.entries.filter(e => e.candidates.length > 1)) assert.equal(await page.locator(`[data-map="${e.id}"]`).inputValue(), '');
   });
   await capture('prepare-1440',true);
+  await page.locator('#pack-setup').scrollIntoViewIfNeeded();
+  await capture('selection-1440');
+  await check('整套入口明确提供目录和模板两张卡片，匹配明细默认折叠',async()=>{
+    assert.equal(await page.locator('[data-source-card]').count(),2);
+    assert.equal(await page.locator('#scope-review').getAttribute('open'),null);
+    await click('[data-action="preview-directory"]');
+    assert.equal(await page.locator('.catalogue-row').count(),fixture.entries.length);
+    assert.equal(await page.locator('.preview-pages').count(),0);
+    await click('#done-catalogue');
+    await click('#scope-review > summary');
+  });
   await check('集中查看待指定项并保持选中范围', async () => {
     await click('[data-filter="unresolved"]');
     assert.equal(await page.locator('[data-row]').count(), fixture.entries.filter(e=>e.candidates.length !== 1).length);
     assert.equal(Number(await page.locator('#scope-selected').innerText()), fixture.entries.length);
     await click('[data-filter="all"]');
+    const firstRow=page.locator('[data-row]').first();
+    await firstRow.uncheck();
+    assert.match(await page.locator('#scope-summary-count').innerText(),new RegExp(`已选 ${fixture.entries.length-1} 项`));
+    await firstRow.check();
   });
   await check('模板正文预览及为单个条目指定模板', async () => {
     const row=fixture.entries.find(e=>e.candidates.length>1);
@@ -48,24 +63,37 @@ try {
     assert.equal(await page.locator(`[data-map="${row.id}"]`).inputValue(), row.candidates[1]);
     assert.equal(await page.locator('dialog[open]').count(),0);
   });
-  await check('我的模板为空时不误展示已选内置目录',async()=>{
-    await click('[data-library="mine"]');
+  await check('仅更换目录时保留光大模板，来源分别标明',async()=>{
+    await click('[data-action="replace-directory"]');
     assert.equal(await page.locator('#directory-rows').count(),0);
-    assert.match(await body(),/还没有保存的模板套装/);
+    assert.ok(await page.locator('#directory-file').count());
+    assert.match(await page.locator('[data-source-card="templates"]').innerText(),/光大证券 · 公司债底稿模板/);
+    assert.match(await page.locator('.setup-summary').innerText(),/当前目录：尚未选择/);
+    await click('[data-part="directory"][data-mode="builtin"]');
+    assert.equal(await page.locator('[data-row]').count(),fixture.entries.length);
+    await click('[data-action="replace-templates"]');
+    assert.match(await page.locator('[data-source-card="directory"]').innerText(),/光大证券 · 尽职调查目录/);
+    assert.equal(await page.locator('#archive-file').count(),1);
   });
   await check('目录与模板包同页选择，未解析状态不能进入生成',async()=>{
-    await click('.source-tabs [data-library="upload"]');
+    await click('[data-library="custom"]');
     await page.locator('#directory-file').setInputFiles({name:'synthetic-catalogue.xlsx',mimeType:'application/octet-stream',buffer:Buffer.from('synthetic UI filename only')});
     await page.locator('#archive-file').setInputFiles({name:'synthetic-templates.zip',mimeType:'application/zip',buffer:Buffer.from('synthetic UI filename only')});
     assert.match(await body(),/synthetic-catalogue.xlsx/);
     assert.match(await body(),/synthetic-templates.zip/);
     assert.equal(await page.locator('#directory-rows').count(),0);
     await demoSource();await click('[data-action="next"]');
-    assert.match(await page.locator('[role="alert"]').innerText(),/尚未解析/);
+    assert.match(await page.locator('[role="alert"]').innerText(),/尚未读取/);
     await capture('upload-1440',true);
+    await click('.prototype-controls > summary');
     await click('[data-action="simulate-match"]');
     assert.equal(await page.locator('[data-row]').count(), fixture.entries.length);
     assert.match(await body(),/非上传结果/);
+    await page.locator('#directory-file').setInputFiles({name:'synthetic-next-catalogue.xlsx',mimeType:'application/octet-stream',buffer:Buffer.from('next synthetic UI filename only')});
+    assert.equal(await page.locator('#directory-rows').count(),0);
+    assert.doesNotMatch(await body(),/非上传结果/);
+    assert.match(await body(),/synthetic-next-catalogue.xlsx/);
+    assert.match(await body(),/synthetic-templates.zip/);
   });
   await check('缺模板保留条目，不静默进入下一步',async()=>{
     await reset();await demoSource();await click('[data-action="next"]');
@@ -133,6 +161,20 @@ try {
     await click('[data-preview-tab="text"]');
     assert.ok((await page.locator('.text-preview').innerText()).length>20);
     await capture('text-1440');
+  });
+  await check('真实预览只接收脱敏数据，旧原文图片地址不可访问',async()=>{
+    if(fixture.real){
+      const clean=await page.evaluate(()=>window.BB_TEMPLATE_DATA);
+      assert.equal(clean.redacted,true);
+      assert.ok([...clean.templates,...clean.general].every(t=>t.redacted===true));
+      const published=JSON.stringify(clean);
+      assert.doesNotMatch(published,/浙江省交通投资|浙江交通投资|中汇会计师|国浩律师|杭州市/);
+      assert.ok([...clean.templates,...clean.general].flatMap(t=>t.pages).every(s=>s.startsWith('assets/redacted-')));
+      const old=await page.request.get(`${base}/assets/annual_report-1.png`);
+      assert.equal(old.status(),404);
+      const raw=await page.request.get(`${base}/data.js`);
+      assert.equal(raw.status(),404);
+    }
   });
   assert.deepEqual(failures,[]);assert.deepEqual(networkErrors,[]);assert.deepEqual(mutations,[]);
   await writeFile(`${output}/result.json`,JSON.stringify({passed:passed.length,cases:passed,realIntake:fixture.real,pageErrors:failures,httpErrors:networkErrors,mutationRequests:mutations},null,2));
