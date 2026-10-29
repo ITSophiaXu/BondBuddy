@@ -3,7 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Pool} from 'pg';
 import {Value} from '@sinclair/typebox/value';
-import {PROJECT_QA_PRICE,QaWorkspaceSchema,type QaInput,type QaWorkspace} from '@bondbuddy/contracts';
+import {Type} from '@sinclair/typebox';
+import {QA_HISTORY_CAPABILITY,PROJECT_QA_PRICE,QaRunSchema,QaWorkspaceSchema,type QaInput,type QaWorkspace} from '@bondbuddy/contracts';
 import {createServer} from './server.js';
 import {isolatedTestDatabase} from './test-database.js';
 import {digest,uid} from './data.js';
@@ -33,13 +34,19 @@ test('answer history counts the whole project, keeps recent answers through prep
   return records;
  };
  const read=async(project:string,run?:string)=>{
-  const response=await app.inject({method:'GET',url:`/api/v1/projects/${project}/qa${run?'?run_id='+run:''}`});
+  const response=await app.inject({method:'GET',headers:{[QA_HISTORY_CAPABILITY.header]:QA_HISTORY_CAPABILITY.value},url:`/api/v1/projects/${project}/qa${run?'?run_id='+run:''}`});
   assert.equal(response.statusCode,200,response.body);const value=response.json();
   assert.ok(Value.Check(QaWorkspaceSchema,value),JSON.stringify([...Value.Errors(QaWorkspaceSchema,value)]));return value as QaWorkspace;
  };
  try{
   const project=await create(),records=await seed(project,['prepare','answer','prepare','answer']);
   const second=await create();await seed(second,['answer','answer','answer']);
+  const legacySchema=Type.Composite([Type.Omit(QaWorkspaceSchema,['runs']),Type.Object({runs:Type.Array(Type.Omit(QaRunSchema,['answer_sequence']))})]);
+  for(const headers of [{},{[QA_HISTORY_CAPABILITY.header]:'unknown'}]){
+   const legacy=await app.inject({method:'GET',url:`/api/v1/projects/${project}/qa`,headers});
+   assert.equal(legacy.statusCode,200);assert.ok(legacy.json().runs.every((r:any)=>!('answer_sequence' in r)));
+   assert.ok(Value.Check(legacySchema,legacy.json()),'old strict workspace DTO remains readable');
+  }
   const recent=await read(project);
   assert.deepEqual(recent.runs.filter(r=>r.operation==='answer').map(r=>[r.sequence,r.answer_sequence]),[[4,2],[2,1]]);
   assert.ok(recent.runs.filter(r=>r.operation==='prepare').every(r=>r.answer_sequence===undefined));

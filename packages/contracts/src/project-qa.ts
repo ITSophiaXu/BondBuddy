@@ -1,6 +1,7 @@
 import {Type,type Static} from '@sinclair/typebox';
 import {ProjectFileAssetSchema,ProjectFileSourceSchema,ProjectFileTextSchema,type ProjectFileAsset,type ProjectFileSource} from './project-file-workspace.js';
 
+export const QA_HISTORY_CAPABILITY={header:'x-bb-qa-history',value:'answer-sequence-v1'} as const;
 export const PROJECT_QA_PRICE={points:60,version:'project-qa-question-60-v1'} as const;
 const obj=<T extends Parameters<typeof Type.Object>[0]>(p:T)=>Type.Object(p,{additionalProperties:false});
 const id=Type.String({minLength:1,maxLength:128}),short=Type.String({maxLength:250}),text=Type.String({maxLength:16000});

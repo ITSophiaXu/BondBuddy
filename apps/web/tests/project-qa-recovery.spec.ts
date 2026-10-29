@@ -8,14 +8,13 @@ import {answerId,assertFixture,checked,fixture,historicalRecords,install,newMate
 // Adversarial browser-only recovery over the frozen public HTTP fixture. No real
 // Word generation, model calls, credit settlement or production delivery occurs.
 const url=(run:string|null=answerId)=>`/#qa?project=${projectId}${run?`&run=${run}`:''}`;
-const choice=(page:Page)=>page.locator('[data-qa-knowledge-choice][value="false"]');
 const selectedIds=(page:Page)=>page.locator('[data-remove-q]').evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.removeQ));
 test.beforeEach(async({page})=>{page.on('dialog',dialog=>void dialog.accept());});
 test.afterEach(async({page})=>{await assertFixture(page);});
 
 async function open(page:Page,state=fixture(),run:string|null=answerId){await install(page,state);await page.goto(url(run));await expect(page.locator('#qa-history')).toBeVisible();if(await page.locator('.qa-followup').count())await page.locator('.qa-followup>summary').click();return state;}
-async function adopt(page:Page){if(await page.locator('.qa-followup').getAttribute('open')===null)await page.locator('.qa-followup>summary').click();await page.locator('#qa-continue').click();await expect(page.locator('#qa-requirements')).toBeVisible();await choice(page).check();await expect(page.locator('#qa-save')).toBeEnabled();}
-async function start(page:Page){await page.locator('#qa-start').click();await expect(page.locator('#qa-confirm')).toBeVisible();await page.locator('#qa-confirm').click();}
+async function adopt(page:Page){if(await page.locator('.qa-followup').getAttribute('open')===null)await page.locator('.qa-followup>summary').click();await page.locator('#qa-continue').click();await expect(page.locator('#qa-requirements')).toBeVisible();await expect(page.locator('#qa-save')).toBeEnabled();}
+async function start(page:Page){await page.locator('#qa-start').click();}
 async function frozen(page:Page){
   // Check the native fieldset property and actual inherited control behavior.
   await expect(page.locator('#qa-preparation-controls')).toHaveJSProperty('disabled',true);
@@ -172,7 +171,8 @@ test('another page acknowledging the same request cannot make this page discard 
   const original=await readRecovery(page),body=structuredClone(state.answers[0]),second=await secondary(page,state);
   try{
     await second.goto(url(null));await expect(second.locator('#qa-retry-pending')).toBeEnabled();await second.locator('#qa-retry-pending').click();await expect.poll(()=>state.answers.length).toBe(2);await expect(second.locator('#qa-retry-pending')).toHaveCount(0);
-    expect((await readRecovery(page)).pending).toBeUndefined();await expect(page.locator('#qa-recheck-cache')).toBeEnabled();await page.locator('#qa-recheck-cache').click();
+    await expect(second).toHaveURL(/run=synthetic-qa-answer-/);
+    await expect.poll(async()=>(await readRecovery(page)).pending).toBeUndefined();await expect(page.locator('#qa-recheck-cache')).toBeEnabled();await page.locator('#qa-recheck-cache').click();
     await expect(page.locator('#qa-retry-original-conflict')).toBeEnabled();await frozen(page);await expect(page.locator('#qa-requirements')).toHaveValue(original.draft.requirements);
     const adoptStored=page.locator('#qa-use-stored');if(await adoptStored.count())await expect(adoptStored).toBeDisabled();
     expect(state.answers).toEqual([body,body]);await page.locator('#qa-retry-original-conflict').click();await expect.poll(()=>state.answers.length).toBe(3);await expect(page.locator('#qa-retry-original-conflict')).toHaveCount(0);

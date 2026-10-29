@@ -42,7 +42,7 @@ test('preparation-only history stays hidden while direct preparation and adoptio
  const s=fixture();s.workspace.runs=s.workspace.runs.filter(r=>r.operation==='prepare');
  await install(page,s);await page.goto(route(prepareId));await expect(page.locator('#qa-history')).toBeHidden();
  await expect(page.locator('.qa-prepared')).toBeVisible();await page.reload();
- await page.locator('#qa-use-preparation').click();await expect(page.locator('#qa-preparation-controls')).toBeVisible();
+ await expect(page.locator('#qa-use-preparation')).toHaveCount(0);await expect(page.locator('#qa-preparation-controls')).toBeVisible();
  await expect(page.locator('#qa-history')).toBeHidden();expect(s.answers).toEqual([]);expect(s.prepares).toEqual([]);
 });
 

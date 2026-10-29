@@ -41,7 +41,7 @@ for(const operation of ['prepare','answer'] as const)for(const status of ['pause
       await expect(page.locator('#qa-history')).toHaveValue(operation==='answer'?runId:'');
       await expect(page.locator(`#qa-history option[value="${prepareId}"]`)).toHaveCount(0);
       if(operation==='prepare'&&status==='succeeded'){
-        await expect(page.locator('.qa-prepared')).toContainText('候选问题');
+        await expect(page.locator('.qa-question-list')).toContainText(state.workspace.draft.questions[0].question);
         await expect(page.locator('#qa-download')).toHaveCount(0);
       }else{
         await expect(page.locator('.qa-run-head')).toContainText(operation==='prepare'?'识别问题清单':'回答问题');
