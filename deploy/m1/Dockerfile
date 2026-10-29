@@ -95,6 +95,7 @@ COPY --from=build --chown=root:root /app/deploy/m1/scripts/backup-stream.mjs dep
 
 FROM node-runtime AS api
 ARG BB_RELEASE_SHA=unknown
+ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} HOST=0.0.0.0 PORT=3000 BB_UPLOAD_SPOOL_DIR=/var/lib/bondbuddy/upload-spool PATH=/opt/template-preview/bin:$PATH
 # The API renders only allowlisted derivatives. Keep its Python dependencies
 # independent of the model/worker runtime and never render an original directly.
@@ -116,6 +117,7 @@ HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ["node","-e","const s=re
 CMD ["node","apps/worker/dist/integrity-egress.js"]
 
 FROM node-runtime AS worker
+ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/bondbuddy-browsers
 RUN node node_modules/playwright/cli.js install --with-deps chromium && chmod -R a+rX /opt/bondbuddy-browsers
 ARG BB_RELEASE_SHA=unknown
