@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHash } from 'node:crypto';
-import { M4_DOCUMENT_TYPES, type M4Draft, type M4DraftInput, type M4DraftRequest, type M4MaterialPin, type M4Requirement, type M4Workspace } from '@bondbuddy/contracts';
+import { M4_DOCUMENT_TYPES, type M4Draft, type M4DraftInput, type M4DraftRequest, type M4MaterialPin, type M4Requirement, type M4Workspace } from './billing-types.js';
 import { ApiError, type Dto } from './api.js';
 import { M4UploadRecovery, M4UploadRecoveryError, m4UploadAdoptionInput, m4UploadContext, m4UploadInputOf, m4UploadRecordMatches, m4UploadSame, m4UploadValidInput, type M4UploadPageSnapshot } from './m4-upload-recovery.js';
 import { UploadRecoveryLockError, UploadRecoveryStorageError, type UploadRecoveryStorage, type UploadRecoveryLock } from './upload-recovery.js';

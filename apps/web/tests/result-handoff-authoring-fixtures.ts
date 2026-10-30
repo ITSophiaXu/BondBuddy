@@ -1,9 +1,12 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
 import {FormatRegistry} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
 import {emptyUpdateDetails,schemas} from '@bondbuddy/contracts';
 import {createHash} from 'node:crypto';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {taskPage} from './collection-fixtures';
 import {docx,downloadBytes} from './word-roundtrip-fixtures';
 export {downloadBytes};
@@ -44,8 +47,8 @@ export function fixture(){
 export type State=ReturnType<typeof fixture>;
 const installed=new WeakMap<Page,State>();
 function checked<K extends keyof typeof schemas>(name:K,value:unknown):asserts value is Dto<K>{expect(Value.Check(schemas[name],value),name+': '+JSON.stringify([...Value.Errors(schemas[name],value)])).toBe(true);}
-function dto<K extends keyof typeof schemas>(route:Route,name:K,value:Dto<K>){checked(name,value);return route.fulfill({status:200,json:value});}
-const error=(route:Route,status:number,code='DATA_UNAVAILABLE')=>route.fulfill({status,json:{code,message:'Synthetic '+code,retryable:status>=500,correlation_id:'result-handoff-authoring',field_errors:[]}});
+function dto<K extends keyof typeof schemas>(route:Route,name:K,value:Dto<K>){checked(name,value);return route.fulfill({status:200,json:fixtureBody(route,value)});}
+const error=(route:Route,status:number,code='DATA_UNAVAILABLE')=>route.fulfill({status,json:fixtureBody(route,{code,message:'Synthetic '+code,retryable:status>=500,correlation_id:'result-handoff-authoring',field_errors:[]})});
 export const writes=(s:State)=>s.calls.filter(c=>c.method!=='GET');
 export function immutableSnapshot(s:State){return structuredClone({materials:s.materials,inputs:[...s.inputs],runs:[...s.runs],versions:s.versions,artifacts:[...s.artifacts].map(([id,a])=>({id,metadata:a.metadata,sha256:hash(a.bytes)}))});}
 export function validateFixture(s:State){
@@ -60,12 +63,13 @@ export function validateFixture(s:State){
 export async function install(page:Page,s=fixture()){
   validateFixture(s);expect(installed.has(page)).toBe(false);installed.set(page,s);page.on('pageerror',e=>s.errors.push(e.message));
   await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     try{
-      const req=route.request(),url=new URL(req.url()),method=req.method(),path=url.pathname.slice('/api/v1'.length),body:unknown=req.postData()?req.postDataJSON():null;s.calls.push({method,path,body:structuredClone(body)});
+      const req=route.request(),url=new URL(req.url()),method=req.method(),path=url.pathname.slice('/api/v1'.length),body:unknown=req.postData()?fixtureRequest(req):null;s.calls.push({method,path,body:structuredClone(body)});
       if(method==='GET'&&path==='/me')return dto(route,'MeResponse',{user_id:ids.owner,session_status:'active'});
       if(method==='GET'&&path==='/account')return dto(route,'AccountResponse',{user_id:ids.owner,username:'synthetic_authoring_owner',phone_masked:null,status:'active',created_at:oldTime,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});
       if(method==='GET'&&path==='/credits/balance')return dto(route,'CreditBalanceResponse',{enabled:true,available:100000,frozen:0});
-      if(method==='GET'&&path==='/m4/topics')return route.fulfill({status:200,json:{topics:[]}});
+      if(method==='GET'&&path==='/m4/topics')return route.fulfill({status:200,json:fixtureBody(route,{topics:[]})});
       if(method==='GET'&&path==='/projects')return dto(route,'ProjectListResponse',{items:[{project_id:ids.project,name:s.project.name,kind:s.project.kind,issuer_name:s.project.issuer_name,market:s.project.market,offering:s.project.offering,draft_revision:s.project.draft_revision,updated_at:s.project.updated_at,latest_run:{run_id:ids.newRun,state:'succeeded',updated_at:newTime},latest_artifact:{artifact_id:artifactId(3,'revision'),run_id:ids.newRun,version:8,created_at:newTime}}],page:{has_more:false,next_cursor:null}});
       const base='/projects/'+ids.project;
       if(method==='GET'&&path===base)return dto(route,'ProjectResponse',s.project);

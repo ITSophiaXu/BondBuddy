@@ -1,10 +1,12 @@
+import {fixtureBody,serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
 import {PROJECT_QA_PRICE,schemas,type ProjectFileAsset,type QaDraft,type QaInput,type QaQuestion,type QaResult,type QaRun,type QaWorkspace} from '@bondbuddy/contracts';
 import {FormatRegistry} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {taskPage} from './collection-fixtures';
 
 // Synthetic public HTTP fixtures. These tests do not generate, inspect or deliver
@@ -62,8 +64,8 @@ export function fixture(){
 export type State=ReturnType<typeof fixture>;
 const installed=new WeakMap<Page,State>();
 export function checked<K extends keyof typeof schemas>(name:K,value:unknown):asserts value is Dto<K>{expect(Value.Check(schemas[name],value),`${name}: ${JSON.stringify([...Value.Errors(schemas[name],value)])}`).toBe(true);}
-async function reply<K extends keyof typeof schemas>(route:Route,name:K,body:Dto<K>,status=200){checked(name,body);await route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});}
-const problem=(route:Route,status:number,code:string)=>route.fulfill({status,json:{code}});
+async function reply<K extends keyof typeof schemas>(route:Route,name:K,body:Dto<K>,status=200){checked(name,body);await route.fulfill({status,contentType:'application/json',body:fixtureJson(route,body)});}
+const problem=(route:Route,status:number,code:string)=>route.fulfill({status,json:fixtureBody(route,{code})});
 export const writes=(state:State)=>state.calls.filter(call=>call.method!=='GET');
 export const qaWrites=(state:State)=>writes(state).filter(call=>call.path.includes('/qa/'));
 export const workspaceReads=(state:State)=>state.calls.filter(call=>call.method==='GET'&&call.path===`/projects/${projectId}/qa`);
@@ -85,9 +87,11 @@ export async function install(page:Page,state=fixture()){
   });
   await page.context().route('https://synthetic.invalid/**',async route=>{state.unexpected.push(`BINARY ${route.request().method()} ${route.request().url()}`);return route.abort();});
   await page.context().route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const request=route.request(),url=new URL(request.url()),path=url.pathname.replace('/api/v1',''),method=request.method();
-    const body:unknown=request.postData()&&request.headers()['content-type']?.includes('application/json')?request.postDataJSON():undefined;
+    const body:unknown=request.postData()&&request.headers()['content-type']?.includes('application/json')?fixtureRequest(request):undefined;
     state.calls.push({method,path,search:url.search,...(body===undefined?{}:{body:structuredClone(body)})});
+    if(method==='GET'&&path==='/commerce/catalog')return route.fulfill({status:404,json:fixtureBody(route,{code:'NOT_FOUND'})});
     if(method==='GET'&&path==='/me')return reply(route,'MeResponse',{user_id:state.owner,session_status:'active'});
     if(method==='GET'&&path==='/auth/recovery/info')return reply(route,'RecoveryInfoResponse',{enabled:false,support_contact:null,link_minutes:30});
     if(method==='GET'&&path==='/account')return reply(route,'AccountResponse',{user_id:state.owner,username:'synthetic_qa',phone_masked:null,status:'active',created_at:now,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});

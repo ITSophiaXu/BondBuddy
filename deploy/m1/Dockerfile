@@ -15,7 +15,11 @@ COPY apps/worker/package.json apps/worker/
 COPY apps/web/package.json apps/web/
 RUN npm ci --no-audit --no-fund
 COPY packages packages
+COPY product-prototype/public/workpaper-entry.css product-prototype/public/
+COPY product-prototype/public/subscription-billing.css product-prototype/public/billing-price-admin.css product-prototype/public/
 COPY apps apps
+# Web type checking includes opt-in local E2E imports; these synthetic config sources stay in the build stage.
+COPY scripts/local-integration/config.mjs scripts/local-integration/config.d.mts scripts/local-integration/
 # The web workspace imports these prototype stylesheets as its layout baseline (#361, M2).
 COPY product-prototype/public/styles.css product-prototype/public/project-workspace.css product-prototype/public/credits.css product-prototype/public/material-results.css product-prototype/public/source-prospectus.css product-prototype/public/duplicate-upload-feedback.css product-prototype/public/optional-materials.css product-prototype/public/prospectus-panel.css product-prototype/public/file-generation-ux.css product-prototype/public/workpaper-entry.css product-prototype/public/project-entry.css product-prototype/public/workspace-typography.css product-prototype/public/workpaper-task.css product-prototype/public/
 # Copy only the pinned public research assets, never source documents or test materials.
@@ -90,7 +94,14 @@ COPY --from=build --chown=root:root /app/deploy/m1/scripts/backup-stream.mjs dep
 
 FROM node-runtime AS api
 ARG BB_RELEASE_SHA=unknown
-ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} HOST=0.0.0.0 PORT=3000 BB_UPLOAD_SPOOL_DIR=/var/lib/bondbuddy/upload-spool
+ARG PIP_INDEX_URL=https://pypi.org/simple
+ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} HOST=0.0.0.0 PORT=3000 BB_UPLOAD_SPOOL_DIR=/var/lib/bondbuddy/upload-spool PATH=/opt/template-preview/bin:$PATH
+# The API renders only allowlisted derivatives. Keep its Python dependencies
+# independent of the model/worker runtime and never render an original directly.
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv libreoffice-writer fonts-noto-cjk \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=build --chown=root:root /app/python/bondbuddy_template_preview.py /app/python/bondbuddy_template_redaction.py /app/python/template-preview-requirements.txt ./python/
+RUN python3 -m venv /opt/template-preview && /opt/template-preview/bin/pip install --no-cache-dir -r python/template-preview-requirements.txt
 # Disk-backed upload spool (compose mounts a volume here); a fresh named volume inherits this owner.
 RUN mkdir -p /var/lib/bondbuddy/upload-spool && chown node:node /var/lib/bondbuddy/upload-spool && chmod 0700 /var/lib/bondbuddy/upload-spool
 USER node
@@ -105,6 +116,7 @@ HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ["node","-e","const s=re
 CMD ["node","apps/worker/dist/integrity-egress.js"]
 
 FROM node-runtime AS worker
+ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/bondbuddy-browsers
 RUN node node_modules/playwright/cli.js install --with-deps chromium && chmod -R a+rX /opt/bondbuddy-browsers
 ARG BB_RELEASE_SHA=unknown

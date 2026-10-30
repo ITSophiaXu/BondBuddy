@@ -1,7 +1,10 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
 import {Value} from '@sinclair/typebox/value';
 import {ProjectFileCheckSchema,ProjectFileVersionSchema,projectFileSchemas,type ProjectFileCheck,type ProjectFileFinding,type ProjectFileVersion} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {appendMaterial,assertFixture as assertWord,docx,downloadBytes,editedFile,fixture as wordFixture,hash,ids,install as installWord,mime,now,originalBytes,writeCalls} from './word-roundtrip-fixtures';
 
 export {docx,downloadBytes,editedFile,hash,ids,mime,originalBytes,writeCalls};
@@ -14,7 +17,7 @@ export type DownloadFault='id'|'version'|'hash'|'bytes'|'missing'|'run-id'|'run-
 export type ContextFault='unreadable'|'duplicate-check'|'duplicate-file'|'wrong-family'|'wrong-sequence'|'missing-version'|'registry-unreadable'|'collection-mismatch'|'duplicate-collection';
 type Options={historical?:boolean;dropUpdateOnce?:boolean;dropCheckOnce?:boolean;contextFault?:ContextFault};
 type UpdatePost={checkId:string;body:Dto<'ProjectFileUpdateRequest'>};
-const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,json:body});
+const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,json:fixtureBody(route,body)});
 const failure=(route:Route,status=503)=>json(route,status,{code:status===404?'NOT_FOUND':'DATA_UNAVAILABLE',message:'Synthetic pinned read unavailable',retryable:status>=500,correlation_id:'consistency-originals',field_errors:[]});
 
 // Extend the already closed real-OOXML/import-CAS producer. No old helper is
@@ -79,12 +82,13 @@ function projectedChecks(s:State){
 export async function install(page:Page,s=fixture()){
   await installWord(page,s);
   await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const request=route.request(),url=new URL(request.url()),path=url.pathname.slice('/api/v1'.length),method=request.method();
     const handled=path===base+'/files'||path===base+'/project-files/checks'&&method==='GET'||path===base+'/project-files'&&method==='GET'&&s.contextFault==='registry-unreadable'||
       path===base+'/project-files/checks'&&method==='POST'&&s.originalsOptions.dropCheckOnce||path===base+'/project-files/checks/'+checkId+'/updates'&&method==='POST'||
       method==='GET'&&(path===`/artifacts/${ids.originalArtifact}`||path===`/artifacts/${ids.originalArtifact}/download`||path===`/runs/${ids.originalRun}`||new RegExp('^'+base+'/materials/[^/]+(?:/download)?$').test(path));
     if(!handled)return route.fallback();
-    const body=method==='POST'?request.postDataJSON():null;s.calls.push({owner:s.owner,method,path,search:url.search,body:structuredClone(body)});
+    const body=method==='POST'?fixtureRequest(request):null;s.calls.push({owner:s.owner,method,path,search:url.search,body:structuredClone(body)});
     try{
       if(path===base+'/files'){s.readFiles++;return s.filesFailure?failure(route):json(route,200,collection(s));}
       if(path===base+'/project-files'&&s.contextFault==='registry-unreadable')return failure(route);

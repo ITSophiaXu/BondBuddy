@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {PROJECT_FILE_UPDATE_PRICE,type ProjectFileAsset,type ProjectFileCheck,type ProjectFileFinding,type ProjectFileVersion} from '@bondbuddy/contracts';
+import {PROJECT_FILE_UPDATE_PRICE,type ProjectFileAsset,type ProjectFileCheck,type ProjectFileFinding,type ProjectFileVersion} from './billing-types.js';
 import {createConfirmationSnapshot,restoreConfirmationSnapshot,type ConfirmationBinding,type ConfirmationSnapshot} from './consistency-confirmation.js';
 
 const sha='a'.repeat(64),name='同名关联文件.docx';
@@ -27,7 +27,7 @@ function fixture(){
         findings:[finding('financial-first'),finding('financial-second'),finding('financial-no-replacement','conflict',null),finding('financial-manual-with-text','manual','仍需人工判断')]},
     ]}};
   const binding:ConfirmationBinding={owner:'owner',project:'project',checkId:'check',body:{request_id:'original-request',expected_check_sha256:sha,
-    price_version:PROJECT_FILE_UPDATE_PRICE.version,expected_points:9000,files:[{file_version_id:'financial-version'},{file_version_id:'issuer-version'}]},filenames:[name,name]};
+    price_version:PROJECT_FILE_UPDATE_PRICE.version,expected_points:"9000",files:[{file_version_id:'financial-version'},{file_version_id:'issuer-version'}]},filenames:[name,name]};
   return {binding,check,registry,automatic:[1,2],projectName:'冻结时的项目名称'};
 }
 function create(input=fixture()){
@@ -100,7 +100,7 @@ test('confirmation recovery requires the complete original binding including sam
     binding=>{binding.owner='other-owner';},binding=>{delete binding.owner;},binding=>{binding.project='other-project';},
     binding=>{binding.checkId='other-check';},binding=>{binding.body.request_id='another-request';},
     binding=>{binding.body.expected_check_sha256='b'.repeat(64);},binding=>{binding.body.price_version='unknown' as never;},
-    binding=>{binding.body.expected_points=4500;},binding=>{binding.body.files.reverse();},
+    binding=>{binding.body.expected_points="4500";},binding=>{binding.body.files.reverse();},
     binding=>{binding.body.files[0].file_version_id='another-version';},binding=>{binding.filenames[0]='another.docx';},
     binding=>{binding.filenames.pop();},binding=>{(binding.body as unknown as Record<string,unknown>).extra=true;},
   ];
@@ -157,7 +157,7 @@ test('confirmation metadata accepts 200 selected files but refuses empty, over-l
   input.registry=Array.from({length:200},(_,index)=>({...structuredClone(template),file_id:'family-'+index,version_id:'version-'+index,filename:'文件'+index+'.docx'}));
   input.check.files=input.registry.map(file=>({file_id:file.file_id,file_version_id:file.version_id,filename:file.filename,sequence:file.sequence}));
   input.check.result!.files=input.registry.map(file=>({...structuredClone(result),file_version_id:file.version_id,findings:[finding('automatic-'+file.version_id)]}));
-  input.binding.body.files=input.registry.map(file=>({file_version_id:file.version_id}));input.binding.body.expected_points=900000;
+  input.binding.body.files=input.registry.map(file=>({file_version_id:file.version_id}));input.binding.body.expected_points="900000";
   input.binding.filenames=input.registry.map(file=>file.filename);input.automatic=Array(200).fill(1);
   const snapshot=create(input);assert.equal(snapshot.files.length,200);assert.equal(restoreConfirmationSnapshot(roundTrip(snapshot),input.binding)?.files.length,200);
   const tooMany=roundTrip(snapshot);tooMany.files.push(structuredClone(tooMany.files[0]));assert.equal(restoreConfirmationSnapshot(tooMany,input.binding),undefined);

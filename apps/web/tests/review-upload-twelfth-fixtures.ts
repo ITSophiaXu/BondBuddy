@@ -1,3 +1,6 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import { expect, type Page, type Route } from '@playwright/test';
 import { FormatRegistry, type TSchema } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
@@ -6,7 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { schemas, ReviewDraftInputSchema, ReviewDraftRequestSchema, isReviewReport,
   type ReviewDraftInput, type ReviewDraftRequest, type ReviewReport, type ReviewWorkspace } from '@bondbuddy/contracts';
-import type { Dto } from '../src/api';
+import type { Dto } from './billing-fixture-wire';
 
 export const ids = { owner: 'review-twelfth-owner', otherOwner: 'review-twelfth-owner-b', project: 'review-twelfth-project', report: 'review-twelfth-report-1', otherReport: 'review-twelfth-report-2', finding: 'same-public-finding' };
 export const now = '2026-10-25T12:00:00Z', mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -41,13 +44,14 @@ function workspace(state: State, requested: string | null): ReviewWorkspace {
   check(schemas.ProjectResponse, value.project); check(ReviewDraftInputSchema, inputOf(value.draft)); value.materials.forEach(material => check(schemas.MaterialResponse, material));
   if (selected) expect(isReviewReport(selected)).toBe(true); return value;
 }
-const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, json: body });
+const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, json: fixtureBody(route,body) });
 function problem(route: Route, status: number, code: Dto<'Error'>['code']) { const body: Dto<'Error'> = { code, message: `Synthetic ${code}`, retryable: status >= 500, correlation_id: 'review-twelfth-trace', field_errors: [] }; check(schemas.Error, body); return json(route, body, status); }
 export async function install(page: Page, state = fixture()) {
   page.on('pageerror', error => state.errors.push(error.message)); await page.clock.install({ time: new Date(now) });
   await page.route('**/api/v1/**', async route => {
+    if(await serveDisabledBillingCatalog(route))return;
     const request = route.request(), url = new URL(request.url()), path = url.pathname.slice('/api/v1'.length), method = request.method(), isBytes = path.endsWith('/bytes');
-    const body = request.postData() && !isBytes ? request.postDataJSON() : undefined; state.calls.push({ method, path, search: url.search, ...(body === undefined ? {} : { body }) });
+    const body = request.postData() && !isBytes ? fixtureRequest(request) : undefined; state.calls.push({ method, path, search: url.search, ...(body === undefined ? {} : { body }) });
     if (state.owner !== ids.owner) return problem(route, 404, 'NOT_FOUND');
     if (method === 'GET') {
       if (path === `/projects/${ids.project}`) return json(route, state.project);

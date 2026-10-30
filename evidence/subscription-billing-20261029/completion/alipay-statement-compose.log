@@ -1,0 +1,11 @@
+{"variant":"base","scenario":"default-disabled","switch":"0","expected":"pass","failures":[],"passed":true}
+{"variant":"base","scenario":"enabled","switch":"1","expected":"pass","failures":[],"passed":true}
+{"variant":"base","scenario":"parent-disabled","switch":"1","expected":"reject","failures":["alipay_statement_configuration"],"passed":true}
+{"variant":"base","scenario":"invalid-switch","switch":"true","expected":"reject","failures":["alipay_statement_configuration"],"passed":true}
+{"variant":"base","scenario":"missing-download-host","switch":"1","expected":"reject","failures":["alipay_statement_host_when_enabled"],"passed":true}
+{"variant":"prod","scenario":"default-disabled","switch":"0","expected":"pass","failures":[],"passed":true}
+{"variant":"prod","scenario":"enabled","switch":"1","expected":"pass","failures":[],"passed":true}
+{"variant":"prod","scenario":"parent-disabled","switch":"1","expected":"reject","failures":["alipay_statement_configuration"],"passed":true}
+{"variant":"prod","scenario":"invalid-switch","switch":"true","expected":"reject","failures":["alipay_statement_configuration"],"passed":true}
+{"variant":"prod","scenario":"missing-download-host","switch":"1","expected":"reject","failures":["alipay_statement_host_when_enabled"],"passed":true}
+{"cases":10,"passed":10,"scope":"real Docker Compose config only; no up/build/pull","merchantRequests":0,"rawConfigurationRecorded":false}

@@ -189,10 +189,10 @@ async function login(page: Page, username: string, expectProject = true) {
   await page.getByLabel('用户名').fill(username);
   await page.getByLabel('密码').fill('Synthetic-password-123');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
   if (await page.getByRole('button', { name: '打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
-  await page.getByRole('link', { name: '全部项目', exact: true }).first().click();
-  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
+  await page.getByRole('link', { name: '任务进度与结果', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
   await page.goto(`/#/projects/${projectId}`);
   if (expectProject) {
     await expect(page.getByRole('heading', { name: project.name, exact: true })).toBeVisible();
@@ -532,7 +532,7 @@ test('duplicate uploads join one status read, and late processing responses cann
   await expect(page.locator('#material-recovery-status')).toContainText('1 份重复上传');
   await expect.poll(() => pending).toBe(1); expect(reads.length).toBe(0); // The held route supersedes the normal status reader.
   if (await page.getByRole('button', { name: '打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
-  await page.getByRole('link', { name: '全部项目', exact: true }).first().click(); release();
+  await page.getByRole('link', { name: '任务进度与结果', exact: true }).first().click(); release();
   await expect(page.locator('.source-profile')).toHaveCount(0);
   await page.goto(`/#/projects/${projectId}`); await expect.poll(() => pending).toBe(2);
   if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();

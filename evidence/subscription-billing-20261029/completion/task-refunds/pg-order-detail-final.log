@@ -1,0 +1,13 @@
+▶ selected original order identifies its period beyond the latest 50 and keeps unknown or foreign orders private
+  ✔ the 51st record remains the original subscription with string-valued money and original dates (206.9378ms)
+  ✔ only a verified owner recharge order returns period null; foreign and nonexistent orders return identical 404 (21.5988ms)
+  ✔ missing or inconsistent original subscription records stay unavailable instead of becoming a permanent topup (12.779ms)
+✔ selected original order identifies its period beyond the latest 50 and keeps unknown or foreign orders private (765.337ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8880.961

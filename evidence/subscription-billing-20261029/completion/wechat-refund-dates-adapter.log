@@ -1,0 +1,18 @@
+✔ synthetic refund mock HTTP signs original transaction, exact nominal total and same out_refund_no for query (60.1555ms)
+✔ same-request recovery preserves the original refund payload after either pre-send crash or lost response (13.916ms)
+✔ refund recovery retains authenticated matching response requirements and never turns a missing order into failure (51.8862ms)
+✔ refund status mapping retains ABNORMAL as unresolved and only CLOSED is explicit failure (11.9265ms)
+✔ authenticated API application and success times normalize separately across offsets and bill days (17.6884ms)
+✔ API refund dates reject missing acceptance, impossible calendars, unknown offsets and conflicting chronology (101.7027ms)
+✔ callback refund dates use only decrypted success_time and never notification or undocumented application time (9.2727ms)
+✔ RSA/AES refund callbacks validate event/status, merchant, channel identities and payer cash fields (32.1961ms)
+✔ cash proof is independent from valid nominal payment; missing evidence is unknown and discounts still pay (9.4401ms)
+✔ refund capability defaults off; explicit verified configuration enables it; unknown transport results throw (40.208ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1334.9993

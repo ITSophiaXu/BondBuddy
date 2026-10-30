@@ -58,3 +58,24 @@ export function verifiedFileCheck(versionId:string,source:ProjectFileText,target
   return {file_version_id:versionId,status:findings.some(f=>f.kind==='conflict')?'conflict':findings.length?'manual':'consistent',
     coverage:strings(p.coverage)||'本轮按募集书可读取内容核对项目文件；资料缺项保留人工确认。',findings,links};
 }
+
+/** A visible manual fallback is useful diagnostic data, but is not a completed paid check. */
+export function completedFileCheck(versionId:string,source:ProjectFileText,target:ProjectFileText,proposal:unknown):ProjectFileCheckResult['files'][number]{
+  const p=proposal&&typeof proposal==='object'?proposal as Record<string,unknown>:{};
+  const nonempty=target.spans.filter(s=>s.text.trim()),ids=new Set(target.spans.map(s=>s.id));
+  // Explicit admissions of unread/unchecked content contradict completion even
+  // when a proposal copies every paragraph ID. Ordinary manual uncertainty
+  // (e.g. missing supporting material) is still allowed after actual reading.
+  const admitsIncomplete=(v:unknown)=>typeof v==='string'&&/(?:尚未|未能|无法)(?:完整)?(?:读取|检查|核对)|未(?:读取|检查)(?!到|出)|(?:not\s+(?:read|checked|reviewed|performed)|unread)(?:\b|$)/i.test(v);
+  if(source.coverage!=='complete'||target.coverage!=='complete'||!source.spans.some(s=>s.text.trim())||!nonempty.length
+    ||!Array.isArray(p.findings)||p.findings.length>1800||!Array.isArray(p.checked_span_ids)
+    ||p.checked_span_ids.some(id=>typeof id!=='string'||!ids.has(id))||admitsIncomplete(p.coverage)
+    ||p.findings.some(item=>item&&typeof item==='object'&&admitsIncomplete(item.reason)))throw Error('FILE_CHECK_INCOMPLETE');
+  const covered=new Set(p.checked_span_ids),checked=verifiedFileCheck(versionId,source,target,p);
+  if(nonempty.some(s=>!covered.has(s.id))||!checked.links.length&&!checked.findings.some(f=>fileAnchor(target,f.target_span_id,f.original)&&f.reason.trim()))throw Error('FILE_CHECK_INCOMPLETE');
+  for(const finding of checked.findings)if(finding.kind==='conflict'&&!/^p\d+$/.test(finding.target_span_id)){
+    finding.kind='manual';finding.replacement=null;finding.reason+='；位于页眉、页脚或附注，请人工修订此处。';
+  }
+  checked.status=checked.findings.some(f=>f.kind==='conflict')?'conflict':checked.findings.length?'manual':'consistent';
+  return checked;
+}

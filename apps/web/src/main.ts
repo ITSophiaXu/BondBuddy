@@ -1,3 +1,4 @@
+import {configureBillingTaskRecovery, resumeBillingTask, cleanBillingReturn, cancelBillingTask, billingTaskRechargeHref, type BillingTask} from './billing-task-recovery';
 import { ProjectQaWorkspace } from './project-qa-workspace';
 import { IntegrityWorkspace } from './integrity-workspace';
 import { ReviewEntry } from './review-entry';
@@ -9,9 +10,11 @@ import { renderFinancialUploadGuidance } from './financial-upload-guidance';
 import { OPTIONAL_MATERIAL_GUIDANCE, OPTIONAL_MATERIAL_FORMATS } from './optional-materials';
 import { ProjectFiles, clearProjectFileViews } from './project-files';
 import { BillingPage } from './billing-page';
+import { BillingPriceAdminPage } from './billing-price-admin';
+import { TaskRefundAdminPage } from './task-refund-admin-page';
 import { CreditWallet } from './credit-wallet';
 import { ProjectAssistant } from './project-assistant';
-import { projectListContext, withProjectContext, projectBackLink, projectSection, navigationProjectContext, projectWorkHref, rechargeHref, type ProjectWork } from './project-navigation';
+import { projectListContext, withProjectContext, projectBackLink, projectSection, navigationProjectContext, projectWorkHref, rechargeHref } from './project-navigation';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
 import { renderRecoveryPage } from './recovery';
 import { ProjectBrowser } from './project-browser';
@@ -28,6 +31,7 @@ import './ocr-review.css';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import { UserFacingError } from './user-facing-error';
 import { sourceFields, readSourceFields, sourcePeriodSummary, sourceRequiredMessage, clearSourceSelections } from './source-prospectus.js';
+import { formatTemplateNotice, formatTemplatePin, selectedFormatTemplate, type SourceFormatContext } from './source-format-template.js';
 import { retainUpdateDetails } from './update-form.js';
 import { uploadErrorMessage } from './upload-error';
 import { Draft } from './draft';
@@ -59,6 +63,17 @@ const folder = icon('M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z');
 const plus = icon('M12 5v14M5 12h14');
 const person = icon('M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 20a8 8 0 0 1 16 0');
 let identity: string | undefined;
+configureBillingTaskRecovery(()=>identity);
+function billingNotice(message:string,task?:BillingTask,retryHash?:string){
+  document.querySelector('#billing-task-notice')?.remove();
+  const notice=document.createElement('aside');notice.id='billing-task-notice';notice.className='billing-task-notice';notice.setAttribute('role','status');
+  const text=document.createElement('p');text.textContent=message;notice.append(text);
+  if(task){const link=document.createElement('a');link.href=billingTaskRechargeHref(task);link.className='btn primary';link.textContent='订阅或充值，继续原任务';notice.append(link);
+    const cancel=document.createElement('button');cancel.type='button';cancel.className='btn secondary';cancel.textContent='取消待执行任务';cancel.addEventListener('click',()=>{if(identity===task.owner)void cancelBillingTask(task.owner,task.id).then(()=>notice.remove());});notice.append(cancel);
+  }else{if(retryHash){const retry=document.createElement('a');retry.href=retryHash;retry.className='btn secondary';retry.textContent='核对原任务提交';retry.addEventListener('click',event=>{if(location.hash===retryHash){event.preventDefault();void renderRoute();}});notice.append(retry);}const close=document.createElement('button');close.type='button';close.textContent='知道了';close.addEventListener('click',()=>notice.remove());notice.append(close);}
+  document.body.append(notice);
+}
+window.addEventListener('bondbuddy:billing-task-needs-funds',event=>{const task=(event as CustomEvent<BillingTask>).detail;if(task.owner===identity)billingNotice(task.body.billing_resume===true?'本批底稿因积分不足暂停，已完成文件保留。完成订阅或充值并返回后，将自动继续这一批的剩余文件。':'积分不足，原任务尚未开始。完成订阅或充值并返回后，将自动继续这一个任务。',task);});
 let accountIdentity: { owner: string; name?: string; request?: Promise<void> } | undefined;
 let epoch = 0;
 let currentRoute = '/';
@@ -71,6 +86,8 @@ let updateEntry:UpdateEntry|undefined;
 let prospectusPanel:ProspectusPanel|undefined;
 let projectFiles: ProjectFiles | undefined;
 let billingPage: BillingPage | undefined;
+let billingPriceAdmin: BillingPriceAdminPage | undefined;
+let taskRefundAdmin: TaskRefundAdminPage | undefined;
 let creditWallet: CreditWallet | undefined;
 let globalAssistant: ProjectAssistant | undefined;
 let artifactPage: ArtifactPage | undefined;
@@ -132,6 +149,8 @@ function clearPrivateState() {
   projectFiles?.dispose(); projectFiles = undefined;
   clearProjectFileViews();
   billingPage?.dispose(); billingPage = undefined;
+  billingPriceAdmin?.dispose(); billingPriceAdmin=undefined;
+  taskRefundAdmin?.dispose(); taskRefundAdmin=undefined;
   artifactPage?.dispose(); artifactPage = undefined;
   projectExecution?.dispose(); projectExecution = undefined;
   projectConversation?.dispose(); projectConversation = undefined;
@@ -142,6 +161,7 @@ function clearPrivateState() {
   for (const controller of recoveryControllers.values()) controller.abort();
   localUploads.clear(); recoveredMaterials.clear(); recoveryStates.clear(); recoveryControllers.clear();uploadRecoveries.clear();uploadJournalErrors.clear();for(const input of uploadReselectInputs.values())input.remove();uploadReselectInputs.clear();
   epoch++; api.reset(); draft?.dispose(); draft = undefined; newDirty = false; creating = false;
+  document.querySelector('#billing-task-notice')?.remove();
   identity = undefined; projectBrowser?.dispose(); projectBrowser = undefined;
 }
 
@@ -309,13 +329,12 @@ function mountAccountIdentity() {
 
 function shell(content: string, section: string) {
   const context=navigationProjectContext(location.hash);
-  const work=(kind:ProjectWork)=>context?projectWorkHref(kind,context.projectId).slice(1):kind;
   const nav = (route: string, ico: string, label: string, active: boolean, pending = false) => `<a href="#${route}" class="nav-item ${active ? 'active' : ''}" ${active ? 'aria-current="page"' : ''}>${prototypeIcon(ico)}<span>${label}</span>${pending ? '<small class="nav-pending">未开放</small>' : ''}</a>`;
   root.innerHTML = `<div class="prototype-app"><aside class="sidebar" id="sidebar"><button class="mobile-menu-close icon-btn" id="close-menu" aria-label="关闭菜单">${prototypeIcon('close')}</button><a class="brand" href="#tasks"><img src="/favicon.svg" alt=""/>bondbuddy<small>BETA</small></a>
     <div class="workspace"><div class="workspace-icon">${prototypeIcon('building')}</div><div><strong>我的工作空间</strong><small>PERSONAL WORKSPACE</small></div></div>
-    <nav aria-label="主导航">${nav('tasks','folder','全部项目',section === 'projects')}<div class="nav-label">${context?'继续这个项目':'开始工作'}</div>${nav(work('update'),'update','更新募集书',section === 'new' || section === 'workspace')}${nav(work('review'),'review','复核募集书',section === 'review')}${nav(work('generate'),'spark','文件生成',section === 'generate')}${nav(work('integrity'),'shield','诚信核查',section === 'integrity')}${nav(work('qa'),'chat','项目问答',section === 'qa')}</nav>
+    <nav aria-label="主导航">${nav('tasks','clock','任务进度与结果',section === 'projects')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','文件生成',section === 'generate')}${nav('integrity','shield','诚信核查',section === 'integrity')}${nav('qa','chat','项目问答',section === 'qa')}</nav>
     <div class="sidebar-bottom"><section class="credit-wallet" data-credit-wallet="sidebar" aria-label="积分余额"></section><nav aria-label="账号">${nav(rechargeHref().slice(1),'settings','我的账号',section === 'account')}</nav><div class="user account"><span class="avatar" aria-hidden="true">我</span><strong data-account-name aria-label="当前登录账号">当前账号</strong><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
-    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '文件生成' : section === 'integrity' ? '诚信核查' : section === 'qa' ? '项目问答' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '积分与充值' : '全部项目'}</span></div><div class="top-actions"><span class="top-plan-link">按任务使用积分</span><div class="mobile-credit-wallet" data-credit-wallet="compact"></div></div></header>
+    <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '文件生成' : section === 'integrity' ? '诚信核查' : section === 'qa' ? '项目问答' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '账户与计费' : '任务进度与结果'}</span></div><div class="top-actions"><span class="top-plan-link">按任务使用积分</span><div class="mobile-credit-wallet" data-credit-wallet="compact"></div></div></header>
     <main id="main" tabindex="-1">${context?`<section class="project-context" aria-label="当前项目"><div><small>正在处理</small><strong data-project-context-name>${esc(projectNames.get(context.projectId)??'当前项目')}</strong></div><a href="${projectWorkHref('files',context.projectId)}">返回本项目文件</a></section>`:''}${content}</main></div></div>`;
   if(context&&!projectNames.has(context.projectId)&&!projectNameRequests.has(context.projectId)){
     const owner=identity,expectedProject=context.projectId;
@@ -354,7 +373,7 @@ async function logout() {
   if (projectFiles && !await projectFiles.beforeLeave()) return;
   if (fileConsistency && !await fileConsistency.beforeLeave()) return;
   if (newDirty && !window.confirm('当前新项目尚未保存。退出会放弃这些填写内容，是否继续？')) return;
-  if (projectConversation?.hasUnsent && !window.confirm('还有未发送或保存结果未确认的消息。退出后本页输入将无法恢复，是否继续？')) return;
+  if (projectConversation?.hasUnsent && !await projectConversation.flush() && !window.confirm('还有未发送或保存结果未确认的消息。退出后本页输入将无法恢复，是否继续？')) return;
   button.disabled = true;
   if (draft && (draft.dirty || draft.state === 'saving') && !await draft.save()) {
     if (!identity) return;
@@ -388,7 +407,7 @@ async function renderRoute() {
   }
   if (!identity || location.hash.slice(1) !== raw) return;
   if (!canLeaveOcrReview() || creating || (newDirty && !window.confirm('当前新项目尚未保存，离开会放弃填写内容，是否继续？')) ||
-      nextRoute !== currentRoute && projectConversation?.hasUnsent &&
+      nextRoute !== currentRoute && projectConversation?.hasUnsent && !await projectConversation.flush() &&
       !window.confirm('还有未发送或保存结果未确认的消息。离开后本页输入将无法恢复，是否继续？')) {
     history.replaceState(null, '', `${location.pathname}${location.search}#${currentRoute}`); return;
   }
@@ -419,8 +438,16 @@ async function renderRoute() {
   materialProcessing?.dispose(); materialProcessing = undefined;
   reviewEntry?.dispose();reviewEntry=undefined;updateEntry?.dispose();updateEntry=undefined;prospectusPanel?.dispose();prospectusPanel=undefined;
   currentRoute = nextRoute;
+  const resumeId=new URLSearchParams(raw.split('?')[1]??'').get('resume_request');
+  if(resumeId&&!/^\/?(?:account|billing|payment)(?:[/?]|$)/.test(raw)){
+    const returnHash=cleanBillingReturn(location.hash),resumeOwner=identity;
+    try{await resumeBillingTask(resumeOwner,resumeId,returnHash,(path,body,headers)=>api.request('POST',path,body,headers));if(identity!==resumeOwner||token!==epoch)return;history.replaceState(null,'',location.pathname+location.search+returnHash);currentRoute=returnHash.slice(1);document.querySelector('#billing-task-notice')?.remove();}
+    catch(error){if(identity!==resumeOwner||token!==epoch)return;if(error instanceof ApiError&&error.code==='CREDITS_INSUFFICIENT'){/* The scoped payment notice remains visible. */}else if(error instanceof ApiError&&error.status>=400&&error.status<500&&![408,429].includes(error.status)){history.replaceState(null,'',location.pathname+location.search+returnHash);currentRoute=returnHash.slice(1);billingNotice(friendlyError(error,'submit')+' 原请求未受理，材料与输入保留，请在工作区按当前版本开始。');}else billingNotice(friendlyError(error,'submit')+' 原请求和范围保留，可核对原任务提交。',undefined,returnHash+(returnHash.includes('?')?'&':'?')+'resume_request='+encodeURIComponent(resumeId));}
+  }
   if (!raw || legacyDashboard) history.replaceState(null,'',location.pathname+location.search+'#tasks'+(raw.includes('?')?'?'+raw.split('?')[1]:''));
   if (/^review(\?|$)/.test(requested)) { const query=new URLSearchParams(requested.split('?')[1]??''); if(query.has('new'))renderNewReview(api,shell,()=>token===epoch,query);else{reviewEntry=new ReviewEntry(api,shell,()=>token===epoch);await reviewEntry.render(query.get('project')??undefined);}return; }
+  if(requested==='/billing/prices'){billingPriceAdmin=new BillingPriceAdminPage(api,shell,()=>token===epoch,identity);await billingPriceAdmin.render();return;}
+  if(requested==='/billing/task-refunds'){taskRefundAdmin=new TaskRefundAdminPage(api,shell,()=>token===epoch,identity);await taskRefundAdmin.render();return;}
   if(requested==='/account'||requested.startsWith('/account?')||requested==='billing'||requested.startsWith('billing?')||requested.startsWith('payment/')||requested==='/data-policy'){
     const query=new URLSearchParams(requested.split('?')[1]??'');
     const project=query.get('project')??undefined;
@@ -428,7 +455,7 @@ async function renderRoute() {
     await renderAccount(accountPage);
     if(token!==epoch)return;
     const host=document.querySelector<HTMLElement>('#account-credits');
-    if(host){billingPage=new BillingPage(api,html=>{if(token===epoch)host.innerHTML=html;},()=>token===epoch,project,order);await billingPage.render();}
+    if(host){billingPage=new BillingPage(api,html=>{if(token===epoch)host.innerHTML=html;},()=>token===epoch,project,order,identity);await billingPage.render();}
     if(requested==='/data-policy'||query.get('section')==='data'){const details=document.querySelector<HTMLDetailsElement>('#account-data');if(details){document.querySelector<HTMLDialogElement>('#account-settings')?.showModal();details.open=true;details.scrollIntoView({block:'start'});}}
     return;
   }
@@ -486,7 +513,7 @@ async function renderRoute() {
 function renderNew(handoffQuery=new URLSearchParams()) {
   const value = blankDraft();
   const creationRequestId=crypto.randomUUID();
-  shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>先保存项目，再添加材料。没有历史募集书，也可以编制首稿。</p></div><a class="btn secondary" href="#tasks">查看全部项目</a></div>${workspaceSteps(1)}<div id="business-handoff"></div>
+  shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>先保存项目，再添加材料。没有历史募集书，也可以编制首稿。</p></div><a class="btn secondary" href="#tasks">查看任务进度与结果</a></div>${workspaceSteps(1)}<div id="business-handoff"></div>
     <form id="create-form" class="update-form"><div class="workspace-layout authoring-workspace"><section class="panel form-panel form-card">${updateFormFields(value, true)}
     <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div><p class="field-hint">创建项目只保存信息；添加材料和补充要求后，由你明确开始任务。</p></section></div></form>`, 'new');
   const handoffEpoch=epoch;void mountBusinessHandoff(api,document.querySelector<HTMLElement>('#business-handoff')!,handoffQuery,()=>handoffEpoch===epoch);
@@ -517,7 +544,7 @@ function renderReviewProjectDetails(project: Dto<'ProjectResponse'>, query: URLS
   const returnQuery = withProjectContext(new URLSearchParams({ tab: query.get('review_tab') === 'results' ? 'results' : 'materials' }));
   const reportId = query.get('review_report_id'); if (reportId) returnQuery.set('report_id', reportId);
   const returnHref = `#/projects/${encodeURIComponent(project.project_id)}/review?${returnQuery}`;
-  shell(`<div class="review-workspace"><header class="review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><h1 id="project-heading">${esc(project.name)}</h1><p>补充复核所需的项目信息，保存后用于下一次明确执行。</p></div><span class="save-badge" id="save-state" role="status">已保存</span></header>${workspaceSteps(1,'复核流程')}<form id="draft-form" class="review-panel review-create"><h2>编辑复核项目信息</h2><p class="review-muted">修改后自动保存，已开始的任务保持原输入。</p>${reviewProjectFields(project)}<p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>其他页面已修改项目信息；当前填写仍保留，请核对后加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃本页修改并加载最新资料</button></div><div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span><a class="btn primary" href="${esc(returnHref)}">返回复核工作区</a></div></form></div>`, projectSection('review'));
+  shell(`<div class="review-workspace"><header class="review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><h1 id="project-heading">${esc(project.name)}</h1><p>补充复核所需的项目信息，保存后用于下一次明确执行。</p></div><span class="save-badge" id="save-state" role="status">已保存</span></header>${workspaceSteps(1,'复核流程')}<form id="draft-form" class="review-panel review-create"><h2>编辑复核项目信息</h2><p class="review-muted">修改后自动保存，已开始的任务保持原输入。</p>${reviewProjectFields(project)}<p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>其他页面已修改项目信息；当前填写仍保留，请核对后加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃本页修改并加载最新资料</button></div><div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span><a class="btn primary" href="${esc(returnHref)}">返回复核工作区</a></div></form></div>`, 'review');
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
   bindReviewProjectFields(form, value => draft?.edit({ ...value, issuer_name: value.issuer_name ?? '' }),project);
   form.addEventListener('submit', event => { event.preventDefault(); void draft?.save(); });
@@ -540,7 +567,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     <p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>当前输入未覆盖其他页面的修改。可以复制保留输入，再加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃当前输入并加载最新资料</button></div>
     <div class="workspace-layout authoring-workspace"><div class="workspace-main">
       <form id="draft-form" class="update-form" ${step === 'materials' ? 'hidden' : ''}><section class="panel form-card"><p class="field-hint">修改后自动保存；未确定的选填内容可留空。</p>${updateFormFields(value)}
-      <div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span></div></section><div class="form-footer"><a href="#tasks">查看全部项目</a><button id="continue-materials" type="button" class="btn primary">保存并继续 ${prototypeIcon('arrow')}</button></div></form>
+      <div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span></div></section><div class="form-footer"><a href="#tasks">查看任务进度与结果</a><button id="continue-materials" type="button" class="btn primary">保存并继续 ${prototypeIcon('arrow')}</button></div></form>
       <div id="workspace-materials" ${step === 'details' ? 'hidden' : ''}><div id="business-handoff"></div>
         <div class="project-strip"><span>${prototypeIcon('file')}全文更新</span><button id="edit-project-details" class="text-btn" type="button">编辑项目信息</button><span id="workspace-material-count">正在读取材料…</span></div>
         <div id="workspace-progress"></div><div id="prospectus-panel"></div>
@@ -753,6 +780,13 @@ function confirmedMaterials(projectId: string) {
   return [...materials.values()].filter(m=>!prospectusPanel?.inactive.has(m.material_id));
 }
 
+function sourceFormatContext(projectId: string): SourceFormatContext | undefined {
+  if (!draft || !['update', 'generation'].includes(draft.project.kind)) return undefined;
+  return { materials: confirmedMaterials(projectId), sources: draft.fields.update_details.source_prospectuses,
+    template: draft.fields.update_details.format_template, inheritedFromResult: projectExecution?.inheritsResultFormat,
+    group: `source-format-${projectId}` };
+}
+
 function isCurrentProjectWorkspace(projectId: string) {
   // Navigation context (from, step, run, handoff) does not change the project.
   // Keep the full route for navigation, but compare the path when accepting material updates.
@@ -802,7 +836,7 @@ function renderUploadRow(upload: LocalUpload) {
     ? `<button type="button" class="text-button" data-upload-action="remove" data-upload-key="${esc(upload.key)}">移除此行</button>`
     : '';
   const processing = upload.phase === 'persisted' && upload.material ? (materialProcessing?.render(upload.material) ?? '') : '';
-  return `<li class="material-file-row" data-upload-phase="${upload.phase}" data-upload-id="${esc(upload.key)}"><div class="material-file-main"><strong>${esc(upload.phase === 'persisted' && upload.material ? upload.material.filename : uploadName(upload))}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(uploadSize(upload))}</span>${showProgress ? `<progress max="${uploadSize(upload)}" value="${progress}" aria-label="${esc(uploadName(upload))} 字节传输进度"></progress>` : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p>${processing}${upload.material ? sourceFields(upload.material, draft?.fields.update_details.source_prospectuses) : ''}</div>${controls || canRemove ? `<div class="material-file-actions">${controls}${canRemove}</div>` : ''}</li>`;
+  return `<li class="material-file-row" data-upload-phase="${upload.phase}" data-upload-id="${esc(upload.key)}"><div class="material-file-main"><strong>${esc(upload.phase === 'persisted' && upload.material ? upload.material.filename : uploadName(upload))}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(uploadSize(upload))}</span>${showProgress ? `<progress max="${uploadSize(upload)}" value="${progress}" aria-label="${esc(uploadName(upload))} 字节传输进度"></progress>` : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p>${processing}${upload.material ? sourceFields(upload.material, draft?.fields.update_details.source_prospectuses, draft ? sourceFormatContext(draft.project.project_id) : undefined) : ''}</div>${controls || canRemove ? `<div class="material-file-actions">${controls}${canRemove}</div>` : ''}</li>`;
 }
 
 function renderMaterialPartitions(projectId: string) {
@@ -825,7 +859,7 @@ function renderMaterialPartitions(projectId: string) {
     {label:'公司、经营与信用（选填）',roles:[...M1_MATERIAL_PARTITIONS[5].roles,...M1_MATERIAL_PARTITIONS[3].roles].filter(role=>role.code!=='other'),primary:['governance','corporate','business','rating'],optional:true},
     {label:'其他补充材料（选填）',roles:M1_MATERIAL_PARTITIONS[5].roles.filter(role=>role.code==='other'),primary:['other'],optional:true}
   ];
-  const groups = partitions.map((partition, index) => `<section class="material-partition${partition.optional ? ' optional-material-partition' : ''}" aria-labelledby="material-partition-${index}"><h3 id="material-partition-${index}">${esc(partition.label)}</h3>${partition.optional ? `<p class="optional-material-help">按实际情况提供，未上传这些可选材料也可继续编制。</p><p class="optional-material-formats" id="material-formats-${index}">${OPTIONAL_MATERIAL_FORMATS}</p>` : ''}${[true,false].map(primary => `${primary ? '' : '<details class="material-subtypes"><summary>按细分类别补充材料（选填）</summary>'}<ul class="material-role-list">${partition.roles.filter(role => partition.primary.includes(role.code) === primary).filter(role => {
+  const groups = partitions.map((partition, index) => `<section class="material-partition${partition.optional ? ' optional-material-partition' : ''}" aria-labelledby="material-partition-${index}"><h3 id="material-partition-${index}">${esc(partition.label)}</h3>${index === 1 && sourceFormatContext(projectId) ? formatTemplateNotice(sourceFormatContext(projectId)!) : ''}${partition.optional ? `<p class="optional-material-help">按实际情况提供，未上传这些可选材料也可继续编制。</p><p class="optional-material-formats" id="material-formats-${index}">${OPTIONAL_MATERIAL_FORMATS}</p>` : ''}${[true,false].map(primary => `${primary ? '' : '<details class="material-subtypes"><summary>按细分类别补充材料（选填）</summary>'}<ul class="material-role-list">${partition.roles.filter(role => partition.primary.includes(role.code) === primary).filter(role => {
     const relevant = role.code === 'historical' ? history !== false : role.code === 'reference' ? history !== true : true;
     return relevant || uploads.some(upload => upload.role === role.code) || materials.some(material => material.role === role.code);
   }).map(rawRole => {
@@ -837,7 +871,7 @@ function renderMaterialPartitions(projectId: string) {
     const accept = role.code === 'historical' || role.code === 'reference'
       ? '.docx,.pdf'
       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
-    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses)}</div><div class="material-file-actions">${materialDeleteControl(material.material_id)}</div></li>`).join('');
+    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses, sourceFormatContext(projectId))}</div><div class="material-file-actions">${materialDeleteControl(material.material_id)}</div></li>`).join('');
     const picker = canAdd ? `<label class="button secondary material-picker" for="upload-${esc(role.code)}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" ${partition.optional ? `aria-describedby="material-formats-${index}"` : ''} data-upload-role="${esc(role.code)}"/></label>` : '';
     return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong><span>${esc(canAdd ? roleGuidance(role.code) : '先前添加的材料仍保留；当前历史稿选项下无需继续添加此类文件')}</span></div>${picker}</div>${role.code==='audit'?renderFinancialUploadGuidance(draft?.fields.market??null,draft?.fields.offering??null,draft?.fields.update_details.reporting_cutoff??null):''}<ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}${duplicateUploadNotices(duplicates)}</ul></li>`;
   }).join('')}</ul>${primary ? '' : '</details>'}`).join('')}</section>`).join('');
@@ -868,6 +902,14 @@ function updateMaterialWorkspace(projectId: string) {
     // Keep file input nodes attached: rebuilding them during recovery/progress can swallow
     // the native file chooser's change event. Only partition changes add/remove pickers.
     const template = document.createElement('template'); template.innerHTML = renderMaterialPartitions(projectId);
+    template.content.querySelectorAll('.material-partition').forEach((fresh, index) => {
+      const partition = list.querySelectorAll('.material-partition')[index];
+      if (!partition) return;
+      const notice = fresh.querySelector(':scope > .source-format-notice'), previous = partition.querySelector(':scope > .source-format-notice');
+      if (!notice) previous?.remove();
+      else if (previous) previous.replaceWith(notice.cloneNode(true));
+      else partition.querySelector('h3')?.after(notice.cloneNode(true));
+    });
     const groups = list.querySelectorAll('.material-role-list');
     template.content.querySelectorAll('.material-role-list').forEach((desired, index) => {
       const group = groups[index]; if (!group) return;
@@ -898,6 +940,14 @@ function updateMaterialWorkspace(projectId: string) {
       const details = group.closest<HTMLDetailsElement>('.material-subtypes');
       const visibleFiles = [...group.querySelectorAll('.material-file-main strong')].map(el => el.textContent).join('\n');
       if (details && visibleFiles && details.dataset.shownFiles !== visibleFiles) { details.open = true; details.dataset.shownFiles = visibleFiles; }
+    });
+    const context = sourceFormatContext(projectId), selected = context ? selectedFormatTemplate(context) : null;
+    list.querySelectorAll<HTMLInputElement>('[data-format-template]').forEach(control => {
+      const row = control.closest<HTMLElement>('[data-source-material]');
+      control.checked = Boolean(selected && row?.dataset.sourceMaterial === selected.material_id &&
+        Number(row.dataset.sourceMaterialVersion) === selected.material_version && row.dataset.sourceSha256 === selected.sha256);
+      const label = control.parentElement?.querySelector('span');
+      if (label) label.textContent = `沿用此稿格式${control.checked && !context?.template ? '（自动选择）' : ''}`;
     });
   }
   const status = document.querySelector<HTMLElement>('#material-recovery-status');
@@ -1165,8 +1215,19 @@ function bindMaterialWorkspace(projectId: string) {
     const target = event.target as HTMLElement;
     const source = target.closest<HTMLElement>('[data-source-material]');
     if (!source || !draft) return;
-    const material = confirmedMaterials(projectId).find(m => m.material_id === source.dataset.sourceMaterial);
+    const material = confirmedMaterials(projectId).find(m => m.material_id === source.dataset.sourceMaterial &&
+      m.material_version === Number(source.dataset.sourceMaterialVersion) && m.sha256 === source.dataset.sourceSha256);
     if (!material) return;
+    if (target.matches('[data-format-template]')) {
+      if (!(target instanceof HTMLInputElement) || !target.checked || target.disabled || projectExecution?.inheritsResultFormat) return;
+      const details = { ...draft.fields.update_details, format_template: formatTemplatePin(material) };
+      draft.edit({ update_details: details });
+      retainUpdateDetails(document.querySelector<HTMLFormElement>('#draft-form')!, details);
+      updateMaterialWorkspace(projectId);
+      host.querySelector<HTMLInputElement>(`[data-format-template="${CSS.escape(material.material_id)}"]`)?.focus({ preventScroll: true });
+      return;
+    }
+    if (!target.dataset.sourceField) return;
     const previous = draft.fields.update_details.source_prospectuses?.find(s => s.material_id === material.material_id && s.material_version === material.material_version && s.sha256 === material.sha256);
     const value = readSourceFields(source, material, previous, target.dataset.sourceField);
     const sources = (draft.fields.update_details.source_prospectuses ?? []).filter(s => s.material_id !== material.material_id);
@@ -1179,7 +1240,7 @@ function bindMaterialWorkspace(projectId: string) {
     }
     source.querySelector('[data-source-period-summary]')!.textContent = sourcePeriodSummary(value.reporting_periods);
     source.querySelector('[data-source-required-message]')!.textContent = sourceRequiredMessage(value);
-    syncProjectExecution(projectId);
+    updateMaterialWorkspace(projectId);
   });
   host.addEventListener('dragover', event => { if ((event.target as HTMLElement).closest('.material-picker')) event.preventDefault(); });
   host.addEventListener('drop', event => {
@@ -1195,6 +1256,16 @@ function bindMaterialWorkspace(projectId: string) {
     input.value = '';
   });
   host.addEventListener('click', event => {
+    const resetTemplate = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-format-template-auto]');
+    if (resetTemplate) {
+      if (!draft || resetTemplate.disabled || projectExecution?.inheritsResultFormat || projectExecution && !projectExecution.materialsEditable) return;
+      const details = { ...draft.fields.update_details, format_template: null };
+      draft.edit({ update_details: details });
+      retainUpdateDetails(document.querySelector<HTMLFormElement>('#draft-form')!, details);
+      updateMaterialWorkspace(projectId);
+      host.querySelector<HTMLInputElement>('[data-format-template]:checked')?.focus({ preventScroll: true });
+      return;
+    }
     const retry = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-processing-retry]');
     if (retry) { materialProcessing?.refresh(retry.dataset.processingRetry); return; }
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-upload-action]');

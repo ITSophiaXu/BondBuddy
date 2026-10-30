@@ -1,5 +1,6 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { AuthoringProgressSchema } from './authoring-progress.js';
+import {CommerceMetadataFields} from './commerce.js';
 
 export const AUTHORING_BILLING_TASKS = {
   interim: '一期更新', annual: '年度更新', two_years: '两年补更', three_years: '三年补更',
@@ -29,10 +30,11 @@ const utc = Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?
 const nullable = <T extends ReturnType<typeof Type.String>>(schema: T) => Type.Union([schema, Type.Null()]);
 export const CreditBalanceSchema = obj({ available: points, frozen: points });
 export const FixedQuoteSchema = obj({
+  ...CommerceMetadataFields,
   quote_id: id, project_id: id, input_revision: Type.Integer({ minimum: 1 }),
   input_hash: Type.String({ pattern: '^[a-f0-9]{64}$' }),
   task_type: Type.Union(Object.keys(BILLING_TASKS).map(k => Type.Literal(k as BillingTask))),
-  points: Type.Integer({ minimum: 1, maximum: 1000000000 }), price_version: id,
+  points: Type.Integer({ minimum: 0, maximum: 1000000000 }), price_version: id,
   reason: Type.String({ maxLength: 1000 }), created_at: utc
 });
 export const billingSchemas = {
@@ -61,6 +63,7 @@ const historyPage = obj({ next_cursor: nullable(Type.String({ maxLength: 1024 })
 export const creditHistorySchemas = {
   CreditHistoryQuery: obj({ cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 1024 })), limit: Type.Optional(Type.String({ pattern: '^(?:[1-9]|[1-4][0-9]|50)$', default: '20' })) }),
   CreditConsumptionHistoryResponse: obj({ items: Type.Array(obj({
+    ...CommerceMetadataFields,
     reservation_id: id, run_id: id, project_id: nullable(id), project_name: Type.String({ maxLength: 200 }),
     task_name: Type.String({ maxLength: 200 }), created_at: utc, finalized_at: nullable(utc),
     state: Type.Union(['held','settled','released'].map(s=>Type.Literal(s))),
@@ -68,6 +71,7 @@ export const creditHistorySchemas = {
     reserved_points: points, charged_points: points, released_points: points, corrected_points: points,
   })), page: historyPage }),
   RechargeHistoryResponse: obj({ items: Type.Array(obj({
+    ...CommerceMetadataFields,
     order_id: id, provider: Type.Union([Type.Literal('wechat'),Type.Literal('alipay')]),
     state: Type.Union(['pending','paid','expired','failed'].map(s=>Type.Literal(s))),
     amount_fen: points, points, created_at: utc, credited_at: nullable(utc),

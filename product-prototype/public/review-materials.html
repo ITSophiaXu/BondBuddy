@@ -17,6 +17,12 @@
 </div></main>
 <script>
 const upload=document.querySelector('#upload'),existing=document.querySelector('#existing'),selected=document.querySelector('#selected');
+if(new URLSearchParams(location.search).has('empty')){
+  document.querySelector('.modes').hidden=true;existing.hidden=true;upload.hidden=false;
+  document.querySelector('.selected').hidden=true;
+  document.querySelector('[name=mode][value=upload]').checked=true;
+  document.querySelector('.modes').previousElementSibling.textContent='上传本次待复核的募集说明书。';
+}
 document.querySelectorAll('[name=mode]').forEach(radio=>radio.addEventListener('change',()=>{upload.hidden=radio.value!=='upload';existing.hidden=radio.value!=='existing';}));
 document.querySelector('#versions').addEventListener('change',event=>{selected.textContent=event.target.value;});
 upload.querySelector('input').addEventListener('change',event=>{if(event.target.files[0])selected.textContent=event.target.files[0].name;});

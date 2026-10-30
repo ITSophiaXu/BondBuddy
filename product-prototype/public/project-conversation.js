@@ -49,7 +49,7 @@ export function projectConversation({state,draft,saveDraft,esc,icon,render,inval
     return `<div class="cowork-prompts">${labels.map(label=>`<button type="button" data-action="project-prompt" data-value="${label}">${label}</button>`).join('')}</div>`;
   }
   function composer(kind,d){
-    if(kind==='update')return `<form id="project-message-form" class="cowork-composer"><textarea id="project-message" aria-label="补充募集书更新说明" maxlength="3000" rows="3" placeholder="如有额外的募集书更新要求，可在此补充">${esc(d.messageDraft||'')}</textarea><div class="supplement-footer"><div class="supplement-feedback"></div><div class="supplement-save-actions">${d.projectId?'<button type="submit" class="btn secondary small cowork-save">保存补充说明</button>':'<p class="cowork-footnote">随项目一起保存。</p>'}</div></div></form>`;
+    if(kind==='update')return `<form id="project-message-form" class="cowork-composer"><textarea id="project-message" aria-label="补充募集书更新说明" maxlength="3000" rows="3" placeholder="如有额外的募集书更新要求，可在此补充">${esc(d.messageDraft||'')}</textarea><div class="supplement-footer"><div class="supplement-feedback"></div><div class="supplement-save-actions">${d.projectId?'<p class="cowork-footnote" id="note-autosave-status" role="status">输入后自动保存</p>':'<p class="cowork-footnote">随项目一起保存。</p>'}</div></div></form>`;
     const label=kind==='review'?'补充核验线索或特别关注事项':'补充募集书更新说明（选填）';
     const placeholder=kind==='review'?'例如：第86页的有息负债金额与审计附注不一致，请结合两处来源核对；公司最近变更了名称，相关公告稍后补充。':'请输入额外的募集书更新说明';
     return `<form id="project-message-form"><label class="field"><span>${label}</span><textarea id="project-message" maxlength="3000" rows="4" placeholder="${esc(placeholder)}">${esc(d.messageDraft||'')}</textarea></label>${d.projectId ? '<button type="submit" class="btn primary small">保存补充说明</button>' : '<p class="cowork-footnote">随项目一起保存。</p>'}</form>`;
@@ -79,5 +79,11 @@ export function projectConversation({state,draft,saveDraft,esc,icon,render,inval
     if(d.messageEditIndex===index){delete d.messageEditIndex;d.messageDraft='';}else if(d.messageEditIndex>index)d.messageEditIndex--;
     changed(kind);
   }
-  return {migrate,prompts,composer,commit,click,remove};
+  function autosave(kind){
+    const d=draft(kind),text=d.messageDraft||'',index=Number.isInteger(d.messageEditIndex)?d.messageEditIndex:(d.projectMessages||[]).length;
+    if(!text.trim())return;
+    saveFree(kind,text);d.messageEditIndex=index;d.messageDraft=text;saveDraft(kind);
+    const status=document?.querySelector('#note-autosave-status');if(status)status.textContent='已自动保存';
+  }
+  return {migrate,prompts,composer,commit,click,remove,autosave};
 }

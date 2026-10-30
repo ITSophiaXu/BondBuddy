@@ -5,6 +5,7 @@ import { DATA_POLICY_VERSION, DELETION_PURGED_CONTENT, DELETION_RETAINED_METADAT
 import { azureBlobs, transaction, uid, type PrivateBlobs } from './data.js';
 import { purgeLogContent, retentionPolicyFromEnv } from './log-ops.js';
 import { runStorageLifecycle, storageLifecyclePolicyFromEnv, type StorageLifecyclePolicy } from './storage-lifecycle.js';
+import { parseInventoryKey } from './storage-inventory.js';
 
 const MAX_BATCH_SIZE = 50;
 
@@ -134,6 +135,8 @@ async function purgeDeletedProjects(pool: Pool, blobs: PrivateBlobs, policy: Del
   const due = await pool.query(`SELECT p.owner_user_id,p.id FROM bb_projects p
      WHERE p.deleted_at IS NOT NULL AND p.deleted_at + ($1::integer * interval '1 day') <= $2::timestamptz
        AND ($3::text IS NULL OR p.owner_user_id=$3)
+       AND NOT EXISTS (SELECT 1 FROM bb_runs r WHERE r.owner_user_id=p.owner_user_id AND r.project_id=p.id
+         AND r.state NOT IN ('succeeded','test_completed','failed','cancelled','rejected'))
        AND NOT EXISTS (SELECT 1 FROM bb_deleted_content_purges r WHERE r.subject_kind='project' AND r.owner_user_id=p.owner_user_id AND r.project_id=p.id)
      ORDER BY p.deleted_at,p.id LIMIT $4`, [policy.deletedContentPurgeDays, now, policy.ownerScope ?? null, batchSize]);
   let purged = 0, objects = 0, failed = 0;
@@ -142,18 +145,50 @@ async function purgeDeletedProjects(pool: Pool, blobs: PrivateBlobs, policy: Del
       const artifacts = await pool.query(`SELECT a.object_key FROM bb_artifact_versions a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
         WHERE r.owner_user_id=$1 AND r.project_id=$2`, [p.owner_user_id, p.id]);
       for (const a of artifacts.rows) await blobs.delete(a.object_key);
+      const authoringObjects = await purgeAuthoringObjects(pool, blobs, p.owner_user_id, p.id);
+            const templates=await pool.query(`SELECT DISTINCT r->>'object_key' AS object_key FROM bb_file_template_sets s,
+        LATERAL jsonb_array_elements(s.records) r WHERE s.owner_user_id=$1 AND s.project_id=$2`,[p.owner_user_id,p.id]);
+      for(const t of templates.rows)await blobs.delete(t.object_key);
+      const artifactObjects = (artifacts.rowCount ?? 0) + authoringObjects + (templates.rowCount ?? 0);
       await policy.afterBlobDeletes?.(p.id);
       await transaction(pool, async client => {
         const receipt = await client.query(`INSERT INTO bb_deleted_content_purges(id,owner_user_id,project_id,subject_kind,artifact_objects,policy_version)
           VALUES($1,$2,$3,'project',$4,$5) ON CONFLICT (owner_user_id,project_id) WHERE subject_kind='project' DO NOTHING RETURNING id`,
-          [uid(), p.owner_user_id, p.id, artifacts.rowCount ?? 0, DATA_POLICY_VERSION]);
+          [uid(), p.owner_user_id, p.id, artifactObjects, DATA_POLICY_VERSION]);
         if (receipt.rowCount) await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
-          VALUES($1,$2,'project',$3,'project.content_purged',$4)`, [uid(), p.owner_user_id, p.id, { receipt_id: receipt.rows[0].id, artifact_objects: artifacts.rowCount ?? 0 }]);
+          VALUES($1,$2,'project',$3,'project.content_purged',$4)`, [uid(), p.owner_user_id, p.id, { receipt_id: receipt.rows[0].id, artifact_objects: artifactObjects, authoring_objects: authoringObjects }]);
       });
-      purged++; objects += artifacts.rowCount ?? 0;
+      purged++; objects += artifactObjects;
     } catch { failed++; }
   }
   return { purged, objects, failed };
+}
+
+async function purgeAuthoringObjects(pool: Pool, blobs: PrivateBlobs, owner: string, project: string) {
+  const runs = await pool.query('SELECT id FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2', [owner, project]);
+  if (!runs.rowCount) return 0;
+  if (!blobs.listPage) throw Error('Authoring content purge requires private Blob listing');
+  let deleted = 0;
+  for (const run of runs.rows) {
+    for (const directory of ['file-authoring', 'format-diagnostics']) {
+      const prefix = `owners/${owner}/projects/${project}/runs/${run.id}/${directory}/`;
+      let continuation: string | undefined;
+      // Each retry deletes another bounded batch before attempting its receipt.
+      for (let pageNo = 0; pageNo < 20; pageNo++) {
+        const page = await blobs.listPage(prefix, continuation, 100);
+        if (page.items.length > 100) throw Error('Authoring content listing exceeded page bound');
+        for (const item of page.items) {
+          if (!item.key.startsWith(prefix)) throw Error('Authoring content listing escaped owned run');
+          if (!['file_authoring', 'format_report'].includes(parseInventoryKey(item.key))) continue;
+          await blobs.delete(item.key); deleted++;
+        }
+        continuation = page.continuation;
+        if (!continuation) break;
+      }
+      if (continuation) throw Error('Authoring content purge batch incomplete');
+    }
+  }
+  return deleted;
 }
 
 /**

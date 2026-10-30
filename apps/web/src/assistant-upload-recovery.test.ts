@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHash } from 'node:crypto';
-import { M1_UPLOAD_MIME_TYPES, type M4MaterialPin, type M4Workspace } from '@bondbuddy/contracts';
+import { M1_UPLOAD_MIME_TYPES, type M4MaterialPin, type M4Workspace } from './billing-types.js';
 import { ApiError, type Dto } from './api.js';
 import { AssistantUploadRecovery } from './assistant-upload-recovery.js';
 import { UploadRecoveryConflictError, UploadRecoveryStorageError, type UploadRecoveryStorage } from './upload-recovery.js';

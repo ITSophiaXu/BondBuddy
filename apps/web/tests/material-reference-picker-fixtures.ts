@@ -1,6 +1,7 @@
+import {fixtureBody} from './billing-fixture-wire';
 import { expect, type Page } from '@playwright/test';
 import { schemas, type M4DocumentType, type M4DraftInput, type M4MaterialPin } from '@bondbuddy/contracts';
-import type { Dto } from '../src/api';
+import type { Dto } from './billing-fixture-wire';
 import {
   fixture as baseFixture, install as installBase, mount as mountBase, addMaterial, materialOf, check,
   ids, now, mime, hash, inputOf, pinKey, draftWrites, libraryWrites, writes, noBusiness, choose,
@@ -46,31 +47,31 @@ export async function install(page: Page, state = fixture()) {
     if (path === '/projects') {
       state.calls.push({ method: 'GET', path, search: url.search });
       if (state.projectGate) await state.projectGate();
-      if (state.failProjectList) return route.fulfill({ status: 503, json: { code: 'DATA_UNAVAILABLE', message: 'Synthetic project list failure', retryable: true, correlation_id: 'picker-project-read', field_errors: [] } });
+      if (state.failProjectList) return route.fulfill({ status: 503, json: fixtureBody(route,{ code: 'DATA_UNAVAILABLE', message: 'Synthetic project list failure', retryable: true, correlation_id: 'picker-project-read', field_errors: [] }) });
       check(schemas.ProjectListQuery, Object.fromEntries(url.searchParams));
       const q = url.searchParams.get('q') ?? '', selected = state.projects.filter(project => project.name.includes(q));
       const cursor = url.searchParams.get('cursor'), offset = cursor ? Number(cursor.replace('picker-offset-', '')) : 0;
       expect(Number.isSafeInteger(offset) && offset >= 0).toBe(true);
       const limit = Number(url.searchParams.get('limit') ?? 50), items = selected.slice(offset, offset + limit), hasMore = offset + items.length < selected.length;
       const response: Dto<'ProjectListResponse'> = { items, page: { next_cursor: hasMore ? `picker-offset-${offset + items.length}` : null, has_more: hasMore } };
-      check(schemas.ProjectListResponse, response); return route.fulfill({ json: response });
+      check(schemas.ProjectListResponse, response); return route.fulfill({ json: fixtureBody(route,response) });
     }
     const events = path.match(/^\/projects\/([^/]+)\/events$/);
     if (events) {
       state.calls.push({ method: 'GET', path, search: url.search });
       if (state.eventsGate) await state.eventsGate(events[1]);
-      if (state.failEventsFor === events[1]) return route.fulfill({ status: 503, json: { code: 'DATA_UNAVAILABLE', message: 'Synthetic material event failure', retryable: true, correlation_id: 'picker-material-read', field_errors: [] } });
+      if (state.failEventsFor === events[1]) return route.fulfill({ status: 503, json: fixtureBody(route,{ code: 'DATA_UNAVAILABLE', message: 'Synthetic material event failure', retryable: true, correlation_id: 'picker-material-read', field_errors: [] }) });
       const after = Number(url.searchParams.get('after') ?? 0), all = state.projectMaterials.get(events[1]) ?? [], page = all.slice(after, after + 2);
       const response: Dto<'ProjectEventsResponse'> = { items: page.map((selected, index) => ({ event_id: `picker-event-${events[1]}-${after + index + 1}`, schema_version: 1,
         trace_id: 'picker-synthetic-trace', project_id: events[1], seq: after + index + 1, occurred_at: now, type: 'material.upload_progress', payload: { material_id: selected.material_id } })),
         next_cursor: after + page.length < all.length ? after + page.length : null };
-      check(schemas.ProjectEventsResponse, response); return route.fulfill({ json: response });
+      check(schemas.ProjectEventsResponse, response); return route.fulfill({ json: fixtureBody(route,response) });
     }
     const project = path.match(/^\/projects\/([^/]+)$/), selected = project && state.projects.find(item => item.project_id === project[1]);
     if (selected && project![1] !== ids.sourceProject && project![1] !== ids.project) {
       state.calls.push({ method: 'GET', path, search: url.search });
       const response: Dto<'ProjectResponse'> = { ...state.workspace.project, project_id: selected.project_id, name: selected.name, kind: 'update' };
-      check(schemas.ProjectResponse, response); return route.fulfill({ json: response });
+      check(schemas.ProjectResponse, response); return route.fulfill({ json: fixtureBody(route,response) });
     }
     return route.fallback();
   });

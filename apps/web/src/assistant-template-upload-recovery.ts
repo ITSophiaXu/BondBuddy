@@ -1,5 +1,5 @@
 import { M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, M4MaterialPinSchema, M4RequirementSchema, M4TemplateCreateRequestSchema, M4ViewRequestSchema, M4ViewStateSchema, schemas,
-  type M4MaterialPin, type M4Template, type M4TemplateCreateRequest, type M4ViewRequest, type M4ViewState, type M4Workspace } from '@bondbuddy/contracts';
+  type M4MaterialPin, type M4Template, type M4TemplateCreateRequest, type M4ViewRequest, type M4ViewState, type M4Workspace } from './billing-types.js';
 import { Value } from '@sinclair/typebox/value';
 import { ApiError, type Dto } from './api.js';
 import { AssistantUploadRecovery } from './assistant-upload-recovery.js';

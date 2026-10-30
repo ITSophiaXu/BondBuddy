@@ -30,6 +30,23 @@ input.json 的 target 是本次目标发行人、市场品种、报告期和项�
 
 ## 修订和清洁版
 
+当 input.json.format_tools.version 为 `controlled-docx-v1` 时，本节采用受控原稿编辑流程：先阅读 fixed-edit.md 的接口说明和 template-manifest.json 的结构摘要，并通过下列工具按章节查看原文和格式。所有实质 Word 修改通过固定工具登记，正式修订版与清洁版由 worker 在本次 CLI 结束后从锁定原稿和已持久化的操作日志生成。完整更新、事实依据、缺项标注和本轮范围要求继续适用。
+
+```
+/opt/venv/bin/python -B -m bondbuddy_file_authoring.fixed_edit inspect --input input.json --operations output/operations.json --offset 0 --limit 40
+/opt/venv/bin/python -B -m bondbuddy_file_authoring.fixed_edit apply --input input.json --operations output/operations.json --operation-file scratch/operation.json
+```
+
+先使用 `inspect` 获得稳定 node_id、预期原文和能力信息。将同章、同表的相关修改写成 operation 数组，一次调用 `apply` 校验并追加到 output/operations.json；整批通过才保存。跨章继续分批处理，无需一次返回整份修改 JSON。每次 inspect/apply 都会重新读取原稿并重放累计日志，长文优先按相关修改合批，避免为每个字段重复启动和重放；分批方式不缩减全文更新范围。使用 replace_text / replace_cell_text 修改原位置的文字；使用 insert_paragraph / insert_row，显式指定同级段落或原表行作为样式来源。新内容继承原稿格式。复杂合并、增列、域或旧修订重叠等若工具返回不支持，保留具体未完成事项及位置，不能换用空白 Document 重建，也不能宣称完成该项。实际没有必要修改时保留明确无修改理由。
+
+格式模板提供样式、适用章序、表头/单位/期间组织及披露句式；本项目材料提供事实；目标品种知识提供必要披露要求。专家模板确实要求的章序、表结构迁移应记录对应依据并继承原稿可用样式。局部续改遵守用户范围，不因读取新知识模板扩展本轮修改。
+
+需要挂接缺项或问题说明时使用 add_comment，指定原段落 node_id、before 和批注 text，遵守本任务关于批注文案和正文占位的规定。多段落单元格用字符串数组逐段更新并保留样式。确实没有必要修改时使用 `no_changes --input input.json --operations output/operations.json --reason "具体理由"`；不得用无变化理由跳过应完成的更新。
+
+受控流程中的正式交付依据为 output/operations.json 和锁定底稿；模型自行写出的 Word 工作文件不作为正式成果。仍写 output/delivery.md，准确说明实际更新、未支持改动和未执行的视觉检查。worker 的格式诊断在交付后独立运行，不代表已完成内容或专业审核。下文直接生成双 Word 的要求适用于没有 format_tools 的旧任务、PDF 重建和无原稿首稿。
+
+### 仅无 format_tools 时适用的直接交付流程
+
 baseline_path 指定实际编辑基线：有 DOCX 时保留原包的样式、字体、表格、图片、页眉页脚、关系、分节和编号，不重排到空白 Document。将原始 DOCX 原样复制为 output/baseline.docx。原有修订保留，本轮新增修订作者使用 input.json.revision_author（Patcher 的 author 参数传同一个值）；新增为 w:ins，删除为 w:del/w:delText，替换包含删除和插入。不能只启用 trackRevisions 却直接改文字。word_patch.Patcher 是可选的低层修订工具；复杂表格和结构可以自行用 lxml 编辑，但所有实质变更都须有真实修订。新增段落需标记段落标记的插入，新增表格行需标记行插入。
 
 非 DOCX 原稿要如实重建基线为 output/baseline.docx，保留原文与表结构并在交付说明写清重建限制。没有任何原稿时，直接编制完整可编辑首稿；output/tracked.docx、output/clean.docx、output/baseline.docx 为同一首稿的副本，不伪造旧文或删除记录。

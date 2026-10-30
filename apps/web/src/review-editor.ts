@@ -1,4 +1,4 @@
-import {ReviewEditorResponseSchema,schemas,type ReviewEditorResponse,type ReviewEditorIssue,type ReviewArtifact,type ReviewHistoryEntry,type ReviewExportRequest,type Run} from '@bondbuddy/contracts';
+import {ReviewEditorResponseSchema,schemas,type ReviewEditorResponse,type ReviewEditorIssue,type ReviewArtifact,type ReviewHistoryEntry,type ReviewExportRequest,type Run} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
 import { ApiClient,friendlyError } from './api';
 import { UserFacingError } from './user-facing-error';

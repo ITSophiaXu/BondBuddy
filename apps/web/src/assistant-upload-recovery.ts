@@ -1,4 +1,4 @@
-import { M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, M4MaterialPinSchema, type M4MaterialPin, type M4Workspace } from '@bondbuddy/contracts';
+import { M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, M4MaterialPinSchema, type M4MaterialPin, type M4Workspace } from './billing-types.js';
 import { UserFacingError } from './user-facing-error.js';
 import { Value } from '@sinclair/typebox/value';
 import type { Dto } from './api.js';

@@ -64,11 +64,11 @@ export async function renderAccount(ctx: AccountContext) {
   }
   if (!live()) return;
   const username = account.username;
-  ctx.shell(`<div class="account-page"><header class="account-page-heading"><div><h1>我的账号</h1><p>账户信息与积分管理</p></div><button class="account-settings-trigger" id="open-account-settings" type="button" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z M9 3h6l1 4 4 1v8l-4 1-1 4H9l-1-4-4-1V8l4-1 1-4Z"/></svg>账号设置</button></header>
+  ctx.shell(`<div class="account-page"><header class="account-page-heading"><div><h1>我的账号</h1><p>账户信息与任务计费</p></div><button class="account-settings-trigger" id="open-account-settings" type="button" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z M9 3h6l1 4 4 1v8l-4 1-1 4H9l-1-4-4-1V8l4-1 1-4Z"/></svg>账号设置</button></header>
     <div class="account-layout">
     <section class="account-profile" aria-labelledby="account-info-title"><div class="account-profile-heading"><h2 id="account-info-title">基本信息</h2><span class="account-avatar" aria-hidden="true">${esc((username ?? '我').slice(0, 1).toUpperCase())}</span></div><dl class="settings-list" id="account-info"></dl></section>
-    <div id="account-credits" class="account-credits" aria-label="积分与充值"></div>
-    </div></div>
+    <div id="account-credits" class="account-credits" aria-label="账户与计费"></div>
+    </div><nav id="account-billing-management" aria-label="计费管理" hidden></nav></div>
     <dialog id="account-settings" class="account-settings-dialog" aria-labelledby="account-settings-title">
     <div class="account-settings-heading"><h2 id="account-settings-title">账号设置</h2><button class="text-button" id="close-account-settings" type="button" autofocus>关闭</button></div>
     <div class="settings-stack">
@@ -82,6 +82,14 @@ export async function renderAccount(ctx: AccountContext) {
   const settings = document.querySelector<HTMLDialogElement>('#account-settings')!;
   document.querySelector('#open-account-settings')!.addEventListener('click', () => settings.showModal());
   document.querySelector('#close-account-settings')!.addEventListener('click', () => settings.close());
+  void ctx.api.request<{permissions:string[]}>('GET','/billing/permissions').then(({permissions})=>{
+    if(!live()||!Array.isArray(permissions))return;
+    const host=document.querySelector<HTMLElement>('#account-billing-management');if(!host)return;
+    const links=[];
+    if(permissions.includes('price_draft')||permissions.includes('price_publish'))links.push('<a href="#/billing/prices">价格管理</a>');
+    if(permissions.includes('task_refund_approve'))links.push('<a href="#/billing/task-refunds">任务售后审批</a>');
+    host.innerHTML=links.join(' · ');host.hidden=!links.length;
+  }).catch(()=>{/* Permission lookup failure never exposes management actions. */});
   void ctx.api.dataPolicy().then(policy => {
     if(!live())return;
     const copy=dataPolicyCopy(policy),target=document.querySelector('#account-data-copy');

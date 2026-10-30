@@ -156,7 +156,7 @@ test('upload saves a new version without adopting it or rebuilding its parent',a
   expect(f.counts().puts).toBe(1);expect(f.counts().reads).toBeGreaterThan(1);
   await openContainingDetails(page,`[data-use-version="${newVersion.version_id}"]`);
   await expect(page.locator(`[data-use-version="${newVersion.version_id}"]`)).toHaveText('用于本次更新');
-  await expect(page.locator('.prospectus-panel header')).toContainText(oldVersion.filename);
+  await expect(page.locator('.reference-file.is-selected')).toContainText(oldVersion.filename);
 });
 
 test('the first saved upload also remains unadopted until an explicit decision',async({page})=>{
@@ -226,7 +226,7 @@ test('a selection conflict refreshes the actual current version while keeping th
   const f=await fixture(page,{candidate:true,conflictSelectionOnce:true});
   await chooseNew(page);await page.locator('#confirm-prospectus-selection').click();
   await expect(page.locator('#prospectus-status')).toContainText(/保留/);
-  await expect(page.locator('.prospectus-panel header')).toContainText('另一页面采用的合成募集书.docx');
+  await expect(page.locator('.reference-file.is-selected')).toContainText('另一页面采用的合成募集书.docx');
   expect(f.state.current_version_id).toBe('version-external');expect(f.selections).toHaveLength(1);
   expect(f.state.versions.some(v=>v.version_id===newVersion.version_id)).toBe(true);
   expect(await f.changes()).toBe('0');expect(f.counts().reads).toBeGreaterThan(1);
@@ -248,7 +248,7 @@ test('an acknowledged adoption remains adopted when its following parent refresh
   const f=await fixture(page,{candidate:true,failChanged:true});
   await chooseNew(page);await page.locator('#confirm-prospectus-selection').click();
   await expect(page.locator('#prospectus-status')).toContainText(/已采用.*下一步暂未打开/);
-  await expect(page.locator('.prospectus-panel header')).toContainText(filename);
+  await expect(page.locator('.reference-file.is-selected')).toContainText(filename);
   await expect(page.locator('dialog[open], #retry-prospectus-selection')).toHaveCount(0);
   expect(f.selections).toHaveLength(1);expect(f.state.selection_revision).toBe(8);expect(await f.changes()).toBe('1');
 });

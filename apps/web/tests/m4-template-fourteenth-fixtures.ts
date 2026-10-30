@@ -1,7 +1,10 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import { expect, type Page, type Route } from '@playwright/test';
 import { isDeepStrictEqual } from 'node:util';
 import { M4TemplateCreateRequestSchema, type M4DraftRequest, type M4Template, type M4TemplateCreateRequest } from '@bondbuddy/contracts';
-import type { Dto } from '../src/api';
+import type { Dto } from './billing-fixture-wire';
 import { fixture as sourceFixture, install as installSourceFixture, mount as mountSourceComponent, materialOf, addMaterial, check, ids, now, mime, hash, pin, pinKey, inputOf } from './m4-upload-thirteenth-fixtures';
 
 // Reuse the frozen public transport/M4 CAS fixture without changing its source. These tests add only the new template contract.
@@ -22,14 +25,15 @@ export function fixture() {
     afterTemplate: undefined as ((request: M4TemplateCreateRequest, template: M4Template) => void) | undefined, templateResponse: undefined as ((template: M4Template) => unknown) | undefined };
 }
 export type State = ReturnType<typeof fixture>;
-const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, json: body });
+const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, json: fixtureBody(route,body) });
 function problem(route: Route, status: number, code: Dto<'Error'>['code']) { return json(route, { code, message: `Synthetic ${code}`, retryable: status >= 500, correlation_id: 'm4-fourteenth-trace', field_errors: [] } satisfies Dto<'Error'>, status); }
 export async function install(page: Page, state = fixture()) {
   await installSourceFixture(page, state);
   await page.route('**/api/v1/**', async route => {
+    if(await serveDisabledBillingCatalog(route))return;
     const request = route.request(), url = new URL(request.url()), path = url.pathname.slice('/api/v1'.length), method = request.method();
     if (path === '/m4/templates') {
-      const body = request.postData() ? request.postDataJSON() : undefined; state.calls.push({ method, path, search: url.search, ...(body === undefined ? {} : { body }) });
+      const body = request.postData() ? fixtureRequest(request) : undefined; state.calls.push({ method, path, search: url.search, ...(body === undefined ? {} : { body }) });
       if (state.owner !== ids.owner) return problem(route, 404, 'NOT_FOUND');
       if (method === 'GET') { expect(url.search).toBe(''); const templates = new Map([...state.workspace.templates, ...[...state.templateKeys.values()].map(value => value.template)].map(value => [`${value.template_id}:${value.template_version}`, value])); return json(route, { templates: [...templates.values()] }); }
       if (method !== 'POST') { state.unexpected.push(`${method} ${path}`); return problem(route, 500, 'DATA_UNAVAILABLE'); }
@@ -46,7 +50,7 @@ export async function install(page: Page, state = fixture()) {
       if (drop === 'after') return route.abort('connectionreset'); return json(route, { template: state.templateResponse?.(structuredClone(template)) ?? template }, 201);
     }
     if (method === 'PUT' && path === `/m4/topics/${ids.topic}/drafts/init`) {
-      const sent = request.postDataJSON() as M4DraftRequest, ref = sent.input.template;
+      const sent = fixtureRequest(request) as M4DraftRequest, ref = sent.input.template;
       if (ref) { const template = state.workspace.templates.find(value => value.template_id === ref.template_id && value.template_version === ref.template_version && value.sha256 === ref.sha256 && value.document_type === 'init' && value.status === 'active'); if (!template || !state.materials.has(pinKey(template.material))) { state.calls.push({ method, path, search: url.search, body: sent }); return problem(route, 422, 'VALIDATION_FAILED'); } }
     }
     return route.fallback();

@@ -1,3 +1,5 @@
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {test,expect,type Page} from '@playwright/test';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
@@ -19,8 +21,8 @@ export async function sourceFixture(page:Page,current:boolean){
       version_id:'new-source',sequence:4,origin:'upload',filename:material.filename,sha256:material.sha256,created_at:now,material_id:material.material_id,material_version:material.material_version,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null,
     });
     if(route.request().method()==='POST'){
-      const body=route.request().postDataJSON();selections.push(body);
-      if(control.conflict){control.conflict=false;return route.fulfill({status:409,json:{code:'INPUT_REVISION_CONFLICT'}});}
+      const body=fixtureRequest(route.request());selections.push(body);
+      if(control.conflict){control.conflict=false;return route.fulfill({status:409,json:fixtureBody(route,{code:'INPUT_REVISION_CONFLICT'})});}
       if(!receipts.has(body.request_id)){
         expect(body.expected_selection_revision).toBe(versions.selection_revision);versions.current_version_id=body.version_id;versions.selection_revision++;
         const v=versions.versions.find(v=>v.version_id===body.version_id)!;
@@ -29,17 +31,17 @@ export async function sourceFixture(page:Page,current:boolean){
         receipts.set(body.request_id,structuredClone(versions));
       }
       if(control.dropSelection){control.dropSelection=false;return route.abort('connectionreset');}
-      return route.fulfill({json:receipts.get(body.request_id)});
+      return route.fulfill({json:fixtureBody(route,receipts.get(body.request_id))});
     }
-    return route.fulfill({json:versions});
+    return route.fulfill({json:fixtureBody(route,versions)});
   });
   await page.route('**/project-files/source',async route=>{
-    const body=route.request().postDataJSON(),source=workspace.source!;
+    const body=fixtureRequest(route.request()),source=workspace.source!;
     expect(body).toEqual({source_version_id:source.version_id,expected_selection_revision:source.selection_revision});
     for(const draft of Object.values(workspace.workspace.drafts))draft.project_file={project_id:ids.api,source_version_id:source.version_id,source_selection_revision:source.selection_revision};
     state.calls.push({method:'POST',path:`/projects/${ids.api}/project-files/source`,body});
-    return route.fulfill({json:workspace});
+    return route.fulfill({json:fixtureBody(route,workspace)});
   });
-  await page.route('**/workpapers',route=>route.fulfill({json:{catalogues:[],batches:[],assessments:[]}}));
+  await page.route('**/workpapers',route=>route.fulfill({json:fixtureBody(route,{catalogues:[],batches:[],assessments:[]})}));
   return {state,versions,selections,control};
 }

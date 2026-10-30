@@ -1,0 +1,11 @@
+✔ full review locks 27195 points, settles once on report delivery, and releases a failed retry (2900.4352ms)
+✔ paid API: insufficient funds, recharge, concurrent execution, settlement, failed/cancelled release and price changes (7899.3798ms)
+✔ history whitelist, ledger totals, microsecond pagination and owner-scoped cursors (1502.4042ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17465.8456

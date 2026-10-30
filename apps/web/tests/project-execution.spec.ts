@@ -1,9 +1,11 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import { taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas } from '@bondbuddy/contracts';
+import { commerceMetadata, AUTOMATIC_PRICE_VERSION, OUTCOME_PRICE_VERSION, emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
-import type { Dto } from '../src/api';
+import type { Dto } from './billing-fixture-wire';
 import { join, resolve } from 'node:path';
 import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -14,7 +16,7 @@ const id = 'synthetic-execution-project';
 const priorArtifact = { artifact_id: 'synthetic-old-artifact', run_id: 'synthetic-old-run', version: 1, created_at: now };
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 const emptyMessages = { version: 1, content_sha256: hash('bondbuddy:empty-project-messages'), message_ids: [] };
-const json = (route: Route, status: number, body: unknown) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+const json = (route: Route, status: number, body: unknown) => route.fulfill({ status, contentType: 'application/json', body: fixtureJson(route,body) });
 const periods: NonNullable<Dto<'InputRevisionCreateRequest'>['target_confirmation']>['target_reporting_periods'] = [{ start: '2025-01-01', end: '2025-12-31', period_kind: 'annual', scope: 'consolidated', status: 'user_asserted', evidence_refs: [] }];
 function fixture() {
   const project: Dto<'ProjectResponse'> = { project_id: id, name: '合成任务项目', issuer_name: '合成发行人', kind: 'update',
@@ -80,6 +82,7 @@ function registerGeneratedPair(state: ReturnType<typeof fixture>, run: Dto<'RunR
 }
 async function setup(page: Page, state = fixture(), canStart = true) {
   await page.context().route('**/api/v1/**', async route => {
+    if(await serveDisabledBillingCatalog(route))return;
     const request = route.request(), url = new URL(request.url()), path = url.pathname.replace('/api/v1', '');
     const method = request.method();
     if (path === '/auth/logout') { state.loggedOut = true; return route.fulfill({ status: 204 }); }
@@ -90,7 +93,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     if (path === '/m4/topics') return json(route,200,{topics:[]});
     if (path === '/me') return json(route, 200, { user_id: 'synthetic-owner', session_status: 'active' });
     if (path === `/projects/${id}`) {
-      if (method === 'PATCH') { state.patchRequests++; Object.assign(state.project, request.postDataJSON(), { draft_revision: state.project.draft_revision + 1 }); }
+      if (method === 'PATCH') { state.patchRequests++; Object.assign(state.project, fixtureRequest(request), { draft_revision: state.project.draft_revision + 1 }); }
       if (method === 'GET' && state.holdProjectRead) {
         state.holdProjectRead=false;
         await new Promise<void>(resolve=>{state.releaseProjectRead=resolve;});
@@ -136,7 +139,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     const material = state.materials.find(m => path === `/projects/${id}/materials/${m.material_id}`);
     if (material) return json(route, 200, material);
     if (path === `/projects/${id}/input-revisions` && method === 'POST') {
-      const body = request.postDataJSON();
+      const body = fixtureRequest(request);
       expect(Value.Check(schemas.InputRevisionCreateRequest, body)).toBe(true);
       state.inputs.push(body);
       if (state.conflictSave) return json(route, 409, { code: 'INPUT_REVISION_CONFLICT' });
@@ -151,7 +154,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     const rev = path.match(/\/input-revisions\/(\d+)$/);
     if (rev) return json(route, 200, state.snapshots.get(Number(rev[1])));
     if (path === `/projects/${id}/preflight`) {
-      const body = request.postDataJSON();
+      const body = fixtureRequest(request);
       state.preflights.push(body);
       if (state.preflightError) return json(route, state.preflightError.status, state.preflightError);
       if (state.holdCheck) await new Promise<void>(resolve => { state.releaseCheck = resolve; });
@@ -159,7 +162,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
       return json(route, 200, { project_id: id, ...body, status: state.checkStatus, missing_inputs: blocking,
         blocking_inputs: blocking, advisory_inputs: [], uncertainty: ['material_needs_confirmation:synthetic-audit:1'], billing_mode: state.paid?'fixed_credits':'platform_trial' });
     }
-    if(path.endsWith('/credit-quote'))return json(route,200,{enabled:true,quote:state.freeClassification?null:{quote_id:`quote-${state.priceVersion}`,project_id:id,...request.postDataJSON(),task_type:'interim',points:state.points,price_version:state.priceVersion,reason:'合成一期更新',created_at:now},balance:{available:state.available,frozen:0},shortage:state.freeClassification?0:Math.max(0,state.points-state.available),reason:state.freeClassification?'原稿信息不足，本次保留 M1 免费编制，不补扣。':null});
+    if(path.endsWith('/credit-quote'))return json(route,200,{enabled:true,quote:state.freeClassification?null:{quote_id:`quote-${state.priceVersion}`,project_id:id,...fixtureRequest(request),task_type:'interim',points:state.points,price_version:state.priceVersion,reason:'合成一期更新',created_at:now},balance:{available:state.available,frozen:0},shortage:state.freeClassification?0:Math.max(0,state.points-state.available),reason:state.freeClassification?'原稿信息不足，本次保留 M1 免费编制，不补扣。':null});
     if(path==='/credits/balance')return json(route,200,{enabled:state.paid,available:state.available,frozen:state.frozen});
     if(path==='/credits/recharge-config')return json(route,200,{enabled:true,providers:['alipay'],packs:RECHARGE_PACKS,pack_version:'synthetic-v1'});
     if(path==='/credits/recharge-orders'){
@@ -168,7 +171,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     }
     if(path.startsWith('/credits/recharge-orders/'))return json(route,200,state.order);
     if (path === '/runs/execute') {
-      const body = request.postDataJSON();
+      const body = fixtureRequest(request);
       expect(Value.Check(schemas.ExecuteRequest, body)).toBe(true);
       state.executes.push(body);
       if (state.executeError) return json(route, state.executeError.status, state.executeError);
@@ -251,7 +254,7 @@ test('all selected uploads must finish and be saved before starting an update', 
   });
   await setup(page,state);
   await page.route('**/materials/uploads**',async route=>{
-    const declaration=route.request().postDataJSON() as Dto<'UploadCreateRequest'>;
+    const declaration=fixtureRequest(route.request()) as Dto<'UploadCreateRequest'>;
     const uploadId=`upload-${declarations.size}`;declarations.set(uploadId,declaration);
     return json(route,201,{upload_id:uploadId,state:'uploading',upload_url:`/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`,expires_at:'2099-01-01T00:00:00Z',max_bytes:100_000_000});
   });
@@ -359,7 +362,7 @@ test('M2 a changed price is checked again without revealing or confirming the am
   await setup(page,state);let reject=true;
   await page.route('**/api/v1/runs/execute',async route=>{
     if(route.request().method()!=='POST'||!reject)return route.fallback();
-    reject=false;state.executes.push(route.request().postDataJSON());state.points=20000;state.priceVersion='test-v2';
+    reject=false;state.executes.push(fixtureRequest(route.request()));state.points=20000;state.priceVersion='test-v2';
     return json(route,409,{code:'QUOTE_CHANGED'});
   });
   await page.locator('#execute-input').click();await expect(page.locator('#execution-message')).toContainText('计费条件已更新');
@@ -1182,7 +1185,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       if (path.endsWith('/bytes')) { puts.push(path); return route.fulfill({status:204}); }
       if (path.endsWith('/complete')) {
         completes++;
-        const body = request.postDataJSON();
+        const body = fixtureRequest(request);
         state.materials.push({material_id:'lost-material', material_version:1, upload_id:'lost-upload', role:'audit', filename:'lost.pdf', media_type:'application/pdf', byte_size:body.byte_size, sha256:body.sha256, state:'persisted', persisted_at:now, error:null});
         return route.abort('connectionreset');
       }
@@ -1216,7 +1219,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       if (path.endsWith('/source-profile') || path.endsWith('/ocr')) { unexpected.push(path); return json(route, 500, { code: 'UNEXPECTED_REVIEW_REQUEST' }); }
       if (path.endsWith('/materials/uploads')) {
         const uploadId = `synthetic-upload-${uploads.size + 1}`;
-        uploads.set(uploadId, request.postDataJSON());
+        uploads.set(uploadId, fixtureRequest(request));
         return json(route, 201, { upload_id: uploadId, state: 'uploading', upload_url: `/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`, expires_at: '2099-01-01T00:00:00Z', max_bytes: 100_000_000 });
       }
       if (path.endsWith('/bytes')) return route.fulfill({ status: 204 });
@@ -1224,7 +1227,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
         const uploadId = path.split('/').at(-2)!, upload = uploads.get(uploadId)!;
         if (upload.role === 'audit' && failAudit) { failAudit = false; return json(route, 422, { code: 'MATERIAL_CONTENT_MISMATCH' }); }
         if (upload.role === 'historical' && !releaseSave) await new Promise<void>(resolve => { releaseSave = resolve; });
-        const body = request.postDataJSON();
+        const body = fixtureRequest(request);
         const material: Dto<'MaterialResponse'> = { material_id: `material-${uploadId}`, material_version: 1, upload_id: uploadId,
           role: upload.role as Dto<'MaterialResponse'>['role'], filename: upload.filename, media_type: upload.media_type,
           byte_size: body.byte_size, sha256: body.sha256, state: 'persisted', persisted_at: now, error: null };
@@ -1296,10 +1299,10 @@ test('all-projects update keeps its list context through progress, edit and refr
  const state=fixture();state.checkStatus='ready';state.runState='running';state.runStage='file_authoring';state.runReason='';
  await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#execution-progress .task-progress')).toContainText('编制募集书');
  await openListedRun(page,[...state.runs.values()][0]);
- await expect(page.locator('.sidebar a.active')).toContainText('全部项目');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
- await page.getByRole('button',{name:'编辑项目信息',exact:true}).click();await expect(page).toHaveURL(/from=projects/);await expect(page.locator('.sidebar a.active')).toContainText('全部项目');
+ await expect(page.locator('.sidebar a.active')).toContainText('任务进度与结果');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
+ await page.getByRole('button',{name:'编辑项目信息',exact:true}).click();await expect(page).toHaveURL(/from=projects/);await expect(page.locator('.sidebar a.active')).toContainText('任务进度与结果');
  await page.getByRole('button',{name:/保存并继续/}).click();await page.reload();
- await expect(page.locator('.sidebar a.active')).toContainText('全部项目');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
+ await expect(page.locator('.sidebar a.active')).toContainText('任务进度与结果');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
  expect(state.executes).toHaveLength(1);
 });
 
@@ -1338,7 +1341,7 @@ for (const scenario of [
     if (path.endsWith('/bytes')) { byteUploads++; return route.fulfill({ status: 204 }); }
     if (path.endsWith('/complete')) {
       const receipt: Dto<'MaterialResponse'> = { material_id: 'synthetic-supplement', material_version: 1, upload_id: 'synthetic-supplement-upload',
-        role: 'audit', filename: 'supplement.txt', media_type: 'text/plain', ...route.request().postDataJSON(), state: 'persisted', persisted_at: now, error: null };
+        role: 'audit', filename: 'supplement.txt', media_type: 'text/plain', ...fixtureRequest(route.request()), state: 'persisted', persisted_at: now, error: null };
       state.materials.push(receipt); return json(route, 200, receipt);
     }
     return json(route, 201, { upload_id: 'synthetic-supplement-upload', state: 'uploading',
@@ -1423,10 +1426,10 @@ test('dashboard update preserves filtered workbench context through execution, e
  const state=fixture();state.checkStatus='ready';state.runState='running';state.runStage='file_authoring';state.runReason='';
  await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#execution-progress .task-progress')).toContainText('编制募集书');
  await page.goto('/#dashboard');await page.locator('[data-tasks]').click();await page.locator('.collection-task a').click();
- await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
+ await expect(page.locator('.nav-item.active')).toHaveText('任务进度与结果');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
  await page.getByRole('button',{name:'编辑项目信息',exact:true}).click();await page.getByRole('button',{name:/保存并继续/}).click();await page.reload();
- await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
- await page.getByRole('link',{name:'返回全部项目'}).click();await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();expect(state.executes).toHaveLength(1);
+ await expect(page.locator('.nav-item.active')).toHaveText('任务进度与结果');await expect(page.locator('#workspace-progress .task-progress')).toBeVisible();
+ await page.getByRole('link',{name:'返回任务进度与结果'}).click();await expect(page.getByRole('heading',{name:'任务进度与结果',exact:true})).toBeVisible();expect(state.executes).toHaveLength(1);
 });
 
 
@@ -1458,10 +1461,10 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
     if (path.endsWith('/bytes')) return route.fulfill({status:204});
     if (path.endsWith('/complete')) {
       const material: Dto<'MaterialResponse'> = {material_id:`replacement-${sequence}`,material_version:1,upload_id:`upload-${sequence}`,
-        role:'historical',filename:nextName,media_type:'application/pdf',...route.request().postDataJSON(),state:'persisted',persisted_at:now,error:null};
+        role:'historical',filename:nextName,media_type:'application/pdf',...fixtureRequest(route.request()),state:'persisted',persisted_at:now,error:null};
       state.materials.push(material); return json(route,200,material);
     }
-    nextName = route.request().postDataJSON().filename; sequence++;
+    nextName = fixtureRequest(route.request()).filename; sequence++;
     return json(route,201,{upload_id:`upload-${sequence}`,state:'uploading',upload_url:`/api/v1/projects/${id}/materials/uploads/upload-${sequence}/bytes`,expires_at:'2099-01-01T00:00:00Z',max_bytes:100000000});
   });
   const remove = async (name:string, accept=true) => {
@@ -1670,4 +1673,32 @@ for(const width of [1440,390])test('dynamic balance: 1 point starts, exhaustion 
  await expect(page.getByRole('dialog')).not.toBeVisible();expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);
  if(evidence)await page.screenshot({path:join(evidence,'dynamic-resumed-'+width+'.png'),fullPage:true});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('commercial scope authoring blocks pending quotes and confirms ready work items before one execution',async({page})=>{
+ const state=fixture();state.paid=true;state.checkStatus='ready';state.available=100000;await setup(page,state);
+ let ready=false;
+ await page.route('**/api/v1/commerce/**',route=>new URL(route.request().url()).pathname.endsWith('/catalog')?json(route,200,{enabled:true,currency:'CNY',version:OUTCOME_PRICE_VERSION,model:'pay_as_you_go',items:[],rules:[]}):json(route,200,{available_fen:100000,held_fen:0,payment_enabled:false,providers:[],legacy_balance_notice:''}));
+ await page.route('**/credit-quote',route=>json(route,200,{enabled:true,quote:{quote_id:'commercial-authoring-quote',project_id:id,...fixtureRequest(route.request()),task_type:'interim',points:ready?16800:0,price_version:OUTCOME_PRICE_VERSION,reason:'按当前输入范围核实',created_at:now,...commerceMetadata(ready?16800:0),quote_status:ready?'ready':'pending_scope',scope_quote_id:'scope-authoring',scope_lines:ready?[{key:'period-update',label:'更新本期财务表和直接受影响正文',quantity:1,unit:'组',unit_price_fen:16800,amount_fen:16800,evidence:['锁定原稿和本期审计报告，按已核实业务范围处理。']}]:[]},balance:{available:100000,frozen:0},shortage:0,reason:null}));
+ await page.reload();await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('本次范围报价待确认，尚未收费');await expect(page.locator('#execute-input')).toBeDisabled();expect(state.executes).toEqual([]);
+ ready=true;await page.locator('#refresh-quote').click();await page.locator('#execute-input').click();await expect(page.locator('[data-commerce-confirm]')).toContainText('¥168.00');await expect(page.locator('[data-commerce-confirm]')).toContainText('更新本期财务表');
+ await page.locator('[data-commerce-back]').click();expect(state.executes).toEqual([]);await page.locator('#execute-input').click();await page.locator('[data-commerce-accept]').click();await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('commercial-authoring-quote');
+});
+
+
+test('automatic authoring performs one quoted task without an amount dialog',async({page})=>{
+ const state=fixture();state.paid=true;state.checkStatus='ready';state.available=100000;await setup(page,state);
+ await page.route('**/api/v1/commerce/**',route=>json(route,200,{enabled:true,currency:'CNY',version:AUTOMATIC_PRICE_VERSION,model:'pay_as_you_go',items:[],rules:[]}));
+ await page.route('**/credit-quote',route=>json(route,200,{enabled:true,quote:{...commerceMetadata(8864),quote_id:'auto-authoring',project_id:id,...fixtureRequest(route.request()),task_type:'interim',points:8864,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,reason:'已保存输入',created_at:now,quote_status:'ready',scope_quote_id:'scope-authoring',scope_lines:[]},balance:{available:100000,frozen:0},shortage:0,reason:null}));
+ await page.reload();await page.locator('#execute-input').click();await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('auto-authoring');await expect(page.locator('[data-commerce-confirm]')).toHaveCount(0);
+});
+
+
+test('automatic authoring with no balance saves the original task for exact supplement',async({page})=>{
+ const state=fixture();state.paid=true;state.checkStatus='ready';state.available=0;await setup(page,state);const starts:any[]=[];
+ await page.route('**/api/v1/commerce/**',route=>json(route,200,{enabled:true,currency:'CNY',version:AUTOMATIC_PRICE_VERSION,model:'pay_as_you_go',items:[],rules:[]}));
+ await page.route('**/credit-quote',route=>json(route,200,{enabled:true,quote:{...commerceMetadata(8864),quote_id:'auto-shortage',project_id:id,...fixtureRequest(route.request()),task_type:'interim',points:8864,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,reason:'已保存输入',created_at:now,quote_status:'ready',scope_quote_id:'scope-shortage',scope_lines:[]},balance:{available:0,frozen:0},shortage:8864,reason:null}));
+ await page.route('**/api/v1/runs/execute',route=>{starts.push(fixtureRequest(route.request()));return json(route,402,{code:'CREDITS_INSUFFICIENT'});});
+ await page.reload();await page.locator('#execute-input').click();await expect(page.locator('#billing-task-notice')).toContainText('原任务尚未开始');expect(starts).toHaveLength(1);
+ const saved=await page.evaluate(()=>{const key=Object.keys(localStorage).find(key=>key.startsWith('bondbuddy:billing-task:v2:'))!;return JSON.parse(localStorage.getItem(key)!);});expect(saved.requiredPoints).toBe('8864');expect(saved.body).toEqual(starts[0]);expect(saved.body).not.toHaveProperty('expected_points');
 });

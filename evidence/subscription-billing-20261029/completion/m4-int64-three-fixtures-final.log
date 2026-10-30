@@ -1,0 +1,18 @@
+✔ M4 dynamic credits: one-point start, real debit, pause, durable delivery, cancellation, refund and owner isolation (5622.1597ms)
+✔ missing material generation input returns all actionable fields without tasks, quotes or charges (1713.9714ms)
+✔ synthetic assistant fixed QA: approved version, no model rates, failure release, exact-once delivery and price changes (2944.46ms)
+✔ synthetic M4 lifecycle: active cross-project source, support, template and QA pins retain only exact owner/version bytes (2096.8276ms)
+✔ synthetic M4 handoff: explicit owner binding, canonical execution mutex and immutable lineage (2262.9169ms)
+✔ M4 free task preparation and unavailable capabilities do not turn basic QA into free help (0.7908ms)
+✔ product help remains free with selected sources while mixed professional questions remain paid (2.6388ms)
+✔ synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual exclusion, QA text and real wallet capped metering (10856.8553ms)
+✔ explicit completed baseline uses the existing content-update tier, not the original first-authoring tier (2.6682ms)
+✔ global assistant persistence, owner isolation, no implicit execution and create retries (3206.6032ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 91249.1899

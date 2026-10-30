@@ -1,0 +1,36 @@
+✔ explicit PC and WAP products create official SDK signed Web checkout with immutable amount and absolute expiry, no network or mandate (12.2709ms)
+✔ query posts SDK-signed form through bounded fetch and verifies the exact response bytes, not reserialized JSON (15.1807ms)
+✔ signed callbacks decode form once, preserve percent/plus, accept delayed retries and reject forgery, duplicate fields, wrong product identities and currency (18.8523ms)
+✔ query validates original identity/currency/amount and keeps cash proof separate from nominal and seller transfer date (50.3209ms)
+✔ only authenticated absent query after immutable expiry resolves missing order, and close follows original-order query across payment races (12.7491ms)
+✔ strict original response envelope rejects unsigned, tampered, duplicate-key and method-substitution responses without leaking details (21.9162ms)
+✔ fetch fails closed on redirects, HTTP errors, oversized streams and timeouts including response bodies (68.845ms)
+✔ cash refund validates independent buyer fields, queries original request and never treats cumulative refund_fee as this refund (17.3005ms)
+✔ refund refuses missing/discounted original cash before dispatch and leaves missing or mismatched per-request cash unresolved (41.3558ms)
+✔ refund recovery retries only the same signed original request when the channel has not yet recorded it (22.6059ms)
+✔ configuration and minor-unit conversion reject weak keys, unsupported products, guessed callback endpoints and unsafe money (13.3841ms)
+✔ bounded ZIP inspection supports stored/deflated CSV and descriptors without normalizing business rows (4.6045ms)
+✔ strict encoding accepts explicit UTF-8 BOM, ASCII, and unambiguous GBK; invalid/ambiguous bytes stay unknown (1.9432ms)
+✔ ZIP filenames cannot introduce paths, duplicate names, executables, directories, or symlinks (0.917ms)
+✔ ZIP encryption, unsupported methods and inconsistent local metadata are rejected (0.4102ms)
+✔ CRC, compressed stream, central-directory boundaries and overlapping entries are checked (1.8131ms)
+✔ archive, entry-count, expanded-size and expansion-ratio budgets fail closed (11.9444ms)
+✔ unknown content remains unnormalized metadata; control characters and oversized text are rejected (4.6649ms)
+✔ Alipay statements default off; explicit enable advertises only trade and the request app (126.1126ms)
+✔ verified RSA2 URL and bounded ZIP retain local evidence only, with unresolved normalization (48.6752ms)
+✔ forged or changed metadata cannot cause a download (121.5645ms)
+✔ signed metadata permits only exact HTTPS resource and one matching merchant PID (128.3703ms)
+✔ unavailable, unsupported or empty-file metadata never pretends that zero business occurred (117.4518ms)
+✔ unsupported funds/account requests and current/future/invalid dates fail before network access (140.7205ms)
+✔ redirects, content encodings, HTML, wrong sizes and excess declared bytes stay unresolved (86.4509ms)
+✔ actual response bytes have a hard cap and rejection cancels the stream (128.0291ms)
+✔ download timeout aborts pending bodies and a late response is cancelled without reading (348.1638ms)
+✔ expired or future metadata is refused and signed URLs are queried afresh for each retry (110.1193ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 28
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11423.5816

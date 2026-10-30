@@ -14,7 +14,7 @@ import { registerGeneratedProspectus } from './prospectus-versions.js';
 import { registerProjectFileOutcome } from './project-file-storage.js';
 
 import { syncAuthoringProgress } from './authoring-progress.js';
-import { creditBalance,lockCreditAccount } from './billing.js';
+import { creditBalanceExact,lockCreditAccount } from './billing.js';
 import { debitAuthoringCredits } from './authoring-credit-debit.js';
 
 const terminal = new Set(['succeeded','test_completed','failed','cancelled','rejected']);
@@ -39,7 +39,12 @@ async function event(client:PoolClient, r:any, state:string, stage:string|null, 
 }
 
 // Used by claim, the operator queue and resolve so no paused attempt is invisible.
-const fixedPriceRun = "EXISTS(SELECT 1 FROM bb_runs billing_run WHERE billing_run.id=j.run_id AND (billing_run.billing_mode='fixed_credits' OR billing_run.billing_mode='metered_credits' AND j.subtype IN ('m4_document_v1','m4_qa_v1')))";
+const fixedPriceRun = `EXISTS(SELECT 1 FROM bb_runs billing_run WHERE billing_run.id=j.run_id AND (
+  billing_run.billing_mode='fixed_credits' OR billing_run.billing_mode='metered_credits' AND j.subtype IN ('m4_document_v1','m4_qa_v1')
+  OR EXISTS(SELECT 1 FROM bb_commerce_scope_runs coverage JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
+    WHERE coverage.owner_user_id=billing_run.owner_user_id AND coverage.run_id=billing_run.id AND scope.amount_fen=0)
+  OR EXISTS(SELECT 1 FROM bb_automatic_scope_runs coverage JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
+    WHERE coverage.owner_user_id=billing_run.owner_user_id AND coverage.run_id=billing_run.id AND scope.amount_fen=0 AND scope.automatic_price IS NOT NULL)))`;
 const needsProviderReconciliation = `(
   a.status='pending_reconcile'
   OR (a.status='failed' AND NOT (COALESCE(j.checkpoint->'operator_reconciliations','{}'::jsonb) ? a.id) AND (
@@ -276,7 +281,7 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
     }
     if(kind==='resume'&&j.credit_pause_requested){
       await lockCreditAccount(client,owner);
-      if((await creditBalance(client,owner)).available<1)throw new Problem(402,'CREDITS_INSUFFICIENT','积分已用完，请充值后继续本次任务。');
+      if((await creditBalanceExact(client,owner)).available<1n)throw new Problem(402,'CREDITS_INSUFFICIENT','积分已用完，请充值后继续本次任务。');
       if(r.state==='running')throw new Problem(409,'INPUT_REVISION_CONFLICT','正在保存当前进度，保存后自动继续。');
       await client.query('UPDATE bb_jobs SET credit_pause_requested=false WHERE id=$1',[j.id]);
     }
@@ -552,6 +557,12 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
     const {r,j}=await lockedLease(client,lease);
     // Charge the remaining locked price only when delivery is ready. Insufficient funds preserve the pair.
     if(outcome==='succeeded'&&!j.user_pause_requested){
+      const coveredZero=(await client.query(`SELECT (EXISTS(SELECT 1 FROM bb_commerce_scope_runs coverage
+        JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
+        WHERE coverage.owner_user_id=$1 AND coverage.run_id=$2 AND scope.amount_fen=0)
+        OR EXISTS(SELECT 1 FROM bb_automatic_scope_runs coverage
+        JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
+        WHERE coverage.owner_user_id=$1 AND coverage.run_id=$2 AND scope.amount_fen=0 AND scope.automatic_price IS NOT NULL)) AS covered`,[r.owner_user_id,r.id])).rows[0].covered;
       if(j.subtype==='m4_document_v1'){
         const ready=await client.query(`SELECT a.kind,v.id FROM bb_m4_artifacts a
           JOIN bb_artifact_versions v ON v.id=a.artifact_id AND v.version=a.artifact_version AND v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id
@@ -573,7 +584,12 @@ export async function finish(pool:Pool,lease:Lease,outcome:'failed'|'succeeded'|
         const ready=await client.query("SELECT i.operation,i.result FROM bb_integrity_runs i WHERE i.owner_user_id=$1 AND i.project_id=$2 AND i.run_id=$3",[r.owner_user_id,r.project_id,r.id]);
         if(!ready.rowCount||ready.rows[0].operation==='check'&&!ready.rows[0].result?.records?.some((v:any)=>v.search_performed===true))
           throw new Problem(422,'DELIVERY_FAILED','Integrity workpaper requires recorded actual search');
-      }else if(r.billing_mode==='fixed_credits'&&r.task_kind!=='review'){
+      }else if(j.subtype==='project_file_v1'&&(await client.query("SELECT 1 FROM bb_project_file_operations WHERE owner_user_id=$1 AND run_id=$2 AND operation='check'",[r.owner_user_id,r.id])).rowCount){
+        // Checks deliver one report Word. The locked structured result must cover every selected version.
+        // The normal artifact verification above still requires actual Word bytes and readback evidence.
+        const ready=(await client.query('SELECT bb_project_file_check_delivery_ready(r) ready FROM bb_runs r WHERE r.id=$1 AND r.owner_user_id=$2',[r.id,r.owner_user_id])).rows[0];
+        if(!ready?.ready)throw new Problem(422,'DELIVERY_FAILED','Delivered immutable consistency report required');
+      }else if((r.billing_mode==='fixed_credits'||coveredZero)&&r.task_kind!=='review'){
         const pair=j.checkpoint?.stages?.word_delivery_pair;
         if(!pair?.revision_artifact_id||!pair?.clean_artifact_id||pair.revision_artifact_id!==artifact.id)
           throw new Problem(422,'DELIVERY_FAILED','Both generated Word files required for settlement');
@@ -745,14 +761,14 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
     if(reason==='credits_recharged'){
       if(r.stage!=='credits_exhausted'||!j.credit_pause_requested||j.user_pause_requested)return false;
       await lockCreditAccount(client,owner);
-      if((await creditBalance(client,owner)).available<1)return false;
+      if((await creditBalanceExact(client,owner)).available<1n)return false;
     }else if(j.user_pause_requested)return false;
     if(await providerCallNeedsReconciliation(client,j.id))return false;
     // Another blocker may have won while the in-flight result was being saved.
     // Once it clears, retain the credit blocker rather than strand the run in that old stage.
     if(j.credit_pause_requested&&reason!=='credits_recharged'){
       await lockCreditAccount(client,owner);
-      if((await creditBalance(client,owner)).available<1){
+      if((await creditBalanceExact(client,owner)).available<1n){
         await client.query("UPDATE bb_jobs SET stage='credits_exhausted',updated_at=now() WHERE id=$1",[j.id]);
         await event(client,r,'paused','credits_exhausted','credits_exhausted','CREDITS_INSUFFICIENT');
         return false;

@@ -1,0 +1,129 @@
+
+Running 7 tests using 1 worker
+
+(node:45180) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\automatic-task-billing.spec.ts:16:1 › independent full review uses its locked points quote and executes once without a price confirmation (4.2s)
+  x  2 tests\automatic-task-billing.spec.ts:32:1 › QA one business click submits exactly once without an amount confirmation (30.1s)
+(node:44656) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  3 tests\automatic-task-billing.spec.ts:40:84 › QA uncertain bb-task-price-170-20261029-v3 task keeps points in its durable recovery panel (30.1s)
+(node:29992) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  4 tests\automatic-task-billing.spec.ts:40:84 › QA uncertain bb-task-price-170-20261029-v2 task keeps points in its durable recovery panel (30.1s)
+(node:31296) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  5 tests\automatic-task-billing.spec.ts:57:1 › integrity starts once from its business action and keeps the immutable revision (30.0s)
+(node:47540) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 6 tests\automatic-task-billing.spec.ts:65:1 › consistency updates directly after selection, including zero-cost included scope (2.1s)
+  x  7 tests\automatic-task-billing.spec.ts:73:1 › insufficient balance preserves only the original task and payment return replays its exact key and body (30.1s)
+
+
+  1) tests\automatic-task-billing.spec.ts:32:1 › QA one business click submits exactly once without an amount confirmation
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for locator('#qa-start')
+
+
+      34 |   await page.route(`**/api/v1/projects/${qaProject}/qa/quote`,route=>json(route,quote(1218)));
+      35 |   await page.route(`**/api/v1/projects/${qaProject}/qa/runs`,route=>{starts.push(rawRequest(route));return json(route,{run_id:'automatic-qa'});});
+    > 36 |   await page.goto(`/#qa?project=${qaProject}`);await page.locator('#qa-start').click();await expect.poll(()=>starts.length).toBe(1);
+         |                                                                                ^
+      37 |   expect(starts[0]).toMatchObject({price_version:AUTOMATIC_PRICE_VERSION,expected_points:'1218',scope_quote_id:'scope-automatic'});await expect(page.locator('#qa-confirm,[data-commerce-confirm]')).toHaveCount(0);
+      38 | });
+      39 |
+        at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\web\tests\automatic-task-billing.spec.ts:36:80
+
+    Error Context: ..\..\.tmp\automatic-task-billing-initial\automatic-task-billing-QA--87843-hout-an-amount-confirmation\error-context.md
+
+  2) tests\automatic-task-billing.spec.ts:40:84 › QA uncertain bb-task-price-170-20261029-v3 task keeps points in its durable recovery panel
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for locator('#qa-start')
+
+
+      43 |   await page.route(`**/api/v1/projects/${qaProject}/qa/quote`,route=>json(route,{...quote(1218),price_version:priceVersion}));
+      44 |   await page.route(`**/api/v1/projects/${qaProject}/qa/runs`,route=>{starts.push(rawRequest(route));return json(route,{code:'DATA_UNAVAILABLE'},503);});
+    > 45 |   await page.goto(`/#qa?project=${qaProject}`);await page.locator('#qa-start').click();
+         |                                                                                ^
+      46 |   await expect.poll(()=>starts.length).toBe(1);
+      47 |   expect(starts[0].expected_points).toBe('1218');
+      48 |   await expect(page.locator('.qa-recovery')).toContainText('1,218 积分');
+        at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\web\tests\automatic-task-billing.spec.ts:45:80
+
+    Error Context: ..\..\.tmp\automatic-task-billing-initial\automatic-task-billing-QA--b72da--its-durable-recovery-panel\error-context.md
+
+  3) tests\automatic-task-billing.spec.ts:40:84 › QA uncertain bb-task-price-170-20261029-v2 task keeps points in its durable recovery panel
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for locator('#qa-start')
+
+
+      43 |   await page.route(`**/api/v1/projects/${qaProject}/qa/quote`,route=>json(route,{...quote(1218),price_version:priceVersion}));
+      44 |   await page.route(`**/api/v1/projects/${qaProject}/qa/runs`,route=>{starts.push(rawRequest(route));return json(route,{code:'DATA_UNAVAILABLE'},503);});
+    > 45 |   await page.goto(`/#qa?project=${qaProject}`);await page.locator('#qa-start').click();
+         |                                                                                ^
+      46 |   await expect.poll(()=>starts.length).toBe(1);
+      47 |   expect(starts[0].expected_points).toBe('1218');
+      48 |   await expect(page.locator('.qa-recovery')).toContainText('1,218 积分');
+        at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\web\tests\automatic-task-billing.spec.ts:45:80
+
+    Error Context: ..\..\.tmp\automatic-task-billing-initial\automatic-task-billing-QA--426c1--its-durable-recovery-panel\error-context.md
+
+  4) tests\automatic-task-billing.spec.ts:57:1 › integrity starts once from its business action and keeps the immutable revision
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for locator('#integrity-start')
+
+
+      59 |   await page.route(`**/api/v1/projects/${integrityProject}/integrity/quote`,route=>json(route,quote(22738)));
+      60 |   await page.route(`**/api/v1/projects/${integrityProject}/integrity/runs`,route=>{starts.push(rawRequest(route));return json(route,{run_id:'automatic-integrity'});});
+    > 61 |   await page.goto(`/#integrity?project=${integrityProject}`);await page.locator('#integrity-start').click();await expect.poll(()=>starts.length).toBe(1);
+         |                                                                                                     ^
+      62 |   expect(starts[0]).toMatchObject({price_version:AUTOMATIC_PRICE_VERSION,expected_points:'22738'});await expect(page.locator('#integrity-confirm')).toHaveCount(0);
+      63 | });
+      64 |
+        at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\web\tests\automatic-task-billing.spec.ts:61:101
+
+    Error Context: ..\..\.tmp\automatic-task-billing-initial\automatic-task-billing-int-fa672-eeps-the-immutable-revision\error-context.md
+
+  5) tests\automatic-task-billing.spec.ts:73:1 › insufficient balance preserves only the original task and payment return replays its exact key and body
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for locator('#qa-start')
+
+
+      76 |   await page.route(`**/api/v1/projects/${qaProject}/qa/runs`,route=>{starts.push(rawRequest(route));rawStarts.push(route.request().postData()!);return starts.length===1?json(route,{code:'CREDITS_INSUFFICIENT'},402):json(route,{run_id:'paid-original'});});
+      77 |   await page.route('**/api/v1/subscriptions',route=>{payments.push(rawRequest(route));return json(route,{code:'MUST_NOT_PAY'},500);});
+    > 78 |   await page.goto(`/#qa?project=${qaProject}`);await page.locator('#qa-start').click();await expect(page.locator('#billing-task-notice')).toContainText('原任务尚未开始');expect(payments).toEqual([]);expect(starts).toHaveLength(1);
+         |                                                                                ^
+      79 |   // The subscription page supplies this same validated return route only after a paid order.
+      80 |   const returnTo=await page.evaluate(async()=>{const row=Object.keys(localStorage).find(k=>k.startsWith('bondbuddy:billing-task:v1:'))!,record=JSON.parse(localStorage.getItem(row)!);const recovery=await import('/src/'+'billing-task-recovery.ts');return recovery.billingTaskReturnTo(record.owner,record.id);});
+      81 |   expect(returnTo).toBeTruthy();await page.goto('/'+returnTo);await expect.poll(()=>starts.length).toBe(2);expect(starts[1]).toEqual(starts[0]);expect(starts[0].expected_points).toBe('1218');expect(rawStarts[1]).toBe(rawStarts[0]);
+        at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\web\tests\automatic-task-billing.spec.ts:78:80
+
+    Error Context: ..\..\.tmp\automatic-task-billing-initial\automatic-task-billing-ins-db005-lays-its-exact-key-and-body\error-context.md
+
+  5 failed
+    tests\automatic-task-billing.spec.ts:32:1 › QA one business click submits exactly once without an amount confirmation
+    tests\automatic-task-billing.spec.ts:40:84 › QA uncertain bb-task-price-170-20261029-v3 task keeps points in its durable recovery panel
+    tests\automatic-task-billing.spec.ts:40:84 › QA uncertain bb-task-price-170-20261029-v2 task keeps points in its durable recovery panel
+    tests\automatic-task-billing.spec.ts:57:1 › integrity starts once from its business action and keeps the immutable revision
+    tests\automatic-task-billing.spec.ts:73:1 › insufficient balance preserves only the original task and payment return replays its exact key and body
+  2 passed (2.9m)

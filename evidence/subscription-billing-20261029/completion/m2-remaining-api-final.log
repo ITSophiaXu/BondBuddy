@@ -1,0 +1,157 @@
+✔ authoring meter: monotonic, capped, lease bounded and independent of page time (1.0652ms)
+✖ dynamic billing: one point starts, exhaustion pauses, topup resumes same checkpoint, no overdraft or duplicate settlement (2572.8103ms)
+✔ authoring meter: monotonic, capped, lease bounded and independent of page time (0.8057ms)
+✖ authoring billing: queue zero, safe pause freezes, resume reuses, cancel settles once, failure releases, legacy preserved (2851.5105ms)
+✔ all eight fixed tiers and user-approved boundaries use one package (1.8729ms)
+✔ annual update includes interim, de-duplicates statements, and only charges newly covered annual periods (0.2356ms)
+✔ non-issuer references never reduce target periods; missing metadata never silently selects highest price (0.1739ms)
+✔ price configuration requires exactly eight bounded integer prices (0.5492ms)
+✔ large generated Word is downloadable without parsing the XML that the legacy inspector rejects (238.0858ms)
+✔ missing or non-file output cannot be labelled as available Word (2.1283ms)
+✔ every supported project material is stored opaquely without content parsing (27.932ms)
+✖ both authorized qx audit originals retain their exact bytes and need no signature profile (1.9238ms)
+✖ raw material public upload preserves bytes, ownership, idempotency and old signature records without starting parsing (1826.041ms)
+✔ unchanged issuer source gate rejects repeated resumes without queue churn; clearable pauses resume (7958.1232ms)
+✔ synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation, cancellation and owner cursor (6298.1995ms)
+✖ paid review: quote only, insufficient/concurrent submissions, immutable price, report settlement and revision release (2963.2099ms)
+✔ approved review catalog preserves authoring and leaves unpriced independent revisions unavailable (0.7468ms)
+✖ approved review prices: zero/one-point start, concurrency, delivered settlement, differential cancel/failure, history and old trial (3711.8414ms)
+✔ upload inspection exception requires preprod, an explicit switch and one exact XLSX identity (2.2465ms)
+✔ bounded upload inspection accepts valid synthetic samples for the seven shared MIME types (37952.127ms)
+✖ authorized rq-202509 historical DOCX passes both inspection paths at its recorded hash (3.7ms)
+✖ authorized rq-202509 financial XLSX passes both inspection paths at its recorded hash (2.8223ms)
+✖ all four registered XLSX originals retain their recorded hashes and pass inspection (3.1167ms)
+✔ externalLink extension lists and markup compatibility branches remain passive (16552.9435ms)
+✔ passive XLSX alternate URLs and multiple external link paths are accepted without resolving targets (6659.6309ms)
+✔ XLSX external workbook parts require a book, its relationships part and every referenced passive path (29058.2809ms)
+✔ internal relationship targets resolve from package root or source directory without escaping (15018.5536ms)
+✔ an empty DEFLATE directory is valid only when it expands to no bytes (9633.2903ms)
+✔ only bounded, absolute DOCX http/https/mailto hyperlink relationships are passive (68736.457ms)
+✔ passive XLSX workbook links are accepted on both upload inspection paths (3247.2335ms)
+✔ passive externalBook children and TargetMode casing remain accepted (3201.681ms)
+✔ OPC percent-encoded part names are resolved once and unsafe aliases are rejected (21817.6224ms)
+✔ a ZIP end-of-central-directory comment does not make a readable XLSX invalid (3128.4434ms)
+✔ UTF-16 XML with either byte-order mark remains readable (6331.447ms)
+✔ structural details distinguish ZIP header mismatch, expanded CRC, and XML parse failures (8853.7745ms)
+✔ XLSX external links never grant DDE, OLE, macros or malformed XML a path through inspection (19486.4609ms)
+✔ Office XML parts remain capped at 16 MiB despite the authorized large document (4992.3075ms)
+✔ Office containers are inspected from the spooled file entry by entry and zip bombs fail closed (32474.9056ms)
+✔ upload inspection rejects encryption, corrupt structures, active content, and bounded archive abuse (122102.105ms)
+✔ PDF upload admits only the restricted filled Sig fixture and rejects other Widgets (12890.3257ms)
+✔ signed PDF risk controls remain fail-closed on both inspection paths (61564.0926ms)
+✔ multipage signatures retain bytes and reject active, ambiguous or incomplete inputs (20383.7479ms)
+✔ authorized qx signed PDF is accepted unchanged by the multipage profile (5771.7802ms)
+✔ inspection infrastructure and size rejections expose fixed internal reasons (1406.1437ms)
+✔ upload inspection is single-flight: extra work queues, and a bounded wait fails with a stable 503 (7147.5235ms)
+✔ spooled and in-memory originals accept identical bytes without content checks at chunk boundaries (141.9747ms)
+✔ spooled PDF stays opaque while a mismatched stored size is rejected (14.3486ms)
+✔ spool stream hashes bytes, rejects overruns and leaves no partial file behind (26.3505ms)
+✔ spool reservations are capped and released once (0.5945ms)
+✔ PostgreSQL/Azurite streamed PUT verifies size and hash, stages Blob blocks and cleans the spool (2088.3642ms)
+✔ signature assessment keeps v1 immutable and bounds v2 without authenticity claims (2.0953ms)
+✔ each uploaded source requires relation, market, offering and reporting period (3.2366ms)
+✔ source optionality, every-file coverage and version binding are independent (0.5655ms)
+✔ user-declared periods need valid dates, without financial extraction or scope approval (0.4969ms)
+✔ source issuer name is optional while all other declarations and material pins remain required (0.6334ms)
+ℹ tests 55
+ℹ suites 0
+ℹ pass 46
+ℹ fail 9
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 643610.5208
+
+✖ failing tests:
+
+test at apps\api\dist\authoring-dynamic-balance.pg.test.js:26:1
+✖ dynamic billing: one point starts, exhaustion pauses, topup resumes same checkpoint, no overdraft or duplicate settlement (2572.8103ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  '10' !== 1
+
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/authoring-dynamic-balance.pg.test.js:65:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '10',
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\authoring-progress.pg.test.js:26:1
+✖ authoring billing: queue zero, safe pause freezes, resume reuses, cancel settles once, failure releases, legacy preserved (2851.5105ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  '0' !== 0
+
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/authoring-progress.pg.test.js:61:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '0',
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\original-material-upload.test.js:39:1
+✖ both authorized qx audit originals retain their exact bytes and need no signature profile (1.9238ms)
+  [Error: ENOENT: no such file or directory, open 'C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\tests\samples\2026-09-25\manifest.json'] { errno: -4058, code: 'ENOENT', syscall: 'open', path: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\subscription-auto-billing-20261029\\tests\\samples\\2026-09-25\\manifest.json' }
+
+test at apps\api\dist\original-material-upload.test.js:51:1
+✖ raw material public upload preserves bytes, ownership, idempotency and old signature records without starting parsing (1826.041ms)
+  [Error: ENOENT: no such file or directory, open 'C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\tests\samples\2026-09-25\manifest.json'] { errno: -4058, code: 'ENOENT', syscall: 'open', path: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\subscription-auto-billing-20261029\\tests\\samples\\2026-09-25\\manifest.json' }
+
+test at apps\api\dist\review-billing.pg.test.js:14:1
+✖ paid review: quote only, insufficient/concurrent submissions, immutable price, report settlement and revision release (2963.2099ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  '300' !== 300
+
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/review-billing.pg.test.js:36:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '300',
+    expected: 300,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\review-price-activation.pg.test.js:26:1
+✖ approved review prices: zero/one-point start, concurrency, delivered settlement, differential cancel/failure, history and old trial (3711.8414ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  '13900' !== 13900
+
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/review-price-activation.pg.test.js:57:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '13900',
+    expected: 13900,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\upload-safety.test.js:109:1
+✖ authorized rq-202509 historical DOCX passes both inspection paths at its recorded hash (3.7ms)
+  [Error: ENOENT: no such file or directory, open 'C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\tests\samples\2026-09-25\rq-202509\2、任丘市建设投资集团有限公司2025年面向专业投资者非公开发行公司债券（第二期）募集说明书 (3).docx'] { errno: -4058, code: 'ENOENT', syscall: 'open', path: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\subscription-auto-billing-20261029\\tests\\samples\\2026-09-25\\rq-202509\\2、任丘市建设投资集团有限公司2025年面向专业投资者非公开发行公司债券（第二期）募集说明书 (3).docx' }
+
+test at apps\api\dist\upload-safety.test.js:122:1
+✖ authorized rq-202509 financial XLSX passes both inspection paths at its recorded hash (2.8223ms)
+  [Error: ENOENT: no such file or directory, open 'C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\tests\samples\2026-09-25\rq-202509\0-报表-建投20250930-1.14.xlsx'] { errno: -4058, code: 'ENOENT', syscall: 'open', path: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\subscription-auto-billing-20261029\\tests\\samples\\2026-09-25\\rq-202509\\0-报表-建投20250930-1.14.xlsx' }
+
+test at apps\api\dist\upload-safety.test.js:135:1
+✖ all four registered XLSX originals retain their recorded hashes and pass inspection (3.1167ms)
+  [Error: ENOENT: no such file or directory, open 'C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\tests\samples\2026-09-25\rq-202506\任丘建投2025年6月财务报表.xlsx'] { errno: -4058, code: 'ENOENT', syscall: 'open', path: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\subscription-auto-billing-20261029\\tests\\samples\\2026-09-25\\rq-202506\\任丘建投2025年6月财务报表.xlsx' }

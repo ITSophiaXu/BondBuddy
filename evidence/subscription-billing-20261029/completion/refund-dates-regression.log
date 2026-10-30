@@ -1,0 +1,73 @@
+✔ lost payment callbacks reconcile once without a browser, another charge, or another task (594.8134ms)
+✔ query timeout and mismatched identity keep original payment pending and back off (473.3176ms)
+✔ accepted refund with a lost response completes by querying its original ID; unknown holds stay frozen (406.4334ms)
+✔ a crash after refund freeze but before dispatch resumes the same authorised request once (541.4975ms)
+✔ pre-send dispatch crash uses only documented same-request recovery; unknown or mismatched receipts never release held points (401.6573ms)
+✔ a matching callback arriving during a failed query prevents needless same-request resubmission (345.8475ms)
+✔ shutdown stops starting claimed rows; unfinished original orders remain recoverable (647.8515ms)
+✔ synthetic signed cash refunds bind original payment/lot, exclude consumed/held/noncash money and settle once under callback/query concurrency (9748.9339ms)
+✔ synthetic timeout/unknown retains freeze, reconciles same refund ID, and explicit CLOSED releases without reusing a failed request (9025.9198ms)
+✔ synthetic task/refund races serialize on original account and rollback cannot send cash before a durable freeze (7510.1059ms)
+✔ historical bonus package refunds consumed remainder at original A/Q and quality restoration keeps the same cash ceiling (7100.0266ms)
+✔ historical package cumulative one-cent rounding preserves sub-cent credits and strict request units (7767.5321ms)
+✖ cash refunds allocate only authenticated original-source family and serialize races with consumption (7280.4814ms)
+✔ daily statement differences preserve adjacent DB bigints above 2^53 without repairing financial records (371.1032ms)
+✔ wrong app or trade type cannot suppress local payment missing coverage; a valid row still matches (380.4376ms)
+✔ same-merchant owners reconcile separately while another merchant with the same transaction ID is never consumed (796.331ms)
+✔ unsafe normalized statement money remains unknown and rolls back evidence without changing the wallet (312.7293ms)
+✔ missing authenticated channel time remains uncovered despite a local credit timestamp and never repairs the wallet (301.8152ms)
+✔ paid historical proof refresh reuses the exact existing lot without granting credits again (316.4438ms)
+✔ close intent survives unknown response, blocks reopening, and cannot erase a verified payment (279.974ms)
+✔ historical statement keeps gross issuance and refund cash separate from current balance and later refund success (354.3033ms)
+✔ statement-only receipt raises persisted differences without creating payment credit, and concurrent scans claim once (214.7376ms)
+✔ refund reverse coverage needs authenticated application-date evidence and detects a later missing row without mutating wallets (378.8912ms)
+✔ mismatched statement identity and unavailable provider keep the job recoverable and alert without private error data (146.3267ms)
+✔ synthetic refund mock HTTP signs original transaction, exact nominal total and same out_refund_no for query (52.968ms)
+✔ same-request recovery preserves the original refund payload after either pre-send crash or lost response (11.6994ms)
+✔ refund recovery retains authenticated matching response requirements and never turns a missing order into failure (55.4002ms)
+✔ refund status mapping retains ABNORMAL as unresolved and only CLOSED is explicit failure (9.7381ms)
+✔ authenticated API application and success times normalize separately across offsets and bill days (17.5128ms)
+✔ API refund dates reject missing acceptance, impossible calendars, unknown offsets and conflicting chronology (104.0036ms)
+✔ callback refund dates use only decrypted success_time and never notification or undocumented application time (9.8617ms)
+✔ RSA/AES refund callbacks validate event/status, merchant, channel identities and payer cash fields (31.6599ms)
+✔ cash proof is independent from valid nominal payment; missing evidence is unknown and discounts still pay (9.3462ms)
+✔ refund capability defaults off; explicit verified configuration enables it; unknown transport results throw (34.9411ms)
+✔ statement capability defaults off and signed manifest binds an authenticated bounded download (29.6017ms)
+✔ statement URL restrictions prevent forwarding merchant authorization to redirects, external hosts or other API paths (16.4356ms)
+✔ unsigned manifests, hash mismatches, compressed payloads and HTTP redirects are never accepted as statement evidence (12.0907ms)
+✔ download stops on its first excessive chunk and authenticated absence differs from unsigned failure (8.47ms)
+✔ close signs the original merchant order, verifies 204, and preserves a payment that wins the close race (11.6692ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 38
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 130986.6698
+
+✖ failing tests:
+
+test at apps\api\dist\payment-refunds.pg.test.js:438:1
+✖ cash refunds allocate only authenticated original-source family and serialize races with consumption (7280.4814ms)
+  AssertionError [ERR_ASSERTION]: [{"kind":"local_refund_missing_from_statement","line_no":0,"reference_id":"5931ffbfaa5e48a9bfcdae8704afdb1f","unit":"coverage","expected_value":null,"observed_value":null},{"kind":"local_refund_missing_from_statement","line_no":0,"reference_id":"fd9e4c69e7784185b0a029ed878c1491","unit":"coverage","expected_value":null,"observed_value":null},{"kind":"refund_application_evidence_conflict","line_no":0,"reference_id":"5931ffbfaa5e48a9bfcdae8704afdb1f","unit":"identity","expected_value":null,"observed_value":null},{"kind":"refund_application_time","line_no":3,"reference_id":"5931ffbfaa5e48a9bfcdae8704afdb1f","unit":"identity","expected_value":null,"observed_value":null}]
+  + actual - expected
+
+    [
+      {
+  +     difference_count: 4
+  -     difference_count: 0
+      }
+    ]
+
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payment-refunds.pg.test.js:492:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: [ { difference_count: 4 } ],
+    expected: [ { difference_count: 0 } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

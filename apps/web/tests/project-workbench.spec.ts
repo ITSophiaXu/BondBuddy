@@ -215,8 +215,8 @@ test('a file response arriving after navigation cannot repaint the previous proj
   const state=await setup(page);let release!:()=>void;state.holdFiles=new Promise<void>(resolve=>{release=resolve;});
   await page.getByRole('button',{name:'刷新文件',exact:true}).click();
   await expect.poll(()=>state.calls.filter(c=>c.path===`/projects/${root}/files`).length).toBe(2);
-  await page.getByRole('link',{name:'← 返回全部项目',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();
+  await page.getByRole('link',{name:'← 返回任务进度与结果',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'任务进度与结果',exact:true})).toBeVisible();
   release();await expect.poll(()=>state.fileReplies).toBe(2);await expect(page.locator('.project-workbench')).toHaveCount(0);
   expect(errors).toEqual([]);
 });

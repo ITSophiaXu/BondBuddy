@@ -11,7 +11,7 @@ test('filename parentheses, nesting, business alternatives and legal names',()=>
   assert.equal(workpaperFilenameTitle('有关文件(如有(含增资))及说明'),'有关文件及说明');
   assert.equal(workpaperFilenameTitle('批准（备案）文件'),'批准或备案文件');
   assert.equal(workpaperFilenameTitle('甲（中国）有限公司说明（签字日期）'),'甲（中国）有限公司说明');
-  assert.equal(workpaperFilenameTitle('甲（含企业债券）文件'),'甲及企业债券文件');
+  assert.equal(workpaperFilenameTitle('甲（含企业债券）文件'),'甲文件');
   const entries=[{id:'one',sheet:'1 尽职调查文件',kind:'file',code:'1-0',title:'核查记录'},{id:'two',sheet:'2 发行阶段文件',kind:'file',code:'2-1',title:'发行文件'}];
   assert.deepEqual(defaultWorkpaperIds(entries),['one']);
 });

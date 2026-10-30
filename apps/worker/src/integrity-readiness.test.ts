@@ -1,3 +1,4 @@
+// Accelerated observation windows for legacy fixtures; production durations have dedicated regressions.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
@@ -11,7 +12,7 @@ const site=INTEGRITY_SITES.find(s=>s.id==='credit-china')!;
 const form='<input id="keyword" placeholder="企业名称"><a id="submit">查询</a><main>请输入名称</main>';
 const submit=`document.querySelector('#submit').onclick=async()=>{const q=document.querySelector('input').value;await fetch('/query?q='+encodeURIComponent(q));document.querySelector('main').textContent='本次查询 '+q+' 共0条';};`;
 const html=(body:string,script='')=>`<!doctype html><html><meta charset="utf-8"><title>synthetic official fixture</title><body>${body}<script>${script}</script></body></html>`;
-const options={waitMs:2200,maxPages:1,attempts:1};
+const options={resultStableMs:150,zeroConfirmMs:300,waitMs:2200,maxPages:1,attempts:1};
 
 test('region inference reuses explicit registration and does not infer from personal names',()=>{
  assert.deepEqual(inferIntegrityRegion(subject),{province:'河南',city:''});
@@ -43,7 +44,9 @@ test('page readiness, query conditions, retries and honest results in real Chrom
    assert.equal(r.outcome,'no_results');assert.equal(r.diagnostic?.code,'no_results');assert.match(r.captures[0].text,/河南合成测试企业/);
   });
   await t.test('same-site visible iframe form and results',async()=>{
-   const r=await run(url=>url.pathname==='/query'?'ok':url.pathname==='/frame'?html(form,submit):html('<iframe src="/frame" style="width:900px;height:500px"></iframe>'));
+   // Include the real screenshot and post-capture checks across both frames.
+   // A 2.2-second budget can expire during capture even after a stable result.
+   const r=await run(url=>url.pathname==='/query'?'ok':url.pathname==='/frame'?html(form,submit):html('<iframe src="/frame" style="width:900px;height:500px"></iframe>'),{...options,waitMs:5000});
    assert.equal(r.outcome,'no_results');assert.match(r.captures[0].text,/共0条/);
   });
   await t.test('automatic interstitial navigation is allowed to finish after a non-200 initial response',async()=>{

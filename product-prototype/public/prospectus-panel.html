@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="project-workspace.css">
   <link rel="stylesheet" href="../../apps/web/src/prototype-adapter.css"><link rel="stylesheet" href="prospectus-panel.css">
   <link rel="stylesheet" href="../../apps/web/src/file-workspace.css">
+  <link rel="stylesheet" href="../../apps/web/src/project-file-check-batches.css">
 </head>
 <body>
 <main style="max-width:1160px;margin:0 auto;padding:32px 20px">
@@ -38,5 +39,6 @@
   $('file').onchange=()=>{if(!$('file').files[0])return;$('filename').textContent=$('file').files[0].name;$('selected').hidden=false;$('choose').disabled=true;$('save').hidden=true;document.querySelector('.prospectus-upload-label').textContent='正在上传';$('prospectus-status').textContent='正在上传…（模拟）';setTimeout(()=>{$('empty').hidden=true;$('choose').disabled=false;$('save').hidden=false;document.querySelector('.prospectus-upload-label').textContent='已上传';$('prospectus-status').textContent='文件已保存，尚未采用。此处为模拟演示，不上传文件或创建任务。';},700);};
   $('save').onclick=()=>{$('prospectus-status').textContent='已采用此版（模拟）；未启动更新或扣费。';};
 </script>
+<script src="file-check-batches.js"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
-import {WORKPAPER_PRICE,type WorkpaperWorkspace,type WorkpaperStart,type WorkpaperBatch,type WorkpaperAssess} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,SUBSCRIPTION_PLANS,SUBSCRIPTION_CATALOG_VERSION,WORKPAPER_PRICE,type WorkpaperWorkspace,type WorkpaperStart,type WorkpaperBatch,type WorkpaperAssess} from '@bondbuddy/contracts';
 import {fixture,href,ids,now,sha} from './generation-entry-fixtures';
 
 async function setup(page:import('@playwright/test').Page,count=350){
@@ -29,6 +29,43 @@ const assertNoPreflight=async(page:import('@playwright/test').Page)=>{
  else {await expect(page.locator('.pf-flow-steps')).toContainText('选择募集说明书');await expect(page.locator('.pf-flow-steps')).toContainText('选择生成内容');await expect(page.locator('.pf-flow-steps')).toContainText('确认并生成');}
 };
 async function submitSelection(page:import('@playwright/test').Page){await page.locator('#wp-start').click();if(await page.locator('#wp-confirm-start').isVisible()){await expect(page.locator('[data-flow-step="3"]')).toHaveAttribute('aria-current','step');await page.locator('#wp-confirm-start').click();}}
+
+test('asynchronous batch shortage pays and resumes the exact remaining batch without touching a manual pause',async({page})=>{
+ await page.setViewportSize({width:1440,height:960});
+ const s=await setup(page,3),points=AUTOMATIC_TASK_TARIFF.workpaper.points;
+ s.data.price={version:AUTOMATIC_PRICE_VERSION,points,auto_charge:true};
+ const batch:WorkpaperBatch={batch_id:'short-batch',topic_id:'topic-short',catalogue_id:'catalogue-1',revision:4,state:'paused',source:s.source,total_points:points*2,charged_points:points,created_at:now,error:'积分不足',billing_resume:{price_version:AUTOMATIC_PRICE_VERSION,required_points:points,available_points:0,shortage:points},items:s.data.catalogues[0].entries.slice(0,2).map((entry,i)=>({entry,run_id:i?'': 'completed-child',state:i?'queued':'succeeded',stage:null,attempt:1,error:null,artifacts:[]}))};
+ const manual={...structuredClone(batch),batch_id:'manually-paused',billing_resume:undefined,error:null};s.data.batches=[manual,batch];
+ let funded=false;const actions:any[]=[],payments:any[]=[],future=new Date(Date.now()+86400000).toISOString();
+ const order=()=>({order_id:'recovery-topup',provider:'wechat',state:funded?'paid':'pending',amount_fen:points,points,currency:'CNY',checkout_url:'weixin://wxpay/bizpayurl?pr=synthetic',project_id:null,expires_at:future,credited_at:funded?new Date().toISOString():null});
+ await page.route('**/api/v1/**',async route=>{
+  const path=new URL(route.request().url()).pathname.replace('/api/v1','');
+  if(path==='/account/sessions')return route.fulfill({json:{items:[]}});
+  if(path==='/account/recovery')return route.fulfill({json:{enabled:false,support_operator:false,current:null,pending:null}});
+  if(path===`/projects/${ids.api}/workpapers/batches/short-batch/actions`){const body=route.request().postDataJSON();actions.push(body);if(!funded)return route.fulfill({status:402,json:{code:'CREDITS_INSUFFICIENT'}});batch.state='queued';batch.revision++;batch.billing_resume=undefined;return route.fulfill({json:batch});}
+  if(path==='/subscriptions/catalog')return route.fulfill({json:{enabled:true,version:SUBSCRIPTION_CATALOG_VERSION,plans:SUBSCRIPTION_PLANS,providers:['wechat'],auto_renew_available:false}});
+  if(path==='/subscriptions/account')return route.fulfill({json:{subscription:null,available_points:funded?points:0,held_points:0,subscription_available_points:0,topup_available_points:funded?points:0,other_available_points:0,periods:[]}});
+  if(path==='/commerce/catalog')return route.fulfill({json:{enabled:true,version:AUTOMATIC_PRICE_VERSION,currency:'CNY',model:'subscription_and_topup',items:[],rules:[]}});
+  if(path==='/commerce/quotations')return route.fulfill({json:{items:[]}});
+  if(path==='/credits/consumption-history'||path==='/credits/recharge-history')return route.fulfill({json:{items:[],page:{has_more:false,next_cursor:null}}});
+  if(path==='/commerce/topups'&&route.request().method()==='POST'){payments.push(route.request().postDataJSON());return route.fulfill({status:201,json:order()});}
+  if(path==='/commerce/topups/recovery-topup/refresh')throw new Error('Automatic recovery must not need the refresh-payment button');
+  if(path==='/commerce/topups/recovery-topup')return route.fulfill({json:order()});
+  await route.fallback();
+ });
+ await page.goto('/'+href({step:'workpapers',view:'results',batch:batch.batch_id}));
+ await expect(page.locator('[data-wp-batch-id="manually-paused"]')).not.toContainText('补足积分');expect(actions).toEqual([]);
+ if(process.env.BB_UX_EVIDENCE_DIR){await mkdir(process.env.BB_UX_EVIDENCE_DIR,{recursive:true});await page.evaluate(()=>window.scrollTo(0,0));await expect.poll(()=>page.evaluate(()=>scrollY)).toBe(0);await page.screenshot({path:resolve(process.env.BB_UX_EVIDENCE_DIR,'workpaper-shortage-1440.png'),fullPage:true});}
+ await page.locator('[data-wp-batch-id="short-batch"]').getByRole('button',{name:'补足积分并继续本批'}).click();
+ await expect(page.locator('#billing-task-notice')).toContainText('已完成文件保留');expect(actions).toHaveLength(1);expect(payments).toEqual([]);
+ await page.locator('#billing-task-notice').getByRole('link',{name:'订阅或充值，继续原任务'}).click();
+ await expect(page.locator('#subscription-topup-amount')).toHaveValue((points/100).toFixed(2));
+ await page.getByRole('button',{name:'充值并前往支付'}).click();await expect(page.getByRole('button',{name:'刷新支付状态'})).toBeVisible();
+ expect(actions).toHaveLength(1);funded=true;await page.evaluate(()=>window.dispatchEvent(new Event('bondbuddy:credits-changed')));
+ await expect.poll(()=>actions.length).toBe(2);expect(actions[1]).toEqual(actions[0]);expect(payments).toHaveLength(1);expect(payments[0].amount_fen).toBe(points);
+ await expect(page).toHaveURL(/view=results&batch=short-batch/);expect(manual.state).toBe('paused');
+ await page.reload();await expect(page.locator('[data-wp-batch-id="short-batch"]')).toContainText('等待生成');expect(actions).toHaveLength(2);
+});
 
 for(const width of [1440,390,320])test(`saved directory stays compact and confirmation preserves selected scope ${width}`,async({page})=>{
  const state=await setup(page,3);await page.setViewportSize({width,height:960});await page.goto('/'+href({step:'workpapers'}));
@@ -129,4 +166,11 @@ for(const width of [1440,390])test(`direct generation prototype ${width}`,async(
  await page.locator('#wp-filter').fill('核查 350');await page.locator('#entries input').uncheck();await page.locator('#wp-filter').fill('');await page.locator('#wp-requirements').fill('访谈只准备提纲，缺原件处如实说明');await page.locator('#wp-requirements').press('Tab');
  await mkdir('test-evidence/workpaper-direct',{recursive:true});await page.screenshot({path:`test-evidence/workpaper-direct/prototype-preparation-${width}.png`,fullPage:true});await page.locator('#wp-confirm').screenshot({path:`test-evidence/workpaper-direct/prototype-preparation-card-${width}.png`});
  await page.locator('#wp-start').click();await expect(page.locator('#wp-batches')).toContainText('3 / 349 份完成');await page.screenshot({path:`test-evidence/workpaper-direct/prototype-progress-${width}.png`,fullPage:true});expect(errors).toEqual([]);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+
+test('automatic workpaper tariff starts the chosen batch on one click with the server unit price',async({page})=>{
+ const state=await setup(page,3);state.data.price={version:AUTOMATIC_PRICE_VERSION,points:3458,auto_charge:true};
+ await page.goto('/'+href({step:'workpapers'}));await expect(page.locator('.wp-fee-summary')).toContainText('10,374');await expect(page.locator('#wp-start')).toHaveText('开始生成底稿');
+ await page.locator('#wp-start').click();await expect.poll(()=>state.requests.length).toBe(1);expect(state.requests[0]).toMatchObject({price_version:AUTOMATIC_PRICE_VERSION,expected_points:10374});await expect(page.locator('#wp-confirm-start')).toHaveCount(0);
 });

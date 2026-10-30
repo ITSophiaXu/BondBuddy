@@ -11,6 +11,7 @@ test('inventory keys accept only known private object layouts', () => {
   const owner = 'owner_1', project = 'project_1', sha = 'a'.repeat(64), u = '12345678-1234-1234-1234-123456789012';
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/snapshots/s1`), 'snapshot');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/uploads/u1`), 'upload');
+  assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/file-templates/assets/${sha}.docx`), 'file_template');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/provider-results/c1-${sha}.json`), 'provider_result');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/ocr/results/${sha}.json`), 'ocr_result');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/ocr-v2/material/1/${sha}/${sha}.json`), 'ocr_v2_checkpoint');
@@ -20,6 +21,12 @@ test('inventory keys accept only known private object layouts', () => {
   assert.equal(parseInventoryKey(`users/${owner}/runs/r1/artifacts/a1/v1.docx`), 'artifact');
   assert.equal(parseInventoryKey(`parse-cache/${sha}/${u}`), 'parse_cache');
   assert.equal(parseInventoryKey(`log-archive/ndjson_file/${u}.ndjson`), 'log_archive');
+  for (const file of ['baseline.docx', 'tracked.docx', 'clean.docx', 'delivery.md', 'input.json', 'operations.json', 'template-manifest.json'])
+    assert.equal(parseInventoryKey(`owners/${owner}/projects/${project}/runs/r1/file-authoring/call-1/${sha}/${file}`), 'file_authoring');
+  assert.equal(parseInventoryKey(`owners/${owner}/projects/${project}/runs/r1/file-authoring/finalized/${sha}/tracked.docx`), 'file_authoring');
+  assert.equal(parseInventoryKey(`owners/${owner}/projects/${project}/runs/r1/format-diagnostics/${sha}/format-report.json`), 'format_report');
+  assert.equal(parseInventoryKey(`owners/${owner}/projects/${project}/runs/r1/file-authoring/call-1/${sha}/unrelated.json`), 'unrecognized');
+  assert.equal(parseInventoryKey(`owners/${owner}/projects/${project}/runs/r1/file-authoring/../${sha}/input.json`), 'unrecognized');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/snapshots/x/extra`), 'unrecognized');
   assert.equal(parseInventoryKey(`users/${owner}/projects/${project}/unknown/x`), 'unrecognized');
   assert.equal(inventoryPolicyFromEnv({}).deleteEnabled, false);

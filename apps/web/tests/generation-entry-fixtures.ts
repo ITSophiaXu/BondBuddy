@@ -1,9 +1,12 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {clearRows,addDocuments,selectedRows} from './file-generation-rows';
 import {expect,type Page,type Route} from '@playwright/test';
 import {createHash} from 'node:crypto';
 import {Value} from '@sinclair/typebox/value';
 import {PROJECT_DOCUMENT_CATALOG,m4Schemas,projectFileSchemas,type M4DocumentType,type M4Draft,type M4DraftRequest,type M4Template,type ProjectFileBatch,type ProjectFileWorkspace} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import type {FileGenerationBatchRequest} from '../src/file-generation-cache';
 
 // Owner-scoped synthetic HTTP, real main.ts routes and native controls. These
@@ -17,7 +20,7 @@ export const file={name:'原范围补充依据.docx',mimeType:mime,buffer:Buffer
 const hash=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
 export type Call={method:string;path:string;body:unknown};
 type Session={project:string;declaration:Dto<'UploadCreateRequest'>;received:boolean;material?:Dto<'MaterialResponse'>};
-const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,json:body});
+const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,json:fixtureBody(route,body)});
 export const key=(kind:string,project=ids.api,owner=ids.owner)=>`bondbuddy:file-generation:${encodeURIComponent(owner)}:${encodeURIComponent(project)}:${kind}`;
 export const href=(extra:Record<string,string>={},project=ids.api,navigation=ids.api)=>'#generate?'+new URLSearchParams({project,return_project:navigation,...extra});
 export const writes=(s:State)=>s.calls.filter(c=>c.method!=='GET');
@@ -57,8 +60,9 @@ export async function fixture(page:Page){
     sessions:new Map<string,Session>(),materials:new Map<string,Dto<'MaterialResponse'>>(),templates:new Map<string,M4Template>(),puts:0};
   page.on('pageerror',error=>state.errors.push(error.message));
   await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const req=route.request(),url=new URL(req.url()),path=url.pathname.replace('/api/v1',''),method=req.method();
-    const body=method==='PUT'&&path.endsWith('/bytes')?undefined:req.postData()?req.postDataJSON():undefined;
+    const body=method==='PUT'&&path.endsWith('/bytes')?undefined:req.postData()?fixtureRequest(req):undefined;
     state.calls.push({path,method,body});
     if(path==='/me')return json(route,200,{user_id:state.owner,session_status:'active'});
     if(path==='/account')return json(route,200,{user_id:state.owner,username:'synthetic_entry_owner',phone_masked:null,status:'active',created_at:now,accepted_terms_version:'terms-1',current_terms_version:'terms-1',password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});

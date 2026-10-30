@@ -1,4 +1,4 @@
-import { schemas } from '@bondbuddy/contracts';
+import { schemas } from './billing-types.js';
 import { Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import type { Dto } from './api.js';

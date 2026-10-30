@@ -1,0 +1,20 @@
+✔ wire schema and strict parser accept exactly canonical nonnegative int64 strings (1.8928ms)
+✔ schema int64 upper bound is exact at every decimal prefix (0.2689ms)
+✔ legacy/config narrowing is explicit and never rounds a quantity (0.2114ms)
+✔ account sums, per-lot differences and shortage use BigInt with checked overflow (0.2073ms)
+✔ points and CNY formatting and input parsing do not use floating-point currency (16.2193ms)
+✔ standard prices use full-precision decimal cost and two separate exact ceilings (1.2245ms)
+✔ management wire rejects JSON numbers and managed family IDs have a fixed shape (0.8976ms)
+✔ quote and scope explanations encode amounts without converting revisions or changing stored snapshots (2.5278ms)
+✔ nested task progress, period hold breakdown and correction history retain full integer range (0.4722ms)
+✔ raw requests reject numeric wire values before schema coercion and normalize bounded old hash inputs exactly (0.4124ms)
+✔ refund null evidence and ordinary document quantities are not converted by field-name guessing (0.2678ms)
+✔ only cumulative admin usage counts change; rates, durations and revision numbers keep their units (0.4855ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 735.0736

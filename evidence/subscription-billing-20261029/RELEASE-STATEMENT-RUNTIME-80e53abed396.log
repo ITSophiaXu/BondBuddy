@@ -1,0 +1,286 @@
+TAP version 13
+# Subtest: explicit PC and WAP products create official SDK signed Web checkout with immutable amount and absolute expiry, no network or mandate
+ok 1 - explicit PC and WAP products create official SDK signed Web checkout with immutable amount and absolute expiry, no network or mandate
+  ---
+  duration_ms: 34.081108
+  type: 'test'
+  ...
+# Subtest: query posts SDK-signed form through bounded fetch and verifies the exact response bytes, not reserialized JSON
+ok 2 - query posts SDK-signed form through bounded fetch and verifies the exact response bytes, not reserialized JSON
+  ---
+  duration_ms: 14.145094
+  type: 'test'
+  ...
+# Subtest: signed callbacks decode form once, preserve percent/plus, accept delayed retries and reject forgery, duplicate fields, wrong product identities and currency
+ok 3 - signed callbacks decode form once, preserve percent/plus, accept delayed retries and reject forgery, duplicate fields, wrong product identities and currency
+  ---
+  duration_ms: 21.405745
+  type: 'test'
+  ...
+# Subtest: query validates original identity/currency/amount and keeps cash proof separate from nominal and seller transfer date
+ok 4 - query validates original identity/currency/amount and keeps cash proof separate from nominal and seller transfer date
+  ---
+  duration_ms: 66.656084
+  type: 'test'
+  ...
+# Subtest: only authenticated absent query after immutable expiry resolves missing order, and close follows original-order query across payment races
+ok 5 - only authenticated absent query after immutable expiry resolves missing order, and close follows original-order query across payment races
+  ---
+  duration_ms: 18.190677
+  type: 'test'
+  ...
+# Subtest: strict original response envelope rejects unsigned, tampered, duplicate-key and method-substitution responses without leaking details
+ok 6 - strict original response envelope rejects unsigned, tampered, duplicate-key and method-substitution responses without leaking details
+  ---
+  duration_ms: 27.93138
+  type: 'test'
+  ...
+# Subtest: fetch fails closed on redirects, HTTP errors, oversized streams and timeouts including response bodies
+ok 7 - fetch fails closed on redirects, HTTP errors, oversized streams and timeouts including response bodies
+  ---
+  duration_ms: 65.071751
+  type: 'test'
+  ...
+# Subtest: cash refund validates independent buyer fields, queries original request and never treats cumulative refund_fee as this refund
+ok 8 - cash refund validates independent buyer fields, queries original request and never treats cumulative refund_fee as this refund
+  ---
+  duration_ms: 19.385002
+  type: 'test'
+  ...
+# Subtest: refund refuses missing/discounted original cash before dispatch and leaves missing or mismatched per-request cash unresolved
+ok 9 - refund refuses missing/discounted original cash before dispatch and leaves missing or mismatched per-request cash unresolved
+  ---
+  duration_ms: 42.666286
+  type: 'test'
+  ...
+# Subtest: refund recovery retries only the same signed original request when the channel has not yet recorded it
+ok 10 - refund recovery retries only the same signed original request when the channel has not yet recorded it
+  ---
+  duration_ms: 28.42579
+  type: 'test'
+  ...
+# Subtest: configuration and minor-unit conversion reject weak keys, unsupported products, guessed callback endpoints and unsafe money
+ok 11 - configuration and minor-unit conversion reject weak keys, unsupported products, guessed callback endpoints and unsafe money
+  ---
+  duration_ms: 13.497281
+  type: 'test'
+  ...
+# Subtest: bounded ZIP inspection supports stored/deflated CSV and descriptors without normalizing business rows
+ok 12 - bounded ZIP inspection supports stored/deflated CSV and descriptors without normalizing business rows
+  ---
+  duration_ms: 6.127027
+  type: 'test'
+  ...
+# Subtest: strict encoding accepts explicit UTF-8 BOM, ASCII, and unambiguous GBK; invalid/ambiguous bytes stay unknown
+ok 13 - strict encoding accepts explicit UTF-8 BOM, ASCII, and unambiguous GBK; invalid/ambiguous bytes stay unknown
+  ---
+  duration_ms: 1.614034
+  type: 'test'
+  ...
+# Subtest: ZIP filenames cannot introduce paths, duplicate names, executables, directories, or symlinks
+ok 14 - ZIP filenames cannot introduce paths, duplicate names, executables, directories, or symlinks
+  ---
+  duration_ms: 1.023721
+  type: 'test'
+  ...
+# Subtest: ZIP encryption, unsupported methods and inconsistent local metadata are rejected
+ok 15 - ZIP encryption, unsupported methods and inconsistent local metadata are rejected
+  ---
+  duration_ms: 0.720715
+  type: 'test'
+  ...
+# Subtest: CRC, compressed stream, central-directory boundaries and overlapping entries are checked
+ok 16 - CRC, compressed stream, central-directory boundaries and overlapping entries are checked
+  ---
+  duration_ms: 2.42175
+  type: 'test'
+  ...
+# Subtest: archive, entry-count, expanded-size and expansion-ratio budgets fail closed
+ok 17 - archive, entry-count, expanded-size and expansion-ratio budgets fail closed
+  ---
+  duration_ms: 4.669797
+  type: 'test'
+  ...
+# Subtest: unknown content remains unnormalized metadata; control characters and oversized text are rejected
+ok 18 - unknown content remains unnormalized metadata; control characters and oversized text are rejected
+  ---
+  duration_ms: 7.470855
+  type: 'test'
+  ...
+# Subtest: CSV line limits reject a near-limit stored archive of newlines without allocating a line array
+ok 19 - CSV line limits reject a near-limit stored archive of newlines without allocating a line array
+  ---
+  duration_ms: 760.804652
+  type: 'test'
+  ...
+# Subtest: Alipay statements default off; explicit enable advertises only trade and the request app
+ok 20 - Alipay statements default off; explicit enable advertises only trade and the request app
+  ---
+  duration_ms: 153.104855
+  type: 'test'
+  ...
+# Subtest: verified RSA2 URL and bounded ZIP retain local evidence only, with unresolved normalization
+ok 21 - verified RSA2 URL and bounded ZIP retain local evidence only, with unresolved normalization
+  ---
+  duration_ms: 104.483561
+  type: 'test'
+  ...
+# Subtest: forged or changed metadata cannot cause a download
+ok 22 - forged or changed metadata cannot cause a download
+  ---
+  duration_ms: 68.187327
+  type: 'test'
+  ...
+# Subtest: signed metadata permits only exact HTTPS resource and one matching merchant PID
+ok 23 - signed metadata permits only exact HTTPS resource and one matching merchant PID
+  ---
+  duration_ms: 141.715803
+  type: 'test'
+  ...
+# Subtest: unavailable, unsupported or empty-file metadata never pretends that zero business occurred
+ok 24 - unavailable, unsupported or empty-file metadata never pretends that zero business occurred
+  ---
+  duration_ms: 138.309071
+  type: 'test'
+  ...
+# Subtest: unsupported funds/account requests and current/future/invalid dates fail before network access
+ok 25 - unsupported funds/account requests and current/future/invalid dates fail before network access
+  ---
+  duration_ms: 88.814217
+  type: 'test'
+  ...
+# Subtest: redirects, content encodings, HTML, wrong sizes and excess declared bytes stay unresolved
+ok 26 - redirects, content encodings, HTML, wrong sizes and excess declared bytes stay unresolved
+  ---
+  duration_ms: 173.785997
+  type: 'test'
+  ...
+# Subtest: actual response bytes have a hard cap and rejection cancels the stream
+ok 27 - actual response bytes have a hard cap and rejection cancels the stream
+  ---
+  duration_ms: 122.144822
+  type: 'test'
+  ...
+# Subtest: download timeout aborts pending bodies and a late response is cancelled without reading
+ok 28 - download timeout aborts pending bodies and a late response is cancelled without reading
+  ---
+  duration_ms: 241.551705
+  type: 'test'
+  ...
+# Subtest: expired or future metadata is refused and signed URLs are queried afresh for each retry
+ok 29 - expired or future metadata is refused and signed URLs are queried afresh for each retry
+  ---
+  duration_ms: 47.048761
+  type: 'test'
+  ...
+# Subtest: factory disables absent/disabled config without reading files; invalid config exposes no payable channel or secrets
+ok 30 - factory disables absent/disabled config without reading files; invalid config exposes no payable channel or secrets
+  ---
+  duration_ms: 4.670736
+  type: 'test'
+  ...
+# Subtest: factory permits injected absolute secret files and an explicit platform rotation pin file
+ok 31 - factory permits injected absolute secret files and an explicit platform rotation pin file
+  ---
+  duration_ms: 1.531512
+  type: 'test'
+  ...
+# Subtest: factory reads bounded regular files; on POSIX rejects loose permissions and symlinks
+ok 32 - factory reads bounded regular files; on POSIX rejects loose permissions and symlinks
+  ---
+  duration_ms: 1.865514
+  type: 'test'
+  ...
+# Subtest: Alipay is independently disabled, requires an explicit contracted Web product and never exposes a mandate
+ok 33 - Alipay is independently disabled, requires an explicit contracted Web product and never exposes a mandate
+  ---
+  duration_ms: 96.417639
+  type: 'test'
+  ...
+# Subtest: Alipay statements default off, require explicit merchant enablement and reject malformed switches before reading secrets
+ok 34 - Alipay statements default off, require explicit merchant enablement and reject malformed switches before reading secrets
+  ---
+  duration_ms: 46.533157
+  type: 'test'
+  ...
+# Subtest: statement comparisons retain exact safe numbers and canonical signed int64 values
+ok 35 - statement comparisons retain exact safe numbers and canonical signed int64 values
+  ---
+  duration_ms: 1.042508
+  type: 'test'
+  ...
+# Subtest: statement integers reject missing, coerced, rounded and out-of-int64 evidence
+ok 36 - statement integers reject missing, coerced, rounded and out-of-int64 evidence
+  ---
+  duration_ms: 0.877506
+  type: 'test'
+  ...
+# Subtest: absolute statement fees preserve precision and reject INT64_MIN overflow
+ok 37 - absolute statement fees preserve precision and reject INT64_MIN overflow
+  ---
+  duration_ms: 1.956215
+  type: 'test'
+  ...
+# Subtest: modern ALL statement separates gross sale, refund application, fees and historical refund status
+ok 38 - modern ALL statement separates gross sale, refund application, fees and historical refund status
+  ---
+  duration_ms: 4.318133
+  type: 'test'
+  ...
+# Subtest: funds statement preserves accounting direction separately from user credits
+ok 39 - funds statement preserves accounting direction separately from user credits
+  ---
+  duration_ms: 0.817606
+  type: 'test'
+  ...
+# Subtest: integer CNY parsing rejects exponents, excess precision, negatives and unbounded values
+ok 40 - integer CNY parsing rejects exponents, excess precision, negatives and unbounded values
+  ---
+  duration_ms: 0.649505
+  type: 'test'
+  ...
+# Subtest: foreign merchant, wrong currency, duplicate rows, unsupported headers and inconsistent totals stay unresolved
+ok 41 - foreign merchant, wrong currency, duplicate rows, unsupported headers and inconsistent totals stay unresolved
+  ---
+  duration_ms: 3.130024
+  type: 'test'
+  ...
+# Subtest: statement capability defaults off and signed manifest binds an authenticated bounded download
+ok 42 - statement capability defaults off and signed manifest binds an authenticated bounded download
+  ---
+  duration_ms: 41.59616
+  type: 'test'
+  ...
+# Subtest: statement URL restrictions prevent forwarding merchant authorization to redirects, external hosts or other API paths
+ok 43 - statement URL restrictions prevent forwarding merchant authorization to redirects, external hosts or other API paths
+  ---
+  duration_ms: 20.66403
+  type: 'test'
+  ...
+# Subtest: unsigned manifests, hash mismatches, compressed payloads and HTTP redirects are never accepted as statement evidence
+ok 44 - unsigned manifests, hash mismatches, compressed payloads and HTTP redirects are never accepted as statement evidence
+  ---
+  duration_ms: 16.545003
+  type: 'test'
+  ...
+# Subtest: download stops on its first excessive chunk and authenticated absence differs from unsigned failure
+ok 45 - download stops on its first excessive chunk and authenticated absence differs from unsigned failure
+  ---
+  duration_ms: 9.279558
+  type: 'test'
+  ...
+# Subtest: close signs the original merchant order, verifies 204, and preserves a payment that wins the close race
+ok 46 - close signs the original merchant order, verifies 204, and preserves a payment that wins the close race
+  ---
+  duration_ms: 37.471534
+  type: 'test'
+  ...
+1..46
+# tests 46
+# suites 0
+# pass 46
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4750.040908

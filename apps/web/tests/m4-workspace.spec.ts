@@ -1,4 +1,5 @@
 import { taskPage } from './collection-fixtures';
+import {fixtureBody} from './billing-fixture-wire';
 import { test,expect,type Page,type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir,readFile,writeFile } from 'node:fs/promises';
@@ -72,7 +73,7 @@ test('case template prototype and implementation expose the same six materials a
   await prototype.close();
 });
 const now='2026-10-06T00:00:00Z',mime='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-const reply=(route:Route,body:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+const reply=(route:Route,body:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(fixtureBody(route,body))});
 function fixture(dynamic=false){
   const source={source_project_id:'source-project',material_id:'source-doc',material_version:3,sha256:hash('source')};
   const draft=(type:M4DocumentType):M4Draft=>({document_type:type,version:1,sha256:hash(type),updated_at:now,source_material:type==='private_summary'?source:null,materials:[],template:null,edit_base:null,scope:'whole',fields:{issuer_name:'合成发行人',market:'sse',broker:'合成券商'},requirements:[{requirement_id:'req1',text:'保留已采纳要求',message_id:'m0',message_version:1}]});
@@ -124,7 +125,7 @@ async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'=
   }
   await page.goto(`/#${mode}?${fresh?'new=synthetic':'topic=topic-a'}`);
   if(legacyComponent){
-    await page.evaluate(async()=>{const componentPath='/src/material-workspace.ts',apiPath='/src/api.ts',{MaterialWorkspace}=await import(componentPath),{ApiClient}=await import(apiPath);const component=new MaterialWorkspace(new ApiClient(),'owner-a',(html:string)=>{document.querySelector('.shell')!.innerHTML=html;},()=>true,undefined,undefined,true);await component.render();});
+    await page.evaluate(async()=>{const componentPath='/src/material-workspace.ts',apiPath='/src/api.ts',{MaterialWorkspace}=await import(componentPath),{ApiClient}=await import(apiPath);const component=new MaterialWorkspace(new ApiClient(),'owner-a',(html:string)=>{document.querySelector('.shell')!.innerHTML=html;},()=>true,undefined,undefined,true);await component.render();(window as any).__materialController=component;});
     for(const path of ['src/style.css','../../product-prototype/public/styles.css','../../product-prototype/public/source-prospectus.css','../../product-prototype/public/project-workspace.css','src/prototype-adapter.css'])await page.addStyleTag({content:(await readFile(resolve(process.cwd(),path),'utf8')).replace(/@import\s+[^;]+;/g,'')});
   }
   await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
@@ -132,6 +133,18 @@ async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'=
 
 const choose=async(page:Page,type:M4DocumentType)=>page.locator(`[data-m4-type][value="${type}"]`).check();
 const start=async(page:Page)=>{await page.getByRole('button',{name:'生成募集说明书摘要',exact:true}).click();await expect(page.getByRole('button',{name:'正在提交…',exact:true})).toHaveCount(0);};
+for(const kind of ['qa','document'] as const)for(const insufficient of [false,true])test(`legacy send controller ${insufficient?'blocks a positive':'accepts a zero'} string shortage for ${kind}`,async({page})=>{
+  const s=fixture();s.balance.available=(kind==='document'?4500:20)-(insufficient?1:0);s.startDocumentOnMessage=kind==='document';await mount(page,s,'generate',false,true);
+  if(kind==='document')await choose(page,'private_summary');
+  // Exercise the retained controller command path through its real ApiClient.
+  // This is controller coverage, not a claim that the retired composer is visible.
+  await page.evaluate(async kind=>{const c=(window as any).__materialController;c.view.unsent_content=kind==='document'?'开始制作':'说明本次材料';await c.send();},kind);
+  expect(s.messages).toHaveLength(0);expect(s.quotes).toHaveLength(1);
+  await page.evaluate(async()=>{await (window as any).__materialController.send();});
+  if(insufficient){expect(s.messages).toHaveLength(0);expect(s.charged).toBe(0);return;}
+  expect(s.messages).toHaveLength(1);expect(s.messages[0].quote_id).toBe('quote-a');expect(s.charged).toBe(1);
+  expect(s.messages[0].execute===true).toBe(kind==='document');
+});
 
 for(const purpose of ['source','material'] as const)test(`duplicate feedback: material generation ${purpose} keeps the original and explains reuse`,async({page})=>{
   const s=fixture();await mount(page,s);await choose(page,'private_summary');
@@ -560,10 +573,10 @@ for(const state of ['running','succeeded','failed'] as const)test(`project mater
  await mount(page,s);
  await page.route('**/api/v1/projects**',async route=>{const url=new URL(route.request().url());if(url.pathname==='/api/v1/projects/m4-project/tasks')return reply(route,taskPage('m4-project',[task.run],'generation',{topic_id:s.workspace.topic.topic_id}));if(url.pathname==='/api/v1/projects')return reply(route,{items:[{...s.workspace.project,status:state,latest_run:{run_id:'dashboard-run',state,updated_at:now}}],page:{has_more:false,next_cursor:null}});if(url.pathname==='/api/v1/projects/m4-project')return reply(route,s.workspace.project);return route.fallback();});
  await page.goto('/#dashboard');await page.locator('[data-tasks]').click();await page.locator('.collection-task a').click();
- await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:dashboard-run');
+ await expect(page.locator('.nav-item.active')).toHaveText('任务进度与结果');await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:dashboard-run');
  if(state==='succeeded')await expect(page.locator('#m4-content')).toContainText('本次材料成果.docx');else await expect(page.locator('#m4-content')).toContainText(state==='running'?'正在':'本轮未完成');
- await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:dashboard-run');
- await page.getByRole('link',{name:'返回全部项目'}).click();await expect(page.getByRole('heading',{name:'全部项目',exact:true})).toBeVisible();expect(s.executions).toHaveLength(0);
+ await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('任务进度与结果');await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:dashboard-run');
+ await page.getByRole('link',{name:'返回任务进度与结果'}).click();await expect(page.getByRole('heading',{name:'任务进度与结果',exact:true})).toBeVisible();expect(s.executions).toHaveLength(0);
 });
 
 

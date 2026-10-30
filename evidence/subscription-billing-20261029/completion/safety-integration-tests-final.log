@@ -1,0 +1,18 @@
+✔ wallet quarantine fences new credit and subscriptions while preserving account reads and cancellation (359.1154ms)
+✔ merchant quarantine prevents checkout dispatch but original order queries remain available (655.4916ms)
+✔ reconciliation isolates committed wallet drift even without a configured payment provider (264.409ms)
+✔ lost payment callbacks reconcile once without a browser, another charge, or another task (510.1676ms)
+✔ query timeout and mismatched identity keep original payment pending and back off (452.8412ms)
+✔ accepted refund with a lost response completes by querying its original ID; unknown holds stay frozen (363.3173ms)
+✔ a crash after refund freeze but before dispatch resumes the same authorised request once (449.096ms)
+✔ pre-send dispatch crash uses only documented same-request recovery; unknown or mismatched receipts never release held points (361.2182ms)
+✔ a matching callback arriving during a failed query prevents needless same-request resubmission (301.7328ms)
+✔ shutdown stops starting claimed rows; unfinished original orders remain recoverable (583.8936ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18726.852

@@ -1,6 +1,6 @@
 import { isUnifiedInput, reportingWindow, type BillingTask, type Market, type Offering, type SourceProspectus, type UpdateDetails } from '@bondbuddy/contracts';
 
-export type Classification = { task: BillingTask; reason: string } | { task: null; reason: string };
+export type Classification = { task: BillingTask; reason: string; annualPeriods?:number } | { task: null; reason: string };
 /** Uses only the locked user declarations; never infers company identity from a filename. */
 export function classifyFixedPrice(manifest: any): Classification {
   if (!isUnifiedInput(manifest)) return { task: null, reason: '此输入仍为旧版，请保存当前项目信息后重新获取报价。' };
@@ -34,5 +34,5 @@ export function classifyFixedPrice(manifest: any): Classification {
   // interim; over three annual periods is capped at the corresponding three-year tier.
   const task: BillingTask = migration ? years <= 1 ? 'migration' : years === 2 ? 'migration_two_years' : 'migration_three_years' :
     years === 0 ? 'interim' : years === 1 ? 'annual' : years === 2 ? 'two_years' : 'three_years';
-  return { task, reason: `${migration ? '同企业原稿需迁移市场或主要模板，' : '复用同企业原稿，'}${years ? `新增${years}个完整年度${years>3?'，按三年档封顶':''}，含最新一期。` : '最新一期或纯内容更新。'}` };
+  return { task, annualPeriods:years, reason: `${migration ? '同企业原稿需迁移市场或主要模板，' : '复用同企业原稿，'}${years ? `新增${years}个完整年度${years>3?'，按三年档封顶':''}，含最新一期。` : '最新一期或纯内容更新。'}` };
 }

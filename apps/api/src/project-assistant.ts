@@ -3,7 +3,7 @@ import type { Pool, PoolClient } from 'pg';
 import { AssistantCardRequestSchema, isUnifiedInput, type AssistantCardRequest, type AssistantCard, type AssistantResult } from '@bondbuddy/contracts';
 import { project,projectDto,materialDto,runDto,transaction,date,executionKeyStorage,Problem,missing,conflict,uid } from './data.js';
 import { inputManifestHash } from './production-rule-pin.js';
-import { creditBalance,quoteDto } from './billing.js';
+import { creditBalanceExact,quoteDto } from './billing.js';
 import { m4QuoteDto } from './m4-billing.js';
 import { draft as reviewDraft } from './review-workspace.js';
 
@@ -19,7 +19,7 @@ async function cardDto(db:Db,user:string,row:any):Promise<AssistantCard>{
     [user,row.project_id,executionKeyStorage(row.execution_request_id)])).rows[0];
   // The immutable request key is reused by the existing executor. A lost HTTP
   // response is recovered here, without a second execution or linking mutation.
-  return {...row.request,...row.summary,created_at:date(row.created_at),balance:await creditBalance(db,user),run:run && (!row.request.input_hash || run.input_hash.trim()===row.request.input_hash)?runDto(run):null};
+  return {...row.request,...row.summary,created_at:date(row.created_at),balance:await creditBalanceExact(db,user),run:run && (!row.request.input_hash || run.input_hash.trim()===row.request.input_hash)?runDto(run):null};
 }
 export async function assistantCardSummary(db:Db,user:string,t:any,b:AssistantCardRequest){
   const p=await project(db,user,b.project_id);
@@ -62,7 +62,7 @@ export async function assistantCardSummary(db:Db,user:string,t:any,b:AssistantCa
   if(b.operation==='generation'&&!quote)throw conflict('QUOTE_REQUIRED','请先查看本次材料生成的报价。');
   const material_names:string[]=[];
   for(const pin of selected){
-    const m=(await db.query('SELECT filename FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL',
+    const m=(await db.query('SELECT filename FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL AND NOT internal_template',
       [user,pin.source_project_id??p.id,pin.material_id,pin.material_version])).rows[0];
     if(!m)throw missing();if(!material_names.includes(m.filename))material_names.push(m.filename);
   }
@@ -72,7 +72,7 @@ export async function assistantCardSummary(db:Db,user:string,t:any,b:AssistantCa
 export function registerProjectAssistant(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>){
   app.get('/api/v1/assistant/projects/:project_id',async request=>{
     const user=await owner(request),id=param(request,'project_id'),p=await project(db(),user,id);
-    const materials=(await db().query('SELECT DISTINCT ON(id) * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL ORDER BY id,version DESC',[user,id])).rows.map(materialDto);
+    const materials=(await db().query('SELECT DISTINCT ON(id) * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL AND NOT internal_template ORDER BY id,version DESC',[user,id])).rows.map(materialDto);
     const rows=(await db().query(`SELECT a.id,a.version,a.sha256,r.id AS run_id,r.created_at,r.input_revision,
       COALESCE(m.filename,'清洁版募集说明书.docx') AS filename
       FROM bb_artifact_versions a JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id

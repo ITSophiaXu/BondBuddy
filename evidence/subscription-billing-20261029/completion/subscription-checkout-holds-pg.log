@@ -1,0 +1,19 @@
+▶ synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once
+  ✔ verified payment grants once, 90-day rights and cash ratio survive cancellation (522.5317ms)
+  ✔ checkout failure before channel creation stays unknown until authenticated expiry, then permits a new purchase (60.3841ms)
+  ✔ only a wholly unused period refunds 199 cash by removing 21000 points, unknown status stays held (183.5839ms)
+  ✔ task and cash-refund holds are separate in the same wallet and each period (198.4678ms)
+  ✔ consumption prevents subscription cash refund; expired correction preserves original paid ratio (65.084ms)
+  ✔ the application rejects an unused subscription after the seven-day refund window (46.2696ms)
+  ✔ topup is 1:1 permanent and does not inherit a subscription discount (52.7702ms)
+  ✔ native checkout has no recurring capability; an authenticated synthetic mandate renews once after timeout (141.2184ms)
+  ✔ a delayed refund for an earlier period cannot cancel a later paid period or its mandate (128.7817ms)
+✔ synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once (1571.1658ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9771.0977

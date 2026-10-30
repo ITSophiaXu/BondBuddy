@@ -1,0 +1,27 @@
+✔ lost payment callbacks reconcile once without a browser, another charge, or another task (463.3982ms)
+✔ query timeout and mismatched identity keep original payment pending and back off (403.01ms)
+✔ accepted refund with a lost response completes by querying its original ID; unknown holds stay frozen (381.8918ms)
+✔ a crash after refund freeze but before dispatch resumes the same authorised request once (429.2967ms)
+✔ pre-send dispatch crash uses only documented same-request recovery; unknown or mismatched receipts never release held points (353.8443ms)
+✔ a matching callback arriving during a failed query prevents needless same-request resubmission (305.6352ms)
+✔ shutdown stops starting claimed rows; unfinished original orders remain recoverable (587.9592ms)
+✔ synthetic signed cash refunds bind original payment/lot, exclude consumed/held/noncash money and settle once under callback/query concurrency (7649.9176ms)
+✔ synthetic timeout/unknown retains freeze, reconciles same refund ID, and explicit CLOSED releases without reusing a failed request (9173.6929ms)
+✔ synthetic task/refund races serialize on original account and rollback cannot send cash before a durable freeze (6860.8609ms)
+✔ historical bonus package refunds consumed remainder at original A/Q and quality restoration keeps the same cash ceiling (8771.5083ms)
+✔ historical package cumulative one-cent rounding preserves sub-cent credits and strict request units (7398.4947ms)
+✔ cash refunds allocate only authenticated original-source family and serialize races with consumption (7240.5419ms)
+✔ paid historical proof refresh reuses the exact existing lot without granting credits again (290.6463ms)
+✔ close intent survives unknown response, blocks reopening, and cannot erase a verified payment (254.6201ms)
+✔ historical statement keeps gross issuance and refund cash separate from current balance and later refund success (329.2269ms)
+✔ statement-only receipt raises persisted differences without creating payment credit, and concurrent scans claim once (199.0672ms)
+✔ refund reverse coverage needs authenticated application-date evidence and detects a later missing row without mutating wallets (359.2535ms)
+✔ mismatched statement identity and unavailable provider keep the job recoverable and alert without private error data (133.6625ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 120506.4082

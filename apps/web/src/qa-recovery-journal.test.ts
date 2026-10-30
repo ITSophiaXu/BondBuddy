@@ -16,7 +16,7 @@ class MemoryStorage implements QaRecoveryJournalStorage{
 const prefix='bb-qa-recovery-journal-v1:owner:project:',sha='a'.repeat(64),mainKey='bb-qa-recovery:owner:project';
 const draft=():QaDraft=>({preparation_id:'prepare-run',questions:[{id:'q2',start:2,end:2,question:'请说明偿债安排。'}],materials:[{kind:'material',pin:{source_project_id:'member-project',material_id:'audit',material_version:3,sha256:sha}}],requirements:'核对项目原始依据',use_knowledge:false});
 const answer=(request='answer-request'):QaRecoveryValue=>({revision:4,draft:draft(),sourceRun:'historical-answer',needsKnowledgeChoice:false,
-  pending:{kind:'answer',request:{request_id:request,expected_revision:4,expected_points:60,price_version:PROJECT_QA_PRICE.version}}});
+  pending:{kind:'answer',request:{request_id:request,expected_revision:4,expected_points:"60",price_version:PROJECT_QA_PRICE.version}}});
 const prepare=(request='prepare-request'):QaRecoveryValue=>({...answer(),needsKnowledgeChoice:true,pending:{kind:'prepare',request:{request_id:request,
   source:{kind:'material',pin:{source_project_id:'project',material_id:'questions',material_version:1,sha256:sha}}}}});
 const savingDraft=():QaRecoveryValue=>({...answer(),pending:{kind:'draft',request:{expected_revision:4,draft:draft()}}});
@@ -46,7 +46,7 @@ test('QA journal same request identity conflicts on every complete snapshot diff
   const storage=new MemoryStorage(),journal=new QaRecoveryJournal('owner','project',storage),base=answer();journal.retain(base);const raw=storage.getItem(prefix+'answer:answer-request');
   const changes=[{...base,sourceRun:'other-view'},{...base,needsKnowledgeChoice:undefined},{...base,draft:{...draft(),requirements:'different'}},
     {...base,draft:{...draft(),materials:[]}},{...base,draft:{...draft(),use_knowledge:true}},
-    {...base,revision:5,pending:{kind:'answer' as const,request:{request_id:'answer-request',expected_revision:5,expected_points:60,price_version:PROJECT_QA_PRICE.version}}}];
+    {...base,revision:5,pending:{kind:'answer' as const,request:{request_id:'answer-request',expected_revision:5,expected_points:'60',price_version:PROJECT_QA_PRICE.version}}}];
   for(const value of changes){assert.deepEqual(journal.retain(value),{status:'conflict'});assert.deepEqual(journal.confirm(value),{status:'conflict'});assert.equal(storage.getItem(prefix+'answer:answer-request'),raw);}
   const second=prepare();journal.retain(second);if(second.pending?.kind==='prepare')second.pending.request.source.pin.sha256='b'.repeat(64);
   assert.equal(journal.retain(second).status,'conflict');

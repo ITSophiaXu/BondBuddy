@@ -82,6 +82,15 @@ export async function resultsLoading(page:Page){
  for(const frame of await visibleFrames(page))if(await frame.locator('[aria-busy=true]:visible,.loading:visible,.el-loading-mask:visible,.ant-spin-spinning:visible,[role=progressbar]:visible').count())return true;
  return false;
 }
+/** Observe result content, including same-count replacements, without portal clocks/footers. */
+export async function resultAreaText(page:Page,fallback:string){
+ const parts:string[]=[];
+ for(const frame of await visibleFrames(page)){
+  const text=await frame.locator('#results:visible,#result:visible,#companylists:visible,.search-results:visible,.search-result-list:visible,.default-result-list:visible,.result-list:visible,main:visible').evaluateAll(nodes=>nodes.filter(n=>!nodes.some(parent=>parent!==n&&parent.contains(n))).map(n=>(n as HTMLElement).innerText).join('\n'));
+  if(text.trim())parts.push(text);
+ }
+ return parts.length?parts.join('\n'):fallback;
+}
 export async function searchButton(frame:Frame,input?:Locator){
  // Portals often use an unlabelled image beside the field as their submit control.
  // Limit these attribute matches to the field's local container, never a global icon.

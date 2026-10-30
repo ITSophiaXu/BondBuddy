@@ -1,0 +1,15 @@
+
+Running 8 tests using 1 worker
+
+(node:49784) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 apps\web\tests\ordinary-file-check-batches.spec.ts:60:1 › one click executes without an amount dialog; partial outputs retain independent charges and failed-only retry (1.8s)
+  ok 2 apps\web\tests\ordinary-file-check-batches.spec.ts:69:53 › two tabs serialize successful submissions and keep one original request (3.1s)
+  ok 3 apps\web\tests\ordinary-file-check-batches.spec.ts:69:53 › two tabs serialize unknown submissions and keep one original request (3.2s)
+  ok 4 apps\web\tests\ordinary-file-check-batches.spec.ts:76:1 › a definite quote conflict permits a fresh quote after rejected submission (1.0s)
+  ok 5 apps\web\tests\ordinary-file-check-batches.spec.ts:80:1 › insufficient balance retains the original range and only offers subscription or topup (1.1s)
+  ok 6 apps\web\tests\ordinary-file-check-batches.spec.ts:85:1 › without Web Locks the page does not quote or submit a chargeable task (856ms)
+  ok 7 apps\web\tests\ordinary-file-check-batches.spec.ts:88:1 › an unknown retry outside the recent-30 list restores the exact old batch and request after reopening (1.2s)
+  ok 8 apps\web\tests\ordinary-file-check-batches.spec.ts:94:1 › capture same-size partial-batch prototype and implementation at desktop and mobile sizes (1.6s)
+
+  8 passed (18.0s)

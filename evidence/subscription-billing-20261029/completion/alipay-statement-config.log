@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: factory disables absent/disabled config without reading files; invalid config exposes no payable channel or secrets
+ok 1 - factory disables absent/disabled config without reading files; invalid config exposes no payable channel or secrets
+  ---
+  duration_ms: 5.4236
+  type: 'test'
+  ...
+# Subtest: factory permits injected absolute secret files and an explicit platform rotation pin file
+ok 2 - factory permits injected absolute secret files and an explicit platform rotation pin file
+  ---
+  duration_ms: 1.7666
+  type: 'test'
+  ...
+# Subtest: factory reads bounded regular files; on POSIX rejects loose permissions and symlinks
+ok 3 - factory reads bounded regular files; on POSIX rejects loose permissions and symlinks
+  ---
+  duration_ms: 23.3099
+  type: 'test'
+  ...
+# Subtest: Alipay is independently disabled, requires an explicit contracted Web product and never exposes a mandate
+ok 4 - Alipay is independently disabled, requires an explicit contracted Web product and never exposes a mandate
+  ---
+  duration_ms: 108.6327
+  type: 'test'
+  ...
+# Subtest: Alipay statements default off, require explicit merchant enablement and reject malformed switches before reading secrets
+ok 5 - Alipay statements default off, require explicit merchant enablement and reject malformed switches before reading secrets
+  ---
+  duration_ms: 86.6566
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1281.7922

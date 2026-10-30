@@ -1,3 +1,4 @@
+// Accelerated observation windows for legacy fixtures; production durations have dedicated regressions.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
@@ -10,7 +11,7 @@ const subject={name:'河南合成测试企业',kind:'company' as const,province:
 const html=(body:string,script='')=>`<!doctype html><meta charset="utf-8"><title>synthetic official fixture</title><body>${body}<script>${script}</script>`;
 const form='<input placeholder="企业名称"><button>查询</button><main>请输入名称</main>';
 const navigate=(popup:boolean)=>`document.querySelector('button').onclick=()=>{const q=document.querySelector('input').value;${popup?"window.open('/query?q='+encodeURIComponent(q))":"location.href='/query?q='+encodeURIComponent(q)"};};`;
-const options={waitMs:4500,maxPages:1,attempts:2};
+const options={resultStableMs:150,zeroConfirmMs:300,waitMs:4500,maxPages:1,attempts:2};
 
 test('certificate and policy failures stop while transient transport failures remain retryable',()=>{
  const result:BrowserCollection={query:'合成企业',search_performed:false,outcome:'failed',scope:'synthetic',limitation:'synthetic',reason:'synthetic',captures:[]};

@@ -1,0 +1,22 @@
+{
+  "synthetic": true,
+  "template": "bb_billing_complete_20261029_v4",
+  "target": "bb_billing_complete_20261029_v5",
+  "checks": [
+    {
+      "database": "bb_billing_complete_20261029_v5",
+      "mode": "upgrade-from-0156",
+      "count": 158,
+      "latest": "0157_payment_refund_channel_dates.sql",
+      "migrationExit": 0
+    },
+    {
+      "database": "bb_billing_empty_0157_check_20261029",
+      "mode": "empty-install",
+      "count": 158,
+      "latest": "0157_payment_refund_channel_dates.sql",
+      "migrationExit": 0
+    }
+  ],
+  "freshCleanup": true
+}

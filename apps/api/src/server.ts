@@ -8,6 +8,7 @@ import { listProjects, archiveProject } from './project-list.js';
 import { registerProjectCollection } from './project-collection.js';
 import { registerProjectFileWorkspace } from './project-file-workspace.js';
 import { registerWorkpapers } from './workpapers.js';
+import { registerFileGeneration } from './file-generation.js';
 import { registerProjectFileConsistency } from './project-file-consistency.js';
 import { registerProspectusRoutes, registerUploadedProspectus, prospectusVersions, assertProspectusRemovable } from './prospectus-versions.js';
 import { registerUpdateWorkspace } from './update-workspace.js';
@@ -65,7 +66,7 @@ import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOvera
 import { assertGenerationIssuerBinding, assertLockedInputIntegrity, assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled, workingDraftConfigured } from './non-production-test.js';
 import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatches } from './test-issuer-candidate.js';
 import { classifyPreflightReadiness } from './preflight-readiness.js';
-import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation } from './unified-authoring.js';
+import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertOwnedFormatTemplate, inheritPreviousOutputFormat } from './unified-authoring.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
@@ -78,12 +79,23 @@ import { installProductionReviewLedgerRoutes } from './production-review-ledger.
 import { installProductionRulePackReleaseRoutes } from './production-rule-pack-releases.js';
 import { configuredUploadInspectionException, uploadInspectionExceptionMatches } from './upload-inspection-exception.js';
 
-import { creditBalance, quoteCredits, reserveCredits, quoteDto } from './billing.js';
+import { creditBalanceExact, quoteCreditsExact, reserveCredits, quoteDto } from './billing.js';
+import {installBillingWire} from './billing-wire.js';
 import { classifyFixedPrice } from './billing-classification.js';
 import { installPayments, type PaymentProvider } from './payments.js';
+import {installCommerce} from './commerce.js';
+import {installSubscriptions} from './subscriptions.js';
+import {installBillingPermissions} from './billing-permissions.js';
+import {installBillingPriceAdmin} from './billing-price-admin.js';
+import {installTaskRefunds} from './task-refunds.js';
+import {installSubscriptionOrderDetail} from './subscription-order-detail.js';
+import {configureAutomaticBilling} from './automatic-billing-context.js';
+import {paymentProvidersFromEnv} from './payment-provider-config.js';
+import {installPaymentReconciliation} from './payment-reconciliation.js';
+import {installProjectFileCheckBatches} from './project-file-check-batches.js';
 
 export type Principal = { userId: string; csrfVerified: boolean; sessionId?: string };
-export type Settings = { paymentProviders?: readonly PaymentProvider[]; enablePaidAuthoring?: boolean; enablePaidReview?: boolean; pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
+export type Settings = { enableSubscriptionBilling?: boolean; enableOutcomePricing?: boolean; paymentProviders?: readonly PaymentProvider[]; enablePaidAuthoring?: boolean; enablePaidReview?: boolean; pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -141,8 +153,15 @@ export function createServer(settings: Settings = {}) {
   // Preflight jobs persist request IDs; keep them unique across server restarts.
   const app = Fastify({ logger: false, genReqId: uid, trustProxy: process.env.BB_TRUSTED_PROXY_CIDR ?? false, bodyLimit: MAX_BYTES + 1024, ajv: { customOptions: { removeAdditional: false, coerceTypes: false } } });
   const pool = settings.pool ?? new Pool({ connectionString: process.env.DATABASE_URL });
-  const paidAuthoring = settings.enablePaidAuthoring ?? process.env.BB_PAID_AUTHORING_ENABLED === '1';
-  const paidReview = settings.enablePaidReview ?? process.env.BB_PAID_REVIEW_ENABLED === '1';
+  // Fastify runs onClose hooks in reverse registration order. Register the
+  // owned pool first so in-flight payment/statement reconciliation drains first.
+  if(!settings.pool)app.addHook('onClose',async()=>{await pool.end();});
+  const subscriptionBilling=settings.enableSubscriptionBilling??process.env.BB_SUBSCRIPTION_BILLING_ENABLED==='1';
+  configureAutomaticBilling(pool,subscriptionBilling);
+  const commercial = subscriptionBilling || (settings.enableOutcomePricing ?? process.env.BB_OUTCOME_PRICING_ENABLED === '1');
+  const paidAuthoring = commercial || (settings.enablePaidAuthoring ?? process.env.BB_PAID_AUTHORING_ENABLED === '1');
+  const paidReview = commercial || (settings.enablePaidReview ?? process.env.BB_PAID_REVIEW_ENABLED === '1');
+  const paymentProviders = settings.paymentProviders ?? paymentProvidersFromEnv(process.env).providers;
   const allowedOrigin=settings.allowedOrigin ?? process.env.BB_ALLOWED_ORIGIN;
   const uploadInspectionException = configuredUploadInspectionException();
   const auth:AuthConfig={pool,allowedOrigin,termsVersion:settings.auth?.termsVersion ?? process.env.BB_TERMS_VERSION,supportContact:settings.auth?.supportContact ?? process.env.BB_SUPPORT_CONTACT};
@@ -169,6 +188,7 @@ export function createServer(settings: Settings = {}) {
     request.log.error(error);
     return reply.code(500).send({ code: 'DATA_UNAVAILABLE', message: 'Internal error', retryable: true, field_errors: [], correlation_id: request.id });
   });
+  installBillingWire(app,{db,owner});
   installAuth(app,auth);
   installAccountRecovery(app,auth);
   // #17: the worker runtime executes queued runs; the synthetic flag remains for older tests.
@@ -183,13 +203,16 @@ export function createServer(settings: Settings = {}) {
     return principal.userId;
   }
   function db() { if (!process.env.DATABASE_URL && !settings.pool) throw unavailable(); return pool; }
-  registerReviewRoutes(app, db, owner, paidReview);
-  registerM4Routes(app, db, owner, blob, queueEnabled);
+  registerReviewRoutes(app, db, owner, paidReview, commercial);
+  registerM4Routes(app, db, owner, blob, queueEnabled, commercial);
   registerProjectAssistant(app, db, owner);
-  registerProjectQa(app, db, owner);
+  registerProjectQa(app, db, owner, commercial);
   registerQaKnowledge(app, db, owner);
   registerReadableReview(app, db, owner, blob);
-  installPayments(app,pool,owner,paidAuthoring,settings.paymentProviders??[]);
+  installPayments(app,pool,owner,paidAuthoring&&!commercial,paymentProviders);
+  installPaymentReconciliation(app,pool,paymentProviders);
+  installCommerce(app,pool,owner,commercial,paymentProviders);
+  installSubscriptions(app,pool,owner,subscriptionBilling,paymentProviders);
   app.post('/api/v1/projects/:project_id/target-period-evidence-decisions',{
     schema:{body:schemas.TargetPeriodEvidenceDecisionRequest,response:{200:schemas.TargetPeriodEvidenceDecisionResponse}}},async request=>{
     const user=await owner(request),projectId=param(request,'project_id');
@@ -288,6 +311,11 @@ export function createServer(settings: Settings = {}) {
     return bytes;
   }
   installAdminRoutes(app,{db,blobs:blob,owner,promptViewDeadlineMs:settings.promptViewDeadlineMs});
+  installBillingPermissions(app,{db,owner});
+  installBillingPriceAdmin(app,db,owner);
+  installTaskRefunds(app,{db,owner});
+  installSubscriptionOrderDetail(app,{db,owner});
+  installProjectFileCheckBatches(app,{db,owner});
   installBrowserErrorRoutes(app,{db,owner,sessionId:async request=>{
     const principal=await (settings.principal ? settings.principal(request) : sessionPrincipal(request,auth));
     if(!principal?.sessionId)throw new Problem(401,'UNAUTHENTICATED','Session required');
@@ -317,10 +345,11 @@ export function createServer(settings: Settings = {}) {
     listProjects(db(),await owner(request),request.query as import('@sinclair/typebox').Static<typeof schemas.ProjectListQuery>,request.headers[PROJECT_TASK_COUNTS_CAPABILITY.header]===PROJECT_TASK_COUNTS_CAPABILITY.value));
   registerProspectusRoutes(app,db,owner,blob);
   registerProjectCollection(app,db,owner);
-  registerProjectFileWorkspace(app,db,owner,blob);
+  registerProjectFileWorkspace(app,db,owner,blob,commercial);
   registerWorkpapers(app,db,owner,blob);
-  registerProjectFileConsistency(app,db,owner);
-  registerIntegrity(app,db,owner,blob);
+  registerFileGeneration(app,db,owner,blob,commercial);
+  registerProjectFileConsistency(app,db,owner,commercial);
+  registerIntegrity(app,db,owner,blob,commercial);
   registerUpdateWorkspace(app,db,owner,blob,appendProjectMaterialEvent);
   registerReviewEditor(app,db,owner,blob);
   app.get('/api/v1/projects/:project_id/artifacts',{schema:{querystring:schemas.ArtifactHistoryQuery,response:{200:schemas.ArtifactHistoryResponse}}},async (request,reply) => {
@@ -335,6 +364,7 @@ export function createServer(settings: Settings = {}) {
     const user=await owner(request), b=body<{creation_request_id?:string;name:string;kind:string;issuer_name:string|null;market:Market|null;offering:Offering|null;update_details?:UpdateDetails}>(request);
     checkedPair(b.market,b.offering);
     const details={...emptyUpdateDetails(),...b.update_details};
+    if(details.format_template)throw new Problem(422,'VALIDATION_FAILED','请先创建项目并上传原稿，再选择格式模板。');
     const errors=updateDetailsErrors(details);if(errors.length)throw new Problem(422,'VALIDATION_FAILED',errors[0].message);
     const id=uid(), value=await transaction(db(),async client=>{
       if(b.creation_request_id){
@@ -610,8 +640,15 @@ export function createServer(settings: Settings = {}) {
         // an explicit [] is the only way to clear the list.
         ...(!submittedDetails || !Object.hasOwn(submittedDetails,'target_reporting_periods')
           ? (priorDetails.target_reporting_periods === undefined ? {} : {target_reporting_periods:priorDetails.target_reporting_periods})
+          : {}),
+        ...(!submittedDetails || !Object.hasOwn(submittedDetails,'format_template')
+          ? (priorDetails.format_template === undefined ? {} : {format_template:priorDetails.format_template})
           : {})};
       const errors=updateDetailsErrors(details);if(errors.length)throw new Problem(422,'VALIDATION_FAILED',errors[0].message);
+      // Validate newly selected references; unrelated edits can still preserve an old selection.
+      // Exact selected-material membership is rechecked when a new input is locked.
+      if(submittedDetails && Object.hasOwn(submittedDetails,'format_template'))
+        await assertOwnedFormatTemplate(client,user,id,details.format_template);
       const result=await client.query('UPDATE bb_projects SET name=$3,issuer_name=$4,market=$5,offering=$6,update_details=$7,draft_revision=draft_revision+1,updated_at=now() WHERE owner_user_id=$1 AND id=$2 RETURNING *',[user,id,next.name,next.issuer_name,next.market,next.offering,JSON.stringify(details)]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'project',id,'project.draft_updated',{project_id:id,draft_revision:result.rows[0].draft_revision}]);
       await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'project_edit',status:'submitted'});
@@ -722,7 +759,10 @@ export function createServer(settings: Settings = {}) {
       const refs=[...b.material_versions].sort((a,z)=>a.material_id.localeCompare(z.material_id)||a.material_version-z.material_version);
       if(new Set(refs.map(r=>r.material_id)).size!==refs.length) throw new Problem(422,'VALIDATION_FAILED','Duplicate material IDs');
       const resolved=[];
-      for(const ref of refs){const q=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL FOR SHARE',[user,id,ref.material_id,ref.material_version]);if(!q.rows[0])throw missing();resolved.push({material_id:ref.material_id,material_version:ref.material_version,role:q.rows[0].role,sha256:q.rows[0].sha256.trim()});}
+      const formatMaterials=[];
+      for(const ref of refs){const q=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL AND NOT internal_template FOR SHARE',[user,id,ref.material_id,ref.material_version]);if(!q.rows[0])throw missing();const pin={material_id:ref.material_id,material_version:ref.material_version,role:q.rows[0].role,sha256:q.rows[0].sha256.trim()};resolved.push(pin);formatMaterials.push({...pin,media_type:String(q.rows[0].media_type)});}
+      // Keep the request's material order for automatic format choice, independent of canonical hashing order.
+      formatMaterials.sort((a,bm)=>b.material_versions.findIndex(m=>m.material_id===a.material_id)-b.material_versions.findIndex(m=>m.material_id===bm.material_id));
       if(prospectus.inactive_material_ids.some(id=>refs.some(ref=>ref.material_id===id)))throw conflict('INPUT_REVISION_CONFLICT','选择中包含旧募集书版本，请刷新后使用当前版本。');
       if(currentProspectus?.material_id&&!refs.some(ref=>ref.material_id===currentProspectus.material_id&&ref.material_version===currentProspectus.material_version))throw conflict('INPUT_REVISION_CONFLICT','请包含当前募集书版本。');
       if (['update','generation'].includes(p.kind) && p.update_details?.authoring_mode === 'unified_v1')
@@ -839,7 +879,6 @@ export function createServer(settings: Settings = {}) {
       if(userReference)Object.assign(manifest,{user_reference_pin:userReference.pin});
       if(creditFacilitySupplementPins?.length)Object.assign(manifest,{credit_facility_supplements:creditFacilitySupplementPins});
       if (p.update_details?.authoring_mode === 'unified_v1') {
-        const authoring: import('@bondbuddy/contracts').UnifiedAuthoringInput = await lockUnifiedAuthoring(p, resolved, currentMessageSet);
         const previous = (await client.query(`SELECT a.id,a.version,a.sha256,r.id AS run_id,r.input_revision,i.manifest
           FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id
           JOIN bb_artifact_versions a ON a.id=j.checkpoint#>>'{stages,word_delivery_pair,clean_artifact_id}' AND a.owner_user_id=r.owner_user_id AND a.run_id=r.id
@@ -850,8 +889,13 @@ export function createServer(settings: Settings = {}) {
             [user,id,b.edit_base?.artifact_id??null,b.edit_base?.artifact_version??null,b.edit_base?.sha256??null])).rows[0];
         const sourceKey = (items: {material_id:string;material_version:number;role:string;sha256:string}[]) => JSON.stringify(items.filter(m => ['historical','reference'].includes(m.role)).map(m => [m.material_id,m.material_version,m.sha256]).sort());
         if(b.edit_base && !previous)throw conflict('INPUT_REVISION_CONFLICT','所选成果已不可用，请重新选择准确版本。');
-        if (b.edit_base !== null && previous && isUnifiedInput(previous.manifest) && previous.manifest.issuer_name === p.issuer_name &&
-            sourceKey(previous.manifest.materials as typeof resolved) === sourceKey(resolved)) {
+        const continuesPrevious = b.edit_base !== null && previous && isUnifiedInput(previous.manifest) && previous.manifest.issuer_name === p.issuer_name &&
+          sourceKey(previous.manifest.materials as typeof resolved) === sourceKey(resolved);
+        // A continuation inherits its verified clean artifact. An unrelated draft
+        // template choice cannot block or replace that already selected baseline.
+        const authoring: import('@bondbuddy/contracts').UnifiedAuthoringInput = await lockUnifiedAuthoring(
+          continuesPrevious ? {...p,update_details:{...p.update_details,format_template:null}} : p, formatMaterials, currentMessageSet);
+        if (continuesPrevious) {
           authoring.previous_output = { artifact_id:previous.id,version:previous.version,sha256:String(previous.sha256).trim(),run_id:previous.run_id,input_revision:previous.input_revision };
           if(b.edit_base)authoring.edit_baseline = {market:previous.manifest.market,offering:previous.manifest.offering,
             reporting_periods:previous.manifest.update_details.target_reporting_periods?.length
@@ -859,6 +903,7 @@ export function createServer(settings: Settings = {}) {
               : reportingWindow(previous.manifest.market,previous.manifest.offering,previous.manifest.update_details.reporting_cutoff)};
         }
         if(b.edit_base&&!authoring.previous_output)throw conflict('INPUT_REVISION_CONFLICT','所选版本的发行人或来源与当前材料不同，请核对后再修改。');
+        inheritPreviousOutputFormat(authoring);
         Object.assign(manifest, { issuer_name: p.issuer_name, authoring });
       }
       Object.assign(manifest,{prospectus_selection:{revision:prospectus.selection_revision,version_id:prospectus.current_version_id}});
@@ -1046,14 +1091,14 @@ export function createServer(settings: Settings = {}) {
       const converted=await client.query('SELECT 1 FROM bb_project_kind_conversions WHERE owner_user_id=$1 AND project_id=$2',[user,id]);
       if(converted.rowCount)throw conflict('INPUT_REVISION_CONFLICT','Converted project cannot accept historical material');
       const source=(await client.query(`SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2
-        AND id=$3 AND version=$4 AND deleted_at IS NULL FOR UPDATE`,[user,id,b.source_material_id,b.source_material_version])).rows[0];
+        AND id=$3 AND version=$4 AND deleted_at IS NULL AND NOT internal_template FOR UPDATE`,[user,id,b.source_material_id,b.source_material_version])).rows[0];
       if(!source)throw missing();
       if(source.role!=='reference'||!['application/pdf',DOCX_MEDIA_TYPE].includes(source.media_type)||
         source.sha256.trim()!==b.source_sha256||source.media_type!==b.source_media_type||
         !Number.isSafeInteger(Number(source.byte_size))||Number(source.byte_size)>MAX_BYTES)
         throw conflict('MATERIAL_CONTENT_MISMATCH','Source identity, format or bytes differ');
       const capacity=(await client.query(`SELECT count(*)::int files,COALESCE(sum(byte_size),0)::bigint bytes
-        FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL`,[user,id])).rows[0];
+        FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL AND NOT internal_template`,[user,id])).rows[0];
       if(capacity.files>=M1_UPLOAD_LIMITS.projectFiles||Number(capacity.bytes)+Number(source.byte_size)>M1_UPLOAD_LIMITS.projectBytes)
         throw new Problem(422,'VALIDATION_FAILED','Project material limit: 60 files / 500 MiB');
       const uploadId=await freshUpload(client,source);
@@ -1078,7 +1123,7 @@ export function createServer(settings: Settings = {}) {
         return {receipt_id:receipt.id,source_material_id:receipt.source_material_id,source_material_version:receipt.source_material_version,material:materialDto(saved)};
       }
       const source=(await client.query(`SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2
-        AND id=$3 AND version=$4 AND deleted_at IS NULL FOR UPDATE`,[user,id,b.source_material_id,b.source_material_version])).rows[0];
+        AND id=$3 AND version=$4 AND deleted_at IS NULL AND NOT internal_template FOR UPDATE`,[user,id,b.source_material_id,b.source_material_version])).rows[0];
       if(!source||source.role!=='reference'||source.sha256.trim()!==b.source_sha256||source.media_type!==b.source_media_type)throw missing();
       let upload=(await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[user,receipt.upload_id])).rows[0];
       if(upload.state==='deleting'||upload.state==='purged'){
@@ -1088,7 +1133,7 @@ export function createServer(settings: Settings = {}) {
       }
       if(upload.state!=='uploading'&&upload.state!=='received')throw conflict('IDEMPOTENCY_CONFLICT','Copy reservation is no longer writable');
       const capacity=(await client.query(`SELECT count(*)::int files,COALESCE(sum(byte_size),0)::bigint bytes
-        FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL`,[user,id])).rows[0];
+        FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL AND NOT internal_template`,[user,id])).rows[0];
       if(capacity.files>=M1_UPLOAD_LIMITS.projectFiles||Number(capacity.bytes)+Number(source.byte_size)>M1_UPLOAD_LIMITS.projectBytes)
         throw new Problem(422,'VALIDATION_FAILED','Project material limit: 60 files / 500 MiB');
       const release=reserveSpool(Number(source.byte_size)),copy=join(spoolDirectory(),`${uid()}.blob`);
@@ -1256,7 +1301,7 @@ export function createServer(settings: Settings = {}) {
         await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'upload',$3,'upload.reused',$4)",[uid(),user,uploadId,{project_id:id,material_id:m.id,material_version:m.version}]);
         return result;
       }
-      const capacity=(await client.query('SELECT count(*)::int AS files,COALESCE(sum(byte_size),0)::bigint AS bytes FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL',[user,id])).rows[0];
+      const capacity=(await client.query('SELECT count(*)::int AS files,COALESCE(sum(byte_size),0)::bigint AS bytes FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL AND NOT internal_template',[user,id])).rows[0];
       if(capacity.files>=M1_UPLOAD_LIMITS.projectFiles||Number(capacity.bytes)+b.byte_size>M1_UPLOAD_LIMITS.projectBytes)
         throw new Problem(422,'VALIDATION_FAILED','Project material limit: 60 files / 500 MiB');
       const materialId=uid();
@@ -1333,7 +1378,7 @@ export function createServer(settings: Settings = {}) {
   });
   installCreditHistory(app,db,owner);
   app.get('/api/v1/credits/balance',{schema:{response:{200:schemas.CreditBalanceResponse}}},async request=>{
-    const user=await owner(request);return {enabled:paidAuthoring,...await creditBalance(db(),user)};
+    const user=await owner(request);return {enabled:paidAuthoring,...await creditBalanceExact(db(),user)};
   });
   app.get('/api/v1/runs/:run_id/credit-charge',{schema:{response:{200:schemas.RunCreditChargeResponse}}},async request=>{
     const user=await owner(request),r=await run(db(),user,param(request,'run_id'));
@@ -1348,8 +1393,8 @@ export function createServer(settings: Settings = {}) {
     await project(db(),user,id);
     const b=body<{input_revision:number;input_hash:string}>(request);
     if(!isPgInputRevision(b.input_revision))throw new Problem(422,'VALIDATION_FAILED','Invalid input revision');
-    if(!paidAuthoring)return {enabled:false,quote:null,balance:await creditBalance(db(),user),shortage:0,reason:null};
-    return quoteCredits(db(),user,id,b.input_revision,b.input_hash);
+    if(!paidAuthoring)return {enabled:false,quote:null,balance:await creditBalanceExact(db(),user),shortage:0n,reason:null};
+    return quoteCreditsExact(db(),user,id,b.input_revision,b.input_hash,commercial);
   });
   app.post('/api/v1/runs/execute',{schema:{body:schemas.ExecuteRequest}},async (request,reply)=>{
     const user=await owner(request);
@@ -1487,7 +1532,7 @@ export function createServer(settings: Settings = {}) {
       if(paidAuthoring && !testGrantId && ['update','generation'].includes(lockedKind)) {
         if(!classifyFixedPrice(input.rows[0].manifest).task)
           throw new Problem(422,'INPUT_REQUIRED','请补齐项目信息和已上传的原稿信息，保存当前输入后重新获取报价。');
-        await reserveCredits(client,user,q.rows[0],b.quote_id,input.rows[0],currentProject);
+        await reserveCredits(client,user,q.rows[0],b.quote_id,input.rows[0],currentProject,undefined,commercial);
       }
       if(prepared)await prepared.register(client,{kind:'run_execute',runId,inputRevision:b.input_revision,inputHash:b.input_hash,materialVersions:input.rows[0].material_versions});
       await recordOperation(client,{owner:user,projectId:b.project_id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:b.input_revision,inputHash:b.input_hash});
@@ -1888,5 +1933,9 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   if(!Number.isInteger(port)||port<1||port>65535)throw new Error('Invalid PORT');
   // Spool files left by a killed process are never resumed; clear them before accepting uploads.
   await clearSpoolDirectory();
+  let closing=false;
+  const shutdown=()=>{if(closing)return;closing=true;void app.close().catch(()=>{process.exitCode=1;});};
+  process.once('SIGTERM',shutdown);
+  process.once('SIGINT',shutdown);
   app.listen({host:process.env.HOST??'127.0.0.1',port}).catch(error=>{app.log.error(error);process.exitCode=1;});
 }

@@ -1,0 +1,100 @@
+✔ authoring snapshots cannot bypass project mutex by claiming to be QA when billing is disabled or enabled (2701.8223ms)
+✖ M4 dynamic credits: one-point start, real debit, pause, durable delivery, cancellation, refund and owner isolation (1613.7578ms)
+✔ synthetic fixed M4: no rate dependency, immutable terms, competing wallets, full release and old quotation rejection (642.698ms)
+✔ all material/exchange combinations select actual source knowledge with distinct immutable bytes (182.2609ms)
+✔ workpaper guide pins the selected scope and distinguishes disclosures from independent evidence (76.3427ms)
+✔ readable SSE opinion replaces missing case layout while historical guide evidence remains unchanged (15.5294ms)
+✔ missing material generation input returns all actionable fields without tasks, quotes or charges (1675.3629ms)
+✖ synthetic assistant fixed QA: approved version, no model rates, failure release, exact-once delivery and price changes (1174.5543ms)
+✔ synthetic M4 lifecycle: active cross-project source, support, template and QA pins retain only exact owner/version bytes (2139.1964ms)
+✔ synthetic M4 handoff: explicit owner binding, canonical execution mutex and immutable lineage (2295.052ms)
+✔ M4 free task preparation and unavailable capabilities do not turn basic QA into free help (0.854ms)
+✔ product help remains free with selected sources while mixed professional questions remain paid (2.4926ms)
+✖ synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual exclusion, QA text and real wallet capped metering (1661.3264ms)
+✔ explicit completed baseline uses the existing content-update tier, not the original first-authoring tier (1.4386ms)
+✖ global assistant persistence, owner isolation, no implicit execution and create retries (2727.9359ms)
+✔ workpaper task projection distinguishes inspections; exact historical reads preserve project and owner isolation (2097.1163ms)
+✔ batch tasks project immutable attempt membership to both collection endpoints with owner/source isolation (2103.5905ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 13
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 112244.7401
+
+✖ failing tests:
+
+test at apps\api\dist\m4-dynamic-balance.pg.test.js:14:1
+✖ M4 dynamic credits: one-point start, real debit, pause, durable delivery, cancellation, refund and owner isolation (1613.7578ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  '4500' !== 4500
+
+      at prepare (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/m4-dynamic-balance.pg.test.js:33:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/m4-dynamic-balance.pg.test.js:40:26)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '4500',
+    expected: 4500,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\m4-workspace.pg.test.js:54:1
+✖ synthetic assistant fixed QA: approved version, no model rates, failure release, exact-once delivery and price changes (1174.5543ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  '0' !== 0
+
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/m4-workspace.pg.test.js:66:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '0',
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\m4-workspace.pg.test.js:453:1
+✖ synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual exclusion, QA text and real wallet capped metering (1661.3264ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  '0' !== 0
+
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/m4-workspace.pg.test.js:509:20)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '0',
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\project-assistant.pg.test.js:20:1
+✖ global assistant persistence, owner isolation, no implicit execution and create retries (2727.9359ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  '4500' !== 4500
+
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/project-assistant.pg.test.js:67:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '4500',
+    expected: 4500,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

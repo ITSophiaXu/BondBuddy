@@ -1,0 +1,39 @@
+✔ HTTP automatic billing includes same-scope revision in a settled new check without another hold (2498.6772ms)
+✔ HTTP automatic billing preserves the 1000-point revision upgrade for a settled old 990-point check (2453.9095ms)
+✔ partial file-check quality refund revokes only that file and rejects only its stale included-maintenance quote (1782.9779ms)
+✔ HTTP project file batch carries automatic tariff metadata and accepts the matching executable quote (1889.9364ms)
+✔ HTTP automatic workpaper generation returns 402 without creating a batch or hold when points are insufficient (1011.2831ms)
+✔ asynchronous workpaper shortage resumes only the original batch once and never overrides a later manual pause (1669.1478ms)
+✔ retired source-diff route remains replayable while automatic workpaper checks use independent paid files (979.7942ms)
+✔ a paid v2 subscription and cancellation retain v2 task prices after v3 release (795.326ms)
+✔ new non-subscribers and new paid subscriptions use the published v3 comprehensive review tariff (348.6408ms)
+✔ an unexpired v2 quote keeps its immutable price and remains executable after v3 release (198.7787ms)
+✔ stored batch price protection is scoped to its transaction callback and survives current-price changes (147.1786ms)
+✔ exact account read supports balances above MAX_SAFE while legacy narrowing fails explicitly (3.0408ms)
+✔ int64 lot with large original and frozen values allocates the exact small difference (0.4381ms)
+✔ multiple source slices preserve query order and never reallocate existing holds (0.3994ms)
+✔ billing permissions authenticate before looking up database and expose no public grant route (294.4869ms)
+▶ synthetic PG: independent billing grants, immutable history and transaction authorization
+  ✔ default deny and exact permission separation (43.2469ms)
+  ✔ grant retries preserve identity; changed or duplicate original inputs conflict (12.5777ms)
+  ✔ history cannot be altered, deleted or reopened after revocation (322.328ms)
+  ✔ in-flight authority locks synchronize with revoke and user deactivation (339.6151ms)
+  ✔ disabled accounts lose all effective permissions without deleting audit history (9.0059ms)
+  ✔ authenticated route returns only this account permissions and prevents caching (7.3279ms)
+✔ synthetic PG: independent billing grants, immutable history and transaction authorization (840.1939ms)
+✔ complete API price lifecycle changes future real quotes, preserves paid contracts, and rolls back through a future version (3466.8122ms)
+▶ task quality returns preserve frozen item/lot evidence, original cash rights and independent approval
+  ✔ acceptance commits independent units and cross-lot slices before any refund read; strings and no free approval (946.3588ms)
+  ✔ concurrent whole repair and partial approval cannot exceed original charge (182.1626ms)
+  ✔ missing independent delivery, held work and rejected requests never issue a return (300.2185ms)
+  ✔ legacy whole-task refund revokes every dependent item, without inventing separate historic allocations (142.2893ms)
+  ✔ HTTP rejects client-supplied amounts, isolates owners, and permissions revoke independently (496.5465ms)
+✔ task quality returns preserve frozen item/lot evidence, original cash rights and independent approval (2194.6463ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 59998.801
