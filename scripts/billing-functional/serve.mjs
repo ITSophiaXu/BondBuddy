@@ -32,7 +32,9 @@ const provider={name:'wechat',merchantId:'synthetic-billing-functional-'+saved.i
   create:async order=>({checkoutUrl:'weixin://wxpay/bizpayurl?pr=synthetic-local-'+order.id}),
   query:async order=>({orderId:order.id,merchantId:order.merchant_id,amountFen:order.amount_fen,currency:'CNY',state:'paid',transactionId:'synthetic-'+order.id,payerCash:{amountFen:order.amount_fen,currency:'CNY'}}),
   verifyCallback:async()=>{throw Error('No external callbacks are accepted by this synthetic provider');}};
-const app=createServer({pool,blobs,enableSubscriptionBilling:true,paymentProviders:[provider],allowedOrigin:baseURL,auth:{termsVersion:terms}});
+// Enable the actual queued-run controls (including cancellation and release).
+// This flag does not start a worker; generated outputs still need explicit simulation.
+const app=createServer({pool,blobs,enableSubscriptionBilling:true,enableSyntheticQueue:true,paymentProviders:[provider],allowedOrigin:baseURL,auth:{termsVersion:terms}});
 app.addHook('onError',async(request,_reply,error)=>console.error(JSON.stringify({path:request.routeOptions.url,code:error.code,message:error.message})));
 let ready=false,stopping=false,vite;
 const allowedHosts=new Set([`localhost:${ports.web}`,`127.0.0.1:${ports.web}`,`127.0.0.1:${ports.api}`,`localhost:${ports.api}`]);

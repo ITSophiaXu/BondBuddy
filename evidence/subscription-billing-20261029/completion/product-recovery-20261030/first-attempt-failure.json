@@ -1,0 +1,22 @@
+{
+  "startedAt": "2026-10-30T01:52:35.503Z",
+  "finishedAt": "2026-10-30T01:52:37.217Z",
+  "username": "billing_recover_d0f0f9f2",
+  "passed": 0,
+  "failed": 1,
+  "checks": [],
+  "pageErrors": [],
+  "executionRequests": [],
+  "realProductBrowser": true,
+  "realHttp": true,
+  "realPostgres": true,
+  "fixturePreparationOnly": true,
+  "clientResponseMocking": false,
+  "localStorageInjection": false,
+  "syntheticPaymentProvider": true,
+  "modelWorkerRunning": false,
+  "realMoneyCharged": false,
+  "defaultDemoAccountTouched": false,
+  "error": "SyntaxError: Unexpected token '<', \"<!doctype \"... is not valid JSON",
+  "evidenceSource": "Restored from captured command stdout; this attempt failed before account registration because the Vite port did not proxy /__billing-test/status."
+}

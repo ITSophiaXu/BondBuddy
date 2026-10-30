@@ -21,7 +21,7 @@ node scripts/billing-functional/stop.mjs
 
 ## 手动路径
 
-1. 在真实产品页登录，再打开测试台；确认可用/任务预留均为零。
+1. 在真实产品页登录，再打开测试台；新账号首次可用/任务预留均为零，已有测试记录的账号以当前账本为起点，不重置余额。
 2. 在产品账户页开通月订阅或按需充值。页面会显示合成支付二维码，**无需扫码**；点击产品原有的“刷新支付状态”会经 synthetic provider 查询模拟成功，再由产品 `refreshRecharge → applyVerifiedPayment` 真正写入订阅周期/充值批次。
 3. 回到测试台刷新账本，准备合成全面复核。准备只保存材料和锁定报价；“开始任务”调用真实报价绑定请求，自动预留额度，无金额确认弹窗。零余额会显示产品原始 402 错误且无预留。
 4. “模拟成功交付并结算”复用真实 `claim → syntheticReviewPair → finish`，生成明确标注的合成 Word 并真实结算。模拟失败调用真实 `finish(...,'failed')` 释放预留，不直接改余额。
@@ -29,11 +29,15 @@ node scripts/billing-functional/stop.mjs
 
 测试台只处理本人的测试任务。所有测试 API 都是带 JSON/Origin/真实登录/CSRF 的 POST；服务仅监听 loopback 且检查 Host。完成动作串行执行，只有候选队列任务的 owner/run 都匹配时才交付；队列变化时释放误领租约并报错，不完成其他任务。普通产品页面可以浏览，但没有完整模型执行栈；不要在这个环境上传客户材料或把其他生成入口当成已配置。
 
+本地服务开启 `enableSyntheticQueue`，使产品实际的排队任务取消接口可用；这个选项不启动模型worker。排队中的测试任务可以通过产品取消并释放预留，已经成功交付的任务仍按实际结算规则处理。
+
 自动验证使用另外的随机注册账号，不消费 `billing_tester` 的演示余额。测试账号密码只用于本地隔离环境。
 
 测试台遇到明确的登录过期401时，自动刷新现有会话一次，再用完全相同的任务ID和正文重放一次；刷新失败、403、500和网络错误不自动重放业务操作。页面刷新会加载最新测试台脚本，不需要重启服务。专项验证命令为 `node --test scripts/billing-functional/panel-session.test.mjs`，同样使用随机账号，真实过期场景只调整该账号的测试会话。
 
 在仓库根可运行 `node scripts/billing-functional/verify.mjs` 验证真实HTTP链，运行 `node scripts/billing-functional/browser-verify.mjs` 用本机Edge验证实际页面点击；不要同时运行两者，避免测试队列相互等待。[手动测试步骤](MANUAL-QA.md)列出每一步预期余额。自动验证会新增独立测试账号及合成流水，保留用户测试账号的当前余额。
+
+`node scripts/billing-functional/product-recovery-verify.mjs` 验证真实复核页面的“余额不足→按差额充值→到账自动返回原任务”。仅准备材料使用合成测试接口，开始、充值和恢复均经过产品页面，最终通过真实取消接口释放该随机账号的预留；不改浏览器响应或注入恢复记录。该脚本无需领取全局队列，不会完成其他账号的任务。
 
 ## 自动验收
 
