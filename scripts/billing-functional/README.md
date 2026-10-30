@@ -31,6 +31,8 @@ node scripts/billing-functional/stop.mjs
 
 自动验证使用另外的随机注册账号，不消费 `billing_tester` 的演示余额。测试账号密码只用于本地隔离环境。
 
+测试台遇到明确的登录过期401时，自动刷新现有会话一次，再用完全相同的任务ID和正文重放一次；刷新失败、403、500和网络错误不自动重放业务操作。页面刷新会加载最新测试台脚本，不需要重启服务。专项验证命令为 `node --test scripts/billing-functional/panel-session.test.mjs`，同样使用随机账号，真实过期场景只调整该账号的测试会话。
+
 在仓库根可运行 `node scripts/billing-functional/verify.mjs` 验证真实HTTP链，运行 `node scripts/billing-functional/browser-verify.mjs` 用本机Edge验证实际页面点击；不要同时运行两者，避免测试队列相互等待。[手动测试步骤](MANUAL-QA.md)列出每一步预期余额。自动验证会新增独立测试账号及合成流水，保留用户测试账号的当前余额。
 
 ## 自动验收

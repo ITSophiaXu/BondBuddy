@@ -3,9 +3,28 @@ const points=value=>BigInt(value??'0').toLocaleString('zh-CN');
 let busy=false,lastState;const messages=[];
 function log(message){messages.unshift(new Date().toLocaleTimeString()+' '+message);$('#log').textContent=messages.slice(0,30).join('\n');}
 const csrf=()=>document.cookie.split(';').map(part=>part.trim()).find(part=>part.startsWith('bb_csrf='))?.slice(8)??'';
+let refreshingSession;
+async function responseData(response){
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok){const error=new Error(`${data.code??response.status}：${data.message??'请求失败'}`);error.status=response.status;throw error;}
+  return data;
+}
+async function refreshSession(){
+  // Match the product ApiClient: only an explicit 401 may refresh an existing
+  // session. A failed/unknown refresh never authorizes a business-request retry.
+  if(!refreshingSession){
+    const pending=fetch('/api/v1/auth/refresh',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'x-bb-csrf':csrf()}}).then(responseData);
+    refreshingSession=pending;void pending.finally(()=>{if(refreshingSession===pending)refreshingSession=undefined;}).catch(()=>{});
+  }
+  await refreshingSession;
+}
 async function send(path,body={}){
-  const response=await fetch('/__billing-test/api/'+path,{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json','x-bb-csrf':csrf()},body:JSON.stringify(body)});
-  const data=await response.json();if(!response.ok){const error=new Error(`${data.code??response.status}：${data.message??'请求失败'}`);error.status=response.status;throw error;}return data;
+  // Freeze the exact original task ID/body before any network request. Refresh
+  // rotates CSRF cookies, so only that header is reread for the single retry.
+  const serialized=JSON.stringify(body),request=()=>fetch('/__billing-test/api/'+path,{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'content-type':'application/json','x-bb-csrf':csrf()},body:serialized});
+  let response=await request();
+  if(response.status===401&&csrf()){await refreshSession();response=await request();}
+  return responseData(response);
 }
 function draw(state){
   lastState=state;$('#identity').innerHTML=`<strong>当前登录：${esc(state.username)}</strong><p class="muted">真实产品会话；当前账号的测试数据与其他账号隔离。<a href="/#/account">管理账户与支付</a></p>`;

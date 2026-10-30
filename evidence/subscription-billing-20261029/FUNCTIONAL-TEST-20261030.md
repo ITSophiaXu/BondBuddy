@@ -19,6 +19,7 @@
 |产品账户和自动任务页面回归|35项通过；这组采用既有页面测试夹具，不冒充真实后端联调|[日志](completion/billing-functional-browser-20261030.log)|
 |本地测试台的真实HTTP与数据库|17项通过，含认证边界、0余额、订阅/充值、幂等及交付/失败|[报告](completion/billing-functional-http-20261030.json)|
 |浏览器点击真实Web/API/数据库|10项通过，另用随机账号，未拦截或替换浏览器API响应；桌面1440与手机390检查通过，0页面未处理异常|[报告](completion/functional-manual-20261030/browser-result.json)、[日志](completion/billing-functional-live-browser-v2.log)|
+|测试台会话续期与禁止不明结果重放|1项专项测试、7个场景通过；真实过期会话成功续期后沿用同一正文，仅产生1个任务及1笔预留；403/500/断网/刷新失败通过明确的浏览器故障注入验证不重放|[报告](completion/panel-session-verification-20261030.json)、[测试](../../scripts/billing-functional/panel-session.test.mjs)|
 |最终API TypeScript构建及公共契约检查|通过|[API构建](completion/alipay-normalized-api-build-final.log)、[契约检查](completion/billing-functional-contracts-20261030.log)|
 
 真实浏览器路径：0积分 → 轻量订阅21,000 → 100元测试充值后31,000 → 全面复核冻结27,195，可用3,805 → 成功结算后可用仍3,805、冻结归零 → 原请求重放不再扣费 → 300元充值后33,805 → 新任务失败释放后恢复33,805。刷新和重新读取账户保持同一账本。
@@ -30,3 +31,5 @@
 另已收尾支付宝CSV配置子集与日期补证：当前API构建通过，解析器最新15项通过，新增8项PG及旧4项经过夹具修复均有通过证据；空库/升级共159个迁移。见[对账说明](ALIPAY-NORMALIZED-RECONCILIATION.md)及[解析边界](ALIPAY-CSV-NORMALIZATION-20261030.md)。本地功能测试没有因此依赖真实支付宝凭据。
 
 当前运行环境为Windows、Node v26.13.0、Edge及本机PostgreSQL。先前Node22发布镜像验证有独立历史版本记录，不代表本次新增源码已经在生产镜像或真实商户环境验收。
+
+会话续期修复只涉及本地测试台，没有修改生产鉴权；专项测试使用独立随机账号并通过真实失败结算释放其预留，没有调整演示账号余额。无需重启当前服务，刷新测试台即可使用。手动测试第9步已更正：测试其他订阅档位使用新的账号，原账号当期结束后才能手动续期；本期额外用量用充值补充。
