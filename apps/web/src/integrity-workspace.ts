@@ -9,7 +9,8 @@ import {Value} from '@sinclair/typebox/value';
 import {ApiClient,ApiError,friendlyError,type Dto} from './api';
 import {ProjectEntry,projectFlowSteps} from './project-entry';
 import {integritySitePicker,bindIntegritySitePicker} from './integrity-site-picker';
-import {ArtifactDownloads,artifactFilename} from './artifact-download';
+import {ArtifactDownloads,artifactFilename,boundedDownload} from './artifact-download';
+import {downloadProgressText} from './download-progress';
 import {mountIntegrityBrowserEvidence} from './integrity-browser-evidence';
 import {esc,date} from './ui';
 import {runStateLabel} from './review-state';
@@ -266,11 +267,14 @@ export class IntegrityWorkspace {
   document.querySelector('#integrity-next-pending')!.addEventListener('click',()=>{const eligible=pending.filter(i=>!(i.subject.kind==='person'&&INTEGRITY_SITES.find(s=>s.id===i.siteId)?.companyOnly)),index=eligible.findIndex(i=>i.key===this.focusPair),next=eligible[(index+1)%eligible.length];if(next){this.expanded.add(next.subject.id);this.evidenceModal(r,next.subject,next.siteId);}});
   document.querySelector('#integrity-resume-evidence')?.addEventListener('click',()=>{const f=this.evidenceDraft!,source=this.state!.rounds.find(x=>x.run_id===f.roundId&&x.operation==='check'),subject=source?.manifest.draft.subjects.find(s=>s.id===f.subjectId);if(source&&subject)this.resumeEvidenceModal(source,subject,f.siteId);else this.status('未找到原核查轮，请打开原轮继续补证。');});
   document.querySelectorAll<HTMLButtonElement>('[data-integrity-download]').forEach(b=>b.addEventListener('click',()=>void this.act(async()=>{
+   const label=b.textContent;b.textContent='正在准备下载…';b.setAttribute('aria-busy','true');this.status('正在准备下载，请稍候…');
+   try{await boundedDownload(this.controller.signal,async signal=>{
    const matches=r.artifacts.filter(pin=>pin.artifact_id===b.dataset.integrityDownload);
    if(matches.length!==1)throw new UserFacingError('所选底稿的任务或版本无法核实，未下载。请重新读取本轮底稿后再试。');
-   const expected=matches[0],a=await this.api.artifact(expected.artifact_id,this.controller.signal);
+   const expected=matches[0],a=await this.api.artifact(expected.artifact_id,signal);
    if(a.artifact_id!==expected.artifact_id||a.version!==expected.artifact_version||a.run_id!==r.run_id)throw new UserFacingError('所选底稿的任务或版本无法核实，未下载。请重新读取本轮底稿后再试。');
-   const bytes=await this.api.artifactBytes(a,this.controller.signal);if(this.live()){this.downloads.save(bytes,artifactFilename(a));this.status('底稿已交给浏览器下载。');}
+   const bytes=await this.api.artifactBytes(a,signal,(received,total)=>{if(this.live()){b.textContent='正在下载…';this.status(downloadProgressText(received,total));}});if(this.live()){this.downloads.save(bytes,artifactFilename(a));this.status('底稿已交给浏览器下载，请在浏览器下载列表查看。');}
+   });}finally{b.textContent=label;b.removeAttribute('aria-busy');}
   },'download')));
   document.querySelectorAll<HTMLButtonElement>('[data-run-action]').forEach(b=>b.addEventListener('click',()=>void this.act(async()=>{if(this.locked())return;await this.api.runAction(r.run_id,b.dataset.runAction as 'pause'|'resume'|'cancel',this.controller.signal);await this.refresh();})));
   document.querySelector('#integrity-use-round')?.addEventListener('click',()=>{if(!writable)return;const prepared={...structuredClone(r.manifest.draft),site_ids:removeRetiredIntegritySites(r.manifest.draft.site_ids)};const d=this.modal('采用此轮名单准备新核查',`${this.summary(prepared)}<p>将替换当前准备名单、网站范围和说明，仅带入当前可用网站，原核查记录及底稿保留。采用只保存到本机，不查询网站。新一轮仍需确认本次范围与费用。</p>${this.dirty?'<details><summary>当前尚未保存的名单将被替换</summary>'+this.summary(this.state!.draft)+'</details>':''}<button class="btn primary" id="integrity-adopt-confirm">采用到本轮准备</button>`);d.querySelector('#integrity-adopt-confirm')!.addEventListener('click',()=>{this.state!.draft=structuredClone(prepared);this.sourceRun=r.run_id;this.dirty=true;if(this.persist()){d.close();location.hash=this.href();}else d.querySelector('[role=status]')!.textContent=this.problem;});});

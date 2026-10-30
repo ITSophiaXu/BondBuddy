@@ -119,7 +119,7 @@ async function installApi(page: Page, state: FixtureState) {
       }
       if (state.failNextComplete.has(upload.filename)) {
         state.failNextComplete.delete(upload.filename);
-        return json(route, 422, { code: 'MATERIAL_CONTENT_MISMATCH' });
+        return json(route, 422, { code: 'MATERIAL_UNREADABLE', field_errors:[{field:'material_upload',code:'inspection_timeout'}] });
       }
       if (upload.filename === 'slow-save.pdf' && state.releaseSlowComplete === undefined) await new Promise<void>(resolve => { state.releaseSlowComplete = resolve; });
       const body = request.postDataJSON() as { byte_size: number; sha256: string };
@@ -136,6 +136,21 @@ async function installApi(page: Page, state: FixtureState) {
 function state(): FixtureState {
   return { owner: null, uploads: new Map(), materials: new Map(), sequence: 0, failNextComplete: new Set(), unavailableNextComplete: new Map(), dropNextComplete: new Set(), holdNextCreate: false, expireNextBytes: false, inspectionFailures: new Map(), byteAttempts: [], putNames: [] };
 }
+
+test('unsupported local file offers replacement, not retry or passive waiting, and saves only the replacement',async({page})=>{
+  const s=state();await installApi(page,s);await login(page,'owner_a');
+  await page.locator('[data-upload-role="audit"]').setInputFiles({name:'invalid.bin',mimeType:'application/octet-stream',buffer:Buffer.from('unsupported synthetic bytes')});
+  const row=page.locator('.material-file-row').filter({hasText:'invalid.bin'});
+  await expect(row).toContainText('请选择支持格式的文件');
+  await expect(row.getByRole('button',{name:'重试此文件'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'等待材料保存完成'})).toHaveCount(0);
+  expect(s.uploads.size).toBe(0);
+  if(process.env.BB_UX_EVIDENCE){await row.scrollIntoViewIfNeeded();await page.screenshot({path:join(process.env.BB_UX_EVIDENCE,'upload-replacement.png')});}
+  const choosing=page.waitForEvent('filechooser');await row.getByRole('button',{name:'选择其他文件'}).click();
+  await (await choosing).setFiles({name:'valid.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic replacement')});
+  await expect(page.locator('.material-file-row').filter({hasText:'valid.pdf'})).toContainText('服务器已确认保存');
+  await expect(row).toHaveCount(0);expect(s.uploads.size).toBe(1);expect(s.materials.size).toBe(1);
+});
 
 for (const width of [1440, 390]) test(`optional materials expose examples and preserve mixed format uploads at ${width}`, async ({page}) => {
   await page.setViewportSize({width, height:960});
@@ -252,7 +267,7 @@ test('three independent files, 100% remains saving, failed file retry, then owne
   fixture.releaseSlowComplete!();
   await expect(slowRow).toContainText('服务器已确认保存');
   const failedRow = page.locator('.material-file-row').filter({ hasText: 'failed-once.pdf' });
-  await expect(failedRow).toContainText('文件内容校验与声明不一致');
+  await expect(failedRow).toContainText('文件检查服务暂时未能完成');
   await expect(page.locator('.material-file-row').filter({ hasText: 'survives.pdf' })).toContainText('服务器已确认保存');
   expect(fixture.materials.size).toBe(2);
   await failedRow.getByRole('button', { name: '重试此文件' }).click();
@@ -279,7 +294,7 @@ test('three independent files, 100% remains saving, failed file retry, then owne
   expect(pageErrors).toEqual([]);
 });
 
-test('an unsupported external workbook reference is explained without claiming file damage; only that file retries', async ({ page }) => {
+test('an unsupported external workbook reference offers replacement without resending saved peers', async ({ page }) => {
   const fixture=state(); fixture.inspectionFailures.set('external.xlsx', {
     reason: 'external_link_invalid', correlationId: 'synthetic-external-link',
   });
@@ -300,8 +315,10 @@ test('an unsupported external workbook reference is explained without claiming f
     }
   }
   await expect(page.locator('.material-file-row').filter({hasText:'saved.pdf'})).toContainText('服务器已确认保存');
-  await row.getByRole('button',{name:'重试此文件'}).click();
-  await expect(row).toContainText('服务器已确认保存');
+  await expect(row.getByRole('button',{name:'重试此文件'})).toHaveCount(0);
+  const chooser=page.waitForEvent('filechooser');await row.getByRole('button',{name:'选择其他文件'}).click();
+  await (await chooser).setFiles({name:'repaired.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('synthetic repaired workbook')});
+  await expect(page.locator('.material-file-row').filter({hasText:'repaired.xlsx'})).toContainText('服务器已确认保存');
   expect(fixture.materials.size).toBe(2);
   expect(fixture.byteAttempts.filter(name=>name==='saved.pdf')).toHaveLength(1);
 });
@@ -365,7 +382,7 @@ test('server refresh reconciles a delayed receipt but never matches only a filen
     await page.getByRole('button',{name:'刷新已保存材料'}).click();
     await expect(page.locator('#material-recovery-status')).toContainText('已恢复 1 份材料');
     await expect(row).toBeVisible();
-    await expect(page.getByRole('button',{name:'等待材料保存完成',exact:true})).toBeDisabled();
+    await expect(page.getByRole('button',{name:'请先处理材料状态',exact:true})).toBeDisabled();
   }
   // A renamed, deduplicated receipt may have another upload ID, but its bytes and role must agree.
   Object.assign(material,{media_type:'application/pdf',upload_id:'prior-deduplicated-upload',filename:'renamed.pdf'});

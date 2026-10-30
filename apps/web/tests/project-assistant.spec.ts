@@ -1,3 +1,4 @@
+import {fixtureJson,fixtureRequest,serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {AUTOMATIC_PRICE_VERSION,commerceMetadata} from '@bondbuddy/contracts';
 import { test,expect,type Page } from '@playwright/test';
 import { mkdir,readFile } from 'node:fs/promises';
@@ -14,7 +15,7 @@ async function setup(page:Page,{paid=false,fixed=false}={}){
  const w:any=fixture(),messages:any[]=[],executions:any[]=[],cards:any[]=[],uploads:any[]=[];let quoteReads=0,releaseUpload:(()=>void)|undefined;
  const delivered=Buffer.from('Synthetic downloadable report'),deliveredHash=createHash('sha256').update(delivered).digest('hex');
  w.drafts.private_summary={document_type:'private_summary',version:0,sha256:hash,updated_at:null,source_material:null,materials:[],template:null,edit_base:null,scope:'whole',fields:{},requirements:[]};
- await page.route('**/api/v1/**',async route=>{const req=route.request(),path=new URL(req.url()).pathname.replace('/api/v1','');let body:unknown={},status=200;
+ await page.route('**/api/v1/**',async route=>{if(await serveDisabledBillingCatalog(route))return;const req=route.request(),path=new URL(req.url()).pathname.replace('/api/v1','');let body:unknown={},status=200;
   if(path==='/me')body={user_id:'synthetic-assistant-user',session_status:'active'};
   else if(path==='/account')body={user_id:'synthetic-assistant-user',username:'synthetic'};
   else if(path==='/account/sessions')body={items:[]};
@@ -24,22 +25,22 @@ async function setup(page:Page,{paid=false,fixed=false}={}){
   else if(path==='/projects')body={items:[],page:{has_more:false,next_cursor:null}};
   else if(path==='/m4/topics')body=req.method()==='GET'?{topics:[w.topic]}:{topic:w.topic};
   else if(path.endsWith('/workspace'))body=w;
-  else if(path.endsWith('/view')){const b=req.postDataJSON();expect(b.expected_version).toBe(w.view.version);w.view={...b.view,version:w.view.version+1};body={view:w.view};}
-  else if(path.endsWith('/cards')){if(req.method()==='POST'){const b=req.postDataJSON();const card={...b,draft_token:w.view.assistant.draft_token,created_at:new Date().toISOString(),project_name:'合成材料任务',requirements:w.drafts.private_summary.supplemental_requirements,material_names:w.material_details.map((m:any)=>m.filename),baseline:null,quote:{points:4500},balance:{available:100000,frozen:0},run:null};cards.push(card);body={card};}else body={cards};}
-  else if(path.endsWith('/quote')){quoteReads++;const document=req.postDataJSON().kind==='document';body={quote:{quote_id:'quote',topic_id:'topic',input_hash:hash,points:document?4500:fixed?60:paid?20:0,task_type:document?'m4_G05':paid||fixed?'m4_Q01':'m4_Q00',billing_method:document||fixed?'fixed':paid?'metered_capped':'free',amount_semantics:document||fixed?'fixed_price':'reservation_cap'},balance:{available:100000,frozen:0},shortage:0};}
-  else if(path.endsWith('/drafts/private_summary')){const b=req.postDataJSON();w.drafts.private_summary={...b.input,version:w.drafts.private_summary.version+1,sha256:hash,updated_at:now};body={draft:w.drafts.private_summary};}
-  else if(path==='/m4/topics/topic/execute'){const b=req.postDataJSON();executions.push(b);const card=cards.find(c=>c.execution_request_id===b.execution_request_id);card.run={run_id:'document-run',project_id:'scope',state:'queued',stage:'queued',input_revision:1};body={run:card.run};}
-  else if(path.endsWith('/materials/uploads')){const b=req.postDataJSON(),id=String(uploads.length);uploads.push(b);body={upload_id:id,state:'uploading',upload_url:'/api/v1/synthetic-upload/'+id,expires_at:'2099-01-01T00:00:00Z',max_bytes:104857600};}
+  else if(path.endsWith('/view')){const b=fixtureRequest(req);expect(b.expected_version).toBe(w.view.version);w.view={...b.view,version:w.view.version+1};body={view:w.view};}
+  else if(path.endsWith('/cards')){if(req.method()==='POST'){const b=fixtureRequest(req);const card={...b,draft_token:w.view.assistant.draft_token,created_at:new Date().toISOString(),project_name:'合成材料任务',requirements:w.drafts.private_summary.supplemental_requirements,material_names:w.material_details.map((m:any)=>m.filename),baseline:null,quote:{points:4500},balance:{available:100000,frozen:0},run:null};cards.push(card);body={card};}else body={cards};}
+  else if(path.endsWith('/quote')){quoteReads++;const document=fixtureRequest(req).kind==='document';body={quote:{quote_id:'quote',topic_id:'topic',input_hash:hash,points:document?4500:fixed?60:paid?20:0,task_type:document?'m4_G05':paid||fixed?'m4_Q01':'m4_Q00',billing_method:document||fixed?'fixed':paid?'metered_capped':'free',amount_semantics:document||fixed?'fixed_price':'reservation_cap'},balance:{available:100000,frozen:0},shortage:0};}
+  else if(path.endsWith('/drafts/private_summary')){const b=fixtureRequest(req);w.drafts.private_summary={...b.input,version:w.drafts.private_summary.version+1,sha256:hash,updated_at:now};body={draft:w.drafts.private_summary};}
+  else if(path==='/m4/topics/topic/execute'){const b=fixtureRequest(req);executions.push(b);const card=cards.find(c=>c.execution_request_id===b.execution_request_id);card.run={run_id:'document-run',project_id:'scope',state:'queued',stage:'queued',input_revision:1};body={run:card.run};}
+  else if(path.endsWith('/materials/uploads')){const b=fixtureRequest(req),id=String(uploads.length);uploads.push(b);body={upload_id:id,state:'uploading',upload_url:'/api/v1/synthetic-upload/'+id,expires_at:'2099-01-01T00:00:00Z',max_bytes:104857600};}
   else if(path.startsWith('/synthetic-upload/')){if(uploads[Number(path.split('/').at(-1))].filename==='first.txt')await new Promise<void>(resolve=>{releaseUpload=resolve;});await route.fulfill({status:204});return;}
   else if(path.endsWith('/complete')){const id=path.split('/').at(-2)!,u=uploads[Number(id)];body={...u,material_id:'material-'+id,material_version:1,upload_id:id,state:'persisted',persisted_at:now,error:null};}
-  else if(path==='/m4/topics/topic/materials'){const pin=req.postDataJSON().material,index=Number(pin.material_id.split('-').at(-1));w.materials.push(pin);w.material_details.push({...pin,...uploads[index],state:'persisted'});body={materials:w.materials};}
+  else if(path==='/m4/topics/topic/materials'){const pin=fixtureRequest(req).material,index=Number(pin.material_id.split('-').at(-1));w.materials.push(pin);w.material_details.push({...pin,...uploads[index],state:'persisted'});body={materials:w.materials};}
   else if(path==='/artifacts/result')body={filename:'合成项目_复核报告_V2_20261009.txt',artifact_id:'result',media_type:'text/plain',sha256:deliveredHash,download_url:'/api/v1/artifacts/result/download'};
   else if(path==='/artifacts/result/download'){await route.fulfill({contentType:'text/plain',body:delivered});return;}
-  else if(path.endsWith('/messages')){const b=req.postDataJSON();messages.push(b);w.messages.push({message_id:'message',role:'user',content:b.content,created_at:now,reply_status:'completed',context:b.context},
+  else if(path.endsWith('/messages')){const b=fixtureRequest(req);messages.push(b);w.messages.push({message_id:'message',role:'user',content:b.content,created_at:now,reply_status:'completed',context:b.context},
     {message_id:'answer',role:'assistant',content:'可先说明需要调整的内容，确认后再生成新版本。',created_at:now,reply_status:'completed',context:b.context});body={message:w.messages[0],run:{run_id:'qa'}};}
-  else if(path==='/runs/execute'){executions.push(req.postDataJSON());body={};}
+  else if(path==='/runs/execute'){executions.push(fixtureRequest(req));body={};}
   else {status=404;body={code:'NOT_FOUND'};}
-  await route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+  await route.fulfill({status,contentType:'application/json',body:fixtureJson(route,body)});
  });await page.goto('/#dashboard');return {w,messages,executions,cards,uploads,releaseUpload:()=>releaseUpload?.(),quoteReads:()=>quoteReads};
 }
 test('duplicate feedback: assistant attachments identify renamed duplicates without another material',async({page})=>{
