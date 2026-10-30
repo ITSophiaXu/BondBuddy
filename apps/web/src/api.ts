@@ -109,7 +109,31 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
   }
 }
 
+type RequestUploadProgress={progress:(loaded:number,total:number)=>void;uploaded?:()=>void};
+
 export class ApiClient {
+  /** Authenticated binary imports keep the same response/error/401 handling as JSON requests. */
+  uploadRequest<T>(path:string,file:File,progress:RequestUploadProgress['progress'],signal:AbortSignal,uploaded?:()=>void){
+    return this.request<T>('POST',path,file,{'Content-Type':'application/octet-stream'},signal,{progress,uploaded});
+  }
+  private sendUpload(method:string,path:string,file:Blob,headers:Record<string,string>,signal:AbortSignal,upload:RequestUploadProgress):Promise<Response>{
+    signal.throwIfAborted();
+    return new Promise((resolve,reject)=>{
+      const xhr=new XMLHttpRequest();let timer:ReturnType<typeof setTimeout>|undefined;let transferred=false;
+      const clean=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);};
+      const fail=(error:unknown)=>{clean();reject(error);};
+      const abort=()=>{xhr.abort();fail(signal.reason??new DOMException('Aborted','AbortError'));};
+      xhr.upload.addEventListener('progress',e=>{if(!signal.aborted)upload.progress(e.loaded,e.lengthComputable?e.total:file.size);});
+      const uploaded=()=>{if(signal.aborted||transferred)return;transferred=true;upload.progress(file.size,file.size);upload.uploaded?.();timer=setTimeout(()=>{fail(new ApiError(0,'DATA_UNAVAILABLE'));xhr.abort();},120_000);};
+      xhr.upload.addEventListener('load',uploaded);
+      xhr.addEventListener('load',()=>{uploaded();clean();if(signal.aborted){reject(signal.reason);return;}const responseHeaders=new Headers();for(const line of xhr.getAllResponseHeaders().trim().split(/[\r\n]+/)){const index=line.indexOf(':');if(index>0)responseHeaders.append(line.slice(0,index),line.slice(index+1).trim());}resolve(new Response(xhr.status===204?null:xhr.responseText,{status:xhr.status,statusText:xhr.statusText,headers:responseHeaders}));});
+      xhr.addEventListener('error',()=>fail(new ApiError(0,'DATA_UNAVAILABLE')));
+      xhr.addEventListener('abort',()=>fail(signal.aborted?signal.reason:new ApiError(0,'DATA_UNAVAILABLE')));
+      signal.addEventListener('abort',abort,{once:true});
+      try{xhr.open(method,'/api/v1'+path);xhr.withCredentials=true;for(const [key,value] of Object.entries(headers))xhr.setRequestHeader(key,value);upload.progress(0,file.size);signal.throwIfAborted();xhr.send(file);}catch(error){fail(error);}
+    });
+  }
+
   subscriptionCatalog(signal?:AbortSignal){return this.request<SubscriptionCatalog>('GET','/subscriptions/catalog',undefined,{},signal);}
   subscriptionAccount(signal?:AbortSignal){return this.request<SubscriptionAccount>('GET','/subscriptions/account',undefined,{},signal);}
   createSubscription(input:SubscriptionCheckoutRequest,signal?:AbortSignal){return this.request<SubscriptionCheckout>('POST','/subscriptions',input,{},signal);}
@@ -148,8 +172,9 @@ export class ApiClient {
     this.refresh = undefined;
   }
 
-  private async send(method: string, path: string, body: unknown, headers: Record<string, string>, signal: AbortSignal) {
+  private async send(method: string, path: string, body: unknown, headers: Record<string, string>, signal: AbortSignal, upload?:RequestUploadProgress) {
     const csrf = document.cookie.split('; ').find(value => value.startsWith('bb_csrf='))?.slice('bb_csrf='.length);
+    if(upload&&body instanceof Blob)return this.sendUpload(method,path,body,{...(method==='GET'||!csrf?{}:{'X-BB-CSRF':csrf}),...headers},signal,upload);
     return fetch(`/api/v1${path}`, {
       method, credentials: 'same-origin', cache: 'no-store', signal,
       headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
@@ -158,9 +183,9 @@ export class ApiClient {
     });
   }
 
-  private async response(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal): Promise<Response> {
+  private async response(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal, upload?:RequestUploadProgress): Promise<Response> {
     const signal = signalOverride ?? this.controller.signal;
-    let response = await this.send(method, path, body, headers, signal);
+    let response = await this.send(method, path, body, headers, signal, upload);
     const authenticated = !path.startsWith('/auth/recovery/') && !['/auth/login', '/auth/register', '/auth/agreement'].includes(path);
     if (response.status === 401 && authenticated && document.cookie.includes('bb_csrf=')) {
       if (!this.refresh) {
@@ -176,7 +201,7 @@ export class ApiClient {
         throw error;
       }
       signal.throwIfAborted();
-      response = await this.send(method, path, body, headers, signal);
+      response = await this.send(method, path, body, headers, signal, upload);
     }
     signal.throwIfAborted();
     if (!response.ok) {
@@ -187,12 +212,12 @@ export class ApiClient {
     return response;
   }
 
-  async request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal): Promise<T> {
+  async request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal, upload?:RequestUploadProgress): Promise<T> {
     headers={[BILLING_WIRE_HEADER]:BILLING_WIRE_VERSION,...headers};
     const family=billingWireRoute(method,path);
     if(family?.request&&body!==undefined&&headers[BILLING_WIRE_HEADER]!==LEGACY_BILLING_WIRE_VERSION)body=encodeBillingDto(family.request,body);
     const value=await runRecoverableBillingRequest(method,path,body,headers,async()=>{
-      const response=await this.response(method,path,body,headers,signalOverride);
+      const response=await this.response(method,path,body,headers,signalOverride,upload);
       if(response.status===204)return undefined as T;
       let payload:unknown=await response.json();
       if(family?.response){

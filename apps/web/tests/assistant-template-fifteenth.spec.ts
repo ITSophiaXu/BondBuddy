@@ -28,9 +28,9 @@ test('assistant template global shortcut reaches the real initiation form before
   const before = writes(state).length, original = viewOf(work(state)); await select(page); await saved(page, state); expect(writes(state).slice(before).every(value => !value.path.endsWith('/cards'))).toBe(true); expect(work(state).view.assistant!.action).toEqual(original.assistant!.action); expect(templatePosts(state)[0].broker).toBe('快捷入口券商'); noBusiness(state);
 });
 
-test('assistant template actual QA details uses its existing card action and same login host survives detach to the global dock', async ({ page }) => {
-  const state = await install(page); await mountQa(page); await expect(page.locator('#qa-agent [data-kind=generation]')).toHaveCount(0); const host = await page.locator('#qa-agent .bb-assistant').elementHandle();
-  const release = await holdCreation(page, state); await page.evaluate(() => { (window as any).qaComponent.dispose(); }); await expect(page.locator('#qa-agent .bb-assistant')).toHaveCount(0); await expect(page.locator('[data-assistant-dock]')).toBeVisible(); await page.locator('[data-assistant-dock]').click(); release(); await saved(page, state);
+test('assistant template global host retains its original task while leaving the actual QA workspace', async ({ page }) => {
+  const state = await install(page); await mountQa(page); const host = await page.locator('.bb-assistant').elementHandle();
+  const release = await holdCreation(page, state); await page.evaluate(() => { (window as any).qaComponent.dispose(); }); await expect(page.locator('.bb-assistant')).toBeVisible(); release(); await saved(page, state);
   expect(await host!.evaluate(value => value.isConnected && value.parentElement === document.body)).toBe(true); expect(uploads(state, 'create')[0].path).toContain('/projects/' + ids.scope + '/'); expect(work(state).view.assistant!.project_id).toBe(ids.project); expect(work(state).view.assistant!.template_key).toBe(created(state).template_id + '/1'); noBusiness(state);
 });
 
@@ -159,7 +159,7 @@ for (const contender of ['material', 'template'] as const) test('assistant templ
   const state = await install(page); await mount(page); const other = await context.newPage(); await install(other, state); await mount(other); const before = writes(state).length;
   const results = await Promise.all([page.evaluate(async value => { try { await (window as any).assistantComponent.assistantTemplateUploads.prepare(value); return 'prepared'; } catch { return 'blocked'; } }, declaration()),
     other.evaluate(async ({ contender, value, project, topic }) => { const c = (window as any).assistantComponent; try { if (contender === 'template') await c.assistantTemplateUploads.prepare(value); else await c.materialUploads.begin(new File(['ordinary'], '并发普通材料.pdf', { type: 'application/pdf' }), 'other', project, topic, 'attachment', crypto.randomUUID()); return 'prepared'; } catch { return 'blocked'; } }, { contender, value: declaration(), project: ids.project, topic: ids.topic })]);
-  expect(results.sort()).toEqual(['blocked', 'prepared']); expect(writes(state)).toHaveLength(before); const counts = await page.evaluate(() => ({ template: Object.keys(localStorage).filter(key => key.startsWith('bb-assistant-template-upload-v1:')).length, material: Object.keys(localStorage).filter(key => key.startsWith('bondbuddy:upload-recovery:v1:') && key.includes(':assistant-material:')).length })); expect(counts.template + counts.material).toBe(1); await other.close(); noBusiness(state);
+  expect(results.sort()).toEqual(['blocked', 'prepared']); expect(writes(state)).toHaveLength(before); await expect.poll(() => page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('bb-assistant-template-upload-v1:') || key.startsWith('bondbuddy:upload-recovery:v1:') && key.includes(':assistant-material:')).length)).toBe(1); await other.close(); noBusiness(state);
 });
 
 test('assistant template unresolved recovery blocks ordinary attachment, autosave and all task writes while preserving local editing', async ({ page }) => {

@@ -1,3 +1,4 @@
+import {hold,check} from './upload-progress-fixtures';
 import {test,expect,type Page} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
@@ -175,4 +176,9 @@ for(const width of [1440,390])test(`directory interpretation prototype ${width}`
   await page.locator('.wp-mapping-fields select').first().selectOption('2');await expect(page.locator('#wp-accept-mapping')).toBeDisabled();
   await page.locator('#wp-preview-again').click();await expect(page.locator('#wp-accept-mapping')).toBeEnabled();
   await page.locator('#wp-accept-mapping').click();await expect(page.locator('#wp-import-review')).toHaveCount(0);
+});
+
+test('directory upload shows transfer progress then recognition without a fake percentage',async({page})=>{
+ await setup(page);await hold(page);await page.locator('#wp-upload').setInputFiles(file);
+ await check(page,page.locator('#wp-status progress'),'workpaper-directory',1440);await expect(page.locator('#wp-status progress')).toHaveCount(0);
 });

@@ -243,7 +243,7 @@ for (const width of [1440,390]) test(`duplicate feedback: update keeps named not
   await expect(notices).toHaveCount(2);
 });
 
-test('three independent files, 100% remains saving, failed file retry, then owner-scoped relogin recovery', async ({ page }) => {
+test('three independent files, indeterminate saving after transfer, failed file retry, then owner-scoped relogin recovery', async ({ page }) => {
   const fixture = state(); fixture.failNextComplete.add('failed-once.pdf'); await installApi(page, fixture);
   const pageErrors: string[] = []; page.on('pageerror', error => pageErrors.push(error.message));
   await login(page, 'owner_a');
@@ -261,7 +261,8 @@ test('three independent files, 100% remains saving, failed file retry, then owne
     { name: 'survives.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic ok') }
   ]);
   const slowRow = page.locator('.material-file-row').filter({ hasText: 'slow-save.pdf' });
-  await expect(slowRow.getByRole('progressbar')).toHaveAttribute('value', '19');
+  await expect(slowRow).toHaveAttribute('data-upload-phase', 'saving');
+  await expect(slowRow.getByRole('progressbar')).not.toHaveAttribute('value');
   await expect(slowRow).toContainText('正在保存');
   expect(fixture.releaseSlowComplete).toBeDefined();
   fixture.releaseSlowComplete!();
