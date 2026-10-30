@@ -413,7 +413,7 @@ export class ProjectExecution {
     this.button('complete-source-information').hidden = !block.sourceGap || !this.materialsEditable;
     this.button('execute-input').disabled = Boolean(blocked) || scopePending(this.quote?.quote) || Boolean(this.quote && (!isAutomaticCharge(this.quote.quote)&&(isCnyPrice(this.quote.quote)?int64(this.quote.shortage)>0n:int64(this.quote.balance.available)===0n)));
     this.button('execute-input').textContent = this.busy || this.starting ? (this.restoring ? '开始更新' : '正在提交…')
-      : this.materialsEditable && this.materialBlock() ? '等待材料保存完成'
+      : this.materialsEditable && this.materialBlock() ? '请先处理材料状态'
       : this.awaitingCredits ? '继续更新'
       : this.nextRequested ? '生成新版' : '开始更新';
     let quoteHost=this.actions.querySelector<HTMLElement>('#fixed-quote');

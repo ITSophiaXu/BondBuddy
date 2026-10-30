@@ -9,7 +9,7 @@ import {installIntegrityDeliveryReference} from './integrity-delivery-reference'
 // Desktop 1440 only. HTTP/OOXML fixtures do not execute a worker, official query,
 // production content, private storage, credit settlement or a Word application.
 const mismatch='所选底稿的任务或版本无法核实，未下载。请重新读取本轮底稿后再试。';
-const success='底稿已交给浏览器下载。';
+const success='底稿已交给浏览器下载，请在浏览器下载列表查看。';
 const modal=(page:Page)=>page.locator('.integrity-modal[open]');
 const panel=(page:Page)=>page.locator('.integrity-panel').first();
 const button=(page:Page,s:State,run=exportId,kind:Kind='company')=>page.locator(`[data-integrity-download="${word(s,run,kind).artifact_id}"]`);

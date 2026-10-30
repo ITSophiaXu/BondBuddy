@@ -33,7 +33,7 @@ import { UserFacingError } from './user-facing-error';
 import { sourceFields, readSourceFields, sourcePeriodSummary, sourceRequiredMessage, clearSourceSelections } from './source-prospectus.js';
 import { formatTemplateNotice, formatTemplatePin, selectedFormatTemplate, type SourceFormatContext } from './source-format-template.js';
 import { retainUpdateDetails } from './update-form.js';
-import { uploadErrorMessage } from './upload-error';
+import { uploadErrorMessage, InvalidUploadFileError, uploadNeedsReplacement } from './upload-error';
 import { Draft } from './draft';
 import { blankDraft, validateDraft } from './form-model';
 import { bindUpdateForm, readUpdateForm, updateFormFields, revealUpdateFormErrors } from './update-form';
@@ -105,7 +105,7 @@ const projectNameRequests=new Map<string,Promise<void>>();
 
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
 type UploadPhase = 'queued' | 'hashing' | 'checking' | 'uploading' | 'saving' | 'persisted' | 'failed' | 'cancelled' | 'uncertain';
-type LocalUpload = { key: string; owner: string; projectId: string; role: UploadRole; file?: File; declaration?:Dto<'UploadCreateRequest'>; uploadId?:string; recoveryRecord?:UploadRecoveryRecord; explicitResume?:boolean; restored?:boolean; needsFile?:boolean; journalDone?:boolean; phase: UploadPhase; sentBytes: number; material?: Dto<'MaterialResponse'>; error?: string; controller?: AbortController; hash?: string };
+type LocalUpload = { key: string; owner: string; projectId: string; role: UploadRole; file?: File; declaration?:Dto<'UploadCreateRequest'>; uploadId?:string; recoveryRecord?:UploadRecoveryRecord; explicitResume?:boolean; restored?:boolean; needsFile?:boolean; needsReplacement?:boolean; journalDone?:boolean; phase: UploadPhase; sentBytes: number; material?: Dto<'MaterialResponse'>; error?: string; controller?: AbortController; hash?: string };
 let runningUploads = 0;
 let preparingUploads=0;
 type MaterialRecovery = { state: 'loading' | 'ready' | 'unavailable'; message?: string };
@@ -240,7 +240,7 @@ function renderLogin(message = '', mode: 'login' | 'register' = 'login') {
   if (registering) bindRegister(); else {
     bindLogin();
     const link=document.querySelector<HTMLElement>('#login-recovery');
-    void api.recoveryInfo().then(info=>{if(link?.isConnected && info.enabled)link.innerHTML='<a href="#/recover">忘记密码？联系客服找回</a>';}).catch(()=>{});
+    if(link)link.innerHTML='<a href="#/recover">忘记密码？查看找回方式</a>';
   }
 }
 
@@ -821,7 +821,9 @@ function renderUploadRow(upload: LocalUpload) {
   const showProgress = ['uploading', 'saving'].includes(upload.phase);
   const progress = Math.min(uploadSize(upload), upload.sentBytes);
   const confirmation=(upload.restored||!upload.file)&&['failed','cancelled','uncertain'].includes(upload.phase);
-  const controls = confirmation
+  const controls = upload.needsReplacement
+    ? `<button type="button" class="text-button" data-upload-action="replace" data-upload-key="${esc(upload.key)}">选择其他文件</button>`
+    : confirmation
     ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">确认原上传</button>${upload.needsFile?`<button type="button" class="text-button" data-upload-action="reselect" data-upload-key="${esc(upload.key)}" aria-label="为${esc(uploadName(upload))}重新选择原文件">重新选择原文件继续</button>`:''}`
     : upload.phase === 'failed' || upload.phase === 'cancelled'
     ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">重试此文件</button>`
@@ -972,9 +974,9 @@ function updateMaterialWorkspace(projectId: string) {
 function declaredMediaType(file: File, role: UploadRole): typeof M1_UPLOAD_MIME_TYPES[number] {
   const extension = file.name.toLowerCase().split('.').at(-1) ?? '';
   const mediaType = mimeByExtension[extension];
-  if (!mediaType || !M1_UPLOAD_MIME_TYPES.includes(mediaType)) throw new UserFacingError('此分区暂不支持该文件扩展名。');
+  if (!mediaType || !M1_UPLOAD_MIME_TYPES.includes(mediaType)) throw new InvalidUploadFileError('此分区暂不支持该文件扩展名。请选择支持格式的文件，或移除此未保存行。');
   if ((role === 'historical' || role === 'reference') && extension !== 'docx' && extension !== 'pdf') {
-    throw new UserFacingError('募集说明书分区仅接受 DOCX 或 PDF。');
+    throw new InvalidUploadFileError('募集说明书分区仅接受 DOCX 或 PDF。请选择其他文件，或移除此未保存行。');
   }
   return mediaType;
 }
@@ -1003,13 +1005,14 @@ function restoreUploadRows(projectId:string){
     localUploads.set(projectId,rows);uploadJournalErrors.delete(projectId);
   }catch(error){uploadJournalErrors.set(projectId,uploadRecoveryMessage(error));}
 }
-function reselectUploadFile(upload:LocalUpload){
+function reselectUploadFile(upload:LocalUpload,replace=false){
   if(uploadReselectInputs.has(upload.key))return;
   const input=document.createElement('input');input.type='file';input.hidden=true;input.dataset.uploadReselect=upload.key;input.accept=upload.role==='historical'||upload.role==='reference'?'.docx,.pdf':'.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
   const clear=()=>{input.remove();if(uploadReselectInputs.get(upload.key)===input)uploadReselectInputs.delete(upload.key);};
   input.addEventListener('cancel',clear,{once:true});
-  input.addEventListener('change',()=>{
+  input.addEventListener('change',async()=>{
     const file=input.files?.[0];clear();if(!file||identity!==upload.owner||!(localUploads.get(upload.projectId)??[]).includes(upload))return;
+    if(replace){await removeUploadRow(upload);if(identity===upload.owner&&!(localUploads.get(upload.projectId)??[]).includes(upload))addUpload(upload.projectId,upload.role,file);return;}
     upload.file=file;upload.explicitResume=true;upload.phase='queued';upload.error=undefined;updateMaterialWorkspace(upload.projectId);pumpUploads();
   },{once:true});
   document.body.append(input);uploadReselectInputs.set(upload.key,input);input.click();
@@ -1050,14 +1053,14 @@ function pumpUploadPreparation(){
     void (async()=>{
       try{
         const file=upload.file;if(!file)throw new UserFacingError('请重新选择原文件。');const media_type=declaredMediaType(file,upload.role);
-        if(!file.size)throw new UserFacingError('空文件不能上传。');if(file.size>M1_UPLOAD_LIMITS.fileBytes)throw new UserFacingError('单份文件不能超过 100 MB，请拆分后上传。');
+        if(!file.size)throw new InvalidUploadFileError('空文件不能上传。请选择有内容的文件，或移除此未保存行。');if(file.size>M1_UPLOAD_LIMITS.fileBytes)throw new InvalidUploadFileError('单份文件不能超过 100 MB，请拆分后选择新文件，或移除此未保存行。');
         updateMaterialWorkspace(upload.projectId);const hash=await sha256(await file.arrayBuffer());controller.signal.throwIfAborted();
         if(identity!==upload.owner||!(localUploads.get(upload.projectId)??[]).includes(upload))return;
         const declaration={filename:file.name,media_type,byte_size:file.size,sha256:hash,role:upload.role};
         upload.recoveryRecord=uploadRecovery(upload.projectId,upload.owner).begin(declaration,undefined,upload.key);upload.declaration=declaration;upload.hash=hash;upload.phase='queued';
       }catch(error){
         if(identity!==upload.owner||upload.phase==='cancelled'||upload.phase==='queued'&&controller.signal.aborted)return;
-        upload.phase='failed';upload.error=uploadRecoveryMessage(error);
+        upload.phase='failed';upload.needsReplacement=uploadNeedsReplacement(error);upload.error=uploadRecoveryMessage(error);
       }finally{
         if(upload.controller===controller)upload.controller=undefined;preparingUploads--;if(identity===upload.owner)updateMaterialWorkspace(upload.projectId);pumpUploads();
       }
@@ -1086,7 +1089,7 @@ async function performUpload(upload: LocalUpload) {
   try{
     if(!upload.declaration){
       const file=upload.file;if(!file)throw new UserFacingError('请重新选择原文件。');
-      const media_type=declaredMediaType(file,upload.role);if(!file.size)throw new UserFacingError('空文件不能上传。');if(file.size>M1_UPLOAD_LIMITS.fileBytes)throw new UserFacingError('单份文件不能超过 100 MB，请拆分后上传。');
+      const media_type=declaredMediaType(file,upload.role);if(!file.size)throw new InvalidUploadFileError('空文件不能上传。请选择有内容的文件，或移除此未保存行。');if(file.size>M1_UPLOAD_LIMITS.fileBytes)throw new InvalidUploadFileError('单份文件不能超过 100 MB，请拆分后选择新文件，或移除此未保存行。');
       const hash=upload.hash??await sha256(await file.arrayBuffer());controller.signal.throwIfAborted();if(!isCurrentOwner())return;
       upload.hash=hash;upload.declaration={filename:file.name,media_type,byte_size:file.size,sha256:hash,role:upload.role};
     }
@@ -1119,6 +1122,7 @@ async function performUpload(upload: LocalUpload) {
     if(error instanceof UploadRecoveryNeedsFileError){upload.needsFile=true;upload.phase='failed';upload.error=error.message;updateMaterialWorkspace(upload.projectId);return;}
     const uncertain=!aborted&&Boolean(upload.uploadId)&&(!(error instanceof ApiError)||error.status===0||error.status>=500)
       &&!(error instanceof UploadRecoveryStorageError||error instanceof UploadRecoveryLockError||error instanceof UploadRecoveryConflictError||error instanceof UploadRecoveryReceiptError);
+    upload.needsReplacement=!aborted&&!uncertain&&uploadNeedsReplacement(error);
     upload.phase=aborted?'cancelled':uncertain?'uncertain':'failed';upload.error=aborted?undefined:uploadRecoveryMessage(error);
     updateMaterialWorkspace(upload.projectId);
     if(uncertain){
@@ -1280,7 +1284,8 @@ function bindMaterialWorkspace(projectId: string) {
         if (uncertain) void refreshProjectMaterials(projectId, epoch);
         break;
       }
-      case 'retry': upload.explicitResume=true; upload.phase = 'queued'; upload.error = undefined; updateMaterialWorkspace(projectId); pumpUploads(); break;
+      case 'replace': reselectUploadFile(upload,true);break;
+      case 'retry': if(upload.needsReplacement)return;upload.explicitResume=true; upload.phase = 'queued'; upload.error = undefined; updateMaterialWorkspace(projectId); pumpUploads(); break;
       case 'reselect': reselectUploadFile(upload);break;
       case 'reconcile': void refreshProjectMaterials(projectId, epoch); break;
       case 'remove': {

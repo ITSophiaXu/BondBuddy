@@ -78,9 +78,18 @@ export async function renderRecoveryPage(api:ApiClient,root:HTMLElement,mode:'re
   root.innerHTML=`<main id="main" class="closed-layout" tabindex="-1"><section class="panel form-panel"><a class="brand" href="#/">BondBuddy</a><h1>${mode==='reset'?'设置新密码':'人工找回账号'}</h1><p class="muted">${mode==='reset'?'新密码设置成功后，所有旧会话将退出。':policy}</p><div id="recovery-public-body"><p role="status">正在读取找回信息…</p></div><p id="recovery-public-message" class="form-message" role="status"></p><a class="back-link" href="#/">返回登录</a></section></main>`;
   const body=root.querySelector<HTMLElement>('#recovery-public-body')!,message=root.querySelector<HTMLElement>('#recovery-public-message')!;
   let info:Dto<'RecoveryInfoResponse'>;
-  try{info=await api.recoveryInfo();}catch(error){if(live())body.textContent=errorText(error,'read');return;}
+  try{info=await api.recoveryInfo();}catch(error){
+    if(live()){
+      body.innerHTML=`<p role="status">找回服务信息暂时无法读取。${esc(errorText(error,'read'))}</p><p>可先检查浏览器密码管理器中是否保存了本账号密码；注册新账号不会恢复原账号项目。</p><button class="button secondary" id="recovery-retry">重新读取找回方式</button>`;
+      body.querySelector('#recovery-retry')!.addEventListener('click',()=>void renderRecoveryPage(api,root,mode,token,live,done));
+    }
+    return;
+  }
   if(!live())return;
-  if(!info.enabled){body.textContent='人工找回尚未开放，请妥善保管密码。';return;}
+  if(!info.enabled){
+    body.innerHTML=`<p>人工找回尚未开放，当前无法在线重置密码。原账号和项目资料仍保留。</p><p>请先检查浏览器密码管理器中是否保存了本账号密码。注册新账号不会恢复原账号项目。</p>${info.support_contact?`<p>需要帮助可联系原客服：${esc(info.support_contact)}。请勿发送密码或客户材料。</p>`:'<p>平台尚未提供公开的找回联系方式。如有原客服会话，可在原会话中咨询开放情况。</p>'}`;
+    return;
+  }
   if(mode==='request'){
     body.innerHTML=`<p>客服：${esc(info.support_contact!)}</p><form id="recovery-request-form"><label for="recover-username">账号用户名</label><input id="recover-username" required pattern="${USERNAME_PATTERN}" maxlength="32" autocomplete="username"/><div class="form-actions"><button class="button primary">获取找回工单号</button></div></form>`;
     body.querySelector('form')!.addEventListener('submit',async event=>{

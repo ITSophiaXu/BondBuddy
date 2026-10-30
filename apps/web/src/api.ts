@@ -1,4 +1,5 @@
 import {runRecoverableBillingRequest,observeAutomaticQuotes} from './billing-task-recovery.js';
+import {readDownloadBytes,type DownloadProgress} from './download-progress.js';
 import {BILLING_WIRE_HEADER,BILLING_WIRE_VERSION,LEGACY_BILLING_WIRE_VERSION,billingWireRoute,encodeBillingDto,validateBillingDto} from '@bondbuddy/contracts';
 import { UserFacingError, unknownErrorText, type ErrorOperation } from './user-facing-error.js';
 import type { Static } from '@sinclair/typebox';
@@ -301,7 +302,7 @@ export class ApiClient {
   runEvents(id: string, after: number, signal?: AbortSignal) {
     return this.request<Dto<'RunEventsResponse'>>('GET', `/runs/${encodeURIComponent(id)}/events?after=${after}`, undefined, {}, signal);
   }
-  async artifactBytes(artifact: Dto<'ArtifactResponse'>, signal?: AbortSignal): Promise<Blob> {
+  async artifactBytes(artifact: Dto<'ArtifactResponse'>, signal?: AbortSignal, progress?: DownloadProgress): Promise<Blob> {
     const activeSignal = signal ?? this.controller.signal;
     const url = new URL(artifact.download_url, location.origin);
     const path = `/api/v1/artifacts/${encodeURIComponent(artifact.artifact_id)}/download`;
@@ -310,7 +311,7 @@ export class ApiClient {
     }
     const response = await this.response('GET', `${url.pathname.slice('/api/v1'.length)}${url.search}`, undefined, {}, activeSignal);
     if (response.status !== 200 || response.headers.get('content-type')?.split(';')[0].trim() !== artifact.media_type) throw new ApiError(0, 'DATA_UNAVAILABLE');
-    const bytes = await response.arrayBuffer();
+    const bytes = await readDownloadBytes(response, activeSignal, progress);
     activeSignal.throwIfAborted();
     if (!bytes.byteLength) throw new ApiError(0, 'DATA_UNAVAILABLE');
     // Check the bytes received by the browser against the freshly authorized metadata.
