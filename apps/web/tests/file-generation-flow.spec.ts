@@ -3,7 +3,7 @@ import {mkdir} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {sourceFixture} from './generation-source-fixtures';
 import {href,ids,file,batches} from './generation-entry-fixtures';
-import {emptyFileGenerationPreparation} from '@bondbuddy/contracts';
+import {emptyFileGenerationPreparation,PROJECT_DOCUMENT_CATALOG} from '@bondbuddy/contracts';
 
 // Real controllers and rendered UI; HTTP, files and task outcomes are synthetic.
 async function capture(page:Page,name:string){const dir=process.env.BB_FLOW_EVIDENCE;if(!dir)return;await mkdir(dir,{recursive:true});await page.evaluate(()=>window.scrollTo(0,0));await expect.poll(()=>page.evaluate(()=>scrollY)).toBe(0);await page.screenshot({path:join(dir,name+'.png'),fullPage:true});await page.screenshot({path:join(dir,name+'-viewport.png')});}
@@ -21,18 +21,24 @@ for(const width of [1440,390,320])test(`source first with PR787 radio choices, $
  await mode(page,'upload').check();await expect(page.locator('#pf-source-existing')).toBeHidden();await expect(page.locator('.pf-selected-source')).toContainText('募集说明书_V3.docx');expect(s.selections).toHaveLength(0);
  await expect(mode(page,'upload')).toBeFocused();await mode(page,'upload').press('ArrowRight');await expect(mode(page,'project')).toBeChecked();
  await page.locator('#pf-source-next').click();await expect(page).toHaveURL(/step=prepare/);await expect(page.locator('[data-flow-step="2"]')).toHaveAttribute('aria-current','step');
- await expect(page.locator('.fg-types').first().locator('[data-fg-type]')).toHaveCount(6);await expect(page.locator('.fg-source-card')).toHaveCount(2);
+ await expect(page.locator('.fg-types')).toHaveCount(1);
+ await expect(page.locator('.fg-types [data-fg-type]')).toHaveCount(PROJECT_DOCUMENT_CATALOG.length+1);
+ for(const type of ['workpaper',...PROJECT_DOCUMENT_CATALOG.map(t=>t.id)])await expect(page.locator(`[data-fg-type="${type}"]`)).toBeVisible();
+ await expect(page.getByText('其他文件类型',{exact:true})).toHaveCount(0);
+ await expect(page.locator('.fg-source-card')).toHaveCount(2);
+ await capture(page,'file-options-'+width);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await expect(page.getByRole('button',{name:'直接使用光大整套'})).toBeVisible();expect(batches(s.state)).toHaveLength(0);
  await page.locator('a[data-flow-step="1"]').click();await page.locator('#pf-source-next').click();await expect(page).toHaveURL(/step=prepare/);
 });
 
 for(const existing of [false,true])test(`upload adopts saved source and waits for explicit next, existing=${existing}`,async({page})=>{
  const s=await sourceFixture(page,existing);await page.goto('/'+href({step:'source',mode:'documents'},ids.api,ids.navigation));
- if(!existing){await expect(mode(page,'upload')).toBeChecked();await expect(page.locator('#pf-source-next')).toBeDisabled();await capture(page,'source-empty');}else await mode(page,'upload').check();
+ if(!existing){await expect(page.locator('.pf-source-modes')).toBeHidden();await expect(mode(page,'project')).toBeHidden();await expect(page.locator('#pf-source-existing')).toBeHidden();await expect(page.locator('#choose-prospectus-version')).toBeVisible();await expect(page.locator('#pf-source-next')).toBeDisabled();await capture(page,'source-empty');}else await mode(page,'upload').check();
  const chooser=page.waitForEvent('filechooser');await page.locator('#choose-prospectus-version').click();await(await chooser).setFiles(file);
  await expect(page.locator('.pf-selected-source')).toContainText(file.name);await expect(page.locator('#pf-source-next')).toBeEnabled();await expect(page).toHaveURL(/step=source/);
+ await expect(mode(page,'project')).toBeVisible();await expect(mode(page,'upload')).toBeChecked();
  expect(s.state.puts).toBe(1);expect(s.selections).toHaveLength(1);await expect(page.locator('#pf-source-existing')).toBeHidden();expect(batches(s.state)).toHaveLength(0);
- await page.reload();await expect(page.locator('.pf-selected-source')).toContainText(file.name);await page.locator('#pf-source-next').click();await expect(page.locator('#pf-template-list')).toBeVisible();
+ await page.reload();await expect(page.locator('.pf-selected-source')).toContainText(file.name);await expect(mode(page,'project')).toBeVisible();await page.locator('#pf-source-next').click();await expect(page.locator('#pf-template-list')).toBeVisible();
  expect(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('return_project')).toBe(ids.navigation);expect(s.state.puts).toBe(1);expect(s.selections).toHaveLength(1);
 });
 
@@ -90,4 +96,7 @@ for(const width of [1440,390,320])test(`approved prototype reference screens, ${
  await page.locator('[data-action=back]').click();await expect(page.locator('#bb-project-source')).toBeVisible();await capture(page,'prototype-source-'+width);
  await page.locator('[data-action=next]').click();await page.locator('[data-mode=batch]').click();await capture(page,'prototype-directory-'+width);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await page.goto('/@fs/'+file+'?empty=1');await expect(page.getByRole('radio',{name:'选择项目已有募集说明书',exact:true})).toBeHidden();
+ await expect(page.locator('#bb-source-existing')).toBeHidden();await expect(page.locator('[data-action=upload-source]')).toBeVisible();
+ await expect(page.locator('[data-action=next]')).toBeDisabled();await capture(page,'prototype-empty-'+width);
 });

@@ -1,4 +1,4 @@
-import {fixtureBody} from './billing-fixture-wire';
+import {fixtureBody,serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
 import {INTEGRITY_PRICE,INTEGRITY_SITES,resolveIntegritySite,schemas,type IntegrityDraft,type IntegrityEvidence,type IntegrityInput,type IntegrityManual,type IntegrityRecord,type IntegrityRound,type IntegrityWorkspace,type M4MaterialPin} from '@bondbuddy/contracts';
@@ -89,6 +89,7 @@ export async function install(page:Page,state=fixture()){
   });
   await page.context().route('https://synthetic.invalid/**',async route=>{state.unexpected.push(`BINARY ${route.request().method()} ${route.request().url()}`);return route.abort();});
   await page.context().route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const request=route.request(),url=new URL(request.url()),path=url.pathname.replace('/api/v1',''),method=request.method();
     const body:unknown=request.postData()&&request.headers()['content-type']?.includes('application/json')?fixtureRequest(request):undefined;
     state.calls.push({method,path,search:url.search,...(body===undefined?{}:{body:structuredClone(body)})});

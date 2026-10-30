@@ -1,4 +1,14 @@
 import { ApiError, errorReference, friendlyError } from './api.js';
+import { UserFacingError } from './user-facing-error.js';
+
+export class InvalidUploadFileError extends UserFacingError {}
+
+export function uploadNeedsReplacement(error: unknown): boolean {
+  if (error instanceof InvalidUploadFileError) return true;
+  if (!(error instanceof ApiError)) return false;
+  return ['MATERIAL_FORMAT_UNSUPPORTED','MATERIAL_CONTENT_MISMATCH','MATERIAL_ENCRYPTED'].includes(error.code)
+    || error.code === 'MATERIAL_UNREADABLE' && ['size_limit','encrypted_content','content_mismatch','unsupported_content','structure_invalid','external_link_invalid'].includes(String(error.details.uploadReason));
+}
 
 export function uploadErrorMessage(error: unknown): string {
   if (!(error instanceof ApiError)) return friendlyError(error, 'save');

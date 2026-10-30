@@ -1,0 +1,101 @@
+{
+  "baseline": "c6cc55c8521f31323d806744cf559351f3ad35fd",
+  "finalBase": "1c6fc9fd332ecc011cb9ab61ba086f26cb7cdd76",
+  "finalCode": "355868bcd95160614124cedfc80b7f9fe2a0e0a4",
+  "rebasedRefresh": [
+    "file-version-row.png",
+    "file-version-history.png",
+    "integrity-toolbar.png",
+    "integrity-download.png",
+    "login.png",
+    "recovery-disabled.png"
+  ],
+  "environment": "Windows Edge + local Vite + synthetic HTTP; not production",
+  "files": [
+    {
+      "path": "before/file-version-history.png",
+      "bytes": 143305,
+      "sha256": "f11f40a3ae762b800934d9e2805e455eec5822a87a0a21dd46f96a4e61d0545c"
+    },
+    {
+      "path": "before/file-version-row.png",
+      "bytes": 78552,
+      "sha256": "0719787efe6fedeab0b9b0c82a108dca5143a5cf09f7ce9b36a46c0171fc6d1c"
+    },
+    {
+      "path": "before/integrity-download.png",
+      "bytes": 114092,
+      "sha256": "abb5a21aad957449567a7a581bb403e18eb77fc27336dc505ec0c2cd3eee91cb"
+    },
+    {
+      "path": "before/integrity-toolbar.png",
+      "bytes": 111735,
+      "sha256": "cc863fcd1dfaf313b0fd2d7866b27ae30fbfcfbc58833b50e3fd85f8c13693c0"
+    },
+    {
+      "path": "before/login.png",
+      "bytes": 39788,
+      "sha256": "350205140fc0cf1b71964b5c76b9bc19df0a7f4ca2b748c5eff0be11917d2efc"
+    },
+    {
+      "path": "before/recovery-disabled.png",
+      "bytes": 22290,
+      "sha256": "466f0096e1506e96d6f37ac4b5fe64a54deca6dda3a15b869e44951b9677b8bb"
+    },
+    {
+      "path": "after/file-version-history.png",
+      "bytes": 147178,
+      "sha256": "3becf5af533b8caa108efb640ef7e2b447af364deff9f90e32ffd3e35a9cd0a5"
+    },
+    {
+      "path": "after/file-version-row.png",
+      "bytes": 81747,
+      "sha256": "14bcbd0f72eaf73d8852661fc26d07b6b4213d863f7f08421591a0b2f6c791fe"
+    },
+    {
+      "path": "after/integrity-download-error.png",
+      "bytes": 74709,
+      "sha256": "841e30f42ff5d298aff000541cbb9e98e9b802e3f1895bcfdc8e4914a32e3189"
+    },
+    {
+      "path": "after/integrity-download.png",
+      "bytes": 113181,
+      "sha256": "4e40217a7bc81a7f3cfa8d55db617ec723141223dcc5d13377b17a6f5c658be0"
+    },
+    {
+      "path": "after/integrity-toolbar-390.png",
+      "bytes": 41084,
+      "sha256": "d0cc7f7a929c1a13237532adcede3faf0306e3a6ca3e45403ecd0b25ee3985d1"
+    },
+    {
+      "path": "after/integrity-toolbar.png",
+      "bytes": 115205,
+      "sha256": "8f15b735d72a8631e2224fbb51543212c5578646475a37fd7ab29d63c331f982"
+    },
+    {
+      "path": "after/login.png",
+      "bytes": 41749,
+      "sha256": "0c216c2bdd103e82ec93881f017d605b0c0559d3363a513163404fe1131e67b1"
+    },
+    {
+      "path": "after/recovery-disabled.png",
+      "bytes": 33737,
+      "sha256": "557fa3966aee3c95c95e03bfd23f5bf580a41a55a9809a7efecc19c5a126ba18"
+    },
+    {
+      "path": "after/upload-replacement.png",
+      "bytes": 76428,
+      "sha256": "70075951403108c699d4c71dae67f1dd4d9f90ea04d27987984c55e235d867a1"
+    },
+    {
+      "path": "after/workpaper-editable.png",
+      "bytes": 74842,
+      "sha256": "30c4fe7f367cbf6494601d7346aecfbf09b3bab166f4dc983515ebeab9e8fd5f"
+    },
+    {
+      "path": "after/workpaper-selected-confirmation.png",
+      "bytes": 79778,
+      "sha256": "b0d5a73f21ad4116d7aeac59e8f7f8ce85bc51785eca4608b904a8f0acbab6d8"
+    }
+  ]
+}

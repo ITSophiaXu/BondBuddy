@@ -272,7 +272,7 @@ test('all selected uploads must finish and be saved before starting an update', 
   await expect(page.locator('[data-upload-phase="uploading"]')).toHaveCount(2);
   await expect(page.locator('[data-upload-phase="queued"]')).toHaveCount(1);
   await expect(start).toBeDisabled();
-  await expect(start).toHaveText('等待材料保存完成');
+  await expect(start).toHaveText('请先处理材料状态');
   if(process.env.BB_UPLOAD_GUARD_EVIDENCE){
     for(const width of [1440,390]){
       await page.setViewportSize({width,height:960});
@@ -286,7 +286,7 @@ test('all selected uploads must finish and be saved before starting an update', 
     await expect.poll(()=>completions.has(file.name)).toBe(true);
     await expect(page.locator('.material-file-row').filter({hasText:file.name})).toContainText('正在保存');
     await expect(start).toBeDisabled();
-    await expect(start).toHaveText('等待材料保存完成');
+    await expect(start).toHaveText('请先处理材料状态');
     await start.dispatchEvent('click');
     expect(state.inputs).toHaveLength(0);expect(state.executes).toHaveLength(0);
     completions.get(file.name)!();
@@ -1268,7 +1268,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       if (path.endsWith('/bytes')) return route.fulfill({ status: 204 });
       if (path.endsWith('/complete')) {
         const uploadId = path.split('/').at(-2)!, upload = uploads.get(uploadId)!;
-        if (upload.role === 'audit' && failAudit) { failAudit = false; return json(route, 422, { code: 'MATERIAL_CONTENT_MISMATCH' }); }
+        if (upload.role === 'audit' && failAudit) { failAudit = false; return json(route, 422, { code: 'MATERIAL_UNREADABLE', field_errors: [{field:'material_upload',code:'inspection_timeout'}] }); }
         if (upload.role === 'historical' && !releaseSave) await new Promise<void>(resolve => { releaseSave = resolve; });
         const body = fixtureRequest(request);
         const material: Dto<'MaterialResponse'> = { material_id: `material-${uploadId}`, material_version: 1, upload_id: uploadId,

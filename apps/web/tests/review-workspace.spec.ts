@@ -1,3 +1,4 @@
+import {fixtureJson,fixtureRequest,serveDisabledBillingCatalog} from './billing-fixture-wire';
 import { taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
@@ -12,7 +13,7 @@ import type { Dto } from '../src/api';
 // Real Chromium with an owner-aware synthetic HTTP fixture. Not model, database or Word acceptance.
 const id='synthetic-review-project',now='2026-10-02T10:00:00Z',mime='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const hash=(text:string)=>createHash('sha256').update(text).digest('hex');
-const reply=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+const reply=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:fixtureJson(route,body)});
 const key=(context:ReviewContext)=>JSON.stringify(context);
 const readableMarkdown='# 合成复核报告\n\n## 复核范围与依据\n本轮按 input.json 的 full_review 执行；输入锁与 input_hash 一致。\n材料路径 materials/m0.docx，SHA-256 为内部校验值。\n\n## 财务核对\n**本次结论：** 发现两项需要处理的事项，财务差异需要优先核对。\n\n**核对范围：** 已对照合成募集书与2025年合成审计报告。\n\n### 1. 现金流金额与审计报告不一致\n**原文位置：** 第八章，经营现金流表。\n\n**核对依据：** 合成审计报告。\n\n原文值 | 对照值 | 差异\n--- | --- | ---\n100 | 120 | 20\n\n**修改建议：** 确认口径后统一金额。\n\n### 2. 财务分析中的单位需核对\n**问题说明：** 原文分析使用元，报表使用万元。\n\n**修改建议：** 统一单位后重新核对分析文字。\n\n## 合规与披露\n**本次结论：** 历史名称披露缺少时间依据。\n\n### 3. 历史名称披露待补充证据\n**原文位置：** 第二章，发行人历史沿革。\n\n**待确认事项：** 缺少名称变更日期依据。\n\n**修改建议：** 补充变更文件及生效日期。\n\n## 公开信息核验\n**本次结论：** 公开信息核验未执行，不能据此判断无风险。\n\n**还需确认：** 发行人名称变更及重大诉讼的最新公开记录。\n\n## 建议处理顺序\n1. 核对财务口径\n2. 补充名称变更证据';
 function fixture(){
@@ -33,6 +34,7 @@ function fixture(){
 }
 async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/review?tab=results`){
   await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const request=route.request(),url=new URL(request.url()),path=url.pathname.replace('/api/v1',''),method=request.method();
     if(path.endsWith('/quote')){if(method!=='GET')state.quoteCalls.push(path);return reply(route,200,{enabled:false,quote:null,balance:{available:0,frozen:0},shortage:0,reason:null});}
     if(path==='/me')return reply(route,200,{user_id:state.owner,session_status:'active'});
@@ -43,7 +45,7 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
     if(path===`/projects/${id}/prospectus-versions`)return reply(route,200,{project_id:id,current_version_id:null,selection_revision:0,inactive_material_ids:[],versions:[]});
     if(path===`/projects/${id}`){
       if(method==='PATCH'){
-        const body=request.postDataJSON() as Dto<'ProjectPatchRequest'>;expect(Value.Check(schemas.ProjectPatchRequest,body)).toBe(true);state.projectPatches.push(body);
+        const body=fixtureRequest(request) as Dto<'ProjectPatchRequest'>;expect(Value.Check(schemas.ProjectPatchRequest,body)).toBe(true);state.projectPatches.push(body);
         if(state.failProjectPatch)return reply(route,503,{code:'DATA_UNAVAILABLE'});
         if(request.headers()['if-match']!==String(state.workspace.project.draft_revision))return reply(route,409,{code:'INPUT_REVISION_CONFLICT'});
         state.workspace.project={...state.workspace.project,...body,draft_revision:state.workspace.project.draft_revision+1,updated_at:now};
@@ -59,7 +61,7 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
     if(path.endsWith('/review-history'))return reply(route,200,{items:state.history});
     if(path.endsWith('/review-draft')){
       if(method==='PUT'){
-        const body=request.postDataJSON();expect(Value.Check(ReviewDraftRequestSchema,body)).toBe(true);if(body.kind==='input')state.inputSaves.push(structuredClone(body));
+        const body=fixtureRequest(request);expect(Value.Check(ReviewDraftRequestSchema,body)).toBe(true);if(body.kind==='input')state.inputSaves.push(structuredClone(body));
         if(state.failDrafts)return reply(route,503,{code:'DATA_UNAVAILABLE'});
         if(body.kind==='input'){
           await state.uploadGates.draft?.(body.input);
@@ -75,7 +77,7 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
       return reply(route,200,{draft:state.workspace.draft,message_drafts:state.workspace.message_drafts});
     }
     if(path.endsWith('/review-messages')){
-      const body=request.postDataJSON() as ReviewMessageRequest;expect(Value.Check(ReviewMessageRequestSchema,body)).toBe(true);state.requests.push(body);
+      const body=fixtureRequest(request) as ReviewMessageRequest;expect(Value.Check(ReviewMessageRequestSchema,body)).toBe(true);state.requests.push(body);
       let message=state.workspace.messages.find(m=>m.message_id===body.submission_request_id);
       if(!message){message={message_id:body.submission_request_id,role:'user',content:body.content,context:body.context,created_at:now,reply_status:'completed',reply_to:null,proposal:null,error:null};state.workspace.messages.push(message);state.workspace.messages.push({...message,message_id:`reply-${message.message_id}`,role:'assistant',content:'合成助手回复：已理解说明，可核对修订提议。',reply_to:message.message_id,proposal:{proposal_id:`proposal-${message.message_id}`,source_report_id:'report-v1',finding_ids:['F01'],requirements:['保留历史名称，只修改本期金额。'],explanation:'仅调整已核实的现金流金额。'}});}
       if(state.dropMessageOnce){state.dropMessageOnce=false;return route.abort('connectionreset');}
@@ -83,7 +85,7 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
       return reply(route,201,{message});
     }
     if(path.endsWith('/revision-plan')){
-      const body=request.postDataJSON() as ReviewPlanRequest;expect(Value.Check(ReviewPlanRequestSchema,body)).toBe(true);state.plans.push(body);
+      const body=fixtureRequest(request) as ReviewPlanRequest;expect(Value.Check(ReviewPlanRequestSchema,body)).toBe(true);state.plans.push(body);
       if(state.failPlan)return reply(route,503,{code:'DATA_UNAVAILABLE'});
       if(body.expected_version!==(state.workspace.plan?.version??0))return reply(route,409,{code:'INPUT_REVISION_CONFLICT'});
       const {expected_version,proposal_id,...plan}=body;
@@ -93,7 +95,7 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
       state.workspace.plan={...plan,version:expected_version+1,plan_id:'plan-1',sha256:hash(JSON.stringify(body)),accepted_at:now,...(proposal_origin?{proposal_origin}:{})};return reply(route,200,state.workspace.plan);
     }
     if(path.endsWith('/review-proposal-adoptions')){
-      const body=request.postDataJSON() as ReviewProposalAdoptionRequest;state.adoptions.push(body);
+      const body=fixtureRequest(request) as ReviewProposalAdoptionRequest;state.adoptions.push(body);
       let result=state.adoptionResults.get(body.adoption_request_id);
       if(!result){
         const proposal=state.workspace.messages.find(message=>message.proposal?.proposal_id===body.proposal_id)?.proposal as ReviewProposalV2;
@@ -108,7 +110,7 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
       if(state.dropAdoptionOnce){state.dropAdoptionOnce=false;return route.abort('connectionreset');}return reply(route,200,result);
     }
     if(path.endsWith('/review-executions')){
-      const body=request.postDataJSON() as ReviewExecutionRequest;expect(Value.Check(ReviewExecutionRequestSchema,body)).toBe(true);state.executes.push(body);
+      const body=fixtureRequest(request) as ReviewExecutionRequest;expect(Value.Check(ReviewExecutionRequestSchema,body)).toBe(true);state.executes.push(body);
       let run=state.runs.get(body.execution_request_id);
       if(!run){if(state.workspace.active_run)return reply(route,409,{code:'ACTIVE_RUN_CONFLICT'});run=state.makeRun(`run-${state.runs.size+1}`,'queued',body.execution_request_id);state.runs.set(body.execution_request_id,run);state.workspace.active_run=run;state.history.push({run,operation:body.operation,version:state.history.length+1,source_report_id:body.source_report_id,report_id:null,input:structuredClone(state.workspace.draft),input_revision:state.workspace.draft.version,finding_ids:body.finding_ids,plan:structuredClone(state.workspace.plan),artifacts:[],created_at:'2026-10-02T11:00:00Z'});}
       if(state.linked){const history=state.history.find(item=>item.run.run_id===run!.run_id);if(history)history.origin={version:'review-execution-origin-v1',entrypoint:body.entrypoint??'quick_action',accepted_proposal:state.workspace.accepted_proposals?.find(item=>item.acceptance_id===body.accepted_proposal_id)??null,context_report_ref:body.context_report_ref??null};}
@@ -128,7 +130,7 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
       state.materialReads.push(referencedMaterial.material_id);return reply(route,200,referencedMaterial);
     }
     if(path.endsWith('/materials/uploads')){
-      const body=request.postDataJSON() as Dto<'UploadCreateRequest'>;state.uploads.push(body);
+      const body=fixtureRequest(request) as Dto<'UploadCreateRequest'>;state.uploads.push(body);
       const uploadId='upload-evidence'+(state.uploads.length===1?'':'-'+state.uploads.length);
       return reply(route,201,{upload_id:uploadId,state:'uploading',upload_url:'/api/v1/synthetic-upload/'+uploadId,expires_at:'2027-01-01T00:00:00Z',max_bytes:104857600});
     }

@@ -1,3 +1,5 @@
+import './upload-progress.css';
+import {uploadProgressHtml,type UploadStatus} from './upload-progress';
 import {WorkpaperLibraryPanel} from './workpaper-library';
 import {PROJECT_DOCUMENT_CATALOG,M1_UPLOAD_LIMITS,resultFilename,type ProjectFileVersion,type ProjectFileCheck,type ProjectDocumentType,type ProjectFileSource,type ProjectFileWorkspace,type M4Workspace,type M4MaterialPin} from './billing-types.js';
 import {uploadFileMaterial,type UploadFileMaterialState} from './file-workspace';
@@ -286,7 +288,7 @@ export class ProjectFiles {
     }
     const panel=this.panel;
     try{await panel.refresh();if(!this.live()||this.panel!==panel)return;
-      const state=panel.state;this.trackSource(state?.current_version_id?id+':'+state.current_version_id:undefined);this.paintSummary();
+      const state=panel.state;this.trackSource(state?.current_version_id?id+':'+state.current_version_id:undefined);this.paintSummary();this.paintFiles();
     }catch{if(this.live()&&this.panel===panel){host.innerHTML='<p class="collection-error">募集书版本暂未读取，已有项目文件仍可查看和下载。</p><button class="text-button" id="pw-retry-source">重新读取募集书</button>';host.querySelector('#pw-retry-source')!.addEventListener('click',()=>void this.syncPanel(true));}}
   }
   private uniqueTaskRow(runId:string){
@@ -515,7 +517,7 @@ export class ProjectFiles {
     this.paintFileStatus(scoped,untyped);
     document.querySelector('#file-list')!.innerHTML=visible.length?visible.map(row=>{
       const f=row.file,v=row.version;
-      return '<article class="collection-file" tabindex="-1" data-file-key="'+esc(f.file_key)+'" data-file-view-focus="'+esc(fileViewFocus('row',f.file_key))+'" data-file-view-asset="'+esc(this.fileViewAsset(f))+'" data-file-status-group="'+row.group+'" data-file-version="'+esc(v?.version_id??'')+'"'+(v?' data-file-family="'+esc(v.file_id)+'"':'')+(this.fileContextTarget&&v?.version_id===this.fileContextTarget?' data-file-context-target="true"':'')+'><span class="collection-file-icon">'+ico('file')+'</span><div class="collection-file-info"><strong>'+esc(f.filename)+'</strong><small>'+(f.source==='material'?'已上传文件':'生成成果')+' · V'+f.display_version+' · '+esc(date(f.created_at))+(f.current?' · 当前募集书':'')+'</small></div>'+this.badge(row)+'<div class="pw-file-actions">'+this.fileEditActions(f,v)+'<button class="text-button" data-file-history="'+esc(f.file_key)+'">版本记录 ('+f.version_count+')</button>'+(v?.revision_asset?'<button class="btn secondary small" data-file-download="'+esc(f.file_id)+'" data-version="'+f.version+'" data-revision>下载修订版</button>':'')+'<button class="btn secondary small" data-file-download="'+esc(f.file_id)+'" data-version="'+f.version+'">'+ico('download')+(v?.revision_asset?'下载清洁版':'下载')+'</button></div></article>';
+      return '<article class="collection-file" tabindex="-1" data-file-key="'+esc(f.file_key)+'" data-file-view-focus="'+esc(fileViewFocus('row',f.file_key))+'" data-file-view-asset="'+esc(this.fileViewAsset(f))+'" data-file-status-group="'+row.group+'" data-file-version="'+esc(v?.version_id??'')+'"'+(v?' data-file-family="'+esc(v.file_id)+'"':'')+(this.fileContextTarget&&v?.version_id===this.fileContextTarget?' data-file-context-target="true"':'')+'><span class="collection-file-icon">'+ico('file')+'</span><div class="collection-file-info"><strong>'+esc(f.filename)+'</strong><small>'+(f.source==='material'?'已上传文件':'生成成果')+' · '+esc(this.fileVersionLabel(f))+' · '+esc(date(f.created_at))+esc(this.prospectusVersionLabel(f))+'</small></div>'+this.badge(row)+'<div class="pw-file-actions">'+this.fileEditActions(f,v)+'<button class="text-button" data-file-history="'+esc(f.file_key)+'">版本记录 ('+f.version_count+')</button>'+(v?.revision_asset?'<button class="btn secondary small" data-file-download="'+esc(f.file_id)+'" data-version="'+f.version+'" data-revision>下载修订版</button>':'')+'<button class="btn secondary small" data-file-download="'+esc(f.file_id)+'" data-version="'+f.version+'">'+ico('download')+(v?.revision_asset?'下载清洁版':'下载')+'</button></div></article>';
     }).join(''):'<div class="collection-empty"><h3>'+ (this.statusFilter!=='all'||this.q||this.typeFilter?'没有符合当前筛选的文件':'此目录尚无文件')+'</h3><p>'+(this.statusFilter!=='all'?'已有文件可能在其他分组，或尚待同步。':'已有文件会在上传或相关任务完成后显示。')+'</p>'+(this.statusFilter!=='all'?'<button type="button" class="text-button" data-clear-file-status>清除状态筛选</button>':'')+'</div>';
     const catalog=this.statusFilter==='all'&&this.registryLoaded?PROJECT_DOCUMENT_CATALOG.filter(d=>(!this.typeFilter||d.id===this.typeFilter)&&(this.folder==='all'||d.folder===this.folder||d.folder.startsWith(this.folder+'.'))&&!this.registry.some(v=>v.latest&&v.document_type===d.id)&&d.name.includes(this.q.trim())):[];
     if(catalog.length)document.querySelector('#file-list')!.insertAdjacentHTML('beforeend','<details class="pw-prepare"><summary>准备其他文件 <span>'+catalog.length+' 类</span></summary><p>首次生成需要对应历史文件或模板，也可以上传已有文件。</p>'+catalog.map(d=>'<article class="collection-file"><span class="collection-file-icon">'+ico('file')+'</span><div class="collection-file-info"><strong>'+d.code+' '+d.name+'</strong><small>尚无项目文件</small></div><div class="pw-file-actions"><button class="btn secondary small" data-import-type="'+d.id+'">上传已有文件</button><a class="text-button" href="'+this.href('generate',{step:'source',prepare_document:d.id})+'">准备生成</a></div></article>').join('')+'</details>');
@@ -550,7 +552,8 @@ export class ProjectFiles {
     d.innerHTML='<header><h2 id="pw-import-heading">'+(target?'上传此文件修改稿':'上传项目关联文件')+'</h2><button class="icon-btn" data-close aria-label="关闭">'+ico('close')+'</button></header><p class="pw-import-target" id="pw-import-target">'+esc(this.name)+(target?' · '+esc(PROJECT_DOCUMENT_CATALOG.find(c=>c.id===target.document_type)!.name)+'<br><strong>原文件：'+esc(target.filename)+' · V'+target.sequence+'</strong>':restoring?.latest?'<br>原目标版本暂不可读取，将沿原文件类型与版本条件确认。':'')+'</p><form><label>文件类型<select name="type" required><option value="">请选择文件类型</option>'+PROJECT_DOCUMENT_CATALOG.map(c=>'<option value="'+c.id+'" '+(type===c.id?'selected':'')+'>'+c.name+'</option>').join('')+'</select></label><label>Word 或 PDF<input name="file" type="file" accept=".docx,.pdf" '+(restoring?'':'required')+'/></label><p>'+(restoring?'先确认原上传；已收到字节时无需重选。若需要字节，请选择原文件。':target?'保存为此类文件的新版本，原 V'+target.sequence+' 保留。本次不生成、不合并、不检查。':'保存为此类文件的新版本，保留旧版。上传后可检查与当前募集书的一致性。')+'</p><p>选好文件类型后，选择 Word 或 PDF 即自动上传保存。</p><button class="btn primary" hidden>重试保存项目文件</button></form><p role="status"></p>';
     if(restoring?.file){const transfer=new DataTransfer();transfer.items.add(restoring.file);d.querySelector<HTMLInputElement>('[name=file]')!.files=transfer.files;}
     const controls=()=>{d.querySelector<HTMLInputElement>('input')!.disabled=this.uploading||!d.querySelector<HTMLSelectElement>('select')!.value||!!this.pendingImport?.uncertain&&!!this.pendingImport.file&&!this.pendingImport.allowReselect;d.querySelector<HTMLSelectElement>('select')!.disabled=this.uploading||!!this.pendingImport||!!target||!!restoring;const retry=d.querySelector<HTMLButtonElement>('form button')!;retry.disabled=this.uploading||targetConflict;retry.hidden=this.uploading||!uploadFailed;};
-    const status=(text:string)=>{d.querySelector('[role=status]')!.textContent=text;};
+    const statusHost=d.querySelector('[role=status]')!;
+    const status:UploadStatus=(text,p)=>{if(p)statusHost.innerHTML=uploadProgressHtml(p,this.pendingImport?.file?.name??'项目文件',{announce:false});else statusHost.textContent=text;};
     d.querySelector<HTMLSelectElement>('[name=type]')!.addEventListener('invalid',()=>status('请选择有效的文件类型，再保存项目文件。所选文件仍保留。'));
     if(restoring?.uncertain)status('本次保存结果尚未确认。请重试保存项目文件，沿用同一次操作。'+(restoring.pin?'已上传文件不会重复上传。':'请重试确认上传与保存结果。'));controls();
     document.body.append(d);d.showModal();d.querySelector('[data-close]')!.addEventListener('click',()=>{if(!this.uploading)d.close();});d.addEventListener('cancel',e=>{if(this.uploading)e.preventDefault();});
@@ -586,9 +589,19 @@ export class ProjectFiles {
     select.addEventListener('change',controls);
     input.addEventListener('change',()=>{if(input.files?.length&&!this.uploading)d.querySelector('form')!.requestSubmit();});
   }
+  private fileVersionLabel(f:ProjectFile){
+    return `文件版本 V${f.display_version}`;
+  }
+  private prospectusVersionLabel(f:ProjectFile){
+    const matches=this.sourceProject===f.project_id?this.panel?.state?.versions.filter(v=>v.sha256===f.sha256&&(f.source==='material'
+      ?v.material_id===f.file_id&&v.material_version===f.version
+      :v.artifact_id===f.file_id&&v.artifact_version===f.version)):[];
+    const version=matches?.length===1?matches[0]:undefined;
+    return version?` · ${version.version_id===this.panel?.state?.current_version_id?'当前募集书':'募集书'} V${version.sequence}`:f.current?' · 当前募集书（稿次待核实）':'';
+  }
   private history(key:string){
     this.dialog?.remove();const rows=this.files.filter(f=>f.file_key===key);const dialog=document.createElement('dialog');this.dialog=dialog;dialog.className='collection-file-dialog';dialog.setAttribute('aria-label','文件版本记录');
-    dialog.innerHTML=`<header><h2>版本记录</h2><button class="icon-btn" data-close aria-label="关闭版本记录">${ico('close')}</button></header><p>${esc(this.name)} · 旧版本保留</p>${rows.map(f=>`<article><div><strong>V${f.display_version} · ${esc(f.filename)}</strong><small>${esc(date(f.created_at))}${f.current?' · 当前募集书':''}${f.latest?' · 当前文件':''}</small></div>${this.registered(f)?.revision_asset?`<button class="btn secondary small" data-file-download="${esc(f.file_id)}" data-version="${f.version}" data-revision>下载修订版</button>`:''}<button class="btn secondary small" data-file-download="${esc(f.file_id)}" data-version="${f.version}">${this.registered(f)?.revision_asset?'下载清洁版':'下载'}</button></article>`).join('')}<p id="file-dialog-status" role="status"></p>`;
+    dialog.innerHTML=`<header><h2>版本记录</h2><button class="icon-btn" data-close aria-label="关闭版本记录">${ico('close')}</button></header><p>${esc(this.name)} · 旧版本保留</p>${rows.map(f=>`<article><div><strong>${esc(this.fileVersionLabel(f))} · ${esc(f.filename)}</strong><small>${esc(date(f.created_at))}${esc(this.prospectusVersionLabel(f))}${f.latest?' · 当前文件':''}</small></div>${this.registered(f)?.revision_asset?`<button class="btn secondary small" data-file-download="${esc(f.file_id)}" data-version="${f.version}" data-revision>下载修订版</button>`:''}<button class="btn secondary small" data-file-download="${esc(f.file_id)}" data-version="${f.version}">${this.registered(f)?.revision_asset?'下载清洁版':'下载'}</button></article>`).join('')}<p id="file-dialog-status" role="status"></p>`;
     document.body.append(dialog);dialog.showModal();dialog.querySelector('[data-close]')!.addEventListener('click',()=>dialog.close());dialog.addEventListener('close',()=>dialog.remove());this.bindDownloads(dialog);
   }
   private bindDownloads(host:Element){

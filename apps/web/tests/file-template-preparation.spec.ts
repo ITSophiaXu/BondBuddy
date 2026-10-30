@@ -1,3 +1,4 @@
+import {hold,check} from './upload-progress-fixtures';
 import {fixtureBody,fixtureRequest} from './billing-fixture-wire';
 import {test,expect,type Page} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
@@ -105,4 +106,18 @@ test('mixed package funding return replays the exact original request without a 
  await expect(page.locator('.fg-history')).toContainText('其他文件 0/1');
  await page.reload();await expect(page.locator('.fg-history')).toContainText('其他文件 0/1');
  expect(requests).toHaveLength(2);expect(state.submissions).toHaveLength(1);expect(payments).toEqual([]);
+});
+
+for(const width of [1440,390])test('supplement exposes byte progress and saving at '+width,async({page})=>{
+ await page.setViewportSize({width,height:960});const s=await setup(page);await hold(page);
+ await page.locator('#fg-support').setInputFiles(file);await check(page,page.locator('.fg-upload-progress progress'),'file-generation-support',width);
+ await expect(page.locator('.fg-upload-progress')).toHaveCount(0);expect(s.data.preparation.materials).toHaveLength(1);
+});
+test('template batch shows the current filename and transfer then processing',async({page})=>{
+ await setup(page);await page.locator('#fg-custom').click();
+ await page.evaluate(async()=>{const {ApiClient}=await import(String('/src/api.ts')),original=ApiClient.prototype.uploadRequest;
+ ApiClient.prototype.uploadRequest=async function(path:string,file:File,progress:any,signal:AbortSignal,uploaded:any){progress(file.size*.4,file.size);await new Promise<void>(r=>(window as any).releaseBytes=r);uploaded();await new Promise<void>(r=>(window as any).releaseSave=r);return original.call(this,path,file,progress,signal,uploaded);};});
+ const first={name:'第一份模板.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:Buffer.from('synthetic template')};
+ await page.locator('#fg-template-upload').setInputFiles(first);await expect(page.locator('.fg-upload-progress')).toContainText(first.name);
+ await check(page,page.locator('.fg-upload-progress progress'),'file-generation-template',1440);await expect(page.locator('.fg-upload-progress')).toHaveCount(0);
 });

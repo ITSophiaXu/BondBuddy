@@ -1,3 +1,4 @@
+import {hold,check} from './upload-progress-fixtures';
 import {addDocuments} from './file-generation-rows';
 import {expect,test,type Page,type Route} from '@playwright/test';
 import {createHash} from 'node:crypto';
@@ -104,4 +105,10 @@ test('project file requires exact original bytes before replacing an unreceived 
 test('template recovery cannot overwrite a newer draft after its creation receipt was lost',async({page})=>{
   const s=await fixture(page);s.dropTemplate=true;await mount(page,'generation');await addDocuments(page,['init']);await page.locator('[data-pf-template=init]').click();await page.locator('dialog input[type=file]').setInputFiles(file);await expect(page.locator('#pf-template-recovery [data-generation-resume]')).toBeVisible();s.work.workspace.drafts.init.version++;s.work.workspace.drafts.init.fields.broker='另一页面已保存券商';
   await mount(page,'generation',true);await page.locator('#pf-template-recovery [data-generation-resume]').click();await expect(page.locator('#pf-status')).toContainText('其他页面修改');expect(writes(s.calls,'/drafts/init')).toHaveLength(0);expect(s.work.workspace.drafts.init.fields.broker).toBe('另一页面已保存券商');expect(s.templates.size).toBe(1);expect(s.puts).toBe(1);noBusiness(s.calls);expect(s.unexpected).toEqual([]);
+});
+
+for(const mode of ['files','generation'] as const)test(mode+' upload shares byte progress and saving',async({page})=>{
+ await fixture(page);await mount(page,mode);await hold(page);
+ if(mode==='files'){await page.locator('#import-project-file').click();await page.locator('dialog select').selectOption('init');await page.locator('dialog input[type=file]').setInputFiles(file);await check(page,page.locator('dialog progress'),'project-file',1440);await expect(page.locator('dialog[open]')).toHaveCount(0);}
+ else{await addDocuments(page,['init']);await page.locator('#pf-support-details summary').click();await page.locator('#pf-support').setInputFiles(file);await check(page,page.locator('#pf-support-feedback progress'),'legacy-support',1440);await expect(page.locator('#pf-support-feedback progress')).toHaveCount(0);}
 });

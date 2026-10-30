@@ -1,3 +1,5 @@
+import './upload-progress.css';
+import {uploadActivity,uploadProgressHtml,type UploadStatus} from './upload-progress';
 import {billingRecoverySchemas,billingRecoveryHeaders,type BillingRecoveryDto} from './billing-recovery-wire.js';
 import {serializeInt64} from '@bondbuddy/contracts';
 import {int64} from '@bondbuddy/contracts';
@@ -167,7 +169,13 @@ export class WorkpaperPanel {
     if(!review){review=document.createElement('div');review.id='wp-import-review';node.after(review);}
     if(this.importReview)this.importReview.render(review,disabled);else review.replaceChildren();
   }
-  private async act(fn:()=>Promise<void>){if(this.busy)return;this.busy=true;this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();try{await fn();}catch(e){this.status=friendlyError(e,'submit');}finally{this.busy=false;if(this.live()){this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=this.status);this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();}}}
+  private syncPreparationControls(){
+    // Import may replace the whole preparation view while busy. Update the new
+    // controls too, without repainting user input or moving keyboard focus.
+    const disabled=this.busy||!!this.pending;
+    this.host.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement|HTMLTextAreaElement>('#wp-change-directory,#wp-catalogue,#wp-upload,#wp-all,#wp-none,[data-wp-item],#wp-requirements').forEach(control=>control.disabled=disabled);
+  }
+  private async act(fn:()=>Promise<void>){if(this.busy)return;this.busy=true;this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();try{await fn();}catch(e){this.status=friendlyError(e,'submit');}finally{this.busy=false;if(this.live()){this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=this.status);this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();}}}
   private async download(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number)=>void)=>Promise<{bytes:Blob;filename:string}>){
     if(this.busy)return;this.busy=true;
     const feedback=this.downloadFeedback?.node??document.createElement('p');
@@ -193,7 +201,7 @@ export class WorkpaperPanel {
         if(!operation)this.upload={};
       }
       if(operation&&operation!==this.upload.operationId)this.upload={operationId:operation,projectId:this.project};
-      const status=(s:string)=>{this.status=s;const n=this.host.querySelector('#wp-status');if(n)n.textContent=s;};
+      const status:UploadStatus=(s,p)=>{this.status=s;const n=this.host.querySelector('#wp-status');if(n)n.innerHTML=uploadProgressHtml(p??uploadActivity(s),file?.name??'底稿目录',{announce:false});};
       let pin:Awaited<ReturnType<typeof uploadFileMaterial>>;
       try{pin=await uploadFileMaterial(this.api,this.project,file,this.controller.signal,status,this.upload,this.owner,'workpaper-catalogue',undefined,()=>this.live());}
       catch(e){if(e instanceof UploadRecoveryNeedsFileError&&this.upload.operationId)this.uploadNeedsFile.add(this.upload.operationId);throw new UserFacingError(uploadErrorMessage(e));}

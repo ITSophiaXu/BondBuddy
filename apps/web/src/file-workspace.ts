@@ -1,3 +1,5 @@
+import './upload-progress.css';
+import {uploadActivity,uploadTransfer,uploadProgressHtml,type FileUploadProgress,type UploadStatus} from './upload-progress';
 import {billingRecoveryHeaders} from './billing-recovery-wire.js';
 import {int64,formatPoints} from '@bondbuddy/contracts';
 import {isOutcomePriceVersion} from './billing-types.js';
@@ -29,6 +31,7 @@ import {isCnyPrice,displayPrice,cny,scopeLinesHtml,scopeStatus,scopeStatusLabel,
 type Workspace=import('./billing-types.js').ProjectFileWorkspace;
 export type UploadFileMaterialState={
   file?:File;projectId?:string;operationId?:string;recovery?:UploadRecovery;
+  progress?:FileUploadProgress;
   material?:Awaited<ReturnType<ApiClient['completeUpload']>>;
 };
 function fileMaterialMime(file:File){const ext=file.name.split('.').at(-1)?.toLowerCase(),mime=ext==='docx'?M1_UPLOAD_MIME_TYPES[0]:ext==='pdf'?M1_UPLOAD_MIME_TYPES[1]:ext==='xlsx'?M1_UPLOAD_MIME_TYPES[2]:null;if(!mime||!file.size||file.size>M1_UPLOAD_LIMITS.fileBytes)throw new UserFacingError('请上传不超过 100 MB 的 DOCX、PDF 或 XLSX 文件。');return mime;}
@@ -57,9 +60,12 @@ type GenerationUploadContext={
 };
 const uploadJson=(value:unknown):UploadRecoveryJson=>JSON.parse(JSON.stringify(value)) as UploadRecoveryJson;
 const canonical=(value:unknown):string=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
-export async function uploadFileMaterial(api:ApiClient,id:string,file:File|undefined,signal:AbortSignal,status:(s:string)=>void=()=>{},state:UploadFileMaterialState={},owner='',purpose='file-material',context?:UploadRecoveryJson,current:()=>boolean=()=>true):Promise<M4MaterialPin>{
+export async function uploadFileMaterial(api:ApiClient,id:string,file:File|undefined,signal:AbortSignal,status:UploadStatus=()=>{},state:UploadFileMaterialState={},owner='',purpose='file-material',context?:UploadRecoveryJson,current:()=>boolean=()=>true):Promise<M4MaterialPin>{
+  const report=(p:FileUploadProgress)=>{state.progress=p;status(p.message,p);};
+  report(uploadActivity());
   const recovery=await prepareFileMaterial(api,id,file,signal,state,owner,purpose,context,current);
-  const m=state.material=await recovery.resume(state.operationId!,{file:state.file,signal,status});
+  const m=state.material=await recovery.resume(state.operationId!,{file:state.file,signal,status:s=>report(uploadActivity(s)),progress:(loaded,total)=>report(uploadTransfer(loaded,total))});
+  report(uploadActivity("文件已保存，正在完成后续处理…"));
   signal.throwIfAborted();
   return {source_project_id:id,material_id:m.material_id,material_version:m.material_version,sha256:m.sha256};
 }
@@ -215,7 +221,7 @@ export class FileWorkspace {
     if(this.live())location.hash=this.href({step:destination});
   }
   private lockPreparation(){this.syncSourceAction();this.paintSupportUpload();document.querySelectorAll<HTMLElement>('.pf-generation-grid,.pf-optional-grid,.pf-original-operations').forEach(n=>n.inert=this.busy);const b=document.querySelector<HTMLButtonElement>('#pf-generate');if(b&&this.busy)b.disabled=true;document.querySelectorAll<HTMLButtonElement>('[data-batch-retry],[data-batch-cancel],[data-pf-download]').forEach(button=>button.disabled=this.busy);const refresh=document.querySelector<HTMLButtonElement>('#pf-refresh-results');if(refresh){refresh.disabled=this.busy||this.resultsReading!==undefined;refresh.textContent=this.resultsReading!==undefined?'正在刷新…':'刷新生成状态';}}
-  private async act(fn:()=>Promise<void>,operation:'read'|'save'|'download'|'submit'|'action'='save'){if(this.busy)return;if(this.panel&&!await this.panel.beforeLeave())return;this.busy=true;clearTimeout(this.timer);this.resultsRequest++;this.resultsReading=undefined;this.lockPreparation();this.paintEntryIntent();this.status('正在保存…');try{await fn();}catch(e){if(this.live())this.status(friendlyError(e,operation));}finally{this.busy=false;if(this.live()){if(document.querySelector('#pf-template-list'))this.paintTemplates();this.lockPreparation();this.paintEntryIntent();this.scheduleResults();}}}
+  private async act(fn:()=>Promise<void>,operation:'read'|'save'|'download'|'submit'|'action'='save'){if(this.busy)return;if(this.panel&&!await this.panel.beforeLeave())return;this.busy=true;clearTimeout(this.timer);this.resultsRequest++;this.resultsReading=undefined;this.lockPreparation();this.paintEntryIntent();this.status('正在保存…');try{await fn();}catch(e){if(this.live())this.status(friendlyError(e,operation));}finally{this.busy=false;if(this.live()){for(const n of document.querySelectorAll('#pf-support-feedback'))if(n.querySelector('.file-upload-progress'))n.textContent=this.message;if(document.querySelector('#pf-template-list'))this.paintTemplates();this.lockPreparation();this.paintEntryIntent();this.scheduleResults();}}}
   private prepared(){const source=this.state?.source;if(!source)return false;const matches=(id:M4DocumentType)=>{const pin=this.state!.workspace.drafts[id].project_file;return !!pin&&pin.project_id===this.id&&pin.source_version_id===source.version_id&&pin.source_selection_revision===source.selection_revision;};return this.selected.size?[...this.selected].every(matches):PROJECT_DOCUMENT_CATALOG.some(d=>matches(d.id));}
   private saveSelection(){if(this.cache&&!this.cache.saveSelection([...this.selected]))this.status('本次文件选择暂未保存到浏览器会话，刷新后请重新核对。');}
   private header(step:string){
@@ -368,7 +374,7 @@ export class FileWorkspace {
     let uploadFailed=false;
     const input=dialog.querySelector<HTMLInputElement>('[name=file]')!,broker=dialog.querySelector<HTMLInputElement>('[name=broker]'),retry=dialog.querySelector<HTMLButtonElement>('form button')!;
     const controls=()=>{input.disabled=this.busy||!!pending?.upload.operationId||!!broker&&!broker.value.trim();if(broker)broker.disabled=this.busy||!!pending?.upload.operationId;retry.hidden=this.busy||!uploadFailed;for(const b of dialog.querySelectorAll<HTMLButtonElement>('[data-use-template]'))b.disabled=this.busy||!!pending?.upload.operationId||!!selected&&selected.template_id===b.dataset.useTemplate&&selected.template_version===Number(b.dataset.version);};
-    const execute=async(fn:()=>Promise<void>)=>{if(this.busy)return;this.busy=true;uploadFailed=false;controls();const status=dialog.querySelector('#pf-modal-status')!;status.textContent='正在上传并保存…';try{await fn();}catch(e){uploadFailed=true;if(this.live())status.textContent=friendlyError(e,'save');}finally{this.busy=false;controls();if(this.live())this.paintTemplates();}};
+    const execute=async(fn:()=>Promise<void>)=>{if(this.busy)return;this.busy=true;uploadFailed=false;controls();const status=dialog.querySelector('#pf-modal-status')!;status.innerHTML=uploadProgressHtml(uploadActivity('正在准备文件…'),'文件',{announce:false}); try{await fn();}catch(e){uploadFailed=true;if(this.live())status.textContent=friendlyError(e,'save');}finally{this.busy=false;controls();if(this.live())this.paintTemplates();}};
     let pending:{file:File;upload:UploadFileMaterialState}|undefined;
     dialog.querySelector('form')!.addEventListener('submit',e=>{e.preventDefault();void execute(async()=>{
       const file=dialog.querySelector<HTMLInputElement>('[name=file]')!.files![0];if(!file||!file.name.toLowerCase().endsWith('.docx'))throw new UserFacingError('历史文件 / 模板请选择 DOCX。');
@@ -430,7 +436,8 @@ export class FileWorkspace {
     const record=recovery.list().find(r=>r.id===id);if(!record)throw new UserFacingError('原上传记录已变化，请重新读取。');
     let context=this.generationContext(record);
     if(context.kind==='template'&&file&&!file.name.toLowerCase().endsWith('.docx'))throw new UserFacingError('历史文件 / 模板请选择原 DOCX。');
-    const pin=await uploadFileMaterial(this.api,this.id!,file,this.controller.signal,status,state,this.owner,purpose,undefined,()=>this.live());
+    const report:UploadStatus=(s,p)=>{status(s);if(!this.live())return;const host=this.dialog?.open?this.dialog.querySelector('#pf-modal-status'):document.querySelector(purpose==='generation-template'?'#pf-status':'#pf-support-feedback')??document.querySelector('#pf-status');if(host)host.innerHTML='<strong>'+esc(record.declaration.filename)+'</strong>'+uploadProgressHtml(p??uploadActivity(s),record.declaration.filename,{announce:false});};
+    const pin=await uploadFileMaterial(this.api,this.id!,file,this.controller.signal,report,state,this.owner,purpose,undefined,()=>this.live());
     this.state=await this.request<Workspace>('GET','/workspace');
     if(this.state.workspace.topic.topic_id!==context.topic)throw new UserFacingError('原资料所属工作区已变化，请保留原记录并核对。');
     await this.m4.material(context.topic,pin);
@@ -473,7 +480,7 @@ export class FileWorkspace {
       this.state.workspace.templates=this.state.workspace.templates.filter(t=>t.template_id!==template!.template_id||t.template_version!==template!.template_version);
       this.state.workspace.templates.push(template);
     }
-    await recovery.forget(id);return pin;
+    await recovery.forget(id);status('文件已保存，原材料选择已确认。');const progressHost=this.dialog?.open?this.dialog.querySelector('#pf-modal-status'):document.querySelector(purpose==='generation-template'?'#pf-status':'#pf-support-feedback');if(progressHost)progressHost.textContent='文件已保存，原材料选择已确认。';return pin;
   }
   private async prepareGeneration(){await this.act(async()=>{
     if(this.cacheUnknown)throw new UserFacingError('原准备记录暂不可读取，请先重新读取。');

@@ -1,3 +1,4 @@
+import {hold,check} from './upload-progress-fixtures';
 import {test,expect,type Page} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
@@ -42,8 +43,19 @@ test('directory import succeeds automatically and enables the next step without 
   const state=await setup(page);await page.locator('#wp-upload').setInputFiles(file);
   await expect(page.locator('.wp-directory-current')).toContainText(file.name);
   await expect(page.locator('[data-wp-item]')).toHaveCount(3);await expect(page.locator('#wp-start')).toBeEnabled();
+  await expect(page.locator('#wp-change-directory')).toBeEnabled();
+  await page.locator('#wp-none').click();await expect(page.locator('#wp-start')).toBeDisabled();
+  await page.locator('[data-wp-item]').first().check();
+  await page.locator('#wp-requirements').fill('合成范围回归：只编制所选一份');
+  if(process.env.BB_UX_EVIDENCE){await mkdir(process.env.BB_UX_EVIDENCE,{recursive:true});await page.setViewportSize({width:1366,height:768});await page.locator('#wp-requirements').scrollIntoViewIfNeeded();await page.screenshot({path:resolve(process.env.BB_UX_EVIDENCE,'workpaper-editable.png')});}
   expect(await records(page)).toEqual([]);expect(state.imports).toHaveLength(1);expect(state.uploads.puts).toBe(1);
-  await page.locator('#wp-start').click();await expect(page.locator('#wp-confirmation-page')).toContainText('3 份文件');
+  await page.locator('#wp-start').click();await expect(page.locator('#wp-confirmation-page')).toContainText('1 份文件');
+  await expect(page.locator('#wp-confirmation-page')).toContainText('4,500');
+  await expect(page.locator('#wp-confirmation-page')).toContainText('合成范围回归');
+  if(process.env.BB_UX_EVIDENCE)await page.screenshot({path:resolve(process.env.BB_UX_EVIDENCE,'workpaper-selected-confirmation.png')});
+  await page.locator('#wp-confirm-back').click();await page.reload();
+  await expect(page.locator('[data-wp-item]:checked')).toHaveCount(1);
+  await expect(page.locator('#wp-requirements')).toHaveValue('合成范围回归：只编制所选一份');
   expect(state.uploads.calls.some(c=>c.method==='POST'&&/batches|execute/.test(c.path))).toBe(false);
 });
 
@@ -164,4 +176,9 @@ for(const width of [1440,390])test(`directory interpretation prototype ${width}`
   await page.locator('.wp-mapping-fields select').first().selectOption('2');await expect(page.locator('#wp-accept-mapping')).toBeDisabled();
   await page.locator('#wp-preview-again').click();await expect(page.locator('#wp-accept-mapping')).toBeEnabled();
   await page.locator('#wp-accept-mapping').click();await expect(page.locator('#wp-import-review')).toHaveCount(0);
+});
+
+test('directory upload shows transfer progress then recognition without a fake percentage',async({page})=>{
+ await setup(page);await hold(page);await page.locator('#wp-upload').setInputFiles(file);
+ await check(page,page.locator('#wp-status progress'),'workpaper-directory',1440);await expect(page.locator('#wp-status progress')).toHaveCount(0);
 });

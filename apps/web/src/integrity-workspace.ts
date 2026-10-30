@@ -1,3 +1,5 @@
+import './upload-progress.css';
+import {uploadActivity,uploadTransfer,uploadProgressHtml,type UploadStatus} from './upload-progress';
 import {billingRecoveryHeaders} from './billing-recovery-wire.js';
 import {int64} from '@bondbuddy/contracts';
 import {isAutomaticCharge,displayCharge} from './commerce';
@@ -9,7 +11,8 @@ import {Value} from '@sinclair/typebox/value';
 import {ApiClient,ApiError,friendlyError,type Dto} from './api';
 import {ProjectEntry,projectFlowSteps} from './project-entry';
 import {integritySitePicker,bindIntegritySitePicker} from './integrity-site-picker';
-import {ArtifactDownloads,artifactFilename} from './artifact-download';
+import {ArtifactDownloads,artifactFilename,boundedDownload} from './artifact-download';
+import {downloadProgressText} from './download-progress';
 import {mountIntegrityBrowserEvidence} from './integrity-browser-evidence';
 import {esc,date} from './ui';
 import {runStateLabel} from './review-state';
@@ -266,11 +269,14 @@ export class IntegrityWorkspace {
   document.querySelector('#integrity-next-pending')!.addEventListener('click',()=>{const eligible=pending.filter(i=>!(i.subject.kind==='person'&&INTEGRITY_SITES.find(s=>s.id===i.siteId)?.companyOnly)),index=eligible.findIndex(i=>i.key===this.focusPair),next=eligible[(index+1)%eligible.length];if(next){this.expanded.add(next.subject.id);this.evidenceModal(r,next.subject,next.siteId);}});
   document.querySelector('#integrity-resume-evidence')?.addEventListener('click',()=>{const f=this.evidenceDraft!,source=this.state!.rounds.find(x=>x.run_id===f.roundId&&x.operation==='check'),subject=source?.manifest.draft.subjects.find(s=>s.id===f.subjectId);if(source&&subject)this.resumeEvidenceModal(source,subject,f.siteId);else this.status('未找到原核查轮，请打开原轮继续补证。');});
   document.querySelectorAll<HTMLButtonElement>('[data-integrity-download]').forEach(b=>b.addEventListener('click',()=>void this.act(async()=>{
+   const label=b.textContent;b.textContent='正在准备下载…';b.setAttribute('aria-busy','true');this.status('正在准备下载，请稍候…');
+   try{await boundedDownload(this.controller.signal,async signal=>{
    const matches=r.artifacts.filter(pin=>pin.artifact_id===b.dataset.integrityDownload);
    if(matches.length!==1)throw new UserFacingError('所选底稿的任务或版本无法核实，未下载。请重新读取本轮底稿后再试。');
-   const expected=matches[0],a=await this.api.artifact(expected.artifact_id,this.controller.signal);
+   const expected=matches[0],a=await this.api.artifact(expected.artifact_id,signal);
    if(a.artifact_id!==expected.artifact_id||a.version!==expected.artifact_version||a.run_id!==r.run_id)throw new UserFacingError('所选底稿的任务或版本无法核实，未下载。请重新读取本轮底稿后再试。');
-   const bytes=await this.api.artifactBytes(a,this.controller.signal);if(this.live()){this.downloads.save(bytes,artifactFilename(a));this.status('底稿已交给浏览器下载。');}
+   const bytes=await this.api.artifactBytes(a,signal,(received,total)=>{if(this.live()){b.textContent='正在下载…';this.status(downloadProgressText(received,total));}});if(this.live()){this.downloads.save(bytes,artifactFilename(a));this.status('底稿已交给浏览器下载，请在浏览器下载列表查看。');}
+   });}finally{b.textContent=label;b.removeAttribute('aria-busy');}
   },'download')));
   document.querySelectorAll<HTMLButtonElement>('[data-run-action]').forEach(b=>b.addEventListener('click',()=>void this.act(async()=>{if(this.locked())return;await this.api.runAction(r.run_id,b.dataset.runAction as 'pause'|'resume'|'cancel',this.controller.signal);await this.refresh();})));
   document.querySelector('#integrity-use-round')?.addEventListener('click',()=>{if(!writable)return;const prepared={...structuredClone(r.manifest.draft),site_ids:removeRetiredIntegritySites(r.manifest.draft.site_ids)};const d=this.modal('采用此轮名单准备新核查',`${this.summary(prepared)}<p>将替换当前准备名单、网站范围和说明，仅带入当前可用网站，原核查记录及底稿保留。采用只保存到本机，不查询网站。新一轮仍需确认本次范围与费用。</p>${this.dirty?'<details><summary>当前尚未保存的名单将被替换</summary>'+this.summary(this.state!.draft)+'</details>':''}<button class="btn primary" id="integrity-adopt-confirm">采用到本轮准备</button>`);d.querySelector('#integrity-adopt-confirm')!.addEventListener('click',()=>{this.state!.draft=structuredClone(prepared);this.sourceRun=r.run_id;this.dirty=true;if(this.persist()){d.close();location.hash=this.href();}else d.querySelector('[role=status]')!.textContent=this.problem;});});
@@ -311,7 +317,8 @@ export class IntegrityWorkspace {
   const select=d.querySelector<HTMLSelectElement>('#integrity-existing-materials')!;
   void this.api.projectFiles(this.id!,this.controller.signal).then(result=>{if(!this.live()||!d.open)return;if(!Value.Check(schemas.ProjectFilesResponse,result)||result.project_id!==this.id)throw new UserFacingError('文件清单无法核实。');files=result.items.filter(f=>f.project_id===this.id&&f.source==='material'&&/\.(png|jpe?g|pdf|docx)$/i.test(f.filename));select.innerHTML='<option value="">选择本项目文件（不重新上传）</option>'+files.map((f,i)=>`<option value="${i}">${esc(f.filename)} · 版本 ${f.version}</option>`).join('');const index=files.findIndex(f=>form.material&&f.file_id===form.material.material_id&&f.version===form.material.material_version&&f.sha256===form.material.sha256);if(index>=0)select.value=String(index);}).catch(e=>{if(d.open){select.innerHTML='<option value="">文件读取失败，可重开或上传新文件</option>';d.querySelector('[role=status]')!.textContent=this.error(e,'read');}});
   const fileInput=d.querySelector<HTMLInputElement>('[name=file]')!,saveButton=d.querySelector<HTMLButtonElement>('#integrity-evidence-save')!;
-  const uploadStatus=(text:string)=>{d.querySelector('[role=status]')!.textContent=text;};
+  const uploadStatusHost=d.querySelector('[role=status]')!;
+   const uploadStatus:UploadStatus=(text,p)=>{if(p)uploadStatusHost.innerHTML=uploadProgressHtml(p,fileInput.files?.[0]?.name??'补充证据',{announce:false});else uploadStatusHost.textContent=text;};
   const runUpload=(fn:()=>Promise<void>)=>this.act(fn,'save').finally(()=>{if(this.live()&&d.isConnected)paintUpload();});
   const paintUpload=()=>{
    const host=d.querySelector<HTMLElement>('#integrity-upload-recovery')!;
@@ -357,7 +364,7 @@ export class IntegrityWorkspace {
      form.uploadOperationId=record.id;if(!collect())throw new UserFacingError(this.problem);
     }
     const original=integrityUploadRecord(recovery,form),operationId=original.id;
-    const material=await recovery.resume(operationId,{file,signal:this.controller.signal,status:message=>uploadStatus(message.includes('会话')?'正在准备保存原文件…':message.includes('原上传')?'正在确认文件是否已保存…':message),progress:(loaded,total)=>uploadStatus(loaded>=total?'文件传输完成，正在确认保存…':`正在上传 ${Math.floor(loaded/total*100)}%…`)});
+    const material=await recovery.resume(operationId,{file,signal:this.controller.signal,status:message=>uploadStatus(message,uploadActivity(message)),progress:(loaded,total)=>{const p=uploadTransfer(loaded,total);uploadStatus(p.message,p);}});
     this.controller.signal.throwIfAborted();if(!current()||form.uploadOperationId!==operationId||this.evidenceDraft?.uploadOperationId!==operationId)throw new UserFacingError('原补证记录已变化，材料尚未写入本页。请重新读取并核对。');
     form.material={source_project_id:this.id!,material_id:material.material_id,material_version:material.material_version,sha256:material.sha256};
     this.selectedFile=undefined;fileInput.value='';if(!collect())throw new UserFacingError(this.problem);
