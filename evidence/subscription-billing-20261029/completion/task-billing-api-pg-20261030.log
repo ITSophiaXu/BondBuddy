@@ -1,0 +1,17 @@
+✔ HTTP automatic billing includes same-scope revision in a settled new check without another hold (2909.5957ms)
+✔ HTTP automatic billing preserves the 1000-point revision upgrade for a settled old 990-point check (2567.4788ms)
+✔ partial file-check quality refund revokes only that file and rejects only its stale included-maintenance quote (1843.1644ms)
+✔ HTTP project file batch carries automatic tariff metadata and accepts the matching executable quote (1868.4199ms)
+✔ HTTP automatic workpaper generation returns 402 without creating a batch or hold when points are insufficient (1052.4911ms)
+✔ asynchronous workpaper shortage resumes only the original batch once and never overrides a later manual pause (2009.0512ms)
+✔ retired source-diff route remains replayable while automatic workpaper checks use independent paid files (1192.1931ms)
+✔ retired workpaper assessment rejects new free work but preserves historical replay and reads (1067.5675ms)
+✔ HTTP selected-document answers charge the response SKU; preparation and unclear inputs cannot buy or bypass an answer (2818.8277ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 40061.5775

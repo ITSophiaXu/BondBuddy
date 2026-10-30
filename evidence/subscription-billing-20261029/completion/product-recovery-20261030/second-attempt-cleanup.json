@@ -1,0 +1,26 @@
+{
+  "at": "2026-10-30T01:56:47.044Z",
+  "username": "billing_recover_494c7e47",
+  "runId": "effd5212-a57d-4b9d-b1f5-257e42f790e6",
+  "realHttpLogin": true,
+  "realHttpCancellation": true,
+  "databaseReused": true,
+  "before": {
+    "state": "queued",
+    "charge_state": "held",
+    "points": "27195",
+    "charged_points": null
+  },
+  "after": {
+    "state": "cancelled",
+    "charge_state": "released",
+    "points": "27195",
+    "charged_points": "0"
+  },
+  "wallet": {
+    "remaining": "27195",
+    "frozen": "0"
+  },
+  "defaultDemoAccountTouched": false,
+  "modelWorkerRunning": false
+}

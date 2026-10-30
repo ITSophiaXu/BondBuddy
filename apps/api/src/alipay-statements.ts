@@ -1,17 +1,16 @@
 import {createHash} from 'node:crypto';
-import {inspectAlipayStatementArchive,ALIPAY_STATEMENT_ARCHIVE_LIMIT} from './alipay-statements-archive.js';
+import {readAlipayStatementArchive,ALIPAY_STATEMENT_ARCHIVE_LIMIT} from './alipay-statements-archive.js';
+import {normalizeAlipayStatementDocuments,type AlipayStatementNormalization} from './alipay-statements-format.js';
 
-/** No CSV row is normalized until an authoritative format is verified. */
-export type AlipayStatementEntry=never;
+export type {AlipayStatementEntry,AlipayStatementSourceAmounts,AlipayStatementFinancialTotals,AlipayStatementTotals,AlipayStatementNormalization,NormalizedAlipayStatement} from './alipay-statements-format.js';
 export type AlipayStatementDocument={nameSha256:string;sha256:string;byteLength:number;encoding:'utf-8'|'gbk';lineCount:number};
 export type VerifiedAlipayStatement={
   provider:'alipay';merchantId:string;requestAppId:string;billDate:string;kind:'trade';accountType:null;
   availability:'available';sha1:null;sha256:string;byteLength:number;verifiedAt:string;
   evidence:{kind:'alipay_rsa2_download_url';signedResponseSha256:string;downloadSha256:string;
     signedUrlMerchantId:string;requestedBillDate:string;requestBillType:'trade'};
-  normalization:{status:'unresolved';reasons:['ALIPAY_CSV_FORMAT_UNVERIFIED']};
-  documents:AlipayStatementDocument[];entries:AlipayStatementEntry[];totals:null;
-};
+  documents:AlipayStatementDocument[];
+}&AlipayStatementNormalization;
 
 export type AlipayStatementRequest={billDate:string;kind:'trade'|'funds';accountType?:string};
 export type AlipayStatementMetadata={data:Record<string,unknown>;signedResponseSha256:string;verifiedAt:string};
@@ -75,8 +74,8 @@ async function downloadArchive(url:URL,options:DownloaderOptions):Promise<Uint8A
   finally{controller.abort();if(resources.body&&!resources.body.locked)void resources.body.cancel().catch(()=>{});if(timeout)clearTimeout(timeout);}
 }
 
-/** Evidence intake, not completed reconciliation. Current public sources prove
- * the signed URL protocol, but not a CSV column contract. Unknown rows cannot
+/** Authenticated evidence intake, not completed reconciliation. Only the
+ * documented/configured Chinese CSV subset is normalized. Unknown rows cannot
  * become invented payments/refunds, zero totals, or a successful coverage claim. */
 export function createAlipayStatementDownloader(options:DownloaderOptions){
   if(!/^2088\d{12}$/.test(options.merchantId)||!/^20\d{14}$/.test(options.appId)
@@ -90,11 +89,12 @@ export function createAlipayStatementDownloader(options:DownloaderOptions){
     if(metadata.data.code!=='10000')return fail('STATEMENT_UNRESOLVED');
     if(metadata.data.bill_file_code!==undefined&&metadata.data.bill_file_code!=='EMPTY_DATA_WITH_BILL_FILE')return fail('METADATA_UNSUPPORTED');
     const url=checkedDownloadUrl(metadata.data.bill_download_url,options.merchantId);
-    const bytes=await downloadArchive(url,options),documents=inspectAlipayStatementArchive(bytes),digest=sha256(bytes);
+    const bytes=await downloadArchive(url,options),archive=readAlipayStatementArchive(bytes),documents=archive.map(item=>item.document),digest=sha256(bytes);
+    const normalized=normalizeAlipayStatementDocuments(archive,input.billDate);
     return {provider:'alipay',merchantId:options.merchantId,requestAppId:options.appId,billDate:input.billDate,kind:'trade',accountType:null,
       availability:'available',sha1:null,sha256:digest,byteLength:bytes.byteLength,verifiedAt:metadata.verifiedAt,
       evidence:{kind:'alipay_rsa2_download_url',signedResponseSha256:metadata.signedResponseSha256,downloadSha256:digest,
         signedUrlMerchantId:options.merchantId,requestedBillDate:input.billDate,requestBillType:'trade'},
-      normalization:{status:'unresolved',reasons:['ALIPAY_CSV_FORMAT_UNVERIFIED']},documents,entries:[],totals:null};
+      documents,...normalized};
   };
 }

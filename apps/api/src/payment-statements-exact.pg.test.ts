@@ -160,6 +160,7 @@ test('unsafe normalized statement money remains unknown and rolls back evidence 
     const row=await seed(h),before=await financialSnapshot(h.pool,[h.owner]);
     p.downloadStatements=async request=>{
       const statement=parsed([row],request,h.merchant);
+      if(statement.provider!=='wechat')throw Error('fixture WeChat statement missing');
       assert.equal(statement.entries[0].kind,'payment');
       if(statement.entries[0].kind!=='payment')throw Error('fixture payment missing');
       statement.entries[0].nominalFen=Number.MAX_SAFE_INTEGER+1;

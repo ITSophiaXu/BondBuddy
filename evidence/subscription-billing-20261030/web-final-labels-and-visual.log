@@ -1,0 +1,10 @@
+
+Running 2 tests using 1 worker
+
+
+
+(node:30424) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[1/2] tests\subscription-account.spec.ts:387:1 › subscription preview shares the account layout and keeps its interactive example entirely local
+[2/2] tests\subscription-account.spec.ts:501:1 › annual renewal shows the next whole-year charge and cancelling preserves the remaining monthly entitlement
+  2 passed (11.5s)

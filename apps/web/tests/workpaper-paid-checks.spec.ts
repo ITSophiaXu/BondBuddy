@@ -3,6 +3,7 @@ import {AUTOMATIC_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,type WorkpaperLibraryItem,
 import {fixture,install,openFiles,ids,now,hash,docx} from './word-roundtrip-fixtures';
 import {mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
+import {fixtureBody,fixtureRequest} from './billing-fixture-wire';
 
 async function setup(page:Page,shortage=false){
   const s=fixture();await install(page,s);const starts:any[]=[],quotes:any[]=[],paid:WorkpaperPaidCheckBatch[]=[];
@@ -14,21 +15,22 @@ async function setup(page:Page,shortage=false){
       run_id:n<2?'generation-'+n:null,state:'succeeded',stage:null,attempt:1,error:null,
       ...(n<2?{file:{original:version,current:version},artifacts:[{kind:'document' as const,filename:version.filename,pin:s.artifact}]}:{artifacts:[],explanation:{filename:'1-2 不适用说明.docx',sha256:hash(docx('合成不适用说明'))}})};
   });
-  await page.route('**/api/v1/commerce/**',route=>route.fulfill({json:{enabled:true,currency:'CNY',version:AUTOMATIC_PRICE_VERSION,model:'subscription_and_topup',items:[],rules:[]}}));
+  await page.route('**/api/v1/commerce/catalog',route=>route.fulfill({json:{enabled:true,currency:'CNY',version:AUTOMATIC_PRICE_VERSION,model:'subscription_and_topup',items:[],rules:[]}}));
+  await page.route('**/api/v1/commerce/account',route=>route.fulfill({json:fixtureBody(route,{available_fen:86000,held_fen:0,payment_enabled:false,providers:[],legacy_balance_notice:'合成底稿检查测试余额'})}));
   await page.route('**/api/v1/projects/*/workpapers/**',async route=>{
-    const url=new URL(route.request().url()),body=route.request().method()==='POST'?route.request().postDataJSON():null;
-    if(url.pathname.endsWith('/library'))return route.fulfill({json:{items:entries,total:3,offset:0,limit:50,source:s.source,checks:[],paid_checks:paid,check_capability:{enabled:true,reason:'',mode:'per_file'}}});
+    const url=new URL(route.request().url()),body=route.request().method()==='POST'?fixtureRequest(route.request()):null;
+    if(url.pathname.endsWith('/library'))return route.fulfill({json:fixtureBody(route,{items:entries,total:3,offset:0,limit:50,source:s.source,checks:[],paid_checks:paid,check_capability:{enabled:true,reason:'',mode:'per_file'}})});
     if(url.pathname.endsWith('/check-batches/quote')){
       quotes.push(body);const targets=entries.filter(i=>i.file&&(!body.file_version_ids||body.file_version_ids.includes(i.file.current.version_id)));
-      return route.fulfill({json:{points:targets.length*AUTOMATIC_TASK_TARIFF.check.points,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,source:s.source,
+      return route.fulfill({json:fixtureBody(route,{points:targets.length*AUTOMATIC_TASK_TARIFF.check.points,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,source:s.source,
         items:targets.map(i=>({item_id:i.entry.id,file_version_id:i.file!.current.version_id,filename:i.file!.current.filename,points:AUTOMATIC_TASK_TARIFF.check.points,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,scope_quote_id:'scope-'+i.entry.id,quote_status:'ready',scope_lines:[]})),
-        excluded:[{item_id:'wp-2',filename:'1-2 不适用说明.docx',reason:'尚无可独立检查的已交付 Word 版本。'}]}});
+        excluded:[{item_id:'wp-2',filename:'1-2 不适用说明.docx',reason:'尚无可独立检查的已交付 Word 版本。'}]})});
     }
     if(url.pathname.endsWith('/check-batches')){
       starts.push(body);if(shortage&&starts.length===1)return route.fulfill({status:402,json:{code:'CREDITS_INSUFFICIENT',message:'本次需补足积分后继续原范围。'}});
       const batch:WorkpaperPaidCheckBatch={batch_id:'paid-check-batch',workpaper_batch_id:body.workpaper_batch_id,created_at:now,source:s.source!,points:body.expected_points,state:'queued',
         items:body.file_version_ids.map((version:string,n:number)=>({file_version_id:version,item_id:'wp-'+n,filename:`1-${n} 合成底稿.docx`,run_id:'file-check-'+n,state:'queued',points:AUTOMATIC_TASK_TARIFF.check.points,charged_points:0,scope_quote_id:'scope-wp-'+n}))};
-      paid.splice(0,paid.length,batch);return route.fulfill({json:batch});
+      paid.splice(0,paid.length,batch);return route.fulfill({json:fixtureBody(route,batch)});
     }
     if(url.pathname.endsWith('/preview'))return route.fulfill({json:{text:'合成底稿真实文本预览'}});
     return route.fulfill({status:404,json:{code:'NOT_FOUND'}});
@@ -53,7 +55,7 @@ for(const width of [1440,390])test(`workpaper paid batch ${width}: visible exact
 test('workpaper batch shortage preserves the exact parent request and automatically resumes only that request',async({page})=>{
   const state=await setup(page,true);await openFiles(page);const panel=page.locator('#pw-workpaper-library');await panel.locator('.wl-file > summary').first().click();
   await panel.getByRole('button',{name:'检查本批底稿',exact:true}).first().click();await expect(page.locator('#billing-task-notice')).toContainText('原任务尚未开始');
-  expect(state.starts).toHaveLength(1);const returnTo=await page.evaluate(async()=>{const key=Object.keys(localStorage).find(k=>k.startsWith('bondbuddy:billing-task:v1:'))!,row=JSON.parse(localStorage.getItem(key)!);const recovery=await import('/src/'+'billing-task-recovery.ts');return recovery.billingTaskReturnTo(row.owner,row.id);});
+  expect(state.starts).toHaveLength(1);const returnTo=await page.evaluate(async()=>{const key=Object.keys(localStorage).find(k=>k.startsWith('bondbuddy:billing-task:v2:'))!,row=JSON.parse(localStorage.getItem(key)!);const recovery=await import('/src/'+'billing-task-recovery.ts');return recovery.billingTaskReturnTo(row.owner,row.id);});
   expect(returnTo).toBeTruthy();await page.goto('/'+returnTo);await expect.poll(()=>state.starts.length).toBe(2);expect(state.starts[1]).toEqual(state.starts[0]);
   await page.reload();await expect(page.locator('#pw-workpaper-library')).toBeVisible();expect(state.starts).toHaveLength(2);
 });
@@ -72,11 +74,18 @@ test('historical workpaper recheck uses only that family current version and exc
   state.s.checks.push({run_id:'original-workpaper-check',state:'succeeded',stage:'completed',created_at:now,source:state.s.source!,stale:false,sha256:hash('Synthetic original workpaper check'),
     files:[{file_id:original.file_id,file_version_id:original.version_id,filename:original.filename,sequence:1}],updates:[],result:{version:'project-file-check-v1',files:[{file_version_id:original.version_id,status:'consistent',coverage:'Synthetic complete original version',findings:[],links:[]}]}});
   const starts:any[]=[],quotes:any[]=[];
-  await page.route('**/api/v1/projects/*/project-files/checks/quote',route=>{const body=route.request().postDataJSON();quotes.push(body);return route.fulfill({json:{pricing_mode:'outcome_cny_v1',currency:'CNY',auto_charge:true,amount_fen:AUTOMATIC_TASK_TARIFF.check.points,points:AUTOMATIC_TASK_TARIFF.check.points,price_version:AUTOMATIC_PRICE_VERSION,quote_status:'ready',scope_quote_id:'recheck-scope',scope_lines:[],source_version_id:state.s.source!.version_id,file_version_ids:body.file_version_ids}});});
+  await page.route('**/api/v1/projects/*/project-files/checks/quote',route=>{const body=fixtureRequest(route.request());quotes.push(body);return route.fulfill({json:fixtureBody(route,{pricing_mode:'outcome_cny_v1',currency:'CNY',auto_charge:true,amount_fen:AUTOMATIC_TASK_TARIFF.check.points,points:AUTOMATIC_TASK_TARIFF.check.points,price_version:AUTOMATIC_PRICE_VERSION,quote_status:'ready',scope_quote_id:'recheck-scope',scope_lines:[],source_version_id:state.s.source!.version_id,file_version_ids:body.file_version_ids})});});
   await page.route('**/api/v1/projects/*/project-files/checks',route=>{if(route.request().method()==='GET')return route.fallback();starts.push(route.request().postDataJSON());return route.fulfill({json:{run_id:'rechecked-workpaper'}});});
   await page.goto(`/#consistency?project=${ids.root}&run=original-workpaper-check&file=${original.version_id}`);
   await expect(page.locator('.fc-freshness')).toContainText('本份底稿的当前版本');await expect(page.locator('.fc-freshness')).not.toContainText('份新增文件未在本轮检查');
   await page.getByRole('button',{name:'重新检查此份底稿',exact:true}).first().click();await expect.poll(()=>starts.length).toBe(1);
   expect(quotes[0].file_version_ids).toEqual([current.version_id]);expect(starts[0].file_version_ids).toEqual([current.version_id]);
   await expect(page.locator('dialog[open],[data-commerce-confirm]')).toHaveCount(0);
+});
+
+test('workpaper check receipts show ledger charges and never infer a release from failed or cancelled run state',async({page})=>{
+ const state=await setup(page);await openFiles(page);const panel=page.locator('#pw-workpaper-library');await panel.locator('.wl-file > summary').first().click();await panel.getByRole('button',{name:'检查本批底稿',exact:true}).first().click();await expect.poll(()=>state.starts.length).toBe(1);
+ state.paid[0].state='partial';state.paid[0].items[0].state='failed';state.paid[0].items[0].charged_points=0;state.paid[0].items[1].state='succeeded';state.paid[0].items[1].charged_points=AUTOMATIC_TASK_TARIFF.check.points;
+ await page.reload();const receipt=page.locator('.wl-paid-check');await receipt.locator('summary').click();await expect(receipt).not.toContainText('已释放');await expect(receipt.getByRole('link',{name:'1-0 合成底稿.docx'}).locator('..')).toContainText('已扣 0 积分');await expect(receipt.getByRole('link',{name:'1-1 合成底稿.docx'}).locator('..')).toContainText('已扣 6,095 积分');
+ state.paid[0].items[0].state='cancelled';await page.reload();await receipt.locator('summary').click();await expect(receipt).not.toContainText('处理中');await expect(receipt).not.toContainText('已释放');expect(state.starts).toHaveLength(1);
 });

@@ -6,7 +6,7 @@ import {integrityRecords,integrityQueries} from './integrity-evidence.js';
 const subject:IntegritySubject={id:'s',kind:'company',name:'合成测试企业',identifier:'123456789012345678',role:'发行人',province:'广东',city:'深圳市'};
 const when='2026-10-21T00:00:00.000Z';
 test('expanded scope supports the screenshot inventory and keeps old saved IDs readable',()=>{
- assert.deepEqual(Object.fromEntries(['基础征信','金融监管','其他领域','属地监管'].map(group=>[group,INTEGRITY_SELECTABLE_SITES.filter(s=>s.group===group).length])),{'基础征信':8,'金融监管':18,'其他领域':26,'属地监管':2});
+ assert.deepEqual(Object.fromEntries(['基础征信','金融监管','其他领域','属地监管'].map(group=>[group,INTEGRITY_SELECTABLE_SITES.filter(s=>s.group===group).length])),{'基础征信':3,'金融监管':18,'其他领域':26,'属地监管':2});
  assert.equal(new Set(INTEGRITY_SITES.map(s=>s.id)).size,INTEGRITY_SITES.length);
  for(const id of ['gsxt','execution','judgments','food-drug'])assert.equal(INTEGRITY_SITES.find(s=>s.id===id)?.legacy,true);
  assert.ok(Value.Check(IntegrityDraftSchema,{subjects:[subject],site_ids:INTEGRITY_SITES.map(s=>s.id),notes:''}));

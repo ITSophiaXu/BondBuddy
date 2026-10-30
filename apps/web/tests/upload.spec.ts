@@ -140,6 +140,10 @@ function state(): FixtureState {
 for (const width of [1440, 390]) test(`optional materials expose examples and preserve mixed format uploads at ${width}`, async ({page}) => {
   await page.setViewportSize({width, height:960});
   const s=state(); await installApi(page,s); await login(page,'owner_a');
+  if (process.env.BB_MATERIAL_UX_EVIDENCE) {
+    await mkdir(process.env.BB_MATERIAL_UX_EVIDENCE,{recursive:true});
+    await page.screenshot({path:join(process.env.BB_MATERIAL_UX_EVIDENCE,`materials-${width}.png`),fullPage:true});
+  }
   for (const [role,label] of [['debt','有息债务明细表'],['guarantee','担保明细 / 担保合同'],['governance','公司章程 / 治理制度'],['bankFacilities','银行授信情况表'],['corporate','营业执照 / 公司基本资料'],['rating','评级报告（主体 / 债项 / 跟踪）'],['business','业务经营资料']]) {
     const card=page.locator(`[data-material-role="${role}"]`);
     await expect(card).toBeVisible(); await expect(card).toContainText(label); await expect(card).toContainText('选填');
@@ -228,10 +232,13 @@ test('three independent files, 100% remains saving, failed file retry, then owne
   const fixture = state(); fixture.failNextComplete.add('failed-once.pdf'); await installApi(page, fixture);
   const pageErrors: string[] = []; page.on('pageerror', error => pageErrors.push(error.message));
   await login(page, 'owner_a');
-  for (const partition of ['历史／参考募集书（选填）', '审计报告 / 财务报表及附注', '募投项目与权证材料', '债务、授信与担保（选填）', '公司、经营与信用（选填）', '其他补充材料（选填）']) {
+  for (const partition of ['审计报告 / 财务报表及附注', '募投项目与权证材料（选填）', '债务、授信与担保（选填）', '公司、经营与信用（选填）', '其他补充材料（选填）']) {
     await expect(page.locator('#material-partitions').getByRole('heading', { name: partition, exact: true })).toBeVisible();
   }
   await expect(page.locator('#material-partitions select')).toHaveCount(0);
+  await expect(page.locator('#material-partitions [data-upload-role="historical"], #material-partitions [data-upload-role="reference"], #material-partitions .material-subtypes')).toHaveCount(0);
+  await expect(page.locator('[data-material-role="fundUse"]')).toContainText('选填');
+  await expect(page.locator('#choose-prospectus-version')).toBeVisible();
   const auditInput = page.getByLabel('为审计报告（可含报表及附注）选择文件');
   await auditInput.setInputFiles([
     { name: 'slow-save.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic slow') },
@@ -372,7 +379,7 @@ test('server refresh reconciles a delayed receipt but never matches only a filen
 test('renamed equal-content uploads display one saved material and survive reload', async ({ page }) => {
   const fixture = state(); await installApi(page, fixture); await login(page, 'owner_a');
   const buffer = Buffer.from('%PDF synthetic same history');
-  await page.getByLabel('为历史／参考募集书选择文件').setInputFiles([
+  await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles([
     { name: 'history.pdf', mimeType: 'application/pdf', buffer },
     { name: 'renamed.pdf', mimeType: 'application/pdf', buffer }
   ]);
@@ -478,7 +485,7 @@ test('upload processing stays compact with pending evidence, unchanged targets a
     await expect(page.locator('#material-partitions')).not.toContainText(/evidence-|native_text|核对识别内容|原文：|有待确认项|历史稿信息/);
   };
   await login(page, 'owner_a');
-  await page.getByLabel('为历史／参考募集书选择文件').setInputFiles({ name: 'synthetic-history.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic recognition') });
+  await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: 'synthetic-history.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic recognition') });
   const row = page.locator('.material-file-row').filter({ hasText: 'synthetic-history.pdf' });
   await expect(row).toContainText('服务器已确认保存'); await expect(row).toContainText('等待处理');
   await noReview(); await expect(row.getByRole('progressbar')).toHaveCount(0);
@@ -501,6 +508,7 @@ test('upload processing stays compact with pending evidence, unchanged targets a
 test('OCR pending, parse failure, legacy absent job and read failure each have honest recovery states', async ({ page }) => {
   const current = state();
   for (const name of ['scan', 'bad', 'legacy', 'network']) current.materials.set(name, { material_id: name, material_version: 1, upload_id: `upload-${name}`, role: 'audit', filename: `${name}.pdf`, media_type: 'application/pdf', byte_size: 1024, sha256: 'a'.repeat(64), state: 'persisted', persisted_at: now, error: null });
+  current.materials.get('legacy')!.role = 'notes';
   await installApi(page, current);
   let networkOk = false;
   await page.route('**/materials/*/parse-job', route => {
@@ -513,6 +521,8 @@ test('OCR pending, parse failure, legacy absent job and read failure each have h
   });
   await login(page, 'owner_a');
   for (const [name, message] of [['scan', '处理暂缓'], ['bad', '暂时无法读取此文件'], ['legacy', '暂未取得处理状态'], ['network', '文件保存不受影响']]) await expect(page.locator('.material-file-row').filter({ hasText: `${name}.pdf` })).toContainText(message);
+  await expect(page.locator('[data-material-role="notes"]')).toBeVisible();
+  await expect(page.locator('[data-upload-role="notes"]')).toHaveCount(0);
   const networkRow = page.locator('.material-file-row').filter({ hasText: 'network.pdf' });
   networkOk = true; await networkRow.getByRole('button', { name: '刷新状态' }).click(); await expect(networkRow).toContainText('处理完成');
   await expect(page.locator('.source-profile')).toHaveCount(0);
@@ -528,7 +538,7 @@ test('duplicate uploads join one status read, and late processing responses cann
   });
   await login(page, 'owner_a');
   const buffer = Buffer.from('%PDF synthetic reused parse');
-  await page.getByLabel('为历史／参考募集书选择文件').setInputFiles([{ name: 'one.pdf', mimeType: 'application/pdf', buffer }, { name: 'two.pdf', mimeType: 'application/pdf', buffer }]);
+  await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles([{ name: 'one.pdf', mimeType: 'application/pdf', buffer }, { name: 'two.pdf', mimeType: 'application/pdf', buffer }]);
   await expect(page.locator('#material-recovery-status')).toContainText('1 份重复上传');
   await expect.poll(() => pending).toBe(1); expect(reads.length).toBe(0); // The held route supersedes the normal status reader.
   if (await page.getByRole('button', { name: '打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
@@ -543,7 +553,7 @@ test('duplicate uploads join one status read, and late processing responses cann
 
 test('material recovery keeps the live file picker attached until its change event arrives', async ({ page }) => {
   const current = state(); await installApi(page, current); await login(page, 'owner_a');
-  const picker = await page.getByLabel('为历史／参考募集书选择文件').elementHandle();
+  const picker = await page.getByLabel('为审计报告（可含报表及附注）选择文件').elementHandle();
   await page.getByRole('button', { name: '刷新已保存材料' }).click();
   await expect(page.locator('#material-recovery-status')).toContainText('尚未添加材料');
   expect(await picker!.evaluate(input => input.isConnected)).toBe(true);

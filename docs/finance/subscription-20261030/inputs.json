@@ -1,0 +1,117 @@
+{
+  "asOf": "2026-10-30",
+  "status": "CONDITIONAL_BUDGET_AND_COHORT_SENSITIVITY_NOT_FORECAST_OR_ACTUALS",
+  "months": 24,
+  "userConfirmed": {
+    "managementBudget24MonthsCny": 2458500,
+    "networkAcquiredUsersFirst6Months": 1000,
+    "userMeaning": "registered_or_activated_users_conversion_must_be_separate",
+    "budgetIncludesHistoricalRecoveryCny": 456200,
+    "clarification": "用户确认1000为注册/激活用户，付费率另算；245.85万元包含历史研发回收45.62万元，其他成本构成需重新拆分。",
+    "exactUserStatement": "成本经过优化 已经变成 24个月 245.85，获客可以假设6个月内 可以通过人脉获得1000 用户，你可以基于此调正"
+  },
+  "sources": {
+    "priorInputs": "../subscription-20261029/inputs.json",
+    "priorResults": "../subscription-20261029/results.json",
+    "fullReviewCostDecision": "../../product-decisions/2026-10-29-full-review-standard-cost.md"
+  },
+  "budget": {
+    "historicalRecoveryCny": 456200,
+    "mainIncludesHistoricalRecovery": true,
+    "mainIncludesPaymentFees": true,
+    "mainIncludesTaxSurcharge": true,
+    "mainIncludesIncomeTax": false,
+    "proposedOperatingBreakdownCny": {
+      "fixedFoundation": 794400,
+      "additionalDevelopment": 77200,
+      "additionalOperationsQaSecurity": 200000,
+      "acquisition": 400000,
+      "referralIncentives": 90000,
+      "paymentSurchargeAndContingency": 135300,
+      "paidResources": 66700,
+      "paidSupport": 238700
+    },
+    "breakdownEvidence": "New proposed budget limits, not an approved detailed allocation or observed spending. Foundation 794400 is the user's earlier 33100/month budget; dynamic capacities use prior allocations; the remaining allocation is a design proposal.",
+    "monthlyAllocation": "fixed_and_unused_capacity_evenly_allocated_required_variable_costs_follow_modeled_activity_not_actual_spending_or_cash_timing",
+    "assumptions": [
+      "245.85 is interpreted as ten-thousand CNY, using the existing budget convention; no optimized line-item budget was provided.",
+      "User confirmed that 2458500 includes the existing 456200 historical investment recovery; the operating envelope is 2002300.",
+      "The remaining 2002300 operating envelope includes paid-task resources, support, promotions, acquisition and fixed operations; old pools are not added again or proportionally cut.",
+      "Resource/support requirements above their embedded capacity, payment fees, VAT surcharge and added full-review cost all consume the same 135300 contingency allocation once before any overrun is added. Income tax is separate. No additional 5% uplift is applied.",
+      "The resource and support capacities are proposed references, not verified actual costs. Main pressure preserves the whole envelope and adds uncovered variable-cost requirements independently by task count and active payer-months.",
+      "Unused allocated capacity is retained in the full-spend pressure case; it is assumed spent on other deductible operating purposes for this conditional tax calculation. A budget limit itself is not an actual tax deduction.",
+      "Monthly allocation is a transparent display convention. Actual spend and cash timing are unknown; do not infer a cash funding requirement or investment payback month."
+    ],
+    "dynamicSensitivity": {
+      "legacyCapacityPaidPersonMonths": 8079.78,
+      "legacyCapacityTasks": 56598.84,
+      "legacyPaidResourceBudgetCny": 66700,
+      "legacyPaidSupportBudgetCny": 238700,
+      "costRateMultipliers": [1, 1.5, 2],
+      "rule": "Resource demand scales with original task-equivalents; support demand scales with active payer-months. Compute max(0, resource_requirement - 66700) and max(0, support_requirement - 238700) separately, then consume the shared 135300 contingency with payment fees and VAT surcharge. Only the uncovered excess increases the full budget. Do not count embedded capacities or contingency twice.",
+      "evidence": "Legacy budget allocation, not actual DeepSeek token usage or proven marginal cost. Different task mixes may invalidate this proportional proxy."
+    }
+  },
+  "acquisition": {
+    "mainMeaning": "new_registered_users_not_activated_or_paid",
+    "first6Months": [100, 150, 150, 200, 200, 200],
+    "months7To24MonthlyNewRegistrations": 0,
+    "newRegistrationSensitivityPerMonth": [50, 100, 150],
+    "conversionLagShares": [0.6, 0.3, 0.1],
+    "notes": [
+      "Only the six-month total comes from the user. The month-by-month ramp is a new illustration, not an observed channel funnel.",
+      "A registered cohort converts once, with 60%/30%/10% of its eventual conversions in signup month / next month / second next month. Cohorts are not re-acquired every six months.",
+      "No main-case acquisition after M6 is assumed. Additional acquisition is a separate conditional sensitivity and is not treated as free or guaranteed.",
+      "In the 1000-already-paid sensitivity, the first-six-month users are first payers at arrival. Later registrations, if any, still use the scenario conversion probability."
+    ]
+  },
+  "scenarios": [
+    { "id": "conservative", "label": "保守条件", "registeredToFirstPaid": 0.15, "monthlyPaidRelationshipRetention": 0.94, "taskActiveShareOfRetainedPaid": 0.6, "annualProjectsPerRetainedPayer": 5 },
+    { "id": "base", "label": "基准条件", "registeredToFirstPaid": 0.3, "monthlyPaidRelationshipRetention": 0.97, "taskActiveShareOfRetainedPaid": 0.75, "annualProjectsPerRetainedPayer": 10 },
+    { "id": "optimistic", "label": "乐观条件", "registeredToFirstPaid": 0.5, "monthlyPaidRelationshipRetention": 0.99, "taskActiveShareOfRetainedPaid": 0.9, "annualProjectsPerRetainedPayer": 20 }
+  ],
+  "cohortNotes": [
+    "All conversion, retention and activity probabilities are explicit decision ranges, not industry benchmarks, observed data, or confidence intervals.",
+    "The conversion probability is registered-to-ever-first-paid over a three-month window, including any activation/trial steps; no additional unobserved activation rate is multiplied in.",
+    "Paid-relationship retention means a customer remains eligible to buy again. It is not an auto-renewal rate, current subscriber count, or probability of purchasing every month.",
+    "Active-share is the fraction of retained payer-months that place independent chargeable work. In the project model it allocates annual project work to active months, without multiplying annual project volume down again. The legacy comparison separately applies its 7.005-task basket to active months.",
+    "A first payer is active in the first purchase month; active-share applies only to returning retained payers. Churn is permanent in this simplification; reactivation is not invented.",
+    "Users and tasks are expected-equivalent quantities and may be fractional; real orders and people are integers."
+  ],
+  "revenue": {
+    "retainPriorTariff": true,
+    "retainPriorConsumedPointWeights": true,
+    "retainPriorRefundAndTaxAssumptions": true,
+    "bonusFaceBudgetCny": 98500,
+    "bonusSchedule": "equal_24_months_with_unused_carry",
+    "notes": [
+      "The prior 98500 face-value redemption allowance is retained, not cancelled due to network acquisition. The optimized budget's promotion fulfillment remains inside its envelope, not added again.",
+      "Net revenue recognizes only paid consideration of consumed points, after the existing 3% service-return provision and 6% VAT conversion.",
+      "Subscription cash, unconsumed credits and expired credits do not create additional revenue in this model.",
+      "Equal promotion release and equal cost allocation are planning display assumptions, not promised grant policy or observed timing."
+    ]
+  },
+  "projectWorkloadSensitivity": {
+    "annualProjectsPerRetainedPayer": [5, 10, 20],
+    "projectCoverage": 1,
+    "majorDocumentOperationsPerProject": 1,
+    "majorDocumentMix": "normalize_prior_frequencies_of_quarter_annual_two_year_three_year_migration_new",
+    "independentTasksPerProject": { "related": 2, "workpaper": 1, "integrity": 0.5, "response": 10, "check": 2 },
+    "fullReviewPerProject": 0,
+    "notes": [
+      "5-20 projects per year comes from the user's earlier statement. Per-project task counts and major-document mix are new workload assumptions, not measured demand.",
+      "Use every project as requested. Per-project billable operations exclude model retries, included repairs, duplicated internal checks, shared issuer work charged twice and repeated clicks.",
+      "Integrity frequency0.5 is a portfolio average after cross-project issuer reuse. Two checks mean two separately chargeable new versions or independent requests, not included parent-task self-checks.",
+      "Project-based frequency is per retained payer-year, so do not multiply annual projects by the inactive-month share again; projects are distributed across the already-modeled active months.",
+      "This project-based workload is the main transparent scenario design. The low legacy basket is retained as a side-by-side comparison, not silently extrapolated to all projects. Full review stays separately visible."
+    ]
+  },
+  "fullReviewSensitivityFrequenciesPerActivePayerMonth": [0.05, 0.1, 0.2],
+  "targetTaxAfterOperatingNetMargin": 0.6,
+  "outputLimits": [
+    "No live API requests, external research or actual token-cost measurement in this revision.",
+    "No tariff, subscription, wallet or production-code mutation.",
+    "No actual cash-flow or cash-funding-peak estimate without receipt and expenditure timing.",
+    "All 60% revenue/price boundaries are diagnostics at held demand, never asserted future user counts."
+  ]
+}

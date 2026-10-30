@@ -1,0 +1,32 @@
+{
+  "synthetic": true,
+  "database": "bb_billing_functional_5c7885f4594549d4",
+  "migrations": {
+    "count": 160,
+    "latest": "0159_annual_subscription_releases.sql"
+  },
+  "demoBefore": [
+    {
+      "id": "2aeec927-26ef-42d9-85ee-aa2c07802dca",
+      "orders": 2,
+      "lots": 2,
+      "remaining": "60000",
+      "frozen": "0"
+    }
+  ],
+  "demoAfter": [
+    {
+      "id": "2aeec927-26ef-42d9-85ee-aa2c07802dca",
+      "orders": 2,
+      "lots": 2,
+      "remaining": "60000",
+      "frozen": "0"
+    }
+  ],
+  "demoUnchangedAcrossRestart": true,
+  "initialAttempt": {
+    "migration": "0159 applied",
+    "startup": "failed: local override omitted existing p_owner parameter; fixed without dropping function"
+  },
+  "completedAt": "2026-10-30T02:29:05.230Z"
+}

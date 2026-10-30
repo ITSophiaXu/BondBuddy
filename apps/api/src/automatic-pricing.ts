@@ -25,7 +25,17 @@ export function resolveAutomaticTaskPrice(action:string,snapshot:any,version:Aut
   }else if(action==='m4_qa'){
     sku='response';if(typeof snapshot.content!=='string'||!snapshot.content.trim()||snapshot.content.length>16000)return unsupported('请提供一个明确的问题或使用问题清单批量回复。');
     const numbered=snapshot.content.match(/(?:^|\n)\s*(?:\d+[.、)）]|[（(]\d+[)）]|问题\s*\d+)/g)??[];
-    if(numbered.length>1||(snapshot.content.match(/[?？]/g)??[]).length>1)return unsupported('该输入包含多项提问，请使用问题清单逐题回复，系统会按实际题数处理。');
+    const clauses=snapshot.content.split(/[，,；;\n]|(?=(?:并|另外|同时|另行)(?:请你|请|帮我)?(?:说明|解释|回答|回复|分析|核对|计算|比较|对比))/);
+    const separateQuestions=clauses.filter((raw:string)=>{
+      const clause=raw.trim(),request=/^(?:(?:并|另外|同时|另行)\s*)?(?:请你|请|帮我)?(?:说明|解释|回答|回复|总结|归纳|概括|列出|写出|分析|核对|计算|比较|对比)(.+)$/.exec(clause);
+      if(!request)return /[^\s]{1,40}(?:为什么|为何)[^\s]+/.test(clause);
+      // Evidence, citations, methods and arithmetic supporting the same answer
+      // remain included. Count only separately requested substantive subjects.
+      const subject=request[1].trim();
+      return !/^(?:其|该题|上述|本题|相关|所用|具体|详细|相应)?(?:依据|证据|出处|引用|来源|计算方法|计算公式|公式|口径|步骤|差额|数据来源|财务数据|数据|该问题|该问询|问题|问询)(?:[。.!！?？]|$|和|及)/.test(subject)
+        && !/^(?:如何|怎么|怎样).*(?:上传|下载|查看积分|查看余额|任务进度|任务状态)/.test(subject);
+    });
+    if(numbered.length>1||separateQuestions.length>1||(snapshot.content.match(/[?？]/g)??[]).length>1)return unsupported('该输入包含多项提问，请使用问题清单逐题回复，系统会按实际题数处理。');
   }else if(action==='m4_document'){
     if(snapshot.kind!=='document'||!snapshot.input)return unsupported('请选择本次独立生成的文件。');
     sku=snapshot.billing_task==='m4_workpaper'||snapshot.input.workpaper?'workpaper':'related';

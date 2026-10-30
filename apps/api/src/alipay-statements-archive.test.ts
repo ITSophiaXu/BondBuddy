@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {inspectAlipayStatementArchive,alipayArchiveCrc32,ALIPAY_STATEMENT_ARCHIVE_LIMIT,AlipayArchiveError} from './alipay-statements-archive.js';
+import {inspectAlipayStatementArchive,readAlipayStatementArchive,alipayArchiveCrc32,ALIPAY_STATEMENT_ARCHIVE_LIMIT,AlipayArchiveError} from './alipay-statements-archive.js';
 import {syntheticStatementZip,syntheticCsv} from './alipay-statements-fixtures.js';
 const rejected=(bytes:Uint8Array,code?:string)=>assert.throws(()=>inspectAlipayStatementArchive(bytes),(error:unknown)=>error instanceof AlipayArchiveError&&(!code||error.code===code));
 
@@ -13,6 +13,13 @@ test('bounded ZIP inspection supports stored/deflated CSV and descriptors withou
     assert.equal(documents.length,1);assert.equal(documents[0].sha256,hash);assert.equal(documents[0].encoding,'utf-8');assert.equal(documents[0].byteLength,bytes.length);
     assert.equal('name' in documents[0],false);assert.equal('text' in documents[0],false);
   }
+});
+
+test('normalization reader exposes bounded transient decoded text while the inspection API retains metadata only',()=>{
+  const archive=syntheticStatementZip(),documents=readAlipayStatementArchive(archive);
+  assert.equal(documents[0].text,syntheticCsv().toString('utf8').replace(/^\ufeff/,''));
+  assert.deepEqual(documents.map(item=>item.document),inspectAlipayStatementArchive(archive));
+  assert.equal('name' in documents[0],false);assert.equal('text' in inspectAlipayStatementArchive(archive)[0],false);
 });
 
 test('strict encoding accepts explicit UTF-8 BOM, ASCII, and unambiguous GBK; invalid/ambiguous bytes stay unknown',()=>{

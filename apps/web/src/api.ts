@@ -4,13 +4,13 @@ import { UserFacingError, unknownErrorText, type ErrorOperation } from './user-f
 import type { Static } from '@sinclair/typebox';
 import type { schemas, SchemaName, DataPolicy, AgreementResponse } from './billing-types.js';
 import type { FactDecisionRequest } from '@bondbuddy/contracts';
-import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest,SubscriptionCheckout,Subscription,SubscriptionAutoRenewRequest,SubscriptionAutoRenew} from './billing-types.js';
-import { isUploadInspectionPublicReason, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
+import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest,SubscriptionCheckout,Subscription,SubscriptionAutoRenewRequest,SubscriptionAutoRenew,SubscriptionChangeQuoteRequest,SubscriptionChangeCheckoutRequest} from './billing-types.js';
+import { isUploadInspectionPublicReason, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
 export class ApiError extends Error {
   constructor(public status: number, public code: string, public readonly details: {
-    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; materialInputIssues?: M4InputIssue[];
+    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind;
   } = {}) { super(code); }
 }
 
@@ -26,6 +26,14 @@ export function parseApiError(status: number, value: unknown, fallbackCode = 'DA
     ? problem.correlation_id : undefined;
   const fields: unknown[] = Array.isArray(problem.field_errors) ? problem.field_errors : [];
   let uploadReason: UploadInspectionPublicReason | undefined;
+  let trialLimit: TrialLimitKind | undefined;
+  if (code === 'TRIAL_QUOTA_EXCEEDED') for (const field of fields) {
+    if (isRecord(field) && field.field === TRIAL_LIMIT_ERROR_FIELD &&
+        TRIAL_LIMIT_KINDS.includes(field.code as TrialLimitKind)) {
+      trialLimit = field.code as TrialLimitKind;
+      break;
+    }
+  }
   if (code === 'MATERIAL_UNREADABLE') for (const field of fields) {
     if (isRecord(field) && field.field === 'material_upload' && isUploadInspectionPublicReason(field.code)) {
       uploadReason = field.code;
@@ -41,6 +49,7 @@ export function parseApiError(status: number, value: unknown, fallbackCode = 'DA
     ...(correlationId ? { correlationId } : {}),
     ...(typeof problem.retryable === 'boolean' ? { retryable: problem.retryable } : {}),
     ...(uploadReason ? { uploadReason } : {}),
+    ...(trialLimit ? { trialLimit } : {}),
   });
 }
 
@@ -58,6 +67,17 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
     case 'UNAUTHENTICATED': return '登录已失效，请重新登录。';
     case 'NOT_FOUND': return '无法访问这个项目，它可能已移除或不属于当前账号。';
     case 'RATE_LIMITED': return '尝试次数过多，请稍后再试。';
+    case 'TRIAL_QUOTA_EXCEEDED': {
+      const limit = error.details.trialLimit;
+      const reason = limit === 'active_runs_per_user' ? '当前账号同时处理的任务已达上限，请等待已有任务完成后再次开始。'
+        : limit === 'global_active_runs' ? '系统当前处理的任务已达上限，请稍后再次开始。'
+        : limit === 'runs_per_user_per_day' || limit === 'model_tokens_per_user_per_day' ? '当前账号今日处理额度已用完，请次日重试或联系支持。'
+        : '已达到当前处理上限，请稍后重试；持续无法开始时请联系支持。';
+      return `${reason} 已保存的材料和要求保留；本次操作未开始，不会因这次拒绝扣费。${reference}`;
+    }
+    case 'TRIAL_ACCESS_DENIED': return `当前账号暂不能开始新任务，请联系支持核对。已保存的材料和要求保留。${reference}`;
+    case 'MODEL_CALLS_SUSPENDED': return `系统暂时停止接受新的处理任务，请稍后重试。已保存的材料和要求保留。${reference}`;
+    case 'BILLING_PROTOCOL_REPLAY_ONLY': return `页面版本已更新，请刷新页面后重新开始。已保存的材料和要求保留；本次任务未开始。${reference}`;
     case 'CSRF_DENIED': return '会话验证未通过，请刷新页面后重试。';
     case 'VALIDATION_FAILED': return `请检查填写内容后重试。${reference}`;
     case 'INPUT_REQUIRED': return error.details.materialInputIssues?.length
@@ -74,6 +94,8 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
     case 'BILLING_NOT_READY': return '积分价格尚未配置，请联系支持；本次未扣费。';
     case 'PAYMENT_UNAVAILABLE': return '充值渠道暂不可用，请稍后重试。项目材料已保留。';
     case 'PAYMENT_INVALID': return '支付结果尚未核实，请刷新订单状态；无需重复付款。';
+    case 'SUBSCRIPTION_CHANGE_QUOTE_STALE': return '可抵扣积分已变化或付款摘要已过期，请刷新付款摘要。';
+    case 'SUBSCRIPTION_CHANGE_MANDATE_PENDING': return '原自动续费仍在解除核对中，请稍后继续同一付款请求；尚未生成新订单。';
     case 'PASSWORD_INVALID': return '当前密码不正确。';
     case 'ACCOUNT_CLOSURE_BLOCKED': return '还有任务尚未结束，暂时不能注销账号。';
     case 'PROJECT_DELETE_BLOCKED': return '项目中还有任务尚未结束，暂时不能删除。';
@@ -91,6 +113,8 @@ export class ApiClient {
   subscriptionAccount(signal?:AbortSignal){return this.request<SubscriptionAccount>('GET','/subscriptions/account',undefined,{},signal);}
   createSubscription(input:SubscriptionCheckoutRequest,signal?:AbortSignal){return this.request<SubscriptionCheckout>('POST','/subscriptions',input,{},signal);}
   renewSubscription(id:string,input:SubscriptionCheckoutRequest,signal?:AbortSignal){return this.request<SubscriptionCheckout>('POST',`/subscriptions/${encodeURIComponent(id)}/renew`,input,{},signal);}
+  subscriptionChangeQuote(input:SubscriptionChangeQuoteRequest,signal?:AbortSignal){return this.request<Dto<'SubscriptionChangeQuoteResponse'>>('POST','/subscriptions/change-quotes',input,{},signal);}
+  subscriptionChangeCheckout(input:SubscriptionChangeCheckoutRequest,signal?:AbortSignal){return this.request<Dto<'SubscriptionChangeCheckoutResponse'>>('POST','/subscriptions/change-checkouts',input,{},signal);}
   cancelSubscription(id:string,input:{request_id:string},signal?:AbortSignal){return this.request<Subscription>('POST',`/subscriptions/${encodeURIComponent(id)}/cancel`,input,{},signal);}
   subscriptionAutoRenew(id:string,input:SubscriptionAutoRenewRequest,signal?:AbortSignal){return this.request<SubscriptionAutoRenew>('POST',`/subscriptions/${encodeURIComponent(id)}/auto-renew`,input,{},signal);}
   refreshSubscriptionAutoRenew(id:string,signal?:AbortSignal){return this.request<SubscriptionAutoRenew>('POST',`/subscriptions/${encodeURIComponent(id)}/auto-renew/refresh`,{}, {},signal);}

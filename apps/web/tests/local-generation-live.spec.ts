@@ -20,8 +20,11 @@ test('real model: browser upload, queued authoring, durable success and both Wor
  await page.getByLabel('最新报告期年份',{exact:true}).selectOption('2026');
  await page.getByRole('radio',{name:'6月末',exact:true}).check();
  await page.getByRole('button',{name:'创建项目，继续提供材料',exact:true}).click();
- await expect(page.getByLabel('为历史／参考募集书选择文件',{exact:true})).toBeEnabled();
- await page.getByLabel('为历史／参考募集书选择文件',{exact:true}).setInputFiles({name:'生成链路验证合成原稿.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:makeSyntheticDocxFixture({text:'本地真实生成验证有限公司募集说明书（合成测试稿）。报告期为2025年度。本文件仅用于验证本地生成和下载，不含真实企业、财务数据或发行安排。业务概况、财务信息、发行条款均待人工提供。'})});
+ await expect(page.getByLabel('募集书新版本文件',{exact:true})).toBeEnabled();
+ await page.getByLabel('募集书新版本文件',{exact:true}).setInputFiles({name:'生成链路验证合成原稿.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:makeSyntheticDocxFixture({text:'本地真实生成验证有限公司募集说明书（合成测试稿）。报告期为2025年度。本文件仅用于验证本地生成和下载，不含真实企业、财务数据或发行安排。业务概况、财务信息、发行条款均待人工提供。'})});
+ await expect(page.locator('#prospectus-status')).toContainText('尚未采用');
+ await page.locator('[data-use-version]').click();
+ await page.locator('#confirm-prospectus-selection').click();
  await expect(page.getByLabel('原发行市场',{exact:true})).toBeVisible();
  await page.getByLabel('与目标发行人的关系',{exact:true}).selectOption({label:'同企业'});
  await page.getByLabel('原发行市场',{exact:true}).selectOption('szse');

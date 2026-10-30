@@ -1,0 +1,20 @@
+{
+  "passed": 10,
+  "checks": [
+    "real login and zero initial balance",
+    "insufficient balance creates no hold",
+    "real subscription checkout grants 21000 after synthetic receipt",
+    "real topup adds permanent 10000",
+    "start reserves exact quote without amount confirmation",
+    "synthetic delivery uses real settlement",
+    "execution replay does not charge twice",
+    "failed task releases the entire hold",
+    "reload retains real ledger",
+    "desktop/mobile usable, no page exceptions"
+  ],
+  "username": "billing_ui_1793323329269",
+  "errors": [],
+  "synthetic": true,
+  "realMoneyCharged": false,
+  "modelCalls": 0
+}

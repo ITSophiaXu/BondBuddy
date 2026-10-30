@@ -126,6 +126,23 @@ test('refund refuses missing/discounted original cash before dispatch and leaves
   }
 });
 
+test('refund query requests and preserves authenticated completion time without fabricating missing or invalid dates',async()=>{
+  const query=(gmt_refund_pay:unknown)=>createAlipayPayProvider({...f.options,refundsEnabled:true},{...dependencies,fetch:async(_url,init)=>{
+    const {fields,biz}=f.request(init?.body);
+    if(fields.method==='alipay.trade.query')return f.response(fields.method,f.paid);
+    assert.equal(fields.method,'alipay.trade.fastpay.refund.query');
+    assert.equal(biz.out_request_no,f.refund.id);
+    assert.ok(biz.query_options.includes('gmt_refund_pay'));
+    return f.response(fields.method,{...f.refunded,gmt_refund_pay});
+  }}).refunds!.query(f.refund);
+  const receipt=await query('2026-10-29 00:00:01');
+  assert.equal(receipt.providerSucceededAt,'2026-10-28T16:00:01.000Z');
+  assert.equal(receipt.providerCreatedAt,undefined);
+  assert.equal((await query(undefined)).providerSucceededAt,undefined);
+  for(const value of [null,'','2026-02-30 12:00:00','2026-10-29 24:00:00','2026-10-29T00:00:01Z',1793232001000])
+    await assert.rejects(()=>query(value),rejected('RECEIPT_INVALID'));
+});
+
 test('refund recovery retries only the same signed original request when the channel has not yet recorded it',async()=>{
   let submitted=false;const requests:string[]=[];
   const p=createAlipayPayProvider({...f.options,refundsEnabled:true},{...dependencies,fetch:async(_url,init)=>{

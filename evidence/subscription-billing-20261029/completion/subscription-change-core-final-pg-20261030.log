@@ -1,0 +1,17 @@
+▶ subscription changes preserve actual task charges, pending rights and exact funding
+  ✔ real delivered review reduces original consideration and fractional rounding is only a concession (2395.1688ms)
+  ✔ in-flight task rights are excluded; unknown payment holds only unused rights and cannot duplicate orders (1090.4225ms)
+  ✔ stale quote rejection permanently fences its key even after original balance is restored (905.5237ms)
+  ✔ selective quality return and whole correction preserve mixed funding and remain convertible (2490.6231ms)
+  ✔ old mandate must be cancelled at old amount and new annual renewal requires a new mandate (403.5394ms)
+  ✔ cash proof gaps and unknown/refused refund cannot manufacture transfer or restoration (513.6134ms)
+  ✔ mixed contract cannot omit either exact consideration scalar at INSERT (118.1099ms)
+✔ subscription changes preserve actual task charges, pending rights and exact funding (7921.2188ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18183.2294

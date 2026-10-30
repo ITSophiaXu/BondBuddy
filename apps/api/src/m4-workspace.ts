@@ -191,8 +191,9 @@ export function m4UnavailableResearch(content:string):boolean{return content.spl
   if(/(?:解释|什么是|是什么|是什么意思|概念).{0,15}(?:公开检索|实时查询|法规效力|法规适用|深度研究)|(?:公开检索|实时查询|法规效力|法规适用性|深度研究).{0,15}(?:是什么|是什么意思|概念)/.test(clause))return false;
   return /(?:联网|公开检索|实时查询|实时检索|法规检索|深度研究|多期系统分析)|(?:查找|检索|搜索|查询|核验|确认|验证).{0,30}(?:最新法规|现行法规|法规效力|法规适用|公开网站|公开信息|实时信息)|(?:法规效力|法规适用性).{0,15}(?:判断|核验|检索|查询)/.test(clause);
 });}
-export function classifyM4Qa(content:string,context:M4MessageContext):M4BillingTask|'m4_Q00'|'m4_task_assistance'{
-  // Capability explanations and preparing a task never reserve user credits. Basic analysis still uses its actual QA category.
+export type M4RequestIntent='product_help'|'task_preparation'|'business_question'|'clarify';
+/** A selected document is context, not permission to turn a business answer into free task help. */
+export function classifyM4RequestIntent(content:string):M4RequestIntent{
   const greeting=/^(?:(?:你好|您好|嗨|hi|hello)(?:[，,\s]*(?:bondbuddy|券商助手|项目助手))?|你是谁|你(?:能|可以)(?:帮我)?做什么|你有什么功能|介绍一下你自己)[\s!！?？。,.，]*$/i;
   const productSurface='(?:bondbuddy|券商助手|项目助手|产品|本产品|这个产品|材料生成|这个页面|这个功能)';
   const uploadTarget='(?:(?:财务|审计)?材料|附件|文件|原稿|模板|募集说明书|募集书|参考稿|历史稿|资料)';
@@ -201,17 +202,70 @@ export function classifyM4Qa(content:string,context:M4MessageContext):M4BillingT
   const outputHelp=`(?:(?:如何|怎么|在哪(?:里)?|哪里|从哪(?:里)?)${outputOperation}${outputTarget}|${outputTarget}(?:如何|怎么|在哪(?:里)?|在哪里)${outputOperation}?|下载(?:入口|链接)(?:在哪(?:里)?|在哪里))`;
   const workflowHelp='(?:(?:如何|怎么|在哪(?:里)?|哪里)(?:(?:查看|查询|查)(?:任务进度|任务状态|项目进度|项目状态|积分余额|余额|可用积分|积分流水|消费记录|积分记录)|(?:充值|购买)积分|(?:取消|停止)(?:当前|正在运行的|本次)?任务)|(?:任务进度|任务状态|积分余额|积分流水|余额)(?:如何|怎么|在哪(?:里)?|在哪里)(?:查看|查询|查)?|(?:当前|正在运行的|本次)?任务(?:如何|怎么)(?:取消|停止)|积分(?:如何|怎么)(?:充值|购买))';
   const productHelp=new RegExp(String.raw`^(?:并|也|还)?(?:请问|请你|请|能否|能不能|可以|能|麻烦你|麻烦)?(?:告诉我|帮我|说明|介绍|解释)?\s*(?:${productSurface}(?:的)?\s*)?(?:(?:如何|怎么)使用${productSurface}?|(?:如何|怎么)上传${uploadTarget}?(?:(?:到|至)(?:当前项目|本项目|这个项目|项目))?|${outputHelp}|${workflowHelp}|(?:产品|使用)帮助|支持哪些功能)(?:\s*吗)?$`,'i');
+  // Product billing help is free; the exact product subjects keep bond/project
+  // refund, redemption and financial-analysis questions outside this allowance.
+  const billingSubject='(?:订阅|自动续费|续费|月付|年付|充值|积分|余额|退款|账单|消费记录|付款记录|购买记录|积分有效期|订阅档位|任务扣费)';
+  const billingHelp=new RegExp(String.raw`^(?:并|也|还)?(?:请问|请你|请|能否|能不能|可以|能|麻烦你|麻烦)?(?:告诉我|帮我|说明|介绍|解释)?\s*(?:(?:如何|怎么|怎样|在哪(?:里)?|哪里)(?:查看|查询|申请|开通|管理|取消|关闭|停止|开启|打开|升级|转换|续订|办理)?${billingSubject}|(?:我的|当前|本次|这个|本产品的)?${billingSubject}(?:(?:如何|怎么|怎样)(?:查看|查询|申请|开通|管理|取消|关闭|停止|开启|升级|转换|续订|办理)|(?:在哪(?:里)?|在哪里|为什么|为何|何时|什么时候)(?:查看|查询|过期|失效|到期|扣费|被扣|扣了|被扣了|到账|续费)?|未到账怎么办|可以退款吗|多久到账|有效期是多久|是否会过期|怎么收费|多少钱|是多少|怎么算)|月付(?:如何|怎么|怎样)(?:升级|转|转换)(?:到|为|成)年付|(?:积分|订阅积分|充值积分)(?:为什么|为何|何时|什么时候)(?:会|被)?(?:过期|失效|到期)|(?:如何|怎么)(?:申请|查看|查询)退款(?:进度|状态)?)(?:\s*吗)?$`);
+  const isHelp=(clause:string)=>greeting.test(clause)||productHelp.test(clause)||billingHelp.test(clause);
   // A selected source does not turn product help into paid material analysis. Every
   // clause must be help: an upload/use phrase cannot make a separate business question free.
   const clauses=content.split(/[，,。；;：:!！?？\n]/).map(c=>c.trim()).filter(Boolean);
-  if(greeting.test(content.trim())||clauses.length && clauses.every(c=>greeting.test(c)||productHelp.test(c)))return 'm4_Q00';
-  if(m4UnavailableDocument(content)||m4UnavailableResearch(content)||m4UnavailableLocalScope(content))return 'm4_task_assistance';
-  const analysis=/解释|解读|查询|分析|计算|比较|对比|概念|条款|有哪些|是否|为什么|是什么意思|是什么|有什么|怎么理解|如何理解|同比|比率|公式/.test(content);
-  if(context.document_type && !analysis)return 'm4_task_assistance';
-  if(!analysis && /立项报告|募集说明书摘要|主承销商核查意见|法律意见书|申请书|推荐函|材料生成|任务要求|当前任务|开始制作|开始执行|准备材料|补充材料|采用.*模板|券商.*是|发行人.*是|要求.*(?:保存|记录)|保留|不要(?:生成|新增)|(?:作为|列为).*(?:重点|要求)|重点关注|(?:更新|复核).{0,15}(?:募集说明书|募集书)/.test(content))return 'm4_task_assistance';
+  if(greeting.test(content.trim())||clauses.length && clauses.every(isHelp))return 'product_help';
+  const prospectusTask=/(?:更新|复核|编制|修改)(?:募集说明书|募集书)/.test(content);
+  // Main-prospectus tasks support local writing restrictions in their own
+  // workflow; the material-generation workspace's whole-file limit is separate.
+  if(m4UnavailableDocument(content)||m4UnavailableResearch(content)||m4UnavailableLocalScope(content)&&!prospectusTask)return 'clarify';
+  const businessClauses=clauses.filter(c=>!isHelp(c));
+  const taskTarget=/(?:募集(?:说明)?书|立项报告|私募摘要|核查意见|法律意见书?|申请书|推荐函|底稿|材料生成|当前任务|本次任务)/;
+  const explicitTask=businessClauses.some(c=>!/(?:不要|不需要|先别|别|如何|怎么|怎样).{0,10}(?:生成|制作|编制|更新|复核|修改|执行)/.test(c)
+    && /(?:生成|制作|编制|更新|复核|修改|开始执行)/.test(c)&&(taskTarget.test(c)||/^(?:请|现在|马上|按当前任务)?开始(?:制作|执行)$/.test(c)));
+  // Analysis requested inside a document belongs to that document. A separately
+  // requested answer remains an independent task and cannot ride free preparation.
+  const separateAnswer=businessClauses.some(c=>/(?:另外|另行|单独|独立|先在这里|直接在这里|同时回答|并回答|并回复).{0,30}(?:回答|回复|解释|说明|分析|计算|比较|核对)|^(?:同时|并)(?:回答|回复)/.test(c));
+  if(explicitTask&&!separateAnswer)return 'task_preparation';
+  const quotedRequirements=/(?:保存|记录|记下|补充|更新|调整)(?:当前|本次)?(?:任务)?要求\s*[:：]/.test(content)
+    || businessClauses.length>0&&businessClauses.every(c=>/^(?:请)?把.{1,80}(?:作为|列为).{0,20}(?:重点|要求)$/.test(c));
+  if(quotedRequirements&&!separateAnswer)return 'task_preparation';
+  const question=businessClauses.some(c=>! /^(?:请|请你|帮我|麻烦)?(?:不要|不需要|先别|别)(?:回答|回复|解释|解读|查询|分析|计算|比较|对比|说明|核对)/.test(c)
+    && /解释|解读|查询|分析|计算|比较|对比|回答|回复|说明|写出|列出|归纳|概括|总结|提炼|核对|有哪些|是否|为什么|为何|是什么意思|是什么|有什么|多少|如何|怎么|怎样|原因|同比|比率|公式/.test(c.replace(/募集说明书|编制说明|不适用说明/g,'')));
+  if(question)return 'business_question';
+  const preparation=businessClauses.length>0&&businessClauses.every(c=>
+    /^(?:并|也|还)?(?:请|请你|帮我|麻烦)?(?:保存|记录|记下|补充|调整|保留|采用|准备|设置|上传|不要(?:生成|新增|修改|删除)|先别(?:生成|更新|复核))/.test(c)
+    || /^(?:请)?把.{1,80}(?:作为|列为).{0,20}(?:重点|要求)$/.test(c)
+    || /^(?:券商|发行人|项目名称|任务要求|语气|格式|篇幅|模板|目标报告期|报告期)(?:是|为|改为|设为|采用|正式|简洁)/.test(c));
+  return preparation?'task_preparation':'clarify';
+}
+export function classifyM4Qa(content:string,context:M4MessageContext):M4BillingTask|'m4_Q00'|'m4_task_assistance'{
+  const intent=classifyM4RequestIntent(content);
+  if(intent==='product_help')return 'm4_Q00';
+  if(intent!=='business_question')return 'm4_task_assistance';
   if(/比较|对比|两期|两年/.test(content))return 'm4_Q04';
   if(/计算|同比|资产负债率|流动比率|速动比率|公式/.test(content))return 'm4_Q03';
   return context.citations.length||context.source_material||context.reading_artifact?'m4_Q02':'m4_Q01';
+}
+/** Free runs may return navigation, literal task requirements or a clarification, never a professional answer. */
+export function constrainFreeM4Reply(reply:M4AssistantReply,manifest:M4QaManifest):M4AssistantReply{
+  if(manifest.billing_task!=='m4_Q00'&&manifest.billing_task!=='m4_task_assistance')return reply;
+  const {assistant_action,...base}=reply,plain={...base,citations:[],requirements:[],fields:{},document_type:null,target_business:null} as M4AssistantReply;
+  if(manifest.billing_task==='m4_Q00'){
+    const content=/退款/.test(manifest.content)?'请在账户的购买记录中打开原订单，查看可退款额度、退款资格和处理进度，再按该订单发起退款。此处尚未查询或提交退款。'
+      :/过期|到期|失效|有效期/.test(manifest.content)?'可在账户中查看各批积分的有效期。当前订阅积分每批到账后90天有效，新充值积分永久有效；旧批次按原约定显示。取消续费不会提前清除已付积分。'
+      :/订阅|续费|月付|年付|档位/.test(manifest.content)?'请打开账户中的“管理订阅”，查看当前方案、下次续费日期和金额，并操作续费开关、允许的月付升档或转年付。本条帮助不会修改订阅或发起付款。'
+      :/下载|成果|清洁版|修订版/.test(manifest.content)?'已生成的成果可在原任务结果中查看和下载；请先打开对应项目及任务，选择需要的文件版本。'
+      :/积分|余额|充值|消费记录|账单|付款记录|购买记录|扣费/.test(manifest.content)?'请在账户中查看积分余额、充值、购买记录和消费记录。独立业务任务开始时预留积分，交付后结算；可打开对应记录核对实际扣费，充值状态以原订单为准。'
+      :/取消|停止|进度|状态/.test(manifest.content)?'请打开对应项目的任务记录查看进度或停止正在执行的任务。已生成的文件会保留，具体扣费和返还可在任务记录中查看。'
+      :/上传/.test(manifest.content)?'请在当前项目的材料区上传文件，等待保存完成后选择要使用的材料，再提出具体业务任务。'
+      :'BondBuddy 可以帮助编制和更新募集说明书、生成关联文件、核查一致性、独立复核及回复问题。请说明要处理的项目、材料和业务目标。';
+    return {...plain,content,intent:'answer'};
+  }
+  const intent=classifyM4RequestIntent(manifest.content);
+  if(intent!=='task_preparation')return {...plain,content:'请明确本次是要回答独立业务问题，还是补充当前文件任务的要求；请一并说明目标对象。当前仅澄清需求，尚未开始业务处理。',intent:'clarify'};
+  const trustedValues=[...Object.values(manifest.context_snapshot?.draft?.fields??{}),...Object.values(manifest.assistant_context??{}).filter((v):v is string=>typeof v==='string')];
+  const fields=(values:Record<string,string>)=>Object.fromEntries(Object.entries(values).filter(([,value])=>manifest.content.includes(value)||trustedValues.includes(value)));
+  const structured=['draft','execute'].includes(reply.intent);
+  return {...plain,content:structured||assistant_action?'本轮仅整理任务信息和原始要求，请继续核对所选文件任务；业务分析将在该成果任务中完成。':'本轮已保留任务要求，尚未开始生成文件或回答独立业务问题。',
+    intent:reply.intent==='cross_business'?'clarify':reply.intent,document_type:structured?reply.document_type:null,fields:structured?fields(reply.fields):{},requirements:structured&&reply.requirements.length?[manifest.content]:[],
+    ...(assistant_action?{assistant_action:{...assistant_action,requirements:manifest.content,fields:fields(assistant_action.fields)}}:{})};
 }
 async function qaSnapshot(db:Db,owner:string,t:any,b:{content:string;context:M4MessageContext}){
   await validateContext(db,owner,t,b.context);

@@ -1,0 +1,21 @@
+✔ all twelve tariff rows preserve separate base-fen and 1.7 rounding (1.003ms)
+✔ comprehensive review uses its planning cost, with exact two-stage rounding (1.671ms)
+✔ independent question list charges one unit each; malformed or oversized lists are rejected (0.3967ms)
+✔ integrity scope never splits an oversized request into silently chargeable rounds (0.2606ms)
+✔ one-question chat cannot accept an explicit multi-question list at one-unit price (1.7294ms)
+✔ new check includes repair; older checks retain their original upgrade rights (0.3411ms)
+✔ workpaper is a separately commissioned document and not an automatic 280-unit purchase (0.1492ms)
+✔ more than three new annual periods is unsupported rather than silently capped (0.7151ms)
+✔ selected document cannot make an independent business answer free (18.8498ms)
+✔ literal document requirements have no separate answer charge; ambiguous requests only clarify (1.4977ms)
+✔ subscription and wallet operation help remains free without exempting bond-business questions (0.6402ms)
+✔ one-sentence multiple answers must use the existing itemized question flow (0.8471ms)
+✔ free reply constraints remove business answers and invented requirements (1.9022ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4415.0422

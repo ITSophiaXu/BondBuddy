@@ -162,6 +162,8 @@ export async function repairWalletProjection(pool:Pool,input:PrivilegedInput&{ow
     const before=await auditCreditClient(c,input.owner),beforeHash=billingAuditHash(before),eventId=uid();
     let reason:string|undefined;
     if(beforeHash!==input.expectedAuditHash)reason='audit_changed';
+    // paymentDrift includes immutable subscription-change funding. Projection
+    // repair may restore held/transferred totals, never invent missing sources.
     else if(before.reservationDrift.length||before.paymentDrift.length||before.refundDrift.length)reason='non_projection_difference';
     else if(!before.lotDrift.length)reason='no_projection_difference';
     const changes:{lotId:string;remaining:string;frozen:string}[]=[];

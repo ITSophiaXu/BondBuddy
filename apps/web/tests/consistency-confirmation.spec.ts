@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto';
 import {mkdir,readFile,writeFile} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {expect,test,type Page,type Locator} from '@playwright/test';
-import {PROJECT_FILE_UPDATE_PRICE,encodeBillingDto,BILLING_WIRE_HEADER,LEGACY_BILLING_WIRE_VERSION} from '@bondbuddy/contracts';
+import {PROJECT_FILE_UPDATE_PRICE,AUTOMATIC_PRICE_VERSION,encodeBillingDto,BILLING_WIRE_HEADER,LEGACY_BILLING_WIRE_VERSION} from '@bondbuddy/contracts';
 import type {Dto} from '../src/api';
 import {fixture,open,assertFixture,expected,typeName,resultHash,completeReceipt,changeLive,forgetOriginalCheck,
   selectedVersions,sharedFilename,excludedFilename,ids,base,cacheKey,fileIds,checkId,writes,serverSnapshot,type State} from './consistency-confirmation-fixtures';
@@ -102,6 +102,12 @@ test.afterEach(async({page})=>assertFixture(page));
 test('ordinary upgrade preserves an unsafe numeric original without starting or overwriting a task',async({page})=>{
   const {s}=await startUnknown(page);
   const raw=await page.evaluate(key=>{const saved=JSON.parse(sessionStorage.getItem(key)!);saved.pendingUpdate.body.expected_points=Number.MAX_SAFE_INTEGER+1;const raw=JSON.stringify(saved);sessionStorage.setItem(key,raw);return raw;},cacheKey);
+  await page.reload();await expect(page.getByRole('alert')).toContainText('原检查或更新请求无法核实');
+  expect(await page.evaluate(key=>sessionStorage.getItem(key),cacheKey)).toBe(raw);expect(s.posts).toHaveLength(1);expect(s.receipts.size).toBe(1);
+});
+test('ordinary upgrade retains a damaged funding request and blocks a replacement task',async({page})=>{
+  const {s}=await startUnknown(page);
+  const raw=await page.evaluate(({key,version})=>{const saved=JSON.parse(sessionStorage.getItem(key)!);saved.needsCredits=true;saved.fundingRequest={checkId:saved.pendingUpdate.checkId,body:{...saved.pendingUpdate.body,price_version:version,expected_points:Number.MAX_SAFE_INTEGER+1}};delete saved.pendingUpdate;const raw=JSON.stringify(saved);sessionStorage.setItem(key,raw);return raw;},{key:cacheKey,version:AUTOMATIC_PRICE_VERSION});
   await page.reload();await expect(page.getByRole('alert')).toContainText('原检查或更新请求无法核实');
   expect(await page.evaluate(key=>sessionStorage.getItem(key),cacheKey)).toBe(raw);expect(s.posts).toHaveLength(1);expect(s.receipts.size).toBe(1);
 });

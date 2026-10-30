@@ -153,12 +153,14 @@ test('synthetic subscriptions share the wallet, retain original cash rights, ref
       assert.deepEqual(await correctSettlement(pool,{runId:f.run,actor:'synthetic-test',reason:'Synthetic repeated correction'}),corrections);
     });
     await t.test('the application rejects an unused subscription after the seven-day refund window',async()=>{
-      const who=await owner(),a=await buy(who),account=await subscriptionAccount(pool,who),now=Date.now;
+      const who=await owner(),a=await buy(who),account=await subscriptionAccount(pool,who);
+      await pool.query('CREATE TABLE IF NOT EXISTS bb_subscription_refund_test_clock(owner_user_id text PRIMARY KEY,observed_at timestamptz NOT NULL)');
+      await pool.query("CREATE OR REPLACE FUNCTION bb_subscription_clock(p_owner text) RETURNS timestamptz LANGUAGE sql STABLE AS $$ SELECT COALESCE((SELECT observed_at FROM bb_subscription_refund_test_clock WHERE owner_user_id=p_owner),date_trunc('milliseconds',now())) $$");
       try{
-        Date.now=()=>new Date(account.periods[0].starts_at!).getTime()+7*86400000+1;
+        await pool.query('INSERT INTO bb_subscription_refund_test_clock VALUES($1,$2)',[who,new Date(new Date(account.periods[0].starts_at!).getTime()+7*86400000+1).toISOString()]);
         const eligibility=await paymentRefundEligibility(pool,who,a.order.order_id,[provider]);assert.equal(eligibility.enabled,false);assert.equal(eligibility.refundable_fen,0);
         await assert.rejects(requestPaymentRefund(pool,who,a.order.order_id,{request_id:uid(),amount_fen:19900},[provider]));
-      }finally{Date.now=now;}
+      }finally{await pool.query('DELETE FROM bb_subscription_refund_test_clock WHERE owner_user_id=$1',[who]);}
       assert.equal((await creditBalance(pool,who)).available,21000);
     });
     await t.test('topup is 1:1 permanent and does not inherit a subscription discount',async()=>{

@@ -1,0 +1,40 @@
+✔ normalized Alipay payment/refund CSV reconciles without treating merchant receipts as buyer cash or writing financial tables (563.8663ms)
+✔ Alipay amount/identity mismatches and unregistered PID rows cannot suppress registered local missing coverage (532.789ms)
+✔ Alipay refund coverage follows completion day across midnight and detects a genuinely omitted local completion (538.7075ms)
+✔ missing authenticated payment/refund time stays unknown instead of borrowing CSV or local timestamps (457.3235ms)
+✔ duplicate Alipay records remain unresolved and parser-version evidence preserves earlier same-archive unknown history (465.5919ms)
+✔ Alipay statement differences preserve adjacent bigint fen above 2^53 and never repair a historical balance (425.7051ms)
+✔ late authenticated Alipay payment/refund completion reopens its old bill without rewriting earlier checks or settling twice (486.3688ms)
+✔ Alipay terminal date recovery uses bounded query retries without creating another refund or moving cash again (31777.7807ms)
+✖ Alipay download proof persists as unresolved coverage with JSON null totals and never mutates wallet or refund ledgers (928.2943ms)
+✔ Alipay trade-only scheduling creates seven trade jobs and never creates or claims fund jobs (726.3458ms)
+✔ Alipay identity, signed URL scope and SHA1 confusion are rejected without persisting financial evidence (661.1387ms)
+✔ database provenance guards reject provider-method mismatch and NULL WeChat SHA1 instead of accepting SQL UNKNOWN (1000.0503ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 11
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 69865.9286
+
+✖ failing tests:
+
+test at apps\api\dist\alipay-statements.pg.test.js:71:1
+✖ Alipay download proof persists as unresolved coverage with JSON null totals and never mutates wallet or refund ledgers (928.2943ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+
+    assert.ok(job)
+
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/alipay-statements.pg.test.js:77:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

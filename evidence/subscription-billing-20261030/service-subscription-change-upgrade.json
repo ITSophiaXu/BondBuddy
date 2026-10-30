@@ -1,0 +1,79 @@
+{
+  "before": {
+    "at": "2026-10-30T03:28:09.562Z",
+    "database": "bb_billing_functional_5c7885f4594549d4",
+    "service_pid": 35804,
+    "hashes": {
+      "lots": {
+        "count": 2,
+        "sha256": "824009a7ab8e75b4df4a3eb3c3b312d6512a83a94a94674a878975f102c7a2c9"
+      },
+      "orders": {
+        "count": 2,
+        "sha256": "0b5c8855d0b74f0546e41d2b8b0ca0f405d0ec49d435f1395db5c69c1684e9d7"
+      },
+      "periods": {
+        "count": 1,
+        "sha256": "52ae4daf30dfec54169fbf20d90544257fc696a7cb26fee26ce454b608339fd6"
+      },
+      "events": {
+        "count": 2,
+        "sha256": "d2888bf25de0bae1200e2b3b325f2e0be0bb150c0eee60142d865affd40b9292"
+      }
+    },
+    "balance": {
+      "available": "60000",
+      "frozen": "0"
+    },
+    "current": {
+      "plan_id": "professional",
+      "billing_cycle": "monthly",
+      "current_period_start": "2026-10-30T01:48:29.883Z",
+      "current_period_end": "2026-11-30T01:48:29.883Z",
+      "auto_renew": false
+    },
+    "migrations": {
+      "count": 160,
+      "latest": "0159_annual_subscription_releases.sql"
+    }
+  },
+  "after": {
+    "at": "2026-10-30T03:29:42.667Z",
+    "database": "bb_billing_functional_5c7885f4594549d4",
+    "service_pid": 18092,
+    "hashes": {
+      "lots": {
+        "count": 2,
+        "sha256": "824009a7ab8e75b4df4a3eb3c3b312d6512a83a94a94674a878975f102c7a2c9"
+      },
+      "orders": {
+        "count": 2,
+        "sha256": "0b5c8855d0b74f0546e41d2b8b0ca0f405d0ec49d435f1395db5c69c1684e9d7"
+      },
+      "periods": {
+        "count": 1,
+        "sha256": "52ae4daf30dfec54169fbf20d90544257fc696a7cb26fee26ce454b608339fd6"
+      },
+      "events": {
+        "count": 2,
+        "sha256": "d2888bf25de0bae1200e2b3b325f2e0be0bb150c0eee60142d865affd40b9292"
+      }
+    },
+    "balance": {
+      "available": "60000",
+      "frozen": "0"
+    },
+    "current": {
+      "plan_id": "professional",
+      "billing_cycle": "monthly",
+      "current_period_start": "2026-10-30T01:48:29.883Z",
+      "current_period_end": "2026-11-30T01:48:29.883Z",
+      "auto_renew": false
+    },
+    "migrations": {
+      "count": 161,
+      "latest": "0160_subscription_changes.sql"
+    }
+  },
+  "existing_demo_preserved": true
+}

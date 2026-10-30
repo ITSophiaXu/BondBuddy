@@ -30,7 +30,7 @@ const PREVIOUS_SITES: IntegritySite[] = [
 const basic = '基础征信', finance = '金融监管', other = '其他领域';
 const scoped = (id: string, name: string, group: string, topic: string, url: string, queryTerms: string[], companyOnly = false): IntegritySite =>
   ({ ...site(id, name, group, topic, url, companyOnly), queryTerms });
-export const INTEGRITY_SELECTABLE_SITES: IntegritySite[] = [
+const CATALOG_SITES: IntegritySite[] = [
   site('credit-china', '信用中国', basic, '公共信用、行政处罚及严重失信信息', 'https://www.creditchina.gov.cn/'),
   scoped('execution-dishonest', '中国执行信息网-失信被执行人', basic, '失信被执行人名单', 'https://zxgk.court.gov.cn/shixin/', ['失信']),
   scoped('execution-debtor', '中国执行信息网-被执行人信息', basic, '被执行人案件信息', 'https://zxgk.court.gov.cn/zhixing/', ['被执行人信息']),
@@ -88,11 +88,17 @@ export const INTEGRITY_SELECTABLE_SITES: IntegritySite[] = [
 
   ...PREVIOUS_SITES.filter(s => s.group === '属地监管'),
 ];
-// Keep prior IDs resolvable for saved drafts, queued runs, old records and free re-exports.
-// They are shown only when an existing draft still selects them; they are never silently remapped.
+// User decision 2026-10-30 (#819): retire these query items from new checks.
+// Keep their exact metadata for immutable queued runs, evidence and free re-exports.
+const RETIRED_SITE_IDS = new Set(['credit-china', 'execution-dishonest', 'execution-debtor', 'execution-restriction', 'industry-credit']);
+export const isRetiredIntegritySite = (id: string): boolean => RETIRED_SITE_IDS.has(id);
+export const removeRetiredIntegritySites = (ids: readonly string[]): string[] => ids.filter(id => !isRetiredIntegritySite(id));
+export const INTEGRITY_SELECTABLE_SITES: IntegritySite[] = CATALOG_SITES.filter(s => !isRetiredIntegritySite(s.id));
+
+// Other prior IDs can still be shown when a saved draft selects them.
 export const INTEGRITY_SITES: IntegritySite[] = [
-  ...INTEGRITY_SELECTABLE_SITES,
-  ...PREVIOUS_SITES.filter(s => !INTEGRITY_SELECTABLE_SITES.some(current => current.id === s.id)).map(s => ({ ...s, legacy: true, group: '历史网站范围' })),
+  ...CATALOG_SITES,
+  ...PREVIOUS_SITES.filter(s => !CATALOG_SITES.some(current => current.id === s.id)).map(s => ({ ...s, legacy: true, group: '历史网站范围' })),
 ];
 export const INTEGRITY_SITE_LIMIT = INTEGRITY_SITES.length;
 

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {AUTOMATIC_PRICE_VERSION,BILLING_WIRE_HEADER,BILLING_WIRE_VERSION,LEGACY_BILLING_WIRE_VERSION} from '@bondbuddy/contracts';
-import {automaticTaskPath,billingTaskReturnTo,cancelBillingTask,configureBillingTaskRecovery,observeAutomaticQuotes,createBillingTask,readBillingTask,resumeBillingTask,runRecoverableBillingRequest} from './billing-task-recovery.js';
+import {automaticTaskPath,billingTaskReturnTo,billingTaskRechargeHrefForRequest,cancelBillingTask,configureBillingTaskRecovery,observeAutomaticQuotes,createBillingTask,readBillingTask,resumeBillingTask,runRecoverableBillingRequest} from './billing-task-recovery.js';
 
 function memory(){const rows=new Map<string,string>();return {rows,getItem:(key:string)=>rows.get(key)??null,setItem:(key:string,value:string)=>{rows.set(key,value);},removeItem:(key:string)=>{rows.delete(key);}};}
 const endpoint='/projects/p1/qa/runs',body={request_id:'answer-one',expected_revision:7,price_version:AUTOMATIC_PRICE_VERSION,expected_points:'1218',scope_quote_id:'q1'},route='#qa?project=p1';
@@ -13,6 +13,17 @@ test('mixed file package returns from funding with its original request, tariff 
  assert.equal(calls,1);assert.equal(await readBillingTask('owner',task.id,store),undefined);
 });
 function waiting(store:ReturnType<typeof memory>,id:string){const key=[...store.rows.keys()].find(k=>k.endsWith(id))!,value=JSON.parse(store.getItem(key)!);store.setItem(key,JSON.stringify({...value,state:'needs_funds'}));}
+
+test('local funding links bind the authenticated owner and exact waiting request, never a changed or unknown task',async()=>{
+ const store=memory(),one=await createBillingTask('owner',endpoint,body,{},route,store),two=await createBillingTask('owner',endpoint,{...body,request_id:'second'}, {},route,store);
+ waiting(store,one.id);
+ const href=await billingTaskRechargeHrefForRequest('owner',endpoint,{...body},store);assert.ok(href?.includes('resume_request='+one.id));
+ assert.equal(await billingTaskRechargeHrefForRequest('other',endpoint,body,store),undefined);
+ assert.equal(await billingTaskRechargeHrefForRequest('owner',endpoint,{...body,expected_revision:8},store),undefined);
+ assert.equal(await billingTaskRechargeHrefForRequest('owner',endpoint,two.body,store),undefined);
+ assert.equal(await billingTaskRechargeHrefForRequest('owner','/projects/other/qa/runs',body,store),undefined);
+ await cancelBillingTask('owner',one.id,store);assert.equal(await billingTaskRechargeHrefForRequest('owner',endpoint,body,store),undefined);
+});
 
 test('task recovery rejects a different owner, tampered input, expired intent and arbitrary routes',async()=>{
   const store=memory(),now=Date.now(),task=await createBillingTask('owner',endpoint,body,{},route,store,now);
@@ -61,6 +72,16 @@ test('402 is recoverable, unknown results do not automatically restart, and old 
 test('a changed body cannot reuse a pending original request key',async()=>{
   const store=memory();await createBillingTask('owner',endpoint,body,{},route,store);
   await assert.rejects(createBillingTask('owner',endpoint,{...body,expected_revision:8},{},route,store));
+});
+test('explicit quota rejection clears recovery while generic rate limits retain the unknown original',async()=>{
+  const store=memory();Object.assign(globalThis,{localStorage:store,location:{hash:route}});configureBillingTaskRecovery(()=>'owner');
+  try{
+    for(const code of ['TRIAL_QUOTA_EXCEEDED','RATE_LIMITED']){
+      const error={status:429,code};await assert.rejects(runRecoverableBillingRequest('POST',endpoint,body,{},async()=>{throw error;}),e=>e===error);
+      if(code==='TRIAL_QUOTA_EXCEEDED')assert.equal(store.rows.size,0);
+      else {assert.equal(store.rows.size,1);const task=JSON.parse([...store.rows.values()][0]);assert.equal(task.state,'unknown');assert.deepEqual(task.body,body);}
+    }
+  }finally{configureBillingTaskRecovery(()=>undefined);}
 });
 
 

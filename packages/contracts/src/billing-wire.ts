@@ -17,8 +17,9 @@ const balance=['available','frozen'] as const;
 const progress=['accrued_points','charged_points','released_points','available_points'] as const;
 const charge=[...under('quote',quote),...under('progress',progress)] as const;
 const m4Workspace=under('tasks.*.credit_charge',charge);
-const period=['amount_fen','points','available_points','held_points','task_held_points','refund_held_points'] as const;
-const subscriptionAccount=['available_points','held_points','task_held_points','refund_held_points','subscription_available_points','topup_available_points','other_available_points',...under('periods.*',period)] as const;
+const period=['amount_fen','points','monthly_points','available_points','held_points','task_held_points','refund_held_points','face_amount_fen','change_held_points'] as const;
+const subscription=['next_charge_amount_fen'] as const;
+const subscriptionAccount=['available_points','held_points','task_held_points','refund_held_points','change_held_points','subscription_available_points','topup_available_points','other_available_points',...under('periods.*',period),...under('subscription',subscription)] as const;
 const refund=['amount_fen','credit_points'] as const;
 const qaRun=['reserved_points','charged_points',...commerce,...under('manifest',quote)] as const;
 const integrityRun=['charged_points','reserved_points',...under('manifest',quote)] as const;
@@ -49,9 +50,11 @@ export const BILLING_WIRE_DTOS={
   commerceCatalog:['items.*.price_fen','items.*.price_points'],
   commerceAccount:['available_fen','held_fen','available_points','held_points'],
   topupRequest:['amount_fen'],
-  subscriptionCatalog:['plans.*.amount_fen','plans.*.points'],
+  subscriptionCatalog:['plans.*.amount_fen','plans.*.annual_amount_fen','plans.*.points'],
   subscriptionAccount,
-  subscriptionCheckout:['order.amount_fen','order.points'],
+  subscriptionCheckout:['order.amount_fen','order.points',...under('subscription',subscription)],
+  subscription,
+  subscriptionAutoRenew:under('subscription',subscription),
   refund,
   refundRequest:['amount_fen','points','expected_amount_fen'],
   refundEligibility:['order_amount_fen','original_points','paid_amount_fen','refundable_fen','held_refund_fen','refunded_fen','refundable_points','refunded_points',...under('refunds.*',refund)],

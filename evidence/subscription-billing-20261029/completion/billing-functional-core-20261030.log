@@ -1,0 +1,39 @@
+✔ automatic authoring produces an executable locked quote without operator pricing; shortages have no hold (317.0746ms)
+✔ two competing executions cannot consume the same automatic scope twice (507.2162ms)
+✔ HTTP exposes automatic price metadata, rejects client amounts and preserves owner isolation (3331.9959ms)
+✔ failed and released authoring can retry with a new immutable quote; closed=false (597.6114ms)
+✔ failed and released authoring can retry with a new immutable quote; closed=true (557.6092ms)
+✔ HTTP automatic billing includes same-scope revision in a settled new check without another hold (2946.4194ms)
+✔ HTTP automatic billing preserves the 1000-point revision upgrade for a settled old 990-point check (2670.4596ms)
+✔ partial file-check quality refund revokes only that file and rejects only its stale included-maintenance quote (2083.7751ms)
+✔ HTTP project file batch carries automatic tariff metadata and accepts the matching executable quote (1987.9367ms)
+✔ HTTP automatic workpaper generation returns 402 without creating a batch or hold when points are insufficient (1053.1942ms)
+✔ asynchronous workpaper shortage resumes only the original batch once and never overrides a later manual pause (1911.4956ms)
+✔ retired source-diff route remains replayable while automatic workpaper checks use independent paid files (1205.2573ms)
+✔ full review locks 27195 points, settles once on report delivery, and releases a failed retry (3119.3663ms)
+✔ synthetic signed provider: forged/mismatched/replayed callbacks and query-based credit repair (2145.874ms)
+✔ subscription mode closes legacy bonus-pack sales while replaying original paid and pending orders unchanged (1803.9329ms)
+▶ selected original order identifies its period beyond the latest 50 and keeps unknown or foreign orders private
+  ✔ the 51st record remains the original subscription with string-valued money and original dates (221.1084ms)
+  ✔ only a verified owner recharge order returns period null; foreign and nonexistent orders return identical 404 (37.8494ms)
+  ✔ missing or inconsistent original subscription records stay unavailable instead of becoming a permanent topup (13.3797ms)
+✔ selected original order identifies its period beyond the latest 50 and keeps unknown or foreign orders private (852.1965ms)
+▶ synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once
+  ✔ verified payment grants once, 90-day rights and cash ratio survive cancellation (584.1638ms)
+  ✔ checkout failure before channel creation stays unknown until authenticated expiry, then permits a new purchase (96.7278ms)
+  ✔ only a wholly unused period refunds 199 cash by removing 21000 points, unknown status stays held (211.301ms)
+  ✔ task and cash-refund holds are separate in the same wallet and each period (420.4665ms)
+  ✔ consumption prevents subscription cash refund; expired correction preserves original paid ratio (109.6566ms)
+  ✔ the application rejects an unused subscription after the seven-day refund window (71.6176ms)
+  ✔ topup is 1:1 permanent and does not inherit a subscription discount (70.9374ms)
+  ✔ native checkout has no recurring capability; an authenticated synthetic mandate renews once after timeout (189.7725ms)
+  ✔ a delayed refund for an earlier period cannot cancel a later paid period or its mandate (150.9743ms)
+✔ synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once (2065.4126ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 100094.7202
