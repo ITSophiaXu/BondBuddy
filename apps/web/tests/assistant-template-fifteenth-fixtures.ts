@@ -142,8 +142,8 @@ export async function mount(page: Page, options: { owner?: string; navigation?: 
   await expect(page.locator('[data-composer]')).toBeEnabled(); if (options.form !== false) { await page.locator('[data-a=edit]').first().click(); await expect(page.locator('[data-template-upload]')).toBeAttached(); }
 }
 export async function mountQa(page: Page) {
-  await mount(page, { open: false }); await page.evaluate(async project => { const w = window as any, path = '/src/project-qa-workspace.ts', { ProjectQaWorkspace } = await import(path); location.hash = 'qa?project=' + project; w.qaComponent = new ProjectQaWorkspace(w.assistantApi, (html: string) => { document.querySelector('main')!.innerHTML = html; }, () => true, () => w.assistantComponent, project, w.assistantComponent.owner); await w.qaComponent.render(); }, ids.project);
-  await page.locator('#qa-assistant summary').click(); await expect(page.locator('#qa-agent .bb-assistant')).toHaveCount(1); await page.locator('#qa-agent [data-a=edit]').click(); await expect(page.locator('#qa-agent [data-template-upload]')).toBeAttached();
+  await mount(page, { open: false }); await page.evaluate(async project => { const w = window as any, path = '/src/project-qa-workspace.ts', { ProjectQaWorkspace } = await import(path); location.hash = 'qa?project=' + project; w.qaComponent = new ProjectQaWorkspace(w.assistantApi, (html: string) => { document.querySelector('main')!.innerHTML = html; }, () => true, project, w.assistantComponent.owner); await w.qaComponent.render(); }, ids.project);
+  await expect(page.getByRole('heading', { name: '项目问答', exact: true })).toBeVisible(); await page.getByRole('button', { name: '打开 BondBuddy', exact: true }).click(); await expect(page.locator('[data-composer]')).toBeEnabled(); await page.locator('[data-a=edit]').first().click(); await expect(page.locator('[data-template-upload]')).toBeAttached();
 }
 export const recovery = (page: Page) => page.locator('[data-assistant-template-recovery-id]').first();
 export const resume = (page: Page) => recovery(page).locator('[data-assistant-template-recovery-action=resume]');

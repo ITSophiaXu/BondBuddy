@@ -25,7 +25,7 @@ for (const width of [1440, 390]) test(`upload progress survives repaint and keep
   await page.screenshot({path:`test-evidence/upload-autosave/upload-${width}.png`});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.evaluate(()=>(window as any).continueBytes());
-  await expect(first.getByRole('progressbar')).toHaveAttribute('value','100');
+  await expect(first.getByRole('progressbar')).not.toHaveAttribute('value');
   await expect(first).toContainText('正在保存');
   await expect.poll(()=>typeof finish).toBe('function');state.completeGate=undefined;finish();
   await expect(first).toHaveCount(0);

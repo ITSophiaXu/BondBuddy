@@ -1,3 +1,5 @@
+import './upload-progress.css';
+import {uploadActivity,uploadTransfer,uploadProgressHtml,type FileUploadProgress} from './upload-progress';
 import {billingRecoveryHeaders} from './billing-recovery-wire.js';
 import {serializeInt64} from '@bondbuddy/contracts';
 import {int64} from '@bondbuddy/contracts';
@@ -32,6 +34,7 @@ const wordScope='保留完整原问题清单，仅回填本轮所选问题，不
 const noAcceptance=new Set(['INPUT_REVISION_CONFLICT','PROJECT_RUN_ACTIVE','CREDITS_INSUFFICIENT','QUOTE_CHANGED','INPUT_REQUIRED','MATERIAL_UNREADABLE']);
 
 export class ProjectQaWorkspace {
+ private fileProgress=new Map<string,FileUploadProgress>();private preparingUpload?:File;
  private get unitPoints(){return this.state?.price.points??PROJECT_QA_PRICE.points;}
  private priceText(points:string|number|bigint){return displayCharge(this.state?.price,points);}
  private pendingPrice(pending:QaRecoveryPending|undefined){return pending?.kind==='answer'?isOutcomePriceVersion(pending.request.price_version)&&!isAutomaticPriceVersion(pending.request.price_version)?cny(pending.request.expected_points):formatPoints(pending.request.expected_points)+' 积分':'包含在回复任务内';}
@@ -151,6 +154,8 @@ export class ProjectQaWorkspace {
   const upload=document.querySelector<HTMLInputElement>('#qa-upload'),history=document.querySelector<HTMLSelectElement>('#qa-history');
   if(upload)upload.disabled=blocked;
   if(history)history.disabled=this.busy||this.locked();
+   document.querySelectorAll<HTMLButtonElement>('[data-qa-upload-action]').forEach(button=>{const envelope=this.uploadEnvelopes.find(e=>e.items.some(i=>i.id===button.dataset.operation)),index=envelope?.items.findIndex(i=>i.id===button.dataset.operation)??-1;button.disabled=this.busy||!!this.pending||!envelope||index<0||index>0&&!envelope.items[index-1].applied;});
+   document.querySelectorAll<HTMLInputElement|HTMLButtonElement>('[data-qa-upload-reselect],[data-qa-upload-stop]').forEach(control=>control.disabled=this.busy||!!this.pending);
   const run=this.currentRun(),follow=run?.operation==='answer'?qaFollowupFor(run,this.state!.runs,this.id!):undefined;
   document.querySelectorAll<HTMLButtonElement>('#qa-view-missing,#qa-prepare-next').forEach(button=>button.disabled=this.busy||this.locked()||!follow||!!follow.error);
   const unavailable=this.state!.draft.materials.some(a=>!this.state!.materials.some(m=>key(a)===key(m.asset)));
@@ -375,7 +380,7 @@ export class ProjectQaWorkspace {
    ${this.uploadRows('source')}
    ${empty?'<p class="qa-format-note">支持可检索的 PDF；扫描页请补充可提取文字的文件。</p>':''}
   </section>`;
-  this.shell(`<div class="qa-page">${this.header()}<p id="project-qa-status" role="status">${esc(this.message)}</p>${this.recovery()}${this.activeTasks()}
+  this.shell(`<div class="qa-page">${this.header()}<p id="project-qa-status" role="status">${esc(this.message)}</p>${this.preparingUpload?uploadProgressHtml(uploadActivity(),this.preparingUpload.name):''}${this.recovery()}${this.activeTasks()}
    <div class="qa-toolbar" ${!history.length?'hidden':''}><label for="qa-history">历史记录</label><select id="qa-history" aria-label="问答历史版本" ${locked?'disabled':''}><option value="">准备下一轮</option>${history.map(r=>`<option value="${esc(r.run_id)}" ${r.run_id===run?.run_id?'selected':''}>${r.answer_sequence?`第 ${r.answer_sequence} 次 · `:''}回答问题 · ${esc(runStateLabel[r.state as keyof typeof runStateLabel]??'状态待核对')} · ${esc(date(r.created_at))}</option>`).join('')}</select></div>
    ${this.workflow(run,prepared)}<div class="qa-layout">${this.projectMaterials(run)}${upload}${empty?`<div class="qa-deliverables"><div><span aria-hidden="true">${prototypeIcon('file')}</span><div><h3>回答完成后下载 Word</h3><p>先在页面审阅回答，再下载包含回答、依据和补件要求的文件。</p></div></div><div><span aria-hidden="true">${prototypeIcon('check')}</span><div><h3>待补材料清单</h3><p>逐题列出缺少的材料，补齐后可继续生成新版本。</p></div></div></div>${this.state.draft.preparation_id||this.uploadEnvelopes.some(e=>e.kind==='supplement')?content:''}`:`<section class="panel qa-document"><h2>${editing?'核对问题并开始回答':run?.operation==='prepare'?'识别问题清单':'回答文档'}</h2><div id="qa-document-body">${content}</div></section>`}</div></div>`,'qa');
   document.querySelector('#qa-manage-prospectus')?.addEventListener('click',()=>void this.manageProspectus());
@@ -671,7 +676,7 @@ export class ProjectQaWorkspace {
  }
  private uploadRows(kind:QaUploadKind){
   const errors=this.uploadSelections.map((s,index)=>({s,index})).filter(({s})=>s.kind===kind).map(({s,index})=>`<article class="qa-upload-recovery"><strong>${esc(s.name)}</strong><p role="alert">${esc(s.message)}</p><button class="text-button" data-qa-selection="${index}">移除此本机选择</button></article>`).join('');
-  return `${kind==='source'&&this.uploadProblem?`<p class="qa-warning" role="alert">${esc(this.uploadProblem)}</p>`:''}${errors}${this.uploadEnvelopes.filter(e=>e.kind===kind).map(e=>`<div class="qa-upload-recovery" data-qa-upload-batch="${esc(e.id)}"><p>${kind==='source'?'原问题清单文件；保存文件与免费识别分开。':'这些文件仅补充到开始上传时的原问题、材料及回答要求；其他页面修改后会停止。'} 刷新不会自动确认上传或提交任务。</p>${e.items.map((item,index)=>`<article data-qa-upload-id="${esc(item.id)}"><strong>${esc(item.declaration.filename)}</strong><p>${item.applied?'已加入原准备，待清理本机上传记录':e.handedOff?'已移交原免费识别请求，请在上方恢复原请求':item.material?'服务器已确认保存原文件；'+(kind==='source'?'尚未开始免费识别':'尚需确认加入原准备'):'原上传保存结果待确认；先查看文件是否已保存；如需重新上传，再选择同一份文件。'}</p>${this.uploadErrors.has(item.id)?`<p class="qa-warning" role="alert">${esc(this.uploadErrors.get(item.id)!)}</p>`:''}${item.applied||e.handedOff?'':`<button class="btn secondary" data-qa-upload-action="resume" data-operation="${esc(item.id)}" ${index>0&&!e.items[index-1].applied||!!this.pending?'disabled':''}>确认原上传${kind==='supplement'?'并加入原准备':''}</button>${this.uploadNeedsFile.has(item.id)?`<label class="btn secondary">重新选择原文件<input type="file" data-qa-upload-reselect="${esc(item.id)}" accept="${kind==='source'?'.doc,.docx,.pdf':'.doc,.docx,.pdf,.xlsx'}" aria-label="重新选择原文件 ${esc(item.declaration.filename)}"></label>`:''}${kind==='source'&&item.material?`<button class="btn primary" data-qa-upload-action="prepare" data-operation="${esc(item.id)}" ${this.pending?'disabled':''}>继续免费识别</button>`:''}`}</article>`).join('')}<button class="text-button" data-qa-upload-stop="${esc(e.id)}">${e.handedOff||e.items.every(i=>i.applied)?'清理本机上传记录':'停止本机后续保存'}</button><small>服务器已收到的文件、已保存的原准备及已提交的识别请求仍会保留。</small></div>`).join('')}`;
+  return `${kind==='source'&&this.uploadProblem?`<p class="qa-warning" role="alert">${esc(this.uploadProblem)}</p>`:''}${errors}${this.uploadEnvelopes.filter(e=>e.kind===kind).map(e=>`<div class="qa-upload-recovery" data-qa-upload-batch="${esc(e.id)}"><p>${kind==='source'?'原问题清单文件；保存文件与免费识别分开。':'这些文件仅补充到开始上传时的原问题、材料及回答要求；其他页面修改后会停止。'} 刷新不会自动确认上传或提交任务。</p>${e.items.map((item,index)=>`<article data-qa-upload-id="${esc(item.id)}"><strong>${esc(item.declaration.filename)}</strong>${uploadProgressHtml(this.fileProgress.get(item.id),item.declaration.filename,{error:this.uploadErrors.get(item.id),paused:!this.busy&&!item.material,complete:!!item.material})}<p>${item.applied?'已加入原准备，待清理本机上传记录':e.handedOff?'已移交原免费识别请求，请在上方恢复原请求':item.material?'服务器已确认保存原文件；'+(kind==='source'?'尚未开始免费识别':'尚需确认加入原准备'):'原上传保存结果待确认；先查看文件是否已保存；如需重新上传，再选择同一份文件。'}</p>${item.applied||e.handedOff?'':`<button class="btn secondary" data-qa-upload-action="resume" data-operation="${esc(item.id)}" ${index>0&&!e.items[index-1].applied||!!this.pending?'disabled':''}>确认原上传${kind==='supplement'?'并加入原准备':''}</button>${this.uploadNeedsFile.has(item.id)?`<label class="btn secondary">重新选择原文件<input type="file" data-qa-upload-reselect="${esc(item.id)}" accept="${kind==='source'?'.doc,.docx,.pdf':'.doc,.docx,.pdf,.xlsx'}" aria-label="重新选择原文件 ${esc(item.declaration.filename)}"></label>`:''}${kind==='source'&&item.material?`<button class="btn primary" data-qa-upload-action="prepare" data-operation="${esc(item.id)}" ${this.pending?'disabled':''}>继续免费识别</button>`:''}`}</article>`).join('')}<button class="text-button" data-qa-upload-stop="${esc(e.id)}">${e.handedOff||e.items.every(i=>i.applied)?'清理本机上传记录':'停止本机后续保存'}</button><small>服务器已收到的文件、已保存的原准备及已提交的识别请求仍会保留。</small></div>`).join('')}`;
  }
  private bindUploads(){
   document.querySelectorAll<HTMLElement>('[data-qa-upload-action]').forEach(button=>button.addEventListener('click',()=>void this.act(async()=>{
@@ -694,6 +699,7 @@ export class ProjectQaWorkspace {
    if(!this.owner||!this.uploadCore.has(kind))throw new UserFacingError('尚未核实当前账号，未建立上传会话。');
    if(kind==='supplement'&&(!this.state!.draft.preparation_id||this.state!.draft.materials.length+files.length>50))throw new UserFacingError('每轮最多参考 50 份材料，请先核对原问题清单和材料数量。');
    if(!this.persist())throw new UserFacingError(this.cacheProblem);
+   this.preparingUpload=files[0];this.paint();
    const base=this.snapshot(),declarations:Dto<'UploadCreateRequest'>[]=[];
    for(const file of files){const media=qaUploadMedia(file.name,kind);if(!media||!file.size||file.size>100*1024*1024)throw new UserFacingError('请上传不超过 100 MB 的'+(kind==='source'?' DOC/DOCX 或 PDF 问题清单。':' DOC/DOCX、PDF 或 Excel 材料。'));
     const sha256=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].map(v=>v.toString(16).padStart(2,'0')).join('');
@@ -702,6 +708,7 @@ export class ProjectQaWorkspace {
    if(!this.cacheMatches()||!qaUploadSame(base,this.snapshot()))throw new UserFacingError('准备内容已在文件核对期间改变，未开始上传。');
    envelope=qaUploadEnvelope(this.owner,this.id!,kind,base,declarations);envelope=this.retainUpload(envelope,null);
    for(const [index,item] of envelope.items.entries()){this.uploadFiles.set(item.id,files[index]);this.uploadCore.get(kind)!.begin(item.declaration,qaUploadContext(envelope,index),item.id);}
+   this.preparingUpload=undefined;this.scanUploads();this.paint();
    for(let index=0;index<envelope.items.length;index++)await this.resumeUpload(envelope.id,index,files[index]);
    // Initial file selection retains the existing upload-and-free-identification
    // intent. Reload/retry only confirms the upload; its next task is explicit.
@@ -709,7 +716,8 @@ export class ProjectQaWorkspace {
    if(this.live())this.message='已补充材料并保留原准备选择。核对问题、材料与费用后开始回答。';
   }catch(error){if(this.live()){
    this.message=this.error(error,this.pending&&this.pending.kind!=='draft'?'submit':'save');
-   if(!envelope)this.uploadSelections.push(...files.map(file=>({kind,name:file.name,message:this.error(error,this.pending&&this.pending.kind!=='draft'?'submit':'save')})));
+   this.preparingUpload=undefined;
+    if(!envelope)this.uploadSelections.push(...files.map(file=>({kind,name:file.name,message:this.error(error,this.pending&&this.pending.kind!=='draft'?'submit':'save')})));
    else if(kind==='source'&&this.pending?.kind==='prepare'&&this.pending.request.request_id===envelope.prepareRequestId){/* Original prepare journal owns this uncertainty. */}
    else{try{const unresolved=this.originalEnvelope(envelope.id).items.find(i=>!i.applied);if(unresolved)this.uploadErrors.set(unresolved.id,this.error(error,this.pending&&this.pending.kind!=='draft'?'submit':'save'));}
     catch{this.uploadSelections.push(...files.map(file=>({kind,name:file.name,message:this.error(error,this.pending&&this.pending.kind!=='draft'?'submit':'save')})));}}
@@ -724,7 +732,9 @@ export class ProjectQaWorkspace {
   const core=this.uploadCore.get(e.kind)!;const record=core.list().find(r=>r.id===item.id);
   if(!record||!qaUploadRecordMatches(e,index,record))throw new UserFacingError('原上传记录已丢失或关联不一致，已停止；不会重新建立上传或套用当前准备。');
   let material:Dto<'MaterialResponse'>;
-  try{material=await core.resume(item.id,{file:file??this.uploadFiles.get(item.id),signal:this.controller.signal,status:message=>this.status(message.replaceAll('上传会话','文件').replaceAll('原文件字节','原文件'))});}
+  this.uploadErrors.delete(item.id);
+  const report=(p:FileUploadProgress)=>{if(!this.live())return;this.fileProgress.set(item.id,p);this.scanUploads();this.paint();};
+  try{material=await core.resume(item.id,{file:file??this.uploadFiles.get(item.id),signal:this.controller.signal,status:message=>report(uploadActivity(message)),progress:(loaded,total)=>report(uploadTransfer(loaded,total))});}
   catch(error){if(error instanceof UploadRecoveryNeedsFileError)this.uploadNeedsFile.add(item.id);throw error;}
   if(!this.live())return;
   e=this.originalEnvelope(envelopeId);item=e.items[index];

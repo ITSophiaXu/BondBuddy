@@ -1,3 +1,5 @@
+import './upload-progress.css';
+import {uploadActivity,uploadProgressHtml,type UploadStatus} from './upload-progress';
 import {billingRecoverySchemas,billingRecoveryHeaders,type BillingRecoveryDto} from './billing-recovery-wire.js';
 import {serializeInt64} from '@bondbuddy/contracts';
 import {int64} from '@bondbuddy/contracts';
@@ -199,7 +201,7 @@ export class WorkpaperPanel {
         if(!operation)this.upload={};
       }
       if(operation&&operation!==this.upload.operationId)this.upload={operationId:operation,projectId:this.project};
-      const status=(s:string)=>{this.status=s;const n=this.host.querySelector('#wp-status');if(n)n.textContent=s;};
+      const status:UploadStatus=(s,p)=>{this.status=s;const n=this.host.querySelector('#wp-status');if(n)n.innerHTML=uploadProgressHtml(p??uploadActivity(s),file?.name??'底稿目录',{announce:false});};
       let pin:Awaited<ReturnType<typeof uploadFileMaterial>>;
       try{pin=await uploadFileMaterial(this.api,this.project,file,this.controller.signal,status,this.upload,this.owner,'workpaper-catalogue',undefined,()=>this.live());}
       catch(e){if(e instanceof UploadRecoveryNeedsFileError&&this.upload.operationId)this.uploadNeedsFile.add(this.upload.operationId);throw new UserFacingError(uploadErrorMessage(e));}

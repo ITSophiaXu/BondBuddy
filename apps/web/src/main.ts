@@ -1,3 +1,5 @@
+import './upload-progress.css';
+import {uploadActivity,uploadProgressHtml,uploadTransfer} from './upload-progress';
 import {configureBillingTaskRecovery, resumeBillingTask, cleanBillingReturn, cancelBillingTask, billingTaskRechargeHref, type BillingTask} from './billing-task-recovery';
 import { ProjectQaWorkspace } from './project-qa-workspace';
 import { IntegrityWorkspace } from './integrity-workspace';
@@ -818,7 +820,7 @@ function materialDeleteControl(id:string) {
 
 function renderUploadRow(upload: LocalUpload) {
   const active = ['queued', 'hashing', 'checking', 'uploading', 'saving'].includes(upload.phase);
-  const showProgress = ['uploading', 'saving'].includes(upload.phase);
+  const showProgress = upload.phase !== 'persisted';
   const progress = Math.min(uploadSize(upload), upload.sentBytes);
   const confirmation=(upload.restored||!upload.file)&&['failed','cancelled','uncertain'].includes(upload.phase);
   const controls = upload.needsReplacement
@@ -838,7 +840,7 @@ function renderUploadRow(upload: LocalUpload) {
     ? `<button type="button" class="text-button" data-upload-action="remove" data-upload-key="${esc(upload.key)}">移除此行</button>`
     : '';
   const processing = upload.phase === 'persisted' && upload.material ? (materialProcessing?.render(upload.material) ?? '') : '';
-  return `<li class="material-file-row" data-upload-phase="${upload.phase}" data-upload-id="${esc(upload.key)}"><div class="material-file-main"><strong>${esc(upload.phase === 'persisted' && upload.material ? upload.material.filename : uploadName(upload))}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(uploadSize(upload))}</span>${showProgress ? `<progress max="${uploadSize(upload)}" value="${progress}" aria-label="${esc(uploadName(upload))} 字节传输进度"></progress>` : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p>${processing}${upload.material ? sourceFields(upload.material, draft?.fields.update_details.source_prospectuses, draft ? sourceFormatContext(draft.project.project_id) : undefined) : ''}</div>${controls || canRemove ? `<div class="material-file-actions">${controls}${canRemove}</div>` : ''}</li>`;
+  return `<li class="material-file-row" data-upload-phase="${upload.phase}" data-upload-id="${esc(upload.key)}"><div class="material-file-main"><strong>${esc(upload.phase === 'persisted' && upload.material ? upload.material.filename : uploadName(upload))}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(uploadSize(upload))}</span>${showProgress ? uploadProgressHtml(upload.phase==='uploading'?uploadTransfer(progress,uploadSize(upload)):uploadActivity(uploadStatus(upload)),uploadName(upload),{showMessage:false,error:upload.phase==='failed'?uploadStatus(upload):undefined,paused:['cancelled','uncertain'].includes(upload.phase)}) : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p>${processing}${upload.material ? sourceFields(upload.material, draft?.fields.update_details.source_prospectuses, draft ? sourceFormatContext(draft.project.project_id) : undefined) : ''}</div>${controls || canRemove ? `<div class="material-file-actions">${controls}${canRemove}</div>` : ''}</li>`;
 }
 
 function renderMaterialPartitions(projectId: string) {
