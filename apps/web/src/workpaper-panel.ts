@@ -28,6 +28,8 @@ export class WorkpaperPanel {
   private data:WorkpaperWorkspace={catalogues:[],batches:[],assessments:[]};private selected=new Set<string>();private catalogue?:WorkpaperCatalogue;
   private progressBatch?:string;private expandedBatches=new Map<string,boolean>();
   private downloadFeedback?:{node:HTMLElement;target:Record<string,string|undefined>};
+  // Reading existing files must not activate the unsaved-work navigation guard.
+  private downloading=false;
   private pending?:BillingRecoveryDto<'WorkpaperStart'>;private busy=false;private status='';private requirements='';private filter='';private upload:UploadFileMaterialState={};private storageError=false;
   private view:'prepare'|'confirm'|'results'='prepare';
   private expandedFolders=new Set<string>();
@@ -177,7 +179,7 @@ export class WorkpaperPanel {
   }
   private async act(fn:()=>Promise<void>){if(this.busy)return;this.busy=true;this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();try{await fn();}catch(e){this.status=friendlyError(e,'submit');}finally{this.busy=false;if(this.live()){this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=this.status);this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();}}}
   private async download(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number,total?:number)=>void)=>Promise<{bytes:Blob;filename:string}>){
-    if(this.busy)return;this.busy=true;
+    if(this.busy||this.downloading)return;this.downloading=true;
     const feedback=this.downloadFeedback?.node??document.createElement('p');
     feedback.id='wp-download-feedback';feedback.setAttribute('role','status');
     this.downloadFeedback={node:feedback,target:{...button.dataset}};button.closest('.wp-actions')!.append(feedback);
@@ -190,7 +192,7 @@ export class WorkpaperPanel {
     }};
     try{const file=await boundedDownload(this.controller.signal,signal=>read(signal,progress),button.hasAttribute('data-wp-zip')?20*60_000:120_000);if(this.live())this.downloads.save(file.bytes,file.filename,feedback);}
     catch(e){if(this.live())feedback.textContent=artifactError(e);}
-    finally{this.busy=false;buttons.forEach(({b,disabled})=>b.disabled=disabled);button.textContent=text;button.removeAttribute('aria-busy');}
+    finally{this.downloading=false;buttons.forEach(({b,disabled})=>b.disabled=disabled);button.textContent=text;button.removeAttribute('aria-busy');}
   }
   private async importFile(file?:File,operation?:string){
     if(this.pending||this.busy)return;
@@ -310,7 +312,7 @@ export class WorkpaperPanel {
     if(feedback){const button=[...node.querySelectorAll<HTMLButtonElement>('button')].find(b=>Object.entries(feedback.target).every(([key,value])=>b.dataset[key]===value));button?.closest('.wp-actions')?.append(feedback.node);}
   }
   private poll(){clearTimeout(this.timer);if(!this.live())return;this.timer=setTimeout(()=>void(async()=>{
-    try{if(!this.busy){const data=await this.readWorkspace();if(this.live()&&!this.busy){
+    try{if(!this.busy&&!this.downloading){const data=await this.readWorkspace();if(this.live()&&!this.busy&&!this.downloading){
       // Keep the submit control stable while batch availability is unchanged.
       const confirmationState=()=>this.data.batches.some(b=>['queued','running','paused'].includes(b.state));
       const previous=confirmationState();this.data=data;this.paintBatches();if(previous!==confirmationState())this.paintConfirm();
