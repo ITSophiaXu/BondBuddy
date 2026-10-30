@@ -60,12 +60,12 @@ test('authoring source guide: first exact source opens every user-collapsed ance
   expect(writes(s)).toEqual([]);expectNoExecution(s);
 });
 
-test('authoring source guide: user fills each exact source, next reference opens its folded group, then explicit start pins the saved declarations',async({page})=>{
+test('authoring source guide: user fills each saved source without subtype upload groups, then explicit start pins the declarations',async({page})=>{
   test.setTimeout(40000);const s=await openSourceGuide(page);await expect(guide(page)).toBeVisible();const initial=s.patches.length;
   await pureLocate(page,s,field(page,historicalId,'relation'));await select(page,historicalId,'relation','same_issuer');await select(page,historicalId,'market','sse');await select(page,historicalId,'offering','private');await select(page,historicalId,'year','2024');await quarter(page,historicalId,'12-31');await saved(page,s,initial);
   await expect(page.locator('#start-disabled-reason')).toContainText(s.materials[1].filename);const next=field(page,referenceId,'market');
-  const subtype=sourceFieldset(page,referenceId).locator('xpath=ancestor::details[contains(@class,"material-subtypes")]');await expect(subtype).toHaveCount(1);await ancestors(next,false);await expect(next).toBeHidden();
-  await pureLocate(page,s,next);await expect(subtype).toHaveJSProperty('open',true);await expect(field(page,referenceId,'relation')).toHaveValue('parent');
+  await expect(page.locator('#material-partitions .material-subtypes')).toHaveCount(0);await ancestors(next,false);await expect(next).toBeHidden();
+  await pureLocate(page,s,next);await expect(field(page,referenceId,'relation')).toHaveValue('parent');
   const previous=s.patches.length;await select(page,referenceId,'market','szse');await select(page,referenceId,'offering','private');await select(page,referenceId,'year','2023');await quarter(page,referenceId,'06-30');await saved(page,s,previous);
   await expect(guide(page)).toBeHidden();await expect(page.locator('#execute-input')).toBeEnabled();expectNoExecution(s);expect(sourceProspectusInputGaps(s.materials,s.project.update_details?.source_prospectuses)).toEqual([]);
   const declarations=structuredClone(s.project.update_details!.source_prospectuses),patches=structuredClone(s.patches),expectedMaterials=s.materials.map(m=>({material_id:m.material_id,material_version:m.material_version}));

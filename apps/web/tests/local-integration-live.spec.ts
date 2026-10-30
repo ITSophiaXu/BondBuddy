@@ -25,8 +25,11 @@ test('real update: auto-name, source metadata, DOCX/PDF upload, requirements and
   await page.getByRole('button',{name:'创建项目，继续提供材料',exact:true}).click();
   await expect(page.locator('#project-heading')).toHaveText('本地自动化验收有限公司-深交所-普通私募公司债-募集书更新');
   // setInputFiles does not wait for enabled state; restoration intentionally locks this fieldset.
-  await expect(page.getByLabel('为历史／参考募集书选择文件',{exact:true})).toBeEnabled();
-  await page.getByLabel('为历史／参考募集书选择文件',{exact:true}).setInputFiles({name:'合成历史募集书.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:makeSyntheticDocxFixture({text:'Synthetic local source prospectus, not customer data.'})});
+  await expect(page.getByLabel('募集书新版本文件',{exact:true})).toBeEnabled();
+  await page.getByLabel('募集书新版本文件',{exact:true}).setInputFiles({name:'合成历史募集书.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:makeSyntheticDocxFixture({text:'Synthetic local source prospectus, not customer data.'})});
+  await expect(page.locator('#prospectus-status')).toContainText('尚未采用');
+  await page.locator('[data-use-version]').click();
+  await page.locator('#confirm-prospectus-selection').click();
   await expect(page.getByLabel('原发行市场',{exact:true})).toBeVisible();
   await page.getByLabel('与目标发行人的关系',{exact:true}).selectOption({label:'同企业'});
   await page.getByLabel('原发行市场',{exact:true}).selectOption('szse');

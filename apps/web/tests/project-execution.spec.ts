@@ -1246,13 +1246,32 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     });
     // setup's catch-all was registered last; it must fall back to the material fixture above.
     await setup(page, state, false);
-    const historyPicker = page.getByLabel('为历史／参考募集书选择文件');
+    let sourceSelected = false;
+    await page.route(`**/api/v1/projects/${id}/prospectus-versions**`, async route => {
+      if (route.request().method() === 'POST') {
+        expect(fixtureRequest(route.request()).version_id).toBe('source-version');
+        sourceSelected = true;
+      }
+      const material = state.materials.find(m => m.role === 'historical');
+      const versions: Dto<'ProspectusVersionsResponse'> = {
+        project_id:id, current_version_id:sourceSelected?'source-version':null, selection_revision:sourceSelected?1:0,
+        inactive_material_ids:material&&!sourceSelected?[material.material_id]:[],
+        versions:material?[{version_id:'source-version',sequence:1,origin:'upload',filename:material.filename,sha256:material.sha256,created_at:now,
+          material_id:material.material_id,material_version:material.material_version,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null}]:[]
+      };
+      return json(route,200,versions);
+    });
+    const historyPicker = page.getByLabel('募集书新版本文件');
     await expect(historyPicker).toBeEnabled();
     await expect(page.locator('#material-recovery-status')).toContainText('尚未添加材料');
     await historyPicker.setInputFiles({ name: '合成历史稿.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('%PDF synthetic history') });
     const history = page.locator('.material-file-row').filter({ hasText: '合成历史稿.docx' });
-    await expect(history).toContainText('正在保存');
+    await expect(page.locator('#prospectus-status')).toContainText('保存');
     await expect.poll(() => releaseSave).toBeDefined(); releaseSave!();
+    await expect(page.locator('#prospectus-status')).toContainText('尚未采用');
+    await expect(history).toHaveCount(0);
+    await page.locator('[data-use-version="source-version"]').click();
+    await page.locator('#confirm-prospectus-selection').click();
     await expect(history).toContainText('处理中');
     await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: '合成财务材料.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic financial') });
     const financial = page.locator('.material-file-row').filter({ hasText: '合成财务材料.pdf' });
@@ -1447,7 +1466,7 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
   expect(originalInput.prospectus_selection_revision).toBe(0);
   await page.getByRole('button', {name:'停止本次任务',exact:true}).click();
   await continueAuthoring(page);
-  let failDelete = false, deletes = 0, nextName = '', sequence = 0;
+  let failDelete = false, deletes = 0, sequence = 0;
   await page.route(`**/api/v1/projects/${id}/materials/*`, async route => {
     if (route.request().method() !== 'DELETE') return route.fallback();
     deletes++;
@@ -1456,17 +1475,14 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
     state.materials.splice(state.materials.findIndex(m => m.material_id === materialId),1);
     return route.fulfill({status:204});
   });
-  await page.route(`**/api/v1/projects/${id}/materials/uploads**`, async route => {
-    const path = new URL(route.request().url()).pathname;
-    if (path.endsWith('/bytes')) return route.fulfill({status:204});
-    if (path.endsWith('/complete')) {
-      const material: Dto<'MaterialResponse'> = {material_id:`replacement-${sequence}`,material_version:1,upload_id:`upload-${sequence}`,
-        role:'historical',filename:nextName,media_type:'application/pdf',...fixtureRequest(route.request()),state:'persisted',persisted_at:now,error:null};
-      state.materials.push(material); return json(route,200,material);
-    }
-    nextName = fixtureRequest(route.request()).filename; sequence++;
-    return json(route,201,{upload_id:`upload-${sequence}`,state:'uploading',upload_url:`/api/v1/projects/${id}/materials/uploads/upload-${sequence}/bytes`,expires_at:'2099-01-01T00:00:00Z',max_bytes:100000000});
-  });
+  // Older projects can still contain unregistered source materials. Restore them
+  // from the server fixture; new uploads now use the prospectus panel above.
+  const restoreLegacySource = async (filename: string) => {
+    sequence++;
+    state.materials.push({material_id:`replacement-${sequence}`,material_version:1,upload_id:`upload-${sequence}`,
+      role:'historical',filename,media_type:'application/pdf',byte_size:1024,sha256:hash(filename),state:'persisted',persisted_at:now,error:null});
+    await page.getByRole('button',{name:'刷新已保存材料'}).click();
+  };
   const remove = async (name:string, accept=true) => {
     page.once('dialog', dialog => accept ? dialog.accept() : dialog.dismiss());
     await page.locator('.material-file-row').filter({hasText:name}).getByRole('button',{name:'删除',exact:true}).click();
@@ -1474,8 +1490,7 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
   await remove('history.docx');
   await expect(page.locator('.material-file-row').filter({hasText:'history.docx'})).toHaveCount(0);
   await expect.poll(()=>state.project.update_details!.source_prospectuses).toEqual([]);
-  const picker = page.getByLabel('为历史／参考募集书选择文件');
-  await picker.setInputFiles({name:'误传募集书.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic wrong')});
+  await restoreLegacySource('误传募集书.pdf');
   const wrong = page.locator('.material-file-row').filter({hasText:'误传募集书.pdf'});
   await expect(wrong).toContainText('服务器已确认保存');
   await wrong.locator('[data-source-field="relation"]').selectOption('parent');
@@ -1490,7 +1505,7 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
   await remove('误传募集书.pdf');
   await expect(wrong).toHaveCount(0);
   await expect.poll(()=>state.project.update_details!.source_prospectuses).toEqual([]);
-  await picker.setInputFiles({name:'正确募集书.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic correct')});
+  await restoreLegacySource('正确募集书.pdf');
   const correct = page.locator('.material-file-row').filter({hasText:'正确募集书.pdf'});
   await expect(correct).toContainText('服务器已确认保存');
   await expect(correct.locator('[data-source-field="issuer_name"]')).toHaveCount(0);

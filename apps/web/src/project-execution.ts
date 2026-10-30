@@ -406,9 +406,6 @@ export class ProjectExecution {
       materialDetails.querySelector('#materials-state-description')!.textContent = materialsLocked
         ? activeRun ? '本次编制已开始，材料已锁定，无法新增、替换或删除。' : '本次编制材料已锁定。需要补充材料时，请点击“继续修改”，用于下一轮编制。'
         : this.nextRequested ? '补充材料将用于下一轮编制，已开始的任务和已有成果保持不变。' : '请在开始更新前补齐材料；开始后材料锁定，仅可查看。';
-      materialDetails.querySelectorAll('.material-subtypes>summary').forEach(summary => {
-        summary.textContent = materialsLocked ? '按细分类别查看材料' : '按细分类别补充材料（选填）';
-      });
     }
     this.conversation.setEditingVisible(!editsFrozen && !this.restoring && !activeRun && (!this.run || this.nextRequested));
     this.actions.closest('.authoring-actions')?.classList.toggle('is-preparing', !this.restoring && !activeRun && (!this.run || this.nextRequested));
