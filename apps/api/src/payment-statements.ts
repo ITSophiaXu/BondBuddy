@@ -13,7 +13,7 @@ const dayBefore=(date:string,days:number)=>new Date(Date.parse(date+'T00:00:00Z'
 const statementKinds=(provider:PaymentProvider)=>provider.statementKinds??(provider.name==='wechat'?['trade','funds'] as const:['trade'] as const);
 
 /** Compare original amounts and separately audit cash/points. No payment/refund/credit writer is called here. */
-async function differences(c:PoolClient,provider:PaymentProvider,statement:VerifiedPaymentStatement):Promise<Difference[]>{
+async function differences(c:PoolClient,provider:PaymentProvider,statement:VerifiedPaymentStatement,asOfDay:string):Promise<Difference[]>{
   // A verified Alipay download is not yet a verified transaction/settlement format.
   // Never apply WeChat coupon arithmetic or application-date semantics to it.
   if(statement.provider==='alipay')return [{kind:'alipay_statement_format_unverified',line:0,reference:statement.billDate,unit:'coverage'}];
@@ -69,8 +69,13 @@ async function differences(c:PoolClient,provider:PaymentProvider,statement:Verif
       if(entry.merchantId!==statement.merchantId){add('other_merchant',entry,'coverage');continue;}
       if(entry.appId!==statement.appId||entry.tradeType!=='NATIVE'){add('other_application_or_trade',entry,'coverage');continue;}
       const refund=refundMap.get(entry.refundId!);if(!refund){add('channel_refund_without_intent',entry,'coverage');continue;}
+      // Trade bills describe accepted refund applications. Success/callback/local
+      // completion times cannot locate this row, including a refund settled later.
+      const applicationMatches=chinaDate(new Date(entry.eventAt))===statement.billDate&&
+        (!refund.provider_created_at||new Date(refund.provider_created_at).toISOString()===entry.eventAt);
+      if(!applicationMatches)add('refund_application_time',entry,'identity');
       if(refund.order_id!==entry.orderId||refund.provider_txn_id!==entry.transactionId||refund.provider_refund_id!==entry.providerRefundId)add('refund_identity',entry,'identity');
-      else if(exact(refund.amount_fen)===exact(entry.refundRequestedFen))foundRefunds.add(refund.id);
+      else if(applicationMatches&&exact(refund.amount_fen)===exact(entry.refundRequestedFen))foundRefunds.add(refund.id);
       compare('refund_requested_cash',entry,'cny_fen',refund.amount_fen,entry.refundRequestedFen);
       // This file snapshots successful refund APPLICATIONS. PROCESSING/FAIL/CHANGE
       // is not the current API refund state; never reverse a later successful refund.
@@ -105,12 +110,15 @@ async function differences(c:PoolClient,provider:PaymentProvider,statement:Verif
       if(order.provider_paid_at&&chinaDate(new Date(order.provider_paid_at))===statement.billDate&&!foundPayments.has(order.id))
         add('local_payment_missing_from_statement',undefined,'coverage',undefined,undefined,order.id);
     }
-    // Refund API application/success dates are not persisted yet. Never assign a
-    // refund to this bill date using local created_at/completed_at. Authenticated
-    // bill entries can establish the application date; otherwise record coverage
-    // across the merchant's successful refunds, without claiming a daily mismatch.
-    const refundCoverage=(await c.query(`SELECT r.id,count(b.statement_id)>0 AS has_application_evidence,
-      COALESCE(bool_or(b.bill_date=$3::date),false) AS application_on_bill_date
+    // Both authenticated API create_time and exact historical bill rows establish
+    // application dates. Accepted processing/closed refunds also belong in bills.
+    // Legacy unknown dates stay uncovered; never backfill from local timestamps.
+    const refundCoverage=(await c.query(`SELECT r.id,count(b.statement_id)>0 AS has_statement_evidence,
+      (r.provider_created_at AT TIME ZONE 'Asia/Shanghai')::date<$5::date-90 AS outside_statement_window,
+      (r.provider_created_at IS NOT NULL OR count(b.statement_id)>0) AS has_application_evidence,
+      CASE WHEN r.provider_created_at IS NOT NULL THEN (r.provider_created_at AT TIME ZONE 'Asia/Shanghai')::date=$3::date
+        ELSE COALESCE(bool_or(b.bill_date=$3::date),false) END AS application_on_bill_date,
+      COALESCE(bool_or(r.provider_created_at IS NOT NULL AND b.payload->>'eventAt'<>to_char(r.provider_created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),false) AS historical_time_conflict
       FROM bb_payment_refunds r LEFT JOIN (
         SELECT e.statement_id,e.reference_id,e.payload,j.bill_date FROM bb_payment_statement_entries e
         JOIN bb_payment_statements s ON s.id=e.statement_id JOIN bb_payment_statement_jobs j ON j.id=s.job_id
@@ -119,12 +127,16 @@ async function differences(c:PoolClient,provider:PaymentProvider,statement:Verif
         AND b.payload->>'transactionId'=r.provider_txn_id AND b.payload->>'providerRefundId'=r.provider_refund_id
         AND b.payload->>'refundRequestedFen'=r.amount_fen::text AND b.payload->>'appId'=$4
         AND b.payload->>'tradeType'='NATIVE' AND b.payload->>'merchantId'=$2
-      WHERE r.provider=$1 AND r.merchant_id=$2 AND r.state='succeeded' GROUP BY r.id`,
-      [provider.name,provider.merchantId,statement.billDate,statement.appId])).rows;
+      WHERE r.provider=$1 AND r.merchant_id=$2
+        AND (r.provider_created_at IS NOT NULL OR r.provider_refund_id IS NOT NULL OR r.state='succeeded') GROUP BY r.id`,
+      [provider.name,provider.merchantId,statement.billDate,statement.appId,asOfDay])).rows;
     for(const refund of refundCoverage){
+      if(refund.historical_time_conflict)add('refund_application_evidence_conflict',undefined,'identity',undefined,undefined,refund.id);
       if(!refund.has_application_evidence)add('refund_application_date_uncovered',undefined,'coverage',undefined,undefined,refund.id);
       else if(refund.application_on_bill_date&&!foundRefunds.has(refund.id))
         add('local_refund_missing_from_statement',undefined,'coverage',undefined,undefined,refund.id);
+      else if(refund.outside_statement_window&&!refund.has_statement_evidence)
+        add('refund_application_statement_window_uncovered',undefined,'coverage',undefined,undefined,refund.id);
     }
   }
   return issues;
@@ -139,7 +151,7 @@ export async function enqueuePaymentStatement(pool:Pool,provider:PaymentProvider
   return result.rows[0]?.id as string|undefined;
 }
 
-async function persistStatement(pool:Pool,job:any,provider:PaymentProvider,statement:VerifiedPaymentStatement){
+async function persistStatement(pool:Pool,job:any,provider:PaymentProvider,statement:VerifiedPaymentStatement,asOfDay:string){
   const date=typeof job.bill_date==='string'?job.bill_date:new Date(job.bill_date).toISOString().slice(0,10);
   if(statement.provider!==provider.name||statement.merchantId!==provider.merchantId||statement.billDate!==date||statement.kind!==job.kind||(statement.accountType??'')!==job.account_type
     ||provider.statementAppId!==undefined&&(statement.provider==='wechat'?statement.appId:statement.requestAppId)!==provider.statementAppId
@@ -172,7 +184,7 @@ async function persistStatement(pool:Pool,job:any,provider:PaymentProvider,state
         SELECT $1,line_no,kind,reference_id,payload FROM jsonb_to_recordset($2::jsonb) r(line_no integer,kind text,reference_id text,payload jsonb)`,
         [saved.id,JSON.stringify(statement.entries.map(entry=>({line_no:entry.line,kind:entry.kind,reference_id:ref(entry),payload:entry})))]);
     }
-    const issues=await differences(c,provider,statement),checkId=uid();
+    const issues=await differences(c,provider,statement,asOfDay),checkId=uid();
     await c.query('INSERT INTO bb_payment_statement_checks(id,job_id,statement_id,difference_count) VALUES($1,$2,$3,$4)',[checkId,job.id,saved.id,issues.length]);
     if(issues.length)await c.query(`INSERT INTO bb_payment_statement_differences(id,check_id,kind,line_no,reference_id,unit,expected_value,observed_value)
       SELECT id,$1,kind,line_no,reference_id,unit,expected_value,observed_value FROM jsonb_to_recordset($2::jsonb)
@@ -212,7 +224,7 @@ export async function reconcileDailyStatements(pool:Pool,providers:readonly Paym
     const billDate=typeof job.bill_date==='string'?job.bill_date:new Date(job.bill_date).toISOString().slice(0,10);
     try{
       const statement=await provider.downloadStatements!({billDate,kind:job.kind,...(job.kind==='funds'?{accountType:job.account_type}:{})});
-      const state=await persistStatement(pool,job,provider,statement);
+      const state=await persistStatement(pool,job,provider,statement,today);
       if(state==='complete')counts.completed++;else if(state==='unknown')counts.unknown++;
     }catch{
       counts.unknown++;

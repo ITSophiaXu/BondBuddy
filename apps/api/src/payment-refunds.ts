@@ -12,7 +12,7 @@ export type RefundOrder={id:string;order_id:string;merchant_id:string;provider_t
 /** Produced only by an authenticated channel response or a verified/decrypted callback. */
 export type VerifiedRefund={refundId:string;orderId:string;merchantId:string;transactionId:string;providerRefundId:string;
   currency:string;orderAmountFen:number;amountFen:number;payerTotalFen:number;payerRefundFen:number;
-  state:'processing'|'succeeded'|'failed';failureCode?:string};
+  state:'processing'|'succeeded'|'failed';failureCode?:string;providerCreatedAt?:string;providerSucceededAt?:string};
 export interface PaymentRefundProvider{
   create(order:RefundOrder):Promise<VerifiedRefund>;
   query(order:RefundOrder):Promise<VerifiedRefund>;
@@ -23,6 +23,34 @@ export interface PaymentRefundProvider{
 const unavailable=()=>new Problem(503,'PAYMENT_UNAVAILABLE','原支付渠道暂未开放自动退款，请联系支持核实原单。');
 const invalid=()=>new Problem(422,'PAYMENT_INVALID','Refund receipt does not match the locked original payment');
 const terminal=(state:string)=>state==='succeeded'||state==='failed';
+export const refundDatesIncomplete=(row:any)=>row.provider==='wechat'&&(!row.provider_created_at||row.state==='succeeded'&&!row.provider_succeeded_at);
+function refundDates(row:any,receipt:VerifiedRefund){
+  for(const value of [receipt.providerCreatedAt,receipt.providerSucceededAt]){
+    // Adapters must return canonical authenticated instants, never local or envelope timestamps.
+    if(value!==undefined&&(typeof value!=='string'||!Number.isFinite(Date.parse(value))||new Date(value).toISOString()!==value))throw invalid();
+  }
+  if(receipt.providerSucceededAt!==undefined&&receipt.state!=='succeeded')throw invalid();
+  for(const [stored,received] of [[row.provider_created_at,receipt.providerCreatedAt],[row.provider_succeeded_at,receipt.providerSucceededAt]]){
+    if(stored&&received&&date(stored)!==received)throw new Problem(409,'PAYMENT_INVALID','Authenticated refund time conflicts with the original receipt');
+  }
+  const created=row.provider_created_at?date(row.provider_created_at):receipt.providerCreatedAt;
+  const succeeded=row.provider_succeeded_at?date(row.provider_succeeded_at):receipt.providerSucceededAt;
+  if(created&&succeeded&&Date.parse(succeeded)<Date.parse(created))throw invalid();
+  return {created:created??null,succeeded:succeeded??null};
+}
+async function recheckRefundApplicationDay(c:PoolClient,row:any,created:string|null){
+  if(row.provider!=='wechat'||row.provider_created_at||!created)return;
+  // Late proof can belong to a day outside the rolling seven-day recheck. Keep
+  // prior evidence, but invalidate any in-flight check's lease so it cannot hide
+  // the need to compare this newly committed proof. The enabled statement
+  // adapter and its 90-day retrieval bound still control all external reads.
+  await c.query(`INSERT INTO bb_payment_statement_jobs(id,provider,merchant_id,bill_date,kind,account_type,next_attempt_at)
+    VALUES($1,$2,$3,($4::timestamptz AT TIME ZONE 'Asia/Shanghai')::date,'trade','',
+      GREATEST(now(),((($4::timestamptz AT TIME ZONE 'Asia/Shanghai')::date+1)+time '10:00') AT TIME ZONE 'Asia/Shanghai'))
+    ON CONFLICT(provider,merchant_id,bill_date,kind,account_type) DO UPDATE SET
+      state='pending',lease_token=NULL,lease_until=NULL,next_attempt_at=EXCLUDED.next_attempt_at,updated_at=now()`,
+    [uid(),row.provider,row.merchant_id,created]);
+}
 function refundProvider(providers:readonly PaymentProvider[],row:any){
   const provider=providers.find(p=>p.name===row.provider&&p.merchantId===row.merchant_id&&p.refunds);
   if(!provider?.refunds)throw unavailable();return provider;
@@ -178,8 +206,16 @@ export async function applyVerifiedRefund(pool:Pool,provider:PaymentProvider,rec
       !/^[A-Za-z0-9_-]{1,128}$/.test(receipt.providerRefundId)||!['processing','succeeded','failed'].includes(receipt.state)||
       receipt.state==='failed'&&receipt.failureCode!=='CLOSED'||!row.dispatch_started_at)throw invalid();
     if(row.provider_refund_id&&row.provider_refund_id!==receipt.providerRefundId)throw new Problem(409,'PAYMENT_INVALID','Channel refund identity conflicts with the original refund');
+    const times=refundDates(row,receipt);
     if(terminal(row.state)){
       if(terminal(receipt.state)&&row.state!==receipt.state)throw new Problem(409,'PAYMENT_INVALID','Conflicting terminal refund outcome requires reconciliation');
+      // First authenticated evidence may arrive after settlement. Enrich proof only;
+      // never replay balances, subscription cancellation, events or outbox delivery.
+      if(!row.provider_created_at&&times.created||!row.provider_succeeded_at&&times.succeeded){
+        const enriched=(await c.query(`UPDATE bb_payment_refunds SET provider_created_at=$2,provider_succeeded_at=$3 WHERE id=$1 RETURNING *`,[row.id,times.created,times.succeeded])).rows[0];
+        await recheckRefundApplicationDay(c,row,times.created);
+        return refundDto(enriched);
+      }
       return refundDto(row);
     }
     if(terminal(receipt.state)){
@@ -196,15 +232,28 @@ export async function applyVerifiedRefund(pool:Pool,provider:PaymentProvider,rec
       }
     }
     const updated=(await c.query(`UPDATE bb_payment_refunds SET state=$2,provider_refund_id=COALESCE(provider_refund_id,$3),updated_at=now(),
-      completed_at=CASE WHEN $2 IN ('succeeded','failed') THEN now() ELSE NULL END,failure_code=$4 WHERE id=$1 RETURNING *`,
-      [row.id,receipt.state,receipt.providerRefundId,receipt.state==='failed'?'CLOSED':null])).rows[0];
+      completed_at=CASE WHEN $2 IN ('succeeded','failed') THEN now() ELSE NULL END,failure_code=$4,
+      provider_created_at=$5,provider_succeeded_at=$6 WHERE id=$1 RETURNING *`,
+      [row.id,receipt.state,receipt.providerRefundId,receipt.state==='failed'?'CLOSED':null,times.created,times.succeeded])).rows[0];
+    await recheckRefundApplicationDay(c,row,times.created);
     await event(c,updated,receipt.state);return refundDto(updated);
   });
 }
 
 export async function refreshPaymentRefund(pool:Pool,owner:string,refundId:string,providers:readonly PaymentProvider[]):Promise<PaymentRefund>{
   const pointer=(await pool.query('SELECT * FROM bb_payment_refunds WHERE id=$1 AND owner_user_id=$2',[refundId,owner])).rows[0];if(!pointer)throw missing();
-  if(terminal(pointer.state))return refundDto(pointer);
+  if(terminal(pointer.state)){
+    if(!refundDatesIncomplete(pointer))return refundDto(pointer);
+    const provider=providers.find(p=>p.name===pointer.provider&&p.merchantId===pointer.merchant_id&&p.refunds);
+    if(!provider?.refunds)return refundDto(pointer);
+    // Terminal proof recovery is read-only at the channel, including on timeout.
+    // It must never enter create/recoverSameRequest, even for an old missing record.
+    let receipt:VerifiedRefund;
+    try{receipt=await provider.refunds.query(refundOrder(pointer));}catch{return refundDto(pointer);}
+    if(receipt.refundId!==pointer.id||receipt.orderId!==pointer.order_id)throw invalid();
+    try{return await applyVerifiedRefund(pool,provider,receipt);}
+    catch(error){if(error instanceof Problem&&error.code==='BILLING_NOT_READY')return refundDto(pointer);throw error;}
+  }
   const provider=refundProvider(providers,pointer);
   const claimed=pointer.dispatch_started_at?{row:pointer,create:false}:await transaction(pool,async c=>{
     await assertChannelWritable(c,provider.name,provider.merchantId);
