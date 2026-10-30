@@ -919,12 +919,23 @@ export async function requeueFailedReviewAssembly(pool:Pool,blobs:PrivateBlobs,i
     }catch{throw new Problem(409,'CAPABILITY_NOT_READY','Review recovery Blob evidence is unavailable');}
     if(!resultBytes||resultBytes.length!==Number(p.byte_size)||digest(resultBytes)!==input.resultSha256||!promptBytes||digest(promptBytes)!==prompt.content_sha256.trim())
       throw new Problem(409,'CAPABILITY_NOT_READY','Review recovery Blob evidence is missing or changed');
+    // A paid assembly repair keeps the exact completed failure release. It may
+    // not reinterpret a consumed or partially charged historical reservation.
+    if(r.billing_mode==='fixed_credits'){
+      const credits=(await client.query(`SELECT state,billing_policy,charged_points FROM bb_credit_reservations
+        WHERE id=$1 AND owner_user_id=$2 AND run_id=$3`,[r.reservation_id,r.owner_user_id,r.id])).rows[0];
+      if(!credits||credits.state!=='released'||credits.billing_policy!=='on_delivery'||String(credits.charged_points)!=='0')throw refuse();
+    }
     const audit={actor:input.actor,policy:'review_assembly_v1',attempt_id:a.id,attempt_no:String(a.attempt_no),logical_call_id:a.logical_call_id,
       result_id:p.id,result_sha256:input.resultSha256,prompt_snapshot_id:prompt.id,prompt_sha256:prompt.content_sha256.trim(),
       input_revision:String(r.input_revision),input_hash:r.input_hash.trim(),failure_event_seq:String(r.event_cursor),failure_error_id:failure.id};
     await client.query(`UPDATE bb_jobs SET state='queued',stage='queued',error_code=NULL,updated_at=now(),
       checkpoint=jsonb_set(checkpoint,'{review_assembly_recovery}',$2::jsonb,true) WHERE id=$1`,[j.id,JSON.stringify({...audit,reuse_only:true})]);
     await event(client,r,'queued','queued','review_assembly_requeued',undefined,'run.state_changed',{...audit,reuse_only:'true'});
+    if(r.billing_mode==='fixed_credits'){
+      const checked=(await client.query('SELECT bb_review_assembly_recovery_credit_ready(r) ready FROM bb_runs r WHERE r.id=$1',[r.id])).rows[0];
+      if(checked?.ready!==true)throw refuse();
+    }
     return {run_id:r.id,attempt_id:a.id,result_sha256:input.resultSha256,idempotent:false};
   });
 }

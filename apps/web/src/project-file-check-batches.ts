@@ -3,7 +3,7 @@ import {projectFileCheckBatchSchemas,int64,serializeInt64,formatPoints,type File
 import {ApiClient,ApiError,friendlyError} from './api';
 import {esc} from './ui';
 import {runStateLabel} from './review-state';
-import {rechargeHref} from './project-navigation';
+import {billingTaskRechargeHrefForRequest} from './billing-task-recovery';
 import {UserFacingError} from './user-facing-error';
 import './project-file-check-batches.css';
 type Pending={kind:'create';body:FileCheckBatchCreate;state:'attempting'|'needs_funds'|'unknown'}|{kind:'retry';batch_id:string;body:FileCheckBatchRetry;state:'attempting'|'needs_funds'|'unknown'};
@@ -12,6 +12,7 @@ export class FileCheckBatches{
   private abort=new AbortController();private host?:HTMLElement;private timer?:ReturnType<typeof setTimeout>;private batches:FileCheckBatch[]=[];
   private busy=false;private loading=false;private loaded=false;private error='';private pending?:Pending;private storageBlocked=false;
   private completed?:{request_id:string;batch_id:string};private observedCompletion?:string;
+  private fundingHref?:string;
   constructor(private api:ApiClient,private active:()=>boolean,private project:string,private owner:string|undefined,private changed:()=>void){
     this.restore();
   }
@@ -21,6 +22,11 @@ export class FileCheckBatches{
   private live(){return this.active()&&!this.abort.signal.aborted;}
   private key(){if(!this.owner)throw Error('Missing owner');return 'bondbuddy:file-check-batch:v1:'+JSON.stringify([this.owner,this.project]);}
   private base(){return '/projects/'+encodeURIComponent(this.project)+'/project-files/check-batches';}
+  private async refreshFundingHref(){
+    const pending=this.pending;
+    const href=pending?.state==='needs_funds'?await billingTaskRechargeHrefForRequest(this.owner,this.base()+(pending.kind==='retry'?'/'+encodeURIComponent(pending.batch_id)+'/retry':''),pending.body):undefined;
+    if(this.pending===pending)this.fundingHref=href;
+  }
   private restore(){
     try{const raw=localStorage.getItem(this.key());this.pending=undefined;this.completed=undefined;
       if(raw){const saved=JSON.parse(raw);if(saved.owner!==this.owner||saved.project!==this.project||saved.pending&&(!['attempting','needs_funds','unknown'].includes(saved.pending.state)||
@@ -51,9 +57,13 @@ export class FileCheckBatches{
         if(!Value.Check(projectFileCheckBatchSchemas.FileCheckBatchResponse,original)||original.batch_id!==batchId)throw Error('Invalid original batch');
         result.batches.unshift(original);
       }
-      if(this.live()){this.batches=result.batches;this.loaded=true;if(this.completed&&result.batches.some(b=>b.batch_id===this.completed!.batch_id))this.observedCompletion=this.completed.request_id;if(!this.storageBlocked)this.error='';}}
+      if(this.live()){
+        const pending=this.pending;
+        const accepted=pending?.kind==='create'?result.batches.find(b=>b.request_id===pending.body.request_id&&b.source.version_id===pending.body.expected_source_version_id&&b.source.selection_revision===pending.body.expected_source_selection_revision&&b.items.length===pending.body.file_version_ids.length&&b.items.every(i=>pending.body.file_version_ids.includes(i.file_version_id))):undefined;
+        if(accepted&&pending){this.completed={request_id:pending.body.request_id,batch_id:accepted.batch_id};this.pending=undefined;this.persist();}
+        this.batches=result.batches;this.loaded=true;if(this.completed&&result.batches.some(b=>b.batch_id===this.completed!.batch_id))this.observedCompletion=this.completed.request_id;if(!this.storageBlocked)this.error='';}}
     catch(e){if(this.live())this.error=friendlyError(e,'read');}
-    finally{this.loading=false;this.draw();clearTimeout(this.timer);if(this.live())this.timer=setTimeout(()=>void this.refresh(),15000);}
+    finally{this.loading=false;await this.refreshFundingHref();this.draw();clearTimeout(this.timer);if(this.live())this.timer=setTimeout(()=>void this.refresh(),15000);}
   }
   async start(source:ProjectFileSource,versions:string[]){
     if(this.busy||this.storageBlocked||!this.owner)return;
@@ -66,12 +76,12 @@ export class FileCheckBatches{
       }
       await this.submit();});
     }catch(e){if(this.live())this.error=friendlyError(e,'submit');}
-    finally{this.busy=false;this.draw();}
+    finally{this.busy=false;await this.refreshFundingHref();this.draw();}
   }
   private async retry(batch:FileCheckBatch){
     if(this.busy||this.storageBlocked)return;this.busy=true;this.error='';this.draw();
     try{await this.serialized(async()=>{if(!this.pending){const items=batch.items.filter(i=>retryable.includes(i.state));this.pending={kind:'retry',batch_id:batch.batch_id,state:'attempting',body:{request_id:crypto.randomUUID(),price_version:batch.price_version,expected_points:serializeInt64(items.reduce((sum,i)=>int64(sum+int64(i.points)),0n)),expected_attempts:items.map(i=>({file_version_id:i.file_version_id,run_id:i.run_id}))}};}await this.submit();});}
-    catch(e){if(this.live())this.error=friendlyError(e,'submit');}finally{this.busy=false;this.draw();}
+    catch(e){if(this.live())this.error=friendlyError(e,'submit');}finally{this.busy=false;await this.refreshFundingHref();this.draw();}
   }
   private async submit(){
     const request=this.pending!;request.state='attempting';this.persist();
@@ -82,7 +92,7 @@ export class FileCheckBatches{
   }
   private draw(){
     if(!this.live()||!this.host?.isConnected)return;
-    this.host.innerHTML=`${this.error?`<p role="alert">${esc(this.error)}</p>`:''}${this.pending?`<section class="notice"><p>${this.pending.state==='needs_funds'?'积分不足，原文件范围和价格已保存，尚未开始。':'原逐份检查请求仍待核对，继续时沿用原请求。'}</p><button class="btn secondary" data-file-check-pending ${this.busy||this.storageBlocked?'disabled':''}>继续原检查请求</button>${this.pending.state==='needs_funds'?` <a class="text-button" href="${esc(rechargeHref(this.project))}">订阅或充值</a>`:''}</section>`:''}
+    this.host.innerHTML=`${this.error?`<p role="alert">${esc(this.error)}</p>`:''}${this.pending?`<section class="notice"><p>${this.pending.state==='needs_funds'?'积分不足，原文件范围和价格已保存，尚未开始。':'原逐份检查请求仍待核对，继续时沿用原请求。'}</p><button class="btn secondary" data-file-check-pending ${this.busy||this.storageBlocked?'disabled':''}>继续原检查请求</button>${this.pending.state==='needs_funds'&&this.fundingHref?` <a class="text-button" data-file-check-funding href="${esc(this.fundingHref)}">订阅或充值，继续原检查</a>`:''}</section>`:''}
       ${this.batches.map(batch=>`<section class="panel file-check-batch" data-file-check-batch="${esc(batch.batch_id)}"><header><h2>${{queued:'逐份检查已受理',running:'正在逐份检查',complete:'本批检查已完成',partial:'本批部分文件已完成',failed:'本批文件尚未完成'}[batch.state]}</h2><button class="text-button" data-file-check-refresh ${this.loading?'disabled':''}>刷新本批状态</button></header><p>已完成 ${batch.items.filter(i=>i.state==='succeeded').length} / ${batch.items.length} 份 · 已扣 ${formatPoints(batch.charged_points)} 积分。每份独立交付与结算，失败文件不扣费。</p><ul>${batch.items.map(item=>`<li data-check-file="${esc(item.file_version_id)}"><div><strong>${esc(item.filename)}</strong><span>${esc(runStateLabel[item.state as keyof typeof runStateLabel]??item.state)} · 已扣 ${formatPoints(item.charged_points)} 积分</span></div><a class="text-button" href="#consistency?${new URLSearchParams({project:this.project,run:item.run_id})}">${item.state==='succeeded'?'查看本份检查与修订':'查看本份任务'}</a></li>`).join('')}</ul>${['partial','failed'].includes(batch.state)?`<button class="btn secondary" data-file-check-retry="${esc(batch.batch_id)}" ${this.busy||this.storageBlocked?'disabled':''}>仅重试失败或已取消文件</button><p class="muted">沿用原文件与原价格，已成功文件不会再次执行或扣费。</p>`:''}</section>`).join('')}`;
     this.host.querySelectorAll('[data-file-check-refresh]').forEach(b=>b.addEventListener('click',()=>void this.refresh()));
     this.host.querySelectorAll<HTMLButtonElement>('[data-file-check-retry]').forEach(b=>b.addEventListener('click',()=>{const batch=this.batches.find(i=>i.batch_id===b.dataset.fileCheckRetry);if(batch)void this.retry(batch);}));

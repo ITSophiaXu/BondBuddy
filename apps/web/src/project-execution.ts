@@ -1,5 +1,6 @@
 import {int64} from '@bondbuddy/contracts';
 import {isAutomaticCharge} from './commerce';
+import {billingTaskRechargeHrefForRequest} from './billing-task-recovery';
 import {UserFacingError} from './user-facing-error.js';
 import { ArtifactPage } from './artifact-page';
 import { authoringTasks,taskHref,type ProjectTask } from './project-collection-model';
@@ -179,6 +180,7 @@ export class ProjectExecution {
   private chargeError = false;
   private paidEnabled?: boolean;
   private awaitingCredits = new URLSearchParams(location.hash.split('?')[1] ?? '').get('resume') === 'credits';
+  private fundingHref?:string;
 
   constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation,
     private referenceSnapshots?: ReferenceSnapshotResolver, private onStaleInput?: () => void,
@@ -232,7 +234,7 @@ export class ProjectExecution {
     }).catch(() => {});
   }
   private node(selector: string) { return this.host.querySelector<HTMLElement>(selector) ?? this.actions.querySelector<HTMLElement>(selector)!; }
-  private rechargeLink(){const [path,search='']=location.hash.split('?'),query=new URLSearchParams(search);query.set('resume','credits');return rechargeHref(this.id,path+'?'+query);}
+  private rechargeLink(){if(this.fundingHref)return this.fundingHref;const [path,search='']=location.hash.split('?'),query=new URLSearchParams(search);query.set('resume','credits');return rechargeHref(this.id,path+'?'+query);}
   private eligibleMaterials() {
     return this.materials;
   }
@@ -820,8 +822,9 @@ export class ProjectExecution {
       if(!this.matchesExecution(run,request))throw new ApiError(0,'DATA_UNAVAILABLE');
       this.acceptRun(run);this.message='任务已提交；重复提交此版本会返回同一任务。';void this.poll();
     }catch(error){
+      if(error instanceof ApiError&&error.status===402&&error.code==='CREDITS_INSUFFICIENT')this.fundingHref=await billingTaskRechargeHrefForRequest(undefined,'/runs/execute',request);
       if(error instanceof ApiError&&error.code==='IDEMPOTENCY_CONFLICT')this.pendingExecutionConflict=true;
-      else if(error instanceof ApiError&&error.status>=400&&error.status<500&&error.status!==408){
+      else if(error instanceof ApiError&&error.status>=400&&error.status<500&&![408,429].includes(error.status)){
         // A definitive rejection has no accepted run; billing can now obtain a new quote.
         this.pendingExecution=undefined;this.pendingExecutionConflict=false;
       }
@@ -834,6 +837,7 @@ export class ProjectExecution {
     await this.action(()=>this.submitExecution(request),'execute');
   }
   private acceptRun(run: Dto<'RunResponse'>) {
+    this.fundingHref=undefined;
     if(this.pendingExecution&&this.matchesExecution(run,this.pendingExecution)){
       this.pendingExecution=undefined;this.pendingExecutionConflict=false;
     }

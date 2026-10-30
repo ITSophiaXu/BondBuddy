@@ -1,0 +1,26 @@
+{
+  "synthetic": true,
+  "realHttp": true,
+  "realPostgres": true,
+  "modelCallsPerformed": 0,
+  "realPaymentCallsPerformed": 0,
+  "startedAt": "2026-10-30T03:59:34.064Z",
+  "finishedAt": "2026-10-30T03:59:36.147Z",
+  "instanceId": "5c7885f4-5945-49d4-8d8c-40f7fa87f583",
+  "launchId": "5d6d3738126cd3bf2a05d5e992d299354ad68112d7cdb78a",
+  "username": "billing_settle_11bdbeb9",
+  "owner": "2319a6e1-ce58-41db-a50d-8f62777b4cfe",
+  "failedRun": "9a15131c-8a1a-4741-be7b-7879de974b9a",
+  "deliveredRun": "67eb17b2-f658-4ba3-bc42-cbacef8a8b78",
+  "checks": [
+    "one new random account funds its real wallet through a synthetic verified topup",
+    "failed full review releases its complete 27195-point reservation and charges zero",
+    "replayed failed submission and completion keep the original run without another hold or release",
+    "delivered synthetic Word settles exactly once; repeated completion does not debit again",
+    "success exposes its exact originally charged quality-refund unit",
+    "owner-only SQL confirms one reserve per run, one settle or release, zero model calls and a consistent ledger"
+  ],
+  "passed": 6,
+  "failed": 0,
+  "skipped": 0
+}

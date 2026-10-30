@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import { Value } from '@sinclair/typebox/value';
 import { M4AssistantReplySchema,type M4AssistantReply,type M4QaManifest } from '@bondbuddy/contracts';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
-import { m4UnavailableDocument,m4UnavailableLocalScope,m4UnavailableResearch } from '@bondbuddy/api/m4-workspace';
+import { m4UnavailableDocument,m4UnavailableLocalScope,m4UnavailableResearch,constrainFreeM4Reply } from '@bondbuddy/api/m4-workspace';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage,type RunStage,type StageContext } from './run-pipeline.js';
 import { loadM4WorkerInput,type M4WorkerInput } from './m4-input.js';
@@ -29,12 +29,16 @@ export function validM4QaResult(value:unknown,ctx:StageContext,input?:M4WorkerIn
   return !!v && v.version==='codex-m4-qa-v1' && v.input_hash===ctx.run.input_hash.trim()
     && /^[a-f0-9]{64}$/.test(v.skill_sha256) && /^[a-f0-9]{64}$/.test(v.method_hash)
     && Value.Check(M4AssistantReplySchema,v.reply) && (!input || authorizedM4Reply(v.reply,input))
+    && (!input||input.manifest.kind!=='qa'||same(v.reply,constrainFreeM4Reply(v.reply,input.manifest)))
     && (v.calculation===null || !!v.calculation && /^[a-f0-9]{64}$/.test(v.calculation.request_sha256)
       && v.calculation.result.version==='m4-finance-v1' && ['calculated','needs_confirmation'].includes(String(v.calculation.result.status)));
 }
 
 /** The CLI labels semantic intent; it cannot create/charge a document run or mutate immutable input. */
 export function constrainM4Reply(reply:M4AssistantReply,manifest:M4QaManifest):M4AssistantReply {
+  return constrainFreeM4Reply(constrainM4TaskReply(reply,manifest),manifest);
+}
+function constrainM4TaskReply(reply:M4AssistantReply,manifest:M4QaManifest):M4AssistantReply {
   if(manifest.assistant_context){
     const discussOnly=/(?:先别|暂时不要|不要|不需要)(?:执行|开始|生成|制作|改稿|更新|复核)(?:[，。！\s]|募集|任务|$)|只是(?:讨论|问)|^(?:如何|怎么|怎样).*(?:生成|制作|更新|复核)/.test(manifest.content);
     const {assistant_action,...answer}=reply;

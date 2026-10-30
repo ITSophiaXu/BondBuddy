@@ -288,3 +288,23 @@ test('retired source-diff route remains replayable while automatic workpaper che
     const after=await counts(pool,f.owner);assert.equal(after.runs,before.runs+1);assert.equal(after.reservations,before.reservations);
   }finally{await app.close();await pool.end();}
 });
+
+test('retired workpaper assessment rejects new free work but preserves historical replay and reads',{skip:!database,timeout:120000},async()=>{
+  const pool=new Pool({connectionString:database}),f=await fixture(pool),app=server(pool,f),base=`/api/v1/projects/${f.project}/workpapers/assessments`;
+  const body={request_id:randomUUID(),catalogue_id:randomUUID(),catalogue_sha256:sha,item_ids:['row-1'],source_version_id:f.sourceVersion,source_selection_revision:1,requirements:'Synthetic historical assessment'};
+  const send=(payload:typeof body)=>app.inject({method:'POST',url:base,headers:{origin},payload});
+  try{
+    await fund(pool,f.owner,50000);const before=await counts(pool,f.owner);
+    const rejected=await send(body);assert.equal(rejected.statusCode,409,rejected.body);assert.equal(rejected.json().code,'BILLING_NOT_READY');
+    assert.deepEqual(await counts(pool,f.owner),before);assert.deepEqual(await creditBalance(pool,f.owner),{available:50000,frozen:0});
+    const old=randomUUID(),manifest={version:'workpaper-assessment-v1',request:body,source:{project_id:f.project,version_id:f.sourceVersion,sequence:1,selection_revision:1,filename:'Synthetic prospectus.docx',asset:f.source},entries:[]};
+    const hash=inputManifestHash(manifest),requestHash=inputManifestHash({id:f.project,...body});
+    await pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,1,$2,1,$3,$4,'[]','[]')",[f.project,f.owner,hash,manifest]);
+    await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,1,$4,$5,'generation',$6,'failed')",[old,f.owner,f.project,hash,'workpaper-assessment:'+body.request_id,requestHash]);
+    await pool.query('INSERT INTO bb_workpaper_assessments(run_id,owner_user_id,project_id,manifest,input_hash) VALUES($1,$2,$3,$4,$5)',[old,f.owner,f.project,manifest,hash]);
+    const replay=await send(body);assert.equal(replay.statusCode,200,replay.body);assert.equal(replay.json().assessment_id,old);assert.equal(replay.json().state,'failed');
+    const history=await app.inject({method:'GET',url:base+'/'+old,headers:{origin}});assert.equal(history.statusCode,200,history.body);assert.equal(history.json().assessment_id,old);
+    const conflict=await send({...body,requirements:'New assessment disguised as replay'});assert.equal(conflict.statusCode,409);assert.equal(conflict.json().code,'IDEMPOTENCY_CONFLICT');
+    const after=await counts(pool,f.owner);assert.equal(after.runs,before.runs+1);assert.equal(after.reservations,before.reservations);assert.deepEqual(await creditBalance(pool,f.owner),{available:50000,frozen:0});
+  }finally{await app.close();await pool.end();}
+});

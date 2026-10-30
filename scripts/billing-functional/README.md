@@ -33,7 +33,7 @@ node scripts/billing-functional/stop.mjs
 
 ## 自动续费与逐月发额
 
-在产品账户页打开自动续费，再点“刷新续费授权状态”模拟渠道签约完成；取消时沿用真实取消 API，模拟渠道持久记录取消结果。模拟授权返回保留域的 HTTPS 链接，以保留生产 HTTPS 校验；仅本地注入的 `authorization.js` 将它变为本地账户链接，点击会调用产品已有的刷新授权按钮，不访问外网。本地 provider 支持月付、年付签约、取消、同订单幂等续扣；授权和支付结果分别保存在专用 `bb_local_billing_mandates`、`bb_local_billing_charges` 表，重启不会重新签约或重复扣款。
+在产品账户页进入“管理订阅”，开启自动续费，再点“刷新续费授权状态”模拟渠道签约完成；取消也在管理页，完成一次确认后沿用真实取消 API，模拟渠道持久记录取消结果。模拟授权返回保留域的 HTTPS 链接，以保留生产 HTTPS 校验；仅本地注入的 `authorization.js` 将它变为本地账户链接，点击会调用产品已有的刷新授权按钮，不访问外网。本地 provider 支持月付、年付签约、取消、同订单幂等续扣；授权和支付结果分别保存在专用 `bb_local_billing_mandates`、`bb_local_billing_charges` 表，重启不会重新签约或重复扣款。
 
 测试台的 **“模拟下期续费/额度发放”** 无需等待一个月：只推进当前登录账号的订阅测试时钟，并调用按账号限定的生产调度器。月付到期模拟扣下期月费；年付先模拟下一次月额度发放，合同周年才会续扣年费；关闭续费后不再扣下期费用，已付合同内的额度仍按月发放。同一操作 ID 重试不推进第二次，也不重复发额。
 
@@ -57,4 +57,4 @@ node scripts/billing-functional/stop.mjs
 
 在服务就绪后运行 `node scripts/billing-functional/verify.mjs`。避免与手动测试同时把不同账号的复核留在队列中；该脚本不会完成别人的任务。结果保存到 `.runtime/last-verification.json`。
 
-2026-10-30，真实 HTTP + PostgreSQL 的17项断言、真实浏览器点击的10项检查通过。默认演示账号余额保持零，自动验证使用其他账号；整个验收没有模型调用或真实支付。此前已实际执行一次停止/重启，数据保留。[完整验收记录](../../evidence/subscription-billing-20261029/FUNCTIONAL-TEST-20261030.md)包含桌面和手机截图。
+2026-10-30，首轮真实 HTTP + PostgreSQL 的17项断言、真实浏览器点击的10项检查通过。该次验证时默认演示账号为零；后续用户测试形成的余额、订单和订阅始终保留，自动验证使用其他账号。整个验收没有模型调用或真实支付。[完整验收记录](../../evidence/subscription-billing-20261029/FUNCTIONAL-TEST-20261030.md)包含桌面和手机截图；随后即时升档和月付转年付另有[专项验收](../../evidence/subscription-billing-20261030/SUBSCRIPTION-CHANGES.md)。
