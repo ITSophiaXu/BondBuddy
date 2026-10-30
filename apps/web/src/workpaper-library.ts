@@ -84,13 +84,16 @@ export class WorkpaperLibraryPanel {
     if(this.live())this.paint();
   }
   private async act(button:HTMLButtonElement,action:()=>Promise<void>){if(this.busy)return;this.busy=true;button.disabled=true;try{await action();}catch(e){this.message(friendlyError(e,'read'));}finally{this.busy=false;button.disabled=false;}}
-  private async saveFile(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number)=>void)=>Promise<{bytes:Blob;filename:string}>,archive=false){
+  private async saveFile(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number,total?:number)=>void)=>Promise<{bytes:Blob;filename:string}>,archive=false){
     const feedback=this.downloadFeedback?.node??document.createElement('p');
     feedback.className='wl-download-feedback';feedback.setAttribute('role','status');
     this.downloadFeedback={node:feedback,key:button.closest<HTMLElement>('[data-key]')!.dataset.key!};button.closest('.wl-actions')!.append(feedback);
     const text=button.textContent;button.textContent='正在准备下载…';button.setAttribute('aria-busy','true');
     feedback.textContent='正在准备下载，请稍候…';
-    const progress=(received:number)=>{if(this.live())feedback.textContent=`正在下载文件包，已接收 ${(received/1024/1024).toFixed(2)} MB…`;};
+    const progress=(received:number,total?:number)=>{if(this.live()){
+      button.textContent='正在下载…';
+      feedback.textContent=total?`正在下载文件包，${Math.min(100,Math.floor(received/total*100))}%（${(received/1024/1024).toFixed(2)} / ${(total/1024/1024).toFixed(2)} MB）`:`正在下载文件包，已接收 ${(received/1024/1024).toFixed(2)} MB…`;
+    }};
     try{const file=await boundedDownload(this.abort.signal,signal=>read(signal,progress),archive?20*60_000:120_000);if(this.live())this.downloads.save(file.bytes,file.filename,feedback);}
     catch(e){if(this.live())feedback.textContent=artifactError(e);}
     finally{button.textContent=text;button.removeAttribute('aria-busy');}

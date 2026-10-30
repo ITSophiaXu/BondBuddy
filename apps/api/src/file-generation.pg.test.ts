@@ -101,6 +101,35 @@ test(`real PostgreSQL (${automatic?'automatic':'legacy'}): private import, built
   const view=await ok('GET',base);assert.equal(typeof view.batches[0].points,'string');assert.equal(typeof view.batches[0].workpapers.total_points,'string');assert.equal(typeof view.revision,'number');
   assert.equal((await send('POST',base+'/batches',{...request,expected_revision:2})).statusCode,409);
   assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1',[owner])).rows[0].n,automatic?2:0,'preparation and task submission do not fake a charge');
+
+  const systemTemplates=await ok('GET',base+'/system-templates');assert.equal(systemTemplates.templates.length,7);assert.ok(systemTemplates.templates.every((t:any)=>t.preview.redacted&&t.preview.blocks.length));
+  owner='foreign-'+randomUUID();assert.equal((await send('GET',base+'/system-templates')).statusCode,404);owner=originalOwner;
+  // Both old preparations without a mode and explicitly selected Word mode remain strict.
+  for(const mode of [undefined,'selected']){
+   const revision=(await ok('GET',base)).revision;
+   const unpinned={...prep,document_types:['workpaper'],mappings:{},...(mode?{workpaper_template_mode:mode}:{})};
+   await ok('PUT',base+'/preparation',{expected_revision:revision,preparation:unpinned});
+   assert.equal((await send('POST',base+'/quote',{...request,request_id:randomUUID(),expected_revision:revision+1,expected_points:automatic?3458:4500,document_quotes:[]})).statusCode,422);
+  }
+  // System templates submit without Word mappings, preserve materials, and replay
+  // even after preparation has switched mode. No model or production data involved.
+  for(const withMaterials of [false,true]){
+   await pool.query("UPDATE bb_workpaper_batches SET state='complete' WHERE owner_user_id=$1",[owner]);
+   if(automatic)await grant(3458);
+   const revision=(await ok('GET',base)).revision;
+   const automaticPrep={...prep,document_types:['workpaper'],template_set_id:null,mappings:{},workpaper_template_mode:'automatic',materials:withMaterials?[source]:[],requirements:'Use every supplied material'};
+   await ok('PUT',base+'/preparation',{expected_revision:revision,preparation:automaticPrep});
+   const autoRequest={...request,request_id:randomUUID(),expected_revision:revision+1,expected_points:automatic?3458:4500,document_quotes:[]};
+   const quote=await ok('POST',base+'/quote',autoRequest);assert.equal(quote.count,1);
+   const autoBatch=await ok('POST',base+'/batches',autoRequest);assert.equal(autoBatch.workpapers.template_mode,'automatic');
+   const manifest=(await pool.query('SELECT manifest FROM bb_workpaper_items WHERE batch_id=$1',[autoBatch.workpapers.batch_id])).rows[0].manifest;
+   assert.equal(manifest.input.template,null);assert.equal(manifest.template_material,null);assert.ok(manifest.knowledge.template.sha256);
+   assert.equal(manifest.input.workpaper.execution,withMaterials?undefined:'shared_batch_v1');
+   assert.equal(manifest.input.materials.length,withMaterials?2:1);
+   if(withMaterials)assert.deepEqual(manifest.input.materials[1],source,'supplement reaches the normal material-aware document path');
+   assert.equal((await ok('POST',base+'/batches',autoRequest)).batch_id,autoBatch.batch_id);
+  }
+  assert.equal(results[0].workpapers.template_mode,'selected');
  }finally{if(oldBundle===undefined)delete process.env.BB_FILE_TEMPLATE_BUNDLE;else process.env.BB_FILE_TEMPLATE_BUNDLE=oldBundle;await app.close();await pool.end();if(relative(resolve(tmpdir()),resolve(temporary)).startsWith('bb-template-fixture-'))await rm(temporary,{recursive:true,force:true});}
 });
 
