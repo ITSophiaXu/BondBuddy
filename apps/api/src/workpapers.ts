@@ -79,6 +79,7 @@ export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:stri
   const balance=required?await creditBalanceExact(db,owner):null;
   const files=await workpaperFileVersions(db,owner,id);
   return {batch_id:b.id,topic_id:b.topic_id,catalogue_id:b.catalogue_id,state:b.state,revision:b.revision,source:b.source,total_points:serializeInt64(b.total_points),charged_points:serializeInt64(charged.amount),created_at:date(b.created_at),error:b.error,start_mode:b.start_mode,
+    ...(items.length?{template_mode:items.every(i=>!!i.manifest.input.template)?'selected' as const:items.every(i=>!i.manifest.input.template)?'automatic' as const:'mixed' as const}:{}),
     ...(balance?{billing_resume:{price_version:b.price_version,required_points:serializeInt64(required),available_points:serializeInt64(balance.available),shortage:serializeInt64(shortageInt64(required,balance.available))}}:{}),
     items:items.map(i=>{const file=files.get(batch+':'+i.item_id),current=file?.current;return {entry:i.manifest.input.workpaper.entry,decision:i.output_decision??i.manifest.input.workpaper.decision,...(i.delivered_explanation?{explanation:{filename:workpaperDownloadFilename(i.manifest.input.workpaper.entry,{explanation:true}),sha256:i.delivered_explanation.sha256}}:{}),...(file?{file}:{}),run_id:i.run_id,state:i.run_state??(i.state==='succeeded'?'succeeded':b.state==='cancelled'?'cancelled':i.state),stage:i.stage??null,attempt:i.attempt,error:i.error,
       artifacts:current?.asset.kind==='artifact'?[{kind:'document' as const,filename:workpaperDownloadFilename(i.manifest.input.workpaper.entry),pin:current.asset.pin}]:artifacts.filter(a=>a.run_id===i.run_id&&!i.delivered_explanation).map(a=>({kind:a.kind,filename:workpaperDownloadFilename(i.manifest.input.workpaper.entry),pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}))};})};
@@ -136,8 +137,8 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
   });
 }
 
-export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,user:string,id:string,b:Static<typeof WorkpaperStartSchema>,templateInputs?:{templates:Record<string,{template:import('@bondbuddy/contracts').M4TemplateRef;material:import('@bondbuddy/contracts').M4MaterialPin}>;materials:import('@bondbuddy/contracts').M4MaterialPin[]}){
- const hash=inputManifestHash({project_id:id,...b,...(templateInputs?{templateInputs}:{})});
+export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,user:string,id:string,b:Static<typeof WorkpaperStartSchema>,templateInputs?:{templates:Record<string,{template:import('@bondbuddy/contracts').M4TemplateRef;material:import('@bondbuddy/contracts').M4MaterialPin}>;materials:import('@bondbuddy/contracts').M4MaterialPin[]},additionalMaterials:import('@bondbuddy/contracts').M4MaterialPin[]=[]){
+ const hash=inputManifestHash({project_id:id,...b,...(templateInputs?{templateInputs}:{}),...(additionalMaterials.length?{additionalMaterials}:{})});
       const p=await project(c,user,id,true);
       await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[user+':workpaper-batch:'+b.request_id]);
       const prior=(await c.query('SELECT * FROM bb_workpaper_batches WHERE owner_user_id=$1 AND request_id=$2',[user,b.request_id])).rows[0];
@@ -167,6 +168,7 @@ export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,u
         throw conflict('PROJECT_FILE_BATCH_INPUT_EXPIRED','上次底稿文件包未提交，募集书依据已变化，请刷新页面重新核对。');
       if(!source||source.version_id!==b.source_version_id||source.selection_revision!==b.source_selection_revision)throw conflict('INPUT_REVISION_CONFLICT','募集说明书版本已变化，请重新核对。');
       await readM4MaterialPin(c,user,cat.material);
+      for(const material of additionalMaterials)await readM4MaterialPin(c,user,material);
       if(!p.market||!p.offering)throw new Problem(422,'INPUT_REQUIRED','请补充项目市场和品种。');
       const imported=await importProspectusMaterial(c,blobs(),user,source.project_id,source.version_id);
       const sourcePin={source_project_id:source.project_id,material_id:imported.material_id,material_version:imported.material_version,sha256:imported.sha256};
@@ -174,11 +176,13 @@ export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,u
       await c.query("INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,execution_scope_project_id) VALUES($1,$2,$3,'generation',$4,$5,$6,$7)",[child,user,'底稿 · '+p.name,p.issuer_name,p.market,p.offering,scope]);
       await c.query("INSERT INTO bb_m4_topics(id,owner_user_id,project_id,source_project_id,name,creation_request_id,request_hash,surface) VALUES($1,$2,$3,$4,$5,$6,$7,'materials')",[topicId,user,child,id,'底稿 · '+p.name,'workpaper:'+batchId,hash]);
       await c.query("INSERT INTO bb_workpaper_batches(id,owner_user_id,project_id,topic_id,catalogue_id,request_id,request_hash,source,state,total_points,price_version,assessment_id,assessment_hash,start_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',$9,$10,$11,$12,$13)",[batchId,user,id,topicId,cat.id,b.request_id,hash,source,b.expected_points,b.price_version,b.assessment_id??null,b.assessment_hash??null,direct?'direct':'assessed']);
+      // Shared extraction currently reads only the prospectus. System-template
+      // batches with supplements use the existing material-aware per-file path.
       for(const [ordinal,entry] of selected.entries()){
         const decision=decisions.find(d=>d.item_id===entry.id);
         const manifest:M4DocumentManifest={version:'m4-document-input-v1',kind:'document',topic_id:topicId,execution_scope_project_id:scope,project_name:p.name,draft_version:1,
           market:p.market,offering:p.offering,billing_task:'m4_workpaper',template_material:templateInputs?.templates[entry.id]?.material??null,knowledge:loadWorkpaperKnowledge(p.market as Market,p.offering as Offering,entry,!!templateInputs),
-          input:{document_type:'workpaper',workpaper:{batch_id:batchId,catalogue_id:cat.id,entry,...(direct?{mode:'direct' as const,...(templateInputs?{}:{execution:'shared_batch_v1' as const})}:{decision})},source_material:sourcePin,materials:[cat.material,...(templateInputs?.materials??[])],template:templateInputs?.templates[entry.id]?.template??null,edit_base:null,scope:'whole',
+          input:{document_type:'workpaper',workpaper:{batch_id:batchId,catalogue_id:cat.id,entry,...(direct?{mode:'direct' as const,...(templateInputs||additionalMaterials.length?{}:{execution:'shared_batch_v1' as const})}:{decision})},source_material:sourcePin,materials:[cat.material,...(templateInputs?.materials??[]),...additionalMaterials],template:templateInputs?.templates[entry.id]?.template??null,edit_base:null,scope:'whole',
             fields:{market:p.market,offering:p.offering,issuer_name:p.issuer_name??'',source_filename:source.filename,source_version:String(source.sequence)},requirements:[],supplemental_requirements:b.requirements}};
         let explanation=null;
         if(decision&&decision.status!=='generate'){

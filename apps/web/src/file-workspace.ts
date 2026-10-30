@@ -211,7 +211,7 @@ export class FileWorkspace {
     const button=document.querySelector<HTMLButtonElement>('#pf-source-next');
     if(button){button.disabled=this.busy||!!this.panel?.hasUnconfirmed||!this.state?.source;const footer=button.closest<HTMLElement>('footer')!;footer.hidden=false;footer.querySelector('p')!.textContent=this.state?.source?`将使用 V${this.state.source.sequence} 作为本次生成依据。`:'请上传或选择募集说明书，保存完成后继续。';}
   }
-  private sourceDestination():string{const mode=new URLSearchParams(location.hash.split('?')[1]).get('mode');return this.entryHasOriginalOperation()||this.entryIntent||this.entryAdopted?'documents':mode==='documents'||mode==='workpapers'?mode:'prepare';}
+  private sourceDestination():string{const mode=new URLSearchParams(location.hash.split('?')[1]).get('mode');return this.entryHasOriginalOperation()||this.entryIntent||this.entryAdopted?'documents':mode==='documents'?'documents':'prepare';}
   private async continueFromSource(){
     this.state=await this.request<Workspace>('GET','/workspace');
     const source=this.state.source;if(!source)return;
@@ -257,6 +257,15 @@ export class FileWorkspace {
     const step=!requested||requested==='choose'?'source':requested;
     if(this.cacheUnknown){clearTimeout(this.timer);this.waitForEntry();this.shell(`${this.header(step)}<p id="pf-status" role="status">${esc(this.message)}</p><a class="text-button" href="${esc(this.filesHref())}">返回项目文件</a>`,'generate');this.paintEntryIntent();return;}
     if(this.pendingBatch){this.paintRecovery();return;}
+    const query=new URLSearchParams(location.hash.split('?')[1]);
+    let legacyWorkpaperPending=false;
+    try{legacyWorkpaperPending=!!JSON.parse(localStorage.getItem(`bb-workpapers-v1:${this.owner}:${this.id}`)??'null')?.pending;}catch{legacyWorkpaperPending=true;}
+    if((step==='prepare'||step==='workpapers'&&query.get('view')!=='results'&&!query.has('workpaper_batch'))&&legacyWorkpaperPending){
+      if(step==='prepare'){location.hash=this.href({step:'workpapers'});return;}
+      this.shell(`${this.header('workpapers')}<div id="pf-workpapers"></div>`,'generate');
+      this.workpapers=new WorkpaperPanel(this.api,document.querySelector('#pf-workpapers')!,this.id!,this.owner!,this.state.source,()=>this.live(),step=>this.setWorkpaperStep(step));await this.workpapers.render();return;
+    }
+    if(step==='workpapers'&&query.get('view')!=='results'&&!query.has('workpaper_batch')){location.hash=this.href({step:'prepare'});return;}
     if(step==='prepare'){
       if(!this.state.source){location.hash=this.href({step:'source'});return;}
       this.shell(`${this.header('prepare')}<div id="pf-unified-generation"></div>`,'generate');
