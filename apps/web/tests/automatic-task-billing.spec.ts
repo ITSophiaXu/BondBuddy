@@ -6,6 +6,8 @@ import {fixture as integrityFixture,install as installIntegrity,projectId as int
 import {fixture as consistencyFixture,install as installConsistency,ids,base,checkId,fileIds} from './consistency-confirmation-fixtures';
 import {fixture as reviewFixture,install as installReview,projectId as reviewProject,hash as reviewHash,now as reviewNow} from './review-followup-fixtures';
 import {fixtureBody,fixtureRequest} from './billing-fixture-wire';
+import {mkdir} from 'node:fs/promises';
+import {join} from 'node:path';
 
 const pageErrors=new WeakMap<Page,string[]>();
 test.beforeEach(async({page})=>{const errors:string[]=[];pageErrors.set(page,errors);page.on('pageerror',error=>errors.push(error.message));});
@@ -16,8 +18,14 @@ const json=(route:Route,body:unknown,status=200)=>route.fulfill({status,json:fix
 const rawRequest=(route:Route)=>{fixtureRequest(route.request());return route.request().postDataJSON();};
 const quote=(points:number)=>({...commerceMetadata(points),auto_charge:true,price_version:AUTOMATIC_PRICE_VERSION,points,quote_status:'ready' as const,scope_quote_id:'scope-automatic',scope_lines:[]});
 const price=()=>({...quote(0),version:AUTOMATIC_PRICE_VERSION,quote_status:'pending_scope' as const});
+async function exactFundingReturn(page:Page,href:string,owner:string){
+ const id=new URLSearchParams(href.split('?')[1]).get('resume_request');expect(id).toMatch(/^[a-f0-9]{64}$/);
+ const saved=await page.evaluate(async({owner,id})=>{const recovery=await import('/src/'+'billing-task-recovery.ts');return {task:await recovery.readBillingTask(owner,id),returnTo:await recovery.billingTaskReturnTo(owner,id)};},{owner,id:id!});
+ expect(saved.task?.state).toBe('needs_funds');expect(saved.returnTo).toBeTruthy();return saved;
+}
+async function evidence(page:Page,name:string){if(process.env.BB_UX_EVIDENCE_DIR){await mkdir(process.env.BB_UX_EVIDENCE_DIR,{recursive:true});await page.screenshot({path:join(process.env.BB_UX_EVIDENCE_DIR,name+'.png'),fullPage:true});}}
 async function commerce(page:Page){
-  const catalog={enabled:true,currency:'CNY',version:AUTOMATIC_PRICE_VERSION,model:'pay_as_you_go',items:[],rules:[]};
+  const catalog={enabled:true,currency:'CNY',version:AUTOMATIC_PRICE_VERSION,model:'subscription_and_topup',items:[],rules:[]};
   const account={available_fen:100000,held_fen:0,payment_enabled:false,providers:[],legacy_balance_notice:'合成自动扣费测试余额'};
   expect(Value.Check(schemas.CommerceCatalogResponse,catalog)).toBe(true);expect(Value.Check(schemas.CommerceAccountResponse,account)).toBe(true);
   await page.route('**/api/v1/commerce/catalog',route=>json(route,catalog));
@@ -94,4 +102,30 @@ test('insufficient balance preserves only the original task and payment return r
   expect(saved.task).toMatchObject({version:2,owner:qaOwner,id:resumeRequest,state:'needs_funds',requiredPoints:'1218',body:starts[0]});
   expect(saved.returnTo).toBeTruthy();await page.goto('/'+saved.returnTo);await expect.poll(()=>starts.length).toBe(2);expect(starts[1]).toEqual(starts[0]);expect(starts[0].expected_points).toBe('1218');expect(rawStarts[1]).toBe(rawStarts[0]);
   await page.reload();await expect(page.locator('#qa-start')).toBeVisible();expect(starts).toHaveLength(2);expect(payments).toEqual([]);
+});
+
+for(const width of [1440,390])test(`local consistency funding link ${width} returns to the exact original update without a second price confirmation`,async({page})=>{
+ const state=consistencyFixture();await installConsistency(page,state);await commerce(page);await page.setViewportSize({width,height:960});const starts:any[]=[],raw:string[]=[];
+ await page.route(`**/api/v1${base}/checks/${checkId}/updates/quote`,route=>{const files=rawRequest(route).files;return json(route,{points:6095,price_version:AUTOMATIC_PRICE_VERSION,quote_status:'ready',items:files.map((file:any)=>({...quote(6095),file_version_id:file.file_version_id}))});});
+ await page.route(`**/api/v1${base}/checks/${checkId}/updates`,route=>{starts.push(rawRequest(route));raw.push(route.request().postData()!);return starts.length===1?json(route,{code:'CREDITS_INSUFFICIENT'},402):json(route,{batch_id:'original-local-update'});});
+ await page.goto(`/#consistency?project=${ids.root}&run=${checkId}`);await page.locator(`[data-fc-select="${fileIds.issuer}"]`).check();await page.locator('#fc-accept-top').click();
+ const link=page.locator('[data-fc-funding]');await expect(link).toHaveAttribute('href',/resume_request=/);await expect(page.locator('#fc-confirm-update')).toHaveCount(0);
+ const href=(await link.getAttribute('href'))!;await page.reload();await expect(link).toHaveAttribute('href',href);expect(starts).toHaveLength(1);
+ await evidence(page,`consistency-local-funding-${width}`);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ const saved=await exactFundingReturn(page,href,ids.owner);expect(saved.task.body).toEqual(starts[0]);await page.goto('/'+saved.returnTo);await expect.poll(()=>starts.length).toBe(2);expect(raw[1]).toBe(raw[0]);
+ await expect(page.locator('[data-fc-funding],#fc-confirm-update')).toHaveCount(0);await page.reload();expect(starts).toHaveLength(2);
+});
+
+test('local per-file check funding link retains original batch after reload and replays once',async({page})=>{
+ const state=consistencyFixture();await installConsistency(page,state);await commerce(page);const starts:any[]=[],batches:any[]=[];
+ await page.route(`**/api/v1${base}/check-batches**`,route=>{
+  const path=new URL(route.request().url()).pathname;
+  if(route.request().method()==='GET')return route.fulfill({json:{batches}});
+  const body=rawRequest(route);if(path.endsWith('/quote'))return route.fulfill({json:{source:state.source,points:String(body.file_version_ids.length*6095),price_version:AUTOMATIC_PRICE_VERSION,price_versions:[AUTOMATIC_PRICE_VERSION],auto_charge:true,items:body.file_version_ids.map((version:string)=>({file_version_id:version,filename:state.files.find(f=>f.version_id===version)!.filename,price_version:AUTOMATIC_PRICE_VERSION,points:'6095',scope_quote_id:'scope-'+version,reused_run_id:null,quote_status:'ready'}))}});
+  starts.push(body);if(starts.length===1)return json(route,{code:'CREDITS_INSUFFICIENT'},402);
+  const batch={batch_id:'original-check-batch',request_id:body.request_id,source:state.source,created_at:'2026-10-30T02:00:00Z',price_version:body.price_version,price_versions:[body.price_version],points:body.expected_points,charged_points:'0',state:'queued',items:body.file_version_ids.map((version:string)=>({file_version_id:version,filename:state.files.find(f=>f.version_id===version)!.filename,price_version:body.price_version,points:'6095',scope_quote_id:'scope-'+version,reused_run_id:null,run_id:'check-'+version,state:'queued',attempt:1,charged_points:'0'}))};batches.splice(0,batches.length,batch);return route.fulfill({json:batch});
+ });
+ await page.goto(`/#consistency?project=${ids.root}&run=${checkId}`);await page.locator('[data-fc-start]').first().click();const link=page.locator('[data-file-check-funding]');await expect(link).toHaveAttribute('href',/resume_request=/);
+ const href=(await link.getAttribute('href'))!;await page.reload();await expect(link).toHaveAttribute('href',href);expect(starts).toHaveLength(1);
+ const saved=await exactFundingReturn(page,href,ids.owner);expect(saved.task.body).toEqual(starts[0]);await page.goto('/'+saved.returnTo);await expect.poll(()=>starts.length).toBe(2);expect(starts[1]).toEqual(starts[0]);await expect(page.locator('[data-file-check-batch]')).toHaveCount(1);await expect(page.locator('[data-file-check-pending],[data-file-check-funding]')).toHaveCount(0);await page.reload();expect(starts).toHaveLength(2);
 });

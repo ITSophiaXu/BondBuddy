@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {createAlipayPayProvider} from './alipay-pay.js';
 import {createAlipayStatementDownloader,AlipayStatementError} from './alipay-statements.js';
-import {statementFixture} from './alipay-statements-fixtures.js';
+import {statementFixture,syntheticStatementZip,syntheticTradeCsv} from './alipay-statements-fixtures.js';
 import {ALIPAY_STATEMENT_ARCHIVE_LIMIT} from './alipay-statements-archive.js';
 
 const gateway='https://openapi.alipay.com/gateway.do';
@@ -42,6 +42,26 @@ test('verified RSA2 URL and bounded ZIP retain local evidence only, with unresol
   assert.equal(calls.length,2);assert.equal(calls[1].url,f.url);assert.equal(calls[1].init.redirect,'error');assert.equal(calls[1].init.method,'GET');
   assert.deepEqual(calls[1].init.headers,{accept:'application/zip,application/octet-stream'});assert.equal(calls[1].init.signal?.aborted,true);
   assert.equal('dispatcher' in calls[1].init,false);assert.equal('agent' in calls[1].init,false);
+});
+
+test('authenticated documented detail CSV produces normalized evidence without retaining raw CSV, account, filename or guessed APPID/cash',async()=>{
+  const f=statementFixture(),archive=syntheticStatementZip([{name:'synthetic-private-detail.csv',bytes:Buffer.from(syntheticTradeCsv({preamble:true}))}]);
+  const {run,calls}=provider(f,{download:async()=>f.bytesResponse(archive)}),result=await run();
+  assert.equal(result.provider,'alipay');if(result.provider!=='alipay')throw Error('wrong provider');
+  assert.equal(result.sha256,digest(archive));assert.equal(result.evidence.downloadSha256,digest(archive));
+  assert.deepEqual(result.normalization,{status:'normalized',format:'alipay-trade-cn-v1'});assert.equal(result.entries.length,2);
+  assert.equal(result.totals?.refund.amountFen,'2000');assert.equal(result.requestAppId,f.options.appId);
+  for(const entry of result.entries){assert.equal('appId' in entry,false);assert.equal('payerCash' in entry,false);}
+  const persisted=JSON.stringify(result);for(const privateValue of ['synthetic-private-detail.csv','synthetic-account','synthetic product',f.url,'dwbillcenter'])assert.equal(persisted.includes(privateValue),false);
+  assert.equal(calls.length,2);
+});
+
+test('one malformed detail row keeps the authenticated archive unresolved without partial financial entries',async()=>{
+  const f=statementFixture(),archive=syntheticStatementZip([{bytes:Buffer.from(syntheticTradeCsv().replace('-20.00,-19.00,-1.00','-20.00,19.00,-1.00'))}]);
+  const result=await provider(f,{download:async()=>f.bytesResponse(archive)}).run();
+  assert.equal(result.provider,'alipay');if(result.provider!=='alipay')throw Error('wrong provider');
+  assert.deepEqual(result.normalization,{status:'unresolved',reasons:['ALIPAY_CSV_FORMAT_UNVERIFIED']});assert.deepEqual(result.entries,[]);assert.equal(result.totals,null);
+  assert.equal(result.documents.length,1);assert.equal(result.sha256,digest(archive));
 });
 
 test('forged or changed metadata cannot cause a download',async()=>{

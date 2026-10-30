@@ -1,0 +1,14 @@
+✔ global assistant CLI gets the selected context and proposes cards without executing; explicit discussion remains text (309.5378ms)
+✔ M4 QA receives exact execution proposal and reading context but returns intent without creating Word or mutating input (137.7217ms)
+✔ M4 semantic guard distinguishes whole-action denial, method questions and local limits; unavailable work cannot execute (1.5936ms)
+✔ new opinion types preserve explicit execution and local restrictions, but whole-action denial still wins (0.4169ms)
+✔ M4 unavailable requests receive truthful capability feedback even if model claims success; basic concepts and negative requests remain usable (0.3989ms)
+✔ free assistant output and replay cannot deliver an unpriced business answer (424.5704ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4655.389

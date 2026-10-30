@@ -55,6 +55,12 @@ export async function readBillingTask(owner:string,id:string,store:StorageLike=s
 export async function cancelBillingTask(owner:string,id:string,store:StorageLike=storage()){const task=await readBillingTask(owner,id,store);if(task)store.removeItem(storageKey(task));}
 export async function billingTaskReturnTo(owner:string,id:string,store:StorageLike=storage()){const task=await readBillingTask(owner,id,store);if(!task||!resumable(task.state))return undefined;const [path,query='']=task.returnTo.split('?'),params=new URLSearchParams(query);params.set('resume_request',id);return path+'?'+params;}
 export function billingTaskRechargeHref(task:BillingTask){return '#/account?'+new URLSearchParams({return_to:task.returnTo,resume_request:task.id});}
+/** Local task panels must link the exact durable intent, never a different task on the same page. */
+export async function billingTaskRechargeHrefForRequest(owner:string|undefined,path:string,body:Record<string,unknown>,store:StorageLike=storage()):Promise<string|undefined>{
+  owner??=ownerProvider();const requestId=requestKey(body);if(!owner||!requestId)return;
+  const task=await readBillingTask(owner,await hash([owner,path,requestId]),store);
+  if(task?.state==='needs_funds'&&task.path===path&&canonical(task.body)===canonical(body))return billingTaskRechargeHref(task);
+}
 function saveState(task:BillingTask,state:BillingTask['state'],store:StorageLike){store.setItem(storageKey(task),JSON.stringify({...task,state}));}
 function failureState(error:unknown){const e=error as {status?:number;code?:string};return e?.status===402&&e.code==='CREDITS_INSUFFICIENT'?'needs_funds':e?.status&&e.status>=400&&e.status<500&&![408,429].includes(e.status)?'rejected':'unknown';}
 async function submitTask<T>(task:BillingTask,submit:()=>Promise<T>,store:StorageLike):Promise<T>{

@@ -165,7 +165,7 @@ export function createAlipayPayProvider(options:AlipayPayOptions,dependencies:Al
   };
   const queryRefund=async(order:RefundOrder):Promise<VerifiedRefund>=>{
     const payerTotalFen=await originalCash(order),data=await request('alipay.trade.fastpay.refund.query',{
-      out_trade_no:order.order_id,trade_no:order.provider_transaction_id,out_request_no:order.id,query_options:['refund_detail_item_list','refund_voucher_detail_list']});
+      out_trade_no:order.order_id,trade_no:order.provider_transaction_id,out_request_no:order.id,query_options:['refund_detail_item_list','refund_voucher_detail_list','gmt_refund_pay']});
     if(data.code!=='10000'||data.refund_status!=='REFUND_SUCCESS')return fail('REFUND_UNRESOLVED');
     if(id(data.out_trade_no)!==order.order_id||id(data.trade_no)!==order.provider_transaction_id||id(data.out_request_no)!==order.id
       ||alipayMoneyFen(data.total_amount)!==order.order_amount_fen||alipayMoneyFen(data.refund_amount)!==order.amount_fen
@@ -179,7 +179,10 @@ export function createAlipayPayProvider(options:AlipayPayOptions,dependencies:Al
     // ambiguous separators or changing the ledger's allowed identifier alphabet.
     const providerRefundId='alipay_'+createHash('sha256').update(JSON.stringify([id(data.trade_no),id(data.out_request_no)])).digest('hex');
     return {refundId:order.id,orderId:order.order_id,merchantId:options.merchantId,transactionId:order.provider_transaction_id,providerRefundId,
-      currency:'CNY',orderAmountFen:order.order_amount_fen,amountFen:order.amount_fen,payerTotalFen,payerRefundFen,state:'succeeded'};
+      currency:'CNY',orderAmountFen:order.order_amount_fen,amountFen:order.amount_fen,payerTotalFen,payerRefundFen,state:'succeeded',
+      // Official refund-query option: execution success time, not the request
+      // time or merchant transfer time. An absent value remains unknown.
+      ...(data.gmt_refund_pay===undefined?{}:{providerSucceededAt:paymentTime(data.gmt_refund_pay)})};
   };
   const createRefund=async(order:RefundOrder):Promise<VerifiedRefund>=>{
     await originalCash(order,true);

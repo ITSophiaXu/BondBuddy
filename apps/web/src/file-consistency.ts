@@ -8,6 +8,7 @@ import {PROJECT_DOCUMENT_CATALOG,PROJECT_FILE_UPDATE_PRICE,OUTCOME_PRICE_VERSION
 import {Value} from '@sinclair/typebox/value';
 import {ApiClient,ApiError,friendlyError,type Dto} from './api';
 import {withProjectContext,rechargeHref} from './project-navigation';
+import {billingTaskRechargeHrefForRequest} from './billing-task-recovery';
 import {ArtifactDownloads,artifactFilename} from './artifact-download';
 import {ProspectusPanel} from './prospectus-panel';
 import {esc,date} from './ui';
@@ -49,6 +50,7 @@ export class FileConsistency {
   private checkRequest?:BillingRecoveryDto<'ProjectFileCheckRequest'>;
   private pendingUpdate?:PendingUpdate;
   private recoveryError='';
+  private fundingRequest?:{checkId:string;body:Dto<'ProjectFileUpdateRequest'>};private fundingHref?:string;
   private dialog?:HTMLDialogElement;private locatedUpdate?:string;
   private originalMessages=new Map<string,string>();
   private manualTokens=new Map<string,string>();private manualControls=new Map<string,ManualNav>();
@@ -71,6 +73,7 @@ export class FileConsistency {
       if(typeof cached.selectionCheck==='string'&&cached.selectionCheck.length<=128&&Array.isArray(cached.chosen)&&cached.chosen.length<=200&&cached.chosen.every((id:unknown)=>typeof id==='string'&&id.length>0&&id.length<=128)){this.selectionCheck=cached.selectionCheck;this.chosen=new Set(cached.chosen);}
       if(['all','conflict','consistent','manual','updated','selected'].includes(cached.filter))this.filter=cached.filter;
       this.needsCredits=cached.needsCredits===true;
+      if(this.needsCredits&&typeof cached.fundingRequest?.checkId==='string'&&Value.Check(schemas.ProjectFileUpdateRequest,cached.fundingRequest.body)&&isAutomaticPriceVersion(cached.fundingRequest.body.price_version))this.fundingRequest=cached.fundingRequest;
       if(Value.Check(billingRecoverySchemas.ProjectFileCheckRequest,cached.checkRequest))this.checkRequest=cached.checkRequest;
       const pending=cached.pendingUpdate;
       if(pending?.attempted===true&&typeof pending.checkId==='string'&&pending.checkId.length>0&&pending.checkId.length<=128&&Value.Check(billingRecoverySchemas.ProjectFileUpdateRequest,pending.body)&&Array.isArray(pending.filenames)&&pending.filenames.length===pending.body.files.length&&pending.filenames.every((n:unknown)=>typeof n==='string'&&n.length<=200)){
@@ -79,12 +82,12 @@ export class FileConsistency {
       }
       if(cached.checkRequest!=null&&!this.checkRequest||pending?.attempted===true&&!this.pendingUpdate)throw new Error('Invalid retained request');
       if(this.checkRequest||this.pendingUpdate)this.message='已恢复上次尚未确认的提交，请重试核对同一请求。';
-      else if(this.needsCredits)this.message='已恢复本轮文件选择。充值后请重新确认费用，尚未提交更新。';
+      else if(this.needsCredits)this.message=this.fundingRequest?'原更新范围和价格已保存，补足积分并返回后继续原任务。':'已恢复本轮文件选择。充值后请重新确认费用，尚未提交更新。';
     }catch{this.recoveryError='本机保存的原检查或更新请求无法核实，记录已保留。请联系支持核对原任务，避免重复提交。';}
   }
   private cache(){
     if(!this.cacheKey||this.recoveryError)return;
-    try{if(!this.checkRequest&&!this.pendingUpdate?.attempted&&!this.chosen.size&&!this.needsCredits)sessionStorage.removeItem(this.cacheKey);else sessionStorage.setItem(this.cacheKey,JSON.stringify({owner:this.owner,project:this.id,selectionCheck:this.checkRequest||this.pendingUpdate?.attempted?this.selectionCheck:this.selected()?.run_id??this.selectionCheck,chosen:[...this.chosen],filter:this.filter,needsCredits:this.needsCredits,checkRequest:this.checkRequest,pendingUpdate:this.pendingUpdate?.attempted?this.pendingUpdate:undefined}));}
+    try{if(!this.checkRequest&&!this.pendingUpdate?.attempted&&!this.chosen.size&&!this.needsCredits)sessionStorage.removeItem(this.cacheKey);else sessionStorage.setItem(this.cacheKey,JSON.stringify({owner:this.owner,project:this.id,selectionCheck:this.checkRequest||this.pendingUpdate?.attempted?this.selectionCheck:this.selected()?.run_id??this.selectionCheck,chosen:[...this.chosen],filter:this.filter,needsCredits:this.needsCredits,fundingRequest:this.fundingRequest,checkRequest:this.checkRequest,pendingUpdate:this.pendingUpdate?.attempted?this.pendingUpdate:undefined}));}
     catch{this.message='浏览器无法保存重试凭据，请保持页面打开并确认本次提交结果。';}
   }
   private live(){return this.current()&&!this.abort.signal.aborted;}
@@ -155,6 +158,8 @@ export class FileConsistency {
       this.checks=checks.checks;this.files=files.files;this.source=state.source;this.updates=updates.batches;
       this.linkedHistory=linkedHistory;this.historyReadError=historyReadError;
       this.linkedUpdateHistory=linkedUpdateHistory;
+      if(this.fundingRequest){const pending=this.fundingRequest;this.fundingHref=await billingTaskRechargeHrefForRequest(this.owner,`/projects/${encodeURIComponent(this.id)}/project-files/checks/${encodeURIComponent(pending.checkId)}/updates`,pending.body);if(!this.fundingHref){this.fundingRequest=undefined;this.needsCredits=false;this.cache();}}
+      if(!this.live()||revision!==this.reloadRevision)return;
       // Explicit actions repaint in finally, after busy is cleared. A first
       // disabled repaint would remove the focused node before it can be read.
       if(!this.busy)this.paint();
@@ -424,7 +429,7 @@ export class FileConsistency {
     const start=`<button class="btn ${this.checkRequest||scope?.changed||!c?'primary':'secondary'}" data-fc-start ${this.busy||!!this.pendingUpdate?.attempted||!this.checkRequest&&(checking||!this.source||!latest.length)?'disabled':''}>${this.checkRequest?'重试确认原检查':this.automaticChecks&&!this.workpaperCheck(c)?this.checkBatches.hasPending?'继续原检查请求':'开始逐份检查':this.workpaperCheck(c)?'重新检查此份底稿':scope?.changed?(this.commerce?'核对当前范围与费用':'按当前全部文件重新检查（免费）'):c?(this.commerce?'核对重新检查费用':'重新检查（免费）'):(this.commerce?'查看检查总价':'开始检查（免费）')}</button>`;
     const filesHref='#/projects/'+encodeURIComponent(this.id)+'/files',emptyAction=this.checkRequest?start:!this.source?start+' <a class="btn primary" href="'+filesHref+'">添加并采用募集书</a> <a class="btn secondary" href="'+filesHref+'">上传关联文件</a> <a class="btn secondary" href="#generate?project='+encodeURIComponent(this.id)+'">生成关联文件</a>':!latest.length?'<a class="btn primary" href="'+filesHref+'">上传已有项目文件</a>':start;
     const html=`<a class="back-link" href="#tasks">← 返回任务进度与结果</a><div class="page-head"><div><div class="eyebrow">FILE CONSISTENCY</div><h1 id="fc-page-heading" tabindex="-1">${checking?'正在检查文件一致性':'文件一致性检查'}</h1><p>${esc(this.name)} · 核对关联文件与募集书，查看差异后选择是否生成修订版与清洁版。</p></div><a class="btn secondary" href="${filesHref}">返回项目文件</a></div>${source}
-      <p id="fc-status" role="status">${esc(this.message)}</p>${this.pendingUpdate?.attempted?'<section class="fc-warning"><p>上次更新提交结果尚未确认。请沿用原范围确认，避免重复创建批次。</p><button class="btn secondary" id="fc-pending-action" data-fc-confirm-pending>重试确认上次更新</button></section>':''}${this.needsCredits?`<p><a class="text-button" href="${esc(rechargeHref(this.id))}">${this.commerce?'查看余额与按需充值':'查看积分与充值'}</a> · 检查结果和选择保留，充值后需重新确认更新。</p>`:''}
+      <p id="fc-status" role="status">${esc(this.message)}</p>${this.pendingUpdate?.attempted?'<section class="fc-warning"><p>上次更新提交结果尚未确认。请沿用原范围确认，避免重复创建批次。</p><button class="btn secondary" id="fc-pending-action" data-fc-confirm-pending>重试确认上次更新</button></section>':''}${this.needsCredits?this.fundingHref?`<p><a class="text-button" data-fc-funding href="${esc(this.fundingHref)}">订阅或充值，继续原更新</a> · 检查结果和原更新请求已保留，补足积分并返回后自动继续。</p>`:`<p><a class="text-button" href="${esc(rechargeHref(this.id))}">${this.commerce?'查看余额与按需充值':'查看积分与充值'}</a> · 检查结果和选择保留，充值后需重新确认更新。</p>`:''}
       ${!this.source?'<div id="fc-prospectus"></div>':''}${this.automaticChecks?'<div id="fc-check-batches"></div>':''}
       ${target!==undefined?this.updateTaskHtml(target):''}
       ${this.checks.length?`<div class="pf-section-head"><label>检查记录 <select id="fc-history">${!c?'<option value="" selected disabled>指定的检查记录不可读</option>':''}${this.checks.map(x=>`<option value="${esc(x.run_id)}" ${x.run_id===c?.run_id?'selected':''}>${x.run_id===this.linkedHistory?'链接指定记录 · ':''}${esc(date(x.created_at))} · ${esc(runStateLabel[x.state as keyof typeof runStateLabel]??x.state)}</option>`).join('')}</select></label>${start}</div>${this.linkedHistory?'<p class="fc-history-scope">已读取链接指定的历史检查；下拉列表另含最近 30 轮，不代表全部历史记录。</p>':''}`:''}
@@ -685,11 +690,11 @@ export class FileConsistency {
     pending.attempted=true;this.cache();this.dialog?.querySelectorAll<HTMLButtonElement>('button').forEach(b=>b.disabled=true);
     try{await this.request('POST','/checks/'+encodeURIComponent(pending.checkId)+'/updates',pending.body,billingRecoveryHeaders('ProjectFileUpdateRequest',pending.body));}
     catch(e){
-      if(e instanceof ApiError&&e.status>=400&&e.status<500&&![408,429].includes(e.status)){this.pendingUpdate=undefined;this.cache();this.needsCredits=e.code==='CREDITS_INSUFFICIENT';this.closeDialog();try{await this.reload();}catch{};}
+      if(e instanceof ApiError&&e.status>=400&&e.status<500&&![408,429].includes(e.status)){this.pendingUpdate=undefined;this.needsCredits=e.code==='CREDITS_INSUFFICIENT';this.fundingRequest=this.needsCredits&&isAutomaticPriceVersion(pending.body.price_version)?{checkId:pending.checkId,body:pending.body}:undefined;this.fundingHref=undefined;this.cache();this.closeDialog();try{await this.reload();}catch{};}
       else {const status=this.dialog?.querySelector('#fc-confirm-status');if(status)status.textContent='提交结果尚未确认。请重试核对同一请求，避免重复更新。';}
       throw e;
     }finally{this.dialog?.querySelectorAll<HTMLButtonElement>('button').forEach(b=>b.disabled=false);}
-    this.pendingUpdate=undefined;this.needsCredits=false;window.dispatchEvent(new Event('bondbuddy:credits-changed'));this.closeDialog();this.chosen.clear();this.cache();this.message='已提交所选文件更新。每份分别交付、分别结算；存疑事项保留，原稿保留。';await this.reload();
+    this.pendingUpdate=undefined;this.needsCredits=false;this.fundingRequest=undefined;this.fundingHref=undefined;window.dispatchEvent(new Event('bondbuddy:credits-changed'));this.closeDialog();this.chosen.clear();this.cache();this.message='已提交所选文件更新。每份分别交付、分别结算；存疑事项保留，原稿保留。';await this.reload();
   }
 }
 

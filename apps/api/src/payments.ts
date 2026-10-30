@@ -10,6 +10,7 @@ import { installPaymentRefunds,recordPaymentCashProof,type PaymentRefundProvider
 import {activateSubscriptionPayment,markSubscriptionPaymentFailed,type RecurringPaymentProvider} from './subscriptions.js';
 import type {PaymentStatementRequest,VerifiedPaymentStatement} from './payment-statements-format.js';
 import {installPaymentStatements} from './payment-statements.js';
+import {recheckAuthenticatedStatementDay} from './payment-statement-recheck.js';
 
 type OrderRequest=Static<typeof schemas.RechargeOrderRequest>;
 export type PaymentOrder={id:string;merchant_id:string;amount_fen:number;currency:'CNY';expires_at:string};
@@ -63,17 +64,26 @@ export async function applyVerifiedPayment(pool:Pool,provider:PaymentProvider,re
         // A historical paid replay may add independently verified cash evidence,
         // but must never manufacture a missing original lot or reissue credits.
         const lot=(await c.query('SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND source_key=$2',[order.owner_user_id,`recharge:${order.id}`])).rows[0];
-        if(!lot||safeBillingNumber(lot.original_points)!==safeBillingNumber(order.points)||lot.source!==(order.order_kind==='subscription'?'subscription':'purchase'))
+        const period=order.order_kind==='subscription'?(await c.query('SELECT lot_id,monthly_points,points,amount_fen FROM bb_subscription_periods WHERE order_id=$1 AND owner_user_id=$2',[order.id,order.owner_user_id])).rows[0]:null;
+        if(!lot||safeBillingNumber(lot.original_points)!==safeBillingNumber(period?.monthly_points??order.points)||lot.source!==(order.order_kind==='subscription'?'subscription':'purchase')||
+          order.order_kind==='subscription'&&(!period||period.lot_id!==lot.id||safeBillingNumber(period.points)!==safeBillingNumber(order.points)||safeBillingNumber(period.amount_fen)!==safeBillingNumber(order.amount_fen)))
           throw new Problem(503,'DATA_UNAVAILABLE','Original paid credit lot requires reconciliation');
         await recordPaymentCashProof(c,order,lot.id,receipt.payerCash);
-        if(receipt.paidAt&&!order.provider_paid_at)await c.query('UPDATE bb_recharge_orders SET provider_paid_at=$2 WHERE id=$1',[order.id,receipt.paidAt]);
+        if(receipt.paidAt&&!order.provider_paid_at){
+          await c.query('UPDATE bb_recharge_orders SET provider_paid_at=$2 WHERE id=$1',[order.id,receipt.paidAt]);
+          if(provider.name==='alipay')await recheckAuthenticatedStatementDay(c,'alipay',provider.merchantId,receipt.paidAt);
+        }
       }
       return rechargeDto(order);
     }
     if(receipt.state==='paid'){
       // Payment success and credit issuance commit together. A callback/query retry
       // after a database failure recovers the same order, without another payment.
+      if((await c.query('SELECT 1 FROM bb_subscription_changes WHERE order_id=$1',[order.id])).rowCount&&
+        (!receipt.payerCash||receipt.payerCash.currency!=='CNY'||receipt.payerCash.amountFen!==safeBillingNumber(order.amount_fen)))
+        throw new Problem(422,'PAYMENT_INVALID','订阅转换需要与本次应付金额一致的已认证实付凭证。');
       await c.query("UPDATE bb_recharge_orders SET state='paid',provider_txn_id=$2,credited_at=COALESCE(credited_at,now()),provider_paid_at=COALESCE(provider_paid_at,$3) WHERE id=$1",[order.id,receipt.transactionId,receipt.paidAt??null]);
+      if(provider.name==='alipay'&&receipt.paidAt&&!order.provider_paid_at)await recheckAuthenticatedStatementDay(c,'alipay',provider.merchantId,receipt.paidAt);
       const lotId=order.order_kind==='subscription'
         ?await activateSubscriptionPayment(c,order,`payment:${provider.name}`)
         :await grantCredits(c,{owner:order.owner_user_id,source:'purchase',key:`recharge:${order.id}`,points:safeBillingNumber(order.points),expiresAt:null,actor:`payment:${provider.name}`,reason:`verified_order:${order.id}`});

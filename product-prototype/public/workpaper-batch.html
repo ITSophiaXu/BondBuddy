@@ -16,13 +16,14 @@
 <section class="wp-batches" id="wp-batches"><h2>底稿生成进度</h2><p class="muted">尚未提交底稿文件包。</p></section>
 <p class="prototype-note">本原型随本次实现提交，尚未经过用户视觉验收。真实入口沿用“文件生成”的项目与来源选择；本页只展示新增准备区和进度区。</p></main>
 <script>
+const automatic=new URLSearchParams(location.search).get('billing')==='automatic',points=automatic?3458:4500;
 const selected=new Set(Array.from({length:350},(_,i)=>i+1));let started=false,paused=false;
 const find=id=>document.getElementById(id);
 function confirm(){
  const count=selected.size;
- const hint=started?'已有底稿文件包正在处理，请在下方查看进度或继续原文件包。':!count?'请先在目录中勾选需要生成的底稿。':'点击后直接开始逐份编制，完成的文件可随时下载。';
+ const hint=started?'已有底稿文件包正在处理，请在下方查看进度或继续原文件包。':!count?'请先在目录中勾选需要生成的底稿。':automatic?'点击开始后自动预留积分，按所选条目逐份交付结算。':'点击后直接开始逐份编制，完成的文件可随时下载。';
  find('wp-confirm').innerHTML=`<div class="wp-confirm-heading"><div><h3>批量生成底稿</h3><p>按所选目录逐份编制，资料不足或不适用的条目附具体说明。</p></div><span class="wp-selection-count">已选 <strong>${count}</strong> 份底稿</span></div><p class="wp-confirm-source">本批依据：募集说明书_V3.docx · V3</p>
- <div class="wp-confirm-actions"><div class="wp-fee-summary"><span>本批费用上限 <strong>${(count*4500).toLocaleString()}</strong> 积分</span><small>每份底稿 4,500 积分</small></div><div class="wp-action-area"><p id="wp-action-hint">${hint}</p><div class="wp-action-buttons">${started?'<a class="btn secondary" href="#wp-batches">查看生成进度</a>':''}<button class="btn primary" id="wp-start" aria-describedby="wp-action-hint wp-fee-note" ${!count||started?'disabled':''}>批量生成底稿</button></div></div></div><p class="wp-fee-note" id="wp-fee-note">生成底稿按处理进度逐份计费；仅形成说明的条目不收取生成积分，已扣部分自动退回。</p>`;
+ <div class="wp-confirm-actions"><div class="wp-fee-summary"><span>本批费用上限 <strong>${(count*points).toLocaleString()}</strong> 积分</span><small>每份底稿 ${points.toLocaleString()} 积分</small></div><div class="wp-action-area"><p id="wp-action-hint">${hint}</p><div class="wp-action-buttons">${started?'<a class="btn secondary" href="#wp-batches">查看生成进度</a>':''}<button class="btn primary" id="wp-start" aria-describedby="wp-action-hint wp-fee-note" ${!count||started?'disabled':''}>${automatic?'开始生成底稿':'批量生成底稿'}</button></div></div></div><p class="wp-fee-note" id="wp-fee-note">${automatic?'开始时核验本批总额度，按所选文件逐份预留积分，成功交付后扣费；仅形成说明或未交付的条目不收生成费。':'生成底稿按处理进度逐份计费；仅形成说明的条目不收取生成积分，已扣部分自动退回。'}</p>`;
  find('wp-start').onclick=()=>{started=true;confirm();progress();};
 }
 function entries(){const query=find('wp-filter').value;find('entries').innerHTML=Array.from({length:350},(_,i)=>i+1).filter(i=>(`1.${i} 财务与业务核查 ${i}`).includes(query)).map(i=>`<tr><td><input type="checkbox" aria-label="选择 财务与业务核查 ${i}" data-id="${i}" ${selected.has(i)?'checked':''}></td><td><strong>1.${i} 财务与业务核查 ${i}</strong></td><td>1 尽职调查</td><td>目录 · ${i+1} 行</td></tr>`).join('');find('entries').querySelectorAll('input').forEach(el=>el.onchange=()=>{el.checked?selected.add(Number(el.dataset.id)):selected.delete(Number(el.dataset.id));confirm();});confirm();}

@@ -1,0 +1,12 @@
+
+> @bondbuddy/api@0.1.0 build
+> tsc -p tsconfig.json
+
+src/billing-change-audit.ts(59,91): error TS7006: Parameter 's' implicitly has an 'any' type.
+npm error Lifecycle script `build` failed with error:
+npm error code 2
+npm error path C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\api
+npm error workspace @bondbuddy/api@0.1.0
+npm error location C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\api
+npm error command failed
+npm error command C:\Windows\system32\cmd.exe /d /s /c tsc -p tsconfig.json

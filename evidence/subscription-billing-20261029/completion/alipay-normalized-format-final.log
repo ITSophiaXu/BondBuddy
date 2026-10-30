@@ -1,0 +1,23 @@
+✔ documented named fields and detail footers normalize payment/refund separately while preserving signed values (4.9618ms)
+✔ configured column order, documented order-ID alias, quoting, multiline ignored text, and trailing delimiters are supported (0.9819ms)
+✔ money parsing is exact beyond Number precision and enforces signed int64 sums (1.8807ms)
+✔ positive and negative refund source conventions are explicit, while mixed signs and inconsistent principal are rejected (1.7479ms)
+✔ missing optional financial columns and blank evidence remain null, never a manufactured zero (0.6467ms)
+✔ missing/duplicate core headers, ambiguous aliases, unknown businesses and invalid refund identities reject all rows (1.4023ms)
+✔ both count/receipt/merchant-discount footers are mandatory and must agree with known detail amounts (1.6474ms)
+✔ recognized empty detail is zero only after both explicit zero footers; missing files stay unresolved (0.7728ms)
+✔ duplicate or conflicting event/order identities and a bad later row never retain an earlier valid payment (1.966ms)
+✔ calendar dates, completed local day, and daily metadata range are validated without inventing timezone (1.4461ms)
+✔ bounded RFC4180 rejects malformed quoting, control text, too many columns and oversized logical records (16.4253ms)
+✔ entry physical line limit is enforced at its accepted boundary without Number-based money summation (677.1235ms)
+✔ recognized payment-only summary can be matched in either member order and checks signed fee, counts and totals (2.6822ms)
+✔ unknown summary layouts, refund/netting summaries, duplicate details and extra members remain wholly unresolved (0.6827ms)
+✔ normalized persistence validator rejects tampered structure, signed provenance, identities and sums (1.3554ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 892.1352

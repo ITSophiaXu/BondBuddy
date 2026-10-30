@@ -1,0 +1,32 @@
+✔ normalized Alipay payment/refund CSV reconciles without treating merchant receipts as buyer cash or writing financial tables (554.017ms)
+✔ Alipay amount/identity mismatches and unregistered PID rows cannot suppress registered local missing coverage (520.121ms)
+✔ Alipay refund coverage follows completion day across midnight and detects a genuinely omitted local completion (474.7764ms)
+✔ missing authenticated payment/refund time stays unknown instead of borrowing CSV or local timestamps (438.8098ms)
+✔ duplicate Alipay records remain unresolved and parser-version evidence preserves earlier same-archive unknown history (431.6802ms)
+✔ Alipay statement differences preserve adjacent bigint fen above 2^53 and never repair a historical balance (378.4285ms)
+✔ late authenticated Alipay payment/refund completion reopens its old bill without rewriting earlier checks or settling twice (464.2767ms)
+✔ Alipay terminal date recovery uses bounded query retries without creating another refund or moving cash again (31780.3279ms)
+▶ annual statements reconcile monthly issuance against one paid contract across both channels
+  ✔ wechat: original monthly subscription and topup still reconcile (359.4188ms)
+  ✔ wechat: first grant and all twelve annual releases produce no extra cash order or statement payment (295.1021ms)
+  ✔ wechat: actual wrong first-grant quantity and source remain visible differences (191.7598ms)
+  ✔ wechat: largest annual refund reconciles whole cash once, removes first batch and cancels future grants (185.9181ms)
+  ✔ alipay: original monthly subscription and topup still reconcile (106.5031ms)
+  ✔ alipay: first grant and all twelve annual releases produce no extra cash order or statement payment (237.0561ms)
+  ✔ alipay: actual wrong first-grant quantity and source remain visible differences (140.1726ms)
+  ✔ alipay: largest annual refund reconciles whole cash once, removes first batch and cancels future grants (164.4908ms)
+✔ annual statements reconcile monthly issuance against one paid contract across both channels (1826.9978ms)
+✔ paid historical proof refresh reuses the exact existing lot without granting credits again (341.8302ms)
+✔ close intent survives unknown response, blocks reopening, and cannot erase a verified payment (299.3316ms)
+✔ historical statement keeps gross issuance and refund cash separate from current balance and later refund success (414.3266ms)
+✔ statement-only receipt raises persisted differences without creating payment credit, and concurrent scans claim once (241.409ms)
+✔ refund reverse coverage needs authenticated application-date evidence and detects a later missing row without mutating wallets (440.6108ms)
+✔ mismatched statement identity and unavailable provider keep the job recoverable and alert without private error data (146.614ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 78147.8557

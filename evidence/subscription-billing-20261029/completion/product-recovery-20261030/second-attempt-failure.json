@@ -1,0 +1,42 @@
+{
+  "startedAt": "2026-10-30T01:53:05.862Z",
+  "finishedAt": "2026-10-30T01:53:40.219Z",
+  "username": "billing_recover_494c7e47",
+  "projectId": "67aedd8c-7a41-4227-a8e2-4316c9d3a6db",
+  "requestId": "m3-8ec0803ea9a0fbf5be415aba126d704691365971cf08675dc3c8efad902f1232",
+  "resumeId": "6b36ac79907e0e9c225ea3a06192bba1ce781204ceab6a93491ad28c9fe47754",
+  "expectedPoints": "27195",
+  "passed": 4,
+  "failed": 1,
+  "checks": [
+    "real authenticated random account starts at zero; isolated synthetic instance verified",
+    "one actual review click submits without amount confirmation; 402 saves the exact original task and creates no run or hold",
+    "product recharge link carries recovery identity and pre-fills the exact 271.95 yuan shortage",
+    "real account checkout creates one exact-shortage topup and preserves original task recovery"
+  ],
+  "pageErrors": [],
+  "executionRequests": [
+    {
+      "path": "/api/v1/projects/67aedd8c-7a41-4227-a8e2-4316c9d3a6db/review-executions",
+      "bodySha256": "ace66418902b6d1631042252674f098c83aadef7183eaba7b357f3866322695f",
+      "executionRequestId": "m3-8ec0803ea9a0fbf5be415aba126d704691365971cf08675dc3c8efad902f1232"
+    },
+    {
+      "path": "/api/v1/projects/67aedd8c-7a41-4227-a8e2-4316c9d3a6db/review-executions",
+      "bodySha256": "ace66418902b6d1631042252674f098c83aadef7183eaba7b357f3866322695f",
+      "executionRequestId": "m3-8ec0803ea9a0fbf5be415aba126d704691365971cf08675dc3c8efad902f1232"
+    }
+  ],
+  "realProductBrowser": true,
+  "realHttp": true,
+  "realPostgres": true,
+  "fixturePreparationOnly": true,
+  "clientResponseMocking": false,
+  "localStorageInjection": false,
+  "syntheticPaymentProvider": true,
+  "modelWorkerRunning": false,
+  "realMoneyCharged": false,
+  "defaultDemoAccountTouched": false,
+  "error": "TimeoutError: page.waitForResponse: Timeout 30000ms exceeded while waiting for event \"response\"",
+  "cleanupError": "AssertionError [ERR_ASSERTION]: {\"code\":\"CAPABILITY_NOT_READY\",\"message\":\"Capability is not connected\",\"retryable\":false,\"field_errors\":[],\"correlation_id\":\"a96304c4-c24a-45bf-910a-ce9cfd6c977e\"}"
+}

@@ -1701,4 +1701,13 @@ test('automatic authoring with no balance saves the original task for exact supp
  await page.route('**/api/v1/runs/execute',route=>{starts.push(fixtureRequest(route.request()));return json(route,402,{code:'CREDITS_INSUFFICIENT'});});
  await page.reload();await page.locator('#execute-input').click();await expect(page.locator('#billing-task-notice')).toContainText('原任务尚未开始');expect(starts).toHaveLength(1);
  const saved=await page.evaluate(()=>{const key=Object.keys(localStorage).find(key=>key.startsWith('bondbuddy:billing-task:v2:'))!;return JSON.parse(localStorage.getItem(key)!);});expect(saved.requiredPoints).toBe('8864');expect(saved.body).toEqual(starts[0]);expect(saved.body).not.toHaveProperty('expected_points');
+ await expect(page.locator('#fixed-quote a')).toHaveAttribute('href',new RegExp('resume_request='+saved.id));
+});
+
+test('automatic authoring keeps the exact quote and execution request after HTTP 429',async({page})=>{
+ const state=fixture();state.paid=true;state.checkStatus='ready';state.available=100000;state.executeError={status:429,code:'RATE_LIMITED',correlation_id:'synthetic-rate-limited'};await setup(page,state);let quotes=0;
+ await page.route('**/api/v1/commerce/**',route=>json(route,200,{enabled:true,currency:'CNY',version:AUTOMATIC_PRICE_VERSION,model:'subscription_and_topup',items:[],rules:[]}));
+ await page.route('**/credit-quote',route=>{quotes++;return json(route,200,{enabled:true,quote:{...commerceMetadata(8864),quote_id:'auto-rate-limit-'+quotes,project_id:id,...fixtureRequest(route.request()),task_type:'interim',points:8864,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,reason:'已保存输入',created_at:now,quote_status:'ready',scope_quote_id:'scope-rate-limit',scope_lines:[]},balance:{available:100000,frozen:0},shortage:0,reason:null});});
+ await page.reload();await page.locator('#execute-input').click();await expect.poll(()=>state.executes.length).toBe(1);const original=structuredClone(state.executes[0]);await expect(page.locator('#retry-execution')).toBeVisible();
+ state.executeError=undefined;await page.locator('#retry-execution').click();await expect.poll(()=>state.executes.length).toBe(2);expect(state.executes[1]).toEqual(original);expect(quotes).toBe(1);await expect(page.locator('[data-commerce-confirm]')).toHaveCount(0);expect(state.runs.size).toBe(1);
 });

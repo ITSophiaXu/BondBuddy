@@ -365,6 +365,24 @@ test('M4 unavailable requests receive truthful capability feedback even if model
     assert.deepEqual(constrainM4Reply(conceptual,{...manifest,content}),conceptual);
 });
 
+test('free assistant output and replay cannot deliver an unpriced business answer',async()=>{
+ for(const content of ['这个呢？','保存任务要求：在募集书中说明收入下降原因','更新募集书，并解释收入变化']){
+  const f=await fixture('qa');try{
+   const manifest=f.input.manifest as M4QaManifest;manifest.content=content;manifest.billing_task='m4_task_assistance';f.ctx.run.input_hash=inputManifestHash(manifest);
+   const stage=m4QaStage({load:async()=>f.input,config:loadCodexAdapterConfig({}),model:options=>({name:options.name,run:async()=>{
+    await options.fileWorkspace!.prepare(f.directory);
+    await writeFile(join(f.directory,'output/reply.json'),JSON.stringify(reply({content:'客户流失导致收入下降，资产负债率42%。',intent:'draft',document_type:'init',requirements:['客户流失已确认'],fields:{issuer_name:'Invented issuer'}})));
+    return {kind:'done',value:await options.fileWorkspace!.collect(f.directory,{call_id:'synthetic-free-boundary'} as never,{text:''})};
+   }})});
+   const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error();
+   assert.ok(validM4QaResult(result.value,f.ctx,f.input));assert.doesNotMatch(result.value.reply.content,/客户流失|42%/);assert.deepEqual(result.value.reply.fields,{});
+   assert.deepEqual(result.value.reply.requirements,content==='这个呢？'?[]:[content]);
+   const forged={...result.value,reply:{...result.value.reply,content:'客户流失导致收入下降，资产负债率42%。'}};
+   assert.equal(validM4QaResult(forged,f.ctx,f.input),false,'Recovered provider content must obey the same free-result boundary');
+  }finally{await f.clean();}
+ }
+});
+
 test('M4 router requires explicit input-lock marker; ordinary M1 generation retains its route',async()=>{
   const f=await fixture();let docs=0,qa=0;
   try{const router=modelGenerationRouter({m4Document:{name:'model_generation',run:async()=>{docs++;return {kind:'done',value:'document'};}},

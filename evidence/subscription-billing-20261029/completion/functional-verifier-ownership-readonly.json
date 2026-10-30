@@ -1,0 +1,21 @@
+{
+  "synthetic": true,
+  "readOnly": true,
+  "instanceMatched": true,
+  "username": "billing_qa_7c0c2eaa",
+  "startedAt": "2026-10-30T01:50:20.560Z",
+  "finishedAt": "2026-10-30T01:50:20.811Z",
+  "scriptSha256": "8205a30087a1976412ecb01995fcf51f81af899c47354cbd1c702503cd5d63be",
+  "checks": [
+    "random account matches authenticated registration",
+    "three paid orders belong to the random account",
+    "both task reservations and credit allocations belong to the random account",
+    "three synthetic Word artifacts belong to the random account"
+  ],
+  "passed": 4,
+  "failed": 0,
+  "newUsers": 0,
+  "newTasks": 0,
+  "serviceRestarts": 0,
+  "demonstrationAccountReadOrWritten": false
+}

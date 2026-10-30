@@ -1,8 +1,8 @@
 import {deflateRawSync} from 'node:zlib';
 import {syntheticAlipayFixture} from './test-alipay-pay-fixtures.js';
 
-/** Invented documents and generated keys. These are ZIP/transport fixtures,
- * never examples of an officially verified Alipay CSV business format. */
+/** Invented documents and generated keys. These are synthetic test fixtures,
+ * never merchant samples or proof of provider integration. */
 type ZipFile={name?:string;bytes?:Uint8Array;method?:number;flags?:number;descriptor?:boolean;attributes?:number;madeBy?:number};
 function crc(bytes:Uint8Array){let value=0xffffffff;for(const byte of bytes){value^=byte;for(let i=0;i<8;i++)value=value&1?0xedb88320^(value>>>1):value>>>1;}return (value^0xffffffff)>>>0;}
 export const syntheticCsv=()=>Buffer.from('\ufeff合成字段,未验证业务含义\r\nsynthetic_value,not_a_payment\r\n');
@@ -28,3 +28,31 @@ export function statementFixture(){
   const bytesResponse=(bytes:Uint8Array=archive,headers:Record<string,string>={})=>new Response(Buffer.from(bytes),{headers:{'content-type':'application/zip','content-length':String(bytes.byteLength),...headers}});
   return {...base,method,billDate,archive,url,data,bytesResponse};
 }
+
+/** Header/footer semantics follow the cited official text/images; values and
+ * RFC4180 serialization are synthetic, not a captured provider CSV. */
+export const syntheticTradeHeaders=['支付宝交易号','商家订单号','业务类型','商品名称','完成时间','订单金额（元）','商家实收（元）','商家优惠','服务费','退款批次号/请求号'];
+export const syntheticTradeRows=()=>[
+  ['2026102800000001','order_1','交易','synthetic product','2026-10-28 09:10:11','100.00','97.00','3.00','-0.60',''],
+  ['2026102800000001','order_1','退款','synthetic product','2026-10-28 10:20:30','-20.00','-19.00','-1.00','0.12','refund_1'],
+];
+const csvCell=(value:string)=>/[",\r\n]/.test(value)?'"'+value.replaceAll('"','""')+'"':value;
+export function syntheticTradeCsv(options:{headers?:string[];rows?:string[][];paymentFooter?:string;refundFooter?:string;preamble?:boolean}={}){
+  const lines:string[]=[];
+  if(options.preamble)lines.push('#支付宝业务明细查询','#账号: synthetic-account',
+    '#起始日期: [2026年10月28日 00:00:00] 终止日期: [2026年10月29日 00:00:00]','#-----------业务明细列表-----------');
+  lines.push((options.headers??syntheticTradeHeaders).map(csvCell).join(','),...(options.rows??syntheticTradeRows()).map(row=>row.map(csvCell).join(',')));
+  if(options.preamble)lines.push('#-----------业务明细列表结束-----------');
+  lines.push(options.paymentFooter??'#交易合计: 1笔, 商家实收共97.00元, 商家优惠共3.00元',
+    options.refundFooter??'#退款合计: 1笔, 商家实收退款共19.00元, 商家优惠退款共1.00元');
+  if(options.preamble)lines.push('#导出时间: [2026年10月29日 10:23:01]');
+  return '\ufeff'+lines.join('\r\n')+'\r\n';
+}
+export function syntheticTradeSummaryCsv(){return '\ufeff'+[
+  '#支付宝业务汇总查询','#账号: synthetic-account',
+  '#起始日期: [2026年10月28日 00:00:00] 终止日期: [2026年10月29日 00:00:00]','#-----------业务汇总列表-----------',
+  '门店编号,门店名称,交易订单总数,退款订单总数,订单金额,商家实收,支付宝优惠,商家优惠,卡消费金额,服务费（元）,分润（元）,实收净额（元）',
+  'store_1,Synthetic store,1,0,100.00,97.00,0.00,3.00,0.00,-0.60,0.00,96.40',
+  '合计,,1,0,100.00,97.00,0.00,3.00,0.00,-0.60,0.00,96.40',
+  '#-----------业务汇总列表结束-----------','#导出时间: [2026年10月29日 10:23:01]',
+].join('\r\n')+'\r\n';}

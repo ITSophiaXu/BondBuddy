@@ -58,7 +58,8 @@ export async function reconcilePendingPayments(pool:Pool,providers:readonly Paym
   const refunds=(await pool.query(`WITH due AS (
     SELECT r.id FROM bb_payment_refunds r WHERE (r.state IN ('requested','processing')
       OR r.provider='wechat' AND r.state IN ('succeeded','failed')
-        AND (r.provider_created_at IS NULL OR r.state='succeeded' AND r.provider_succeeded_at IS NULL))
+        AND (r.provider_created_at IS NULL OR r.state='succeeded' AND r.provider_succeeded_at IS NULL)
+      OR r.provider='alipay' AND r.state='succeeded' AND r.provider_succeeded_at IS NULL)
       AND r.next_reconcile_at<=now() AND r.updated_at<=now()-interval '30 seconds'
       AND EXISTS(SELECT 1 FROM jsonb_to_recordset($1::jsonb) AS p(provider text,merchant_id text,refunds boolean)
         WHERE p.provider=r.provider AND p.merchant_id=r.merchant_id AND p.refunds)

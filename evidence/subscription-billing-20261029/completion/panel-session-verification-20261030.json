@@ -1,0 +1,20 @@
+{
+  "synthetic": true,
+  "username": "billing_sess_56a71fc6",
+  "startedAt": "2026-10-30T01:41:00.993Z",
+  "finishedAt": "2026-10-30T01:41:04.020Z",
+  "passed": 7,
+  "checks": [
+    "403: no refresh and no request replay",
+    "500: no refresh and no request replay",
+    "network: no refresh and no request replay",
+    "second 401 stops after one real refresh and one identical retry",
+    "real expired-session 401 plus failed refresh does not replay business",
+    "real expired session refreshes and same funded task reserves exactly once",
+    "cleanup through actual failed finish releases test reservation"
+  ],
+  "realHttpSessionExpiry": true,
+  "clientFailureInjection": true,
+  "productionAuthChanged": false,
+  "defaultDemoAccountTouched": false
+}
