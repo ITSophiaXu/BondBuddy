@@ -190,7 +190,7 @@ test('reselecting the same package keeps manual choices and the selected scope',
  await page.locator('#fg-match-toggle').click();await page.locator('[data-fg-mapping="entry-1"]').focus();await page.locator('[data-fg-mapping="entry-1"]').selectOption('word-2');await page.locator('[data-fg-item="entry-2"]').uncheck();
  await useWord(page);
  expect(state.data.preparation.item_ids).toEqual(['entry-1']);expect(state.data.preparation.mappings['entry-1'].record_id).toBe('word-2');
- await page.locator('#fg-automatic').click();await expect(page.locator('.fg-match-summary')).toContainText('系统自动匹配');await useWord(page);
+ await page.locator('#fg-automatic').click();await expect(page.locator('.fg-match-summary')).toContainText('光大模板');await useWord(page);
  expect(state.data.preparation.item_ids).toEqual(['entry-1']);expect(state.data.preparation.mappings['entry-1'].record_id).toBe('word-2');
 });
 
@@ -221,11 +221,11 @@ test('a failed preparation save cannot submit the locally auto-matched selection
  failing=false;await page.locator('#fg-confirm').click();await expect(page.getByRole('dialog')).toContainText('2 份文件');expect(Object.keys(state.data.preparation.mappings)).toHaveLength(2);
 });
 
-for(const width of [1440,390])test(`system templates are the explicit default and submit without manual mappings at ${width}`,async({page})=>{
+for(const width of [1440,390])test(`Guangda templates are the named default and submit without manual mappings at ${width}`,async({page})=>{
  await page.setViewportSize({width,height:960});const state=await setup(page,true);
- await expect(page.locator('.fg-template-panel')).toContainText('系统模板 · 按文件类别自动匹配');
+ await expect(page.locator('.fg-template-panel')).toContainText('光大模板');await expect(page.locator('.fg-template-panel')).not.toContainText('系统模板');
  expect(state.data.preparation.workpaper_template_mode).toBe('automatic');expect(state.data.preparation.mappings).toEqual({});expect(state.data.sets).toHaveLength(0);
- await page.getByRole('button',{name:'预览系统样式',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('综合核查记录');await page.getByRole('button',{name:'关闭',exact:true}).click();
+ await page.getByRole('button',{name:'预览模板',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('综合核查记录');await page.getByRole('button',{name:'关闭',exact:true}).click();
  const evidence=resolve('test-evidence/template-selection');await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,`system-default-${width}.png`),fullPage:true});await page.locator('.fg-template-panel').screenshot({path:resolve(evidence,`system-panel-${width}.png`),style:'.fg-footer,.topbar,.skip-link,.ba-dock{visibility:hidden!important}'});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await page.locator('#fg-confirm').click();await expect(page.locator('.fg-status')).toContainText('已提交');expect(state.submissions).toHaveLength(1);expect(state.quotes).toBe(1);
@@ -235,7 +235,7 @@ test('legacy direct entry moves to one preparation and preserves its catalogue, 
  await page.addInitScript(({owner,project})=>localStorage.setItem(`bb-workpapers-v1:${owner}:${project}`,JSON.stringify({catalogue:'builtin-cat',selected:['entry-2'],requirements:'保留旧目录编制要求'})),{owner:ids.owner,project:ids.api});
  const state=await setup(page);await page.goto('/'+href({step:'workpapers'}));await expect(page).toHaveURL(/step=prepare/);
  await expect(page.locator('#fg-requirements')).toHaveValue('保留旧目录编制要求');await expect(page.locator('.fg-match-summary')).toContainText('已选 1 项');
- await page.locator('#fg-confirm').click();await expect(page.getByRole('dialog')).toContainText('系统模板');expect(state.data.preparation.item_ids).toEqual(['entry-2']);expect(state.data.preparation.workpaper_template_mode).toBe('automatic');
+ await page.locator('#fg-confirm').click();await expect(page.getByRole('dialog')).toContainText('光大模板');expect(state.data.preparation.item_ids).toEqual(['entry-2']);expect(state.data.preparation.workpaper_template_mode).toBe('automatic');
 });
 
 test('legacy pending workpaper request stays on its recovery path and is never resubmitted automatically',async({page})=>{
