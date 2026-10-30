@@ -1,3 +1,5 @@
+import './upload-progress.css';
+import {uploadActivity,uploadTransfer,uploadProgressHtml,type UploadStatus} from './upload-progress';
 import {billingRecoveryHeaders} from './billing-recovery-wire.js';
 import {int64} from '@bondbuddy/contracts';
 import {isAutomaticCharge,displayCharge} from './commerce';
@@ -315,7 +317,8 @@ export class IntegrityWorkspace {
   const select=d.querySelector<HTMLSelectElement>('#integrity-existing-materials')!;
   void this.api.projectFiles(this.id!,this.controller.signal).then(result=>{if(!this.live()||!d.open)return;if(!Value.Check(schemas.ProjectFilesResponse,result)||result.project_id!==this.id)throw new UserFacingError('文件清单无法核实。');files=result.items.filter(f=>f.project_id===this.id&&f.source==='material'&&/\.(png|jpe?g|pdf|docx)$/i.test(f.filename));select.innerHTML='<option value="">选择本项目文件（不重新上传）</option>'+files.map((f,i)=>`<option value="${i}">${esc(f.filename)} · 版本 ${f.version}</option>`).join('');const index=files.findIndex(f=>form.material&&f.file_id===form.material.material_id&&f.version===form.material.material_version&&f.sha256===form.material.sha256);if(index>=0)select.value=String(index);}).catch(e=>{if(d.open){select.innerHTML='<option value="">文件读取失败，可重开或上传新文件</option>';d.querySelector('[role=status]')!.textContent=this.error(e,'read');}});
   const fileInput=d.querySelector<HTMLInputElement>('[name=file]')!,saveButton=d.querySelector<HTMLButtonElement>('#integrity-evidence-save')!;
-  const uploadStatus=(text:string)=>{d.querySelector('[role=status]')!.textContent=text;};
+  const uploadStatusHost=d.querySelector('[role=status]')!;
+   const uploadStatus:UploadStatus=(text,p)=>{if(p)uploadStatusHost.innerHTML=uploadProgressHtml(p,fileInput.files?.[0]?.name??'补充证据',{announce:false});else uploadStatusHost.textContent=text;};
   const runUpload=(fn:()=>Promise<void>)=>this.act(fn,'save').finally(()=>{if(this.live()&&d.isConnected)paintUpload();});
   const paintUpload=()=>{
    const host=d.querySelector<HTMLElement>('#integrity-upload-recovery')!;
@@ -361,7 +364,7 @@ export class IntegrityWorkspace {
      form.uploadOperationId=record.id;if(!collect())throw new UserFacingError(this.problem);
     }
     const original=integrityUploadRecord(recovery,form),operationId=original.id;
-    const material=await recovery.resume(operationId,{file,signal:this.controller.signal,status:message=>uploadStatus(message.includes('会话')?'正在准备保存原文件…':message.includes('原上传')?'正在确认文件是否已保存…':message),progress:(loaded,total)=>uploadStatus(loaded>=total?'文件传输完成，正在确认保存…':`正在上传 ${Math.floor(loaded/total*100)}%…`)});
+    const material=await recovery.resume(operationId,{file,signal:this.controller.signal,status:message=>uploadStatus(message,uploadActivity(message)),progress:(loaded,total)=>{const p=uploadTransfer(loaded,total);uploadStatus(p.message,p);}});
     this.controller.signal.throwIfAborted();if(!current()||form.uploadOperationId!==operationId||this.evidenceDraft?.uploadOperationId!==operationId)throw new UserFacingError('原补证记录已变化，材料尚未写入本页。请重新读取并核对。');
     form.material={source_project_id:this.id!,material_id:material.material_id,material_version:material.material_version,sha256:material.sha256};
     this.selectedFile=undefined;fileInput.value='';if(!collect())throw new UserFacingError(this.problem);

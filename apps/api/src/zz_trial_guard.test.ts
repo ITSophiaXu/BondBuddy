@@ -68,9 +68,21 @@ test('config: guard is off outside production unless enabled, and bad values fai
   assert.equal(trialConfigFromEnv({ NODE_ENV: 'production' }).enabled, true);
   assert.equal(trialConfigFromEnv({ NODE_ENV: 'production', BB_TRIAL_GUARD: 'off' }).enabled, false);
   assert.equal(trialConfigFromEnv({ BB_TRIAL_KILL_SWITCH: '1' }).kill_switch_config, true);
-  assert.throws(() => trialConfigFromEnv({ BB_TRIAL_RUNS_PER_USER_PER_DAY: '-1' }));
+  assert.throws(() => trialConfigFromEnv({ BB_TRIAL_ACTIVE_RUNS_PER_USER: '-1' }));
   assert.throws(() => trialConfigFromEnv({ BB_TRIAL_GUARD: 'maybe' }));
   assert.throws(() => trialConfigFromEnv({ BB_TRIAL_DAY_TIME_ZONE: 'Not/AZone' }));
+});
+
+test('daily limits stay retired even when legacy production environment values remain', () => {
+  for (const value of ['1', '2000000', '-1', 'obsolete']) {
+    const config = trialConfigFromEnv({ NODE_ENV: 'production', BB_TRIAL_GUARD: 'on',
+      BB_TRIAL_RUNS_PER_USER_PER_DAY: value, BB_TRIAL_MODEL_TOKENS_PER_USER_PER_DAY: value,
+      BB_TRIAL_PROJECTS_PER_USER_PER_DAY: value, BB_TRIAL_UPLOAD_BYTES_PER_USER_PER_DAY: value });
+    for (const key of ['runs_per_user_per_day', 'model_tokens_per_user_per_day', 'projects_per_user_per_day', 'upload_bytes_per_user_per_day'] as const)
+      assert.equal(config[key], 0, `${key} must report unlimited`);
+    assert.equal(config.enabled, true);
+    assert.equal(config.active_runs_per_user, 2);
+  }
 });
 
 test('health and readiness probes', { skip }, async () => {
@@ -114,7 +126,7 @@ test('health and readiness probes', { skip }, async () => {
   } finally { await pool.end(); }
 });
 
-test('run quotas: active runs, runs per day, idempotent replay and logged rejection', { skip }, async () => {
+test('run admission retains concurrency and idempotency but ignores daily counts', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   try {
     await openGate(pool);
@@ -137,8 +149,8 @@ test('run quotas: active runs, runs per day, idempotent replay and logged reject
     assert.equal((await h.submit(owner, projectId, inputHash)).statusCode, 202);
     await pool.query("UPDATE bb_runs SET state='cancelled' WHERE owner_user_id=$1", [owner]);
     const daily = await h.submit(owner, projectId, inputHash);
-    assert.equal(daily.statusCode, 429);
-    assert.match(daily.json().message, /runs_per_user_per_day/);
+    assert.equal(daily.statusCode, 202, daily.body);
+    assert.equal(await alertFor(pool, 'runs_per_user_per_day', owner), 0);
     // A global cap is shared by every account and cannot be bypassed by an allow override.
     const active = (await pool.query("SELECT count(*)::int n FROM bb_runs WHERE state IN ('preparing','queued','running','validating','delivering')")).rows[0].n;
     const g = harness(pool, base({ global_active_runs: active + 1 }));
@@ -193,7 +205,7 @@ test('a quota-rejected start can retry the same request after capacity returns w
   } finally { await h.app.close(); await pool.end(); }
 });
 
-test('token quota counts unknown usage conservatively at submit and before every model call', { skip }, async () => {
+test('daily token usage never blocks submit or model calls and remains fully accounted', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   const config = base({ model_tokens_per_user_per_day: 1000, unknown_usage_tokens_per_attempt: 600, active_runs_per_user: 10, runs_per_user_per_day: 10 });
   configureTrialGuard(config);
@@ -209,16 +221,20 @@ test('token quota counts unknown usage conservatively at submit and before every
     await recordPotentialCall(pool, lease, 'synthetic-call-b', 1); // usage never reported: counts 600
     // 350 measured + 600 conservative = 950 < 1000: one more intent is still allowed.
     await recordPotentialCall(pool, lease, 'synthetic-call-c', 1);
-    await assert.rejects(recordPotentialCall(pool, lease, 'synthetic-call-d', 1), (error: any) => error.code === 'TRIAL_QUOTA_EXCEEDED' && error.status === 429);
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1', [lease.jobId])).rows[0].n, 3, 'a rejected call leaves no intent');
-    const refused = await h.submit(owner, projectId, inputHash);
-    assert.equal(refused.statusCode, 429);
-    assert.match(refused.json().message, /model_tokens_per_user_per_day/);
-    assert.equal(await alertFor(pool, 'model_tokens_per_user_per_day', owner), 1);
+    await recordPotentialCall(pool, lease, 'synthetic-call-d', 1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1', [lease.jobId])).rows[0].n, 4);
+    const accepted = await h.submit(owner, projectId, inputHash);
+    assert.equal(accepted.statusCode, 202, accepted.body);
+    assert.equal(await alertFor(pool, 'model_tokens_per_user_per_day', owner), 0);
 
     // Cost ledger and daily aggregates (log_reader).
     const reader = await user(pool, 'trial-reader'), nobody = await user(pool, 'trial-none');
     await grantOperator(pool, { userId: reader, role: 'log_reader', grantedBy: 'synthetic-setup', reasonCode: 'synthetic_test' });
+    const status = await h.as(reader)('GET', '/api/v1/admin/trial/status');
+    assert.equal(status.statusCode, 200, status.body);
+    assert.ok(Value.Check(schemas.AdminTrialStatusResponse, status.json()));
+    for (const key of ['runs_per_user_per_day', 'model_tokens_per_user_per_day', 'projects_per_user_per_day', 'upload_bytes_per_user_per_day'])
+      assert.equal(status.json().limits[key], 0, 'admin status reports effective unlimited daily usage');
     assert.equal((await h.as(nobody)('GET', `/api/v1/admin/trial/cost-ledger?user_id=${owner}`)).statusCode, 404);
     const ledger = await h.as(reader)('GET', `/api/v1/admin/trial/cost-ledger?user_id=${owner}&limit=2`);
     assert.equal(ledger.statusCode, 200, ledger.body);
@@ -227,23 +243,23 @@ test('token quota counts unknown usage conservatively at submit and before every
     assert.ok(ledger.json().next_cursor);
     const rest = await h.as(reader)('GET', `/api/v1/admin/trial/cost-ledger?user_id=${owner}&cursor=${ledger.json().next_cursor}`);
     const items = [...ledger.json().items, ...rest.json().items];
-    assert.equal(items.length, 3);
+    assert.equal(items.length, 4);
     assert.ok(items.every((item: any) => item.pricing_status === 'unknown' && item.cost_amount === null));
-    assert.deepEqual(items.map((item: any) => [item.usage_status, item.input_tokens, item.conservative_tokens]), [['measured', '250', '350'], ['unknown', null, '600'], ['unknown', null, '600']]);
+    assert.deepEqual(items.map((item: any) => [item.usage_status, item.input_tokens, item.conservative_tokens]), [['measured', '250', '350'], ['unknown', null, '600'], ['unknown', null, '600'], ['unknown', null, '600']]);
     assert.equal((await h.as(reader)('GET', '/api/v1/admin/trial/cost-ledger?price=1')).statusCode, 422);
     const usage = await h.as(reader)('GET', `/api/v1/admin/trial/usage?user_id=${owner}`);
     assert.equal(usage.statusCode, 200, usage.body);
     assert.ok(Value.Check(billingDtoSchema(schemas.AdminTrialUsageResponse,"adminTrialUsage",Int64Schema) as TSchema, usage.json()));
     const [mine] = usage.json().per_user;
     assert.equal(mine.user_id, owner);
-    assert.equal(mine.runs_created, '1');
-    assert.equal(mine.attempts, '3');
+    assert.equal(mine.runs_created, '2');
+    assert.equal(mine.attempts, '4');
     assert.equal(mine.measured_attempts, '1');
-    assert.equal(mine.unresolved_attempts, '2');
+    assert.equal(mine.unresolved_attempts, '3');
     assert.deepEqual(mine.measured_tokens, { input_tokens: '250', output_tokens: '100', cached_input_tokens: '0', reasoning_tokens: '0' });
-    assert.equal(mine.conservative_tokens, '1550');
+    assert.equal(mine.conservative_tokens, '2150');
     assert.equal(usage.json().totals[0].user_id, null);
-    assert.equal(usage.json().totals[0].attempts, '3');
+    assert.equal(usage.json().totals[0].attempts, '4');
     const all = await h.as(reader)('GET', '/api/v1/admin/trial/usage');
     assert.ok(BigInt(all.json().totals[0].attempts) >= 3n);
     assert.equal((await h.as(reader)('GET', '/api/v1/admin/trial/usage?from=2026-01-01&to=2026-09-01')).statusCode, 422, 'range is bounded');
@@ -252,7 +268,7 @@ test('token quota counts unknown usage conservatively at submit and before every
   } finally { configureTrialGuard(null); await pool.end(); }
 });
 
-test('zero disables only the daily model-token cap while retaining other trial limits', { skip }, async () => {
+test('unlimited daily usage retains concurrent task admission controls', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   const config = base({ active_runs_per_user: 1, runs_per_user_per_day: 10, model_tokens_per_user_per_day: 0 });
   configureTrialGuard(config);
@@ -407,15 +423,14 @@ test('abuse limits: per-account and per-source, shared source not blanket-banned
   const pool = new Pool({ connectionString: connection });
   try {
     const office = `203.0.113.${Math.floor(Math.random() * 200) + 1}`;
-    const h = harness(pool, base({ projects_per_user_per_day: 2, projects_per_source_per_hour: 3, uploads_per_user_per_hour: 2, upload_bytes_per_user_per_day: 1500 }));
+    const h = harness(pool, base({ projects_per_user_per_day: 2, projects_per_source_per_hour: 4, uploads_per_user_per_hour: 2, upload_bytes_per_user_per_day: 1500 }));
     const operatorUser = await user(pool, 'abuse-op');
     await grantOperator(pool, { userId: operatorUser, role: 'log_operator', grantedBy: 'synthetic-setup', reasonCode: 'synthetic_test' });
     const [a, b, c, d] = [await user(pool, 'abuse-a'), await user(pool, 'abuse-b'), await user(pool, 'abuse-c'), await user(pool, 'abuse-d')];
     assert.equal((await h.project(a, office)).statusCode, 201);
     assert.equal((await h.project(a, office)).statusCode, 201);
     const perAccount = await h.project(a, office);
-    assert.equal(perAccount.statusCode, 429);
-    assert.match(perAccount.json().message, /projects_per_user_per_day/);
+    assert.equal(perAccount.statusCode, 201, 'project creation has no daily account cap');
     assert.equal((await h.project(b, office)).statusCode, 201, 'a colleague on the same office IP is not blocked by one account');
     const perSource = await h.project(c, office);
     assert.equal(perSource.statusCode, 429);
@@ -432,26 +447,24 @@ test('abuse limits: per-account and per-source, shared source not blanket-banned
     assert.equal(denied.statusCode, 403);
     assert.equal(denied.json().code, 'TRIAL_ACCESS_DENIED');
     assert.deepEqual(await rejected(pool, b, 'project_create'), ['TRIAL_ACCESS_DENIED']);
-    assert.deepEqual(await rejected(pool, a, 'project_create'), ['TRIAL_QUOTA_EXCEEDED']);
+    assert.deepEqual(await rejected(pool, a, 'project_create'), []);
     assert.equal((await h.as(operatorUser)('POST', `/api/v1/admin/trial/overrides/${deny.override_id}/revoke`, { reason_code: 'reviewed' })).statusCode, 200);
     assert.equal((await h.as(operatorUser)('POST', `/api/v1/admin/trial/overrides/${deny.override_id}/revoke`, { reason_code: 'reviewed' })).statusCode, 409);
     assert.equal((await h.project(b, '192.0.2.45')).statusCode, 201);
     assert.equal((await h.as(operatorUser)('POST', '/api/v1/admin/trial/overrides', { user_id: 'no-such-user', effect: 'deny', reason_code: 'x' })).statusCode, 404);
     assert.equal((await h.as(a)('GET', '/api/v1/admin/trial/overrides')).statusCode, 404);
     await assert.rejects(pool.query('DELETE FROM bb_trial_overrides WHERE id=$1', [deny.override_id]));
-    // Upload sessions: per-account hourly count and daily declared bytes.
+    // Upload sessions retain hourly count checks, with no daily byte cap.
     const up = await user(pool, 'abuse-upload');
     const projectId = (await h.project(up, '192.0.2.46')).json().project_id;
     const upload = (bytes: number) => h.as(up, '192.0.2.46')('POST', `/api/v1/projects/${projectId}/materials/uploads`, { filename: 'synthetic.pdf', media_type: 'application/pdf', byte_size: bytes, sha256: 'a'.repeat(64), role: 'historical' });
     assert.equal((await upload(1000)).statusCode, 201);
     const bytes = await upload(1000);
-    assert.equal(bytes.statusCode, 429);
-    assert.match(bytes.json().message, /upload_bytes_per_user_per_day/);
-    assert.equal((await upload(400)).statusCode, 201);
+    assert.equal(bytes.statusCode, 201, 'uploads can exceed the old daily byte cap');
     const count = await upload(10);
     assert.equal(count.statusCode, 429);
     assert.match(count.json().message, /uploads_per_user_per_hour/);
-    assert.deepEqual(await rejected(pool, up, 'upload_create'), ['TRIAL_QUOTA_EXCEEDED', 'TRIAL_QUOTA_EXCEEDED']);
+    assert.deepEqual(await rejected(pool, up, 'upload_create'), ['TRIAL_QUOTA_EXCEEDED']);
     // Only a keyed hash of the source is stored.
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_trial_admissions WHERE source_hash LIKE $1', [`%${office}%`])).rows[0].n, 0);
   } finally { await pool.end(); }

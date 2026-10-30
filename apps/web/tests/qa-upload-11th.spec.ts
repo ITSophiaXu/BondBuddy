@@ -9,7 +9,7 @@ async function open(page:Page,state=qaUploadFixture()){await installQaUpload11th
 async function capture(page:Page,name:string){const out=process.env.BB_QA_UPLOAD_11TH_EVIDENCE_DIR;if(out){await mkdir(out,{recursive:true});await page.screenshot({path:join(out,`qa-upload-11th-${name}.png`)});}}
 async function local(page:Page){const entries=await page.evaluate(()=>Object.fromEntries(Object.keys(localStorage).map(k=>[k,localStorage.getItem(k)!])));return new QaRecoveryCache('synthetic-qa-owner-a',projectId,{getItem:k=>entries[k]??null,setItem:()=>{throw Error('read only');},removeItem:()=>{throw Error('read only');}}).read();}
 async function pending(page:Page,state:QaUploadState,source=false,file=qaUploadFile(source?'合成原问题清单.doc':'合成原补充材料.pdf')){
- await page.locator(source?'#qa-upload':'#qa-supplement').setInputFiles(file);await expect(confirm(page)).toBeVisible();await expect(row(page)).toContainText(file.name);expect(state.qa.prepares).toEqual([]);
+ await page.locator(source?'#qa-upload':'#qa-supplement').setInputFiles(file);await expect(confirm(page)).toBeEnabled();await expect(row(page).locator('[role=alert]').first()).toBeVisible();await expect(row(page)).toContainText(file.name);expect(state.qa.prepares).toEqual([]);
  const writes=qaTransportWrites(state).length;await page.reload();await expect(confirm(page)).toBeVisible();expect(qaTransportWrites(state)).toHaveLength(writes);expect(state.qa.prepares).toEqual([]);return file;
 }
 test.beforeEach(async({page})=>{page.on('dialog',d=>void d.accept());});

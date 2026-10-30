@@ -60,7 +60,7 @@ async function setup(page:Page,{versions=false,purpose='update',retry=false}={})
   await page.route('**/panel-harness',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body><main style="max-width:1160px;margin:0 auto;padding:32px 20px"><div id="panel"></div></main></body></html>'}));
   const reenter=async()=>{await page.goto('/panel-harness');
   await page.evaluate(async({purpose,prototypeRoot})=>{
-    const load=(path:string)=>import(path);await load('/src/style.css');await load('/src/update-entry.css');await load(prototypeRoot+'styles.css');await load(prototypeRoot+'project-workspace.css');await load('/src/prototype-adapter.css');
+    const load=(path:string)=>import(path);await load('/src/style.css');await load('/src/update-entry.css');await load(prototypeRoot+'styles.css');await load(prototypeRoot+'project-workspace.css');await load('/src/prototype-adapter.css');if(purpose==='generation')await load('/src/generation-flow.css');
     const {ProspectusPanel}=await load('/src/prospectus-panel.ts'),{ApiClient}=await load('/src/api.ts');
     const panel=new ProspectusPanel(new ApiClient(()=>{}),'synthetic-panel-project',document.querySelector('#panel'),async()=>true,async()=>{},()=>{},purpose,'synthetic-owner');
     await panel.refresh();Object.assign(window,{panelFixture:{refresh:()=>panel.refresh()}});
@@ -106,9 +106,44 @@ test('current version downloads, history disclosure survives refresh, and adopti
 });
 
 test('generation guidance and same-size visual evidence',async({page})=>{
-  await setup(page,{purpose:'generation'});await expect(page.locator('#choose-prospectus-version')).toBeVisible();await expect(history(page)).toBeHidden();await expect(page.getByText('上传募集书新版本',{exact:true})).toHaveCount(0);await expect(page.locator('.pf-source-modes label')).toHaveText(['上传新募集说明书','选择项目已有募集说明书']);
+  await setup(page,{purpose:'generation'});await expect(page.locator('#choose-prospectus-version')).toBeVisible();await expect(history(page)).toBeHidden();await expect(page.getByText('上传募集书新版本',{exact:true})).toHaveCount(0);await expect(page.locator('.pf-source-modes')).toBeHidden();
   const out=process.env.BB_PANEL_EVIDENCE;if(!out)return;await mkdir(out,{recursive:true});
   for(const state of ['empty','current'])for(const width of [1440,390]){await page.setViewportSize({width,height:960});await setup(page,{versions:state==='current'});await page.locator('.prospectus-panel').screenshot({path:`${out}/implementation-${state}-${width}.png`});await page.goto(prototypeRoot+'prospectus-panel.html?state='+state);await page.locator('.prospectus-panel').screenshot({path:`${out}/prototype-${state}-${width}.png`});}
+});
+
+for(const width of [1440,390,320])test(`generation empty project only exposes upload, ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:960});const f=await setup(page,{purpose:'generation'});
+  const out=process.env.BB_EMPTY_SOURCE_EVIDENCE;
+  if(out){await mkdir(out,{recursive:true});await page.screenshot({path:`${out}/implementation-empty-${width}.png`,fullPage:true});}
+  await expect(page.getByRole('radio',{name:'选择项目已有募集说明书',exact:true})).toBeHidden();
+  await expect(page.locator('.pf-source-modes')).toBeHidden();await expect(page.locator('#pf-source-existing')).toBeHidden();
+  await expect(page.locator('#choose-prospectus-version')).toBeVisible();
+  await expect(page.locator('.pf-source-picker')).not.toContainText('选择一种方式');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  expect(f.calls.filter(c=>c.method!=='GET')).toEqual([]);
+});
+
+test('generation refresh removes stale project choice and restores it for saved unselected versions',async({page})=>{
+  const f=await setup(page,{purpose:'generation',versions:true});
+  const existing=page.getByRole('radio',{name:'选择项目已有募集说明书',exact:true});
+  await page.getByRole('radio',{name:'上传新募集说明书',exact:true}).check();await existing.check();
+  f.state.versions=[];f.state.current_version_id=null;f.state.selection_revision++;
+  await page.evaluate(()=>window.panelFixture.refresh());
+  await expect(existing).toBeHidden();await expect(page.locator('#pf-source-existing')).toBeHidden();
+  await expect(page.locator('#choose-prospectus-version')).toBeVisible();
+  f.state.versions=[version(1)];await page.evaluate(()=>window.panelFixture.refresh());
+  await expect(existing).toBeVisible();await existing.check();
+  await expect(page.locator('#pf-project-source option')).toHaveText(['请选择募集说明书版本','V1 · 合成历史募集书.docx']);
+  await expect(page.locator('.pf-selected-source')).toHaveCount(0);
+  expect(f.calls.filter(c=>c.method!=='GET')).toEqual([]);
+});
+
+test('generation does not offer unverified versions as existing project sources',async({page})=>{
+  const f=await setup(page,{purpose:'generation',versions:true});f.state.project_id='another-project';
+  await page.evaluate(()=>window.panelFixture.refresh());
+  await expect(page.getByRole('radio',{name:'选择项目已有募集说明书',exact:true})).toBeHidden();
+  await expect(page.locator('#pf-source-existing')).toBeHidden();await expect(page.locator('#choose-prospectus-version')).toBeVisible();
+  expect(f.calls.filter(c=>c.method!=='GET')).toEqual([]);
 });
 
 test('generation drop zone validates files and automatically saves one valid file',async({page})=>{

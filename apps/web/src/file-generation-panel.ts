@@ -1,3 +1,5 @@
+import './upload-progress.css';
+import {uploadActivity,uploadTransfer,uploadProgressHtml,type FileUploadProgress,type UploadStatus} from './upload-progress';
 import {BILLING_WIRE_HEADER,BILLING_WIRE_VERSION,LEGACY_BILLING_WIRE_VERSION,formatPoints,int64,serializeInt64,FileGenerationSubmitSchema as LegacyFileGenerationSubmitSchema,type BillingWireVersion,type FileGenerationSubmit as LegacyFileGenerationSubmit} from '@bondbuddy/contracts';
 import {PROJECT_DOCUMENT_CATALOG,M4_DOCUMENT_FIXED_PRICE,FileGenerationPreparationSchema,FileGenerationSubmitSchema,emptyFileGenerationPreparation,defaultWorkpaperIds,
  type FileGenerationWorkspace,type FileGenerationPreparation,type FileGenerationSubmit,type FileGenerationQuote,type FileTemplateSet,type FileTemplateRecord,type FileTemplatePin,type FileTemplatePreview,type FileTemplateMatch,type FileGenerationBatch,type WorkpaperCatalogue,type WorkpaperCataloguePreview,type WorkpaperColumnMapping,type ProjectFileWorkspace,type M4DocumentType,type M4MaterialPin} from './billing-types';
@@ -10,11 +12,12 @@ import {uploadFileMaterial,type UploadFileMaterialState} from './file-workspace'
 import {WorkpaperImportReview} from './workpaper-import-review';
 import {UploadRecovery} from './upload-recovery';
 import './file-generation-panel.css';
-const primary=['annual','underwriter','application','legal','init'];
 const label=(type:string)=>type==='workpaper'?'尽职调查底稿包':PROJECT_DOCUMENT_CATALOG.find(d=>d.id===type)?.name??type;
 const pin=(r:FileTemplateRecord):FileTemplatePin=>({set_id:r.set_id,record_id:r.record_id,sha256:r.sha256});
 type UploadReceipt={request_id:string;sha256:string;filename:string;document_type:M4DocumentType;set_id?:string};
 export class FileGenerationPanel {
+ private uploadProgress?:FileUploadProgress; private uploadName="文件";
+ private reportUpload:UploadStatus=(s,p)=>{if(!this.live())return;this.status=s;this.uploadProgress=p??uploadActivity(s);this.paint();};
  private controller=new AbortController();private data?:FileGenerationWorkspace;private prep=emptyFileGenerationPreparation();private cat?:WorkpaperCatalogue;
  private activeStep=2;private busy=false;private status='';private dirty=false;private storageError=false;private custom=false;private showMatches=false;private matches:FileTemplateMatch[]=[];
  private pending?:FileGenerationSubmit|LegacyFileGenerationSubmit;private pendingWire:BillingWireVersion=BILLING_WIRE_VERSION;private receipts:UploadReceipt[]=[];private dialog?:HTMLDialogElement;private timer?:ReturnType<typeof setTimeout>;
@@ -54,7 +57,7 @@ export class FileGenerationPanel {
   this.dirty=true;this.persist();const result=await this.request<{revision:number;preparation:FileGenerationPreparation}>('PUT','/preparation',{expected_revision:this.data!.revision,preparation:this.prep});
   this.data!.revision=result.revision;this.data!.preparation=structuredClone(result.preparation);this.dirty=false;this.persist();
  }
- private async act(fn:()=>Promise<void>){if(this.busy)return;this.busy=true;this.paint();try{await fn();}catch(e){this.status=friendlyError(e,'save');}finally{this.busy=false;if(this.live())this.paint();}}
+ private async act(fn:()=>Promise<void>){if(this.busy)return;this.busy=true;this.paint();try{await fn();}catch(e){this.status=friendlyError(e,'save');}finally{this.busy=false;this.uploadProgress=undefined;if(this.live())this.paint();}}
  private async change(fn:()=>void){await this.act(async()=>{fn();this.dirty=true;this.persist();await this.save();});}
  private set(){return this.data?.sets.find(s=>s.set_id===this.prep.template_set_id);}
  private record(p:FileTemplatePin|undefined){return p?this.data?.sets.find(s=>s.set_id===p.set_id)?.records.find(r=>r.record_id===p.record_id):undefined;}
@@ -70,9 +73,9 @@ export class FileGenerationPanel {
   const p=this.prep,set=this.set(),wp=p.document_types.includes('workpaper'),unmapped=p.item_ids.filter(id=>!p.mappings[id]).length,count=(wp?p.item_ids.length:0)+p.document_types.filter(t=>t!=='workpaper').length;
   const card=(type:string,hint:string)=>`<label class="fg-type ${p.document_types.includes(type as M4DocumentType)?'is-selected':''}"><input type="checkbox" data-fg-type="${type}" ${p.document_types.includes(type as M4DocumentType)?'checked':''}><span><strong>${esc(label(type))}</strong><small>${esc(hint)}</small></span></label>`;
   this.host.innerHTML=`<div class="fg-preparation"><div class="fg-source"><div><small>本次生成依据</small><strong>${esc(this.source?.filename??'尚未选择募集说明书')} ${this.source?'· V'+this.source.sequence:''}</strong></div><a class="btn secondary" href="#generate?project=${encodeURIComponent(this.project)}&step=source">更换募集说明书</a></div>
-   <p role="status" class="fg-status">${esc(this.status)}</p>${this.storageError?'<button class="btn secondary" id="fg-reload">重新载入服务端清单</button>':''}
+   <p role="status" class="fg-status" ${this.uploadProgress?'hidden':''}>${esc(this.status)}</p>${this.uploadProgress?'<div class="fg-upload-progress"><strong>'+esc(this.uploadName)+'</strong>'+uploadProgressHtml(this.uploadProgress,this.uploadName)+'</div>':''}${this.storageError?'<button class="btn secondary" id="fg-reload">重新载入服务端清单</button>':''}
    ${this.pending?'<section class="panel fg-recovery"><h2>上次提交的结果待确认</h2><p>将用原提交编号核实结果，不会重复创建文件包。目录、模板和要求暂时锁定。</p><button class="btn primary" id="fg-resolve">确认上次提交结果</button><button class="btn secondary" id="fg-stop-submission">停止尚未提交的请求</button></section>':''}
-   <div id="fg-controls"><section class="panel"><h2>这次要生成哪些文件？</h2><p class="muted">可以同时选择底稿包和其他文件，使用同一份募集说明书。</p><div class="fg-types">${card('workpaper','按目录逐项编制，打包交付')}${primary.map(t=>card(t,PROJECT_DOCUMENT_CATALOG.find(d=>d.id===t)!.hint)).join('')}</div><details class="fg-other"><summary>其他文件类型</summary><div class="fg-types">${PROJECT_DOCUMENT_CATALOG.filter(t=>!primary.includes(t.id)).map(t=>card(t.id,t.hint)).join('')}</div></details></section>
+   <div id="fg-controls"><section class="panel"><h2>这次要生成哪些文件？</h2><p class="muted">可以同时选择多种文件，使用同一份募集说明书。</p><div class="fg-types">${card('workpaper','按目录逐项编制，打包交付')}${PROJECT_DOCUMENT_CATALOG.map(t=>card(t.id,t.hint)).join('')}</div></section>
    <section class="panel" ${wp?'':'hidden'}><div class="fg-section-heading"><div><h2>底稿目录与文件模板</h2><p class="muted">目录决定生成哪些文件；模板决定每份文件采用什么样式。</p></div></div><div class="fg-source-choices"><button class="fg-option ${!this.custom?'is-selected':''}" id="fg-builtin-all" ${!this.data.builtin.available?'disabled':''}><strong>直接使用光大整套</strong><small>同时采用内置目录和 Word 模板</small></button><button class="fg-option ${this.custom?'is-selected':''}" id="fg-custom"><strong>自定义目录与模板</strong><small>分别选择内置文件或上传自己的文件</small></button></div>${!this.data.builtin.available?'<p class="fg-notice">光大模板资产尚未安装，可先上传自己的模板。</p>':''}
    <div class="fg-two-cards"><article class="fg-source-card"><span class="fg-card-number">01</span><h3>底稿目录</h3><p>生成哪些文件</p><strong>${esc(this.cat?.filename??'尚未选择目录')}</strong><small>${this.cat?this.cat.entries.filter(e=>e.kind==='file').length+' 项目录 · 已选 '+p.item_ids.length+' 项':'上传 Excel，系统识别编号、名称和编制要求'}</small><div class="fg-actions"><button class="btn secondary" id="fg-preview-catalogue" ${!this.cat?'disabled':''}>预览目录</button><button class="text-button" id="fg-change-catalogue">更换目录</button></div><div class="fg-custom-controls" ${this.custom?'':'hidden'}><button class="text-button" id="fg-builtin-catalogue" ${!this.data.builtin.available?'disabled':''}>使用光大目录</button><label class="btn secondary">上传 XLSX<input id="fg-catalogue-upload" type="file" accept=".xlsx" hidden></label></div></article>
    <article class="fg-source-card"><span class="fg-card-number">02</span><h3>底稿文件模板</h3><p>每份文件采用什么样式</p><strong>${esc(set?.name??'尚未选择模板包')}</strong><small>${set?set.records.filter(r=>r.document_type==='workpaper').length+' 份 Word 模板 · '+set.version:'可上传 ZIP、Word 文件或整个文件夹'}</small><div class="fg-actions"><button class="btn secondary" id="fg-preview-set" ${!set?'disabled':''}>预览模板</button><button class="text-button" id="fg-change-templates">更换模板包</button></div><div class="fg-custom-controls" ${this.custom?'':'hidden'}><button class="text-button" id="fg-builtin-templates" ${!this.data.builtin.available?'disabled':''}>使用光大模板</button><label class="btn secondary">上传 Word / ZIP<input id="fg-template-upload" type="file" accept=".docx,.zip" multiple hidden></label><label class="btn secondary">选择文件夹<input id="fg-folder-upload" type="file" webkitdirectory multiple hidden></label><select id="fg-saved-set" aria-label="选择已保存模板包"><option value="">选择已保存的模板包</option>${this.data.sets.filter(s=>s.records.some(r=>r.document_type==='workpaper')).map(s=>`<option value="${esc(s.set_id)}" ${s.set_id===p.template_set_id?'selected':''}>${esc(s.name)} · ${s.records.length} 份 · ${esc(s.version)}</option>`).join('')}</select></div></article></div>
@@ -128,13 +131,14 @@ export class FileGenerationPanel {
   const sets:FileTemplateSet[]=[];let skipped=files.length-words.length;
   for(const [index,file] of words.entries()){
    if(file.size>64*1024*1024)throw new UserFacingError('单个模板文件或 ZIP 不可超过 64 MB。');
-   this.status=`正在保存模板 ${index+1}/${words.length}…`;this.paint();
+   this.uploadName=file.webkitRelativePath||file.name;this.reportUpload(`正在准备模板 ${index+1}/${words.length}：${this.uploadName}`);
    const sha256=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].map(x=>x.toString(16).padStart(2,'0')).join(''),filename=file.webkitRelativePath||file.name;
    let receipt=this.receipts.find(r=>r.sha256===sha256&&r.filename===filename&&r.document_type===type);
    if(!receipt){receipt={request_id:crypto.randomUUID(),sha256,filename,document_type:type};this.receipts.push(receipt);this.persist();}
    let set=this.data!.sets.find(s=>s.set_id===receipt!.set_id);
-   if(!set){const query=new URLSearchParams({request_id:receipt.request_id,sha256,filename,document_type:type,format:/\.zip$/i.test(file.name)?'zip':'docx'});set=await this.request<FileTemplateSet>('POST','/templates/import?'+query,file,{'Content-Type':'application/octet-stream'});receipt.set_id=set.set_id;this.data!.sets.unshift(set);this.persist();}sets.push(set);
+   if(!set){const query=new URLSearchParams({request_id:receipt.request_id,sha256,filename,document_type:type,format:/\.zip$/i.test(file.name)?'zip':'docx'});set=await this.api.uploadRequest<FileTemplateSet>(`/projects/${encodeURIComponent(this.project)}/file-generation/templates/import?`+query,file,(loaded,total)=>{const p=uploadTransfer(loaded,total);this.reportUpload(p.message,p);},this.controller.signal,()=>this.reportUpload('文件传输完成，正在解析并保存模板…'));receipt.set_id=set.set_id;this.data!.sets.unshift(set);this.persist();}sets.push(set);
   }
+  this.reportUpload('模板已保存，正在整理模板包…');
   let combined=sets[0];if(sets.length>1){const request='combine-'+[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(sets.map(s=>s.set_id).sort().join('|'))))].map(x=>x.toString(16).padStart(2,'0')).join('');combined=await this.request<FileTemplateSet>('POST','/templates/combine',{request_id:request,set_ids:sets.map(s=>s.set_id)});this.data!.sets.unshift(combined);}
   if(type==='workpaper'){this.prep.template_set_id=combined.set_id;this.prep.mappings={};await this.readMatches();this.showMatches=true;}else this.prep.document_templates[type]=pin(combined.records[0]);
   await this.save();this.status=`已保存 ${combined.records.length} 份 Word 模板。${skipped?'已忽略 '+skipped+' 个 PDF 或其他文件；请核对是否有仅提供 PDF 的事项。':''}`;
@@ -142,7 +146,8 @@ export class FileGenerationPanel {
  private async uploadCatalogue(file?:File,operationId?:string){
   if(file&&!/\.xlsx$/i.test(file.name))throw new UserFacingError('底稿目录支持 XLSX，旧版 XLS 请另存为 XLSX。');
   if(operationId)this.catalogueUpload={operationId,recovery:new UploadRecovery(this.api,this.owner,this.project,'file-generation-catalogue',()=>this.live())};
-  this.cataloguePin=await uploadFileMaterial(this.api,this.project,file,this.controller.signal,s=>{this.status=s;this.paint();},this.catalogueUpload,this.owner,'file-generation-catalogue');
+  this.uploadName=file?.name??"底稿目录";
+  this.cataloguePin=await uploadFileMaterial(this.api,this.project,file,this.controller.signal,this.reportUpload,this.catalogueUpload,this.owner,'file-generation-catalogue');
   const context=this.catalogueUpload.recovery?.list().find(r=>r.id===this.catalogueUpload.operationId)?.context as {mapping?:WorkpaperColumnMapping[];scope?:'due_diligence'|'all'}|undefined;
   if(context?.mapping)await this.acceptCatalogue(context.mapping,context.scope??'due_diligence');else await this.previewCatalogueImport();
  }
@@ -177,7 +182,8 @@ export class FileGenerationPanel {
  private async resumeSupport(file?:File,operationId?:string){
   if(this.prep.materials.length>=50&&!operationId)throw new UserFacingError('本批最多补充 50 份资料。');
   const recovery=new UploadRecovery(this.api,this.owner,this.project,'file-generation-support',()=>this.live()),state:UploadFileMaterialState={recovery,...(operationId?{operationId}:{})};
-  const m=await uploadFileMaterial(this.api,this.project,file,this.controller.signal,s=>{this.status=s;this.paint();},state,this.owner,'file-generation-support');
+  this.uploadName=file?.name??recovery.list().find(r=>r.id===operationId)?.declaration.filename??"补充资料";
+  const m=await uploadFileMaterial(this.api,this.project,file,this.controller.signal,this.reportUpload,state,this.owner,'file-generation-support');
   if(!this.prep.materials.some(p=>p.material_id===m.material_id&&p.material_version===m.material_version))this.prep.materials.push(m);await this.save();if(state.operationId)await recovery.forget(state.operationId);
  }
  private paintSupportRecovery(){
