@@ -594,7 +594,7 @@ export class ProjectFiles {
       ?v.material_id===f.file_id&&v.material_version===f.version
       :v.artifact_id===f.file_id&&v.artifact_version===f.version)):[];
     const version=matches?.length===1?matches[0]:undefined;
-    return version?` · ${f.current?'当前募集书':'募集书'} V${version.sequence}`:f.current?' · 当前募集书（稿次待核实）':'';
+    return version?` · ${version.version_id===this.panel?.state?.current_version_id?'当前募集书':'募集书'} V${version.sequence}`:f.current?' · 当前募集书（稿次待核实）':'';
   }
   private history(key:string){
     this.dialog?.remove();const rows=this.files.filter(f=>f.file_key===key);const dialog=document.createElement('dialog');this.dialog=dialog;dialog.className='collection-file-dialog';dialog.setAttribute('aria-label','文件版本记录');

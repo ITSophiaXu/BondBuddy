@@ -46,10 +46,12 @@ test('directory import succeeds automatically and enables the next step without 
   await page.locator('#wp-none').click();await expect(page.locator('#wp-start')).toBeDisabled();
   await page.locator('[data-wp-item]').first().check();
   await page.locator('#wp-requirements').fill('合成范围回归：只编制所选一份');
+  if(process.env.BB_UX_EVIDENCE){await mkdir(process.env.BB_UX_EVIDENCE,{recursive:true});await page.setViewportSize({width:1366,height:768});await page.locator('#wp-requirements').scrollIntoViewIfNeeded();await page.screenshot({path:resolve(process.env.BB_UX_EVIDENCE,'workpaper-editable.png')});}
   expect(await records(page)).toEqual([]);expect(state.imports).toHaveLength(1);expect(state.uploads.puts).toBe(1);
   await page.locator('#wp-start').click();await expect(page.locator('#wp-confirmation-page')).toContainText('1 份文件');
   await expect(page.locator('#wp-confirmation-page')).toContainText('4,500');
   await expect(page.locator('#wp-confirmation-page')).toContainText('合成范围回归');
+  if(process.env.BB_UX_EVIDENCE)await page.screenshot({path:resolve(process.env.BB_UX_EVIDENCE,'workpaper-selected-confirmation.png')});
   await page.locator('#wp-confirm-back').click();await page.reload();
   await expect(page.locator('[data-wp-item]:checked')).toHaveCount(1);
   await expect(page.locator('#wp-requirements')).toHaveValue('合成范围回归：只编制所选一份');
