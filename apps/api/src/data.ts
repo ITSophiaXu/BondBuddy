@@ -4,7 +4,7 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient, type BlobItem } from '@azure/storage-blob';
-import { isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
+import { isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
 import { inspectMaterialUpload, inspectMaterialUploadFile, inspectMaterialUploadFileDetailed } from './original-material-upload.js';
 import { UploadSafetyError, type UploadInspectionResult, type UploadRejectionReason, type UploadStructureDetail } from './upload-safety.js';
 
@@ -35,6 +35,7 @@ export const executionKeyFromStorage=(value:string):string=>{
 };
 export class Problem extends Error {
   inputIssues?: M4InputIssue[];
+  trialLimit?: TrialLimitKind;
   constructor(public status: number, public code: string, message: string, public readonly uploadReason?: UploadRejectionReason, public readonly uploadDetail?: UploadStructureDetail) { super(message); }
 }
 export function publicProblem(error: Problem, correlationId: string) {
@@ -46,7 +47,10 @@ export function publicProblem(error: Problem, correlationId: string) {
     code: error.code, message: inspection ? 'Material inspection was not completed' : error.message,
     retryable: error.status === 503 || inspection === 'inspection_queue_timeout' ||
       inspection === 'inspection_timeout' || inspection === 'inspection_worker_failed',
-    field_errors: inspection ? [{ field: 'material_upload', code: inspection, message: 'File inspection was not completed' }] : error.code === 'INPUT_REQUIRED' ? error.inputIssues ?? [] : [],
+    field_errors: inspection ? [{ field: 'material_upload', code: inspection, message: 'File inspection was not completed' }]
+      : error.code === 'TRIAL_QUOTA_EXCEEDED' && error.trialLimit && TRIAL_LIMIT_KINDS.includes(error.trialLimit)
+        ? [{ field: TRIAL_LIMIT_ERROR_FIELD, code: error.trialLimit, message: 'Current processing limit reached' }]
+        : error.code === 'INPUT_REQUIRED' ? error.inputIssues ?? [] : [],
     correlation_id: correlationId,
   };
 }

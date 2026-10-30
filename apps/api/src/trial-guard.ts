@@ -53,6 +53,7 @@ export function configureTrialGuard(config: TrialConfig | null) { processConfig 
 export class TrialLimitProblem extends Problem {
   constructor(status: 403 | 429 | 503, code: 'TRIAL_QUOTA_EXCEEDED' | 'TRIAL_ACCESS_DENIED' | 'MODEL_CALLS_SUSPENDED', readonly limit: TrialLimitKind) {
     super(status, code, code === 'MODEL_CALLS_SUSPENDED' ? 'New model work is suspended by the operator' : code === 'TRIAL_ACCESS_DENIED' ? 'Trial access is suspended for this account' : `Trial limit reached: ${limit}`);
+    this.trialLimit = limit;
   }
 }
 const exceeded = (limit: TrialLimitKind) => new TrialLimitProblem(429, 'TRIAL_QUOTA_EXCEEDED', limit);
