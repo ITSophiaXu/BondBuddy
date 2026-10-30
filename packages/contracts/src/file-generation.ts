@@ -12,6 +12,8 @@ export type FileTemplatePin=Static<typeof FileTemplatePinSchema>;
 export const FileTemplateChoiceSchema=Type.Union([FileTemplatePinSchema,obj({private_template:M4TemplateRefSchema})]);
 export type FileTemplateChoice=Static<typeof FileTemplateChoiceSchema>;
 export const FileGenerationPreparationSchema=obj({
+  // Omitted preserves the original requirement for an explicitly pinned Word.
+  workpaper_template_mode:Type.Optional(Type.Union([Type.Literal('automatic'),Type.Literal('selected')])),
   document_types:Type.Array(M4DocumentTypeSchema,{maxItems:20,uniqueItems:true}),
   catalogue_id:Type.Union([id,Type.Null()]),template_set_id:Type.Union([id,Type.Null()]),
   item_ids:Type.Array(id,{maxItems:1000,uniqueItems:true}),
@@ -33,6 +35,7 @@ export const FileBuiltinAdoptSchema=obj({request_id:id,version:id,part:Type.Unio
 export type FileTemplateRecord=FileTemplatePin & {name:string;code:string;role:string;document_type:Static<typeof M4DocumentTypeSchema>};
 export type FileTemplateSet={set_id:string;name:string;version:string;origin:'builtin'|'private';records:FileTemplateRecord[];warnings:string[];catalogue?:WorkpaperCatalogue};
 export type FileTemplatePreview={title:string;redacted:true;view:'structure';blocks:({kind:'paragraph';text:string;bold:boolean;align:string}|{kind:'table';rows:string[][]})[];pdf_available:boolean};
+export type SystemWorkpaperTemplates={templates:{family:string;preview:FileTemplatePreview}[]};
 export type FileGenerationBatch={batch_id:string;created_at:string;points:number;workpapers:WorkpaperBatch|null;documents:ProjectFileBatch|null};
 export type FileGenerationPricing={mode:'legacy'|'automatic'|'scope';price_version:string;workpaper_points:number;document_points:number|null};
 export type FileGenerationWorkspace={revision:number;preparation:FileGenerationPreparation;sets:FileTemplateSet[];builtin:{name:string;version:string;available:boolean};batches:FileGenerationBatch[];pricing?:FileGenerationPricing};
@@ -44,6 +47,7 @@ export const fileGenerationOpenApiPaths=()=>{
   return {[base]:{get:route()},[base+'/preparation']:{put:route(FilePreparationSaveSchema)},[base+'/builtin']:{post:route(FileBuiltinAdoptSchema)},[base+'/quote']:{post:route(FileGenerationSubmitSchema)},[base+'/batches']:{post:route(FileGenerationSubmitSchema)},
     [base+'/stop-submission']:{post:route(FileGenerationSubmitSchema)},
     [base+'/templates/combine']:{post:route(FileTemplateCombineSchema)},
+    [base+'/system-templates']:{get:route()},
     [base+'/template-preview']:{post:route(FileTemplatePinSchema)},
     [base+'/template-preview-pdf']:{post:route(FileTemplatePinSchema)},
     [base+'/templates/import']:{post:{...route(),parameters:[...route().parameters,...Object.entries(FileTemplateImportQuerySchema.properties).map(([name,schema])=>({name,in:'query',required:true,schema}))],requestBody:{required:true,content:{'application/octet-stream':{schema:{type:'string',format:'binary'}}}}}},

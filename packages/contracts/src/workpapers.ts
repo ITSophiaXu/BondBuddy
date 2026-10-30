@@ -34,6 +34,7 @@ export type WorkpaperItem={entry:WorkpaperEntry;decision?:WorkpaperDecision;expl
   artifacts:{kind:'document'|'preparation_note';filename:string;pin:M4ArtifactPin}[];
   file?:{original:ProjectFileVersion;current:ProjectFileVersion}};
 export type WorkpaperBatch={batch_id:string;topic_id:string;catalogue_id:string;state:'queued'|'running'|'paused'|'complete'|'partial'|'cancelled';revision:number;
+  template_mode?:'automatic'|'selected'|'mixed';
   source:ProjectFileSource;items:WorkpaperItem[];total_points:number;charged_points:number;created_at:string;error:string|null;start_mode?:'direct'|'assessed';
   billing_resume?:{price_version:string;required_points:number;available_points:number;shortage:number}};
 export type WorkpaperWorkspace={catalogues:WorkpaperCatalogue[];batches:WorkpaperBatch[];assessments:WorkpaperAssessment[];price?:{version:string;points:number;auto_charge?:boolean}};

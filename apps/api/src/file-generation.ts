@@ -17,6 +17,8 @@ import {importProspectusMaterial} from './prospectus-import.js';
 import {createWorkpaperBatch,readWorkpaperBatch} from './workpapers.js';
 import {ensureProjectFileWorkspace,createProjectFileBatch,projectFileBatchDto} from './project-file-workspace.js';
 import {parseWorkpaperXlsx} from './workpaper-catalogue.js';
+import {loadWorkpaperTemplate} from './workpaper-templates.js';
+import {templateStructure} from './file-template-preview.js';
 import {renderTemplatePreview} from './file-template-renderer.js';
 import {builtinBundle,bundleBytes,storeTemplateSet,readTemplateSets,templateSetDto,templateRecord,storeTemplateMaterial,resolveTemplate,unpackTemplates,templateMatches,TEMPLATE_MAX_BYTES} from './file-template-library.js';
 type Db=Pool|PoolClient;
@@ -65,7 +67,7 @@ async function quote(db:PoolClient,blobs:PrivateBlobs,user:string,id:string,b:Fi
  if(p.document_types.includes('workpaper')){
   cat=await catalogue(db,user,id,p.catalogue_id);const entries=cat.entries as WorkpaperEntry[],selected=entries.filter(e=>e.kind==='file'&&p.item_ids.includes(e.id));
   if(!selected.length||selected.length!==p.item_ids.length)invalid('请从当前底稿目录选择有效的文件条目。');
-  for(const entry of selected)await validateChoice(db,user,id,p.mappings[entry.id],'workpaper');
+  if(p.workpaper_template_mode!=='automatic')for(const entry of selected)await validateChoice(db,user,id,p.mappings[entry.id],'workpaper');
   count=selected.length;omitted=entries.filter(e=>e.kind==='file'&&!p.item_ids.includes(e.id)).map(({id,code,title})=>({id,code,title}));
  }
  for(const type of p.document_types.filter(t=>t!=='workpaper')){if(!PROJECT_DOCUMENT_CATALOG.some(t=>t.id===type))invalid('不支持该文种。');await validateChoice(db,user,id,p.document_templates[type],type);count++;}
@@ -146,6 +148,12 @@ export function registerFileGeneration(app:FastifyInstance,db:()=>Pool,owner:(r:
    const row=(await c.query('INSERT INTO bb_file_template_sets(id,owner_user_id,project_id,request_id,request_hash,name,version,origin,records,warnings) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[uid(),user,projectId,b.request_id,hash,'我的模板包',hash.slice(0,16),'private',JSON.stringify(records),JSON.stringify(sets.flatMap(s=>s.warnings))])).rows[0];return templateSetDto(row);
   });
  });
+ app.get(base+'/system-templates',async(r,reply)=>{
+  await project(db(),await owner(r),id(r));
+  const families=['综合核查记录','专项核查文件','发行人说明','诚信查询记录','访谈记录','培训底稿','不适用说明'];
+  const templates=await Promise.all(families.map(async family=>({family,preview:await templateStructure(loadWorkpaperTemplate({code:'',title:family}).bytes,family)})));
+  return reply.header('Cache-Control','private, no-store').send({templates});
+ });
  app.post(base+'/template-preview',{schema:{body:FileTemplatePinSchema}},async(r,reply)=>{
   const {record}=await templateRecord(db(),await owner(r),id(r),r.body as Static<typeof FileTemplatePinSchema>);return reply.header('Cache-Control','private, no-store').send(record.preview);
  });
@@ -184,8 +192,9 @@ export function registerFileGeneration(app:FastifyInstance,db:()=>Pool,owner:(r:
    // admitted. Each original child keeps its own accepted tariff and settlement.
    if(price.mode==='automatic')await requireFileUpdateCredits(c,user,q.points,true);
    if(prep.document_types.includes('workpaper')){
-    const templates:Record<string,{template:M4TemplateRef;material:M4MaterialPin}>={};for(const item of prep.item_ids)templates[item]=await resolveTemplate(c,blobs(),user,projectId,prep.mappings[item],'workpaper');
-    workpapers=await createWorkpaperBatch(c,blobs,user,projectId,{request_id:'fg-wp:'+b.request_id,start_mode:'direct',catalogue_id:cat.id,catalogue_sha256:cat.sha256.trim(),item_ids:prep.item_ids,source_version_id:source.version_id,source_selection_revision:source.selection_revision,requirements:prep.requirements,expected_points:prep.item_ids.length*price.workpaper_points,price_version:price.mode==='automatic'?price.price_version:M4_DOCUMENT_FIXED_PRICE.version},{templates,materials:prep.materials});
+    const automatic=prep.workpaper_template_mode==='automatic';
+    const templates:Record<string,{template:M4TemplateRef;material:M4MaterialPin}>={};if(!automatic)for(const item of prep.item_ids)templates[item]=await resolveTemplate(c,blobs(),user,projectId,prep.mappings[item],'workpaper');
+    workpapers=await createWorkpaperBatch(c,blobs,user,projectId,{request_id:'fg-wp:'+b.request_id,start_mode:'direct',catalogue_id:cat.id,catalogue_sha256:cat.sha256.trim(),item_ids:prep.item_ids,source_version_id:source.version_id,source_selection_revision:source.selection_revision,requirements:prep.requirements,expected_points:prep.item_ids.length*price.workpaper_points,price_version:price.mode==='automatic'?price.price_version:M4_DOCUMENT_FIXED_PRICE.version},automatic?undefined:{templates,materials:prep.materials},automatic?prep.materials:[]);
    }
    const types=prep.document_types.filter(t=>t!=='workpaper');
    if(types.length){
