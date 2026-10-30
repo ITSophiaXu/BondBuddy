@@ -1,13 +1,13 @@
 import {hold,check} from './upload-progress-fixtures';
 import {fixtureBody,fixtureRequest} from './billing-fixture-wire';
-import {test,expect,type Page} from '@playwright/test';
+import {test,expect,type Page,type Route} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {fixture,href,ids,sha,now,file} from './generation-entry-fixtures';
 import {AUTOMATIC_PRICE_VERSION,emptyFileGenerationPreparation,type FileGenerationWorkspace,type FileTemplateSet,type WorkpaperCatalogue} from '@bondbuddy/contracts';
 const catalogue:WorkpaperCatalogue={catalogue_id:'builtin-cat',filename:'光大证券底稿目录.xlsx',sha256:sha,created_at:now,warnings:[],entries:['1','2'].map((code,i)=>({id:'entry-'+code,code,title:i?'关联方情况说明':'基本情况核查记录',folder:'',sheet:'尽职调查文件',row:i+2,instructions:'',kind:'file',path:code+'.docx'}))};
 const set:FileTemplateSet={set_id:'builtin-set',name:'光大证券模板',version:'synthetic-v1',origin:'builtin',warnings:[],records:[...['1','2'].map(code=>({set_id:'builtin-set',record_id:'word-'+code,sha256:sha,name:code+' 核查模板',code,role:'核查记录',document_type:'workpaper' as const})),{set_id:'builtin-set',record_id:'annual',sha256:sha,name:'年度报告',code:'',role:'年度报告',document_type:'annual'}]};
-async function setup(page:Page,automatic=false){
+async function setup(page:Page,automatic=false,builtinReply?:(route:Route)=>Promise<void>){
  const transport=await fixture(page);const state={transport,data:{revision:0,preparation:emptyFileGenerationPreparation(),sets:[],builtin:{name:'光大证券模板',version:'synthetic-v1',available:true},batches:[]} as FileGenerationWorkspace,submissions:[] as any[],lost:false,imports:[] as Buffer[]};
  if(automatic)state.data.pricing={mode:'automatic',price_version:AUTOMATIC_PRICE_VERSION,workpaper_points:3458,document_points:7965};
  await page.route('**/api/v1/projects/*/file-generation**',async route=>{
@@ -15,7 +15,7 @@ async function setup(page:Page,automatic=false){
   const reply=(body:unknown)=>route.fulfill({json:fixtureBody(route,body)});
   if(req.method()==='GET'&&path.endsWith('/file-generation'))return reply(state.data);
   if(path.endsWith('/preparation')){state.data.revision++;state.data.preparation=body.preparation;return reply({revision:state.data.revision,preparation:state.data.preparation});}
-  if(path.endsWith('/builtin')){if(!state.data.sets.length)state.data.sets.push(set);return reply({...(body.part!=='catalogue'?{set}:{}),...(body.part!=='templates'?{catalogue}:{})});}
+  if(path.endsWith('/builtin')){if(!state.data.sets.length)state.data.sets.push(set);if(builtinReply)return builtinReply(route);return reply({...(body.part!=='catalogue'?{set}:{}),...(body.part!=='templates'?{catalogue}:{})});}
   if(path.endsWith('/matches'))return reply({matches:catalogue.entries.map(e=>({item_id:e.id,status:'suggested',reason:'same code',candidates:[{set_id:set.set_id,record_id:'word-'+e.code,sha256:sha}]}))});
   if(path.endsWith('/template-preview'))return reply({title:'核查记录',redacted:true,view:'structure',pdf_available:false,blocks:[{kind:'paragraph',text:'项目名称：【本项信息】',bold:false,align:'left'},{kind:'table',rows:[['姓名','职务'],['—','—']]}]});
   if(path.endsWith('/template-preview-pdf'))return route.fulfill({status:503,json:{code:'DATA_UNAVAILABLE',message:'unavailable',retryable:true}});
@@ -29,7 +29,8 @@ async function setup(page:Page,automatic=false){
 }
 test('independent catalogue/template cards, safe preview and mixed confirmation use the production component',async({page})=>{
  await page.setViewportSize({width:1440,height:960});
- const state=await setup(page);await page.getByRole('button',{name:'直接使用光大整套'}).click();await expect(page.locator('.fg-combination')).toContainText('光大证券底稿目录.xlsx');
+ const state=await setup(page);await expect(page.locator('.fg-template-panel')).toContainText('光大证券底稿目录.xlsx');
+ await expect(page.locator('#fg-matches select')).toHaveCount(0);
  await page.getByRole('button',{name:'预览目录',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('基本情况核查记录');await page.getByRole('button',{name:'关闭',exact:true}).click();
  await page.getByRole('button',{name:'预览模板',exact:true}).click();await page.locator('[data-record="word-1"]').click();await expect(page.getByRole('dialog')).toContainText('项目名称：【本项信息】');
  await page.getByRole('button',{name:'查看版式预览'}).click();await expect(page.locator('#fg-layout-status')).toContainText('结构预览已保留');await page.getByRole('button',{name:'关闭',exact:true}).click();
@@ -59,14 +60,66 @@ for(const received of [false,true])test(`support upload interruption resumes onc
  await expect(page.locator('#fg-controls'),await page.locator('.fg-status').innerText()).toContainText('已采用 1 份补充资料');await expect(page.getByRole('button',{name:'继续保存',exact:true})).toHaveCount(0);
  expect(state.transport.puts).toBe(1);expect(state.data.preparation.materials).toHaveLength(1);expect(state.submissions).toHaveLength(0);
 });
-test('replacing templates preserves catalogue and uploads actual bytes; refresh restores preparation',async({page})=>{
- const state=await setup(page);await page.getByRole('button',{name:'直接使用光大整套'}).click();await page.getByRole('button',{name:'更换模板包',exact:true}).click();
+test('custom templates have independent selections, upload actual bytes and survive mode changes and refresh',async({page})=>{
+ const state=await setup(page);await expect(page.locator('#fg-preview-set')).toBeEnabled();await page.locator('#fg-custom').click();
+ await expect(page.locator('#fg-template-upload')).toBeEnabled();
+ await expect(page.getByText('使用光大目录',{exact:true})).toHaveCount(0);await expect(page.getByText('使用光大模板',{exact:true})).toHaveCount(0);
+ expect(state.data.preparation.catalogue_id).toBeNull();
  const bytes=Buffer.from('synthetic Word bytes for transport test');await page.locator('#fg-template-upload').setInputFiles({name:'template.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:bytes});
- await expect(page.locator('.fg-combination')).toContainText('我的模板包');expect(state.imports[0]).toEqual(bytes);expect(state.data.preparation.catalogue_id).toBe(catalogue.catalogue_id);
- await page.reload();await expect(page.locator('.fg-combination')).toContainText('我的模板包');await expect(page.locator('.fg-combination')).toContainText('光大证券底稿目录.xlsx');
+ await expect(page.locator('.fg-template-panel')).toContainText('我的模板包');expect(state.imports[0]).toEqual(bytes);expect(state.data.preparation.catalogue_id).toBeNull();
+ await page.locator('#fg-builtin-all').click();await expect(page.locator('#fg-preview-catalogue')).toBeEnabled();
+ await page.locator('#fg-custom').click();await expect(page.locator('.fg-template-panel')).toContainText('我的模板包');
+ await page.reload();await expect(page.locator('.fg-template-panel')).toContainText('我的模板包');await expect(page.locator('.fg-template-panel')).not.toContainText('光大证券底稿目录.xlsx');
  await page.setViewportSize({width:390,height:844});await expect(page.locator('#fg-confirm')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  const evidence=resolve('test-evidence/file-template-preparation');await mkdir(evidence,{recursive:true});await page.screenshot({path:resolve(evidence,'mobile-synthetic.png'),fullPage:true});
 });
+
+test('a late builtin reply cannot replace custom mode; cancellation and retry keep the page usable',async({page})=>{
+ let release!:()=>void,calls=0;const gate=new Promise<void>(r=>release=r);
+ const state=await setup(page,false,async route=>{calls++;if(calls===1)await gate;await route.fulfill({json:fixtureBody(route,{set,catalogue})}).catch(()=>{});});
+ await expect(page.locator('#fg-cancel-builtin')).toBeVisible();await page.locator('#fg-custom').click();
+ await expect(page.locator('#fg-template-upload')).toBeEnabled();release();
+ await expect(page.locator('#fg-custom')).toHaveAttribute('aria-pressed','true');expect(state.data.preparation.template_set_id).toBeNull();
+ await page.locator('#fg-builtin-all').click();await expect(page.locator('#fg-preview-catalogue')).toBeEnabled();await expect(page.locator('#fg-preview-set')).toBeEnabled();
+ await expect(page.locator('#fg-builtin-all')).toHaveAttribute('aria-pressed','true');expect(state.submissions).toHaveLength(0);
+});
+
+test('builtin failure and explicit cancellation can retry without losing other preparation',async({page})=>{
+ let calls=0;
+ await setup(page,false,async route=>{
+  calls++;if(calls===1)return route.fulfill({status:503,json:{code:'DATA_UNAVAILABLE'}});
+  if(calls===2)return;
+  await route.fulfill({json:fixtureBody(route,{set,catalogue})});
+ });
+ await expect(page.locator('#fg-load-builtin')).toBeEnabled();await page.locator('#fg-load-builtin').click();
+ await expect(page.locator('#fg-cancel-builtin')).toBeVisible();await page.locator('#fg-cancel-builtin').click();
+ await expect(page.locator('.fg-load-status')).toContainText('已取消');await expect(page.locator('#fg-custom')).toBeEnabled();
+ await page.locator('#fg-load-builtin').click();await expect(page.locator('#fg-preview-set')).toBeEnabled();expect(calls).toBe(3);
+});
+test('builtin timeout leaves a visible retry and a usable custom mode',async({page})=>{
+ await page.addInitScript(()=>{const timeout=AbortSignal.timeout.bind(AbortSignal);let first=true;AbortSignal.timeout=(ms)=>{if(ms===60_000&&first){first=false;return timeout(100);}return timeout(ms);};});
+ let calls=0;await setup(page,false,async route=>{if(++calls===1)return;await route.fulfill({json:fixtureBody(route,{set,catalogue})});});
+ await expect(page.locator('.fg-load-status')).toContainText('加载超时');await expect(page.locator('#fg-custom')).toBeEnabled();
+ await page.locator('#fg-load-builtin').click();await expect(page.locator('#fg-preview-set')).toBeEnabled();
+});
+
+test('248-entry catalogue and 147 templates render matches only on expansion and still switch modes',async({page})=>{
+ const state=await setup(page);await expect(page.locator('#fg-preview-set')).toBeEnabled();
+ const largeCatalogue=structuredClone(catalogue),largeSet=structuredClone(set);
+ largeCatalogue.entries=Array.from({length:248},(_,i)=>({...catalogue.entries[0],id:'scale-'+i,code:'1-'+i,title:'合成核查 '+i}));
+ largeSet.records=Array.from({length:147},(_,i)=>({...set.records[0],record_id:'scale-'+i,code:'1-'+i,name:'合成模板 '+i}));
+ state.data.sets=[largeSet];state.data.preparation.item_ids=largeCatalogue.entries.map(e=>e.id);state.data.preparation.mappings={};state.data.revision++;
+ await page.route('**/api/v1/projects/*/workpapers/catalogues/*',route=>route.fulfill({json:largeCatalogue}));
+ await page.route('**/file-generation/matches?*',route=>route.fulfill({json:{matches:[]}}));
+ await page.reload();await expect(page.locator('#fg-preview-set')).toBeEnabled();await expect(page.locator('#fg-matches select')).toHaveCount(0);
+ const start=Date.now();await page.locator('#fg-match-toggle').click();await expect(page.locator('#fg-matches select')).toHaveCount(248);
+ console.log(JSON.stringify({syntheticEntries:248,templates:147,expandMs:Date.now()-start}));
+ await expect(page.locator('#fg-matches option')).toHaveCount(248);
+ const first=page.locator('#fg-matches select').first();await first.focus();await expect(first.locator('option')).toHaveCount(148);
+ await first.selectOption('scale-146');await expect.poll(()=>state.data.preparation.mappings['scale-0']?.record_id).toBe('scale-146');
+ await page.locator('#fg-custom').click();await expect(page.locator('#fg-template-upload')).toBeEnabled();await expect(page.locator('#fg-matches select')).toHaveCount(0);
+});
+
 test('lost submission reply is recovered with the same frozen request after reload',async({page})=>{
  const state=await setup(page);await page.locator('[data-fg-type="workpaper"]').uncheck();await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  state.lost=true;await page.getByRole('button',{name:'核对清单与费用'}).click();await page.getByRole('button',{name:'确认生成 1 份文件'}).click();await expect(page.locator('#fg-submit-status')).not.toBeEmpty();
