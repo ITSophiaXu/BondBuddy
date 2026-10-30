@@ -159,7 +159,9 @@ for (const contender of ['material', 'template'] as const) test('assistant templ
   const state = await install(page); await mount(page); const other = await context.newPage(); await install(other, state); await mount(other); const before = writes(state).length;
   const results = await Promise.all([page.evaluate(async value => { try { await (window as any).assistantComponent.assistantTemplateUploads.prepare(value); return 'prepared'; } catch { return 'blocked'; } }, declaration()),
     other.evaluate(async ({ contender, value, project, topic }) => { const c = (window as any).assistantComponent; try { if (contender === 'template') await c.assistantTemplateUploads.prepare(value); else await c.materialUploads.begin(new File(['ordinary'], '并发普通材料.pdf', { type: 'application/pdf' }), 'other', project, topic, 'attachment', crypto.randomUUID()); return 'prepared'; } catch { return 'blocked'; } }, { contender, value: declaration(), project: ids.project, topic: ids.topic })]);
-  expect(results.sort()).toEqual(['blocked', 'prepared']); expect(writes(state)).toHaveLength(before); await expect.poll(() => page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('bb-assistant-template-upload-v1:') || key.startsWith('bondbuddy:upload-recovery:v1:') && key.includes(':assistant-material:')).length)).toBe(1); await other.close(); noBusiness(state);
+  expect(results.sort()).toEqual(['blocked', 'prepared']); expect(writes(state)).toHaveLength(before);
+  const countPending = () => page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('bb-assistant-template-upload-v1:') || key.startsWith('bondbuddy:upload-recovery:v1:') && key.includes(':assistant-material:')).length);
+  expect(await countPending()).toBe(1); await other.close(); expect(await countPending()).toBe(1); noBusiness(state);
 });
 
 test('assistant template unresolved recovery blocks ordinary attachment, autosave and all task writes while preserving local editing', async ({ page }) => {
