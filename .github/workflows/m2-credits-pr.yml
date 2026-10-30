@@ -64,6 +64,7 @@ jobs:
             apps/api/dist/billing-classification.test.js \
             apps/api/dist/credit-history.test.js \
             apps/api/dist/billing.pg.test.js \
+            apps/api/dist/execute-quota-billing.pg.test.js \
             apps/api/dist/authoring-progress.pg.test.js \
             apps/api/dist/authoring-dynamic-balance.pg.test.js \
             apps/api/dist/queue.test.js \

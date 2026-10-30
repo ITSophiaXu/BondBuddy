@@ -50,7 +50,7 @@ function fixture() {
     runReason: 'rule_applicability_overall_review_required', eventSeq: 2, failEvents: false,
     eventStage: undefined as string | undefined, eventError: undefined as string | undefined,
     eventHistory: [] as { seq: number; state: Dto<'RunResponse'>['state']; stage: string; reason: string }[],
-    executeError: undefined as { status: number; code: string; correlation_id: string } | undefined,
+    executeError: undefined as { status: number; code: string; correlation_id: string; field_errors?: {field:string;code:string;message:string}[] } | undefined,
     preflightError: undefined as { status: number; code: string; correlation_id: string } | undefined,
     runActions: [] as string[],
     checkStatus: 'blocked' as Dto<'PreflightResponse'>['status'], reason: 'rule_pack:rule_applicability_overall_review_required',
@@ -819,6 +819,45 @@ test('temporary start failure retains support reference and does not claim missi
   await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-start-unavailable');
   await expect(page.locator('#execution-message')).not.toContainText('填写内容');
   expect(state.runs.size).toBe(0);
+});
+
+for (const width of [1440,390]) test(`quota rejection keeps saved input and permits the same start request at ${width}px`, async ({page}) => {
+  await page.setViewportSize({width,height:width===1440?960:844});
+  const state=fixture();state.checkStatus='ready';state.paid=true;state.available=1_000_000;
+  state.executeError={status:429,code:'TRIAL_QUOTA_EXCEEDED',correlation_id:'synthetic-start-quota',
+    field_errors:[{field:'trial_limit',code:'active_runs_per_user',message:'Current processing limit reached'}]};
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('等待已有任务完成后再次开始');
+  await expect(page.locator('#execution-message')).toContainText('不会因这次拒绝扣费');
+  await expect(page.locator('#execution-message')).toContainText('synthetic-start-quota');
+  await expect(page.locator('#execute-input')).toBeEnabled();
+  expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(0);
+  expect(state.inputs[0].material_versions).toEqual(state.materials.map(m=>({material_id:m.material_id,material_version:1})));
+  const original=structuredClone(state.executes[0]);
+  const evidence=process.env.BB_START_QUOTA_EVIDENCE_DIR;
+  if(evidence){
+    await mkdir(evidence,{recursive:true});
+    await page.locator('#execution-actions').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(evidence,`quota-rejected-${width}.png`)});
+    const prototype=await page.context().newPage();
+    await prototype.setViewportSize({width,height:width===1440?960:844});
+    await prototype.route('http://prototype.test/**',async route=>{
+      const pathname=new URL(route.request().url()).pathname;
+      try{await route.fulfill({body:await readFile(resolve('../../',pathname.slice(1))),
+        contentType:pathname.endsWith('.css')?'text/css':pathname.endsWith('.svg')?'image/svg+xml':'text/html'});}
+      catch{await route.fulfill({status:404});}
+    });
+    await prototype.goto('http://prototype.test/product-prototype/public/authoring-materials-entry.html');
+    await prototype.locator('#execution-actions').scrollIntoViewIfNeeded();
+    await prototype.screenshot({path:join(evidence,`prototype-start-${width}.png`)});
+    await prototype.close();
+  }
+  state.executeError=undefined;
+  await page.locator('#execute-input').click();
+  await expect.poll(()=>state.runs.size).toBe(1);
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(2);
+  expect(state.executes[1]).toEqual(original);
 });
 
 test('unified authoring includes all uploaded source materials without a second selection form', async ({ page }) => {

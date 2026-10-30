@@ -16,6 +16,7 @@ export const TRIAL_LIMIT_KINDS = [
   'global_active_runs', 'kill_switch', 'operator_deny',
   'projects_per_user_per_day', 'projects_per_source_per_hour', 'uploads_per_user_per_hour', 'uploads_per_source_per_hour'
 ] as const;
+export const TRIAL_LIMIT_ERROR_FIELD = 'trial_limit' as const;
 // Admission events counted for abuse limits (the source is stored only as a keyed hash).
 export const TRIAL_ADMISSION_KINDS = ['project_create', 'upload_create', 'run_submit'] as const;
 export const TRIAL_OVERRIDE_EFFECTS = ['allow', 'deny'] as const;

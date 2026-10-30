@@ -10,6 +10,34 @@ test('an active source-project run has a safe business message distinct from dra
 });
 import { uploadErrorMessage } from './upload-error.js';
 
+test('start limits describe the recovery action without trusting server prose', () => {
+  for (const [limit, expected] of [
+    ['active_runs_per_user', /等待已有任务完成/],
+    ['global_active_runs', /系统当前处理的任务/],
+    ['runs_per_user_per_day', /次日重试/],
+    ['model_tokens_per_user_per_day', /次日重试/],
+  ] as const) {
+    const error = parseApiError(429, {code:'TRIAL_QUOTA_EXCEEDED',message:'private server detail',correlation_id:'synthetic-quota',
+      field_errors:[{field:'trial_limit',code:limit,message:'untrusted replacement'}]});
+    assert.equal(error.details.trialLimit, limit);
+    const message = friendlyError(error);
+    assert.match(message, expected);
+    assert.match(message, /材料和要求保留/);
+    assert.match(message, /不会因这次拒绝扣费/);
+    assert.match(message, /synthetic-quota/);
+    assert.doesNotMatch(message, /private|untrusted|操作未完成|充值/);
+  }
+  for (const fields of [[], [{field:'trial_limit',code:'<script>'}], [{field:'wrong',code:'global_active_runs'}]]) {
+    const error = parseApiError(429, {code:'TRIAL_QUOTA_EXCEEDED',field_errors:fields});
+    assert.equal(error.details.trialLimit, undefined);
+    assert.match(friendlyError(error), /当前处理上限/);
+    assert.doesNotMatch(friendlyError(error), /<script>/);
+  }
+  assert.match(friendlyError(new ApiError(403, 'TRIAL_ACCESS_DENIED')), /账号暂不能开始新任务/);
+  assert.match(friendlyError(new ApiError(503, 'MODEL_CALLS_SUSPENDED')), /系统暂时停止接受/);
+  assert.match(friendlyError(new ApiError(409, 'BILLING_PROTOCOL_REPLAY_ONLY')), /刷新页面后重新开始/);
+});
+
 test('material input errors name missing fields without exposing server messages or diagnostic IDs',()=>{
   const error=parseApiError(422,{code:'INPUT_REQUIRED',message:'private server detail',correlation_id:'internal-reference',field_errors:[
     {field:'market',code:'M4_MARKET_REQUIRED',message:'untrusted replacement'},
