@@ -1,7 +1,15 @@
 {
   "baseline": "c6cc55c8521f31323d806744cf559351f3ad35fd",
-  "coreFix": "143dd1d1",
-  "localIntegration": "e8afad19",
+  "finalBase": "1c6fc9fd332ecc011cb9ab61ba086f26cb7cdd76",
+  "finalCode": "355868bcd95160614124cedfc80b7f9fe2a0e0a4",
+  "rebasedRefresh": [
+    "file-version-row.png",
+    "file-version-history.png",
+    "integrity-toolbar.png",
+    "integrity-download.png",
+    "login.png",
+    "recovery-disabled.png"
+  ],
   "environment": "Windows Edge + local Vite + synthetic HTTP; not production",
   "files": [
     {
@@ -51,8 +59,8 @@
     },
     {
       "path": "after/integrity-download.png",
-      "bytes": 113148,
-      "sha256": "e76e87ac21d0c38809101a6a3dfc64efd5c06c9aab9fd6c0c0bf52894ea6456c"
+      "bytes": 113181,
+      "sha256": "4e40217a7bc81a7f3cfa8d55db617ec723141223dcc5d13377b17a6f5c658be0"
     },
     {
       "path": "after/integrity-toolbar-390.png",
