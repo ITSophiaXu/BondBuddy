@@ -3,6 +3,8 @@ import { MARKETS, OFFERINGS, MARKET_OFFERINGS } from './public-enums.js';
 import type { ProjectMessageSetPin } from './project-message-set-pin.js';
 
 export type UnifiedAuthoringInput = {
+  /** Absent on existing input revisions: those runs retain their original authoring path. */
+  format_policy?: SourceFormatPolicy;
   edit_baseline?: {market:typeof MARKETS[number];offering:typeof OFFERINGS[number];reporting_periods:TargetReportingPeriod[]};
   review_result?: import('./review-update.js').ReviewResultPin;
   review_revision?: import('./review-revision.js').ReviewRevisionPin;
@@ -61,6 +63,38 @@ export const SourceProspectusSchema = Type.Object({
 }, { additionalProperties: false });
 export type SourceProspectus = Static<typeof SourceProspectusSchema>;
 export type SourceMaterialPin = { material_id: string; material_version: number; sha256: string; role: string };
+export const FormatTemplatePinSchema = Type.Object({
+  material_id: Type.String({ minLength: 1, maxLength: 128 }),
+  material_version: Type.Integer({ minimum: 1 }),
+  sha256: Type.String({ pattern: '^[a-f0-9]{64}$' })
+}, { additionalProperties: false });
+export type FormatTemplatePin = Static<typeof FormatTemplatePinSchema>;
+const formatMaterial = Type.Object({ kind: Type.Literal('material'), ...FormatTemplatePinSchema.properties }, { additionalProperties: false });
+const formatArtifact = Type.Object({ kind: Type.Literal('artifact'), artifact_id: Type.String({ minLength: 1, maxLength: 128 }),
+  version: Type.Integer({ minimum: 1 }), sha256: Type.String({ pattern: '^[a-f0-9]{64}$' }),
+  run_id: Type.String({ minLength: 1, maxLength: 128 }), input_revision: Type.Integer({ minimum: 1 }) }, { additionalProperties: false });
+export const SourceFormatPolicySchema = Type.Union([
+  Type.Object({ version: Type.Literal('source-format-v1'), mode: Type.Union([Type.Literal('preserve_docx'), Type.Literal('reconstruct_pdf')]),
+    template: formatMaterial, selection: Type.Union([Type.Literal('explicit'), Type.Literal('automatic'), Type.Literal('review_source')]) }, { additionalProperties: false }),
+  Type.Object({ version: Type.Literal('source-format-v1'), mode: Type.Literal('preserve_docx'), template: formatArtifact,
+    selection: Type.Literal('previous_output') }, { additionalProperties: false }),
+  Type.Object({ version: Type.Literal('source-format-v1'), mode: Type.Literal('new_document'), template: Type.Null(),
+    selection: Type.Literal('automatic') }, { additionalProperties: false })
+]);
+export type SourceFormatPolicy = Static<typeof SourceFormatPolicySchema>;
+export function sameFormatTemplate(a: FormatTemplatePin | null | undefined, b: FormatTemplatePin | null | undefined): boolean {
+  return !!a && !!b && a.material_id === b.material_id && a.material_version === b.material_version && a.sha256 === b.sha256;
+}
+/** Input order is the user's material order, never a random material-ID ranking. */
+export function recommendFormatTemplate<T extends SourceMaterialPin & { media_type?: string }>(
+  materials: readonly T[], sources: readonly SourceProspectus[] = []
+): T | null {
+  const candidates = materials.filter(m => ['historical', 'reference'].includes(m.role) &&
+    ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/pdf'].includes(m.media_type ?? ''));
+  const rank = (m: T) => (m.media_type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ? 0 : 2) +
+    (sources.some(s => sameFormatTemplate(s, m) && s.relation === 'same_issuer') ? 0 : 1);
+  return candidates.reduce<T | null>((best, m) => !best || rank(m) < rank(best) ? m : best, null);
+}
 /** Draft fields stay nullable while editing. New authoring submissions require a declaration for every selected source. */
 export function sourceProspectusMissingFields(source?: SourceProspectus): string[] {
   const missing: string[] = [];
@@ -85,6 +119,8 @@ export function sourceProspectusInputGaps(materials: readonly SourceMaterialPin[
 export const UpdateDetailsSchema = Type.Object({
   authoring_mode: Type.Optional(Type.Literal('unified_v1')),
   source_prospectuses: Type.Optional(Type.Array(SourceProspectusSchema, { maxItems: 60 })),
+  // Omission preserves an existing choice on PATCH; null explicitly returns to automatic selection.
+  format_template: Type.Optional(Type.Union([FormatTemplatePinSchema, Type.Null()])),
   has_historical: nullable(Type.Boolean()),
   reporting_cutoff: nullable(Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' })),
   // Optional for older clients. On PATCH, omission preserves the saved period set; [] explicitly clears it.
@@ -98,7 +134,7 @@ export const UpdateDetailsSchema = Type.Object({
     details: note(), target: note()
   }, { additionalProperties: false }), { maxItems: PROJECT_FIELD_LIMITS.fundingUses }),
   other_information: note(), supplementary_notes: note()
-}, { additionalProperties: false, description: 'User-provided update draft, not extracted or audited facts. PATCH replaces legacy fields in this object; omitted target_reporting_periods preserves the saved list for older clients, while [] explicitly clears it.' });
+}, { additionalProperties: false, description: 'User-provided update draft, not extracted or audited facts. PATCH replaces legacy fields; omitted target_reporting_periods and format_template preserve saved values. [] clears periods; null clears an explicit format template.' });
 export type TargetReportingPeriod = Static<typeof TargetReportingPeriodSchema>;
 export type UpdateDetails = Static<typeof UpdateDetailsSchema>;
 export type Money = Static<typeof MoneySchema>;

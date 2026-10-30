@@ -34,10 +34,13 @@ docs/product-decisions/*
 !docs/product-decisions/2026-10-28-project-qa-materials.md
 !docs/product-decisions/2026-10-29-project-qa-single-start.md
 !docs/product-decisions/2026-10-29-project-qa-prospectus-first.md
+!docs/product-decisions/2026-10-29-source-format-preservation.md
 !docs/product-decisions/2026-10-28-workpaper-shared-batch.md
 !docs/acceptance/
 docs/acceptance/*
+!docs/acceptance/integrity-result-wait-20261029.md
 !docs/acceptance/project-qa-prospectus-first-20261029.md
+!docs/acceptance/source-format-preservation-20261029.md
 !docs/acceptance/workpaper-shared-batch-20261028.md
 !docs/acceptance/issue-718/
 !docs/acceptance/m4-implementation-2026-10-06.md
@@ -64,3 +67,6 @@ outputs/*
 
 !docs/product-decisions/2026-10-11-authoring-live-progress.md
 !docs/product-decisions/2026-10-15-material-case-templates.md
+!docs/product-decisions/2026-10-28-commercial-scope-billing.md
+!docs/product-decisions/2026-10-29-subscription-auto-billing.md
+!docs/FILE-TEMPLATE-IMPLEMENTATION.md

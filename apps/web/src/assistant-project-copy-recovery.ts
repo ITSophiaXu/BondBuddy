@@ -1,5 +1,5 @@
 import { M1_UPLOAD_LIMITS, M4MaterialPinSchema, M4RequirementSchema, M4ViewRequestSchema, M4ViewStateSchema, SourceProspectusSchema, emptyUpdateDetails, schemas, updateDetailsErrors,
-  type AssistantResult, type M4MaterialPin, type M4ViewRequest, type M4ViewState, type M4Workspace, type SourceProspectus } from '@bondbuddy/contracts';
+  type AssistantResult, type M4MaterialPin, type M4ViewRequest, type M4ViewState, type M4Workspace, type SourceProspectus } from './billing-types.js';
 import { Value } from '@sinclair/typebox/value';
 import { ApiError, type ApiClient, type Dto } from './api.js';
 import { isDateTime } from './schema-formats.js';

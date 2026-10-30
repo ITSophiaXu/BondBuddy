@@ -1,3 +1,6 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import { expect, type Page, type Route } from '@playwright/test';
 import { FormatRegistry, type TSchema } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
@@ -7,7 +10,7 @@ import { resolve } from 'node:path';
 import { schemas, emptyUpdateDetails, M4_DOCUMENT_TYPES, M4DraftInputSchema, M4MaterialPinSchema, M4ViewStateSchema,
   M4ViewRequestSchema, M4QuoteRequestSchema, M4TemplateCreateRequestSchema, type M4Workspace, type M4Draft,
   type M4MaterialPin, type M4QuoteResponse, type AssistantCard } from '@bondbuddy/contracts';
-import type { Dto } from '../src/api';
+import type { Dto } from './billing-fixture-wire';
 
 export const now = '2026-10-25T12:00:00Z', ids = { owner: 'assistant-upload-11th-owner', otherOwner: 'assistant-upload-11th-owner-b', project: 'assistant-upload-11th-actual', scope: 'assistant-upload-11th-topic-project', topic: 'assistant-upload-11th-original-topic', otherTopic: 'assistant-upload-11th-other-topic' };
 export const file = { name: '原审计材料-长文件名用于手机换行检查.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.7\nSynthetic assistant recovery evidence\n%%EOF') };
@@ -35,11 +38,12 @@ export async function assistantFixture(page: Page) {
   const state = { owner: ids.owner as string, calls: [] as Call[], unexpected: [] as string[], errors: [] as string[], cards: [] as AssistantCard[], uploads: new Map<string, Upload>(), materials: new Map<string, { project: string; material: Dto<'MaterialResponse'> }>(),
     work: new Map([[ids.topic, workspace(ids.topic, ids.project)], [ids.otherTopic, workspace(ids.otherTopic, null)], ['assistant-upload-11th-owner-b-topic', workspace('assistant-upload-11th-owner-b-topic', null)]]), dropPut: false, dropComplete: false, dropAssociation: false, templateFailure: false, gate: undefined as (() => Promise<void>) | undefined };
   page.on('pageerror', error => state.errors.push(error.message)); await page.clock.install({ time: new Date(now) });
-  const reply = (route: Route, status: number, body: unknown) => route.fulfill({ status, json: body });
+  const reply = (route: Route, status: number, body: unknown) => route.fulfill({ status, json: fixtureBody(route,body) });
   const problem = (route: Route, status: number, code: Dto<'Error'>['code']) => { const body: Dto<'Error'> = { code, message: 'Synthetic error', retryable: status >= 500, correlation_id: 'assistant-upload-11th-trace', field_errors: [] }; check(schemas.Error, body); return reply(route, status, body); };
   await page.route('**/api/v1/**', async route => {
+    if(await serveDisabledBillingCatalog(route))return;
     const request = route.request(), url = new URL(request.url()), path = url.pathname.slice(prefix.length), method = request.method();
-    const body = request.postData() && !path.endsWith('/bytes') ? request.postDataJSON() : undefined; state.calls.push({ method, path, body });
+    const body = request.postData() && !path.endsWith('/bytes') ? fixtureRequest(request) : undefined; state.calls.push({ method, path, body });
     const visibleTopic = (topic: string) => state.owner === ids.owner ? topic !== 'assistant-upload-11th-owner-b-topic' : topic === 'assistant-upload-11th-owner-b-topic';
     if (path === '/m4/topics' && method === 'GET') return reply(route, 200, { topics: [...state.work.values()].filter(value => visibleTopic(value.topic.topic_id)).map(value => value.topic) });
     const topic = path.match(/^\/m4\/topics\/([^/]+)\/(workspace|view|materials|quote)$/);

@@ -1,7 +1,10 @@
+import {runRecoverableBillingRequest,observeAutomaticQuotes} from './billing-task-recovery.js';
+import {BILLING_WIRE_HEADER,BILLING_WIRE_VERSION,LEGACY_BILLING_WIRE_VERSION,billingWireRoute,encodeBillingDto,validateBillingDto} from '@bondbuddy/contracts';
 import { UserFacingError, unknownErrorText, type ErrorOperation } from './user-facing-error.js';
 import type { Static } from '@sinclair/typebox';
-import type { schemas, SchemaName, DataPolicy, AgreementResponse } from '@bondbuddy/contracts';
+import type { schemas, SchemaName, DataPolicy, AgreementResponse } from './billing-types.js';
 import type { FactDecisionRequest } from '@bondbuddy/contracts';
+import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest,SubscriptionCheckout,Subscription,SubscriptionAutoRenewRequest,SubscriptionAutoRenew} from './billing-types.js';
 import { isUploadInspectionPublicReason, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
@@ -51,7 +54,7 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
   const reference = errorReference(error);
   switch (error.code) {
     case 'INPUT_REVISION_CONFLICT': return '这个项目已在其他页面修改。你的输入仍保留，请查看最新版本后再修改。';
-    case 'PROJECT_RUN_ACTIVE': return '同一来源项目已有任务正在执行。本次未开始，草稿保留。请在全部项目查看任务，等待完成或停止后明确执行。';
+    case 'PROJECT_RUN_ACTIVE': return '同一来源项目已有任务正在执行。本次未开始，草稿保留。请在任务进度与结果查看任务，等待完成或停止后明确执行。';
     case 'UNAUTHENTICATED': return '登录已失效，请重新登录。';
     case 'NOT_FOUND': return '无法访问这个项目，它可能已移除或不属于当前账号。';
     case 'RATE_LIMITED': return '尝试次数过多，请稍后再试。';
@@ -62,9 +65,12 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
       : `本次输入尚未满足执行条件，请核对项目材料；仍无法继续时联系支持。${reference}`;
     case 'MATERIAL_UNREADABLE': return `材料尚未满足当前处理条件，请保留原文件并核对材料状态。${reference}`;
     case 'CAPABILITY_NOT_READY': return `这项功能暂未开放，请联系支持。${reference}`;
-    case 'CREDITS_INSUFFICIENT': return '积分不足，本次任务尚未开始。请充值后重新确认。';
+    case 'CREDITS_INSUFFICIENT': return '积分不足，本次任务尚未开始。请通过原任务入口补足积分后继续。';
     case 'QUOTE_REQUIRED': return '请查看本次任务报价后确认开始。';
     case 'QUOTE_CHANGED': return '价格或项目输入已变化，请查看新报价后重新确认。';
+    case 'QUOTE_EXPIRED': return '报价已过期，本次未开始、未扣费。准备内容保留，请重新申请范围报价。';
+    case 'QUOTE_UNAVAILABLE': return '当前范围暂无法承接，本次未开始、未扣费。请查看报价原因或调整准备内容。';
+    case 'QUOTE_DECLINED': return '本报价已拒绝，本次未开始、未扣费。准备内容保留，可重新申请范围报价。';
     case 'BILLING_NOT_READY': return '积分价格尚未配置，请联系支持；本次未扣费。';
     case 'PAYMENT_UNAVAILABLE': return '充值渠道暂不可用，请稍后重试。项目材料已保留。';
     case 'PAYMENT_INVALID': return '支付结果尚未核实，请刷新订单状态；无需重复付款。';
@@ -81,7 +87,20 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
 }
 
 export class ApiClient {
+  subscriptionCatalog(signal?:AbortSignal){return this.request<SubscriptionCatalog>('GET','/subscriptions/catalog',undefined,{},signal);}
+  subscriptionAccount(signal?:AbortSignal){return this.request<SubscriptionAccount>('GET','/subscriptions/account',undefined,{},signal);}
+  createSubscription(input:SubscriptionCheckoutRequest,signal?:AbortSignal){return this.request<SubscriptionCheckout>('POST','/subscriptions',input,{},signal);}
+  renewSubscription(id:string,input:SubscriptionCheckoutRequest,signal?:AbortSignal){return this.request<SubscriptionCheckout>('POST',`/subscriptions/${encodeURIComponent(id)}/renew`,input,{},signal);}
+  cancelSubscription(id:string,input:{request_id:string},signal?:AbortSignal){return this.request<Subscription>('POST',`/subscriptions/${encodeURIComponent(id)}/cancel`,input,{},signal);}
+  subscriptionAutoRenew(id:string,input:SubscriptionAutoRenewRequest,signal?:AbortSignal){return this.request<SubscriptionAutoRenew>('POST',`/subscriptions/${encodeURIComponent(id)}/auto-renew`,input,{},signal);}
+  refreshSubscriptionAutoRenew(id:string,signal?:AbortSignal){return this.request<SubscriptionAutoRenew>('POST',`/subscriptions/${encodeURIComponent(id)}/auto-renew/refresh`,{}, {},signal);}
   projectTasks(id:string,cursor?:string,signal?:AbortSignal){return this.request<Dto<'ProjectTasksResponse'>>('GET','/projects/'+encodeURIComponent(id)+'/tasks'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{[PROJECT_TASK_COUNTS_CAPABILITY.header]:PROJECT_TASK_COUNTS_CAPABILITY.value},signal);}
+  commerceCatalog(signal?:AbortSignal){return this.request<Dto<'CommerceCatalogResponse'>>('GET','/commerce/catalog',undefined,{},signal);}
+  commerceAccount(signal?:AbortSignal){return this.request<Dto<'CommerceAccountResponse'>>('GET','/commerce/account',undefined,{},signal);}
+  commerceTopup(input:Dto<'CommerceTopupRequest'>,signal?:AbortSignal){return this.request<Dto<'RechargeOrderResponse'>>('POST','/commerce/topups',input,{},signal);}
+  commerceOrder(id:string,signal?:AbortSignal){return this.request<Dto<'RechargeOrderResponse'>>('GET',`/commerce/topups/${encodeURIComponent(id)}`,undefined,{},signal);}
+  commerceRefresh(id:string,signal?:AbortSignal){return this.request<Dto<'RechargeOrderResponse'>>('POST',`/commerce/topups/${encodeURIComponent(id)}/refresh`,{}, {},signal);}
+  commerceFeedback(input:Dto<'CommerceFeedbackRequest'>,signal?:AbortSignal){return this.request<Dto<'CommerceFeedbackResponse'>>('POST','/commerce/feedback',input,{},signal);}
   projectFiles(id:string,signal?:AbortSignal){return this.request<Dto<'ProjectFilesResponse'>>('GET','/projects/'+encodeURIComponent(id)+'/files',undefined,{},signal);}
   consumptionHistory(cursor?:string,signal?:AbortSignal){return this.request<Dto<'CreditConsumptionHistoryResponse'>>('GET','/credits/consumption-history'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{},signal);}
   rechargeHistory(cursor?:string,signal?:AbortSignal){return this.request<Dto<'RechargeHistoryResponse'>>('GET','/credits/recharge-history'+(cursor?'?cursor='+encodeURIComponent(cursor):''),undefined,{},signal);}
@@ -110,7 +129,7 @@ export class ApiClient {
       method, credentials: 'same-origin', cache: 'no-store', signal,
       headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
         ...(method === 'GET' || !csrf ? {} : { 'X-BB-CSRF': csrf }), ...headers },
-      body: body === undefined ? undefined : JSON.stringify(body)
+      body: body === undefined ? undefined : body instanceof Blob ? body : JSON.stringify(body)
     });
   }
 
@@ -144,11 +163,24 @@ export class ApiClient {
   }
 
   async request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}, signalOverride?: AbortSignal): Promise<T> {
-    const response = await this.response(method, path, body, headers, signalOverride);
-    const value = response.status === 204 ? undefined as T : await response.json();
+    headers={[BILLING_WIRE_HEADER]:BILLING_WIRE_VERSION,...headers};
+    const family=billingWireRoute(method,path);
+    if(family?.request&&body!==undefined&&headers[BILLING_WIRE_HEADER]!==LEGACY_BILLING_WIRE_VERSION)body=encodeBillingDto(family.request,body);
+    const value=await runRecoverableBillingRequest(method,path,body,headers,async()=>{
+      const response=await this.response(method,path,body,headers,signalOverride);
+      if(response.status===204)return undefined as T;
+      let payload:unknown=await response.json();
+      if(family?.response){
+        // Legacy replay receipts may be narrowed numbers; normalize only the returned view.
+        if(headers[BILLING_WIRE_HEADER]===LEGACY_BILLING_WIRE_VERSION)payload=encodeBillingDto(family.response,payload);
+        else try{validateBillingDto(family.response,payload);}catch{throw new ApiError(0,'DATA_UNAVAILABLE');}
+      }
+      return payload as T;
+    });
+    observeAutomaticQuotes(value);
     // Refresh the signed-in wallet after charge/quote reads and explicit execution/payment changes.
     if (typeof window !== 'undefined' && (path.endsWith('/credit-charge') || path.endsWith('/credit-quote') ||
-        method !== 'GET' && (path.startsWith('/runs/') || path.includes('/review/') || path.startsWith('/credits/')))) {
+        method !== 'GET' && (path.startsWith('/runs/') || path.includes('/review/') || path.startsWith('/credits/') || path.startsWith('/commerce/')))) {
       window.dispatchEvent(new Event('bondbuddy:credits-changed'));
     }
     return value;

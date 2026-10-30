@@ -1,0 +1,1298 @@
+{
+  "route": "#consistency?project=consistency-task-root&run=consistency-task-new-check&return_project=consistency-task-root",
+  "width": 1440,
+  "height": 960,
+  "dialog": {
+    "x": 322.5,
+    "y": 57.59375,
+    "width": 780,
+    "height": 844.796875,
+    "top": 57.59375,
+    "bottom": 902.390625,
+    "left": 322.5,
+    "right": 1102.5
+  },
+  "body": {
+    "box": {
+      "x": 323.5,
+      "y": 133.59375,
+      "width": 778,
+      "height": 614.609375,
+      "top": 133.59375,
+      "bottom": 748.203125,
+      "left": 323.5,
+      "right": 1101.5
+    },
+    "scrollTop": 3640,
+    "clientHeight": 615,
+    "scrollHeight": 4255,
+    "clientWidth": 778,
+    "scrollWidth": 778
+  },
+  "footer": {
+    "x": 323.5,
+    "y": 748.203125,
+    "width": 778,
+    "height": 153.1875,
+    "top": 748.203125,
+    "bottom": 901.390625,
+    "left": 323.5,
+    "right": 1101.5
+  },
+  "confirm": {
+    "x": 991.5,
+    "y": 840.390625,
+    "width": 82,
+    "height": 41,
+    "top": 840.390625,
+    "bottom": 881.390625,
+    "left": 991.5,
+    "right": 1073.5
+  },
+  "source": "依据这版募集书更新当前募集说明书_V3.docxV3 · 采用记录 7沿用本轮检查固定的版本。",
+  "rows": [
+    {
+      "version": "consistency-selection-issuer-v1",
+      "filename": "合成同名关联文件[待核对].docx",
+      "type": "发行人基本情况说明",
+      "sequence": "检查时 V2",
+      "counts": "自动更新 2 处 · 人工 1 项继续保留"
+    },
+    {
+      "version": "consistency-selection-financial-v1",
+      "filename": "合成同名关联文件[待核对].docx",
+      "type": "主要财务情况说明",
+      "sequence": "检查时 V4",
+      "counts": "自动更新 3 处 · 人工 0 项继续保留"
+    },
+    {
+      "version": "consistency-selection-credit-v1",
+      "filename": "合成另行保留的授信说明.docx",
+      "type": "授信情况说明",
+      "sequence": "检查时 V1",
+      "counts": "自动更新 1 处 · 人工 0 项继续保留"
+    },
+    {
+      "version": "consistency-selection-init-v1",
+      "filename": "合成长清单_立项报告.docx",
+      "type": "立项报告",
+      "sequence": "检查时 V1",
+      "counts": "自动更新 1 处 · 人工 0 项继续保留"
+    },
+    {
+      "version": "consistency-selection-underwriter-v1",
+      "filename": "合成长清单_主承销商核查意见.docx",
+      "type": "主承销商核查意见",
+      "sequence": "检查时 V1",
+      "counts": "自动更新 1 处 · 人工 0 项继续保留"
+    },
+    {
+      "version": "consistency-selection-legal-v1",
+      "filename": "合成长清单_法律意见书.docx",
+      "type": "法律意见书",
+      "sequence": "检查时 V1",
+      "counts": "自动更新 1 处 · 人工 0 项继续保留"
+    },
+    {
+      "version": "consistency-selection-application-v1",
+      "filename": "合成长清单_挂牌 / 发行申请书.docx",
+      "type": "挂牌 / 发行申请书",
+      "sequence": "检查时 V1",
+      "counts": "自动更新 1 处 · 人工 0 项继续保留"
+    },
+    {
+      "version": "consistency-selection-recommendation-v1",
+      "filename": "合成长清单_推荐函.docx",
+      "type": "推荐函",
+      "sequence": "检查时 V1",
+      "counts": "自动更新 1 处 · 人工 0 项继续保留"
+    },
+    {
+      "version": "consistency-selection-private_summary-v1",
+      "filename": "合成长清单_募集说明书摘要.docx",
+      "type": "募集说明书摘要",
+      "sequence": "检查时 V1",
+      "counts": "自动更新 1 处 · 人工 0 项继续保留"
+    },
+    {
+      "version": "consistency-selection-annual-v1",
+      "filename": "合成长清单_年度报告.docx",
+      "type": "年度报告",
+      "sequence": "检查时 V1",
+      "counts": "自动更新 1 处 · 人工 0 项继续保留"
+    },
+    {
+      "version": "consistency-selection-semiannual-v1",
+      "filename": "合成长清单_半年度报告.docx",
+      "type": "半年度报告",
+      "sequence": "检查时 V1",
+      "counts": "自动更新 1 处 · 人工 0 项继续保留"
+    },
+    {
+      "version": "consistency-selection-proceeds-v1",
+      "filename": "合成长清单_募集资金使用情况说明.docx",
+      "type": "募集资金使用情况说明",
+      "sequence": "检查时 V1",
+      "counts": "自动更新 1 处 · 人工 0 项继续保留"
+    }
+  ],
+  "scopeOpen": true,
+  "active": "",
+  "png_bytes": 175127,
+  "png_sha256": "4c4c5f9e408a55e19343ffe518d1ded41918c5859afdbfe7a06676ef7dee483b",
+  "sources": [
+    {
+      "path": "apps/web/src/file-consistency.ts",
+      "bytes": 93155,
+      "sha256": "98828ab273b9322358a39cdf133858db936c19881283e9a7b8fcfec7d0431c59"
+    },
+    {
+      "path": "apps/web/src/consistency-confirmation.ts",
+      "bytes": 8586,
+      "sha256": "c1ceceaa4ad62abf0d4ed418878bc584a129eea3d27fa7de735bed2f44915f1d"
+    },
+    {
+      "path": "apps/web/src/consistency-confirmation.css",
+      "bytes": 2146,
+      "sha256": "3296344d3c95c27cf822e3d1a25ae787ec71bae1b9d637dc18b787c3ffb96f18"
+    }
+  ],
+  "audit": {
+    "synthetic": true,
+    "original": {
+      "projectName": "合成募集书换版后的文件更新确认项目",
+      "check": {
+        "run_id": "consistency-task-new-check",
+        "state": "succeeded",
+        "stage": "completed",
+        "created_at": "2026-10-25T14:00:00Z",
+        "source": {
+          "project_id": "consistency-task-root",
+          "version_id": "consistency-task-source-v3",
+          "selection_revision": 7,
+          "filename": "当前募集说明书_V3.docx",
+          "sequence": 3,
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "consistency-task-root",
+              "material_id": "consistency-task-source-material-v3",
+              "material_version": 1,
+              "sha256": "9f1797e007bcc32c694640a523c4961c080fd9dc02002727dd87e95a5e865fc1"
+            }
+          }
+        },
+        "stale": false,
+        "sha256": "f8c7b88ca3f37c831b12820196fa56e13a817a71f8aa6e9ea260e0c28bf1903f",
+        "files": [
+          {
+            "file_id": "consistency-selection-issuer-family",
+            "file_version_id": "consistency-selection-issuer-v1",
+            "filename": "合成同名关联文件[待核对].docx",
+            "sequence": 2
+          },
+          {
+            "file_id": "consistency-selection-financial-family",
+            "file_version_id": "consistency-selection-financial-v1",
+            "filename": "合成同名关联文件[待核对].docx",
+            "sequence": 4
+          },
+          {
+            "file_id": "consistency-selection-credit-family",
+            "file_version_id": "consistency-selection-credit-v1",
+            "filename": "合成另行保留的授信说明.docx",
+            "sequence": 1
+          },
+          {
+            "file_id": "consistency-selection-init-family",
+            "file_version_id": "consistency-selection-init-v1",
+            "filename": "合成长清单_立项报告.docx",
+            "sequence": 1
+          },
+          {
+            "file_id": "consistency-selection-underwriter-family",
+            "file_version_id": "consistency-selection-underwriter-v1",
+            "filename": "合成长清单_主承销商核查意见.docx",
+            "sequence": 1
+          },
+          {
+            "file_id": "consistency-selection-legal-family",
+            "file_version_id": "consistency-selection-legal-v1",
+            "filename": "合成长清单_法律意见书.docx",
+            "sequence": 1
+          },
+          {
+            "file_id": "consistency-selection-application-family",
+            "file_version_id": "consistency-selection-application-v1",
+            "filename": "合成长清单_挂牌 / 发行申请书.docx",
+            "sequence": 1
+          },
+          {
+            "file_id": "consistency-selection-recommendation-family",
+            "file_version_id": "consistency-selection-recommendation-v1",
+            "filename": "合成长清单_推荐函.docx",
+            "sequence": 1
+          },
+          {
+            "file_id": "consistency-selection-private_summary-family",
+            "file_version_id": "consistency-selection-private_summary-v1",
+            "filename": "合成长清单_募集说明书摘要.docx",
+            "sequence": 1
+          },
+          {
+            "file_id": "consistency-selection-annual-family",
+            "file_version_id": "consistency-selection-annual-v1",
+            "filename": "合成长清单_年度报告.docx",
+            "sequence": 1
+          },
+          {
+            "file_id": "consistency-selection-semiannual-family",
+            "file_version_id": "consistency-selection-semiannual-v1",
+            "filename": "合成长清单_半年度报告.docx",
+            "sequence": 1
+          },
+          {
+            "file_id": "consistency-selection-proceeds-family",
+            "file_version_id": "consistency-selection-proceeds-v1",
+            "filename": "合成长清单_募集资金使用情况说明.docx",
+            "sequence": 1
+          }
+        ],
+        "updates": [],
+        "result": {
+          "version": "project-file-check-v1",
+          "files": [
+            {
+              "file_version_id": "consistency-selection-issuer-v1",
+              "status": "conflict",
+              "coverage": "合成发行人基本情况说明：本轮仅核对列出的金额与授信口径，不代表全文或专业验收。",
+              "links": [],
+              "findings": [
+                {
+                  "id": "confirmation-issuer-automatic-1",
+                  "kind": "conflict",
+                  "target_span_id": "confirmation-issuer-automatic-1-target",
+                  "original": "合成issuer原文金额 100",
+                  "replacement": "合成issuer建议更新金额 120",
+                  "source_span_id": "confirmation-issuer-automatic-1-source",
+                  "source_quote": "合成募集书同口径金额 120",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成发行人基本情况说明第3页",
+                  "reason": "合成issuer第1处：同期间同单位的金额与本轮募集书不同。",
+                  "field": "发行人基本情况说明核对字段1",
+                  "period": "2025年度",
+                  "unit": "万元"
+                },
+                {
+                  "id": "confirmation-issuer-automatic-2",
+                  "kind": "conflict",
+                  "target_span_id": "confirmation-issuer-automatic-2-target",
+                  "original": "合成issuer原文金额 101",
+                  "replacement": "合成issuer建议更新金额 121",
+                  "source_span_id": "confirmation-issuer-automatic-2-source",
+                  "source_quote": "合成募集书同口径金额 121",
+                  "source_location": "合成募集书第13页",
+                  "target_location": "合成发行人基本情况说明第4页",
+                  "reason": "合成issuer第2处：同期间同单位的金额与本轮募集书不同。",
+                  "field": "发行人基本情况说明核对字段2",
+                  "period": "2025年度",
+                  "unit": "万元"
+                },
+                {
+                  "id": "confirmation-issuer-manual-1",
+                  "kind": "manual",
+                  "target_span_id": "confirmation-issuer-manual-1-target",
+                  "original": "合成银行批复口径仍需业务人员核实。",
+                  "replacement": null,
+                  "source_span_id": null,
+                  "source_quote": "",
+                  "source_location": "原募集书第12页",
+                  "target_location": "原关联文件第3页",
+                  "reason": "合成人工事项继续保留；生成自动修改稿不会把它记为处理完成。",
+                  "field": "合成授信口径",
+                  "period": "2025年度",
+                  "unit": "万元"
+                }
+              ]
+            },
+            {
+              "file_version_id": "consistency-selection-financial-v1",
+              "status": "conflict",
+              "coverage": "合成主要财务情况说明：本轮仅核对列出的金额与授信口径，不代表全文或专业验收。",
+              "links": [],
+              "findings": [
+                {
+                  "id": "confirmation-financial-automatic-1",
+                  "kind": "conflict",
+                  "target_span_id": "confirmation-financial-automatic-1-target",
+                  "original": "合成financial原文金额 110",
+                  "replacement": "合成financial建议更新金额 130",
+                  "source_span_id": "confirmation-financial-automatic-1-source",
+                  "source_quote": "合成募集书同口径金额 130",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成主要财务情况说明第3页",
+                  "reason": "合成financial第1处：同期间同单位的金额与本轮募集书不同。",
+                  "field": "主要财务情况说明核对字段1",
+                  "period": "2025年度",
+                  "unit": "万元"
+                },
+                {
+                  "id": "confirmation-financial-automatic-2",
+                  "kind": "conflict",
+                  "target_span_id": "confirmation-financial-automatic-2-target",
+                  "original": "合成financial原文金额 111",
+                  "replacement": "合成financial建议更新金额 131",
+                  "source_span_id": "confirmation-financial-automatic-2-source",
+                  "source_quote": "合成募集书同口径金额 131",
+                  "source_location": "合成募集书第13页",
+                  "target_location": "合成主要财务情况说明第4页",
+                  "reason": "合成financial第2处：同期间同单位的金额与本轮募集书不同。",
+                  "field": "主要财务情况说明核对字段2",
+                  "period": "2025年度",
+                  "unit": "万元"
+                },
+                {
+                  "id": "confirmation-financial-automatic-3",
+                  "kind": "conflict",
+                  "target_span_id": "confirmation-financial-automatic-3-target",
+                  "original": "合成financial原文金额 112",
+                  "replacement": "合成financial建议更新金额 132",
+                  "source_span_id": "confirmation-financial-automatic-3-source",
+                  "source_quote": "合成募集书同口径金额 132",
+                  "source_location": "合成募集书第14页",
+                  "target_location": "合成主要财务情况说明第5页",
+                  "reason": "合成financial第3处：同期间同单位的金额与本轮募集书不同。",
+                  "field": "主要财务情况说明核对字段3",
+                  "period": "2025年度",
+                  "unit": "万元"
+                }
+              ]
+            },
+            {
+              "file_version_id": "consistency-selection-credit-v1",
+              "status": "conflict",
+              "coverage": "合成授信情况说明：本轮仅核对列出的金额与授信口径，不代表全文或专业验收。",
+              "links": [],
+              "findings": [
+                {
+                  "id": "confirmation-credit-automatic-1",
+                  "kind": "conflict",
+                  "target_span_id": "confirmation-credit-automatic-1-target",
+                  "original": "合成credit原文金额 120",
+                  "replacement": "合成credit建议更新金额 140",
+                  "source_span_id": "confirmation-credit-automatic-1-source",
+                  "source_quote": "合成募集书同口径金额 140",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成授信情况说明第3页",
+                  "reason": "合成credit第1处：同期间同单位的金额与本轮募集书不同。",
+                  "field": "授信情况说明核对字段1",
+                  "period": "2025年度",
+                  "unit": "万元"
+                }
+              ]
+            },
+            {
+              "file_version_id": "consistency-selection-init-v1",
+              "status": "conflict",
+              "coverage": "合成立项报告：本轮仅核对列出的金额与授信口径，不代表全文或专业验收。",
+              "links": [
+                {
+                  "source_span_id": "consistency-selection-init-source-span",
+                  "target_span_id": "consistency-selection-init-target-span",
+                  "source_quote": "合成2025年度同口径数值120万元",
+                  "target_quote": "合成2025年度同口径数值120万元",
+                  "field": "合成财务数据",
+                  "period": "2025年度",
+                  "unit": "万元",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成文件第3页",
+                  "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+                  "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+                }
+              ],
+              "findings": [
+                {
+                  "id": "confirmation-init-automatic-1",
+                  "kind": "conflict",
+                  "target_span_id": "confirmation-init-automatic-1-target",
+                  "original": "合成init原文金额 130",
+                  "replacement": "合成init建议更新金额 150",
+                  "source_span_id": "confirmation-init-automatic-1-source",
+                  "source_quote": "合成募集书同口径金额 150",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成立项报告第3页",
+                  "reason": "合成init第1处：同期间同单位的金额与本轮募集书不同。",
+                  "field": "立项报告核对字段1",
+                  "period": "2025年度",
+                  "unit": "万元"
+                }
+              ]
+            },
+            {
+              "file_version_id": "consistency-selection-underwriter-v1",
+              "status": "conflict",
+              "coverage": "合成主承销商核查意见：本轮仅核对列出的金额与授信口径，不代表全文或专业验收。",
+              "links": [
+                {
+                  "source_span_id": "consistency-selection-underwriter-source-span",
+                  "target_span_id": "consistency-selection-underwriter-target-span",
+                  "source_quote": "合成2025年度同口径数值120万元",
+                  "target_quote": "合成2025年度同口径数值120万元",
+                  "field": "合成财务数据",
+                  "period": "2025年度",
+                  "unit": "万元",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成文件第3页",
+                  "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+                  "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+                }
+              ],
+              "findings": [
+                {
+                  "id": "confirmation-underwriter-automatic-1",
+                  "kind": "conflict",
+                  "target_span_id": "confirmation-underwriter-automatic-1-target",
+                  "original": "合成underwriter原文金额 140",
+                  "replacement": "合成underwriter建议更新金额 160",
+                  "source_span_id": "confirmation-underwriter-automatic-1-source",
+                  "source_quote": "合成募集书同口径金额 160",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成主承销商核查意见第3页",
+                  "reason": "合成underwriter第1处：同期间同单位的金额与本轮募集书不同。",
+                  "field": "主承销商核查意见核对字段1",
+                  "period": "2025年度",
+                  "unit": "万元"
+                }
+              ]
+            },
+            {
+              "file_version_id": "consistency-selection-legal-v1",
+              "status": "conflict",
+              "coverage": "合成法律意见书：本轮仅核对列出的金额与授信口径，不代表全文或专业验收。",
+              "links": [
+                {
+                  "source_span_id": "consistency-selection-legal-source-span",
+                  "target_span_id": "consistency-selection-legal-target-span",
+                  "source_quote": "合成2025年度同口径数值120万元",
+                  "target_quote": "合成2025年度同口径数值120万元",
+                  "field": "合成财务数据",
+                  "period": "2025年度",
+                  "unit": "万元",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成文件第3页",
+                  "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+                  "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+                }
+              ],
+              "findings": [
+                {
+                  "id": "confirmation-legal-automatic-1",
+                  "kind": "conflict",
+                  "target_span_id": "confirmation-legal-automatic-1-target",
+                  "original": "合成legal原文金额 150",
+                  "replacement": "合成legal建议更新金额 170",
+                  "source_span_id": "confirmation-legal-automatic-1-source",
+                  "source_quote": "合成募集书同口径金额 170",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成法律意见书第3页",
+                  "reason": "合成legal第1处：同期间同单位的金额与本轮募集书不同。",
+                  "field": "法律意见书核对字段1",
+                  "period": "2025年度",
+                  "unit": "万元"
+                }
+              ]
+            },
+            {
+              "file_version_id": "consistency-selection-application-v1",
+              "status": "conflict",
+              "coverage": "合成挂牌 / 发行申请书：本轮仅核对列出的金额与授信口径，不代表全文或专业验收。",
+              "links": [
+                {
+                  "source_span_id": "consistency-selection-application-source-span",
+                  "target_span_id": "consistency-selection-application-target-span",
+                  "source_quote": "合成2025年度同口径数值120万元",
+                  "target_quote": "合成2025年度同口径数值120万元",
+                  "field": "合成财务数据",
+                  "period": "2025年度",
+                  "unit": "万元",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成文件第3页",
+                  "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+                  "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+                }
+              ],
+              "findings": [
+                {
+                  "id": "confirmation-application-automatic-1",
+                  "kind": "conflict",
+                  "target_span_id": "confirmation-application-automatic-1-target",
+                  "original": "合成application原文金额 160",
+                  "replacement": "合成application建议更新金额 180",
+                  "source_span_id": "confirmation-application-automatic-1-source",
+                  "source_quote": "合成募集书同口径金额 180",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成挂牌 / 发行申请书第3页",
+                  "reason": "合成application第1处：同期间同单位的金额与本轮募集书不同。",
+                  "field": "挂牌 / 发行申请书核对字段1",
+                  "period": "2025年度",
+                  "unit": "万元"
+                }
+              ]
+            },
+            {
+              "file_version_id": "consistency-selection-recommendation-v1",
+              "status": "conflict",
+              "coverage": "合成推荐函：本轮仅核对列出的金额与授信口径，不代表全文或专业验收。",
+              "links": [
+                {
+                  "source_span_id": "consistency-selection-recommendation-source-span",
+                  "target_span_id": "consistency-selection-recommendation-target-span",
+                  "source_quote": "合成2025年度同口径数值120万元",
+                  "target_quote": "合成2025年度同口径数值120万元",
+                  "field": "合成财务数据",
+                  "period": "2025年度",
+                  "unit": "万元",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成文件第3页",
+                  "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+                  "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+                }
+              ],
+              "findings": [
+                {
+                  "id": "confirmation-recommendation-automatic-1",
+                  "kind": "conflict",
+                  "target_span_id": "confirmation-recommendation-automatic-1-target",
+                  "original": "合成recommendation原文金额 170",
+                  "replacement": "合成recommendation建议更新金额 190",
+                  "source_span_id": "confirmation-recommendation-automatic-1-source",
+                  "source_quote": "合成募集书同口径金额 190",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成推荐函第3页",
+                  "reason": "合成recommendation第1处：同期间同单位的金额与本轮募集书不同。",
+                  "field": "推荐函核对字段1",
+                  "period": "2025年度",
+                  "unit": "万元"
+                }
+              ]
+            },
+            {
+              "file_version_id": "consistency-selection-private_summary-v1",
+              "status": "conflict",
+              "coverage": "合成募集说明书摘要：本轮仅核对列出的金额与授信口径，不代表全文或专业验收。",
+              "links": [
+                {
+                  "source_span_id": "consistency-selection-private_summary-source-span",
+                  "target_span_id": "consistency-selection-private_summary-target-span",
+                  "source_quote": "合成2025年度同口径数值120万元",
+                  "target_quote": "合成2025年度同口径数值120万元",
+                  "field": "合成财务数据",
+                  "period": "2025年度",
+                  "unit": "万元",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成文件第3页",
+                  "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+                  "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+                }
+              ],
+              "findings": [
+                {
+                  "id": "confirmation-private_summary-automatic-1",
+                  "kind": "conflict",
+                  "target_span_id": "confirmation-private_summary-automatic-1-target",
+                  "original": "合成private_summary原文金额 180",
+                  "replacement": "合成private_summary建议更新金额 200",
+                  "source_span_id": "confirmation-private_summary-automatic-1-source",
+                  "source_quote": "合成募集书同口径金额 200",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成募集说明书摘要第3页",
+                  "reason": "合成private_summary第1处：同期间同单位的金额与本轮募集书不同。",
+                  "field": "募集说明书摘要核对字段1",
+                  "period": "2025年度",
+                  "unit": "万元"
+                }
+              ]
+            },
+            {
+              "file_version_id": "consistency-selection-annual-v1",
+              "status": "conflict",
+              "coverage": "合成年度报告：本轮仅核对列出的金额与授信口径，不代表全文或专业验收。",
+              "links": [
+                {
+                  "source_span_id": "consistency-selection-annual-source-span",
+                  "target_span_id": "consistency-selection-annual-target-span",
+                  "source_quote": "合成2025年度同口径数值120万元",
+                  "target_quote": "合成2025年度同口径数值120万元",
+                  "field": "合成财务数据",
+                  "period": "2025年度",
+                  "unit": "万元",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成文件第3页",
+                  "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+                  "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+                }
+              ],
+              "findings": [
+                {
+                  "id": "confirmation-annual-automatic-1",
+                  "kind": "conflict",
+                  "target_span_id": "confirmation-annual-automatic-1-target",
+                  "original": "合成annual原文金额 190",
+                  "replacement": "合成annual建议更新金额 210",
+                  "source_span_id": "confirmation-annual-automatic-1-source",
+                  "source_quote": "合成募集书同口径金额 210",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成年度报告第3页",
+                  "reason": "合成annual第1处：同期间同单位的金额与本轮募集书不同。",
+                  "field": "年度报告核对字段1",
+                  "period": "2025年度",
+                  "unit": "万元"
+                }
+              ]
+            },
+            {
+              "file_version_id": "consistency-selection-semiannual-v1",
+              "status": "conflict",
+              "coverage": "合成半年度报告：本轮仅核对列出的金额与授信口径，不代表全文或专业验收。",
+              "links": [
+                {
+                  "source_span_id": "consistency-selection-semiannual-source-span",
+                  "target_span_id": "consistency-selection-semiannual-target-span",
+                  "source_quote": "合成2025年度同口径数值120万元",
+                  "target_quote": "合成2025年度同口径数值120万元",
+                  "field": "合成财务数据",
+                  "period": "2025年度",
+                  "unit": "万元",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成文件第3页",
+                  "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+                  "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+                }
+              ],
+              "findings": [
+                {
+                  "id": "confirmation-semiannual-automatic-1",
+                  "kind": "conflict",
+                  "target_span_id": "confirmation-semiannual-automatic-1-target",
+                  "original": "合成semiannual原文金额 200",
+                  "replacement": "合成semiannual建议更新金额 220",
+                  "source_span_id": "confirmation-semiannual-automatic-1-source",
+                  "source_quote": "合成募集书同口径金额 220",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成半年度报告第3页",
+                  "reason": "合成semiannual第1处：同期间同单位的金额与本轮募集书不同。",
+                  "field": "半年度报告核对字段1",
+                  "period": "2025年度",
+                  "unit": "万元"
+                }
+              ]
+            },
+            {
+              "file_version_id": "consistency-selection-proceeds-v1",
+              "status": "conflict",
+              "coverage": "合成募集资金使用情况说明：本轮仅核对列出的金额与授信口径，不代表全文或专业验收。",
+              "links": [
+                {
+                  "source_span_id": "consistency-selection-proceeds-source-span",
+                  "target_span_id": "consistency-selection-proceeds-target-span",
+                  "source_quote": "合成2025年度同口径数值120万元",
+                  "target_quote": "合成2025年度同口径数值120万元",
+                  "field": "合成财务数据",
+                  "period": "2025年度",
+                  "unit": "万元",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成文件第3页",
+                  "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+                  "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+                }
+              ],
+              "findings": [
+                {
+                  "id": "confirmation-proceeds-automatic-1",
+                  "kind": "conflict",
+                  "target_span_id": "confirmation-proceeds-automatic-1-target",
+                  "original": "合成proceeds原文金额 210",
+                  "replacement": "合成proceeds建议更新金额 230",
+                  "source_span_id": "confirmation-proceeds-automatic-1-source",
+                  "source_quote": "合成募集书同口径金额 230",
+                  "source_location": "合成募集书第12页",
+                  "target_location": "合成募集资金使用情况说明第3页",
+                  "reason": "合成proceeds第1处：同期间同单位的金额与本轮募集书不同。",
+                  "field": "募集资金使用情况说明核对字段1",
+                  "period": "2025年度",
+                  "unit": "万元"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "files": [
+        {
+          "version_id": "consistency-selection-issuer-v1",
+          "file_id": "consistency-selection-issuer-family",
+          "document_type": "issuer",
+          "filename": "合成同名关联文件[待核对].docx",
+          "sequence": 2,
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "consistency-task-root",
+              "material_id": "consistency-selection-issuer-material",
+              "material_version": 1,
+              "sha256": "70b3adff11c28c0f3ab998beb9e5809f30f43c1c35bd65d4cd89a56adfbfd01c"
+            }
+          },
+          "revision_asset": null,
+          "source_version_id": "consistency-task-source-v3",
+          "source_name": "当前募集说明书_V3.docx",
+          "source_sequence": 3,
+          "template_id": null,
+          "template_version": null,
+          "created_at": "2026-10-25T16:00:00Z",
+          "run_id": null,
+          "links": [],
+          "latest": true,
+          "version_count": 2,
+          "consistency": {
+            "status": "conflict",
+            "count": 2,
+            "check_run_id": "consistency-task-new-check"
+          },
+          "automatic": 2,
+          "manual": 1,
+          "manualUnlisted": false
+        },
+        {
+          "version_id": "consistency-selection-financial-v1",
+          "file_id": "consistency-selection-financial-family",
+          "document_type": "financial",
+          "filename": "合成同名关联文件[待核对].docx",
+          "sequence": 4,
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "consistency-task-root",
+              "material_id": "consistency-selection-financial-material",
+              "material_version": 1,
+              "sha256": "b98b41ec7f8795a9b289dc4ccf4536cab446aa655524281a910d8886488dbde5"
+            }
+          },
+          "revision_asset": null,
+          "source_version_id": "consistency-task-source-v3",
+          "source_name": "当前募集说明书_V3.docx",
+          "source_sequence": 3,
+          "template_id": null,
+          "template_version": null,
+          "created_at": "2026-10-25T16:00:00Z",
+          "run_id": null,
+          "links": [],
+          "latest": true,
+          "version_count": 4,
+          "consistency": {
+            "status": "conflict",
+            "count": 3,
+            "check_run_id": "consistency-task-new-check"
+          },
+          "automatic": 3,
+          "manual": 0,
+          "manualUnlisted": false
+        },
+        {
+          "version_id": "consistency-selection-credit-v1",
+          "file_id": "consistency-selection-credit-family",
+          "document_type": "credit",
+          "filename": "合成另行保留的授信说明.docx",
+          "sequence": 1,
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "consistency-task-root",
+              "material_id": "consistency-selection-credit-material",
+              "material_version": 1,
+              "sha256": "ebb08b8a09b1b82c2d1ee12e6c37a221f5ed767caa1cfe00b0f617fbf8e56936"
+            }
+          },
+          "revision_asset": null,
+          "source_version_id": "consistency-task-source-v3",
+          "source_name": "当前募集说明书_V3.docx",
+          "source_sequence": 3,
+          "template_id": null,
+          "template_version": null,
+          "created_at": "2026-10-25T16:00:00Z",
+          "run_id": null,
+          "links": [],
+          "latest": true,
+          "version_count": 1,
+          "consistency": {
+            "status": "conflict",
+            "count": 1,
+            "check_run_id": "consistency-task-new-check"
+          },
+          "automatic": 1,
+          "manual": 0,
+          "manualUnlisted": false
+        },
+        {
+          "version_id": "consistency-selection-init-v1",
+          "file_id": "consistency-selection-init-family",
+          "document_type": "init",
+          "filename": "合成长清单_立项报告.docx",
+          "sequence": 1,
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "consistency-task-root",
+              "material_id": "consistency-selection-init-material",
+              "material_version": 1,
+              "sha256": "3e4bdabf25b2b0e65381cfeafea04fb96de1aeac3cc8ee7263021318ec5aa05e"
+            }
+          },
+          "revision_asset": null,
+          "source_version_id": "consistency-task-source-v3",
+          "source_name": "当前募集说明书_V3.docx",
+          "source_sequence": 3,
+          "template_id": null,
+          "template_version": null,
+          "created_at": "2026-10-25T16:00:00Z",
+          "run_id": null,
+          "links": [
+            {
+              "source_span_id": "consistency-selection-init-source-span",
+              "target_span_id": "consistency-selection-init-target-span",
+              "source_quote": "合成2025年度同口径数值120万元",
+              "target_quote": "合成2025年度同口径数值120万元",
+              "field": "合成财务数据",
+              "period": "2025年度",
+              "unit": "万元",
+              "source_location": "合成募集书第12页",
+              "target_location": "合成文件第3页",
+              "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+              "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+            }
+          ],
+          "latest": true,
+          "version_count": 1,
+          "consistency": {
+            "status": "conflict",
+            "count": 1,
+            "check_run_id": "consistency-task-new-check"
+          },
+          "automatic": 1,
+          "manual": 0,
+          "manualUnlisted": false
+        },
+        {
+          "version_id": "consistency-selection-underwriter-v1",
+          "file_id": "consistency-selection-underwriter-family",
+          "document_type": "underwriter",
+          "filename": "合成长清单_主承销商核查意见.docx",
+          "sequence": 1,
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "consistency-task-root",
+              "material_id": "consistency-selection-underwriter-material",
+              "material_version": 1,
+              "sha256": "de3329748f9e9d16cc851d26e8f05479e2a69f16c9114fa41b06336993de5f57"
+            }
+          },
+          "revision_asset": null,
+          "source_version_id": "consistency-task-source-v3",
+          "source_name": "当前募集说明书_V3.docx",
+          "source_sequence": 3,
+          "template_id": null,
+          "template_version": null,
+          "created_at": "2026-10-25T16:00:00Z",
+          "run_id": null,
+          "links": [
+            {
+              "source_span_id": "consistency-selection-underwriter-source-span",
+              "target_span_id": "consistency-selection-underwriter-target-span",
+              "source_quote": "合成2025年度同口径数值120万元",
+              "target_quote": "合成2025年度同口径数值120万元",
+              "field": "合成财务数据",
+              "period": "2025年度",
+              "unit": "万元",
+              "source_location": "合成募集书第12页",
+              "target_location": "合成文件第3页",
+              "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+              "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+            }
+          ],
+          "latest": true,
+          "version_count": 1,
+          "consistency": {
+            "status": "conflict",
+            "count": 1,
+            "check_run_id": "consistency-task-new-check"
+          },
+          "automatic": 1,
+          "manual": 0,
+          "manualUnlisted": false
+        },
+        {
+          "version_id": "consistency-selection-legal-v1",
+          "file_id": "consistency-selection-legal-family",
+          "document_type": "legal",
+          "filename": "合成长清单_法律意见书.docx",
+          "sequence": 1,
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "consistency-task-root",
+              "material_id": "consistency-selection-legal-material",
+              "material_version": 1,
+              "sha256": "33977c75d8591dd5389462f577d5f109067290983e7331bb7b1d33eac62b81ee"
+            }
+          },
+          "revision_asset": null,
+          "source_version_id": "consistency-task-source-v3",
+          "source_name": "当前募集说明书_V3.docx",
+          "source_sequence": 3,
+          "template_id": null,
+          "template_version": null,
+          "created_at": "2026-10-25T16:00:00Z",
+          "run_id": null,
+          "links": [
+            {
+              "source_span_id": "consistency-selection-legal-source-span",
+              "target_span_id": "consistency-selection-legal-target-span",
+              "source_quote": "合成2025年度同口径数值120万元",
+              "target_quote": "合成2025年度同口径数值120万元",
+              "field": "合成财务数据",
+              "period": "2025年度",
+              "unit": "万元",
+              "source_location": "合成募集书第12页",
+              "target_location": "合成文件第3页",
+              "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+              "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+            }
+          ],
+          "latest": true,
+          "version_count": 1,
+          "consistency": {
+            "status": "conflict",
+            "count": 1,
+            "check_run_id": "consistency-task-new-check"
+          },
+          "automatic": 1,
+          "manual": 0,
+          "manualUnlisted": false
+        },
+        {
+          "version_id": "consistency-selection-application-v1",
+          "file_id": "consistency-selection-application-family",
+          "document_type": "application",
+          "filename": "合成长清单_挂牌 / 发行申请书.docx",
+          "sequence": 1,
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "consistency-task-root",
+              "material_id": "consistency-selection-application-material",
+              "material_version": 1,
+              "sha256": "fcb27672b5140aa303745643760b6251a1f9ff0ef19aedab9bf4ae364d9d66bd"
+            }
+          },
+          "revision_asset": null,
+          "source_version_id": "consistency-task-source-v3",
+          "source_name": "当前募集说明书_V3.docx",
+          "source_sequence": 3,
+          "template_id": null,
+          "template_version": null,
+          "created_at": "2026-10-25T16:00:00Z",
+          "run_id": null,
+          "links": [
+            {
+              "source_span_id": "consistency-selection-application-source-span",
+              "target_span_id": "consistency-selection-application-target-span",
+              "source_quote": "合成2025年度同口径数值120万元",
+              "target_quote": "合成2025年度同口径数值120万元",
+              "field": "合成财务数据",
+              "period": "2025年度",
+              "unit": "万元",
+              "source_location": "合成募集书第12页",
+              "target_location": "合成文件第3页",
+              "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+              "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+            }
+          ],
+          "latest": true,
+          "version_count": 1,
+          "consistency": {
+            "status": "conflict",
+            "count": 1,
+            "check_run_id": "consistency-task-new-check"
+          },
+          "automatic": 1,
+          "manual": 0,
+          "manualUnlisted": false
+        },
+        {
+          "version_id": "consistency-selection-recommendation-v1",
+          "file_id": "consistency-selection-recommendation-family",
+          "document_type": "recommendation",
+          "filename": "合成长清单_推荐函.docx",
+          "sequence": 1,
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "consistency-task-root",
+              "material_id": "consistency-selection-recommendation-material",
+              "material_version": 1,
+              "sha256": "1a9819e29bfa04b381a2b0c23204148cae17df098e42f6d042b44252a570fc0a"
+            }
+          },
+          "revision_asset": null,
+          "source_version_id": "consistency-task-source-v3",
+          "source_name": "当前募集说明书_V3.docx",
+          "source_sequence": 3,
+          "template_id": null,
+          "template_version": null,
+          "created_at": "2026-10-25T16:00:00Z",
+          "run_id": null,
+          "links": [
+            {
+              "source_span_id": "consistency-selection-recommendation-source-span",
+              "target_span_id": "consistency-selection-recommendation-target-span",
+              "source_quote": "合成2025年度同口径数值120万元",
+              "target_quote": "合成2025年度同口径数值120万元",
+              "field": "合成财务数据",
+              "period": "2025年度",
+              "unit": "万元",
+              "source_location": "合成募集书第12页",
+              "target_location": "合成文件第3页",
+              "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+              "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+            }
+          ],
+          "latest": true,
+          "version_count": 1,
+          "consistency": {
+            "status": "conflict",
+            "count": 1,
+            "check_run_id": "consistency-task-new-check"
+          },
+          "automatic": 1,
+          "manual": 0,
+          "manualUnlisted": false
+        },
+        {
+          "version_id": "consistency-selection-private_summary-v1",
+          "file_id": "consistency-selection-private_summary-family",
+          "document_type": "private_summary",
+          "filename": "合成长清单_募集说明书摘要.docx",
+          "sequence": 1,
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "consistency-task-root",
+              "material_id": "consistency-selection-private_summary-material",
+              "material_version": 1,
+              "sha256": "40d87feea9e48ce93d1c44227a78af9df0a5857f43954f7e4b83ddb0fed24951"
+            }
+          },
+          "revision_asset": null,
+          "source_version_id": "consistency-task-source-v3",
+          "source_name": "当前募集说明书_V3.docx",
+          "source_sequence": 3,
+          "template_id": null,
+          "template_version": null,
+          "created_at": "2026-10-25T16:00:00Z",
+          "run_id": null,
+          "links": [
+            {
+              "source_span_id": "consistency-selection-private_summary-source-span",
+              "target_span_id": "consistency-selection-private_summary-target-span",
+              "source_quote": "合成2025年度同口径数值120万元",
+              "target_quote": "合成2025年度同口径数值120万元",
+              "field": "合成财务数据",
+              "period": "2025年度",
+              "unit": "万元",
+              "source_location": "合成募集书第12页",
+              "target_location": "合成文件第3页",
+              "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+              "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+            }
+          ],
+          "latest": true,
+          "version_count": 1,
+          "consistency": {
+            "status": "conflict",
+            "count": 1,
+            "check_run_id": "consistency-task-new-check"
+          },
+          "automatic": 1,
+          "manual": 0,
+          "manualUnlisted": false
+        },
+        {
+          "version_id": "consistency-selection-annual-v1",
+          "file_id": "consistency-selection-annual-family",
+          "document_type": "annual",
+          "filename": "合成长清单_年度报告.docx",
+          "sequence": 1,
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "consistency-task-root",
+              "material_id": "consistency-selection-annual-material",
+              "material_version": 1,
+              "sha256": "e46bd90ecaedd7486715caea2cc74270833581572fb7eb0107fad8063e29d989"
+            }
+          },
+          "revision_asset": null,
+          "source_version_id": "consistency-task-source-v3",
+          "source_name": "当前募集说明书_V3.docx",
+          "source_sequence": 3,
+          "template_id": null,
+          "template_version": null,
+          "created_at": "2026-10-25T16:00:00Z",
+          "run_id": null,
+          "links": [
+            {
+              "source_span_id": "consistency-selection-annual-source-span",
+              "target_span_id": "consistency-selection-annual-target-span",
+              "source_quote": "合成2025年度同口径数值120万元",
+              "target_quote": "合成2025年度同口径数值120万元",
+              "field": "合成财务数据",
+              "period": "2025年度",
+              "unit": "万元",
+              "source_location": "合成募集书第12页",
+              "target_location": "合成文件第3页",
+              "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+              "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+            }
+          ],
+          "latest": true,
+          "version_count": 1,
+          "consistency": {
+            "status": "conflict",
+            "count": 1,
+            "check_run_id": "consistency-task-new-check"
+          },
+          "automatic": 1,
+          "manual": 0,
+          "manualUnlisted": false
+        },
+        {
+          "version_id": "consistency-selection-semiannual-v1",
+          "file_id": "consistency-selection-semiannual-family",
+          "document_type": "semiannual",
+          "filename": "合成长清单_半年度报告.docx",
+          "sequence": 1,
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "consistency-task-root",
+              "material_id": "consistency-selection-semiannual-material",
+              "material_version": 1,
+              "sha256": "63dfcb1758e45f0fab68ccbdd91bd711a906eb11350c7489d018641ce12ffd63"
+            }
+          },
+          "revision_asset": null,
+          "source_version_id": "consistency-task-source-v3",
+          "source_name": "当前募集说明书_V3.docx",
+          "source_sequence": 3,
+          "template_id": null,
+          "template_version": null,
+          "created_at": "2026-10-25T16:00:00Z",
+          "run_id": null,
+          "links": [
+            {
+              "source_span_id": "consistency-selection-semiannual-source-span",
+              "target_span_id": "consistency-selection-semiannual-target-span",
+              "source_quote": "合成2025年度同口径数值120万元",
+              "target_quote": "合成2025年度同口径数值120万元",
+              "field": "合成财务数据",
+              "period": "2025年度",
+              "unit": "万元",
+              "source_location": "合成募集书第12页",
+              "target_location": "合成文件第3页",
+              "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+              "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+            }
+          ],
+          "latest": true,
+          "version_count": 1,
+          "consistency": {
+            "status": "conflict",
+            "count": 1,
+            "check_run_id": "consistency-task-new-check"
+          },
+          "automatic": 1,
+          "manual": 0,
+          "manualUnlisted": false
+        },
+        {
+          "version_id": "consistency-selection-proceeds-v1",
+          "file_id": "consistency-selection-proceeds-family",
+          "document_type": "proceeds",
+          "filename": "合成长清单_募集资金使用情况说明.docx",
+          "sequence": 1,
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "consistency-task-root",
+              "material_id": "consistency-selection-proceeds-material",
+              "material_version": 1,
+              "sha256": "75bdc8b3a2c2f8e6ef250e82d6b606cd56c8cb7af4460bbd8799da4a3f2adb2c"
+            }
+          },
+          "revision_asset": null,
+          "source_version_id": "consistency-task-source-v3",
+          "source_name": "当前募集说明书_V3.docx",
+          "source_sequence": 3,
+          "template_id": null,
+          "template_version": null,
+          "created_at": "2026-10-25T16:00:00Z",
+          "run_id": null,
+          "links": [
+            {
+              "source_span_id": "consistency-selection-proceeds-source-span",
+              "target_span_id": "consistency-selection-proceeds-target-span",
+              "source_quote": "合成2025年度同口径数值120万元",
+              "target_quote": "合成2025年度同口径数值120万元",
+              "field": "合成财务数据",
+              "period": "2025年度",
+              "unit": "万元",
+              "source_location": "合成募集书第12页",
+              "target_location": "合成文件第3页",
+              "source_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9",
+              "target_sha256": "7024ec2123d1ace6476e72fd4442540b2ff56007b4b0eaa78ae092ccf581cfd9"
+            }
+          ],
+          "latest": true,
+          "version_count": 1,
+          "consistency": {
+            "status": "conflict",
+            "count": 1,
+            "check_run_id": "consistency-task-new-check"
+          },
+          "automatic": 1,
+          "manual": 0,
+          "manualUnlisted": false
+        }
+      ],
+      "source": {
+        "project_id": "consistency-task-root",
+        "version_id": "consistency-task-source-v3",
+        "selection_revision": 7,
+        "filename": "当前募集说明书_V3.docx",
+        "sequence": 3,
+        "asset": {
+          "kind": "material",
+          "pin": {
+            "source_project_id": "consistency-task-root",
+            "material_id": "consistency-task-source-material-v3",
+            "material_version": 1,
+            "sha256": "9f1797e007bcc32c694640a523c4961c080fd9dc02002727dd87e95a5e865fc1"
+          }
+        }
+      }
+    },
+    "writes": [],
+    "limits": "Native desktop browser and synthetic owner-scoped HTTP/OOXML/receipt evidence only; no real services, worker, model, billing, Word/WPS or user acceptance. Mobile deferred."
+  }
+}

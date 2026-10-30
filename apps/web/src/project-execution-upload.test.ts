@@ -14,7 +14,7 @@ function controller(readBlock:()=>string, request:()=>Promise<unknown>=async()=>
   const messages={version:1,content_sha256:'messages',message_ids:[]};
   const draft={project:{project_id:'synthetic',kind:'update',market:'sse',offering:'private'},state:'saved',valid:true,dirty:false,
     fields:{market:'sse',offering:'private',update_details:{authoring_mode:'unified_v1',target_reporting_periods:[{}]}},save:async()=>true};
-  const execution=new exports.ProjectExecution({},draft,{currentRef:async()=>messages},undefined,undefined,'',undefined,undefined,readBlock);
+  const execution=new exports.ProjectExecution({},draft,{flush:async()=>true,currentRef:async()=>messages},undefined,undefined,'',undefined,undefined,readBlock);
   execution.render=()=>{};execution.action=async(work:()=>Promise<void>)=>work();
   execution.materialReady=true;execution.materials=[{material_id:'saved',material_version:1}];
   execution.selected=true;execution.selectedMessages=messages;execution.input={};execution.preflight={status:'ready'};

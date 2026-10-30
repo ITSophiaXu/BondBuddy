@@ -2,8 +2,9 @@ import { taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Value } from '@sinclair/typebox/value';
-import { schemas, ReviewDraftRequestSchema, ReviewExecutionRequestSchema, ReviewMessageRequestSchema, ReviewPlanRequestSchema, isReviewReport,
+import { commerceMetadata, OUTCOME_PRICE_VERSION, schemas, INTEGRITY_PRICE, ReviewDraftRequestSchema, ReviewExecutionRequestSchema, ReviewMessageRequestSchema, ReviewPlanRequestSchema, isReviewReport,
   type ReviewWorkspace, type ReviewDraftInput, type ReviewReport, type ReviewEvidenceRef, type ReviewContext, type ReviewMessageRequest,
   type ReviewExecutionRequest, type ReviewPlanRequest, type ReviewProposal, type ReviewProposalV2, type ReviewProposalAdoptionRequest, type ReviewProposalAdoptionResponse, type ReviewHistoryEntry, type ReviewRevisionHandling, type Run, type RunEvent } from '@bondbuddy/contracts';
 import type { Dto } from '../src/api';
@@ -183,7 +184,7 @@ test('failed requirement save retains editable text, blocks start, and retries w
   state.failDrafts=false;await page.reload();
   await expect(page.getByLabel('补充复核要求（选填）')).toHaveValue('保存失败时保留这条要求。');
   await expect.poll(()=>state.workspace.draft.requirements).toEqual(['保存失败时保留这条要求。']);
-  await page.getByLabel('补充复核要求（选填）').fill('');await page.getByRole('button',{name:'保存要求',exact:true}).click();
+  await page.getByLabel('补充复核要求（选填）').fill('');await page.locator('#review-requirements').blur();
   await expect.poll(()=>state.workspace.draft.requirements).toEqual([]);
   await page.reload();await expect(page.getByLabel('补充复核要求（选填）')).toHaveValue('');
   expect(state.requests).toHaveLength(0);expect(state.executes).toHaveLength(0);
@@ -459,7 +460,7 @@ test('workbench alone owns version history and retains stopped/failed snapshots 
   await setup(page,state,'#tasks');const project=page.locator(`.collection-project[data-project-id="${id}"]`);await expect(project).toBeVisible();await project.locator('[data-tasks]').click();await page.getByRole('button',{name:'复核版本记录',exact:true}).click();const dialog=page.getByRole('dialog');await expect(dialog.locator('.review-history-entry')).toHaveCount(3);await expect(dialog).toContainText('已停止');await expect(dialog).toContainText('处理失败');await dialog.getByText('查看本轮输入与处理范围',{exact:true}).first().click();await expect(dialog).toContainText('保留的cancelled版本要求');
   await mkdir('test-evidence/m3-agent-progress-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-agent-progress-review/history-desktop.png'});
   await dialog.getByRole('link',{name:'打开此版报告'}).click();await expect(page).toHaveURL(/report_id=report-v1/);await expect(page.getByRole('tab')).toHaveCount(3);await expect(page.locator('#review-workspace').getByRole('button',{name:'版本记录',exact:true})).toHaveCount(0);
-  await page.setViewportSize({width:390,height:844});await expect(page.locator('.sidebar a.active')).toContainText('全部项目');await expect(page.locator('.sidebar a.active')).toHaveAttribute('href','#tasks');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  await page.setViewportSize({width:390,height:844});await expect(page.locator('.sidebar a.active')).toContainText('复核募集书');await expect(page.getByRole('link',{name:'返回任务进度与结果'})).toHaveAttribute('href','#tasks');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
 
 
@@ -596,15 +597,15 @@ test('annotated source prototype screenshots',async({page})=>{
 
 for(const viewport of [{width:1360,height:900},{width:390,height:844}])test(`unified review materials preserve inline requirements ${viewport.width}`,async({page})=>{
  await page.setViewportSize(viewport);const state=await setup(page,fixture(),`#/projects/${id}/review?tab=materials&from=projects`);
- await expect(page.locator('.sidebar a.active')).toContainText('全部项目');
+ await expect(page.locator('.sidebar a.active')).toContainText('复核募集书');
  await expect(page.locator('#review-agent')).toHaveCount(0);await expect(page.locator('.review-agent-fab')).toHaveCount(0);
  await expect(page.getByRole('heading',{name:'材料与要求',exact:true})).toBeVisible();
  await page.locator('#review-requirements').fill('请关注本期现金流。');
  await expect.poll(()=>state.workspace.draft.requirements.includes('请关注本期现金流。')).toBe(true);
  expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);
  await page.reload();await expect(page.locator('#review-requirements')).toHaveValue('请关注本期现金流。');
- await page.getByRole('tab',{name:/复核结果/}).click();await expect(page.locator('.sidebar a.active')).toContainText('全部项目');
- await page.reload();await expect(page.locator('.sidebar a.active')).toContainText('全部项目');
+ await page.getByRole('tab',{name:/复核结果/}).click();await expect(page.locator('.sidebar a.active')).toContainText('复核募集书');
+ await page.reload();await expect(page.locator('.sidebar a.active')).toContainText('复核募集书');
  await page.getByRole('tab',{name:/材料与要求/}).click();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  const output=process.env.BB_WORKSPACE_SCREENSHOTS;if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/materials-${viewport.width}.png`,fullPage:true});}
@@ -656,7 +657,7 @@ test('duplicate feedback: cached duplicate retains its notice when saving the dr
  const input=page.locator('[data-review-upload-role="audit"]'),zone=page.locator('[data-review-drop="audit"]');
  const file={name:'重复草稿材料.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic draft retry duplicate')};
  await input.setInputFiles(file);await expect.poll(()=>s.workspace.materials.length).toBe(3);await expect(zone.locator('[data-review-upload-key]')).toHaveCount(0);
- s.failDrafts=true;await input.setInputFiles(file);const retry=zone.locator('[data-review-recovery-action=resume]');await expect(retry).toBeEnabled();await expect(retry).toContainText('原草稿');
+ s.failDrafts=true;await input.setInputFiles(file);const retry=zone.locator('[data-review-recovery-action=resume]');await expect(retry).toBeEnabled();await expect(retry).toHaveText('重试');
  const bytesBeforeRetry=s.uploadBytes,createsBeforeRetry=s.uploads.length,request=structuredClone(s.inputSaves.at(-1)!);expect(createsBeforeRetry).toBe(2);expect(bytesBeforeRetry).toBe(2);
  s.failDrafts=false;await retry.click();
  await expect(zone.locator('[data-review-upload-key]')).toHaveCount(0);await expect(zone.locator('.duplicate-upload-notice')).toContainText('重复草稿材料.txt：重复文件');
@@ -695,13 +696,13 @@ for(const width of [1360,390])test(`upload queue keeps other pickers usable thro
  await expect(start).toBeDisabled();await expect(other).toBeEnabled();
  const chooserPromise=page.waitForEvent('filechooser');
  await page.locator('label[for="review-upload-other"]').click();const chooser=await chooserPromise;
- bytes.release();await expect(first).toContainText('正在确认材料保存');
+ bytes.release();await expect(first).toContainText('正在保存');
  expect(await original!.evaluate(el=>el.isConnected)).toBe(true);
  await chooser.setFiles({name:'synthetic-other.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic other evidence')});
  const second=page.locator('[data-review-drop="other"] .material-file-row').filter({hasText:'synthetic-other.txt'});
- await expect(second).toContainText('等待前一批');expect(state.uploads).toHaveLength(1);
+ await expect(second).toContainText('等待上传');expect(state.uploads).toHaveLength(1);
  completion.release();await expect.poll(()=>state.inputSaves.some(request=>request.input.material_versions.some(material=>material.material_id==='evidence-new'))).toBe(true);
- await expect(start).toBeDisabled();await expect(other).toBeEnabled();await expect(second).toContainText('等待前一批');
+ await expect(start).toBeDisabled();await expect(other).toBeEnabled();await expect(second).toContainText('等待上传');
  const output=process.env.BB_UPLOAD_EVIDENCE;
  if(output){await mkdir(output,{recursive:true});await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${output}/implementation-uploading-${width}.png`,fullPage:true});if(width===1360)await writeFile(output+'/uploading-scene.json',JSON.stringify(await page.locator('#app').innerHTML()));}
  draft.release();
@@ -740,7 +741,7 @@ test('draft-save retry continues saved material and invalid file can be removed'
  await setup(page,state,`#/projects/${id}/review?tab=materials`);
  await page.locator('[data-review-upload-role="other"]').setInputFiles({name:'synthetic-saved.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic saved evidence')});
  const row=page.locator('[data-review-drop="other"] .material-file-row').filter({hasText:'synthetic-saved.txt'});
- const retry=row.locator('[data-review-recovery-action=resume]');await expect(retry).toBeEnabled();await expect(retry).toContainText('原草稿');await expect(row.getByRole('button',{name:'移除此行'})).toHaveCount(0);const request=structuredClone(state.inputSaves.at(-1)!);
+ const retry=row.locator('[data-review-recovery-action=resume]');await expect(retry).toBeEnabled();await expect(retry).toHaveText('重试');await expect(row.getByRole('button',{name:'移除此行'})).toHaveCount(0);const request=structuredClone(state.inputSaves.at(-1)!);
  state.failDrafts=false;await retry.click();await expect(row).toContainText('已保存');
  expect(state.uploadBytes).toBe(1);expect(state.uploads).toHaveLength(1);expect(state.uploadCompletions).toEqual(['upload-evidence']);expect(state.inputSaves).toEqual([request,request]);expect(state.quoteCalls).toHaveLength(0);
  await page.locator('[data-review-upload-role="other"]').setInputFiles({name:'synthetic-invalid.exe',mimeType:'application/octet-stream',buffer:Buffer.from('not executable')});
@@ -855,6 +856,7 @@ test('review navigation retains the app scale while keeping its own layout',asyn
   await page.setViewportSize({width,height:width===390?844:900});await page.goto('/#/new');
   await expect(page.getByRole('heading',{name:'更新募集说明书',exact:true})).toBeVisible();const update=await measure();
   const updateCard=await page.locator('.form-panel').boundingBox();
+  const updateStepsBottom=await page.locator('.stepper').evaluate(el=>el.getBoundingClientRect().bottom);
   const updateSteps=await page.locator('.stepper').evaluate(el=>({font:getComputedStyle(el).fontSize,gap:getComputedStyle(el).gap,height:el.getBoundingClientRect().height}));
   const output=process.env.BB_SCALE_EVIDENCE;if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/update-entry-${width}.png`,fullPage:true});}
   if(width===390)await page.getByRole('button',{name:'打开菜单',exact:true}).click();
@@ -863,8 +865,9 @@ test('review navigation retains the app scale while keeping its own layout',asyn
   await expect(page.getByRole('heading',{name:'准备复核项目'})).toBeVisible();const review=await measure();expect(review).toEqual(update);
   const reviewCard=await page.locator('#review-create-form').boundingBox();
   expect(reviewCard!.x).toBeCloseTo(updateCard!.x,0);expect(reviewCard!.width).toBeCloseTo(updateCard!.width,0);
-  // The review-only free badge adds a row to the mobile topbar.
-  if(width>=760)expect(reviewCard!.y).toBeCloseTo(updateCard!.y,0);
+  // Intro copy may wrap differently; compare the form's spacing below the shared steps.
+  const reviewStepsBottom=await page.locator('.stepper').evaluate(el=>el.getBoundingClientRect().bottom);
+  if(width>=760)expect(reviewCard!.y-reviewStepsBottom).toBeCloseTo(updateCard!.y-updateStepsBottom,0);
   expect(await page.locator('.stepper').evaluate(el=>({font:getComputedStyle(el).fontSize,gap:getComputedStyle(el).gap,height:el.getBoundingClientRect().height}))).toEqual(updateSteps);
   if(output){await page.screenshot({path:`${output}/review-entry-${width}.png`,fullPage:true});await writeFile(`${output}/scale-${width}.json`,JSON.stringify({viewport:width,update,review,updateCard,reviewCard},null,2)+'\n');}
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
@@ -917,8 +920,8 @@ test('review task receipt displays the actual reserved, charged and released poi
 
 test('dashboard review progress keeps its collection context through tab changes and reload',async({page})=>{
  const s=fixture();s.workspace.active_run=s.makeRun('active-run','running');await setup(page,s,`#/projects/${id}/review?tab=making&from=dashboard&dashboard_kind=review&dashboard_status=active`);
- await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.locator('#review-tab-making')).toHaveAttribute('aria-selected','true');
- await page.locator('#review-tab-results').click();await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('全部项目');await expect(page.getByRole('link',{name:'返回全部项目'})).toHaveAttribute('href','#tasks');expect(s.executes).toHaveLength(0);
+ await expect(page.locator('.nav-item.active')).toHaveText('复核募集书');await expect(page.locator('#review-tab-making')).toHaveAttribute('aria-selected','true');
+ await page.locator('#review-tab-results').click();await page.reload();await expect(page.locator('.nav-item.active')).toHaveText('复核募集书');await expect(page.getByRole('link',{name:'返回任务进度与结果'})).toHaveAttribute('href','#tasks');expect(s.executes).toHaveLength(0);
 });
 
 
@@ -1126,15 +1129,54 @@ for(const width of [1440,390])test('review material source choices are exclusive
   expect(errors).toEqual([]);
 });
 
-test('empty review explains both source choices and missing existing materials without an empty disclosure',async({page})=>{
+test('empty review offers upload directly without nonexistent project source choices',async({page})=>{
   const state=fixture();state.workspace.materials=[];state.workspace.draft={version:0,source_material_ref:null,material_versions:[],requirements:[],as_of:null};
   await setup(page,state,`#/projects/${id}/review?tab=materials`);
-  await expect(page.getByRole('radio',{name:'上传新募集说明书',exact:true})).toBeChecked();
-  await page.getByRole('radio',{name:'选择项目已有募集说明书',exact:true}).check();
-  await expect(page.getByText('项目还没有可选的募集说明书，请切换到“上传新募集说明书”。',{exact:true})).toBeVisible();
-  await expect(page.locator('#review-project-source')).toBeDisabled();
+  await expect(page.locator('#review-source-upload')).toBeVisible();
+  await expect(page.getByRole('radio',{name:'上传新募集说明书',exact:true})).toBeHidden();
+  await expect(page.getByRole('radio',{name:'选择项目已有募集说明书',exact:true})).toBeHidden();
+  await expect(page.locator('#review-project-source')).toBeHidden();
   await expect(page.locator('#review-upload-groups details')).toHaveCount(0);
+  if(process.env.BB_REVIEW_ROUTE_EVIDENCE){await mkdir(process.env.BB_REVIEW_ROUTE_EVIDENCE,{recursive:true});await page.locator('#review-upload-groups').screenshot({path:process.env.BB_REVIEW_ROUTE_EVIDENCE+'/empty-upload.png'});}
   await page.getByRole('button',{name:'开始复核',exact:true}).click();expect(state.executes).toHaveLength(0);
+});
+
+test('review entered from project navigation highlights review before any task exists',async({page})=>{
+  const state=fixture();state.workspace.project.kind='update';state.workspace.selected_report=null;state.workspace.reports=[];state.workspace.artifacts=[];state.history=[];
+  await setup(page,state,`#/projects/${id}/review?tab=materials&from=projects&return_project=${id}`);
+  await expect(page.locator('#review-phase-badge')).toHaveText('准备复核');
+  await expect(page.locator('#review-progress-bar')).toBeHidden();
+  await expect(page.locator('#review-tab-making')).toBeHidden();
+  await expect(page.getByRole('navigation',{name:'主导航'}).locator('a.active')).toHaveText('复核募集书');
+  if(process.env.BB_REVIEW_ROUTE_EVIDENCE){await mkdir(process.env.BB_REVIEW_ROUTE_EVIDENCE,{recursive:true});await page.screenshot({path:process.env.BB_REVIEW_ROUTE_EVIDENCE+'/review-ready.png'});}
+  expect(state.executes).toHaveLength(0);expect(state.quoteCalls).toHaveLength(0);
+});
+
+test('review offers generated project versions without uploads and recovers a failed version read',async({page})=>{
+  const state=fixture();state.workspace.materials=[];state.workspace.draft={version:0,source_material_ref:null,material_versions:[],requirements:[],as_of:null};
+  await setup(page,state,`#/projects/${id}/review?tab=materials`);
+  let fail=true,empty=false;
+  await page.route('**/prospectus-versions',route=>fail?reply(route,503,{code:'DATA_UNAVAILABLE'}):reply(route,200,{project_id:id,current_version_id:'generated-1',selection_revision:1,inactive_material_ids:[],versions:empty?[]:[{version_id:'generated-1',sequence:1,origin:'generated',filename:'合成更新成果.docx',sha256:hash('generated'),created_at:now,material_id:null,material_version:null,artifact_id:'clean-1',artifact_version:1,revision_artifact_id:null,run_id:'update-1'}]}));
+  await page.reload();
+  await expect(page.getByRole('button',{name:'重新读取',exact:true})).toBeVisible();
+  await expect(page.locator('#review-source-upload')).toBeVisible();
+  await expect(page.getByRole('radio',{name:'选择项目已有募集说明书',exact:true})).toBeHidden();
+  fail=false;await page.getByRole('button',{name:'重新读取',exact:true}).click();
+  await expect(page.getByRole('radio',{name:'选择项目已有募集说明书',exact:true})).toBeChecked();
+  await expect(page.locator('#review-project-source')).toContainText('合成更新成果.docx');
+  await expect(page.getByRole('button',{name:'重新读取',exact:true})).toBeHidden();
+  empty=true;await page.reload();
+  await expect(page.locator('#review-source-upload')).toBeVisible();
+  await expect(page.getByRole('radio',{name:'选择项目已有募集说明书',exact:true})).toBeHidden();
+  expect(state.executes).toHaveLength(0);expect(state.uploads).toHaveLength(0);
+});
+
+for(const width of [1440,390])test('empty review material reference matches upload-only behavior '+width,async({page})=>{
+  await page.setViewportSize({width,height:960});
+  const root=process.cwd().replaceAll('\\','/').replace(/\/apps\/web$/,'');
+  await page.goto(`/@fs/${root}/product-prototype/public/review-materials.html?empty=1`);
+  await expect(page.locator('#upload')).toBeVisible();await expect(page.locator('.modes')).toBeHidden();await expect(page.locator('#existing')).toBeHidden();
+  if(process.env.BB_REVIEW_ROUTE_EVIDENCE){await mkdir(process.env.BB_REVIEW_ROUTE_EVIDENCE,{recursive:true});await page.screenshot({path:process.env.BB_REVIEW_ROUTE_EVIDENCE+`/prototype-empty-${width}.png`});}
 });
 
 test('old browser draft cannot reintroduce a question file omitted by the review API',async({page})=>{
@@ -1143,7 +1185,87 @@ test('old browser draft cannot reintroduce a question file omitted by the review
   const input={...original,material_versions:[...original.material_versions,question]};
   await page.addInitScript(({key,value})=>localStorage.setItem(key,JSON.stringify(value)),{key:`bb-review-input:owner-a:${id}`,value:{owner:'owner-a',project_id:id,version:1,input}});
   await setup(page,state,`#/projects/${id}/review?tab=materials`);
-  await page.locator('#review-requirements').fill('保留本机补充要求');await page.getByRole('button',{name:'保存要求',exact:true}).click();
+  await page.locator('#review-requirements').fill('保留本机补充要求');await page.locator('#review-requirements').blur();
   await expect.poll(()=>state.workspace.draft.requirements).toEqual(['保留本机补充要求']);
   expect(state.workspace.draft.material_versions.map(m=>m.material_id)).toEqual(['material-0','material-1']);
+});
+
+const taskEntries=[
+  {route:'integrity',label:'诚信核查',next:'下一步：名单与网站范围'},
+  {route:'update',label:'更新募集书',next:'进入更新募集书'},
+  {route:'review',label:'复核募集书',next:'下一步：材料与要求'},
+  {route:'generate',label:'文件生成',next:'打开文件生成'},
+  {route:'qa',label:'项目问答',next:'下一步：确认项目资料'},
+];
+const finishedReview=`#/projects/${id}/review?tab=results&report_id=report-v1&from=projects&return_project=${id}`;
+async function installTaskEntryProjects(page:Page){
+  const other={...fixture().workspace.project,project_id:'another-task-project',name:'另一个核查项目',issuer_name:'另一家发行人'};
+  await page.route('**/api/v1/projects?*',route=>reply(route,200,{items:[fixture().workspace.project,other],page:{next_cursor:null,has_more:false}}));
+  await page.route(`**/api/v1/projects/${other.project_id}`,route=>reply(route,200,other));
+  await page.route(`**/api/v1/projects/${other.project_id}/integrity`,route=>reply(route,200,{draft:{subjects:[],site_ids:[],notes:''},revision:1,price:INTEGRITY_PRICE,rounds:[]}));
+  return other;
+}
+async function clickTaskEntry(page:Page,label:string){
+  if(page.viewportSize()!.width<960)await page.getByRole('button',{name:'打开菜单',exact:true}).click();
+  await page.getByRole('navigation',{name:'主导航'}).getByRole('link',{name:label,exact:true}).click();
+}
+
+for(const width of [1440,390])test(`completed review starts every sidebar task with no selected project (${width}px)`,async({page})=>{
+  test.setTimeout(60000);
+  await page.setViewportSize({width,height:width===1440?960:844});
+  await setup(page,fixture(),finishedReview);await installTaskEntryProjects(page);
+  const writes:string[]=[];page.on('request',request=>{if(request.url().includes('/api/v1/')&&!['GET','HEAD'].includes(request.method()))writes.push(request.url());});
+  for(const entry of taskEntries){
+    await expect(page.locator('.review-findings')).toBeVisible();
+    await clickTaskEntry(page,entry.label);
+    await expect.poll(()=>page.evaluate(()=>location.hash)).toBe('#'+entry.route);
+    await expect(page.locator('.project-context')).toHaveCount(0);
+    if(entry.route==='update')await page.locator('details.update-entry-existing > summary').click();
+    await expect(page.locator('.update-project-option')).toHaveCount(2);
+    await expect(page.locator('.update-project-option input:checked')).toHaveCount(0);
+    await expect(page.locator('#project-entry-selection')).toHaveText('请选择一个项目');
+    await expect(page.getByRole('button',{name:entry.next,exact:true})).toBeDisabled();
+    await expect(page.getByRole(entry.route==='update'||entry.route==='review'?'link':'button',{name:'＋ 新建项目',exact:true})).toBeVisible();
+    if(process.env.BB_TASK_ENTRY_EVIDENCE&&entry.route==='integrity'){
+      await page.screenshot({path:join(process.env.BB_TASK_ENTRY_EVIDENCE,`implementation-${width}.png`)});
+      if(width<960){
+        await page.getByRole('button',{name:'打开菜单',exact:true}).click();
+        await page.screenshot({path:join(process.env.BB_TASK_ENTRY_EVIDENCE,`menu-${width}.png`)});
+        await page.locator('#close-menu').click();
+      }
+    }
+    await page.goBack();
+    await expect.poll(()=>page.evaluate(()=>({path:location.hash.split('?')[0],...Object.fromEntries(new URLSearchParams(location.hash.split('?')[1]))}))).toEqual({path:`#/projects/${id}/review`,tab:'results',report_id:'report-v1',run:'run-1',from:'projects',return_project:id});
+  }
+  await expect(page.locator('.review-findings')).toBeVisible();expect(writes).toEqual([]);
+});
+
+test('after review, integrity can create a blank project or explicitly use a different project',async({page})=>{
+  await setup(page,fixture(),finishedReview);const other=await installTaskEntryProjects(page);
+  const reads:string[]=[];page.on('request',request=>{if(request.url().includes('/integrity'))reads.push(new URL(request.url()).pathname);});
+  await clickTaskEntry(page,'诚信核查');
+  await page.getByRole('button',{name:'＋ 新建项目',exact:true}).click();
+  const dialog=page.getByRole('dialog');
+  await expect(dialog.getByLabel('项目名称',{exact:true})).toHaveValue('');
+  await expect(dialog.getByLabel('发行人全称',{exact:true})).toHaveValue('');
+  await page.keyboard.press('Escape');
+  await page.locator(`.update-project-option input[value="${other.project_id}"]`).check();
+  await page.getByRole('button',{name:'下一步：名单与网站范围',exact:true}).click();
+  await expect(page.locator('.pf-project-strip strong')).toHaveText(other.name);
+  await expect.poll(()=>page.evaluate(()=>location.hash)).toBe('#integrity?project='+other.project_id);
+  expect(reads).toEqual([`/api/v1/projects/${other.project_id}/integrity`]);
+  await expect(page.getByRole('link',{name:'返回本项目文件',exact:true})).toHaveAttribute('href',`#/projects/${other.project_id}/files`);
+  await clickTaskEntry(page,'项目问答');
+  await expect(page.locator('#project-entry-selection')).toHaveText('请选择一个项目');
+  await clickTaskEntry(page,'诚信核查');
+  await expect(page.locator('.update-project-option input:checked')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'下一步：名单与网站范围',exact:true})).toBeDisabled();
+});
+
+test('commercial scope review refreshes pending work and requires explicit total confirmation',async({page})=>{
+ const state=await setup(page,fixture(),`#/projects/${id}/review?tab=materials`);let ready=false;
+ await page.route('**/review-executions/quote',route=>reply(route,200,{enabled:true,quote:{quote_id:'commercial-review-quote',task_type:'full_review',points:ready?26800:0,price_version:OUTCOME_PRICE_VERSION,reason:'按独立实质复核工作项报价',...commerceMetadata(ready?26800:0),quote_status:ready?'ready':'pending_scope',scope_quote_id:'scope-review',scope_lines:ready?[{key:'review-input',label:'核对选定材料的财务披露及引用',quantity:1,unit:'组',unit_price_fen:26800,amount_fen:26800,evidence:['固定待复核募集书和已选审计报告版本。']}]:[]},balance:{available:100000,frozen:0},shortage:0,reason:null}));
+ await page.getByRole('button',{name:'开始复核',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('本次范围报价待确认，尚未收费');await expect(page.getByRole('button',{name:'确认总价并开始',exact:true})).toHaveCount(0);expect(state.executes).toEqual([]);
+ ready=true;await page.getByRole('button',{name:'刷新范围报价',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('¥268.00');await expect(page.getByRole('dialog')).toContainText('核对选定材料的财务披露及引用');expect(state.executes).toEqual([]);
+ await page.getByRole('button',{name:'确认总价并开始',exact:true}).click();await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0].quote_id).toBe('commercial-review-quote');
 });

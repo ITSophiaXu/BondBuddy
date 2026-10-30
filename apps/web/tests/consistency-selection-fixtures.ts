@@ -1,7 +1,10 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page} from '@playwright/test';
 import {Value} from '@sinclair/typebox/value';
 import {PROJECT_DOCUMENT_CATALOG,PROJECT_FILE_UPDATE_PRICE,projectFileSchemas,type ProjectFileFinding,type ProjectFileVersion} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {fixture as taskFixture,install as installTask,assertFixture as assertTask,
   ids,base,cacheKey,hash,now,serverSnapshot} from './consistency-task-fixtures';
 
@@ -79,15 +82,16 @@ export async function install(page:Page,s=fixture()){
   // Override only this round's explicit update endpoint; all reads, identity,
   // collection projections and unexpected-request checks remain in the producer.
   await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const request=route.request(),url=new URL(request.url()),path=url.pathname.slice('/api/v1'.length),match=path.match(new RegExp('^'+base+'/checks/([^/]+)/updates$'));
     if(request.method()!=='POST'||!match)return route.fallback();
-    const body=request.postDataJSON() as Dto<'ProjectFileUpdateRequest'>;
+    const body=fixtureRequest(request) as Dto<'ProjectFileUpdateRequest'>;
     s.calls.push({method:'POST',path,search:url.search,body:structuredClone(body)});
     try{
       expect(Value.Check(projectFileSchemas.ProjectFileUpdateRequest,body),'Existing public update request schema').toBe(true);
       const post={checkId:decodeURIComponent(match[1]),body:structuredClone(body)};s.posts.push(post);
       const original=s.receipts.get(body.request_id);
-      if(original){expect(post,'A retry keeps the whole original envelope').toEqual(original.post);return route.fulfill({status:200,json:{batch_id:original.batchId}});}
+      if(original){expect(post,'A retry keeps the whole original envelope').toEqual(original.post);return route.fulfill({status:200,json:fixtureBody(route,{batch_id:original.batchId})});}
       expect(post.checkId).toBe(checkId);expect(body.expected_check_sha256).toBe(s.checks[0].sha256);
       expect(body.price_version).toBe(PROJECT_FILE_UPDATE_PRICE.version);expect(body.expected_points).toBe(body.files.length*PROJECT_FILE_UPDATE_PRICE.points);
       expect(new Set(body.files.map(v=>v.file_version_id)).size).toBe(body.files.length);
@@ -99,8 +103,8 @@ export async function install(page:Page,s=fixture()){
       const batchId='consistency-selection-batch-'+(s.receipts.size+1);s.receipts.set(body.request_id,{post:structuredClone(post),batchId});
       s.batches.push({batch_id:batchId,state:'queued',items:body.files.map(v=>({file_version_id:v.file_version_id,filename:s.files.find(f=>f.version_id===v.file_version_id)!.filename,run_id:null,error:null}))});
       if(s.dropRemaining){s.dropRemaining=false;return route.abort('connectionreset');}
-      return route.fulfill({status:200,json:{batch_id:batchId}});
-    }catch(error){s.errors.push(error instanceof Error?error.message:String(error));return route.fulfill({status:500,json:{code:'DATA_UNAVAILABLE',message:'Synthetic fixture assertion failed',retryable:true,correlation_id:'consistency-selection',field_errors:[]}});}
+      return route.fulfill({status:200,json:fixtureBody(route,{batch_id:batchId})});
+    }catch(error){s.errors.push(error instanceof Error?error.message:String(error));return route.fulfill({status:500,json:fixtureBody(route,{code:'DATA_UNAVAILABLE',message:'Synthetic fixture assertion failed',retryable:true,correlation_id:'consistency-selection',field_errors:[]})});}
   });
   return s;
 }

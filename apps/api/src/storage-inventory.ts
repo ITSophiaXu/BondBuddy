@@ -4,8 +4,8 @@ import { Pool, type PoolClient } from 'pg';
 import { azureBlobs, uid, type PrivateBlobs } from './data.js';
 import { raiseAlert } from './evidence-gate.js';
 
-export const INVENTORY_PREFIXES = ['users/', 'parse-cache/', 'log-archive/'] as const;
-export type InventoryKind = 'snapshot' | 'upload' | 'provider_result' | 'ocr_result' | 'ocr_page' | 'ocr_v2_checkpoint' | 'ocr_v2_page' | 'artifact' | 'parse_cache' | 'log_archive' | 'unrecognized';
+export const INVENTORY_PREFIXES = ['users/', 'parse-cache/', 'log-archive/', 'owners/'] as const;
+export type InventoryKind = 'snapshot' | 'upload' | 'file_template' | 'provider_result' | 'ocr_result' | 'ocr_page' | 'ocr_v2_checkpoint' | 'ocr_v2_page' | 'artifact' | 'parse_cache' | 'log_archive' | 'file_authoring' | 'format_report' | 'unrecognized';
 export type InventoryClass = 'referenced' | 'intent_pending' | 'orphan_candidate' | 'post_0042_unregistered' | 'snapshot_provenance_unknown' | 'unrecognized';
 type Item = { key: string; bytes: number; lastModified?: Date; etag: string };
 type Db = Pool | PoolClient;
@@ -13,9 +13,12 @@ const digest = (key: string) => createHash('sha256').update(key).digest('hex');
 const id = '[A-Za-z0-9_-]{1,128}';
 const hex = '[a-f0-9]{64}';
 const uuid = '[a-f0-9-]{36}';
+const authoringId = '[A-Za-z0-9_:@.-]{1,128}';
+const authoringRun = `owners/${authoringId}/projects/${authoringId}/runs/${authoringId}/`;
 const patterns: [InventoryKind, RegExp][] = [
   ['snapshot', new RegExp(`^users/${id}/projects/${id}/snapshots/${id}$`)],
   ['upload', new RegExp(`^users/${id}/projects/${id}/uploads/${id}$`)],
+  ['file_template', new RegExp(`^users/${id}/projects/${id}/file-templates/assets/${hex}\\.docx$`)],
   ['provider_result', new RegExp(`^users/${id}/projects/${id}/provider-results/${id}-${hex}\\.json$`)],
   ['ocr_result', new RegExp(`^users/${id}/projects/${id}/ocr/results/${hex}\\.json$`)],
   ['ocr_page', new RegExp(`^users/${id}/projects/${id}/ocr/${id}/[1-9][0-9]{0,8}/${hex}\\.png$`)],
@@ -23,11 +26,21 @@ const patterns: [InventoryKind, RegExp][] = [
   ['ocr_v2_page', new RegExp(`^users/${id}/projects/${id}/ocr-v2/${id}/[1-9][0-9]{0,8}/${hex}/${hex}\\.png$`)],
   ['artifact', new RegExp(`^users/${id}/runs/${id}/artifacts/${id}/v[1-9][0-9]*\\.docx$`)],
   ['parse_cache', new RegExp(`^parse-cache/${hex}/${uuid}$`)],
-  ['log_archive', new RegExp(`^log-archive/[a-z][a-z0-9_]{0,63}/${uuid}(\\.${hex})?\\.ndjson$`)]
+  ['log_archive', new RegExp(`^log-archive/[a-z][a-z0-9_]{0,63}/${uuid}(\\.${hex})?\\.ndjson$`)],
+  ['file_authoring', new RegExp(`^${authoringRun}file-authoring/${authoringId}/${hex}/(tracked\\.docx|clean\\.docx|baseline\\.docx|delivery\\.md|operations\\.json|template-manifest\\.json|input\\.json)$`)],
+  ['format_report', new RegExp(`^${authoringRun}format-diagnostics/${hex}/format-report\\.json$`)]
 ];
 export function parseInventoryKey(key: string): InventoryKind {
+  if (key.startsWith('owners/') && key.includes('..')) return 'unrecognized';
   return patterns.find(([, pattern]) => pattern.test(key))?.[0] ?? 'unrecognized';
 }
+
+// The owned run pins the whole producer directory, including writes made before
+// a provider/checkpoint reference commits. Purging this scope is project-driven.
+const authoringReference = `SELECT 1 FROM bb_runs r JOIN bb_projects p ON p.id=r.project_id AND p.owner_user_id=r.owner_user_id
+  WHERE r.owner_user_id=split_part($1,'/',2) AND r.project_id=split_part($1,'/',4) AND r.id=split_part($1,'/',6)
+    AND NOT EXISTS (SELECT 1 FROM bb_deleted_content_purges d
+      WHERE d.owner_user_id=r.owner_user_id AND d.project_id=r.project_id AND d.subject_kind='project')`;
 
 async function classify(db: Db, kind: InventoryKind, key: string): Promise<InventoryClass> {
   if (kind === 'unrecognized') return 'unrecognized';
@@ -35,6 +48,8 @@ async function classify(db: Db, kind: InventoryKind, key: string): Promise<Inven
     snapshot: `SELECT 1 FROM bb_snapshot_refs s WHERE s.object_key=$1 AND NOT EXISTS
       (SELECT 1 FROM bb_log_content_tombstones t WHERE t.content_kind='prompt_snapshot' AND t.content_id=s.id)`,
     upload: 'SELECT 1 FROM bb_uploads WHERE object_key=$1 UNION ALL SELECT 1 FROM bb_material_versions WHERE object_key=$1',
+    file_template: `SELECT 1 FROM bb_file_template_sets s CROSS JOIN LATERAL jsonb_array_elements(s.records) r
+      WHERE s.owner_user_id=split_part($1,'/',2) AND s.project_id=split_part($1,'/',4) AND r->>'object_key'=$1`,
     provider_result: `SELECT 1 FROM bb_provider_result_refs r WHERE r.result_ref=$1 AND NOT EXISTS
       (SELECT 1 FROM bb_log_content_tombstones t WHERE t.content_kind='provider_result' AND t.content_id=r.id)`,
     ocr_result: 'SELECT 1 FROM bb_ocr_snapshots WHERE result_key=$1',
@@ -46,6 +61,8 @@ async function classify(db: Db, kind: InventoryKind, key: string): Promise<Inven
     ocr_v2_checkpoint: 'SELECT 1 FROM bb_ocr_v2_pages WHERE checkpoint_key=$1',
     ocr_v2_page: 'SELECT 1 FROM bb_ocr_v2_pages WHERE image_key=$1',
     artifact: 'SELECT 1 FROM bb_artifact_versions WHERE object_key=$1',
+    file_authoring: authoringReference,
+    format_report: authoringReference,
     parse_cache: 'SELECT 1 FROM bb_parse_cache WHERE object_key=$1',
     log_archive: `SELECT 1 FROM bb_log_archive_receipts r LEFT JOIN bb_log_archive_lifecycle l ON l.segment_id=r.segment_id
       WHERE r.object_key=$1 AND l.segment_id IS NULL

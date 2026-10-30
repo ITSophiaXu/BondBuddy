@@ -144,7 +144,7 @@ test('a late image response cannot unlock the newly selected record or revive a 
   state.holdImage = () => afterNavigation;
   await record(page, 551).click();
   await expect.poll(() => state.images).toBe(before + 1);
-  await page.getByRole('link', { name: '全部项目', exact: true }).first().click();
+  await page.getByRole('link', { name: '任务进度与结果', exact: true }).first().click();
   finish();
   await expect(page.locator('#ocr-crop')).toHaveCount(0);
   expect(state.writes).toHaveLength(0); expect(errors).toEqual([]);
@@ -293,7 +293,7 @@ test('late conflict reload cannot replace the selected record or restore a dispo
   release(); state.holdReview = undefined;
   await expect(save(page)).toBeEnabled(); await expect(acknowledge(page)).toBeHidden();
   await expect(page.getByLabel('校正后文字或数值')).toHaveValue('(1,234.50)');
-  await page.getByRole('link', { name: '全部项目', exact: true }).first().click();
+  await page.getByRole('link', { name: '任务进度与结果', exact: true }).first().click();
   await expect(page.locator('#ocr-conflict-latest')).toHaveCount(0);
   expect(errors).toEqual([]); expect(state.writes).toHaveLength(1);
 });
@@ -305,10 +305,10 @@ test('leaving during conflict reload discards the late response', async ({ page 
   const pending = new Promise<void>(resolve => { release = resolve; }); state.holdReview = () => pending;
   await reloadCorrection(page).click(); await expect.poll(() => state.reads).toBe(2);
   page.once('dialog', dialog => dialog.accept());
-  await page.getByRole('link', { name: '全部项目', exact: true }).first().click();
+  await page.getByRole('link', { name: '任务进度与结果', exact: true }).first().click();
   const response = page.waitForResponse(r => r.url().endsWith(path));
   release(); await response;
   await expect(page.locator('#ocr-conflict-latest')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
   expect(state.writes).toHaveLength(1); expect(errors).toEqual([]);
 });

@@ -1,0 +1,15 @@
+✔ statement comparisons retain exact safe numbers and canonical signed int64 values (1.8507ms)
+✔ statement integers reject missing, coerced, rounded and out-of-int64 evidence (2.5006ms)
+✔ absolute statement fees preserve precision and reject INT64_MIN overflow (0.4823ms)
+✔ daily statement differences preserve adjacent DB bigints above 2^53 without repairing financial records (511.9709ms)
+✔ wrong app or trade type cannot suppress local payment missing coverage; a valid row still matches (391.6895ms)
+✔ same-merchant owners reconcile separately while another merchant with the same transaction ID is never consumed (804.7123ms)
+✔ unsafe normalized statement money remains unknown and rolls back evidence without changing the wallet (336.3256ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18954.062

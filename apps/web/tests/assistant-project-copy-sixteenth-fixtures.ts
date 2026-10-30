@@ -1,3 +1,6 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import { expect, type Page, type Route } from '@playwright/test';
 import { FormatRegistry, type TSchema } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
@@ -9,7 +12,7 @@ import { schemas, emptyUpdateDetails, M4_DOCUMENT_TYPES, M4ViewRequestSchema, M4
   ReviewDraftRequestSchema, ReviewExecutionRequestSchema, AssistantCardRequestSchema, QaWorkspaceSchema, PROJECT_QA_PRICE,
   type M4Workspace, type M4ViewState, type M4MaterialPin, type M4ArtifactPin, type AssistantAction, type AssistantCard,
   type SourceProspectus, type ReviewDraft, type QaWorkspace } from '@bondbuddy/contracts';
-import type { Dto } from '../src/api';
+import type { Dto } from './billing-fixture-wire';
 
 export const now = '2026-10-25T12:00:00Z';
 export const ids = { owner: 'copy-16-owner', otherOwner: 'copy-16-owner-b', source: 'copy-16-source', scope: 'copy-16-topic-project', topic: 'copy-16-original-topic', target: 'copy-16-target', otherTopic: 'copy-16-other-topic', otherScope: 'copy-16-other-scope', card: 'copy-16-original-card' };
@@ -74,13 +77,14 @@ export function addSaved(state: State, value: SavedMaterial) { state.materials.s
 export function currentMaterials(state: State, project: string) { const found = new Map<string, SavedMaterial>(); for (const value of state.materials.values()) if (value.project === project && !state.deleted.has(pinKey(pin(project, value.material))) && (!found.has(value.material.material_id) || found.get(value.material.material_id)!.material.material_version < value.material.material_version)) found.set(value.material.material_id, value); return [...found.values()]; }
 export async function install(page: Page, state = fixture()) {
   page.on('pageerror', error => state.errors.push(error.message)); await page.clock.install({ time: new Date(now) });
-  const reply = (route: Route, status: number, value: unknown) => route.fulfill({ status, json: value });
+  const reply = (route: Route, status: number, value: unknown) => route.fulfill({ status, json: fixtureBody(route,value) });
   const problem = (route: Route, status: number, code: Dto<'Error'>['code']) => reply(route, status, { code, message: 'Synthetic exact copy boundary', retryable: status >= 500, correlation_id: 'copy-16-trace', field_errors: [] });
   const materialAt = (project: string, id: string, version: string | null) => version ? [...state.materials.values()].find(value => value.project === project && value.material.material_id === id && value.material.material_version === Number(version) && !state.deleted.has(pinKey(pin(project, value.material)))) : currentMaterials(state, project).find(value => value.material.material_id === id);
   const snapshot = (value: M4Workspace) => { const result = structuredClone(value); result.materials = result.materials.filter(p => state.materials.has(pinKey(p)) && !state.deleted.has(pinKey(p))); result.material_details = result.materials.map(p => { const m = state.materials.get(pinKey(p))!.material; return { ...p, filename: m.filename, role: m.role, state: m.state, media_type: m.media_type }; }); check(M4ViewStateSchema, viewOf(result)); return result; };
   async function before(stage: Stage, call: Call) { const drop = state.drops[stage]; delete state.drops[stage]; await state.gates[stage]?.(call); return drop; }
   await page.route('**/api/v1/**', async route => {
-    const request = route.request(), url = new URL(request.url()), path = url.pathname.slice('/api/v1'.length), method = request.method(), body = request.postData() && !path.endsWith('/bytes') ? request.postDataJSON() : undefined;
+    if(await serveDisabledBillingCatalog(route))return;
+    const request = route.request(), url = new URL(request.url()), path = url.pathname.slice('/api/v1'.length), method = request.method(), body = request.postData() && !path.endsWith('/bytes') ? fixtureRequest(request) : undefined;
     const call: Call = { owner: state.owner, method, path, search: url.search, ...(request.headers()['if-match'] ? { ifMatch: request.headers()['if-match'] } : {}), ...(body === undefined ? {} : { body: structuredClone(body) }) }; state.calls.push(call);
     if (state.owner !== ids.owner) return problem(route, 404, 'NOT_FOUND'); if (state.failReads.has(path) && method === 'GET') return problem(route, 503, 'DATA_UNAVAILABLE');
     if (path === '/m4/topics' && method === 'GET') return reply(route, 200, { topics: [...state.work.values()].map(value => value.topic) });

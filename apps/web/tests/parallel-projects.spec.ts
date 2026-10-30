@@ -200,7 +200,7 @@ test('search composition and the active search focus are not replaced by another
 test('an initial offline visit without cached projects shows an idle offline state until a real online read succeeds', async ({ page }) => {
   await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', { configurable: true, value: false }));
   const state = await setup(page);
-  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
   await expect(sync(page)).toContainText('离线');
   await expect(page.locator('#project-list')).toHaveAttribute('aria-busy', 'false');
   await expect(page.locator('#project-list')).toContainText('离线');

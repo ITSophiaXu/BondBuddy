@@ -1,3 +1,4 @@
+// Accelerated observation windows for legacy fixtures; production durations have dedicated regressions.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
@@ -39,7 +40,7 @@ test('automatic image verification continues only to confirmed website outcomes'
     await route.fulfill({contentType:'text/html; charset=utf-8',body:'<!doctype html><meta charset="utf-8"><body><input id="search_input" placeholder="企业名称"><button id="search">搜索</button><main>请输入企业名称</main>'+gate+modal+'<script>'+script+'</script>'});
    });
    try{
-    const options={waitMs:mode==='slow_model'?2000:mode==='pending_validation'?1500:mode==='no_result_after_accept'?3500:9000,maxPages:1,attempts:1,screenCapture:async()=>Buffer.from('synthetic screenshot'),captchaRecognizer:async(input:{png:Buffer;sha256:string})=>{
+    const options={resultStableMs:150,zeroConfirmMs:300,waitMs:mode==='slow_model'?2000:mode==='pending_validation'?1500:mode==='no_result_after_accept'?3500:9000,maxPages:1,attempts:1,screenCapture:async()=>Buffer.from('synthetic screenshot'),captchaRecognizer:async(input:{png:Buffer;sha256:string})=>{
      recognitions++;if(mode==='slow_model')await new Promise(r=>setTimeout(r,2500));assert.ok(input.png.length>100);assert.equal(input.sha256.length,64);
      if(mode==='interrupted')throw new IntegrityCaptchaInterruption({kind:'pause',stage:'provider_reconcile',reason:'provider_result_pending'});
      if(mode==='aborted'){abort.abort();abort.signal.throwIfAborted();}

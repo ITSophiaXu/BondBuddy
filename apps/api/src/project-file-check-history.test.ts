@@ -41,10 +41,10 @@ function harness(options:Options={}){
       return rows(options.missingSource?[]:[{id:source.version_id,project_id:projectId,selection_revision:options.currentRevision??1,
         sequence:1,filename:source.filename,sha256:sha,material_id:'synthetic-source-material',material_version:1}]);
     }
-    if(sql==='SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL'){
+    if(sql==='SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL AND NOT internal_template'){
       assert.deepEqual(values,[owner,projectId,'synthetic-source-material',1]);return rows([{sha256:sha}]);
     }
-    if(sql.startsWith('SELECT o.*,r.state,r.stage FROM bb_project_file_operations o JOIN bb_runs r')){
+    if(sql.startsWith('SELECT o.*,r.state,r.stage,')&&sql.includes('FROM bb_project_file_operations o JOIN bb_runs r')){
       assert.ok(sql.includes('r.owner_user_id=o.owner_user_id AND r.project_id=o.project_id AND r.id=o.run_id'));
       assert.ok(sql.includes("o.owner_user_id=$1 AND o.project_id=$2 AND o.operation='check'"));
       const filtered=operations.filter(o=>o.owner_user_id===values[0]&&o.project_id===values[1]&&o.operation==='check');

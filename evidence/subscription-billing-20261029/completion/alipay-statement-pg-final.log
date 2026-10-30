@@ -1,0 +1,78 @@
+TAP version 13
+# Subtest: Alipay download proof persists as unresolved coverage with JSON null totals and never mutates wallet or refund ledgers
+not ok 1 - Alipay download proof persists as unresolved coverage with JSON null totals and never mutates wallet or refund ledgers
+  ---
+  duration_ms: 242.2384
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\subscription-auto-billing-20261029\\apps\\api\\dist\\alipay-statements.pg.test.js:71:1'
+  failureType: 'testCodeFailure'
+  error: '该订单请按原权益单位申请退款，现金由系统按原实付对价计算。'
+  code: 'PAYMENT_INVALID'
+  stack: |-
+    file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payment-refunds.js:156:19
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async transaction (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/data.js:69:24)
+    async requestPaymentRefund (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payment-refunds.js:130:20)
+    async seedPaidRefund (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/alipay-statements.pg.test.js:67:5)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/alipay-statements.pg.test.js:74:9)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: Alipay trade-only scheduling creates seven trade jobs and never creates or claims fund jobs
+ok 2 - Alipay trade-only scheduling creates seven trade jobs and never creates or claims fund jobs
+  ---
+  duration_ms: 512.1619
+  type: 'test'
+  ...
+# Subtest: Alipay identity, signed URL scope and SHA1 confusion are rejected without persisting financial evidence
+ok 3 - Alipay identity, signed URL scope and SHA1 confusion are rejected without persisting financial evidence
+  ---
+  duration_ms: 553.9179
+  type: 'test'
+  ...
+# Subtest: database provenance guards reject provider-method mismatch and NULL WeChat SHA1 instead of accepting SQL UNKNOWN
+not ok 4 - database provenance guards reject provider-method mismatch and NULL WeChat SHA1 instead of accepting SQL UNKNOWN
+  ---
+  duration_ms: 155.0322
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\subscription-auto-billing-20261029\\apps\\api\\dist\\alipay-statements.pg.test.js:167:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+
+      Comparison {
+    +   code: '42P08'
+    -   code: 'P0001'
+      }
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    code: 'P0001'
+  actual:
+  error: 'inconsistent types deduced for parameter $3'
+  stack: |-
+    C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\node_modules\pg-pool\index.js:45:11
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async waitForActual (node:assert:615:5)
+    async strict.rejects (node:assert:738:25)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/alipay-statements.pg.test.js:177:9)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  operator: 'rejects'
+  stack: |-
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/alipay-statements.pg.test.js:177:9)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 2
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 38634.5667

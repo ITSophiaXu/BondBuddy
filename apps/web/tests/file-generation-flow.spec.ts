@@ -3,13 +3,16 @@ import {mkdir} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {sourceFixture} from './generation-source-fixtures';
 import {href,ids,file,batches} from './generation-entry-fixtures';
+import {emptyFileGenerationPreparation} from '@bondbuddy/contracts';
 
 // Real controllers and rendered UI; HTTP, files and task outcomes are synthetic.
 async function capture(page:Page,name:string){const dir=process.env.BB_FLOW_EVIDENCE;if(!dir)return;await mkdir(dir,{recursive:true});await page.evaluate(()=>window.scrollTo(0,0));await expect.poll(()=>page.evaluate(()=>scrollY)).toBe(0);await page.screenshot({path:join(dir,name+'.png'),fullPage:true});await page.screenshot({path:join(dir,name+'-viewport.png')});}
 const mode=(page:Page,value:string)=>page.locator(`[name=generation-source-mode][value=${value}]`);
 
 for(const width of [1440,390,320])test(`source first with PR787 radio choices, ${width}px`,async({page})=>{
- const s=await sourceFixture(page,true);await page.setViewportSize({width,height:960});await page.goto('/'+href());
+ const s=await sourceFixture(page,true);
+ await page.route('**/api/v1/projects/*/file-generation',route=>route.fulfill({json:{revision:0,preparation:emptyFileGenerationPreparation(),sets:[],builtin:{name:'光大证券模板',version:'synthetic-v1',available:true},batches:[]}}));
+ await page.setViewportSize({width,height:960});await page.goto('/'+href());
  await expect(page.getByRole('heading',{name:'生成文件',exact:true})).toBeVisible();await expect(page.locator('[data-flow-step="1"]')).toHaveAttribute('aria-current','step');
  await expect(page.locator('#pf-prospectus')).toBeVisible();await expect(page.locator('.pf-flow-modes,#wp-upload,#pf-template-list')).toHaveCount(0);
  await expect(mode(page,'project')).toBeChecked();await expect(page.locator('.pf-source-modes label')).toHaveText(['上传新募集说明书','选择项目已有募集说明书']);
@@ -17,8 +20,10 @@ for(const width of [1440,390,320])test(`source first with PR787 radio choices, $
  await capture(page,'source-existing-'+width);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await mode(page,'upload').check();await expect(page.locator('#pf-source-existing')).toBeHidden();await expect(page.locator('.pf-selected-source')).toContainText('募集说明书_V3.docx');expect(s.selections).toHaveLength(0);
  await expect(mode(page,'upload')).toBeFocused();await mode(page,'upload').press('ArrowRight');await expect(mode(page,'project')).toBeChecked();
- await page.locator('#pf-source-next').click();await expect(page.locator('.pf-flow-modes a')).toHaveCount(2);await expect(page.locator('[data-flow-step="2"]')).toHaveAttribute('aria-current','step');await expect(page.locator('#wp-upload')).toBeVisible();
- await page.locator('.pf-flow-modes a').nth(1).click();await expect(page.locator('#pf-add-row')).toBeVisible();expect(batches(s.state)).toHaveLength(0);
+ await page.locator('#pf-source-next').click();await expect(page).toHaveURL(/step=prepare/);await expect(page.locator('[data-flow-step="2"]')).toHaveAttribute('aria-current','step');
+ await expect(page.locator('.fg-types').first().locator('[data-fg-type]')).toHaveCount(6);await expect(page.locator('.fg-source-card')).toHaveCount(2);
+ await expect(page.getByRole('button',{name:'直接使用光大整套'})).toBeVisible();expect(batches(s.state)).toHaveLength(0);
+ await page.locator('a[data-flow-step="1"]').click();await page.locator('#pf-source-next').click();await expect(page).toHaveURL(/step=prepare/);
 });
 
 for(const existing of [false,true])test(`upload adopts saved source and waits for explicit next, existing=${existing}`,async({page})=>{

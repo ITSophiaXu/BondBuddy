@@ -1,0 +1,27 @@
+✔ exact decimal parsing and fraction cancellation never round at intermediate steps (2.0871ms)
+✔ display rounding records nearest ties away from zero, including tiny negative results (0.4377ms)
+✔ integer and supplier decimal parsers reject already lossy or invalid inputs (0.8836ms)
+✔ synthetic cost evidence is immutable/idempotent; missing and late costs block a complete margin claim (903.1266ms)
+✔ all attempts count once, budget allocations stay separate, and exact contribution is not net profit (17.3252ms)
+✔ unknown, pending and failed attempts with missing cost never become healthy zero (0.6292ms)
+✔ foreign currency stays exact and separate, never implicitly converted to CNY (0.664ms)
+✔ later evidence invalidates a closed review, but row order does not (0.8592ms)
+✔ explicit zero expenses still require all categories, terminal state and model evidence review (0.7449ms)
+✔ missing cache or reasoning subset is incomplete when procurement rates differ (0.6847ms)
+✔ subscription original consideration, not face value, determines contribution (0.7312ms)
+✔ 0.1+0.2 and long decimal supplier amounts remain exact before any display rounding (0.622ms)
+✔ fractional JS costs, NaN, infinity, negative, exponent and absent decimals are incomplete (5.732ms)
+✔ each non-divisible source A*p/Q is summed exactly and its original correction is subtracted (0.7449ms)
+✔ a complete reversal cancels repeating ratios exactly; remaining resource cost is a negative contribution (0.4521ms)
+✔ missing or mismatched compensation/consumption slices do not fabricate known cash (0.8181ms)
+✔ zero cash activity basis is explicit; excess reversal is an anomaly rather than invented negative revenue (0.4955ms)
+✔ int64 inputs beyond MAX_SAFE stay exact; unsafe numeric inputs and overflow are rejected (0.9257ms)
+✔ legacy arithmetic reviews cannot approve v2, and changed original ratios require a fresh review (0.5459ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10112.6116

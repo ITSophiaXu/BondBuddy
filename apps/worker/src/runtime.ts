@@ -27,6 +27,7 @@ import { historicalWordDeliveryStage } from './historical-word-stage.js';
 import { runReviewAssistantOnce } from './review-assistant.js';
 import type { ReviewedContextLoader } from '@bondbuddy/api/production-rule-pin';
 import { sweepParseStaging } from './parse-staging.js';
+import { runFormatDiagnosticOnce } from './word-format-diagnostic.js';
 import { createIssuerIdentityProducer } from './issuer-identity-producer.js';
 import { createControlledNativeFactCandidateProducer } from './controlled-native-fact-candidate-producer.js';
 import { loadReviewedRuleApplicabilityContext } from '@bondbuddy/rule-applicability-context';
@@ -136,6 +137,7 @@ export class WorkerRuntime {
   }
 
   start() {
+    if(this.o.kinds.includes('run') && this.o.runKinds.some(kind=>kind==='update'||kind==='generation')) this.loops.push(this.formatDiagnosticLoop());
     for (let slot = 0; slot < this.o.concurrency; slot++) this.loops.push(this.slotLoop(slot));
     for (let slot = this.o.concurrency; slot < this.o.concurrency + this.dedicatedParseSlots; slot++) this.loops.push(this.slotLoop(slot, ['parse']));
     const interactiveStart=this.o.concurrency+this.dedicatedParseSlots;
@@ -208,6 +210,17 @@ export class WorkerRuntime {
     while (!this.stopping) {
       try { await this.sweep(); } catch { this.counters.errors++; }
       await sleep(this.o.sweepMs, this.stopSignal.signal);
+    }
+  }
+
+  private async formatDiagnosticLoop() {
+    while (!this.stopping) {
+      let outcome = 'idle';
+      try { outcome = await runFormatDiagnosticOnce({ pool: this.o.pool, blobs: this.o.blobs, signal: this.workAbort.signal }); }
+      catch { outcome = 'error'; }
+      if (outcome !== 'idle') this.emit({ kind: 'word_format_diagnostic', outcome });
+      // This independent loop never holds a document execution slot or delays a download.
+      await sleep(outcome === 'completed' ? this.o.pollMs : this.o.sweepMs, this.stopSignal.signal);
     }
   }
 

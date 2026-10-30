@@ -1,0 +1,273 @@
+{
+  "asOf": "2026-10-29",
+  "status": "Conditional decision bounds; not a new budget, tariff or forecast",
+  "sourceHashes": {
+    "inputs.json": "feeccb25367ea483ce822b405e83605221a52cf15638e68bd2cd27193521a71f",
+    "results.json": "9ecfd74a09967f585b0b8a90e9c8d914d284dc9d7b2aa6859dfdec715eb5ef60",
+    "calculate.mjs": "20080e9953c355613764ab17d532e59258066aad2a6b41607b1022798e2f6ce4",
+    "24个月条件估算.md": "5bf2c9ccaf899f43b9edd5788e3c7fb52646c2b3e6035de065bb2e8e98e1acea"
+  },
+  "definitions": {
+    "currentNetRevenue": 2373661.445363997,
+    "operatingCostPool": 2588400,
+    "historicalRecovery": 456200,
+    "revenueLeak": 0.014084536082474227,
+    "tax": {
+      "vat": 0.06,
+      "income": 0.25,
+      "payment": 0.006,
+      "surchargeOnVat": 0.12
+    },
+    "refundRate": 0.03,
+    "fundingRatio": 0.9641924128503075
+  },
+  "targets": [
+    {
+      "id": "operating_break_even",
+      "label": "税后经营保本",
+      "margin": 0,
+      "recovery": 0,
+      "requiredRevenue": 2625377.2201878414,
+      "revenueMultiple": 1.1060453567695894,
+      "priceMultiple": 1.1022997547872553,
+      "referenceBasketCny": 380.45787852501735,
+      "operatingCostPoolCeiling": 2340229.52508919,
+      "cutRequired": 248170.47491081012,
+      "cutShare": 0.0958779458008075,
+      "feasibleWithNonnegativeCosts": true
+    },
+    {
+      "id": "recovery_break_even",
+      "label": "完成历史回收后保本",
+      "margin": 0,
+      "recovery": 456200,
+      "requiredRevenue": 3242333.428836527,
+      "revenueMultiple": 1.365962882014676,
+      "priceMultiple": 1.3530367970064165,
+      "referenceBasketCny": 466.99956805732705,
+      "operatingCostPoolCeiling": 1731962.8584225234,
+      "cutRequired": 856437.1415774766,
+      "cutShare": 0.33087511264776565,
+      "feasibleWithNonnegativeCosts": true
+    },
+    {
+      "id": "operating_margin_60",
+      "label": "税后经营净利率60%",
+      "margin": 0.6,
+      "recovery": 0,
+      "requiredRevenue": 13922456.720158804,
+      "revenueMultiple": 5.865392786890811,
+      "priceMultiple": 5.69354344409489,
+      "referenceBasketCny": 1965.1219648945967,
+      "operatingCostPoolCeiling": 441300.36879799253,
+      "cutRequired": 2147099.6312020076,
+      "cutShare": 0.8295084342458692,
+      "feasibleWithNonnegativeCosts": true
+    },
+    {
+      "id": "recovery_margin_60",
+      "label": "历史回收后余量率60%",
+      "margin": 0.6,
+      "recovery": 456200,
+      "requiredRevenue": 17194194.604945518,
+      "revenueMultiple": 7.243743474254736,
+      "priceMultiple": 7.023209745605321,
+      "referenceBasketCny": 2424.055225127881,
+      "operatingCostPoolCeiling": -166966.2978686741,
+      "cutRequired": 2755366.297868674,
+      "cutShare": 1.0645056010928273,
+      "feasibleWithNonnegativeCosts": false
+    }
+  ],
+  "cuts": [
+    {
+      "id": "base",
+      "label": "原基准，不改预算",
+      "removedPools": [],
+      "removeBonusFace": false,
+      "costScale": 1,
+      "netRevenue": 2373661.445363997,
+      "operatingPool": 2588400,
+      "paymentFee": 16341.557868186366,
+      "surcharge": 17090.36240662078,
+      "yearPretax": [
+        -447924.58942345646,
+        199754.1145126467
+      ],
+      "incomeTax": 0,
+      "operatingNetProfit": -248170.47491080977,
+      "afterRecovery": -704370.4749108098,
+      "operatingNetMargin": -0.1045517571157892,
+      "afterRecoveryMargin": -0.2967442877275178
+    },
+    {
+      "id": "no_media",
+      "label": "仅取消媒体费用",
+      "removedPools": [
+        "media"
+      ],
+      "removeBonusFace": false,
+      "costScale": 1,
+      "netRevenue": 2373661.445363997,
+      "operatingPool": 1265400,
+      "paymentFee": 16341.557868186366,
+      "surcharge": 17090.36240662078,
+      "yearPretax": [
+        24275.410576543458,
+        1050554.1145126466
+      ],
+      "incomeTax": 268707.3812722975,
+      "operatingNetProfit": 806122.1438168925,
+      "afterRecovery": 349922.1438168925,
+      "operatingNetMargin": 0.3396112555947401,
+      "afterRecoveryMargin": 0.14741872498301145
+    },
+    {
+      "id": "no_promo_fulfillment",
+      "label": "仅取消赠额履约池，保留赠额抵扣",
+      "removedPools": [
+        "promoFulfillment"
+      ],
+      "removeBonusFace": false,
+      "costScale": 1,
+      "netRevenue": 2373661.445363997,
+      "operatingPool": 2365800,
+      "paymentFee": 16341.557868186366,
+      "surcharge": 17090.36240662078,
+      "yearPretax": [
+        -370724.5894234565,
+        345154.1145126467
+      ],
+      "incomeTax": 0,
+      "operatingNetProfit": -25570.474910809833,
+      "afterRecovery": -481770.47491080983,
+      "operatingNetMargin": -0.010772587203095698,
+      "afterRecoveryMargin": -0.20296511781482432
+    },
+    {
+      "id": "no_bonus_face",
+      "label": "仅取消赠额票面，保留履约预算",
+      "removedPools": [],
+      "removeBonusFace": true,
+      "costScale": 1,
+      "netRevenue": 2460570.6567656794,
+      "operatingPool": 2588400,
+      "paymentFee": 16939.887469980622,
+      "surcharge": 17716.108728712887,
+      "yearPretax": [
+        -424935.8945391699,
+        262450.55510615546
+      ],
+      "incomeTax": 0,
+      "operatingNetProfit": -162485.33943301445,
+      "afterRecovery": -618685.3394330144,
+      "operatingNetMargin": -0.06603563241975537,
+      "afterRecoveryMargin": -0.2514397778953648
+    },
+    {
+      "id": "no_promo",
+      "label": "赠额计划全取消：履约池＋票面",
+      "removedPools": [
+        "promoFulfillment"
+      ],
+      "removeBonusFace": true,
+      "costScale": 1,
+      "netRevenue": 2460570.6567656794,
+      "operatingPool": 2365800,
+      "paymentFee": 16939.887469980622,
+      "surcharge": 17716.108728712887,
+      "yearPretax": [
+        -347735.89453916997,
+        407850.5551061554
+      ],
+      "incomeTax": 15028.665141746358,
+      "operatingNetProfit": 45085.995425239074,
+      "afterRecovery": -411114.0045747609,
+      "operatingNetMargin": 0.018323389861318914,
+      "afterRecoveryMargin": -0.16708075561429056
+    },
+    {
+      "id": "no_media_no_promo",
+      "label": "媒体及赠额计划全部取消",
+      "removedPools": [
+        "media",
+        "promoFulfillment"
+      ],
+      "removeBonusFace": true,
+      "costScale": 1,
+      "netRevenue": 2460570.6567656794,
+      "operatingPool": 1042800.0000000003,
+      "paymentFee": 16939.887469980622,
+      "surcharge": 17716.108728712887,
+      "yearPretax": [
+        124464.10546083006,
+        1258650.5551061553
+      ],
+      "incomeTax": 345778.66514174634,
+      "operatingNetProfit": 1037335.995425239,
+      "afterRecovery": 581135.995425239,
+      "operatingNetMargin": 0.42158350241759573,
+      "afterRecoveryMargin": 0.23617935694198627
+    }
+  ],
+  "zeroCost": {
+    "id": "zero_cost_bound",
+    "label": "全部经营池为零的理论上界",
+    "removedPools": [],
+    "removeBonusFace": false,
+    "costScale": 0,
+    "netRevenue": 2373661.445363997,
+    "operatingPool": 0,
+    "paymentFee": 16341.557868186366,
+    "surcharge": 17090.36240662078,
+    "yearPretax": [
+      586375.4105765435,
+      1753854.1145126466
+    ],
+    "incomeTax": 585057.3812722976,
+    "operatingNetProfit": 1755172.1438168928,
+    "afterRecovery": 1298972.1438168928,
+    "operatingNetMargin": 0.7394365979381444,
+    "afterRecoveryMargin": 0.5472440673264158
+  },
+  "checks": {
+    "count": 34,
+    "failures": 0,
+    "items": [
+      "base revenue unchanged",
+      "base operating net unchanged",
+      "base recovery unchanged",
+      "approved total including recovery",
+      "source nonhistorical pools",
+      "operating_break_even existing price threshold",
+      "operating_break_even existing revenue threshold",
+      "operating_break_even cost ceiling reaches target",
+      "recovery_break_even existing price threshold",
+      "recovery_break_even existing revenue threshold",
+      "recovery_break_even cost ceiling reaches target",
+      "operating_margin_60 existing price threshold",
+      "operating_margin_60 existing revenue threshold",
+      "operating_margin_60 cost ceiling reaches target",
+      "recovery_margin_60 existing price threshold",
+      "recovery_margin_60 existing revenue threshold",
+      "base full profit bridge",
+      "base remains below 60%",
+      "no_media full profit bridge",
+      "no_media remains below 60%",
+      "no_promo_fulfillment full profit bridge",
+      "no_promo_fulfillment remains below 60%",
+      "no_bonus_face full profit bridge",
+      "no_bonus_face remains below 60%",
+      "no_promo full profit bridge",
+      "no_promo remains below 60%",
+      "no_media_no_promo full profit bridge",
+      "no_media_no_promo remains below 60%",
+      "zero cost recovery margin formula",
+      "even zero operating pool cannot reach recovery-adjusted 60% at current revenue",
+      "inputs.json unchanged",
+      "results.json unchanged",
+      "calculate.mjs unchanged",
+      "24个月条件估算.md unchanged"
+    ]
+  }
+}

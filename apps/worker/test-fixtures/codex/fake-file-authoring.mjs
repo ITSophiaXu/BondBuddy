@@ -1,6 +1,7 @@
 // Synthetic provider only. Sandbox preflight is delegated to the real pinned Codex binary.
 import {spawnSync,spawn} from 'node:child_process';
 import {writeFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
 const args=process.argv.slice(2);
 if(args.includes('sandbox')){
   const result=spawnSync('/usr/local/bin/codex',args,{stdio:'inherit'});process.exit(result.status??1);
@@ -29,7 +30,13 @@ assert d['target']['issuer_name']=='合成目标发行人'
 assert d['requirements'] and d['knowledge']
 for m in d['materials']:assert (r/m['path']).is_file()
 source=d['baseline_path']
-if source:
+if d.get('format_tools'):
+ from bondbuddy_file_authoring.fixed_edit import load_editor,write_json
+ data,base,raw,log,editor=load_editor(r/'input.json')
+ node=next(n for n in editor.nodes if editor.nodes[n][1].tag==q('p'))
+ log['operations']=[{'id':'synthetic-update','kind':'replace_text','node_id':node,'before':paragraph_text(editor.nodes[node][1]),'after':'合成目标发行人2025年净资产120万元。'+d['input_hash'][:8]}]
+ write_json(o/'operations.json',log)
+elif source:
  shutil.copyfile(r/source,o/'baseline.docx');parts=package(r/source);root=parse_xml(parts['word/document.xml']);p=root.find(q('body')).find(q('p'))
  Patcher(root,True,d['revision_author']).patch(p,paragraph_text(p),'合成目标发行人2025年净资产120万元。'+d['input_hash'][:8])
  parts['word/document.xml']=serialized(root)
@@ -43,7 +50,7 @@ else:
 if not source:
  (o/'baseline.docx').unlink();(o/'delivery.md').unlink()
 `;
-const result=spawnSync('/opt/venv/bin/python',['-c',program],{cwd,env:{PATH:process.env.PATH,PYTHONPATH:'/app/python',LANG:'C.UTF-8'},encoding:'utf8'});
+const result=spawnSync('/opt/venv/bin/python',['-c',program],{cwd,env:{PATH:process.env.PATH,PYTHONPATH:fileURLToPath(new URL('../../../../python',import.meta.url)),LANG:'C.UTF-8'},encoding:'utf8'});
 if(result.status!==0){process.stderr.write(result.stderr);process.exit(1);}
 console.log(JSON.stringify({type:'thread.started',thread_id:'synthetic-file-thread'}));
 console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'合成测试：文件已实际生成。'}}));

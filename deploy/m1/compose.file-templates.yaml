@@ -1,0 +1,11 @@
+# Optional private-library overlay. Install a reviewed immutable bundle first.
+# This file is configuration only; applying it is owned by the release chat.
+services:
+  api:
+    environment:
+      BB_FILE_TEMPLATE_BUNDLE: /opt/bondbuddy/private-file-templates
+    volumes:
+      - type: bind
+        source: ${BB_FILE_TEMPLATE_HOST_DIR:?set the private immutable bundle directory}
+        target: /opt/bondbuddy/private-file-templates
+        read_only: true

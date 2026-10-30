@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {PROJECT_QA_PRICE,type ProjectFileAsset,type QaAnswer,type QaDraft,type QaQuestion,type QaResult,type QaRun} from '@bondbuddy/contracts';
+import {PROJECT_QA_PRICE,LEGACY_OUTCOME_PRICE_VERSION,OUTCOME_PRICE_VERSION,commerceMetadata,encodeBillingDto,type ProjectFileAsset,type QaAnswer,type QaDraft,type QaQuestion,type QaResult,type QaRun} from './billing-types.js';
 import {qaAssetKey,qaSameDraft,qaPreparationFor,qaFollowupFor} from './qa-continuation.js';
 
 const projectId='qa-project',sha='a'.repeat(64),snapshotSha='b'.repeat(64),documentSha='c'.repeat(64),prepareHash='d'.repeat(64),answerHash='e'.repeat(64),evidenceSha='f'.repeat(64);
@@ -19,14 +19,22 @@ const result=(patch:Partial<QaResult>={}):QaResult=>({version:'project-qa-result
   snapshot:snapshot(),questions:questions(),answers:[],warnings:[],evidence:[],...patch});
 const preparation=(patch:Partial<QaRun>={}):QaRun=>({run_id:'exact-prepare',sequence:1,operation:'prepare',state:'succeeded',stage:'completed',created_at:'2026-10-25T00:00:00Z',
   manifest:{version:'project-qa-v1',operation:'prepare',project_name:'债券项目',source:{filename:'问题清单.docx',asset:source()},preparation_id:null,
-    questions:[],materials:[],requirements:'',cases:[],price_version:PROJECT_QA_PRICE.version,points:0},result:result(),artifact_id:'prepared-artifact',reserved_points:0,charged_points:0,...patch});
+    questions:[],materials:[],requirements:'',cases:[],price_version:PROJECT_QA_PRICE.version,points:"0"},result:result(),artifact_id:'prepared-artifact',reserved_points:"0",charged_points:"0",...patch});
 const answerRun=(patch:Partial<QaRun>={}):QaRun=>({run_id:'historical-answer',sequence:2,operation:'answer',state:'succeeded',stage:'completed',created_at:'2026-10-25T01:00:00Z',
   manifest:{version:'project-qa-v1',operation:'answer',project_name:'债券项目',source:{filename:'问题清单.docx',asset:source()},preparation_id:'exact-prepare',questions:questions(),
-    materials:[{filename:'财务报告.pdf',asset:material()},{filename:'募集书.docx',asset:artifact()}],requirements:'按原问题逐项说明',cases:[],price_version:PROJECT_QA_PRICE.version,points:180},
-  result:result({input_hash:answerHash,document:{key:'answered/document.docx',sha256:evidenceSha,byte_size:2048},answers:answers(),evidence:evidence()}),artifact_id:'answer-artifact',reserved_points:0,charged_points:180,...patch});
+    materials:[{filename:'财务报告.pdf',asset:material()},{filename:'募集书.docx',asset:artifact()}],requirements:'按原问题逐项说明',cases:[],price_version:PROJECT_QA_PRICE.version,points:"180"},
+  result:result({input_hash:answerHash,document:{key:'answered/document.docx',sha256:evidenceSha,byte_size:2048},answers:answers(),evidence:evidence()}),artifact_id:'answer-artifact',reserved_points:"0",charged_points:"180",...patch});
 function assertBlocked(run:QaRun,runs:readonly QaRun[]=[preparation()],project=projectId){
   const choice=qaFollowupFor(run,runs,project);assert.ok(choice.error);assert.deepEqual(choice.questions,[]);assert.deepEqual(choice.missingIds,[]);assert.equal(choice.preparation,undefined);
 }
+
+test('historical and current CNY answer continuations preserve the paid amount instead of reclassifying it as per-question credits',()=>{
+ for(const version of [LEGACY_OUTCOME_PRICE_VERSION,OUTCOME_PRICE_VERSION]){
+  const run=answerRun();run.manifest={...run.manifest,...encodeBillingDto('commerceMetadata',commerceMetadata(3900,3900,1,version)),price_version:version,points:"3900"};run.charged_points="3900";
+  const choice=qaFollowupFor(run,[preparation()],projectId);assert.equal(choice.error,undefined);assert.ok(choice.preparation);
+  assertBlocked({...run,manifest:{...run.manifest,points:"180"}});
+ }
+});
 
 test('QA asset keys normalize property order and retain every exact material or artifact pin field',()=>{
   const original=source();if(original.kind!=='material')return;
@@ -64,7 +72,7 @@ test('QA preparation resolves only the exact explicit successful run and permits
 test('QA preparation requires complete public schemas, prepare operation, success and a same-project material source',()=>{
   const base=preparation(),m=base.manifest;
   const invalid:QaRun[]=[preparation({operation:'answer'}),preparation({state:'running'}),preparation({state:'test_completed'}),preparation({state:'failed'}),preparation({result:null}),
-    preparation({manifest:{...m,operation:'answer'}}),preparation({manifest:{...m,preparation_id:'other'}}),preparation({manifest:{...m,points:60}}),
+    preparation({manifest:{...m,operation:'answer'}}),preparation({manifest:{...m,preparation_id:'other'}}),preparation({manifest:{...m,points:"60"}}),
     preparation({manifest:{...m,questions:questions()}}),preparation({manifest:{...m,materials:[{filename:'material',asset:material()}]}}),
     preparation({manifest:{...m,source:{...m.source,asset:artifact()}}}),preparation({manifest:{...m,source:{...m.source,asset:material()}}}),
     {...base,project_id:projectId} as QaRun,{...base,manifest:{...m,request_id:'not-in-public-schema'}} as QaRun,
@@ -104,7 +112,7 @@ test('QA follow-up combines missing and unanswered questions without claiming a 
 
 test('QA follow-up permits terminal failures with no result as unanswered work, and rejects active or unknown states',()=>{
   for(const state of ['succeeded','failed','cancelled','rejected','test_completed']){
-    const choice=qaFollowupFor(answerRun({state,result:null,artifact_id:null,charged_points:0}),[preparation()],projectId);
+    const choice=qaFollowupFor(answerRun({state,result:null,artifact_id:null,charged_points:"0"}),[preparation()],projectId);
     assert.equal(choice.error,undefined);assert.deepEqual(choice.questions,questions());assert.deepEqual(choice.missingIds,['q2','q4','q7']);
   }
   for(const state of ['preparing','queued','running','paused','awaiting_input','validating','delivering','settlement_pending','unknown'])assertBlocked(answerRun({state}));
@@ -138,7 +146,7 @@ test('QA follow-up requires exact preparation ID and source file name, pin kind,
 test('QA follow-up requires exact manifest questions and the complete original preparation snapshot',()=>{
   const base=answerRun(),input=base.manifest;
   assertBlocked(answerRun({manifest:{...input,questions:[{...questions()[0],question:'different'},...questions().slice(1)]}}));
-  assertBlocked(answerRun({manifest:{...input,questions:[],points:0}}));assertBlocked(answerRun({manifest:{...input,points:120}}));
+  assertBlocked(answerRun({manifest:{...input,questions:[],points:"0"}}));assertBlocked(answerRun({manifest:{...input,points:"120"}}));
   assertBlocked(answerRun({result:{...base.result!,questions:questions().slice(1)}}));
   assertBlocked(answerRun({result:{...base.result!,questions:questions().reverse()}}));
   for(const patch of [{sha256:sha},{coverage:'partial' as const},{warnings:['altered snapshot warning']},

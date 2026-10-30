@@ -76,7 +76,7 @@ async function capture(page:Page,name:string){const dir=process.env.BB_ENTRY_REC
 
 for(const width of [1440,390])test(`prospectus upload survives refresh without File or adoption at ${width}`,async({page})=>{
   await page.setViewportSize({width,height:900});const s=await fixture(page);s.dropComplete=true;await mount(page,'panel');
-  await page.locator('summary').filter({hasText:'上传历史／参考稿'}).click();await page.locator('#prospectus-version-file').setInputFiles(file);
+  await page.locator('#prospectus-version-file').setInputFiles(file);
   await expect(page.locator('[data-resume-prospectus]')).toBeVisible();expect(s.puts).toBe(1);const count=s.calls.filter(c=>c.method!=='GET').length;
   await mount(page,'panel',true);expect(s.calls.filter(c=>c.method!=='GET')).toHaveLength(count);await capture(page,`panel-recovery-${width}`);await page.locator('[data-resume-prospectus]').click();await expect(page.locator('#prospectus-status')).toContainText('已保存 V1');expect(s.puts).toBe(1);expect(s.sessions.size).toBe(1);expect(s.versions).toHaveLength(1);noBusiness(s.calls);expect(s.unexpected).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

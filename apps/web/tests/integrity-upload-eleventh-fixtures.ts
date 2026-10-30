@@ -1,7 +1,9 @@
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
 import {schemas} from '@bondbuddy/contracts';
 import {createHash} from 'node:crypto';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {fixture,install,checked,ownerId,projectId,now} from './integrity-continuation-fixtures';
 
 // Synthetic schema HTTP only: no official query, document inspection or paid run.
@@ -12,8 +14,8 @@ export function uploadFixture(){return Object.assign(fixture(),{
  holdComplete:undefined as Promise<void>|undefined,completeEntered:false,
  });}
 export type UploadState=ReturnType<typeof uploadFixture>;
-async function reply<K extends keyof typeof schemas>(route:Route,name:K,body:Dto<K>,status=200){checked(name,body);await route.fulfill({status,json:body});}
-const problem=(route:Route,status:number,code:string,details?:object)=>route.fulfill({status,json:{code,...(details?{details}:{})}});
+async function reply<K extends keyof typeof schemas>(route:Route,name:K,body:Dto<K>,status=200){checked(name,body);await route.fulfill({status,json:fixtureBody(route,body)});}
+const problem=(route:Route,status:number,code:string,details?:object)=>route.fulfill({status,json:fixtureBody(route,{code,...(details?{details}:{})})});
 export async function installUpload(page:Page,state=uploadFixture()){
  await install(page,state);
  await page.context().route('**/synthetic-integrity-eleventh-upload/**',async route=>{
@@ -25,7 +27,7 @@ export async function installUpload(page:Page,state=uploadFixture()){
  await page.context().route('**/api/v1/projects/*/materials/uploads**',async route=>{
   const request=route.request(),url=new URL(request.url()),path=url.pathname.replace('/api/v1',''),method=request.method();
   if(!path.startsWith(`/projects/${projectId}/materials/uploads`)||method!=='POST')return route.fallback();
-  const body:unknown=request.postDataJSON();state.calls.push({method,path,search:url.search,body:structuredClone(body)});
+  const body:unknown=fixtureRequest(request);state.calls.push({method,path,search:url.search,body:structuredClone(body)});
   if(state.owner!==ownerId)return problem(route,404,'NOT_FOUND');
   if(path===`/projects/${projectId}/materials/uploads`){
    checked('UploadCreateRequest',body);state.uploads.push(structuredClone(body));const id=`synthetic-eleventh-u-${state.uploads.length}`;

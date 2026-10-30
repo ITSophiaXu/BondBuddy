@@ -1,5 +1,5 @@
 import {WorkpaperLibraryPanel} from './workpaper-library';
-import {PROJECT_DOCUMENT_CATALOG,M1_UPLOAD_LIMITS,resultFilename,type ProjectFileVersion,type ProjectFileCheck,type ProjectDocumentType,type ProjectFileSource,type ProjectFileWorkspace,type M4Workspace,type M4MaterialPin} from '@bondbuddy/contracts';
+import {PROJECT_DOCUMENT_CATALOG,M1_UPLOAD_LIMITS,resultFilename,type ProjectFileVersion,type ProjectFileCheck,type ProjectDocumentType,type ProjectFileSource,type ProjectFileWorkspace,type M4Workspace,type M4MaterialPin} from './billing-types.js';
 import {uploadFileMaterial,type UploadFileMaterialState} from './file-workspace';
 import { ApiClient, ApiError, friendlyError, type Dto } from './api';
 import { UserFacingError } from './user-facing-error';
@@ -171,10 +171,10 @@ export class ProjectFiles {
     try{
       const [project]=await Promise.all([this.api.project(this.id,this.controller.signal),this.loadData()]);
       if(!this.live())return;this.name=project.name;
-      this.shell(`<div class="project-workbench"><a class="back-link" href="#tasks">← 返回全部项目</a><div class="page-head"><div><div class="eyebrow">项目工作台</div><h1>${esc(project.name)}</h1><p>${esc(project.issuer_name??'发行人待填写')} · 募集书、项目文件与任务归在一起</p></div></div>
+      this.shell(`<div class="project-workbench"><a class="back-link" href="#tasks">← 返回任务进度与结果</a><div class="page-head"><div><div class="eyebrow">项目工作台</div><h1>${esc(project.name)}</h1><p>${esc(project.issuer_name??'发行人待填写')} · 募集书、项目文件与任务归在一起</p></div></div>
         <nav class="pw-actions" aria-label="本项目业务"><a class="btn secondary" href="${this.href('update',{from:'projects'})}">更新募集书</a><a class="btn secondary" href="${this.href('review',{from:'projects'})}">复核募集书</a><a class="btn secondary" href="${this.href('generate')}">生成文件</a><a class="btn primary" href="${this.href('generate',{step:'workpapers'})}">批量生成底稿</a><a class="btn secondary" href="${this.href('integrity')}">诚信核查</a><a class="btn secondary" href="${this.href('qa')}">项目问答</a></nav>
         <section class="pw-source" aria-labelledby="pw-source-heading"><div class="pw-section-title"><div><h2 id="pw-source-heading">当前募集说明书</h2><p>关联文件检查与生成以明确采用的募集书为依据。</p></div><span class="pw-saved">旧版本保留</span></div><div id="pw-current-source" role="status"></div><div id="pw-prospectus"><p>正在读取募集书版本…</p></div></section>
-        <section class="pw-check" aria-labelledby="pw-check-heading"><div><h2 id="pw-check-heading">先检查，再决定更新哪些文件</h2><p id="pw-check-note"></p><small>检查免费。更新关联文件每份 4,500 积分，确认后执行，交付修订版和清洁版。</small></div><a class="btn primary" id="pw-check-link" href="${this.href('consistency')}">免费检查文件一致性</a></section>
+        <section class="pw-check" aria-labelledby="pw-check-heading"><div><h2 id="pw-check-heading">先检查，再决定更新哪些文件</h2><p id="pw-check-note"></p><small>按已选募集书与文件版本检查；查看结果后可选择需要同步的文件。</small></div><a class="btn primary" id="pw-check-link" href="${this.href('consistency')}">检查文件一致性</a></section>
         <section id="pw-workpaper-library" class="workpaper-library" aria-label="尽职调查底稿文件"></section><section id="pw-task-summary" class="pw-tasks" aria-label="本项目最近任务"></section>
         <div class="pw-files-head"><div><h2>项目文件</h2><p>先查看已有文件，需要时再准备其他文件。</p></div><button class="btn secondary" id="import-project-file">上传关联文件</button></div><div id="pw-import-recovery" role="status"></div><div id="pw-import-result"></div><section id="pw-file-context" class="pw-file-context" aria-labelledby="pw-file-context-heading" hidden></section><p id="file-action-status" role="status"></p><div class="collection-file-workspace"><details class="pw-folder-picker" id="pw-folder-picker" ${this.folderMedia.matches?'':'open'}><summary><span>查看文件目录 / 筛选</span><small id="pw-folder-selection"></small></summary><nav id="file-folders" class="collection-folders" aria-label="项目文件目录"></nav></details><section class="collection-panel collection-file-panel"><header class="collection-heading"><h2 id="folder-title" tabindex="-1" data-file-view-focus="${esc(fileViewFocus('title'))}"></h2><div><span id="folder-count"></span><button class="text-button" id="refresh-files" data-file-view-focus="${esc(fileViewFocus('refresh'))}">刷新文件</button></div></header>
         <div class="collection-search">${ico('search')}<input id="file-search" type="search" maxlength="${fileSearchLimit}" data-file-view-focus="${esc(fileViewFocus('search'))}" aria-label="搜索项目文件" placeholder="搜索文件名称" value="${esc(this.q)}"/></div><div id="pw-file-status" class="collection-filters" role="group" aria-label="按处理状态筛选文件" aria-describedby="pw-file-status-note"></div><div id="pw-file-status-note" class="collection-muted" role="status"></div><div id="file-list"></div></section></div></div>`,'projects');
@@ -185,7 +185,7 @@ export class ProjectFiles {
       document.querySelector('#import-project-file')!.addEventListener('click',()=>this.importFile(this.typeFilter));
       this.folderMedia.removeEventListener('change',this.syncFolderLayout);this.folderMedia.addEventListener('change',this.syncFolderLayout);
       document.querySelector('#refresh-files')!.addEventListener('click',()=>void this.refresh());this.paint(false);this.paintSummary();this.paintImportRecovery();this.paintFileContext();this.fileViewScrollY=scrollY;if(!this.registryLoaded)this.status('文件检查状态暂未同步，已有文件仍可下载。');this.schedule();await this.syncPanel();if(this.live()){this.fileContextUiReady=true;this.maybeLocateFileContext();this.restoreInitialFileView();this.maybeRestoreTaskHistory();this.rememberFileView();}
-    }catch(error){if(this.live()){this.shell(`<a class="back-link" href="#tasks">← 返回全部项目</a><div class="collection-empty"><h1>项目文件暂时无法打开</h1><p role="alert">${esc(friendlyError(error,'read'))}</p><button class="btn secondary" id="retry-files">重新读取</button></div>`,'projects');document.querySelector('#retry-files')!.addEventListener('click',()=>void this.render());}}
+    }catch(error){if(this.live()){this.shell(`<a class="back-link" href="#tasks">← 返回任务进度与结果</a><div class="collection-empty"><h1>项目文件暂时无法打开</h1><p role="alert">${esc(friendlyError(error,'read'))}</p><button class="btn secondary" id="retry-files">重新读取</button></div>`,'projects');document.querySelector('#retry-files')!.addEventListener('click',()=>void this.render());}}
   }
   private async loadData(){
     const revision=++this.loadRevision;
@@ -266,6 +266,7 @@ export class ProjectFiles {
   private locateFileContext(){
     this.fileContextAutoPending=false;const context=this.resolvedFileContext();if(!context){this.paintFileContext();return;}
     if(this.hasUnconfirmed||document.querySelector('dialog[open]')){this.status('请先确认当前上传或保存结果，再定位文件。');return;}
+    if(context.current.document_type==='workpaper'){document.querySelector('#pw-workpaper-library')?.scrollIntoView({block:'start'});return;}
     this.folder=PROJECT_DOCUMENT_CATALOG.find(d=>d.id===context.current.document_type)!.folder;this.q='';this.typeFilter=context.current.document_type;this.statusFilter='all';this.fileContextTarget=context.current.version_id;
     const search=document.querySelector<HTMLInputElement>('#file-search');if(search)search.value='';this.paint();
     const rows=Array.from(document.querySelectorAll<HTMLElement>('#file-list [data-file-family]')).filter(row=>row.dataset.fileFamily===context.request.family&&row.dataset.fileVersion===context.current.version_id);
@@ -396,7 +397,7 @@ export class ProjectFiles {
     const version=this.panel?.state?.versions.find(v=>v.version_id===this.panel!.state!.current_version_id);
     const file=this.files.find(f=>f.current&&f.project_id===this.sourceProject);
     source.innerHTML=this.sourceNotice?'<p class="collection-error">'+esc(this.sourceNotice)+'</p>':version?'<strong>已采用 V'+version.sequence+' · '+esc(version.filename)+'</strong>':this.source?'<strong>已采用 V'+this.source.sequence+' · '+esc(this.source.filename)+'</strong>':file?'<strong>当前募集书 · '+esc(file.filename)+'</strong>':'<p>尚未采用募集书。可保存新稿，再明确采用为当前版本。</p>';
-    document.querySelector('#pw-check-note')!.textContent=this.sourceChanged||this.registry.some(v=>v.latest&&v.consistency.status==='stale')?'当前募集书或文件版本已变化。请先免费检查，再查看哪些文件需要更新。':'检查已有文件与当前募集书的内容差异；查看结果后，由你选择是否更新。';
+    document.querySelector('#pw-check-note')!.textContent=this.sourceChanged||this.registry.some(v=>v.latest&&v.consistency.status==='stale')?'当前募集书或文件版本已变化。请先检查，再查看哪些文件需要更新。':'检查已有文件与当前募集书的内容差异；查看结果后，由你选择是否更新。';
     this.paintTaskHistory();
   }
   private schedule(){clearTimeout(this.timer);this.timer=setTimeout(()=>{if(this.live()&&document.visibilityState==='visible')void this.refresh();else if(this.live())this.schedule();},30000);}
@@ -445,6 +446,7 @@ export class ProjectFiles {
     return '#generate?'+withProjectContext(new URLSearchParams({topic:w.topic.topic_id,run:v.run_id,return_project:this.id}));
   }
   private fileEditActions(f:ProjectFile,v?:ProjectFileVersion){
+    if(v?.document_type==='workpaper')return '<small class="pw-file-note">请在下方底稿文件库查看检查和维护版本。</small>';
     if(!v?.latest)return f.file_key.startsWith('project-file:')?'<small class="pw-file-note">文件版本暂未核对，请刷新后再修改。</small>':'';
     const href=this.continuationHref(v);
     return (href?'<a class="text-button" href="'+esc(href)+'">打开此稿继续修改</a>':'<small class="pw-file-note">此稿暂不能直接接续，可上传修改稿。</small>')+'<button class="text-button" data-file-edit-upload="'+esc(v.version_id)+'">上传此文件修改稿</button>';
@@ -453,12 +455,12 @@ export class ProjectFiles {
   private savedImportMessage(){
     const s=this.savedImport;if(!s)return '';const v=this.savedImportVersion(),row=v&&this.files.find(f=>this.registered(f)?.version_id===v.version_id);
     if(!v||!row)return '文件已保存，列表暂未同步。请刷新文件查看新版本。';
-    return (s.previous?'修改稿已保存为 V'+v.sequence+'，原 V'+s.previous+' 保留。':'项目文件已保存为 V'+v.sequence+'，旧版本保留。')+(!v.latest?'当前文件已有后续版本。':'')+'可免费检查全部项目文件与当前募集书的一致性。';
+    return (s.previous?'修改稿已保存为 V'+v.sequence+'，原 V'+s.previous+' 保留。':'项目文件已保存为 V'+v.sequence+'，旧版本保留。')+(!v.latest?'当前文件已有后续版本。':'')+'可检查全部项目文件与当前募集书的一致性。';
   }
   private paintSavedImport(readFailed=false){
     const host=document.querySelector('#pw-import-result');if(!host)return;const s=this.savedImport;if(!s){host.innerHTML='';return;}
     const v=this.savedImportVersion(),available=v&&this.files.some(f=>this.registered(f)?.version_id===v.version_id);
-    host.innerHTML='<section class="pw-import-result" aria-label="项目文件保存结果" tabindex="-1"><p>'+esc(readFailed?'文件已保存，列表暂未同步。请刷新文件查看新版本。':this.savedImportMessage())+'</p><div>'+(available?'<button class="text-button" data-saved-history="'+esc('project-file:'+v.file_id)+'">查看新旧版本</button>':'')+'<a class="text-button" href="'+esc(this.href('consistency'))+'">免费检查全部项目文件</a></div><small>检查本项目全部当前文件；保存修改稿不会自动检查或更新。</small></section>';
+    host.innerHTML='<section class="pw-import-result" aria-label="项目文件保存结果" tabindex="-1"><p>'+esc(readFailed?'文件已保存，列表暂未同步。请刷新文件查看新版本。':this.savedImportMessage())+'</p><div>'+(available?'<button class="text-button" data-saved-history="'+esc('project-file:'+v.file_id)+'">查看新旧版本</button>':'')+'<a class="text-button" href="'+esc(this.href('consistency'))+'">检查全部项目文件</a></div><small>检查本项目全部当前文件；保存修改稿不会自动检查或更新。</small></section>';
     host.querySelector<HTMLButtonElement>('[data-saved-history]')?.addEventListener('click',()=>this.history('project-file:'+v!.file_id));
   }
   private badge(row:ProjectFileStatusRow){
@@ -491,7 +493,7 @@ export class ProjectFiles {
         other:'募集书、原始材料及其他项目成果不按关联文件检查状态归类。'
       };
       note=descriptions[this.statusFilter];
-      if(this.statusFilter==='check')note+=' <a class="text-button" href="'+esc(this.href('consistency'))+'">免费检查全部当前关联文件</a>。检查范围为本项目全部当前关联文件，当前筛选只影响显示。';
+      if(this.statusFilter==='check')note+=' <a class="text-button" href="'+esc(this.href('consistency'))+'">检查全部当前关联文件</a>。检查范围为本项目全部当前关联文件，当前筛选只影响显示。';
       if(unsynced&&(this.statusFilter!=='unsynced'||this.typeFilter))note+='<br>'+ (this.typeFilter?'当前目录和名称范围内另有 '+unsynced+' 份关联文件的类型与状态待同步，未纳入当前文种筛选。':'其中 '+unsynced+' 份关联文件状态待同步，未归入差异、检查中或未发现差异等业务分组。')+' <button type="button" class="text-button" data-show-unsynced data-file-view-focus="'+esc(fileViewFocus('status-unsynced'))+'">查看状态待同步文件</button>';
     }
     if(!this.registryLoaded||unsynced)note+=' <button type="button" class="text-button" data-status-refresh data-file-view-focus="'+esc(fileViewFocus('status-refresh'))+'">刷新文件状态</button>';
@@ -521,7 +523,7 @@ export class ProjectFiles {
     document.querySelectorAll<HTMLButtonElement>('[data-import-type]').forEach(b=>b.addEventListener('click',()=>this.importFile(b.dataset.importType as ProjectDocumentType)));
     document.querySelectorAll<HTMLButtonElement>('[data-file-edit-upload]').forEach(b=>b.addEventListener('click',()=>{
       const targets=projectFileStatusRows(this.files,this.registry,this.registryLoaded).filter(row=>row.version?.version_id===b.dataset.fileEditUpload),v=targets.length===1?targets[0].version:undefined;
-      if(!v?.latest){this.status('文件版本已变化，请刷新后重新选择。');return;}this.importFile(v.document_type,undefined,structuredClone(v));
+      if(!v?.latest){this.status('文件版本已变化，请刷新后重新选择。');return;}if(v.document_type==='workpaper'){this.status('请在底稿文件库中查看该文件的检查和维护版本。');return;}this.importFile(v.document_type,undefined,structuredClone(v));
     }));
     this.bindDownloads(document.querySelector('#file-list')!);
     document.querySelectorAll<HTMLButtonElement>('[data-file-history]').forEach(b=>b.addEventListener('click',()=>this.history(b.dataset.fileHistory!)));
@@ -539,7 +541,9 @@ export class ProjectFiles {
     if(operationId){try{const record=this.imports().list().find(r=>r.id===operationId);if(!record)throw new UserFacingError('原上传记录已变化，请重新读取。');if(this.pendingImport?.upload.operationId!==operationId)this.restoreImport(record);}catch(e){this.status(friendlyError(e,'read'));return;}}
     if(this.uploading||this.panel?.hasUnconfirmed){this.status('请先确认当前上传或采用操作的结果，再上传关联文件。');return;}const opener=document.activeElement instanceof HTMLElement?document.activeElement:undefined;this.dialog?.remove();const d=document.createElement('dialog');this.dialog=d;d.className='pf-modal pw-file-import';
     const restoring=this.pendingImport;if(restoring)type=restoring.type;
-    const target=restoring?this.registry.find(v=>v.version_id===restoring.latest&&v.document_type===restoring.type):clickedTarget;
+    const candidate=restoring?this.registry.find(v=>v.version_id===restoring.latest&&v.document_type===restoring.type):clickedTarget;
+    if(candidate?.document_type==='workpaper'){this.status('请在底稿文件库中查看该文件的检查和维护版本。');return;}
+    const target=candidate as (ProjectFileVersion&{document_type:ProjectDocumentType})|undefined;
     if(target)type=target.document_type;
     let targetConflict=false,uploadFailed=!!restoring;
     d.setAttribute('aria-labelledby','pw-import-heading');

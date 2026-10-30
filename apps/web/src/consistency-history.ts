@@ -1,4 +1,4 @@
-import {ProjectFileCheckSchema,type ProjectFileCheck} from '@bondbuddy/contracts';
+import {ProjectFileCheckSchema,type ProjectFileCheck} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
 import {ApiClient} from './api';
 import {UserFacingError} from './user-facing-error';

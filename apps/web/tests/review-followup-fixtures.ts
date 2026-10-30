@@ -1,3 +1,6 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import { expect, type Page, type Route } from '@playwright/test';
 import { FormatRegistry, type TSchema } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
@@ -7,7 +10,7 @@ import { schemas, ReviewDraftInputSchema, ReviewDraftRequestSchema, ReviewEditor
   isReviewReport, type ReviewDraftInput, type ReviewDraftRequest, type ReviewEditorResponse,
   type ReviewExecutionRequest, type ReviewExportRequest, type ReviewHistoryEntry, type ReviewReport,
   type ReviewWorkspace, type Run } from '@bondbuddy/contracts';
-import type { Dto } from '../src/api';
+import type { Dto } from './billing-fixture-wire';
 import { taskPage } from './collection-fixtures';
 
 // Public HTTP fixtures exercise the real UI. Synthetic Word bytes do not establish
@@ -142,17 +145,18 @@ function workspace(state: State, requested: string | null): ReviewWorkspace {
   return value;
 }
 async function reply<K extends keyof typeof schemas>(route: Route, name: K, body: Dto<K>, status = 200) {
-  checked(name, body); return route.fulfill({ status, json: body });
+  checked(name, body); return route.fulfill({ status, json: fixtureBody(route,body) });
 }
-const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, json: body });
+const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, json: fixtureBody(route,body) });
 const problem = (route: Route, status: number, code: Dto<'Error'>['code']) => reply(route, 'Error', {
   code, message: `Synthetic ${code}`, retryable: status >= 500, field_errors: [], correlation_id: 'followup-synthetic-correlation',
 }, status);
 export async function install(page: Page, state = fixture()) {
   installed.set(page, state); page.on('pageerror', error => state.errors.push(error.message));
   await page.route('**/api/v1/**', async route => {
+    if(await serveDisabledBillingCatalog(route))return;
     const request = route.request(), url = new URL(request.url()), path = url.pathname.slice('/api/v1'.length), method = request.method();
-    const body = ['POST', 'PUT', 'PATCH'].includes(method) && path !== '/synthetic-review-followup-upload' && request.postData() ? request.postDataJSON() : undefined;
+    const body = ['POST', 'PUT', 'PATCH'].includes(method) && path !== '/synthetic-review-followup-upload' && request.postData() ? fixtureRequest(request) : undefined;
     state.calls.push({ method, path, search: url.search, ...(body ? { body } : {}) });
     if (method === 'GET') {
       if (path === '/me') return reply(route, 'MeResponse', { user_id: owner, session_status: 'active' });

@@ -1,3 +1,5 @@
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import {createHash} from 'node:crypto';
 import {expect,type Page,type Route} from '@playwright/test';
 import {FormatRegistry,Type,type TSchema} from '@sinclair/typebox';
@@ -6,7 +8,7 @@ import {resultFilename,M4_DOCUMENT_TYPES,M4DraftInputSchema,M4ViewStateSchema,PR
   ProjectFileCheckSchema,ProjectFileSourceSchema,ProjectFileVersionSchema,projectFileSchemas,schemas,
   type M4Draft,type M4Workspace,type ProjectFileAsset,type ProjectFileCheck,type ProjectFileFinding,
   type ProjectFileSource,type ProjectFileUpdateBatches,type ProjectFileVersion} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {docx,downloadBytes} from './word-roundtrip-fixtures';
 export {docx,downloadBytes};
 
@@ -41,9 +43,9 @@ const batchesSchema=Type.Object({batches:Type.Array(Type.Object({batch_id:Type.S
   file_version_id:Type.String({minLength:1}),filename:Type.String({minLength:1}),run_id:Type.Union([Type.String({minLength:1}),Type.Null()]),error:Type.Union([Type.String(),Type.Null()])},{additionalProperties:false}))},{additionalProperties:false}))},{additionalProperties:false});
 const sourceSchema=Type.Object({project_id:Type.String({minLength:1}),source:ProjectFileSourceSchema},{additionalProperties:true});
 function checked(schema:TSchema,value:unknown,label:string){expect(Value.Check(schema,value),label+': '+JSON.stringify([...Value.Errors(schema,value)])).toBe(true);}
-function json(route:Route,value:unknown,schema?:TSchema,label='HTTP response'){if(schema)checked(schema,value,label);return route.fulfill({status:200,json:value});}
+function json(route:Route,value:unknown,schema?:TSchema,label='HTTP response'){if(schema)checked(schema,value,label);return route.fulfill({status:200,json:fixtureBody(route,value)});}
 function dto<K extends keyof typeof schemas>(route:Route,name:K,value:Dto<K>){return json(route,value,schemas[name],name);}
-const error=(route:Route,status:number,code='DATA_UNAVAILABLE')=>route.fulfill({status,json:{code,message:'Synthetic '+code,retryable:status>=500,correlation_id:'consistency-task-test',field_errors:[]}});
+const error=(route:Route,status:number,code='DATA_UNAVAILABLE')=>route.fulfill({status,json:fixtureBody(route,{code,message:'Synthetic '+code,retryable:status>=500,correlation_id:'consistency-task-test',field_errors:[]})});
 const materialAsset=(id:string):ProjectFileAsset=>({kind:'material',pin:{source_project_id:ids.root,material_id:id,material_version:1,sha256:hash(id)}});
 const project=(id:string,name:string):Dto<'ProjectResponse'>=>({project_id:id,name,kind:'generation',issuer_name:'合成多项目发行人',market:'sse',offering:'private',draft_revision:1,input_revision:null,input_hash:null,updated_at:now});
 function finding(id:string,manual=false):ProjectFileFinding{return {id,kind:manual?'manual':'conflict',target_span_id:'target-'+id,original:'合成原文件数值100',replacement:manual?null:'合成募集书数值120',source_span_id:manual?null:'source-'+id,source_quote:manual?'':'合成募集书数值120',source_location:'原募集书第12页',target_location:'原关联文件第3页',reason:manual?'需人工核对原始依据。':'本轮合成差异。',field:manual?'授信口径':'合成财务数值',period:'2024年度',unit:'万元'};}
@@ -139,7 +141,9 @@ export async function install(page:Page,s=fixture()){
   await page.context().route('**/api/v1/**',async route=>{
     try{
     const req=route.request(),url=new URL(req.url()),path=url.pathname.slice('/api/v1'.length),method=req.method();
-    const body:unknown=req.postData()?req.postDataJSON():null;s.calls.push({method,path,search:url.search,body:structuredClone(body)});
+    const body:unknown=req.postData()?fixtureRequest(req):null;s.calls.push({method,path,search:url.search,body:structuredClone(body)});
+    if(method==='GET'&&path===`/projects/${ids.root}/workpapers/library`)return route.fulfill({status:404,json:fixtureBody(route,{code:'NOT_FOUND'})});
+    if(method==='GET'&&path==='/commerce/catalog')return route.fulfill({status:404,json:fixtureBody(route,{code:'NOT_FOUND'})});
     if(method==='GET'&&path==='/me')return dto(route,'MeResponse',{user_id:ids.owner,session_status:'active'});
     if(method==='GET'&&path==='/account')return dto(route,'AccountResponse',{user_id:ids.owner,username:'synthetic_task_owner',phone_masked:null,status:'active',created_at:now,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});
     if(method==='GET'&&path==='/credits/balance')return dto(route,'CreditBalanceResponse',{enabled:true,available:100000,frozen:0});

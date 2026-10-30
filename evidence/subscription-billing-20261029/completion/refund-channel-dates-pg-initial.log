@@ -1,0 +1,15 @@
+✔ callback success-only proof is enriched by terminal query without repeating refund or credit events (6612.7599ms)
+✔ channel dates reject conflicting identities, backwards time and database mutation without changing financial records (7244.7279ms)
+✔ first application-day bill detects missing accepted refunds in processing, closed and succeeded states (6179.0662ms)
+✔ refund reconciliation uses authenticated application day rather than success day or local completion time (5400.9634ms)
+✔ wrong application time or app cannot count as valid refund coverage, while legacy missing proof stays explicit (6058.0821ms)
+✔ terminal proof refresh enforces owner and remains query-only when the channel is unavailable (7296.93ms)
+✔ background terminal proof recovery backs off unknown queries and enriches the original refund without new money movement (38132.4799ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 115138.8526

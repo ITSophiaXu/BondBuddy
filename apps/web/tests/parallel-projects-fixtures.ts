@@ -1,9 +1,12 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import { expect, type Page, type Route } from '@playwright/test';
 import { FormatRegistry } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import { schemas } from '@bondbuddy/contracts';
-import type { Dto } from '../src/api';
+import type { Dto } from './billing-fixture-wire';
 
 // Synthetic public HTTP records exercise real collection/SPA UI. No generation,
 // backend queue, professional review, private storage or credit settlement runs.
@@ -84,7 +87,7 @@ function taskPage(state: State, projectId: string, cursor?: string): Dto<'Projec
   return { project_id: projectId, items, page: { has_more, next_cursor: has_more ? prefix + items.at(-1)!.run_id : null } };
 }
 async function reply<K extends keyof typeof schemas>(route: Route, name: K, body: Dto<K>, status = 200) {
-  checked(name, body); return route.fulfill({ status, json: body });
+  checked(name, body); return route.fulfill({ status, json: fixtureBody(route,body) });
 }
 const problem = (route: Route, status: number, code: Dto<'Error'>['code']) => reply(route, 'Error', { code,
   message: `Synthetic ${code}`, retryable: status >= 500, field_errors: [], correlation_id: 'parallel-synthetic-correlation' }, status);
@@ -102,8 +105,9 @@ function projectResponse(item: Project): Dto<'ProjectResponse'> {
 export async function install(page: Page, state = fixture()) {
   installed.set(page, state); page.on('pageerror', error => state.errors.push(error.message));
   await page.route('**/api/v1/**', async route => {
+    if(await serveDisabledBillingCatalog(route))return;
     const req = route.request(), url = new URL(req.url()), path = url.pathname.slice('/api/v1'.length), method = req.method();
-    const body = method !== 'GET' && req.postData() ? req.postDataJSON() : undefined;
+    const body = method !== 'GET' && req.postData() ? fixtureRequest(req) : undefined;
     state.calls.push({ method, path, search: url.search, owner: state.owner, ...(body ? { body } : {}) });
     if (method === 'GET') {
       if (path === '/me') return state.authenticated ? reply(route, 'MeResponse', { user_id: state.owner, session_status: 'active' }) : problem(route, 401, 'UNAUTHENTICATED');

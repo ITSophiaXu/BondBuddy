@@ -1,3 +1,4 @@
+import {encodeBillingDto,type BillingWireDto} from '@bondbuddy/contracts';
 import { artifactNameColumns, artifactNameJoins, artifactDownloadName } from './artifact-filename.js';
 import { contentDisposition } from './material-download.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -87,10 +88,10 @@ async function bindHandoff(db:PoolClient,owner:string,topicId:string,b:M4Handoff
     VALUES($1,$2,'project',$3,'project.m4_handoff_bound',$4)`,[uid(),owner,target.id,binding]);
   return {binding};
 }
-export async function readM4MaterialPin(db:Db,owner:string,pin:M4MaterialPin){
+export async function readM4MaterialPin(db:Db,owner:string,pin:M4MaterialPin,allowInternalTemplate=false){
   await project(db,owner,pin.source_project_id);
   const m=(await db.query(`SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL`,[owner,pin.source_project_id,pin.material_id,pin.material_version])).rows[0];
-  if(!m || m.sha256.trim()!==pin.sha256)throw missing();return m;
+  if(!m || m.sha256.trim()!==pin.sha256 || m.internal_template&&!allowInternalTemplate)throw missing();return m;
 }
 export async function readM4ArtifactPin(db:Db,owner:string,pin:M4ArtifactPin){
   await project(db,owner,pin.source_project_id);
@@ -127,7 +128,7 @@ async function validateDraft(db:Db,owner:string,topic:string,input:M4DraftInput)
     const base=(await db.query('SELECT * FROM bb_m4_artifacts WHERE owner_user_id=$1 AND artifact_id=$2 AND artifact_version=$3',[owner,input.edit_base.artifact_id,input.edit_base.artifact_version])).rows[0];
     if(!base || base.kind!=='document' || base.document_type!==input.document_type)invalid('全文改稿必须明确选择同文种的已交付正文，复核报告与编制说明不能作为正文底稿。');}
   if(input.template){const t=(await db.query('SELECT * FROM bb_m4_templates WHERE owner_user_id=$1 AND id=$2 AND version=$3',[owner,input.template.template_id,input.template.template_version])).rows[0];
-    if(!t || t.sha256.trim()!==input.template.sha256 || t.document_type!==input.document_type || t.retired_at)stale();await readM4MaterialPin(db,owner,t.material);}
+    if(!t || t.sha256.trim()!==input.template.sha256 || t.document_type!==input.document_type || t.retired_at)stale();await readM4MaterialPin(db,owner,t.material,true);}
   for(const requirement of input.requirements){const m=(await db.query('SELECT * FROM bb_m4_messages WHERE owner_user_id=$1 AND topic_id=$2 AND id=$3 AND version=$4',[owner,topic,requirement.message_id,requirement.message_version])).rows[0];
     if(!m || m.role!=='assistant' || !m.reply?.requirements?.includes(requirement.text))invalid('采用的要求必须来自本话题助手的准确消息。');}
 }
@@ -364,7 +365,7 @@ export async function completeM4Qa(db:Db,owner:string,runId:string,reply:M4Assis
     VALUES($1,$2,$3,$4,1,'qa_text','项目问答.txt',$5,$6,$7,$7) ON CONFLICT DO NOTHING`,[owner,e.topic_id,runId,artifactId,bytes,e.input_hash,textContent]);
   await topicEvent(db,owner,t.id,'m4.reply_completed',{message_id:messageId,run_id:runId});return {artifactId,artifactVersion:1};
 }
-async function workspace(db:Db,owner:string,id:string):Promise<M4Workspace>{
+async function workspace(db:Db,owner:string,id:string):Promise<BillingWireDto<M4Workspace,'m4Workspace'>>{
   const t=await requireTopic(db,owner,id),p=await project(db,owner,t.project_id),materials=await sharedMaterials(db,owner,id);
   const material_details=await Promise.all(materials.map(async pin=>{const m=await readM4MaterialPin(db,owner,pin);return {...pin,filename:m.filename,state:m.state,media_type:m.media_type,role:m.role};}));
   const messages=(await db.query(`SELECT m.*,r.state AS run_state FROM bb_m4_messages m LEFT JOIN bb_runs r ON r.id=m.run_id AND r.owner_user_id=m.owner_user_id
@@ -385,10 +386,10 @@ async function workspace(db:Db,owner:string,id:string):Promise<M4Workspace>{
   const pending_requirements=(await db.query(`SELECT requirement_id,text,message_id,message_version FROM bb_m4_pending_requirements
     WHERE owner_user_id=$1 AND topic_id=$2 AND consumed_document_type IS NULL ORDER BY created_at,requirement_id`,[owner,id])).rows;
   const drafts=Object.fromEntries(await Promise.all(M4_DOCUMENT_TYPES.map(async type=>[type,await readDraft(db,owner,id,type)]))) as M4Workspace['drafts'];
-  return {topic:topicDto(t),project:projectDto(p),drafts,
-    materials,material_details,templates,messages,tasks,artifacts,pending_requirements,view:{...(view?.view??emptyM4View()),version:view?.version??0},active_run:[...tasks].reverse().find(t=>t.manifest.kind==='document' && !terminal.includes(t.run.state))?.run??null};
+  return encodeBillingDto('m4Workspace',{topic:topicDto(t),project:projectDto(p),drafts,
+    materials,material_details,templates,messages,tasks,artifacts,pending_requirements,view:{...(view?.view??emptyM4View()),version:view?.version??0},active_run:[...tasks].reverse().find(t=>t.manifest.kind==='document' && !terminal.includes(t.run.state))?.run??null});
 }
-export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs,queueEnabled:boolean){
+export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs,queueEnabled:boolean,commercial=false){
   const base=M4_API_BASE;
   app.get(`${base}/topics`,async request=>{const user=await owner(request);const rows=(await db().query(`SELECT t.* FROM bb_m4_topics t JOIN bb_projects p ON p.id=t.project_id AND p.owner_user_id=t.owner_user_id
     WHERE t.owner_user_id=$1 AND p.deleted_at IS NULL ORDER BY t.updated_at DESC,t.id`,[user])).rows;return {topics:rows.map(topicDto)};});
@@ -438,8 +439,8 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
       const row=(await c.query(`INSERT INTO bb_m4_templates(id,version,owner_user_id,document_type,name,broker,material,sha256,creation_request_id,request_hash,market,offering)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,[id,version,user,b.document_type,b.name,b.broker,b.material,b.material.sha256,b.creation_request_id,h,market,offering])).rows[0];return {template:templateDto(row)};});});
   app.post(`${base}/topics/:topic_id/quote`,{schema:{body:M4QuoteRequestSchema}},async request=>{const user=await owner(request),id=param(request,'topic_id'),b=request.body as M4QuoteRequest;
-    return transaction(db(),async c=>{const t=await requireTopic(c,user,id,true);if(b.kind==='document'){const m=await documentManifest(c,user,t,b.document_type,b.expected_draft_version);if(m.kind!=='document')invalid('Invalid document');return quoteM4(c,user,id,m.billing_task,inputManifestHash(m),m);}
-      const s=await qaSnapshot(c,user,t,b);return quoteM4(c,user,id,s.billing_task,inputManifestHash(s),s);});});
+    return transaction(db(),async c=>{const t=await requireTopic(c,user,id,true);if(b.kind==='document'){const m=await documentManifest(c,user,t,b.document_type,b.expected_draft_version);if(m.kind!=='document')invalid('Invalid document');return quoteM4(c,user,id,m.billing_task,inputManifestHash(m),m,commercial);}
+      const s=await qaSnapshot(c,user,t,b);return quoteM4(c,user,id,s.billing_task,inputManifestHash(s),s,commercial);});});
   app.post(`${base}/topics/:topic_id/execute`,{schema:{body:M4ExecuteRequestSchema}},async request=>{const user=await owner(request),id=param(request,'topic_id'),b=request.body as M4ExecuteRequest;
     return transaction(db(),async c=>{const t=await requireTopic(c,user,id,true);return {run:runDto(await executeDocument(c,user,t,b,queueEnabled))};});});
   app.post(`${base}/topics/:topic_id/messages`,{schema:{body:M4MessageRequestSchema}},async request=>{const user=await owner(request),id=param(request,'topic_id'),b=request.body as M4MessageRequest;
@@ -456,7 +457,7 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
           const manifest:M4Manifest={version:'m4-qa-input-v1',kind:'qa',topic_id:id,message_id:messageId,...snapshot,billing_task:'m4_task_assistance',execution_proposal:proposal};
           const row=(await c.query(`INSERT INTO bb_m4_messages(id,owner_user_id,topic_id,role,content,context,submission_request_id,request_hash,reply_status)
             VALUES($1,$2,$3,'user',$4,$5,$6,$7,'queued') RETURNING *`,[messageId,user,id,b.content,b.context,b.submission_request_id,h])).rows[0];
-          const freeQuote=await quoteM4(c,user,id,'m4_task_assistance',inputManifestHash(manifest),manifest);
+          const freeQuote=await quoteM4(c,user,id,'m4_task_assistance',inputManifestHash(manifest),manifest,commercial);
           const r=await newRun(c,user,t,`m4-message-${b.submission_request_id}`,h,manifest,freeQuote.quote.quote_id,inputManifestHash(manifest),queueEnabled);
           await c.query('UPDATE bb_m4_messages SET run_id=$2 WHERE id=$1',[messageId,r.id]);row.run_id=r.id;return {message:messageDto(row),run:runDto(r)};
         }
@@ -475,7 +476,7 @@ export function registerM4Routes(app:FastifyInstance,db:()=>Pool,owner:(r:Fastif
       const row=(await c.query(`INSERT INTO bb_m4_messages(id,owner_user_id,topic_id,role,content,context,submission_request_id,request_hash,reply_status)
         VALUES($1,$2,$3,'user',$4,$5,$6,$7,'queued') RETURNING *`,[messageId,user,id,b.content,b.context,b.submission_request_id,h])).rows[0];
       const manifest:M4Manifest={version:'m4-qa-input-v1',kind:'qa',topic_id:id,message_id:messageId,...snapshot};
-      let quoteId=b.quote_id;if(['m4_Q00','m4_task_assistance'].includes(snapshot.billing_task)&&!quoteId)quoteId=(await quoteM4(c,user,id,snapshot.billing_task,inputManifestHash(snapshot),snapshot)).quote.quote_id;
+      let quoteId=b.quote_id;if(['m4_Q00','m4_task_assistance'].includes(snapshot.billing_task)&&!quoteId)quoteId=(await quoteM4(c,user,id,snapshot.billing_task,inputManifestHash(snapshot),snapshot,commercial)).quote.quote_id;
       const r=await newRun(c,user,t,`m4-message-${b.submission_request_id}`,h,manifest,quoteId,inputManifestHash(snapshot),queueEnabled);
       await c.query('UPDATE bb_m4_messages SET run_id=$2 WHERE id=$1',[messageId,r.id]);row.run_id=r.id;
       await topicEvent(c,user,id,'m4.message_sent',{message_id:messageId,run_id:r.id});return {message:messageDto(row),run:runDto(r)};});});

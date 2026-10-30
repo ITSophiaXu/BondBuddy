@@ -1,4 +1,5 @@
-import {PROJECT_QA_PRICE,ProjectFileAssetSchema,QaDraftSchema,QaRunSchema,type ProjectFileAsset,type QaDraft,type QaQuestion,type QaResult,type QaRun} from '@bondbuddy/contracts';
+import {int64,parseInt64} from '@bondbuddy/contracts';
+import {OUTCOME_PRICE_VERSION,isOutcomePriceVersion,PROJECT_QA_PRICE,ProjectFileAssetSchema,QaDraftSchema,QaRunSchema,type ProjectFileAsset,type QaDraft,type QaQuestion,type QaResult,type QaRun} from './billing-types.js';
 import {Value} from '@sinclair/typebox/value';
 
 export type QaPreparationChoice={preparation?:QaRun;error?:string};
@@ -25,16 +26,17 @@ function validDraft(value:unknown):value is QaDraft{
 }
 const questionValue=(q:QaQuestion)=>({id:q.id,start:q.start,end:q.end,question:q.question});
 const questionKey=(questions:readonly QaQuestion[])=>JSON.stringify(questions.map(questionValue));
-const draftKey=(draft:QaDraft)=>JSON.stringify({preparation_id:draft.preparation_id,questions:draft.questions.map(questionValue),
+const draftKey=(draft:QaDraft)=>JSON.stringify({included_followup_of:draft.included_followup_of,preparation_id:draft.preparation_id,questions:draft.questions.map(questionValue),
   materials:draft.materials.map(qaAssetKey),requirements:draft.requirements,use_knowledge:draft.use_knowledge});
 
 /** Compare the complete request meaning, retaining question and material order. */
 export function qaSameDraft(a:QaDraft,b:QaDraft):boolean{
   try{return validDraft(a)&&validDraft(b)&&draftKey(a)===draftKey(b);}catch{return false;}
 }
+function validPoints(value:unknown){try{parseInt64(value);return true;}catch{return false;}}
 function validRun(value:unknown):value is QaRun{
-  return Value.Check(QaRunSchema,value)&&validId(value.run_id)&&Number.isSafeInteger(value.sequence)&&nonnegativeInteger(value.reserved_points)&&
-    nonnegativeInteger(value.charged_points)&&validAsset(value.manifest.source.asset)&&value.manifest.materials.every(m=>validAsset(m.asset))&&
+  return Value.Check(QaRunSchema,value)&&validId(value.run_id)&&Number.isSafeInteger(value.sequence)&&validPoints(value.reserved_points)&&
+    validPoints(value.charged_points)&&validAsset(value.manifest.source.asset)&&value.manifest.materials.every(m=>validAsset(m.asset))&&
     (value.manifest.preparation_id===null||validId(value.manifest.preparation_id))&&(value.artifact_id===null||validId(value.artifact_id));
 }
 function questionsMatch(questions:readonly QaQuestion[],snapshot:QaResult['snapshot']):boolean{
@@ -63,7 +65,7 @@ export function qaPreparationFor(draft:QaDraft,runs:readonly QaRun[],projectId:s
     if(!validRun(preparation))return {error:'原问题清单的解析记录不完整，请重新读取后再继续。'};
     if(preparation.operation!=='prepare'||preparation.manifest.operation!=='prepare'||preparation.state!=='succeeded'||preparation.result===null)
       return {error:'原问题清单尚未成功解析，请先完成识别。'};
-    if(preparation.manifest.preparation_id!==null||preparation.manifest.points!==0||preparation.manifest.questions.length||
+    if(preparation.manifest.preparation_id!==null||int64(preparation.manifest.points)!==0n||preparation.manifest.questions.length||
       preparation.manifest.materials.length||preparation.manifest.cases.length)return {error:'原问题清单的解析来源不一致，请重新读取后再继续。'};
     const source=preparation.manifest.source.asset;
     if(source.kind!=='material'||source.pin.source_project_id!==projectId)return {error:'原问题清单与当前项目不一致，请选择本项目的 Word 清单。'};
@@ -80,7 +82,7 @@ export function qaFollowupFor(run:QaRun,runs:readonly QaRun[],projectId:string):
     if(!validRun(run)||run.operation!=='answer'||run.manifest.operation!=='answer')return failure('本轮回答记录不完整，请重新读取后再继续。');
     if(!terminal.has(run.state))return failure('本轮仍在处理中，请结束后再准备下一轮。');
     const input=run.manifest;
-    if(!input.questions.length||input.points!==input.questions.length*PROJECT_QA_PRICE.points)return failure('本轮问题数量与记录不一致，请重新读取后再继续。');
+    if(!input.questions.length||int64(input.points)!==(isOutcomePriceVersion(input.price_version)?int64(input.amount_fen):BigInt(input.questions.length)*BigInt(PROJECT_QA_PRICE.points)))return failure('本轮问题数量与记录不一致，请重新读取后再继续。');
     const resolved=qaPreparationFor({preparation_id:input.preparation_id,questions:input.questions,materials:input.materials.map(m=>m.asset),
       requirements:input.requirements,use_knowledge:false},runs,projectId);
     if(!resolved.preparation)return failure(resolved.error??'未找到原问题清单，请重新读取后再继续。');

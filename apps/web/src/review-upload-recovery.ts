@@ -1,6 +1,6 @@
 import { M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, ReviewContextSchema, ReviewDraftInputSchema, ReviewDraftRequestSchema,
   ReviewReportSchema, isReviewReport, schemas, type ReviewContext, type ReviewDraft, type ReviewDraftInput,
-  type ReviewDraftRequest, type ReviewMaterialPin, type ReviewReport, type ReviewWorkspace } from '@bondbuddy/contracts';
+  type ReviewDraftRequest, type ReviewMaterialPin, type ReviewReport, type ReviewWorkspace } from './billing-types.js';
 import { Value } from '@sinclair/typebox/value';
 import { UserFacingError } from './user-facing-error.js';
 import type { Dto } from './api.js';

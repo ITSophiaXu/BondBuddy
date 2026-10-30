@@ -34,7 +34,7 @@ function fixture() {
     saves: [] as Dto<'ProjectMessageSaveRequest'>[], inputs: [] as Dto<'InputRevisionCreateRequest'>[],
     snapshots: new Map<number, Dto<'InputRevisionResponse'>>(),
     executes: [] as Dto<'ExecuteRequest'>[], run: undefined as Dto<'RunResponse'> | undefined,
-    createFailOnce: false, notePatchFailOnce: false, dropOnce: false, changedCursor: false, failRead: false, inputConflictOnce: false, pageCursors: [] as string[]
+    createFailOnce: false, notePatchFailOnce: false, dropOnce: false, changedCursor: false, failRead: false, inputConflictOnce: false, pageCursors: [] as string[], saveGate: undefined as (()=>Promise<void>)|undefined
   };
   function ref() {
     const members = messages.map(m => ({ message_id: m.message_id, message_version: m.message_version,
@@ -117,6 +117,7 @@ async function setup(page: Page, fixtureState = fixture()) {
       const input = request.postDataJSON() as Dto<'ProjectMessageSaveRequest'>;
       expect(Value.Check(schemas.ProjectMessageSaveRequest, input)).toBe(true);
       state.saves.push(input);
+      await state.saveGate?.();
       const result = save(input);
       if (state.dropOnce && result.status === 201) { state.dropOnce = false; return route.abort('connectionreset'); }
       return reply(route, result.status, result.body);
@@ -174,12 +175,13 @@ async function setup(page: Page, fixtureState = fixture()) {
     return reply(route, 404, { code: 'NOT_FOUND' });
   });
   await page.goto(`/#/projects/${id}`);
-  await expect(page.locator('#conversation-status')).toBeEmpty();
+  await expect(page.locator('#conversation-status')).toContainText('自动保存');
   return fixtureState;
 }
 async function send(page: Page, text: string) {
   await page.getByLabel('补充募集书更新说明').fill(text);
-  await page.locator('#send-project-message').click();
+  await expect(page.locator('#conversation-status')).toHaveText('已自动保存');
+  await page.locator('#new-project-message').click();
   await expect(page.locator('.cowork-message').filter({ hasText: text })).toBeVisible();
 }
 
@@ -254,57 +256,50 @@ test('unified source metadata is material-version-bound, survives reopening and 
   await page.screenshot({path:'test-evidence/m1-unified/materials.png',fullPage:true});
 });
 
-test('save-only sends, exact edit history, lost-response idempotency and refresh/relogin', async ({ page }) => {
-  const setupState = await setup(page);
-  const { state } = setupState;
-  state.dropOnce = true;
-  await page.getByLabel('补充募集书更新说明').fill('用户授信原话：50亿元');
-  await page.locator('#send-project-message').click();
-  await expect(page.locator('#conversation-status')).toContainText('保存结果尚未确认');
-  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('用户授信原话：50亿元');
-  await page.getByLabel('补充募集书更新说明').fill('另一条尚未发送的内容');
-  await expect(page.locator('#send-project-message')).toBeDisabled();
-  page.once('dialog', dialog => dialog.accept());
-  await page.locator('#restore-message-request').click();
-  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('用户授信原话：50亿元');
-  await page.locator('#send-project-message').click();
-  await expect(page.locator('.cowork-message')).toContainText('用户授信原话：50亿元');
-  expect(state.saves[0]).toEqual(state.saves[1]); expect(state.messages).toHaveLength(1);
-  await page.locator('[data-edit-message]').click();
-  await page.getByLabel('补充募集书更新说明').fill('用户修正：截至6月，已用30亿元');
-  await page.locator('#send-project-message').click();
-  await expect(page.locator('.cowork-message')).toContainText('用户修正：截至6月');
-  expect(state.messages[0].message_version).toBe(2);
-  expect(state.saves.at(-1)?.expected_message_version).toBe(1);
-  await page.getByRole('button', { name: '查看旧版本' }).click();
+test('autosave retains text, revises the same message, and restores after reload', async ({page}) => {
+  const {state}=await setup(page);
+  const input=page.getByLabel('补充募集书更新说明');
+  await input.fill('用户授信原话：50亿元');
+  await expect(page.locator('#conversation-status')).toHaveText('已自动保存');
+  await expect(input).toHaveValue('用户授信原话：50亿元');await expect(input).toBeFocused();
+  await expect(page.getByRole('button',{name:'保存补充说明',exact:true})).toHaveCount(0);
+  await input.fill('用户修正：截至6月，已用30亿元');
+  await expect.poll(()=>state.messages[0]?.body).toBe('用户修正：截至6月，已用30亿元');
+  await expect(page.locator('#conversation-status')).toHaveText('已自动保存');
+  expect(state.messages).toHaveLength(1);expect(state.messages[0].message_version).toBe(2);
+  expect(state.saves[1].expected_message_version).toBe(1);
+  await page.locator('#new-project-message').click();await page.getByRole('button',{name:'查看旧版本'}).click();
   await expect(page.locator('.message-history')).toContainText('用户授信原话：50亿元');
   expect(state.executes).toHaveLength(0); expect(state.inputs).toHaveLength(0);
   await page.reload(); await expect(page.locator('.cowork-message')).toContainText('用户修正：截至6月');
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await page.getByLabel('用户名').fill('first'); await page.getByLabel('密码').fill('synthetic-password');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
   await page.goto(`/#/projects/${id}`);
   await expect(page.locator('.cowork-message')).toContainText('用户修正：截至6月');
   await expect(page.locator('.cowork-assistant')).toHaveCount(0);
   expect(state.executes).toHaveLength(0);
 });
 
-test('acknowledged save is not reported as pending when the following read fails', async ({ page }) => {
-  const { state } = await setup(page);
-  state.failRead = true;
+test('lost autosave receipt retries the original request before saving later edits', async ({page}) => {
+  const {state}=await setup(page);state.dropOnce=true;
+  const input=page.getByLabel('补充募集书更新说明');await input.fill('原要求');
+  await expect(page.locator('#conversation-status')).toContainText('保存结果尚未确认');
+  await expect(input).toHaveValue('原要求');await input.fill('修改后的最新要求');
+  await expect(page.locator('#conversation-status')).toHaveText('已自动保存');
+  expect(state.saves[0]).toEqual(state.saves[1]);expect(state.messages).toHaveLength(1);
+  expect(state.messages[0].body).toBe('修改后的最新要求');expect(state.messages[0].message_version).toBe(2);
+  await expect(input).toHaveValue('修改后的最新要求');expect(state.executes).toHaveLength(0);
+});
+
+test('acknowledged autosave survives a failed read without duplicate submission', async ({page}) => {
+  const {state}=await setup(page);state.failRead=true;
   await page.getByLabel('补充募集书更新说明').fill('服务器已保存的用户消息');
-  await page.locator('#send-project-message').click();
   await expect(page.locator('#conversation-status')).toContainText('补充要求已保存，但列表读取失败');
-  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('');
-  await expect(page.locator('#send-project-message')).toBeDisabled();
-  expect(state.messages).toHaveLength(1);
-  expect(state.saves).toHaveLength(1);
-  state.failRead = false;
-  await page.locator('#reload-project-messages').click();
-  await expect(page.locator('.cowork-message')).toContainText('服务器已保存的用户消息');
-  await expect(page.locator('#conversation-status')).toBeEmpty();
-  expect(state.saves).toHaveLength(1);
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('服务器已保存的用户消息');
+  expect(state.saves).toHaveLength(1);state.failRead=false;await page.locator('#reload-project-messages').click();
+  await expect(page.locator('#conversation-status')).toHaveText('已自动保存');expect(state.saves).toHaveLength(1);
 });
 
 test('input-lock conflict rereads every saved message before creating a fresh snapshot', async ({ page }) => {
@@ -368,7 +363,7 @@ test('pagination pins all messages, new edit produces a new immutable input with
   await page.reload(); await expect(page.locator('#execution-progress .task-progress [role="status"]')).toHaveText('本轮未完成');
   await page.getByRole('button', { name: '继续修改' }).click();
   await page.getByLabel('补充募集书更新说明').fill('下一轮补充，不能改写旧输入');
-  await page.locator('#send-project-message').click();
+  await page.getByLabel('补充募集书更新说明').blur();
   await expect.poll(()=>state.messages.length).toBe(25);
   expect(state.snapshots.get(1)!.input_hash).toBe(oldHash);
   await page.locator('#execute-input').click();
@@ -386,7 +381,7 @@ test('stale edit and cursor reread without overriding; owner switch clears priva
   f.save({ message_id: f.state.messages[0].message_id, submission_request_id: 'external-edit',
     expected_message_version: 1, body: '另一页面已修改', material_versions: [] });
   await page.getByLabel('补充募集书更新说明').fill('本页不同的修改');
-  await page.locator('#send-project-message').click();
+  await page.getByLabel('补充募集书更新说明').blur();
   await expect(page.locator('#conversation-status')).toContainText('新版本');
   await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('本页不同的修改');
   expect(f.state.messages[0].body).toBe('另一页面已修改');
@@ -401,11 +396,11 @@ test('stale edit and cursor reread without overriding; owner switch clears priva
   await page.locator('#more-project-messages').click();
   await expect(f.state.pageCursors.filter(cursor => cursor === 'first').length).toBeGreaterThan(2);
   await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('另一页面已修改');
-  await page.locator('#cancel-message-edit').click();
+  await page.locator('#new-project-message').click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await page.getByLabel('用户名').fill('second'); await page.getByLabel('密码').fill('synthetic-password');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
   await page.goto(`/#/projects/${id}`);
   await expect(page.getByText('项目暂时无法打开')).toBeVisible();
   await expect(page.getByText('用户原话 A')).toHaveCount(0);
@@ -433,7 +428,7 @@ test('create and material conversation use the prototype desktop and mobile work
   };
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto('/#update');
-  await page.getByRole('link',{name:'＋ 新建项目并更新',exact:true}).click();
+  await page.getByRole('link',{name:'＋ 新建项目',exact:true}).click();
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByLabel('发行市场', { exact: true }).selectOption('sse');
   await page.getByLabel('发行方式', { exact: true }).selectOption('private');
@@ -444,7 +439,7 @@ test('create and material conversation use the prototype desktop and mobile work
   await page.setViewportSize({ width: 390, height: 844 }); await capture('create-mobile');
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.getByRole('button', { name: '创建项目，继续提供材料' }).click();
-  await expect(page.locator('#conversation-status')).toBeEmpty();
+  await expect(page.locator('#conversation-status')).toContainText('自动保存');
   await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('');
   if(evidence){
     for(const [device,width,height] of [['desktop',1440,960],['mobile',390,844]] as const){
@@ -466,7 +461,7 @@ test('create and material conversation use the prototype desktop and mobile work
 test('latest period derives source-independent windows; supplementary notes are saved on materials and editable after reload', async ({page}) => {
   const {state}=await setup(page);
   await page.goto('/#update');
-  await page.getByRole('link',{name:'＋ 新建项目并更新',exact:true}).click();
+  await page.getByRole('link',{name:'＋ 新建项目',exact:true}).click();
   await page.getByLabel('发行人全称').fill('合成发行人有限公司');
   await page.getByLabel('发行市场',{exact:true}).selectOption('sse');
   await page.getByLabel('发行方式',{exact:true}).selectOption('private');
@@ -482,7 +477,8 @@ test('latest period derives source-independent windows; supplementary notes are 
   await page.reload();
   await page.locator('[data-edit-message]').click();
   await page.getByLabel('补充募集书更新说明').fill('修改后要求：补充业务变化');
-  await page.getByRole('button',{name:'保存补充说明',exact:true}).click();
+  await expect(page.locator('#conversation-status')).toHaveText('已自动保存');
+  await page.locator('#new-project-message').click();
   await expect(page.locator('.cowork-message')).toContainText('修改后要求：补充业务变化');
   await page.getByRole('button',{name:'编辑项目信息'}).click();
   await page.getByLabel('发行方式',{exact:true}).selectOption('public');
@@ -514,17 +510,14 @@ test('unrelated edits preserve historical target metadata and original prospectu
 });
 
 
-test('legacy initial-note save failure preserves content at the material footer for explicit retry',async({page})=>{
+test('legacy initial-note autosave failure preserves content and retries without a save button',async({page})=>{
   const f=fixture();f.state.project.update_details!.supplementary_notes='旧项目已保存的补充说明';
-  const {state}=await setup(page,f);
-  await expect(page.locator('.cowork-initial')).toContainText('旧项目已保存的补充说明');
-  await page.getByRole('button',{name:'修改创建时的补充说明'}).click();
-  await page.getByLabel('补充募集书更新说明').fill('修改失败仍保留');state.notePatchFailOnce=true;
-  await page.getByRole('button',{name:'保存补充说明',exact:true}).click();
+  const {state}=await setup(page,f);await page.getByRole('button',{name:'修改创建时的补充说明'}).click();
+  state.notePatchFailOnce=true;await page.getByLabel('补充募集书更新说明').fill('修改失败仍保留');
   await expect(page.locator('#conversation-status')).toContainText('保存失败');
   await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('修改失败仍保留');
-  await page.getByRole('button',{name:'保存补充说明',exact:true}).click();
-  await expect(page.locator('.cowork-initial')).toContainText('修改失败仍保留');
+  await page.locator('#send-project-message').click();await expect(page.locator('#conversation-status')).toHaveText('已自动保存');
+  await page.locator('#new-project-message').click();await expect(page.locator('.cowork-initial')).toContainText('修改失败仍保留');
   expect(state.executes).toHaveLength(0);expect(state.saves).toHaveLength(0);
 });
 
@@ -568,4 +561,34 @@ test('source quarter controls stay independent and unrelated edits preserve actu
   await expect(reference.getByRole('radio',{name:'9月末',exact:true})).toBeChecked();
   expect(f.state.project.update_details!.source_prospectuses!.every(s=>s.reporting_periods.every(p=>p.status==='needs_confirmation'&&p.scope===null))).toBe(true);
   await expect(page.locator('input[type=date]')).toHaveCount(0);
+});
+
+
+test('autosave keeps typing enabled and persists the latest edit after a slow response',async({page})=>{
+  const {state}=await setup(page);let finish!:()=>void;
+  state.saveGate=()=>new Promise<void>(resolve=>{finish=resolve;});
+  const input=page.getByLabel('补充募集书更新说明');await input.fill('第一次输入');
+  await expect.poll(()=>state.saves.length).toBe(1);await expect(input).toBeEnabled();await input.fill('保存期间继续输入的最新说明');
+  state.saveGate=undefined;finish();await expect(page.locator('#conversation-status')).toHaveText('已自动保存');
+  expect(state.messages).toHaveLength(1);expect(state.messages[0].body).toBe('保存期间继续输入的最新说明');
+  expect(state.messages[0].message_version).toBe(2);await expect(input).toHaveValue('保存期间继续输入的最新说明');
+});
+
+test('IME composition autosaves only complete text and immediate start pins the latest note',async({page})=>{
+  const {state}=await setup(page);const input=page.getByLabel('补充募集书更新说明');
+  await page.clock.install();await input.dispatchEvent('compositionstart');await input.fill('zhong');await page.clock.runFor(1000);expect(state.saves).toHaveLength(0);
+  await input.fill('重点核对审计口径');await input.dispatchEvent('compositionend');
+  await page.clock.runFor(700);await expect(page.locator('#conversation-status')).toHaveText('已自动保存');
+  await input.fill('开始前刚补充的最新说明');await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  expect(state.messages[0].body).toBe('开始前刚补充的最新说明');expect(state.inputs[0].requirement_message_ids).toEqual([state.messages[0].message_id]);
+});
+
+for(const width of [1440,390])test('autosave presentation at '+width,async({page})=>{
+  await page.setViewportSize({width,height:960});await setup(page);
+  await page.getByLabel('补充募集书更新说明').fill('按照上传模板，更新本次募集说明书，并核对各处财务口径。');
+  await expect(page.locator('#conversation-status')).toHaveText('已自动保存');
+  await mkdir('test-evidence/upload-autosave',{recursive:true});await page.locator('#project-conversation-root').scrollIntoViewIfNeeded();
+  await page.screenshot({path:'test-evidence/upload-autosave/note-'+width+'.png'});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });

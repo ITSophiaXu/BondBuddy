@@ -62,7 +62,7 @@ export async function prepareUserSubmission(pool: Pool, blobs: PrivateBlobs, bod
 
 export async function verifiedMaterialVersions(client: PoolClient, owner: string, projectId: string, refs: { material_id: string; material_version: number }[]) {
   for (const ref of refs) {
-    const found = await client.query('SELECT 1 FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL', [owner,projectId,ref.material_id,ref.material_version]);
+    const found = await client.query('SELECT 1 FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL AND NOT internal_template', [owner,projectId,ref.material_id,ref.material_version]);
     if (!found.rowCount) throw missing();
   }
   return refs;

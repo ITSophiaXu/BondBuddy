@@ -1,0 +1,17 @@
+✔ unknown checkout retains its original key and body across reload, time and general errors (9.207ms)
+✔ concurrent tabs reuse one intent; a changed plan, provider or amount never reuses its key (0.913ms)
+✔ subscription renewal recovery keeps the original subscription endpoint and plan (0.7999ms)
+✔ an accepted subscription order keeps its historical amount and points across catalog changes (0.6585ms)
+✔ recovery from another task keeps the first payment task context (0.8495ms)
+✔ only a matching server-confirmed terminal order permits a new explicitly observed purchase (1.185ms)
+✔ corrupted or lossy storage and mismatched acknowledgements do not permit another payment (0.7505ms)
+✔ an existing number-v1 intent retries its original numeric request without a new key or silent conversion (1.0613ms)
+✔ version-2 order snapshots preserve int64 values above the safe-number limit and reject lossy acknowledgements (0.7203ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 875.2607

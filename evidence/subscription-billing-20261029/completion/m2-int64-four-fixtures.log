@@ -1,0 +1,15 @@
+✔ authoring meter: monotonic, capped, lease bounded and independent of page time (1.8289ms)
+✔ dynamic billing: one point starts, exhaustion pauses, topup resumes same checkpoint, no overdraft or duplicate settlement (4492.1765ms)
+✔ authoring meter: monotonic, capped, lease bounded and independent of page time (1.815ms)
+✔ authoring billing: queue zero, safe pause freezes, resume reuses, cancel settles once, failure releases, legacy preserved (4495.9849ms)
+✔ paid review: quote only, insufficient/concurrent submissions, immutable price, report settlement and revision release (3928.5329ms)
+✔ approved review catalog preserves authoring and leaves unpriced independent revisions unavailable (1.1259ms)
+✔ approved review prices: zero/one-point start, concurrency, delivered settlement, differential cancel/failure, history and old trial (8576.5472ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 68274.4209

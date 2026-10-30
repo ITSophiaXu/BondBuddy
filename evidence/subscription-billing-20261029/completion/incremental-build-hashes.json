@@ -1,0 +1,62 @@
+[
+  {
+    "path": "apps/api/src/alipay-pay.ts",
+    "sha256": "b672007408c5107467645ee490beb61521b1621d646a9b377e401dc3d9e8638a"
+  },
+  {
+    "path": "apps/api/dist/alipay-pay.js",
+    "sha256": "86fb11e3b1fead9807016ee39a633e11a7b9d31d35e40200ea584342d1554514"
+  },
+  {
+    "path": "apps/api/src/commerce-economics.ts",
+    "sha256": "b52a82b006de1d3f45636879b99a5bff9181d421a5dd61124661e9f88df00d43"
+  },
+  {
+    "path": "apps/api/dist/commerce-economics.js",
+    "sha256": "6e248144999a95d8319de912df9d768b78792c6b5b0db81b29b6d251ebec8f42"
+  },
+  {
+    "path": "apps/api/src/subscriptions.ts",
+    "sha256": "3436883693092983959bc8e9967c88470e214ec245026d6199042faff903913e"
+  },
+  {
+    "path": "apps/api/dist/subscriptions.js",
+    "sha256": "2157826e30df74b51fdb2e3321b448c71a9e1b06e44ad5d455db59bc434371f8"
+  },
+  {
+    "path": "apps/web/src/checkout-intent.ts",
+    "sha256": "67ee5e7bdcd0c8641522adfefa50b76824e2d436fb957ec9a923c076540a621d"
+  },
+  {
+    "path": "apps/web/src/subscription-billing-page.ts",
+    "sha256": "28efca86d84d1c9d92608a16b4c1cff6e8f7296ade453f3f3841c797520738d4"
+  },
+  {
+    "path": "apps/worker/src/project-file-stage.ts",
+    "sha256": "01db3e32b645d8ae75f9d9fe9f850bbdc6eebe86464b3be74b8d03c41b99b40d"
+  },
+  {
+    "path": "apps/worker/dist/project-file-stage.js",
+    "sha256": "d9bdd9a4aa80e0bea0fa5153aa1acd87ad913d25df3556f6972f0bacae01ca88"
+  },
+  {
+    "path": "apps/worker/src/project-file-paid-coverage.pg.test.ts",
+    "sha256": "32b1859dd26c7096fc145cb876182e2b6688396aefa9172e8a5c79320afa8536"
+  },
+  {
+    "path": "apps/worker/dist/project-file-paid-coverage.pg.test.js",
+    "sha256": "4bf0a9432cf1f520b0bd273827a3792adb91be41cf9d8df19ac7af488b1ebedb"
+  },
+  {
+    "path": "packages/contracts/src/subscriptions.ts",
+    "sha256": "63ab821aecb11837af4a50b04f9dcc86c0aabc86c68a0f92944cf0d69718bcbc"
+  },
+  {
+    "path": "db/migrations/0144_project_file_check_coverage.sql",
+    "sha256": "78c131b82782f0bbcee80f37bc892ec3558766a7be47bc933ba5701add19ca45"
+  },
+  {
+    "path": "package-lock.json",
+    "sha256": "69ce90eb0ff8cb11578c419ad3c5a1221da099fdb5fce17c190aef2052255701"
+  }
+]

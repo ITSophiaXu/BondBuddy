@@ -1,6 +1,6 @@
 import type { M4Topic, M4TopicCreateRequest, M4Workspace, M4DraftRequest, M4Draft, M4ViewRequest, M4ViewState,
   M4MessageRequest, M4Message, M4QuoteRequest, M4QuoteResponse, M4ExecuteRequest, M4MaterialPin,
-  M4TemplateCreateRequest, M4Template, M4Artifact, Run } from '@bondbuddy/contracts';
+  M4TemplateCreateRequest, M4Template, M4Artifact, Run } from './billing-types.js';
 import { ApiClient, ApiError } from './api';
 
 export class M4Api {

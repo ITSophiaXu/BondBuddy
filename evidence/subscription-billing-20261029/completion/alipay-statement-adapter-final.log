@@ -1,0 +1,26 @@
+✔ bounded ZIP inspection supports stored/deflated CSV and descriptors without normalizing business rows (5.279ms)
+✔ strict encoding accepts explicit UTF-8 BOM, ASCII, and unambiguous GBK; invalid/ambiguous bytes stay unknown (2.1378ms)
+✔ ZIP filenames cannot introduce paths, duplicate names, executables, directories, or symlinks (1.1097ms)
+✔ ZIP encryption, unsupported methods and inconsistent local metadata are rejected (0.4078ms)
+✔ CRC, compressed stream, central-directory boundaries and overlapping entries are checked (1.8844ms)
+✔ archive, entry-count, expanded-size and expansion-ratio budgets fail closed (12.7765ms)
+✔ unknown content remains unnormalized metadata; control characters and oversized text are rejected (7.8358ms)
+✔ CSV line limits reject a near-limit stored archive of newlines without allocating a line array (600.9352ms)
+✔ Alipay statements default off; explicit enable advertises only trade and the request app (73.4084ms)
+✔ verified RSA2 URL and bounded ZIP retain local evidence only, with unresolved normalization (327.6575ms)
+✔ forged or changed metadata cannot cause a download (122.168ms)
+✔ signed metadata permits only exact HTTPS resource and one matching merchant PID (148.5886ms)
+✔ unavailable, unsupported or empty-file metadata never pretends that zero business occurred (114.2884ms)
+✔ unsupported funds/account requests and current/future/invalid dates fail before network access (130.2297ms)
+✔ redirects, content encodings, HTML, wrong sizes and excess declared bytes stay unresolved (146.6927ms)
+✔ actual response bytes have a hard cap and rejection cancels the stream (241.4753ms)
+✔ download timeout aborts pending bodies and a late response is cancelled without reading (310.3665ms)
+✔ expired or future metadata is refused and signed URLs are queried afresh for each retry (140.6437ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3614.0961

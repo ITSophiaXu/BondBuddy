@@ -58,7 +58,7 @@ test('dynamic billing: one point starts, exhaustion pauses, topup resumes same c
    await Promise.all([renew(pool,lease),renew(pool,other)]);
    assert.deepEqual(await creditBalance(pool,owner),{available:0,frozen:0});
    const p=(await charge(r.run_id)).progress,p2=(await charge(second.run_id)).progress;
-   assert.equal(p.charged_points+p2.charged_points,1);
+   assert.equal(BigInt(p.charged_points)+BigInt(p2.charged_points),1n);
    assert.equal(p.credit_exhausted,true);assert.equal(p2.credit_exhausted,true);
    await checkpointStage(pool,lease,'model_generation',{logical_call_id:'durable-synthetic-result'});
    assert.equal(await pauseAtCheckpoint(pool,lease),true);
@@ -84,7 +84,7 @@ test('dynamic billing: one point starts, exhaustion pauses, topup resumes same c
    await age(r.run_id);await renew(pool,resumed);assert.equal(await pauseAtCheckpoint(pool,resumed),true);
    assert.equal((await creditBalance(pool,owner)).available,0);
    const spent=(await charge(r.run_id)).progress.charged_points;
-   assert.equal(spent,before.charged_points+7);
+   assert.equal(BigInt(spent),BigInt(before.charged_points)+7n);
    await fund(20);ok(await act(r.run_id,'pause'));
    assert.equal(await resumePausedRun(pool,owner,r.run_id,'credits_recharged'),false,'manual pause prevents auto resume');
    ok(await act(r.run_id,'resume'));const saving=await claim(pool);assert.ok(saving);
@@ -100,7 +100,7 @@ test('dynamic billing: one point starts, exhaustion pauses, topup resumes same c
    const delivery=await claim(pool);assert.ok(delivery);
    assert.equal((delivery.checkpoint.stages as any).word_delivery_pair.clean_artifact_id,clean.artifactId);
    await finish(pool,delivery,'succeeded',{artifactId:revision.artifactId,artifactVersion:1,blobs});
-   assert.equal((await charge(r.run_id)).progress.charged_points,10000);
+   assert.equal((await charge(r.run_id)).progress.charged_points,'10000');
    assert.equal((await act(r.run_id,'cancel')).statusCode,409);
    const sum=(await pool.query("SELECT sum(points)::int n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[r.run_id])).rows[0].n;
    assert.equal(sum,10000);
@@ -115,7 +115,7 @@ test('dynamic billing: one point starts, exhaustion pauses, topup resumes same c
    assert.ok((await creditBalance(pool,owner)).available<beforeFailure);
    await finish(pool,failureLease,'failed',{errorCode:'DATA_UNAVAILABLE'});
    assert.equal((await creditBalance(pool,owner)).available,beforeFailure);
-   assert.equal((await charge(failure.run_id)).progress.charged_points,0);
+   assert.equal((await charge(failure.run_id)).progress.charged_points,'0');
    assert.equal((await auditCredits(pool)).consistent,true);
  }finally{await app.close();await pool.end();}
 });

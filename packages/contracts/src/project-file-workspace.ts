@@ -1,6 +1,7 @@
 import { Type, type Static } from '@sinclair/typebox';
 import { PROJECT_DOCUMENT_CATALOG } from './project-document-catalog.js';
 import { M4MaterialPinSchema, M4ArtifactPinSchema } from './m4-workspace.js';
+import {OutcomePriceVersionSchema,CommerceMetadataFields,ScopeLineSchema,ScopeQuoteStatusSchema,type CommercePriceMetadata} from './commerce.js';
 
 const obj=<T extends Parameters<typeof Type.Object>[0]>(p:T)=>Type.Object(p,{additionalProperties:false});
 const id=Type.String({minLength:1,maxLength:128});
@@ -47,12 +48,17 @@ export const projectFileSchemas={
   ProjectFileSourceRequest:obj({source_version_id:id,expected_selection_revision:Type.Integer({minimum:0})}),
   ProjectFileImportRequest:obj({request_id:id,document_type:ProjectDocumentTypeSchema,material:M4MaterialPinSchema,expected_latest_version_id:nullable(id)}),
   ProjectFileBatchRequest:obj({request_id:id,source_version_id:id,expected_selection_revision:Type.Integer({minimum:0}),
-    documents:Type.Array(obj({document_type:ProjectDocumentTypeSchema,draft_version:Type.Integer({minimum:1})}),{minItems:1,maxItems:12})}),
-  ProjectFileCheckRequest:obj({request_id:id,expected_source_version_id:id}),
+    price_version:Type.Optional(OutcomePriceVersionSchema),expected_points:Type.Optional(Type.Integer({minimum:0,maximum:100000000})),
+    documents:Type.Array(obj({document_type:ProjectDocumentTypeSchema,draft_version:Type.Integer({minimum:1}),scope_quote_id:Type.Optional(id)}),{minItems:1,maxItems:12})}),
+  ProjectFileBatchQuoteResponse:obj({points:Type.Integer({minimum:0}),quote_status:ScopeQuoteStatusSchema,documents:Type.Array(obj({...CommerceMetadataFields,document_type:ProjectDocumentTypeSchema,draft_version:Type.Integer({minimum:1}),points:Type.Integer({minimum:0})}))}),
+  ProjectFileCheckRequest:obj({scope_quote_id:Type.Optional(id),request_id:id,expected_source_version_id:id,price_version:Type.Optional(OutcomePriceVersionSchema),expected_points:Type.Optional(Type.Integer({minimum:0,maximum:100000000})),file_version_ids:Type.Optional(Type.Array(id,{minItems:1,maxItems:200,uniqueItems:true}))}),
+  ProjectFileCheckQuoteResponse:obj({...CommerceMetadataFields,points:Type.Integer({minimum:0,maximum:100000000}),price_version:nullable(id),file_version_ids:Type.Array(id,{minItems:1,maxItems:200,uniqueItems:true}),source_version_id:id}),
   ProjectFileBatchActionRequest:obj({action:Type.Union([Type.Literal('retry'),Type.Literal('cancel')])}),
   ProjectFileUpdateRequest:obj({request_id:id,expected_check_sha256:hash,
-    price_version:Type.Literal(PROJECT_FILE_UPDATE_PRICE.version),expected_points:Type.Integer({minimum:4500,maximum:900000}),
-    files:Type.Array(obj({file_version_id:id}),{minItems:1,maxItems:200})}),
+    price_version:Type.Union([Type.Literal(PROJECT_FILE_UPDATE_PRICE.version),OutcomePriceVersionSchema]),expected_points:Type.Integer({minimum:0,maximum:100000000}),
+    files:Type.Array(obj({file_version_id:id,scope_quote_id:Type.Optional(id)}),{minItems:1,maxItems:200})}),
+  ProjectFileUpdateQuoteRequest:obj({expected_check_sha256:hash,files:Type.Array(obj({file_version_id:id}),{minItems:1,maxItems:200})}),
+  ProjectFileUpdateQuoteResponse:obj({points:Type.Integer({minimum:0}),price_version:id,quote_status:ScopeQuoteStatusSchema,items:Type.Array(obj({...CommerceMetadataFields,file_version_id:id,scope_quote_id:Type.Optional(id),quote_status:ScopeQuoteStatusSchema,points:Type.Integer({minimum:0}),scope_lines:Type.Array(ScopeLineSchema)}))}),
 };
 
 export type ProjectFileVersion=Static<typeof ProjectFileVersionSchema>;
@@ -60,16 +66,17 @@ export type ProjectFileBatch=Static<typeof ProjectFileBatchSchema>;
 export type ProjectFileCheck=Static<typeof ProjectFileCheckSchema>;
 
 const status=Type.Union((['unchecked','checking','conflict','manual','consistent','stale','updated'] as const).map(s=>Type.Literal(s)));
-export const ProjectFileVersionSchema=obj({version_id:id,file_id:id,document_type:ProjectDocumentTypeSchema,filename:short,sequence:Type.Integer({minimum:1}),
+export const ProjectFileVersionSchema=obj({version_id:id,file_id:id,document_type:Type.Union([ProjectDocumentTypeSchema,Type.Literal('workpaper')]),filename:short,sequence:Type.Integer({minimum:1}),
  asset:ProjectFileAssetSchema,revision_asset:nullable(ProjectFileAssetSchema),source_version_id:nullable(id),template_id:nullable(id),template_version:nullable(Type.Integer({minimum:1})),
  source_name:nullable(short),source_sequence:nullable(Type.Integer({minimum:1})),created_at:Type.String(),run_id:nullable(id),links:Type.Array(ProjectFileLinkSchema),
  latest:Type.Boolean(),version_count:Type.Integer({minimum:1}),consistency:obj({status,count:Type.Integer({minimum:0}),check_run_id:nullable(id)})});
 export const ProjectFileBatchSchema=obj({batch_id:id,state:Type.Union((['queued','running','paused','complete','cancelled'] as const).map(s=>Type.Literal(s))),
  items:Type.Array(obj({document_type:ProjectDocumentTypeSchema,run_id:nullable(id),state:Type.String(),error:nullable(text)}))});
-export const ProjectFileCheckSchema=obj({run_id:id,state:Type.String(),stage:Type.String(),created_at:Type.String(),source:ProjectFileSourceSchema,stale:Type.Boolean(),
- sha256:nullable(hash),result:nullable(ProjectFileCheckResultSchema),files:Type.Array(obj({file_id:id,file_version_id:id,filename:short,sequence:Type.Integer({minimum:1})})),
+export const ProjectFileCheckSchema=obj({...CommerceMetadataFields,run_id:id,state:Type.String(),stage:Type.String(),created_at:Type.String(),source:ProjectFileSourceSchema,stale:Type.Boolean(),
+ points:Type.Optional(Type.Integer({minimum:0})),price_version:Type.Optional(id),update_price_version:Type.Optional(id),
+ sha256:nullable(hash),result:nullable(ProjectFileCheckResultSchema),files:Type.Array(obj({file_id:id,file_version_id:id,filename:short,sequence:Type.Integer({minimum:1}),update_points:Type.Optional(Type.Integer({minimum:0}))})),
  updates:Type.Array(obj({file_version_id:id,issue_ids:Type.Array(id),run_id:nullable(id),state:Type.String(),new_version_id:nullable(id)}))});
-export type ProjectFileWorkspace={project_id:string;source:ProjectFileSource|null;workspace:import('./m4-workspace.js').M4Workspace;files:ProjectFileVersion[];batches:ProjectFileBatch[]};
+export type ProjectFileWorkspace={project_id:string;source:ProjectFileSource|null;workspace:import('./m4-workspace.js').M4Workspace;files:ProjectFileVersion[];batches:ProjectFileBatch[];price?:CommercePriceMetadata & {points:number;price_version:string}};
 export type ProjectFileUpdateBatches={batches:{batch_id:string;state:string;items:{file_version_id:string;filename:string;run_id:string|null;error:string|null}[]}[]};
 export function projectFileOpenApiPaths(){
  const route=(method:string,description:string,body:unknown,response:unknown,extra?:string)=>({[method]:{description,security:[{sessionCookie:[]}],
@@ -82,12 +89,15 @@ export function projectFileOpenApiPaths(){
    [base+'/workspace']:{...route('get','Project source, reusable M4 templates and drafts, files and durable batches',null,null),...route('post','Prepare project file workspace without starting a model or charging',projectFileSchemas.ProjectFileWorkspaceRequest,null)},
    [base+'/source']:route('post','Pin current project prospectus in file drafts',projectFileSchemas.ProjectFileSourceRequest,null),
    [base+'/batches']:route('post','Persist frozen template-backed generation package',projectFileSchemas.ProjectFileBatchRequest,ProjectFileBatchSchema),
+   [base+'/batches/quote']:route('post','Request exact work-scope quotes for each selected document',projectFileSchemas.ProjectFileBatchRequest,projectFileSchemas.ProjectFileBatchQuoteResponse),
    [base+'/batches/{batch_id}/actions']:route('post','Explicitly retry unfinished generation or stop later files',projectFileSchemas.ProjectFileBatchActionRequest,null,'batch_id'),
    [base+'/imports']:route('post','Append owned historical file or new edition; retain old bytes',projectFileSchemas.ProjectFileImportRequest,files),
    [base+'/checks']:{...route('get','Checks against pinned prospectus versions and accepted changes',null,obj({checks:Type.Array(ProjectFileCheckSchema)})),
      ...route('post','Check latest project files against current prospectus',projectFileSchemas.ProjectFileCheckRequest,obj({run_id:id}))},
+   [base+'/checks/quote']:route('post','Quote selected exact versions, reusing already-paid same-version coverage',projectFileSchemas.ProjectFileCheckRequest,projectFileSchemas.ProjectFileCheckQuoteResponse),
    [base+'/checks/{run_id}']:route('get','Read one owned project check by its exact run, including checks outside the recent list',null,obj({check:ProjectFileCheckSchema}),'run_id'),
    [base+'/checks/{run_id}/updates']:route('post','Generate tracked/clean versions for selected files, 4500 credits per file on delivery; reject stale inputs',projectFileSchemas.ProjectFileUpdateRequest,obj({batch_id:id}),'run_id'),
+   [base+'/checks/{run_id}/updates/quote']:route('post','Quote actual selected differences and reuse paid checks',projectFileSchemas.ProjectFileUpdateQuoteRequest,projectFileSchemas.ProjectFileUpdateQuoteResponse,'run_id'),
    [base+'/updates']:route('get','Pending and completed accepted update packages',null,null),
    [base+'/updates/{run_id}/check']:route('get','Read the exact owned original check of an accepted file update run, including checks outside the recent list',null,obj({check:ProjectFileCheckSchema}),'run_id'),
    [base+'/updates/{run_id}/cancel']:route('post','Stop later files; started runs and successful outputs stay available',null,obj({ok:Type.Boolean()}),'run_id'),

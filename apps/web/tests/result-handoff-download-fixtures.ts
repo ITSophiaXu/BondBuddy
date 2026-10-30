@@ -1,7 +1,9 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
 import {Value} from '@sinclair/typebox/value';
 import {schemas} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {assertFixture as assertTaskFixture,docx,downloadBytes,fixture as taskFixture,hash,ids as taskIds,
   install as installTaskFixture,mime,serverSnapshot,writes,type Variant} from './consistency-task-fixtures';
 
@@ -89,7 +91,7 @@ function collection(s:State):Dto<'ProjectFilesResponse'>{
 }
 function dto<K extends keyof typeof schemas>(route:Route,name:K,value:Dto<K>){
   expect(Value.Check(schemas[name],value),name+': '+JSON.stringify([...Value.Errors(schemas[name],value)])).toBe(true);
-  return route.fulfill({status:200,json:value});
+  return route.fulfill({status:200,json:fixtureBody(route,value)});
 }
 function run(s:State,id:string):Dto<'RunResponse'>{
   const task=s.task.tasks.find(t=>t.run_id===id);
@@ -109,6 +111,7 @@ export async function install(page:Page,s=fixture()){
   // download entrances. Unknown requests still fail in the closed base fixture.
   await installTaskFixture(page,s.task);
   await page.context().route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const req=route.request(),url=new URL(req.url()),path=url.pathname.slice('/api/v1'.length),method=req.method();
     if(method!=='GET')return route.fallback();
     const material=path.match(new RegExp('^/projects/'+ids.root+'/materials/([^/]+)(/download)?$'));
@@ -129,8 +132,8 @@ export async function install(page:Page,s=fixture()){
       throw new Error('Unreachable handoff fixture route.');
     }catch(error){
       s.task.errors.push(error instanceof Error?error.message:String(error));
-      return route.fulfill({status:500,json:{code:'DATA_UNAVAILABLE',message:'Synthetic handoff fixture failure',retryable:true,
-        correlation_id:'handoff-test',field_errors:[]}});
+      return route.fulfill({status:500,json:fixtureBody(route,{code:'DATA_UNAVAILABLE',message:'Synthetic handoff fixture failure',retryable:true,
+        correlation_id:'handoff-test',field_errors:[]})});
     }
   });
   return s;

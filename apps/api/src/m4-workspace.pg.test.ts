@@ -62,9 +62,9 @@ test('synthetic assistant fixed QA: approved version, no model rates, failure re
     const path=`/api/v1/m4/topics/${topic.topic_id}`,context=emptyM4Context(),content='如何上传材料，并计算资产负债率';
     const quote=()=>ok('POST',`${path}/quote`,{kind:'qa',content,context});
     assert.equal((await send('POST',`${path}/quote`,{kind:'qa',content,context})).json().code,'BILLING_NOT_READY');
-    assert.equal((await ok('POST',`${path}/quote`,{kind:'qa',content:'如何使用项目助手？',context})).quote.points,0);
+    assert.equal((await ok('POST',`${path}/quote`,{kind:'qa',content:'如何使用项目助手？',context})).quote.points,'0');
     for(const greeting of ['你好！','Hello BondBuddy','你能帮我做什么？','你是谁'])
-      assert.equal((await ok('POST',`${path}/quote`,{kind:'qa',content:greeting,context})).quote.points,0);
+      assert.equal((await ok('POST',`${path}/quote`,{kind:'qa',content:greeting,context})).quote.points,'0');
     assert.equal(classifyM4Qa('你好，解释担保条款',context),'m4_Q01','a greeting must not make a business question free');
     await assert.rejects(publishM4QaPrice(pool,{...price,points:0}));
     await publishM4QaPrice(pool,price);await publishM4QaPrice(pool,price);
@@ -74,12 +74,12 @@ test('synthetic assistant fixed QA: approved version, no model rates, failure re
       '请告诉我怎么上传材料，并计算资产负债率','能告诉我如何使用净现值公式计算债券价格吗','怎么充值积分，并分析现金流',
       '如何查看积分流水，并计算资产负债率','怎么取消正在运行的任务，比较两期偿债能力','如何计算积分余额']){
       const mixed=(await ok('POST',`${path}/quote`,{kind:'qa',content:question,context})).quote;
-      assert.equal(mixed.points,60,question);assert.equal(mixed.billing_method,'fixed');
+      assert.equal(mixed.points,'60',question);assert.equal(mixed.billing_method,'fixed');
       assert.equal((await send('POST',`${path}/messages`,{submission_request_id:randomUUID(),content:question,context,quote_id:mixed.quote_id})).json().code,'CREDITS_INSUFFICIENT',question);
     }
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1',[user])).rows[0].n,0,'mixed business analysis must not create a free run without credit');
     const q=(await quote()).quote;
-    assert.equal(q.points,60);assert.equal(q.billing_method,'fixed');assert.equal(q.amount_semantics,'fixed_price');assert.equal(q.price_version,price.id);
+    assert.equal(q.points,'60');assert.equal(q.billing_method,'fixed');assert.equal(q.amount_semantics,'fixed_price');assert.equal(q.price_version,price.id);
     assert.match(q.reason,/回答成功后扣费/);
     const request={submission_request_id:randomUUID(),content,context,quote_id:q.quote_id};
     assert.equal((await send('POST',`${path}/messages`,request)).json().code,'CREDITS_INSUFFICIENT');
@@ -109,7 +109,7 @@ test('synthetic assistant fixed QA: approved version, no model rates, failure re
       '请告诉我如何上传材料','能告诉我怎么使用项目助手吗','怎么上传文件到当前项目','你好，请告诉我怎么下载已生成文件',
       '怎么查看任务进度','请告诉我如何查看任务状态吗','怎么充值积分','如何查看积分余额','如何查看积分流水','余额在哪里查看','怎么取消当前任务','怎么取消正在运行的任务']){
       const free=(await ok('POST',`${path}/quote`,{kind:'qa',content:help,context:readingContext})).quote;
-      assert.equal(free.points,0,help);assert.equal(free.billing_method,'free');assert.equal(free.task_type,'m4_Q00');
+      assert.equal(free.points,'0',help);assert.equal(free.billing_method,'free');assert.equal(free.task_type,'m4_Q00');
     }
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_m4_billing_configs')).rows[0].n,0);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts')).rows[0].n,0,'synthetic delivery must not invent model usage');
@@ -118,7 +118,7 @@ test('synthetic assistant fixed QA: approved version, no model rates, failure re
     assert.equal((await send('POST',`${path}/messages`,{...request,submission_request_id:randomUUID(),quote_id:stale.quote_id})).json().code,'QUOTE_CHANGED');
     assert.deepEqual(await creditBalance(pool,user),{available:120,frozen:0});
     await publishM4QaPrice(pool,{...price,id:'synthetic-qa-future',points:999,effective_at:'2999-01-01T00:00:00.000Z'});
-    const current=(await quote()).quote;assert.equal(current.points,90);
+    const current=(await quote()).quote;assert.equal(current.points,'90');
     const cancelled=(await ok('POST',`${path}/messages`,{...request,submission_request_id:randomUUID(),quote_id:current.quote_id})).run;
     await ok('POST',`/api/v1/runs/${cancelled.run_id}/cancel`,{reason:'user_cancelled'});
     const stopped=await ok('GET',`${path}/workspace`);
@@ -393,11 +393,11 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     await ok('PUT',path(t,'view'),{expected_version:0,view});ws=await ok('GET',path(t,'workspace'));assert.equal(ws.view.unsent_content,view.unsent_content);assert.equal(ws.view.tab_scroll.input,240);
     for(const selected of [{...context,source_material:pin},{...context,citations:[{kind:'material',ref:pin,locator:'paragraph 1'}]}]){
       const help=(await ok('POST',path(t,'quote'),{kind:'qa',content:'如何上传材料',context:selected})).quote;
-      assert.equal(help.task_type,'m4_Q00');assert.equal(help.points,0);assert.equal(help.billing_method,'free');
+      assert.equal(help.task_type,'m4_Q00');assert.equal(help.points,'0');assert.equal(help.billing_method,'free');
     }
     actor=other;assert.equal((await send('GET',path(t,'workspace'))).statusCode,404);assert.equal((await ok('GET','/api/v1/m4/templates')).templates.length,0);actor=user;
     const withoutRates=await ok('POST',path(t,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});
-    assert.equal(withoutRates.quote.points,4500);assert.equal(withoutRates.quote.billing_method,'fixed');
+    assert.equal(withoutRates.quote.points,'4500');assert.equal(withoutRates.quote.billing_method,'fixed');
     assert.equal((await send('POST',path(t,'quote'),{kind:'qa',content:'解释资产的概念',context})).json().code,'BILLING_NOT_READY');
     const config:M4BillingConfig={model_id:'synthetic-codex',rates:{'synthetic-codex':{input_microyuan_per_million:1000000,cached_microyuan_per_million:1000000,output_microyuan_per_million:2000000}},
       budgets:Object.fromEntries(Object.keys(M4_BILLING_TASKS).map(k=>[k,{input_tokens:1000000,output_tokens:1000000,reserve_factor:1.2}])) as M4BillingConfig['budgets']};
@@ -409,7 +409,7 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     assert.equal((await ok('GET',path(direct,'workspace'))).messages.length,0);
     const comparisonQuote=await ok('POST',path(t,'quote'),{kind:'qa',content:'比较两期资产负债率',context});assert.equal(comparisonQuote.quote.task_type,'m4_Q04');assert.equal(comparisonQuote.quote.multiplier,4);
     const calculationQuote=await ok('POST',path(t,'quote'),{kind:'qa',content:'计算本期资产负债率',context});assert.equal(calculationQuote.quote.task_type,'m4_Q03');assert.equal(calculationQuote.quote.multiplier,3);
-    const q=await ok('POST',path(t,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});assert.equal(q.quote.amount_semantics,'fixed_price');assert.equal(q.quote.points,4500);assert.ok(q.shortage>0);
+    const q=await ok('POST',path(t,'quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});assert.equal(q.quote.amount_semantics,'fixed_price');assert.equal(q.quote.points,'4500');assert.ok(BigInt(q.shortage)>0n);
     const exec={execution_request_id:randomUUID(),document_type:'private_summary',expected_draft_version:1,quote_id:q.quote.quote_id,entrypoint:'workspace'};
     assert.equal((await send('POST',path(t,'execute'),exec)).json().code,'CREDITS_INSUFFICIENT');
     await transaction(pool,c=>grantCredits(c,{owner:user,points:4499,key:'synthetic-below-price',source:'purchase',expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
@@ -445,10 +445,10 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
     const job=(await pool.query('SELECT id FROM bb_jobs WHERE run_id=$1',[paid.run_id])).rows[0].id,attempt=randomUUID();
     await pool.query(`INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,usage_status,model_id) VALUES($1,$2,$3,'synthetic-logical-call',1,'completed','measured','synthetic-codex')`,[attempt,user,job]);
     await pool.query(`INSERT INTO bb_usage_observations(id,owner_user_id,attempt_id,source,source_event_id,usage_status,input_tokens,output_tokens,cached_input_tokens) VALUES($1,$2,$3,'provider','synthetic-usage','measured',1000,100,0)`,[randomUUID(),user,attempt]);
-    const metered=await settleM4Metering(pool,user,paid.run_id);assert.deepEqual(metered,{ready:true,charged_points:1});assert.ok(pq.quote.points>1);
+    const metered=await settleM4Metering(pool,user,paid.run_id);assert.deepEqual(metered,{ready:true,charged_points:1});assert.ok(BigInt(pq.quote.points)>1n);
     await transaction(pool,async c=>{const artifact=await completeM4Qa(c,user,paid.run_id,reply);await c.query("UPDATE bb_jobs SET state='succeeded',lease_token=NULL,lease_until=NULL WHERE run_id=$1",[paid.run_id]);await c.query("UPDATE bb_runs SET artifact_id=$2,artifact_version=$3,state='succeeded' WHERE id=$1",[paid.run_id,artifact.artifactId,artifact.artifactVersion]);});
     const reservation=(await pool.query('SELECT state,points,charged_points FROM bb_credit_reservations WHERE run_id=$1',[paid.run_id])).rows[0];assert.equal(reservation.state,'settled');assert.equal(Number(reservation.charged_points),1);assert.equal((await creditBalance(pool,user)).frozen,0);
-    const events=(await pool.query('SELECT kind,points FROM bb_credit_events WHERE run_id=$1 ORDER BY kind',[paid.run_id])).rows;assert.equal(events.filter(e=>e.kind==='settle').length,1);assert.equal(Number(events.find(e=>e.kind==='release').points),pq.quote.points-1);
+    const events=(await pool.query('SELECT kind,points FROM bb_credit_events WHERE run_id=$1 ORDER BY kind',[paid.run_id])).rows;assert.equal(events.filter(e=>e.kind==='settle').length,1);assert.equal(BigInt(events.find(e=>e.kind==='release').points),BigInt(pq.quote.points)-1n);
     actor=other;assert.equal((await send('GET',`/api/v1/m4/artifacts/${qa.artifact_id}/versions/1/bytes`)).statusCode,404);actor=user;
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_m4_executions WHERE owner_user_id=$1',[user])).rows[0].n,4);
     // Unsupported requests receive free capability feedback without a selected document or a paid QA fallback.
@@ -575,7 +575,7 @@ test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual
       for(const market of ['sse','szse'] as const){
         const d=await save(t,{...emptyM4Draft(type),materials:[pin],fields:{issuer_name:'Synthetic issuer',market}},version);version=d.version;
         const q=await ok('POST',path(t,'quote'),{kind:'document',document_type:type,expected_draft_version:version});
-        assert.equal(q.quote.task_type,type==='underwriter'?'m4_G02':'m4_G03');assert.equal(q.quote.points,4500);assert.equal(q.quote.billing_method,'fixed');
+        assert.equal(q.quote.task_type,type==='underwriter'?'m4_G02':'m4_G03');assert.equal(q.quote.points,'4500');assert.equal(q.quote.billing_method,'fixed');
         const request={...exec,execution_request_id:randomUUID(),document_type:type,expected_draft_version:version,quote_id:q.quote.quote_id};
         const run=(await ok('POST',path(t,'execute'),request)).run;
         assert.equal((await ok('POST',path(t,'execute'),request)).run.run_id,run.run_id);

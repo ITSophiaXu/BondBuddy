@@ -1,0 +1,177 @@
+✔ automatic authoring produces an executable locked quote without operator pricing; shortages have no hold (296.0195ms)
+✔ two competing executions cannot consume the same automatic scope twice (440.4443ms)
+✔ HTTP exposes automatic price metadata, rejects client amounts and preserves owner isolation (1265.5221ms)
+✔ failed and released authoring can retry with a new immutable quote; closed=false (453.7342ms)
+✔ failed and released authoring can retry with a new immutable quote; closed=true (459.0869ms)
+✔ HTTP automatic billing includes same-scope revision in a settled new check without another hold (2502.7102ms)
+✔ HTTP automatic billing preserves the 1000-point revision upgrade for a settled old 990-point check (2249.3261ms)
+✔ partial file-check quality refund revokes only that file and rejects only its stale included-maintenance quote (1551.7973ms)
+✔ HTTP project file batch carries automatic tariff metadata and accepts the matching executable quote (1665.7527ms)
+✔ HTTP automatic workpaper generation returns 402 without creating a batch or hold when points are insufficient (937.645ms)
+✔ asynchronous workpaper shortage resumes only the original batch once and never overrides a later manual pause (1707.1626ms)
+✔ retired source-diff route remains replayable while automatic workpaper checks use independent paid files (958.3015ms)
+✔ a paid v2 subscription and cancellation retain v2 task prices after v3 release (930.3763ms)
+✔ new non-subscribers and new paid subscriptions use the published v3 comprehensive review tariff (335.9684ms)
+✔ an unexpired v2 quote keeps its immutable price and remains executable after v3 release (190.8344ms)
+✔ stored batch price protection is scoped to its transaction callback and survives current-price changes (129.2444ms)
+✖ full review locks 27195 points, settles once on report delivery, and releases a failed retry (1449.4804ms)
+✔ synthetic PG HTTP tasks preserve large balances, exact string writes, idempotency and terminal release (983.8155ms)
+✔ exact account read supports balances above MAX_SAFE while legacy narrowing fails explicitly (1.8755ms)
+✔ int64 lot with large original and frozen values allocates the exact small difference (0.5417ms)
+✔ multiple source slices preserve query order and never reallocate existing holds (0.3727ms)
+✔ usage aggregates preserve MAX_SAFE+1 and distinguish unknown counts from measured zero (0.364ms)
+✔ trial usage and platform ledger keep exact cumulative and per-attempt token strings (23.5651ms)
+✔ billing permissions authenticate before looking up database and expose no public grant route (307.7915ms)
+▶ synthetic PG: independent billing grants, immutable history and transaction authorization
+  ✔ default deny and exact permission separation (50.752ms)
+  ✔ grant retries preserve identity; changed or duplicate original inputs conflict (19.7122ms)
+  ✔ history cannot be altered, deleted or reopened after revocation (366.0924ms)
+  ✔ in-flight authority locks synchronize with revoke and user deactivation (362.2327ms)
+  ✔ disabled accounts lose all effective permissions without deleting audit history (9.8277ms)
+  ✔ authenticated route returns only this account permissions and prevents caching (7.8374ms)
+✔ synthetic PG: independent billing grants, immutable history and transaction authorization (948.1396ms)
+✔ complete API price lifecycle changes future real quotes, preserves paid contracts, and rolls back through a future version (4149.7931ms)
+✔ wallet quarantine fences new credit and subscriptions while preserving account reads and cancellation (354.1349ms)
+✔ merchant quarantine prevents checkout dispatch but original order queries remain available (658.1196ms)
+✔ reconciliation isolates committed wallet drift even without a configured payment provider (266.3377ms)
+✔ durable wallet isolation, exact authorized projection repair and separate resumption preserve original facts (702.5045ms)
+✔ exclusive recheck waits for an in-flight writer and never isolates a legitimate intermediate state (485.3668ms)
+✔ channel mismatch blocks only that merchant; no verifier, unknown and malformed evidence cannot resume (363.6822ms)
+✔ committed payment/credit mismatch isolates wallet and channel and rejects projection-only repair (343.318ms)
+✔ committed dispatch holds shared safety through external work; isolation stops later dispatch but keeps exit controls available (396.8747ms)
+✔ direct SQL finalization observes safety before wallet lock for original and M4 task families (898.7488ms)
+✔ isolated refund permits schedule metadata but rejects state or credit changes without blocking other wallets (399.0976ms)
+✔ projection repair cannot restore individually valid lots into an overflowing account total (279.9239ms)
+✔ default HTTP balance preserves MAX_SAFE+1 and zero/holds as strings through the response schema (311.7798ms)
+✔ raw JSON number/fraction/negative/overflow are rejected before AJV coercion or financial handler (28.1381ms)
+✔ numeric-v1 only replays persisted owner/resource/request and original handler still rejects changed amount (17.7356ms)
+✔ legacy responses preserve the original response schema field filtering (14.149ms)
+✔ callback bodies are excluded from billing transforms and unauthenticated replay does not open the DB (16.8396ms)
+✔ OpenAPI distinguishes modern wire components from original domain schemas (25.9354ms)
+✖ paid API: insufficient funds, recharge, concurrent execution, settlement, failed/cancelled release and price changes (1517.3718ms)
+✔ synthetic cost evidence is immutable/idempotent; missing and late costs block a complete margin claim (929.82ms)
+✔ all attempts count once, budget allocations stay separate, and exact contribution is not net profit (12.4216ms)
+✔ unknown, pending and failed attempts with missing cost never become healthy zero (0.5748ms)
+✔ foreign currency stays exact and separate, never implicitly converted to CNY (0.6068ms)
+✔ later evidence invalidates a closed review, but row order does not (0.8023ms)
+✔ explicit zero expenses still require all categories, terminal state and model evidence review (0.5391ms)
+✔ missing cache or reasoning subset is incomplete when procurement rates differ (0.5404ms)
+✔ subscription original consideration, not face value, determines contribution (0.6257ms)
+✔ 0.1+0.2 and long decimal supplier amounts remain exact before any display rounding (0.5135ms)
+✔ fractional JS costs, NaN, infinity, negative, exponent and absent decimals are incomplete (2.3273ms)
+✔ each non-divisible source A*p/Q is summed exactly and its original correction is subtracted (0.4898ms)
+✔ a complete reversal cancels repeating ratios exactly; remaining resource cost is a negative contribution (0.3795ms)
+✔ missing or mismatched compensation/consumption slices do not fabricate known cash (0.5847ms)
+✔ zero cash activity basis is explicit; excess reversal is an anomaly rather than invented negative revenue (0.3686ms)
+✔ int64 inputs beyond MAX_SAFE stay exact; unsafe numeric inputs and overflow are rejected (0.6329ms)
+✔ legacy arithmetic reviews cannot approve v2, and changed original ratios require a fresh review (0.4824ms)
+✖ history whitelist, ledger totals, microsecond pagination and owner-scoped cursors (2730.45ms)
+✔ lost payment callbacks reconcile once without a browser, another charge, or another task (523.8084ms)
+✔ query timeout and mismatched identity keep original payment pending and back off (430.8481ms)
+✔ accepted refund with a lost response completes by querying its original ID; unknown holds stay frozen (333.3052ms)
+✔ a crash after refund freeze but before dispatch resumes the same authorised request once (445.4971ms)
+✔ pre-send dispatch crash uses only documented same-request recovery; unknown or mismatched receipts never release held points (361.6981ms)
+✔ a matching callback arriving during a failed query prevents needless same-request resubmission (308.0781ms)
+✔ shutdown stops starting claimed rows; unfinished original orders remain recoverable (575.8248ms)
+✔ synthetic signed cash refunds bind original payment/lot, exclude consumed/held/noncash money and settle once under callback/query concurrency (7791.9291ms)
+✔ synthetic timeout/unknown retains freeze, reconciles same refund ID, and explicit CLOSED releases without reusing a failed request (6633.3442ms)
+✔ synthetic task/refund races serialize on original account and rollback cannot send cash before a durable freeze (6437.1798ms)
+✔ historical bonus package refunds consumed remainder at original A/Q and quality restoration keeps the same cash ceiling (6703.7415ms)
+✔ historical package cumulative one-cent rounding preserves sub-cent credits and strict request units (6745.5461ms)
+✔ cash refunds allocate only authenticated original-source family and serialize races with consumption (7430.6933ms)
+✔ synthetic signed provider: forged/mismatched/replayed callbacks and query-based credit repair (1766.0062ms)
+✔ subscription mode closes legacy bonus-pack sales while replaying original paid and pending orders unchanged (1661.2875ms)
+✔ synthetic scope quote: persistent pending, different same-task prices, immutable evidence and no browser price approval (1876.3595ms)
+✔ monthly read-only report observes actual paid lots without recording prepayments or expiry as earned revenue (341.0891ms)
+✔ refunded reopening is a new retained purchase, calendar repurchase requires a matured subsequent period (12.6081ms)
+✔ prepayment, original-lot consideration, quality returns, cash refunds and expiry remain separate (0.8528ms)
+✔ missing proof remains unknown and empty cohorts never imply zero retention (0.4029ms)
+✔ incomplete or duplicate settlement allocations cannot appear as exact earned revenue (0.8625ms)
+▶ selected original order identifies its period beyond the latest 50 and keeps unknown or foreign orders private
+  ✔ the 51st record remains the original subscription with string-valued money and original dates (203.5726ms)
+  ✔ only a verified owner recharge order returns period null; foreign and nonexistent orders return identical 404 (29.3023ms)
+  ✔ missing or inconsistent original subscription records stay unavailable instead of becoming a permanent topup (12.9064ms)
+✔ selected original order identifies its period beyond the latest 50 and keeps unknown or foreign orders private (797.6859ms)
+▶ synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once
+  ✔ verified payment grants once, 90-day rights and cash ratio survive cancellation (426.1603ms)
+  ✔ checkout failure before channel creation stays unknown until authenticated expiry, then permits a new purchase (70.9107ms)
+  ✔ only a wholly unused period refunds 199 cash by removing 21000 points, unknown status stays held (169.8091ms)
+  ✔ task and cash-refund holds are separate in the same wallet and each period (225.2947ms)
+  ✔ consumption prevents subscription cash refund; expired correction preserves original paid ratio (78.4919ms)
+  ✔ the application rejects an unused subscription after the seven-day refund window (47.0646ms)
+  ✔ topup is 1:1 permanent and does not inherit a subscription discount (54.7228ms)
+  ✔ native checkout has no recurring capability; an authenticated synthetic mandate renews once after timeout (152.1075ms)
+  ✔ a delayed refund for an earlier period cannot cancel a later paid period or its mandate (125.1303ms)
+✔ synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once (1462.1756ms)
+▶ task quality returns preserve frozen item/lot evidence, original cash rights and independent approval
+  ✔ int64 issuance overflow rolls back the whole approval and preserves the original pending request (537.2768ms)
+  ✔ acceptance commits independent units and cross-lot slices before any refund read; strings and no free approval (668.5993ms)
+  ✔ concurrent whole repair and partial approval cannot exceed original charge (185.0374ms)
+  ✔ missing independent delivery, held work and rejected requests never issue a return (306.9558ms)
+  ✔ legacy whole-task refund revokes every dependent item, without inventing separate historic allocations (146.9427ms)
+  ✔ HTTP rejects client-supplied amounts, isolates owners, and permissions revoke independently (473.2483ms)
+✔ task quality returns preserve frozen item/lot evidence, original cash rights and independent approval (2443.7312ms)
+ℹ tests 109
+ℹ suites 0
+ℹ pass 106
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 314101.4115
+
+✖ failing tests:
+
+test at apps\api\dist\automatic-review-billing.pg.test.js:13:1
+✖ full review locks 27195 points, settles once on report delivery, and releases a failed retry (1449.4804ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  '27195' !== 27195
+
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/automatic-review-billing.pg.test.js:35:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '27195',
+    expected: 27195,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\billing.pg.test.js:17:1
+✖ paid API: insufficient funds, recharge, concurrent execution, settlement, failed/cancelled release and price changes (1517.3718ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  '159900' !== 159900
+
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/billing.pg.test.js:67:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '159900',
+    expected: 159900,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\credit-history.test.js:5:1
+✖ history whitelist, ledger totals, microsecond pagination and owner-scoped cursors (2730.45ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  '12000' !== 12000
+
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/credit-history.test.js:21:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '12000',
+    expected: 12000,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

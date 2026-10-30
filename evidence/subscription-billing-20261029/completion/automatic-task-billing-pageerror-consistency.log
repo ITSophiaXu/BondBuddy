@@ -1,0 +1,37 @@
+
+Running 1 test using 1 worker
+
+(node:41040) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  1 tests\automatic-task-billing.spec.ts:69:1 › consistency updates directly after selection, including zero-cost included scope (3.0s)
+
+
+  1) tests\automatic-task-billing.spec.ts:69:1 › consistency updates directly after selection, including zero-cost included scope
+
+    Error: automatic billing must not hide unhandled browser errors
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 5
+
+    - Array []
+    + Array [
+    +   "Billing quantity must be canonical int64 decimal text",
+    +   "Billing quantity must be canonical int64 decimal text",
+    +   "Billing quantity must be canonical int64 decimal text",
+    + ]
+
+       9 | const pageErrors=new WeakMap<Page,string[]>();
+      10 | test.beforeEach(async({page})=>{const errors:string[]=[];pageErrors.set(page,errors);page.on('pageerror',error=>errors.push(error.message));});
+    > 11 | test.afterEach(async({page})=>{expect(pageErrors.get(page),'automatic billing must not hide unhandled browser errors').toEqual([]);});
+         |                                                                                                                        ^
+      12 |
+      13 | const json=(route:Route,body:unknown,status=200)=>route.fulfill({status,json:fixtureBody(route,body)});
+      14 | // Validate the real HTTP wire while preserving decimal strings in captured requests.
+        at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\web\tests\automatic-task-billing.spec.ts:11:120
+
+    Error Context: ..\..\.tmp\automatic-task-billing-pageerror-consistency\automatic-task-billing-con-5eb7d-ng-zero-cost-included-scope\error-context.md
+
+  1 failed
+    tests\automatic-task-billing.spec.ts:69:1 › consistency updates directly after selection, including zero-cost included scope

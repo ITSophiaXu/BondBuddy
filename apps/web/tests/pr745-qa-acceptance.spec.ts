@@ -22,7 +22,7 @@ test('busy project preserves the exact free prepare request across navigation an
  await page.goto(qaUploadUrl);await page.locator('#qa-upload').setInputFiles(qaUploadFile('忙碌期间的问题清单.doc'));
  await expect(page.locator('#qa-retry-pending')).toBeVisible();
  await expect(page.locator('[data-qa-selection]')).toHaveCount(0);
- await page.getByRole('link',{name:'全部项目',exact:true}).click();
+ await page.getByRole('link',{name:'任务进度与结果',exact:true}).click();
  await expect(page.locator('#qa-retry-pending')).toHaveCount(0);
  await page.goto(qaUploadUrl);await expect(page.locator('#qa-retry-pending')).toBeVisible();
  expect(attempts).toHaveLength(1);blocked=false;

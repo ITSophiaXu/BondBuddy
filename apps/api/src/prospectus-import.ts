@@ -9,7 +9,7 @@ export async function importProspectusMaterial(c:PoolClient,blobs:PrivateBlobs,u
       if(!v)throw missing();
       const imported=(await c.query('SELECT material_id FROM bb_review_source_imports WHERE owner_user_id=$1 AND project_id=$2 AND version_id=$3',[user,id,v.id])).rows[0];
       if(v.material_id||imported){
-        const m=(await c.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL',[user,id,v.material_id??imported.material_id,v.material_version??1])).rows[0];
+        const m=(await c.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL AND NOT internal_template',[user,id,v.material_id??imported.material_id,v.material_version??1])).rows[0];
         if(m)return materialDto(m);
         if(v.material_id)throw missing();
         await c.query('DELETE FROM bb_review_source_imports WHERE owner_user_id=$1 AND project_id=$2 AND version_id=$3',[user,id,v.id]);
@@ -19,7 +19,7 @@ export async function importProspectusMaterial(c:PoolClient,blobs:PrivateBlobs,u
       if(!a||a.sha256.trim()!==v.sha256.trim())throw missing();
       const bytes=await blobs.getIfExistsBounded(a.object_key,M1_UPLOAD_LIMITS.fileBytes);
       if(!bytes||digest(bytes)!==v.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','募集书文件暂不可用。');
-      const capacity=(await c.query('SELECT count(*)::int files,COALESCE(sum(byte_size),0)::bigint bytes FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL',[user,id])).rows[0];
+      const capacity=(await c.query('SELECT count(*)::int files,COALESCE(sum(byte_size),0)::bigint bytes FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL AND NOT internal_template',[user,id])).rows[0];
       if(capacity.files>=M1_UPLOAD_LIMITS.projectFiles||Number(capacity.bytes)+bytes.length>M1_UPLOAD_LIMITS.projectBytes)throw new Problem(422,'VALIDATION_FAILED','项目材料达到容量上限。');
       const upload=uid(),material=uid(),key=`users/${user}/projects/${id}/uploads/${upload}`,media='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
       await blobs.put(key,bytes,media);

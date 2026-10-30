@@ -1,8 +1,9 @@
+import {fixtureBody} from './billing-fixture-wire';
 import {expect,type Page} from '@playwright/test';
 import {Value} from '@sinclair/typebox/value';
 import {M4_DOCUMENT_TYPES,M4DocumentManifestSchema,M4DraftInputSchema,type M4Artifact,type M4ArtifactPin,
   type M4DocumentType,type M4Draft,type M4DraftInput,type M4MaterialPin,type M4Requirement,type M4Task,type Run} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {fixture as wordFixture,install as installWord,assertFixture as assertWord,docx,hash,ids,now,mime,writeCalls} from './word-roundtrip-fixtures';
 
 export {ids,now,hash,writeCalls};
@@ -96,13 +97,13 @@ export async function install(page:Page,s=fixture()){
   await page.route('**/api/v1/m4/topics/*/workspace',async route=>{
     if(route.request().method()!=='GET')return route.fallback();s.workspaceReads++;
     s.calls.push({owner:s.owner,method:'GET',path:'/m4/topics/'+ids.topic+'/workspace',search:new URL(route.request().url()).search,body:null});
-    return route.fulfill({json:structuredClone(s.workspace)});
+    return route.fulfill({json:fixtureBody(route,structuredClone(s.workspace))});
   });
   await page.route('**/api/v1/projects/*/materials/*',async route=>{
     const request=route.request(),url=new URL(request.url()),match=url.pathname.match(/^\/api\/v1\/projects\/([^/]+)\/materials\/([^/]+)$/);
     if(request.method()!=='GET'||!match)return route.fallback();
     const material=[...s.materialVersions.values()].find(m=>m.pin.source_project_id===decodeURIComponent(match[1])&&m.pin.material_id===decodeURIComponent(match[2])&&(!url.searchParams.has('version')||m.pin.material_version===Number(url.searchParams.get('version'))));
-    if(!material)return route.fallback();s.calls.push({owner:s.owner,method:'GET',path:url.pathname.slice('/api/v1'.length),search:url.search,body:null});return route.fulfill({json:structuredClone(material.dto)});
+    if(!material)return route.fallback();s.calls.push({owner:s.owner,method:'GET',path:url.pathname.slice('/api/v1'.length),search:url.search,body:null});return route.fulfill({json:fixtureBody(route,structuredClone(material.dto))});
   });return s;
 }
 export async function frames(page:Page){await page.clock.runFor(80);}

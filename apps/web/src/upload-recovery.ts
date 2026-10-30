@@ -1,4 +1,4 @@
-import { M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, schemas } from '@bondbuddy/contracts';
+import { M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, schemas } from './billing-types.js';
 import { Value } from '@sinclair/typebox/value';
 import { UserFacingError } from './user-facing-error.js';
 import { ApiError, type ApiClient, type Dto } from './api.js';
@@ -174,9 +174,10 @@ export class UploadRecovery {
       this.sessions.delete(id);
     });
   }
-  async updateContext(id: string, context: UploadRecoveryJson): Promise<UploadRecoveryRecord> {
+  async updateContext(id: string, context: UploadRecoveryJson, expected?: {context?: UploadRecoveryJson}): Promise<UploadRecoveryRecord> {
     return this.locked(id, async () => {
       if (!jsonContext(context)) throw new UploadRecoveryConflictError(); const { key, record } = this.entry(id);
+      if (expected && canonical(record.context) !== canonical(expected.context)) throw new UploadRecoveryConflictError();
       const next = { ...record, context: clone(context) }; this.write(key, next); return clone(next);
     });
   }

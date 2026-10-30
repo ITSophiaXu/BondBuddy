@@ -1,3 +1,6 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureRequest} from './billing-fixture-wire';
 import { expect, type Page, type Route } from '@playwright/test';
 import { FormatRegistry, type TSchema } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
@@ -7,7 +10,7 @@ import { resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { M4_DOCUMENT_TYPES, M4DraftInputSchema, M4DraftRequestSchema, M4MaterialPinSchema, M4ViewRequestSchema, schemas,
   type M4Artifact, type M4DocumentType, type M4Draft, type M4DraftInput, type M4DraftRequest, type M4MaterialPin, type M4Requirement, type M4Workspace } from '@bondbuddy/contracts';
-import type { Dto } from '../src/api';
+import type { Dto } from './billing-fixture-wire';
 
 // The actual component and public HTTP boundary are used. No model, DOCX, billing or object-store acceptance is implied.
 export const ids = { owner: 'm4-thirteenth-owner', otherOwner: 'm4-thirteenth-owner-b', topic: 'm4-thirteenth-topic', project: 'm4-thirteenth-project', sourceProject: 'm4-thirteenth-source-project' };
@@ -60,7 +63,7 @@ function validateWorkspace(state: State, value: M4Workspace) {
   for (const type of M4_DOCUMENT_TYPES) { const draft = value.drafts[type]; check(M4DraftInputSchema, inputOf(draft)); expect(draft.document_type).toBe(type); expect(Number.isSafeInteger(draft.version) && draft.version >= 0).toBe(true); }
   value.materials.forEach(selected => check(M4MaterialPinSchema, selected)); value.pending_requirements.forEach(value => expect(value.message_version).toBe(2)); return value;
 }
-const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, json: body });
+const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, json: fixtureBody(route,body) });
 function requirementMessages(state: State) {
   const rows = [...Object.values(state.workspace.drafts).flatMap(draft => draft.requirements), ...state.workspace.pending_requirements], grouped = new Map<string, M4Requirement[]>();
   for (const row of rows) { const key = `${row.message_id}:${row.message_version}`, previous = grouped.get(key) ?? []; if (!previous.some(value => value.requirement_id === row.requirement_id)) previous.push(row); grouped.set(key, previous); }
@@ -70,8 +73,9 @@ function problem(route: Route, status: number, code: Dto<'Error'>['code']) { con
 export async function install(page: Page, state = fixture()) {
   page.on('pageerror', error => state.errors.push(error.message)); await page.clock.install({ time: new Date(now) });
   await page.route('**/api/v1/**', async route => {
+    if(await serveDisabledBillingCatalog(route))return;
     const request = route.request(), url = new URL(request.url()), path = url.pathname.slice('/api/v1'.length), method = request.method(), isBytes = path.endsWith('/bytes');
-    const body = request.postData() && !isBytes ? request.postDataJSON() : undefined; state.calls.push({ method, path, search: url.search, ...(body === undefined ? {} : { body }) });
+    const body = request.postData() && !isBytes ? fixtureRequest(request) : undefined; state.calls.push({ method, path, search: url.search, ...(body === undefined ? {} : { body }) });
     if (state.owner !== ids.owner) return problem(route, 404, 'NOT_FOUND');
     if (method === 'GET') {
       if (path === '/me') return json(route, { user_id: ids.owner, session_status: 'active' });

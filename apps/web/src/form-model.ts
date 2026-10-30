@@ -1,5 +1,5 @@
 import { Value } from '@sinclair/typebox/value';
-import { schemas, MARKETS, MARKET_LABELS, MARKET_OFFERINGS, OFFERING_LABELS, PROJECT_FIELD_LIMITS, emptyUpdateDetails, updateDetailsErrors, type Market, type Offering, type Project, type UpdateDetails } from '@bondbuddy/contracts';
+import { schemas, MARKETS, MARKET_LABELS, MARKET_OFFERINGS, OFFERING_LABELS, PROJECT_FIELD_LIMITS, emptyUpdateDetails, updateDetailsErrors, type Market, type Offering, type Project, type UpdateDetails } from './billing-types.js';
 import type { Dto } from './api.js';
 export type ProjectCreate = Dto<'ProjectCreateRequest'>;
 

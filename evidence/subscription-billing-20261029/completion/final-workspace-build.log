@@ -1,0 +1,47 @@
+
+> build
+> npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/domain && npm run build -w @bondbuddy/rule-pack-registry && npm run build -w @bondbuddy/rule-applicability-context && npm run build -w @bondbuddy/api && npm run build -w @bondbuddy/worker && npm run build -w @bondbuddy/web
+
+
+> @bondbuddy/contracts@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/domain@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/rule-pack-registry@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/rule-applicability-context@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/api@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/worker@0.1.0 build
+> tsc -p tsconfig.json
+
+
+> @bondbuddy/web@0.1.0 build
+> tsc --noEmit && vite build
+
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 531 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.76 kB │ gzip:   0.52 kB
+dist/assets/index-CxvMWZPF.css    393.85 kB │ gzip:  72.16 kB
+dist/assets/index-CmYOZgX6.js   1,899.30 kB │ gzip: 523.32 kB
+
+✓ built in 821ms
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.

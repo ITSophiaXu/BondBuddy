@@ -1,0 +1,53 @@
+▶ ordinary file batches settle independent outputs, retain original price on failed-only retries and isolate requests
+  ✔ native strings are required before AJV coercion and insufficient total funds leave no children or holds (113.1242ms)
+  ✔ concurrent original requests freeze the full obligation once in independent children (378.5808ms)
+  ✖ one successful Word is delivered and billed even when another file fails (216.431ms)
+  ✖ failed-only retry and same-owner second-project create share safe lock order; original successful work is never rerun (288.4025ms)
+✖ ordinary file batches settle independent outputs, retain original price on failed-only retries and isolate requests (3378.8521ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 2
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15827.4249
+
+✖ failing tests:
+
+test at apps\worker\dist\ordinary-file-check-batches.pg.test.js:99:17
+✖ one successful Word is delivered and billed even when another file fails (216.431ms)
+  AssertionError [ERR_ASSERTION]: {"stage":"model_generation","name":"Error","message":"redacted","code":null}
+      at Object.onUnexpectedError (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/worker/dist/ordinary-file-check-batches.pg.test.js:55:243)
+      at runPipelineOnce (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/worker/dist/run-pipeline.js:783:33)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/worker/dist/ordinary-file-check-batches.pg.test.js:100:26)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/worker/dist/ordinary-file-check-batches.pg.test.js:99:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at apps\worker\dist\ordinary-file-check-batches.pg.test.js:115:17
+✖ failed-only retry and same-owner second-project create share safe lock order; original successful work is never rerun (288.4025ms)
+  AssertionError [ERR_ASSERTION]: 409 {"code":"INPUT_REVISION_CONFLICT","message":"原文件已完成或重试状态已变化，请刷新。","retryable":false,"field_errors":[],"correlation_id":"f0599e43-2ae7-4dd5-be82-dc34d499d053"}
+      at ok (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/worker/dist/ordinary-file-check-batches.pg.test.js:27:101)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Promise.all (index 0)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/worker/dist/ordinary-file-check-batches.pg.test.js:130:40)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/worker/dist/ordinary-file-check-batches.pg.test.js:115:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

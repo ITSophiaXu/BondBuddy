@@ -1,0 +1,127 @@
+
+> check:contracts
+> npm run check:examples -w @bondbuddy/contracts
+
+
+> @bondbuddy/contracts@0.1.0 check:examples
+> node --test dist/outcome-pricing.test.js dist/integrity-presentation.test.js dist/workpapers.test.js && node dist/check-examples.js && node dist/check-data-lifecycle.js && npm run check:ocr-v2 && npm run check:generation-issuer-binding
+
+✔ captcha image failures stay specific in shared web and export copy without exposing diagnostics (4.3807ms)
+✔ diagnostics preserve exact failure causes and validate without breaking historical records (1.2316ms)
+✔ historical unknown errors never acquire invented HTTP or authentication causes (0.7939ms)
+✔ certificate, required stylesheet and rate-limit failures are actionable without exposing raw diagnostics (0.4399ms)
+✔ display limitations omit legacy collection diagnostics without changing original scope or evidence (0.2184ms)
+✔ adverse records, ambiguous identities, ordinary notices and unrelated hits remain distinct (0.2923ms)
+✔ trial-03 prices use integer fen and unpriced integrity is unavailable rather than free (3.064ms)
+✔ one target progresses 9.8 → 39 → 99 by valid owned tier, not by repeated charges (1.1126ms)
+✔ same goal reply and necessary draft merge once at the final tier (0.4328ms)
+✔ a different goal or genuinely new financial identity cannot consume unrelated coverage (0.6616ms)
+✔ 9.9 check upgrades to 19.9 sync with a 10-yuan difference; financial review is separate (0.924ms)
+✔ financial work charges 249, 498, then 499 for one, two, then three new main periods (0.3762ms)
+✔ financial same-group split work and already-owned periods are deduplicated (0.6ms)
+✔ financial incremental receipts reach the same 499 cap and a one-yuan period is still valid coverage (0.8205ms)
+✔ full-price financial periods are independent; only discounted or included coverage pins prior receipts (0.7266ms)
+✔ necessary restatement and repair are included; another independently commissioned 99 target totals 348 (0.3791ms)
+✔ complete financial group is 499 and owned complete group never charges for the original target (0.549ms)
+✔ included work requires an explicit valid parent receipt for the same coverage identity (0.5143ms)
+✔ exact independent output reuse costs zero and different output identity is charged separately (0.2521ms)
+✔ unknown and unsupported scope remain nonexecutable, distinct from valid included zero (0.2446ms)
+✔ public plan excludes ownership; malformed counts, duplicate receipt ids and work ids are rejected (0.7203ms)
+✔ legacy outcome metadata preserves the submitted amount and all historical version schemas read v1 (0.3871ms)
+✔ direct start and a retained legacy paid request validate identically in browser and API (2.8629ms)
+✔ start cannot omit its mode or mix an independent assessment into a direct request (1.3194ms)
+✔ direct start retains pinned source, catalogue, request and price bounds (1.0621ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 977.7277
+validated 171 synthetic examples + 12 internal library examples and recovery/conflict/usage invariants
+Validated 4 synthetic data-lifecycle examples
+
+> @bondbuddy/contracts@0.1.0 check:ocr-v2
+> node --test dist/ocr-v2.test.js
+
+✔ synthetic JSON example has strict schemas and a reproducible image/hash domain (23.8286ms)
+✔ 70 physical pages require bounded batches, then exact verified contiguous aggregation (200.3278ms)
+✔ 74 physical pages require bounded batches, then exact verified contiguous aggregation (198.4565ms)
+✔ failed physical page retries alone; prior successful pages reuse without counting them again (12.7752ms)
+✔ unknown, not-started and measured failed attempts remain distinct from successful checkpoints (2.1867ms)
+✔ checkpoint and reuse identity bind owner (2.7488ms)
+✔ checkpoint and reuse identity bind project (2.1716ms)
+✔ checkpoint and reuse identity bind material ID (3.8584ms)
+✔ checkpoint and reuse identity bind material version (2.8211ms)
+✔ checkpoint and reuse identity bind material hash (1.9618ms)
+✔ checkpoint and reuse identity bind physical page count (2.3718ms)
+✔ checkpoint and reuse identity bind processor (1.8629ms)
+✔ checkpoint and reuse identity bind engine (2.072ms)
+✔ checkpoint and reuse identity bind engine version (2.3314ms)
+✔ checkpoint and reuse identity bind language (2.606ms)
+✔ checkpoint and reuse identity bind language data (2.2971ms)
+✔ checkpoint and reuse identity bind orientation model (2.4989ms)
+✔ checkpoint and reuse identity bind OCR options (2.2344ms)
+✔ checkpoint and reuse identity bind renderer (1.7604ms)
+✔ checkpoint and reuse identity bind renderer version (2.4217ms)
+✔ checkpoint and reuse identity bind DPI (2.838ms)
+✔ checkpoint and reuse identity bind pixel budget (2.2433ms)
+✔ checkpoint and reuse identity bind render options (2.6305ms)
+✔ single-page identity cannot be relabelled or referenced by a different result/request hash (6.4577ms)
+✔ page records, table/box provenance, uncertainty and image bytes are checked before reuse (7.8805ms)
+✔ batch validation rejects missing, duplicate, extra outcomes and mismatched request/context (9.7967ms)
+✔ bounded requests reject unsupported, malformed and scope-bypassing inputs (2.9472ms)
+✔ platform source preflight stays within first five physical pages; full OCR still needs explicit run pins (3.8147ms)
+✔ v1 shape, 50-page ceiling, optional consumption and user-asserted correction remain unchanged (57.1733ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1663.2494
+
+> @bondbuddy/contracts@0.1.0 check:generation-issuer-binding
+> node --test dist/generation-issuer-binding.test.js
+
+✔ same legal issuer may compile consolidated and parent statements; accounting scopes remain separate (2.7963ms)
+✔ subsidiaries cited in issuer notes are localized and excluded without an issuer verification review (0.3276ms)
+✔ a subsidiary-only report cannot determine the legal issuer (0.4185ms)
+✔ same display name with distinct verified legal entity IDs is a conflict, never majority-resolved (0.3744ms)
+✔ every selected issuer-role material needs exactly one explicit disposition (0.5866ms)
+✔ missing subject or unresolved OCR/parser doubt stays pending (0.4751ms)
+✔ a new material or parse pin cannot reuse observations from an old snapshot (0.4052ms)
+✔ withdrawal blocks reuse and cannot be reversed on the same binding version (0.3937ms)
+✔ approval checks the whole same-version review history, not only its last event (2.9135ms)
+✔ the authoritative selected input manifest detects omitted materials even if the snapshot omits them too (0.495ms)
+✔ owner/project/input revision/hash must match the authoritative server input ref (0.1774ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 671.5202
+✔ wire schema and strict parser accept exactly canonical nonnegative int64 strings (2.0103ms)
+✔ schema int64 upper bound is exact at every decimal prefix (0.3988ms)
+✔ legacy/config narrowing is explicit and never rounds a quantity (0.2684ms)
+✔ account sums, per-lot differences and shortage use BigInt with checked overflow (0.5514ms)
+✔ points and CNY formatting and input parsing do not use floating-point currency (16.7477ms)
+✔ standard prices use full-precision decimal cost and two separate exact ceilings (1.1355ms)
+✔ management wire rejects JSON numbers and managed family IDs have a fixed shape (0.9127ms)
+✔ quote and scope explanations encode amounts without converting revisions or changing stored snapshots (3.296ms)
+✔ nested task progress, period hold breakdown and correction history retain full integer range (0.5208ms)
+✔ raw requests reject numeric wire values before schema coercion and normalize bounded old hash inputs exactly (0.4487ms)
+✔ refund null evidence and ordinary document quantities are not converted by field-name guessing (0.2276ms)
+✔ only cumulative admin usage counts change; rates, durations and revision numbers keep their units (0.2394ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 717.1913

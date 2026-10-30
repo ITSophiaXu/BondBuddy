@@ -16,6 +16,7 @@ import { fileAuthoringStage,fileAuthoringDeliveryStage } from './file-authoring-
 import {fileURLToPath} from 'node:url';
 import { requeueGeneratedWordDelivery, promoteWordArtifact } from '@bondbuddy/api/queue';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
+import { runFormatDiagnosticOnce } from './word-format-diagnostic.js';
 
 const database = await isolatedTestDatabase(undefined,'file-authoring');
 const connection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
@@ -64,14 +65,28 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
           // Deliberately do not run parsing: original bytes must reach the CLI immediately.
           assert.equal((await pool.query("SELECT count(*)::int n FROM bb_jobs WHERE project_id=$1 AND job_type='parse'",[project])).rows[0].n,0);
         }
+        if(completeSource){
+          const versions=await send('GET',`/api/v1/projects/${project}/prospectus-versions`);
+          assert.equal(versions.statusCode,200,versions.body);
+          const selected=versions.json().versions.find((v:any)=>v.material_id===completeSource!.material_id);
+          assert.ok(selected);
+          const adopted=await send('POST',`/api/v1/projects/${project}/prospectus-versions/current`,{request_id:randomUUID(),version_id:selected.version_id,expected_selection_revision:versions.json().selection_revision});
+          assert.equal(adopted.statusCode,200,adopted.body);
+        }
         const details={...created.json().update_details,source_prospectuses:source?[source]:[]};
-        const patched=await send('PATCH',`/api/v1/projects/${project}`,{update_details:details},{'if-match':'1'});
+        const currentDraft=await send('GET',`/api/v1/projects/${project}`);
+        assert.equal(currentDraft.statusCode,200,currentDraft.body);
+        const patched=await send('PATCH',`/api/v1/projects/${project}`,{update_details:details},{'if-match':String(currentDraft.json().draft_revision)});
         assert.equal(patched.statusCode,200,patched.body);
         let draftRevision=patched.json().draft_revision;
         const message={message_id:randomUUID(),submission_request_id:randomUUID(),expected_message_version:null,body:'合成要求：明确2025年信息，缺项标待确认。',material_versions:[]};
         const saved=await send('POST',`/api/v1/projects/${project}/messages`,message);
         assert.equal(saved.statusCode,201,saved.body);
         const lockResponse=async(edit_base?:{artifact_id:string;artifact_version:number;sha256:string}|null)=>{
+          // Delivery adopts the new project prospectus and advances its draft.
+          // A new user action reads that current revision before locking inputs.
+          const current=await send('GET',`/api/v1/projects/${project}`);
+          assert.equal(current.statusCode,200,current.body);draftRevision=current.json().draft_revision;
           const messagePage=await send('GET',`/api/v1/projects/${project}/messages`);
           assert.equal(messagePage.statusCode,200,messagePage.body);
           const messages=messagePage.json().project_message_set_ref;
@@ -158,6 +173,19 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
           const file=(await send('GET',`/api/v1/artifacts/${artifact.word_delivery[`${variant}_artifact_id`]}`)).json();
           const response=await send('GET',file.download_url);
           assert.equal(response.statusCode,200,response.body);assert.equal(digest(response.rawPayload),file.sha256);
+        }
+        if(relation || missingMetadata){
+          const diagnostic=async()=>(await pool.query("SELECT checkpoint #> '{stages,word_delivery_pair,format_diagnostic}' AS report FROM bb_jobs WHERE run_id=$1",[run.run_id])).rows[0].report;
+          // Downloads already succeeded before the independent diagnostic is claimed.
+          assert.equal((await diagnostic()).status,'pending');
+          for(let i=0;i<20 && (await diagnostic()).status==='pending';i++)
+            await Promise.all([runFormatDiagnosticOnce({pool,blobs}),runFormatDiagnosticOnce({pool,blobs})]);
+          const completed=await diagnostic();
+          assert.equal(completed.status,'passed',JSON.stringify(completed));
+          const bytes=await blobs.getIfExistsBounded(completed.report.key,32*1024*1024);
+          assert.ok(bytes);assert.equal(digest(bytes),completed.report.sha256);
+          assert.equal((await send('GET',`/api/v1/runs/${run.run_id}`)).json().state,'succeeded');
+          assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=(SELECT id FROM bb_jobs WHERE run_id=$1)',[run.run_id])).rows[0].n,1);
         }
         if(!relation&&!missingMetadata){
           const next=await lock();

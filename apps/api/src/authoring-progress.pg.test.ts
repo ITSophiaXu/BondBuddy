@@ -57,16 +57,16 @@ test('authoring billing: queue zero, safe pause freezes, resume reuses, cancel s
    await transaction(pool,c=>grantCredits(c,{owner,points:1000000,key:'synthetic-progress-funds',source:'purchase',expiresAt:null,actor:'test',reason:'synthetic'}));
    await publishPrices(pool,{id:'progress-test-v1',prices:{...INITIAL_FIXED_PRICES,new_authoring:10000},effectiveAt:'2020-01-01T00:00:00Z',actor:'test',reason:'synthetic'});
    const queued=await create();
-   assert.equal((await charge(queued.run_id)).progress.accrued_points,0);
+   assert.equal((await charge(queued.run_id)).progress.accrued_points,'0');
    assert.equal(ok(await act(queued.run_id,'pause')).state,'paused');
    assert.equal(await claim(pool),null);
    ok(await act(queued.run_id,'cancel'));
-   assert.equal((await charge(queued.run_id)).progress.charged_points,0);
+   assert.equal((await charge(queued.run_id)).progress.charged_points,'0');
 
    const running=await create(),lease=await claim(pool);assert.ok(lease);
    assert.equal((await pool.query('SELECT stage FROM bb_runs WHERE id=$1',[running.run_id])).rows[0].stage,'claimed');
    await age(running.run_id);await checkpointStage(pool,lease,'materials_ready',{synthetic:true});
-   const before=(await charge(running.run_id)).progress.accrued_points;assert.ok(before>400&&before<10000);
+   const before=BigInt((await charge(running.run_id)).progress.accrued_points);assert.ok(before>400n&&before<10000n);
    ok(await act(running.run_id,'pause'));
    const frozen=(await charge(running.run_id)).progress.accrued_points;
    await checkpointStage(pool,lease,'model_generation',{logical_call_id:'synthetic-saved-result'});
@@ -84,8 +84,8 @@ test('authoring billing: queue zero, safe pause freezes, resume reuses, cancel s
    assert.ok(events.some((e:any)=>e.payload.authoring_activity?.code==='write_document'));
    actor='foreign-'+randomUUID();assert.equal((await act(running.run_id,'pause')).statusCode,404);assert.equal((await send('GET','/api/v1/runs/'+running.run_id+'/credit-charge')).statusCode,404);actor=owner;
    const cancels=await Promise.all([act(running.run_id,'cancel'),act(running.run_id,'cancel')]);assert.deepEqual(cancels.map(x=>x.statusCode).sort(),[200,409]);
-   const final=await charge(running.run_id);assert.equal(final.state,'settled');assert.ok(final.progress.charged_points>=frozen);
-   assert.equal(final.progress.charged_points+final.progress.released_points,10000);
+   const final=await charge(running.run_id);assert.equal(final.state,'settled');assert.ok(BigInt(final.progress.charged_points)>=BigInt(frozen));
+   assert.equal(BigInt(final.progress.charged_points)+BigInt(final.progress.released_points),10000n);
    assert.equal(await recordAuthoringActivity(pool,resumed,{...activity,state:'completed'}),false);
    const history=ok(await send('GET','/api/v1/credits/consumption-history')).items.find((i:any)=>i.run_id===running.run_id);
    assert.equal(history.charged_points,final.progress.charged_points);assert.equal(history.released_points,final.progress.released_points);
@@ -93,14 +93,14 @@ test('authoring billing: queue zero, safe pause freezes, resume reuses, cancel s
    const balance=await creditBalance(pool,owner);
    await correctSettlement(pool,{runId:running.run_id,actor:'test',reason:'synthetic correction'});
    await correctSettlement(pool,{runId:running.run_id,actor:'test',reason:'synthetic correction'});
-   assert.equal((await creditBalance(pool,owner)).available,balance.available+final.progress.charged_points);
+   assert.equal(BigInt((await creditBalance(pool,owner)).available),BigInt(balance.available)+BigInt(final.progress.charged_points));
 
    const failed=await create(),failureLease=await claim(pool);assert.ok(failureLease);await age(failed.run_id);
    await finish(pool,failureLease,'failed',{errorCode:'DATA_UNAVAILABLE'});
-   assert.equal((await charge(failed.run_id)).progress.charged_points,0);
+   assert.equal((await charge(failed.run_id)).progress.charged_points,'0');
    const legacy=await create();await pool.query("UPDATE bb_credit_reservations SET billing_policy='on_delivery' WHERE run_id=$1",[legacy.run_id]);
    assert.ok(await claim(pool));await age(legacy.run_id);ok(await act(legacy.run_id,'cancel'));
-   assert.equal((await charge(legacy.run_id)).progress.charged_points,0);
+   assert.equal((await charge(legacy.run_id)).progress.charged_points,'0');
    const success=await create(),successLease=await claim(pool);assert.ok(successLease);
    const revision=await promoteWordArtifact(pool,successLease,makeSyntheticDocxFixture({text:'Synthetic revised'}),blobs,'generated_pair_v1');
    const clean=await promoteWordArtifact(pool,successLease,makeSyntheticDocxFixture({text:'Synthetic clean'}),blobs,'generated_pair_v1');
@@ -110,7 +110,7 @@ test('authoring billing: queue zero, safe pause freezes, resume reuses, cancel s
    assert.equal((await charge(success.run_id)).state,'held');
    ok(await act(success.run_id,'resume'));const deliveryLease=await claim(pool);assert.ok(deliveryLease);
    await finish(pool,deliveryLease,'succeeded',{artifactId:revision.artifactId,artifactVersion:1,blobs});
-   assert.equal((await charge(success.run_id)).progress.charged_points,10000);
+   assert.equal((await charge(success.run_id)).progress.charged_points,'10000');
    assert.equal((await auditCredits(pool)).consistent,true);
  }finally{await app.close();await pool.end();}
 });

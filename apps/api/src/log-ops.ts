@@ -1,3 +1,4 @@
+import {int64,serializeInt64} from '@bondbuddy/contracts';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { constants } from 'node:fs';
 import { open } from 'node:fs/promises';
@@ -14,6 +15,7 @@ import { raiseAlert, tripEvidenceGate } from './evidence-gate.js';
 const validId = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 const safeCode = /^[a-z][a-z0-9_]{0,63}$/;
 const iso = (value: Date | string | null | undefined) => value ? new Date(value).toISOString() : null;
+const exactInt=(value:unknown)=>value===null||value===undefined?null:serializeInt64(value);
 const int = (value: unknown) => value === null || value === undefined ? null : Number(value);
 
 // ---------------------------------------------------------------- scrubbing
@@ -989,7 +991,7 @@ const filterArgs = (f: AdminFilter) => [f.user_id ?? null, f.project_id ?? null,
 export async function adminErrorCounts(pool: Pool, actorId: string, filter: AdminFilter) {
   return transaction(pool, async client => {
     const auditId = await audit(client, { actorId, role: 'log_operator', owner: filter.user_id, purpose: 'admin_error_counts', filter });
-    const rows = await client.query(`SELECT e.code error_code,e.category error_category,e.fingerprint,count(*)::int count
+    const rows = await client.query(`SELECT e.code error_code,e.category error_category,e.fingerprint,count(*)::text count
       FROM bb_observability_errors e LEFT JOIN bb_jobs j ON j.id=e.job_id
       WHERE ($1::text IS NULL OR e.owner_user_id=$1) AND ($2::text IS NULL OR e.project_id=$2)
         AND ($3::text IS NULL OR e.job_id=$3) AND ($4::text IS NULL OR e.trace_id=$4)
@@ -998,7 +1000,7 @@ export async function adminErrorCounts(pool: Pool, actorId: string, filter: Admi
         AND ($8::text IS NULL OR j.state=$8) AND ($9::text IS NULL OR e.code=$9)
         AND ($10::text IS NULL OR e.category=$10) AND ($11::text IS NULL OR e.fingerprint=$11)
         AND ($12::boolean OR j.channel IS DISTINCT FROM 'non_production_test')
-      GROUP BY e.code,e.category,e.fingerprint ORDER BY count DESC,e.code,e.category,e.fingerprint LIMIT $13`,
+      GROUP BY e.code,e.category,e.fingerprint ORDER BY count(*) DESC,e.code,e.category,e.fingerprint LIMIT $13`,
       [...filterArgs(filter), testChannelEnabled(), filter.limit]);
     return { items: rows.rows.map(r => ({ ...r, fingerprint: r.fingerprint?.trim() ?? null })), audit_id: auditId };
   });
@@ -1022,15 +1024,15 @@ export async function adminEvents(pool: Pool, actorId: string, filter: AdminFilt
   });
 }
 
-type UsageRow = { usage_status: string; call_status: string; attempt_no: number; input_tokens: number | null; output_tokens: number | null; cached_input_tokens: number | null; reasoning_tokens: number | null };
+type UsageRow = { usage_status: string; call_status: string; attempt_no: number; input_tokens: number | string | null; output_tokens: number | string | null; cached_input_tokens: number | string | null; reasoning_tokens: number | string | null };
 /** Sums measured attempts only. Unknown/pending/conflict count as unresolved and add no tokens. */
 export function consumption(rows: UsageRow[]) {
   const measured = rows.filter(r => r.usage_status === 'measured');
   const sum = (field: 'input_tokens' | 'output_tokens' | 'cached_input_tokens' | 'reasoning_tokens') => {
-    const values = measured.map(r => r[field]).filter((v): v is number => v !== null && v !== undefined);
-    return values.length ? values.reduce((a, b) => a + Number(b), 0) : null;
+    const values = measured.map(r => r[field]).filter((v): v is number|string => v !== null && v !== undefined);
+    return values.length ? serializeInt64(values.reduce<bigint>((a, b) => a + int64(b), 0n)) : null;
   };
-  return { attempts: rows.length, measured_attempts: measured.length, unresolved_attempts: rows.length - measured.length, input_tokens: sum('input_tokens'), output_tokens: sum('output_tokens'), cached_input_tokens: sum('cached_input_tokens'), reasoning_tokens: sum('reasoning_tokens') };
+  return { attempts: serializeInt64(rows.length), measured_attempts: serializeInt64(measured.length), unresolved_attempts: serializeInt64(rows.length - measured.length), input_tokens: sum('input_tokens'), output_tokens: sum('output_tokens'), cached_input_tokens: sum('cached_input_tokens'), reasoning_tokens: sum('reasoning_tokens') };
 }
 const terminal = ['succeeded', 'test_completed', 'failed', 'cancelled', 'rejected'];
 
@@ -1059,7 +1061,7 @@ export async function adminJobTimeline(pool: Pool, actorId: string, jobId: strin
       FROM bb_observability_errors e LEFT JOIN bb_error_recovery_events r ON r.error_id=e.id
       WHERE e.owner_user_id=$1 AND e.job_id=$2 ORDER BY e.created_at,e.id`, [job.owner_user_id, job.id])).rows;
     const artifact = job.artifact_id ? (await client.query('SELECT * FROM bb_artifact_versions WHERE owner_user_id=$1 AND id=$2 AND version=$3', [job.owner_user_id, job.artifact_id, job.artifact_version])).rows[0] : null;
-    const usageRows: UsageRow[] = attemptRows.map(a => ({ usage_status: a.usage_status, call_status: a.status, attempt_no: a.attempt_no, input_tokens: int(a.input_tokens), output_tokens: int(a.output_tokens), cached_input_tokens: int(a.cached_input_tokens), reasoning_tokens: int(a.reasoning_tokens) }));
+    const usageRows: UsageRow[] = attemptRows.map(a => ({ usage_status: a.usage_status, call_status: a.status, attempt_no: a.attempt_no, input_tokens: exactInt(a.input_tokens), output_tokens: exactInt(a.output_tokens), cached_input_tokens: exactInt(a.cached_input_tokens), reasoning_tokens: exactInt(a.reasoning_tokens) }));
     const state = job.run_state ?? job.state;
     const created = new Date(job.created_at), updated = new Date(job.updated_at);
     return {
@@ -1090,27 +1092,27 @@ export async function adminMetrics(pool: Pool, actorId: string, filter: AdminFil
           OR ($10::text IS NULL AND $11::text IS NULL AND j.error_code=$9)
           OR EXISTS (SELECT 1 FROM bb_observability_errors e WHERE e.job_id=j.id
             AND ($9::text IS NULL OR e.code=$9) AND ($10::text IS NULL OR e.category=$10) AND ($11::text IS NULL OR e.fingerprint=$11))))`;
-    const jobs = (await client.query(`${scope} SELECT count(*)::int total, count(*) FILTER (WHERE state='succeeded')::int succeeded, count(*) FILTER (WHERE state='failed')::int failed,
-        count(*) FILTER (WHERE state='cancelled')::int cancelled, count(*) FILTER (WHERE state='rejected')::int rejected,
+    const jobs = (await client.query(`${scope} SELECT count(*)::text total, count(*) FILTER (WHERE state='succeeded')::text succeeded, count(*) FILTER (WHERE state='failed')::text failed,
+        count(*) FILTER (WHERE state='cancelled')::text cancelled, count(*) FILTER (WHERE state='rejected')::text rejected,
         avg(EXTRACT(EPOCH FROM updated_at-created_at)*1000) FILTER (WHERE state IN ('succeeded','test_completed','failed','cancelled')) avg_ms,
         percentile_cont(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM updated_at-created_at)*1000) FILTER (WHERE state IN ('succeeded','test_completed','failed','cancelled')) p95_ms FROM scoped`, args)).rows[0];
     const attempts = (await client.query(`${scope} SELECT a.id,a.model_id,a.status call_status,a.attempt_no,u.usage_status,u.input_tokens,u.output_tokens,u.cached_input_tokens,u.reasoning_tokens,rt.duration_ms
         FROM scoped j JOIN bb_model_call_attempts a ON a.job_id=j.id JOIN bb_call_usage_effective u ON u.attempt_id=a.id LEFT JOIN bb_model_call_attempt_runtime rt ON rt.attempt_id=a.id
-        WHERE ($7::text IS NULL OR a.model_id=$7)`, args)).rows.map(a => ({ ...a, input_tokens: int(a.input_tokens), output_tokens: int(a.output_tokens), cached_input_tokens: int(a.cached_input_tokens), reasoning_tokens: int(a.reasoning_tokens) }));
-    const errors = (await client.query(`${scope} SELECT e.code error_code,e.category error_category,e.fingerprint,count(*)::int count FROM scoped j JOIN bb_observability_errors e ON e.job_id=j.id
+        WHERE ($7::text IS NULL OR a.model_id=$7)`, args)).rows.map(a => ({ ...a, input_tokens: exactInt(a.input_tokens), output_tokens: exactInt(a.output_tokens), cached_input_tokens: exactInt(a.cached_input_tokens), reasoning_tokens: exactInt(a.reasoning_tokens) }));
+    const errors = (await client.query(`${scope} SELECT e.code error_code,e.category error_category,e.fingerprint,count(*)::text count FROM scoped j JOIN bb_observability_errors e ON e.job_id=j.id
         WHERE ($9::text IS NULL OR e.code=$9) AND ($10::text IS NULL OR e.category=$10) AND ($11::text IS NULL OR e.fingerprint=$11)
-        GROUP BY e.code,e.category,e.fingerprint ORDER BY count DESC,e.code,e.category,e.fingerprint`, args)).rows.map(e=>({...e,fingerprint:e.fingerprint?.trim()??null}));
-    const operations = (await client.query(`SELECT count(*) FILTER (WHERE status='submitted')::int submitted, count(*) FILTER (WHERE status='rejected')::int rejected FROM bb_operations o
+        GROUP BY e.code,e.category,e.fingerprint ORDER BY count(*) DESC,e.code,e.category,e.fingerprint`, args)).rows.map(e=>({...e,fingerprint:e.fingerprint?.trim()??null}));
+    const operations = (await client.query(`SELECT count(*) FILTER (WHERE status='submitted')::text submitted, count(*) FILTER (WHERE status='rejected')::text rejected FROM bb_operations o
         WHERE ($1::text IS NULL OR o.owner_user_id=$1) AND ($2::text IS NULL OR o.project_id=$2) AND ($3::text IS NULL OR o.trace_id=$3)
           AND ($4::timestamptz IS NULL OR o.created_at>=$4) AND ($5::timestamptz IS NULL OR o.created_at<=$5) AND ($6::text IS NULL OR o.error_code=$6)`, [filter.user_id ?? null, filter.project_id ?? null, filter.trace_id ?? null, filter.from ?? null, filter.to ?? null, filter.error_code ?? null])).rows[0];
-    const finished = jobs.succeeded + jobs.failed + jobs.cancelled;
+    const finished = int64(jobs.succeeded) + int64(jobs.failed) + int64(jobs.cancelled);
     const durations = attempts.map(a => a.duration_ms).filter(v => v !== null).map(Number);
     const models = new Map<string | null, typeof attempts>();
     for (const a of attempts) models.set(a.model_id, [...(models.get(a.model_id) ?? []), a]);
     return {
       window: { from: iso(filter.from), to: iso(filter.to) },
       operations: { submitted: operations.submitted, rejected: operations.rejected },
-      jobs: { total: jobs.total, succeeded: jobs.succeeded, failed: jobs.failed, cancelled: jobs.cancelled, rejected: jobs.rejected, other: jobs.total - finished - jobs.rejected, success_rate: finished ? jobs.succeeded / finished : null, failure_rate: finished ? jobs.failed / finished : null, duration_ms_avg: jobs.avg_ms === null ? null : Number(jobs.avg_ms), duration_ms_p95: jobs.p95_ms === null ? null : Number(jobs.p95_ms) },
+      jobs: { total: jobs.total, succeeded: jobs.succeeded, failed: jobs.failed, cancelled: jobs.cancelled, rejected: jobs.rejected, other: serializeInt64(int64(jobs.total) - finished - int64(jobs.rejected)), success_rate: finished ? Number(int64(jobs.succeeded)*1_000_000_000n/finished)/1_000_000_000 : null, failure_rate: finished ? Number(int64(jobs.failed)*1_000_000_000n/finished)/1_000_000_000 : null, duration_ms_avg: jobs.avg_ms === null ? null : Number(jobs.avg_ms), duration_ms_p95: jobs.p95_ms === null ? null : Number(jobs.p95_ms) },
       attempts: { total: attempts.length, completed: attempts.filter(a => a.call_status === 'completed').length, failed: attempts.filter(a => a.call_status === 'failed').length, pending_reconcile: attempts.filter(a => a.call_status === 'pending_reconcile').length, confirmed_not_sent: attempts.filter(a => a.call_status === 'confirmed_not_sent').length, conflict: attempts.filter(a => a.usage_status === 'conflict').length, duration_ms_avg: durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null },
       consumption: { all_attempts: consumption(attempts), completed_attempts: consumption(attempts.filter(a => a.call_status === 'completed')), retry_attempts: consumption(attempts.filter(a => a.attempt_no > 1)) },
       by_model: [...models].map(([model_id, rows]) => { const c = consumption(rows); return { model_id, attempts: rows.length, completed: rows.filter(a => a.call_status === 'completed').length, failed: rows.filter(a => a.call_status === 'failed').length, input_tokens: c.input_tokens, output_tokens: c.output_tokens, cached_input_tokens: c.cached_input_tokens, reasoning_tokens: c.reasoning_tokens }; }),

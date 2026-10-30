@@ -1,9 +1,12 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureBody} from './billing-fixture-wire';
+import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
 import {emptyUpdateDetails,reportingWindow,schemas,sourceProspectusInputGaps,updateDetailsErrors,type SourceProspectus} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import {FormatRegistry} from '@sinclair/typebox';
 import {createHash} from 'node:crypto';
-import type {Dto} from '../src/api';
+import type {Dto} from './billing-fixture-wire';
 import {taskPage} from './collection-fixtures';
 
 // Derived from authoring-onboarding.spec.ts's public HTTP fixture (lines 1–197,
@@ -36,8 +39,8 @@ const installed=new WeakMap<Page,State>();
 export const writes=(s:State)=>s.calls.filter(call=>call.method!=='GET');
 export function expectNoExecution(s:State){expect(s.locked).toEqual([]);expect(s.preflights).toEqual([]);expect(s.quotes).toEqual([]);expect(s.executes).toEqual([]);}
 function checked<K extends keyof typeof schemas>(name:K,value:unknown):asserts value is Dto<K>{expect(Value.Check(schemas[name],value),`${name}: ${JSON.stringify([...Value.Errors(schemas[name],value)])}`).toBe(true);}
-async function reply<K extends keyof typeof schemas>(route:Route,name:K,body:Dto<K>,status=200){checked(name,body);await route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});}
-const errorReply=(route:Route,status:number,code:string)=>route.fulfill({status,json:{code}});
+async function reply<K extends keyof typeof schemas>(route:Route,name:K,body:Dto<K>,status=200){checked(name,body);await route.fulfill({status,contentType:'application/json',body:fixtureJson(route,body)});}
+const errorReply=(route:Route,status:number,code:string)=>route.fulfill({status,json:fixtureBody(route,{code})});
 const refs=(s:State)=>s.materials.map(m=>({material_id:m.material_id,material_version:m.material_version}));
 function input(revision:number,materials:Dto<'InputRevisionResponse'>['material_versions'],hash=sha256('synthetic-guide-input-'+revision)):Dto<'InputRevisionResponse'>{return {project_id:projectId,input_revision:revision,input_hash:hash,material_versions:structuredClone(materials),
   target_confirmation:{status:'unconfirmed',market:null,offering:null,as_of:null,document_purpose:null,target_reporting_periods:[],confirmed_at:null,confirmed_by:null},rule_pack_version:null,template_version:null,reference_release:null,created_at:now};}
@@ -52,13 +55,14 @@ export async function install(page:Page,s=fixture()){
   expect(updateDetailsErrors(s.project.update_details!),'Initial synthetic project must satisfy cross-field draft validation.').toEqual([]);
   installed.set(page,s);page.on('pageerror',error=>s.errors.push(error.message));
   await page.context().route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const request=route.request(),url=new URL(request.url()),path=url.pathname.replace('/api/v1',''),method=request.method();
-    const body:unknown=request.headers()['content-type']?.includes('application/json')&&request.postData()?request.postDataJSON():undefined;
+    const body:unknown=request.headers()['content-type']?.includes('application/json')&&request.postData()?fixtureRequest(request):undefined;
     s.calls.push({method,path,search:url.search,...(body===undefined?{}:{body:structuredClone(body)})});
     if(method==='GET'&&path==='/me')return reply(route,'MeResponse',{user_id:'synthetic-source-guide-owner',session_status:'active'});
     if(method==='GET'&&path==='/account')return reply(route,'AccountResponse',{user_id:'synthetic-source-guide-owner',username:'synthetic',phone_masked:null,status:'active',created_at:now,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});
     if(method==='GET'&&path==='/credits/balance')return reply(route,'CreditBalanceResponse',{enabled:true,available:100000,frozen:0});
-    if(method==='GET'&&path==='/m4/topics')return route.fulfill({json:{topics:[]}});
+    if(method==='GET'&&path==='/m4/topics')return route.fulfill({json:fixtureBody(route,{topics:[]})});
     if(method==='GET'&&path==='/projects')return reply(route,'ProjectListResponse',{items:[{project_id:projectId,name:s.project.name,draft_revision:s.project.draft_revision,updated_at:now,kind:s.project.kind,issuer_name:s.project.issuer_name,market:s.project.market,offering:s.project.offering,latest_run:null,latest_artifact:null}],page:{has_more:false,next_cursor:null}});
     if(path===`/projects/${projectId}`&&method==='PATCH'){
       checked('ProjectPatchRequest',body);const ifMatch=request.headers()['if-match'];s.patches.push({body:structuredClone(body),ifMatch});

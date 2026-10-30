@@ -1,10 +1,11 @@
+import {billingRecoverySchemas,type BillingRecoveryDto} from './billing-recovery-wire.js';
 import {Type} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
 import {schemas,ProjectFileCheckSchema,ProjectFileSourceSchema,ProjectFileVersionSchema,ProjectFileAssetSchema,
-  ProjectDocumentTypeSchema,type ProjectFileCheck,type ProjectFileSource,type ProjectFileVersion,type ProjectFileAsset} from '@bondbuddy/contracts';
+  ProjectDocumentTypeSchema,type ProjectFileCheck,type ProjectFileSource,type ProjectFileVersion,type ProjectFileAsset} from './billing-types.js';
 import type {Dto} from './api.js';
 
-export type ConfirmationBinding={owner?:string;project:string;checkId:string;body:Dto<'ProjectFileUpdateRequest'>;filenames:string[]};
+export type ConfirmationBinding={owner?:string;project:string;checkId:string;body:BillingRecoveryDto<'ProjectFileUpdateRequest'>;filenames:string[]};
 export type ConfirmationSnapshot={version:1;binding:ConfirmationBinding;projectName:string;createdAt:string;source:ProjectFileSource;
   files:Array<{fileId:string;versionId:string;filename:string;sequence:number;documentType:ProjectFileVersion['document_type']|null;
     asset:ProjectFileAsset|null;automatic:number;manual:number;manualUnlisted:boolean}>};
@@ -14,12 +15,12 @@ const id=Type.String({minLength:1,maxLength:128});
 const filename=Type.String({maxLength:200});
 const count=Type.Integer({minimum:0,maximum:2000});
 const sequence=Type.Integer({minimum:1,maximum:Number.MAX_SAFE_INTEGER});
-const bindingSchema=obj({owner:Type.Optional(id),project:id,checkId:id,body:schemas.ProjectFileUpdateRequest,
+const bindingSchema=obj({owner:Type.Optional(id),project:id,checkId:id,body:billingRecoverySchemas.ProjectFileUpdateRequest,
   filenames:Type.Array(filename,{minItems:1,maxItems:200})});
 const snapshotSchema=obj({version:Type.Literal(1),binding:bindingSchema,projectName:Type.String({maxLength:200}),
   createdAt:Type.String({minLength:24,maxLength:24}),source:ProjectFileSourceSchema,
   files:Type.Array(obj({fileId:id,versionId:id,filename,sequence,
-    documentType:Type.Union([ProjectDocumentTypeSchema,Type.Null()]),asset:Type.Union([ProjectFileAssetSchema,Type.Null()]),
+    documentType:Type.Union([ProjectDocumentTypeSchema,Type.Literal('workpaper'),Type.Null()]),asset:Type.Union([ProjectFileAssetSchema,Type.Null()]),
     automatic:count,manual:count,manualUnlisted:Type.Boolean()}),{minItems:1,maxItems:200})});
 const validId=(value:string)=>!!value.trim()&&!/[\u0000-\u001f\u007f-\u009f]/.test(value);
 function validBinding(value:unknown):value is ConfirmationBinding{
@@ -33,7 +34,7 @@ function sameBinding(a:ConfirmationBinding,b:ConfirmationBinding){
   return a.owner===b.owner&&a.project===b.project&&a.checkId===b.checkId&&
     a.body.request_id===b.body.request_id&&a.body.expected_check_sha256===b.body.expected_check_sha256&&
     a.body.price_version===b.body.price_version&&a.body.expected_points===b.body.expected_points&&
-    a.body.files.length===b.body.files.length&&a.body.files.every((file,index)=>file.file_version_id===b.body.files[index].file_version_id&&a.filenames[index]===b.filenames[index]);
+    a.body.files.length===b.body.files.length&&a.body.files.every((file,index)=>file.file_version_id===b.body.files[index].file_version_id&&file.scope_quote_id===b.body.files[index].scope_quote_id&&a.filenames[index]===b.filenames[index]);
 }
 function validAsset(asset:ProjectFileAsset){
   const pin=asset.pin,version=asset.kind==='material'?asset.pin.material_version:asset.pin.artifact_version;
@@ -50,7 +51,7 @@ function cloneBinding(binding:ConfirmationBinding):ConfirmationBinding{
   return {...(binding.owner===undefined?{}:{owner:binding.owner}),project:binding.project,checkId:binding.checkId,
     body:{request_id:binding.body.request_id,expected_check_sha256:binding.body.expected_check_sha256,
       price_version:binding.body.price_version,expected_points:binding.body.expected_points,
-      files:binding.body.files.map(file=>({file_version_id:file.file_version_id}))},filenames:[...binding.filenames]};
+      files:binding.body.files.map(file=>({file_version_id:file.file_version_id,...(file.scope_quote_id?{scope_quote_id:file.scope_quote_id}:{})}))},filenames:[...binding.filenames]};
 }
 function freeze<T>(value:T):T{
   if(value&&typeof value==='object'){Object.values(value).forEach(freeze);Object.freeze(value);}

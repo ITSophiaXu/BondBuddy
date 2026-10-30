@@ -79,7 +79,7 @@ export const collectionFilesSql = `
  EXISTS(SELECT 1 FROM bb_prospectus_selection s JOIN bb_prospectus_versions v ON v.id=s.version_id AND v.owner_user_id=s.owner_user_id
    WHERE s.owner_user_id=m.owner_user_id AND v.material_id=m.id AND v.material_version=m.version) AS current,
  NULL::jsonb AS naming
- FROM bb_material_versions m WHERE m.owner_user_id=$1 AND m.deleted_at IS NULL
+ FROM bb_material_versions m WHERE m.owner_user_id=$1 AND m.deleted_at IS NULL AND NOT m.internal_template
  AND NOT EXISTS(SELECT 1 FROM bb_project_file_versions fv JOIN bb_project_files ff ON ff.owner_user_id=fv.owner_user_id AND ff.id=fv.file_id WHERE fv.owner_user_id=m.owner_user_id AND ff.project_id IN(SELECT id FROM members) AND fv.asset#>>'{pin,material_id}'=m.id AND (fv.asset#>>'{pin,material_version}')::int=m.version)
  AND (m.project_id IN(SELECT id FROM members) OR EXISTS(
    SELECT 1 FROM bb_m4_topic_materials tm JOIN bb_m4_topics t ON t.owner_user_id=tm.owner_user_id AND t.id=tm.topic_id

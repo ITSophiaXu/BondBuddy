@@ -62,7 +62,7 @@ test('global assistant persistence, owner isolation, no implicit execution and c
     await ok('PUT',`/api/v1/m4/topics/${t.topic_id}/drafts/private_summary`,{expected_version:0,input:draft});
     const quote=await ok('POST',`/api/v1/m4/topics/${t.topic_id}/quote`,{kind:'document',document_type:'private_summary',expected_draft_version:1});
     const cardRequest={card_id:randomUUID(),operation:'generation',project_id:t.project_id,execution_request_id:randomUUID(),quote_id:quote.quote.quote_id,document_type:'private_summary',expected_draft_version:1};
-    const card=await ok('POST',`/api/v1/assistant/topics/${t.topic_id}/cards`,cardRequest);assert.equal(card.card.quote.points,4500);assert.equal(card.card.run,null);
+    const card=await ok('POST',`/api/v1/assistant/topics/${t.topic_id}/cards`,cardRequest);assert.equal(card.card.quote.points,'4500');assert.equal(card.card.run,null);
     assert.equal((await ok('POST',`/api/v1/assistant/topics/${t.topic_id}/cards`,cardRequest)).card.card_id,card.card.card_id);
     assert.equal((await send('POST',`/api/v1/assistant/topics/${t.topic_id}/cards`,{...cardRequest,input_hash:'c'.repeat(64)})).statusCode,409);
     const execution={execution_request_id:cardRequest.execution_request_id,document_type:'private_summary',expected_draft_version:1,quote_id:quote.quote.quote_id,entrypoint:'assistant'};

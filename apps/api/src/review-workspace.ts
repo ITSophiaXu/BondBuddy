@@ -1,5 +1,6 @@
+import {shortageInt64} from '@bondbuddy/contracts';
 import { artifactNameColumns, artifactNameJoins, artifactDownloadName } from './artifact-filename.js';
-import { activePrice, creditBalance, quoteDto, reserveCredits } from './billing.js';
+import { activePrice, creditBalanceExact, quoteDto, reserveCredits } from './billing.js';
 import { billingSchemas, type BillingTask } from '@bondbuddy/contracts';
 import { ReviewUpdateRequestSchema, type ReviewUpdateRequest, type ReviewResultPin } from '@bondbuddy/contracts';
 import { loadAuthoringKnowledge } from './unified-authoring.js';
@@ -22,6 +23,8 @@ import { lockReviewFileDelivery } from './review-file-knowledge.js';
 import { recordOperation } from './observability.js';
 import { runEventPayloadDto } from './run-event-dto.js';
 import { reviewNonEvidenceMaterialIds, withoutWorkflowMaterials } from './review-materials.js';
+import {requestScope} from './scope-quotations.js';
+import {outcomeMetadata} from './outcome-pricing.js';
 
 type Db = Pool | PoolClient;
 const finalStates = ['succeeded', 'test_completed', 'failed', 'cancelled', 'rejected'];
@@ -41,7 +44,7 @@ async function pins(db: Db, user: string, id: string, selected: ReviewMaterialPi
   if (selected.some(pin => excluded.has(pin.material_id))) invalid('问题清单、底稿目录、生成模板等任务材料不能作为复核核验材料，请刷新材料列表后重试。');
   const rows = [];
   for (const pin of selected) {
-    const m = (await db.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL', [user, id, pin.material_id, pin.material_version])).rows[0];
+    const m = (await db.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL AND NOT internal_template', [user, id, pin.material_id, pin.material_version])).rows[0];
     if (!m || String(m.sha256).trim() !== pin.sha256) stale();
     rows.push(m);
   }
@@ -162,12 +165,12 @@ async function timeline(db: Db, user: string, id: string, messages: ReviewMessag
     .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.entry_id.localeCompare(b.entry_id));
 }
 
-export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner: (request: FastifyRequest) => Promise<string>, paidReview = false) {
+export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner: (request: FastifyRequest) => Promise<string>, paidReview = false, commercial=false) {
   const projectId = (request: FastifyRequest) => (request.params as { project_id: string }).project_id;
   app.get('/api/v1/projects/:project_id/review-workspace', async request => {
     const user = await owner(request), id = projectId(request), p = await requireReview(db(), user, id);
     const excluded = await reviewNonEvidenceMaterialIds(db(), user, id);
-    const materials = (await db().query(`SELECT DISTINCT ON(id) * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL ORDER BY id,version DESC`, [user, id])).rows.filter(m => !excluded.has(m.id));
+    const materials = (await db().query(`SELECT DISTINCT ON(id) * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL AND NOT internal_template ORDER BY id,version DESC`, [user, id])).rows.filter(m => !excluded.has(m.id));
     const reports = (await db().query('SELECT id AS report_id,version,run_id,created_at FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 ORDER BY version DESC', [user, id])).rows.map(r => ({ ...r, created_at: date(r.created_at) }));
     const requestedReport = (request.query as { report_id?: string }).report_id;
     const requested = requestedReport ? await readReviewReport(db(), user, id, requestedReport) : null;
@@ -180,7 +183,9 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
     const chosen = requestedReport ?? (artifactRun?.operation === 'revision' ? artifactRun.source_report_id
       : reports.find(r => r.run_id === artifactRun?.run_id)?.report_id);
     const selected = requested ?? (chosen ? await readReviewReport(db(), user, id, chosen) : null);
-    const active = (await db().query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND task_kind IN (\'review\',\'update\') AND NOT(state=ANY($3::text[])) ORDER BY created_at DESC LIMIT 1', [user, id, finalStates])).rows[0];
+    // A shared project can be updating while review is still only a draft.
+    // The execution mutex remains cross-task; progress here belongs to review only.
+    const active = (await db().query('SELECT * FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND task_kind=\'review\' AND NOT(state=ANY($3::text[])) ORDER BY created_at DESC LIMIT 1', [user, id, finalStates])).rows[0];
     const messages = (await db().query('SELECT * FROM bb_review_messages WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at,id', [user, id])).rows.map(messageDto);
     const accepted = (await db().query('SELECT acceptance FROM bb_review_proposal_adoptions WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at,id', [user, id])).rows.map(row => acceptedProposalDto(row.acceptance)).filter(value => value !== null);
     return { project: projectDto(p), materials: materials.map(materialDto), draft: await draft(db(), user, id), message_drafts: await messageDrafts(db(), user, id), active_run: active ? runDto(active) : null,
@@ -342,18 +347,23 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
     app.post(`/api/v1/projects/:project_id/${kind}/quote`, {schema:{body:kind==='review-executions'?ReviewExecutionRequestSchema:ReviewUpdateRequestSchema,response:{200:billingSchemas.FixedQuoteResponse}}}, async request => {
       const user=await owner(request),id=projectId(request),b=request.body as ReviewExecutionRequest | ReviewUpdateRequest;
       return transaction(db(),async client=>{
-        const p=await requireReview(client,user,id,true),balance=await creditBalance(client,user);
+        const p=await requireReview(client,user,id,true),balance=await creditBalanceExact(client,user);
         if(!paidReview)return {enabled:false,quote:null,balance,shortage:0,reason:null};
         if('operation' in b){const d=await draft(client,user,id);if(d.version!==b.expected_input_version)stale();if(!d.source_material_ref)invalid('Select the reviewed source');await pins(client,user,id,d.material_versions);}
         else {const source=(await client.query("SELECT 1 FROM bb_runs r JOIN bb_review_executions e ON e.run_id=r.id WHERE r.id=$1 AND r.owner_user_id=$2 AND r.project_id=$3 AND r.state='succeeded' AND e.operation IN ('full_review','differential_review')",[b.source_run_id,user,id])).rowCount;if(!source)throw missing();}
         const task:BillingTask='operation' in b?(b.operation==='revision'?'review_revision':b.operation):'review_revision';
-        const price=await activePrice(client),points=price.prices[task];
-        if(!Number.isSafeInteger(points)||points<=0)throw new Problem(503,'BILLING_NOT_READY','该任务的积分价格尚未配置。');
         const hash=await intentHash(client,user,id,p,b);
-        const row=(await client.query(`INSERT INTO bb_credit_quotes(id,owner_user_id,project_id,input_revision,input_hash,price_version,task_type,points,reason,intent_hash)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$5) ON CONFLICT DO NOTHING RETURNING *`,[uid(),user,id,p.draft_revision,hash,price.id,task,points,'按本次已确认的任务范围收取固定积分；系统重试不重复收费。'])).rows[0]
-          ??(await client.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND project_id=$2 AND intent_hash=$3 AND price_version=$4',[user,id,hash,price.id])).rows[0];
-        return {enabled:true,quote:quoteDto(row),balance,shortage:Math.max(0,points-balance.available),reason:null};
+        const {quote_id:_quote,...scopeRequest}=b;
+        const price=await activePrice(client,commercial),scope=commercial?await requestScope(client,user,id,'review',hash,{task,request:scopeRequest,...('operation' in b?{review_draft:await draft(client,user,id)}:{})}):null;
+        if(scope&&scope.quote_status!=='ready')return {enabled:true,quote:{quote_id:scope.scope_quote_id,project_id:id,input_revision:p.draft_revision,input_hash:hash,task_type:task,points:0,
+          reason:'本次复核范围待核实；核定覆盖范围及所需成果后，才能确认费用并执行。',created_at:new Date().toISOString(),...outcomeMetadata(0),...scope},balance,shortage:0,reason:'本次范围待核实，尚未形成可执行报价。'};
+        const points=scope?.amount_fen??price.prices[task];
+        if(!Number.isSafeInteger(points)||points<0||points===0&&!scope)throw new Problem(503,'BILLING_NOT_READY','该任务的价格尚未核定。');
+        const priceVersion=scope?.price_version??price.id;
+        const row=(await client.query(`INSERT INTO bb_credit_quotes(id,owner_user_id,project_id,input_revision,input_hash,price_version,task_type,points,reason,intent_hash,pricing_mode,scope_quote_id,scope_lines)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$5,$10,$11,$12) ON CONFLICT DO NOTHING RETURNING *`,[uid(),user,id,p.draft_revision,hash,priceVersion,task,points,commercial?'按本次已核实的复核范围明细锁定人民币总价；交付后结算，失败或取消释放。':'按本次已确认的任务范围收取固定积分；系统重试不重复收费。',commercial?'outcome_cny_v1':'legacy_credit',scope?.scope_quote_id??null,JSON.stringify(scope?.scope_lines??[])])).rows[0]
+          ??(await client.query('SELECT * FROM bb_credit_quotes WHERE owner_user_id=$1 AND project_id=$2 AND intent_hash=$3 AND price_version=$4 AND scope_quote_id IS NOT DISTINCT FROM $5::text',[user,id,hash,priceVersion,scope?.scope_quote_id??null])).rows[0];
+        return {enabled:true,quote:quoteDto({...row,...scope}),balance,shortage:shortageInt64(points,balance.available),reason:null};
       });
     });
   }
@@ -428,7 +438,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       const r = (await client.query(`INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued') RETURNING *`, [runId, user, id, inputRevision, inputHash, key, revision ? 'update' : 'review', requestHash])).rows[0];
       await client.query('INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,source_report_id,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7)', [runId, user, id, version, b.operation, b.source_report_id, { input, input_version: inputVersion, finding_ids: b.finding_ids, plan, origin, context_messages: discussion }]);
-      if(paidReview)await reserveCredits(client,user,r,b.quote_id,null,p,await intentHash(client,user,id,p,b));
+      if(paidReview)await reserveCredits(client,user,r,b.quote_id,null,p,await intentHash(client,user,id,p,b),commercial);
       await recordOperation(client, { owner: user, projectId: id, runId, requestId: request.id, traceId: runId, kind: 'execute', status: 'submitted', inputRevision, inputHash });
       await enqueue(client, r, RUN_PIPELINE_SUBTYPE);
       return runDto({ ...r, stage: 'queued', event_cursor: 1 });
@@ -461,11 +471,15 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       const version=Number((await client.query('SELECT COALESCE(max(version),0)+1 next FROM bb_review_executions WHERE owner_user_id=$1 AND project_id=$2',[user,id])).rows[0].next);
       const revision=Number((await client.query('SELECT COALESCE(max(revision),0)+1 next FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2',[user,id])).rows[0].next);
       const sourceProject={issuer_name:source.manifest.issuer_name,market:source.manifest.market,offering:source.manifest.offering};
+      const formatSource=materialRows.find(m=>m.id===pin.source_material.material_id&&m.version===pin.source_material.material_version)!;
+      const formatPolicy:import('@bondbuddy/contracts').SourceFormatPolicy={version:'source-format-v1',
+        mode:formatSource.media_type==='application/vnd.openxmlformats-officedocument.wordprocessingml.document'?'preserve_docx':'reconstruct_pdf',
+        template:{kind:'material',...pin.source_material},selection:'review_source'};
       const input={...original,requirements:pin.requirements?[pin.requirements]:[]};
       const manifest={project_kind:'review',name:p.name,draft_revision:p.draft_revision,...sourceProject,
         update_details:{...emptyUpdateDetails(),...source.manifest.update_details,authoring_mode:'unified_v1',supplementary_notes:pin.requirements||null},
         materials:materialRows.map(m=>({material_id:m.id,material_version:m.version,sha256:m.sha256.trim(),role:m.role})),
-        authoring:{version:'unified_v1',source_prospectuses:[],requirements:[],knowledge:await loadAuthoringKnowledge(sourceProject),knowledge_status:'authoring_reference_not_compliance_approval',review_result:pin}};
+        authoring:{version:'unified_v1',source_prospectuses:[],requirements:[],knowledge:await loadAuthoringKnowledge(sourceProject),knowledge_status:'authoring_reference_not_compliance_approval',review_result:pin,format_policy:formatPolicy}};
       const inputHash=inputManifestHash(manifest),runId=uid();
       await client.query(`INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,$4,$5,$6,$7,'[]')`,[id,revision,user,p.draft_revision,inputHash,manifest,JSON.stringify(manifest.materials)]);
       await client.query('UPDATE bb_projects SET latest_input_revision=$3,updated_at=now() WHERE owner_user_id=$1 AND id=$2',[user,id,revision]);
@@ -473,7 +487,7 @@ export function registerReviewRoutes(app: FastifyInstance, db: () => Pool, owner
       const report=(await client.query('SELECT id FROM bb_review_reports WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3',[user,id,b.source_run_id])).rows[0];
       const origin:ReviewExecutionOrigin={version:'review-execution-origin-v1',entrypoint:'quick_action',accepted_proposal:null,context_report_ref:null};
       await client.query(`INSERT INTO bb_review_executions(run_id,owner_user_id,project_id,version,operation,source_report_id,snapshot) VALUES($1,$2,$3,$4,'revision',$5,$6)`,[runId,user,id,version,report?.id??null,{input,input_version:source.snapshot.input_version,finding_ids:[],plan:null,origin,context_messages:[],source_run_id:b.source_run_id}]);
-      if(paidReview)await reserveCredits(client,user,run,b.quote_id,null,p,await intentHash(client,user,id,p,b));
+      if(paidReview)await reserveCredits(client,user,run,b.quote_id,null,p,await intentHash(client,user,id,p,b),commercial);
       await recordOperation(client,{owner:user,projectId:id,runId,requestId:request.id,traceId:runId,kind:'execute',status:'submitted',inputRevision:revision,inputHash});
       await enqueue(client,run,RUN_PIPELINE_SUBTYPE);return runDto({...run,stage:'queued',event_cursor:1});
     });

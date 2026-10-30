@@ -44,7 +44,7 @@ for(const width of [1440,390])test(`project list opens and expands the exact bat
   await expect(page.locator(`[data-run-id="${s.task.run_id}"]`)).toContainText('120 / 248 份完成');
   await mkdir('test-evidence/workpaper-download-batch-20261029',{recursive:true});
   await page.screenshot({path:`test-evidence/workpaper-download-batch-20261029/task-${width}.png`,fullPage:true});
-  await page.locator(`[data-run-id="${s.task.run_id}"]`).getByRole('link',{name:'查看进度'}).click();
+  await page.locator(`[data-run-id="${s.task.run_id}"]`).getByRole('link',{name:'查看结果'}).click();
   await expect(page).toHaveURL(new RegExp(`project=${ids.api}.*step=workpapers&view=results&batch=requested-batch`));
   await assertTarget(page);await expect(page.locator('[data-wp-batch-id="newer-batch"] details')).not.toHaveAttribute('open','');
   await mkdir('test-evidence/workpaper-progress-routing',{recursive:true});

@@ -175,7 +175,7 @@ test('a late original-owner complete cannot expose the filename or result in a n
   await page.getByLabel('用户名', { exact: true }).fill('recovery_owner_b');
   await page.getByLabel('密码', { exact: true }).fill('Synthetic-recovery-owner-b');
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '全部项目', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
   await page.goto(`/#/projects/${ids.otherProject}`); await expect(picker(page)).toBeEnabled();
   expect(await page.evaluate(() => performance.timeOrigin)).toBe(documentOrigin);
   state.completeGate = undefined; release(); await expect.poll(() => state.activeCompletes).toBe(0);

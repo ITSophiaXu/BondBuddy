@@ -38,10 +38,10 @@ test('failed later page never becomes partial totals and refresh errors preserve
 });
 test('inline tasks, scoped menu, project consistency link and responsive layout',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await setup(page);
- await expect(page.getByRole('navigation',{name:'主导航'}).getByRole('link').first()).toHaveText('全部项目');await expect(page.getByRole('link',{name:'工作台',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('navigation',{name:'主导航'}).getByRole('link').first()).toHaveText('任务进度与结果');await expect(page.getByRole('link',{name:'工作台',exact:true})).toHaveCount(0);
  await expect(page.locator('[data-tasks=update]')).toHaveAttribute('aria-expanded','false');await page.locator('[data-tasks=update]').click();await expect(page.locator('[data-run-id=run-update]')).toContainText('正在更新募集书');
- const consistency=page.locator('.collection-project').filter({has:page.locator('[data-work=update]')}).locator('.collection-consistency');await expect(consistency).toHaveAttribute('href','#consistency?project=update');await expect(consistency).toHaveText('检查文件一致性');
- await page.locator('[data-work=update]').click();await expect(page.getByRole('menuitem',{name:'复核募集书'})).toHaveAttribute('href','#review?project=update&from=projects');await page.getByRole('menuitem',{name:'更新募集书'}).press('Escape');
+ await page.locator('[data-work=update]').click(); const consistency=page.getByRole('menuitem',{name:'检查文件一致性'});await expect(consistency).toHaveAttribute('href','#consistency?project=update');await expect(consistency).toHaveText('检查文件一致性');
+ await expect(page.getByRole('menuitem',{name:'复核募集书'})).toHaveAttribute('href','#review?project=update&from=projects');await page.getByRole('menuitem',{name:'更新募集书'}).press('Escape');
  await page.getByRole('searchbox').fill('没有这个发行人');await expect(page.getByText('没有找到匹配的项目')).toBeVisible();await page.getByRole('button',{name:'清除筛选'}).click();await expect(page.locator('.collection-project')).toHaveCount(6);
  for(const width of [1440,1024,390,320]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}
  expect(errors).toEqual([]);

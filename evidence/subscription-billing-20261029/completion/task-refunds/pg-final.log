@@ -1,0 +1,15 @@
+▶ task quality returns preserve frozen item/lot evidence, original cash rights and independent approval
+  ✔ acceptance commits independent units and cross-lot slices before any refund read; strings and no free approval (967.1685ms)
+  ✔ concurrent whole repair and partial approval cannot exceed original charge (211.0837ms)
+  ✔ missing independent delivery, held work and rejected requests never issue a return (349.0644ms)
+  ✔ legacy whole-task refund revokes every dependent item, without inventing separate historic allocations (167.9312ms)
+  ✔ HTTP rejects client-supplied amounts, isolates owners, and permissions revoke independently (629.7306ms)
+✔ task quality returns preserve frozen item/lot evidence, original cash rights and independent approval (2500.2448ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10694.4996

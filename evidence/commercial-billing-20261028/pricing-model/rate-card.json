@@ -1,0 +1,58 @@
+{
+  "version": "2026-10-28-trial-03",
+  "currency": "CNY",
+  "amountUnit": "fen",
+  "status": "TRIAL_CANDIDATE_NOT_APPROVED_FOR_PRODUCTION",
+  "currentSupplierRatesVerified": false,
+  "fullTaskCostsVerified": false,
+  "description": "Business design source for trial amounts. It does not configure the application or authorize execution, payment or material transfer.",
+  "prices": {
+    "fact_reply": 980,
+    "fact_revision": 3900,
+    "calculation_reply": 3900,
+    "argument_revision": 9900,
+    "argument_reply": 9900,
+    "new_disclosure": 9900,
+    "period": 24900,
+    "financial_restatement": 24900,
+    "financial_group": 49900,
+    "template": 1990,
+    "check": 990,
+    "sync": 1990,
+    "review": 14900
+  },
+  "standardFinancialGroup": {
+    "maxAnnualMainPeriods": 3,
+    "maxLatestInterimPeriods": 1,
+    "includesNecessaryComparatives": true,
+    "includesConsolidatedAndParentDisclosure": true,
+    "includesNecessaryBaselineRepairAndRestatement": true,
+    "capIdentity": [
+      "payer_scope",
+      "issuer",
+      "accounting_basis",
+      "business_target_revision",
+      "financial_target_group"
+    ],
+    "technicalRetriesAndOriginalScopeEvidenceDoNotResetCap": true,
+    "includesNecessaryPeriodRepairAndRestatement": true
+  },
+  "principles": [
+    "Scope classification is a required independent input. This file is not an implemented automatic scope recognizer.",
+    "Unknown or unsupported scope receives no executable low-price quote.",
+    "Only independent business objectives and outputs count; no token, call, paragraph, question-number or source-file billing.",
+    "Original-scope correction/evidence completion is included even if the original price was under-estimated.",
+    "Coverage credit is a previously purchased valid entitlement, not an unrestricted monetary coupon.",
+    "A change of technical document hash alone is not a new business target revision.",
+    "Evidence reuse does not make every future independent output free. The incremental output must be explicit.",
+    "Same-goal reply and necessary prospectus application belong to the agreed combined business outcome, not two analysis charges.",
+    "New third-party reply outputs using existing financial facts are direct replies only, unless already included or merely clarification of the old delivery.",
+    "Financial cap is for the same locked business target, not a lifetime issuer ceiling.",
+    "Basic linked-file check and financial-group review have different coverage and are not an automatic upgrade ladder.",
+    "Company net-profit qualification requires actual weighted complete costs and fixed budget. These prices alone do not ensure 60%.",
+    "A 249 period package includes required baseline repair, alignment and restatement; these are not add-on SKUs.",
+    "Financial target revisions cannot reset for unrelated non-financial facts, replies or technical/project names.",
+    "Classify independent residual output after analysis reuse; no invented analysis discount."
+  ],
+  "ruleRevision": "Necessary financial repair/restatement included; financial target identity and residual work clarified. Amounts unchanged."
+}

@@ -1,0 +1,14 @@
+{
+  "revision": "279f13a0f086ca1048b38058fcc94703763f8b5a",
+  "tag": "bondbuddy-billing-api-local:279f13a0f086-20261029",
+  "target": "api",
+  "builder": "existing legacy builder",
+  "startedAt": "2026-10-29T14:14:06.814Z",
+  "timeoutSeconds": 1800,
+  "includesCodexIntermediateStage": true,
+  "buildsWorkerBrowserOcrStages": false,
+  "endedAt": "2026-10-29T14:21:46.253Z",
+  "exitCode": 0,
+  "timedOut": false,
+  "imageId": "sha256:1ecf1c3b12966ffa986716dfdde891d1d31b25f2bcdfa20fde4061c780d421d2"
+}

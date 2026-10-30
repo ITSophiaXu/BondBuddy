@@ -1,10 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { SourceProspectus, UpdateDetails, ProjectMessageSetPin, Market, Offering } from '@bondbuddy/contracts';
-import { isMarketOffering, sourceProspectusInputGaps, type SourceMaterialPin } from '@bondbuddy/contracts';
+import type { SourceProspectus, UpdateDetails, ProjectMessageSetPin, Market, Offering, FormatTemplatePin, SourceFormatPolicy, UnifiedAuthoringInput } from '@bondbuddy/contracts';
+import { isMarketOffering, sourceProspectusInputGaps, recommendFormatTemplate, sameFormatTemplate, type SourceMaterialPin } from '@bondbuddy/contracts';
+import type { PoolClient } from 'pg';
 import { nafmiiMtnDraftRulePack, nafmiiMtnChapterTemplate, nafmiiCpDraftRulePack, nafmiiCpChapterTemplate, nafmiiScpDraftRulePack, nafmiiScpChapterTemplate } from '@bondbuddy/domain';
-import { conflict, digest, Problem } from './data.js';
+import { conflict, digest, missing, Problem } from './data.js';
 
 const repo = resolve(fileURLToPath(import.meta.url), '../../../..');
 export { isUnifiedInput } from '@bondbuddy/contracts';
@@ -12,8 +13,38 @@ export function assertAuthoringSourceInformation(materials: readonly SourceMater
   const gaps = sourceProspectusInputGaps(materials, sources);
   if (gaps.length) throw new Problem(422, 'INPUT_REQUIRED', `请在材料页补齐 ${gaps.length} 份历史／参考募集书的信息：${[...new Set(gaps.flatMap(g => g.missing))].join('、')}，保存后再继续。`);
 }
+type FormatMaterial = SourceMaterialPin & { media_type?: string };
+const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+/** Called under the project draft lock. Foreign and unknown material references share 404. */
+export async function assertOwnedFormatTemplate(client: Pick<PoolClient, 'query'>, owner: string, projectId: string,
+  pin: FormatTemplatePin | null | undefined): Promise<void> {
+  if (!pin) return;
+  const result = await client.query(`SELECT role,media_type,sha256 FROM bb_material_versions
+    WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL FOR SHARE`,
+  [owner, projectId, pin.material_id, pin.material_version]);
+  if (result.rows.length !== 1) throw missing();
+  const row = result.rows[0];
+  if (!['historical', 'reference'].includes(row.role) || ![DOCX, 'application/pdf'].includes(row.media_type) || String(row.sha256).trim() !== pin.sha256)
+    throw conflict('INPUT_REVISION_CONFLICT', '所选格式模板与原稿版本不一致，请重新选择。');
+}
+/** A pin can only refer to selected, already owner-checked materials. */
+export function lockSourceFormatPolicy(details: UpdateDetails, materials: readonly FormatMaterial[]): SourceFormatPolicy {
+  const explicit = details.format_template;
+  const selected = explicit ? materials.find(m => sameFormatTemplate(m, explicit)) : recommendFormatTemplate(materials, details.source_prospectuses);
+  if (explicit && (!selected || !['historical', 'reference'].includes(selected.role) || ![DOCX, 'application/pdf'].includes(selected.media_type ?? '')))
+    throw conflict('INPUT_REVISION_CONFLICT', '所选格式模板未包含在本次材料中，或其版本已经变化。');
+  if (!selected) return { version: 'source-format-v1', mode: 'new_document', template: null, selection: 'automatic' };
+  return { version: 'source-format-v1', mode: selected.media_type === DOCX ? 'preserve_docx' : 'reconstruct_pdf',
+    template: { kind: 'material', material_id: selected.material_id, material_version: selected.material_version, sha256: selected.sha256 },
+    selection: explicit ? 'explicit' : 'automatic' };
+}
+/** The selected clean result remains both the editing base and the inherited format reference. */
+export function inheritPreviousOutputFormat(authoring: UnifiedAuthoringInput): void {
+  if (authoring.previous_output) authoring.format_policy = { version: 'source-format-v1', mode: 'preserve_docx',
+    template: { kind: 'artifact', ...authoring.previous_output }, selection: 'previous_output' };
+}
 export async function lockUnifiedAuthoring(project: { market: Market | null; offering: Offering | null; update_details: UpdateDetails },
-  materials: readonly { material_id: string; material_version: number; role: string; sha256: string }[], messages: ProjectMessageSetPin) {
+  materials: readonly FormatMaterial[], messages: ProjectMessageSetPin) {
   const sources: SourceProspectus[] = [];
   for (const source of project.update_details.source_prospectuses ?? []) {
     const pin = materials.find(m => m.material_id === source.material_id);
@@ -24,6 +55,7 @@ export async function lockUnifiedAuthoring(project: { market: Market | null; off
   }
   const knowledge = await loadAuthoringKnowledge(project);
   return { version: 'unified_v1' as const, source_prospectuses: sources, requirements: messages.members, knowledge,
+    format_policy: lockSourceFormatPolicy(project.update_details, materials),
     knowledge_status: 'authoring_reference_not_compliance_approval' as const };
 }
 
