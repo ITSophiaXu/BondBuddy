@@ -6,12 +6,21 @@ import type { OperatorRole, TrialLimitKind, TrialLimits, TrialOverrideEffect } f
 import { digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
 import { gateState, raiseAlert } from './evidence-gate.js';
 
-// #35 controlled trial guard. The platform pays for M1 trial usage, so these limits bound
-// cost and abuse; there are no credits and nothing is charged. Limits come from server
-// configuration; overrides and the operator kill switch are append-only rows (0025).
+// Admission controls for concurrency, short-window abuse and operator suspension.
+// Daily usage limits were retired on 2026-10-30. Usage accounting and credit billing
+// remain separate; overrides and the kill switch are append-only rows (0025).
 
 export type TrialConfig = TrialLimits;
 type Db = Pool | PoolClient;
+
+// Keep the admin DTO compatible, but never let old deployment env or injected config
+// re-enable daily limits. Zero means unlimited for these retired fields only.
+const RETIRED_DAILY_LIMITS = {
+  runs_per_user_per_day: 0,
+  upload_bytes_per_user_per_day: 0,
+  model_tokens_per_user_per_day: 0,
+  projects_per_user_per_day: 0,
+} as const;
 
 const intEnv = (env: NodeJS.ProcessEnv, name: string, fallback: number, max = Number.MAX_SAFE_INTEGER) => {
   const raw = env[name];
@@ -31,12 +40,9 @@ export function trialConfigFromEnv(env: NodeJS.ProcessEnv = process.env): TrialC
     enabled: flag ? flag === 'on' : env.NODE_ENV === 'production',
     day_time_zone: zone,
     active_runs_per_user: intEnv(env, 'BB_TRIAL_ACTIVE_RUNS_PER_USER', 2),
-    runs_per_user_per_day: intEnv(env, 'BB_TRIAL_RUNS_PER_USER_PER_DAY', 10),
-    upload_bytes_per_user_per_day: intEnv(env, 'BB_TRIAL_UPLOAD_BYTES_PER_USER_PER_DAY', 1024 * 1024 * 1024),
-    model_tokens_per_user_per_day: intEnv(env, 'BB_TRIAL_MODEL_TOKENS_PER_USER_PER_DAY', 2_000_000),
+    ...RETIRED_DAILY_LIMITS,
     unknown_usage_tokens_per_attempt: intEnv(env, 'BB_TRIAL_UNKNOWN_USAGE_TOKENS_PER_ATTEMPT', 200_000),
     global_active_runs: intEnv(env, 'BB_TRIAL_GLOBAL_ACTIVE_RUNS', 4),
-    projects_per_user_per_day: intEnv(env, 'BB_TRIAL_PROJECTS_PER_USER_PER_DAY', 20),
     projects_per_source_per_hour: intEnv(env, 'BB_TRIAL_PROJECTS_PER_SOURCE_PER_HOUR', 120),
     uploads_per_user_per_hour: intEnv(env, 'BB_TRIAL_UPLOADS_PER_USER_PER_HOUR', 120),
     uploads_per_source_per_hour: intEnv(env, 'BB_TRIAL_UPLOADS_PER_SOURCE_PER_HOUR', 1200),
@@ -64,9 +70,6 @@ export function sourceHash(ip: string | undefined, env: NodeJS.ProcessEnv = proc
   return createHash('sha256').update(`bb-trial-source:${env.BB_TRIAL_SOURCE_SALT ?? ''}:${ip}`).digest('hex');
 }
 
-async function dayStart(db: Db, zone: string) {
-  return (await db.query("SELECT date_trunc('day', now() AT TIME ZONE $1) AT TIME ZONE $1 AS start", [zone])).rows[0].start as Date;
-}
 const lockKey = (db: Db, key: string) => db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [key]);
 
 export async function activeOverride(db: Db, userId: string): Promise<TrialOverrideEffect | null> {
@@ -83,7 +86,7 @@ export async function killSwitchState(db: Db, config: TrialConfig) {
 
 const ACTIVE_RUN_STATES = "('preparing','queued','running','validating','delivering')";
 
-/** Platform safety budget only: observed tokens plus a conservative allowance for unknown usage. */
+/** Usage reporting only: observed tokens plus a conservative allowance for unknown usage. */
 export async function tokensSince(db: Db, config: TrialConfig, userId: string, since: Date) {
   const q = await db.query(`SELECT COALESCE(sum(tokens),0)::text AS tokens FROM (
     SELECT CASE WHEN a.status='confirmed_not_sent' THEN 0
@@ -117,7 +120,6 @@ async function accountOverride(db: Db, userId: string) {
 export async function admitProjectCreate(client: PoolClient, config: TrialConfig, userId: string, source: string | null) {
   const effect = await accountOverride(client, userId);
   if (config.enabled && effect !== 'allow') {
-    if ((await countAdmissions(client, 'owner_user_id', userId, 'project_create', await dayStart(client, config.day_time_zone))).n >= config.projects_per_user_per_day) throw exceeded('projects_per_user_per_day');
     if (source && (await countAdmissions(client, 'source_hash', source, 'project_create', hourAgo())).n >= config.projects_per_source_per_hour) throw exceeded('projects_per_source_per_hour');
   }
   await admit(client, userId, 'project_create', source);
@@ -128,8 +130,6 @@ export async function admitUploadCreate(client: PoolClient, config: TrialConfig,
   if (config.enabled && effect !== 'allow') {
     if ((await countAdmissions(client, 'owner_user_id', userId, 'upload_create', hourAgo())).n >= config.uploads_per_user_per_hour) throw exceeded('uploads_per_user_per_hour');
     if (source && (await countAdmissions(client, 'source_hash', source, 'upload_create', hourAgo())).n >= config.uploads_per_source_per_hour) throw exceeded('uploads_per_source_per_hour');
-    const today = await countAdmissions(client, 'owner_user_id', userId, 'upload_create', await dayStart(client, config.day_time_zone));
-    if (today.bytes + bytes > config.upload_bytes_per_user_per_day) throw exceeded('upload_bytes_per_user_per_day');
   }
   await admit(client, userId, 'upload_create', source, bytes);
 }
@@ -146,10 +146,6 @@ export async function admitRunSubmit(client: PoolClient, config: TrialConfig, us
     if (effect !== 'allow') {
       const active = (await client.query(`SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND state IN ${ACTIVE_RUN_STATES}`, [userId])).rows[0].n;
       if (active >= config.active_runs_per_user) throw exceeded('active_runs_per_user');
-      const since = await dayStart(client, config.day_time_zone);
-      const today = (await client.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND created_at>=$2', [userId, since])).rows[0].n;
-      if (today >= config.runs_per_user_per_day) throw exceeded('runs_per_user_per_day');
-      if (config.model_tokens_per_user_per_day > 0 && await tokensSince(client, config, userId, since) >= config.model_tokens_per_user_per_day) throw exceeded('model_tokens_per_user_per_day');
     }
   }
   await admit(client, userId, 'run_submit', source);
@@ -160,8 +156,6 @@ export async function assertModelCallAllowed(client: PoolClient, config: TrialCo
   if ((await killSwitchState(client, config)).engaged) throw new TrialLimitProblem(503, 'MODEL_CALLS_SUSPENDED', 'kill_switch');
   const effect = await activeOverride(client, userId);
   if (effect === 'deny') throw new TrialLimitProblem(403, 'TRIAL_ACCESS_DENIED', 'operator_deny');
-  if (config.enabled && effect !== 'allow' && config.model_tokens_per_user_per_day > 0 && await tokensSince(client, config, userId, await dayStart(client, config.day_time_zone)) >= config.model_tokens_per_user_per_day)
-    throw exceeded('model_tokens_per_user_per_day');
 }
 
 /** Raise the #79 quota alert for a rejection (one per limit and scope per hour). Never throws. */
@@ -280,7 +274,7 @@ export async function trialStatus(pool: Pool, config: TrialConfig, actorId: stri
     await audit(client, actorId, 'log_reader', 'trial_status', {});
     const workers = (await client.query('SELECT worker_id,last_seen_at,kinds,concurrency,EXTRACT(EPOCH FROM now()-last_seen_at)::int age FROM bb_worker_heartbeats WHERE stopped_at IS NULL ORDER BY last_seen_at DESC LIMIT 50')).rows;
     const oldest = (await client.query("SELECT EXTRACT(EPOCH FROM now()-min(updated_at))::int age FROM bb_jobs WHERE state='queued'")).rows[0].age;
-    return { limits: config, kill_switch: await killSwitchState(client, config),
+    return { limits: { ...config, ...RETIRED_DAILY_LIMITS }, kill_switch: await killSwitchState(client, config),
       global_active_runs: (await client.query(`SELECT count(*)::int n FROM bb_runs WHERE state IN ${ACTIVE_RUN_STATES}`)).rows[0].n,
       workers: workers.map(w => ({ worker_id: w.worker_id, last_seen_at: iso(w.last_seen_at)!, age_seconds: Math.max(0, Number(w.age)), kinds: w.kinds, concurrency: w.concurrency })),
       oldest_queued_age_seconds: oldest === null ? null : Math.max(0, Number(oldest)) };

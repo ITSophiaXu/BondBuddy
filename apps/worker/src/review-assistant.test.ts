@@ -182,7 +182,7 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
       } finally {await evidenceGate('open');}
     });
 
-    await t.test('assistant observations share the platform token guard while unknown usage remains unknown and no billing occurs',async ctx=>{
+    await t.test('assistant usage is accounted without imposing a daily token cap',async ctx=>{
       const before=trialGuardConfig();configureTrialGuard({...before,enabled:true,model_tokens_per_user_per_day:100,unknown_usage_tokens_per_attempt:100});
       try {
         for(const usage of [measured,'missing']) {
@@ -191,11 +191,11 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
           const observed=await f.attempt(first.id);
           assert.equal(observed.usage_status,usage==='missing'?'unknown':'measured');assert.equal(observed.internal_cost,null);
           if(usage==='missing'){assert.equal(observed.input_tokens,null);assert.equal(observed.output_tokens,null);assert.equal(observed.total_tokens,null);}
-          assert.equal(await tokensSince(pool,trialGuardConfig(),f.owner,new Date(0)),100,'shared platform budget includes assistant attempts');
+          assert.equal(await tokensSince(pool,trialGuardConfig(),f.owner,new Date(0)),100n,'usage reporting still includes assistant attempts');
           const client=await pool.connect();
-          try {await assert.rejects(assertModelCallAllowed(client,trialGuardConfig(),f.owner),{code:'TRIAL_QUOTA_EXCEEDED'});}finally{client.release();}
-          const next=await f.queue();assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'failed');
-          assert.equal((await f.row(next.id)).error,'TRIAL_QUOTA_EXCEEDED');assert.equal(await f.attempt(next.id),undefined);assert.equal(await f.sends(),1);
+          try {await assertModelCallAllowed(client,trialGuardConfig(),f.owner);}finally{client.release();}
+          const next=await f.queue();assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'completed');
+          assert.equal((await f.row(next.id)).error,null);assert.ok(await f.attempt(next.id));assert.equal(await f.sends(),2);
           assert.equal(Number((await pool.query("SELECT count(*) n FROM bb_outbox WHERE owner_user_id=$1 AND event_type ~ '(billing|charge|settlement|reservation)'",[f.owner])).rows[0].n),0);
         }
       } finally {configureTrialGuard(before);}

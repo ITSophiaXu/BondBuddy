@@ -17,7 +17,7 @@ import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, revi
 import { adminEvents, adminJobTimeline, forwardLogs, grantOperator, parseAdminFilter, type LogRecord } from '@bondbuddy/api/log-ops';
 import { claimMaterialParse, documentParserVersion, requeueAwaitingOcrParseJobs } from '@bondbuddy/api/material-jobs';
 import { checkpointStage, claim, pauseRun, resumePausedRun, upgradeStageCheckpoint } from '@bondbuddy/api/queue';
-import { configureTrialGuard, createOverride, revokeOverride, setKillSwitch, trialConfigFromEnv } from '@bondbuddy/api/trial-guard';
+import { configureTrialGuard, createOverride, revokeOverride, setKillSwitch, trialConfigFromEnv, TrialLimitProblem } from '@bondbuddy/api/trial-guard';
 import { DEFAULT_DISABLED_FEATURES, type CodexAdapterConfig, type CodexJournal } from './codex-adapter.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
@@ -624,10 +624,15 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     const twoCalls = [syntheticInputLockStage, materialsReadyStage, model(), secondModel, word()];
     const trialConfig = { ...trialConfigFromEnv({}), enabled: true, model_tokens_per_user_per_day: 1 };
     const trialProject = await project('trial limit runtime');
+    configureTrialGuard(trialConfig);
+    const unlimitedRun = (await execute(trialProject)).json().run_id as string;
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: twoCalls }), 'succeeded', 'both model calls run despite the obsolete token cap');
+    assert.deepEqual(await attempts((await runRow(unlimitedRun)).job_id), [[1, 'completed'], [1, 'completed']]);
+    // Reproduce a persisted pause from the old worker. The new worker must recover it
+    // immediately without an allow override, midnight rollover, or replaying the first call.
+    const legacySecondModel: RunStage = { ...secondModel, run: async () => { throw new TrialLimitProblem(429, 'TRIAL_QUOTA_EXCEEDED', 'model_tokens_per_user_per_day'); } };
     const quotaRun = (await execute(trialProject)).json().run_id as string;
-    assert.equal(await runPipelineOnce({ pool, blobs, stages: twoCalls, afterStage: async stage => {
-      if (stage === 'model_generation') configureTrialGuard(trialConfig);
-    } }), 'paused');
+    assert.equal(await runPipelineOnce({ pool, blobs, stages: [syntheticInputLockStage, materialsReadyStage, model(), legacySecondModel, word()] }), 'paused');
     const quotaRow = await runRow(quotaRun);
     assert.equal(quotaRow.state, 'paused'); assert.equal(quotaRow.job_stage, 'trial_limit');
     assert.equal(quotaRow.checkpoint.stages.model_generation !== undefined, true);
@@ -635,12 +640,9 @@ test('synthetic #17 worker runtime: idempotent submit, checkpoints, reuse, recon
     assert.equal((await pool.query('SELECT attempts FROM bb_jobs WHERE id=$1', [quotaRow.job_id])).rows[0].attempts, 1);
     const quotaEvent = (await pool.query("SELECT payload FROM bb_run_events WHERE run_id=$1 AND state='paused' ORDER BY seq DESC LIMIT 1", [quotaRun])).rows[0].payload;
     assert.deepEqual([quotaEvent.reason, quotaEvent.error_code], ['model_tokens_per_user_per_day', 'TRIAL_QUOTA_EXCEEDED']);
-    assert.equal((await send('POST', `/api/v1/runs/${quotaRun}/resume`, { reason: 'synthetic' })).statusCode, 429);
     const trialRuntime = new WorkerRuntime({ pool, blobs, runStages: twoCalls });
     await trialRuntime.sweep();
-    assert.equal((await runRow(quotaRun)).state, 'paused');
-    await createOverride(pool, operator, { user_id: alice, effect: 'allow', reason_code: 'synthetic_trial_relief' });
-    await trialRuntime.sweep();
+    assert.equal((await runRow(quotaRun)).state, 'queued');
     assert.equal(await runPipelineOnce({ pool, blobs, stages: twoCalls }), 'succeeded');
     assert.deepEqual(await attempts(quotaRow.job_id), [[1, 'completed'], [1, 'completed']], 'first call is reused; only the next call is sent');
     assert.equal((await runRow(quotaRun)).state, 'succeeded');
