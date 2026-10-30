@@ -61,14 +61,23 @@ export async function storeTemplateSet(c:PoolClient,blobs:PrivateBlobs,owner:str
  const existing=(await c.query('SELECT records FROM bb_file_template_sets WHERE owner_user_id=$1 AND project_id=$2',[owner,id])).rows;
  const assets=new Map<string,number>();for(const set of existing)for(const r of set.records)assets.set(r.sha256,r.byte_size??0);for(const file of files)assets.set(digest(file.bytes),file.bytes.length);
  if(existing.length>=500||assets.size>1000||[...assets.values()].reduce((a,b)=>a+b,0)>500*1024*1024)invalid('本项目模板库已达到容量上限（1,000 份不同 Word / 500 MB），请拆分到其他项目。');
- const setId=uid(),records:StoredRecord[]=[];
- for(const [index,f] of files.entries()){
+ const setId=uid(),records:StoredRecord[]=new Array(files.length),savedAssets=new Map<string,Promise<void>>();
+ let next=0,failure:unknown;
+ // Bound storage concurrency and preserve the original record order. Wait for
+ // every in-flight readback before allowing the surrounding transaction to end.
+ await Promise.all(Array.from({length:Math.min(4,files.length)},async()=>{while(!failure){
+  const index=next++;if(index>=files.length)return;const f=files[index];
+  try{
   const sha256=digest(f.bytes),code=f.meta?.code??f.name.split('/').at(-1)!.match(/^\d+(?:[-.－]\d+)*/)?.[0]??'',role=f.meta?.role??safeRole(f.name),document_type=f.meta?.document_type??type;
   const name=f.meta?.name??(document_type==='workpaper'?`${code?code+' · ':''}${role} · ${index+1}`:PROJECT_DOCUMENT_CATALOG.find(d=>d.id===document_type)?.name??'文件模板');
   const preview=templateStructure(f.bytes,name),key=`users/${owner}/projects/${id}/file-templates/assets/${sha256}.docx`;
-  await blobs.put(key,f.bytes,WORD_MIME);const saved=await blobs.getIfExistsBounded(key,TEMPLATE_MAX_BYTES);if(!saved||digest(saved)!==sha256)throw Error('TEMPLATE_STORE_FAILED');
-  records.push({record_id:f.meta?.id??uid(),sha256,code,role,document_type,name,object_key:key,preview,match_title:f.meta?.match_title??f.name,byte_size:f.bytes.length});
- }
+  let saved=savedAssets.get(sha256);
+  if(!saved){saved=(async()=>{await blobs.put(key,f.bytes,WORD_MIME);const readback=await blobs.getIfExistsBounded(key,TEMPLATE_MAX_BYTES);if(!readback||digest(readback)!==sha256)throw Error('TEMPLATE_STORE_FAILED');})();savedAssets.set(sha256,saved);}
+  await saved;
+  records[index]={record_id:f.meta?.id??uid(),sha256,code,role,document_type,name,object_key:key,preview,match_title:f.meta?.match_title??f.name,byte_size:f.bytes.length};
+  }catch(error){failure=error;}
+ }}));
+ if(failure)throw failure;
  const row=(await c.query('INSERT INTO bb_file_template_sets(id,owner_user_id,project_id,request_id,request_hash,name,version,origin,records,warnings) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[setId,owner,id,request,hash,origin==='builtin'?'光大证券模板':'我的模板包',version,origin,JSON.stringify(records),JSON.stringify(warnings)])).rows[0];return templateSetDto(row);
 }
 export async function storeTemplateMaterial(c:PoolClient,blobs:PrivateBlobs,owner:string,id:string,bytes:Buffer,filename:string,media=WORD_MIME,internal=false):Promise<M4MaterialPin>{
