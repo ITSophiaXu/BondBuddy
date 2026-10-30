@@ -1,0 +1,165 @@
+[
+  {
+    "ordinal": 1,
+    "project_id": "b36f0b4c-3c89-449a-81f6-3367b2e4cdfa",
+    "issuer": "浙江省交通投资集团有限公司",
+    "run_id": "a9ac9062-4926-4544-8063-e81165a1f49b",
+    "url": "https://bondbuddy.gululai.com/#integrity?project=b36f0b4c-3c89-449a-81f6-3367b2e4cdfa&run=a9ac9062-4926-4544-8063-e81165a1f49b&return_project=b36f0b4c-3c89-449a-81f6-3367b2e4cdfa",
+    "state": "failed",
+    "created_at": "2026-10-29T17:30:42.233Z",
+    "completed_at": "2026-10-29T17:45:36.791Z",
+    "province": "浙江",
+    "city": "杭州市",
+    "status_counts": {
+      "query_failed": 6,
+      "no_public_results": 2,
+      "public_matches": 2,
+      "not_executed": 44
+    },
+    "charged_points": 0,
+    "terminal_error": {
+      "reason": "provider_call_failed",
+      "error_code": "MODEL_OUTPUT_SCHEMA_INVALID"
+    },
+    "original_capture_count": 7,
+    "report_sha256": null
+  },
+  {
+    "ordinal": 2,
+    "project_id": "1467bc86-ce95-4f26-92ec-36c7082cdad3",
+    "issuer": "山东蒜都发展投资有限公司",
+    "run_id": "f0575106-9b8d-4bbb-a4b2-b96511694c12",
+    "url": "https://bondbuddy.gululai.com/#integrity?project=1467bc86-ce95-4f26-92ec-36c7082cdad3&run=f0575106-9b8d-4bbb-a4b2-b96511694c12&return_project=1467bc86-ce95-4f26-92ec-36c7082cdad3",
+    "state": "succeeded",
+    "created_at": "2026-10-29T17:59:14.053Z",
+    "completed_at": "2026-10-29T18:55:41.696Z",
+    "province": "山东",
+    "city": "济宁市",
+    "status_counts": {
+      "query_failed": 20,
+      "no_public_results": 20,
+      "public_matches": 12,
+      "needs_manual": 2
+    },
+    "charged_points": 5000,
+    "terminal_error": null,
+    "original_capture_count": 54,
+    "report_sha256": "a22fc4b7947bafe0231af8c972b06a7bdfc4dcad56a9958120c7fc960cc2b74d"
+  },
+  {
+    "ordinal": 3,
+    "project_id": "9410dce3-f89c-4a23-9a03-84077a977af0",
+    "issuer": "杞县豫资城乡发展建设有限公司",
+    "run_id": "e11068c4-3c3c-4dc6-a25c-86e5ab75f932",
+    "url": "https://bondbuddy.gululai.com/#integrity?project=9410dce3-f89c-4a23-9a03-84077a977af0&run=e11068c4-3c3c-4dc6-a25c-86e5ab75f932&return_project=9410dce3-f89c-4a23-9a03-84077a977af0",
+    "state": "succeeded",
+    "created_at": "2026-10-29T19:04:07.990Z",
+    "completed_at": "2026-10-29T20:08:33.637Z",
+    "province": "河南",
+    "city": "开封市",
+    "status_counts": {
+      "query_failed": 22,
+      "no_public_results": 20,
+      "public_matches": 10,
+      "needs_manual": 2
+    },
+    "charged_points": 5000,
+    "terminal_error": null,
+    "original_capture_count": 51,
+    "report_sha256": "4daef5c7a96e8e9b6f2bfbc1bbcc9403fa59b7e27de620489e2cb569d8ff3782"
+  },
+  {
+    "ordinal": 4,
+    "project_id": "4643a43d-3247-4dd3-9585-1cce898e7608",
+    "issuer": "任丘市建设投资集团有限公司",
+    "run_id": "62d1f3b6-514c-4ca6-aef6-786d0eaf89c4",
+    "url": "https://bondbuddy.gululai.com/#integrity?project=4643a43d-3247-4dd3-9585-1cce898e7608&run=62d1f3b6-514c-4ca6-aef6-786d0eaf89c4&return_project=4643a43d-3247-4dd3-9585-1cce898e7608",
+    "state": "failed",
+    "created_at": "2026-10-29T20:18:01.877Z",
+    "completed_at": "2026-10-29T20:56:10.881Z",
+    "province": "河北",
+    "city": "任丘市",
+    "status_counts": {
+      "query_failed": 7,
+      "no_public_results": 11,
+      "public_matches": 7,
+      "needs_manual": 2,
+      "not_executed": 27
+    },
+    "charged_points": 0,
+    "terminal_error": {
+      "reason": "processor_failed",
+      "error_code": "DATA_UNAVAILABLE"
+    },
+    "original_capture_count": 27,
+    "report_sha256": null
+  },
+  {
+    "ordinal": 5,
+    "project_id": "23a8fae9-d87d-48d6-b309-bbeee69a1e78",
+    "issuer": "沧州交通发展（集团）有限责任公司",
+    "run_id": "bc55a126-a2b5-4d98-8e0c-a640ca960d7c",
+    "url": "https://bondbuddy.gululai.com/#integrity?project=23a8fae9-d87d-48d6-b309-bbeee69a1e78&run=bc55a126-a2b5-4d98-8e0c-a640ca960d7c&return_project=23a8fae9-d87d-48d6-b309-bbeee69a1e78",
+    "state": "succeeded",
+    "created_at": "2026-10-29T21:07:27.577Z",
+    "completed_at": "2026-10-29T22:06:17.518Z",
+    "province": "河北",
+    "city": "沧州市",
+    "status_counts": {
+      "query_failed": 20,
+      "no_public_results": 19,
+      "public_matches": 13,
+      "needs_manual": 2
+    },
+    "charged_points": 5000,
+    "terminal_error": null,
+    "original_capture_count": 57,
+    "report_sha256": "b025e8fe99d9e7eb998e131b4a9c281024c358973c9ce0a7d038f590b0dee20a"
+  },
+  {
+    "ordinal": 6,
+    "project_id": "96dc290d-63f4-4c3f-8ed6-22b9ec896d42",
+    "issuer": "济南章丘控股集团有限公司",
+    "run_id": "35fe8e62-6cf6-41fb-ba67-f920bba0baff",
+    "url": "https://bondbuddy.gululai.com/#integrity?project=96dc290d-63f4-4c3f-8ed6-22b9ec896d42&run=35fe8e62-6cf6-41fb-ba67-f920bba0baff&return_project=96dc290d-63f4-4c3f-8ed6-22b9ec896d42",
+    "state": "succeeded",
+    "created_at": "2026-10-29T22:10:54.912Z",
+    "completed_at": "2026-10-29T23:11:37.849Z",
+    "province": "山东",
+    "city": "济南市",
+    "status_counts": {
+      "query_failed": 21,
+      "no_public_results": 20,
+      "public_matches": 11,
+      "needs_manual": 2
+    },
+    "charged_points": 5000,
+    "terminal_error": null,
+    "original_capture_count": 51,
+    "report_sha256": "f277b36e21ec0cb533eda7256bfd081dd8257e28fc046d80195c1506e797df0e"
+  },
+  {
+    "ordinal": 7,
+    "project_id": "045494c2-83b0-4518-bde8-8e58be0335f0",
+    "issuer": "国家电网有限公司",
+    "run_id": "89f6874f-19fa-42f7-a990-5febeb15fb49",
+    "url": "https://bondbuddy.gululai.com/#integrity?project=045494c2-83b0-4518-bde8-8e58be0335f0&run=89f6874f-19fa-42f7-a990-5febeb15fb49&return_project=045494c2-83b0-4518-bde8-8e58be0335f0",
+    "state": "failed",
+    "created_at": "2026-10-29T23:17:14.291Z",
+    "completed_at": "2026-10-29T23:30:29.095Z",
+    "province": "北京",
+    "city": "北京市",
+    "status_counts": {
+      "query_failed": 6,
+      "public_matches": 4,
+      "not_executed": 44
+    },
+    "charged_points": 0,
+    "terminal_error": {
+      "reason": "provider_call_failed",
+      "error_code": "MODEL_OUTPUT_SCHEMA_INVALID"
+    },
+    "original_capture_count": 7,
+    "report_sha256": null
+  }
+]

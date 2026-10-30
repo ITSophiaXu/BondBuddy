@@ -1,0 +1,1543 @@
+{
+  "summary_runs": 7,
+  "sites": [
+    {
+      "site_id": "credit-china",
+      "site_name": "信用中国",
+      "site_urls": [
+        "https://www.creditchina.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 7,
+      "product_reported_failure_count": 7,
+      "confirmed_access_failure_count": 7,
+      "not_executed_count": 0,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "http_response_error": 7
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": true,
+      "all_summary_runs_confirmed_access_failures": true
+    },
+    {
+      "site_id": "execution-dishonest",
+      "site_name": "中国执行信息网-失信被执行人",
+      "site_urls": [
+        "https://zxgk.court.gov.cn/shixin/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 7,
+      "product_reported_failure_count": 7,
+      "confirmed_access_failure_count": 7,
+      "not_executed_count": 0,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "http_response_error": 7
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": true,
+      "all_summary_runs_confirmed_access_failures": true
+    },
+    {
+      "site_id": "execution-debtor",
+      "site_name": "中国执行信息网-被执行人信息",
+      "site_urls": [
+        "https://zxgk.court.gov.cn/zhixing/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 7,
+      "product_reported_failure_count": 7,
+      "confirmed_access_failure_count": 7,
+      "not_executed_count": 0,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "http_response_error": 7
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": true,
+      "all_summary_runs_confirmed_access_failures": true
+    },
+    {
+      "site_id": "execution-restriction",
+      "site_name": "中国执行信息网-限制消费信息",
+      "site_urls": [
+        "https://zxgk.court.gov.cn/xgl/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 7,
+      "product_reported_failure_count": 7,
+      "confirmed_access_failure_count": 7,
+      "not_executed_count": 0,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "http_response_error": 7
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": true,
+      "all_summary_runs_confirmed_access_failures": true
+    },
+    {
+      "site_id": "bankruptcy",
+      "site_name": "全国企业破产重整案件信息网",
+      "site_urls": [
+        "https://pccz.court.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 7,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 0,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "product_reports_no_results": 6,
+        "product_reports_results": 1
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "tax",
+      "site_name": "国家税务总局",
+      "site_urls": [
+        "https://www.chinatax.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 7,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 0,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "product_reports_no_results": 6,
+        "product_reports_results": 1
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "tax-dishonest",
+      "site_name": "重大税收违法失信案件信息公布栏",
+      "site_urls": [
+        "https://www.chinatax.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 7,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 0,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "product_reports_results": 7
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "industry-credit",
+      "site_name": "全国行业信用公共服务平台",
+      "site_urls": [
+        "https://www.bcp12312.org.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 7,
+      "product_reported_failure_count": 7,
+      "confirmed_access_failure_count": 7,
+      "not_executed_count": 0,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "certificate_error": 7
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": true,
+      "all_summary_runs_confirmed_access_failures": true
+    },
+    {
+      "site_id": "pbc",
+      "site_name": "中国人民银行",
+      "site_urls": [
+        "https://www.pbc.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 7,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 0,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "product_reports_results": 7
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "nfra",
+      "site_name": "国家金融监督管理总局",
+      "site_urls": [
+        "https://www.nfra.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 7,
+      "product_reported_failure_count": 7,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 0,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 7,
+      "categories": {
+        "result_unverified": 7
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": true,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "csrc-portal",
+      "site_name": "中国证监会",
+      "site_urls": [
+        "https://www.csrc.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "product_reports_results": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "csrc",
+      "site_name": "中国证券监督管理委员会-证券期货市场失信记录查询平台",
+      "site_urls": [
+        "https://neris.csrc.gov.cn/shixinchaxun/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 5,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "verification_required": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "sse",
+      "site_name": "上海证券交易所",
+      "site_urls": [
+        "https://www.sse.com.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 5,
+      "categories": {
+        "not_executed": 2,
+        "product_reports_no_results": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "bse",
+      "site_name": "北京证券交易所",
+      "site_urls": [
+        "https://www.bse.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "product_reports_no_results": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "szse",
+      "site_name": "深圳证券交易所-首页",
+      "site_urls": [
+        "https://www.szse.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 5,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "product_reports_results": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "szse-bond-discipline",
+      "site_name": "深圳证券交易所-债券纪律处分",
+      "site_urls": [
+        "https://www.szse.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 5,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "product_reports_results": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "szse-supervision",
+      "site_name": "深圳证券交易所-监管措施",
+      "site_urls": [
+        "https://www.szse.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 5,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "product_reports_results": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "safe",
+      "site_name": "国家外汇管理局",
+      "site_urls": [
+        "https://www.safe.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "product_reports_no_results": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "neeq",
+      "site_name": "全国中小企业股份转让系统",
+      "site_urls": [
+        "https://www.neeq.com.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "product_reports_no_results": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "nafmii-discipline",
+      "site_name": "中国银行间市场交易商协会-自律处分概览",
+      "site_urls": [
+        "https://www.nafmii.org.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "product_reports_results": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "sac",
+      "site_name": "中国证券业协会",
+      "site_urls": [
+        "https://www.sac.net.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "product_reports_no_results": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "amac",
+      "site_name": "中国证券投资基金业协会",
+      "site_urls": [
+        "https://www.amac.org.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "product_reports_no_results": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "mofcom",
+      "site_name": "中华人民共和国商务部",
+      "site_urls": [
+        "https://www.mofcom.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 5,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "verification_required": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "commerce-credit",
+      "site_name": "商务信用服务平台",
+      "site_urls": [
+        "https://www.bcpcn.com/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "product_reports_no_results": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "cfa-credit",
+      "site_name": "中国期货业协会-期货公司诚信记录信息",
+      "site_urls": [
+        "https://www.cfachina.org/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "product_reports_no_results": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "cfa-discipline",
+      "site_name": "中国期货业协会-纪律惩戒",
+      "site_urls": [
+        "https://www.cfachina.org/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "product_reports_no_results": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "emergency",
+      "site_name": "中华人民共和国应急管理部",
+      "site_urls": [
+        "https://www.mem.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 5,
+      "product_reported_failure_count": 5,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 2,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 2,
+        "result_unverified": 5
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "ndrc",
+      "site_name": "国家发展和改革委员会",
+      "site_urls": [
+        "https://www.ndrc.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "product_reports_no_results": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "environment",
+      "site_name": "中华人民共和国生态环境部",
+      "site_urls": [
+        "https://www.mee.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 4,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "stylesheet_load_failure": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "mof",
+      "site_name": "中华人民共和国财政部",
+      "site_urls": [
+        "https://www.mof.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "product_reports_no_results": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "statistics",
+      "site_name": "国家统计局",
+      "site_urls": [
+        "https://www.stats.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 4,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "stylesheet_load_failure": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "customs",
+      "site_name": "中华人民共和国海关总署",
+      "site_urls": [
+        "http://www.customs.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 4,
+      "confirmed_access_failure_count": 4,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "http_response_error": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "industry",
+      "site_name": "中华人民共和国工业和信息化部",
+      "site_urls": [
+        "https://www.miit.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 1,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 1,
+      "categories": {
+        "not_executed": 3,
+        "product_reports_results": 3,
+        "result_unverified": 1
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "samr",
+      "site_name": "国家市场监督管理总局",
+      "site_urls": [
+        "https://www.samr.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 2,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 2,
+      "categories": {
+        "not_executed": 3,
+        "product_reports_results": 2,
+        "result_unverified": 2
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "samr-penalties",
+      "site_name": "国家市场监督管理总局-中国市场监管行政处罚文书网",
+      "site_urls": [
+        "https://www.samr.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "product_reports_results": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "agriculture",
+      "site_name": "农业农村部",
+      "site_urls": [
+        "https://www.moa.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "product_reports_no_results": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "customs-credit",
+      "site_name": "中国海关企业进出口信用信息公示平台",
+      "site_urls": [
+        "http://credit.customs.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 4,
+      "confirmed_access_failure_count": 4,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "http_response_error": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "energy",
+      "site_name": "国家能源局",
+      "site_urls": [
+        "https://www.nea.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 4,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "stylesheet_load_failure": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "housing",
+      "site_name": "国家住房和城乡建设部",
+      "site_urls": [
+        "https://www.mohurd.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 4,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 1,
+      "categories": {
+        "not_executed": 3,
+        "result_unverified": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "cec-blacklist",
+      "site_name": "中国电力企业联合会-信用电力-关联黑名单",
+      "site_urls": [
+        "https://www.cec.org.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 4,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "result_unverified": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "cec-supervision",
+      "site_name": "中国电力企业联合会-信用电力-监管、大数据预警",
+      "site_urls": [
+        "https://www.cec.org.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 4,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "result_unverified": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "resources",
+      "site_name": "自然资源部",
+      "site_urls": [
+        "https://www.mnr.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "product_reports_no_results": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "mohrss",
+      "site_name": "人力资源和社会保障部",
+      "site_urls": [
+        "https://www.mohrss.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "product_reports_results": 3,
+        "product_reports_no_results": 1
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "transport",
+      "site_name": "交通运输部",
+      "site_urls": [
+        "https://www.mot.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 1,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "product_reports_no_results": 2,
+        "product_reports_results": 2
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "transport-credit",
+      "site_name": "信用交通-信用信息查询",
+      "site_urls": [
+        "https://credit.mot.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 4,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "query_entry_unavailable": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "transport-penalties",
+      "site_name": "信用交通-行政处罚",
+      "site_urls": [
+        "https://credit.mot.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 4,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "query_entry_unavailable": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "construction-credit",
+      "site_name": "全国建筑市场监管公共服务平台",
+      "site_urls": [
+        "https://jzsc.mohurd.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 4,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "query_operation_failed": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "salt-credit",
+      "site_name": "信用盐业-盐行业信用管理与公共服务平台",
+      "site_urls": [
+        "https://www.cnsalt.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "product_reports_no_results": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "procurement-agency",
+      "site_name": "中国政府采购网-代理机构不良行为记录名单",
+      "site_urls": [
+        "https://www.ccgp.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 4,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "product_reports_no_results": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "procurement-dishonest",
+      "site_name": "中国政府采购网-政府采购严重违法失信行为记录名单",
+      "site_urls": [
+        "https://www.ccgp.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 4,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "product_reports_no_results": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "salt-association",
+      "site_name": "中国盐业协会",
+      "site_urls": [
+        "https://www.cnsalt.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "product_reports_no_results": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "nmpa",
+      "site_name": "国家药品监督管理局",
+      "site_urls": [
+        "https://www.nmpa.gov.cn/"
+      ],
+      "selected_count": 7,
+      "attempted_count": 4,
+      "product_reported_failure_count": 4,
+      "confirmed_access_failure_count": 4,
+      "not_executed_count": 3,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 3,
+        "http_response_error": 4
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "local-csrc",
+      "site_name": "浙江证监局",
+      "site_urls": [
+        "https://www.csrc.gov.cn/zhejiang/index.shtml"
+      ],
+      "selected_count": 1,
+      "attempted_count": 0,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 1,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 1
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "local-tax",
+      "site_name": "浙江税务局",
+      "site_urls": [
+        "http://zhejiang.chinatax.gov.cn/"
+      ],
+      "selected_count": 1,
+      "attempted_count": 0,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 1,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 1
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "local-csrc",
+      "site_name": "山东证监局",
+      "site_urls": [
+        "https://www.csrc.gov.cn/shandong/index.shtml"
+      ],
+      "selected_count": 2,
+      "attempted_count": 2,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 0,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "product_reports_results": 2
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "local-tax",
+      "site_name": "山东税务局",
+      "site_urls": [
+        "http://shandong.chinatax.gov.cn/"
+      ],
+      "selected_count": 2,
+      "attempted_count": 2,
+      "product_reported_failure_count": 2,
+      "confirmed_access_failure_count": 2,
+      "not_executed_count": 0,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "http_response_error": 2
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "local-csrc",
+      "site_name": "河南证监局",
+      "site_urls": [
+        "https://www.csrc.gov.cn/henan/index.shtml"
+      ],
+      "selected_count": 1,
+      "attempted_count": 1,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 0,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "product_reports_results": 1
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "local-tax",
+      "site_name": "河南税务局",
+      "site_urls": [
+        "https://henan.chinatax.gov.cn/"
+      ],
+      "selected_count": 1,
+      "attempted_count": 1,
+      "product_reported_failure_count": 1,
+      "confirmed_access_failure_count": 1,
+      "not_executed_count": 0,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "network_error": 1
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "local-csrc",
+      "site_name": "河北证监局",
+      "site_urls": [
+        "https://www.csrc.gov.cn/hebei/index.shtml"
+      ],
+      "selected_count": 2,
+      "attempted_count": 1,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 1,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 1,
+        "product_reports_results": 1
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "local-tax",
+      "site_name": "河北税务局",
+      "site_urls": [
+        "http://hebei.chinatax.gov.cn/"
+      ],
+      "selected_count": 2,
+      "attempted_count": 1,
+      "product_reported_failure_count": 1,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 1,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 1,
+        "http_response_error": 1
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "local-csrc",
+      "site_name": "北京证监局",
+      "site_urls": [
+        "https://www.csrc.gov.cn/beijing/index.shtml"
+      ],
+      "selected_count": 1,
+      "attempted_count": 0,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 1,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 1
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    },
+    {
+      "site_id": "local-tax",
+      "site_name": "北京税务局",
+      "site_urls": [
+        "http://beijing.chinatax.gov.cn/"
+      ],
+      "selected_count": 1,
+      "attempted_count": 0,
+      "product_reported_failure_count": 0,
+      "confirmed_access_failure_count": 0,
+      "not_executed_count": 1,
+      "pending_count": 0,
+      "unknown_attempt_status_count": 0,
+      "confirmed_capture_coverage_gap_count": 0,
+      "confirmed_query_scope_gap_count": 0,
+      "suspected_result_confirmation_error_count": 0,
+      "categories": {
+        "not_executed": 1
+      },
+      "ten_of_ten_product_reported_failures": false,
+      "ten_of_ten_confirmed_access_failures": false,
+      "all_summary_runs_product_reported_failures": false,
+      "all_summary_runs_confirmed_access_failures": false
+    }
+  ]
+}

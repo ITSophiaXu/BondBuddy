@@ -1,0 +1,122 @@
+[
+  {
+    "ordinal": 7,
+    "site": "nfra",
+    "file": "run-07-nfra.png",
+    "captureId": "b16644d1-816b-4d97-a0e3-93b28c99c23a",
+    "originalSha256": "a10deac944e9e1acc382b0714fb499652569273cd2cc7bd9f76d13e623e37698",
+    "uploadedSha256": "a10deac944e9e1acc382b0714fb499652569273cd2cc7bd9f76d13e623e37698",
+    "transformation": "none",
+    "purpose": "产品result_unverified与可见无结果页面不一致，疑似确认误判"
+  },
+  {
+    "ordinal": 6,
+    "site": "csrc",
+    "file": "run-06-csrc.png",
+    "captureId": "518b490e-2b2f-4aa6-9811-6024f1a3bd55",
+    "originalSha256": "7df1673311f86155175726afe37d056331d80ed9416b52a5c77c1beb358b3977",
+    "uploadedSha256": "ec3359d97cf294a30a7dcff636c6b1018c5088849da85ed3e7f0a12cdd5f0a0d",
+    "transformation": "crop: omit unrelated public personal names below CAPTCHA; no content added",
+    "purpose": "验证码阻断查询"
+  },
+  {
+    "ordinal": 6,
+    "site": "mofcom",
+    "file": "run-06-mofcom.png",
+    "captureId": "f58208fc-3c1c-4673-b419-d22a362baab9",
+    "originalSha256": "ed5d3c51bf4c1f6a0d61914312f1238ec9a084a19501a397902e741214facf31",
+    "uploadedSha256": "ed5d3c51bf4c1f6a0d61914312f1238ec9a084a19501a397902e741214facf31",
+    "transformation": "none",
+    "purpose": "验证码阻断查询"
+  },
+  {
+    "ordinal": 6,
+    "site": "sse",
+    "file": "run-06-sse.png",
+    "captureId": "8e274e17-575e-4ffe-9a65-84a9f1182799",
+    "originalSha256": "43ac3e6455f739b38e161867e8a9d47e14be53cd285171b110ce0086b22b9eb9",
+    "uploadedSha256": "43ac3e6455f739b38e161867e8a9d47e14be53cd285171b110ce0086b22b9eb9",
+    "transformation": "none",
+    "purpose": "产品no_public_results是否为本次实际查询结果待核验"
+  },
+  {
+    "ordinal": 6,
+    "site": "szse",
+    "file": "run-06-szse.png",
+    "captureId": "e02f531c-f7d9-46a8-8eb5-5e15ed4b894d",
+    "originalSha256": "8f77568720e9353b59ad97ef4afa96dc7ea225d42f7337f31b53f1c7d53b205e",
+    "uploadedSha256": "8f77568720e9353b59ad97ef4afa96dc7ea225d42f7337f31b53f1c7d53b205e",
+    "transformation": "none",
+    "purpose": "实际检索返回结果，但截图未覆盖具体结果条目"
+  },
+  {
+    "ordinal": 6,
+    "site": "procurement-agency",
+    "file": "run-06-procurement-agency.png",
+    "captureId": "ea061c55-a65d-4f66-a129-0a70657fb2fc",
+    "originalSha256": "0d13ae872d7f56fe8984ac8406bb4f5e406c75202c35fb1009250a6815ccd02e",
+    "uploadedSha256": "0d13ae872d7f56fe8984ac8406bb4f5e406c75202c35fb1009250a6815ccd02e",
+    "transformation": "none",
+    "purpose": "实际查询范围为采购公告，不能替代专项不良/严重违法失信名单核查"
+  },
+  {
+    "ordinal": 6,
+    "site": "statistics",
+    "file": "run-06-statistics.png",
+    "captureId": "9adbb0a9-6979-44e3-9a51-30ecef14e93a",
+    "originalSha256": "b67b6e25028a3de700f0ad05f2fa3d309cf89c0d188cc47430ec8d3bc9548835",
+    "uploadedSha256": "b67b6e25028a3de700f0ad05f2fa3d309cf89c0d188cc47430ec8d3bc9548835",
+    "transformation": "none",
+    "purpose": "生产results阶段外部样式被ERR_BLOCKED_BY_CLIENT阻断"
+  },
+  {
+    "ordinal": 6,
+    "site": "customs-credit",
+    "file": "run-06-customs-credit.png",
+    "captureId": "7082c009-7624-4ae4-99c4-b8e9fbe8dc24",
+    "originalSha256": "42978d192e6b49483ed221f107e3a20aa4900d6b697f1742b481c36aff1b9dfd",
+    "uploadedSha256": "42978d192e6b49483ed221f107e3a20aa4900d6b697f1742b481c36aff1b9dfd",
+    "transformation": "none",
+    "purpose": "安全策略拦截；生产open阶段HTTP400"
+  },
+  {
+    "ordinal": 6,
+    "site": "construction-credit",
+    "file": "run-06-construction-credit.png",
+    "captureId": "b0f09296-6505-4188-bfcd-dfbae108df72",
+    "originalSha256": "5380b0b82a097cdb47f9f2f85dcf0c10ca694e97123f71139f73a48e60de5787",
+    "uploadedSha256": "5380b0b82a097cdb47f9f2f85dcf0c10ca694e97123f71139f73a48e60de5787",
+    "transformation": "none",
+    "purpose": "operation_failed/query，查询操作未完成"
+  },
+  {
+    "ordinal": 6,
+    "site": "emergency",
+    "file": "run-06-emergency.png",
+    "captureId": "24ec33f3-eef6-4d54-8387-994e6b6f2a50",
+    "originalSha256": "f56316e8eb0aa102939631c69d13a7f232bacc474e94a2f82af7e0469333b4c1",
+    "uploadedSha256": "f56316e8eb0aa102939631c69d13a7f232bacc474e94a2f82af7e0469333b4c1",
+    "transformation": "none",
+    "purpose": "结果归属无法核验"
+  },
+  {
+    "ordinal": 6,
+    "site": "cec-blacklist",
+    "file": "run-06-cec-blacklist.png",
+    "captureId": "63636fc5-c0ef-44bc-b5d6-6436ec942d6b",
+    "originalSha256": "c59296be04708e4903150e448d480f4aa23a2e3cb49e3a9326dc30b11f5240c7",
+    "uploadedSha256": "c59296be04708e4903150e448d480f4aa23a2e3cb49e3a9326dc30b11f5240c7",
+    "transformation": "none",
+    "purpose": "结果状态未确认"
+  },
+  {
+    "ordinal": 6,
+    "site": "housing",
+    "file": "run-06-housing.png",
+    "captureId": "0d10caa8-7a55-4490-8355-ae531433fae4",
+    "originalSha256": "ac38c09ccc7a9a635747871770e4e799f8e98dca5d4e2d58e61e22b4fd468b52",
+    "uploadedSha256": "ac38c09ccc7a9a635747871770e4e799f8e98dca5d4e2d58e61e22b4fd468b52",
+    "transformation": "none",
+    "purpose": "产品result_unverified；未取得可确认的查询结果页"
+  }
+]
