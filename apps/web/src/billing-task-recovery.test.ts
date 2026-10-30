@@ -73,6 +73,16 @@ test('a changed body cannot reuse a pending original request key',async()=>{
   const store=memory();await createBillingTask('owner',endpoint,body,{},route,store);
   await assert.rejects(createBillingTask('owner',endpoint,{...body,expected_revision:8},{},route,store));
 });
+test('explicit quota rejection clears recovery while generic rate limits retain the unknown original',async()=>{
+  const store=memory();Object.assign(globalThis,{localStorage:store,location:{hash:route}});configureBillingTaskRecovery(()=>'owner');
+  try{
+    for(const code of ['TRIAL_QUOTA_EXCEEDED','RATE_LIMITED']){
+      const error={status:429,code};await assert.rejects(runRecoverableBillingRequest('POST',endpoint,body,{},async()=>{throw error;}),e=>e===error);
+      if(code==='TRIAL_QUOTA_EXCEEDED')assert.equal(store.rows.size,0);
+      else {assert.equal(store.rows.size,1);const task=JSON.parse([...store.rows.values()][0]);assert.equal(task.state,'unknown');assert.deepEqual(task.body,body);}
+    }
+  }finally{configureBillingTaskRecovery(()=>undefined);}
+});
 
 
 test('reload after resuming or an unknown response replays the original request once, including concurrent returns',async()=>{

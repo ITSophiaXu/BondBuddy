@@ -343,7 +343,7 @@ test('M2 shortage preserves inputs, recharge never executes, returning starts di
   if(evidence)await page.screenshot({path:join(evidence,'m2-billing-mobile.png')});
   await page.setViewportSize({width:1440,height:960});
   await expect(page.getByRole('button',{name:'充值 ¥50',exact:true})).toHaveCount(0);
-  await page.getByRole('button',{name:'充值 ¥200',exact:true}).click();
+  await page.getByRole('button',{name:'充值 ¥200.00',exact:true}).click();
   await expect(page.getByRole('heading',{name:'等待支付确认'})).toBeVisible();expect(state.executes).toHaveLength(0);
   state.order!.state='paid';state.order!.credited_at=now;state.available+=20000;
   await page.getByRole('button',{name:'刷新支付状态'}).click();await expect(page.getByRole('heading',{name:'积分已到账'})).toBeVisible();
@@ -540,12 +540,16 @@ test('double click and editing locks during submission preserve the locked reque
 });
 
 test('editing while preflight is pending discards that result; next action locks a new revision', async ({ page }) => {
+  // Hold the autosave debounce so this test isolates invalidation of the earlier preflight.
+  await page.clock.install({time:new Date(now)});await page.clock.pauseAt(new Date(Date.parse(now)+1000));
   const state=await setup(page); state.holdCheck=true;
   await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseCheck).toBe(true);
   await page.getByLabel('补充募集书更新说明').fill('只供下一版使用'); state.releaseCheck!(); state.holdCheck=false;
   await expect(page.locator('#execution-preflight')).toBeEmpty(); expect(state.executes).toHaveLength(0);
-  await expect(page.locator('#start-disabled-reason')).toContainText('尚未保存');
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('只供下一版使用');
+  expect(state.inputs).toHaveLength(1);expect(state.inputs[0].project_message_set_ref).toEqual(emptyMessages);
   await page.getByLabel('补充募集书更新说明').fill('');
+  await page.clock.resume();
   await prepare(page);
   await expect.poll(()=>state.inputs.length).toBe(2); state.checkStatus='ready'; await page.locator('#recheck-input').click();
   await page.locator('#execute-input').click();

@@ -62,7 +62,7 @@ export async function billingTaskRechargeHrefForRequest(owner:string|undefined,p
   if(task?.state==='needs_funds'&&task.path===path&&canonical(task.body)===canonical(body))return billingTaskRechargeHref(task);
 }
 function saveState(task:BillingTask,state:BillingTask['state'],store:StorageLike){store.setItem(storageKey(task),JSON.stringify({...task,state}));}
-function failureState(error:unknown){const e=error as {status?:number;code?:string};return e?.status===402&&e.code==='CREDITS_INSUFFICIENT'?'needs_funds':e?.status&&e.status>=400&&e.status<500&&![408,429].includes(e.status)?'rejected':'unknown';}
+function failureState(error:unknown){const e=error as {status?:number;code?:string};return e?.status===402&&e.code==='CREDITS_INSUFFICIENT'?'needs_funds':e?.status&&e.status>=400&&e.status<500&&e.status!==408&&(e.status!==429||e.code==='TRIAL_QUOTA_EXCEEDED')?'rejected':'unknown';}
 async function submitTask<T>(task:BillingTask,submit:()=>Promise<T>,store:StorageLike):Promise<T>{
   try{const result=await submit();store.removeItem(storageKey(task));return result;}catch(error){const state=failureState(error);if(state==='rejected')store.removeItem(storageKey(task));else{saveState(task,state,store);if(state==='needs_funds'&&typeof window!=='undefined')window.dispatchEvent(new CustomEvent('bondbuddy:billing-task-needs-funds',{detail:{...task,state}}));}throw error;}
 }

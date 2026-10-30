@@ -825,7 +825,7 @@ export class ProjectExecution {
     }catch(error){
       if(error instanceof ApiError&&error.status===402&&error.code==='CREDITS_INSUFFICIENT')this.fundingHref=await billingTaskRechargeHrefForRequest(undefined,'/runs/execute',request);
       if(error instanceof ApiError&&error.code==='IDEMPOTENCY_CONFLICT')this.pendingExecutionConflict=true;
-      else if(error instanceof ApiError&&error.status>=400&&error.status<500&&![408,429].includes(error.status)){
+      else if(error instanceof ApiError&&error.status>=400&&error.status<500&&error.status!==408&&(error.status!==429||error.code==='TRIAL_QUOTA_EXCEEDED')){
         // A definitive rejection has no accepted run; billing can now obtain a new quote.
         this.pendingExecution=undefined;this.pendingExecutionConflict=false;
       }
