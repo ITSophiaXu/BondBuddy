@@ -50,7 +50,7 @@ export class FileConsistency {
   private checkRequest?:BillingRecoveryDto<'ProjectFileCheckRequest'>;
   private pendingUpdate?:PendingUpdate;
   private recoveryError='';
-  private fundingRequest?:{checkId:string;body:Dto<'ProjectFileUpdateRequest'>};private fundingHref?:string;
+  private fundingRequest?:{checkId:string;body:BillingRecoveryDto<'ProjectFileUpdateRequest'>};private fundingHref?:string;
   private dialog?:HTMLDialogElement;private locatedUpdate?:string;
   private originalMessages=new Map<string,string>();
   private manualTokens=new Map<string,string>();private manualControls=new Map<string,ManualNav>();
@@ -73,14 +73,14 @@ export class FileConsistency {
       if(typeof cached.selectionCheck==='string'&&cached.selectionCheck.length<=128&&Array.isArray(cached.chosen)&&cached.chosen.length<=200&&cached.chosen.every((id:unknown)=>typeof id==='string'&&id.length>0&&id.length<=128)){this.selectionCheck=cached.selectionCheck;this.chosen=new Set(cached.chosen);}
       if(['all','conflict','consistent','manual','updated','selected'].includes(cached.filter))this.filter=cached.filter;
       this.needsCredits=cached.needsCredits===true;
-      if(this.needsCredits&&typeof cached.fundingRequest?.checkId==='string'&&Value.Check(schemas.ProjectFileUpdateRequest,cached.fundingRequest.body)&&isAutomaticPriceVersion(cached.fundingRequest.body.price_version))this.fundingRequest=cached.fundingRequest;
+      if(this.needsCredits&&typeof cached.fundingRequest?.checkId==='string'&&cached.fundingRequest.checkId.length>0&&cached.fundingRequest.checkId.length<=128&&Value.Check(billingRecoverySchemas.ProjectFileUpdateRequest,cached.fundingRequest.body)&&isAutomaticPriceVersion(cached.fundingRequest.body.price_version))this.fundingRequest=cached.fundingRequest;
       if(Value.Check(billingRecoverySchemas.ProjectFileCheckRequest,cached.checkRequest))this.checkRequest=cached.checkRequest;
       const pending=cached.pendingUpdate;
       if(pending?.attempted===true&&typeof pending.checkId==='string'&&pending.checkId.length>0&&pending.checkId.length<=128&&Value.Check(billingRecoverySchemas.ProjectFileUpdateRequest,pending.body)&&Array.isArray(pending.filenames)&&pending.filenames.length===pending.body.files.length&&pending.filenames.every((n:unknown)=>typeof n==='string'&&n.length<=200)){
         this.pendingUpdate={checkId:pending.checkId,body:pending.body,filenames:pending.filenames,attempted:true,...(Value.Check(billingRecoverySchemas.ProjectFileUpdateQuoteResponse,pending.quote)?{quote:encodeBillingDto('projectFileUpdateQuote',pending.quote)}:{})};
         this.pendingUpdate.confirmation=restoreConfirmationSnapshot(pending.confirmation,this.confirmationBinding(this.pendingUpdate));
       }
-      if(cached.checkRequest!=null&&!this.checkRequest||pending?.attempted===true&&!this.pendingUpdate)throw new Error('Invalid retained request');
+      if(cached.checkRequest!=null&&!this.checkRequest||pending?.attempted===true&&!this.pendingUpdate||this.needsCredits&&cached.fundingRequest!=null&&!this.fundingRequest)throw new Error('Invalid retained request');
       if(this.checkRequest||this.pendingUpdate)this.message='已恢复上次尚未确认的提交，请重试核对同一请求。';
       else if(this.needsCredits)this.message=this.fundingRequest?'原更新范围和价格已保存，补足积分并返回后继续原任务。':'已恢复本轮文件选择。充值后请重新确认费用，尚未提交更新。';
     }catch{this.recoveryError='本机保存的原检查或更新请求无法核实，记录已保留。请联系支持核对原任务，避免重复提交。';}
