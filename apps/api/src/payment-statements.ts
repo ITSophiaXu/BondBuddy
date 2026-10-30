@@ -5,18 +5,21 @@ import {transaction,uid} from './data.js';
 import {raiseAlert} from './evidence-gate.js';
 import {statementDate,type PaymentStatementRequest,type VerifiedPaymentStatement,type StatementEntry} from './payment-statements-format.js';
 import {statementInteger as exact,statementAbsolute} from './payment-statement-integers.js';
+import type {AlipayStatementEntry} from './alipay-statements.js';
+import {validateNormalizedAlipayStatement} from './alipay-statements-format.js';
+import {alipayStatementDifferences} from './alipay-statement-differences.js';
 
 type Difference={kind:string;line:number;reference:string;unit:'cny_fen'|'points'|'identity'|'coverage'|'state';expected?:string;observed?:string};
-const ref=(entry:StatementEntry)=>entry.kind==='funds'?entry.flowId:entry.kind==='refund'?entry.refundId!:entry.orderId;
+const ref=(entry:StatementEntry|AlipayStatementEntry)=>entry.kind==='funds'?entry.flowId:entry.kind==='refund'?entry.refundId!:entry.orderId;
 const chinaDate=(now:Date)=>new Date(now.getTime()+8*3600000).toISOString().slice(0,10);
 const dayBefore=(date:string,days:number)=>new Date(Date.parse(date+'T00:00:00Z')-days*86400000).toISOString().slice(0,10);
 const statementKinds=(provider:PaymentProvider)=>provider.statementKinds??(provider.name==='wechat'?['trade','funds'] as const:['trade'] as const);
 
 /** Compare original amounts and separately audit cash/points. No payment/refund/credit writer is called here. */
 async function differences(c:PoolClient,provider:PaymentProvider,statement:VerifiedPaymentStatement,asOfDay:string):Promise<Difference[]>{
-  // A verified Alipay download is not yet a verified transaction/settlement format.
+  // Alipay has its own PID coverage, completion times and merchant amounts.
   // Never apply WeChat coupon arithmetic or application-date semantics to it.
-  if(statement.provider==='alipay')return [{kind:'alipay_statement_format_unverified',line:0,reference:statement.billDate,unit:'coverage'}];
+  if(statement.provider==='alipay')return alipayStatementDifferences(c,provider,statement);
   const issues:Difference[]=[],entries=statement.entries;
   const add=(kind:string,entry:StatementEntry|undefined,unit:Difference['unit'],expected?:unknown,observed?:unknown,reference?:string)=>{
     issues.push({kind,line:entry?.line??0,reference:reference??(entry?ref(entry):statement.billDate),unit,
@@ -157,15 +160,17 @@ async function persistStatement(pool:Pool,job:any,provider:PaymentProvider,state
     ||provider.statementAppId!==undefined&&(statement.provider==='wechat'?statement.appId:statement.requestAppId)!==provider.statementAppId
     ||!['available','absent'].includes(statement.availability)||statement.entries.length>20000)throw new Error('Statement identity mismatch');
   let method='wechat_sha1',signedResponseSha256:string|null=null,context:Record<string,unknown>={};
-  const unresolved=statement.provider==='alipay';
+  let unresolved=statement.provider==='alipay'&&statement.normalization.status==='unresolved';
   if(statement.provider==='alipay'){
     const proof=statement.evidence;
     if(statement.availability!=='available'||statement.sha1!==null||! /^[a-f0-9]{64}$/.test(statement.sha256)
       ||!Number.isSafeInteger(statement.byteLength)||statement.byteLength<1||statement.byteLength>10485760
       ||proof.kind!=='alipay_rsa2_download_url'||! /^[a-f0-9]{64}$/.test(proof.signedResponseSha256)||proof.downloadSha256!==statement.sha256
-      ||proof.signedUrlMerchantId!==provider.merchantId||proof.requestedBillDate!==date||proof.requestBillType!=='trade'
-      ||statement.normalization.status!=='unresolved'||statement.normalization.reasons.length!==1||statement.normalization.reasons[0]!=='ALIPAY_CSV_FORMAT_UNVERIFIED'
-      ||statement.entries.length!==0||statement.totals!==null)throw new Error('Invalid Alipay statement proof');
+      ||proof.signedUrlMerchantId!==provider.merchantId||proof.requestedBillDate!==date||proof.requestBillType!=='trade')throw new Error('Invalid Alipay statement proof');
+    if(statement.normalization.status==='unresolved'){
+      if(statement.normalization.reasons.length!==1||statement.normalization.reasons[0]!=='ALIPAY_CSV_FORMAT_UNVERIFIED'
+        ||statement.entries.length!==0||statement.totals!==null)throw new Error('Invalid unresolved Alipay statement');
+    }else if(!validateNormalizedAlipayStatement(statement))throw new Error('Invalid normalized Alipay statement');
     method=proof.kind;signedResponseSha256=proof.signedResponseSha256;
     // Keep only non-secret provenance; download URLs and file contents never enter logs/JSON evidence.
     context={request_app_id:statement.requestAppId,merchant_id:proof.signedUrlMerchantId,requested_bill_date:date,request_bill_type:'trade',
@@ -175,7 +180,10 @@ async function persistStatement(pool:Pool,job:any,provider:PaymentProvider,state
     await c.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
     const locked=(await c.query('SELECT * FROM bb_payment_statement_jobs WHERE id=$1 FOR UPDATE',[job.id])).rows[0];
     if(!locked||locked.state!=='running'||locked.lease_token!==job.lease_token)return 'lease_lost' as const;
-    const key=statement.availability==='absent'?'absent':statement.sha256;
+    // Parser-version evidence is append-only. The same downloaded archive may
+    // already have an older unresolved evidence record with no parsed rows.
+    const key=statement.availability==='absent'?'absent':statement.provider==='alipay'&&statement.normalization.status==='normalized'
+      ?statement.sha256+':'+statement.normalization.format:statement.sha256;
     let saved=(await c.query('SELECT id FROM bb_payment_statements WHERE job_id=$1 AND evidence_key=$2',[job.id,key])).rows[0];
     if(!saved){
       saved=(await c.query(`INSERT INTO bb_payment_statements(id,job_id,evidence_key,availability,sha1,sha256,byte_length,verified_at,totals,verification_method,signed_response_sha256,verification_context)
@@ -185,6 +193,7 @@ async function persistStatement(pool:Pool,job:any,provider:PaymentProvider,state
         [saved.id,JSON.stringify(statement.entries.map(entry=>({line_no:entry.line,kind:entry.kind,reference_id:ref(entry),payload:entry})))]);
     }
     const issues=await differences(c,provider,statement,asOfDay),checkId=uid();
+    if(statement.provider==='alipay'&&issues.some(issue=>['alipay_payment_time_uncovered','alipay_refund_time_uncovered'].includes(issue.kind)))unresolved=true;
     await c.query('INSERT INTO bb_payment_statement_checks(id,job_id,statement_id,difference_count) VALUES($1,$2,$3,$4)',[checkId,job.id,saved.id,issues.length]);
     if(issues.length)await c.query(`INSERT INTO bb_payment_statement_differences(id,check_id,kind,line_no,reference_id,unit,expected_value,observed_value)
       SELECT id,$1,kind,line_no,reference_id,unit,expected_value,observed_value FROM jsonb_to_recordset($2::jsonb)

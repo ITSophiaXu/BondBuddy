@@ -1,0 +1,31 @@
+{
+  "synthetic": true,
+  "realHttp": true,
+  "realPostgres": true,
+  "modelCallsPerformed": 0,
+  "realPaymentCallsPerformed": 0,
+  "startedAt": "2026-10-30T01:21:43.283Z",
+  "finishedAt": "2026-10-30T01:21:45.082Z",
+  "username": "billing_qa_7c0c2eaa",
+  "checks": [
+    "untrusted Host denied",
+    "anonymous simulation denied",
+    "missing CSRF denied",
+    "wrong Origin denied",
+    "random test account starts at zero",
+    "full review quote has automatic current price",
+    "zero balance rejects start without reservation",
+    "subscription creates actual pending 199 yuan order",
+    "subscription refresh grants exactly once",
+    "100 yuan topup adds 10000 permanent points",
+    "start holds 27195 through real product submission",
+    "foreign account cannot complete task",
+    "synthetic delivered Word produces real settled charge",
+    "replay returns same run without double charge",
+    "failed task releases real reservation",
+    "billing_tester remains at zero",
+    "three synthetic Word artifacts recorded"
+  ],
+  "passed": 17,
+  "failed": 0
+}

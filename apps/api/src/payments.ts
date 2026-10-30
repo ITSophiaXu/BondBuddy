@@ -10,6 +10,7 @@ import { installPaymentRefunds,recordPaymentCashProof,type PaymentRefundProvider
 import {activateSubscriptionPayment,markSubscriptionPaymentFailed,type RecurringPaymentProvider} from './subscriptions.js';
 import type {PaymentStatementRequest,VerifiedPaymentStatement} from './payment-statements-format.js';
 import {installPaymentStatements} from './payment-statements.js';
+import {recheckAuthenticatedStatementDay} from './payment-statement-recheck.js';
 
 type OrderRequest=Static<typeof schemas.RechargeOrderRequest>;
 export type PaymentOrder={id:string;merchant_id:string;amount_fen:number;currency:'CNY';expires_at:string};
@@ -66,7 +67,10 @@ export async function applyVerifiedPayment(pool:Pool,provider:PaymentProvider,re
         if(!lot||safeBillingNumber(lot.original_points)!==safeBillingNumber(order.points)||lot.source!==(order.order_kind==='subscription'?'subscription':'purchase'))
           throw new Problem(503,'DATA_UNAVAILABLE','Original paid credit lot requires reconciliation');
         await recordPaymentCashProof(c,order,lot.id,receipt.payerCash);
-        if(receipt.paidAt&&!order.provider_paid_at)await c.query('UPDATE bb_recharge_orders SET provider_paid_at=$2 WHERE id=$1',[order.id,receipt.paidAt]);
+        if(receipt.paidAt&&!order.provider_paid_at){
+          await c.query('UPDATE bb_recharge_orders SET provider_paid_at=$2 WHERE id=$1',[order.id,receipt.paidAt]);
+          if(provider.name==='alipay')await recheckAuthenticatedStatementDay(c,'alipay',provider.merchantId,receipt.paidAt);
+        }
       }
       return rechargeDto(order);
     }
@@ -74,6 +78,7 @@ export async function applyVerifiedPayment(pool:Pool,provider:PaymentProvider,re
       // Payment success and credit issuance commit together. A callback/query retry
       // after a database failure recovers the same order, without another payment.
       await c.query("UPDATE bb_recharge_orders SET state='paid',provider_txn_id=$2,credited_at=COALESCE(credited_at,now()),provider_paid_at=COALESCE(provider_paid_at,$3) WHERE id=$1",[order.id,receipt.transactionId,receipt.paidAt??null]);
+      if(provider.name==='alipay'&&receipt.paidAt&&!order.provider_paid_at)await recheckAuthenticatedStatementDay(c,'alipay',provider.merchantId,receipt.paidAt);
       const lotId=order.order_kind==='subscription'
         ?await activateSubscriptionPayment(c,order,`payment:${provider.name}`)
         :await grantCredits(c,{owner:order.owner_user_id,source:'purchase',key:`recharge:${order.id}`,points:safeBillingNumber(order.points),expiresAt:null,actor:`payment:${provider.name}`,reason:`verified_order:${order.id}`});

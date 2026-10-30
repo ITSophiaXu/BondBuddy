@@ -1,0 +1,22 @@
+{
+  "synthetic": true,
+  "template": "bb_billing_complete_20261029_v5",
+  "target": "bb_billing_complete_20261030_v6",
+  "checks": [
+    {
+      "database": "bb_billing_complete_20261030_v6",
+      "mode": "upgrade-from-0157",
+      "count": 159,
+      "latest": "0158_alipay_statement_normalization.sql",
+      "migrationExit": 0
+    },
+    {
+      "database": "bb_billing_empty_0158_check_20261030",
+      "mode": "empty-install",
+      "count": 159,
+      "latest": "0158_alipay_statement_normalization.sql",
+      "migrationExit": 0
+    }
+  ],
+  "freshCleanup": true
+}
