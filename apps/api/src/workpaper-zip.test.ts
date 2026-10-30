@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Readable} from 'node:stream';
+import fs from 'node:fs';
 import {setTimeout as delay} from 'node:timers/promises';
 import {WorkpaperZipCache,type WorkpaperZipFile} from './workpaper-zip.js';
 import {digest,type PrivateBlobs} from './data.js';
@@ -19,6 +20,20 @@ test('slow readers cannot retain an unlimited number of distinct archives',async
     await consume((await cache.open('fifth',[file(bytes)],blobs)).body);
     await Promise.all(streams.map(consume));
   }finally{for(const stream of streams)stream.destroy();await cache.close();}
+});
+
+test('a ZIP input filesystem error rejects the request and allows a clean retry',async t=>{
+  const cache=new WorkpaperZipCache(options),bytes=Buffer.from('data');
+  const original=fs.stat;
+  const mock=t.mock.method(fs,'stat',((path:fs.PathLike,callback:(error:Error)=>void)=>{
+    if(String(path).includes('bondbuddy-workpaper-zip-'))queueMicrotask(()=>callback(new Error('synthetic input unavailable')));
+    else (original as any)(path,callback);
+  }) as typeof fs.stat);
+  const blobs={openRead:async()=>({body:Readable.from([bytes]),contentLength:bytes.length})} as unknown as PrivateBlobs;
+  try{
+    await assert.rejects(cache.open('owner',[file(bytes)],blobs),/暂时无法读取/);mock.mock.restore();
+    await consume((await cache.open('owner',[file(bytes)],blobs)).body);
+  }finally{await cache.close();}
 });
 
 test('coalesces overlapping downloads, streams storage once, and invalidates on pin/name/owner changes',async()=>{

@@ -122,6 +122,7 @@ export class WorkpaperZipCache {
       }));
       if(failure)throw failure;signal.throwIfAborted();
       const path=join(directory,'workpapers.zip'),zip=new ZipFile();
+      zip.on('error',error=>(zip.outputStream as Readable).destroy(error));
       const output=pipeline(zip.outputStream,createWriteStream(path,{flags:'wx',mode:0o600}),{signal});
       // DOCX is already compressed. STORE avoids hundreds of redundant deflates.
       for(const [i,file] of files.entries())zip.addFile(join(directory,String(i)),file.path,{compress:false});

@@ -26,9 +26,9 @@ Windows、Node 22、PostgreSQL 16、Azurite 3.35.0；独立测试数据库与容
 
 ## 自动化证据
 
-API：`node --test --test-concurrency=1 apps/api/dist/workpaper-zip.test.js apps/api/dist/workpaper-download.test.js apps/api/dist/workpaper-download.pg.test.js`，9 pass / 0 fail / 0 skip。
+API：`node --test --test-concurrency=1 apps/api/dist/workpaper-zip.test.js apps/api/dist/workpaper-download.test.js apps/api/dist/workpaper-download.pg.test.js`，共 10 个用例（9 个缓存/HTTP 夹具测试及 1 个真实 PostgreSQL/Azurite 测试），均通过。
 
-覆盖 248 份 ZIP 全部解压、CRC、SHA-256、路径和数量；缓存复用/失效、账号隔离、项目删除、交付状态撤回、损坏/截断/过大文件、超时、取消、迟到流关闭、慢读者上限。未生成任务或产生费用。
+覆盖 248 份 ZIP 全部解压、CRC、SHA-256、路径和数量；缓存复用/失效、账号隔离、项目删除、交付状态撤回、损坏/截断/过大文件、超时、取消、迟到流关闭、慢读者上限。ZIP 库的临时文件读取错误接入请求失败处理，故障注入验证可重试，避免未监听的 error 事件终止服务。未生成任务或产生费用。
 
 网页 API 单元测试：`node --test apps/web/dist-test/api.test.js`，22 pass / 0 fail。覆盖未知/压缩长度、截断和接收进度。
 
@@ -47,5 +47,7 @@ TypeScript、API/worker 和 Vite 生产构建通过。公共契约 72 项测试�
 ![实现](../../apps/web/test-evidence/workpaper-progress-routing/implementation-1440.png)
 
 ## 最终统一验收待办
+
+GitHub Actions 检查未能启动：运行 41058809765 的 GitHub 注释指出账户近期付款失败或支出上限需要提高，job 无执行步骤。以上通过结果为本地自测，不宣称远端 CI 通过；PR 保持开放，待账户问题解决后重新运行。
 
 在统一集成版复验两个下载入口，再用获授权的实际 248 份批次复测冷/热下载和真实网络传输。用户尚未验收；生产配置、部署及线上核验由统一发布 chat 按授权处理。
