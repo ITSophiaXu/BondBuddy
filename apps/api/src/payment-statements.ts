@@ -8,6 +8,7 @@ import {statementInteger as exact,statementAbsolute} from './payment-statement-i
 import type {AlipayStatementEntry} from './alipay-statements.js';
 import {validateNormalizedAlipayStatement} from './alipay-statements-format.js';
 import {alipayStatementDifferences} from './alipay-statement-differences.js';
+import {lotFundingEvidenceSql,lotFundingMatches,subscriptionIssuanceMatchesSql} from './subscription-funding-evidence.js';
 
 type Difference={kind:string;line:number;reference:string;unit:'cny_fen'|'points'|'identity'|'coverage'|'state';expected?:string;observed?:string};
 const ref=(entry:StatementEntry|AlipayStatementEntry)=>entry.kind==='funds'?entry.flowId:entry.kind==='refund'?entry.refundId!:entry.orderId;
@@ -29,9 +30,13 @@ async function differences(c:PoolClient,provider:PaymentProvider,statement:Verif
   const orderIds=entries.filter(e=>e.kind!=='funds').map(e=>(e as Exclude<StatementEntry,{kind:'funds'}>).orderId);
   const businessIds=entries.flatMap(e=>e.kind==='funds'?[e.businessId,e.voucherId]:[e.transactionId]);
   const refundIds=entries.flatMap(e=>e.kind==='refund'?[e.refundId!]:e.kind==='funds'?[e.businessId,e.voucherId]:[]);
-  const orders=(await c.query(`SELECT o.*,p.cash_amount_fen,l.id AS lot_id,l.original_points
+  const orders=(await c.query(`SELECT o.*,p.cash_amount_fen,l.id AS lot_id,l.original_points,
+      CASE WHEN o.order_kind='subscription' THEN sp.monthly_points ELSE o.points END AS expected_original_points,
+      CASE WHEN o.order_kind<>'subscription' THEN true ELSE ${subscriptionIssuanceMatchesSql} END AS subscription_issuance_matches,
+      sp.funding_kind,l.cash_basis_fen::text,l.cash_basis_points::text,${lotFundingEvidenceSql()} AS funding_evidence
     FROM bb_recharge_orders o LEFT JOIN bb_payment_cash_proofs p ON p.order_id=o.id
     LEFT JOIN bb_credit_lots l ON l.owner_user_id=o.owner_user_id AND l.source_key='recharge:'||o.id
+    LEFT JOIN bb_subscription_periods sp ON sp.order_id=o.id AND sp.owner_user_id=o.owner_user_id
     WHERE o.provider=$1 AND o.merchant_id=$2 AND (o.id=ANY($3::text[]) OR o.provider_txn_id=ANY($4::text[])
       OR (o.provider_paid_at>=($5::date::timestamp AT TIME ZONE 'Asia/Shanghai') AND o.provider_paid_at<($5::date::timestamp AT TIME ZONE 'Asia/Shanghai')+interval '1 day'))`,
     [provider.name,provider.merchantId,orderIds,businessIds,statement.billDate])).rows;
@@ -62,7 +67,10 @@ async function differences(c:PoolClient,provider:PaymentProvider,statement:Verif
       else if(order.cash_amount_fen===null||order.cash_amount_fen===undefined)add('payment_cash_proof_missing',entry,'coverage');
       else compare('payment_payer_cash',entry,'cny_fen',order.cash_amount_fen,exact(entry.nominalFen)-exact(entry.couponFen));
       if(!order.lot_id)add('payment_lot_missing',entry,'coverage');
-      else compare('original_credit_issuance',entry,'points',order.points,order.original_points);
+      else if(order.expected_original_points!==null)compare('original_credit_issuance',entry,'points',order.expected_original_points,order.original_points);
+      // An annual order promises twelve releases; its first lot is one month's
+      // rights. Cash still reconciles once against the original whole order.
+      if(order.order_kind==='subscription'&&(order.subscription_issuance_matches!==true||!lotFundingMatches({required:order.funding_kind==='mixed',funding:order.funding_evidence,numerator:order.cash_basis_fen,denominator:order.cash_basis_points})))add('subscription_contract_issuance',entry,'identity');
       // Use authenticated channel success_time, never local callback/credited_at time.
       const timeMatches=!!order.provider_paid_at&&new Date(order.provider_paid_at).toISOString()===entry.eventAt&&chinaDate(new Date(entry.eventAt))===statement.billDate;
       if(!order.provider_paid_at)add('payment_channel_time_uncovered',entry,'coverage');

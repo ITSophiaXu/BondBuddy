@@ -18,14 +18,14 @@ export async function subscriptionOrderPeriod(pool:Pool,owner:string,orderId:str
     if(!p)throw unavailable();
     try{
       if(int64(p.amount_fen)!==int64(order.amount_fen)||int64(p.points)!==int64(order.points)||
-        order.state==='paid'&&(!['active','refunded'].includes(p.status)||!p.lot_id||p.remaining==null||p.frozen==null||!p.starts_at||!p.ends_at||!p.credits_expires_at))throw unavailable();
-      const frozen=int64(p.frozen??0),refundHeld=int64(p.refund_held);
+        order.state==='paid'&&(!['active','refunded','superseded'].includes(p.status)||!p.lot_id||p.remaining==null||p.frozen==null||!p.starts_at||!p.ends_at||!p.credits_expires_at))throw unavailable();
+      const frozen=int64(p.frozen??0),refundHeld=int64(p.refund_held),changeHeld=int64(p.change_held??0);
       return{order_id:orderId,period:{id:p.id,order_id:p.order_id,plan_id:p.plan_id,status:p.status,
-        amount_fen:serializeInt64(p.amount_fen),points:serializeInt64(p.points),
+        amount_fen:serializeInt64(p.amount_fen),points:serializeInt64(p.points),face_amount_fen:serializeInt64(p.face_amount_fen),funding_kind:p.funding_kind,
         billing_cycle:p.billing_cycle,monthly_points:serializeInt64(p.monthly_points),release_count:p.billing_cycle==='annual'?12:1,
         released_count:Number(p.released_count),next_release_at:p.next_release_at?date(p.next_release_at):null,
         available_points:serializeInt64(p.available??0),held_points:serializeInt64(frozen),
-        task_held_points:serializeInt64(frozen-refundHeld),refund_held_points:serializeInt64(refundHeld),
+        task_held_points:serializeInt64(frozen-refundHeld-changeHeld),refund_held_points:serializeInt64(refundHeld),change_held_points:serializeInt64(changeHeld),
         starts_at:p.starts_at?date(p.starts_at):null,ends_at:p.ends_at?date(p.ends_at):null,
         credits_expires_at:p.credits_expires_at?date(p.credits_expires_at):null,
         refundable_until:p.starts_at?new Date(new Date(p.starts_at).getTime()+7*86400000).toISOString():null}};

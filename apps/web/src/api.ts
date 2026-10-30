@@ -4,7 +4,7 @@ import { UserFacingError, unknownErrorText, type ErrorOperation } from './user-f
 import type { Static } from '@sinclair/typebox';
 import type { schemas, SchemaName, DataPolicy, AgreementResponse } from './billing-types.js';
 import type { FactDecisionRequest } from '@bondbuddy/contracts';
-import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest,SubscriptionCheckout,Subscription,SubscriptionAutoRenewRequest,SubscriptionAutoRenew} from './billing-types.js';
+import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest,SubscriptionCheckout,Subscription,SubscriptionAutoRenewRequest,SubscriptionAutoRenew,SubscriptionChangeQuoteRequest,SubscriptionChangeCheckoutRequest} from './billing-types.js';
 import { isUploadInspectionPublicReason, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
@@ -74,6 +74,8 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
     case 'BILLING_NOT_READY': return '积分价格尚未配置，请联系支持；本次未扣费。';
     case 'PAYMENT_UNAVAILABLE': return '充值渠道暂不可用，请稍后重试。项目材料已保留。';
     case 'PAYMENT_INVALID': return '支付结果尚未核实，请刷新订单状态；无需重复付款。';
+    case 'SUBSCRIPTION_CHANGE_QUOTE_STALE': return '可抵扣积分已变化或付款摘要已过期，请刷新付款摘要。';
+    case 'SUBSCRIPTION_CHANGE_MANDATE_PENDING': return '原自动续费仍在解除核对中，请稍后继续同一付款请求；尚未生成新订单。';
     case 'PASSWORD_INVALID': return '当前密码不正确。';
     case 'ACCOUNT_CLOSURE_BLOCKED': return '还有任务尚未结束，暂时不能注销账号。';
     case 'PROJECT_DELETE_BLOCKED': return '项目中还有任务尚未结束，暂时不能删除。';
@@ -91,6 +93,8 @@ export class ApiClient {
   subscriptionAccount(signal?:AbortSignal){return this.request<SubscriptionAccount>('GET','/subscriptions/account',undefined,{},signal);}
   createSubscription(input:SubscriptionCheckoutRequest,signal?:AbortSignal){return this.request<SubscriptionCheckout>('POST','/subscriptions',input,{},signal);}
   renewSubscription(id:string,input:SubscriptionCheckoutRequest,signal?:AbortSignal){return this.request<SubscriptionCheckout>('POST',`/subscriptions/${encodeURIComponent(id)}/renew`,input,{},signal);}
+  subscriptionChangeQuote(input:SubscriptionChangeQuoteRequest,signal?:AbortSignal){return this.request<Dto<'SubscriptionChangeQuoteResponse'>>('POST','/subscriptions/change-quotes',input,{},signal);}
+  subscriptionChangeCheckout(input:SubscriptionChangeCheckoutRequest,signal?:AbortSignal){return this.request<Dto<'SubscriptionChangeCheckoutResponse'>>('POST','/subscriptions/change-checkouts',input,{},signal);}
   cancelSubscription(id:string,input:{request_id:string},signal?:AbortSignal){return this.request<Subscription>('POST',`/subscriptions/${encodeURIComponent(id)}/cancel`,input,{},signal);}
   subscriptionAutoRenew(id:string,input:SubscriptionAutoRenewRequest,signal?:AbortSignal){return this.request<SubscriptionAutoRenew>('POST',`/subscriptions/${encodeURIComponent(id)}/auto-renew`,input,{},signal);}
   refreshSubscriptionAutoRenew(id:string,signal?:AbortSignal){return this.request<SubscriptionAutoRenew>('POST',`/subscriptions/${encodeURIComponent(id)}/auto-renew/refresh`,{}, {},signal);}

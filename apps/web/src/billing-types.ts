@@ -13,7 +13,7 @@ const schemaFamilies={CreditBalanceResponse:'creditBalance',FixedQuoteResponse:'
  QaQuoteResponse:'qaQuote',QaAnswerRequest:'qaAnswerRequest',QaWorkspaceResponse:'qaWorkspace',
  IntegrityQuoteResponse:'integrityQuote',IntegrityRunRequest:'integrityRunRequest',IntegrityWorkspaceResponse:'integrityWorkspace',
  ProjectFileBatchRequest:'projectFileBatchRequest',ProjectFileBatchQuoteResponse:'projectFileBatchQuote',ProjectFileCheckRequest:'projectFileCheckRequest',ProjectFileCheckQuoteResponse:'projectFileCheckQuote',ProjectFileUpdateRequest:'projectFileUpdateRequest',ProjectFileUpdateQuoteResponse:'projectFileUpdateQuote',
- SubscriptionCatalogResponse:'subscriptionCatalog',SubscriptionAccountResponse:'subscriptionAccount',SubscriptionCheckoutResponse:'subscriptionCheckout',SubscriptionResponse:'subscription',SubscriptionAutoRenewResponse:'subscriptionAutoRenew'} as const satisfies Record<string,BillingWireDtoName>;
+ SubscriptionCatalogResponse:'subscriptionCatalog',SubscriptionAccountResponse:'subscriptionAccount',SubscriptionCheckoutResponse:'subscriptionCheckout',SubscriptionChangeCheckoutResponse:'subscriptionCheckout',SubscriptionResponse:'subscription',SubscriptionAutoRenewResponse:'subscriptionAutoRenew'} as const satisfies Record<string,BillingWireDtoName>;
 type WireSchemaSet<S extends Record<string,TSchema>>={[K in keyof S]:K extends keyof typeof schemaFamilies?WireSchema<S[K],typeof schemaFamilies[K]>:S[K]};
 function wireSchemas<S extends Record<string,TSchema>>(set:S):WireSchemaSet<S>{return Object.fromEntries(Object.entries(set).map(([k,s])=>[k,k in schemaFamilies?wireSchema(s,schemaFamilies[k as keyof typeof schemaFamilies]):s])) as WireSchemaSet<S>;}
 export const schemas=wireSchemas(domain.schemas);

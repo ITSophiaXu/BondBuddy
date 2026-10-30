@@ -20,7 +20,7 @@ const responseFamily=(path:string,method:string):BillingWireDtoName|undefined=>{
   if(path==='/commerce/quotations')return 'scopeQuotationList';
   if(path==='/credits/consumption-history')return 'consumptionHistory';
   if(path==='/credits/recharge-history')return 'rechargeHistory';
-  if((path==='/subscriptions'||/^\/subscriptions\/[^/]+\/renew$/.test(path))&&method==='POST')return 'subscriptionCheckout';
+  if((path==='/subscriptions'||path==='/subscriptions/change-checkouts'||/^\/subscriptions\/[^/]+\/renew$/.test(path))&&method==='POST')return 'subscriptionCheckout';
   if(path.endsWith('/auto-renew')||path.endsWith('/auto-renew/refresh'))return 'subscriptionAutoRenew';
   if(path.endsWith('/cancel')&&path.startsWith('/subscriptions/'))return 'subscription';
   if(path.startsWith('/commerce/topups'))return path.endsWith('/refund-eligibility')?'refundEligibility':path.endsWith('/refunds')||path.includes('/refunds/')?'refund':'rechargeOrder';
@@ -252,10 +252,17 @@ test('wallet and subscription period distinguish task holds from pending cash-re
 
 test('stopping automatic renewal preserves the current period and all remaining credits',async({page})=>{
   const {calls}=await setup(page,{payment:true,active:true,renewal:true});await page.goto('/#/account');
+  await expect(page.getByRole('switch',{name:'自动续费',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'管理订阅',exact:true}).click();
   await page.getByRole('switch',{name:'自动续费',exact:true}).click();
+  await expect(page.getByRole('dialog')).toContainText('本期 轻量订阅保留至');
+  expect(calls.filter(call=>call.path.endsWith('/cancel')&&call.method==='POST')).toHaveLength(0);
+  await page.getByRole('button',{name:'返回管理',exact:true}).click();
+  await page.getByRole('button',{name:'停止自动续费',exact:true}).click();
+  await page.getByRole('button',{name:'确认停止续费',exact:true}).click();
   await expect(page.locator('.subscription-message')).toContainText('已停止未来续费，已到账积分按原有效期继续使用');
   await expect(page.locator('.account-balance-value')).toHaveText('22,000积分');
-  await expect(page.locator('.subscription-current')).toContainText('已停止续费');
+  await expect(page.locator('.subscription-management')).toContainText('未开启自动续费，到期不会自动扣款');
   expect(calls.filter(call=>call.path.endsWith('/cancel')&&call.method==='POST')).toHaveLength(1);
   expect(calls.filter(call=>call.path.endsWith('/refunds')&&call.method==='POST')).toEqual([]);
 });
@@ -334,20 +341,23 @@ test('a mismatched order detail cannot supply another order period or imply perm
 
 test('a mandate authorization link is not displayed as a completed automatic renewal',async({page})=>{
   const {calls}=await setup(page,{payment:true,active:true,renewal:true,manualActive:true});await page.goto('/#/account');
+  await page.getByRole('button',{name:'管理订阅',exact:true}).click();
   await expect(page.getByRole('switch',{name:'自动续费',exact:true})).toHaveAttribute('aria-checked','false');
   await page.getByRole('switch',{name:'自动续费',exact:true}).click();
   await expect(page.getByRole('link',{name:'前往支付渠道授权',exact:true})).toHaveAttribute('href','https://payments.example.test/mandate');
-  await expect(page.locator('.subscription-current')).not.toContainText('已开通自动续费');
+  await expect(page.locator('.subscription-management')).not.toContainText('已开通自动续费');
   await page.getByRole('button',{name:'刷新续费授权状态',exact:true}).click();
-  await expect(page.locator('.subscription-current')).toContainText('已开通自动续费');
+  await expect(page.locator('.subscription-management')).toContainText('已开通自动续费');
   await expect(page.locator('.subscription-message')).toHaveText('自动续费已开通。');
   await expect(page.getByRole('link',{name:'前往支付渠道授权',exact:true})).toHaveCount(0);
   await page.getByRole('switch',{name:'自动续费',exact:true}).click();
+  await page.getByRole('button',{name:'确认停止续费',exact:true}).click();
   await expect(page.getByRole('switch',{name:'自动续费',exact:true})).toHaveAttribute('aria-checked','false');
   await page.getByRole('switch',{name:'自动续费',exact:true}).click();
   await page.getByRole('button',{name:'刷新续费授权状态',exact:true}).click();
   await expect(page.getByRole('switch',{name:'自动续费',exact:true})).toHaveAttribute('aria-checked','true');
   await page.getByRole('switch',{name:'自动续费',exact:true}).click();
+  await page.getByRole('button',{name:'确认停止续费',exact:true}).click();
   const authorizations=calls.filter(c=>c.path.endsWith('/auto-renew')&&c.method==='POST'),cancellations=calls.filter(c=>c.path.endsWith('/cancel')&&c.method==='POST');
   expect(authorizations).toHaveLength(2);expect(authorizations[0].body.request_id).not.toBe(authorizations[1].body.request_id);
   expect(cancellations).toHaveLength(2);expect(cancellations[0].body.request_id).not.toBe(cancellations[1].body.request_id);
@@ -406,6 +416,7 @@ test('subscription preview shares the account layout and keeps its interactive e
   await evidence(page,'subscription-final-prototype-annual-390.png');await regionEvidence(page,'subscription-final-prototype-annual-card-detail-390.png','[data-subscription-plan="intensive"]');await regionEvidence(page,'subscription-final-prototype-topup-detail-390.png','.subscription-topup');
   await page.setViewportSize({width:1440,height:960});await evidence(page,'subscription-final-prototype-annual-1440.png');await regionEvidence(page,'subscription-final-prototype-annual-plans-detail-1440.png','.subscription-plans');await regionEvidence(page,'subscription-final-prototype-topup-detail-1440.png','.subscription-topup');
   await page.getByRole('button',{name:'开通轻量',exact:true}).click();await expect(page.locator('.subscription-message')).toHaveText('付款成功，本月积分已到账，剩余额度按月发放。');
+  await page.getByRole('button',{name:'管理订阅',exact:true}).click();
   await expect(page.getByRole('switch',{name:'自动续费',exact:true})).toHaveAttribute('aria-checked','false');await page.getByRole('switch',{name:'自动续费',exact:true}).click();await expect(page.getByRole('switch',{name:'自动续费',exact:true})).toHaveAttribute('aria-checked','true');
   expect(apiCalls).toEqual([]);
 });
@@ -425,7 +436,8 @@ test('quote-only authoring recovery pre-fills the exact topup gap in yuan withou
 
 test('pending cancellation refreshes the original mandate across reload and forbids reauthorization until confirmed',async({page})=>{
   const {calls}=await setup(page,{payment:true,active:true,renewal:true,cancelPending:true});await page.goto('/#/account');
-  await page.getByRole('switch',{name:'自动续费',exact:true}).click();await expect(page.locator('.subscription-current')).toContainText('正在停止续费');
+  await page.getByRole('button',{name:'管理订阅',exact:true}).click();
+  await page.getByRole('switch',{name:'自动续费',exact:true}).click();await page.getByRole('button',{name:'确认停止续费',exact:true}).click();await expect(page.locator('.subscription-management')).toContainText('正在停止续费');
   await expect(page.getByRole('switch',{name:'自动续费',exact:true})).toBeDisabled();await expect(page.getByRole('link',{name:'前往支付渠道授权',exact:true})).toHaveCount(0);
   await page.reload();await page.getByRole('button',{name:'刷新原解约状态',exact:true}).click();
   await expect(page.locator('.subscription-message')).toContainText('原解约结果仍在核对');await expect(page.getByRole('switch',{name:'自动续费',exact:true})).toBeDisabled();
@@ -501,8 +513,7 @@ test('a default paid checkout ends on the overview while an explicit history lin
 
 test('annual renewal shows the next whole-year charge and cancelling preserves the remaining monthly entitlement',async({page})=>{
   const {calls}=await setup(page,{payment:true,active:true,renewal:true,annual:true});await page.goto('/#/account');
-  const control=page.getByRole('switch',{name:'自动续费',exact:true});await expect(control).toHaveAttribute('aria-checked','true');
-  await expect(page.locator('[data-renewal-schedule]')).toContainText('¥2,149.20（年付）');await expect(page.locator('[data-renewal-schedule]')).toContainText('2027');
+  const control=page.getByRole('switch',{name:'自动续费',exact:true});await expect(control).toHaveCount(0);
   await expect(page.locator('.subscription-annual-releases')).toContainText('已发放 1/12 个月额度，剩余 11 个月；每月 21,000 积分');
   await expect(page.locator('.subscription-plan .credit-pack-badge')).toHaveCount(1);await expect(page.locator('[data-subscription-plan="light"] .btn')).toHaveText('当前订阅');await expect(page.locator('.subscription-plan .btn').filter({hasText:'到期后可选'})).toHaveCount(2);
   await page.getByRole('radio',{name:'月付',exact:true}).click();await expect(page.locator('.subscription-plan .credit-pack-badge')).toHaveCount(0);await expect(page.locator('.subscription-plan .btn').filter({hasText:'到期后可选'})).toHaveCount(3);
@@ -510,8 +521,82 @@ test('annual renewal shows the next whole-year charge and cancelling preserves t
   await page.locator('#subscription-topup-amount').fill('12.18');await expect(page.locator('#subscription-topup-preview')).toHaveText('将到账 1,218 积分');
   await evidence(page,'subscription-final-annual-current-1440.png');await regionEvidence(page,'subscription-final-annual-plans-detail-1440.png','.subscription-plans');await regionEvidence(page,'subscription-final-topup-detail-1440.png','.subscription-topup');
   await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await evidence(page,'subscription-final-annual-current-390.png');await regionEvidence(page,'subscription-final-annual-card-detail-390.png','[data-subscription-plan="intensive"]');await regionEvidence(page,'subscription-final-topup-detail-390.png','.subscription-topup');await page.setViewportSize({width:1440,height:960});
-  await control.click();await expect(control).toHaveAttribute('aria-checked','false');
-  await expect(page.locator('.subscription-current')).toContainText('已停止续费');await expect(page.locator('.subscription-current')).toContainText('2027');
-  await expect(page.locator('.subscription-annual-releases')).toContainText('剩余 11 个月');await expect(page.locator('.subscription-annual-releases')).toContainText('停止续费不影响本年剩余额度按月到账');
+  await page.getByRole('button',{name:'管理订阅',exact:true}).click();await expect(control).toHaveAttribute('aria-checked','true');
+  await expect(page.locator('[data-renewal-schedule]')).toContainText('¥2,149.20（年付）');await expect(page.locator('[data-renewal-schedule]')).toContainText('2027');
+  await regionEvidence(page,'subscription-management-annual-1440.png','.subscription-management');
+  await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await regionEvidence(page,'subscription-management-annual-390.png','.subscription-management');await page.setViewportSize({width:1440,height:960});
+  await control.click();await expect(page.getByRole('dialog')).toContainText('已付年期的剩余额度仍按月到账');await evidence(page,'subscription-cancel-confirm-annual-1440.png');
+  await page.getByRole('button',{name:'确认停止续费',exact:true}).click();await expect(control).toHaveAttribute('aria-checked','false');
+  await expect(page.locator('.subscription-management')).toContainText('未开启自动续费，到期不会自动扣款');await expect(page.locator('.subscription-management')).toContainText('2027');
+  await expect(page.locator('.subscription-annual-releases')).toContainText('剩余 11 个月');
+  await page.getByRole('button',{name:'← 返回账户概览',exact:true}).click();await expect(control).toHaveCount(0);await expect(page.locator('.subscription-current')).toContainText('本期有效');
   expect(calls.filter(c=>c.path.endsWith('/cancel')&&c.method==='POST')).toHaveLength(1);expect(calls.filter(c=>c.path.endsWith('/refunds')&&c.method==='POST')).toHaveLength(0);
+});
+
+async function changeFixture(page:Page,options:{partial?:boolean;stale?:boolean;unknown?:boolean;mandatePending?:boolean}={}){
+  const base=await setup(page,{payment:true,active:true,renewal:true});
+  let available=options.partial?'27500':'55000',quoteCount=0,attempts=0,created=false,paid=false,target='professional',cycle='annual';
+  const rejected=new Set<string>();let checkoutBody:any,acceptedQuote:any;
+  const subscription=()=>({id:'subscription-1',plan_id:paid?target:'professional',status:'active',auto_renew:!paid,mandate_status:paid?'cancelled':'active',current_period_start:now,current_period_end:paid&&cycle==='annual'?'2027-10-29T04:00:00Z':end,task_price_version:AUTOMATIC_PRICE_VERSION,billing_cycle:paid?cycle:'monthly',next_charge_at:paid?null:end,next_charge_amount_fen:paid?null:'49900'});
+  const quote=()=>{const plan=plans.find(p=>p.id===target)!,offset=available==='55000'?'49900':'24950',face=cycle==='annual'?plan.annual_amount_fen:plan.amount_fen;return{quote_id:'change-quote-'+quoteCount,source_period_id:'period-original',source_plan_id:'professional',target_plan_id:target,billing_cycle:cycle,face_amount_fen:String(face),credit_offset_fen:offset,pay_now_fen:String(BigInt(face)-BigInt(offset)),transfer_points:available,excluded_held_points:'0',monthly_points:String(plan.points),total_points:String(plan.points*(cycle==='annual'?12:1)),release_count:cycle==='annual'?12:1,expires_at:'2026-10-29T04:15:00Z'};};
+  const order=()=>({order_id:'change-order',provider:'wechat',state:paid?'paid':'pending',amount_fen:acceptedQuote?.pay_now_fen??'489020',points:acceptedQuote?.total_points??'660000',currency:'CNY',checkout_url:'weixin://wxpay/bizpayurl?pr=synthetic-change',project_id:null,expires_at:end,credited_at:paid?now:null});
+  const period=()=>({id:paid?'period-changed':'period-original',order_id:paid?'change-order':'subscription-original',plan_id:paid?target:'professional',status:'active',amount_fen:paid?order().amount_fen:'49900',points:paid?acceptedQuote.total_points:'55000',...(paid?{funding_kind:'mixed',face_amount_fen:acceptedQuote.face_amount_fen}:{}),available_points:created?paid?acceptedQuote.monthly_points:'0':available,held_points:created&&!paid?available:'0',task_held_points:'0',refund_held_points:'0',change_held_points:created&&!paid?available:'0',starts_at:now,ends_at:subscription().current_period_end,credits_expires_at:expiry,refundable_until:'2026-11-05T04:00:00Z',billing_cycle:subscription().billing_cycle,monthly_points:paid?acceptedQuote.monthly_points:'55000',release_count:paid?acceptedQuote.release_count:1,released_count:1,next_release_at:paid&&cycle==='annual'?end:null});
+  await page.route('**/api/v1/**',async route=>{
+    const request=route.request(),path=new URL(request.url()).pathname.replace('/api/v1',''),method=request.method(),body=request.postData()?request.postDataJSON():undefined;
+    if(path==='/subscriptions/account'){const p=period();return json(route,200,{subscription:subscription(),available_points:String(BigInt(p.available_points)+1000n),held_points:p.held_points,task_held_points:'0',refund_held_points:'0',change_held_points:p.change_held_points,subscription_available_points:p.available_points,topup_available_points:'1000',other_available_points:'0',periods:paid?[{...p,id:'period-original',order_id:'subscription-original',plan_id:'professional',status:'superseded',points:'55000',monthly_points:'55000',amount_fen:'49900',funding_kind:'cash',face_amount_fen:'49900',available_points:'0',task_held_points:'2000',billing_cycle:'monthly',release_count:1,next_release_at:null},p]:[p]});}
+    if(path==='/subscriptions/change-quotes'){base.calls.push({method,path,body});quoteCount++;target=body.plan_id;cycle=body.billing_cycle;acceptedQuote=quote();return json(route,201,{quote:acceptedQuote});}
+    if(path==='/subscriptions/change-checkouts'){
+      base.calls.push({method,path,body});attempts++;
+      if(rejected.has(body.request_id))return json(route,409,{code:'SUBSCRIPTION_CHANGE_QUOTE_STALE'});
+      if(options.stale&&attempts===1){rejected.add(body.request_id);available='27500';return json(route,409,{code:'SUBSCRIPTION_CHANGE_QUOTE_STALE'});}
+      if(options.mandatePending&&attempts===1)return json(route,409,{code:'SUBSCRIPTION_CHANGE_MANDATE_PENDING'});
+      if(checkoutBody)expect(body).toEqual(checkoutBody);else checkoutBody=body;created=true;
+      if(options.unknown&&attempts===1)return json(route,503,{code:'PAYMENT_UNAVAILABLE'});
+      return json(route,201,{subscription:subscription(),order:order(),change_id:'change-one'});
+    }
+    if(path==='/commerce/topups/change-order'||path==='/commerce/topups/change-order/refresh')return json(route,200,order());
+    if(path==='/subscriptions/orders/change-order/period')return json(route,200,{order_id:'change-order',period:{...period(),id:'period-changed',order_id:'change-order',billing_cycle:cycle,points:acceptedQuote.total_points,monthly_points:acceptedQuote.monthly_points,release_count:acceptedQuote.release_count,released_count:paid?1:0,funding_kind:'mixed',face_amount_fen:acceptedQuote.face_amount_fen,amount_fen:acceptedQuote.pay_now_fen}});
+    return route.fallback();
+  });
+  return{...base,settle:()=>{paid=true;},created:()=>created};
+}
+
+for(const scenario of [{name:'professional monthly upgrade',annual:false,partial:false,pay:'500.00',plan:'intensive',monthly:'114,000'},
+  {name:'professional monthly to annual',annual:true,partial:false,pay:'4,890.20',plan:'professional',monthly:'55,000'},
+  {name:'partially used monthly to annual',annual:true,partial:true,pay:'5,139.70',plan:'professional',monthly:'55,000'}]){
+  test(`${scenario.name} previews original paid-value credit and opens the new contract only after payment`,async({page})=>{
+    const fixture=await changeFixture(page,{partial:scenario.partial});await page.goto('/#/account');
+    await expect(page.locator('.subscription-current')).toContainText('专业 · 月付订阅');await expect(page.getByRole('switch',{name:'自动续费'})).toHaveCount(0);
+    if(scenario.annual)await page.getByRole('radio',{name:'年付 · 9折',exact:true}).click();
+    await page.locator(`[data-subscription-plan="${scenario.plan}"] button`).click();
+    await expect(page.getByRole('dialog')).toContainText('未用积分按原实付对价抵扣');await expect(page.locator('[data-change-pay-now]')).toHaveText('¥'+scenario.pay);expect(fixture.created()).toBe(false);
+    await evidence(page,`subscription-${scenario.name.replaceAll(' ','-')}-quote-1440.png`);
+    await regionEvidence(page,`subscription-${scenario.name.replaceAll(' ','-')}-quote-detail-1440.png`,'#subscription-change-dialog');
+    if(scenario.annual&&!scenario.partial){await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await regionEvidence(page,'subscription-annual-quote-detail-390.png','#subscription-change-dialog');await page.setViewportSize({width:1440,height:960});}
+    await page.getByRole('button',{name:'支付 ¥'+scenario.pay+' 并切换',exact:true}).click();
+    await expect(page.locator('.payment-amount')).toHaveText('¥'+scenario.pay);await expect(page.locator('[data-change-held]')).toBeVisible();
+    await expect(page.locator('.subscription-payment [data-change-funding]')).toContainText('本次实付 ¥'+scenario.pay);
+    await expect(page.locator('.subscription-current')).toContainText('专业 · 月付订阅');fixture.settle();await page.getByRole('button',{name:'刷新支付状态',exact:true}).click();
+    await expect(page.locator('.subscription-payment')).toHaveCount(0);await expect(page.locator('.subscription-current')).toContainText(scenario.monthly+' 积分');
+    await expect(page.locator('[data-period="period-original"]')).toContainText('已转换至新套餐');await expect(page.locator('[data-period="period-original"]')).toContainText('任务预留 2,000 积分，继续按原任务结算');
+    await expect(page.locator('[data-period="period-changed"] [data-change-funding]')).toContainText('本次实付 ¥'+scenario.pay);
+    if(scenario.annual)await expect(page.locator('.subscription-annual-releases')).toContainText('已发放 1/12 个月额度');
+    await page.getByRole('button',{name:'管理订阅',exact:true}).click();await expect(page.getByRole('switch',{name:'自动续费',exact:true})).toHaveAttribute('aria-checked','false');
+    expect(fixture.calls.filter(c=>c.path==='/subscriptions/change-checkouts')).toHaveLength(1);
+  });
+}
+
+test('stale change summary terminates only the rejected key and shows new actual payment before retry',async({page})=>{
+  const fixture=await changeFixture(page,{stale:true});await page.goto('/#/account');await page.getByRole('radio',{name:'年付 · 9折',exact:true}).click();await page.locator('[data-subscription-plan="professional"] button').click();
+  await page.getByRole('button',{name:'支付 ¥4,890.20 并切换',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('可抵扣积分已变化或摘要已过期');expect(fixture.created()).toBe(false);
+  await page.getByRole('button',{name:'刷新付款摘要',exact:true}).click();await expect(page.locator('[data-change-pay-now]')).toHaveText('¥5,139.70');expect(fixture.calls.filter(c=>c.path==='/subscriptions/change-checkouts')).toHaveLength(1);
+  await page.getByRole('button',{name:'支付 ¥5,139.70 并切换',exact:true}).click();await expect(page.locator('.payment-amount')).toHaveText('¥5,139.70');
+  const checkouts=fixture.calls.filter(c=>c.path==='/subscriptions/change-checkouts');expect(checkouts).toHaveLength(2);expect(checkouts[0].body.request_id).not.toBe(checkouts[1].body.request_id);expect(checkouts[0].body.quote_id).not.toBe(checkouts[1].body.quote_id);
+});
+
+for(const failure of ['unknown','mandatePending'] as const)test(`${failure} subscription change retains the original request and quote across reload`,async({page})=>{
+  const fixture=await changeFixture(page,{[failure]:true});await page.goto('/#/account');await page.getByRole('radio',{name:'年付 · 9折',exact:true}).click();await page.locator('[data-subscription-plan="professional"] button').click();await page.getByRole('button',{name:'支付 ¥4,890.20 并切换',exact:true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);await page.reload();await expect(page.getByRole('button',{name:'继续原付款',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'继续原付款',exact:true}).click();await expect(page.locator('.payment-amount')).toHaveText('¥4,890.20');
+  const checkouts=fixture.calls.filter(c=>c.path==='/subscriptions/change-checkouts');expect(checkouts).toHaveLength(2);expect(checkouts[0].body).toEqual(checkouts[1].body);expect(fixture.calls.filter(c=>c.path==='/subscriptions/change-quotes')).toHaveLength(1);
 });

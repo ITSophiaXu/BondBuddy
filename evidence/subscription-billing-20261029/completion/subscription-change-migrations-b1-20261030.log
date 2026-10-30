@@ -1,0 +1,83 @@
+C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\node_modules\pg\lib\client.js:694
+          Error.captureStackTrace(err)
+                ^
+
+error: syntax error at end of input
+    at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\node_modules\pg\lib\client.js:694:17
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/db/migrate.mjs:13:40 {
+  length: 5301,
+  severity: 'ERROR',
+  code: '42601',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: '1582',
+  internalQuery: '\n' +
+    'DECLARE p bb_subscription_periods%ROWTYPE;l bb_credit_lots%ROWTYPE;BEGIN\n' +
+    " IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Subscription installment history is immutable' USING ERRCODE='23514';END IF;\n" +
+    ' SELECT * INTO STRICT p FROM bb_subscription_periods WHERE id=NEW.period_id AND owner_user_id=NEW.owner_user_id;\n' +
+    " IF TG_OP='INSERT' THEN\n" +
+    "  IF p.billing_cycle<>'annual' OR p.status<>'pending' OR NEW.state<>'scheduled' OR NEW.points<>p.monthly_points OR NEW.amount_fen<>floor(p.amount_fen::numeric*NEW.installment_index/12)-floor(p.amount_fen::numeric*(NEW.installment_index-1)/12)\n" +
+    "   OR NEW.due_at<>bb_subscription_clock(NEW.owner_user_id)+(NEW.installment_index-1)*interval '1 month'\n" +
+    "   OR NOT EXISTS(SELECT 1 FROM bb_recharge_orders WHERE id=p.order_id AND state='paid')\n" +
+    "  THEN RAISE EXCEPTION 'Annual installment must match its verified original contract' USING ERRCODE='23514';END IF;\n" +
+    ' ELSE\n' +
+    '  IF ROW(NEW.id,NEW.owner_user_id,NEW.period_id,NEW.installment_index,NEW.due_at,NEW.points,NEW.amount_fen)\n' +
+    '   IS DISTINCT FROM ROW(OLD.id,OLD.owner_user_id,OLD.period_id,OLD.installment_index,OLD.due_at,OLD.points,OLD.amount_fen)\n' +
+    "   OR OLD.state<>'scheduled' AND NEW IS DISTINCT FROM OLD\n" +
+    "  THEN RAISE EXCEPTION 'Installment terms and final issuance are immutable' USING ERRCODE='23514';END IF;\n" +
+    "  IF NEW.state='issued' AND OLD.state='scheduled' THEN\n" +
+    '   SELECT * INTO l FROM bb_credit_lots WHERE id=NEW.lot_id AND owner_user_id=NEW.owner_user_id;\n' +
+    "   IF l.id IS NULL OR l.source<>'subscription' OR l.original_points<>NEW.points OR l.cash_basis_fen IS DISTINCT FROM CASE WHEN p.funding_kind='mixed' THEN p.consideration_numerator ELSE NEW.amount_fen END OR l.cash_basis_points IS DISTINCT FROM CASE WHEN p.funding_kind='mixed' THEN p.consideration_denominator ELSE NEW.points END\n" +
+    "    OR l.cash_order_id IS DISTINCT FROM CASE WHEN p.funding_kind='mixed' THEN NULL ELSE p.order_id END OR l.expires_at IS DISTINCT FROM NEW.expires_at OR NEW.issued_at IS DISTINCT FROM bb_subscription_clock(NEW.owner_user_id)\n" +
+    '    OR NEW.due_at>NEW.issued_at\n' +
+    "   THEN RAISE EXCEPTION 'Installment issuance requires the exact due wallet lot' USING ERRCODE='23514';END IF;\n" +
+    "  ELSIF NEW.state='cancelled' AND OLD.state='scheduled' THEN\n" +
+    "   IF p.status<>'refunded' OR NOT EXISTS(SELECT 1 FROM bb_payment_refunds WHERE order_id=p.order_id AND state='succeeded' AND amount_fen=p.amount_fen)\n" +
+    "   THEN RAISE EXCEPTION 'Only a completed whole-contract refund cancels future installments' USING ERRCODE='23514';END IF;\n" +
+    '  END IF;\n' +
+    ' END IF;RETURN NEW;\n' +
+    'END ',
+  where: 'SQL statement "CREATE OR REPLACE FUNCTION public.bb_subscription_credit_release_guard()\n' +
+    ' RETURNS trigger\n' +
+    ' LANGUAGE plpgsql\n' +
+    'AS $function$\n' +
+    'DECLARE p bb_subscription_periods%ROWTYPE;l bb_credit_lots%ROWTYPE;BEGIN\n' +
+    " IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Subscription installment history is immutable' USING ERRCODE='23514';END IF;\n" +
+    ' SELECT * INTO STRICT p FROM bb_subscription_periods WHERE id=NEW.period_id AND owner_user_id=NEW.owner_user_id;\n' +
+    " IF TG_OP='INSERT' THEN\n" +
+    "  IF p.billing_cycle<>'annual' OR p.status<>'pending' OR NEW.state<>'scheduled' OR NEW.points<>p.monthly_points OR NEW.amount_fen<>floor(p.amount_fen::numeric*NEW.installment_index/12)-floor(p.amount_fen::numeric*(NEW.installment_index-1)/12)\n" +
+    "   OR NEW.due_at<>bb_subscription_clock(NEW.owner_user_id)+(NEW.installment_index-1)*interval '1 month'\n" +
+    "   OR NOT EXISTS(SELECT 1 FROM bb_recharge_orders WHERE id=p.order_id AND state='paid')\n" +
+    "  THEN RAISE EXCEPTION 'Annual installment must match its verified original contract' USING ERRCODE='23514';END IF;\n" +
+    ' ELSE\n' +
+    '  IF ROW(NEW.id,NEW.owner_user_id,NEW.period_id,NEW.installment_index,NEW.due_at,NEW.points,NEW.amount_fen)\n' +
+    '   IS DISTINCT FROM ROW(OLD.id,OLD.owner_user_id,OLD.period_id,OLD.installment_index,OLD.due_at,OLD.points,OLD.amount_fen)\n' +
+    "   OR OLD.state<>'scheduled' AND NEW IS DISTINCT FROM OLD\n" +
+    "  THEN RAISE EXCEPTION 'Installment terms and final issuance are immutable' USING ERRCODE='23514';END IF;\n" +
+    "  IF NEW.state='issued' AND OLD.state='scheduled' THEN\n" +
+    '   SELECT * INTO l FROM bb_credit_lots WHERE id=NEW.lot_id AND owner_user_id=NEW.owner_user_id;\n' +
+    "   IF l.id IS NULL OR l.source<>'subscription' OR l.original_points<>NEW.points OR l.cash_basis_fen IS DISTINCT FROM CASE WHEN p.funding_kind='mixed' THEN p.consideration_numerator ELSE NEW.amount_fen END OR l.cash_basis_points IS DISTINCT FROM CASE WHEN p.funding_kind='mixed' THEN p.consideration_denominator ELSE NEW.points END\n" +
+    "    OR l.cash_order_id IS DISTINCT FROM CASE WHEN p.funding_kind='mixed' THEN NULL ELSE p.order_id END OR l.expires_at IS DISTINCT FROM NEW.expires_at OR NEW.issued_at IS DISTINCT FROM bb_subscription_clock(NEW.owner_user_id)\n" +
+    '    OR NEW.due_at>NEW.issued_at\n' +
+    "   THEN RAISE EXCEPTION 'Installment issuance requires the exact due wallet lot' USING ERRCODE='23514';END IF;\n" +
+    "  ELSIF NEW.state='cancelled' AND OLD.state='scheduled' THEN\n" +
+    "   IF p.status<>'refunded' OR NOT EXISTS(SELECT 1 FROM bb_payment_refunds WHERE order_id=p.order_id AND state='succeeded' AND amount_fen=p.amount_fen)\n" +
+    "   THEN RAISE EXCEPTION 'Only a completed whole-contract refund cancels future installments' USING ERRCODE='23514';END IF;\n" +
+    '  END IF;\n' +
+    ' END IF;RETURN NEW;\n' +
+    'END $function$\n' +
+    '"\n' +
+    'PL/pgSQL function inline_code_block line 7 at EXECUTE',
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'scan.l',
+  line: '1240',
+  routine: 'scanner_yyerror'
+}
+
+Node.js v26.13.0

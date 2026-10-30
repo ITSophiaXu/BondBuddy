@@ -8,6 +8,7 @@ import {date,digest,missing,Problem,transaction,uid} from './data.js';
 import type {PaymentProvider} from './payments.js';
 import {cumulativeRefundFen} from './payment-refund-calculation.js';
 import {recheckAuthenticatedStatementDay} from './payment-statement-recheck.js';
+import {restoreSubscriptionChange} from './subscription-changes.js';
 
 export type RefundOrder={id:string;order_id:string;merchant_id:string;provider_transaction_id:string;currency:'CNY';order_amount_fen:number;amount_fen:number};
 /** Produced only by an authenticated channel response or a verified/decrypted callback. */
@@ -240,6 +241,7 @@ export async function applyVerifiedRefund(pool:Pool,provider:PaymentProvider,rec
     await recheckRefundStatementDay(c,row,times.created,times.succeeded);
     if(receipt.state==='succeeded')await c.query(`UPDATE bb_subscription_credit_releases r SET state='cancelled'
       FROM bb_subscription_periods p WHERE r.period_id=p.id AND p.order_id=$1 AND p.owner_user_id=$2 AND p.status='refunded' AND r.state='scheduled'`,[row.order_id,row.owner_user_id]);
+    if(receipt.state==='succeeded')await restoreSubscriptionChange(c,row.order_id);
     await event(c,updated,receipt.state);return refundDto(updated);
   });
 }

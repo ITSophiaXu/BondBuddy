@@ -79,6 +79,9 @@ export async function applyVerifiedPayment(pool:Pool,provider:PaymentProvider,re
     if(receipt.state==='paid'){
       // Payment success and credit issuance commit together. A callback/query retry
       // after a database failure recovers the same order, without another payment.
+      if((await c.query('SELECT 1 FROM bb_subscription_changes WHERE order_id=$1',[order.id])).rowCount&&
+        (!receipt.payerCash||receipt.payerCash.currency!=='CNY'||receipt.payerCash.amountFen!==safeBillingNumber(order.amount_fen)))
+        throw new Problem(422,'PAYMENT_INVALID','订阅转换需要与本次应付金额一致的已认证实付凭证。');
       await c.query("UPDATE bb_recharge_orders SET state='paid',provider_txn_id=$2,credited_at=COALESCE(credited_at,now()),provider_paid_at=COALESCE(provider_paid_at,$3) WHERE id=$1",[order.id,receipt.transactionId,receipt.paidAt??null]);
       if(provider.name==='alipay'&&receipt.paidAt&&!order.provider_paid_at)await recheckAuthenticatedStatementDay(c,'alipay',provider.merchantId,receipt.paidAt);
       const lotId=order.order_kind==='subscription'

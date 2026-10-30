@@ -5,6 +5,7 @@ import {SubscriptionPeriodSchema} from './subscriptions.js';
 // This new endpoint has one wire format: exact decimal integer strings.
 export const SubscriptionOrderPeriodSchema=Type.Object({...SubscriptionPeriodSchema.properties,
   amount_fen:Int64Schema,points:Int64Schema,monthly_points:Type.Optional(Int64Schema),available_points:Int64Schema,held_points:Int64Schema,
+  face_amount_fen:Type.Optional(Int64Schema),change_held_points:Type.Optional(Int64Schema),
   task_held_points:Int64Schema,refund_held_points:Int64Schema},{additionalProperties:false});
 export const subscriptionOrderDetailSchemas={
   SubscriptionOrderPeriodResponse:Type.Object({order_id:SubscriptionPeriodSchema.properties.order_id,

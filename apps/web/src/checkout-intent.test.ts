@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {checkoutIntentKey,checkoutPending,readCheckoutIntent,submitCheckoutIntent,observeCheckoutOrder,type CheckoutChoice,type CheckoutIntent,type CheckoutOrder} from './checkout-intent.js';
+import {checkoutIntentKey,checkoutPending,readCheckoutIntent,submitCheckoutIntent,observeCheckoutOrder,CheckoutQuoteStale,type CheckoutChoice,type CheckoutIntent,type CheckoutOrder} from './checkout-intent.js';
 
 function fixture(){
   const rows=new Map<string,string>(),storage={getItem:(key:string)=>rows.get(key)??null,setItem:(key:string,value:string)=>{rows.set(key,value);},removeItem:(key:string)=>{rows.delete(key);}};
@@ -10,6 +10,27 @@ function fixture(){
 }
 const choice:CheckoutChoice={kind:'topup',provider:'wechat',amount_fen:'1218',project_id:'project-one'};
 const order:CheckoutOrder={order_id:'original-order',provider:'wechat',amount_fen:'1218',points:'1218',state:'pending'};
+
+test('subscription change recovery keeps the quote and cycle after an unknown checkout',async()=>{
+  const env=fixture(),change:CheckoutChoice={kind:'subscription_change',quote_id:'quote-one',plan_id:'professional',billing_cycle:'annual',provider:'wechat'};
+  await assert.rejects(submitCheckoutIntent('owner',change,undefined,async()=>{throw Error('unknown');},env));
+  const original=readCheckoutIntent('owner',env.storage)!;
+  await assert.rejects(submitCheckoutIntent('owner',{...change,quote_id:'quote-two'},undefined,async()=>order,env),/已有原付款待核对/);
+  await assert.rejects(submitCheckoutIntent('owner',{...change,billing_cycle:'monthly'},undefined,async()=>order,env),/已有原付款待核对/);
+  const result=await submitCheckoutIntent('owner',undefined,undefined,async intent=>{assert.deepEqual(intent.choice,change);return{...order,amount_fen:'489020',points:'660000'};},env);
+  assert.equal(result.request_id,original.request_id);assert.equal(result.order!.amount_fen,'489020');
+});
+
+test('only a permanent server quote rejection releases a change intent while preserving its old-key barrier',async()=>{
+  const env=fixture(),change:CheckoutChoice={kind:'subscription_change',quote_id:'quote-one',plan_id:'professional',billing_cycle:'annual',provider:'wechat'};
+  await assert.rejects(submitCheckoutIntent('owner',change,undefined,async()=>{throw {status:409,code:'SUBSCRIPTION_CHANGE_MANDATE_PENDING'};},env));
+  const original=readCheckoutIntent('owner',env.storage)!;assert.equal(checkoutPending(original),true);
+  await assert.rejects(submitCheckoutIntent('owner',undefined,undefined,async()=>{throw new CheckoutQuoteStale();},env));
+  const rejected=readCheckoutIntent('owner',env.storage)!;assert.equal(checkoutPending(rejected),false);assert.equal(rejected.rejection,'subscription_change_quote_stale');assert.equal(rejected.request_id,original.request_id);
+  await assert.rejects(submitCheckoutIntent('owner',{...change,quote_id:'quote-two'},undefined,async()=>order,env),/已有原付款待核对/);
+  const newer=await submitCheckoutIntent('owner',{...change,quote_id:'quote-two'},original.request_id,async()=>({...order,amount_fen:'513970',points:'660000'}),env);
+  assert.notEqual(newer.request_id,original.request_id);assert.equal(newer.rejection,undefined);
+});
 
 test('unknown checkout retains its original key and body across reload, time and general errors',async()=>{
   const env=fixture(),requests:CheckoutIntent[]=[];

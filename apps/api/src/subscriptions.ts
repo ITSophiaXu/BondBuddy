@@ -8,6 +8,7 @@ import {currentAutomaticPriceVersion} from './automatic-tariff-repository.js';
 import {creditBalanceExact,grantCredits,lockCreditAccount,lockCreditAccountForControl} from './billing.js';
 import {assertChannelWritable,withBillingDispatch} from './billing-safety.js';
 import {applyVerifiedPayment,openCheckout,paymentOrder,refreshRecharge,type PaymentOrder,type PaymentProvider,type VerifiedPayment} from './payments.js';
+import {installSubscriptionChanges,applySubscriptionChange,failSubscriptionChange} from './subscription-changes.js';
 
 export type MandateRequest={requestId:string;subscriptionId:string;merchantId:string;amountFen:number;currency:'CNY';interval:'month'|'year';mandateId:string|null};
 /** An adapter may return this only after an authenticated channel query, never a browser redirect. */
@@ -52,31 +53,37 @@ export async function subscriptionAccount(pool:Pool,owner:string):Promise<Billin
       COALESCE(sum(remaining-frozen) FILTER(WHERE source='subscription' AND (expires_at IS NULL OR expires_at>now())),0)::text subscription,
       COALESCE(sum(remaining-frozen) FILTER(WHERE source='purchase' AND (expires_at IS NULL OR expires_at>now())),0)::text topup,
       (SELECT COALESCE(sum(a.points),0)::text FROM bb_payment_refund_allocations a JOIN bb_payment_refunds r ON r.id=a.refund_id AND r.owner_user_id=a.owner_user_id
-        WHERE a.owner_user_id=$1 AND r.state IN ('requested','processing')) refund_held
+        WHERE a.owner_user_id=$1 AND r.state IN ('requested','processing')) refund_held,
+      (SELECT COALESCE(sum(a.points),0)::text FROM bb_subscription_change_allocations a JOIN bb_subscription_changes ch ON ch.id=a.change_id
+        WHERE a.owner_user_id=$1 AND ch.state='held') change_held
       FROM bb_credit_lots WHERE owner_user_id=$1`,[owner])).rows[0];
     const periods=(await c.query(subscriptionPeriodQuery('p.owner_user_id=$1 ORDER BY p.cycle_index DESC LIMIT 50'),[owner])).rows;
-    const refundHeld=safePoints(b.refund_held),subscriptionAvailable=safePoints(b.subscription),topupAvailable=safePoints(b.topup);
+    const refundHeld=safePoints(b.refund_held),changeHeld=safePoints(b.change_held),subscriptionAvailable=safePoints(b.subscription),topupAvailable=safePoints(b.topup);
     return encodeBillingDto('subscriptionAccount',{subscription:s?subscriptionDto(s):null,available_points:balance.available,held_points:balance.frozen,
-      task_held_points:safePoints(balance.frozen-refundHeld),refund_held_points:refundHeld,
+      task_held_points:safePoints(balance.frozen-refundHeld-changeHeld),refund_held_points:refundHeld,change_held_points:changeHeld,
       subscription_available_points:subscriptionAvailable,topup_available_points:topupAvailable,other_available_points:safePoints(balance.available-subscriptionAvailable-topupAvailable),
       periods:periods.map(p=>({id:p.id,order_id:p.order_id,plan_id:p.plan_id,status:p.status,amount_fen:Number(p.amount_fen),points:Number(p.points),
+        face_amount_fen:Number(p.face_amount_fen),funding_kind:p.funding_kind,change_held_points:safePoints(p.change_held),
         billing_cycle:p.billing_cycle,monthly_points:Number(p.monthly_points),release_count:p.billing_cycle==='annual'?12:1,released_count:Number(p.released_count),next_release_at:p.next_release_at?date(p.next_release_at):null,
         available_points:safePoints(p.available??0),held_points:safePoints(p.frozen??0),
-        task_held_points:safePoints(int64(p.frozen??0)-safePoints(p.refund_held)),refund_held_points:safePoints(p.refund_held),
+        task_held_points:safePoints(int64(p.frozen??0)-safePoints(p.refund_held)-safePoints(p.change_held)),refund_held_points:safePoints(p.refund_held),
         starts_at:p.starts_at?date(p.starts_at):null,ends_at:p.ends_at?date(p.ends_at):null,credits_expires_at:p.credits_expires_at?date(p.credits_expires_at):null,
         refundable_until:p.starts_at?new Date(new Date(p.starts_at).getTime()+7*86400000).toISOString():null}))});
   });
 }
 /** One original order can own several issued lots; unissued rights are never a balance. */
-export function subscriptionPeriodQuery(where:string){return `SELECT p.*,totals.remaining,totals.frozen,totals.available,totals.refund_held,
+export function subscriptionPeriodQuery(where:string){return `SELECT p.*,totals.remaining,totals.frozen,totals.available,totals.refund_held,totals.change_held,
   CASE WHEN p.billing_cycle='annual' THEN (SELECT count(*) FROM bb_subscription_credit_releases WHERE period_id=p.id AND state='issued') ELSE CASE WHEN p.lot_id IS NULL THEN 0 ELSE 1 END END released_count,
   (SELECT min(due_at) FROM bb_subscription_credit_releases WHERE period_id=p.id AND state='scheduled') next_release_at
   FROM bb_subscription_periods p LEFT JOIN LATERAL(
    SELECT COALESCE(sum(l.remaining),0)::text remaining,COALESCE(sum(l.frozen),0)::text frozen,
     COALESCE(sum(l.remaining-l.frozen) FILTER(WHERE l.expires_at IS NULL OR l.expires_at>now()),0)::text available,
     COALESCE(sum((SELECT COALESCE(sum(a.points),0) FROM bb_payment_refund_allocations a JOIN bb_payment_refunds r ON r.id=a.refund_id
-     WHERE a.lot_id=l.id AND a.owner_user_id=p.owner_user_id AND r.state IN ('requested','processing'))),0)::text refund_held
-   FROM bb_credit_lots l WHERE l.owner_user_id=p.owner_user_id AND (l.id=p.lot_id OR l.id IN (SELECT lot_id FROM bb_subscription_credit_releases WHERE period_id=p.id AND state='issued'))
+     WHERE a.lot_id=l.id AND a.owner_user_id=p.owner_user_id AND r.state IN ('requested','processing'))),0)::text refund_held,
+    COALESCE(sum((SELECT COALESCE(sum(a.points),0) FROM bb_subscription_change_allocations a JOIN bb_subscription_changes ch ON ch.id=a.change_id
+     WHERE a.lot_id=l.id AND a.owner_user_id=p.owner_user_id AND ch.state='held')),0)::text change_held
+   FROM bb_credit_lots l WHERE l.owner_user_id=p.owner_user_id AND (l.id=p.lot_id OR l.cash_origin_lot_id=p.lot_id OR l.id IN (SELECT lot_id FROM bb_subscription_credit_releases WHERE period_id=p.id AND state='issued')
+    OR l.cash_origin_lot_id IN (SELECT lot_id FROM bb_subscription_credit_releases WHERE period_id=p.id AND state='issued'))
   ) totals ON true WHERE ${where}`;}
 async function insertPeriod(c:PoolClient,s:any,p:ReturnType<typeof plan>,provider:PaymentProvider,requestId:string,hash:string,automatic:boolean){
   const taskPriceVersion=await currentAutomaticPriceVersion(c);
@@ -134,12 +141,16 @@ export async function activateSubscriptionPayment(c:PoolClient,order:any,actor:s
   const period=(await c.query('SELECT * FROM bb_subscription_periods WHERE order_id=$1 AND owner_user_id=$2 FOR UPDATE',[order.id,order.owner_user_id])).rows[0];
   if(!period||Number(period.amount_fen)!==Number(order.amount_fen)||Number(period.points)!==Number(order.points))throw invalid('订阅订单与冻结的周期权益不一致。');
   if(period.lot_id)return period.lot_id;
+  const changed=await applySubscriptionChange(c,order.id);
   const dates=(await c.query("SELECT bb_subscription_clock($1) starts_at,bb_subscription_clock($1)+$2*interval '1 month' ends_at,bb_subscription_clock($1)+interval '90 days' expires_at",[order.owner_user_id,period.billing_cycle==='annual'?12:1])).rows[0];
   if(period.billing_cycle==='annual')await c.query(`INSERT INTO bb_subscription_credit_releases(id,owner_user_id,period_id,installment_index,due_at,points,amount_fen)
-    SELECT $1||':'||n,$2,$1,n,$3::timestamptz+(n-1)*interval '1 month',$4,$5 FROM generate_series(1,12) n`,[period.id,order.owner_user_id,dates.starts_at,period.monthly_points,Number(period.amount_fen)/12]);
+    SELECT $1||':'||n,$2,$1,n,$3::timestamptz+(n-1)*interval '1 month',$4,floor($5::numeric*n/12)-floor($5::numeric*(n-1)/12) FROM generate_series(1,12) n`,[period.id,order.owner_user_id,dates.starts_at,period.monthly_points,period.amount_fen]);
   const lotId=await grantCredits(c,{owner:order.owner_user_id,source:'subscription',key:`recharge:${order.id}`,points:Number(period.monthly_points),expiresAt:date(dates.expires_at),actor,reason:`verified_subscription:${period.id}`});
   if(period.billing_cycle==='annual')await c.query("UPDATE bb_subscription_credit_releases SET state='issued',lot_id=$2,issued_at=$3,expires_at=$4 WHERE period_id=$1 AND installment_index=1",[period.id,lotId,dates.starts_at,dates.expires_at]);
   await c.query("UPDATE bb_subscription_periods SET status='active',lot_id=$2,starts_at=$3,ends_at=$4,credits_expires_at=$5 WHERE id=$1",[period.id,lotId,dates.starts_at,dates.ends_at,dates.expires_at]);
+  if(changed)await c.query(`UPDATE bb_subscriptions SET status='active',provider=$2,merchant_id=$3,billing_cycle=$4,billing_amount_fen=$5,
+    auto_renew=false,auto_renew_requested=false,mandate_status='none',mandate_request_id=NULL,mandate_ref=NULL,mandate_url=NULL WHERE id=$1`,
+    [period.subscription_id,order.provider,order.merchant_id,period.billing_cycle,period.face_amount_fen]);
   const s=(await c.query(`UPDATE bb_subscriptions SET status=CASE WHEN status='cancelled' THEN 'cancelled' ELSE 'active' END,
     plan_id=$2,current_period_start=$3,current_period_end=$4,task_price_version=$5,updated_at=now() WHERE id=$1 RETURNING *`,
     [period.subscription_id,period.plan_id,dates.starts_at,dates.ends_at,period.task_price_version])).rows[0];
@@ -147,8 +158,9 @@ export async function activateSubscriptionPayment(c:PoolClient,order:any,actor:s
   return lotId;
 }
 export async function markSubscriptionPaymentFailed(c:PoolClient,orderId:string){
+  const changed=await failSubscriptionChange(c,orderId);
   const p=(await c.query("UPDATE bb_subscription_periods SET status='failed' WHERE order_id=$1 AND status='pending' RETURNING *",[orderId])).rows[0];
-  if(p)await c.query("UPDATE bb_subscriptions SET status=CASE WHEN status='cancelled' THEN status ELSE 'past_due' END,auto_renew=false,updated_at=now() WHERE id=$1",[p.subscription_id]);
+  if(p&&!changed)await c.query("UPDATE bb_subscriptions SET status=CASE WHEN status='cancelled' THEN status ELSE 'past_due' END,auto_renew=false,updated_at=now() WHERE id=$1",[p.subscription_id]);
 }
 async function recordAction(c:PoolClient,s:any,requestId:string,operation:string,value:unknown){
   const hash=digest(JSON.stringify([s.id,operation,value]));
@@ -288,6 +300,7 @@ export async function processDueSubscriptionCreditReleases(pool:Pool,limit=100,o
   return{checked:due.length,issued};
 }
 export function installSubscriptions(app:FastifyInstance,pool:Pool,owner:(r:FastifyRequest)=>Promise<string>,enabled:boolean,providers:readonly PaymentProvider[]){
+  installSubscriptionChanges(app,pool,owner,enabled,providers);
   app.get('/api/v1/subscriptions/catalog',{schema:{response:{200:schemas.SubscriptionCatalogResponse}}},async r=>{
     await owner(r);return{enabled,version:SUBSCRIPTION_CATALOG_VERSION,plans:SUBSCRIPTION_PLANS,
       providers:enabled?providers.map(p=>p.name):[],auto_renew_available:enabled&&providers.some(supportsAutomaticRenewal)};
