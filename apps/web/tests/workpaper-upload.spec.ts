@@ -34,7 +34,8 @@ async function setup(page:Page){
     }
     return route.fulfill({status:404,json:{code:'NOT_FOUND'}});
   });
-  await page.goto('/'+href({step:'workpapers'}));
+  // Exercise the retained compatibility screen; ordinary new entries use unified preparation.
+  await page.goto('/'+href({step:'workpapers',legacy:'1'}));
   await expect(page.locator('#wp-upload')).toBeEnabled();return state;
 }
 const records=(page:Page)=>page.evaluate(prefix=>Object.entries(localStorage).filter(([key])=>key.startsWith(prefix)).map(([key,raw])=>({key,record:JSON.parse(raw)})),journalPrefix);
@@ -78,6 +79,19 @@ test('lost catalogue response survives reload with the same request and no secon
   await page.getByRole('button',{name:'继续识别目录',exact:true}).click();
   await expect(page.locator('[data-wp-upload]')).toHaveCount(0);expect(state.imports).toEqual([original,original]);
   expect(state.data.catalogues).toHaveLength(1);expect(state.uploads.puts).toBe(1);
+});
+
+test('unified entry resumes an old unresolved catalogue import without another upload or changed request',async({page})=>{
+  const state=await setup(page);state.failure='lost';await page.locator('#wp-upload').setInputFiles(file);
+  await expect(page.locator('[data-wp-upload]')).toHaveCount(1);const original=state.imports[0];
+  await page.goto('/'+href({step:'prepare'}));await expect(page).toHaveURL(/step=workpapers/);
+  await expect(page.getByRole('button',{name:'继续识别目录',exact:true})).toBeVisible();
+  expect(state.imports).toEqual([original]);
+  await page.getByRole('button',{name:'继续识别目录',exact:true}).click();
+  await expect(page.locator('[data-wp-upload]')).toHaveCount(0);
+  expect(state.imports).toEqual([original,original]);expect(state.uploads.puts).toBe(1);
+  expect(await records(page)).toEqual([]);
+  expect(state.uploads.calls.some(c=>c.method==='POST'&&/batches|execute/.test(c.path))).toBe(false);
 });
 
 test('successful retry clears duplicate saved receipts left by the old screen',async({page})=>{

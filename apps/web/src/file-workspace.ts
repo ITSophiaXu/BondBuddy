@@ -258,8 +258,13 @@ export class FileWorkspace {
     if(this.cacheUnknown){clearTimeout(this.timer);this.waitForEntry();this.shell(`${this.header(step)}<p id="pf-status" role="status">${esc(this.message)}</p><a class="text-button" href="${esc(this.filesHref())}">返回项目文件</a>`,'generate');this.paintEntryIntent();return;}
     if(this.pendingBatch){this.paintRecovery();return;}
     const query=new URLSearchParams(location.hash.split('?')[1]);
-    let legacyWorkpaperPending=false;
-    try{legacyWorkpaperPending=!!JSON.parse(localStorage.getItem(`bb-workpapers-v1:${this.owner}:${this.id}`)??'null')?.pending;}catch{legacyWorkpaperPending=true;}
+    let legacyWorkpaperPending=query.get('legacy')==='1';
+    try{
+      legacyWorkpaperPending ||= !!JSON.parse(localStorage.getItem(`bb-workpapers-v1:${this.owner}:${this.id}`)??'null')?.pending;
+      // Old catalogue uploads retain their original scope, import request and column mapping.
+      // Resolve them on their existing screen before moving to the unified preparation.
+      legacyWorkpaperPending ||= this.uploadRecovery('workpaper-catalogue').list().length>0;
+    }catch{legacyWorkpaperPending=true;}
     if((step==='prepare'||step==='workpapers'&&query.get('view')!=='results'&&!query.has('workpaper_batch'))&&legacyWorkpaperPending){
       if(step==='prepare'){location.hash=this.href({step:'workpapers'});return;}
       this.shell(`${this.header('workpapers')}<div id="pf-workpapers"></div>`,'generate');
