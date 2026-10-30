@@ -171,3 +171,16 @@ test('a broken ZIP response body is never offered as a finished download',async 
   const {api}=stubDownload(t,()=>new Response(new ReadableStream({start(c){c.enqueue(new Uint8Array(30));c.error(new Error('connection lost'));}}),{headers:{'Content-Type':'application/zip'}}));
   await assert.rejects(api.workpaperZip('project','batch',new AbortController().signal,()=>{}),/connection lost/);
 });
+
+test('ZIP progress uses only reliable lengths and rejects truncated archives',async t=>{
+  for(const encoding of [undefined,'gzip'])await t.test(encoding??'identity',async sub=>{
+    const {api}=stubDownload(sub,()=>new Response(new Uint8Array(64),{headers:{'content-type':'application/zip','content-length':'64',...(encoding?{'content-encoding':encoding}:{})}}));
+    const progress:Array<[number,number|undefined]>=[];
+    await api.workpaperZip('project','batch',new AbortController().signal,(received,total)=>progress.push([received,total]));
+    assert.deepEqual(progress,[[64,encoding?undefined:64]]);
+  });
+  await t.test('truncated',async sub=>{
+    const {api}=stubDownload(sub,()=>new Response(new Uint8Array(32),{headers:{'content-type':'application/zip','content-length':'64'}}));
+    await assert.rejects(api.workpaperZip('project','batch',new AbortController().signal,()=>{}),error=>error instanceof ApiError&&error.code==='DATA_UNAVAILABLE');
+  });
+});

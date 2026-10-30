@@ -3,6 +3,7 @@ import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import type {WorkpaperBatch,WorkpaperWorkspace} from '@bondbuddy/contracts';
 import {fixture,ids,now,sha} from './generation-entry-fixtures';
+import {fixtureBody} from './billing-fixture-wire';
 
 // Synthetic HTTP data, real project-list/file-page routes and WorkpaperPanel.
 async function setup(page:Page){
@@ -19,8 +20,8 @@ async function setup(page:Page){
     const request=route.request(),path=new URL(request.url()).pathname.replace('/api/v1','');calls.push({path,method:request.method()});
     if(path==='/projects')return route.fulfill({json:{items:[{project_id:ids.api,name:'合成批量底稿项目',kind:'generation',draft_revision:1,updated_at:now,file_count:1,task_summary:{active:1,attention:0,completed:0,total:1,latest:task,recent_result:null}}],page:{has_more:false,next_cursor:null}}});
     if(path===`/projects/${ids.api}/tasks`)return route.fulfill({json:{project_id:ids.api,items:[task],page:{has_more:false,next_cursor:null}}});
-    if(path===`/projects/${ids.api}/workpapers`)return route.fulfill({json:data});
-    if(path===`/projects/${ids.api}/workpapers/batches/${target.batch_id}`)return route.fulfill(state.missing?{status:404,json:{code:'NOT_FOUND'}}:{json:target});
+    if(path===`/projects/${ids.api}/workpapers`)return route.fulfill({json:fixtureBody(route,data)});
+    if(path===`/projects/${ids.api}/workpapers/batches/${target.batch_id}`)return route.fulfill(state.missing?{status:404,json:{code:'NOT_FOUND'}}:{json:fixtureBody(route,target)});
     await route.fallback();
   });
   return {original,target,newer,data,task,calls,state,href:`/#generate?project=${ids.api}&step=workpapers&view=results&batch=${target.batch_id}`};
@@ -71,6 +72,31 @@ test('ZIP download shows waiting state and a usable save link if automatic downl
   await page.clock.install();await page.clock.fastForward(6000);await expect(save).toBeVisible();
   const download=page.waitForEvent('download');await save.click();expect((await download).suggestedFilename()).toBe('底稿文件包.zip');
   expect(reads).toBe(1);expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);
+});
+
+for(const knownLength of [true,false])test(`streamed ZIP updates the button and byte progress, known length=${knownLength}`,async({page})=>{
+  const s=await setup(page);
+  await page.addInitScript(({knownLength})=>{
+    const original=window.fetch;
+    window.fetch=(...args)=>{
+      if(!String(args[0]).endsWith('/workpapers/batches/requested-batch/download'))return original(...args);
+      return new Promise<Response>(resolve=>{
+        let stream!:ReadableStreamDefaultController<Uint8Array>;
+        const body=new ReadableStream<Uint8Array>({start(c){stream=c;}});
+        Object.assign(window,{zipChunk:()=>{resolve(new Response(body,{headers:{'content-type':'application/zip',...(knownLength?{'content-length':'2097152'}:{})}}));stream.enqueue(new Uint8Array(1048576));},zipFinish:()=>{stream.enqueue(new Uint8Array(1048576));stream.close();}});
+      });
+    };
+  },{knownLength});
+  await page.goto(s.href);await page.getByRole('button',{name:'下载已完成文件（ZIP）'}).first().click();
+  await expect(page.getByRole('button',{name:'正在准备下载…'})).toBeDisabled();
+  await page.evaluate(()=> (window as any).zipChunk());
+  await expect(page.getByRole('button',{name:'正在下载…',exact:true})).toBeDisabled();
+  const feedback=page.locator('#wp-download-feedback');await expect(feedback).toContainText('正在下载');
+  if(knownLength)await expect(feedback).toContainText('50%');else await expect(feedback).not.toContainText('%');
+  await mkdir('test-evidence/workpaper-download-speed',{recursive:true});
+  await page.screenshot({path:`test-evidence/workpaper-download-speed/streaming-${knownLength}.png`});
+  await page.evaluate(()=> (window as any).zipFinish());await expect(feedback.getByRole('link',{name:'保存文件'})).toBeVisible();
+  expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);
 });
 
 test('a hanging ZIP request ends visibly and the same batch can retry without resubmitting generation',async({page})=>{

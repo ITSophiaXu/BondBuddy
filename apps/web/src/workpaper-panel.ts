@@ -176,7 +176,7 @@ export class WorkpaperPanel {
     this.host.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement|HTMLTextAreaElement>('#wp-change-directory,#wp-catalogue,#wp-upload,#wp-all,#wp-none,[data-wp-item],#wp-requirements').forEach(control=>control.disabled=disabled);
   }
   private async act(fn:()=>Promise<void>){if(this.busy)return;this.busy=true;this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();try{await fn();}catch(e){this.status=friendlyError(e,'submit');}finally{this.busy=false;if(this.live()){this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=this.status);this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();}}}
-  private async download(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number)=>void)=>Promise<{bytes:Blob;filename:string}>){
+  private async download(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number,total?:number)=>void)=>Promise<{bytes:Blob;filename:string}>){
     if(this.busy)return;this.busy=true;
     const feedback=this.downloadFeedback?.node??document.createElement('p');
     feedback.id='wp-download-feedback';feedback.setAttribute('role','status');
@@ -184,7 +184,10 @@ export class WorkpaperPanel {
     feedback.textContent='正在准备下载，请稍候…';
     const buttons=[...this.host.querySelectorAll<HTMLButtonElement>('#wp-batches button')].map(b=>({b,disabled:b.disabled}));
     const text=button.textContent;buttons.forEach(({b})=>b.disabled=true);button.textContent='正在准备下载…';button.setAttribute('aria-busy','true');
-    const progress=(received:number)=>{if(this.live())feedback.textContent=`正在下载文件包，已接收 ${(received/1024/1024).toFixed(2)} MB…`;};
+    const progress=(received:number,total?:number)=>{if(this.live()){
+      button.textContent='正在下载…';
+      feedback.textContent=total?`正在下载文件包，${Math.min(100,Math.floor(received/total*100))}%（${(received/1024/1024).toFixed(2)} / ${(total/1024/1024).toFixed(2)} MB）`:`正在下载文件包，已接收 ${(received/1024/1024).toFixed(2)} MB…`;
+    }};
     try{const file=await boundedDownload(this.controller.signal,signal=>read(signal,progress),button.hasAttribute('data-wp-zip')?20*60_000:120_000);if(this.live())this.downloads.save(file.bytes,file.filename,feedback);}
     catch(e){if(this.live())feedback.textContent=artifactError(e);}
     finally{this.busy=false;buttons.forEach(({b,disabled})=>b.disabled=disabled);button.textContent=text;button.removeAttribute('aria-busy');}

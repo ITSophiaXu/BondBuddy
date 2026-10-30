@@ -7,8 +7,8 @@ import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
-import {ZipFile} from 'yazl';
-import {PassThrough,Readable} from 'node:stream';
+import {WorkpaperZipCache} from './workpaper-zip.js';
+import {readWorkpaperZipFiles} from './workpaper-zip-files.js';
 import {WorkpaperImportSchema,WorkpaperPreviewSchema,WorkpaperStartSchema,WorkpaperActionSchema,WorkpaperDecisionSchema,WORKPAPER_LIMITS,WORKPAPER_PRICE,workpaperDownloadFilename,workpaperZipPath,
   type WorkpaperDecision,type WorkpaperCatalogue,type WorkpaperWorkspace,type WorkpaperBatch,type WorkpaperEntry,type M4DocumentManifest,type Market,type Offering} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,missing,Problem,date,digest,assertCanonicalBusinessRunIdle,type PrivateBlobs} from './data.js';
@@ -195,6 +195,8 @@ export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,u
 }
 
 export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs){
+  const zipCache=new WorkpaperZipCache();
+  app.addHook('onClose',()=>zipCache.close());
   registerWorkpaperAssessments(app,db,owner);
   registerWorkpaperLibrary(app,db,owner);
   const base='/api/v1/projects/:project_id/workpapers',params=(r:FastifyRequest)=>r.params as {project_id:string;batch_id:string};
@@ -295,37 +297,15 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
   app.get(base+'/batches/:batch_id/download',async(r,reply)=>{
     const user=await owner(r),{project_id:id,batch_id:batch}=params(r),data=await readWorkpaperBatch(db(),user,id,batch);
     if(!data.items.some(i=>i.artifacts.length||i.explanation))throw new Problem(422,'INPUT_REQUIRED','尚无已完成底稿可打包。');
-    const zip=new ZipFile(),stream=new PassThrough(),usedPaths=new Set<string>();let activeInput:PassThrough|undefined,abortEntry:(()=>void)|undefined;
-    zip.outputStream.on('error',e=>stream.destroy(e));zip.outputStream.pipe(stream);
-    stream.on('close',()=>{activeInput?.destroy();abortEntry?.();(zip.outputStream as Readable).destroy();});
-    // At most one bounded Blob is held at a time; ZIP backpressure keeps hundreds of files bounded.
-    void (async()=>{
-      try{
-        const append=async(path:string,bytes:Buffer)=>{
-          if(stream.destroyed)throw Error('DOWNLOAD_CLOSED');
-          const finished=new Promise<void>((resolve,reject)=>{
-            abortEntry=()=>reject(Error('DOWNLOAD_CLOSED'));
-            zip.addReadStreamLazy(path,{},callback=>{const s=new PassThrough();activeInput=s;s.on('end',resolve);s.on('error',reject);callback(null,s);s.end(bytes);bytes=Buffer.alloc(0);});
-          });await finished;activeInput=undefined;abortEntry=undefined;
-        };
-        for(const item of data.items)if(item.explanation){
-          const {bytes}=await explanationFile(db(),blobs(),user,id,batch,item.entry.id);
-          await append(workpaperZipPath(item.entry,true,usedPaths),bytes);
-        }
-        for(const item of data.items)for(const artifact of item.artifacts.filter(a=>a.kind==='document')){
-          if(stream.destroyed)return;
-          const row=await readProjectFileAsset(db(),user,{kind:'artifact',pin:artifact.pin});
-          const bytes=await blobs().getIfExistsBounded(row.object_key,64*1024*1024);
-          if(stream.destroyed)return;
-          if(!bytes||digest(bytes)!==artifact.pin.sha256)throw Error('WORKPAPER_DOWNLOAD_UNAVAILABLE');
-          const path=workpaperZipPath(item.entry,false,usedPaths);
-          // addReadStreamLazy avoids buffering the entire batch in yazl.
-          await append(path,bytes);
-        }
-        zip.end();
-      }catch{stream.destroy(Error('底稿打包读取失败，请重试。'));(zip.outputStream as Readable).destroy();}
-    })();
-    return reply.header('Cache-Control','private, no-store').header('Content-Disposition',`attachment; filename="workpapers.zip"; filename*=UTF-8''${encodeURIComponent('底稿文件包.zip')}`).type('application/zip').send(stream);
+    const files=await readWorkpaperZipFiles(db(),user,data);
+    const controller=new AbortController();
+    reply.raw.once('close',()=>controller.abort());
+    const started=performance.now();
+    const archive=await zipCache.open(JSON.stringify([user,id,batch]),files,blobs(),controller.signal);
+    r.log.info({batch_id:batch,files:files.length,zip_bytes:archive.size,zip_cache_hit:archive.cached,zip_prepare_ms:Math.round(performance.now()-started)},'workpaper ZIP ready');
+    return reply.header('Cache-Control','private, no-store').header('Content-Length',archive.size)
+      .header('Content-Disposition',`attachment; filename="workpapers.zip"; filename*=UTF-8''${encodeURIComponent('底稿文件包.zip')}`)
+      .type('application/zip').send(archive.body);
   });
 }
 

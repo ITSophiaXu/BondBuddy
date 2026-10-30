@@ -143,7 +143,7 @@ export interface PrivateBlobs {
   /** Streams the object, hashing it and (with `path`) writing it to a file; null when absent. */
   readToFile?(key: string, path: string | null, maxBytes: number): Promise<BlobDigest | null>;
   /** Opens the object as a stream (with its stored length); null when absent. */
-  openRead?(key: string): Promise<{ body: Readable; contentLength: number | undefined } | null>;
+  openRead?(key: string, signal?: AbortSignal): Promise<{ body: Readable; contentLength: number | undefined } | null>;
 }
 export type BlobDigest = { byteSize: number; sha256: string };
 const BLOB_BLOCK_BYTES = 4 * 1024 * 1024;
@@ -250,10 +250,10 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
       // so at most blockSize x concurrency bytes are in memory at a time.
       await container.getBlockBlobClient(key).uploadFile(path, { blockSize: BLOB_BLOCK_BYTES, maxSingleShotSize: BLOB_BLOCK_BYTES, concurrency: 2, blobHTTPHeaders: { blobContentType: mediaType } });
     },
-    async openRead(key) {
+    async openRead(key, signal) {
       await ensure();
       try {
-        const response = await container.getBlockBlobClient(key).download();
+        const response = await container.getBlockBlobClient(key).download(0, undefined, {abortSignal: signal});
         if (!response.readableStreamBody) throw new Problem(503,'DATA_UNAVAILABLE','Stored object has no body');
         return { body: response.readableStreamBody as Readable, contentLength: response.contentLength };
       } catch (error) {

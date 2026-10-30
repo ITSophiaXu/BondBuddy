@@ -39,7 +39,7 @@ test('retained 248-file batch: normalized names across ZIP, explanations, batch 
   const saved=JSON.stringify(items);
   const artifacts=items.slice(124).map(i=>({run_id:i.run_id,kind:'document',filename:'旧名称.docx',project_id:'project',artifact_id:i.item_id,artifact_version:1,sha256:sha}));
   const batch={id:'batch',topic_id:'topic',catalogue_id:'catalogue',state:'complete',revision:1,source,total_points:0,created_at:'2026-10-29T00:00:00Z',error:null,start_mode:'direct'};
-  const sql:string[]=[];let actor='owner',corrupt=false;
+  const sql:string[]=[];let actor='owner',corrupt=false,reads=0,active=0,peak=0;
   const db={query:async(statement:string,params:any[])=>{
     sql.push(statement);assert.ok(/^\s*(SELECT|WITH)\b/i.test(statement),'downloads must never mutate state');
     if(params[0]!=='owner')return {rows:[]};
@@ -49,21 +49,29 @@ test('retained 248-file batch: normalized names across ZIP, explanations, batch 
     else if(statement.startsWith('SELECT i.*,r.state'))rows=items;
     else if(statement.includes('coalesce(sum(CASE'))rows=[{amount:0}];
     else if(statement.startsWith('SELECT coalesce(i.explanation'))rows=items.filter(i=>i.item_id===params[2]);
+    else if(statement.startsWith('SELECT i.item_id,coalesce'))rows=items;
+    else if(statement.includes('FROM jsonb_to_recordset'))rows=JSON.parse(params[1]).map((pin:any)=>({...pin,object_key:'blob'}));
     else if(statement.includes('FROM bb_artifact_versions a JOIN'))rows=[{sha256:sha,object_key:'blob'}];
     else if(statement.includes('SELECT a.*,v.sha256'))rows=artifacts;
     else if(statement.startsWith('SELECT update_project_id')||statement.includes('SELECT v.*,s.revision')||statement.includes('SELECT c.*,r.state'))rows=[];
+    else if(statement.startsWith('SELECT o.*,r.state')||statement.startsWith('SELECT a.*,r.state,v.id')||statement.startsWith('SELECT v.*,f.document_type')||statement.startsWith('WITH RECURSIVE descendants'))rows=[];
+    else if(statement.startsWith('SELECT * FROM bb_workpaper_paid_check_batches'))rows=[];
     else if(statement.startsWith('WITH ranked'))rows=items.map(i=>({...i,task:i.manifest.input.workpaper,batch_id:'batch',catalogue_id:'catalogue',created_at:batch.created_at,source,position:1,version_count:1}));
     else if(statement.startsWith('SELECT id,state,stage'))rows=items.map(i=>({id:i.run_id,state:i.run_state,stage:null}));
     else if(statement.includes('jsonb_array_length'))rows=[];
     else throw Error('Unexpected fixture query: '+statement);
     return {rows,rowCount:rows.length};
   }} as unknown as Pool;
-  const blobs={getIfExistsBounded:async(_key:string,max:number)=>{assert.ok(bytes.length<=max);return corrupt?Buffer.from('corrupt'):bytes;}} as PrivateBlobs;
+  const blobs={getIfExistsBounded:async(_key:string,max:number)=>{reads++;active++;peak=Math.max(peak,active);await new Promise(r=>setTimeout(r,2));active--;assert.ok(bytes.length<=max);return corrupt?Buffer.from('corrupt'):bytes;}} as PrivateBlobs;
   const app=Fastify();app.setErrorHandler((error,_request,reply)=>reply.code(error instanceof Problem?error.status:500).send({message:error instanceof Error?error.message:String(error)}));
   registerWorkpapers(app,()=>db,async()=>actor,()=>blobs);
   const base='/api/v1/projects/project/workpapers';
   try{
     const response=await app.inject(base+'/batches/batch/download');assert.equal(response.statusCode,200,response.body);
+    assert.equal(Number(response.headers['content-length']),response.rawPayload.length);
+    assert.equal(reads,248);assert.equal(peak,4);assert.ok(sql.length<25,'query count must not grow with each file');
+    const warm=await app.inject(base+'/batches/batch/download');assert.equal(warm.statusCode,200);
+    assert.deepEqual(warm.rawPayload,response.rawPayload);assert.equal(reads,248,'unchanged download reuses the verified ZIP');
     const parts=zipParts(response.rawPayload);
     assert.equal(parts.size,248);assert.equal([...parts.keys()].filter(n=>n.startsWith('不适用说明/')).length,124);
     assert.ok([...parts.keys()].every(n=>Buffer.byteLength(n)<=240&&!n.includes('附注')&&!n.includes('附表')&&!n.includes('操作说明')));
