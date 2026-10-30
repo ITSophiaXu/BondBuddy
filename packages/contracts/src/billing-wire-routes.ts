@@ -27,6 +27,8 @@ export function billingWireRoute(method:string,url:string):BillingWireRoute|unde
  if(p==='/subscriptions/catalog')return{response:'subscriptionCatalog'};
  if(p==='/subscriptions/account')return{response:'subscriptionAccount'};
  if((p==='/subscriptions'||/^\/subscriptions\/[^/]+\/renew$/.test(p))&&post)return{response:'subscriptionCheckout',replay:'subscription'};
+ if(/^\/subscriptions\/[^/]+\/cancel$/.test(p)&&post)return{response:'subscription'};
+ if(/^\/subscriptions\/[^/]+\/auto-renew(?:\/refresh)?$/.test(p)&&post)return{response:'subscriptionAutoRenew'};
  if(/^\/m4\/topics\/[^/]+\/workspace$/.test(p))return{response:'m4Workspace'};
  if(/^\/m4\/topics\/[^/]+\/quote$/.test(p))return{response:'m4QuoteResponse'};
  if(/^\/m4\/topics\/[^/]+\/execute$/.test(p)&&post)return{replay:'m4Run'};

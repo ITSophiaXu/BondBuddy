@@ -11,7 +11,7 @@ node scripts/billing-functional/start.mjs
 node scripts/billing-functional/stop.mjs
 ```
 
-启动时检查 `5189/3089` 端口，不覆盖已有服务；新建专用空数据库并执行仓库全部迁移，不复制或清空原模板的用户。一个隐藏 Node 子进程承载 Vite 与 API。启动器清除继承的数据库、云资源、支付及模型配置；没有生产 provider，也没有模型 worker。退出只通过本实例随机控制令牌请求有序停止，不按 PID 杀其他进程，不停止 PostgreSQL。
+启动时检查 `5189/3089` 端口，不覆盖已有服务；首次新建专用空数据库并执行仓库全部迁移，不复制或清空原模板的用户。后续停启仅在专用数据库名和实例 marker 均匹配后补跑尚未应用的迁移，保留原账号与账本，诊断追加到 `.runtime/migrations.log`。一个隐藏 Node 子进程承载 Vite 与 API。启动器清除继承的数据库、云资源、支付及模型配置；没有生产 provider，也没有模型 worker。退出只通过本实例随机控制令牌请求有序停止，不按 PID 杀其他进程，不停止 PostgreSQL。
 
 - 测试台：`http://localhost:5189/__billing-test`
 - 真实产品账户：`http://localhost:5189/#/account`
@@ -22,7 +22,7 @@ node scripts/billing-functional/stop.mjs
 ## 手动路径
 
 1. 在真实产品页登录，再打开测试台；新账号首次可用/任务预留均为零，已有测试记录的账号以当前账本为起点，不重置余额。
-2. 在产品账户页开通月订阅或按需充值。页面会显示合成支付二维码，**无需扫码**；点击产品原有的“刷新支付状态”会经 synthetic provider 查询模拟成功，再由产品 `refreshRecharge → applyVerifiedPayment` 真正写入订阅周期/充值批次。
+2. 在产品账户页开通月付/年付订阅或按需充值。页面会显示合成支付二维码，**无需扫码**；点击产品原有的“刷新支付状态”会经 synthetic provider 查询模拟成功，再由产品 `refreshRecharge → applyVerifiedPayment` 真正写入订阅周期/充值批次。年付价格为12个月月价的9折；仅首月额度立即到账，其余按月发放。
 3. 回到测试台刷新账本，准备合成全面复核。准备只保存材料和锁定报价；“开始任务”调用真实报价绑定请求，自动预留额度，无金额确认弹窗。零余额会显示产品原始 402 错误且无预留。
 4. “模拟成功交付并结算”复用真实 `claim → syntheticReviewPair → finish`，生成明确标注的合成 Word 并真实结算。模拟失败调用真实 `finish(...,'failed')` 释放预留，不直接改余额。
 5. “重放同一执行键”再次提交保存的原请求，应得到同一个任务，余额不重复减少。再准备新的任务测试失败路径。
@@ -30,6 +30,20 @@ node scripts/billing-functional/stop.mjs
 测试台只处理本人的测试任务。所有测试 API 都是带 JSON/Origin/真实登录/CSRF 的 POST；服务仅监听 loopback 且检查 Host。完成动作串行执行，只有候选队列任务的 owner/run 都匹配时才交付；队列变化时释放误领租约并报错，不完成其他任务。普通产品页面可以浏览，但没有完整模型执行栈；不要在这个环境上传客户材料或把其他生成入口当成已配置。
 
 本地服务开启 `enableSyntheticQueue`，使产品实际的排队任务取消接口可用；这个选项不启动模型worker。排队中的测试任务可以通过产品取消并释放预留，已经成功交付的任务仍按实际结算规则处理。
+
+## 自动续费与逐月发额
+
+在产品账户页打开自动续费，再点“刷新续费授权状态”模拟渠道签约完成；取消时沿用真实取消 API，模拟渠道持久记录取消结果。模拟授权返回保留域的 HTTPS 链接，以保留生产 HTTPS 校验；仅本地注入的 `authorization.js` 将它变为本地账户链接，点击会调用产品已有的刷新授权按钮，不访问外网。本地 provider 支持月付、年付签约、取消、同订单幂等续扣；授权和支付结果分别保存在专用 `bb_local_billing_mandates`、`bb_local_billing_charges` 表，重启不会重新签约或重复扣款。
+
+测试台的 **“模拟下期续费/额度发放”** 无需等待一个月：只推进当前登录账号的订阅测试时钟，并调用按账号限定的生产调度器。月付到期模拟扣下期月费；年付先模拟下一次月额度发放，合同周年才会续扣年费；关闭续费后不再扣下期费用，已付合同内的额度仍按月发放。同一操作 ID 重试不推进第二次，也不重复发额。
+
+这个时钟仅适用于订阅：钱包90天过期、会话有效期及其他业务仍按真实时间判断，不可用它验收90天余额过期。没有改系统时间、已锁定合同日期、发额日期或余额；真实产品 API、生产迁移和环境没有时间模拟入口。启动仅在数据库名与实例 marker 均符合本地专用实例后替换 `bb_subscription_clock(text)`，生产定义及未设置模拟时钟的账号仍返回毫秒精度的真实当前时间。
+
+服务统一构建、迁移并重启后运行 `node scripts/billing-functional/subscription-renewal-verify.mjs`。它新增随机账号，验证月续扣一次、同操作重放、取消后不扣、年付次月只发积分、未知/失败续扣不发积分及持久化渠道结果。未知/失败只写对应账号的本地模拟渠道表，再由真实支付处理决定是否发额；不直接写钱包。结果位于 `.runtime/subscription-renewal-verification.json`。
+
+2026-10-30本链路首次真实HTTP执行通过12/12项，使用4个新随机账号，未运行模型任务或真实支付。[结果与修复记录](../../evidence/subscription-billing-20261029/completion/SUBSCRIPTION-RENEWAL-HTTP-20261030.md)保留了此前一次真实启动失败，以及静态发现的模拟授权URL问题；未重跑旧的整套扣费/页面恢复验证。
+
+真实浏览器补充命令为 `node scripts/billing-functional/subscription-annual-browser-verify.mjs`：只用一个新年度轻量账号，点击真实产品支付、续费开关、本地化授权链接、取消开关及测试台发额按钮。2026-10-30首次执行6/6通过，外部请求0、浏览器异常0；[报告与4张截图](../../evidence/subscription-billing-20261029/completion/subscription-annual-browser-20261030/billing_annual_ui_2f35173a/result.json)记录年费只支付一次、首月21,000和次月42,000积分。
 
 自动验证使用另外的随机注册账号，不消费 `billing_tester` 的演示余额。测试账号密码只用于本地隔离环境。
 

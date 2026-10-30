@@ -32,12 +32,19 @@ export async function auditCreditClient(c:PoolClient,owner?:string){
     const paymentDrift=(await c.query(`SELECT o.id,o.owner_user_id,o.provider,o.merchant_id,o.state FROM bb_recharge_orders o LEFT JOIN bb_credit_lots l
       ON l.owner_user_id=o.owner_user_id AND l.source_key='recharge:'||o.id
       LEFT JOIN bb_subscription_periods sp ON sp.owner_user_id=o.owner_user_id AND sp.order_id=o.id
-      WHERE ($1::text IS NULL OR o.owner_user_id=$1) AND ((o.state='paid' AND (l.id IS NULL OR l.original_points IS DISTINCT FROM o.points
+      WHERE ($1::text IS NULL OR o.owner_user_id=$1) AND ((o.state='paid' AND (l.id IS NULL OR l.original_points IS DISTINCT FROM CASE WHEN o.order_kind='subscription' THEN sp.monthly_points ELSE o.points END
         OR (o.order_kind='recharge' AND (l.source IS DISTINCT FROM 'purchase' OR l.expires_at IS NOT NULL))
         OR (o.order_kind='subscription' AND (sp.id IS NULL OR sp.status NOT IN ('active','refunded')
           OR sp.lot_id IS DISTINCT FROM l.id OR sp.points IS DISTINCT FROM o.points OR sp.amount_fen IS DISTINCT FROM o.amount_fen
           OR l.source IS DISTINCT FROM 'subscription' OR sp.credits_expires_at IS NULL
-          OR l.expires_at IS DISTINCT FROM sp.credits_expires_at))))
+          OR l.expires_at IS DISTINCT FROM sp.credits_expires_at
+          OR sp.billing_cycle='annual' AND (
+           (SELECT count(*) FROM bb_subscription_credit_releases WHERE period_id=sp.id)<>12
+           OR (SELECT sum(points) FROM bb_subscription_credit_releases WHERE period_id=sp.id)<>o.points
+           OR (SELECT sum(amount_fen) FROM bb_subscription_credit_releases WHERE period_id=sp.id)<>o.amount_fen
+           OR EXISTS(SELECT 1 FROM bb_subscription_credit_releases x LEFT JOIN bb_credit_lots issued ON issued.id=x.lot_id AND issued.owner_user_id=x.owner_user_id
+            WHERE x.period_id=sp.id AND x.state='issued' AND (issued.id IS NULL OR issued.original_points<>x.points
+             OR issued.cash_basis_fen<>x.amount_fen OR issued.cash_basis_points<>x.points OR issued.cash_order_id<>o.id)))))))
       OR (o.state<>'paid' AND l.id IS NOT NULL))`,[owner??null])).rows;
     const refundDrift=(await c.query(`SELECT r.id,r.owner_user_id,r.provider,r.merchant_id,r.state FROM bb_payment_refunds r WHERE ($1::text IS NULL OR r.owner_user_id=$1) AND (
       r.credit_points<>(SELECT COALESCE(sum(a.points),0) FROM bb_payment_refund_allocations a WHERE a.refund_id=r.id)

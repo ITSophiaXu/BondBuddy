@@ -1,0 +1,58 @@
+{
+  "synthetic": true,
+  "realHttp": true,
+  "realPostgres": true,
+  "modelCallsPerformed": 0,
+  "realPaymentCallsPerformed": 0,
+  "startedAt": "2026-10-30T02:29:34.661Z",
+  "finishedAt": "2026-10-30T02:29:36.794Z",
+  "instanceId": "5c7885f4-5945-49d4-8d8c-40f7fa87f583",
+  "launchId": "f133b6a440bdea7366ca86d24cb5fba5d1b06580a1e42fcc",
+  "accounts": [
+    {
+      "username": "billing_renew_7c580b49",
+      "owner": "ba0af279-0db5-42d0-b157-a94afe6e0eb1",
+      "cycle": "monthly",
+      "subscriptionId": "9a4a520b-15e5-4261-94b3-76fa9e5fdb3f",
+      "firstOrderId": "2f2fe5016cb94b3ba0e826b568f1e559"
+    },
+    {
+      "username": "billing_renew_330fccf4",
+      "owner": "7e53080f-d24d-4f7d-a8a3-d8ede04eefd4",
+      "cycle": "annual",
+      "subscriptionId": "56e207cc-5886-4098-898d-c1a799139095",
+      "firstOrderId": "6fa2b5796b284419a832481ff4ee8edf"
+    },
+    {
+      "username": "billing_renew_ef50688e",
+      "owner": "603025d1-d8b9-4139-beea-646e6affb9d4",
+      "cycle": "monthly",
+      "subscriptionId": "afaa8dd6-4514-4f66-b7e6-1ee10bd40564",
+      "firstOrderId": "bda8a383304741d4a9834ac6dc37a6b7"
+    },
+    {
+      "username": "billing_renew_8473a4c4",
+      "owner": "4fb044a7-5285-42a2-b0e8-f5f32f65ff39",
+      "cycle": "monthly",
+      "subscriptionId": "a414bfcb-3dcc-4b42-9c66-e6cc647b21c7",
+      "firstOrderId": "ef29bcb8b6494eaa9e024d0478bf5fb0"
+    }
+  ],
+  "clockScope": "subscription only; wallet expiry and sessions use real time",
+  "checks": [
+    "anonymous subscription simulation denied",
+    "subscription simulation requires real CSRF",
+    "actual catalog exposes recurring capability and annual 10% discount",
+    "monthly due event charges 199 yuan and grants one month, without changing another account",
+    "replay of same advance and renewal is idempotent",
+    "cancelled mandate does not charge or grant a new month at the next due date",
+    "a newly instantiated provider preserves cancelled monthly and active yearly mandates",
+    "annual payment charges 2149.20 once, then releases next monthly 21000 even after renewal cancellation",
+    "annual monthly release replay cannot duplicate credits",
+    "unknown renewal stays one pending order across retry and provider reconstruction, with no credits granted",
+    "failed renewal grants no credits and stops automatic renewal",
+    "all synthetic clocks and evidence are scoped to four newly registered random accounts"
+  ],
+  "passed": 12,
+  "failed": 0
+}

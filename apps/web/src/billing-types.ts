@@ -13,7 +13,7 @@ const schemaFamilies={CreditBalanceResponse:'creditBalance',FixedQuoteResponse:'
  QaQuoteResponse:'qaQuote',QaAnswerRequest:'qaAnswerRequest',QaWorkspaceResponse:'qaWorkspace',
  IntegrityQuoteResponse:'integrityQuote',IntegrityRunRequest:'integrityRunRequest',IntegrityWorkspaceResponse:'integrityWorkspace',
  ProjectFileBatchRequest:'projectFileBatchRequest',ProjectFileBatchQuoteResponse:'projectFileBatchQuote',ProjectFileCheckRequest:'projectFileCheckRequest',ProjectFileCheckQuoteResponse:'projectFileCheckQuote',ProjectFileUpdateRequest:'projectFileUpdateRequest',ProjectFileUpdateQuoteResponse:'projectFileUpdateQuote',
- SubscriptionCatalogResponse:'subscriptionCatalog',SubscriptionAccountResponse:'subscriptionAccount',SubscriptionCheckoutResponse:'subscriptionCheckout'} as const satisfies Record<string,BillingWireDtoName>;
+ SubscriptionCatalogResponse:'subscriptionCatalog',SubscriptionAccountResponse:'subscriptionAccount',SubscriptionCheckoutResponse:'subscriptionCheckout',SubscriptionResponse:'subscription',SubscriptionAutoRenewResponse:'subscriptionAutoRenew'} as const satisfies Record<string,BillingWireDtoName>;
 type WireSchemaSet<S extends Record<string,TSchema>>={[K in keyof S]:K extends keyof typeof schemaFamilies?WireSchema<S[K],typeof schemaFamilies[K]>:S[K]};
 function wireSchemas<S extends Record<string,TSchema>>(set:S):WireSchemaSet<S>{return Object.fromEntries(Object.entries(set).map(([k,s])=>[k,k in schemaFamilies?wireSchema(s,schemaFamilies[k as keyof typeof schemaFamilies]):s])) as WireSchemaSet<S>;}
 export const schemas=wireSchemas(domain.schemas);
@@ -38,6 +38,8 @@ export type CommerceTopup=BillingWireDto<domain.CommerceTopup,'topupRequest'>;
 export type SubscriptionCatalog=BillingWireDto<domain.SubscriptionCatalog,'subscriptionCatalog'>;
 export type SubscriptionAccount=BillingWireDto<domain.SubscriptionAccount,'subscriptionAccount'>;
 export type SubscriptionCheckout=BillingWireDto<domain.SubscriptionCheckout,'subscriptionCheckout'>;
+export type Subscription=BillingWireDto<domain.Subscription,'subscription'>;
+export type SubscriptionAutoRenew=BillingWireDto<domain.SubscriptionAutoRenew,'subscriptionAutoRenew'>;
 export type SubscriptionPeriod=SubscriptionAccount['periods'][number];
 export type PaymentRefund=BillingWireDto<domain.PaymentRefund,'refund'>;
 export type PaymentRefundRequest=BillingWireDto<domain.PaymentRefundRequest,'refundRequest'>;

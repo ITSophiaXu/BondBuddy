@@ -64,7 +64,9 @@ export async function applyVerifiedPayment(pool:Pool,provider:PaymentProvider,re
         // A historical paid replay may add independently verified cash evidence,
         // but must never manufacture a missing original lot or reissue credits.
         const lot=(await c.query('SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 AND source_key=$2',[order.owner_user_id,`recharge:${order.id}`])).rows[0];
-        if(!lot||safeBillingNumber(lot.original_points)!==safeBillingNumber(order.points)||lot.source!==(order.order_kind==='subscription'?'subscription':'purchase'))
+        const period=order.order_kind==='subscription'?(await c.query('SELECT lot_id,monthly_points,points,amount_fen FROM bb_subscription_periods WHERE order_id=$1 AND owner_user_id=$2',[order.id,order.owner_user_id])).rows[0]:null;
+        if(!lot||safeBillingNumber(lot.original_points)!==safeBillingNumber(period?.monthly_points??order.points)||lot.source!==(order.order_kind==='subscription'?'subscription':'purchase')||
+          order.order_kind==='subscription'&&(!period||period.lot_id!==lot.id||safeBillingNumber(period.points)!==safeBillingNumber(order.points)||safeBillingNumber(period.amount_fen)!==safeBillingNumber(order.amount_fen)))
           throw new Problem(503,'DATA_UNAVAILABLE','Original paid credit lot requires reconciliation');
         await recordPaymentCashProof(c,order,lot.id,receipt.payerCash);
         if(receipt.paidAt&&!order.provider_paid_at){

@@ -3,7 +3,7 @@ import {UserFacingError} from './user-facing-error.js';
 import {workReturnTo} from './project-navigation.js';
 
 type Provider='wechat'|'alipay';
-export type CheckoutChoice={kind:'subscription';subscription_id?:string;plan_id:SubscriptionCheckoutRequest['plan_id'];provider:Provider}
+export type CheckoutChoice={kind:'subscription';subscription_id?:string;plan_id:SubscriptionCheckoutRequest['plan_id'];provider:Provider;billing_cycle?:'monthly'|'annual'}
   |{kind:'topup';amount_fen:string;provider:Provider;project_id?:string};
 type LegacyCheckoutChoice=Exclude<CheckoutChoice,{kind:'topup'}>|{kind:'topup';amount_fen:number;provider:Provider;project_id?:string};
 export type CheckoutOrder={order_id:string;provider:Provider;state:'pending'|'paid'|'expired'|'failed';amount_fen:string;points:string};
@@ -25,10 +25,10 @@ function amountValid(value:unknown,legacy=false,maximum=9223372036854775807n):bo
 }
 function choiceValid(value:unknown,legacy=false):value is CheckoutChoice|LegacyCheckoutChoice{
   if(!object(value)||!['wechat','alipay'].includes(String(value.provider)))return false;
-  return value.kind==='subscription'?keys(value,['kind','subscription_id','plan_id','provider'])&&SUBSCRIPTION_PLANS.some(p=>p.id===value.plan_id)&&(value.subscription_id===undefined||id(value.subscription_id)):
+  return value.kind==='subscription'?keys(value,legacy?['kind','subscription_id','plan_id','provider']:['kind','subscription_id','plan_id','provider','billing_cycle'])&&SUBSCRIPTION_PLANS.some(p=>p.id===value.plan_id)&&(value.subscription_id===undefined||id(value.subscription_id))&&(value.billing_cycle===undefined||['monthly','annual'].includes(String(value.billing_cycle))):
     value.kind==='topup'&&keys(value,['kind','amount_fen','provider','project_id'])&&amountValid(value.amount_fen,legacy,1000000n)&&(value.project_id===undefined||id(value.project_id));
 }
-function sameChoice(a:CheckoutChoice|LegacyCheckoutChoice,b:CheckoutChoice){return a.kind===b.kind&&a.provider===b.provider&&(a.kind==='subscription'&&b.kind==='subscription'?a.plan_id===b.plan_id&&a.subscription_id===b.subscription_id:a.kind==='topup'&&b.kind==='topup'&&int64(a.amount_fen)===int64(b.amount_fen)&&a.project_id===b.project_id);}
+function sameChoice(a:CheckoutChoice|LegacyCheckoutChoice,b:CheckoutChoice){return a.kind===b.kind&&a.provider===b.provider&&(a.kind==='subscription'&&b.kind==='subscription'?a.plan_id===b.plan_id&&a.subscription_id===b.subscription_id&&(a.billing_cycle??'monthly')===(b.billing_cycle??'monthly'):a.kind==='topup'&&b.kind==='topup'&&int64(a.amount_fen)===int64(b.amount_fen)&&a.project_id===b.project_id);}
 function contextValid(value:unknown):value is CheckoutContext{return object(value)&&keys(value,['project_id','return_to','resume_request'])&&(value.project_id===undefined||id(value.project_id))&&(value.resume_request===undefined||id(value.resume_request))&&(value.return_to===undefined||typeof value.return_to==='string'&&workReturnTo(value.return_to)===value.return_to);}
 function orderValid(intent:Pick<CheckoutIntent,'choice'>,value:unknown,legacy=false):value is CheckoutOrder|LegacyCheckoutOrder{
   if(!object(value)||!id(value.order_id)||value.provider!==intent.choice.provider||!['pending','paid','expired','failed'].includes(String(value.state)))return false;

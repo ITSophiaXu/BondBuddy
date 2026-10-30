@@ -1,0 +1,46 @@
+{
+  "synthetic": true,
+  "realBrowser": "Microsoft Edge / Playwright",
+  "realHttp": true,
+  "realPostgres": true,
+  "startedAt": "2026-10-30T02:33:26.072Z",
+  "finishedAt": "2026-10-30T02:33:31.435Z",
+  "instanceId": "5c7885f4-5945-49d4-8d8c-40f7fa87f583",
+  "launchId": "f133b6a440bdea7366ca86d24cb5fba5d1b06580a1e42fcc",
+  "username": "billing_annual_ui_2f35173a",
+  "owner": "ef2ffa82-3820-484b-a0e4-b3c65c40124b",
+  "subscriptionId": "011e87f3-274f-4c9d-b04c-6fb546cf0f5f",
+  "firstOrderId": "ac881351ec1b4f74b0e832bec659b5a8",
+  "passed": 6,
+  "failed": 0,
+  "checks": [
+    "new random account and independent Edge context start at zero in the verified local instance",
+    "real annual checkout charges 2149.20 once, closes its payment card and grants only the first 21000 points",
+    "clicking the localized authorization link triggers the actual mandate refresh, enables renewal and sends zero external requests",
+    "the real renewal switch cancels the persisted channel mandate",
+    "the real test-panel button releases the second annual installment after cancellation, with one original payment and no model runs",
+    "no browser exceptions, popups or external HTTP requests throughout the actual annual flow"
+  ],
+  "invalidDomainRequests": [],
+  "nonLocalRequests": [],
+  "mandateRequests": [
+    {
+      "path": "/api/v1/subscriptions/011e87f3-274f-4c9d-b04c-6fb546cf0f5f/auto-renew",
+      "body": "{\"request_id\":\"a882762a-e850-4927-9d43-392ec309a81d\",\"enabled\":true}"
+    },
+    {
+      "path": "/api/v1/subscriptions/011e87f3-274f-4c9d-b04c-6fb546cf0f5f/auto-renew/refresh",
+      "body": "{}"
+    }
+  ],
+  "pageErrors": [],
+  "screenshots": [
+    "01-annual-paid-first-month.png",
+    "02-localized-authorization.png",
+    "03-renewal-enabled.png",
+    "04-second-month-issued.png"
+  ],
+  "modelCallsPerformed": 0,
+  "realPaymentCallsPerformed": 0,
+  "clockScope": "subscription only; wallet expiry and sessions use real time"
+}

@@ -11,7 +11,15 @@ const browser=await chromium.launch({channel:'msedge',headless:true}),page=await
 page.on('pageerror',e=>errors.push(e.message));
 const state=()=>page.evaluate(async()=>{const token=document.cookie.split(';').map(x=>x.trim()).find(x=>x.startsWith('bb_csrf='))?.slice(8);const r=await fetch('/__billing-test/api/state',{method:'POST',headers:{'content-type':'application/json','x-bb-csrf':token},body:'{}'});if(!r.ok)throw Error(await r.text());return r.json();});
 const balance=async(available,held=0)=>{const s=await state();assert.equal(s.account.available_points,String(available));assert.equal(s.account.task_held_points,String(held));return s;};
-const paid=async()=>{await expect(page.locator('#refresh-subscription-payment')).toBeVisible();await page.locator('#refresh-subscription-payment').click();await expect(page.getByRole('heading',{name:'积分已到账',exact:true})).toBeVisible();};
+const paid=async()=>{
+  await expect(page.locator('#refresh-subscription-payment')).toBeVisible();await page.locator('#refresh-subscription-payment').click();
+  // Default checkout returns to the account overview after the authenticated
+  // receipt. A separate task-recovery verifier checks return-to-task behavior.
+  await expect(page.locator('.subscription-payment')).toHaveCount(0);
+  await expect(page.locator('#refresh-subscription-payment')).toHaveCount(0);
+  await expect(page.locator('.subscription-message')).toContainText('积分已到账');
+  const query=new URLSearchParams(new URL(page.url()).hash.split('?')[1]);assert.equal(query.has('order'),false);assert.equal(query.has('checkout'),false);
+};
 try{
   await page.goto(base+'/#/login');await page.locator('#username').fill(username);await page.locator('#password').fill(password);await page.locator('#login-form button[type=submit]').click();
   await expect(page.locator('#login-form')).toHaveCount(0);await page.goto(base+'/__billing-test');await expect(page.locator('#identity')).toContainText(username);await balance(0);checks.push('real login and zero initial balance');

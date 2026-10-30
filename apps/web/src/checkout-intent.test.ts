@@ -43,6 +43,25 @@ test('subscription renewal recovery keeps the original subscription endpoint and
   assert.equal(result.request_id,old.request_id);
 });
 
+test('annual checkout recovery preserves its cycle and never reuses its key for a monthly purchase',async()=>{
+  const env=fixture(),annual:CheckoutChoice={kind:'subscription',plan_id:'professional',provider:'wechat',billing_cycle:'annual'};
+  await assert.rejects(submitCheckoutIntent('owner',annual,undefined,async()=>{throw Error('unknown');},env));
+  const original=readCheckoutIntent('owner',env.storage)!;
+  await assert.rejects(submitCheckoutIntent('owner',{...annual,billing_cycle:'monthly'},undefined,async()=>order,env),/已有原付款待核对/);
+  const result=await submitCheckoutIntent('owner',undefined,undefined,async intent=>{assert.deepEqual(intent.choice,annual);return{...order,amount_fen:'538920',points:'660000'};},env);
+  assert.equal(result.request_id,original.request_id);
+  const invalid={...result,choice:{...annual,billing_cycle:'weekly'}};env.storage.setItem(checkoutIntentKey('owner'),JSON.stringify(invalid));
+  assert.throws(()=>readCheckoutIntent('owner',env.storage));
+});
+
+test('pre-cycle monthly checkout keeps its exact original body when explicitly choosing monthly',async()=>{
+  const env=fixture(),monthly:CheckoutChoice={kind:'subscription',plan_id:'light',provider:'wechat'};
+  await assert.rejects(submitCheckoutIntent('owner',monthly,undefined,async()=>{throw Error('unknown');},env));
+  const original=readCheckoutIntent('owner',env.storage)!;
+  const saved=await submitCheckoutIntent('owner',{...monthly,billing_cycle:'monthly'},undefined,async intent=>{assert.deepEqual(intent.choice,monthly);return{...order,amount_fen:'19900',points:'21000'};},env);
+  assert.equal(saved.request_id,original.request_id);
+});
+
 test('an accepted subscription order keeps its historical amount and points across catalog changes',async()=>{
   const env=fixture(),subscription:CheckoutChoice={kind:'subscription',plan_id:'light',provider:'wechat'};
   const historical={...order,amount_fen:'18900',points:'20500'};

@@ -4,6 +4,8 @@ import {createHash,timingSafeEqual} from 'node:crypto';
 import {Pool} from 'pg';
 import {createServer as createVite} from 'vite';
 import {config,runtime,repo,directory,ports,baseURL,apiURL,pgBase,terms,cleanEnvironment} from './config.mjs';
+import {installLocalProviderState,syntheticPaymentProvider} from './provider.mjs';
+import {localSubscriptionState,advanceLocalSubscription,setLocalNextChargeOutcome} from './subscription-controls.mjs';
 
 const launchId=process.env.BB_FUNCTIONAL_LAUNCH,stopToken=process.env.BB_FUNCTIONAL_STOP;
 if(!/^[a-f0-9]{48}$/.test(launchId??'')||!/^[a-f0-9]{64}$/.test(stopToken??''))throw Error('Start through billing-functional/start.mjs');
@@ -15,7 +17,7 @@ const marker=(await pool.query('SELECT instance_id FROM bb_local_billing_instanc
 const {createServer}=await import('../../apps/api/dist/server.js');
 const {session}=await import('../../apps/api/dist/auth.js');
 const {Problem,digest,uid}=await import('../../apps/api/dist/data.js');
-const {subscriptionAccount}=await import('../../apps/api/dist/subscriptions.js');
+const {subscriptionAccount,processDueSubscriptionRenewals,processDueSubscriptionCreditReleases}=await import('../../apps/api/dist/subscriptions.js');
 const {claim,finish,releaseLease}=await import('../../apps/api/dist/queue.js');
 const {syntheticReviewPair}=await import('../../apps/api/dist/review-delivery-test-fixture.js');
 const {makeSyntheticDocxFixture}=await import('../../apps/api/dist/docx-fixtures.js');
@@ -28,10 +30,8 @@ const getIfExists=async key=>{try{return await get(key);}catch(error){if(error.c
 const blobs={put:async(key,bytes)=>writeFile(blobPath(key),bytes),get,getIfExists,
   getIfExistsBounded:async(key,limit)=>{try{if((await stat(blobPath(key))).size>limit)throw new Problem(413,'UPLOAD_TOO_LARGE','Synthetic object exceeds limit');return await get(key);}catch(error){if(error.code==='ENOENT')return null;throw error;}},
   exists:async key=>(await getIfExists(key))!==null,delete:async key=>{try{await unlink(blobPath(key));}catch(error){if(error.code!=='ENOENT')throw error;}}};
-const provider={name:'wechat',merchantId:'synthetic-billing-functional-'+saved.id,acknowledgement:{code:'SUCCESS'},
-  create:async order=>({checkoutUrl:'weixin://wxpay/bizpayurl?pr=synthetic-local-'+order.id}),
-  query:async order=>({orderId:order.id,merchantId:order.merchant_id,amountFen:order.amount_fen,currency:'CNY',state:'paid',transactionId:'synthetic-'+order.id,payerCash:{amountFen:order.amount_fen,currency:'CNY'}}),
-  verifyCallback:async()=>{throw Error('No external callbacks are accepted by this synthetic provider');}};
+await installLocalProviderState(pool,saved);
+const provider=syntheticPaymentProvider(pool,saved);
 // Enable the actual queued-run controls (including cancellation and release).
 // This flag does not start a worker; generated outputs still need explicit simulation.
 const app=createServer({pool,blobs,enableSubscriptionBilling:true,enableSyntheticQueue:true,paymentProviders:[provider],allowedOrigin:baseURL,auth:{termsVersion:terms}});
@@ -60,13 +60,23 @@ async function state(owner){
     h.state AS charge_state,h.points AS reserved_points,h.charged_points
     FROM bb_local_billing_reviews t LEFT JOIN bb_runs r ON r.id=t.run_id LEFT JOIN bb_credit_reservations h ON h.run_id=t.run_id
     WHERE t.owner_user_id=$1 ORDER BY t.created_at DESC LIMIT 20`,[owner])).rows;
-  return {synthetic:true,username:user.username,account,tasks};
+  return {synthetic:true,username:user.username,account,tasks,subscription_test:await localSubscriptionState(pool,owner)};
 }
 // Serialize test actions in this one local process. Product APIs still perform
 // their normal database transactions, session checks and idempotency rules.
 let chain=Promise.resolve();const serial=work=>{const next=chain.then(work);chain=next.catch(()=>{});return next;};
 app.get('/__billing-test/status',async()=>({ready,synthetic:true,launch_id:launchId}));
 app.post('/__billing-test/api/state',{schema:{body:emptyBody}},async request=>state(await owner(request)));
+app.post('/__billing-test/api/subscription/advance',{schema:{body:idBody}},async request=>{
+  const user=await owner(request);return serial(async()=>{
+    try{await advanceLocalSubscription(pool,user,request.body.id,{processDueSubscriptionRenewals,processDueSubscriptionCreditReleases,providers:[provider]});}
+    catch(error){if(error instanceof Problem)throw error;throw new Problem(409,'INPUT_REVISION_CONFLICT',error.message);}
+    return state(user);
+  });
+});
+app.post('/__billing-test/api/subscription/outcome',{schema:{body:{type:'object',additionalProperties:false,required:['outcome'],properties:{outcome:{type:'string',enum:['paid','pending','failed']}}}}},async request=>{
+  const user=await owner(request);return serial(async()=>{await setLocalNextChargeOutcome(pool,user,request.body.outcome);return state(user);});
+});
 app.post('/__billing-test/api/review/prepare',{schema:{body:idBody}},async request=>{
   const user=await owner(request),id=request.body.id;
   return serial(async()=>{
@@ -127,12 +137,12 @@ try{
   }
   const banner='<style>body{padding-bottom:100px!important;box-sizing:border-box}#billing-functional-banner{max-height:90px;overflow:auto}</style><div id="billing-functional-banner" style="position:fixed;bottom:0;left:0;right:0;z-index:2147483647;padding:12px;background:#fff1a6;color:#302600;text-align:center;font:14px/1.4 system-ui">本地合成测试 · 不扣真钱、不调用模型 · 订阅/充值后点击“刷新支付状态”模拟到账，无需扫码。 <a href="/__billing-test" style="color:#302600;text-decoration:underline">打开计费测试台</a></div>';
   vite=await createVite({root:join(repo,'apps/web'),configFile:join(repo,'apps/web/vite.config.ts'),plugins:[{
-    name:'billing-functional-only',transformIndexHtml:html=>html.replace('</body>',banner+'</body>'),
+    name:'billing-functional-only',transformIndexHtml:html=>html.replace('</body>',banner+'<script type="module" src="/__billing-test/authorization.js"></script></body>'),
     configureServer(server){server.middlewares.use(async(req,res,next)=>{
       if(!local(req.socket.remoteAddress)||!allowedHosts.has(req.headers.host??'')){res.statusCode=403;res.end('Local functional environment only');return;}
       const path=(req.url??'').split('?',1)[0];
       if(path==='/__billing-test'||path==='/__billing-test/'){res.setHeader('content-type','text/html; charset=utf-8');res.setHeader('cache-control','no-store');res.end(await readFile(join(directory,'panel.html'),'utf8'));return;}
-      if(path==='/__billing-test/panel.js'){res.setHeader('content-type','text/javascript; charset=utf-8');res.setHeader('cache-control','no-store');res.end(await readFile(join(directory,'panel.js'),'utf8'));return;}next();
+      if(path==='/__billing-test/panel.js'||path==='/__billing-test/authorization.js'){res.setHeader('content-type','text/javascript; charset=utf-8');res.setHeader('cache-control','no-store');res.end(await readFile(join(directory,path.endsWith('/authorization.js')?'authorization.js':'panel.js'),'utf8'));return;}next();
     });}
   }],server:{host:'127.0.0.1',port:ports.web,strictPort:true,allowedHosts:['localhost','127.0.0.1'],proxy:{'/api/v1':{target:apiURL},'/__billing-test/api':{target:apiURL}}}});
   await vite.listen();ready=true;console.log(JSON.stringify({ready:true,synthetic:true,url:baseURL+'/__billing-test',database:saved.database,launchId}));
