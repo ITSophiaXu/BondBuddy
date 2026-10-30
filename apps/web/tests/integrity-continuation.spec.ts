@@ -12,17 +12,18 @@ const subjectField=(page:Page,id:string,field:string)=>page.locator(`[data-subje
 const evidenceButton=(page:Page,index:number,siteId:string)=>page.locator(`[data-evidence="${index}:${siteId}"]`);
 const nextPending=(page:Page)=>page.locator('#integrity-next-pending:visible');
 const originalSubjects=()=>historicalDraft().subjects;
+const preparedDraft=()=>({...historicalDraft(),site_ids:['bankruptcy','local-tax']});
 test.afterEach(async({page})=>assertFixture(page));
 async function open(page:Page,state=fixture(),run:string|null=exportId){await install(page,state);await page.goto(route(run));await expect(page.locator(run?'#integrity-records':'#integrity-roster')).toBeVisible();return state;}
 async function adopt(page:Page){await page.locator('#integrity-use-round').click();await expect(page.locator('#integrity-adopt-confirm')).toBeVisible();await page.locator('#integrity-adopt-confirm').click();await expect(page.locator('#integrity-roster')).toBeVisible();}
-async function expectLocal(page:Page){
+async function expectLocal(page:Page,siteIds=preparedDraft().site_ids){
   await expect(page.locator('[data-subject-row]')).toHaveCount(3);for(const subject of originalSubjects())for(const field of ['kind','name','role','identifier'] as const)await expect(subjectField(page,subject.id,field)).toHaveValue(subject[field]);
   await expect(page.locator('#integrity-notes')).toHaveValue(historicalDraft().notes);
-  await expect(page.locator('[name=integrity-site]:checked')).toHaveCount(4);for(const id of historicalDraft().site_ids)await expect(page.locator(`[name=integrity-site][value="${id}"]`)).toBeChecked();
+  await expect(page.locator('[name=integrity-site]:checked')).toHaveCount(siteIds.length);for(const id of siteIds)await expect(page.locator(`[name=integrity-site][value="${id}"]`)).toBeChecked();
   for(const subject of originalSubjects().filter(subject=>subject.kind==='company'))for(const field of ['province','city'] as const)await expect(page.locator(`[data-region="${subject.id}"][data-field="${field}"]`)).toHaveValue(subject[field]);
 }
 async function expectPending(page:Page){await expect(page.locator('#integrity-recovery')).toBeVisible();await expect(page.locator('#integrity-retry-pending')).toBeEnabled();}
-async function start(page:Page){await page.locator('#integrity-start').click();await expect(page.locator('#integrity-confirm')).toBeVisible();await page.locator('#integrity-confirm').click();}
+async function start(page:Page){await page.locator('[name=integrity-site][value=tax]').check();await page.locator('#integrity-start').click();await expect(page.locator('#integrity-confirm')).toBeVisible();await page.locator('#integrity-confirm').click();}
 async function freeExport(page:Page){await page.locator('#integrity-export').click();await expect(page.locator('#integrity-export-free-confirm')).toBeVisible();await page.locator('#integrity-export-free-confirm').click();}
 async function openEvidence(page:Page,index=0,siteId='credit-china'){
   const button=evidenceButton(page,index,siteId);await button.locator('xpath=ancestor::details').evaluate((element:HTMLDetailsElement)=>{element.open=true;});await button.click();await expect(page.locator('#integrity-evidence-form')).toBeVisible();
@@ -114,17 +115,17 @@ test('free export requires explicit confirmation and freezes all current evidenc
 });
 
 test('a paid new check confirms 5,000 and freezes the whole adopted roster without inheriting old findings',async({page})=>{
-  const state=await open(page),history=historicalRounds(state);await adopt(page);await page.locator('#integrity-start').click();await expect(modal(page)).toContainText('5,000');for(const subject of originalSubjects())await expect(modal(page)).toContainText(subject.name);expect(writes(state)).toEqual([]);
-  await page.locator('#integrity-confirm').click();await expect.poll(()=>state.checks.length).toBe(1);expect(state.drafts).toEqual([{expected_revision:10,draft:historicalDraft()}]);expect(state.checks[0]).toEqual({request_id:expect.any(String),expected_revision:11,price_version:INTEGRITY_PRICE.version,expected_points:5000});
-  const accepted=[...state.accepted.values()][0];expect(accepted.round.manifest.draft).toEqual(historicalDraft());expect(accepted.round.manifest.records).toEqual([]);expect(accepted.round.manifest.evidence_ids).toEqual([]);expect(historicalRounds(state)).toEqual(history);expect(state.manuals).toEqual([]);expect(state.exports).toEqual([]);
+  const state=await open(page),history=historicalRounds(state);await adopt(page);await page.locator('[name=integrity-site][value="tax"]').check();const expected={...preparedDraft(),site_ids:[...preparedDraft().site_ids,'tax']};await page.locator('#integrity-start').click();await expect(modal(page)).toContainText('5,000');for(const subject of originalSubjects())await expect(modal(page)).toContainText(subject.name);expect(writes(state)).toEqual([]);
+  await page.locator('#integrity-confirm').click();await expect.poll(()=>state.checks.length).toBe(1);expect(state.drafts).toEqual([{expected_revision:10,draft:expected}]);expect(state.checks[0]).toEqual({request_id:expect.any(String),expected_revision:11,price_version:INTEGRITY_PRICE.version,expected_points:5000});
+  const accepted=[...state.accepted.values()][0];expect(accepted.round.manifest.draft).toEqual(expected);expect(accepted.round.manifest.records).toEqual([]);expect(accepted.round.manifest.evidence_ids).toEqual([]);expect(historicalRounds(state)).toEqual(history);expect(state.manuals).toEqual([]);expect(state.exports).toEqual([]);
 });
 
 test('cancelling the paid confirmation performs no save, query, export or upload',async({page})=>{
-  const state=await open(page);await adopt(page);await page.locator('#integrity-start').click();await modal(page).locator('[data-close]').click();await expectLocal(page);expect(writes(state)).toEqual([]);
+  const state=await open(page);await adopt(page);await page.locator('[name=integrity-site][value=tax]').check();await page.locator('#integrity-start').click();await modal(page).locator('[data-close]').click();await expectLocal(page,[...preparedDraft().site_ids,'tax']);expect(writes(state)).toEqual([]);
 });
 
 test('local storage persistence failure blocks execution before any draft or paid POST',async({page})=>{
-  const state=await open(page);await adopt(page);await page.evaluate(()=>{Storage.prototype.setItem=()=>{throw new DOMException('Synthetic quota failure','QuotaExceededError');};});await start(page);
+  const state=await open(page);await adopt(page);await page.locator('[name=integrity-site][value=tax]').check();await page.evaluate(()=>{Storage.prototype.setItem=()=>{throw new DOMException('Synthetic quota failure','QuotaExceededError');};});await start(page);
   await expect(page.locator('#integrity-status')).not.toHaveText('');expect(integrityWrites(state)).toEqual([]);expect(state.accepted.size).toBe(0);
 });
 
@@ -183,7 +184,7 @@ test('a matching-looking unrelated check is never treated as an unknown paid rec
 });
 
 for(const code of ['CREDITS_INSUFFICIENT','INPUT_REVISION_CONFLICT','QUOTE_CHANGED'] as const)test(`definitive ${code} rejection retains preparation and requires another explicit 5,000 confirmation`,async({page})=>{
-  const state=await open(page);await adopt(page);state.rejectCheck=code;await start(page);await expect.poll(()=>state.checks.length).toBe(1);await expect(page.locator('#integrity-retry-pending')).toHaveCount(0);await expect(page.locator('#integrity-preparation-controls')).toHaveJSProperty('disabled',false);await expectLocal(page);
+  const state=await open(page);await adopt(page);state.rejectCheck=code;await start(page);await expect.poll(()=>state.checks.length).toBe(1);await expect(page.locator('#integrity-retry-pending')).toHaveCount(0);await expect(page.locator('#integrity-preparation-controls')).toHaveJSProperty('disabled',false);await expectLocal(page,[...preparedDraft().site_ids,'tax']);
   if(await modal(page).isVisible())await modal(page).locator('[data-close]').click();expect(state.accepted.size).toBe(0);await page.locator('#integrity-start').click();await expect(page.locator('#integrity-confirm')).toBeVisible();expect(state.checks).toHaveLength(1);await page.locator('#integrity-confirm').click();await expect.poll(()=>state.checks.length).toBe(2);expect(state.checks[1].expected_points).toBe(5000);
 });
 
@@ -244,7 +245,7 @@ test('an unknown draft GET mismatch presents both preparations and explicit loca
   state.workspaceRead={...structuredClone(state.workspace),revision:12,draft:{subjects:[{id:'foreign-company',kind:'company',name:'另一页面的服务器企业有限公司',identifier:'',role:'另一名单',province:'北京',city:''}],site_ids:['csrc'],notes:'服务器当前完整准备，需要与本机核对。'}};
   await page.locator('#integrity-refresh-pending').click();await expect(page.locator('#integrity-recovery')).toContainText('合成发行人有限公司');await expect(page.locator('#integrity-recovery')).toContainText('另一页面的服务器企业有限公司');await expect(page.locator('#integrity-rebase-pending-draft')).toBeEnabled();expect(state.drafts).toHaveLength(1);
   await page.locator('#integrity-rebase-pending-draft').click();await expect(page.locator('#integrity-rebase-pending-draft')).toHaveCount(0);await expect(page.locator('#integrity-preparation-controls')).toHaveJSProperty('disabled',false);await expectLocal(page);expect(state.drafts).toHaveLength(1);expect(state.checks).toEqual([]);expect(state.exports).toEqual([]);
-  const saved=await page.evaluate(async({owner,project})=>{const module='/src/integrity-recovery.ts';const {IntegrityRecoveryCache}=await import(module);return new IntegrityRecoveryCache(owner,project).read();},{owner:ownerId,project:projectId});expect(saved).toMatchObject({status:'valid',value:{revision:12,draft:historicalDraft()}});
+  const saved=await page.evaluate(async({owner,project})=>{const module='/src/integrity-recovery.ts';const {IntegrityRecoveryCache}=await import(module);return new IntegrityRecoveryCache(owner,project).read();},{owner:ownerId,project:projectId});expect(saved).toMatchObject({status:'valid',value:{revision:12,draft:preparedDraft()}});
 });
 
 test('raw evidence fields survive close, reopen and refresh while blank actual time stays blank',async({page})=>{
