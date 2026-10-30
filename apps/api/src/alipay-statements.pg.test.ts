@@ -71,7 +71,9 @@ test('Alipay download proof persists as unresolved coverage with JSON null total
   const h=await setup(),p=provider(h.merchant),download=verifiedDownload(h.merchant);
   try{
     await seedPaidRefund(h,p);const before=await financialSnapshot(h.pool);
-    const job=await enqueuePaymentStatement(h.pool,p,{billDate,kind:'trade'});assert.ok(job);
+    const job=await enqueuePaymentStatement(h.pool,p,{billDate,kind:'trade'})??
+      (await h.pool.query("SELECT id FROM bb_payment_statement_jobs WHERE provider='alipay' AND merchant_id=$1 AND bill_date=$2 AND kind='trade'",[h.merchant,billDate])).rows[0]?.id;
+    assert.ok(job,'First authenticated payment date may already have queued this bill');
     assert.deepEqual(await reconcileDailyStatements(h.pool,[p],{now:manualNow}),{checked:1,completed:0,unknown:1});
     const evidence=(await h.pool.query(`SELECT *,totals IS NULL AS totals_is_sql_null,jsonb_typeof(totals) AS totals_json_type
       FROM bb_payment_statements WHERE job_id=$1`,[job])).rows;

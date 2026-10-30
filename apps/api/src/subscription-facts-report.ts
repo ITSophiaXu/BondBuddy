@@ -3,10 +3,11 @@ import type {Pool} from 'pg';
 import {int64,serializeInt64} from '@bondbuddy/contracts';
 import {transaction,Problem} from './data.js';
 import {ZERO,ratio,add,subtract,ratioJson,type ExactRatio} from './commerce-economics-math.js';
+import {lotFundingEvidenceSql,lotFundingMatches,type LotFundingEvidence} from './subscription-funding-evidence.js';
 
 export const SUBSCRIPTION_FACTS_VERSION='subscription-facts-exact-v1';
 type Order={order_id:string;owner_user_id:string;order_kind:string;occurred_at:string;amount_fen:string;cash_amount_fen:string|null;refunded_fen:string;period_start:string|null;period_end:string|null};
-type Slice={event_id:string;occurred_at:string;lot_id:string;origin_lot_id:string|null;order_id:string|null;source:string;points:string;basis_fen:string|null;basis_points:string|null;event_total_points?:string;reservation_id?:string};
+type Slice={event_id:string;occurred_at:string;lot_id:string;origin_lot_id:string|null;order_id:string|null;source:string;points:string;basis_fen:string|null;basis_points:string|null;event_total_points?:string;reservation_id?:string;funding_required?:boolean;funding_slices?:LotFundingEvidence[]};
 type Refund={occurred_at:string;amount_fen:string};
 type Expiry={expires_at:string;remaining:string;frozen:string};
 export type SubscriptionFactsInput={from:string;to:string;as_of:string;orders:Order[];redemptions:Slice[];corrections:Slice[];cash_refunds:Refund[];expired_lots:Expiry[];excluded_legacy_settlement_points:string};
@@ -21,7 +22,7 @@ const unique=(values:string[])=>String(new Set(values).size);
 function consideration(slices:Slice[]){
  let known=ZERO;const missing:string[]=[];
  for(const s of slices){
-  if(s.basis_fen===null||s.basis_points===null||int64(s.basis_points)===0n){missing.push(s.lot_id);continue;}
+  if(s.basis_fen===null||s.basis_points===null||int64(s.basis_points)===0n||!lotFundingMatches({required:s.funding_required,funding:s.funding_slices,numerator:s.basis_fen,denominator:s.basis_points})){missing.push(s.lot_id);continue;}
   known=add(known,ratio(int64(s.basis_fen)*int64(s.points),int64(s.basis_points)));
  }
  return{complete:missing.length===0,known,total:missing.length?null:known,missing_lots:[...new Set(missing)].sort()};
@@ -97,6 +98,9 @@ export function summarizeSubscriptionFacts(input:SubscriptionFactsInput){
   cohort_status:cohorts.length?'observed_retained_paid_cohorts':'no_observed_retained_paid_cohort',
   original_batches:[...originalBatches.values()].sort((a,b)=>a.month.localeCompare(b.month)||a.origin_lot_id.localeCompare(b.origin_lot_id)).map(b=>({month:b.month,origin_lot_id:b.origin_lot_id,order_id:b.order_id,source:b.source,
    redeemed_points:serializeInt64(b.redeemed_points),quality_returned_points:serializeInt64(b.returned_points),consideration_complete:b.complete,net_earned_order_consideration_fen:b.complete?ratioJson(subtract(b.earned,b.reversed)):null})),
+  mixed_funding_allocations:[...redemptions.map(s=>({kind:'redemption' as const,...s})),...corrections.map(s=>({kind:'quality_return' as const,...s}))]
+   .filter(s=>s.funding_required||s.funding_slices?.length).map(s=>({kind:s.kind,event_id:s.event_id,lot_id:s.lot_id,origin_lot_id:s.origin_lot_id,
+    points:s.points,consideration_complete:consideration([s]).complete,funding:s.funding_slices??[]})),
   excluded_legacy_progress_settlement_points:input.excluded_legacy_settlement_points,
   accounting_notice:'Read-only management facts, not statutory revenue or company profit. Paid orders are prepayments; verified payer cash and cash refunds are separate from earned original-lot A*p/Q consideration. Quality returns reverse earned consideration; cash refunds are not deducted again from earned consideration. Expired balances are current unfrozen/frozen snapshots grouped by expiry month, not historical expiry flows or breakage income. Cohorts exclude fully cash-refunded periods and missing/zero payer cash proof as of this snapshot; historical cohorts can restate after refunds. Renewal requires a new period after an earlier retained period ended; same/overlapping-month purchases and refunded reopenings do not establish renewal. Only fully observed later calendar months have repurchase rates; this is purchase recurrence, not product retention. Legacy progress-billing settlements are excluded explicitly. No forecast, supplier expense, tax or profit is inferred.'};
 }
@@ -114,13 +118,15 @@ export async function readSubscriptionFacts(pool:Pool,from:string,to:string){
     LEFT JOIN LATERAL(SELECT sum(amount_fen) amount FROM bb_payment_refunds WHERE order_id=o.id AND owner_user_id=o.owner_user_id AND state='succeeded') refunds ON true
     WHERE o.state='paid' AND o.credited_at IS NOT NULL ORDER BY o.credited_at,o.id`)).rows;
   const slices=(await c.query(`SELECT e.id event_id,e.reservation_id,e.points::text event_total_points,e.created_at occurred_at,COALESCE(a.lot_id,'unmapped:'||e.id) lot_id,l.cash_origin_lot_id origin_lot_id,l.cash_order_id order_id,COALESCE(l.source,'unknown') source,
-    COALESCE(a.charged_points,a.points,e.points)::text points,l.cash_basis_fen::text basis_fen,l.cash_basis_points::text basis_points
+    COALESCE(a.charged_points,a.points,e.points)::text points,l.cash_basis_fen::text basis_fen,l.cash_basis_points::text basis_points,
+    (l.cash_order_id IS NULL AND l.cash_basis_fen>0) funding_required,${lotFundingEvidenceSql()} funding_slices
     FROM bb_credit_events e JOIN bb_credit_reservations r ON r.id=e.reservation_id AND r.owner_user_id=e.owner_user_id
     LEFT JOIN bb_credit_allocations a ON a.reservation_id=r.id AND COALESCE(a.charged_points,a.points)>0 LEFT JOIN bb_credit_lots l ON l.id=a.lot_id AND l.owner_user_id=e.owner_user_id
     WHERE e.kind='settle' AND r.billing_policy='on_delivery' AND e.points>0
     AND e.created_at>=($1||'-01')::date::timestamp AT TIME ZONE 'Asia/Shanghai' AND e.created_at<(($2||'-01')::date+interval '1 month')::timestamp AT TIME ZONE 'Asia/Shanghai'`,[from,to])).rows;
   const corrections=(await c.query(`SELECT e.id event_id,e.created_at occurred_at,COALESCE(e.lot_id,'unmapped:'||e.id) lot_id,l.cash_origin_lot_id origin_lot_id,l.cash_order_id order_id,COALESCE(l.source,'unknown') source,e.points::text,
-    l.cash_basis_fen::text basis_fen,l.cash_basis_points::text basis_points FROM bb_credit_events e
+    l.cash_basis_fen::text basis_fen,l.cash_basis_points::text basis_points,
+    (l.cash_order_id IS NULL AND l.cash_basis_fen>0) funding_required,${lotFundingEvidenceSql()} funding_slices FROM bb_credit_events e
     JOIN bb_credit_reservations r ON r.id=e.reservation_id AND r.owner_user_id=e.owner_user_id
     LEFT JOIN bb_credit_lots l ON l.id=e.lot_id AND l.owner_user_id=e.owner_user_id
     WHERE e.kind='correction' AND r.billing_policy='on_delivery'

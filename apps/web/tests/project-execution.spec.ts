@@ -50,7 +50,7 @@ function fixture() {
     runReason: 'rule_applicability_overall_review_required', eventSeq: 2, failEvents: false,
     eventStage: undefined as string | undefined, eventError: undefined as string | undefined,
     eventHistory: [] as { seq: number; state: Dto<'RunResponse'>['state']; stage: string; reason: string }[],
-    executeError: undefined as { status: number; code: string; correlation_id: string } | undefined,
+    executeError: undefined as { status: number; code: string; correlation_id: string; field_errors?: {field:string;code:string;message:string}[] } | undefined,
     preflightError: undefined as { status: number; code: string; correlation_id: string } | undefined,
     runActions: [] as string[],
     checkStatus: 'blocked' as Dto<'PreflightResponse'>['status'], reason: 'rule_pack:rule_applicability_overall_review_required',
@@ -343,7 +343,7 @@ test('M2 shortage preserves inputs, recharge never executes, returning starts di
   if(evidence)await page.screenshot({path:join(evidence,'m2-billing-mobile.png')});
   await page.setViewportSize({width:1440,height:960});
   await expect(page.getByRole('button',{name:'充值 ¥50',exact:true})).toHaveCount(0);
-  await page.getByRole('button',{name:'充值 ¥200',exact:true}).click();
+  await page.getByRole('button',{name:'充值 ¥200.00',exact:true}).click();
   await expect(page.getByRole('heading',{name:'等待支付确认'})).toBeVisible();expect(state.executes).toHaveLength(0);
   state.order!.state='paid';state.order!.credited_at=now;state.available+=20000;
   await page.getByRole('button',{name:'刷新支付状态'}).click();await expect(page.getByRole('heading',{name:'积分已到账'})).toBeVisible();
@@ -540,12 +540,16 @@ test('double click and editing locks during submission preserve the locked reque
 });
 
 test('editing while preflight is pending discards that result; next action locks a new revision', async ({ page }) => {
+  // Hold the autosave debounce so this test isolates invalidation of the earlier preflight.
+  await page.clock.install({time:new Date(now)});await page.clock.pauseAt(new Date(Date.parse(now)+1000));
   const state=await setup(page); state.holdCheck=true;
   await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseCheck).toBe(true);
   await page.getByLabel('补充募集书更新说明').fill('只供下一版使用'); state.releaseCheck!(); state.holdCheck=false;
   await expect(page.locator('#execution-preflight')).toBeEmpty(); expect(state.executes).toHaveLength(0);
-  await expect(page.locator('#start-disabled-reason')).toContainText('尚未保存');
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue('只供下一版使用');
+  expect(state.inputs).toHaveLength(1);expect(state.inputs[0].project_message_set_ref).toEqual(emptyMessages);
   await page.getByLabel('补充募集书更新说明').fill('');
+  await page.clock.resume();
   await prepare(page);
   await expect.poll(()=>state.inputs.length).toBe(2); state.checkStatus='ready'; await page.locator('#recheck-input').click();
   await page.locator('#execute-input').click();
@@ -819,6 +823,45 @@ test('temporary start failure retains support reference and does not claim missi
   await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-start-unavailable');
   await expect(page.locator('#execution-message')).not.toContainText('填写内容');
   expect(state.runs.size).toBe(0);
+});
+
+for (const width of [1440,390]) test(`quota rejection keeps saved input and permits the same start request at ${width}px`, async ({page}) => {
+  await page.setViewportSize({width,height:width===1440?960:844});
+  const state=fixture();state.checkStatus='ready';state.paid=true;state.available=1_000_000;
+  state.executeError={status:429,code:'TRIAL_QUOTA_EXCEEDED',correlation_id:'synthetic-start-quota',
+    field_errors:[{field:'trial_limit',code:'active_runs_per_user',message:'Current processing limit reached'}]};
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('等待已有任务完成后再次开始');
+  await expect(page.locator('#execution-message')).toContainText('不会因这次拒绝扣费');
+  await expect(page.locator('#execution-message')).toContainText('synthetic-start-quota');
+  await expect(page.locator('#execute-input')).toBeEnabled();
+  expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(0);
+  expect(state.inputs[0].material_versions).toEqual(state.materials.map(m=>({material_id:m.material_id,material_version:1})));
+  const original=structuredClone(state.executes[0]);
+  const evidence=process.env.BB_START_QUOTA_EVIDENCE_DIR;
+  if(evidence){
+    await mkdir(evidence,{recursive:true});
+    await page.locator('#execution-actions').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(evidence,`quota-rejected-${width}.png`)});
+    const prototype=await page.context().newPage();
+    await prototype.setViewportSize({width,height:width===1440?960:844});
+    await prototype.route('http://prototype.test/**',async route=>{
+      const pathname=new URL(route.request().url()).pathname;
+      try{await route.fulfill({body:await readFile(resolve('../../',pathname.slice(1))),
+        contentType:pathname.endsWith('.css')?'text/css':pathname.endsWith('.svg')?'image/svg+xml':'text/html'});}
+      catch{await route.fulfill({status:404});}
+    });
+    await prototype.goto('http://prototype.test/product-prototype/public/authoring-materials-entry.html');
+    await prototype.locator('#execution-actions').scrollIntoViewIfNeeded();
+    await prototype.screenshot({path:join(evidence,`prototype-start-${width}.png`)});
+    await prototype.close();
+  }
+  state.executeError=undefined;
+  await page.locator('#execute-input').click();
+  await expect.poll(()=>state.runs.size).toBe(1);
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(2);
+  expect(state.executes[1]).toEqual(original);
 });
 
 test('unified authoring includes all uploaded source materials without a second selection form', async ({ page }) => {
@@ -1246,13 +1289,32 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     });
     // setup's catch-all was registered last; it must fall back to the material fixture above.
     await setup(page, state, false);
-    const historyPicker = page.getByLabel('为历史／参考募集书选择文件');
+    let sourceSelected = false;
+    await page.route(`**/api/v1/projects/${id}/prospectus-versions**`, async route => {
+      if (route.request().method() === 'POST') {
+        expect(fixtureRequest(route.request()).version_id).toBe('source-version');
+        sourceSelected = true;
+      }
+      const material = state.materials.find(m => m.role === 'historical');
+      const versions: Dto<'ProspectusVersionsResponse'> = {
+        project_id:id, current_version_id:sourceSelected?'source-version':null, selection_revision:sourceSelected?1:0,
+        inactive_material_ids:material&&!sourceSelected?[material.material_id]:[],
+        versions:material?[{version_id:'source-version',sequence:1,origin:'upload',filename:material.filename,sha256:material.sha256,created_at:now,
+          material_id:material.material_id,material_version:material.material_version,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null}]:[]
+      };
+      return json(route,200,versions);
+    });
+    const historyPicker = page.getByLabel('募集书新版本文件');
     await expect(historyPicker).toBeEnabled();
     await expect(page.locator('#material-recovery-status')).toContainText('尚未添加材料');
     await historyPicker.setInputFiles({ name: '合成历史稿.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('%PDF synthetic history') });
     const history = page.locator('.material-file-row').filter({ hasText: '合成历史稿.docx' });
-    await expect(history).toContainText('正在保存');
+    await expect(page.locator('#prospectus-status')).toContainText('保存');
     await expect.poll(() => releaseSave).toBeDefined(); releaseSave!();
+    await expect(page.locator('#prospectus-status')).toContainText('尚未采用');
+    await expect(history).toHaveCount(0);
+    await page.locator('[data-use-version="source-version"]').click();
+    await page.locator('#confirm-prospectus-selection').click();
     await expect(history).toContainText('处理中');
     await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: '合成财务材料.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic financial') });
     const financial = page.locator('.material-file-row').filter({ hasText: '合成财务材料.pdf' });
@@ -1447,7 +1509,7 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
   expect(originalInput.prospectus_selection_revision).toBe(0);
   await page.getByRole('button', {name:'停止本次任务',exact:true}).click();
   await continueAuthoring(page);
-  let failDelete = false, deletes = 0, nextName = '', sequence = 0;
+  let failDelete = false, deletes = 0, sequence = 0;
   await page.route(`**/api/v1/projects/${id}/materials/*`, async route => {
     if (route.request().method() !== 'DELETE') return route.fallback();
     deletes++;
@@ -1456,17 +1518,14 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
     state.materials.splice(state.materials.findIndex(m => m.material_id === materialId),1);
     return route.fulfill({status:204});
   });
-  await page.route(`**/api/v1/projects/${id}/materials/uploads**`, async route => {
-    const path = new URL(route.request().url()).pathname;
-    if (path.endsWith('/bytes')) return route.fulfill({status:204});
-    if (path.endsWith('/complete')) {
-      const material: Dto<'MaterialResponse'> = {material_id:`replacement-${sequence}`,material_version:1,upload_id:`upload-${sequence}`,
-        role:'historical',filename:nextName,media_type:'application/pdf',...fixtureRequest(route.request()),state:'persisted',persisted_at:now,error:null};
-      state.materials.push(material); return json(route,200,material);
-    }
-    nextName = fixtureRequest(route.request()).filename; sequence++;
-    return json(route,201,{upload_id:`upload-${sequence}`,state:'uploading',upload_url:`/api/v1/projects/${id}/materials/uploads/upload-${sequence}/bytes`,expires_at:'2099-01-01T00:00:00Z',max_bytes:100000000});
-  });
+  // Older projects can still contain unregistered source materials. Restore them
+  // from the server fixture; new uploads now use the prospectus panel above.
+  const restoreLegacySource = async (filename: string) => {
+    sequence++;
+    state.materials.push({material_id:`replacement-${sequence}`,material_version:1,upload_id:`upload-${sequence}`,
+      role:'historical',filename,media_type:'application/pdf',byte_size:1024,sha256:hash(filename),state:'persisted',persisted_at:now,error:null});
+    await page.getByRole('button',{name:'刷新已保存材料'}).click();
+  };
   const remove = async (name:string, accept=true) => {
     page.once('dialog', dialog => accept ? dialog.accept() : dialog.dismiss());
     await page.locator('.material-file-row').filter({hasText:name}).getByRole('button',{name:'删除',exact:true}).click();
@@ -1474,8 +1533,7 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
   await remove('history.docx');
   await expect(page.locator('.material-file-row').filter({hasText:'history.docx'})).toHaveCount(0);
   await expect.poll(()=>state.project.update_details!.source_prospectuses).toEqual([]);
-  const picker = page.getByLabel('为历史／参考募集书选择文件');
-  await picker.setInputFiles({name:'误传募集书.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic wrong')});
+  await restoreLegacySource('误传募集书.pdf');
   const wrong = page.locator('.material-file-row').filter({hasText:'误传募集书.pdf'});
   await expect(wrong).toContainText('服务器已确认保存');
   await wrong.locator('[data-source-field="relation"]').selectOption('parent');
@@ -1490,7 +1548,7 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
   await remove('误传募集书.pdf');
   await expect(wrong).toHaveCount(0);
   await expect.poll(()=>state.project.update_details!.source_prospectuses).toEqual([]);
-  await picker.setInputFiles({name:'正确募集书.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic correct')});
+  await restoreLegacySource('正确募集书.pdf');
   const correct = page.locator('.material-file-row').filter({hasText:'正确募集书.pdf'});
   await expect(correct).toContainText('服务器已确认保存');
   await expect(correct.locator('[data-source-field="issuer_name"]')).toHaveCount(0);
@@ -1701,4 +1759,13 @@ test('automatic authoring with no balance saves the original task for exact supp
  await page.route('**/api/v1/runs/execute',route=>{starts.push(fixtureRequest(route.request()));return json(route,402,{code:'CREDITS_INSUFFICIENT'});});
  await page.reload();await page.locator('#execute-input').click();await expect(page.locator('#billing-task-notice')).toContainText('原任务尚未开始');expect(starts).toHaveLength(1);
  const saved=await page.evaluate(()=>{const key=Object.keys(localStorage).find(key=>key.startsWith('bondbuddy:billing-task:v2:'))!;return JSON.parse(localStorage.getItem(key)!);});expect(saved.requiredPoints).toBe('8864');expect(saved.body).toEqual(starts[0]);expect(saved.body).not.toHaveProperty('expected_points');
+ await expect(page.locator('#fixed-quote a')).toHaveAttribute('href',new RegExp('resume_request='+saved.id));
+});
+
+test('automatic authoring keeps the exact quote and execution request after HTTP 429',async({page})=>{
+ const state=fixture();state.paid=true;state.checkStatus='ready';state.available=100000;state.executeError={status:429,code:'RATE_LIMITED',correlation_id:'synthetic-rate-limited'};await setup(page,state);let quotes=0;
+ await page.route('**/api/v1/commerce/**',route=>json(route,200,{enabled:true,currency:'CNY',version:AUTOMATIC_PRICE_VERSION,model:'subscription_and_topup',items:[],rules:[]}));
+ await page.route('**/credit-quote',route=>{quotes++;return json(route,200,{enabled:true,quote:{...commerceMetadata(8864),quote_id:'auto-rate-limit-'+quotes,project_id:id,...fixtureRequest(route.request()),task_type:'interim',points:8864,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,reason:'已保存输入',created_at:now,quote_status:'ready',scope_quote_id:'scope-rate-limit',scope_lines:[]},balance:{available:100000,frozen:0},shortage:0,reason:null});});
+ await page.reload();await page.locator('#execute-input').click();await expect.poll(()=>state.executes.length).toBe(1);const original=structuredClone(state.executes[0]);await expect(page.locator('#retry-execution')).toBeVisible();
+ state.executeError=undefined;await page.locator('#retry-execution').click();await expect.poll(()=>state.executes.length).toBe(2);expect(state.executes[1]).toEqual(original);expect(quotes).toBe(1);await expect(page.locator('[data-commerce-confirm]')).toHaveCount(0);expect(state.runs.size).toBe(1);
 });

@@ -1,0 +1,17 @@
+
+> @bondbuddy/api@0.1.0 build
+> tsc -p tsconfig.json
+
+src/subscriptions.ts(48,3): error TS2322: Type '{ subscription: { billing_cycle?: "annual" | "monthly" | undefined; next_charge_at?: string | null | undefined; next_charge_amount_fen?: string | null | undefined; status: string; ... 6 more ...; task_price_version: string; } | null; ... 8 more ...; periods: { ...; }[]; }' is not assignable to type '{ change_held_points?: string | undefined; subscription: { billing_cycle?: "annual" | "monthly" | undefined; next_charge_at?: string | null | undefined; next_charge_amount_fen?: string | ... 1 more ... | undefined; ... 7 more ...; task_price_version: string; } | null; ... 7 more ...; periods: { ...; }[]; }'.
+  Types of property 'periods' are incompatible.
+    Type '{ id: any; order_id: any; plan_id: any; status: any; amount_fen: number; points: number; face_amount_fen: number; funding_kind: any; change_held_points: bigint; billing_cycle: any; monthly_points: number; ... 10 more ...; refundable_until: string | null; }[]' is not assignable to type '{ billing_cycle?: "annual" | "monthly" | undefined; face_amount_fen?: number | undefined; monthly_points?: number | undefined; release_count?: number | undefined; change_held_points?: number | undefined; ... 16 more ...; refundable_until: string | null; }[]'.
+      Type '{ id: any; order_id: any; plan_id: any; status: any; amount_fen: number; points: number; face_amount_fen: number; funding_kind: any; change_held_points: bigint; billing_cycle: any; monthly_points: number; ... 10 more ...; refundable_until: string | null; }' is not assignable to type '{ billing_cycle?: "annual" | "monthly" | undefined; face_amount_fen?: number | undefined; monthly_points?: number | undefined; release_count?: number | undefined; change_held_points?: number | undefined; ... 16 more ...; refundable_until: string | null; }'.
+        Types of property 'change_held_points' are incompatible.
+          Type 'bigint' is not assignable to type 'number'.
+npm error Lifecycle script `build` failed with error:
+npm error code 2
+npm error path C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\api
+npm error workspace @bondbuddy/api@0.1.0
+npm error location C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\apps\api
+npm error command failed
+npm error command C:\Windows\system32\cmd.exe /d /s /c tsc -p tsconfig.json

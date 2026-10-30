@@ -1,0 +1,24 @@
+error: cannot change name of input parameter "p_owner"
+    at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\node_modules\pg\lib\client.js:694:17
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/scripts/billing-functional/provider.mjs:33:5
+    at async transaction (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/scripts/billing-functional/provider.mjs:3:108)
+    at async installLocalProviderState (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/scripts/billing-functional/provider.mjs:11:3)
+    at async file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/scripts/billing-functional/serve.mjs:33:1 {
+  length: 162,
+  severity: 'ERROR',
+  code: '42P13',
+  detail: undefined,
+  hint: 'Use DROP FUNCTION bb_subscription_clock(text) first.',
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'pg_proc.c',
+  line: '495',
+  routine: 'ProcedureCreate'

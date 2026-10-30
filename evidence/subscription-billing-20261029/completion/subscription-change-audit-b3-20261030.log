@@ -1,0 +1,17 @@
+template=bb_change_20261030_b3
+▶ subscription change funding and projection repair share one authoritative audit
+  ✔ held transfer is a legitimate frozen balance and a failed checkout releases it (692.4198ms)
+  ✔ applied and refunded transfers never resurrect the old lot through repair (359.5492ms)
+  ✔ multi-step funding survives annual cash allocation with unequal monthly cents (306.4707ms)
+  ✔ missing mixed funding is non-projection evidence and cannot be repaired into credits (189.5862ms)
+  ✔ missing pending source evidence cannot be classified as a repairable hold (153.2504ms)
+  ✔ funding ownership, original consideration and restoration expiry are database-enforced (1075.7585ms)
+✔ subscription change funding and projection repair share one authoritative audit (2780.5784ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11375.617

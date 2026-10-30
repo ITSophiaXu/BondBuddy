@@ -1,0 +1,17 @@
+
+> @bondbuddy/web@0.1.0 test
+> playwright test subscription-account.spec.ts --grep professional monthly|partially used|stale change summary|unknown subscription change|mandatePending subscription change
+
+
+Running 6 tests using 1 worker
+
+(node:464) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\subscription-account.spec.ts:566:3 › professional monthly upgrade previews original paid-value credit and opens the new contract only after payment (4.2s)
+  ok 2 tests\subscription-account.spec.ts:566:3 › professional monthly to annual previews original paid-value credit and opens the new contract only after payment (3.1s)
+  ok 3 tests\subscription-account.spec.ts:566:3 › partially used monthly to annual previews original paid-value credit and opens the new contract only after payment (2.2s)
+  ok 4 tests\subscription-account.spec.ts:583:1 › stale change summary terminates only the rejected key and shows new actual payment before retry (1.9s)
+  ok 5 tests\subscription-account.spec.ts:591:60 › unknown subscription change retains the original request and quote across reload (2.9s)
+  ok 6 tests\subscription-account.spec.ts:591:60 › mandatePending subscription change retains the original request and quote across reload (2.9s)
+
+  6 passed (25.8s)

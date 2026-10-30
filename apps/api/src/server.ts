@@ -1410,6 +1410,11 @@ export function createServer(settings: Settings = {}) {
     const storedExecutionKey=autoBrowserTestKey?autoTestExecutionKeyStorage(b.execution_request_id):rawExecutionKey;
     const logicalExecutionKey=autoBrowserTestKey?storedExecutionKey:b.execution_request_id;
     const logicalKeyHash=executionKeyHash(logicalExecutionKey);
+    // Admission conditions change independently of this immutable input. Keep
+    // the rejected job as evidence, but check current policy on an exact retry.
+    const recheckAdmissionRejection=(prior:any)=>prior?.subtype==='execute_rejected' &&
+      prior.stage==='submission_rejected' && ['TRIAL_QUOTA_EXCEEDED','TRIAL_ACCESS_DENIED','MODEL_CALLS_SUSPENDED'].includes(prior.error_code) &&
+      prior.request_hash?.trim()===requestHash;
     const expectedChannel:'non_production_test'|'production'=b.test_grant_id||(!unified&&workingDraftConfigured())?'non_production_test':'production';
     const existingRun=async(client:PoolClient)=>{
       // Old automatic test runs used the raw browser key. Honor an exact replay
@@ -1502,7 +1507,7 @@ export function createServer(settings: Settings = {}) {
         rejected.stage==='submission_rejected' && rejected.request_hash.trim()===requestHash &&
         !b.test_grant_id && workingDraftConfigured() &&
         ['TEST_GRANT_EXPIRED','TEST_GRANT_INVALID','INPUT_REQUIRED','CAPABILITY_NOT_READY','MATERIAL_UNREADABLE'].includes(rejected.error_code);
-      if(rejected&&!retiredBusinessRejection)return {rejection:await priorRejection(client,rejected)};
+      if(rejected&&!retiredBusinessRejection&&!recheckAdmissionRejection(rejected))return {rejection:await priorRejection(client,rejected)};
       const currentProject=await project(client,user,b.project_id,true);
       if(currentProject.kind==='review')throw new Problem(422,'VALIDATION_FAILED','Use the review execution endpoint to confirm the report, scope and input version');
       if(wideRevision)throw new Problem(422,'VALIDATION_FAILED','Input revision exceeds storage range');
@@ -1557,6 +1562,11 @@ export function createServer(settings: Settings = {}) {
             return same?{run:visibleRunDto(priorRun)}:{errorCode:'IDEMPOTENCY_CONFLICT',httpStatus:409,replay:true};
           }
           const owned=await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,b.project_id]);
+          const previous=(await client.query("SELECT id,request_hash,error_code,stage,subtype FROM bb_jobs WHERE owner_user_id=$1 AND execution_request_key_hash=$2 AND subtype IN ('execute_rejected','execute_schema_rejected')",[user,logicalKeyHash])).rows[0];
+          if(owned.rowCount && recheckAdmissionRejection(previous)){
+            await recordOperation(client,{owner:user,projectId:b.project_id,jobId:previous.id,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:error.code});
+            return {errorCode:error.code,httpStatus:error.status,replay:false};
+          }
           if(owned.rowCount && ['CREDITS_INSUFFICIENT','QUOTE_REQUIRED','QUOTE_CHANGED','BILLING_NOT_READY'].includes(error.code)){
             await recordOperation(client,{owner:user,projectId:b.project_id,requestId:request.id,traceId,kind:'execute',status:'rejected',errorCode:error.code});
             return {errorCode:error.code,httpStatus:error.status,replay:false};
@@ -1569,7 +1579,8 @@ export function createServer(settings: Settings = {}) {
         });
         if('run' in disposition)return reply.code(202).send(disposition.run);
         if(!disposition.replay)await reportTrialRejection(db(),error,user);
-        throw new Problem(disposition.httpStatus,disposition.errorCode,!disposition.replay&&disposition.errorCode===error.code?error.message:'Execution request was rejected');
+        if(!disposition.replay&&disposition.errorCode===error.code)throw error;
+        throw new Problem(disposition.httpStatus,disposition.errorCode,'Execution request was rejected');
       }
       throw error;
     } finally { await prepared?.discard().catch(() => undefined); /* durable intent remains for the orphan sweep */ }

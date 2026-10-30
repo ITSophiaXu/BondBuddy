@@ -1,0 +1,284 @@
+✔ a paid v2 subscription and cancellation retain v2 task prices after v3 release (1064.8905ms)
+✔ new non-subscribers and new paid subscriptions use the published v3 comprehensive review tariff (456.5978ms)
+✔ an unexpired v2 quote keeps its immutable price and remains executable after v3 release (243.3527ms)
+✔ stored batch price protection is scoped to its transaction callback and survives current-price changes (162.5848ms)
+▶ selected original order identifies its period beyond the latest 50 and keeps unknown or foreign orders private
+  ✔ the 51st record remains the original subscription with string-valued money and original dates (230.7151ms)
+  ✔ only a verified owner recharge order returns period null; foreign and nonexistent orders return identical 404 (27.434ms)
+  ✔ missing or inconsistent original subscription records stay unavailable instead of becoming a permanent topup (16.718ms)
+✔ selected original order identifies its period beyond the latest 50 and keeps unknown or foreign orders private (932.1465ms)
+▶ annual payment, monthly release, original consideration and whole-contract refunds
+  ✖ real default clock retains exact milliseconds through verified payment and lot issuance (112.3153ms)
+  ✖ one annual payment creates twelve rights, only first month is issued, payment replay cannot mint the year (29.6086ms)
+  ✖ cancelled renewal retains twelve monthly installments; retries, catch-up and calendar anchors preserve total cash (20.7926ms)
+  ✖ seven-day unused annual whole-order refund removes only issued credits, blocks future grants and never refunds twice (24.9198ms)
+  ✖ failed cash refund unfreezes its issued batch and allows overdue paid installments (21.0064ms)
+  ✖ legacy monthly request hash survives omitted or explicit monthly; annual cannot reuse that request (19.6686ms)
+  ✖ year mandate binds annual amount/interval, can be reopened after cancellation, and charges once only at anniversary (20.7819ms)
+  ✖ actual review settlement uses annual lot consideration and disqualifies whole-contract cash withdrawal (18.8461ms)
+✖ annual payment, monthly release, original consideration and whole-contract refunds (409.2859ms)
+✔ subscription catalog keeps billing mode true independent of unavailable payment channels (420.3689ms)
+✔ subscription catalog keeps billing mode false independent of unavailable payment channels (58.0114ms)
+▶ synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once
+  ✖ verified payment grants once, 90-day rights and cash ratio survive cancellation (160.2262ms)
+  ✔ checkout failure before channel creation stays unknown until authenticated expiry, then permits a new purchase (77.6083ms)
+  ✔ only a wholly unused period refunds 199 cash by removing 21000 points, unknown status stays held (465.9776ms)
+  ✖ task and cash-refund holds are separate in the same wallet and each period (333.5871ms)
+  ✔ consumption prevents subscription cash refund; expired correction preserves original paid ratio (91.9346ms)
+  ✖ the application rejects an unused subscription after the seven-day refund window (50.7098ms)
+  ✔ topup is 1:1 permanent and does not inherit a subscription discount (73.9022ms)
+  ✔ native checkout has no recurring capability; an authenticated synthetic mandate renews once after timeout (157.3858ms)
+  ✔ a delayed refund for an earlier period cannot cancel a later paid period or its mandate (154.1443ms)
+✖ synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once (1691.9849ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 16
+ℹ fail 13
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 51934.8492
+
+✖ failing tests:
+
+test at apps\api\dist\subscriptions-annual.pg.test.js:43:17
+✖ real default clock retains exact milliseconds through verified payment and lot issuance (112.3153ms)
+  Error: Payment channel is not configured
+      at unavailable (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:16:27)
+      at openCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:154:15)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async createSubscriptionCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions.js:133:19)
+      at async buy (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:32:26)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:46:23)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:43:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    status: 503,
+    code: 'PAYMENT_UNAVAILABLE',
+    uploadReason: undefined,
+    uploadDetail: undefined,
+    inputIssues: undefined
+  }
+
+test at apps\api\dist\subscriptions-annual.pg.test.js:52:17
+✖ one annual payment creates twelve rights, only first month is issued, payment replay cannot mint the year (29.6086ms)
+  Error: Payment channel is not configured
+      at unavailable (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:16:27)
+      at openCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:154:15)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async createSubscriptionCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions.js:133:19)
+      at async buy (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:32:26)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:53:44)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:52:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    status: 503,
+    code: 'PAYMENT_UNAVAILABLE',
+    uploadReason: undefined,
+    uploadDetail: undefined,
+    inputIssues: undefined
+  }
+
+test at apps\api\dist\subscriptions-annual.pg.test.js:81:17
+✖ cancelled renewal retains twelve monthly installments; retries, catch-up and calendar anchors preserve total cash (20.7926ms)
+  Error: Payment channel is not configured
+      at unavailable (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:16:27)
+      at openCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:154:15)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async createSubscriptionCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions.js:133:19)
+      at async buy (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:32:26)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:82:44)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:81:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    status: 503,
+    code: 'PAYMENT_UNAVAILABLE',
+    uploadReason: undefined,
+    uploadDetail: undefined,
+    inputIssues: undefined
+  }
+
+test at apps\api\dist\subscriptions-annual.pg.test.js:114:17
+✖ seven-day unused annual whole-order refund removes only issued credits, blocks future grants and never refunds twice (24.9198ms)
+  Error: Payment channel is not configured
+      at unavailable (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:16:27)
+      at openCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:154:15)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async createSubscriptionCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions.js:133:19)
+      at async buy (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:32:26)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:115:44)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:114:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    status: 503,
+    code: 'PAYMENT_UNAVAILABLE',
+    uploadReason: undefined,
+    uploadDetail: undefined,
+    inputIssues: undefined
+  }
+
+test at apps\api\dist\subscriptions-annual.pg.test.js:143:17
+✖ failed cash refund unfreezes its issued batch and allows overdue paid installments (21.0064ms)
+  Error: Payment channel is not configured
+      at unavailable (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:16:27)
+      at openCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:154:15)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async createSubscriptionCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions.js:133:19)
+      at async buy (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:32:26)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:144:44)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:143:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    status: 503,
+    code: 'PAYMENT_UNAVAILABLE',
+    uploadReason: undefined,
+    uploadDetail: undefined,
+    inputIssues: undefined
+  }
+
+test at apps\api\dist\subscriptions-annual.pg.test.js:155:17
+✖ legacy monthly request hash survives omitted or explicit monthly; annual cannot reuse that request (19.6686ms)
+  Error: Payment channel is not configured
+      at unavailable (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:16:27)
+      at openCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:154:15)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async createSubscriptionCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions.js:133:19)
+      at async buy (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:32:26)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:156:44)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:155:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    status: 503,
+    code: 'PAYMENT_UNAVAILABLE',
+    uploadReason: undefined,
+    uploadDetail: undefined,
+    inputIssues: undefined
+  }
+
+test at apps\api\dist\subscriptions-annual.pg.test.js:165:17
+✖ year mandate binds annual amount/interval, can be reopened after cancellation, and charges once only at anniversary (20.7819ms)
+  Error: Payment channel is not configured
+      at unavailable (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:16:27)
+      at openCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:154:15)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async createSubscriptionCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions.js:133:19)
+      at async buy (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:32:26)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:166:44)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:165:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    status: 503,
+    code: 'PAYMENT_UNAVAILABLE',
+    uploadReason: undefined,
+    uploadDetail: undefined,
+    inputIssues: undefined
+  }
+
+test at apps\api\dist\subscriptions-annual.pg.test.js:198:17
+✖ actual review settlement uses annual lot consideration and disqualifies whole-contract cash withdrawal (18.8461ms)
+  Error: Payment channel is not configured
+      at unavailable (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:16:27)
+      at openCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/payments.js:154:15)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async createSubscriptionCheckout (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions.js:133:19)
+      at async buy (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:32:26)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:199:44)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions-annual.pg.test.js:198:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    status: 503,
+    code: 'PAYMENT_UNAVAILABLE',
+    uploadReason: undefined,
+    uploadDetail: undefined,
+    inputIssues: undefined
+  }
+
+test at apps\api\dist\subscriptions.pg.test.js:60:17
+✖ verified payment grants once, 90-day rights and cash ratio survive cancellation (160.2262ms)
+  error: syntax error at end of input
+      at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\node_modules\pg\lib\client.js:694:17
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async auditCreditClient (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/billing-audit.js:30:27)
+      at async transaction (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/data.js:69:24)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions.pg.test.js:66:25)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions.pg.test.js:60:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    length: 93,
+    severity: 'ERROR',
+    code: '42601',
+    detail: undefined,
+    hint: undefined,
+    position: '1799',
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: 'scan.l',
+    line: '1240',
+    routine: 'scanner_yyerror'
+  }
+
+test at apps\api\dist\subscriptions.pg.test.js:165:17
+✖ task and cash-refund holds are separate in the same wallet and each period (333.5871ms)
+  error: syntax error at end of input
+      at C:\Users\lezhai\Downloads\Bondbuddy\subscription-auto-billing-20261029\node_modules\pg\lib\client.js:694:17
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async auditCreditClient (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/billing-audit.js:30:27)
+      at async transaction (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/data.js:69:24)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions.pg.test.js:184:27)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions.pg.test.js:165:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    length: 93,
+    severity: 'ERROR',
+    code: '42601',
+    detail: undefined,
+    hint: undefined,
+    position: '1799',
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: 'scan.l',
+    line: '1240',
+    routine: 'scanner_yyerror'
+  }
+
+test at apps\api\dist\subscriptions.pg.test.js:204:17
+✖ the application rejects an unused subscription after the seven-day refund window (50.7098ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions.pg.test.js:209:24)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/api/dist/subscriptions.pg.test.js:204:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

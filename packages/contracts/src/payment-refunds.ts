@@ -5,15 +5,15 @@ const id=Type.String({minLength:1,maxLength:128});
 const amount=Type.Integer({minimum:0,maximum:Number.MAX_SAFE_INTEGER});
 const nullableText=Type.Union([Type.String({maxLength:200}),Type.Null()]);
 export const PaymentRefundSchema=obj({
-  refund_id:id,order_id:id,currency:Type.Literal('CNY'),amount_fen:Type.Integer({minimum:1,maximum:1000000}),credit_points:Type.Integer({minimum:1,maximum:1150000}),
+  refund_id:id,order_id:id,currency:Type.Literal('CNY'),amount_fen:Type.Integer({minimum:1,maximum:1078920}),credit_points:Type.Integer({minimum:1,maximum:1150000}),
   state:Type.Union([Type.Literal('requested'),Type.Literal('processing'),Type.Literal('succeeded'),Type.Literal('failed')]),
   created_at:Type.String(),updated_at:Type.String(),completed_at:Type.Union([Type.String(),Type.Null()]),failure_code:nullableText,
 });
 export type PaymentRefund=Static<typeof PaymentRefundSchema>;
 export const paymentRefundSchemas={
   PaymentRefundRequest:Type.Union([
-    obj({request_id:id,amount_fen:Type.Integer({minimum:1,maximum:1000000})}),
-    obj({request_id:id,points:Type.Integer({minimum:1,maximum:1150000}),expected_amount_fen:Type.Optional(Type.Integer({minimum:1,maximum:1000000}))}),
+    obj({request_id:id,amount_fen:Type.Integer({minimum:1,maximum:1078920})}),
+    obj({request_id:id,points:Type.Integer({minimum:1,maximum:1150000}),expected_amount_fen:Type.Optional(Type.Integer({minimum:1,maximum:1078920}))}),
   ]),
   PaymentRefundResponse:PaymentRefundSchema,
   PaymentRefundEligibilityResponse:obj({order_id:id,currency:Type.Literal('CNY'),order_amount_fen:amount,original_points:amount,

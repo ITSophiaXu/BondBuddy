@@ -24,17 +24,18 @@ function extraFields(bytes:Buffer){let at=0;const ids=new Set<number>();while(at
   if(ids.has(id)||[0x0001,0x9901,0x7075].includes(id)||at+size>bytes.length)return fail('ZIP_EXTRA_UNSUPPORTED');ids.add(id);at+=size;
 }}
 
-/** No extraction to disk. Central/local metadata, CRC and bounded decompression
- * are checked before retaining only hashes and encoding/count metadata. ZIP64,
- * encryption, paths, links, duplicate names and ambiguous encodings stay unknown. */
-export function inspectAlipayStatementArchive(input:Uint8Array):AlipayStatementDocument[]{
+export type AlipayStatementArchiveDocument={document:AlipayStatementDocument;text:string};
+/** No extraction to disk. Text is transient and must not be persisted/logged;
+ * only document metadata and successfully normalized fields leave the adapter.
+ * ZIP64, encryption, paths, links and ambiguous encodings stay unknown. */
+export function readAlipayStatementArchive(input:Uint8Array):AlipayStatementArchiveDocument[]{
   if(input.byteLength<22||input.byteLength>ALIPAY_STATEMENT_ARCHIVE_LIMIT)return fail('ZIP_SIZE_INVALID');
   const bytes=Buffer.from(input);let end=-1;
   for(let at=bytes.length-22;at>=Math.max(0,bytes.length-22-65535);at--){if(bytes.readUInt32LE(at)===0x06054b50&&at+22+bytes.readUInt16LE(at+20)===bytes.length){end=at;break;}}
   if(end<0||bytes.readUInt16LE(end+4)!==0||bytes.readUInt16LE(end+6)!==0)return fail('ZIP_DIRECTORY_INVALID');
   const count=bytes.readUInt16LE(end+10),directorySize=bytes.readUInt32LE(end+12),directory=bytes.readUInt32LE(end+16);
   if(count<1||count>maxEntries||bytes.readUInt16LE(end+8)!==count||directory+directorySize!==end)return fail('ZIP_DIRECTORY_INVALID');
-  let cursor=directory,total=0;const names=new Set<string>(),regions:{start:number;end:number}[]=[],documents:AlipayStatementDocument[]=[];
+  let cursor=directory,total=0;const names=new Set<string>(),regions:{start:number;end:number}[]=[],documents:AlipayStatementArchiveDocument[]=[];
   for(let index=0;index<count;index++){
     if(cursor+46>end||bytes.readUInt32LE(cursor)!==0x02014b50)return fail('ZIP_ENTRY_INVALID');
     const madeBy=bytes.readUInt16LE(cursor+4),version=bytes.readUInt16LE(cursor+6),flags=bytes.readUInt16LE(cursor+8),method=bytes.readUInt16LE(cursor+10),crc=bytes.readUInt32LE(cursor+16);
@@ -74,10 +75,15 @@ export function inspectAlipayStatementArchive(input:Uint8Array):AlipayStatementD
       if(character===10||character===13){lineCount++;lineLength=0;if(lineCount>100002)return fail('CSV_TEXT_LIMIT');}
       else if(++lineLength>32768)return fail('CSV_TEXT_LIMIT');
     }
-    documents.push({nameSha256:digest(nameBytes),sha256:digest(unpacked),byteLength:expanded,encoding:decoded.encoding,lineCount});
+    documents.push({document:{nameSha256:digest(nameBytes),sha256:digest(unpacked),byteLength:expanded,encoding:decoded.encoding,lineCount},text:decoded.text});
     regions.push({start:offset,end:regionEnd});cursor+=46+nameLength+extraLength+commentLength;
   }
   if(cursor!==end)return fail('ZIP_DIRECTORY_INVALID');regions.sort((a,b)=>a.start-b.start);
   if(regions[0].start!==0||regions.at(-1)!.end!==directory||regions.some((region,index)=>index>0&&regions[index-1].end!==region.start))return fail('ZIP_LAYOUT_INVALID');
   return documents;
+}
+
+/** Compatibility inspection entry point retains metadata only. */
+export function inspectAlipayStatementArchive(input:Uint8Array):AlipayStatementDocument[]{
+  return readAlipayStatementArchive(input).map(item=>item.document);
 }

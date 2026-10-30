@@ -1,0 +1,13 @@
+
+Running 5 tests using 1 worker
+
+
+(node:35584) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[1/5] tests\subscription-account.spec.ts:177:1 › small topup uses exact fen and preserves the non-subscription entry
+[2/5] tests\subscription-account.spec.ts:386:1 › subscription preview shares the account layout and keeps its interactive example entirely local
+[3/5] tests\subscription-account.spec.ts:465:1 › annual checkout displays the full 10-percent-discount price and monthly releases while preserving an unknown original cycle
+[4/5] tests\subscription-account.spec.ts:484:1 › a default paid checkout ends on the overview while an explicit history link retains order and refund detail
+[5/5] tests\subscription-account.spec.ts:499:1 › annual renewal shows the next whole-year charge and cancelling preserves the remaining monthly entitlement
+  5 passed (23.0s)

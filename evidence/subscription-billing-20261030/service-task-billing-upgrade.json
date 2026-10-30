@@ -1,0 +1,104 @@
+{
+  "before": {
+    "at": "2026-10-30T03:42:52.762Z",
+    "database": "bb_billing_functional_5c7885f4594549d4",
+    "service_pid": 18092,
+    "hashes": {
+      "lots": {
+        "count": 2,
+        "sha256": "824009a7ab8e75b4df4a3eb3c3b312d6512a83a94a94674a878975f102c7a2c9"
+      },
+      "orders": {
+        "count": 2,
+        "sha256": "0b5c8855d0b74f0546e41d2b8b0ca0f405d0ec49d435f1395db5c69c1684e9d7"
+      },
+      "periods": {
+        "count": 1,
+        "sha256": "52ae4daf30dfec54169fbf20d90544257fc696a7cb26fee26ce454b608339fd6"
+      },
+      "events": {
+        "count": 2,
+        "sha256": "d2888bf25de0bae1200e2b3b325f2e0be0bb150c0eee60142d865affd40b9292"
+      }
+    },
+    "balance": {
+      "available": "60000",
+      "frozen": "0"
+    },
+    "current": {
+      "plan_id": "professional",
+      "billing_cycle": "monthly",
+      "current_period_start": "2026-10-30T01:48:29.883Z",
+      "current_period_end": "2026-11-30T01:48:29.883Z",
+      "auto_renew": false
+    },
+    "migrations": {
+      "count": 161,
+      "latest": "0160_subscription_changes.sql"
+    }
+  },
+  "auto_renew_audit": {
+    "baseline_at": "2026-10-30T03:42:52.762Z",
+    "service_restarted_at": "2026-10-30T03:58:58.929Z",
+    "subscription": [
+      {
+        "plan_id": "professional",
+        "billing_cycle": "monthly",
+        "auto_renew": true,
+        "mandate_status": "active",
+        "created_at": "2026-10-30T01:47:53.666Z",
+        "updated_at": "2026-10-30T03:51:38.450Z"
+      }
+    ],
+    "mandates": [
+      {
+        "state": "active",
+        "amount_fen": "49900",
+        "interval": "month",
+        "created_at": "2026-10-30T03:51:35.126Z",
+        "updated_at": "2026-10-30T03:51:38.440Z"
+      }
+    ]
+  },
+  "renewal_note": "The initial broad snapshot assertion detected a renewal change. Read-only audit confirms the mandate became active after the early baseline and before this service restart; this existing state was preserved, not reset. Actor is not inferred.",
+  "after": {
+    "at": "2026-10-30T04:00:48.214Z",
+    "database": "bb_billing_functional_5c7885f4594549d4",
+    "service_pid": 7532,
+    "hashes": {
+      "lots": {
+        "count": 2,
+        "sha256": "824009a7ab8e75b4df4a3eb3c3b312d6512a83a94a94674a878975f102c7a2c9"
+      },
+      "orders": {
+        "count": 2,
+        "sha256": "0b5c8855d0b74f0546e41d2b8b0ca0f405d0ec49d435f1395db5c69c1684e9d7"
+      },
+      "periods": {
+        "count": 1,
+        "sha256": "52ae4daf30dfec54169fbf20d90544257fc696a7cb26fee26ce454b608339fd6"
+      },
+      "events": {
+        "count": 2,
+        "sha256": "d2888bf25de0bae1200e2b3b325f2e0be0bb150c0eee60142d865affd40b9292"
+      }
+    },
+    "balance": {
+      "available": "60000",
+      "frozen": "0"
+    },
+    "current": {
+      "plan_id": "professional",
+      "billing_cycle": "monthly",
+      "current_period_start": "2026-10-30T01:48:29.883Z",
+      "current_period_end": "2026-11-30T01:48:29.883Z",
+      "auto_renew": true
+    },
+    "migrations": {
+      "count": 162,
+      "latest": "0161_paid_review_assembly_recovery.sql"
+    }
+  },
+  "wallet_orders_events_and_term_preserved": true,
+  "existing_pre_restart_renewal_preserved": true
+}

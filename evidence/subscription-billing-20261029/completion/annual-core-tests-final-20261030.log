@@ -1,0 +1,29 @@
+✔ default HTTP balance preserves MAX_SAFE+1 and zero/holds as strings through the response schema (445.3726ms)
+✔ raw JSON number/fraction/negative/overflow are rejected before AJV coercion or financial handler (44.3201ms)
+✔ numeric-v1 only replays persisted owner/resource/request and original handler still rejects changed amount (38.5691ms)
+✔ legacy responses preserve the original response schema field filtering (36.9741ms)
+✔ callback bodies are excluded from billing transforms and unauthenticated replay does not open the DB (23.1041ms)
+✔ OpenAPI distinguishes modern wire components from original domain schemas (36.976ms)
+▶ annual payment, monthly release, original consideration and whole-contract refunds
+  ✔ real default clock retains exact milliseconds through verified payment and lot issuance (384.8431ms)
+  ✔ one annual payment creates twelve rights, only first month is issued, payment replay cannot mint the year (317.1621ms)
+  ✔ cancelled renewal retains twelve monthly installments; retries, catch-up and calendar anchors preserve total cash (428.6382ms)
+  ✔ seven-day unused annual whole-order refund removes only issued credits, blocks future grants and never refunds twice (204.5755ms)
+  ✔ failed cash refund unfreezes its issued batch and allows overdue paid installments (132.504ms)
+  ✔ legacy monthly request hash survives omitted or explicit monthly; annual cannot reuse that request (163.1068ms)
+  ✔ year mandate binds annual amount/interval, can be reopened after cancellation, and charges once only at anniversary (355.8606ms)
+  ✔ actual review settlement uses annual lot consideration and disqualifies whole-contract cash withdrawal (2083.4767ms)
+✔ annual payment, monthly release, original consideration and whole-contract refunds (4103.255ms)
+✔ quote and scope explanations encode amounts without converting revisions or changing stored snapshots (4.0972ms)
+✔ nested task progress, period hold breakdown and correction history retain full integer range (0.5911ms)
+✔ raw requests reject numeric wire values before schema coercion and normalize bounded old hash inputs exactly (0.4501ms)
+✔ refund null evidence and ordinary document quantities are not converted by field-name guessing (0.2121ms)
+✔ only cumulative admin usage counts change; rates, durations and revision numbers keep their units (0.2328ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18461.3714

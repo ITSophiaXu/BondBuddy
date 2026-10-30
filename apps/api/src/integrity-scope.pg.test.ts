@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {Pool} from 'pg';
-import {INTEGRITY_SITES,OUTCOME_PRICE_VERSION} from '@bondbuddy/contracts';
+import {INTEGRITY_SELECTABLE_SITES,OUTCOME_PRICE_VERSION} from '@bondbuddy/contracts';
 import {createServer} from './server.js';
 import {transaction} from './data.js';
 import {grantCredits,creditBalance} from './billing.js';
@@ -15,7 +15,7 @@ test('synthetic integrity round: scope quote before execution, variable locked a
  const send=(path:string,payload:unknown)=>app.inject({method:'POST',url:'/api/v1/projects/integrity-scope-project/integrity/'+path,payload:payload as any,headers:{origin:'http://scope.test'}});
  try{
   await pool.query("INSERT INTO bb_users(id,username) VALUES('integrity-scope-owner','synthetic_integrity_scope'); INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES('integrity-scope-project','integrity-scope-owner','Synthetic integrity scope','update')");
-  const draft={subjects:[{id:'subject-1',kind:'company',name:'Synthetic company',identifier:'',role:'issuer',province:'',city:''}],site_ids:[INTEGRITY_SITES[0].id],notes:''};
+  const draft={subjects:[{id:'subject-1',kind:'company',name:'Synthetic company',identifier:'',role:'issuer',province:'',city:''}],site_ids:[INTEGRITY_SELECTABLE_SITES[0].id],notes:''};
   const saved=await send('draft',{expected_revision:0,draft});assert.equal(saved.statusCode,200,saved.body);
   const pending=await send('quote',{expected_revision:1});assert.equal(pending.statusCode,200,pending.body);assert.equal(pending.json().quote_status,'pending_scope');
   const request={request_id:'synthetic-execution',expected_revision:1,expected_points:'0',price_version:OUTCOME_PRICE_VERSION,scope_quote_id:pending.json().scope_quote_id};

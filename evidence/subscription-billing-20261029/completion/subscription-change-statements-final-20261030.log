@@ -1,0 +1,21 @@
+/bb_change_20261030_b3
+▶ annual statements reconcile monthly issuance against one paid contract across both channels
+  ✔ wechat: original monthly subscription and topup still reconcile (390.9186ms)
+  ✔ wechat: first grant and all twelve annual releases produce no extra cash order or statement payment (291.4972ms)
+  ✔ wechat: actual wrong first-grant quantity and source remain visible differences (186.0646ms)
+  ✔ wechat: largest annual refund reconciles whole cash once, removes first batch and cancels future grants (206.5607ms)
+  ✔ wechat: consecutive upgrades reconcile only new cash and preserve source rights after the new annual refund (460.0119ms)
+  ✔ alipay: original monthly subscription and topup still reconcile (104.3565ms)
+  ✔ alipay: first grant and all twelve annual releases produce no extra cash order or statement payment (250.6897ms)
+  ✔ alipay: actual wrong first-grant quantity and source remain visible differences (154.5095ms)
+  ✔ alipay: largest annual refund reconciles whole cash once, removes first batch and cancels future grants (197.8193ms)
+  ✔ alipay: consecutive upgrades reconcile only new cash and preserve source rights after the new annual refund (409.4245ms)
+✔ annual statements reconcile monthly issuance against one paid contract across both channels (2787.9995ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10758.6561

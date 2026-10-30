@@ -1,5 +1,6 @@
 import type {Pool,PoolClient} from 'pg';
 import {transaction} from './data.js';
+import {auditSubscriptionChanges} from './billing-change-audit.js';
 
 /** One authoritative invariant query set. Call with a stable snapshot, or after
  * acquiring the relevant exclusive safety lock in READ COMMITTED. Held tasks
@@ -11,14 +12,17 @@ export async function auditCreditClient(c:PoolClient,owner?:string){
       FROM bb_credit_allocations a JOIN bb_credit_reservations r ON r.id=a.reservation_id), refunds AS (
       SELECT a.lot_id,COALESCE(sum(a.points) FILTER(WHERE r.state IN ('requested','processing')),0) held,
         COALESCE(sum(a.points) FILTER(WHERE r.state='succeeded'),0) refunded FROM bb_payment_refund_allocations a
-        JOIN bb_payment_refunds r ON r.id=a.refund_id GROUP BY a.lot_id)
+        JOIN bb_payment_refunds r ON r.id=a.refund_id GROUP BY a.lot_id), changes AS (
+      SELECT a.lot_id,COALESCE(sum(a.points) FILTER(WHERE ch.state='held'),0) held,
+        COALESCE(sum(a.points) FILTER(WHERE ch.state IN ('applied','refunded')),0) transferred
+      FROM bb_subscription_change_allocations a JOIN bb_subscription_changes ch ON ch.id=a.change_id GROUP BY a.lot_id)
       SELECT l.id,l.owner_user_id,l.remaining::text,l.frozen::text,
-        (COALESCE(sum(a.points) FILTER(WHERE a.state='held' AND a.billing_policy<>'authoring_balance_v2'),0)+COALESCE(refunds.held,0))::text AS expected_frozen,
-        (l.original_points-COALESCE(sum(CASE WHEN a.compensated THEN a.points ELSE COALESCE(a.charged_points,CASE WHEN a.state='settled' THEN a.points ELSE 0 END) END),0)-COALESCE(refunds.refunded,0))::text AS expected_remaining
-      FROM bb_credit_lots l LEFT JOIN allocations a ON a.lot_id=l.id LEFT JOIN refunds ON refunds.lot_id=l.id
+        (COALESCE(sum(a.points) FILTER(WHERE a.state='held' AND a.billing_policy<>'authoring_balance_v2'),0)+COALESCE(refunds.held,0)+COALESCE(changes.held,0))::text AS expected_frozen,
+        (l.original_points-COALESCE(sum(CASE WHEN a.compensated THEN a.points ELSE COALESCE(a.charged_points,CASE WHEN a.state='settled' THEN a.points ELSE 0 END) END),0)-COALESCE(refunds.refunded,0)-COALESCE(changes.transferred,0))::text AS expected_remaining
+      FROM bb_credit_lots l LEFT JOIN allocations a ON a.lot_id=l.id LEFT JOIN refunds ON refunds.lot_id=l.id LEFT JOIN changes ON changes.lot_id=l.id
       WHERE ($1::text IS NULL OR l.owner_user_id=$1)
-      GROUP BY l.id,refunds.held,refunds.refunded HAVING l.frozen<>COALESCE(sum(a.points) FILTER(WHERE a.state='held' AND a.billing_policy<>'authoring_balance_v2'),0)+COALESCE(refunds.held,0)
-      OR l.remaining<>l.original_points-COALESCE(sum(CASE WHEN a.compensated THEN a.points ELSE COALESCE(a.charged_points,CASE WHEN a.state='settled' THEN a.points ELSE 0 END) END),0)-COALESCE(refunds.refunded,0)`,[owner??null])).rows;
+      GROUP BY l.id,refunds.held,refunds.refunded,changes.held,changes.transferred HAVING l.frozen<>COALESCE(sum(a.points) FILTER(WHERE a.state='held' AND a.billing_policy<>'authoring_balance_v2'),0)+COALESCE(refunds.held,0)+COALESCE(changes.held,0)
+      OR l.remaining<>l.original_points-COALESCE(sum(CASE WHEN a.compensated THEN a.points ELSE COALESCE(a.charged_points,CASE WHEN a.state='settled' THEN a.points ELSE 0 END) END),0)-COALESCE(refunds.refunded,0)-COALESCE(changes.transferred,0)`,[owner??null])).rows;
     const reservationDrift=(await c.query(`SELECT r.id,r.owner_user_id,r.run_id,r.state,r.points::text FROM bb_credit_reservations r
       JOIN bb_runs run ON run.id=r.run_id JOIN bb_credit_quotes q ON q.id=r.quote_id
       WHERE ($1::text IS NULL OR r.owner_user_id=$1) AND (r.points<>q.points OR r.owner_user_id<>run.owner_user_id OR run.reservation_id IS DISTINCT FROM r.id
@@ -32,13 +36,24 @@ export async function auditCreditClient(c:PoolClient,owner?:string){
     const paymentDrift=(await c.query(`SELECT o.id,o.owner_user_id,o.provider,o.merchant_id,o.state FROM bb_recharge_orders o LEFT JOIN bb_credit_lots l
       ON l.owner_user_id=o.owner_user_id AND l.source_key='recharge:'||o.id
       LEFT JOIN bb_subscription_periods sp ON sp.owner_user_id=o.owner_user_id AND sp.order_id=o.id
-      WHERE ($1::text IS NULL OR o.owner_user_id=$1) AND ((o.state='paid' AND (l.id IS NULL OR l.original_points IS DISTINCT FROM o.points
+      WHERE ($1::text IS NULL OR o.owner_user_id=$1) AND ((o.state='paid' AND (l.id IS NULL OR l.original_points IS DISTINCT FROM CASE WHEN o.order_kind='subscription' THEN sp.monthly_points ELSE o.points END
         OR (o.order_kind='recharge' AND (l.source IS DISTINCT FROM 'purchase' OR l.expires_at IS NOT NULL))
-        OR (o.order_kind='subscription' AND (sp.id IS NULL OR sp.status NOT IN ('active','refunded')
+        OR (o.order_kind='subscription' AND (sp.id IS NULL OR sp.status NOT IN ('active','superseded','refunded')
           OR sp.lot_id IS DISTINCT FROM l.id OR sp.points IS DISTINCT FROM o.points OR sp.amount_fen IS DISTINCT FROM o.amount_fen
           OR l.source IS DISTINCT FROM 'subscription' OR sp.credits_expires_at IS NULL
-          OR l.expires_at IS DISTINCT FROM sp.credits_expires_at))))
+          OR l.expires_at IS DISTINCT FROM sp.credits_expires_at
+          OR sp.billing_cycle='annual' AND (
+           (SELECT count(*) FROM bb_subscription_credit_releases WHERE period_id=sp.id)<>12
+           OR (SELECT sum(points) FROM bb_subscription_credit_releases WHERE period_id=sp.id)<>o.points
+           OR (SELECT sum(amount_fen) FROM bb_subscription_credit_releases WHERE period_id=sp.id)<>o.amount_fen
+           OR EXISTS(SELECT 1 FROM bb_subscription_credit_releases x LEFT JOIN bb_credit_lots issued ON issued.id=x.lot_id AND issued.owner_user_id=x.owner_user_id
+            WHERE x.period_id=sp.id AND x.state='issued' AND (issued.id IS NULL OR issued.original_points<>x.points
+             OR x.amount_fen IS DISTINCT FROM floor(sp.amount_fen::numeric*x.installment_index/12)-floor(sp.amount_fen::numeric*(x.installment_index-1)/12)
+             OR issued.cash_basis_fen IS DISTINCT FROM CASE WHEN sp.funding_kind='mixed' THEN sp.consideration_numerator ELSE x.amount_fen END
+             OR issued.cash_basis_points IS DISTINCT FROM CASE WHEN sp.funding_kind='mixed' THEN sp.consideration_denominator ELSE x.points END
+             OR issued.cash_order_id IS DISTINCT FROM CASE WHEN sp.funding_kind='mixed' THEN NULL ELSE o.id END)))))))
       OR (o.state<>'paid' AND l.id IS NOT NULL))`,[owner??null])).rows;
+    paymentDrift.push(...await auditSubscriptionChanges(c,owner));
     const refundDrift=(await c.query(`SELECT r.id,r.owner_user_id,r.provider,r.merchant_id,r.state FROM bb_payment_refunds r WHERE ($1::text IS NULL OR r.owner_user_id=$1) AND (
       r.credit_points<>(SELECT COALESCE(sum(a.points),0) FROM bb_payment_refund_allocations a WHERE a.refund_id=r.id)
       OR

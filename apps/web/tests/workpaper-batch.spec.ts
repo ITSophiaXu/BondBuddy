@@ -3,6 +3,7 @@ import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {AUTOMATIC_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,SUBSCRIPTION_PLANS,SUBSCRIPTION_CATALOG_VERSION,WORKPAPER_PRICE,type WorkpaperWorkspace,type WorkpaperStart,type WorkpaperBatch,type WorkpaperAssess} from '@bondbuddy/contracts';
 import {fixture,href,ids,now,sha} from './generation-entry-fixtures';
+import {fixtureBody,fixtureRequest} from './billing-fixture-wire';
 
 async function setup(page:import('@playwright/test').Page,count=350){
  const existing=await fixture(page),source=existing.workspaces.get(ids.api)!.source!;
@@ -11,15 +12,15 @@ async function setup(page:import('@playwright/test').Page,count=350){
  await page.route('**/api/v1/runs/*/resume',async route=>{state.resumeRequests.push(route.request().url());await route.fulfill({status:409,json:{code:'CAPABILITY_NOT_READY'}});});
  await page.route('**/api/v1/projects/*/workpapers**',async route=>{
   const request=route.request(),url=new URL(request.url()),base=`/api/v1/projects/${ids.api}/workpapers`;
-  if(url.pathname===base&&request.method()==='GET')return route.fulfill({json:data});
+  if(url.pathname===base&&request.method()==='GET')return route.fulfill({json:fixtureBody(route,data)});
   if(url.pathname===base+'/assessments'){state.assessmentRequests.push(request.postDataJSON());return route.fulfill({status:500,json:{code:'UNEXPECTED_PREFLIGHT'}});}
   if(url.pathname===base+'/batches'){
-   const body=request.postDataJSON() as WorkpaperStart;state.requests.push(body);
+   const body=fixtureRequest(request) as WorkpaperStart;state.requests.push(body);
    if(!data.batches.length){const b:WorkpaperBatch={batch_id:'batch-1',topic_id:'topic-workpapers',catalogue_id:body.catalogue_id,revision:1,state:'queued',start_mode:body.start_mode??'assessed',source:structuredClone(source),total_points:body.expected_points,charged_points:0,created_at:now,error:null,
     items:data.catalogues[0].entries.filter(e=>body.item_ids.includes(e.id)).map(entry=>({entry,run_id:null,state:'queued',stage:null,attempt:1,error:null,artifacts:[]}))};data.batches.push(b);}
-   if(state.uncertain){state.uncertain=false;return route.abort('failed');}return route.fulfill({json:data.batches[0]});
+   if(state.uncertain){state.uncertain=false;return route.abort('failed');}return route.fulfill({json:fixtureBody(route,data.batches[0])});
   }
-  if(url.pathname.endsWith('/actions')){const b=data.batches[0],action=request.postDataJSON().action;b.state=action==='pause'?'paused':action==='cancel'?'cancelled':'queued';b.revision++;return route.fulfill({json:b});}
+  if(url.pathname.endsWith('/actions')){const b=data.batches[0],action=fixtureRequest(request).action;b.state=action==='pause'?'paused':action==='cancel'?'cancelled':'queued';b.revision++;return route.fulfill({json:fixtureBody(route,b)});}
   return route.fulfill({status:404,json:{code:'NOT_FOUND'}});
  });return state;
 }
@@ -89,6 +90,12 @@ test('first visit with no catalogue presents the upload control',async({page})=>
   await expect(page.getByText('底稿记录暂时无法读取。原记录已保留，请刷新重试。')).toHaveCount(0);
   await page.reload();await expect(page.locator('#wp-upload')).toBeEnabled();
   await expect(page.locator('#wp-start')).toHaveCount(0);
+});
+for(const width of [1440,390])test(`automatic workpaper ${width} quotes each selected file and charges on delivery without a confirmation step`,async({page})=>{
+ const state=await setup(page);state.data.price={version:AUTOMATIC_PRICE_VERSION,points:AUTOMATIC_TASK_TARIFF.workpaper.points,auto_charge:true};await page.setViewportSize({width,height:960});await page.goto('/'+href({step:'workpapers'}));
+ await expect(page.locator('#wp-start')).toHaveText('开始生成底稿');await expect(page.locator('#wp-confirm')).toContainText('每份底稿 3,458 积分');await expect(page.locator('#wp-fee-note')).toContainText('成功交付后扣费');await expect(page.locator('#wp-fee-note')).not.toContainText('按处理进度');
+ if(process.env.BB_UX_EVIDENCE_DIR){await mkdir(process.env.BB_UX_EVIDENCE_DIR,{recursive:true});await page.locator('#wp-confirm').screenshot({path:resolve(process.env.BB_UX_EVIDENCE_DIR,`workpaper-automatic-card-${width}.png`)});}
+ await page.locator('#wp-start').click();await expect.poll(()=>state.requests.length).toBe(1);expect(state.requests[0]).toMatchObject({price_version:AUTOMATIC_PRICE_VERSION,expected_points:350*AUTOMATIC_TASK_TARIFF.workpaper.points});await expect(page.locator('#wp-confirm-start')).toHaveCount(0);await expect(page.locator('#wp-batches')).toContainText('0 / 350 份完成');
 });
 for(const width of [1440,390])test(`confirmation submits selected 349 files and shows progress ${width}`,async({page})=>{
  const state=await setup(page);await page.setViewportSize({width,height:960});await page.goto('/'+href({step:'workpapers'}));await assertNoPreflight(page);

@@ -2,7 +2,7 @@ import {isAutomaticPriceVersion} from '@bondbuddy/contracts';
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
-import {OUTCOME_PRICE_VERSION,commerceMetadata,INTEGRITY_PRICE,INTEGRITY_SITES,integritySchemas,resolveIntegritySite,integritySourceAllowed,type IntegrityDraft,type IntegrityInput,type IntegrityWorkspace,type IntegrityRound,type IntegrityManual} from '@bondbuddy/contracts';
+import {OUTCOME_PRICE_VERSION,commerceMetadata,INTEGRITY_PRICE,INTEGRITY_SITES,isRetiredIntegritySite,integritySchemas,resolveIntegritySite,integritySourceAllowed,type IntegrityDraft,type IntegrityInput,type IntegrityWorkspace,type IntegrityRound,type IntegrityManual} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,Problem,date,assertCanonicalBusinessRunIdle,digest,type PrivateBlobs} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {enqueue} from './queue.js';
@@ -16,6 +16,7 @@ const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
 export function validateIntegrityDraft(d:IntegrityDraft,start=false){
  if(start&&(!d.subjects.length||!d.site_ids.length))throw new Problem(422,'INPUT_REQUIRED','请添加核查对象并选择网站。');
  if(d.site_ids.some(id=>!INTEGRITY_SITES.some(s=>s.id===id)))throw new Problem(422,'VALIDATION_FAILED','网站范围已变化，请重新选择。');
+ if(d.site_ids.some(isRetiredIntegritySite))throw new Problem(422,'VALIDATION_FAILED','所选范围包含已移除的网站，请刷新并保存当前网站范围。');
  const ids=new Set<string>(),names=new Set<string>();
  for(const s of d.subjects){
   if(!s.name.trim()||ids.has(s.id)||names.has(s.kind+':'+s.name.trim()+':'+s.identifier.trim()))throw new Problem(422,'VALIDATION_FAILED','请填写对象名称，并移除重复对象。');

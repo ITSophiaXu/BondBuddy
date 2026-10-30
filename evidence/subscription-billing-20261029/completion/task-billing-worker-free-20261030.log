@@ -1,0 +1,35 @@
+✖ global assistant CLI gets the selected context and proposes cards without executing; explicit discussion remains text (181.2269ms)
+✔ M4 QA receives exact execution proposal and reading context but returns intent without creating Word or mutating input (137.6261ms)
+✔ M4 semantic guard distinguishes whole-action denial, method questions and local limits; unavailable work cannot execute (1.3081ms)
+✔ new opinion types preserve explicit execution and local restrictions, but whole-action denial still wins (0.2878ms)
+✔ M4 unavailable requests receive truthful capability feedback even if model claims success; basic concepts and negative requests remain usable (0.2596ms)
+✔ free assistant output and replay cannot deliver an unpriced business answer (384.2314ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 5
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4906.5297
+
+✖ failing tests:
+
+test at apps\worker\dist\m4-stages.test.js:2:1
+✖ global assistant CLI gets the selected context and proposes cards without executing; explicit discussion remains text (181.2269ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - '更新募集书，只改措辞，不要更新财务数字'
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/subscription-auto-billing-20261029/apps/worker/dist/m4-stages.test.js:27:20)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: '更新募集书，只改措辞，不要更新财务数字',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

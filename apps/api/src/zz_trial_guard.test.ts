@@ -155,6 +155,44 @@ test('run quotas: active runs, runs per day, idempotent replay and logged reject
   } finally { await pool.end(); }
 });
 
+test('a quota-rejected start can retry the same request after capacity returns without changing its input', { skip }, async () => {
+  const pool = new Pool({ connectionString: connection });
+  const h = harness(pool, base({ active_runs_per_user: 1, runs_per_user_per_day: 100 }));
+  try {
+    await openGate(pool);
+    const owner = await user(pool, 'trial-retry');
+    const occupied = await h.ready(owner), target = await h.ready(owner);
+    const first = await h.submit(owner, occupied.projectId, occupied.inputHash, 'occupied-request');
+    assert.equal(first.statusCode, 202, first.body);
+    const retry = () => h.submit(owner, target.projectId, target.inputHash, 'same-retry-request');
+    const rejected = await retry();
+    assert.equal(rejected.statusCode, 429, rejected.body);
+    assert.equal(rejected.json().code, 'TRIAL_QUOTA_EXCEEDED');
+    assert.deepEqual(rejected.json().field_errors, [{field:'trial_limit',code:'active_runs_per_user',message:'Current processing limit reached'}]);
+    const audit = (await pool.query("SELECT id,request_hash,error_code FROM bb_jobs WHERE project_id=$1 AND subtype='execute_rejected'", [target.projectId])).rows;
+    assert.equal(audit.length, 1);
+    assert.equal((await retry()).statusCode, 429, 'the current capacity limit is still enforced');
+    const changed = await h.as(owner)('POST', '/api/v1/runs/execute', { execution_request_id:'same-retry-request', project_id:target.projectId,
+      input_revision:1,input_hash:target.inputHash,task_kind:'update',input_manifest_ref:'changed-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace' });
+    assert.equal(changed.statusCode, 409);
+    assert.equal(changed.json().code, 'IDEMPOTENCY_CONFLICT', 'a rejected key cannot be rebound to another request');
+    await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1", [first.json().run_id]);
+    const suspended = harness(pool, base({ kill_switch_config:true }));
+    try {
+      const blocked = await suspended.submit(owner, target.projectId, target.inputHash, 'same-retry-request');
+      assert.equal(blocked.statusCode, 503, blocked.body);
+      assert.equal(blocked.json().code, 'MODEL_CALLS_SUSPENDED', 'a retry reports the current admission failure instead of the previous quota');
+    } finally { await suspended.app.close(); }
+    const concurrent = await Promise.all([retry(), retry(), retry()]);
+    const resumed = concurrent[0]!;
+    assert.equal(resumed.statusCode, 202, resumed.body);
+    assert.ok(concurrent.every(response => response.statusCode===202 && response.json().run_id===resumed.json().run_id));
+    assert.equal((await retry()).json().run_id, resumed.json().run_id, 'accepted retries return exactly one run');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1', [target.projectId])).rows[0].n, 1);
+    assert.deepEqual((await pool.query("SELECT id,request_hash,error_code FROM bb_jobs WHERE project_id=$1 AND subtype='execute_rejected'", [target.projectId])).rows, audit, 'the original rejection evidence is immutable');
+  } finally { await h.app.close(); await pool.end(); }
+});
+
 test('token quota counts unknown usage conservatively at submit and before every model call', { skip }, async () => {
   const pool = new Pool({ connectionString: connection });
   const config = base({ model_tokens_per_user_per_day: 1000, unknown_usage_tokens_per_attempt: 600, active_runs_per_user: 10, runs_per_user_per_day: 10 });
@@ -311,14 +349,16 @@ test('kill switch stops new runs and new model calls; operator-only and append-o
     const { projectId, inputHash } = await h.ready(owner);
     const run = (await h.submit(owner, projectId, inputHash)).json().run_id as string;
     const lease = await h.leaseFor(owner, run);
+    const retryTarget=await h.ready(owner),retryKey=`suspended-${uid()}`;
     assert.equal((await h.as(reader)('POST', '/api/v1/admin/trial/kill-switch', { state: 'engaged', reason_code: 'provider_incident' })).statusCode, 404, 'log_reader cannot write');
     const engaged = await h.as(operatorUser)('POST', '/api/v1/admin/trial/kill-switch', { state: 'engaged', reason_code: 'provider_incident' });
     assert.equal(engaged.statusCode, 200, engaged.body);
     assert.equal(engaged.json().engaged, true);
     try {
-      const stopped = await h.submit(owner, projectId, inputHash);
+      const stopped = await h.submit(owner, retryTarget.projectId, retryTarget.inputHash,retryKey);
       assert.equal(stopped.statusCode, 503);
       assert.equal(stopped.json().code, 'MODEL_CALLS_SUSPENDED');
+      assert.equal((await h.submit(owner,retryTarget.projectId,retryTarget.inputHash,retryKey)).statusCode,503);
       assert.ok((await rejected(pool, owner, 'execute')).includes('MODEL_CALLS_SUSPENDED'));
       await assert.rejects(recordPotentialCall(pool, lease, 'synthetic-kill', 1), (error: any) => error.code === 'MODEL_CALLS_SUSPENDED');
       assert.equal((await h.as(operatorUser)('POST', '/api/v1/admin/trial/kill-switch', { state: 'engaged', reason_code: 'again' })).statusCode, 409);
@@ -329,6 +369,9 @@ test('kill switch stops new runs and new model calls; operator-only and append-o
     } finally {
       assert.equal((await h.as(operatorUser)('POST', '/api/v1/admin/trial/kill-switch', { state: 'released', reason_code: 'provider_recovered' })).statusCode, 200);
     }
+    const resumed=await h.submit(owner,retryTarget.projectId,retryTarget.inputHash,retryKey);
+    assert.equal(resumed.statusCode,202,resumed.body);
+    assert.equal((await h.submit(owner,retryTarget.projectId,retryTarget.inputHash,retryKey)).json().run_id,resumed.json().run_id);
     await recordPotentialCall(pool, lease, 'synthetic-kill', 1);
     await assert.rejects(pool.query('DELETE FROM bb_trial_kill_switch_events'));
     // BB_TRIAL_KILL_SWITCH=1 engages independently of the operator rows.
@@ -337,6 +380,27 @@ test('kill switch stops new runs and new model calls; operator-only and append-o
     const configured = harness(pool, { ...config, kill_switch_config: true });
     assert.equal((await configured.submit(owner, projectId, inputHash)).json().code, 'MODEL_CALLS_SUSPENDED');
   } finally { configureTrialGuard(null); await pool.end(); }
+});
+
+test('an account admission denial is enforced until revoked, then the same start request can run',{skip},async()=>{
+  const pool=new Pool({connectionString:connection}),h=harness(pool,base());
+  try{
+    await openGate(pool);
+    const owner=await user(pool,'retry-denied'),operatorUser=await user(pool,'retry-denied-op');
+    await grantOperator(pool,{userId:operatorUser,role:'log_operator',grantedBy:'synthetic-setup',reasonCode:'synthetic_test'});
+    const target=await h.ready(owner),key=`denied-${uid()}`;
+    const denied=await h.as(operatorUser)('POST','/api/v1/admin/trial/overrides',{user_id:owner,effect:'deny',reason_code:'synthetic_review'});
+    assert.equal(denied.statusCode,201,denied.body);
+    for(let attempt=0;attempt<2;attempt++){
+      const blocked=await h.submit(owner,target.projectId,target.inputHash,key);
+      assert.equal(blocked.statusCode,403,blocked.body);assert.equal(blocked.json().code,'TRIAL_ACCESS_DENIED');
+    }
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[target.projectId])).rows[0].n,0);
+    assert.equal((await h.as(operatorUser)('POST',`/api/v1/admin/trial/overrides/${denied.json().override_id}/revoke`,{reason_code:'synthetic_reviewed'})).statusCode,200);
+    const resumed=await h.submit(owner,target.projectId,target.inputHash,key);
+    assert.equal(resumed.statusCode,202,resumed.body);
+    assert.equal((await h.submit(owner,target.projectId,target.inputHash,key)).json().run_id,resumed.json().run_id);
+  }finally{await h.app.close();await pool.end();}
 });
 
 test('abuse limits: per-account and per-source, shared source not blanket-banned, allow/deny overrides', { skip }, async () => {

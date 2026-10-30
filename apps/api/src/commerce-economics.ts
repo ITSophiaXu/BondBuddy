@@ -4,6 +4,7 @@ import {pathToFileURL} from 'node:url';
 import type {Pool,PoolClient} from 'pg';
 import {missing,Problem,transaction,uid} from './data.js';
 import {ZERO,add,subtract,divide,ratio,ratioJson,unsignedInteger,nonnegativeDecimal,exactDecimal,roundedDecimal,type ExactRatio,type IntegerInput} from './commerce-economics-math.js';
+import {lotFundingEvidenceSql,lotFundingMatches,type LotFundingEvidence} from './subscription-funding-evidence.js';
 
 export const ECONOMICS_REPORT_VERSION='commerce-economics-exact-v2' as const;
 export const EXPENSE_CATEGORIES=['parsing_ocr','extra_compute_storage','payment_fee','original_scope_rework','support_extra','presale_quote'] as const;
@@ -11,7 +12,7 @@ export type ExpenseCategory=typeof EXPENSE_CATEGORIES[number];
 type Attempt={attempt_id:string;billable:boolean;pricing_status:string;usage_status:string;currency:string|null;cost_amount:string|number|null;cached_input_tokens:number|null;reasoning_tokens:number|null;input_per_million?:string;cached_input_per_million?:string;output_per_million?:string;reasoning_output_per_million?:string;[key:string]:unknown};
 type Expense={id:string;category:ExpenseCategory;amount_fen:IntegerInput;within_fixed_budget:boolean;[key:string]:unknown};
 type Review={snapshot_hash:string;model_required:boolean;[key:string]:unknown};
-export type ConsiderationSlice={points:IntegerInput;numerator_fen:IntegerInput|null;denominator_points:IntegerInput|null;[key:string]:unknown};
+export type ConsiderationSlice={points:IntegerInput;numerator_fen:IntegerInput|null;denominator_points:IntegerInput|null;funding_required?:boolean;funding_slices?:LotFundingEvidence[];[key:string]:unknown};
 export type RunCostInput={run_id:string;state:string;revenue_fen:IntegerInput;compensation_fen:IntegerInput;
   consideration_slices?:ConsiderationSlice[];compensation_slices?:ConsiderationSlice[];attempts:Attempt[];expenses:Expense[];reviews?:Review[]};
 const canonical=(value:unknown):string=>JSON.stringify(value,(_k,v)=>v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).sort(([a],[b])=>a.localeCompare(b))):v);
@@ -25,7 +26,7 @@ function sliceConsideration(slices:ConsiderationSlice[]|undefined,expected:bigin
   try{
     for(const slice of slices){
       const p=unsignedInteger(slice.points),A=unsignedInteger(slice.numerator_fen),Q=unsignedInteger(slice.denominator_points);
-      if(p===0n||Q===0n)return null;
+      if(p===0n||Q===0n||!lotFundingMatches({required:slice.funding_required,funding:slice.funding_slices,numerator:slice.numerator_fen,denominator:slice.denominator_points}))return null;
       points+=p;total=add(total,ratio(A*p,Q));
     }
     return points===expected?total:null;
@@ -126,13 +127,15 @@ async function load(c:PoolClient,runId:string){
   if(!tagged)throw invalid('Only explicitly tagged CNY service runs can be interpreted as fen; legacy credits are not money');
   const correction=(await c.query("SELECT COALESCE(sum(points),0)::text amount FROM bb_credit_events WHERE run_id=$1 AND owner_user_id=$2 AND kind='correction'",[runId,run.owner_user_id])).rows[0];
   const slices=(await c.query(`SELECT a.reservation_id,l.id lot_id,a.charged_points::text points,l.cash_basis_fen::text numerator_fen,l.cash_basis_points::text denominator_points,
-    l.cash_order_id,l.cash_origin_lot_id FROM bb_credit_reservations r JOIN bb_credit_allocations a ON a.reservation_id=r.id
+    l.cash_order_id,l.cash_origin_lot_id,(l.cash_order_id IS NULL AND l.cash_basis_fen>0) funding_required,${lotFundingEvidenceSql()} funding_slices
+    FROM bb_credit_reservations r JOIN bb_credit_allocations a ON a.reservation_id=r.id
     JOIN bb_credit_lots l ON l.id=a.lot_id AND l.owner_user_id=r.owner_user_id
     WHERE r.run_id=$1 AND r.owner_user_id=$2 AND r.billing_policy='on_delivery' AND r.state='settled' AND a.charged_points>0 ORDER BY l.id`,[runId,run.owner_user_id])).rows;
   // A correction lot carries the immutable original payment basis. Retrieve each
   // event rather than rounding PostgreSQL division before summing repeating ratios.
   const reversals=(await c.query(`SELECT e.id event_id,e.reservation_id,e.lot_id,e.points::text points,
-    l.cash_basis_fen::text numerator_fen,l.cash_basis_points::text denominator_points,l.cash_order_id,l.cash_origin_lot_id
+    l.cash_basis_fen::text numerator_fen,l.cash_basis_points::text denominator_points,l.cash_order_id,l.cash_origin_lot_id,
+    (l.cash_order_id IS NULL AND l.cash_basis_fen>0) funding_required,${lotFundingEvidenceSql()} funding_slices
     FROM bb_credit_events e LEFT JOIN bb_credit_lots l ON l.id=e.lot_id AND l.owner_user_id=e.owner_user_id
     WHERE e.run_id=$1 AND e.owner_user_id=$2 AND e.kind='correction' ORDER BY e.id`,[runId,run.owner_user_id])).rows;
   return {run,reportInput:{run_id:run.id,state:run.state,revenue_fen:money.charge,compensation_fen:correction.amount,

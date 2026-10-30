@@ -1,0 +1,57 @@
+{
+  "startedAt": "2026-10-30T01:56:47.812Z",
+  "finishedAt": "2026-10-30T01:56:55.741Z",
+  "username": "billing_recover_7cddc64a",
+  "projectId": "2bcd0e6a-17bf-479c-8618-f206c05d7f5d",
+  "runId": "bd5a8ab1-2af7-43e0-b4cd-58ab59a14a18",
+  "requestId": "m3-6fedd0790252534a894b745721fc1f5ccaa538edd804b66106b7a1c3fb37e380",
+  "resumeId": "865e59604e3a10fdd9f9eafd735aed4716204ac44cb646b6b1349c044ee5f489",
+  "orderId": "a1b096302e924b3e9158effcaffa8b87",
+  "expectedPoints": "27195",
+  "passed": 9,
+  "failed": 0,
+  "checks": [
+    "real authenticated random account starts at zero; isolated synthetic instance verified",
+    "one actual review click submits without amount confirmation; 402 saves the exact original task and creates no run or hold",
+    "product recharge link carries recovery identity and pre-fills the exact 271.95 yuan shortage",
+    "real account checkout creates one exact-shortage topup and preserves original task recovery",
+    "synthetic payment receipt automatically returns to the real review page and replays the same request key and exact body without another start click",
+    "real database has one paid order, one queued run and one 27195-point reservation, with no settled task charge yet",
+    "product reload restores the same queued task and does not submit or reserve again",
+    "real queued-run cancellation releases the full hold; model calls remain zero",
+    "real product chain completes with no unhandled browser exceptions"
+  ],
+  "pageErrors": [],
+  "executionRequests": [
+    {
+      "path": "/api/v1/projects/2bcd0e6a-17bf-479c-8618-f206c05d7f5d/review-executions",
+      "bodySha256": "ac846c0763f8a4984f94d7c1d7a474fcf22b4782432776d4834cdca55dd28d9c",
+      "executionRequestId": "m3-6fedd0790252534a894b745721fc1f5ccaa538edd804b66106b7a1c3fb37e380"
+    },
+    {
+      "path": "/api/v1/projects/2bcd0e6a-17bf-479c-8618-f206c05d7f5d/review-executions",
+      "bodySha256": "ac846c0763f8a4984f94d7c1d7a474fcf22b4782432776d4834cdca55dd28d9c",
+      "executionRequestId": "m3-6fedd0790252534a894b745721fc1f5ccaa538edd804b66106b7a1c3fb37e380"
+    }
+  ],
+  "executionResponses": [
+    {
+      "path": "/api/v1/projects/2bcd0e6a-17bf-479c-8618-f206c05d7f5d/review-executions",
+      "status": 402
+    },
+    {
+      "path": "/api/v1/projects/2bcd0e6a-17bf-479c-8618-f206c05d7f5d/review-executions",
+      "status": 200
+    }
+  ],
+  "realProductBrowser": true,
+  "realHttp": true,
+  "realPostgres": true,
+  "fixturePreparationOnly": true,
+  "clientResponseMocking": false,
+  "localStorageInjection": false,
+  "syntheticPaymentProvider": true,
+  "modelWorkerRunning": false,
+  "realMoneyCharged": false,
+  "defaultDemoAccountTouched": false
+}

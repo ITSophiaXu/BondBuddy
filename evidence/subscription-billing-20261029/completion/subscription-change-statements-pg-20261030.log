@@ -1,0 +1,26 @@
+▶ annual statements reconcile monthly issuance against one paid contract across both channels
+  ✔ wechat: original monthly subscription and topup still reconcile (528.5867ms)
+  ✔ wechat: first grant and all twelve annual releases produce no extra cash order or statement payment (330.2141ms)
+  ✔ wechat: actual wrong first-grant quantity and source remain visible differences (189.6853ms)
+  ✔ wechat: largest annual refund reconciles whole cash once, removes first batch and cancels future grants (231.1555ms)
+  ✔ wechat: consecutive upgrades reconcile only new cash and preserve source rights after the new annual refund (507.4068ms)
+  ✔ alipay: original monthly subscription and topup still reconcile (130.1835ms)
+  ✔ alipay: first grant and all twelve annual releases produce no extra cash order or statement payment (274.7643ms)
+  ✔ alipay: actual wrong first-grant quantity and source remain visible differences (210.791ms)
+  ✔ alipay: largest annual refund reconciles whole cash once, removes first batch and cancels future grants (187.361ms)
+  ✔ alipay: consecutive upgrades reconcile only new cash and preserve source rights after the new annual refund (440.6101ms)
+✔ annual statements reconcile monthly issuance against one paid contract across both channels (3269.6568ms)
+✔ monthly read-only report observes actual paid lots without recording prepayments or expiry as earned revenue (607.0702ms)
+▶ selected original order identifies its period beyond the latest 50 and keeps unknown or foreign orders private
+  ✔ the 51st record remains the original subscription with string-valued money and original dates (598.4265ms)
+  ✔ only a verified owner recharge order returns period null; foreign and nonexistent orders return identical 404 (27.2105ms)
+  ✔ missing or inconsistent original subscription records stay unavailable instead of becoming a permanent topup (16.2162ms)
+✔ selected original order identifies its period beyond the latest 50 and keeps unknown or foreign orders private (4709.4473ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16115.0232

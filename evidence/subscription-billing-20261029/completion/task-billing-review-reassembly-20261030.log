@@ -1,0 +1,28 @@
+✔ review reassembly requires Blob evidence and an explicit exact identity (1.9791ms)
+✔ private review reassembly preserves original evidence, rolls back, is idempotent and reuses CLI result without a new call (2121.5238ms)
+▶ review reassembly rejects mismatched scope, non-replayable evidence and competing work before mutation
+  ✔ result Blob tamper (1573.2171ms)
+  ✔ missing result Blob (901.1055ms)
+  ✔ prompt Blob tamper (880.3251ms)
+  ✔ missing prompt Blob (871.4449ms)
+  ✔ wrong run input hash (866.1313ms)
+  ✔ missing prompt checkpoint (928.309ms)
+  ✔ duplicate result checkpoint (1001.2851ms)
+  ✔ live lease (876.0127ms)
+  ✔ wrong task kind (865.3993ms)
+  ✔ deleted project (874.9643ms)
+  ✔ existing report (876.0692ms)
+  ✔ conflicting usage (908.6567ms)
+  ✔ later unresolved attempt (908.4368ms)
+  ✔ active run in same project (912.405ms)
+  ✔ foreign attempt and wrong expected hash (1655.0904ms)
+  ✔ failure in another stage (820.4158ms)
+✔ review reassembly rejects mismatched scope, non-replayable evidence and competing work before mutation (15724.577ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28755.3625

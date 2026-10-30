@@ -1,5 +1,6 @@
 import {int64} from '@bondbuddy/contracts';
 import {isAutomaticCharge} from './commerce';
+import {billingTaskRechargeHrefForRequest} from './billing-task-recovery';
 import {UserFacingError} from './user-facing-error.js';
 import { ArtifactPage } from './artifact-page';
 import { authoringTasks,taskHref,type ProjectTask } from './project-collection-model';
@@ -180,6 +181,7 @@ export class ProjectExecution {
   private chargeError = false;
   private paidEnabled?: boolean;
   private awaitingCredits = new URLSearchParams(location.hash.split('?')[1] ?? '').get('resume') === 'credits';
+  private fundingHref?:string;
 
   constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation,
     private referenceSnapshots?: ReferenceSnapshotResolver, private onStaleInput?: () => void,
@@ -234,7 +236,7 @@ export class ProjectExecution {
     }).catch(() => {});
   }
   private node(selector: string) { return this.host.querySelector<HTMLElement>(selector) ?? this.actions.querySelector<HTMLElement>(selector)!; }
-  private rechargeLink(){const [path,search='']=location.hash.split('?'),query=new URLSearchParams(search);query.set('resume','credits');return rechargeHref(this.id,path+'?'+query);}
+  private rechargeLink(){if(this.fundingHref)return this.fundingHref;const [path,search='']=location.hash.split('?'),query=new URLSearchParams(search);query.set('resume','credits');return rechargeHref(this.id,path+'?'+query);}
   private eligibleMaterials() {
     return this.materials;
   }
@@ -404,9 +406,6 @@ export class ProjectExecution {
       materialDetails.querySelector('#materials-state-description')!.textContent = materialsLocked
         ? activeRun ? '本次编制已开始，材料已锁定，无法新增、替换或删除。' : '本次编制材料已锁定。需要补充材料时，请点击“继续修改”，用于下一轮编制。'
         : this.nextRequested ? '补充材料将用于下一轮编制，已开始的任务和已有成果保持不变。' : '请在开始更新前补齐材料；开始后材料锁定，仅可查看。';
-      materialDetails.querySelectorAll('.material-subtypes>summary').forEach(summary => {
-        summary.textContent = materialsLocked ? '按细分类别查看材料' : '按细分类别补充材料（选填）';
-      });
     }
     this.conversation.setEditingVisible(!editsFrozen && !this.restoring && !activeRun && (!this.run || this.nextRequested));
     this.actions.closest('.authoring-actions')?.classList.toggle('is-preparing', !this.restoring && !activeRun && (!this.run || this.nextRequested));
@@ -824,8 +823,9 @@ export class ProjectExecution {
       if(!this.matchesExecution(run,request))throw new ApiError(0,'DATA_UNAVAILABLE');
       this.acceptRun(run);this.message='任务已提交；重复提交此版本会返回同一任务。';void this.poll();
     }catch(error){
+      if(error instanceof ApiError&&error.status===402&&error.code==='CREDITS_INSUFFICIENT')this.fundingHref=await billingTaskRechargeHrefForRequest(undefined,'/runs/execute',request);
       if(error instanceof ApiError&&error.code==='IDEMPOTENCY_CONFLICT')this.pendingExecutionConflict=true;
-      else if(error instanceof ApiError&&error.status>=400&&error.status<500&&error.status!==408){
+      else if(error instanceof ApiError&&error.status>=400&&error.status<500&&error.status!==408&&(error.status!==429||error.code==='TRIAL_QUOTA_EXCEEDED')){
         // A definitive rejection has no accepted run; billing can now obtain a new quote.
         this.pendingExecution=undefined;this.pendingExecutionConflict=false;
       }
@@ -838,6 +838,7 @@ export class ProjectExecution {
     await this.action(()=>this.submitExecution(request),'execute');
   }
   private acceptRun(run: Dto<'RunResponse'>) {
+    this.fundingHref=undefined;
     if(this.pendingExecution&&this.matchesExecution(run,this.pendingExecution)){
       this.pendingExecution=undefined;this.pendingExecutionConflict=false;
     }

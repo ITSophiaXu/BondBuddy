@@ -262,10 +262,15 @@ test('historical package cumulative one-cent rounding preserves sub-cent credits
     for(const input of [{request_id:randomUUID(),amount_fen:1,points:2},{request_id:randomUUID()},
       {request_id:randomUUID(),points:1150001},{request_id:randomUUID(),points:1.1},{request_id:randomUUID(),points:NaN},
       {request_id:randomUUID(),points:Infinity},{request_id:randomUUID(),points:Number.MAX_SAFE_INTEGER+1},
-      {request_id:randomUUID(),amount_fen:1000001},{request_id:randomUUID(),points:2,expected_amount_fen:0},
+      {request_id:randomUUID(),amount_fen:1078921},{request_id:randomUUID(),points:2,expected_amount_fen:0},
       {request_id:randomUUID(),amount_fen:1,expected_amount_fen:1}]){
       await assert.rejects(requestPaymentRefund(h.pool,h.owner,order.order_id,input as any,[h.provider]),e=>(e as any).code==='VALIDATION_FAILED');
     }
+    // The global cash cap now includes annual subscriptions. Historical packages
+    // still require their original points unit, even below that expanded cap.
+    await assert.rejects(requestPaymentRefund(h.pool,h.owner,order.order_id,{request_id:randomUUID(),amount_fen:1000001},[h.provider]),e=>(e as any).code==='PAYMENT_INVALID');
+    assert.equal((await h.readLot(order.order_id)).remaining,before.remaining);
+    assert.equal((await h.readLot(order.order_id)).frozen,'0');assert.equal(h.counts().creates,count);
     assert.equal((await h.send('POST',`/api/v1/commerce/topups/${order.order_id}/refunds`,{request_id:randomUUID(),points:2,amount_fen:1})).statusCode,422);
     h.setMode('success');let points=0,cash=0;
     for(const q of [2,...Array(19).fill(1),52479]){

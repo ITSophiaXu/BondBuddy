@@ -1,4 +1,4 @@
-import {INTEGRITY_SITES, INTEGRITY_SELECTABLE_SITES, type IntegritySite} from '@bondbuddy/contracts';
+import {INTEGRITY_SITES, INTEGRITY_SELECTABLE_SITES, removeRetiredIntegritySites, type IntegritySite} from '@bondbuddy/contracts';
 import {esc} from './ui';
 
 const external = '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M6 3H3v10h10v-3M9 2h5v5M7 9l7-7"/></svg>';
@@ -15,6 +15,7 @@ function groupMarkup(name: string, sites: IntegritySite[], selected: string[]) {
 }
 
 export function integritySitePicker(selected: string[]) {
+  selected = removeRetiredIntegritySites(selected);
   const main = INTEGRITY_SELECTABLE_SITES.filter(s=>s.group!=='属地监管');
   const legacy = INTEGRITY_SITES.filter(s=>s.legacy&&selected.includes(s.id));
   return `<div class="integrity-site-picker">
@@ -37,7 +38,7 @@ export function syncIntegritySitePicker(selected: string[], root: ParentNode = d
 }
 
 export function bindIntegritySitePicker(getSelected:()=>string[], onChange:(ids:string[])=>void, root:ParentNode=document) {
-  const update=(ids:string[])=>{onChange(ids);syncIntegritySitePicker(ids,root);};
+  const update=(ids:string[])=>{ids=removeRetiredIntegritySites(ids);onChange(ids);syncIntegritySitePicker(ids,root);};
   root.querySelectorAll<HTMLInputElement>('[name=integrity-site]').forEach(c=>c.addEventListener('change',()=>{
     update(c.checked?[...new Set([...getSelected(),c.value])]:getSelected().filter(id=>id!==c.value));
   }));
