@@ -2,7 +2,7 @@
 // the fixed synthetic prompt as the run's model_request snapshot, runs it through the contained
 // Codex adapter with the PostgreSQL durable journal, and finishes the job. Attempt, usage,
 // runtime and cost-ledger rows are the normal #79 rows. The trial kill switch, deny override,
-// daily token quota and evidence gate are enforced by recordPotentialCall before the intent.
+// evidence gate are enforced by recordPotentialCall before the intent; daily usage is uncapped.
 // Env credential mode only: an auth.json configuration is refused.
 import type { Pool } from 'pg';
 import type { PlatformProbeTemplateId } from '@bondbuddy/contracts';

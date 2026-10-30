@@ -39,7 +39,7 @@ export async function enqueuePlatformProbe(pool: Pool, actorId: string, body: Pl
       const job = (await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2', [principal.user_id, prior.id])).rows[0];
       return response(job, prior, body.template_id, true);
     }
-    // #35: the kill switch, a deny override and the daily token quota of the platform principal
+    // The kill switch and a deny override of the platform principal
     // reject a new probe up front; the worker re-checks all of them before the call intent.
     await assertModelCallAllowed(client, config, principal.user_id);
     const run = { id: uid(), owner_user_id: principal.user_id, project_id: principal.project_id, task_kind: PLATFORM_PROBE_JOB_TYPE };

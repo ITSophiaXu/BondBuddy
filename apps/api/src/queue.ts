@@ -216,7 +216,7 @@ export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:
     if(j.checkpoint?.review_assembly_recovery)
       throw new Problem(409,'CAPABILITY_NOT_READY','Review reassembly is reuse-only; new provider calls are forbidden');
     if(r.channel==='non_production_test')await assertTestGrant(client,{grantId:r.test_grant_id,userId:r.owner_user_id,projectId:r.project_id,inputRevision:r.input_revision,inputHash:r.input_hash});
-    // #35: kill switch, deny override and the daily token quota are re-checked before every call.
+    // Re-check the kill switch and deny override before every new call; daily usage is uncapped.
     await assertModelCallAllowed(client,trialGuardConfig(),lease.owner);
     if(metadata.promptSnapshotId){
       const ref=await client.query('SELECT 1 FROM bb_snapshot_refs WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND run_id=$4',[metadata.promptSnapshotId,lease.owner,r.project_id,r.id]);

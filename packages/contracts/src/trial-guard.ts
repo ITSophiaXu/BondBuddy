@@ -3,7 +3,7 @@ import { Type, type Static, type TSchema } from '@sinclair/typebox';
 // #35 controlled trial: quotas, abuse limits, operator overrides, platform cost ledger,
 // liveness/readiness and trial alerts. Kept in its own module so parallel PRs that append to
 // index.ts do not collide; index.ts only re-exports and spreads these values.
-// M1 does not charge users: supplier rates describe platform expenditure only.
+// Supplier usage reporting is separate from task credit billing; daily limits are retired.
 
 // Public API error codes added to ERROR_CODES.
 // TRIAL_QUOTA_EXCEEDED (429): a per-user, per-source or global trial limit is reached.
@@ -11,6 +11,7 @@ import { Type, type Static, type TSchema } from '@sinclair/typebox';
 // MODEL_CALLS_SUSPENDED (503): the emergency kill switch stops new model work.
 export const TRIAL_GUARD_ERROR_CODES = ['TRIAL_QUOTA_EXCEEDED', 'TRIAL_ACCESS_DENIED', 'MODEL_CALLS_SUSPENDED'] as const;
 // Which limit rejected the request. Stored on the quota alert and in the rejection log detail.
+// Daily limit kinds are retained only for historical events and older deployments.
 export const TRIAL_LIMIT_KINDS = [
   'active_runs_per_user', 'runs_per_user_per_day', 'upload_bytes_per_user_per_day', 'model_tokens_per_user_per_day',
   'global_active_runs', 'kill_switch', 'operator_deny',
@@ -37,13 +38,15 @@ const utc = Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?
 const day = Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'Trial accounting day in the configured trial time zone.' });
 const safeCode = Type.String({ pattern: '^[a-z][a-z0-9_]{0,63}$' });
 const count = Type.Integer({ minimum: 0 });
+const retiredDailyLimit = Type.Integer({ minimum: 0, deprecated: true,
+  description: 'Retired daily limit. Current servers return 0 (unlimited); old positive values are ignored.' });
 const tokens = obj({ input_tokens: count, output_tokens: count, cached_input_tokens: count, reasoning_tokens: count });
 
 const TrialLimitsSchema = obj({
   enabled: Type.Boolean(), day_time_zone: Type.String({ pattern: '^[A-Za-z_]+(?:/[A-Za-z_+-]+)*$' }),
-  active_runs_per_user: count, runs_per_user_per_day: count, upload_bytes_per_user_per_day: count, model_tokens_per_user_per_day: count,
+  active_runs_per_user: count, runs_per_user_per_day: retiredDailyLimit, upload_bytes_per_user_per_day: retiredDailyLimit, model_tokens_per_user_per_day: retiredDailyLimit,
   unknown_usage_tokens_per_attempt: count, global_active_runs: count,
-  projects_per_user_per_day: count, projects_per_source_per_hour: count, uploads_per_user_per_hour: count, uploads_per_source_per_hour: count,
+  projects_per_user_per_day: retiredDailyLimit, projects_per_source_per_hour: count, uploads_per_user_per_hour: count, uploads_per_source_per_hour: count,
   kill_switch_config: Type.Boolean()
 });
 const KillSwitchSchema = obj({ engaged: Type.Boolean(), config_engaged: Type.Boolean(), operator_state: nullable(enumOf(TRIAL_KILL_SWITCH_STATES)), reason_code: nullable(safeCode), changed_at: nullable(utc) });
