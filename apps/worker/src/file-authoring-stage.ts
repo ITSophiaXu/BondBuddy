@@ -14,7 +14,7 @@ const DOCX='application/vnd.openxmlformats-officedocument.wordprocessingml.docum
 const MAX=100*1024*1024;
 type FileRef={key:string;sha256:string;byte_size:number};
 export type FileAuthoringResult={version:'codex-file-word-v1';input_hash:string;files:Record<string,FileRef>;summary:Record<string,unknown>;error?:string};
-const fileNames=['tracked.docx','clean.docx','baseline.docx','delivery.md','operations.json','template-manifest.json','input.json'] as const;
+const fileNames=['tracked.docx','clean.docx','baseline.docx','delivery.md','operations.json','template-manifest.json','input.json','source-baseline.docx'] as const;
 const requiredFiles=['tracked.docx','clean.docx'] as const;
 function prefix(ctx:StageContext){return `owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/file-authoring/`;}
 function validPair(r:FileAuthoringResult,ctx:StageContext){
@@ -36,13 +36,22 @@ export function validFileResult(value:unknown,ctx:StageContext):value is FileAut
 
 export function editingSource(input:UnifiedInput){
   const policy=input.manifest.authoring.format_policy;
+  const exact=(pin:{material_id:string;material_version:number;sha256:string},role?:string)=>{
+    const matches=input.materials.filter(m=>m.pin.material_id===pin.material_id && m.pin.material_version===pin.material_version && m.pin.sha256===pin.sha256 && (!role||m.pin.role===role));
+    if(matches.length!==1)throw Error('INPUT_REVISION_CONFLICT');
+    return matches[0]!;
+  };
+  const prior=input.manifest.authoring.previous_output;
+  if(prior)return exact({material_id:prior.artifact_id,material_version:prior.version,sha256:prior.sha256},'project_output');
+  const review=input.manifest.authoring.review_result;
+  if(review)return exact(review.source_material);
+  // A locked source declaration cannot silently disappear and become a new manuscript.
+  for(const pin of input.manifest.authoring.source_prospectuses)exact(pin);
   // Revision sources keep their identity. A selected format source determines the
   // first-draft editing package only when there is no previous/report baseline.
   if(policy?.template?.kind==='material' && !input.manifest.authoring.previous_output){
     const pin=policy.template;
-    const chosen=input.materials.find(m=>m.pin.material_id===pin.material_id && m.pin.material_version===pin.material_version && m.pin.sha256===pin.sha256);
-    if(!chosen)throw Error('INPUT_REVISION_CONFLICT');
-    return chosen;
+    return exact(pin);
   }
   return [...input.materials].filter(m=>['project_output','historical','reference'].includes(m.pin.role)).sort((a,b)=>{
     const rank=(m:typeof a)=>m.pin.material_id===input.manifest.authoring.review_result?.source_material.material_id?-2:m.pin.role==='project_output'?-1:input.manifest.authoring.source_prospectuses.find(s=>s.material_id===m.pin.material_id)?.relation==='same_issuer'?0:1;
@@ -103,7 +112,8 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
       lockedInput=Buffer.from(JSON.stringify(data,null,2));
       await writeFile(join(cwd,'input.json'),lockedInput,{mode:0o400});
       originals.set('input.json',digest(await readFile(join(cwd,'input.json'))));
-      for(const name of ['task.md','read_material.py','word_patch.py'])await copyFile(join(helpers,name),join(cwd,name));
+      for(const name of ['task.md','baseline-quality.md','read_material.py','word_patch.py'])await copyFile(join(helpers,name),join(cwd,name));
+      originals.set('baseline-quality.md',digest(await checkedFile(cwd,'baseline-quality.md')));
       if(controlled){
         await copyFile(join(helpers,'fixed-edit.md'),join(cwd,'fixed-edit.md'));
         originals.set('fixed-edit.md',digest(await checkedFile(cwd,'fixed-edit.md')));
@@ -119,7 +129,12 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
       for(const name of fileNames){
         let bytes:Buffer;
         try{
-          if(controlled && name==='baseline.docx')bytes=await checkedFile(cwd,JSON.parse(lockedInput!.toString('utf8')).baseline_path);
+          if(name==='source-baseline.docx'){
+            if(controlled||source?.mediaType!==DOCX)continue;
+            // Preserve the actual immutable source, not output/baseline.docx supplied by the model.
+            bytes=await checkedFile(cwd,JSON.parse(lockedInput!.toString('utf8')).baseline_path);
+          }
+          else if(controlled && name==='baseline.docx')bytes=await checkedFile(cwd,JSON.parse(lockedInput!.toString('utf8')).baseline_path);
           else if(controlled && name.endsWith('.docx'))continue;
           else if(controlled && name==='input.json')bytes=lockedInput!;
           else if(controlled && name==='template-manifest.json')bytes=await checkedFile(cwd,name,FORMAT_JSON_MAX);
@@ -139,17 +154,18 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
       }
       const delivery=files['delivery.md']?(await checkedFile(join(cwd,'output'),'delivery.md',256*1024)).toString('utf8'):'';
       return {version:'codex-file-word-v1',input_hash:ctx.run.input_hash.trim(),files,summary:{
+        baseline_review_version:'baseline-pair-v1',revision_author:JSON.parse(lockedInput!.toString('utf8')).revision_author,
         ...(controlled?{format_policy:input.manifest.authoring.format_policy,format_execution:'controlled-docx-v1',format_state:'operations_ready'}:{}),
         baseline_kind:!source?'none':source.pin.role==='project_output'?'project_output':source.mediaType===DOCX?'uploaded_source':'reconstructed_pdf',
-        source_sha256:source?.pin.sha256??null,effective_baseline_sha256:files['baseline.docx']?.sha256??null,
+        source_sha256:source?.pin.sha256??null,effective_baseline_sha256:files['source-baseline.docx']?.sha256??files['baseline.docx']?.sha256??null,
         authoring_summary:delivery?[delivery.slice(0,12000)]:[],
         source_issuer:source?.pin.role==='project_output'?input.manifest.issuer_name:input.manifest.authoring.source_prospectuses.find(s=>s.material_id===source?.pin.material_id)?.issuer_name??null}};
     };
     const config=options.config??loadCodexAdapterConfig();
     return (options.model??codexModelStage)({name:'file_authoring_v1',logicalCallId:'file-authoring-v1',
       config:{...config,work_root:join(process.env.BB_PARSE_STAGING_DIR??config.work_root,'file-authoring'),max_output_bytes:32*1024*1024},
-      buildPrompt:async()=>`请在切换实际处理工作时发送一条独立的用户可见进度消息，严格使用 BB_PROGRESS:read_materials、BB_PROGRESS:read_knowledge、BB_PROGRESS:analyze、BB_PROGRESS:write_document、BB_PROGRESS:check_document 或 BB_PROGRESS:prepare_download 中的相应一项，并在其后用「 | 」附上一句不超过240字的用户可见工作摘要，说明刚完成或当前处理的具体步骤。每次取得中间进展都发送一条，不包含思考过程、材料正文、命令、内部路径或密钥。请先完整阅读 task.md 和 input.json，再自主使用本次原始材料和知识文件完成整份募集书及 output/ 下的交付文件。一次执行完成，不返回全文修改 JSON，不等待逐批请求。输入锁：${ctx.run.input_hash.trim()}。`,
-      schema:{},validate:value=>validFileResult(value,ctx),resultSchemaVersion:'codex-file-word-v1',templateVersion:controlled?'single-cli-authoring-format-v1':'single-cli-authoring-v1',fileWorkspace:{prepare,collect}}).run(ctx);
+      buildPrompt:async()=>`请在切换实际处理工作时发送一条独立的用户可见进度消息，严格使用 BB_PROGRESS:read_materials、BB_PROGRESS:read_knowledge、BB_PROGRESS:analyze、BB_PROGRESS:write_document、BB_PROGRESS:check_document 或 BB_PROGRESS:prepare_download 中的相应一项，并在其后用「 | 」附上一句不超过240字的用户可见工作摘要，说明刚完成或当前处理的具体步骤。每次取得中间进展都发送一条，不包含思考过程、材料正文、命令、内部路径或密钥。请先完整阅读 input.json、baseline-quality.md 和 task.md。baseline-quality.md 的原稿保留与自行核验要求覆盖旧说明中的冲突指令，有原稿必须基于指定原文更新。再自主使用本次原始材料和知识文件完成整份募集书及 output/ 下的交付文件。一次执行完成，不返回全文修改 JSON，不等待逐批请求。输入锁：${ctx.run.input_hash.trim()}。`,
+      schema:{},validate:value=>validFileResult(value,ctx),resultSchemaVersion:'codex-file-word-v1',templateVersion:controlled?'single-cli-authoring-format-baseline-v2':'single-cli-authoring-baseline-v2',fileWorkspace:{prepare,collect}}).run(ctx);
   }};
 }
 
@@ -185,7 +201,7 @@ export function fileAuthoringDeliveryStage():RunStage{
       }
       const diagnostic:FormatDiagnostic={version:'word-format-diagnostic-v1',status:'pending',input_hash:data.input_hash,
         revision_author:data.revision_author,revision_date:data.revision_date,
-        files:{baseline:refs['baseline.docx']!,tracked:refs['tracked.docx']!,operations:refs['operations.json']!}};
+        files:{baseline:refs['baseline.docx']!,tracked:refs['tracked.docx']!,operations:refs['operations.json']!,clean:refs['clean.docx']!}};
       return {kind:'deliver',deliveryPolicy:'generated_pair_v1',bytes:finalized.get('tracked.docx')!,cleanBytes:finalized.get('clean.docx')!,
         wordSummary:{...value.summary,format_state:'finalized',format_diagnostic:diagnostic,writer_version:'bondbuddy-fixed-word-1.0.0',
           delivery_policy:'generated_pair_v1',content_review:'not_performed',effective_baseline_sha256:digest(baselineBytes),
@@ -193,8 +209,14 @@ export function fileAuthoringDeliveryStage():RunStage{
     }
     // Preserve any old checker result in its original private provider record; it is not
     // rewritten as a pass. A new policy publishes just the two generated files.
+    const baseline=value.files['source-baseline.docx'];
+    const diagnostic:FormatDiagnostic|undefined=value.summary.baseline_review_version==='baseline-pair-v1' && baseline
+      && baseline.sha256===value.summary.source_sha256 && typeof value.summary.revision_author==='string'
+      ? {version:'word-format-diagnostic-v1',mode:'baseline_pair_v1',status:'pending',input_hash:ctx.run.input_hash.trim(),
+        revision_author:value.summary.revision_author,files:{baseline,tracked:value.files['tracked.docx']!,clean:value.files['clean.docx']!}}:undefined;
     return {kind:'deliver',deliveryPolicy:'generated_pair_v1',bytes:await read('tracked.docx'),cleanBytes:await read('clean.docx'),
       wordSummary:{...value.summary,writer_version:'bondbuddy-file-word-1.0.0',delivery_policy:'generated_pair_v1',content_review:'not_performed',
+        ...(diagnostic?{format_diagnostic:diagnostic}:{}),
         source_sha256:value.summary.source_sha256??null,baseline_hash:value.summary.baseline_hash??null,
         effective_baseline_sha256:value.summary.effective_baseline_sha256??null,plan_hash:value.summary.plan_hash??null,
         replacements:null,columns:null,pending:null,pending_review:[]}};

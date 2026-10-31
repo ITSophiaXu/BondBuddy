@@ -204,6 +204,24 @@ test('format diagnostic: PostgreSQL concurrency, durable retries, cancellation a
       assert.deepEqual(await deliveryState(pool, fixture), before);
     });
 
+    await t.test('real pair checker records an untracked rewrite without changing delivery',
+      {skip:!(process.env.BONDBUDDY_TEST_PYTHON||process.env.BONDBUDDY_WORD_PYTHON)},async()=>{
+      const store=memoryBlobs(),fixture=await completedFixture(pool,store.blobs),before=await deliveryState(pool,fixture);
+      const diagnostic:FormatDiagnostic={...fixture.diagnostic,mode:'baseline_pair_v1',files:{
+        baseline:fixture.diagnostic.files.baseline,tracked:fixture.diagnostic.files.tracked,clean:fixture.diagnostic.files.tracked}};
+      await pool.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{stages,word_delivery_pair,format_diagnostic}',$2::jsonb) WHERE id=$1",[fixture.jobId,JSON.stringify(diagnostic)]);
+      assert.equal(await runFormatDiagnosticOnce({pool,blobs:store.blobs}),'completed');
+      const saved=await checkpoint(pool,fixture);
+      assert.equal(saved.status,'failed');
+      const report=JSON.parse((await store.blobs.get(saved.report!.key)).toString('utf8'));
+      assert.ok(report.issues.some((issue:{code:string})=>issue.code==='WORD_REJECT_MISMATCH'));
+      assert.equal(report.content_review,'not_performed');
+      assert.deepEqual(await deliveryState(pool,fixture),before);
+      const artifacts=await pool.query('SELECT delivery_status FROM bb_artifact_versions WHERE run_id=$1',[fixture.runId]);
+      assert.ok(artifacts.rows.length>=2);
+      assert.ok(artifacts.rows.every(row=>row.delivery_status==='available'));
+    });
+
     await t.test('project deletion before the upload intent commits prevents all report Blob IO', async () => {
       const store = memoryBlobs(), fixture = await completedFixture(pool, store.blobs), before = await deliveryState(pool, fixture);
       const writes = store.writes.length, reads = store.reads.length;
