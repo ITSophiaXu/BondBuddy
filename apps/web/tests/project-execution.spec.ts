@@ -31,7 +31,7 @@ function fixture() {
   return { project, materials, inputs: [] as Dto<'InputRevisionCreateRequest'>[], snapshots: new Map<number, Dto<'InputRevisionResponse'>>(),
     executes: [] as Dto<'ExecuteRequest'>[], runs: new Map<string, Dto<'RunResponse'>>(), preflights: [] as Dto<'PreflightRequest'>[],
     artifacts: new Map<string, Dto<'ArtifactResponse'>>(),
-    generatedVersions: [] as Dto<'ProspectusVersionsResponse'>['versions'],
+    generatedVersions: [] as Dto<'ProspectusVersionsResponse'>['versions'], sourceSelected: true,
     priorTasks: [] as Dto<'ProjectTasksResponse'>['items'],
     nextInputRevision: undefined as number | undefined, patchRequests: 0,
     holdProjectRead: false, releaseProjectRead: undefined as (() => void) | undefined,
@@ -117,7 +117,14 @@ async function setup(page: Page, state = fixture(), canStart = true) {
         versions.current_version_id=state.generatedVersions.at(-1)!.version_id;
         versions.selection_revision+=state.generatedVersions.length;
       }
+      if(material&&!state.sourceSelected){versions.current_version_id=null;versions.selection_revision=0;versions.inactive_material_ids=[material.material_id];}
       return json(route,200,versions);
+    }
+    if(path===`/projects/${id}/prospectus-versions/current`&&method==='POST'){
+      expect(request.postDataJSON().version_id).toBe('source-version');
+      state.sourceSelected=true;state.project.draft_revision++;
+      const material=state.materials.find(m=>m.role==='historical')!;
+      return json(route,200,{project_id:id,current_version_id:'source-version',selection_revision:1,inactive_material_ids:[],versions:[{version_id:'source-version',sequence:1,origin:'upload',filename:material.filename,sha256:material.sha256,created_at:now,material_id:material.material_id,material_version:material.material_version,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null}]});
     }
     const artifactMatch=path.match(/^\/artifacts\/([^/]+)$/);
     if(artifactMatch&&method==='GET'){
@@ -1818,4 +1825,28 @@ test('automatic authoring keeps the exact quote and execution request after HTTP
  await page.route('**/credit-quote',route=>{quotes++;return json(route,200,{enabled:true,quote:{...commerceMetadata(8864),quote_id:'auto-rate-limit-'+quotes,project_id:id,...fixtureRequest(route.request()),task_type:'interim',points:8864,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,reason:'已保存输入',created_at:now,quote_status:'ready',scope_quote_id:'scope-rate-limit',scope_lines:[]},balance:{available:100000,frozen:0},shortage:0,reason:null});});
  await page.reload();await page.locator('#execute-input').click();await expect.poll(()=>state.executes.length).toBe(1);const original=structuredClone(state.executes[0]);await expect(page.locator('#retry-execution')).toBeVisible();
  state.executeError=undefined;await page.locator('#retry-execution').click();await expect.poll(()=>state.executes.length).toBe(2);expect(state.executes[1]).toEqual(original);expect(quotes).toBe(1);await expect(page.locator('[data-commerce-confirm]')).toHaveCount(0);expect(state.runs.size).toBe(1);
+});
+
+
+test('uploaded but unselected source cannot silently start a new-document update', async ({page}) => {
+  const state=fixture();state.sourceSelected=false;state.project.update_details!.authoring_mode='unified_v1';
+  await setup(page,state,false);
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  await expect(page.getByRole('status').filter({hasText:'已上传历史／参考募集说明书，请先点击'})).toBeVisible();
+  expect(state.inputs).toHaveLength(0);expect(state.executes).toHaveLength(0);
+  if(process.env.BB_SOURCE_STRUCTURE_EVIDENCE){
+    const output=resolve(process.env.BB_SOURCE_STRUCTURE_EVIDENCE);await mkdir(output,{recursive:true});
+    for(const width of [1440,390]){
+      await page.setViewportSize({width,height:960});await page.locator('#execute-input').scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`source-selection-required-${width}.png`)});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    }
+  }
+  await page.locator('[data-use-version="source-version"]').click();
+  await page.locator('#confirm-prospectus-selection').click();
+  await expect(page.locator('#execute-input')).toBeEnabled();
+  await page.locator('#execute-input').click();
+  await expect.poll(()=>state.inputs.length).toBe(1);
+  expect(state.inputs[0].material_versions).toContainEqual({material_id:'synthetic-history',material_version:1});
+  expect(state.inputs[0].prospectus_selection_revision).toBe(1);
 });

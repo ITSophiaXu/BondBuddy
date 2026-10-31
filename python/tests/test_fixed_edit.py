@@ -123,6 +123,17 @@ class FixedEditTests(unittest.TestCase):
         self.assertEqual(len(clean_doc.tables[0].rows), 3)
         self.assertEqual(clean_doc.tables[0].cell(1, 1).text, '120')
 
+    def test_recorded_heading_rewrite_still_requires_structure_review(self):
+        node = self.node('第一章 发行人概况')
+        output, receipt = self.generate([{'id': 'heading', 'kind': 'replace_text', 'node_id': node['node_id'],
+                                         'before': node['text'], 'after': '第二章 发行人基本情况'}])
+        report = json.loads((output / 'format-report.json').read_text(encoding='utf-8'))
+        self.assertEqual(report['source_structure']['status'], 'changed')
+        self.assertEqual([issue['code'] for issue in report['issues']], ['SOURCE_OUTLINE_CHANGED'])
+        self.assertEqual(receipt['format_status'], 'failed')
+        self.assertTrue((output / 'tracked.docx').is_file(), 'diagnostics do not block delivery')
+        self.assertTrue((output / 'clean.docx').is_file())
+
     def test_wrong_hash_stale_anchor_unknown_fields_and_no_log_are_rejected(self):
         node = self.node('保留😀的原始段落。')
         with self.assertRaisesRegex(ValueError, 'WORD_EDIT_ANCHOR_MISMATCH'):

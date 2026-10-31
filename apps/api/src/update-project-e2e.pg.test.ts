@@ -104,11 +104,16 @@ test('update project: real uploads, version CAS, exact input pins, cross-kind re
     const mistakeDraft=await ok('GET',mistakePath);
     const wrongInput={draft_revision:mistakeDraft.draft_revision,prospectus_selection_revision:0,material_versions:[{material_id:wrong.material_id,material_version:1}],requirement_message_ids:[]};
     assert.equal((await send('POST',mistakePath+'/input-revisions',wrongInput)).statusCode,409,'saved-only upload cannot silently enter the task');
-    const noReference=await ok('POST',mistakePath+'/input-revisions',{...wrongInput,material_versions:[]});
-    assert.deepEqual(noReference.material_versions,[],'no reference remains a valid choice');
+    const omittedSource=await send('POST',mistakePath+'/input-revisions',{...wrongInput,material_versions:[]});
+    assert.equal(omittedSource.statusCode,409,'an uploaded but unselected source must not silently become a new-document task');
+    assert.match(omittedSource.body,/用于本次更新/);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_input_revisions WHERE project_id=$1',[mistake.project_id])).rows[0].n,0);
     owner=`other-${randomUUID()}`;assert.equal((await send('DELETE',`${mistakePath}/materials/${wrong.material_id}`)).statusCode,404);owner=user;
     assert.equal((await send('DELETE',`${mistakePath}/materials/${wrong.material_id}`)).statusCode,204);
     assert.equal((await ok('GET',mistakePath+'/prospectus-versions')).versions.length,0);
+    const emptyDraft=await ok('GET',mistakePath);
+    const noReference=await ok('POST',mistakePath+'/input-revisions',{...wrongInput,draft_revision:emptyDraft.draft_revision,material_versions:[]});
+    assert.deepEqual(noReference.material_versions,[],'a project with no source still supports new-document authoring');
     const replacement=await upload(mistake.project_id,'correct-replacement');
     const replaced=await ok('GET',mistakePath+'/prospectus-versions');
     assert.equal(replaced.versions[0].sequence,2);assert.equal(replaced.versions[0].material_id,replacement.material_id);
