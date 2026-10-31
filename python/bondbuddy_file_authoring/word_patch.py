@@ -104,7 +104,12 @@ class Patcher:
     def __init__(self, root, revision, author="BondBuddy"):
         self.author = author
         self.revision = revision
-        self.next_id = max([int(n) for n in ET.XPath('//@w:id', namespaces=NS)(root) if n.isdigit()] + [0]) + 1
+        # A non-revision replay never allocates revision IDs. An absolute XPath
+        # on an attached paragraph walks its entire document, so doing this for
+        # every edit made long prospectuses exceed the Word worker deadline.
+        # Tracked editing still scans the document once to avoid ID collisions.
+        self.next_id = (max([int(n) for n in ET.XPath('//@w:id', namespaces=NS)(root)
+                            if n.isdigit()] + [0]) + 1) if revision else 1
         self.date = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
 
     def revision_node(self, run, kind):

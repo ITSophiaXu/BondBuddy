@@ -322,9 +322,10 @@ class Editor:
             patcher = ReplayPatcher(root, self.data['revision_author'], self.data.get('revision_date'))
             patcher.next_id = next_revision
             comment_targets = {item['node_id'] for item in self.comments}
+            target_keys = self.touched | self.inserted_paragraphs | self.inserted_rows | comment_targets
             destinations = {key: at_path(root, path_to(self.roots[part], node))
                             for key, (story, node) in self.nodes.items()
-                            if story == part and key in self.touched | self.inserted_paragraphs | self.inserted_rows | comment_targets}
+                            if story == part and key in target_keys}
             for key in sorted(self.touched):
                 if key not in self.original_paragraphs or self.nodes[key][0] != part:
                     continue

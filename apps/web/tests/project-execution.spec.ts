@@ -1034,6 +1034,56 @@ test('provider timeout explains service recovery and keeps the same task after a
   await expect(page.locator('#prepare-next-version')).toBeVisible();
 });
 
+for (const stage of ['word_delivery', 'provider_call', 'future_processing_stage', undefined]) {
+  test(`processor failure explains ${stage ?? 'unavailable history'} without inventing missing materials`, async ({ page }) => {
+    const state=fixture();state.checkStatus='ready';state.runState='running';state.runStage='word_delivery';state.runReason='stage_started';
+    await setup(page,state);await page.locator('#execute-input').click();
+    await expect(page.locator('#execution-progress')).toContainText('正在保存 Word 文件');
+    const run=[...state.runs.values()][0], inputHash=run.input_hash;
+    const event=(seq:number, eventStage:string, type:Dto<'RunEvent'>['type'], reason:string):Dto<'RunEvent'> => ({
+      event_id:`failure-event-${seq}`,schema_version:1,trace_id:'trace',run_id:run.run_id,seq,occurred_at:now,
+      stage:eventStage,type,state:type==='run.progress'?'running':'failed',payload:{reason}
+    });
+    state.publicEvents=[
+      ...(stage?[event(3,'word_delivery','run.progress','stage_started'),event(4,stage,'run.progress','stage_started')]:[]),
+      event(5,'failed','run.state_changed','processor_failed')
+    ];
+    run.state='failed';run.stage='failed';run.event_cursor=5;state.eventSeq=5;
+    state.chargeState='released';
+    for(let refresh=0;refresh<2;refresh++){
+      await page.reload();
+      const summary=page.locator('.execution-summary');
+      await expect(summary).toContainText(stage==='word_delivery'?'Word 文件生成或保存失败':'系统处理失败');
+      await expect(summary).not.toContainText('待处理条件');
+      await expect(summary).not.toContainText('请查看材料信息');
+      await expect(summary).not.toContainText('processor_failed');
+      await expect(page.locator('.task-progress-steps [aria-current="step"]')).toContainText(stage==='word_delivery'?'保存文档':'编制募集书');
+      await expect(page.locator('#prepare-next-version')).toBeVisible();
+      await expect(page.locator('#resume-run')).toHaveCount(0);
+      expect(state.executes).toHaveLength(1);expect(run.input_hash).toBe(inputHash);expect(state.runActions).toEqual([]);
+    }
+    if(stage==='word_delivery'&&process.env.BB_WORD_FAILURE_UX_DIR){
+      await mkdir(process.env.BB_WORD_FAILURE_UX_DIR,{recursive:true});
+      for(const [name,width,height] of [['desktop',1440,960],['mobile',390,844]] as const){
+        await page.setViewportSize({width,height});
+        await page.locator('#execution-progress').scrollIntoViewIfNeeded();
+        await page.screenshot({path:join(process.env.BB_WORD_FAILURE_UX_DIR,`implementation-${name}.png`)});
+        expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+      }
+    }
+  });
+}
+
+test('unknown processor reason keeps the cause unknown instead of requesting materials', async ({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runState='failed';state.runStage='failed';state.runReason='future_failure_reason';
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.locator('.execution-summary')).toContainText('具体原因尚未确认');
+  await expect(page.locator('.execution-summary')).not.toContainText('待处理条件');
+  await page.reload();
+  await expect(page.locator('.execution-summary')).toContainText('具体原因尚未确认');
+  expect(state.executes).toHaveLength(1);
+});
+
 test('account switch ignores an in-flight execute result', async ({ page }) => {
   const state=fixture(); state.checkStatus='ready'; await setup(page,state); state.holdExecute=true;
   await page.locator('#execute-input').click(); await expect.poll(()=>!!state.releaseExecute).toBe(true);
