@@ -719,7 +719,8 @@ export class ProjectExecution {
         if (error instanceof ApiError && error.status === 409) {
           this.invalidate();
           await this.conversation.refresh();
-          this.message = this.nextRequested?'项目、材料或底稿版本已变化，请重新载入项目资料后再生成。':'消息或项目版本已变化；已重新读取消息，请核对后再次开始。';
+          this.message = error.details.prospectusSelectionRequired ? friendlyError(error)
+            : this.nextRequested?'项目、材料或底稿版本已变化，请重新载入项目资料后再生成。':'消息或项目版本已变化；已重新读取消息，请核对后再次开始。';
           if(this.nextRequested){this.nextBasisError=this.message;this.nextNeedsProjectRefresh=true;}
           return;
         }

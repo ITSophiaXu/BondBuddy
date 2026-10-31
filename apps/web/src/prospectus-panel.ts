@@ -1,6 +1,6 @@
 import './upload-progress.css';
 import {uploadActivity,uploadTransfer,uploadProgressHtml,type FileUploadProgress} from './upload-progress';
-import { M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, type ProspectusVersions } from '@bondbuddy/contracts';
+import { M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, requiresProspectusSelection, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type ProspectusVersions } from '@bondbuddy/contracts';
 import { ApiClient, friendlyError, ApiError } from './api';
 import { UserFacingError } from './user-facing-error';
 import { ArtifactDownloads, artifactFilename } from './artifact-download';
@@ -43,6 +43,7 @@ export class ProspectusPanel {
   dispose(){this.controller.abort();this.closeDialog();this.downloads.dispose();}
   get hasUnconfirmed(){return !this.controller.signal.aborted&&(this.busy||!!this.pendingSelection?.attempted||!!this.pendingUpload?.uncertain||this.purpose==='generation'&&(!!this.pendingUpload||this.uploadRows().length>0));}
   get selectedVersionId(){return this.verifiedVersions()?this.state?.current_version_id:null;}
+  get sourceSelectionMessage(){return this.purpose==='update'&&this.verifiedVersions()&&requiresProspectusSelection(this.state!)?PROSPECTUS_SELECTION_REQUIRED_MESSAGE:'';}
   private generationCandidate(){
     if(!['generation','qa'].includes(this.purpose)||!this.verifiedVersions())return;
     const current=this.state!.versions.find(v=>v.version_id===this.state!.current_version_id);

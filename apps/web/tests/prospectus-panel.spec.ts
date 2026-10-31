@@ -63,7 +63,7 @@ async function setup(page:Page,{versions=false,purpose='update',retry=false}={})
     const load=(path:string)=>import(path);await load('/src/style.css');await load('/src/update-entry.css');await load(prototypeRoot+'styles.css');await load(prototypeRoot+'project-workspace.css');await load('/src/prototype-adapter.css');if(purpose==='generation')await load('/src/generation-flow.css');
     const {ProspectusPanel}=await load('/src/prospectus-panel.ts'),{ApiClient}=await load('/src/api.ts');
     const panel=new ProspectusPanel(new ApiClient(()=>{}),'synthetic-panel-project',document.querySelector('#panel'),async()=>true,async()=>{},()=>{},purpose,'synthetic-owner');
-    await panel.refresh();Object.assign(window,{panelFixture:{refresh:()=>panel.refresh()}});
+    await panel.refresh();Object.assign(window,{panelFixture:{refresh:()=>panel.refresh(),sourceSelectionMessage:()=>panel.sourceSelectionMessage}});
   },{purpose,prototypeRoot});
   await expect(page.locator('[data-prospectus-heading]')).toBeVisible();};await reenter();return{state,calls,reenter};
 }
@@ -83,6 +83,7 @@ for(const purpose of ['update','consistency'])test(purpose+' automatically uploa
   const chooser=page.waitForEvent('filechooser');await page.getByRole('button',{name:'重新选择',exact:true}).click();await(await chooser).setFiles({name:'合成新稿.docx',mimeType:mime,buffer:bytes});
   await expect(page.locator('#prospectus-status')).toContainText(/已保存.*尚未采用/);await page.evaluate(()=>window.panelFixture.refresh());
   expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.state.current_version_id).toBeNull();await expect(page.locator('#save-prospectus-version')).toBeHidden();
+  expect(await page.evaluate(()=>window.panelFixture.sourceSelectionMessage())).toBe(purpose==='update'?'已上传历史／参考募集说明书，请先点击“用于本次更新”选择原稿；如为误传，请删除后再开始。':'');
   if(process.env.BB_UPLOAD_EVIDENCE){await mkdir(process.env.BB_UPLOAD_EVIDENCE,{recursive:true});for(const width of [1440,390]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.locator('.prospectus-panel').screenshot({path:`${process.env.BB_UPLOAD_EVIDENCE}/${purpose}-uploaded-${width}.png`});}}
 });
 
@@ -97,6 +98,7 @@ test('unknown upload receipt retries the original session without reupload and s
   await page.getByRole('button',{name:'确认原上传',exact:true}).click();await expect(page.locator('#prospectus-status')).toContainText(/已保存.*尚未采用/);expect(f.state.current_version_id).toBeNull();expect(f.state.selection_revision).toBe(0);expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(0);
   expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.calls.filter(c=>c.path.endsWith('/materials/uploads'))).toHaveLength(1);const completions=f.calls.filter(c=>c.path.endsWith('/complete'));expect(completions).toHaveLength(2);expect(completions[0].body).toEqual(completions[1].body);
   await adopt(page,'v3');expect(f.state.current_version_id).toBeNull();await page.locator('#confirm-prospectus-selection').click();await expect(page.locator('.reference-file.is-selected')).toContainText('本次更新已选用');expect(f.state.current_version_id).toBe('v3');
+  expect(await page.evaluate(()=>window.panelFixture.sourceSelectionMessage())).toBe('');
 });
 
 test('current version downloads, history disclosure survives refresh, and adoption needs confirmation',async({page})=>{
@@ -170,7 +172,7 @@ test('generation upload recovery auto-selects saved source using the original re
   await expect(page.locator('.pf-selected-source')).toContainText('V3');
   expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(1);
 });
-declare global{interface Window{panelFixture:{refresh:()=>Promise<void>}}}
+declare global{interface Window{panelFixture:{refresh:()=>Promise<void>;sourceSelectionMessage:()=>string}}}
 
 test('mistaken saved upload can be cancelled, deleted, refreshed away and replaced',async({page})=>{
   const f=await setup(page);await expect(page.locator('[data-prospectus-heading]')).toHaveText('历史／参考募集书（选填）');
@@ -181,6 +183,7 @@ test('mistaken saved upload can be cancelled, deleted, refreshed away and replac
   await row.getByRole('button',{name:'删除',exact:true}).click();await page.locator('[data-confirm-delete]').click();
   await expect(row).toHaveCount(0);await page.evaluate(()=>window.panelFixture.refresh());await expect(history(page).locator('[data-prospectus-version]')).toHaveCount(0);
   expect(f.calls.filter(c=>c.method==='DELETE')).toHaveLength(1);expect(f.state.current_version_id).toBeNull();
+  expect(await page.evaluate(()=>window.panelFixture.sourceSelectionMessage())).toBe('');
   await selectFile(page,'正确参考稿.docx');await expect(page.locator('[data-prospectus-version="v3"]')).toContainText('正确参考稿.docx');
   expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(0);
 });

@@ -41,6 +41,10 @@ docs/acceptance/*
 !docs/acceptance/integrity-result-wait-20261029.md
 !docs/acceptance/project-qa-prospectus-first-20261029.md
 !docs/acceptance/source-format-preservation-20261029.md
+!docs/acceptance/source-structure-2026-10-31.md
+!docs/acceptance/source-structure-2026-10-31/
+docs/acceptance/source-structure-2026-10-31/*
+!docs/acceptance/source-structure-2026-10-31/*.png
 !docs/acceptance/workpaper-shared-batch-20261028.md
 !docs/acceptance/issue-718/
 !docs/acceptance/m4-implementation-2026-10-06.md

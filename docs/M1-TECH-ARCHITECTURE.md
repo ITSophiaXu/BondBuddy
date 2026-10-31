@@ -28,6 +28,8 @@
 
 > 2026-10-29：募集说明书原稿格式保留采用精确模板pin、固定编辑工具、持久化操作后受控定稿及非阻断格式诊断。旧输入保持旧路径，单次CLI和下载口径继续沿用；能力与验收边界见[原稿格式保留决定](product-decisions/2026-10-29-source-format-preservation.md)。
 
+> 2026-10-31：已有上传原稿但尚未采用时，统一更新页面、输入锁定和新 run 创建均要求先“用于本次更新”；执行检查在已有 run 幂等返回之后、积分预留之前，防止旧助手确认卡漏稿，不改变已接受任务的输入。恢复提示复用 `INPUT_REVISION_CONFLICT`，其 `field_errors` 中的 `prospectus_selection / PROSPECTUS_SELECTION_REQUIRED` 由 contracts 唯一定义。无基线首稿允许修订与清洁文件去重复用同一 artifact，下载端仅对这类明确同 ID/同 hash 的配对接受别名；归属、run/version、双版引用及下载字节校验保留。见[集成验收](acceptance/source-structure-2026-10-31.md)。
+
 # M1 统一技术栈与四人协作基线
 
 ## 2026-10-07 材料原件上传边界

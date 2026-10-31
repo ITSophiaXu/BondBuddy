@@ -95,12 +95,28 @@ export class ArtifactPage {
           // Obtain a fresh grant for every attempt; never reuse a URL from page load.
           const fresh = await this.api.artifact(file.id, signal);
           if (!this.current() || generation !== this.generation || signal.aborted) return;
+          const freshDelivery = fresh.word_delivery;
+          // A first draft may deduplicate identical Word bytes into one artifact.
+          // Its metadata calls that shared artifact "revision"; only this explicit
+          // no-baseline pair can also satisfy the clean download action.
+          const firstDraftCleanAlias = file.variant === 'clean' && freshDelivery?.variant === 'revision' &&
+            delivery?.baseline_kind === 'none' && freshDelivery.baseline_kind === 'none' &&
+            delivery.revision_artifact_id === delivery.clean_artifact_id &&
+            freshDelivery.revision_artifact_id === freshDelivery.clean_artifact_id && fresh.sha256 === artifact.sha256;
           if (fresh.artifact_id !== file.id || fresh.run_id !== artifact.run_id || fresh.version !== artifact.version ||
             fresh.quality_status !== 'passed' || fresh.delivery_status !== artifact.delivery_status ||
-            (file.variant && (fresh.word_delivery?.variant !== file.variant || fresh.word_delivery.revision_artifact_id !== delivery?.revision_artifact_id))) throw new ApiError(0, 'DATA_UNAVAILABLE');
+            (file.variant && ((!firstDraftCleanAlias && freshDelivery?.variant !== file.variant) ||
+              freshDelivery?.revision_artifact_id !== delivery?.revision_artifact_id ||
+              freshDelivery?.clean_artifact_id !== delivery?.clean_artifact_id))) throw new ApiError(0, 'DATA_UNAVAILABLE');
           const bytes = await this.api.artifactBytes(fresh, signal);
           if (!this.current() || generation !== this.generation || signal.aborted) return;
-          this.downloads.save(bytes, artifactFilename(fresh));
+          let filename = artifactFilename(fresh);
+          if (firstDraftCleanAlias) {
+            const cleanName = filename.replace(/募集书修订版(?=_V\d+(?:_\d{8})?\.docx$)/, '募集书清洁版');
+            filename = cleanName !== filename ? cleanName : artifactFilename({ ...fresh, filename: undefined,
+              word_delivery: { ...freshDelivery!, variant: 'clean' } });
+          }
+          this.downloads.save(bytes, filename);
           status.textContent = '文件已交给浏览器下载，请在浏览器下载列表中查看。';
         } catch (error) {
           if (this.current() && generation === this.generation && !signal.aborted) status.textContent = artifactError(error);

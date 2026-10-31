@@ -886,7 +886,7 @@ function renderMaterialPartitions(projectId: string) {
 function projectMaterialReadiness(projectId: string) {
   const recovery = recoveryStates.get(projectId);
   const pending = (localUploads.get(projectId) ?? []).find(upload => upload.phase !== 'persisted');
-  const message = prospectusPanel?.hasUnconfirmed ? '募集书保存或采用结果尚未确认，请先确认后再开始更新。' : recovery?.state === 'unavailable' ? '材料记录读取失败，请点击“刷新已保存材料”重试。'
+  const message = prospectusPanel?.hasUnconfirmed ? '募集书保存或采用结果尚未确认，请先确认后再开始更新。' : prospectusPanel?.sourceSelectionMessage ? prospectusPanel.sourceSelectionMessage : recovery?.state === 'unavailable' ? '材料记录读取失败，请点击“刷新已保存材料”重试。'
     : pending ? `${uploadName(pending)}：${uploadStatus(pending)}`
     : recovery?.state !== 'ready' ? '正在读取已保存材料…' : '';
   return {ready: !message, message};

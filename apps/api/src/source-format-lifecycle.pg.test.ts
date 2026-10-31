@@ -98,8 +98,11 @@ test('format inventory pins only the matching owned run and never auto-deletes a
     assert.equal(scanned.byPrefix['owners/'].unrecognized.count, 1);
     assert.equal(scanned.deleted, 0); assert.equal(store.deleted.length, 0); assert.equal(store.stored.size, 5);
     assert.equal((await pool.query("SELECT count(*)::int n FROM bb_storage_inventory_cursors WHERE prefix='owners/'")).rows[0].n, 1);
-    await pool.query('UPDATE bb_projects SET deleted_at=now() WHERE id=$1', [fixture.project]);
-    assert.equal((await runDeletedContentPurge(pool, store.blobs, { deletedContentPurgeDays: 0, ownerScope: fixture.owner })).projectsPurged, 1);
+    // Use one clock at the inclusive retention boundary: PostgreSQL's now()
+    // has finer precision than a Date and may otherwise be a fraction ahead.
+    const deletedAt = new Date();
+    await pool.query('UPDATE bb_projects SET deleted_at=$2 WHERE id=$1', [fixture.project, deletedAt]);
+    assert.equal((await runDeletedContentPurge(pool, store.blobs, { deletedContentPurgeDays: 0, ownerScope: fixture.owner, now: () => deletedAt })).projectsPurged, 1);
     // An unexpected late write cannot be hidden by a retained run row after purge.
     await store.blobs.put(report, Buffer.from('synthetic late report'), 'application/json');
     const after = await runStorageInventory(pool, store.blobs);

@@ -2,6 +2,30 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test, type TestContext } from 'node:test';
 import { ApiClient, ApiError, friendlyError, parseApiError, type Dto } from './api.js';
+import { PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE } from '@bondbuddy/contracts';
+
+test('unselected prospectus errors explain adoption without trusting server prose', () => {
+  const error = parseApiError(409, {code:'INPUT_REVISION_CONFLICT',message:'private server message',
+    field_errors:[{...PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR,message:'untrusted replacement'}]});
+  assert.equal(error.code, 'INPUT_REVISION_CONFLICT');
+  assert.equal(error.details.prospectusSelectionRequired, true);
+  assert.equal(friendlyError(error), PROSPECTUS_SELECTION_REQUIRED_MESSAGE);
+  assert.doesNotMatch(friendlyError(error), /private|untrusted|其他页面/);
+});
+
+test('only the prospectus field/code pair under input conflict selects the recovery message', () => {
+  for (const fields of [undefined, {}, [null, [], 'invalid'],
+    [{field:'wrong',code:PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR.code}],
+    [{field:PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR.field,code:'UNKNOWN',message:PROSPECTUS_SELECTION_REQUIRED_MESSAGE}],
+  ]) {
+    const error = parseApiError(409, {code:'INPUT_REVISION_CONFLICT',message:PROSPECTUS_SELECTION_REQUIRED_MESSAGE,field_errors:fields});
+    assert.equal(error.details.prospectusSelectionRequired, undefined);
+    assert.match(friendlyError(error), /其他页面修改/);
+  }
+  const unrelated = parseApiError(422, {code:'VALIDATION_FAILED',field_errors:[PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR]});
+  assert.equal(unrelated.details.prospectusSelectionRequired, undefined);
+  assert.doesNotMatch(friendlyError(unrelated), /用于本次更新/);
+});
 
 test('an active source-project run has a safe business message distinct from draft version conflict',()=>{
   const error=parseApiError(409,{code:'PROJECT_RUN_ACTIVE',message:'Synthetic private worker path or provider detail must not reach the UI'});
