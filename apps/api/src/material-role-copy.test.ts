@@ -118,6 +118,22 @@ test('owner explicitly copies exact reference bytes with durable replay and isol
       source_material_version:1,source_sha256:docxHash,source_media_type:DOCX,target_role:'historical'});
     assert.equal(docxCopy.statusCode,201,docxCopy.body);
     assert.deepEqual((await send('GET',`${base}/materials/${docxCopy.json().material.material_id}/download`)).rawPayload,docx);
+    // Unified updates adopt corrected historical uploads in the copy transaction.
+    await pool.query(`UPDATE bb_projects SET update_details=jsonb_set(update_details,'{authoring_mode}','"unified_v1"') WHERE id=$1`,[project]);
+    const automaticRequest={request_key:randomUUID(),source_material_id:docxSource.json().material_id,
+      source_material_version:1,source_sha256:docxHash,source_media_type:DOCX,target_role:'historical'};
+    const automatic=await send('POST',path,automaticRequest);
+    assert.equal(automatic.statusCode,201,automatic.body);
+    const selected=(await send('GET',`${base}/prospectus-versions`)).json();
+    assert.equal(selected.versions.find((v:any)=>v.version_id===selected.current_version_id).material_id,automatic.json().material.material_id);
+    assert.equal(selected.selection_revision,1);
+    const newerCopy=await send('POST',path,{...automaticRequest,request_key:randomUUID()});
+    assert.equal(newerCopy.statusCode,201,newerCopy.body);
+    const newerSelected=(await send('GET',`${base}/prospectus-versions`)).json();
+    assert.equal(newerSelected.selection_revision,2);
+    assert.equal((await send('POST',path,automaticRequest)).statusCode,201);
+    assert.deepEqual((await send('GET',`${base}/prospectus-versions`)).json(),newerSelected,'old copy receipt replay cannot replace the newer source');
+    assert.deepEqual((await pool.query('SELECT input_hash,material_versions FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=1',[owner,project])).rows[0],old);
     // Synthetic metadata is sufficient to exercise the transactional byte-capacity guard.
     for(let index=0;index<5;index++){
       const materialId=randomUUID(),key=`synthetic/${owner}/${materialId}`,size=M1_UPLOAD_LIMITS.fileBytes;
