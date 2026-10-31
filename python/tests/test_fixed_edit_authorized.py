@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 
 from bondbuddy_file_authoring.check import package
+from bondbuddy_file_authoring.baseline_review import audit_pair
 from bondbuddy_file_authoring.fixed_edit import empty_log, finalize, write_json
 from bondbuddy_file_authoring.template_manifest import build_manifest, sha
 
@@ -48,6 +49,8 @@ class AuthorizedFixedEditTests(unittest.TestCase):
                 receipt = finalize(input_path, log_path, output)
                 self.assertEqual(receipt['format_status'], 'passed',
                                  (output / 'format-report.json').read_text(encoding='utf-8'))
+                pair = audit_pair(source, output / 'tracked.docx', output / 'clean.docx', data['revision_author'])
+                self.assertEqual(pair['status'], 'passed', pair)
                 baseline, tracked = package(source), package(output / 'tracked.docx')
                 for part in baseline:
                     if part != 'word/document.xml':

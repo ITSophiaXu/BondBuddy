@@ -786,7 +786,15 @@ v4 仅对明确标识 `codex-material-readonly-1`、已退出、无结果且 MOD
 
 Codex 使用命名文件权限：本次输入只读、scratch/output 可写，网络禁止，其他项目、/proc 和凭据不可读；工具环境不继承凭据。每次模型发送前真实探测目录外读写/原件修改/网络拒绝。Docker 仍 cap_drop ALL、只读根和 no-new-privileges；专用 seccomp/AppArmor 仅补齐嵌套非特权命名空间所需系统调用与挂载，未使用 privileged、unconfined 或 danger-full-access。详见 deploy/m1/security/README.md。
 
-模型完成后平台独立检查真实文件：输入 hash 不变、OOXML 可读、接受修订与清洁稿一致、拒绝本轮修订与基线一致、基线原件及媒体保留，无原稿不造修订。真实结果文件先入本人私有 Blob 并回读 hash，文件引用经既有持久调用 journal 保存，后续继续现有 Word 检查、成果提升和授权下载。复用完成调用；未知调用不盲目重放，新文件模式不加入只读批次的自动超时重试。模型完成不等于 Word 验收通过，真实业务/页面验收仍分开。
+上述首版曾检查真实文件与基线、双 Word 的一致性；随后 10 月 2 日生成即下载决定取消了这层交付门槛。10 月 29 日增加受控 DOCX 编辑及交付后格式诊断，10 月 31 日按下述决定恢复真实基线与双 Word 的非阻断核验。结果文件先入本人私有 Blob 并回读 hash，文件引用经既有持久调用 journal 保存，再提升成果和授权下载。复用完成调用；未知调用不盲目重放，新文件模式不加入只读批次的自动超时重试。文件可下载、机械检查通过和真实内容验收是不同状态。
+
+## 2026-10-31：恢复实际原稿与双 Word 一致性
+
+按[原稿质量恢复决定](product-decisions/2026-10-31-original-baseline-quality.md)，`editingSource` 精确匹配所选上一版成果或复核源稿的 ID、版本与 hash；已声明源稿缺失时不能降级成新编。主提示先读 `baseline-quality.md`，要求全量阅读原文，保留未受影响文字、目录和表格，在同一次 CLI 内自查修正。新提示快照版本为 `single-cli-authoring[-format]-baseline-v2`；不改变逻辑调用 ID，不让已有完成调用重新计费执行。
+
+`baseline_review` 核对拒绝本轮修订后等于原件有效正文、接受全部修订后等于清洁版、清洁版无修订、原媒体/嵌入件保留，并记录各 story 的全文文字复用数量。受控模式同时复用格式与操作重放核验；直接模式保存输入中的 `source-baseline.docx`，不能拿模型生成的 `output/baseline.docx` 代替原件。历史持久结果缺少新引用时仍走原交付兼容路径，不冒称已核验。
+
+交付后沿用 `word-format-diagnostic-v1` 私有诊断生命周期：受控结果增添 clean 引用；直接结果使用 `mode=baseline_pair_v1`。旧结果没有 clean 引用时继续旧格式检查。所有诊断文件验证账号、项目、run 前缀、hash 与大小；报告与 source-baseline 均在已有 inventory/删除前缀内，无新迁移。失败或不支持只进入诊断记录，不改变已提供文件的可下载性、任务终态、账本或模型调用。逐章内容是否更新充分、法规判断及 Word/WPS 页面质量不由这些机械检查背书。
 
 ## 2026-10-09：更新直接开始、交付后结算（#631）
 

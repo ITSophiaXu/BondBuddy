@@ -47,9 +47,11 @@ async function clearPendingReport(client: PoolClient, row: Candidate, blobs: Pri
 export function validFormatDiagnostic(row: Candidate): boolean {
   const d = row.diagnostic;
   const prefix = `owners/${row.owner_user_id}/projects/${row.project_id}/runs/${row.run_id}/file-authoring/`;
+  const required=d?.mode==='baseline_pair_v1'?['baseline','tracked','clean']:['baseline','tracked','operations',...(d?.files?.clean?['clean']:[])];
   return d?.version === 'word-format-diagnostic-v1' && d.status === 'pending' && d.input_hash === row.input_hash.trim()
+    && (d.mode===undefined||d.mode==='baseline_pair_v1')
     && typeof d.revision_author === 'string' && d.revision_author.length > 0 && d.revision_author.length <= 128
-    && ['baseline', 'tracked', 'operations'].every(name => {
+    && required.every(name => {
       const ref = d.files?.[name as keyof FormatDiagnostic['files']];
       return ref && typeof ref.key === 'string' && ref.key.startsWith(prefix) && !ref.key.includes('..')
         && /^[a-f0-9]{64}$/.test(ref.sha256) && Number.isSafeInteger(ref.byte_size) && ref.byte_size > 0
@@ -62,8 +64,11 @@ export async function diagnoseFormat(row: Candidate, blobs: PrivateBlobs, signal
   const root = await mkdtemp(join(tmpdir(), 'bb-format-diagnostic-'));
   try {
     await mkdir(join(root, 'materials'), { mode: 0o700 });
-    for (const [name, path] of [['baseline', 'materials/baseline.docx'], ['tracked', 'tracked.docx'], ['operations', 'operations.json']] as const) {
-      const ref = row.diagnostic.files[name];
+    const paths=[['baseline','materials/baseline.docx'],['tracked','tracked.docx'],
+      ...(row.diagnostic.mode!=='baseline_pair_v1'?[['operations','operations.json']]:[]),
+      ...(row.diagnostic.files.clean?[['clean','clean.docx']]:[])];
+    for (const [name, path] of paths) {
+      const ref = row.diagnostic.files[name as keyof FormatDiagnostic['files']]!;
       const bytes = await blobs.getIfExistsBounded(ref.key, name === 'operations' ? FORMAT_JSON_MAX : WORD_FILE_MAX);
       if (!bytes || bytes.length !== ref.byte_size || digest(bytes) !== ref.sha256) throw Error('WORD_FORMAT_BLOB_MISMATCH');
       await writeFile(join(root, path), bytes);
@@ -71,10 +76,13 @@ export async function diagnoseFormat(row: Candidate, blobs: PrivateBlobs, signal
     await writeFile(join(root, 'input.json'), JSON.stringify({ input_hash: row.input_hash.trim(),
       baseline_path: 'materials/baseline.docx', baseline_sha256: row.diagnostic.files.baseline.sha256,
       revision_author: row.diagnostic.revision_author, revision_date: row.diagnostic.revision_date }));
+    const pair=!!row.diagnostic.files.clean;
     await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON ?? process.env.BONDBUDDY_TEST_PYTHON ?? 'python3',
-      ['-B', '-s', '-m', 'bondbuddy_file_authoring.format_diff', '--baseline', join(root, 'materials/baseline.docx'),
+      ['-B', '-s', '-m', pair?'bondbuddy_file_authoring.baseline_review':'bondbuddy_file_authoring.format_diff', '--baseline', join(root, 'materials/baseline.docx'),
         '--tracked', join(root, 'tracked.docx'), '--author', row.diagnostic.revision_author,
-        '--input', join(root, 'input.json'), '--operations', join(root, 'operations.json'), '--output', join(root, 'report.json')],
+        ...(pair?['--clean',join(root,'clean.docx')]:[]),
+        ...(row.diagnostic.mode!=='baseline_pair_v1'?['--input', join(root, 'input.json'), '--operations', join(root, 'operations.json')]:[]),
+        '--output', join(root, 'report.json')],
       { cwd: repo, env: { ...process.env, PYTHONPATH: join(repo, 'python'), PYTHONIOENCODING: 'utf-8' },
         timeout: 300000, maxBuffer: FORMAT_JSON_MAX, signal });
     return await readFormatFile(root, 'report.json', FORMAT_JSON_MAX);

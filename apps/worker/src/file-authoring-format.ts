@@ -16,7 +16,8 @@ export type FormatDiagnostic = {
   input_hash: string;
   revision_author: string;
   revision_date?: string;
-  files: { baseline: FormatFileRef; tracked: FormatFileRef; operations: FormatFileRef };
+  mode?: 'baseline_pair_v1';
+  files: { baseline: FormatFileRef; tracked: FormatFileRef; operations?: FormatFileRef; clean?: FormatFileRef };
   report?: FormatFileRef;
   /** Persisted before upload; retained until report registration or confirmed cleanup. */
   pending_report?: FormatFileRef;

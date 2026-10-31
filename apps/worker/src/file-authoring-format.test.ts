@@ -33,7 +33,7 @@ test('explicit template choice is independent of random material ids; previous o
   input.materials.unshift({ ...input.materials[0]!, pin: { ...input.materials[0]!.pin, material_id: 'aaa' } });
   assert.equal(editingSource(input)?.pin.material_id, 'source');
   input.manifest.authoring.previous_output = { artifact_id: 'prior', version: 1, sha256: 'b'.repeat(64), run_id: 'prior-run', input_revision: 1 };
-  input.materials.push({ ...input.materials[0]!, pin: { ...input.materials[0]!.pin, material_id: 'prior', role: 'project_output' } });
+  input.materials.push({ ...input.materials[0]!, pin: { ...input.materials[0]!.pin, material_id: 'prior', sha256:'b'.repeat(64), role: 'project_output' } });
   assert.equal(editingSource(input)?.pin.material_id, 'prior');
 });
 
@@ -103,7 +103,7 @@ for (const invalid of [false, true]) test(`trusted finalization ${invalid ? 'rej
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('an existing snapshot without format policy retains the original direct-file delivery path',async()=>{
+test('an existing snapshot without format policy retains the original direct-file delivery path',{skip:!python},async()=>{
   const f=fixture(false),root=await mkdtemp(join(tmpdir(),'bb-format-legacy-'));
   try{
     const stage=fileAuthoringStage({load:async()=>f.input,model:options=>({name:'model_generation',run:async()=>{
@@ -117,8 +117,35 @@ test('an existing snapshot without format policy retains the original direct-fil
     f.ctx.values.set('model_generation',result.value);
     const delivery=await fileAuthoringDeliveryStage().run(f.ctx);
     assert.equal(delivery.kind,'deliver');
-    if(delivery.kind==='deliver')assert.equal(delivery.wordSummary?.format_execution,undefined);
+    if(delivery.kind==='deliver'){
+      assert.equal(delivery.wordSummary?.format_execution,undefined);
+      const diagnostic=delivery.wordSummary?.format_diagnostic as FormatDiagnostic;
+      assert.equal(diagnostic.mode,'baseline_pair_v1');
+      assert.equal(diagnostic.files.baseline.sha256,digest(f.source));
+      assert.equal((result.value as FileAuthoringResult).files['baseline.docx'],undefined);
+      // Already delivered files remain available when the sidecar detects a mismatch.
+      const clean=diagnostic.files.clean!;
+      const wrong=makeWorkerDocxFixture({externalLink:false,text:'不同的清洁稿正文'});
+      f.objects.set(clean.key,wrong);
+      diagnostic.files.clean={...clean,sha256:digest(wrong),byte_size:wrong.length};
+      const report=JSON.parse((await diagnoseFormat({id:'job',run_id:'run',owner_user_id:'owner',project_id:'project',
+        input_hash:'a'.repeat(64),diagnostic},f.blobs)).toString('utf8'));
+      assert.equal(report.status,'failed');
+      assert.ok(report.issues.some((issue:{code:string})=>issue.code==='WORD_ACCEPT_MISMATCH'));
+    }
   }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test('an explicit continuation never falls back to an uploaded original or a different result',()=>{
+  const {input}=fixture();
+  input.manifest.authoring.previous_output={artifact_id:'prior',version:2,sha256:'b'.repeat(64),run_id:'prior-run',input_revision:1};
+  assert.throws(()=>editingSource(input),/INPUT_REVISION_CONFLICT/);
+  input.materials.push({...input.materials[0]!,pin:{material_id:'prior',material_version:1,sha256:'b'.repeat(64),role:'project_output'}});
+  assert.throws(()=>editingSource(input),/INPUT_REVISION_CONFLICT/);
+  input.materials[1]!.pin.material_version=2;
+  assert.equal(editingSource(input)?.pin.material_id,'prior');
+  input.materials[1]!.pin.sha256='c'.repeat(64);
+  assert.throws(()=>editingSource(input),/INPUT_REVISION_CONFLICT/);
 });
 
 test('diagnostics reject foreign or oversized references before reading storage', () => {
@@ -131,4 +158,31 @@ test('diagnostics reject foreign or oversized references before reading storage'
   assert.equal(validFormatDiagnostic(row), false);
   row.diagnostic.files.baseline = { ...ref, byte_size: 101 * 1024 * 1024 };
   assert.equal(validFormatDiagnostic(row), false);
+});
+
+test('a declared original cannot disappear from the locked material list',()=>{
+  const {input}=fixture(false);
+  input.manifest.authoring.source_prospectuses=[{...input.materials[0]!.pin,issuer_name:null,
+    relation:'same_issuer',market:null,offering:null,reporting_periods:[],status:'user_asserted'}];
+  assert.equal(editingSource(input)?.pin.material_id,'source');
+  input.materials=[];
+  assert.throws(()=>editingSource(input),/INPUT_REVISION_CONFLICT/);
+});
+
+test('pair diagnostics require an owned bounded clean file, including on the controlled path',()=>{
+  const ref={key:'owners/owner/projects/project/runs/run/file-authoring/call/a',sha256:'b'.repeat(64),byte_size:20};
+  const diagnostic:FormatDiagnostic={version:'word-format-diagnostic-v1',status:'pending',mode:'baseline_pair_v1',
+    input_hash:'a'.repeat(64),revision_author:'BondBuddy-a',files:{baseline:ref,tracked:ref}};
+  const row={id:'job',run_id:'run',owner_user_id:'owner',project_id:'project',input_hash:'a'.repeat(64),diagnostic};
+  assert.equal(validFormatDiagnostic(row),false);
+  diagnostic.files.clean={...ref};
+  assert.equal(validFormatDiagnostic(row),true);
+  for(const mode of ['baseline_pair_v1',undefined] as const){
+    diagnostic.mode=mode;
+    diagnostic.files.operations=ref;
+    diagnostic.files.clean={...ref,key:ref.key.replace('owners/owner/','owners/other/')};
+    assert.equal(validFormatDiagnostic(row),false);
+    diagnostic.files.clean={...ref,byte_size:101*1024*1024};
+    assert.equal(validFormatDiagnostic(row),false);
+  }
 });
