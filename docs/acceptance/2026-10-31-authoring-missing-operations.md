@@ -20,6 +20,8 @@
 3. 使用本地已有生产同版 worker 镜像，`--network none`，运行 `apps/worker/test-fixtures/codex/completion-probe.mjs`，以回环模拟 Responses 服务验证：缺失后补齐、持续缺失、初始齐全。前两者各2次模拟 HTTP响应、后者1次，均只有1个 CLI 进程。最终 usage 分别20/10、20/10、10/5，确认统计的是完整累计输入／输出用量。
 4. 浏览器回归使用模拟API及独立本地端口；实际模型的编制质量和原项目格式验收不属于该模拟证明范围。
 
+补充限制：`codex-file-authoring.test.js` 的4项Linux端到端回归均在 `AUTHORING_FILE_SANDBOX_UNAVAILABLE` 预检退出，未进入 provider intent。采用仓库已有 seccomp 配置仍复现；未修改的同版本镜像也在同一预检失败。该本机沙箱环境问题已有记录（`source-format-preservation-20261029.md`），此次没有放宽权限或绕过检查。它不等于上述43项worker回归或3场景CLI协议探针失败，但这4项完整文件执行联测必须在可通过权限探针的集成环境复验。
+
 复现协议探针：先编译 worker，在 Codex 0.154.0 worker 镜像中将新 `file-authoring-completion.js` 挂载到 `/app/apps/worker/dist/`，将探针挂载到 `/tmp/completion-probe.mjs`，以 `node /tmp/completion-probe.mjs` 运行。容器设置 `--network none`，无生产凭据。
 
 ## 发布与恢复边界
