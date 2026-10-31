@@ -2,7 +2,7 @@ import {serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import { taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { commerceMetadata, AUTOMATIC_PRICE_VERSION, OUTCOME_PRICE_VERSION, emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas } from '@bondbuddy/contracts';
+import { commerceMetadata, AUTOMATIC_PRICE_VERSION, OUTCOME_PRICE_VERSION, emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import type { Dto } from './billing-fixture-wire';
@@ -924,6 +924,20 @@ test('unified input rejection preserves the selected version without silently su
   await expect(page.locator('#execution-message')).toContainText('消息或项目版本已变化');
   expect(state.inputs).toHaveLength(1); expect(state.inputs[0].material_versions[0].material_version).toBe(1);
   expect(state.executes).toHaveLength(0); expect(state.runs.size).toBe(0);
+});
+
+test('a server-side source selection conflict explains adoption without starting a task', async ({ page }) => {
+  const state=fixture();state.checkStatus='ready';
+  await setup(page,state);
+  await page.route(`**/api/v1/projects/${id}/input-revisions`,async route=>{
+    state.inputs.push(route.request().postDataJSON());
+    await json(route,409,{code:'INPUT_REVISION_CONFLICT',message:'server-specific wording is not UI copy',
+      field_errors:[PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR]});
+  });
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('请先点击“用于本次更新”选择原稿');
+  await expect(page.locator('#execution-message')).not.toContainText('消息或项目版本已变化');
+  expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(0);expect(state.runs.size).toBe(0);
 });
 
 test('manual task refresh invalidates a late paused poll without replaying task actions', async ({ page }) => {

@@ -6,12 +6,12 @@ import type { Static } from '@sinclair/typebox';
 import type { schemas, SchemaName, DataPolicy, AgreementResponse } from './billing-types.js';
 import type { FactDecisionRequest } from '@bondbuddy/contracts';
 import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest,SubscriptionCheckout,Subscription,SubscriptionAutoRenewRequest,SubscriptionAutoRenew,SubscriptionChangeQuoteRequest,SubscriptionChangeCheckoutRequest} from './billing-types.js';
-import { isUploadInspectionPublicReason, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
+import { isUploadInspectionPublicReason, isProspectusSelectionRequiredFieldError, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
 export class ApiError extends Error {
   constructor(public status: number, public code: string, public readonly details: {
-    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind;
+    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean;
   } = {}) { super(code); }
 }
 
@@ -42,6 +42,8 @@ export function parseApiError(status: number, value: unknown, fallbackCode = 'DA
     }
   }
   return new ApiError(status, code, {
+    ...(code === 'INPUT_REVISION_CONFLICT' && fields.some(isProspectusSelectionRequiredFieldError)
+      ? { prospectusSelectionRequired: true } : {}),
     ...(code === 'INPUT_REQUIRED' ? { materialInputIssues: fields.flatMap(field => {
       if (!isRecord(field)) return [];
       const issue = m4InputIssue(field.code, field.field);
@@ -63,7 +65,9 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
   if (!(error instanceof ApiError)) return unknownErrorText(operation);
   const reference = errorReference(error);
   switch (error.code) {
-    case 'INPUT_REVISION_CONFLICT': return '这个项目已在其他页面修改。你的输入仍保留，请查看最新版本后再修改。';
+    case 'INPUT_REVISION_CONFLICT': return error.details.prospectusSelectionRequired
+      ? PROSPECTUS_SELECTION_REQUIRED_MESSAGE
+      : '这个项目已在其他页面修改。你的输入仍保留，请查看最新版本后再修改。';
     case 'PROJECT_RUN_ACTIVE': return '同一来源项目已有任务正在执行。本次未开始，草稿保留。请在任务进度与结果查看任务，等待完成或停止后明确执行。';
     case 'UNAUTHENTICATED': return '登录已失效，请重新登录。';
     case 'NOT_FOUND': return '无法访问这个项目，它可能已移除或不属于当前账号。';

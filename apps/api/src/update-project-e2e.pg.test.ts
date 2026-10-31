@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { BlobServiceClient } from '@azure/storage-blob';
-import { emptyUpdateDetails, INITIAL_FIXED_PRICES } from '@bondbuddy/contracts';
+import { emptyUpdateDetails, INITIAL_FIXED_PRICES, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
 import { azureBlobs,digest,transaction } from './data.js';
 import { publishPrices,grantCredits } from './billing.js';
@@ -107,6 +107,7 @@ test('update project: real uploads, version CAS, exact input pins, cross-kind re
     const omittedSource=await send('POST',mistakePath+'/input-revisions',{...wrongInput,material_versions:[]});
     assert.equal(omittedSource.statusCode,409,'an uploaded but unselected source must not silently become a new-document task');
     assert.match(omittedSource.body,/用于本次更新/);
+    assert.deepEqual(omittedSource.json().field_errors,[PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR]);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_input_revisions WHERE project_id=$1',[mistake.project_id])).rows[0].n,0);
     owner=`other-${randomUUID()}`;assert.equal((await send('DELETE',`${mistakePath}/materials/${wrong.material_id}`)).statusCode,404);owner=user;
     assert.equal((await send('DELETE',`${mistakePath}/materials/${wrong.material_id}`)).statusCode,204);
@@ -121,6 +122,34 @@ test('update project: real uploads, version CAS, exact input pins, cross-kind re
     // Real queue, storage, settlement and delivery, with explicitly synthetic Word output (no model).
     await publishPrices(pool,{id:'update-e2e-prices',prices:INITIAL_FIXED_PRICES,effectiveAt:'2020-01-01T00:00:00Z',actor:'test',reason:'synthetic'});
     await transaction(pool,c=>grantCredits(c,{owner:user,points:1000000,key:randomUUID(),source:'purchase',expiresAt:null,actor:'test',reason:'synthetic'}));
+
+    // A prepared input (including an assistant card) must not bypass selection
+    // when an original is subsequently uploaded in another browser tab.
+    const staleExecute={execution_request_id:randomUUID(),project_id:mistake.project_id,
+      input_revision:noReference.input_revision,input_hash:noReference.input_hash,task_kind:'update',
+      input_manifest_ref:noReference.input_hash,storage_origin:'cloud',workspace_id:mistake.project_id};
+    const staleResult=await send('POST','/api/v1/runs/execute',staleExecute);
+    assert.equal(staleResult.statusCode,409,staleResult.body);
+    assert.deepEqual(staleResult.json().field_errors,[PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR]);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[mistake.project_id])).rows[0].n,0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations c JOIN bb_runs r ON r.id=c.run_id WHERE r.project_id=$1',[mistake.project_id])).rows[0].n,0,'rejection must not reserve credits');
+
+    // Actual no-source authoring remains allowed. Once accepted, its exact
+    // execution request replays even if a source is uploaded afterwards.
+    const newDraft=await create('update'),newPath=`/api/v1/projects/${newDraft.project_id}`;
+    const newInput=await ok('POST',`${newPath}/input-revisions`,{draft_revision:newDraft.draft_revision,
+      prospectus_selection_revision:0,material_versions:[],requirement_message_ids:[]});
+    const newQuote=await ok('POST',`${newPath}/credit-quote`,{input_revision:newInput.input_revision,input_hash:newInput.input_hash});
+    const newRequest={execution_request_id:randomUUID(),project_id:newDraft.project_id,input_revision:newInput.input_revision,
+      input_hash:newInput.input_hash,task_kind:'update',input_manifest_ref:newInput.input_hash,storage_origin:'cloud',
+      workspace_id:newDraft.project_id,quote_id:newQuote.quote.quote_id};
+    const accepted=await ok('POST','/api/v1/runs/execute',newRequest);
+    await upload(newDraft.project_id,'uploaded-after-accepted-run');
+    assert.equal((await ok('POST','/api/v1/runs/execute',newRequest)).run_id,accepted.run_id,'existing run keeps its locked input and reservation');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[newDraft.project_id])).rows[0].n,1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations c JOIN bb_runs r ON r.id=c.run_id WHERE r.project_id=$1',[newDraft.project_id])).rows[0].n,1);
+    await ok('POST',`/api/v1/runs/${accepted.run_id}/cancel`,{reason:'synthetic_cleanup'});
+
     const execute=async(i:any)=>{
       const quote=await ok('POST',`${path}/credit-quote`,{input_revision:i.input_revision,input_hash:i.input_hash});
       return ok('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:p.project_id,input_revision:i.input_revision,input_hash:i.input_hash,task_kind:'update',input_manifest_ref:i.input_hash,storage_origin:'cloud',workspace_id:p.project_id,quote_id:quote.quote.quote_id});

@@ -11,7 +11,8 @@ import { registerWorkpapers } from './workpapers.js';
 import { registerFileGeneration } from './file-generation.js';
 import { registerProjectFileConsistency } from './project-file-consistency.js';
 import { registerProspectusRoutes, registerUploadedProspectus, prospectusVersions, assertProspectusRemovable } from './prospectus-versions.js';
-import { requiresProspectusSelection, PROSPECTUS_SELECTION_REQUIRED_MESSAGE } from '@bondbuddy/contracts';
+import { requiresProspectusSelection } from '@bondbuddy/contracts';
+import { prospectusSelectionRequired } from './data.js';
 import { registerUpdateWorkspace } from './update-workspace.js';
 import { registerReviewEditor } from './review-editor.js';
 import { listArtifactHistory } from './artifact-history.js';
@@ -756,7 +757,7 @@ export function createServer(settings: Settings = {}) {
       const prospectus=await prospectusVersions(client,user,id);
       if(b.prospectus_selection_revision!==undefined&&b.prospectus_selection_revision!==prospectus.selection_revision)throw conflict('INPUT_REVISION_CONFLICT','当前募集书已变化，请刷新后重新开始。');
       if(p.kind==='update'&&p.update_details?.authoring_mode==='unified_v1'&&requiresProspectusSelection(prospectus))
-        throw conflict('INPUT_REVISION_CONFLICT',PROSPECTUS_SELECTION_REQUIRED_MESSAGE);
+        throw prospectusSelectionRequired();
       const currentProspectus=prospectus.versions.find(v=>v.version_id===prospectus.current_version_id);
       if(currentProspectus && b.edit_base===undefined)b.edit_base=currentProspectus.artifact_id?{artifact_id:currentProspectus.artifact_id,artifact_version:currentProspectus.artifact_version!,sha256:currentProspectus.sha256}:null;
       const refs=[...b.material_versions].sort((a,z)=>a.material_id.localeCompare(z.material_id)||a.material_version-z.material_version);
@@ -1523,6 +1524,12 @@ export function createServer(settings: Settings = {}) {
         throw conflict('INPUT_REVISION_CONFLICT','Input was locked for a different project kind');
       if((['update','generation'].includes(lockedKind)||['update','generation'].includes(b.task_kind))&&lockedKind!==b.task_kind)
         throw conflict('INPUT_REVISION_CONFLICT','Task kind does not match the locked input');
+      // Uploads can arrive after an input/assistant card was prepared without
+      // changing its draft revision. Do not start a new source-less run from it.
+      // Existing runs return above, preserving retries and their immutable input.
+      if(lockedKind==='update'&&isUnifiedInput(input.rows[0].manifest)&&
+        requiresProspectusSelection(await prospectusVersions(client,user,b.project_id)))
+        throw prospectusSelectionRequired();
       if(b.task_kind!=='qa')await assertCanonicalBusinessRunIdle(client,user,currentProject);
       await assertLockedInputIntegrity(client,{userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
       // Exact replays return above. New runs using older incomplete snapshots must

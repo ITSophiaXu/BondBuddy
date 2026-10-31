@@ -1,5 +1,42 @@
 # 已上传原稿漏入更新输入的修复
 
+## 同日集成补充
+
+在 `aa8ca0cc` 的入口修复上补齐执行与下载边界：
+
+- 先准备无稿输入/助手确认卡，再上传未采用原稿，不能继续用旧输入创建新 run。服务端在项目锁内检查，已有 run 的相同请求先幂等返回；拒绝不创建任务、不预留积分。
+- 原稿采用提示通过现有错误协议的白名单 `field_errors` 传给页面与助手，不被通用“其他页面修改”覆盖；不直接显示任意服务端文案。
+- 首稿的修订/清洁字节相同、复用同一 artifact 时，清洁按钮可下载并使用清洁版文件名。仅对 `baseline_kind=none` 且双版引用、SHA、run/version一致的配对接受该别名；其他错配、授权失败、坏字节继续拒绝。
+- 生命周期测试统一删除时间与零日阈值检查的测试时钟，消除 PostgreSQL 微秒与 JavaScript 毫秒精度竞争；生产清理代码不变。
+
+本次增量基于独立 macOS 工作区和最新 `develop 6efbb5fc`，使用 Node 24.14.0、隔离 PostgreSQL 16.15、Azurite、真实 Python 编辑器及独立 Edge。Browser plugin 不可用，采用仓库 Playwright；没有操作用户浏览器会话。数据库和文件均为 synthetic；无真实供应商调用、生产任务重跑或发布。
+
+集成验证：全工作区 build、check:contracts 通过；web 单元 964/964；API/worker 定向组合最终 21/21（0跳过，含真实上传/输入锁定/报价/任务/账务/双Word下载）；Python 25/25；PPN离线3/3及框架一致性检查通过。上传/更新浏览器35项、成果下载44项通过；补充服务端采用提示用例及相邻回归单独复验，结果见本PR验证记录，不与前轮重复计数。
+
+首轮21项为17通过/4失败：3项固定编辑测试因macOS临时目录软链接与文件realpath守卫不一致，改用规范绝对TMPDIR后6/6通过，未放宽安全校验；1项生命周期测试因上述时钟竞争失败，测试时钟修正后最终21项全部通过。失败记录保留，不能称首轮全绿。
+
+关键命令：
+
+```text
+npm run build
+npm run check:contracts
+npm run test:unit -w @bondbuddy/web
+node --test --test-concurrency=1 apps/api/dist/update-project-e2e.pg.test.js apps/api/dist/source-format.pg.test.js apps/api/dist/source-format-lifecycle.pg.test.js apps/api/dist/source-format.test.js apps/api/dist/unified-authoring.test.js apps/worker/dist/file-authoring-format.test.js apps/worker/dist/ppn-writing-workspace.test.js
+BB_E2E_BASE_URL=http://127.0.0.1:5188 BB_E2E_BROWSER_CHANNEL=msedge npm test -w @bondbuddy/web -- tests/artifact-page.spec.ts
+BB_E2E_BASE_URL=http://127.0.0.1:5207 BB_E2E_BROWSER_CHANNEL=msedge npm test -w @bondbuddy/web -- tests/prospectus-panel.spec.ts tests/project-execution.spec.ts --grep 'unselected|upload|source|no-history|no reference|unified|new-document'
+```
+
+PG/Blob用显式本地 `BB_TEST_DATABASE_URL` / `BB_TEST_AZURITE_CONNECTION_STRING`；编辑器用 `BONDBUDDY_TEST_PYTHON`。macOS固定编辑测试设置规范 `TMPDIR`，不使用`/var`软链接路径。未配置环境导致的跳过不计作通过。
+
+下载页面没有布局或新增交互偏离：复用既有下载按钮/成功反馈；1440/390截图为合成首稿两个按钮均完成下载。入口原型对照沿用下文记录。
+
+![桌面首稿两版下载](source-structure-2026-10-31/first-draft-download-1440.png)
+![手机首稿两版下载](source-structure-2026-10-31/first-draft-download-390.png)
+
+GitHub #860 的托管检查没有启动（steps为空），annotation明确为账户付款/消费额度限制。不得把它记为远端测试通过；正常PR合并仍遵守分支保护，不使用管理员绕过。此次代码合并不等于已部署或该客户原稿已重新生成。
+
+## 原入口修复的验收记录
+
 状态：开发和自测完成；用户集成验收、生产发布及真实模型复验未执行。无数据库迁移、无新增依赖。发布需协调 API、web、worker 和随 worker 打包的 Python/知识文件。
 
 ## 问题与原因

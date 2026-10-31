@@ -34,6 +34,10 @@ type State = {
   moreProjects?: boolean;
   generatedPair?: boolean;
   authoringSummary?: string[];
+  firstDraftAlias?: boolean;
+  deliveryOverride?: Partial<NonNullable<Dto<'ArtifactResponse'>['word_delivery']>>;
+  artifactVersion?: number;
+  metadataSha256?: string;
 };
 const state = (): State => ({ calls: [], metadataReads: {}, grants: [], metadataStatus: 200, downloadStatus: 200,
   loggedOut: false, missingSummary: false, changedRun: false, runState: 'succeeded', wrongMediaType: false });
@@ -66,13 +70,15 @@ async function installApi(page: Page, data: State) {
       }
       data.metadataReads[id] = (data.metadataReads[id] ?? 0) + 1;
       if (data.metadataStatus !== 200) return json(route, data.metadataStatus, { code: data.metadataStatus === 404 ? 'NOT_FOUND' : 'DATA_UNAVAILABLE' });
-      const artifact: Dto<'ArtifactResponse'> = { filename:filenames[variant],display_version:2,artifact_id: id, run_id: data.changedRun ? 'other-run' : runId, version: 1,
-        media_type: mediaType, sha256: createHash('sha256').update(bytes).digest('hex'), quality_status: 'passed', delivery_status: 'available',
+      const artifact: Dto<'ArtifactResponse'> = { filename:filenames[variant],display_version:2,artifact_id: id, run_id: data.changedRun ? 'other-run' : runId, version: data.artifactVersion ?? 1,
+        media_type: mediaType, sha256: data.metadataSha256 ?? createHash('sha256').update(bytes).digest('hex'), quality_status: 'passed', delivery_status: 'available',
         download_url: data.urlOverride ?? `/api/v1/artifacts/${id}/download?grant=fresh-${data.metadataReads[id]}`,
         expires_at: '2026-09-26T02:05:00Z',
         ...(data.missingSummary ? {} : { word_delivery: { ...summary, variant,
           pending_review_count: data.pendingCount ?? summary.pending_review_count, pending_review: data.pendingItems ?? summary.pending_review,
-          ...(data.generatedPair ? {writer_version:'bondbuddy-file-word-1.0.0' as const,baseline_artifact_id:undefined,delivery_policy:'generated_pair_v1' as const,content_review:'not_performed' as const,replacements:null,columns:null,pending_review_count:null,pending_review:[]} : {}),authoring_summary:data.authoringSummary } }) };
+          ...(data.generatedPair ? {writer_version:'bondbuddy-file-word-1.0.0' as const,baseline_artifact_id:undefined,delivery_policy:'generated_pair_v1' as const,content_review:'not_performed' as const,replacements:null,columns:null,pending_review_count:null,pending_review:[]} : {}),
+          ...(data.firstDraftAlias ? {baseline_kind:'none' as const,revision_artifact_id:ids.revision,clean_artifact_id:ids.revision,source_sha256:null,baseline_hash:null,effective_baseline_sha256:null,plan_hash:null} : {}),
+          authoring_summary:data.authoringSummary,...data.deliveryOverride } }) };
       return json(route, 200, artifact);
     }
     return json(route, 404, { code: 'NOT_FOUND' });
@@ -191,6 +197,76 @@ test('generated pair offers both downloads without baseline or content-check cla
   await page.setViewportSize({width:1440,height:960});
   await page.screenshot({path:join(tmpdir(),'bondbuddy-generated-pair-desktop.png'),fullPage:true});
 });
+
+for (const viewport of [{width:1440,height:960},{width:390,height:844}]) {
+  test(`first-draft shared artifact downloads as clean and revision with fresh grants at ${viewport.width}px`,async({page})=>{
+    const data=state();data.generatedPair=true;data.firstDraftAlias=true;
+    const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+    await page.setViewportSize(viewport);await installApi(page,data);
+    await page.goto('/#/artifacts/word-revision');
+    await expect(page.getByRole('heading',{name:'下载募集书',exact:true})).toBeVisible();
+    await expect(page.getByText('本次为首次编制，没有历史修订对照。',{exact:true})).toBeVisible();
+    for (const [variant,label] of [['clean','清洁版'],['revision','修订版']] as const) {
+      const pending=page.waitForEvent('download');
+      await page.getByRole('button',{name:`下载${label}`,exact:true}).click();
+      const downloaded=await pending;
+      expect(downloaded.suggestedFilename()).toBe(filenames[variant]);
+      expect(await downloaded.failure()).toBeNull();
+      const chunks:Buffer[]=[];for await (const chunk of (await downloaded.createReadStream())!)chunks.push(Buffer.from(chunk));
+      expect(Buffer.concat(chunks)).toEqual(bytes);
+    }
+    expect(data.grants).toEqual(['fresh-2','fresh-3']);
+    expect(data.calls.filter(call=>call.path.endsWith('/download')).map(call=>call.path)).toEqual([
+      `/artifacts/${ids.revision}/download`,`/artifacts/${ids.revision}/download`]);
+    expect(data.calls.every(call=>call.method==='GET')).toBe(true);
+    await expect(page.locator('vite-error-overlay')).toHaveCount(0);expect(errors).toEqual([]);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+    const evidence=process.env.BB_E2E_EVIDENCE_DIR??tmpdir();await mkdir(evidence,{recursive:true});
+    await page.screenshot({path:join(evidence,`bondbuddy-first-draft-download-${viewport.width}.png`),fullPage:true});
+  });
+}
+
+for (const scenario of ['distinct pair wrong variant','shared pair with source baseline','missing initial baseline kind',
+  'fresh baseline kind changed','wrong baseline variant','changed clean pair','changed revision pair','changed run','changed version','changed hash'] as const) {
+  test(`first-draft clean download refuses ${scenario} before reading bytes`,async({page})=>{
+    const data=state();data.generatedPair=true;data.firstDraftAlias=scenario!=='distinct pair wrong variant';
+    if(scenario==='shared pair with source baseline')data.deliveryOverride={baseline_kind:'uploaded_source'};
+    if(scenario==='missing initial baseline kind')data.deliveryOverride={baseline_kind:undefined};
+    await installApi(page,data);let downloads=0;page.on('download',()=>downloads++);
+    await page.goto('/#/artifacts/word-revision');
+    await expect(page.getByRole('button',{name:'下载清洁版',exact:true})).toBeVisible();
+    if(scenario==='distinct pair wrong variant')data.deliveryOverride={variant:'revision',baseline_kind:'none'};
+    if(scenario==='fresh baseline kind changed')data.deliveryOverride={baseline_kind:'uploaded_source'};
+    if(scenario==='wrong baseline variant')data.deliveryOverride={variant:'baseline'};
+    if(scenario==='changed clean pair')data.deliveryOverride={clean_artifact_id:ids.clean};
+    if(scenario==='changed revision pair')data.deliveryOverride={revision_artifact_id:'another-revision'};
+    if(scenario==='changed run')data.changedRun=true;
+    if(scenario==='changed version')data.artifactVersion=2;
+    if(scenario==='changed hash')data.metadataSha256='0'.repeat(64);
+    await page.getByRole('button',{name:'下载清洁版',exact:true}).click();
+    await expect(page.locator('[data-download-status="0"]')).toContainText('校验未通过');
+    await expect(page.getByRole('button',{name:'下载清洁版',exact:true})).toBeEnabled();
+    expect(downloads).toBe(0);expect(data.grants).toEqual([]);
+  });
+}
+
+for (const scenario of ['expired grant','corrupt bytes'] as const) {
+  test(`first-draft clean alias still rejects ${scenario} and retries with a fresh grant`,async({page})=>{
+    const data=state();data.generatedPair=true;data.firstDraftAlias=true;
+    await installApi(page,data);let downloads=0;page.on('download',()=>downloads++);
+    await page.goto('/#/artifacts/word-revision');
+    if(scenario==='expired grant')data.downloadStatus=404;
+    else data.downloadBody=Buffer.from('corrupt synthetic Word download');
+    await page.getByRole('button',{name:'下载清洁版',exact:true}).click();
+    await expect(page.locator('[data-download-status="0"]')).toContainText(scenario==='expired grant'?'成果或下载授权不可用':'校验未通过');
+    expect(downloads).toBe(0);
+    data.downloadStatus=200;data.downloadBody=undefined;
+    const pending=page.waitForEvent('download');
+    await page.getByRole('button',{name:'下载清洁版',exact:true}).click();
+    const downloaded=await pending;expect(downloaded.suggestedFilename()).toBe(filenames.clean);
+    expect(await downloaded.failure()).toBeNull();expect(data.grants).toEqual(['fresh-2','fresh-3']);
+  });
+}
 
 test('artifact query keeps the original project navigation and uses the actual artifact id',async({page})=>{
   const data=state();await installApi(page,data);
