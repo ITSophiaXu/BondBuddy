@@ -2,7 +2,7 @@ import {serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import { taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { commerceMetadata, AUTOMATIC_PRICE_VERSION, OUTCOME_PRICE_VERSION, emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas } from '@bondbuddy/contracts';
+import { commerceMetadata, AUTOMATIC_PRICE_VERSION, OUTCOME_PRICE_VERSION, emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import type { Dto } from './billing-fixture-wire';
@@ -31,7 +31,7 @@ function fixture() {
   return { project, materials, inputs: [] as Dto<'InputRevisionCreateRequest'>[], snapshots: new Map<number, Dto<'InputRevisionResponse'>>(),
     executes: [] as Dto<'ExecuteRequest'>[], runs: new Map<string, Dto<'RunResponse'>>(), preflights: [] as Dto<'PreflightRequest'>[],
     artifacts: new Map<string, Dto<'ArtifactResponse'>>(),
-    generatedVersions: [] as Dto<'ProspectusVersionsResponse'>['versions'],
+    generatedVersions: [] as Dto<'ProspectusVersionsResponse'>['versions'], sourceSelected: true, selectionRequests: [] as unknown[],
     priorTasks: [] as Dto<'ProjectTasksResponse'>['items'],
     nextInputRevision: undefined as number | undefined, patchRequests: 0,
     holdProjectRead: false, releaseProjectRead: undefined as (() => void) | undefined,
@@ -117,7 +117,15 @@ async function setup(page: Page, state = fixture(), canStart = true) {
         versions.current_version_id=state.generatedVersions.at(-1)!.version_id;
         versions.selection_revision+=state.generatedVersions.length;
       }
+      if(material&&!state.sourceSelected){versions.current_version_id=null;versions.selection_revision=0;versions.inactive_material_ids=[material.material_id];}
       return json(route,200,versions);
+    }
+    if(path===`/projects/${id}/prospectus-versions/current`&&method==='POST'){
+      state.selectionRequests.push(request.postDataJSON());
+      expect(request.postDataJSON().version_id).toBe('source-version');
+      state.sourceSelected=true;state.project.draft_revision++;
+      const material=state.materials.find(m=>m.role==='historical')!;
+      return json(route,200,{project_id:id,current_version_id:'source-version',selection_revision:1,inactive_material_ids:[],versions:[{version_id:'source-version',sequence:1,origin:'upload',filename:material.filename,sha256:material.sha256,created_at:now,material_id:material.material_id,material_version:material.material_version,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null}]});
     }
     const artifactMatch=path.match(/^\/artifacts\/([^/]+)$/);
     if(artifactMatch&&method==='GET'){
@@ -919,6 +927,20 @@ test('unified input rejection preserves the selected version without silently su
   expect(state.executes).toHaveLength(0); expect(state.runs.size).toBe(0);
 });
 
+test('a server-side source selection conflict explains adoption without starting a task', async ({ page }) => {
+  const state=fixture();state.checkStatus='ready';
+  await setup(page,state);
+  await page.route(`**/api/v1/projects/${id}/input-revisions`,async route=>{
+    state.inputs.push(route.request().postDataJSON());
+    await json(route,409,{code:'INPUT_REVISION_CONFLICT',message:'server-specific wording is not UI copy',
+      field_errors:[PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR]});
+  });
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-message')).toContainText('自动采用状态尚未确认');
+  await expect(page.locator('#execution-message')).not.toContainText('消息或项目版本已变化');
+  expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(0);expect(state.runs.size).toBe(0);
+});
+
 test('manual task refresh invalidates a late paused poll without replaying task actions', async ({ page }) => {
   // Freeze the scheduled five-second poll so only explicit refreshes can change the state.
   await page.clock.install({time:new Date(now)});
@@ -1034,7 +1056,7 @@ test('provider timeout explains service recovery and keeps the same task after a
   await expect(page.locator('#prepare-next-version')).toBeVisible();
 });
 
-for (const stage of ['word_delivery', 'provider_call', 'future_processing_stage', undefined]) {
+for (const stage of ['word_delivery', 'provider_call', 'future_processing_stage', 'missing_operations', undefined]) {
   test(`processor failure explains ${stage ?? 'unavailable history'} without inventing missing materials`, async ({ page }) => {
     const state=fixture();state.checkStatus='ready';state.runState='running';state.runStage='word_delivery';state.runReason='stage_started';
     await setup(page,state);await page.locator('#execute-input').click();
@@ -1046,14 +1068,15 @@ for (const stage of ['word_delivery', 'provider_call', 'future_processing_stage'
     });
     state.publicEvents=[
       ...(stage?[event(3,'word_delivery','run.progress','stage_started'),event(4,stage,'run.progress','stage_started')]:[]),
-      event(5,'failed','run.state_changed','processor_failed')
+      {...event(5,'failed','run.state_changed','processor_failed'),payload:{reason:'processor_failed',
+        ...(stage==='missing_operations'?{error_code:'WORD_FORMAT_OPERATIONS_MISSING' as const}:{})}}
     ];
     run.state='failed';run.stage='failed';run.event_cursor=5;state.eventSeq=5;
     state.chargeState='released';
     for(let refresh=0;refresh<2;refresh++){
       await page.reload();
       const summary=page.locator('.execution-summary');
-      await expect(summary).toContainText(stage==='word_delivery'?'Word 文件生成或保存失败':'系统处理失败');
+      await expect(summary).toContainText(stage==='missing_operations'?'未保存必需的修订记录':stage==='word_delivery'?'Word 文件生成或保存失败':'系统处理失败');
       await expect(summary).not.toContainText('待处理条件');
       await expect(summary).not.toContainText('请查看材料信息');
       await expect(summary).not.toContainText('processor_failed');
@@ -1339,13 +1362,14 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     });
     // setup's catch-all was registered last; it must fall back to the material fixture above.
     await setup(page, state, false);
-    let sourceSelected = false;
+    let selectionPosts = 0;
     await page.route(`**/api/v1/projects/${id}/prospectus-versions**`, async route => {
       if (route.request().method() === 'POST') {
         expect(fixtureRequest(route.request()).version_id).toBe('source-version');
-        sourceSelected = true;
+        selectionPosts++;
       }
       const material = state.materials.find(m => m.role === 'historical');
+      const sourceSelected = Boolean(material);
       const versions: Dto<'ProspectusVersionsResponse'> = {
         project_id:id, current_version_id:sourceSelected?'source-version':null, selection_revision:sourceSelected?1:0,
         inactive_material_ids:material&&!sourceSelected?[material.material_id]:[],
@@ -1361,11 +1385,10 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     const history = page.locator('.material-file-row').filter({ hasText: '合成历史稿.docx' });
     await expect(page.locator('#prospectus-status')).toContainText('保存');
     await expect.poll(() => releaseSave).toBeDefined(); releaseSave!();
-    await expect(page.locator('#prospectus-status')).toContainText('尚未采用');
-    await expect(history).toHaveCount(0);
-    await page.locator('[data-use-version="source-version"]').click();
-    await page.locator('#confirm-prospectus-selection').click();
     await expect(history).toContainText('处理中');
+    await expect(page.locator('[data-use-version="source-version"]')).toHaveCount(0);
+    await expect(page.locator('#confirm-prospectus-selection')).toHaveCount(0);
+    expect(selectionPosts).toBe(0);
     await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: '合成财务材料.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic financial') });
     const financial = page.locator('.material-file-row').filter({ hasText: '合成财务材料.pdf' });
     await expect(financial.getByRole('button', { name: '重试此文件' })).toBeVisible();
@@ -1493,19 +1516,18 @@ test('credit visibility: one click starts and running receipt follows settlement
   state.available=82100;state.frozen=17900;await page.evaluate(()=>window.dispatchEvent(new Event('bondbuddy:credits-changed')));
   await expect(page.locator('#fixed-quote')).toBeHidden();
   await expect(page.locator('.task-credit-receipt')).toContainText('正在同步已消耗积分');
-  await expect(page.locator('.credit-wallet .wallet-value strong')).toHaveText('100,000');await expect(page.locator('.credit-wallet')).toContainText('可用 82,100');
-  await expect(page.locator('.credit-wallet')).toContainText('任务已预留 17,900');
+  await expect(page.locator('[data-credit-wallet]')).toHaveCount(0);
   if(evidence){await page.locator('#workspace-progress').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'implementation-running.png')});}
   state.chargeState='settled'; state.frozen=0;
   [...state.runs.values()][0].state='succeeded';
   await expect(page.locator('.task-credit-receipt')).toContainText('已扣费',{timeout:12000});
-  await expect(page.locator('.credit-wallet')).toContainText('暂无预留积分');await expect(page.locator('.credit-wallet .wallet-value strong')).toHaveText('82,100');
+  await expect(page.locator('[data-credit-wallet]')).toHaveCount(0);
   state.chargeFailure=true; await page.reload();
   await expect(page.locator('.task-credit-receipt')).toContainText('暂未同步');
   state.chargeFailure=false; state.chargeState='released'; state.available=100000;
   await page.reload();
   await expect(page.locator('.task-credit-receipt')).toContainText('已返还，本次不扣费');
-  await expect(page.locator('.credit-wallet')).toContainText('100,000');
+  await expect(page.locator('[data-credit-wallet]')).toHaveCount(0);
 });
 
 test('credit visibility: trial explains zero charge before and during execution',async({page})=>{
@@ -1818,4 +1840,41 @@ test('automatic authoring keeps the exact quote and execution request after HTTP
  await page.route('**/credit-quote',route=>{quotes++;return json(route,200,{enabled:true,quote:{...commerceMetadata(8864),quote_id:'auto-rate-limit-'+quotes,project_id:id,...fixtureRequest(route.request()),task_type:'interim',points:8864,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,reason:'已保存输入',created_at:now,quote_status:'ready',scope_quote_id:'scope-rate-limit',scope_lines:[]},balance:{available:100000,frozen:0},shortage:0,reason:null});});
  await page.reload();await page.locator('#execute-input').click();await expect.poll(()=>state.executes.length).toBe(1);const original=structuredClone(state.executes[0]);await expect(page.locator('#retry-execution')).toBeVisible();
  state.executeError=undefined;await page.locator('#retry-execution').click();await expect.poll(()=>state.executes.length).toBe(2);expect(state.executes[1]).toEqual(original);expect(quotes).toBe(1);await expect(page.locator('[data-commerce-confirm]')).toHaveCount(0);expect(state.runs.size).toBe(1);
+});
+
+
+test('upload automatically adopts the original and submits it without a selection click', async ({page}) => {
+  const state=fixture();state.project.update_details!.authoring_mode='unified_v1';
+  const bytes=Buffer.from('history'),source=state.materials.shift()!,profile=structuredClone(state.project.update_details!.source_prospectuses);
+  source.byte_size=bytes.length;
+  await setup(page,state);
+  let completed=false;
+  await page.route(`**/api/v1/projects/${id}/materials/uploads**`,async route=>{
+    const request=route.request(),path=new URL(request.url()).pathname;
+    if(path.endsWith('/bytes')){expect(request.postDataBuffer()).toEqual(bytes);return route.fulfill({status:204});}
+    if(path.endsWith('/complete')){
+      if(!completed){completed=true;state.materials.push(source);state.project.draft_revision++;state.project.update_details!.source_prospectuses=profile;}
+      return json(route,200,source);
+    }
+    return json(route,201,{upload_id:source.upload_id,state:'uploading',upload_url:`/api/v1/projects/${id}/materials/uploads/${source.upload_id}/bytes`,expires_at:'2099-01-01T00:00:00Z',max_bytes:100*1024*1024});
+  });
+  await page.locator('#prospectus-version-file').setInputFiles({name:source.filename,mimeType:source.media_type,buffer:bytes});
+  await expect(page.locator('.reference-file.is-selected')).toContainText(source.filename);
+  await expect(page.locator('[data-use-version="source-version"]')).toHaveCount(0);
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
+  await expect(page.locator('#execute-input')).toBeEnabled();
+  expect(state.selectionRequests).toEqual([]);expect(state.inputs).toHaveLength(0);expect(state.executes).toHaveLength(0);
+  if(process.env.BB_SOURCE_STRUCTURE_EVIDENCE){
+    const output=resolve(process.env.BB_SOURCE_STRUCTURE_EVIDENCE);await mkdir(output,{recursive:true});
+    for(const width of [1440,390]){
+      await page.setViewportSize({width,height:960});await page.locator('#prospectus-panel').scrollIntoViewIfNeeded();
+      await page.locator('#prospectus-panel').screenshot({path:join(output,`auto-adopted-source-${width}.png`)});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    }
+  }
+  await page.locator('#execute-input').click();
+  await expect.poll(()=>state.inputs.length).toBe(1);
+  expect(state.inputs[0].material_versions).toContainEqual({material_id:'synthetic-history',material_version:1});
+  expect(state.inputs[0].prospectus_selection_revision).toBe(1);
+  expect(state.selectionRequests).toEqual([]);
 });

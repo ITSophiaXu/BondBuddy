@@ -9,6 +9,7 @@ from pathlib import Path
 from lxml import etree as ET
 
 from .check import STORY, package
+from .source_outline import outline
 from .word_patch import paragraph_text, q, xml
 
 VERSION = 'word-template-manifest-v1'
@@ -170,7 +171,12 @@ def build_manifest(source: Path):
             if node.tag in {q('abstractNum'), q('num')}:
                 kind = ET.QName(node).localname
                 numbering[f'{kind}:{node.get(q(kind + "Id"))}'] = property_xml(node)
+    try:
+        source_structure = outline(parts)
+    except ValueError:
+        source_structure = {'status': 'unsupported', 'reason': 'Effective outline requires unsupported revision handling'}
     return {'version': VERSION, 'baseline_sha256': sha(source.read_bytes()),
+            'source_structure': source_structure,
             'offset_unit': 'unicode_code_points', 'nodes': described, 'styles': styles, 'property_formats': formats,
             'document_defaults': defaults, 'numbering_definitions': numbering,
             'headings': [{'node_id': n['node_id'], 'text': n['text'], 'style_id': n.get('style_id'),

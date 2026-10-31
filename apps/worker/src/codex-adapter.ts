@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { filePermissionArgs, verifyFilePermissions } from './codex-file-permissions.js';
+import { fileCompletionArgs } from './file-authoring-completion.js';
 import { MATERIAL_TOOLS, type MaterialToolData } from './authoring-material-tools.js';
 import { createMaterialToolTrace, isMaterialModelEnvelope, validateMaterialToolTrace, type MaterialToolTrace, type MaterialModelEnvelope } from './material-tool-trace.js';
 import { REVIEW_TOOLS, createReviewToolTrace, reviewModelEnvelopeAsync, validateReviewToolData, validateReviewToolTraceAsync, type ReviewToolData, type ReviewToolTrace, type ReviewModelEnvelope } from './review-tools.js';
@@ -219,16 +220,18 @@ export function codexConfigOverrides(c: CodexAdapterConfig, files = false): stri
   return kv.flatMap(v => ['-c', v]);
 }
 
-export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; imageFile?: string }): string[] {
+export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileCompletion?: boolean; imageFile?: string }): string[] {
+  if(o.fileCompletion && !o.fileAuthoring)throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (o.materialDataFile && o.reviewDataFile || !!o.reviewDataFile !== !!o.reviewTraceFile) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (c.web_search==='live' && (o.materialDataFile || o.reviewDataFile)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (o.materialTraceFile && (!o.materialDataFile || resolve(o.materialTraceFile)!==resolve(o.cwd,'..','materials-trace.json') || c.web_search==='live')) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const args = ['exec', '--json', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules', ...(o.fileAuthoring?[]:['--sandbox', 'read-only']), '--cd', o.cwd,
-    ...codexConfigOverrides(c,o.fileAuthoring), ...c.disabled_features.filter(f=>!o.fileAuthoring || !['shell_tool','unified_exec','view_image'].includes(f)).flatMap(f => ['--disable', f])];
+    ...codexConfigOverrides(c,o.fileAuthoring), ...c.disabled_features.filter(f=>(!o.fileAuthoring || !['shell_tool','unified_exec','view_image'].includes(f)) && !(o.fileCompletion && f==='hooks')).flatMap(f => ['--disable', f])];
   if(o.fileAuthoring){
     if(o.schemaFile || o.materialDataFile || o.reviewDataFile || o.reviewTraceFile || !o.ephemeral)throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
     args.push(...filePermissionArgs(o.cwd),'--enable','shell_tool','--enable','unified_exec','--enable','view_image',
       '-c',`shell_environment_policy.set={PATH="/opt/venv/bin:/usr/local/bin:/usr/bin:/bin",HOME=${JSON.stringify(join(o.cwd,'scratch'))},TMPDIR=${JSON.stringify(join(o.cwd,'scratch'))},PYTHONPATH="/app/python",PYTHONDONTWRITEBYTECODE="1",LANG="C.UTF-8"}`);
+    if(o.fileCompletion)args.push(...fileCompletionArgs());
     if(c.credential.kind==='command')args.push('-c','model_catalog_json="/opt/bondbuddy/codex-file-authoring-model-catalog.json"');
   }
   if (o.imageFile) {
@@ -298,6 +301,7 @@ export function normalizeCodexUsage(raw: unknown): ProviderUsage {
 }
 
 export type CodexProcessResult = {
+  file_diagnostics?: { tools: Record<string, unknown>[]; omitted: number };
   web_search_events?: { observed_at: string; item: Record<string, unknown> }[];
   started_at: string; duration_ms: number; exit_code: number | null; exit_signal: string | null;
   thread_id: string | null; turn_completed: boolean; usage: ProviderUsage; last_message: string | null;
@@ -307,7 +311,7 @@ export type CodexProcessResult = {
 
 // One codex process. Stdout is parsed incrementally; stderr is inspected in a bounded
 // private buffer for status markers, then discarded. It is never logged or persisted.
-export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void }): Promise<CodexProcessResult> {
+export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileCompletion?: boolean; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void }): Promise<CodexProcessResult> {
   const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
   if (c.credential.kind === 'env') {
     const value = process.env[c.credential.name];
@@ -384,6 +388,14 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
             if(ev.type==='item.started')r.tool_attempts++;
           }
           if (ev.type === 'item.completed' && type === 'agent_message' && typeof item?.text === 'string') r.last_message = item.text;
+          if (o.fileAuthoring && ev.type === 'item.completed' && type === 'command_execution') {
+            const evidence = r.file_diagnostics ??= { tools: [], omitted: 0 };
+            // Bounded private diagnostic tail, never published as progress or logs.
+            if (evidence.tools.length === 24) { evidence.tools.shift(); evidence.omitted++; }
+            evidence.tools.push({ id: item?.id, status: item?.status, exit_code: item?.exit_code,
+              command: typeof item?.command === 'string' ? item.command.slice(0,2048) : null,
+              output: typeof item?.aggregated_output === 'string' ? item.aggregated_output.slice(-4096) : null });
+          }
           break;
         }
         default: break;
@@ -466,7 +478,7 @@ export type ContainedCallInput = {
   materialTools?: MaterialToolData;
   /** Persist host read receipts alongside the model result (never combined with live search). */
   materialToolsTrace?: true;
-  fileWorkspace?: { prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent,response?:{text:string})=>Promise<unknown> };
+  fileWorkspace?: { completionCheck?: boolean; prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent,response?:{text:string;diagnostics?:CodexProcessResult['file_diagnostics']})=>Promise<unknown> };
   /** Immutable evidence and pinned Markdown. Receipts come only from the host MCP trace. */
   reviewTools?: ReviewToolData;
 };
@@ -620,7 +632,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         // Lease loss and cancellation still abort the same process immediately.
         const executionConfig = (input.materialTools || input.fileWorkspace || input.reviewTools) && c.authoring_timeout_ms !== undefined
           ? { ...c, timeout_ms: c.authoring_timeout_ms } : c;
-        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, signal: input.signal, onEvent: input.onEvent,
+        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileCompletion:input.fileWorkspace?.completionCheck===true, signal: input.signal, onEvent: input.onEvent,
           onActivity:input.onActivity?event=>input.onActivity!(event,intent):undefined });
         if (!input.fileWorkspace && c.web_search === 'live') await journal.recordWebSearchEvents!(intent, raw.web_search_events ?? []);
         if (raw.thread_id) threadId = raw.thread_id;
@@ -660,7 +672,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         let obs: ProviderCallObservation = { ...intent, provider_request_id: null, finish_reason: cls.finish_reason, outcome: cls.outcome, usage: cls.usage, error_code: cls.error_code, result_ref: null, result_sha256: null, result_schema_version: null, result_byte_size: null };
         if (cls.outcome === 'completed') {
           try {
-            if(input.fileWorkspace)cls.value=await input.fileWorkspace.collect(cwd,intent,{text:raw.last_message??''});
+            if(input.fileWorkspace)cls.value=await input.fileWorkspace.collect(cwd,intent,{text:raw.last_message??'',diagnostics:raw.file_diagnostics});
             if(input.materialToolsTrace)cls.value={version:'material-tool-result-v1',model_output:cls.value,tool_trace:materialToolTrace!} satisfies MaterialModelEnvelope;
             const persisted:unknown=input.reviewTools?{version:'review-model-envelope-v1',output:cls.value,tool_trace:reviewToolTrace!} satisfies ReviewModelEnvelope:cls.value;
             obs = { ...obs, ...await journal.storeResult(intent, Buffer.from(JSON.stringify(persisted)), input.result_schema_version) };
@@ -673,7 +685,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
           if (obs.outcome === 'completed' && cls.usage.status !== 'measured') obs = { ...obs, outcome: 'pending_reconcile', error_code: 'MODEL_USAGE_PENDING' };
         }
         if (input.signal?.aborted) obs = { ...obs,outcome:'pending_reconcile',error_code:'MODEL_CANCELLED' };
-        const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.fileWorkspace ? 'codex-file-authoring-1' : input.reviewTools ? REVIEW_TOOL_ADAPTER_VERSION : input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : input.imageInput ? 'codex-image-input-1' : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
+        const runtime: ModelAttemptRuntime = { adapter: 'codex_exec', adapter_version: input.fileWorkspace ? (input.fileWorkspace.completionCheck ? 'codex-file-authoring-2' : 'codex-file-authoring-1') : input.reviewTools ? REVIEW_TOOL_ADAPTER_VERSION : input.materialTools ? READ_ONLY_MATERIAL_ADAPTER_VERSION : input.imageInput ? 'codex-image-input-1' : CODEX_ADAPTER_VERSION, model_provider: c.model_provider, model_config_version: c.model_config_version, provider_request_id_status: 'unknown', framework_thread_id: raw.thread_id ?? (persistent ? threadId : null), started_at: raw.started_at, duration_ms: raw.duration_ms, exit_code: raw.exit_code, exit_signal: raw.exit_signal, finish_reason: obs.finish_reason, error_code: obs.error_code, tool_attempts: raw.tool_attempts, pricing_status: 'unknown' };
         const retryable = obs.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID' && obs.usage.status === 'measured' && attemptNo < maxAttempts;
         await journal.recordRuntime(intent, runtime);
         await journal.recordObservation(obs, { retryable });

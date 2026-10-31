@@ -8,7 +8,8 @@ import { project, transaction, uid, digest, conflict, missing, Problem, date, re
 // are owner-unique; inspect nested pins too (M4 and file operations are cross-project).
 const deletionReason = `CASE
   WHEN v.origin='generated' THEN 'generated'
-  WHEN EXISTS(SELECT 1 FROM bb_prospectus_selection s WHERE s.owner_user_id=v.owner_user_id AND s.version_id=v.id) THEN 'current'
+  WHEN EXISTS(SELECT 1 FROM bb_prospectus_selection s JOIN bb_projects p ON p.owner_user_id=s.owner_user_id AND p.id=s.project_id
+    WHERE s.owner_user_id=v.owner_user_id AND s.version_id=v.id AND NOT (p.kind='update' AND COALESCE(p.update_details->>'authoring_mode','')='unified_v1')) THEN 'current'
   WHEN EXISTS(SELECT 1 FROM bb_input_revisions i WHERE i.owner_user_id=v.owner_user_id AND (
     i.material_versions @> jsonb_build_array(jsonb_build_object('material_id',v.material_id)) OR
     jsonb_path_exists(i.manifest,'$.**.material_id ? (@ == $material)',jsonb_build_object('material',v.material_id))))
@@ -47,7 +48,7 @@ export async function prospectusVersions(db: Pool | PoolClient, owner: string, i
       material_id:v.material_id,material_version:v.material_version,artifact_id:v.artifact_id,artifact_version:v.artifact_version,revision_artifact_id:v.revision_artifact_id,run_id:v.run_id,delete_block_reason:v.delete_block_reason})) };
 }
 
-export async function changed(c:PoolClient, owner:string, id:string, versionId:string) {
+export async function changed(c:PoolClient, owner:string, id:string, versionId:string|null) {
   await c.query(`INSERT INTO bb_prospectus_selection(owner_user_id,project_id,version_id,revision) VALUES($1,$2,$3,1)
     ON CONFLICT(project_id) DO UPDATE SET version_id=$3,revision=bb_prospectus_selection.revision+1`,[owner,id,versionId]);
   await c.query('UPDATE bb_projects SET draft_revision=draft_revision+1,updated_at=now() WHERE owner_user_id=$1 AND id=$2',[owner,id]);
@@ -56,13 +57,33 @@ export async function changed(c:PoolClient, owner:string, id:string, versionId:s
 }
 
 /** Called inside the project lock. Version numbers are append-only, independent of material IDs. */
-export async function registerUploadedProspectus(c:PoolClient,owner:string,id:string,m:any,selectFirst=false) {
+export async function registerUploadedProspectus(c:PoolClient,owner:string,id:string,m:any,adopt=false) {
   let v=(await c.query('SELECT * FROM bb_prospectus_versions WHERE owner_user_id=$1 AND project_id=$2 AND material_id=$3 AND material_version=$4',[owner,id,m.id,m.version])).rows[0];
   if(!v) v=(await c.query(`INSERT INTO bb_prospectus_versions(id,owner_user_id,project_id,sequence,origin,filename,sha256,material_id,material_version)
     SELECT $1,$2,$3,COALESCE(max(sequence),0)+1,'upload',$4,$5,$6,$7 FROM bb_prospectus_versions WHERE project_id=$3 RETURNING *`,
     [uid(),owner,id,m.filename,m.sha256.trim(),m.id,m.version])).rows[0];
-  if(selectFirst && !(await c.query('SELECT 1 FROM bb_prospectus_selection WHERE project_id=$1',[id])).rowCount) await changed(c,owner,id,v.id);
+  // Only a newly completed upload adopts. Replaying an old completion must not
+  // switch away from a newer upload or a subsequently selected/generated result.
+  if(adopt){
+    const cleared=await c.query("UPDATE bb_projects SET update_details=update_details-'format_template' WHERE owner_user_id=$1 AND id=$2 AND update_details ? 'format_template' RETURNING id",[owner,id]);
+    if(cleared.rowCount || !(await c.query('SELECT 1 FROM bb_prospectus_selection WHERE project_id=$1 AND version_id=$2',[id,v.id])).rowCount)
+      await changed(c,owner,id,v.id);
+  }
   return v;
+}
+
+/** A mistaken, unused automatic source can be removed without stranding the project. */
+export async function reselectAfterProspectusRemoval(c:PoolClient,owner:string,id:string,materialId:string){
+  const selected=(await c.query(`SELECT 1 FROM bb_prospectus_selection s JOIN bb_prospectus_versions v
+    ON v.owner_user_id=s.owner_user_id AND v.project_id=s.project_id AND v.id=s.version_id
+    WHERE s.owner_user_id=$1 AND s.project_id=$2 AND v.material_id=$3`,[owner,id,materialId])).rowCount;
+  if(!selected)return;
+  const next=(await c.query(`SELECT v.id FROM bb_prospectus_versions v WHERE v.owner_user_id=$1 AND v.project_id=$2
+    AND (EXISTS(SELECT 1 FROM bb_material_versions m WHERE m.owner_user_id=v.owner_user_id AND m.id=v.material_id AND m.version=v.material_version AND m.deleted_at IS NULL)
+      OR EXISTS(SELECT 1 FROM bb_artifact_versions a WHERE a.owner_user_id=v.owner_user_id AND a.id=v.artifact_id AND a.version=v.artifact_version AND a.delivery_status='available'))
+    ORDER BY v.sequence DESC LIMIT 1`,[owner,id])).rows[0];
+  await changed(c,owner,id,next?.id??null);
+  await c.query("UPDATE bb_projects SET update_details=update_details-'format_template' WHERE owner_user_id=$1 AND id=$2",[owner,id]);
 }
 
 /** Completion archives both outputs, but only promotes if the user has not switched/uploaded since input lock. */

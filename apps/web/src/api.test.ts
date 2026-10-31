@@ -2,6 +2,30 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test, type TestContext } from 'node:test';
 import { ApiClient, ApiError, friendlyError, parseApiError, type Dto } from './api.js';
+import { PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE } from '@bondbuddy/contracts';
+
+test('unselected prospectus errors explain adoption without trusting server prose', () => {
+  const error = parseApiError(409, {code:'INPUT_REVISION_CONFLICT',message:'private server message',
+    field_errors:[{...PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR,message:'untrusted replacement'}]});
+  assert.equal(error.code, 'INPUT_REVISION_CONFLICT');
+  assert.equal(error.details.prospectusSelectionRequired, true);
+  assert.equal(friendlyError(error), PROSPECTUS_SELECTION_REQUIRED_MESSAGE);
+  assert.doesNotMatch(friendlyError(error), /private|untrusted|其他页面/);
+});
+
+test('only the prospectus field/code pair under input conflict selects the recovery message', () => {
+  for (const fields of [undefined, {}, [null, [], 'invalid'],
+    [{field:'wrong',code:PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR.code}],
+    [{field:PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR.field,code:'UNKNOWN',message:PROSPECTUS_SELECTION_REQUIRED_MESSAGE}],
+  ]) {
+    const error = parseApiError(409, {code:'INPUT_REVISION_CONFLICT',message:PROSPECTUS_SELECTION_REQUIRED_MESSAGE,field_errors:fields});
+    assert.equal(error.details.prospectusSelectionRequired, undefined);
+    assert.match(friendlyError(error), /其他页面修改/);
+  }
+  const unrelated = parseApiError(422, {code:'VALIDATION_FAILED',field_errors:[PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR]});
+  assert.equal(unrelated.details.prospectusSelectionRequired, undefined);
+  assert.doesNotMatch(friendlyError(unrelated), /用于本次更新/);
+});
 
 test('an active source-project run has a safe business message distinct from draft version conflict',()=>{
   const error=parseApiError(409,{code:'PROJECT_RUN_ACTIVE',message:'Synthetic private worker path or provider detail must not reach the UI'});
@@ -162,7 +186,7 @@ test('workpaper ZIP reports received bytes and returns the complete streamed arc
   const first=new Uint8Array(24).fill(1),last=new Uint8Array(37).fill(2);
   const {api,calls}=stubDownload(t,()=>new Response(new ReadableStream({start(c){c.enqueue(first);c.enqueue(last);c.close();}}),{headers:{'Content-Type':'application/zip'}}));
   const progress:number[]=[],bytes=await api.workpaperZip('source project','batch',new AbortController().signal,n=>progress.push(n));
-  assert.deepEqual(progress,[24,61]);assert.equal(bytes.size,61);
+  assert.deepEqual(progress,[0,24,61]);assert.equal(bytes.size,61);
   assert.deepEqual(new Uint8Array(await bytes.arrayBuffer()),new Uint8Array([...first,...last]));
   assert.equal(calls[0]!.url,'/api/v1/projects/source%20project/workpapers/batches/batch/download');
 });
@@ -177,7 +201,7 @@ test('ZIP progress uses only reliable lengths and rejects truncated archives',as
     const {api}=stubDownload(sub,()=>new Response(new Uint8Array(64),{headers:{'content-type':'application/zip','content-length':'64',...(encoding?{'content-encoding':encoding}:{})}}));
     const progress:Array<[number,number|undefined]>=[];
     await api.workpaperZip('project','batch',new AbortController().signal,(received,total)=>progress.push([received,total]));
-    assert.deepEqual(progress,[[64,encoding?undefined:64]]);
+    assert.deepEqual(progress,[[0,encoding?undefined:64],[64,encoding?undefined:64]]);
   });
   await t.test('truncated',async sub=>{
     const {api}=stubDownload(sub,()=>new Response(new Uint8Array(32),{headers:{'content-type':'application/zip','content-length':'64'}}));

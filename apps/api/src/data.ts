@@ -4,7 +4,7 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient, type BlobItem } from '@azure/storage-blob';
-import { isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
+import { isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
 import { inspectMaterialUpload, inspectMaterialUploadFile, inspectMaterialUploadFileDetailed } from './original-material-upload.js';
 import { UploadSafetyError, type UploadInspectionResult, type UploadRejectionReason, type UploadStructureDetail } from './upload-safety.js';
 
@@ -36,6 +36,7 @@ export const executionKeyFromStorage=(value:string):string=>{
 export class Problem extends Error {
   inputIssues?: M4InputIssue[];
   trialLimit?: TrialLimitKind;
+  prospectusSelectionRequired?: boolean;
   constructor(public status: number, public code: string, message: string, public readonly uploadReason?: UploadRejectionReason, public readonly uploadDetail?: UploadStructureDetail) { super(message); }
 }
 export function publicProblem(error: Problem, correlationId: string) {
@@ -50,12 +51,16 @@ export function publicProblem(error: Problem, correlationId: string) {
     field_errors: inspection ? [{ field: 'material_upload', code: inspection, message: 'File inspection was not completed' }]
       : error.code === 'TRIAL_QUOTA_EXCEEDED' && error.trialLimit && TRIAL_LIMIT_KINDS.includes(error.trialLimit)
         ? [{ field: TRIAL_LIMIT_ERROR_FIELD, code: error.trialLimit, message: 'Current processing limit reached' }]
-        : error.code === 'INPUT_REQUIRED' ? error.inputIssues ?? [] : [],
+        : error.code === 'INPUT_REVISION_CONFLICT' && error.prospectusSelectionRequired
+          ? [PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR]
+          : error.code === 'INPUT_REQUIRED' ? error.inputIssues ?? [] : [],
     correlation_id: correlationId,
   };
 }
 export const missing = () => new Problem(404, 'NOT_FOUND', 'Resource does not exist');
 export const conflict = (code: string, message: string) => new Problem(409, code, message);
+export const prospectusSelectionRequired = () => Object.assign(
+  conflict('INPUT_REVISION_CONFLICT', PROSPECTUS_SELECTION_REQUIRED_MESSAGE), { prospectusSelectionRequired: true });
 export const unavailable = () => new Problem(501, 'CAPABILITY_NOT_READY', 'Capability is not connected');
 export async function transaction<T>(pool: Pool, fn: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();

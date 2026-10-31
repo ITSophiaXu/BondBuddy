@@ -95,8 +95,8 @@ test('subscription account shows point rights and disables unavailable payment c
   await expect(page.getByRole('button',{name:'开通密集',exact:true})).toBeDisabled();
   await expect(page.locator('#subscription-topup-form')).toHaveCount(0);
   await expect(page.locator('[data-record="response-settled"] .credit-history-amount')).toContainText('消耗 1,218 积分');
-  await expect(page.locator('.top-plan-link')).toHaveText('订阅与充值');
-  await expect(page.locator('[data-credit-wallet]').first()).not.toContainText('¥');
+  await expect(page.locator('.account-balance-total')).toContainText('21,000');
+  await expect(page.locator('[data-credit-wallet]')).toHaveCount(0);
   expect(calls.filter(call=>call.method==='POST')).toEqual([]);
   await evidence(page,'subscription-account-1440.png');
   await page.setViewportSize({width:390,height:844});

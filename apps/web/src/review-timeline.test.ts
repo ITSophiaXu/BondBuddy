@@ -24,6 +24,9 @@ test('recorded failure remains visible while audit timestamps and raw errors sta
   const failure:RunEvent={event_id:'failed-event',schema_version:1,trace_id:'trace',run_id:current.run.run_id,seq:5,occurred_at:'2026-10-04T09:10:00Z',stage:current.run.stage,type:'run.state_changed',state:'failed',payload:{error_code:'DELIVERY_FAILED'}};
   current.events=[failure];
   assert.match(reviewTaskNotice(current)??'',/文档交付失败/);
+  current.events=[{...failure,payload:{error_code:'WORD_FORMAT_OPERATIONS_MISSING'}}];
+  assert.match(reviewTaskNotice(current)??'',/未保存必需的修订记录/);
+  current.events=[failure];
   let html=reviewTaskHtml(current,'2026-10-04T09:00:00Z');
   assert.match(html,/文档交付失败/);assert.doesNotMatch(html,/ · 开始 | · 结束 | · 更新 /);
   current.started_at='2026-10-04T09:01:00Z';current.completed_at='2026-10-04T09:10:00Z';

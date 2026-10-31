@@ -20,3 +20,22 @@ export const prospectusVersionSchemas = {
 };
 export type ProspectusVersion = Static<typeof ProspectusVersionSchema>;
 export type ProspectusVersions = Static<typeof prospectusVersionSchemas.ProspectusVersionsResponse>;
+
+/** A saved upload must not silently disappear from an update's locked input. */
+export function requiresProspectusSelection(state: ProspectusVersions): boolean {
+  return state.current_version_id === null && state.versions.some(version => version.origin === 'upload');
+}
+
+export const PROSPECTUS_SELECTION_REQUIRED_MESSAGE = '已上传原稿的自动采用状态尚未确认，请刷新已保存材料后重试。';
+
+export const PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR = {
+  field: 'prospectus_selection', code: 'PROSPECTUS_SELECTION_REQUIRED', message: PROSPECTUS_SELECTION_REQUIRED_MESSAGE,
+} as const;
+
+/** Recognize only the public field/code pair; server prose is never UI copy. */
+export function isProspectusSelectionRequiredFieldError(value: unknown): boolean {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const field = value as Record<string, unknown>;
+  return field.field === PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR.field &&
+    field.code === PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR.code;
+}

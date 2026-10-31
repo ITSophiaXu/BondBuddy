@@ -138,17 +138,6 @@ export class ProjectAssistant {
   mount(){
     if(!this.host.isConnected)document.body.append(this.host);
     if(!this.dock.isConnected)document.body.append(this.dock);
-    const navigation=document.querySelector('.sidebar nav[aria-label="账号"]');
-    if(navigation&&!navigation.querySelector('[data-assistant-restore]')){
-      const button=document.createElement('button');button.type='button';button.className='nav-item assistant-restore';button.dataset.assistantRestore='';
-      button.innerHTML=icon('buddy')+'<span>BondBuddy</span>';
-      button.title='打开或恢复 BondBuddy';
-      button.addEventListener('click',()=>{
-        const menu=document.querySelector<HTMLButtonElement>('#toggle-menu');if(menu?.getAttribute('aria-expanded')==='true')menu.click();
-        void this.setOpen(true);
-      });
-      navigation.prepend(button);
-    }
     this.paintDock();this.syncLayout();
   }
   private async setOpen(open:boolean){

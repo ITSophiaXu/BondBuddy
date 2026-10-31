@@ -35,6 +35,7 @@ const reasonLabels: Record<string, string> = { user_cancelled: '用户请求停�
   provider_call_retrying:'系统已准备重试，当前输入保持不变。' };
 const failureLabels: Record<string, string> = {
   DELIVERY_FAILED: '本轮文档交付失败，未取得可核验的成果。请联系支持核对任务结果。',
+  WORD_FORMAT_OPERATIONS_MISSING: '本轮编制未保存必需的修订记录，未生成可交付的 Word。请联系支持核对本轮结果。',
   VALIDATION_FAILED: '本轮成果未通过校验，未登记为有效报告。请核对输入后，明确开始下一轮。',
   MODEL_TIMEOUT: '本轮处理超时。请核对连接与输入后，明确开始下一轮。',
   MODEL_STREAM_BROKEN: '本轮响应中断，未取得完整成果。请核对服务连接后，明确开始下一轮。',

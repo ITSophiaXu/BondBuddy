@@ -67,14 +67,17 @@ test('248-file ZIP on real PostgreSQL/Azurite: cold/warm HTTP, legacy-read bench
     }
     zip.end();await oldBody;const legacyMs=performance.now()-legacyStart;
     const address=await app.listen({port:0,host:'127.0.0.1'}),url=`${address}/api/v1/projects/${project}/workpapers/batches/${batch}/download`;
-    const download=async()=>{
+    const download=async(expectedFiles=248)=>{
       const start=performance.now();let response:Response,polls=0,maxRequestMs=0;
       for(;;){
         const requestStart=performance.now();
         response=await fetch(url,{headers:{Prefer:'respond-async'},signal:AbortSignal.timeout(2000)});
         maxRequestMs=Math.max(maxRequestMs,performance.now()-requestStart);
         if(response.status!==202)break;
-        assert.deepEqual(await response.json(),{status:'preparing'});polls++;
+        const preparation=await response.json();assert.equal(preparation.status,'preparing');
+        assert.equal(preparation.progress.total_files,expectedFiles);
+        assert.ok(['retrieving','packaging'].includes(preparation.progress.phase));
+        assert.ok(Number.isInteger(preparation.progress.completed_files)&&preparation.progress.completed_files>=0&&preparation.progress.completed_files<=expectedFiles);polls++;
         await delay(Number(response.headers.get('retry-after'))*1000);
       }
       const headersMs=performance.now()-start;
@@ -97,7 +100,8 @@ test('248-file ZIP on real PostgreSQL/Azurite: cold/warm HTTP, legacy-read bench
     t.diagnostic(JSON.stringify({files:count,zipBytes:cold.content.length,legacySerialMs:Math.round(legacyMs),coldPrepareMs:Math.round(cold.headersMs),coldTotalMs:Math.round(cold.totalMs),coldPolls:cold.polls,maxRequestMs:Math.round(cold.maxRequestMs),warmPrepareMs:Math.round(warm.headersMs),warmTotalMs:Math.round(warm.totalMs)}));
     actor='foreign';assert.equal((await fetch(url)).status,404);actor=originalOwner;
     await pool.query("UPDATE bb_artifact_versions SET delivery_status='pending' WHERE owner_user_id=$1 AND id='item-124'",[actor]);
-    const changed=await download();assert.notDeepEqual(changed.content,cold.content);
+    const changed=await download(247);assert.notDeepEqual(changed.content,cold.content);
+    assert.equal(changed.content.readUInt16LE(changed.content.length-12),247);
     await pool.query('UPDATE bb_projects SET deleted_at=now() WHERE owner_user_id=$1 AND id=$2',[actor,project]);
     assert.equal((await fetch(url)).status,404);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1',[actor])).rows[0].n,0);

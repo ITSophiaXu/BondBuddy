@@ -86,16 +86,24 @@ export function registerUpdateWorkspace(app:FastifyInstance,db:()=>Pool,owner:(r
       const sources=[...new Set([id,...(source.execution_scope_project_id&&source.execution_scope_project_id!==id?[source.execution_scope_project_id]:[])])];
       for(const sourceId of sources){
         await project(db(),user,sourceId);
-        const materials=(await db().query('SELECT DISTINCT ON(id) id,version FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL AND NOT internal_template ORDER BY id,version DESC',[user,sourceId])).rows;
+        const materials=(await db().query('SELECT * FROM (SELECT DISTINCT ON(id) id,version,persisted_at FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL AND NOT internal_template ORDER BY id,version DESC) latest ORDER BY persisted_at,id',[user,sourceId])).rows;
         for(const m of materials)await copyMaterial(db(),blobs(),user,target,sourceId,m.id,m.version,event);
         await transaction(db(),async c=>{
-          await project(c,user,target,true);
-          if((await c.query('SELECT 1 FROM bb_prospectus_selection WHERE owner_user_id=$1 AND project_id=$2',[user,target])).rowCount)return;
+          const targetProject=await project(c,user,target,true);
+          if((await c.query('SELECT 1 FROM bb_prospectus_selection WHERE owner_user_id=$1 AND project_id=$2 AND version_id IS NOT NULL',[user,target])).rowCount)return;
           const current=(await c.query(`SELECT COALESCE(v.material_id,i.material_id) material_id,COALESCE(v.material_version,i.material_version) material_version
             FROM bb_prospectus_selection s JOIN bb_prospectus_versions v ON v.project_id=s.project_id AND v.id=s.version_id AND v.owner_user_id=s.owner_user_id
             LEFT JOIN bb_review_source_imports i ON i.project_id=v.project_id AND i.version_id=v.id AND i.owner_user_id=v.owner_user_id
             WHERE s.owner_user_id=$1 AND s.project_id=$2`,[user,sourceId])).rows[0];
-          if(!current?.material_id)return;
+          if(!current?.material_id){
+            const latest=(await c.query("SELECT v.* FROM bb_prospectus_versions v JOIN bb_material_versions m ON m.owner_user_id=v.owner_user_id AND m.id=v.material_id AND m.version=v.material_version WHERE v.owner_user_id=$1 AND v.project_id=$2 AND m.deleted_at IS NULL ORDER BY v.sequence DESC LIMIT 1",[user,target])).rows[0];
+            if(latest){
+              await changed(c,user,target,latest.id);
+              if(!sameFormatTemplate(targetProject.update_details?.format_template,{material_id:latest.material_id,material_version:latest.material_version,sha256:latest.sha256.trim()}))
+                await c.query("UPDATE bb_projects SET update_details=update_details-'format_template' WHERE owner_user_id=$1 AND id=$2",[user,target]);
+            }
+            return;
+          }
           const selected=(await c.query(`SELECT v.id FROM bb_update_material_copies c JOIN bb_prospectus_versions v
             ON v.project_id=c.project_id AND v.material_id=c.material_id AND v.owner_user_id=c.owner_user_id
             WHERE c.owner_user_id=$1 AND c.project_id=$2 AND c.source_material_id=$3 AND c.source_material_version=$4`,[user,target,current.material_id,current.material_version])).rows[0];

@@ -99,6 +99,11 @@ def audit(baseline_path, tracked_path, author, input_path=None, operations_path=
         after = package(Path(tracked_path))
         result['baseline_sha256'] = sha(Path(baseline_path).read_bytes())
         result['tracked_sha256'] = sha(Path(tracked_path).read_bytes())
+        from .source_outline import outline, compare_outlines
+        result['source_structure'] = compare_outlines(outline(before), outline(after))
+        if result['source_structure']['status'] == 'changed':
+            result['issues'].append({'code': 'SOURCE_OUTLINE_CHANGED', 'part': 'word/document.xml',
+                                     'review': 'Verify explicit user scope or necessary target disclosure; recorded edits alone do not prove authorization.'})
         if not isinstance(author, str) or not author:
             raise ValueError('WORD_FORMAT_AUTHOR_REQUIRED')
         expected, new_comment_ids = None, set()
