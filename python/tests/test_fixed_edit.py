@@ -183,6 +183,11 @@ class FixedEditTests(unittest.TestCase):
         self.assertEqual(receipt['format_status'], 'passed')
         tracked = xml(package(output / 'tracked.docx')['word/document.xml'])
         self.assertTrue(any(n.get(q('author')) == 'Prior author' for n in tracked.iter(q('ins'))))
+        new_ids = [int(n.get(q('id'))) for n in tracked.iter()
+                   if n.tag in (q('ins'), q('del')) and n.get(q('author')) == self.data['revision_author']]
+        self.assertTrue(new_ids)
+        self.assertTrue(all(value > 100 for value in new_ids))
+        self.assertEqual(len(new_ids), len(set(new_ids)))
         cleaned = xml(package(output / 'clean.docx')['word/document.xml'])
         self.assertFalse(list(cleaned.iter(q('ins'))))
         old = self.node('保留😀的原始段落。')
@@ -322,6 +327,56 @@ class FixedEditTests(unittest.TestCase):
         inspected = subprocess.run(args + ['inspect', '--input', str(self.input), '--operations', str(self.log_path), '--node', node['node_id']], capture_output=True, encoding='utf-8')
         self.assertEqual(inspected.returncode, 0, inspected.stderr)
         self.assertEqual(json.loads(inspected.stdout)['nodes'][0]['text'], '保留😀并更新文字。')
+
+    def test_large_prospectus_replay_finishes_without_repeated_document_scans(self):
+        # A long, run-heavy synthetic package exercises the real finalization
+        # subprocess and its deadline, not a mock of the XML query implementation.
+        parts = package(self.source)
+        root = xml(parts['word/document.xml'])
+        body = root.find(q('body'))
+        template = ET.Element(q('p'))
+        for index in range(10):
+            run = ET.SubElement(template, q('r'))
+            props = ET.SubElement(run, q('rPr'))
+            ET.SubElement(props, q('b' if index % 2 else 'i'))
+            ET.SubElement(run, q('t')).text = '合成财务披露。'
+        for _ in range(8000):
+            body.insert(len(body) - 1, copy.deepcopy(template))
+        parts['word/document.xml'] = serialized(root)
+        with ZipFile(self.source, 'w', ZIP_DEFLATED) as archive:
+            for name, raw in parts.items():
+                archive.writestr(name, raw)
+        raw = self.source.read_bytes()
+        self.data['baseline_sha256'] = sha(raw)
+        write_json(self.input, self.data)
+        editor = Editor(self.data, self.source)
+        self.log = empty_log(self.data, raw)
+        for key, (_, node) in editor.nodes.items():
+            if node.tag == q('p') and paragraph_text(node) == '合成财务披露。' * 10:
+                self.log['operations'].append({'id': 'large-' + str(len(self.log['operations'])),
+                    'kind': 'replace_text', 'node_id': key, 'before': paragraph_text(node),
+                    'after': paragraph_text(node) + '本轮更新。'})
+                if len(self.log['operations']) == 600:
+                    break
+        write_json(self.log_path, self.log)
+        output = self.root / 'large-output'
+        result = subprocess.run([sys.executable, '-m', 'bondbuddy_file_authoring.fixed_edit',
+            'finalize', '--input', str(self.input), '--operations', str(self.log_path),
+            '--output-dir', str(output), '--skip-report'], capture_output=True, encoding='utf-8', timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)['operation_count'], 600)
+        tracked_parts = package(output / 'tracked.docx')
+        tracked = xml(tracked_parts['word/document.xml'])
+        clean = xml(package(output / 'clean.docx')['word/document.xml'])
+        self.assertEqual(len(tracked.findall('.//' + q('ins'))), 600)
+        self.assertEqual(len(clean.findall('.//' + q('ins'))), 0)
+        self.assertEqual(sum(paragraph_text(p).endswith('本轮更新。') for p in clean.iter(q('p'))), 600)
+        # Rejecting the new revisions restores every original paragraph and run
+        # property; unrelated template parts remain byte-identical.
+        self.assertEqual(canonical(resolve_revisions(copy.deepcopy(tracked), False)), canonical(root))
+        for name, original in parts.items():
+            if name != 'word/document.xml':
+                self.assertEqual(tracked_parts[name], original, name)
 
 
 if __name__ == '__main__':

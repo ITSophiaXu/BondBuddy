@@ -302,10 +302,16 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
     const user=await owner(r),{project_id:id,batch_id:batch}=params(r),data=await readWorkpaperBatch(db(),user,id,batch);
     if(!data.items.some(i=>i.artifacts.length||i.explanation))throw new Problem(422,'INPUT_REQUIRED','尚无已完成底稿可打包。');
     const files=await readWorkpaperZipFiles(db(),user,data);
+    const scope=JSON.stringify([user,id,batch]);
+    // Keep cold ZIP preparation out of an idle HTTP connection. Older clients
+    // retain the blocking response; polling clients opt in with standard Prefer.
+    if(r.headers.prefer==='respond-async'&&!zipCache.prepare(scope,files,blobs()))
+      return reply.code(202).header('Cache-Control','private, no-store').header('Retry-After','2')
+        .header('Preference-Applied','respond-async').send({status:'preparing'});
     const controller=new AbortController();
     reply.raw.once('close',()=>controller.abort());
     const started=performance.now();
-    const archive=await zipCache.open(JSON.stringify([user,id,batch]),files,blobs(),controller.signal);
+    const archive=await zipCache.open(scope,files,blobs(),controller.signal);
     r.log.info({batch_id:batch,files:files.length,zip_bytes:archive.size,zip_cache_hit:archive.cached,zip_prepare_ms:Math.round(performance.now()-started)},'workpaper ZIP ready');
     return reply.header('Cache-Control','private, no-store').header('Content-Length',archive.size)
       .header('Content-Disposition',`attachment; filename="workpapers.zip"; filename*=UTF-8''${encodeURIComponent('底稿文件包.zip')}`)
