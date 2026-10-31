@@ -27,9 +27,7 @@
       <a class="nav-item" href="#qa" data-icon="chat"><span>项目问答</span></a>
     </nav>
     <div class="sidebar-bottom">
-      <button class="nav-item" type="button" style="width:100%" data-icon="chat"><span>BondBuddy</span></button>
-      <nav aria-label="账号"><a class="nav-item active" href="#account" aria-current="page" data-icon="settings"><span>我的账号</span></a></nav>
-      <div class="user account"><span class="avatar">我</span><strong data-account-name>owner_a</strong><button class="text-button">退出</button></div>
+      <div class="user account"><a class="account-entry" href="#account" aria-label="我的账号" title="我的账号" aria-current="page"><span class="avatar" aria-hidden="true">我</span><strong data-account-name>owner_a</strong></a><button class="text-button">退出</button></div>
     </div>
   </aside>
   <div class="shell">
@@ -53,7 +51,7 @@
   const close=()=>{sidebar.classList.remove('mobile-open');menu.setAttribute('aria-expanded','false');};
   menu.onclick=()=>{sidebar.classList.add('mobile-open');menu.setAttribute('aria-expanded','true');};
   document.querySelector('#close-menu').onclick=close;
-  document.querySelectorAll('nav a').forEach(link=>link.onclick=()=>{document.querySelectorAll('.nav-item').forEach(el=>{el.classList.remove('active');el.removeAttribute('aria-current');});link.classList.add('active');link.setAttribute('aria-current','page');document.querySelector('#current-page').textContent=link.textContent;close();});
+  document.querySelectorAll('nav a,.account-entry').forEach(link=>link.onclick=()=>{document.querySelectorAll('.nav-item,.account-entry').forEach(el=>{el.classList.remove('active');el.removeAttribute('aria-current');});link.classList.add('active');link.setAttribute('aria-current','page');document.querySelector('#current-page').textContent=link.classList.contains('account-entry')?'我的账号':link.textContent;close();});
 </script>
 </body>
 </html>

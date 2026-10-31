@@ -12,6 +12,20 @@
 .prototype-app .sidebar-bottom { flex-shrink: 0; }
 .prototype-app .sidebar > nav { flex: 0 0 auto; overflow: visible; }
 .prototype-app .sidebar-bottom { margin-top: auto; padding-top: 16px; }
+.prototype-app .account-entry {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  gap: 9px;
+  margin: 0 0 0 -6px;
+  padding: 6px;
+  border-radius: 8px;
+}
+.prototype-app .account-entry:hover,
+.prototype-app .account-entry:focus-visible,
+.prototype-app .account-entry[aria-current="page"] { background: #e7eddd; }
 .prototype-app .sidebar .nav-item { min-height: 44px; }
 .prototype-app .sidebar .nav-item span { min-width: 0; overflow-wrap: anywhere; }
 .prototype-app .shell { min-width: 0; }

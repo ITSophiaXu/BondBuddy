@@ -103,7 +103,7 @@ async function openSettings(page: Page, state: Fixture) {
   await page.getByRole('button', { name: '登录', exact: true }).click();
   await page.getByRole('link', { name: '任务进度与结果', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
-  await page.getByRole('link', { name: '我的账号' }).click();
+  await page.getByRole('link', { name: '我的账号' }).locator('[data-account-name]').click();
   await expect(page.getByRole('heading', { name: '我的账号', exact: true })).toBeVisible();
 }
 async function openSecurity(page: Page) {
@@ -264,7 +264,11 @@ test('a session revoked elsewhere returns to login instead of showing account da
 
 test('unified account keeps two basic fields and opens security settings only on request',async({page,context})=>{
  const state=fixture();await installApi(context,state);await openSettings(page,state);
- await expect(page.getByRole('navigation',{name:'账号'}).getByRole('link')).toHaveCount(1);
+ await expect(page.getByRole('navigation',{name:'账号'})).toHaveCount(0);
+ await expect(page.locator('.sidebar .nav-item').filter({hasText:/^(我的账号|BondBuddy)$/})).toHaveCount(0);
+ await expect(page.locator('.account-entry')).toHaveCount(1);
+ await expect(page.locator('.account-entry')).toHaveAttribute('title','我的账号');
+ await expect(page.locator('.account-entry #logout')).toHaveCount(0);
  await expect(page.getByRole('link',{name:'积分与充值',exact:true})).toHaveCount(0);
  await expect(page.getByRole('link',{name:'数据保存与删除',exact:true})).toHaveCount(0);
  await expect(page.locator('#account-credits')).toContainText('5,000');
@@ -294,6 +298,11 @@ test('unified account keeps two basic fields and opens security settings only on
  await page.goto('/#billing');await expect(page.getByRole('heading',{name:'我的账号',exact:true})).toBeVisible();
  await expect(page.locator('#account-credits')).toContainText('5,300');
  await expect(page.locator('.credit-reservation')).toHaveCount(0);
+ await page.setViewportSize({width:1366,height:768});
+ await page.getByRole('link',{name:'更新募集书',exact:true}).click();
+ const entry=page.getByRole('link',{name:'我的账号',exact:true});await entry.focus();await page.keyboard.press('Enter');
+ await expect(page.getByRole('heading',{name:'我的账号',exact:true})).toBeVisible();
+ await expect(entry).toHaveAttribute('aria-current','page');expect(calls(state,'/auth/logout')).toHaveLength(0);
  if(output){await page.setViewportSize({width:1360,height:900});await page.screenshot({path:output+'/implementation-account-zero-1360.png',fullPage:true});}
 });
 
@@ -357,7 +366,7 @@ for(const [width,height] of [[1920,1080],[1440,900],[1366,768],[1280,720],[1093,
   }
   await integrity.click();await expect(page).toHaveURL(/#integrity$/);await expect(sidebar.locator('a[href="#integrity"]')).toHaveAttribute('aria-current','page');
   if(width<=960)await page.getByRole('button',{name:'打开菜单',exact:true}).click();
-  const account=sidebar.getByRole('link',{name:'我的账号',exact:true});await account.scrollIntoViewIfNeeded();await account.click();await expect(page.locator('.account-balance-value')).toContainText('5,000');
+  const account=sidebar.getByRole('link',{name:'我的账号',exact:true});await account.scrollIntoViewIfNeeded();await account.locator('.avatar').click();await expect(page.locator('.account-balance-value')).toContainText('5,000');expect(calls(state,'/auth/logout')).toHaveLength(0);
   if(width<=960){await page.getByRole('button',{name:'打开菜单',exact:true}).click();await sidebar.getByRole('button',{name:'关闭菜单',exact:true}).click();await expect(sidebar).toBeHidden();}
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  });
