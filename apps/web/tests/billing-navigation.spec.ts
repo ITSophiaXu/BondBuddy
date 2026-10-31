@@ -1,4 +1,5 @@
 import {expect,test,type Page,type Route} from '@playwright/test';
+import {fixtureJson} from './billing-fixture-wire';
 import {DATA_POLICY_VERSION,DELETION_PURGED_CONTENT,DELETION_RETAINED_METADATA,type DataPolicy} from '@bondbuddy/contracts';
 import type {Dto} from '../src/api';
 
@@ -7,7 +8,7 @@ const now='2026-10-25T04:00:00Z',original='navigation-original',execution='navig
 const accountSessions:Dto<'AccountSessionListResponse'>={items:[{session_id:'synthetic-current-session',current:true,created_at:now,last_refreshed_at:now,refresh_expires_at:'2030-01-01T00:00:00Z'}]};
 const recovery:Dto<'RecoveryAccountResponse'>={enabled:false,support_operator:false,current:null,pending:null};
 const policy:DataPolicy={policy_version:DATA_POLICY_VERSION,storage_location:'platform_private_cloud',server_side_processing:true,model_provider_processing:true,active_retention:'until_user_deletes',purge_enabled:false,deleted_content_purge_days:null,orphan_upload_purge_hours:null,log_content_retention_days:30,backup_retention_days:null,pinned_by_active_run:'retained_until_run_ends',purged_content:[...DELETION_PURGED_CONTENT],retained_metadata:[...DELETION_RETAINED_METADATA]};
-const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:status<400?fixtureJson(route,body):JSON.stringify(body)});
 async function setup(page:Page){
   const calls:{method:string;path:string;body:unknown}[]=[];
   const orders=new Map<string,Record<string,unknown>>();
@@ -61,10 +62,10 @@ test('associated-file recharge retains the check and never claims automatic batc
   expect(state.calls.filter(c=>c.method==='POST').every(c=>c.path==='/credits/recharge-orders')).toBe(true);
 });
 
-test('a topic-only wallet retains navigation without assigning the original project to its order',async({page})=>{
+test('my account retains topic navigation without assigning the original project to its order',async({page})=>{
   const state=await setup(page),work=`#generate?topic=topic-1&run=run-1&return_project=${original}`;
   await page.goto('/'+work);
-  const wallet=page.getByRole('link',{name:'查看积分与充值',exact:true});
+  const wallet=page.getByRole('link',{name:'我的账号',exact:true});
   await expect(wallet).toBeVisible();const href=await wallet.getAttribute('href'),query=new URLSearchParams(href!.split('?')[1]);
   expect(query.get('project')).toBeNull();expect(query.get('return_project')).toBe(original);expect(query.get('return_to')).toBe(work);
   await wallet.click();await expect(page.locator('[data-pack="cny200"]')).toBeVisible();

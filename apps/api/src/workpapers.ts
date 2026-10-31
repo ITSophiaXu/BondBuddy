@@ -305,9 +305,10 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
     const scope=JSON.stringify([user,id,batch]);
     // Keep cold ZIP preparation out of an idle HTTP connection. Older clients
     // retain the blocking response; polling clients opt in with standard Prefer.
-    if(r.headers.prefer==='respond-async'&&!zipCache.prepare(scope,files,blobs()))
+    const preparation=r.headers.prefer==='respond-async'?zipCache.prepare(scope,files,blobs()):true;
+    if(preparation!==true)
       return reply.code(202).header('Cache-Control','private, no-store').header('Retry-After','2')
-        .header('Preference-Applied','respond-async').send({status:'preparing'});
+        .header('Preference-Applied','respond-async').send(preparation);
     const controller=new AbortController();
     reply.raw.once('close',()=>controller.abort());
     const started=performance.now();

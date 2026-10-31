@@ -186,7 +186,7 @@ test('workpaper ZIP reports received bytes and returns the complete streamed arc
   const first=new Uint8Array(24).fill(1),last=new Uint8Array(37).fill(2);
   const {api,calls}=stubDownload(t,()=>new Response(new ReadableStream({start(c){c.enqueue(first);c.enqueue(last);c.close();}}),{headers:{'Content-Type':'application/zip'}}));
   const progress:number[]=[],bytes=await api.workpaperZip('source project','batch',new AbortController().signal,n=>progress.push(n));
-  assert.deepEqual(progress,[24,61]);assert.equal(bytes.size,61);
+  assert.deepEqual(progress,[0,24,61]);assert.equal(bytes.size,61);
   assert.deepEqual(new Uint8Array(await bytes.arrayBuffer()),new Uint8Array([...first,...last]));
   assert.equal(calls[0]!.url,'/api/v1/projects/source%20project/workpapers/batches/batch/download');
 });
@@ -201,7 +201,7 @@ test('ZIP progress uses only reliable lengths and rejects truncated archives',as
     const {api}=stubDownload(sub,()=>new Response(new Uint8Array(64),{headers:{'content-type':'application/zip','content-length':'64',...(encoding?{'content-encoding':encoding}:{})}}));
     const progress:Array<[number,number|undefined]>=[];
     await api.workpaperZip('project','batch',new AbortController().signal,(received,total)=>progress.push([received,total]));
-    assert.deepEqual(progress,[[64,encoding?undefined:64]]);
+    assert.deepEqual(progress,[[0,encoding?undefined:64],[64,encoding?undefined:64]]);
   });
   await t.test('truncated',async sub=>{
     const {api}=stubDownload(sub,()=>new Response(new Uint8Array(32),{headers:{'content-type':'application/zip','content-length':'64'}}));

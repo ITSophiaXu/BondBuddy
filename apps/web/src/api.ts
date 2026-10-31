@@ -1,5 +1,7 @@
 import {runRecoverableBillingRequest,observeAutomaticQuotes} from './billing-task-recovery.js';
 import {readDownloadBytes,type DownloadProgress} from './download-progress.js';
+import {WorkpaperZipPreparationSchema,type WorkpaperZipPreparation} from '@bondbuddy/contracts';
+import {Value} from '@sinclair/typebox/value';
 import {BILLING_WIRE_HEADER,BILLING_WIRE_VERSION,LEGACY_BILLING_WIRE_VERSION,billingWireRoute,encodeBillingDto,validateBillingDto} from '@bondbuddy/contracts';
 import { UserFacingError, unknownErrorText, type ErrorOperation } from './user-facing-error.js';
 import type { Static } from '@sinclair/typebox';
@@ -241,7 +243,7 @@ export class ApiClient {
   }
 
   /** Only fixed owner-authorized artifact routes may use this binary seam. */
-  async workpaperZip(project:string,batch:string,signal:AbortSignal,onProgress?:(received:number,total?:number)=>void):Promise<Blob>{
+  async workpaperZip(project:string,batch:string,signal:AbortSignal,onProgress?:(received:number,total?:number)=>void,onPreparation?:(state:WorkpaperZipPreparation)=>void):Promise<Blob>{
     let response:Response;
     for(;;){
       signal.throwIfAborted();
@@ -249,7 +251,13 @@ export class ApiClient {
       if(response.status!==202)break;
       // Consume the small status response before the next request. The caller's
       // total download deadline still bounds preparation and the final ZIP body.
-      if(response.headers.get('content-type')?.split(';')[0]!=='application/json'||(await response.json()).status!=='preparing')throw new ApiError(0,'DATA_UNAVAILABLE');
+      if(response.headers.get('content-type')?.split(';')[0]!=='application/json')throw new ApiError(0,'DATA_UNAVAILABLE');
+      const preparation:unknown=await response.json();
+      if(!Value.Check(WorkpaperZipPreparationSchema,preparation)||preparation.progress&&(
+        preparation.progress.completed_files>preparation.progress.total_files||
+        preparation.progress.phase==='packaging'&&preparation.progress.completed_files!==preparation.progress.total_files
+      ))throw new ApiError(0,'DATA_UNAVAILABLE');
+      signal.throwIfAborted();onPreparation?.(preparation);
       const seconds=Number(response.headers.get('retry-after'));
       await new Promise<void>((resolve,reject)=>{
         const abort=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);reject(signal.reason);};
@@ -260,6 +268,7 @@ export class ApiClient {
     if(response.status!==200||response.headers.get('content-type')?.split(';')[0]!=='application/zip')throw new ApiError(0,'DATA_UNAVAILABLE');
     const length=Number(response.headers.get('content-length')),encoding=response.headers.get('content-encoding');
     const total=Number.isSafeInteger(length)&&length>0&&(!encoding||encoding==='identity')?length:undefined;
+    onProgress?.(0,total);
     let bytes:Blob;
     if(response.body&&onProgress){
       const reader=response.body.getReader(),chunks:Uint8Array<ArrayBuffer>[]=[];let received=0;

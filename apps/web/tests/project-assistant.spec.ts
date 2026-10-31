@@ -164,7 +164,7 @@ test('attachments selected during an upload are queued and retained; changed car
  await page.locator('[data-a=prepare]').click();await expect(page.locator('[data-a=execute]')).toHaveCount(1);await page.locator('[data-a=execute]').click();await expect.poll(()=>s.executions.length).toBe(1);
  await page.locator('.ba-header [data-a=toggle]').click();await expect(page.locator('.bb-assistant')).toBeHidden();
  expect(s.cards.at(-1).run.state).toBe('queued');expect(s.executions).toHaveLength(1);
- await page.getByRole('button',{name:'BondBuddy',exact:true}).click();await expect(page.locator('.ba-task').last()).toBeVisible();
+ await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await expect(page.locator('.ba-task').last()).toBeVisible();
  if(process.env.ASSISTANT_EVIDENCE){await page.setViewportSize({width:1440,height:960});await page.screenshot({path:resolve(evidenceDir,'implementation-confirmed.png')});}
  await expect(page.locator('.ba-task').last()).toContainText('等待开始');await page.reload();await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('.ba-task').last()).toContainText('等待开始');
  s.cards.at(-1).run={...s.cards.at(-1).run,state:'succeeded',artifact_id:'result'};await expect(page.locator('[data-a=download]')).toBeVisible({timeout:12000});
@@ -192,6 +192,8 @@ test('assistant closes to the bottom-right launcher and restores page space - '+
  // Upgrade path: a user hid the assistant in the previous version.
  await page.addInitScript(()=>sessionStorage.setItem('bb-assistant-hidden:synthetic-assistant-user','true'));
  const s=await setup(page),dock=page.locator('[data-assistant-dock]');
+ await expect(page.locator('.sidebar [data-assistant-restore]')).toHaveCount(0);
+ await expect(page.locator('.sidebar .nav-item').filter({hasText:'BondBuddy'})).toHaveCount(0);
  await expect(dock).toBeVisible();await expect(dock).toHaveAttribute('aria-expanded','false');
  // The collapsed entry is only an icon, with its accessible name retained.
  expect((await dock.innerText()).trim()).toBe('');
@@ -218,6 +220,7 @@ test('assistant closes to the bottom-right launcher and restores page space - '+
  await page.locator('[data-composer]').press('Escape');await expect(dock).toBeFocused();
  await expect.poll(()=>s.w.view.unsent_content).toBe('收起后仍保留的未发送文字');
  await page.reload();await expect(dock).toBeVisible();await expect(dock).toHaveAttribute('aria-expanded','false');
+ await expect(page.locator('.sidebar [data-assistant-restore]')).toHaveCount(0);
  await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
  const dockBox=await dock.boundingBox();
  expect(dockBox!.x).toBeGreaterThanOrEqual(0);expect(dockBox!.x+dockBox!.width).toBeLessThanOrEqual(width);

@@ -9,24 +9,55 @@ import {digest,type PrivateBlobs} from './data.js';
 const options={ttlMs:60_000,maxBytes:1024*1024,concurrency:4,timeoutMs:1000};
 const file=(bytes:Buffer,path='可生成文件/1.docx'):WorkpaperZipFile=>({path,key:'private/key',sha256:digest(bytes),maxBytes:1000});
 async function consume(stream:Readable){const chunks:Buffer[]=[];for await(const chunk of stream)chunks.push(Buffer.from(chunk));return Buffer.concat(chunks);}
+const preparing=(total=1)=>({status:'preparing',progress:{phase:'retrieving',completed_files:0,total_files:total}});
+
+test('preparation reports verified files, snapshots shared work, then stays packaging until ZIP finalization',async t=>{
+  const cache=new WorkpaperZipCache({...options,concurrency:1}),bytes=Buffer.from('data');
+  const files=[file(bytes),file(bytes,'可生成文件/2.docx')];
+  let reads=0,release!:()=>void,secondOpened!:()=>void,packing!:()=>void;
+  const second=new Promise<void>(r=>secondOpened=r),gate=new Promise<void>(r=>release=r),packStarted=new Promise<void>(r=>packing=r);
+  const stats:(()=>void)[]=[];
+  const original=fs.stat;
+  const mock=t.mock.method(fs,'stat',((...args:Parameters<typeof fs.stat>)=>{
+    if(String(args[0]).includes('bondbuddy-workpaper-zip-')){stats.push(()=>Reflect.apply(original,fs,args));packing();}
+    else Reflect.apply(original,fs,args);
+  }) as typeof fs.stat);
+  const blobs={openRead:async()=>{
+    if(++reads===2){secondOpened();await gate;}
+    return {body:Readable.from([bytes]),contentLength:bytes.length};
+  }} as unknown as PrivateBlobs;
+  try{
+    const initial=cache.prepare('owner',files,blobs);assert.deepEqual(initial,preparing(2));
+    await second;
+    const partial=cache.prepare('owner',files,blobs);
+    assert.deepEqual(partial,{status:'preparing',progress:{phase:'retrieving',completed_files:1,total_files:2}});
+    assert.deepEqual(initial,preparing(2),'a response snapshot must not change after returning');
+    release();await packStarted;
+    assert.deepEqual(cache.prepare('owner',files,blobs),{status:'preparing',progress:{phase:'packaging',completed_files:2,total_files:2}});
+    assert.equal(reads,2,'polls do not restart storage reads');
+    mock.mock.restore();stats.splice(0).forEach(resume=>resume());
+    await consume((await cache.open('owner',files,blobs)).body);
+    assert.equal(cache.prepare('owner',files,blobs),true);
+  }finally{mock.mock.restore();release();stats.splice(0).forEach(resume=>resume());await cache.close();}
+});
 
 test('short polls share a bounded background build; a failed preparation is reported once and can retry',async()=>{
   const cache=new WorkpaperZipCache(options),bytes=Buffer.from('data');let reads=0,release!:()=>void,opened!:()=>void;
   const gate=new Promise<void>(r=>release=r),started=new Promise<void>(r=>opened=r);
   const blobs={openRead:async()=>{reads++;opened();await gate;return {body:Readable.from([bytes]),contentLength:bytes.length};}} as unknown as PrivateBlobs;
   try{
-    assert.equal(cache.prepare('owner',[file(bytes)],blobs),false);await started;
-    for(let i=0;i<5;i++)assert.equal(cache.prepare('owner',[file(bytes)],blobs),false);
+    assert.deepEqual(cache.prepare('owner',[file(bytes)],blobs),preparing());await started;
+    for(let i=0;i<5;i++)assert.deepEqual(cache.prepare('owner',[file(bytes)],blobs),preparing());
     assert.equal(reads,1);release();
     await consume((await cache.open('owner',[file(bytes)],blobs)).body);
     assert.equal(cache.prepare('owner',[file(bytes)],blobs),true);assert.equal(reads,1);
     // No HTTP waiter remains to catch a background failure. It must still be
     // observed on the next poll, without an unhandled rejection or restart loop.
     const broken={openRead:async()=>null} as unknown as PrivateBlobs;
-    assert.equal(cache.prepare('broken',[file(bytes)],broken),false);
+    assert.deepEqual(cache.prepare('broken',[file(bytes)],broken),preparing());
     await assert.rejects(cache.open('broken',[file(bytes)],broken),/暂时无法读取/);
     assert.throws(()=>cache.prepare('broken',[file(bytes)],broken),/暂时无法读取/);
-    assert.equal(cache.prepare('broken',[file(bytes)],blobs),false);
+    assert.deepEqual(cache.prepare('broken',[file(bytes)],blobs),preparing());
     await consume((await cache.open('broken',[file(bytes)],blobs)).body);
   }finally{release();await cache.close();}
 });
@@ -35,12 +66,14 @@ test('abandoned polling builds retain deadlines, admission limits and shutdown c
   const cache=new WorkpaperZipCache({...options,timeoutMs:40}),bytes=Buffer.from('data'),signals:AbortSignal[]=[];
   const blobs={openRead:async(_key:string,signal:AbortSignal)=>{signals.push(signal);return new Promise(()=>{});}} as unknown as PrivateBlobs;
   try{
-    assert.equal(cache.prepare('one',[file(bytes)],blobs),false);
-    assert.equal(cache.prepare('two',[file(bytes)],blobs),false);
+    assert.deepEqual(cache.prepare('one',[file(bytes)],blobs),preparing());
+    assert.deepEqual(cache.prepare('two',[file(bytes)],blobs),preparing());
     assert.throws(()=>cache.prepare('three',[file(bytes)],blobs),/正在准备/);
-    await delay(80);assert.equal(signals.length,2);assert.ok(signals.every(s=>s.aborted));
+    // Wait for cleanup as well as the deadline; filesystem latency varies by host.
+    await Promise.all(['one','two'].map(scope=>assert.rejects(cache.open(scope,[file(bytes)],blobs),/暂时无法读取/)));
+    assert.equal(signals.length,2);assert.ok(signals.every(s=>s.aborted));
     assert.throws(()=>cache.prepare('one',[file(bytes)],blobs),/暂时无法读取/);
-    assert.equal(cache.prepare('three',[file(bytes)],blobs),false);
+    assert.deepEqual(cache.prepare('three',[file(bytes)],blobs),preparing());
   }finally{await cache.close();}
   assert.ok(signals.every(s=>s.aborted));assert.throws(()=>cache.prepare('closed',[file(bytes)],blobs),/暂时无法读取/);
 });

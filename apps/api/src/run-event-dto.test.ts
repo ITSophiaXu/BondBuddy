@@ -20,6 +20,12 @@ test('known adapter failures retain a safe reason without provider output', () =
     provider_error_message: 'private supplier payload', prompt: 'hidden instructions' }), { error_code: 'MODEL_STREAM_BROKEN' });
 });
 
+test('missing controlled Word operations retains its exact safe failure code',()=>{
+  assert.deepEqual(runEventPayloadDto({reason:'processor_failed',error_code:'WORD_FORMAT_OPERATIONS_MISSING',
+    diagnostic:{command:'private command',last_message:'private prose'}}),
+    {reason:'processor_failed',error_code:'WORD_FORMAT_OPERATIONS_MISSING'});
+});
+
 test('review action projection accepts only the exact versioned enums and drops nested private fields', () => {
   const action={version:'review-action-v1',action_id:'a'.repeat(64),code:'read_materials',state:'started'};
   assert.deepEqual(runEventPayloadDto({reason:'review_action',action,stdout:'private'}),{reason:'review_action',action});

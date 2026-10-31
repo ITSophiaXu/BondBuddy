@@ -27,6 +27,51 @@ async function setup(page:Page){
   return {original,target,newer,data,task,calls,state,href:`/#generate?project=${ids.api}&step=workpapers&view=results&batch=${target.batch_id}`};
 }
 const targetPanel=(page:Page)=>page.locator('[data-wp-batch-id="requested-batch"]');
+for(const width of [1440,390])test(`ZIP preparation counts, elapsed time and packaging remain distinct from generation ${width}`,async({page})=>{
+  const s=await setup(page);await page.setViewportSize({width,height:960});await page.clock.install();
+  s.target.state='complete';s.target.items=Array.from({length:248},(_,i)=>({...s.target.items[0],entry:{...s.target.items[0].entry,id:`item-${i}`,code:`1.${i+1}`}}));
+  let phase='retrieving',reads=0;
+  await page.route('**/workpapers/batches/requested-batch/download',route=>{
+    reads++;return route.fulfill({status:202,headers:{'retry-after':'1'},json:{status:'preparing',progress:{phase,completed_files:phase==='retrieving'?124:248,total_files:248}}});
+  });
+  await page.goto(s.href);await targetPanel(page).locator('[data-wp-zip]').click();
+  const feedback=page.locator('#wp-download-feedback'),bar=feedback.getByRole('progressbar');
+  await expect(feedback).toContainText('已准备 124 / 248 份文件');
+  await expect(bar).toHaveAttribute('value','124');await expect(bar).toHaveAttribute('max','248');
+  await expect(targetPanel(page).getByRole('progressbar',{name:'底稿完成进度'})).toHaveAttribute('value','248');
+  await page.clock.fastForward(121_000);await expect(feedback).toContainText('已等待 2:01');
+  await expect(feedback).toContainText('等待时间较长');await expect(feedback).not.toContainText('%');
+  await targetPanel(page).locator('summary').click();
+  await mkdir('test-evidence/workpaper-download-progress-20261031',{recursive:true});
+  await feedback.scrollIntoViewIfNeeded();
+  await page.screenshot({path:`test-evidence/workpaper-download-progress-20261031/implementation-preparing-${width}.png`});
+  phase='packaging';await page.clock.fastForward(2000);
+  await expect(feedback).toContainText('248 / 248 份文件已准备，正在完成打包');
+  await expect(bar).not.toHaveAttribute('value');await expect(feedback).not.toContainText('100%');
+  await expect(bar).toHaveCSS('animation-name','wp-download-wait');
+  await page.screenshot({path:`test-evidence/workpaper-download-progress-20261031/implementation-packaging-${width}.png`});
+  await page.evaluate(()=>{(window as any).oldDownloadFeedback=document.getElementById('wp-download-feedback');});
+  await page.getByRole('navigation',{name:'文件生成导航'}).getByRole('link',{name:'项目文件',exact:true}).click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${ids.api}/files`));
+  const last=await page.evaluate(()=>(window as any).oldDownloadFeedback.textContent),lastReads=reads;
+  await page.clock.fastForward(6000);
+  expect(await page.evaluate(()=>(window as any).oldDownloadFeedback.textContent)).toBe(last);expect(reads).toBe(lastReads);
+  expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);expect(s.original.errors).toEqual([]);
+});
+
+test('invalid preparation counts fail visibly; retry resets waiting state and the elapsed clock',async({page})=>{
+  const s=await setup(page);await page.clock.install();let retry=false,reads=0;
+  await page.route('**/workpapers/batches/requested-batch/download',route=>{
+    reads++;return route.fulfill({status:202,headers:{'retry-after':'1'},json:retry?{status:'preparing'}:{status:'preparing',progress:{phase:'retrieving',completed_files:249,total_files:248}}});
+  });
+  await page.goto(s.href);const button=targetPanel(page).locator('[data-wp-zip]');await button.click();
+  const feedback=page.locator('#wp-download-feedback');await expect(feedback).toContainText('暂时无法读取');
+  await expect(feedback.getByRole('progressbar')).toHaveCount(0);await expect(button).toBeEnabled();
+  await page.clock.fastForward(121_000);retry=true;await button.click();
+  await expect.poll(()=>reads).toBe(2);await expect(feedback).toContainText('已等待 0:00');
+  await expect(feedback).toContainText('可能需要几分钟');await expect(feedback.getByRole('progressbar')).not.toHaveAttribute('value');
+  await expect(feedback.locator('.wp-download-slow')).toBeHidden();
+});
 test('ZIP preparation polls until ready, saves the file and keeps one active download',async({page})=>{
   const s=await setup(page);let reads=0;
   await page.route('**/workpapers/batches/requested-batch/download',route=>{
@@ -141,8 +186,9 @@ test('ZIP download shows waiting state and a usable save link if automatic downl
   expect(reads).toBe(1);expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);
 });
 
-for(const knownLength of [true,false])test(`streamed ZIP updates the button and byte progress, known length=${knownLength}`,async({page})=>{
+for(const [knownLength,width] of [[true,1440],[true,390],[false,1440]] as const)test(`streamed ZIP updates the button and byte progress, known length=${knownLength}, width=${width}`,async({page})=>{
   const s=await setup(page);
+  await page.setViewportSize({width,height:960});
   await page.addInitScript(({knownLength})=>{
     const original=window.fetch;
     window.fetch=(...args)=>{
@@ -160,9 +206,16 @@ for(const knownLength of [true,false])test(`streamed ZIP updates the button and 
   await expect(page.getByRole('button',{name:'正在下载…',exact:true})).toBeDisabled();
   const feedback=page.locator('#wp-download-feedback');await expect(feedback).toContainText('正在下载');
   if(knownLength)await expect(feedback).toContainText('50%');else await expect(feedback).not.toContainText('%');
-  await mkdir('test-evidence/workpaper-download-speed',{recursive:true});
-  await page.screenshot({path:`test-evidence/workpaper-download-speed/streaming-${knownLength}.png`});
+  const bar=feedback.getByRole('progressbar',{name:'文件传输进度'});
+  if(knownLength){await expect(bar).toHaveAttribute('value','1048576');await expect(bar).toHaveAttribute('max','2097152');}
+  else await expect(bar).not.toHaveAttribute('value');
+  if(!knownLength){await page.emulateMedia({reducedMotion:'reduce'});await expect(bar).toHaveCSS('animation-name','none');}
+  await mkdir('test-evidence/workpaper-download-progress-20261031',{recursive:true});
+  await feedback.scrollIntoViewIfNeeded();
+  await page.screenshot({path:`test-evidence/workpaper-download-progress-20261031/implementation-transferring-${width}-${knownLength}.png`});
   await page.evaluate(()=> (window as any).zipFinish());await expect(feedback.getByRole('link',{name:'保存文件'})).toBeVisible();
+  await expect(feedback.getByRole('progressbar')).toHaveCount(0);
+  await page.clock.install();await page.clock.fastForward(60_000);await expect(feedback.getByRole('link',{name:'保存文件'})).toBeVisible();
   expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);
 });
 
@@ -210,4 +263,15 @@ for(const width of [1440,390])test(`existing batch prototype comparison ${width}
   await mkdir('test-evidence/workpaper-progress-routing',{recursive:true});
   await page.screenshot({path:`test-evidence/workpaper-progress-routing/prototype-${width}.png`});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+for(const width of [1440,390])test(`download prototype comparison ${width}`,async({page})=>{
+  await page.setViewportSize({width,height:960});
+  for(const scene of ['preparing','packaging','transferring']){
+    await page.goto('/@fs/'+resolve(process.cwd(),'../../product-prototype/public/workpaper-batch.html').replaceAll('\\','/')+'?download='+scene);
+    const feedback=page.locator('#wp-download-feedback');await expect(feedback).toBeVisible();await feedback.scrollIntoViewIfNeeded();
+    await mkdir('test-evidence/workpaper-download-progress-20261031',{recursive:true});
+    await page.screenshot({path:`test-evidence/workpaper-download-progress-20261031/prototype-${scene}-${width}.png`});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+  }
 });

@@ -34,3 +34,4 @@ product-prototype
 !product-prototype/knowledge/*-review.md
 
 !product-prototype/public/workspace-typography.css
+!product-prototype/public/navigation-responsive.css
