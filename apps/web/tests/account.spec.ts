@@ -1,7 +1,8 @@
 import { expect, test, type BrowserContext, type Page, type Route } from '@playwright/test';
+import { fixtureJson } from './billing-fixture-wire';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 // Synthetic /api/v1 fixture: exercises the browser against the public account contract, not a live API.
 const origin = process.env.BB_E2E_BASE_URL ?? 'http://127.0.0.1:5173';
@@ -13,7 +14,7 @@ type Fixture = {
   sessions: Session[]; activeRuns: Run[]; rateLimitNext: boolean; mutations: { method: string; path: string; body: unknown }[];
 };
 const retained = ['account_identifier', 'agreement_acceptances', 'registration_event', 'closure_record', 'operation_logs', 'model_usage_records', 'audit_outbox'];
-const json = (route: Route, status: number, value?: unknown) => route.fulfill({ status, contentType: 'application/json', body: value === undefined ? '' : JSON.stringify(value) });
+const json = (route: Route, status: number, value?: unknown) => route.fulfill({ status, contentType: 'application/json', body: value === undefined ? '' : status < 400 ? fixtureJson(route, value) : JSON.stringify(value) });
 const session = (id: string, current = false): Session => ({ session_id: id, current, created_at: now, last_refreshed_at: current ? now : null, refresh_expires_at: '2026-10-24T12:00:00Z' });
 
 function fixture(): Fixture {
@@ -270,7 +271,7 @@ test('unified account keeps two basic fields and opens security settings only on
  await expect(page.locator('#account-credits')).toContainText('300');
  await expect(page.locator('#account-credits')).toContainText('充值渠道暂未开放');
  await expect(page.locator('.credit-pack').first()).toContainText('20,000');
- await expect(page.locator('.credit-pack').first().getByRole('button')).toHaveText('充值 ¥200');
+ await expect(page.locator('.credit-pack').first().getByRole('button')).toHaveText('充值 ¥200.00');
  await expect(page.locator('[data-pack="cny50"]')).toHaveCount(0);
  await expect(page.locator('#account-info dt')).toHaveText(['账户名','绑定手机号']);
  for(const name of ['登录会话','修改密码','账号找回','数据说明','注销账号'])await expect(page.locator('summary').filter({hasText:name})).not.toBeVisible();
@@ -307,29 +308,60 @@ test('a review payment order returns to the original review workspace',async({pa
 });
 
 
-test('credit visibility: wallet stays pinned, works on mobile, refreshes and clears on logout',async({page,context})=>{
+test('balance lives in my account, refreshes there and stops polling after leaving',async({page,context})=>{
   await page.clock.install();
-  const state=fixture(); await installApi(context,state);
-  let available=82100, frozen=17900, fail=false, balanceReads=0;
+  const state=fixture();await installApi(context,state);
+  let available=82100,frozen=17900,fail=false,balanceReads=0;
   await context.route('**/api/v1/credits/balance',route=>{balanceReads++;return json(route,fail?503:200,fail?{code:'DATA_UNAVAILABLE'}:{enabled:false,available,frozen});});
+  for(const kind of ['consumption','recharge'])await context.route('**/api/v1/credits/'+kind+'-history*',route=>json(route,200,{items:[],page:{has_more:false,next_cursor:null}}));
   await page.setViewportSize({width:1440,height:960});await openSettings(page,state);
-  const wallet=page.locator('.credit-wallet');await expect(wallet.locator('.wallet-value strong')).toHaveText('100,000');await expect(wallet).toContainText('可用 82,100');await expect(wallet).toContainText('17,900');
-  await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
-  const box=await wallet.boundingBox();expect(box!.x).toBeLessThan(236);expect(box!.y+box!.height).toBeLessThan(960);
-  await page.getByRole('link',{name:'更新募集书',exact:true}).click();await expect(wallet).toContainText('100,000');
-  await page.setViewportSize({width:1024,height:500});const short=await wallet.boundingBox();expect(short!.y).toBeGreaterThan(0);expect(short!.y+short!.height).toBeLessThan(500);
-  await page.setViewportSize({width:390,height:844});await expect(page.locator('.mobile-credit-wallet')).toContainText('100,000');
-  await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));expect((await page.locator('.mobile-credit-wallet').boundingBox())!.y).toBeLessThan(100);
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
-  const evidence=process.env.BB_UX_EVIDENCE_DIR;if(evidence){await mkdir(evidence,{recursive:true});await page.screenshot({path:join(evidence,'implementation-mobile.png')});}
+  const balance=page.locator('.account-balance-value'),total=page.locator('.account-balance-total');
+  await expect(balance).toHaveText('82,100积分');await expect(total).toContainText('100,000');await expect(page.locator('.credit-reservation')).toContainText('17,900');
+  await expect(page.locator('.sidebar [data-credit-wallet],.topbar [data-credit-wallet]')).toHaveCount(0);
+  await page.setViewportSize({width:390,height:844});await expect(balance).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.setViewportSize({width:1440,height:960});
-  available=0;frozen=0;await wallet.getByRole('button',{name:'刷新积分余额'}).click();await expect(wallet.locator('.wallet-value strong')).toHaveText('0');
-  fail=true;await wallet.getByRole('button',{name:'刷新积分余额'}).click();await expect(wallet).toContainText('余额暂未同步');await expect(wallet.locator('.wallet-value strong')).toHaveText('—');
-  fail=false;available=80000;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await expect(wallet).toContainText('80,000');
-  available=70000;await page.clock.fastForward(31000);await expect(wallet).toContainText('70,000');
-  await page.locator('#logout').click();await expect(wallet).toHaveCount(0);const reads=balanceReads;
-  await page.clock.fastForward(31000);expect(balanceReads).toBe(reads);await expect(page.getByRole('button',{name:'登录',exact:true})).toBeVisible();
+  available=0;frozen=0;await page.getByRole('button',{name:'刷新记录与余额'}).click();await expect(balance).toHaveText('0积分');await expect(total).toContainText('余额 0');
+  fail=true;await page.getByRole('button',{name:'刷新记录与余额'}).click();await expect(balance).toHaveText('—积分');await expect(total).toContainText('—');
+  fail=false;available=80000;await page.evaluate(()=>window.dispatchEvent(new Event('online')));await expect(balance).toHaveText('80,000积分');
+  available=70000;await page.clock.fastForward(31000);await expect(balance).toHaveText('70,000积分');
+  await page.getByRole('link',{name:'更新募集书',exact:true}).click();await expect(page.locator('.account-balance-value')).toHaveCount(0);
+  const reads=balanceReads;await page.clock.fastForward(31000);expect(balanceReads).toBe(reads);
+  available=60000;await page.getByRole('link',{name:'我的账号',exact:true}).click();await expect(balance).toHaveText('60,000积分');
+  await page.locator('#logout').click();await expect(balance).toHaveCount(0);const logoutReads=balanceReads;
+  await page.clock.fastForward(31000);expect(balanceReads).toBe(logoutReads);await expect(page.getByRole('button',{name:'登录',exact:true})).toBeVisible();
 });
+
+for(const [width,height] of [[1920,1080],[1440,900],[1366,768],[1280,720],[1093,614],[1024,600],[960,600],[853,480],[800,600],[768,1024],[390,844],[320,568],[844,390],[1024,400]]){
+ test('responsive navigation and account at '+width+'x'+height,async({page,context})=>{
+  const state=fixture();await installApi(context,state);await page.setViewportSize({width:1440,height:960});await openSettings(page,state);
+  await page.setViewportSize({width,height});
+  await expect(page.locator('.account-balance-value')).toContainText('5,000');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  const sidebar=page.locator('#sidebar');
+  if(width<=960){await expect(sidebar).toBeHidden();await page.getByRole('button',{name:'打开菜单',exact:true}).click();}
+  await expect(sidebar).toBeVisible();await expect(sidebar.locator('[data-credit-wallet]')).toHaveCount(0);
+  const integrity=sidebar.getByRole('link',{name:'诚信核查',exact:true});
+  // Check the real hit target: visibility alone also passes for clipped links.
+  if(height<540)await integrity.scrollIntoViewIfNeeded();
+  expect(await integrity.evaluate(el=>{const r=el.getBoundingClientRect();const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);return r.top>=0&&r.bottom<=innerHeight&&!!hit&&el.contains(hit);})).toBe(true);
+  if(height>=540)await expect(sidebar.getByRole('link',{name:'项目问答',exact:true})).toBeInViewport({ratio:1});
+  const evidence=process.env.BB_NAV_EVIDENCE_DIR;
+  if(evidence&&[1366,1093,390,844].includes(width)){
+   await mkdir(evidence,{recursive:true});await page.screenshot({path:join(evidence,'implementation-navigation-'+width+'x'+height+'.png')});
+   const prototype=await context.newPage();await prototype.setViewportSize({width,height});
+   await prototype.goto('/@fs/'+resolve('../../product-prototype/public/navigation-responsive.html').replaceAll('\\','/'));
+   if(width<=960)await prototype.getByRole('button',{name:'打开菜单',exact:true}).click();
+   await expect(prototype.getByRole('link',{name:'诚信核查',exact:true})).toBeVisible();
+   await prototype.screenshot({path:join(evidence,'prototype-navigation-'+width+'x'+height+'.png')});await prototype.close();
+  }
+  await integrity.click();await expect(page).toHaveURL(/#integrity$/);await expect(sidebar.locator('a[href="#integrity"]')).toHaveAttribute('aria-current','page');
+  if(width<=960)await page.getByRole('button',{name:'打开菜单',exact:true}).click();
+  const account=sidebar.getByRole('link',{name:'我的账号',exact:true});await account.scrollIntoViewIfNeeded();await account.click();await expect(page.locator('.account-balance-value')).toContainText('5,000');
+  if(width<=960){await page.getByRole('button',{name:'打开菜单',exact:true}).click();await sidebar.getByRole('button',{name:'关闭菜单',exact:true}).click();await expect(sidebar).toBeHidden();}
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ });
+}
 
 
 function creditHistoryFixture(){
@@ -364,7 +396,7 @@ test('credit history shows actual order states and refreshes arrival and balance
  const state=fixture(),data=creditHistoryFixture();await installApi(context,state);await installCreditHistory(context,data);await openSettings(page,state);
  const history=page.getByRole('region',{name:'积分记录'});await history.getByRole('tab',{name:'充值记录',exact:true}).click();
  for(const text of ['已到账','待支付／确认中','已关闭／过期','支付未完成'])await expect(history).toContainText(text);
- await expect(history.locator('[data-record=order-0]')).toContainText('¥500.00');await expect(history.locator('[data-record=order-0]')).toContainText('52,500 积分');
+ await expect(history.locator('[data-record=order-0]')).toContainText('¥500.00');await expect(history.locator('[data-record=order-0]')).toContainText('52,500 历史积分');
  data.orders[1].state='paid';data.orders[1].credited_at='2026-10-09T04:00:00Z';data.available+=52500;
  await history.getByRole('button',{name:'刷新记录与余额'}).click();await expect(history.locator('[data-record=order-1]')).toContainText('已到账');await expect(page.locator('.account-balance-value')).toContainText('102,500');
  await expect(history.locator('[data-record]')).toHaveCount(4);expect(state.mutations.filter(x=>x.path.includes('execute')||x.path.includes('recharge-orders'))).toHaveLength(0);
