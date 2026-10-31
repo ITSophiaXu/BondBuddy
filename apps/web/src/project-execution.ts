@@ -81,7 +81,10 @@ export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>
 }
 
 /** Presentation only: the server remains authoritative about readiness and run transitions. */
-export function readinessMessage(reason: string): string {
+export function readinessMessage(reason: string, lastProcessingStage?: string): string {
+  if (reason === 'processor_failed') return lastProcessingStage === 'word_delivery'
+    ? 'Word 文件生成或保存失败，本轮未能交付。已保存材料会保留，无需重新上传；请联系支持核对并恢复。'
+    : '系统处理失败，本轮未能完成。已保存材料会保留；请联系支持核对原因，无需因本提示补充材料。';
   if (reason === 'provider_result_pending' || reason === 'provider_reconciliation_required') return '编制服务暂未返回结果，正在核对并恢复；已完成内容会保留，无需补充材料。';
   if (reason === 'provider_timeout_retries_exhausted') return '编制服务多次响应超时，本次未能完成。已保存材料和已完成内容仍保留，请联系支持继续处理。';
   if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点继续修改，以新输入重新编制。';
@@ -108,7 +111,7 @@ export function readinessMessage(reason: string): string {
   if (reason.includes('provider_reconcil')) return '正在核对先前模型调用，暂不重复调用。';
   if (reason.includes('capability_not_ready')) return '所需处理能力尚未就绪。';
   if (reason === 'user_cancelled') return '用户已取消任务。';
-  return '仍有待处理条件，请查看材料信息或联系支持。';
+  return '本次处理未能继续，具体原因尚未确认。已保存材料会保留，请联系支持核对。';
 }
 
 /** Stable across tabs/reloads; a new input revision is required for an intentional new run. */
@@ -463,11 +466,14 @@ export class ProjectExecution {
     const automaticPause = automaticPauseMessage(run);
     const repeatedPause = run?.state === 'paused' && this.samePauseAfterResume(run);
     const needsAttention = run && ['paused', 'awaiting_input', 'failed', 'rejected', 'cancelled'].includes(run.state);
+    const lastProcessingStage = run ? [...this.events].reverse().find(event => event.run_id === run.run_id
+      && event.type === 'run.progress' && event.seq <= (run.event_cursor ?? Infinity) && event.stage)?.stage ?? undefined : undefined;
+    const failedWordProgress = run?.state === 'failed' && lastProcessingStage === 'word_delivery' ? {phase: 3 as const} : undefined;
     // The current run stage is authoritative even when event history is late or unavailable.
     const summary = run?.stage === 'user_paused' ? undefined : automaticPause
       ? (this.reason !== 'trial_limit_cleared' && runtimeMessage(this.reason)) || automaticPause
       : repeatedPause ? '任务再次停在相同条件，重复继续不会推进。请联系支持核对恢复条件。'
-      : needsAttention && this.reason ? readinessMessage(this.reason)
+      : needsAttention && this.reason ? readinessMessage(this.reason, lastProcessingStage)
         : !needsAttention && this.reason === 'trial_limit_cleared' ? runtimeMessage(this.reason)
         : run?.state === 'paused' ? run.stage === 'awaiting_materials'
           ? '等待材料处理完成，条件满足后后台会继续。'
@@ -489,7 +495,7 @@ export class ProjectExecution {
     const creditDetailsOpen = executionProgressHost.querySelector<HTMLDetailsElement>('.authoring-credit-meter details')?.open ?? false;
     const focusedId = executionProgressHost.contains(document.activeElement) ? document.activeElement?.id : undefined;
     const creditSummaryFocused = document.activeElement === executionProgressHost.querySelector('.authoring-credit-meter summary');
-    executionProgressHost.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div>${taskProgress(run,'update',authoringStatus(run,this.events,this.charge?.progress))}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
+    executionProgressHost.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div>${taskProgress(run,'update',authoringStatus(run,this.events,this.charge?.progress) ?? failedWordProgress)}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${authoringVisibleEvents(run,this.events).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(authoringEventLabel(event) ?? stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
       ${needsRecharge ? `<div class="execution-summary" role="status"><strong>积分已用完，${run.state === 'paused' ? '任务已暂停' : '正在保存进度后暂停'}</strong><p>充值到账后自动继续本次任务，已完成的步骤不会重复执行。</p><a class="button primary" href="${esc(this.rechargeLink())}">充值积分</a></div>` : ''}
       ${authoringCreditReceipt(run,this.charge?.progress,this.charge?.quote&&this.charge.state?{...this.charge.quote,state:this.charge.state}:undefined,this.chargeError)}
