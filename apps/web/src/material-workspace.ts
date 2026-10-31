@@ -639,7 +639,7 @@ export class MaterialWorkspace {
         if(this.selected!==type||current.version!==version||current.dirty){
           this.message('材料或要求已修改，请保存后重新点击生成。',true);return;
         }
-        if(shortage&&!isAutomaticCharge(quote)){this.message('积分不足，本次未开始生成、未扣费。充值后请重新点击生成。',true,true);return;}
+        if(int64(shortage)>0n&&!isAutomaticCharge(quote)){this.message('积分不足，本次未开始生成、未扣费。充值后请重新点击生成。',true,true);return;}
         this.pendingExecution={execution_request_id:crypto.randomUUID(),document_type:type,expected_draft_version:version,quote_id:quote.quote_id,entrypoint};
         this.cache();
       }

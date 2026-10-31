@@ -228,23 +228,18 @@ test('material input feedback matches the prototype on desktop and mobile',async
   await prototype.close();
 });
 
-for(const viewport of [{width:1440,height:1100},{width:430,height:932}])test(`legacy quotation: one click starts and balance drops only after success at ${viewport.width}px`,async({page})=>{
+for(const viewport of [{width:1440,height:1100},{width:430,height:932}])test(`legacy quotation: one click starts and shows the completed artifact at ${viewport.width}px`,async({page})=>{
   await page.setViewportSize(viewport);const s=fixture();await mount(page,s);await choose(page,'private_summary');
-  const wallet=page.locator(viewport.width>760?'.credit-wallet .wallet-value strong':'.mobile-credit-wallet strong');
-  await expect(wallet).toHaveText('10,000');
+  await expect(page.locator('[data-credit-wallet]')).toHaveCount(0);
   await expect(page.locator('.m4-price')).toHaveCount(0);await expect(page.getByRole('button',{name:'确认并生成'})).toHaveCount(0);
   if(process.env.M4_UX_EVIDENCE){const dir=resolve(process.env.M4_UX_EVIDENCE_DIR || 'test-evidence/m4-one-click-20261008');await mkdir(dir,{recursive:true});await page.locator('.form-footer').scrollIntoViewIfNeeded();await page.screenshot({path:resolve(dir,`ready-${viewport.width}.png`)});}
   await start(page);await expect.poll(()=>s.executions.length).toBe(1);expect(s.quotes).toHaveLength(1);
   await expect(page.getByRole('tab',{name:'生成进度'})).toHaveAttribute('aria-selected','true');
-  await expect(page.locator('.m4-price')).toHaveCount(0);await expect(wallet).toHaveText('10,000');
-  await expect(page.locator('.wallet-note')).toContainText('任务已预留 4,500');
-  const reads=s.balanceReads;s.balance.frozen=0;
+  await expect(page.locator('.m4-price')).toHaveCount(0);
+  s.balance.frozen=0;
   const fresh={...s.artifact,artifact_id:'new-artifact',revision_number:2,filename:'合成摘要新稿.docx',run_id:'new-run'};
   s.workspace.artifacts.push(fresh);s.workspace.tasks[0].run=s.run('new-run','succeeded');s.workspace.tasks[0].artifacts=[fresh];s.workspace.active_run=null;
-  // The material poll, not the 30s wallet timer or a manual refresh, updates settlement.
-  await expect(wallet).toHaveText('5,500',{timeout:10000});expect(s.balanceReads).toBeGreaterThan(reads);
-  await expect(page.locator('#m4-status')).toContainText('本次制作已完成');
-  await expect(page.locator('.wallet-note')).toContainText('暂无预留积分');
+  await expect(page.locator('#m4-status')).toContainText('本次制作已完成',{timeout:10000});
   if(process.env.M4_UX_EVIDENCE){await page.screenshot({path:resolve(process.env.M4_UX_EVIDENCE_DIR || 'test-evidence/m4-one-click-20261008',`success-${viewport.width}.png`)});}
 });
 
@@ -257,7 +252,7 @@ test('insufficient credits show a recharge action, retain input and never auto-s
   expect(rechargeQuery.get('return_to')).toBe(await page.evaluate(()=>location.hash));
   expect(s.executions).toHaveLength(0);expect(s.balance.frozen).toBe(0);await expect(page.locator('.m4-price')).toHaveCount(0);
   s.balance.available=10000;await page.evaluate(()=>window.dispatchEvent(new Event('online')));
-  await expect(page.locator('.wallet-value strong')).toHaveText('10,000');expect(s.executions).toHaveLength(0);
+  expect(s.executions).toHaveLength(0);
   await expect(page.locator('#m4-requirements')).toHaveValue('积分不足时保留这份输入');
   await start(page);expect(s.executions).toHaveLength(1);
 });
@@ -286,12 +281,10 @@ test('an input edit while the internal quote is pending cannot submit a stale dr
   await start(page);expect(s.executions).toHaveLength(1);const input=s.workspace.tasks[0].manifest;expect(input.kind==='document'&&input.input.supplemental_requirements).toBe('报价等待期间的新要求');
 });
 
-for(const state of ['failed','cancelled'] as const)test(`a ${state} task releases the reservation without reducing balance`,async({page})=>{
+for(const state of ['failed','cancelled'] as const)test(`a ${state} task displays unfinished work without resubmitting`,async({page})=>{
   const s=fixture();await mount(page,s);await choose(page,'private_summary');await start(page);
-  await expect(page.locator('.wallet-note')).toContainText('任务已预留 4,500');
   s.balance={available:10000,frozen:0};s.workspace.tasks[0].run=s.run('new-run',state);s.workspace.active_run=null;
-  await expect(page.locator('.wallet-note')).toContainText('暂无预留积分',{timeout:10000});
-  await expect(page.locator('.wallet-value strong')).toHaveText('10,000');expect(s.executions).toHaveLength(1);
+  await expect(page.locator('#m4-content')).toContainText(state==='cancelled'?'本轮已停止':'本轮未完成',{timeout:10000});expect(s.executions).toHaveLength(1);
 });
 
 test('legacy MaterialWorkspace component first save and concurrent upload share creation and retain entered requirements',async({page})=>{
@@ -608,7 +601,7 @@ test('linked source is not deleted from another project and own material unlocks
   task.run.state='cancelled';s.workspace.active_run=null;await page.getByRole('button',{name:'刷新状态',exact:true}).click();await expect(remove).toBeEnabled();
 });
 
-for(const viewport of [{width:1440,height:960},{width:390,height:844}])test(`dynamic material progress, persistent tabs, pause/resume and wallet polling at ${viewport.width}px`,async({page})=>{
+for(const viewport of [{width:1440,height:960},{width:390,height:844}])test(`dynamic material progress, persistent tabs, pause/resume and credit progress at ${viewport.width}px`,async({page})=>{
   await page.setViewportSize(viewport);const s=fixture(true);s.balance.available=1000;await mount(page,s);await choose(page,'private_summary');await start(page);
   expect(s.executions).toHaveLength(1);expect(s.balance).toEqual({available:1000,frozen:0});
   await expect(page.getByRole('tab',{name:'生成进度'})).toHaveAttribute('aria-selected','true');
@@ -619,7 +612,7 @@ for(const viewport of [{width:1440,height:960},{width:390,height:844}])test(`dyn
   p.accrued_points=p.charged_points=125;p.available_points=s.balance.available=875;p.active_ms=65000;p.last_activity_at=now;
   await expect(page.locator('[aria-label=积分消耗] strong')).toHaveText('125 积分',{timeout:10000});
   await expect(page.locator('[aria-label=生成过程]')).toContainText('正在核对发行人信息与财务材料');
-  const wallet=page.locator(viewport.width>760?'.credit-wallet .wallet-value strong':'.mobile-credit-wallet strong');await expect(wallet).toHaveText('875');
+  await expect(page.locator('[data-credit-wallet]')).toHaveCount(0);
   if(process.env.M4_DYNAMIC_EVIDENCE){const dir=resolve('test-evidence/material-dynamic-20261013');await mkdir(dir,{recursive:true});await page.screenshot({path:resolve(dir,`running-${viewport.width}.png`),fullPage:true});}
   await page.getByRole('button',{name:'暂停生成',exact:true}).click();await expect(page.locator('.task-progress')).toContainText('任务已暂停');
   await expect(page.locator('[aria-label=积分消耗] strong')).toHaveText('125 积分');await page.reload();await expect(page.getByRole('button',{name:'继续生成'})).toBeVisible();

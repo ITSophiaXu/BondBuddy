@@ -192,6 +192,8 @@ test('assistant closes to the bottom-right launcher and restores page space - '+
  // Upgrade path: a user hid the assistant in the previous version.
  await page.addInitScript(()=>sessionStorage.setItem('bb-assistant-hidden:synthetic-assistant-user','true'));
  const s=await setup(page),dock=page.locator('[data-assistant-dock]');
+ await expect(page.locator('.sidebar [data-assistant-restore]')).toHaveCount(0);
+ await expect(page.locator('.sidebar .nav-item').filter({hasText:'BondBuddy'})).toHaveCount(0);
  await expect(dock).toBeVisible();await expect(dock).toHaveAttribute('aria-expanded','false');
  // The collapsed entry is only an icon, with its accessible name retained.
  expect((await dock.innerText()).trim()).toBe('');
@@ -218,6 +220,7 @@ test('assistant closes to the bottom-right launcher and restores page space - '+
  await page.locator('[data-composer]').press('Escape');await expect(dock).toBeFocused();
  await expect.poll(()=>s.w.view.unsent_content).toBe('收起后仍保留的未发送文字');
  await page.reload();await expect(dock).toBeVisible();await expect(dock).toHaveAttribute('aria-expanded','false');
+ await expect(page.locator('.sidebar [data-assistant-restore]')).toHaveCount(0);
  await page.evaluate(()=>window.scrollTo(0,document.body.scrollHeight));
  const dockBox=await dock.boundingBox();
  expect(dockBox!.x).toBeGreaterThanOrEqual(0);expect(dockBox!.x+dockBox!.width).toBeLessThanOrEqual(width);
