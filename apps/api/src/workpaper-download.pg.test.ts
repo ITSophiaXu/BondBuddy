@@ -11,6 +11,7 @@ import {isolatedTestDatabase} from './test-database.js';
 import {makeSyntheticDocxFixture} from './docx-fixtures.js';
 import {readWorkpaperBatch} from './workpapers.js';
 import {readProjectFileAsset} from './project-file-storage.js';
+import {setTimeout as delay} from 'node:timers/promises';
 
 const database=await isolatedTestDatabase(undefined,'workpaper-download');
 const storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
@@ -20,7 +21,11 @@ test('248-file ZIP on real PostgreSQL/Azurite: cold/warm HTTP, legacy-read bench
  {skip:!database||!storage,timeout:180000},async t=>{
   const pool=new Pool({connectionString:database}),originalOwner=randomUUID();let actor:string=originalOwner;
   const container='bb-zip-'+randomUUID().replaceAll('-',''),blobs=azureBlobs(storage!,container);
-  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true})});
+  // Model real per-object latency while retaining actual Azurite reads/hashes.
+  // Preparing all 248 files exceeds the request deadline below, so a blocking
+  // cold response would fail even though every individual file is healthy.
+  const slowBlobs={...blobs,openRead:async(key:string,signal?:AbortSignal)=>{await delay(200,undefined,{signal});return blobs.openRead!(key,signal);}};
+  const app=createServer({pool,blobs:slowBlobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true})});
   const post=async(path:string,payload:unknown)=>{
     const response=await app.inject({method:'POST',url:'/api/v1'+path,payload:payload as any,headers:{origin:'http://bondbuddy.test'}});
     assert.ok(response.statusCode<300,response.body);return response.json();
@@ -63,12 +68,22 @@ test('248-file ZIP on real PostgreSQL/Azurite: cold/warm HTTP, legacy-read bench
     zip.end();await oldBody;const legacyMs=performance.now()-legacyStart;
     const address=await app.listen({port:0,host:'127.0.0.1'}),url=`${address}/api/v1/projects/${project}/workpapers/batches/${batch}/download`;
     const download=async()=>{
-      const start=performance.now(),response=await fetch(url),headersMs=performance.now()-start;
+      const start=performance.now();let response:Response,polls=0,maxRequestMs=0;
+      for(;;){
+        const requestStart=performance.now();
+        response=await fetch(url,{headers:{Prefer:'respond-async'},signal:AbortSignal.timeout(2000)});
+        maxRequestMs=Math.max(maxRequestMs,performance.now()-requestStart);
+        if(response.status!==202)break;
+        assert.deepEqual(await response.json(),{status:'preparing'});polls++;
+        await delay(Number(response.headers.get('retry-after'))*1000);
+      }
+      const headersMs=performance.now()-start;
       assert.equal(response.status,200,await (response.status===200?Promise.resolve(''):response.text()));
       const content=Buffer.from(await response.arrayBuffer());assert.equal(Number(response.headers.get('content-length')),content.length);
-      return {content,headersMs,totalMs:performance.now()-start};
+      return {content,headersMs,totalMs:performance.now()-start,polls,maxRequestMs};
     };
     const cold=await download(),warm=await download();assert.deepEqual(warm.content,cold.content);
+    assert.ok(cold.polls>1);assert.ok(cold.totalMs>2000);assert.equal(warm.polls,0);
     let offset=cold.content.readUInt32LE(cold.content.length-6),count=0;
     while(cold.content.readUInt32LE(offset)===0x02014b50){
       const local=cold.content.readUInt32LE(offset+42),size=cold.content.readUInt32LE(offset+20),nameLength=cold.content.readUInt16LE(offset+28);
@@ -79,7 +94,7 @@ test('248-file ZIP on real PostgreSQL/Azurite: cold/warm HTTP, legacy-read bench
       offset+=46+nameLength+cold.content.readUInt16LE(offset+30)+cold.content.readUInt16LE(offset+32);count++;
     }
     assert.equal(count,248);
-    t.diagnostic(JSON.stringify({files:count,zipBytes:cold.content.length,legacySerialMs:Math.round(legacyMs),coldPrepareMs:Math.round(cold.headersMs),coldTotalMs:Math.round(cold.totalMs),warmPrepareMs:Math.round(warm.headersMs),warmTotalMs:Math.round(warm.totalMs)}));
+    t.diagnostic(JSON.stringify({files:count,zipBytes:cold.content.length,legacySerialMs:Math.round(legacyMs),coldPrepareMs:Math.round(cold.headersMs),coldTotalMs:Math.round(cold.totalMs),coldPolls:cold.polls,maxRequestMs:Math.round(cold.maxRequestMs),warmPrepareMs:Math.round(warm.headersMs),warmTotalMs:Math.round(warm.totalMs)}));
     actor='foreign';assert.equal((await fetch(url)).status,404);actor=originalOwner;
     await pool.query("UPDATE bb_artifact_versions SET delivery_status='pending' WHERE owner_user_id=$1 AND id='item-124'",[actor]);
     const changed=await download();assert.notDeepEqual(changed.content,cold.content);

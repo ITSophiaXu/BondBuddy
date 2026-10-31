@@ -27,6 +27,33 @@ async function setup(page:Page){
   return {original,target,newer,data,task,calls,state,href:`/#generate?project=${ids.api}&step=workpapers&view=results&batch=${target.batch_id}`};
 }
 const targetPanel=(page:Page)=>page.locator('[data-wp-batch-id="requested-batch"]');
+test('ZIP preparation polls until ready, saves the file and keeps one active download',async({page})=>{
+  const s=await setup(page);let reads=0;
+  await page.route('**/workpapers/batches/requested-batch/download',route=>{
+    expect(route.request().headers().prefer).toBe('respond-async');reads++;
+    return reads<=2?route.fulfill({status:202,headers:{'retry-after':'1'},json:{status:'preparing'}})
+      :route.fulfill({contentType:'application/zip',body:Buffer.concat([Buffer.from('PK'),Buffer.alloc(100)])});
+  });
+  await page.goto(s.href);const button=targetPanel(page).locator('[data-wp-zip]');
+  const download=page.waitForEvent('download');await button.click();
+  await expect(page.locator('#wp-download-feedback')).toContainText('正在准备下载');await expect(button).toBeDisabled();
+  expect((await download).suggestedFilename()).toBe('底稿文件包.zip');expect(reads).toBe(3);
+  await expect(button).toBeEnabled();expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);
+});
+
+test('leaving during the polling delay cancels further download requests',async({page})=>{
+  const s=await setup(page);let reads=0;
+  await page.route('**/workpapers/batches/requested-batch/download',route=>{
+    reads++;return route.fulfill({status:202,headers:{'retry-after':'1'},json:{status:'preparing'}});
+  });
+  await page.goto(s.href);await targetPanel(page).getByRole('button',{name:'下载已完成文件（ZIP）'}).click();
+  await expect.poll(()=>reads).toBe(1);
+  await page.getByRole('navigation',{name:'文件生成导航'}).getByRole('link',{name:'项目文件',exact:true}).click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${ids.api}/files`));
+  await page.waitForTimeout(1200);expect(reads).toBe(1);
+  expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);
+});
+
 for(const streaming of [false,true])test(`leaving an unfinished ZIP download keeps navigation usable and cancels the read, streaming=${streaming}`,async({page})=>{
   const s=await setup(page);
   await page.addInitScript(({streaming})=>{
