@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BondBuddy · 底稿批量生成原型</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="workpaper-batch.css"><link rel="stylesheet" href="file-generation-ux.css"><link rel="stylesheet" href="workpaper-entry.css">
+<title>BondBuddy · 底稿批量生成原型</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="workpaper-batch.css"><link rel="stylesheet" href="file-generation-ux.css"><link rel="stylesheet" href="workpaper-entry.css"><link rel="stylesheet" href="workpaper-download-progress.css">
 <style>body{background:#f7f8f2}main{max-width:1024px;margin:32px auto;padding:0 20px;box-sizing:content-box}.prototype-note{font-size:13px;color:#68776e;margin:20px 0}#wp-confirm button:disabled{opacity:.5}@media(max-width:600px){main{margin:20px auto;padding:0 20px}}</style></head>
 <body><main><p class="prototype-note">文件生成 → 选择募集说明书 → 批量生成底稿。2026-10-27 原型补充；合成示例，操作只演示交互。</p>
 <header class="pf-workspace-heading pf-generation-heading pf-workpaper-heading"><a class="pf-back-link" href="file-generation.html">← 选择生成方式</a><div class="pf-title-row"><div><h1>批量生成底稿</h1><p>上传 Excel 底稿目录，依据募集说明书逐份生成。</p></div><nav class="pf-workspace-actions" aria-label="文件生成导航"><a class="btn secondary" href="#wp-batches">生成记录</a><a class="btn secondary" href="index.html#projects">项目文件</a></nav></div></header>
@@ -38,4 +38,4 @@ if(new URLSearchParams(location.search).get('upload')==='recovery'){
   find('wp-retry-directory').onclick=()=>{card.remove();hidden.forEach(el=>el.hidden=false);find('wp-status').textContent='目录已保存，选好文件后即可开始批量生成。（合成演示）';};
   find('wp-forget-directory').onclick=()=>{card.remove();find('wp-status').textContent='已移除本机待办，服务器文件仍保留。（合成演示）';};
 }
-</script><script src="workpaper-import-preview.js"></script></body></html>
+</script><script src="workpaper-import-preview.js"></script><script src="workpaper-download-preview.js"></script></body></html>

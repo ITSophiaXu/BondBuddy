@@ -9,6 +9,8 @@ import {Value} from '@sinclair/typebox/value';
 import {ApiClient,ApiError,errorReference,friendlyError} from './api';
 import {UserFacingError} from './user-facing-error';
 import {ArtifactDownloads,artifactError,boundedDownload} from './artifact-download';
+import {WorkpaperDownloadProgress} from './workpaper-download-progress';
+import type {WorkpaperZipPreparation} from '@bondbuddy/contracts';
 import {uploadFileMaterial,type UploadFileMaterialState} from './file-workspace';
 import {UploadRecovery,UploadRecoveryNeedsFileError} from './upload-recovery';
 import {uploadErrorMessage} from './upload-error';
@@ -178,21 +180,24 @@ export class WorkpaperPanel {
     this.host.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement|HTMLTextAreaElement>('#wp-change-directory,#wp-catalogue,#wp-upload,#wp-all,#wp-none,[data-wp-item],#wp-requirements').forEach(control=>control.disabled=disabled);
   }
   private async act(fn:()=>Promise<void>){if(this.busy)return;this.busy=true;this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();try{await fn();}catch(e){this.status=friendlyError(e,'submit');}finally{this.busy=false;if(this.live()){this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=this.status);this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();}}}
-  private async download(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number,total?:number)=>void)=>Promise<{bytes:Blob;filename:string}>){
+  private async download(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number,total?:number)=>void,preparation:(state:WorkpaperZipPreparation)=>void)=>Promise<{bytes:Blob;filename:string}>){
     if(this.busy||this.downloading)return;this.downloading=true;
-    const feedback=this.downloadFeedback?.node??document.createElement('p');
+    const feedback=this.downloadFeedback?.node??document.createElement('div');
     feedback.id='wp-download-feedback';feedback.setAttribute('role','status');
     this.downloadFeedback={node:feedback,target:{...button.dataset}};button.closest('.wp-actions')!.append(feedback);
     feedback.textContent='正在准备下载，请稍候…';
+    const activity=button.hasAttribute('data-wp-zip')?new WorkpaperDownloadProgress(feedback,this.controller.signal):undefined;
     const buttons=[...this.host.querySelectorAll<HTMLButtonElement>('#wp-batches button')].map(b=>({b,disabled:b.disabled}));
     const text=button.textContent;buttons.forEach(({b})=>b.disabled=true);button.textContent='正在准备下载…';button.setAttribute('aria-busy','true');
     const progress=(received:number,total?:number)=>{if(this.live()){
       button.textContent='正在下载…';
+      if(activity){activity.transfer(received,total);return;}
       feedback.textContent=total?`正在下载文件包，${Math.min(100,Math.floor(received/total*100))}%（${(received/1024/1024).toFixed(2)} / ${(total/1024/1024).toFixed(2)} MB）`:`正在下载文件包，已接收 ${(received/1024/1024).toFixed(2)} MB…`;
     }};
-    try{const file=await boundedDownload(this.controller.signal,signal=>read(signal,progress),button.hasAttribute('data-wp-zip')?20*60_000:120_000);if(this.live())this.downloads.save(file.bytes,file.filename,feedback);}
-    catch(e){if(this.live())feedback.textContent=artifactError(e);}
-    finally{this.downloading=false;buttons.forEach(({b,disabled})=>b.disabled=disabled);button.textContent=text;button.removeAttribute('aria-busy');}
+    const preparation=(state:WorkpaperZipPreparation)=>{if(this.live())activity?.prepare(state);};
+    try{const file=await boundedDownload(this.controller.signal,signal=>read(signal,progress,preparation),button.hasAttribute('data-wp-zip')?20*60_000:120_000);activity?.stop();if(this.live()){feedback.setAttribute('role','status');this.downloads.save(file.bytes,file.filename,feedback);}}
+    catch(e){activity?.stop();if(this.live()){feedback.setAttribute('role','status');feedback.textContent=artifactError(e);}}
+    finally{activity?.stop();this.downloading=false;buttons.forEach(({b,disabled})=>b.disabled=disabled);button.textContent=text;button.removeAttribute('aria-busy');}
   }
   private async importFile(file?:File,operation?:string){
     if(this.pending||this.busy)return;
@@ -302,7 +307,7 @@ export class WorkpaperPanel {
       <details data-batch="${esc(b.batch_id)}" ${(this.expandedBatches.get(b.batch_id)??b.batch_id===this.progressBatch)?'open':''}><summary>查看逐份状态与下载</summary><ul class="wp-items">${b.items.map(i=>`<li><div><strong>${esc(i.entry.code)} ${esc(i.entry.title)}</strong><small>${esc(runStateLabel[i.state as keyof typeof runStateLabel]??stateNames[i.state]??i.state)}${i.explanation?' · 已生成不适用说明':''}${i.error?' · '+esc(i.error):''}</small></div><div class="wp-actions">${i.explanation?'<button class="text-button" data-wp-explanation="'+esc(i.entry.id)+'" data-batch="'+esc(b.batch_id)+'">下载不适用说明</button>':''}${i.artifacts.filter(a=>a.kind==='document').map(a=>`<button class="text-button" data-wp-art="${esc(a.pin.artifact_id)}" data-wp-batch="${esc(b.batch_id)}">${a.kind==='document'?'下载底稿':'编制说明'}</button>`).join('')}</div></li>`).join('')}</ul></details></article>`;}).join('')}`;
     node.querySelectorAll<HTMLDetailsElement>('details[data-batch]').forEach(el=>el.addEventListener('toggle',()=>{if(el.isConnected)this.expandedBatches.set(el.dataset.batch!,el.open);}));
     node.querySelectorAll<HTMLElement>('[data-wp-action]').forEach(el=>el.onclick=()=>void this.batchAction(this.data.batches.find(b=>b.batch_id===el.dataset.batch)!,el.dataset.wpAction!));
-    node.querySelectorAll<HTMLButtonElement>('[data-wp-zip]').forEach(el=>el.onclick=()=>void this.download(el,async (signal,progress)=>({bytes:await this.api.workpaperZip(this.project,el.dataset.wpZip!,signal,progress),filename:'底稿文件包.zip'})));
+    node.querySelectorAll<HTMLButtonElement>('[data-wp-zip]').forEach(el=>el.onclick=()=>void this.download(el,async (signal,progress,preparation)=>({bytes:await this.api.workpaperZip(this.project,el.dataset.wpZip!,signal,progress,preparation),filename:'底稿文件包.zip'})));
     node.querySelectorAll<HTMLButtonElement>('[data-wp-explanation]').forEach(el=>el.onclick=()=>void this.download(el,async signal=>{
       const batch=this.data.batches.find(b=>b.batch_id===el.dataset.batch)!,item=batch.items.find(i=>i.entry.id===el.dataset.wpExplanation)!;
       return {bytes:await this.api.workpaperExplanation(this.project,batch.batch_id,item.entry.id,signal),filename:item.explanation!.filename};

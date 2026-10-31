@@ -74,7 +74,10 @@ test('248-file ZIP on real PostgreSQL/Azurite: cold/warm HTTP, legacy-read bench
         response=await fetch(url,{headers:{Prefer:'respond-async'},signal:AbortSignal.timeout(2000)});
         maxRequestMs=Math.max(maxRequestMs,performance.now()-requestStart);
         if(response.status!==202)break;
-        assert.deepEqual(await response.json(),{status:'preparing'});polls++;
+        const preparation=await response.json();assert.equal(preparation.status,'preparing');
+        assert.equal(preparation.progress.total_files,248);
+        assert.ok(['retrieving','packaging'].includes(preparation.progress.phase));
+        assert.ok(Number.isInteger(preparation.progress.completed_files)&&preparation.progress.completed_files>=0&&preparation.progress.completed_files<=248);polls++;
         await delay(Number(response.headers.get('retry-after'))*1000);
       }
       const headersMs=performance.now()-start;

@@ -7,10 +7,12 @@ import {Transform,Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import {ZipFile} from 'yazl';
 import {digest,Problem,type PrivateBlobs} from './data.js';
+import type {WorkpaperZipPreparation} from '@bondbuddy/contracts';
 
 export type WorkpaperZipFile={path:string;key:string;sha256:string;maxBytes:number};
 type Archive={directory:string;path:string;size:number;users:number;expires:number};
-type Pending={promise:Promise<Archive>;controller:AbortController;waiters:number;background:boolean};
+type PreparationProgress=NonNullable<WorkpaperZipPreparation['progress']>;
+type Pending={promise:Promise<Archive>;controller:AbortController;waiters:number;background:boolean;progress:PreparationProgress};
 const unavailable=()=>new Problem(503,'DATA_UNAVAILABLE','底稿文件包暂时无法读取，请稍后重试。已生成文件仍保留，无需重新生成。');
 
 // Bound both opening storage and consuming it. Close a late stream even when an
@@ -53,8 +55,9 @@ export class WorkpaperZipCache {
       if(!idle)throw new Problem(503,'DATA_UNAVAILABLE','其他文件包正在下载，请稍后重试。');
       this.ready.delete(idle[0]);void rm(idle[1].directory,{recursive:true,force:true}).catch(()=>{});
     }
-    const controller=new AbortController(),work:Pending={controller,waiters:0,background:false,promise:undefined!};
-    work.promise=this.build(files,blobs,controller.signal).then(result=>{
+    const progress:PreparationProgress={phase:'retrieving',completed_files:0,total_files:files.length};
+    const controller=new AbortController(),work:Pending={controller,waiters:0,background:false,promise:undefined!,progress};
+    work.promise=this.build(files,blobs,controller.signal,progress).then(result=>{
       this.failures.delete(key);this.ready.set(key,result);return result;
     }).catch(error=>{
       // The short polling response has already ended. Retain one bounded failure
@@ -70,14 +73,14 @@ export class WorkpaperZipCache {
   }
   /** Opt-in HTTP polling: finish each request before storage preparation. The
    * bounded build survives these short responses and is shared by all polls. */
-  prepare(scope:string,files:WorkpaperZipFile[],blobs:PrivateBlobs):boolean{
+  prepare(scope:string,files:WorkpaperZipFile[],blobs:PrivateBlobs):true|WorkpaperZipPreparation{
     if(this.closed)throw unavailable();
     const key=digest(JSON.stringify([scope,files])),failure=this.failures.get(key);
     this.failures.delete(key);
     if(failure&&failure>Date.now())throw unavailable();
     if(this.archive(key))return true;
     const work=this.pending.get(key)??this.start(key,files,blobs);
-    work.background=true;return false;
+    work.background=true;return {status:'preparing',progress:{...work.progress}};
   }
   async open(scope:string,files:WorkpaperZipFile[],blobs:PrivateBlobs,signal?:AbortSignal):Promise<{body:Readable;size:number;cached:boolean}>{
     signal?.throwIfAborted();
@@ -109,7 +112,7 @@ export class WorkpaperZipCache {
     void this.prune().catch(()=>{});
     return {body,size:result.size,cached};
   }
-  private async build(files:WorkpaperZipFile[],blobs:PrivateBlobs,parent:AbortSignal):Promise<Archive>{
+  private async build(files:WorkpaperZipFile[],blobs:PrivateBlobs,parent:AbortSignal,progress:PreparationProgress):Promise<Archive>{
     const directory=await mkdtemp(join(tmpdir(),'bondbuddy-workpaper-zip-'));
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(unavailable()),this.options.timeoutMs);
     const signal=AbortSignal.any([parent,controller.signal]);
@@ -139,10 +142,12 @@ export class WorkpaperZipCache {
             await pipeline(opened.body,check,createWriteStream(path,{flags:'wx',mode:0o600}),{signal});
             if(opened.contentLength!==undefined&&received!==opened.contentLength)throw unavailable();
             if(received===0||hash.digest('hex')!==file.sha256)throw unavailable();
+            progress.completed_files++;
           }catch(error){failure=error;controller.abort(error);}
         }
       }));
       if(failure)throw failure;signal.throwIfAborted();
+      progress.phase='packaging';
       const path=join(directory,'workpapers.zip'),zip=new ZipFile();
       zip.on('error',error=>(zip.outputStream as Readable).destroy(error));
       const output=pipeline(zip.outputStream,createWriteStream(path,{flags:'wx',mode:0o600}),{signal});

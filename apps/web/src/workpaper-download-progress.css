@@ -1,0 +1,9 @@
+.wp-download-progress{width:100%;box-sizing:border-box;padding:16px;border:1px solid #dce4de;border-radius:10px;background:#f6f9f5;color:#243c30;line-height:1.6}
+.wp-download-progress strong{font-size:15px}.wp-download-progress p{margin:6px 0;font-size:14px}.wp-batch .wp-download-progress progress{display:block;width:100%;height:10px;margin:12px 0 8px;accent-color:#527d49}
+.wp-download-progress progress:indeterminate{background:#e8eee1 linear-gradient(#62824d,#62824d) 50% 0/30% 100% no-repeat;animation:wp-download-wait 1.5s ease-in-out infinite alternate}
+.wp-download-progress progress:indeterminate::-webkit-progress-bar{background:transparent}
+.wp-download-progress progress:indeterminate::-moz-progress-bar{background:transparent}
+@keyframes wp-download-wait{from{background-position:0 0}to{background-position:100% 0}}
+@media(prefers-reduced-motion:reduce){.wp-download-progress progress:indeterminate{animation:none}}
+.wp-download-progress .wp-download-elapsed{display:block;font-size:13px;font-variant-numeric:tabular-nums;color:#53665b}.wp-download-progress small{display:block;margin-top:8px;color:#53665b;font-size:12px}.wp-download-progress .wp-download-slow{font-size:13px;color:#785b20}
+@media(max-width:600px){.wp-download-progress{padding:12px}}
