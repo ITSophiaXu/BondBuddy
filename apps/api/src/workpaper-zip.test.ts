@@ -10,6 +10,41 @@ const options={ttlMs:60_000,maxBytes:1024*1024,concurrency:4,timeoutMs:1000};
 const file=(bytes:Buffer,path='可生成文件/1.docx'):WorkpaperZipFile=>({path,key:'private/key',sha256:digest(bytes),maxBytes:1000});
 async function consume(stream:Readable){const chunks:Buffer[]=[];for await(const chunk of stream)chunks.push(Buffer.from(chunk));return Buffer.concat(chunks);}
 
+test('short polls share a bounded background build; a failed preparation is reported once and can retry',async()=>{
+  const cache=new WorkpaperZipCache(options),bytes=Buffer.from('data');let reads=0,release!:()=>void,opened!:()=>void;
+  const gate=new Promise<void>(r=>release=r),started=new Promise<void>(r=>opened=r);
+  const blobs={openRead:async()=>{reads++;opened();await gate;return {body:Readable.from([bytes]),contentLength:bytes.length};}} as unknown as PrivateBlobs;
+  try{
+    assert.equal(cache.prepare('owner',[file(bytes)],blobs),false);await started;
+    for(let i=0;i<5;i++)assert.equal(cache.prepare('owner',[file(bytes)],blobs),false);
+    assert.equal(reads,1);release();
+    await consume((await cache.open('owner',[file(bytes)],blobs)).body);
+    assert.equal(cache.prepare('owner',[file(bytes)],blobs),true);assert.equal(reads,1);
+    // No HTTP waiter remains to catch a background failure. It must still be
+    // observed on the next poll, without an unhandled rejection or restart loop.
+    const broken={openRead:async()=>null} as unknown as PrivateBlobs;
+    assert.equal(cache.prepare('broken',[file(bytes)],broken),false);
+    await assert.rejects(cache.open('broken',[file(bytes)],broken),/暂时无法读取/);
+    assert.throws(()=>cache.prepare('broken',[file(bytes)],broken),/暂时无法读取/);
+    assert.equal(cache.prepare('broken',[file(bytes)],blobs),false);
+    await consume((await cache.open('broken',[file(bytes)],blobs)).body);
+  }finally{release();await cache.close();}
+});
+
+test('abandoned polling builds retain deadlines, admission limits and shutdown cancellation',async()=>{
+  const cache=new WorkpaperZipCache({...options,timeoutMs:40}),bytes=Buffer.from('data'),signals:AbortSignal[]=[];
+  const blobs={openRead:async(_key:string,signal:AbortSignal)=>{signals.push(signal);return new Promise(()=>{});}} as unknown as PrivateBlobs;
+  try{
+    assert.equal(cache.prepare('one',[file(bytes)],blobs),false);
+    assert.equal(cache.prepare('two',[file(bytes)],blobs),false);
+    assert.throws(()=>cache.prepare('three',[file(bytes)],blobs),/正在准备/);
+    await delay(80);assert.equal(signals.length,2);assert.ok(signals.every(s=>s.aborted));
+    assert.throws(()=>cache.prepare('one',[file(bytes)],blobs),/暂时无法读取/);
+    assert.equal(cache.prepare('three',[file(bytes)],blobs),false);
+  }finally{await cache.close();}
+  assert.ok(signals.every(s=>s.aborted));assert.throws(()=>cache.prepare('closed',[file(bytes)],blobs),/暂时无法读取/);
+});
+
 test('slow readers cannot retain an unlimited number of distinct archives',async()=>{
   const cache=new WorkpaperZipCache(options),bytes=Buffer.from('data'),streams:Readable[]=[];
   const blobs={openRead:async()=>({body:Readable.from([bytes]),contentLength:bytes.length})} as unknown as PrivateBlobs;

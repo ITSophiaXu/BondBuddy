@@ -10,7 +10,7 @@ import {digest,Problem,type PrivateBlobs} from './data.js';
 
 export type WorkpaperZipFile={path:string;key:string;sha256:string;maxBytes:number};
 type Archive={directory:string;path:string;size:number;users:number;expires:number};
-type Pending={promise:Promise<Archive>;controller:AbortController;waiters:number};
+type Pending={promise:Promise<Archive>;controller:AbortController;waiters:number;background:boolean};
 const unavailable=()=>new Problem(503,'DATA_UNAVAILABLE','底稿文件包暂时无法读取，请稍后重试。已生成文件仍保留，无需重新生成。');
 
 // Bound both opening storage and consuming it. Close a late stream even when an
@@ -32,10 +32,52 @@ async function cancellable<T>(promise:Promise<T>,signal?:AbortSignal,late?:(valu
 export class WorkpaperZipCache {
   private ready=new Map<string,Archive>();
   private pending=new Map<string,Pending>();
+  private failures=new Map<string,number>();
   private closed=false;
   private sweep:ReturnType<typeof setInterval>;
   constructor(private options={ttlMs:10*60_000,maxBytes:256*1024*1024,concurrency:4,timeoutMs:120_000}){
     this.sweep=setInterval(()=>void this.prune().catch(()=>{}),60_000);this.sweep.unref();
+  }
+  private archive(key:string){
+    const archive=this.ready.get(key);
+    if(archive&&archive.expires<=Date.now()&&!archive.users){
+      this.ready.delete(key);void rm(archive.directory,{recursive:true,force:true}).catch(()=>{});return undefined;
+    }
+    return archive;
+  }
+  private start(key:string,files:WorkpaperZipFile[],blobs:PrivateBlobs):Pending{
+    if(this.pending.size>=2)throw new Problem(503,'DATA_UNAVAILABLE','其他文件包正在准备，请稍后重试下载。');
+    // Bound archives pinned by slow readers as well as idle cache bytes.
+    if(this.ready.size+this.pending.size>=4){
+      const idle=[...this.ready].find(([,a])=>!a.users);
+      if(!idle)throw new Problem(503,'DATA_UNAVAILABLE','其他文件包正在下载，请稍后重试。');
+      this.ready.delete(idle[0]);void rm(idle[1].directory,{recursive:true,force:true}).catch(()=>{});
+    }
+    const controller=new AbortController(),work:Pending={controller,waiters:0,background:false,promise:undefined!};
+    work.promise=this.build(files,blobs,controller.signal).then(result=>{
+      this.failures.delete(key);this.ready.set(key,result);return result;
+    }).catch(error=>{
+      // The short polling response has already ended. Retain one bounded failure
+      // receipt so the next poll reports the error instead of rebuilding forever.
+      if(work.background&&!this.closed){
+        this.failures.set(key,Date.now()+this.options.ttlMs);
+        if(this.failures.size>4)this.failures.delete(this.failures.keys().next().value!);
+      }
+      throw error;
+    }).finally(()=>{if(this.pending.get(key)===work)this.pending.delete(key);});
+    void work.promise.catch(()=>{});
+    this.pending.set(key,work);return work;
+  }
+  /** Opt-in HTTP polling: finish each request before storage preparation. The
+   * bounded build survives these short responses and is shared by all polls. */
+  prepare(scope:string,files:WorkpaperZipFile[],blobs:PrivateBlobs):boolean{
+    if(this.closed)throw unavailable();
+    const key=digest(JSON.stringify([scope,files])),failure=this.failures.get(key);
+    this.failures.delete(key);
+    if(failure&&failure>Date.now())throw unavailable();
+    if(this.archive(key))return true;
+    const work=this.pending.get(key)??this.start(key,files,blobs);
+    work.background=true;return false;
   }
   async open(scope:string,files:WorkpaperZipFile[],blobs:PrivateBlobs,signal?:AbortSignal):Promise<{body:Readable;size:number;cached:boolean}>{
     signal?.throwIfAborted();
@@ -43,30 +85,10 @@ export class WorkpaperZipCache {
     const key=digest(JSON.stringify([scope,files]));
     // Reserve ready entries synchronously before any await, so eviction cannot
     // remove a ZIP between looking it up and opening a response stream.
-    let archive=this.ready.get(key),cached=!!archive;
-    if(archive&&archive.expires<=Date.now()&&!archive.users){
-      this.ready.delete(key);void rm(archive.directory,{recursive:true,force:true}).catch(()=>{});archive=undefined;cached=false;
-    }
+    let archive=this.archive(key),cached=!!archive;
     if(archive)archive.users++;
     else {
-      let work=this.pending.get(key);
-      if(!work){
-        if(this.pending.size>=2)throw new Problem(503,'DATA_UNAVAILABLE','其他文件包正在准备，请稍后重试下载。');
-        // Slow readers may pin expired archives. Bound their count as well as
-        // the idle cache bytes; otherwise repeated distinct downloads grow disk.
-        if(this.ready.size+this.pending.size>=4){
-          const idle=[...this.ready].find(([,a])=>!a.users);
-          if(!idle)throw new Problem(503,'DATA_UNAVAILABLE','其他文件包正在下载，请稍后重试。');
-          this.ready.delete(idle[0]);void rm(idle[1].directory,{recursive:true,force:true}).catch(()=>{});
-        }
-        const controller=new AbortController();
-        work={controller,waiters:0,promise:undefined!};
-        const current=work;
-        current.promise=this.build(files,blobs,controller.signal).then(result=>{
-          this.ready.set(key,result);return result;
-        }).finally(()=>{if(this.pending.get(key)===current)this.pending.delete(key);});
-        this.pending.set(key,current);
-      }
+      const work=this.pending.get(key)??this.start(key,files,blobs);
       work.waiters++;
       try{
         archive=await cancellable(work.promise,signal);
@@ -75,7 +97,7 @@ export class WorkpaperZipCache {
         archive.users++;archive.expires=Date.now()+this.options.ttlMs;this.ready.set(key,archive);
       }finally{
         work.waiters--;
-        if(!work.waiters&&this.pending.get(key)===work)work.controller.abort(unavailable());
+        if(!work.waiters&&!work.background&&this.pending.get(key)===work)work.controller.abort(unavailable());
       }
     }
     const result=archive;
@@ -134,6 +156,7 @@ export class WorkpaperZipCache {
     finally{clearTimeout(timer);}
   }
   private async prune(){
+    for(const [key,expires] of this.failures)if(expires<=Date.now())this.failures.delete(key);
     let size=[...this.ready.values()].reduce((n,a)=>n+a.size,0);
     for(const [key,a] of this.ready){
       if(a.users||a.expires>Date.now()&&size<=this.options.maxBytes)continue;
@@ -146,6 +169,6 @@ export class WorkpaperZipCache {
     const completed=await Promise.allSettled([...this.pending.values()].map(work=>work.promise));
     const archives=new Set([...this.ready.values(),...completed.flatMap(r=>r.status==='fulfilled'?[r.value]:[])]);
     await Promise.all([...archives].map(a=>rm(a.directory,{recursive:true,force:true})));
-    this.ready.clear();this.pending.clear();
+    this.ready.clear();this.pending.clear();this.failures.clear();
   }
 }

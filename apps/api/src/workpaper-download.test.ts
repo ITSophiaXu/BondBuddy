@@ -62,15 +62,22 @@ test('retained 248-file batch: normalized names across ZIP, explanations, batch 
     else throw Error('Unexpected fixture query: '+statement);
     return {rows,rowCount:rows.length};
   }} as unknown as Pool;
-  const blobs={getIfExistsBounded:async(_key:string,max:number)=>{reads++;active++;peak=Math.max(peak,active);await new Promise(r=>setTimeout(r,2));active--;assert.ok(bytes.length<=max);return corrupt?Buffer.from('corrupt'):bytes;}} as PrivateBlobs;
+  let release!:()=>void;const storageGate=new Promise<void>(r=>release=r);
+  const blobs={getIfExistsBounded:async(_key:string,max:number)=>{reads++;active++;peak=Math.max(peak,active);await storageGate;await new Promise(r=>setTimeout(r,2));active--;assert.ok(bytes.length<=max);return corrupt?Buffer.from('corrupt'):bytes;}} as PrivateBlobs;
   const app=Fastify();app.setErrorHandler((error,_request,reply)=>reply.code(error instanceof Problem?error.status:500).send({message:error instanceof Error?error.message:String(error)}));
   registerWorkpapers(app,()=>db,async()=>actor,()=>blobs);
   const base='/api/v1/projects/project/workpapers';
   try{
+    const preparing=await app.inject({url:base+'/batches/batch/download',headers:{prefer:'respond-async'}});
+    assert.equal(preparing.statusCode,202);assert.deepEqual(preparing.json(),{status:'preparing'});
+    assert.equal(preparing.headers['retry-after'],'2');assert.equal(preparing.headers['cache-control'],'private, no-store');
+    actor='other';assert.equal((await app.inject({url:base+'/batches/batch/download',headers:{prefer:'respond-async'}})).statusCode,404);actor='owner';
+    assert.equal((await app.inject({url:base+'/batches/batch/download',headers:{prefer:'respond-async'}})).statusCode,202);
+    release();sql.length=0;
     const response=await app.inject(base+'/batches/batch/download');assert.equal(response.statusCode,200,response.body);
     assert.equal(Number(response.headers['content-length']),response.rawPayload.length);
     assert.equal(reads,248);assert.equal(peak,4);assert.ok(sql.length<25,'query count must not grow with each file');
-    const warm=await app.inject(base+'/batches/batch/download');assert.equal(warm.statusCode,200);
+    const warm=await app.inject({url:base+'/batches/batch/download',headers:{prefer:'respond-async'}});assert.equal(warm.statusCode,200);
     assert.deepEqual(warm.rawPayload,response.rawPayload);assert.equal(reads,248,'unchanged download reuses the verified ZIP');
     const parts=zipParts(response.rawPayload);
     assert.equal(parts.size,248);assert.equal([...parts.keys()].filter(n=>n.startsWith('不适用说明/')).length,124);
@@ -91,5 +98,5 @@ test('retained 248-file batch: normalized names across ZIP, explanations, batch 
     actor='other';assert.equal((await app.inject(base+'/batches/batch/download')).statusCode,404);
     assert.equal((await app.inject(base+'/batches/batch/explanations/item-0')).statusCode,404);
     assert.equal(JSON.stringify(items),saved);
-  }finally{await app.close();}
+  }finally{release();await app.close();}
 });

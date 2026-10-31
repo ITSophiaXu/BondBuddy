@@ -238,7 +238,21 @@ export class ApiClient {
 
   /** Only fixed owner-authorized artifact routes may use this binary seam. */
   async workpaperZip(project:string,batch:string,signal:AbortSignal,onProgress?:(received:number,total?:number)=>void):Promise<Blob>{
-    const response=await this.response('GET',`/projects/${encodeURIComponent(project)}/workpapers/batches/${encodeURIComponent(batch)}/download`,undefined,{},signal);
+    let response:Response;
+    for(;;){
+      signal.throwIfAborted();
+      response=await this.response('GET',`/projects/${encodeURIComponent(project)}/workpapers/batches/${encodeURIComponent(batch)}/download`,undefined,{'Prefer':'respond-async'},signal);
+      if(response.status!==202)break;
+      // Consume the small status response before the next request. The caller's
+      // total download deadline still bounds preparation and the final ZIP body.
+      if(response.headers.get('content-type')?.split(';')[0]!=='application/json'||(await response.json()).status!=='preparing')throw new ApiError(0,'DATA_UNAVAILABLE');
+      const seconds=Number(response.headers.get('retry-after'));
+      await new Promise<void>((resolve,reject)=>{
+        const abort=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);reject(signal.reason);};
+        const timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve();},Math.max(1,Math.min(5,Number.isFinite(seconds)&&seconds>0?seconds:2))*1000);
+        signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
+      });
+    }
     if(response.status!==200||response.headers.get('content-type')?.split(';')[0]!=='application/zip')throw new ApiError(0,'DATA_UNAVAILABLE');
     const length=Number(response.headers.get('content-length')),encoding=response.headers.get('content-encoding');
     const total=Number.isSafeInteger(length)&&length>0&&(!encoding||encoding==='identity')?length:undefined;
