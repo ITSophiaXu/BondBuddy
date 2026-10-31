@@ -81,7 +81,13 @@ export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>
 }
 
 /** Presentation only: the server remains authoritative about readiness and run transitions. */
+export function executionEventReason(payload: Dto<'RunEvent'>['payload'] | undefined): string | undefined {
+  return payload?.error_code === 'WORD_FORMAT_OPERATIONS_MISSING' && payload.reason === 'processor_failed'
+    ? payload.error_code : payload?.reason ?? payload?.error_code;
+}
+
 export function readinessMessage(reason: string, lastProcessingStage?: string): string {
+  if (reason === 'WORD_FORMAT_OPERATIONS_MISSING') return '本轮编制未保存必需的修订记录，尚未生成可交付的 Word。已保存材料会保留，无需重新上传；请联系支持核对本轮结果。';
   if (reason === 'processor_failed') return lastProcessingStage === 'word_delivery'
     ? 'Word 文件生成或保存失败，本轮未能交付。已保存材料会保留，无需重新上传；请联系支持核对并恢复。'
     : '系统处理失败，本轮未能完成。已保存材料会保留；请联系支持核对原因，无需因本提示补充材料。';
@@ -1030,7 +1036,7 @@ export class ProjectExecution {
             this.lastPausedEvent = event;
           }
           const reason = event.state === run.state && event.stage === run.stage
-            ? event.payload.reason ?? event.payload.error_code : undefined;
+            ? executionEventReason(event.payload) : undefined;
           if (this.reason !== reason) this.resumeVerified = false;
           this.reason = reason;
         }
@@ -1042,7 +1048,7 @@ export class ProjectExecution {
       const currentCursor = run.event_cursor ?? 0;
       const currentEvent = this.events.slice().reverse().find(event => event.seq <= currentCursor &&
         event.state === run.state && event.stage === run.stage);
-      const reason = currentEvent?.payload.reason ?? currentEvent?.payload.error_code;
+      const reason = executionEventReason(currentEvent?.payload);
       if (this.reason !== reason) this.resumeVerified = false;
       this.reason = reason;
       this.progressMessage = '';

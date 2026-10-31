@@ -47,6 +47,33 @@ test('a pinned review source can use a non-historical material role', () => {
   assert.equal(editingSource(input)?.pin.role,'audit');
 });
 
+test('normal model exit without operations preserves private evidence and reports the actual failure', {skip:!python}, async()=>{
+  const f=fixture(),root=await mkdtemp(join(tmpdir(),'bb-missing-operations-'));
+  let calls=0;
+  try{
+    const stage=fileAuthoringStage({load:async()=>f.input,model:options=>({name:'model_generation',run:async()=>{
+      calls++;assert.equal(options.fileWorkspace!.completionCheck,true);
+      await options.fileWorkspace!.prepare(root);
+      await writeFile(join(root,'scratch/工作记录.md'),'Synthetic pending chapter; no completed edits.');
+      const value=await options.fileWorkspace!.collect(root,{call_id:'call'} as any,{text:'Synthetic tool failure; no delivery.',diagnostics:{tools:[{exit_code:1,output:'WORD_EDIT_NODE_NOT_FOUND'}],omitted:0}});
+      return {kind:'done',value};
+    }})});
+    const outcome=await stage.run(f.ctx);assert.equal(outcome.kind,'done');if(outcome.kind!=='done')throw Error('completion expected');
+    const value=outcome.value as FileAuthoringResult;
+    assert.equal(value.summary.validation_error,'WORD_FORMAT_OPERATIONS_MISSING');
+    assert.deepEqual(value.summary.missing_files,['operations.json']);
+    assert.equal(value.files['operations.json'],undefined);assert.equal(value.files['clean.docx'],undefined);
+    const diagnostic=f.objects.get(value.files['diagnostic.json']!.key)!;
+    assert.equal(digest(diagnostic),value.files['diagnostic.json']!.sha256);
+    assert.match(diagnostic.toString(),/Synthetic tool failure/);assert.match(diagnostic.toString(),/WORD_EDIT_NODE_NOT_FOUND/);
+    assert.match(diagnostic.toString(),/Synthetic pending chapter/);
+    await rm(root,{recursive:true,force:true});
+    f.ctx.values.set('model_generation',value);
+    for(let i=0;i<2;i++)assert.deepEqual(await fileAuthoringDeliveryStage().run(f.ctx),{kind:'fail',code:'WORD_FORMAT_OPERATIONS_MISSING'});
+    assert.equal(calls,1);assert.equal(JSON.stringify(value.summary).includes('Synthetic'),false);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
 for (const invalid of [false, true]) test(`trusted finalization ${invalid ? 'rejects wrong anchors without accepting model DOCX' : 'ignores arbitrary model DOCX and preserves the original package'}`, { skip: !python, timeout: 60000 }, async () => {
   const f = fixture();
   const root = await mkdtemp(join(tmpdir(), 'bb-format-stage-test-'));

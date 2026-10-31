@@ -111,7 +111,7 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
         originals.set('template-manifest.json',digest(await checkedFile(cwd,'template-manifest.json',FORMAT_JSON_MAX)));
       }
     };
-    const collect=async(cwd:string,intent:{call_id:string})=>{
+    const collect=async(cwd:string,intent:{call_id:string},response?:{text:string;diagnostics?:unknown})=>{
       for(const [path,hash] of originals)if(digest(await checkedFile(cwd,path))!==hash)throw Error('INPUT_REVISION_CONFLICT');
       const files:Record<string,FileRef>={};
       // Retain only bounded, regular declared artifacts in private storage, including a
@@ -133,9 +133,26 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
         files[name]={key,sha256,byte_size:bytes.length};
       }
       if(!(controlled?['baseline.docx','input.json','operations.json']:requiredFiles).every(name=>files[name])){
+        // Preserve the explanation and bounded command tail before the ephemeral
+        // workspace is removed. This is private evidence, never a Word artifact.
+        let worklog:string|null=null;
+        try { worklog=(await checkedFile(join(cwd,'scratch'),'工作记录.md',256*1024)).toString('utf8'); } catch { /* optional */ }
+        const metadata={version:'file-authoring-diagnostic-v1',input_hash:ctx.run.input_hash.trim(),
+          call_id:intent.call_id,accepted:false,last_message:response?.text.slice(0,32768)??null};
+        let diagnostic=Buffer.from(JSON.stringify({...metadata,command_tail:response?.diagnostics??null,worklog}));
+        if(diagnostic.length>512*1024)diagnostic=Buffer.from(JSON.stringify({...metadata,details_omitted:'512KiB_limit'}));
+        {
+          const sha256=digest(diagnostic),key=`${prefix(ctx)}${intent.call_id}/${sha256}/diagnostic.json`;
+          await ctx.blobs.put(key,diagnostic,'application/json');
+          const saved=await ctx.blobs.getIfExistsBounded(key,512*1024);
+          if(!saved||digest(saved)!==sha256)throw Error('AUTHORING_OUTPUT_STORE_FAILED');
+          files['diagnostic.json']={key,sha256,byte_size:diagnostic.length};
+        }
         // Keep the durable completion and usage even if a required output is missing.
         return {version:'codex-file-word-v1',input_hash:ctx.run.input_hash.trim(),files,
-          summary:{validation_error:controlled?'WORD_FORMAT_OPERATIONS_MISSING':'WORD_OUTPUT_MISSING'},error:'WORD_QUALITY_REJECTED'};
+          summary:{validation_error:controlled?'WORD_FORMAT_OPERATIONS_MISSING':'WORD_OUTPUT_MISSING',
+            ...(controlled?{format_execution:'controlled-docx-v1'}:{}),
+            missing_files:(controlled?['baseline.docx','input.json','operations.json']:requiredFiles).filter(name=>!files[name])},error:'WORD_QUALITY_REJECTED'};
       }
       const delivery=files['delivery.md']?(await checkedFile(join(cwd,'output'),'delivery.md',256*1024)).toString('utf8'):'';
       return {version:'codex-file-word-v1',input_hash:ctx.run.input_hash.trim(),files,summary:{
@@ -149,7 +166,7 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
     return (options.model??codexModelStage)({name:'file_authoring_v1',logicalCallId:'file-authoring-v1',
       config:{...config,work_root:join(process.env.BB_PARSE_STAGING_DIR??config.work_root,'file-authoring'),max_output_bytes:32*1024*1024},
       buildPrompt:async()=>`请在切换实际处理工作时发送一条独立的用户可见进度消息，严格使用 BB_PROGRESS:read_materials、BB_PROGRESS:read_knowledge、BB_PROGRESS:analyze、BB_PROGRESS:write_document、BB_PROGRESS:check_document 或 BB_PROGRESS:prepare_download 中的相应一项，并在其后用「 | 」附上一句不超过240字的用户可见工作摘要，说明刚完成或当前处理的具体步骤。每次取得中间进展都发送一条，不包含思考过程、材料正文、命令、内部路径或密钥。请先完整阅读 task.md 和 input.json，再自主使用本次原始材料和知识文件完成整份募集书及 output/ 下的交付文件。一次执行完成，不返回全文修改 JSON，不等待逐批请求。输入锁：${ctx.run.input_hash.trim()}。`,
-      schema:{},validate:value=>validFileResult(value,ctx),resultSchemaVersion:'codex-file-word-v1',templateVersion:controlled?'single-cli-authoring-format-v1':'single-cli-authoring-v1',fileWorkspace:{prepare,collect}}).run(ctx);
+      schema:{},validate:value=>validFileResult(value,ctx),resultSchemaVersion:'codex-file-word-v1',templateVersion:controlled?'single-cli-authoring-format-v2':'single-cli-authoring-v2',fileWorkspace:{completionCheck:true,prepare,collect}}).run(ctx);
   }};
 }
 
@@ -157,7 +174,7 @@ export function fileAuthoringDeliveryStage():RunStage{
   return {name:'word_delivery',replay:true,run:async ctx=>{
     const value=ctx.values.get('model_generation');
     if(!validFileResult(value,ctx))return {kind:'fail',code:'VALIDATION_FAILED'};
-    if(!validPair(value,ctx) && !validControlledInputs(value,ctx))return {kind:'fail',code:'WORD_DELIVERY_UNAVAILABLE'};
+    if(!validPair(value,ctx) && !validControlledInputs(value,ctx))return {kind:'fail',code:value.summary.validation_error==='WORD_FORMAT_OPERATIONS_MISSING'?'WORD_FORMAT_OPERATIONS_MISSING':'WORD_DELIVERY_UNAVAILABLE'};
     const gate=await ctx.validateBeforeModelCall?.();if(gate)return gate;
     const read=async(name:string)=>{const f=value.files[name]!;const b=await ctx.blobs.getIfExistsBounded(f.key,MAX);if(!b||b.length!==f.byte_size||digest(b)!==f.sha256)throw Error('WORD_OUTPUT_BLOB_MISMATCH');return b;};
     if(validControlledInputs(value,ctx)){

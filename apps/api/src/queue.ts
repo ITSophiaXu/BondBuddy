@@ -699,7 +699,7 @@ export async function jobSnapshot(pool:Pool,owner:string,runId:string) {
 // error so the admin timeline shows why. Internal codes (e.g. WORD_QUALITY_REJECTED) map to a public one.
 async function recordRunFailure(client:PoolClient,r:any,jobId:string,errorCode:string|undefined,stage:string|undefined) {
   const code:ErrorCode=(ERROR_CODES as readonly string[]).includes(errorCode??'')?errorCode as ErrorCode:errorCode?.startsWith('WORD_')?'DELIVERY_FAILED':'DATA_UNAVAILABLE';
-  const category:typeof ERROR_CATEGORIES[number]=errorCode?.startsWith('MODEL_')?'model_provider':code==='DELIVERY_FAILED'?'delivery':code==='CAPABILITY_NOT_READY'?'queue':code.startsWith('MATERIAL_')?'material_parse':'internal';
+  const category:typeof ERROR_CATEGORIES[number]=errorCode?.startsWith('MODEL_')?'model_provider':code==='DELIVERY_FAILED'||errorCode?.startsWith('WORD_')?'delivery':code==='CAPABILITY_NOT_READY'?'queue':code.startsWith('MATERIAL_')?'material_parse':'internal';
   const safeStage=stage&&/^[a-z][a-z0-9_]{0,63}$/.test(stage)?stage:null;
   const attempts=(await client.query('SELECT attempts FROM bb_jobs WHERE id=$1',[jobId])).rows[0]?.attempts??0;
   await client.query('UPDATE bb_jobs SET error_code=$2 WHERE id=$1',[jobId,code]);
