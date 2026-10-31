@@ -164,7 +164,7 @@ test('attachments selected during an upload are queued and retained; changed car
  await page.locator('[data-a=prepare]').click();await expect(page.locator('[data-a=execute]')).toHaveCount(1);await page.locator('[data-a=execute]').click();await expect.poll(()=>s.executions.length).toBe(1);
  await page.locator('.ba-header [data-a=toggle]').click();await expect(page.locator('.bb-assistant')).toBeHidden();
  expect(s.cards.at(-1).run.state).toBe('queued');expect(s.executions).toHaveLength(1);
- await page.getByRole('button',{name:'BondBuddy',exact:true}).click();await expect(page.locator('.ba-task').last()).toBeVisible();
+ await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await expect(page.locator('.ba-task').last()).toBeVisible();
  if(process.env.ASSISTANT_EVIDENCE){await page.setViewportSize({width:1440,height:960});await page.screenshot({path:resolve(evidenceDir,'implementation-confirmed.png')});}
  await expect(page.locator('.ba-task').last()).toContainText('等待开始');await page.reload();await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('.ba-task').last()).toContainText('等待开始');
  s.cards.at(-1).run={...s.cards.at(-1).run,state:'succeeded',artifact_id:'result'};await expect(page.locator('[data-a=download]')).toBeVisible({timeout:12000});

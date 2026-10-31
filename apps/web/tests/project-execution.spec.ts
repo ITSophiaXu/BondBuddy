@@ -1362,13 +1362,14 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     });
     // setup's catch-all was registered last; it must fall back to the material fixture above.
     await setup(page, state, false);
-    let sourceSelected = false;
+    let selectionPosts = 0;
     await page.route(`**/api/v1/projects/${id}/prospectus-versions**`, async route => {
       if (route.request().method() === 'POST') {
         expect(fixtureRequest(route.request()).version_id).toBe('source-version');
-        sourceSelected = true;
+        selectionPosts++;
       }
       const material = state.materials.find(m => m.role === 'historical');
+      const sourceSelected = Boolean(material);
       const versions: Dto<'ProspectusVersionsResponse'> = {
         project_id:id, current_version_id:sourceSelected?'source-version':null, selection_revision:sourceSelected?1:0,
         inactive_material_ids:material&&!sourceSelected?[material.material_id]:[],
@@ -1384,11 +1385,10 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     const history = page.locator('.material-file-row').filter({ hasText: '合成历史稿.docx' });
     await expect(page.locator('#prospectus-status')).toContainText('保存');
     await expect.poll(() => releaseSave).toBeDefined(); releaseSave!();
-    await expect(page.locator('#prospectus-status')).toContainText('尚未采用');
-    await expect(history).toHaveCount(0);
-    await page.locator('[data-use-version="source-version"]').click();
-    await page.locator('#confirm-prospectus-selection').click();
     await expect(history).toContainText('处理中');
+    await expect(page.locator('[data-use-version="source-version"]')).toHaveCount(0);
+    await expect(page.locator('#confirm-prospectus-selection')).toHaveCount(0);
+    expect(selectionPosts).toBe(0);
     await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: '合成财务材料.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic financial') });
     const financial = page.locator('.material-file-row').filter({ hasText: '合成财务材料.pdf' });
     await expect(financial.getByRole('button', { name: '重试此文件' })).toBeVisible();
