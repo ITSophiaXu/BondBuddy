@@ -69,7 +69,7 @@ test('retained 248-file batch: normalized names across ZIP, explanations, batch 
   const base='/api/v1/projects/project/workpapers';
   try{
     const preparing=await app.inject({url:base+'/batches/batch/download',headers:{prefer:'respond-async'}});
-    assert.equal(preparing.statusCode,202);assert.deepEqual(preparing.json(),{status:'preparing'});
+    assert.equal(preparing.statusCode,202);assert.deepEqual(preparing.json(),{status:'preparing',progress:{phase:'retrieving',completed_files:0,total_files:248}});
     assert.equal(preparing.headers['retry-after'],'2');assert.equal(preparing.headers['cache-control'],'private, no-store');
     actor='other';assert.equal((await app.inject({url:base+'/batches/batch/download',headers:{prefer:'respond-async'}})).statusCode,404);actor='owner';
     assert.equal((await app.inject({url:base+'/batches/batch/download',headers:{prefer:'respond-async'}})).statusCode,202);

@@ -16,6 +16,13 @@ import {WorkpaperMappingsSchema,WorkpaperPreviewSchema} from './workpaper-import
 export * from './workpaper-import.js';
 export const WorkpaperImportSchema=obj({request_id:id,material:M4MaterialPinSchema,scope:Type.Optional(Type.Union([Type.Literal('due_diligence'),Type.Literal('all')])),mapping:Type.Optional(WorkpaperMappingsSchema)});
 export type WorkpaperImport=Static<typeof WorkpaperImportSchema>;
+// Optional progress keeps new clients compatible with older preparing responses.
+// Counts cover verified files only; retrieval completion is not download completion.
+export const WorkpaperZipPreparationSchema=obj({status:Type.Literal('preparing'),progress:Type.Optional(obj({
+ phase:Type.Union([Type.Literal('retrieving'),Type.Literal('packaging')]),
+ completed_files:Type.Integer({minimum:0}),total_files:Type.Integer({minimum:1})
+}))});
+export type WorkpaperZipPreparation=Static<typeof WorkpaperZipPreparationSchema>;
 const workpaperStartFields={request_id:id,catalogue_id:id,catalogue_sha256:Type.String({pattern:'^[a-f0-9]{64}$'}),
  item_ids:Type.Array(id,{minItems:1,maxItems:WORKPAPER_LIMITS.items,uniqueItems:true}),source_version_id:id,
  source_selection_revision:Type.Integer({minimum:0}),requirements:Type.String({maxLength:12000}),price_version:id,expected_points:Type.Integer({minimum:0})};
