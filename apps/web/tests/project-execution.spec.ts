@@ -31,7 +31,7 @@ function fixture() {
   return { project, materials, inputs: [] as Dto<'InputRevisionCreateRequest'>[], snapshots: new Map<number, Dto<'InputRevisionResponse'>>(),
     executes: [] as Dto<'ExecuteRequest'>[], runs: new Map<string, Dto<'RunResponse'>>(), preflights: [] as Dto<'PreflightRequest'>[],
     artifacts: new Map<string, Dto<'ArtifactResponse'>>(),
-    generatedVersions: [] as Dto<'ProspectusVersionsResponse'>['versions'], sourceSelected: true,
+    generatedVersions: [] as Dto<'ProspectusVersionsResponse'>['versions'], sourceSelected: true, selectionRequests: [] as unknown[],
     priorTasks: [] as Dto<'ProjectTasksResponse'>['items'],
     nextInputRevision: undefined as number | undefined, patchRequests: 0,
     holdProjectRead: false, releaseProjectRead: undefined as (() => void) | undefined,
@@ -121,6 +121,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
       return json(route,200,versions);
     }
     if(path===`/projects/${id}/prospectus-versions/current`&&method==='POST'){
+      state.selectionRequests.push(request.postDataJSON());
       expect(request.postDataJSON().version_id).toBe('source-version');
       state.sourceSelected=true;state.project.draft_revision++;
       const material=state.materials.find(m=>m.role==='historical')!;
@@ -935,7 +936,7 @@ test('a server-side source selection conflict explains adoption without starting
       field_errors:[PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR]});
   });
   await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('请先点击“用于本次更新”选择原稿');
+  await expect(page.locator('#execution-message')).toContainText('自动采用状态尚未确认');
   await expect(page.locator('#execution-message')).not.toContainText('消息或项目版本已变化');
   expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(0);expect(state.runs.size).toBe(0);
 });
@@ -1842,25 +1843,38 @@ test('automatic authoring keeps the exact quote and execution request after HTTP
 });
 
 
-test('uploaded but unselected source cannot silently start a new-document update', async ({page}) => {
-  const state=fixture();state.sourceSelected=false;state.project.update_details!.authoring_mode='unified_v1';
-  await setup(page,state,false);
-  await expect(page.locator('#execute-input')).toBeDisabled();
-  await expect(page.getByRole('status').filter({hasText:'已上传历史／参考募集说明书，请先点击'})).toBeVisible();
-  expect(state.inputs).toHaveLength(0);expect(state.executes).toHaveLength(0);
+test('upload automatically adopts the original and submits it without a selection click', async ({page}) => {
+  const state=fixture();state.project.update_details!.authoring_mode='unified_v1';
+  const bytes=Buffer.from('history'),source=state.materials.shift()!,profile=structuredClone(state.project.update_details!.source_prospectuses);
+  source.byte_size=bytes.length;
+  await setup(page,state);
+  let completed=false;
+  await page.route(`**/api/v1/projects/${id}/materials/uploads**`,async route=>{
+    const request=route.request(),path=new URL(request.url()).pathname;
+    if(path.endsWith('/bytes')){expect(request.postDataBuffer()).toEqual(bytes);return route.fulfill({status:204});}
+    if(path.endsWith('/complete')){
+      if(!completed){completed=true;state.materials.push(source);state.project.draft_revision++;state.project.update_details!.source_prospectuses=profile;}
+      return json(route,200,source);
+    }
+    return json(route,201,{upload_id:source.upload_id,state:'uploading',upload_url:`/api/v1/projects/${id}/materials/uploads/${source.upload_id}/bytes`,expires_at:'2099-01-01T00:00:00Z',max_bytes:100*1024*1024});
+  });
+  await page.locator('#prospectus-version-file').setInputFiles({name:source.filename,mimeType:source.media_type,buffer:bytes});
+  await expect(page.locator('.reference-file.is-selected')).toContainText(source.filename);
+  await expect(page.locator('[data-use-version="source-version"]')).toHaveCount(0);
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
+  await expect(page.locator('#execute-input')).toBeEnabled();
+  expect(state.selectionRequests).toEqual([]);expect(state.inputs).toHaveLength(0);expect(state.executes).toHaveLength(0);
   if(process.env.BB_SOURCE_STRUCTURE_EVIDENCE){
     const output=resolve(process.env.BB_SOURCE_STRUCTURE_EVIDENCE);await mkdir(output,{recursive:true});
     for(const width of [1440,390]){
-      await page.setViewportSize({width,height:960});await page.locator('#execute-input').scrollIntoViewIfNeeded();
-      await page.screenshot({path:join(output,`source-selection-required-${width}.png`)});
+      await page.setViewportSize({width,height:960});await page.locator('#prospectus-panel').scrollIntoViewIfNeeded();
+      await page.locator('#prospectus-panel').screenshot({path:join(output,`auto-adopted-source-${width}.png`)});
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     }
   }
-  await page.locator('[data-use-version="source-version"]').click();
-  await page.locator('#confirm-prospectus-selection').click();
-  await expect(page.locator('#execute-input')).toBeEnabled();
   await page.locator('#execute-input').click();
   await expect.poll(()=>state.inputs.length).toBe(1);
   expect(state.inputs[0].material_versions).toContainEqual({material_id:'synthetic-history',material_version:1});
   expect(state.inputs[0].prospectus_selection_revision).toBe(1);
+  expect(state.selectionRequests).toEqual([]);
 });

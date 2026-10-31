@@ -26,7 +26,7 @@ export function requiresProspectusSelection(state: ProspectusVersions): boolean 
   return state.current_version_id === null && state.versions.some(version => version.origin === 'upload');
 }
 
-export const PROSPECTUS_SELECTION_REQUIRED_MESSAGE = '已上传历史／参考募集说明书，请先点击“用于本次更新”选择原稿；如为误传，请删除后再开始。';
+export const PROSPECTUS_SELECTION_REQUIRED_MESSAGE = '已上传原稿的自动采用状态尚未确认，请刷新已保存材料后重试。';
 
 export const PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR = {
   field: 'prospectus_selection', code: 'PROSPECTUS_SELECTION_REQUIRED', message: PROSPECTUS_SELECTION_REQUIRED_MESSAGE,

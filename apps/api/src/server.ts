@@ -10,7 +10,7 @@ import { registerProjectFileWorkspace } from './project-file-workspace.js';
 import { registerWorkpapers } from './workpapers.js';
 import { registerFileGeneration } from './file-generation.js';
 import { registerProjectFileConsistency } from './project-file-consistency.js';
-import { registerProspectusRoutes, registerUploadedProspectus, prospectusVersions, assertProspectusRemovable } from './prospectus-versions.js';
+import { registerProspectusRoutes, registerUploadedProspectus, prospectusVersions, assertProspectusRemovable, reselectAfterProspectusRemoval } from './prospectus-versions.js';
 import { requiresProspectusSelection } from '@bondbuddy/contracts';
 import { prospectusSelectionRequired } from './data.js';
 import { registerUpdateWorkspace } from './update-workspace.js';
@@ -1165,6 +1165,7 @@ export function createServer(settings: Settings = {}) {
           signatureAssessment===null?null:JSON.stringify(signatureAssessment)])).rows[0];
       await client.query("UPDATE bb_uploads SET state='completed' WHERE id=$1",[upload.id]);
       await client.query('UPDATE bb_material_role_copy_receipts SET material_id=$2,completed_at=now() WHERE id=$1',[receipt.id,materialId]);
+      await registerUploadedProspectus(client,user,id,saved,copyProject.update_details?.authoring_mode==='unified_v1');
       await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload)
         VALUES($1,$2,'material',$3,'material.role_copied',$4)`,
         [uid(),user,materialId,{project_id:id,source_material_id:source.id,source_material_version:source.version,material_id:materialId,material_version:1,receipt_id:receipt.id}]);
@@ -1248,7 +1249,8 @@ export function createServer(settings: Settings = {}) {
       let excepted=false;
       // The storage receipt and operation commit together. Legacy projects retain auxiliary parsing.
       const accepted=async (m:any)=>{
-        if(m.role==='historical')await registerUploadedProspectus(client,user,id,m);
+        if(m.role==='historical')await registerUploadedProspectus(client,user,id,m,
+          uploadProject.kind==='update'&&uploadProject.update_details?.authoring_mode==='unified_v1'&&!receipt.rowCount&&u.state!=='completed');
         // Unified authoring reads the original in the Codex task. Do not start an
         // independent parsing/OCR pass simply because the original has been stored.
         if (uploadProject.update_details?.authoring_mode !== 'unified_v1')
@@ -1350,6 +1352,7 @@ export function createServer(settings: Settings = {}) {
       if(!live.length)return; // Owned repeat deletion is idempotent and emits no duplicate side effects.
       const prospectus=await assertProspectusRemovable(client,user,id,materialId);
       const deleted=await client.query('UPDATE bb_material_versions SET deleted_at=now() WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND deleted_at IS NULL RETURNING *',[user,id,materialId]);
+      if(prospectus)await reselectAfterProspectusRemoval(client,user,id,materialId);
       if(prospectus)await client.query(`UPDATE bb_projects SET draft_revision=draft_revision+1,updated_at=now(),
         update_details=jsonb_set(update_details,'{source_prospectuses}',COALESCE((SELECT jsonb_agg(s)
           FROM jsonb_array_elements(COALESCE(update_details->'source_prospectuses','[]'::jsonb)) s WHERE s->>'material_id'<>$3),'[]'::jsonb))
@@ -1524,12 +1527,15 @@ export function createServer(settings: Settings = {}) {
         throw conflict('INPUT_REVISION_CONFLICT','Input was locked for a different project kind');
       if((['update','generation'].includes(lockedKind)||['update','generation'].includes(b.task_kind))&&lockedKind!==b.task_kind)
         throw conflict('INPUT_REVISION_CONFLICT','Task kind does not match the locked input');
-      // Uploads can arrive after an input/assistant card was prepared without
-      // changing its draft revision. Do not start a new source-less run from it.
+      // Uploads can arrive after an input/assistant card was prepared. A new run
+      // must use the latest source selection, including automatic adoption.
       // Existing runs return above, preserving retries and their immutable input.
-      if(lockedKind==='update'&&isUnifiedInput(input.rows[0].manifest)&&
-        requiresProspectusSelection(await prospectusVersions(client,user,b.project_id)))
-        throw prospectusSelectionRequired();
+      if(lockedKind==='update'&&isUnifiedInput(input.rows[0].manifest)){
+        const current=await prospectusVersions(client,user,b.project_id);
+        if(requiresProspectusSelection(current))throw prospectusSelectionRequired();
+        if(current.selection_revision!==(input.rows[0].manifest.prospectus_selection?.revision??0))
+          throw conflict('INPUT_REVISION_CONFLICT','当前原稿已变化，请刷新材料并重新开始。');
+      }
       if(b.task_kind!=='qa')await assertCanonicalBusinessRunIdle(client,user,currentProject);
       await assertLockedInputIntegrity(client,{userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
       // Exact replays return above. New runs using older incomplete snapshots must
