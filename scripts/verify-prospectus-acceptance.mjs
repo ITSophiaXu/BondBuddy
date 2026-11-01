@@ -107,7 +107,11 @@ export function validateFinancialChecks(rows,materials,reviewerId){
     ensure(equalRoundedAmount(row.source,row.output,row.output.decimal_places),'FINANCIAL_AMOUNT_MISMATCH');
     const locators=row.output.locators;
     ensure(Array.isArray(locators)&&Number.isSafeInteger(row.expected_occurrences)&&row.expected_occurrences>0
-      &&locators.length===row.expected_occurrences&&new Set(locators).size===locators.length&&locators.every(text),'REPEATED_VALUE_COVERAGE_INCOMPLETE');
+      &&locators.length===row.expected_occurrences&&new Set(locators.map(l=>JSON.stringify(l))).size===locators.length
+      &&locators.every(l=>l&&text(l.locator)&&l.scope_anchor&&text(l.scope_anchor.locator)&&text(l.scope_anchor.quote)
+        &&(l.quote===undefined||(text(l.quote)&&Number.isSafeInteger(l.start)&&Number.isSafeInteger(l.end)&&l.start>=0&&l.end>l.start))
+        &&(l.quote!==undefined||(l.period_anchor&&text(l.period_anchor.locator)&&text(l.period_anchor.quote)
+          &&l.metric_anchor&&text(l.metric_anchor.locator)&&text(l.metric_anchor.quote)))),'REPEATED_VALUE_COVERAGE_INCOMPLETE');
     if(row.scope==='consolidated'&&locators.length>=2)repeated++;
   }
   ensure(METRICS.every(metric=>SCOPES.every(scope=>keys.has(`${scope}:${metric}`)))&&repeated>=3,'FINANCIAL_COVERAGE_INCOMPLETE');
@@ -129,11 +133,64 @@ def word_value(path,locator):
  if not match: raise ValueError('word_locator')
  if path not in words: words[path]=package(Path(path))
  root=resolve_revisions(xml(words[path][match[1]]),True)
- if match[2]: return paragraph_text(list(root.iter(q('p')))[int(match[2])-1])
+ if match[2]:
+  p=list(root.iter(q('p')))[int(match[2])-1]
+  return paragraph_text(p),any(a.tag==q('tc') for a in p.iterancestors())
  table=list(root.iter(q('tbl')))[int(match[3])-1]
  cell=table.findall(q('tr'))[int(match[4])-1].findall(q('tc'))[int(match[5])-1]
- return ' '.join(paragraph_text(p) for p in cell.iter(q('p')))
+ return ' '.join(paragraph_text(p) for p in cell.iter(q('p'))),True
 def number(value): return Decimal(str(value).replace(',','').strip())
+PERIOD=r'20[0-9]{2}年[0-9]{1,2}(?:[-—–至][0-9]{1,2})?月(?:[0-9]{1,2}日|末)?|20[0-9]{2}-[0-9]{2}-[0-9]{2}'
+NUMBER=r'-?[0-9]+(?:,[0-9]{3})*(?:\\.[0-9]+)?'
+ALIASES={'total_assets':('总资产','资产总额','资产合计'),'total_liabilities':('总负债','负债总额','负债合计','负债总计'),
+ 'net_assets':('净资产','所有者权益','股东权益'),'net_profit':('净利润',),
+ 'operating_cash_flow':('经营活动产生的现金流量净额','经营活动现金流量净额','经营性现金流量净额')}
+def metric_ok(value,metric):return any(alias in value for alias in ALIASES[metric])
+def period_ok(value,metric):
+ value=re.sub(r'\\s+','',value)
+ periods=re.findall(PERIOD,value)
+ if metric in ('total_assets','total_liabilities','net_assets'):
+  return len(periods)==1 and periods[0] in ('2025年9月末','2025年9月30日','2025-09-30')
+ return len(periods)==1 and re.fullmatch(r'2025年1[-—–至]9月',periods[0]) is not None
+def anchored(path,anchor):
+ value=word_value(path,anchor['locator'])[0];quote=anchor['quote']
+ if value.count(quote)!=1: raise ValueError('anchor_not_unique')
+ return quote
+def output_value(path,spec,row):
+ if not isinstance(spec,dict): raise ValueError('precise_output_location_required')
+ value,is_cell=word_value(path,spec['locator'])
+ scope=anchored(path,spec['scope_anchor'])
+ if ('合并' if row['scope']=='consolidated' else '母公司') not in scope: raise ValueError('scope_anchor')
+ if 'quote' in spec:
+  quote=spec['quote'];start=spec['start'];end=spec['end']
+  if value.count(quote)!=1 or not period_ok(quote,row['metric']) or not metric_ok(quote,row['metric']): raise ValueError('precise_period_context')
+  if isinstance(start,bool) or isinstance(end,bool) or not isinstance(start,int) or not isinstance(end,int) or not 0<=start<end<=len(quote): raise ValueError('amount_span')
+  periods=list(re.finditer(PERIOD,quote))
+  amounts=[m for m in re.finditer(NUMBER,quote) if not any(m.start()<p.end() and p.start()<m.end() for p in periods)]
+  if len(amounts)!=1: raise ValueError('ambiguous_multiple_amounts')
+  if (start,end)!=amounts[0].span(): raise ValueError('amount_span')
+  amount=quote[start:end]
+  if not re.fullmatch(NUMBER,amount): raise ValueError('amount_span')
+  if start and quote[start-1] in '0123456789,.': raise ValueError('partial_amount')
+  if end<len(quote) and quote[end] in '0123456789,.': raise ValueError('partial_amount')
+  if quote[end:].lstrip().startswith(('%','％')): raise ValueError('percentage_is_not_amount')
+  if quote[:start].rstrip().endswith(('(','（')) and quote[end:].lstrip().startswith((')','）')): raise ValueError('parenthesized_amount_unsupported')
+  identity=(spec['locator'],value.index(quote)+start,value.index(quote)+end)
+ else:
+  amount=value.strip()
+  if not is_cell or not re.fullmatch(NUMBER,amount): raise ValueError('single_numeric_cell_required')
+  def coordinates(loc):
+   m=re.fullmatch(r'(word/(?:document|header[0-9]+|footer[0-9]+|footnotes|endnotes)\\.xml)#table=([1-9][0-9]*),row=([1-9][0-9]*),cell=([1-9][0-9]*)',loc)
+   if not m: raise ValueError('simple_table_header_required')
+   return m[1],int(m[2]),int(m[3]),int(m[4])
+  cell=coordinates(spec['locator']);period=coordinates(spec['period_anchor']['locator']);scope_cell=coordinates(spec['scope_anchor']['locator']);metric=coordinates(spec['metric_anchor']['locator'])
+  if any(h[:2]!=cell[:2] for h in (period,scope_cell,metric)): raise ValueError('same_table_anchors_required')
+  if not period[2]<cell[2] or period[3]!=cell[3] or not scope_cell[2]<cell[2] or metric[2]!=cell[2] or not metric[3]<cell[3]: raise ValueError('table_header_geometry')
+  if not period_ok(anchored(path,spec['period_anchor']),row['metric']): raise ValueError('cell_period_anchor')
+  if not metric_ok(anchored(path,spec['metric_anchor']),row['metric']): raise ValueError('cell_metric_anchor')
+  identity=(spec['locator'],'whole_cell')
+ if number(amount)!=number(row['output']['value']): raise ValueError('output_value')
+ return identity
 failures=[]
 for index,row in enumerate(data['financial_checks']):
  try:
@@ -144,16 +201,18 @@ for index,row in enumerate(data['financial_checks']):
    if path not in books: books[path]=load_workbook(path,data_only=True,read_only=True)
    if number(books[path][sheet][cell].value)!=number(src['value']): raise ValueError('source_value')
   else: raise ValueError('unsupported_financial_source')
+  seen=set()
   for locator in row['output']['locators']:
-   values=re.findall(r'-?[0-9]+(?:,[0-9]{3})*(?:\\.[0-9]+)?',word_value(data['clean'],locator))
-   if not any(number(v)==number(row['output']['value']) for v in values): raise ValueError('output_value')
+   identity=output_value(data['clean'],locator,row)
+   if identity in seen: raise ValueError('duplicate_amount_span')
+   seen.add(identity)
  except Exception: failures.append(index)
 for book in books.values(): book.close()
 print(json.dumps({'chapter_ids':chapters,'pages':pages,'financial_failures':failures}))
 `;
 export function inspectAcceptanceArtifacts(root,source,pdfs,financial){
   const result=spawnSync(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',
-    ['-B','-s','-c',INSPECT,source,...pdfs],{cwd:root,env:{...process.env,PYTHONPATH:resolve(root,'python')},input:JSON.stringify(financial),encoding:'utf8',timeout:300000,maxBuffer:2*1024*1024});
+    ['-B','-s','-c',INSPECT,source,...pdfs],{cwd:root,env:{...process.env,PYTHONPATH:resolve(root,'python'),PYTHONIOENCODING:'utf-8'},input:JSON.stringify(financial),encoding:'utf8',timeout:300000,maxBuffer:2*1024*1024});
   ensure(!result.error&&result.status===0,'INDEPENDENT_INSPECTION_FAILED');
   try{return JSON.parse(result.stdout);}catch{fail('INDEPENDENT_INSPECTION_FAILED');}
 }

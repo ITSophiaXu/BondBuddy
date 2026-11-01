@@ -67,11 +67,17 @@ test('amount checks perform exact unit conversion and explicit half-away-from-ze
   assert.throws(()=>equalRoundedAmount({value:'1,000',unit:'CNY'},{value:'1000',unit:'CNY'},2),/FINANCIAL_VALUE_INVALID/);
   assert.throws(()=>equalRoundedAmount({value:'1',unit:'unknown'},{value:'1',unit:'CNY'},2),/FINANCIAL_UNIT_INVALID/);
 });
+function exactLocation(locator,quote,amount='100.00',scope='consolidated'){
+  return {locator,quote,start:quote.indexOf(amount),end:quote.indexOf(amount)+amount.length,
+    scope_anchor:{locator:'word/document.xml//w:p[1]',quote:scope==='consolidated'?'合并':'母公司'}};
+}
 function financialRows(){return SCOPES.flatMap(scope=>METRICS.map(metric=>{
   const start=['total_assets','total_liabilities','net_assets'].includes(metric)?'2025-09-30':'2025-01-01';
   return {scope,metric,status:'passed',reviewer_id:'synthetic-reviewer',amount:'passed',unit:'passed',reporting_period:'passed',entity_scope:'passed',repeated_values:'passed',
     source:{file_id:'rq-202509-02',sha256:'a'.repeat(64),scope,start,end:'2025-09-30',locator:'SYNTHETIC!A1',value:'1000000',unit:'CNY'},
-    output:{scope,start,end:'2025-09-30',value:'100',unit:'CNY_10K',decimal_places:2,locators:['word/document.xml//w:p[1]','word/document.xml//w:p[2]']},expected_occurrences:2};
+    output:{scope,start,end:'2025-09-30',value:'100',unit:'CNY_10K',decimal_places:2,locators:[
+      exactLocation('word/document.xml//w:p[2]','2025年9月末合并总资产100.00万元。','100.00',scope),
+      exactLocation('word/document.xml//w:p[3]','2025年9月末合并总资产100.00万元。','100.00',scope)]},expected_occurrences:2};
 }));}
 test('financial review covers both scopes, correct quarter, converted amounts and every repeated value location',()=>{
   const materials=new Map([['rq-202509-02','a'.repeat(64)],['rq-202509-01','b'.repeat(64)]]);
@@ -79,6 +85,7 @@ test('financial review covers both scopes, correct quarter, converted amounts an
   for(const mutate of [rows=>rows.pop(),rows=>rows[1]=rows[0],rows=>rows[0].source.end='2025-06-30',
     rows=>rows[0].output.scope='parent',rows=>rows[0].source.sha256='b'.repeat(64),rows=>rows[0].output.value='101',
     rows=>rows[0].output.locators.pop(),rows=>rows[0].output.locators[1]=rows[0].output.locators[0],
+    rows=>rows[0].output.locators[0]='word/document.xml//w:p[2]',rows=>delete rows[0].output.locators[0].scope_anchor,
     rows=>rows[0].amount='pending',rows=>{rows[0].source.file_id='rq-202509-01';rows[0].source.sha256='b'.repeat(64);},
     rows=>{for(const r of rows){r.output.locators.pop();r.expected_occurrences=1;}}]){
     const rows=financialRows();mutate(rows);assert.throws(()=>validateFinancialChecks(rows,materials,'synthetic-reviewer'));
@@ -92,8 +99,15 @@ from docx import Document
 from openpyxl import Workbook
 from pypdf import PdfWriter
 import sys
-r=Path(sys.argv[1]);doc=Document();doc.add_heading('第一章 Synthetic validator only',1)
-doc.add_paragraph('Synthetic amount 100.00.');doc.add_paragraph('Repeated synthetic amount 100.00.')
+r=Path(sys.argv[1]);doc=Document();doc.add_heading('第一章 合并 Synthetic validator only',1)
+doc.add_paragraph('2025年9月末合并总资产100.00万元。');doc.add_paragraph('2025年9月末合并总资产100.00万元。')
+doc.add_paragraph('2025年9月末总资产90万元，2025年6月末总资产100万元。')
+doc.add_paragraph('2025年9月末总资产100万元，2025年6月末总资产90万元。')
+doc.add_paragraph('2025年9月末总资产90万元、负债总额100万元。')
+doc.add_paragraph('2025年9月末总资产100%万元。');doc.add_paragraph('2025年9月末总资产（100）万元。')
+doc.add_paragraph('2025年9月末总资产(100)万元。')
+table=doc.add_table(rows=4,cols=2);table.cell(0,0).text='合并';table.cell(1,1).text='2025年9月末'
+table.cell(2,0).text='总资产';table.cell(2,1).text='90.00';table.cell(3,0).text='总资产';table.cell(3,1).text='100.00'
 doc.save(r/'synthetic.docx');book=Workbook();book.active.title='SYNTHETIC';book.active['A1']=1000000;book.save(r/'synthetic.xlsx')
 writer=PdfWriter();writer.add_blank_page(width=595,height=842)
 with open(r/'synthetic.pdf','wb') as stream:writer.write(stream)
@@ -103,11 +117,33 @@ with open(r/'synthetic.pdf','wb') as stream:writer.write(stream)
     assert.equal(result.status,0,'Python fixture builder must be available; no integration skip is allowed');
     const row=financialRows()[0],financial={financial_checks:[row],materials:{'rq-202509-02':join(temp,'synthetic.xlsx')},clean:join(temp,'synthetic.docx')};
     const run=()=>inspectAcceptanceArtifacts(root,join(temp,'synthetic.docx'),[join(temp,'synthetic.pdf')],financial);
-    row.output.locators=['word/document.xml//w:p[2]','word/document.xml//w:p[3]'];
     assert.deepEqual(run().financial_failures,[]);
     row.source.locator='SYNTHETIC!A2';assert.deepEqual(run().financial_failures,[0]);
     row.source.locator='SYNTHETIC!A1';row.source.value='999';assert.deepEqual(run().financial_failures,[0]);
-    row.source.value='1000000';row.output.locators=['word/document.xml//w:p[99]'];assert.deepEqual(run().financial_failures,[0]);
-    row.output.locators=['word/document.xml//w:p[1]'];assert.deepEqual(run().financial_failures,[0]);
+    row.source.value='1000000';row.output.locators=[exactLocation('word/document.xml//w:p[99]','2025年9月末合并总资产100.00万元。')];assert.deepEqual(run().financial_failures,[0]);
+    row.output.locators=[exactLocation('word/document.xml//w:p[1]','2025年9月末合并总资产100.00万元。')];assert.deepEqual(run().financial_failures,[0]);
+    // A historical comparison of 100 cannot validate an incorrect target amount of 90.
+    row.output.locators=['word/document.xml//w:p[4]'];assert.deepEqual(run().financial_failures,[0]);
+    row.output.locators=[exactLocation('word/document.xml//w:p[4]','2025年9月末总资产90万元，2025年6月末总资产100万元。','100')];assert.deepEqual(run().financial_failures,[0]);
+    row.output.locators=[exactLocation('word/document.xml//w:p[4]','2025年6月末总资产100万元','100')];assert.deepEqual(run().financial_failures,[0]);
+    row.output.locators=[exactLocation('word/document.xml//w:p[4]','2025年9月末总资产90万元','90')];assert.deepEqual(run().financial_failures,[0]);
+    row.output.locators=[exactLocation('word/document.xml//w:p[5]','2025年9月末总资产100万元','100')];assert.deepEqual(run().financial_failures,[]);
+    row.output.locators=[exactLocation('word/document.xml//w:p[6]','2025年9月末总资产90万元、负债总额100万元。','100')];assert.deepEqual(run().financial_failures,[0]);
+    row.output.locators=[exactLocation('word/document.xml//w:p[6]','2025年9月末负债总额100万元','100')];assert.deepEqual(run().financial_failures,[0]);
+    // The exact span must select the monetary token, never the year or reporting month.
+    row.output.value='2025';row.output.locators=[exactLocation('word/document.xml//w:p[4]','2025年9月末总资产90万元','2025')];assert.deepEqual(run().financial_failures,[0]);
+    row.output.value='9';row.output.locators=[exactLocation('word/document.xml//w:p[4]','2025年9月末总资产90万元','9')];assert.deepEqual(run().financial_failures,[0]);
+    row.output.value='100';
+    row.output.locators=[exactLocation('word/document.xml//w:p[7]','2025年9月末总资产100%万元。','100')];assert.deepEqual(run().financial_failures,[0]);
+    row.output.locators=[exactLocation('word/document.xml//w:p[8]','2025年9月末总资产（100）万元。','100')];assert.deepEqual(run().financial_failures,[0]);
+    row.output.locators=[exactLocation('word/document.xml//w:p[9]','2025年9月末总资产(100)万元。','100')];assert.deepEqual(run().financial_failures,[0]);
+    const cell=(n)=>({locator:`word/document.xml#table=1,row=${n},cell=2`,scope_anchor:{locator:'word/document.xml#table=1,row=1,cell=1',quote:'合并'},
+      period_anchor:{locator:'word/document.xml#table=1,row=2,cell=2',quote:'2025年9月末'},
+      metric_anchor:{locator:`word/document.xml#table=1,row=${n},cell=1`,quote:'总资产'}});
+    row.output.locators=[cell(3)];assert.deepEqual(run().financial_failures,[0]);
+    row.output.locators=[cell(4)];assert.deepEqual(run().financial_failures,[]);
+    row.output.locators[0].period_anchor={locator:'word/document.xml//w:p[4]',quote:'2025年6月末'};assert.deepEqual(run().financial_failures,[0]);
+    row.output.locators=[cell(4)];row.output.locators[0].period_anchor={locator:'word/document.xml//w:p[2]',quote:'2025年9月末'};assert.deepEqual(run().financial_failures,[0]);
+    row.output.locators=[cell(4)];row.output.locators[0].metric_anchor={locator:'word/document.xml#table=1,row=3,cell=1',quote:'总资产'};assert.deepEqual(run().financial_failures,[0]);
   }finally{rmSync(temp,{recursive:true,force:true});}
 });
