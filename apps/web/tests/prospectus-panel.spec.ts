@@ -87,8 +87,8 @@ test('reference upload matches the material picker, supports keyboard selection,
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     if(out)await page.locator('.prospectus-panel').screenshot({path:`${out}/implementation-empty-${width}.png`});
   }
-  await picker.focus();const chooser=page.waitForEvent('filechooser');await page.keyboard.press('Enter');
-  await(await chooser).setFiles({name:'键盘选择募集书.docx',mimeType:mime,buffer:bytes});
+  const [chooser]=await Promise.all([page.waitForEvent('filechooser'),picker.press('Enter')]);
+  await chooser.setFiles({name:'键盘选择募集书.docx',mimeType:mime,buffer:bytes});
   await expect(page.locator('.reference-file.is-selected')).toContainText('键盘选择募集书.docx');
   await expect(picker).toBeEnabled();
 });
