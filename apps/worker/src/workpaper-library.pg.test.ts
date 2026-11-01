@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {setTimeout as delay} from 'node:timers/promises';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {createServer} from '@bondbuddy/api';
@@ -47,7 +48,7 @@ test('real API/PG: generation → library/preview/ZIP → changed prospectus →
     await ok('POST',wp+'/assessments',request);
     assert.equal(await execute([workpaperAssessmentStage({model,config:()=>loadCodexAdapterConfig({})}),workpaperAssessmentDelivery()]),'succeeded');
     const assessment=(await ok('GET',wp)).assessments[0];
-    const batch=await ok('POST',wp+'/batches',{...request,request_id:randomUUID(),assessment_id:assessment.assessment_id,assessment_hash:assessment.result_hash,price_version:WORKPAPER_PRICE.version,expected_points:WORKPAPER_PRICE.points});
+    const batch=await ok('POST',wp+'/batches',{...request,request_id:randomUUID(),assessment_id:assessment.assessment_id,assessment_hash:assessment.result_hash,price_version:WORKPAPER_PRICE.version,expected_points:String(WORKPAPER_PRICE.points)});
     await advanceWorkpaperBatch(pool);
     assert.equal(await execute([{name:'model_generation',run:async ctx=>{
       const files:Record<string,{key:string;sha256:string;byte_size:number}>={};
@@ -70,7 +71,13 @@ test('real API/PG: generation → library/preview/ZIP → changed prospectus →
     assert.equal((await ok('GET',wp+'/library?history=true&search=不存在')).total,0);
     const preview=await ok('GET',wp+`/batches/${batch.batch_id}/items/${cat.entries[0].id}/preview`);assert.match(preview.text,/总资产100万元/);
     assert.equal((await ok('GET',wp+'/library?category=explanation')).total,1);
-    const zip=await send('GET',wp+`/batches/${batch.batch_id}/download`);assert.equal(zip.rawPayload.readUInt16LE(zip.rawPayload.length-12),2);
+    let zip=await send('GET',wp+`/batches/${batch.batch_id}/download`);
+    for(let polls=0;zip.statusCode===202&&polls<60;polls++){
+      assert.equal(zip.json().status,'preparing');
+      await delay(100);zip=await send('GET',wp+`/batches/${batch.batch_id}/download`);
+    }
+    assert.equal(zip.statusCode,200,zip.body);assert.equal(zip.headers['content-type'],'application/zip');
+    assert.equal(zip.rawPayload.readUInt16LE(zip.rawPayload.length-12),2);
     const newPin=await upload(id,'synthetic-v2.docx',makeSyntheticDocxFixture({text:text.replace('100','200')}),docx,'historical');
     versions=await ok('GET',base+'/prospectus-versions');const next=versions.versions.find((v:any)=>v.sha256===newPin.sha256||v.material_id===newPin.material_id)??versions.versions[0];
     source=await ok('POST',base+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:source.selection_revision,version_id:next.version_id});

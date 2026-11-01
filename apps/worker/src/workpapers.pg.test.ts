@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {setTimeout as delay} from 'node:timers/promises';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {createServer} from '@bondbuddy/api';
@@ -40,7 +41,7 @@ test('300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolati
     if(manifest.input.workpaper.entry.code==='3'){
       const decision=explanationDecision(manifest.input.workpaper.entry.id),bytes=await makeWorkpaperExplanation(manifest.input.workpaper.entry,decision);
       const key='synthetic-output/'+ctx.run.id;await blobs.put(key,bytes,DOCX);explanations.set(ctx.run.id,bytes);
-      const before=Number((await pool.query('SELECT charged_points FROM bb_credit_reservations WHERE run_id=$1',[ctx.run.id])).rows[0].charged_points);
+      const before=BigInt((await pool.query('SELECT charged_points FROM bb_credit_reservations WHERE run_id=$1',[ctx.run.id])).rows[0].charged_points);
       assert.ok(before>0&&before<WORKPAPER_PRICE.points,'earlier pipeline milestones charged only part of the price');
       await pool.query('UPDATE bb_jobs SET credit_pause_requested=true,user_pause_requested=true WHERE run_id=$1',[ctx.run.id]);
       await publishWorkpaperItemResult(pool,user,ctx.run.id,decision,{key,sha256:digest(bytes),filename:'ignored.docx'});
@@ -77,12 +78,12 @@ test('300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolati
     const material=await upload(id,'synthetic-catalogue.xlsx',await catalogueXlsx(500),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     const importRequest={request_id:randomUUID(),material},cat=await ok('POST',base+'/catalogues',importRequest);
     assert.equal(cat.entries.length,500);assert.deepEqual(await ok('POST',base+'/catalogues',importRequest),cat);
-    const request={start_mode:'direct' as const,request_id:randomUUID(),catalogue_id:cat.catalogue_id,catalogue_sha256:cat.sha256,item_ids:cat.entries.slice(0,300).map((e:any)=>e.id),source_version_id:adopted.current_version_id,source_selection_revision:adopted.selection_revision,requirements:'缺少资料标记待补充',price_version:WORKPAPER_PRICE.version,expected_points:300*WORKPAPER_PRICE.points};
+    const request={start_mode:'direct' as const,request_id:randomUUID(),catalogue_id:cat.catalogue_id,catalogue_sha256:cat.sha256,item_ids:cat.entries.slice(0,300).map((e:any)=>e.id),source_version_id:adopted.current_version_id,source_selection_revision:adopted.selection_revision,requirements:'缺少资料标记待补充',price_version:WORKPAPER_PRICE.version,expected_points:String(300*WORKPAPER_PRICE.points)};
     // A previous free preflight stays recorded but cannot block direct authoring.
     const {start_mode,price_version,expected_points,...oldRequest}=request;
     const retired=await ok('POST',base+'/assessments',{...oldRequest,request_id:randomUUID()});
     await ok('POST','/api/v1/runs/'+retired.assessment_id+'/pause',{reason:'synthetic_retired_preflight'});
-    assert.equal((await send('POST',base+'/batches',{...request,expected_points:1})).statusCode,409);
+    assert.equal((await send('POST',base+'/batches',{...request,expected_points:'1'})).statusCode,409);
     let batch=await ok('POST',base+'/batches',request) as WorkpaperBatch;
     assert.equal(batch.items.length,300);assert.equal((await ok('POST',base+'/batches',request)).batch_id,batch.batch_id);
     actor=randomUUID();assert.equal((await send('GET',base)).statusCode,404);assert.equal((await send('GET',base+`/batches/${batch.batch_id}/download`)).statusCode,404);actor=user;
@@ -109,9 +110,14 @@ test('300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolati
     batch=await ok('POST',base+`/batches/${batch.batch_id}/actions`,{action:'retry_failed',expected_revision:batch.revision});
     await advanceWorkpaperBatch(pool);assert.equal(await execute(),'succeeded');await advanceWorkpaperBatch(pool);batch=await read();
     assert.equal(batch.state,'complete');assert.equal(processed,301);assert.ok(succeededRuns.every(id=>batch.items.some(i=>i.run_id===id)));
-    assert.equal(batch.charged_points,299*WORKPAPER_PRICE.points);assert.equal(batch.items[1].attempt,2);
+    assert.equal(batch.charged_points,String(299*WORKPAPER_PRICE.points));assert.equal(batch.items[1].attempt,2);
     assert.equal(batch.items[0].artifacts.length,1);assert.ok(batch.items[0].artifacts.every(a=>a.kind==='document'&&a.filename.includes('财务核查 1')));
-    const response=await send('GET',base+`/batches/${batch.batch_id}/download`);assert.equal(response.statusCode,200);assert.equal(response.headers['content-type'],'application/zip');
+    let response=await send('GET',base+`/batches/${batch.batch_id}/download`);
+    for(let polls=0;response.statusCode===202&&polls<300;polls++){
+      assert.equal(response.json().status,'preparing');
+      await delay(100);response=await send('GET',base+`/batches/${batch.batch_id}/download`);
+    }
+    assert.equal(response.statusCode,200,response.body);assert.equal(response.headers['content-type'],'application/zip');
     const bytes=response.rawPayload,end=bytes.length-22;assert.equal(bytes.readUInt32LE(end),0x06054b50);assert.equal(bytes.readUInt16LE(end+10),300);
     let cursor=bytes.readUInt32LE(end+16);const names:string[]=[];
     while(cursor<end){assert.equal(bytes.readUInt32LE(cursor),0x02014b50);const len=bytes.readUInt16LE(cursor+28);names.push(bytes.subarray(cursor+46,cursor+46+len).toString('utf8'));cursor+=46+len+bytes.readUInt16LE(cursor+30)+bytes.readUInt16LE(cursor+32);}
@@ -129,7 +135,7 @@ test('300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolati
     assert.equal((await pool.query('SELECT count(*) n FROM bb_workpaper_assessments')).rows[0].n,'1');
     assert.equal((await pool.query('SELECT count(*) n FROM bb_model_call_attempts')).rows[0].n,'0');
     assert.equal((await ok('POST',base+'/batches',request)).batch_id,batch.batch_id);
-    let smallRequest={...request,request_id:randomUUID(),item_ids:request.item_ids.slice(0,3),expected_points:3*WORKPAPER_PRICE.points,source_version_id:updatedSource.current_version_id,source_selection_revision:updatedSource.selection_revision};
+    let smallRequest={...request,request_id:randomUUID(),item_ids:request.item_ids.slice(0,3),expected_points:String(3*WORKPAPER_PRICE.points),source_version_id:updatedSource.current_version_id,source_selection_revision:updatedSource.selection_revision};
     assert.equal((await send('POST',base+'/batches',{...smallRequest,source_version_id:request.source_version_id,source_selection_revision:request.source_selection_revision})).json().code,'PROJECT_FILE_BATCH_INPUT_EXPIRED');
     batch=await ok('POST',base+'/batches',smallRequest);await advanceWorkpaperBatch(pool);
     batch=await read();batch=await ok('POST',base+`/batches/${batch.batch_id}/actions`,{action:'cancel',expected_revision:batch.revision});
