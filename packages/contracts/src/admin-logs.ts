@@ -34,7 +34,9 @@ const tokens = nullable(count);
 const TokenBreakdown = obj({ input_tokens: tokens, output_tokens: tokens, cached_input_tokens: tokens, reasoning_tokens: tokens });
 const AdminLogEvent = obj({ event_id: id, kind: Type.String({ pattern: '^[a-z_]+\\.[a-z_]+$' }), occurred_at: utc, user_id: id, project_id: nullable(id), job_id: nullable(id), run_id: nullable(id), channel: enumOf(RUN_CHANNELS), trace_id: id, actor_type: enumOf(['user', 'system', 'operator'] as const), status: nullable(safeCode), stage: nullable(safeCode), error_code: nullable(code), error_id: nullable(id), logical_call_id: nullable(id), attempt_no: nullable(Type.Integer({ minimum: 1 })), prompt_snapshot_ref: nullable(id) });
 const PromptRef = obj({ snapshot_id: id, kind: enumOf(['user_prompt', 'model_request', 'structured_input'] as const), version: Type.Integer({ minimum: 1 }), content_sha256: hash, redaction_version: safeCode, input_revision: nullable(Type.Integer({ minimum: 1 })), template_version: nullable(Type.String()), rule_pack_version: nullable(Type.String()), model_parameters_version: nullable(Type.String()), content_state: enumOf(LOG_CONTENT_STATES), created_at: utc });
-const Attempt = obj({ attempt_id: id, logical_call_id: id, attempt_no: Type.Integer({ minimum: 1 }), channel: enumOf(RUN_CHANNELS), status: enumOf(ADMIN_ATTEMPT_STATUSES), model_id: nullable(Type.String({ maxLength: 128 })), provider_request_id: nullable(Type.String({ maxLength: 256 })), prompt_snapshot_ref: nullable(id), user_submission_id: nullable(id), usage_status: enumOf(ADMIN_USAGE_STATUSES), usage: TokenBreakdown, corrected: Type.Boolean(), duration_ms: nullable(count), error_code: nullable(code), created_at: utc });
+const Attempt = obj({ attempt_id: id, logical_call_id: id, attempt_no: Type.Integer({ minimum: 1 }), channel: enumOf(RUN_CHANNELS), status: enumOf(ADMIN_ATTEMPT_STATUSES), model_id: nullable(Type.String({ maxLength: 128 })), provider_request_id: nullable(Type.String({ maxLength: 256 })), prompt_snapshot_ref: nullable(id), user_submission_id: nullable(id), usage_status: enumOf(ADMIN_USAGE_STATUSES), usage: TokenBreakdown, corrected: Type.Boolean(), duration_ms: nullable(count), error_code: nullable(code), created_at: utc,
+  // Present only when a bounded private execution log was persisted for this attempt.
+  exec_log: Type.Optional(obj({ sha256: hash, byte_size: count, truncated: Type.Boolean(), download_ref: Type.String({ maxLength: 256, pattern: '^/api/v1/admin/exec-logs/[A-Za-z0-9_-]{1,128}$' }) })) });
 const UserSubmission = obj({ submission_id: id, snapshot_id: id, kind: enumOf(['run_execute','project_message'] as const), message_id: nullable(id), message_version: nullable(Type.Integer({ minimum: 1 })), version: Type.Integer({ minimum: 1 }), previous_submission_id: nullable(id), content_sha256: hash, input_revision: nullable(Type.Integer({ minimum: 1 })), input_hash: nullable(hash), material_versions: Type.Array(obj({ material_id: id, material_version: Type.Integer({ minimum: 1 }) })), content_state: enumOf(LOG_CONTENT_STATES), created_at: utc });
 const Stage = obj({ seq: Type.Integer({ minimum: 1 }), type: Type.String({ maxLength: 64 }), state: safeCode, stage: nullable(safeCode), reason: nullable(safeCode), occurred_at: utc });
 const ErrorRow = obj({ error_id: id, code, category: safeCode, stage: nullable(safeCode), attempt_id: nullable(id), provider_status: nullable(Type.Integer({ minimum: 100, maximum: 599 })), provider_error_type: nullable(safeCode), retry_count: count, fingerprint: nullable(hash), safe_message: nullable(Type.String({ maxLength: 1024 })), safe_stack: nullable(Type.String({ maxLength: 2048 })), recovery_status: nullable(enumOf(ERROR_RECOVERY_OUTCOMES)), created_at: utc });
@@ -57,6 +59,15 @@ export const adminSchemas = {
     // All attempts including failed retries vs. attempts whose status is completed.
     consumption: obj({ all_attempts: Consumption, completed_attempts: Consumption })
   }),
+  AdminExecLogResponse: obj({
+    attempt_id: id,
+    run_id: id,
+    sha256: hash,
+    byte_size: count,
+    truncated: Type.Boolean(),
+    content_type: Type.Literal('text/plain; charset=utf-8'),
+    body: Type.String({ description: 'Bounded private stdout/stderr capture ([stdout] JSONL then [stderr]); only via audited log_reader access.' })
+  }),
   AdminMetricsResponse: obj({
     window: obj({ from: nullable(utc), to: nullable(utc) }),
     operations: obj({ submitted: count, rejected: count }),
@@ -74,6 +85,7 @@ export const adminSchemas = {
   UsageCorrectionResponse: obj({ correction_id: id, attempt_id: id, usage_status: enumOf(['measured', 'unknown'] as const), usage: TokenBreakdown })
 } as const;
 export type AdminJobTimeline = Static<typeof adminSchemas.AdminJobTimelineResponse>;
+export type AdminExecLog = Static<typeof adminSchemas.AdminExecLogResponse>;
 export type AdminMetrics = Static<typeof adminSchemas.AdminMetricsResponse>;
 export type OperatorRole = typeof OPERATOR_ROLES[number];
 export type OpsAlertKind = typeof OPS_ALERT_KINDS[number];

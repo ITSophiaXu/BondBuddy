@@ -520,6 +520,7 @@ export const operations: readonly Operation[] = [
   op('get', '/admin/logs/events', 'Filter redacted observability events by user/project/job/trace/time/model/status/error (log_reader)', 'AdminLogEventsResponse', 200, undefined, [404, 422]),
   op('get', '/admin/errors', 'Audited error counts by code, category and fingerprint (log_operator)', 'AdminErrorCountsResponse', 200, undefined, [404, 422]),
   op('get', '/admin/jobs/{job_id}/timeline', 'Job timeline: prompt refs, stages, model attempts with token breakdown, errors and artifact (log_reader)', 'AdminJobTimelineResponse', 200, undefined, [404]),
+  op('get', '/admin/exec-logs/{attempt_id}', 'Audited private Codex stdout/stderr execution log for one model attempt (log_reader)', 'AdminExecLogResponse', 200, undefined, [404]),
   op('get', '/admin/jobs/{job_id}/user-submissions', 'Audited submitted-prompt version index by job (prompt_viewer); bodies use the separate audited prompt view', 'AdminUserSubmissionListResponse', 200, undefined, [404, 422]),
   op('get', '/admin/metrics', 'Token, success/failure rate and duration aggregates; retries and final consumption kept apart (log_reader)', 'AdminMetricsResponse', 200, undefined, [404, 422]),
   op('get', '/admin/prompts/{snapshot_id}', 'Audited plaintext view of a redacted prompt snapshot (prompt_viewer)', 'AdminPromptView', 200, undefined, [404, 422]),

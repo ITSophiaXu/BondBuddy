@@ -4,6 +4,7 @@ import type {AdminDashboardOverview, AdminDashboardTask, AdminDashboardUser} fro
 import {
   dashboardCost,
   dashboardDuration,
+  dashboardExecLogHtml,
   dashboardForbiddenHtml,
   dashboardQuery,
   dashboardSummaryHtml,
@@ -31,7 +32,8 @@ const task: AdminDashboardTask = {
   run_id: 'run_syn_1', user_id: 'user_syn_1', phone_masked: '****1234', project_id: 'proj_syn_1', project_name: '合成项目',
   task_kind: 'update', state: 'succeeded', stage: 'delivered', created_at: '2026-10-31T08:00:00Z', updated_at: '2026-10-31T08:05:00Z',
   duration_ms: 300000, model_attempts: 6, input_tokens: 12000, output_tokens: 3400, cost_amount: '1.2300000000', currency: 'CNY',
-  pricing_status: 'priced', last_error_code: null, credit_settled_points: '600'
+  pricing_status: 'priced', last_error_code: null, credit_settled_points: '600',
+  latest_attempt_id: 'att_syn_1', exec_log_available: true
 };
 
 test('summary cards render every aggregate, including tokens, cost and settled points', () => {
@@ -59,7 +61,7 @@ test('users table shows masked phones and lets an operator select a user', () =>
 });
 
 test('tasks table renders state/stage, duration, tokens, pricing and the latest error code', () => {
-  const html = dashboardTasksHtml([task, {...task, run_id: 'run_syn_2', state: 'failed', stage: 'model_call', last_error_code: 'DELIVERY_FAILED', pricing_status: null, cost_amount: null, currency: null}]);
+  const html = dashboardTasksHtml([task, {...task, run_id: 'run_syn_2', state: 'failed', stage: 'model_call', last_error_code: 'DELIVERY_FAILED', pricing_status: null, cost_amount: null, currency: null, latest_attempt_id: null, exec_log_available: false}]);
   assert.match(html, /data-dashboard-task-row="run_syn_1"/);
   assert.match(html, /已完成/);
   assert.match(html, /delivered/);
@@ -69,7 +71,22 @@ test('tasks table renders state/stage, duration, tokens, pricing and the latest 
   assert.match(html, /DELIVERY_FAILED/);
   assert.match(html, /未定价/);
   assert.match(html, /—/);
+  assert.match(html, /data-dashboard-exec-log="att_syn_1">查看执行日志/);
+  assert.equal((html.match(/data-dashboard-exec-log=/g) ?? []).length, 1, 'runs without evidence show a dash, not a broken link');
   assert.match(dashboardTasksHtml([]), /没有符合条件的任务/);
+});
+
+test('execution log panel shows bounded size, truncation and escaped private bytes', () => {
+  const log = {attempt_id: 'att_syn_1', run_id: 'run_syn_1', sha256: 'a'.repeat(64), byte_size: 42, truncated: true,
+    content_type: 'text/plain; charset=utf-8' as const, body: '{"type":"thread.started"}\n[stderr]\n<b>synthetic</b>'};
+  const html = dashboardExecLogHtml(log, '');
+  assert.match(html, /data-dashboard-exec-log-panel/);
+  assert.match(html, /42 字节（超出上限，已截断）/);
+  assert.match(html, /data-dashboard-exec-log-download/);
+  assert.match(html, /&lt;b&gt;synthetic&lt;\/b&gt;/);
+  assert.equal(html.includes('<b>synthetic</b>'), false);
+  assert.equal(dashboardExecLogHtml(null, ''), '');
+  assert.match(dashboardExecLogHtml(null, '无权限或执行日志不存在。'), /role="alert"/);
 });
 
 test('filters and cursor become an encoded query without losing the user selection', () => {

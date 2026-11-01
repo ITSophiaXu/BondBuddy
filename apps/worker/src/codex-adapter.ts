@@ -21,6 +21,8 @@ import type { ProbeJournal } from './deepseek-probe.js';
 import {validateModelImage,type ModelImageInput} from './model-image-input.js';
 
 export const CODEX_ADAPTER_VERSION = 'codex-adapter-1';
+/** Bounded per-attempt stdout/stderr capture. Full stderr is retained up to this cap. */
+export const DEFAULT_CODEX_EXEC_LOG_MAX_BYTES = 20 * 1024 * 1024;
 /** A completed turn produced a known-invalid file, not an unknown provider outcome. */
 export class CodexOutputValidationError extends Error {}
 export const REVIEW_TOOL_ADAPTER_VERSION = 'codex-review-tools-1';
@@ -41,6 +43,8 @@ export type CodexAdapterConfig = {
   authoring_timeout_ms?: number;
   kill_grace_ms: number;
   max_output_bytes: number;
+  /** Bounded combined stdout/stderr capture for operator diagnostics. */
+  exec_log_max_bytes?: number;
   max_schema_reasks: number;
   /** Local opt-in diagnostics only. Rejected bytes are never accepted provider results. */
   retain_invalid_output?: boolean;
@@ -172,6 +176,7 @@ export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): Co
     authoring_timeout_ms: Number(env.BB_CODEX_AUTHORING_TIMEOUT_MS || 18000000),
     kill_grace_ms: 2000,
     max_output_bytes: 4 * 1024 * 1024,
+    exec_log_max_bytes: Number(env.BB_CODEX_EXEC_LOG_MAX_BYTES ?? DEFAULT_CODEX_EXEC_LOG_MAX_BYTES),
     max_schema_reasks: Number(env.BB_CODEX_MAX_SCHEMA_REASKS ?? 1),
     retain_invalid_output: env.BB_CODEX_RETAIN_INVALID_OUTPUT === '1',
     disabled_features: DEFAULT_DISABLED_FEATURES,
@@ -193,6 +198,7 @@ export function assertCodexConfig(c: CodexAdapterConfig) {
     count(c.timeout_ms) && c.timeout_ms > 0 && c.timeout_ms <= 2147483647 &&
     (c.authoring_timeout_ms === undefined || (count(c.authoring_timeout_ms) && c.authoring_timeout_ms > 0 && c.authoring_timeout_ms <= 2147483647)) &&
     count(c.kill_grace_ms) && count(c.max_output_bytes) && c.max_output_bytes > 0 &&
+    (c.exec_log_max_bytes === undefined || (count(c.exec_log_max_bytes) && c.exec_log_max_bytes > 0 && c.exec_log_max_bytes <= 100 * 1024 * 1024)) &&
     count(c.max_schema_reasks) && c.max_schema_reasks <= 3 && (c.retain_invalid_output === undefined || typeof c.retain_invalid_output === 'boolean') && c.disabled_features.every(f => /^[a-z0-9_]{1,64}$/.test(f)) && c.path_env.length > 0 &&
     Object.entries(c.proxy_env ?? {}).every(([k, v]) => (CODEX_PROXY_ENV_NAMES as readonly string[]).includes(k) && (/^https_proxy$/i.test(k) ? proxyUrl(v) : noProxyList(v)));
   if (!ok) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
@@ -303,15 +309,40 @@ export function normalizeCodexUsage(raw: unknown): ProviderUsage {
 export type CodexProcessResult = {
   file_diagnostics?: { tools: Record<string, unknown>[]; omitted: number };
   web_search_events?: { observed_at: string; item: Record<string, unknown> }[];
+  /** Private, bounded combined stdout/stderr capture; only present when requested. */
+  exec_log?: { bytes: Buffer; truncated: boolean };
   started_at: string; duration_ms: number; exit_code: number | null; exit_signal: string | null;
   thread_id: string | null; turn_completed: boolean; usage: ProviderUsage; last_message: string | null;
   tool_attempts: number; turn_failed: boolean; saw_error: boolean; provider_error_code?: ModelAdapterErrorCode | null;
   stop: null | 'tool' | 'timeout' | 'cancelled' | 'broken' | 'too_large' | 'spawn_failed';
 };
 
-// One codex process. Stdout is parsed incrementally; stderr is inspected in a bounded
-// private buffer for status markers, then discarded. It is never logged or persisted.
-export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileCompletion?: boolean; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void }): Promise<CodexProcessResult> {
+/** One bounded buffer shared by stdout and stderr. Sections keep raw JSONL intact. */
+export function createCodexExecLogCapture(maxBytes: number) {
+  const stdout: Buffer[] = [], stderr: Buffer[] = [];
+  let used = 0, truncated = false;
+  const append = (target: Buffer[], text: string) => {
+    if (truncated) return;
+    const chunk = Buffer.from(text, 'utf8');
+    const room = maxBytes - used;
+    if (chunk.length <= room) { target.push(chunk); used += chunk.length; return; }
+    if (room > 0) { target.push(chunk.subarray(0, room)); used += room; }
+    truncated = true;
+  };
+  return {
+    stdout: (text: string) => append(stdout, text),
+    stderr: (text: string) => append(stderr, text),
+    finish: (): { bytes: Buffer; truncated: boolean } => ({
+      bytes: Buffer.concat([Buffer.from('[stdout]\n'), ...stdout, Buffer.from('\n[stderr]\n'), ...stderr]),
+      truncated
+    })
+  };
+}
+
+// One codex process. Stdout is parsed incrementally; a bounded stderr prefix is inspected
+// for status markers. When captureExecLog is set the private caller may persist the full
+// bounded stdout/stderr evidence; it is never logged to the process output.
+export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileCompletion?: boolean; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean }): Promise<CodexProcessResult> {
   const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
   if (c.credential.kind === 'env') {
     const value = process.env[c.credential.name];
@@ -333,6 +364,11 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
     try { child = spawn(c.command[0], [...c.command.slice(1), ...args], { cwd: o.cwd, env, detached: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); }
     catch { r.stop = 'spawn_failed'; resolveResult(r); return; }
     let bytes = 0, buffer = '', stderrPrefix = '', settled = false, graceTimer: NodeJS.Timeout | null = null;
+    const capture = o.captureExecLog ? createCodexExecLogCapture(c.exec_log_max_bytes ?? DEFAULT_CODEX_EXEC_LOG_MAX_BYTES) : null;
+    // Never persist a credential value that the child might echo. Only env credentials
+    // have a readable value here; file/command credentials stay opaque.
+    const credentialValue = c.credential.kind === 'env' ? process.env[c.credential.name] : undefined;
+    const captured = (text: string) => credentialValue && credentialValue.length >= 8 ? text.split(credentialValue).join('[REDACTED]') : text;
     const killGroup = (sig: NodeJS.Signals) => {
       if (!child.pid) return;
       if (process.platform === 'win32') {
@@ -405,6 +441,7 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
     };
     child.stdout!.setEncoding('utf8');
     child.stdout!.on('data', (chunk: string) => {
+      capture?.stdout(captured(chunk));
       bytes += Buffer.byteLength(chunk);
       if (bytes > c.max_output_bytes) { stop('too_large', true); return; }
       buffer += chunk;
@@ -412,7 +449,10 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
       while ((nl = buffer.indexOf('\n')) >= 0) { const line = buffer.slice(0, nl); buffer = buffer.slice(nl + 1); handle(line); }
     });
     child.stderr!.setEncoding('utf8');
-    child.stderr!.on('data', (chunk: string) => { if (stderrPrefix.length < 4096) stderrPrefix += chunk.slice(0, 4096 - stderrPrefix.length); });
+    child.stderr!.on('data', (chunk: string) => {
+      capture?.stderr(captured(chunk));
+      if (stderrPrefix.length < 4096) stderrPrefix += chunk.slice(0, 4096 - stderrPrefix.length);
+    });
     child.stdin!.on('error', () => { /* child may exit before reading */ });
     child.on('error', () => { if (!r.stop) r.stop = child.pid ? 'broken' : 'spawn_failed'; });
     child.on('close', (code, sig) => {
@@ -426,6 +466,7 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
       killGroup('SIGKILL'); // reap any grandchildren left in the group
       r.exit_code = code; r.exit_signal = sig;
       r.duration_ms = Number((process.hrtime.bigint() - t0) / 1000000n);
+      if (capture) r.exec_log = capture.finish();
       resolveResult(r);
     });
     child.stdin!.end(o.prompt);
@@ -456,6 +497,8 @@ export function classifyCodexResult(r: CodexProcessResult, parse: (text: string)
 export type PriorAttempt = { call_id: string; attempt_no: number; status: 'pending_reconcile' | 'confirmed_not_sent' | 'completed' | 'failed'; observed: boolean; operator_retry?: boolean };
 export interface CodexJournal extends ProbeJournal {
   recordWebSearchEvents?(intent: ProviderCallIntent, events: NonNullable<CodexProcessResult['web_search_events']>): Promise<void>;
+  /** Persist the bounded private stdout/stderr evidence for this attempt. */
+  storeExecLog?(intent: ProviderCallIntent, bytes: Buffer, meta: { truncated: boolean }): Promise<void>;
   recordObservation(observation: ProviderCallObservation, options?: { retryable?: boolean }): Promise<void>;
   recordRuntime(intent: ProviderCallIntent, runtime: ModelAttemptRuntime): Promise<void>;
   latestAttempt(logicalCallId: string): Promise<PriorAttempt | null>;
@@ -632,8 +675,11 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         // Lease loss and cancellation still abort the same process immediately.
         const executionConfig = (input.materialTools || input.fileWorkspace || input.reviewTools) && c.authoring_timeout_ms !== undefined
           ? { ...c, timeout_ms: c.authoring_timeout_ms } : c;
-        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileCompletion:input.fileWorkspace?.completionCheck===true, signal: input.signal, onEvent: input.onEvent,
+        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileCompletion:input.fileWorkspace?.completionCheck===true, signal: input.signal, onEvent: input.onEvent, captureExecLog: true,
           onActivity:input.onActivity?event=>input.onActivity!(event,intent):undefined });
+        // The execution log is private evidence only. A storage failure must never
+        // change the provider outcome or block reconciliation.
+        if (raw.exec_log) try { await journal.storeExecLog?.(intent, raw.exec_log.bytes, { truncated: raw.exec_log.truncated }); } catch { /* retained failure stays visible through the observation */ }
         if (!input.fileWorkspace && c.web_search === 'live') await journal.recordWebSearchEvents!(intent, raw.web_search_events ?? []);
         if (raw.thread_id) threadId = raw.thread_id;
         // File delivery is decided by the trusted collector, not a final prose message.

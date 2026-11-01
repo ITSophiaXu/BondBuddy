@@ -122,7 +122,7 @@ test('tasks query filters by state/time/user, maps usage and continues from the 
   const row = {run_id: 'run_2', user_id: 'user_1', phone_e164: '+8613800001234', project_id: 'proj_1', project_name: '合成项目',
     task_kind: 'update', state: 'succeeded', stage: 'delivered', created_at: new Date('2026-10-30T08:00:00Z'), updated_at: new Date('2026-10-30T08:01:00Z'),
     duration_ms: '60000', model_attempts: 3, input_tokens: '1200', output_tokens: '300', cost_amount: '0.4500000000', currency: 'CNY',
-    pricing_status: 'priced', last_error_code: null, credit_settled_points: '600'};
+    pricing_status: 'priced', last_error_code: null, credit_settled_points: '600', latest_attempt_id: 'att_syn_1'};
   const {pool, calls} = fakePool(sql => sql.includes('r.task_kind') ? [row] : []);
   const cursor = encodeDashboardCursor('tasks', {createdAt: new Date('2026-11-01T00:00:00.000Z'), id: 'run_3'});
   const filter = parseDashboardFilter({from: '2026-10-01T00:00:00Z', state: 'succeeded', cursor, limit: '1'}, 'tasks');
@@ -132,7 +132,8 @@ test('tasks query filters by state/time/user, maps usage and continues from the 
     run_id: 'run_2', user_id: 'user_1', phone_masked: '****1234', project_id: 'proj_1', project_name: '合成项目', task_kind: 'update',
     state: 'succeeded', stage: 'delivered', created_at: '2026-10-30T08:00:00.000Z', updated_at: '2026-10-30T08:01:00.000Z',
     duration_ms: 60000, model_attempts: 3, input_tokens: 1200, output_tokens: 300, cost_amount: '0.4500000000', currency: 'CNY',
-    pricing_status: 'priced', last_error_code: null, credit_settled_points: '600'
+    pricing_status: 'priced', last_error_code: null, credit_settled_points: '600',
+    latest_attempt_id: 'att_syn_1', exec_log_available: true
   });
   assert.equal(result.next_cursor, null);
   const call = tasksSelect(calls);
@@ -148,6 +149,7 @@ test('tasks query filters by state/time/user, maps usage and continues from the 
   assert.equal(call.params[6], 2);
   assert.ok(calls.some(entry => entry.sql.includes('rt.recorded_at DESC')));
   assert.ok(calls.some(entry => entry.sql.includes("e.kind='settle'")));
+  assert.ok(calls.some(entry => entry.sql.includes('FROM bb_codex_exec_logs l')));
 });
 
 test('routes deny non-operators with the same 404 and return masked rows for log_reader', async () => {
