@@ -57,12 +57,13 @@
 .prototype-app .material-role-heading>div { width: 100%; }
 .prototype-app .material-role-heading>div>strong { font-size: 12px; }
 .prototype-app .material-role-heading>div>span { font-size: 11px; }
-.prototype-app .material-picker { width: 100%; border: 1px dashed #b7c6a8; border-radius: 8px; background: #fafcf6; padding: 17px; margin-top: 12px; display: flex; gap: 10px; min-height: 78px; }
+.prototype-app .material-picker, .reference-prospectus .reference-upload-picker { width: 100%; border: 1px dashed #b7c6a8; border-radius: 8px; background: #fafcf6; padding: 17px; margin-top: 12px; display: flex; gap: 10px; min-height: 78px; }
 .prototype-app .material-picker input { min-height: 0; }
 .prototype-app .material-role-heading:has(.material-picker) { gap: 0; }
 .prototype-app .material-role-list { grid-template-columns: minmax(0,1fr); }
 .prototype-app .material-role { padding:0; border:0; background:transparent; }
-.prototype-app .material-role-heading .material-picker { min-height:90px; margin-bottom:12px; }
+.prototype-app .material-role-heading .material-picker, .reference-prospectus .reference-upload-picker { min-height:90px; margin-bottom:12px; }
+.prototype-app .material-picker.is-dragging, .reference-prospectus.is-dragging .reference-upload-picker { border-color:#577552; background:#edf4e5; outline:2px solid #577552; outline-offset:2px; }
 .material-subtypes>summary { cursor:pointer; font-size:11px; color:var(--muted); padding:10px 0; }
 .material-subtypes .material-role-list { padding-top:12px; }
 .material-subtypes:not(:has(.material-role)) { display:none; }

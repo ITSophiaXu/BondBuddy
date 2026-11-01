@@ -35,9 +35,11 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
     assert.equal(material.statusCode,200,material.body);
     let draftRevision=1,selectionRevision=0;
     if(role==='historical'){
-      // Uploads are available history until explicitly adopted as the current prospectus.
-      const selected=await send('POST',`/api/v1/projects/${id}/prospectus-versions`,{request_id:randomUUID(),expected_selection_revision:0,material_id:material.json().material_id,material_version:1,sha256:d.sha256});
+      // Historical uploads are automatically adopted; use the acknowledged selection revision.
+      const selected=await send('GET',`/api/v1/projects/${id}/prospectus-versions`);
       assert.equal(selected.statusCode,200,selected.body);selectionRevision=selected.json().selection_revision;
+      assert.equal(selected.json().current_version_id,selected.json().versions.find((v:any)=>v.material_id===material.json().material_id).version_id);
+      assert.equal(selectionRevision,1);
       const current=await send('GET',`/api/v1/projects/${id}`);assert.equal(current.statusCode,200,current.body);draftRevision=current.json().draft_revision;
       const incomplete=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:draftRevision,prospectus_selection_revision:selectionRevision,material_versions:[{material_id:material.json().material_id,material_version:1}],requirement_message_ids:[]});
       assert.equal(incomplete.statusCode,422,incomplete.body);assert.equal(incomplete.json().code,'INPUT_REQUIRED');

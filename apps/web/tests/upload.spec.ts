@@ -137,6 +137,26 @@ function state(): FixtureState {
   return { owner: null, uploads: new Map(), materials: new Map(), sequence: 0, failNextComplete: new Set(), unavailableNextComplete: new Map(), dropNextComplete: new Set(), holdNextCreate: false, expireNextBytes: false, inspectionFailures: new Map(), byteAttempts: [], putNames: [] };
 }
 
+test('reference and audit upload areas share styling and audit drops keep the correct role',async({page})=>{
+  const s=state();await installApi(page,s);await login(page,'owner_a');
+  const reference=page.locator('.reference-upload-picker'),audit=page.locator('[data-material-role="audit"] .material-picker');
+  await expect(reference).toHaveText('点击或拖入文件');await expect(audit).toContainText('点击或拖入文件');
+  const styles=(element:Element)=>{const css=getComputedStyle(element);return {height:css.minHeight,border:css.borderTopStyle,color:css.borderTopColor,background:css.backgroundColor,radius:css.borderRadius,padding:css.padding};};
+  expect(await reference.evaluate(styles)).toEqual(await audit.evaluate(styles));
+  const data=await page.evaluateHandle(()=>{const data=new DataTransfer();data.items.add(new File(['%PDF synthetic audit drag fixture'],'拖入审计报告.pdf',{type:'application/pdf'}));return data;});
+  await audit.dispatchEvent('dragover',{dataTransfer:data});await expect(audit).toHaveClass(/is-dragging/);
+  await audit.evaluate(el=>el.dispatchEvent(new DragEvent('dragleave',{bubbles:true,relatedTarget:el.querySelector('span')})));
+  await expect(audit).toHaveClass(/is-dragging/);
+  await audit.dispatchEvent('dragleave',{relatedTarget:null});await expect(audit).not.toHaveClass(/is-dragging/);
+  await audit.dispatchEvent('drop',{dataTransfer:data});await data.dispose();
+  await expect.poll(()=>s.materials.size).toBe(1);expect([...s.materials.values()][0]).toMatchObject({role:'audit',filename:'拖入审计报告.pdf'});
+  await expect(audit).not.toHaveClass(/is-dragging/);await expect(page.locator('.reference-file')).toHaveCount(0);
+  const out=process.env.BB_REFERENCE_DROP_EVIDENCE;if(out){await mkdir(out,{recursive:true});for(const width of [1440,390,320]){
+    await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await page.screenshot({path:`${out}/workspace-${width}.png`,fullPage:true});
+  }}
+});
+
 test('unsupported local file offers replacement, not retry or passive waiting, and saves only the replacement',async({page})=>{
   const s=state();await installApi(page,s);await login(page,'owner_a');
   await page.locator('[data-upload-role="audit"]').setInputFiles({name:'invalid.bin',mimeType:'application/octet-stream',buffer:Buffer.from('unsupported synthetic bytes')});

@@ -88,7 +88,7 @@ test('project review: real dual Word delivery, explicit promotion, manual export
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_review_artifacts WHERE run_id=$1',[incomplete.run_id])).rows[0].n,0);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_review_editors WHERE run_id=$1',[incomplete.run_id])).rows[0].n,0);
     const failedCharge=await ok('GET','/api/v1/runs/'+incomplete.run_id+'/credit-charge');
-    assert.equal(failedCharge.state,'released');assert.equal(failedCharge.progress.charged_points,0);
+    assert.equal(failedCharge.state,'released');assert.equal(failedCharge.progress.charged_points,'0');
     const preserved=await ok('GET',path+'/review-workspace');assert.equal(preserved.artifact_run.run_id,exported.run_id,'failed review preserves previous successful artifacts');
     owner=randomUUID();assert.equal((await send('GET',path+'/review-executions/'+first.run_id+'/editor')).statusCode,404);assert.equal((await send('POST',path+'/review-exports',{...exportRequest,request_id:randomUUID()})).statusCode,404);assert.equal((await send('POST',path+'/review-source',{version_id:generated.version_id})).statusCode,404);
   }finally{await app.close();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();await pool.end();}

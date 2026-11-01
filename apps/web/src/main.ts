@@ -1242,10 +1242,18 @@ function bindMaterialWorkspace(projectId: string) {
     source.querySelector('[data-source-required-message]')!.textContent = sourceRequiredMessage(value);
     updateMaterialWorkspace(projectId);
   });
-  host.addEventListener('dragover', event => { if ((event.target as HTMLElement).closest('.material-picker')) event.preventDefault(); });
+  host.addEventListener('dragover', event => {
+    const picker = (event.target as Element).closest('.material-picker');
+    if (!picker || !event.dataTransfer?.types.includes('Files')) return;
+    event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; picker.classList.add('is-dragging');
+  });
+  host.addEventListener('dragleave', event => {
+    const picker = (event.target as Element).closest('.material-picker');
+    if (picker && (!(event.relatedTarget instanceof Node) || !picker.contains(event.relatedTarget))) picker.classList.remove('is-dragging');
+  });
   host.addEventListener('drop', event => {
     const picker = (event.target as HTMLElement).closest('.material-picker'); if (!picker) return;
-    event.preventDefault(); const role = picker.querySelector<HTMLInputElement>('[data-upload-role]')?.dataset.uploadRole as UploadRole;
+    event.preventDefault(); picker.classList.remove('is-dragging'); const role = picker.querySelector<HTMLInputElement>('[data-upload-role]')?.dataset.uploadRole as UploadRole;
     if (role) for (const file of Array.from(event.dataTransfer?.files ?? [])) addUpload(projectId, role, file);
   });
   host.addEventListener('change', event => {

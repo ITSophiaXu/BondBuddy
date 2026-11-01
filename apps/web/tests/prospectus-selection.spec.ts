@@ -85,6 +85,7 @@ async function fixture(page:Page,options:FixtureOptions={}){
             sha256:session.input.sha256,state:'persisted',persisted_at:now,error:null};
           if(!state.versions.some(v=>v.version_id===newVersion.version_id))state.versions.unshift({...newVersion,
             sequence:Math.max(0,...state.versions.map(v=>v.sequence))+1,filename:session.input.filename});
+          state.current_version_id=newVersion.version_id;state.selection_revision++;
         }
         if(flags.dropCompleteOnce){flags.dropCompleteOnce=false;return route.abort('connectionreset');}
         return reply(route,200,session.material);
@@ -143,31 +144,28 @@ async function chooseNew(page:Page){
   await page.locator(`[data-use-version="${newVersion.version_id}"]`).click();
   await expect(page.locator('dialog[open]')).toBeVisible();
 }
-const savedStatus=(page:Page)=>expect(page.locator('#prospectus-status')).toContainText(/已保存.*尚未采用|已保存.*未.*采用/);
+const savedStatus=(page:Page)=>expect(page.locator('#prospectus-status')).toContainText(/已保存并自动采用/);
 
-test('upload saves a new version without adopting it or rebuilding its parent',async({page})=>{
+test('upload acknowledges server adoption once, preserves the old version and refreshes its parent',async({page})=>{
   const f=await fixture(page);
   await upload(page);await savedStatus(page);
-  expect(f.state.current_version_id).toBe(oldVersion.version_id);expect(f.state.selection_revision).toBe(7);
+  expect(f.state.current_version_id).toBe(newVersion.version_id);expect(f.state.selection_revision).toBe(8);
   expect(f.state.versions.map(v=>v.version_id)).toEqual([newVersion.version_id,oldVersion.version_id]);
-  expect(f.selections).toHaveLength(0);expect(await f.changes()).toBe('0');
+  expect(f.selections).toHaveLength(0);await expect.poll(f.changes).toBe('1');
   expect(await f.unconfirmed()).toBe(false);
   expect(f.mutations.some(m=>m.path===`${base}/prospectus-versions`)).toBe(false);
   expect(f.counts().puts).toBe(1);expect(f.counts().reads).toBeGreaterThan(1);
-  await openContainingDetails(page,`[data-use-version="${newVersion.version_id}"]`);
-  await expect(page.locator(`[data-use-version="${newVersion.version_id}"]`)).toHaveText('用于本次更新');
-  await expect(page.locator('.reference-file.is-selected')).toContainText(oldVersion.filename);
+  await expect(page.locator(`[data-use-version="${newVersion.version_id}"]`)).toHaveCount(0);
+  await expect(page.locator('.reference-file.is-selected')).toContainText(newVersion.filename);
 });
 
-test('the first saved upload also remains unadopted until an explicit decision',async({page})=>{
+test('the first saved upload is automatically adopted without a second selection request',async({page})=>{
   const f=await fixture(page,{current:false});
   await upload(page);await savedStatus(page);
-  expect(f.state.current_version_id).toBeNull();expect(f.state.selection_revision).toBe(0);
-  expect(f.selections).toHaveLength(0);expect(await f.changes()).toBe('0');
-  await chooseNew(page);
+  expect(f.state.current_version_id).toBe(newVersion.version_id);expect(f.state.selection_revision).toBe(1);
+  await expect.poll(f.changes).toBe('1');
   expect(f.selections).toHaveLength(0);
-  await page.locator('#confirm-prospectus-selection').click();
-  await expect.poll(f.changes).toBe('1');expect(f.state.current_version_id).toBe(newVersion.version_id);
+  await expect(page.locator('dialog[open]')).toHaveCount(0);
 });
 
 test('a later adoption shows its target and effect, can be cancelled, and only submits on confirmation',async({page})=>{
@@ -204,7 +202,8 @@ test('a lost completion receipt reconciles the same session without a second byt
   expect(await f.unconfirmed()).toBe(true);
   await page.locator('#save-prospectus-version').click();await savedStatus(page);
   expect(f.counts().puts).toBe(1);expect(f.counts().completions).toBe(2);expect(f.declarations).toHaveLength(1);
-  expect(f.state.current_version_id).toBe(oldVersion.version_id);expect(f.selections).toHaveLength(0);expect(await f.changes()).toBe('0');
+  expect(f.state.current_version_id).toBe(newVersion.version_id);expect(f.state.selection_revision).toBe(8);
+  expect(f.selections).toHaveLength(0);await expect.poll(f.changes).toBe('1');
   expect(await f.unconfirmed()).toBe(false);
 });
 
@@ -241,7 +240,7 @@ test('saving a file neither invents source declarations nor claims automatic ide
   expect(f.mutations.every(m=>m.path.includes('/materials/uploads'))).toBe(true);
   await expect(page.locator('[data-source-field], [data-source-material]')).toHaveCount(0);
   await expect(page.locator('#fixture-host')).not.toContainText(/已自动识别|自动识别完成/);
-  expect(await f.changes()).toBe('0');expect(f.selections).toHaveLength(0);
+  await expect.poll(f.changes).toBe('1');expect(f.selections).toHaveLength(0);
 });
 
 test('an acknowledged adoption remains adopted when its following parent refresh fails',async({page})=>{
@@ -272,7 +271,7 @@ test('a background version refresh preserves the automatically uploaded version'
   await page.locator('#prospectus-version-file').setInputFiles({name:filename,mimeType:mime,buffer:bytes});
   await page.evaluate(async()=>{await (window as unknown as {syntheticProspectusPanel:{refresh():Promise<void>}}).syntheticProspectusPanel.refresh();});
   await savedStatus(page);await expect(page.locator('#save-prospectus-version')).toBeHidden();
-  expect(f.counts().puts).toBe(1);expect(f.state.current_version_id).toBe(oldVersion.version_id);
+  expect(f.counts().puts).toBe(1);expect(f.state.current_version_id).toBe(newVersion.version_id);
 });
 
 test('another page clearing a confirmed upload does not misreport the saved prospectus version',async({page})=>{
