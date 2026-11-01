@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {setTimeout as delay} from 'node:timers/promises';
 import {randomUUID} from 'node:crypto';
 import {writeFile,mkdir} from 'node:fs/promises';
 import {Pool} from 'pg';
@@ -64,7 +65,7 @@ test('assessment and confirmation: mixed/all-excluded packages, evidence and imm
   const material=await upload(id,'catalogue.xlsx',await catalogueXlsx(4),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),cat=await ok('POST',base+'/catalogues',{request_id:randomUUID(),material});
   const body={request_id:randomUUID(),catalogue_id:cat.catalogue_id,catalogue_sha256:cat.sha256,item_ids:cat.entries.map((e:any)=>e.id),source_version_id:adopted.current_version_id,source_selection_revision:adopted.selection_revision,requirements:'按募集书判断，不造原始证据'};
   const started=await ok('POST',base+'/assessments',body);assert.equal(started.state,'queued');assert.deepEqual(await ok('POST',base+'/assessments',body),started);
-  const start={...body,request_id:randomUUID(),assessment_id:started.assessment_id,assessment_hash:'a'.repeat(64),price_version:WORKPAPER_PRICE.version,expected_points:WORKPAPER_PRICE.points};
+  const start={...body,request_id:randomUUID(),assessment_id:started.assessment_id,assessment_hash:'a'.repeat(64),price_version:WORKPAPER_PRICE.version,expected_points:String(WORKPAPER_PRICE.points)};
   assert.equal((await send('POST',base+'/batches',start)).statusCode,409);
   assert.equal((await pool.query('SELECT count(*) n FROM bb_workpaper_batches')).rows[0].n,'0');
   await ok('POST','/api/v1/runs/'+started.assessment_id+'/pause',{reason:'synthetic_pause'});
@@ -81,9 +82,9 @@ test('assessment and confirmation: mixed/all-excluded packages, evidence and imm
   assert.equal((await pool.query('SELECT count(*) n FROM bb_credit_reservations')).rows[0].n,'0');
   const confirmed={...start,assessment_hash:a.result_hash};
   assert.equal((await send('POST',base+'/batches',{...confirmed,requirements:'变更要求'})).statusCode,409);
-  assert.equal((await send('POST',base+'/batches',{...confirmed,expected_points:18000})).statusCode,409);
+  assert.equal((await send('POST',base+'/batches',{...confirmed,expected_points:'18000'})).statusCode,409);
   actor=randomUUID();assert.equal((await send('POST',base+'/batches',confirmed)).statusCode,404);actor=user;
-  const [batch,duplicate]=await Promise.all([ok('POST',base+'/batches',confirmed),ok('POST',base+'/batches',confirmed)]);assert.equal(batch.batch_id,duplicate.batch_id);assert.equal(batch.items.filter((i:any)=>i.explanation).length,3);assert.equal(batch.total_points,4500);
+  const [batch,duplicate]=await Promise.all([ok('POST',base+'/batches',confirmed),ok('POST',base+'/batches',confirmed)]);assert.equal(batch.batch_id,duplicate.batch_id);assert.equal(batch.items.filter((i:any)=>i.explanation).length,3);assert.equal(batch.total_points,'4500');
   assert.equal((await ok('POST',base+'/batches',confirmed)).batch_id,batch.batch_id);
   await assert.rejects(pool.query("UPDATE bb_workpaper_assessments SET result=result||'{\"warnings\":[]}' WHERE run_id=$1",[a.assessment_id]),/immutable/);
   await assert.rejects(pool.query('UPDATE bb_workpaper_batches SET assessment_hash=$2 WHERE id=$1',[batch.batch_id,'b'.repeat(64)]),/immutable/);
@@ -93,13 +94,19 @@ test('assessment and confirmation: mixed/all-excluded packages, evidence and imm
   const parts=readBoundedOfficeParts(explanation.rawPayload);
   assert.match(parts.get('word/document.xml')!.toString(),/不足以确认该事项不适用/);
   assert.doesNotMatch(parts.get('word/document.xml')!.toString(),/判断版本|SHA-256|募集书依据|来源：/);
-  const zip=await send('GET',base+'/batches/'+batch.batch_id+'/download');assert.equal(zip.rawPayload.readUInt16LE(zip.rawPayload.length-12),3);
+  let zip=await send('GET',base+'/batches/'+batch.batch_id+'/download');
+  for(let polls=0;zip.statusCode===202&&polls<60;polls++){
+   assert.equal(zip.json().status,'preparing');
+   await delay(100);zip=await send('GET',base+'/batches/'+batch.batch_id+'/download');
+  }
+  assert.equal(zip.statusCode,200,zip.body);assert.equal(zip.headers['content-type'],'application/zip');
+  assert.equal(zip.rawPayload.readUInt16LE(zip.rawPayload.length-12),3);
   actor=randomUUID();assert.equal((await send('GET',explanationUrl)).statusCode,404);actor=user;
   await mkdir('test-evidence/workpaper-assessment',{recursive:true});await writeFile('test-evidence/workpaper-assessment/资料不足说明.docx',explanation.rawPayload);
   await ok('POST',base+'/batches/'+batch.batch_id+'/actions',{action:'cancel',expected_revision:batch.revision});
   allExcluded=true;const next=await ok('POST',base+'/assessments',{...body,request_id:randomUUID()});assert.equal(await execute(),'succeeded');
   const assessed=(await ok('GET',base)).assessments.find((x:any)=>x.assessment_id===next.assessment_id);
-  const excluded=await ok('POST',base+'/batches',{...confirmed,request_id:randomUUID(),assessment_id:next.assessment_id,assessment_hash:assessed.result_hash,expected_points:0});
+  const excluded=await ok('POST',base+'/batches',{...confirmed,request_id:randomUUID(),assessment_id:next.assessment_id,assessment_hash:assessed.result_hash,expected_points:'0'});
   assert.equal(excluded.state,'complete');assert.equal(excluded.items.filter((i:any)=>i.explanation).length,4);assert.equal(await advanceWorkpaperBatch(pool),false);
   assert.equal((await pool.query('SELECT count(*) n FROM bb_workpaper_attempts')).rows[0].n,'0');assert.equal((await pool.query('SELECT count(*) n FROM bb_credit_reservations')).rows[0].n,'0');
   await upload(id,'new.docx',makeSyntheticDocxFixture({text:'新的募集说明书'}),DOCX,'historical');
