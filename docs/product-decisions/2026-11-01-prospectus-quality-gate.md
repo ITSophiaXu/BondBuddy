@@ -12,7 +12,7 @@
 
 准备 PostgreSQL 16 的一次性本地模板数据库，角色需有 CREATEDB 权限供集成测试克隆。`BB_TEST_DATABASE_URL` 仅允许 loopback 主机及 `bb_prospectus_quality` 或 `bb_prospectus_quality_<suffix>` 库名，禁止 query 参数覆盖连接目标；runner 仅对此显式测试库运行迁移，不使用继承的生产 `DATABASE_URL`。CI 使用独立 service，禁止连接生产数据库。
 
-通过后在 `.local/prospectus-quality.json` 写入 commit、完整 Git tree、Linux 平台、干净源码状态、每项结果和日志摘要；完整成功或失败日志保存在 `.local/prospectus-quality-logs/<commit>/`，CI 一并保留成功证据及原日志。测试前删除旧凭据，测试后复查源码未变。正常发布凭据 24 小时内有效；任何新 commit（包括只改文档的提交和合并提交）都需重新运行，不能复用 PR 旧 SHA 的凭据。渲染只证明可转换及页数保留等自动化条件，不替代逐页视觉检查与业务审核。
+通过后在 `.local/prospectus-quality.json` 写入 commit、完整 Git tree、Linux 平台、干净源码状态、每项结果和日志摘要；完整成功或失败日志保存在 `.local/prospectus-quality-logs/<commit>/`，受控发布主机私有保留完整凭据和验收记录，托管 CI 仅保留机械测试日志。测试前删除旧凭据，测试后复查源码未变。正常发布凭据 24 小时内有效；任何新 commit（包括只改文档的提交和合并提交）都需重新运行，不能复用 PR 旧 SHA 的凭据。渲染只证明可转换及页数保留等自动化条件，不替代逐页视觉检查与业务审核。
 
 单独执行 `npm run quality:prospectus:validate` 可运行上述全部机械测试，并明确输出“未运行真实模型验收、未签发发布凭据”。该命令允许本地工作树验证，保留独立运行日志，不能用于部署授权。完整 `quality:prospectus` 最后未获真实验收时退出失败，并且不会留下通过凭据。
 
@@ -41,8 +41,12 @@ bash deploy/m1/scripts/deploy.sh HEAD
 
 ## 远端约束及启用事项
 
-`.github/workflows/prospectus-quality.yml` 对 develop/master 的 PR、push 和 merge queue 运行同一门禁，没有 paths 过滤或允许失败步骤。仓库管理员应将 `prospectus-quality` 设置为 develop/master 的 required status check，要求与最新基线同步，并禁止管理员跳过及直接 push；部署执行者只允许走上述受控入口。
+`.github/workflows/prospectus-quality.yml` 对 develop/master 的 PR、push 和 merge queue 运行 `validate`，没有 paths 过滤或允许失败步骤。它提供 `prospectus-quality-mechanical` 检查，不接收私有验收文件、不签发发布凭据。托管 job 可以独立完成机械回归，不再因没有私有文件而永久失败；它通过仍不授权发布。
 
-现有托管 CI 不携带客户材料或私有金样验收文件，因此没有受控证据时完整门禁必须失败；不因 CI 环境无法取得证据改为 skip。可在具备私有证据的受控 Linux runner 执行同一命令。若未来为 CI 增加私有证据传输，应只传到受控 job 的临时目录、绑定当前候选提交，并保持公共日志仅含摘要，不能把客户材料作为普通 artifact 上传。
+受控 Linux 发布者执行 `node scripts/publish-prospectus-quality.mjs <完整40位候选SHA>`。CLI 要求同一干净 HEAD 和 canonical GitHub origin，在该 SHA 上先登记 `prospectus-release-acceptance: pending`，固定运行完整 `run` 和同 SHA 的 `verify`，复查源码未变后才登记 `success`；失败、缺证据或无凭据登记 `failure` 并退出失败。成功描述仅含结果和凭据 hash，任何客户文档、人审记录和私有路径均不发送 GitHub。具体操作见 [受控发布者说明](../../scripts/prospectus-quality-publisher.md)。本次未实际运行状态发布。
+
+管理员应同时要求 `prospectus-quality-mechanical` 和 `prospectus-release-acceptance`，并将后者绑定到受信任的 GitHub App/发布服务身份，要求与最新基线同步、禁止管理员跳过及直接 push。不能仅凭相同 context 名接受任意作者提交的 status。当前不能配置这项远端限制时，不得声称 PR 状态不可伪造；实际部署仍必须核对当前发布提交的私有通过凭据。
+
+PR head、GitHub PR 合并测试 SHA、merge queue SHA 和最终 master SHA 可能不同；状态只能说明其绑定的完整 SHA。先确认保护实际评估的 PR head 或测试合并 SHA，并对同一准确 SHA 验收和发布状态；为 merge queue 发布状态必须验收对应队列提交。最终部署使用 master 的确切提交，变化后需重新验收并由发布者重跑，不能用 PR 上的绿色状态代替最终提交的凭据。
 
 本次读取远端状态时当前账号只有 push 权限、没有 admin 权限，规则 API 表示当前私有仓库套餐不支持 rulesets；GitHub Actions 还存在账单/额度限制。**新增 workflow 不代表远端分支保护已经启用，也不代表 Actions 已运行。** 在管理员解决套餐、额度及 required-check 配置前，受控 Linux runner 和部署入口的默认拒绝提供实际拦截；拥有服务器或仓库管理权限的人仍可绕开脚本，这一外部限制不能声称已经消除。

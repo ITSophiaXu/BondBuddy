@@ -108,7 +108,8 @@ function run(receiptPath, release = true) {
   };
   check('build', 'npm', ['run', 'build']);
   check('contracts', 'npm', ['run', 'check:contracts']);
-  check('gate-regressions', process.execPath, ['--test', '--test-reporter=tap', 'scripts/prospectus-quality-gate.test.mjs', 'scripts/verify-prospectus-acceptance.test.mjs'], parseTap);
+  check('gate-regressions', process.execPath, ['--test', '--test-reporter=tap', 'scripts/prospectus-quality-gate.test.mjs',
+    'scripts/verify-prospectus-acceptance.test.mjs', 'scripts/publish-prospectus-quality.test.mjs'], parseTap);
   check('database-migrations', process.execPath, ['db/migrate.mjs']);
   check('worker-authoring', process.execPath, ['--test', '--test-concurrency=1', '--test-reporter=tap',
     'apps/worker/dist/file-authoring-quality.test.js', 'apps/worker/dist/file-authoring-delivery.test.js',

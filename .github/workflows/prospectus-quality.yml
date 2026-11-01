@@ -1,4 +1,4 @@
-name: Prospectus release quality
+name: Prospectus mechanical quality
 
 on:
   pull_request:
@@ -11,12 +11,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: prospectus-quality-${{ github.ref }}
+  group: prospectus-quality-mechanical-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  prospectus-quality:
-    name: prospectus-quality
+  prospectus-quality-mechanical:
+    name: prospectus-quality-mechanical
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -55,25 +55,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libreoffice-writer fonts-noto-cjk ripgrep
           echo "BONDBUDDY_TEST_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
-      # No acceptance evidence is embedded in the repository or public artifacts.
-      # Missing private real-model acceptance must fail, never silently skip.
-      - name: Require mechanical regressions and current real-model golden-case acceptance
-        run: node scripts/prospectus-quality-gate.mjs run .local/prospectus-quality.json
-      - name: Retain passing evidence for this commit
+      # This job does not receive private acceptance or issue release receipts.
+      # The independent prospectus-release-acceptance status comes only from the
+      # controlled Linux publisher after the full gate and private human review.
+      - name: Require all mechanical regressions without authorizing release
+        run: node scripts/prospectus-quality-gate.mjs validate
+      - name: Retain mechanical logs only
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: prospectus-quality-${{ github.sha }}
-          path: |
-            .local/prospectus-quality.json
-            .local/prospectus-quality-logs/
-          if-no-files-found: error
-          include-hidden-files: true
-          retention-days: 7
-      - name: Retain failure logs without creating passing evidence
-        if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: prospectus-quality-failed-${{ github.sha }}
+          name: prospectus-quality-mechanical-${{ github.sha }}
           path: .local/prospectus-quality-logs/
           if-no-files-found: warn
           include-hidden-files: true

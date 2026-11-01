@@ -25,6 +25,7 @@
     "quality:prospectus": "node scripts/prospectus-quality-gate.mjs run",
     "quality:prospectus:validate": "node scripts/prospectus-quality-gate.mjs validate",
     "quality:prospectus:verify": "node scripts/prospectus-quality-gate.mjs verify",
+    "quality:prospectus:publish-status": "node scripts/publish-prospectus-quality.mjs",
     "start:api": "npm start -w @bondbuddy/api",
     "migrate:api": "node db/migrate.mjs",
     "storage:lifecycle": "npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/api && npm run storage:lifecycle -w @bondbuddy/api",
