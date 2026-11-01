@@ -141,7 +141,9 @@
             "currency": "CNY",
             "pricing_status": "priced",
             "last_error_code": null,
-            "credit_settled_points": "600"
+            "credit_settled_points": "600",
+            "latest_attempt_id": "att_syn_1",
+            "exec_log_available": true
           },
           {
             "run_id": "run_syn_2",
@@ -162,7 +164,9 @@
             "currency": null,
             "pricing_status": null,
             "last_error_code": "DELIVERY_FAILED",
-            "credit_settled_points": "0"
+            "credit_settled_points": "0",
+            "latest_attempt_id": null,
+            "exec_log_available": false
           }
         ],
         "next_cursor": null

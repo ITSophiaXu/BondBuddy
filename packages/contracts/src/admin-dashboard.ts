@@ -72,7 +72,10 @@ const AdminDashboardTaskSchema = obj({
   currency: nullable(currency),
   pricing_status: nullable(pricingStatus),
   last_error_code: nullable(errorCode),
-  credit_settled_points: Int64Schema
+  credit_settled_points: Int64Schema,
+  // Latest attempt that has private execution evidence; null when none exists for this run.
+  latest_attempt_id: nullable(id),
+  exec_log_available: Type.Boolean()
 });
 
 export const adminDashboardSchemas = {

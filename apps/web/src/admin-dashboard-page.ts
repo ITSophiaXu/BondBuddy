@@ -1,11 +1,13 @@
 import {Value} from '@sinclair/typebox/value';
 import {
   adminDashboardSchemas,
+  schemas,
   type AdminDashboardOverview,
   type AdminDashboardTask,
   type AdminDashboardTasks,
   type AdminDashboardUser,
-  type AdminDashboardUsers
+  type AdminDashboardUsers,
+  type AdminExecLog
 } from '@bondbuddy/contracts';
 import {ApiClient, ApiError, friendlyError} from './api.js';
 import {date, esc} from './ui.js';
@@ -104,10 +106,26 @@ export function dashboardTasksHtml(items: AdminDashboardTask[]): string {
     <td>${esc(dashboardCost(item.cost_amount, item.currency))}<small>${esc(item.pricing_status ?? '未定价')}</small></td>
     <td>${esc(item.last_error_code ?? '—')}</td>
     <td>${esc(points(item.credit_settled_points))}</td>
+    <td>${item.exec_log_available && item.latest_attempt_id
+      ? `<button type="button" class="text-button" data-dashboard-exec-log="${esc(item.latest_attempt_id)}">查看执行日志</button>`
+      : '—'}</td>
   </tr>`).join('');
   return `<div class="admin-dashboard-table" role="region" aria-label="任务明细" tabindex="0"><table>
-    <thead><tr><th>任务</th><th>用户</th><th>项目</th><th>类型</th><th>状态 / 阶段</th><th>耗时</th><th>模型尝试</th><th>输入 / 输出 tokens</th><th>平台成本</th><th>最近错误</th><th>已结算积分</th></tr></thead>
+    <thead><tr><th>任务</th><th>用户</th><th>项目</th><th>类型</th><th>状态 / 阶段</th><th>耗时</th><th>模型尝试</th><th>输入 / 输出 tokens</th><th>平台成本</th><th>最近错误</th><th>已结算积分</th><th>执行日志</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
+}
+
+/** Private attempt log viewer; only reachable through the audited log_reader route. */
+export function dashboardExecLogHtml(log: AdminExecLog | null, error: string): string {
+  if (error) return `<p role="alert">${esc(error)}</p>`;
+  if (!log) return '';
+  return `<section class="admin-dashboard-exec-log" aria-label="执行日志" data-dashboard-exec-log-panel>
+    <header><h2>执行日志 ${esc(log.attempt_id)}</h2>
+      <button type="button" class="text-button" data-dashboard-exec-log-download>下载 .log</button>
+      <button type="button" class="text-button" data-dashboard-exec-log-close>关闭</button></header>
+    <p>${number(log.byte_size)} 字节${log.truncated ? '（超出上限，已截断）' : ''} · sha256 ${esc(log.sha256)}</p>
+    <pre data-dashboard-exec-log-body>${esc(log.body)}</pre>
+  </section>`;
 }
 
 export function dashboardForbiddenHtml(): string {
@@ -139,6 +157,9 @@ export class AdminDashboardPage {
   private loading = false;
   private error = '';
   private forbidden = false;
+  private execLog: AdminExecLog | null = null;
+  private execLogError = '';
+  private execLogLoading = false;
   constructor(private api: ApiClient, private shell: (html: string, section: string) => void, private active: () => boolean) {}
   dispose() { this.controller.abort(); }
   private live() { return this.active() && !this.controller.signal.aborted; }
@@ -203,6 +224,31 @@ export class AdminDashboardPage {
     void this.refresh();
   }
 
+  private async showExecLog(attemptId: string) {
+    if (!attemptId || this.execLogLoading) return;
+    this.execLogLoading = true; this.execLog = null; this.execLogError = ''; this.draw();
+    try {
+      const log = await this.api.request<AdminExecLog>('GET', `/admin/exec-logs/${encodeURIComponent(attemptId)}`, undefined, {}, this.controller.signal);
+      if (!Value.Check(schemas.AdminExecLogResponse, log)) throw Error('Invalid execution log');
+      if (this.live()) this.execLog = log;
+    } catch (error) {
+      if (this.live()) this.execLogError = error instanceof ApiError && error.status === 404
+        ? '无权限或执行日志不存在。' : friendlyError(error, 'read');
+    } finally {
+      this.execLogLoading = false;
+      if (this.live()) this.draw();
+    }
+  }
+
+  private downloadExecLog() {
+    if (!this.execLog) return;
+    const url = URL.createObjectURL(new Blob([this.execLog.body], {type: 'text/plain;charset=utf-8'}));
+    const anchor = document.createElement('a');
+    anchor.href = url; anchor.download = `exec-${this.execLog.attempt_id}.log`;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
   private draw() {
     if (!this.live()) return;
     if (this.forbidden) { this.shell(dashboardForbiddenHtml(), 'projects'); return; }
@@ -214,6 +260,8 @@ export class AdminDashboardPage {
       ${filtersHtml(this.filters)}
       <section aria-label="用户明细"><header><h2>用户</h2></header>${this.loading && !this.users.length ? '<p role="status">正在读取用户明细…</p>' : dashboardUsersHtml(this.users, this.filters.userId || null)}${this.usersCursor ? `<button type="button" class="text-button" data-dashboard-more-users ${this.loading ? 'disabled' : ''}>加载更多用户</button>` : ''}</section>
       <section aria-label="任务明细"><header><h2>任务</h2></header>${this.loading && !this.tasks.length ? '<p role="status">正在读取任务明细…</p>' : dashboardTasksHtml(this.tasks)}${this.tasksCursor ? `<button type="button" class="text-button" data-dashboard-more-tasks ${this.loading ? 'disabled' : ''}>加载更多任务</button>` : ''}</section>
+      ${this.execLogLoading ? '<p role="status">正在读取执行日志…</p>' : ''}
+      ${dashboardExecLogHtml(this.execLog, this.execLogError)}
     </section>`, 'projects');
     document.querySelector('[data-dashboard-refresh]')?.addEventListener('click', () => void this.refresh());
     document.querySelector('[data-dashboard-filters]')?.addEventListener('submit', event => {
@@ -231,5 +279,11 @@ export class AdminDashboardPage {
       button.addEventListener('click', () => this.setUser(button.dataset.dashboardUserFilter ?? '')));
     document.querySelector('[data-dashboard-more-users]')?.addEventListener('click', () => void this.moreUsers());
     document.querySelector('[data-dashboard-more-tasks]')?.addEventListener('click', () => void this.moreTasks());
+    document.querySelectorAll<HTMLButtonElement>('[data-dashboard-exec-log]').forEach(button =>
+      button.addEventListener('click', () => void this.showExecLog(button.dataset.dashboardExecLog ?? '')));
+    document.querySelector('[data-dashboard-exec-log-close]')?.addEventListener('click', () => {
+      this.execLog = null; this.execLogError = ''; this.draw();
+    });
+    document.querySelector('[data-dashboard-exec-log-download]')?.addEventListener('click', () => this.downloadExecLog());
   }
 }

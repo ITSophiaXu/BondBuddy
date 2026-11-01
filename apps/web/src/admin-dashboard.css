@@ -16,3 +16,5 @@
 .admin-dashboard-table tbody tr.selected{background:#eef6ff}
 .admin-dashboard-table small{display:block;color:#5b6b76;font-size:.78rem;white-space:normal}
 .admin-dashboard-user-filter{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.admin-dashboard-exec-log{margin:16px 0;border:1px solid #d9e2e8;border-radius:10px;padding:12px}
+.admin-dashboard-exec-log pre{max-height:420px;overflow:auto;background:#0f1720;color:#d7e2ea;padding:12px;border-radius:8px;font-size:.8rem;white-space:pre-wrap}

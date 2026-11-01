@@ -94,6 +94,16 @@ test('synthetic durable Codex attempts write #79 rows, re-ask under lease, pause
     assert.deepEqual(rows.map(x => [x.attempt_no, x.status, x.outcome, x.error_code]), [[1, 'failed', 'failed', 'MODEL_OUTPUT_SCHEMA_INVALID'], [2, 'completed', 'completed', null]]);
     assert.deepEqual([rows[1].input_tokens, rows[1].cached_input_tokens, rows[1].output_tokens, rows[1].reasoning_tokens, rows[1].total_tokens], [8418, 6784, 46, 33, 8464]);
     assert.ok(rows.every(x => x.usage_status === 'measured' && x.model_id === 'deepseek-flash' && x.prompt_snapshot_id === ok.promptRef && x.provider_request_id_status === 'unknown' && x.pricing_status === 'unknown' && x.trace_id === ok.runId && x.framework_thread_id && x.duration_ms >= 0 && x.model_config_version === 'codex-deepseek-flash-test'));
+    const execLogs = (await pool.query(`SELECT a.attempt_no,l.object_key,l.sha256,l.byte_size,l.truncated FROM bb_codex_exec_logs l
+      JOIN bb_model_call_attempts a ON a.id=l.attempt_id WHERE a.job_id=$1 ORDER BY a.attempt_no`, [ok.lease.jobId])).rows;
+    assert.equal(execLogs.length, 2, 'every attempt persists its private execution log, including the re-ask');
+    for (const log of execLogs) {
+      const logBytes = await blobs.get(log.object_key);
+      assert.equal(createHash('sha256').update(logBytes).digest('hex'), String(log.sha256).trim());
+      assert.equal(logBytes.length, Number(log.byte_size));
+      assert.equal(log.truncated, false);
+      assert.match(logBytes.toString('utf8'), /^\[stdout\]\n/);
+    }
     assert.equal((await jobSnapshot(pool, owner, ok.runId)).state, 'running', 'a retryable failure keeps the job running');
     const events = (await pool.query("SELECT event->>'kind' AS kind FROM bb_observability_events WHERE job_id=$1 AND event->>'kind' LIKE 'model.%' ORDER BY created_at,id", [ok.lease.jobId])).rows.map(x => x.kind);
     assert.deepEqual(events.filter(k => k === 'model.call_started').length, 2);

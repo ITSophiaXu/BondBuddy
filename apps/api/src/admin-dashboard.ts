@@ -143,7 +143,9 @@ const taskRow = (row: any) => ({
   currency: row.currency ?? null,
   pricing_status: row.pricing_status ?? null,
   last_error_code: row.last_error_code ?? null,
-  credit_settled_points: points(row.credit_settled_points)
+  credit_settled_points: points(row.credit_settled_points),
+  latest_attempt_id: row.latest_attempt_id ?? null,
+  exec_log_available: row.latest_attempt_id !== null && row.latest_attempt_id !== undefined
 });
 
 async function auditRead(client: PoolClient, actorId: string, purpose: string, filter: DashboardFilter) {
@@ -260,7 +262,7 @@ export async function adminDashboardTasks(pool: Pool, actorId: string, filter: D
         r.task_kind,r.state,r.stage,r.created_at,r.updated_at,
         GREATEST(0,FLOOR(EXTRACT(EPOCH FROM (r.updated_at-r.created_at))*1000))::bigint::text AS duration_ms,
         usage.model_attempts,usage.input_tokens,usage.output_tokens,usage.cost_amount,usage.currency,usage.pricing_status,
-        err.last_error_code,credits.credit_settled_points
+        err.last_error_code,credits.credit_settled_points,exec_log.attempt_id AS latest_attempt_id
       FROM bb_runs r
       JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id
       LEFT JOIN bb_users u ON u.id=r.owner_user_id
@@ -288,6 +290,12 @@ export async function adminDashboardTasks(pool: Pool, actorId: string, filter: D
         FROM bb_credit_events e
         WHERE e.owner_user_id=r.owner_user_id AND e.run_id=r.id AND e.kind='settle'
       ) credits ON true
+      LEFT JOIN LATERAL (
+        SELECT l.attempt_id
+        FROM bb_codex_exec_logs l
+        WHERE l.owner_user_id=r.owner_user_id AND l.run_id=r.id
+        ORDER BY l.created_at DESC,l.attempt_id DESC LIMIT 1
+      ) exec_log ON true
       WHERE ($1::timestamptz IS NULL OR r.created_at>=$1)
         AND ($2::timestamptz IS NULL OR r.created_at<=$2)
         AND ($3::text IS NULL OR r.state=$3)
