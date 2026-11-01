@@ -70,6 +70,68 @@ async function setup(page:Page,{versions=false,purpose='update',retry=false}={})
   await expect(page.locator('[data-prospectus-heading]')).toBeVisible();};await reenter();return{state,calls,reenter};
 }
 const history=(page:Page)=>page.locator('[data-prospectus-history]');
+async function dragFiles(page:Page,names:string[],empty=false){
+  return page.evaluateHandle(({names,bytes})=>{const data=new DataTransfer();for(const name of names)data.items.add(new File([new Uint8Array(bytes)],name,{type:name.endsWith('.pdf')?'application/pdf':name.endsWith('.txt')?'text/plain':'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}));return data;},{names,bytes:empty?[]:[...bytes]});
+}
+
+test('reference upload matches the material picker, supports keyboard selection, and fits narrow screens',async({page})=>{
+  await setup(page);const picker=page.getByRole('button',{name:'上传历史／参考稿',exact:true});
+  await expect(picker).toHaveText('点击或拖入文件');await expect(picker).toHaveAttribute('aria-describedby','reference-upload-hint');
+  await expect(picker).toHaveCSS('border-top-style','dashed');
+  await expect(page.locator('.prospectus-panel-heading button')).toHaveCount(0);
+  const out=process.env.BB_REFERENCE_DROP_EVIDENCE;if(out)await mkdir(out,{recursive:true});
+  for(const width of [1440,390,320]){
+    await page.setViewportSize({width,height:960});
+    const bounds=await picker.boundingBox(),files=await page.locator('[data-prospectus-files]').boundingBox();
+    expect(bounds!.width).toBeCloseTo(files!.width,0);expect(bounds!.height).toBeGreaterThanOrEqual(90);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    if(out)await page.locator('.prospectus-panel').screenshot({path:`${out}/implementation-empty-${width}.png`});
+  }
+  await picker.focus();const chooser=page.waitForEvent('filechooser');await page.keyboard.press('Enter');
+  await(await chooser).setFiles({name:'键盘选择募集书.docx',mimeType:mime,buffer:bytes});
+  await expect(page.locator('.reference-file.is-selected')).toContainText('键盘选择募集书.docx');
+  await expect(picker).toBeEnabled();
+});
+
+test('reference drag feedback survives child transitions and clears on leaving or dropping',async({page})=>{
+  const f=await setup(page),panel=page.locator('.reference-prospectus'),picker=page.locator('.reference-upload-picker');
+  const text=await page.evaluateHandle(()=>{const data=new DataTransfer();data.setData('text/plain','not a file');return data;});
+  await picker.dispatchEvent('dragover',{dataTransfer:text});await expect(panel).not.toHaveClass(/is-dragging/);await text.dispose();
+  const data=await dragFiles(page,['拖入募集书.pdf']);
+  await picker.dispatchEvent('dragover',{dataTransfer:data});await expect(panel).toHaveClass(/is-dragging/);
+  await expect(picker).toHaveCSS('background-color','rgb(237, 244, 229)');
+  await picker.evaluate(el=>el.dispatchEvent(new DragEvent('dragleave',{bubbles:true,relatedTarget:el.querySelector('span')})));
+  await expect(panel).toHaveClass(/is-dragging/);
+  const out=process.env.BB_REFERENCE_DROP_EVIDENCE;if(out)await panel.screenshot({path:`${out}/implementation-dragging.png`});
+  await panel.dispatchEvent('dragleave',{relatedTarget:null});await expect(panel).not.toHaveClass(/is-dragging/);
+  // The whole reference card remains a drop target, including the file-list empty state.
+  await page.locator('.reference-empty').dispatchEvent('drop',{dataTransfer:data});await data.dispose();
+  await expect(page.locator('.reference-file.is-selected')).toContainText('拖入募集书.pdf');
+  await expect(panel).not.toHaveClass(/is-dragging/);
+  expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);
+  expect(f.calls.filter(c=>/runs|authoring|wallet/.test(c.path))).toEqual([]);
+});
+
+test('reference drops reject invalid files and suppress a second upload while saving',async({page})=>{
+  const f=await setup(page),picker=page.locator('.reference-upload-picker');
+  for(const [names,empty,message] of [[['a.pdf','b.pdf'],false,'每次请选择一份'],[['错误.txt'],false,'请上传不超过 100 MB'],[['空文件.pdf'],true,'请上传不超过 100 MB']] as const){
+    const data=await dragFiles(page,[...names],empty);await picker.dispatchEvent('drop',{dataTransfer:data});await data.dispose();
+    await expect(page.getByRole('alert')).toContainText(message);expect(f.calls.filter(c=>c.method!=='GET')).toEqual([]);
+  }
+  let release!:()=>void;const blocked=new Promise<void>(resolve=>release=resolve);
+  await page.route('**/materials/uploads/*/bytes',async route=>{await blocked;await route.fallback();});
+  const data=await dragFiles(page,['正确参考稿.docx']);
+  try{
+    await picker.dispatchEvent('drop',{dataTransfer:data});await expect(picker).toBeDisabled();
+    await expect.poll(()=>f.calls.filter(c=>c.path.endsWith('/materials/uploads')).length).toBe(1);
+    await picker.dispatchEvent('dragover',{dataTransfer:data});await expect(page.locator('.reference-prospectus')).not.toHaveClass(/is-dragging/);
+    await picker.dispatchEvent('drop',{dataTransfer:data});
+    expect(f.calls.filter(c=>c.path.endsWith('/materials/uploads'))).toHaveLength(1);
+  }finally{release();await data.dispose();}
+  await expect(page.locator('.reference-file.is-selected')).toContainText('正确参考稿.docx');
+  await expect(picker).toBeEnabled();expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);
+});
+
 async function selectFile(page:Page,name='合成新稿.docx'){const chooser=page.waitForEvent('filechooser');await page.locator('#choose-prospectus-version').click();await(await chooser).setFiles({name,mimeType:name.endsWith('.txt')?'text/plain':mime,buffer:bytes});}
 async function adopt(page:Page,id:string){await history(page).evaluate(el=>(el as HTMLDetailsElement).open=true);await page.locator('[data-use-version="'+id+'"]').click();await expect(page.locator('dialog[open]')).toBeVisible();}
 
@@ -243,7 +305,7 @@ test('uploaded references remain visible on reentry and only previous generated 
 
 test('reference upload visual comparison at desktop and mobile widths',async({page})=>{
   const out=process.env.BB_REFERENCE_EVIDENCE;if(!out)return;await mkdir(out,{recursive:true});
-  for(const width of [1440,390])for(const saved of [false,true]){
+  for(const width of [1440,390,320])for(const saved of [false,true]){
     const f=await setup(page);await page.setViewportSize({width,height:960});
     if(saved){f.state.versions=[version(1)];f.state.current_version_id='v1';f.state.selection_revision=1;await page.evaluate(()=>window.panelFixture.refresh());await history(page).evaluate(el=>(el as HTMLDetailsElement).open=true);}
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

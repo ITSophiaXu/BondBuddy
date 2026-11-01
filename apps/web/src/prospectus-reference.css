@@ -19,12 +19,12 @@
 .reference-retained { margin-top: 5px; color: #69766b; }
 .reference-prospectus .reference-selection-help { margin-top: 8px; }
 .reference-prospectus .reference-selection-help .text-button { padding: 0 3px; }
-.reference-prospectus .reference-empty { padding: 18px 16px; border: 1px dashed #ced8c9; border-radius: 8px; }
+.reference-prospectus .reference-empty { padding: 0; }
 .reference-generated-history { margin-top: 14px; }
 .reference-prospectus .prospectus-upload-editor > p { display: none; }
 .reference-prospectus #prospectus-status:not(:empty) { margin: 12px 0 0; padding: 0; background: none; }
 .reference-prospectus #prospectus-status[data-tone="error"] { color: #923b2d; }
-.reference-prospectus.is-dragging { outline: 2px solid #577552; outline-offset: 3px; }
+.reference-prospectus .reference-upload-picker { justify-content: center; margin-top: 0; margin-bottom: 20px; }
 @media (max-width: 900px) {
   .reference-prospectus .reference-file { display: grid; grid-template-columns: 36px minmax(0, 1fr); }
   .reference-file .prospectus-version-actions { grid-column: 2; justify-content: flex-start; }
