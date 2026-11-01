@@ -53,7 +53,7 @@ input.json 的 target 是本次目标发行人、市场品种、报告期和项�
 
 需要挂接缺项或问题说明时使用 add_comment，指定原段落 node_id、before 和批注 text，遵守本任务关于批注文案和正文占位的规定。多段落单元格用字符串数组逐段更新并保留样式。确实没有必要修改时使用 `no_changes --input input.json --operations output/operations.json --reason "具体理由"`；不得用无变化理由跳过应完成的更新。
 
-受控流程中的正式交付依据为 output/operations.json 和锁定底稿；模型自行写出的 Word 工作文件不作为正式成果。仍写 output/delivery.md，准确说明实际更新、未支持改动和未执行的视觉检查。worker 的格式诊断在交付后独立运行，不代表已完成内容或专业审核。下文直接生成双 Word 的要求适用于没有 format_tools 的旧任务、PDF 重建和无原稿首稿。
+受控流程中的正式交付依据为 output/operations.json 和锁定底稿；模型自行写出的 Word 工作文件不作为正式成果。仍写 output/delivery.md，准确说明实际更新、未支持改动和未执行的视觉检查。worker 在发布成果前独立检查双稿一致性、原稿内容与章节保留及格式；质量检查失败不能标记为成功。检查通过仍不代表已完成财务事实、法规或页面视觉验收。下文直接生成双 Word 的要求适用于没有 format_tools 的旧任务、PDF 重建和无原稿首稿。
 
 ### 仅无 format_tools 时适用的直接交付流程
 
@@ -61,12 +61,12 @@ baseline_path 指定实际编辑基线：有 DOCX 时保留原包的样式、字
 
 非 DOCX 原稿要如实重建基线为 output/baseline.docx，保留原文与表结构并在交付说明写清重建限制。没有任何原稿时，直接编制完整可编辑首稿；output/tracked.docx、output/clean.docx、output/baseline.docx 为同一首稿的副本，不伪造旧文或删除记录。
 
-必须实际写出 output/tracked.docx 和 output/clean.docx。清洁版为接受修订后的新稿，不含修订标记；不是旧原稿或空模板。baseline.docx 和 delivery.md 为辅助资料，不是交付前置。两份 Word 写好后即完成交付，不运行额外的内容、格式或修订一致性检查，不因检查未执行而停留、重做或失败。生成清洁版可以使用：
+必须实际写出 output/tracked.docx 和 output/clean.docx。清洁版为接受修订后的新稿，不含修订标记；不是旧原稿或空模板。worker 使用锁定原稿独立检查双稿内容与格式一致、拒绝修订可恢复原稿、章节和实质内容未大幅删减。生成两个文件或模型正常退出不足以证明交付通过。原有内容逐章保留，不能依靠缩小字体、重排目录或填充无关文字凑长度；跨期更新不能用无修改、仅批注或全局替换日期冒充已更新本期财务事实。生成清洁版可以使用：
 
 ```
 /opt/venv/bin/python -m bondbuddy_file_authoring.check clean output/tracked.docx output/clean.docx
 ```
 
-以上 clean 命令只用于接受修订并写出清洁版；不要求运行检查子命令。保持实际修订编辑要求，不能把未执行的内容或兼容性检查写成通过。
+以上 clean 命令只用于接受修订并写出清洁版。质量检查由 worker 独立执行；不能修改检查输入、删除失败证据或把未执行的内容、事实与兼容性检查写成通过。
 
 在 output/delivery.md 用中文说明实际更新范围、缺项、基线所属企业及版本、采用的知识、检查方法和局限。没有页面渲染器时写明“未进行页面视觉检查”，不得声称排版或 Word/WPS 已验收。保留修订稿原件，预览转换不能覆盖它。交付完后用普通中文简述结果，不需要固定 JSON 字段。

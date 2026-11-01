@@ -33,7 +33,7 @@ test('explicit template choice is independent of random material ids; previous o
   input.materials.unshift({ ...input.materials[0]!, pin: { ...input.materials[0]!.pin, material_id: 'aaa' } });
   assert.equal(editingSource(input)?.pin.material_id, 'source');
   input.manifest.authoring.previous_output = { artifact_id: 'prior', version: 1, sha256: 'b'.repeat(64), run_id: 'prior-run', input_revision: 1 };
-  input.materials.push({ ...input.materials[0]!, pin: { ...input.materials[0]!.pin, material_id: 'prior', role: 'project_output' } });
+  input.materials.push({ ...input.materials[0]!, pin: { ...input.materials[0]!.pin, material_id: 'prior', sha256:'b'.repeat(64), role: 'project_output' } });
   assert.equal(editingSource(input)?.pin.material_id, 'prior');
 });
 
@@ -45,6 +45,32 @@ test('a pinned review source can use a non-historical material role', () => {
     source_material:{material_id:'source',material_version:1,sha256:input.materials[0]!.pin.sha256}};
   input.manifest.authoring.format_policy={...input.manifest.authoring.format_policy!,selection:'review_source'} as NonNullable<typeof input.manifest.authoring.format_policy>;
   assert.equal(editingSource(input)?.pin.role,'audit');
+  // Old snapshots need the exact review pin even before format_policy existed.
+  delete input.manifest.authoring.format_policy;
+  assert.equal(editingSource(input)?.pin.role,'audit');
+  input.materials[0]!.pin.sha256='d'.repeat(64);
+  assert.throws(()=>editingSource(input),/INPUT_REVISION_CONFLICT/);
+});
+
+test('continuation requires the selected artifact version and hash, with no fallback to another original',()=>{
+  const {input}=fixture();
+  input.manifest.authoring.previous_output={artifact_id:'prior',version:2,sha256:'b'.repeat(64),run_id:'prior-run',input_revision:1};
+  assert.throws(()=>editingSource(input),/INPUT_REVISION_CONFLICT/);
+  input.materials.push({...input.materials[0]!,pin:{material_id:'prior',material_version:1,sha256:'b'.repeat(64),role:'project_output'}});
+  assert.throws(()=>editingSource(input),/INPUT_REVISION_CONFLICT/);
+  input.materials[1]!.pin.material_version=2;
+  assert.equal(editingSource(input)?.pin.material_id,'prior');
+  input.materials[1]!.pin.sha256='c'.repeat(64);
+  assert.throws(()=>editingSource(input),/INPUT_REVISION_CONFLICT/);
+});
+
+test('a declared original cannot disappear from the locked inputs and become a new manuscript',()=>{
+  const {input}=fixture(false);
+  input.manifest.authoring.source_prospectuses=[{...input.materials[0]!.pin,issuer_name:null,
+    relation:'same_issuer',market:null,offering:null,reporting_periods:[],status:'user_asserted'}];
+  assert.equal(editingSource(input)?.pin.material_id,'source');
+  input.materials=[];
+  assert.throws(()=>editingSource(input),/INPUT_REVISION_CONFLICT/);
 });
 
 test('normal model exit without operations preserves private evidence and reports the actual failure', {skip:!python}, async()=>{
@@ -71,6 +97,32 @@ test('normal model exit without operations preserves private evidence and report
     f.ctx.values.set('model_generation',value);
     for(let i=0;i<2;i++)assert.deepEqual(await fileAuthoringDeliveryStage().run(f.ctx),{kind:'fail',code:'WORD_FORMAT_OPERATIONS_MISSING'});
     assert.equal(calls,1);assert.equal(JSON.stringify(value.summary).includes('Synthetic'),false);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test('a same-issuer new reporting period cannot be delivered as unchanged source',{skip:!python},async()=>{
+  const f=fixture(),root=await mkdtemp(join(tmpdir(),'bb-unupdated-period-'));
+  const period=(year:string)=>({start:`${year}-01-01`,end:`${year}-12-31`,period_kind:'annual' as const,
+    scope:'consolidated' as const,status:'user_asserted' as const,evidence_refs:[]});
+  f.input.manifest.update_details.target_reporting_periods=[period('2025')];
+  f.input.manifest.authoring.source_prospectuses=[{...f.input.materials[0]!.pin,issuer_name:'合成发行人',relation:'same_issuer',
+    market:'sse',offering:'private',reporting_periods:[period('2024')],status:'user_asserted'}];
+  try{
+    const stage=fileAuthoringStage({load:async()=>f.input,model:options=>({name:'model_generation',run:async()=>{
+      await options.fileWorkspace!.prepare(root);
+      const data=JSON.parse(await readFile(join(root,'input.json'),'utf8'));
+      assert.equal(data.update_required,true);
+      await runFormatPython(['no_changes','--input',join(root,'input.json'),'--operations',join(root,'output/operations.json'),
+        '--reason','Synthetic no-change claim despite a different reporting target.']);
+      return {kind:'done',value:await options.fileWorkspace!.collect(root,{call_id:'call'} as any)};
+    }})});
+    const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error('expected result');
+    f.ctx.values.set('model_generation',result.value);
+    const delivery=await fileAuthoringDeliveryStage().run(f.ctx);
+    assert.equal(delivery.kind,'fail');if(delivery.kind!=='fail')throw Error('expected rejection');
+    assert.equal(delivery.code,'WORD_QUALITY_REJECTED');
+    const gate=delivery.checkpoint!.quality_gate as {report:{key:string}};
+    assert.match(f.objects.get(gate.report.key)!.toString(),/WORD_REPORTING_UPDATE_INCOMPLETE/);
   }finally{await rm(root,{recursive:true,force:true});}
 });
 
@@ -130,21 +182,28 @@ for (const invalid of [false, true]) test(`trusted finalization ${invalid ? 'rej
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('an existing snapshot without format policy retains the original direct-file delivery path',async()=>{
+test('an existing snapshot without format policy retains direct generation with independent host quality checks',{skip:!python},async()=>{
   const f=fixture(false),root=await mkdtemp(join(tmpdir(),'bb-format-legacy-'));
   try{
     const stage=fileAuthoringStage({load:async()=>f.input,model:options=>({name:'model_generation',run:async()=>{
       await options.fileWorkspace!.prepare(root);
       assert.equal(JSON.parse(await readFile(join(root,'input.json'),'utf8')).format_tools,undefined);
       for(const name of ['tracked.docx','clean.docx'])await writeFile(join(root,'output',name),f.source);
+      await writeFile(join(root,'output/baseline.docx'),'model-provided false baseline');
       return {kind:'done',value:await options.fileWorkspace!.collect(root,{call_id:'legacy-call'} as Parameters<NonNullable<typeof options.fileWorkspace>['collect']>[1])};
     }})});
     const result=await stage.run(f.ctx);assert.equal(result.kind,'done');
     if(result.kind!=='done')throw Error('expected result');
     f.ctx.values.set('model_generation',result.value);
+    const saved=result.value as FileAuthoringResult;
+    assert.equal(saved.files['baseline.docx']!.sha256,digest(f.source));
+    assert.ok(saved.files['input.json']);
     const delivery=await fileAuthoringDeliveryStage().run(f.ctx);
     assert.equal(delivery.kind,'deliver');
-    if(delivery.kind==='deliver')assert.equal(delivery.wordSummary?.format_execution,undefined);
+    if(delivery.kind==='deliver'){
+      assert.equal(delivery.wordSummary?.format_execution,undefined);
+      assert.equal((delivery.wordSummary!.quality_gate as {status:string}).status,'passed');
+    }
   }finally{await rm(root,{recursive:true,force:true});}
 });
 
