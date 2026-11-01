@@ -70,17 +70,24 @@ test(`legacy record authoring with explicit parse fixtures → ${live?'real prov
             parser:request=>runDocumentParser(request,{pythonExecutable:process.env.BONDBUDDY_TEST_PYTHON??'python3'})}}),'succeeded');
         }
         const details={...created.json().update_details,source_prospectuses:source?[source]:[]};
-        const patched=await send('PATCH',`/api/v1/projects/${project}`,{update_details:details},{'if-match':'1'});
+        const uploadedProject=await send('GET',`/api/v1/projects/${project}`);
+        assert.equal(uploadedProject.statusCode,200,uploadedProject.body);
+        const patched=await send('PATCH',`/api/v1/projects/${project}`,{update_details:details},{'if-match':String(uploadedProject.json().draft_revision)});
         assert.equal(patched.statusCode,200,patched.body);
         let draftRevision=patched.json().draft_revision;
         const message={message_id:randomUUID(),submission_request_id:randomUUID(),expected_message_version:null,body:'合成要求：明确2025年信息，缺项标待确认。',material_versions:[]};
         const saved=await send('POST',`/api/v1/projects/${project}/messages`,message);
         assert.equal(saved.statusCode,201,saved.body);
         const lockResponse=async()=>{
+          // Upload adoption and a delivered current version can advance both revisions.
+          const current=await send('GET',`/api/v1/projects/${project}`);
+          assert.equal(current.statusCode,200,current.body);draftRevision=current.json().draft_revision;
+          const versions=await send('GET',`/api/v1/projects/${project}/prospectus-versions`);
+          assert.equal(versions.statusCode,200,versions.body);
           const messagePage=await send('GET',`/api/v1/projects/${project}/messages`);
           assert.equal(messagePage.statusCode,200,messagePage.body);
           const messages=messagePage.json().project_message_set_ref;
-          return send('POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:draftRevision,material_versions:refs,
+          return send('POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:draftRevision,prospectus_selection_revision:versions.json().selection_revision,material_versions:refs,
             requirement_message_ids:messages.message_ids,project_message_set_ref:messages});
         };
         const lock=async()=>{
