@@ -14,6 +14,7 @@ import { ProjectFiles, clearProjectFileViews } from './project-files';
 import { BillingPage } from './billing-page';
 import { BillingPriceAdminPage } from './billing-price-admin';
 import { TaskRefundAdminPage } from './task-refund-admin-page';
+import { AdminDashboardPage } from './admin-dashboard-page';
 import { ProjectAssistant } from './project-assistant';
 import { projectListContext, withProjectContext, projectBackLink, projectSection, navigationProjectContext, projectWorkHref, rechargeHref } from './project-navigation';
 import { prototypeIcon, workspaceSteps } from './prototype-design';
@@ -29,6 +30,7 @@ import { MaterialWorkspace } from './material-workspace';
 import { carryHandoff, copyHandoffSource, mountBusinessHandoff } from './business-handoff';
 import { renderOcrReview, canLeaveOcrReview, disposeOcrReview } from './ocr-review';
 import './ocr-review.css';
+import './admin-dashboard.css';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import { UserFacingError } from './user-facing-error';
 import { sourceFields, readSourceFields, sourcePeriodSummary, sourceRequiredMessage, clearSourceSelections } from './source-prospectus.js';
@@ -89,6 +91,7 @@ let projectFiles: ProjectFiles | undefined;
 let billingPage: BillingPage | undefined;
 let billingPriceAdmin: BillingPriceAdminPage | undefined;
 let taskRefundAdmin: TaskRefundAdminPage | undefined;
+let adminDashboard: AdminDashboardPage | undefined;
 let globalAssistant: ProjectAssistant | undefined;
 let artifactPage: ArtifactPage | undefined;
 let projectExecution: ProjectExecution | undefined;
@@ -150,6 +153,7 @@ function clearPrivateState() {
   billingPage?.dispose(); billingPage = undefined;
   billingPriceAdmin?.dispose(); billingPriceAdmin=undefined;
   taskRefundAdmin?.dispose(); taskRefundAdmin=undefined;
+  adminDashboard?.dispose(); adminDashboard=undefined;
   artifactPage?.dispose(); artifactPage = undefined;
   projectExecution?.dispose(); projectExecution = undefined;
   projectConversation?.dispose(); projectConversation = undefined;
@@ -445,6 +449,7 @@ async function renderRoute() {
   if (/^review(\?|$)/.test(requested)) { const query=new URLSearchParams(requested.split('?')[1]??''); if(query.has('new'))renderNewReview(api,shell,()=>token===epoch,query);else{reviewEntry=new ReviewEntry(api,shell,()=>token===epoch);await reviewEntry.render(query.get('project')??undefined);}return; }
   if(requested==='/billing/prices'){billingPriceAdmin=new BillingPriceAdminPage(api,shell,()=>token===epoch,identity);await billingPriceAdmin.render();return;}
   if(requested==='/billing/task-refunds'){taskRefundAdmin=new TaskRefundAdminPage(api,shell,()=>token===epoch,identity);await taskRefundAdmin.render();return;}
+  if(requested==='/admin/dashboard'){adminDashboard=new AdminDashboardPage(api,shell,()=>token===epoch);await adminDashboard.render();return;}
   if(requested==='/account'||requested.startsWith('/account?')||requested==='billing'||requested.startsWith('billing?')||requested.startsWith('payment/')||requested==='/data-policy'){
     const query=new URLSearchParams(requested.split('?')[1]??'');
     const project=query.get('project')??undefined;
