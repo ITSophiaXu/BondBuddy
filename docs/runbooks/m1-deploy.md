@@ -2,7 +2,13 @@
 
 Everything lives in `deploy/m1/`. This runbook covers target-host requirements, first install, deploy, rollback, legacy restore tooling and TLS. It does not replace the release record: every production deploy, rollback and restore is logged in `deploy/m1/state/releases.log` on the host, and must also be noted on the release Issue/PR with the commit, migrations, verification and rollback plan. From 2026-09-29, releases and the host schedule do not create new backups by project-owner decision. Existing backups remain subject to the configured retention policy.
 
-## Stack
+## Mandatory prospectus quality gate (2026-11-01)
+
+Before a release or image export, run `npm run quality:prospectus` on the exact clean Linux candidate checkout and set `BB_RELEASE_QUALITY_RECEIPT` to the resulting `.local/prospectus-quality.json`. The scripts reject missing, failed, skipped, expired, or different-commit/tree evidence before release effects, including when all images are preloaded. Every image must carry the matching full `org.opencontainers.image.revision` label. Run again for the final merge commit; PR evidence cannot authorize a different release SHA. Emergency rollback may reuse an expired original pass only when its full commit and receipt SHA256 match the successful deployment record in `state/releases.log`; use the preserved `state/quality/<full-sha>.json`. See [policy and commands](../product-decisions/2026-11-01-prospectus-quality-gate.md), including the current GitHub billing/branch-protection limitations. Manual Docker commands outside these entry points remain an administrative bypass and must not be used as the release path.
+
+Full release authorization also requires `BB_PROSPECTUS_ACCEPTANCE_FILE`: a trusted private real-model golden-case acceptance for the current commit/tree, including locked source/input/output hashes and independent financial, chapter and rendered-output verification. Missing evidence fails the final required check; synthetic responses cannot satisfy it. `npm run quality:prospectus:validate` runs mechanical checks only and never issues a release receipt. Hosted CI intentionally fails if private evidence has not been supplied; use the same full command on a controlled Linux runner with authorized evidence. Never upload customer documents or the private acceptance file as public CI artifacts.
+
+## Stack services
 
 | service | image | notes |
 |---|---|---|

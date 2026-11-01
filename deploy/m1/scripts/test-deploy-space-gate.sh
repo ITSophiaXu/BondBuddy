@@ -18,22 +18,30 @@ cat > "$test_dir/deploy/m1/scripts/smoke.sh" <<'SH'
 echo smoke >> "$TEST_CALLS"
 SH
 chmod +x "$test_dir/deploy/m1/scripts/backup.sh" "$test_dir/deploy/m1/scripts/smoke.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$test_dir/deploy/m1/scripts/install-codex-file-sandbox.sh"
 cat > "$test_dir/bin/git" <<'SH'
 #!/usr/bin/env bash
 case " $* " in
   *' rev-parse --show-toplevel '*) printf '%s\n' "$TEST_ROOT" ;;
   *' rev-parse --verify '*) printf '%s\n' aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ;;
-  *' archive '*) echo archive >> "$TEST_CALLS" ;;
+  *' archive '*) exec 9>"$TEST_CALLS.lock"; flock 9; echo archive >> "$TEST_CALLS" ;;
   *) exit 1 ;;
 esac
 SH
+cat > "$test_dir/bin/node" <<'SH'
+#!/usr/bin/env bash
+[[ "$*" = *'prospectus-quality-gate.mjs verify '* ]] || exit 1
+echo quality-verify >> "$TEST_CALLS"
+[ "${TEST_QUALITY_MODE:-pass}" = pass ] || exit 9
+SH
 cat > "$test_dir/bin/tar" <<'SH'
 #!/usr/bin/env bash
-echo tar >> "$TEST_CALLS"
+exec 9>"$TEST_CALLS.lock"; flock 9; echo tar >> "$TEST_CALLS"
 SH
 cat > "$test_dir/bin/docker" <<'SH'
 #!/usr/bin/env bash
 case " $* " in
+  *' image inspect --format '*) printf '%s\n' "${TEST_IMAGE_REVISION:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}" ;;
   *' context inspect '*) printf 'unix:///var/run/docker.sock\n' ;;
   *' info --format '*)
     [ "$TEST_ROOT_MODE" = valid ] || exit 1
@@ -81,6 +89,8 @@ SH
 chmod +x "$test_dir/bin/"*
 export TEST_ROOT="$test_dir" TEST_CALLS="$test_dir/calls" TEST_INSPECT_COUNT="$test_dir/inspect-count"
 export BB_ENV_FILE="$test_dir/deploy/m1/.env" BB_STATE_DIR="$test_dir/state"
+export BB_RELEASE_QUALITY_RECEIPT="$test_dir/synthetic-receipt.json"
+printf '{}\n' > "$BB_RELEASE_QUALITY_RECEIPT"
 export PATH="$test_dir/bin:$PATH" TEST_ROOT_MODE=valid TEST_DF_MODE=valid
 unset DOCKER_HOST DOCKER_CONTEXT
 
@@ -96,61 +106,70 @@ run_case() {
     [ "$(cat "$test_dir/state/current")" = old-release ] || exit 1
     [ "$(cat "$test_dir/state/previous")" = old-release ] || exit 1
     if [ "$expected" = reject_after_archive ]; then
-      rg -q '^archive$' "$TEST_CALLS"
+      grep -Eq '^archive$' "$TEST_CALLS"
       forbidden='build|compose|backup|image rm|smoke'
     else
       forbidden='archive|tar|build|compose|backup|image rm|smoke'
     fi
-    if rg -q "$forbidden" "$TEST_CALLS"; then
+    if grep -Eq "$forbidden" "$TEST_CALLS"; then
       echo "$label: side effect before rejection" >&2; exit 1
     fi
   else
     [ "$result" -eq 0 ] || { echo "$label: unexpected rejection ($result)" >&2; cat "$test_dir/error" "$test_dir/output" "$TEST_CALLS" >&2; exit 1; }
-    rg -q '^archive$' "$TEST_CALLS"
-    rg -q 'compose' "$TEST_CALLS"
-    if rg -q '^backup ' "$TEST_CALLS"; then echo "$label: automatic backup invoked" >&2; exit 1; fi
+    grep -Eq '^archive$' "$TEST_CALLS"
+    grep -Eq 'compose' "$TEST_CALLS"
+    if grep -Eq '^backup ' "$TEST_CALLS"; then echo "$label: automatic backup invoked" >&2; exit 1; fi
   fi
   echo "PASS $label"
 }
 
 export TEST_IMAGES=partial TEST_FREE_BYTES=2684354560
+TEST_QUALITY_MODE=reject run_case 'quality failure rejects before Docker, archive or state switch' reject
+grep -Eq '^quality-verify$' "$TEST_CALLS"
+if grep -Eq '^df$|compose|build|archive' "$TEST_CALLS"; then echo 'quality failure caused release effects' >&2; exit 1; fi
+saved_receipt="$BB_RELEASE_QUALITY_RECEIPT"
+unset BB_RELEASE_QUALITY_RECEIPT
+run_case 'missing quality evidence rejects before release effects' reject
+grep -Eq 'BB_RELEASE_QUALITY_RECEIPT' "$test_dir/error"
+export BB_RELEASE_QUALITY_RECEIPT="$saved_receipt"
 printf 'BB_PROFILE=prod\nBB_HTTP_PORT=18090\nBB_DEPLOYMENT_TIER=production\nBB_NON_PRODUCTION_TEST_CHANNEL=enabled\n' > "$test_dir/deploy/m1/.env"
 run_case 'production rejects enabled test channel before archive' reject
-rg -q 'requires BB_DEPLOYMENT_TIER=preprod' "$test_dir/error"
+grep -Eq 'requires BB_DEPLOYMENT_TIER=preprod' "$test_dir/error"
 printf 'BB_PROFILE=prod\nBB_HTTP_PORT=18090\nBB_DEPLOYMENT_TIER=production\nBB_NON_PRODUCTION_TEST_CHANNEL=disabled\n' > "$test_dir/deploy/m1/.env"
 run_case 'local build rejects at 2.5 GiB' reject
-rg -q '2684354560 bytes available; requires 4294967296 bytes.*local Docker build' "$test_dir/error"
+grep -Eq '2684354560 bytes available; requires 4294967296 bytes.*local Docker build' "$test_dir/error"
 export TEST_FREE_BYTES=4294967296
 run_case 'local build passes at 4 GiB' pass
-rg -q 'build' "$TEST_CALLS"
+grep -Eq 'build' "$TEST_CALLS"
 export TEST_IMAGES=all TEST_FREE_BYTES=2684354560
 run_case 'four preloaded images pass at 2.5 GiB' pass
-if rg -q 'build' "$TEST_CALLS"; then echo 'unexpected build with preloaded images' >&2; exit 1; fi
+TEST_IMAGE_REVISION=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb run_case 'preloaded image with wrong revision rejects' reject_after_archive
+if grep -Eq 'build' "$TEST_CALLS"; then echo 'unexpected build with preloaded images' >&2; exit 1; fi
 export TEST_FREE_BYTES=2684354559
 run_case 'preloaded deploy rejects below 2.5 GiB' reject
-rg -q '2684354559 bytes available; requires 2684354560 bytes.*preloaded' "$test_dir/error"
+grep -Eq '2684354559 bytes available; requires 2684354560 bytes.*preloaded' "$test_dir/error"
 export TEST_DF_MODE=fail
 run_case 'df failure rejects' reject
-rg -q 'df failed.*2684354560 bytes.*preloaded' "$test_dir/error"
+grep -Eq 'df failed.*2684354560 bytes.*preloaded' "$test_dir/error"
 export TEST_DF_MODE=valid TEST_FREE_BYTES=unknown
 run_case 'malformed df output rejects' reject
-rg -q 'cannot read free bytes' "$test_dir/error"
+grep -Eq 'cannot read free bytes' "$test_dir/error"
 export TEST_FREE_BYTES=18446744073709551616
 run_case 'out-of-range df output rejects' reject
-rg -q '18446744073709551616 bytes outside shell integer range; required 2684354560 bytes' "$test_dir/error"
+grep -Eq '18446744073709551616 bytes outside shell integer range; required 2684354560 bytes' "$test_dir/error"
 export TEST_DF_MODE=valid TEST_ROOT_MODE=fail
 run_case 'unknown Docker data-root rejects' reject
-rg -q 'cannot determine Docker data-root' "$test_dir/error"
+grep -Eq 'cannot determine Docker data-root' "$test_dir/error"
 export TEST_ROOT_MODE=valid DOCKER_HOST=tcp://remote:2375
 run_case 'remote Docker endpoint rejects' reject
-rg -q 'not a local Unix socket' "$test_dir/error"
+grep -Eq 'not a local Unix socket' "$test_dir/error"
 unset DOCKER_HOST
 export TEST_IMAGES=vanish-api TEST_FREE_BYTES=2684354560
 run_case 'preloaded api disappears before build' reject_after_archive
-rg -q 'requires 4294967296 bytes.*api image missing' "$test_dir/error"
+grep -Eq 'requires 4294967296 bytes.*api image missing' "$test_dir/error"
 export TEST_IMAGES=vanish-egress
 run_case 'preloaded egress disappears before build' reject_after_archive
-rg -q 'requires 4294967296 bytes.*egress image missing' "$test_dir/error"
+grep -Eq 'requires 4294967296 bytes.*egress image missing' "$test_dir/error"
 
 # Pre-switch in-flight gate: checked after images exist, before migration or container switch.
 export TEST_IMAGES=all TEST_FREE_BYTES=4294967296
@@ -163,19 +182,19 @@ gate_case() {
   [ "$result" -eq "$expected_rc" ] || { echo "$label: exit $result, expected $expected_rc" >&2; cat "$test_dir/error" >&2; exit 1; }
   if [ "$expected_rc" -ne 0 ]; then
     [ "$(cat "$test_dir/state/current")" = old-release ] || { echo "$label: release state changed" >&2; exit 1; }
-    if rg -q '^backup |run --rm migrate|up -d|image rm|^smoke$' "$TEST_CALLS"; then
+    if grep -Eq '^backup |run --rm migrate|up -d|image rm|^smoke$' "$TEST_CALLS"; then
       echo "$label: switched or backed up before gate" >&2; exit 1
     fi
-    rg -q '^inflight-query$' "$TEST_CALLS"
+    grep -Eq '^inflight-query$' "$TEST_CALLS"
   fi
   echo "PASS $label"
 }
 gate_case 'gate defers when a run is in flight' 1 2 76
-rg -q '2 non-parse runs in flight' "$test_dir/error"
+grep -Eq '2 non-parse runs in flight' "$test_dir/error"
 gate_case 'gate reports unavailable run count' 1 fail 77
 gate_case 'gate rejects malformed run count' 1 'ERROR: x' 77
 gate_case 'gate passes with no run in flight' 1 0 0
-rg -q '^inflight-query$' "$TEST_CALLS"
-rg -q 'up -d --remove-orphans --wait' "$TEST_CALLS"
+grep -Eq '^inflight-query$' "$TEST_CALLS"
+grep -Eq 'up -d --remove-orphans --wait' "$TEST_CALLS"
 gate_case 'gate is off by default' 0 2 0
-if rg -q '^inflight-query$' "$TEST_CALLS"; then echo 'gate queried while disabled' >&2; exit 1; fi
+if grep -Eq '^inflight-query$' "$TEST_CALLS"; then echo 'gate queried while disabled' >&2; exit 1; fi
