@@ -325,4 +325,10 @@ export function installAdminDashboardRoutes(app: FastifyInstance, deps: Deps) {
     reply.header('cache-control', 'no-store');
     return adminDashboardTasks(deps.db(), actor, filter);
   });
+  // Access probe: returns {allowed} instead of 404 so the account page can hide the link.
+  app.get('/api/v1/admin/dashboard/access', {schema: {response: {200: schemas.AdminDashboardAccessResponse}}}, async (request, reply) => {
+    const userId = await deps.owner(request);
+    reply.header('cache-control', 'private, no-store');
+    return {allowed: (await operatorRoles(deps.db(), userId)).has('log_reader')};
+  });
 }

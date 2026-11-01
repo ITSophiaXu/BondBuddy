@@ -97,7 +97,9 @@ export const adminDashboardSchemas = {
   AdminDashboardTasksResponse: obj({
     items: Type.Array(AdminDashboardTaskSchema, {maxItems: 100}),
     next_cursor: nullable(cursor)
-  })
+  }),
+  // Lightweight access probe so the account page can show the operator link only to log_reader holders.
+  AdminDashboardAccessResponse: obj({allowed: Type.Boolean()})
 } as const;
 
 export type AdminDashboardOverview = Static<typeof adminDashboardSchemas.AdminDashboardOverviewResponse>;
