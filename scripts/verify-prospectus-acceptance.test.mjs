@@ -86,6 +86,11 @@ test('financial review covers both scopes, correct quarter, converted amounts an
     rows=>rows[0].output.scope='parent',rows=>rows[0].source.sha256='b'.repeat(64),rows=>rows[0].output.value='101',
     rows=>rows[0].output.locators.pop(),rows=>rows[0].output.locators[1]=rows[0].output.locators[0],
     rows=>rows[0].output.locators[0]='word/document.xml//w:p[2]',rows=>delete rows[0].output.locators[0].scope_anchor,
+    rows=>rows[0].output.locators[0].scope_section_anchor={locator:'word/document.xml//w:p[1]',quote:'合并'},
+    rows=>rows[0].output.locators[0].table_caption={locator:'word/document.xml//w:p[1]',quote:'合并'},
+    rows=>rows[0].output.locators[0].narrative_list='true',
+    rows=>rows[0].output.locators[0].reporting_period_definition={section_anchor:{locator:'word/document.xml//w:p[1]',quote:'释义'}},
+    rows=>rows[0].output.locators[0].period_context={section_anchor:{locator:'word/document.xml//w:p[1]',quote:'管理层讨论与分析'}},
     rows=>rows[0].amount='pending',rows=>{rows[0].source.file_id='rq-202509-01';rows[0].source.sha256='b'.repeat(64);},
     rows=>{for(const r of rows){r.output.locators.pop();r.expected_occurrences=1;}}]){
     const rows=financialRows();mutate(rows);assert.throws(()=>validateFinancialChecks(rows,materials,'synthetic-reviewer'));
@@ -147,3 +152,15 @@ with open(r/'synthetic.pdf','wb') as stream:writer.write(stream)
     row.output.locators=[cell(4)];row.output.locators[0].metric_anchor={locator:'word/document.xml#table=1,row=3,cell=1',quote:'总资产'};assert.deepEqual(run().financial_failures,[0]);
   }finally{rmSync(temp,{recursive:true,force:true});}
 });
+
+for(const name of ['FinancialGeometry','FinancialLabels','NarrativeLists','AuthorizedTemplateLayout']){
+  test(`independent financial reader validates ${name} without changing a template`,()=>{
+    const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+    const python=process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3';
+    const result=spawnSync(python,['-B','-s','scripts/prospectus_acceptance_inspect_test.py',name,'-v'],
+      {cwd:root,env:{...process.env,PYTHONPATH:resolve(root,'python'),PYTHONIOENCODING:'utf-8'},encoding:'utf8'});
+    assert.equal(result.status,0,`Independent reader checks cannot skip or fail:\n${result.stdout}\n${result.stderr}`);
+    assert.match(result.stderr,/\bOK\s*$/);
+    assert.doesNotMatch(result.stderr,/\bskipped\b/i);
+  });
+}

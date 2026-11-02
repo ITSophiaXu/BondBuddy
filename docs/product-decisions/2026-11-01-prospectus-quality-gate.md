@@ -55,4 +55,4 @@ bash deploy/m1/scripts/deploy.sh HEAD
 
 PR head、GitHub PR 合并测试 SHA、merge queue SHA 和最终 master SHA 可能不同；状态只能说明其绑定的完整 SHA。先确认保护实际评估的 PR head 或测试合并 SHA，并对同一准确 SHA 验收和发布状态；为 merge queue 发布状态必须验收对应队列提交。最终部署使用 master 的确切提交，变化后需重新验收并由发布者重跑，不能用 PR 上的绿色状态代替最终提交的凭据。
 
-本次读取远端状态时当前账号只有 push 权限、没有 admin 权限，规则 API 表示当前私有仓库套餐不支持 rulesets；GitHub Actions 还存在账单/额度限制。**新增 workflow 不代表远端分支保护已经启用，也不代表 Actions 已运行。** 在管理员解决套餐、额度及 required-check 配置前，受控 Linux runner 和部署入口的默认拒绝提供实际拦截；拥有服务器或仓库管理权限的人仍可绕开脚本，这一外部限制不能声称已经消除。
+首次读取远端状态时，当前账号只有 push 权限、没有 admin 权限，规则 API 表示当时的私有仓库套餐不支持 rulesets，Actions 也曾因账单/额度未启动。后续候选 `d4a5bea133c6f9edba02d879569653e82e6f2dd2` 的七项托管检查已实际成功，包括机械门禁和生产安全配置下的 CLI 原生测试；早期账单失败不能继续作为 Actions 无法运行的当前结论。**CI 成功不代表两个必需检查及可信发布身份已被远端分支保护强制启用。** 用户指定 Sophie 负责独立业务复核及管理员配置交接。2026-11-02 再次只读核对时，当前账号仍无 admin 权限；`develop` 和 `master` 的分支摘要均返回 `protected: false`、`protection.enabled: false`、必需检查列表为空且 enforcement 为 `off`。在管理员落实保护前，受控 Linux runner 和部署入口的默认拒绝提供实际拦截；拥有服务器或仓库管理权限的人仍可绕开脚本，这一外部限制不能声称已经消除。
