@@ -10,10 +10,31 @@ const expected = { commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
 function receipt() { return { schema_version: POLICY, status: 'passed', ...expected, platform: 'linux', clean_tree: true,
   started_at: new Date(now - 1000).toISOString(), finished_at: new Date(now).toISOString(),
   checks: REQUIRED_CHECKS.map(id => ({ id, status: 'passed', log_sha256: 'c'.repeat(64),
-    ...(['gate-regressions', 'worker-authoring'].includes(id) ? { summary: { tests: 4, pass: 4, fail: 0, cancelled: 0, skipped: 0, todo: 0 } } : {}),
+    ...(['gate-regressions', 'api-source-selection', 'worker-authoring'].includes(id) ? { summary: { tests: 4, pass: 4, fail: 0, cancelled: 0, skipped: 0, todo: 0 } } : {}),
     ...(id === 'document-regressions' ? { summary: { tests: 4, passed: 4, failures: 0, errors: 0, skipped: 0, expected_failures: 0, unexpected_successes: 0, render_required: true, authorized_render_reports: 1, rendered_documents: 3 } } : {}),
     ...(id === 'real-model-acceptance' ? { summary: { status: 'passed', ...expected, real_model: true, case_count: 1, evidence_sha256: 'e'.repeat(64) } } : {}) })) }; }
 test('complete current Linux evidence passes for the exact source tree', () => assert.equal(verifyReceipt(receipt(), expected, now).status, 'passed'));
+
+test('API source-selection cannot be omitted from release or rollback evidence', () => {
+  const incomplete = receipt();
+  incomplete.checks = incomplete.checks.filter(check => check.id !== 'api-source-selection');
+  assert.throws(() => verifyReceipt(incomplete, expected, now));
+  const raw = JSON.stringify(incomplete), hash = createHash('sha256').update(raw).digest('hex');
+  const log = `${incomplete.finished_at}\tdeploy\t${incomplete.commit.slice(0, 12)} commit=${incomplete.commit} quality_sha256=${hash}\n`;
+  assert.throws(() => verifyRollbackReceipt(raw, expected, log, now));
+});
+
+test('API source-selection requires its own complete, nonempty and unskipped TAP summary', () => {
+  const good = receipt().checks.find(check => check.id === 'api-source-selection').summary;
+  for (const summary of [undefined, null, {}, { ...good, tests: 0, pass: 0 }, { ...good, pass: 3 },
+    ...['fail', 'cancelled', 'skipped', 'todo'].map(key => ({ ...good, [key]: 1 })),
+    ...['tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo'].map(key => {
+      const missing = { ...good }; delete missing[key]; return missing;
+    })]) {
+    const invalid = receipt(); invalid.checks.find(check => check.id === 'api-source-selection').summary = summary;
+    assert.throws(() => verifyReceipt(invalid, expected, now));
+  }
+});
 test('database migrations accept only a dedicated disposable loopback database', () => {
   assert.equal(validateTestDatabase('postgresql://test:test@127.0.0.1:55491/bb_prospectus_quality').hostname, '127.0.0.1');
   for (const invalid of [undefined, 'postgres://production/bb_prospectus_quality', 'postgres://localhost/bondbuddy',

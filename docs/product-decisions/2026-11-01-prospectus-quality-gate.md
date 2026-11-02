@@ -6,7 +6,9 @@
 
 ## 发布要求
 
-`npm run quality:prospectus` 在已安装依赖的干净 Linux checkout 执行完整构建、公共契约、门禁自身反例、隔离测试库迁移、worker 原稿更新集成与真实失败终态/checkpoint 持久化、固定编辑与结构保留、四份授权真实 DOCX、清洁/修订双稿以及 LibreOffice PDF 渲染回归。测试清单固定于 `scripts/prospectus-quality-gate.mjs` 与 `scripts/run-document-quality-tests.py`；不使用调用者传入的任意命令清单。失败、取消、跳过、TODO、空测试、缺失依赖或样本均阻断。授权样本验证 manifest SHA256；真实原稿的固定编辑输入为 synthetic，不能称为真实模型更新或专业验收。
+`npm run quality:prospectus` 在已安装依赖的干净 Linux checkout 执行完整构建、公共契约、门禁自身反例、隔离测试库迁移、独立 API 原稿选择与输入锁定、worker 原稿更新集成与真实失败终态/checkpoint 持久化、固定编辑与结构保留、四份授权真实 DOCX、清洁/修订双稿以及 LibreOffice PDF 渲染回归。测试清单固定于 `scripts/prospectus-quality-gate.mjs` 与 `scripts/run-document-quality-tests.py`；不使用调用者传入的任意命令清单。失败、取消、跳过、TODO、空测试、缺失依赖或样本均阻断。授权样本验证 manifest SHA256；真实原稿的固定编辑输入为 synthetic，不能称为真实模型更新或专业验收。
+
+`api-source-selection` 在迁移后独立运行 `prospectus-source-lock.pg.test.js`、`prospectus-auto-adoption.pg.test.js` 和 `source-format.pg.test.js`，使用真实 PostgreSQL 的隔离克隆库验证已采用原稿不可遗漏/替换版本、过期选择不写输入、精确原稿 SHA 与模板锁定，以及自动采用修复不重写既有输入。此项不调用模型或 Blob，不要求 Azurite；缺测试库会产生 skip 并阻断。它必须产生非空、全部通过且 fail/cancelled/skipped/todo 均为零的独立 TAP 摘要及日志 hash；部署和回滚的凭据验证同样检查这一项，旧凭据缺少此项或只声明 passed 均不能通过。
 
 **最后必须通过当前 commit/tree 的真实模型金样验收。** 通过 `BB_PROSPECTUS_ACCEPTANCE_FILE` 指向受控私有验收记录，由 `scripts/verify-prospectus-acceptance.mjs` 核对真实模型调用、锁定原稿/输入/输出 hash 及独立财务事实、章节与渲染验收证据。缺记录、仅合成响应、旧提交验收或缺少独立确认一律失败，不能自动填成通过。原始客户材料和验收记录不放进公共仓库或 CI 日志/artifact；发布凭据仅保存检查摘要及证据 hash。真实模型金样不能被模板保真和机械单元测试替代。
 
