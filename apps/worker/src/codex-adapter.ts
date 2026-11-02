@@ -16,13 +16,17 @@ import { REVIEW_TOOLS, createReviewToolTrace, reviewModelEnvelopeAsync, validate
 import type { ModelAdapterAttemptRecord, ModelAdapterErrorCode } from '@bondbuddy/contracts';
 import type { ProviderCallIntent, ProviderCallObservation, ProviderUsage, ModelAttemptRuntime } from '@bondbuddy/api/provider-results';
 import { READ_ONLY_MATERIAL_ADAPTER_VERSION } from '@bondbuddy/api/provider-results';
+import { CODEX_EXEC_LOG_MAX_BYTES } from '@bondbuddy/api/exec-logs';
 import type { ProbeJournal } from './deepseek-probe.js';
 
 import {validateModelImage,type ModelImageInput} from './model-image-input.js';
 
 export const CODEX_ADAPTER_VERSION = 'codex-adapter-1';
-/** Bounded per-attempt stdout/stderr capture. Full stderr is retained up to this cap. */
-export const DEFAULT_CODEX_EXEC_LOG_MAX_BYTES = 20 * 1024 * 1024;
+/** Bounded per-attempt stdout/stderr capture, including section markers. */
+export const DEFAULT_CODEX_EXEC_LOG_MAX_BYTES = CODEX_EXEC_LOG_MAX_BYTES;
+const EXEC_LOG_STDOUT_MARKER = Buffer.from('[stdout]\n');
+const EXEC_LOG_STDERR_MARKER = Buffer.from('\n[stderr]\n');
+const EXEC_LOG_MARKER_BYTES = EXEC_LOG_STDOUT_MARKER.length + EXEC_LOG_STDERR_MARKER.length;
 /** A completed turn produced a known-invalid file, not an unknown provider outcome. */
 export class CodexOutputValidationError extends Error {}
 export const REVIEW_TOOL_ADAPTER_VERSION = 'codex-review-tools-1';
@@ -198,7 +202,7 @@ export function assertCodexConfig(c: CodexAdapterConfig) {
     count(c.timeout_ms) && c.timeout_ms > 0 && c.timeout_ms <= 2147483647 &&
     (c.authoring_timeout_ms === undefined || (count(c.authoring_timeout_ms) && c.authoring_timeout_ms > 0 && c.authoring_timeout_ms <= 2147483647)) &&
     count(c.kill_grace_ms) && count(c.max_output_bytes) && c.max_output_bytes > 0 &&
-    (c.exec_log_max_bytes === undefined || (count(c.exec_log_max_bytes) && c.exec_log_max_bytes > 0 && c.exec_log_max_bytes <= 100 * 1024 * 1024)) &&
+    (c.exec_log_max_bytes === undefined || (count(c.exec_log_max_bytes) && c.exec_log_max_bytes >= EXEC_LOG_MARKER_BYTES && c.exec_log_max_bytes <= CODEX_EXEC_LOG_MAX_BYTES)) &&
     count(c.max_schema_reasks) && c.max_schema_reasks <= 3 && (c.retain_invalid_output === undefined || typeof c.retain_invalid_output === 'boolean') && c.disabled_features.every(f => /^[a-z0-9_]{1,64}$/.test(f)) && c.path_env.length > 0 &&
     Object.entries(c.proxy_env ?? {}).every(([k, v]) => (CODEX_PROXY_ENV_NAMES as readonly string[]).includes(k) && (/^https_proxy$/i.test(k) ? proxyUrl(v) : noProxyList(v)));
   if (!ok) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
@@ -319,12 +323,14 @@ export type CodexProcessResult = {
 
 /** One bounded buffer shared by stdout and stderr. Sections keep raw JSONL intact. */
 export function createCodexExecLogCapture(maxBytes: number) {
+  if (!count(maxBytes) || maxBytes < EXEC_LOG_MARKER_BYTES || maxBytes > CODEX_EXEC_LOG_MAX_BYTES) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const stdout: Buffer[] = [], stderr: Buffer[] = [];
+  const contentMaxBytes = maxBytes - EXEC_LOG_MARKER_BYTES;
   let used = 0, truncated = false;
   const append = (target: Buffer[], text: string) => {
     if (truncated) return;
     const chunk = Buffer.from(text, 'utf8');
-    const room = maxBytes - used;
+    const room = contentMaxBytes - used;
     if (chunk.length <= room) { target.push(chunk); used += chunk.length; return; }
     if (room > 0) { target.push(chunk.subarray(0, room)); used += room; }
     truncated = true;
@@ -333,7 +339,7 @@ export function createCodexExecLogCapture(maxBytes: number) {
     stdout: (text: string) => append(stdout, text),
     stderr: (text: string) => append(stderr, text),
     finish: (): { bytes: Buffer; truncated: boolean } => ({
-      bytes: Buffer.concat([Buffer.from('[stdout]\n'), ...stdout, Buffer.from('\n[stderr]\n'), ...stderr]),
+      bytes: Buffer.concat([EXEC_LOG_STDOUT_MARKER, ...stdout, EXEC_LOG_STDERR_MARKER, ...stderr]),
       truncated
     })
   };
