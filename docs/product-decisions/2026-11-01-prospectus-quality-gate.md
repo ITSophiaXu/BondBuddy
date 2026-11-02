@@ -10,6 +10,8 @@
 
 `api-source-selection` 在迁移后独立运行 `prospectus-source-lock.pg.test.js`、`prospectus-auto-adoption.pg.test.js` 和 `source-format.pg.test.js`，使用真实 PostgreSQL 的隔离克隆库验证已采用原稿不可遗漏/替换版本、过期选择不写输入、精确原稿 SHA 与模板锁定，以及自动采用修复不重写既有输入。此项不调用模型或 Blob，不要求 Azurite；缺测试库会产生 skip 并阻断。它必须产生非空、全部通过且 fail/cancelled/skipped/todo 均为零的独立 TAP 摘要及日志 hash；部署和回滚的凭据验证同样检查这一项，旧凭据缺少此项或只声明 passed 均不能通过。
 
+`gate-regressions` 还固定运行 `deploy/m1/scripts/codex-bwrap.test.mjs`，验证 `/proc` 加固 wrapper 保留 sandbox 参数与文件描述符、追加限制及传递退出状态。这些 Linux shell 反例必须真实执行，任何 skip 均阻断；不因本地缺少环境而移出清单。该合成套件不替代生产 worker 镜像中的真实 sandbox canary 检查。
+
 **最后必须通过当前 commit/tree 的真实模型金样验收。** 通过 `BB_PROSPECTUS_ACCEPTANCE_FILE` 指向受控私有验收记录，由 `scripts/verify-prospectus-acceptance.mjs` 核对真实模型调用、锁定原稿/输入/输出 hash 及独立财务事实、章节与渲染验收证据。缺记录、仅合成响应、旧提交验收或缺少独立确认一律失败，不能自动填成通过。原始客户材料和验收记录不放进公共仓库或 CI 日志/artifact；发布凭据仅保存检查摘要及证据 hash。真实模型金样不能被模板保真和机械单元测试替代。
 
 准备 PostgreSQL 16 的一次性本地模板数据库，角色需有 CREATEDB 权限供集成测试克隆。`BB_TEST_DATABASE_URL` 仅允许 loopback 主机及 `bb_prospectus_quality` 或 `bb_prospectus_quality_<suffix>` 库名，禁止 query 参数覆盖连接目标；runner 仅对此显式测试库运行迁移，不使用继承的生产 `DATABASE_URL`。CI 使用独立 service，禁止连接生产数据库。
