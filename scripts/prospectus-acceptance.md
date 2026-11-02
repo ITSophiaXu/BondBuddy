@@ -4,6 +4,8 @@
 
 The operator and CI access controls are the trust boundary. This verifier checks file bytes, source bindings, numerical comparisons and review completeness. It does **not** authenticate a natural person, verify a provider's digital signature, or replace professional financial/legal judgement. Do not copy model-authored claims into human-review fields. Do not upload client documents as CI artifacts.
 
+Hosted CI runs only `prospectus-quality-mechanical` via `validate` and never receives private acceptance or signs a release receipt. A controlled Linux publisher runs the full gate and exact-SHA verification, then emits the independent required `prospectus-release-acceptance` status; see [publisher procedure](prospectus-quality-publisher.md).
+
 Run with the same Python environment as the document tests:
 
 ```sh
