@@ -118,7 +118,7 @@ function run(receiptPath, release = true) {
   check('worker-authoring', process.execPath, ['--test', '--test-concurrency=1', '--test-reporter=tap',
     'apps/worker/dist/file-authoring-quality.test.js', 'apps/worker/dist/file-authoring-delivery.test.js',
     'apps/worker/dist/file-authoring-format.test.js', 'apps/worker/dist/file-authoring-quality.pg.test.js',
-    'apps/worker/dist/authoring-material-tools.test.js'], parseTap);
+    'apps/worker/dist/authoring-material-tools.test.js', 'apps/worker/dist/codex-exec-log.test.js'], parseTap);
   check('document-regressions', python, ['scripts/run-document-quality-tests.py'], output => {
     const lines = output.split(/\r?\n/).filter(line => line.startsWith('DOCUMENT_QUALITY_RESULT='));
     if (lines.length !== 1) throw new Error('Missing document quality summary');

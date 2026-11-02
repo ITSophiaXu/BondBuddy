@@ -12,6 +12,8 @@
 
 `gate-regressions` 还固定运行 `deploy/m1/scripts/codex-bwrap.test.mjs`，验证 `/proc` 加固 wrapper 保留 sandbox 参数与文件描述符、追加限制及传递退出状态。这些 Linux shell 反例必须真实执行，任何 skip 均阻断；不因本地缺少环境而移出清单。该合成套件不替代生产 worker 镜像中的真实 sandbox canary 检查。
 
+`worker-authoring` 还固定运行 `codex-exec-log.test.js`，验证原始 stdout/stderr 捕获、凭据脱敏、journal 持久化及包含 section markers 的 20 MiB 总字节上限和配置边界；它使用同一严格 TAP 摘要要求，不能只在本次修复中手动验证后从发布清单遗漏。
+
 **最后必须通过当前 commit/tree 的真实模型金样验收。** 通过 `BB_PROSPECTUS_ACCEPTANCE_FILE` 指向受控私有验收记录，由 `scripts/verify-prospectus-acceptance.mjs` 核对真实模型调用、锁定原稿/输入/输出 hash 及独立财务事实、章节与渲染验收证据。缺记录、仅合成响应、旧提交验收或缺少独立确认一律失败，不能自动填成通过。原始客户材料和验收记录不放进公共仓库或 CI 日志/artifact；发布凭据仅保存检查摘要及证据 hash。真实模型金样不能被模板保真和机械单元测试替代。
 
 准备 PostgreSQL 16 的一次性本地模板数据库，角色需有 CREATEDB 权限供集成测试克隆。`BB_TEST_DATABASE_URL` 仅允许 loopback 主机及 `bb_prospectus_quality` 或 `bb_prospectus_quality_<suffix>` 库名，禁止 query 参数覆盖连接目标；runner 仅对此显式测试库运行迁移，不使用继承的生产 `DATABASE_URL`。CI 使用独立 service，禁止连接生产数据库。
