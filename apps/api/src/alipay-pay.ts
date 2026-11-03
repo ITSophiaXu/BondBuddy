@@ -5,10 +5,12 @@ import type {PaymentOrder,PaymentProvider,VerifiedPayment} from './payments.js';
 import type {RefundOrder,VerifiedRefund} from './payment-refunds.js';
 import {createAlipayStatementDownloader,type AlipayStatementMetadata} from './alipay-statements.js';
 
-const gateway='https://openapi.alipay.com/gateway.do',maxBody=65536;
+const gateways={production:'https://openapi.alipay.com/gateway.do',sandbox:'https://openapi-sandbox.dl.alipaydev.com/gateway.do'} as const,maxBody=65536;
 export type AlipayWebProduct='page'|'wap';
 export type AlipayPayOptions={appId:string;merchantId:string;webProduct:AlipayWebProduct;appPrivateKeyPem:string;alipayPublicKeyPem:string;
-  notifyUrl:string;returnUrl:string;refundsEnabled?:boolean;statementsEnabled?:boolean;timeoutMs?:number};
+  environment?:keyof typeof gateways;appPrivateKeyType?:'PKCS1'|'PKCS8';
+  notifyUrl?:string;returnUrl:string;refundsEnabled?:boolean;statementsEnabled?:boolean;timeoutMs?:number};
+export type AlipayPaymentProvider=PaymentProvider & {createCheckoutForm(order:PaymentOrder):Promise<string>};
 export type AlipayPayDependencies={fetch?:typeof fetch;now?:()=>number};
 export class AlipayPayError extends Error{constructor(readonly code:string){super('Alipay payment '+code);this.name='AlipayPayError';}}
 const fail=(code:string):never=>{throw new AlipayPayError(code);};
@@ -26,9 +28,10 @@ const paymentTime=(value:unknown)=>{
   const time=Date.parse(value.replace(' ','T')+'+08:00');
   if(!Number.isFinite(time)||chinaTime(time)!==value)return fail('RECEIPT_INVALID');return new Date(time).toISOString();
 };
-function checkUrl(value:string,notify=false){
+function checkUrl(value:string,notify=false,sandbox=false){
   let url:URL;try{url=new URL(value);}catch{return fail('CONFIG_INVALID');}
-  if(value.length>2048||url.protocol!=='https:'||url.username||url.password||url.hash||url.search
+  const localReturn=sandbox&&!notify&&url.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(url.hostname);
+  if(value.length>2048||url.protocol!=='https:'&&!localReturn||url.username||url.password||url.hash||url.search
     ||notify&&url.pathname!=='/api/v1/payments/alipay/callback')return fail('CONFIG_INVALID');
 }
 function jsonObject(value:unknown):Record<string,unknown>{if(!value||typeof value!=='object'||Array.isArray(value))return fail('PAYLOAD_INVALID');return value as Record<string,unknown>;}
@@ -82,19 +85,29 @@ function callbackForm(headers:FastifyRequest['headers'],raw:string):Record<strin
 }
 
 /** Direct-merchant public-key mode only. Web checkout is one payment, never a mandate. */
-export function createAlipayPayProvider(options:AlipayPayOptions,dependencies:AlipayPayDependencies={}):PaymentProvider{
+export function createAlipayPayProvider(options:AlipayPayOptions,dependencies:AlipayPayDependencies={}):AlipayPaymentProvider{
   const now=dependencies.now??Date.now,fetcher=dependencies.fetch??fetch,timeoutMs=options.timeoutMs??10000;
+  const environment=options.environment??'production',gateway=gateways[environment];
   let sdk:AlipaySdk;
   try{
-    if(!/^20\d{14}$/.test(options.appId)||!/^2088\d{12}$/.test(options.merchantId)||!['page','wap'].includes(options.webProduct)
+    if(!(environment==='sandbox'?/^\d{16}$/:/^20\d{14}$/).test(options.appId)||!/^2088\d{12}$/.test(options.merchantId)||!['page','wap'].includes(options.webProduct)
       ||!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>30000||options.refundsEnabled!==undefined&&typeof options.refundsEnabled!=='boolean'
-      ||options.statementsEnabled!==undefined&&typeof options.statementsEnabled!=='boolean')return fail('CONFIG_INVALID');
-    checkUrl(options.notifyUrl,true);checkUrl(options.returnUrl);
-    const privateKey=createPrivateKey(options.appPrivateKeyPem),publicKey=createPublicKey(options.alipayPublicKeyPem);
+      ||options.statementsEnabled!==undefined&&typeof options.statementsEnabled!=='boolean'||!gateway
+      ||environment==='sandbox'&&(options.webProduct!=='page'||options.statementsEnabled)
+      ||options.appPrivateKeyType!==undefined&&!['PKCS1','PKCS8'].includes(options.appPrivateKeyType))return fail('CONFIG_INVALID');
+    if(options.notifyUrl!==undefined)checkUrl(options.notifyUrl,true);
+    else if(environment!=='sandbox')return fail('CONFIG_INVALID');
+    checkUrl(options.returnUrl,false,environment==='sandbox');
+    // Raw Skill keys go unchanged into the SDK. PEM is constructed only for
+    // native crypto validation, never persisted or substituted into SDK config.
+    const raw=options.appPrivateKeyType!==undefined;
+    if(raw&&![options.appPrivateKeyPem,options.alipayPublicKeyPem].every(value=>/^[A-Za-z0-9+/]+={0,2}$/.test(value)))return fail('CONFIG_INVALID');
+    const privateKey=createPrivateKey(raw?`-----BEGIN ${options.appPrivateKeyType==='PKCS1'?'RSA ':''}PRIVATE KEY-----\n${options.appPrivateKeyPem}\n-----END ${options.appPrivateKeyType==='PKCS1'?'RSA ':''}PRIVATE KEY-----`:options.appPrivateKeyPem);
+    const publicKey=createPublicKey(raw?`-----BEGIN PUBLIC KEY-----\n${options.alipayPublicKeyPem}\n-----END PUBLIC KEY-----`:options.alipayPublicKeyPem);
     for(const key of [privateKey,publicKey])if(key.asymmetricKeyType!=='rsa'||(key.asymmetricKeyDetails?.modulusLength??0)<2048)return fail('CONFIG_INVALID');
     if(createPublicKey(privateKey).export({type:'spki',format:'pem'})===publicKey.export({type:'spki',format:'pem'}))return fail('CONFIG_INVALID');
-    sdk=new AlipaySdk({appId:options.appId,privateKey:privateKey.export({type:'pkcs8',format:'pem'}).toString(),keyType:'PKCS8',
-      alipayPublicKey:publicKey.export({type:'spki',format:'pem'}).toString(),signType:'RSA2',charset:'utf-8',gateway,camelcase:false,timeout:timeoutMs});
+    sdk=new AlipaySdk({appId:options.appId,privateKey:raw?options.appPrivateKeyPem:privateKey.export({type:'pkcs8',format:'pem'}).toString(),keyType:options.appPrivateKeyType??'PKCS8',
+      alipayPublicKey:raw?options.alipayPublicKeyPem:publicKey.export({type:'spki',format:'pem'}).toString(),signType:'RSA2',charset:'utf-8',gateway,camelcase:false,timeout:timeoutMs});
   }catch{return fail('CONFIG_INVALID');}
   const orderValid=(order:PaymentOrder,creating=false)=>{
     if(order.merchant_id!==options.merchantId||order.currency!=='CNY'||!Number.isSafeInteger(order.amount_fen)||order.amount_fen<1||order.amount_fen>10000000000
@@ -194,15 +207,19 @@ export function createAlipayPayProvider(options:AlipayPayOptions,dependencies:Al
     // original out_request_no; never use cumulative refund_fee as this receipt.
     return queryRefund(order);
   };
-  const provider:PaymentProvider={name:'alipay',merchantId:options.merchantId,acknowledgement:'success',
+  const checkout=(order:PaymentOrder,method:'GET'|'POST')=>{
+    orderValid(order,true);const page=options.webProduct==='page';
+    return sdk.pageExecute(page?'alipay.trade.page.pay':'alipay.trade.wap.pay',method,{
+      timestamp:chinaTime(now()),...(options.notifyUrl?{notifyUrl:options.notifyUrl}:{}),returnUrl:options.returnUrl,
+      bizContent:{out_trade_no:order.id,total_amount:yuan(order.amount_fen),subject:'BondBuddy service balance',product_code:page?'FAST_INSTANT_TRADE_PAY':'QUICK_WAP_WAY',
+        time_expire:chinaTime(Date.parse(order.expires_at)),...(page?{qr_pay_mode:'2'}:{seller_id:options.merchantId,quit_url:options.returnUrl})}});
+  };
+  const provider:AlipayPaymentProvider={name:'alipay',merchantId:options.merchantId,acknowledgement:'success',
+    createCheckoutForm:async order=>checkout(order,'POST'),
     ...(downloadStatements?{downloadStatements,statementAppId:options.appId,statementKinds:['trade'] as const,statementAccounts:[]}:{}),
     create:async order=>{
-      orderValid(order,true);const page=options.webProduct==='page';
-      const checkoutUrl=sdk.pageExecute(page?'alipay.trade.page.pay':'alipay.trade.wap.pay','GET',{
-        timestamp:chinaTime(now()),notifyUrl:options.notifyUrl,returnUrl:options.returnUrl,
-        bizContent:{out_trade_no:order.id,total_amount:yuan(order.amount_fen),subject:'BondBuddy service balance',product_code:page?'FAST_INSTANT_TRADE_PAY':'QUICK_WAP_WAY',
-          time_expire:chinaTime(Date.parse(order.expires_at)),...(page?{qr_pay_mode:'2'}:{seller_id:options.merchantId,quit_url:options.returnUrl})}});
-      const url=new URL(checkoutUrl);if(url.origin!=='https://openapi.alipay.com'||url.pathname!=='/gateway.do'||url.username||url.password||url.hash||checkoutUrl.length>4096)return fail('CHECKOUT_INVALID');
+      const checkoutUrl=checkout(order,'GET');
+      const url=new URL(checkoutUrl);if(url.origin!==new URL(gateway).origin||url.pathname!=='/gateway.do'||url.username||url.password||url.hash||checkoutUrl.length>4096)return fail('CHECKOUT_INVALID');
       return {checkoutUrl};
     },query:order=>payment(order),
     closePayment:async order=>{
@@ -216,7 +233,8 @@ export function createAlipayPayProvider(options:AlipayPayOptions,dependencies:Al
       if(data.sign_type!=='RSA2'||!data.sign||data.sign.length>1024||!/^[A-Za-z0-9+/]+={0,2}$/.test(data.sign))return fail('SIGNATURE_INVALID');
       try{if(!sdk.checkNotifySignV2(data))return fail('SIGNATURE_INVALID');}catch{return fail('SIGNATURE_INVALID');}
       if(data.app_id!==options.appId||data.seller_id!==options.merchantId||data.notify_type!=='trade_status_sync'||data.charset?.toLowerCase()!=='utf-8'
-        ||data.version!==undefined&&data.version!=='1.0'||!['TRADE_SUCCESS','TRADE_FINISHED'].includes(data.trade_status))return fail('RECEIPT_INVALID');
+        ||data.version!==undefined&&data.version!=='1.0'||!['TRADE_SUCCESS','TRADE_FINISHED'].includes(data.trade_status)
+        ||['out_biz_no','gmt_refund','refund_fee'].some(field=>Object.hasOwn(data,field)))return fail('RECEIPT_INVALID');
       for(const key of ['currency','trans_currency','pay_currency','settle_currency'])if(data[key]!==undefined&&data[key]!=='CNY')return fail('RECEIPT_INVALID');
       const amountFen=alipayMoneyFen(data.total_amount),cash=data.buyer_pay_amount===undefined?undefined:alipayMoneyFen(data.buyer_pay_amount);
       if(amountFen<1||cash!==undefined&&cash>amountFen||data.credit_pay_mode||data.auth_trade_pay_mode)return fail('RECEIPT_INVALID');
