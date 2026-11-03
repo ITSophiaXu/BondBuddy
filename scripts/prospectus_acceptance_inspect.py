@@ -900,6 +900,33 @@ class Reader:
         return result
 
     @staticmethod
+    def qualitative_net_profit_other_amount(value):
+        """Recognize one conservative, complete monetary-attribution grammar.
+
+        A qualitative net-profit introduction has no monetary assertion when
+        the following amount explicitly belongs to another statement metric.
+        Unknown wording, extra amounts and implied reassignment still require
+        review. This identifies ownership only; it does not verify that other
+        amount, its ratio, or the business interpretation.
+        """
+        value = compact(value)
+        if value.count('净利润') != 1:
+            return False
+        labels = {alias for metric in INCOME
+                  if metric not in ('net_profit', 'profit_attributable_to_parent')
+                  for alias in ALIASES[metric]} | {'政府补助', '营业外收入'}
+        label = '(?:' + '|'.join(re.escape(x) for x in sorted(labels, key=lambda x: (-len(x), x))) + ')'
+        driver = r'(?:政府补助|补助|项目回款)'
+        risk = rf'盈利能力(?:易|容易)?受{driver}(?:(?:、|及|和){driver}){{0,2}}影响'
+        match = re.fullmatch(
+            r'(?P<period>20[0-9]{2}年1[-—–至][0-9]{1,2}月)[，,]?'
+            r'(?:(?:发行人|公司|本公司)(?:的)?)?净利润规模(?:较小|较大|有限)[，,]'
+            rf'合并利润表(?:列示|显示){label}(?:为)?{NUMBER}(?:亿元|万元|元)'
+            rf'(?:[，,]占(?:同期)?{label}(?:的)?[0-9]+(?:\.[0-9]+)?[%％])?'
+            rf'(?:[，,]{risk})?[。；;！？!?]?', value)
+        return match is not None and period_ok(match['period'], 'net_profit')
+
+    @staticmethod
     def unsupported_metric_lists(value, metric):
         """Retained monetary assertions cannot disappear through parser rejection.
 
@@ -913,6 +940,10 @@ class Reader:
             if (match.start(), match.end()) in supported:
                 continue
             clause = compact(match[0])
+            if metric == 'net_profit' and Reader.qualitative_net_profit_other_amount(clause):
+                # Full-clause ownership, never a keyword or paragraph exemption.
+                # It contributes no verified/required net-profit occurrence.
+                continue
             money = NUMBER + r'(?:亿元|万元|元)'
             value_before_metric = money + r'(?:为|是|系|对应|属于|的)(?:(?:发行人|公司|本公司)(?:的)?)?(?:期末|本期|当期)?$'
             if metric in NARRATIVE_METRICS and any(

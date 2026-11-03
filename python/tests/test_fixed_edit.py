@@ -17,7 +17,7 @@ from bondbuddy_file_authoring.check import package, resolve_revisions
 from bondbuddy_file_authoring.fixed_edit import Editor, empty_log, finalize, load_input, write_json
 from bondbuddy_file_authoring.format_diff import audit, canonical
 from bondbuddy_file_authoring.template_manifest import build_manifest, node_text, sha
-from bondbuddy_file_authoring.word_patch import paragraph_text, q, serialized, xml
+from bondbuddy_file_authoring.word_patch import Patcher, paragraph_text, q, serialized, xml
 
 
 class FixedEditTests(unittest.TestCase):
@@ -122,6 +122,68 @@ class FixedEditTests(unittest.TestCase):
         self.assertIn('新增完整段落', [p.text for p in clean_doc.paragraphs])
         self.assertEqual(len(clean_doc.tables[0].rows), 3)
         self.assertEqual(clean_doc.tables[0].cell(1, 1).text, '120')
+
+    def empty_numeric_cell(self, *, existing_run=False):
+        # A real blank financial cell may carry its only font in the paragraph
+        # mark. The document default is deliberately different from that font.
+        def mutate(parts):
+            root = xml(parts['word/document.xml'])
+            p = root.find('.//' + q('tbl')).findall(q('tr'))[1].findall(q('tc'))[1].find(q('p'))
+            for child in list(p):
+                p.remove(child)
+            props = ET.SubElement(p, q('pPr'))
+            ET.SubElement(props, q('jc'), {q('val'): 'right'})
+            mark = ET.SubElement(props, q('rPr'))
+            ET.SubElement(mark, q('rFonts'), {q('ascii'): 'Times New Roman', q('hAnsi'): 'Times New Roman'})
+            ET.SubElement(mark, q('sz'), {q('val'): '21'})
+            if existing_run:
+                run = ET.SubElement(p, q('r'))
+                rpr = ET.SubElement(run, q('rPr'))
+                ET.SubElement(rpr, q('rFonts'), {q('ascii'): 'Courier New', q('hAnsi'): 'Courier New'})
+                ET.SubElement(rpr, q('sz'), {q('val'): '18'})
+            parts['word/document.xml'] = serialized(root)
+        self.modify_package(self.source, mutate)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        write_json(self.input, self.data)
+        self.log = empty_log(self.data, self.source.read_bytes())
+
+    def assert_numeric_cell_format(self, output, row, font, size):
+        original = package(self.source)
+        for variant in ('clean', 'tracked'):
+            parts = package(output / (variant + '.docx'))
+            root = xml(parts['word/document.xml'])
+            cell = root.find('.//' + q('tbl')).findall(q('tr'))[row].findall(q('tc'))[1]
+            run = next(r for r in cell.iter(q('r')) if r.find(q('t')) is not None)
+            self.assertEqual(run.find(q('rPr') + '/' + q('rFonts')).get(q('ascii')), font)
+            self.assertEqual(run.find(q('rPr') + '/' + q('sz')).get(q('val')), size)
+            self.assertEqual(parts['word/styles.xml'], original['word/styles.xml'])
+            if variant == 'tracked':
+                self.assertEqual(canonical(resolve_revisions(copy.deepcopy(root), False)),
+                                 canonical(xml(original['word/document.xml'])))
+
+    def test_fill_empty_cell_inherits_paragraph_mark_font_in_both_word_views(self):
+        self.empty_numeric_cell()
+        cell = self.node('', 'cell')
+        output, receipt = self.generate([{'id': 'blank', 'kind': 'replace_cell_text',
+                                         'node_id': cell['node_id'], 'before': '', 'after': '0.00'}])
+        self.assertEqual(receipt['format_status'], 'passed')
+        self.assert_numeric_cell_format(output, 1, 'Times New Roman', '21')
+
+    def test_cloned_row_inherits_empty_cell_paragraph_mark_font(self):
+        self.empty_numeric_cell()
+        row = self.node('净资产\n', 'row')
+        output, receipt = self.generate([{'id': 'row', 'kind': 'insert_row', 'node_id': row['node_id'],
+                                         'before': row['text'], 'values': ['负债', '0.00']}])
+        self.assertEqual(receipt['format_status'], 'passed')
+        self.assert_numeric_cell_format(output, 2, 'Times New Roman', '21')
+
+    def test_empty_existing_run_keeps_its_font_ahead_of_paragraph_mark(self):
+        self.empty_numeric_cell(existing_run=True)
+        cell = self.node('', 'cell')
+        output, receipt = self.generate([{'id': 'blank', 'kind': 'replace_cell_text',
+                                         'node_id': cell['node_id'], 'before': '', 'after': '0.00'}])
+        self.assertEqual(receipt['format_status'], 'passed')
+        self.assert_numeric_cell_format(output, 1, 'Courier New', '18')
 
     def test_recorded_heading_rewrite_still_requires_structure_review(self):
         node = self.node('第一章 发行人概况')
@@ -388,6 +450,31 @@ class FixedEditTests(unittest.TestCase):
         for name, original in parts.items():
             if name != 'word/document.xml':
                 self.assertEqual(tracked_parts[name], original, name)
+
+
+    def test_empty_annotated_paragraph_uses_mark_font_and_preserves_comment_reference(self):
+        p = ET.Element(q('p'))
+        mark = ET.SubElement(ET.SubElement(p, q('pPr')), q('rPr'))
+        ET.SubElement(mark, q('rFonts'), {q('ascii'): 'Times New Roman', q('hAnsi'): 'Times New Roman'})
+        ET.SubElement(mark, q('sz'), {q('val'): '21'})
+        reference = ET.SubElement(p, q('r'))
+        props = ET.SubElement(reference, q('rPr'))
+        ET.SubElement(props, q('rStyle'), {q('val'): 'CommentReference'})
+        ET.SubElement(props, q('vertAlign'), {q('val'): 'superscript'})
+        ET.SubElement(reference, q('commentReference'), {q('id'): '77'})
+        original = copy.deepcopy(p)
+        reference_before = canonical(reference)
+        Patcher(p, False).patch(p, '', '0.00')
+        added = next(run for run in p.findall(q('r')) if run.find(q('t')) is not None)
+        self.assertEqual(canonical(added.find(q('rPr'))), canonical(mark))
+        self.assertEqual(canonical(reference), reference_before)
+        tracked = copy.deepcopy(original)
+        Patcher(tracked, True).patch(tracked, '', '0.00')
+        self.assertEqual(canonical(resolve_revisions(copy.deepcopy(tracked), False)), canonical(original))
+        self.assertEqual(canonical(resolve_revisions(copy.deepcopy(tracked), True)), canonical(p))
+        cloned = Editor(self.data, self.source).clone_paragraph(original, '0.00')
+        self.assertEqual(canonical(cloned.find(q('r') + '/' + q('rPr'))), canonical(mark))
+        self.assertFalse(list(cloned.iter(q('commentReference'))))
 
 
 if __name__ == '__main__':

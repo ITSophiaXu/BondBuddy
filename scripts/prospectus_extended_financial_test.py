@@ -50,6 +50,47 @@ def source_checks():
     return case, files, result
 
 
+def net_profit_attribution_clauses():
+    # Synthetic numbers vary independently of the real materials. Recognition
+    # must depend on complete ownership grammar, never a particular amount.
+    positive = (
+        '2025年1-9月净利润规模较小，合并利润表列示政府补助123.45万元，占同期营业外收入的12.34%，盈利能力易受补助及项目回款影响。',
+        '2025年1至9月，发行人的净利润规模有限，合并利润表显示投资收益为-1.23亿元。',
+        '2025年1—9月本公司净利润规模较大，合并利润表列示营业外收入1000元，盈利能力受项目回款影响。',
+    )
+    sentence = positive[0]
+    attacks = {
+        'original_single': '报告期内，发行人净利润为166.42万元。',
+        'value_before_metric': '本期166.42万元为发行人净利润。',
+        'money_in_qualitative_prefix': sentence.replace('规模较小，', '规模较小166.42万元，'),
+        'unlabelled_in_qualitative_prefix': sentence.replace('规模较小，', '规模较小166.42，'),
+        'intervening_amount': sentence.replace('规模较小，', '规模较小，实际为166.42万元，'),
+        'grants_between_profit_and_amount': '2025年1-9月净利润为政府补助166.42万元。',
+        'grants_after_profit_amount': '2025年1-9月净利润为166.42万元，政府补助123.45万元。',
+        'shared_unit': sentence.replace('123.45万元', '123.45、166.42万元'),
+        'additional_amount': sentence.replace('123.45万元', '123.45万元及166.42万元'),
+        'reassignment': sentence.replace('123.45万元', '123.45万元即净利润166.42万元'),
+        'reverse_reassignment': sentence.replace('123.45万元', '166.42万元为净利润'),
+        'parenthesized_profit': sentence.replace('123.45万元', '123.45万元（即净利润166.42万元）'),
+        'unknown_connector': sentence.replace('123.45万元', '123.45万元之外另166.42万元'),
+        'implicit_money_tail': sentence[:-1] + '，上述规模为166.42万元。',
+        'implicit_alias_tail': sentence[:-1] + '，上述金额即前者。',
+        'money_percentage': sentence.replace('12.34%', '166.42万元'),
+        'net_profit_denominator': sentence.replace('营业外收入', '净利润'),
+        'historical_period': sentence.replace('2025年', '2024年'),
+        'wrong_quarter': sentence.replace('1-9月', '1-6月'),
+        'ambiguous_period': sentence.replace('2025年1-9月', '报告期内'),
+        'unknown_qualitative': sentence.replace('规模较小', '表现良好'),
+        'unknown_metric': sentence.replace('政府补助123.45', '其他款项123.45'),
+        'unknown_statement': sentence.replace('合并利润表', '某报表'),
+        'unknown_predicate': sentence.replace('列示政府补助', '称政府补助'),
+        'unknown_metric_connector': sentence.replace('政府补助123.45', '政府补助数额是123.45'),
+        'prior_money': '166.42万元，' + sentence,
+        'separate_stale_clause': sentence[:-1] + '；发行人净利润为166.42万元。',
+    }
+    return positive, attacks
+
+
 class FinancialSourceBindings(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -138,6 +179,23 @@ class FinancialSourceBindings(unittest.TestCase):
         self.assertEqual(Reader.unsupported_metric_lists(denominator,'total_assets'),[])
         for clause in ('本期100.00万元为发行人销售费用。','100.00万元的销售费用。','报告期内，发行人销售费用为100.00万元。'):
             self.assertTrue(Reader.unsupported_metric_lists(clause,'sales_expenses'))
+
+    def test_qualitative_net_profit_requires_complete_explicit_other_amount_ownership(self):
+        positive, attacks = net_profit_attribution_clauses()
+        for clause in positive:
+            with self.subTest(clause=clause):
+                self.assertTrue(Reader.qualitative_net_profit_other_amount(clause))
+                self.assertEqual(Reader.unsupported_metric_lists(clause, 'net_profit'), [])
+                # Attribution recognition must never supply the required
+                # three-period net-profit occurrence or verify another value.
+                self.assertEqual(Reader.metric_list_clauses(clause, 'net_profit'), [])
+        for name, clause in attacks.items():
+            with self.subTest(attack=name):
+                self.assertFalse(Reader.qualitative_net_profit_other_amount(clause))
+                self.assertTrue(Reader.unsupported_metric_lists(clause, 'net_profit'))
+        sales = positive[0].replace('政府补助123.45', '销售费用123.45')
+        self.assertEqual(Reader.unsupported_metric_lists(sales, 'net_profit'), [])
+        self.assertTrue(Reader.unsupported_metric_lists(sales, 'sales_expenses'))
 
 
 class ExpandedAmountRegression(unittest.TestCase):
@@ -255,6 +313,38 @@ class ExpandedAmountRegression(unittest.TestCase):
         self.assertEqual(errors,[])
         self.assertEqual(len(verified),39)
         self.assertEqual(coverage['status'],'passed',coverage)
+
+    def test_explicit_other_amount_after_qualitative_profit_does_not_replace_required_role(self):
+        document,refs=self.fixture();original=refs['p'][7966];extra=copy.deepcopy(original)
+        positive,_=net_profit_attribution_clauses()
+        # Other guarded metrics retain their own amount checks; the complete
+        # positive must not introduce a synthetic investment-income assertion.
+        self.put(extra,positive[0]);original.addnext(extra)
+        coverage,errors,verified,_=self.evaluate(document,refs)
+        self.assertEqual(errors,[]);self.assertEqual(len(verified),39)
+        self.assertEqual(coverage['status'],'passed',coverage)
+        # A purely qualitative net-profit mention cannot replace its real
+        # three-period assertion even when the remaining table values match.
+        self.put(original,paragraph_text(original).split('；',1)[1])
+        coverage,_,_,_=self.evaluate(document,refs)
+        self.assertEqual(coverage['status'],'failed')
+        self.assertNotIn('narrative:7967:consolidated:net_profit',coverage['covered_role_ids'])
+
+    def test_other_metric_wording_cannot_mask_stale_profit_with_correct_duplicate(self):
+        _,attacks=net_profit_attribution_clauses()
+        for name in ('money_in_qualitative_prefix','intervening_amount',
+                     'grants_between_profit_and_amount','grants_after_profit_amount',
+                     'shared_unit','additional_amount','reverse_reassignment',
+                     'parenthesized_profit','unknown_connector','implicit_alias_tail',
+                     'historical_period','wrong_quarter','separate_stale_clause'):
+            with self.subTest(attack=name):
+                document,refs=self.fixture();original=refs['p'][7966];fresh=copy.deepcopy(original)
+                self.put(original,attacks[name]);original.addnext(fresh)
+                coverage,_,_,_=self.evaluate(document,refs,
+                    overrides={'net_profit':fresh,'profit_attributable_to_parent':fresh})
+                self.assertEqual(coverage['status'],'failed',coverage)
+                self.assertIn({'role':'narrative:7967:consolidated:net_profit',
+                               'code':'unsupported_occurrence_clause'},coverage['failures'])
 
     def test_each_of_six_missing_or_stale_narratives_rejects_correct_tables(self):
         for source_p,scope,metric in RQ_NARRATIVE_ROLES:

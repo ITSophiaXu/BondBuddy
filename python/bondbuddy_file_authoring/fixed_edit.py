@@ -22,7 +22,7 @@ from lxml import etree as ET
 from .check import STORY, package, resolve_revisions
 from .template_manifest import (build_manifest, build_nodes, capability_limits,
                                 describe_nodes, node_text, sha)
-from .word_patch import Patcher, paragraph_text, q, run_with_text, serialized, xml
+from .word_patch import Patcher, paragraph_run_reference, paragraph_text, q, run_with_text, serialized, xml
 
 VERSION = 'word-operations-v1'
 MAX_LOG = 32 * 1024 * 1024
@@ -205,7 +205,7 @@ class Editor:
         props = source.find(q('pPr'))
         if props is not None:
             node.append(copy.deepcopy(props))
-        reference = next(iter(source.iter(q('r'))), ET.Element(q('r')))
+        reference = paragraph_run_reference(source)
         # Only format properties are inherited. No bookmark, drawing, comment or
         # relationship IDs from the source content are cloned into the new text.
         node.append(run_with_text(reference, text))
