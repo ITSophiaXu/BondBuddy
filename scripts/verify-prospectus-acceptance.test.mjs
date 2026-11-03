@@ -8,7 +8,7 @@ import { join,resolve,dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { ACCEPTANCE_POLICY,METRICS,SCOPES,REQUIRED_FINANCIAL_KEYS,REQUIRED_ROLE_IDS,STOCK_METRICS,FINANCIAL_POLICY,verifyProspectusAcceptance,validateBinding,validateChapterCoverage,
-  equalRoundedAmount,validateFinancialChecks,validateHumanReviewer,validateMeasuredUsage,validateRealModelRecord,inspectAcceptanceArtifacts,validateFixedOccurrenceCoverage } from './verify-prospectus-acceptance.mjs';
+  equalRoundedAmount,equalRoundedRatio,validateFinancialChecks,validateHumanReviewer,validateMeasuredUsage,validateRealModelRecord,inspectAcceptanceArtifacts,validateFixedOccurrenceCoverage } from './verify-prospectus-acceptance.mjs';
 
 test('release acceptance fails when its private evidence file is missing',async()=>{
   await assert.rejects(verifyProspectusAcceptance({file:''}),/FILE_REQUIRED/);
@@ -78,11 +78,18 @@ function exactLocation(locator,quote,amount='100.00',scope='consolidated'){
 }
 function financialRows(){return REQUIRED_FINANCIAL_KEYS.map(key=>{const [scope,metric]=key.split(':');const binding=FINANCIAL_POLICY.metrics.find(r=>r.scope===scope&&r.metric===metric);
   const start=STOCK_METRICS.includes(metric)?'2025-09-30':'2025-01-01';
-  return {scope,metric,status:'passed',reviewer_id:'synthetic-reviewer',amount:'passed',unit:'passed',reporting_period:'passed',entity_scope:'passed',repeated_values:'passed',
+  const row={scope,metric,status:'passed',reviewer_id:'synthetic-reviewer',amount:'passed',unit:'passed',reporting_period:'passed',entity_scope:'passed',repeated_values:'passed',
     source:{file_id:'rq-202509-02',sha256:'a'.repeat(64),scope,start,end:'2025-09-30',locator:binding.locator,value:'1000000',unit:'CNY'},
     output:{scope,start,end:'2025-09-30',value:'100',unit:'CNY_10K',decimal_places:2,locators:[
       exactLocation('word/document.xml//w:p[2]','2025年9月末合并总资产100.00万元。','100.00',scope),
       exactLocation('word/document.xml//w:p[3]','2025年9月末合并总资产100.00万元。','100.00',scope)]},expected_occurrences:2};
+  if(binding.derived==='ratio_percent'){
+    row.source.denominator={...row.source,locator:binding.denominator.locator,value:'4000000'};
+    row.output.value='25';row.output.unit='PERCENT';row.expected_occurrences=1;
+    row.output.locators=[{...exactLocation('word/document.xml//w:p[4]',
+      '2025年9月末合并应付债券占非流动负债比例25.00%。','25.00',scope),narrative_ratio:true}];
+  }
+  return row;
 });}
 test('financial review covers both scopes, correct quarter, converted amounts and every repeated value location',()=>{
   const materials=new Map([['rq-202509-02','a'.repeat(64)],['rq-202509-01','b'.repeat(64)]]);
@@ -103,13 +110,14 @@ test('financial review covers both scopes, correct quarter, converted amounts an
 });
 
 test('operator occurrence counts cannot replace the independent fixed-case coverage result',()=>{
-  const result={policy:'rq-202509-occurrences-v2',status:'passed',required_count:39,located_count:39,covered_count:39,
+  const result={policy:'rq-202509-occurrences-v3',status:'passed',required_count:43,located_count:43,covered_count:43,
     covered_role_ids:[...REQUIRED_ROLE_IDS],failures:[]};
   validateFixedOccurrenceCoverage(result);
   for(const value of [undefined,{}, {...result,status:'failed'}, {...result,required_count:18},
     {...result,located_count:23}, {...result,covered_count:23}, {...result,covered_role_ids:result.covered_role_ids.slice(1)},
     {...result,covered_role_ids:result.covered_role_ids.map(()=>result.covered_role_ids[0])},
     {...result,policy:'rq-202509-occurrences-v1'}, {...result,required_count:27,located_count:27,covered_count:27},
+    {...result,policy:'rq-202509-occurrences-v2'}, {...result,required_count:39,located_count:39,covered_count:39},
     {...result,covered_role_ids:result.covered_role_ids.map((id,i)=>i===0?'invented-role':id)},
     {...result,failures:[{code:'required_occurrence_not_independently_checked'}]}])
     assert.throws(()=>validateFixedOccurrenceCoverage(value),/FIXED_OCCURRENCE_COVERAGE_INCOMPLETE/);
@@ -117,7 +125,7 @@ test('operator occurrence counts cannot replace the independent fixed-case cover
 
 test('new consolidated keys are mandatory without inventing parent attribution or expense claims',()=>{
   const materials=new Map([['rq-202509-02','a'.repeat(64)]]);
-  assert.equal(REQUIRED_FINANCIAL_KEYS.length,18);
+  assert.equal(REQUIRED_FINANCIAL_KEYS.length,21);
   for(const metric of ['deferred_income','sales_expenses','administrative_expenses','finance_expenses','investment_income','profit_attributable_to_parent']){
     assert.ok(REQUIRED_FINANCIAL_KEYS.includes(`consolidated:${metric}`));
     assert.ok(!REQUIRED_FINANCIAL_KEYS.includes(`parent:${metric}`));
@@ -129,6 +137,52 @@ test('new consolidated keys are mandatory without inventing parent attribution o
     wrong.source.start=wrong.output.start=metric==='deferred_income'?'2025-01-01':'2025-09-30';
     assert.throws(()=>validateFinancialChecks(period,materials,'synthetic-reviewer'),/FINANCIAL_PERIOD_MISMATCH/);
   }
+});
+
+test('derived percentages use both exact source values and explicit rounding, never the output numerator',()=>{
+  const ratio=(value,denominator)=>({value,unit:'CNY',denominator:{value:denominator,unit:'CNY'}});
+  assert.equal(equalRoundedRatio(ratio('1','32'),{value:'3.13',unit:'PERCENT'},2),true);
+  assert.equal(equalRoundedRatio(ratio('-1','32'),{value:'-3.13',unit:'PERCENT'},2),true);
+  assert.equal(equalRoundedRatio({value:'1',unit:'CNY_10K',denominator:{value:'40000',unit:'CNY'}},{value:'25',unit:'PERCENT'},2),true);
+  const actualSource=ratio('1486683178.1500001','5724561492.2299995');
+  assert.equal(equalRoundedRatio(actualSource,{value:'25.97',unit:'PERCENT'},2),true);
+  assert.equal(equalRoundedRatio(actualSource,{value:'26.82',unit:'PERCENT'},2),false);
+  for(const invalid of ['0','-1'])assert.throws(()=>equalRoundedRatio(ratio('1',invalid),{value:'0',unit:'PERCENT'},2),/RATIO_DENOMINATOR_INVALID/);
+  for(const invalid of ['1e6','NaN','Infinity'])assert.throws(()=>equalRoundedRatio(ratio('1',invalid),{value:'0',unit:'PERCENT'},2),/FINANCIAL_VALUE_INVALID/);
+  assert.throws(()=>equalRoundedRatio(ratio('1','2'),{value:'50',unit:'CNY'},2),/FINANCIAL_UNIT_INVALID/);
+});
+
+test('bond amounts and ratio are mandatory; denominator identity, scope, cutoff and unit are independently bound',()=>{
+  const materials=new Map([['rq-202509-02','a'.repeat(64)]]);
+  const ratioMetric='bonds_payable_noncurrent_liabilities_ratio';
+  for(const key of ['consolidated:bonds_payable','parent:bonds_payable',`consolidated:${ratioMetric}`]){
+    assert.ok(REQUIRED_FINANCIAL_KEYS.includes(key));
+    assert.throws(()=>validateFinancialChecks(financialRows().filter(r=>`${r.scope}:${r.metric}`!==key),materials,'synthetic-reviewer'),/FINANCIAL_COVERAGE_INCOMPLETE/);
+  }
+  for(const mutate of [
+    row=>delete row.source.denominator,
+    row=>row.source.denominator.locator='01合并资产负债表!D128',
+    row=>row.source.denominator.file_id='rq-202509-01',
+    row=>row.source.denominator.sha256='b'.repeat(64),
+    row=>row.source.denominator.scope='parent',
+    row=>row.source.denominator.start='2025-01-01',
+    row=>row.source.denominator.end='2025-06-30',
+    row=>row.source.denominator.unit='CNY_10K',
+    row=>row.source.denominator.value='0',
+    row=>row.source.denominator.value='5000000',
+    row=>row.output.value='26.82',
+    row=>row.output.decimal_places=3,
+    row=>row.output.unit='CNY_10K',
+    row=>delete row.output.locators[0].narrative_ratio,
+    row=>row.output.locators[0].narrative_ratio='true',
+    row=>row.output.locators[0].narrative_list=true,
+    row=>delete row.output.locators[0].quote,
+  ]){
+    const rows=financialRows();mutate(rows.find(r=>r.metric===ratioMetric));
+    assert.throws(()=>validateFinancialChecks(rows,materials,'synthetic-reviewer'));
+  }
+  const rows=financialRows();rows[0].source.denominator={...rows[0].source};
+  assert.throws(()=>validateFinancialChecks(rows,materials,'synthetic-reviewer'),/FINANCIAL_SOURCE_MISMATCH/);
 });
 test('an arbitrary same-valued synthetic spreadsheet cannot establish an authorized financial source',()=>{
   const root=resolve(dirname(fileURLToPath(import.meta.url)),'..'),temp=mkdtempSync(join(tmpdir(),'bb-synthetic-source-rejection-'));

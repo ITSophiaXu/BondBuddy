@@ -11,7 +11,7 @@ import json
 import re
 import sys
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from pathlib import Path
 from zipfile import ZipFile
 from pathlib import PurePosixPath
@@ -32,13 +32,14 @@ NUMBER = r'-?[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?'
 MONEY_UNIT = {'元': 'CNY', '万元': 'CNY_10K', '亿元': 'CNY_100M'}
 POLICY = json.loads((Path(__file__).with_name('prospectus-financial-policy.json')).read_text(encoding='utf-8'))
 SOURCE_BINDINGS = {(r['scope'], r['metric']): r for r in POLICY['metrics']}
-if len(SOURCE_BINDINGS) != 18 or POLICY['version'] != 'rq-202509-financial-v2':
+if len(SOURCE_BINDINGS) != 21 or POLICY['version'] != 'rq-202509-financial-v3':
     raise ValueError('financial_policy_invalid')
 STOCK = tuple({r['metric'] for r in POLICY['metrics'] if r['stock']})
 INCOME = ('net_profit', 'nonoperating_expenses', 'sales_expenses', 'administrative_expenses',
           'finance_expenses', 'investment_income', 'profit_attributable_to_parent')
 EXTENDED = ('deferred_income', 'sales_expenses', 'administrative_expenses', 'finance_expenses',
-            'investment_income', 'profit_attributable_to_parent')
+            'investment_income', 'profit_attributable_to_parent', 'bonds_payable')
+RATIO_METRIC = 'bonds_payable_noncurrent_liabilities_ratio'
 ALIASES = {
     'total_assets': ('总资产', '资产总额', '资产合计', '资产总计'),
     'total_liabilities': ('总负债', '负债总额', '负债合计', '负债总计'),
@@ -47,6 +48,7 @@ ALIASES = {
     'net_profit': ('净利润',),
     'nonoperating_expenses': ('营业外支出',),
     'deferred_income': ('递延收益',), 'sales_expenses': ('销售费用',),
+    'bonds_payable': ('应付债券',),
     'administrative_expenses': ('管理费用',), 'finance_expenses': ('财务费用',),
     'investment_income': ('投资收益',),
     'profit_attributable_to_parent': ('归属母公司所有者的净利润', '归属于母公司所有者的净利润', '归属于母公司股东的净利润'),
@@ -55,7 +57,7 @@ ALIASES = {
 HYPOTHETICAL = re.compile(r'备考|模拟|假设|发行后|预测')
 UNITS = re.compile(r'单位[：:](?:人民币)?(?:元|万元|亿元)(?:[、,，/／](?:%|％))*')
 CAPTION = re.compile(r'表[0-9一二三四五六七八九十]+(?:[-－—.．][0-9一二三四五六七八九十]+)*[：:]?.+')
-OCCURRENCE_POLICY = 'rq-202509-occurrences-v2'
+OCCURRENCE_POLICY = 'rq-202509-occurrences-v3'
 # Original-source coordinates define roles only. Clean-document coordinates are
 # discovered from captions, structured ancestors and metric clauses below.
 RQ_TABLE_ROLES = (
@@ -72,6 +74,7 @@ RQ_TABLE_ROLES = (
     (44, 45, 'consolidated', 'deferred_income'), (45, 7, 'consolidated', 'sales_expenses'),
     (45, 8, 'consolidated', 'administrative_expenses'), (45, 10, 'consolidated', 'finance_expenses'),
     (45, 14, 'consolidated', 'investment_income'), (45, 30, 'consolidated', 'profit_attributable_to_parent'),
+    (44, 42, 'consolidated', 'bonds_payable'), (47, 38, 'parent', 'bonds_payable'),
 )
 RQ_NARRATIVE_ROLES = (
     (46, 'consolidated', 'operating_cash_flow'), (285, 'consolidated', 'operating_cash_flow'),
@@ -81,12 +84,15 @@ RQ_NARRATIVE_ROLES = (
     (7605, 'consolidated', 'deferred_income'), (7838, 'consolidated', 'sales_expenses'),
     (7840, 'consolidated', 'administrative_expenses'), (7842, 'consolidated', 'finance_expenses'),
     (7870, 'consolidated', 'investment_income'), (7967, 'consolidated', 'profit_attributable_to_parent'),
+    (7403, 'consolidated', 'bonds_payable'),
 )
+RQ_RATIO_ROLES = ((7403, 'consolidated', RATIO_METRIC),)
 ROLE_IDS = tuple(f'table:{t}:{scope}:{metric}' for t, _, scope, metric in RQ_TABLE_ROLES) + tuple(
-    f'narrative:{p}:{scope}:{metric}' for p, scope, metric in RQ_NARRATIVE_ROLES)
+    f'narrative:{p}:{scope}:{metric}' for p, scope, metric in RQ_NARRATIVE_ROLES) + tuple(
+    f'narrative_ratio:{p}:{scope}:{metric}' for p, scope, metric in RQ_RATIO_ROLES)
 NARRATIVE_METRICS = frozenset(metric for _, _, metric in RQ_NARRATIVE_ROLES)
-if (len(ROLE_IDS) != 39 or len(set(ROLE_IDS)) != 39 or len(POLICY['required_role_ids']) != 39
-        or set(ROLE_IDS) != set(POLICY['required_role_ids']) or POLICY['required_occurrences'] != 39
+if (len(ROLE_IDS) != 43 or len(set(ROLE_IDS)) != 43 or len(POLICY['required_role_ids']) != 43
+        or set(ROLE_IDS) != set(POLICY['required_role_ids']) or POLICY['required_occurrences'] != 43
         or POLICY['occurrence_policy'] != OCCURRENCE_POLICY):
     raise ValueError('financial_role_policy_mismatch')
 
@@ -188,7 +194,7 @@ def ordered_periods(value, metric):
 
 
 def extended_lists(value, metric):
-    """Finite source-shaped clauses; percentages are context, never approved facts."""
+    """Finite source-shaped clauses; ratio verification uses explicit ratio roles."""
     if metric not in EXTENDED:
         return []
     clauses = list(re.finditer(r'[^。；;！？!?]+(?:[。；;！？!?]|$)', value))
@@ -213,13 +219,16 @@ def extended_lists(value, metric):
                 continue
             expression = inherited['period']
         else:
-            if metric == 'deferred_income':
+            if metric == 'bonds_payable':
+                ending = rf'，占当期期末非流动负债的比例分别为(?P<percentages>{percent})[。；;]?'
+            elif metric == 'deferred_income':
                 ending = rf'，占当期末非流动负债的比例分别为{percent}[。；;]?'
             elif metric == 'investment_income':
                 ending = r'，明细如下：'
             else:
                 ending = rf'，分别占同期营业总成本的比例分别为{percent}，主要为[^。；;！？!?]+[。；;]?'
-            match = re.fullmatch(r'(?P<period>[^，,]+)[，,](?:发行人|公司|本公司)(?:的)?' + alias +
+            label = alias + (r'余额' if metric == 'bonds_payable' else '')
+            match = re.fullmatch(r'(?P<period>[^，,]+)[，,](?:发行人|公司|本公司)(?:的)?' + label +
                                  rf'分别为(?P<amounts>{series})' + ending, text)
             if not match:
                 continue
@@ -237,8 +246,15 @@ def extended_lists(value, metric):
             amounts.append({'value': amount['value'], 'unit': amount['unit'],
                             'start': positions[a], 'end': positions[b-1]+1})
         if len(amounts) == 3:
-            result.append({'start': clause.start(), 'end': clause.end(), 'expression': expression,
-                           'quote': clause[0], 'amounts': amounts})
+            parsed = {'start': clause.start(), 'end': clause.end(), 'expression': expression,
+                      'quote': clause[0], 'amounts': amounts}
+            if metric == 'bonds_payable':
+                parsed['percentages'] = []
+                for value_match in re.finditer(rf'(?P<value>{NUMBER})[%％]', match['percentages']):
+                    a = match.start('percentages') + value_match.start('value')
+                    b = match.start('percentages') + value_match.end('value')
+                    parsed['percentages'].append({'value': value_match['value'], 'start': positions[a], 'end': positions[b-1]+1})
+            result.append(parsed)
     return result
 
 
@@ -255,6 +271,20 @@ def numeric_cache(cell):
     if cell is None or cell.attrib.get('t', 'n') != 'n' or cached is None or cached.text is None:
         raise ValueError('numeric_source_cache_required')
     return finite_decimal(cached.text)
+
+
+def rounded_ratio(numerator, denominator):
+    """Round percent to two places using exact source-cache rational numbers."""
+    if denominator <= 0:
+        raise ValueError('positive_ratio_denominator_required')
+    an, ad = numerator.as_integer_ratio()
+    bn, bd = denominator.as_integer_ratio()
+    n, d = an * bd * 10000, ad * bn
+    magnitude = abs(n)
+    rounded = (magnitude // d + (magnitude % d * 2 >= d)) * (-1 if n < 0 else 1)
+    with localcontext() as context:
+        context.prec = max(28, len(str(abs(rounded))) + 4)
+        return Decimal(rounded) / 100
 
 
 class FinancialSources:
@@ -275,7 +305,23 @@ class FinancialSources:
     def value(self, path, row, issuer):
         src = row['source']
         binding = SOURCE_BINDINGS.get((row['scope'], row['metric']))
-        if not binding or issuer != POLICY['issuer'] or src['file_id'] != POLICY['material_id'] or src['scope'] != row['scope'] or src['unit'] != 'CNY':
+        if not binding:
+            raise ValueError('source_metric_scope')
+        actual = self.bound_value(path, src, binding, row['scope'], issuer)
+        if binding.get('derived') == 'ratio_percent':
+            denominator = self.bound_value(path, src['denominator'], binding['denominator'], row['scope'], issuer)
+            output = row['output']
+            if (output['scope'] != row['scope'] or output['unit'] != 'PERCENT' or output['decimal_places'] != 2
+                    or output['start'] != '2025-09-30' or output['end'] != '2025-09-30'
+                    or finite_decimal(output['value']) != rounded_ratio(actual, denominator)):
+                raise ValueError('source_derived_ratio_mismatch')
+        elif 'denominator' in src:
+            raise ValueError('unexpected_source_denominator')
+        return actual
+
+    def bound_value(self, path, src, binding, scope, issuer):
+        if (issuer != POLICY['issuer'] or src['file_id'] != POLICY['material_id']
+                or src['scope'] != scope or src['unit'] != binding['unit']):
             raise ValueError('source_metric_scope')
         if src['locator'] != binding['locator']:
             raise ValueError('source_bound_locator')
@@ -761,7 +807,7 @@ class Reader:
     def table_history(self, path, spec, amount, row):
         if row['metric'] not in EXTENDED:
             return
-        if self.authorized_source is None or row['scope'] != 'consolidated':
+        if self.authorized_source is None or (row['scope'] != 'consolidated' and row['metric'] != 'bonds_payable'):
             raise ValueError('authorized_table_history_required')
         t, r, _, _ = next(role for role in RQ_TABLE_ROLES if role[2:] == (row['scope'], row['metric']))
         original = self.node(self.authorized_source, f'word/document.xml#table={t},row={r},cell=2')
@@ -795,15 +841,41 @@ class Reader:
             if (not old_value and new_value) or (old_value and (not re.fullmatch(NUMBER, new_value) or number(old_value) != number(new_value))):
                 raise ValueError('historical_table_value_changed')
 
+    def narrative_ratio_span(self, path, spec, location, row):
+        if (row['metric'] != RATIO_METRIC or row['scope'] != 'consolidated'
+                or row['output']['unit'] != 'PERCENT' or row['output']['decimal_places'] != 2):
+            raise ValueError('explicit_derived_ratio_required')
+        amount_row = {'scope': row['scope'], 'metric': 'bonds_payable',
+                      'output': {'unit': 'CNY_10K', 'decimal_places': 2}}
+        self.extended_list_span(path, spec, location, amount_row)
+        current = next(m for m in extended_lists(location['text'], 'bonds_payable') if m['quote'] == spec['quote'])
+        source_role = next(p for p, s, m in RQ_RATIO_ROLES if (s, m) == (row['scope'], row['metric']))
+        original = self.node(self.authorized_source, f'word/document.xml//w:p[{source_role}]')['text']
+        previous = extended_lists(original, 'bonds_payable')
+        if len(previous) != 1:
+            raise ValueError('authorized_historical_ratio_required')
+        for item in current['percentages']:
+            if not re.fullmatch(r'-?[0-9]+(?:,[0-9]{3})*\.[0-9]{2}', item['value']):
+                raise ValueError('ratio_precision_mismatch')
+        if any(number(a['value']) != number(b['value']) for a, b in zip(
+                previous[0]['percentages'][:2], current['percentages'][:2])):
+            raise ValueError('historical_ratio_changed')
+        selected = current['percentages'][2]
+        return selected['start'], selected['end']
+
     def output_value(self, path, spec, row):
         if not isinstance(spec, dict):
             raise ValueError('precise_output_location_required')
+        ratio = row['metric'] == RATIO_METRIC
+        if ((ratio and (spec.get('narrative_ratio') is not True or 'narrative_list' in spec or 'quote' not in spec))
+                or (not ratio and 'narrative_ratio' in spec)):
+            raise ValueError('explicit_derived_ratio_required')
         location = self.node(path, spec['locator'])
         value = location['text']
         if 'quote' in spec:
             scope = self.anchor(path, spec['scope_anchor'])
             default_scope = '本募集说明书其他章节中若无特殊说明，则财务数据及财务指标均为合并口径。'
-            if (spec.get('narrative_list') and spec['scope_anchor']['quote'] == default_scope
+            if ((spec.get('narrative_list') or ratio) and spec['scope_anchor']['quote'] == default_scope
                     and scope['story'] == 'word/document.xml' and scope['node'].getparent().tag == q('body')
                     and scope['node'].getparent() is location['node'].getparent()
                     and row['scope'] == 'consolidated'):
@@ -815,11 +887,14 @@ class Reader:
             quote, start, end = spec['quote'], spec['start'], spec['end']
             if value.count(quote) != 1:
                 raise ValueError('unique_quote_required')
-            if not spec.get('narrative_list') and (not period_ok(quote, row['metric']) or not metric_ok(quote, row['metric'])):
+            if not (spec.get('narrative_list') or ratio) and (not period_ok(quote, row['metric']) or not metric_ok(quote, row['metric'])):
                 raise ValueError('precise_period_context')
             if isinstance(start, bool) or isinstance(end, bool) or not isinstance(start, int) or not isinstance(end, int) or not 0 <= start < end <= len(quote):
                 raise ValueError('amount_span')
-            if spec.get('narrative_list'):
+            if ratio:
+                if (start, end) != self.narrative_ratio_span(path, spec, location, row):
+                    raise ValueError('target_list_ratio_span')
+            elif spec.get('narrative_list'):
                 if (start, end) != self.narrative_list_span(path, spec, location, row):
                     raise ValueError('target_list_amount_span')
             else:
@@ -830,7 +905,7 @@ class Reader:
             amount = quote[start:end]
             if not re.fullmatch(NUMBER, amount) or start and quote[start - 1] in '0123456789,.' or end < len(quote) and quote[end] in '0123456789,.':
                 raise ValueError('partial_amount')
-            if quote[end:].lstrip().startswith(('%', '％')):
+            if not ratio and quote[end:].lstrip().startswith(('%', '％')):
                 raise ValueError('percentage_is_not_amount')
             if quote[:start].rstrip().endswith(('(', '（')) and quote[end:].lstrip().startswith((')', '）')):
                 raise ValueError('parenthesized_amount_unsupported')
@@ -1039,38 +1114,41 @@ class Reader:
                 candidates = self.target_amount_candidates(clean, output, tables[0], metric, self.interval(source_location))
             required.append({'role': role, 'scope': scope, 'metric': metric, 'kind': 'table',
                              'candidates': candidates, 'ambiguous': len(tables) > 1 or len(candidates) > 1})
-        for paragraph_number, scope, metric in RQ_NARRATIVE_ROLES:
+        for paragraph_number, scope, metric in (*RQ_NARRATIVE_ROLES, *RQ_RATIO_ROLES):
+            ratio = metric == RATIO_METRIC
+            clause_metric = 'bonds_payable' if ratio else metric
             paragraph = source['paragraphs'][paragraph_number - 1]
-            if paragraph not in source['contexts'] or len(self.metric_list_clauses(paragraph_text(paragraph), metric)) != 1:
+            if paragraph not in source['contexts'] or len(self.metric_list_clauses(paragraph_text(paragraph), clause_metric)) != 1:
                 raise ValueError('authorized_occurrence_narrative_shape_changed')
             context = source['contexts'][paragraph]
             candidates = []
             unsupported = []
             exempt_source_clauses = set()
-            if metric in NARRATIVE_METRICS:
+            if clause_metric in NARRATIVE_METRICS:
                 for original in source['body']:
                     if original.tag != q('p') or source['contexts'].get(original) != context:
                         continue
                     for clause in re.finditer(r'[^。；;！？!?]+(?:[。；;！？!?]|$)', paragraph_text(original)):
-                        if self.historical_or_other_entity_single_clause(clause[0], metric):
+                        if self.historical_or_other_entity_single_clause(clause[0], clause_metric):
                             exempt_source_clauses.add(compact(clause[0]))
             for candidate in output['body']:
                 if candidate.tag != q('p') or output['contexts'].get(candidate) != context:
                     continue
                 text = paragraph_text(candidate)
-                unsupported.extend((start, end) for start, end in self.unsupported_metric_lists(text, metric)
+                unsupported.extend((start, end) for start, end in self.unsupported_metric_lists(text, clause_metric)
                                    if compact(text[start:end]) not in exempt_source_clauses)
-                for start, end in self.metric_list_clauses(text, metric):
+                for start, end in self.metric_list_clauses(text, clause_metric):
                     loc = f'word/document.xml//w:p[{output["paragraph_indices"][candidate] + 1}]'
                     candidates.append((loc, start, end))
-            required.append({'role': f'narrative:{paragraph_number}:{scope}:{metric}',
-                             'scope': scope, 'metric': metric, 'kind': 'narrative_list',
+            prefix = 'narrative_ratio' if ratio else 'narrative'
+            required.append({'role': f'{prefix}:{paragraph_number}:{scope}:{metric}',
+                             'scope': scope, 'metric': metric, 'kind': 'narrative_ratio' if ratio else 'narrative_list',
                              'candidates': candidates, 'ambiguous': len(candidates) > 1,
                              'unsupported': bool(unsupported)})
         return required
 
     def occurrence_coverage(self, clean, verified):
-        required_count = len(RQ_TABLE_ROLES) + len(RQ_NARRATIVE_ROLES)
+        required_count = len(RQ_TABLE_ROLES) + len(RQ_NARRATIVE_ROLES) + len(RQ_RATIO_ROLES)
         result = {'policy': OCCURRENCE_POLICY, 'status': 'failed', 'required_count': required_count,
                   'located_count': 0, 'covered_count': 0, 'covered_role_ids': [], 'failures': []}
         try:
@@ -1133,7 +1211,7 @@ def inspect(source_path, pdfs, data):
                         raise ValueError('duplicate_amount_span')
                     seen.add(identity)
                     verified.append({'scope': row['scope'], 'metric': row['metric'], 'identity': identity,
-                                     'kind': 'narrative_list' if locator.get('narrative_list') is True else 'table' if 'quote' not in locator else 'narrative'})
+                                     'kind': 'narrative_ratio' if locator.get('narrative_ratio') is True else 'narrative_list' if locator.get('narrative_list') is True else 'table' if 'quote' not in locator else 'narrative'})
             except Exception:
                 failures.append(index)
     finally:

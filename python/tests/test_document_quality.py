@@ -200,6 +200,67 @@ class DocumentQualityTests(unittest.TestCase):
                                  'before': node['text'], 'after': '一、风险因素：经营风险'}])
         self.assertIn('WORD_SOURCE_OUTLINE_CHANGED', self.codes(report))
 
+    def test_formula_note_update_passes_without_approving_its_financial_meaning(self):
+        doc = Document(self.source)
+        formula = '1.全部债务=短期借款+长期借款'
+        doc.add_paragraph(formula)
+        doc.add_paragraph('2.流动比率=流动资产/流动负债')
+        doc.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        node = self.node(formula)
+        report = self.generate([{'id': 'formula-note', 'kind': 'replace_text', 'node_id': node['node_id'],
+                                 'before': formula, 'after': formula + '（有息债务口径待人工确认）'}])
+        self.assertEqual(report['status'], 'passed', report)
+        self.assertEqual(report['metrics']['outline_status'], 'unchanged')
+        self.assertEqual(report['metrics']['formula_status'], 'unchanged')
+        self.assertEqual(report['factual_accuracy'], 'not_verified')
+
+    def test_valid_edit_log_cannot_hide_deleted_reordered_renumbered_or_rewritten_formulas(self):
+        doc = Document(self.source)
+        formulas = ['1.流动比率=流动资产/流动负债', '2.速动比率=（流动资产-存货）/流动负债',
+                    '3.资产负债率=负债总计/资产总计']
+        for formula in formulas:
+            doc.add_paragraph(formula)
+        doc.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        for after in [
+            ['', '', ''],
+            ['1.速动比率=（流动资产-存货）/流动负债', '2.流动比率=流动资产/流动负债', formulas[2]],
+            [f.replace(f'{i + 1}.', f'{i + 4}.', 1) for i, f in enumerate(formulas)],
+            [formulas[0].replace('/流动负债', '/负债总计'), *formulas[1:]],
+            [formulas[0].replace('流动资产/', '存货/'), *formulas[1:]],
+            [formulas[0].replace('/', '×'), *formulas[1:]],
+            [formulas[0] + '（流动资产*2）', *formulas[1:]],
+        ]:
+            with self.subTest(after=after):
+                operations = [{'id': f'formula-{i}', 'kind': 'replace_text', 'node_id': self.node(old)['node_id'],
+                               'before': old, 'after': new}
+                              for i, (old, new) in enumerate(zip(formulas, after)) if old != new]
+                report = self.generate(operations)
+                self.assertIn('WORD_SOURCE_FORMULA_CHANGED', self.codes(report))
+                self.assertGreater(report['metrics']['prose_retention'], .65)
+
+    def test_formula_exemption_keeps_real_heading_chapter_content_loss_blocked(self):
+        doc = Document(self.source)
+        doc.add_paragraph('1.流动比率=流动资产/流动负债')
+        doc.add_paragraph('2.速动比率=（流动资产-存货）/流动负债')
+        doc.add_paragraph('2、长期偿债能力分析')
+        original = ('发行人通过调整借款到期分布，减少集中兑付压力，并维持原有融资渠道。'
+                    '历史年度的偿债指标与经营活动情况共同解释长期资金安排。') * 3
+        doc.add_paragraph(original)
+        doc.add_paragraph('（五）盈利能力分析')
+        doc.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        node = self.node(original)
+        replacement = ('对短期现金收支及受限资产另行开展审查，本期评价等待补充资料后确定。' * 10)[:len(original)]
+        report = self.generate([{'id': 'rewrite-analysis', 'kind': 'replace_text', 'node_id': node['node_id'],
+                                 'before': original, 'after': replacement}])
+        self.assertEqual(report['metrics']['outline_status'], 'unchanged')
+        self.assertEqual(report['metrics']['formula_status'], 'unchanged')
+        problem = next(i for i in report['issues'] if i['code'] == 'WORD_SOURCE_CHAPTER_CONTENT_LOST')
+        self.assertGreaterEqual(problem['chapters'][0]['character_ratio'], .75)
+        self.assertLess(problem['chapters'][0]['prose_retention'], .55)
+
     def test_arabic_heading_numbers_cannot_be_normalized_away(self):
         doc = Document(self.source)
         doc.paragraphs[0].text = '1 财务状况'

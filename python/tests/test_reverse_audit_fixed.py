@@ -1,12 +1,16 @@
 """Synthetic source-to-replay inventory; no financial acceptance is asserted."""
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from docx import Document
 from openpyxl import Workbook
 from bondbuddy_file_authoring.fixed_edit import empty_log, load_editor, write_json
-from bondbuddy_file_authoring.reverse_audit import inventory, source_rows
+from bondbuddy_file_authoring.reverse_audit import inventory, source_rows, write_inventory_report
 from bondbuddy_file_authoring.template_manifest import sha
 from bondbuddy_file_authoring.word_patch import q, serialized, xml
 from lxml import etree as ET
@@ -66,6 +70,14 @@ class ReverseAuditTests(unittest.TestCase):
         self.assertNotEqual(group['cells'][0]['decimal'], '17.23')
         self.assertEqual(group['cells'][0]['decimal'], group['cells'][0]['raw_cached'])
         self.assertTrue(all(r['status'] == 'needs_review' for r in occurrences))
+        self.assertEqual(len(result['review_queue']), 1)
+        candidate = result['review_queue'][0]
+        self.assertEqual(candidate['node_id'], narrative['node_id'])
+        self.assertEqual(candidate['text_sha256'], narrative['text_sha256'])
+        self.assertEqual(candidate['period_language'], ['报告期'])
+        self.assertEqual(candidate['status'], 'needs_review')
+        self.assertIn(group, [result['source_groups'][i] for i in candidate['source_group_indices']])
+        self.assertFalse(narrative['in_table'])
 
     def test_unrelated_change_does_not_hide_old_occurrence_and_insertions_are_scanned(self):
         *_, editor = load_editor(self.input)
@@ -82,6 +94,42 @@ class ReverseAuditTests(unittest.TestCase):
         self.assertTrue(any(r['node_id'].startswith('op:additional:') and r['changed'] for r in occurrences))
         self.assertTrue(result['identity_occurrences'])
         self.assertEqual(result['identity_occurrences'][0]['status'], 'needs_review')
+        self.assertEqual(len(result['review_queue']), 1)
+        self.assertIn('报告期内', result['occurrences'][result['review_queue'][0]['node_id']]['text'])
+        self.assertFalse(any(item['node_id'].startswith('op:additional:') for item in result['review_queue']))
+
+    def test_review_queue_does_not_treat_comment_or_unchanged_value_as_verified(self):
+        *_, editor = load_editor(self.input)
+        target = next(key for key, (_, node) in editor.nodes.items()
+                      if node.tag == q('p') and '报告期内' in ''.join(node.itertext()))
+        self.log['operations'] = [{'id': 'explanation', 'kind': 'add_comment', 'node_id': target,
+                                  'before': '报告期内，工程应付款余额为17.23万元，仍应逐项回查。',
+                                  'text': '已查看来源的说明不能代替核对金额、期间及口径。'}]
+        write_json(self.operations, self.log)
+        result = inventory(self.input, self.operations)
+        self.assertEqual([item['node_id'] for item in result['review_queue']], [target])
+        self.assertTrue(result['occurrences'][target]['replay_comments'])
+        self.assertEqual(result['review_queue'][0]['status'], 'needs_review')
+        self.assertEqual(result['inventory_mode'], 'operations_replay')
+        self.assertEqual(result['operations_sha256'], sha(self.operations.read_bytes()))
+
+    def test_review_queue_distinguishes_period_language_from_historical_facts(self):
+        document = Document(self.source)
+        document.paragraphs[0].text = '最近两年及一期末，工程应付款分别为12.00万元、13.00万元和17.23万元。'
+        document.add_paragraph('2023年发生工程应付款12.00万元；该历史金额仍需按来源审核。')
+        document.tables[0].cell(0, 0).text = '报告期内工程应付款'
+        document.sections[0].header.paragraphs[0].text = '报告期内工程应付款17.23万元'
+        document.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        write_json(self.input, self.data)
+        result = inventory(self.input)
+        self.assertEqual(result['inventory_mode'], 'baseline_preview')
+        self.assertEqual(len(result['review_queue']), 1)
+        candidate = result['review_queue'][0]
+        self.assertEqual(candidate['period_language'], ['最近两年及一期末'])
+        self.assertEqual(candidate['status'], 'needs_review')
+        self.assertTrue(any('2023年发生' in r['text'] for r in result['occurrences'].values()))
+        self.assertTrue(any(r['part'].startswith('word/header') for r in result['occurrences'].values()))
 
     def test_formula_without_numeric_cache_is_missing_not_zero(self):
         group = next(g for g in inventory(self.input)['source_groups'] if g['match_label'] == '递延补助')
@@ -176,6 +224,101 @@ class ReverseAuditTests(unittest.TestCase):
         self.modify_xlsx(update)
         with self.assertRaisesRegex(ValueError, 'SHARED_STRING_INDEX'):
             inventory(self.input)
+
+    def test_report_cannot_overwrite_input_or_explicit_or_declared_operations(self):
+        (self.root / 'output').mkdir()
+        (self.root / 'scratch').mkdir()
+        operations = self.root / 'output/operations.json'
+        write_json(operations, self.log)
+        declared_log = self.root / 'scratch/declared-log.json'
+        write_json(declared_log, self.log)
+        self.data['operations_path'] = 'scratch/declared-log.json'
+        write_json(self.input, self.data)
+        for target in (self.input, operations, declared_log):
+            with self.subTest(target=target):
+                original = target.read_bytes()
+                with self.assertRaisesRegex(ValueError, 'REVERSE_AUDIT_REPORT_UNSAFE'):
+                    write_inventory_report(self.input, operations, target)
+                self.assertEqual(target.read_bytes(), original)
+
+    def test_report_cannot_overwrite_declared_baseline_pdf_or_any_material_role(self):
+        (self.root / 'scratch').mkdir()
+        for field in ('baseline_path', 'original_pdf_path', 'historical', 'notes', 'financial', 'other'):
+            with self.subTest(field=field):
+                target = self.root / 'scratch/source.json'
+                raw = b'Protected source bytes, even when its declared suffix is invalid.'
+                target.write_bytes(raw)
+                data = dict(self.data)
+                if field.endswith('_path'):
+                    data[field] = 'scratch/source.json'
+                else:
+                    data['materials'] = [*self.data['materials'], {'role': field, 'path': 'scratch/source.json'}]
+                write_json(self.input, data)
+                with self.assertRaisesRegex(ValueError, 'REVERSE_AUDIT_REPORT_UNSAFE'):
+                    write_inventory_report(self.input, None, target)
+                self.assertEqual(target.read_bytes(), raw)
+
+    def test_hardlinked_report_and_traversal_are_rejected_without_changing_sources(self):
+        (self.root / 'scratch').mkdir()
+        hardlink = self.root / 'scratch/linked.json'
+        original = self.xlsx.read_bytes()
+        os.link(self.xlsx, hardlink)
+        for target in (hardlink, self.root / 'scratch/../report.json', self.root.parent / 'outside.json'):
+            with self.subTest(target=target), self.assertRaisesRegex(ValueError, 'REVERSE_AUDIT_REPORT_UNSAFE'):
+                write_inventory_report(self.input, None, target)
+        self.assertEqual(self.xlsx.read_bytes(), original)
+
+    def test_symbolic_report_and_parent_are_rejected(self):
+        (self.root / 'scratch').mkdir()
+        (self.root / 'output').mkdir()
+        if os.name != 'nt':
+            link = self.root / 'scratch/link.json'
+            link.symlink_to(self.xlsx)
+            parent = self.root / 'scratch/linked-parent'
+            parent.symlink_to(self.root / 'output', target_is_directory=True)
+            for target in (link, parent / 'report.json'):
+                with self.subTest(target=target), self.assertRaisesRegex(ValueError, 'REVERSE_AUDIT_REPORT_UNSAFE'):
+                    write_inventory_report(self.input, None, target)
+        else:
+            original = Path.is_symlink
+            for blocked in (self.root / 'scratch', self.root / 'scratch/link.json'):
+                with patch.object(Path, 'is_symlink', lambda p: p == blocked or original(p)):
+                    with self.assertRaisesRegex(ValueError, 'REVERSE_AUDIT_REPORT_UNSAFE'):
+                        write_inventory_report(self.input, None, self.root / 'scratch/link.json')
+
+    def test_report_destination_is_rechecked_after_inventory(self):
+        from bondbuddy_file_authoring import reverse_audit
+        (self.root / 'scratch').mkdir()
+        destination = self.root / 'scratch/report.json'
+        original_inventory = reverse_audit.inventory
+        source_bytes = self.source.read_bytes()
+        def link_destination(*args):
+            result = original_inventory(*args)
+            os.link(self.source, destination)
+            return result
+        with patch.object(reverse_audit, 'inventory', link_destination):
+            with self.assertRaisesRegex(ValueError, 'REVERSE_AUDIT_REPORT_UNSAFE'):
+                write_inventory_report(self.input, None, destination)
+        self.assertEqual(self.source.read_bytes(), source_bytes)
+
+    def test_cli_normal_scratch_report_preserves_input_and_operations(self):
+        (self.root / 'scratch').mkdir()
+        (self.root / 'output').mkdir()
+        operations = self.root / 'output/operations.json'
+        write_json(operations, self.log)
+        source_paths = [self.input, self.source, self.xlsx, operations]
+        originals = {p: p.read_bytes() for p in source_paths}
+        report = self.root / 'scratch/report.json'
+        base = [sys.executable, '-m', 'bondbuddy_file_authoring.reverse_audit', '--input', str(self.input),
+                '--operations', str(operations), '--report']
+        rejected = subprocess.run([*base, str(operations)], capture_output=True, encoding='utf-8', timeout=30)
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn('REVERSE_AUDIT_REPORT_UNSAFE', rejected.stderr)
+        run = subprocess.run([*base, str(report)], capture_output=True, encoding='utf-8', timeout=30)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(json.loads(run.stdout)['financial_acceptance'], 'not_run')
+        self.assertEqual(json.loads(report.read_text(encoding='utf-8'))['status'], 'needs_review')
+        self.assertEqual({p: p.read_bytes() for p in source_paths}, originals)
 
 
 if __name__ == '__main__':

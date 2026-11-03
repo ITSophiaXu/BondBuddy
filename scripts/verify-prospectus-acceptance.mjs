@@ -14,8 +14,9 @@ export const REQUIRED_FINANCIAL_KEYS=Object.freeze(FINANCIAL_POLICY.metrics.map(
 export const REQUIRED_ROLE_IDS=Object.freeze(FINANCIAL_POLICY.required_role_ids);
 export const METRICS=Object.freeze([...new Set(FINANCIAL_POLICY.metrics.map(r=>r.metric))]);
 export const STOCK_METRICS=Object.freeze([...new Set(FINANCIAL_POLICY.metrics.filter(r=>r.stock).map(r=>r.metric))]);
-if(FINANCIAL_POLICY.version!=='rq-202509-financial-v2'||REQUIRED_FINANCIAL_KEYS.length!==18||new Set(REQUIRED_FINANCIAL_KEYS).size!==18
-  ||REQUIRED_ROLE_IDS.length!==39||new Set(REQUIRED_ROLE_IDS).size!==39)throw new Error('PROSPECTUS_ACCEPTANCE_POLICY_INVALID');
+if(FINANCIAL_POLICY.version!=='rq-202509-financial-v3'||REQUIRED_FINANCIAL_KEYS.length!==21||new Set(REQUIRED_FINANCIAL_KEYS).size!==21
+  ||FINANCIAL_POLICY.occurrence_policy!=='rq-202509-occurrences-v3'||FINANCIAL_POLICY.required_occurrences!==43
+  ||REQUIRED_ROLE_IDS.length!==43||new Set(REQUIRED_ROLE_IDS).size!==43)throw new Error('PROSPECTUS_ACCEPTANCE_POLICY_INVALID');
 export const SCOPES=Object.freeze(['consolidated','parent']);
 const repo=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const HEX=/^[a-f0-9]{64}$/;
@@ -23,7 +24,7 @@ const TOOL_FILES=Object.freeze([
   'apps/worker/src/codex-adapter.ts','apps/worker/src/file-authoring-stage.ts','apps/worker/src/file-authoring-quality.ts',
   'apps/worker/src/unified-input.ts','deploy/m1/codex-file-authoring-model-catalog.json',
   'python/bondbuddy_file_authoring/task.md','python/bondbuddy_file_authoring/fixed-edit.md',
-  'python/bondbuddy_file_authoring/fixed_edit.py','python/bondbuddy_file_authoring/check.py',
+  'python/bondbuddy_file_authoring/fixed_edit.py','python/bondbuddy_file_authoring/preflight.py','python/bondbuddy_file_authoring/check.py',
   'python/bondbuddy_file_authoring/reverse_audit.py','python/tests/test_reverse_audit_fixed.py',
   'python/bondbuddy_file_authoring/quality.py','python/bondbuddy_file_authoring/source_outline.py',
   'python/bondbuddy_file_authoring/format_diff.py','python/bondbuddy_file_authoring/template_manifest.py',
@@ -103,6 +104,17 @@ export function equalRoundedAmount(source,output,places){
   const rounded=(magnitude/denominator+(magnitude%denominator*2n>=denominator?1n:0n))*(numerator<0n?-1n:1n);
   return rounded*b.d===b.n*scale;
 }
+export function equalRoundedRatio(source,output,places){
+  const divisor=source?.denominator;
+  ensure(Number.isSafeInteger(places)&&places>=0&&places<=6&&Object.hasOwn(units,source?.unit)
+    &&divisor&&Object.hasOwn(units,divisor.unit)&&output?.unit==='PERCENT','FINANCIAL_UNIT_INVALID');
+  const a=decimal(source.value,true),d=decimal(divisor.value,true),b=decimal(output.value),scale=10n**BigInt(places);
+  ensure(d.n>0n,'FINANCIAL_RATIO_DENOMINATOR_INVALID');
+  const numerator=a.n*units[source.unit]*d.d*100n*scale,denominator=a.d*d.n*units[divisor.unit];
+  const magnitude=numerator<0n?-numerator:numerator;
+  const rounded=(magnitude/denominator+(magnitude%denominator*2n>=denominator?1n:0n))*(numerator<0n?-1n:1n);
+  return rounded*b.d===b.n*scale;
+}
 export function validateFinancialChecks(rows,materials,reviewerId){
   ensure(Array.isArray(rows)&&rows.length===REQUIRED_FINANCIAL_KEYS.length,'FINANCIAL_COVERAGE_INCOMPLETE');
   const keys=new Set();let repeated=0;
@@ -115,16 +127,28 @@ export function validateFinancialChecks(rows,materials,reviewerId){
       && row.source.scope===row.scope&&row.output?.scope===row.scope&&row.source.locator===binding.locator&&row.source.unit==='CNY','FINANCIAL_SOURCE_MISMATCH');
     const start=STOCK_METRICS.includes(row.metric)?'2025-09-30':'2025-01-01';
     for(const side of [row.source,row.output])ensure(side.start===start&&side.end==='2025-09-30','FINANCIAL_PERIOD_MISMATCH');
-    ensure(equalRoundedAmount(row.source,row.output,row.output.decimal_places),'FINANCIAL_AMOUNT_MISMATCH');
+    const ratioBinding=binding.derived==='ratio_percent';
+    if(ratioBinding){
+      const denominator=row.source.denominator,expected=binding.denominator;
+      ensure(denominator&&expected&&denominator.file_id===row.source.file_id&&denominator.sha256===row.source.sha256
+        &&denominator.scope===row.scope&&denominator.locator===expected.locator&&denominator.unit==='CNY','FINANCIAL_SOURCE_MISMATCH');
+      ensure(denominator.start===start&&denominator.end==='2025-09-30','FINANCIAL_PERIOD_MISMATCH');
+      ensure(row.output.decimal_places===2&&row.output.unit==='PERCENT','FINANCIAL_UNIT_INVALID');
+      ensure(equalRoundedRatio(row.source,row.output,row.output.decimal_places),'FINANCIAL_AMOUNT_MISMATCH');
+    }else{
+      ensure(row.source.denominator===undefined,'FINANCIAL_SOURCE_MISMATCH');
+      ensure(equalRoundedAmount(row.source,row.output,row.output.decimal_places),'FINANCIAL_AMOUNT_MISMATCH');
+    }
     const locators=row.output.locators;
     ensure(Array.isArray(locators)&&Number.isSafeInteger(row.expected_occurrences)&&row.expected_occurrences>0
       &&locators.length===row.expected_occurrences&&new Set(locators.map(l=>JSON.stringify(l))).size===locators.length
       &&locators.every(l=>l&&text(l.locator)&&l.scope_anchor&&text(l.scope_anchor.locator)&&text(l.scope_anchor.quote)
         &&(l.narrative_list===undefined||(l.narrative_list===true&&l.quote!==undefined))
-        &&(l.reporting_period_definition===undefined||(l.narrative_list===true
+        &&(ratioBinding?(l.narrative_ratio===true&&l.narrative_list===undefined&&l.quote!==undefined):l.narrative_ratio===undefined)
+        &&(l.reporting_period_definition===undefined||((l.narrative_list===true||l.narrative_ratio===true)
           &&validAnchor(l.reporting_period_definition.section_anchor)&&validAnchor(l.reporting_period_definition.term_anchor)
           &&validAnchor(l.reporting_period_definition.definition_anchor)))
-        &&(l.period_context===undefined||(l.narrative_list===true&&l.reporting_period_definition
+        &&(l.period_context===undefined||((l.narrative_list===true||l.narrative_ratio===true)&&l.reporting_period_definition
           &&validAnchor(l.period_context.section_anchor)&&validAnchor(l.period_context.introduction_anchor)))
         &&((l.scope_section_anchor===undefined&&l.table_caption===undefined)||(l.quote===undefined
           &&l.scope_section_anchor&&text(l.scope_section_anchor.locator)&&text(l.scope_section_anchor.quote)
@@ -143,10 +167,10 @@ export function inspectAcceptanceArtifacts(root,source,pdfs,financial){
   try{return JSON.parse(result.stdout);}catch{fail('INDEPENDENT_INSPECTION_FAILED');}
 }
 export function validateFixedOccurrenceCoverage(coverage){
-  ensure(coverage?.policy==='rq-202509-occurrences-v2'&&coverage.status==='passed'
-    &&coverage.required_count===39&&coverage.located_count===39&&coverage.covered_count===39
-    &&Array.isArray(coverage.covered_role_ids)&&coverage.covered_role_ids.length===39
-    &&coverage.covered_role_ids.every(id=>REQUIRED_ROLE_IDS.includes(id))&&new Set(coverage.covered_role_ids).size===39
+  ensure(coverage?.policy==='rq-202509-occurrences-v3'&&coverage.status==='passed'
+    &&coverage.required_count===43&&coverage.located_count===43&&coverage.covered_count===43
+    &&Array.isArray(coverage.covered_role_ids)&&coverage.covered_role_ids.length===43
+    &&coverage.covered_role_ids.every(id=>REQUIRED_ROLE_IDS.includes(id))&&new Set(coverage.covered_role_ids).size===43
     &&Array.isArray(coverage.failures)&&coverage.failures.length===0,'FIXED_OCCURRENCE_COVERAGE_INCOMPLETE');
 }
 export async function verifyProspectusAcceptance({root=repo,file=process.env.BB_PROSPECTUS_ACCEPTANCE_FILE,now=Date.now()}={}){

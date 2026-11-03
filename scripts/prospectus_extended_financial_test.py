@@ -12,7 +12,8 @@ from openpyxl import load_workbook, Workbook
 from lxml import etree as ET
 
 from prospectus_acceptance_inspect import (Reader, FinancialSources, SOURCE_BINDINGS, POLICY, ALIASES,
-    RQ_TABLE_ROLES, RQ_NARRATIVE_ROLES, ROLE_IDS, EXTENDED, STOCK, extended_lists, finite_decimal, numeric_cache, metric_ok)
+    RQ_TABLE_ROLES, RQ_NARRATIVE_ROLES, RQ_RATIO_ROLES, RATIO_METRIC, ROLE_IDS, EXTENDED, STOCK,
+    extended_lists, finite_decimal, numeric_cache, metric_ok, rounded_ratio)
 from bondbuddy_file_authoring.check import package
 from bondbuddy_file_authoring.word_patch import paragraph_text, q, xml, serialized
 
@@ -46,6 +47,17 @@ def source_checks():
                 'source':{'file_id':'rq-202509-02','sha256':POLICY['source_sha256'], 'locator':binding['locator'],
                           'scope':key[0], 'start':start,'end':'2025-09-30','unit':'CNY','value':raw},
                 'output':{'scope':key[0],'start':start,'end':'2025-09-30','value':str(output),'unit':'CNY_10K','decimal_places':2}}
+            if binding.get('derived') == 'ratio_percent':
+                denominator = binding['denominator']
+                denominator_tree = xml(archive.read(book[denominator['sheet']]._worksheet_path))
+                denominator_raw = denominator_tree.find(f'.//s:sheetData/s:row/s:c[@r="{denominator["cell"]}"]/s:v', ns).text
+                result[key]['source']['denominator'] = {
+                    'file_id':'rq-202509-02', 'sha256':POLICY['source_sha256'], 'locator':denominator['locator'],
+                    'scope':key[0], 'start':start, 'end':'2025-09-30', 'unit':'CNY', 'value':denominator_raw}
+                with localcontext() as context:
+                    context.prec = 100
+                    ratio = (Decimal(raw) / Decimal(denominator_raw) * 100).quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
+                result[key]['output'].update(unit='PERCENT', value=str(ratio))
     book.close()
     return case, files, result
 
@@ -96,10 +108,10 @@ class FinancialSourceBindings(unittest.TestCase):
     def setUpClass(cls):
         cls.case, cls.files, cls.rows = source_checks()
 
-    def test_all_18_exact_raw_caches_headers_labels_and_periods(self):
+    def test_all_21_exact_raw_caches_headers_labels_and_periods(self):
         source = FinancialSources()
         try:
-            self.assertEqual(len(self.rows),18)
+            self.assertEqual(len(self.rows),21)
             for key, row in self.rows.items():
                 with self.subTest(key=key):
                     self.assertEqual(source.value(self.files['rq-202509-02'],row,self.case['issuer']),Decimal(row['source']['value']))
@@ -107,11 +119,56 @@ class FinancialSourceBindings(unittest.TestCase):
             source.close()
 
     def test_exact_role_ids_agree_with_shared_policy(self):
-        self.assertEqual(len(ROLE_IDS),39)
-        self.assertEqual(len(set(ROLE_IDS)),39)
+        self.assertEqual(len(ROLE_IDS),43)
+        self.assertEqual(len(set(ROLE_IDS)),43)
         self.assertEqual(set(ROLE_IDS),set(POLICY['required_role_ids']))
-        self.assertEqual(POLICY['required_occurrences'],39)
-        self.assertEqual({(s,m) for _,_,s,m in RQ_TABLE_ROLES}|{(s,m) for _,s,m in RQ_NARRATIVE_ROLES},set(SOURCE_BINDINGS))
+        self.assertEqual(POLICY['required_occurrences'],43)
+        self.assertEqual({(s,m) for _,_,s,m in RQ_TABLE_ROLES}|{(s,m) for _,s,m in (*RQ_NARRATIVE_ROLES,*RQ_RATIO_ROLES)},set(SOURCE_BINDINGS))
+
+    def test_ratio_recomputes_both_locked_caches_and_rejects_wrong_binding(self):
+        source=FinancialSources();row=self.rows['consolidated',RATIO_METRIC]
+        try:
+            source.value(self.files['rq-202509-02'],row,self.case['issuer'])
+            self.assertEqual(row['output']['value'],'25.97')
+            # Even a caller-adjusted result cannot make a false denominator
+            # correct: all original raw cache digits and its source role bind.
+            for field,value in [('file_id','rq-202509-01'),('sha256','0'*64),('scope','parent'),
+                    ('start','2025-01-01'),('end','2025-06-30'),('unit','CNY_10K'),
+                    ('locator','01合并资产负债表!D128'),('locator','01母公司资产负债!D127'),
+                    ('value','5724561492.23'),('value','0'),('value','-1')]:
+                with self.subTest(field=field,value=value):
+                    wrong=copy.deepcopy(row);wrong['source']['denominator'][field]=value
+                    with self.assertRaises(ValueError):source.value(self.files['rq-202509-02'],wrong,self.case['issuer'])
+            for field,value in [('value','26.82'),('unit','CNY_10K'),('decimal_places',1),
+                    ('scope','parent'),('start','2025-01-01'),('end','2025-06-30')]:
+                wrong=copy.deepcopy(row);wrong['output'][field]=value
+                with self.assertRaises(ValueError):source.value(self.files['rq-202509-02'],wrong,self.case['issuer'])
+            wrong=copy.deepcopy(row);del wrong['source']['denominator']
+            with self.assertRaises(KeyError):source.value(self.files['rq-202509-02'],wrong,self.case['issuer'])
+        finally:source.close()
+
+    def test_ratio_denominator_headers_and_label_are_independently_required(self):
+        binding=SOURCE_BINDINGS['consolidated',RATIO_METRIC]['denominator']
+        def sheet():
+            ws=Workbook().active
+            for cell,value in {'A1':binding['statement_title'],'A3':binding['entity_header'],'B3':binding['period_header'],
+                    'D4':binding['column_header'],'A127':binding['label'],'E3':'金额单位：人民币元'}.items():ws[cell]=value
+            return ws
+        FinancialSources.headers(sheet(),binding)
+        for cell,value in [('A127','负债合计'),('A127','应付债券'),('A1','母公司资产负债表'),
+                ('B3','2025年6月30日'),('D4','期初余额'),('E3','金额单位：人民币万元')]:
+            ws=sheet();ws[cell]=value
+            with self.assertRaises(ValueError):FinancialSources.headers(ws,binding)
+        ws=sheet();ws.sheet_state='hidden'
+        with self.assertRaises(ValueError):FinancialSources.headers(ws,binding)
+
+    def test_ratio_rounding_is_exact_at_positive_and_negative_halfway(self):
+        for n,d,expected in [('1','32','3.13'),('-1','32','-3.13'),
+                ('3.1249999999999999999999999999999999','100','3.12'),
+                ('3.1250000000000000000000000000000001','100','3.13')]:
+            self.assertEqual(rounded_ratio(Decimal(n),Decimal(d)),Decimal(expected))
+        for denominator in ('0','-1'):
+            with self.assertRaises(ValueError):rounded_ratio(Decimal('1'),Decimal(denominator))
 
     def test_missing_blank_error_string_and_nonfinite_cache_are_rejected(self):
         namespace='http://schemas.openxmlformats.org/spreadsheetml/2006/main'
@@ -228,6 +285,11 @@ class ExpandedAmountRegression(unittest.TestCase):
             if len(amounts)!=3:raise AssertionError((p,metric,'amount_count'))
             a,b=amounts[2].span(1)
             cls.put(paragraph,text[:start+a]+cls.rows[scope,metric]['output']['value']+text[start+b:])
+        for p,scope,metric in RQ_RATIO_ROLES:
+            paragraph=paragraphs[p-1];text=paragraph_text(paragraph)
+            parsed=extended_lists(text,'bonds_payable')[0];chosen=parsed['percentages'][2]
+            a,b=parsed['start']+chosen['start'],parsed['start']+chosen['end']
+            cls.put(paragraph,text[:a]+cls.rows[scope,metric]['output']['value']+text[b:])
         cls.positive=serialized(document)
 
     @staticmethod
@@ -280,18 +342,21 @@ class ExpandedAmountRegression(unittest.TestCase):
             except ValueError as error:errors.append((role,str(error)));continue
             record={'scope':scope,'metric':metric,'kind':'table','identity':identity}
             verified.append(record);specs.append((record,spec,row))
-        for source_p,scope,metric in RQ_NARRATIVE_ROLES:
-            role=f'narrative:{source_p}:{scope}:{metric}'
+        for source_p,scope,metric in (*RQ_NARRATIVE_ROLES,*RQ_RATIO_ROLES):
+            ratio=metric==RATIO_METRIC;clause_metric='bonds_payable' if ratio else metric
+            prefix='narrative_ratio' if ratio else 'narrative'
+            role=f'{prefix}:{source_p}:{scope}:{metric}'
             if role in omit:continue
             paragraph=(overrides or {}).get(metric,refs['p'][source_p-1])
             if paragraph not in paragraphs:continue
-            text=paragraph_text(paragraph);clauses=Reader.metric_list_clauses(text,metric)
+            text=paragraph_text(paragraph);clauses=Reader.metric_list_clauses(text,clause_metric)
             if len(clauses)!=1:errors.append((role,'no_unique_supported_clause'));continue
             start,end=clauses[0];quote=text[start:end]
             amounts=list(re.finditer(r'(-?[0-9]+(?:,[0-9]{3})*\.[0-9]+)\s*(?:亿元|万元|元)',quote))
             if len(amounts)!=3:errors.append((role,'no_complete_three_amount_list'));continue
             chosen=amounts[2]
-            spec={'locator':p(paragraph),'quote':quote,'narrative_list':True,'start':chosen.start(1),'end':chosen.end(1),
+            if ratio:chosen=list(re.finditer(r'(-?[0-9]+(?:,[0-9]{3})*\.[0-9]+)[%％]',quote))[2]
+            spec={'locator':p(paragraph),'quote':quote,'narrative_ratio' if ratio else 'narrative_list':True,'start':chosen.start(1),'end':chosen.end(1),
                   'scope_anchor':anchor(p(refs['p'][4779]))}
             if source_p in (46,285):
                 spec['scope_anchor']={'locator':p(refs['p'][43]),'quote':'本募集说明书其他章节中若无特殊说明，则财务数据及财务指标均为合并口径。'}
@@ -304,15 +369,62 @@ class ExpandedAmountRegression(unittest.TestCase):
             row=self.rows[scope,metric]
             try:identity=reader.output_value(path,spec,row)
             except ValueError as error:errors.append((role,str(error)));continue
-            record={'scope':scope,'metric':metric,'kind':'narrative_list','identity':identity}
+            record={'scope':scope,'metric':metric,'kind':'narrative_ratio' if ratio else 'narrative_list','identity':identity}
             verified.append(record);specs.append((record,spec,row))
         return reader.occurrence_coverage(path,verified),errors,verified,(reader,path,specs)
 
-    def test_real_source_driven_39_identity_fixture(self):
+    def test_real_source_driven_43_identity_fixture(self):
         coverage,errors,verified,_=self.evaluate(*self.fixture())
         self.assertEqual(errors,[])
-        self.assertEqual(len(verified),39)
+        self.assertEqual(len(verified),43)
         self.assertEqual(coverage['status'],'passed',coverage)
+
+    def test_stale_bonds_amount_and_ratio_fail_correct_tables_and_cannot_be_replaced_by_copy(self):
+        amount_role='narrative:7403:consolidated:bonds_payable'
+        ratio_role=f'narrative_ratio:7403:consolidated:{RATIO_METRIC}'
+        for variant in ('amount','ratio','unchanged','correct_copy','wrong_denominator'):
+            with self.subTest(variant=variant):
+                document,refs=self.fixture();paragraph=refs['p'][7402];fresh=copy.deepcopy(paragraph)
+                text=paragraph_text(paragraph)
+                if variant in ('amount','unchanged','correct_copy'):text=text.replace(self.rows['consolidated','bonds_payable']['output']['value'],'148,812.55')
+                if variant in ('ratio','unchanged','correct_copy'):text=text.replace(self.rows['consolidated',RATIO_METRIC]['output']['value']+'%','26.82%')
+                if variant=='wrong_denominator':text=text.replace('非流动负债','负债')
+                self.put(paragraph,text)
+                overrides=None
+                if variant=='correct_copy':
+                    paragraph.addnext(fresh);overrides={'bonds_payable':fresh,RATIO_METRIC:fresh}
+                coverage,errors,verified,_=self.evaluate(document,refs,overrides=overrides)
+                self.assertEqual(coverage['status'],'failed',coverage)
+                self.assertEqual(sum(v['kind']=='table' for v in verified),28)
+                if variant=='amount':self.assertIn((amount_role,'output_value'),errors)
+                if variant=='ratio':self.assertIn((ratio_role,'output_value'),errors)
+                if variant in ('unchanged','correct_copy'):
+                    self.assertNotIn(amount_role,coverage['covered_role_ids']);self.assertNotIn(ratio_role,coverage['covered_role_ids'])
+
+    def test_bonds_history_is_retained_and_ratio_requires_exact_flag_unit_and_current_span(self):
+        document,refs=self.fixture();text=paragraph_text(refs['p'][7402])
+        for value in ('268,419.14','118,951.46','41.05%','24.37%'):self.assertIn(value,text)
+        coverage,errors,_,(reader,path,specs)=self.evaluate(document,refs)
+        self.assertEqual(errors,[]);self.assertEqual(coverage['status'],'passed')
+        _,spec,row=next(x for x in specs if x[0]['metric']==RATIO_METRIC)
+        for variant in ('money_span','historical_span','missing_flag','both_flags','wrong_unit','wrong_metric','wrong_scope','wrong_precision'):
+            wrong,wrong_row=copy.deepcopy(spec),copy.deepcopy(row)
+            if variant=='money_span':
+                chosen=list(re.finditer(r'([0-9.,]+)万元',wrong['quote']))[-1];wrong['start'],wrong['end']=chosen.span(1)
+            elif variant=='historical_span':
+                chosen=list(re.finditer(r'([0-9.]+)%',wrong['quote']))[0];wrong['start'],wrong['end']=chosen.span(1)
+            elif variant=='missing_flag':wrong.pop('narrative_ratio')
+            elif variant=='both_flags':wrong['narrative_list']=True
+            elif variant=='wrong_unit':wrong_row['output']['unit']='CNY_10K'
+            elif variant=='wrong_metric':wrong_row['metric']='bonds_payable'
+            elif variant=='wrong_scope':wrong_row['scope']='parent'
+            else:wrong_row['output']['decimal_places']=3
+            with self.subTest(variant=variant),self.assertRaises(ValueError):reader.output_value(path,wrong,wrong_row)
+        for value in ('268,419.14','118,951.46','41.05','24.37'):
+            document,refs=self.fixture();paragraph=refs['p'][7402]
+            self.put(paragraph,paragraph_text(paragraph).replace(value,'1.00',1))
+            coverage,_,_,_=self.evaluate(document,refs)
+            self.assertEqual(coverage['status'],'failed',value)
 
     def test_explicit_other_amount_after_qualitative_profit_does_not_replace_required_role(self):
         document,refs=self.fixture();original=refs['p'][7966];extra=copy.deepcopy(original)
@@ -321,7 +433,7 @@ class ExpandedAmountRegression(unittest.TestCase):
         # positive must not introduce a synthetic investment-income assertion.
         self.put(extra,positive[0]);original.addnext(extra)
         coverage,errors,verified,_=self.evaluate(document,refs)
-        self.assertEqual(errors,[]);self.assertEqual(len(verified),39)
+        self.assertEqual(errors,[]);self.assertEqual(len(verified),43)
         self.assertEqual(coverage['status'],'passed',coverage)
         # A purely qualitative net-profit mention cannot replace its real
         # three-period assertion even when the remaining table values match.
@@ -352,7 +464,7 @@ class ExpandedAmountRegression(unittest.TestCase):
             with self.subTest(metric=metric):
                 document,refs=self.fixture();role=f'narrative:{source_p}:{scope}:{metric}'
                 coverage,_,verified,_=self.evaluate(document,refs,omit=(role,))
-                self.assertEqual(sum(r['kind']=='table' for r in verified),26)
+                self.assertEqual(sum(r['kind']=='table' for r in verified),28)
                 self.assertIn({'role':role,'code':'required_occurrence_not_independently_checked'},coverage['failures'])
                 text=paragraph_text(refs['p'][source_p-1]);span=Reader.metric_list_clauses(text,metric)[0]
                 amounts=list(re.finditer(r'(-?[0-9]+(?:,[0-9]{3})*\.[0-9]+)\s*万元',text[span[0]:span[1]]));a,b=amounts[2].span(1)
@@ -373,7 +485,7 @@ class ExpandedAmountRegression(unittest.TestCase):
                 narrative=next(r for r in verified if r['metric']==metric and r['kind']=='narrative_list')
                 table=next(r for r in verified if r['metric']==metric and r['kind']=='table')
                 replaced=[r for r in verified if r is not narrative]+[table]
-                self.assertEqual(len(replaced),39)
+                self.assertEqual(len(replaced),43)
                 result=reader.occurrence_coverage(path,replaced)
                 self.assertEqual(result['status'],'failed')
                 self.assertNotIn(next(role for role in ROLE_IDS if role.startswith('narrative:') and role.endswith(':'+metric)),result['covered_role_ids'])
@@ -485,7 +597,7 @@ class ExpandedAmountRegression(unittest.TestCase):
         self.put(paragraph,'Synthetic unrelated table')
         Reader().caption(table).addprevious(extra)
         coverage,errors,verified,_=self.evaluate(document,refs)
-        self.assertEqual(errors,[]);self.assertEqual(len(verified),39);self.assertEqual(coverage['status'],'passed',coverage)
+        self.assertEqual(errors,[]);self.assertEqual(len(verified),43);self.assertEqual(coverage['status'],'passed',coverage)
 
 
 if __name__=='__main__':unittest.main()

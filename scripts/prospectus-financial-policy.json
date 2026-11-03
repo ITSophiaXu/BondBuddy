@@ -1,11 +1,11 @@
 {
-  "version": "rq-202509-financial-v2",
+  "version": "rq-202509-financial-v3",
   "case_id": "rq-202509",
   "issuer": "任丘市建设投资集团有限公司",
   "material_id": "rq-202509-02",
   "source_sha256": "c11db9a211c7e8c21efc5aab6a8e503b3817aa78f3d184cfe5d077b0a32826c2",
-  "occurrence_policy": "rq-202509-occurrences-v2",
-  "required_occurrences": 39,
+  "occurrence_policy": "rq-202509-occurrences-v3",
+  "required_occurrences": 43,
   "metrics": [
     {
       "scope": "consolidated",
@@ -294,6 +294,71 @@
       "column_header": "2025年1-9月",
       "unit": "CNY",
       "statement_kind": "income_statement"
+    },
+    {
+      "scope": "consolidated",
+      "metric": "bonds_payable",
+      "locator": "01合并资产负债表!D116",
+      "stock": true,
+      "sheet": "01合并资产负债表",
+      "cell": "D116",
+      "label_cell": "A116",
+      "label": "        应付债券",
+      "statement_title": "合并资产负债表",
+      "entity_header": "编制单位：任丘市建设投资集团有限公司",
+      "period_header": " 2025年9月30日",
+      "column_header": "期末余额",
+      "unit": "CNY",
+      "statement_kind": "balance_sheet"
+    },
+    {
+      "scope": "parent",
+      "metric": "bonds_payable",
+      "locator": "01母公司资产负债!D116",
+      "stock": true,
+      "sheet": "01母公司资产负债",
+      "cell": "D116",
+      "label_cell": "A116",
+      "label": "        应付债券",
+      "statement_title": "母公司资产负债表",
+      "entity_header": "编制单位：任丘市建设投资集团有限公司",
+      "period_header": " 2025年9月30日",
+      "column_header": "期末余额",
+      "unit": "CNY",
+      "statement_kind": "balance_sheet"
+    },
+    {
+      "scope": "consolidated",
+      "metric": "bonds_payable_noncurrent_liabilities_ratio",
+      "locator": "01合并资产负债表!D116",
+      "stock": true,
+      "sheet": "01合并资产负债表",
+      "cell": "D116",
+      "label_cell": "A116",
+      "label": "        应付债券",
+      "statement_title": "合并资产负债表",
+      "entity_header": "编制单位：任丘市建设投资集团有限公司",
+      "period_header": " 2025年9月30日",
+      "column_header": "期末余额",
+      "unit": "CNY",
+      "statement_kind": "balance_sheet",
+      "derived": "ratio_percent",
+      "denominator": {
+        "scope": "consolidated",
+        "metric": "noncurrent_liabilities",
+        "locator": "01合并资产负债表!D127",
+        "stock": true,
+        "sheet": "01合并资产负债表",
+        "cell": "D127",
+        "label_cell": "A127",
+        "label": "非流动负债合计",
+        "statement_title": "合并资产负债表",
+        "entity_header": "编制单位：任丘市建设投资集团有限公司",
+        "period_header": " 2025年9月30日",
+        "column_header": "期末余额",
+        "unit": "CNY",
+        "statement_kind": "balance_sheet"
+      }
     }
   ],
   "required_role_ids": [
@@ -335,6 +400,10 @@
     "table:45:consolidated:investment_income",
     "narrative:7870:consolidated:investment_income",
     "table:45:consolidated:profit_attributable_to_parent",
-    "narrative:7967:consolidated:profit_attributable_to_parent"
+    "narrative:7967:consolidated:profit_attributable_to_parent",
+    "table:44:consolidated:bonds_payable",
+    "table:47:parent:bonds_payable",
+    "narrative:7403:consolidated:bonds_payable",
+    "narrative_ratio:7403:consolidated:bonds_payable_noncurrent_liabilities_ratio"
   ]
 }

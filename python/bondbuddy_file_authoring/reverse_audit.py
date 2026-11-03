@@ -24,6 +24,8 @@ REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 IDENTITIES = ('法定代表人', '董事长', '总经理', '注册地址', '办公地址', '联系电话', '邮政编码')
 FINANCIAL_ROLES = {'financial', 'interimFinancial', 'audit', 'notes'}
 NUMBER = re.compile(r'(?<![\dA-Za-z])[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?![\dA-Za-z])')
+# Literal language only, not a conclusion about which period a fact belongs to.
+PERIOD_LANGUAGE = re.compile(r'报告期|本期|当期|最近[一二三四五六七八九十两\d]+年(?:及|和)[一二三四五六七八九十\d]+期(?:末)?')
 
 
 def compact(value):
@@ -145,6 +147,7 @@ def inventory(input_path, operations_path=None):
                            for item in editor.comments if item['node_id'] == key or
                            item['node_id'] in current and current[item['node_id']][1] in node.iter()]
         records.append({'node_id': key, 'part': part, 'kind': 'paragraph' if node.tag == q('p') else 'row',
+                        'in_table': any(parent.tag == q('tc') for parent in node.iterancestors()),
                         'text': text, 'text_sha256': sha(text.encode()), 'baseline_text': before.get(key),
                         'changed': key not in before or before[key] != text, 'context': context,
                         'numeric_literals': NUMBER.findall(text), 'existing_comments': anchored, 'replay_comments': replay_comments,
@@ -169,6 +172,25 @@ def inventory(input_path, operations_path=None):
             source_contexts.setdefault(context_id, row.pop('headers'))
             groups.append({**row, 'source_context_id': context_id,
                            'occurrence_ids': [r['node_id'] for text, r in normalized_records if row['match_label'] in text]})
+    matched_groups = {}
+    for index, group in enumerate(groups):
+        for node_id in group['occurrence_ids']:
+            matched_groups.setdefault(node_id, []).append(index)
+    review_queue = []
+    for record in records:
+        language = list(dict.fromkeys(PERIOD_LANGUAGE.findall(compact(record['text']))))
+        if (record['kind'] != 'paragraph' or record['part'] != 'word/document.xml'
+                or record['in_table'] or record['changed'] or not record['numeric_literals']
+                or not language or record['node_id'] not in matched_groups):
+            continue
+        # A correct new copy or a comment cannot remove the original occurrence
+        # from this queue. Source rows may disagree or refer to other scopes;
+        # therefore these are review candidates, never expected-value verdicts.
+        review_queue.append({'node_id': record['node_id'], 'text_sha256': record['text_sha256'],
+                             'reason': 'unchanged_periodic_financial_narrative',
+                             'period_language': language,
+                             'source_group_indices': matched_groups[record['node_id']],
+                             'status': 'needs_review'})
     return {'version': 'source-reverse-audit-v1', 'status': 'needs_review', 'input_hash': data['input_hash'],
             'baseline_sha256': sha(raw), 'operations_sha256': sha(operations_raw) if operations_raw is not None else None,
             'operations_canonical_sha256': sha(json.dumps(log, sort_keys=True, ensure_ascii=False).encode()),
@@ -177,12 +199,55 @@ def inventory(input_path, operations_path=None):
                             'Numbers are exact cached decimals; absent formula cache is never zero.',
                             'Matched rows and paragraphs overlap intentionally; inspect both label and adjacent value cells.',
                             'All matches require source/context review, including changed=false. This is not financial acceptance.',
+                            'The review queue prioritizes unchanged periodic narratives; it does not infer current periods, scopes, units or expected amounts. Absence from the queue is not approval.',
                             'Identity matches include history/signatures. Read original and replay operation comments; no forced replacement.'],
             'source_groups': groups, 'source_contexts': source_contexts,
+            'review_queue': review_queue,
             'occurrences': {r['node_id']: r for r in records}, 'unsupported_sources': unsupported,
             'excluded_nodes': [key for key, (_, node) in editor.nodes.items() if node.tag in (q('p'), q('tr')) and key not in current],
             'identity_occurrences': [{**r, 'labels': [label for label in IDENTITIES if label in compact(r['text'])]}
                                      for text, r in normalized_records if any(label in text for label in IDENTITIES)]}
+
+
+def write_inventory_report(input_path, operations_path, report_path):
+    """A diagnostic destination must never replace any declared input file."""
+    from .preflight import checked_path, protect_report_path
+    input_path = Path(input_path).absolute()
+    root = input_path.parent.resolve()
+    try:
+        input_path = checked_path(root, input_path)
+        input_raw = regular_bytes(input_path)
+        declared = json.loads(input_raw)
+        if not isinstance(declared, dict):
+            raise ValueError('REVERSE_AUDIT_INPUT_INVALID')
+        protected = [input_path]
+        if operations_path is not None:
+            protected.append(Path(operations_path).absolute())
+        protected.extend(root / declared[key] for key in ('baseline_path', 'original_pdf_path', 'operations_path')
+                         if isinstance(declared.get(key), str) and declared[key])
+        protected.extend(root / material['path'] for material in declared.get('materials', [])
+                         if isinstance(material, dict) and isinstance(material.get('path'), str) and material['path'])
+
+        def destination():
+            path = checked_path(root, report_path)
+            relative = path.relative_to(root)
+            if len(relative.parts) < 2 or relative.parts[0] not in ('scratch', 'output') or path.suffix != '.json':
+                raise ValueError('REVERSE_AUDIT_REPORT_UNSAFE')
+            protect_report_path(path, protected)
+            return path
+
+        report = destination()
+    except (OSError, ValueError, TypeError) as exc:
+        raise ValueError('REVERSE_AUDIT_REPORT_UNSAFE') from exc
+    result = inventory(input_path, operations_path)
+    try:
+        destination()
+        if regular_bytes(input_path) != input_raw:
+            raise ValueError('REVERSE_AUDIT_INPUT_CHANGED')
+    except (OSError, ValueError) as exc:
+        raise ValueError('REVERSE_AUDIT_REPORT_UNSAFE') from exc
+    write_json(report, result)
+    return result
 
 
 def main():
@@ -191,15 +256,11 @@ def main():
     parser.add_argument('--operations')
     parser.add_argument('--report', required=True)
     args = parser.parse_args()
-    root = Path(args.input).resolve().parent
-    report = Path(args.report).resolve()
-    if not any(report.is_relative_to(root / name) for name in ('scratch', 'output')) or Path(args.report).is_symlink():
-        raise ValueError('REVERSE_AUDIT_REPORT_UNSAFE')
-    result = inventory(args.input, args.operations)
-    write_json(report, result)
+    result = write_inventory_report(args.input, args.operations, args.report)
     print(json.dumps({'version': result['version'], 'status': result['status'],
                       'source_groups': len(result['source_groups']), 'identity_occurrences': len(result['identity_occurrences']),
-                      'report': str(report), 'financial_acceptance': 'not_run'}, ensure_ascii=False))
+                      'unchanged_periodic_narratives': len(result['review_queue']),
+                      'report': str(Path(args.report).absolute()), 'financial_acceptance': 'not_run'}, ensure_ascii=False))
 
 
 if __name__ == '__main__':

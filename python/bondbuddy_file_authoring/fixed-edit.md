@@ -84,6 +84,8 @@ values 与物理单元格一一对应。多段落单元格对应项使用数组�
 
 每个位置在工作记录中对应原材料 hash／定位、主体及合并／母公司口径、指标、时点／累计期间、单位、金额、比例和计算依据，以及输出 node_id 与处理状态。普通表格和叙述要交叉核对，不能因主表已改而跳过盈利、现金流或其他分析文字；不对全文作无上下文的数值替换，不为凑一致性重写原章或删减历史比较值。
 
+更新偿债分析时，保留有依据的历史事实和解释并明确历史期间，补充本期分析与具体缺口，不机械保留过时乐观结论。更新现金流表时保留历史聚合行的标签范围；只有本期狭窄子项值时，不得把原聚合行改名为子项并沿用历史聚合金额，应保留聚合范围、按品种规则标明本期缺项并挂注待核，已知子项另明范围和期间。
+
 同一当前主体信息、法定代表人、联系方式或备查信息的重复位置也逐项登记和核对。先区分当前信息、历史签字与明确时点的事件；没有变化依据时保留已知原值和原有时点，不把缺少新一期材料当作必须清空原字段。确需确认或材料冲突时，所有相关当前位置按 task.md 和目标品种规则一致处理并记录，不让一处待确认与另一处无提示的当前事实互相矛盾，不替换历史签字或事件。
 
 完成后对清单逐位置重新 inspect，读取累计 operations 从锁定原稿实际重放后的文字和单元格，再核对来源、期间、口径、单位、金额、比例及各重复位置的一致性。检查原稿清单是否有未覆盖项、未保存修改或冲突；新增披露也纳入清单。操作日志合法、主表数值正确、工具执行成功及模型交付说明都不等于全文已核对。未解决位置按 task.md 处理并如实记录，不能以泛化“已核对”结论替代，不能宣称财务或人工验收通过。
@@ -91,6 +93,20 @@ values 与物理单元格一一对应。多段落单元格对应项使用数组�
 ## 按锁定来源行反向回查
 
 有财务 XLSX 时，结束前按 task.md 运行 `bondbuddy_file_authoring.reverse_audit`，按 source_groups.occurrence_ids 读取 occurrences 的完整实际文稿及 source_contexts 的来源表头，逐组回查其待核列表。辅助程序从锁定原件缓存取值，重放累计 operations，列出 changed=false 的原段、表行、页眉页脚和身份字段。逐处回查真实来源、时点、口径及单位，不能把报告运行成功或默认 retained 当作核对。修改日志后重跑；身份冲突先读取已挂接批注，不强行替换历史签字或有待确认的姓名。程序永远不输出金融 passed，独立发布验收仍必须执行。
+
+review_queue 只把匹配来源且尚未修改的有关期间正文突出为待核候选，不给 expected/actual 定论。优先逐项读取它及对应 source_groups、source_contexts 缓存，明确本期／历史期间；有批注或未改都不等于已核。队列处理后仍回查全部适用来源行和出现位置。
+
+## 提交前累计质量预检
+
+```sh
+/opt/venv/bin/python -B -m bondbuddy_file_authoring.fixed_edit preflight --input input.json --operations output/operations.json --report scratch/word-quality-preflight.json
+```
+
+operations 必须是当前已保存的完整日志，报告路径只允许 scratch 下的 JSON 普通文件。工具在独占临时区重放临时双稿，直接调用宿主同一 `quality.verify`，不修改锁定输入、材料、日志或 output 正式文件。报告绑定 input／底稿／operations hash，标为 model_preflight_diagnostic_only；host_acceptance、delivery_registered 和 release_authorized 均为 false。自写报告不会被用作检查输入或宿主批准。
+
+失败退出码为1，stdout 给报告路径和问题摘要，stderr 标为 WORD_PREFLIGHT_REJECTED。读取报告 quality_report 和 diagnostics：失败章节含标题、原文／当前有效段落零基位置、稳定 inspect node_id 和 operation_ids；标题变更含 recognition。正文诊断有界，text_truncated／truncated 为 true 时使用 inspect --node 读取完整当前文，不带 operations 的 inspect 只作底稿对照。缺日志、哈希冲突、不安全路径或检查不可用不能通过。
+
+按 task.md 核对原历史数值和有依据历史解释的适用期间，保留无需变化的适用内容；本期变化明确标期，缺本期材料局部挂注或按品种规则缺项。已有证据表明原乐观判断不适用时作有依据的最小改写，不为满足保留率机械沿用它。更新日志后重跑来源回查与预检，再结束执行。预检通过只适用于报告绑定的日志，不能声称财务／视觉／人工验收通过；宿主仍在执行结束后独立重建并检查。
 
 ## 完成编制
 

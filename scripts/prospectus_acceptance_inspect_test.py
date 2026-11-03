@@ -16,7 +16,7 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-from prospectus_acceptance_inspect import Reader, compact, metric_ok, period_ok, EXTENDED, STOCK, extended_lists, FinancialSources, SOURCE_BINDINGS, POLICY
+from prospectus_acceptance_inspect import Reader, compact, metric_ok, period_ok, EXTENDED, STOCK, extended_lists, FinancialSources, SOURCE_BINDINGS, POLICY, RATIO_METRIC
 from bondbuddy_file_authoring.word_patch import leaves, paragraph_text, serialized, xml
 
 
@@ -440,6 +440,8 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                 (45,10,2,1,2,3262,'finance_expenses','consolidated'),
                 (45,14,2,1,2,3262,'investment_income','consolidated'),
                 (45,30,2,1,2,3262,'profit_attributable_to_parent','consolidated'),
+                (44,42,2,1,2,3019,'bonds_payable','consolidated'),
+                (47,38,2,1,2,3581,'bonds_payable','parent'),
             ]
             for t, r, c, pr, pc, caption_number, metric, scope in cases:
                 with self.subTest(table=t, row=r, metric=metric):
@@ -491,7 +493,7 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                     (4816, 'total_assets'), (6865, 'total_liabilities'), (7967, 'net_profit'), (8017, 'operating_cash_flow'),
                     (7931, 'nonoperating_expenses'), (7605,'deferred_income'), (7838,'sales_expenses'),
                     (7840,'administrative_expenses'), (7842,'finance_expenses'), (7870,'investment_income'),
-                    (7967,'profit_attributable_to_parent')):
+                    (7967,'profit_attributable_to_parent'), (7403,'bonds_payable')):
                 with self.subTest(paragraph=paragraph_number, metric=metric):
                     location = p(paragraph_number)
                     text = reader.node(path, location)['text']
@@ -517,6 +519,16 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                     identity = reader.output_value(path, spec, row)
                     verified.append({'scope': 'consolidated', 'metric': metric, 'kind': 'narrative_list', 'identity': identity})
                     checked_specs.append((copy.deepcopy(verified[-1]), copy.deepcopy(spec), copy.deepcopy(row)))
+                    if metric == 'bonds_payable':
+                        ratio_spec, ratio_row = copy.deepcopy(spec), copy.deepcopy(row)
+                        ratio_spec.pop('narrative_list'); ratio_spec['narrative_ratio'] = True
+                        percentage = list(re.finditer(r'([0-9.]+)%', quote))[-1]
+                        ratio_spec['start'], ratio_spec['end'] = percentage.span(1)
+                        ratio_row['metric'] = RATIO_METRIC
+                        ratio_row['output'].update(value=percentage[1], unit='PERCENT')
+                        ratio_identity = reader.output_value(path, ratio_spec, ratio_row)
+                        verified.append({'scope':'consolidated','metric':RATIO_METRIC,'kind':'narrative_ratio','identity':ratio_identity})
+                        checked_specs.append((copy.deepcopy(verified[-1]),ratio_spec,ratio_row))
                     if paragraph_number == 7931:
                         self.assertTrue(quote.endswith('，明细如下：'))
                         wrong = copy.deepcopy(spec)
@@ -531,17 +543,17 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                         reader.output_value(path, wrong, row)
             # Fixed roles are independent of operator counts. All tables can be
             # correct while a stale profitability paragraph is simply omitted.
-            self.assertEqual(len(verified), 39)
+            self.assertEqual(len(verified), 43)
             coverage = reader.occurrence_coverage(path, verified)
             self.assertEqual(coverage['status'], 'passed', coverage)
             missing = [v for v in verified if v['identity'][0] != p(7967)]
-            self.assertEqual(sum(v['kind'] == 'table' for v in missing), 26)
+            self.assertEqual(sum(v['kind'] == 'table' for v in missing), 28)
             coverage = reader.occurrence_coverage(path, missing)
             self.assertEqual(coverage['status'], 'failed')
             self.assertIn({'role': 'narrative:7967:consolidated:net_profit',
                            'code': 'required_occurrence_not_independently_checked'}, coverage['failures'])
-            repeated = missing + [copy.deepcopy(missing[-1]) for _ in range(39-len(missing))]
-            self.assertEqual(len(repeated), 39)
+            repeated = missing + [copy.deepcopy(missing[-1]) for _ in range(43-len(missing))]
+            self.assertEqual(len(repeated), 43)
             self.assertEqual(reader.occurrence_coverage(path, repeated)['status'], 'failed')
             self.assertEqual(Reader(source=path, issuer=case['issuer']).occurrence_coverage(path, verified)['status'], 'failed')
             expense_missing = [v for v in verified if v['identity'][0] != p(7931)]
@@ -592,7 +604,7 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                         spec = copy.deepcopy(original_spec)
                         relocate(spec)
                         checked.append({**record, 'identity': mutant_reader.output_value(mutant_path, spec, row)})
-                    self.assertEqual(len(checked), 39)
+                    self.assertEqual(len(checked), 43)
                     coverage = mutant_reader.occurrence_coverage(mutant_path, checked)
                     self.assertEqual(coverage['status'], 'failed')
                     self.assertIn({'role': 'narrative:7967:consolidated:net_profit',
@@ -615,7 +627,7 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                            'code': 'ambiguous_or_missing_occurrence'}, coverage['failures'])
 
             # Body paragraph and table-row insertion shift real locators. The
-            # source-role matcher must still find the same 39 actual amounts.
+            # source-role matcher must still find the same 43 actual values.
             shifted_path = str(Path(directory) / 'synthetic-inserted-positions.docx')
             with ZipFile(path) as archive:
                 parts = {name: archive.read(name) for name in archive.namelist()}

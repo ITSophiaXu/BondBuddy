@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .check import REV, STORY, package, resolve_revisions
 from .format_diff import audit, canonical, strip_added_comment_markers
-from .source_outline import compare_outlines, heading_role, outline, style_map
+from .source_outline import compare_financial_formulas, compare_outlines, heading_role, outline, style_map
 from .template_manifest import sha
 from .word_patch import paragraph_text, q, xml
 
@@ -197,6 +197,10 @@ def verify(input_path):
             if structural['status'] != 'unchanged':
                 issue('WORD_SOURCE_OUTLINE_CHANGED')
             report['metrics']['outline_status'] = structural['status']
+            formulas = compare_financial_formulas(source, clean)
+            if formulas['status'] != 'unchanged':
+                issue('WORD_SOURCE_FORMULA_CHANGED', formulas=formulas['changes'][:100])
+            report['metrics']['formula_status'] = formulas['status']
             old_chapters = chapters(source, before_roots['word/document.xml'])
             new_chapters = chapters(clean, cleaned['word/document.xml'])
             deficient = []

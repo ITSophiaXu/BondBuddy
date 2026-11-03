@@ -488,7 +488,7 @@ def finalize(input_path, operations_path, output_dir, skip_report=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['prepare', 'inspect', 'apply', 'finalize', 'no_changes'])
+    parser.add_argument('command', choices=['prepare', 'inspect', 'apply', 'finalize', 'no_changes', 'preflight'])
     parser.add_argument('--input', required=True)
     parser.add_argument('--operations')
     parser.add_argument('--operation-file')
@@ -499,6 +499,7 @@ def main():
     parser.add_argument('--offset', type=int, default=0)
     parser.add_argument('--limit', type=int, default=30)
     parser.add_argument('--reason')
+    parser.add_argument('--report')
     args = parser.parse_args()
     try:
         if args.command == 'prepare':
@@ -510,6 +511,19 @@ def main():
             result = {'version': manifest['version'], 'baseline_sha256': manifest['baseline_sha256'],
                       'node_count': len(manifest['nodes']), 'heading_count': len(manifest['headings']),
                       'supported_operations': manifest['supported_operations']}
+        elif args.command == 'preflight':
+            if not args.operations or not args.report:
+                error('WORD_EDIT_ARGUMENT_REQUIRED')
+            from .preflight import preflight
+            report = preflight(args.input, args.operations, args.report)
+            result = {key: value for key, value in report.items() if key not in {'quality_report', 'diagnostics'}}
+            result['issues'] = [{'code': issue['code']} for issue in report['issues']]
+            result['report'] = args.report
+            print(json.dumps(result, ensure_ascii=False))
+            if report['status'] != 'passed':
+                print(json.dumps({'error': 'WORD_PREFLIGHT_REJECTED'}), file=sys.stderr)
+                return 1
+            return 0
         elif args.command == 'finalize':
             if not args.operations or not args.output_dir:
                 error('WORD_EDIT_ARGUMENT_REQUIRED')
