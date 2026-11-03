@@ -122,7 +122,9 @@ export function createAlipayPayProvider(options:AlipayPayOptions,dependencies:Al
       const body=sdk.sdkExecute(method,{bizContent,timestamp:chinaTime(now())},{bizContentAutoSnakeCase:false});
       const response=await fetcher(gateway,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded;charset=utf-8',accept:'application/json'},body,signal:controller.signal,redirect:'error'});
       resources.body=response.body;
-      if(response.status!==200||!/^application\/json(?:\s*;|$)/i.test(response.headers.get('content-type')??''))return fail('HTTP_INVALID');
+      // Alipay's gateway also labels signed JSON as text/html. Both MIME types
+      // still require the bounded JSON envelope and exact-byte RSA2 verification.
+      if(response.status!==200||!/^(?:application\/json|text\/html)(?:\s*;|$)/i.test(response.headers.get('content-type')??''))return fail('HTTP_INVALID');
       const contentLength=response.headers.get('content-length');if(contentLength&&(!/^\d+$/.test(contentLength)||Number(contentLength)>maxBody))return fail('PAYLOAD_TOO_LARGE');
       if(!response.body)return fail('PAYLOAD_INVALID');const reader=response.body.getReader(),chunks:Uint8Array[]=[];let size=0;
       const cancel=()=>{void reader.cancel().catch(()=>{});};controller.signal.addEventListener('abort',cancel,{once:true});
