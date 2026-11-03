@@ -21,13 +21,18 @@ export const SCOPES=Object.freeze(['consolidated','parent']);
 const repo=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const HEX=/^[a-f0-9]{64}$/;
 const TOOL_FILES=Object.freeze([
+  'apps/web/src/api.ts','apps/web/src/project-execution.ts','apps/web/src/first-draft-confirmation.ts',
+  'apps/api/src/none-baseline.ts','apps/api/src/server.ts','packages/contracts/src/none-baseline.ts',
+  'packages/contracts/src/index.ts','packages/contracts/src/update-project.ts',
   'apps/worker/src/codex-adapter.ts','apps/worker/src/file-authoring-stage.ts','apps/worker/src/file-authoring-quality.ts',
-  'apps/worker/src/unified-input.ts','deploy/m1/codex-file-authoring-model-catalog.json',
+  'apps/worker/src/unified-input.ts','apps/worker/src/file-authoring-format.ts','deploy/m1/codex-file-authoring-model-catalog.json',
   'python/bondbuddy_file_authoring/task.md','python/bondbuddy_file_authoring/fixed-edit.md',
   'python/bondbuddy_file_authoring/fixed_edit.py','python/bondbuddy_file_authoring/preflight.py','python/bondbuddy_file_authoring/check.py',
   'python/bondbuddy_file_authoring/reverse_audit.py','python/tests/test_reverse_audit_fixed.py',
+  'python/bondbuddy_file_authoring/period_definitions.py','python/tests/test_period_definition_guard.py',
   'python/bondbuddy_file_authoring/quality.py','python/bondbuddy_file_authoring/source_outline.py',
-  'python/bondbuddy_file_authoring/format_diff.py','python/bondbuddy_file_authoring/template_manifest.py',
+  'python/bondbuddy_file_authoring/format_diff.py','python/bondbuddy_file_authoring/format_plan.py',
+  'python/tests/test_format_plan.py','python/bondbuddy_file_authoring/template_manifest.py',
   'python/bondbuddy_file_authoring/word_patch.py','python/bondbuddy_file_authoring/read_material.py',
   'scripts/verify-prospectus-acceptance.mjs','scripts/verify-prospectus-acceptance.test.mjs',
   'scripts/prospectus_acceptance_inspect.py','scripts/prospectus_acceptance_inspect_test.py','scripts/prospectus-financial-policy.json','scripts/prospectus_extended_financial_test.py']);

@@ -49,11 +49,11 @@ export function validFormatDiagnostic(row: Candidate): boolean {
   const prefix = `owners/${row.owner_user_id}/projects/${row.project_id}/runs/${row.run_id}/file-authoring/`;
   return d?.version === 'word-format-diagnostic-v1' && d.status === 'pending' && d.input_hash === row.input_hash.trim()
     && typeof d.revision_author === 'string' && d.revision_author.length > 0 && d.revision_author.length <= 128
-    && ['baseline', 'tracked', 'operations'].every(name => {
+    && ['baseline', 'tracked', 'operations', ...(d.files && Object.hasOwn(d.files, 'plan') ? ['plan'] : [])].every(name => {
       const ref = d.files?.[name as keyof FormatDiagnostic['files']];
       return ref && typeof ref.key === 'string' && ref.key.startsWith(prefix) && !ref.key.includes('..')
         && /^[a-f0-9]{64}$/.test(ref.sha256) && Number.isSafeInteger(ref.byte_size) && ref.byte_size > 0
-        && ref.byte_size <= (name === 'operations' ? FORMAT_JSON_MAX : WORD_FILE_MAX);
+        && ref.byte_size <= (name === 'operations' || name === 'plan' ? FORMAT_JSON_MAX : WORD_FILE_MAX);
     });
 }
 

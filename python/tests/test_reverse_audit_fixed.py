@@ -131,6 +131,89 @@ class ReverseAuditTests(unittest.TestCase):
         self.assertTrue(any('2023年发生' in r['text'] for r in result['occurrences'].values()))
         self.assertTrue(any(r['part'].startswith('word/header') for r in result['occurrences'].values()))
 
+    def test_unmatched_periodic_amount_stays_in_review_queue(self):
+        document = Document(self.source)
+        document.paragraphs[0].text = '报告期内，发行人专项经营净额为47.81万元。'
+        document.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        write_json(self.input, self.data)
+        result = inventory(self.input)
+        candidate = result['review_queue'][0]
+        self.assertEqual(candidate['source_group_indices'], [])
+        self.assertEqual(candidate['source_match_status'], 'unmatched_requires_source_review')
+        self.assertEqual(candidate['status'], 'needs_review')
+
+    def test_display_aliases_keep_original_labels_and_qualified_metrics(self):
+        from bondbuddy_file_authoring.reverse_audit import label_candidates, alias_in_text
+        label = '其中：减：经营收益（损失以“－”号填列）'
+        candidates = label_candidates(label)
+        self.assertEqual(candidates[0]['label'], label)
+        self.assertEqual(candidates[1]['label'], '经营收益')
+        self.assertEqual(candidates[1]['status'], 'ambiguous_needs_review')
+        self.assertTrue(alias_in_text('经营收益', '报告期内，发行人经营收益分别为3万元和8万元。'))
+        self.assertFalse(alias_in_text('经营收益', '报告期内，发行人联营经营收益为8万元。'))
+        self.assertFalse(alias_in_text('经营收益', '报告期内，发行人经营收益率为8%。'))
+        self.assertEqual(label_candidates('其中：联营经营收益')[1]['label'], '联营经营收益')
+        self.assertEqual(label_candidates('经营收益（联营企业）'), [{'label':'经营收益（联营企业）','transformations':[],'status':'literal_needs_review'}])
+
+    def test_source_alias_candidates_are_not_a_financial_binding(self):
+        document = Document(self.source)
+        document.paragraphs[0].text = '报告期内，发行人工程应付款余额为17.23万元。'
+        document.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet['A1'] = '合并口径'
+        sheet['A8'] = '减：工程应付款（减少以“－”号填列）'
+        sheet['D8'] = 876543.21
+        workbook.save(self.xlsx)
+        self.material['sha256'] = sha(self.xlsx.read_bytes())
+        write_json(self.input, self.data)
+        result = inventory(self.input)
+        group = result['source_groups'][0]
+        self.assertEqual(group['label'], sheet['A8'].value)
+        self.assertEqual(group['label_candidates'][1]['label'], '工程应付款')
+        self.assertTrue(group['candidate_alias_matches'])
+        self.assertTrue(all(item['status']=='ambiguous_needs_review' for item in group['candidate_alias_matches']))
+        self.assertEqual(result['review_queue'][0]['status'], 'needs_review')
+        self.assertNotIn('expected_value', group)
+
+    def test_glossary_table_periods_have_independent_pending_coverage(self):
+        document = Document(self.source)
+        table = document.add_table(rows=2, cols=3)
+        table.cell(0,0).text = '最近三年及一期'
+        table.cell(0,1).text = '指'
+        table.cell(0,2).text = '2022年度、2023年度、2024年度和2025年1-3月'
+        table.cell(1,0).text = '最近三年及一期末'
+        table.cell(1,2).text = '2022年末、2023年末、2024年末和2025年3月末'
+        document.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        write_json(self.input, self.data)
+        result = inventory(self.input)
+        definitions = result['period_definition_occurrences']
+        self.assertEqual(len(definitions),2)
+        self.assertTrue(all(x['kind']=='row' and not x['changed'] and x['status']=='needs_review' for x in definitions))
+        self.assertTrue(all(x['node_id'] in result['occurrences'] for x in definitions))
+        self.assertIn('2025年3月末', definitions[1]['definition_text'])
+
+    def test_changed_or_empty_period_definitions_are_not_implicitly_reviewed(self):
+        document = Document(self.source)
+        document.add_paragraph('报告期：2024年度和2025年1-3月')
+        table = document.add_table(rows=1, cols=2)
+        table.cell(0,0).text = '本期末'
+        document.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        write_json(self.input, self.data)
+        self.log = empty_log(self.data, self.source.read_bytes())
+        *_, editor = load_editor(self.input)
+        target = next(key for key,(_,node) in editor.nodes.items() if node.tag==q('p') and ''.join(node.itertext()).startswith('报告期：'))
+        self.log['operations']=[{'id':'synthetic-period-change','kind':'replace_text','node_id':target,'before':'报告期：2024年度和2025年1-3月','after':'报告期：2024年度和2025年1-9月'}]
+        write_json(self.operations,self.log)
+        definitions = inventory(self.input,self.operations)['period_definition_occurrences']
+        self.assertEqual(len(definitions),2)
+        self.assertTrue(any(x['changed'] and x['status']=='needs_review' for x in definitions))
+        self.assertTrue(any(x['definition_text']=='' and x['status']=='needs_review' for x in definitions))
+
     def test_formula_without_numeric_cache_is_missing_not_zero(self):
         group = next(g for g in inventory(self.input)['source_groups'] if g['match_label'] == '递延补助')
         self.assertIsNone(group['cells'][0]['decimal'])

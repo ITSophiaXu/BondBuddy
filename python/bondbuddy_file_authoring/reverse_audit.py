@@ -1,7 +1,7 @@
 """Source-row to actual replay occurrence inventory; never a financial acceptance.
 
-Literal XLSX labels define groups; no case amounts, alias inference, period choice,
-unit conversion or scope decision is supplied by this helper. Every match is pending
+Literal XLSX labels and conservative display aliases define candidate groups; no
+case amounts, period choice, unit conversion or scope decision is supplied. Every match is pending
 actual review, including original paragraphs without an operation.
 """
 from __future__ import annotations
@@ -30,6 +30,68 @@ PERIOD_LANGUAGE = re.compile(r'报告期|本期|当期|最近[一二三四五六
 
 def compact(value):
     return re.sub(r'\s+', '', value or '')
+
+
+# These are display syntax candidates, not a metric/period/scope dictionary.
+STRUCTURAL_PREFIX = re.compile(r'^(?:加|减|其中)[:：]')
+FILL_NOTE = re.compile(r"""[（(](?:损失|亏损|亏损总额|减少|减少额)以[“”"‘']?[-－−﹣][“”"‘']?号填列[）)]$""")
+PERIOD_TERM = re.compile(r'(?:报告期(?:末)?|本期(?:末)?|当期(?:末)?|(?:最近|近)[一二三四五六七八九十两\d]+年(?:及|和)[一二三四五六七八九十\d]+期(?:末)?)')
+
+
+def label_candidates(label):
+    original = compact(label)
+    result = [{'label': original, 'transformations': [], 'status': 'literal_needs_review'}]
+    value, changes = original, []
+    while STRUCTURAL_PREFIX.match(value):
+        value = STRUCTURAL_PREFIX.sub('', value, count=1)
+        changes.append('structural_prefix')
+    if FILL_NOTE.search(value):
+        value = FILL_NOTE.sub('', value)
+        changes.append('explicit_sign_filling_note')
+    if value != original and len(value) >= 2:
+        result.append({'label': value, 'transformations': changes, 'status': 'ambiguous_needs_review'})
+    return result
+
+
+def alias_in_text(label, text):
+    # Do not turn a narrow qualified noun into the unqualified metric: e.g.
+    # "联营经营收益" is not an alias match for "经营收益". Unknown grammar
+    # remains unmatched; the independent narrative queue still includes it.
+    for match in re.finditer(re.escape(label), text):
+        before, after = text[:match.start()], text[match.end():]
+        if before and re.search(r'[\u4e00-\u9fff]$', before):
+            subject = re.split(r'[，,。；;：:\n]', before)[-1]
+            if subject not in ('发行人', '发行人的', '公司', '公司的', '本公司', '本公司的'):
+                continue
+        if after and re.match(r'[\u4e00-\u9fff]', after) and not after.startswith(('分别', '为', '是', '余额', '金额', '合计', '总计', '均')):
+            continue
+        return True
+    return False
+
+
+def period_definitions(current, records):
+    by_id = {record['node_id']: record for record in records}
+    result = []
+    for node_id, (part, node) in current.items():
+        if part != 'word/document.xml' or node_id not in by_id:
+            continue
+        term, definition = None, None
+        if node.tag == q('tr'):
+            cells = node.findall(q('tc'))
+            if len(cells) >= 2 and PERIOD_TERM.fullmatch(compact(node_text(cells[0]))):
+                term = compact(node_text(cells[0]))
+                definition = '\n'.join(node_text(cell) for cell in cells[1:] if compact(node_text(cell)) not in ('', '指', '是'))
+        elif node.tag == q('p') and not by_id[node_id]['in_table']:
+            match = re.match(r'^(' + PERIOD_TERM.pattern + r')(?:指|是|[:：])(.+)$', compact(node_text(node)))
+            if match:
+                term, definition = match.groups()
+        if term is not None:
+            record = by_id[node_id]
+            result.append({'node_id': node_id, 'kind': record['kind'], 'term': term,
+                           'definition_text': definition, 'text_sha256': record['text_sha256'],
+                           'baseline_text': record['baseline_text'], 'changed': record['changed'],
+                           'reason': 'reporting_period_definition_requires_review', 'status': 'needs_review'})
+    return result
 
 
 def accepted_nodes(editor):
@@ -170,8 +232,15 @@ def inventory(input_path, operations_path=None):
         for row in source_rows(path, material):
             context_id = material['sha256'] + ':' + row['sheet']
             source_contexts.setdefault(context_id, row.pop('headers'))
-            groups.append({**row, 'source_context_id': context_id,
-                           'occurrence_ids': [r['node_id'] for text, r in normalized_records if row['match_label'] in text]})
+            candidates = label_candidates(row['label'])
+            literal_ids = [r['node_id'] for text, r in normalized_records if row['match_label'] in text]
+            aliases = [{'node_id': r['node_id'], 'candidate_label': candidate['label'],
+                        'status': 'ambiguous_needs_review'}
+                       for candidate in candidates[1:] for text, r in normalized_records
+                       if r['node_id'] not in literal_ids and alias_in_text(candidate['label'], text)]
+            groups.append({**row, 'source_context_id': context_id, 'label_candidates': candidates,
+                           'candidate_alias_matches': aliases,
+                           'occurrence_ids': list(dict.fromkeys(literal_ids + [item['node_id'] for item in aliases]))})
     matched_groups = {}
     for index, group in enumerate(groups):
         for node_id in group['occurrence_ids']:
@@ -181,7 +250,7 @@ def inventory(input_path, operations_path=None):
         language = list(dict.fromkeys(PERIOD_LANGUAGE.findall(compact(record['text']))))
         if (record['kind'] != 'paragraph' or record['part'] != 'word/document.xml'
                 or record['in_table'] or record['changed'] or not record['numeric_literals']
-                or not language or record['node_id'] not in matched_groups):
+                or not language):
             continue
         # A correct new copy or a comment cannot remove the original occurrence
         # from this queue. Source rows may disagree or refer to other scopes;
@@ -189,13 +258,14 @@ def inventory(input_path, operations_path=None):
         review_queue.append({'node_id': record['node_id'], 'text_sha256': record['text_sha256'],
                              'reason': 'unchanged_periodic_financial_narrative',
                              'period_language': language,
-                             'source_group_indices': matched_groups[record['node_id']],
+                             'source_group_indices': matched_groups.get(record['node_id'], []),
+                             'source_match_status': 'ambiguous_needs_review' if record['node_id'] in matched_groups else 'unmatched_requires_source_review',
                              'status': 'needs_review'})
     return {'version': 'source-reverse-audit-v1', 'status': 'needs_review', 'input_hash': data['input_hash'],
             'baseline_sha256': sha(raw), 'operations_sha256': sha(operations_raw) if operations_raw is not None else None,
             'operations_canonical_sha256': sha(json.dumps(log, sort_keys=True, ensure_ascii=False).encode()),
             'inventory_mode': 'operations_replay' if operations_raw is not None else 'baseline_preview',
-            'limitations': ['Literal XLSX labels only: no alias, metric, current period, scope or unit inference.',
+            'limitations': ['Original XLSX labels and conservative display-syntax aliases are separate candidates; no metric, current period, scope or unit inference. Alias matches remain ambiguous.',
                             'Numbers are exact cached decimals; absent formula cache is never zero.',
                             'Matched rows and paragraphs overlap intentionally; inspect both label and adjacent value cells.',
                             'All matches require source/context review, including changed=false. This is not financial acceptance.',
@@ -203,6 +273,7 @@ def inventory(input_path, operations_path=None):
                             'Identity matches include history/signatures. Read original and replay operation comments; no forced replacement.'],
             'source_groups': groups, 'source_contexts': source_contexts,
             'review_queue': review_queue,
+            'period_definition_occurrences': period_definitions(current, records),
             'occurrences': {r['node_id']: r for r in records}, 'unsupported_sources': unsupported,
             'excluded_nodes': [key for key, (_, node) in editor.nodes.items() if node.tag in (q('p'), q('tr')) and key not in current],
             'identity_occurrences': [{**r, 'labels': [label for label in IDENTITIES if label in compact(r['text'])]}
@@ -260,6 +331,8 @@ def main():
     print(json.dumps({'version': result['version'], 'status': result['status'],
                       'source_groups': len(result['source_groups']), 'identity_occurrences': len(result['identity_occurrences']),
                       'unchanged_periodic_narratives': len(result['review_queue']),
+                      'unmatched_periodic_narratives': sum(not item['source_group_indices'] for item in result['review_queue']),
+                      'period_definitions': len(result['period_definition_occurrences']),
                       'report': str(Path(args.report).absolute()), 'financial_acceptance': 'not_run'}, ensure_ascii=False))
 
 

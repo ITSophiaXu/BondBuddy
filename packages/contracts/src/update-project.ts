@@ -5,6 +5,8 @@ import type { ProjectMessageSetPin } from './project-message-set-pin.js';
 export type UnifiedAuthoringInput = {
   /** Absent on existing input revisions: those runs retain their original authoring path. */
   format_policy?: SourceFormatPolicy;
+  /** Server-checked absence/exclusion decision, immutable with this input. */
+  none_baseline?: import('./none-baseline.js').NoneBaselineSnapshot;
   edit_baseline?: {market:typeof MARKETS[number];offering:typeof OFFERINGS[number];reporting_periods:TargetReportingPeriod[]};
   review_result?: import('./review-update.js').ReviewResultPin;
   review_revision?: import('./review-revision.js').ReviewRevisionPin;

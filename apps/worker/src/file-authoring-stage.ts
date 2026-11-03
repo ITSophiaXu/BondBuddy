@@ -1,11 +1,14 @@
+import { authoringBaselinePin, NoneBaselineConflict } from '@bondbuddy/api/none-baseline';
 import { mkdir,writeFile,readFile,copyFile,lstat,realpath } from 'node:fs/promises';
 import { join,resolve,extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { digest } from '@bondbuddy/api/data';
+import { checkpointStage } from '@bondbuddy/api/queue';
 import { readCheckpointedProviderResult } from '@bondbuddy/api/provider-results';
+import { isDeepStrictEqual } from 'node:util';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage,type RunStage,type StageContext } from './run-pipeline.js';
-import { loadUnifiedInput,selectLegacySourcePin,type UnifiedInput } from './unified-input.js';
+import { loadUnifiedInput,type UnifiedInput } from './unified-input.js';
 import { finalizeFormat, runFormatPython, FORMAT_JSON_MAX, type FormatDiagnostic } from './file-authoring-format.js';
 import { verifyWordQuality } from './file-authoring-quality.js';
 
@@ -36,30 +39,14 @@ export function validFileResult(value:unknown,ctx:StageContext):value is FileAut
 }
 
 export function editingSource(input:UnifiedInput){
-  const policy=input.manifest.authoring.format_policy;
-  const authoring=input.manifest.authoring;
-  const exact=(pin:{material_id:string;material_version:number;sha256:string},role?:string)=>{
-    const matches=input.materials.filter(m=>m.pin.material_id===pin.material_id && m.pin.material_version===pin.material_version
-      && m.pin.sha256===pin.sha256 && (!role||m.pin.role===role));
-    if(matches.length!==1)throw Error('INPUT_REVISION_CONFLICT');
-    return matches[0]!;
-  };
-  if(authoring.previous_output){
-    const pin=authoring.previous_output;
-    return exact({material_id:pin.artifact_id,material_version:pin.version,sha256:pin.sha256},'project_output');
-  }
-  if(authoring.review_result){
-    return exact(authoring.review_result.source_material);
-  }
-  // A declared manuscript cannot silently turn into first-draft generation.
-  for(const pin of authoring.source_prospectuses)exact(pin);
-  // Revision sources keep their identity. A selected format source determines the
-  // first-draft editing package only when there is no previous/report baseline.
-  if(policy?.template?.kind==='material' && !input.manifest.authoring.previous_output){
-    return exact(policy.template);
-  }
-  const legacy=selectLegacySourcePin(input.materials.map(material=>material.pin),authoring);
-  return legacy?input.materials.find(material=>material.pin===legacy)!:null;
+  let pin;
+  try { pin=authoringBaselinePin(input.materials.map(material=>material.pin),input.manifest.authoring); }
+  catch(error) { if(error instanceof NoneBaselineConflict)throw Error(error.code); throw error; }
+  if(!pin)return null;
+  const matches=input.materials.filter(m=>m.pin.material_id===pin.material_id && m.pin.material_version===pin.material_version
+    && m.pin.sha256===pin.sha256 && (!input.manifest.authoring.previous_output || m.pin.role==='project_output'));
+  if(matches.length!==1)throw Error('INPUT_REVISION_CONFLICT');
+  return matches[0]!;
 }
 
 function qualityContext(input:UnifiedInput,source:ReturnType<typeof editingSource>){
@@ -201,7 +188,7 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
   }};
 }
 
-export function fileAuthoringDeliveryStage(options:{quality?:typeof verifyWordQuality;load?:typeof loadUnifiedInput}={}):RunStage{
+export function fileAuthoringDeliveryStage(options:{quality?:typeof verifyWordQuality;load?:typeof loadUnifiedInput;checkpoint?:typeof checkpointStage}={}):RunStage{
   return {name:'word_delivery',replay:true,run:async ctx=>{
     const value=ctx.values.get('model_generation');
     if(!validFileResult(value,ctx))return {kind:'fail',code:'VALIDATION_FAILED'};
@@ -239,10 +226,26 @@ export function fileAuthoringDeliveryStage(options:{quality?:typeof verifyWordQu
           return {kind:'fail',code:'WORD_QUALITY_REJECTED'};
         throw error;
       }
+      // Index the host-derived plan before quality checking can throw or fail to store
+      // its report. A retry may reuse this binding but must never replace its evidence.
+      const planBytes=finalized.get('format-plan.json')!;
+      const planHash=digest(planBytes),planKey=`${prefix(ctx)}finalized/${planHash}/format-plan.json`;
+      const planRef:FileRef={key:planKey,sha256:planHash,byte_size:planBytes.length};
+      const planCheckpoint={version:'word-format-plan-checkpoint-v1',input_hash:ctx.run.input_hash.trim(),
+        locked_input_sha256:digest(lockedInput),baseline_sha256:digest(baselineBytes),operations_sha256:digest(operations),plan:planRef};
+      const stages=ctx.lease.checkpoint.stages as Record<string,unknown>|undefined;
+      const hasPlan=!!stages && Object.hasOwn(stages,'word_format_plan');
+      if(hasPlan && !isDeepStrictEqual(stages.word_format_plan,planCheckpoint))return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
+      await ctx.blobs.put(planKey,planBytes,'application/json');
+      const storedPlan=await ctx.blobs.getIfExistsBounded(planKey,FORMAT_JSON_MAX);
+      if(!storedPlan||digest(storedPlan)!==planHash)throw Error('AUTHORING_OUTPUT_STORE_FAILED');
+      if(!hasPlan)await (options.checkpoint??checkpointStage)(ctx.pool,ctx.lease,'word_format_plan',planCheckpoint,false);
+      ctx.checkpoint.word_format_plan=planCheckpoint;
       const quality=await check({data,tracked:finalized.get('tracked.docx')!,clean:finalized.get('clean.docx')!,baseline:baselineBytes,operations});
-      if(quality.report.status!=='passed')return {kind:'fail',code:'WORD_QUALITY_REJECTED',checkpoint:{quality_gate:{version:quality.report.version,status:quality.report.status,report:quality.ref}}};
+      if(quality.report.status!=='passed')return {kind:'fail',code:'WORD_QUALITY_REJECTED',checkpoint:{quality_gate:{version:quality.report.version,status:quality.report.status,report:quality.ref,format_plan:planRef}}};
       const refs:Record<string,FileRef>={};
       for(const [name,bytes] of finalized){
+        if(name==='format-plan.json'){refs[name]=planRef;continue;}
         const sha256=digest(bytes),key=`${prefix(ctx)}finalized/${sha256}/${name}`;
         await ctx.blobs.put(key,bytes,name.endsWith('.docx')?DOCX:'application/json');
         const saved=await ctx.blobs.getIfExistsBounded(key,MAX);
@@ -251,7 +254,7 @@ export function fileAuthoringDeliveryStage(options:{quality?:typeof verifyWordQu
       }
       const diagnostic:FormatDiagnostic={version:'word-format-diagnostic-v1',status:'pending',input_hash:data.input_hash,
         revision_author:data.revision_author,revision_date:data.revision_date,
-        files:{baseline:refs['baseline.docx']!,tracked:refs['tracked.docx']!,operations:refs['operations.json']!}};
+        files:{baseline:refs['baseline.docx']!,tracked:refs['tracked.docx']!,operations:refs['operations.json']!,plan:planRef}};
       return {kind:'deliver',deliveryPolicy:'generated_pair_v1',bytes:finalized.get('tracked.docx')!,cleanBytes:finalized.get('clean.docx')!,
         wordSummary:{...value.summary,format_state:'finalized',format_diagnostic:diagnostic,writer_version:'bondbuddy-fixed-word-1.0.0',
           quality_gate:{version:quality.report.version,status:quality.report.status,report:quality.ref},

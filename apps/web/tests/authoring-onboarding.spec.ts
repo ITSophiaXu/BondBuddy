@@ -394,7 +394,9 @@ test('finance-only project uses the existing explicit start and locks the exact 
   await expect(page.locator('#project-message')).toBeFocused();
   expect(writes(state)).toEqual([]);
   await expect(page.locator('[data-upload-role=audit]')).toBeEnabled();
-  expect(await page.locator('[data-material-role=audit]').evaluate(element => Boolean(element.compareDocumentPosition(document.querySelector('[data-material-role=historical]')!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+  // Historical uploads now belong to the independent adopted-prospectus panel.
+  await expect(page.locator('#prospectus-panel #prospectus-version-file')).toBeEnabled();
+  await expect(page.locator('#material-partitions [data-material-role=historical]')).toHaveCount(0);
   expectNoExecution(state);
   await screenshot(page, 'financial-upload-entry-desktop.png');
   const chooserEvent = page.waitForEvent('filechooser'); await page.locator('[data-material-role=audit] .material-picker').click(); const chooser = await chooserEvent;

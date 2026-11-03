@@ -1,3 +1,4 @@
+import { legacyAuthoringSourcePin, validateNoneBaseline, NoneBaselineConflict } from '@bondbuddy/api/none-baseline';
 import { ReviewResultPinSchema, SourceFormatPolicySchema, sameFormatTemplate, type ReviewResultPin } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { isUnifiedInput, isMarketOffering, UpdateDetailsSchema, isReviewReport, isReviewRevisionPin, executableRevisionFinding,
@@ -29,11 +30,7 @@ export class UnifiedInputPending extends Error {}
 /** Preserve the pre-format-policy source order for both authoring and its gate. */
 export function selectLegacySourcePin<T extends UnifiedManifest['materials'][number]>(materials:readonly T[],
   authoring:Pick<UnifiedAuthoringInput,'source_prospectuses'|'review_result'>):T|null {
-  return [...materials].filter(material=>['project_output','historical','reference'].includes(material.role)).sort((a,b)=>{
-    const rank=(material:typeof a)=>material.material_id===authoring.review_result?.source_material.material_id?-2:
-      material.role==='project_output'?-1:authoring.source_prospectuses.find(source=>source.material_id===material.material_id)?.relation==='same_issuer'?0:1;
-    return rank(a)-rank(b)||a.material_id.localeCompare(b.material_id);
-  })[0]??null;
+  return legacyAuthoringSourcePin(materials,authoring);
 }
 
 export function revisionEvidenceRefs(pin: ReviewRevisionPin): ReviewEvidenceRef[] {
@@ -162,6 +159,11 @@ export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevi
   if (!revision && !result && !m.authoring.knowledge.length) return { kind: 'pause', stage: 'capability_not_ready', reason: 'authoring_knowledge_required' };
   if (m.authoring.knowledge.some(k => typeof k.markdown !== 'string' || digest(k.markdown) !== k.sha256)) return fail;
   if (m.authoring.previous_output && !await previousArtifact(pool, run, m.authoring.previous_output)) return fail;
+  // Finding revisions have their own verified report/source path, not the file-authoring none path.
+  if(!revision){
+    try { await validateNoneBaseline(pool,{owner:run.owner_user_id,projectId:run.project_id},m); }
+    catch(error) { return {kind:'fail',code:error instanceof NoneBaselineConflict?error.code:'DATA_UNAVAILABLE'}; }
+  }
   return null;
 }
 

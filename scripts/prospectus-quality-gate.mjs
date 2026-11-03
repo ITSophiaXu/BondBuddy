@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export const POLICY = 'prospectus-quality-v1';
-export const REQUIRED_CHECKS = Object.freeze(['build', 'contracts', 'gate-regressions', 'database-migrations', 'api-source-selection', 'worker-authoring', 'document-regressions', 'deploy-regressions', 'real-model-acceptance']);
+export const REQUIRED_CHECKS = Object.freeze(['build', 'contracts', 'gate-regressions', 'database-migrations', 'api-source-selection', 'browser-input-chain', 'worker-authoring', 'document-regressions', 'deploy-regressions', 'real-model-acceptance']);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 function execute(command, args, options = {}) {
@@ -53,7 +53,7 @@ export function verifyReceipt(receipt, expected, now = Date.now(), allowExpired 
     throw new Error('Quality evidence is expired or has invalid timestamps');
   if (!Array.isArray(receipt.checks) || receipt.checks.length !== REQUIRED_CHECKS.length || !REQUIRED_CHECKS.every((id, i) => receipt.checks[i]?.id === id && receipt.checks[i].status === 'passed' && /^[a-f0-9]{64}$/.test(receipt.checks[i].log_sha256 ?? '')))
     throw new Error('A required quality check is missing or failed');
-  for (const id of ['gate-regressions', 'api-source-selection', 'worker-authoring']) validateTapSummary(receipt.checks.find(check => check.id === id)?.summary);
+  for (const id of ['gate-regressions', 'api-source-selection', 'browser-input-chain', 'worker-authoring']) validateTapSummary(receipt.checks.find(check => check.id === id)?.summary);
   validateDocumentSummary(receipt.checks.find(check => check.id === 'document-regressions')?.summary);
   validateAcceptanceSummary(receipt.checks.find(check => check.id === 'real-model-acceptance')?.summary, expected);
   return receipt;
@@ -109,16 +109,18 @@ function run(receiptPath, release = true) {
   check('build', 'npm', ['run', 'build']);
   check('contracts', 'npm', ['run', 'check:contracts']);
   check('gate-regressions', process.execPath, ['--test', '--test-reporter=tap', 'scripts/prospectus-quality-gate.test.mjs',
-    'scripts/verify-prospectus-acceptance.test.mjs', 'scripts/publish-prospectus-quality.test.mjs',
+    'scripts/verify-prospectus-acceptance.test.mjs', 'scripts/publish-prospectus-quality.test.mjs', 'scripts/prospectus-input-browser.test.mjs',
     'deploy/m1/scripts/codex-bwrap.test.mjs'], parseTap);
   check('database-migrations', process.execPath, ['db/migrate.mjs']);
   check('api-source-selection', process.execPath, ['--test', '--test-concurrency=1', '--test-reporter=tap',
     'apps/api/dist/prospectus-source-lock.pg.test.js', 'apps/api/dist/prospectus-auto-adoption.pg.test.js',
-    'apps/api/dist/source-format.pg.test.js'], parseTap);
+    'apps/api/dist/source-format.pg.test.js', 'apps/api/dist/none-baseline.pg.test.js'], parseTap);
+  check('browser-input-chain', process.execPath, ['scripts/prospectus-input-browser.mjs'], parseTap);
   check('worker-authoring', process.execPath, ['--test', '--test-concurrency=1', '--test-reporter=tap',
     'apps/worker/dist/file-authoring-quality.test.js', 'apps/worker/dist/file-authoring-delivery.test.js',
     'apps/worker/dist/file-authoring-format.test.js', 'apps/worker/dist/file-authoring-quality.pg.test.js',
-    'apps/worker/dist/authoring-material-tools.test.js', 'apps/worker/dist/codex-exec-log.test.js'], parseTap);
+    'apps/worker/dist/authoring-material-tools.test.js', 'apps/worker/dist/codex-exec-log.test.js',
+    'apps/worker/dist/none-baseline.test.js'], parseTap);
   check('document-regressions', python, ['scripts/run-document-quality-tests.py'], output => {
     const lines = output.split(/\r?\n/).filter(line => line.startsWith('DOCUMENT_QUALITY_RESULT='));
     if (lines.length !== 1) throw new Error('Missing document quality summary');

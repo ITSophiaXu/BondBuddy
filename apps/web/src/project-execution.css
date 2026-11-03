@@ -26,6 +26,14 @@
 #execution-actions .fixed-quote { text-align: left; color: var(--ink, #173f35); }
 #execution-actions .fixed-quote p { font-size: 14px; line-height: 1.6; }
 #workspace-materials > .form-footer:has(#fixed-quote:not([hidden])) { flex-wrap: wrap; gap: 16px; }
+#execution-actions:has(#execution-first-draft:not([hidden])) { width: min(680px, 100%); max-width: 100%; }
+#workspace-materials > .form-footer:has(#execution-first-draft:not([hidden])) { flex-wrap: wrap; gap: 16px; }
+#first-draft-exclusions { padding-left: 20px; overflow-wrap: anywhere; }
+#first-draft-exclusions li { margin: 12px 0; }
+#first-draft-exclusions details { margin-top: 4px; font-size: 13px; }
+@media (max-width: 600px) {
+  #execution-actions:has(#execution-first-draft:not([hidden])) { grid-column: 1 / -1; width: 100%; margin-left: 0; }
+}
 @media (max-width: 600px) { .execution-panel { padding: 16px; } .execution-fields { grid-template-columns: 1fr; } }
 .execution-fields label { margin: 0 0 8px; }
 .execution-fields select { font: inherit; width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid #abbba5; border-radius: 6px; background: white; color: var(--ink); }

@@ -17,6 +17,7 @@ from pathlib import Path
 from .check import REV, STORY, package, resolve_revisions
 from .format_diff import audit, canonical, strip_added_comment_markers
 from .source_outline import compare_financial_formulas, compare_outlines, heading_role, outline, style_map
+from .period_definitions import check_definitions
 from .template_manifest import sha
 from .word_patch import paragraph_text, q, xml
 
@@ -149,6 +150,12 @@ def verify(input_path):
         report['metrics']['output'] = result_stats
         if not result_stats['characters']:
             issue('WORD_EMPTY_MANUSCRIPT')
+
+        periods = check_definitions(data, cleaned['word/document.xml'])
+        report['period_definition_check'] = periods
+        report['validation_scope'].append('explicit_current_period_definitions')
+        if periods['conflicts']:
+            issue('WORD_REPORTING_PERIOD_DEFINITION_CONFLICT', definitions=periods['conflicts'])
 
         kind = data.get('baseline_kind', 'none')
         source_value = data.get('baseline_path')

@@ -45,6 +45,7 @@ jobs:
           tests/prospectus-saved-reentry.spec.ts
           tests/source-format-template.spec.ts
           tests/authoring-continuation.spec.ts
+          tests/first-draft-confirmation.spec.ts
           tests/file-consistency.spec.ts
           tests/consistency-confirmation.spec.ts
           tests/review-editor.spec.ts

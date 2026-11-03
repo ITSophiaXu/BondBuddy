@@ -1,3 +1,5 @@
+import { historicalExclusions, lockNoneBaseline, NoneBaselineConflict } from './none-baseline.js';
+import { FIRST_DRAFT_EXCLUSION_SCOPE, type FirstDraftConfirmationRequest } from '@bondbuddy/contracts';
 import { registerProjectQa } from './project-qa.js';
 import { registerQaKnowledge } from './qa-knowledge.js';
 import { registerIntegrity } from './integrity.js';
@@ -737,14 +739,32 @@ export function createServer(settings: Settings = {}) {
     });
     return reply.code(204).send();
   });
+  app.get('/api/v1/projects/:project_id/first-draft-exclusions',{schema:{response:{200:schemas.FirstDraftExclusionsResponse}}},async(request,reply)=>{
+    const user=await owner(request),id=param(request,'project_id');
+    reply.header('cache-control','private, no-store');
+    try {
+      return await transaction(db(),async client=>{
+        // The same project lock used by uploads/deletion keeps the displayed set coherent.
+        const p=await project(client,user,id,true);
+        if(!['update','generation'].includes(p.kind))throw conflict('INPUT_REVISION_CONFLICT','该项目不支持无原稿编制。');
+        return {project_id:id,draft_revision:p.draft_revision,project_kind:p.kind,scope:FIRST_DRAFT_EXCLUSION_SCOPE,
+          excluded_historical:await historicalExclusions(client,{owner:user,projectId:id},[])};
+      });
+    } catch(error) {
+      if(error instanceof Problem)throw error;
+      throw new Problem(503,'DATA_UNAVAILABLE','无法读取项目历史稿集合，请稍后重试。');
+    }
+  });
   app.post('/api/v1/projects/:project_id/input-revisions',{schema:{body:schemas.InputRevisionCreateRequest}},async (request,reply)=>{
     const user=await owner(request), id=param(request,'project_id');
-    const b=body<{prospectus_selection_revision?:number;edit_base?:{artifact_id:string;artifact_version:number;sha256:string}|null;draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];target_confirmation?:TargetConfirmationRequest;user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;test_rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[];generation_issuer_binding_ref?:GenerationIssuerBindingRef;project_message_set_ref?:ProjectMessageSetRef}>(request);
+    const b=body<{first_draft_confirmation?:FirstDraftConfirmationRequest;prospectus_selection_revision?:number;edit_base?:{artifact_id:string;artifact_version:number;sha256:string}|null;draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];target_confirmation?:TargetConfirmationRequest;user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;test_rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[];generation_issuer_binding_ref?:GenerationIssuerBindingRef;project_message_set_ref?:ProjectMessageSetRef}>(request);
     if(b.test_rule_applicability_context_ref && !testChannelEnabled())
       throw new Problem(403,'TEST_CHANNEL_DISABLED','Test channel is disabled');
     const result=await transaction(db(),async client=>{
       const p=await project(client,user,id,true);
       if(p.draft_revision!==b.draft_revision) throw conflict('INPUT_REVISION_CONFLICT','Draft revision changed');
+      if(b.first_draft_confirmation && (p.kind!=='generation' || p.update_details?.authoring_mode!=='unified_v1'))
+        throw conflict('INPUT_REVISION_CONFLICT','首稿确认只适用于无原稿的统一编制生成项目。');
       let targetConfirmation;
       if (b.target_confirmation) {
         try {
@@ -916,6 +936,13 @@ export function createServer(settings: Settings = {}) {
         }
         if(b.edit_base&&!authoring.previous_output)throw conflict('INPUT_REVISION_CONFLICT','所选版本的发行人或来源与当前材料不同，请核对后再修改。');
         inheritPreviousOutputFormat(authoring);
+        try {
+          const snapshot=await lockNoneBaseline(client,{owner:user,projectId:id},p.kind,resolved,authoring,b.first_draft_confirmation,new Date().toISOString());
+          if(snapshot)authoring.none_baseline=snapshot;
+        } catch(error) {
+          if(error instanceof NoneBaselineConflict)throw conflict(error.code,error.message);
+          throw new Problem(503,'DATA_UNAVAILABLE','无法核对项目历史稿集合，请稍后重试。');
+        }
         Object.assign(manifest, { issuer_name: p.issuer_name, authoring });
       }
       Object.assign(manifest,{prospectus_selection:{revision:prospectus.selection_revision,version_id:prospectus.current_version_id}});

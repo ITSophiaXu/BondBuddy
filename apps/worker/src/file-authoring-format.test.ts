@@ -8,6 +8,7 @@ import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import { editingSource, fileAuthoringStage, fileAuthoringDeliveryStage, type FileAuthoringResult } from './file-authoring-stage.js';
 import { runFormatPython, type FormatDiagnostic } from './file-authoring-format.js';
+import { verifyWordQuality } from './file-authoring-quality.js';
 import { diagnoseFormat, validFormatDiagnostic } from './word-format-diagnostic.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { UnifiedInput } from './unified-input.js';
@@ -26,8 +27,16 @@ function fixture(controlled = true) {
   const blobs = { getIfExistsBounded: async (key: string) => objects.get(key) ?? null,
     put: async (key: string, bytes: Buffer) => { objects.set(key, bytes); } } as unknown as PrivateBlobs;
   const ctx = { run: { id: 'run', owner_user_id: 'owner', project_id: 'project', input_hash: 'a'.repeat(64) },
-    lease: { checkpoint: {} }, signal: new AbortController().signal, values: new Map(), blobs } as unknown as StageContext;
-  return { source, input, objects, ctx, blobs };
+    lease: { checkpoint: {} }, checkpoint:{}, signal: new AbortController().signal, values: new Map(), blobs } as unknown as StageContext;
+  const persisted={checkpoint:{} as StageContext['lease']['checkpoint'],writes:0};
+  const checkpoint:NonNullable<Parameters<typeof fileAuthoringDeliveryStage>[0]>['checkpoint']=async(_pool,lease,stage,value,completed)=>{
+    assert.equal(stage,'word_format_plan');assert.equal(completed,false);
+    persisted.writes++;
+    persisted.checkpoint=JSON.parse(JSON.stringify({...lease.checkpoint,stages:{...lease.checkpoint.stages as object,[stage]:value}}));
+    lease.checkpoint=structuredClone(persisted.checkpoint);
+  };
+  const delivery=(options:Parameters<typeof fileAuthoringDeliveryStage>[0]={})=>fileAuthoringDeliveryStage({...options,checkpoint});
+  return { source, input, objects, ctx, blobs, persisted, delivery };
 }
 
 test('explicit template choice is independent of random material ids; previous output remains the revision source', () => {
@@ -167,7 +176,7 @@ test('normal model exit without operations preserves private evidence and report
     assert.match(diagnostic.toString(),/Synthetic pending chapter/);
     await rm(root,{recursive:true,force:true});
     f.ctx.values.set('model_generation',value);
-    for(let i=0;i<2;i++)assert.deepEqual(await fileAuthoringDeliveryStage().run(f.ctx),{kind:'fail',code:'WORD_FORMAT_OPERATIONS_MISSING'});
+    for(let i=0;i<2;i++)assert.deepEqual(await f.delivery().run(f.ctx),{kind:'fail',code:'WORD_FORMAT_OPERATIONS_MISSING'});
     assert.equal(calls,1);assert.equal(JSON.stringify(value.summary).includes('Synthetic'),false);
   }finally{await rm(root,{recursive:true,force:true});}
 });
@@ -190,11 +199,15 @@ test('a same-issuer new reporting period cannot be delivered as unchanged source
     }})});
     const result=await stage.run(f.ctx);assert.equal(result.kind,'done');if(result.kind!=='done')throw Error('expected result');
     f.ctx.values.set('model_generation',result.value);
-    const delivery=await fileAuthoringDeliveryStage().run(f.ctx);
+    const delivery=await f.delivery().run(f.ctx);
     assert.equal(delivery.kind,'fail');if(delivery.kind!=='fail')throw Error('expected rejection');
     assert.equal(delivery.code,'WORD_QUALITY_REJECTED');
-    const gate=delivery.checkpoint!.quality_gate as {report:{key:string}};
+    const gate=delivery.checkpoint!.quality_gate as {report:{key:string};format_plan:{key:string;sha256:string}};
     assert.match(f.objects.get(gate.report.key)!.toString(),/WORD_REPORTING_UPDATE_INCOMPLETE/);
+    const plan=f.objects.get(gate.format_plan.key)!;
+    assert.equal(digest(plan),gate.format_plan.sha256);
+    assert.equal(JSON.parse(plan.toString()).input_hash,f.ctx.run.input_hash);
+    assert.equal(JSON.parse(plan.toString()).visual_review,'not_run');
   }finally{await rm(root,{recursive:true,force:true});}
 });
 
@@ -228,7 +241,7 @@ for (const invalid of [false, true]) test(`trusted finalization ${invalid ? 'rej
     assert.equal(value.summary.format_state, 'operations_ready');
     assert.equal(value.files['tracked.docx'], undefined);
     if (invalid) {
-      assert.deepEqual(await fileAuthoringDeliveryStage().run(f.ctx), { kind: 'fail', code: 'WORD_QUALITY_REJECTED' });
+      assert.deepEqual(await f.delivery().run(f.ctx), { kind: 'fail', code: 'WORD_QUALITY_REJECTED' });
     } else {
       assert.equal(value.files['baseline.docx']!.sha256, digest(f.source));
       // A process restart no longer needs the CLI workspace: only stored references remain.
@@ -239,13 +252,15 @@ for (const invalid of [false, true]) test(`trusted finalization ${invalid ? 'rej
         if(simulateStorageFailure && args[0].includes('/finalized/')){simulateStorageFailure=false;throw Error('SYNTHETIC_STORAGE_OUTAGE');}
         return put(...args);
       };
-      await assert.rejects(fileAuthoringDeliveryStage().run(f.ctx),/SYNTHETIC_STORAGE_OUTAGE/);
-      const delivery = await fileAuthoringDeliveryStage().run(f.ctx);
+      await assert.rejects(f.delivery().run(f.ctx),/SYNTHETIC_STORAGE_OUTAGE/);
+      const delivery = await f.delivery().run(f.ctx);
       assert.equal(delivery.kind, 'deliver');
       if(delivery.kind!=='deliver')throw Error('expected delivery');
       assert.notEqual(digest(delivery.cleanBytes!), digest(Buffer.from('PK arbitrary model document')));
       const diagnostic = delivery.wordSummary!.format_diagnostic as FormatDiagnostic;
       assert.equal(diagnostic.status, 'pending');
+      assert.ok(diagnostic.files.plan);
+      assert.equal(digest(f.objects.get(diagnostic.files.plan.key)!),diagnostic.files.plan.sha256);
       const report = JSON.parse((await diagnoseFormat({ id: 'job', run_id: 'run', owner_user_id: 'owner', project_id: 'project',
         input_hash: 'a'.repeat(64), diagnostic }, f.blobs)).toString('utf8'));
       assert.equal(report.status, 'passed', JSON.stringify(report));
@@ -270,12 +285,77 @@ test('an existing snapshot without format policy retains direct generation with 
     const saved=result.value as FileAuthoringResult;
     assert.equal(saved.files['baseline.docx']!.sha256,digest(f.source));
     assert.ok(saved.files['input.json']);
-    const delivery=await fileAuthoringDeliveryStage().run(f.ctx);
+    const delivery=await f.delivery().run(f.ctx);
     assert.equal(delivery.kind,'deliver');
     if(delivery.kind==='deliver'){
       assert.equal(delivery.wordSummary?.format_execution,undefined);
       assert.equal((delivery.wordSummary!.quality_gate as {status:string}).status,'passed');
     }
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
+for(const failure of ['quality_timeout','quality_report_store'] as const)test(`format plan remains indexed after ${failure} and a restart reuses recorded model output`,{skip:!python,timeout:60000},async()=>{
+  const f=fixture(),root=await mkdtemp(join(tmpdir(),'bb-format-plan-checkpoint-'));
+  let modelCalls=0,qualityCalls=0,failOnce=true;
+  try{
+    const generation=fileAuthoringStage({load:async()=>f.input,model:options=>({name:'model_generation',run:async()=>{
+      modelCalls++;
+      await options.fileWorkspace!.prepare(root);
+      await runFormatPython(['no_changes','--input',join(root,'input.json'),'--operations',join(root,'output/operations.json'),
+        '--reason','Synthetic unchanged draft for infrastructure recovery.']);
+      return {kind:'done',value:await options.fileWorkspace!.collect(root,{call_id:'call'} as any)};
+    }})});
+    const generated=await generation.run(f.ctx);assert.equal(generated.kind,'done');
+    if(generated.kind!=='done')throw Error('expected recorded model result');
+    const value=generated.value as FileAuthoringResult;
+    f.ctx.values.set('model_generation',value);
+    await rm(root,{recursive:true,force:true});
+    const put=f.blobs.put.bind(f.blobs);
+    f.blobs.put=async(...args)=>{
+      if(failure==='quality_report_store' && failOnce && args[0].includes('/quality/')){
+        failOnce=false;throw Error('SYNTHETIC_QUALITY_REPORT_STORE_FAILURE');
+      }
+      return put(...args);
+    };
+    const quality:typeof verifyWordQuality=async input=>{
+      qualityCalls++;
+      assert.equal(f.persisted.writes,1,'plan must be durable before the first quality call');
+      if(failure==='quality_timeout' && failOnce){failOnce=false;throw Error('SYNTHETIC_QUALITY_TIMEOUT');}
+      return verifyWordQuality(input);
+    };
+    if(failure==='quality_timeout'){
+      await assert.rejects(fileAuthoringDeliveryStage({quality,checkpoint:async()=>{throw Error('SYNTHETIC_CHECKPOINT_OUTAGE');}}).run(f.ctx),/SYNTHETIC_CHECKPOINT_OUTAGE/);
+      assert.equal(qualityCalls,0);assert.equal(f.persisted.writes,0,'a failed checkpoint cannot advance to quality checking');
+    }
+    await assert.rejects(f.delivery({quality}).run(f.ctx),/SYNTHETIC_QUALITY_(TIMEOUT|REPORT_STORE_FAILURE)/);
+    const saved=f.persisted.checkpoint.stages as Record<string,Record<string,unknown>>;
+    const bound=saved.word_format_plan!;
+    assert.equal(bound.version,'word-format-plan-checkpoint-v1');
+    assert.equal(bound.input_hash,f.ctx.run.input_hash);
+    assert.equal(bound.locked_input_sha256,value.files['input.json']!.sha256);
+    assert.equal(bound.baseline_sha256,value.files['baseline.docx']!.sha256);
+    assert.equal(bound.operations_sha256,value.files['operations.json']!.sha256);
+    const plan=bound.plan as {key:string;sha256:string;byte_size:number};
+    const stored=f.objects.get(plan.key)!;
+    assert.equal(digest(stored),plan.sha256);assert.equal(stored.length,plan.byte_size);
+    assert.equal(saved.word_delivery,undefined,'evidence is indexed independently of a delivery result');
+    // Reconstruct both stage maps from the durable snapshot as a new process would.
+    const restarted:StageContext={...f.ctx,lease:{...f.ctx.lease,checkpoint:structuredClone(f.persisted.checkpoint)},
+      checkpoint:structuredClone(saved),values:new Map([['model_generation',structuredClone(value)]])};
+    const writesBeforeRetry=f.persisted.writes;
+    for(const field of ['input_hash','locked_input_sha256','baseline_sha256','operations_sha256','plan']){
+      const conflict=structuredClone(restarted.lease.checkpoint);
+      const entry=(conflict.stages as Record<string,Record<string,unknown>>).word_format_plan!;
+      entry[field]=field==='plan'?{...plan,sha256:'0'.repeat(64)}:'0'.repeat(64);
+      const conflicting:StageContext={...restarted,lease:{...restarted.lease,checkpoint:conflict}};
+      assert.deepEqual(await f.delivery({quality}).run(conflicting),{kind:'fail',code:'INPUT_REVISION_CONFLICT'});
+      assert.deepEqual(conflicting.lease.checkpoint,conflict,'conflicting evidence must not be replaced');
+      assert.equal(f.persisted.writes,writesBeforeRetry);assert.equal(qualityCalls,1);
+    }
+    const delivery=await f.delivery({quality}).run(restarted);
+    assert.equal(delivery.kind,'deliver');assert.equal(modelCalls,1);assert.equal(qualityCalls,2);
+    assert.equal(f.persisted.writes,1,'matching evidence reuses the original durable binding');
+    assert.deepEqual(f.persisted.checkpoint.stages,saved);
   }finally{await rm(root,{recursive:true,force:true});}
 });
 
@@ -285,6 +365,14 @@ test('diagnostics reject foreign or oversized references before reading storage'
     version: 'word-format-diagnostic-v1' as const, status: 'pending' as const, input_hash: 'a'.repeat(64), revision_author: 'BondBuddy-a',
     files: { baseline: { ...ref }, tracked: { ...ref }, operations: { ...ref } } } };
   assert.ok(validFormatDiagnostic(row));
+  const files=(row.diagnostic as FormatDiagnostic).files;
+  files.plan={...ref};
+  assert.ok(validFormatDiagnostic(row));
+  files.plan={...ref,key:'owners/other/projects/project/runs/run/file-authoring/format-plan.json'};
+  assert.equal(validFormatDiagnostic(row),false);
+  files.plan={...ref,byte_size:33*1024*1024};
+  assert.equal(validFormatDiagnostic(row),false);
+  delete files.plan;
   row.diagnostic.files.baseline.key = 'owners/other/projects/project/runs/run/file-authoring/call/a';
   assert.equal(validFormatDiagnostic(row), false);
   row.diagnostic.files.baseline = { ...ref, byte_size: 101 * 1024 * 1024 };

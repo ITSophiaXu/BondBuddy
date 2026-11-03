@@ -94,7 +94,7 @@ values 与物理单元格一一对应。多段落单元格对应项使用数组�
 
 有财务 XLSX 时，结束前按 task.md 运行 `bondbuddy_file_authoring.reverse_audit`，按 source_groups.occurrence_ids 读取 occurrences 的完整实际文稿及 source_contexts 的来源表头，逐组回查其待核列表。辅助程序从锁定原件缓存取值，重放累计 operations，列出 changed=false 的原段、表行、页眉页脚和身份字段。逐处回查真实来源、时点、口径及单位，不能把报告运行成功或默认 retained 当作核对。修改日志后重跑；身份冲突先读取已挂接批注，不强行替换历史签字或有待确认的姓名。程序永远不输出金融 passed，独立发布验收仍必须执行。
 
-review_queue 只把匹配来源且尚未修改的有关期间正文突出为待核候选，不给 expected/actual 定论。优先逐项读取它及对应 source_groups、source_contexts 缓存，明确本期／历史期间；有批注或未改都不等于已核。队列处理后仍回查全部适用来源行和出现位置。
+review_queue 将尚未修改且带有关期间和数值的正文突出为待核候选，包括未匹配来源的正文；不给 expected/actual 定论。优先逐项读取它及对应 source_groups、source_contexts 缓存，明确本期／历史期间；有批注或未改都不等于已核。队列处理后仍回查全部适用来源行和出现位置。
 
 ## 提交前累计质量预检
 
@@ -111,3 +111,8 @@ operations 必须是当前已保存的完整日志，报告路径只允许 scrat
 ## 完成编制
 
 保留 output/operations.json，写好 output/delivery.md，准确说明实际修改、局部缺项、未支持事项和未执行的视觉检查。worker 从锁定原稿重放操作并生成正式文件，再独立检查双稿、内容保留、目录和格式，通过后才能发布成功成果。跨期更新仅写批注、no_changes 或替换日期不能证明本期数据已更新。必要的新增列当前不支持时，必须如实记录未完成，不能覆盖应保留的历史比较数据。质量检查不代表财务事实、法规或 Word/WPS 专业验收。
+
+报告期定义另列 period_definition_occurrences，覆盖释义表行及独立段落，不因没有财务行标签或已修改而略过。review_queue 的来源组为空仍必须查原件；保守词面别名仅是 ambiguous_needs_review 候选，原标签及主体／范围限定始终保留，不能借别名自动选择财务事实。
+
+
+共享质量检查器还将锁定的完整 target.details.target_reporting_periods 与明确当前募集说明书释义中的报告期定义比较。仅对能确定绑定且可完整解析的日历年度／累计季度期间进行检查；确定矛盾报告 WORD_REPORTING_PERIOD_DEFINITION_CONFLICT，模型预检和模型结束后宿主检查执行同一规则。修复实际释义及对应正文后重跑预检。不能把历史比较句中的六月日期统一改成新期间，也不能用新增正确定义掩盖仍存在的冲突定义。输入缺项、期间口径冲突或不可解析的释义保持 needs_review，不代表金融事实通过。

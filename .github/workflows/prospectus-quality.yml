@@ -50,6 +50,8 @@ jobs:
       - name: Install build, Word and rendering dependencies
         run: |
           npm ci --no-audit --no-fund
+          npx --no-install playwright install --with-deps chromium
+          docker pull mcr.microsoft.com/azure-storage/azurite:3.35.0
           python -m pip install -r python/requirements-dev.txt
           python -m pip check
           sudo apt-get update

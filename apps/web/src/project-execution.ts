@@ -1,3 +1,5 @@
+import { canReviewFirstDraft, checkedFirstDraftExclusions, sameFirstDraftExclusions } from './first-draft-confirmation';
+import type { FirstDraftConfirmationRequest, FirstDraftExclusionsResponse, ProspectusVersions } from '@bondbuddy/contracts';
 import {int64} from '@bondbuddy/contracts';
 import {isAutomaticCharge} from './commerce';
 import {billingTaskRechargeHrefForRequest} from './billing-task-recovery';
@@ -147,6 +149,8 @@ export class ProjectExecution {
   private deliveryId?: string;
   private locateResult?: (returning?: boolean) => void;
   private events: Dto<'RunEvent'>[] = [];
+  private firstDraftReview?: { exclusions: FirstDraftExclusionsResponse; context: string; generation: number; selectionRevision: number };
+  private firstDraftConfirmation?: { request: FirstDraftConfirmationRequest; context: string; generation: number; selectionRevision: number };
   private selected = false;
   private preflight?: Dto<'PreflightResponse'>;
   private run?: Dto<'RunResponse'>;
@@ -212,8 +216,9 @@ export class ProjectExecution {
   mount(host: HTMLElement, actions: HTMLElement) {
     this.host = host; this.actions = actions;
     host.innerHTML = '<p id="execution-read-message" class="muted" role="status" hidden></p><details id="previous-execution" class="previous-execution" open><summary id="previous-execution-summary" hidden><span>上一轮任务与成果</span><small data-previous-execution-state></small></summary><section class="panel execution-panel" id="run-panel" hidden><div id="execution-progress" aria-live="polite"></div></section><div id="execution-delivery" class="embedded-artifact"></div></details>';
-    actions.innerHTML = `<div id="execution-preflight" hidden></div><p id="execution-message" role="status"></p><p id="start-disabled-reason" role="status"></p><div class="execution-submit-row"><div class="start-buttons"><button class="text-button" type="button" id="refresh-execution" hidden>重新读取</button><button class="text-button" type="button" id="select-saved-input" hidden>继续上次提交</button><button class="text-button" type="button" id="recheck-input" hidden>重新检查处理条件</button><button class="text-button" type="button" id="complete-source-information" aria-describedby="start-disabled-reason" hidden>补齐这份原稿信息</button><button class="btn primary" type="button" id="execute-input" aria-describedby="start-disabled-reason execution-message execution-credit-hint">开始更新 ${icon('arrow')}</button></div></div>`;
+    actions.innerHTML = `<div id="execution-preflight" hidden></div><section id="execution-first-draft" class="fixed-quote" aria-labelledby="first-draft-title" hidden><h3 id="first-draft-title">确认按首稿编制</h3><p>以下历史募集书未包含在本次材料中。按首稿执行将根据当前材料编制新稿。</p><ul id="first-draft-exclusions"></ul><button class="btn primary" type="button" id="confirm-first-draft">按首稿执行</button></section><p id="execution-message" role="status"></p><p id="start-disabled-reason" role="status"></p><div class="execution-submit-row"><div class="start-buttons"><button class="text-button" type="button" id="refresh-execution" hidden>重新读取</button><button class="text-button" type="button" id="select-saved-input" hidden>继续上次提交</button><button class="text-button" type="button" id="recheck-input" hidden>重新检查处理条件</button><button class="text-button" type="button" id="complete-source-information" aria-describedby="start-disabled-reason" hidden>补齐这份原稿信息</button><button class="btn primary" type="button" id="execute-input" aria-describedby="start-disabled-reason execution-message execution-credit-hint">开始更新 ${icon('arrow')}</button></div></div>`;
     this.button('execute-input').addEventListener('click', () => { void this.start(); });
+    this.button('confirm-first-draft').addEventListener('click', () => { void this.confirmFirstDraft(); });
     this.button('complete-source-information').addEventListener('click', () => { this.focusMissingSourceInformation(); });
     this.button('refresh-execution').addEventListener('click', () => { void this.restore(); });
     const retry=document.createElement('button');retry.type='button';retry.className='text-button';retry.id='retry-execution';retry.hidden=true;retry.textContent='核对上次提交';
@@ -279,7 +284,56 @@ export class ProjectExecution {
     const resolved = referencePin(reference, fresh, project.offering);
     return 'note' in resolved ? { status: 'blocked', message: resolved.note } : { status: 'pinned', choice: resolved.choice };
   }
+  private firstDraftContext() {
+    return JSON.stringify([this.id,this.draft.project.kind,this.draft.project.draft_revision,this.draft.fields,
+      this.materials.map(m=>[m.material_id,m.material_version,m.role,m.sha256]).sort(),this.readAdoptedVersion?.()??null,
+      this.nextRequested,this.nextChoice,this.nextBasis?.key??null]);
+  }
+  private clearFirstDraft() { this.firstDraftReview=undefined;this.firstDraftConfirmation=undefined; }
+  private expireFirstDraft() {
+    const decision=this.firstDraftReview??this.firstDraftConfirmation;
+    if(decision&&(decision.generation!==this.generation||decision.context!==this.firstDraftContext()))this.clearFirstDraft();
+  }
+  private firstDraftAvailable(versions:ProspectusVersions) {
+    return !this.readAdoptedVersion?.() && !this.nextBasis?.editBase && (!this.nextRequested||this.nextChoice!=='result') &&
+      canReviewFirstDraft(this.id,this.draft.project.kind,this.eligibleMaterials(),versions);
+  }
+  private async readFirstDraftReview() {
+    if(this.draft.project.kind!=='generation')return undefined;
+    const context=this.firstDraftContext(),generation=this.generation;
+    const [preview,versions]=await Promise.all([this.api.firstDraftExclusions(this.id,this.controller.signal),this.api.prospectusVersions(this.id,this.controller.signal)]);
+    if(!this.active||context!==this.firstDraftContext()||generation!==this.generation||this.materialBlock())return undefined;
+    const exclusions=checkedFirstDraftExclusions(preview,this.id,this.draft.project.draft_revision);
+    if(!exclusions||!this.firstDraftAvailable(versions))return undefined;
+    return {exclusions,context,generation,selectionRevision:versions.selection_revision};
+  }
+  private async offerFirstDraftReview() {
+    this.clearFirstDraft();
+    const review=await this.readFirstDraftReview();
+    if(!review){this.message='项目材料或底稿状态已变化，请刷新已保存材料后重新开始。';return;}
+    this.firstDraftReview=review;
+    this.message='项目中仍有历史募集书未包含在本次材料中，请核对上方列表后决定是否按首稿执行。';
+  }
+  private async confirmFirstDraft() {
+    this.expireFirstDraft();
+    const reviewed=this.firstDraftReview;
+    if(!this.active||!reviewed||this.busy||this.starting||this.restoring||this.pendingExecution||this.inputReadUncertain||this.materialBlock())return;
+    let confirmed=false;
+    await this.action(async()=>{
+      const fresh=await this.readFirstDraftReview();
+      if(!fresh||reviewed.context!==this.firstDraftContext()||reviewed.generation!==this.generation){this.clearFirstDraft();this.message='项目材料或底稿状态已变化，请重新开始并核对。';return;}
+      if(fresh.selectionRevision!==reviewed.selectionRevision||!sameFirstDraftExclusions(reviewed.exclusions,fresh.exclusions)){
+        this.firstDraftReview=fresh;this.firstDraftConfirmation=undefined;this.message='历史稿列表已变化，请重新核对后再点击“按首稿执行”。';return;
+      }
+      this.firstDraftConfirmation={context:fresh.context,generation:fresh.generation,selectionRevision:fresh.selectionRevision,
+        request:{decision:'generate_first_draft',scope:fresh.exclusions.scope,excluded_historical:fresh.exclusions.excluded_historical.map(({material_id,material_version,sha256})=>({material_id,material_version,sha256}))}};
+      this.firstDraftReview=undefined;this.message='';confirmed=true;
+    },'other','read');
+    if(confirmed)await this.start();
+  }
   private startBlock(): { reason: string; sourceGap?: ReturnType<typeof sourceProspectusInputGaps>[number] } {
+    this.expireFirstDraft();
+    if(this.firstDraftReview)return {reason:'请先核对历史稿列表，并明确选择是否按首稿执行。'};
     if (this.run && !['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state)) return { reason: '已有任务正在处理，请查看上方进度。' };
     if (this.restoring) return { reason: '正在读取项目状态…' };
     if (this.busy || this.starting) return { reason: '正在提交，请稍候。' };
@@ -348,6 +402,7 @@ export class ProjectExecution {
     if (document.activeElement !== control) unavailable();
   }
   private invalidate() {
+    this.clearFirstDraft();
     this.generation++; this.selected = false; this.selectedMessages = undefined; this.preflight = undefined;
     this.resumeVerified = false;
     this.quote = undefined;
@@ -357,7 +412,7 @@ export class ProjectExecution {
   conversationChanged() { if (this.active) this.invalidate(); }
   sync(materials: Material[], ready: boolean, materialMessage = '') {
     if (!this.active) return;
-    const stamp = JSON.stringify([this.draft.fields, materials.map(m => [m.material_id, m.material_version]).sort()]);
+    const stamp = JSON.stringify([this.draft.fields, materials.map(m => [m.material_id, m.material_version,m.role,m.sha256]).sort(),this.readAdoptedVersion?.()??null]);
     const changed = stamp !== this.sourceStamp || (this.materialReady && !ready);
     this.materials = materials; this.materialReady = ready; this.materialMessage = materialMessage;
     if (changed) {
@@ -449,6 +504,10 @@ export class ProjectExecution {
     this.button('retry-execution').disabled = this.busy || this.starting || this.restoring || this.pendingExecutionConflict;
     this.button('select-saved-input').hidden = !this.offerSavedInput || this.inputReadUncertain || !this.conversation.ready || this.conversation.hasMessages;
     this.button('select-saved-input').disabled = Boolean(blocked);
+    const firstDraft=this.firstDraftReview;
+    this.node('#execution-first-draft').hidden=!firstDraft||Boolean(activeRun);
+    this.node('#first-draft-exclusions').innerHTML=firstDraft?firstDraft.exclusions.excluded_historical.map(pin=>`<li><strong>${esc(pin.filename)}</strong> · 版本 ${pin.material_version}<details><summary>核对文件版本</summary><code>${esc(pin.sha256)}</code></details></li>`).join(''):'';
+    this.button('confirm-first-draft').disabled=this.busy||this.starting||this.restoring||Boolean(this.materialBlock());
     const check = this.preflight;
     this.node('#execution-preflight').hidden = !check || check.status !== 'blocked' || Boolean(activeRun);
     this.node('#execution-preflight').textContent = check?.status === 'blocked' && !activeRun ? blockedMessage(check) : '';
@@ -669,6 +728,7 @@ export class ProjectExecution {
   }
   private async save() {
     await this.action(async () => {
+      const expectedFirstDraft=this.firstDraftConfirmation;
       if (!await this.conversation.flush()) { this.message = '补充说明尚未保存，内容已保留，请稍后重试。'; return; }
       if (this.materialBlock() || this.inputReadUncertain || this.pendingExecution) return;
       const selected = this.eligibleMaterials();
@@ -712,9 +772,16 @@ export class ProjectExecution {
           }
         }
         if (!this.active || generation !== this.generation || this.materialBlock()) return;
+        this.expireFirstDraft();
+        if(expectedFirstDraft&&expectedFirstDraft!==this.firstDraftConfirmation){this.message='材料或目标已变化，请重新开始并核对首稿确认。';return;}
+        const firstDraft=this.firstDraftConfirmation;
+        if(firstDraft&&(!this.firstDraftAvailable(versions)||firstDraft.selectionRevision!==versions.selection_revision)){
+          this.clearFirstDraft();this.message='项目底稿状态已变化，请重新开始并核对。';return;
+        }
         submitted=true;
         result = await this.api.createInputRevision(this.id, { prospectus_selection_revision:versions.selection_revision,draft_revision: p.draft_revision,
           ...(this.nextRequested?{edit_base:this.nextBasis!.editBase}:{}),
+          ...(firstDraft?{first_draft_confirmation:firstDraft.request}:{}),
           material_versions: selected.map(m => ({ material_id: m.material_id, material_version: m.material_version })),
           requirement_message_ids: messages.message_ids, project_message_set_ref: messages,
           ...(reference.status === 'pinned' ? { user_reference: reference.choice } : {}),
@@ -725,6 +792,15 @@ export class ProjectExecution {
         if(!submitted){
           if(this.nextRequested){this.nextBasisError=friendlyError(error,'read');this.message=this.nextBasisError;return;}
           throw error;
+        }
+        if (error instanceof ApiError && error.status === 409 && ['FIRST_DRAFT_CONFIRMATION_REQUIRED','FIRST_DRAFT_EXCLUSION_STALE'].includes(error.code)) {
+          this.invalidate();
+          if(this.draft.project.kind==='generation')await this.offerFirstDraftReview();
+          else this.message='项目中仍有历史募集书未包含在本次材料中，请刷新材料并纳入准确原稿后重新开始。';
+          return;
+        }
+        if(error instanceof ApiError&&error.status===409&&error.code==='HISTORICAL_BASELINE_REQUIRED'){
+          this.invalidate();this.message='项目中仍有历史募集书未包含在本次材料中，请刷新材料并纳入准确原稿后重新开始。';return;
         }
         if (error instanceof ApiError && error.status === 409) {
           this.invalidate();
@@ -745,6 +821,7 @@ export class ProjectExecution {
       }
       if (!this.active) return;
       if (result.project_id !== this.id) throw new ApiError(0, 'DATA_UNAVAILABLE');
+      this.clearFirstDraft();
       this.input = result;
       this.selectedMessages = messages;
       this.selected = generation === this.generation;
@@ -915,6 +992,7 @@ export class ProjectExecution {
   }
   private async restore() {
     if (this.busy) return;
+    this.clearFirstDraft();
     if(this.pendingExecution){await this.restorePendingExecution();return;}
     this.nextBasisRead++;this.nextBasisLoading=false;this.nextBasis=undefined;
     this.runReadVersion++;

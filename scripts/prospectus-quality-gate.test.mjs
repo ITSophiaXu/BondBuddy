@@ -10,7 +10,7 @@ const expected = { commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
 function receipt() { return { schema_version: POLICY, status: 'passed', ...expected, platform: 'linux', clean_tree: true,
   started_at: new Date(now - 1000).toISOString(), finished_at: new Date(now).toISOString(),
   checks: REQUIRED_CHECKS.map(id => ({ id, status: 'passed', log_sha256: 'c'.repeat(64),
-    ...(['gate-regressions', 'api-source-selection', 'worker-authoring'].includes(id) ? { summary: { tests: 4, pass: 4, fail: 0, cancelled: 0, skipped: 0, todo: 0 } } : {}),
+    ...(['gate-regressions', 'api-source-selection', 'browser-input-chain', 'worker-authoring'].includes(id) ? { summary: { tests: 4, pass: 4, fail: 0, cancelled: 0, skipped: 0, todo: 0 } } : {}),
     ...(id === 'document-regressions' ? { summary: { tests: 4, passed: 4, failures: 0, errors: 0, skipped: 0, expected_failures: 0, unexpected_successes: 0, render_required: true, authorized_render_reports: 1, rendered_documents: 3 } } : {}),
     ...(id === 'real-model-acceptance' ? { summary: { status: 'passed', ...expected, real_model: true, case_count: 1, evidence_sha256: 'e'.repeat(64) } } : {}) })) }; }
 test('complete current Linux evidence passes for the exact source tree', () => assert.equal(verifyReceipt(receipt(), expected, now).status, 'passed'));
@@ -34,6 +34,19 @@ test('API source-selection requires its own complete, nonempty and unskipped TAP
     const invalid = receipt(); invalid.checks.find(check => check.id === 'api-source-selection').summary = summary;
     assert.throws(() => verifyReceipt(invalid, expected, now));
   }
+});
+test('real browser input evidence is required and cannot be empty, skipped or borrowed from API tests', () => {
+  const good = receipt().checks.find(check => check.id === 'browser-input-chain').summary;
+  for (const summary of [undefined, null, {}, { ...good, tests: 0, pass: 0 }, { ...good, pass: 3 },
+    ...['fail', 'cancelled', 'skipped', 'todo'].map(key => ({ ...good, [key]: 1 }))]) {
+    const invalid = receipt(); invalid.checks.find(check => check.id === 'browser-input-chain').summary = summary;
+    assert.throws(() => verifyReceipt(invalid, expected, now));
+  }
+  const missing = receipt(); missing.checks = missing.checks.filter(check => check.id !== 'browser-input-chain');
+  assert.throws(() => verifyReceipt(missing, expected, now));
+  const raw = JSON.stringify(missing), hash = createHash('sha256').update(raw).digest('hex');
+  const log = `${missing.finished_at}\tdeploy\t${missing.commit.slice(0, 12)} commit=${missing.commit} quality_sha256=${hash}\n`;
+  assert.throws(() => verifyRollbackReceipt(raw, expected, log, now));
 });
 test('database migrations accept only a dedicated disposable loopback database', () => {
   assert.equal(validateTestDatabase('postgresql://test:test@127.0.0.1:55491/bb_prospectus_quality').hostname, '127.0.0.1');
