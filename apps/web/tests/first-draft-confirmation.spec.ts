@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { emptyUpdateDetails, reportingWindow, schemas } from '@bondbuddy/contracts';
-import { FormatRegistry } from '@sinclair/typebox';
+import '../src/schema-formats';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
@@ -16,7 +16,6 @@ const now = '2026-10-25T03:00:00Z';
 const scope = 'project_undeleted_historical_versions' as const;
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 const messages = { version: 1, content_sha256: hash('bondbuddy:empty-project-messages'), message_ids: [] };
-FormatRegistry.Set('date-time', value => value === now);
 type Exclusion = Dto<'FirstDraftExclusionsResponse'>['excluded_historical'][number];
 type Call = { method: string; path: string; body?: unknown };
 

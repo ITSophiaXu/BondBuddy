@@ -4,7 +4,7 @@ import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import {expect,type Page,type Route} from '@playwright/test';
 import {emptyUpdateDetails,reportingWindow,schemas,sourceProspectusInputGaps,updateDetailsErrors,type SourceProspectus} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
-import {FormatRegistry} from '@sinclair/typebox';
+import '../src/schema-formats';
 import {createHash} from 'node:crypto';
 import type {Dto} from './billing-fixture-wire';
 import {taskPage} from './collection-fixtures';
@@ -16,7 +16,6 @@ import {taskPage} from './collection-fixtures';
 // model output, storage, worker execution or a real credit ledger.
 export const projectId='synthetic-source-guide-project',now='2026-10-25T03:00:00Z';
 export const sha256=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
-FormatRegistry.Set('date-time',value=>value===now);
 const emptyMessages={version:1,content_sha256:sha256('bondbuddy:empty-project-messages'),message_ids:[]};
 type Material=Dto<'MaterialResponse'>;
 type Call={method:string;path:string;search:string;body?:unknown};
