@@ -50,6 +50,18 @@ input.json 的 target 是本次目标发行人、市场品种、报告期和项�
 
 结束前从实际已保存的文稿逐位置回查该清单。受控流程通过 fixed_edit inspect 查看累计 operations 重放后的当前位置；直接交付流程读取实际修订版接受修订后的内容。逐处核对金额、期间、单位、主体口径、比例及重复数据一致性，并确认所有原稿清单位置均有处理结论；不要只检查操作 JSON、主表单元格数量、操作数或自己写的“已核对”说明。仍未覆盖或有冲突的位置不得宣称已完成，保留具体缺项及对应位置。该自检不替代 worker 的独立质量门、财务事实核验和人工验收，也不授权改写原稿模板。
 
+### 受控 DOCX 编辑有锁定 XLSX 时按来源行反向回查
+
+仅在受控 DOCX 编辑（format_tools.version=controlled-docx-v1）且有锁定财务 XLSX 时，结束前必需运行确定性出现位置辅助工具；它直接读锁定 XLSX 的原始行标签与数值缓存，并读取累计操作实际重放且接受原有修订后的全文，包含零操作原段、表行、页眉页脚和身份信息：
+
+```sh
+/opt/venv/bin/python -B -m bondbuddy_file_authoring.reverse_audit --input input.json --operations output/operations.json --report scratch/source-reverse-audit.json
+```
+
+先据工作表真实标题、主体、期间和单位识别适用来源，记录辅助及历史来源排除原因；sheet_state 仅显示原始可见性，不自动筛选。用脚本按来源及标签分组读取，勿整份打印大报告；分组不缩减相关本期事实覆盖。按报告 source_groups 每个来源行的 occurrence_ids 读取 occurrences 对应的完整实际原/现文及上下文，并读取 source_contexts 对应的原始表头及来源缓存，逐处回查本期值、历史比较值、期间、口径和单位；相近指标不能仅按字符串匹配认作同一事实。changed=false 仍必须核对，禁止将枚举数量、运行成功、匹配命中或默认 retained 当作已核对。报告始终是 needs_review，不产生财务通过结论；缺缓存、无匹配项、别名、未支持材料或歧义需另读实际原件并记录具体结论与位置。
+
+identity_occurrences 也含历史签字和事件，结合时点、原稿 existing_comments 及本轮 replay_comments 逐处判断；有依据的身份冲突保留具体待确认批注，不强行替换成附注里的另一个姓名。将逐项判断及来源记录写入工作记录；改动 operations 后重新运行，检查报告的输入/底稿/操作及来源 hash。显式 operations 路径不存在会报错，不传路径仅是 baseline_preview，不能当作本轮重放检查。不能略过该待核列表或把这个运行辅助报告冒充 worker／财务／行业独立验收。非受控直接交付流程仍读取实际修订稿接受修订后的内容按原件核对，记录该辅助不适用；不得用无 operations 的底稿清单冒充实际直接成果检查。没有财务 XLSX 时也如实记录辅助未适用及原因，继续按原件逐处核对。
+
 ## 修订和清洁版
 
 当 input.json.format_tools.version 为 `controlled-docx-v1` 时，本节采用受控原稿编辑流程：先阅读 fixed-edit.md 的接口说明和 template-manifest.json 的结构摘要，并通过下列工具按章节查看原文和格式。所有实质 Word 修改通过固定工具登记，正式修订版与清洁版由 worker 在本次 CLI 结束后从锁定原稿和已持久化的操作日志生成。完整更新、事实依据、缺项标注和本轮范围要求继续适用。

@@ -4,12 +4,14 @@ import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
+import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
 import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import { editingSource, fileAuthoringStage, fileAuthoringDeliveryStage, type FileAuthoringResult } from './file-authoring-stage.js';
 import { runFormatPython, type FormatDiagnostic } from './file-authoring-format.js';
 import { diagnoseFormat, validFormatDiagnostic } from './word-format-diagnostic.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { UnifiedInput } from './unified-input.js';
+import { unifiedInputGate } from './unified-input.js';
 import type { StageContext } from './run-pipeline.js';
 
 const python = !!(process.env.BONDBUDDY_TEST_PYTHON || process.env.BONDBUDDY_WORD_PYTHON);
@@ -71,6 +73,76 @@ test('a declared original cannot disappear from the locked inputs and become a n
   assert.equal(editingSource(input)?.pin.material_id,'source');
   input.materials=[];
   assert.throws(()=>editingSource(input),/INPUT_REVISION_CONFLICT/);
+});
+
+test('the input gate binds its immutable adopted version to the template, independent of later project selection',async()=>{
+  const {input,ctx}=fixture();
+  const source=input.materials[0]!.pin;
+  input.manifest.prospectus_selection={revision:2,version_id:'pinned-source-v1'};
+  input.manifest.update_details.target_reporting_periods=[{start:'2025-01-01',end:'2025-12-31',period_kind:'annual',scope:'consolidated',status:'user_asserted',evidence_refs:[]}];
+  const markdown='Synthetic adopted-source gate knowledge';
+  input.manifest.authoring.knowledge=[{path:'synthetic.md',markdown,sha256:digest(markdown)}];
+  const reference={...input.materials[0]!,pin:{material_id:'auxiliary',material_version:1,sha256:'c'.repeat(64),role:'reference'}};
+  input.materials.push(reference);input.manifest.materials=input.materials.map(m=>m.pin);
+  let adopted:{material_id:string|null;material_version:number|null;sha256:string;artifact_id?:string;artifact_version?:number;run_id?:string}|undefined=
+    {material_id:source.material_id,material_version:source.material_version,sha256:source.sha256};
+  const lookups:unknown[][]=[];
+  const pool={query:async(sql:string,values:unknown[])=>{
+    if(sql.includes('FROM bb_prospectus_versions')){
+      lookups.push(values);
+      assert.deepEqual(values,[ctx.run.owner_user_id,ctx.run.project_id,'pinned-source-v1']);
+      return {rows:adopted?[adopted]:[]};
+    }
+    if(sql.includes('SELECT a.object_key,a.sha256'))return {rows:['selected-clean','other-clean'].includes(String(values[0]))
+      ?[{object_key:`synthetic/${String(values[0])}`,sha256:'d'.repeat(64)}]:[]};
+    assert.ok(!sql.includes('bb_prospectus_selection'),'the later current selection is never queried');
+    const material=input.materials.find(m=>m.pin.material_id===values[2]&&m.pin.material_version===values[3]);
+    return {rows:material?[{role:material.pin.role,sha256:material.pin.sha256,media_type:material.mediaType}]:[]};
+  }} as unknown as Parameters<typeof unifiedInputGate>[0];
+  const gate=async()=>{
+    const input_hash=inputManifestHash(input.manifest);
+    return unifiedInputGate(pool,{...ctx.run,input_hash},{input_hash,manifest:input.manifest,draft_revision:1,
+      material_versions:input.manifest.materials,rule_pack_version:null,template_version:null});
+  };
+  const before=structuredClone(input.manifest);
+  assert.equal(await gate(),null);
+  assert.deepEqual(input.manifest,before,'no immutable input is rewritten');
+  input.manifest.authoring.format_policy={version:'source-format-v1',mode:'preserve_docx',selection:'automatic',
+    template:{kind:'material',material_id:'auxiliary',material_version:1,sha256:reference.pin.sha256}};
+  assert.deepEqual(await gate(),{kind:'fail',code:'INPUT_REVISION_CONFLICT'});
+  input.manifest.authoring.format_policy={version:'source-format-v1',mode:'preserve_docx',selection:'automatic',
+    template:{kind:'material',material_id:source.material_id,material_version:source.material_version,sha256:source.sha256}};
+  adopted={...adopted!,material_version:2};
+  assert.deepEqual(await gate(),{kind:'fail',code:'INPUT_REVISION_CONFLICT'});
+  adopted={material_id:source.material_id,material_version:source.material_version,sha256:'f'.repeat(64)};
+  assert.deepEqual(await gate(),{kind:'fail',code:'INPUT_REVISION_CONFLICT'});
+  adopted=undefined;
+  assert.deepEqual(await gate(),{kind:'fail',code:'INPUT_REVISION_CONFLICT'});
+  assert.equal(lookups.length,5);
+  delete input.manifest.prospectus_selection;
+  assert.equal(await gate(),null,'legacy inputs without a selection pin keep their original path');
+  assert.equal(lookups.length,5);
+  input.manifest.prospectus_selection={revision:2,version_id:'pinned-source-v1'};
+  adopted={material_id:source.material_id,material_version:source.material_version,sha256:source.sha256};
+  delete input.manifest.authoring.format_policy;
+  input.manifest.authoring.source_prospectuses=[{material_id:source.material_id,material_version:source.material_version,sha256:source.sha256,
+    issuer_name:null,relation:'same_issuer',market:null,offering:null,reporting_periods:[],status:'user_asserted'}];
+  assert.equal(await gate(),null,'an exact original in a safe pre-format-policy snapshot remains usable');
+  assert.equal(editingSource(input)?.pin.material_id,'source');
+  input.materials=input.materials.filter(m=>m.pin.material_id==='source');input.manifest.materials=input.materials.map(m=>m.pin);
+  assert.equal(await gate(),null,'a pre-format-policy snapshot with only its exact original remains usable');
+  input.manifest.authoring.source_prospectuses=[];
+  input.materials.unshift({...reference,pin:{...reference.pin,material_id:'aaa-reference'}});input.manifest.materials=input.materials.map(m=>m.pin);
+  assert.deepEqual(await gate(),{kind:'fail',code:'INPUT_REVISION_CONFLICT'},'legacy ranking cannot silently replace the adopted original');
+  assert.equal(editingSource(input)?.pin.material_id,'aaa-reference','authoring and its gate share the actual legacy order');
+  adopted={material_id:null,material_version:null,sha256:'d'.repeat(64),artifact_id:'selected-clean',artifact_version:3,run_id:'selected-run'};
+  assert.deepEqual(await gate(),{kind:'fail',code:'INPUT_REVISION_CONFLICT'},'generated selection cannot degrade to uploaded-source editing');
+  input.manifest.authoring.previous_output={artifact_id:'selected-clean',version:3,sha256:'d'.repeat(64),run_id:'selected-run',input_revision:2};
+  assert.equal(await gate(),null,'an exact selected clean artifact keeps its verified legacy continuation');
+  input.manifest.authoring.previous_output={...input.manifest.authoring.previous_output,artifact_id:'other-clean',run_id:'other-run',input_revision:1};
+  assert.equal(await gate(),null,'a validated explicit viewed-result continuation may differ from project current');
+  input.manifest.authoring.previous_output={...input.manifest.authoring.previous_output,sha256:'f'.repeat(64)};
+  assert.deepEqual(await gate(),{kind:'fail',code:'INPUT_REVISION_CONFLICT'},'explicit previous output still requires its verified artifact hash');
 });
 
 test('normal model exit without operations preserves private evidence and reports the actual failure', {skip:!python}, async()=>{

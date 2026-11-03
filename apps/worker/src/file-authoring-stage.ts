@@ -5,7 +5,7 @@ import { digest } from '@bondbuddy/api/data';
 import { readCheckpointedProviderResult } from '@bondbuddy/api/provider-results';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage,type RunStage,type StageContext } from './run-pipeline.js';
-import { loadUnifiedInput,type UnifiedInput } from './unified-input.js';
+import { loadUnifiedInput,selectLegacySourcePin,type UnifiedInput } from './unified-input.js';
 import { finalizeFormat, runFormatPython, FORMAT_JSON_MAX, type FormatDiagnostic } from './file-authoring-format.js';
 import { verifyWordQuality } from './file-authoring-quality.js';
 
@@ -58,10 +58,8 @@ export function editingSource(input:UnifiedInput){
   if(policy?.template?.kind==='material' && !input.manifest.authoring.previous_output){
     return exact(policy.template);
   }
-  return [...input.materials].filter(m=>['project_output','historical','reference'].includes(m.pin.role)).sort((a,b)=>{
-    const rank=(m:typeof a)=>m.pin.material_id===input.manifest.authoring.review_result?.source_material.material_id?-2:m.pin.role==='project_output'?-1:input.manifest.authoring.source_prospectuses.find(s=>s.material_id===m.pin.material_id)?.relation==='same_issuer'?0:1;
-    return rank(a)-rank(b)||a.pin.material_id.localeCompare(b.pin.material_id);
-  })[0]??null;
+  const legacy=selectLegacySourcePin(input.materials.map(material=>material.pin),authoring);
+  return legacy?input.materials.find(material=>material.pin===legacy)!:null;
 }
 
 function qualityContext(input:UnifiedInput,source:ReturnType<typeof editingSource>){

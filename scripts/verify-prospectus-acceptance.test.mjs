@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join,resolve,dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { ACCEPTANCE_POLICY,METRICS,SCOPES,verifyProspectusAcceptance,validateBinding,validateChapterCoverage,
+import { ACCEPTANCE_POLICY,METRICS,SCOPES,REQUIRED_FINANCIAL_KEYS,REQUIRED_ROLE_IDS,STOCK_METRICS,FINANCIAL_POLICY,verifyProspectusAcceptance,validateBinding,validateChapterCoverage,
   equalRoundedAmount,validateFinancialChecks,validateHumanReviewer,validateMeasuredUsage,validateRealModelRecord,inspectAcceptanceArtifacts,validateFixedOccurrenceCoverage } from './verify-prospectus-acceptance.mjs';
 
 test('release acceptance fails when its private evidence file is missing',async()=>{
@@ -66,19 +66,24 @@ test('amount checks perform exact unit conversion and explicit half-away-from-ze
   assert.equal(equalRoundedAmount({value:'12.345',unit:'CNY'},{value:'12.35',unit:'CNY'},2),true);
   assert.throws(()=>equalRoundedAmount({value:'1,000',unit:'CNY'},{value:'1000',unit:'CNY'},2),/FINANCIAL_VALUE_INVALID/);
   assert.throws(()=>equalRoundedAmount({value:'1',unit:'unknown'},{value:'1',unit:'CNY'},2),/FINANCIAL_UNIT_INVALID/);
+  assert.equal(equalRoundedAmount({value:'24952672.960000001',unit:'CNY'},{value:'2495.27',unit:'CNY_10K'},2),true);
+  assert.equal(equalRoundedAmount({value:'8295896.5000001201',unit:'CNY'},{value:'829.59',unit:'CNY_10K'},2),true);
+  for(const value of ['1e6','NaN','Infinity','1.'.padEnd(1025,'0')])
+    assert.throws(()=>equalRoundedAmount({value,unit:'CNY'},{value:'100',unit:'CNY_10K'},2),/FINANCIAL_VALUE_INVALID/);
+  assert.throws(()=>equalRoundedAmount({value:'1000000',unit:'CNY'},{value:'100.0000000',unit:'CNY_10K'},6),/FINANCIAL_VALUE_INVALID/);
 });
 function exactLocation(locator,quote,amount='100.00',scope='consolidated'){
   return {locator,quote,start:quote.indexOf(amount),end:quote.indexOf(amount)+amount.length,
     scope_anchor:{locator:'word/document.xml//w:p[1]',quote:scope==='consolidated'?'合并':'母公司'}};
 }
-function financialRows(){return SCOPES.flatMap(scope=>METRICS.map(metric=>{
-  const start=['total_assets','total_liabilities','net_assets'].includes(metric)?'2025-09-30':'2025-01-01';
+function financialRows(){return REQUIRED_FINANCIAL_KEYS.map(key=>{const [scope,metric]=key.split(':');const binding=FINANCIAL_POLICY.metrics.find(r=>r.scope===scope&&r.metric===metric);
+  const start=STOCK_METRICS.includes(metric)?'2025-09-30':'2025-01-01';
   return {scope,metric,status:'passed',reviewer_id:'synthetic-reviewer',amount:'passed',unit:'passed',reporting_period:'passed',entity_scope:'passed',repeated_values:'passed',
-    source:{file_id:'rq-202509-02',sha256:'a'.repeat(64),scope,start,end:'2025-09-30',locator:'SYNTHETIC!A1',value:'1000000',unit:'CNY'},
+    source:{file_id:'rq-202509-02',sha256:'a'.repeat(64),scope,start,end:'2025-09-30',locator:binding.locator,value:'1000000',unit:'CNY'},
     output:{scope,start,end:'2025-09-30',value:'100',unit:'CNY_10K',decimal_places:2,locators:[
       exactLocation('word/document.xml//w:p[2]','2025年9月末合并总资产100.00万元。','100.00',scope),
       exactLocation('word/document.xml//w:p[3]','2025年9月末合并总资产100.00万元。','100.00',scope)]},expected_occurrences:2};
-}));}
+});}
 test('financial review covers both scopes, correct quarter, converted amounts and every repeated value location',()=>{
   const materials=new Map([['rq-202509-02','a'.repeat(64)],['rq-202509-01','b'.repeat(64)]]);
   validateFinancialChecks(financialRows(),materials,'synthetic-reviewer');
@@ -98,73 +103,55 @@ test('financial review covers both scopes, correct quarter, converted amounts an
 });
 
 test('operator occurrence counts cannot replace the independent fixed-case coverage result',()=>{
-  const result={policy:'rq-202509-occurrences-v1',status:'passed',required_count:27,located_count:27,covered_count:27,
-    covered_role_ids:Array.from({length:27},(_,i)=>`synthetic-role-${i}`),failures:[]};
+  const result={policy:'rq-202509-occurrences-v2',status:'passed',required_count:39,located_count:39,covered_count:39,
+    covered_role_ids:[...REQUIRED_ROLE_IDS],failures:[]};
   validateFixedOccurrenceCoverage(result);
   for(const value of [undefined,{}, {...result,status:'failed'}, {...result,required_count:18},
     {...result,located_count:23}, {...result,covered_count:23}, {...result,covered_role_ids:result.covered_role_ids.slice(1)},
     {...result,covered_role_ids:result.covered_role_ids.map(()=>result.covered_role_ids[0])},
+    {...result,policy:'rq-202509-occurrences-v1'}, {...result,required_count:27,located_count:27,covered_count:27},
+    {...result,covered_role_ids:result.covered_role_ids.map((id,i)=>i===0?'invented-role':id)},
     {...result,failures:[{code:'required_occurrence_not_independently_checked'}]}])
     assert.throws(()=>validateFixedOccurrenceCoverage(value),/FIXED_OCCURRENCE_COVERAGE_INCOMPLETE/);
 });
-test('independent reader rejects invented source cells, wrong source amounts and nonexistent or wrong output positions',()=>{
-  const root=resolve(dirname(fileURLToPath(import.meta.url)),'..'),temp=mkdtempSync(join(tmpdir(),'bb-synthetic-financial-validator-'));
+
+test('new consolidated keys are mandatory without inventing parent attribution or expense claims',()=>{
+  const materials=new Map([['rq-202509-02','a'.repeat(64)]]);
+  assert.equal(REQUIRED_FINANCIAL_KEYS.length,18);
+  for(const metric of ['deferred_income','sales_expenses','administrative_expenses','finance_expenses','investment_income','profit_attributable_to_parent']){
+    assert.ok(REQUIRED_FINANCIAL_KEYS.includes(`consolidated:${metric}`));
+    assert.ok(!REQUIRED_FINANCIAL_KEYS.includes(`parent:${metric}`));
+    const missing=financialRows().filter(r=>r.metric!==metric);
+    assert.throws(()=>validateFinancialChecks(missing,materials,'synthetic-reviewer'),/FINANCIAL_COVERAGE_INCOMPLETE/);
+    const parent=financialRows(),row=parent.find(r=>r.metric===metric);row.scope=row.source.scope=row.output.scope='parent';
+    assert.throws(()=>validateFinancialChecks(parent,materials,'synthetic-reviewer'),/FINANCIAL_COVERAGE_INCOMPLETE/);
+    const period=financialRows(),wrong=period.find(r=>r.metric===metric);
+    wrong.source.start=wrong.output.start=metric==='deferred_income'?'2025-01-01':'2025-09-30';
+    assert.throws(()=>validateFinancialChecks(period,materials,'synthetic-reviewer'),/FINANCIAL_PERIOD_MISMATCH/);
+  }
+});
+test('an arbitrary same-valued synthetic spreadsheet cannot establish an authorized financial source',()=>{
+  const root=resolve(dirname(fileURLToPath(import.meta.url)),'..'),temp=mkdtempSync(join(tmpdir(),'bb-synthetic-source-rejection-'));
   try{
     const program=`from pathlib import Path
+import sys
 from docx import Document
 from openpyxl import Workbook
 from pypdf import PdfWriter
-import sys
-r=Path(sys.argv[1]);doc=Document();doc.add_heading('第一章 合并 Synthetic validator only',1)
-doc.add_paragraph('2025年9月末合并总资产100.00万元。');doc.add_paragraph('2025年9月末合并总资产100.00万元。')
-doc.add_paragraph('2025年9月末总资产90万元，2025年6月末总资产100万元。')
-doc.add_paragraph('2025年9月末总资产100万元，2025年6月末总资产90万元。')
-doc.add_paragraph('2025年9月末总资产90万元、负债总额100万元。')
-doc.add_paragraph('2025年9月末总资产100%万元。');doc.add_paragraph('2025年9月末总资产（100）万元。')
-doc.add_paragraph('2025年9月末总资产(100)万元。')
-table=doc.add_table(rows=4,cols=2);table.cell(0,0).text='合并';table.cell(1,1).text='2025年9月末'
-table.cell(2,0).text='总资产';table.cell(2,1).text='90.00';table.cell(3,0).text='总资产';table.cell(3,1).text='100.00'
-doc.save(r/'synthetic.docx');book=Workbook();book.active.title='SYNTHETIC';book.active['A1']=1000000;book.save(r/'synthetic.xlsx')
-writer=PdfWriter();writer.add_blank_page(width=595,height=842)
-with open(r/'synthetic.pdf','wb') as stream:writer.write(stream)
+r=Path(sys.argv[1]);doc=Document();doc.add_paragraph('Synthetic source rejection fixture');doc.save(r/'synthetic.docx')
+book=Workbook();book.active['A1']=1000000;book.save(r/'synthetic.xlsx')
+w=PdfWriter();w.add_blank_page(width=595,height=842)
+with open(r/'synthetic.pdf','wb') as stream:w.write(stream)
 `;
     const python=process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3';
-    const result=spawnSync(python,['-B','-c',program,temp],{encoding:'utf8'});
-    assert.equal(result.status,0,'Python fixture builder must be available; no integration skip is allowed');
-    const row=financialRows()[0],financial={financial_checks:[row],materials:{'rq-202509-02':join(temp,'synthetic.xlsx')},clean:join(temp,'synthetic.docx')};
-    const run=()=>inspectAcceptanceArtifacts(root,join(temp,'synthetic.docx'),[join(temp,'synthetic.pdf')],financial);
-    assert.deepEqual(run().financial_failures,[]);
-    row.source.locator='SYNTHETIC!A2';assert.deepEqual(run().financial_failures,[0]);
-    row.source.locator='SYNTHETIC!A1';row.source.value='999';assert.deepEqual(run().financial_failures,[0]);
-    row.source.value='1000000';row.output.locators=[exactLocation('word/document.xml//w:p[99]','2025年9月末合并总资产100.00万元。')];assert.deepEqual(run().financial_failures,[0]);
-    row.output.locators=[exactLocation('word/document.xml//w:p[1]','2025年9月末合并总资产100.00万元。')];assert.deepEqual(run().financial_failures,[0]);
-    // A historical comparison of 100 cannot validate an incorrect target amount of 90.
-    row.output.locators=['word/document.xml//w:p[4]'];assert.deepEqual(run().financial_failures,[0]);
-    row.output.locators=[exactLocation('word/document.xml//w:p[4]','2025年9月末总资产90万元，2025年6月末总资产100万元。','100')];assert.deepEqual(run().financial_failures,[0]);
-    row.output.locators=[exactLocation('word/document.xml//w:p[4]','2025年6月末总资产100万元','100')];assert.deepEqual(run().financial_failures,[0]);
-    row.output.locators=[exactLocation('word/document.xml//w:p[4]','2025年9月末总资产90万元','90')];assert.deepEqual(run().financial_failures,[0]);
-    row.output.locators=[exactLocation('word/document.xml//w:p[5]','2025年9月末总资产100万元','100')];assert.deepEqual(run().financial_failures,[]);
-    row.output.locators=[exactLocation('word/document.xml//w:p[6]','2025年9月末总资产90万元、负债总额100万元。','100')];assert.deepEqual(run().financial_failures,[0]);
-    row.output.locators=[exactLocation('word/document.xml//w:p[6]','2025年9月末负债总额100万元','100')];assert.deepEqual(run().financial_failures,[0]);
-    // The exact span must select the monetary token, never the year or reporting month.
-    row.output.value='2025';row.output.locators=[exactLocation('word/document.xml//w:p[4]','2025年9月末总资产90万元','2025')];assert.deepEqual(run().financial_failures,[0]);
-    row.output.value='9';row.output.locators=[exactLocation('word/document.xml//w:p[4]','2025年9月末总资产90万元','9')];assert.deepEqual(run().financial_failures,[0]);
-    row.output.value='100';
-    row.output.locators=[exactLocation('word/document.xml//w:p[7]','2025年9月末总资产100%万元。','100')];assert.deepEqual(run().financial_failures,[0]);
-    row.output.locators=[exactLocation('word/document.xml//w:p[8]','2025年9月末总资产（100）万元。','100')];assert.deepEqual(run().financial_failures,[0]);
-    row.output.locators=[exactLocation('word/document.xml//w:p[9]','2025年9月末总资产(100)万元。','100')];assert.deepEqual(run().financial_failures,[0]);
-    const cell=(n)=>({locator:`word/document.xml#table=1,row=${n},cell=2`,scope_anchor:{locator:'word/document.xml#table=1,row=1,cell=1',quote:'合并'},
-      period_anchor:{locator:'word/document.xml#table=1,row=2,cell=2',quote:'2025年9月末'},
-      metric_anchor:{locator:`word/document.xml#table=1,row=${n},cell=1`,quote:'总资产'}});
-    row.output.locators=[cell(3)];assert.deepEqual(run().financial_failures,[0]);
-    row.output.locators=[cell(4)];assert.deepEqual(run().financial_failures,[]);
-    row.output.locators[0].period_anchor={locator:'word/document.xml//w:p[4]',quote:'2025年6月末'};assert.deepEqual(run().financial_failures,[0]);
-    row.output.locators=[cell(4)];row.output.locators[0].period_anchor={locator:'word/document.xml//w:p[2]',quote:'2025年9月末'};assert.deepEqual(run().financial_failures,[0]);
-    row.output.locators=[cell(4)];row.output.locators[0].metric_anchor={locator:'word/document.xml#table=1,row=3,cell=1',quote:'总资产'};assert.deepEqual(run().financial_failures,[0]);
+    const built=spawnSync(python,['-B','-c',program,temp],{encoding:'utf8'});assert.equal(built.status,0,built.stderr);
+    const financial={issuer:FINANCIAL_POLICY.issuer,financial_checks:[financialRows()[0]],materials:{'rq-202509-02':join(temp,'synthetic.xlsx')},clean:join(temp,'synthetic.docx')};
+    const inspection=inspectAcceptanceArtifacts(root,join(temp,'synthetic.docx'),[join(temp,'synthetic.pdf')],financial);
+    assert.deepEqual(inspection.financial_failures,[0]);assert.equal(inspection.fixed_occurrence_coverage.status,'failed');
   }finally{rmSync(temp,{recursive:true,force:true});}
 });
 
-for(const name of ['FinancialGeometry','FinancialLabels','NarrativeLists','AuthorizedTemplateLayout']){
+for(const name of ['FinancialGeometry','FinancialLabels','NarrativeLists','AuthorizedTemplateLayout','FinancialSourceBindings','ExpandedAmountRegression']){
   test(`independent financial reader validates ${name} without changing a template`,()=>{
     const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
     const python=process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3';

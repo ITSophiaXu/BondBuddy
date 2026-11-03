@@ -26,6 +26,16 @@ export type UnifiedMaterial = { pin: UnifiedManifest['materials'][number]; filen
 export type UnifiedInput = { manifest: UnifiedManifest; materials: UnifiedMaterial[]; requirements: string[] };
 export class UnifiedInputPending extends Error {}
 
+/** Preserve the pre-format-policy source order for both authoring and its gate. */
+export function selectLegacySourcePin<T extends UnifiedManifest['materials'][number]>(materials:readonly T[],
+  authoring:Pick<UnifiedAuthoringInput,'source_prospectuses'|'review_result'>):T|null {
+  return [...materials].filter(material=>['project_output','historical','reference'].includes(material.role)).sort((a,b)=>{
+    const rank=(material:typeof a)=>material.material_id===authoring.review_result?.source_material.material_id?-2:
+      material.role==='project_output'?-1:authoring.source_prospectuses.find(source=>source.material_id===material.material_id)?.relation==='same_issuer'?0:1;
+    return rank(a)-rank(b)||a.material_id.localeCompare(b.material_id);
+  })[0]??null;
+}
+
 export function revisionEvidenceRefs(pin: ReviewRevisionPin): ReviewEvidenceRef[] {
   return pin.selected_findings.filter(executableRevisionFinding).flatMap(finding => [...finding.target_refs, ...finding.evidence_refs]);
 }
@@ -94,6 +104,31 @@ export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevi
       if(!m.materials.some(pin=>sameFormatTemplate(pin,format.template as import('@bondbuddy/contracts').FormatTemplatePin)))return fail;
       if(format.selection==='explicit' && !sameFormatTemplate(format.template,m.update_details.format_template))return fail;
       if(format.selection==='review_source' && !sameFormatTemplate(format.template,m.authoring.review_result?.source_material))return fail;
+    }
+  }
+  // Resolve the version pinned by this immutable input, never the project's later
+  // current selection. Older conflicting inputs fail closed without being rewritten.
+  if(!m.authoring.review_result && !m.authoring.review_revision){
+    const selection=m.prospectus_selection as {version_id?:unknown}|undefined;
+    if(selection?.version_id!=null){
+      if(typeof selection.version_id!=='string')return fail;
+      const adopted=(await pool.query(`SELECT material_id,material_version,sha256 FROM bb_prospectus_versions
+        WHERE owner_user_id=$1 AND project_id=$2 AND id=$3`,
+      [run.owner_user_id,run.project_id,selection.version_id])).rows[0];
+      if(!adopted)return fail;
+      if(adopted.material_id!==null && !m.authoring.previous_output){
+        const pin={material_id:adopted.material_id,material_version:adopted.material_version,sha256:String(adopted.sha256).trim()};
+        // Pre-format-policy snapshots use the same deterministic source order as
+        // their legacy authoring path. A safe exact-source task can still resume.
+        const legacy=!format?selectLegacySourcePin(m.materials,m.authoring):undefined;
+        const editingPin=format?.template?.kind==='material'?format.template:legacy;
+        if(!m.materials.some(material=>sameFormatTemplate(material,pin))
+          || !sameFormatTemplate(editingPin,pin))return fail;
+      }else if(adopted.material_id===null && !m.authoring.previous_output){
+        // An explicit viewed-result continuation may differ from project current.
+        // Its exact artifact/source/owner/hash is verified by previousArtifact below.
+        return fail;
+      }
     }
   }
   const result=m.authoring.review_result;

@@ -336,8 +336,20 @@ async function screenshotAtTop(page: Page, directory: string, filename: string) 
   await page.screenshot({ path: join(directory, filename), fullPage: true });
 }
 
+test('ordinary start with an adopted clean result displays inherited format before a continuation choice', async ({ page }) => {
+  const state = fixture(); state.runs.clear(); state.project.input_revision = null; state.project.input_hash = null;
+  await install(page, state); await page.goto(`/#/projects/${projectId}?step=materials`);
+  await expect(page.locator('#material-editing')).toBeEnabled();
+  await expect(page.locator('[data-format-template-result]')).toBeVisible();
+  await expect(page.locator('[data-format-template-details]')).toBeHidden();
+  await expect(page.locator('[data-format-template="synthetic-historical-current"]')).toBeHidden();
+  await expect(page.locator('[data-format-template="synthetic-historical-current"]')).toBeDisabled();
+  expect(state.patches).toEqual([]); expectNoExecution(state);
+});
+
 test('template fidelity: continuation inherits the exact result format and restores source choices for an uploaded basis', async ({ page }) => {
-  const state = await openCompleted(page); await prepare(page);
+  const state = fixture(); addNewerCurrent(state); await openCompleted(page, state); await prepare(page);
+  await expectSummary(page, '合成第7轮募集书_清洁版.docx', 3);
   await expect(page.locator('[data-format-template-result]')).toBeVisible();
   await expect(page.locator('[data-format-template-result]')).toHaveText('沿用所选成果格式，参考原稿仅用于补充内容。');
   const source = page.locator('[data-format-template="synthetic-historical-current"]');

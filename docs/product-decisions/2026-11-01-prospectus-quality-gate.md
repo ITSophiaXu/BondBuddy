@@ -10,11 +10,15 @@
 
 `api-source-selection` 在迁移后独立运行 `prospectus-source-lock.pg.test.js`、`prospectus-auto-adoption.pg.test.js` 和 `source-format.pg.test.js`，使用真实 PostgreSQL 的隔离克隆库验证已采用原稿不可遗漏/替换版本、过期选择不写输入、精确原稿 SHA 与模板锁定，以及自动采用修复不重写既有输入。此项不调用模型或 Blob，不要求 Azurite；缺测试库会产生 skip 并阻断。它必须产生非空、全部通过且 fail/cancelled/skipped/todo 均为零的独立 TAP 摘要及日志 hash；部署和回滚的凭据验证同样检查这一项，旧凭据缺少此项或只声明 passed 均不能通过。
 
+已采用主稿存在时，自动模板选择必须绑定其准确 material/version/hash，不能再由辅助参考稿的格式、关系或输入顺序取代。明确选择另一格式须先改用对应原稿；当前为生成成果时，普通请求默认续改准确清洁稿，显式历史成果选择仍可保留并经原有归属/来源校验，不能因显式 null 退回首稿。worker 按不可变输入中的 selection 版本核验，不查询后来发生变化的当前选择；安全的旧输入可继续执行，冲突旧输入拒绝但不重写。UI 沿用同一选择，并在现有 Desktop UX job 固定执行原稿格式及成果续改 suite。
+
 `gate-regressions` 还固定运行 `deploy/m1/scripts/codex-bwrap.test.mjs`，验证 `/proc` 加固 wrapper 保留 sandbox 参数与文件描述符、追加限制及传递退出状态。这些 Linux shell 反例必须真实执行，任何 skip 均阻断；不因本地缺少环境而移出清单。该合成套件不替代生产 worker 镜像中的真实 sandbox canary 检查。
 
 `worker-authoring` 还固定运行 `codex-exec-log.test.js`，验证原始 stdout/stderr 捕获、凭据脱敏、journal 持久化及包含 section markers 的 20 MiB 总字节上限和配置边界；它使用同一严格 TAP 摘要要求，不能只在本次修复中手动验证后从发布清单遗漏。
 
 **最后必须通过当前 commit/tree 的真实模型金样验收。** 通过 `BB_PROSPECTUS_ACCEPTANCE_FILE` 指向受控私有验收记录，由 `scripts/verify-prospectus-acceptance.mjs` 核对真实模型调用、锁定原稿/输入/输出 hash 及独立财务事实、章节与渲染验收证据。缺记录、仅合成响应、旧提交验收或缺少独立确认一律失败，不能自动填成通过。原始客户材料和验收记录不放进公共仓库或 CI 日志/artifact；发布凭据仅保存检查摘要及证据 hash。真实模型金样不能被模板保真和机械单元测试替代。
+
+任丘三季报金样的最小财务回归由固定政策 `scripts/prospectus-financial-policy.json` 指定 18 个指标／口径组合、39 个实际位置（26 个表格金额及 13 个正文金额）。独立读取准确来源单元格及可见表头、主体、期间、单位和原始缓存，不接受相同数值的其他单元格替代。正文位置从真实输出重找，未支持的旧金额断言不能靠新增正确副本掩盖；合法历史比较数须保留。这个最低清单不替代全文金额、比率公式、身份／法律时点和独立业务审核。运行时的 `reverse_audit` 来源行清单只辅助模型逐处核对，所有条目仍待核，不能作为财务通过凭据；工具和反例进入版本指纹及必需测试。
 
 准备 PostgreSQL 16 的一次性本地模板数据库，角色需有 CREATEDB 权限供集成测试克隆。`BB_TEST_DATABASE_URL` 仅允许 loopback 主机及 `bb_prospectus_quality` 或 `bb_prospectus_quality_<suffix>` 库名，禁止 query 参数覆盖连接目标；runner 仅对此显式测试库运行迁移，不使用继承的生产 `DATABASE_URL`。CI 使用独立 service，禁止连接生产数据库。
 

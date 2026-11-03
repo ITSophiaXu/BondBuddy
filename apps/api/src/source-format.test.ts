@@ -20,6 +20,38 @@ test('explicit template overrides recommendation but cannot refer to unselected 
   assert.equal(lockSourceFormatPolicy({ ...details, format_template: null }, [a, b]).selection, 'automatic');
 });
 
+test('an adopted update original wins DOCX preference and equal-rank reference order', () => {
+  const adopted = { material_id: a.material_id, material_version: a.material_version, sha256: a.sha256 };
+  assert.deepEqual(lockSourceFormatPolicy(emptyUpdateDetails(), [b, a], adopted), {
+    version: 'source-format-v1', mode: 'preserve_docx', template: { kind: 'material', ...adopted }, selection: 'automatic' });
+  assert.deepEqual(lockSourceFormatPolicy(emptyUpdateDetails(), [b, { ...a, media_type: 'application/pdf' }], adopted), {
+    version: 'source-format-v1', mode: 'reconstruct_pdf', template: { kind: 'material', ...adopted }, selection: 'automatic' });
+  assert.equal(lockSourceFormatPolicy({ ...emptyUpdateDetails(), format_template: adopted }, [b, a], adopted).selection, 'explicit');
+});
+
+test('adopted source pins fail closed on absent/stale input or a different explicit format', () => {
+  const adopted = { material_id: a.material_id, material_version: a.material_version, sha256: a.sha256 };
+  for (const materials of [[b], [b, { ...a, material_version: 2 }], [b, { ...a, sha256: 'c'.repeat(64) }],
+    [b, { ...a, role: 'financial' }], [b, { ...a, media_type: 'text/plain' }]])
+    assert.throws(() => lockSourceFormatPolicy(emptyUpdateDetails(), materials, adopted), /已采用原稿/);
+  assert.throws(() => lockSourceFormatPolicy({ ...emptyUpdateDetails(), format_template: explicit }, [a, b], adopted),
+    (error: any) => error.status === 409 && error.code === 'INPUT_REVISION_CONFLICT' && /清除旧格式选择/.test(error.message));
+});
+
+test('new update authoring locks an immutable adopted format while unbound authoring retains explicit selection', async () => {
+  const adopted = { material_id: a.material_id, material_version: a.material_version, sha256: a.sha256 };
+  const project = { market: null, offering: null, update_details: emptyUpdateDetails() };
+  const messages = { version: 0, content_sha256: '0'.repeat(64), members: [], message_ids: [] };
+  const before = structuredClone(project);
+  const locked = await lockUnifiedAuthoring(project, [b, a], messages, adopted);
+  assert.deepEqual(locked.format_policy.template, { kind: 'material', ...adopted });
+  assert.deepEqual(project, before);
+  adopted.sha256 = 'c'.repeat(64);
+  assert.equal(locked.format_policy.template?.sha256, a.sha256);
+  const unbound = await lockUnifiedAuthoring({ ...project, update_details: { ...project.update_details, format_template: explicit } }, [a, b], messages);
+  assert.deepEqual(unbound.format_policy.template, { kind: 'material', ...explicit });
+});
+
 test('empty, PDF-only and exact DOCX inputs lock distinct modes and do not mutate inputs', async () => {
   const project = { market: null, offering: null, update_details: { ...emptyUpdateDetails(), format_template: explicit } };
   const messages = { version: 0, content_sha256: '0'.repeat(64), members: [], message_ids: [] };

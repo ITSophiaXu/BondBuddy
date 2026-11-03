@@ -15,6 +15,7 @@ import { UserFacingError, type ErrorOperation } from './user-facing-error';
 import { M4Api } from './m4-api';
 import { ReviewApi } from './review-api';
 import { executionRequest } from './execution-request';
+import { assistantAuthoringEditBase } from './authoring-continuation';
 import { sourceFields,readSourceFields } from './source-prospectus';
 import { cutoffSelection,quarterCutoff,QUARTER_ENDS } from './reporting-cutoff';
 import { taskProgress } from './task-progress';
@@ -419,7 +420,7 @@ export class ProjectAssistant {
         const messages=(await this.preparationRead(guard,()=>this.api.projectMessages(p.project_id,undefined,this.controller.signal))).project_message_set_ref;
         const base=this.view.unsent_context.reading_artifact;
         const locked=await this.preparationWrite(guard,()=>this.api.createInputRevision(p.project_id,{draft_revision:p.draft_revision,material_versions:materials.map(m=>({material_id:m.material_id,material_version:m.material_version})),
-          requirement_message_ids:messages.message_ids,project_message_set_ref:messages,edit_base:base?{artifact_id:base.artifact_id,artifact_version:base.artifact_version,sha256:base.sha256}:null},this.controller.signal));
+          requirement_message_ids:messages.message_ids,project_message_set_ref:messages,...assistantAuthoringEditBase(base)},this.controller.signal));
         const request=await this.preparationRead(guard,()=>executionRequest(locked,'update')),q=await this.preparationWrite(guard,()=>this.api.creditQuote(p.project_id,{input_revision:locked.input_revision,input_hash:locked.input_hash},this.controller.signal));
         b={...b,project_id:p.project_id,execution_request_id:request.execution_request_id,input_revision:locked.input_revision,input_hash:locked.input_hash,...(q.quote?{quote_id:q.quote.quote_id}:{})};
       }else{

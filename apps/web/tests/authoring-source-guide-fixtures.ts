@@ -30,7 +30,7 @@ export function fixture(){
   const project:Dto<'ProjectResponse'>={project_id:projectId,name:'合成原稿信息定位项目',issuer_name:'合成目标发行人有限公司',kind:'update',market:'sse',offering:'private',draft_revision:1,input_revision:null,input_hash:null,updated_at:now,
     update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1',reporting_cutoff:'2026-06-30',target_reporting_periods:reportingWindow('sse','private','2026-06-30'),
       source_prospectuses:[sourceDeclaration(materials[1],{relation:'parent',market:null,offering:null,reporting_periods:[]})]}};
-  return {project,materials,selectionRevision:5,patches:[] as {body:Dto<'ProjectPatchRequest'>;ifMatch:string|undefined}[],locked:[] as LockedInput[],inputs:new Map<number,Dto<'InputRevisionResponse'>>(),
+  return {project,materials,selectionRevision:5,prospectusVersions:undefined as Dto<'ProspectusVersionsResponse'>|undefined,patches:[] as {body:Dto<'ProjectPatchRequest'>;ifMatch:string|undefined}[],locked:[] as LockedInput[],inputs:new Map<number,Dto<'InputRevisionResponse'>>(),
     preflights:[] as Dto<'PreflightRequest'>[],quotes:[] as Dto<'FixedQuoteRequest'>[],executes:[] as Dto<'ExecuteRequest'>[],runs:new Map<string,Dto<'RunResponse'>>(),quote:null as Dto<'FixedQuoteResponse'>['quote'],
     calls:[] as Call[],unexpected:[] as string[],errors:[] as string[],holdTasks:false,heldTasks:false,releaseTasks:undefined as (()=>void)|undefined};
 }
@@ -79,13 +79,20 @@ export async function install(page:Page,s=fixture()){
     }
     if(path===`/projects/${projectId}/messages`&&method==='GET')return reply(route,'ProjectMessagePage',{conversation_id:projectId,items:[],project_message_set_ref:emptyMessages,next_cursor:null,has_more:false});
     if(path===`/projects/${projectId}/prospectus-versions`&&method==='GET'){
-      const historical=s.materials.find(m=>m.role==='historical');return reply(route,'ProspectusVersionsResponse',{project_id:projectId,current_version_id:historical?'synthetic-guide-source-version':null,selection_revision:historical?s.selectionRevision:0,inactive_material_ids:[],versions:historical?[{version_id:'synthetic-guide-source-version',sequence:1,origin:'upload',filename:historical.filename,sha256:historical.sha256,created_at:now,material_id:historical.material_id,material_version:historical.material_version,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null}]:[]});
+      const historical=s.materials.find(m=>m.role==='historical');return reply(route,'ProspectusVersionsResponse',s.prospectusVersions??{project_id:projectId,current_version_id:historical?'synthetic-guide-source-version':null,selection_revision:historical?s.selectionRevision:0,inactive_material_ids:[],versions:historical?[{version_id:'synthetic-guide-source-version',sequence:1,origin:'upload',filename:historical.filename,sha256:historical.sha256,created_at:now,material_id:historical.material_id,material_version:historical.material_version,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null}]:[]});
+    }
+    if(path===`/projects/${projectId}/prospectus-versions/current`&&method==='POST'&&s.prospectusVersions){
+      checked('ProspectusVersionSelectRequest',body);
+      if(body.expected_selection_revision!==s.prospectusVersions.selection_revision)return errorReply(route,409,'INPUT_REVISION_CONFLICT');
+      if(!s.prospectusVersions.versions.some(v=>v.version_id===body.version_id))return errorReply(route,404,'NOT_FOUND');
+      s.prospectusVersions={...s.prospectusVersions,current_version_id:body.version_id,selection_revision:s.prospectusVersions.selection_revision+1};
+      s.project.draft_revision++;return reply(route,'ProspectusVersionsResponse',s.prospectusVersions);
     }
     const material=s.materials.find(m=>path===`/projects/${projectId}/materials/${m.material_id}`);
     if(material&&method==='GET')return !url.searchParams.has('version')||Number(url.searchParams.get('version'))===material.material_version?reply(route,'MaterialResponse',material):errorReply(route,404,'NOT_FOUND');
     if(method==='GET'&&s.materials.some(m=>path===`/projects/${projectId}/materials/${m.material_id}/parse-job`))return errorReply(route,404,'NOT_FOUND');
     if(path===`/projects/${projectId}/input-revisions`&&method==='POST'){
-      checked('InputRevisionCreateRequest',body);expect(body.draft_revision).toBe(s.project.draft_revision);expect(body.prospectus_selection_revision).toBe(s.materials.some(m=>m.role==='historical')?s.selectionRevision:0);
+      checked('InputRevisionCreateRequest',body);expect(body.draft_revision).toBe(s.project.draft_revision);expect(body.prospectus_selection_revision).toBe(s.prospectusVersions?.selection_revision??(s.materials.some(m=>m.role==='historical')?s.selectionRevision:0));
       const order=(values:{material_id:string;material_version:number}[])=>[...values].sort((a,b)=>a.material_id.localeCompare(b.material_id));expect(order(body.material_versions)).toEqual(order(refs(s)));expect(body.project_message_set_ref).toEqual(emptyMessages);expect(body.requirement_message_ids).toEqual([]);
       expect(sourceProspectusInputGaps(s.materials,s.project.update_details?.source_prospectuses)).toEqual([]);
       const revision=Math.max(0,...s.inputs.keys())+1,response=input(revision,body.material_versions,sha256(JSON.stringify(body)));s.inputs.set(revision,response);s.locked.push({request:structuredClone(body),project:structuredClone(s.project),response:structuredClone(response)});

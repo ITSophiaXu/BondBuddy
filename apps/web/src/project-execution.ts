@@ -5,7 +5,7 @@ import {UserFacingError} from './user-facing-error.js';
 import { ArtifactPage } from './artifact-page';
 import { authoringTasks,taskHref,type ProjectTask } from './project-collection-model';
 import { prototypeIcon as icon } from './prototype-design';
-import { reportingWindow, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef } from '@bondbuddy/contracts';
+import { reportingWindow, sourceProspectusInputGaps, type RunState, type RUN_PAUSE_STAGES, type RUN_RUNTIME_REASONS, type ProjectMessageSetRef, type ProspectusVersion } from '@bondbuddy/contracts';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import type { Draft } from './draft';
 import { executionRequest, executionTaskKind, type ExecutionTaskKind } from './execution-request';
@@ -195,11 +195,15 @@ export class ProjectExecution {
   constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation,
     private referenceSnapshots?: ReferenceSnapshotResolver, private onStaleInput?: () => void,
     private initialNotice = '', private onDelivered?:()=>void,
-    private refreshPreparation?:()=>Promise<boolean>, private readMaterialBlock?:()=>string) {}
+    private refreshPreparation?:()=>Promise<boolean>, private readMaterialBlock?:()=>string,
+    private readAdoptedVersion?:()=>ProspectusVersion|null) {}
   private get active() { return !this.controller.signal.aborted; }
   private get id() { return this.draft.project.project_id; }
   get hasUnconfirmedRequest() { return Boolean(this.pendingExecution || this.inputWriteUncertain); }
-  get inheritsResultFormat() { return Boolean(this.nextRequested && (this.nextBasis?.editBase || this.nextChoice === 'result')); }
+  get inheritsResultFormat() {
+    if (this.nextRequested) return Boolean(this.nextBasis?.editBase || this.nextChoice === 'result');
+    return this.readAdoptedVersion?.()?.origin === 'generated';
+  }
   get materialsEditable() {
     return this.active && !this.restoring && !this.inputReadUncertain && !this.pendingExecution && !this.starting && !this.busy && (!this.run || this.nextRequested);
   }

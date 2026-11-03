@@ -13,6 +13,8 @@ import sys
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from zipfile import ZipFile
+from pathlib import PurePosixPath
 
 from openpyxl import load_workbook
 from pypdf import PdfReader
@@ -28,7 +30,15 @@ LOCATOR = re.compile(
 PERIOD = r'20[0-9]{2}年[0-9]{1,2}(?:[-—–至][0-9]{1,2})?月(?:[0-9]{1,2}日|末)?|20[0-9]{2}-[0-9]{2}-[0-9]{2}'
 NUMBER = r'-?[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?'
 MONEY_UNIT = {'元': 'CNY', '万元': 'CNY_10K', '亿元': 'CNY_100M'}
-STOCK = ('total_assets', 'total_liabilities', 'net_assets')
+POLICY = json.loads((Path(__file__).with_name('prospectus-financial-policy.json')).read_text(encoding='utf-8'))
+SOURCE_BINDINGS = {(r['scope'], r['metric']): r for r in POLICY['metrics']}
+if len(SOURCE_BINDINGS) != 18 or POLICY['version'] != 'rq-202509-financial-v2':
+    raise ValueError('financial_policy_invalid')
+STOCK = tuple({r['metric'] for r in POLICY['metrics'] if r['stock']})
+INCOME = ('net_profit', 'nonoperating_expenses', 'sales_expenses', 'administrative_expenses',
+          'finance_expenses', 'investment_income', 'profit_attributable_to_parent')
+EXTENDED = ('deferred_income', 'sales_expenses', 'administrative_expenses', 'finance_expenses',
+            'investment_income', 'profit_attributable_to_parent')
 ALIASES = {
     'total_assets': ('总资产', '资产总额', '资产合计', '资产总计'),
     'total_liabilities': ('总负债', '负债总额', '负债合计', '负债总计'),
@@ -36,12 +46,16 @@ ALIASES = {
                    '所有者权益(或股东权益)合计'),
     'net_profit': ('净利润',),
     'nonoperating_expenses': ('营业外支出',),
+    'deferred_income': ('递延收益',), 'sales_expenses': ('销售费用',),
+    'administrative_expenses': ('管理费用',), 'finance_expenses': ('财务费用',),
+    'investment_income': ('投资收益',),
+    'profit_attributable_to_parent': ('归属母公司所有者的净利润', '归属于母公司所有者的净利润', '归属于母公司股东的净利润'),
     'operating_cash_flow': ('经营活动产生的现金流量净额', '经营活动现金流量净额', '经营性现金流量净额'),
 }
 HYPOTHETICAL = re.compile(r'备考|模拟|假设|发行后|预测')
 UNITS = re.compile(r'单位[：:](?:人民币)?(?:元|万元|亿元)(?:[、,，/／](?:%|％))*')
 CAPTION = re.compile(r'表[0-9一二三四五六七八九十]+(?:[-－—.．][0-9一二三四五六七八九十]+)*[：:]?.+')
-OCCURRENCE_POLICY = 'rq-202509-occurrences-v1'
+OCCURRENCE_POLICY = 'rq-202509-occurrences-v2'
 # Original-source coordinates define roles only. Clean-document coordinates are
 # discovered from captions, structured ancestors and metric clauses below.
 RQ_TABLE_ROLES = (
@@ -55,13 +69,26 @@ RQ_TABLE_ROLES = (
     (54, 10, 'consolidated', 'operating_cash_flow'), (55, 5, 'consolidated', 'total_assets'),
     (79, 5, 'consolidated', 'total_liabilities'), (98, 15, 'consolidated', 'net_profit'),
     (45, 22, 'consolidated', 'nonoperating_expenses'), (48, 21, 'parent', 'nonoperating_expenses'),
+    (44, 45, 'consolidated', 'deferred_income'), (45, 7, 'consolidated', 'sales_expenses'),
+    (45, 8, 'consolidated', 'administrative_expenses'), (45, 10, 'consolidated', 'finance_expenses'),
+    (45, 14, 'consolidated', 'investment_income'), (45, 30, 'consolidated', 'profit_attributable_to_parent'),
 )
 RQ_NARRATIVE_ROLES = (
     (46, 'consolidated', 'operating_cash_flow'), (285, 'consolidated', 'operating_cash_flow'),
     (4816, 'consolidated', 'total_assets'), (6865, 'consolidated', 'total_liabilities'),
     (7967, 'consolidated', 'net_profit'), (8017, 'consolidated', 'operating_cash_flow'),
     (7931, 'consolidated', 'nonoperating_expenses'),
+    (7605, 'consolidated', 'deferred_income'), (7838, 'consolidated', 'sales_expenses'),
+    (7840, 'consolidated', 'administrative_expenses'), (7842, 'consolidated', 'finance_expenses'),
+    (7870, 'consolidated', 'investment_income'), (7967, 'consolidated', 'profit_attributable_to_parent'),
 )
+ROLE_IDS = tuple(f'table:{t}:{scope}:{metric}' for t, _, scope, metric in RQ_TABLE_ROLES) + tuple(
+    f'narrative:{p}:{scope}:{metric}' for p, scope, metric in RQ_NARRATIVE_ROLES)
+NARRATIVE_METRICS = frozenset(metric for _, _, metric in RQ_NARRATIVE_ROLES)
+if (len(ROLE_IDS) != 39 or len(set(ROLE_IDS)) != 39 or len(POLICY['required_role_ids']) != 39
+        or set(ROLE_IDS) != set(POLICY['required_role_ids']) or POLICY['required_occurrences'] != 39
+        or POLICY['occurrence_policy'] != OCCURRENCE_POLICY):
+    raise ValueError('financial_role_policy_mismatch')
 
 
 def compact(value):
@@ -76,8 +103,11 @@ def metric_ok(value, metric, *, cell=False):
     value = compact(value)
     if cell:
         value = re.sub(r'^(?:[一二三四五六七八九十]+|[0-9]+)[、.．]', '', value)
-        if metric == 'net_profit':
+        if metric in ('net_profit', 'profit_attributable_to_parent'):
             value = re.sub(r'\(净?亏损[^()]*\)$', '', value)
+        if metric == 'investment_income':
+            value = re.sub(r'\((?:亏损|损失)[^()]*\)$', '', value)
+            value = re.sub(r'^加[：:]', '', value)
         if metric == 'nonoperating_expenses':
             value = re.sub(r'^减[：:]', '', value)
         return value in ALIASES[metric]
@@ -157,10 +187,140 @@ def ordered_periods(value, metric):
     return result
 
 
+def extended_lists(value, metric):
+    """Finite source-shaped clauses; percentages are context, never approved facts."""
+    if metric not in EXTENDED:
+        return []
+    clauses = list(re.finditer(r'[^。；;！？!?]+(?:[。；;！？!?]|$)', value))
+    result = []
+    token = rf'{NUMBER}(?:亿元|万元|元)'
+    series = rf'{token}(?:[、,，及和]{token})+'
+    percent = rf'{NUMBER}[%％](?:[、,，及和]{NUMBER}[%％]){{2}}'
+    alias = '(?:' + '|'.join(re.escape(x) for x in ALIASES[metric]) + ')'
+    for ci, clause in enumerate(clauses):
+        text = compact(clause[0])
+        if metric == 'profit_attributable_to_parent':
+            match = re.fullmatch(alias + rf'(?:分别)?为(?P<amounts>{series})[。；;]?', text)
+            if not match or ci == 0:
+                continue
+            previous = compact(clauses[ci-1][0])
+            inherited = re.fullmatch(r'(?P<period>[^，,]+)[，,](?:发行人|公司|本公司)(?:的)?(?:合并(?:口径)?)?净利润分别为(?P<amounts>' + series + r')[；;]', previous)
+            if not inherited:
+                continue
+            previous_amounts = list(re.finditer(rf'(?P<value>{NUMBER})(?P<unit>亿元|万元|元)', inherited['amounts']))
+            if (len(previous_amounts) != 3 or len({m['unit'] for m in previous_amounts}) != 1
+                    or len({len(m['value'].split('.')[1]) if '.' in m['value'] else 0 for m in previous_amounts}) != 1):
+                continue
+            expression = inherited['period']
+        else:
+            if metric == 'deferred_income':
+                ending = rf'，占当期末非流动负债的比例分别为{percent}[。；;]?'
+            elif metric == 'investment_income':
+                ending = r'，明细如下：'
+            else:
+                ending = rf'，分别占同期营业总成本的比例分别为{percent}，主要为[^。；;！？!?]+[。；;]?'
+            match = re.fullmatch(r'(?P<period>[^，,]+)[，,](?:发行人|公司|本公司)(?:的)?' + alias +
+                                 rf'分别为(?P<amounts>{series})' + ending, text)
+            if not match:
+                continue
+            expression = match['period']
+        try:
+            if expression not in ('最近两年及一期', '最近两年及一期末', '报告期内'):
+                ordered_periods(expression, metric)
+        except ValueError:
+            continue
+        positions = [i for i, char in enumerate(clause[0]) if not char.isspace()]
+        amounts = []
+        for amount in re.finditer(rf'(?P<value>{NUMBER})(?P<unit>亿元|万元|元)', match['amounts']):
+            a = match.start('amounts') + amount.start('value')
+            b = match.start('amounts') + amount.end('value')
+            amounts.append({'value': amount['value'], 'unit': amount['unit'],
+                            'start': positions[a], 'end': positions[b-1]+1})
+        if len(amounts) == 3:
+            result.append({'start': clause.start(), 'end': clause.end(), 'expression': expression,
+                           'quote': clause[0], 'amounts': amounts})
+    return result
+
+
+def finite_decimal(value):
+    """Exact plain finite decimal, including all original XML cache digits."""
+    if not isinstance(value, str) or len(value) > 1024 or not re.fullmatch(r'-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?', value):
+        raise ValueError('finite_source_decimal_required')
+    return Decimal(value)
+
+
+def numeric_cache(cell):
+    ns = '{http://schemas.openxmlformats.org/spreadsheetml/2006/main}'
+    cached = None if cell is None else cell.find(ns+'v')
+    if cell is None or cell.attrib.get('t', 'n') != 'n' or cached is None or cached.text is None:
+        raise ValueError('numeric_source_cache_required')
+    return finite_decimal(cached.text)
+
+
+class FinancialSources:
+    def __init__(self):
+        self.books, self.xml_sheets, self.hashes = {}, {}, {}
+
+    @staticmethod
+    def headers(sheet, binding):
+        expected = {'A1': binding['statement_title'], 'A3': binding['entity_header'],
+                    'B3': binding['period_header'], re.sub(r'[0-9]+', '', binding['cell'])+'4': binding['column_header'],
+                    binding['label_cell']: binding['label']}
+        if sheet.sheet_state != 'visible' or any(compact(str(sheet[cell].value or '')) != compact(str(value)) for cell, value in expected.items()):
+            raise ValueError('source_header_or_label')
+        units = [compact(str(sheet[f'{col}3'].value or '')) for col in ('D','E','F')]
+        if not any(x == '金额单位：人民币元' for x in units):
+            raise ValueError('source_unit_header')
+
+    def value(self, path, row, issuer):
+        src = row['source']
+        binding = SOURCE_BINDINGS.get((row['scope'], row['metric']))
+        if not binding or issuer != POLICY['issuer'] or src['file_id'] != POLICY['material_id'] or src['scope'] != row['scope'] or src['unit'] != 'CNY':
+            raise ValueError('source_metric_scope')
+        if src['locator'] != binding['locator']:
+            raise ValueError('source_bound_locator')
+        expected_start = '2025-09-30' if binding['stock'] else '2025-01-01'
+        if src['start'] != expected_start or src['end'] != '2025-09-30':
+            raise ValueError('source_bound_period')
+        path = str(Path(path))
+        if path not in self.books:
+            digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+            if digest != POLICY['source_sha256'] or src['sha256'] != digest:
+                raise ValueError('authorized_financial_source_hash')
+            self.hashes[path] = digest
+            self.books[path] = load_workbook(path, data_only=True, read_only=True, keep_links=False)
+            with ZipFile(path) as archive:
+                ns = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+                rels = {r.attrib['Id']: r.attrib['Target'] for r in xml(archive.read('xl/_rels/workbook.xml.rels'))}
+                sheets = {}
+                for sheet in xml(archive.read('xl/workbook.xml')).find('s:sheets', ns):
+                    target = rels[sheet.attrib['{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id']]
+                    member = target.lstrip('/') if target.startswith('/') else str(PurePosixPath('xl') / target)
+                    tree = xml(archive.read(member))
+                    sheets[sheet.attrib['name']] = {c.attrib['r']: c for c in tree.findall('.//s:sheetData/s:row/s:c', ns)}
+                self.xml_sheets[path] = sheets
+        if src['sha256'] != self.hashes[path]:
+            raise ValueError('source_hash')
+        sheet = self.books[path][binding['sheet']]
+        self.headers(sheet, binding)
+        cell = self.xml_sheets[path][binding['sheet']].get(binding['cell'])
+        actual = numeric_cache(cell)
+        if finite_decimal(src['value']) != actual:
+            raise ValueError('source_value')
+        return actual
+
+    def close(self):
+        for path, book in self.books.items():
+            book.close()
+            if hashlib.sha256(Path(path).read_bytes()).hexdigest() != self.hashes[path]:
+                raise ValueError('source_changed_during_read')
+
+
 class Reader:
     def __init__(self, *, source=None, issuer=''):
         self.packages = {}
         self.roots = {}
+        self.story_nodes = {}
         self.grids = {}
         self.occurrence_documents = {}
         self.issuer = compact(issuer)
@@ -192,12 +352,16 @@ class Reader:
         key = (path, story)
         if key not in self.roots:
             self.roots[key] = resolve_revisions(xml(self.parts(path)[story]), True)
+            # The parsed story is immutable during inspection. Retain its exact
+            # physical order instead of rescanning every paragraph per anchor.
+            self.story_nodes[key] = (list(self.roots[key].iter(q('p'))), list(self.roots[key].iter(q('tbl'))))
         root = self.roots[key]
+        paragraphs, tables = self.story_nodes[key]
         if match[2]:
-            node = list(root.iter(q('p')))[int(match[2]) - 1]
+            node = paragraphs[int(match[2]) - 1]
             return {'story': story, 'root': root, 'node': node, 'table': None,
                     'text': paragraph_text(node)}
-        table = list(root.iter(q('tbl')))[int(match[3]) - 1]
+        table = tables[int(match[3]) - 1]
         row, cell = int(match[4]) - 1, int(match[5]) - 1
         node = table.findall(q('tr'))[row].findall(q('tc'))[cell]
         return {'story': story, 'root': root, 'node': node, 'table': table, 'table_index': int(match[3]), 'row': row, 'cell': cell,
@@ -253,16 +417,30 @@ class Reader:
         if scope not in value or other in value or HYPOTHETICAL.search(value):
             raise ValueError('scope_anchor')
         families = ('资产负债表', '利润表', '现金流量表')
-        expected = '资产负债表' if row['metric'] in STOCK else '利润表' if row['metric'] in ('net_profit', 'nonoperating_expenses') else '现金流量表'
+        expected = '资产负债表' if row['metric'] in STOCK else '利润表' if row['metric'] in INCOME else '现金流量表'
         if any(family in value for family in families) and expected not in value:
             raise ValueError('scope_statement_kind')
 
-    def issuer_scope(self, value, amount=None, *, analysis_caption=False):
+    def issuer_scope(self, value, amount=None, *, analysis_caption=False, path=None):
         value = compact(value)
         if re.search(r'子公司|其他公司|其他企业|被投资企业|关联方', value):
             raise ValueError('other_entity_scope')
-        if amount is not None and amount['story'] == 'word/document.xml' and self.compatible_caption == (amount['table_index'], value):
-            return
+        if (path is not None and amount is not None and amount['story'] == 'word/document.xml'
+                and self.compatible_caption is not None and self.compatible_caption[1] == value):
+            source = self.occurrence_document(self.authorized_source)
+            output = self.occurrence_document(path)
+            context = source['contexts'][source['tables'][self.compatible_caption[0]-1]]
+            matches = []
+            for table in output['tables']:
+                if output['contexts'].get(table) != context:
+                    continue
+                try:
+                    if compact(paragraph_text(self.caption(table))) == value:
+                        matches.append(table)
+                except ValueError:
+                    continue
+            if matches == [amount['table']]:
+                return
         if self.issuer:
             value = value.replace(self.issuer, '发行人')
         # A standalone issuer marker is not enough when an unknown named entity
@@ -333,13 +511,13 @@ class Reader:
         if 'scope_section_anchor' not in spec:
             if scope['node'] is not caption:
                 raise ValueError('adjacent_caption_scope_required')
-            self.issuer_scope(scope['text'], amount)
+            self.issuer_scope(scope['text'], amount, path=path)
             return
         title = self.anchor(path, spec['table_caption'], whole=True)
         section = self.anchor(path, spec['scope_section_anchor'], whole=True)
         if title['story'] != amount['story'] or title['node'] is not caption or HYPOTHETICAL.search(title['text']):
             raise ValueError('table_caption_binding')
-        self.issuer_scope(title['text'], amount, analysis_caption=True)
+        self.issuer_scope(title['text'], amount, analysis_caption=True, path=path)
         # Even with section inheritance a caption cannot contradict the scope.
         other = '母公司' if row['scope'] == 'consolidated' else '合并'
         if other in title['text']:
@@ -482,6 +660,8 @@ class Reader:
         return ordered_periods(values['text'], row['metric'])
 
     def narrative_list_span(self, path, spec, location, row):
+        if row['metric'] in EXTENDED:
+            return self.extended_list_span(path, spec, location, row)
         quote = spec['quote']
         other = '母公司' if row['scope'] == 'consolidated' else '合并'
         index = location['text'].index(quote)
@@ -534,6 +714,87 @@ class Reader:
         offset = len(head) + len('分别为')
         return offset + selected.start('amount'), offset + selected.end('amount')
 
+    def extended_list_span(self, path, spec, location, row):
+        if row['scope'] != 'consolidated' or self.authorized_source is None or location['node'].getparent().tag != q('body'):
+            raise ValueError('authorized_consolidated_list_required')
+        matches = [m for m in extended_lists(location['text'], row['metric']) if m['quote'] == spec['quote']]
+        if len(matches) != 1:
+            raise ValueError('complete_extended_clause_required')
+        parsed = matches[0]
+        context = compact(location['text'][:parsed['end']])
+        if row['metric'] == 'profit_attributable_to_parent':
+            # Only the full attribution metric is exempted, never other local
+            # references to parent financial statements, entities or forecasts.
+            own_clause = compact(parsed['quote'])
+            alias = next(a for a in ALIASES[row['metric']] if own_clause.startswith(a))
+            context = compact(location['text'][:parsed['start']]) + '归属指标' + own_clause[len(alias):]
+        if '母公司' in context or HYPOTHETICAL.search(context) or re.search(r'子公司|担保人|其他公司|其他企业|被投资企业|关联方', context):
+            raise ValueError('competing_narrative_entity_or_scope')
+        expression = parsed['expression']
+        if expression in ('最近两年及一期', '最近两年及一期末', '报告期内'):
+            periods = self.defined_periods(path, spec, location, expression, row)
+        else:
+            if 'reporting_period_definition' in spec or 'period_context' in spec:
+                raise ValueError('unexpected_period_definition')
+            periods = ordered_periods(expression, row['metric'])
+        stock = row['metric'] in STOCK
+        expected = [(f'{year}-12-31' if stock else f'{year}-01-01', f'{year}-12-31') for year in (2023, 2024)]
+        expected.append(('2025-09-30' if stock else '2025-01-01', '2025-09-30'))
+        if periods != expected:
+            raise ValueError('historical_or_target_period_changed')
+        amount_list = parsed['amounts']
+        for amount in amount_list:
+            value = amount['value'].replace(',', '')
+            places = len(value.split('.')[1]) if '.' in value else 0
+            if MONEY_UNIT[amount['unit']] != row['output']['unit'] or places != row['output']['decimal_places']:
+                raise ValueError('list_unit_or_precision_mismatch')
+        source_role = next(p for p, s, m in RQ_NARRATIVE_ROLES if (s, m) == (row['scope'], row['metric']))
+        original = self.node(self.authorized_source, f'word/document.xml//w:p[{source_role}]')['text']
+        source_lists = extended_lists(original, row['metric'])
+        if len(source_lists) != 1:
+            raise ValueError('authorized_historical_list_required')
+        for old, new in zip(source_lists[0]['amounts'][:2], amount_list[:2]):
+            if old['unit'] != new['unit'] or number(old['value']) != number(new['value']):
+                raise ValueError('historical_list_value_changed')
+        return amount_list[2]['start'], amount_list[2]['end']
+
+    def table_history(self, path, spec, amount, row):
+        if row['metric'] not in EXTENDED:
+            return
+        if self.authorized_source is None or row['scope'] != 'consolidated':
+            raise ValueError('authorized_table_history_required')
+        t, r, _, _ = next(role for role in RQ_TABLE_ROLES if role[2:] == (row['scope'], row['metric']))
+        original = self.node(self.authorized_source, f'word/document.xml#table={t},row={r},cell=2')
+        def table_unit(table):
+            caption = self.caption(table)
+            units, node = [], table.getprevious()
+            while node is not caption:
+                if node is None:
+                    raise ValueError('historical_table_unit_missing')
+                value = compact(paragraph_text(node))
+                if UNITS.fullmatch(value):
+                    units.append(MONEY_UNIT[re.search(r'亿元|万元|元', value)[0]])
+                node = node.getprevious()
+            if len(units) != 1:
+                raise ValueError('historical_table_unit_missing')
+            return units[0]
+        if table_unit(original['table']) != table_unit(amount['table']) or table_unit(amount['table']) != row['output']['unit']:
+            raise ValueError('historical_table_unit_changed')
+        header = self.node(path, spec['period_anchor']['locator'])
+        for source_column in (2, 3):
+            a, b, old = self.grid(original['table'])[r-1][source_column]
+            old_header = self.grid(original['table'])[0][source_column][2]
+            current = [node for x, y, node in self.grid(amount['table'])[amount['row']] if (x, y) == (a, b)]
+            current_header = [node for x, y, node in self.grid(amount['table'])[header['row']] if (x, y) == (a, b)]
+            if len(current) != 1 or len(current_header) != 1:
+                raise ValueError('historical_table_geometry')
+            text = lambda node: compact(' '.join(paragraph_text(p) for p in node.iter(q('p'))))
+            if text(current_header[0]) != text(old_header):
+                raise ValueError('historical_table_period_changed')
+            old_value, new_value = text(old), text(current[0])
+            if (not old_value and new_value) or (old_value and (not re.fullmatch(NUMBER, new_value) or number(old_value) != number(new_value))):
+                raise ValueError('historical_table_value_changed')
+
     def output_value(self, path, spec, row):
         if not isinstance(spec, dict):
             raise ValueError('precise_output_location_required')
@@ -579,6 +840,7 @@ class Reader:
             if location['table'] is None or not re.fullmatch(NUMBER, amount):
                 raise ValueError('single_numeric_cell_required')
             self.table_geometry(path, spec, location, row)
+            self.table_history(path, spec, location, row)
             identity = (spec['locator'], 'whole_cell')
         if number(amount) != number(row['output']['value']):
             raise ValueError('output_value')
@@ -613,6 +875,8 @@ class Reader:
     @staticmethod
     def metric_list_clauses(value, metric):
         """Locate the complete source-shaped metric clause, independent of evidence."""
+        if metric in EXTENDED:
+            return [(m['start'], m['end']) for m in extended_lists(value, metric)]
         result = []
         for match in re.finditer(r'[^。；;！？!?]+(?:[。；;！？!?]|$)', value):
             clause = match[0]
@@ -637,7 +901,7 @@ class Reader:
 
     @staticmethod
     def unsupported_metric_lists(value, metric):
-        """Retained monetary lists cannot disappear through parser rejection.
+        """Retained monetary assertions cannot disappear through parser rejection.
 
         This intentionally recognizes a wider shape than the validated list
         grammar. An unknown connector or reporting-period expression needs
@@ -649,6 +913,16 @@ class Reader:
             if (match.start(), match.end()) in supported:
                 continue
             clause = compact(match[0])
+            money = NUMBER + r'(?:亿元|万元|元)'
+            value_before_metric = money + r'(?:为|是|系|对应|属于|的)(?:(?:发行人|公司|本公司)(?:的)?)?(?:期末|本期|当期)?$'
+            if metric in NARRATIVE_METRICS and any(
+                    re.search(money, clause[end:]) or re.search(value_before_metric, clause[:start])
+                    for start, end in metric_mentions(clause, metric)):
+                # One attributed amount is enough, including "100万元为净利润".
+                # Amounts of another metric before an asset-ratio denominator
+                # are not an assertion of that denominator's monetary value.
+                result.append((match.start(), match.end()))
+                continue
             for _, end in metric_mentions(clause, metric):
                 tail = clause[end:]
                 amounts = [m for m in re.finditer(NUMBER, tail)
@@ -657,6 +931,20 @@ class Reader:
                     result.append((match.start(), match.end()))
                     break
         return result
+
+    @staticmethod
+    def historical_or_other_entity_single_clause(value, metric):
+        """Eligibility only; callers must also prove exact authorized-source text."""
+        value = compact(value)
+        if not metric_mentions(value, metric) or len(re.findall(NUMBER + r'(?:亿元|万元|元)', value)) != 1:
+            return False
+        years = [int(year) for year in re.findall(r'(20[0-9]{2})年', value)]
+        historical = bool(years) and max(years) < 2025 and not re.search(r'本期|当期|最近|报告期|现在|目前|本年|本年度', value)
+        # A stray mention of a guarantor is insufficient: the complete source
+        # clause must start with its explicit subject and contain no issuer one.
+        other = bool(re.match(r'^(?:子公司|其他公司|担保人|被投资企业|关联方)[^，,。；;！？!?]{0,40}', value))
+        other = other and not re.search(r'发行人|本公司|本集团', value)
+        return historical or other
 
     def target_amount_candidates(self, path, document, table, metric, source_interval):
         """Find the current amount under its real header in the retained grid slot."""
@@ -727,11 +1015,20 @@ class Reader:
             context = source['contexts'][paragraph]
             candidates = []
             unsupported = []
+            exempt_source_clauses = set()
+            if metric in NARRATIVE_METRICS:
+                for original in source['body']:
+                    if original.tag != q('p') or source['contexts'].get(original) != context:
+                        continue
+                    for clause in re.finditer(r'[^。；;！？!?]+(?:[。；;！？!?]|$)', paragraph_text(original)):
+                        if self.historical_or_other_entity_single_clause(clause[0], metric):
+                            exempt_source_clauses.add(compact(clause[0]))
             for candidate in output['body']:
                 if candidate.tag != q('p') or output['contexts'].get(candidate) != context:
                     continue
                 text = paragraph_text(candidate)
-                unsupported.extend(self.unsupported_metric_lists(text, metric))
+                unsupported.extend((start, end) for start, end in self.unsupported_metric_lists(text, metric)
+                                   if compact(text[start:end]) not in exempt_source_clauses)
                 for start, end in self.metric_list_clauses(text, metric):
                     loc = f'word/document.xml//w:p[{output["paragraph_indices"][candidate] + 1}]'
                     candidates.append((loc, start, end))
@@ -789,7 +1086,7 @@ def inspect(source_path, pdfs, data):
     chapters = ['preamble'] + ['p:' + str(h['paragraph']) + ':' + hashlib.sha256(h['text'].encode()).hexdigest()
                                for h in source['headings'] if h['level'] == 0]
     pages = [len(PdfReader(p).pages) for p in pdfs]
-    reader, books, failures, verified = Reader(source=source_path, issuer=data.get('issuer', '')), {}, [], []
+    reader, sources, failures, verified = Reader(source=source_path, issuer=data.get('issuer', '')), FinancialSources(), [], []
     try:
         for index, row in enumerate(data['financial_checks']):
             try:
@@ -797,13 +1094,7 @@ def inspect(source_path, pdfs, data):
                 path = data['materials'][src['file_id']]
                 if not path.lower().endswith('.xlsx'):
                     raise ValueError('unsupported_financial_source')
-                sheet, cell = src['locator'].rsplit('!', 1)
-                if not re.fullmatch(r'[A-Z]{1,3}[1-9][0-9]*', cell):
-                    raise ValueError('cell_locator')
-                if path not in books:
-                    books[path] = load_workbook(path, data_only=True, read_only=True)
-                if number(books[path][sheet][cell].value) != number(src['value']):
-                    raise ValueError('source_value')
+                sources.value(path, row, data.get('issuer', ''))
                 seen = set()
                 for locator in row['output']['locators']:
                     identity = reader.output_value(data['clean'], locator, row)
@@ -815,8 +1106,7 @@ def inspect(source_path, pdfs, data):
             except Exception:
                 failures.append(index)
     finally:
-        for book in books.values():
-            book.close()
+        sources.close()
     return {'chapter_ids': chapters, 'pages': pages, 'financial_failures': failures,
             'fixed_occurrence_coverage': reader.occurrence_coverage(data['clean'], verified)}
 

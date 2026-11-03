@@ -16,7 +16,7 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-from prospectus_acceptance_inspect import Reader, compact, metric_ok, period_ok
+from prospectus_acceptance_inspect import Reader, compact, metric_ok, period_ok, EXTENDED, STOCK, extended_lists, FinancialSources, SOURCE_BINDINGS, POLICY
 from bondbuddy_file_authoring.word_patch import leaves, paragraph_text, serialized, xml
 
 
@@ -265,7 +265,7 @@ class NarrativeLists(FinancialFixture):
         spec = {'locator': anchor(paragraph)['locator'], 'quote': quote, 'narrative_list': True,
                 'start': quote.rindex(value), 'end': quote.rindex(value) + len(value), 'scope_anchor': anchor(intro)}
         if defined:
-            r = 2 if metric in ('total_assets', 'total_liabilities', 'net_assets') else 1
+            r = 2 if metric in STOCK else 1
             spec['reporting_period_definition'] = {'section_anchor': anchor(glossary),
                 'term_anchor': {'locator': self.cell(1, r, 1), 'quote': table.cell(r - 1, 0).text},
                 'definition_anchor': {'locator': self.cell(1, r, 3), 'quote': table.cell(r - 1, 2).text}}
@@ -434,6 +434,12 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                 (98, 15, 2, 1, 2, 0, 'net_profit', 'consolidated'),
                 (45, 22, 2, 1, 2, 3262, 'nonoperating_expenses', 'consolidated'),
                 (48, 21, 2, 1, 2, 3788, 'nonoperating_expenses', 'parent'),
+                (44,45,2,1,2,3019,'deferred_income','consolidated'),
+                (45,7,2,1,2,3262,'sales_expenses','consolidated'),
+                (45,8,2,1,2,3262,'administrative_expenses','consolidated'),
+                (45,10,2,1,2,3262,'finance_expenses','consolidated'),
+                (45,14,2,1,2,3262,'investment_income','consolidated'),
+                (45,30,2,1,2,3262,'profit_attributable_to_parent','consolidated'),
             ]
             for t, r, c, pr, pc, caption_number, metric, scope in cases:
                 with self.subTest(table=t, row=r, metric=metric):
@@ -452,7 +458,7 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                         caption_number = list(amount['root'].iter(qn('w:p'))).index(caption) + 1
                         spec['table_caption'] = anchor(p(caption_number))
                     row = {'scope': scope, 'metric': metric,
-                           'output': {'value': amount['text'].replace(',', '').strip()}}
+                           'output': {'value': amount['text'].replace(',', '').strip(), 'unit': 'CNY_10K'}}
                     identity = reader.output_value(path, spec, row)
                     verified.append({'scope': scope, 'metric': metric, 'kind': 'table', 'identity': identity})
                     checked_specs.append((copy.deepcopy(verified[-1]), copy.deepcopy(spec), copy.deepcopy(row)))
@@ -483,7 +489,9 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                                 reader.output_value(path, wrong, different)
             for paragraph_number, metric in ((46, 'operating_cash_flow'), (285, 'operating_cash_flow'),
                     (4816, 'total_assets'), (6865, 'total_liabilities'), (7967, 'net_profit'), (8017, 'operating_cash_flow'),
-                    (7931, 'nonoperating_expenses')):
+                    (7931, 'nonoperating_expenses'), (7605,'deferred_income'), (7838,'sales_expenses'),
+                    (7840,'administrative_expenses'), (7842,'finance_expenses'), (7870,'investment_income'),
+                    (7967,'profit_attributable_to_parent')):
                 with self.subTest(paragraph=paragraph_number, metric=metric):
                     location = p(paragraph_number)
                     text = reader.node(path, location)['text']
@@ -493,16 +501,16 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                         quote = text[start:finish]
                         scope = {'locator': p(44), 'quote': '本募集说明书其他章节中若无特殊说明，则财务数据及财务指标均为合并口径。'}
                     else:
-                        quote = text if paragraph_number == 7931 else text[:text.index('；') + 1] if paragraph_number == 7967 else text[:text.index('。') + 1]
+                        quote = extended_lists(text, metric)[0]['quote'] if metric in EXTENDED else text if paragraph_number == 7931 else text[:text.index('；') + 1] if paragraph_number == 7967 else text[:text.index('。') + 1]
                         scope = anchor(p(4780))
                     selected = list(re.finditer(r'(-?[0-9]+(?:,[0-9]{3})*\.[0-9]+)\s*万元', quote))[-1]
                     spec = {'locator': location, 'quote': quote, 'narrative_list': True,
                         'start': selected.start(1), 'end': selected.end(1), 'scope_anchor': scope}
                     if paragraph_number not in (46, 285):
-                        r = 29 if metric in ('total_assets', 'total_liabilities', 'net_assets') else 28
+                        r = 29 if metric in STOCK else 28
                         spec['reporting_period_definition'] = {'section_anchor': anchor(p(164)),
                             'term_anchor': anchor(cell(2, r, 1)), 'definition_anchor': anchor(cell(2, r, 3))}
-                    if paragraph_number in (7931, 7967):
+                    if paragraph_number in (7931, 7967) or metric in EXTENDED and metric not in STOCK:
                         spec['period_context'] = {'section_anchor': anchor(p(4779)), 'introduction_anchor': anchor(p(4780))}
                     row = {'scope': 'consolidated', 'metric': metric,
                         'output': {'value': selected[1].replace(',', ''), 'unit': 'CNY_10K', 'decimal_places': 2}}
@@ -523,17 +531,17 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                         reader.output_value(path, wrong, row)
             # Fixed roles are independent of operator counts. All tables can be
             # correct while a stale profitability paragraph is simply omitted.
-            self.assertEqual(len(verified), 27)
+            self.assertEqual(len(verified), 39)
             coverage = reader.occurrence_coverage(path, verified)
             self.assertEqual(coverage['status'], 'passed', coverage)
             missing = [v for v in verified if v['identity'][0] != p(7967)]
-            self.assertEqual(sum(v['kind'] == 'table' for v in missing), 20)
+            self.assertEqual(sum(v['kind'] == 'table' for v in missing), 26)
             coverage = reader.occurrence_coverage(path, missing)
             self.assertEqual(coverage['status'], 'failed')
             self.assertIn({'role': 'narrative:7967:consolidated:net_profit',
                            'code': 'required_occurrence_not_independently_checked'}, coverage['failures'])
-            repeated = missing + [copy.deepcopy(missing[-1])]
-            self.assertEqual(len(repeated), 27)
+            repeated = missing + [copy.deepcopy(missing[-1]) for _ in range(39-len(missing))]
+            self.assertEqual(len(repeated), 39)
             self.assertEqual(reader.occurrence_coverage(path, repeated)['status'], 'failed')
             self.assertEqual(Reader(source=path, issuer=case['issuer']).occurrence_coverage(path, verified)['status'], 'failed')
             expense_missing = [v for v in verified if v['identity'][0] != p(7931)]
@@ -584,7 +592,7 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                         spec = copy.deepcopy(original_spec)
                         relocate(spec)
                         checked.append({**record, 'identity': mutant_reader.output_value(mutant_path, spec, row)})
-                    self.assertEqual(len(checked), 27)
+                    self.assertEqual(len(checked), 39)
                     coverage = mutant_reader.occurrence_coverage(mutant_path, checked)
                     self.assertEqual(coverage['status'], 'failed')
                     self.assertIn({'role': 'narrative:7967:consolidated:net_profit',
@@ -607,7 +615,7 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                            'code': 'ambiguous_or_missing_occurrence'}, coverage['failures'])
 
             # Body paragraph and table-row insertion shift real locators. The
-            # source-role matcher must still find the same 27 actual amounts.
+            # source-role matcher must still find the same 39 actual amounts.
             shifted_path = str(Path(directory) / 'synthetic-inserted-positions.docx')
             with ZipFile(path) as archive:
                 parts = {name: archive.read(name) for name in archive.namelist()}
@@ -671,6 +679,8 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                            'code': 'ambiguous_or_missing_occurrence'}, coverage['failures'])
             self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), material['sha256'])
 
+
+from prospectus_extended_financial_test import FinancialSourceBindings, ExpandedAmountRegression
 
 if __name__ == '__main__':
     unittest.main()

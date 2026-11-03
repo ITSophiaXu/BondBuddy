@@ -69,7 +69,7 @@ import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOvera
 import { assertGenerationIssuerBinding, assertLockedInputIntegrity, assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled, workingDraftConfigured } from './non-production-test.js';
 import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatches } from './test-issuer-candidate.js';
 import { classifyPreflightReadiness } from './preflight-readiness.js';
-import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertOwnedFormatTemplate, inheritPreviousOutputFormat } from './unified-authoring.js';
+import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertOwnedFormatTemplate, inheritPreviousOutputFormat, lockProspectusEditBase } from './unified-authoring.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
@@ -761,7 +761,7 @@ export function createServer(settings: Settings = {}) {
       if(p.kind==='update'&&p.update_details?.authoring_mode==='unified_v1'&&requiresProspectusSelection(prospectus))
         throw prospectusSelectionRequired();
       const currentProspectus=prospectus.versions.find(v=>v.version_id===prospectus.current_version_id);
-      if(currentProspectus && b.edit_base===undefined)b.edit_base=currentProspectus.artifact_id?{artifact_id:currentProspectus.artifact_id,artifact_version:currentProspectus.artifact_version!,sha256:currentProspectus.sha256}:null;
+      b.edit_base=lockProspectusEditBase(currentProspectus,b.edit_base);
       const refs=[...b.material_versions].sort((a,z)=>a.material_id.localeCompare(z.material_id)||a.material_version-z.material_version);
       if(new Set(refs.map(r=>r.material_id)).size!==refs.length) throw new Problem(422,'VALIDATION_FAILED','Duplicate material IDs');
       const resolved=[];
@@ -897,10 +897,16 @@ export function createServer(settings: Settings = {}) {
         if(b.edit_base && !previous)throw conflict('INPUT_REVISION_CONFLICT','所选成果已不可用，请重新选择准确版本。');
         const continuesPrevious = b.edit_base !== null && previous && isUnifiedInput(previous.manifest) && previous.manifest.issuer_name === p.issuer_name &&
           sourceKey(previous.manifest.materials as typeof resolved) === sourceKey(resolved);
+        if(b.edit_base && !continuesPrevious)throw conflict('INPUT_REVISION_CONFLICT','所选成果与本次来源材料或发行人不一致，请恢复对应依据后重新开始。');
         // A continuation inherits its verified clean artifact. An unrelated draft
         // template choice cannot block or replace that already selected baseline.
+        // An adopted upload is the editing manuscript, even when an auxiliary
+        // reference wins the older DOCX/relationship/order recommendation.
+        const adoptedSource = !continuesPrevious && currentProspectus?.material_id
+          ? { material_id: currentProspectus.material_id, material_version: currentProspectus.material_version!, sha256: currentProspectus.sha256 }
+          : undefined;
         const authoring: import('@bondbuddy/contracts').UnifiedAuthoringInput = await lockUnifiedAuthoring(
-          continuesPrevious ? {...p,update_details:{...p.update_details,format_template:null}} : p, formatMaterials, currentMessageSet);
+          continuesPrevious ? {...p,update_details:{...p.update_details,format_template:null}} : p, formatMaterials, currentMessageSet, adoptedSource);
         if (continuesPrevious) {
           authoring.previous_output = { artifact_id:previous.id,version:previous.version,sha256:String(previous.sha256).trim(),run_id:previous.run_id,input_revision:previous.input_revision };
           if(b.edit_base)authoring.edit_baseline = {market:previous.manifest.market,offering:previous.manifest.offering,
