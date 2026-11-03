@@ -13,6 +13,36 @@ CHAPTER = re.compile(rf'^第[{NUM}]+\s*(?:章|节|篇|部分)\s*')
 SECTION = re.compile(rf'^(?:[{NUM}]+[、．.]|[（(][{NUM}]+[）)])\s*')
 STYLE_HEADING = re.compile(r'^(?:heading|标题)\s*([1-9])$', re.I)
 STYLE_TOC = re.compile(r'^(?:toc|目录)\s*[1-9]?$', re.I)
+BASIC_INFORMATION_LABELS = frozenset({
+    '发行人名称', '法定代表人', '设立日期', '设立（工商注册）日期', '工商注册日期',
+    '注册资本', '实缴资本', '统一社会信用代码', '社会统一信用编码',
+    '注册地址', '邮政编码', '电话', '传真', '信息披露事务负责人', '联系地址',
+})
+BASIC_INFORMATION_ROW = re.compile(r'^(?:([0-9]{1,3})[、．.]|[（(]([0-9]{1,3})[）)])\s*([^:：]+)[:：]\s*(\S.*)$')
+
+
+def basic_information_field(paragraph):
+    if paragraph is None or paragraph.tag != q('p'):
+        return None
+    match = BASIC_INFORMATION_ROW.fullmatch(paragraph_text(paragraph).strip())
+    if not match:
+        return None
+    number = int(match[1] or match[2])
+    label = re.sub(r'\s+', '', match[3])
+    return (number, label) if number > 0 and label in BASIC_INFORMATION_LABELS else None
+
+
+def in_basic_information_block(paragraph):
+    """Recognize consecutive fixed issuer fields, never arbitrary colon titles."""
+    parent = paragraph.getparent()
+    field = basic_information_field(paragraph)
+    if parent is None or parent.tag != q('body') or field is None:
+        return False
+    for sibling, step in ((paragraph.getprevious(), -1), (paragraph.getnext(), 1)):
+        adjacent = basic_information_field(sibling)
+        if adjacent and adjacent[0] == field[0] + step and adjacent[1] != field[1]:
+            return True
+    return False
 
 
 def style_map(parts):
@@ -54,6 +84,10 @@ def heading_role(paragraph, styles):
     if len(text) <= 120 and CHAPTER.match(text):
         return {'kind': 'heading', 'level': 0, 'recognition': 'text_candidate'}
     if len(text) <= 80 and SECTION.match(text) and not re.search(r'[。；;！？!?]', text):
+        # Explicit outline/style headings returned above always remain protected.
+        # Unknown labels and isolated rows remain title candidates and fail closed.
+        if in_basic_information_block(paragraph):
+            return None
         return {'kind': 'heading', 'level': 1, 'recognition': 'text_candidate'}
     return None
 

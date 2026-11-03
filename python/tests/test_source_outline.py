@@ -49,6 +49,49 @@ class SourceOutlineTests(unittest.TestCase):
         self.assertEqual(len(outline(source)['headings']), 1)
         self.assertEqual(compare_outlines(outline(source), outline(changed))['status'], 'unchanged')
 
+    def test_consecutive_basic_information_values_are_not_heading_names(self):
+        def body(value):
+            return (p('一、发行人基本信息') + p('1、发行人名称：合成发行人')
+                    + p('2、法定代表人：' + value) + p('3、设立日期：合成日期'))
+        source = outline(parts(body('合成人员甲')))
+        changed = outline(parts(body('【待人工确认】')))
+        self.assertEqual([item['text'] for item in source['headings']], ['一、发行人基本信息'])
+        self.assertEqual(compare_outlines(source, changed)['status'], 'unchanged')
+
+    def test_parenthesized_arabic_basic_information_fields_are_not_headings(self):
+        source = parts(p('（1）发行人名称：合成发行人') + p('（2）法定代表人：合成人员甲'))
+        self.assertEqual(outline(source)['headings'], [])
+
+    def test_explicit_colon_headings_remain_protected_in_information_blocks(self):
+        for props, styles in [
+            ('<w:outlineLvl w:val="1"/>', ''),
+            ('<w:pStyle w:val="Heading2"/>', '<w:style w:styleId="Heading2"><w:name w:val="heading 2"/></w:style>'),
+        ]:
+            def body(value):
+                return p('1、发行人名称：合成发行人') + p('2、法定代表人：' + value, props)
+            source = outline(parts(body('合成人员甲'), styles))
+            changed = outline(parts(body('合成人员乙'), styles))
+            self.assertEqual(len(source['headings']), 1)
+            self.assertEqual(compare_outlines(source, changed)['status'], 'changed')
+
+    def test_unknown_isolated_nonconsecutive_and_chinese_rows_fail_closed(self):
+        for body in [
+            p('1、未知字段：合成值'),
+            p('1、法定代表人：合成人员甲'),
+            p('1、发行人名称：合成发行人') + p('3、法定代表人：合成人员甲'),
+            p('1、法定代表人：合成人员甲') + p('2、法定代表人：合成人员乙'),
+            p('一、发行人名称：合成发行人') + p('二、法定代表人：合成人员甲'),
+        ]:
+            with self.subTest(body=body):
+                self.assertTrue(outline(parts(body))['headings'])
+
+    def test_empty_field_values_and_unknown_colon_titles_are_not_exempted(self):
+        source = parts(p('1、发行人名称：合成发行人') + p('2、法定代表人：')
+                       + p('3、未知字段：合成值') + p('一、风险因素：财务风险'))
+        self.assertEqual(len(outline(source)['headings']), 4)
+        changed = {key: value.replace('财务风险'.encode(), '经营风险'.encode()) for key, value in source.items()}
+        self.assertEqual(compare_outlines(outline(source), outline(changed))['status'], 'changed')
+
     def test_heading_order_level_and_numbering_changes_are_reported(self):
         source = parts(p('财务状况', '<w:outlineLvl w:val="0"/><w:numPr><w:numId w:val="1"/></w:numPr>') + p('第一章 发行人'))
         for body in [p('第一章 发行人') + p('财务状况', '<w:outlineLvl w:val="0"/>'),

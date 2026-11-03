@@ -407,6 +407,8 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                         raw = serialized(document)
                     after.writestr(entry, raw)
             reader = Reader(source=source, issuer=case['issuer'])
+            verified = []
+            checked_specs = []
             p = lambda n: f'word/document.xml//w:p[{n}]'
             cell = lambda t, r, c: f'word/document.xml#table={t},row={r},cell={c}'
             def anchor(locator):
@@ -430,6 +432,8 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                 (55, 5, 2, 1, 2, 0, 'total_assets', 'consolidated'),
                 (79, 5, 2, 1, 2, 0, 'total_liabilities', 'consolidated'),
                 (98, 15, 2, 1, 2, 0, 'net_profit', 'consolidated'),
+                (45, 22, 2, 1, 2, 3262, 'nonoperating_expenses', 'consolidated'),
+                (48, 21, 2, 1, 2, 3788, 'nonoperating_expenses', 'parent'),
             ]
             for t, r, c, pr, pc, caption_number, metric, scope in cases:
                 with self.subTest(table=t, row=r, metric=metric):
@@ -449,7 +453,9 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                         spec['table_caption'] = anchor(p(caption_number))
                     row = {'scope': scope, 'metric': metric,
                            'output': {'value': amount['text'].replace(',', '').strip()}}
-                    reader.output_value(path, spec, row)
+                    identity = reader.output_value(path, spec, row)
+                    verified.append({'scope': scope, 'metric': metric, 'kind': 'table', 'identity': identity})
+                    checked_specs.append((copy.deepcopy(verified[-1]), copy.deepcopy(spec), copy.deepcopy(row)))
                     if t == 54 and metric == 'total_assets':
                         # The misspelled source caption is not a generic alias:
                         # a changed source, unknown issuer or another table fails.
@@ -476,7 +482,8 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                             with self.assertRaises(ValueError):
                                 reader.output_value(path, wrong, different)
             for paragraph_number, metric in ((46, 'operating_cash_flow'), (285, 'operating_cash_flow'),
-                    (4816, 'total_assets'), (6865, 'total_liabilities'), (7967, 'net_profit'), (8017, 'operating_cash_flow')):
+                    (4816, 'total_assets'), (6865, 'total_liabilities'), (7967, 'net_profit'), (8017, 'operating_cash_flow'),
+                    (7931, 'nonoperating_expenses')):
                 with self.subTest(paragraph=paragraph_number, metric=metric):
                     location = p(paragraph_number)
                     text = reader.node(path, location)['text']
@@ -486,7 +493,7 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                         quote = text[start:finish]
                         scope = {'locator': p(44), 'quote': '本募集说明书其他章节中若无特殊说明，则财务数据及财务指标均为合并口径。'}
                     else:
-                        quote = text[:text.index('；') + 1] if paragraph_number == 7967 else text[:text.index('。') + 1]
+                        quote = text if paragraph_number == 7931 else text[:text.index('；') + 1] if paragraph_number == 7967 else text[:text.index('。') + 1]
                         scope = anchor(p(4780))
                     selected = list(re.finditer(r'(-?[0-9]+(?:,[0-9]{3})*\.[0-9]+)\s*万元', quote))[-1]
                     spec = {'locator': location, 'quote': quote, 'narrative_list': True,
@@ -495,17 +502,173 @@ class AuthorizedTemplateLayout(unittest.TestCase):
                         r = 29 if metric in ('total_assets', 'total_liabilities', 'net_assets') else 28
                         spec['reporting_period_definition'] = {'section_anchor': anchor(p(164)),
                             'term_anchor': anchor(cell(2, r, 1)), 'definition_anchor': anchor(cell(2, r, 3))}
-                    if paragraph_number == 7967:
+                    if paragraph_number in (7931, 7967):
                         spec['period_context'] = {'section_anchor': anchor(p(4779)), 'introduction_anchor': anchor(p(4780))}
                     row = {'scope': 'consolidated', 'metric': metric,
                         'output': {'value': selected[1].replace(',', ''), 'unit': 'CNY_10K', 'decimal_places': 2}}
-                    reader.output_value(path, spec, row)
+                    identity = reader.output_value(path, spec, row)
+                    verified.append({'scope': 'consolidated', 'metric': metric, 'kind': 'narrative_list', 'identity': identity})
+                    checked_specs.append((copy.deepcopy(verified[-1]), copy.deepcopy(spec), copy.deepcopy(row)))
+                    if paragraph_number == 7931:
+                        self.assertTrue(quote.endswith('，明细如下：'))
+                        wrong = copy.deepcopy(spec)
+                        wrong['quote'] = quote.removesuffix('，明细如下：')
+                        with self.assertRaisesRegex(ValueError, 'complete_actual_clause_boundaries_required'):
+                            reader.output_value(path, wrong, row)
                     # The target amount cannot be replaced by an equal historical span.
                     wrong = copy.deepcopy(spec)
                     earlier = list(re.finditer(r'(-?[0-9]+(?:,[0-9]{3})*\.[0-9]+)\s*万元', quote))[0]
                     wrong['start'], wrong['end'] = earlier.span(1)
                     with self.assertRaises(ValueError):
                         reader.output_value(path, wrong, row)
+            # Fixed roles are independent of operator counts. All tables can be
+            # correct while a stale profitability paragraph is simply omitted.
+            self.assertEqual(len(verified), 27)
+            coverage = reader.occurrence_coverage(path, verified)
+            self.assertEqual(coverage['status'], 'passed', coverage)
+            missing = [v for v in verified if v['identity'][0] != p(7967)]
+            self.assertEqual(sum(v['kind'] == 'table' for v in missing), 20)
+            coverage = reader.occurrence_coverage(path, missing)
+            self.assertEqual(coverage['status'], 'failed')
+            self.assertIn({'role': 'narrative:7967:consolidated:net_profit',
+                           'code': 'required_occurrence_not_independently_checked'}, coverage['failures'])
+            repeated = missing + [copy.deepcopy(missing[-1])]
+            self.assertEqual(len(repeated), 27)
+            self.assertEqual(reader.occurrence_coverage(path, repeated)['status'], 'failed')
+            self.assertEqual(Reader(source=path, issuer=case['issuer']).occurrence_coverage(path, verified)['status'], 'failed')
+            expense_missing = [v for v in verified if v['identity'][0] != p(7931)]
+            coverage = reader.occurrence_coverage(path, expense_missing)
+            self.assertEqual(coverage['status'], 'failed')
+            self.assertIn({'role': 'narrative:7931:consolidated:nonoperating_expenses',
+                           'code': 'required_occurrence_not_independently_checked'}, coverage['failures'])
+
+            # A retained stale list with unsupported language cannot disappear
+            # while an inserted correct-shaped copy supplies every identity.
+            # Revalidate all shifted locations through the real amount reader.
+            for name, old, new in (('connector', '分别为', '分别是'),
+                    ('period', '报告期内', '此前期内'), ('no-connector', '分别为', '数额为'),
+                    ('shared-unit', '分别为', '分别是')):
+                with self.subTest(retained_stale_variant=name):
+                    with ZipFile(path) as archive:
+                        mutant_parts = {entry: archive.read(entry) for entry in archive.namelist()}
+                    mutant_document = xml(mutant_parts['word/document.xml'])
+                    target = list(mutant_document.iter(qn('w:p')))[7966]
+                    fresh = copy.deepcopy(target)
+                    original_text = paragraph_text(target)
+                    identity = next(v['identity'] for v in verified if v['identity'][0] == p(7967))
+                    changed = original_text.replace(old, new, 1)
+                    digit = next(i for i in range(identity[1], identity[2]) if changed[i].isdigit())
+                    changed = changed[:digit] + ('1' if changed[digit] != '1' else '2') + changed[digit + 1:]
+                    if name == 'shared-unit':
+                        changed = changed.replace('万元', '', 2)
+                    text_leaves = [leaf for leaf, _, _, _ in leaves(target) if leaf.tag == qn('w:t')]
+                    for index, leaf in enumerate(text_leaves):
+                        leaf.text = changed if index == 0 else ''
+                    target.addnext(fresh)
+                    mutant_parts['word/document.xml'] = serialized(mutant_document)
+                    mutant_path = str(Path(directory) / f'synthetic-retained-stale-{name}.docx')
+                    with ZipFile(mutant_path, 'w') as archive:
+                        for entry, raw in mutant_parts.items():
+                            archive.writestr(entry, raw)
+                    checked = []
+                    mutant_reader = Reader(source=source, issuer=case['issuer'])
+                    def relocate(spec):
+                        for key, value in list(spec.items()):
+                            if isinstance(value, dict):
+                                relocate(value)
+                            elif key == 'locator':
+                                match = re.fullmatch(r'word/document.xml//w:p\[([0-9]+)\]', value)
+                                if match and int(match[1]) >= 7967:
+                                    spec[key] = p(int(match[1]) + 1)
+                    for record, original_spec, row in checked_specs:
+                        spec = copy.deepcopy(original_spec)
+                        relocate(spec)
+                        checked.append({**record, 'identity': mutant_reader.output_value(mutant_path, spec, row)})
+                    self.assertEqual(len(checked), 27)
+                    coverage = mutant_reader.occurrence_coverage(mutant_path, checked)
+                    self.assertEqual(coverage['status'], 'failed')
+                    self.assertIn({'role': 'narrative:7967:consolidated:net_profit',
+                                   'code': 'unsupported_occurrence_clause'}, coverage['failures'])
+
+            old_period_path = str(Path(directory) / 'synthetic-old-period-role.docx')
+            with ZipFile(path) as archive:
+                old_period_parts = {name: archive.read(name) for name in archive.namelist()}
+            old_period_document = xml(old_period_parts['word/document.xml'])
+            header = list(old_period_document.iter(qn('w:tbl')))[43].findall(qn('w:tr'))[0].findall(qn('w:tc'))[1]
+            for text in header.iter(qn('w:t')):
+                text.text = (text.text or '').replace('9', '6')
+            old_period_parts['word/document.xml'] = serialized(old_period_document)
+            with ZipFile(old_period_path, 'w') as archive:
+                for name, raw in old_period_parts.items():
+                    archive.writestr(name, raw)
+            coverage = Reader(source=source, issuer=case['issuer']).occurrence_coverage(old_period_path, verified)
+            self.assertEqual(coverage['status'], 'failed')
+            self.assertIn({'role': 'table:44:consolidated:total_assets',
+                           'code': 'ambiguous_or_missing_occurrence'}, coverage['failures'])
+
+            # Body paragraph and table-row insertion shift real locators. The
+            # source-role matcher must still find the same 27 actual amounts.
+            shifted_path = str(Path(directory) / 'synthetic-inserted-positions.docx')
+            with ZipFile(path) as archive:
+                parts = {name: archive.read(name) for name in archive.namelist()}
+            document = xml(parts['word/document.xml'])
+            body = document.find(qn('w:body'))
+            note = OxmlElement('w:p')
+            run, text = OxmlElement('w:r'), OxmlElement('w:t')
+            text.text = 'Synthetic inserted body paragraph for locator-shift regression.'
+            run.append(text)
+            note.append(run)
+            body.insert(0, note)
+            table = list(document.iter(qn('w:tbl')))[43]
+            target_row = table.findall(qn('w:tr'))[19]
+            inserted = copy.deepcopy(table.findall(qn('w:tr'))[1])
+            for i, tc in enumerate(inserted.findall(qn('w:tc'))):
+                for child in list(tc):
+                    if child.tag != qn('w:tcPr'):
+                        tc.remove(child)
+                paragraph = OxmlElement('w:p')
+                if i == 0:
+                    run, text = OxmlElement('w:r'), OxmlElement('w:t')
+                    text.text = 'Synthetic inserted non-metric row'
+                    run.append(text)
+                    paragraph.append(run)
+                tc.append(paragraph)
+            inserted_paragraphs = len(list(inserted.iter(qn('w:p'))))
+            target_row.addprevious(inserted)
+            parts['word/document.xml'] = serialized(document)
+            with ZipFile(shifted_path, 'w') as archive:
+                for name, raw in parts.items():
+                    archive.writestr(name, raw)
+            shifted = copy.deepcopy(verified)
+            for record in shifted:
+                identity = list(record['identity'])
+                if record['kind'] == 'table':
+                    match = re.fullmatch(r'word/document.xml#table=44,row=([0-9]+),cell=([0-9]+)', identity[0])
+                    if match and int(match[1]) >= 20:
+                        identity[0] = cell(44, int(match[1]) + 1, int(match[2]))
+                else:
+                    original = int(re.search(r'\[([0-9]+)\]', identity[0])[1])
+                    identity[0] = p(original + 1 + (inserted_paragraphs if original > 285 else 0))
+                record['identity'] = tuple(identity)
+            shifted_reader = Reader(source=source, issuer=case['issuer'])
+            coverage = shifted_reader.occurrence_coverage(shifted_path, shifted)
+            self.assertEqual(coverage['status'], 'passed', coverage)
+
+            # Duplicating the same semantic paragraph cannot become a second
+            # role or let the operator choose whichever occurrence is correct.
+            ambiguous_path = str(Path(directory) / 'synthetic-ambiguous-role.docx')
+            paragraph_number = int(re.search(r'\[([0-9]+)\]', next(v['identity'][0] for v in shifted
+                if v['kind'] == 'narrative_list' and v['metric'] == 'net_profit'))[1])
+            target = list(document.iter(qn('w:p')))[paragraph_number - 1]
+            target.addnext(copy.deepcopy(target))
+            parts['word/document.xml'] = serialized(document)
+            with ZipFile(ambiguous_path, 'w') as archive:
+                for name, raw in parts.items():
+                    archive.writestr(name, raw)
+            coverage = Reader(source=source, issuer=case['issuer']).occurrence_coverage(ambiguous_path, shifted)
+            self.assertEqual(coverage['status'], 'failed')
+            self.assertIn({'role': 'narrative:7967:consolidated:net_profit',
+                           'code': 'ambiguous_or_missing_occurrence'}, coverage['failures'])
             self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), material['sha256'])
 
 

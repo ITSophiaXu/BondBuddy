@@ -35,11 +35,33 @@ ALIASES = {
     'net_assets': ('净资产', '所有者权益', '所有者权益合计', '股东权益', '股东权益合计',
                    '所有者权益(或股东权益)合计'),
     'net_profit': ('净利润',),
+    'nonoperating_expenses': ('营业外支出',),
     'operating_cash_flow': ('经营活动产生的现金流量净额', '经营活动现金流量净额', '经营性现金流量净额'),
 }
 HYPOTHETICAL = re.compile(r'备考|模拟|假设|发行后|预测')
 UNITS = re.compile(r'单位[：:](?:人民币)?(?:元|万元|亿元)(?:[、,，/／](?:%|％))*')
 CAPTION = re.compile(r'表[0-9一二三四五六七八九十]+(?:[-－—.．][0-9一二三四五六七八九十]+)*[：:]?.+')
+OCCURRENCE_POLICY = 'rq-202509-occurrences-v1'
+# Original-source coordinates define roles only. Clean-document coordinates are
+# discovered from captions, structured ancestors and metric clauses below.
+RQ_TABLE_ROLES = (
+    (44, 26, 'consolidated', 'total_assets'), (44, 48, 'consolidated', 'total_liabilities'),
+    (44, 59, 'consolidated', 'net_assets'), (45, 25, 'consolidated', 'net_profit'),
+    (46, 12, 'consolidated', 'operating_cash_flow'), (47, 24, 'parent', 'total_assets'),
+    (47, 43, 'parent', 'total_liabilities'), (47, 50, 'parent', 'net_assets'),
+    (48, 24, 'parent', 'net_profit'), (49, 12, 'parent', 'operating_cash_flow'),
+    (54, 2, 'consolidated', 'total_assets'), (54, 3, 'consolidated', 'total_liabilities'),
+    (54, 5, 'consolidated', 'net_assets'), (54, 9, 'consolidated', 'net_profit'),
+    (54, 10, 'consolidated', 'operating_cash_flow'), (55, 5, 'consolidated', 'total_assets'),
+    (79, 5, 'consolidated', 'total_liabilities'), (98, 15, 'consolidated', 'net_profit'),
+    (45, 22, 'consolidated', 'nonoperating_expenses'), (48, 21, 'parent', 'nonoperating_expenses'),
+)
+RQ_NARRATIVE_ROLES = (
+    (46, 'consolidated', 'operating_cash_flow'), (285, 'consolidated', 'operating_cash_flow'),
+    (4816, 'consolidated', 'total_assets'), (6865, 'consolidated', 'total_liabilities'),
+    (7967, 'consolidated', 'net_profit'), (8017, 'consolidated', 'operating_cash_flow'),
+    (7931, 'consolidated', 'nonoperating_expenses'),
+)
 
 
 def compact(value):
@@ -56,20 +78,28 @@ def metric_ok(value, metric, *, cell=False):
         value = re.sub(r'^(?:[一二三四五六七八九十]+|[0-9]+)[、.．]', '', value)
         if metric == 'net_profit':
             value = re.sub(r'\(净?亏损[^()]*\)$', '', value)
+        if metric == 'nonoperating_expenses':
+            value = re.sub(r'^减[：:]', '', value)
         return value in ALIASES[metric]
-    # Narrative labels cannot be carved out of subtotal/attribution labels.
+    return bool(metric_mentions(value, metric))
+
+
+def metric_mentions(value, metric):
+    """Return whole metric mentions, excluding attribution and ratio labels."""
+    value = compact(value)
+    result = []
     for alias in sorted(ALIASES[metric], key=len, reverse=True):
         for match in re.finditer(re.escape(alias), value):
             prefix = value[:match.start()]
             suffix = value[match.end():]
             if re.search(r'(?:非?流动|固定|金融|其他|长期|短期|少数|净|归属于母公司|母公司|负债和|负债及)$', prefix):
                 continue
-            if re.match(r'(?:收益率|比率|增长率|占比|比例|比重)', suffix):
+            if re.match(r'(?:的)?(?:率|收益率|比率|增长率|占比|比例|比重)', suffix):
                 continue
-            if metric == 'net_profit' and re.search(r'(?:持续经营|终止经营|归属于.{0,12})$', prefix):
+            if metric == 'net_profit' and re.search(r'(?:持续经营|终止经营|归属(?:于)?.{0,16})$', prefix):
                 continue
-            return True
-    return False
+            result.append(match.span())
+    return result
 
 
 def period_ok(value, metric, *, cell=False):
@@ -132,13 +162,16 @@ class Reader:
         self.packages = {}
         self.roots = {}
         self.grids = {}
+        self.occurrence_documents = {}
         self.issuer = compact(issuer)
+        self.authorized_source = None
         self.compatible_caption = None
         if source is not None:
             manifest = json.loads((Path(__file__).resolve().parents[1] / 'tests/samples/2026-09-25/manifest.json').read_text(encoding='utf-8'))
             case = next(c for c in manifest['cases'] if c['case_id'] == 'rq-202509')
             baseline = next(f for f in case['files'] if f['file_id'] == 'rq-202509-01')
             if issuer == case['issuer'] and hashlib.sha256(Path(source).read_bytes()).hexdigest() == baseline['sha256']:
+                self.authorized_source = str(source)
                 # This one authorized source caption omits 发 in 发行人. Preserve
                 # its exact text; never make 行人 a generic issuer/scope alias.
                 expected = '表5-10最近两年及一期行人合并报表口径主要财务指标'
@@ -220,7 +253,7 @@ class Reader:
         if scope not in value or other in value or HYPOTHETICAL.search(value):
             raise ValueError('scope_anchor')
         families = ('资产负债表', '利润表', '现金流量表')
-        expected = '资产负债表' if row['metric'] in STOCK else '利润表' if row['metric'] == 'net_profit' else '现金流量表'
+        expected = '资产负债表' if row['metric'] in STOCK else '利润表' if row['metric'] in ('net_profit', 'nonoperating_expenses') else '现金流量表'
         if any(family in value for family in families) and expected not in value:
             raise ValueError('scope_statement_kind')
 
@@ -483,7 +516,8 @@ class Reader:
                 raise ValueError('unexpected_period_definition')
             periods = ordered_periods(expression, row['metric'])
         token = rf'{NUMBER}\s*(?:亿元|万元|元)'
-        if not re.fullmatch(rf'\s*{token}(?:\s*[、,，及和]\s*{token})+\s*[。；;]?\s*', tail):
+        ending = r'(?:[。；;]|，明细如下：)?' if row['metric'] == 'nonoperating_expenses' else r'[。；;]?'
+        if not re.fullmatch(rf'\s*{token}(?:\s*[、,，及和]\s*{token})+\s*{ending}\s*', tail):
             raise ValueError('complete_uniform_money_list_required')
         amounts = list(re.finditer(rf'(?P<amount>{NUMBER})\s*(?P<unit>亿元|万元|元)', tail))
         if len(periods) != len(amounts):
@@ -550,13 +584,212 @@ class Reader:
             raise ValueError('output_value')
         return identity
 
+    def occurrence_document(self, path):
+        """Use actual structured ancestors, excluding TOC/text-only candidates."""
+        if path in self.occurrence_documents:
+            return self.occurrence_documents[path]
+        root = self.node(path, 'word/document.xml//w:p[1]')['root']
+        body = root.find(q('body'))
+        if body is None:
+            raise ValueError('occurrence_body_required')
+        paragraphs, tables = list(root.iter(q('p'))), list(root.iter(q('tbl')))
+        p_indices = {node: index for index, node in enumerate(paragraphs)}
+        t_indices = {node: index + 1 for index, node in enumerate(tables)}
+        roles = {h['paragraph']: h for h in outline(self.parts(path))['headings']
+                 if h['recognition'] in ('outline', 'style')}
+        contexts, stack = {}, []
+        for node in body:
+            heading = roles.get(p_indices.get(node)) if node.tag == q('p') else None
+            if heading:
+                while stack and stack[-1][0] >= heading['level']:
+                    stack.pop()
+                stack.append((heading['level'], compact(heading['text'])))
+            contexts[node] = tuple(stack)
+        result = {'root': root, 'body': body, 'paragraphs': paragraphs, 'tables': tables,
+                  'paragraph_indices': p_indices, 'table_indices': t_indices, 'contexts': contexts}
+        self.occurrence_documents[path] = result
+        return result
+
+    @staticmethod
+    def metric_list_clauses(value, metric):
+        """Locate the complete source-shaped metric clause, independent of evidence."""
+        result = []
+        for match in re.finditer(r'[^。；;！？!?]+(?:[。；;！？!?]|$)', value):
+            clause = match[0]
+            if clause.count('分别为') != 1:
+                continue
+            head = clause.split('分别为')[0]
+            comma = re.fullmatch(r'(.+?)[，,]([^，,]+)', head)
+            if not comma:
+                continue
+            expression, label = compact(comma[1]), compact(comma[2])
+            label = re.sub(r'^(?:发行人|公司|本公司)(?:的)?', '', label)
+            label = re.sub(r'^(?:合并|母公司)(?:口径)?', '', label)
+            if not metric_ok(label, metric, cell=True):
+                continue
+            if expression not in ('最近两年及一期', '最近两年及一期末', '报告期内'):
+                try:
+                    ordered_periods(expression, metric)
+                except ValueError:
+                    continue
+            result.append((match.start(), match.end()))
+        return result
+
+    @staticmethod
+    def unsupported_metric_lists(value, metric):
+        """Retained monetary lists cannot disappear through parser rejection.
+
+        This intentionally recognizes a wider shape than the validated list
+        grammar. An unknown connector or reporting-period expression needs
+        review; a nearby supported copy cannot replace that retained clause.
+        """
+        supported = set(Reader.metric_list_clauses(value, metric))
+        result = []
+        for match in re.finditer(r'[^。；;！？!?]+(?:[。；;！？!?]|$)', value):
+            if (match.start(), match.end()) in supported:
+                continue
+            clause = compact(match[0])
+            for _, end in metric_mentions(clause, metric):
+                tail = clause[end:]
+                amounts = [m for m in re.finditer(NUMBER, tail)
+                           if not tail[m.end():].startswith(('%', '％', '年', '月'))]
+                if len(amounts) >= 2 and re.search(NUMBER + r'(?:亿元|万元|元)', tail):
+                    result.append((match.start(), match.end()))
+                    break
+        return result
+
+    def target_amount_candidates(self, path, document, table, metric, source_interval):
+        """Find the current amount under its real header in the retained grid slot."""
+        candidates = []
+        grid = self.grid(table)
+        for ri, cells in enumerate(grid):
+            if not cells or not metric_ok(' '.join(paragraph_text(p) for p in cells[0][2].iter(q('p'))), metric, cell=True):
+                continue
+            for ci, (a, b, node) in enumerate(cells):
+                amount = ' '.join(paragraph_text(p) for p in node.iter(q('p'))).strip()
+                if (a, b) != source_interval or b - a != 1 or not re.fullmatch(NUMBER, amount):
+                    continue
+                if node.find(q('tcPr') + '/' + q('vMerge')) is not None:
+                    continue
+                valid_header = False
+                for pr, headers in enumerate(grid[:ri]):
+                    for pa, pb, header in headers:
+                        value = ' '.join(paragraph_text(p) for p in header.iter(q('p')))
+                        if not pa <= a < b <= pb or not period_ok(value, metric, cell=True):
+                            continue
+                        if header.find(q('tcPr') + '/' + q('vMerge')) is not None:
+                            continue
+                        overridden = any(
+                            re.search(r'比例|占比|比重|百分比|[%％]', text) or re.search(PERIOD, text)
+                            for lower in grid[pr + 1:ri] for la, lb, cell in lower if la <= a < b <= lb
+                            for text in [compact(' '.join(paragraph_text(p) for p in cell.iter(q('p'))))])
+                        if not overridden:
+                            valid_header = True
+                if valid_header:
+                    loc = f'word/document.xml#table={document["table_indices"][table]},row={ri + 1},cell={ci + 1}'
+                    candidates.append((loc, 'whole_cell'))
+        return candidates
+
+    def required_occurrence_targets(self, clean):
+        if self.authorized_source is None:
+            raise ValueError('authorized_occurrence_source_required')
+        source = self.occurrence_document(self.authorized_source)
+        output = self.occurrence_document(clean)
+        required = []
+        for table_number, row_number, scope, metric in RQ_TABLE_ROLES:
+            role = f'table:{table_number}:{scope}:{metric}'
+            table = source['tables'][table_number - 1]
+            source_location = self.node(self.authorized_source,
+                f'word/document.xml#table={table_number},row={row_number},cell=2')
+            if table not in source['contexts'] or not metric_ok(
+                    paragraph_text(table.findall(q('tr'))[row_number - 1].findall(q('tc'))[0].find(q('p'))), metric, cell=True):
+                raise ValueError('authorized_occurrence_table_shape_changed')
+            caption = compact(paragraph_text(self.caption(table)))
+            context = source['contexts'][table]
+            tables = []
+            for candidate in output['tables']:
+                if output['contexts'].get(candidate) != context:
+                    continue
+                try:
+                    if compact(paragraph_text(self.caption(candidate))) == caption:
+                        tables.append(candidate)
+                except ValueError:
+                    continue
+            candidates = []
+            if len(tables) == 1:
+                candidates = self.target_amount_candidates(clean, output, tables[0], metric, self.interval(source_location))
+            required.append({'role': role, 'scope': scope, 'metric': metric, 'kind': 'table',
+                             'candidates': candidates, 'ambiguous': len(tables) > 1 or len(candidates) > 1})
+        for paragraph_number, scope, metric in RQ_NARRATIVE_ROLES:
+            paragraph = source['paragraphs'][paragraph_number - 1]
+            if paragraph not in source['contexts'] or len(self.metric_list_clauses(paragraph_text(paragraph), metric)) != 1:
+                raise ValueError('authorized_occurrence_narrative_shape_changed')
+            context = source['contexts'][paragraph]
+            candidates = []
+            unsupported = []
+            for candidate in output['body']:
+                if candidate.tag != q('p') or output['contexts'].get(candidate) != context:
+                    continue
+                text = paragraph_text(candidate)
+                unsupported.extend(self.unsupported_metric_lists(text, metric))
+                for start, end in self.metric_list_clauses(text, metric):
+                    loc = f'word/document.xml//w:p[{output["paragraph_indices"][candidate] + 1}]'
+                    candidates.append((loc, start, end))
+            required.append({'role': f'narrative:{paragraph_number}:{scope}:{metric}',
+                             'scope': scope, 'metric': metric, 'kind': 'narrative_list',
+                             'candidates': candidates, 'ambiguous': len(candidates) > 1,
+                             'unsupported': bool(unsupported)})
+        return required
+
+    def occurrence_coverage(self, clean, verified):
+        required_count = len(RQ_TABLE_ROLES) + len(RQ_NARRATIVE_ROLES)
+        result = {'policy': OCCURRENCE_POLICY, 'status': 'failed', 'required_count': required_count,
+                  'located_count': 0, 'covered_count': 0, 'covered_role_ids': [], 'failures': []}
+        try:
+            targets = self.required_occurrence_targets(clean)
+        except (ValueError, KeyError, IndexError, TypeError):
+            result['failures'].append({'code': 'authorized_source_roles_unavailable'})
+            return result
+        used = set()
+        for target in targets:
+            role, candidates = target['role'], target['candidates']
+            if target.get('unsupported'):
+                result['failures'].append({'role': role, 'code': 'unsupported_occurrence_clause'})
+                continue
+            if target['ambiguous'] or len(candidates) != 1:
+                result['failures'].append({'role': role, 'code': 'ambiguous_or_missing_occurrence'})
+                continue
+            result['located_count'] += 1
+            candidate = candidates[0]
+            matches = []
+            for record in verified:
+                identity = record['identity']
+                if (record['scope'], record['metric'], record['kind']) != (target['scope'], target['metric'], target['kind']):
+                    continue
+                if target['kind'] == 'table':
+                    matches_role = identity == candidate
+                else:
+                    matches_role = (identity[0] == candidate[0] and len(identity) == 3
+                                    and candidate[1] <= identity[1] < identity[2] <= candidate[2])
+                if matches_role:
+                    matches.append(identity)
+            if len(matches) != 1 or matches[0] in used:
+                result['failures'].append({'role': role, 'code': 'required_occurrence_not_independently_checked'})
+                continue
+            used.add(matches[0])
+            result['covered_role_ids'].append(role)
+        result['covered_count'] = len(result['covered_role_ids'])
+        if len(targets) == result['located_count'] == result['covered_count'] == required_count and not result['failures']:
+            result['status'] = 'passed'
+        return result
+
 
 def inspect(source_path, pdfs, data):
     source = outline(package(Path(source_path)))
     chapters = ['preamble'] + ['p:' + str(h['paragraph']) + ':' + hashlib.sha256(h['text'].encode()).hexdigest()
                                for h in source['headings'] if h['level'] == 0]
     pages = [len(PdfReader(p).pages) for p in pdfs]
-    reader, books, failures = Reader(source=source_path, issuer=data.get('issuer', '')), {}, []
+    reader, books, failures, verified = Reader(source=source_path, issuer=data.get('issuer', '')), {}, [], []
     try:
         for index, row in enumerate(data['financial_checks']):
             try:
@@ -577,12 +810,15 @@ def inspect(source_path, pdfs, data):
                     if identity in seen:
                         raise ValueError('duplicate_amount_span')
                     seen.add(identity)
+                    verified.append({'scope': row['scope'], 'metric': row['metric'], 'identity': identity,
+                                     'kind': 'narrative_list' if locator.get('narrative_list') is True else 'table' if 'quote' not in locator else 'narrative'})
             except Exception:
                 failures.append(index)
     finally:
         for book in books.values():
             book.close()
-    return {'chapter_ids': chapters, 'pages': pages, 'financial_failures': failures}
+    return {'chapter_ids': chapters, 'pages': pages, 'financial_failures': failures,
+            'fixed_occurrence_coverage': reader.occurrence_coverage(data['clean'], verified)}
 
 
 if __name__ == '__main__':

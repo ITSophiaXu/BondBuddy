@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 export const ACCEPTANCE_POLICY='prospectus-acceptance-v1';
-export const METRICS=Object.freeze(['total_assets','total_liabilities','net_assets','net_profit','operating_cash_flow']);
+export const METRICS=Object.freeze(['total_assets','total_liabilities','net_assets','net_profit','operating_cash_flow','nonoperating_expenses']);
 export const SCOPES=Object.freeze(['consolidated','parent']);
 const repo=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const HEX=/^[a-f0-9]{64}$/;
@@ -134,6 +134,13 @@ export function inspectAcceptanceArtifacts(root,source,pdfs,financial){
   ensure(!result.error&&result.status===0,'INDEPENDENT_INSPECTION_FAILED');
   try{return JSON.parse(result.stdout);}catch{fail('INDEPENDENT_INSPECTION_FAILED');}
 }
+export function validateFixedOccurrenceCoverage(coverage){
+  ensure(coverage?.policy==='rq-202509-occurrences-v1'&&coverage.status==='passed'
+    &&coverage.required_count===27&&coverage.located_count===27&&coverage.covered_count===27
+    &&Array.isArray(coverage.covered_role_ids)&&coverage.covered_role_ids.length===27
+    &&coverage.covered_role_ids.every(text)&&new Set(coverage.covered_role_ids).size===27
+    &&Array.isArray(coverage.failures)&&coverage.failures.length===0,'FIXED_OCCURRENCE_COVERAGE_INCOMPLETE');
+}
 export async function verifyProspectusAcceptance({root=repo,file=process.env.BB_PROSPECTUS_ACCEPTANCE_FILE,now=Date.now()}={}){
   ensure(text(file),'FILE_REQUIRED');
   const evidenceFile=resolve(root,file);let raw;
@@ -177,6 +184,7 @@ export async function verifyProspectusAcceptance({root=repo,file=process.env.BB_
   const inspection=inspectAcceptanceArtifacts(root,files.source.path,[files.source_pdf.path,files.tracked_pdf.path,files.clean_pdf.path],
     {financial_checks:c.financial_checks,materials:materialPaths,clean:files.clean.path,issuer:golden.issuer});
   ensure(Array.isArray(inspection.financial_failures)&&inspection.financial_failures.length===0,'FINANCIAL_ARTIFACT_VALUE_MISMATCH');
+  validateFixedOccurrenceCoverage(inspection.fixed_occurrence_coverage);
   ensure(inspection.chapter_ids.length>=5,'SOURCE_OUTLINE_INCOMPLETE');
   validateChapterCoverage(c.chapters,inspection.chapter_ids,reviewer.id);
   ensure(review.reviewer_id===reviewer.id&&review.generated_by_model===false&&review.facts_verified_by_human===true

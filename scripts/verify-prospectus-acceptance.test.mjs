@@ -8,7 +8,7 @@ import { join,resolve,dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { ACCEPTANCE_POLICY,METRICS,SCOPES,verifyProspectusAcceptance,validateBinding,validateChapterCoverage,
-  equalRoundedAmount,validateFinancialChecks,validateHumanReviewer,validateMeasuredUsage,validateRealModelRecord,inspectAcceptanceArtifacts } from './verify-prospectus-acceptance.mjs';
+  equalRoundedAmount,validateFinancialChecks,validateHumanReviewer,validateMeasuredUsage,validateRealModelRecord,inspectAcceptanceArtifacts,validateFixedOccurrenceCoverage } from './verify-prospectus-acceptance.mjs';
 
 test('release acceptance fails when its private evidence file is missing',async()=>{
   await assert.rejects(verifyProspectusAcceptance({file:''}),/FILE_REQUIRED/);
@@ -95,6 +95,17 @@ test('financial review covers both scopes, correct quarter, converted amounts an
     rows=>{for(const r of rows){r.output.locators.pop();r.expected_occurrences=1;}}]){
     const rows=financialRows();mutate(rows);assert.throws(()=>validateFinancialChecks(rows,materials,'synthetic-reviewer'));
   }
+});
+
+test('operator occurrence counts cannot replace the independent fixed-case coverage result',()=>{
+  const result={policy:'rq-202509-occurrences-v1',status:'passed',required_count:27,located_count:27,covered_count:27,
+    covered_role_ids:Array.from({length:27},(_,i)=>`synthetic-role-${i}`),failures:[]};
+  validateFixedOccurrenceCoverage(result);
+  for(const value of [undefined,{}, {...result,status:'failed'}, {...result,required_count:18},
+    {...result,located_count:23}, {...result,covered_count:23}, {...result,covered_role_ids:result.covered_role_ids.slice(1)},
+    {...result,covered_role_ids:result.covered_role_ids.map(()=>result.covered_role_ids[0])},
+    {...result,failures:[{code:'required_occurrence_not_independently_checked'}]}])
+    assert.throws(()=>validateFixedOccurrenceCoverage(value),/FIXED_OCCURRENCE_COVERAGE_INCOMPLETE/);
 });
 test('independent reader rejects invented source cells, wrong source amounts and nonexistent or wrong output positions',()=>{
   const root=resolve(dirname(fileURLToPath(import.meta.url)),'..'),temp=mkdtempSync(join(tmpdir(),'bb-synthetic-financial-validator-'));

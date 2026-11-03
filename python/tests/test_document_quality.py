@@ -177,6 +177,29 @@ class DocumentQualityTests(unittest.TestCase):
                                  'before': node['text'], 'after': '第一章 新编摘要'}])
         self.assertIn('WORD_SOURCE_OUTLINE_CHANGED', self.codes(report))
 
+    def test_basic_information_value_update_keeps_true_heading_sequence(self):
+        doc = Document(self.source)
+        for text in ['1、发行人名称：合成发行人', '2、法定代表人：合成人员甲', '3、设立日期：合成日期']:
+            doc.add_paragraph(text)
+        doc.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        node = self.node('2、法定代表人：合成人员甲')
+        report = self.generate([{'id': 'basic-information', 'kind': 'replace_text', 'node_id': node['node_id'],
+                                 'before': node['text'], 'after': '2、法定代表人：【待人工确认】'}])
+        self.assertEqual(report['status'], 'passed', report)
+        self.assertEqual(report['metrics']['outline_status'], 'unchanged')
+        self.assertEqual(report['factual_accuracy'], 'not_verified')
+
+    def test_unstyled_colon_title_rewrite_remains_blocked(self):
+        doc = Document(self.source)
+        doc.add_paragraph('一、风险因素：财务风险')
+        doc.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        node = self.node('一、风险因素：财务风险')
+        report = self.generate([{'id': 'rename-colon-heading', 'kind': 'replace_text', 'node_id': node['node_id'],
+                                 'before': node['text'], 'after': '一、风险因素：经营风险'}])
+        self.assertIn('WORD_SOURCE_OUTLINE_CHANGED', self.codes(report))
+
     def test_arabic_heading_numbers_cannot_be_normalized_away(self):
         doc = Document(self.source)
         doc.paragraphs[0].text = '1 财务状况'
