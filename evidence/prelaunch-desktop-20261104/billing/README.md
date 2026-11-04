@@ -9,6 +9,7 @@
 | 付款与关单同时完成时，已付款结果丢失或待执行任务未恢复 | 付款胜出显示已支付，返回准确的原等待任务且只恢复一次；不创建替代订单。旧单已确认结束后，即使后续账号读取失败，仍保留已结束结果。 | 浏览器使用 synthetic 路由与订单，不等于真实支付通知、数据库或 worker 联调。 |
 | 账号轮询打断充值、退款输入或阅读 | 聚焦 input/textarea/select、IME 组合输入及打开的对话框期间继续取数，但延后被动整页重绘；恢复空闲或显式操作时更新。充值值/光标、退款控件、实际质量说明输入及展开的扣费规则保持。 | 自动化覆盖 Edge 桌面；静态原型没有 API 轮询和 IME 重绘，截图不能证明此行为。 |
 | 离开账号页后支付异步回调把 URL 改回账号页 | 分别延迟关单和刷新支付后的历史读取，在此期间点击“更新募集书”；释放响应后仍保留目标页面及 `#update`，同一订阅 POST 仅一次。 | 只覆盖这两条已定位的异步导航路径。 |
+| 渠道未开放却从任务直接引导“订阅或充值” | 全局及可达局部不足/耗尽入口改为查看积分或余额与支付渠道状态；明确准备内容、原请求或已完成文件保留。精确恢复链接、原 body/key、单次恢复与显式开始语义仍由既有场景验证。 | 纯文案候选，未部署；没有开通渠道、补款或改动恢复逻辑。线上 B01 仍阻断，原型偏离仍待产品确认。 |
 
 最终浏览器回归由主 agent 在本轮最终账号页 diff 上执行（Windows、Edge，1440×960 viewport）：
 
@@ -40,6 +41,31 @@ npx playwright test tests/subscription-account.spec.ts --grep 'leaving during th
 
 早期辅助 fixture 调整中出现的等待超时与标题定位错误未作为产品缺陷计数。主 agent 另已执行仓库 build 与 `check:contracts`，均 exit 0；本目录的 49 项不是后端支付数据库回归计数。
 
+## 余额不足提示补扫与定向回归
+
+在 `d7f918f981a415655aa24e1c5aafbd3b2ceb5132` 之上的文案工作树，补扫修改 11 个前端源文件中的不足/耗尽提示：全局通知、募集书更新、助手、复核及其进度、材料生成、文件一致性与逐份检查、底稿、旧账号页和进度说明。入口改为“查看积分与支付状态”或“查看余额与支付状态”，旧账号页不再把不足一律说成余额 0。底稿按钮突出实际动作“继续本批（需足够积分）”。已启用支付表单中的充值和支付操作保持原标签。
+
+没有更改 href、事件处理、请求、API、原型或恢复逻辑。自动计费仍回到准确的原任务，底稿保留已完成文件并只继续剩余项；旧更新、复核、材料与助手入口仍保留明确开始/重新发送要求。独立只读复核未发现行为改动。本次沿原有提示位置和导航修正文案，不新增纯文案镜像测试或截图，也不代签产品/视觉确认。
+
+Windows、Node `v26.13.0`、Edge，专用 Vite `127.0.0.1:5182`。参数化场景只选择 1440 桌面变体，其余沿用既有默认 1280 viewport；旧 M2 场景内部原有的 390 检查继续运行，未增加手机端需求。浏览器和前端实际运行，金额、任务、支付渠道和订单均为 synthetic HTTP fixture；没有真实支付、数据库或模型调用。
+
+```powershell
+# apps/web
+$env:BB_E2E_BROWSER_CHANNEL='msedge'
+$env:BB_E2E_BASE_URL='http://127.0.0.1:5182'
+npm exec playwright -- test tests/automatic-task-billing.spec.ts tests/workpaper-batch.spec.ts tests/file-template-preparation.spec.ts tests/project-execution.spec.ts tests/review-workspace.spec.ts tests/project-assistant.spec.ts tests/m4-workspace.spec.ts tests/subscription-account.spec.ts --grep 'insufficient balance preserves only|local consistency funding link 1440|local per-file check funding|asynchronous batch shortage|mixed package funding|M2 shortage preserves|dynamic balance:.*1440|paid review starts.*1440|update card has no upfront|insufficient credits show balance|dynamic material progress.*1440|disables unavailable payment capabilities' --output ../../.local/playwright-billing-copy-focused
+# 首轮 11 passed / 1 failed，1.1m，exit 1
+
+npm exec playwright -- test tests/workpaper-batch.spec.ts --grep 'asynchronous batch shortage' --output ../../.local/playwright-billing-copy-workpaper
+# 修正该旧场景的 fixture wire 适配后，1 passed / 0 failed，9.3s，exit 0
+```
+
+首轮失败发生在底稿提示和准确恢复 href 断言通过之后：该场景的订阅目录、账号、订单和批次返回值仍直接输出数字，未调用现有 `fixtureBody` 生成现行字符串金额协议，账号页因此读数失败并回退旧页，找不到充值控件。仅改该场景复用既有 `fixtureBody`/`fixtureRequest`，未放宽生产校验或修改任务/付款预期；原请求重放、手动暂停批次不受影响、一次订单及刷新不重复执行全部通过。已通过的 11 项未重复执行，两轮不相加为 13 项。`local-material-dynamic.spec.ts` 的旧文案选择器同步，但本轮未执行该 opt-in live 场景。
+
+原始日志保留：[首轮 12 项](billing-copy-focused.log)（SHA-256 `e22fe8f7fef792598b20ba7eb524b8dbc3fdc66f87511828c2708d24a34784ec`）；[底稿单项复验](billing-copy-workpaper.log)（SHA-256 `53f7e104319937f0eb9bcd94c4c3a919c1e9d63513bed056930a7f82a0714395`）。主 agent 在源文案最终调整后再次执行根 `npm run build` 与 `npm run check:contracts`，均 exit 0；日志在忽略目录 `.local/final-neutral-copy-build.log`、`.local/final-neutral-copy-contracts.log`，保留既有 chunk 体积提示。
+
+这次只解决“不知道渠道状态却直接引导付款”的误导。线上无自助支付通路、真实充值和恢复未验收的 B01 阻断保持；不能将这些合成恢复结果写成真实资金链通过。
+
 ## 截图来源与原型对照
 
 原型页面为 `product-prototype/public/account-credits.html?subscription=1`，交互脚本 `product-prototype/public/subscription-account-prototype.js`，样式 `subscription-billing.css`、`subscription-experience-prototype.css`；本轮读取版本为上述基线 `7f3c4ac77`。实现入口为 `apps/web/src/subscription-billing-page.ts`，测试为 `apps/web/tests/subscription-account.spec.ts`。
@@ -56,6 +82,6 @@ npx playwright test tests/subscription-account.spec.ts --grep 'leaving during th
 
 对照沿用账号信息/余额卡、月付年付切换、套餐卡、按需充值及折叠规则的位置。原型和实现的示例账号、导航、说明文案、历史记录及全页高度存在差异；全页截图中的固定侧栏位置还受采集时滚动影响。因此这组原始全页图不能替代仓库要求的同尺寸逐屏视觉验收。
 
-**待产品确认的偏离：** 静态原型点套餐即模拟付款成功，充值也直接模拟到账，没有待付款二维码、关单、重新选择、未知结果、持久化拒绝或异步导航竞态。新增“取消本次付款并重新选择”按钮及其确认/未知/终态状态提示未找到对应已批准原型，仍待产品负责人确认；本记录没有确认人，也不视为已批准。规则展开和输入保留符合原有阅读/输入流程，但静态截图无法验证动态刷新细节。未修改原型来制造一致性。
+**待产品确认的偏离：** 静态原型点套餐即模拟付款成功，充值也直接模拟到账，没有待付款二维码、关单、重新选择、未知结果、持久化拒绝或异步导航竞态。新增“取消本次付款并重新选择”按钮及其确认/未知/终态状态提示未找到对应已批准原型，仍待产品负责人确认；本记录没有确认人，也不视为已批准。本次中性状态文案沿用原提示位置和导航，未修改原型，不能代替上述产品确认。规则展开和输入保留符合原有阅读/输入流程，但静态截图无法验证动态刷新细节。未修改原型来制造一致性。
 
-本轮未覆盖手机、真实付款/退款/关单、支付渠道通知、生产账号账务写入、真实模型调用或客户材料；不得据此宣称正式收费链路已经端到端验收。
+本轮未开展新增手机端验收，未覆盖真实付款/退款/关单、支付渠道通知、生产账号账务写入、真实模型调用或客户材料；不得据此宣称正式收费链路已经端到端验收。

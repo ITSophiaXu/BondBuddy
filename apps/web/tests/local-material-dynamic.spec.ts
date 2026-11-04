@@ -32,7 +32,7 @@ test('real material upload, one-point debit, process log and durable pause witho
     await expect(page.locator('.authoring-credit-meter')).toContainText('可用余额 0 积分');
     await expect(page.locator('[aria-label=生成过程]')).toContainText('积分已用完，已保存进度并暂停');
     await expect(page.locator('.m4-tab-close')).toHaveCount(0);await expect(page.getByText('来源与版本',{exact:true})).toHaveCount(0);
-    await expect(page.getByRole('link',{name:'充值积分',exact:true})).toBeVisible();
+    await expect(page.getByRole('link',{name:'查看积分与支付状态',exact:true})).toBeVisible();
     await page.reload();await expect(page.locator('.task-progress')).toContainText('积分已用完，任务已暂停');
     for(const width of [1440,390]){await page.setViewportSize({width,height:width===1440?960:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:join(evidence,`real-exhausted-${width}.png`),fullPage:true});}
     const stored=(await pool.query('SELECT r.state,c.billing_policy,c.charged_points,j.checkpoint FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id JOIN bb_credit_reservations c ON c.id=r.reservation_id WHERE r.id=$1 AND r.owner_user_id=$2',[run.run_id,owner])).rows[0];

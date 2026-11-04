@@ -126,6 +126,7 @@ test('update card has no upfront price and recharge retains the project',async({
  await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('.ba-task')).toContainText('仅更新本期');
  await expect(page.locator('.ba-task .ba-credits')).toHaveCount(0);
  await expect(page.locator('.ba-task a.ba-primary')).toHaveAttribute('href','#/account?project=source-project');
+  await expect(page.locator('.ba-task a.ba-primary')).toHaveText('查看余额与支付状态');
  card.balance.available=17900;
  await expect(page.locator('.ba-task').getByRole('button',{name:'开始更新',exact:true})).toBeVisible({timeout:12000});expect(s.executions).toHaveLength(0);
  await page.locator('.ba-task').getByRole('button',{name:'开始更新',exact:true}).click();

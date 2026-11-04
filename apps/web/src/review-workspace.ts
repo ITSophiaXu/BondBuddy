@@ -908,9 +908,9 @@ export class ReviewWorkspace {
     if(isAutomaticCharge(quote.quote)){request.quote_id=quote.quote.quote_id;return true;}
     if(isCnyPrice(quote.quote)?int64(quote.shortage)>0n:quote.quote.task_type in DYNAMIC_REVIEW_BILLING_TASKS?int64(quote.balance.available)<1n:int64(quote.shortage)>0n){
       if(isCnyPrice(quote.quote)){
-        this.openDialog('服务余额不足',`<p>本次总价 ${esc(displayPrice(quote.quote))}，当前余额不足。材料和问题范围已保留，尚未开始。</p><a class="btn primary" href="${esc(rechargeHref(this.projectId))}" id="review-recharge-link">按需充值</a>`,[]);return false;
+        this.openDialog('服务余额不足',`<p>本次总价 ${esc(displayPrice(quote.quote))}，当前余额不足。材料和问题范围已保留，尚未开始。请到账号页查看余额与支付渠道状态；余额充足后返回项目明确开始，任务不会自动执行。</p><a class="btn primary" href="${esc(rechargeHref(this.projectId))}" id="review-recharge-link">查看余额与支付状态</a>`,[]);return false;
       }
-      this.openDialog('积分不足',`<p>积分不足，请充值后继续任务。</p><p>本次材料、要求与问题范围已保留。充值到账后请返回项目明确开始，任务不会自动执行。</p><a class="btn primary" href="${esc(rechargeHref(this.projectId))}" id="review-recharge-link">充值积分</a>`,[]);
+      this.openDialog('积分不足',`<p>积分不足，本次任务尚未开始。</p><p>本次材料、要求与问题范围已保留。请到账号页查看积分与支付渠道状态；积分充足后请返回项目明确开始，任务不会自动执行。</p><a class="btn primary" href="${esc(rechargeHref(this.projectId))}" id="review-recharge-link">查看积分与支付状态</a>`,[]);
       this.dialog?.querySelector('#review-recharge-link')?.addEventListener('click',()=>this.dialog?.close());
       return false;
     }
@@ -934,12 +934,12 @@ export class ReviewWorkspace {
       const changed=charge.progress?.policy==='authoring_balance_v2'&&(charge.progress.charged_points!==this.charge?.progress?.charged_points||charge.progress.available_points!==this.charge?.progress?.available_points);
       this.charge=charge;this.chargeKey=key;this.chargeError=false;
       if(changed)window.dispatchEvent(new Event('bondbuddy:credits-changed'));
-      if(charge.progress?.credit_exhausted&&this.creditPromptRun!==run.run_id){if(this.dialog?.open||this.followupSaving)this.message('当前任务积分已用尽，已保留处理结果。请完成当前填写后查看任务并充值。');else{this.creditPromptRun=run.run_id;this.rechargeDialog();}}
+      if(charge.progress?.credit_exhausted&&this.creditPromptRun!==run.run_id){if(this.dialog?.open||this.followupSaving)this.message('当前任务积分已用尽，已保留处理结果。请完成当前填写后查看任务、积分与支付渠道状态。');else{this.creditPromptRun=run.run_id;this.rechargeDialog();}}
       if(!charge.progress?.credit_exhausted)this.creditPromptRun=undefined;
     }).catch(()=>{if(this.live())this.chargeError=true;}).finally(()=>{this.chargeLoading=false;this.chargeFetchedAt=Date.now();if(this.live())this.renderMaking();});
   }
   private rechargeDialog(){
-    this.openDialog('积分已用完','<p>当前复核会在保存进度后暂停，已完成的工作保留。充值到账后继续同一任务。</p><a class="btn primary" id="review-recharge-link" href="'+esc(rechargeHref(this.projectId))+'">充值积分</a>',[]);
+    this.openDialog('积分已用完','<p>当前复核会在保存进度后暂停，已完成的工作保留。请到账号页查看积分与支付渠道状态；积分充足后继续同一任务。</p><a class="btn primary" id="review-recharge-link" href="'+esc(rechargeHref(this.projectId))+'">查看积分与支付状态</a>',[]);
     this.dialog?.querySelector('#review-recharge-link')?.addEventListener('click',()=>this.dialog?.close());
   }
   private async controlRun(action:'pause'|'resume'){

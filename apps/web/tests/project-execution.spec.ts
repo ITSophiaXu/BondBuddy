@@ -339,10 +339,10 @@ async function openListedRun(page: Page, run: Dto<'RunResponse'>) {
 test('M2 shortage preserves inputs, recharge never executes, returning starts directly',async({page})=>{
   const state=fixture();state.paid=true;state.checkStatus='ready';state.project.update_details!.authoring_mode='unified_v1';
   await page.setViewportSize({width:1440,height:960});await setup(page,state);
-  await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('积分不足，请充值后继续更新');
+  await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote h3')).toHaveText('积分不足');await expect(page.locator('#fixed-quote')).toContainText('查看余额与支付渠道状态；余额充足后返回项目点击继续更新');
   expect(state.executes).toHaveLength(0);await expect(page.locator('#execute-input')).toBeDisabled();
   const evidence=process.env.BB_UX_EVIDENCE_DIR;if(evidence){await mkdir(evidence,{recursive:true});await page.locator('#fixed-quote').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'implementation-shortage-1440.png')});await page.setViewportSize({width:390,height:844});await page.locator('#fixed-quote').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'implementation-shortage-390.png')});await page.setViewportSize({width:1440,height:960});}
-  await page.locator('#fixed-quote').getByRole('link',{name:'充值积分',exact:true}).click();
+  await page.locator('#fixed-quote').getByRole('link',{name:'查看余额与支付状态',exact:true}).click();
   await expect(page.getByRole('heading',{name:'按需充值',exact:true})).toBeVisible();
   if(evidence)await page.screenshot({path:join(evidence,'m2-billing-desktop.png')});
   await expect(page.locator('[data-pack]')).toHaveCount(4);
@@ -1816,11 +1816,11 @@ for(const width of [1440,390])test('dynamic balance: 1 point starts, exhaustion 
  const run=[...state.runs.values()][0];
  state.liveProgress={...state.liveProgress,accrued_points:1,charged_points:1,available_points:0,credit_exhausted:true,clock_running:false};state.available=0;
  run.state='paused';run.stage='credits_exhausted';state.eventSeq++;
- await expect(page.getByRole('dialog')).toBeVisible();await expect(page.getByRole('dialog')).toContainText('充值后继续');
+ await expect(page.getByRole('dialog')).toBeVisible();await expect(page.getByRole('dialog')).toContainText('查看积分与支付渠道状态；积分充足后自动继续本次任务');
  const evidence=process.env.BB_UX_EVIDENCE_DIR;
  if(evidence){await mkdir(evidence,{recursive:true});await page.screenshot({path:join(evidence,'dynamic-exhausted-'+width+'.png'),fullPage:true});}
- await page.getByRole('button',{name:'稍后充值'}).click();
- await page.reload();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'稍后充值'}).click();
+ await page.getByRole('button',{name:'稍后处理'}).click();
+ await page.reload();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'稍后处理'}).click();
  state.available=20000;state.liveProgress={...state.liveProgress,available_points:20000,credit_exhausted:false,clock_running:true};run.state='running';run.stage='model_generation';state.eventSeq++;
  await expect(page.locator('.authoring-credit-meter')).toContainText('可用余额 20,000 积分');
  await expect(page.getByRole('dialog')).not.toBeVisible();expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);

@@ -144,7 +144,7 @@ test('mixed package funding return replays the exact original request without a 
  await expect(page.locator('.fg-match-summary')).toContainText('已匹配 2 / 2 项');
  await page.locator('#fg-more-types').click();await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  await page.getByRole('button',{name:'生成本批文件',exact:true}).click();
- const link=page.locator('#billing-task-notice').getByRole('link',{name:'订阅或充值，继续原任务',exact:true});await expect(link).toBeVisible();
+ const link=page.locator('#billing-task-notice').getByRole('link',{name:'查看积分与支付状态',exact:true});await expect(link).toBeVisible();
  expect(requests).toHaveLength(1);expect(state.submissions).toHaveLength(0);
  const resumeId=new URLSearchParams((await link.getAttribute('href'))!.split('?')[1]).get('resume_request')!;
  const saved=await page.evaluate(async({owner,id})=>{const recovery=await import('/src/'+'billing-task-recovery.ts');return {task:await recovery.readBillingTask(owner,id),returnTo:await recovery.billingTaskReturnTo(owner,id)};},{owner:ids.owner,id:resumeId});

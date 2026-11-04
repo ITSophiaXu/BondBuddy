@@ -359,7 +359,7 @@ export class ProjectAssistant {
     if(this.currentUploads().some(u=>!uploadReady(u)))throw new AssistantInputError('请先确认附件已保存并加入原对话，或停止本机追踪。');
     await this.flush();const id=this.workspace.topic.topic_id,content=this.text.trim(),context=this.context();
     if(!this.qaQuote||this.qaQuote.content!==content||scopePending(this.qaQuote.value.quote)){const value=await this.businessWrite(id,()=>this.m4.quote(id,{kind:'qa',content,context}));this.qaQuote={value,content,key:this.qaQuote?.content===content?this.qaQuote.key:crypto.randomUUID()};this.runtimeGeneration++;this.cache();if(!isAutomaticCharge(value.quote)&&(int64(value.quote.points)>0n||scopePending(value.quote)))return;}
-    const q=this.qaQuote;if(int64(q.value.shortage)>0n&&!isAutomaticCharge(q.value.quote))throw new AssistantInputError(isCnyPrice(q.value.quote)?'服务余额不足，请核对本次总价并按需充值。':'积分不足，请充值后重新发送。');
+    const q=this.qaQuote;if(int64(q.value.shortage)>0n&&!isAutomaticCharge(q.value.quote))throw new AssistantInputError(isCnyPrice(q.value.quote)?'服务余额不足，请核对本次总价，并到账号页查看余额与支付渠道状态；余额充足后返回重新发送。':'积分不足，原问题已保留。请到账号页查看积分与支付渠道状态；积分充足后返回重新发送。');
     if(isCnyPrice(q.value.quote)&&!await confirmCnyTask('确认本次回答费用',q.value.quote,'按当前问题和已选材料回答；新增问题或范围须另行确认。'))return;
     await this.businessWrite(id,()=>this.m4.message(id,{submission_request_id:q.key,content,context,quote_id:q.value.quote.quote_id}));
     this.text='';this.qaQuote=undefined;this.changed();await this.flush();await this.poll();
@@ -446,7 +446,7 @@ export class ProjectAssistant {
       const refreshed=c.operation==='update'?await this.api.creditQuote(c.project_id,{input_revision:c.input_revision!,input_hash:c.input_hash!},this.controller.signal):c.operation==='review'?await new ReviewApi(this.api,c.project_id,this.controller.signal).quoteExecution(this.reviewRequest(c)):await this.m4.quote(topic,{kind:'document',document_type:c.document_type as M4DocumentType,expected_draft_version:c.expected_draft_version!});
       if(!refreshed.quote)throw new ApiError(503,'BILLING_NOT_READY');c.quote=refreshed.quote;c.balance=refreshed.balance;c.quote_id=refreshed.quote.quote_id;
       if(scopePending(c.quote)){this.status=scopeStatusLabel(c.quote)+'，尚未收费。准备内容保留，可查看账户报价明细或返回调整。';return;}
-      if(int64(refreshed.shortage)>0n&&!isAutomaticCharge(refreshed.quote))throw new AssistantInputError('服务余额不足，请核对本次总价并按需充值。');
+      if(int64(refreshed.shortage)>0n&&!isAutomaticCharge(refreshed.quote))throw new AssistantInputError('服务余额不足，请核对本次总价，并到账号页查看余额与支付渠道状态；余额充足后返回并明确开始。');
     }
     if(isCnyPrice(c.quote)){if(!await confirmCnyTask('确认'+businessName(c.operation)+'费用',c.quote!,`${c.project_name} · ${c.operation==='update'?'材料版本 '+c.input_revision:c.operation==='review'?'复核输入版本 '+c.expected_input_version:'文件草稿版本 '+c.expected_draft_version} · 按任务卡所列要求和材料执行。`))return;if(!this.live||this.staleCard(c))throw new AssistantInputError('输入已变化，请重新核对本次任务和费用。');}
     if(c.operation==='update'){
@@ -598,7 +598,7 @@ export class ProjectAssistant {
       ${!r?scopeLinesHtml(c.quote):''}${scopePending(c.quote)&&!r?scopeLifecycleHtml(c.quote):''}
       ${r&&!finished(r.state)?taskProgress(r,c.operation==='generation'?'material':c.operation):''}
       ${r?`${this.taskLink(c)}${r.state==='succeeded'?` <button data-a="continue" data-id="${esc(c.card_id)}">继续修改</button><div data-delivery="${esc(r.run_id)}"></div>`:''}${['failed','paused'].includes(r.state)?'<p>原材料和要求已保留，可在原任务中查看原因与恢复状态。</p>':''}`:
-        `<div class="ba-card-actions"><button data-a="edit">修改信息</button>${stale?'<span>输入已变化，请重新核对任务。</span>':insufficient?`<a href="#/account?project=${encodeURIComponent(c.project_id)}" class="ba-primary">余额不足，按需充值</a>`:`<button class="ba-primary" data-a="execute" data-id="${esc(c.card_id)}"${this.busy?' disabled':''}>${scopePending(c.quote)?'刷新报价状态':c.operation==='update'?'开始更新':'确认并开始'}</button>`}</div><small>按约定交付结算；未交付部分释放预留费用。</small>`}</section>`;
+        `<div class="ba-card-actions"><button data-a="edit">修改信息</button>${stale?'<span>输入已变化，请重新核对任务。</span>':insufficient?`<a href="#/account?project=${encodeURIComponent(c.project_id)}" class="ba-primary">查看余额与支付状态</a>`:`<button class="ba-primary" data-a="execute" data-id="${esc(c.card_id)}"${this.busy?' disabled':''}>${scopePending(c.quote)?'刷新报价状态':c.operation==='update'?'开始更新':'确认并开始'}</button>`}</div><small>按约定交付结算；未交付部分释放预留费用。</small>`}</section>`;
   }
   private replyProgress(message:M4Message){
     if(message.role!=='user'||message.reply_status==='completed')return '';

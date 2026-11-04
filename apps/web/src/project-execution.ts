@@ -430,7 +430,7 @@ export class ProjectExecution {
     const q=this.quote;
     const insufficient=!!q&&(isCnyPrice(q.quote)?int64(q.shortage)>0n:int64(q.balance.available)===0n);
     quoteHost.hidden=(!insufficient&&!scopePending(q?.quote))||Boolean(activeRun)||Boolean(this.run&&!this.nextRequested);
-    quoteHost.innerHTML=scopePending(q?.quote)?`<div class="fixed-quote"><h3>${esc(scopeStatusLabel(q?.quote))}</h3>${scopeLifecycleHtml(q?.quote)}<button type="button" class="text-button" id="refresh-quote">刷新范围报价</button></div>`:insufficient?`<div class="fixed-quote"><h3>${isCnyPrice(q?.quote)?'服务余额不足':'积分不足'}，请充值后继续更新</h3><p>${isCnyPrice(q?.quote)?'本次总价 '+displayPrice(q?.quote)+'。':''}项目材料与补充要求已保留，当前没有启动更新任务。</p><a class="btn primary" href="${esc(this.rechargeLink())}">${isCnyPrice(q?.quote)?'按需充值':'充值积分'}</a><button type="button" class="text-button" id="refresh-quote">刷新余额</button></div>`:'';
+    quoteHost.innerHTML=scopePending(q?.quote)?`<div class="fixed-quote"><h3>${esc(scopeStatusLabel(q?.quote))}</h3>${scopeLifecycleHtml(q?.quote)}<button type="button" class="text-button" id="refresh-quote">刷新范围报价</button></div>`:insufficient?`<div class="fixed-quote"><h3>${isCnyPrice(q?.quote)?'服务余额不足':'积分不足'}</h3><p>${isCnyPrice(q?.quote)?'本次总价 '+displayPrice(q?.quote)+'。':''}项目材料与补充要求已保留，当前没有启动更新任务。请到账号页查看余额与支付渠道状态；余额充足后返回项目点击继续更新。</p><a class="btn primary" href="${esc(this.rechargeLink())}">查看余额与支付状态</a><button type="button" class="text-button" id="refresh-quote">刷新余额</button></div>`:'';
     quoteHost.querySelector<HTMLButtonElement>('#refresh-quote')?.addEventListener('click',()=>{void this.action(()=>this.loadQuote(),'other','read');});
     let billingHint = this.actions.querySelector<HTMLElement>('#execution-credit-hint');
     if (!billingHint) { billingHint = document.createElement('p'); billingHint.id = 'execution-credit-hint'; billingHint.className = 'muted'; this.actions.querySelector('.start-buttons')!.before(billingHint); }
@@ -493,7 +493,7 @@ export class ProjectExecution {
       const dialog = document.createElement('dialog');
       dialog.className = 'credit-recharge-dialog';
       dialog.setAttribute('aria-labelledby', 'credit-recharge-title');
-      dialog.innerHTML = `<h2 id="credit-recharge-title">积分已用完，充值后继续</h2><p>已完成的工作会保留，积分已停止扣减。当前处理保存后暂停，充值到账后自动继续本次任务。</p><div class="form-actions"><a class="button primary" href="${esc(this.rechargeLink())}">充值积分</a><button type="button" class="button secondary">稍后充值</button></div>`;
+      dialog.innerHTML = `<h2 id="credit-recharge-title">积分已用完</h2><p>已完成的工作会保留，积分已停止扣减。当前处理保存后暂停。请到账号页查看积分与支付渠道状态；积分充足后自动继续本次任务。</p><div class="form-actions"><a class="button primary" href="${esc(this.rechargeLink())}">查看积分与支付状态</a><button type="button" class="button secondary">稍后处理</button></div>`;
       dialog.querySelector('button')!.addEventListener('click', () => dialog.close());
       document.body.append(dialog); this.creditDialog = dialog; dialog.showModal();
     }
@@ -503,7 +503,7 @@ export class ProjectExecution {
     const creditSummaryFocused = document.activeElement === executionProgressHost.querySelector('.authoring-credit-meter summary');
     executionProgressHost.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div>${taskProgress(run,'update',authoringStatus(run,this.events,this.charge?.progress) ?? failedWordProgress)}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
       ${this.events.length ? `<ol class="execution-events">${authoringVisibleEvents(run,this.events).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(authoringEventLabel(event) ?? stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
-      ${needsRecharge ? `<div class="execution-summary" role="status"><strong>积分已用完，${run.state === 'paused' ? '任务已暂停' : '正在保存进度后暂停'}</strong><p>充值到账后自动继续本次任务，已完成的步骤不会重复执行。</p><a class="button primary" href="${esc(this.rechargeLink())}">充值积分</a></div>` : ''}
+      ${needsRecharge ? `<div class="execution-summary" role="status"><strong>积分已用完，${run.state === 'paused' ? '任务已暂停' : '正在保存进度后暂停'}</strong><p>请到账号页查看积分与支付渠道状态；积分充足后自动继续本次任务，已完成的步骤不会重复执行。</p><a class="button primary" href="${esc(this.rechargeLink())}">查看积分与支付状态</a></div>` : ''}
       ${authoringCreditReceipt(run,this.charge?.progress,this.charge?.quote&&this.charge.state?{...this.charge.quote,state:this.charge.state}:undefined,this.chargeError)}
       <p class="muted">${activeRun ? '关闭页面不会取消任务。编制开始后材料已锁定，仅可查看。' : this.nextRequested ? '补充材料或修改要求将用于下一轮编制，旧成果仍会保留。' : '本次材料已锁定。点击“继续修改”后可为下一轮补充材料或修改要求，旧成果仍会保留。'}</p>
       <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' + (run.state === 'running' && this.charge?.progress?.pause_requested || run.stage === 'user_paused' || run.stage === 'credits_exhausted' ? '<button class="button secondary" type="button" id="resume-run">继续本次任务</button>' : ['queued','running'].includes(run.state) ? '<button class="button secondary" type="button" id="pause-run">暂停任务</button>' : '') : ''}${run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
@@ -655,7 +655,7 @@ export class ProjectExecution {
           ? executionInputError(error, this.draft.project.kind, this.draft.fields.update_details.has_historical, this.materials, this.draft.fields.update_details.authoring_mode === 'unified_v1') : undefined;
         this.inputRejected = operation !== 'other' && error instanceof ApiError && error.status === 409 &&
           (error.code === 'INPUT_REQUIRED' || operation === 'preflight' && error.code === 'CAPABILITY_NOT_READY');
-        this.message = inputMessage ?? (error instanceof ApiError && error.code==='CREDITS_INSUFFICIENT' ? '积分不足，请充值后继续更新。' : error instanceof ApiError && error.code==='QUOTE_CHANGED' ? '计费条件已更新，请点击继续更新。' : error instanceof ApiError && error.code==='QUOTE_REQUIRED' ? '积分核验暂不可用，请稍后重新开始。' : undefined) ??
+        this.message = inputMessage ?? (error instanceof ApiError && error.code==='CREDITS_INSUFFICIENT' ? '积分不足，项目材料与要求已保留。请到账号页查看积分与支付渠道状态；积分充足后返回原任务入口继续。' : error instanceof ApiError && error.code==='QUOTE_CHANGED' ? '计费条件已更新，请点击继续更新。' : error instanceof ApiError && error.code==='QUOTE_REQUIRED' ? '积分核验暂不可用，请稍后重新开始。' : undefined) ??
           (error instanceof ApiError && error.code === 'CAPABILITY_NOT_READY'
             ? operation === 'preflight' && error.status === 409
               ? `材料或处理条件尚未就绪，请稍后重新检查；持续未恢复时联系支持。${errorReference(error)}`

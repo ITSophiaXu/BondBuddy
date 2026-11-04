@@ -71,12 +71,12 @@ function billingNotice(message:string,task?:BillingTask,retryHash?:string){
   document.querySelector('#billing-task-notice')?.remove();
   const notice=document.createElement('aside');notice.id='billing-task-notice';notice.className='billing-task-notice';notice.setAttribute('role','status');
   const text=document.createElement('p');text.textContent=message;notice.append(text);
-  if(task){const link=document.createElement('a');link.href=billingTaskRechargeHref(task);link.className='btn primary';link.textContent='订阅或充值，继续原任务';notice.append(link);
+  if(task){const link=document.createElement('a');link.href=billingTaskRechargeHref(task);link.className='btn primary';link.textContent='查看积分与支付状态';notice.append(link);
     const cancel=document.createElement('button');cancel.type='button';cancel.className='btn secondary';cancel.textContent='取消待执行任务';cancel.addEventListener('click',()=>{if(identity===task.owner)void cancelBillingTask(task.owner,task.id).then(()=>notice.remove());});notice.append(cancel);
   }else{if(retryHash){const retry=document.createElement('a');retry.href=retryHash;retry.className='btn secondary';retry.textContent='核对原任务提交';retry.addEventListener('click',event=>{if(location.hash===retryHash){event.preventDefault();void renderRoute();}});notice.append(retry);}const close=document.createElement('button');close.type='button';close.textContent='知道了';close.addEventListener('click',()=>notice.remove());notice.append(close);}
   document.body.append(notice);
 }
-window.addEventListener('bondbuddy:billing-task-needs-funds',event=>{const task=(event as CustomEvent<BillingTask>).detail;if(task.owner===identity)billingNotice(task.body.billing_resume===true?'本批底稿因积分不足暂停，已完成文件保留。完成订阅或充值并返回后，将自动继续这一批的剩余文件。':'积分不足，原任务尚未开始。完成订阅或充值并返回后，将自动继续这一个任务。',task);});
+window.addEventListener('bondbuddy:billing-task-needs-funds',event=>{const task=(event as CustomEvent<BillingTask>).detail;if(task.owner===identity)billingNotice(task.body.billing_resume===true?'本批底稿因积分不足暂停，已完成文件保留，待执行请求已保存。请到账号页查看积分与支付渠道状态；积分充足后返回，将自动继续这一批的剩余文件。':'积分不足，原任务尚未开始，待执行请求已保存。请到账号页查看积分与支付渠道状态；积分充足后返回，将自动继续这一个任务。',task);});
 let accountIdentity: { owner: string; name?: string; request?: Promise<void> } | undefined;
 let epoch = 0;
 let currentRoute = '/';

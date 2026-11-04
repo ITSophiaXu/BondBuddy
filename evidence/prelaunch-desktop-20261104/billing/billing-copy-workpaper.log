@@ -1,0 +1,8 @@
+
+Running 1 test using 1 worker
+
+(node:22760) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 tests\workpaper-batch.spec.ts:34:1 › asynchronous batch shortage pays and resumes the exact remaining batch without touching a manual pause (4.3s)
+
+  1 passed (9.3s)

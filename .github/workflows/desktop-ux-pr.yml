@@ -60,3 +60,17 @@ jobs:
           tests/review-workspace.spec.ts
           --grep 'paid review starts.*1440|enabled review never starts free|review task receipt displays|paid review response loss'
           --reporter=line
+      - name: Billing state guidance across desktop journeys
+        working-directory: apps/web
+        run: >-
+          npx playwright test
+          tests/automatic-task-billing.spec.ts
+          tests/workpaper-batch.spec.ts
+          tests/file-template-preparation.spec.ts
+          tests/project-execution.spec.ts
+          tests/review-workspace.spec.ts
+          tests/project-assistant.spec.ts
+          tests/m4-workspace.spec.ts
+          tests/subscription-account.spec.ts
+          --grep 'insufficient balance preserves only|local consistency funding link 1440|local per-file check funding|asynchronous batch shortage|mixed package funding|M2 shortage preserves|dynamic balance:.*1440|paid review starts.*1440|update card has no upfront|insufficient credits show balance|dynamic material progress.*1440|disables unavailable payment capabilities'
+          --reporter=line
