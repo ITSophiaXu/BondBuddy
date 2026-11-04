@@ -1,0 +1,33 @@
+{
+  "server": {
+    "directory": "C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/.local/prelaunch-payment-pg",
+    "port": "55434"
+  },
+  "remaining_clones": [],
+  "other_connections": [],
+  "attempts": [
+    {
+      "observed_at": "2026-11-04T05:10:05.892Z",
+      "mode": "smart",
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "pg_ctl: could not send stop signal (PID: 8200): Operation not permitted"
+    },
+    {
+      "observed_at": "2026-11-04T05:10:16.975Z",
+      "mode": "smart",
+      "exit_code": 0,
+      "stdout": "waiting for server to shut down.... done\r\nserver stopped",
+      "stderr": ""
+    }
+  ],
+  "final": {
+    "observed_at": "2026-11-04T05:10:17.021Z",
+    "status": {
+      "exit_code": 3,
+      "stdout": "pg_ctl: no server running",
+      "stderr": ""
+    },
+    "port": "ECONNREFUSED"
+  }
+}

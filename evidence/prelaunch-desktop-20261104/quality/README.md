@@ -1,6 +1,6 @@
 # 文件生成质量：覆盖分析与离线机械检查
 
-日期：2026-11-04。检查对象为本工作区的当前实现；观察到的 HEAD 为 `ecfd757407a499026df487f2ab01486687ad860b`，Git tree 为 `8a74adc661689938d24a62c91cb55a6f3d43620e`。本记录不是发布凭据。测试期间未修改 worker、生成器或质量阈值，未 cherry-pick #871，未操作线上账号、生产配置或积分。
+日期：2026-11-04。第一轮机械检查观察 HEAD 为 `ecfd757407a499026df487f2ab01486687ad860b`，Git tree 为 `8a74adc661689938d24a62c91cb55a6f3d43620e`；第二轮续改跨层 probe 的准确 subject 为 `8df8b5089a6e02a36165167ae536ef1e39ca7a6f`，两轮证据分别注明，不把后续文档提交当成重新执行的代码版本。本记录不是发布凭据。测试期间未修改业务源码、worker、生成器或质量阈值，未复制/cherry-pick #871，未操作线上账号、生产配置或积分。
 
 结论：原件完整性、解析锚点、固定编辑、修订/清洁关系和部分输入链有机械证据，但**正式生成质量验收未完成**。当前实现仍沿用质量拒绝可作为 advisory 交付的旧政策；#871 的独立质量门禁及当前最终 commit/tree 的真实模型金样、独立财务/章节/完整渲染复核未完成，不能以本轮 synthetic 或离线原件检查替代。
 
@@ -27,6 +27,7 @@
 | Linux 多产品入口的本地导出/来源机械检查 | 94/94 通过、0 skip | [linux-product-export.log](linux-product-export.log)，包含底稿、M4 计算/来源、诚信 DOCX、问答回填、复核 DOCX/PDF 批注与修订导出；全部为 synthetic 内容或已随库交付的中性格式模板，无模型调用 |
 | DOCX 包、底稿 ZIP/下载及 M4/复核 stage 边界 | 54 项：52 通过、2 个 Linux 限定 symlink skip | [product-export-boundaries.log](product-export-boundaries.log)，真实 Fastify 与内存 DB/Blob fixture；M4/复核的模型回调为 fake，不能算真实模型/PG/生产验收 |
 | Linux 符号链接安全边界复验 | 2/2 通过、0 skip | [linux-symlink-boundaries.log](linux-symlink-boundaries.log)，原样运行 Node54 中 Windows 跳过的两项；不删除或更改原 skip，不扩大为整套 Linux gate |
+| 第二轮续改：真实 API/PG/queue 与编译后前端 guard | 7/7 通过、0 skip（1 父 test＋6 场景） | [continuation-api-pg.log](continuation-api-pg.log)、[结构化结果与源码/编译产物 hash](continuation-api-pg-results.json)，subject `8df8b50`；合成认证、DOCX 和内存 Blob，无模型，具体边界见下文 |
 
 Python 综合的分组数：parser 39、授权 DOCX parser 1、outline 7、file authoring 7、fixed edit 18、四原稿 fixed-edit replay 1（4 个子案例）、unified Word 8、首稿 writer 8、Word delivery 5、revision CLI 5。
 
@@ -40,9 +41,52 @@ Windows 失败是 `test_rejects_existing_output_and_unsafe_directory` 中 `chmod
 
 当前 [file-authoring-delivery.test.ts](../../../apps/worker/src/file-authoring-delivery.test.ts:20) 仍要求 `WORD_QUALITY_REJECTED` 属于 advisory，结果为 `deliver`、`deliveryPolicy=generated_pair_v1`、`content_review=not_performed`。它证明旧交付行为仍在，不能证明符合 11 月 1 日可信宿主失败必须拒绝的要求。没有将该测试改成“通过新质量要求”，也没有在本任务修改敏感生成代码。
 
-本轮未启动真实 worker 模型执行、未发起任何模型调用，未运行当前最终候选的完整 `quality:prospectus:validate` 或 `quality:prospectus`，未产生或伪造质量通过凭据。没有执行生产真实原稿→模型→双 Word→真实下载全链路，也没有执行独立全文财务事实、规则适用、逐页视觉和 Word/WPS 客户端复核。真实 worker/沙箱/检查点与数据库交付仍须在准确最终候选及固定 Linux 清单复验。
+两轮均未启动真实 worker 模型执行、未发起任何模型调用，未运行当前最终候选的完整 `quality:prospectus:validate` 或 `quality:prospectus`，未产生或伪造质量通过凭据。没有执行生产真实原稿→模型→双 Word→真实下载全链路，也没有执行独立全文财务事实、规则适用、逐页视觉和 Word/WPS 客户端复核。真实 worker/沙箱/检查点与数据库交付仍须在准确最终候选及固定 Linux 清单复验。
 
-[场景矩阵](scenario-matrix.md) 逐项区分机械证据、已知政策缺口和必须补做的真实验收。矩阵中 #871 与同 ID 首稿续改的合并前场景均为待执行项，没有把只读兼容审查当成集成通过。
+[场景矩阵](scenario-matrix.md) 逐项区分机械证据、已知政策缺口和必须补做的真实验收。第二轮仅补齐当前 `8df8b50` 的 Q15 及 Q17/Q18 部分机械证据，Q16 的可信宿主质量拒绝、#871 首稿确认 expiry guard 与最终合入候选集成仍待执行，没有把只读兼容审查当成集成通过。
+
+## 第二轮：续改跨层机械证据
+
+准确 subject 为 `8df8b5089a6e02a36165167ae536ef1e39ca7a6f`。先以当前源码执行 `npm exec tsc -- -p apps/api/tsconfig.json` 和 `npm exec tsc -- -p apps/web/tsconfig.test.json`，均 exit 0；随后只导入当前 API `createServer`、queue 的 `claim/promoteWordArtifact/checkpointStage/finish` 及编译后的 `readContinuationBasis`。没有修改这些实现或移植 #871。
+
+真实执行部分包括通过 `app.inject` 调用的 Fastify HTTP handlers、专用 PostgreSQL 16.14 隔离克隆、queue 事务、同字节成果登记与当前稿选择、artifact 元数据和授权下载、前端 guard 及 input 持久化。`app.inject` 没有经过 TCP、Nginx、前端 ApiClient 或浏览器；结果 JSON 保留的当时标签 `metadata: "real HTTP"` 只指真实 route 处理，不代表真实网络请求。认证为注入的 synthetic principal，Word 为合成 DOCX，私有 Blob 接口由内存 Map 实现；没有真实登录浏览器、Azurite/Azure 或模型。因此不能写成生产或真实模型全链路验收。
+
+| 场景 | 从实际接口到客观断言 | 结果与限定 |
+| --- | --- | --- |
+| Q15 同 ID 首稿 | 真实创建项目/input/run，queue 两次 promote 相同 DOCX 得到同 ID/hash，checkpoint `baseline_kind=none` 后 finish 登记 generated/current；GET run/versions/artifact 进入编译后 guard；result/current 分别准备与提交前重读，再 POST input-revisions | 两选择均准确持久化 `authoring.previous_output` 和来源格式 template；实际授权下载 hash 等于合成 DOCX；锁输入不新增 run。只是当前实现的无模型协议，不证明 #871 合入后仍通过 |
+| Q17 错 hash/version 请求 | 用真实 metadata 的准确 pin 作为基准，只修改请求中的 SHA 或不存在的 artifact version，POST input-revisions | 均 HTTP 409 `INPUT_REVISION_CONFLICT`，各次新增 input/run 均为 0；这是请求负例，没有手改不可变数据库记录，也不是“同一个成果 hash 被正常更新”的伪场景 |
+| Q17 正常当前稿变化 | 完成第二个真实 API/queue 合成生成任务，正常注册新的 current version/hash/selection；GET 后 guard key 变化，仍能准确读取旧 run 的 result | 新 current 精确 pin 新成果，result 精确 pin 旧成果；旧 selection 的 input POST 为 409，新增 input/run 均为 0。计数基线取在第二个合法任务完成之后 |
+| Q17 存储故障 | 仅在合成内存 Blob 删除字节或放入同大小损坏字节，真实 GET artifact 先做字节校验，再由 result/current guard 重读 | API 503，两个选择均拒绝，新增 input/run 为 0；随后恢复原字节。明确是存储故障注入，不是数据库 availability 直接篡改或新质量门禁失败；只证明 guard 路径拒绝，没有宣称绕过 guard 的直接 input 请求也会重新读 Blob |
+| Q18 旧状态边界 | 读取同 ID 旧成果 API 与数据库证据，续改读取后再次对比 | 仍是 `generated_pair_v1`、`content_review=not_performed`；证据 ID 和 passed/available 未被读取行为改写，未出现 `word-quality-v1`。不追认正文/业务质量，不证明尚未合入 #871 的迁移行为 |
+| Q17 公开撤销路径 | 通过真实 DELETE project 使已有 artifacts 进入 revoked，再读取 metadata、result/current 并提交旧 pin | metadata/读取/旧 input 均被 404 拒绝，新增 input/run 为 0；限定为项目删除后的真实撤销，不冒充独立 artifact 撤销 API 或 #871 failed gate |
+
+这里的“0”仅指新增 `bb_input_revisions` 和 `bb_runs`；artifact 元数据 GET 会按现有行为创建短期下载授权及审计记录，不能称为“数据库总写入为 0”。两次调用 guard 的 probe 不替代真实浏览器事件绑定验收，也没有重新运行本批既有前端 fixture。
+
+可复现 probe 原文保存在 [continuation-api-pg-probe.mjs.txt](continuation-api-pg-probe.mjs.txt)，其 SHA 与结果 JSON 内 `.local/quality-continuation-probe.mjs` 完全对应；不因后续安全说明静默修改已运行的脚本或标签。复跑时将原文放回同工作区忽略目录 `.local/quality-continuation-probe.mjs`，准备仅本机的完整迁移模板，通过 `BB_TEST_DATABASE_URL` 指向该专用模板。**原 probe 调用克隆 helper 后才断言连接地址，所以复跑必须先执行以下只读预检，成功后才能运行 probe**；先校验 host/port/template，连接该已限定 loopback 的实例读取并确认目录，在任何 `isolatedTestDatabase` 调用前完成。禁止指向生产连接。
+
+```powershell
+@'
+import assert from 'node:assert/strict';
+import {Client} from 'pg';
+const url=new URL(process.env.BB_TEST_DATABASE_URL);
+assert.equal(url.hostname,'127.0.0.1');
+assert.equal(url.port,'55434');
+assert.equal(decodeURIComponent(url.pathname),'/bb_prelaunch_payment_template');
+const client=new Client({connectionString:url.toString()});
+await client.connect();
+try {
+  const row=(await client.query("SELECT current_setting('data_directory') AS directory,current_setting('port') AS port")).rows[0];
+  assert.equal(row.directory.replaceAll('\\','/'),'C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/.local/prelaunch-payment-pg');
+  assert.equal(row.port,'55434');
+} finally { await client.end(); }
+'@ | node --input-type=module
+if($LASTEXITCODE -ne 0){throw 'Dedicated PostgreSQL preflight failed; do not clone or run probe'}
+node --test --test-concurrency=1 .local/quality-continuation-probe.mjs
+```
+
+helper 在独立测试结束时清理克隆。预检不安装环境或修改数据库；当前复跑仍需精确代码与编译产物 hash 相符，不能仅凭未来日志名认定同一 subject 通过。
+
+第二轮结束时剩余测试克隆 0、其他客户端连接 0；核对专用目录和端口后 `pg_ctl -m smart -w stop` exit 0，最终 status exit 3、`127.0.0.1:55434` 为 `ECONNREFUSED`。普通沙箱首停无信号权限，经批准提升后仅停止此实例，两次记录均在 [continuation-postgres-cleanup.json](continuation-postgres-cleanup.json)。普通沙箱首次启动也因受限令牌 error 87/3 被拒，批准恢复后才执行测试，没有重新 initdb 或连接其他数据库。
 
 ## 既有真实失败证据
 

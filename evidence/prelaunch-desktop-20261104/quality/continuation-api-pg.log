@@ -1,0 +1,16 @@
+▶ current HEAD real API/PG continuation protocol with synthetic Word and Blob
+  ✔ Q15 same-hash shared-ID first draft is archived/current; actual result and current metadata lock the exact continuation pin (356.5571ms)
+  ✔ Q17 mismatched SHA or version is refused by actual input route with zero new input/run; persisted immutable rows are untouched (42.4732ms)
+  ✔ Q17 normal subsequent generation changes current version/hash and selection; stale prepared choice cannot persist an input or run (246.9089ms)
+  ✔ Q17 synthetic Blob missing/corrupt faults fail real metadata reads and both compiled guard choices with zero new input/run (71.544ms)
+  ✔ Q18 old passed/available metadata stays generated_pair_v1/content_review not_performed after same-ID continuation reads (21.2446ms)
+  ✔ Q17 public project deletion revokes available artifacts; prior result/current reads and stale input request add zero input/run (35.7398ms)
+✔ current HEAD real API/PG continuation protocol with synthetic Word and Blob (2374.6849ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14629.9886

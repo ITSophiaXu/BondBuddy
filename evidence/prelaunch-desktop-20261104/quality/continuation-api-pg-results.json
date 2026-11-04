@@ -1,0 +1,101 @@
+{
+  "observed_at": "2026-11-04T05:09:15.649Z",
+  "head": "8df8b5089a6e02a36165167ae536ef1e39ca7a6f",
+  "node": "v26.13.0",
+  "environment": {
+    "server": {
+      "directory": "C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/.local/prelaunch-payment-pg",
+      "port": "55434",
+      "version": "PostgreSQL 16.14, compiled by Visual C++ build 1944, 64-bit"
+    },
+    "authentication": "synthetic injected principal",
+    "database": "isolated clone of dedicated local template",
+    "blob": "in-memory synthetic",
+    "docx": "synthetic",
+    "models": "none"
+  },
+  "records": [
+    {
+      "scenario": "Q15",
+      "status": "mechanical_pass",
+      "choices": [
+        "result",
+        "current"
+      ],
+      "shared_artifact": true,
+      "metadata": "real HTTP",
+      "pin": "persisted real PG input",
+      "model": "not_called"
+    },
+    {
+      "scenario": "Q17-stale-pin",
+      "status": "mechanical_pass",
+      "injection": "invalid request pins, no DB edits",
+      "hash_and_version_rejected": true,
+      "delta": {
+        "inputs": 0,
+        "runs": 0
+      }
+    },
+    {
+      "scenario": "Q17-normal-current-change",
+      "status": "mechanical_pass",
+      "change": "real routes + queue completion + generated registration",
+      "old_result_retained": true,
+      "stale_selection_rejected": true,
+      "delta": {
+        "inputs": 0,
+        "runs": 0
+      }
+    },
+    {
+      "scenario": "Q17-blob-fault",
+      "status": "mechanical_pass",
+      "injection": "synthetic in-memory Blob only; DB/evidence immutable",
+      "faults": [
+        "missing",
+        "same-size corrupt"
+      ],
+      "metadata_http": 503,
+      "delta": {
+        "inputs": 0,
+        "runs": 0
+      },
+      "limitation": "guard path only; not a new quality-gate rejection or durable metadata revocation"
+    },
+    {
+      "scenario": "Q18-old-status",
+      "status": "mechanical_pass_limited",
+      "content_review": "not_performed",
+      "new_quality_backfill": false,
+      "limitation": "#871 new quality gate not present or executed"
+    },
+    {
+      "scenario": "Q17-public-revocation",
+      "status": "mechanical_pass_limited",
+      "change": "public DELETE project revokes artifacts; no direct DB mutation",
+      "metadata_http": 404,
+      "delta": {
+        "inputs": 0,
+        "runs": 0
+      },
+      "limitation": "project deletion, not a standalone artifact-revoke route or #871 failed gate"
+    }
+  ],
+  "not_executed": [
+    "#871 trusted-host quality refusal integration",
+    "#871 first-draft expiry guard integration",
+    "final candidate real model golden and independent business/visual acceptance"
+  ],
+  "hashes": {
+    "apps/api/src/server.ts": "dbc71583bef8ea7584a552ca7c71c41932519c1f3e60c84de33681d6e700aa4b",
+    "apps/api/dist/server.js": "ae6e8a15b9d2b5bddb988953215ff04df29368175c5dc83da217c0e8b9df721c",
+    "apps/api/src/queue.ts": "066dd67f7fd4d3331852e639b7842bf47155f6bc2551442f01e30a67514166ff",
+    "apps/api/dist/queue.js": "72c639c0c6a68118e4af0b1387b3880cf136a78885a11e5a8b2dd50f9b8be362",
+    "apps/api/src/prospectus-versions.ts": "acf4c8403260a67a8d08123f10976a9c193ac2ebeb80112f908c60f46d6a07c1",
+    "apps/api/dist/prospectus-versions.js": "b799959deb9218641ae1432dfc37e262ea4bce70dd72d1c1386e4902c1b43740",
+    "apps/web/src/authoring-continuation.ts": "8d4394756bc32d1a36b96e469e07f62d0821a17f12a8d8cd98dc2eda91570518",
+    "apps/web/dist-test/authoring-continuation.js": "bfcc6c0d9a69fb23f001798417b131d5506b5cbb51d5496d07727df510ce7dd0",
+    ".local/quality-continuation-probe.mjs": "26632a0ba5d3f0d38a266eeafdbab010c5f49a95d6d138c79a9cc4b868933dba"
+  }
+}

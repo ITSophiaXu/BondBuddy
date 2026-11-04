@@ -18,12 +18,12 @@
 | Q12 | 实际 worker 从锁定材料经工具/沙箱/调用journal到检查点/私有Blob/终态；断线恢复不重调未知模型 | 本轮未启动worker供应商执行，仅运行阶段/工具机械测试 | 待执行；准确候选Linux沙箱、PG/Azurite、真实worker集成及生产模型验收 |
 | Q13 | 可信服务端质量检查失败必须 failed，不登记正常成果，不写 completed checkpoint | 当前 `file-authoring-delivery.test.ts:20` 反而要求 WORD_QUALITY_REJECTED advisory→deliver/content_review=not_performed | **政策缺口/发布阻断**；由独立#871修复及固定gate验证，不能在本任务静默放宽/移植 |
 | Q14 | #871当前final commit/tree固定机械、真实模型金样、独立财务/章节/渲染及Word/WPS复核 | 仅只读#871决定与失败记录，未跑其完整gate、未签凭据 | 待执行/发布阻断；机械绿不能替代真实模型或独立确认 |
-| Q15 | 新无基线首稿合法双同hash/同ID；真实API/PG的 result/current 精确pin，并能续改准确清洁稿 | 当前前端guard只读兼容审查认为DTO兼容；本轮未做跨#871集成 | 待执行；最终合入候选真实API/PG，不得把review当pass |
+| Q15 | 新无基线首稿合法双同hash/同ID；真实API/PG的 result/current 精确pin，并能续改准确清洁稿 | 第二轮 subject `8df8b50`，`continuation-api-pg.log/results.json`：真实API/PG/queue登记合成同ID首稿，元数据→编译guard→两选择POST input持久化精确previous_output/format pin，实际下载hash一致 | 当前实现机械通过；synthetic principal/DOCX/内存Blob、无模型；#871最终合入候选仍须重跑 |
 | Q16 | 质量拒绝run=failed、artifact=null，不出现正常artifact/生成版本；不能由失败结果建立新input续改 | #871失败checkpoint设计只读审查；本轮没有该候选执行结果 | 待执行；核对真实数据库/HTTP返回及零新input/run |
-| Q17 | 准备续改后原成果hash/version/available变化必须0新run；准备/提交两次re-read保留；合法同ID别名不放宽来源约束 | 本批现有前端回归证明部分guard；跨#871真实API/PG尚未执行 | 待执行；最终候选同时保留#871首稿确认expiry guard及两次re-read |
-| Q18 | 已存在passed/available成果不能被自动回填为新word-quality-v1通过，旧漏稿成果不因同ID被“洗白” | DTO只读审查：#871未新增ArtifactResponse质量通过字段，失败留checkpoint | 政策边界；旧passed/available只证明旧交付/读回，不能宣称追溯业务质量通过 |
+| Q17 | 准备续改后原成果hash/version/available变化必须0新run；准备/提交两次re-read保留；合法同ID别名不放宽来源约束 | 第二轮真实API/PG：正常新generation改变current version/hash/selection，旧选择409；错hash/版本请求409；合成Blob缺失/损坏使metadata503及两choice guard拒绝；公开DELETE project实际revoked后404。各拒绝新增input/run均0，未手改immutable行 | 部分机械通过；存储为明确故障注入，availability撤销限项目删除；#871合入、首稿expiry及真实浏览器整链待做 |
+| Q18 | 已存在passed/available成果不能被自动回填为新word-quality-v1通过，旧漏稿成果不因同ID被“洗白” | 第二轮真实API与PG旧generated_pair_v1/content_review=not_performed在续改读取后不变，未出现word-quality-v1；#871 DTO仅只读审查 | 当前读取行为有有限机械证据；不追认正文或漏稿质量，不证明未合入#871的新gate/迁移 |
 
-不得将 Q15–Q18 的合并前必做场景写成已执行集成结果。#871旧候选真实失败记录也不能因本轮机械通过而更改状态。
+不得将 Q15、Q17/Q18 当前实现的有限机械证据，写成 Q16 或 #871 最终合入候选集成通过。#871旧候选真实失败记录也不能因本轮机械通过而更改状态。第二轮7/7包含一个父test和6个场景，真实routes/queue事务/编译guard与合成认证/Word/内存Blob的边界及复跑原文见[README](README.md#第二轮续改跨层机械证据)。routes通过app.inject调用，没有经过TCP/Nginx/ApiClient/浏览器。0新增input/run不等于0数据库总写入：metadata GET仍写下载授权与审计。
 
 ## 产品入口与实际输出格式
 
@@ -38,7 +38,7 @@
 | 底稿生成／目录批次 | 单项正文或不适用/缺材料说明 DOCX；编制说明 DOCX；批量下载 ZIP，内含 DOCX；XLSX 目录是输入 | Linux94 的 shared11、147 中性模板包、source4；Node54 的直接底稿与248文件ZIP逐成员校验 | 真实批次全部内容可信、部分项生成失败后的结算/恢复正确、付费复核及继续修改已端到端通过 |
 | 诚信核查 | 企业、个人按实际对象分别导出 DOCX；截图嵌入 Word，证据可由图片/PDF/Word输入 | Linux94 的 integrity_report4：整图保留、未签章、失败/未核实页面不冒充结果、诊断和不利事实进明细 | 官网实际查询成功、证据主体匹配、验证码/登录及部分网站失败恢复、实际导出/重复导出的PG链通过 |
 | 问答及附件回填 | DOCX 问题原稿原位回填并输出 DOCX；PDF/旧 DOC 问题转 Word；XLSX 可作证据输入 | Linux94 的 project_qa9：表格/页脚/长文/空值零值/缺材料；真实本机 DOC/PDF 转换；XLSX位置保留 | 回答事实正确、全部问题已覆盖、真实材料多附件部分失败处理/账务/版本注册下载通过 |
-| 继续修改／基于成果再次生成 | 沿原入口生成新的 DOCX 或修订/清洁对；已有下载字节与精确来源 pin 应保留 | Linux94 的 fixed source/accept revisions/重复复核保留人工批注；Node54 的 M4 edit-base、hash/版本/owner约束；Q15–Q18 | 用户从下载成果回到真实 API/PG 再提交的整链通过，或旧 passed 成果已被新质量政策追认 |
+| 继续修改／基于成果再次生成 | 沿原入口生成新的 DOCX 或修订/清洁对；已有下载字节与精确来源 pin 应保留 | Linux94 的 fixed source/accept revisions/重复复核保留人工批注；Node54 的 M4 edit-base、hash/版本/owner约束；第二轮Q15真实API/PG/queue+编译guard精确锁输入，Q17/Q18有限机械证据 | 真实浏览器到worker模型续改整链通过、#871质量拒绝合入通过，或旧 passed 成果已被新质量政策追认 |
 
 本轮只验证上述已有输出格式。没有生成 XLSX 成果的验收，也没有将可读 PDF 输入理解成所有产品都提供 PDF 成果。PDF 批注是文件复核的专门输出；普通文书、底稿、问答和诚信报告为 Word。
 
@@ -47,10 +47,10 @@
 | 风险 | 本轮已直接覆盖 | 必须补做的最终候选场景 | 状态 |
 | --- | --- | --- | --- |
 | 输出损坏、假格式或无内容 | Node54 DOCX inspector 的 CRC、XML、关系、压缩/大小限制；ZIP 拒绝丢失/截断/损坏文件；复核 stage 拒绝进度/空/invalid Word并保留诊断 | 每个入口真实 worker→私有 Blob→artifact→下载都注入损坏并确认不交付、不误计费；M1 质量拒绝依然有 Q13 缺口 | 部分覆盖，不能外推全入口质量拒绝 |
-| 错版、错 hash、异主或撤回材料 | 输入链 HTTP/PG 5项；Linux94 source hash/期间/单位/合并母公司冲突；Node54 M4精确pin和edit-base限制、ZIP pin/name/owner变化失效 | 各入口准备后替换/撤回材料或成果，提交与恢复时二次读回，应拒绝并且0新run/0错误扣费；Q15–Q18合入验证 | 部分覆盖；只有输入链子集有真实PG证据 |
+| 错版、错 hash、异主或撤回材料 | 输入链 HTTP/PG 5项；Linux94 source hash/期间/单位/合并母公司冲突；Node54 M4精确pin和edit-base限制、ZIP pin/name/owner变化失效；第二轮Q15/Q17当前续改API/PG/guard负例和正常换稿证据 | 其他各入口准备后替换/撤回材料或成果、提交/恢复二次读回与错误扣费；Q15–Q18的#871最终合入验证 | 部分覆盖；输入链和本轮募集书续改子集有真实PG证据 |
 | 一个批次或多附件部分失败 | 问答扫描/不可读页保留具体缺口、不编问题；诚信失败/未核实页不做成功截图；底稿无依据形成具体说明；ZIP任何坏成员整包拒绝后可重试 | 普通文件批量、底稿多项、诚信多站点和问答多附件在中途失败/取消/断线后状态、已成功成果、重试范围及扣费均准确；未跑现存相关PG suite | 待执行真实集成；ZIP原子失败不是生成批次部分恢复 |
 | 重复生成、重复下载或恢复 | 底稿shared crash replay字节相同；ZIP并发复用、pin失效、错误重试、取消；重复批注保留人工内容 | 各产品相同request重放不新增模型调用/收费；更换request后的明确再生成保留旧成果；未知模型结果断线不得重复调用 | 部分覆盖；本轮未跑跨入口真实PG/journal协议 |
-| 继续修改与旧版本保留 | 修订接受/拒绝语义、原件hash不变；M4 edit-base类型/owner/version pin；两类Word人工批注在重复复核保留 | 对真实模型成果从结果页选择续改，准确下载/准备/提交双读回；同ID合法首稿与failed quality拒绝分别按Q15–Q18验证 | 待执行完整真实用户链 |
+| 继续修改与旧版本保留 | 修订接受/拒绝语义、原件hash不变；M4 edit-base类型/owner/version pin；两类Word人工批注在重复复核保留；第二轮Q15同ID首稿准确续改input与Q17正常换稿后旧result保留 | 对真实模型成果从浏览器结果页选择续改，准确下载/准备/提交双读回；#871同ID合法首稿与failed quality拒绝集成、expiry guard按Q15–Q18验证 | 当前API/PG有限通过；完整真实用户/模型与#871合入链待执行 |
 | 实际格式与客户端打开 | 实际生成并重新解析DOCX/PDF；248成员ZIP独立CRC/hash验证；本机LibreOffice完成旧DOC转换；147中性Word模板包校验 | 最终各入口真实成果逐页渲染、Word/WPS打开/批注/修订/表格编辑，核对用户文件名、MIME和实际字节格式一致 | 部分覆盖；本轮没有最终成果视觉签收 |
 
 上述待执行项是覆盖缺口，不表示已经复现每个潜在故障；也不能由无模型机械通过签署收费发布质量结论。

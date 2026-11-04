@@ -60,7 +60,8 @@
 | 扩展资金链真实组件 | C34、R66、P64、V25、F18 各组修后全通过、无 skip；有重复/嵌套，不相加。V 原 22 pass/3 fail、F 先红 1 pass/2 fail 原样保留。真实 Fastify/隔离 PG/密码协议，渠道与模型合成；真实 CLI smoke 通过，专用 PG 已 smart-stop。 |
 | 文件质量及各入口导出 | 原件 15/15；Windows Python 99 项 98 pass/1 权限语义 fail，Linux 对应完整小套件 8/8；多入口 Linux 导出 94/94；Node 52 pass/2 平台 skip，两个 symlink 安全项 Linux 原样 2/2 复验。worker 授权 opt-in 项和 HTTP/PG/Azurite 输入链 5/5 已补实跑。保留原失败/skip；各组重叠，不相加，非完整发布 gate。详见 quality。 |
 | 复核计费与恢复定向浏览器 | 后续提示修改后 4 passed：桌面不足保留输入、缺价不免费执行、实际预留/扣费/释放展示、丢响应沿用原意图。Synthetic HTTP fixture，不代表本次新增真实充值或模型执行。 |
-| whitespace / 原始证据 | 源码及文档通过；原始失败 `component-price-coverage.tap` 与 `component-refund-facts-red.tap` 保留 Node 生成的 8 处缩进空行，完整 diff 检查会报告它们，未为绿灯清洗失败证据。此目录关闭文本换行转换，CRLF 是有效行尾；30 个暂存证据文件 hash 与清单完全一致。 |
+| 第二轮续改跨层 | subject `8df8b50`，7 passed/0 skip（父 test＋6 场景）：真实 Fastify routes/隔离 PG/queue 与编译 guard 验证同 ID 双稿、精确 input 引用、正常换稿和拒绝场景。app.inject 不经 TCP/Nginx/ApiClient/浏览器；认证、Word 与内存 Blob 为 synthetic。#871 质量拒绝、expiry 与真实模型整链未执行。见 quality。 |
+| whitespace / 原始证据 | 源码及文档通过；原始失败 `component-price-coverage.tap` 与 `component-refund-facts-red.tap` 保留 Node 生成的 8 处缩进空行，完整 diff 检查会报告它们，未为绿灯清洗失败证据。此目录关闭文本换行转换，CRLF 是有效行尾；第二轮后 34 个证据文件 hash 与清单一致。 |
 
 单元最终命令：
 
