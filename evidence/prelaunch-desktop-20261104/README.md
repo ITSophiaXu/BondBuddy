@@ -79,6 +79,12 @@ npm exec playwright -- test tests/project-execution.spec.ts tests/project-qa-con
 npm exec playwright -- test tests/review-workspace.spec.ts --grep 'paid review starts.*1440|enabled review never starts free|review task receipt displays|paid review response loss' --output ../../.local/playwright-final-outputs/review-checks
 ```
 
+### CI 接线复核
+
+对已推送 head `96dcce8eb44833938b23a242477cecccd40fcc1a` 的实际 workflow 核对发现：桌面 CI 会执行全部 Web unit，但其八个浏览器文件不包含本轮首稿、问答及账号恢复场景；固定积分 CI 会编译新报表，却不执行报表 unit/PG 回归。已保留原清单并追加四个浏览器套件、四条复核定向场景，以及订阅拒绝、退款归月和报表消费者的七个 API 测试文件。测试列表实读为桌面 255 项/12 文件，另复核定向 4 项；这只是配置/发现验证，实际通过状态以新 head 的 GitHub run 为准。原有 20/15 分钟上限、权限、隔离数据库和环境开关保持。
+
+上述旧 head 的 [CLI review run](https://github.com/ITSophiaXu/BondBuddy/actions/runs/41776225273) 在构建原生沙箱时因 `npm ci` 的网络 `ECONNRESET` 失败，尚未进入该阶段后续测试；已保留失败链接，本机原日志在忽略目录。未通过改 Docker/模型版本或跳过沙箱处理。M4 core 的同 head run 已成功；其余及追加清单的新 head 检查需分别读回，不把旧 SHA 绿灯转移为新 SHA 通过。
+
 ## 迁移、分类和剩余验收
 
 - 迁移 `0164_subscription_checkout_rejections.sql` 只新增拒绝表、复合主键、hash 约束和不可变 trigger；不改旧迁移。新增错误 `SUBSCRIPTION_CHECKOUT_REJECTED` 在 packages/contracts 唯一定义。

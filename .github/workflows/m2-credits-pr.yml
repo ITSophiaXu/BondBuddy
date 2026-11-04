@@ -79,3 +79,13 @@ jobs:
             apps/worker/dist/authoring-pause.pg.test.js \
             apps/worker/dist/provider-reconciliation.test.js \
             apps/api/dist/generated-word-delivery.test.js
+      - name: Subscription checkout, cash refund facts and report consumers
+        run: |
+          node --test --test-concurrency=1 \
+            apps/api/dist/billing-wire.test.js \
+            apps/api/dist/subscriptions.pg.test.js \
+            apps/api/dist/subscription-facts-report.test.js \
+            apps/api/dist/subscription-facts-report.pg.test.js \
+            apps/api/dist/annual-payment-statements.pg.test.js \
+            apps/api/dist/subscription-funding-evidence.test.js \
+            apps/api/dist/task-refunds.pg.test.js

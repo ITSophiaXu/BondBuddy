@@ -48,4 +48,15 @@ jobs:
           tests/review-editor.spec.ts
           tests/review-editor-recovery.spec.ts
           tests/review-flow-editor.spec.ts
+          tests/project-execution.spec.ts
+          tests/project-qa-continuation.spec.ts
+          tests/task-results.spec.ts
+          tests/subscription-account.spec.ts
+          --reporter=line
+      - name: Review funding and exact-intent recovery
+        working-directory: apps/web
+        run: >-
+          npx playwright test
+          tests/review-workspace.spec.ts
+          --grep 'paid review starts.*1440|enabled review never starts free|review task receipt displays|paid review response loss'
           --reporter=line
