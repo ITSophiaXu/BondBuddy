@@ -43,6 +43,7 @@
 - 账号页显示“支付渠道暂未开放，暂不能开通订阅或充值”，订阅按钮禁用，充值区没有金额/渠道/提交控件。这是新用户无法完成付费任务的收费上线阻碍。
 - 线上 FAQ 曾实测被轮询收起；既有成果 Word 只读下载成功。本轮不把该既有成果算作新账号的生成或付费交付证据。
 - 观察到 Web 资源 `/assets/index-3I4fg0_u.js`、`/assets/index-CF0oSORG.css`；未核实 API/worker/egress 的完整部署版本，不能用 Web bundle 代替全服务版本。
+- 05:46 UTC 另用已授权测试账号的新临时会话复核服务端，三个业务 GET 均 200 且现行字符串金额协议有效：订阅目录 enabled=true 但 providers=[]，自动续费不可用；充值 payment_enabled=false/providers=[]，积分与现金可用/预留均为 0、无订阅。临时会话随后 logout 204，无开单、发分或任务执行。浏览器连接未恢复，因此这是新 API 观测，不冒充新的 UI 实测；原始脱敏结果留在本机忽略目录。
 
 实时截图及测试账号凭据保存在本机受控输出/忽略目录；凭据、原材料、生成成果、数据库运行目录不进入此 PR。
 
@@ -63,7 +64,8 @@
 | 复核计费与恢复定向浏览器 | 后续提示修改后 4 passed：桌面不足保留输入、缺价不免费执行、实际预留/扣费/释放展示、丢响应沿用原意图。Synthetic HTTP fixture，不代表本次新增真实充值或模型执行。 |
 | 第二轮续改跨层 | subject `8df8b50`，7 passed/0 skip（父 test＋6 场景）：真实 Fastify routes/隔离 PG/queue 与编译 guard 验证同 ID 双稿、精确 input 引用、正常换稿和拒绝场景。app.inject 不经 TCP/Nginx/ApiClient/浏览器；认证、Word 与内存 Blob 为 synthetic。#871 质量拒绝、expiry 与真实模型整链未执行。见 quality。 |
 | 余额不足中性提示定向浏览器 | `d7f918f` 之上的文案工作树：首轮 12 项为 11 passed/1 failed；底稿旧 fixture 未适配现行字符串金额协议，最小修正该 fixture 后仅重跑失败项，1 passed/0 failed。普通任务、局部文件恢复、混合包、底稿剩余续跑、旧更新/复核/材料显式开始、耗尽状态与未开放渠道均已有通过结果。原始失败保留，非真实支付/模型验收。补充文案后根 build 与 contracts 再次 exit 0，详见 billing。 |
-| whitespace / 原始证据 | 源码及文档通过；原始失败 `component-price-coverage.tap` 与 `component-refund-facts-red.tap` 保留 Node 生成的 8 处缩进空行；补充的 `billing-copy-focused.log` 保留 Playwright 生成的 2 处行末空格。完整 diff 检查会报告这 10 处，未为绿灯清洗失败证据。此目录关闭文本换行转换，CRLF 是有效行尾；补充文案后，清单只刷新两份已编辑说明文档并新增两份原始日志，合计 36 个证据文件 hash 复核通过。原测试记录、源码绑定及原始输出未变，更新时间与范围保存在 component-results.json。 |
+| 跨入口交付/恢复/扣费 PG 补缺 | API9＋worker9 个现有文件均取得通过结果；原失败与定向复验分轮保留、不跨轮累计。真实 Fastify/隔离 PG/Azurite/worker/原生 Word/ZIP/Chromium，认证、模型和网站为合成；另一本机 parser/PG 测试读取既有授权原稿。五个测试适配字符串协议和 synthetic queue，QA 另补混合可读/无文字附件、缺口/引用、暂停恢复与单次结算断言，隔离输出目录显式配置；不改产品运行逻辑。完整命令、源码与产物绑定及服务清理见 [quality/cross-entry](quality/cross-entry/README.md)。 |
+| whitespace / 原始证据 | 源码及说明文档通过；原始 TAP、Playwright 日志和 fixture patch 保留工具生成的缩进空行/行末空格，完整 diff 检查仍会报告，未为绿灯清洗失败证据。此目录关闭文本换行转换，CRLF 是有效行尾；原测试记录、源码绑定及原始输出保持，新增归档与更新后的说明文档均按清单逐字节复核。清单不是正式质量通过凭据。 |
 
 单元最终命令：
 
@@ -90,12 +92,14 @@ npm exec playwright -- test tests/review-workspace.spec.ts --grep 'paid review s
 
 随后 `d7f918f981a415655aa24e1c5aafbd3b2ceb5132` 的五项 CI 均实际成功：[desktop](https://github.com/ITSophiaXu/BondBuddy/actions/runs/41777966508)、[fixed credits](https://github.com/ITSophiaXu/BondBuddy/actions/runs/41777966541)、[CLI/native sandbox](https://github.com/ITSophiaXu/BondBuddy/actions/runs/41777966509)、[Linux integration](https://github.com/ITSophiaXu/BondBuddy/actions/runs/41777966559)、[M4 core](https://github.com/ITSophiaXu/BondBuddy/actions/runs/41777966454)。桌面实际 Web unit 982/982、API recovery 9/9、主浏览器 253 passed/2 skipped、独立 review 4/4；两个 skip 是既有可选截图采集（consistency confirmation collector 和 M2 deferred charge prototype screenshots）。新增资金七文件实际 47 passed/0 skipped，各组交叠不相加。其后的中性文案候选另追加本节定向 12 项到桌面 CI；发现验证为 8 文件/12 项，原步骤、20 分钟限制、权限和环境不变。新 head 必须重新读回实际 CI，不继承 d7 的成功。
 
+`da5974ba96d318c1dbdc6c9c22909099d220c41b` 的五项 CI 也实际成功：[desktop](https://github.com/ITSophiaXu/BondBuddy/actions/runs/41780135797)、[fixed credits](https://github.com/ITSophiaXu/BondBuddy/actions/runs/41780135810)、[CLI/native sandbox](https://github.com/ITSophiaXu/BondBuddy/actions/runs/41780135854)、[Linux integration](https://github.com/ITSophiaXu/BondBuddy/actions/runs/41780135847)、[M4 core](https://github.com/ITSophiaXu/BondBuddy/actions/runs/41780135863)。桌面新增 focused12 已实际 12 passed/0 skipped，其他分组计数与上述相同，不能跨 head 或重复套件相加。之后补入的 18 个跨入口 PG 文件、测试夹具适配与 QA 混合附件断言需要新 head 再执行；M4 原步骤、25 分钟限制和权限保留，新增步骤要求 fail/skip/todo 均为 0。最终 run 结果通过 PR 正文更新，避免为记录成功再改变受验提交。
+
 ## 迁移、分类和剩余验收
 
 - 迁移 `0164_subscription_checkout_rejections.sql` 只新增拒绝表、复合主键、hash 约束和不可变 trigger；不改旧迁移。新增错误 `SUBSCRIPTION_CHECKOUT_REJECTED` 在 packages/contracts 唯一定义。
 - 发布顺序必须先迁移、再 API/Web，并避免新旧 API 混跑。已有拒绝记录后，回退 API 必须仍保留拒绝查询守卫；旧 API 忽略拒绝表，不能仅因 schema additive 就判定可直接回退。
 - 首稿续改涉及输入依据的传递影响，应保留分支待独立生成敏感路径验收；contracts、db 及相关 API 需逐文件确认。付款恢复分类为支付状态/契约/数据库迁移，不能当作纯展示修改。
-- 本轮没有修改 worker、prompt、模型、解析、知识或费率。取消的是本轮测试预算限制，没有取消产品计费边界。
+- 本轮没有修改 worker 运行逻辑、prompt、模型、解析、知识或费率；后续 worker/API 测试夹具适配如实列出。取消的是本轮测试预算限制，没有取消产品计费边界。
 - 真实充值、真实模型回答/生成/复核/诚信核查、Word 专业质量及客户端兼容性仍未完成；不能由合成测试、已有成功文件或赠分替代。
 - 真实渠道代码已有微信 Native 与支付宝 RSA2 page/wap 的创建、查单、关单和认证回调。账号当前空 providers 只能说明没有自助付款通路，不能判断未启用还是坏配置；旧 recharge-config 在新版模式下可能有意关闭，不单独作为结论。生产 API 工厂的 ready/disabled/invalid 预检未执行：现成密钥已定位，但目标 SSH 在远端协议/主机公钥出现前 reset；现有 Azure 登录不含已确认的目标订阅。未关闭主机校验、未改防火墙/商户配置、未生成伪支付。
 - 遵守独立发布说明中的质量要求：提交 PR、合并、发布资格及部署结果分别记录；不伪造 #871 门禁或准确发布 SHA 凭据。本候选只交付 Draft PR，不自行合并或部署。

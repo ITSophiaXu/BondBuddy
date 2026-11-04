@@ -1,6 +1,6 @@
 # 文件生成质量：覆盖分析与离线机械检查
 
-日期：2026-11-04。第一轮机械检查观察 HEAD 为 `ecfd757407a499026df487f2ab01486687ad860b`，Git tree 为 `8a74adc661689938d24a62c91cb55a6f3d43620e`；第二轮续改跨层 probe 的准确 subject 为 `8df8b5089a6e02a36165167ae536ef1e39ca7a6f`，两轮证据分别注明，不把后续文档提交当成重新执行的代码版本。本记录不是发布凭据。测试期间未修改业务源码、worker、生成器或质量阈值，未复制/cherry-pick #871，未操作线上账号、生产配置或积分。
+日期：2026-11-04。第一轮机械检查观察 HEAD 为 `ecfd757407a499026df487f2ab01486687ad860b`，Git tree 为 `8a74adc661689938d24a62c91cb55a6f3d43620e`；第二轮续改跨层 probe 的准确 subject 为 `8df8b5089a6e02a36165167ae536ef1e39ca7a6f`；第三轮运行实现基于 `da5974ba96d318c1dbdc6c9c22909099d220c41b`，五个现有 PG 测试夹具适配当前协议，QA 另补混合附件与恢复/结算断言，准确源码/编译产物 hash 见 [cross-entry](cross-entry/README.md)。各轮分别注明，不把后续文档提交当成重新执行的代码版本。本记录不是发布凭据。未修改业务源码、worker 运行实现、生成器或质量阈值，未复制/cherry-pick #871，未操作生产配置或积分。
 
 结论：原件完整性、解析锚点、固定编辑、修订/清洁关系和部分输入链有机械证据，但**正式生成质量验收未完成**。当前实现仍沿用质量拒绝可作为 advisory 交付的旧政策；#871 的独立质量门禁及当前最终 commit/tree 的真实模型金样、独立财务/章节/完整渲染复核未完成，不能以本轮 synthetic 或离线原件检查替代。
 
@@ -28,6 +28,7 @@
 | DOCX 包、底稿 ZIP/下载及 M4/复核 stage 边界 | 54 项：52 通过、2 个 Linux 限定 symlink skip | [product-export-boundaries.log](product-export-boundaries.log)，真实 Fastify 与内存 DB/Blob fixture；M4/复核的模型回调为 fake，不能算真实模型/PG/生产验收 |
 | Linux 符号链接安全边界复验 | 2/2 通过、0 skip | [linux-symlink-boundaries.log](linux-symlink-boundaries.log)，原样运行 Node54 中 Windows 跳过的两项；不删除或更改原 skip，不扩大为整套 Linux gate |
 | 第二轮续改：真实 API/PG/queue 与编译后前端 guard | 7/7 通过、0 skip（1 父 test＋6 场景） | [continuation-api-pg.log](continuation-api-pg.log)、[结构化结果与源码/编译产物 hash](continuation-api-pg-results.json)，subject `8df8b50`；合成认证、DOCX 和内存 Blob，无模型，具体边界见下文 |
+| 第三轮跨入口：API9＋worker9 个现有 PG 文件 | 各文件均取得通过结果；首轮与定向复验分开记录，不跨轮累加 | [cross-entry/README.md](cross-entry/README.md)：实际 Fastify/隔离 PG/Azurite/worker 阶段、原生 Word/ZIP 及 Chromium，认证、模型和网站均合成；年度事实 parser/PG 使用既有授权原稿且只本机处理。包含所有初次及中间失败，不代表真实模型、正式商户或完整质量 gate |
 
 Python 综合的分组数：parser 39、授权 DOCX parser 1、outline 7、file authoring 7、fixed edit 18、四原稿 fixed-edit replay 1（4 个子案例）、unified Word 8、首稿 writer 8、Word delivery 5、revision CLI 5。
 
@@ -41,7 +42,7 @@ Windows 失败是 `test_rejects_existing_output_and_unsafe_directory` 中 `chmod
 
 当前 [file-authoring-delivery.test.ts](../../../apps/worker/src/file-authoring-delivery.test.ts:20) 仍要求 `WORD_QUALITY_REJECTED` 属于 advisory，结果为 `deliver`、`deliveryPolicy=generated_pair_v1`、`content_review=not_performed`。它证明旧交付行为仍在，不能证明符合 11 月 1 日可信宿主失败必须拒绝的要求。没有将该测试改成“通过新质量要求”，也没有在本任务修改敏感生成代码。
 
-两轮均未启动真实 worker 模型执行、未发起任何模型调用，未运行当前最终候选的完整 `quality:prospectus:validate` 或 `quality:prospectus`，未产生或伪造质量通过凭据。没有执行生产真实原稿→模型→双 Word→真实下载全链路，也没有执行独立全文财务事实、规则适用、逐页视觉和 Word/WPS 客户端复核。真实 worker/沙箱/检查点与数据库交付仍须在准确最终候选及固定 Linux 清单复验。
+所有轮次均未发起真实供应商模型调用，未运行当前最终候选的完整 `quality:prospectus:validate` 或 `quality:prospectus`，未产生或伪造质量通过凭据。第三轮实际运行 worker 阶段、检查点与数据库交付，但模型为注入的 synthetic seam；现有 Linux CI 的原生沙箱也不等于真实模型验收。没有执行生产真实原稿→模型→双 Word→真实下载全链路，也没有执行独立全文财务事实、规则适用、逐页视觉和 Word/WPS 客户端复核。#871 合入后的准确候选及固定 Linux 清单仍须复验。
 
 [场景矩阵](scenario-matrix.md) 逐项区分机械证据、已知政策缺口和必须补做的真实验收。第二轮仅补齐当前 `8df8b50` 的 Q15 及 Q17/Q18 部分机械证据，Q16 的可信宿主质量拒绝、#871 首稿确认 expiry guard 与最终合入候选集成仍待执行，没有把只读兼容审查当成集成通过。
 
@@ -87,6 +88,16 @@ node --test --test-concurrency=1 .local/quality-continuation-probe.mjs
 helper 在独立测试结束时清理克隆。预检不安装环境或修改数据库；当前复跑仍需精确代码与编译产物 hash 相符，不能仅凭未来日志名认定同一 subject 通过。
 
 第二轮结束时剩余测试克隆 0、其他客户端连接 0；核对专用目录和端口后 `pg_ctl -m smart -w stop` exit 0，最终 status exit 3、`127.0.0.1:55434` 为 `ECONNREFUSED`。普通沙箱首停无信号权限，经批准提升后仅停止此实例，两次记录均在 [continuation-postgres-cleanup.json](continuation-postgres-cleanup.json)。普通沙箱首次启动也因受限令牌 error 87/3 被拒，批准恢复后才执行测试，没有重新 initdb 或连接其他数据库。
+
+## 第三轮：跨入口交付、失败恢复与扣费
+
+覆盖复查发现现有五项 CI 没有执行 18 个影响文件/计费链的 PG 文件。已补跑 API9、worker7、M4 case templates 和年度事实 PG 各 1 文件，涵盖多文件生成与检查、底稿共享计划/付费复核、问答回填、诚信核查、动态复核、模板双 Word 及存量材料恢复。年度事实测试用既有授权原稿，本机 parser→16 个候选/anchor→PG ledger/outbox 和检查点/归属负例；它在非 unified 的存量/恢复路径仍可达，新的统一编制直接原稿路径绕过该步骤，不能将它算作新生成或模型质量证明。原有 M4 CI 已覆盖的批量底稿和 pipeline 不重复补跑；计数包含导入的既有 unit 与嵌套子项，不相加声称新的场景总数。
+
+原始失败来自旧测试夹具：合法 HTTP 金额仍用 number、响应断言仍期待 number、复核手动 queue 测试没有显式启用 synthetic queue，以及 QA 缺隔离输出目录。适配现有测试和环境，保持原金额、扣费、暂停/恢复、已完成文件、模型调用次数及归属断言。QA 另补可读主稿＋无文字补充附件：精确 pin、具名缺口/有效引用、实际 Word 说明、已完成答案/hash 复用、每题一次 journal intent、一次 120 积分结算及完成请求重放无新增 run/账务事件均通过；首轮新增查询错用不存在的列，修正为按 job 关联 run 后复验通过，原失败保留。它不代表损坏文件或缺 Blob 可容错，也不新增该 suite 原无的独立 402 场景。诚信复验中曾误把故意 number 的 422 负例转成字符串；恢复原负例后通过，中间失败也保留。`enableSyntheticQueue:true` 只服务本地手动 claim/finish；没有单独试跑 `enableRunRuntime:true`，不据此判断生产模型是否就绪。
+
+真实组件为 Fastify `app.inject`、独立 PostgreSQL、Azurite、持久队列/journal、Python parser/Word 与 Chromium。认证主体、模型结果和 Chromium 网站响应为合成；输入材料含合成材料和上述本机解析的既有授权原稿，不向供应商传送。不经过公网/Nginx/正式商户，未访问真实核查网站。实际命令、各轮原始日志、源码/产物 hash、失败原因与专属服务清理见 [cross-entry](cross-entry/README.md)。生产临时会话的只读状态核对另记在总证据，不混入此组测试。
+
+M4 workflow 追加这 18 文件及必要 Chromium/隔离输出目录、授权本机 parser opt-in，原有步骤、25 分钟限制和权限保留；新步骤要求 tests>0、fail/skip/todo 均为 0。配置检查不是执行结果，最终提交的 Linux CI 以 PR 的准确 head/run 读回为准。
 
 ## 既有真实失败证据
 

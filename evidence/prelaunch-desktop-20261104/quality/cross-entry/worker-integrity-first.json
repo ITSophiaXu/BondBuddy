@@ -1,0 +1,41 @@
+{
+  "subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+  "group": "integrity",
+  "started_at": "2026-11-04T05:46:03.552Z",
+  "command": [
+    "C:\\Program Files\\nodejs\\node.exe",
+    "--test",
+    "--test-concurrency=2",
+    "--test-reporter=tap",
+    "apps/worker/dist/integrity-e2e.pg.test.js"
+  ],
+  "synthetic": true,
+  "environment_keys": [
+    "BB_TEST_DATABASE_URL",
+    "BB_TEST_AZURITE_CONNECTION_STRING",
+    "BONDBUDDY_TEST_PYTHON",
+    "BONDBUDDY_WORD_PYTHON",
+    "BB_PYTHON",
+    "PYTHONPATH",
+    "PYTHONDONTWRITEBYTECODE",
+    "PYTHONIOENCODING",
+    "BB_TEST_INTEGRITY_BROWSER",
+    "BB_TEST_LIVE_AUTHORING",
+    "BB_PLATFORM_PROBE_ENABLED",
+    "BB_REVIEW_WEB_SEARCH_ENABLED",
+    "PLAYWRIGHT_BROWSERS_PATH"
+  ],
+  "bindings": [
+    {
+      "source": "apps/worker/src/integrity-e2e.pg.test.ts",
+      "source_sha256": "4de600e6fa2c8d5b06a84ea817aab204ff8472b41009df72d77f411ccc1a57e0",
+      "dist": "apps/worker/dist/integrity-e2e.pg.test.js",
+      "dist_sha256": "7f97d88b60c1ab51197423084e0bab0850fbcc9569f8871f3a03b88ece1712a0"
+    }
+  ],
+  "finished_at": "2026-11-04T05:46:24.197Z",
+  "exit_code": 1,
+  "signal": null,
+  "log": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\prelaunch-desktop-20261104\\.local\\quality-final-crossentry/worker-integrity-first.tap",
+  "log_sha256": "26b86fbf6060d560ae0bda17233cc2f09470a18955574734372240aa5bd7940a"
+}

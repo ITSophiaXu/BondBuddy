@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Pool} from 'pg';
-import {INITIAL_FIXED_PRICES} from '@bondbuddy/contracts';
+import {INITIAL_FIXED_PRICES,int64} from '@bondbuddy/contracts';
 import {createServer} from './server.js';
 import {isolatedTestDatabase} from './test-database.js';
 import {creditBalance,grantCredits,publishPrices} from './billing.js';
@@ -16,7 +16,7 @@ test('review dynamic balance: zero guard, one-point start, real debit, pause/res
   const pool=new Pool({connectionString:connection}),owner='review-dynamic-'+uid();let actor=owner;
   const files=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{files.set(k,Buffer.from(b));},get:async k=>files.get(k)!,getIfExists:async k=>files.get(k)??null,getIfExistsBounded:async k=>files.get(k)??null,exists:async k=>files.has(k),delete:async k=>{files.delete(k);}};
-  const app=createServer({pool,blobs,enablePaidReview:true,principal:async()=>({userId:actor,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
+  const app=createServer({pool,blobs,enablePaidReview:true,enableSyntheticQueue:true,principal:async()=>({userId:actor,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test'}});
   const ok=(r:any)=>{assert.ok(r.statusCode>=200&&r.statusCode<300,r.body);return r.json();};
   const fund=(points:number)=>transaction(pool,c=>grantCredits(c,{owner,source:'existing_grant',key:uid(),points,expiresAt:null,actor:'synthetic',reason:'isolated test'}));
@@ -40,10 +40,10 @@ test('review dynamic balance: zero guard, one-point start, real debit, pause/res
     const prepared=await prepare();assert.equal((await prepared.start()).statusCode,402);
     await fund(1);const concurrent=await Promise.all([prepared.start(),prepared.start()]);const run=ok(concurrent[0]);assert.equal(ok(concurrent[1]).run_id,run.run_id);
     assert.deepEqual(await creditBalance(pool,owner),{available:1,frozen:0});
-    assert.equal((await charge(run.run_id)).progress.policy,'authoring_balance_v2');assert.equal((await charge(run.run_id)).progress.charged_points,0);
+    assert.equal((await charge(run.run_id)).progress.policy,'authoring_balance_v2');assert.equal((await charge(run.run_id)).progress.charged_points,'0');
     const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,run.run_id);
     await checkpointStage(pool,lease,'input_lock',{saved:true});assert.equal((await creditBalance(pool,owner)).available,0);
-    assert.equal((await charge(run.run_id)).progress.charged_points,1);assert.equal(await pauseAtCheckpoint(pool,lease),true);
+    assert.equal((await charge(run.run_id)).progress.charged_points,'1');assert.equal(await pauseAtCheckpoint(pool,lease),true);
     ok(await act(run.run_id,'pause'));await fund(20);assert.equal(await resumePausedRun(pool,owner,run.run_id,'credits_recharged'),false,'topup cannot override manual pause');
     ok(await act(run.run_id,'resume'));const resumed=await claim(pool);assert.ok(resumed);assert.equal((resumed.checkpoint.stages as any).input_lock.saved,true);
     ok(await act(run.run_id,'pause'));const frozen=(await charge(run.run_id)).progress.charged_points;
@@ -55,17 +55,17 @@ test('review dynamic balance: zero guard, one-point start, real debit, pause/res
     await fund(20000);assert.equal(await resumePausedRun(pool,owner,run.run_id,'credits_recharged'),true);
     const delivery=await claim(pool);assert.ok(delivery);assert.equal((delivery.checkpoint.stages as any).review_saved_report.artifact,report.artifactId);
     await finish(pool,delivery,'succeeded',{artifactId:report.artifactId,artifactVersion:1,blobs});
-    assert.equal((await charge(run.run_id)).progress.charged_points,10000);assert.equal((await act(run.run_id,'cancel')).statusCode,409);
+    assert.equal((await charge(run.run_id)).progress.charged_points,'10000');assert.equal((await act(run.run_id,'cancel')).statusCode,409);
     assert.equal((await pool.query("SELECT sum(points)::int n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[run.run_id])).rows[0].n,10000);
     const next=await prepare(),cancelled=ok(await next.start()),work=await claim(pool);assert.ok(work);
     await age(cancelled.run_id);await renew(pool,work);
     await recordReviewAction(pool,work,{version:'review-action-v1',action_id:digest('actual synthetic check'),code:'check_financial',state:'started'});
-    const consumed=(await charge(cancelled.run_id)).progress.charged_points;assert.ok(consumed>0);
+    const consumed=int64((await charge(cancelled.run_id)).progress.charged_points);assert.ok(consumed>0n);
     assert.ok((await charge(cancelled.run_id)).progress.last_activity_at);
-    ok(await act(cancelled.run_id,'cancel'));assert.ok((await charge(cancelled.run_id)).progress.charged_points>=consumed);
+    ok(await act(cancelled.run_id,'cancel'));assert.ok(int64((await charge(cancelled.run_id)).progress.charged_points)>=consumed);
     const beforeFailure=await creditBalance(pool,owner),failed=ok(await (await prepare()).start()),failing=await claim(pool);assert.ok(failing);
     await age(failed.run_id);await renew(pool,failing);assert.ok((await creditBalance(pool,owner)).available<beforeFailure.available);
-    await finish(pool,failing,'failed',{errorCode:'DATA_UNAVAILABLE'});assert.deepEqual(await creditBalance(pool,owner),beforeFailure);assert.equal((await charge(failed.run_id)).progress.charged_points,0);
+    await finish(pool,failing,'failed',{errorCode:'DATA_UNAVAILABLE'});assert.deepEqual(await creditBalance(pool,owner),beforeFailure);assert.equal((await charge(failed.run_id)).progress.charged_points,'0');
     // Reconstruct pre-change paid review reservations in this isolated database only.
     // New code must neither debit these incrementally nor change their release policy.
     for(const outcome of ['succeeded','cancelled','failed'] as const){
@@ -85,7 +85,7 @@ test('review dynamic balance: zero guard, one-point start, real debit, pause/res
       }else if(outcome==='cancelled')ok(await act(old.run_id,'cancel'));
       else await finish(pool,oldLease,outcome,{errorCode:'DATA_UNAVAILABLE'});
       assert.deepEqual(await creditBalance(pool,owner),{available:before.available+(outcome==='succeeded'?0:10000),frozen:before.frozen-10000});
-      assert.equal((await charge(old.run_id)).progress.charged_points,outcome==='succeeded'?10000:0);
+      assert.equal((await charge(old.run_id)).progress.charged_points,outcome==='succeeded'?'10000':'0');
     }
     actor='foreign-'+uid();assert.equal((await send('GET',`/api/v1/runs/${run.run_id}/credit-charge`)).statusCode,404);actor=owner;
     assert.equal((await auditCredits(pool)).consistent,true);

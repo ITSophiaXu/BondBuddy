@@ -1,0 +1,191 @@
+{
+  "scope": "Existing authorized local parser and isolated PostgreSQL fact persistence test; no provider, merchant or external website call.",
+  "subject_base": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+  "node": "v26.13.0",
+  "command": [
+    "C:\\Program Files\\nodejs\\node.exe",
+    "--test",
+    "--test-concurrency=1",
+    "--test-reporter=tap",
+    "apps/worker/dist/rq-prospectus-annual-fact-pg.integration.test.js"
+  ],
+  "environment_keys": [
+    "SystemRoot",
+    "SYSTEMROOT",
+    "WINDIR",
+    "PATH",
+    "Path",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "PATHEXT",
+    "ComSpec",
+    "SYSTEMDRIVE",
+    "BB_TEST_DATABASE_URL",
+    "BONDBUDDY_TEST_PYTHON",
+    "BONDBUDDY_WORD_PYTHON",
+    "BB_PYTHON",
+    "BB_RUN_AUTHORIZED_RQ_ANNUAL_FACT_PG_TESTS",
+    "PYTHONPATH",
+    "PYTHONDONTWRITEBYTECODE",
+    "PYTHONIOENCODING",
+    "PYTHONUTF8",
+    "BB_TEST_LIVE_AUTHORING",
+    "BB_PLATFORM_PROBE_ENABLED",
+    "BB_REVIEW_WEB_SEARCH_ENABLED"
+  ],
+  "source_and_build": [
+    {
+      "path": "apps/worker/src/rq-prospectus-annual-fact-pg.integration.test.ts",
+      "sha256": "8f9b52aa4a24766133ad74c690e4aa2e7498f4e89dfdabd4c57903679b905b40",
+      "sha256_lf": "e6a84b89997c21019df678f14127e1eb7cb23b2a8ba7330dd665ed667327d62b"
+    },
+    {
+      "path": "apps/worker/dist/rq-prospectus-annual-fact-pg.integration.test.js",
+      "sha256": "97d53e4832b65b7fe32aa72530f83c53a53927088ccc2efce9f70d813bce65c2"
+    },
+    {
+      "path": "apps/worker/src/rq-prospectus-annual-fact-extractor.ts",
+      "sha256": "0e77fd2dfd06ca1f9a64fe0f6db90796c3ca23a18619286cda911a068298bc40",
+      "sha256_lf": "358d69d661205adc48ec7d83cc203815cb413f33bfc6ba6b5bd985be3fbe791e"
+    },
+    {
+      "path": "apps/worker/dist/rq-prospectus-annual-fact-extractor.js",
+      "sha256": "dc1a34bf4e8d6a24cb9971165cc122a6ce90a30c14eef701f6a659b421d054ad"
+    },
+    {
+      "path": "apps/worker/src/controlled-native-fact-candidate-producer.ts",
+      "sha256": "fac56a8fe20c693cafd452dcc2b25c88e408d9589ed408981968dff149a66b9c",
+      "sha256_lf": "11340b8601bde3c4857d567927562e3faff1544a1c1d8ffb40c2e0ab1105836d"
+    },
+    {
+      "path": "apps/worker/dist/controlled-native-fact-candidate-producer.js",
+      "sha256": "516436a7d023e81c931b668d3a3b1e7b73399b2efc6e510fac86a0718c9d4526"
+    },
+    {
+      "path": "apps/worker/src/test-database.ts",
+      "sha256": "95d43468dc2e1450f65857435c1c31b23e6815244a0d082c340f8cdfdd591bb2",
+      "sha256_lf": "06e06ea7000a6237e83d12038bc95a6d8a6d76eaca0843eadd6a1220642fa9b6"
+    },
+    {
+      "path": "apps/worker/dist/test-database.js",
+      "sha256": "aea636fa4850da032d1961a2e28816e738eda46d70980b6554f3d9bf7d586e13"
+    },
+    {
+      "path": "apps/worker/src/run-pipeline.ts",
+      "sha256": "0dd32daa1b41fa1e172a0f8b74f45735654926bdccb7b1afd96b6c7fe327dc86",
+      "sha256_lf": "fef031b3b57dd4c9dfb9a09173f3f8ad4e44f221348e6c1b7b67cf798d2bfa6a"
+    },
+    {
+      "path": "apps/worker/dist/run-pipeline.js",
+      "sha256": "4a32082b61b1f44c3ee7c5c6e79083ae4e0c7c09cc53029bd5c8fd3a97a4d7df"
+    },
+    {
+      "path": "apps/worker/src/document-parser.ts",
+      "sha256": "034dbaed7fe4d633639bbbecf45bb6157eaefe04aa036dfb1868dcf836972683",
+      "sha256_lf": "ac9ded8ec93598acbfa527e7876543fe51fd99f3b13845073cc64b107e7d8a4d"
+    },
+    {
+      "path": "apps/worker/dist/document-parser.js",
+      "sha256": "520f87f7544d599ab6de3fd907f6edc7cd352ebe0d8b49e8754b25e55b00cb50"
+    },
+    {
+      "path": "tests/samples/2026-09-25/manifest.json",
+      "sha256": "b191b6c8bf1ce62bf679b1bda33bd609629a2832119e4eedd5947feb9ab0a67d"
+    }
+  ],
+  "started_at": "2026-11-04T06:08:51.338Z",
+  "state": "complete",
+  "preflight": {
+    "dedicated_loopback_template_verified": true,
+    "clone_names": []
+  },
+  "completed_at": "2026-11-04T06:09:20.938Z",
+  "exit_code": 0,
+  "signal": null,
+  "summary": {
+    "tests": 1,
+    "pass": 1,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "duration_ms": 29431.4361
+  },
+  "raw_sha256": "16732ff73921f7490bc44220f57d94ac3f984f7c3ceff7ae4a8b89f6fe670ea1",
+  "source_and_build_after": [
+    {
+      "path": "apps/worker/src/rq-prospectus-annual-fact-pg.integration.test.ts",
+      "sha256": "8f9b52aa4a24766133ad74c690e4aa2e7498f4e89dfdabd4c57903679b905b40",
+      "sha256_lf": "e6a84b89997c21019df678f14127e1eb7cb23b2a8ba7330dd665ed667327d62b"
+    },
+    {
+      "path": "apps/worker/dist/rq-prospectus-annual-fact-pg.integration.test.js",
+      "sha256": "97d53e4832b65b7fe32aa72530f83c53a53927088ccc2efce9f70d813bce65c2"
+    },
+    {
+      "path": "apps/worker/src/rq-prospectus-annual-fact-extractor.ts",
+      "sha256": "0e77fd2dfd06ca1f9a64fe0f6db90796c3ca23a18619286cda911a068298bc40",
+      "sha256_lf": "358d69d661205adc48ec7d83cc203815cb413f33bfc6ba6b5bd985be3fbe791e"
+    },
+    {
+      "path": "apps/worker/dist/rq-prospectus-annual-fact-extractor.js",
+      "sha256": "dc1a34bf4e8d6a24cb9971165cc122a6ce90a30c14eef701f6a659b421d054ad"
+    },
+    {
+      "path": "apps/worker/src/controlled-native-fact-candidate-producer.ts",
+      "sha256": "fac56a8fe20c693cafd452dcc2b25c88e408d9589ed408981968dff149a66b9c",
+      "sha256_lf": "11340b8601bde3c4857d567927562e3faff1544a1c1d8ffb40c2e0ab1105836d"
+    },
+    {
+      "path": "apps/worker/dist/controlled-native-fact-candidate-producer.js",
+      "sha256": "516436a7d023e81c931b668d3a3b1e7b73399b2efc6e510fac86a0718c9d4526"
+    },
+    {
+      "path": "apps/worker/src/test-database.ts",
+      "sha256": "95d43468dc2e1450f65857435c1c31b23e6815244a0d082c340f8cdfdd591bb2",
+      "sha256_lf": "06e06ea7000a6237e83d12038bc95a6d8a6d76eaca0843eadd6a1220642fa9b6"
+    },
+    {
+      "path": "apps/worker/dist/test-database.js",
+      "sha256": "aea636fa4850da032d1961a2e28816e738eda46d70980b6554f3d9bf7d586e13"
+    },
+    {
+      "path": "apps/worker/src/run-pipeline.ts",
+      "sha256": "0dd32daa1b41fa1e172a0f8b74f45735654926bdccb7b1afd96b6c7fe327dc86",
+      "sha256_lf": "fef031b3b57dd4c9dfb9a09173f3f8ad4e44f221348e6c1b7b67cf798d2bfa6a"
+    },
+    {
+      "path": "apps/worker/dist/run-pipeline.js",
+      "sha256": "4a32082b61b1f44c3ee7c5c6e79083ae4e0c7c09cc53029bd5c8fd3a97a4d7df"
+    },
+    {
+      "path": "apps/worker/src/document-parser.ts",
+      "sha256": "034dbaed7fe4d633639bbbecf45bb6157eaefe04aa036dfb1868dcf836972683",
+      "sha256_lf": "ac9ded8ec93598acbfa527e7876543fe51fd99f3b13845073cc64b107e7d8a4d"
+    },
+    {
+      "path": "apps/worker/dist/document-parser.js",
+      "sha256": "520f87f7544d599ab6de3fd907f6edc7cd352ebe0d8b49e8754b25e55b00cb50"
+    },
+    {
+      "path": "tests/samples/2026-09-25/manifest.json",
+      "sha256": "b191b6c8bf1ce62bf679b1bda33bd609629a2832119e4eedd5947feb9ab0a67d"
+    }
+  ],
+  "cleanup": {
+    "dedicated_loopback_template_verified": true,
+    "clone_names": []
+  },
+  "new_clone_names_remaining": [],
+  "authorized_sample": {
+    "case_id": "rq-202509",
+    "file_id": "rq-202509-01",
+    "sha256": "51f77e36dcdc8b565f9a7b58ebf87cb6be4839a3444b8602df833e3fd61ef678"
+  },
+  "material_boundary": "The existing authorized historical DOCX was read locally by the real parser; sample bytes and ledger payloads were not copied into evidence. PostgreSQL identities/reviewer authorization were synthetic. No model or external website was called.",
+  "raw_log_lf_sha256": "16732ff73921f7490bc44220f57d94ac3f984f7c3ceff7ae4a8b89f6fe670ea1",
+  "metadata_enriched_at": "2026-11-04T06:09:43.930Z"
+}

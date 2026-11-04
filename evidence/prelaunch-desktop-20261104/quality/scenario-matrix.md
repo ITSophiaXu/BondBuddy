@@ -14,8 +14,8 @@
 | Q08 | 目录/标题层级/编号/顺序与正文结构分开；旧修订不隐藏真实标题变化 | `python-mechanical.log` source-outline7项 | 机械通过；没有对最终真实生成稿全章节逐项确认 |
 | Q09 | 四份真实历史 DOCX 经 synthetic 编辑保持包资源/样式/媒体/未改内容，源hash不变 | `python-mechanical.log` authorized-fixed-edit 4 子案例、fixed-edit18项 | 机械通过；不代表真实模型选择了正确原稿或正确修改范围，也不证明页面排版 |
 | Q10 | 修订稿含真实增删；接受修订等于清洁稿、拒绝本轮修订还原基线；首稿无伪造历史 | `python-mechanical.log` file-authoring7、unified-word8、word-delivery5；Linux首稿8项 | 机械通过；Windows目录权限断言1失败保留，Linux原样复验通过；整套固定Linux门禁未跑 |
-| Q11 | 双Word归属、run/version、MIME、元数据与下载字节hash一致；foreign/missing/tampered Blob不交付 | `worker-mechanical.log` 交付边界；本批其他[任务流程记录](../task-flow/README.md)含下载fixture回归 | 部分覆盖；本quality任务没有下载生产真实模型双稿，不能把fixture读回作为内容验收 |
-| Q12 | 实际 worker 从锁定材料经工具/沙箱/调用journal到检查点/私有Blob/终态；断线恢复不重调未知模型 | 本轮未启动worker供应商执行，仅运行阶段/工具机械测试 | 待执行；准确候选Linux沙箱、PG/Azurite、真实worker集成及生产模型验收 |
+| Q11 | 双Word归属、run/version、MIME、元数据与下载字节hash一致；foreign/missing/tampered Blob不交付 | `worker-mechanical.log` 交付边界；第三轮真实 PG/Word 文件链与模板双稿；本批其他[任务流程记录](../task-flow/README.md)含下载fixture回归 | 部分覆盖；没有下载生产真实模型双稿，不能把合成组件读回作为内容验收 |
+| Q12 | 实际 worker 从锁定材料经工具/沙箱/调用journal到检查点/私有Blob/终态；断线恢复不重调未知模型 | 第三轮 [cross-entry](cross-entry/README.md) 的实际 worker/PG/Azurite/journal/Word；现有 Linux CI 另执行原生沙箱，均为合成模型 | 组件部分通过；真实模型、#871 合入后的准确候选及固定 Linux 完整清单仍待验收 |
 | Q13 | 可信服务端质量检查失败必须 failed，不登记正常成果，不写 completed checkpoint | 当前 `file-authoring-delivery.test.ts:20` 反而要求 WORD_QUALITY_REJECTED advisory→deliver/content_review=not_performed | **政策缺口/发布阻断**；由独立#871修复及固定gate验证，不能在本任务静默放宽/移植 |
 | Q14 | #871当前final commit/tree固定机械、真实模型金样、独立财务/章节/渲染及Word/WPS复核 | 仅只读#871决定与失败记录，未跑其完整gate、未签凭据 | 待执行/发布阻断；机械绿不能替代真实模型或独立确认 |
 | Q15 | 新无基线首稿合法双同hash/同ID；真实API/PG的 result/current 精确pin，并能续改准确清洁稿 | 第二轮 subject `8df8b50`，`continuation-api-pg.log/results.json`：真实API/PG/queue登记合成同ID首稿，元数据→编译guard→两选择POST input持久化精确previous_output/format pin，实际下载hash一致 | 当前实现机械通过；synthetic principal/DOCX/内存Blob、无模型；#871最终合入候选仍须重跑 |
@@ -33,11 +33,11 @@
 | --- | --- | --- | --- |
 | 募集书更新／无原稿首稿 | 修订稿、清洁稿 DOCX；无历史首稿可合法同 ID/同字节，是否有基线按输入决定 | Q01–Q14，真实原件 parser/fixed-edit 与 synthetic writer | 新质量政策已生效、真实原稿完整保留、正文事实完整更新、真实分页合格；Q13 明确阻断 |
 | 项目文件更新 | DOCX/PDF 读取与定位，修改后导出修订稿、清洁稿、基线 DOCX | `python-project-files.log` 5 项；Linux94 的 corrections/source pin 与歧义拒绝 | PDF 版式忠实转换、跨文件/全部财务事实更新及真实 worker 注册下载通过 |
-| 文件复核／项目文件一致性检查 | 复核报告 DOCX；源 DOCX 的原生批注 DOCX，源 PDF 的批注 PDF；采纳修改后的 DOCX 修订/清洁稿及报告 | Linux94 的 review Word/annotations/corrections；Node54 的 review-file-stage，拒绝无输出、进度文本、空报告及 invalid Word | 复核没有漏项、法规/结论正确、普通文件批次部分失败已恢复；完整 PG/账务/真实模型链未跑 |
-| 文件生成（M4 文书） | 正文 DOCX＋独立编制说明 DOCX，选定 Word 模板副本保持可编辑 | Node54 的 M4 多品种/模板/交付边界；Linux94 的计算工具、期间/单位/主体与 effective source | 各文书真实模型编制内容合格、编制说明与业务全文一致、所有实际模板逐页视觉合格 |
-| 底稿生成／目录批次 | 单项正文或不适用/缺材料说明 DOCX；编制说明 DOCX；批量下载 ZIP，内含 DOCX；XLSX 目录是输入 | Linux94 的 shared11、147 中性模板包、source4；Node54 的直接底稿与248文件ZIP逐成员校验 | 真实批次全部内容可信、部分项生成失败后的结算/恢复正确、付费复核及继续修改已端到端通过 |
-| 诚信核查 | 企业、个人按实际对象分别导出 DOCX；截图嵌入 Word，证据可由图片/PDF/Word输入 | Linux94 的 integrity_report4：整图保留、未签章、失败/未核实页面不冒充结果、诊断和不利事实进明细 | 官网实际查询成功、证据主体匹配、验证码/登录及部分网站失败恢复、实际导出/重复导出的PG链通过 |
-| 问答及附件回填 | DOCX 问题原稿原位回填并输出 DOCX；PDF/旧 DOC 问题转 Word；XLSX 可作证据输入 | Linux94 的 project_qa9：表格/页脚/长文/空值零值/缺材料；真实本机 DOC/PDF 转换；XLSX位置保留 | 回答事实正确、全部问题已覆盖、真实材料多附件部分失败处理/账务/版本注册下载通过 |
+| 文件复核／项目文件一致性检查 | 复核报告 DOCX；源 DOCX 的原生批注 DOCX，源 PDF 的批注 PDF；采纳修改后的 DOCX 修订/清洁稿及报告 | Linux94 的 review Word/annotations/corrections；Node54 拒绝空/invalid Word；第三轮 ordinary batch、paid coverage/checks 与动态复核 PG 的失败释放/恢复 | 真实复核没有漏项、法规/结论正确；合成模型下的 PG/账务恢复不等于生产真实模型与正式资金链验收 |
+| 文件生成（M4 文书） | 正文 DOCX＋独立编制说明 DOCX，选定 Word 模板副本保持可编辑 | Node54 的 M4 多品种/模板/交付边界；Linux94 来源/计算；第三轮六种默认模板 scope→原生双 Word→PG 单次结算与输入固定 | 各文书真实模型编制内容合格、编制说明与业务全文一致、所有实际模板逐页视觉合格 |
+| 底稿生成／目录批次 | 单项正文或不适用/缺材料说明 DOCX；编制说明 DOCX；批量下载 ZIP，内含 DOCX；XLSX 目录是输入 | Linux94 shared/147模板/source；Node54 ZIP；第三轮 shared-stage、paid-checks、248 ZIP/legacy checks 的真实 PG 恢复、付费复核、缓存和失败释放；原 M4 CI 还覆盖300项部分失败 | 真实批次全部内容可信、正式资金结算及生产真实模型续改端到端通过；不能把本地合成模型 PG 复验当成该结论 |
+| 诚信核查 | 企业、个人按实际对象分别导出 DOCX；截图嵌入 Word，证据可由图片/PDF/Word输入 | Linux94 report；第三轮真实 Chromium＋PG/queue/journal/Word，网站响应和模型为合成，覆盖部分失败、免费再导出、取消/空结果失败释放与隔离 | 官网实际查询成功、真实证据主体匹配、验证码/登录及生产网站故障恢复；组件 PG 链已补验，正式场景仍缺 |
+| 问答及附件回填 | DOCX 问题原稿原位回填并输出 DOCX；PDF/旧 DOC 问题转 Word；XLSX 可作证据输入 | Linux94 project_qa9；第三轮真实 PG/Azurite/worker/Word：精确输入、可读主稿＋无文字补充附件的具名缺口/有效引用/Word说明、暂停后复用回答/hash/单次结算、PDF不可读页、版本下载与必需材料不可读失败释放 | 回答事实正确、全部真实问题和材料已覆盖、生产真实模型及正式资金验收；合成回答组件通过不能代替；不代表损坏文件或缺失Blob容错 |
 | 继续修改／基于成果再次生成 | 沿原入口生成新的 DOCX 或修订/清洁对；已有下载字节与精确来源 pin 应保留 | Linux94 的 fixed source/accept revisions/重复复核保留人工批注；Node54 的 M4 edit-base、hash/版本/owner约束；第二轮Q15真实API/PG/queue+编译guard精确锁输入，Q17/Q18有限机械证据 | 真实浏览器到worker模型续改整链通过、#871质量拒绝合入通过，或旧 passed 成果已被新质量政策追认 |
 
 本轮只验证上述已有输出格式。没有生成 XLSX 成果的验收，也没有将可读 PDF 输入理解成所有产品都提供 PDF 成果。PDF 批注是文件复核的专门输出；普通文书、底稿、问答和诚信报告为 Word。
@@ -48,8 +48,8 @@
 | --- | --- | --- | --- |
 | 输出损坏、假格式或无内容 | Node54 DOCX inspector 的 CRC、XML、关系、压缩/大小限制；ZIP 拒绝丢失/截断/损坏文件；复核 stage 拒绝进度/空/invalid Word并保留诊断 | 每个入口真实 worker→私有 Blob→artifact→下载都注入损坏并确认不交付、不误计费；M1 质量拒绝依然有 Q13 缺口 | 部分覆盖，不能外推全入口质量拒绝 |
 | 错版、错 hash、异主或撤回材料 | 输入链 HTTP/PG 5项；Linux94 source hash/期间/单位/合并母公司冲突；Node54 M4精确pin和edit-base限制、ZIP pin/name/owner变化失效；第二轮Q15/Q17当前续改API/PG/guard负例和正常换稿证据 | 其他各入口准备后替换/撤回材料或成果、提交/恢复二次读回与错误扣费；Q15–Q18的#871最终合入验证 | 部分覆盖；输入链和本轮募集书续改子集有真实PG证据 |
-| 一个批次或多附件部分失败 | 问答扫描/不可读页保留具体缺口、不编问题；诚信失败/未核实页不做成功截图；底稿无依据形成具体说明；ZIP任何坏成员整包拒绝后可重试 | 普通文件批量、底稿多项、诚信多站点和问答多附件在中途失败/取消/断线后状态、已成功成果、重试范围及扣费均准确；未跑现存相关PG suite | 待执行真实集成；ZIP原子失败不是生成批次部分恢复 |
-| 重复生成、重复下载或恢复 | 底稿shared crash replay字节相同；ZIP并发复用、pin失效、错误重试、取消；重复批注保留人工内容 | 各产品相同request重放不新增模型调用/收费；更换request后的明确再生成保留旧成果；未知模型结果断线不得重复调用 | 部分覆盖；本轮未跑跨入口真实PG/journal协议 |
+| 一个批次或多附件部分失败 | 第三轮补齐普通文件批量、底稿共享批次、诚信多主体/多站点与问答多题、同次可读主稿＋无文字补充附件的真实 PG/worker 恢复和单次扣费；网站/模型合成。附件具名缺口进入Word，有效答案/来源及原已完成hash保留；另有扫描缺口、不适用说明、ZIP坏成员原子拒绝 | 准确发布候选在实际服务/模型/正式资金下，故障与断线后状态、已成功成果、重试范围和收费均准确；合法空文本DOCX案例不代表损坏包/缺Blob容错，合成局部不能代替生产整链 | 已有组件集成证据；真实模型与正式资金场景仍待执行 |
+| 重复生成、重复下载或恢复 | 第三轮实际 PG/journal/queue 覆盖完成回答、共享计划、截图与已付检查复用；ZIP并发/取消、再导出不调用模型、不重复扣费；模型为合成 | 各产品生产相同request重放不新增真实模型调用/收费；明确再生成保留旧成果；未知供应商结果断线安全恢复 | 组件部分覆盖；真实供应商未知结果、准确发布候选及正式账务仍待验收 |
 | 继续修改与旧版本保留 | 修订接受/拒绝语义、原件hash不变；M4 edit-base类型/owner/version pin；两类Word人工批注在重复复核保留；第二轮Q15同ID首稿准确续改input与Q17正常换稿后旧result保留 | 对真实模型成果从浏览器结果页选择续改，准确下载/准备/提交双读回；#871同ID合法首稿与failed quality拒绝集成、expiry guard按Q15–Q18验证 | 当前API/PG有限通过；完整真实用户/模型与#871合入链待执行 |
 | 实际格式与客户端打开 | 实际生成并重新解析DOCX/PDF；248成员ZIP独立CRC/hash验证；本机LibreOffice完成旧DOC转换；147中性Word模板包校验 | 最终各入口真实成果逐页渲染、Word/WPS打开/批注/修订/表格编辑，核对用户文件名、MIME和实际字节格式一致 | 部分覆盖；本轮没有最终成果视觉签收 |
 

@@ -1,0 +1,41 @@
+{
+  "subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+  "group": "qa",
+  "started_at": "2026-11-04T05:45:38.539Z",
+  "command": [
+    "C:\\Program Files\\nodejs\\node.exe",
+    "--test",
+    "--test-concurrency=2",
+    "--test-reporter=tap",
+    "apps/worker/dist/project-qa-e2e.pg.test.js"
+  ],
+  "synthetic": true,
+  "environment_keys": [
+    "BB_TEST_DATABASE_URL",
+    "BB_TEST_AZURITE_CONNECTION_STRING",
+    "BONDBUDDY_TEST_PYTHON",
+    "BONDBUDDY_WORD_PYTHON",
+    "BB_PYTHON",
+    "PYTHONPATH",
+    "PYTHONDONTWRITEBYTECODE",
+    "PYTHONIOENCODING",
+    "BB_TEST_INTEGRITY_BROWSER",
+    "BB_TEST_LIVE_AUTHORING",
+    "BB_PLATFORM_PROBE_ENABLED",
+    "BB_REVIEW_WEB_SEARCH_ENABLED",
+    "PLAYWRIGHT_BROWSERS_PATH"
+  ],
+  "bindings": [
+    {
+      "source": "apps/worker/src/project-qa-e2e.pg.test.ts",
+      "source_sha256": "fa47be0d30b2305c4f4e3f7186f7e577162290ac52ba29923ca706f5c48bbf9b",
+      "dist": "apps/worker/dist/project-qa-e2e.pg.test.js",
+      "dist_sha256": "fe4f116975b3cea71a3a08b4b8479605f29b5e7f04054d9e799f88bf7f0802ba"
+    }
+  ],
+  "finished_at": "2026-11-04T05:46:05.724Z",
+  "exit_code": 1,
+  "signal": null,
+  "log": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\prelaunch-desktop-20261104\\.local\\quality-final-crossentry/worker-qa-first.tap",
+  "log_sha256": "c24f904caad9b8137a9c04931cf85230e5ba048c3079e6300c83d45bd32daf91"
+}
