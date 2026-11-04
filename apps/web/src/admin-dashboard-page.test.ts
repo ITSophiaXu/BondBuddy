@@ -71,7 +71,7 @@ test('tasks table renders state/stage, duration, tokens, pricing and the latest 
   assert.match(html, /DELIVERY_FAILED/);
   assert.match(html, /未定价/);
   assert.match(html, /—/);
-  assert.match(html, /data-dashboard-exec-log="att_syn_1">查看执行日志/);
+  assert.match(html, /data-dashboard-exec-log="att_syn_1"[^>]*>(?:<svg[\s\S]*?<\/svg>)?查看执行日志/);
   assert.equal((html.match(/data-dashboard-exec-log=/g) ?? []).length, 1, 'runs without evidence show a dash, not a broken link');
   assert.match(dashboardTasksHtml([]), /没有符合条件的任务/);
 });
