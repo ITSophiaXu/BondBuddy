@@ -226,8 +226,8 @@
   "files": [
     {
       "file": "README.md",
-      "bytes": 7016,
-      "sha256": "fdb0257766a344d89d4a07d249e70190646119a0d8ce26c2ae957b18f438aa82"
+      "bytes": 11557,
+      "sha256": "43e047dde183811730e90e9c74589080cc845814cf0fc7af7ac713e3151d8307"
     },
     {
       "file": "component-core.tap",
@@ -271,8 +271,8 @@
     },
     {
       "file": "launch-gates.md",
-      "bytes": 27598,
-      "sha256": "07476a59437839b3007ae562a418d9e7d4f7d64fdf165d251dababab492f7a1a"
+      "bytes": 27919,
+      "sha256": "1f7daacdb45bac45c83884eb9cecb0883ad0fa19b58c6ca4bc10ad0a2a59a8af"
     },
     {
       "file": "postgres-cleanup.json",
@@ -298,6 +298,18 @@
       "file": "subscription-final-prototype-monthly-1440.png",
       "bytes": 147478,
       "sha256": "d5500e2785dd8a695ef983fc49fea667e174ca15594b7401eeba3eb311f1a907"
+    },
+    {
+      "file": "billing-copy-focused.log",
+      "bytes": 3917,
+      "sha256": "e22fe8f7fef792598b20ba7eb524b8dbc3fdc66f87511828c2708d24a34784ec"
+    },
+    {
+      "file": "billing-copy-workpaper.log",
+      "bytes": 379,
+      "sha256": "53f7e104319937f0eb9bcd94c4c3a919c1e9d63513bed056930a7f82a0714395"
     }
-  ]
+  ],
+  "inventory_updated_at": "2026-11-04T05:33:32.105Z",
+  "inventory_update_note": "Refresh only the two edited documentation files and append the two original billing-guidance logs. Original test run records, code bindings, raw transcripts and images are unchanged; this is not a new test execution."
 }

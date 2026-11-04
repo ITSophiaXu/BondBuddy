@@ -63,7 +63,7 @@
 | 复核计费与恢复定向浏览器 | 后续提示修改后 4 passed：桌面不足保留输入、缺价不免费执行、实际预留/扣费/释放展示、丢响应沿用原意图。Synthetic HTTP fixture，不代表本次新增真实充值或模型执行。 |
 | 第二轮续改跨层 | subject `8df8b50`，7 passed/0 skip（父 test＋6 场景）：真实 Fastify routes/隔离 PG/queue 与编译 guard 验证同 ID 双稿、精确 input 引用、正常换稿和拒绝场景。app.inject 不经 TCP/Nginx/ApiClient/浏览器；认证、Word 与内存 Blob 为 synthetic。#871 质量拒绝、expiry 与真实模型整链未执行。见 quality。 |
 | 余额不足中性提示定向浏览器 | `d7f918f` 之上的文案工作树：首轮 12 项为 11 passed/1 failed；底稿旧 fixture 未适配现行字符串金额协议，最小修正该 fixture 后仅重跑失败项，1 passed/0 failed。普通任务、局部文件恢复、混合包、底稿剩余续跑、旧更新/复核/材料显式开始、耗尽状态与未开放渠道均已有通过结果。原始失败保留，非真实支付/模型验收。补充文案后根 build 与 contracts 再次 exit 0，详见 billing。 |
-| whitespace / 原始证据 | 源码及文档通过；原始失败 `component-price-coverage.tap` 与 `component-refund-facts-red.tap` 保留 Node 生成的 8 处缩进空行；补充的 `billing-copy-focused.log` 保留 Playwright 生成的 2 处行末空格。完整 diff 检查会报告这 10 处，未为绿灯清洗失败证据。此目录关闭文本换行转换，CRLF 是有效行尾；第二轮后 34 个既有证据文件 hash 与清单一致，补充两份文案日志 hash 另见 billing/README。 |
+| whitespace / 原始证据 | 源码及文档通过；原始失败 `component-price-coverage.tap` 与 `component-refund-facts-red.tap` 保留 Node 生成的 8 处缩进空行；补充的 `billing-copy-focused.log` 保留 Playwright 生成的 2 处行末空格。完整 diff 检查会报告这 10 处，未为绿灯清洗失败证据。此目录关闭文本换行转换，CRLF 是有效行尾；补充文案后，清单只刷新两份已编辑说明文档并新增两份原始日志，合计 36 个证据文件 hash 复核通过。原测试记录、源码绑定及原始输出未变，更新时间与范围保存在 component-results.json。 |
 
 单元最终命令：
 
