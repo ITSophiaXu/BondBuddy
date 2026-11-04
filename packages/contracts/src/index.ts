@@ -69,8 +69,6 @@ export * from './upload-inspection-errors.js';
 export * from './update-project.js';
 import { adminSchemas, ADMIN_LOG_FILTERS } from './admin-logs.js';
 export * from './admin-logs.js';
-import { adminDashboardSchemas } from './admin-dashboard.js';
-export * from './admin-dashboard.js';
 import { browserErrorSchemas } from './browser-errors.js';
 export * from './browser-errors.js';
 export * from './data-lifecycle.js';
@@ -106,8 +104,7 @@ export const M1_UPLOAD_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'text/csv', 'text/plain', 'image/png', 'image/jpeg', 'application/msword'
 ] as const;
-import { RUN_STATES } from './run-states.js';
-export * from './run-states.js';
+export const RUN_STATES = ['preparing', 'rejected', 'queued', 'running', 'awaiting_input', 'paused', 'validating', 'delivering', 'settlement_pending', 'succeeded', 'test_completed', 'failed', 'cancelled'] as const;
 /** Project list projection: no run is a draft; otherwise reuse the actual run state. */
 export const PROJECT_STATES = ['draft', ...RUN_STATES] as const;
 export const PROJECT_ARCHIVE_VIEWS = ['active', 'archived', 'all'] as const;
@@ -250,7 +247,6 @@ export const schemas = {
   ...generationIssuerBindingSchemas,
   ...recoverySchemas,
   ...adminSchemas,
-  ...adminDashboardSchemas, // #448 operator-only per-user/per-task dashboard
   ...runtimeSchemas, // #17 worker runtime
   ...trialSchemas, // #35 trial guard
   ...agreementSchemas, // #7 registration agreement
@@ -389,6 +385,7 @@ export type MaterialRole = typeof M1_UPLOAD_MATERIAL_ROLES[number];
 export type UploadMediaType = typeof M1_UPLOAD_MIME_TYPES[number];
 export type Market = typeof MARKETS[number];
 export type Offering = typeof OFFERINGS[number];
+export type RunState = typeof RUN_STATES[number];
 export type ErrorCode = typeof ERROR_CODES[number];
 export type UsageStatus = typeof USAGE_STATUSES[number];
 export function isMarketOffering(market: Market, offering: Offering): boolean {
@@ -520,7 +517,6 @@ export const operations: readonly Operation[] = [
   op('get', '/admin/logs/events', 'Filter redacted observability events by user/project/job/trace/time/model/status/error (log_reader)', 'AdminLogEventsResponse', 200, undefined, [404, 422]),
   op('get', '/admin/errors', 'Audited error counts by code, category and fingerprint (log_operator)', 'AdminErrorCountsResponse', 200, undefined, [404, 422]),
   op('get', '/admin/jobs/{job_id}/timeline', 'Job timeline: prompt refs, stages, model attempts with token breakdown, errors and artifact (log_reader)', 'AdminJobTimelineResponse', 200, undefined, [404]),
-  op('get', '/admin/exec-logs/{attempt_id}', 'Audited private Codex stdout/stderr execution log for one model attempt (log_reader)', 'AdminExecLogResponse', 200, undefined, [404]),
   op('get', '/admin/jobs/{job_id}/user-submissions', 'Audited submitted-prompt version index by job (prompt_viewer); bodies use the separate audited prompt view', 'AdminUserSubmissionListResponse', 200, undefined, [404, 422]),
   op('get', '/admin/metrics', 'Token, success/failure rate and duration aggregates; retries and final consumption kept apart (log_reader)', 'AdminMetricsResponse', 200, undefined, [404, 422]),
   op('get', '/admin/prompts/{snapshot_id}', 'Audited plaintext view of a redacted prompt snapshot (prompt_viewer)', 'AdminPromptView', 200, undefined, [404, 422]),

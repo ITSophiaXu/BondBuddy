@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import { schemas, type OperatorRole } from '@bondbuddy/contracts';
 import { missing, Problem, unavailable, type PrivateBlobs } from './data.js';
 import { gateState, resumeEvidenceGate } from './evidence-gate.js';
-import { adminAlerts, adminErrorCounts, adminEvents, adminExecLog, adminJobTimeline, adminMetrics, adminPromptView, correctUsage, operatorRoles, parseAdminFilter } from './log-ops.js';
+import { adminAlerts, adminErrorCounts, adminEvents, adminJobTimeline, adminMetrics, adminPromptView, correctUsage, operatorRoles, parseAdminFilter } from './log-ops.js';
 import { adminUserSubmissionVersions } from './user-submissions.js';
 
 type Deps = { db: () => Pool; blobs: () => PrivateBlobs; owner: (request: FastifyRequest) => Promise<string>; promptViewDeadlineMs?: number };
@@ -32,12 +32,6 @@ export function installAdminRoutes(app: FastifyInstance, deps: Deps) {
   });
   app.get('/api/v1/admin/jobs/:job_id/timeline', { schema: { response: { 200: schemas.AdminJobTimelineResponse } } }, async request =>
     adminJobTimeline(deps.db(), await operator(request, 'log_reader'), param(request, 'job_id')));
-  app.get('/api/v1/admin/exec-logs/:attempt_id', { schema: { response: { 200: schemas.AdminExecLogResponse } } }, async (request, reply) => {
-    const actor = await operator(request, 'log_reader');
-    reply.header('cache-control', 'no-store');
-    let blobs: PrivateBlobs; try { blobs = deps.blobs(); } catch { throw unavailable(); }
-    return adminExecLog(deps.db(), blobs, actor, param(request, 'attempt_id'));
-  });
   app.get('/api/v1/admin/jobs/:job_id/user-submissions', { schema: { response: { 200: schemas.AdminUserSubmissionListResponse } } }, async (request,reply) => {
     const actor=await operator(request,'prompt_viewer');
     const query=request.query as Record<string,unknown>;

@@ -82,17 +82,12 @@ export async function renderAccount(ctx: AccountContext) {
   const settings = document.querySelector<HTMLDialogElement>('#account-settings')!;
   document.querySelector('#open-account-settings')!.addEventListener('click', () => settings.showModal());
   document.querySelector('#close-account-settings')!.addEventListener('click', () => settings.close());
-  void Promise.all([
-    ctx.api.request<{permissions:string[]}>('GET','/billing/permissions').catch(()=>({permissions:[] as string[]})),
-    ctx.api.request<{allowed:boolean}>('GET','/admin/dashboard/access').catch(()=>({allowed:false}))
-  ]).then(([billing,access])=>{
-    if(!live())return;
-    const permissions=Array.isArray(billing.permissions)?billing.permissions:[];
+  void ctx.api.request<{permissions:string[]}>('GET','/billing/permissions').then(({permissions})=>{
+    if(!live()||!Array.isArray(permissions))return;
     const host=document.querySelector<HTMLElement>('#account-billing-management');if(!host)return;
     const links=[];
     if(permissions.includes('price_draft')||permissions.includes('price_publish'))links.push('<a href="#/billing/prices">价格管理</a>');
     if(permissions.includes('task_refund_approve'))links.push('<a href="#/billing/task-refunds">任务售后审批</a>');
-    if(access.allowed===true)links.push('<a href="#/admin/dashboard">运营看板</a>');
     host.innerHTML=links.join(' · ');host.hidden=!links.length;
   }).catch(()=>{/* Permission lookup failure never exposes management actions. */});
   void ctx.api.dataPolicy().then(policy => {

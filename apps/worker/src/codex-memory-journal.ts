@@ -10,14 +10,9 @@ export class MemoryCodexJournal implements CodexJournal {
   readonly observations: { observation: ProviderCallObservation; retryable: boolean }[] = [];
   readonly runtimes: ModelAttemptRuntime[] = [];
   readonly results = new Map<string, Buffer>();
-  readonly execLogs = new Map<string, { bytes: Buffer; truncated: boolean }>();
   prior: PriorAttempt | null = null;
 
   async recordIntent(intent: ProviderCallIntent) { this.events.push(`intent:${intent.attempt_no}`); this.intents.push(intent); }
-  async storeExecLog(intent: ProviderCallIntent, bytes: Buffer, meta: { truncated: boolean }) {
-    this.execLogs.set(intent.call_id, { bytes: Buffer.from(bytes), truncated: meta.truncated });
-    this.events.push(`exec_log:${intent.attempt_no}`);
-  }
   async storeResult(intent: ProviderCallIntent, bytes: Buffer, schemaVersion: string) {
     const sha = createHash('sha256').update(bytes).digest('hex');
     this.results.set(intent.call_id, bytes);
