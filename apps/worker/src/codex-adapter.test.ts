@@ -314,7 +314,7 @@ test('structured success: intent before spawn, isolated cwd/home/env, #79 record
     const j = new MemoryCodexJournal(); const t = traces();
     const r = await runContainedModelCall(call('SCENARIO:structured return JSON', { onEvent: t.onEvent }), j, config);
     assert.equal(r.status, 'completed'); assert.deepEqual(r.value, { answer: 'OK', n: 16 });
-    assert.deepEqual(j.events, ['intent:1', 'exec_log:1', 'result:1', 'runtime:1', 'observation:1']);
+    assert.deepEqual(j.events, ['intent:1', 'result:1', 'runtime:1', 'observation:1']);
     const trace = t.seen[0] as { argv: string[]; cwd_entries: string[]; env_keys: string[]; codex_home_exists: boolean };
     assert.deepEqual(trace.cwd_entries, [], 'cwd is empty');
     assert.ok(trace.codex_home_exists);

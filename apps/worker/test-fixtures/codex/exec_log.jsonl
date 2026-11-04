@@ -1,5 +1,0 @@
-{"type":"thread.started","thread_id":"thread-exec-log"}
-{"fake":"stderr","text":"synthetic stderr line 1\n"}
-{"type":"item.completed","item":{"type":"agent_message","text":"{\"answer\":\"OK\",\"n\":1}"}}
-{"fake":"stderr","text":"synthetic stderr line 2 without newline synthetic-credential-value-for-exec-log-tests"}
-{"type":"turn.completed","usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0}}

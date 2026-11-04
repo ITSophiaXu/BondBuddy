@@ -8,7 +8,6 @@ import { Value } from '@sinclair/typebox/value';
 import { Pool, type PoolClient } from 'pg';
 import { ADMIN_LOG_FILTERS, ADMIN_LOG_PAGE_LIMIT, ERROR_CATEGORIES, schemas, type OperatorRole } from '@bondbuddy/contracts';
 import { azureBlobs, digest, missing, Problem, transaction, uid, type PrivateBlobs } from './data.js';
-import { CODEX_EXEC_LOG_MAX_BYTES, CODEX_EXEC_LOG_MEDIA_TYPE, codexExecLogRow } from './exec-logs.js';
 import { assertTestChannelReadable, testChannelEnabled } from './non-production-test.js';
 import { emitInternal, internalEvent, saveSnapshotRef } from './observability.js';
 import { raiseAlert, tripEvidenceGate } from './evidence-gate.js';
@@ -1055,10 +1054,8 @@ export async function adminJobTimeline(pool: Pool, actorId: string, jobId: strin
       : (await client.query("SELECT kind,event,created_at FROM bb_observability_events WHERE owner_user_id=$1 AND job_id=$2 AND kind IN ('operation.submitted','operation.rejected','job.state_changed') ORDER BY created_at,CASE WHEN kind LIKE 'operation.%' THEN 0 ELSE 1 END,id", [job.owner_user_id, job.id])).rows.map((r, i) => ({ seq: i + 1, type: r.kind, state: r.event.status ?? 'unknown', stage: r.event.stage ?? null, reason: r.event.error?.code?.toLowerCase() ?? null, occurred_at: iso(r.created_at)! }));
     const attemptRows = (await client.query(`SELECT a.id,a.logical_call_id,a.attempt_no,a.channel,a.status,a.model_id,a.provider_request_id,a.prompt_snapshot_id,a.user_submission_id,a.created_at,
         u.usage_status,u.input_tokens,u.output_tokens,u.cached_input_tokens,u.reasoning_tokens,u.correction_id,rt.duration_ms,
-        l.sha256 AS exec_log_sha256,l.byte_size AS exec_log_byte_size,l.truncated AS exec_log_truncated,
         COALESCE(rt.error_code,(SELECT o.error_code FROM bb_provider_call_observations o WHERE o.attempt_id=a.id ORDER BY o.observed_at DESC,o.id DESC LIMIT 1)) error_code
       FROM bb_model_call_attempts a JOIN bb_call_usage_effective u ON u.attempt_id=a.id LEFT JOIN bb_model_call_attempt_runtime rt ON rt.attempt_id=a.id
-      LEFT JOIN bb_codex_exec_logs l ON l.attempt_id=a.id
       WHERE a.owner_user_id=$1 AND a.job_id=$2 ORDER BY a.logical_call_id,a.attempt_no`, [job.owner_user_id, job.id])).rows;
     const errors = (await client.query(`SELECT e.*,COALESCE(r.outcome,e.recovery_status) effective_recovery_status
       FROM bb_observability_errors e LEFT JOIN bb_error_recovery_events r ON r.error_id=e.id
@@ -1072,33 +1069,13 @@ export async function adminJobTimeline(pool: Pool, actorId: string, jobId: strin
       prompts: prompts.map(s => ({ snapshot_id: s.id, kind: s.snapshot_kind, version: s.version, content_sha256: s.content_sha256.trim(), redaction_version: s.redaction_version, input_revision: s.input_revision, template_version: s.template_version, rule_pack_version: s.rule_pack_version, model_parameters_version: s.model_parameters_version, content_state: s.tombstone ? 'purged' : 'available', created_at: iso(s.created_at)! })),
       user_submissions: submissions.map(s => ({ submission_id:s.id,snapshot_id:s.snapshot_id,kind:s.submission_kind,message_id:s.message_id,message_version:s.message_version,version:s.version,previous_submission_id:s.previous_submission_id,content_sha256:s.content_sha256.trim(),input_revision:s.input_revision,input_hash:s.input_hash?.trim()??null,material_versions:s.material_versions,content_state:s.tombstone?'purged':'available',created_at:iso(s.created_at)! })),
       stages,
-      attempts: attemptRows.map((a, i) => ({ attempt_id: a.id, logical_call_id: a.logical_call_id, attempt_no: a.attempt_no, channel: a.channel ?? 'production', status: a.status, model_id: a.model_id, provider_request_id: a.provider_request_id, prompt_snapshot_ref: a.prompt_snapshot_id, user_submission_id: a.user_submission_id, usage_status: a.usage_status, usage: { input_tokens: usageRows[i].input_tokens, output_tokens: usageRows[i].output_tokens, cached_input_tokens: usageRows[i].cached_input_tokens, reasoning_tokens: usageRows[i].reasoning_tokens }, corrected: !!a.correction_id, duration_ms: int(a.duration_ms), error_code: a.error_code ?? null, created_at: iso(a.created_at)!,
-        ...(a.exec_log_sha256 ? { exec_log: { sha256: String(a.exec_log_sha256).trim(), byte_size: Number(a.exec_log_byte_size), truncated: a.exec_log_truncated === true, download_ref: `/api/v1/admin/exec-logs/${a.id}` } } : {}) })),
+      attempts: attemptRows.map((a, i) => ({ attempt_id: a.id, logical_call_id: a.logical_call_id, attempt_no: a.attempt_no, channel: a.channel ?? 'production', status: a.status, model_id: a.model_id, provider_request_id: a.provider_request_id, prompt_snapshot_ref: a.prompt_snapshot_id, user_submission_id: a.user_submission_id, usage_status: a.usage_status, usage: { input_tokens: usageRows[i].input_tokens, output_tokens: usageRows[i].output_tokens, cached_input_tokens: usageRows[i].cached_input_tokens, reasoning_tokens: usageRows[i].reasoning_tokens }, corrected: !!a.correction_id, duration_ms: int(a.duration_ms), error_code: a.error_code ?? null, created_at: iso(a.created_at)! })),
       errors: errors.map(e => ({ error_id: e.id, code: e.code, category: e.category, stage: e.stage, attempt_id: e.attempt_id, provider_status: e.provider_status, provider_error_type: e.provider_error_type, retry_count: e.retry_count, fingerprint: e.fingerprint?.trim() ?? null, safe_message: e.safe_message, safe_stack: e.safe_stack, recovery_status: e.effective_recovery_status, created_at: iso(e.created_at)! })),
       artifact: artifact ? { artifact_id: artifact.id, version: artifact.version, sha256: artifact.sha256.trim(), quality_status: artifact.quality_status, delivery_status: artifact.delivery_status, created_at: iso(artifact.created_at)! } : null,
       outcome: { state, error_code: job.error_code ?? errors.at(-1)?.code ?? null, artifact_available: !!artifact && artifact.quality_status === 'passed' && ['available','test_only'].includes(artifact.delivery_status) },
       consumption: { all_attempts: consumption(usageRows), completed_attempts: consumption(usageRows.filter(r => r.call_status === 'completed')) }
     };
   });
-}
-
-// #448: audited operator read of one private per-attempt execution log. The row is
-// selected and audited in one transaction before any Blob read.
-export async function adminExecLog(pool: Pool, blobs: PrivateBlobs, actorId: string, attemptId: string) {
-  if (!validId(attemptId)) throw missing();
-  const row = await transaction(pool, async client => {
-    const found = await codexExecLogRow(client, attemptId);
-    await audit(client, { actorId, role: 'log_reader', owner: found?.owner_user_id, purpose: 'admin_exec_log', filter: { attemptId }, target: attemptId });
-    return found;
-  });
-  if (!row) throw missing();
-  assertTestChannelReadable(row.channel);
-  let bytes: Buffer | null;
-  try { bytes = await blobs.getIfExistsBounded(row.object_key, CODEX_EXEC_LOG_MAX_BYTES + 1); }
-  catch { throw new Problem(503, 'DATA_UNAVAILABLE', 'Execution log storage is unavailable'); }
-  if (!bytes || bytes.length !== row.byte_size || digest(bytes) !== row.sha256)
-    throw new Problem(503, 'DATA_UNAVAILABLE', 'Execution log failed its bounded integrity check');
-  return { attempt_id: row.attempt_id, run_id: row.run_id, sha256: row.sha256, byte_size: row.byte_size, truncated: row.truncated, content_type: CODEX_EXEC_LOG_MEDIA_TYPE, body: bytes.toString('utf8') };
 }
 
 export async function adminMetrics(pool: Pool, actorId: string, filter: AdminFilter) {

@@ -47,10 +47,6 @@
       "types": "./dist/provider-results.d.ts",
       "default": "./dist/provider-results.js"
     },
-    "./exec-logs": {
-      "types": "./dist/exec-logs.d.ts",
-      "default": "./dist/exec-logs.js"
-    },
     "./ocr": {
       "types": "./dist/ocr.d.ts",
       "default": "./dist/ocr.js"
