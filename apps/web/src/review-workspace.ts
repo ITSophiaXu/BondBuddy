@@ -897,7 +897,7 @@ export class ReviewWorkspace {
       this.focusedTaskRunId=run.run_id;this.explicitTaskFocus=true;this.run=run;this.workspace.active_run=isActiveRun(run)?run:null;this.dialog?.close();if(this.tab==='materials')this.setTab('making');this.message(isActiveRun(run)?'任务已提交，本次输入已锁定。':`原任务状态已确认：${runStateLabel[run.state]}。新一轮需要重新确认执行。`);this.renderBody();await this.refreshSelection();
     }catch(error){
       if(error instanceof ApiError&&error.status>=400&&error.status<500&&![408,429].includes(error.status)){
-        this.executionPending=undefined;try{localStorage.removeItem(this.executionKey);}catch{}this.dialog?.close();await this.refresh();this.message(`${friendlyError(error,'submit')} 请重新核对输入与范围后再执行。`,true);
+        this.executionPending=undefined;try{localStorage.removeItem(this.executionKey);}catch{}this.dialog?.close();await this.refresh();this.message(`${friendlyError(error,'submit')}${error.code==='CREDITS_INSUFFICIENT'?'':' 请重新核对输入与范围后再执行。'}`,true);
       }else{this.dialogStatus(`${friendlyError(error,'submit')} 重试沿用同一请求，不会重复执行。`);this.message('提交结果暂未确认。点击“开始复核”重试原请求，或刷新查看状态；不会重复创建任务。',true);}
     }
   }

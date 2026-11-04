@@ -288,7 +288,7 @@ export class ApiClient {
   }
 
   async m4ArtifactBytes(artifact: import('@bondbuddy/contracts').M4Artifact, signal?: AbortSignal): Promise<Blob> {
-    return boundedDownload(signal ?? this.controller.signal, async activeSignal => {
+    const activeSignal = signal ?? this.controller.signal;
     const path = `/m4/artifacts/${encodeURIComponent(artifact.artifact_id)}/versions/${artifact.artifact_version}/bytes`;
     const response = await this.response('GET', path, undefined, {}, activeSignal);
     if (response.status !== 200 || response.headers.get('content-type')?.split(';')[0].trim() !== artifact.mime_type) throw new ApiError(0, 'DATA_UNAVAILABLE');
@@ -297,7 +297,6 @@ export class ApiClient {
     const digest = await crypto.subtle.digest('SHA-256', bytes); activeSignal.throwIfAborted();
     if (Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('') !== artifact.sha256) throw new ApiError(0, 'DATA_UNAVAILABLE');
     return new Blob([bytes], {type:artifact.mime_type});
-    });
   }
 
   me() { return this.request<Dto<'MeResponse'>>('GET', '/me'); }
@@ -410,7 +409,7 @@ export class ApiClient {
     return new Blob([bytes],{type:'image/png'});
   }
   async materialBytes(projectId: string, material: Dto<'MaterialResponse'>, signal?: AbortSignal): Promise<Blob> {
-    return boundedDownload(signal ?? this.controller.signal, async activeSignal => {
+    const activeSignal = signal ?? this.controller.signal;
     // The owner-scoped route authorizes this project/material pair; the caller
     // has compared freshly fetched metadata with the report's immutable pin.
     if (material.state !== 'persisted') throw new ApiError(0, 'DATA_UNAVAILABLE');
@@ -424,7 +423,6 @@ export class ApiClient {
     const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
     if (sha256 !== material.sha256) throw new ApiError(0, 'DATA_UNAVAILABLE');
     return new Blob([bytes], { type: material.media_type });
-    });
   }
   materialParseJob(id: string, materialId: string, signal?: AbortSignal) {
     return this.request<Dto<'MaterialParseJobResponse'>>('GET', `/projects/${encodeURIComponent(id)}/materials/${encodeURIComponent(materialId)}/parse-job`, undefined, {}, signal);
