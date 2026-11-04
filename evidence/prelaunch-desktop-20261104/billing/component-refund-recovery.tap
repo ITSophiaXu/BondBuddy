@@ -1,0 +1,408 @@
+TAP version 13
+# Subtest: normalized Alipay payment/refund CSV reconciles without treating merchant receipts as buyer cash or writing financial tables
+ok 1 - normalized Alipay payment/refund CSV reconciles without treating merchant receipts as buyer cash or writing financial tables
+  ---
+  duration_ms: 531.7616
+  type: 'test'
+  ...
+# Subtest: Alipay amount/identity mismatches and unregistered PID rows cannot suppress registered local missing coverage
+ok 2 - Alipay amount/identity mismatches and unregistered PID rows cannot suppress registered local missing coverage
+  ---
+  duration_ms: 526.6756
+  type: 'test'
+  ...
+# Subtest: Alipay refund coverage follows completion day across midnight and detects a genuinely omitted local completion
+ok 3 - Alipay refund coverage follows completion day across midnight and detects a genuinely omitted local completion
+  ---
+  duration_ms: 733.5535
+  type: 'test'
+  ...
+# Subtest: missing authenticated payment/refund time stays unknown instead of borrowing CSV or local timestamps
+ok 4 - missing authenticated payment/refund time stays unknown instead of borrowing CSV or local timestamps
+  ---
+  duration_ms: 699.2843
+  type: 'test'
+  ...
+# Subtest: duplicate Alipay records remain unresolved and parser-version evidence preserves earlier same-archive unknown history
+ok 5 - duplicate Alipay records remain unresolved and parser-version evidence preserves earlier same-archive unknown history
+  ---
+  duration_ms: 391.1149
+  type: 'test'
+  ...
+# Subtest: Alipay statement differences preserve adjacent bigint fen above 2^53 and never repair a historical balance
+ok 6 - Alipay statement differences preserve adjacent bigint fen above 2^53 and never repair a historical balance
+  ---
+  duration_ms: 424.9489
+  type: 'test'
+  ...
+# Subtest: late authenticated Alipay payment/refund completion reopens its old bill without rewriting earlier checks or settling twice
+ok 7 - late authenticated Alipay payment/refund completion reopens its old bill without rewriting earlier checks or settling twice
+  ---
+  duration_ms: 514.9202
+  type: 'test'
+  ...
+# Subtest: Alipay terminal date recovery uses bounded query retries without creating another refund or moving cash again
+ok 8 - Alipay terminal date recovery uses bounded query retries without creating another refund or moving cash again
+  ---
+  duration_ms: 31822.9534
+  type: 'test'
+  ...
+# Subtest: billing permissions authenticate before looking up database and expose no public grant route
+ok 9 - billing permissions authenticate before looking up database and expose no public grant route
+  ---
+  duration_ms: 469.681
+  type: 'test'
+  ...
+# Subtest: synthetic PG: independent billing grants, immutable history and transaction authorization
+    # Subtest: default deny and exact permission separation
+    ok 1 - default deny and exact permission separation
+      ---
+      duration_ms: 39.8252
+      type: 'test'
+      ...
+    # Subtest: grant retries preserve identity; changed or duplicate original inputs conflict
+    ok 2 - grant retries preserve identity; changed or duplicate original inputs conflict
+      ---
+      duration_ms: 13.1576
+      type: 'test'
+      ...
+    # Subtest: history cannot be altered, deleted or reopened after revocation
+    ok 3 - history cannot be altered, deleted or reopened after revocation
+      ---
+      duration_ms: 483.9274
+      type: 'test'
+      ...
+    # Subtest: in-flight authority locks synchronize with revoke and user deactivation
+    ok 4 - in-flight authority locks synchronize with revoke and user deactivation
+      ---
+      duration_ms: 443.167
+      type: 'test'
+      ...
+    # Subtest: disabled accounts lose all effective permissions without deleting audit history
+    ok 5 - disabled accounts lose all effective permissions without deleting audit history
+      ---
+      duration_ms: 166.203
+      type: 'test'
+      ...
+    # Subtest: authenticated route returns only this account permissions and prevents caching
+    ok 6 - authenticated route returns only this account permissions and prevents caching
+      ---
+      duration_ms: 10.4333
+      type: 'test'
+      ...
+    1..6
+ok 10 - synthetic PG: independent billing grants, immutable history and transaction authorization
+  ---
+  duration_ms: 1314.2315
+  type: 'test'
+  ...
+# Subtest: wallet quarantine fences new credit and subscriptions while preserving account reads and cancellation
+ok 11 - wallet quarantine fences new credit and subscriptions while preserving account reads and cancellation
+  ---
+  duration_ms: 318.3293
+  type: 'test'
+  ...
+# Subtest: merchant quarantine prevents checkout dispatch but original order queries remain available
+ok 12 - merchant quarantine prevents checkout dispatch but original order queries remain available
+  ---
+  duration_ms: 724.1923
+  type: 'test'
+  ...
+# Subtest: reconciliation isolates committed wallet drift even without a configured payment provider
+ok 13 - reconciliation isolates committed wallet drift even without a configured payment provider
+  ---
+  duration_ms: 368.6921
+  type: 'test'
+  ...
+# Subtest: durable wallet isolation, exact authorized projection repair and separate resumption preserve original facts
+ok 14 - durable wallet isolation, exact authorized projection repair and separate resumption preserve original facts
+  ---
+  duration_ms: 838.9582
+  type: 'test'
+  ...
+# Subtest: exclusive recheck waits for an in-flight writer and never isolates a legitimate intermediate state
+ok 15 - exclusive recheck waits for an in-flight writer and never isolates a legitimate intermediate state
+  ---
+  duration_ms: 573.0741
+  type: 'test'
+  ...
+# Subtest: channel mismatch blocks only that merchant; no verifier, unknown and malformed evidence cannot resume
+ok 16 - channel mismatch blocks only that merchant; no verifier, unknown and malformed evidence cannot resume
+  ---
+  duration_ms: 449.361
+  type: 'test'
+  ...
+# Subtest: committed payment/credit mismatch isolates wallet and channel and rejects projection-only repair
+ok 17 - committed payment/credit mismatch isolates wallet and channel and rejects projection-only repair
+  ---
+  duration_ms: 361.5246
+  type: 'test'
+  ...
+# Subtest: committed dispatch holds shared safety through external work; isolation stops later dispatch but keeps exit controls available
+ok 18 - committed dispatch holds shared safety through external work; isolation stops later dispatch but keeps exit controls available
+  ---
+  duration_ms: 469.6154
+  type: 'test'
+  ...
+# Subtest: direct SQL finalization observes safety before wallet lock for original and M4 task families
+ok 19 - direct SQL finalization observes safety before wallet lock for original and M4 task families
+  ---
+  duration_ms: 861.095
+  type: 'test'
+  ...
+# Subtest: isolated refund permits schedule metadata but rejects state or credit changes without blocking other wallets
+ok 20 - isolated refund permits schedule metadata but rejects state or credit changes without blocking other wallets
+  ---
+  duration_ms: 365.0535
+  type: 'test'
+  ...
+# Subtest: projection repair cannot restore individually valid lots into an overflowing account total
+ok 21 - projection repair cannot restore individually valid lots into an overflowing account total
+  ---
+  duration_ms: 316.502
+  type: 'test'
+  ...
+# Subtest: paid quota retry reserves only one task and never charges a rejected attempt
+ok 22 - paid quota retry reserves only one task and never charges a rejected attempt
+  ---
+  duration_ms: 2742.9181
+  type: 'test'
+  ...
+# Subtest: lost payment callbacks reconcile once without a browser, another charge, or another task
+ok 23 - lost payment callbacks reconcile once without a browser, another charge, or another task
+  ---
+  duration_ms: 754.3881
+  type: 'test'
+  ...
+# Subtest: query timeout and mismatched identity keep original payment pending and back off
+ok 24 - query timeout and mismatched identity keep original payment pending and back off
+  ---
+  duration_ms: 496.3348
+  type: 'test'
+  ...
+# Subtest: accepted refund with a lost response completes by querying its original ID; unknown holds stay frozen
+ok 25 - accepted refund with a lost response completes by querying its original ID; unknown holds stay frozen
+  ---
+  duration_ms: 363.1265
+  type: 'test'
+  ...
+# Subtest: a crash after refund freeze but before dispatch resumes the same authorised request once
+ok 26 - a crash after refund freeze but before dispatch resumes the same authorised request once
+  ---
+  duration_ms: 631.9939
+  type: 'test'
+  ...
+# Subtest: pre-send dispatch crash uses only documented same-request recovery; unknown or mismatched receipts never release held points
+ok 27 - pre-send dispatch crash uses only documented same-request recovery; unknown or mismatched receipts never release held points
+  ---
+  duration_ms: 352.2397
+  type: 'test'
+  ...
+# Subtest: a matching callback arriving during a failed query prevents needless same-request resubmission
+ok 28 - a matching callback arriving during a failed query prevents needless same-request resubmission
+  ---
+  duration_ms: 271.3212
+  type: 'test'
+  ...
+# Subtest: shutdown stops starting claimed rows; unfinished original orders remain recoverable
+ok 29 - shutdown stops starting claimed rows; unfinished original orders remain recoverable
+  ---
+  duration_ms: 514.3967
+  type: 'test'
+  ...
+# Subtest: server-owned database remains open until an in-flight payment query is applied
+ok 30 - server-owned database remains open until an in-flight payment query is applied
+  ---
+  duration_ms: 1438.638
+  type: 'test'
+  ...
+# Subtest: callback success-only proof is enriched by terminal query without repeating refund or credit events
+ok 31 - callback success-only proof is enriched by terminal query without repeating refund or credit events
+  ---
+  duration_ms: 5174.9013
+  type: 'test'
+  ...
+# Subtest: channel dates reject conflicting identities, backwards time and database mutation without changing financial records
+ok 32 - channel dates reject conflicting identities, backwards time and database mutation without changing financial records
+  ---
+  duration_ms: 6147.889
+  type: 'test'
+  ...
+# Subtest: first application-day bill detects missing accepted refunds in processing, closed and succeeded states
+ok 33 - first application-day bill detects missing accepted refunds in processing, closed and succeeded states
+  ---
+  duration_ms: 6446.0427
+  type: 'test'
+  ...
+# Subtest: refund reconciliation uses authenticated application day rather than success day or local completion time
+ok 34 - refund reconciliation uses authenticated application day rather than success day or local completion time
+  ---
+  duration_ms: 7018.4118
+  type: 'test'
+  ...
+# Subtest: wrong application time or app cannot count as valid refund coverage, while legacy missing proof stays explicit
+ok 35 - wrong application time or app cannot count as valid refund coverage, while legacy missing proof stays explicit
+  ---
+  duration_ms: 6530.5359
+  type: 'test'
+  ...
+# Subtest: terminal proof refresh enforces owner and remains query-only when the channel is unavailable
+ok 36 - terminal proof refresh enforces owner and remains query-only when the channel is unavailable
+  ---
+  duration_ms: 8221.1763
+  type: 'test'
+  ...
+# Subtest: background terminal proof recovery backs off unknown queries and enriches the original refund without new money movement
+ok 37 - background terminal proof recovery backs off unknown queries and enriches the original refund without new money movement
+  ---
+  duration_ms: 41270.1785
+  type: 'test'
+  ...
+# Subtest: late application proof reopens an older completed bill and preserves its first check while detecting the missing refund
+ok 38 - late application proof reopens an older completed bill and preserves its first check while detecting the missing refund
+  ---
+  duration_ms: 4971.3069
+  type: 'test'
+  ...
+# Subtest: application proof outside the channel retrieval window stays explicitly uncovered without an out-of-window download
+ok 39 - application proof outside the channel retrieval window stays explicitly uncovered without an out-of-window download
+  ---
+  duration_ms: 4698.1162
+  type: 'test'
+  ...
+# Subtest: synthetic signed cash refunds bind original payment/lot, exclude consumed/held/noncash money and settle once under callback/query concurrency
+ok 40 - synthetic signed cash refunds bind original payment/lot, exclude consumed/held/noncash money and settle once under callback/query concurrency
+  ---
+  duration_ms: 8324.5276
+  type: 'test'
+  ...
+# Subtest: synthetic timeout/unknown retains freeze, reconciles same refund ID, and explicit CLOSED releases without reusing a failed request
+ok 41 - synthetic timeout/unknown retains freeze, reconciles same refund ID, and explicit CLOSED releases without reusing a failed request
+  ---
+  duration_ms: 9020.37
+  type: 'test'
+  ...
+# Subtest: synthetic task/refund races serialize on original account and rollback cannot send cash before a durable freeze
+ok 42 - synthetic task/refund races serialize on original account and rollback cannot send cash before a durable freeze
+  ---
+  duration_ms: 8218.0334
+  type: 'test'
+  ...
+# Subtest: historical bonus package refunds consumed remainder at original A/Q and quality restoration keeps the same cash ceiling
+ok 43 - historical bonus package refunds consumed remainder at original A/Q and quality restoration keeps the same cash ceiling
+  ---
+  duration_ms: 10812.2739
+  type: 'test'
+  ...
+# Subtest: historical package cumulative one-cent rounding preserves sub-cent credits and strict request units
+ok 44 - historical package cumulative one-cent rounding preserves sub-cent credits and strict request units
+  ---
+  duration_ms: 12371.3409
+  type: 'test'
+  ...
+# Subtest: cash refunds allocate only authenticated original-source family and serialize races with consumption
+ok 45 - cash refunds allocate only authenticated original-source family and serialize races with consumption
+  ---
+  duration_ms: 7267.3999
+  type: 'test'
+  ...
+# Subtest: daily statement differences preserve adjacent DB bigints above 2^53 without repairing financial records
+ok 46 - daily statement differences preserve adjacent DB bigints above 2^53 without repairing financial records
+  ---
+  duration_ms: 295.106
+  type: 'test'
+  ...
+# Subtest: wrong app or trade type cannot suppress local payment missing coverage; a valid row still matches
+ok 47 - wrong app or trade type cannot suppress local payment missing coverage; a valid row still matches
+  ---
+  duration_ms: 317.246
+  type: 'test'
+  ...
+# Subtest: same-merchant owners reconcile separately while another merchant with the same transaction ID is never consumed
+ok 48 - same-merchant owners reconcile separately while another merchant with the same transaction ID is never consumed
+  ---
+  duration_ms: 703.6748
+  type: 'test'
+  ...
+# Subtest: unsafe normalized statement money remains unknown and rolls back evidence without changing the wallet
+ok 49 - unsafe normalized statement money remains unknown and rolls back evidence without changing the wallet
+  ---
+  duration_ms: 291.6092
+  type: 'test'
+  ...
+# Subtest: missing authenticated channel time remains uncovered despite a local credit timestamp and never repairs the wallet
+ok 50 - missing authenticated channel time remains uncovered despite a local credit timestamp and never repairs the wallet
+  ---
+  duration_ms: 281.8921
+  type: 'test'
+  ...
+# Subtest: paid historical proof refresh reuses the exact existing lot without granting credits again
+ok 51 - paid historical proof refresh reuses the exact existing lot without granting credits again
+  ---
+  duration_ms: 217.5518
+  type: 'test'
+  ...
+# Subtest: close intent survives unknown response, blocks reopening, and cannot erase a verified payment
+ok 52 - close intent survives unknown response, blocks reopening, and cannot erase a verified payment
+  ---
+  duration_ms: 223.011
+  type: 'test'
+  ...
+# Subtest: historical statement keeps gross issuance and refund cash separate from current balance and later refund success
+ok 53 - historical statement keeps gross issuance and refund cash separate from current balance and later refund success
+  ---
+  duration_ms: 304.2124
+  type: 'test'
+  ...
+# Subtest: statement-only receipt raises persisted differences without creating payment credit, and concurrent scans claim once
+ok 54 - statement-only receipt raises persisted differences without creating payment credit, and concurrent scans claim once
+  ---
+  duration_ms: 184.4914
+  type: 'test'
+  ...
+# Subtest: refund reverse coverage needs authenticated application-date evidence and detects a later missing row without mutating wallets
+ok 55 - refund reverse coverage needs authenticated application-date evidence and detects a later missing row without mutating wallets
+  ---
+  duration_ms: 310.5721
+  type: 'test'
+  ...
+# Subtest: mismatched statement identity and unavailable provider keep the job recoverable and alert without private error data
+ok 56 - mismatched statement identity and unavailable provider keep the job recoverable and alert without private error data
+  ---
+  duration_ms: 115.4385
+  type: 'test'
+  ...
+# Subtest: selected original order identifies its period beyond the latest 50 and keeps unknown or foreign orders private
+    # Subtest: the 51st record remains the original subscription with string-valued money and original dates
+    ok 1 - the 51st record remains the original subscription with string-valued money and original dates
+      ---
+      duration_ms: 175.609
+      type: 'test'
+      ...
+    # Subtest: only a verified owner recharge order returns period null; foreign and nonexistent orders return identical 404
+    ok 2 - only a verified owner recharge order returns period null; foreign and nonexistent orders return identical 404
+      ---
+      duration_ms: 16.037
+      type: 'test'
+      ...
+    # Subtest: missing or inconsistent original subscription records stay unavailable instead of becoming a permanent topup
+    ok 3 - missing or inconsistent original subscription records stay unavailable instead of becoming a permanent topup
+      ---
+      duration_ms: 23.297
+      type: 'test'
+      ...
+    1..3
+ok 57 - selected original order identifies its period beyond the latest 50 and keeps unknown or foreign orders private
+  ---
+  duration_ms: 702.6716
+  type: 'test'
+  ...
+1..57
+# tests 66
+# suites 0
+# pass 66
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 187092.8923

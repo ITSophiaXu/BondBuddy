@@ -1,0 +1,10 @@
+test_exact_paragraph_does_not_replace_same_amount_in_other_periods (python.tests.test_project_files.ProjectFilesTest.test_exact_paragraph_does_not_replace_same_amount_in_other_periods) ... ok
+test_hash_tampering_and_overlapping_edits_rejected (python.tests.test_project_files.ProjectFilesTest.test_hash_tampering_and_overlapping_edits_rejected) ... ok
+test_source_links_must_match_both_pinned_texts (python.tests.test_project_files.ProjectFilesTest.test_source_links_must_match_both_pinned_texts) ... ok
+test_table_locations_distinguish_rows (python.tests.test_project_files.ProjectFilesTest.test_table_locations_distinguish_rows) ... ok
+test_uncertain_findings_are_comments_without_text_changes (python.tests.test_project_files.ProjectFilesTest.test_uncertain_findings_are_comments_without_text_changes) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.581s
+
+OK

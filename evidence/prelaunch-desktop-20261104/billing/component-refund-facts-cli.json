@@ -1,0 +1,111 @@
+{
+  "scope": "Actual CLI process against an empty isolated PostgreSQL clone; refund lifecycle assertions are in component-refund-facts-green.tap, not this smoke.",
+  "command": "DATABASE_URL=<isolated-test-clone> node apps/api/dist/subscription-facts-report.js 2026-01 2026-02",
+  "exit_code": 0,
+  "duration_ms": 1925.3898,
+  "stderr": "",
+  "report": {
+    "report_version": "subscription-facts-exact-v2",
+    "from": "2026-01",
+    "to": "2026-02",
+    "as_of": "2026-11-04T04:48:14.278Z",
+    "time_zone": "Asia/Shanghai",
+    "months": [
+      {
+        "month": "2026-01",
+        "observation_complete": true,
+        "paid_orders": "0",
+        "paid_subscription_orders": "0",
+        "paid_topup_orders": "0",
+        "verified_cash_paid_unique": "0",
+        "new_retained_subscription_customers": "0",
+        "retained_renewal_orders": "0",
+        "retained_same_or_overlapping_period_orders": "0",
+        "accepted_order_amount_fen": "0",
+        "verified_payer_cash_fen_known": "0",
+        "cash_proof_missing_orders": "0",
+        "verified_payer_cash_fen": "0",
+        "cash_refunded_fen_known": "0",
+        "cash_refunded_fen": "0",
+        "net_payer_cash_flow_fen": "0",
+        "redeemed_points": "0",
+        "known_mapped_redeemed_points": "0",
+        "unverified_redemption_event_ids": [],
+        "quality_returned_points": "0",
+        "original_order_consideration_earned_fen": {
+          "numerator": "0",
+          "denominator": "1"
+        },
+        "quality_return_consideration_fen": {
+          "numerator": "0",
+          "denominator": "1"
+        },
+        "net_earned_order_consideration_fen": {
+          "numerator": "0",
+          "denominator": "1"
+        },
+        "known_earned_order_consideration_fen": {
+          "numerator": "0",
+          "denominator": "1"
+        },
+        "consideration_complete": true,
+        "missing_cash_basis_lots": [],
+        "expired_unfrozen_points_at_snapshot": "0",
+        "expired_frozen_points_at_snapshot": "0"
+      },
+      {
+        "month": "2026-02",
+        "observation_complete": true,
+        "paid_orders": "0",
+        "paid_subscription_orders": "0",
+        "paid_topup_orders": "0",
+        "verified_cash_paid_unique": "0",
+        "new_retained_subscription_customers": "0",
+        "retained_renewal_orders": "0",
+        "retained_same_or_overlapping_period_orders": "0",
+        "accepted_order_amount_fen": "0",
+        "verified_payer_cash_fen_known": "0",
+        "cash_proof_missing_orders": "0",
+        "verified_payer_cash_fen": "0",
+        "cash_refunded_fen_known": "0",
+        "cash_refunded_fen": "0",
+        "net_payer_cash_flow_fen": "0",
+        "redeemed_points": "0",
+        "known_mapped_redeemed_points": "0",
+        "unverified_redemption_event_ids": [],
+        "quality_returned_points": "0",
+        "original_order_consideration_earned_fen": {
+          "numerator": "0",
+          "denominator": "1"
+        },
+        "quality_return_consideration_fen": {
+          "numerator": "0",
+          "denominator": "1"
+        },
+        "net_earned_order_consideration_fen": {
+          "numerator": "0",
+          "denominator": "1"
+        },
+        "known_earned_order_consideration_fen": {
+          "numerator": "0",
+          "denominator": "1"
+        },
+        "consideration_complete": true,
+        "missing_cash_basis_lots": [],
+        "expired_unfrozen_points_at_snapshot": "0",
+        "expired_frozen_points_at_snapshot": "0"
+      }
+    ],
+    "cohorts": [],
+    "unallocated_cash_refunds": {
+      "events": "0",
+      "amount_fen": "0",
+      "refund_ids": []
+    },
+    "cohort_status": "no_observed_retained_paid_cohort",
+    "original_batches": [],
+    "mixed_funding_allocations": [],
+    "excluded_legacy_progress_settlement_points": "0",
+    "accounting_notice": "Read-only management facts, not statutory revenue or company profit. Paid orders are prepayments; verified payer cash and cash refunds are separate from earned original-lot A*p/Q consideration. Cash refunds follow authenticated channel success time, never original payment, refund application or local recording time. Missing refund success dates leave all monthly refund totals and net cash flow unknown; known monthly refunds and unallocated amounts remain explicit until authenticated dates arrive. Quality returns reverse earned consideration; cash refunds are not deducted again from earned consideration. Expired balances are current unfrozen/frozen snapshots grouped by expiry month, not historical expiry flows or breakage income. Cohorts exclude fully cash-refunded periods and missing/zero payer cash proof as of this snapshot; historical cohorts can restate after refunds. Renewal requires a new period after an earlier retained period ended; same/overlapping-month purchases and refunded reopenings do not establish renewal. Only fully observed later calendar months have repurchase rates; this is purchase recurrence, not product retention. Legacy progress-billing settlements are excluded explicitly. No forecast, supplier expense, tax or profit is inferred."
+  }
+}

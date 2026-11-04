@@ -1,0 +1,62 @@
+[
+  {
+    "file": "first-draft-continuation-implementation-1440x960.png",
+    "width": 1440,
+    "height": 960,
+    "sha256": "2a2ec6b3eabb4c1f38ba412a873730b4b4c400e508f10a3dc9720975f3955ba6"
+  },
+  {
+    "file": "materials-entry-prototype-1440x960.png",
+    "width": 1440,
+    "height": 960,
+    "sha256": "49282bcfef9ae6b8a9a1eda28ceed28ba4ac26d15ee96bc8dd6ecacc100f4cc0"
+  },
+  {
+    "file": "qa-first-upload-implementation-1440x960.png",
+    "width": 1440,
+    "height": 960,
+    "sha256": "7a974342c23535b853a956375003874c737c102cf9715ffd2924e36b42b5c5b4"
+  },
+  {
+    "file": "qa-materials-result-prototype-1440x960.png",
+    "width": 1440,
+    "height": 960,
+    "sha256": "1ff53edbfba478a53d159d295bcf8096a012e488183061910226bade2aeeebd1"
+  },
+  {
+    "file": "qa-questions-prototype-1440x960.png",
+    "width": 1440,
+    "height": 960,
+    "sha256": "f38834a69802ee2cf28bebc06282090db72ec30acff22f401d4e79982cc03dc1"
+  },
+  {
+    "file": "qa-result-implementation-1440x960.png",
+    "width": 1440,
+    "height": 960,
+    "sha256": "974d8fee6c4e7356fdc8b0a9a0976d415f5cec910afa8c406a255bbaf071b7e0"
+  },
+  {
+    "file": "qa-result-prototype-1440x960.png",
+    "width": 1440,
+    "height": 960,
+    "sha256": "482fa40c1ef2d071c415f5a31812c91836bf3f058dc54de488e9d25b1257185b"
+  },
+  {
+    "file": "qa-timeout-implementation-1440x960.png",
+    "width": 1440,
+    "height": 960,
+    "sha256": "d3e7129e347913834973f5f61b4455b227676f5a9f82d36ac2045353ab071229"
+  },
+  {
+    "file": "tasks-empty-implementation-1440x960.png",
+    "width": 1440,
+    "height": 960,
+    "sha256": "310bdb65fc8e5f0d72f60389162e963f35f20b1b8f7f17269d33d60702cfa432"
+  },
+  {
+    "file": "tasks-empty-prototype-1440x960.png",
+    "width": 1440,
+    "height": 960,
+    "sha256": "10c9c8886f2f58668a37f070a0f74e7b945bb2e5026213cb8391bb57ad74800d"
+  }
+]

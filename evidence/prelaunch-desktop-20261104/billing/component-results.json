@@ -1,0 +1,303 @@
+{
+  "created_at": "2026-11-04T04:50:00.764Z",
+  "gate_status": "NOT_APPROVED_FOR_PAID_LAUNCH",
+  "scope": "Desktop component evidence; no real merchant transaction, production deployment, final file-quality acceptance or end-to-end paid delivery has been completed.",
+  "environment": {
+    "platform": "win32",
+    "node": "v26.13.0",
+    "postgresql": "16.14",
+    "dedicated_host": "127.0.0.1",
+    "dedicated_port": 55434,
+    "template_migration_file_records": 168,
+    "latest_migration": "0164_subscription_checkout_rejections.sql",
+    "test_data": "Synthetic accounts, merchants, normalized receipts, fixtures; no real credentials or client files."
+  },
+  "code_binding": {
+    "base_product_commit": "ecfd757407a499026df487f2ab01486687ad860b",
+    "final_commit": "f0f7a6bba73a108869ab30ede74f7f0f5e7375c7",
+    "source_and_build": [
+      {
+        "path": "apps/api/src/subscription-facts-report.ts",
+        "sha256": "2f4e8a15e78b2eb352a1e7d7408183a290400813c34bb9c1ef45614b8635da6d",
+        "git_blob_sha256": "35078a9a54788d37a29348dc007c635e0aec62bc11169ce9e5c823939a03924f"
+      },
+      {
+        "path": "apps/api/src/subscription-facts-report.test.ts",
+        "sha256": "26e04e27df4e7ffe9d23579a5849f05ee4425a6bfe17dc13bdf507f37cc9605e",
+        "git_blob_sha256": "9f20634828c32ceb20650ad77351cab7c7267d5223d0a584256721b43258076d"
+      },
+      {
+        "path": "apps/api/src/subscription-facts-report.pg.test.ts",
+        "sha256": "564124765656b8611e0627c4e85bdfa81cc85c38ba12f9a0aaff6cfb4a54fb47",
+        "git_blob_sha256": "b413a6106b375b665995e04ea3fdda0fab4088200009557c554148d451543c3f"
+      },
+      {
+        "path": "apps/api/dist/subscription-facts-report.js",
+        "sha256": "43dd3a1d4f3adc46b68d76e41d05dcd519a5932facbeede06c0aa1052090fdce"
+      },
+      {
+        "path": "apps/api/dist/subscription-facts-report.test.js",
+        "sha256": "9567bd8db9fd6ff663cc23d0a4904337e781d978ea043558ed0243c32ca137d5"
+      },
+      {
+        "path": "apps/api/dist/subscription-facts-report.pg.test.js",
+        "sha256": "d1b07492c94af1daa1302028fbd077f6b1715478acc84b3dba125d87174d0f89"
+      },
+      {
+        "path": "apps/api/src/annual-payment-statements.pg.test.ts",
+        "sha256": "4f3af250b3d5994fba72e8d5745f19f9c52f4b0d6b70b834acc1f77c0b17226a",
+        "git_blob_sha256": "124cff2a92316732c7a1c621acbecef39fbba97aa7b9badc1b64b127e1798c80"
+      },
+      {
+        "path": "apps/api/dist/annual-payment-statements.pg.test.js",
+        "sha256": "34282bbe56e62b830d6aa5ed3cf8cab49c286659870ca3f2bee8660c969498c5"
+      },
+      {
+        "path": "evidence/subscription-billing-20261029/INT64-PROTOCOL-AND-MONTHLY-FACTS.md",
+        "sha256": "211333a4d6c9021272a60c69b0d3419bec2c887cac5386a245e48a0c0d5704ea",
+        "git_blob_sha256": "2d9b8da970724ffe616050ce4372ee0335ace8577380c5b08233af27f550a2d2"
+      }
+    ],
+    "hash_scope": "sha256 is the exact observed Windows source/build file bytes (source working files use CRLF); git_blob_sha256 separately binds tracked files to the committed LF blob. Raw evidence in this directory has Git text conversion disabled so its manifests remain portable."
+  },
+  "build": {
+    "command": "npm exec tsc -- -p apps/api/tsconfig.json",
+    "post_fix_exit_code": 0,
+    "stdout": "",
+    "stderr": "",
+    "note": "Successful compiler emitted no text; this records the observed tool completion, not a fabricated build transcript."
+  },
+  "test_runs": [
+    {
+      "file": "component-core.tap",
+      "sha256": "dbcd8e4a1c270dcb42df98ace6b95b3be17dc8307c5de9547bba77f4d1330103",
+      "bytes": 9778,
+      "top_level_tests": 28,
+      "tests": 34,
+      "suites": 0,
+      "pass": 34,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 92260.2031,
+      "observed_exit_code": 0,
+      "role": "passed component regression"
+    },
+    {
+      "file": "component-price-coverage-green.tap",
+      "sha256": "d0cd90166ac1c035dfd503c2a9823a5ce2de8e0eb6b6272335c29afe6b9f9c58",
+      "bytes": 7059,
+      "top_level_tests": 9,
+      "tests": 25,
+      "suites": 0,
+      "pass": 25,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 49641.1412,
+      "observed_exit_code": 0,
+      "role": "passed component regression"
+    },
+    {
+      "file": "component-price-coverage.tap",
+      "sha256": "5b09103760f6ffe124e7b9ffbf2d1502453e713a503dde740ad05d5f45233b10",
+      "bytes": 9548,
+      "top_level_tests": 9,
+      "tests": 25,
+      "suites": 0,
+      "pass": 22,
+      "fail": 3,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 66736.0697,
+      "observed_exit_code": 1,
+      "role": "preserved pre-fix failure"
+    },
+    {
+      "file": "component-protocol.tap",
+      "sha256": "e08c51e2332e61287d8c3104b847ff265e343bebd3c60e771d72899fbfa64a25",
+      "bytes": 17378,
+      "top_level_tests": 64,
+      "tests": 64,
+      "suites": 0,
+      "pass": 64,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 32790.1007,
+      "observed_exit_code": 0,
+      "role": "passed component regression"
+    },
+    {
+      "file": "component-refund-facts-green.tap",
+      "sha256": "48884b200743d865c044a8138747b7207b41ab7b7db779583c37fb9e47ee48a6",
+      "bytes": 5224,
+      "top_level_tests": 12,
+      "tests": 18,
+      "suites": 0,
+      "pass": 18,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 49968.3564,
+      "observed_exit_code": 0,
+      "role": "passed component regression"
+    },
+    {
+      "file": "component-refund-facts-red.tap",
+      "sha256": "a3b5ea317daea466d3ba65f3c2de9cb172e5fee35408167ac480eb36ba64982f",
+      "bytes": 2652,
+      "top_level_tests": 3,
+      "tests": 3,
+      "suites": 0,
+      "pass": 1,
+      "fail": 2,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 23819.6033,
+      "observed_exit_code": 1,
+      "role": "preserved pre-fix failure"
+    },
+    {
+      "file": "component-refund-recovery.tap",
+      "sha256": "7f9300867958f7347e9b8cf55f5764bc8911abc44f22b487ed0bee259656028a",
+      "bytes": 18861,
+      "top_level_tests": 57,
+      "tests": 66,
+      "suites": 0,
+      "pass": 66,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "duration_ms": 187092.8923,
+      "observed_exit_code": 0,
+      "role": "passed component regression"
+    }
+  ],
+  "overlap_notice": "Do not sum counts: V and F red/green repeat cases; task-refunds in F overlaps C; prior S and UI results also overlap. Node TAP counts include nested parent tests.",
+  "cli_smoke": {
+    "file": "component-refund-facts-cli.json",
+    "exit_code": 0,
+    "scope": "Actual CLI subprocess on an empty isolated database clone; refund lifecycle covered by F PG tests."
+  },
+  "consumer_check": {
+    "search": "subscription-facts-exact-v1|subscription-facts-report|net_payer_cash_flow_fen in apps, packages, scripts, docs, subscription-billing evidence; dist/node_modules excluded.",
+    "active_consumers": [
+      "annual-payment-statements.pg.test.ts",
+      "task-refunds.pg.test.ts",
+      "subscription-funding-evidence.test.ts",
+      "subscription-facts-report.test.ts",
+      "subscription-facts-report.pg.test.ts",
+      "report CLI and protocol documentation"
+    ],
+    "public_http_dto_changes": false,
+    "historical_manifests_rewritten": false
+  },
+  "postgres_cleanup": {
+    "observed_at": "2026-11-04T04:48:36.540Z",
+    "server": {
+      "data_directory": "C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/.local/prelaunch-payment-pg",
+      "port": "55434",
+      "version": "16.14"
+    },
+    "remaining_clones": [],
+    "other_client_connections": [],
+    "stop": {
+      "mode": "smart",
+      "exit_code": 0,
+      "stdout": "waiting for server to shut down.... done\nserver stopped",
+      "privilege": "Initial sandbox stop denied signal permission; approved elevated retry successfully stopped only the verified dedicated instance."
+    },
+    "final": {
+      "observed_at": "2026-11-04T04:49:31.582Z",
+      "pg_ctl_status_exit_code": 3,
+      "pg_ctl_status_stdout": "pg_ctl: no server running\r\n",
+      "pg_ctl_status_stderr": "",
+      "loopback_55434_connect_error": "ECONNREFUSED"
+    }
+  },
+  "files": [
+    {
+      "file": "README.md",
+      "bytes": 7016,
+      "sha256": "fdb0257766a344d89d4a07d249e70190646119a0d8ce26c2ae957b18f438aa82"
+    },
+    {
+      "file": "component-core.tap",
+      "bytes": 9778,
+      "sha256": "dbcd8e4a1c270dcb42df98ace6b95b3be17dc8307c5de9547bba77f4d1330103"
+    },
+    {
+      "file": "component-price-coverage-green.tap",
+      "bytes": 7059,
+      "sha256": "d0cd90166ac1c035dfd503c2a9823a5ce2de8e0eb6b6272335c29afe6b9f9c58"
+    },
+    {
+      "file": "component-price-coverage.tap",
+      "bytes": 9548,
+      "sha256": "5b09103760f6ffe124e7b9ffbf2d1502453e713a503dde740ad05d5f45233b10"
+    },
+    {
+      "file": "component-protocol.tap",
+      "bytes": 17378,
+      "sha256": "e08c51e2332e61287d8c3104b847ff265e343bebd3c60e771d72899fbfa64a25"
+    },
+    {
+      "file": "component-refund-facts-cli.json",
+      "bytes": 5113,
+      "sha256": "672dd084474b54d783cd0f595a4a09136df403e82789763eb9a49696f261b477"
+    },
+    {
+      "file": "component-refund-facts-green.tap",
+      "bytes": 5224,
+      "sha256": "48884b200743d865c044a8138747b7207b41ab7b7db779583c37fb9e47ee48a6"
+    },
+    {
+      "file": "component-refund-facts-red.tap",
+      "bytes": 2652,
+      "sha256": "a3b5ea317daea466d3ba65f3c2de9cb172e5fee35408167ac480eb36ba64982f"
+    },
+    {
+      "file": "component-refund-recovery.tap",
+      "bytes": 18861,
+      "sha256": "7f9300867958f7347e9b8cf55f5764bc8911abc44f22b487ed0bee259656028a"
+    },
+    {
+      "file": "launch-gates.md",
+      "bytes": 27598,
+      "sha256": "07476a59437839b3007ae562a418d9e7d4f7d64fdf165d251dababab492f7a1a"
+    },
+    {
+      "file": "postgres-cleanup.json",
+      "bytes": 811,
+      "sha256": "8f5423a3aa23e83ac9c5a3dd4a09b56210d993eccb9f7081ac7ac6b1be83bd62"
+    },
+    {
+      "file": "prelaunch-payment-closed-1440.png",
+      "bytes": 198843,
+      "sha256": "4392592b8a22d6041c3f5bc34461fdff56a8d8ffe54c1c92d6af63ba50fb189d"
+    },
+    {
+      "file": "screenshots.json",
+      "bytes": 1344,
+      "sha256": "5b003434be79637aeece8d3e8cfadcd0a350499dbdba6e4310a82b80a250994f"
+    },
+    {
+      "file": "subscription-final-monthly-1440.png",
+      "bytes": 178826,
+      "sha256": "b71a6432a980fc21d5174ef55914f011cffe99ee50a5fd35d65bc7d64d1e933a"
+    },
+    {
+      "file": "subscription-final-prototype-monthly-1440.png",
+      "bytes": 147478,
+      "sha256": "d5500e2785dd8a695ef983fc49fea667e174ca15594b7401eeba3eb311f1a907"
+    }
+  ]
+}

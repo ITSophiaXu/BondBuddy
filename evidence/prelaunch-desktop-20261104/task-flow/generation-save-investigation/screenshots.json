@@ -1,0 +1,14 @@
+[
+  {
+    "file": "accepted-saved-1440x960.png",
+    "sha256": "adc40c74b35f8a41b15c6f51bbfdf142c8edb960a3e3b7d31f46cb7b6d6bcbb2",
+    "width": 1440,
+    "height": 960
+  },
+  {
+    "file": "busy-transient-1440x960.png",
+    "sha256": "fdccce6cb68119c6e275b4f0c828f5c30aff970be29684231b4502a93917f196",
+    "width": 1440,
+    "height": 960
+  }
+]
