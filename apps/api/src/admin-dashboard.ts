@@ -184,6 +184,7 @@ export async function adminDashboardOverview(pool: Pool, actorId: string, filter
         AND ($4::text IS NULL OR r.owner_user_id=$4)`, filterArgs(filter));
     const dailyUsage = await client.query(`SELECT to_char(date_trunc('day', r.created_at),'YYYY-MM-DD') AS date,
         count(DISTINCT r.id)::int AS tasks,
+        count(DISTINCT r.owner_user_id)::int AS active_users,
         COALESCE(sum(l.input_tokens),0)::text AS input_tokens,
         COALESCE(sum(l.output_tokens),0)::text AS output_tokens,
         sum(l.cost_amount)::text AS cost_amount,
@@ -209,6 +210,7 @@ export async function adminDashboardOverview(pool: Pool, actorId: string, filter
     const daily = dailyUsage.rows.map(row => ({
       date: row.date as string,
       tasks: integer(row.tasks),
+      active_users: integer(row.active_users),
       input_tokens: integer(row.input_tokens),
       output_tokens: integer(row.output_tokens),
       cost_amount: dashboardCostText(row.cost_amount),

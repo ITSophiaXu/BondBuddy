@@ -23,7 +23,7 @@ const taskKind = Type.String({minLength: 1, maxLength: 64, pattern: '^[a-z][a-z0
 const pricingStatus = Type.Union(['priced', 'rate_missing', 'unknown'].map(value => Type.Literal(value)));
 const errorCode = Type.String({pattern: '^[A-Z][A-Z0-9_]{0,63}$'});
 const stateCount = obj({state: runState, count});
-const dailyPoint = obj({date: Type.String({pattern: '^\\d{4}-\\d{2}-\\d{2}$'}),tasks: count,input_tokens: count,output_tokens: count,cost_amount: nullable(cost),currency: nullable(currency),credit_settled_points: Int64Schema});
+const dailyPoint = obj({date: Type.String({pattern: '^\\d{4}-\\d{2}-\\d{2}$'}),tasks: count,active_users: count,input_tokens: count,output_tokens: count,cost_amount: nullable(cost),currency: nullable(currency),credit_settled_points: Int64Schema});
 
 const range = obj({from: nullable(utc), to: nullable(utc)});
 

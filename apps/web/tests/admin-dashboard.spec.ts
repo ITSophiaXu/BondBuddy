@@ -28,8 +28,8 @@ const overview: AdminDashboardOverview = {
   currency: 'USD',
   credit_settled_points: '500',
   daily: [
-    { date: '2026-11-01', tasks: 1, input_tokens: 1000, output_tokens: 200, cost_amount: '0.0014000000', currency: 'USD', credit_settled_points: '500' },
-    { date: '2026-11-02', tasks: 1, input_tokens: 1000, output_tokens: 200, cost_amount: '0.0014000000', currency: 'USD', credit_settled_points: '0' }
+    { date: '2026-11-01', tasks: 1, active_users: 1, input_tokens: 1000, output_tokens: 200, cost_amount: '0.0014000000', currency: 'USD', credit_settled_points: '500' },
+    { date: '2026-11-02', tasks: 1, active_users: 1, input_tokens: 1000, output_tokens: 200, cost_amount: '0.0014000000', currency: 'USD', credit_settled_points: '0' }
   ]
 };
 

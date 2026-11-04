@@ -47,7 +47,9 @@ const ICONS = {
   close: prototypeIcon('close'),
   lock: prototypeIcon('lock'),
   empty: prototypeIcon('folder'),
-  chart: icon('M3 3v18h18M7 15l4-4 3 3 5-6')
+  chart: icon('M3 3v18h18M7 15l4-4 3 3 5-6'),
+  link: prototypeIcon('link'),
+  more: prototypeIcon('down')
 };
 const STATE_TONE: Record<string, string> = {
   succeeded: 'success', test_completed: 'success', failed: 'danger', rejected: 'danger',
@@ -149,6 +151,8 @@ export function dashboardTrendHtml(overview: AdminDashboardOverview): string {
   const costText = priced.length ? dashboardCost(costTotal.toFixed(10), currency) : '—';
   const short = (value: string) => (value.length >= 10 ? value.slice(5) : value);
   const tasks = barSvg(daily.map(d => ({ value: d.tasks, label: short(d.date), text: `${d.date} 任务 ${d.tasks}` })), 'admin-dashboard-bar');
+  const users = barSvg(daily.map(d => ({ value: d.active_users, label: short(d.date), text: `${d.date} 活跃用户 ${d.active_users}` })), 'admin-dashboard-bar users');
+  const avgUsers = (daily.reduce((sum, d) => sum + d.active_users, 0) / daily.length).toFixed(1);
   const tokens = tokenSvg(daily.map(d => ({ in: d.input_tokens, out: d.output_tokens, label: short(d.date), text: `${d.date} ${d.input_tokens + d.output_tokens}` })));
   const costs = barSvg(daily.map(d => ({ value: d.cost_amount === null ? 0 : Number(d.cost_amount), label: short(d.date), text: `${d.date} 成本 ${d.cost_amount === null ? '未定价' : dashboardCost(d.cost_amount, d.currency)}` })), 'admin-dashboard-bar cost');
   return `<section class="admin-dashboard-panel admin-dashboard-trend" aria-label="时间趋势">
@@ -157,6 +161,7 @@ export function dashboardTrendHtml(overview: AdminDashboardOverview): string {
       <div class="admin-dashboard-chart"><h3>${ICONS.tasks}任务数 <small>共 ${number(tasksTotal)}</small></h3>${tasks}<div class="admin-dashboard-legend"><span><i style="background:#3f7a5e"></i>任务</span></div></div>
       <div class="admin-dashboard-chart"><h3>${ICONS.tokens}tokens <small>${number(inputTotal)} / ${number(outputTotal)}</small></h3>${tokens}<div class="admin-dashboard-legend"><span><i style="background:#2f6f9f"></i>输入</span><span><i style="background:#9cc0d8"></i>输出</span></div></div>
       <div class="admin-dashboard-chart"><h3>${ICONS.cost}平台成本 <small>${esc(costText)}</small></h3>${costs}<div class="admin-dashboard-legend"><span><i style="background:#b98a2e"></i>成本</span></div></div>
+      <div class="admin-dashboard-chart"><h3>${ICONS.users}用户量 <small>日均 ${avgUsers} 人</small></h3>${users}<div class="admin-dashboard-legend"><span><i style="background:#6b4fa0"></i>当日活跃用户</span></div></div>
     </div>
   </section>`;
 }
@@ -209,7 +214,7 @@ export function dashboardExecLogHtml(log: AdminExecLog | null, error: string): s
   if (!log) return '';
   return `<section class="admin-dashboard-exec-log" aria-label="执行日志" data-dashboard-exec-log-panel>
     <header><h2>${ICONS.log}执行日志 ${esc(log.attempt_id)}</h2>
-      <div class="admin-dashboard-exec-meta"><span>${number(log.byte_size)} 字节${log.truncated ? '（超出上限，已截断）' : ''}</span><span class="admin-dashboard-mono">sha256 ${esc(log.sha256)}</span></div>
+      <div class="admin-dashboard-exec-meta"><span>${ICONS.log}${number(log.byte_size)} 字节${log.truncated ? '（超出上限，已截断）' : ''}</span><span class="admin-dashboard-mono">${ICONS.link}sha256 ${esc(log.sha256)}</span></div>
       <div class="admin-dashboard-exec-actions"><button type="button" class="admin-dashboard-link" data-dashboard-exec-log-download>${ICONS.download}下载 .log</button>
       <button type="button" class="admin-dashboard-link" data-dashboard-exec-log-close>${ICONS.close}关闭</button></div></header>
     <pre data-dashboard-exec-log-body>${esc(log.body)}</pre>
@@ -232,7 +237,7 @@ function filtersHtml(filters: DashboardFilters): string {
       <label class="admin-dashboard-field"><span>${ICONS.clock}结束日期</span><input type="date" data-dashboard-to value="${esc(filters.to)}"></label>
       <label class="admin-dashboard-field"><span>${ICONS.settings}状态</span><select data-dashboard-state><option value="">全部状态</option>${options}</select></label>
       <div class="admin-dashboard-filter-actions"><button type="submit" class="btn primary" data-dashboard-apply>${ICONS.search}应用筛选</button>
-      <button type="button" class="admin-dashboard-link" data-dashboard-reset>清除筛选</button></div>
+      <button type="button" class="admin-dashboard-link" data-dashboard-reset>${ICONS.close}清除筛选</button></div>
     </div>
   </form>${filters.userId ? `<p class="admin-dashboard-user-filter" role="status">仅显示用户 ${esc(filters.userId)} 的任务 <button type="button" class="admin-dashboard-link" data-dashboard-clear-user>${ICONS.close}清除用户筛选</button></p>` : ''}`;
 }
@@ -345,12 +350,12 @@ export class AdminDashboardPage {
     if (!this.live()) return;
     if (this.forbidden) { this.shell(dashboardForbiddenHtml(), 'projects'); return; }
     this.shell(`<section class="admin-dashboard">
-      <header class="admin-dashboard-hero">
-        <div><p class="admin-dashboard-eyebrow">OPERATIONS · READ ONLY</p><h1>运营管理看板</h1>
+      <div class="admin-dashboard-page-title">
+        <div><h1>${ICONS.chart}运营看板</h1>
         <p>按用户与任务查看模型用量、平台成本与已结算积分；手机号仅显示后四位，执行日志仅经审计读取。</p></div>
-        <div class="admin-dashboard-hero-actions"><span class="admin-dashboard-pill">${ICONS.lock}只读</span>
+        <div class="admin-dashboard-page-actions"><span class="admin-dashboard-pill">${ICONS.lock}只读</span>
         <button type="button" class="btn primary" data-dashboard-refresh ${this.loading ? 'disabled' : ''}>${ICONS.refresh}刷新数据</button></div>
-      </header>
+      </div>
       ${this.error ? `<p class="admin-dashboard-alert" role="alert">${esc(this.error)}</p>` : ''}
       ${this.overview ? dashboardSummaryHtml(this.overview) : this.loading ? '<p role="status">正在读取运营汇总…</p>' : ''}
       ${this.overview ? dashboardTrendHtml(this.overview) : ''}
@@ -358,12 +363,12 @@ export class AdminDashboardPage {
       <section class="admin-dashboard-panel" aria-label="用户明细">
         <div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.users}用户</div><div class="admin-dashboard-panel-tools"><span class="admin-dashboard-panel-sub">${this.users.length} 位</span><span class="admin-dashboard-scroll-hint">左右滑动查看更多</span></div></div>
         ${this.loading && !this.users.length ? '<p role="status">正在读取用户明细…</p>' : dashboardUsersHtml(this.users, this.filters.userId || null)}
-        ${this.usersCursor ? `<div class="admin-dashboard-more"><button type="button" class="admin-dashboard-link" data-dashboard-more-users ${this.loading ? 'disabled' : ''}>加载更多用户</button></div>` : ''}
+        ${this.usersCursor ? `<div class="admin-dashboard-more"><button type="button" class="admin-dashboard-link" data-dashboard-more-users ${this.loading ? 'disabled' : ''}>${ICONS.more}加载更多用户</button></div>` : ''}
       </section>
       <section class="admin-dashboard-panel" aria-label="任务明细">
         <div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.tasks}任务</div><div class="admin-dashboard-panel-tools"><span class="admin-dashboard-panel-sub">${this.tasks.length} 个</span><span class="admin-dashboard-scroll-hint">左右滑动查看更多</span></div></div>
         ${this.loading && !this.tasks.length ? '<p role="status">正在读取任务明细…</p>' : dashboardTasksHtml(this.tasks)}
-        ${this.tasksCursor ? `<div class="admin-dashboard-more"><button type="button" class="admin-dashboard-link" data-dashboard-more-tasks ${this.loading ? 'disabled' : ''}>加载更多任务</button></div>` : ''}
+        ${this.tasksCursor ? `<div class="admin-dashboard-more"><button type="button" class="admin-dashboard-link" data-dashboard-more-tasks ${this.loading ? 'disabled' : ''}>${ICONS.more}加载更多任务</button></div>` : ''}
       </section>
       ${this.execLogLoading ? '<p role="status">正在读取执行日志…</p>' : ''}
       ${dashboardExecLogHtml(this.execLog, this.execLogError)}
