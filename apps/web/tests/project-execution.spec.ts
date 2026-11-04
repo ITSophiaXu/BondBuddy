@@ -56,15 +56,15 @@ function fixture() {
     checkStatus: 'blocked' as Dto<'PreflightResponse'>['status'], reason: 'rule_pack:rule_applicability_overall_review_required',
     blockers: undefined as string[] | undefined };
 }
-function registerGeneratedPair(state: ReturnType<typeof fixture>, run: Dto<'RunResponse'>, revisionId: string) {
+function registerGeneratedPair(state: ReturnType<typeof fixture>, run: Dto<'RunResponse'>, revisionId: string, sharedFirstDraft = false) {
   expect(run.project_id).toBe(id); expect(run.channel).toBe('production');
   run.state='succeeded'; run.artifact_id=revisionId;
-  const cleanId=`${revisionId}-clean`;
+  const cleanId=sharedFirstDraft?revisionId:`${revisionId}-clean`;
   const wordDelivery: NonNullable<Dto<'ArtifactResponse'>['word_delivery']> = {
     variant:'revision', revision_artifact_id:revisionId, clean_artifact_id:cleanId,
     writer_version:'bondbuddy-unified-word-1.0.0', source_sha256:state.materials.find(m=>m.role==='historical')?.sha256??null,
     baseline_hash:null, effective_baseline_sha256:null, plan_hash:null, delivery_policy:'generated_pair_v1',
-    content_review:'not_performed', baseline_kind:'uploaded_source', replacements:null, columns:null,
+    content_review:'not_performed', baseline_kind:sharedFirstDraft?'none':'uploaded_source', replacements:null, columns:null,
     pending_review_count:0, pending_review:[],
   };
   const primary: Dto<'ArtifactResponse'> = { artifact_id:revisionId, run_id:run.run_id, version:1,
@@ -72,7 +72,7 @@ function registerGeneratedPair(state: ReturnType<typeof fixture>, run: Dto<'RunR
     sha256:hash(`synthetic-revision:${revisionId}`), quality_status:'passed', delivery_status:'available',
     download_url:`/api/v1/artifacts/${revisionId}/download`, expires_at:'2099-01-01T00:00:00Z', word_delivery:wordDelivery };
   const clean: Dto<'ArtifactResponse'> = { ...primary, artifact_id:cleanId, filename:'合成募集书清洁版.docx',
-    sha256:hash(`synthetic-clean:${revisionId}`), download_url:`/api/v1/artifacts/${cleanId}/download`,
+    sha256:sharedFirstDraft?primary.sha256:hash(`synthetic-clean:${revisionId}`), download_url:`/api/v1/artifacts/${cleanId}/download`,
     word_delivery:{...wordDelivery,variant:'clean'} };
   state.artifacts.set(primary.artifact_id,primary); state.artifacts.set(clean.artifact_id,clean);
   state.generatedVersions.push({version_id:`generated-${run.run_id}`,sequence:state.generatedVersions.length+2,
@@ -1206,6 +1206,29 @@ test('continuing after completion creates a new input and retains the preceding 
   expect(state.inputs[1].material_versions).toEqual(state.inputs[0].material_versions);
   expect(primary.word_delivery?.clean_artifact_id).toBe(clean.artifact_id);
   expect(clean.word_delivery?.revision_artifact_id).toBe(first.artifact_id);
+});
+
+for(const changeAfterPreparation of [false,true])test(`deduplicated first draft ${changeAfterPreparation?'is revalidated before another input is submitted':'continues from the exact shared clean artifact'}`,async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.materials=state.materials.filter(material=>material.role!=='historical');
+  state.project.update_details!.has_historical=false;state.project.update_details!.source_prospectuses=[];state.sourceSelected=false;
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  const first=[...state.runs.values()][0],{primary,clean}=registerGeneratedPair(state,first,'deduplicated-first-draft',true);
+  expect(primary.word_delivery?.source_sha256).toBeNull();
+  await page.getByRole('button',{name:'重新读取',exact:true}).click();
+  await expect(page.locator('#execution-progress')).toContainText('已生成');
+  await continueAuthoring(page);
+  await expect(page.locator('[data-next-authoring-summary]')).toContainText(clean.filename!);
+  if(changeAfterPreparation)clean.sha256=hash('changed-first-draft');
+  await page.locator('#execute-input').click();
+  if(changeAfterPreparation){
+    await expect(page.locator('#execution-message')).toContainText('清洁版成果的准确版本尚未确认');
+    expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);
+  }else{
+    await expect(page.locator('#execution-progress .task-progress')).toHaveAttribute('data-input-revision','2');
+    expect(state.inputs[1].edit_base).toEqual({artifact_id:clean.artifact_id,artifact_version:clean.version,sha256:clean.sha256});
+    expect(state.inputs[1].prospectus_selection_revision).toBe(1);expect(state.runs.size).toBe(2);
+  }
 });
 
 

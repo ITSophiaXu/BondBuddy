@@ -147,7 +147,28 @@ test('material download returns exact verified Blob bytes through the same-origi
   assert.deepEqual(new Uint8Array(await blob.arrayBuffer()),sourceBytes);
   assert.equal(calls.length,1);assert.equal(calls[0]!.url,'/api/v1/projects/project%20a/materials/material%2Fsource/download?version=2');
   assert.equal(calls[0]!.init.method,'GET');assert.equal(calls[0]!.init.credentials,'same-origin');
-  assert.equal(calls[0]!.init.cache,'no-store');assert.equal(calls[0]!.init.signal,signal);
+  assert.equal(calls[0]!.init.cache,'no-store');assert(calls[0]!.init.signal instanceof AbortSignal);assert.equal(calls[0]!.init.signal.aborted,false);
+});
+
+test('a stalled material body times out, cancels its reader, and permits a fresh verified download',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  let cancelled=false,stalled=true;
+  const {api,calls}=stubDownload(t,()=>new Response(stalled?new ReadableStream({cancel(){cancelled=true;}}):sourceBytes,{headers:{'Content-Type':'text/plain'}}));
+  const download=api.materialBytes('project a',sourceMaterial());
+  for(let i=0;i<10;i++)await Promise.resolve();
+  const failure=assert.rejects(download,/下载准备超时.*无需重新生成/);
+  t.mock.timers.tick(120_000);await failure;
+  assert.equal(cancelled,true);assert.equal(calls[0].init.signal?.aborted,true);
+  stalled=false;assert.equal((await api.materialBytes('project a',sourceMaterial())).size,sourceBytes.byteLength);
+});
+
+test('artifact metadata that never finishes does not hold a download action indefinitely',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const {api,calls}=stubDownload(t,()=>new Response(new ReadableStream(),{headers:{'Content-Type':'application/json'}}));
+  const metadata=api.artifact('saved-artifact');
+  const failure=assert.rejects(metadata,/下载准备超时.*无需重新生成/);
+  t.mock.timers.tick(120_000);await failure;
+  assert.equal(calls[0].init.signal?.aborted,true);
 });
 
 test('material download rejects same-length corrupted bytes whose hash differs',async t=>{

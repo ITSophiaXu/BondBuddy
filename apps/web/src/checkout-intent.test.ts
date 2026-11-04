@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {checkoutIntentKey,checkoutPending,readCheckoutIntent,submitCheckoutIntent,observeCheckoutOrder,CheckoutQuoteStale,type CheckoutChoice,type CheckoutIntent,type CheckoutOrder} from './checkout-intent.js';
+import {checkoutIntentKey,checkoutPending,readCheckoutIntent,submitCheckoutIntent,observeCheckoutOrder,CheckoutQuoteStale,CheckoutSubscriptionRejected,type CheckoutChoice,type CheckoutIntent,type CheckoutOrder} from './checkout-intent.js';
 
 function fixture(){
   const rows=new Map<string,string>(),storage={getItem:(key:string)=>rows.get(key)??null,setItem:(key:string,value:string)=>{rows.set(key,value);},removeItem:(key:string)=>{rows.delete(key);}};
@@ -10,6 +10,37 @@ function fixture(){
 }
 const choice:CheckoutChoice={kind:'topup',provider:'wechat',amount_fen:'1218',project_id:'project-one'};
 const order:CheckoutOrder={order_id:'original-order',provider:'wechat',amount_fen:'1218',points:'1218',state:'pending'};
+
+test('a durably rejected subscription request permits an observed topup but stale tabs cannot replace its key',async()=>{
+  const env=fixture(),subscription:CheckoutChoice={kind:'subscription',plan_id:'light',provider:'wechat'};
+  await assert.rejects(submitCheckoutIntent('owner',subscription,undefined,async()=>{throw {status:409,code:'PAYMENT_INVALID'};},env));
+  const original=readCheckoutIntent('owner',env.storage)!;assert.equal(checkoutPending(original),true,'general payment errors keep the outcome unknown');
+  await assert.rejects(submitCheckoutIntent('owner',undefined,undefined,async()=>{throw new CheckoutSubscriptionRejected();},env));
+  const rejected=readCheckoutIntent('owner',env.storage)!;
+  assert.equal(rejected.request_id,original.request_id);assert.equal(rejected.rejection,'subscription_checkout_rejected');assert.equal(checkoutPending(rejected),false);
+  await assert.rejects(submitCheckoutIntent('owner',choice,undefined,async()=>order,env),/已有原付款待核对/);
+  const topup=await submitCheckoutIntent('owner',choice,rejected.request_id,async()=>order,env);
+  assert.notEqual(topup.request_id,original.request_id);assert.equal(topup.rejection,undefined);assert.deepEqual(topup.choice,choice);
+});
+
+test('an exact subscription rejection cannot release accepted orders or unrelated checkout kinds',async()=>{
+  const env=fixture(),subscription:CheckoutChoice={kind:'subscription',plan_id:'light',provider:'wechat'};
+  const accepted=await submitCheckoutIntent('owner',subscription,undefined,async()=>({...order,amount_fen:'19900',points:'21000'}),env);
+  await assert.rejects(submitCheckoutIntent('owner',undefined,undefined,async()=>{throw new CheckoutSubscriptionRejected();},env));
+  assert.equal(readCheckoutIntent('owner',env.storage)!.request_id,accepted.request_id);assert.equal(checkoutPending(readCheckoutIntent('owner',env.storage)),true);
+  const other=fixture();await assert.rejects(submitCheckoutIntent('owner',choice,undefined,async()=>{throw new CheckoutSubscriptionRejected();},other));
+  assert.equal(checkoutPending(readCheckoutIntent('owner',other.storage)),true);
+  env.storage.setItem(checkoutIntentKey('owner'),JSON.stringify({...accepted,rejection:'subscription_checkout_rejected'}));
+  assert.throws(()=>readCheckoutIntent('owner',env.storage),'a persisted rejection may never coexist with an accepted order');
+});
+
+test('a rejected legacy subscription intent keeps its exact key and becomes a readable final intent',async()=>{
+  const env=fixture(),subscription:CheckoutChoice={kind:'subscription',plan_id:'light',provider:'wechat'};
+  env.storage.setItem(checkoutIntentKey('owner'),JSON.stringify({version:1,owner:'owner',request_id:'old-key',created_at:1,choice:subscription}));
+  await assert.rejects(submitCheckoutIntent('owner',undefined,undefined,async()=>{throw new CheckoutSubscriptionRejected();},env));
+  const rejected=readCheckoutIntent('owner',env.storage)!;
+  assert.equal(rejected.version,2);assert.equal(rejected.request_id,'old-key');assert.equal(checkoutPending(rejected),false);assert.deepEqual(rejected.choice,subscription);
+});
 
 test('subscription change recovery keeps the quote and cycle after an unknown checkout',async()=>{
   const env=fixture(),change:CheckoutChoice={kind:'subscription_change',quote_id:'quote-one',plan_id:'professional',billing_cycle:'annual',provider:'wechat'};

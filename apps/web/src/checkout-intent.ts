@@ -11,9 +11,11 @@ export type CheckoutOrder={order_id:string;provider:Provider;state:'pending'|'pa
 type LegacyCheckoutOrder=Omit<CheckoutOrder,'amount_fen'|'points'>&{amount_fen:number;points:number};
 export type CheckoutContext={project_id?:string;return_to?:string;resume_request?:string};
 type CheckoutIdentity={owner:string;request_id:string;created_at:number;context?:CheckoutContext};
-export type CheckoutIntent=CheckoutIdentity&({version:2;choice:CheckoutChoice;order?:CheckoutOrder;rejection?:'subscription_change_quote_stale'}|{version:1;choice:LegacyCheckoutChoice;order?:LegacyCheckoutOrder;rejection?:never});
+export type CheckoutIntent=CheckoutIdentity&({version:2;choice:CheckoutChoice;order?:CheckoutOrder;rejection?:'subscription_change_quote_stale'|'subscription_checkout_rejected'}|{version:1;choice:LegacyCheckoutChoice;order?:LegacyCheckoutOrder;rejection?:never});
 /** Only throw after the service has permanently rejected this exact request key. */
 export class CheckoutQuoteStale extends UserFacingError{constructor(){super('付款摘要已失效，原付款请求已结束。请刷新摘要后查看本次实付。');}}
+/** The service has durably rejected this key without creating an order. */
+export class CheckoutSubscriptionRejected extends UserFacingError{constructor(message='当前订阅状态已变化，原付款请求已结束且未创建订单。请刷新账户后重新选择。'){super(message);}}
 type StorageLike=Pick<Storage,'getItem'|'setItem'|'removeItem'>;
 type Lock=<T>(name:string,work:()=>Promise<T>)=>Promise<T>;
 type Environment={storage:StorageLike;lock:Lock};
@@ -51,7 +53,7 @@ export function readCheckoutIntent(owner:string,storage:StorageLike=environment(
   try{
     const raw=storage.getItem(checkoutIntentKey(owner));if(raw===null)return undefined;
     const v:unknown=JSON.parse(raw);
-    if(!object(v)||!keys(v,['version','owner','request_id','created_at','choice','context','order','rejection'])||![1,2].includes(Number(v.version))||typeof v.version!=='number'||v.owner!==owner||!id(v.request_id)||!Number.isSafeInteger(v.created_at)||!choiceValid(v.choice,v.version===1)||v.context!==undefined&&!contextValid(v.context)||v.order!==undefined&&!orderValid({choice:v.choice},v.order,v.version===1)||v.rejection!==undefined&&(v.version!==2||v.rejection!=='subscription_change_quote_stale'||v.choice.kind!=='subscription_change'||v.order!==undefined))throw blocked();
+    if(!object(v)||!keys(v,['version','owner','request_id','created_at','choice','context','order','rejection'])||![1,2].includes(Number(v.version))||typeof v.version!=='number'||v.owner!==owner||!id(v.request_id)||!Number.isSafeInteger(v.created_at)||!choiceValid(v.choice,v.version===1)||v.context!==undefined&&!contextValid(v.context)||v.order!==undefined&&!orderValid({choice:v.choice},v.order,v.version===1)||v.rejection!==undefined&&(v.version!==2||v.order!==undefined||!(v.rejection==='subscription_change_quote_stale'&&v.choice.kind==='subscription_change'||v.rejection==='subscription_checkout_rejected'&&v.choice.kind==='subscription')))throw blocked();
     return v as CheckoutIntent;
   }catch{throw blocked();}
 }
@@ -78,7 +80,13 @@ export async function submitCheckoutIntent(owner:string,choice:CheckoutChoice|un
       intent={version:2,owner,request_id:crypto.randomUUID(),created_at:Date.now(),choice:{...choice},...(context?{context:{...context}}:{})};save(intent,env.storage);
     }else if(choice&&!sameChoice(intent.choice,choice))throw conflict();
     try{const result=bind(intent,await submit(intent));save(result,env.storage);return result;}
-    catch(error){if(error instanceof CheckoutQuoteStale&&intent.version===2&&intent.choice.kind==='subscription_change'&&!intent.order)save({...intent,rejection:'subscription_change_quote_stale'},env.storage);throw error;}
+    catch(error){
+      if(!intent.order){
+        if(error instanceof CheckoutQuoteStale&&intent.version===2&&intent.choice.kind==='subscription_change')save({...intent,rejection:'subscription_change_quote_stale'},env.storage);
+        if(error instanceof CheckoutSubscriptionRejected&&intent.choice.kind==='subscription')save({...intent,version:2,choice:{...intent.choice},order:undefined,rejection:'subscription_checkout_rejected'},env.storage);
+      }
+      throw error;
+    }
   });
 }
 /** A GET/refresh for an already bound order can update its status. A different

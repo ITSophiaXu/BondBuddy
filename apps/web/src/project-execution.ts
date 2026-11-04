@@ -16,7 +16,7 @@ import './project-execution.css';
 import { authoringStatus, authoringEventLabel, authoringCreditReceipt, retainAuthoringEvents, authoringVisibleEvents } from './authoring-progress';
 import { taskProgress } from './task-progress';
 import { rechargeHref, withProjectContext } from './project-navigation';
-import { resolveContinuationBasis, renderContinuationSummary, type ContinuationBasis, type ContinuationChoice } from './authoring-continuation';
+import { readContinuationBasis, renderContinuationSummary, type ContinuationBasis, type ContinuationChoice } from './authoring-continuation';
 import { syncFormatTemplateMode } from './source-format-template';
 import {isCnyPrice,displayPrice,confirmCnyTask,readCommerce,scopePending,scopeLinesHtml,scopeLifecycleHtml,scopeStatusLabel} from './commerce';
 
@@ -590,7 +590,9 @@ export class ProjectExecution {
       }
       const versions=await this.api.prospectusVersions(this.id,this.controller.signal);
       if(!this.active||!this.nextRequested||this.run?.run_id!==runId||this.nextChoice!==choice||read!==this.nextBasisRead)return;
-      this.nextBasis=resolveContinuationBasis(versions,this.id,this.run,choice);
+      const basis=await readContinuationBasis(versions,this.id,this.run,choice,id=>this.api.artifact(id,this.controller.signal));
+      if(!this.active||!this.nextRequested||this.run?.run_id!==runId||this.nextChoice!==choice||read!==this.nextBasisRead)return;
+      this.nextBasis=basis;
     }catch(error){if(this.active&&this.nextRequested&&read===this.nextBasisRead)this.nextBasisError=friendlyError(error,'read');}
     finally{if(read===this.nextBasisRead){this.nextBasisLoading=false;if(this.active)this.render();}}
   }
@@ -701,7 +703,7 @@ export class ProjectExecution {
         const versions=await this.api.prospectusVersions(this.id,this.controller.signal);
         if(this.nextRequested){
           const basis=this.nextBasis;
-          const fresh=this.run?resolveContinuationBasis(versions,this.id,this.run,this.nextChoice):undefined;
+          const fresh=this.run?await readContinuationBasis(versions,this.id,this.run,this.nextChoice,id=>this.api.artifact(id,this.controller.signal)):undefined;
           if(!basis||!fresh||basis.key!==fresh.key){
             this.nextBasisError='项目当前稿或所选底稿已变化，请重新载入项目资料并核对后再生成。';
             this.nextNeedsProjectRefresh=true;this.message=this.nextBasisError;return;
