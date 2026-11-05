@@ -47,6 +47,23 @@ def unwrap(node):
 
 def resolve_revisions(root, accept, only_new=False):
     def selected(n):return not only_new or n.get(Q('author'))==only_new
+    # Grid changes have no author in OOXML. For author-filtered resolution,
+    # associate them with that table's inserted-cell markers before removing cells.
+    selected_grids = set()
+    for table in root.iter(Q('tbl')):
+        cells = [cell for row in table.findall(Q('tr')) for cell in row.findall(Q('tc'))]
+        markers = [marker for cell in cells for marker in cell.findall(Q('tcPr')+'/'+Q('cellIns'))]
+        if any(selected(marker) for marker in markers):
+            grid = table.find(Q('tblGrid'))
+            changes = grid.findall(Q('tblGridChange')) if grid is not None else []
+            if (not accept and len(changes) != 1) or any(not selected(marker) for marker in markers):
+                # Do not resolve another author's grid or guess a missing snapshot.
+                fail('WORD_REVISION_UNSUPPORTED')
+            selected_grids.update(changes)
+    for cell in list(root.iter(Q('tc'))):
+        markers = cell.findall(Q('tcPr')+'/'+Q('cellIns'))
+        if not accept and any(selected(marker) for marker in markers) and cell.getparent() is not None:
+            cell.getparent().remove(cell)
     # Structural row/paragraph insertions/deletions must be resolved before run wrappers.
     for container,prop in [('tr','trPr'),('p','pPr/rPr')]:
         path='/'.join(Q(v) for v in prop.split('/'))
@@ -58,7 +75,7 @@ def resolve_revisions(root, accept, only_new=False):
     for table in list(root.iter(Q('tbl'))):
         if not table.findall(Q('tr')) and table.getparent() is not None:table.getparent().remove(table)
     for node in list(root.iter()):
-        if node.getparent() is None or node.tag not in REV or not selected(node):continue
+        if node.getparent() is None or node.tag not in REV or not (selected(node) or node in selected_grids):continue
         local=ET.QName(node).localname
         if local.endswith('Change'):
             if not accept:
@@ -68,6 +85,9 @@ def resolve_revisions(root, accept, only_new=False):
                 for child in list(parent):parent.remove(child)
                 for child in list(old):parent.append(copy.deepcopy(child))
             else:node.getparent().remove(node)
+        elif local == 'cellIns':
+            if node.getparent().tag != Q('tcPr'):fail('WORD_REVISION_INVALID')
+            node.getparent().remove(node)
         elif local in ('ins','moveTo','del','moveFrom'):
             # Property-level revision markers are not text wrappers.
             if node.getparent().tag in {Q('rPr'),Q('trPr'),Q('tcPr')}:
@@ -78,7 +98,7 @@ def resolve_revisions(root, accept, only_new=False):
                 unwrap(node)
             else:node.getparent().remove(node)
         else:
-            # Column/cell merge semantics require explicit support, never silently accept.
+            # Cell deletion/merge semantics still require explicit support.
             fail('WORD_REVISION_UNSUPPORTED')
     return root
 
