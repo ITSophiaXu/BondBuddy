@@ -11,7 +11,7 @@ import { claim,checkpointStage,finish,promoteWordArtifact } from './queue.js';
 import { registerGeneratedProspectus } from './prospectus-versions.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { readFile } from 'node:fs/promises';
-import { pdfSample,PDF } from './upload-safety.samples.js';
+import { pdfSample,PDF,DOCX } from './upload-safety.samples.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 const connection=await isolatedTestDatabase(undefined,'update-project-e2e');
@@ -28,8 +28,8 @@ test('update project: real uploads, version CAS, exact input pins, cross-kind re
   const ok=async(method:string,url:string,payload?:unknown,headers?:Record<string,string>)=>{const r=await send(method,url,payload,headers);assert.ok(r.statusCode<300,r.body);return r.body?r.json():null;};
   const create=(kind:string,request=randomUUID())=>ok('POST','/api/v1/projects',{creation_request_id:request,name:`Synthetic ${kind}`,kind,issuer_name:'Synthetic issuer',market:'sse',offering:'private',update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1',reporting_cutoff:'2026-09-30'}});
   const upload=async(id:string,tag:string,role='historical')=>{
-    const bytes=pdfSample({tag}),declaration={byte_size:bytes.length,sha256:digest(bytes)};
-    const session=await ok('POST',`/api/v1/projects/${id}/materials/uploads`,{...declaration,filename:`${tag}.pdf`,role,media_type:PDF});
+    const source=['historical','reference'].includes(role),bytes=source?makeSyntheticDocxFixture({text:tag}):pdfSample({tag}),declaration={byte_size:bytes.length,sha256:digest(bytes)};
+    const session=await ok('POST',`/api/v1/projects/${id}/materials/uploads`,{...declaration,filename:`${tag}.${source?'docx':'pdf'}`,role,media_type:source?DOCX:PDF});
     assert.equal((await send('PUT',session.upload_url,bytes)).statusCode,204);
     return ok('POST',`/api/v1/projects/${id}/materials/uploads/${session.upload_id}/complete`,declaration);
   };

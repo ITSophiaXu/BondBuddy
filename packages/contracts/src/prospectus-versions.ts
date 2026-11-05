@@ -14,12 +14,26 @@ export const ProspectusVersionSchema = obj({
 export const prospectusVersionSchemas = {
   UpdateWorkspaceRequest: obj({}),
   UpdateWorkspaceResponse: obj({ source_project_id: id, update_project_id: id }),
-  ProspectusVersionsResponse: obj({ project_id: id, current_version_id: nullable(id), selection_revision: Type.Integer({ minimum: 0 }), inactive_material_ids: Type.Array(id), versions: Type.Array(ProspectusVersionSchema) }),
+  ProspectusVersionsResponse: obj({ project_id: id, current_version_id: nullable(id), selection_revision: Type.Integer({ minimum: 0 }), inactive_material_ids: Type.Array(id), versions: Type.Array(ProspectusVersionSchema), upload_docx_only: Type.Optional(Type.Boolean()) }),
   ProspectusVersionSaveRequest: obj({ request_id: id, expected_selection_revision: Type.Integer({ minimum: 0 }), material_id: id, material_version: integer, sha256: Type.String({ pattern: '^[a-f0-9]{64}$' }) }),
   ProspectusVersionSelectRequest: obj({ request_id: id, expected_selection_revision: Type.Integer({ minimum: 0 }), version_id: id }),
 };
 export type ProspectusVersion = Static<typeof ProspectusVersionSchema>;
 export type ProspectusVersions = Static<typeof prospectusVersionSchemas.ProspectusVersionsResponse>;
+
+/** Applies to new source uploads; saved versions and non-update materials retain their formats. */
+export const isWordOnlyProspectusUpload = (kind: string, role: string): boolean =>
+  kind === 'update' && (role === 'historical' || role === 'reference');
+
+export const PROSPECTUS_DOCX_ONLY_MESSAGE = '历史／参考募集书仅支持 Word（.docx），请上传 Word 原文件。';
+export const PROSPECTUS_DOCX_ONLY_FIELD_ERROR = {
+  field: 'material_upload', code: 'PROSPECTUS_DOCX_ONLY', message: PROSPECTUS_DOCX_ONLY_MESSAGE,
+} as const;
+export function isProspectusDocxOnlyFieldError(value: unknown): boolean {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const field = value as Record<string, unknown>;
+  return field.field === PROSPECTUS_DOCX_ONLY_FIELD_ERROR.field && field.code === PROSPECTUS_DOCX_ONLY_FIELD_ERROR.code;
+}
 
 /** A saved upload must not silently disappear from an update's locked input. */
 export function requiresProspectusSelection(state: ProspectusVersions): boolean {

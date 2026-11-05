@@ -6,7 +6,7 @@ import { BlobServiceClient } from '@azure/storage-blob';
 import { M1_UPLOAD_LIMITS } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
 import { azureBlobs, digest } from './data.js';
-import { DOCX, PDF, docxSample, pdfSample } from './upload-safety.samples.js';
+import { DOCX, PDF, docxSample } from './upload-safety.samples.js';
 import { isolatedTestDatabase } from './test-database.js';
 import { runStorageLifecycle } from './storage-lifecycle.js';
 
@@ -22,13 +22,13 @@ test('owner explicitly copies exact reference bytes with durable replay and isol
   const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true})});
   const send=(method:string,url:string,payload?:unknown,revision?:number)=>app.inject({method:method as any,url,payload:payload as any,
     headers:{origin,...(revision?{'if-match':String(revision)}:{}),...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
-  const bytes=pdfSample(),sha=digest(bytes);
+  const bytes=await docxSample(),sha=digest(bytes);
   try{
     const created=await send('POST','/api/v1/projects',{name:'Synthetic role correction',kind:'update',issuer_name:null,market:null,offering:null});
     assert.equal(created.statusCode,201,created.body);
     const project=created.json().project_id as string;
     const base=`/api/v1/projects/${project}`;
-    const upload=await send('POST',`${base}/materials/uploads`,{filename:'synthetic.pdf',media_type:PDF,byte_size:bytes.length,sha256:sha,role:'reference'});
+    const upload=await send('POST',`${base}/materials/uploads`,{filename:'synthetic.docx',media_type:DOCX,byte_size:bytes.length,sha256:sha,role:'reference'});
     assert.equal(upload.statusCode,201,upload.body);
     assert.equal((await send('PUT',upload.json().upload_url,bytes)).statusCode,204);
     const completed=await send('POST',`${base}/materials/uploads/${upload.json().upload_id}/complete`,{byte_size:bytes.length,sha256:sha});
@@ -37,11 +37,11 @@ test('owner explicitly copies exact reference bytes with durable replay and isol
     const originalInput=await send('POST',`${base}/input-revisions`,{draft_revision:1,material_versions:[{material_id:source.material_id,material_version:1}],requirement_message_ids:[]});
     assert.equal(originalInput.statusCode,201,originalInput.body);
     const oldHash=originalInput.json().input_hash;
-    const request={request_key:randomUUID(),source_material_id:source.material_id,source_material_version:1,source_sha256:sha,source_media_type:PDF,target_role:'historical'};
+    const request={request_key:randomUUID(),source_material_id:source.material_id,source_material_version:1,source_sha256:sha,source_media_type:DOCX,target_role:'historical'};
     const path=`${base}/materials/role-copies`;
     const invalid=[
       {...request,source_sha256:'a'.repeat(64)},
-      {...request,source_media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'},
+      {...request,source_media_type:PDF},
       {...request,target_role:'reference'},
       {...request,source_material_version:2},
     ];

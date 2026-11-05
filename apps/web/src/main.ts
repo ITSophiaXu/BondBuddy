@@ -756,7 +756,7 @@ function roleLabel(role: UploadRole) {
 function roleGuidance(role: UploadRole) {
   const guidance = OPTIONAL_MATERIAL_GUIDANCE[role];
   if (guidance) return `选填 · ${guidance.hint}`;
-  if (role === 'historical') return '选填：同企业、母公司、子公司或相似业务企业原稿。优先 Word；PDF 重建后需核对排版。';
+  if (role === 'historical') return '选填：同企业、母公司、子公司或相似业务企业原稿。仅支持 Word（.docx）。';
   if (role === 'reference') return '无历史稿时可选，可提供你希望参考的募集书';
   if (role === 'audit') return '必需提供审计报告，或财务报表及附注；报表和附注已包含在报告中时无需重复上传';
   if (role === 'financial') return '按所需年度提供；已包含在审计报告中时无需另传';
@@ -890,7 +890,7 @@ function renderMaterialPartitions(projectId: string) {
     const duplicates = (localUploads.get(projectId) ?? []).filter(upload => upload.role === role.code && upload.phase === 'persisted' && upload.material && upload.uploadId && upload.material.upload_id!==upload.uploadId).map(upload => ({filename: uploadName(upload), material: upload.material!}));
     const roleMaterials = materials.filter(material => material.role === role.code && !localMaterialIds.has(material.material_id));
     const accept = role.code === 'historical' || role.code === 'reference'
-      ? '.docx,.pdf'
+      ? '.docx'
       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
     const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses, sourceFormatContext(projectId))}</div><div class="material-file-actions">${materialDeleteControl(material.material_id)}</div></li>`).join('');
     const picker = canAdd ? `<label class="button secondary material-picker" for="upload-${esc(role.code)}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" ${partition.optional ? `aria-describedby="material-formats-${index}"` : ''} data-upload-role="${esc(role.code)}"/></label>` : '';
@@ -995,8 +995,8 @@ function declaredMediaType(file: File, role: UploadRole): typeof M1_UPLOAD_MIME_
   const extension = file.name.toLowerCase().split('.').at(-1) ?? '';
   const mediaType = mimeByExtension[extension];
   if (!mediaType || !M1_UPLOAD_MIME_TYPES.includes(mediaType)) throw new InvalidUploadFileError('此分区暂不支持该文件扩展名。请选择支持格式的文件，或移除此未保存行。');
-  if ((role === 'historical' || role === 'reference') && extension !== 'docx' && extension !== 'pdf') {
-    throw new InvalidUploadFileError('募集说明书分区仅接受 DOCX 或 PDF。请选择其他文件，或移除此未保存行。');
+  if ((role === 'historical' || role === 'reference') && extension !== 'docx') {
+    throw new InvalidUploadFileError('历史／参考募集书仅支持 Word（.docx）。请选择其他文件，或移除此未保存行。');
   }
   return mediaType;
 }
@@ -1027,7 +1027,7 @@ function restoreUploadRows(projectId:string){
 }
 function reselectUploadFile(upload:LocalUpload,replace=false){
   if(uploadReselectInputs.has(upload.key))return;
-  const input=document.createElement('input');input.type='file';input.hidden=true;input.dataset.uploadReselect=upload.key;input.accept=upload.role==='historical'||upload.role==='reference'?'.docx,.pdf':'.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
+  const input=document.createElement('input');input.type='file';input.hidden=true;input.dataset.uploadReselect=upload.key;input.accept=upload.role==='historical'||upload.role==='reference'?'.docx':'.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
   const clear=()=>{input.remove();if(uploadReselectInputs.get(upload.key)===input)uploadReselectInputs.delete(upload.key);};
   input.addEventListener('cancel',clear,{once:true});
   input.addEventListener('change',async()=>{

@@ -6,7 +6,7 @@ import { BlobServiceClient } from '@azure/storage-blob';
 import { M1_UPLOAD_LIMITS } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
 import { azureBlobs, digest } from './data.js';
-import { pdfSample, PDF, TEXT } from './upload-safety.samples.js';
+import { docxSample, DOCX, PDF, TEXT } from './upload-safety.samples.js';
 import { runStorageLifecycle } from './storage-lifecycle.js';
 
 import { isolatedTestDatabase } from './test-database.js';
@@ -27,10 +27,10 @@ test('real storage: concurrent renamed uploads reuse one immutable version, repl
     const r = await send('POST', '/api/v1/projects', { name: 'Synthetic upload reuse', kind: 'update', issuer_name: null, market: null, offering: null });
     assert.equal(r.statusCode, 201, r.body); return r.json().project_id as string;
   };
-  const bytes = pdfSample();
+  const bytes = await docxSample();
   const declaration = { byte_size: bytes.length, sha256: digest(bytes) };
   const received = async (project: string, filename: string, role = 'historical') => {
-    const r = await send('POST', `/api/v1/projects/${project}/materials/uploads`, { ...declaration, filename, role, media_type: PDF });
+    const r = await send('POST', `/api/v1/projects/${project}/materials/uploads`, { ...declaration, filename, role, media_type: DOCX });
     assert.equal(r.statusCode, 201, r.body);
     const session = r.json();
     const put = await send('PUT', session.upload_url, bytes);
@@ -43,7 +43,7 @@ test('real storage: concurrent renamed uploads reuse one immutable version, repl
   };
   try {
     const project = await create();
-    const [first, renamed] = await Promise.all([received(project, 'history.pdf'), received(project, 'renamed.pdf')]);
+    const [first, renamed] = await Promise.all([received(project, 'history.docx'), received(project, 'renamed.docx')]);
     const started = performance.now();
     const results = await Promise.all([complete(first), complete(renamed)]);
     assert.equal(results[0].material_id, results[1].material_id);
@@ -66,20 +66,20 @@ test('real storage: concurrent renamed uploads reuse one immutable version, repl
     assert.equal(await blobs.exists(redundantKey), false);
     assert.equal(await blobs.exists(canonicalKey), true);
     assert.equal((await complete(redundant)).material_id, canonical.material_id, 'completion receipt survives staging cleanup');
-    const otherRole = await complete(await received(project, 'audit.pdf', 'audit'));
+    const otherRole = await complete(await received(project, 'audit.docx', 'audit'));
     assert.notEqual(otherRole.material_id, canonical.material_id);
     const otherProject = await create();
-    assert.notEqual((await complete(await received(otherProject, 'history.pdf'))).material_id, canonical.material_id);
+    assert.notEqual((await complete(await received(otherProject, 'history.docx'))).material_id, canonical.material_id);
     owner = `reuse-other-${randomUUID()}`;
     assert.equal((await send('POST', redundant.complete, declaration)).statusCode, 404);
     assert.equal((await send('GET', `/api/v1/projects/${project}/materials/${canonical.material_id}`)).statusCode, 404);
     const foreignProject = await create();
-    assert.notEqual((await complete(await received(foreignProject, 'history.pdf'))).material_id, canonical.material_id);
+    assert.notEqual((await complete(await received(foreignProject, 'history.docx'))).material_id, canonical.material_id);
     owner = initialOwner;
 
     await blobs.delete(canonicalKey);
     assert.equal((await send('POST', redundant.complete, declaration)).statusCode, 503, 'missing canonical bytes never report saved');
-    const pending = await received(project, 'another-copy.pdf');
+    const pending = await received(project, 'another-copy.docx');
     assert.equal((await send('POST', pending.complete, declaration)).statusCode, 503, 'missing canonical does not silently create another recognition event');
     await blobs.put(canonicalKey, bytes, PDF);
     await pool.query("CREATE FUNCTION bb_fail_reuse_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='upload.reused' THEN RAISE EXCEPTION 'synthetic reuse outbox failure'; END IF; RETURN NEW; END $$");
@@ -94,7 +94,7 @@ test('real storage: concurrent renamed uploads reuse one immutable version, repl
     assert.equal((await complete(pending)).material_id, canonical.material_id);
     assert.equal((await send('DELETE', `/api/v1/projects/${project}/materials/${canonical.material_id}`)).statusCode, 204);
     assert.equal((await send('POST', redundant.complete, declaration)).statusCode, 404, 'receipt cannot revive a deleted version');
-    assert.notEqual((await complete(await received(project, 'replacement.pdf'))).material_id, canonical.material_id);
+    assert.notEqual((await complete(await received(project, 'replacement.docx'))).material_id, canonical.material_id);
     process.stdout.write(`Synthetic concurrent/replay storage scenario: ${Math.round(performance.now() - started)} ms\n`);
   } finally {
     await app.close(); await pool.end();

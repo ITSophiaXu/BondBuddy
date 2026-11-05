@@ -8,12 +8,12 @@ import type { Static } from '@sinclair/typebox';
 import type { schemas, SchemaName, DataPolicy, AgreementResponse } from './billing-types.js';
 import type { FactDecisionRequest } from '@bondbuddy/contracts';
 import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest,SubscriptionCheckout,Subscription,SubscriptionAutoRenewRequest,SubscriptionAutoRenew,SubscriptionChangeQuoteRequest,SubscriptionChangeCheckoutRequest} from './billing-types.js';
-import { isUploadInspectionPublicReason, isProspectusSelectionRequiredFieldError, isSourceProspectusRequiredFieldError, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
+import { isProspectusDocxOnlyFieldError, PROSPECTUS_DOCX_ONLY_MESSAGE, isUploadInspectionPublicReason, isProspectusSelectionRequiredFieldError, isSourceProspectusRequiredFieldError, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
 export class ApiError extends Error {
   constructor(public status: number, public code: string, public readonly details: {
-    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean;
+    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean; prospectusDocxOnly?: boolean;
   } = {}) { super(code); }
 }
 
@@ -44,6 +44,8 @@ export function parseApiError(status: number, value: unknown, fallbackCode = 'DA
     }
   }
   return new ApiError(status, code, {
+    ...(code === 'MATERIAL_FORMAT_UNSUPPORTED' && fields.some(isProspectusDocxOnlyFieldError)
+      ? { prospectusDocxOnly: true } : {}),
     ...(code === 'INPUT_REVISION_CONFLICT' && fields.some(isProspectusSelectionRequiredFieldError)
       ? { prospectusSelectionRequired: true } : {}),
     ...(code === 'INPUT_REQUIRED' ? { sourceProspectusRequired: fields.some(isSourceProspectusRequiredFieldError), materialInputIssues: fields.flatMap(field => {
@@ -67,6 +69,8 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
   if (!(error instanceof ApiError)) return unknownErrorText(operation);
   const reference = errorReference(error);
   switch (error.code) {
+    case 'MATERIAL_FORMAT_UNSUPPORTED': return error.details.prospectusDocxOnly
+      ? PROSPECTUS_DOCX_ONLY_MESSAGE : '文件格式不受支持，请选择此分区支持的文件。';
     case 'INPUT_REVISION_CONFLICT': return error.details.prospectusSelectionRequired
       ? PROSPECTUS_SELECTION_REQUIRED_MESSAGE
       : '这个项目已在其他页面修改。你的输入仍保留，请查看最新版本后再修改。';
