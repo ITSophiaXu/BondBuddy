@@ -56,6 +56,28 @@ jobs:
           tests/task-results.spec.ts
           tests/subscription-account.spec.ts
           --reporter=line
+      - name: Current desktop workspace layout and selected-result journeys
+        working-directory: apps/web
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/desktop-workspace-browser.json
+        run: |
+          npx playwright test tests/desktop-ux-polish.spec.ts --reporter=line,json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_FILE, 'utf8'));
+          const tests = [];
+          function collect(suite) {
+            for (const spec of suite.specs ?? []) tests.push(...spec.tests ?? []);
+            for (const child of suite.suites ?? []) collect(child);
+          }
+          for (const suite of report.suites ?? []) collect(suite);
+          if (!tests.length || report.errors?.length || report.stats?.expected !== tests.length ||
+              report.stats.skipped !== 0 || report.stats.unexpected !== 0 || report.stats.flaky !== 0 ||
+              tests.some(test => test.status !== 'expected' || test.results.at(-1)?.status !== 'passed')) {
+            throw new Error('Desktop workspace tests must all execute and pass without skips or retries.');
+          }
+          console.log(`Desktop workspaces: ${tests.length} passed; 0 skipped, unexpected or flaky.`);
+          NODE
       - name: Review funding and exact-intent recovery
         working-directory: apps/web
         run: >-
