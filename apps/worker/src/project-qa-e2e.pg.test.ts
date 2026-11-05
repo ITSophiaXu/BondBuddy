@@ -43,8 +43,8 @@ test('project Q&A: free extraction, confirmed count, grounded Word, knowledge re
   const persisted=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[ctx.lease.jobId])).rows[0].checkpoint;
   assert.equal(persisted.stages[o.name+'_prompt'].snapshot_id,snapshot);
   const intent={owner_user_id:owner,project_id:ctx.run.project_id,job_id:ctx.lease.jobId,run_id:ctx.run.id,trace_id:ctx.run.id,logical_call_id:o.logicalCallId,call_id:randomUUID(),attempt_no:1,model_id:'synthetic-qa',model_config_version:'synthetic-v1',prompt_snapshot_ref:snapshot};await journal.recordIntent(intent);calls++;
-  const input=(await pool.query('SELECT manifest FROM bb_project_qa_runs WHERE run_id=$1',[ctx.run.id])).rows[0].manifest as QaInput,q=input.questions.find(q=>'qa-'+q.id===o.logicalCallId)!;
-  const first=q===input.questions[0],value={question_id:q.id,answer:first?'本期募集资金 5 亿元全部用于偿还有息债务。':'请补充往来占款回收证据。',status:first?'draft':'missing',missing_materials:first?[]:['往来占款明细、回款计划与最近一期回款凭证。'],citations:first?[{asset_index:0,span_id:'p1',quote:'本期发行规模为人民币 5 亿元，募集资金全部用于偿还有息债务。'}]:[],case_ids:input.cases.map(c=>c.id),approach:'合成回答：说明事项、核对金额并列明证据要求。'};
+  const input=(await pool.query('SELECT manifest FROM bb_project_qa_runs WHERE run_id=$1',[ctx.run.id])).rows[0].manifest as QaInput,q=input.questions.find(q=>('qa-'+q.id===o.logicalCallId||'qa-review-'+q.id===o.logicalCallId))!;
+  const first=q===input.questions[0],value={question_id:q.id,answer:first?(o.logicalCallId.startsWith('qa-review-')?'本期募集资金 5 亿元全部用于偿还有息债务。':'本期募集资金 50 亿元全部用于偿还有息债务。'):'请补充往来占款回收证据。',status:first?'draft':'missing',missing_materials:first?[]:['往来占款明细、回款计划与最近一期回款凭证。'],citations:first?[{asset_index:0,span_id:'p1',quote:'本期发行规模为人民币 5 亿元，募集资金全部用于偿还有息债务。'}]:[],case_ids:input.cases.map(c=>c.id),approach:'合成回答：说明事项、核对金额并列明证据要求。'};
   assert.ok(o.validate(value));const ref=await journal.storeResult(intent,Buffer.from(JSON.stringify(value)),o.resultSchemaVersion);await journal.recordObservation({...intent,...ref,provider_request_id:null,finish_reason:'stop',outcome:'completed',usage:{status:'measured',input_tokens:100,cached_input_tokens:0,output_tokens:20,reasoning_tokens:0,total_tokens:120},error_code:null});return {kind:'done',value};
  }});
  const stage=projectQaModelStage({model,config:()=>loadCodexAdapterConfig({})}),execute=()=>runPipelineOnce({pool,blobs,leaseSeconds:120,runKinds:['generation'],stages:[inputLockStage,materialsReadyStage,stage,projectQaDeliveryStage()],onUnexpectedError:e=>assert.fail(JSON.stringify(e))});
@@ -82,11 +82,11 @@ test('project Q&A: free extraction, confirmed count, grounded Word, knowledge re
   assert.equal((await send('POST',base+'/runs',{...submit,expected_points:60})).statusCode,409);
   const run=await ok('POST',base+'/runs',submit);assert.equal((await ok('POST',base+'/runs',submit)).run_id,run.run_id);assert.deepEqual(await creditBalance(pool,owner),{available:880,frozen:120});
   await ok('POST',`/api/v1/qa/cases/${caseId}/review`,{expected_revision:2,status:'withdrawn',review_note:'测试后撤回；已锁定任务保留快照。'});
-  assert.equal(await execute(),'paused');assert.equal(calls,1);assert.equal((await pool.query('SELECT count(*) n FROM bb_project_qa_answers WHERE run_id=$1',[run.run_id])).rows[0].n,'1');
+  assert.equal(await execute(),'paused');assert.equal(calls,1);assert.equal((await pool.query('SELECT count(*) n FROM bb_project_qa_answers WHERE run_id=$1',[run.run_id])).rows[0].n,'0','an unreviewed draft is never saved as a question answer');
   assert.deepEqual(await creditBalance(pool,owner),{available:880,frozen:120});
   await ok('POST','/api/v1/runs/'+run.run_id+'/resume',{reason:'synthetic checkpoint resume'});
-  assert.equal(await execute(),'succeeded');assert.equal(calls,2,'completed question is reused on resume');assert.deepEqual(await creditBalance(pool,owner),{available:880,frozen:0});
-  w=await ok('GET',base);const answered=w.runs[0];assert.equal(answered.result!.answers.length,2);assert.equal(answered.result!.answers[0].status,'draft');assert.equal(answered.result!.answers[1].status,'missing');assert.equal(answered.charged_points,120);assert.equal(answered.manifest.cases[0].id,caseId);
+  assert.equal(await execute(),'succeeded');assert.equal(calls,4,'draft and review checkpoints are reused on resume');assert.deepEqual(await creditBalance(pool,owner),{available:880,frozen:0});
+  w=await ok('GET',base);const answered=w.runs[0];assert.equal(answered.result!.answers.length,2);assert.equal(answered.result!.answers[0].status,'draft');assert.equal(answered.result!.answers[1].status,'missing');assert.equal(answered.charged_points,120);assert.match(answered.result!.answers[0].answer,/5 亿元/);assert.doesNotMatch(answered.result!.answers[0].answer,/50 亿元/);assert.equal(answered.manifest.cases[0].id,caseId);
   const ungrounded=groundedQaAnswer({...answered.result!.answers[0],citations:[{asset_index:0,span_id:'p1',quote:'这条引文不存在'}],case_ids:['not-approved']},questions[0],answered.manifest,answered.result!.evidence);
   assert.equal(ungrounded.status,'missing');assert.equal(ungrounded.citations.length,0);assert.equal(ungrounded.case_ids.length,0);assert.doesNotMatch(ungrounded.answer,/5 亿元/);
   assert.equal((await pool.query("SELECT count(*) n FROM bb_outbox WHERE aggregate_type='qa_case'")).rows[0].n,'3');
@@ -111,7 +111,7 @@ test('project Q&A: free extraction, confirmed count, grounded Word, knowledge re
   assert.ok(pdfPrepared.result!.warnings.some(w=>w.includes('第 2 页无法提取文字')));
   w=await ok('POST',base+'/draft',{expected_revision:w.revision,draft:{preparation_id:pdfPrep.run_id,questions:pdfPrepared.result!.questions,materials:[material],requirements:'合成 PDF 测试',use_knowledge:false}});
   const pdfRun=await ok('POST',base+'/runs',{request_id:randomUUID(),expected_revision:w.revision,expected_points:60,price_version:PROJECT_QA_PRICE.version});
-  assert.equal(await execute(),'succeeded');assert.equal(calls,callsBeforePdf+1);assert.deepEqual(await creditBalance(pool,owner),{available:700,frozen:0});
+  assert.equal(await execute(),'succeeded');assert.equal(calls,callsBeforePdf+2);assert.deepEqual(await creditBalance(pool,owner),{available:700,frozen:0});
   w=await ok('GET',base);const pdfAnswer=w.runs.find(r=>r.run_id===pdfRun.run_id)!,pdfArtifact=await ok('GET','/api/v1/artifacts/'+pdfAnswer.artifact_id),pdfWord=(await send('GET',pdfArtifact.download_url)).rawPayload;
   assert.equal(digest(pdfWord),pdfArtifact.sha256);await writeFile(join(dir,'synthetic-pdf-answered.docx'),pdfWord);
   const pdfText=execFileSync(process.env.BONDBUDDY_TEST_PYTHON!,['-c','import io,sys; from docx import Document; print("\\n".join(p.text for p in Document(io.BytesIO(sys.stdin.buffer.read())).paragraphs))'],{input:pdfWord,encoding:'utf8',env:{...process.env,PYTHONIOENCODING:'utf-8'}});

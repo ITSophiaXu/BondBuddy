@@ -75,7 +75,10 @@ def prepare(source, output, result):
 def paragraph(text, bold=False, markdown=False):
     p = etree.Element(q('p'))
     prop = etree.SubElement(p, q('pPr'))
-    etree.SubElement(prop, q('spacing'), {q('after'): '120', q('line'): '276', q('lineRule'): 'auto'})
+    # Review templates often use a large document line grid. It belongs to the
+    # original questions, not the inserted answer/table/citation paragraphs.
+    etree.SubElement(prop, q('snapToGrid'), {q('val'): '0'})
+    etree.SubElement(prop, q('spacing'), {q('before'): '0', q('after'): '120', q('beforeLines'): '0', q('afterLines'): '0', q('line'): '276', q('lineRule'): 'auto'})
     # Model answers share Markdown with the web view. Render simple emphasis as
     # native Word runs instead of exposing literal ** markers in formal replies.
     for segment in re.split(r'(\*\*[^*\n]+\*\*)', text) if markdown else [text]:
@@ -137,8 +140,9 @@ def answer_blocks(text):
             etree.SubElement(grid, q('gridCol'))
         for number, row in enumerate(rows):
             tr = etree.SubElement(table, q('tr'))
+            trprop = etree.SubElement(tr, q('trPr'))
+            etree.SubElement(trprop, q('cantSplit'))
             if number == 0:
-                trprop = etree.SubElement(tr, q('trPr'))
                 etree.SubElement(trprop, q('tblHeader'))
             for value in row + [''] * (columns-len(row)):
                 cell = etree.SubElement(tr, q('tc')); cp = etree.SubElement(cell, q('tcPr'))

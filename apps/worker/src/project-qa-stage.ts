@@ -13,6 +13,7 @@ import {composeContainedPrompt,loadCodexAdapterConfig} from './codex-adapter.js'
 import {loadProjectQaInput} from './project-qa-input.js';
 import {projectFilesRoot} from './project-file-tools.js';
 import {qaModelEvidenceContext,qaAnswerInstructions} from './project-qa-evidence.js';
+import {qaMoneyConversions,qaAnswerReviewInstructions} from './project-qa-answer-review.js';
 export {qaPromptEvidence} from './project-qa-evidence.js';
 const prefix=(ctx:StageContext)=>`owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/qa/`;
 const max=100*1024*1024;
@@ -63,7 +64,29 @@ export function qaMissingMaterials(question:string):string[]{
  const matched=requests.filter(([rule])=>rule.test(question)).map(([,request])=>request);
  return matched.length?matched:[`请提供“${question.slice(0,200)}”对应的可读披露内容或具体说明，仅需本题尚无法确定的信息。`];
 }
-export function projectQaModelStage(options:{model?:typeof codexModelStage;config?:typeof loadCodexAdapterConfig}={}):RunStage{
+type QaModelOptions={model?:typeof codexModelStage;config?:typeof loadCodexAdapterConfig};
+/** Two separately journalled calls: resume reuses the draft; only the reviewed
+ * answer is eligible for the per-question checkpoint and Word fill. */
+export function projectQaAnswerStages(question:QaQuestion,input:QaInput,evidence:QaResult['evidence'],prospectusIndex:number,warnings:string[],options:QaModelOptions={}):RunStage{
+ return {name:'qa_answer_review',replay:true,run:async ctx=>{
+  const terms=new Set(qaSearchTerms(question.question));
+  const cases=input.cases.map(c=>({c,score:qaSearchTerms(Object.values(c.content).join(' ')).filter(t=>terms.has(t)).length})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,3).map(x=>x.c);
+  const project_context={prospectus:input.prospectus?{filename:input.prospectus.filename,version:input.prospectus.sequence,asset_index:prospectusIndex}:null,files:evidence.map((e,asset_index)=>({asset_index,filename:e.filename,coverage:e.snapshot.coverage,paragraphs:e.snapshot.spans.length}))};
+  const data={project:input.project_name,project_context,question,requirements:input.requirements,...qaModelEvidenceContext(question,evidence,prospectusIndex),extraction_warnings:warnings,cases:cases.map(c=>({id:c.id,...c.content})),coverage:'选文遗漏不等于原稿未披露；按原始表格表头、单位、期间及附注读取，只标注本题真正无法确定的部分。'};
+  const validate=(v:unknown):v is QaAnswer=>Value.Check(QaAnswerSchema,v)&&v.question_id===question.id&&(qaHasGroundedCitations(v,evidence)||qaUnanswered(v));
+  const model=options.model??codexModelStage;
+  const config=()=>({...((options.config??loadCodexAdapterConfig)()),web_search:'disabled' as const,timeout_ms:600000});
+  const draft=await model({name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:'project-qa-prospectus-first-v3',resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,validate,config,
+   buildPrompt:async()=>composeContainedPrompt({instructions:qaAnswerInstructions,materials:[{ref:'project-qa-input',text:JSON.stringify(data)}]})}).run(ctx);
+  if(draft.kind!=='done')return draft;
+  const proposed_answer=draft.value as QaAnswer;
+  const reviewed=await model({name:'qa_review_'+digest(question.id).slice(0,40),logicalCallId:'qa-review-'+question.id,templateVersion:'project-qa-answer-review-v1',resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,validate,config,
+   buildPrompt:async()=>composeContainedPrompt({instructions:qaAnswerReviewInstructions,materials:[{ref:'project-qa-review-input',text:JSON.stringify({...data,proposed_answer,money_conversions:qaMoneyConversions(evidence,proposed_answer)})}]})}).run(ctx);
+  if(reviewed.kind!=='done')return reviewed;
+  return {kind:'done',value:groundedQaAnswer(reviewed.value as QaAnswer,question,{...input,cases},evidence)};
+ }};
+}
+export function projectQaModelStage(options:QaModelOptions={}):RunStage{
  return {name:'model_generation',replay:true,run:async ctx=>{
   const input=await loadProjectQaInput(ctx),old=(await ctx.pool.query('SELECT result,result_hash FROM bb_project_qa_runs WHERE owner_user_id=$1 AND run_id=$2',[ctx.run.owner_user_id,ctx.run.id])).rows[0];
   if(old?.result){if(!Value.Check(QaResultSchema,old.result)||inputManifestHash(old.result)!==old.result_hash.trim())throw Error('INPUT_REVISION_CONFLICT');return {kind:'done',value:old.result};}
@@ -87,23 +110,13 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
     }
     const prospectusIndex=input.prospectus?input.materials.findIndex(m=>qaSameAsset(m.asset,input.prospectus!.asset)):-1;
     if(input.prospectus&&(prospectusIndex<0||!evidence[prospectusIndex]?.snapshot.spans.some(s=>s.text.trim())))return {kind:'fail',code:'MATERIAL_UNREADABLE'};
-    const projectContext={prospectus:input.prospectus?{filename:input.prospectus.filename,version:input.prospectus.sequence,asset_index:prospectusIndex}:null,files:evidence.map((e,asset_index)=>({asset_index,filename:e.filename,coverage:e.snapshot.coverage,paragraphs:e.snapshot.spans.length})),introduction:prospectusIndex<0?[]:evidence[prospectusIndex].snapshot.spans.filter(s=>s.text.trim()).slice(0,12).map(s=>({span_id:s.id,text:s.text.slice(0,1200)}))};
     const answers:QaAnswer[]=[];
     for(const question of input.questions){
      const saved=(await ctx.pool.query('SELECT answer,sha256 FROM bb_project_qa_answers WHERE owner_user_id=$1 AND run_id=$2 AND question_id=$3',[ctx.run.owner_user_id,ctx.run.id,question.id])).rows[0];
      if(saved){if(inputManifestHash(saved.answer)!==saved.sha256.trim()||!Value.Check(QaAnswerSchema,saved.answer))throw Error('INPUT_REVISION_CONFLICT');answers.push(saved.answer);continue;}
-     const terms=new Set(qaSearchTerms(question.question));
-     const questionCases=input.cases.map(c=>({c,score:qaSearchTerms(Object.values(c.content).join(' ')).filter(t=>terms.has(t)).length})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,3).map(x=>x.c);
-     // Question IDs may contain punctuation and exceed the checkpoint's 64-character limit.
-     // Keep the durable logical call ID unchanged; reserve room for the `_prompt` suffix.
-     const outcome=await (options.model??codexModelStage)({name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:'project-qa-prospectus-first-v2',resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,
-      // An explicit unanswered question can finish without a citation. Its model
-      // prose is discarded by groundedQaAnswer; invented quotations still re-ask.
-      validate:(v):v is QaAnswer=>Value.Check(QaAnswerSchema,v)&&v.question_id===question.id&&(qaHasGroundedCitations(v,evidence)||qaUnanswered(v)),
-      config:()=>({...((options.config??loadCodexAdapterConfig)()),web_search:'disabled',timeout_ms:600000}),
-      buildPrompt:async()=>composeContainedPrompt({instructions:qaAnswerInstructions,materials:[{ref:'project-qa-input',text:JSON.stringify({project:input.project_name,project_context:projectContext,question,requirements:input.requirements,...qaModelEvidenceContext(question,evidence,prospectusIndex),extraction_warnings:warnings,cases:questionCases.map(c=>({id:c.id,...c.content})),coverage:'优先读取募集说明书；正文、完整表格及相邻说明按字符预算选入，不按单元格数截断。selection 中区分提取限制与选文遗漏。项目概况仅帮助理解主体，结论引用 materials 的原文；先写充分的事实答复，仅标注本题真正无法确定的部分。'})}]})}).run(ctx);
+     const outcome=await projectQaAnswerStages(question,input,evidence,prospectusIndex,warnings,options).run(ctx);
      if(outcome.kind!=='done')return outcome;
-     const answer=groundedQaAnswer(outcome.value as QaAnswer,question,{...input,cases:questionCases},evidence);
+     const answer=outcome.value as QaAnswer;
      await transaction(ctx.pool,async c=>{await lock(ctx,c);await c.query('INSERT INTO bb_project_qa_answers(owner_user_id,run_id,question_id,answer,sha256) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[ctx.run.owner_user_id,ctx.run.id,question.id,answer,inputManifestHash(answer)]);});answers.push(answer);
     }
     await writeFile(join(dir,'fill.json'),JSON.stringify({source_sha256:prepared.document.sha256,questions:input.questions,answers,evidence,cases:input.cases,warnings}),{mode:0o600});

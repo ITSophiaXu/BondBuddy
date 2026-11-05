@@ -94,6 +94,10 @@ class ProjectQaTests(unittest.TestCase):
             self.assertNotIn('**答复正文**',xml)
             self.assertTrue(any(r.text=='答复正文' and r.bold for p in doc.paragraphs for r in p.runs))
             self.assertEqual(xml.count('<w:tblHeader'),2);self.assertNotIn('w:hRule="exact"',xml)
+            # Long row labels must travel with their values, and inserted text
+            # must not inherit the template's document grid spacing.
+            self.assertEqual(xml.count('<w:cantSplit'),6)
+            self.assertIn('<w:snapToGrid w:val="0"',xml)
 
     def test_word_numbered_review_comments_are_candidates_without_literal_numbers(self):
         with tempfile.TemporaryDirectory() as td:
