@@ -15,8 +15,8 @@ const version=(sequence:number):ProspectusVersion=>({version_id:'v'+sequence,seq
 function checked<K extends keyof typeof schemas>(name:K,value:unknown){expect([...Value.Errors(schemas[name],value)].map(e=>({path:e.path,message:e.message})),name).toEqual([]);}
 async function reply<K extends keyof typeof schemas>(route:Route,name:K,value:Dto<K>,status=200){checked(name,value);return route.fulfill({status,json:value});}
 // Real component and ApiClient; synthetic bytes, owners and receipts, without model/storage/billing.
-async function setup(page:Page,{versions=false,purpose='update',retry=false}={}){
-  const state:ProspectusVersions={project_id:project,selection_revision:versions?2:0,current_version_id:versions?'v2':null,versions:versions?[version(2),version(1)]:[],inactive_material_ids:[]};
+async function setup(page:Page,{versions=false,purpose='update',retry=false,docxOnly=false}={}){
+  const state:ProspectusVersions={project_id:project,upload_docx_only:docxOnly,selection_revision:versions?2:0,current_version_id:versions?'v2':null,versions:versions?[version(2),version(1)]:[],inactive_material_ids:[]};
   const calls:{method:string;path:string;body:any}[]=[],sessions=new Map<string,{input:Dto<'UploadCreateRequest'>;received:boolean;material?:Dto<'MaterialResponse'>}>();
   let dropComplete=retry;
   await page.route('**/api/v1/**',async route=>{
@@ -97,7 +97,7 @@ test('reference drag feedback survives child transitions and clears on leaving o
   const f=await setup(page),panel=page.locator('.reference-prospectus'),picker=page.locator('.reference-upload-picker');
   const text=await page.evaluateHandle(()=>{const data=new DataTransfer();data.setData('text/plain','not a file');return data;});
   await picker.dispatchEvent('dragover',{dataTransfer:text});await expect(panel).not.toHaveClass(/is-dragging/);await text.dispose();
-  const data=await dragFiles(page,['拖入募集书.pdf']);
+  const data=await dragFiles(page,['拖入募集书.docx']);
   await picker.dispatchEvent('dragover',{dataTransfer:data});await expect(panel).toHaveClass(/is-dragging/);
   await expect(picker).toHaveCSS('background-color','rgb(237, 244, 229)');
   await picker.evaluate(el=>el.dispatchEvent(new DragEvent('dragleave',{bubbles:true,relatedTarget:el.querySelector('span')})));
@@ -106,7 +106,7 @@ test('reference drag feedback survives child transitions and clears on leaving o
   await panel.dispatchEvent('dragleave',{relatedTarget:null});await expect(panel).not.toHaveClass(/is-dragging/);
   // The whole reference card remains a drop target, including the file-list empty state.
   await page.locator('.reference-empty').dispatchEvent('drop',{dataTransfer:data});await data.dispose();
-  await expect(page.locator('.reference-file.is-selected')).toContainText('拖入募集书.pdf');
+  await expect(page.locator('.reference-file.is-selected')).toContainText('拖入募集书.docx');
   await expect(panel).not.toHaveClass(/is-dragging/);
   expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);
   expect(f.calls.filter(c=>/runs|authoring|wallet/.test(c.path))).toEqual([]);
@@ -114,7 +114,7 @@ test('reference drag feedback survives child transitions and clears on leaving o
 
 test('reference drops reject invalid files and suppress a second upload while saving',async({page})=>{
   const f=await setup(page),picker=page.locator('.reference-upload-picker');
-  for(const [names,empty,message] of [[['a.pdf','b.pdf'],false,'每次请选择一份'],[['错误.txt'],false,'请上传不超过 100 MB'],[['空文件.pdf'],true,'请上传不超过 100 MB']] as const){
+  for(const [names,empty,message] of [[['a.pdf','b.pdf'],false,'每次请选择一份'],[['错误.txt'],false,'仅支持 Word'],[['历史稿.pdf'],false,'仅支持 Word'],[['旧稿.doc'],false,'仅支持 Word'],[['空文件.docx'],true,'请上传不超过 100 MB']] as const){
     const data=await dragFiles(page,[...names],empty);await picker.dispatchEvent('drop',{dataTransfer:data});await data.dispose();
     await expect(page.getByRole('alert')).toContainText(message);expect(f.calls.filter(c=>c.method!=='GET')).toEqual([]);
   }
@@ -132,7 +132,28 @@ test('reference drops reject invalid files and suppress a second upload while sa
   await expect(picker).toBeEnabled();expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);
 });
 
-async function selectFile(page:Page,name='合成新稿.docx'){const chooser=page.waitForEvent('filechooser');await page.locator('#choose-prospectus-version').click();await(await chooser).setFiles({name,mimeType:name.endsWith('.txt')?'text/plain':mime,buffer:bytes});}
+async function selectFile(page:Page,name='合成新稿.docx'){const chooser=page.waitForEvent('filechooser'),replace=page.locator('#replace-prospectus-version');await(await replace.isVisible()?replace:page.locator('#choose-prospectus-version')).click();await(await chooser).setFiles({name,mimeType:name.endsWith('.txt')?'text/plain':mime,buffer:bytes});}
+
+for(const purpose of ['update','project','generation','qa'])test(purpose+' enforces the owning update project Word-only policy',async({page})=>{
+  const f=await setup(page,{purpose,docxOnly:true});
+  await expect(page.locator('#prospectus-version-file')).toHaveAttribute('accept','.docx');
+  for(const name of ['历史稿.pdf','旧版Word.doc']){
+    await selectFile(page,name);
+    await expect(page.getByRole('alert')).toContainText('仅支持 Word（.docx）');
+    expect(f.calls.filter(c=>c.method!=='GET')).toEqual([]);
+  }
+  await selectFile(page,'历史稿.DOCX');
+  await expect.poll(()=>f.state.versions.some(v=>v.filename==='历史稿.DOCX')).toBe(true);
+  expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);
+});
+
+test('non-update projects still upload PDF through the shared panel',async({page})=>{
+  const f=await setup(page,{purpose:'consistency'});
+  await expect(page.locator('#prospectus-version-file')).toHaveAttribute('accept','.docx,.pdf');
+  await selectFile(page,'一致性检查稿.pdf');
+  await expect.poll(()=>f.state.versions.some(v=>v.filename==='一致性检查稿.pdf')).toBe(true);
+  expect(f.calls.find(c=>c.path.endsWith('/materials/uploads'))?.body.media_type).toBe('application/pdf');
+});
 async function adopt(page:Page,id:string){await history(page).evaluate(el=>(el as HTMLDetailsElement).open=true);await page.locator('[data-use-version="'+id+'"]').click();await expect(page.locator('dialog[open]')).toBeVisible();}
 
 test('empty state exposes upload, has no saved history entries, and fits phone widths',async({page})=>{
@@ -142,7 +163,7 @@ test('empty state exposes upload, has no saved history entries, and fits phone w
 });
 
 for(const purpose of ['update','consistency'])test(purpose+' uploads a corrected selection with purpose-specific adoption and no task execution',async({page})=>{
-  const f=await setup(page,{purpose});await selectFile(page,'错误.txt');await page.evaluate(()=>window.panelFixture.refresh());await expect(page.getByRole('alert')).toContainText('请上传不超过 100 MB');expect(f.calls.filter(c=>c.method!=='GET')).toEqual([]);
+  const f=await setup(page,{purpose});await selectFile(page,'错误.txt');await page.evaluate(()=>window.panelFixture.refresh());await expect(page.getByRole('alert')).toContainText(purpose==='update'?'仅支持 Word':'请上传不超过 100 MB');expect(f.calls.filter(c=>c.method!=='GET')).toEqual([]);
   await expect(page.getByRole('button',{name:'上传并保存',exact:true})).toHaveCount(0);
   const chooser=page.waitForEvent('filechooser');await page.getByRole('button',{name:'重新选择',exact:true}).click();await(await chooser).setFiles({name:'合成新稿.docx',mimeType:mime,buffer:bytes});
   await expect(page.locator('#prospectus-status')).toContainText(purpose==='update'?/已保存并自动采用/:/已保存.*尚未采用/);await page.evaluate(()=>window.panelFixture.refresh());
@@ -153,7 +174,7 @@ for(const purpose of ['update','consistency'])test(purpose+' uploads a corrected
 
 for(const purpose of ['update','consistency'])test(purpose+' drops one file and ignores a second selection event while uploading',async({page})=>{
   const f=await setup(page,{purpose});
-  await page.evaluate(bytes=>{const input=document.querySelector<HTMLInputElement>('#prospectus-version-file')!,data=new DataTransfer();data.items.add(new File([new Uint8Array(bytes)],'拖入募集书.pdf',{type:'application/pdf'}));document.querySelector('.prospectus-upload-editor')!.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:data}));input.dispatchEvent(new Event('change',{bubbles:true}));},[...bytes]);
+  await page.evaluate(bytes=>{const input=document.querySelector<HTMLInputElement>('#prospectus-version-file')!,data=new DataTransfer();data.items.add(new File([new Uint8Array(bytes)],'拖入募集书.docx',{type:'application/pdf'}));document.querySelector('.prospectus-upload-editor')!.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:data}));input.dispatchEvent(new Event('change',{bubbles:true}));},[...bytes]);
   await expect(page.locator('#prospectus-status')).toContainText(purpose==='update'?/已保存并自动采用/:/已保存.*尚未采用/);expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.calls.filter(c=>c.path.endsWith('/materials/uploads'))).toHaveLength(1);expect(f.state.current_version_id).toBe(purpose==='update'?'v3':null);
 });
 

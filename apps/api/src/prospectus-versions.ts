@@ -42,7 +42,7 @@ export async function prospectusVersions(db: Pool | PoolClient, owner: string, i
     const manifest=(await db.query(`SELECT i.manifest FROM bb_runs r JOIN bb_input_revisions i ON i.owner_user_id=r.owner_user_id AND i.project_id=r.project_id AND i.revision=r.input_revision WHERE r.owner_user_id=$1 AND r.id=$2`,[owner,current.run_id])).rows[0]?.manifest;
     active=(manifest?.materials??[]).filter((m:any)=>m.role==='historical').map((m:any)=>m.material_id);
   }
-  return { project_id:id, current_version_id:selection?.version_id ?? null, selection_revision:selection?.revision ?? 0,
+  return { project_id:id, upload_docx_only:p.kind==='update', current_version_id:selection?.version_id ?? null, selection_revision:selection?.revision ?? 0,
     inactive_material_ids:current||p.kind==='update'&&p.update_details?.authoring_mode==='unified_v1'?versions.filter(v=>v.material_id&&!active.includes(v.material_id)).map(v=>v.material_id):[],
     versions:versions.map(v => ({version_id:v.id,sequence:v.sequence,origin:v.origin,filename:v.filename,sha256:v.sha256.trim(),created_at:date(v.created_at),
       material_id:v.material_id,material_version:v.material_version,artifact_id:v.artifact_id,artifact_version:v.artifact_version,revision_artifact_id:v.revision_artifact_id,run_id:v.run_id,delete_block_reason:v.delete_block_reason})) };

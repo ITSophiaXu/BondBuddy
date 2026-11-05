@@ -3,11 +3,11 @@
 <link rel="stylesheet" href="../../apps/web/src/style.css"><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="project-workspace.css"><link rel="stylesheet" href="../../apps/web/src/prototype-adapter.css"><link rel="stylesheet" href="prospectus-panel.css"><link rel="stylesheet" href="../../apps/web/src/prospectus-saved-reentry.css"><link rel="stylesheet" href="../../apps/web/src/prospectus-reference.css">
 </head><body><main style="max-width:1160px;margin:0 auto;padding:32px 20px"><section class="panel prospectus-panel reference-prospectus" aria-label="历史／参考募集书（选填）">
 <header class="prospectus-panel-heading"><div><h2>历史／参考募集书（选填）</h2><p>上传本企业历史稿或相似企业募集书，作为本次更新的原稿或结构参考。</p></div></header>
-<p class="prospectus-upload-hint" id="reference-upload-hint">Word（.docx）/ PDF · 每次一份，单份不超过 100 MB · 选择或拖入后自动保存并采用为原稿。</p>
+<p class="prospectus-upload-hint" id="reference-upload-hint">仅支持 Word（.docx） · 每次一份，单份不超过 100 MB · 选择或拖入后自动保存并采用为原稿。</p>
 <button type="button" class="button secondary reference-upload-picker" id="choose" aria-label="上传历史／参考稿" aria-describedby="reference-upload-hint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3 M7 8l5-5 5 5 M4 15v5h16v-5"/></svg><span>点击或拖入文件</span></button>
 <section class="reference-files" aria-label="已上传文件"><h3>已上传文件 <span class="reference-file-count" id="count">0</span></h3><div id="files"></div></section>
 <p class="reference-selection-help" id="help"><button class="text-button" id="skip">先提供发行人材料 →</button></p>
-<input type="file" id="file" accept=".docx,.pdf" hidden><p role="status" id="prospectus-status"></p>
+<input type="file" id="file" accept=".docx" hidden><p role="status" id="prospectus-status"></p>
 </section><p style="font-size:12px;color:#69766b">交互原型 · 合成示例，文件选择仅作本地演示，不调用 API。<a href="?state=empty">未上传</a> / <a href="?state=saved">已上传</a> / <a href="?state=multiple">多份文件</a></p></main>
 <script>
 const $=id=>document.getElementById(id),esc=s=>s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
@@ -27,6 +27,6 @@ const dropzone=document.querySelector('.reference-prospectus');
 dropzone.ondragover=e=>{if(!e.dataTransfer?.types.includes('Files'))return;e.preventDefault();e.dataTransfer.dropEffect='copy';dropzone.classList.add('is-dragging');};
 dropzone.ondragleave=e=>{if(!(e.relatedTarget instanceof Node)||!dropzone.contains(e.relatedTarget))dropzone.classList.remove('is-dragging');};
 dropzone.ondrop=e=>{e.preventDefault();dropzone.classList.remove('is-dragging');const files=e.dataTransfer?.files;if(!files?.length)return;if(files.length!==1){$('prospectus-status').textContent='每次请选择一份募集说明书。';return;}$('file').files=files;$('file').dispatchEvent(new Event('change',{bubbles:true}));};
-$('file').onchange=()=>{const f=$('file').files[0];if(!f)return;if(!/\.(docx|pdf)$/i.test(f.name)||!f.size||f.size>100*1024*1024){$('prospectus-status').textContent='请上传不超过 100 MB 的 DOCX 或 PDF 文件。';return;}files.push({id:Math.max(0,...files.map(f=>f.id))+1,name:f.name});selected=files.at(-1).id;render();$('prospectus-status').textContent='演示文件已自动采用为原稿；未实际上传。';$('file').value='';};
+$('file').onchange=()=>{const f=$('file').files[0];if(!f)return;if(!/\.docx$/i.test(f.name)){$('prospectus-status').textContent='历史／参考募集书仅支持 Word（.docx），请上传 Word 原文件。';return;}if(!f.size||f.size>100*1024*1024){$('prospectus-status').textContent='请上传不超过 100 MB 的 Word（.docx）文件。';return;}files.push({id:Math.max(0,...files.map(f=>f.id))+1,name:f.name});selected=files.at(-1).id;render();$('prospectus-status').textContent='演示文件已自动采用为原稿；未实际上传。';$('file').value='';};
 $('skip').onclick=()=>$('prospectus-status').textContent='继续提供审计报告、财务报表及附注。';render();
 </script></body></html>

@@ -457,7 +457,7 @@ test('abuse limits: per-account and per-source, shared source not blanket-banned
     // Upload sessions retain hourly count checks, with no daily byte cap.
     const up = await user(pool, 'abuse-upload');
     const projectId = (await h.project(up, '192.0.2.46')).json().project_id;
-    const upload = (bytes: number) => h.as(up, '192.0.2.46')('POST', `/api/v1/projects/${projectId}/materials/uploads`, { filename: 'synthetic.pdf', media_type: 'application/pdf', byte_size: bytes, sha256: 'a'.repeat(64), role: 'historical' });
+    const upload = (bytes: number) => h.as(up, '192.0.2.46')('POST', `/api/v1/projects/${projectId}/materials/uploads`, { filename: 'synthetic.pdf', media_type: 'application/pdf', byte_size: bytes, sha256: 'a'.repeat(64), role: 'audit' });
     assert.equal((await upload(1000)).statusCode, 201);
     const bytes = await upload(1000);
     assert.equal(bytes.statusCode, 201, 'uploads can exceed the old daily byte cap');

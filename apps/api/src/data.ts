@@ -4,7 +4,7 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient, type BlobItem } from '@azure/storage-blob';
-import { isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
+import { PROSPECTUS_DOCX_ONLY_FIELD_ERROR, isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
 import { inspectMaterialUpload, inspectMaterialUploadFile, inspectMaterialUploadFileDetailed } from './original-material-upload.js';
 import { UploadSafetyError, type UploadInspectionResult, type UploadRejectionReason, type UploadStructureDetail } from './upload-safety.js';
 
@@ -37,6 +37,7 @@ export class Problem extends Error {
   inputIssues?: M4InputIssue[];
   trialLimit?: TrialLimitKind;
   prospectusSelectionRequired?: boolean;
+  prospectusDocxOnly?: boolean;
   constructor(public status: number, public code: string, message: string, public readonly uploadReason?: UploadRejectionReason, public readonly uploadDetail?: UploadStructureDetail) { super(message); }
 }
 export function publicProblem(error: Problem, correlationId: string) {
@@ -53,7 +54,9 @@ export function publicProblem(error: Problem, correlationId: string) {
         ? [{ field: TRIAL_LIMIT_ERROR_FIELD, code: error.trialLimit, message: 'Current processing limit reached' }]
         : error.code === 'INPUT_REVISION_CONFLICT' && error.prospectusSelectionRequired
           ? [PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR]
-          : error.code === 'INPUT_REQUIRED' ? error.inputIssues ?? [] : [],
+          : error.code === 'MATERIAL_FORMAT_UNSUPPORTED' && error.prospectusDocxOnly
+            ? [PROSPECTUS_DOCX_ONLY_FIELD_ERROR]
+            : error.code === 'INPUT_REQUIRED' ? error.inputIssues ?? [] : [],
     correlation_id: correlationId,
   };
 }
