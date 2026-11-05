@@ -15,7 +15,7 @@ async function setup(page:Page,automatic=false,configure?:(state:any)=>void,buil
   const req=route.request(),url=new URL(req.url()),path=url.pathname,body=req.method()==='GET'?undefined:req.headers()['content-type']==='application/octet-stream'?undefined:fixtureRequest(req);
   const reply=(body:unknown)=>route.fulfill({json:fixtureBody(route,body)});
   if(req.method()==='GET'&&path.endsWith('/file-generation'))return reply(state.data);
-  if(path.endsWith('/preparation')){state.data.revision++;state.data.preparation=body.preparation;return reply({revision:state.data.revision,preparation:state.data.preparation});}
+  if(path.endsWith('/preparation')){if(state.data.revision===body.expected_revision+1&&JSON.stringify(state.data.preparation)===JSON.stringify(body.preparation))return reply({revision:state.data.revision,preparation:state.data.preparation});if(state.data.revision!==body.expected_revision)return route.fulfill({status:409,json:{code:'INPUT_REVISION_CONFLICT'}});state.data.revision++;state.data.preparation=structuredClone(body.preparation);return reply({revision:state.data.revision,preparation:state.data.preparation});}
   if(path.endsWith('/builtin')){if(builtinHandler)return builtinHandler(route);if(body.part!=='catalogue'&&!state.data.sets.length)state.data.sets.push(set);return reply({...(body.part!=='catalogue'?{set}:{}),...(body.part!=='templates'?{catalogue:state.catalogue}:{})});}
   if(path.endsWith('/matches')){const chosen=state.data.sets.find(s=>s.set_id===url.searchParams.get('set_id'))??set;return reply({matches:state.matches??state.catalogue.entries.map(e=>{const record=chosen.records.find(r=>r.document_type==='workpaper'&&r.code===e.code);return {item_id:e.id,status:record?'suggested':'missing',reason:record?'same code':'no candidate',candidates:record?[{set_id:chosen.set_id,record_id:record.record_id,sha256:sha}]:[]};})});}
   if(path.endsWith('/system-templates'))return reply({templates:[{family:'综合核查记录',preview:{title:'合成核查记录',blocks:[{kind:'paragraph',text:'项目名称：【本项信息】',bold:false,align:'left'}]}}]});
@@ -111,7 +111,7 @@ test('template timeout keeps the selected system mode and allows retry',async({p
 
 test('directory loading failure and cancellation leave upload and retry available',async({page})=>{
  let calls=0;await setup(page,false,undefined,async route=>{calls++;if(calls===1)return route.fulfill({status:503,json:{code:'DATA_UNAVAILABLE'}});if(calls===2)return;return route.fulfill({json:fixtureBody(route,{catalogue})});});
- await expect(page.locator('#fg-load-builtin')).toBeEnabled();await page.locator('#fg-load-builtin').click();await expect(page.locator('#fg-cancel-builtin')).toBeVisible();await page.locator('#fg-cancel-builtin').click();
+ await expect(page.locator('#fg-load-builtin')).toBeEnabled();await page.locator('#fg-load-builtin').click();await expect(page.locator('#fg-cancel-builtin')).toBeVisible();await expect.poll(()=>calls).toBe(2);await page.locator('#fg-cancel-builtin').click();
  await expect(page.locator('#fg-catalogue-upload')).toBeEnabled();await page.locator('#fg-load-builtin').click();await expect(page.locator('#fg-preview-catalogue')).toBeEnabled();expect(calls).toBe(3);
 });
 
@@ -150,7 +150,7 @@ test('mixed package funding return replays the exact original request without a 
  const saved=await page.evaluate(async({owner,id})=>{const recovery=await import('/src/'+'billing-task-recovery.ts');return {task:await recovery.readBillingTask(owner,id),returnTo:await recovery.billingTaskReturnTo(owner,id)};},{owner:ids.owner,id:resumeId});
  expect(saved.task).toMatchObject({version:2,state:'needs_funds',requiredPoints:'14881',body:JSON.parse(requests[0])});
  expect(saved.returnTo).toBeTruthy();await page.goto('/'+saved.returnTo);
- await expect.poll(()=>requests.length).toBe(2);expect(requests[1]).toBe(requests[0]);expect(state.submissions).toHaveLength(1);
+ await expect.poll(()=>requests.length).toBe(2);await expect.poll(()=>state.submissions.length).toBe(1);expect(requests[1]).toBe(requests[0]);expect(state.submissions).toHaveLength(1);
  await expect(page.locator('.fg-history')).toContainText('其他文件 0/1');
  await page.reload();await expect(page.locator('.fg-history')).toContainText('其他文件 0/1');
  expect(requests).toHaveLength(2);expect(state.submissions).toHaveLength(1);expect(payments).toEqual([]);
@@ -182,7 +182,7 @@ test('unresolved templates stay visible and stop quotes until the user chooses a
  await page.locator('[data-fg-mapping="entry-2"]').selectOption('word-2');
  await expect(page.locator('.fg-match-summary')).toContainText('已匹配 2 / 2 项');
  await page.getByRole('button',{name:'核对清单与费用',exact:true}).click();
- await page.getByRole('button',{name:'确认生成 2 份文件'}).click();expect(state.quotes).toBe(1);expect(state.submissions).toHaveLength(1);
+ await page.getByRole('button',{name:'确认生成 2 份文件'}).click();await expect.poll(()=>state.submissions.length).toBe(1);expect(state.quotes).toBe(1);expect(state.submissions).toHaveLength(1);
 });
 
 test('reselecting the same package keeps manual choices and the selected scope',async({page})=>{
@@ -217,7 +217,7 @@ test('a failed preparation save cannot submit the locally auto-matched selection
  const state=await setup(page);let failing=true;
  await page.route('**/file-generation/preparation',route=>failing?route.fulfill({status:503,json:{code:'DATA_UNAVAILABLE',retryable:true}}):route.fallback());
  await useWord(page);await expect(page.locator('.fg-status')).toContainText('结果尚未确认');
- await page.locator('#fg-confirm').click();expect(state.quotes).toBe(0);expect(state.submissions).toHaveLength(0);
+ await page.locator('#fg-confirm').click();await expect(page.locator('#fg-save-retry')).toBeVisible();await expect(page.locator('#fg-save-retry')).toBeEnabled();expect(state.quotes).toBe(0);expect(state.submissions).toHaveLength(0);
  failing=false;await page.locator('#fg-confirm').click();await expect(page.getByRole('dialog')).toContainText('2 份文件');expect(Object.keys(state.data.preparation.mappings)).toHaveLength(2);
 });
 

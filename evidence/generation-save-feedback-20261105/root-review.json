@@ -1,0 +1,40 @@
+{
+  "checkedAt": "2026-11-05T09:55:44.0950654Z",
+  "role": "primary_agent_independent_review",
+  "base": "1ef2092708aaadbb12f07a4e6ddf5a9e2dee322f",
+  "stats": {
+    "startTime": "2026-11-05T09:53:16.351Z",
+    "duration": 85272.055,
+    "expected": 51,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "sourceBindings": [
+    {
+      "path": "apps/web/src/file-generation-panel.ts",
+      "sha256": "7F3409A066641DC7D9B18EA78581DF384D2A1BCA63E9E2B901C74A6790F0FC06",
+      "gitBlob": "1f97819d4da403c74a00d3cb88da54c1f4ab7636"
+    },
+    {
+      "path": "apps/web/src/file-generation-panel.css",
+      "sha256": "2581F470E336B1C400CE4ADFC7E094F92437859DE1C88E316BEFD9E911AF924E",
+      "gitBlob": "91368d79b7c32fadaba7dceb75392ed328da637c"
+    },
+    {
+      "path": "apps/web/tests/generation-save-feedback.spec.ts",
+      "sha256": "BD8C5E5E6F3F829B8AFBD170B333E51B1D27924BFFBFBF7AABB8A99ACFBA9D8D",
+      "gitBlob": "68022cc25a80708d406f4243c93c85a4a689c7ba"
+    },
+    {
+      "path": "apps/web/tests/file-template-preparation.spec.ts",
+      "sha256": "84E81E03F024BE2CEC1A96AEF0AB29E47288DDF21D4D31D1F52193E654BF1D1B",
+      "gitBlob": "a3feda100ca056a8c3595c7f464655aa9bf22d85"
+    }
+  ],
+  "sourceBeforeAfterEqual": true,
+  "buildExit": 0,
+  "contractsExit": 0,
+  "rawReportSha256": "E827FA3B8F8983CBA6138849C73CE1680C3FFBD925DF4A7EC742772CBA27F41B",
+  "scope": "Real desktop Edge production component and routes with synthetic HTTP, identities and outcomes. No worker, merchant, real ledger, real model or native IME acceptance."
+}
