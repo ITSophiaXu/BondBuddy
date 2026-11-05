@@ -1,3 +1,4 @@
+import { uploadSyntheticReference } from '@bondbuddy/api/test-authoring-source';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Pool } from 'pg';
@@ -26,7 +27,8 @@ test('terminated unified timeout resumes once, preserves usage/checkpoints, boun
         ...(options.unified!==false?{update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1'}}:{})});
       assert.equal(p.statusCode,201,p.body);
       const project=p.json().project_id;
-      const input=await send('POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[]});
+      const materials=options.unified!==false?await uploadSyntheticReference(app,project):{draft_revision:1,material_versions:[],requirement_message_ids:[]};
+      const input=await send('POST',`/api/v1/projects/${project}/input-revisions`,materials);
       assert.equal(input.statusCode,201,input.body);
       const started=await send('POST','/api/v1/runs/execute',{execution_request_id:uid(),project_id:project,input_revision:1,input_hash:input.json().input_hash,
         task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'});

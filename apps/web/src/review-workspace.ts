@@ -1,3 +1,4 @@
+import { documentDeliverable } from './document-deliverable';
 import './upload-progress.css';
 import {uploadActivity,uploadTransfer,uploadProgressHtml} from './upload-progress';
 import {int64} from '@bondbuddy/contracts';
@@ -225,13 +226,17 @@ export class ReviewWorkspace {
       const query=withProjectContext(new URLSearchParams({tab:'results',run:latest.run.run_id}),this.fromList);
       next=`<a class="text-btn" data-review-latest-result href="#/projects/${encodeURIComponent(this.projectId)}/review?${esc(query.toString()+carryHandoff(this.handoffQuery))}">查看最新成果 V${latest.version}</a>`;
     }
-    return `<div class="review-notice"><p>正在查看${selected?'成果 V':'报告 R'}${version}；下载和本页处理均对应此版本。</p>${next}</div>`;
+    const active=this.workspace?.active_run;
+    const activeTask=active?this.workspace?.timeline?.find(item=>item.kind==='task'&&item.task.run.run_id===active.run_id):undefined;
+    const activeQuery=active?withProjectContext(new URLSearchParams({tab:'making',run:active.run_id}),this.fromList):null;
+    const background=active&&isActiveRun(active)&&active.run_id!==runId?`<div class="review-background-task"><span>项目另有进行中的任务${activeTask?.kind==='task'?' · 第 '+activeTask.task.version+' 轮':''}，不影响查看此成果。</span><a class="text-btn" href="#/projects/${encodeURIComponent(this.projectId)}/review?${esc(activeQuery!.toString()+carryHandoff(this.handoffQuery))}">查看进行中任务</a></div>`:'';
+    return `<div class="review-notice"><p>正在查看${selected?'成果 V':'报告 R'}${version}；下载和本页处理均对应此版本。</p>${next}</div>${background}`;
   }
   private renderResultNavigation(){
     const host=this.page?.querySelector('#review-results-panel');if(!host||this.resultUnavailable||host.querySelector('[data-review-preserved-recovery]'))return;
     const html=this.resultContext();if(!html)return;
     let context=host.querySelector<HTMLElement>('[data-review-result-context]');
-    if(!context){context=document.createElement('div');context.dataset.reviewResultContext='';host.prepend(context);}context.innerHTML=html;
+    if(!context){context=document.createElement('div');context.dataset.reviewResultContext='';context.className='review-result-context';host.prepend(context);}context.innerHTML=html;
   }
 
   async render() {
@@ -246,7 +251,7 @@ export class ReviewWorkspace {
       if(!this.requestedTab&&(this.selectedResultRunId||workspace.selected_report||workspace.artifacts.length))this.tab='results';
     if(workspace.active_run&&!this.requestedTab&&!this.selectedResultRunId&&!this.reportId)this.tab='making';
       this.scanUploadRecovery();this.restoreInput();this.syncSelections();
-      this.page.innerHTML = `${this.fromList?projectBackLink():''}<section class="review-selected-project"><div class="review-project-icon">${prototypeIcon('folder')}</div><div><strong>${esc(workspace.project.name)}</strong><div class="review-project-meta" id="review-project-meta"></div></div><a class="text-btn" href="#review">更换项目</a></section><header class="page-head review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><div class="review-project-title"><h1>复核募集说明书</h1><span class="review-tag" id="review-phase-badge"></span></div><p class="review-muted">提供复核材料和要求，复核数据一致性、勾稽、政策要求及格式标点，直接在原文留下修订与批注。</p></div></header><div id="review-workspace-steps" hidden>${reviewSteps(2)}</div><p class="review-status" id="review-status" role="status"></p><p class="task-credit-receipt" id="review-credit-receipt" role="status" hidden></p><div class="review-progress-bar" id="review-progress-bar" tabindex="-1" hidden></div><div id="business-handoff"></div><div class="review-grid review-single-column" id="review-grid"><section class="review-panel"><nav class="review-tabs" role="tablist" aria-label="复核内容"><button id="review-tab-materials" role="tab" data-review-tab="materials" aria-controls="review-materials-panel">材料与要求<span class="review-tab-count" aria-hidden="true"></span></button><button id="review-tab-results" role="tab" data-review-tab="results" aria-controls="review-results-panel">复核结果<span class="review-tab-count" aria-hidden="true"></span></button><button id="review-tab-making" role="tab" data-review-tab="making" aria-controls="review-making-panel" hidden>正在制作</button></nav><div class="review-tab-panel" id="review-materials-panel" role="tabpanel" aria-labelledby="review-tab-materials"></div><div class="review-tab-panel" id="review-results-panel" role="tabpanel" aria-labelledby="review-tab-results"></div><div class="review-tab-panel" id="review-making-panel" role="tabpanel" aria-labelledby="review-tab-making" hidden></div></section></div>`;
+      this.page.innerHTML = `${this.fromList?projectBackLink():''}<header class="page-head review-header"><div><div class="review-project-title"><h1>复核募集说明书</h1><span class="review-tag" id="review-phase-badge"></span></div><section class="review-selected-project"><div class="review-project-icon">${prototypeIcon('folder')}</div><div><strong>${esc(workspace.project.name)}</strong><div class="review-project-meta" id="review-project-meta"></div></div><a class="text-btn" href="#review">更换项目</a></section><p class="review-muted">提供复核材料和要求，复核数据一致性、勾稽、政策要求及格式标点，直接在原文留下修订与批注。</p></div></header><div id="review-workspace-steps" hidden>${reviewSteps(2)}</div><p class="review-status" id="review-status" role="status"></p><p class="task-credit-receipt" id="review-credit-receipt" role="status" hidden></p><div class="review-progress-bar" id="review-progress-bar" tabindex="-1" hidden></div><div id="business-handoff"></div><div class="review-grid review-single-column" id="review-grid"><section class="review-panel"><nav class="review-tabs" role="tablist" aria-label="复核内容"><button id="review-tab-materials" role="tab" data-review-tab="materials" aria-controls="review-materials-panel">材料与要求<span class="review-tab-count" aria-hidden="true"></span></button><button id="review-tab-results" role="tab" data-review-tab="results" aria-controls="review-results-panel">复核结果<span class="review-tab-count" aria-hidden="true"></span></button><button id="review-tab-making" role="tab" data-review-tab="making" aria-controls="review-making-panel" hidden>正在制作</button></nav><div class="review-tab-panel" id="review-materials-panel" role="tabpanel" aria-labelledby="review-tab-materials"></div><div class="review-tab-panel" id="review-results-panel" role="tabpanel" aria-labelledby="review-tab-results"></div><div class="review-tab-panel" id="review-making-panel" role="tabpanel" aria-labelledby="review-tab-making" hidden></div></section></div>`;
       document.removeEventListener('visibilitychange',this.syncOnReturn);window.removeEventListener('online',this.syncOnReturn);
       document.addEventListener('visibilitychange',this.syncOnReturn);window.addEventListener('online',this.syncOnReturn);
       this.bind();this.renderBody();this.schedulePoll();void mountBusinessHandoff(this.api,this.page.querySelector<HTMLElement>('#business-handoff')!,this.handoffQuery,()=>this.live(),handoff=>this.adoptExternalHandoff(handoff));
@@ -315,6 +320,12 @@ export class ReviewWorkspace {
     this.renderCharge();
     if(!this.workspace)return;
     const run=this.workspace.active_run??this.run,bar=this.page?.querySelector<HTMLElement>('#review-progress-bar');
+    // Keep the reading and keyboard order aligned with the selected surface.
+    if(this.page&&bar){
+      this.page.dataset.view=this.tab;
+      const anchor=this.page.querySelector(this.tab==='results'?'#review-grid':'#business-handoff');
+      if(anchor){if(this.tab==='results'){if(anchor.nextElementSibling!==bar)anchor.after(bar);}else if(anchor.previousElementSibling!==bar)anchor.before(bar);}
+    }
     const steps=this.page?.querySelector<HTMLElement>('#review-workspace-steps');
     if(steps){steps.hidden=isActiveRun(this.workspace.active_run);steps.innerHTML=reviewSteps(this.tab==='results'?3:2);}
     const badge=this.page?.querySelector('#review-phase-badge'),meta=this.page?.querySelector('#review-project-meta');
@@ -678,7 +689,7 @@ export class ReviewWorkspace {
     if(!report&&this.workspace.artifact_run&&this.workspace.artifacts.some(a=>a.kind==='report')){
       const reportArtifacts=this.workspace.artifacts.flatMap(artifact=>artifact.kind==='report'||artifact.kind==='comments'?[{artifactId:artifact.artifact_id,kind:artifact.kind}]:[])
         .sort((a,b)=>Number(b.kind==='comments')-Number(a.kind==='comments'));
-      host.innerHTML=progress+`<div class="review-readable-result"><div class="review-readable-heading"><div><p class="review-kicker">REVIEW RESULTS</p><h2>复核报告已生成</h2><p>第 ${this.workspace.artifact_run.version} 次复核 · 分别查看财务、合规与公开信息的核对结果。</p><p>${this.workspace.artifacts.some(a=>a.kind==='comments')?'原文批注保留上传版本正文；无法定位的事项请查看报告中的“原文批注与待确认定位”。':'这次历史成果仅有独立报告，未生成原文批注版。'}</p></div><div class="review-result-actions review-downloads" role="group" aria-label="复核成果">${this.workspace.artifacts.filter(a=>a.kind==='report'||a.kind==='comments').sort((a,b)=>Number(b.kind==='comments')-Number(a.kind==='comments')).map(a=>`<button class="btn ${a.kind==='comments'?'primary':'secondary'}" data-review-action="download" data-artifact-id="${esc(a.artifact_id)}">${a.kind==='comments'?'下载原文批注版':'下载复核报告（Word）'}</button>`).join('')}</div></div><div data-readable-report></div></div>`;
+      host.innerHTML=progress+`<div class="review-readable-result"><div class="review-readable-heading"><div><div class="document-result-title"><h2>复核报告已生成</h2><span class="document-review-note">待人工审阅</span></div><p>第 ${this.workspace.artifact_run.version} 次复核 · 分别查看财务、合规与公开信息的核对结果。</p><p>${this.workspace.artifacts.some(a=>a.kind==='comments')?'原文批注保留上传版本正文；无法定位的事项请查看报告中的“原文批注与待确认定位”。':'这次历史成果仅有独立报告，未生成原文批注版。'}</p></div></div><div class="document-downloads" role="group" aria-label="复核成果">${this.workspace.artifacts.filter(a=>a.kind==='report'||a.kind==='comments').sort((a,b)=>Number(b.kind==='comments')-Number(a.kind==='comments')).map(a=>documentDeliverable(a,`成果 V${this.workspace!.artifact_run!.version} · ${a.kind==='comments'?'原文修订与批注':'问题说明、材料依据与待确认事项'}`,`<button class="btn ${a.kind==='comments'?'primary':'secondary'}" data-review-action="download" data-artifact-id="${esc(a.artifact_id)}">${a.kind==='comments'?'下载原文批注版':'下载复核报告（Word）'}</button>`)).join('')}</div><div data-readable-report></div></div>`;
       this.readable.mount(host.querySelector<HTMLElement>('[data-readable-report]')!,this.workspace.artifact_run.run_id,{downloads:{runId:this.workspace.artifact_run.run_id,artifacts:reportArtifacts}});return;
     }
     if(!report&&this.workspace.artifact_run?.operation==='revision'&&this.workspace.artifacts.some(a=>a.kind==='clean')){

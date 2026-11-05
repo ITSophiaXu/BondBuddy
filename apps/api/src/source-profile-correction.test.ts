@@ -3,10 +3,21 @@ import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { isolatedTestDatabase } from './test-database.js';
-import { azureBlobs, digest } from './data.js';
+import { azureBlobs, digest, uid, type PrivateBlobs } from './data.js';
 import { createServer } from './server.js';
 import { PDF, pdfSample, pngSample } from './upload-safety.samples.js';
 import { readOcr, storeOcr } from './ocr.js';
+
+// Retained PDFs remain editable; they cannot be created through the new Word-only upload route.
+async function savedLegacyPdf(pool:Pool,blobs:PrivateBlobs,owner:string,project:string,filename:string,bytes:Buffer){
+  const id=uid(),key=`users/${owner}/projects/${project}/uploads/${id}`,sha=digest(bytes);
+  await blobs.put(key,bytes,PDF);
+  await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+    VALUES($1,$2,$3,$4,$5,$6,$7,'historical',$8,now(),'completed')`,[id,owner,project,filename,PDF,bytes.length,sha,key]);
+  await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+    VALUES($1,1,$2,$3,$1,'historical',$4,$5,$6,$7,$8,'persisted')`,[id,owner,project,filename,PDF,bytes.length,sha,key]);
+  return id;
+}
 
 const origin = 'http://bondbuddy.test';
 const connection = process.env.BB_TEST_DATABASE_URL;
@@ -17,7 +28,8 @@ test('source-profile PATCH appends an owner-scoped asserted profile with verifie
   { skip: !connection || !blobConnection }, async () => {
     const pool = new Pool({ connectionString: isolatedConnection });
     let active = 'synthetic-profile-owner';
-    const app = createServer({ pool, blobs: azureBlobs(blobConnection!), principal: async () => ({ userId: active, csrfVerified: true }), allowedOrigin: origin });
+    const blobs=azureBlobs(blobConnection!);
+    const app = createServer({ pool, blobs, principal: async () => ({ userId: active, csrfVerified: true }), allowedOrigin: origin });
     const send = async (method: string, url: string, payload?: unknown, extra: Record<string, string> = {}) =>
       app.inject({ method: method as never, url, headers: { origin, ...extra }, payload: payload as never });
     try {
@@ -26,17 +38,7 @@ test('source-profile PATCH appends an owner-scoped asserted profile with verifie
       const project = created.json().project_id as string;
 
       const bytes = pdfSample({ tag: 'source-profile-correction' });
-      const sha = digest(bytes);
-      const upload = await send('POST', `/api/v1/projects/${project}/materials/uploads`, {
-        filename: 'synthetic-historical.pdf', media_type: PDF, byte_size: bytes.length, sha256: sha, role: 'historical',
-      });
-      assert.equal(upload.statusCode, 201, upload.body);
-      assert.equal((await send('PUT', upload.json().upload_url, bytes, { 'content-type': 'application/octet-stream' })).statusCode, 204);
-      const saved = await send('POST', `/api/v1/projects/${project}/materials/uploads/${upload.json().upload_id}/complete`, {
-        byte_size: bytes.length, sha256: sha,
-      });
-      assert.equal(saved.statusCode, 200, saved.body);
-      const materialId = saved.json().material_id as string;
+      const materialId = await savedLegacyPdf(pool,blobs,active,project,'synthetic-historical.pdf',bytes);
 
       const profile = {
         material_id: materialId, material_version: 1, profile_version: 1, state: 'needs_confirmation',
@@ -133,15 +135,7 @@ test('source-profile correction accepts OCR identities and fails closed on inval
       assert.equal(created.statusCode, 201, created.body);
       const projectId = created.json().project_id as string;
       const base = `/api/v1/projects/${projectId}/materials`;
-      const uploadHistoricalPdf = async (filename: string) => {
-        const bytes = pdfSample({ tag: filename });
-        const upload = await send('POST', `${base}/uploads`, { filename, media_type: PDF, byte_size: bytes.length, sha256: digest(bytes), role: 'historical' });
-        assert.equal(upload.statusCode, 201, upload.body);
-        assert.equal((await send('PUT', upload.json().upload_url, bytes, { 'content-type': 'application/octet-stream' })).statusCode, 204);
-        const completed = await send('POST', `${base}/uploads/${upload.json().upload_id}/complete`, { byte_size: bytes.length, sha256: digest(bytes) });
-        assert.equal(completed.statusCode, 200, completed.body);
-        return completed.json().material_id as string;
-      };
+      const uploadHistoricalPdf = (filename:string) => savedLegacyPdf(pool,blobs,owner,projectId,filename,pdfSample({tag:filename}));
       const correct = async (materialId: string) => send('PATCH', `${base}/${materialId}/source-profile`,
         { profile_version: 1, source_market: 'szse', reason: 'synthetic identity test', evidence_refs: [] }, { 'if-match': '1' });
 

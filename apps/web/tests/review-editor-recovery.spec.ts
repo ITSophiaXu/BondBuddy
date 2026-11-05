@@ -11,14 +11,14 @@ const run=(id=runId):Run=>({run_id:id,execution_request_id:`request-${id}`,proje
 const editor=(id=runId):ReviewEditorResponse=>({run_id:id,sha256:sha,snapshot:{version:'review-editor-v1',source_filename:'合成募集书.docx',source_sha256:sha,source_format:'docx',warnings:[],paragraphs:[{id:'p1',text:'旧文'}],issues:[{id:'issue-1',decision:'suggested',manual_text:'',category:'合成类别',title:'合成发现',original:'旧文',replacement:'建议文',reason:'合成依据',evidence:'合成材料',missing:'',uncertain:false,paragraph_id:'p1',applied:true,limitation:''}]}});
 const reply=(route:Route,status:number,body:unknown)=>route.fulfill({status,json:body});
 
-async function fixture(page:Page){
+async function fixture(page:Page,reviewTemplate?:ReviewEditorResponse){
   const state={posts:[] as ReviewExportRequest[],failure:'network' as 'network'|'401'|'none',editorMismatch:false,historyFailure:false,metadataMismatch:false,bytes:0,hold:undefined as Promise<void>|undefined};
   const bytes=Buffer.from('Synthetic saved Word bytes'),mime='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   await page.route('**/api/v1/**',async route=>{
     const request=route.request(),path=new URL(request.url()).pathname.replace('/api/v1','');
     if(path===`${base}/review-history`)return reply(route,200,{items:[runId,secondRun].map((id,i)=>({run:run(id),operation:'full_review',version:i+1,artifacts,created_at:now}))});
     const match=path.match(/\/review-executions\/([^/]+)\/editor$/);
-    if(match){if(state.historyFailure&&match[1]===secondRun)return reply(route,503,{code:'DATA_UNAVAILABLE'});return reply(route,200,editor(state.editorMismatch?'synthetic-other-run':match[1]));}
+    if(match){if(state.historyFailure&&match[1]===secondRun)return reply(route,503,{code:'DATA_UNAVAILABLE'});const id=state.editorMismatch?'synthetic-other-run':match[1];return reply(route,200,reviewTemplate?{...reviewTemplate,run_id:id}:editor(id));}
     if(path===`${base}/review-exports`){state.posts.push(request.postDataJSON());if(state.hold)await state.hold;
       if(state.failure==='network')return route.abort('connectionreset');if(state.failure==='401')return reply(route,401,{code:'UNAUTHENTICATED'});
       return reply(route,200,{...run('synthetic-export-run'),state:'queued',execution_request_id:state.posts.at(-1)!.request_id});}
@@ -44,6 +44,23 @@ async function fixture(page:Page){
   };
   return {state,boot};
 }
+
+for(const width of [1280,390])test(`review categories and pending notes stay outside the prospectus body (${width}px)`,async({page})=>{
+  await page.setViewportSize({width,height:900});
+  const response=editor();response.snapshot.warnings=['合成版本提示，仅显示在结果页'];
+  Object.assign(response.snapshot.issues[0],{category:'合规',uncertain:true,applied:false,missing:'合成用途明细'});
+  const f=await fixture(page,response);await f.boot();
+  const comment=page.locator('.review-preview-comment');
+  await expect(comment.locator('p').first()).toHaveText('问题类别：合规');
+  await expect(comment).toContainText('合成依据');
+  for(const view of ['original','clean']){
+    await page.locator(`[data-editor-view="${view}"]`).click();
+    await expect(page.locator('.review-paper')).toHaveText('旧文');
+    await expect(page.locator('.review-paper .review-preview-comment')).toHaveCount(0);
+    await expect(page.locator('.review-notice')).toHaveText(response.snapshot.warnings[0]);
+    await expect(page.locator('.review-issue-detail')).toContainText('合成用途明细');
+  }
+});
 
 test('unknown export receipt freezes decisions and explicitly retries the identical envelope after reopen',async({page})=>{
   const f=await fixture(page);await f.boot();

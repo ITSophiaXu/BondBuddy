@@ -1,3 +1,7 @@
+> 2026-11-05：按[专业文档工作台决定](product-decisions/2026-11-05-professional-document-workspace.md)，浏览器与原型共用 `product-prototype/public/document-workspace.css`，在现有展示样式后加载；`document-deliverable.ts` 仅组织真实成果文件名、已保存版本和原下载控件。保留 Vite/TypeScript、所有业务模块和授权下载链路，无公共契约、数据或 worker 变更。
+
+> 2026-11-05：更新项目的历史／参考募集书新上传仅支持 Word（.docx）。共用入口按项目返回的 `upload_docx_only` 显示限制；API 创建、传输、完成及角色复制执行相同规则，已完成上传和旧 PDF 保留。无新增迁移；见[格式支持决定](product-decisions/2026-11-05-historical-docx-only.md)。
+
 > 2026-10-30：按[取消每日限额决定](product-decisions/2026-10-30-no-daily-limits.md)，API 与 worker 不再按每日任务数、模型 token、项目数或上传总量拦截；忽略旧每日限额配置，管理字段返回 0。用量统计、积分计费、并发容量及其他有效检查保留。历史每日限额暂停由已有 sweep 恢复，历史错误枚举兼容保留。此决定覆盖下文旧试用每日限额说明。
 
 > 2026-10-30：月付可即时升档或转同档／更高档年付，原未用积分按原实付抵扣。0160追加转换冻结、不可变资金来源和混合对价，付款订单仅记录新现金；消费与返分沿用精确原对价，历史合同保留。续费操作移入管理订阅，新金额与周期另行授权。见[订阅转换决定](product-decisions/2026-10-30-subscription-changes.md)。本阶段按用户要求使用本地模拟支付，不代表真实商户验收或生产发布。

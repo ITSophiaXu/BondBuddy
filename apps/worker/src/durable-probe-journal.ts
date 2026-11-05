@@ -2,6 +2,7 @@ import type { Pool } from 'pg';
 import { recordPotentialCall, type Lease } from '@bondbuddy/api/queue';
 import { latestProviderAttempt, persistProviderResultObject, readCheckpointedProviderResult, recordModelAttemptRuntime, recordProviderCallObservation, type ModelAttemptRuntime, type ProviderCallIntent, type ProviderCallObservation, type ProviderResultReference, type ProviderResultValidator } from '@bondbuddy/api/provider-results';
 import type { PrivateBlobs } from '@bondbuddy/api/provider-results';
+import { recordCodexExecLog } from '@bondbuddy/api/exec-logs';
 import type { ProbeJournal } from './deepseek-probe.js';
 import type { CodexJournal, PriorAttempt } from './codex-adapter.js';
 import { inputManifestHash } from '@bondbuddy/api/production-rule-pin';
@@ -76,6 +77,10 @@ export class CodexDurableJournal extends DurableProbeJournal implements CodexJou
 
   async recordRuntime(intent: ProviderCallIntent, runtime: ModelAttemptRuntime): Promise<void> {
     await recordModelAttemptRuntime(this.codexInput.pool,this.codexInput.lease,intent,runtime);
+  }
+
+  async storeExecLog(intent: ProviderCallIntent, bytes: Buffer, meta: { truncated: boolean }): Promise<void> {
+    await recordCodexExecLog(this.codexInput.pool,this.codexInput.blobs,this.codexInput.lease,intent,bytes,meta);
   }
 
   async latestAttempt(logicalCallId: string): Promise<PriorAttempt | null> {

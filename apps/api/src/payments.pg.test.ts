@@ -14,7 +14,7 @@ test('synthetic signed provider: forged/mismatched/replayed callbacks and query-
   const key=randomUUID(),sign=(body:string)=>createHmac('sha256',key).update(body).digest('hex');
   const receipts=new Map<string,VerifiedPayment>();let creates=0;
   // Test-only adapter. No real merchant, transaction or payment is represented.
-  const provider:PaymentProvider={name:'alipay',merchantId:'synthetic-merchant',acknowledgement:{accepted:true},
+  const provider:PaymentProvider={name:'alipay',merchantId:'synthetic-merchant',acknowledgement:'success',
     create:async order=>{creates++;receipts.set(order.id,{orderId:order.id,merchantId:order.merchant_id,amountFen:order.amount_fen,currency:'CNY',transactionId:null,state:'pending'});return {checkoutUrl:`https://synthetic.invalid/pay/${order.id}`};},
     query:async order=>receipts.get(order.id)!,
     verifyCallback:async(headers,raw)=>{const signature=String(headers['x-synthetic-signature']??'');
@@ -41,7 +41,7 @@ test('synthetic signed provider: forged/mismatched/replayed callbacks and query-
     assert.equal((await callback({...paid,amountFen:1})).statusCode,422);
     assert.equal((await callback({...paid,merchantId:'foreign-merchant'})).statusCode,422);
     assert.deepEqual(await creditBalance(pool,actor),{available:0,frozen:0});
-    const duplicate=await Promise.all([callback(paid),callback(paid)]);duplicate.forEach(r=>assert.equal(r.statusCode,200,r.body));
+    const duplicate=await Promise.all([callback(paid),callback(paid)]);duplicate.forEach(r=>{assert.equal(r.statusCode,200,r.body);assert.equal(r.body,'success');assert.match(String(r.headers['content-type']),/^text\/plain/);});
     assert.deepEqual(await creditBalance(pool,actor),{available:52500,frozen:0});
     await callback({...paid,state:'expired'});
     assert.equal((await send('GET',`/api/v1/credits/recharge-orders/${order.order_id}`)).json().state,'paid');
@@ -73,7 +73,7 @@ test('synthetic signed provider: forged/mismatched/replayed callbacks and query-
 
 test('subscription mode closes legacy bonus-pack sales while replaying original paid and pending orders unchanged',{skip:!connection,timeout:60000},async()=>{
   const pool=new Pool({connectionString:connection}),actor=randomUUID(),receipts=new Map<string,VerifiedPayment>();let creates=0;
-  const provider:PaymentProvider={name:'alipay',merchantId:'synthetic-legacy-transition',acknowledgement:{accepted:true},
+  const provider:PaymentProvider={name:'alipay',merchantId:'synthetic-legacy-transition',acknowledgement:'success',
     create:async order=>{creates++;receipts.set(order.id,{orderId:order.id,merchantId:order.merchant_id,amountFen:order.amount_fen,currency:'CNY',transactionId:null,state:'pending'});return{checkoutUrl:'https://synthetic.invalid/transition/'+order.id};},
     query:async order=>receipts.get(order.id)!,verifyCallback:async()=>{throw Error('Synthetic test uses verified provider seam');}};
   const settings={pool,enablePaidAuthoring:true,paymentProviders:[provider],allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true})};

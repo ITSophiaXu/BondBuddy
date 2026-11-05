@@ -30,6 +30,10 @@ data.cases.push(...productionReviewAttestationExamples.cases);
 const adminExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/admin-logs.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(adminExamples.synthetic, true);
 data.cases.push(...adminExamples.cases);
+// #448 operator-only per-user/per-task dashboard read models.
+const adminDashboardExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/admin-dashboard.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
+assert.equal(adminDashboardExamples.synthetic, true);
+data.cases.push(...adminDashboardExamples.cases);
 // #17 worker runtime stream examples.
 const runtimeExamples = JSON.parse(readFileSync(fileURLToPath(new URL('../examples/worker-runtime.json', import.meta.url)), 'utf8')) as { synthetic: boolean; cases: Example[] };
 assert.equal(runtimeExamples.synthetic, true);

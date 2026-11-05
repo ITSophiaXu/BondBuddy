@@ -97,6 +97,14 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
           const response=await lockResponse();
           assert.equal(response.statusCode,201,response.body);return response.json();
         };
+        if(scenario===null){
+          const rejected=await lockResponse();
+          assert.equal(rejected.statusCode,422,rejected.body);
+          assert.equal(rejected.json().field_errors[0].code,'SOURCE_PROSPECTUS_REQUIRED');
+          assert.equal((await pool.query('SELECT count(*)::int n FROM bb_input_revisions WHERE project_id=$1',[project])).rows[0].n,0);
+          assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[project])).rows[0].n,0);
+          continue;
+        }
         if(missingMetadata){
           const rejected=await lockResponse();
           assert.equal(rejected.statusCode,422,rejected.body);assert.equal(rejected.json().code,'INPUT_REQUIRED');
@@ -187,7 +195,7 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
           assert.equal((await send('GET',`/api/v1/runs/${run.run_id}`)).json().state,'succeeded');
           assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=(SELECT id FROM bb_jobs WHERE run_id=$1)',[run.run_id])).rows[0].n,1);
         }
-        if(!relation&&!missingMetadata){
+        if(scenario==='same_issuer'){
           const next=await lock();
           const pin=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[owner,project,next.input_revision])).rows[0].manifest.authoring.previous_output;
           assert.equal(pin.artifact_id,artifact.word_delivery.clean_artifact_id);

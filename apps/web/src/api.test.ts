@@ -2,7 +2,24 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test, type TestContext } from 'node:test';
 import { ApiClient, ApiError, friendlyError, parseApiError, type Dto } from './api.js';
+import { PROSPECTUS_DOCX_ONLY_FIELD_ERROR, PROSPECTUS_DOCX_ONLY_MESSAGE, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_MESSAGE } from '@bondbuddy/contracts';
+
+test('missing source uses the public field code instead of server prose', () => {
+  const error = parseApiError(422, {code: 'INPUT_REQUIRED', message: 'untrusted server prose', field_errors: [SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR]});
+  assert.equal(friendlyError(error), SOURCE_PROSPECTUS_REQUIRED_MESSAGE);
+  const unrelated = parseApiError(422, {code: 'INPUT_REQUIRED', field_errors: [{...SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, field: 'other'}]});
+  assert.equal(unrelated.details.sourceProspectusRequired, false);
+});
 import { PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE } from '@bondbuddy/contracts';
+
+test('Word-only upload errors use the public reason without trusting server prose', () => {
+  const error=parseApiError(422,{code:'MATERIAL_FORMAT_UNSUPPORTED',message:'private detail',
+    field_errors:[{...PROSPECTUS_DOCX_ONLY_FIELD_ERROR,message:'untrusted replacement'}]});
+  assert.equal(friendlyError(error),PROSPECTUS_DOCX_ONLY_MESSAGE);
+  assert.equal(uploadErrorMessage(error),PROSPECTUS_DOCX_ONLY_MESSAGE);
+  const unrelated=parseApiError(422,{code:'VALIDATION_FAILED',field_errors:[PROSPECTUS_DOCX_ONLY_FIELD_ERROR]});
+  assert.equal(unrelated.details.prospectusDocxOnly,undefined);
+});
 
 test('unselected prospectus errors explain adoption without trusting server prose', () => {
   const error = parseApiError(409, {code:'INPUT_REVISION_CONFLICT',message:'private server message',

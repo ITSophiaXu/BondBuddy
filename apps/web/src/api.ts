@@ -8,12 +8,12 @@ import type { Static } from '@sinclair/typebox';
 import type { schemas, SchemaName, DataPolicy, AgreementResponse } from './billing-types.js';
 import type { FactDecisionRequest } from '@bondbuddy/contracts';
 import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest,SubscriptionCheckout,Subscription,SubscriptionAutoRenewRequest,SubscriptionAutoRenew,SubscriptionChangeQuoteRequest,SubscriptionChangeCheckoutRequest} from './billing-types.js';
-import { isUploadInspectionPublicReason, isProspectusSelectionRequiredFieldError, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
+import { isProspectusDocxOnlyFieldError, PROSPECTUS_DOCX_ONLY_MESSAGE, isUploadInspectionPublicReason, isProspectusSelectionRequiredFieldError, isSourceProspectusRequiredFieldError, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
 export class ApiError extends Error {
   constructor(public status: number, public code: string, public readonly details: {
-    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean;
+    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean; prospectusDocxOnly?: boolean;
   } = {}) { super(code); }
 }
 
@@ -44,9 +44,11 @@ export function parseApiError(status: number, value: unknown, fallbackCode = 'DA
     }
   }
   return new ApiError(status, code, {
+    ...(code === 'MATERIAL_FORMAT_UNSUPPORTED' && fields.some(isProspectusDocxOnlyFieldError)
+      ? { prospectusDocxOnly: true } : {}),
     ...(code === 'INPUT_REVISION_CONFLICT' && fields.some(isProspectusSelectionRequiredFieldError)
       ? { prospectusSelectionRequired: true } : {}),
-    ...(code === 'INPUT_REQUIRED' ? { materialInputIssues: fields.flatMap(field => {
+    ...(code === 'INPUT_REQUIRED' ? { sourceProspectusRequired: fields.some(isSourceProspectusRequiredFieldError), materialInputIssues: fields.flatMap(field => {
       if (!isRecord(field)) return [];
       const issue = m4InputIssue(field.code, field.field);
       return issue ? [issue] : [];
@@ -67,6 +69,8 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
   if (!(error instanceof ApiError)) return unknownErrorText(operation);
   const reference = errorReference(error);
   switch (error.code) {
+    case 'MATERIAL_FORMAT_UNSUPPORTED': return error.details.prospectusDocxOnly
+      ? PROSPECTUS_DOCX_ONLY_MESSAGE : '文件格式不受支持，请选择此分区支持的文件。';
     case 'INPUT_REVISION_CONFLICT': return error.details.prospectusSelectionRequired
       ? PROSPECTUS_SELECTION_REQUIRED_MESSAGE
       : '这个项目已在其他页面修改。你的输入仍保留，请查看最新版本后再修改。';
@@ -87,7 +91,7 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
     case 'BILLING_PROTOCOL_REPLAY_ONLY': return `页面版本已更新，请刷新页面后重新开始。已保存的材料和要求保留；本次任务未开始。${reference}`;
     case 'CSRF_DENIED': return '会话验证未通过，请刷新页面后重试。';
     case 'VALIDATION_FAILED': return `请检查填写内容后重试。${reference}`;
-    case 'INPUT_REQUIRED': return error.details.materialInputIssues?.length
+    case 'INPUT_REQUIRED': return error.details.sourceProspectusRequired ? SOURCE_PROSPECTUS_REQUIRED_MESSAGE : error.details.materialInputIssues?.length
       ? `${error.details.materialInputIssues.map(issue => issue.message).join(' ')} 补齐后请重新点击生成。`
       : `本次输入尚未满足执行条件，请核对项目材料；仍无法继续时联系支持。${reference}`;
     case 'MATERIAL_UNREADABLE': return `材料尚未满足当前处理条件，请保留原文件并核对材料状态。${reference}`;

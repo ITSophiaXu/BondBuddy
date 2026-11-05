@@ -12,6 +12,19 @@ HEADING = re.compile(r'^\s{0,3}#{1,6}\s+(.+?)(?:\s+#+)?\s*$')
 NUMBERED = re.compile(r'^\s*(?:\*\*)?\d+[.、）)]\s*(.+?)(?:\*\*)?$')
 
 
+def category_label(category):
+    """Normalize explicit categories only; never guess one from a finding's prose."""
+    value = (category or '').strip()
+    aliases = {
+        '财务数据一致性': '数据一致性',
+        '政策要求与重点提示': '合规',
+        '合规与披露': '合规',
+        '格式与标点': '格式',
+        '勾稽关系': '勾稽',
+    }
+    return aliases.get(value, value) if value and value != '待确认' else '类别待确认'
+
+
 def correction_blocks(markdown):
     title, fields, current = '', {}, None
     blocks = []
@@ -59,7 +72,7 @@ def findings(markdown):
             missing = ''
         evidence = fields.get('核对依据', '')
         original = fields.get('原文披露', '').strip().strip('`“”「」"')
-        result.append(dict(id=f'R{len(result)+1:03d}', category=fields.get('复核类别', '待确认'),
+        result.append(dict(id=f'R{len(result)+1:03d}', category=category_label(fields.get('复核类别')),
                            title=re.sub(r'^R\d+\s*[·.、:]\s*', '', title), original=original,
                            replacement=fields.get('替换文本', ''), reason=fields.get('问题说明', title),
                            evidence=evidence, missing=missing,

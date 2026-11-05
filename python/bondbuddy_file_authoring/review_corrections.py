@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 from .word_patch import Patcher, xml, serialized, paragraph_text, q, add_layout_comments
-from .correction_findings import findings
+from .correction_findings import category_label, findings
 from bondbuddy_word_delivery.writer import normalize_old_revisions
 
 
@@ -122,8 +122,13 @@ def build(source, request, output):
     write(basepath, parts)
     tasks = []
     for issue in issues:
+        # Saved editors can contain the earlier long-form category labels.
+        issue['category'] = category_label(issue.get('category'))
         status = '用户保留原文' if issue['decision']=='original' else '用户手动修改' if issue['decision']=='manual' and issue['applied'] else '已按建议修改' if issue['applied'] else '待人工确认，保留原文'
-        note = '\n'.join(filter(None, [issue['id']+' · '+issue['title'], status, issue['reason'], '依据：'+issue['evidence'] if issue['evidence'] else '', '缺少材料：'+issue['missing'] if issue['missing'] else '', issue['limitation']]))
+        note = '\n'.join(filter(None, ['问题类别：'+issue['category'], '问题：'+issue['id']+' · '+issue['title'],
+            '问题说明：'+issue['reason'], '依据：'+issue['evidence'] if issue['evidence'] else '',
+            '处理：'+status, '缺少材料：'+issue['missing'] if issue['missing'] else '',
+            '定位或修改限制：'+issue['limitation'] if issue['limitation'] else '']))
         anchor=issue['paragraph_id'] or (paragraphs[0]['id'] if paragraphs else None)
         if anchor:
             tasks.append(dict(target_id=anchor, text=note))
@@ -156,19 +161,11 @@ def build(source, request, output):
         tracking.set(q('val'), '1')
         replacements['word/settings.xml'] = serialized(settings)
     write(output/'revision.docx', {**parts,**replacements})
-    # Clean output has no review marks/comments. Keep explicit unresolved-material notices visible.
+    # Keep only prospectus content in the clean body. Review notes remain in
+    # native comments, the separate report and the editor snapshot.
     for node in list(clean.iter()):
         if node.tag in (q('commentRangeStart'),q('commentRangeEnd'),q('commentReference')) and node.getparent() is not None:
             node.getparent().remove(node)
-    pending = [i for i in issues if i['decision']!='original' and (i['missing'] or i['limitation'] or (i['uncertain'] and not i['applied']))]
-    if pending or warnings:
-        from lxml import etree as ET
-        body=clean.find(q('body'))
-        lines=['复核待确认事项']+warnings+[i['id']+' '+i['title']+'：'+(i['missing'] or i['limitation'] or i['reason']) for i in pending]
-        for line in lines:
-            p=ET.Element(q('p')); ET.SubElement(ET.SubElement(p,q('r')),q('t')).text=line
-            section=body.find(q('sectPr'))
-            body.insert(body.index(section) if section is not None else len(body),p)
     cleanparts={**parts,'word/document.xml':serialized(clean)}
     # Remove orphaned comment parts and declarations in clean output.
     for name in list(cleanparts):
