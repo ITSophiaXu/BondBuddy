@@ -20,7 +20,11 @@ function client(){
   };
 }
 const saved=config(),pool=new Pool({connectionString:pgBase+saved.database}),startedAt=new Date().toISOString(),checks=[],skipped=[],accounts=[];
-const record=name=>checks.push(name),state=a=>a.send('POST','/__billing-test/api/state',{}),refresh=(a,id)=>a.send('POST','/api/v1/commerce/topups/'+id+'/refresh',{});
+const record=name=>checks.push(name),state=a=>a.send('POST','/__billing-test/api/state',{});
+const refresh=async(a,id,outcome='paid')=>{
+  if(outcome!=='pending')await a.send('POST','/__billing-test/api/payment/outcome',{id,outcome,delivery:'query'});
+  return a.send('POST','/api/v1/commerce/topups/'+id+'/refresh',{});
+};
 const amounts=(s,available,held=0,changeHeld=0)=>{assert.equal(BigInt(s.account.available_points),BigInt(available));assert.equal(BigInt(s.account.task_held_points),BigInt(held));assert.equal(BigInt(s.account.change_held_points),BigInt(changeHeld));};
 async function account(plan='professional'){
   const username='billing_change_'+randomUUID().slice(0,8),send=client();
@@ -100,10 +104,10 @@ try{
   record('annual next-month release grants 114000 more points once with all funding sources and no new payment');
 
   const pending=await account(),pq=await quote(pending),pc=await checkout(pending,pq);
-  await pending.send('POST','/__billing-test/api/subscription/outcome',{outcome:'pending'});await refresh(pending,pc.order.order_id);amounts(await state(pending),0,0,55000);
+  await refresh(pending,pc.order.order_id,'pending');amounts(await state(pending),0,0,55000);
   assert.equal((await original(pending)).remaining,'55000');assert.equal((await original(pending)).status,'active');await clean(pending);
   record('unknown payment retains original contract and transfer hold without granting new points');
-  await pending.send('POST','/__billing-test/api/subscription/outcome',{outcome:'failed'});await refresh(pending,pc.order.order_id);amounts(await state(pending),55000);await clean(pending);
+  await refresh(pending,pc.order.order_id,'failed');amounts(await state(pending),55000);await clean(pending);
   assert.equal((await original(pending)).status,'active');assert.equal((await original(pending)).frozen,'0');
   record('verified failed change releases exact held points and keeps the original monthly contract');
 

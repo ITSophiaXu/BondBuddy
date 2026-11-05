@@ -29,6 +29,7 @@ async function createAccount(cycle){
   const checkout=await send('POST','/api/v1/subscriptions',{request_id:randomUUID(),plan_id:'light',provider:'wechat',billing_cycle:cycle},201);
   assert.equal(BigInt(checkout.order.amount_fen),cycle==='annual'?214920n:19900n);
   account.subscriptionId=checkout.subscription.id;account.firstOrderId=checkout.order.order_id;
+  await send('POST','/__billing-test/api/payment/outcome',{id:account.firstOrderId,outcome:'paid',delivery:'query'});
   await send('POST','/api/v1/commerce/topups/'+account.firstOrderId+'/refresh',{});
   equalPoints(await state(account),21000);
   await send('POST','/api/v1/subscriptions/'+account.subscriptionId+'/auto-renew',{request_id:randomUUID(),enabled:true});

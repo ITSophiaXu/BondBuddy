@@ -1,0 +1,21 @@
+name: bondbuddy-mock-payments
+services:
+  postgres:
+    image: postgres:16.10
+    environment:
+      POSTGRES_USER: bondbuddy
+      POSTGRES_PASSWORD: m3-local-synthetic
+      POSTGRES_DB: postgres
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - billing-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bondbuddy -d postgres"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    labels:
+      bb.purpose: local-mock-payment
+volumes:
+  billing-data:

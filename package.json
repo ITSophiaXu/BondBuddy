@@ -15,6 +15,10 @@
     "apps/web"
   ],
   "scripts": {
+    "billing:mock": "node scripts/billing-functional/start.mjs",
+    "billing:mock:stop": "node scripts/billing-functional/stop.mjs",
+    "test:billing:mock": "node --test scripts/billing-functional/payment-provider.test.mjs scripts/billing-functional/billing-client.test.mjs",
+    "test:billing:mock:flow": "node scripts/billing-functional/payment-lifecycle-verify.mjs",
     "build": "npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/domain && npm run build -w @bondbuddy/rule-pack-registry && npm run build -w @bondbuddy/rule-applicability-context && npm run build -w @bondbuddy/api && npm run build -w @bondbuddy/worker && npm run build -w @bondbuddy/web",
     "dev:web": "npm run dev -w @bondbuddy/web",
     "test:web": "npm test -w @bondbuddy/web",

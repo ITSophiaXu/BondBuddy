@@ -78,5 +78,6 @@ outputs/*
 !docs/product-decisions/2026-10-15-material-case-templates.md
 !docs/product-decisions/2026-10-28-commercial-scope-billing.md
 !docs/product-decisions/2026-10-29-subscription-auto-billing.md
+!docs/product-decisions/2026-11-05-mock-payment-lifecycle.md
 !docs/FILE-TEMPLATE-IMPLEMENTATION.md
 /.alipay-sandbox.json
