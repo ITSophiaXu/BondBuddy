@@ -1,0 +1,113 @@
+{
+  "case_id": "review-dongying",
+  "task_type": "review",
+  "input_origin": "captured_real_project",
+  "source_account": "customer_test",
+  "source_project_id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+  "source_snapshot": "cases/review-dongying/source-inputs.json",
+  "legal_issuer_name_for_derived_tests": "东营市城市建设发展集团有限公司",
+  "primary_source_run": {
+    "run_id": "5a015c40-c130-4b23-90a1-ba0b3ffb199e",
+    "project_id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+    "input_revision": 1,
+    "input_hash": "e93f138cfc402967e6e0b14481dc11c1f24d6f28069bbdc7e450aa887d68961d",
+    "state": "paused",
+    "stage": "provider_reconcile",
+    "updated_at": "2026-11-05T08:52:24.659Z"
+  },
+  "input_capture_status": "review_input_hash_matches_execution",
+  "project_input": {
+    "name": "东营城建-上交所-普通私募公司债-募集书复核",
+    "kind": "review",
+    "issuer_name": "东营城建",
+    "market": "sse",
+    "offering": "private",
+    "update_details": {
+      "has_historical": null,
+      "reporting_cutoff": "2026-06-30",
+      "registration_amount": null,
+      "issuance_amount": null,
+      "bond_terms": null,
+      "underwriting": null,
+      "other_agencies": null,
+      "rating_enhancement": null,
+      "funding_uses": [],
+      "other_information": null,
+      "supplementary_notes": null,
+      "authoring_mode": "unified_v1",
+      "source_prospectuses": []
+    }
+  },
+  "review_input": {
+    "as_of": "2026-06-30",
+    "requirements": [],
+    "material_versions": [
+      {
+        "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f",
+        "material_id": "4541d04e-32bb-49b9-a03d-6f8636debdfc",
+        "material_version": 1
+      },
+      {
+        "sha256": "18e450d7708b14524439dbca16a62ffff18a3570597dbcdc15dabcd9b7b81a94",
+        "material_id": "a23e9750-da68-4ef7-a880-81212ed8985b",
+        "material_version": 1
+      },
+      {
+        "sha256": "44023471983b049ff955ae6af159a8a1f3e67404344ea3d504d01b21c0d116de",
+        "material_id": "52977841-2404-4a71-bcaa-b3fa48708d1a",
+        "material_version": 1
+      },
+      {
+        "sha256": "c175434ecfde27bba694116ab5620dc0ea1b1824428181f232bcb99cc9af4c8c",
+        "material_id": "54da1f47-c404-4cac-94bc-cb3376cb01cd",
+        "material_version": 1
+      }
+    ],
+    "source_material_ref": {
+      "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f",
+      "material_id": "4541d04e-32bb-49b9-a03d-6f8636debdfc",
+      "material_version": 1
+    }
+  },
+  "materials": [
+    {
+      "file_id": "nov05-f012",
+      "original_filename": "1-1东营市城市建设发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "upload_role": "historical",
+      "source_material_id": "4541d04e-32bb-49b9-a03d-6f8636debdfc",
+      "source_material_version": 1,
+      "deleted_at": null
+    },
+    {
+      "file_id": "nov05-f014",
+      "original_filename": "5-2-1东营市城市建设发展集团有限公司2024年度经审计的合并及母公司财务报告.pdf",
+      "upload_role": "audit",
+      "source_material_id": "a23e9750-da68-4ef7-a880-81212ed8985b",
+      "source_material_version": 1,
+      "deleted_at": null
+    },
+    {
+      "file_id": "nov05-f015",
+      "original_filename": "5-2-2东营市城市建设发展集团有限公司2025年度经审计的合并及母公司财务报告.pdf",
+      "upload_role": "audit",
+      "source_material_id": "52977841-2404-4a71-bcaa-b3fa48708d1a",
+      "source_material_version": 1,
+      "deleted_at": null
+    },
+    {
+      "file_id": "nov05-f016",
+      "original_filename": "5-2-3东营市城市建设发展集团有限公司2026年半年度财务报表及附注.pdf",
+      "upload_role": "audit",
+      "source_material_id": "54da1f47-c404-4cac-94bc-cb3376cb01cd",
+      "source_material_version": 1,
+      "deleted_at": null
+    }
+  ],
+  "missing_materials": [],
+  "business_acceptance_status": "not_evaluated",
+  "notes": [
+    "项目字段使用简称“东营城建”，原稿法定主体为东营市城市建设发展集团有限公司。",
+    "冻结复核任务在本次取样时为 paused；保留为暂停排查案例，不预判暂停原因。"
+  ],
+  "replay_policy": "隔离测试环境重新建项目、上传和报价；原生产ID/hash/报价只作追踪，不向生产重放。"
+}

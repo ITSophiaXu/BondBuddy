@@ -1,0 +1,93 @@
+{
+  "case_id": "review-suandu",
+  "task_type": "review",
+  "input_origin": "captured_real_project",
+  "source_account": "wql",
+  "source_project_id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+  "source_snapshot": "cases/review-suandu/source-inputs.json",
+  "legal_issuer_name_for_derived_tests": "山东蒜都发展投资有限公司",
+  "primary_source_run": {
+    "run_id": "bcdac86e-ba37-46b8-a18d-3de1da5c3b91",
+    "project_id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+    "input_revision": 2,
+    "input_hash": "fa97bb758d355cef160bee75bc2f13ff4504f6e6ea403b595cda16e84cefad04",
+    "state": "running",
+    "stage": "provider_call",
+    "updated_at": "2026-10-25T12:17:14.457Z"
+  },
+  "input_capture_status": "review_input_hash_matches_execution",
+  "project_input": {
+    "name": "山东蒜都发展投资有限公司-上交所-普通私募公司债-募集书复核",
+    "kind": "review",
+    "issuer_name": "山东蒜都发展投资有限公司",
+    "market": "sse",
+    "offering": "private",
+    "update_details": {
+      "has_historical": null,
+      "reporting_cutoff": "2026-06-30",
+      "registration_amount": null,
+      "issuance_amount": null,
+      "bond_terms": null,
+      "underwriting": null,
+      "other_agencies": null,
+      "rating_enhancement": null,
+      "funding_uses": [],
+      "other_information": null,
+      "supplementary_notes": null,
+      "authoring_mode": "unified_v1",
+      "source_prospectuses": []
+    }
+  },
+  "review_input": {
+    "as_of": "2026-06-30",
+    "requirements": [
+      "请重新完整复核待复核原稿，不能沿用上一轮空报告或把进度说明当作复核结论。重点要求：对原稿中有明确依据的财务数据前后不一致、计算或勾稽错误、年份引用错误、重复文字、错别字、编号、格式及标点问题，直接修改原文并保留 Word 原生修订痕迹，同时说明修改原因。每个已确认问题须给出可定位的逐字原文和完整替换文本，不得只写建议或全部转为待人工复核。缺少外部审计报告等材料时，只把依赖该证据的事项留作批注，不应阻止原稿内部即可验证的修改。覆盖四项复核并形成完整复核报告，最后核对修订版与原文确有实际差异；不得将仅含读取进度、零实质内容的文件作为完成成果。"
+    ],
+    "material_versions": [
+      {
+        "sha256": "5723460065160953bf86361c84707c5b6feb8b47fecf7760a667e3d757ff6a7a",
+        "material_id": "09c0b231-3828-4f55-8ff4-b43ea24e4e3e",
+        "material_version": 1
+      }
+    ],
+    "source_material_ref": {
+      "sha256": "5723460065160953bf86361c84707c5b6feb8b47fecf7760a667e3d757ff6a7a",
+      "material_id": "09c0b231-3828-4f55-8ff4-b43ea24e4e3e",
+      "material_version": 1
+    }
+  },
+  "materials": [
+    {
+      "file_id": "nov05-f001",
+      "original_filename": "1-2 山东蒜都发展投资有限公司2026年面向专业投资者非公开发行科技创新公司债券募集说明书1025v1清洁版.docx",
+      "upload_role": "historical",
+      "source_material_id": "09c0b231-3828-4f55-8ff4-b43ea24e4e3e",
+      "source_material_version": 1,
+      "deleted_at": null
+    },
+    {
+      "file_id": "nov05-f002",
+      "original_filename": "山东蒜都募集说明书_复核修订版_20261025.docx",
+      "upload_role": "historical",
+      "source_material_id": "f6a04153-17cc-49b3-856f-8637fe534790",
+      "source_material_version": 1,
+      "deleted_at": null
+    },
+    {
+      "file_id": "nov05-f003",
+      "original_filename": "山东蒜都募集说明书_复核修订版_20261025.docx",
+      "upload_role": "historical",
+      "source_material_id": "9d13db58-8ac0-457e-b202-932e315dcca4",
+      "source_material_version": 1,
+      "deleted_at": null
+    }
+  ],
+  "missing_materials": [],
+  "business_acceptance_status": "not_evaluated",
+  "notes": [
+    "项目标题为普通私募，但原稿文件名含科技创新公司债券；不得以标题替代正文品种核对。",
+    "所提供主要是原稿及修订版本，未取得同项目审计材料；适合内部一致性和缺少外部证据场景，不代表完整财务复核样本。",
+    "本案例采用2026-10-25既有输入快照；原件及两份后续上传修订稿均与11月5日源项目hash一致。原输入与执行记录hash匹配，但不是11月5日最新草稿。"
+  ],
+  "replay_policy": "隔离测试环境重新建项目、上传和报价；原生产ID/hash/报价只作追踪，不向生产重放。"
+}

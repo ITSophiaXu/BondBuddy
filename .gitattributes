@@ -5,6 +5,9 @@
 /knowledge/exchange-bonds/drafts/sse-private/coverage.json text eol=lf
 # The authorised batch and its exact generated projection are also byte-pinned.
 /tests/samples/2026-09-25/manifest.json text eol=lf
+/tests/samples/2026-11-05/manifest.json text eol=lf
+/tests/samples/2026-11-05/cases/**/*.json text eol=lf
+/tests/samples/2026-11-05/originals/** binary
 /apps/worker/src/authorized-sample-membership.generated.ts text eol=lf
 /knowledge/exchange-bonds/verification/*/notices/*.html binary
 /knowledge/exchange-bonds/verification/*/originals/* binary

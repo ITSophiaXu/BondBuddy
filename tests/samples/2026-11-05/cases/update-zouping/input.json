@@ -1,0 +1,119 @@
+{
+  "case_id": "update-zouping",
+  "task_type": "update",
+  "input_origin": "captured_real_project",
+  "source_account": "yyx",
+  "source_project_id": "dcd85b07-a2fd-4efe-ad20-ead65612dbc0",
+  "source_snapshot": "cases/update-zouping/source-inputs.json",
+  "legal_issuer_name_for_derived_tests": "邹平国信招商发展有限公司",
+  "primary_source_run": {
+    "id": "3974e329-d262-4a81-be37-8db8acd0c1f7",
+    "owner_user_id": "a34eda12-8ea3-4157-978e-357a8f471a61",
+    "project_id": "dcd85b07-a2fd-4efe-ad20-ead65612dbc0",
+    "task_kind": "update",
+    "state": "succeeded",
+    "stage": "succeeded",
+    "created_at": "2026-10-31T14:18:15.030045+00:00",
+    "updated_at": "2026-10-31T15:40:12.950068+00:00",
+    "input_revision": "2",
+    "input_hash": "5033b826f588f42da908666a34a80f87d8c338d034fe378fcf3f8950eab74725",
+    "artifact_id": "word-c73786b10ad9d7fff9d633b14d10862d1441542b1c8fa65695077f68f44a6cf3",
+    "artifact_version": "1",
+    "channel": "production",
+    "billing_mode": "fixed_credits",
+    "prompt_snapshot_ref": null
+  },
+  "input_capture_status": "blocked_source_capture",
+  "project_input": {
+    "name": "邹平国信招商发展有限公司-交易商协会-PPN · 定向债务融资工具-募集书更新",
+    "kind": "update",
+    "issuer_name": "邹平国信招商发展有限公司",
+    "market": "nafmii",
+    "offering": "ppn"
+  },
+  "materials": [
+    {
+      "file_id": "nov05-f010",
+      "original_filename": "DY-3邹平市汇融产业投资集团有限公司2025年度第一期债务融资工具定向募集说明书.docx",
+      "upload_role": "historical",
+      "source_material_id": "92ff4498-4456-49e0-936f-459728dfc586",
+      "source_material_version": 1,
+      "deleted_at": null
+    }
+  ],
+  "missing_materials": [
+    {
+      "project_id": "dcd85b07-a2fd-4efe-ad20-ead65612dbc0",
+      "id": "65d5d75d-40dc-4181-9835-1dfc21a85620",
+      "version": "1",
+      "filename": "pdf_file_澄宇审字(2026)第0359号 邹平国信招商 - 审计报告 已赋码(1)_tables.xlsx",
+      "role": "audit",
+      "sha256": "d10443fd794ccd6d487542501998df7142e60efa615a5a678a249e1a3735c6bc",
+      "bytes": 82254,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    },
+    {
+      "project_id": "dcd85b07-a2fd-4efe-ad20-ead65612dbc0",
+      "id": "75c95699-376b-432c-a0d1-12474d1f94e3",
+      "version": "1",
+      "filename": "pdf_file_澄宇审字(2026)第0359号 邹平国信招商 - 审计报告 已赋码(1)(1).docx",
+      "role": "audit",
+      "sha256": "fc7a8d0a679501280b6532a1e3fa4c30da57f08b7cd38eb4f7c09d8997c8ffde",
+      "bytes": 134563,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    },
+    {
+      "project_id": "dcd85b07-a2fd-4efe-ad20-ead65612dbc0",
+      "id": "7752b5ab-d5ce-46fe-9f28-d243a61d9356",
+      "version": "1",
+      "filename": "邹平国信招商2024-2025年两年连审审计报告 已赋码(1).pdf",
+      "role": "audit",
+      "sha256": "db66c63ec87acbfd6bb06f80f6438cbc93b9c7a73c3ce6bfbb2deed48f18d15e",
+      "bytes": 14245885,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    },
+    {
+      "project_id": "dcd85b07-a2fd-4efe-ad20-ead65612dbc0",
+      "id": "bf153e39-40c3-4046-8183-6c189c2c2aad",
+      "version": "1",
+      "filename": "2026年1-6月国信招商财务报表.pdf",
+      "role": "audit",
+      "sha256": "40e0dd36a17024070e698c4e0827ec96fa90a7d0e63728a27c1789e02e0bff98",
+      "bytes": 492829,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    },
+    {
+      "project_id": "dcd85b07-a2fd-4efe-ad20-ead65612dbc0",
+      "id": "a514a776-63db-4113-aed6-690bbf5a44e4",
+      "version": "1",
+      "filename": "2026年1-6月国信招商财务报表附注.pdf",
+      "role": "audit",
+      "sha256": "2efe3197f6ad228be3040509411fc3662b55a0840875542a878b4e27fdd95122",
+      "bytes": 1132078,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    },
+    {
+      "project_id": "dcd85b07-a2fd-4efe-ad20-ead65612dbc0",
+      "id": "bbe1b8c9-b623-4b49-9b15-a5e1b6f59848",
+      "version": "1",
+      "filename": "邹平国信招商发展有限公司主体长期信用评级报告-征求意见稿V1(3).docx",
+      "role": "other",
+      "sha256": "6dab3cf52c44cec6491bd5d331ba64e72d172d5d8fc328d6c2c39d5d23113482",
+      "bytes": 945480,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    }
+  ],
+  "business_acceptance_status": "not_evaluated",
+  "notes": [
+    "参考稿原文件名含“邹平市汇融产业投资集团”；不能仅凭项目名称认定同一主体。源文件名称、正文主体及原输入关系需分别核对。",
+    "同时保留审计PDF、提取的Word和Excel；不能将不同格式的同组材料重复计为多个独立证据来源。",
+    "待补齐：源项目完整业务输入、目标报告期/补充要求/参考稿关系，以及本案例缺失清单中的财务附件。不可用当前不完整材料验收更新效果。"
+  ],
+  "replay_policy": "隔离测试环境重新建项目、上传和报价；原生产ID/hash/报价只作追踪，不向生产重放。"
+}
