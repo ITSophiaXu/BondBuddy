@@ -131,6 +131,20 @@ jobs:
           grep -Eq '^# skipped 0$' "$RUNNER_TEMP/m4-core-api.tap"
           grep -Eq '^# todo 0$' "$RUNNER_TEMP/m4-core-api.tap"
 
+      - name: Project QA accepted pricing and answer history
+        run: |
+          node --test --test-concurrency=1 --test-reporter=tap \
+            apps/worker/dist/project-qa-pricing.pg.test.js \
+            apps/worker/dist/project-qa-materials.test.js \
+            apps/api/dist/project-scope-quotation.pg.test.js \
+            apps/api/dist/project-qa-history.test.js \
+            apps/api/dist/automatic-pricing.test.js \
+            | tee "$RUNNER_TEMP/qa-pricing.tap"
+          grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/qa-pricing.tap"
+          grep -Eq '^# fail 0$' "$RUNNER_TEMP/qa-pricing.tap"
+          grep -Eq '^# skipped 0$' "$RUNNER_TEMP/qa-pricing.tap"
+          grep -Eq '^# todo 0$' "$RUNNER_TEMP/qa-pricing.tap"
+
       - name: M4 worker stages, real Word pipeline and model router
         run: |
           # These suites inject synthetic model seams; they never spawn a provider CLI.
