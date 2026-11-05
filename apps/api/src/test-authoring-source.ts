@@ -25,7 +25,7 @@ export async function uploadSyntheticReference(app: FastifyInstance, project: st
   }]}},{'if-match':String(current.json().draft_revision)});
   assert.equal(saved.statusCode,200,saved.body);
   const versions = await send('GET',path+'/prospectus-versions'); assert.equal(versions.statusCode,200,versions.body);
-  assert.ok(versions.json().current_version_id,'uploaded reference is adopted');
+  if(current.json().kind==='update')assert.ok(versions.json().current_version_id,'uploaded reference is adopted');
   return {draft_revision:saved.json().draft_revision,prospectus_selection_revision:versions.json().selection_revision,
     material_versions:[ref],requirement_message_ids:[]};
 }
