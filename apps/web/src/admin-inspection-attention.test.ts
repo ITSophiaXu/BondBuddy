@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {Inspection,emptyFilters,type Row} from './admin-inspection-model.js';
-import {errors,overview,taskTable,taskSignalsPanel} from './admin-inspection-render.js';
+import {errors,overview,taskTable,taskSignalsPanel,recentExecutions} from './admin-inspection-render.js';
 import {taskDetail} from './admin-inspection-detail.js';
 
 const at='2026-11-05T06:00:00Z';
@@ -52,4 +52,15 @@ test('error evidence and pause reasons are escaped and filters remain scoped',()
  const html=taskSignalsPanel(d,run);assert.doesNotMatch(html,/<img/);assert.match(html,/&lt;img/);
  assert.equal(d.filtered({...emptyFilters(),state:'attention',user:'other-user'}).length,0);
  assert.equal(d.filtered({...emptyFilters(),state:'attention',kind:'review'}).length,0);
+});
+test('overview makes the active failure filter and eight-row preview explicit',()=>{
+ const failed=Array.from({length:10},(_,i)=>({...run,id:'failed-'+i,state:'failed'}));
+ const d=fixture({bb_runs:[run,...failed],bb_users:[{id:'user-1',username:'operator'}]});
+ const f={...emptyFilters(),state:'failed',user:'user-1'};
+ const html=recentExecutions(d,d.filtered(f),f);
+ assert.match(html,/状态：失败/);assert.match(html,/用户：operator/);assert.match(html,/当前匹配 10 次执行，下方展示最新 8 条/);
+ assert.doesNotMatch(html,/data-detail="run-1"/);assert.doesNotMatch(html,/data-detail="failed-8"/);
+ assert.match(html,/data-overview-reset/);assert.match(html,/data-view="tasks"/);
+ const reset=recentExecutions(d,d.filtered(emptyFilters()),emptyFilters());
+ assert.match(reset,/未设置筛选/);assert.match(reset,/data-detail="run-1"/);assert.doesNotMatch(reset,/data-overview-reset/);
 });
