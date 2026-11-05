@@ -25,6 +25,14 @@ function resolvedQaCitations(proposal:QaAnswer,evidence:QaResult['evidence']){
   if(!c.quote.trim())return [];
   const spans=evidence[c.asset_index]?.snapshot.spans??[];
   if(spans.some(s=>s.id===c.span_id&&s.text.includes(c.quote)))return [c];
+  // The extractor labels p0 as "段落 1". A model can copy that display number
+  // into span_id. Repair only this exact, verifiable alias in the same asset;
+  // never select a nearby paragraph or an arbitrary repeated table value.
+  const displayNumber=/^p([1-9]\d*)$/.exec(c.span_id)?.[1];
+  if(displayNumber&&Number.isSafeInteger(Number(displayNumber))){
+   const aliases=spans.filter(s=>s.id===`p${Number(displayNumber)-1}`&&s.location===`段落 ${displayNumber}`&&s.text.includes(c.quote));
+   if(aliases.length===1)return [{...c,span_id:aliases[0].id}];
+  }
   // Repair a wrong paragraph ID only for a unique verbatim quote in the same asset.
   // A locator typo is not a reason to ask the user to supply facts already disclosed.
   const matches=spans.filter(s=>s.text.includes(c.quote));
@@ -96,7 +104,7 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
      const questionCases=input.cases.map(c=>({c,score:qaSearchTerms(Object.values(c.content).join(' ')).filter(t=>terms.has(t)).length})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,3).map(x=>x.c);
      // Question IDs may contain punctuation and exceed the checkpoint's 64-character limit.
      // Keep the durable logical call ID unchanged; reserve room for the `_prompt` suffix.
-     const outcome=await (options.model??codexModelStage)({name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:'project-qa-prospectus-first-v2',resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,
+     const outcome=await (options.model??codexModelStage)({name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:'project-qa-prospectus-first-v3',resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,
       // An explicit unanswered question can finish without a citation. Its model
       // prose is discarded by groundedQaAnswer; invented quotations still re-ask.
       validate:(v):v is QaAnswer=>Value.Check(QaAnswerSchema,v)&&v.question_id===question.id&&(qaHasGroundedCitations(v,evidence)||qaUnanswered(v)),

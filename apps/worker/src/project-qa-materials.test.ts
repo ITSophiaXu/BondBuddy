@@ -108,3 +108,28 @@ test('an unanswered question retains local requests and discards all uncited mod
  assert.deepEqual(result.missing_materials,proposal.missing_materials);
  assert.match(result.answer,/暂无法形成有依据的回答/);assert.doesNotMatch(result.answer,/100%|引文未能|合同|审计报告/);
 });
+
+test('a display paragraph number resolves repeated declarations to the exact source paragraph',()=>{
+ const quote='本所确认募集说明书与本所出具的报告不存在矛盾。';
+ const evidence=[snapshot([{text:quote},{text:''},{text:quote},{text:''}])],input={cases:[]} as unknown as QaInput;
+ const proposal={question_id:q.id,answer:quote,status:'draft' as const,missing_materials:[],citations:[{asset_index:0,span_id:'p1',quote},{asset_index:0,span_id:'p3',quote}],case_ids:[],approach:''};
+ assert.equal(qaHasGroundedCitations(proposal,evidence),true);
+ const repaired=groundedQaAnswer(proposal,q,input,evidence);
+ assert.deepEqual(repaired.citations.map(c=>c.span_id),['p0','p2']);
+ assert.equal(repaired.answer,quote);assert.equal(repaired.status,'draft');
+ // A valid machine ID takes precedence over interpreting it as a display number.
+ assert.equal(groundedQaAnswer({...proposal,citations:[{asset_index:0,span_id:'p2',quote}]},q,input,evidence).citations[0].span_id,'p2');
+ for(const citation of [{asset_index:1,span_id:'p1',quote},{asset_index:0,span_id:'p01',quote},{asset_index:0,span_id:'p5',quote},{asset_index:0,span_id:'p1',quote:quote+'不存在风险。'}]){
+  assert.equal(qaHasGroundedCitations({...proposal,citations:[citation]},evidence),false);
+ }
+ assert.match(qaAnswerInstructions,/不得从 location 的“段落 N”推算为 pN/);
+});
+
+test('display-number repair never guesses between repeated table cells or incompatible locators',()=>{
+ const quote='暂未制定开发计划。';
+ const proposal={question_id:q.id,answer:quote,status:'draft' as const,missing_materials:[],citations:[{asset_index:0,span_id:'p1',quote}],case_ids:[],approach:''};
+ const table=snapshot([{text:quote,location:'表格 1 / 行 1 / 列 1'},{text:'标题',location:'表格 1 / 行 1 / 列 2'},{text:quote,location:'表格 1 / 行 2 / 列 1'}]);
+ assert.equal(qaHasGroundedCitations(proposal,[table]),false);
+ const wrongNumber=snapshot([{text:quote,location:'段落 20'},{text:''},{text:quote,location:'段落 30'}]);
+ assert.equal(qaHasGroundedCitations(proposal,[wrongNumber]),false);
+});
