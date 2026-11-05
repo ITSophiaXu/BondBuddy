@@ -1,3 +1,4 @@
+import { uploadSyntheticReference } from './test-authoring-source.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {randomUUID} from 'node:crypto';
@@ -37,7 +38,8 @@ test('dynamic billing: one point starts, exhaustion pauses, topup resumes same c
    const u=ok(await send('POST','/api/v1/projects/'+p.project_id+'/materials/uploads',{...d,filename:'synthetic.txt',media_type:'text/plain',role:'audit'}));
    assert.equal((await send('PUT',u.upload_url,b,{'content-type':'application/octet-stream'})).statusCode,204);
    const m=ok(await send('POST','/api/v1/projects/'+p.project_id+'/materials/uploads/'+u.upload_id+'/complete',d));
-   const i=ok(await send('POST','/api/v1/projects/'+p.project_id+'/input-revisions',{draft_revision:1,material_versions:[{material_id:m.material_id,material_version:1}],requirement_message_ids:[]}));
+   const reference=await uploadSyntheticReference(app,p.project_id);
+   const i=ok(await send('POST','/api/v1/projects/'+p.project_id+'/input-revisions',{...reference,material_versions:[...reference.material_versions,{material_id:m.material_id,material_version:1}]}));
    const q=ok(await send('POST','/api/v1/projects/'+p.project_id+'/credit-quote',{input_revision:i.input_revision,input_hash:i.input_hash}));
    return await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:p.project_id,input_revision:i.input_revision,input_hash:i.input_hash,task_kind:'update',input_manifest_ref:i.input_hash,storage_origin:'cloud',workspace_id:p.project_id,quote_id:q.quote.quote_id});
  };

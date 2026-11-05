@@ -24,17 +24,17 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
   const failures:string[]=[];app.addHook('onError',async(_request,_reply,error)=>{failures.push(String(error)+' '+((error as any).where??''));});
   const send=(method:string,url:string,payload?:any,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test',...headers}});
   const fund=(points:number,key:string=randomUUID(),expiresAt:string|null=null)=>transaction(pool,c=>grantCredits(c,{owner,points,key,source:expiresAt?'existing_grant':'purchase',expiresAt,actor:'synthetic-test',reason:'synthetic-only'}));
-  const newInput=async(role='audit')=>{
+  const newInput=async(role='reference')=>{
     const c=await send('POST','/api/v1/projects',{kind:'update',name:'Synthetic paid authoring',issuer_name:'Synthetic issuer',market:'sse',offering:'private',update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1',reporting_cutoff:'2026-09-30'}});
     assert.equal(c.statusCode,201,c.body);const id=c.json().project_id;
-    const b=role==='historical'?makeSyntheticDocxFixture({text:'Synthetic historical prospectus'}):Buffer.from('Synthetic issuer information'),d={byte_size:b.length,sha256:digest(b)};
-    const u=await send('POST',`/api/v1/projects/${id}/materials/uploads`,{...d,filename:role==='historical'?'synthetic.docx':'synthetic.txt',media_type:role==='historical'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'text/plain',role});
+    const b=role!=='audit'?makeSyntheticDocxFixture({text:'Synthetic historical prospectus'}):Buffer.from('Synthetic issuer information'),d={byte_size:b.length,sha256:digest(b)};
+    const u=await send('POST',`/api/v1/projects/${id}/materials/uploads`,{...d,filename:role!=='audit'?'synthetic.docx':'synthetic.txt',media_type:role!=='audit'?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'text/plain',role:role==='reference'?'historical':role});
     assert.equal(u.statusCode,201,u.body);
     assert.equal((await send('PUT',u.json().upload_url,b,{'content-type':'application/octet-stream'})).statusCode,204);
     const material=await send('POST',`/api/v1/projects/${id}/materials/uploads/${u.json().upload_id}/complete`,d);
     assert.equal(material.statusCode,200,material.body);
     let draftRevision=1,selectionRevision=0;
-    if(role==='historical'){
+    if(role!=='audit'){
       // Historical uploads are automatically adopted; use the acknowledged selection revision.
       const selected=await send('GET',`/api/v1/projects/${id}/prospectus-versions`);
       assert.equal(selected.statusCode,200,selected.body);selectionRevision=selected.json().selection_revision;
@@ -45,7 +45,7 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
       assert.equal(incomplete.statusCode,422,incomplete.body);assert.equal(incomplete.json().code,'INPUT_REQUIRED');
       assert.equal((await pool.query('SELECT count(*)::int n FROM bb_input_revisions WHERE project_id=$1',[id])).rows[0].n,0);
       const saved=await send('PATCH',`/api/v1/projects/${id}`,{update_details:{...current.json().update_details,
-        source_prospectuses:[{material_id:material.json().material_id,material_version:1,sha256:d.sha256,issuer_name:'Synthetic issuer',relation:'same_issuer',market:'sse',offering:'private',reporting_periods:reportingWindow('sse','private','2025-12-31'),status:'user_asserted'}]}},{'if-match':String(draftRevision)});
+        source_prospectuses:[{material_id:material.json().material_id,material_version:1,sha256:d.sha256,issuer_name:role==='historical'?'Synthetic issuer':'Synthetic reference issuer',relation:role==='historical'?'same_issuer':'similar_business',market:'sse',offering:'private',reporting_periods:reportingWindow('sse','private','2025-12-31'),status:'user_asserted'}]}},{'if-match':String(draftRevision)});
       assert.equal(saved.statusCode,200,saved.body);draftRevision=saved.json().draft_revision;
     }
     const input=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:draftRevision,prospectus_selection_revision:selectionRevision,material_versions:[{material_id:material.json().material_id,material_version:1}],requirement_message_ids:[]});
