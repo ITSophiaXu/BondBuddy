@@ -9,7 +9,7 @@ import {syntheticPaymentProvider} from './provider.mjs';
 
 // Real HTTP sessions, worker input gates/loaders, immutable inputs, queue leases
 // and money/credit transactions. Most cases use synthetic milestones/artifacts;
-// an additional runPipelineOnce case replaces only model/file-output stages.
+// pipeline scenarios replace only model/file-output stages.
 // This verifies policy compatibility and byte delivery, never content quality.
 const clean=cleanEnvironment();for(const key of Object.keys(process.env))if(!(key in clean))delete process.env[key];Object.assign(process.env,clean);
 const {createServer}=await import('../../apps/api/dist/server.js');
@@ -23,7 +23,7 @@ const {inputLockStage,runPipelineOnce,defaultRunStages}=await import('../../apps
 const {loadM4WorkerInput}=await import('../../apps/worker/dist/m4-input.js');
 const saved=config(),connectionString=pgBase+saved.database,legacyPool=new Pool({connectionString,max:4}),automaticPool=new Pool({connectionString,max:4});
 const nonce=randomUUID().slice(0,8),evidence=join(runtime,'m4-billing-policy-compatibility-'+nonce);mkdirSync(evidence,{recursive:true});
-const startedAt=new Date().toISOString(),checks=[],runs=[],orders=[],historicalQuoteFixtures=[],artifacts=[],apps=[],urls={main:baseURL},cookies=new Map();let owner,username,failure;
+const startedAt=new Date().toISOString(),checks=[],runs=[],orders=[],historicalQuoteFixtures=[],artifacts=[],apps=[],urls={main:baseURL},cookies=new Map();let owner,username,failure,finalAuditConsistent,finalActiveRuns;
 const workerGates=[],workerPipelines=[],lockedBindings=new Map();
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex'),record=name=>{checks.push(name);console.log('PASS '+name);};
 const sql=async(query,params)=>(await automaticPool.query(query,params)).rows;
@@ -107,6 +107,23 @@ async function savedPair(pool,lease){
 }
 const finishPair=(pool,lease,pair)=>finish(pool,lease,'succeeded',{artifactId:pair.document.artifactId,artifactVersion:pair.document.artifactVersion,blobs});
 const cancel=id=>post('automatic','/api/v1/runs/'+id+'/cancel',{reason:'synthetic_m4_policy_compatibility'});
+async function pipelineOwn(id,stages){
+  await nextOwn(id);let taken,unexpected;
+  try{
+    const outcome=await runPipelineOnce({pool:automaticPool,blobs,leaseSeconds:120,runKinds:['generation'],stages,
+      onLease:lease=>{if(!lease)return;if(lease.runId!==id||lease.owner!==owner){unexpected=lease;throw Error('Queue ownership changed before compatibility pipeline');}taken=lease;},
+      onUnexpectedError:error=>assert.fail(JSON.stringify(error))});
+    assert.ok(taken);return{outcome,lease:taken};
+  }finally{if(unexpected)await releaseLease(automaticPool,unexpected,'m4_compatibility_unrelated_guard');}
+}
+const runEvents=id=>sql('SELECT id,kind,lot_id,points::text FROM bb_credit_events WHERE owner_user_id=$1 AND run_id=$2 ORDER BY id',[owner,id]);
+async function rejectRepeatedFinish(lease){
+  const snapshot=async()=>({balance:await balance(),reservation:await ledger(lease.runId),events:await runEvents(lease.runId),
+    allocations:await sql('SELECT a.* FROM bb_credit_allocations a JOIN bb_credit_reservations r ON r.id=a.reservation_id WHERE r.owner_user_id=$1 AND r.run_id=$2 ORDER BY a.lot_id',[owner,lease.runId])});
+  const before=await snapshot();
+  await assert.rejects(finish(automaticPool,lease,'failed',{errorCode:'SYNTHETIC_DUPLICATE_FAILURE',failedStage:'word_delivery'}),error=>error.status===409&&error.code==='ALREADY_TERMINAL');
+  assert.deepEqual(await snapshot(),before);
+}
 try{
   assert.deepEqual(await sql('SELECT current_database() database,instance_id FROM bb_local_billing_instance'),[{database:saved.database,instance_id:saved.id}]);
   for(const [name,pool,automatic] of [['legacy',legacyPool,false],['automatic',automaticPool,true]]){const app=createServer({pool,blobs,enableSubscriptionBilling:automatic,enableOutcomePricing:false,
@@ -215,17 +232,77 @@ try{
   const net=(await sql("SELECT COALESCE(sum(points) FILTER(WHERE kind='settle'),0)-COALESCE(sum(points) FILTER(WHERE kind='correction'),0) AS points FROM bb_credit_events WHERE owner_user_id=$1",[owner]))[0].points;
   assert.equal(BigInt(net),orders.reduce((n,o)=>n+BigInt(o.amount_fen),0n)-returned);
   record('all unspent and failure-restored M4 source rights refund through original orders; refund failure releases and duplicate success never repays twice');
-  assert.equal((await auditCredits(automaticPool,owner)).consistent,true);
+
+  // The model fixture writes its output once; production orchestration replays
+  // the saved checkpoint and promotes the exact same bytes after a tail pause.
+  await topup(2000);const tailTask=await prepare(),tailRun=await execute('legacy',tailTask),tailReservation=(await ledger(tailRun.run_id))[0];
+  lease=await claimOwn(legacyPool,tailRun.run_id);await checkpointStage(legacyPool,lease,'input_lock',lease.verifiedInputLock);await releaseLease(legacyPool,lease,'synthetic_m4_tail_upgrade');
+  let tailModelCalls=0,tailWordReads=0;
+  const tailModel={name:'model_generation',run:async ctx=>{
+    assert.equal(await ctx.validateBeforeModelCall(),null);await workerGate(automaticPool,ctx.lease);tailModelCalls++;
+    const files={};for(const kind of ['document','preparation_note']){
+      const bytes=makeSyntheticDocxFixture({text:'Synthetic saved M4 '+kind+'. Content quality not evaluated.'}),key='synthetic-m4-policy-tail/'+tailRun.run_id+'/'+kind;
+      await blobs.put(key,bytes);files[kind]={key,sha256:hash(bytes)};
+    }
+    return{kind:'done',checkpoint:{synthetic_model:true,files}};
+  }};
+  const tailFiles={name:'word_delivery',replay:true,run:async ctx=>{
+    assert.equal(await ctx.validateBeforeModelCall(),null);tailWordReads++;
+    const bytes={};for(const [kind,file] of Object.entries(ctx.values.get('model_generation').files)){bytes[kind]=await blobs.get(file.key);assert.equal(hash(bytes[kind]),file.sha256);}
+    return{kind:'deliver',bytes:bytes.document,namedArtifacts:[{kind:'preparation_note',filename:'synthetic-preparation-note.docx',bytes:bytes.preparation_note}],deliveryPolicy:'generated_review_v1'};
+  }};
+  const tailStages=defaultRunStages({model_generation:tailModel,word_delivery:tailFiles});
+  assert.equal((await pipelineOwn(tailRun.run_id,tailStages)).outcome,'paused');await expectBalance(0);
+  assert.deepEqual([tailModelCalls,tailWordReads],[1,1]);assert.equal((await task(tailTask,tailRun.run_id)).credit_charge.progress.charged_points,'2000');assert.equal((await workspace(tailTask)).artifacts.length,0);
+  const savedTailArtifacts=await sql('SELECT id,version,sha256,object_key FROM bb_artifact_versions WHERE owner_user_id=$1 AND run_id=$2 ORDER BY id,version',[owner,tailRun.run_id]);assert.equal(savedTailArtifacts.length,2);
+  assert.deepEqual((await sql('SELECT state,stage,artifact_id FROM bb_runs WHERE id=$1',[tailRun.run_id]))[0],{state:'paused',stage:'credits_exhausted',artifact_id:null});
+  for(const a of savedTailArtifacts)await send('automatic','GET','/api/v1/m4/artifacts/'+a.id+'/versions/'+a.version+'/bytes',undefined,404);
+  const tailRefill=await topup(5000);await post('automatic','/api/v1/runs/'+tailRun.run_id+'/resume',{reason:'synthetic_real_m4_pipeline_tail_refill'});await expectBalance(5000);
+  assert.equal((await pipelineOwn(tailRun.run_id,tailStages)).outcome,'succeeded');await expectBalance(2500);
+  assert.deepEqual([tailModelCalls,tailWordReads],[1,2]);assert.deepEqual(await sql('SELECT id,version,sha256,object_key FROM bb_artifact_versions WHERE owner_user_id=$1 AND run_id=$2 ORDER BY id,version',[owner,tailRun.run_id]),savedTailArtifacts);
+  const tailFinal=(await ledger(tailRun.run_id))[0];assert.equal(tailFinal.id,tailReservation.id);assert.equal(tailFinal.quote_id,tailTask.request.quote_id);assert.equal(tailFinal.billing_policy,'authoring_balance_v2');assert.equal(tailFinal.charged_points,'4500');
+  for(const a of savedTailArtifacts)assert.equal(hash(await send('automatic','GET','/api/v1/m4/artifacts/'+a.id+'/versions/'+a.version+'/bytes',undefined,200,true)),a.sha256.trim());
+  workerPipelines.push({run:tailRun.run_id,outcomes:['paused','succeeded'],billingPolicy:tailFinal.billing_policy,syntheticModelInvocations:tailModelCalls,wordReads:tailWordReads,reusedArtifacts:savedTailArtifacts.map(({id,version,sha256})=>({id,version,sha256}))});
+  const tailUnused=await post('automatic','/api/v1/commerce/topups/'+tailRefill.order_id+'/refunds',{request_id:randomUUID(),amount_fen:'2500'},202);
+  await post('main','/__billing-test/api/refund/outcome',{id:tailUnused.refund_id,outcome:'succeeded',delivery:'query'});await post('automatic','/api/v1/commerce/refunds/'+tailUnused.refund_id+'/refresh');returned+=2500n;await expectBalance(0);
+  record('real upgraded M4 pipeline pauses at old v2 tail, keeps both files private, then reuses exact artifacts and one saved synthetic model output after recharge');
+
+  const failureFunding=await topup(10000);
+  for(const policy of ['authoring_balance_v2','on_delivery']){
+    const prepared=await prepare('legacy',policy==='on_delivery'),failedRun=await execute('legacy',prepared),original=(await ledger(failedRun.run_id))[0];assert.equal(original.billing_policy,policy);
+    lease=await claimOwn(legacyPool,failedRun.run_id);await checkpointStage(legacyPool,lease,'input_lock',lease.verifiedInputLock);await releaseLease(legacyPool,lease,'synthetic_m4_pipeline_failure_upgrade');
+    let failureStageEntered=0;const failStages=defaultRunStages({
+      model_generation:{name:'model_generation',run:async ctx=>{assert.equal(await ctx.validateBeforeModelCall(),null);await workerGate(automaticPool,ctx.lease);return{kind:'done',checkpoint:{synthetic_model:true}};}},
+      word_delivery:{name:'word_delivery',run:async ctx=>{assert.equal(await ctx.validateBeforeModelCall(),null);const held=(await ledger(ctx.run.id))[0];assert.equal(held.id,original.id);assert.equal(held.billing_policy,policy);if(policy==='authoring_balance_v2')assert.ok(BigInt(held.charged_points)>0n);failureStageEntered++;return{kind:'fail',code:'SYNTHETIC_OLD_M4_POLICY_STAGE_FAILURE'};}}
+    });
+    const failedPipeline=await pipelineOwn(failedRun.run_id,failStages);assert.equal(failedPipeline.outcome,'failed');assert.equal(failureStageEntered,1);await expectBalance(10000);
+    assert.deepEqual((await sql('SELECT state,artifact_id FROM bb_runs WHERE id=$1',[failedRun.run_id]))[0],{state:'failed',artifact_id:null});
+    const failedCharge=(await task(prepared,failedRun.run_id)).credit_charge;assert.equal(failedCharge.progress.policy,policy);assert.equal(failedCharge.progress.charged_points,'0');
+    const after=(await ledger(failedRun.run_id))[0];assert.equal(after.id,original.id);assert.equal(after.quote_id,original.quote_id);assert.equal(after.points,original.points);
+    const events=await runEvents(failedRun.run_id),sum=kind=>events.filter(e=>e.kind===kind).reduce((n,e)=>n+BigInt(e.points),0n);
+    if(policy==='authoring_balance_v2'){assert.ok(sum('settle')>0n);assert.equal(sum('correction'),sum('settle'));}
+    else{assert.equal(sum('settle'),0n);assert.equal(sum('release'),BigInt(original.points));assert.equal(events.filter(e=>e.kind==='release').length,1);}
+    assert.equal((await workspace(prepared)).artifacts.length,0);assert.equal((await sql('SELECT count(*)::int n FROM bb_artifact_versions WHERE owner_user_id=$1 AND run_id=$2',[owner,failedRun.run_id]))[0].n,0);
+    await rejectRepeatedFinish(failedPipeline.lease);assert.equal((await auditCredits(automaticPool,owner)).consistent,true);
+    workerPipelines.push({run:failedRun.run_id,outcome:'failed',failureStage:'word_delivery',failureStageEntered,billingPolicy:policy,repeatFinish:'ALREADY_TERMINAL_no_ledger_change',creditEvents:events});
+    record('real upgraded M4 pipeline stage failure preserves '+policy+' contract, restores its original debits/hold and rejects duplicate finish without another refund');
+  }
+  const failureUnused=await post('automatic','/api/v1/commerce/topups/'+failureFunding.order_id+'/refunds',{request_id:randomUUID(),amount_fen:'10000'},202);
+  await post('main','/__billing-test/api/refund/outcome',{id:failureUnused.refund_id,outcome:'succeeded',delivery:'query'});await post('automatic','/api/v1/commerce/refunds/'+failureUnused.refund_id+'/refresh');returned+=10000n;await expectBalance(0);
+  const finalNet=(await sql("SELECT COALESCE(sum(points) FILTER(WHERE kind='settle'),0)-COALESCE(sum(points) FILTER(WHERE kind='correction'),0) AS points FROM bb_credit_events WHERE owner_user_id=$1",[owner]))[0].points;
+  assert.equal(BigInt(finalNet),orders.reduce((n,o)=>n+BigInt(o.amount_fen),0n)-returned);
+  finalAuditConsistent=(await auditCredits(automaticPool,owner)).consistent;assert.equal(finalAuditConsistent,true);
   assert.equal((await sql('SELECT count(*)::int n FROM bb_model_call_attempts WHERE owner_user_id=$1',[owner]))[0].n,0);
-  assert.equal((await sql("SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND state NOT IN ('succeeded','failed','cancelled','rejected','test_completed')",[owner]))[0].n,0);
+  finalActiveRuns=(await sql("SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND state NOT IN ('succeeded','failed','cancelled','rejected','test_completed')",[owner]))[0].n;assert.equal(finalActiveRuns,0);
   record('final M4 shared-account credit audit reconciles exact net task charges and cash refunds with no active run and zero model calls');
 }catch(error){failure=error;}
 finally{
   const cleanup=[];
   if(failure&&owner)for(const r of await sql("SELECT id FROM bb_runs WHERE owner_user_id=$1 AND state NOT IN ('succeeded','failed','cancelled','rejected','test_completed')",[owner]))try{await cancel(r.id);cleanup.push({run:r.id,cancelled:true});}catch(error){cleanup.push({run:r.id,error:String(error)});}
   const proof={synthetic:true,contentQualityEvaluated:false,realHttp:true,realPostgres:true,oneDatabase:true,oneAccount:true,realPaymentCallsPerformed:0,modelCallsPerformed:0,
-    startedAt,finishedAt:new Date().toISOString(),instanceId:saved.id,username,owner,runs,orders:orders.map(o=>({id:o.order_id,amount_fen:o.amount_fen})),historicalQuoteFixtures,artifacts,workerGates,workerPipelines,
+    startedAt,finishedAt:new Date().toISOString(),instanceId:saved.id,username,owner,runs,orders:orders.map(o=>({id:o.order_id,amount_fen:o.amount_fen})),historicalQuoteFixtures,artifacts,workerGates,workerPipelines,finalAuditConsistent,finalActiveRuns,
     compatibilityScope:'Current binary under legacy/automatic configuration; historical on_delivery is an explicitly appended policy fixture using the current snapshot format, not a historical binary/schema migration.',
+    remainingCoverage:['No historical binary/schema or original provider-journal migration; no unknown provider result or measured-usage reconciliation is constructed.'],
     passed:checks.length,failed:failure?1:0,skipped:0,checks,cleanup,...(failure?{error:String(failure),stack:failure.stack}:{})};
   writeFileSync(join(evidence,'verification.json'),JSON.stringify(proof,null,2)+'\n');console.log(JSON.stringify({evidence,...proof}));for(const app of apps.reverse())await app.close();await legacyPool.end();await automaticPool.end();
 }

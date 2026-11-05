@@ -9,7 +9,7 @@ import {syntheticPaymentProvider} from './provider.mjs';
 
 // Real HTTP sessions, one database/account and production worker input gates.
 // Most scenarios exercise real queue/settlement with synthetic milestones and
-// artifacts. The final scenario also uses runPipelineOnce/defaultRunStages,
+// artifacts. Pipeline scenarios also use runPipelineOnce/defaultRunStages,
 // replacing only model/file-output stages. No generated-content quality claim.
 const clean=cleanEnvironment();for(const key of Object.keys(process.env))if(!(key in clean))delete process.env[key];Object.assign(process.env,clean);
 const {createServer}=await import('../../apps/api/dist/server.js');
@@ -31,7 +31,7 @@ const getIfExists=async key=>{try{return await get(key);}catch(error){if(error.c
 const blobs={put:(key,bytes)=>writeFile(blobPath(key),bytes),get,getIfExists,
   getIfExistsBounded:async(key,limit)=>{try{assert.ok((await stat(blobPath(key))).size<=limit);return await get(key);}catch(error){if(error.code==='ENOENT')return null;throw error;}},
   exists:async key=>(await getIfExists(key))!==null,delete:async key=>{try{await unlink(blobPath(key));}catch(error){if(error.code!=='ENOENT')throw error;}}};
-const apps=[],urls={main:baseURL},cookies=new Map();let owner,username,failure;
+const apps=[],urls={main:baseURL},cookies=new Map();let owner,username,failure,finalAuditConsistent,finalActiveRuns;
 async function send(target,method,path,body,expected=200){
   const headers={origin:baseURL,cookie:[...cookies].map(([k,v])=>k+'='+v).join('; '),'x-bb-csrf':cookies.get('bb_csrf')??''};
   if(body!==undefined)headers['content-type']='application/json';
@@ -79,6 +79,21 @@ async function claimOwn(pool,id){
   await workerGate(pool,lease);return lease;
 }
 async function deliver(pool,lease){const artifact=await syntheticReviewPair(pool,lease,blobs);return finish(pool,lease,'succeeded',{artifactId:artifact.artifactId,artifactVersion:1,blobs});}
+async function pipelineOwn(id,stages){
+  await nextOwn(id);let taken,unexpected;
+  try{
+    const outcome=await runPipelineOnce({pool:automaticPool,blobs,leaseSeconds:120,runKinds:['review','update'],stages,
+      onLease:lease=>{if(!lease)return;if(lease.runId!==id||lease.owner!==owner){unexpected=lease;throw Error('Queue ownership changed before compatibility pipeline');}taken=lease;},
+      onUnexpectedError:error=>assert.fail(JSON.stringify(error))});
+    assert.ok(taken);return{outcome,lease:taken};
+  }finally{if(unexpected)await releaseLease(automaticPool,unexpected,'policy_compatibility_unrelated_guard');}
+}
+const runEvents=id=>sql('SELECT id,kind,lot_id,points::text FROM bb_credit_events WHERE owner_user_id=$1 AND run_id=$2 ORDER BY id',[owner,id]);
+async function rejectRepeatedFinish(lease){
+  const before={balance:await balance(),reservation:await ledger(lease.runId),allocations:await allocations(lease.runId),events:await runEvents(lease.runId)};
+  await assert.rejects(finish(automaticPool,lease,'failed',{errorCode:'SYNTHETIC_DUPLICATE_FAILURE',failedStage:'word_delivery'}),error=>error.status===409&&error.code==='ALREADY_TERMINAL');
+  assert.deepEqual({balance:await balance(),reservation:await ledger(lease.runId),allocations:await allocations(lease.runId),events:await runEvents(lease.runId)},before);
+}
 async function updateRequest(projectId,sourceRun,requirements){
   const body={execution_request_id:randomUUID(),source_run_id:sourceRun,requirements},path='/api/v1/projects/'+projectId+'/review-updates';
   const q=await post('legacy',path+'/quote',body);assert.equal(q.quote.points,'14900');assert.equal(q.quote.pricing_mode,undefined);
@@ -202,9 +217,71 @@ try{
   await post('automatic','/api/v1/commerce/refunds/'+unused.refund_id+'/refresh');await expectBalance(0);
   record('production runPipelineOnce replays an old v2 input lock through real input/material gates and delivery settlement; only model/file output is synthetic');
 
-  assert.equal((await auditCredits(automaticPool,owner)).consistent,true);
+  // Persist synthetic model output once. Both worker invocations use production
+  // orchestration, promotion and settlement; the second reads the same bytes.
+  const tailFunding=await topup(10000);await pay(tailFunding.order_id);
+  const tailTask=await prepare('dynamic'),tailRun=await execute('legacy',tailTask),tailReservation=(await ledger(tailRun.run_id))[0];
+  lease=await claimOwn(legacyPool,tailRun.run_id);await checkpointStage(legacyPool,lease,'input_lock',lease.verifiedInputLock);await releaseLease(legacyPool,lease,'synthetic_tail_upgrade');
+  let tailModelCalls=0,tailWordReads=0;
+  const tailModel={name:'model_generation',run:async ctx=>{
+    assert.equal(await ctx.validateBeforeModelCall(),null);await workerGate(automaticPool,ctx.lease);tailModelCalls++;
+    const {makeSyntheticDocxFixture}=await import('../../apps/api/dist/docx-fixtures.js'),files={};
+    for(const kind of ['revision','clean','report']){
+      const bytes=makeSyntheticDocxFixture({text:'Synthetic saved review '+kind+'. Content quality not evaluated.'}),key='synthetic-policy-tail/'+tailRun.run_id+'/'+kind;
+      await blobs.put(key,bytes);files[kind]={key,sha256:createHash('sha256').update(bytes).digest('hex')};
+    }
+    return{kind:'done',checkpoint:{synthetic_model:true,files}};
+  }};
+  const tailFiles={name:'word_delivery',replay:true,run:async ctx=>{
+    assert.equal(await ctx.validateBeforeModelCall(),null);tailWordReads++;
+    const files=ctx.values.get('model_generation').files,bytes={};
+    for(const [kind,file] of Object.entries(files)){bytes[kind]=await blobs.get(file.key);assert.equal(createHash('sha256').update(bytes[kind]).digest('hex'),file.sha256);}
+    return{kind:'deliver',bytes:bytes.revision,cleanBytes:bytes.clean,attachments:[{kind:'report',bytes:bytes.report}],deliveryPolicy:'generated_pair_v1',wordSummary:{synthetic_output:true,content_review:'not_performed'}};
+  }};
+  const tailStages=defaultRunStages({model_generation:tailModel,word_delivery:tailFiles});
+  assert.equal((await pipelineOwn(tailRun.run_id,tailStages)).outcome,'paused');await expectBalance(0);
+  assert.deepEqual([tailModelCalls,tailWordReads],[1,1]);assert.equal((await charge(tailRun.run_id)).progress.charged_points,'10000');
+  const savedTailArtifacts=await sql('SELECT id,version,sha256,object_key FROM bb_artifact_versions WHERE owner_user_id=$1 AND run_id=$2 ORDER BY id,version',[owner,tailRun.run_id]);assert.equal(savedTailArtifacts.length,3);
+  assert.deepEqual((await sql('SELECT state,stage,artifact_id FROM bb_runs WHERE id=$1',[tailRun.run_id]))[0],{state:'paused',stage:'credits_exhausted',artifact_id:null});
+  const tailRefill=await topup(30000);await pay(tailRefill.order_id);await post('automatic','/api/v1/runs/'+tailRun.run_id+'/resume',{reason:'synthetic_real_pipeline_tail_refill'});await expectBalance(30000);
+  assert.equal((await pipelineOwn(tailRun.run_id,tailStages)).outcome,'succeeded');await expectBalance(12805);
+  assert.deepEqual([tailModelCalls,tailWordReads],[1,2]);assert.deepEqual(await sql('SELECT id,version,sha256,object_key FROM bb_artifact_versions WHERE owner_user_id=$1 AND run_id=$2 ORDER BY id,version',[owner,tailRun.run_id]),savedTailArtifacts);
+  const tailFinal=(await ledger(tailRun.run_id))[0];assert.equal(tailFinal.id,tailReservation.id);assert.equal(tailFinal.quote_id,tailTask.request.quote_id);assert.equal(tailFinal.billing_policy,'authoring_balance_v2');assert.equal(tailFinal.charged_points,'27195');
+  for(const artifact of savedTailArtifacts)assert.equal(createHash('sha256').update(await blobs.get(artifact.object_key)).digest('hex'),artifact.sha256.trim());
+  workerPipelines.push({run:tailRun.run_id,outcomes:['paused','succeeded'],billingPolicy:tailFinal.billing_policy,syntheticModelInvocations:tailModelCalls,wordReads:tailWordReads,reusedArtifacts:savedTailArtifacts.map(({id,version,sha256})=>({id,version,sha256}))});
+  const tailUnused=await post('automatic','/api/v1/commerce/topups/'+tailRefill.order_id+'/refunds',{request_id:randomUUID(),amount_fen:'12805'},202);
+  await post('main','/__billing-test/api/refund/outcome',{id:tailUnused.refund_id,outcome:'succeeded',delivery:'query'});await post('automatic','/api/v1/commerce/refunds/'+tailUnused.refund_id+'/refresh');await expectBalance(0);
+  record('real upgraded review pipeline pauses at old v2 tail, resumes after recharge, reuses all three exact artifacts and the single saved synthetic model output');
+
+  const failureFunding=await topup(30000);await pay(failureFunding.order_id);
+  for(const policy of ['authoring_balance_v2','on_delivery']){
+    const prepared=policy==='authoring_balance_v2'?await prepare('dynamic'):await updateRequest(old.project_id,first.run_id,'Synthetic real pipeline old-policy failure');
+    const failedRun=policy==='authoring_balance_v2'?await execute('legacy',prepared):await post('legacy',prepared.path,prepared.body);
+    if(policy==='on_delivery')runs.push(failedRun.run_id);
+    const original=(await ledger(failedRun.run_id))[0];assert.equal(original.billing_policy,policy);
+    lease=await claimOwn(legacyPool,failedRun.run_id);await checkpointStage(legacyPool,lease,'input_lock',lease.verifiedInputLock);await releaseLease(legacyPool,lease,'synthetic_pipeline_failure_upgrade');
+    let failureStageEntered=0;const failStages=defaultRunStages({
+      model_generation:{name:'model_generation',run:async ctx=>{assert.equal(await ctx.validateBeforeModelCall(),null);await workerGate(automaticPool,ctx.lease);return{kind:'done',checkpoint:{synthetic_model:true}};}},
+      word_delivery:{name:'word_delivery',run:async ctx=>{assert.equal(await ctx.validateBeforeModelCall(),null);const held=(await ledger(ctx.run.id))[0];assert.equal(held.id,original.id);assert.equal(held.billing_policy,policy);if(policy==='authoring_balance_v2')assert.ok(BigInt(held.charged_points)>0n);failureStageEntered++;return{kind:'fail',code:'SYNTHETIC_OLD_POLICY_STAGE_FAILURE'};}}
+    });
+    const failedPipeline=await pipelineOwn(failedRun.run_id,failStages);assert.equal(failedPipeline.outcome,'failed');assert.equal(failureStageEntered,1);await expectBalance(30000);
+    assert.deepEqual((await sql('SELECT state,artifact_id FROM bb_runs WHERE id=$1',[failedRun.run_id]))[0],{state:'failed',artifact_id:null});
+    const failedCharge=await charge(failedRun.run_id);assert.equal(failedCharge.progress.policy,policy);assert.equal(failedCharge.progress.charged_points,'0');
+    const after=(await ledger(failedRun.run_id))[0];assert.equal(after.id,original.id);assert.equal(after.quote_id,original.quote_id);assert.equal(after.points,original.points);
+    const events=await runEvents(failedRun.run_id),sum=kind=>events.filter(e=>e.kind===kind).reduce((n,e)=>n+BigInt(e.points),0n);
+    if(policy==='authoring_balance_v2'){assert.ok(sum('settle')>0n);assert.equal(sum('correction'),sum('settle'));}
+    else{assert.equal(sum('settle'),0n);assert.equal(sum('release'),BigInt(original.points));assert.equal(events.filter(e=>e.kind==='release').length,1);}
+    assert.equal((await sql('SELECT count(*)::int n FROM bb_artifact_versions WHERE owner_user_id=$1 AND run_id=$2',[owner,failedRun.run_id]))[0].n,0);
+    await rejectRepeatedFinish(failedPipeline.lease);assert.equal((await auditCredits(automaticPool,owner)).consistent,true);
+    workerPipelines.push({run:failedRun.run_id,outcome:'failed',failureStage:'word_delivery',failureStageEntered,billingPolicy:policy,repeatFinish:'ALREADY_TERMINAL_no_ledger_change',creditEvents:events});
+    record('real upgraded review pipeline stage failure preserves '+policy+' contract, restores its original debits/hold and rejects duplicate finish without another refund');
+  }
+  const failureUnused=await post('automatic','/api/v1/commerce/topups/'+failureFunding.order_id+'/refunds',{request_id:randomUUID(),amount_fen:'30000'},202);
+  await post('main','/__billing-test/api/refund/outcome',{id:failureUnused.refund_id,outcome:'succeeded',delivery:'query'});await post('automatic','/api/v1/commerce/refunds/'+failureUnused.refund_id+'/refresh');await expectBalance(0);
+
+  finalAuditConsistent=(await auditCredits(automaticPool,owner)).consistent;assert.equal(finalAuditConsistent,true);
   assert.equal((await sql('SELECT count(*)::int n FROM bb_model_call_attempts WHERE owner_user_id=$1',[owner]))[0].n,0);
-  assert.equal((await sql("SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND state NOT IN ('succeeded','failed','cancelled','rejected','test_completed')",[owner]))[0].n,0);
+  finalActiveRuns=(await sql("SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND state NOT IN ('succeeded','failed','cancelled','rejected','test_completed')",[owner]))[0].n;assert.equal(finalActiveRuns,0);
   record('shared-account final authoritative audit passes with no active run and zero real payment or model calls');
 }catch(error){failure=error;}
 finally{
@@ -213,8 +290,9 @@ finally{
     try{await post('automatic','/api/v1/runs/'+run.id+'/cancel',{reason:'synthetic_compatibility_cleanup'});cleanup.push({run:run.id,cancelled:true});}catch(error){cleanup.push({run:run.id,error:String(error)});}
   }
   const proof={synthetic:true,realHttp:true,realPostgres:true,oneDatabase:true,oneAccount:true,realPaymentCallsPerformed:0,modelCallsPerformed:0,
-    startedAt,finishedAt:new Date().toISOString(),instanceId:saved.id,username,owner,runs,orders,workerGates,workerPipelines,contentQualityEvaluated:false,
+    startedAt,finishedAt:new Date().toISOString(),instanceId:saved.id,username,owner,runs,orders,workerGates,workerPipelines,contentQualityEvaluated:false,finalAuditConsistent,finalActiveRuns,
     compatibilityScope:'Current binary under legacy/automatic configuration; immutable policy compatibility, not historical schema or binary migration.',
+    remainingCoverage:['No historical binary/schema or original provider-journal migration; no unknown provider result or measured-usage reconciliation is constructed.'],
     passed:checks.length,failed:failure?1:0,skipped:0,checks,cleanup,
     ...(failure?{error:String(failure),stack:failure.stack}:{})};
   writeFileSync(join(evidence,'verification.json'),JSON.stringify(proof,null,2)+'\n');console.log(JSON.stringify({evidence,...proof}));

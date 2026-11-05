@@ -1,0 +1,90 @@
+{
+  "checkedAt": "2026-11-05T09:45:46.8503115Z",
+  "role": "primary_agent_independent_review",
+  "base": "1ef2092708aaadbb12f07a4e6ddf5a9e2dee322f",
+  "sourceBindings": [
+    {
+      "path": "scripts/billing-functional/billing-policy-compatibility-verify.mjs",
+      "sha256": "a9b0df03af710fa629e74e8fe04b025d29b956d73b36e440375d8e22a1a8f56f",
+      "matches": true
+    },
+    {
+      "path": "scripts/billing-functional/m4-billing-policy-compatibility-verify.mjs",
+      "sha256": "f092742fba0cbd073d7a9f2741a073145e96761146ba483172b5d8e3771985ea",
+      "matches": true
+    },
+    {
+      "path": "scripts/billing-functional/config.mjs",
+      "sha256": "84b9f7e155413bdbd52d00806cf2bdc4f747a8fe472f8a2d01fa70a7b0ac1549",
+      "matches": true
+    },
+    {
+      "path": "scripts/billing-functional/provider.mjs",
+      "sha256": "5caafc106aee1a5115650baa2e42b4aa30f35d5af0b37e436f92cd9a5ea4689c",
+      "matches": true
+    },
+    {
+      "path": "scripts/billing-functional/serve.mjs",
+      "sha256": "d2bb55f7d982a1b6b022931a13c25c91d3ec884064a93a58151fadd7f783d6d6",
+      "matches": true
+    },
+    {
+      "path": "apps/api/dist/server.js",
+      "sha256": "44cd89c3ef2385b627fd27482cc62a9f317e0b274996f08d95524b8b4968c8c0",
+      "matches": true
+    },
+    {
+      "path": "apps/api/dist/queue.js",
+      "sha256": "72c639c0c6a68118e4af0b1387b3880cf136a78885a11e5a8b2dd50f9b8be362",
+      "matches": true
+    },
+    {
+      "path": "apps/api/dist/automatic-billing-context.js",
+      "sha256": "115476014266e6ed21b7327e598d35e8d9a616f2b91f0270988af5f9ce3293c5",
+      "matches": true
+    },
+    {
+      "path": "apps/worker/dist/run-pipeline.js",
+      "sha256": "4a32082b61b1f44c3ee7c5c6e79083ae4e0c7c09cc53029bd5c8fd3a97a4d7df",
+      "matches": true
+    },
+    {
+      "path": "apps/worker/dist/m4-input.js",
+      "sha256": "36bff626f0652b1cebd9ea78341e00a32b5cacd817013ac42098473f3e37cf5b",
+      "matches": true
+    }
+  ],
+  "reports": [
+    {
+      "file": "review.json",
+      "sha256": "7092650dd0ea22a37c7f74bb55f64d7f5fc12c8a97d0b97dba95ab2904460f3e",
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "finalAuditConsistent": true,
+      "finalActiveRuns": 0,
+      "pipelineScenarios": 4,
+      "realPaymentCalls": 0,
+      "realModelCalls": 0
+    },
+    {
+      "file": "m4.json",
+      "sha256": "7147722d28ea10947083fee60d7274a3421da987812ccbd6fa8b5d3194cc1fba",
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "finalAuditConsistent": true,
+      "finalActiveRuns": 0,
+      "pipelineScenarios": 4,
+      "realPaymentCalls": 0,
+      "realModelCalls": 0
+    }
+  ],
+  "checks": [
+    "Both complete final reports independently parsed; original summaries retained",
+    "Recorded source and compiled artifact raw hashes match current bytes before root build",
+    "Failure stages entered once, locked policies and reservation/quote preserved, duplicate terminal finish leaves ledger unchanged",
+    "Tail resumes reuse registered artifact IDs/versions/hashes and one saved synthetic model output",
+    "No real-model, merchant, historical-schema or unknown-provider-journal acceptance claimed"
+  ]
+}

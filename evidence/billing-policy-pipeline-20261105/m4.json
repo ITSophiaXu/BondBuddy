@@ -1,0 +1,648 @@
+{
+  "synthetic": true,
+  "contentQualityEvaluated": false,
+  "realHttp": true,
+  "realPostgres": true,
+  "oneDatabase": true,
+  "oneAccount": true,
+  "realPaymentCallsPerformed": 0,
+  "modelCallsPerformed": 0,
+  "startedAt": "2026-11-05T09:43:18.710Z",
+  "finishedAt": "2026-11-05T09:43:33.231Z",
+  "instanceId": "85f66562-58b4-4af1-b6d1-995d6477e2e2",
+  "username": "m4_policy_b49bd1d7",
+  "owner": "c230629b-42d6-4be7-9ee0-97ad5d7d7a50",
+  "runs": [
+    "47f3df6a-71e5-4475-905b-7c62d16d43d5",
+    "41733f16-4ab1-4606-9bc7-50c42daf83b3",
+    "a120278e-9242-4392-9167-a801dbf548e2",
+    "fbbbd545-1bb7-4cbc-8867-4c1ede65be8c",
+    "6caddcd8-ab45-44d4-abe9-108516683188",
+    "61538699-f797-4359-92c2-8879f872db11",
+    "e2402fbe-e2a2-49e4-8260-c66248f89b20",
+    "55312206-8d69-4969-a629-49750259e79f",
+    "3d84805f-0a57-46d3-958b-60172d08aaad",
+    "91df4108-390d-4255-a796-c180db3994d7",
+    "8b99412a-db8a-4249-a511-828b87d0ddfd",
+    "fdccff24-d9a2-4fe4-bc73-1469c3099303",
+    "277f72bf-5a2a-4ef4-8e1c-5e3780560358"
+  ],
+  "orders": [
+    {
+      "id": "f43fe7b38c8b49e79219bc2ec7599776",
+      "amount_fen": "1"
+    },
+    {
+      "id": "c4b2515e5c6944bfb58594918e13f381",
+      "amount_fen": "100"
+    },
+    {
+      "id": "51d792b61f4c4df4a0ab23eb6a907927",
+      "amount_fen": "1"
+    },
+    {
+      "id": "0f389c5c62954814aec9326ca08e4f09",
+      "amount_fen": "5000"
+    },
+    {
+      "id": "fcd5e2ace17b4e0a8de40d40fd1ed69e",
+      "amount_fen": "20000"
+    },
+    {
+      "id": "64f4ab9de8f241009db0b1c034a2a2bd",
+      "amount_fen": "50000"
+    },
+    {
+      "id": "b8249fb93af34188b8759f85c9e96391",
+      "amount_fen": "2000"
+    },
+    {
+      "id": "e0675413ea454f688f4d9cb7b5efd322",
+      "amount_fen": "5000"
+    },
+    {
+      "id": "1df95c2c471f4202832c643c333a5d28",
+      "amount_fen": "10000"
+    }
+  ],
+  "historicalQuoteFixtures": [
+    {
+      "quoteId": "af8d06f0-5e33-4705-88f9-c55dd0b7b031",
+      "copiedFrom": "9961c30f-9be5-4d14-8b6b-92589c7defa9",
+      "points": "4500",
+      "billing_policy": "on_delivery",
+      "appendOnly": true
+    },
+    {
+      "quoteId": "274c8d09-87eb-475b-b0f3-cb47a8b1f9b2",
+      "copiedFrom": "aa2272cf-4a56-4f42-8f3f-f047ed70e154",
+      "points": "4500",
+      "billing_policy": "on_delivery",
+      "appendOnly": true
+    },
+    {
+      "quoteId": "a88ac8c6-6666-453e-b25d-667e74479380",
+      "copiedFrom": "e0f97f8a-f639-4f80-97dd-a95264007383",
+      "points": "4500",
+      "billing_policy": "on_delivery",
+      "appendOnly": true
+    },
+    {
+      "quoteId": "61d42b3f-675a-41b4-bb2b-caee24770c47",
+      "copiedFrom": "12dce52d-9b32-482b-80ac-717cb30b3f51",
+      "points": "4500",
+      "billing_policy": "on_delivery",
+      "appendOnly": true
+    },
+    {
+      "quoteId": "a7e31457-eeb5-495c-ba2d-52be1aa687f7",
+      "copiedFrom": "bd0d14a9-5ca8-4642-93e6-4a4d4aa8ce5d",
+      "points": "4500",
+      "billing_policy": "on_delivery",
+      "appendOnly": true
+    }
+  ],
+  "artifacts": [
+    {
+      "run": "47f3df6a-71e5-4475-905b-7c62d16d43d5",
+      "kind": "document",
+      "artifactId": "word-efe5cf1d579a762f09ab376e460cb28e2d49bb709916a6ab79355b531143306a",
+      "artifactVersion": 1,
+      "sha256": "f87552a48ca8938bfcb4a4d1ff20eb9322050e9bebe12060bafbf69656d08c37"
+    },
+    {
+      "run": "47f3df6a-71e5-4475-905b-7c62d16d43d5",
+      "kind": "preparation_note",
+      "artifactId": "word-ee942133839515d59283cb918463376d4f3ac5a61b2b9f2cf6f8861285e3454e",
+      "artifactVersion": 1,
+      "sha256": "9044a76f058c41dd1ebf9cdd4b3ea83165acbee08598277d489ff98f0139f78e"
+    },
+    {
+      "run": "41733f16-4ab1-4606-9bc7-50c42daf83b3",
+      "kind": "document",
+      "artifactId": "word-f22a80a9595da7a22ae655e8cd0d9fe994b4314ec1cf08a89d3d7ea2adee127b",
+      "artifactVersion": 1,
+      "sha256": "f87552a48ca8938bfcb4a4d1ff20eb9322050e9bebe12060bafbf69656d08c37"
+    },
+    {
+      "run": "41733f16-4ab1-4606-9bc7-50c42daf83b3",
+      "kind": "preparation_note",
+      "artifactId": "word-f8dcabc66b3615f5f19e6532d60cd9b0d620c32a47aedb6924df21ee7a8bd92c",
+      "artifactVersion": 1,
+      "sha256": "9044a76f058c41dd1ebf9cdd4b3ea83165acbee08598277d489ff98f0139f78e"
+    },
+    {
+      "run": "e2402fbe-e2a2-49e4-8260-c66248f89b20",
+      "kind": "document",
+      "artifactId": "word-b224a6253fc2a0b813b2967fda0d147d649e4d704b9bf08d8da8554784c65291",
+      "artifactVersion": 1,
+      "sha256": "f87552a48ca8938bfcb4a4d1ff20eb9322050e9bebe12060bafbf69656d08c37"
+    },
+    {
+      "run": "e2402fbe-e2a2-49e4-8260-c66248f89b20",
+      "kind": "preparation_note",
+      "artifactId": "word-ac8f200c6ff3278a0994a9d03deb8eb14168f40812aa9daaaa2d2ac2462194b2",
+      "artifactVersion": 1,
+      "sha256": "9044a76f058c41dd1ebf9cdd4b3ea83165acbee08598277d489ff98f0139f78e"
+    }
+  ],
+  "workerGates": [
+    {
+      "run": "47f3df6a-71e5-4475-905b-7c62d16d43d5",
+      "automatic": false,
+      "inputRevision": 1,
+      "inputHash": "b0dce9a5ee1d67f70d0b7056776e4ea1badfbbc210751096e47d5610f2080820",
+      "reservationId": "640cd28b-1f3a-485f-a4c3-b9caacc8dfb9",
+      "quoteId": "875f88d3-a362-4adc-a93d-8daeedb291b5",
+      "billingPolicy": "authoring_balance_v2",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "e6b3fee9-c1b8-458d-b243-18971e6c76a8",
+          "material_version": 1,
+          "source_project_id": "3fdc6beb-de9c-456c-a067-acd17c024fbc"
+        }
+      ]
+    },
+    {
+      "run": "47f3df6a-71e5-4475-905b-7c62d16d43d5",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "b0dce9a5ee1d67f70d0b7056776e4ea1badfbbc210751096e47d5610f2080820",
+      "reservationId": "640cd28b-1f3a-485f-a4c3-b9caacc8dfb9",
+      "quoteId": "875f88d3-a362-4adc-a93d-8daeedb291b5",
+      "billingPolicy": "authoring_balance_v2",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "e6b3fee9-c1b8-458d-b243-18971e6c76a8",
+          "material_version": 1,
+          "source_project_id": "3fdc6beb-de9c-456c-a067-acd17c024fbc"
+        }
+      ]
+    },
+    {
+      "run": "47f3df6a-71e5-4475-905b-7c62d16d43d5",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "b0dce9a5ee1d67f70d0b7056776e4ea1badfbbc210751096e47d5610f2080820",
+      "reservationId": "640cd28b-1f3a-485f-a4c3-b9caacc8dfb9",
+      "quoteId": "875f88d3-a362-4adc-a93d-8daeedb291b5",
+      "billingPolicy": "authoring_balance_v2",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "e6b3fee9-c1b8-458d-b243-18971e6c76a8",
+          "material_version": 1,
+          "source_project_id": "3fdc6beb-de9c-456c-a067-acd17c024fbc"
+        }
+      ]
+    },
+    {
+      "run": "47f3df6a-71e5-4475-905b-7c62d16d43d5",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "b0dce9a5ee1d67f70d0b7056776e4ea1badfbbc210751096e47d5610f2080820",
+      "reservationId": "640cd28b-1f3a-485f-a4c3-b9caacc8dfb9",
+      "quoteId": "875f88d3-a362-4adc-a93d-8daeedb291b5",
+      "billingPolicy": "authoring_balance_v2",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "e6b3fee9-c1b8-458d-b243-18971e6c76a8",
+          "material_version": 1,
+          "source_project_id": "3fdc6beb-de9c-456c-a067-acd17c024fbc"
+        }
+      ]
+    },
+    {
+      "run": "41733f16-4ab1-4606-9bc7-50c42daf83b3",
+      "automatic": false,
+      "inputRevision": 1,
+      "inputHash": "cb5a0f2c8dbeb731437dbd9ab37def5c5a4cf0106f2ef2e07437c5a6051471e7",
+      "reservationId": "ff8506a5-833f-44e3-8897-862bb423fd73",
+      "quoteId": "af8d06f0-5e33-4705-88f9-c55dd0b7b031",
+      "billingPolicy": "on_delivery",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "9a56032a-e035-47a1-8ee9-f4c37770983a",
+          "material_version": 1,
+          "source_project_id": "3577d41c-add2-44e8-a398-5edb11863a43"
+        }
+      ]
+    },
+    {
+      "run": "41733f16-4ab1-4606-9bc7-50c42daf83b3",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "cb5a0f2c8dbeb731437dbd9ab37def5c5a4cf0106f2ef2e07437c5a6051471e7",
+      "reservationId": "ff8506a5-833f-44e3-8897-862bb423fd73",
+      "quoteId": "af8d06f0-5e33-4705-88f9-c55dd0b7b031",
+      "billingPolicy": "on_delivery",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "9a56032a-e035-47a1-8ee9-f4c37770983a",
+          "material_version": 1,
+          "source_project_id": "3577d41c-add2-44e8-a398-5edb11863a43"
+        }
+      ]
+    },
+    {
+      "run": "a120278e-9242-4392-9167-a801dbf548e2",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "a5c6c786c9bc3885fdf14fa47f1519d679fd8998870ea71c127e89f27b6c503c",
+      "reservationId": "fb3ce6e4-9200-4265-aa9a-2d2d4710facf",
+      "quoteId": "274c8d09-87eb-475b-b0f3-cb47a8b1f9b2",
+      "billingPolicy": "on_delivery",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "40224099-2fe1-4eb5-af7d-bef09b43b8d9",
+          "material_version": 1,
+          "source_project_id": "5b30bbd3-3194-4c7c-829a-0fd1c6e0c324"
+        }
+      ]
+    },
+    {
+      "run": "fbbbd545-1bb7-4cbc-8867-4c1ede65be8c",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "ebcc6aa97c3cefba82981d54ce2f0efb25327c3165e084c3abf76b497177bd39",
+      "reservationId": "19bbe4af-95cf-41cb-9127-f49f2216177f",
+      "quoteId": "a88ac8c6-6666-453e-b25d-667e74479380",
+      "billingPolicy": "on_delivery",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "6a34e400-63a8-4a0e-9bbe-38392f081695",
+          "material_version": 1,
+          "source_project_id": "b206dc32-b283-4c7b-936c-0a852e304635"
+        }
+      ]
+    },
+    {
+      "run": "6caddcd8-ab45-44d4-abe9-108516683188",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "432816ec371d0076472577c29c0f5d542303a33406b2d833f2f74173227fa917",
+      "reservationId": "63f8fdb9-3089-4b45-acf6-f5abea74d207",
+      "quoteId": "f12b7fbe-1815-4361-82e0-db6d1233ea39",
+      "billingPolicy": "authoring_balance_v2",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "cbf5afb5-01a4-4fc5-8df6-57537008d81f",
+          "material_version": 1,
+          "source_project_id": "7658a13d-88e5-4577-a541-6fb87a65bbf8"
+        }
+      ]
+    },
+    {
+      "run": "61538699-f797-4359-92c2-8879f872db11",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "ff32fb58d073b9e8c0d6eae0ceb629edbbf9bce1e240d88ecd172fac45efe7af",
+      "reservationId": "2191b287-9918-4383-90b4-c1d84db5c88d",
+      "quoteId": "7f95195a-3120-48f1-b7c1-6ed5235dc8bf",
+      "billingPolicy": "authoring_balance_v2",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "48823ce5-6715-4d1c-9243-0b62a13f5655",
+          "material_version": 1,
+          "source_project_id": "7a4d78c9-afc1-4640-9a9b-317021966a00"
+        }
+      ]
+    },
+    {
+      "run": "e2402fbe-e2a2-49e4-8260-c66248f89b20",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "78077456d4fda6e7d2f3b2939eaf9443f47c6f349c2fe75b416106d5af778936",
+      "reservationId": "2514db17-b463-487d-bb40-b250a5ce423c",
+      "quoteId": "04369783-b2df-4d5e-b0fe-1fbb2b0d73da",
+      "billingPolicy": "on_delivery",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "ca5d23a4-8f75-4918-8f97-6501ed57abc3",
+          "material_version": 1,
+          "source_project_id": "f379a527-5547-4cf4-be40-d7836e457c64"
+        }
+      ]
+    },
+    {
+      "run": "55312206-8d69-4969-a629-49750259e79f",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "adae702063f37be6bc9d222bcbdb39d18fb889da9023757a846e88d7221ded9c",
+      "reservationId": "cb4cd7d8-4841-446b-aaaf-cf4fa587de13",
+      "quoteId": "3eadc8ed-0c23-44b2-9885-3847519e0bd2",
+      "billingPolicy": "on_delivery",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "b63fa3d0-57eb-4680-b6f8-dab49d2ba651",
+          "material_version": 1,
+          "source_project_id": "5055c39f-ffcc-4bf2-9b07-8bd1ce3c56f4"
+        }
+      ]
+    },
+    {
+      "run": "3d84805f-0a57-46d3-958b-60172d08aaad",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "acb54c2e6577dab1636e371a795232416beac2c148099f302be82a586256324f",
+      "reservationId": "42111259-f7db-4327-b8d6-20118e67adcd",
+      "quoteId": "1614454b-d1e0-4886-844f-760d141d3885",
+      "billingPolicy": "on_delivery",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "8e275f85-1c00-446d-a71e-8533c8378f09",
+          "material_version": 1,
+          "source_project_id": "32a2f43f-0130-4f4e-9898-0385a486498b"
+        }
+      ]
+    },
+    {
+      "run": "91df4108-390d-4255-a796-c180db3994d7",
+      "automatic": false,
+      "inputRevision": 1,
+      "inputHash": "ea3bd646d4a38384c623bdd955cc5130b7beb3f34423c0b99daf06b3f78d9943",
+      "reservationId": "59a0e247-4edf-474d-979b-6a1dd29ea798",
+      "quoteId": "61d42b3f-675a-41b4-bb2b-caee24770c47",
+      "billingPolicy": "on_delivery",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "60c0f8b1-7048-477e-bd3a-fa6d2021d00a",
+          "material_version": 1,
+          "source_project_id": "7a5d9ec9-0b31-4958-aa90-49993e8a623d"
+        }
+      ]
+    },
+    {
+      "run": "91df4108-390d-4255-a796-c180db3994d7",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "ea3bd646d4a38384c623bdd955cc5130b7beb3f34423c0b99daf06b3f78d9943",
+      "reservationId": "59a0e247-4edf-474d-979b-6a1dd29ea798",
+      "quoteId": "61d42b3f-675a-41b4-bb2b-caee24770c47",
+      "billingPolicy": "on_delivery",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "60c0f8b1-7048-477e-bd3a-fa6d2021d00a",
+          "material_version": 1,
+          "source_project_id": "7a5d9ec9-0b31-4958-aa90-49993e8a623d"
+        }
+      ]
+    },
+    {
+      "run": "8b99412a-db8a-4249-a511-828b87d0ddfd",
+      "automatic": false,
+      "inputRevision": 1,
+      "inputHash": "8a992186478a74c9c2f399aa5abaffbbc63cc0bd87e9ea0ddc8dcceadb619d00",
+      "reservationId": "610b8c27-2dd3-4752-bc0c-a52c1e012b11",
+      "quoteId": "dd848ff6-28f8-46b8-9105-b1a68db2b3fd",
+      "billingPolicy": "authoring_balance_v2",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "452e4407-8995-4b57-b262-575eb27208ef",
+          "material_version": 1,
+          "source_project_id": "9ff265bb-3691-4aa1-873b-a397da2af37a"
+        }
+      ]
+    },
+    {
+      "run": "8b99412a-db8a-4249-a511-828b87d0ddfd",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "8a992186478a74c9c2f399aa5abaffbbc63cc0bd87e9ea0ddc8dcceadb619d00",
+      "reservationId": "610b8c27-2dd3-4752-bc0c-a52c1e012b11",
+      "quoteId": "dd848ff6-28f8-46b8-9105-b1a68db2b3fd",
+      "billingPolicy": "authoring_balance_v2",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "452e4407-8995-4b57-b262-575eb27208ef",
+          "material_version": 1,
+          "source_project_id": "9ff265bb-3691-4aa1-873b-a397da2af37a"
+        }
+      ]
+    },
+    {
+      "run": "fdccff24-d9a2-4fe4-bc73-1469c3099303",
+      "automatic": false,
+      "inputRevision": 1,
+      "inputHash": "34c6495a3e98615201060dd6a1257e13023c5c2c6ca7369588974fa854c8000e",
+      "reservationId": "05dd27ff-6080-49ca-9d2c-44e743f24664",
+      "quoteId": "da771671-a57a-43c2-adda-8a2def18e8cf",
+      "billingPolicy": "authoring_balance_v2",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "78fe0b87-ea2f-437c-afcc-e24c4f1ae5fc",
+          "material_version": 1,
+          "source_project_id": "076324ae-31fb-43d4-9432-3bae16a7b00c"
+        }
+      ]
+    },
+    {
+      "run": "fdccff24-d9a2-4fe4-bc73-1469c3099303",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "34c6495a3e98615201060dd6a1257e13023c5c2c6ca7369588974fa854c8000e",
+      "reservationId": "05dd27ff-6080-49ca-9d2c-44e743f24664",
+      "quoteId": "da771671-a57a-43c2-adda-8a2def18e8cf",
+      "billingPolicy": "authoring_balance_v2",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "78fe0b87-ea2f-437c-afcc-e24c4f1ae5fc",
+          "material_version": 1,
+          "source_project_id": "076324ae-31fb-43d4-9432-3bae16a7b00c"
+        }
+      ]
+    },
+    {
+      "run": "277f72bf-5a2a-4ef4-8e1c-5e3780560358",
+      "automatic": false,
+      "inputRevision": 1,
+      "inputHash": "f66d971311900a868bfa8cc3bef5792e2a15cdb877103b220375d31422ae763f",
+      "reservationId": "da2aea4a-a30d-4515-b788-b9e24d15d81c",
+      "quoteId": "a7e31457-eeb5-495c-ba2d-52be1aa687f7",
+      "billingPolicy": "on_delivery",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "55f952d5-25f5-47f4-baae-e65f26d78c1c",
+          "material_version": 1,
+          "source_project_id": "6576f795-abe7-4ec3-acbc-afc8001e9e81"
+        }
+      ]
+    },
+    {
+      "run": "277f72bf-5a2a-4ef4-8e1c-5e3780560358",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "f66d971311900a868bfa8cc3bef5792e2a15cdb877103b220375d31422ae763f",
+      "reservationId": "da2aea4a-a30d-4515-b788-b9e24d15d81c",
+      "quoteId": "a7e31457-eeb5-495c-ba2d-52be1aa687f7",
+      "billingPolicy": "on_delivery",
+      "m4InputLoaded": true,
+      "materialPins": [
+        {
+          "sha256": "ef43e263a39d22579341e51649a22b02090e1ecd50cbdbbe30a3fe0bcea3bd85",
+          "material_id": "55f952d5-25f5-47f4-baae-e65f26d78c1c",
+          "material_version": 1,
+          "source_project_id": "6576f795-abe7-4ec3-acbc-afc8001e9e81"
+        }
+      ]
+    }
+  ],
+  "workerPipelines": [
+    {
+      "run": "91df4108-390d-4255-a796-c180db3994d7",
+      "outcome": "succeeded",
+      "productionStages": [
+        "input_lock",
+        "materials_ready"
+      ],
+      "syntheticStages": [
+        "model_generation",
+        "word_delivery"
+      ],
+      "billingPolicy": "on_delivery",
+      "artifactCount": 2
+    },
+    {
+      "run": "8b99412a-db8a-4249-a511-828b87d0ddfd",
+      "outcomes": [
+        "paused",
+        "succeeded"
+      ],
+      "billingPolicy": "authoring_balance_v2",
+      "syntheticModelInvocations": 1,
+      "wordReads": 2,
+      "reusedArtifacts": [
+        {
+          "id": "word-2fce9897140e8e4340435393d5c4a69e23cd70091dd3b38c81e22aae8f2a14cc",
+          "version": 1,
+          "sha256": "50a615789979576422f6f1a2a874f1eb958428afd66fc745a13dbf796bec6fe1"
+        },
+        {
+          "id": "word-d452bdf77565b52f3d0eef4ccf5cbd5b1e9549b9d9ff3d51b2efd45a079a6d97",
+          "version": 1,
+          "sha256": "09911ffd44310e5496d37c3b768b0352d4075cb82baa4307a14e6d2a9c044779"
+        }
+      ]
+    },
+    {
+      "run": "fdccff24-d9a2-4fe4-bc73-1469c3099303",
+      "outcome": "failed",
+      "failureStage": "word_delivery",
+      "failureStageEntered": 1,
+      "billingPolicy": "authoring_balance_v2",
+      "repeatFinish": "ALREADY_TERMINAL_no_ledger_change",
+      "creditEvents": [
+        {
+          "id": "3eb86401-089a-4e79-be3e-1c3fa748b045",
+          "kind": "settle",
+          "lot_id": null,
+          "points": "135"
+        },
+        {
+          "id": "59f5e85b-051e-449f-a01a-ef489f23270a",
+          "kind": "settle",
+          "lot_id": null,
+          "points": "45"
+        },
+        {
+          "id": "6e7f9edc-df69-4ef5-a159-13502cecbc44",
+          "kind": "settle",
+          "lot_id": null,
+          "points": "720"
+        },
+        {
+          "id": "dynamic-failure:05dd27ff-6080-49ca-9d2c-44e743f24664:e02d14a7-0371-40b4-a96d-7551e2bb0e8a",
+          "kind": "correction",
+          "lot_id": "dynamic-failure:05dd27ff-6080-49ca-9d2c-44e743f24664:e02d14a7-0371-40b4-a96d-7551e2bb0e8a",
+          "points": "900"
+        }
+      ]
+    },
+    {
+      "run": "277f72bf-5a2a-4ef4-8e1c-5e3780560358",
+      "outcome": "failed",
+      "failureStage": "word_delivery",
+      "failureStageEntered": 1,
+      "billingPolicy": "on_delivery",
+      "repeatFinish": "ALREADY_TERMINAL_no_ledger_change",
+      "creditEvents": [
+        {
+          "id": "0126b31a-e8b8-4222-b8c8-98e8cca8549e",
+          "kind": "reserve",
+          "lot_id": null,
+          "points": "4500"
+        },
+        {
+          "id": "release:da2aea4a-a30d-4515-b788-b9e24d15d81c",
+          "kind": "release",
+          "lot_id": null,
+          "points": "4500"
+        }
+      ]
+    }
+  ],
+  "finalAuditConsistent": true,
+  "finalActiveRuns": 0,
+  "compatibilityScope": "Current binary under legacy/automatic configuration; historical on_delivery is an explicitly appended policy fixture using the current snapshot format, not a historical binary/schema migration.",
+  "remainingCoverage": [
+    "No historical binary/schema or original provider-journal migration; no unknown provider result or measured-usage reconciliation is constructed."
+  ],
+  "passed": 13,
+  "failed": 0,
+  "skipped": 0,
+  "checks": [
+    "M4 topic, DOCX upload, saved draft and old v2 quotation use real HTTP; zero balance creates no run",
+    "new M4 API starts old 4500 v2 quote with one point; new worker resumes old input lock and partial recharge without full-price reservation",
+    "saved M4 document and preparation note remain private until old locked tail is funded; new worker settles once with unchanged artifacts and exact downloaded bytes",
+    "historical fixed on_delivery quote fixture starts through old API; new worker accepts its actual reservation and checkpoint and settles old 4500 exactly",
+    "new M4 API starts old on_delivery quotations without changing policy; failure and cancellation release each old full hold once",
+    "new worker failure restores old v2 debits, while user cancellation retains only old-policy work already charged",
+    "current automatic M4 policy interleaves with both old policies on one wallet; success charges its locked price and failure/cancellation release fully",
+    "production runPipelineOnce replays an old on_delivery M4 input through real gates/loader and registers both deliverables at old locked 4500; only model/file output is synthetic",
+    "all unspent and failure-restored M4 source rights refund through original orders; refund failure releases and duplicate success never repays twice",
+    "real upgraded M4 pipeline pauses at old v2 tail, keeps both files private, then reuses exact artifacts and one saved synthetic model output after recharge",
+    "real upgraded M4 pipeline stage failure preserves authoring_balance_v2 contract, restores its original debits/hold and rejects duplicate finish without another refund",
+    "real upgraded M4 pipeline stage failure preserves on_delivery contract, restores its original debits/hold and rejects duplicate finish without another refund",
+    "final M4 shared-account credit audit reconciles exact net task charges and cash refunds with no active run and zero model calls"
+  ],
+  "cleanup": []
+}
