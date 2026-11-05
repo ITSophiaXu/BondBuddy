@@ -33,6 +33,61 @@ class ReviewCorrectionTests(unittest.TestCase):
         r=self.request('');r.update(editor=s,decisions=[dict(id='R001',decision='original',manual_text='')]);build(self.source,r,self.path);self.assertIn('总资产为12亿元。',self.text('clean.docx'))
         r['decisions'][0].update(decision='manual',manual_text='总资产经人工确认为13亿元。');s2=build(self.source,r,self.path)
         self.assertTrue(s2['issues'][0]['applied']);self.assertIn('经人工确认为13',self.text('clean.docx'))
+    def test_four_categories_lead_native_comments_and_revisions_are_reversible(self):
+        rows = [
+            ('政策要求与重点提示', '合规', '募集资金用途待核实。', '', '仅批注'),
+            ('格式与标点', '格式', 'Bond，2026。', 'Bond, 2026.', '直接修改'),
+            ('财务数据一致性', '数据一致性', '总资产为12亿元。', '总资产为13亿元。', '直接修改'),
+            ('勾稽关系', '勾稽', '合计为3亿元。', '合计为4亿元。', '直接修改'),
+        ]
+        d=Document()
+        for _,_,original,_,_ in rows:d.add_paragraph(original)
+        d.save(self.source)
+        original_bytes=self.source.read_bytes()
+        report=''.join(issue(label+'问题',old,new,mode=mode).replace('复核类别：财务数据一致性','复核类别：'+category)
+                       for category,label,old,new,mode in rows)
+        s=build(self.source,self.request(report),self.path)
+        self.assertEqual([i['category'] for i in s['issues']],[row[1] for row in rows])
+        self.assertEqual([i['applied'] for i in s['issues']],[False,True,True,True])
+        with ZipFile(self.path/'revision.docx') as z:
+            comments=list(xml(z.read('word/comments.xml')).iter(q('comment')))
+            self.assertEqual(len(comments),4)
+            for comment,(_,label,_,_,_) in zip(comments,rows):
+                lines=[paragraph_text(p) for p in comment.iter(q('p'))]
+                self.assertEqual(lines[0],'问题类别：'+label)
+                self.assertTrue(lines[1].startswith('问题：R'))
+                self.assertTrue(lines[2].startswith('问题说明：'))
+                self.assertTrue(lines[3].startswith('依据：'))
+                self.assertTrue(lines[4].startswith('处理：'))
+            body=z.read('word/document.xml')
+        # Rejecting all current edits restores the submitted text; accepting them
+        # yields the edited body while the uncertain compliance text stays intact.
+        for accept in (False,True):
+            root=xml(body)
+            for node in list(root.iter()):
+                if node.tag in (q('ins'),q('del')):
+                    keep=(node.tag==q('ins'))==accept
+                    if keep:
+                        for child in list(node):node.addprevious(child)
+                    node.getparent().remove(node)
+            for node in root.iter(q('delText')):node.tag=q('t')
+            actual=[paragraph_text(p) for p in root.iter(q('p'))]
+            expected=[new if accept and mode=='直接修改' else old for _,_,old,new,mode in rows]
+            self.assertEqual(actual,expected)
+        self.assertEqual(self.source.read_bytes(),original_bytes)
+    def test_saved_editor_categories_and_unknown_category_remain_explicit(self):
+        s=build(self.source,self.request(issue('资产','总资产为12亿元。','总资产为13亿元。')),self.path)
+        s['issues'][0]['category']='财务数据一致性'
+        r=self.request('');r.update(editor=s,decisions=[dict(id='R001',decision='original',manual_text='')])
+        saved=build(self.source,r,self.path)
+        self.assertEqual(saved['issues'][0]['category'],'数据一致性')
+        self.assertFalse(saved['issues'][0]['applied'])
+        with ZipFile(self.path/'revision.docx') as z:
+            comment=next(xml(z.read('word/comments.xml')).iter(q('comment')))
+            self.assertEqual(paragraph_text(next(comment.iter(q('p')))),'问题类别：数据一致性')
+        report=issue('资产','总资产为12亿元。','总资产为13亿元。').replace('- 复核类别：财务数据一致性\n','')
+        missing=build(self.source,self.request(report),self.path)
+        self.assertEqual(missing['issues'][0]['category'],'类别待确认')
     def test_ambiguous_and_overlapping_are_not_silently_changed(self):
         s=build(self.source,self.request(issue('重复','相同内容','更新')+issue('资产1','总资产为12亿元。','更新1')+issue('资产2','12亿元','13亿元')),self.path)
         self.assertTrue(all(not i['applied'] and i['limitation'] for i in s['issues']))
