@@ -20,16 +20,23 @@ export async function localSubscriptionState(pool,owner){
   return{clock_at:clock.now_at,simulated:clock.simulated,next_event:next,charges};
 }
 
-export async function advanceLocalSubscription(pool,owner,requestId,{processDueSubscriptionRenewals,processDueSubscriptionCreditReleases,providers}){
-  const c=await pool.connect();let target;
+export async function advanceLocalSubscription(pool,owner,requestId,{processDueSubscriptionRenewals,processDueSubscriptionCreditReleases,providers,expectedEvent,replayOnly=false}){
+  const c=await pool.connect();let target,replayed=false;
   try{
     await c.query('BEGIN');
     // Serialize this owner's test clock, including retries after a lost reply.
     await c.query('SELECT id FROM bb_users WHERE id=$1 FOR UPDATE',[owner]);
     const prior=(await c.query('SELECT * FROM bb_local_billing_advances WHERE owner_user_id=$1 AND request_id=$2',[owner,requestId])).rows[0];
-    if(prior)target=prior;
+    if(prior){target=prior;replayed=true;}
     else{
       const current=await localSubscriptionState(c,owner),event=current.next_event;
+      // Bind a new action to the event the user actually saw. A separate tab
+      // may already have completed it under another request ID. Never turn its
+      // stale click into permission to advance a later month or charge again.
+      if(replayOnly||expectedEvent&&(!event||event.event_kind!==expectedEvent.event_kind||new Date(event.at).getTime()!==new Date(expectedEvent.at).getTime())){
+        await c.query('COMMIT');
+        return {request_id:requestId,advanced:false,replayed:false,event_changed:true,replay_only:replayOnly,expected_event:expectedEvent,current_event:event};
+      }
       if(!event)throw Error('当前账号没有下一次订阅续费或额度发放；可在账户页查看订阅状态。');
       const at=new Date(Math.max(new Date(event.at).getTime(),new Date(current.clock_at).getTime())+1000);
       await c.query(`INSERT INTO bb_local_billing_clock(owner_user_id,now_at) VALUES($1,$2)
@@ -42,7 +49,7 @@ export async function advanceLocalSubscription(pool,owner,requestId,{processDueS
   // subscription credit lots or journals. The helper never changes balances.
   await processDueSubscriptionCreditReleases(pool,100,owner);
   await processDueSubscriptionRenewals(pool,providers,50,owner);
-  return{request_id:requestId,target_at:target.target_at,event_kind:target.event_kind};
+  return{request_id:requestId,advanced:!replayed,replayed,event_changed:false,replay_only:replayOnly,target_at:target.target_at,event_kind:target.event_kind};
 }
 
 export async function setLocalNextChargeOutcome(pool,owner,outcome){

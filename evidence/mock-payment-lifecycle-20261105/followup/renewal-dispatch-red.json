@@ -1,0 +1,270 @@
+{
+  "synthetic": true,
+  "explicitFaultInjection": true,
+  "realHttp": true,
+  "realPostgres": true,
+  "realProductScheduler": true,
+  "realPaymentCallsPerformed": 0,
+  "modelCallsPerformed": 0,
+  "startedAt": "2026-11-05T08:32:46.951Z",
+  "finishedAt": "2026-11-05T08:32:48.092Z",
+  "attempt": "596e978a-389e-4c04-9fa5-788b64627d3a",
+  "checks": [
+    "before-channel-save: durable original dispatch survives the injected interruption without granting a second month",
+    "after-channel-save: durable original dispatch survives the injected interruption without granting a second month",
+    "after-channel-save: reconstructing provider recovers the same authorised order once with a consistent 42000-point wallet"
+  ],
+  "scenarios": [
+    {
+      "fault": "before-channel-save",
+      "username": "billing_dispatch_d2859177",
+      "owner": "7b65a69d-7ce9-4593-9b31-506f6f76763f",
+      "subscriptionId": "8e4dfec5-770f-4e65-938f-529a031a3fbe",
+      "operation": "ac58a80c-5e14-4dab-94a5-499d3c9a3d1a",
+      "faultInjected": true,
+      "dispatchAttempts": [
+        {
+          "orderId": "1249cf718ee44ff1a5d024e44e5816ee",
+          "mandateId": "synthetic-mandate-61e404775b2a4d59b5f13465f6095ed2"
+        }
+      ],
+      "interrupted": {
+        "subscription": {
+          "id": "8e4dfec5-770f-4e65-938f-529a031a3fbe",
+          "status": "active",
+          "auto_renew": true,
+          "mandate_status": "active",
+          "current_period_end": "2026-12-05T08:32:47.248Z"
+        },
+        "orders": [
+          {
+            "id": "ff2b2305c1c54e69859dcad00c82f853",
+            "state": "paid",
+            "amount_fen": "19900",
+            "automatic": false,
+            "payment_dispatch_started_at": null,
+            "channel_state": "paid",
+            "mandate_id": null
+          },
+          {
+            "id": "1249cf718ee44ff1a5d024e44e5816ee",
+            "state": "pending",
+            "amount_fen": "19900",
+            "automatic": true,
+            "payment_dispatch_started_at": "2026-11-05T08:32:47.439Z",
+            "channel_state": null,
+            "mandate_id": null
+          }
+        ],
+        "ledger": {
+          "lots": 1,
+          "remaining": "21000",
+          "frozen": "0"
+        },
+        "modelCalls": 0,
+        "auditConsistent": true
+      },
+      "recovered": {
+        "subscription": {
+          "id": "8e4dfec5-770f-4e65-938f-529a031a3fbe",
+          "status": "active",
+          "auto_renew": true,
+          "mandate_status": "active",
+          "current_period_end": "2026-12-05T08:32:47.248Z"
+        },
+        "orders": [
+          {
+            "id": "ff2b2305c1c54e69859dcad00c82f853",
+            "state": "paid",
+            "amount_fen": "19900",
+            "automatic": false,
+            "payment_dispatch_started_at": null,
+            "channel_state": "paid",
+            "mandate_id": null
+          },
+          {
+            "id": "1249cf718ee44ff1a5d024e44e5816ee",
+            "state": "pending",
+            "amount_fen": "19900",
+            "automatic": true,
+            "payment_dispatch_started_at": "2026-11-05T08:32:47.439Z",
+            "channel_state": null,
+            "mandate_id": null
+          }
+        ],
+        "ledger": {
+          "lots": 1,
+          "remaining": "21000",
+          "frozen": "0"
+        },
+        "modelCalls": 0,
+        "auditConsistent": true
+      },
+      "replayed": {
+        "subscription": {
+          "id": "8e4dfec5-770f-4e65-938f-529a031a3fbe",
+          "status": "active",
+          "auto_renew": true,
+          "mandate_status": "active",
+          "current_period_end": "2026-12-05T08:32:47.248Z"
+        },
+        "orders": [
+          {
+            "id": "ff2b2305c1c54e69859dcad00c82f853",
+            "state": "paid",
+            "amount_fen": "19900",
+            "automatic": false,
+            "payment_dispatch_started_at": null,
+            "channel_state": "paid",
+            "mandate_id": null
+          },
+          {
+            "id": "1249cf718ee44ff1a5d024e44e5816ee",
+            "state": "pending",
+            "amount_fen": "19900",
+            "automatic": true,
+            "payment_dispatch_started_at": "2026-11-05T08:32:47.439Z",
+            "channel_state": null,
+            "mandate_id": null
+          }
+        ],
+        "ledger": {
+          "lots": 1,
+          "remaining": "21000",
+          "frozen": "0"
+        },
+        "modelCalls": 0,
+        "auditConsistent": true
+      },
+      "passed": false
+    },
+    {
+      "fault": "after-channel-save",
+      "username": "billing_dispatch_d0009050",
+      "owner": "96c6a0a3-8451-4fc7-9176-9108b32e9999",
+      "subscriptionId": "44c605be-e243-4c69-b977-9cdf82324d67",
+      "operation": "2b08907a-d5c4-415a-be27-0e31eeeab2c0",
+      "faultInjected": true,
+      "dispatchAttempts": [
+        {
+          "orderId": "e9bb3045b7024bffa7fe6293d8b9eef4",
+          "mandateId": "synthetic-mandate-685b2b8399084f5cba7731d68d42468e"
+        }
+      ],
+      "interrupted": {
+        "subscription": {
+          "id": "44c605be-e243-4c69-b977-9cdf82324d67",
+          "status": "active",
+          "auto_renew": true,
+          "mandate_status": "active",
+          "current_period_end": "2026-12-05T08:32:47.787Z"
+        },
+        "orders": [
+          {
+            "id": "8dd7554f23d94270932d66ad85076099",
+            "state": "paid",
+            "amount_fen": "19900",
+            "automatic": false,
+            "payment_dispatch_started_at": null,
+            "channel_state": "paid",
+            "mandate_id": null
+          },
+          {
+            "id": "e9bb3045b7024bffa7fe6293d8b9eef4",
+            "state": "pending",
+            "amount_fen": "19900",
+            "automatic": true,
+            "payment_dispatch_started_at": "2026-11-05T08:32:47.924Z",
+            "channel_state": "paid",
+            "mandate_id": "synthetic-mandate-685b2b8399084f5cba7731d68d42468e"
+          }
+        ],
+        "ledger": {
+          "lots": 1,
+          "remaining": "21000",
+          "frozen": "0"
+        },
+        "modelCalls": 0,
+        "auditConsistent": true
+      },
+      "recovered": {
+        "subscription": {
+          "id": "44c605be-e243-4c69-b977-9cdf82324d67",
+          "status": "active",
+          "auto_renew": true,
+          "mandate_status": "active",
+          "current_period_end": "2027-01-05T08:32:48.787Z"
+        },
+        "orders": [
+          {
+            "id": "8dd7554f23d94270932d66ad85076099",
+            "state": "paid",
+            "amount_fen": "19900",
+            "automatic": false,
+            "payment_dispatch_started_at": null,
+            "channel_state": "paid",
+            "mandate_id": null
+          },
+          {
+            "id": "e9bb3045b7024bffa7fe6293d8b9eef4",
+            "state": "paid",
+            "amount_fen": "19900",
+            "automatic": true,
+            "payment_dispatch_started_at": "2026-11-05T08:32:47.924Z",
+            "channel_state": "paid",
+            "mandate_id": "synthetic-mandate-685b2b8399084f5cba7731d68d42468e"
+          }
+        ],
+        "ledger": {
+          "lots": 2,
+          "remaining": "42000",
+          "frozen": "0"
+        },
+        "modelCalls": 0,
+        "auditConsistent": true
+      },
+      "replayed": {
+        "subscription": {
+          "id": "44c605be-e243-4c69-b977-9cdf82324d67",
+          "status": "active",
+          "auto_renew": true,
+          "mandate_status": "active",
+          "current_period_end": "2027-01-05T08:32:48.787Z"
+        },
+        "orders": [
+          {
+            "id": "8dd7554f23d94270932d66ad85076099",
+            "state": "paid",
+            "amount_fen": "19900",
+            "automatic": false,
+            "payment_dispatch_started_at": null,
+            "channel_state": "paid",
+            "mandate_id": null
+          },
+          {
+            "id": "e9bb3045b7024bffa7fe6293d8b9eef4",
+            "state": "paid",
+            "amount_fen": "19900",
+            "automatic": true,
+            "payment_dispatch_started_at": "2026-11-05T08:32:47.924Z",
+            "channel_state": "paid",
+            "mandate_id": "synthetic-mandate-685b2b8399084f5cba7731d68d42468e"
+          }
+        ],
+        "ledger": {
+          "lots": 2,
+          "remaining": "42000",
+          "frozen": "0"
+        },
+        "modelCalls": 0,
+        "auditConsistent": true
+      },
+      "passed": true
+    }
+  ],
+  "passed": 3,
+  "failed": 1,
+  "skipped": 0,
+  "error": "AssertionError [ERR_ASSERTION]: an interrupted authorised renewal did not recover its original order exactly once",
+  "stack": "AssertionError [ERR_ASSERTION]: an interrupted authorised renewal did not recover its original order exactly once\n    at file:///C:/Users/lezhai/Downloads/Bondbuddy/mock-payment-lifecycle-20261105/scripts/billing-functional/subscription-dispatch-recovery-verify.mjs:77:10\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+}

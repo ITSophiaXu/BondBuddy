@@ -68,16 +68,17 @@ try{
   await send('POST','/__billing-test/api/review/start',{id:first.id},{expected:402});amount(await state(),0,0);checks.push('zero balance rejects start without reservation');
   const subscription=await post('/api/v1/subscriptions',{request_id:randomUUID(),plan_id:'light',provider:'wechat'});
   check('subscription creates actual pending 199 yuan order',()=>{assert.equal(subscription.order.state,'pending');assert.equal(BigInt(subscription.order.amount_fen),19900n);});
+  await post('/__billing-test/api/payment/outcome',{id:subscription.order.order_id,outcome:'paid',delivery:'query'});
   await post('/api/v1/commerce/topups/'+subscription.order.order_id+'/refresh');amount(await state(),21000,0);
   await post('/api/v1/commerce/topups/'+subscription.order.order_id+'/refresh');amount(await state(),21000,0);checks.push('subscription refresh grants exactly once');
-  const topup=await post('/api/v1/commerce/topups',{request_id:randomUUID(),amount_fen:'10000',provider:'wechat'});await post('/api/v1/commerce/topups/'+topup.order_id+'/refresh');amount(await state(),31000,0);checks.push('100 yuan topup adds 10000 permanent points');
+  const topup=await post('/api/v1/commerce/topups',{request_id:randomUUID(),amount_fen:'10000',provider:'wechat'});await post('/__billing-test/api/payment/outcome',{id:topup.order_id,outcome:'paid',delivery:'query'});await post('/api/v1/commerce/topups/'+topup.order_id+'/refresh');amount(await state(),31000,0);checks.push('100 yuan topup adds 10000 permanent points');
   let current=await post('/__billing-test/api/review/start',{id:first.id});amount(current,3805,27195);const runId=current.tasks.find(row=>row.id===first.id).run_id;assert.ok(runId);checks.push('start holds 27195 through real product submission');
   const foreign=client();await foreign('POST','/api/v1/auth/register',{username:'billing_qa_'+randomUUID().slice(0,8),password:'Synthetic-QA-2026!',accepted_terms_version:terms});
   await foreign('POST','/__billing-test/api/review/finish',{id:first.id,outcome:'succeeded'},{expected:404});checks.push('foreign account cannot complete task');
   current=await post('/__billing-test/api/review/finish',{id:first.id,outcome:'succeeded'});amount(current,3805,0);
   check('synthetic delivered Word produces real settled charge',()=>{const task=current.tasks.find(row=>row.id===first.id);assert.equal(task.state,'succeeded');assert.equal(task.charge_state,'settled');assert.equal(BigInt(task.charged_points),27195n);});
   current=await post('/__billing-test/api/review/start',{id:first.id});amount(current,3805,0);check('replay returns same run without double charge',()=>assert.equal(current.tasks.find(row=>row.id===first.id).run_id,runId));
-  const secondTopup=await post('/api/v1/commerce/topups',{request_id:randomUUID(),amount_fen:'30000',provider:'wechat'});await post('/api/v1/commerce/topups/'+secondTopup.order_id+'/refresh');amount(await state(),33805,0);
+  const secondTopup=await post('/api/v1/commerce/topups',{request_id:randomUUID(),amount_fen:'30000',provider:'wechat'});await post('/__billing-test/api/payment/outcome',{id:secondTopup.order_id,outcome:'paid',delivery:'query'});await post('/api/v1/commerce/topups/'+secondTopup.order_id+'/refresh');amount(await state(),33805,0);
   const second=await prepare();current=await post('/__billing-test/api/review/start',{id:second.id});amount(current,6610,27195);
   current=await post('/__billing-test/api/review/finish',{id:second.id,outcome:'failed'});amount(current,33805,0);check('failed task releases real reservation',()=>assert.equal(current.tasks.find(row=>row.id===second.id).state,'failed'));
   const pool=new Pool({connectionString:pgBase+config().database});try{

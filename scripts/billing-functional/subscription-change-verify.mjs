@@ -20,7 +20,11 @@ function client(){
   };
 }
 const saved=config(),pool=new Pool({connectionString:pgBase+saved.database}),startedAt=new Date().toISOString(),checks=[],skipped=[],accounts=[];
-const record=name=>checks.push(name),state=a=>a.send('POST','/__billing-test/api/state',{}),refresh=(a,id)=>a.send('POST','/api/v1/commerce/topups/'+id+'/refresh',{});
+const record=name=>checks.push(name),state=a=>a.send('POST','/__billing-test/api/state',{});
+const refresh=async(a,id,outcome='paid')=>{
+  if(outcome!=='pending')await a.send('POST','/__billing-test/api/payment/outcome',{id,outcome,delivery:'query'});
+  return a.send('POST','/api/v1/commerce/topups/'+id+'/refresh',{});
+};
 const amounts=(s,available,held=0,changeHeld=0)=>{assert.equal(BigInt(s.account.available_points),BigInt(available));assert.equal(BigInt(s.account.task_held_points),BigInt(held));assert.equal(BigInt(s.account.change_held_points),BigInt(changeHeld));};
 async function account(plan='professional'){
   const username='billing_change_'+randomUUID().slice(0,8),send=client();
@@ -92,18 +96,20 @@ try{
   assert.equal(schedule.length,12);assert.equal(schedule.reduce((n,r)=>n+BigInt(r.amount_fen),0n),1029020n);assert.ok(new Set(schedule.map(r=>r.amount_fen)).size>1);
   record('light month to professional month to intensive year preserves three original cash sources and exact unequal-cent installment allocation');
   const advanceId=randomUUID(),beforeOrders=(await pool.query('SELECT count(*)::int n FROM bb_recharge_orders WHERE owner_user_id=$1',[chained.owner])).rows[0].n;
-  let advanced=await chained.send('POST','/__billing-test/api/subscription/advance',{id:advanceId});amounts(advanced,228000);
-  advanced=await chained.send('POST','/__billing-test/api/subscription/advance',{id:advanceId});amounts(advanced,228000);await clean(chained);
+  const expected_event=(await state(chained)).subscription_test.next_event;assert.ok(expected_event);
+  const advanceBody={id:advanceId,expected_event};
+  let advanced=await chained.send('POST','/__billing-test/api/subscription/advance',advanceBody);amounts(advanced,228000);
+  advanced=await chained.send('POST','/__billing-test/api/subscription/advance',advanceBody);amounts(advanced,228000);await clean(chained);
   assert.equal((await pool.query('SELECT count(*)::int n FROM bb_recharge_orders WHERE owner_user_id=$1',[chained.owner])).rows[0].n,beforeOrders);
   assert.equal((await pool.query(`SELECT count(*)::int n FROM bb_subscription_lot_funding lf JOIN bb_subscription_credit_releases r ON r.lot_id=lf.lot_id
     WHERE r.period_id=$1 AND r.owner_user_id=$2 AND r.state='issued'`,[period.id,chained.owner])).rows[0].n,6);
   record('annual next-month release grants 114000 more points once with all funding sources and no new payment');
 
   const pending=await account(),pq=await quote(pending),pc=await checkout(pending,pq);
-  await pending.send('POST','/__billing-test/api/subscription/outcome',{outcome:'pending'});await refresh(pending,pc.order.order_id);amounts(await state(pending),0,0,55000);
+  await refresh(pending,pc.order.order_id,'pending');amounts(await state(pending),0,0,55000);
   assert.equal((await original(pending)).remaining,'55000');assert.equal((await original(pending)).status,'active');await clean(pending);
   record('unknown payment retains original contract and transfer hold without granting new points');
-  await pending.send('POST','/__billing-test/api/subscription/outcome',{outcome:'failed'});await refresh(pending,pc.order.order_id);amounts(await state(pending),55000);await clean(pending);
+  await refresh(pending,pc.order.order_id,'failed');amounts(await state(pending),55000);await clean(pending);
   assert.equal((await original(pending)).status,'active');assert.equal((await original(pending)).frozen,'0');
   record('verified failed change releases exact held points and keeps the original monthly contract');
 

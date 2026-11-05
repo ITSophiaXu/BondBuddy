@@ -4,14 +4,14 @@ import {mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {Pool} from 'pg';
 import {chromium,expect as playwrightExpect} from '@playwright/test';
-import {baseURL,apiURL,terms,config,pgBase,repo} from './config.mjs';
+import {baseURL,apiURL,terms,config,pgBase,runtime} from './config.mjs';
 
-// The only fixture endpoint used here prepares a synthetic document and draft.
-// Every execution, checkout, recovery and cancellation uses the real product.
+// Fixture endpoints only prepare synthetic input. The actual local cashier UI
+// records the channel outcome; execution, checkout and recovery use the product.
 // No browser routes, responses, localStorage records or payment balances are mocked.
 const expect=playwrightExpect.configure({timeout:15000});
 const saved=config(),startedAt=new Date().toISOString(),username='billing_recover_'+randomUUID().slice(0,8);
-const out=join(repo,'evidence/subscription-billing-20261029/completion/product-recovery-20261030');
+const out=join(runtime,'product-recovery-20261105',username);
 await mkdir(out,{recursive:true});
 assert.match(username,/^billing_recover_[a-f0-9]{8}$/);assert.notEqual(username,'billing_tester');
 const pool=new Pool({connectionString:pgBase+saved.database});
@@ -79,7 +79,18 @@ try{
   assert.ok(page.url().includes('resume_request='+resumeId));
   checks.push('real account checkout creates one exact-shortage topup and preserves original task recovery');
   const recoveredResponse=executionResponse(200);
-  await page.locator('#refresh-subscription-payment').click();
+  const paymentId=new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('order');assert.ok(paymentId);
+  await page.locator('[data-local-payment-checkout]').click();
+  await expect(page.locator('#checkout-title')).toHaveText('等待模拟支付');
+  const cashierQuery=new URL(page.url()).searchParams;
+  assert.equal(cashierQuery.get('order'),paymentId);
+  assert.ok(cashierQuery.get('return_to').includes('resume_request='+resumeId));
+  await amounts('0');
+  await page.locator('#simulate-paid').click();
+  await expect(page.locator('#checkout-title')).toHaveText('渠道已支付，产品待核实入账');
+  await amounts('0');
+  await page.screenshot({path:join(out,'03-cashier-awaiting-confirmation.png'),fullPage:true});
+  await page.locator('#return-paid').click();
   const recovered=await (await recoveredResponse).json();runId=recovered.run_id;
   assert.equal(recovered.execution_request_id,requestId);assert.equal(recovered.project_id,projectId);assert.equal(recovered.state,'queued');
   await expect(page.getByRole('heading',{name:'复核募集说明书',exact:true})).toBeVisible();
@@ -87,7 +98,7 @@ try{
   assert.ok(!page.url().includes('resume_request='));
   assert.equal(executionRequests.length,2);assert.deepEqual(executionRequests[1],executionRequests[0]);
   assert.equal(await page.evaluate(id=>localStorage.getItem('bondbuddy:billing-task:v2:'+id),resumeId),null);
-  checks.push('synthetic payment receipt automatically returns to the real review page and replays the same request key and exact body without another start click');
+  checks.push('explicit cashier confirmation preserves resume identity, returns to the real review page and replays the same request key and exact body without another start click');
   assert.deepEqual(await counters(),{runs:1,reservations:1,held:expectedPoints});await amounts('0',expectedPoints);
   const held=(await pool.query(`SELECT r.execution_request_id,r.state,h.state charge_state,h.points::text,h.charged_points::text
     FROM bb_runs r JOIN bb_credit_reservations h ON h.run_id=r.id
@@ -124,7 +135,7 @@ try{
   const proof={startedAt,finishedAt:new Date().toISOString(),username,projectId,runId,requestId,resumeId,orderId,expectedPoints,
     passed:checks.length,failed:failure||cleanupError?1:0,checks,pageErrors,
     executionRequests:executionRequests.map(({path,body})=>({path,bodySha256:createHash('sha256').update(body).digest('hex'),executionRequestId:JSON.parse(body).execution_request_id})),executionResponses,
-    realProductBrowser:true,realHttp:true,realPostgres:true,fixturePreparationOnly:true,clientResponseMocking:false,localStorageInjection:false,
+    realProductBrowser:true,realHttp:true,realPostgres:true,fixturePreparationOnly:true,paymentOutcomeControl:true,explicitCashierClicks:true,clientResponseMocking:false,localStorageInjection:false,
     syntheticPaymentProvider:true,modelWorkerRunning:false,realMoneyCharged:false,defaultDemoAccountTouched:false,
     ...(failure?{error:String(failure)}:{}),...(cleanupError?{cleanupError}:{})};
   await writeFile(join(out,'result.json'),JSON.stringify(proof,null,2)+'\n');

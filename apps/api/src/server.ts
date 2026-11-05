@@ -94,7 +94,7 @@ import {installBillingPermissions} from './billing-permissions.js';
 import {installBillingPriceAdmin} from './billing-price-admin.js';
 import {installTaskRefunds} from './task-refunds.js';
 import {installSubscriptionOrderDetail} from './subscription-order-detail.js';
-import {configureAutomaticBilling} from './automatic-billing-context.js';
+import {configureAutomaticBilling,withAutomaticBillingRequest} from './automatic-billing-context.js';
 import {paymentProvidersFromEnv} from './payment-provider-config.js';
 import {installPaymentReconciliation} from './payment-reconciliation.js';
 import {installProjectFileCheckBatches} from './project-file-check-batches.js';
@@ -163,6 +163,7 @@ export function createServer(settings: Settings = {}) {
   if(!settings.pool)app.addHook('onClose',async()=>{await pool.end();});
   const subscriptionBilling=settings.enableSubscriptionBilling??process.env.BB_SUBSCRIPTION_BILLING_ENABLED==='1';
   configureAutomaticBilling(pool,subscriptionBilling);
+  app.addHook('onRequest',(_request,_reply,done)=>withAutomaticBillingRequest(subscriptionBilling,done));
   const commercial = subscriptionBilling || (settings.enableOutcomePricing ?? process.env.BB_OUTCOME_PRICING_ENABLED === '1');
   const paidAuthoring = commercial || (settings.enablePaidAuthoring ?? process.env.BB_PAID_AUTHORING_ENABLED === '1');
   const paidReview = commercial || (settings.enablePaidReview ?? process.env.BB_PAID_REVIEW_ENABLED === '1');

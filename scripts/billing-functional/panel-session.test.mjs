@@ -50,6 +50,7 @@ test('panel refreshes an expired real session once and never retries uncertain b
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1',[owner])).rows[0].n,0);
     await api('/api/v1/auth/refresh');
     const order=await api('/api/v1/commerce/topups',{request_id:randomUUID(),amount_fen:'60000',provider:'wechat'});
+    await api('/__billing-test/api/payment/outcome',{id:order.order_id,outcome:'paid',delivery:'query'});
     await api('/api/v1/commerce/topups/'+order.order_id+'/refresh',{});
     await expire();requests.length=0;
     await page.locator('[data-action="start"]').click();await completed('开始任务完成');
@@ -58,7 +59,7 @@ test('panel refreshes an expired real session once and never retries uncertain b
       (SELECT count(*)::int FROM bb_credit_reservations WHERE owner_user_id=$1) reservations,
       (SELECT COALESCE(sum(frozen),0)::text FROM bb_credit_lots WHERE owner_user_id=$1) held`,[owner])).rows[0];
     assert.deepEqual(counters,{runs:1,reservations:1,held:'27195'});checks.push('real expired session refreshes and same funded task reserves exactly once');
-    await page.locator('[data-action="failed"]').click();await completed('模拟失败释放完成');
+    await page.locator('[data-action="failed"]').click();await completed('核对失败与退款完成');
     assert.equal((await pool.query('SELECT COALESCE(sum(frozen),0)::text held FROM bb_credit_lots WHERE owner_user_id=$1',[owner])).rows[0].held,'0');
     checks.push('cleanup through actual failed finish releases test reservation');
     const proof={synthetic:true,username,startedAt,finishedAt:new Date().toISOString(),passed:checks.length,checks,

@@ -5,13 +5,14 @@ import {join} from 'node:path';
 import {Pool} from 'pg';
 import {chromium,expect as playwrightExpect} from '@playwright/test';
 import {baseURL,apiURL,terms,config,pgBase,repo,runtime} from './config.mjs';
+import {payBrowserOrder} from './test-client.mjs';
 
 // One actual annual purchase, in a new browser context and random account.
 // All UI/API responses are real. Only the explicitly configured local payment
 // provider and subscription clock are synthetic; no model task is created.
 const expect=playwrightExpect.configure({timeout:15000});
 const saved=config(),startedAt=new Date().toISOString(),username='billing_annual_ui_'+randomUUID().slice(0,8);
-const out=join(repo,'evidence/subscription-billing-20261029/completion/subscription-annual-browser-20261030',username);
+const out=join(runtime,'subscription-annual-browser-20261105',username);
 await mkdir(out,{recursive:true});
 const pool=new Pool({connectionString:pgBase+saved.database});
 const browser=await chromium.launch({channel:'msedge',headless:true}),context=await browser.newContext({viewport:{width:1440,height:1000}}),page=await context.newPage();
@@ -52,13 +53,15 @@ try{
   await page.locator('[data-subscribe="light"]').click();const checkoutResponse=await checkoutReply;assert.equal(checkoutResponse.status(),201);
   const checkout=await checkoutResponse.json();subscriptionId=checkout.subscription.id;firstOrderId=checkout.order.order_id;
   assert.equal(checkout.subscription.billing_cycle,'annual');assert.equal(BigInt(checkout.order.amount_fen),214920n);
-  await expect(page.locator('#refresh-subscription-payment')).toBeVisible();await page.locator('#refresh-subscription-payment').click();
+  await expect(page.locator('#refresh-subscription-payment')).toBeVisible();await payBrowserOrder(page,firstOrderId);await page.locator('#refresh-subscription-payment').click();
   await expect(page.locator('.subscription-payment')).toHaveCount(0);await expect(page.locator('#refresh-subscription-payment')).toHaveCount(0);
   await expect(page.locator('.subscription-message')).toContainText('本月积分已到账，剩余额度按月发放');
   await expect(page.locator('.subscription-annual-releases')).toContainText('已发放 1/12');
   const paid=await points(21000);assert.equal(paid.subscription_test.charges.paid_orders,1);assert.equal(paid.subscription_test.charges.simulated_paid_fen,'214920');
   const paidQuery=new URLSearchParams(new URL(page.url()).hash.split('?')[1]);assert.equal(paidQuery.has('order'),false);assert.equal(paidQuery.has('checkout'),false);
   checks.push('real annual checkout charges 2149.20 once, closes its payment card and grants only the first 21000 points');await shot('01-annual-paid-first-month.png');
+  await page.locator('#subscription-manage').click();
+  await expect(page.locator('#subscription-management-title')).toBeVisible();
   await page.locator('#subscription-renewal-switch').click();
   const link=page.locator('.subscription-authorization a');await expect(link).toBeVisible();
   await expect(link).toHaveAttribute('data-local-synthetic-mandate','true');await expect(link).toHaveAttribute('href',baseURL+'/#/account');
@@ -71,7 +74,10 @@ try{
   assert.equal(context.pages().length,1);assert.deepEqual(invalidDomainRequests,[]);assert.deepEqual(nonLocalRequests,[]);
   assert.ok(mandateRequests.some(request=>request.path===`/api/v1/subscriptions/${subscriptionId}/auto-renew/refresh`));
   checks.push('clicking the localized authorization link triggers the actual mandate refresh, enables renewal and sends zero external requests');await shot('03-renewal-enabled.png');
-  await page.locator('#subscription-renewal-switch').click();await expect(page.locator('#subscription-renewal-switch')).toHaveAttribute('aria-checked','false');
+  await page.locator('#subscription-renewal-switch').click();
+  await expect(page.locator('#subscription-cancel-dialog')).toBeVisible();
+  await page.locator('#subscription-cancel-confirm').click();
+  await expect(page.locator('#subscription-renewal-switch')).toHaveAttribute('aria-checked','false');
   const cancelled=await state();assert.equal(cancelled.account.subscription.auto_renew,false);assert.equal(cancelled.account.subscription.mandate_status,'cancelled');
   const contractEnd=cancelled.account.subscription.current_period_end;
   checks.push('the real renewal switch cancels the persisted channel mandate');

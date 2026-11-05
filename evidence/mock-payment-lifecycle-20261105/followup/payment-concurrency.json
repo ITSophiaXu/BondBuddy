@@ -1,0 +1,96 @@
+{
+  "synthetic": true,
+  "realHttp": true,
+  "realPostgres": true,
+  "realPaymentCallsPerformed": 0,
+  "modelCallsPerformed": 0,
+  "startedAt": "2026-11-05T08:35:28.659Z",
+  "finishedAt": "2026-11-05T08:35:36.404Z",
+  "instanceId": "85f66562-58b4-4af1-b6d1-995d6477e2e2",
+  "accounts": [
+    {
+      "username": "edge_idem_38590fb0",
+      "owner": "f834ac41-c3ee-4176-9c89-817dc0d743f3"
+    },
+    {
+      "username": "edge_refund_2aadf609",
+      "owner": "acf52714-2c99-4f01-b065-81161f6a7c64"
+    },
+    {
+      "username": "edge_race_76cf9fd6",
+      "owner": "f39e6442-856a-4b0d-9fc6-f02b7b61850f"
+    },
+    {
+      "username": "edge_race_2aad540b",
+      "owner": "ad552607-61dd-42d6-b9bf-48cd27197cfb"
+    },
+    {
+      "username": "edge_sources_f8b19ba6",
+      "owner": "196fe9d7-03ad-4534-8398-f65e78b7be03"
+    },
+    {
+      "username": "edge_correction_9544a96b",
+      "owner": "46a14a94-2fa9-42cb-bcd8-b2cb655ef388"
+    }
+  ],
+  "resources": {
+    "orders": [
+      "d3d5daf7ade1480f999700a012b73b6e",
+      "4815c24d66a84c56a6773df4515ce3b4",
+      "2675a71c63714d308de2a245fc73ec54",
+      "8dade0b2996f4f6fbe140081ed94b758",
+      "71ec288aa96e4849ae9958e55a794e5f",
+      "ecca3cf3858e4f14a4ba9829abce75e7",
+      "1bfb016fdff54845a18d03cbbb67db49",
+      "eb6f150f79e5463bb8e41e61d2fb8d26",
+      "e8b2e97d5eb644b09ef322942f18f6fb"
+    ],
+    "tasks": [
+      "7b526d7b-8f6f-41b2-bd82-a52c830763e2",
+      "a2472249-c5a7-4fc2-8d6b-40978299e9ae",
+      "9358ff45-a941-46aa-b5c0-422555738f73",
+      "0c8ff7ae-3d3c-41fc-b716-eca22c57429c",
+      "21c53255-3262-44cb-a58b-c7d326468521",
+      "3734d3ca-77bb-4052-a9a0-7169a94111a7",
+      "2432843e-e097-4aff-ac51-fb03145e8f71",
+      "6023d0fc-9f2c-4938-990a-1c23a8ab3e4b",
+      "d03591e4-1af0-41f3-979e-3e8ece4ffa76",
+      "a64a53e5-0803-47e0-8ddc-7c050479d5be"
+    ],
+    "runs": [
+      "b3524c24-0ad7-4c42-85b2-b2cfea668049",
+      "bdb480ba-f388-4034-a4b0-045c358e8c3b",
+      "6b0666b6-4ff9-4751-afb5-09b2764383d2",
+      "0038c06e-bdc0-4bc2-951e-2066ce799d0d",
+      "4c8e1ab6-404a-4e16-ac65-962bc5a062a4",
+      "6779e557-a65b-429c-a06e-c4e9416e505c"
+    ],
+    "refunds": [
+      "ddabc9af6e7344ba8439b4ed055a4daf",
+      "3418ab9b206b4a09bcc7c4c939bb7a7b",
+      "528549867a04437eadcb1d1d8eb6e1e0",
+      "90151f8ccdb746c1b4db5e6e5c25d7bb",
+      "afc73a68460f43fdada5f56c26d6a140",
+      "fe14008ab3f840569cb26186ae477518",
+      "e1a8c9544509487cb5f752157541f980"
+    ]
+  },
+  "passed": 12,
+  "failed": 0,
+  "skipped": 0,
+  "checks": [
+    "dedicated local database marker matches before any API mutation",
+    "eight concurrent real topup submissions share one order, one channel intent and one credited lot",
+    "concurrent reuse with changed topup bodies returns 409 and never creates a second intent",
+    "six concurrent real execution submissions create one run and one hold; changed body conflicts and cancellation releases once",
+    "two independent concurrent tasks cannot reserve the same wallet funds twice",
+    "different-key concurrent refunds serialize within original-order capacity; eight same-key retries freeze once and failure releases once",
+    "refund-frozen points cannot fund a full-price task or a dynamic milestone; the one spendable point pauses and failure restores it",
+    "concurrent task reservation versus cash-refund freeze never overcommits funds in either request launch order",
+    "successful task consumes exact slices across two purchases; refunds use original-source remainder, not aggregate wallet balance",
+    "failure after input lock and after cross-source model milestone restores exact cash provenance once and preserves full original-order refund capacity",
+    "source-preserving failure corrections can be cashed out only once and cannot exceed either original payment",
+    "every fresh test account passes wallet audit with nonnegative lots, no pending task and zero real model calls"
+  ],
+  "cleanup": []
+}
