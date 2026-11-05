@@ -47,7 +47,7 @@ import { agreementHref, PASSWORD_HELP, registerErrorMessage, USERNAME_HELP, USER
 import { referenceSnapshotResolver } from './reference';
 import { MaterialProcessing, materialProcessingKey } from './material-processing';
 import './material-processing.css';
-import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES } from '@bondbuddy/contracts';
+import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES, hasAuthoringSource, SOURCE_PROSPECTUS_REQUIRED_MESSAGE } from '@bondbuddy/contracts';
 import './style.css';
 import './update-form.css';
 import './authoring-onboarding.css';
@@ -602,7 +602,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
         <div class="project-strip"><span>${prototypeIcon('file')}全文更新</span><button id="edit-project-details" class="text-btn" type="button">编辑项目信息</button><span id="workspace-material-count">正在读取材料…</span></div>
         <div id="workspace-progress"></div><div id="prospectus-panel"></div>
     <details id="project-materials-details" class="project-materials-details" open><summary>项目信息与材料 <span id="materials-state-label">开始编制前可补充</span></summary><section class="panel materials-panel" aria-labelledby="materials-title"><div class="panel-heading materials-heading"><div><h2 id="materials-title">提供项目材料</h2><p class="muted" id="materials-state-description">请在开始编制前补齐材料；开始后材料锁定，仅可查看。</p><p class="muted material-upload-guidance">按分区添加材料。单份不超过 100 MB，每个项目最多 60 份、合计 500 MB。相同分区重复上传相同内容会复用已保存版本。</p></div><button class="button secondary" type="button" data-refresh-materials>刷新已保存材料</button></div>
-    <aside class="authoring-preparation-guide" data-authoring-preparation-guide hidden aria-label="准备本轮材料与要求"><strong data-authoring-preparation-title hidden>准备下一轮募集书</strong><p data-authoring-preparation-intro>优先提供审计报告，或财务报表及附注；已保存的材料不用重复上传。历史／参考募集书选填，没有原稿也可编制首稿。</p><div data-next-authoring-summary hidden></div><div class="authoring-preparation-actions"><button type="button" class="text-btn" data-authoring-requirements>填写补充要求（选填）</button></div><p class="authoring-execution-note" data-authoring-execution-note>保存项目、材料或要求不会开始任务；准备好后点击页末“开始更新”。</p></aside>
+    <aside class="authoring-preparation-guide" data-authoring-preparation-guide hidden aria-label="准备本轮材料与要求"><strong data-authoring-preparation-title hidden>准备下一轮募集书</strong><div data-next-authoring-summary hidden></div></aside>
     <p id="material-recovery-status" class="material-recovery-status" role="status"></p><fieldset id="material-editing" aria-label="项目材料" disabled><div id="material-partitions">${renderMaterialPartitions(project.project_id)}</div></fieldset>
     <p class="material-policy-note" id="upload-policy-note"></p><p class="material-footnote material-upload-guidance">选中文件后立即上传；未成功的文件可单独重试。</p></section><div id="project-conversation-root" hidden></div></details>
         <div id="execution-root"></div>
@@ -625,12 +625,6 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     }
     localUploads.set(project.project_id,(localUploads.get(project.project_id)??[]).filter(upload=>upload.material?.material_id!==materialId));
     recoveredMaterials.set(project.project_id,(recoveredMaterials.get(project.project_id)??[]).filter(material=>material.material_id!==materialId));
-  });
-  document.querySelector('#prospectus-panel')!.addEventListener('prospectus:skip',()=>{
-    const details=document.querySelector<HTMLDetailsElement>('#project-materials-details');if(details)details.open=true;
-    const financial=document.querySelector<HTMLElement>('[data-material-role="audit"]');
-    financial?.scrollIntoView({block:'start',behavior:'smooth'});
-    financial?.querySelector<HTMLInputElement>('input[type="file"]')?.focus({preventScroll:true});
   });
   projectConversation = new ProjectConversation(api, project.project_id, () => projectExecution?.conversationChanged(), '', async text => {
     if (!draft) return false;
@@ -658,11 +652,6 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
   };
   document.querySelector('#continue-materials')!.addEventListener('click', () => { void setStep('materials'); });
   for (const id of ['edit-project-details','previous-details']) document.querySelector(`#${id}`)!.addEventListener('click', () => { void setStep('details'); });
-  document.querySelector('[data-authoring-requirements]')!.addEventListener('click',()=>{
-    if(projectExecution&&!projectExecution.materialsEditable)return;
-    const details=document.querySelector<HTMLDetailsElement>('#project-materials-details');if(details)details.open=true;
-    const input=document.querySelector<HTMLTextAreaElement>('#project-message');if(input&&!input.disabled){input.scrollIntoView({block:'center'});input.focus({preventScroll:true});}
-  });
   // No-history projects enter the controlled generation path with the same execution surface.
   if (project.kind === 'update' || project.kind === 'generation') {
     projectExecution = new ProjectExecution(api, draft, projectConversation,
@@ -883,8 +872,8 @@ function renderMaterialPartitions(projectId: string) {
   const localMaterialIds = new Set(uploads.flatMap(upload => upload.material ? [upload.material.material_id] : []));
   // Optional-materials.html extends the workspace prototype; role values still come from contracts.
   const partitions: { label: string; roles: readonly {code: UploadRole; label: string}[]; primary: readonly UploadRole[]; optional?: boolean }[] = [
-    {label:'审计报告 / 财务报表及附注',roles:M1_MATERIAL_PARTITIONS[1].roles,primary:['audit']},
     {label:'原稿信息与格式',roles:M1_MATERIAL_PARTITIONS[0].roles,primary:[]},
+    {label:'审计报告 / 财务报表及附注',roles:M1_MATERIAL_PARTITIONS[1].roles,primary:['audit']},
     {label:'募投项目与权证材料（选填）',roles:M1_MATERIAL_PARTITIONS[2].roles,primary:['fundUse']},
     {label:'债务、授信与担保（选填）',roles:M1_MATERIAL_PARTITIONS[4].roles,primary:['debt','bankFacilities','guarantee','collateralMaterials'],optional:true},
     {label:'公司、经营与信用（选填）',roles:[...M1_MATERIAL_PARTITIONS[5].roles,...M1_MATERIAL_PARTITIONS[3].roles].filter(role=>role.code!=='other'),primary:['governance','corporate','business','rating'],optional:true},
@@ -894,7 +883,7 @@ function renderMaterialPartitions(projectId: string) {
     // Keep saved secondary-role files and source declarations accessible without
     // exposing duplicate upload pickers or empty subtype sections.
     const roles = partition.roles.filter(role => partition.primary.includes(role.code) || uploads.some(upload => upload.role === role.code) || materials.some(material => material.role === role.code));
-    return `<section class="material-partition${partition.optional ? ' optional-material-partition' : ''}" aria-labelledby="material-partition-${index}"${roles.length ? '' : ' hidden'}><h3 id="material-partition-${index}">${esc(partition.label)}</h3>${index === 1 && sourceFormatContext(projectId) ? formatTemplateNotice(sourceFormatContext(projectId)!) : ''}${partition.optional ? `<p class="optional-material-help">按实际情况提供，未上传这些可选材料也可继续编制。</p><p class="optional-material-formats" id="material-formats-${index}">${OPTIONAL_MATERIAL_FORMATS}</p>` : ''}<ul class="material-role-list">${roles.map(rawRole => {
+    return `<section class="material-partition${partition.optional ? ' optional-material-partition' : ''}" aria-labelledby="material-partition-${index}"${roles.length ? '' : ' hidden'}><h3 id="material-partition-${index}">${esc(partition.label)}</h3>${index === 0 && sourceFormatContext(projectId) ? formatTemplateNotice(sourceFormatContext(projectId)!) : ''}${partition.optional ? `<p class="optional-material-help">按实际情况提供，未上传这些可选材料也可继续编制。</p><p class="optional-material-formats" id="material-formats-${index}">${OPTIONAL_MATERIAL_FORMATS}</p>` : ''}<ul class="material-role-list">${roles.map(rawRole => {
     const role = {...rawRole,label:OPTIONAL_MATERIAL_GUIDANCE[rawRole.code]?.label ?? rawRole.label};
     const canAdd = partition.primary.includes(role.code);
     const roleUploads = uploads.filter(upload => upload.role === role.code);
@@ -916,7 +905,8 @@ function projectMaterialReadiness(projectId: string) {
   const pending = (localUploads.get(projectId) ?? []).find(upload => upload.phase !== 'persisted');
   const message = prospectusPanel?.hasUnconfirmed ? '募集书保存或采用结果尚未确认，请先确认后再开始更新。' : prospectusPanel?.sourceSelectionMessage ? prospectusPanel.sourceSelectionMessage : recovery?.state === 'unavailable' ? '材料记录读取失败，请点击“刷新已保存材料”重试。'
     : pending ? `${uploadName(pending)}：${uploadStatus(pending)}`
-    : recovery?.state !== 'ready' ? '正在读取已保存材料…' : '';
+    : recovery?.state !== 'ready' ? '正在读取已保存材料…'
+    : draft?.fields.update_details.authoring_mode === 'unified_v1' && !hasAuthoringSource(confirmedMaterials(projectId), Boolean(projectExecution?.inheritsResultFormat || prospectusPanel?.state?.versions.some(v => v.version_id === prospectusPanel?.state?.current_version_id && v.origin === 'generated'))) ? SOURCE_PROSPECTUS_REQUIRED_MESSAGE : '';
   return {ready: !message, message};
 }
 

@@ -2,10 +2,24 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Value } from '@sinclair/typebox/value';
 import { MARKET_OFFERINGS, emptyUpdateDetails, UpdateDetailsSchema, updateDetailsErrors, type Market, type Offering, type ProjectMessageSetPin, type SourceProspectus } from '@bondbuddy/contracts';
-import { assertAuthoringSourceInformation, lockUnifiedAuthoring } from './unified-authoring.js';
-import { digest } from './data.js';
+import { assertAuthoringSourceInformation, assertAuthoringSourceRequired, lockUnifiedAuthoring } from './unified-authoring.js';
+import { digest, publicProblem, Problem } from './data.js';
+import { SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR } from '@bondbuddy/contracts';
 import { lockReviewFileDelivery } from './review-file-knowledge.js';
 const messages={version:0,content_sha256:'0'.repeat(64),members:[],message_ids:[]} as ProjectMessageSetPin;
+test('new authoring requires a source, while verified previous results remain usable', () => {
+  const financial = { material_id: 'financial', material_version: 1, sha256: 'a'.repeat(64), role: 'financial' };
+  for (const materials of [[], [financial]]) assert.throws(() => assertAuthoringSourceRequired(materials), error => {
+    assert.ok(error instanceof Problem);
+    assert.equal(error.status, 422);
+    assert.deepEqual(publicProblem(error, 'synthetic-source-required').field_errors, [SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR]);
+    return true;
+  });
+  for (const role of ['historical', 'reference']) assert.doesNotThrow(() => assertAuthoringSourceRequired([{...financial, role}]));
+  assert.doesNotThrow(() => assertAuthoringSourceRequired([financial], {
+    artifact_id: 'verified-result', version: 1, sha256: 'b'.repeat(64), run_id: 'previous-run', input_revision: 1,
+  }));
+});
 const source: SourceProspectus = { material_id:'source-a',material_version:1,sha256:'a'.repeat(64),issuer_name:'合成母公司',relation:'parent',market:'sse',offering:'private',reporting_periods:[],status:'user_asserted' };
 
 test('existing knowledge snapshots are selected by target type, including all eleven scopes',async()=>{

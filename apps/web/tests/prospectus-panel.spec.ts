@@ -5,7 +5,9 @@ import {fileURLToPath} from 'node:url';
 import {schemas,type ProspectusVersions,type ProspectusVersion} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import type {Dto} from '../src/api';
-import '../src/schema-formats';
+import {isDateTime} from '../src/schema-formats';
+import {FormatRegistry} from '@sinclair/typebox';
+test.beforeEach(() => { FormatRegistry.Set('date-time',isDateTime); });
 
 const prototypeRoot='/@fs/'+fileURLToPath(new URL('../../../product-prototype/public/',import.meta.url)).replaceAll('\\','/');
 const project='synthetic-panel-project',base='/api/v1/projects/'+project,now='2026-10-25T02:00:00Z';
@@ -136,7 +138,7 @@ async function selectFile(page:Page,name='合成新稿.docx'){const chooser=page
 async function adopt(page:Page,id:string){await history(page).evaluate(el=>(el as HTMLDetailsElement).open=true);await page.locator('[data-use-version="'+id+'"]').click();await expect(page.locator('dialog[open]')).toBeVisible();}
 
 test('empty state exposes upload, has no saved history entries, and fits phone widths',async({page})=>{
-  await setup(page);await expect(page.getByRole('button',{name:/^(上传募集说明书|上传历史／参考稿)$/})).toBeVisible();await expect(history(page).locator('[data-prospectus-version]')).toHaveCount(0);await expect(page.locator('.reference-empty')).toContainText('没有参考稿也可以继续');
+  await setup(page);await expect(page.getByRole('button',{name:/^(上传募集说明书|上传历史／参考稿)$/})).toBeVisible();await expect(history(page).locator('[data-prospectus-version]')).toHaveCount(0);await expect(page.locator('.reference-empty')).toContainText('请上传一份历史／参考募集书');
   const chooser=page.waitForEvent('filechooser');await page.getByRole('button',{name:/^(上传募集说明书|上传历史／参考稿)$/}).click();await chooser;
   for(const width of [1440,390,320]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);const card=await page.locator('.prospectus-panel').boundingBox(),heading=await page.locator('[data-prospectus-heading]').boundingBox();expect(heading!.x-card!.x).toBeGreaterThanOrEqual(18);}
 });
@@ -239,8 +241,8 @@ test('generation upload recovery auto-selects saved source using the original re
 declare global{interface Window{panelFixture:{refresh:()=>Promise<void>;sourceSelectionMessage:()=>string;hasUnconfirmed:()=>boolean}}}
 
 test('mistaken saved upload can be cancelled, deleted, refreshed away and replaced',async({page})=>{
-  const f=await setup(page);await expect(page.locator('[data-prospectus-heading]')).toHaveText('历史／参考募集书（选填）');
-  await expect(page.getByRole('button',{name:'先提供发行人材料'})).toBeVisible();
+  const f=await setup(page);await expect(page.locator('[data-prospectus-heading]')).toHaveText('历史／参考募集书（必填）');
+  await expect(page.getByRole('button',{name:'先提供发行人材料'})).toHaveCount(0);
   await selectFile(page,'误上传的历史稿.docx');
   const row=page.locator('[data-prospectus-version="v3"]');await expect(row).toContainText('本次更新已选用');await expect(row.locator('[data-use-version]')).toHaveCount(0);
   await row.getByRole('button',{name:'删除',exact:true}).click();await page.locator('[data-cancel-delete]').click();expect(f.calls.filter(c=>c.method==='DELETE')).toHaveLength(0);
