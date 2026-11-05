@@ -1,4 +1,5 @@
 import './upload-progress.css';
+import { materialPeriodHintSlot, syncReportingPeriodHints } from './reporting-period-hints';
 import {uploadActivity,uploadTransfer,uploadProgressHtml,type FileUploadProgress} from './upload-progress';
 import {formatPoints} from '@bondbuddy/contracts';
 import {int64} from '@bondbuddy/contracts';
@@ -538,6 +539,7 @@ export class ProjectAssistant {
       const details=this.data.project.update_details??=emptyUpdateDetails(),sources=details.source_prospectuses??=[],old=sources.find(s=>s.material_id===m.material_id),next=readSourceFields(container,m,old,el.dataset.sourceField);
       details.source_prospectuses=[...sources.filter(s=>s.material_id!==m.material_id),next];
       this.view.assistant!.source_prospectuses=details.source_prospectuses;this.invalidateTask();}
+    if(this.action?.business==='update'&&this.data)syncReportingPeriodHints(this.host,this.data.materials,this.data.project.update_details?.source_prospectuses??[],this.action.fields.reporting_cutoff??null);
   }
   private async change(event:Event){const el=event.target as HTMLInputElement;
     if(el.matches('[data-assistant-template-recovery-reselect]')){const file=el.files?.[0],id=el.dataset.assistantTemplateRecoveryReselect!;el.value='';if(file){this.templateFiles.set(id,file);this.templateStatuses.set(id,'已选择文件，请点击继续原保存，核对内容相同后再继续。');this.templateErrors.delete(id);this.paintStatus();}return;}
@@ -548,7 +550,7 @@ export class ProjectAssistant {
     if(el.matches('[data-template-upload]')){const file=el.files?.[0];el.value='';if(file)await this.work(()=>this.beginTemplate(file),'save');return;}
     if(el.matches('[data-file]')){const files=Array.from(el.files??[]);el.value='';if(files.length)this.addFiles(files,el.dataset.file as Upload['role'],el.closest('.ba-composer')?'attachment':'business');return;}
     if(el.matches('[data-baseline]')){this.view.unsent_context.reading_artifact=this.data?.results.find(r=>r.pin.artifact_id===el.value)?.pin??null;this.qaQuote=undefined;this.invalidateTask();return;}
-    if(el.matches('[data-year],[data-quarter]')&&this.action){const year=this.host.querySelector<HTMLSelectElement>('[data-year]')!.value,q=this.host.querySelector<HTMLSelectElement>('[data-quarter]')!.value;const date=quarterCutoff(year,q);if(date)this.action.fields.reporting_cutoff=date;this.invalidateTask();}
+    if(el.matches('[data-year],[data-quarter]')&&this.action){const year=this.host.querySelector<HTMLSelectElement>('[data-year]')!.value,q=this.host.querySelector<HTMLSelectElement>('[data-quarter]')!.value;const date=quarterCutoff(year,q);if(date)this.action.fields.reporting_cutoff=date;this.invalidateTask();if(this.action.business==='update'&&this.data)syncReportingPeriodHints(this.host,this.data.materials,this.data.project.update_details?.source_prospectuses??[],date);}
     if(el.matches('[data-field="document_type"]')){this.paint();}
     if(el.matches('[data-field="market"]')&&this.action){delete this.action.fields.offering;this.paint();}
     if(el.dataset.sourceField==='market'&&this.data)this.paint();
@@ -579,7 +581,7 @@ export class ProjectAssistant {
       ${a.business==='generation'&&f.document_type==='init'?`<label>券商立项模板<select data-template><option value="">请选择</option>${(this.workspace?.templates??[]).filter(t=>t.status==='active'&&t.document_type==='init'&&t.market===f.market).map(t=>option(`${t.template_id}/${t.template_version}`,`${t.broker} · ${t.name}`,this.view.assistant?.template_key)).join('')}</select></label><label>模板所属券商<input data-field="broker" value="${esc(f.broker??'')}"></label><label class="ba-attach ba-template-picker">＋ 上传券商模板<input type="file" data-template-upload accept=".docx" aria-label="上传券商模板"></label><div data-template-recovery>${this.templateRecovery()}</div>`:''}
       <div class="ba-upload-actions"><label>＋ ${a.business==='review'?'待复核募集书':'历史／参考募集书'}<input type="file" data-file="historical" accept=".docx,.pdf" multiple></label><label>＋ 财务／审计材料<input type="file" data-file="audit" multiple></label><label>＋ 其他材料<input type="file" data-file="other" multiple></label></div>
       ${a.business!=='update'&&sources.length>1?`<label>本次采用的募集说明书<select data-primary-source><option value="">请选择</option>${sources.map(m=>option(m.material_id,m.filename,this.view.unsent_context.source_material?.material_id)).join('')}</select></label>`:''}
-      <ul class="ba-files">${!this.data?(this.workspace?.material_details??[]).map(m=>`<li>${esc(m.filename)} <small>已保存</small></li>`).join(''):''}${materials.map(m=>`<li>${esc(m.filename)} <small>已保存</small>${a.business==='update'?sourceFields(m,this.data?.project.update_details?.source_prospectuses):''}</li>`).join('')}</ul>
+      <ul class="ba-files">${!this.data?(this.workspace?.material_details??[]).map(m=>`<li>${esc(m.filename)} <small>已保存</small></li>`).join(''):''}${materials.map(m=>`<li>${esc(m.filename)} <small>已保存</small>${a.business==='update'?sourceFields(m,this.data?.project.update_details?.source_prospectuses,undefined,f.reporting_cutoff??null):''}${a.business==='update'?materialPeriodHintSlot(m,f.reporting_cutoff??null):''}</li>`).join('')}</ul>
       <label>补充要求 <small>选填</small><textarea data-requirements maxlength="12000" rows="3" placeholder="例如：只修改偿债能力分析，保留财务数据与表格。">${esc(a.requirements)}</textarea></label>
       ${a.business!=='generation'?`<div data-copy-recovery>${this.copyRecovery()}</div>`:''}<button class="ba-primary" data-a="prepare"${this.busy?' disabled':''}>开始任务</button></section>`;
   }
