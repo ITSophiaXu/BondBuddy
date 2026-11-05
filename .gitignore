@@ -17,6 +17,7 @@ docs/testing/*
 !docs/PROJECT-FILES-ARCHITECTURE.md
 !docs/product-decisions/
 docs/product-decisions/*
+!docs/product-decisions/2026-11-05-latest-financial-window.md
 !docs/product-decisions/2026-10-11-authoring-dynamic-balance.md
 !docs/product-decisions/2026-09-30-m1-simplification.md
 !docs/product-decisions/2026-10-02-generated-word-download.md
@@ -40,6 +41,7 @@ docs/product-decisions/*
 !docs/product-decisions/2026-10-28-workpaper-shared-batch.md
 !docs/acceptance/
 docs/acceptance/*
+!docs/acceptance/financial-period-rollforward-20261105.md
 !docs/acceptance/prospectus-auto-adoption-20261031.md
 !docs/acceptance/prospectus-auto-adoption-20261031/
 docs/acceptance/prospectus-auto-adoption-20261031/*
