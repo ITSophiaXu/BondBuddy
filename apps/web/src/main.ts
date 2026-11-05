@@ -60,6 +60,7 @@ import '../../../product-prototype/public/source-prospectus.css';
 import '../../../product-prototype/public/navigation-responsive.css';
 import './project-context.css';
 import '../../../product-prototype/public/workspace-typography.css';
+import '../../../product-prototype/public/desktop-workspace-polish.css';
 
 const root = document.querySelector<HTMLDivElement>('#app')!;
 const folder = icon('M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z');
@@ -572,7 +573,7 @@ function renderReviewProjectDetails(project: Dto<'ProjectResponse'>, query: URLS
   const returnQuery = withProjectContext(new URLSearchParams({ tab: query.get('review_tab') === 'results' ? 'results' : 'materials' }));
   const reportId = query.get('review_report_id'); if (reportId) returnQuery.set('report_id', reportId);
   const returnHref = `#/projects/${encodeURIComponent(project.project_id)}/review?${returnQuery}`;
-  shell(`<div class="review-workspace"><header class="review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><h1 id="project-heading">${esc(project.name)}</h1><p>补充复核所需的项目信息，保存后用于下一次明确执行。</p></div><span class="save-badge" id="save-state" role="status">已保存</span></header>${workspaceSteps(1,'复核流程')}<form id="draft-form" class="review-panel review-create"><h2>编辑复核项目信息</h2><p class="review-muted">修改后自动保存，已开始的任务保持原输入。</p>${reviewProjectFields(project)}<p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>其他页面已修改项目信息；当前填写仍保留，请核对后加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃本页修改并加载最新资料</button></div><div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span><a class="btn primary" href="${esc(returnHref)}">返回复核工作区</a></div></form></div>`, 'review');
+  shell(`<div class="review-workspace"><header class="review-header"><div><p class="review-kicker">PROSPECTUS REVIEW</p><h1 id="project-heading" title="${esc(project.name)}">${esc(project.name)}</h1><p>补充复核所需的项目信息，保存后用于下一次明确执行。</p></div><span class="save-badge" id="save-state" role="status">已保存</span></header>${workspaceSteps(1,'复核流程')}<form id="draft-form" class="review-panel review-create"><h2>编辑复核项目信息</h2><p class="review-muted">修改后自动保存，已开始的任务保持原输入。</p>${reviewProjectFields(project)}<p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>其他页面已修改项目信息；当前填写仍保留，请核对后加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃本页修改并加载最新资料</button></div><div class="form-actions"><button id="save-draft" class="button secondary" type="submit" disabled>保存修改</button><span class="muted" id="saved-time">${esc(date(project.updated_at))} 保存</span><a class="btn primary" href="${esc(returnHref)}">返回复核工作区</a></div></form></div>`, 'review');
   const form = document.querySelector<HTMLFormElement>('#draft-form')!;
   bindReviewProjectFields(form, value => draft?.edit({ ...value, issuer_name: value.issuer_name ?? '' }),project);
   form.addEventListener('submit', event => { event.preventDefault(); void draft?.save(); });
@@ -590,7 +591,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     materialProcessing.setVisible(document.visibilityState === 'visible');
   }
   const value = { ...draft.fields, kind: project.kind, issuer_name: draft.fields.issuer_name || null };
-  shell(`${projectListContext()?projectBackLink():''}<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1 id="project-heading">${esc(project.name)}</h1><p>提供项目材料和要求，在同一个工作区完成募集书更新。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span>${project.source_project_id?`<a class="text-button" href="#/projects/${encodeURIComponent(project.source_project_id)}">返回原项目</a>`:'<button class="text-button" type="button" id="delete-project">删除项目</button>'}</div></div>
+  shell(`${projectListContext()?projectBackLink():''}<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1 id="project-heading" title="${esc(project.name)}">${esc(project.name)}</h1><p>提供项目材料和要求，在同一个工作区完成募集书更新。</p></div><div class="heading-actions"><span class="save-badge" id="save-state" role="status">已保存</span>${project.source_project_id?`<a class="text-button" href="#/projects/${encodeURIComponent(project.source_project_id)}">返回原项目</a>`:'<button class="text-button" type="button" id="delete-project">删除项目</button>'}</div></div>
     <div id="workspace-steps">${workspaceSteps(step === 'details' ? 1 : 2)}</div>
     <p id="page-error" class="form-message" role="alert" hidden></p><div id="conflict-panel" class="conflict-panel" hidden><p>当前输入未覆盖其他页面的修改。可以复制保留输入，再加载最新资料。</p><button class="button secondary" type="button" id="reload-draft">放弃当前输入并加载最新资料</button></div>
     <div class="workspace-layout authoring-workspace"><div class="workspace-main">

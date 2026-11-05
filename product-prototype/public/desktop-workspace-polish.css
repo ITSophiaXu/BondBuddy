@@ -1,0 +1,179 @@
+/* Desktop-only refinements shared by the approved preview and the real app. */
+@media (min-width: 961px) {
+  .prototype-app {
+    --desktop-title: 28px;
+    --desktop-section: 18px;
+    --desktop-control: 13px;
+    --desktop-radius: 8px;
+  }
+  .prototype-app .topbar { height: 56px; min-height: 56px; }
+  .prototype-app .shell { container-type: inline-size; container-name: assistant-page; }
+  .prototype-app main { padding-top: 24px; padding-bottom: 112px; }
+  .prototype-app main :is(.page-head, .page-heading) {
+    gap: 24px; align-items: flex-start; margin-bottom: 20px;
+  }
+  .prototype-app main :is(.page-head, .page-heading) > div:first-child {
+    flex: 1; min-width: 0;
+  }
+  .prototype-app main :is(.page-head, .page-heading) h1 {
+    font-size: var(--desktop-title); font-weight: 600; line-height: 1.35;
+    letter-spacing: -.4px; margin: 0; text-wrap: balance;
+    word-break: normal; overflow-wrap: anywhere;
+  }
+  .prototype-app main :is(.page-head, .page-heading) p {
+    font-size: 13px; line-height: 1.65; margin-top: 6px;
+  }
+  .prototype-app main :is(.eyebrow, .review-kicker) {
+    font-size: 11px; font-weight: 600; letter-spacing: 1.4px;
+    line-height: 1.5; margin: 0 0 5px;
+  }
+  .prototype-app main .heading-actions {
+    flex: none; display: flex; align-items: center; gap: 12px;
+    white-space: nowrap; padding-top: 20px;
+  }
+  .prototype-app main .heading-actions > * { flex: none; white-space: nowrap; }
+  .prototype-app main :is(.btn, .button) {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    min-height: 40px; padding: 9px 14px; border-radius: var(--desktop-radius);
+    font-size: var(--desktop-control); line-height: 20px; white-space: nowrap;
+  }
+  .prototype-app main :is(.btn.small, .button.small) { min-height: 36px; padding: 7px 12px; }
+  .prototype-app main :is(.text-button, .text-btn) {
+    font-size: 12px; line-height: 20px; min-height: 32px;
+  }
+  .prototype-app main :is(.btn, .button, .text-button, .text-btn):focus-visible {
+    outline: 2px solid var(--green, #173e33); outline-offset: 3px;
+  }
+  .prototype-app main :is(input, select, textarea) { font-size: 14px; }
+  .prototype-app main :is(.btn, .button) input[type=file] { font-size: inherit; }
+  .prototype-app .project-context {
+    padding: 0 0 12px; margin-bottom: 16px; border: 0;
+    border-bottom: 1px solid var(--line); border-radius: 0; background: transparent;
+  }
+  .prototype-app .project-context > div { flex: 1; min-width: 0; flex-wrap: nowrap; }
+  .prototype-app .project-context strong { font-size: 13px; }
+  .prototype-app .project-context > a { flex: none; white-space: nowrap; }
+  .prototype-app main > .back-link,
+  .prototype-app :is(.project-workbench, .review-workspace) > .back-link {
+    margin: 0 0 12px; font-size: 12px;
+  }
+  .prototype-app .stepper { margin: 16px 0 20px; }
+
+  /* Keep the table and all its tools; remove the excessive vertical gaps. */
+  .prototype-app .collection-panel { padding: 18px 22px; margin-top: 18px; background: #fff; }
+  .prototype-app .collection-heading { margin-bottom: 6px; min-height: 32px; }
+  .prototype-app .collection-heading h2 { font-size: var(--desktop-section); }
+  .prototype-app .collection-sync { margin: 0 0 10px; line-height: 1.5; }
+  .prototype-app .collection-search input { min-height: 40px; padding: 9px 0; }
+  .prototype-app .collection-filters { margin: 10px 0; }
+  .prototype-app .collection-table th { padding: 10px 12px; }
+  .prototype-app .collection-project > td { padding: 11px; }
+  .prototype-app .collection-title { font-size: 14px; }
+  .prototype-app .collection-issuer { margin: 3px 0; }
+  .prototype-app .collection-market { padding: 1px 0; background: transparent; font-size: 12px; }
+  .prototype-app .collection-recent { margin-top: 4px; font-size: 12px; }
+  .prototype-app .collection-actions .btn.small { min-height: 36px; padding: 7px 10px; font-size: 12px; }
+
+  /* A selected result is the primary surface. Its independent running task
+     remains reachable from the result context and below the results. */
+  .prototype-app .review-selected-project {
+    padding: 0; margin: 0 0 14px; border: 0; background: transparent;
+  }
+  .prototype-app .review-selected-project > div:nth-child(2) > strong { font-size: 14px; }
+  .prototype-app .review-project-icon { width: 32px; height: 32px; }
+  .prototype-app .review-header { margin: 0 0 16px; }
+  .prototype-app .review-tabs { padding: 0 20px; }
+  .prototype-app .review-tab-panel { padding: 20px; }
+  .prototype-app .review-result-context .review-notice {
+    padding: 12px 16px; margin: 0 0 20px; display: flex;
+    align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  }
+  .prototype-app .review-result-context p { margin: 0; }
+  .prototype-app .review-background-task {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 10px 16px; margin: -8px 0 20px; border-left: 2px solid #809975;
+    background: #f7f9f5; font-size: 13px; color: var(--muted);
+  }
+  .prototype-app .review-background-task button { flex: none; }
+  .prototype-app .review-workspace[data-view=results] > .review-progress-bar { margin-top: 24px; }
+  .prototype-app .review-workspace[data-view=results] #review-phase-badge { display: none; }
+
+  .prototype-app .qa-page { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; }
+  .prototype-app .qa-page > * { grid-column: 1 / -1; min-width: 0; }
+  .prototype-app .qa-page > .page-head { grid-column: 1; grid-row: 1; margin-bottom: 16px; }
+  .prototype-app .qa-page > .qa-toolbar { grid-column: 2; grid-row: 1; align-self: start; margin: 20px 0 0; }
+  .prototype-app .qa-toolbar { gap: 8px; }
+  .prototype-app .qa-toolbar select { width: 230px; max-width: 100%; min-height: 40px; font-size: 13px; }
+  .prototype-app .qa-toolbar label { font-size: 12px; }
+  .prototype-app .qa-workflow { margin: 0 0 16px; }
+  .prototype-app .qa-page :is(.qa-document, .qa-project-materials) { padding: 20px 24px; }
+  .prototype-app .qa-page .qa-upload-compact { padding: 16px 24px; }
+  .prototype-app .qa-project-materials header p { margin-top: 4px; }
+  .prototype-app .qa-prospectus-row { margin-top: 14px; }
+  .prototype-app .qa-page[data-view=result] .qa-document > h2 { margin-bottom: 16px; }
+  .prototype-app .qa-page[data-view=result] .qa-download-card { margin-top: 0; }
+  .prototype-app .qa-result-context { margin: 0 0 16px; font-size: 13px; line-height: 1.65; color: var(--muted); }
+
+  /* One current file card. The live status remains announced and every
+     warning stays visible; only verified duplicate summaries are condensed. */
+  .prototype-app .pw-source { padding: 20px 24px; background: #fff; }
+  .prototype-app .pw-source:has(.prospectus-current-file) #pw-current-source > strong,
+  .prototype-app #pw-prospectus:has(.prospectus-current-file) .prospectus-panel-heading[data-current-summary=true] > div {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+  }
+  .prototype-app .pw-source:has(.prospectus-current-file) #pw-current-source { margin: 0; }
+  .prototype-app #pw-prospectus .prospectus-panel { position: relative; padding-top: 12px; border-top: 0; }
+  .prototype-app #pw-prospectus:has(.prospectus-current-file) .prospectus-panel-heading[data-current-summary=true] {
+    position: static; justify-content: flex-end; margin: 0 0 10px;
+  }
+
+  .prototype-app .pw-source:has(.prospectus-current-file) .pw-saved { display: none; }
+  .prototype-app #pw-prospectus .prospectus-current-file { padding: 14px 16px; margin: 0 0 12px; }
+  .prototype-app #pw-prospectus .prospectus-current-file h3 { font-size: 14px; }
+  .prototype-app #pw-prospectus .prospectus-panel > .muted { margin: 8px 0; }
+  .prototype-app .pw-actions { margin: 16px 0 20px; }
+  .prototype-app .pw-check { padding: 18px 24px; gap: 20px; }
+  .prototype-app .pf-generation-source > .btn { flex: none; height: 40px; padding: 9px 14px; min-width: 64px; }
+  .prototype-app .pf-generation-source { margin-bottom: 18px; padding: 12px 0; }
+  .prototype-app .pf-generation-heading { margin-bottom: 16px; }
+
+  .prototype-app .materials-heading { padding: 20px 24px 12px; }
+  .prototype-app .material-partition { padding: 14px 24px; }
+  .prototype-app .materials-heading h2 { font-size: var(--desktop-section); }
+  .prototype-app .materials-heading p { font-size: 12px; line-height: 1.65; }
+  .prototype-app .material-role-heading > div > span { font-size: 12px; }
+  .prototype-app .authoring-preparation-guide { padding: 14px 24px; }
+  .prototype-app .reference-prospectus { padding: 20px 24px; }
+  .prototype-app .reference-prospectus .reference-upload-picker { min-height: 72px; }
+  .prototype-app .reference-empty { margin: 8px 0; }
+
+  /* The actual footer stays in its original form/fieldset: existing disabled
+     states, handlers and billing messages continue to govern its buttons. */
+  .prototype-app :is(.authoring-actions.is-preparing, .qa-actions, .pf-footer) {
+    position: sticky; bottom: 0; z-index: 20; margin-top: 20px;
+    padding: 12px 18px; border: 1px solid var(--line); border-radius: 10px;
+    background: #fff; box-shadow: 0 -4px 18px #173e3308;
+    max-height: min(38vh, 260px); overflow-y: auto;
+  }
+  .prototype-app .authoring-actions.is-preparing { align-items: center; }
+  .prototype-app .qa-actions { justify-content: space-between; }
+  .prototype-app .qa-document:has(.qa-actions) { overflow: visible; }
+  .prototype-app main:has(.authoring-actions.is-preparing, .qa-actions, .pf-footer) :is(button, input, select, textarea, summary, [tabindex]) { scroll-margin-block: 80px 120px; }
+  .prototype-app main:has(.authoring-actions.is-preparing, .qa-actions, .pf-footer) { scroll-padding-bottom: 120px; }
+
+  /* Use the remaining workspace width when the assistant is open. */
+  @container assistant-page (max-width: 880px) {
+    .prototype-app .qa-page { display: block; }
+    .prototype-app .qa-page > .qa-toolbar { margin: 0 0 16px; justify-content: flex-end; }
+    .prototype-app .review-background-task { flex-wrap: wrap; gap: 4px 12px; }
+  }
+  @container assistant-page (max-width: 600px) {
+    .prototype-app main :is(.page-head, .page-heading) { flex-wrap: wrap; gap: 12px; }
+    .prototype-app main :is(.page-head, .page-heading) > div:first-child { flex-basis: 100%; }
+    .prototype-app main .heading-actions { padding-top: 0; }
+    .prototype-app .qa-toolbar { flex-wrap: wrap; }
+    .prototype-app .qa-toolbar select { width: 100%; }
+    .prototype-app :is(.authoring-actions.is-preparing, .qa-actions, .pf-footer) { padding: 10px 12px; }
+  }
+}

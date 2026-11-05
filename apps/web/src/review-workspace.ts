@@ -225,13 +225,17 @@ export class ReviewWorkspace {
       const query=withProjectContext(new URLSearchParams({tab:'results',run:latest.run.run_id}),this.fromList);
       next=`<a class="text-btn" data-review-latest-result href="#/projects/${encodeURIComponent(this.projectId)}/review?${esc(query.toString()+carryHandoff(this.handoffQuery))}">查看最新成果 V${latest.version}</a>`;
     }
-    return `<div class="review-notice"><p>正在查看${selected?'成果 V':'报告 R'}${version}；下载和本页处理均对应此版本。</p>${next}</div>`;
+    const active=this.workspace?.active_run;
+    const activeTask=active?this.workspace?.timeline?.find(item=>item.kind==='task'&&item.task.run.run_id===active.run_id):undefined;
+    const activeQuery=active?withProjectContext(new URLSearchParams({tab:'making',run:active.run_id}),this.fromList):null;
+    const background=active&&isActiveRun(active)&&active.run_id!==runId?`<div class="review-background-task"><span>项目另有进行中的任务${activeTask?.kind==='task'?' · 第 '+activeTask.task.version+' 轮':''}，不影响查看此成果。</span><a class="text-btn" href="#/projects/${encodeURIComponent(this.projectId)}/review?${esc(activeQuery!.toString()+carryHandoff(this.handoffQuery))}">查看进行中任务</a></div>`:'';
+    return `<div class="review-notice"><p>正在查看${selected?'成果 V':'报告 R'}${version}；下载和本页处理均对应此版本。</p>${next}</div>${background}`;
   }
   private renderResultNavigation(){
     const host=this.page?.querySelector('#review-results-panel');if(!host||this.resultUnavailable||host.querySelector('[data-review-preserved-recovery]'))return;
     const html=this.resultContext();if(!html)return;
     let context=host.querySelector<HTMLElement>('[data-review-result-context]');
-    if(!context){context=document.createElement('div');context.dataset.reviewResultContext='';host.prepend(context);}context.innerHTML=html;
+    if(!context){context=document.createElement('div');context.dataset.reviewResultContext='';context.className='review-result-context';host.prepend(context);}context.innerHTML=html;
   }
 
   async render() {
@@ -315,6 +319,12 @@ export class ReviewWorkspace {
     this.renderCharge();
     if(!this.workspace)return;
     const run=this.workspace.active_run??this.run,bar=this.page?.querySelector<HTMLElement>('#review-progress-bar');
+    // Keep the reading and keyboard order aligned with the selected surface.
+    if(this.page&&bar){
+      this.page.dataset.view=this.tab;
+      const anchor=this.page.querySelector(this.tab==='results'?'#review-grid':'#business-handoff');
+      if(anchor){if(this.tab==='results'){if(anchor.nextElementSibling!==bar)anchor.after(bar);}else if(anchor.previousElementSibling!==bar)anchor.before(bar);}
+    }
     const steps=this.page?.querySelector<HTMLElement>('#review-workspace-steps');
     if(steps){steps.hidden=isActiveRun(this.workspace.active_run);steps.innerHTML=reviewSteps(this.tab==='results'?3:2);}
     const badge=this.page?.querySelector('#review-phase-badge'),meta=this.page?.querySelector('#review-project-meta');
