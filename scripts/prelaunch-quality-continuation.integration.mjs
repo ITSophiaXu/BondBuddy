@@ -27,7 +27,7 @@ test('combined candidate continuation, first-draft history staleness and host qu
     };
     t.after(() => { net.Socket.prototype.connect = originalConnect; });
     const [{ Pool }, contracts, { createServer }, queue, data, { makeSyntheticDocxFixture }, billing,
-      { inputManifestHash }, { unifiedInputGate }, { runPipelineOnce, inputLockStage },
+      { inputManifestHash }, { unifiedInputGate }, { runPipelineOnce, inputLockStage, materialsReadyStage },
       { fileAuthoringDeliveryStage }, { readContinuationBasis }, firstDraft] = await Promise.all([
       import('pg'), import('@bondbuddy/contracts'), import('../apps/api/dist/server.js'),
       import('../apps/api/dist/queue.js'), import('../apps/api/dist/data.js'),
@@ -47,7 +47,7 @@ test('combined candidate continuation, first-draft history staleness and host qu
       enablePaidAuthoring: true, enableSubscriptionBilling: false, enableOutcomePricing: false,
       principal: async () => ({ userId: owner, csrfVerified: true }) });
     t.after(async () => { await app.close(); await pool.end(); });
-    const send = (method, url, payload) => app.inject({ method, url, payload, headers: { origin } });
+    const send = (method, url, payload, headers = {}) => app.inject({ method, url, payload, headers: { origin, ...headers } });
     const ok = async (method, url, payload) => {
       const response = await send(method, url, payload);
       assert.ok(response.statusCode >= 200 && response.statusCode < 300, `${method} ${url}: ${response.statusCode} ${response.body}`);
@@ -70,12 +70,27 @@ test('combined candidate continuation, first-draft history staleness and host qu
       const p = await ok('GET', path(project));
       return send('POST', `${path(project)}/input-revisions`, { draft_revision: p.draft_revision,
         prospectus_selection_revision: basis.selectionRevision, edit_base: basis.editBase,
-        material_versions: [], requirement_message_ids: [], ...extra });
+        material_versions: issuerMaterials.get(project) ?? [], requirement_message_ids: [], ...extra });
     };
-    const create = async (kind = 'update') => ok('POST', '/api/v1/projects', { kind,
-      name: 'Synthetic continuation integration', issuer_name: 'Synthetic issuer', market: 'sse', offering: 'private',
-      update_details: { ...contracts.emptyUpdateDetails(), authoring_mode: 'unified_v1', reporting_cutoff: '2026-09-30',
-        target_reporting_periods: contracts.reportingWindow('sse', 'private', '2026-09-30') } });
+    const issuerMaterials = new Map();
+    const create = async (kind = 'update') => {
+      const project = await ok('POST', '/api/v1/projects', { kind,
+        name: 'Synthetic continuation integration', issuer_name: 'Synthetic issuer', market: 'sse', offering: 'private',
+        update_details: { ...contracts.emptyUpdateDetails(), authoring_mode: 'unified_v1', reporting_cutoff: '2026-09-30',
+          target_reporting_periods: contracts.reportingWindow('sse', 'private', '2026-09-30') } });
+      // Meet the real input gate's issuer-material prerequisite through public upload.
+      // No historical source is adopted; worker/input/quality functions remain unchanged.
+      const bytes = makeSyntheticDocxFixture({ text: 'Synthetic issuer audit: 2026 net assets 120; all figures are synthetic.' });
+      const declaration = { byte_size: bytes.length, sha256: data.digest(bytes) };
+      const upload = await ok('POST', `${path(project.project_id)}/materials/uploads`, {
+        ...declaration, filename: 'synthetic-issuer-audit.docx',
+        media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', role: 'audit' });
+      const uploaded = await send('PUT', upload.upload_url, bytes, { 'content-type': 'application/octet-stream' });
+      assert.equal(uploaded.statusCode, 204, uploaded.body);
+      const material = await ok('POST', `${path(project.project_id)}/materials/uploads/${upload.upload_id}/complete`, declaration);
+      issuerMaterials.set(project.project_id, [{ material_id: material.material_id, material_version: material.material_version }]);
+      return project;
+    };
     const execute = async (project, input) => {
       const quoted = await ok('POST', `${path(project)}/credit-quote`, { input_revision: input.input_revision, input_hash: input.input_hash });
       assert.ok(quoted.quote?.quote_id, 'Exercise the enabled paid-authoring path');
@@ -87,7 +102,8 @@ test('combined candidate continuation, first-draft history staleness and host qu
       const p = await ok('GET', path(project)), versions = await ok('GET', `${path(project)}/prospectus-versions`);
       const input = await ok('POST', `${path(project)}/input-revisions`, { draft_revision: p.draft_revision,
         prospectus_selection_revision: versions.selection_revision,
-        ...(versions.current_version_id === null ? { edit_base: null } : {}), material_versions: [], requirement_message_ids: [] });
+        ...(versions.current_version_id === null ? { edit_base: null } : {}),
+        material_versions: issuerMaterials.get(project) ?? [], requirement_message_ids: [] });
       return { input, run: await execute(project, input), hasCurrent: versions.current_version_id !== null };
     };
     // Construct a legacy delivered pair through the current queue/storage APIs. It
@@ -177,15 +193,19 @@ test('combined candidate continuation, first-draft history staleness and host qu
       assert.equal(stale.json().code, 'INPUT_REVISION_CONFLICT'); assert.deepEqual(await snapshot(id), before);
     });
     await t.test('Q17 missing/corrupt synthetic Blob fails metadata and both compiled choices without input/run/credit changes', async () => {
-      const current = await read(id, first.runId, 'current'), artifactId = current.basis.editBase.artifact_id;
+      // Shared-ID legacy first drafts require a fresh alias read for both choices.
+      // Distinct pairs intentionally use the established metadata-only continuation contract.
+      const projectId = (await create()).project_id, delivered = await legacy(projectId, 'blob-fault');
+      const current = await read(projectId, delivered.runId, 'current'), artifactId = current.basis.editBase.artifact_id;
+      assert.equal(current.basis.version.artifact_id, current.basis.version.revision_artifact_id);
       const row = (await pool.query('SELECT object_key FROM bb_artifact_versions WHERE id=$1 AND version=1', [artifactId])).rows[0];
-      const original = files.get(row.object_key), before = await snapshot(id); assert.ok(original);
+      const original = files.get(row.object_key), before = await snapshot(projectId); assert.ok(original);
       try {
         for (const fault of ['missing', 'corrupt']) {
           if (fault === 'missing') files.delete(row.object_key); else files.set(row.object_key, Buffer.alloc(original.length, 88));
           assert.equal((await send('GET', `/api/v1/artifacts/${artifactId}`)).statusCode, 503);
-          for (const choice of ['result', 'current']) await assert.rejects(read(id, current.basis.version.run_id, choice), /503/);
-          assert.deepEqual(await snapshot(id), before);
+          for (const choice of ['result', 'current']) await assert.rejects(read(projectId, delivered.runId, choice), /503/);
+          assert.deepEqual(await snapshot(projectId), before);
         }
       } finally { files.set(row.object_key, original); }
     });
@@ -216,6 +236,7 @@ test('combined candidate continuation, first-draft history staleness and host qu
       assert.deepEqual(await unifiedInputGate(pool, runRow, immutable), { kind: 'fail', code: 'FIRST_DRAFT_EXCLUSION_STALE' });
       let modelCalls = 0;
       assert.equal(await runPipelineOnce({ pool, blobs, stages: [inputLockStage, { name: 'model_generation', run: async () => { modelCalls++; return { kind: 'done' }; } }],
+        onLease: lease => { assert.ok(lease); assert.equal(lease.runId, run.run_id); },
         onUnexpectedError: error => assert.fail(JSON.stringify(error)) }), 'failed');
       assert.equal(modelCalls, 0); assert.equal((await ok('GET', `/api/v1/runs/${run.run_id}`)).state, 'failed'); await noCharge(run.run_id, balance);
       const stable = await snapshot(projectId), expired = await lock(projectId, basis, { first_draft_confirmation: confirmation(fresh) });
@@ -236,7 +257,8 @@ test('combined candidate continuation, first-draft history staleness and host qu
           }
           return { kind: 'done', value: { version: 'codex-file-word-v1', input_hash: ctx.run.input_hash.trim(), files: outputs, summary: {} } };
         } };
-        assert.equal(await runPipelineOnce({ pool, blobs, leaseSeconds: 120, stages: [inputLockStage, syntheticModel, fileAuthoringDeliveryStage()],
+        assert.equal(await runPipelineOnce({ pool, blobs, leaseSeconds: 120, stages: [inputLockStage, materialsReadyStage, syntheticModel, fileAuthoringDeliveryStage()],
+          onLease: lease => { assert.ok(lease); assert.equal(lease.runId, run.run_id); },
           onUnexpectedError: error => assert.fail(JSON.stringify(error)) }), 'failed');
         assert.equal(modelCalls, 1);
         const failed = await ok('GET', `/api/v1/runs/${run.run_id}`), versions = await ok('GET', `${path(projectId)}/prospectus-versions`);
@@ -258,15 +280,17 @@ test('combined candidate continuation, first-draft history staleness and host qu
       }
     });
     await t.test('Q17 public project deletion revokes legacy artifacts and stale reads/requests add no input/run/credit changes', async () => {
-      const prepared = await read(id, first.runId, 'current'), before = await snapshot(id);
-      assert.equal((await send('DELETE', path(id))).statusCode, 204);
-      const statuses = (await pool.query('SELECT a.delivery_status FROM bb_artifact_versions a JOIN bb_runs r ON r.id=a.run_id WHERE r.project_id=$1', [id])).rows;
+      // Isolate deletion from other scenarios; an unfinished run correctly blocks deletion.
+      const projectId = (await create()).project_id, delivered = await legacy(projectId, 'deletion');
+      const prepared = await read(projectId, delivered.runId, 'current'), before = await snapshot(projectId);
+      const deletion = await send('DELETE', path(projectId)); assert.equal(deletion.statusCode, 204, deletion.body);
+      const statuses = (await pool.query('SELECT a.delivery_status FROM bb_artifact_versions a JOIN bb_runs r ON r.id=a.run_id WHERE r.project_id=$1', [projectId])).rows;
       assert.ok(statuses.length > 0 && statuses.every(value => value.delivery_status === 'revoked'));
       assert.equal((await send('GET', `/api/v1/artifacts/${prepared.basis.editBase.artifact_id}`)).statusCode, 404);
-      for (const choice of ['result', 'current']) await assert.rejects(read(id, first.runId, choice), /404/);
-      const response = await send('POST', `${path(id)}/input-revisions`, { draft_revision: project.draft_revision,
+      for (const choice of ['result', 'current']) await assert.rejects(read(projectId, delivered.runId, choice), /404/);
+      const response = await send('POST', `${path(projectId)}/input-revisions`, { draft_revision: project.draft_revision,
         prospectus_selection_revision: prepared.basis.selectionRevision, edit_base: prepared.basis.editBase, material_versions: [], requirement_message_ids: [] });
-      assert.equal(response.statusCode, 404); assert.deepEqual(await snapshot(id), before);
+      assert.equal(response.statusCode, 404); assert.deepEqual(await snapshot(projectId), before);
     });
     for (const table of ['bb_model_call_attempts', 'bb_provider_call_observations'])
       assert.equal((await pool.query(`SELECT count(*)::int n FROM ${table}`)).rows[0].n, 0);

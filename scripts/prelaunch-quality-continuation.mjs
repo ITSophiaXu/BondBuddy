@@ -85,7 +85,7 @@ async function main() {
     await client.connect();
     try { return await work(client); } finally { await client.end(); }
   };
-  let created = false, creationAttempted = false, databaseCleanup = 'not_created', failure, result, fingerprints, fingerprintsAfter;
+  let created = false, creationAttempted = false, databaseCleanup = 'not_created', homeCleanup = 'not_started', failure, result, fingerprints, fingerprintsAfter;
   const started = new Date().toISOString();
   try {
     ({ Client } = await import('pg'));
@@ -106,13 +106,20 @@ async function main() {
     assert.equal(result.status, 0, `Continuation integration failed (${result.status ?? result.signal})`);
     for (const name of ['fail', 'cancelled', 'skipped', 'todo']) assert.match(result.stdout, new RegExp(`^# ${name} 0$`, 'm'));
     assert.match(result.stdout, /^# tests [1-9][0-9]*$/m);
-    assert.equal(git(['rev-parse', 'HEAD']), commit); assert.equal(git(['rev-parse', 'HEAD^{tree}']), tree);
-    assert.equal(git(['status', '--porcelain', '--untracked-files=no']), '');
-    fingerprintsAfter = fingerprintCode();
-    assert.deepEqual(fingerprintsAfter, fingerprints, 'Source, compiled and installed checker files changed during the run');
   } catch (error) { failure = error; }
   finally {
-    const cleanupErrors = [];
+    const cleanupErrors = [], verificationErrors = [];
+    // Retain post-run evidence even when a child scenario failed. A failed child
+    // remains failed; unchanged fingerprints cannot override its exit/TAP result.
+    if (fingerprints) {
+      try { fingerprintsAfter = fingerprintCode(); }
+      catch (error) { verificationErrors.push(error.message); }
+      try {
+        assert.equal(git(['rev-parse', 'HEAD']), commit); assert.equal(git(['rev-parse', 'HEAD^{tree}']), tree);
+        assert.equal(git(['status', '--porcelain', '--untracked-files=no']), '');
+        if (fingerprintsAfter) assert.deepEqual(fingerprintsAfter, fingerprints, 'Source, compiled and installed checker files changed during the run');
+      } catch (error) { verificationErrors.push(error.message); }
+    }
     if (created) {
       try { await withMaintenance(client => client.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`)); databaseCleanup = 'completed'; }
       catch (error) { databaseCleanup = 'inspect_errors'; cleanupErrors.push(error.message); }
@@ -130,16 +137,17 @@ async function main() {
         const stat = lstatSync(target); assert.ok(stat.isDirectory() && !stat.isSymbolicLink(), 'Cleanup home must remain the generated directory');
       }
       rmSync(target, { recursive: true, force: true });
-    } catch (error) { cleanupErrors.push(error.message); }
+      assert.equal(existsSync(target), false); homeCleanup = 'completed';
+    } catch (error) { homeCleanup = 'inspect_errors'; cleanupErrors.push(error.message); }
     writeFileSync(resolve(logs, 'candidate.json'), JSON.stringify({ schema_version: 'prelaunch-continuation-v1',
       commit, tree, started_at: started, finished_at: new Date().toISOString(), node: process.version,
-      status: failure || cleanupErrors.length ? 'failed' : 'passed', child_exit: result?.status ?? null,
-      child_signal: result?.signal ?? null, error: failure?.message ?? null, cleanup_errors: cleanupErrors,
-      database: databaseName, database_cleanup: databaseCleanup,
+      status: failure || verificationErrors.length || cleanupErrors.length ? 'failed' : 'passed', child_exit: result?.status ?? null,
+      child_signal: result?.signal ?? null, error: failure?.message ?? null, verification_errors: verificationErrors, cleanup_errors: cleanupErrors,
+      database: databaseName, database_cleanup: databaseCleanup, home_cleanup: homeCleanup,
       fingerprints, fingerprints_after: fingerprintsAfter ?? null,
       scope: 'synthetic principal/model/Word/Blob; real API/PG/queue/host checker/compiled guards; no release receipt' }, null, 2) + '\n');
-    if (failure || cleanupErrors.length) throw new AggregateError([failure, ...cleanupErrors.map(value => Error(value))].filter(Boolean),
-      [failure?.message, ...cleanupErrors].filter(Boolean).join('; '));
+    if (failure || verificationErrors.length || cleanupErrors.length) throw new AggregateError([failure, ...verificationErrors.map(value => Error(value)), ...cleanupErrors.map(value => Error(value))].filter(Boolean),
+      [failure?.message, ...verificationErrors, ...cleanupErrors].filter(Boolean).join('; '));
   }
   console.log(`Continuation mechanical evidence: ${logs}`);
 }
