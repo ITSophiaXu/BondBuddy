@@ -2,6 +2,14 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test, type TestContext } from 'node:test';
 import { ApiClient, ApiError, friendlyError, parseApiError, type Dto } from './api.js';
+import { SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_MESSAGE } from '@bondbuddy/contracts';
+
+test('missing source uses the public field code instead of server prose', () => {
+  const error = parseApiError(422, {code: 'INPUT_REQUIRED', message: 'untrusted server prose', field_errors: [SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR]});
+  assert.equal(friendlyError(error), SOURCE_PROSPECTUS_REQUIRED_MESSAGE);
+  const unrelated = parseApiError(422, {code: 'INPUT_REQUIRED', field_errors: [{...SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, field: 'other'}]});
+  assert.equal(unrelated.details.sourceProspectusRequired, false);
+});
 import { PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE } from '@bondbuddy/contracts';
 
 test('unselected prospectus errors explain adoption without trusting server prose', () => {

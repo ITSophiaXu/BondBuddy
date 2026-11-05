@@ -126,8 +126,10 @@ test('update project: real uploads, version CAS, exact input pins, cross-kind re
     assert.equal((await send('DELETE',`${mistakePath}/materials/${wrong.material_id}`)).statusCode,204);
     assert.equal((await ok('GET',mistakePath+'/prospectus-versions')).versions.length,0);
     const emptyDraft=await ok('GET',mistakePath);
-    const noReference=await ok('POST',mistakePath+'/input-revisions',{...wrongInput,draft_revision:emptyDraft.draft_revision,prospectus_selection_revision:2,material_versions:[]});
-    assert.deepEqual(noReference.material_versions,[],'a project with no source still supports new-document authoring');
+    const noReference=await send('POST',mistakePath+'/input-revisions',{...wrongInput,draft_revision:emptyDraft.draft_revision,prospectus_selection_revision:2,material_versions:[]});
+    assert.equal(noReference.statusCode,422,'a deleted source cannot become a source-free new task');
+    assert.equal(noReference.json().field_errors[0].code,'SOURCE_PROSPECTUS_REQUIRED');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_input_revisions WHERE project_id=$1',[mistake.project_id])).rows[0].n,0);
     const replacement=await upload(mistake.project_id,'correct-replacement');
     const replaced=await ok('GET',mistakePath+'/prospectus-versions');
     assert.equal(replaced.versions[0].sequence,2);assert.equal(replaced.versions[0].material_id,replacement.material_id);
@@ -162,19 +164,21 @@ test('update project: real uploads, version CAS, exact input pins, cross-kind re
     // A prepared input (including an assistant card) must not bypass adoption
     // when an original is subsequently uploaded in another browser tab.
     const staleExecute={execution_request_id:randomUUID(),project_id:mistake.project_id,
-      input_revision:noReference.input_revision,input_hash:noReference.input_hash,task_kind:'update',
-      input_manifest_ref:noReference.input_hash,storage_origin:'cloud',workspace_id:mistake.project_id};
+      input_revision:autoInput.input_revision,input_hash:autoInput.input_hash,task_kind:'update',
+      input_manifest_ref:autoInput.input_hash,storage_origin:'cloud',workspace_id:mistake.project_id};
     const staleResult=await send('POST','/api/v1/runs/execute',staleExecute);
     assert.equal(staleResult.statusCode,409,staleResult.body);
     assert.match(staleResult.body,/当前原稿已变化/);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[mistake.project_id])).rows[0].n,0);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations c JOIN bb_runs r ON r.id=c.run_id WHERE r.project_id=$1',[mistake.project_id])).rows[0].n,0,'rejection must not reserve credits');
 
-    // Actual no-source authoring remains allowed. Once accepted, its exact
-    // execution request replays even if a source is uploaded afterwards.
+    // An accepted task replays even if its source changes afterwards.
     const newDraft=await create('update'),newPath=`/api/v1/projects/${newDraft.project_id}`;
-    const newInput=await ok('POST',`${newPath}/input-revisions`,{draft_revision:newDraft.draft_revision,
-      prospectus_selection_revision:0,material_versions:[],requirement_message_ids:[]});
+    const newSource=await upload(newDraft.project_id,'accepted-source');
+    let newDetails=await ok('GET',newPath);
+    newDetails=await ok('PATCH',newPath,{update_details:{...newDetails.update_details,source_prospectuses:[{...source,material_id:newSource.material_id,sha256:newSource.sha256}]}},{'if-match':String(newDetails.draft_revision)});
+    const newInput=await ok('POST',`${newPath}/input-revisions`,{draft_revision:newDetails.draft_revision,
+      prospectus_selection_revision:1,material_versions:[{material_id:newSource.material_id,material_version:1}],requirement_message_ids:[]});
     const newQuote=await ok('POST',`${newPath}/credit-quote`,{input_revision:newInput.input_revision,input_hash:newInput.input_hash});
     const newRequest={execution_request_id:randomUUID(),project_id:newDraft.project_id,input_revision:newInput.input_revision,
       input_hash:newInput.input_hash,task_kind:'update',input_manifest_ref:newInput.input_hash,storage_origin:'cloud',

@@ -66,7 +66,7 @@ function blockedMessage(check: Dto<'PreflightResponse'>): string {
 export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>['kind'], hasHistorical: boolean | null, materials: readonly Material[], unified = false): string | undefined {
   if (!(error instanceof ApiError) || error.code !== 'INPUT_REQUIRED' || error.status !== 409) return undefined;
   const reference = errorReference(error);
-  if (unified) return `本次输入尚未满足执行条件，请核对本次目标及已上传原稿的信息；历史／参考募集书选填，无需更改企业关系或重复上传。${reference}`;
+  if (unified) return `本次输入尚未满足执行条件，请核对本次目标及已上传原稿的信息；历史／参考募集书为必填，已保存稿件无需重复上传。${reference}`;
   if (kind === 'update' && !materials.some(material => material.role === 'historical') &&
       materials.some(material => material.role === 'reference'))
     return `已上传募集书被登记为参考稿。更新需本发行人历史稿及身份核验；若该文件是本发行人的历史募集书，请联系支持保留原文件并更正分类后重新锁定输入。若确实没有本发行人历史稿，请联系支持转为新稿；无需重传。${reference}`;
@@ -378,12 +378,10 @@ export class ProjectExecution {
     for(const id of ['edit-project-details','previous-details']){const button=document.querySelector<HTMLButtonElement>('#'+id);if(button)button.disabled=editsFrozen;}
     const preparationGuide=document.querySelector<HTMLElement>('[data-authoring-preparation-guide]');
     if(preparationGuide){
-      preparationGuide.hidden=!this.materialsEditable;
+      preparationGuide.hidden=!this.materialsEditable||!this.nextRequested;
       preparationGuide.setAttribute('aria-label',this.nextRequested?'准备下一轮募集书':'准备本轮材料与要求');
       const title=preparationGuide.querySelector<HTMLElement>('[data-authoring-preparation-title]');
       if(title)title.hidden=!this.nextRequested;
-      const intro=preparationGuide.querySelector<HTMLElement>('[data-authoring-preparation-intro]');
-      if(intro)intro.hidden=this.nextRequested;
       const summary=preparationGuide.querySelector<HTMLElement>('[data-next-authoring-summary]');
       if(summary){
         summary.hidden=!this.nextRequested;
@@ -403,8 +401,6 @@ export class ProjectExecution {
           summary.querySelector('[data-next-leave]')!.addEventListener('click',()=>this.returnToPreviousResult());
         }
       }
-      const note=preparationGuide.querySelector('[data-authoring-execution-note]');
-      if(note)note.textContent=this.nextRequested?'补充内容用于下一轮，原任务和成果保持不变；准备好后点击页末“生成新版”。':'保存项目、材料或要求不会开始任务；准备好后点击页末“开始更新”。';
     }
     const materialDetails = document.querySelector<HTMLElement>('#project-materials-details');
     if (materialDetails) {

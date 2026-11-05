@@ -104,7 +104,10 @@ test('authoring source guide: absent or complete sources, higher-priority restor
   for(const mode of ['absent','complete'] as const){
     const s=fixture();if(mode==='absent'){s.materials=s.materials.filter(m=>m.material_id===auditId);s.project.update_details!.source_prospectuses=[];}
     else s.project.update_details!.source_prospectuses=s.materials.filter(m=>['historical','reference'].includes(m.role)).map(m=>sourceDeclaration(m));
-    await openSourceGuide(page,s);await expect(page.locator('#start-disabled-reason')).toHaveText('');await expect(page.locator('#execute-input')).toBeEnabled();await expect(guide(page)).toBeHidden();const before=await readonlySnapshot(page,s);await forceGuide(page);expect(await readonlySnapshot(page,s)).toEqual(before);await noSourceFocus(page);expectNoExecution(s);await assertFixture(page);
+    await openSourceGuide(page,s);
+    if(mode==='absent'){await expect(page.locator('#start-disabled-reason')).toContainText('请先上传并采用');await expect(page.locator('#execute-input')).toBeDisabled();}
+    else{await expect(page.locator('#start-disabled-reason')).toHaveText('');await expect(page.locator('#execute-input')).toBeEnabled();}
+    await expect(guide(page)).toBeHidden();const before=await readonlySnapshot(page,s);await forceGuide(page);expect(await readonlySnapshot(page,s)).toEqual(before);await noSourceFocus(page);expectNoExecution(s);await assertFixture(page);
   }
   const restoring=fixture();restoring.holdTasks=true;await freshFixtureDocument(page);await install(page,restoring);
   try{

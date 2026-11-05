@@ -63,6 +63,19 @@ export const SourceProspectusSchema = Type.Object({
 }, { additionalProperties: false });
 export type SourceProspectus = Static<typeof SourceProspectusSchema>;
 export type SourceMaterialPin = { material_id: string; material_version: number; sha256: string; role: string };
+/** A new authoring task needs an uploaded source or a verified previous result. */
+export function hasAuthoringSource(materials: readonly Pick<SourceMaterialPin, 'role'>[], hasPreviousOutput = false): boolean {
+  return hasPreviousOutput || materials.some(material => material.role === 'historical' || material.role === 'reference');
+}
+export const SOURCE_PROSPECTUS_REQUIRED_MESSAGE = '请先上传并采用一份历史／参考募集书，填写原稿信息后再开始更新。';
+export const SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR = {
+  field: 'source_prospectuses', code: 'SOURCE_PROSPECTUS_REQUIRED', message: SOURCE_PROSPECTUS_REQUIRED_MESSAGE,
+} as const;
+export function isSourceProspectusRequiredFieldError(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const field = value as Record<string, unknown>;
+  return field.field === SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR.field && field.code === SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR.code;
+}
 export const FormatTemplatePinSchema = Type.Object({
   material_id: Type.String({ minLength: 1, maxLength: 128 }),
   material_version: Type.Integer({ minimum: 1 }),

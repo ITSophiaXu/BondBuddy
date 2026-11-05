@@ -69,7 +69,7 @@ import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOvera
 import { assertGenerationIssuerBinding, assertLockedInputIntegrity, assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled, workingDraftConfigured } from './non-production-test.js';
 import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatches } from './test-issuer-candidate.js';
 import { classifyPreflightReadiness } from './preflight-readiness.js';
-import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertOwnedFormatTemplate, inheritPreviousOutputFormat } from './unified-authoring.js';
+import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertAuthoringSourceRequired, assertOwnedFormatTemplate, inheritPreviousOutputFormat } from './unified-authoring.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
@@ -909,6 +909,7 @@ export function createServer(settings: Settings = {}) {
               : reportingWindow(previous.manifest.market,previous.manifest.offering,previous.manifest.update_details.reporting_cutoff)};
         }
         if(b.edit_base&&!authoring.previous_output)throw conflict('INPUT_REVISION_CONFLICT','所选版本的发行人或来源与当前材料不同，请核对后再修改。');
+        if (['update','generation'].includes(p.kind)) assertAuthoringSourceRequired(resolved, authoring.previous_output);
         inheritPreviousOutputFormat(authoring);
         Object.assign(manifest, { issuer_name: p.issuer_name, authoring });
       }
@@ -1542,8 +1543,10 @@ export function createServer(settings: Settings = {}) {
       await assertLockedInputIntegrity(client,{userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
       // Exact replays return above. New runs using older incomplete snapshots must
       // return to materials; running tasks keep their already locked inputs.
-      if (['update','generation'].includes(lockedKind) && isUnifiedInput(input.rows[0].manifest))
+      if (['update','generation'].includes(lockedKind) && isUnifiedInput(input.rows[0].manifest)) {
+        assertAuthoringSourceRequired(input.rows[0].manifest.materials, input.rows[0].manifest.authoring.previous_output);
         assertAuthoringSourceInformation(input.rows[0].manifest.materials, input.rows[0].manifest.authoring.source_prospectuses);
+      }
       if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash});
       const testGrantId=b.test_grant_id ?? await autoWorkingDraftGrant(client,
         {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);

@@ -56,7 +56,8 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
   }
   function sourceInformationMissing(kind){
     if(kind!=='update')return false;
-    return selected(kind).filter(f=>['historical','userReference'].includes(f.role)).some(f=>{
+    const sources=selected(kind).filter(f=>['historical','userReference'].includes(f.role));
+    return !sources.length||sources.some(f=>{
       const v=draft(kind).sourceProspectuses?.[f.key||state.files[kind].indexOf(f)]||{};
       return sourceMissingFields(v).length>0;
     });
@@ -79,7 +80,7 @@ export function projectWorkspace({state,esc,icon,bytes,head,api,post,toast,rende
     const files=selected(kind),primary=kind==='review'?'updated':'historical';
     const groups=[];
     if(kind==='review')groups.push({role:primary,title:kind==='review'?'待复核募集书':'本发行人历史募集书',hint:'必需 · 1 份 DOCX；用于原文定位和 Word '+(kind==='review'?'批注':'修订'),accept:'.docx',single:true,roles:[primary]});
-    if(kind==='update')groups.push({role:'historical',title:'历史／参考募集书（选填）',hint:'可上传同企业、母公司、子公司或相似业务企业的募集书；未提供原稿也可编制。',accept:'.docx,.pdf',roles:['historical','userReference']});
+    if(kind==='update')groups.push({role:'historical',title:'历史／参考募集书（必填）',hint:'可上传同企业、母公司、子公司或相似业务企业的募集书；请先上传原稿并填写原稿信息。',accept:'.docx,.pdf',roles:['historical','userReference']});
     groups.push({role:'audit',title:'审计报告 / 财务报表及附注',hint:'必需 · 可上传一份完整审计报告，也可分开上传报表和附注；同一文件无需重复上传。',roles:FINANCIAL_ROLES});
     if(kind==='update')groups.push({role:'fundUse',title:'募投项目与权证材料',hint:'按项目提供：可研报告、备案许可、土地或建设许可证、基金备案许可、子公司股权投资相关材料等。',roles:['fundUse','feasibility','resolutions']});
     const assigned=new Set(groups.flatMap(g=>g.roles));groups.push({role:'other',title:kind==='review'?'其他核对依据':'其他项目材料',hint:kind==='review'?'选填 · 可补充适用法规、工商资料、授信或其他核对依据。':'选填 · 可补充发行方案、授信、经营及其他资料。',roles:[...new Set(files.filter(f=>!assigned.has(f.role)).map(f=>f.role)),'other']});
