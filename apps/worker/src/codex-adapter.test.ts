@@ -260,8 +260,8 @@ test('Copilot command auth is explicit, bounded and rejects incomplete or mixed 
   const args = buildCodexArgs(config, { cwd: '/x', schemaFile: null, ephemeral: true, resumeThreadId: null });
   assert.ok(args.includes('model_providers.copilot_enterprise.auth.command="/usr/local/bin/bb-copilot-token"'));
   assert.ok(!args.some(a => a.includes('model_providers.copilot_enterprise.requires_openai_auth')));
-  assert.ok(args.includes('model_context_window=872000'));
-  assert.ok(args.includes('model_auto_compact_token_limit=780000'));
+  assert.ok(args.includes('model_context_window=1000000'));
+  assert.ok(args.includes('model_auto_compact_token_limit=900000'));
   assert.ok(args.includes('model_catalog_json="/opt/bondbuddy/codex-model-catalog.json"'));
   assert.ok(!args.some(a => /Bearer |gho_|DEEPSEEK_API_KEY/.test(a)));
   for (const override of [{ BB_COPILOT_OAUTH_FILE: '/dev/null' }, { BB_COPILOT_OAUTH_FILE: 'relative' },
@@ -269,6 +269,37 @@ test('Copilot command auth is explicit, bounded and rejects incomplete or mixed 
     { BB_CODEX_CONFIG_VERSION: '' }, { BB_CODEX_CREDENTIAL_ENV: 'DEEPSEEK_API_KEY' }, { BB_CODEX_AUTH_FILE: '/tmp/auth.json' }])
     assert.throws(() => loadCodexAdapterConfig({ ...env, ...override }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
 });
+
+for (const credential of ['env', 'command'] as const) {
+  for (const mode of ['ordinary', 'materials', 'image', 'file'] as const) {
+    test(`explicit 1M context survives ${credential} credentials in ${mode} calls`, () => {
+      const config = loadCodexAdapterConfig(credential === 'env' ? {} : {
+        BB_CODEX_AUTH_MODE: 'copilot_enterprise', BB_COPILOT_OAUTH_FILE: '/run/secrets/bb-copilot-oauth',
+        BB_CODEX_PROVIDER: 'copilot_enterprise', BB_CODEX_MODEL: 'gpt-6-sol',
+        BB_CODEX_BASE_URL: 'https://api.enterprise.githubcopilot.com', BB_CODEX_REASONING_EFFORT: 'max',
+        BB_CODEX_CONFIG_VERSION: 'copilot-gpt6-v1',
+      });
+      const args = buildCodexArgs(config, {
+        cwd: '/synthetic/cwd', schemaFile: null, ephemeral: true, resumeThreadId: null,
+        ...(mode === 'materials' ? { materialDataFile: '/synthetic/cwd/materials.json' } : {}),
+        ...(mode === 'image' ? { imageFile: '/synthetic/input.png' } : {}),
+        ...(mode === 'file' ? { fileAuthoring: true } : {}),
+      });
+      assert.equal(args[0], 'exec', 'config overrides must belong to exec, not the root command');
+      assert.ok(args.includes('--ignore-user-config'));
+      const overrides = args.filter((_, index) => args[index - 1] === '-c');
+      assert.deepEqual(overrides.filter(v => v.startsWith('model_context_window=')), ['model_context_window=1000000']);
+      assert.deepEqual(overrides.filter(v => v.startsWith('model_auto_compact_token_limit=')), ['model_auto_compact_token_limit=900000']);
+      for (const setting of ['model_context_window=1000000', 'model_auto_compact_token_limit=900000']) {
+        const index = args.indexOf(setting);
+        assert.ok(index > args.indexOf('--ignore-user-config'), `${setting} must be an exec override`);
+        assert.equal(args[index - 1], '-c');
+      }
+      assert.ok(overrides.includes(`model=${JSON.stringify(config.model_id)}`));
+      assert.ok(overrides.includes(`model_provider=${JSON.stringify(config.model_provider)}`));
+    });
+  }
+}
 
 test('Copilot child receives the credential file path but no ambient provider secret', async () => {
   const { config, cleanup } = await setup({ model_id: 'gpt-6-sol', model_provider: 'copilot_enterprise',
