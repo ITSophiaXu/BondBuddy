@@ -1,6 +1,7 @@
 // Uses the SYNTHETIC fake codex in test-fixtures/codex; no real provider is called.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -260,14 +261,98 @@ test('Copilot command auth is explicit, bounded and rejects incomplete or mixed 
   const args = buildCodexArgs(config, { cwd: '/x', schemaFile: null, ephemeral: true, resumeThreadId: null });
   assert.ok(args.includes('model_providers.copilot_enterprise.auth.command="/usr/local/bin/bb-copilot-token"'));
   assert.ok(!args.some(a => a.includes('model_providers.copilot_enterprise.requires_openai_auth')));
-  assert.ok(args.includes('model_context_window=872000'));
-  assert.ok(args.includes('model_auto_compact_token_limit=780000'));
+  assert.ok(args.includes('model_context_window=1000000'));
+  assert.ok(args.includes('model_auto_compact_token_limit=900000'));
   assert.ok(args.includes('model_catalog_json="/opt/bondbuddy/codex-model-catalog.json"'));
   assert.ok(!args.some(a => /Bearer |gho_|DEEPSEEK_API_KEY/.test(a)));
   for (const override of [{ BB_COPILOT_OAUTH_FILE: '/dev/null' }, { BB_COPILOT_OAUTH_FILE: 'relative' },
     { BB_CODEX_MODEL: 'deepseek-flash' }, { BB_CODEX_REASONING_EFFORT: 'medium' },
     { BB_CODEX_CONFIG_VERSION: '' }, { BB_CODEX_CREDENTIAL_ENV: 'DEEPSEEK_API_KEY' }, { BB_CODEX_AUTH_FILE: '/tmp/auth.json' }])
     assert.throws(() => loadCodexAdapterConfig({ ...env, ...override }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
+});
+
+for (const credential of ['env', 'command'] as const) {
+  for (const mode of ['ordinary', 'materials', 'image', 'file'] as const) {
+    test(`explicit 1M context survives ${credential} credentials in ${mode} calls`, () => {
+      const config = loadCodexAdapterConfig(credential === 'env' ? {} : {
+        BB_CODEX_AUTH_MODE: 'copilot_enterprise', BB_COPILOT_OAUTH_FILE: '/run/secrets/bb-copilot-oauth',
+        BB_CODEX_PROVIDER: 'copilot_enterprise', BB_CODEX_MODEL: 'gpt-6-sol',
+        BB_CODEX_BASE_URL: 'https://api.enterprise.githubcopilot.com', BB_CODEX_REASONING_EFFORT: 'max',
+        BB_CODEX_CONFIG_VERSION: 'copilot-gpt6-v1',
+      });
+      const args = buildCodexArgs(config, {
+        cwd: '/synthetic/cwd', schemaFile: null, ephemeral: true, resumeThreadId: null,
+        ...(mode === 'materials' ? { materialDataFile: '/synthetic/cwd/materials.json' } : {}),
+        ...(mode === 'image' ? { imageFile: '/synthetic/input.png' } : {}),
+        ...(mode === 'file' ? { fileAuthoring: true } : {}),
+      });
+      assert.equal(args[0], 'exec', 'config overrides must belong to exec, not the root command');
+      assert.ok(args.includes('--ignore-user-config'));
+      const overrides = args.filter((_, index) => args[index - 1] === '-c');
+      assert.deepEqual(overrides.filter(v => v.startsWith('model_context_window=')), ['model_context_window=1000000']);
+      assert.deepEqual(overrides.filter(v => v.startsWith('model_auto_compact_token_limit=')), ['model_auto_compact_token_limit=900000']);
+      for (const setting of ['model_context_window=1000000', 'model_auto_compact_token_limit=900000']) {
+        const index = args.indexOf(setting);
+        assert.ok(index > args.indexOf('--ignore-user-config'), `${setting} must be an exec override`);
+        assert.equal(args[index - 1], '-c');
+      }
+      assert.ok(overrides.includes(`model=${JSON.stringify(config.model_id)}`));
+      assert.ok(overrides.includes(`model_provider=${JSON.stringify(config.model_provider)}`));
+      const catalogs = overrides.filter(v => v.startsWith('model_catalog_json='));
+      const catalog = credential === 'env' ? 'codex-deepseek-model-catalog.json'
+        : mode === 'materials' ? 'codex-authoring-model-catalog.json'
+        : mode === 'image' ? 'codex-image-model-catalog.json'
+        : mode === 'file' ? 'codex-file-authoring-model-catalog.json' : 'codex-model-catalog.json';
+      assert.equal(catalogs.at(-1), `model_catalog_json="/opt/bondbuddy/${catalog}"`);
+      if (credential === 'env') assert.equal(catalogs.length, 1, 'all DeepSeek modes retain the same fallback capabilities');
+    });
+  }
+}
+
+test('DeepSeek catalog preserves the official 0.166 fallback prompt and capabilities with a 1M ceiling', async () => {
+  // openai/codex@6ff1e1ca3b30fc8b914720681fcf5fe62e95f856:
+  // codex-rs/models-manager/src/model_info.rs::model_info_from_slug and prompt.md;
+  // codex-rs/protocol/src/openai_models.rs::default_input_modalities returns text + image.
+  const catalog = JSON.parse(await readFile(new URL('../../../deploy/m1/codex-deepseek-model-catalog.json', import.meta.url), 'utf8'));
+  assert.equal(catalog.models.length, 1);
+  const { model_messages, ...metadata } = catalog.models[0];
+  assert.deepEqual(metadata, {
+    slug: 'deepseek-flash', display_name: 'deepseek-flash', description: null,
+    default_reasoning_level: null, supported_reasoning_levels: [], shell_type: 'unified_exec',
+    visibility: 'none', supported_in_api: true, priority: 99, additional_speed_tiers: [], service_tiers: [],
+    default_service_tier: null, available_access_programs: null, availability_nux: null, upgrade: null,
+    include_skills_usage_instructions: false, include_plugin_usage_instructions: false, include_apps_usage_instructions: false,
+    supports_reasoning_summary_parameter: true, default_reasoning_summary: 'auto', support_verbosity: false,
+    default_verbosity: null, apply_patch_tool_type: null, web_search_tool_type: 'text',
+    truncation_policy: { mode: 'bytes', limit: 10000 }, supports_image_detail_original: false,
+    context_window: 1000000, max_context_window: 1000000, auto_compact_token_limit: 900000,
+    comp_hash: null, effective_context_window_percent: 100, experimental_supported_tools: [], input_modalities: ['text', 'image'],
+    supports_search_tool: false, supports_experimental_context: false, use_responses_lite: false,
+    supports_reasoning_effort_updates: false, guardian: null, node_repl_auto_review_required: false, node_repl_disabled: false,
+    auto_review_model_override: null, model_specialty: null, tool_mode: null, multi_agent_version: null, multi_agent_reasoning_effort: null,
+  });
+  const { instructions_template, ...messages } = model_messages;
+  assert.deepEqual(messages, { approvals: null, collaboration_modes: null, auto_review: null, permissions: null, multi_agent: null });
+  assert.equal(Buffer.byteLength(instructions_template, 'utf8'), 20903);
+  assert.equal(createHash('sha256').update(instructions_template, 'utf8').digest('hex'),
+    'ac8ae107a0d72fe3476b430afb161ea4e67da2e446d778aefc44828160559807');
+  assert.match(await readFile(new URL('../../../deploy/m1/Dockerfile', import.meta.url), 'utf8'),
+    /COPY .*codex-deepseek-model-catalog.json \/opt\/bondbuddy\/codex-deepseek-model-catalog.json/);
+});
+
+test('DeepSeek catalog stays selected for review, search and resumed calls without changing other models', () => {
+  const config = loadCodexAdapterConfig({});
+  const options = { cwd: '/synthetic/cwd', schemaFile: null, ephemeral: true, resumeThreadId: null };
+  for (const [c, o] of [
+    [config, { ...options, reviewDataFile: '/synthetic/cwd/review.json', reviewTraceFile: '/synthetic/review-trace.json' }],
+    [{ ...config, web_search: 'live' as const }, options],
+    [config, { ...options, ephemeral: false, resumeThreadId: 'synthetic-thread' }],
+  ] as const) {
+    const catalogs = buildCodexArgs(c, o).filter(v => v.startsWith('model_catalog_json='));
+    assert.deepEqual(catalogs, ['model_catalog_json="/opt/bondbuddy/codex-deepseek-model-catalog.json"']);
+  }
+  assert.ok(!buildCodexArgs({ ...config, model_id: 'synthetic-other-model' }, options).some(v => v.startsWith('model_catalog_json=')));
+  assert.ok(!buildCodexArgs({ ...config, model_provider: 'synthetic_provider' }, options).some(v => v.startsWith('model_catalog_json=')));
 });
 
 test('Copilot child receives the credential file path but no ambient provider secret', async () => {
