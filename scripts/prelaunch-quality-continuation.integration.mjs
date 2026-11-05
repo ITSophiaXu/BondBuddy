@@ -235,9 +235,14 @@ test('combined candidate continuation, first-draft history staleness and host qu
       const runRow = (await pool.query('SELECT * FROM bb_runs WHERE id=$1', [run.run_id])).rows[0];
       assert.deepEqual(await unifiedInputGate(pool, runRow, immutable), { kind: 'fail', code: 'FIRST_DRAFT_EXCLUSION_STALE' });
       let modelCalls = 0;
+      const leaseEvents = [];
       assert.equal(await runPipelineOnce({ pool, blobs, stages: [inputLockStage, { name: 'model_generation', run: async () => { modelCalls++; return { kind: 'done' }; } }],
-        onLease: lease => { assert.ok(lease); assert.equal(lease.runId, run.run_id); },
+        onLease: lease => {
+          if (lease !== null) { assert.ok(lease); assert.equal(lease.runId, run.run_id); }
+          leaseEvents.push(lease === null ? null : lease.runId);
+        },
         onUnexpectedError: error => assert.fail(JSON.stringify(error)) }), 'failed');
+      assert.deepEqual(leaseEvents, [run.run_id, null], 'Claim the exact run and observe its normal release');
       assert.equal(modelCalls, 0); assert.equal((await ok('GET', `/api/v1/runs/${run.run_id}`)).state, 'failed'); await noCharge(run.run_id, balance);
       const stable = await snapshot(projectId), expired = await lock(projectId, basis, { first_draft_confirmation: confirmation(fresh) });
       assert.equal(expired.statusCode, 409); assert.equal(expired.json().code, 'FIRST_DRAFT_EXCLUSION_STALE'); assert.deepEqual(await snapshot(projectId), stable);
@@ -247,6 +252,7 @@ test('combined candidate continuation, first-draft history staleness and host qu
       for (const projectId of [id, (await create('generation')).project_id]) {
         const prior = await ok('GET', `${path(projectId)}/prospectus-versions`), balance = await billing.creditBalance(pool, owner), { run } = await start(projectId);
         let modelCalls = 0;
+        const leaseEvents = [];
         const syntheticModel = { name: 'model_generation', run: async ctx => {
           modelCalls++; assert.equal(await ctx.validateBeforeModelCall(), null);
           const prefix = `owners/${owner}/projects/${projectId}/runs/${ctx.run.id}/file-authoring/synthetic/`;
@@ -258,8 +264,12 @@ test('combined candidate continuation, first-draft history staleness and host qu
           return { kind: 'done', value: { version: 'codex-file-word-v1', input_hash: ctx.run.input_hash.trim(), files: outputs, summary: {} } };
         } };
         assert.equal(await runPipelineOnce({ pool, blobs, leaseSeconds: 120, stages: [inputLockStage, materialsReadyStage, syntheticModel, fileAuthoringDeliveryStage()],
-          onLease: lease => { assert.ok(lease); assert.equal(lease.runId, run.run_id); },
+          onLease: lease => {
+            if (lease !== null) { assert.ok(lease); assert.equal(lease.runId, run.run_id); }
+            leaseEvents.push(lease === null ? null : lease.runId);
+          },
           onUnexpectedError: error => assert.fail(JSON.stringify(error)) }), 'failed');
+        assert.deepEqual(leaseEvents, [run.run_id, null], 'Claim the exact run and observe its normal release');
         assert.equal(modelCalls, 1);
         const failed = await ok('GET', `/api/v1/runs/${run.run_id}`), versions = await ok('GET', `${path(projectId)}/prospectus-versions`);
         assert.equal(failed.state, 'failed'); assert.equal(failed.artifact_id, null); assert.deepEqual(versions, prior);
