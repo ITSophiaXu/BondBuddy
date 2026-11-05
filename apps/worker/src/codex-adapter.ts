@@ -210,6 +210,7 @@ export function codexConfigOverrides(c: CodexAdapterConfig, files = false): stri
   const p = `model_providers.${c.model_provider}`;
   const kv: string[] = [
     `model=${q(c.model_id)}`, `model_provider=${q(c.model_provider)}`,
+    'model_context_window=1000000', 'model_auto_compact_token_limit=900000',
     `${p}.name=${q(c.model_provider)}`, `${p}.base_url=${q(c.base_url)}`, `${p}.wire_api=${q(c.wire_api)}`,
     c.credential.kind === 'env' ? `${p}.env_key=${q(c.credential.name)}` : c.credential.kind === 'command'
       ? `${p}.auth.command=${q(c.credential.path)}` : `${p}.requires_openai_auth=true`,
@@ -217,12 +218,14 @@ export function codexConfigOverrides(c: CodexAdapterConfig, files = false): stri
     `shell_environment_policy.inherit="none"`, `project_doc_max_bytes=0`, `history.persistence="none"`, `mcp_servers={}`,
   ];
   if (c.reasoning_effort) kv.push(`model_reasoning_effort=${q(c.reasoning_effort)}`);
-  if (c.credential.kind === 'command') kv.push('model_context_window=872000', 'model_auto_compact_token_limit=780000',
+  if (c.credential.kind === 'command') kv.push(
     `model_catalog_json=${q('/opt/bondbuddy/codex-model-catalog.json')}`,
     `${p}.auth.timeout_ms=10000`, `${p}.auth.refresh_interval_ms=300000`,
     `${p}.http_headers.Copilot-Integration-Id=${q('vscode-chat')}`, `${p}.http_headers.Editor-Version=${q('vscode/1.105.1')}`,
     `${p}.http_headers.Editor-Plugin-Version=${q('copilot-chat/0.32.3')}`, `${p}.http_headers.User-Agent=${q('GitHubCopilotChat/0.32.3')}`,
     `${p}.http_headers.OpenAI-Intent=${q('conversation-panel')}`, `${p}.http_headers.X-GitHub-Api-Version=${q('2025-04-01')}`);
+  else if (c.model_provider === 'deepseek' && c.model_id === 'deepseek-flash')
+    kv.push(`model_catalog_json=${q('/opt/bondbuddy/codex-deepseek-model-catalog.json')}`);
   return kv.flatMap(v => ['-c', v]);
 }
 

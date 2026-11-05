@@ -56,9 +56,9 @@ RUN find /app/python -name __pycache__ -prune -exec rm -rf {} + \
 # Only the static musl `codex` binary and the bundled bwrap are kept; the tarball is checked
 # against the npm registry sha512 integrity. Credentials come from env only (never auth.json).
 FROM ${NODE_IMAGE} AS codex
-ARG CODEX_VERSION=0.154.0
-ARG CODEX_INTEGRITY_LINUX_X64=sha512-a4FI3A8sGtwGrOqltrPbrS2hajrHQG591EwmRfiRoLMb10VxdBtUGW4gu6IJVYENiYGA7k3P4jlRHEoCZU/s9Q==
-ARG CODEX_INTEGRITY_LINUX_ARM64=sha512-KmTCB6ST484zeYlPpKP/K5P/gRaYmt6TihVD+zotoe6O9q0JSBP+FYvCz4A/zZXR7xDOHURTSjHp0sD8wWS0YQ==
+ARG CODEX_VERSION=0.166.0
+ARG CODEX_INTEGRITY_LINUX_X64=sha512-CxDm3+D1cpbGJeHrdzINoG+3wn9BVncP4qpZaaNYkxe8iPtRJOYyCJnnPoVjWRIBvI9vPKbRoifsMSA5xDaUpw==
+ARG CODEX_INTEGRITY_LINUX_ARM64=sha512-w0ScAsBr9aZKtIFrh6HN6KU2yjKKeSCzYfbb7DB0Ccj4BYPzeZtUeQprbycLCwuX3AFQdbdjapmLho2iot74jQ==
 ARG TARGETARCH
 WORKDIR /tmp/codex
 RUN set -eu; \
@@ -142,6 +142,8 @@ COPY --chmod=0644 deploy/m1/codex-model-catalog.json /opt/bondbuddy/codex-model-
 COPY --chmod=0644 deploy/m1/codex-image-model-catalog.json /opt/bondbuddy/codex-image-model-catalog.json
 COPY --chmod=0644 deploy/m1/codex-authoring-model-catalog.json /opt/bondbuddy/codex-authoring-model-catalog.json
 COPY --chmod=0644 deploy/m1/codex-file-authoring-model-catalog.json /opt/bondbuddy/codex-file-authoring-model-catalog.json
+COPY --chmod=0644 deploy/m1/codex-deepseek-model-catalog.json /opt/bondbuddy/codex-deepseek-model-catalog.json
+COPY --chmod=0644 deploy/m1/codex-deepseek-LICENSE.txt /opt/bondbuddy/codex-deepseek-LICENSE.txt
 COPY --from=build --chown=root:root /app/python python
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r python/requirements.txt
 COPY --chmod=0755 deploy/m1/scripts/verify-ocr-runtime.sh /usr/local/bin/bb-verify-ocr-runtime
