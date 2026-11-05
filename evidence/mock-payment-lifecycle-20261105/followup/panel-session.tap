@@ -1,0 +1,10 @@
+{"synthetic":true,"username":"billing_sess_fe9d644b","startedAt":"2026-11-05T08:49:57.429Z","finishedAt":"2026-11-05T08:50:03.895Z","passed":7,"checks":["403: no refresh and no request replay","500: no refresh and no request replay","network: no refresh and no request replay","second 401 stops after one real refresh and one identical retry","real expired-session 401 plus failed refresh does not replay business","real expired session refreshes and same funded task reserves exactly once","cleanup through actual failed finish releases test reservation"],"realHttpSessionExpiry":true,"clientFailureInjection":true,"productionAuthChanged":false,"defaultDemoAccountTouched":false}
+✔ panel refreshes an expired real session once and never retries uncertain business requests (8969.9897ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9828.2495

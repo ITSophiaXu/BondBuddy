@@ -1,0 +1,193 @@
+TAP version 13
+# Subtest: cashier preserves exact monetary strings and rejects ambiguous yuan input
+ok 1 - cashier preserves exact monetary strings and rejects ambiguous yuan input
+  ---
+  duration_ms: 16.2956
+  type: 'test'
+  ...
+# Subtest: cashier return is same-origin account context for the exact original order
+ok 2 - cashier return is same-origin account context for the exact original order
+  ---
+  duration_ms: 0.3322
+  type: 'test'
+  ...
+# Subtest: explicit expired session permits one refresh and identical financial-request replay
+ok 3 - explicit expired session permits one refresh and identical financial-request replay
+  ---
+  duration_ms: 1.2036
+  type: 'test'
+  ...
+# Subtest: unknown or forbidden financial result is never automatically retried
+ok 4 - unknown or forbidden financial result is never automatically retried
+  ---
+  duration_ms: 0.561
+  type: 'test'
+  ...
+# Subtest: a late 401 cannot refresh or replay a financial action after another account replaces its CSRF cookie
+ok 5 - a late 401 cannot refresh or replay a financial action after another account replaces its CSRF cookie
+  ---
+  duration_ms: 0.4837
+  type: 'test'
+  ...
+# Subtest: a session change during refresh aborts the old financial replay even if its refresh response arrives late
+ok 6 - a session change during refresh aborts the old financial replay even if its refresh response arrives late
+  ---
+  duration_ms: 1.0457
+  type: 'test'
+  ...
+# Subtest: a refresh returning another owner cannot replay the original financial action even before a broadcast arrives
+ok 7 - a refresh returning another owner cannot replay the original financial action even before a broadcast arrives
+  ---
+  duration_ms: 0.4559
+  type: 'test'
+  ...
+# Subtest: the financial replay keeps its original owner binding when cookies change before the refreshed body resolves
+ok 8 - the financial replay keeps its original owner binding when cookies change before the refreshed body resolves
+  ---
+  duration_ms: 1.3454
+  type: 'test'
+  ...
+# Subtest: a second 401 stops after one refresh and one exact replay
+ok 9 - a second 401 stops after one refresh and one exact replay
+  ---
+  duration_ms: 0.4031
+  type: 'test'
+  ...
+# Subtest: lost financial-action response retains its exact event ID across a recreated UI
+ok 10 - lost financial-action response retains its exact event ID across a recreated UI
+  ---
+  duration_ms: 0.3659
+  type: 'test'
+  ...
+# Subtest: unreliable storage blocks a financial request and mismatched acknowledgement retains the original event
+ok 11 - unreliable storage blocks a financial request and mismatched acknowledgement retains the original event
+  ---
+  duration_ms: 0.2927
+  type: 'test'
+  ...
+# Subtest: two shared-storage callers accept the same successful receipt after the first clears the original intent
+not ok 12 - two shared-storage callers accept the same successful receipt after the first clears the original intent
+  ---
+  duration_ms: 0.335
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\scripts\\billing-functional\\billing-client.test.mjs:136:1'
+  failureType: 'testCodeFailure'
+  error: '原操作已返回，但本机请求记录已变化；请核对原操作。'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    storedAction (file:///C:/Users/lezhai/Downloads/Bondbuddy/mock-payment-lifecycle-20261105/scripts/billing-functional/billing-client.js:81:46)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/mock-payment-lifecycle-20261105/scripts/billing-functional/billing-client.test.mjs:142:64)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: a late verified success keeps a newer pending intent and its unknown-result retry ID intact
+not ok 13 - a late verified success keeps a newer pending intent and its unknown-result retry ID intact
+  ---
+  duration_ms: 0.2848
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\scripts\\billing-functional\\billing-client.test.mjs:146:1'
+  failureType: 'testCodeFailure'
+  error: '原操作已返回，但本机请求记录已变化；请核对原操作。'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    storedAction (file:///C:/Users/lezhai/Downloads/Bondbuddy/mock-payment-lifecycle-20261105/scripts/billing-functional/billing-client.js:81:46)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/mock-payment-lifecycle-20261105/scripts/billing-functional/billing-client.test.mjs:154:63)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: Web Locks cover only the shared intent critical sections, allowing concurrent HTTP with one original ID
+not ok 14 - Web Locks cover only the shared intent critical sections, allowing concurrent HTTP with one original ID
+  ---
+  duration_ms: 0.241
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\scripts\\billing-functional\\billing-client.test.mjs:161:1'
+  failureType: 'testCodeFailure'
+  error: '原操作已返回，但本机请求记录已变化；请核对原操作。'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    storedAction (file:///C:/Users/lezhai/Downloads/Bondbuddy/mock-payment-lifecycle-20261105/scripts/billing-functional/billing-client.js:81:46)
+    async Promise.all (index 1)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/mock-payment-lifecycle-20261105/scripts/billing-functional/billing-client.test.mjs:169:108)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: real browser localStorage without Web Locks blocks before persisting or submitting a financial action
+not ok 15 - real browser localStorage without Web Locks blocks before persisting or submitting a financial action
+  ---
+  duration_ms: 0.609
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\scripts\\billing-functional\\billing-client.test.mjs:173:1'
+  failureType: 'testCodeFailure'
+  error: 'Missing expected rejection.'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  operator: 'rejects'
+  stack: |-
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/mock-payment-lifecycle-20261105/scripts/billing-functional/billing-client.test.mjs:177:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+  ...
+# Subtest: refresh is read-only at the channel until explicit owner payment; signed receipt survives provider restart
+ok 16 - refresh is read-only at the channel until explicit owner payment; signed receipt survives provider restart
+  ---
+  duration_ms: 5.3162
+  type: 'test'
+  ...
+# Subtest: foreign payment controls, order tampering and closed-order payment cannot change a channel result
+ok 17 - foreign payment controls, order tampering and closed-order payment cannot change a channel result
+  ---
+  duration_ms: 1.0091
+  type: 'test'
+  ...
+# Subtest: closing after channel payment reports the paid fact and never cancels already-paid value
+ok 18 - closing after channel payment reports the paid fact and never cancels already-paid value
+  ---
+  duration_ms: 0.583
+  type: 'test'
+  ...
+# Subtest: querying an undispatched automatic order cannot create a manual charge or bypass its mandate
+ok 19 - querying an undispatched automatic order cannot create a manual charge or bypass its mandate
+  ---
+  duration_ms: 0.7227
+  type: 'test'
+  ...
+# Subtest: refund remains processing until explicit result; replays preserve identity/times and foreign controls fail
+ok 20 - refund remains processing until explicit result; replays preserve identity/times and foreign controls fail
+  ---
+  duration_ms: 2.1056
+  type: 'test'
+  ...
+# Subtest: a failed refund reports the explicit CLOSED channel fact required to release the product freeze
+ok 21 - a failed refund reports the explicit CLOSED channel fact required to release the product freeze
+  ---
+  duration_ms: 1.3203
+  type: 'test'
+  ...
+# Subtest: callback authentication rejects forged, modified and cross-kind bodies without exposing keys
+ok 22 - callback authentication rejects forged, modified and cross-kind bodies without exposing keys
+  ---
+  duration_ms: 0.6916
+  type: 'test'
+  ...
+# Subtest: terminal payment and refund transitions reject conflicting facts
+ok 23 - terminal payment and refund transitions reject conflicting facts
+  ---
+  duration_ms: 0.2887
+  type: 'test'
+  ...
+# Subtest: refund control preserves the decimal-string wire amount when forwarding to the product
+ok 24 - refund control preserves the decimal-string wire amount when forwarding to the product
+  ---
+  duration_ms: 0.7847
+  type: 'test'
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 20
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 155.1376

@@ -77,9 +77,23 @@ npm run test:billing:mock
 npm run test:billing:mock:flow
 node scripts/billing-functional/cashier-browser-verify.mjs
 node scripts/billing-functional/product-recovery-verify.mjs
+# 新增并发、响应丢失、账号切换和续费派发断点验收。
+npm run test:billing:mock:edges
+# 新旧报价、历史任务接管、旧余额与新充值混合消费；涉及队列，顺序运行。
+npm run test:billing:mock:compatibility
+# 必须独占实例执行：会有序停止并重新启动本地 Web/API 两次。
+npm run test:billing:mock:restart
 ```
 
-首项为渠道及客户端单测，后三项使用真实本地 Web/API/PostgreSQL。浏览器脚本使用本机 Edge。输出位于本目录忽略的 `.runtime/` 和独立随机账号子目录，不覆盖下方历史验收记录。涉及复核队列的脚本应顺序运行，不能与手动任务交付并行。
+首项为渠道及客户端单测，其余命令使用真实本地 Web/API/PostgreSQL。浏览器脚本使用本机 Edge。输出位于本目录忽略的 `.runtime/` 和独立随机账号子目录，不覆盖下方历史验收记录。涉及复核队列的脚本应顺序运行，不能与手动任务交付并行。
+
+边界专项分别验证真实产品并发事务、完成真实服务端处理后在浏览器丢弃响应，以及续费派发前后明确故障注入；不会伪造产品成功结果。续费查询保持只读，仅声明了同订单及授权幂等保证的适配器可提供可选 `recoverSameRequest`，恢复中断的原派发；没有该保证的渠道保持未知待核实。重启专项使用本实例控制令牌实际停启进程，验证待到账支付、退款冻结、预签回调、余额不足任务及终态重放。运行重启专项期间不要使用其他测试脚本或手动操作。
+
+新旧规则专项包含两个不同条件：同库、不同连接池模拟独立部署进程，由新版 worker 接管旧 review／M4 任务；同一连接池上的多个 API 实例则强制并发重叠，验证请求计费配置与已接受合同的价格 pin 不互相覆盖。历史 M4 固定报价用明确标注的追加式 snapshot fixture 构造，不修改现有任务、报价或余额。旧充值包通过真实旧订单接口购买，消费及退款按原积分／现金对价核算。合成文档只检验文件状态、归属和计费交付链路，不证明内容质量。
+
+本地收银及测试台清除换号前的视图，取消旧请求并忽略迟到响应。财务请求同时携带最初核实的 owner，由本地服务端在会话及 CSRF 验证后再次绑定，避免旧请求在新账号下执行。重新聚焦同一账号保留未完成退款金额与原请求键。[补充验收及失败证据](../../evidence/mock-payment-lifecycle-20261105/FOLLOWUP.md)记录实际执行版本和边界。
+
+多标签的创建／确认记录使用 Web Locks 的短临界区，不持锁等网络；缺少该能力的桌面浏览器在请求前明确阻断。服务器在账号锁内核对页面所见下一事件，过期页面的不同请求 ID 不能推进另一月。旧版本保存的未知推进请求只核对原 ID，不把当前新一期当作补授权。`subscription-two-tab-verify.mjs` 使用真实 Edge 两标签、错序与丢响应检验这一防线。
 
 在服务就绪后运行 `node scripts/billing-functional/verify.mjs`。避免与手动测试同时把不同账号的复核留在队列中；该脚本不会完成别人的任务。结果保存到 `.runtime/last-verification.json`。
 

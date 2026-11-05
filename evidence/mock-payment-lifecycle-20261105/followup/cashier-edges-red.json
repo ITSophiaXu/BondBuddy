@@ -1,0 +1,859 @@
+{
+  "synthetic": true,
+  "realBrowser": "Microsoft Edge",
+  "realHttp": true,
+  "realPostgres": true,
+  "realPaymentCallsPerformed": 0,
+  "modelCallsPerformed": 0,
+  "faultInjection": "Completed real HTTP responses are discarded at the client; no response or ledger is fabricated.",
+  "startedAt": "2026-11-05T08:35:52.387Z",
+  "finishedAt": "2026-11-05T08:36:15.571Z",
+  "instanceId": "85f66562-58b4-4af1-b6d1-995d6477e2e2",
+  "runId": "edge_87377093-6821-467f-bcf2-473601a3f8c8",
+  "accounts": [
+    {
+      "username": "billing_edge_32052e0b",
+      "owner": "0010cbde-9606-4bc4-a2b3-dc5d9c2e7dfd"
+    },
+    {
+      "username": "billing_edge_2d3042ee",
+      "owner": "de3e00d3-49a1-4b48-9644-d8cdab9a45e0"
+    },
+    {
+      "username": "billing_edge_2ac5c3e4",
+      "owner": "35eee076-b442-4e8c-ace6-55976078acf6"
+    },
+    {
+      "username": "billing_edge_87ced758",
+      "owner": "59e5c045-3f0a-4edb-871d-ccb1718ee3e4"
+    },
+    {
+      "username": "billing_edge_fe568573",
+      "owner": "0ff64ca6-8cb0-4f5b-9491-3c344cde8713"
+    },
+    {
+      "username": "billing_edge_033e6daf",
+      "owner": "271c995a-5667-4eff-8d5c-4fd647028f6f"
+    },
+    {
+      "username": "billing_edge_b_0b88b1a0",
+      "owner": "ef99a669-321d-4f5c-b712-abdb26ee0586"
+    },
+    {
+      "username": "billing_edge_ac092c9b",
+      "owner": "e4f7d0f4-7ed3-4942-b866-97131cd426ec"
+    },
+    {
+      "username": "billing_edge_6c7f8887",
+      "owner": "34687de1-2cd3-414b-b777-9122f1441d1a"
+    }
+  ],
+  "passed": 6,
+  "failed": 2,
+  "skipped": 0,
+  "cases": [
+    {
+      "name": "01-payment-response-loss",
+      "passed": true,
+      "startedAt": "2026-11-05T08:35:53.293Z",
+      "screenshots": [
+        "01-payment-response-loss-unknown-response.png",
+        "01-payment-response-loss-recovered-once.png"
+      ],
+      "faults": [
+        {
+          "kind": "client response-loss fault injection",
+          "path": "/__billing-test/api/payment/outcome",
+          "request": {
+            "id": "effebd9496634cad86c8a7c4e80b2b64",
+            "outcome": "paid",
+            "delivery": "callback"
+          },
+          "serverStatus": 200,
+          "serverBody": {
+            "synthetic": true,
+            "username": "billing_edge_32052e0b",
+            "account": {
+              "subscription": null,
+              "available_points": "5000",
+              "held_points": "0",
+              "task_held_points": "0",
+              "refund_held_points": "0",
+              "change_held_points": "0",
+              "subscription_available_points": "0",
+              "topup_available_points": "5000",
+              "other_available_points": "0",
+              "periods": []
+            },
+            "tasks": [],
+            "payments": [
+              {
+                "id": "effebd9496634cad86c8a7c4e80b2b64",
+                "state": "paid",
+                "amount_fen": "5000",
+                "points": "5000",
+                "order_kind": "recharge",
+                "created_at": "2026-11-05T08:35:53.685Z",
+                "automatic": false,
+                "channel_state": "paid",
+                "refundable": {
+                  "order_id": "effebd9496634cad86c8a7c4e80b2b64",
+                  "currency": "CNY",
+                  "order_amount_fen": 5000,
+                  "original_points": 5000,
+                  "paid_amount_fen": 5000,
+                  "refundable_fen": 5000,
+                  "held_refund_fen": 0,
+                  "refunded_fen": 0,
+                  "request_unit": "amount_fen",
+                  "refundable_points": 5000,
+                  "refunded_points": 0,
+                  "enabled": true,
+                  "reason": "",
+                  "refunds": []
+                }
+              }
+            ],
+            "refunds": [],
+            "subscription_test": {
+              "clock_at": "2026-11-05T08:35:54.075Z",
+              "simulated": false,
+              "next_event": null,
+              "charges": {
+                "paid_orders": 1,
+                "recurring_paid_orders": 0,
+                "recurring_pending_orders": 0,
+                "recurring_failed_orders": 0,
+                "simulated_paid_fen": "5000"
+              }
+            }
+          }
+        }
+      ],
+      "requests": [],
+      "responses": [],
+      "pageErrors": [],
+      "externalRequests": [],
+      "requestFailures": [
+        {
+          "url": "http://localhost:5189/__billing-test/api/payment/outcome",
+          "error": "net::ERR_FAILED"
+        }
+      ],
+      "account": {
+        "username": "billing_edge_32052e0b",
+        "owner": "0010cbde-9606-4bc4-a2b3-dc5d9c2e7dfd"
+      },
+      "order": "effebd9496634cad86c8a7c4e80b2b64",
+      "ledger": {
+        "orders": 1,
+        "charges": 1,
+        "cash_proofs": 1,
+        "lots": 1,
+        "grants": 1
+      },
+      "finishedAt": "2026-11-05T08:35:55.159Z"
+    },
+    {
+      "name": "02-refund-request-response-loss-retry",
+      "passed": true,
+      "startedAt": "2026-11-05T08:35:55.182Z",
+      "screenshots": [
+        "02-refund-request-response-loss-retry-unknown-response-retains-request.png"
+      ],
+      "faults": [
+        {
+          "kind": "client response-loss fault injection",
+          "path": "/__billing-test/api/refund/request",
+          "request": {
+            "id": "e7c9463d79dc4c33a39694374116173b",
+            "amount_fen": "1000",
+            "request_id": "0d9b47fe-1b5c-42dc-a633-136442e73aa6"
+          },
+          "serverStatus": 200,
+          "serverBody": {
+            "synthetic": true,
+            "username": "billing_edge_2d3042ee",
+            "account": {
+              "subscription": null,
+              "available_points": "4000",
+              "held_points": "1000",
+              "task_held_points": "0",
+              "refund_held_points": "1000",
+              "change_held_points": "0",
+              "subscription_available_points": "0",
+              "topup_available_points": "4000",
+              "other_available_points": "0",
+              "periods": []
+            },
+            "tasks": [],
+            "payments": [
+              {
+                "id": "e7c9463d79dc4c33a39694374116173b",
+                "state": "paid",
+                "amount_fen": "5000",
+                "points": "5000",
+                "order_kind": "recharge",
+                "created_at": "2026-11-05T08:35:56.193Z",
+                "automatic": false,
+                "channel_state": "paid",
+                "refundable": {
+                  "order_id": "e7c9463d79dc4c33a39694374116173b",
+                  "currency": "CNY",
+                  "order_amount_fen": 5000,
+                  "original_points": 5000,
+                  "paid_amount_fen": 5000,
+                  "refundable_fen": 0,
+                  "held_refund_fen": 1000,
+                  "refunded_fen": 0,
+                  "request_unit": "amount_fen",
+                  "refundable_points": 0,
+                  "refunded_points": 0,
+                  "enabled": false,
+                  "reason": "该订单已有退款处理中，相关金额保持冻结；请刷新原退款单。",
+                  "refunds": [
+                    {
+                      "refund_id": "094f574ea1a4489289db486d8e6007e4",
+                      "order_id": "e7c9463d79dc4c33a39694374116173b",
+                      "currency": "CNY",
+                      "amount_fen": 1000,
+                      "credit_points": 1000,
+                      "state": "processing",
+                      "created_at": "2026-11-05T08:35:56.612Z",
+                      "updated_at": "2026-11-05T08:35:56.691Z",
+                      "completed_at": null,
+                      "failure_code": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "refunds": [
+              {
+                "id": "094f574ea1a4489289db486d8e6007e4",
+                "order_id": "e7c9463d79dc4c33a39694374116173b",
+                "request_id": "0d9b47fe-1b5c-42dc-a633-136442e73aa6",
+                "state": "processing",
+                "amount_fen": "1000",
+                "credit_points": "1000",
+                "created_at": "2026-11-05T08:35:56.612Z",
+                "channel_state": "processing"
+              }
+            ],
+            "subscription_test": {
+              "clock_at": "2026-11-05T08:35:56.752Z",
+              "simulated": false,
+              "next_event": null,
+              "charges": {
+                "paid_orders": 1,
+                "recurring_paid_orders": 0,
+                "recurring_pending_orders": 0,
+                "recurring_failed_orders": 0,
+                "simulated_paid_fen": "5000"
+              }
+            }
+          }
+        }
+      ],
+      "requests": [
+        {
+          "path": "/__billing-test/api/refund/request",
+          "body": {
+            "id": "e7c9463d79dc4c33a39694374116173b",
+            "amount_fen": "1000",
+            "request_id": "0d9b47fe-1b5c-42dc-a633-136442e73aa6"
+          }
+        },
+        {
+          "path": "/__billing-test/api/refund/request",
+          "body": {
+            "id": "e7c9463d79dc4c33a39694374116173b",
+            "amount_fen": "1000",
+            "request_id": "0d9b47fe-1b5c-42dc-a633-136442e73aa6"
+          }
+        }
+      ],
+      "responses": [],
+      "pageErrors": [],
+      "externalRequests": [],
+      "requestFailures": [
+        {
+          "url": "http://localhost:5189/__billing-test/api/refund/request",
+          "error": "net::ERR_FAILED"
+        }
+      ],
+      "account": {
+        "username": "billing_edge_2d3042ee",
+        "owner": "de3e00d3-49a1-4b48-9644-d8cdab9a45e0"
+      },
+      "order": "e7c9463d79dc4c33a39694374116173b",
+      "originalIntent": {
+        "id": "e7c9463d79dc4c33a39694374116173b",
+        "amount_fen": "1000",
+        "request_id": "0d9b47fe-1b5c-42dc-a633-136442e73aa6"
+      },
+      "ledger": {
+        "refunds": 1,
+        "requests": 1,
+        "settlements": 0,
+        "allocated": "1000",
+        "remaining": "5000",
+        "frozen": "1000"
+      },
+      "finishedAt": "2026-11-05T08:35:57.144Z"
+    },
+    {
+      "name": "03-refund-request-response-loss-reload",
+      "passed": true,
+      "startedAt": "2026-11-05T08:35:57.162Z",
+      "screenshots": [
+        "03-refund-request-response-loss-reload-recovered-original-request.png"
+      ],
+      "faults": [
+        {
+          "kind": "client response-loss fault injection",
+          "path": "/__billing-test/api/refund/request",
+          "request": {
+            "id": "280f43d602b54f708ead70f4d655e6dc",
+            "amount_fen": "1000",
+            "request_id": "5af00ecc-73de-40a5-81da-deba101a4d04"
+          },
+          "serverStatus": 200,
+          "serverBody": {
+            "synthetic": true,
+            "username": "billing_edge_2ac5c3e4",
+            "account": {
+              "subscription": null,
+              "available_points": "4000",
+              "held_points": "1000",
+              "task_held_points": "0",
+              "refund_held_points": "1000",
+              "change_held_points": "0",
+              "subscription_available_points": "0",
+              "topup_available_points": "4000",
+              "other_available_points": "0",
+              "periods": []
+            },
+            "tasks": [],
+            "payments": [
+              {
+                "id": "280f43d602b54f708ead70f4d655e6dc",
+                "state": "paid",
+                "amount_fen": "5000",
+                "points": "5000",
+                "order_kind": "recharge",
+                "created_at": "2026-11-05T08:35:58.078Z",
+                "automatic": false,
+                "channel_state": "paid",
+                "refundable": {
+                  "order_id": "280f43d602b54f708ead70f4d655e6dc",
+                  "currency": "CNY",
+                  "order_amount_fen": 5000,
+                  "original_points": 5000,
+                  "paid_amount_fen": 5000,
+                  "refundable_fen": 0,
+                  "held_refund_fen": 1000,
+                  "refunded_fen": 0,
+                  "request_unit": "amount_fen",
+                  "refundable_points": 0,
+                  "refunded_points": 0,
+                  "enabled": false,
+                  "reason": "该订单已有退款处理中，相关金额保持冻结；请刷新原退款单。",
+                  "refunds": [
+                    {
+                      "refund_id": "231ea474794f4582a41fd32af2ba02bd",
+                      "order_id": "280f43d602b54f708ead70f4d655e6dc",
+                      "currency": "CNY",
+                      "amount_fen": 1000,
+                      "credit_points": 1000,
+                      "state": "processing",
+                      "created_at": "2026-11-05T08:35:58.486Z",
+                      "updated_at": "2026-11-05T08:35:58.590Z",
+                      "completed_at": null,
+                      "failure_code": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "refunds": [
+              {
+                "id": "231ea474794f4582a41fd32af2ba02bd",
+                "order_id": "280f43d602b54f708ead70f4d655e6dc",
+                "request_id": "5af00ecc-73de-40a5-81da-deba101a4d04",
+                "state": "processing",
+                "amount_fen": "1000",
+                "credit_points": "1000",
+                "created_at": "2026-11-05T08:35:58.486Z",
+                "channel_state": "processing"
+              }
+            ],
+            "subscription_test": {
+              "clock_at": "2026-11-05T08:35:58.665Z",
+              "simulated": false,
+              "next_event": null,
+              "charges": {
+                "paid_orders": 1,
+                "recurring_paid_orders": 0,
+                "recurring_pending_orders": 0,
+                "recurring_failed_orders": 0,
+                "simulated_paid_fen": "5000"
+              }
+            }
+          }
+        }
+      ],
+      "requests": [
+        {
+          "path": "/__billing-test/api/refund/request",
+          "body": {
+            "id": "280f43d602b54f708ead70f4d655e6dc",
+            "amount_fen": "1000",
+            "request_id": "5af00ecc-73de-40a5-81da-deba101a4d04"
+          }
+        }
+      ],
+      "responses": [],
+      "pageErrors": [],
+      "externalRequests": [],
+      "requestFailures": [
+        {
+          "url": "http://localhost:5189/__billing-test/api/refund/request",
+          "error": "net::ERR_FAILED"
+        }
+      ],
+      "account": {
+        "username": "billing_edge_2ac5c3e4",
+        "owner": "35eee076-b442-4e8c-ace6-55976078acf6"
+      },
+      "order": "280f43d602b54f708ead70f4d655e6dc",
+      "originalIntent": {
+        "id": "280f43d602b54f708ead70f4d655e6dc",
+        "amount_fen": "1000",
+        "request_id": "5af00ecc-73de-40a5-81da-deba101a4d04"
+      },
+      "ledger": {
+        "refunds": 1,
+        "requests": 1,
+        "settlements": 0,
+        "allocated": "1000",
+        "remaining": "5000",
+        "frozen": "1000"
+      },
+      "finishedAt": "2026-11-05T08:35:59.286Z"
+    },
+    {
+      "name": "04-refund-settlement-response-loss",
+      "passed": true,
+      "startedAt": "2026-11-05T08:35:59.303Z",
+      "screenshots": [
+        "04-refund-settlement-response-loss-settled-original-refund-once.png"
+      ],
+      "faults": [
+        {
+          "kind": "client response-loss fault injection",
+          "path": "/__billing-test/api/refund/outcome",
+          "request": {
+            "id": "fdce558776e449bf994f15d239391ab7",
+            "outcome": "succeeded",
+            "delivery": "callback"
+          },
+          "serverStatus": 200,
+          "serverBody": {
+            "synthetic": true,
+            "username": "billing_edge_87ced758",
+            "account": {
+              "subscription": null,
+              "available_points": "4000",
+              "held_points": "0",
+              "task_held_points": "0",
+              "refund_held_points": "0",
+              "change_held_points": "0",
+              "subscription_available_points": "0",
+              "topup_available_points": "4000",
+              "other_available_points": "0",
+              "periods": []
+            },
+            "tasks": [],
+            "payments": [
+              {
+                "id": "4ff31ee3b30b446985962bc9d6fea2f3",
+                "state": "paid",
+                "amount_fen": "5000",
+                "points": "5000",
+                "order_kind": "recharge",
+                "created_at": "2026-11-05T08:35:59.637Z",
+                "automatic": false,
+                "channel_state": "paid",
+                "refundable": {
+                  "order_id": "4ff31ee3b30b446985962bc9d6fea2f3",
+                  "currency": "CNY",
+                  "order_amount_fen": 5000,
+                  "original_points": 5000,
+                  "paid_amount_fen": 5000,
+                  "refundable_fen": 4000,
+                  "held_refund_fen": 0,
+                  "refunded_fen": 1000,
+                  "request_unit": "amount_fen",
+                  "refundable_points": 4000,
+                  "refunded_points": 1000,
+                  "enabled": true,
+                  "reason": "",
+                  "refunds": [
+                    {
+                      "refund_id": "fdce558776e449bf994f15d239391ab7",
+                      "order_id": "4ff31ee3b30b446985962bc9d6fea2f3",
+                      "currency": "CNY",
+                      "amount_fen": 1000,
+                      "credit_points": 1000,
+                      "state": "succeeded",
+                      "created_at": "2026-11-05T08:36:00.410Z",
+                      "updated_at": "2026-11-05T08:36:00.749Z",
+                      "completed_at": "2026-11-05T08:36:00.749Z",
+                      "failure_code": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "refunds": [
+              {
+                "id": "fdce558776e449bf994f15d239391ab7",
+                "order_id": "4ff31ee3b30b446985962bc9d6fea2f3",
+                "request_id": "2629cc1d-a76c-4ca9-83e7-125ddeb99d52",
+                "state": "succeeded",
+                "amount_fen": "1000",
+                "credit_points": "1000",
+                "created_at": "2026-11-05T08:36:00.410Z",
+                "channel_state": "succeeded"
+              }
+            ],
+            "subscription_test": {
+              "clock_at": "2026-11-05T08:36:00.796Z",
+              "simulated": false,
+              "next_event": null,
+              "charges": {
+                "paid_orders": 1,
+                "recurring_paid_orders": 0,
+                "recurring_pending_orders": 0,
+                "recurring_failed_orders": 0,
+                "simulated_paid_fen": "5000"
+              }
+            }
+          }
+        }
+      ],
+      "requests": [
+        {
+          "path": "/__billing-test/api/refund/request",
+          "body": {
+            "id": "4ff31ee3b30b446985962bc9d6fea2f3",
+            "amount_fen": "1000",
+            "request_id": "2629cc1d-a76c-4ca9-83e7-125ddeb99d52"
+          }
+        }
+      ],
+      "responses": [],
+      "pageErrors": [],
+      "externalRequests": [],
+      "requestFailures": [
+        {
+          "url": "http://localhost:5189/__billing-test/api/refund/outcome",
+          "error": "net::ERR_FAILED"
+        }
+      ],
+      "account": {
+        "username": "billing_edge_87ced758",
+        "owner": "59e5c045-3f0a-4edb-871d-ccb1718ee3e4"
+      },
+      "order": "4ff31ee3b30b446985962bc9d6fea2f3",
+      "ledger": {
+        "refunds": 1,
+        "requests": 1,
+        "settlements": 1,
+        "allocated": "1000",
+        "remaining": "4000",
+        "frozen": "0"
+      },
+      "finishedAt": "2026-11-05T08:36:01.587Z"
+    },
+    {
+      "name": "05-two-tab-refund-race",
+      "passed": true,
+      "startedAt": "2026-11-05T08:36:01.607Z",
+      "screenshots": [
+        "05-two-tab-refund-race-first-tab.png",
+        "05-two-tab-refund-race-second-tab.png"
+      ],
+      "faults": [],
+      "requests": [
+        {
+          "path": "/__billing-test/api/refund/request",
+          "body": {
+            "id": "0987e99cd319458ea992e1d9e71c1364",
+            "amount_fen": "1000",
+            "request_id": "775a44e6-17c0-4364-bfe5-0c3708fde3c6"
+          }
+        },
+        {
+          "path": "/__billing-test/api/refund/request",
+          "body": {
+            "id": "0987e99cd319458ea992e1d9e71c1364",
+            "amount_fen": "1000",
+            "request_id": "df8b8e72-50b0-4e42-bc4d-d489efc658cb"
+          }
+        }
+      ],
+      "responses": [
+        {
+          "status": 409,
+          "body": {
+            "code": "PAYMENT_INVALID",
+            "message": "该订单已有退款处理中，相关金额保持冻结；请刷新原退款单。",
+            "retryable": false,
+            "field_errors": [],
+            "correlation_id": "aa78eca8-3037-4e94-b938-f7a30ddcf828"
+          }
+        },
+        {
+          "status": 200,
+          "body": {
+            "synthetic": true,
+            "username": "billing_edge_fe568573",
+            "account": {
+              "subscription": null,
+              "available_points": "4000",
+              "held_points": "1000",
+              "task_held_points": "0",
+              "refund_held_points": "1000",
+              "change_held_points": "0",
+              "subscription_available_points": "0",
+              "topup_available_points": "4000",
+              "other_available_points": "0",
+              "periods": []
+            },
+            "tasks": [],
+            "payments": [
+              {
+                "id": "0987e99cd319458ea992e1d9e71c1364",
+                "state": "paid",
+                "amount_fen": "5000",
+                "points": "5000",
+                "order_kind": "recharge",
+                "created_at": "2026-11-05T08:36:01.923Z",
+                "automatic": false,
+                "channel_state": "paid",
+                "refundable": {
+                  "order_id": "0987e99cd319458ea992e1d9e71c1364",
+                  "currency": "CNY",
+                  "order_amount_fen": 5000,
+                  "original_points": 5000,
+                  "paid_amount_fen": 5000,
+                  "refundable_fen": 0,
+                  "held_refund_fen": 1000,
+                  "refunded_fen": 0,
+                  "request_unit": "amount_fen",
+                  "refundable_points": 0,
+                  "refunded_points": 0,
+                  "enabled": false,
+                  "reason": "该订单已有退款处理中，相关金额保持冻结；请刷新原退款单。",
+                  "refunds": [
+                    {
+                      "refund_id": "3654cc3706ec40b7a500ab177a3f5853",
+                      "order_id": "0987e99cd319458ea992e1d9e71c1364",
+                      "currency": "CNY",
+                      "amount_fen": 1000,
+                      "credit_points": 1000,
+                      "state": "processing",
+                      "created_at": "2026-11-05T08:36:02.570Z",
+                      "updated_at": "2026-11-05T08:36:02.697Z",
+                      "completed_at": null,
+                      "failure_code": null
+                    }
+                  ]
+                }
+              }
+            ],
+            "refunds": [
+              {
+                "id": "3654cc3706ec40b7a500ab177a3f5853",
+                "order_id": "0987e99cd319458ea992e1d9e71c1364",
+                "request_id": "775a44e6-17c0-4364-bfe5-0c3708fde3c6",
+                "state": "processing",
+                "amount_fen": "1000",
+                "credit_points": "1000",
+                "created_at": "2026-11-05T08:36:02.570Z",
+                "channel_state": "processing"
+              }
+            ],
+            "subscription_test": {
+              "clock_at": "2026-11-05T08:36:02.747Z",
+              "simulated": false,
+              "next_event": null,
+              "charges": {
+                "paid_orders": 1,
+                "recurring_paid_orders": 0,
+                "recurring_pending_orders": 0,
+                "recurring_failed_orders": 0,
+                "simulated_paid_fen": "5000"
+              }
+            }
+          }
+        }
+      ],
+      "pageErrors": [],
+      "externalRequests": [],
+      "requestFailures": [],
+      "account": {
+        "username": "billing_edge_fe568573",
+        "owner": "0ff64ca6-8cb0-4f5b-9491-3c344cde8713"
+      },
+      "order": "0987e99cd319458ea992e1d9e71c1364",
+      "ledger": {
+        "refunds": 1,
+        "requests": 1,
+        "settlements": 0,
+        "allocated": "1000",
+        "remaining": "5000",
+        "frozen": "1000"
+      },
+      "concurrencyLimit": "Two real browser submissions; local control actions use the existing serial harness. Product transaction concurrency is verified separately.",
+      "finishedAt": "2026-11-05T08:36:05.474Z"
+    },
+    {
+      "name": "06-account-switch-isolation",
+      "passed": false,
+      "startedAt": "2026-11-05T08:36:05.501Z",
+      "screenshots": [
+        "06-account-switch-isolation-after-product-logout.png",
+        "06-account-switch-isolation-after-other-account-login.png",
+        "06-account-switch-isolation-after-denied-old-order-action.png",
+        "06-account-switch-isolation-failure-0.png",
+        "06-account-switch-isolation-failure-1.png"
+      ],
+      "faults": [],
+      "requests": [],
+      "responses": [],
+      "pageErrors": [],
+      "externalRequests": [],
+      "requestFailures": [
+        {
+          "url": "http://localhost:5189/api/v1/credits/consumption-history",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://localhost:5189/api/v1/commerce/quotations",
+          "error": "net::ERR_ABORTED"
+        },
+        {
+          "url": "http://localhost:5189/api/v1/auth/logout",
+          "error": "net::ERR_ABORTED"
+        }
+      ],
+      "account": {
+        "username": "billing_edge_033e6daf",
+        "owner": "271c995a-5667-4eff-8d5c-4fd647028f6f"
+      },
+      "order": "19ce23d4747f40f39a5384dcd70258c7",
+      "foreign": {
+        "username": "billing_edge_b_0b88b1a0",
+        "owner": "ef99a669-321d-4f5c-b712-abdb26ee0586"
+      },
+      "cashierAfterLogout": {
+        "identity": "当前登录：billing_edge_033e6daf · 本地隔离测试账号",
+        "checkout": "积分已到账\n\n原充值订单 · 不创建第二笔付款\n\n¥50.00\n\n订单号\n19ce23d4747f40f39a5384dcd70258c7\n产品订单状态\n积分已到账\n模拟渠道状态\n模拟渠道已支付\n订单积分\n5,000\n账户可用积分\n5,000\n模拟结果确认方式\n查单确认：先保存渠道结果，再刷新入账\n认证回调：立即通知产品\n模拟支付成功\n模拟支付失败\n关闭未支付订单\n查单并确认到账\n\n保持待支付：无需操作，或刷新本订单核实；不会到账。选择查单确认后，需点击“查单并确认到账”；选择认证回调后，产品收到有效回执才入账。\n\n确认到账并返回原付款\n\n返回保留原付款及待执行任务信息。任务只有在产品确认到账后，才按原请求恢复。",
+        "refunds": "模拟原路退款\n\n申请受理后冻结对应积分，渠道退款成功后才销账；失败会释放退款冻结。任务失败退回积分与原路退款分别记录。\n\n当前可退模拟金额\n¥50.00\n退款冻结\n¥0.00\n已模拟退回\n¥0.00\n模拟退款金额（元）\n提交模拟原路退款申请"
+      },
+      "cashierBeforeReload": {
+        "identity": "当前登录：billing_edge_033e6daf · 本地隔离测试账号",
+        "checkout": "积分已到账\n\n原充值订单 · 不创建第二笔付款\n\n¥50.00\n\n订单号\n19ce23d4747f40f39a5384dcd70258c7\n产品订单状态\n积分已到账\n模拟渠道状态\n模拟渠道已支付\n订单积分\n5,000\n账户可用积分\n5,000\n模拟结果确认方式\n查单确认：先保存渠道结果，再刷新入账\n认证回调：立即通知产品\n模拟支付成功\n模拟支付失败\n关闭未支付订单\n查单并确认到账\n\n保持待支付：无需操作，或刷新本订单核实；不会到账。选择查单确认后，需点击“查单并确认到账”；选择认证回调后，产品收到有效回执才入账。\n\n确认到账并返回原付款\n\n返回保留原付款及待执行任务信息。任务只有在产品确认到账后，才按原请求恢复。",
+        "refunds": "模拟原路退款\n\n申请受理后冻结对应积分，渠道退款成功后才销账；失败会释放退款冻结。任务失败退回积分与原路退款分别记录。\n\n当前可退模拟金额\n¥50.00\n退款冻结\n¥0.00\n已模拟退回\n¥0.00\n模拟退款金额（元）\n提交模拟原路退款申请"
+      },
+      "serverGuard": {
+        "code": "NOT_FOUND",
+        "message": "模拟订单不存在或不属于当前账号。",
+        "retryable": false,
+        "field_errors": [],
+        "correlation_id": "e8cb0ef2-04aa-4e44-8cea-ea35dfaf8f06"
+      },
+      "cashierAfterDeniedAction": "积分已到账\n\n原充值订单 · 不创建第二笔付款\n\n¥50.00\n\n订单号\n19ce23d4747f40f39a5384dcd70258c7\n产品订单状态\n积分已到账\n模拟渠道状态\n模拟渠道已支付\n订单积分\n5,000\n账户可用积分\n5,000\n模拟结果确认方式\n查单确认：先保存渠道结果，再刷新入账\n认证回调：立即通知产品\n模拟支付成功\n模拟支付失败\n关闭未支付订单\n查单并确认到账\n\n保持待支付：无需操作，或刷新本订单核实；不会到账。选择查单确认后，需点击“查单并确认到账”；选择认证回调后，产品收到有效回执才入账。\n\n确认到账并返回原付款\n\n返回保留原付款及待执行任务信息。任务只有在产品确认到账后，才按原请求恢复。",
+      "error": "AssertionError [ERR_ASSERTION]: Cashier must clear the prior account order after real product logout in another tab\n\ntrue !== false\n",
+      "stack": "AssertionError [ERR_ASSERTION]: Cashier must clear the prior account order after real product logout in another tab\n\ntrue !== false\n\n    at file:///C:/Users/lezhai/Downloads/Bondbuddy/mock-payment-lifecycle-20261105/scripts/billing-functional/cashier-edge-browser-verify.mjs:198:12\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async runCase (file:///C:/Users/lezhai/Downloads/Bondbuddy/mock-payment-lifecycle-20261105/scripts/billing-functional/cashier-edge-browser-verify.mjs:94:5)\n    at async file:///C:/Users/lezhai/Downloads/Bondbuddy/mock-payment-lifecycle-20261105/scripts/billing-functional/cashier-edge-browser-verify.mjs:174:3",
+      "finishedAt": "2026-11-05T08:36:08.376Z"
+    },
+    {
+      "name": "07-invalid-refund-input-no-request",
+      "passed": true,
+      "startedAt": "2026-11-05T08:36:08.397Z",
+      "screenshots": [
+        "07-invalid-refund-input-no-request-invalid-inputs-blocked.png"
+      ],
+      "faults": [],
+      "requests": [],
+      "responses": [],
+      "pageErrors": [],
+      "externalRequests": [],
+      "requestFailures": [],
+      "account": {
+        "username": "billing_edge_ac092c9b",
+        "owner": "e4f7d0f4-7ed3-4942-b866-97131cd426ec"
+      },
+      "order": "29c2da4338b84710b47e79fef19ae671",
+      "invalidAmounts": [
+        "50.01",
+        "0",
+        "1.001",
+        "1e1",
+        "-1"
+      ],
+      "ledger": {
+        "refunds": 0,
+        "requests": 0,
+        "settlements": 0,
+        "allocated": "0",
+        "remaining": "5000",
+        "frozen": "0"
+      },
+      "finishedAt": "2026-11-05T08:36:09.330Z"
+    },
+    {
+      "name": "08-product-logout-pointer-reachable",
+      "passed": false,
+      "startedAt": "2026-11-05T08:36:09.347Z",
+      "screenshots": [
+        "08-product-logout-pointer-reachable-before-click.png",
+        "08-product-logout-pointer-reachable-failure-0.png"
+      ],
+      "faults": [],
+      "requests": [],
+      "responses": [],
+      "pageErrors": [],
+      "externalRequests": [],
+      "requestFailures": [],
+      "account": {
+        "username": "billing_edge_6c7f8887",
+        "owner": "34687de1-2cd3-414b-b777-9122f1441d1a"
+      },
+      "error": "TimeoutError: locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#logout')\u001b[22m\n\u001b[2m    - locator resolved to <button id=\"logout\" type=\"button\" class=\"text-button\">退出</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div id=\"billing-functional-banner\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div id=\"billing-functional-banner\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    9 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div id=\"billing-functional-banner\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 500ms\u001b[22m\n",
+      "stack": "locator.click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#logout')\u001b[22m\n\u001b[2m    - locator resolved to <button id=\"logout\" type=\"button\" class=\"text-button\">退出</button>\u001b[22m\n\u001b[2m  - attempting click action\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div id=\"billing-functional-banner\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m    - waiting 20ms\u001b[22m\n\u001b[2m    2 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div id=\"billing-functional-banner\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 100ms\u001b[22m\n\u001b[2m    9 × waiting for element to be visible, enabled and stable\u001b[22m\n\u001b[2m      - element is visible, enabled and stable\u001b[22m\n\u001b[2m      - scrolling into view if needed\u001b[22m\n\u001b[2m      - done scrolling\u001b[22m\n\u001b[2m      - <div id=\"billing-functional-banner\">…</div> intercepts pointer events\u001b[22m\n\u001b[2m    - retrying click action\u001b[22m\n\u001b[2m      - waiting 500ms\u001b[22m\n\n    at C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\scripts\\billing-functional\\cashier-edge-browser-verify.mjs:216:35\n    at async runCase (C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\scripts\\billing-functional\\cashier-edge-browser-verify.mjs:94:5)\n    at async file:///C:/Users/lezhai/Downloads/Bondbuddy/mock-payment-lifecycle-20261105/scripts/billing-functional/cashier-edge-browser-verify.mjs:214:3",
+      "finishedAt": "2026-11-05T08:36:15.556Z"
+    }
+  ],
+  "screenshots": [
+    "01-payment-response-loss-unknown-response.png",
+    "01-payment-response-loss-recovered-once.png",
+    "02-refund-request-response-loss-retry-unknown-response-retains-request.png",
+    "03-refund-request-response-loss-reload-recovered-original-request.png",
+    "04-refund-settlement-response-loss-settled-original-refund-once.png",
+    "05-two-tab-refund-race-first-tab.png",
+    "05-two-tab-refund-race-second-tab.png",
+    "06-account-switch-isolation-after-product-logout.png",
+    "06-account-switch-isolation-after-other-account-login.png",
+    "06-account-switch-isolation-after-denied-old-order-action.png",
+    "06-account-switch-isolation-failure-0.png",
+    "06-account-switch-isolation-failure-1.png",
+    "07-invalid-refund-input-no-request-invalid-inputs-blocked.png",
+    "08-product-logout-pointer-reachable-before-click.png",
+    "08-product-logout-pointer-reachable-failure-0.png"
+  ]
+}

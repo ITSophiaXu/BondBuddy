@@ -1,0 +1,47 @@
+{
+  "synthetic": true,
+  "realHttp": true,
+  "realPostgres": true,
+  "actualServerRestarts": [
+    {
+      "before": "02ae572c7d98e36b16b0845d600954dd399e74f6480e58ed",
+      "after": "6aad791d1a84e2af3ed2a7aee8b2171d75c7cb7a5340fe2b"
+    },
+    {
+      "before": "6aad791d1a84e2af3ed2a7aee8b2171d75c7cb7a5340fe2b",
+      "after": "2e0d6789d851ac2743fa9dca87c20d7a50911c156a59c031"
+    }
+  ],
+  "realMoneyCharged": false,
+  "modelCalls": 0,
+  "startedAt": "2026-11-05T08:40:14.394Z",
+  "finishedAt": "2026-11-05T08:40:37.986Z",
+  "instanceId": "85f66562-58b4-4af1-b6d1-995d6477e2e2",
+  "accounts": [
+    {
+      "username": "billing_restart_pay_0f740c76",
+      "owner": "34dda7f6-4f8a-4d4d-9682-f5e0d0f1b97a"
+    },
+    {
+      "username": "billing_restart_ref_2eeb5d81",
+      "owner": "1494f40e-6740-4312-8ef2-fa3237b52cf4"
+    },
+    {
+      "username": "billing_restart_low_648ccbf5",
+      "owner": "a56da96c-539c-4f81-b2b0-e67bdd3ac00f"
+    }
+  ],
+  "passed": 8,
+  "failed": 0,
+  "skipped": 0,
+  "checks": [
+    "before restart: channel-paid/product-pending, refund-success/product-processing, and one saved credit-paused task are independently persisted",
+    "a real server stop/start retains sessions and original payment states; startup and unpaid refresh never issue credits",
+    "a payment envelope signed before shutdown authenticates after restart; callback/query competition credits the original order once",
+    "closing an original order already paid at the channel competes with its callback without losing payment or issuing a second credit",
+    "a pre-shutdown refund envelope restores the original frozen refund after restart; repeated callback/query settles it once",
+    "a credit-paused task survives restart with its exact checkpoint and run; confirming its saved recharge resumes and settles the same task once",
+    "a second real restart and terminal replays preserve one payment lot, one refund settlement, one task charge and the same artifacts",
+    "all restart accounts pass authoritative wallet audits with zero real payment or model calls"
+  ]
+}

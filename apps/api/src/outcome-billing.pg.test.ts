@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
-import {OUTCOME_PRICE_VERSION,OUTCOME_PRICING_MODE,INITIAL_FIXED_PRICES,emptyUpdateDetails,type M4DocumentManifest,type ProjectFileOperation,type QaInput} from '@bondbuddy/contracts';
+import {OUTCOME_PRICE_VERSION,OUTCOME_PRICING_MODE,INITIAL_FIXED_PRICES,emptyUpdateDetails,reportingWindow,type M4DocumentManifest,type ProjectFileOperation,type QaInput} from '@bondbuddy/contracts';
 import {activePrice,creditBalance,grantCredits,publishPrices,quoteCredits,reserveCredits} from './billing.js';
 import {debitAuthoringCredits} from './authoring-credit-debit.js';
 import {quoteM4,reserveM4,settleM4Metering} from './m4-billing.js';
@@ -11,7 +11,7 @@ import {qaAnswerScope,reserveQaCredits,validateIncludedQaFollowup} from './proje
 import {publishScopeQuote,requestScope} from './scope-quotations.js';
 import {correctSettlement,auditCredits} from './billing-ops.js';
 import {checkpointStage,claim,enqueue,finish,promoteWordArtifact} from './queue.js';
-import {transaction,type PrivateBlobs} from './data.js';
+import {digest,transaction,type PrivateBlobs} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {makeSyntheticDocxFixture} from './docx-fixtures.js';
 import {isolatedTestDatabase} from './test-database.js';
@@ -22,9 +22,13 @@ import {advanceProjectFileBatch} from './project-file-workspace.js';
 
 const database=await isolatedTestDatabase(undefined,'outcome-billing');
 const h='a'.repeat(64);
-const authoring=()=>({draft_revision:1,issuer_name:'Synthetic issuer',market:'sse',offering:'private',materials:[],
- update_details:{...emptyUpdateDetails(),reporting_cutoff:'2026-09-30'},
- authoring:{version:'unified_v1',source_prospectuses:[],requirements:[],knowledge:[],knowledge_status:'authoring_reference_not_compliance_approval'}});
+const referenceBytes=makeSyntheticDocxFixture({text:'Synthetic reference issuer prospectus'});
+const authoring=()=>{
+ const pin={material_id:randomUUID(),material_version:1,sha256:digest(referenceBytes)};
+ return{draft_revision:1,issuer_name:'Synthetic issuer',market:'sse',offering:'private',materials:[{...pin,role:'reference'}],
+  update_details:{...emptyUpdateDetails(),reporting_cutoff:'2026-09-30'},
+  authoring:{version:'unified_v1',source_prospectuses:[{...pin,issuer_name:'Synthetic reference issuer',relation:'similar_business',market:'sse',offering:'private',reporting_periods:reportingWindow('sse','private','2025-12-31'),status:'user_asserted'}],requirements:[],knowledge:[],knowledge_status:'authoring_reference_not_compliance_approval'}};
+};
 const source=(project:string):Extract<ProjectFileOperation,{operation:'check'}>['source']=>({project_id:project,version_id:'synthetic-source-v1',selection_revision:1,filename:'source.docx',sequence:1,
  asset:{kind:'material',pin:{source_project_id:project,material_id:'synthetic-source',material_version:1,sha256:h}}});
 
@@ -38,8 +42,17 @@ async function approve(pool:Pool,id:string,inputHash:string,amount:number){retur
 async function seed(pool:Pool,owner:string,manifest:any,projectId?:string,task='generation'){
  const project=projectId??randomUUID(),id=randomUUID(),hash=inputManifestHash(manifest);
  if(!projectId)await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic outcome project',$3)",[project,owner,task==='update'?'update':'generation']);
+ // Persist the synthetic reference metadata for the trusted saved-input fixture;
+ // these billing tests do not parse source blobs or call a model.
+ for(const material of manifest.authoring?.version==='unified_v1'?manifest.materials:[]){
+  const upload=randomUUID();
+  await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+    VALUES($1,$2,$3,'synthetic-reference.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',$4,$5,'reference',$6,now()+interval '1 hour','completed')`,[upload,owner,project,referenceBytes.length,material.sha256,'synthetic/'+upload]);
+  await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+    VALUES($1,1,$2,$3,$4,'reference','synthetic-reference.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',$5,$6,$7,'persisted')`,[material.material_id,owner,project,upload,referenceBytes.length,material.sha256,'synthetic/'+material.material_id]);
+ }
  const revision=Number((await pool.query('SELECT coalesce(max(revision),0)+1 n FROM bb_input_revisions WHERE project_id=$1',[project])).rows[0].n);
- await pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,1,$4,$5,'[]','[]')",[project,revision,owner,hash,manifest]);
+ await pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,1,$4,$5,$6,'[]')",[project,revision,owner,hash,manifest,JSON.stringify(manifest.materials??[])]);
  await pool.query('UPDATE bb_projects SET latest_input_revision=$2 WHERE id=$1',[project,revision]);
  const run=(await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,$4,$5,$1,$6,$5,'queued') RETURNING *",[id,owner,project,revision,hash,task])).rows[0];
  return {project,run,input:{revision,manifest,input_hash:hash},hash};

@@ -166,6 +166,15 @@ export function syntheticPaymentProvider(pool,saved){
     const row=(await pool.query('SELECT * FROM bb_local_billing_refunds WHERE refund_id=$1 AND merchant_id=$2',[value?.refundId,merchantId])).rows[0];
     required(row&&JSON.stringify(refundReceipt(row))===JSON.stringify(value),'callback differs from persisted simulated refund');return refundReceipt(row);
   }
+  async function recurringCharge(input){
+    return transaction(pool,async c=>{
+      const row=await order(c,input),old=(await c.query('SELECT * FROM bb_local_billing_charges WHERE order_id=$1 FOR UPDATE',[row.id])).rows[0];
+      if(old){required(old.mandate_id===input.mandateId&&old.automatic,'charge replay mismatch');return receipt(old);}
+      const mandate=(await c.query('SELECT * FROM bb_local_billing_mandates WHERE mandate_id=$1 FOR UPDATE',[input.mandateId])).rows[0];
+      required(row.automatic&&mandate&&mandate.state==='active'&&mandate.subscription_id===row.subscription_id&&mandate.owner_user_id===row.owner_user_id&&same(mandate.amount_fen,row.amount_fen),'inactive or mismatched recurring mandate');
+      const charge=await savedCharge(c,row,mandate.mandate_id);return receipt(await result(c,charge,await takeOutcome(c,row.owner_user_id)));
+    });
+  }
   return {name:'wechat',merchantId,acknowledgement:{code:'SUCCESS'},
     create:async input=>transaction(pool,async c=>{const row=await order(c,input);required(!row.automatic,'automatic order must use charge');await savedCharge(c,row);return{checkoutUrl:'weixin://wxpay/bizpayurl?pr=synthetic-local-'+row.id};}),
     // A query reports the saved channel fact. Refreshing a product page is not payment.
@@ -195,13 +204,9 @@ export function syntheticPaymentProvider(pool,saved){
       }),
       queryMandate:async input=>transaction(pool,async c=>{let row=await getMandate(c,input);if(row.state==='pending')row=(await c.query("UPDATE bb_local_billing_mandates SET state='active',updated_at=now() WHERE request_id=$1 RETURNING *",[row.request_id])).rows[0];return mandateReceipt(row);}),
       cancelMandate:async input=>transaction(pool,async c=>{const row=await getMandate(c,input);return mandateReceipt((await c.query("UPDATE bb_local_billing_mandates SET state='cancelled',updated_at=now() WHERE request_id=$1 RETURNING *",[row.request_id])).rows[0]);}),
-      charge:async input=>transaction(pool,async c=>{
-        const row=await order(c,input),old=(await c.query('SELECT * FROM bb_local_billing_charges WHERE order_id=$1 FOR UPDATE',[row.id])).rows[0];
-        if(old){required(old.mandate_id===input.mandateId&&old.automatic,'charge replay mismatch');return receipt(old);}
-        const mandate=(await c.query('SELECT * FROM bb_local_billing_mandates WHERE mandate_id=$1 FOR UPDATE',[input.mandateId])).rows[0];
-        required(row.automatic&&mandate&&mandate.state==='active'&&mandate.subscription_id===row.subscription_id&&mandate.owner_user_id===row.owner_user_id&&same(mandate.amount_fen,row.amount_fen),'inactive or mismatched recurring mandate');
-        const charge=await savedCharge(c,row,mandate.mandate_id);return receipt(await result(c,charge,await takeOutcome(c,row.owner_user_id)));
-      })
+      // Row identity, original mandate and persisted receipt make this specific
+      // local adapter safe to recover under the same channel idempotency key.
+      charge:recurringCharge,recoverSameRequest:recurringCharge
     }
   };
 }

@@ -1,34 +1,57 @@
-import {send,esc,points,money,yuanToFen,accountReturn} from './billing-client.js';
+import {send,esc,points,money,yuanToFen,accountReturn,watchSessionChanges,persistStoredIntent,acknowledgeStoredIntent} from './billing-client.js';
 
 const $=selector=>document.querySelector(selector),query=new URLSearchParams(location.search),orderId=query.get('order')??'';
 const returnTo=accountReturn(orderId,query.get('return_to'),location.origin);
 $('#return-account').href=returnTo;
-let busy=false,lastState,refundAmount='',delivery='query',refundIntent,storageBlocked=false;
+let busy=false,lastState,refundAmount='',delivery='query',refundIntent,refundSerialized,storageBlocked=false,sessionEpoch=0,recheckSession=false,suspendedInput;
 const paymentLabels={pending:'等待模拟支付',paid:'积分已到账',failed:'支付未完成',expired:'订单已关闭或过期'};
 const channelLabels={pending:'待支付',paid:'模拟渠道已支付',failed:'模拟渠道支付失败',closed:'模拟渠道已关闭',expired:'模拟渠道已过期'};
 const refundLabels={requested:'退款申请已受理',processing:'退款处理中',succeeded:'模拟原路退款成功',failed:'模拟原路退款失败'};
 const refundChannelLabels={pending:'等待模拟渠道结果',processing:'模拟渠道处理中',succeeded:'模拟渠道已退款',failed:'模拟渠道退款失败'};
 const key=()=>lastState?'bb-local-cashier-refund-v1:'+JSON.stringify([lastState.username,orderId]):null;
 const deliverySelect=()=>`<label>模拟结果确认方式<select id="delivery" ${busy?'disabled':''}><option value="query" ${delivery==='query'?'selected':''}>查单确认：先保存渠道结果，再刷新入账</option><option value="callback" ${delivery==='callback'?'selected':''}>认证回调：立即通知产品</option></select></label>`;
-function restoreIntent(){
+const validIntent=saved=>!!saved&&typeof saved==='object'&&Object.keys(saved).every(name=>['id','request_id','amount_fen'].includes(name))&&saved.id===orderId&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(saved.request_id)&&typeof saved.amount_fen==='string'&&/^[1-9]\d*$/.test(saved.amount_fen);
+function useIntent(serialized){
+  const saved=serialized===null?null:JSON.parse(serialized);if(saved&&!validIntent(saved))throw Error('原退款申请记录无效');
+  refundIntent=saved;refundSerialized=serialized;
+  refundAmount=saved?(BigInt(saved.amount_fen)/100n)+'.'+String(BigInt(saved.amount_fen)%100n).padStart(2,'0'):'';
+}
+function restoreIntent(){try{useIntent(localStorage.getItem(key()));}catch{storageBlocked=true;}}
+async function retainIntent(proposed,epoch,owner,requestKey){
+  const saved=await persistStoredIntent({key:requestKey,create:()=>proposed,validate:validIntent});
+  if(epoch!==sessionEpoch||lastState?.owner_user_id!==owner)throw Object.assign(Error('账号会话已变化，原退款申请未在新账号下重放。'),{status:401,code:'SESSION_CHANGED'});
+  useIntent(saved.serialized);draw();return saved;
+}
+async function reconcileIntent(epoch){
+  const state=lastState,owner=state?.owner_user_id,requestKey=key();if(!refundIntent||!owner)return;
   try{
-    const saved=JSON.parse(localStorage.getItem(key())??'null');
-    if(saved&&(saved.id!==orderId||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(saved.request_id)||!/^\d+$/.test(saved.amount_fen)||BigInt(saved.amount_fen)<=0n))throw Error('原退款申请记录无效');
-    refundIntent=saved;if(saved)refundAmount=(BigInt(saved.amount_fen)/100n)+'.'+String(BigInt(saved.amount_fen)%100n).padStart(2,'0');
-  }catch{storageBlocked=true;}
+    // A verified old receipt may coexist with a newer pending refund saved by
+    // another tab. Only clear the exact receipt; then adopt the remaining key.
+    for(let i=0;i<4&&refundIntent;i++){
+      const original=refundIntent,serialized=refundSerialized;
+      if(state.owner_user_id!==owner||!state.refunds.some(refund=>refund.order_id===orderId&&refund.request_id===original.request_id&&String(refund.amount_fen)===original.amount_fen))return;
+      const remaining=await acknowledgeStoredIntent({key:requestKey,serialized});
+      if(epoch!==sessionEpoch||lastState?.owner_user_id!==owner)return;
+      useIntent(remaining);
+    }
+  }catch(error){if(epoch===sessionEpoch&&lastState?.owner_user_id===owner&&error.code!=='SESSION_CHANGED')storageBlocked=true;}
 }
-function retainIntent(intent){const text=JSON.stringify(intent);localStorage.setItem(key(),text);if(localStorage.getItem(key())!==text)throw Error('未能可靠保存原退款申请');refundIntent=intent;}
-function reconcileIntent(){
-  if(!refundIntent)return;
-  const accepted=lastState.refunds.find(refund=>refund.order_id===orderId&&refund.request_id===refundIntent.request_id&&String(refund.amount_fen)===refundIntent.amount_fen);
-  if(!accepted)return;
-  try{localStorage.removeItem(key());if(localStorage.getItem(key())!==null)throw Error();refundIntent=undefined;refundAmount='';}catch{storageBlocked=true;}
-}
-function accept(state){
-  if(!state?.synthetic||!Array.isArray(state.payments)||!Array.isArray(state.refunds)||typeof state.username!=='string')throw Error('无法核实本地测试账本');
+async function accept(state,epoch){
+  if(!state?.synthetic||!Array.isArray(state.payments)||!Array.isArray(state.refunds)||typeof state.username!=='string'||typeof state.owner_user_id!=='string')throw Error('无法核实本地测试账本');
   const changed=lastState?.username!==state.username;lastState=state;
-  if(changed){refundIntent=undefined;storageBlocked=false;restoreIntent();}
-  reconcileIntent();draw();
+  if(changed){refundIntent=undefined;storageBlocked=false;restoreIntent();if(!refundIntent&&suspendedInput?.username===state.username)refundAmount=suspendedInput.amount;suspendedInput=undefined;}
+  await reconcileIntent(epoch);if(epoch!==sessionEpoch)return false;draw();return true;
+}
+function clearSessionView(message='账号会话已变化，正在重新核实…'){
+  if(lastState)suspendedInput={username:lastState.username,amount:refundAmount};
+  lastState=undefined;refundIntent=undefined;refundSerialized=undefined;refundAmount='';storageBlocked=false;
+  $('#identity').textContent=message;
+  $('#checkout').innerHTML='<h2 id="checkout-title">请核实当前账号</h2>';
+  $('#refunds').innerHTML='';$('#refunds').hidden=true;$('#message').hidden=true;$('#error').hidden=true;
+}
+function sessionChanged(){
+  sessionEpoch++;clearSessionView();recheckSession=true;
+  if(!busy){recheckSession=false;void work(()=>send('state'));}
 }
 function draw(){
   $('#reload-state').disabled=busy;
@@ -64,12 +87,17 @@ function drawRefunds(payment){
   host.innerHTML=`<h2 id="refund-title">模拟原路退款</h2><p>申请受理后冻结对应积分，渠道退款成功后才销账；失败会释放退款冻结。任务失败退回积分与原路退款分别记录。</p>${details}${form}${rows}`;
 }
 async function work(operation,message){
-  if(busy)return;busy=true;$('#error').hidden=true;$('#message').hidden=true;draw();
-  try{const state=await operation();accept(state);if(message){$('#message').textContent=message;$('#message').hidden=false;}return state;}
+  if(busy)return;const epoch=sessionEpoch;busy=true;$('#error').hidden=true;$('#message').hidden=true;draw();
+  try{const state=await operation();if(epoch!==sessionEpoch)return;if(!await accept(state,epoch)||epoch!==sessionEpoch)return;if(message){$('#message').textContent=message;$('#message').hidden=false;}return state;}
   catch(error){
+    if(epoch!==sessionEpoch)return;
+    if(error.status===401||error.status===404){
+      clearSessionView(error.status===401?'登录已过期，请重新登录后核实本单。':'原订单当前不可访问，正在核实当前账号…');
+      if(error.status===404)recheckSession=true;
+    }
     $('#error').textContent=error.message+(error.status===409&&error.code==='QUOTE_CHANGED'?' 本次退款未受理、未冻结。请刷新账本核对最新可退金额后重新申请。':' 原订单与原退款申请保留。未知结果请先刷新核对，勿另建付款。');$('#error').hidden=false;
     if(error.status===401){lastState=undefined;$('#identity').innerHTML='登录已过期，请<a href="/#/login">返回产品登录</a>后重新打开本单。';$('#checkout').innerHTML='<h2 id="checkout-title">请先登录</h2>';$('#refunds').hidden=true;}
-  }finally{busy=false;draw();$('#reload-state').disabled=false;}
+  }finally{busy=false;draw();$('#reload-state').disabled=false;if(recheckSession){recheckSession=false;void work(()=>send('state'));}}
 }
 $('#checkout').addEventListener('change',event=>{if(event.target.id==='delivery')delivery=event.target.value;});
 $('#checkout').addEventListener('click',event=>{
@@ -77,26 +105,30 @@ $('#checkout').addEventListener('click',event=>{
   if(button.id==='simulate-paid'||button.id==='simulate-failed')void work(()=>send('payment/outcome',{id:orderId,outcome:button.id==='simulate-paid'?'paid':'failed',delivery}),'已保存明确的模拟渠道结果，请核对产品订单状态。');
   else if(button.id==='close-payment')void work(()=>send('payment/close',{id:orderId}),'已核对原未支付订单关闭结果。');
   else if(button.id==='refresh-payment')void work(()=>send('payment/refresh',{id:orderId}),'已查询原订单；只有渠道确认支付成功才会入账。');
-  else if(button.id==='return-paid')void work(async()=>{const state=await send('payment/refresh',{id:orderId});if(state.payments?.find(row=>row.id===orderId)?.state!=='paid')throw Error('原付款仍未确认到账，请保留本单继续核对');location.assign(returnTo);return state;});
+  else if(button.id==='return-paid')void work(async()=>{const state=await send('payment/refresh',{id:orderId});if(state.payments?.find(row=>row.id===orderId)?.state!=='paid')throw Error('原付款仍未确认到账，请保留本单继续核对');return state;}).then(state=>{if(state)location.assign(returnTo);});
 });
 $('#refunds').addEventListener('input',event=>{if(event.target.id==='refund-amount')refundAmount=event.target.value;});
 $('#refunds').addEventListener('submit',event=>{
   if(event.target.id!=='refund-form')return;event.preventDefault();if(busy||storageBlocked)return;
-  let intent=refundIntent;
-  if(!intent){
+  let proposed=refundIntent;
+  if(!proposed){
     const amount=yuanToFen(refundAmount),payment=lastState.payments.find(row=>row.id===orderId);
     if(amount===null||!payment?.refundable?.enabled||BigInt(amount)>BigInt(payment.refundable.refundable_fen)){ $('#error').textContent='请输入不超过当前可退金额、最多两位小数的退款金额。';$('#error').hidden=false;return; }
-    intent={id:orderId,amount_fen:amount,request_id:crypto.randomUUID()};
-    try{retainIntent(intent);}catch{storageBlocked=true;$('#error').textContent='未能可靠保存原退款申请，未提交。请恢复本机存储后刷新。';$('#error').hidden=false;draw();return;}
+    proposed={id:orderId,amount_fen:amount,request_id:crypto.randomUUID()};
   }
+  const epoch=sessionEpoch,owner=lastState.owner_user_id,requestKey=key();
   void work(async()=>{
-    try{return await send('refund/request',intent);}
+    let saved;
+    try{saved=await retainIntent(proposed,epoch,owner,requestKey);}
+    catch(error){if(epoch===sessionEpoch&&error.code!=='SESSION_CHANGED')storageBlocked=true;throw error;}
+    if(epoch!==sessionEpoch||lastState?.owner_user_id!==owner)throw Object.assign(Error('账号会话已变化，原退款申请未提交。'),{status:401,code:'SESSION_CHANGED'});
+    try{return await send('refund/request',saved.intent);}
     catch(error){
       // Product QUOTE_CHANGED is emitted only before admission/hold after its
       // transaction rolls back. Every uncertain error keeps the exact intent.
       if(error.status===409&&error.code==='QUOTE_CHANGED'){
-        try{localStorage.removeItem(key());if(localStorage.getItem(key())!==null)throw Error();refundIntent=undefined;}
-        catch{storageBlocked=true;}
+        try{const remaining=await acknowledgeStoredIntent({key:requestKey,serialized:saved.serialized});if(epoch===sessionEpoch&&lastState?.owner_user_id===owner)useIntent(remaining);}
+        catch(cleanupError){if(epoch===sessionEpoch&&cleanupError.code!=='SESSION_CHANGED')storageBlocked=true;}
       }
       throw error;
     }
@@ -108,5 +140,6 @@ $('#refunds').addEventListener('click',event=>{
   void work(()=>action==='refresh'?send('refund/refresh',{id}):send('refund/outcome',{id,outcome:action,delivery}),'已核对本退款的模拟渠道及产品状态。');
 });
 $('#reload-state').addEventListener('click',()=>void work(()=>send('state')));
+watchSessionChanges(sessionChanged);
 if(!orderId){$('#checkout').innerHTML='<h2 id="checkout-title">缺少原订单</h2><p>请从产品付款页或计费测试台选择本人的订单。</p>';$('#reload-state').disabled=true;}
 else void work(()=>send('state'));

@@ -21,3 +21,10 @@ function localizePayment(){
 }
 new MutationObserver(localizePayment).observe(document.documentElement,{childList:true,subtree:true});
 window.addEventListener('hashchange',localizePayment);localizePayment();
+// Reserve the actual notice height for viewport-fixed navigation too. Body
+// padding alone cannot move the product sidebar's bottom account/logout row.
+const banner=document.querySelector('#billing-functional-banner');
+if(banner){
+  const measure=()=>document.documentElement.style.setProperty('--bb-billing-banner-height',Math.ceil(banner.getBoundingClientRect().height)+'px');
+  new ResizeObserver(measure).observe(banner);measure();
+}

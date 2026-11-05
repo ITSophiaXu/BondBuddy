@@ -21,7 +21,16 @@ function client(){
 const saved=config(),pool=new Pool({connectionString:pgBase+saved.database}),startedAt=new Date().toISOString(),checks=[],accounts=[];
 const record=name=>checks.push(name),equalPoints=(state,value)=>assert.equal(BigInt(state.account.available_points),BigInt(value));
 const state=account=>account.send('POST','/__billing-test/api/state',{});
-const advance=(account,id=randomUUID())=>account.send('POST','/__billing-test/api/subscription/advance',{id});
+const advanceBodies=new WeakMap();
+async function advance(account,id=randomUUID()){
+  let bodies=advanceBodies.get(account);if(!bodies){bodies=new Map();advanceBodies.set(account,bodies);}
+  if(!bodies.has(id)){
+    const expected_event=(await state(account)).subscription_test.next_event;assert.ok(expected_event,'A new action requires a verified next event');
+    bodies.set(id,{id,expected_event});
+  }
+  // A retry reuses both the original UUID and its original event snapshot.
+  return account.send('POST','/__billing-test/api/subscription/advance',bodies.get(id));
+}
 async function createAccount(cycle){
   const username='billing_renew_'+randomUUID().slice(0,8),send=client();
   const registration=await send('POST','/api/v1/auth/register',{username,password:'Synthetic-Renewal-2026!',accepted_terms_version:terms},201);

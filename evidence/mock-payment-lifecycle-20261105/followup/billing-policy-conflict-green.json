@@ -1,0 +1,529 @@
+{
+  "startedAt": "2026-11-05T09:06:01.656Z",
+  "attempt": "9b5d27d6-7af3-46b6-afea-24b6ba7a76dd",
+  "owner": "1b680d8d-4d40-4a56-9268-adb9ffd0148d",
+  "database": "bb_policy_conflict_9b5d27d67af346b6afea24b6ba7a76dd",
+  "migrations": 167,
+  "samePool": true,
+  "synthetic": true,
+  "limitation": "Multiple API instances intentionally share one Pool. This does not establish a defect in the ordinary one-API-per-process deployment.",
+  "checks": [
+    {
+      "name": "automatic API baseline has an executable automatic quote",
+      "passed": true
+    },
+    {
+      "name": "creating a legacy API on the same Pool cannot change the existing automatic API catalogue",
+      "passed": true
+    },
+    {
+      "name": "creating a legacy API on the same Pool cannot turn a new automatic task into pending manual scope",
+      "passed": true
+    },
+    {
+      "name": "creating an automatic API on the same Pool cannot advertise its tariff in the existing legacy API",
+      "passed": true
+    },
+    {
+      "name": "creating a later API does not require the original automatic API to be rebuilt",
+      "passed": true
+    },
+    {
+      "name": "closing the other API cannot leave the legacy API with an automatic tariff",
+      "passed": true
+    },
+    {
+      "name": "overlapping automatic/legacy requests retain separate Pool and client contexts, round 1",
+      "passed": true
+    },
+    {
+      "name": "explicit accepted-contract client overrides and historical tariff pins win then restore, round 1",
+      "passed": true
+    },
+    {
+      "name": "overlapping automatic/legacy requests retain separate Pool and client contexts, round 2",
+      "passed": true
+    },
+    {
+      "name": "explicit accepted-contract client overrides and historical tariff pins win then restore, round 2",
+      "passed": true
+    },
+    {
+      "name": "overlapping automatic/legacy requests retain separate Pool and client contexts, round 3",
+      "passed": true
+    },
+    {
+      "name": "explicit accepted-contract client overrides and historical tariff pins win then restore, round 3",
+      "passed": true
+    },
+    {
+      "name": "overlapping automatic/legacy requests retain separate Pool and client contexts, round 4",
+      "passed": true
+    },
+    {
+      "name": "explicit accepted-contract client overrides and historical tariff pins win then restore, round 4",
+      "passed": true
+    },
+    {
+      "name": "the configuration probe performs no payment, charge, task or model call",
+      "passed": true
+    }
+  ],
+  "observations": [
+    {
+      "name": "automatic API baseline has an executable automatic quote",
+      "passed": true,
+      "catalog": "subscription_and_topup",
+      "quote": {
+        "price_version": "bb-task-price-170-20261029-v3",
+        "quote_id": "c8462a9e-2585-48b1-b14c-da4a12bdee52",
+        "project_id": "27c1b8c3-b43d-424f-9858-7c2dcdcb3e3e",
+        "input_revision": 1,
+        "input_hash": "3119bc5f10c949abf232670ad2488a4f09467c7803bcbe5f8963176db2034e38",
+        "task_type": "full_review",
+        "points": "27195",
+        "reason": "按本次已核实的复核范围明细锁定人民币总价；交付后结算，失败或取消释放。",
+        "created_at": "2026-11-05T09:06:08.723Z",
+        "auto_charge": true,
+        "pricing_mode": "outcome_cny_v1",
+        "currency": "CNY",
+        "amount_fen": "27195",
+        "unit_amount_fen": "27195",
+        "units": "1",
+        "scope_quote_id": "b80d84c8-e8b4-4dcd-923f-a67507de4c06",
+        "quote_status": "ready",
+        "scope_expires_at": "2026-11-12T09:06:08.748Z",
+        "scope_lines": [
+          {
+            "key": "review",
+            "label": "独立全面复核",
+            "quantity": "1",
+            "unit": "份／轮",
+            "unit_price_fen": "27195",
+            "amount_fen": "27195",
+            "evidence": [
+              "服务端已锁定review的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "creating a legacy API on the same Pool cannot change the existing automatic API catalogue",
+      "passed": true,
+      "expected": "subscription_and_topup",
+      "actual": "subscription_and_topup"
+    },
+    {
+      "name": "creating a legacy API on the same Pool cannot turn a new automatic task into pending manual scope",
+      "passed": true,
+      "expected": {
+        "auto_charge": true,
+        "quote_status": "ready",
+        "price_version": "bb-task-price-170-20261029-v3"
+      },
+      "actual": {
+        "price_version": "bb-task-price-170-20261029-v3",
+        "quote_id": "3c884a03-2d1c-4ef2-8e3a-e1061f84d9b3",
+        "project_id": "dc5a1ab5-657d-4a1b-8f4b-40d1eb842fb7",
+        "input_revision": 1,
+        "input_hash": "804029e1f847723a9452f4d8319126fc322771809c2136e4f7e82739be4cf570",
+        "task_type": "full_review",
+        "points": "27195",
+        "reason": "按本次已核实的复核范围明细锁定人民币总价；交付后结算，失败或取消释放。",
+        "created_at": "2026-11-05T09:06:08.878Z",
+        "auto_charge": true,
+        "pricing_mode": "outcome_cny_v1",
+        "currency": "CNY",
+        "amount_fen": "27195",
+        "unit_amount_fen": "27195",
+        "units": "1",
+        "scope_quote_id": "efadc20b-8d41-4485-92f2-21674ee8b402",
+        "quote_status": "ready",
+        "scope_expires_at": "2026-11-12T09:06:08.899Z",
+        "scope_lines": [
+          {
+            "key": "review",
+            "label": "独立全面复核",
+            "quantity": "1",
+            "unit": "份／轮",
+            "unit_price_fen": "27195",
+            "amount_fen": "27195",
+            "evidence": [
+              "服务端已锁定review的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "creating an automatic API on the same Pool cannot advertise its tariff in the existing legacy API",
+      "passed": true,
+      "expected": {
+        "model": "pay_as_you_go",
+        "enabled": false
+      },
+      "actual": {
+        "model": "pay_as_you_go",
+        "enabled": false
+      }
+    },
+    {
+      "name": "creating a later API does not require the original automatic API to be rebuilt",
+      "passed": true,
+      "actual": "subscription_and_topup"
+    },
+    {
+      "name": "closing the other API cannot leave the legacy API with an automatic tariff",
+      "passed": true,
+      "expected": "pay_as_you_go",
+      "actual": "pay_as_you_go"
+    },
+    {
+      "name": "overlapping automatic/legacy requests retain separate Pool and client contexts, round 1",
+      "passed": true,
+      "samples": [
+        {
+          "before": true,
+          "initial": true,
+          "initialPrice": "bb-task-price-170-20261029-v3",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": true,
+          "restoredPrice": "bb-task-price-170-20261029-v3",
+          "restoredPin": null,
+          "after": true
+        },
+        {
+          "before": false,
+          "initial": false,
+          "initialPrice": "outcome-cny-20261028-v2",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": false,
+          "restoredPrice": "outcome-cny-20261028-v2",
+          "restoredPin": null,
+          "after": false
+        }
+      ]
+    },
+    {
+      "name": "explicit accepted-contract client overrides and historical tariff pins win then restore, round 1",
+      "passed": true,
+      "samples": [
+        {
+          "before": true,
+          "initial": true,
+          "initialPrice": "bb-task-price-170-20261029-v3",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": true,
+          "restoredPrice": "bb-task-price-170-20261029-v3",
+          "restoredPin": null,
+          "after": true
+        },
+        {
+          "before": false,
+          "initial": false,
+          "initialPrice": "outcome-cny-20261028-v2",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": false,
+          "restoredPrice": "outcome-cny-20261028-v2",
+          "restoredPin": null,
+          "after": false
+        }
+      ]
+    },
+    {
+      "name": "overlapping automatic/legacy requests retain separate Pool and client contexts, round 2",
+      "passed": true,
+      "samples": [
+        {
+          "before": true,
+          "initial": true,
+          "initialPrice": "bb-task-price-170-20261029-v3",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": true,
+          "restoredPrice": "bb-task-price-170-20261029-v3",
+          "restoredPin": null,
+          "after": true
+        },
+        {
+          "before": false,
+          "initial": false,
+          "initialPrice": "outcome-cny-20261028-v2",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": false,
+          "restoredPrice": "outcome-cny-20261028-v2",
+          "restoredPin": null,
+          "after": false
+        }
+      ]
+    },
+    {
+      "name": "explicit accepted-contract client overrides and historical tariff pins win then restore, round 2",
+      "passed": true,
+      "samples": [
+        {
+          "before": true,
+          "initial": true,
+          "initialPrice": "bb-task-price-170-20261029-v3",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": true,
+          "restoredPrice": "bb-task-price-170-20261029-v3",
+          "restoredPin": null,
+          "after": true
+        },
+        {
+          "before": false,
+          "initial": false,
+          "initialPrice": "outcome-cny-20261028-v2",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": false,
+          "restoredPrice": "outcome-cny-20261028-v2",
+          "restoredPin": null,
+          "after": false
+        }
+      ]
+    },
+    {
+      "name": "overlapping automatic/legacy requests retain separate Pool and client contexts, round 3",
+      "passed": true,
+      "samples": [
+        {
+          "before": true,
+          "initial": true,
+          "initialPrice": "bb-task-price-170-20261029-v3",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": true,
+          "restoredPrice": "bb-task-price-170-20261029-v3",
+          "restoredPin": null,
+          "after": true
+        },
+        {
+          "before": false,
+          "initial": false,
+          "initialPrice": "outcome-cny-20261028-v2",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": false,
+          "restoredPrice": "outcome-cny-20261028-v2",
+          "restoredPin": null,
+          "after": false
+        }
+      ]
+    },
+    {
+      "name": "explicit accepted-contract client overrides and historical tariff pins win then restore, round 3",
+      "passed": true,
+      "samples": [
+        {
+          "before": true,
+          "initial": true,
+          "initialPrice": "bb-task-price-170-20261029-v3",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": true,
+          "restoredPrice": "bb-task-price-170-20261029-v3",
+          "restoredPin": null,
+          "after": true
+        },
+        {
+          "before": false,
+          "initial": false,
+          "initialPrice": "outcome-cny-20261028-v2",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": false,
+          "restoredPrice": "outcome-cny-20261028-v2",
+          "restoredPin": null,
+          "after": false
+        }
+      ]
+    },
+    {
+      "name": "overlapping automatic/legacy requests retain separate Pool and client contexts, round 4",
+      "passed": true,
+      "samples": [
+        {
+          "before": true,
+          "initial": true,
+          "initialPrice": "bb-task-price-170-20261029-v3",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": true,
+          "restoredPrice": "bb-task-price-170-20261029-v3",
+          "restoredPin": null,
+          "after": true
+        },
+        {
+          "before": false,
+          "initial": false,
+          "initialPrice": "outcome-cny-20261028-v2",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": false,
+          "restoredPrice": "outcome-cny-20261028-v2",
+          "restoredPin": null,
+          "after": false
+        }
+      ]
+    },
+    {
+      "name": "explicit accepted-contract client overrides and historical tariff pins win then restore, round 4",
+      "passed": true,
+      "samples": [
+        {
+          "before": true,
+          "initial": true,
+          "initialPrice": "bb-task-price-170-20261029-v3",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": true,
+          "restoredPrice": "bb-task-price-170-20261029-v3",
+          "restoredPin": null,
+          "after": true
+        },
+        {
+          "before": false,
+          "initial": false,
+          "initialPrice": "outcome-cny-20261028-v2",
+          "pinned": {
+            "enabled": true,
+            "price": "bb-task-price-170-20261029-v2",
+            "pin": "bb-task-price-170-20261029-v2"
+          },
+          "manual": {
+            "enabled": false,
+            "price": "outcome-cny-20261028-v2"
+          },
+          "restored": false,
+          "restoredPrice": "outcome-cny-20261028-v2",
+          "restoredPin": null,
+          "after": false
+        }
+      ]
+    },
+    {
+      "name": "the configuration probe performs no payment, charge, task or model call",
+      "passed": true,
+      "facts": {
+        "runs": 0,
+        "credit_events": 0,
+        "model_calls": 0
+      }
+    }
+  ],
+  "passed": true
+}

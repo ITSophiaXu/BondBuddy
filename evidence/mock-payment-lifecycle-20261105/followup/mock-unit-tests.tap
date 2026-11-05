@@ -1,0 +1,184 @@
+TAP version 13
+# Subtest: cashier preserves exact monetary strings and rejects ambiguous yuan input
+ok 1 - cashier preserves exact monetary strings and rejects ambiguous yuan input
+  ---
+  duration_ms: 17.2468
+  type: 'test'
+  ...
+# Subtest: cashier return is same-origin account context for the exact original order
+ok 2 - cashier return is same-origin account context for the exact original order
+  ---
+  duration_ms: 0.3982
+  type: 'test'
+  ...
+# Subtest: explicit expired session permits one refresh and identical financial-request replay
+ok 3 - explicit expired session permits one refresh and identical financial-request replay
+  ---
+  duration_ms: 1.2553
+  type: 'test'
+  ...
+# Subtest: unknown or forbidden financial result is never automatically retried
+ok 4 - unknown or forbidden financial result is never automatically retried
+  ---
+  duration_ms: 0.7047
+  type: 'test'
+  ...
+# Subtest: a late 401 cannot refresh or replay a financial action after another account replaces its CSRF cookie
+ok 5 - a late 401 cannot refresh or replay a financial action after another account replaces its CSRF cookie
+  ---
+  duration_ms: 0.5123
+  type: 'test'
+  ...
+# Subtest: a session change during refresh aborts the old financial replay even if its refresh response arrives late
+ok 6 - a session change during refresh aborts the old financial replay even if its refresh response arrives late
+  ---
+  duration_ms: 1.1606
+  type: 'test'
+  ...
+# Subtest: a refresh returning another owner cannot replay the original financial action even before a broadcast arrives
+ok 7 - a refresh returning another owner cannot replay the original financial action even before a broadcast arrives
+  ---
+  duration_ms: 1.1256
+  type: 'test'
+  ...
+# Subtest: the financial replay keeps its original owner binding when cookies change before the refreshed body resolves
+ok 8 - the financial replay keeps its original owner binding when cookies change before the refreshed body resolves
+  ---
+  duration_ms: 0.63
+  type: 'test'
+  ...
+# Subtest: a second 401 stops after one refresh and one exact replay
+ok 9 - a second 401 stops after one refresh and one exact replay
+  ---
+  duration_ms: 0.4196
+  type: 'test'
+  ...
+# Subtest: lost financial-action response retains its exact event ID across a recreated UI
+ok 10 - lost financial-action response retains its exact event ID across a recreated UI
+  ---
+  duration_ms: 0.6994
+  type: 'test'
+  ...
+# Subtest: unreliable storage blocks a financial request and mismatched acknowledgement retains the original event
+ok 11 - unreliable storage blocks a financial request and mismatched acknowledgement retains the original event
+  ---
+  duration_ms: 0.2678
+  type: 'test'
+  ...
+# Subtest: two shared-storage callers accept the same successful receipt after the first clears the original intent
+ok 12 - two shared-storage callers accept the same successful receipt after the first clears the original intent
+  ---
+  duration_ms: 0.4006
+  type: 'test'
+  ...
+# Subtest: a late verified success keeps a newer pending intent and its unknown-result retry ID intact
+ok 13 - a late verified success keeps a newer pending intent and its unknown-result retry ID intact
+  ---
+  duration_ms: 0.5382
+  type: 'test'
+  ...
+# Subtest: Web Locks cover only the shared intent critical sections, allowing concurrent HTTP with one original ID
+ok 14 - Web Locks cover only the shared intent critical sections, allowing concurrent HTTP with one original ID
+  ---
+  duration_ms: 0.4057
+  type: 'test'
+  ...
+# Subtest: real browser localStorage without Web Locks blocks before persisting or submitting a financial action
+ok 15 - real browser localStorage without Web Locks blocks before persisting or submitting a financial action
+  ---
+  duration_ms: 0.2716
+  type: 'test'
+  ...
+# Subtest: a session change while awaiting the storage lock cannot perform an old financial action under the new account
+ok 16 - a session change while awaiting the storage lock cannot perform an old financial action under the new account
+  ---
+  duration_ms: 0.4571
+  type: 'test'
+  ...
+# Subtest: a session change before a financial receipt arrives retains the original intent and skips acknowledgement cleanup
+ok 17 - a session change before a financial receipt arrives retains the original intent and skips acknowledgement cleanup
+  ---
+  duration_ms: 1.2556
+  type: 'test'
+  ...
+# Subtest: shared refund persistence adopts the original order, amount and UUID rather than overwriting an unknown application
+ok 18 - shared refund persistence adopts the original order, amount and UUID rather than overwriting an unknown application
+  ---
+  duration_ms: 0.2511
+  type: 'test'
+  ...
+# Subtest: a refund acknowledgement preserves a newer unknown refund and that exact application can be restored
+ok 19 - a refund acknowledgement preserves a newer unknown refund and that exact application can be restored
+  ---
+  duration_ms: 0.2325
+  type: 'test'
+  ...
+# Subtest: a refund acknowledgement waiting for its lock cannot clear storage after an account switch
+ok 20 - a refund acknowledgement waiting for its lock cannot clear storage after an account switch
+  ---
+  duration_ms: 0.4472
+  type: 'test'
+  ...
+# Subtest: refresh is read-only at the channel until explicit owner payment; signed receipt survives provider restart
+ok 21 - refresh is read-only at the channel until explicit owner payment; signed receipt survives provider restart
+  ---
+  duration_ms: 5.5694
+  type: 'test'
+  ...
+# Subtest: foreign payment controls, order tampering and closed-order payment cannot change a channel result
+ok 22 - foreign payment controls, order tampering and closed-order payment cannot change a channel result
+  ---
+  duration_ms: 1.1555
+  type: 'test'
+  ...
+# Subtest: closing after channel payment reports the paid fact and never cancels already-paid value
+ok 23 - closing after channel payment reports the paid fact and never cancels already-paid value
+  ---
+  duration_ms: 0.5932
+  type: 'test'
+  ...
+# Subtest: querying an undispatched automatic order cannot create a manual charge or bypass its mandate
+ok 24 - querying an undispatched automatic order cannot create a manual charge or bypass its mandate
+  ---
+  duration_ms: 0.7146
+  type: 'test'
+  ...
+# Subtest: refund remains processing until explicit result; replays preserve identity/times and foreign controls fail
+ok 25 - refund remains processing until explicit result; replays preserve identity/times and foreign controls fail
+  ---
+  duration_ms: 2.1587
+  type: 'test'
+  ...
+# Subtest: a failed refund reports the explicit CLOSED channel fact required to release the product freeze
+ok 26 - a failed refund reports the explicit CLOSED channel fact required to release the product freeze
+  ---
+  duration_ms: 0.7856
+  type: 'test'
+  ...
+# Subtest: callback authentication rejects forged, modified and cross-kind bodies without exposing keys
+ok 27 - callback authentication rejects forged, modified and cross-kind bodies without exposing keys
+  ---
+  duration_ms: 0.448
+  type: 'test'
+  ...
+# Subtest: terminal payment and refund transitions reject conflicting facts
+ok 28 - terminal payment and refund transitions reject conflicting facts
+  ---
+  duration_ms: 0.14
+  type: 'test'
+  ...
+# Subtest: refund control preserves the decimal-string wire amount when forwarding to the product
+ok 29 - refund control preserves the decimal-string wire amount when forwarding to the product
+  ---
+  duration_ms: 0.8451
+  type: 'test'
+  ...
+1..29
+# tests 29
+# suites 0
+# pass 29
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 164.7878

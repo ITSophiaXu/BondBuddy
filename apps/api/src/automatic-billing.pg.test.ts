@@ -2,22 +2,31 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
-import {AUTOMATIC_PRICE_VERSION,emptyUpdateDetails} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,emptyUpdateDetails,reportingWindow} from '@bondbuddy/contracts';
 import {configureAutomaticBilling} from './automatic-billing-context.js';
 import {creditBalance,grantCredits,quoteCredits,reserveCredits} from './billing.js';
-import {transaction} from './data.js';
+import {digest,transaction} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {isolatedTestDatabase} from './test-database.js';
 import {createServer} from './server.js';
+import {makeSyntheticDocxFixture} from './docx-fixtures.js';
 
 const database=await isolatedTestDatabase(undefined,'automatic-billing');
 async function fixture(pool:Pool){
   const owner=randomUUID(),project=randomUUID();
   await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'synthetic_auto_'+owner.slice(0,8)]);
   await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic auto project','generation')",[project,owner]);
-  const manifest={draft_revision:1,issuer_name:'Synthetic issuer',market:'sse',offering:'private',materials:[],update_details:{...emptyUpdateDetails(),reporting_cutoff:'2026-09-30'},authoring:{version:'unified_v1',source_prospectuses:[],requirements:[],knowledge:[],knowledge_status:'authoring_reference_not_compliance_approval'}};
+  // Billing-only saved-input fixture: owned, declared synthetic reference under
+  // the current mandatory-source rule. No parser or model work is performed.
+  const upload=randomUUID(),material=randomUUID(),bytes=makeSyntheticDocxFixture({text:'Synthetic reference issuer prospectus'}),sha=digest(bytes);
+  await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
+    VALUES($1,$2,$3,'synthetic-reference.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',$4,$5,'reference',$6,now()+interval '1 hour','completed')`,[upload,owner,project,bytes.length,sha,'synthetic/'+upload]);
+  await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
+    VALUES($1,1,$2,$3,$4,'reference','synthetic-reference.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',$5,$6,$7,'persisted')`,[material,owner,project,upload,bytes.length,sha,'synthetic/'+material]);
+  const pin={material_id:material,material_version:1,sha256:sha};
+  const manifest={draft_revision:1,issuer_name:'Synthetic issuer',market:'sse',offering:'private',materials:[{...pin,role:'reference'}],update_details:{...emptyUpdateDetails(),reporting_cutoff:'2026-09-30'},authoring:{version:'unified_v1',source_prospectuses:[{...pin,issuer_name:'Synthetic reference issuer',relation:'similar_business',market:'sse',offering:'private',reporting_periods:reportingWindow('sse','private','2025-12-31'),status:'user_asserted'}],requirements:[],knowledge:[],knowledge_status:'authoring_reference_not_compliance_approval'}};
   const hash=inputManifestHash(manifest);
-  await pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,1,$2,1,$3,$4,'[]','[]')",[project,owner,hash,manifest]);
+  await pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,1,$2,1,$3,$4,$5,'[]')",[project,owner,hash,manifest,JSON.stringify(manifest.materials)]);
   await pool.query('UPDATE bb_projects SET latest_input_revision=1 WHERE id=$1',[project]);
   return{owner,project,hash,manifest};
 }

@@ -96,8 +96,10 @@ try{
   assert.equal(schedule.length,12);assert.equal(schedule.reduce((n,r)=>n+BigInt(r.amount_fen),0n),1029020n);assert.ok(new Set(schedule.map(r=>r.amount_fen)).size>1);
   record('light month to professional month to intensive year preserves three original cash sources and exact unequal-cent installment allocation');
   const advanceId=randomUUID(),beforeOrders=(await pool.query('SELECT count(*)::int n FROM bb_recharge_orders WHERE owner_user_id=$1',[chained.owner])).rows[0].n;
-  let advanced=await chained.send('POST','/__billing-test/api/subscription/advance',{id:advanceId});amounts(advanced,228000);
-  advanced=await chained.send('POST','/__billing-test/api/subscription/advance',{id:advanceId});amounts(advanced,228000);await clean(chained);
+  const expected_event=(await state(chained)).subscription_test.next_event;assert.ok(expected_event);
+  const advanceBody={id:advanceId,expected_event};
+  let advanced=await chained.send('POST','/__billing-test/api/subscription/advance',advanceBody);amounts(advanced,228000);
+  advanced=await chained.send('POST','/__billing-test/api/subscription/advance',advanceBody);amounts(advanced,228000);await clean(chained);
   assert.equal((await pool.query('SELECT count(*)::int n FROM bb_recharge_orders WHERE owner_user_id=$1',[chained.owner])).rows[0].n,beforeOrders);
   assert.equal((await pool.query(`SELECT count(*)::int n FROM bb_subscription_lot_funding lf JOIN bb_subscription_credit_releases r ON r.lot_id=lf.lot_id
     WHERE r.period_id=$1 AND r.owner_user_id=$2 AND r.state='issued'`,[period.id,chained.owner])).rows[0].n,6);

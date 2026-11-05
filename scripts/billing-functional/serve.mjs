@@ -62,7 +62,11 @@ app.addHook('onRequest',async(request,reply)=>{
 const auth={pool,allowedOrigin:baseURL,termsVersion:terms};
 async function owner(request){
   if(request.headers.origin!==baseURL||!request.headers['content-type']?.startsWith('application/json'))throw new Problem(403,'CSRF_DENIED','Local JSON request and exact Origin required');
-  return (await session(request,auth,true)).userId;
+  const user=(await session(request,auth,true)).userId,expected=request.headers['x-bb-test-owner'];
+  // Bind a browser retry to the identity that originally displayed the action.
+  // A cookie can change before a cross-tab notification reaches the client.
+  if(expected!==undefined&&expected!==user)throw new Problem(403,'CSRF_DENIED','账号会话已变化，原测试操作不能在新账号下执行。');
+  return user;
 }
 async function product(request,method,url,payload,target=app){
   const response=await target.inject({method,url,payload,remoteAddress:'127.0.0.1',headers:{host:`localhost:${ports.web}`,origin:baseURL,cookie:request.headers.cookie??'','x-bb-csrf':request.headers['x-bb-csrf']??'','content-type':'application/json'}});
@@ -92,7 +96,7 @@ async function state(owner){
     task.charged_points=task.progress?.charged_points??task.gross_charged_points??'0';
     task.checkpoint_stages=Object.keys(task.checkpoint?.stages??{});delete task.checkpoint;
   }
-  return {synthetic:true,username:user.username,account,tasks,...await paymentState(pool,owner,saved),subscription_test:await localSubscriptionState(pool,owner)};
+  return {synthetic:true,owner_user_id:owner,username:user.username,account,tasks,...await paymentState(pool,owner,saved),subscription_test:await localSubscriptionState(pool,owner)};
 }
 // Serialize test actions in this one local process. Product APIs still perform
 // their normal database transactions, session checks and idempotency rules.
@@ -100,11 +104,15 @@ let chain=Promise.resolve();const serial=work=>{const next=chain.then(work);chai
 installPaymentControls(app,{pool,saved,provider,owner,serial,product,state});
 app.get('/__billing-test/status',async()=>({ready,synthetic:true,launch_id:launchId}));
 app.post('/__billing-test/api/state',{schema:{body:emptyBody}},async request=>state(await owner(request)));
-app.post('/__billing-test/api/subscription/advance',{schema:{body:idBody}},async request=>{
+app.post('/__billing-test/api/subscription/advance',{schema:{body:{...idBody,properties:{...idBody.properties,
+  replay_only:{type:'boolean'},expected_event:{type:'object',additionalProperties:false,required:['at','event_kind'],properties:{at:{type:'string',format:'date-time'},event_kind:{type:'string',enum:['release','renewal']}}}}}}},async request=>{
   const user=await owner(request);return serial(async()=>{
-    try{await advanceLocalSubscription(pool,user,request.body.id,{processDueSubscriptionRenewals,processDueSubscriptionCreditReleases,providers:[provider]});}
+    let action;
+    // Unupdated tabs may still send only {id}; absence of an event pin permits
+    // recovery of that ID only, never authorization to advance today's event.
+    try{action=await advanceLocalSubscription(pool,user,request.body.id,{processDueSubscriptionRenewals,processDueSubscriptionCreditReleases,providers:[provider],expectedEvent:request.body.expected_event,replayOnly:request.body.replay_only===true||request.body.expected_event===undefined});}
     catch(error){if(error instanceof Problem)throw error;throw new Problem(409,'INPUT_REVISION_CONFLICT',error.message);}
-    return state(user);
+    return {...await state(user),subscription_action:action,...(action.event_changed?{action_notice:action.replay_only?'未找到原操作记录，未推进订阅事件；请核实下一事件。':'原事件已变化/已由其他标签完成，请核实下一事件。'}:{})};
   });
 });
 app.post('/__billing-test/api/subscription/outcome',{schema:{body:{type:'object',additionalProperties:false,required:['outcome'],properties:{outcome:{type:'string',enum:['paid','pending','failed']}}}}},async request=>{
@@ -200,7 +208,7 @@ try{
     // Registration creates identity/session only. No grant or wallet mutation.
     const account=await subscriptionAccount(pool,response.json().user_id);if(account.available_points!=='0')throw Error('New user must start with zero points');
   }
-  const banner='<style>body{padding-bottom:100px!important;box-sizing:border-box}#billing-functional-banner{max-height:90px;overflow:auto}</style><div id="billing-functional-banner" style="position:fixed;bottom:0;left:0;right:0;z-index:2147483647;padding:12px;background:#fff1a6;color:#302600;text-align:center;font:14px/1.4 system-ui">模拟支付环境 · 不扣真钱、不调用模型 · 在模拟收银台确认支付后到账，刷新本身不会付款，无需扫码。 <a href="/__billing-test" style="color:#302600;text-decoration:underline">打开计费测试台</a></div>';
+  const banner='<style>:root{--bb-billing-banner-height:90px}body{padding-bottom:calc(var(--bb-billing-banner-height) + 16px)!important;box-sizing:border-box}body .sidebar{height:calc(100dvh - var(--bb-billing-banner-height))!important;max-height:calc(100dvh - var(--bb-billing-banner-height));bottom:var(--bb-billing-banner-height)!important}body .ba-dock{bottom:calc(20px + var(--bb-billing-banner-height))}body .billing-task-notice{bottom:calc(24px + var(--bb-billing-banner-height))}#billing-functional-banner{max-height:90px;overflow:auto}</style><div id="billing-functional-banner" style="position:fixed;bottom:0;left:0;right:0;z-index:2147483647;padding:12px;background:#fff1a6;color:#302600;text-align:center;font:14px/1.4 system-ui">模拟支付环境 · 不扣真钱、不调用模型 · 在模拟收银台确认支付后到账，刷新本身不会付款，无需扫码。 <a href="/__billing-test" style="color:#302600;text-decoration:underline">打开计费测试台</a></div>';
   vite=await createVite({root:join(repo,'apps/web'),configFile:join(repo,'apps/web/vite.config.ts'),plugins:[{
     name:'billing-functional-only',transformIndexHtml:html=>html.replace('</body>',banner+'<script type="module" src="/__billing-test/authorization.js"></script><script type="module" src="/__billing-test/payment-entry.js"></script></body>'),
     configureServer(server){server.middlewares.use(async(req,res,next)=>{
