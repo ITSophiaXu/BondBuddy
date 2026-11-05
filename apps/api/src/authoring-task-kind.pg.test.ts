@@ -1,3 +1,5 @@
+import { uploadSyntheticReference } from './test-authoring-source.js';
+import type { PrivateBlobs } from './data.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
@@ -14,7 +16,10 @@ test('authoring snapshots cannot bypass project mutex by claiming to be QA when 
     const origin = 'http://bondbuddy.test';
     try {
       for (const paid of [false, true]) {
-        const app = createServer({ pool, allowedOrigin: origin, enableSyntheticQueue: true,
+        const files=new Map<string,Buffer>();
+        const blobs:PrivateBlobs={put:async(k,b)=>{files.set(k,Buffer.from(b));},get:async k=>files.get(k)!,
+          getIfExists:async k=>files.get(k)??null,getIfExistsBounded:async k=>files.get(k)??null,exists:async k=>files.has(k),delete:async k=>{files.delete(k);}};
+        const app = createServer({ pool, blobs, allowedOrigin: origin, enableSyntheticQueue: true,
           enablePaidAuthoring: paid, principal: async () => ({ userId: owner, csrfVerified: true }) });
         const send = (url: string, payload: unknown) => app.inject({ method: 'POST', url,
           headers: { origin }, payload: payload as any });
@@ -25,8 +30,8 @@ test('authoring snapshots cannot bypass project mutex by claiming to be QA when 
               update_details: { ...emptyUpdateDetails(), authoring_mode: 'unified_v1', reporting_cutoff: '2026-09-30' } });
             assert.equal(created.statusCode, 201, created.body);
             const project = created.json().project_id;
-            const locked = await send(`/api/v1/projects/${project}/input-revisions`,
-              { draft_revision: 1, material_versions: [], requirement_message_ids: [] });
+            const materials=await uploadSyntheticReference(app,project);
+            const locked = await send(`/api/v1/projects/${project}/input-revisions`, materials);
             assert.equal(locked.statusCode, 201, locked.body);
             const input = locked.json();
             const request = { execution_request_id: randomUUID(), project_id: project,

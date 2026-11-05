@@ -51,6 +51,7 @@ export function checkPaymentDeployment(config) {
     &&accounts.length>0&&new Set(accounts).size===accounts.length&&accounts.every(value=>['BASIC','OPERATION','FEES'].includes(value)));
   const alipaySwitch=String(apiEnv.BB_ALIPAY_PAY_ENABLED??'0'),alipayRefundSwitch=String(apiEnv.BB_ALIPAY_REFUND_ENABLED??'0');
   record('alipay_switch_explicit',['0','1'].includes(alipaySwitch));
+  record('alipay_production_environment',billingServices.every(name=>!env(name).BB_ALIPAY_ENVIRONMENT||env(name).BB_ALIPAY_ENVIRONMENT==='production'));
   record('alipay_host_when_enabled',alipaySwitch!=='1'||allowedHosts.includes('openapi.alipay.com'));
   record('alipay_web_product',alipaySwitch!=='1'||['page','wap'].includes(String(apiEnv.BB_ALIPAY_WEB_PRODUCT)));
   record('alipay_refund_configuration',['0','1'].includes(alipayRefundSwitch)&&(alipayRefundSwitch!=='1'||alipaySwitch==='1'));

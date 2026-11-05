@@ -3,7 +3,7 @@ import type { Pool, PoolClient } from 'pg';
 import { BILLING_TASKS, AUTHORING_BILLING_TASKS, DYNAMIC_REVIEW_BILLING_TASKS, isOutcomePriceVersion, type BillingTask, type CreditBalance, type FixedQuote } from '@bondbuddy/contracts';
 import { date, digest, missing, Problem, project, transaction, uid } from './data.js';
 import { classifyFixedPrice } from './billing-classification.js';
-import { assertAuthoringSourceInformation, isUnifiedInput } from './unified-authoring.js';
+import { assertAuthoringSourceInformation, assertAuthoringSourceRequired, isUnifiedInput } from './unified-authoring.js';
 import {OUTCOME_MODE,outcomeMetadata,outcomePriceVersion} from './outcome-pricing.js';
 import {requestScope,assertScopeQuote} from './scope-quotations.js';
 import {bindCommerceScopeRun} from './commerce-coverage.js';
@@ -95,7 +95,10 @@ export async function quoteCreditsExact(pool: Pool, owner: string, projectId: st
     if (!i) throw missing();
     if (i.input_hash.trim() !== hash || p.latest_input_revision !== revision || p.draft_revision !== i.manifest.draft_revision)
       throw new Problem(409, 'INPUT_REVISION_CONFLICT', 'Project inputs changed before quotation');
-    if (isUnifiedInput(i.manifest)) assertAuthoringSourceInformation(i.manifest.materials as any[], i.manifest.authoring.source_prospectuses);
+    if (isUnifiedInput(i.manifest)) {
+      assertAuthoringSourceRequired(i.manifest.materials as any[], i.manifest.authoring.previous_output);
+      assertAuthoringSourceInformation(i.manifest.materials as any[], i.manifest.authoring.source_prospectuses);
+    }
     const balance = await creditBalanceExact(c, owner);
     const classification = classifyFixedPrice(i.manifest);
     if (!commercial&&!classification.task) throw new Problem(422, 'INPUT_REQUIRED', `${classification.reason} 请补齐信息并保存当前输入后重新获取报价。`);

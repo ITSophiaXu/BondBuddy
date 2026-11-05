@@ -1,3 +1,4 @@
+import { uploadSyntheticReference } from './test-authoring-source.js';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {test} from 'node:test';
@@ -30,8 +31,9 @@ test('paid quota retry reserves only one task and never charges a rejected attem
     assert.equal((await send('PUT',upload.json().upload_url,content,{'content-type':'application/octet-stream'})).statusCode,204);
     const material=await send('POST',`/api/v1/projects/${id}/materials/uploads/${upload.json().upload_id}/complete`,metadata);
     assert.equal(material.statusCode,200,material.body);
-    const input=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:1,prospectus_selection_revision:0,
-      material_versions:[{material_id:material.json().material_id,material_version:1}],requirement_message_ids:[]});
+    const reference=await uploadSyntheticReference(app,id);
+    const input=await send('POST',`/api/v1/projects/${id}/input-revisions`,{...reference,
+      material_versions:[...reference.material_versions,{material_id:material.json().material_id,material_version:1}]});
     assert.equal(input.statusCode,201,input.body);const snapshot=input.json();
     const quote=await send('POST',`/api/v1/projects/${id}/credit-quote`,{input_revision:snapshot.input_revision,input_hash:snapshot.input_hash});
     assert.equal(quote.statusCode,200,quote.body);
@@ -60,6 +62,6 @@ test('paid quota retry reserves only one task and never charges a rejected attem
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE run_id=$1',[runId])).rows[0].n,1);
     assert.equal((await pool.query("SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1 AND kind='settle'",[owner])).rows[0].n,0);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_input_revisions WHERE project_id=$1',[target.project_id])).rows[0].n,1);
-    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_material_versions WHERE project_id=$1',[target.project_id])).rows[0].n,1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_material_versions WHERE project_id=$1',[target.project_id])).rows[0].n,2);
   }finally{await app.close();await pool.end();}
 });

@@ -6,7 +6,7 @@ import { createServer } from './server.js';
 import { azureBlobs, digest } from './data.js';
 import { claim, finish, promoteWordArtifact } from './queue.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
-import { pdfSample,PDF } from './upload-safety.samples.js';
+import { DOCX } from './upload-safety.samples.js';
 import { isolatedTestDatabase } from './test-database.js';
 
 const connection=await isolatedTestDatabase(undefined,'project-collection');
@@ -16,8 +16,8 @@ test('project collection: root membership, real uploads/downloads, task history,
   const blobs=azureBlobs(storage!);const origin='http://bondbuddy.test';
   const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
   app.addHook('onError',async(_req,_reply,error)=>{if(!(error as any).status)process.stderr.write(error.message+'\n');});
-  const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
-  const ok=async(method:string,url:string,payload?:any)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,r.body);return r.body?r.json():null;};
+  const send=(method:string,url:string,payload?:any,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload,headers:{origin,...headers,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
+  const ok=async(method:string,url:string,payload?:any,headers?:Record<string,string>)=>{const r=await send(method,url,payload,headers);assert.ok(r.statusCode<300,r.body);return r.body?r.json():null;};
   const create=(kind:string,name:string)=>ok('POST','/api/v1/projects',{name,kind,issuer_name:'Synthetic issuer',market:'sse',offering:'private'});
   try{
     const root=await create('review','合成项目 root');
@@ -28,8 +28,8 @@ test('project collection: root membership, real uploads/downloads, task history,
     let list=await ok('GET','/api/v1/projects');
     assert.equal(list.items.length,2,'update workspace and linked generation project are not duplicate project rows');
     assert.equal(list.items.find((x:any)=>x.project_id===p.project_id).task_summary.attention,1);
-    const bytes=pdfSample({tag:'collection-upload'}),declaration={byte_size:bytes.length,sha256:digest(bytes)};
-    const upload=await ok('POST',`/api/v1/projects/${member}/materials/uploads`,{...declaration,filename:'合成募集书.pdf',media_type:PDF,role:'historical'});
+    const bytes=makeSyntheticDocxFixture({text:'collection-upload'}),declaration={byte_size:bytes.length,sha256:digest(bytes)};
+    const upload=await ok('POST',`/api/v1/projects/${member}/materials/uploads`,{...declaration,filename:'合成募集书.docx',media_type:DOCX,role:'historical'});
     assert.equal((await send('PUT',upload.upload_url,bytes)).statusCode,204);
     const material=await ok('POST',`/api/v1/projects/${member}/materials/uploads/${upload.upload_id}/complete`,declaration);
     let files=await ok('GET',`/api/v1/projects/${root.project_id}/files`);assert.equal(files.items.length,1);assert.equal(files.items[0].folder,'2');
@@ -39,7 +39,14 @@ test('project collection: root membership, real uploads/downloads, task history,
     assert.equal((await ok('GET',`/api/v1/projects/${member}/materials/${material.material_id}?version=1`)).sha256,material.sha256);
     for(const suffix of ['','/download'])assert.equal((await send('GET',`/api/v1/projects/${member}/materials/${material.material_id}${suffix}?version=999`)).statusCode,404,'an absent version never falls back to latest');
     // Queue submissions use the unchanged test execution path; no provider call or billing.
-    const snapshot=await ok('POST',`/api/v1/projects/${member}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[]});
+    let currentProject=await ok('GET',`/api/v1/projects/${member}`);
+    currentProject=await ok('PATCH',`/api/v1/projects/${member}`,{update_details:{...currentProject.update_details,
+      source_prospectuses:[{material_id:material.material_id,material_version:material.material_version,sha256:material.sha256,
+        issuer_name:null,relation:'same_issuer',market:'sse',offering:'private',status:'user_asserted',
+        reporting_periods:[{start:'2025-01-01',end:'2025-12-31',period_kind:'annual',scope:'consolidated',status:'user_asserted',evidence_refs:[]}]}]}},
+      {'if-match':String(currentProject.draft_revision)});
+    const snapshot=await ok('POST',`/api/v1/projects/${member}/input-revisions`,{draft_revision:currentProject.draft_revision,
+      material_versions:[{material_id:material.material_id,material_version:material.material_version}],requirement_message_ids:[]});
     const request={project_id:member,input_revision:1,input_hash:snapshot.input_hash,task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'};
     const execute=()=>ok('POST','/api/v1/runs/execute',{...request,execution_request_id:randomUUID()});
     const run1=await execute();const lease1=await claim(pool,30);assert.equal(lease1!.runId,run1.run_id);

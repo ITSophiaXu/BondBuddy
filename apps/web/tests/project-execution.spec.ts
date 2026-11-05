@@ -571,13 +571,13 @@ test('409 preserves target input and never submits a run', async ({ page }) => {
   expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
 });
 
-test('unified rejection leaves history optional and preserves saved financial material', async ({ page }) => {
-  const state=fixture(); state.materials.shift(); state.checkStatus='ready';
-  state.executeError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-history-required'};
-  await setup(page,state); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书选填');
-  await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-history-required');
+test('missing reference blocks locally and preserves saved financial material', async ({ page }) => {
+  const state=fixture(); state.materials.shift(); state.checkStatus='ready'; state.project.update_details!.authoring_mode='unified_v1';
+  await setup(page,state,false);
+  await expect(page.locator('#start-disabled-reason')).toContainText('请先上传并采用一份历史／参考募集书');
+  await page.locator('#execute-input').dispatchEvent('click');
   await expect(page.locator('#execute-input')).toBeDisabled();
+  expect(state.inputs).toEqual([]); expect(state.executes).toEqual([]);
   expect(state.materials).toHaveLength(1); expect(state.runs.size).toBe(0);
 });
 
@@ -587,8 +587,8 @@ test('legacy reference plus audit upgrades to unified input without requiring a 
   state.checkStatus='ready';
   state.executeError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-generation-required'};
   await setup(page,state); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书选填');
-  await expect(page.locator('#execution-message')).toContainText('无需更改企业关系或重复上传');
+  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书为必填');
+  await expect(page.locator('#execution-message')).toContainText('已保存稿件无需重复上传');
   expect(state.materials[0].role).toBe('reference');
   await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-generation-required');
   await expect(page.locator('#execute-input')).toBeDisabled();
@@ -611,7 +611,7 @@ test('a unified INPUT_REQUIRED preserves source roles and rechecks the same immu
   Object.assign(state.materials[0], { role:'reference' });
   state.preflightError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-preflight-role'};
   await setup(page,state); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书选填');
+  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书为必填');
   await expect(page.locator('#execution-message')).toContainText('错误编号：synthetic-preflight-role');
   await expect(page.locator('#execute-input')).toBeDisabled();
   await expect(page.locator('#recheck-input')).toBeVisible();
@@ -777,20 +777,20 @@ test('unified input includes reference materials and does not ask for reclassifi
   const state=fixture(); state.materials[0].role='reference';
   state.preflightError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-excluded-reference'};
   await setup(page,state); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书选填');
+  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书为必填');
   expect(state.inputs[0].material_versions).toEqual(state.materials.map(m=>({material_id:m.material_id,material_version:1})));
   await page.reload(); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书选填');
+  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书为必填');
   expect(state.materials[0].role).toBe('reference'); expect(state.executes).toHaveLength(0);
 });
 
-test('a legacy generation rejection keeps references optional and supports rechecking', async ({ page }) => {
+test('a legacy generation rejection preserves its reference and supports rechecking', async ({ page }) => {
   const state=fixture(); state.project.kind='generation'; state.project.update_details!.has_historical=false;
   Object.assign(state.materials[0], {role:'reference',parse_snapshot_id:'synthetic-snapshot'});
   state.preflightError={status:409,code:'INPUT_REQUIRED',correlation_id:'synthetic-generation-preflight'};
   await setup(page,state); await page.locator('#execute-input').click();
-  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书选填');
-  await expect(page.locator('#execution-message')).toContainText('无需更改企业关系或重复上传');
+  await expect(page.locator('#execution-message')).toContainText('历史／参考募集书为必填');
+  await expect(page.locator('#execution-message')).toContainText('已保存稿件无需重复上传');
   await expect(page.locator('#execution-message')).not.toContainText('更正分类');
   await expect(page.locator('#execute-input')).toBeDisabled();
   state.preflightError=undefined; state.checkStatus='ready';
@@ -1847,7 +1847,7 @@ test('upload automatically adopts the original and submits it without a selectio
   const state=fixture();state.project.update_details!.authoring_mode='unified_v1';
   const bytes=Buffer.from('history'),source=state.materials.shift()!,profile=structuredClone(state.project.update_details!.source_prospectuses);
   source.byte_size=bytes.length;
-  await setup(page,state);
+  await setup(page,state,false);
   let completed=false;
   await page.route(`**/api/v1/projects/${id}/materials/uploads**`,async route=>{
     const request=route.request(),path=new URL(request.url()).pathname;

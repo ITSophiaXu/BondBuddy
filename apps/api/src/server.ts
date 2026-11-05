@@ -10,6 +10,7 @@ import { registerProjectFileWorkspace } from './project-file-workspace.js';
 import { registerWorkpapers } from './workpapers.js';
 import { registerFileGeneration } from './file-generation.js';
 import { registerProjectFileConsistency } from './project-file-consistency.js';
+import { assertProspectusUploadFormat } from './prospectus-upload.js';
 import { registerProspectusRoutes, registerUploadedProspectus, prospectusVersions, assertProspectusRemovable, reselectAfterProspectusRemoval } from './prospectus-versions.js';
 import { requiresProspectusSelection } from '@bondbuddy/contracts';
 import { prospectusSelectionRequired } from './data.js';
@@ -70,7 +71,7 @@ import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOvera
 import { assertGenerationIssuerBinding, assertLockedInputIntegrity, assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled, workingDraftConfigured } from './non-production-test.js';
 import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatches } from './test-issuer-candidate.js';
 import { classifyPreflightReadiness } from './preflight-readiness.js';
-import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertOwnedFormatTemplate, inheritPreviousOutputFormat } from './unified-authoring.js';
+import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertAuthoringSourceRequired, assertOwnedFormatTemplate, inheritPreviousOutputFormat } from './unified-authoring.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
@@ -911,6 +912,7 @@ export function createServer(settings: Settings = {}) {
               : reportingWindow(previous.manifest.market,previous.manifest.offering,previous.manifest.update_details.reporting_cutoff)};
         }
         if(b.edit_base&&!authoring.previous_output)throw conflict('INPUT_REVISION_CONFLICT','所选版本的发行人或来源与当前材料不同，请核对后再修改。');
+        if (['update','generation'].includes(p.kind)) assertAuthoringSourceRequired(resolved, authoring.previous_output);
         inheritPreviousOutputFormat(authoring);
         Object.assign(manifest, { issuer_name: p.issuer_name, authoring });
       }
@@ -1062,7 +1064,8 @@ export function createServer(settings: Settings = {}) {
     if(!suffix || !expectedExtensions[b.media_type]?.includes(suffix))throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Filename extension and declared type differ');
     const uploadId=uid(),key=`users/${user}/projects/${id}/uploads/${uploadId}`,expires=new Date(Date.now()+15*60_000);
     await transaction(db(),async client=>{
-      await project(client,user,id,true);
+      const uploadProject=await project(client,user,id,true);
+      assertProspectusUploadFormat(uploadProject.kind,b.role,b.filename,b.media_type);
       if(b.role==='historical'){
         const converted=await client.query('SELECT 1 FROM bb_project_kind_conversions WHERE owner_user_id=$1 AND project_id=$2',[user,id]);
         if(converted.rowCount)throw conflict('INPUT_REVISION_CONFLICT','Converted no-history project cannot accept historical prospectus material');
@@ -1105,6 +1108,7 @@ export function createServer(settings: Settings = {}) {
         source.sha256.trim()!==b.source_sha256||source.media_type!==b.source_media_type||
         !Number.isSafeInteger(Number(source.byte_size))||Number(source.byte_size)>MAX_BYTES)
         throw conflict('MATERIAL_CONTENT_MISMATCH','Source identity, format or bytes differ');
+      assertProspectusUploadFormat(p.kind,'historical',source.filename,source.media_type);
       const capacity=(await client.query(`SELECT count(*)::int files,COALESCE(sum(byte_size),0)::bigint bytes
         FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL AND NOT internal_template`,[user,id])).rows[0];
       if(capacity.files>=M1_UPLOAD_LIMITS.projectFiles||Number(capacity.bytes)+Number(source.byte_size)>M1_UPLOAD_LIMITS.projectBytes)
@@ -1133,6 +1137,7 @@ export function createServer(settings: Settings = {}) {
       const source=(await client.query(`SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2
         AND id=$3 AND version=$4 AND deleted_at IS NULL AND NOT internal_template FOR UPDATE`,[user,id,b.source_material_id,b.source_material_version])).rows[0];
       if(!source||source.role!=='reference'||source.sha256.trim()!==b.source_sha256||source.media_type!==b.source_media_type)throw missing();
+      assertProspectusUploadFormat(copyProject.kind,'historical',source.filename,source.media_type);
       let upload=(await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[user,receipt.upload_id])).rows[0];
       if(upload.state==='deleting'||upload.state==='purged'){
         const replacement=await freshUpload(client,source);
@@ -1182,15 +1187,16 @@ export function createServer(settings: Settings = {}) {
     return reply.code(201).send(result);
   });
   app.put('/api/v1/projects/:project_id/materials/uploads/:upload_id/bytes',async (request,reply)=>{
-    const user=await owner(request),id=param(request,'project_id'),uploadId=param(request,'upload_id');await project(db(),user,id);
+    const user=await owner(request),id=param(request,'project_id'),uploadId=param(request,'upload_id');const uploadProject=await project(db(),user,id);
     const stream=request.body as Readable|undefined;if(!stream||typeof stream.pipe!=='function')throw new Problem(422,'VALIDATION_FAILED','Binary upload required');
     // Reject unknown, finished or expired uploads before accepting any bytes; the locked re-check below stays authoritative.
-    const pre=(await db().query('SELECT state,byte_size,expires_at FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,uploadId])).rows[0];
+    const pre=(await db().query('SELECT state,byte_size,expires_at,role,filename,declared_media_type FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,uploadId])).rows[0];
     if((await db().query('SELECT 1 FROM bb_material_role_copy_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId])).rowCount)throw missing();
     if(!pre)throw missing();
     if(pre.state==='completed')throw conflict('IDEMPOTENCY_CONFLICT','Upload already completed');
     if(pre.state!=='uploading'&&pre.state!=='received')throw missing();
     if(new Date(pre.expires_at).getTime()<Date.now())throw new Problem(422,'VALIDATION_FAILED','Upload expired');
+    assertProspectusUploadFormat(uploadProject.kind,pre.role,pre.filename,pre.declared_media_type);
     const declared=Number(pre.byte_size),length=request.headers['content-length'];
     const mismatch=()=>new Problem(422,'MATERIAL_CONTENT_MISMATCH','Bytes or hash mismatch');
     if(length!==undefined&&Number(length)!==declared)throw mismatch();
@@ -1199,12 +1205,14 @@ export function createServer(settings: Settings = {}) {
       spooled=await spoolStream(stream,declared,mismatch);
       const bytes=spooled;
       await transaction(db(),async client=>{
+        const currentProject=await project(client,user,id);
         const q=await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,uploadId]);const u=q.rows[0];if(!u)throw missing();
         if((await client.query('SELECT 1 FROM bb_material_role_copy_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId])).rowCount)throw missing();
         if((await client.query('SELECT 1 FROM bb_upload_reuse_receipts WHERE owner_user_id=$1 AND upload_id=$2',[user,uploadId])).rowCount)throw conflict('IDEMPOTENCY_CONFLICT','Upload already resolved; retry completion');
         if(u.state==='completed')throw conflict('IDEMPOTENCY_CONFLICT','Upload already completed');
         if(u.state!=='uploading'&&u.state!=='received')throw missing();
         if(new Date(u.expires_at).getTime()<Date.now())throw new Problem(422,'VALIDATION_FAILED','Upload expired');
+        assertProspectusUploadFormat(currentProject.kind,u.role,u.filename,u.declared_media_type);
         if(bytes.byteSize!==Number(u.byte_size)||bytes.sha256!==u.sha256.trim())throw mismatch();
         const excepted=uploadInspectionExceptionMatches(uploadInspectionException,{
           ownerUserId:user,projectId:id,role:u.role,byteSize:bytes.byteSize,sha256:bytes.sha256,mediaType:u.declared_media_type
@@ -1276,6 +1284,7 @@ export function createServer(settings: Settings = {}) {
       }
       if(u.state==='completed'){const existing=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND upload_id=$2 AND deleted_at IS NULL',[user,uploadId]);return checkedMaterial(existing.rows[0]);}
       if(u.state==='deleting'||u.state==='purged')throw missing();
+      assertProspectusUploadFormat(uploadProject.kind,u.role,u.filename,u.declared_media_type);
       if(u.state!=='received')throw new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received');
       // Re-verify the stored object from a disk copy: hash while streaming, then inspect the file.
       const release=reserveSpool(b.byte_size),copy=join(spoolDirectory(),`${uid()}.blob`);
@@ -1544,8 +1553,10 @@ export function createServer(settings: Settings = {}) {
       await assertLockedInputIntegrity(client,{userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);
       // Exact replays return above. New runs using older incomplete snapshots must
       // return to materials; running tasks keep their already locked inputs.
-      if (['update','generation'].includes(lockedKind) && isUnifiedInput(input.rows[0].manifest))
+      if (['update','generation'].includes(lockedKind) && isUnifiedInput(input.rows[0].manifest)) {
+        assertAuthoringSourceRequired(input.rows[0].manifest.materials, input.rows[0].manifest.authoring.previous_output);
         assertAuthoringSourceInformation(input.rows[0].manifest.materials, input.rows[0].manifest.authoring.source_prospectuses);
+      }
       if(b.test_grant_id)await assertTestGrant(client,{grantId:b.test_grant_id,userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash});
       const testGrantId=b.test_grant_id ?? await autoWorkingDraftGrant(client,
         {userId:user,projectId:b.project_id,inputRevision:b.input_revision,inputHash:b.input_hash},input.rows[0]);

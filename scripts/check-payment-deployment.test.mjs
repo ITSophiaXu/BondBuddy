@@ -103,6 +103,12 @@ test('Alipay deployment needs its exact gateway, one explicit Web product and an
   value.services.api.environment.BB_ALIPAY_PAY_ENABLED='true';failed(value,'alipay_switch_explicit');
 });
 
+test('deployment rejects sandbox or unrecognized Alipay environments on all billing services',()=>{
+  for(const name of ['api','worker','worker-review','worker-parse','ops'])for(const environment of ['sandbox','unknown']){
+    const value=config();value.services[name].environment.BB_ALIPAY_ENVIRONMENT=environment;failed(value,'alipay_production_environment');
+  }
+});
+
 test('Alipay daily statements remain off by default and cannot bypass a disabled merchant or invalid switch',()=>{
   const value=config();
   assert.equal(checkPaymentDeployment(value).passed,true);

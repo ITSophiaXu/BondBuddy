@@ -39,7 +39,8 @@ export function uploadErrorMessage(error: unknown): string {
   }
   if (error.code === 'MATERIAL_CONTENT_MISMATCH') return `文件内容校验与声明不一致，尚未保存。请核对所选文件。${reference}`;
   if (error.code === 'MATERIAL_ENCRYPTED') return `服务器无法读取加密文件。请提供可读取的副本。${reference}`;
-  if (error.code === 'MATERIAL_FORMAT_UNSUPPORTED') return `服务器暂不支持此文件格式。${reference}`;
+  if (error.code === 'MATERIAL_FORMAT_UNSUPPORTED') return error.details.prospectusDocxOnly
+    ? friendlyError(error, 'save') : `服务器暂不支持此文件格式。${reference}`;
   if (error.code === 'VALIDATION_FAILED') return `上传请求不符合限制或会话已过期，请核对文件大小后重试。${reference}`;
   return friendlyError(error, 'save');
 }

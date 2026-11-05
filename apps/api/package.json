@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./test-authoring-source": {"types":"./dist/test-authoring-source.d.ts","default":"./dist/test-authoring-source.js"},
     "./docx-inspector": {"types":"./dist/docx-inspector.d.ts","default":"./dist/docx-inspector.js"},
     "./project-qa": {"types":"./dist/project-qa.d.ts","default":"./dist/project-qa.js"},
     "./project-file-consistency": {"types":"./dist/project-file-consistency.d.ts","default":"./dist/project-file-consistency.js"},
