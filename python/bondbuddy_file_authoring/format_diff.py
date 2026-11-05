@@ -67,7 +67,7 @@ def changed_properties(before, after):
 def replay_signature(root, author):
     root = copy.deepcopy(root)
     for node in root.iter():
-        if node.tag in {q('ins'), q('del'), q('moveFrom'), q('moveTo'), q('comment')} and node.get(q('author')) == author:
+        if node.tag in {q('ins'), q('del'), q('moveFrom'), q('moveTo'), q('comment'), q('pPrChange'), q('rPrChange'), q('trPrChange')} and node.get(q('author')) == author:
             # Trusted replay allocates fresh timestamps and revision IDs. They do
             # not affect visual properties or the content of the recorded edit.
             node.attrib.pop(q('date'), None)
@@ -115,6 +115,8 @@ def audit(baseline_path, tracked_path, author, input_path=None, operations_path=
             if sha(raw) != result['baseline_sha256'] or data['revision_author'] != author:
                 raise ValueError('WORD_FORMAT_REPLAY_INPUT_MISMATCH')
             expected = editor.tracked_parts()
+            from .format_plan import plan_summary
+            result['format_adjustments'] = plan_summary(editor.format_plan)
             old_ids = {n.get(q('id')) for n in xml(before['word/document.xml']).iter()
                        if n.tag in {q('commentRangeStart'), q('commentRangeEnd'), q('commentReference')}}
             new_comment_ids = {n.get(q('id')) for n in xml(expected['word/document.xml']).iter()
@@ -144,6 +146,9 @@ def audit(baseline_path, tracked_path, author, input_path=None, operations_path=
                 old, new = xml(before[part]), xml(after[part])
                 resolve_revisions(new, False, only_new=author)
                 strip_added_comment_markers(new, new_comment_ids)
+                if expected is not None:
+                    from .format_plan import restore_absent_property_shells
+                    restore_absent_property_shells(new, editor.format_plan, part)
                 if canonical(old) != canonical(new):
                     result['issues'].append({'code': 'UNEXPECTED_SOURCE_CHANGE', 'part': part,
                                              'areas': changed_properties(old, new)})

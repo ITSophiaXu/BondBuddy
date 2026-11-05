@@ -8,6 +8,7 @@ if [ "$(env_value BB_NON_PRODUCTION_TEST_CHANNEL)" = enabled ] && [ "$(env_value
   exit 2
 fi
 sha="$(git -C "$BB_REPO" rev-parse --verify "${1:?usage: deploy.sh <git-sha>}^{commit}")"
+node "$BB_REPO/scripts/prospectus-quality-gate.mjs" verify "$sha" "${BB_RELEASE_QUALITY_RECEIPT:?set BB_RELEASE_QUALITY_RECEIPT to passing evidence for this exact commit}"
 tag="${sha:0:12}"
 build_required_bytes=$(( 4 * 1024 * 1024 * 1024 ))
 # Images already present (e.g. loaded with `docker load` from scripts/export-images.sh on a build
@@ -62,8 +63,13 @@ for target in api worker web; do
 done
 if ! have "bondbuddy-m1-egress:$tag"; then
   check_space "$build_required_bytes" "local Docker build required (egress image missing; 4 GiB minimum)"
-  docker build -q -t "bondbuddy-m1-egress:$tag" "$ctx/deploy/m1/egress" >/dev/null
+  docker build -q --build-arg BB_RELEASE_SHA="$sha" -t "bondbuddy-m1-egress:$tag" "$ctx/deploy/m1/egress" >/dev/null
 fi
+# Tags and preloaded archives alone do not prove which source was built.
+for target in api worker web egress; do
+  revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "bondbuddy-m1-$target:$tag")"
+  [ "$revision" = "$sha" ] || { echo "release image source mismatch: $target" >&2; exit 1; }
+done
 previous="$(current_tag)"
 export BB_IMAGE_TAG="$tag"
 # Optional pre-switch gate (BB_DEPLOY_INFLIGHT_GATE=1): the build above can take many minutes, so a run
@@ -88,8 +94,13 @@ compose run --rm migrate
 compose up -d --remove-orphans --wait api worker worker-review worker-parse ops egress web
 echo "$tag" > "$BB_STATE/current"
 [ -n "$previous" ] && echo "$previous" > "$BB_STATE/previous"
-log_release deploy "$tag (previous ${previous:-none})"
 "$(dirname "$0")/smoke.sh" "http://127.0.0.1:$(env_value BB_HTTP_PORT)"
+# Keep the exact passing receipt for a later emergency rollback. Record success
+# only after smoke: a failed deployment must never authorize the rollback exception.
+quality_digest="$(sha256sum "$BB_RELEASE_QUALITY_RECEIPT" | awk '{print $1}')"
+mkdir -p "$BB_STATE/quality"
+[ "$BB_RELEASE_QUALITY_RECEIPT" -ef "$BB_STATE/quality/$sha.json" ] || cp "$BB_RELEASE_QUALITY_RECEIPT" "$BB_STATE/quality/$sha.json"
+log_release deploy "$tag commit=$sha quality_sha256=$quality_digest (previous ${previous:-none})"
 # Keep only the current and previous release images on disk.
 keep="$tag ${previous:-}"
 docker image ls --format '{{.Repository}}:{{.Tag}}' | grep '^bondbuddy-m1-' | while read -r ref; do

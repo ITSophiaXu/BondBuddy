@@ -346,6 +346,9 @@ export class ApiClient {
   projectMessageVersion(id: string, messageId: string, version: number, signal?: AbortSignal) {
     return this.request<Dto<'ProjectMessage'>>('GET', `/projects/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}/versions/${version}`, undefined, {}, signal);
   }
+  firstDraftExclusions(id: string, signal?: AbortSignal) {
+    return this.request<Dto<'FirstDraftExclusionsResponse'>>('GET', `/projects/${encodeURIComponent(id)}/first-draft-exclusions`, undefined, {}, signal);
+  }
   createInputRevision(id: string, input: Dto<'InputRevisionCreateRequest'>, signal?: AbortSignal) {
     return this.request<Dto<'InputRevisionResponse'>>('POST', `/projects/${encodeURIComponent(id)}/input-revisions`, input, {}, signal);
   }

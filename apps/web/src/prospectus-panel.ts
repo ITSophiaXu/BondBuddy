@@ -43,6 +43,11 @@ export class ProspectusPanel {
   dispose(){this.controller.abort();this.closeDialog();this.downloads.dispose();}
   get hasUnconfirmed(){return !this.controller.signal.aborted&&(this.busy||!!this.pendingSelection?.attempted||!!this.pendingUpload?.uncertain||this.purpose==='generation'&&(!!this.pendingUpload||this.uploadRows().length>0));}
   get selectedVersionId(){return this.verifiedVersions()?this.state?.current_version_id:null;}
+  get selectedVersion():ProspectusVersions['versions'][number]|null{
+    if(!this.verifiedVersions())return null;
+    const version=this.state!.versions.find(v=>v.version_id===this.state!.current_version_id);
+    return version?{...version}:null;
+  }
   get sourceSelectionMessage(){return this.purpose==='update'&&this.verifiedVersions()&&requiresProspectusSelection(this.state!)?PROSPECTUS_SELECTION_REQUIRED_MESSAGE:'';}
   private generationCandidate(){
     if(!['generation','qa'].includes(this.purpose)||!this.verifiedVersions())return;

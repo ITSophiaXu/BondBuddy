@@ -2,7 +2,7 @@ import {serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { emptyUpdateDetails, schemas } from '@bondbuddy/contracts';
-import { FormatRegistry } from '@sinclair/typebox';
+import '../src/schema-formats';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -18,7 +18,6 @@ const otherProjectId = 'synthetic-continuation-b';
 const ownerId = 'synthetic-continuation-owner-a';
 const oldRunId = 'synthetic-continuation-run-7';
 const now = '2026-10-25T05:00:00Z';
-FormatRegistry.Set('date-time', value => value === now);
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const emptyMessages = { version: 1, content_sha256: sha256('bondbuddy:empty-project-messages'), message_ids: [] };
 type Project = Dto<'ProjectResponse'>;
@@ -336,8 +335,20 @@ async function screenshotAtTop(page: Page, directory: string, filename: string) 
   await page.screenshot({ path: join(directory, filename), fullPage: true });
 }
 
+test('ordinary start with an adopted clean result displays inherited format before a continuation choice', async ({ page }) => {
+  const state = fixture(); state.runs.clear(); state.project.input_revision = null; state.project.input_hash = null;
+  await install(page, state); await page.goto(`/#/projects/${projectId}?step=materials`);
+  await expect(page.locator('#material-editing')).toBeEnabled();
+  await expect(page.locator('[data-format-template-result]')).toBeVisible();
+  await expect(page.locator('[data-format-template-details]')).toBeHidden();
+  await expect(page.locator('[data-format-template="synthetic-historical-current"]')).toBeHidden();
+  await expect(page.locator('[data-format-template="synthetic-historical-current"]')).toBeDisabled();
+  expect(state.patches).toEqual([]); expectNoExecution(state);
+});
+
 test('template fidelity: continuation inherits the exact result format and restores source choices for an uploaded basis', async ({ page }) => {
-  const state = await openCompleted(page); await prepare(page);
+  const state = fixture(); addNewerCurrent(state); await openCompleted(page, state); await prepare(page);
+  await expectSummary(page, '合成第7轮募集书_清洁版.docx', 3);
   await expect(page.locator('[data-format-template-result]')).toBeVisible();
   await expect(page.locator('[data-format-template-result]')).toHaveText('沿用所选成果格式，参考原稿仅用于补充内容。');
   const source = page.locator('[data-format-template="synthetic-historical-current"]');

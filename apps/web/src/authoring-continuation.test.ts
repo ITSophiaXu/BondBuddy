@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { emptyUpdateDetails, type ProspectusVersion } from '@bondbuddy/contracts';
 import type { Dto } from './api.js';
 import type { DraftFields } from './draft.js';
-import { readContinuationBasis, renderContinuationSummary, resolveContinuationBasis } from './authoring-continuation.js';
+import { readContinuationBasis, renderContinuationSummary, resolveContinuationBasis, assistantAuthoringEditBase } from './authoring-continuation.js';
 
 const projectId = 'continuation-project', sha = 'a'.repeat(64), otherSha = 'b'.repeat(64), at = '2026-10-25T00:00:00Z';
 const run = (patch: Partial<Dto<'RunResponse'>> = {}): Dto<'RunResponse'> => ({
@@ -87,6 +87,24 @@ test('a historical result pins its own clean artifact, independently of the newe
   source.versions[1].sha256 = otherSha;
   assert.equal(historical.version?.sha256, sha);
   assert.equal(historical.editBase?.sha256, sha);
+});
+
+test('ordinary assistant preparation omits edit_base when no result was selected', () => {
+  for (const base of [null, undefined]) {
+    const payload = assistantAuthoringEditBase(base);
+    assert.deepEqual(payload, {});
+    assert.equal(Object.hasOwn(payload, 'edit_base'), false, 'the API may adopt the current generated clean result by default');
+  }
+});
+
+test('assistant preparation keeps the explicitly viewed historical result even when current is newer', () => {
+  const historical = resolveContinuationBasis(versions(), projectId, run(), 'result');
+  const selected = { ...historical.editBase!, source_project_id: projectId };
+  const payload = assistantAuthoringEditBase(selected);
+  assert.deepEqual(payload.edit_base, historical.editBase);
+  assert.notEqual(payload.edit_base?.artifact_id, versions().versions[0].artifact_id);
+  selected.sha256 = otherSha;
+  assert.equal(payload.edit_base?.sha256, sha);
 });
 
 test('result choice never promotes failed, active or internal test runs into a formal baseline', () => {

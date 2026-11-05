@@ -96,6 +96,7 @@ COPY --from=build --chown=root:root /app/deploy/m1/scripts/backup-stream.mjs dep
 
 FROM node-runtime AS api
 ARG BB_RELEASE_SHA=unknown
+LABEL org.opencontainers.image.revision=${BB_RELEASE_SHA}
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} HOST=0.0.0.0 PORT=3000 BB_UPLOAD_SPOOL_DIR=/var/lib/bondbuddy/upload-spool PATH=/opt/template-preview/bin:$PATH
 # The API renders only allowlisted derivatives. Keep its Python dependencies
@@ -118,10 +119,11 @@ HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ["node","-e","const s=re
 CMD ["node","apps/worker/dist/integrity-egress.js"]
 
 FROM node-runtime AS worker
+ARG BB_RELEASE_SHA=unknown
+LABEL org.opencontainers.image.revision=${BB_RELEASE_SHA}
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/bondbuddy-browsers
 RUN node node_modules/playwright/cli.js install --with-deps chromium && chmod -R a+rX /opt/bondbuddy-browsers
-ARG BB_RELEASE_SHA=unknown
 ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} PATH=/opt/venv/bin:$PATH \
     TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
 # Bookworm OCR engine and language data are pinned independently; osd is used on every page.
@@ -134,7 +136,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       tesseract-ocr-osd=1:4.1.0-2 \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=codex --chown=root:root /opt/codex /opt/codex
-RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version
+# Default adapter PATH resolves this immutable wrapper before any system bwrap.
+# It calls only the integrity-pinned bundled binary and reapplies /proc deny last.
+COPY --chown=root:root --chmod=0755 deploy/m1/scripts/codex-bwrap.sh /usr/local/bin/bwrap
+RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version && /usr/local/bin/bwrap --version
 COPY --chmod=0755 deploy/m1/scripts/copilot-token.mjs /usr/local/bin/bb-copilot-token
 RUN install -d -m 0755 /opt/bondbuddy
 COPY --chmod=0644 deploy/m1/codex-model-catalog.json /opt/bondbuddy/codex-model-catalog.json
@@ -156,6 +161,8 @@ USER node
 CMD ["sh","-c","/usr/local/bin/bb-verify-ocr-runtime && exec node apps/worker/dist/runtime.js"]
 
 FROM nginxinc/nginx-unprivileged:1.29-alpine AS web
+ARG BB_RELEASE_SHA=unknown
+LABEL org.opencontainers.image.revision=${BB_RELEASE_SHA}
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 COPY --from=build /app/deploy/m1/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/deploy/m1/nginx/security-headers.conf /etc/nginx/conf.d/snippets/security-headers.conf

@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { SourceProspectus, UpdateDetails, ProjectMessageSetPin, Market, Offering, FormatTemplatePin, SourceFormatPolicy, UnifiedAuthoringInput } from '@bondbuddy/contracts';
+import type { SourceProspectus, UpdateDetails, ProjectMessageSetPin, Market, Offering, FormatTemplatePin, SourceFormatPolicy, UnifiedAuthoringInput, ProspectusVersions } from '@bondbuddy/contracts';
 import { isMarketOffering, sourceProspectusInputGaps, recommendFormatTemplate, sameFormatTemplate, type SourceMaterialPin } from '@bondbuddy/contracts';
 import type { PoolClient } from 'pg';
 import { nafmiiMtnDraftRulePack, nafmiiMtnChapterTemplate, nafmiiCpDraftRulePack, nafmiiCpChapterTemplate, nafmiiScpDraftRulePack, nafmiiScpChapterTemplate } from '@bondbuddy/domain';
@@ -15,6 +15,22 @@ export function assertAuthoringSourceInformation(materials: readonly SourceMater
 }
 type FormatMaterial = SourceMaterialPin & { media_type?: string };
 const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+type AuthoringEditBase = { artifact_id: string; artifact_version: number; sha256: string };
+/** An adopted clean result cannot become first draft; explicit result choices keep their trusted verification. */
+export function lockProspectusEditBase(current: Pick<ProspectusVersions['versions'][number], 'artifact_id' | 'artifact_version' | 'sha256'> | undefined,
+  requested: AuthoringEditBase | null | undefined): AuthoringEditBase | null | undefined {
+  if (!current) return requested;
+  if (!current.artifact_id) return requested === undefined ? null : requested;
+  if (requested === null)
+    throw conflict('INPUT_REVISION_CONFLICT', '当前已采用清洁稿，请使用当前稿默认基线，或选择准确的历史成果后重新开始。');
+  // A viewed successful historical result may differ from current. The existing
+  // owner/quality/source/issuer checks below input locking verify its exact pin.
+  if (requested !== undefined) return requested;
+  const selected = { artifact_id: current.artifact_id, artifact_version: current.artifact_version!, sha256: current.sha256 };
+  if (!Number.isSafeInteger(selected.artifact_version) || selected.artifact_version < 1 || !/^[a-f0-9]{64}$/.test(selected.sha256))
+    throw conflict('INPUT_REVISION_CONFLICT', '当前已采用的清洁稿版本无法确认，请刷新后重新开始。');
+  return selected;
+}
 /** Called under the project draft lock. Foreign and unknown material references share 404. */
 export async function assertOwnedFormatTemplate(client: Pick<PoolClient, 'query'>, owner: string, projectId: string,
   pin: FormatTemplatePin | null | undefined): Promise<void> {
@@ -28,9 +44,14 @@ export async function assertOwnedFormatTemplate(client: Pick<PoolClient, 'query'
     throw conflict('INPUT_REVISION_CONFLICT', '所选格式模板与原稿版本不一致，请重新选择。');
 }
 /** A pin can only refer to selected, already owner-checked materials. */
-export function lockSourceFormatPolicy(details: UpdateDetails, materials: readonly FormatMaterial[]): SourceFormatPolicy {
+export function lockSourceFormatPolicy(details: UpdateDetails, materials: readonly FormatMaterial[], adoptedSource?: FormatTemplatePin): SourceFormatPolicy {
   const explicit = details.format_template;
-  const selected = explicit ? materials.find(m => sameFormatTemplate(m, explicit)) : recommendFormatTemplate(materials, details.source_prospectuses);
+  const adopted = adoptedSource ? materials.find(m => sameFormatTemplate(m, adoptedSource)) : undefined;
+  if (adoptedSource && (!adopted || !['historical', 'reference'].includes(adopted.role) || ![DOCX, 'application/pdf'].includes(adopted.media_type ?? '')))
+    throw conflict('INPUT_REVISION_CONFLICT', '已采用原稿未包含在本次材料中，或其版本已经变化，请刷新后重新开始。');
+  if (adoptedSource && explicit && !sameFormatTemplate(explicit, adoptedSource))
+    throw conflict('INPUT_REVISION_CONFLICT', '格式模板与当前已采用原稿不同，请清除旧格式选择，或改用对应原稿后重新开始。');
+  const selected = adopted ?? (explicit ? materials.find(m => sameFormatTemplate(m, explicit)) : recommendFormatTemplate(materials, details.source_prospectuses));
   if (explicit && (!selected || !['historical', 'reference'].includes(selected.role) || ![DOCX, 'application/pdf'].includes(selected.media_type ?? '')))
     throw conflict('INPUT_REVISION_CONFLICT', '所选格式模板未包含在本次材料中，或其版本已经变化。');
   if (!selected) return { version: 'source-format-v1', mode: 'new_document', template: null, selection: 'automatic' };
@@ -44,7 +65,7 @@ export function inheritPreviousOutputFormat(authoring: UnifiedAuthoringInput): v
     template: { kind: 'artifact', ...authoring.previous_output }, selection: 'previous_output' };
 }
 export async function lockUnifiedAuthoring(project: { market: Market | null; offering: Offering | null; update_details: UpdateDetails },
-  materials: readonly FormatMaterial[], messages: ProjectMessageSetPin) {
+  materials: readonly FormatMaterial[], messages: ProjectMessageSetPin, adoptedSource?: FormatTemplatePin) {
   const sources: SourceProspectus[] = [];
   for (const source of project.update_details.source_prospectuses ?? []) {
     const pin = materials.find(m => m.material_id === source.material_id);
@@ -55,7 +76,7 @@ export async function lockUnifiedAuthoring(project: { market: Market | null; off
   }
   const knowledge = await loadAuthoringKnowledge(project);
   return { version: 'unified_v1' as const, source_prospectuses: sources, requirements: messages.members, knowledge,
-    format_policy: lockSourceFormatPolicy(project.update_details, materials),
+    format_policy: lockSourceFormatPolicy(project.update_details, materials, adoptedSource),
     knowledge_status: 'authoring_reference_not_compliance_approval' as const };
 }
 

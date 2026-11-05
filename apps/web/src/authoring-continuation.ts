@@ -13,6 +13,12 @@ export type ContinuationBasis = {
   key: string;
 };
 
+/** Ordinary assistant preparation uses the current manuscript default unless a result was explicitly selected. */
+export function assistantAuthoringEditBase(base: NonNullable<Dto<'InputRevisionCreateRequest'>['edit_base']> | null | undefined):
+  Pick<Dto<'InputRevisionCreateRequest'>, 'edit_base'> {
+  return base ? { edit_base: { artifact_id: base.artifact_id, artifact_version: base.artifact_version, sha256: base.sha256 } } : {};
+}
+
 const validId = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= 128 && value.trim().length > 0;
 const positiveRevision = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 const validHash = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);

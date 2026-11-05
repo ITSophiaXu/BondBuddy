@@ -711,7 +711,7 @@ async function recordRunFailure(client:PoolClient,r:any,jobId:string,errorCode:s
 }
 
 /** Merges one completed stage into checkpoint.stages without touching provider_results written by #16. */
-export async function checkpointStage(pool:Pool,lease:Lease,stage:string,value:Record<string,unknown>) {
+export async function checkpointStage(pool:Pool,lease:Lease,stage:string,value:Record<string,unknown>,completed=true) {
   if(!/^[a-z][a-z0-9_]{0,63}$/.test(stage))throw new Problem(422,'VALIDATION_FAILED','Invalid stage');
   await transaction(pool,async client=>{
     const {r}=await lockedLease(client,lease);
@@ -719,7 +719,7 @@ export async function checkpointStage(pool:Pool,lease:Lease,stage:string,value:R
       checkpoint=checkpoint || jsonb_build_object('stages', COALESCE(checkpoint->'stages','{}'::jsonb) || jsonb_build_object($2::text,$3::jsonb))
       WHERE id=$1 RETURNING checkpoint`,[lease.jobId,stage,JSON.stringify(value)]);
     lease.checkpoint=q.rows[0].checkpoint;
-    await event(client,r,'running',stage,'stage_completed',undefined,'run.progress');
+    if(completed)await event(client,r,'running',stage,'stage_completed',undefined,'run.progress');
   });
 }
 
