@@ -139,6 +139,7 @@ RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version
 COPY --chmod=0755 deploy/m1/scripts/copilot-token.mjs /usr/local/bin/bb-copilot-token
 RUN install -d -m 0755 /opt/bondbuddy
 COPY --chmod=0644 deploy/m1/codex-model-catalog.json /opt/bondbuddy/codex-model-catalog.json
+COPY --chmod=0644 deploy/m1/codex-deepseek-model-catalog.json /opt/bondbuddy/codex-deepseek-model-catalog.json
 COPY --chmod=0644 deploy/m1/codex-image-model-catalog.json /opt/bondbuddy/codex-image-model-catalog.json
 COPY --chmod=0644 deploy/m1/codex-authoring-model-catalog.json /opt/bondbuddy/codex-authoring-model-catalog.json
 COPY --chmod=0644 deploy/m1/codex-file-authoring-model-catalog.json /opt/bondbuddy/codex-file-authoring-model-catalog.json

@@ -217,6 +217,10 @@ export function codexConfigOverrides(c: CodexAdapterConfig, files = false): stri
     `shell_environment_policy.inherit="none"`, `project_doc_max_bytes=0`, `history.persistence="none"`, `mcp_servers={}`,
   ];
   if (c.reasoning_effort) kv.push(`model_reasoning_effort=${q(c.reasoning_effort)}`);
+  // The pinned CLI also clamps overrides to the catalog's max_context_window.
+  if (c.model_provider === 'deepseek' && c.model_id === 'deepseek-flash') kv.push(
+    'model_context_window=1000000', 'model_auto_compact_token_limit=900000',
+    'model_catalog_json="/opt/bondbuddy/codex-deepseek-model-catalog.json"');
   if (c.credential.kind === 'command') kv.push('model_context_window=872000', 'model_auto_compact_token_limit=780000',
     `model_catalog_json=${q('/opt/bondbuddy/codex-model-catalog.json')}`,
     `${p}.auth.timeout_ms=10000`, `${p}.auth.refresh_interval_ms=300000`,

@@ -262,12 +262,38 @@ test('Copilot command auth is explicit, bounded and rejects incomplete or mixed 
   assert.ok(!args.some(a => a.includes('model_providers.copilot_enterprise.requires_openai_auth')));
   assert.ok(args.includes('model_context_window=872000'));
   assert.ok(args.includes('model_auto_compact_token_limit=780000'));
+  assert.ok(!args.includes('model_context_window=1000000'));
   assert.ok(args.includes('model_catalog_json="/opt/bondbuddy/codex-model-catalog.json"'));
   assert.ok(!args.some(a => /Bearer |gho_|DEEPSEEK_API_KEY/.test(a)));
   for (const override of [{ BB_COPILOT_OAUTH_FILE: '/dev/null' }, { BB_COPILOT_OAUTH_FILE: 'relative' },
     { BB_CODEX_MODEL: 'deepseek-flash' }, { BB_CODEX_REASONING_EFFORT: 'medium' },
     { BB_CODEX_CONFIG_VERSION: '' }, { BB_CODEX_CREDENTIAL_ENV: 'DEEPSEEK_API_KEY' }, { BB_CODEX_AUTH_FILE: '/tmp/auth.json' }])
     assert.throws(() => loadCodexAdapterConfig({ ...env, ...override }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
+});
+
+test('DeepSeek uses a 1M context for ordinary, material, image and file authoring calls', async () => {
+  const config = loadCodexAdapterConfig({});
+  const base = { cwd: '/x/cwd', schemaFile: null, ephemeral: true, resumeThreadId: null };
+  for (const extra of [{}, { materialDataFile: '/x/cwd/materials.json' }, { imageFile: '/x/input.png' }, { fileAuthoring: true, fileCompletion: true }]) {
+    const args = buildCodexArgs(config, { ...base, ...extra });
+    assert.equal(args.filter(a => a.startsWith('model_context_window=')).length, 1);
+    assert.ok(args.includes('model_context_window=1000000'));
+    assert.ok(args.includes('model_auto_compact_token_limit=900000'));
+    assert.deepEqual(args.filter(a => a.startsWith('model_catalog_json=')), ['model_catalog_json="/opt/bondbuddy/codex-deepseek-model-catalog.json"']);
+  }
+  const catalog = JSON.parse(await readFile(new URL('../../../deploy/m1/codex-deepseek-model-catalog.json', import.meta.url), 'utf8'));
+  const model = catalog.models.find((m: { slug: string }) => m.slug === config.model_id);
+  assert.equal(model.context_window, 1000000);
+  assert.equal(model.max_context_window, 1000000, 'Codex clamps the override to this catalog ceiling');
+  assert.equal(model.auto_compact_token_limit, 900000);
+  assert.equal(model.effective_context_window_percent, 95);
+  assert.deepEqual(model.input_modalities, ['text', 'image']);
+  assert.equal(model.use_responses_lite, false);
+  assert.ok(model.model_messages.instructions_template.length > 0);
+  const other = buildCodexArgs({ ...config, model_provider: 'other_provider' }, base);
+  assert.ok(!other.some(a => a.startsWith('model_context_window=') || a.startsWith('model_auto_compact_token_limit=')));
+  const unknown = buildCodexArgs({ ...config, model_id: 'future-deepseek-model' }, base);
+  assert.ok(!unknown.some(a => a.startsWith('model_catalog_json=')));
 });
 
 test('Copilot child receives the credential file path but no ambient provider secret', async () => {
