@@ -161,19 +161,11 @@ def build(source, request, output):
         tracking.set(q('val'), '1')
         replacements['word/settings.xml'] = serialized(settings)
     write(output/'revision.docx', {**parts,**replacements})
-    # Clean output has no review marks/comments. Keep explicit unresolved-material notices visible.
+    # Keep only prospectus content in the clean body. Review notes remain in
+    # native comments, the separate report and the editor snapshot.
     for node in list(clean.iter()):
         if node.tag in (q('commentRangeStart'),q('commentRangeEnd'),q('commentReference')) and node.getparent() is not None:
             node.getparent().remove(node)
-    pending = [i for i in issues if i['decision']!='original' and (i['missing'] or i['limitation'] or (i['uncertain'] and not i['applied']))]
-    if pending or warnings:
-        from lxml import etree as ET
-        body=clean.find(q('body'))
-        lines=['复核待确认事项']+warnings+[i['id']+' '+i['title']+'：'+(i['missing'] or i['limitation'] or i['reason']) for i in pending]
-        for line in lines:
-            p=ET.Element(q('p')); ET.SubElement(ET.SubElement(p,q('r')),q('t')).text=line
-            section=body.find(q('sectPr'))
-            body.insert(body.index(section) if section is not None else len(body),p)
     cleanparts={**parts,'word/document.xml':serialized(clean)}
     # Remove orphaned comment parts and declarations in clean output.
     for name in list(cleanparts):

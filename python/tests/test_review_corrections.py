@@ -22,7 +22,8 @@ class ReviewCorrectionTests(unittest.TestCase):
         before=self.source.read_bytes();r=self.request(issue('资产','总资产为12亿元。','总资产为13.6亿元。')+issue('收入','收入为5亿元。','收入为6亿元。','最新收入附注','仅批注'))
         s=build(self.source,r,self.path)
         self.assertTrue(s['issues'][0]['applied']);self.assertFalse(s['issues'][1]['applied'])
-        self.assertIn('总资产为13.6亿元。',self.text('clean.docx'));self.assertIn('收入为5亿元。',self.text('clean.docx'));self.assertIn('最新收入附注',self.text('clean.docx'))
+        self.assertEqual(self.text('clean.docx'),'总资产为13.6亿元。\n收入为5亿元。\n相同内容\n相同内容')
+        self.assertEqual(s['issues'][1]['missing'],'最新收入附注')
         with ZipFile(self.path/'revision.docx') as z:
             root=xml(z.read('word/document.xml'));self.assertTrue(list(root.iter(q('ins'))));self.assertTrue(list(root.iter(q('del'))));self.assertIn('最新收入附注',z.read('word/comments.xml').decode())
         with ZipFile(self.path/'clean.docx') as z:
@@ -49,6 +50,7 @@ class ReviewCorrectionTests(unittest.TestCase):
         s=build(self.source,self.request(report),self.path)
         self.assertEqual([i['category'] for i in s['issues']],[row[1] for row in rows])
         self.assertEqual([i['applied'] for i in s['issues']],[False,True,True,True])
+        self.assertEqual(self.text('clean.docx'),'\n'.join(new if mode=='直接修改' else old for _,_,old,new,mode in rows))
         with ZipFile(self.path/'revision.docx') as z:
             comments=list(xml(z.read('word/comments.xml')).iter(q('comment')))
             self.assertEqual(len(comments),4)
@@ -150,6 +152,6 @@ class ReviewCorrectionTests(unittest.TestCase):
         s=build(self.source,self.request('仅完成部分阅读，尚无结构化条目。'),self.path)
         self.assertEqual(s['issues'],[])
         self.assertTrue(any('不能据此认定未发现问题' in w for w in s['warnings']))
-        self.assertIn('总资产为12亿元。',self.text('clean.docx'))
+        self.assertEqual(self.text('clean.docx'),'总资产为12亿元。\n收入为5亿元。\n相同内容\n相同内容')
 
 if __name__=='__main__':unittest.main()
