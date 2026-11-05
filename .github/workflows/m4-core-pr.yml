@@ -132,6 +132,8 @@ jobs:
           grep -Eq '^# todo 0$' "$RUNNER_TEMP/m4-core-api.tap"
 
       - name: M4 worker stages, real Word pipeline and model router
+        env:
+          BB_WORKPAPER_ASSESSMENT_TEST_OUTPUT_DIRECTORY: ${{ runner.temp }}/bb-m4-worker/workpaper-assessment
         run: |
           # These suites inject synthetic model seams; they never spawn a provider CLI.
           node --test --test-concurrency=1 --test-reporter=tap \
