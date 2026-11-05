@@ -5,7 +5,7 @@
 ## 版本与环境
 
 - 基线：develop `a8936895`（包含桌面 UX PR #882）。
-- 实现、共享样式及运行原型：`1f572963eea9f3b61dd3f198582af5b3255b60e5`。后续证据提交只增加本目录，不改变已验证源码。
+- 实现、共享样式及运行原型：`1f572963eea9f3b61dd3f198582af5b3255b60e5`。后续提交增加本目录与 Docker 资源清单修复，不改变已验证的 UI 源码。
 - 已确认原始预览：`bondbuddy-document-workspace.html`，SHA-256 `37e197b00e46ecf12bbdba4ab2f56dae0cfadc35ad3206e900886466f8ef57a8`；本目录保留 `approved-tasks-1024.png` 和 `approved-review-1024.png`。
 - 运行原型：`product-prototype/public/document-workspace.html?view=tasks|results|materials|files|qa`，与真实前端同用 `document-workspace.css`；`index.html` 同步加载。
 - macOS / Node 24.14.0 / 仓库 Playwright Chromium；实际前端 `http://127.0.0.1:5182`，原基线 `http://127.0.0.1:5183`；原型使用本机 4333 只读服务器。
@@ -38,6 +38,7 @@
 | 同尺寸对照 | 18张实际页面、10张运行原型、2张已确认预览，共30张；清单见 `capture-manifest.json` |
 | 构建 | `npm run build`通过；最终源码的 `npm run build -w @bondbuddy/web`再次通过；保留既有大chunk提示 |
 | 公共契约 | `npm run check:contracts`通过：32+29+11=72项，179个合成示例、12个内部示例和4个生命周期示例 |
+| 前端完整单元回归 | `npm run test:unit -w @bondbuddy/web`：**971通过**，含构建资源清单检查 |
 | 最终相关浏览器回归 | **209通过、1跳过**。下方命令一次完整运行；跳过的是旧可选原型截图用例 |
 | 专项截图/布局巡检 | 7项通过，覆盖18个实际页面尺寸、10个原型尺寸及已确认预览。截图采集脚本为本次临时工具，已移除 |
 
@@ -58,6 +59,8 @@ BB_E2E_BASE_URL=http://127.0.0.1:5182 npm test -w @bondbuddy/web -- \
 ```
 
 ## 既有失败与边界
+
+- GitHub 首轮 desktop-ux 的前端单元检查为970通过、1失败：M1 Docker构建白名单遗漏此前的 `desktop-workspace-polish.css`，本次 `document-workspace.css` 也需纳入。现已同时补齐 `deploy/m1/Dockerfile` 的 COPY 和专用 dockerignore；原构建资源检查2/2、完整前端单元971/971通过。UI源码和截图不因此改变；GitHub最终执行结果以PR检查记录为准。
 
 - 本次扩大检查发现 `integrity-browser.spec.ts` 的11项旧结果/准备流程用例失败；对未修改的 `a8936895` 前端（5183）完整重跑同一文件，11项全部复现。场景未进入断言预期的准备或结果状态；本次未据此修改业务代码或旧断言，也不将它们算作通过。
 - 最终命令沿用 #882 已登记的4项排除：助手窗口切换的瞬时 boundingBox、旧文件检查文案、旧问答准备文案、延迟轮询/上传 DOM 标记。这4项本轮未重新基线复测，仍按既有记录单列。
