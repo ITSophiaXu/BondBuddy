@@ -6,6 +6,7 @@ import {
   adminDashboardTasks,
   adminDashboardUsers,
   dashboardCostText,
+  dashboardTrendWindow,
   decodeDashboardCursor,
   encodeDashboardCursor,
   installAdminDashboardRoutes,
@@ -64,6 +65,36 @@ test('range parsing normalises UTC days and rejects unknown or unsafe filter inp
   ]) {
     assert.throws(() => parseDashboardFilter(bad as Record<string, unknown>), (error: any) => error.status === 422, JSON.stringify(bad));
   }
+});
+
+test('trend defaults to 14 inclusive UTC calendar days anchored to to or now', () => {
+  const now = new Date('2026-11-05T12:34:56Z');
+  const current = dashboardTrendWindow(parseDashboardFilter({}), now);
+  assert.equal(current.from.toISOString(), '2026-10-23T00:00:00.000Z');
+  assert.equal(current.to.toISOString(), now.toISOString());
+  assert.equal(current.dates.length, 14);
+  assert.equal(current.dates.at(-1), '2026-11-05');
+  const historical = dashboardTrendWindow(parseDashboardFilter({to: '2026-10-14'}), now);
+  assert.equal(historical.from.toISOString(), '2026-10-01T00:00:00.000Z');
+  assert.equal(historical.dates.length, 14);
+  assert.equal(historical.dates.at(-1), '2026-10-14');
+});
+
+test('only trend window is capped at 90 calendar days and the original filter stays complete', () => {
+  const filter = parseDashboardFilter({from: '2026-01-01', to: '2026-04-30'});
+  const trend = dashboardTrendWindow(filter);
+  assert.equal(trend.from.toISOString(), '2026-01-31T00:00:00.000Z');
+  assert.equal(trend.dates.length, 90);
+  assert.equal(trend.dates.at(-1), '2026-04-30');
+  assert.equal(filter.from?.toISOString(), '2026-01-01T00:00:00.000Z');
+  assert.equal(filter.to?.toISOString(), '2026-04-30T23:59:59.999Z');
+});
+
+test('trend preserves explicit intraday boundaries while including their UTC calendar dates', () => {
+  const trend = dashboardTrendWindow(parseDashboardFilter({from: '2026-01-01T12:00:00Z', to: '2026-01-03T08:00:00Z'}));
+  assert.equal(trend.from.toISOString(), '2026-01-01T12:00:00.000Z');
+  assert.equal(trend.to.toISOString(), '2026-01-03T08:00:00.000Z');
+  assert.deepEqual(trend.dates, ['2026-01-01', '2026-01-02', '2026-01-03']);
 });
 
 test('keyset cursors round-trip the created_at and id pair and are section-scoped', () => {

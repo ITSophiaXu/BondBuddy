@@ -108,10 +108,11 @@ export function dashboardSummaryHtml(overview: AdminDashboardOverview): string {
 
 function barSvg(items: { value: number; label: string; text: string }[], cls: string): string {
   const W = 300, H = 110, pad = 6;
-  const max = Math.max(1, ...items.map(item => item.value));
+  const max = Math.max(0, ...items.map(item => item.value)) || 1;
   const width = (W - pad * 2) / Math.max(1, items.length);
   const bars = items.map((item, index) => {
-    const height = Math.max(2, (item.value / max) * (H - 22));
+    if (item.value <= 0) return '';
+    const height = (item.value / max) * (H - 22);
     const x = pad + index * width + width * 0.16;
     return `<rect class="${cls}" x="${x.toFixed(1)}" y="${(H - 16 - height).toFixed(1)}" width="${(width * 0.68).toFixed(1)}" height="${height.toFixed(1)}" rx="1.5"><title>${esc(item.text)}</title></rect>`;
   }).join('');
@@ -129,8 +130,8 @@ function tokenSvg(items: { in: number; out: number; label: string; text: string 
     const input = (item.in / max) * (H - 22);
     const output = (item.out / max) * (H - 22);
     const x = pad + index * width + width * 0.16;
-    return `<rect class="admin-dashboard-bar token-in" x="${x.toFixed(1)}" y="${(H - 16 - input).toFixed(1)}" width="${(width * 0.68).toFixed(1)}" height="${input.toFixed(1)}" rx="1.5"><title>${esc(item.label)} 输入 ${number(item.in)}</title></rect>` +
-      `<rect class="admin-dashboard-bar token-out" x="${x.toFixed(1)}" y="${(H - 16 - input - output + 2).toFixed(1)}" width="${(width * 0.68).toFixed(1)}" height="${Math.max(1, output - 2).toFixed(1)}" rx="1.5"><title>${esc(item.label)} 输出 ${number(item.out)}</title></rect>`;
+    return (item.in > 0 ? `<rect class="admin-dashboard-bar token-in" x="${x.toFixed(1)}" y="${(H - 16 - input).toFixed(1)}" width="${(width * 0.68).toFixed(1)}" height="${input.toFixed(1)}" rx="1.5"><title>${esc(item.label)} 输入 ${number(item.in)}</title></rect>` : '') +
+      (item.out > 0 ? `<rect class="admin-dashboard-bar token-out" x="${x.toFixed(1)}" y="${(H - 16 - input - output).toFixed(1)}" width="${(width * 0.68).toFixed(1)}" height="${output.toFixed(1)}" rx="1.5"><title>${esc(item.label)} 输出 ${number(item.out)}</title></rect>` : '');
   }).join('');
   const step = Math.max(1, Math.ceil(items.length / 5));
   const labels = items.map((item, index) => index % step === 0
@@ -140,15 +141,23 @@ function tokenSvg(items: { in: number; out: number; label: string; text: string 
 
 export function dashboardTrendHtml(overview: AdminDashboardOverview): string {
   const daily = overview.daily ?? [];
-  if (!daily.length) return `<section class="admin-dashboard-panel" aria-label="时间趋势"><div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.chart}时间趋势 <span class="admin-dashboard-panel-sub">按任务创建时间（UTC）</span></div><span class="admin-dashboard-panel-sub">暂无按天数据</span></div><div class="admin-dashboard-empty">${ICONS.empty}<p>所选范围内没有任务。</p></div></section>`;
+  if (!daily.length) return `<section class="admin-dashboard-panel" aria-label="时间趋势"><div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.chart}时间趋势 <span class="admin-dashboard-panel-sub">按任务创建时间（UTC）</span></div></div><div class="admin-dashboard-empty">${ICONS.empty}<p>暂无按天趋势数据。</p></div></section>`;
+  const first = daily[0]!.date, last = daily[daily.length - 1]!.date;
+  const rangeText = `${first} 至 ${last} · ${daily.length} 个 UTC 日`;
+  const truncated = overview.range.from !== null && overview.range.from.slice(0, 10) < first;
+  const rangeNote = truncated
+    ? `趋势仅展示所选范围最后 ${daily.length} 个 UTC 日；汇总与明细保留完整筛选范围。`
+    : '图表按以上日期统计；汇总与明细按完整筛选范围统计。';
+  const panelHead = `<div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.chart}时间趋势 <span class="admin-dashboard-panel-sub">按任务创建时间（UTC）</span></div><span class="admin-dashboard-panel-sub">${esc(rangeText)}</span></div>`;
   const tasksTotal = daily.reduce((sum, d) => sum + d.tasks, 0);
+  if (tasksTotal === 0) return `<section class="admin-dashboard-panel" aria-label="时间趋势">${panelHead}<p class="admin-dashboard-range">${esc(rangeNote)}</p><div class="admin-dashboard-empty">${ICONS.empty}<p>该趋势日期范围内没有任务。</p></div></section>`;
   const inputTotal = daily.reduce((sum, d) => sum + d.input_tokens, 0);
   const outputTotal = daily.reduce((sum, d) => sum + d.output_tokens, 0);
   const priced = daily.filter(d => d.cost_amount !== null);
   const costTotal = priced.reduce((sum, d) => sum + Number(d.cost_amount), 0);
   const currencies = new Set(priced.map(d => d.currency).filter((c): c is string => !!c));
   const currency = currencies.size === 1 ? [...currencies][0] : null;
-  const costText = priced.length ? dashboardCost(costTotal.toFixed(10), currency) : '—';
+  const costText = priced.length ? dashboardCost(costTotal.toFixed(10), currency) : '未定价';
   const short = (value: string) => (value.length >= 10 ? value.slice(5) : value);
   const tasks = barSvg(daily.map(d => ({ value: d.tasks, label: short(d.date), text: `${d.date} 任务 ${d.tasks}` })), 'admin-dashboard-bar');
   const users = barSvg(daily.map(d => ({ value: d.active_users, label: short(d.date), text: `${d.date} 活跃用户 ${d.active_users}` })), 'admin-dashboard-bar users');
@@ -156,7 +165,7 @@ export function dashboardTrendHtml(overview: AdminDashboardOverview): string {
   const tokens = tokenSvg(daily.map(d => ({ in: d.input_tokens, out: d.output_tokens, label: short(d.date), text: `${d.date} ${d.input_tokens + d.output_tokens}` })));
   const costs = barSvg(daily.map(d => ({ value: d.cost_amount === null ? 0 : Number(d.cost_amount), label: short(d.date), text: `${d.date} 成本 ${d.cost_amount === null ? '未定价' : dashboardCost(d.cost_amount, d.currency)}` })), 'admin-dashboard-bar cost');
   return `<section class="admin-dashboard-panel admin-dashboard-trend" aria-label="时间趋势">
-    <div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.chart}时间趋势 <span class="admin-dashboard-panel-sub">按任务创建时间（UTC）</span></div><span class="admin-dashboard-panel-sub">最近 ${daily.length} 天</span></div>
+    ${panelHead}<p class="admin-dashboard-range">${esc(rangeNote)}</p>
     <div class="admin-dashboard-charts">
       <div class="admin-dashboard-chart"><h3>${ICONS.tasks}任务数 <small>共 ${number(tasksTotal)}</small></h3>${tasks}<div class="admin-dashboard-legend"><span><i style="background:#3f7a5e"></i>任务</span></div></div>
       <div class="admin-dashboard-chart"><h3>${ICONS.tokens}tokens <small>${number(inputTotal)} / ${number(outputTotal)}</small></h3>${tokens}<div class="admin-dashboard-legend"><span><i style="background:#2f6f9f"></i>输入</span><span><i style="background:#9cc0d8"></i>输出</span></div></div>

@@ -13,7 +13,7 @@ assert.equal(database.search, ''); assert.equal(database.hash, '');
 for (const key of Object.keys(process.env))
   assert.ok(!/TOKEN|SECRET|API_KEY|PASSWORD|CONNECTION_STRING|DATABASE_URL$/.test(key) || key === 'BB_TEST_DATABASE_URL', key);
 
-test('combined candidate continuation, first-draft expiry and host quality refusal across real API/PG',
+test('combined candidate continuation, first-draft history staleness and host quality refusal across real API/PG',
   { timeout: 150_000 }, async t => {
     const originalConnect = net.Socket.prototype.connect, externalSockets = [];
     net.Socket.prototype.connect = function (...args) {

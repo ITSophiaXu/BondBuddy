@@ -1,0 +1,82 @@
+
+Running 5 tests using 1 worker
+
+  ok 1 apps\web\tests\admin-dashboard.spec.ts:230:3 › desktop admin navigation keeps the dashboard route after clicking .admin-tabs a (1.2s)
+  ok 2 apps\web\tests\admin-dashboard.spec.ts:230:3 › desktop admin navigation keeps the dashboard route after clicking .admin-brand (946ms)
+  ok 3 apps\web\tests\admin-dashboard.spec.ts:243:1 › desktop admin logout sends one request and clears the current session view (939ms)
+  x  4 apps\web\tests\admin-dashboard.spec.ts:255:1 › desktop admin logout failure is visible and the same session can retry (6.1s)
+  x  5 apps\web\tests\admin-dashboard.spec.ts:270:1 › desktop admin hides the product assistant while preserving a pending complete conversation save (7.3s)
+
+
+  1) apps\web\tests\admin-dashboard.spec.ts:255:1 › desktop admin logout failure is visible and the same session can retry 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('.admin-app [role="alert"]')
+    Expected substring: "服务暂时无法完成操作"
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toContainText" locator('.admin-app [role="alert"]') with timeout 5000ms
+      - waiting for locator('.admin-app [role="alert"]')
+
+
+      259 |   await page.locator('#admin-logout').click();
+      260 |   await expect.poll(() => calls.filter(call => call.path === '/auth/logout' && call.method === 'POST').length).toBe(1);
+    > 261 |   await expect(page.locator('.admin-app [role="alert"]')).toContainText('服务暂时无法完成操作');
+          |                                                           ^
+      262 |   await expect(page.locator('#admin-logout')).toBeEnabled();
+      263 |   await expect(page).toHaveURL(/#\/admin\/dashboard$/);
+      264 |   await expect(page.locator('[data-dashboard-metric="users"]')).toHaveText('2');
+        at C:\Users\lezhai\Downloads\Bondbuddy\prelaunch-admin-navigation-20261105\apps\web\tests\admin-dashboard.spec.ts:261:59
+
+    Error Context: .local\admin-navigation-evidence\navigation-logout-only\output\admin-dashboard-desktop-ad-f83f6--the-same-session-can-retry\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\admin-navigation-evidence\navigation-logout-only\output\admin-dashboard-desktop-ad-f83f6--the-same-session-can-retry\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\admin-navigation-evidence\navigation-logout-only\output\admin-dashboard-desktop-ad-f83f6--the-same-session-can-retry\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) apps\web\tests\admin-dashboard.spec.ts:270:1 › desktop admin hides the product assistant while preserving a pending complete conversation save 
+
+    Error: expect(locator).not.toBeVisible() failed
+
+    Locator:  locator('.bb-assistant')
+    Expected: not visible
+    Received: visible
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "not toBeVisible" locator('.bb-assistant') with timeout 5000ms
+      - waiting for locator('.bb-assistant')
+        14 × locator resolved to <div class="bb-assistant ba-open">…</div>
+           - unexpected value "visible"
+
+
+      280 |   await page.evaluate(() => { location.hash = '/admin/dashboard'; });
+      281 |   await expect(page.locator('.admin-app')).toBeVisible();
+    > 282 |   await expect(page.locator('.bb-assistant')).not.toBeVisible();
+          |                                                   ^
+      283 |   await expect(page.locator('[data-assistant-dock]')).not.toBeVisible();
+      284 |   releaseViewSave();
+      285 |   await expect.poll(() => workspace.view.unsent_content).toBe('这段桌面问题还没有发送，请保留原稿引用和成果上下文。');
+        at C:\Users\lezhai\Downloads\Bondbuddy\prelaunch-admin-navigation-20261105\apps\web\tests\admin-dashboard.spec.ts:282:51
+
+    Error Context: .local\admin-navigation-evidence\navigation-logout-only\output\admin-dashboard-desktop-ad-c1ce1--complete-conversation-save\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\admin-navigation-evidence\navigation-logout-only\output\admin-dashboard-desktop-ad-c1ce1--complete-conversation-save\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\admin-navigation-evidence\navigation-logout-only\output\admin-dashboard-desktop-ad-c1ce1--complete-conversation-save\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2 failed
+    apps\web\tests\admin-dashboard.spec.ts:255:1 › desktop admin logout failure is visible and the same session can retry 
+    apps\web\tests\admin-dashboard.spec.ts:270:1 › desktop admin hides the product assistant while preserving a pending complete conversation save 
+  3 passed (18.8s)

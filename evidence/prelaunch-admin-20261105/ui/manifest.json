@@ -1,0 +1,185 @@
+{
+  "base": "3bb7baf12dba1c75465e9c5dd71ef7b073c176a9",
+  "scope": "local synthetic HTTP; no production admin or billing writes",
+  "runtime": "v26.13.0",
+  "phases": [
+    {
+      "phase": "first-red",
+      "tests": 5,
+      "pass": 0,
+      "fail": 5,
+      "bodyExecuted": 0,
+      "exitCode": 1,
+      "started": "2026-11-05T02:36:51.925Z",
+      "completed": "2026-11-05T02:36:55.848Z"
+    },
+    {
+      "phase": "behavior-first-red",
+      "tests": 5,
+      "pass": 0,
+      "fail": 5,
+      "bodyExecuted": 5,
+      "exitCode": 1,
+      "started": "2026-11-05T02:38:33.477Z",
+      "completed": "2026-11-05T02:39:13.215Z"
+    },
+    {
+      "phase": "navigation-logout-only",
+      "tests": 5,
+      "pass": 3,
+      "fail": 2,
+      "bodyExecuted": 5,
+      "exitCode": 1,
+      "started": "2026-11-05T02:39:59.930Z",
+      "completed": "2026-11-05T02:40:19.642Z"
+    },
+    {
+      "phase": "final-evidence-green",
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "bodyExecuted": 5,
+      "exitCode": 0,
+      "started": "2026-11-05T02:47:51.535Z",
+      "completed": "2026-11-05T02:48:00.504Z"
+    },
+    {
+      "phase": "review-cost-scale-final-ten",
+      "tests": 10,
+      "pass": 10,
+      "fail": 0,
+      "bodyExecuted": 10,
+      "exitCode": 0,
+      "started": "2026-11-05T02:56:59.481Z",
+      "completed": "2026-11-05T02:57:13.923Z"
+    }
+  ],
+  "finalPhase": "review-cost-scale-final-ten",
+  "sourceBefore": {
+    "apps/web/src/main.ts": "f236c4825e0157db904ce418ca3421492fac1e25d00d146ff7396d496162c55c",
+    "apps/web/src/project-assistant.ts": "d9e088fc91f2a00a0538ac5421b568e0ec0b86ed2e24570ef2032f89982fd47c",
+    "apps/web/src/admin-dashboard-page.ts": "acddc04090638fcd6f648404c309af3534cd9c8392eb0d6763c8e95f4e8c62cd",
+    "apps/api/src/admin-dashboard.ts": "6050fd9af019fcf7e4d146b4c52a3887c3424af40f4cea0cf487d13d57fc71ea",
+    "apps/web/tests/admin-dashboard.spec.ts": "b68bd110ed3e78441bd0e0318610642c1fdefbc18f189fa7d5643172f7f572b5",
+    ".github/workflows/desktop-ux-pr.yml": "b7ffa78e0e148a306aafa447201b09b1b9f1a6f9ed043d6445c38e398e45f54e"
+  },
+  "sourceAfter": {
+    "apps/web/src/main.ts": "f236c4825e0157db904ce418ca3421492fac1e25d00d146ff7396d496162c55c",
+    "apps/web/src/project-assistant.ts": "d9e088fc91f2a00a0538ac5421b568e0ec0b86ed2e24570ef2032f89982fd47c",
+    "apps/web/src/admin-dashboard-page.ts": "acddc04090638fcd6f648404c309af3534cd9c8392eb0d6763c8e95f4e8c62cd",
+    "apps/api/src/admin-dashboard.ts": "6050fd9af019fcf7e4d146b4c52a3887c3424af40f4cea0cf487d13d57fc71ea",
+    "apps/web/tests/admin-dashboard.spec.ts": "b68bd110ed3e78441bd0e0318610642c1fdefbc18f189fa7d5643172f7f572b5",
+    ".github/workflows/desktop-ux-pr.yml": "b7ffa78e0e148a306aafa447201b09b1b9f1a6f9ed043d6445c38e398e45f54e"
+  },
+  "sources": [
+    {
+      "path": "apps/web/src/main.ts",
+      "byteSha256": "f236c4825e0157db904ce418ca3421492fac1e25d00d146ff7396d496162c55c",
+      "lfNormalizedSha256": "0272c462c4e0a8dd77fd50800c7efb27276923404ef811a508b8af0ca0804c3f"
+    },
+    {
+      "path": "apps/web/src/project-assistant.ts",
+      "byteSha256": "d9e088fc91f2a00a0538ac5421b568e0ec0b86ed2e24570ef2032f89982fd47c",
+      "lfNormalizedSha256": "676341af8b65c3f3bed1a87ad93a791e1c418178a5321f74eababd1c7b5dd75a"
+    },
+    {
+      "path": "apps/web/src/admin-dashboard-page.ts",
+      "byteSha256": "acddc04090638fcd6f648404c309af3534cd9c8392eb0d6763c8e95f4e8c62cd",
+      "lfNormalizedSha256": "43c4aa6f990274cfc5cd563e2d9d42f0b8843a7a606fdc56becae4eed313e0f3"
+    },
+    {
+      "path": "apps/api/src/admin-dashboard.ts",
+      "byteSha256": "6050fd9af019fcf7e4d146b4c52a3887c3424af40f4cea0cf487d13d57fc71ea",
+      "lfNormalizedSha256": "5d53f5f7ed5658715a9e2570530901bf1690075a453db708d20d75860b137856"
+    },
+    {
+      "path": "apps/web/tests/admin-dashboard.spec.ts",
+      "byteSha256": "b68bd110ed3e78441bd0e0318610642c1fdefbc18f189fa7d5643172f7f572b5",
+      "lfNormalizedSha256": "4feb6b584a41c3058cfd076264fe408eeb49fd4b265716bc2f866154ba68fced"
+    },
+    {
+      "path": ".github/workflows/desktop-ux-pr.yml",
+      "byteSha256": "b7ffa78e0e148a306aafa447201b09b1b9f1a6f9ed043d6445c38e398e45f54e",
+      "lfNormalizedSha256": "ac9d629cc8b4ac9bc5e1266b617bd52d79b8460d4f3d2b8cd7572da6f2c97b8f"
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "screenshots/navigation-before.jpeg",
+      "width": 1280,
+      "height": 720,
+      "source": ".local\\admin-navigation-evidence\\behavior-first-red\\screenshots-from-traces\\admin-dashboard-desktop-ad-bd387-after-clicking-admin-tabs-a.jpeg",
+      "originalFrame": "screencast/page@6a184841c509c211f406226488ec154e-1793846317806.jpeg",
+      "trace": ".local\\admin-navigation-evidence\\behavior-first-red\\output\\admin-dashboard-desktop-ad-bd387-after-clicking-admin-tabs-a\\trace.zip",
+      "sha256": "a2fa283c0a40df7622f820c7c0a55d3fc87356444d7bf1c125e81b3a2f893b45"
+    },
+    {
+      "file": "screenshots/assistant-before.jpeg",
+      "width": 1280,
+      "height": 720,
+      "source": ".local\\admin-navigation-evidence\\behavior-first-red\\screenshots-from-traces\\admin-dashboard-desktop-ad-c1ce1--complete-conversation-save.jpeg",
+      "originalFrame": "screencast/page@f5a065174b5a7f640a6c8aebe8524e84-1793846352304.jpeg",
+      "trace": ".local\\admin-navigation-evidence\\behavior-first-red\\output\\admin-dashboard-desktop-ad-c1ce1--complete-conversation-save\\trace.zip",
+      "sha256": "a66cdc98d18a1d8fd9ae78d01f0e3424f9c883518dea6738242ed4db1943dbae"
+    },
+    {
+      "file": "screenshots/logout-feedback-before.jpeg",
+      "width": 1280,
+      "height": 720,
+      "source": ".local\\admin-navigation-evidence\\navigation-logout-only\\screenshots-from-traces\\admin-dashboard-desktop-ad-f83f6--the-same-session-can-retry.jpeg",
+      "originalFrame": "screencast/page@91e571b977e042028bd4250621c8d084-1793846405752.jpeg",
+      "trace": ".local\\admin-navigation-evidence\\navigation-logout-only\\output\\admin-dashboard-desktop-ad-f83f6--the-same-session-can-retry\\trace.zip",
+      "sha256": "defd2ff561631714738c3e2c467afd3a3b9256ae4e58b8d4ffce4ca9ceb2a4da"
+    },
+    {
+      "file": "screenshots/navigation-after.png",
+      "width": 1280,
+      "height": 720,
+      "source": ".local\\admin-navigation-evidence\\review-cost-scale-final-ten\\screenshots\\desktop-admin-navigation-keeps-the-dashboard-route-after-clicking-admin-tabs-a.png",
+      "sha256": "5e01f922cc72625e98145c8e48dc3350ace19845465dcf193c0f7dd9ff8db5c7"
+    },
+    {
+      "file": "screenshots/logout-feedback-after.png",
+      "width": 1280,
+      "height": 720,
+      "source": ".local\\admin-navigation-evidence\\review-cost-scale-final-ten\\screenshots\\desktop-admin-logout-failure-visible.png",
+      "sha256": "d454caee19e3a7cde80518f749d902feaad2c4d4ce3517d148b636a7f675de5e"
+    },
+    {
+      "file": "screenshots/assistant-hidden-after.png",
+      "width": 1280,
+      "height": 720,
+      "source": ".local\\admin-navigation-evidence\\review-cost-scale-final-ten\\screenshots\\desktop-admin-assistant-hidden.png",
+      "sha256": "5e01f922cc72625e98145c8e48dc3350ace19845465dcf193c0f7dd9ff8db5c7"
+    },
+    {
+      "file": "screenshots/assistant-restored-after.png",
+      "width": 1280,
+      "height": 720,
+      "source": ".local\\admin-navigation-evidence\\review-cost-scale-final-ten\\screenshots\\desktop-admin-assistant-restored.png",
+      "sha256": "a51b5e41846e2e37b414e3f6a3ba8debca74c5b0e12c0e86f000d6d8b630e4e6"
+    },
+    {
+      "file": "screenshots/calendar-and-cost-after.png",
+      "width": 1280,
+      "height": 720,
+      "source": ".local\\admin-navigation-evidence\\review-cost-scale-final-ten\\screenshots\\desktop-admin-fourteen-calendar-days.png",
+      "sha256": "34750234db6dc6f768ae176ff30b3648dd1536009c17c4f258da844fe26d7f98"
+    },
+    {
+      "file": "screenshots/cost-scale-discovery-before.png",
+      "width": 1280,
+      "height": 720,
+      "source": ".local\\admin-navigation-evidence\\final-source-bound-ten-green\\screenshots\\desktop-admin-fourteen-calendar-days.png",
+      "sha256": "e3b833281006e5b743d5c012bb97173a4374e60d87de6cb6cecbadec0429be92"
+    }
+  ],
+  "finalStats": {
+    "startTime": "2026-11-05T02:57:00.184Z",
+    "duration": 13711.787,
+    "expected": 10,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

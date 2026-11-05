@@ -1,0 +1,199 @@
+{
+  "synthetic": true,
+  "base_commit": "3bb7baf12dba1c75465e9c5dd71ef7b073c176a9",
+  "finalized_at": "2026-11-05T02:53:23.768Z",
+  "environment": {
+    "os": "Windows",
+    "node": "v26.13.0",
+    "postgres": "16.14",
+    "migrations": 168,
+    "host": "127.0.0.1",
+    "port": 55434,
+    "template": "bb_prelaunch_payment_template",
+    "isolation": "per-test-file automatic template clone"
+  },
+  "scope": {
+    "summary_details": "retain complete existing from/to/state/user filters",
+    "trend": "default 14 inclusive UTC calendar dates anchored to to or current day; chart only last at most 90 UTC dates; fill idle days",
+    "ui": "actual first/last dates and UTC date count; disclose capped chart; active-user average over complete dates; no minimum-height zero bars",
+    "cost": "idle and unpriced costs remain null; no new charge, payment or model calls",
+    "contract": "existing optional daily and maxItems90 retained; no new DTO fields or weakened schema"
+  },
+  "rounds": [
+    {
+      "label": "pg-before-fix",
+      "description": "Fixture setup error: synthetic username exceeded bb_username_format length; seven SQL23514 failures before product assertions. Not product defect evidence.",
+      "counts": {
+        "tests": 7,
+        "pass": 0,
+        "fail": 7,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": {
+        "code": 1,
+        "signal": null
+      },
+      "raw_sha256": "e303b55ba6a3b0a7900e0a7a214f9334fc07f062f388a7aea0852ec4fa39d406",
+      "metadata_sha256": "5eb9987a2df6d04b18e60d5a4bbf71436c19cee3aca23354e4e096912530adf9"
+    },
+    {
+      "label": "pg-before-fix-fixture-corrected",
+      "description": "Unmodified 3bb product code, corrected username fixture. All seven failures are product assertions: sparse dates, historical anchor, 91-day cardinality, session-timezone grouping and missing idle dates.",
+      "counts": {
+        "tests": 7,
+        "pass": 0,
+        "fail": 7,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": {
+        "code": 1,
+        "signal": null
+      },
+      "raw_sha256": "72669a2c71fa9af4d79899f9e01f9ad527031b0e2936ffc1a783790c18918bf3",
+      "metadata_sha256": "97348b2c0633d0804fbf4e85df55a2a35f96f28ff6b8df47b2f61d2979298b83"
+    },
+    {
+      "label": "pg-after-fix",
+      "description": "Initial fixed product verification: seven passes. Superseded for the final PG test source by ci-admin-final after strengthening excluded-row and long-window assertions; product source unchanged.",
+      "counts": {
+        "tests": 7,
+        "pass": 7,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "raw_sha256": "d7cf3b04755e93940b2c2d2cb50fe1540a60ed975426cd5cf36b4f67a8d76cbf",
+      "metadata_sha256": "9d93833f69eb99d99ccaaf784b0fa0ecba168a7164cb751552e8611ab0c3a9cb"
+    },
+    {
+      "label": "api-units-after-fix",
+      "description": "Ten API unit passes; final API runtime and unit sources unchanged after this run.",
+      "counts": {
+        "tests": 10,
+        "pass": 10,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "raw_sha256": "2450411102c810b4a0f86254e8027f5efc71cb402a11f4cdc699f2b70f5d90ac",
+      "metadata_sha256": "83b73607343c851c8dfe44bc5a2b03e8cc82e7b247e041b84a64ade6df800ee2"
+    },
+    {
+      "label": "page-units-after-fix",
+      "description": "Twelve page unit passes; final page runtime and unit sources unchanged after this run.",
+      "counts": {
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "raw_sha256": "233da6422615665c4183fcd828128b55706b963838c4a8df936771c00b0cff36",
+      "metadata_sha256": "76ef73a5d245d1e0ecea5dcd866ff564c44c141e65c0b809ce9d79f4b684a54f"
+    },
+    {
+      "label": "ci-admin-final",
+      "description": "Final seven PG plus ten API unit tests, sequential TAP, 17/17. Includes nonzero excluded owner/state/date usage and settlement fixtures. Executes the exact TAP guard extracted from the new workflow step; guard exit 0. This is local execution, not GitHub Actions evidence.",
+      "counts": {
+        "tests": 17,
+        "pass": 17,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": {
+        "code": 0,
+        "signal": null
+      },
+      "raw_sha256": "27984347b144590f0d2ecb728a4b179b8acb1ac5c592aeb894384a33c62e88e3",
+      "metadata_sha256": "120562809cb0f5c06ba8e85259816b3e3f892d650392e2db1f94062cd6623a6c"
+    }
+  ],
+  "final_bindings": [
+    {
+      "path": "apps/api/src/admin-dashboard.ts",
+      "sha256": "6050fd9af019fcf7e4d146b4c52a3887c3424af40f4cea0cf487d13d57fc71ea",
+      "lf_normalized_sha256": "5d53f5f7ed5658715a9e2570530901bf1690075a453db708d20d75860b137856"
+    },
+    {
+      "path": "apps/api/src/admin-dashboard.test.ts",
+      "sha256": "eef66b722ed7a88ff9acfd3cf5c89b02da0768533d1163230d3abef2920f3f47",
+      "lf_normalized_sha256": "9e0af1babd4d51a946fb6a8293d467aff8f731904b25d702d41a0269189bda51"
+    },
+    {
+      "path": "apps/api/src/admin-dashboard.pg.test.ts",
+      "sha256": "177b7d7709d898e0b00e30c588985926919c35e9658225c2d58a54912afa7672",
+      "lf_normalized_sha256": "177b7d7709d898e0b00e30c588985926919c35e9658225c2d58a54912afa7672"
+    },
+    {
+      "path": "apps/web/src/admin-dashboard-page.ts",
+      "sha256": "9c3f3036c7a5580fa1a335f91e6190ce279c07b9bfb5bc5c60f33a784db514fa",
+      "lf_normalized_sha256": "077193933e4eb414b3f5034ecf347c2b7b904e3da979ed504a368f15cf8adb28"
+    },
+    {
+      "path": "apps/web/src/admin-dashboard-page.test.ts",
+      "sha256": "059b34fecd0876286d3dfe21cc2872ea9b447dde02bb1f508e5bfa96e8087c69",
+      "lf_normalized_sha256": "b4eb256f9f4a632acbc97e95664f5705d60fedc993629c3f6565ae14b3155098"
+    },
+    {
+      "path": ".github/workflows/m2-credits-pr.yml",
+      "sha256": "5979760866d49ded016f1805ac3d1e6d8c2e47d70ac23dea8e52cb0d1fb44912",
+      "lf_normalized_sha256": "974bed346a22c69261bd3d00ff92199e592e2e91e1c4a366aa3dc300f97ffdab"
+    },
+    {
+      "path": "apps/api/dist/admin-dashboard.js",
+      "sha256": "acf07d69297dd024d752e6d0bba94c6b679d776acd5ff5699f6044c265062c0c"
+    },
+    {
+      "path": "apps/api/dist/admin-dashboard.test.js",
+      "sha256": "aa79f4092b5723240485d1a85d265dc4ddb78fd85692811a099eb9c0a1b5d75e"
+    },
+    {
+      "path": "apps/api/dist/admin-dashboard.pg.test.js",
+      "sha256": "2043a4f32f889572dcce72b506fb19629f56d8320dc8499fa7f1a0b2549b1430"
+    },
+    {
+      "path": "apps/web/dist-test/admin-dashboard-page.js",
+      "sha256": "0c07c0d04397a95e7f94598174ec92867e71a12b1647e9ba04d15d54dec68b6b"
+    },
+    {
+      "path": "apps/web/dist-test/admin-dashboard-page.test.js",
+      "sha256": "da86ad362c32b3654ad2e27c06fcea1cae385ea7e0c38b692a0e4e60956dc52f"
+    }
+  ],
+  "final_pg_binding": "ci-admin-final",
+  "final_page_binding": "page-units-after-fix",
+  "cleanup": {
+    "clones": 0,
+    "other_clients": 0,
+    "smart_stop_exit": 0,
+    "status_exit": 3,
+    "port": "ECONNREFUSED"
+  },
+  "boundaries": [
+    "Synthetic PostgreSQL and UI/unit fixtures; not live production operator/data acceptance.",
+    "The local CI-like test uses Node26 on Windows; the updated GitHub Actions step still requires its Linux run.",
+    "No real model, merchant, payment or professional content acceptance.",
+    "Do not sum overlapping test rounds."
+  ]
+}

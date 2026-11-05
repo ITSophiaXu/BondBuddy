@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: summary cards render every aggregate, including tokens, cost and settled points
+ok 1 - summary cards render every aggregate, including tokens, cost and settled points
+  ---
+  duration_ms: 22.0885
+  type: 'test'
+  ...
+# Subtest: users table shows masked phones and lets an operator select a user
+ok 2 - users table shows masked phones and lets an operator select a user
+  ---
+  duration_ms: 0.787
+  type: 'test'
+  ...
+# Subtest: tasks table renders state/stage, duration, tokens, pricing and the latest error code
+ok 3 - tasks table renders state/stage, duration, tokens, pricing and the latest error code
+  ---
+  duration_ms: 0.627
+  type: 'test'
+  ...
+# Subtest: execution log panel shows bounded size, truncation and escaped private bytes
+ok 4 - execution log panel shows bounded size, truncation and escaped private bytes
+  ---
+  duration_ms: 0.3144
+  type: 'test'
+  ...
+# Subtest: filters and cursor become an encoded query without losing the user selection
+ok 5 - filters and cursor become an encoded query without losing the user selection
+  ---
+  duration_ms: 0.9024
+  type: 'test'
+  ...
+# Subtest: the forbidden state is a permission notice, never a generic failure
+ok 6 - the forbidden state is a permission notice, never a generic failure
+  ---
+  duration_ms: 0.1386
+  type: 'test'
+  ...
+# Subtest: cost and duration formatting stay readable and explicit
+ok 7 - cost and duration formatting stay readable and explicit
+  ---
+  duration_ms: 0.1562
+  type: 'test'
+  ...
+# Subtest: trend dates and active-user daily average include every idle UTC day
+ok 8 - trend dates and active-user daily average include every idle UTC day
+  ---
+  duration_ms: 1.1453
+  type: 'test'
+  ...
+# Subtest: a bounded trend discloses the last 90 UTC days while full-filter summaries and details remain available
+ok 9 - a bounded trend discloses the last 90 UTC days while full-filter summaries and details remain available
+  ---
+  duration_ms: 0.7582
+  type: 'test'
+  ...
+# Subtest: idle windows display their actual range without drawing activity or measured-zero cost bars
+ok 10 - idle windows display their actual range without drawing activity or measured-zero cost bars
+  ---
+  duration_ms: 0.2829
+  type: 'test'
+  ...
+# Subtest: zero tokens and unknown costs do not get minimum-height activity bars
+ok 11 - zero tokens and unknown costs do not get minimum-height activity bars
+  ---
+  duration_ms: 0.3492
+  type: 'test'
+  ...
+# Subtest: small positive costs have visible proportional bars while known zero and null costs have none
+ok 12 - small positive costs have visible proportional bars while known zero and null costs have none
+  ---
+  duration_ms: 0.5574
+  type: 'test'
+  ...
+# Subtest: an older response without daily data never claims the selected summary range has no tasks
+ok 13 - an older response without daily data never claims the selected summary range has no tasks
+  ---
+  duration_ms: 0.1307
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2143.2587
