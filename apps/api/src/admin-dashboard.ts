@@ -182,6 +182,41 @@ export async function adminDashboardOverview(pool: Pool, actorId: string, filter
         AND ($2::timestamptz IS NULL OR r.created_at<=$2)
         AND ($3::text IS NULL OR r.state=$3)
         AND ($4::text IS NULL OR r.owner_user_id=$4)`, filterArgs(filter));
+    const dailyUsage = await client.query(`SELECT to_char(date_trunc('day', r.created_at),'YYYY-MM-DD') AS date,
+        count(DISTINCT r.id)::int AS tasks,
+        count(DISTINCT r.owner_user_id)::int AS active_users,
+        COALESCE(sum(l.input_tokens),0)::text AS input_tokens,
+        COALESCE(sum(l.output_tokens),0)::text AS output_tokens,
+        sum(l.cost_amount)::text AS cost_amount,
+        CASE WHEN count(DISTINCT l.currency) FILTER (WHERE l.currency IS NOT NULL)=1 THEN min(l.currency) END AS currency
+      FROM bb_runs r
+      LEFT JOIN bb_platform_cost_ledger l ON l.owner_user_id=r.owner_user_id AND l.run_id=r.id
+      WHERE r.created_at >= COALESCE($1::timestamptz, now()-interval '14 days')
+        AND ($2::timestamptz IS NULL OR r.created_at<=$2)
+        AND ($3::text IS NULL OR r.state=$3)
+        AND ($4::text IS NULL OR r.owner_user_id=$4)
+      GROUP BY 1 ORDER BY 1`, filterArgs(filter));
+    const dailyCredits = await client.query(`SELECT to_char(date_trunc('day', r.created_at),'YYYY-MM-DD') AS date,
+        COALESCE(sum(e.points),0)::text AS points
+      FROM bb_credit_events e
+      JOIN bb_runs r ON r.id=e.run_id AND r.owner_user_id=e.owner_user_id
+      WHERE e.kind='settle'
+        AND r.created_at >= COALESCE($1::timestamptz, now()-interval '14 days')
+        AND ($2::timestamptz IS NULL OR r.created_at<=$2)
+        AND ($3::text IS NULL OR r.state=$3)
+        AND ($4::text IS NULL OR r.owner_user_id=$4)
+      GROUP BY 1`, filterArgs(filter));
+    const creditByDay = new Map(dailyCredits.rows.map(row => [row.date as string, String(row.points)]));
+    const daily = dailyUsage.rows.map(row => ({
+      date: row.date as string,
+      tasks: integer(row.tasks),
+      active_users: integer(row.active_users),
+      input_tokens: integer(row.input_tokens),
+      output_tokens: integer(row.output_tokens),
+      cost_amount: dashboardCostText(row.cost_amount),
+      currency: row.currency ?? null,
+      credit_settled_points: points(creditByDay.get(row.date as string) ?? '0')
+    }));
     const use = usage.rows[0] ?? {};
     return {
       range: {from: iso(filter.from), to: iso(filter.to)},
@@ -194,7 +229,8 @@ export async function adminDashboardOverview(pool: Pool, actorId: string, filter
       output_tokens: integer(use.output_tokens),
       cost_amount: dashboardCostText(use.cost_amount),
       currency: use.currency ?? null,
-      credit_settled_points: points(credits.rows[0]?.credit_settled_points)
+      credit_settled_points: points(credits.rows[0]?.credit_settled_points),
+      daily
     };
   });
 }

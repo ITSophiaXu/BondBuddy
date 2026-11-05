@@ -26,7 +26,11 @@ const overview: AdminDashboardOverview = {
   output_tokens: 200,
   cost_amount: '0.0014000000',
   currency: 'USD',
-  credit_settled_points: '500'
+  credit_settled_points: '500',
+  daily: [
+    { date: '2026-11-01', tasks: 1, active_users: 1, input_tokens: 1000, output_tokens: 200, cost_amount: '0.0014000000', currency: 'USD', credit_settled_points: '500' },
+    { date: '2026-11-02', tasks: 1, active_users: 1, input_tokens: 1000, output_tokens: 200, cost_amount: '0.0014000000', currency: 'USD', credit_settled_points: '0' }
+  ]
 };
 
 const user = {
@@ -129,6 +133,9 @@ test('agents and operators see per-user/per-task aggregates and masked phones', 
   await expect(page.locator('[data-dashboard-metric="tokens"]')).toHaveText('1,000 / 200');
   await expect(page.locator('[data-dashboard-metric="cost"]')).toHaveText('0.0014 USD');
   await expect(page.locator('[data-dashboard-metric="credits"]')).toHaveText('500 积分');
+  await expect(page.getByText('时间趋势').first()).toBeVisible();
+  await expect(page.locator('.admin-dashboard-chart').first()).toContainText('任务数');
+  await expect(page.locator('.admin-dashboard-chart-svg rect').first()).toBeVisible();
 
   await expect(page.locator('[data-dashboard-user-row="u_test"]')).toContainText('****0001');
   const row = page.locator('[data-dashboard-task-row="r_test"]');

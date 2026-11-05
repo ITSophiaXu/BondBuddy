@@ -356,6 +356,32 @@ function shell(content: string, section: string) {
   menu.addEventListener('click', () => { const open = document.querySelector('#sidebar')!.classList.toggle('mobile-open'); menu.setAttribute('aria-expanded', String(open)); menu.setAttribute('aria-label', open ? '关闭菜单' : '打开菜单'); });
 }
 
+function adminTab(route: string, ico: string, label: string, active: boolean) {
+  return `<a class="admin-tab" href="#${route}"${active ? ' aria-current="page" data-active="true"' : ''}>${prototypeIcon(ico)}<span>${label}</span></a>`;
+}
+
+/** Standalone administrator console shell: no product sidebar, no product assistant. */
+function adminShell(content: string, _section: string) {
+  const operator = identity || '当前账号';
+  root.innerHTML = `<div class="admin-app">
+    <header class="admin-topbar">
+      <a class="admin-brand" href="#admin/dashboard"><span class="admin-mark">${prototypeIcon('lock')}</span><span>BondBuddy <span class="admin-tag">ADMIN CONSOLE</span></span></a>
+      <nav class="admin-tabs" aria-label="管理导航">
+        ${adminTab('admin/dashboard','grid','运营看板',true)}
+        <span class="admin-tab disabled" title="用户管理即将上线">${prototypeIcon('building')}<span>用户管理</span><small>即将上线</small></span>
+        <span class="admin-tab disabled" title="审计日志即将上线">${prototypeIcon('file')}<span>审计日志</span><small>即将上线</small></span>
+      </nav>
+      <div class="admin-top-right">
+        <span class="admin-env">管理控制台</span>
+        <span class="admin-operator"><span class="admin-avatar">${esc(operator.slice(0,1).toUpperCase())}</span>${esc(operator)}</span>
+        <button id="admin-logout" class="admin-text-button" type="button">${prototypeIcon('arrow')}退出</button>
+      </div>
+    </header>
+    <div id="admin-main" class="admin-main">${content}</div>
+  </div>`;
+  document.querySelector('#admin-logout')?.addEventListener('click', () => { void logout(); });
+}
+
 function showError(error: unknown, operation:'save'|'action'='action') {
   const target = document.querySelector<HTMLElement>('#page-error');
   if (target) { target.textContent = friendlyError(error,operation); target.hidden = false; }
@@ -449,7 +475,7 @@ async function renderRoute() {
   if (/^review(\?|$)/.test(requested)) { const query=new URLSearchParams(requested.split('?')[1]??''); if(query.has('new'))renderNewReview(api,shell,()=>token===epoch,query);else{reviewEntry=new ReviewEntry(api,shell,()=>token===epoch);await reviewEntry.render(query.get('project')??undefined);}return; }
   if(requested==='/billing/prices'){billingPriceAdmin=new BillingPriceAdminPage(api,shell,()=>token===epoch,identity);await billingPriceAdmin.render();return;}
   if(requested==='/billing/task-refunds'){taskRefundAdmin=new TaskRefundAdminPage(api,shell,()=>token===epoch,identity);await taskRefundAdmin.render();return;}
-  if(requested==='/admin/dashboard'){adminDashboard=new AdminDashboardPage(api,shell,()=>token===epoch);await adminDashboard.render();return;}
+  if(requested==='/admin/dashboard'){adminDashboard=new AdminDashboardPage(api,adminShell,()=>token===epoch);await adminDashboard.render();return;}
   if(requested==='/account'||requested.startsWith('/account?')||requested==='billing'||requested.startsWith('billing?')||requested.startsWith('payment/')||requested==='/data-policy'){
     const query=new URLSearchParams(requested.split('?')[1]??'');
     const project=query.get('project')??undefined;
