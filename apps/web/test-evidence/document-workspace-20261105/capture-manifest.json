@@ -1,0 +1,496 @@
+[
+  {
+    "name": "tasks-actual-1366",
+    "url": "http://127.0.0.1:5182/#tasks",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "任务进度与结果",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "tasks-actual-1024",
+    "url": "http://127.0.0.1:5182/#tasks",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 1024,
+      "height": 900
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "任务进度与结果",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "tasks-actual-390",
+    "url": "http://127.0.0.1:5182/#tasks",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 390,
+      "height": 768
+    },
+    "sidebar": 0,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "任务进度与结果",
+        "size": "25px"
+      }
+    ]
+  },
+  {
+    "name": "review-actual-1366",
+    "url": "http://127.0.0.1:5182/#/projects/review-flow-reader-project/review?tab=results&run=review-flow-reader-run-1",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "复核募集说明书",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "review-actual-1024",
+    "url": "http://127.0.0.1:5182/#/projects/review-flow-reader-project/review?tab=results&run=review-flow-reader-run-1",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 1024,
+      "height": 900
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "复核募集说明书",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "review-actual-390",
+    "url": "http://127.0.0.1:5182/#/projects/review-flow-reader-project/review?tab=results&run=review-flow-reader-run-1",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 390,
+      "height": 768
+    },
+    "sidebar": 0,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "复核募集说明书",
+        "size": "25px"
+      }
+    ]
+  },
+  {
+    "name": "qa-actual-1366",
+    "url": "http://127.0.0.1:5182/#qa?project=synthetic-qa-continuation-a&run=synthetic-qa-answer-5",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "项目问答",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "qa-actual-1024",
+    "url": "http://127.0.0.1:5182/#qa?project=synthetic-qa-continuation-a&run=synthetic-qa-answer-5",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 1024,
+      "height": 900
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "项目问答",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "qa-actual-390",
+    "url": "http://127.0.0.1:5182/#qa?project=synthetic-qa-continuation-a&run=synthetic-qa-answer-5",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 390,
+      "height": 768
+    },
+    "sidebar": 0,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "项目问答",
+        "size": "22px"
+      }
+    ]
+  },
+  {
+    "name": "materials-actual-1366",
+    "url": "http://127.0.0.1:5182/#/projects/result-handoff-authoring-project?step=materials&run=result-handoff-authoring-old-run&from=projects&prepare=next&basis=result&prepare_after=3",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "合成历史募集书找稿项目",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "materials-actual-1024",
+    "url": "http://127.0.0.1:5182/#/projects/result-handoff-authoring-project?step=materials&run=result-handoff-authoring-old-run&from=projects&prepare=next&basis=result&prepare_after=3",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 1024,
+      "height": 900
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "合成历史募集书找稿项目",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "materials-actual-390",
+    "url": "http://127.0.0.1:5182/#/projects/result-handoff-authoring-project?step=materials&run=result-handoff-authoring-old-run&from=projects&prepare=next&basis=result&prepare_after=3",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 390,
+      "height": 768
+    },
+    "sidebar": 0,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "合成历史募集书找稿项目",
+        "size": "25px"
+      }
+    ]
+  },
+  {
+    "name": "files-actual-1366",
+    "url": "http://127.0.0.1:5182/#/projects/word-roundtrip-root/files",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "合成项目文件状态项目",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "files-actual-1024",
+    "url": "http://127.0.0.1:5182/#/projects/word-roundtrip-root/files",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 1024,
+      "height": 900
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "合成项目文件状态项目",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "files-actual-390",
+    "url": "http://127.0.0.1:5182/#/projects/word-roundtrip-root/files",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 390,
+      "height": 768
+    },
+    "sidebar": 0,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "合成项目文件状态项目",
+        "size": "25px"
+      }
+    ]
+  },
+  {
+    "name": "generation-actual-1366",
+    "url": "http://127.0.0.1:5182/#generate?project=generation-entry-api-P&return_project=generation-entry-api-P&step=documents",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "生成文件",
+        "size": "24px"
+      }
+    ]
+  },
+  {
+    "name": "generation-actual-1024",
+    "url": "http://127.0.0.1:5182/#generate?project=generation-entry-api-P&return_project=generation-entry-api-P&step=documents",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 1024,
+      "height": 900
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "生成文件",
+        "size": "24px"
+      }
+    ]
+  },
+  {
+    "name": "generation-actual-390",
+    "url": "http://127.0.0.1:5182/#generate?project=generation-entry-api-P&return_project=generation-entry-api-P&step=documents",
+    "title": "BondBuddy · 债券项目工作空间",
+    "viewport": {
+      "width": 390,
+      "height": 768
+    },
+    "sidebar": 0,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "生成文件",
+        "size": "22px"
+      }
+    ]
+  },
+  {
+    "name": "tasks-prototype-1366",
+    "url": "http://127.0.0.1:4333/product-prototype/public/document-workspace.html?view=tasks",
+    "title": "BondBuddy · 专业文档工作台原型",
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "任务进度与结果",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "tasks-prototype-1024",
+    "url": "http://127.0.0.1:4333/product-prototype/public/document-workspace.html?view=tasks",
+    "title": "BondBuddy · 专业文档工作台原型",
+    "viewport": {
+      "width": 1024,
+      "height": 900
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "任务进度与结果",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "results-prototype-1366",
+    "url": "http://127.0.0.1:4333/product-prototype/public/document-workspace.html?view=results",
+    "title": "BondBuddy · 专业文档工作台原型",
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "复核募集说明书",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "results-prototype-1024",
+    "url": "http://127.0.0.1:4333/product-prototype/public/document-workspace.html?view=results",
+    "title": "BondBuddy · 专业文档工作台原型",
+    "viewport": {
+      "width": 1024,
+      "height": 900
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "复核募集说明书",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "materials-prototype-1366",
+    "url": "http://127.0.0.1:4333/product-prototype/public/document-workspace.html?view=materials",
+    "title": "BondBuddy · 专业文档工作台原型",
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "合成城市建设投资集团有限公司-上交所-普通私募公司债-募集书更新",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "materials-prototype-1024",
+    "url": "http://127.0.0.1:4333/product-prototype/public/document-workspace.html?view=materials",
+    "title": "BondBuddy · 专业文档工作台原型",
+    "viewport": {
+      "width": 1024,
+      "height": 900
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "合成城市建设投资集团有限公司-上交所-普通私募公司债-募集书更新",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "files-prototype-1366",
+    "url": "http://127.0.0.1:4333/product-prototype/public/document-workspace.html?view=files",
+    "title": "BondBuddy · 专业文档工作台原型",
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "合成项目文件",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "files-prototype-1024",
+    "url": "http://127.0.0.1:4333/product-prototype/public/document-workspace.html?view=files",
+    "title": "BondBuddy · 专业文档工作台原型",
+    "viewport": {
+      "width": 1024,
+      "height": 900
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "合成项目文件",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "qa-prototype-1366",
+    "url": "http://127.0.0.1:4333/product-prototype/public/document-workspace.html?view=qa",
+    "title": "BondBuddy · 专业文档工作台原型",
+    "viewport": {
+      "width": 1366,
+      "height": 768
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "项目问答",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "qa-prototype-1024",
+    "url": "http://127.0.0.1:4333/product-prototype/public/document-workspace.html?view=qa",
+    "title": "BondBuddy · 专业文档工作台原型",
+    "viewport": {
+      "width": 1024,
+      "height": 900
+    },
+    "sidebar": 184,
+    "background": "rgb(255, 255, 255)",
+    "heading": [
+      {
+        "text": "项目问答",
+        "size": "28px"
+      }
+    ]
+  },
+  {
+    "name": "approved-tasks-1024",
+    "source": "user-approved inline preview",
+    "viewport": {
+      "width": 1024,
+      "height": 900
+    },
+    "source_sha256": "37e197b00e46ecf12bbdba4ab2f56dae0cfadc35ad3206e900886466f8ef57a8"
+  },
+  {
+    "name": "approved-review-1024",
+    "source": "user-approved inline preview",
+    "viewport": {
+      "width": 1024,
+      "height": 900
+    },
+    "source_sha256": "37e197b00e46ecf12bbdba4ab2f56dae0cfadc35ad3206e900886466f8ef57a8"
+  }
+]
