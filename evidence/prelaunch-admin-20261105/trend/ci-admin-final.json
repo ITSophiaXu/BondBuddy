@@ -1,0 +1,35 @@
+{
+  "synthetic": true,
+  "started": "2026-11-05T02:50:57.913Z",
+  "finished": "2026-11-05T02:51:09.919Z",
+  "node": "v26.13.0",
+  "command": [
+    "--test",
+    "--test-concurrency=1",
+    "--test-reporter=tap",
+    "apps/api/dist/admin-dashboard.test.js",
+    "apps/api/dist/admin-dashboard.pg.test.js"
+  ],
+  "exit": {
+    "code": 0,
+    "signal": null
+  },
+  "guard": {
+    "exit": {
+      "code": 0,
+      "signal": null
+    },
+    "output": "",
+    "source_sha256": "685e05baa02b3d6297753ec73ae4289dea4aa953d821bf7bfcf2d5fb5475c97f"
+  },
+  "bindings": {
+    "apps/api/src/admin-dashboard.ts": "6050fd9af019fcf7e4d146b4c52a3887c3424af40f4cea0cf487d13d57fc71ea",
+    "apps/api/src/admin-dashboard.pg.test.ts": "177b7d7709d898e0b00e30c588985926919c35e9658225c2d58a54912afa7672",
+    "apps/api/dist/admin-dashboard.js": "acf07d69297dd024d752e6d0bba94c6b679d776acd5ff5699f6044c265062c0c",
+    "apps/api/dist/admin-dashboard.pg.test.js": "2043a4f32f889572dcce72b506fb19629f56d8320dc8499fa7f1a0b2549b1430",
+    "apps/api/src/admin-dashboard.test.ts": "eef66b722ed7a88ff9acfd3cf5c89b02da0768533d1163230d3abef2920f3f47",
+    "apps/api/dist/admin-dashboard.test.js": "aa79f4092b5723240485d1a85d265dc4ddb78fd85692811a099eb9c0a1b5d75e",
+    ".github/workflows/m2-credits-pr.yml": "5979760866d49ded016f1805ac3d1e6d8c2e47d70ac23dea8e52cb0d1fb44912"
+  },
+  "raw_sha256": "27984347b144590f0d2ecb728a4b179b8acb1ac5c592aeb894384a33c62e88e3"
+}

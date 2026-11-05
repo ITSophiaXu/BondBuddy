@@ -8,6 +8,7 @@ import {
   dashboardForbiddenHtml,
   dashboardQuery,
   dashboardSummaryHtml,
+  dashboardTrendHtml,
   dashboardTasksHtml,
   dashboardUsersHtml,
   emptyDashboardFilters
@@ -119,4 +120,64 @@ test('cost and duration formatting stay readable and explicit', () => {
   assert.equal(dashboardDuration(null), '—');
   assert.equal(dashboardDuration(900), '900 ms');
   assert.equal(dashboardDuration(1500), '1.5 秒');
+});
+
+const idleDay = (date: string) => ({date, tasks: 0, active_users: 0, input_tokens: 0, output_tokens: 0, cost_amount: null, currency: null, credit_settled_points: '0'});
+
+test('trend dates and active-user daily average include every idle UTC day', () => {
+  const daily = Array.from({length: 14}, (_, i) => idleDay(`2026-10-${String(i + 1).padStart(2, '0')}`));
+  daily[0] = {...daily[0], tasks: 2, active_users: 1};
+  daily[13] = {...daily[13], tasks: 3, active_users: 2};
+  const html = dashboardTrendHtml({...overview, daily});
+  assert.match(html, /2026-10-01 至 2026-10-14/);
+  assert.match(html, /14 个 UTC 日/);
+  assert.match(html, /日均 0\.2 人/);
+  assert.doesNotMatch(html, /最近 14 天/);
+});
+
+test('a bounded trend discloses the last 90 UTC days while full-filter summaries and details remain available', () => {
+  const daily = Array.from({length: 90}, (_, i) => idleDay(new Date(Date.parse('2026-01-31T00:00:00Z') + i * 86400000).toISOString().slice(0, 10)));
+  daily[0] = {...daily[0], tasks: 1, active_users: 1};
+  const html = dashboardTrendHtml({...overview, range: {from: '2026-01-01T00:00:00Z', to: '2026-04-30T23:59:59.999Z'}, daily});
+  assert.match(html, /2026-01-31 至 2026-04-30/);
+  assert.match(html, /最后 90 个 UTC 日/);
+  assert.match(html, /汇总与明细保留完整筛选范围/);
+});
+
+test('idle windows display their actual range without drawing activity or measured-zero cost bars', () => {
+  const html = dashboardTrendHtml({...overview, daily: [idleDay('2026-02-01'), idleDay('2026-02-02')]});
+  assert.match(html, /2026-02-01 至 2026-02-02/);
+  assert.match(html, /该趋势日期范围内没有任务/);
+  assert.doesNotMatch(html, /<rect/);
+  assert.doesNotMatch(html, /0\.0.*USD/);
+});
+
+test('zero tokens and unknown costs do not get minimum-height activity bars', () => {
+  const html = dashboardTrendHtml({...overview, daily: [{...idleDay('2026-02-01'), tasks: 1, active_users: 1}, idleDay('2026-02-02')]});
+  assert.doesNotMatch(html, /<rect class="admin-dashboard-bar token-(?:in|out)"/);
+  assert.doesNotMatch(html, /<rect class="admin-dashboard-bar cost"/);
+  assert.equal((html.match(/<rect class="admin-dashboard-bar"/g) ?? []).length, 1);
+  assert.equal((html.match(/<rect class="admin-dashboard-bar users"/g) ?? []).length, 1);
+  assert.match(html, /未定价/);
+});
+
+test('small positive costs have visible proportional bars while known zero and null costs have none', () => {
+  const html = dashboardTrendHtml({...overview, daily: [
+    {...idleDay('2026-02-01'), tasks: 1, active_users: 1, cost_amount: '0.0001000000', currency: 'USD'},
+    {...idleDay('2026-02-02'), tasks: 1, active_users: 1, cost_amount: '0.0002000000', currency: 'USD'},
+    {...idleDay('2026-02-03'), tasks: 1, active_users: 1, cost_amount: '0.0000000000', currency: 'USD'},
+    idleDay('2026-02-04')
+  ]});
+  const bars = [...html.matchAll(/<rect class="admin-dashboard-bar cost"[^>]* height="([0-9.]+)"/g)];
+  assert.equal(bars.length, 2, 'only the two known positive costs draw bars');
+  const heights = bars.map(match => Number(match[1]));
+  assert.ok(heights.every(height => height > 0));
+  assert.equal(heights[1], heights[0] * 2, '0.0002 costs twice 0.0001');
+  assert.match(html, /0\.0003 USD/);
+});
+
+test('an older response without daily data never claims the selected summary range has no tasks', () => {
+  const html = dashboardTrendHtml(overview);
+  assert.match(html, /暂无按天趋势数据/);
+  assert.doesNotMatch(html, /所选范围内没有任务/);
 });

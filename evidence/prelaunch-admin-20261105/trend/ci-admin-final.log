@@ -1,0 +1,112 @@
+TAP version 13
+# Subtest: default UTC trend contains all 14 calendar days including idle dates, while summary remains unrestricted
+ok 1 - default UTC trend contains all 14 calendar days including idle dates, while summary remains unrestricted
+  ---
+  duration_ms: 232.6036
+  type: 'test'
+  ...
+# Subtest: historical to anchors the default 14-day trend without discarding older summary tasks
+ok 2 - historical to anchors the default 14-day trend without discarding older summary tasks
+  ---
+  duration_ms: 230.3267
+  type: 'test'
+  ...
+# Subtest: 90, 91 and 120-day filters keep complete summaries and paginated details with a schema-valid last-90-day trend
+ok 3 - 90, 91 and 120-day filters keep complete summaries and paginated details with a schema-valid last-90-day trend
+  ---
+  duration_ms: 489.9978
+  type: 'test'
+  ...
+# Subtest: UTC midnight grouping and credit dates remain unchanged in an Asia/Shanghai PostgreSQL session
+ok 4 - UTC midnight grouping and credit dates remain unchanged in an Asia/Shanghai PostgreSQL session
+  ---
+  duration_ms: 189.2926
+  type: 'test'
+  ...
+# Subtest: owner and state filters count runs/users once and do not multiply usage or settlement rows
+ok 5 - owner and state filters count runs/users once and do not multiply usage or settlement rows
+  ---
+  duration_ms: 449.2269
+  type: 'test'
+  ...
+# Subtest: an empty window contains idle calendar days without inventing measured zero costs
+ok 6 - an empty window contains idle calendar days without inventing measured zero costs
+  ---
+  duration_ms: 211.8101
+  type: 'test'
+  ...
+# Subtest: a measured but unpriced attempt stays null beside an idle day
+ok 7 - a measured but unpriced attempt stays null beside an idle day
+  ---
+  duration_ms: 257.094
+  type: 'test'
+  ...
+# Subtest: phone masking keeps only the last four digits and never returns the full number
+ok 8 - phone masking keeps only the last four digits and never returns the full number
+  ---
+  duration_ms: 1.3024
+  type: 'test'
+  ...
+# Subtest: range parsing normalises UTC days and rejects unknown or unsafe filter input
+ok 9 - range parsing normalises UTC days and rejects unknown or unsafe filter input
+  ---
+  duration_ms: 1.4848
+  type: 'test'
+  ...
+# Subtest: trend defaults to 14 inclusive UTC calendar days anchored to to or now
+ok 10 - trend defaults to 14 inclusive UTC calendar days anchored to to or now
+  ---
+  duration_ms: 0.4791
+  type: 'test'
+  ...
+# Subtest: only trend window is capped at 90 calendar days and the original filter stays complete
+ok 11 - only trend window is capped at 90 calendar days and the original filter stays complete
+  ---
+  duration_ms: 0.4918
+  type: 'test'
+  ...
+# Subtest: trend preserves explicit intraday boundaries while including their UTC calendar dates
+ok 12 - trend preserves explicit intraday boundaries while including their UTC calendar dates
+  ---
+  duration_ms: 1.1913
+  type: 'test'
+  ...
+# Subtest: keyset cursors round-trip the created_at and id pair and are section-scoped
+ok 13 - keyset cursors round-trip the created_at and id pair and are section-scoped
+  ---
+  duration_ms: 0.5222
+  type: 'test'
+  ...
+# Subtest: cost text stays exact decimal and rejects floating-point or malformed values
+ok 14 - cost text stays exact decimal and rejects floating-point or malformed values
+  ---
+  duration_ms: 0.3552
+  type: 'test'
+  ...
+# Subtest: users query applies time/state/user filters, keyset pagination and masked rows
+ok 15 - users query applies time/state/user filters, keyset pagination and masked rows
+  ---
+  duration_ms: 6.8292
+  type: 'test'
+  ...
+# Subtest: tasks query filters by state/time/user, maps usage and continues from the encoded cursor
+ok 16 - tasks query filters by state/time/user, maps usage and continues from the encoded cursor
+  ---
+  duration_ms: 0.9849
+  type: 'test'
+  ...
+# Subtest: routes deny non-operators with the same 404 and return masked rows for log_reader
+ok 17 - routes deny non-operators with the same 404 and return masked rows for log_reader
+  ---
+  duration_ms: 372.5235
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11751.2446
