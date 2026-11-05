@@ -12,6 +12,7 @@ docs/testing/*
 !docs/testing/bondbuddy-test-plan-v6/
 !docs/product.md
 !docs/M1-TECH-ARCHITECTURE.md
+!docs/PR-RELEASE-DEPLOY.md
 !docs/M2-FIXED-CREDITS.md
 !docs/M4-CORE-API.md
 !docs/PROJECT-FILES-ARCHITECTURE.md
