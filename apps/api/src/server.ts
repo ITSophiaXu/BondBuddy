@@ -37,6 +37,7 @@ import { installLibraryAdminRoutes } from './library-admin-routes.js';
 import { action as queueAction, enqueue } from './queue.js';
 import { executionKeyHash, isPgInputRevision, recordLogicalJob, recordOperation, rejectOperation, validExecutionKey } from './observability.js';
 import { installAdminRoutes } from './admin-routes.js';
+import { installAdminInspectionRoutes } from './admin-inspection.js';
 import { DOCX_LIMITS, WORD_MEDIA_TYPE } from './docx-inspector.js';
 import { installEventStreams, type StreamSettings } from './stream.js';
 import { sendMaterial, contentDisposition } from './material-download.js';
@@ -313,6 +314,7 @@ export function createServer(settings: Settings = {}) {
     return bytes;
   }
   installAdminRoutes(app,{db,blobs:blob,owner,promptViewDeadlineMs:settings.promptViewDeadlineMs});
+  installAdminInspectionRoutes(app,{db,owner});
   installBillingPermissions(app,{db,owner});
   installBillingPriceAdmin(app,db,owner);
   installTaskRefunds(app,{db,owner});
