@@ -28,13 +28,14 @@ test('combined candidate continuation, first-draft history staleness and host qu
     t.after(() => { net.Socket.prototype.connect = originalConnect; });
     const [{ Pool }, contracts, { createServer }, queue, data, { makeSyntheticDocxFixture }, billing,
       { inputManifestHash }, { unifiedInputGate }, { runPipelineOnce, inputLockStage, materialsReadyStage },
-      { fileAuthoringDeliveryStage }, { readContinuationBasis }, firstDraft] = await Promise.all([
+      { fileAuthoringDeliveryStage }, { readContinuationBasis }, firstDraft, { auditCredits }] = await Promise.all([
       import('pg'), import('@bondbuddy/contracts'), import('../apps/api/dist/server.js'),
       import('../apps/api/dist/queue.js'), import('../apps/api/dist/data.js'),
       import('../apps/api/dist/docx-fixtures.js'), import('../apps/api/dist/billing.js'),
       import('../apps/api/dist/production-rule-pin.js'), import('../apps/worker/dist/unified-input.js'),
       import('../apps/worker/dist/run-pipeline.js'), import('../apps/worker/dist/file-authoring-stage.js'),
-      import('../apps/web/dist-test/authoring-continuation.js'), import('../apps/web/dist-test/first-draft-confirmation.js')]);
+      import('../apps/web/dist-test/authoring-continuation.js'), import('../apps/web/dist-test/first-draft-confirmation.js'),
+      import('../apps/api/dist/billing-audit.js')]);
     const pool = new Pool({ connectionString: database.href }), owner = `synthetic-continuation-${randomUUID()}`;
     const files = new Map();
     const blobs = { put: async (key, bytes) => { files.set(key, Buffer.from(bytes)); },
@@ -148,6 +149,89 @@ test('combined candidate continuation, first-draft history staleness and host qu
       const charged = await ok('GET', `/api/v1/runs/${runId}/credit-charge`);
       assert.equal(String(charged.progress.charged_points), '0');
     };
+    // Legacy authoring_balance_v2 preserves progress debits and appends an exact
+    // per-source refund on failure (2026-10-11 decision; migration 0104). Its
+    // historical charged_points is gross; the public task projection is net zero.
+    const fullyRefunded = async (runId, balance, lease) => {
+      assert.ok(lease); assert.equal(lease.runId, runId);
+      const reservationRows = (await pool.query(`SELECT c.*,r.state AS run_state,r.reservation_id AS run_reservation_id
+        FROM bb_credit_reservations c JOIN bb_runs r ON r.id=c.run_id AND r.owner_user_id=c.owner_user_id
+        WHERE c.run_id=$1`, [runId])).rows;
+      assert.equal(reservationRows.length, 1);
+      const reservation = reservationRows[0];
+      assert.equal(reservation.owner_user_id, owner); assert.equal(reservation.run_id, runId);
+      assert.equal(reservation.run_reservation_id, reservation.id); assert.equal(reservation.run_state, 'failed');
+      assert.equal(reservation.billing_policy, 'authoring_balance_v2'); assert.equal(reservation.state, 'released');
+      assert.ok(reservation.finalized_at);
+      const events = (await pool.query(`SELECT * FROM bb_credit_events
+        WHERE run_id=$1 OR reservation_id=$2 ORDER BY event_key`, [runId, reservation.id])).rows;
+      assert.ok(events.length > 0);
+      for (const event of events) {
+        assert.equal(event.owner_user_id, owner); assert.equal(event.run_id, runId); assert.equal(event.reservation_id, reservation.id);
+        assert.ok(['settle', 'correction'].includes(event.kind)); assert.ok(BigInt(event.points) > 0n);
+        assert.equal(event.actor, 'system');
+        assert.equal(event.reason, event.kind === 'settle' ? 'authoring_progress_debit' : 'authoring_platform_failure_refund');
+      }
+      const settlements = events.filter(event => event.kind === 'settle');
+      assert.ok(settlements.length > 0, 'Exercise actual legacy progress debits before quality refusal');
+      for (const event of settlements) assert.match(event.event_key, new RegExp(`^progress:${reservation.id}:[0-9]+$`));
+      settlements.sort((a, b) => BigInt(a.event_key.split(':').at(-1)) < BigInt(b.event_key.split(':').at(-1)) ? -1 : 1);
+      let gross = 0n;
+      for (const event of settlements) {
+        gross += BigInt(event.points);
+        assert.equal(event.event_key, `progress:${reservation.id}:${gross}`);
+      }
+      assert.ok(gross > 0n && gross <= BigInt(reservation.points));
+      assert.equal(BigInt(reservation.charged_points), gross, 'Keep the append-only gross debit history');
+      const allocations = (await pool.query(`SELECT a.*,l.owner_user_id AS lot_owner,l.source AS lot_source,l.frozen AS lot_frozen
+        FROM bb_credit_allocations a JOIN bb_credit_lots l ON l.id=a.lot_id
+        WHERE a.reservation_id=$1 ORDER BY a.lot_id`, [reservation.id])).rows;
+      assert.ok(allocations.length > 0);
+      const corrections = events.filter(event => event.kind === 'correction');
+      assert.equal(corrections.length, allocations.length);
+      assert.equal(allocations.reduce((sum, allocation) => sum + BigInt(allocation.charged_points), 0n), gross);
+      assert.equal(corrections.reduce((sum, event) => sum + BigInt(event.points), 0n), gross);
+      for (const allocation of allocations) {
+        assert.equal(allocation.reservation_id, reservation.id); assert.equal(allocation.lot_owner, owner);
+        assert.ok(BigInt(allocation.charged_points) > 0n); assert.equal(BigInt(allocation.points), BigInt(allocation.charged_points));
+        assert.equal(BigInt(allocation.lot_frozen), 0n);
+        const key = `dynamic-failure:${reservation.id}:${allocation.lot_id}`;
+        const matched = corrections.filter(event => event.event_key === key);
+        assert.equal(matched.length, 1); assert.equal(matched[0].id, key); assert.equal(matched[0].lot_id, key);
+        assert.equal(BigInt(matched[0].points), BigInt(allocation.charged_points));
+        const refundLots = (await pool.query('SELECT * FROM bb_credit_lots WHERE id=$1 OR source_key=$1', [key])).rows;
+        assert.equal(refundLots.length, 1);
+        const refund = refundLots[0];
+        assert.equal(refund.id, key); assert.equal(refund.source_key, key); assert.equal(refund.owner_user_id, owner);
+        assert.equal(refund.source, allocation.lot_source === 'purchase' ? 'purchase' : 'correction');
+        assert.equal(BigInt(refund.original_points), BigInt(allocation.charged_points));
+        assert.equal(BigInt(refund.remaining), BigInt(allocation.charged_points)); assert.equal(BigInt(refund.frozen), 0n);
+      }
+      assert.equal(balance.frozen, 0); assert.deepEqual(await billing.creditBalance(pool, owner), balance);
+      const charged = await ok('GET', `/api/v1/runs/${runId}/credit-charge`);
+      assert.equal(charged.progress.policy, 'authoring_balance_v2'); assert.equal(String(charged.progress.charged_points), '0');
+      const history = await ok('GET', '/api/v1/credits/consumption-history?limit=50');
+      const entries = history.items.filter(item => item.run_id === runId);
+      assert.equal(entries.length, 1);
+      const entry = entries[0];
+      assert.equal(entry.reservation_id, reservation.id); assert.equal(entry.state, 'released');
+      assert.equal(entry.billing_policy, 'authoring_balance_v2');
+      assert.equal(entry.reserved_points, '0'); assert.equal(entry.released_points, '0');
+      assert.equal(BigInt(entry.charged_points), gross); assert.equal(BigInt(entry.corrected_points), gross);
+      assert.equal((await auditCredits(pool, owner)).consistent, true);
+      const ledgerSnapshot = async () => ({
+        balance: await billing.creditBalance(pool, owner),
+        events: (await pool.query('SELECT * FROM bb_credit_events WHERE owner_user_id=$1 ORDER BY event_key', [owner])).rows,
+        lots: (await pool.query('SELECT * FROM bb_credit_lots WHERE owner_user_id=$1 ORDER BY id', [owner])).rows,
+        reservations: (await pool.query('SELECT * FROM bb_credit_reservations WHERE owner_user_id=$1 ORDER BY id', [owner])).rows,
+        allocations: (await pool.query('SELECT * FROM bb_credit_allocations WHERE reservation_id=$1 ORDER BY lot_id', [reservation.id])).rows
+      });
+      const stable = await ledgerSnapshot();
+      await assert.rejects(queue.finish(pool, lease, 'failed', { errorCode: 'DATA_UNAVAILABLE' }),
+        error => error instanceof data.Problem && error.code === 'ALREADY_TERMINAL');
+      assert.deepEqual(await ledgerSnapshot(), stable, 'A duplicate terminal attempt cannot refund or mutate the ledger again');
+      assert.equal((await auditCredits(pool, owner)).consistent, true);
+    };
     assert.ok(Number((await pool.query('SHOW server_version_num')).rows[0].server_version_num) >= 160000);
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [owner, `synthetic_${randomUUID().replaceAll('-', '').slice(0,16)}`]);
     await billing.publishPrices(pool, { id: `synthetic-continuation-${randomUUID()}`, prices: { ...contracts.INITIAL_FIXED_PRICES, new_authoring: 10000 },
@@ -252,6 +336,7 @@ test('combined candidate continuation, first-draft history staleness and host qu
       for (const projectId of [id, (await create('generation')).project_id]) {
         const prior = await ok('GET', `${path(projectId)}/prospectus-versions`), balance = await billing.creditBalance(pool, owner), { run } = await start(projectId);
         let modelCalls = 0;
+        let claimedLease;
         const leaseEvents = [];
         const syntheticModel = { name: 'model_generation', run: async ctx => {
           modelCalls++; assert.equal(await ctx.validateBeforeModelCall(), null);
@@ -265,7 +350,7 @@ test('combined candidate continuation, first-draft history staleness and host qu
         } };
         assert.equal(await runPipelineOnce({ pool, blobs, leaseSeconds: 120, stages: [inputLockStage, materialsReadyStage, syntheticModel, fileAuthoringDeliveryStage()],
           onLease: lease => {
-            if (lease !== null) { assert.ok(lease); assert.equal(lease.runId, run.run_id); }
+            if (lease !== null) { assert.ok(lease); assert.equal(lease.runId, run.run_id); claimedLease = lease; }
             leaseEvents.push(lease === null ? null : lease.runId);
           },
           onUnexpectedError: error => assert.fail(JSON.stringify(error)) }), 'failed');
@@ -277,7 +362,7 @@ test('combined candidate continuation, first-draft history staleness and host qu
         assert.equal(gate.version, 'word-quality-v1'); assert.equal(gate.status, 'failed');
         const report = files.get(gate.report.key); assert.ok(report); assert.equal(data.digest(report), gate.report.sha256);
         assert.ok(JSON.parse(report).issues.length > 0, 'Use the actual installed host checker report');
-        await noCharge(run.run_id, balance);
+        await fullyRefunded(run.run_id, balance, claimedLease);
         const stable = await snapshot(projectId);
         await assert.rejects(read(projectId, run.run_id, 'result'), /成功交付/);
         const current = await read(projectId, run.run_id, 'current');

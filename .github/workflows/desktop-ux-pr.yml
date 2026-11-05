@@ -105,7 +105,7 @@ jobs:
           PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/admin-dashboard-browser.json
         run: |
           set -o pipefail
-          npx playwright test tests/admin-dashboard.spec.ts --reporter=line,json
+          npx playwright test tests/admin-dashboard.spec.ts tests/admin-inspection.spec.ts --reporter=line,json
           node --input-type=module <<'NODE'
           import { readFileSync } from 'node:fs';
           const report = JSON.parse(readFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_FILE, 'utf8'));

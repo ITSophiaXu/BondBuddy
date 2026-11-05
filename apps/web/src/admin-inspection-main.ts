@@ -1,0 +1,61 @@
+import {Value} from '@sinclair/typebox/value';
+import {AdminInspectionSnapshotSchema} from '@bondbuddy/contracts';
+import {ApiClient,ApiError} from './api.js';
+import {Inspection,emptyFilters,label,str,time} from './admin-inspection-model.js';
+import {esc,button,navs,filterHtml,overview,users,taskTable,batchList,errors,costs,coverage} from './admin-inspection-render.js';
+import {taskDetail} from './admin-inspection-detail.js';
+import './admin-inspection.css';
+const root=document.querySelector<HTMLDivElement>('#admin-root')!;
+let data:Inspection|undefined,view='overview',filters=emptyFilters(),page=0,detail='',tab='timeline',error='',loading=false;
+let draftFilters={...filters},readVersion=0,loggingOut=false;
+const filterNames=['search','kind','state','from','to','channel'] as const;
+function rememberDraft(form:HTMLFormElement){const values=new FormData(form);for(const name of filterNames)draftFilters[name]=str(values.get(name));}
+function filterFocus(){
+ const active=document.activeElement;
+ if(!(active instanceof HTMLInputElement||active instanceof HTMLSelectElement)||!active.closest('[data-filters]'))return;
+ return {name:active.name,start:active instanceof HTMLInputElement?active.selectionStart:null,end:active instanceof HTMLInputElement?active.selectionEnd:null,direction:active instanceof HTMLInputElement?active.selectionDirection:null};
+}
+function restoreFilterFocus(focus:ReturnType<typeof filterFocus>){
+ if(!focus)return;
+ const active=root.querySelector<HTMLInputElement|HTMLSelectElement>(`[data-filters] [name="${CSS.escape(focus.name)}"]`);
+ active?.focus({preventScroll:true});
+ if(active instanceof HTMLInputElement&&focus.start!==null&&focus.end!==null)active.setSelectionRange(focus.start,focus.end,focus.direction??undefined);
+}
+const api=new ApiClient(()=>{readVersion++;loading=false;data=undefined;detail='';error='登录已失效，请重新登录。';draw();});
+function draw(){const focus=filterFocus();if(!data){root.innerHTML=`<main class="login"><div class="logo">B<span>BondBuddy</span></div><h1>运营后台</h1><p>使用具备日志读取权限的账号登录。</p><form data-login><label>用户名<input name="username" autocomplete="username" required></label><label>密码<input name="password" type="password" autocomplete="current-password" required></label><button class="button primary" ${loading?'disabled':''}>${loading?'加载中…':'登录'}</button></form><p role="alert">${esc(error)}</p><a href="/">返回 BondBuddy</a></main>`;bind();return;}
+ const runs=data.filtered(filters);page=Math.max(0,Math.min(page,Math.max(0,Math.ceil(runs.length/25)-1)));const source=data.snapshot.source==='live_database'?'数据库实时读取':data.snapshot.source==='production_snapshot'?'线上真实数据快照':data.snapshot.source==='historical_evidence'?'历史真实记录（非当前全量）':'模拟测试数据';root.innerHTML=`<aside class="sidebar"><a class="logo" href="/admin/">B<span>BondBuddy<small>运营管理</small></span></a><nav>${navs.map(([id,icon,t])=>`<button data-view="${id}" class="${view===id?'active':''}"><b>${icon}</b>${t}</button>`).join('')}</nav><footer><span class="status-dot"></span> 只读运营后台<br><a href="/">返回产品 ↗</a></footer></aside><main class="workspace"><header class="topbar"><span>管理控制台 <span class="muted">/ ${navs.find(n=>n[0]===view)?.[2]}</span></span><div>${button(loading?'读取中…':'刷新数据',`data-refresh ${loading||loggingOut?'disabled':''}`)}${button(loggingOut?'退出中…':'退出',`data-logout ${loggingOut?'disabled':''}`)}</div></header><section class="page-heading"><div><small>OPERATIONS & OBSERVABILITY</small><h1>${navs.find(n=>n[0]===view)?.[2]}</h1></div><span class="source-tag">${source}</span></section><p class="source-line">采集于 ${esc(time(data.snapshot.captured_at))}（北京时间） · ${data.snapshot.source==='historical_evidence'?`载入 ${data.snapshot.scope.run_count} 条历史任务，线上总数未知`:`${data.snapshot.scope.run_count} / ${data.snapshot.scope.available_run_count} 次任务执行`} · <button class="link" data-view="coverage">查看覆盖范围</button></p>${error?`<p role="alert" class="notice">${esc(error)}</p>`:''}${view==='coverage'?'':filterHtml(data,draftFilters)}${view==='overview'?overview(data,runs)+batchList(data,filters):view==='users'?users(data,runs,filters)+batchList(data,filters):view==='tasks'?`<section class="panel"><h3>任务执行列表 <small>可按账号进入追踪详情</small></h3>${taskTable(data,runs,page)}</section>`+batchList(data,filters):view==='errors'?errors(data,runs,filters):view==='costs'?costs(data,runs):coverage(data)}</main>${detail?taskDetail(data,detail,tab):''}`;bind();restoreFilterFocus(focus);}
+async function refresh(){
+ if(loggingOut)return;
+ const version=++readVersion;loading=true;error='';draw();
+ try{
+  const s=await api.request('GET','/admin/inspection/snapshot');
+  if(version!==readVersion||loggingOut)return;
+  if(!Value.Check(AdminInspectionSnapshotSchema,s))throw Error('invalid snapshot');
+  data=new Inspection(s);
+ }catch(e){
+  if(version!==readVersion||loggingOut)return;
+  if(e instanceof ApiError&&(e.status===404||e.status===401)){data=undefined;detail='';}
+  error=e instanceof ApiError&&e.status===404?'此账号没有日志读取权限，或该环境尚未部署此接口。':e instanceof ApiError&&e.status===401?'请登录运营账号。':'读取数据失败；已有数据仍是上次采集快照。';
+ }finally{if(version===readVersion&&!loggingOut){loading=false;draw();}}
+}
+async function logout(){
+ if(loggingOut)return;
+ loggingOut=true;readVersion++;loading=false;api.reset();error='';draw();
+ try{await api.logout();data=undefined;detail='';filters=emptyFilters();draftFilters={...filters};view='overview';page=0;}
+ catch{if(data)error='退出结果尚未确认，请重试退出。';}
+ finally{loggingOut=false;draw();}
+}
+function bind(){root.querySelector<HTMLFormElement>('[data-login]')?.addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget as HTMLFormElement);loading=true;error='';draw();try{await api.login({username:str(f.get('username')),password:str(f.get('password'))});await refresh();}catch{error='登录失败，请核对账号、密码和访问权限。';}finally{loading=false;draw();}});
+ root.querySelectorAll<HTMLElement>('[data-view]').forEach(b=>b.onclick=()=>{view=b.dataset.view!;page=0;draw();});root.querySelector('[data-refresh]')?.addEventListener('click',refresh);root.querySelector('[data-logout]')?.addEventListener('click',logout);
+ const form=root.querySelector<HTMLFormElement>('[data-filters]');
+ for(const name of ['kind','state','channel'] as const){
+  const select=form?.querySelector<HTMLSelectElement>(`[name="${name}"]`),value=draftFilters[name];
+  if(select){if(value&&![...select.options].some(option=>option.value===value))select.add(new Option(label(value),value));select.value=value;}
+ }
+ form?.addEventListener('input',()=>rememberDraft(form));form?.addEventListener('change',()=>rememberDraft(form));
+ form?.addEventListener('submit',e=>{e.preventDefault();rememberDraft(form);filters={...draftFilters};page=0;draw();});root.querySelector('[data-reset]')?.addEventListener('click',()=>{filters=emptyFilters();draftFilters={...filters};page=0;draw();});root.querySelector('[data-clear-user]')?.addEventListener('click',()=>{filters.user='';draftFilters.user='';page=0;draw();});root.querySelectorAll<HTMLElement>('[data-user]').forEach(b=>b.onclick=()=>{filters=emptyFilters();filters.user=b.dataset.user!;draftFilters={...filters};view='tasks';page=0;draw();});root.querySelectorAll<HTMLElement>('[data-kind]').forEach(b=>b.onclick=()=>{filters.kind=b.dataset.kind!;draftFilters.kind=filters.kind;view='tasks';page=0;draw();});
+ for(const [attr,state] of [['data-failed','failed'],['data-stale','stale']])root.querySelector(`[${attr}]`)?.addEventListener('click',()=>{filters.state=state;draftFilters.state=state;view='tasks';page=0;draw();});root.querySelector('[data-prev]')?.addEventListener('click',()=>{page--;draw();});root.querySelector('[data-next]')?.addEventListener('click',()=>{page++;draw();});root.querySelectorAll<HTMLElement>('[data-detail]').forEach(b=>b.onclick=()=>{detail=b.dataset.detail!;tab='timeline';draw();root.querySelector<HTMLButtonElement>('[data-close]')?.focus();});root.querySelectorAll<HTMLElement>('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab!;draw();root.querySelector<HTMLButtonElement>(`[data-tab="${tab}"]`)?.focus();});for(const selector of ['[data-close]','[data-backdrop]'])root.querySelector(selector)?.addEventListener('click',closeDetail);
+}
+function closeDetail(){const id=detail;detail='';draw();[...root.querySelectorAll<HTMLButtonElement>('[data-detail]')].find(b=>b.dataset.detail===id)?.focus();}
+document.addEventListener('keydown',e=>{if(detail&&e.key==='Escape')closeDetail();if(detail&&e.key==='Tab'){const list=[...root.querySelectorAll<HTMLElement>('.drawer button,.drawer summary,.drawer [tabindex="0"]')];const first=list[0],last=list.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}});
+void refresh();
