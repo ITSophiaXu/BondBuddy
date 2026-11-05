@@ -4,6 +4,26 @@ import {schemas} from '@bondbuddy/contracts';
 import {missing,Problem} from './data.js';
 import {audit,operatorRoles} from './log-ops.js';
 import {collectAdminInspection} from './admin-inspection-data.js';
+import {Readable} from 'node:stream';
+import type {AdminInspectionSnapshot} from '@bondbuddy/contracts';
+
+/** Stream the curated DTO without building a second, whole-snapshot JSON string. */
+export function adminInspectionBody(snapshot:AdminInspectionSnapshot){
+  function* chunks(){
+    const {tables,...metadata}=snapshot;
+    yield JSON.stringify(metadata).slice(0,-1)+',"tables":[';
+    for(let i=0;i<tables.length;i++){
+      const {rows,...table}=tables[i];
+      yield (i?',':'')+JSON.stringify(table).slice(0,-1)+',"rows":[';
+      for(let offset=0;offset<rows.length;offset+=128){
+        yield (offset?',':'')+rows.slice(offset,offset+128).map(row=>JSON.stringify(row)).join(',');
+      }
+      yield ']}';
+    }
+    yield ']}';
+  }
+  return Readable.from(chunks(),{objectMode:false,highWaterMark:64*1024});
+}
 
 export function installAdminInspectionRoutes(app:FastifyInstance,deps:{db:()=>Pool;owner:(r:FastifyRequest)=>Promise<string>}){
   // Keep the large metadata export within the API container's memory budget.
@@ -32,7 +52,7 @@ export function installAdminInspectionRoutes(app:FastifyInstance,deps:{db:()=>Po
       await client.query("SET LOCAL statement_timeout='15s'");
       const snapshot=await collectAdminInspection(client,'live_database',process.env.BB_RELEASE_SHA??null);
       await client.query('COMMIT');
-      return snapshot;
+      return reply.type('application/json; charset=utf-8').send(adminInspectionBody(snapshot));
     }catch(error){releaseExport();throw error;}
     finally{if(client){await client.query('ROLLBACK').catch(()=>{});client.release();}}
   });
