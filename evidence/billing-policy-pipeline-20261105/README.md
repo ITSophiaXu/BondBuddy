@@ -2,7 +2,7 @@
 
 用户未提供具体线上失败任务，本轮主动构造同类兼容风险，不用于归因未知线上故障。承接已合并的 [#894](https://github.com/ITSophiaXu/BondBuddy/pull/894)，补齐原专项通过手动 checkpoint/finish 验证、尚未经过完整 worker 编排的分支。仅增加测试与证据，不修改产品、费率、契约或数据库迁移。
 
-生产基线为 `1ef2092708aaadbb12f07a4e6ddf5a9e2dee322f`。隔离本地服务、PostgreSQL 和随机合成账号；Windows Node `v26.13.0`。两份脚本按顺序执行，所记录的十份脚本／编译产物及服务实例在执行前后保持一致，见 [provenance.json](provenance.json) 和主 agent 的 [独立核对](root-review.json)。旧报告保留，最终报告没有拼接不同轮次。
+产品源码基线为 `1ef2092708aaadbb12f07a4e6ddf5a9e2dee322f`，不代表线上版本。隔离本地服务、PostgreSQL 和随机合成账号；Windows Node `v26.13.0`。两份脚本按顺序执行，所记录的十份脚本／编译产物及服务实例在执行前后保持一致，见 [provenance.json](provenance.json) 和主 agent 的 [独立核对](root-review.json)。旧报告保留，最终报告没有拼接不同轮次。
 
 | 脚本 | 本次结果 | 新增覆盖 |
 | --- | --- | --- |
