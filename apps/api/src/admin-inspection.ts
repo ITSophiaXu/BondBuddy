@@ -52,7 +52,8 @@ export function installAdminInspectionRoutes(app:FastifyInstance,deps:{db:()=>Po
       await client.query("SET LOCAL statement_timeout='15s'");
       const snapshot=await collectAdminInspection(client,'live_database',process.env.BB_RELEASE_SHA??null);
       await client.query('COMMIT');
-      return reply.type('application/json; charset=utf-8').send(adminInspectionBody(snapshot));
+      // The web proxy has a small tmpfs/memory budget; preserve backpressure.
+      return reply.header('x-accel-buffering','no').type('application/json; charset=utf-8').send(adminInspectionBody(snapshot));
     }catch(error){releaseExport();throw error;}
     finally{if(client){await client.query('ROLLBACK').catch(()=>{});client.release();}}
   });
