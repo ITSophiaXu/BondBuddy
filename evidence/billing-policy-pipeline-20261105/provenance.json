@@ -1,0 +1,118 @@
+{
+  "status": "passed",
+  "startedAt": "2026-11-05T09:42:57.050Z",
+  "finishedAt": "2026-11-05T09:43:33.404Z",
+  "node": "v26.13.0",
+  "root": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105",
+  "head": "1ef2092708aaadbb12f07a4e6ddf5a9e2dee322f",
+  "sourceBindings": [
+    {
+      "path": "scripts/billing-functional/billing-policy-compatibility-verify.mjs",
+      "bytes": 33874,
+      "sha256": "a9b0df03af710fa629e74e8fe04b025d29b956d73b36e440375d8e22a1a8f56f"
+    },
+    {
+      "path": "scripts/billing-functional/m4-billing-policy-compatibility-verify.mjs",
+      "bytes": 38192,
+      "sha256": "f092742fba0cbd073d7a9f2741a073145e96761146ba483172b5d8e3771985ea"
+    },
+    {
+      "path": "scripts/billing-functional/config.mjs",
+      "bytes": 2054,
+      "sha256": "84b9f7e155413bdbd52d00806cf2bdc4f747a8fe472f8a2d01fa70a7b0ac1549"
+    },
+    {
+      "path": "scripts/billing-functional/provider.mjs",
+      "bytes": 20385,
+      "sha256": "5caafc106aee1a5115650baa2e42b4aa30f35d5af0b37e436f92cd9a5ea4689c"
+    },
+    {
+      "path": "scripts/billing-functional/serve.mjs",
+      "bytes": 23884,
+      "sha256": "d2bb55f7d982a1b6b022931a13c25c91d3ec884064a93a58151fadd7f783d6d6"
+    },
+    {
+      "path": "apps/api/dist/server.js",
+      "bytes": 198823,
+      "sha256": "44cd89c3ef2385b627fd27482cc62a9f317e0b274996f08d95524b8b4968c8c0"
+    },
+    {
+      "path": "apps/api/dist/queue.js",
+      "bytes": 100083,
+      "sha256": "72c639c0c6a68118e4af0b1387b3880cf136a78885a11e5a8b2dd50f9b8be362"
+    },
+    {
+      "path": "apps/api/dist/automatic-billing-context.js",
+      "bytes": 1914,
+      "sha256": "115476014266e6ed21b7327e598d35e8d9a616f2b91f0270988af5f9ce3293c5"
+    },
+    {
+      "path": "apps/worker/dist/run-pipeline.js",
+      "bytes": 56608,
+      "sha256": "4a32082b61b1f44c3ee7c5c6e79083ae4e0c7c09cc53029bd5c8fd3a97a4d7df"
+    },
+    {
+      "path": "apps/worker/dist/m4-input.js",
+      "bytes": 11294,
+      "sha256": "36bff626f0652b1cebd9ea78341e00a32b5cacd817013ac42098473f3e37cf5b"
+    }
+  ],
+  "sourceUnchanged": true,
+  "serviceUnchanged": true,
+  "service": {
+    "ready": true,
+    "synthetic": true,
+    "launch_id": "982d76730703e1b28255bfa28f12f0adb4606a26e0fa9548"
+  },
+  "results": [
+    {
+      "script": "scripts/billing-functional/billing-policy-compatibility-verify.mjs",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "scripts/billing-functional/billing-policy-compatibility-verify.mjs"
+      ],
+      "startedAt": "2026-11-05T09:42:57.193Z",
+      "finishedAt": "2026-11-05T09:43:15.332Z",
+      "exit": 0,
+      "stdout": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\scripts\\billing-functional\\.runtime\\pipeline-compatibility-final-beba4e6b\\review.stdout.log",
+      "stderr": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\scripts\\billing-functional\\.runtime\\pipeline-compatibility-final-beba4e6b\\review.stderr.log",
+      "stdoutSha256": "a2ab80cbd34478e5d0f62b2d56abd611932170d67eb73c5be971375e314559a2",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "report": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\scripts\\billing-functional\\.runtime\\billing-policy-compatibility-f48db002\\verification.json",
+      "reportSha256": "7092650dd0ea22a37c7f74bb55f64d7f5fc12c8a97d0b97dba95ab2904460f3e",
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "finalAuditConsistent": true,
+      "finalActiveRuns": 0,
+      "realPaymentCallsPerformed": 0,
+      "modelCallsPerformed": 0,
+      "pipelineScenarios": 4
+    },
+    {
+      "script": "scripts/billing-functional/m4-billing-policy-compatibility-verify.mjs",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "scripts/billing-functional/m4-billing-policy-compatibility-verify.mjs"
+      ],
+      "startedAt": "2026-11-05T09:43:15.424Z",
+      "finishedAt": "2026-11-05T09:43:33.282Z",
+      "exit": 0,
+      "stdout": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\scripts\\billing-functional\\.runtime\\pipeline-compatibility-final-beba4e6b\\m4.stdout.log",
+      "stderr": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\scripts\\billing-functional\\.runtime\\pipeline-compatibility-final-beba4e6b\\m4.stderr.log",
+      "stdoutSha256": "4054f9bcd2d950035e012b5674c7ec04454d084c5bda43f76dda2a9604f4ed3d",
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "report": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\scripts\\billing-functional\\.runtime\\m4-billing-policy-compatibility-b49bd1d7\\verification.json",
+      "reportSha256": "7147722d28ea10947083fee60d7274a3421da987812ccbd6fa8b5d3194cc1fba",
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "finalAuditConsistent": true,
+      "finalActiveRuns": 0,
+      "realPaymentCallsPerformed": 0,
+      "modelCallsPerformed": 0,
+      "pipelineScenarios": 4
+    }
+  ],
+  "scope": "Local current binary, real HTTP/PG and production pipeline input/material/orchestration/promotion/settlement. Only model and Word-output stages are synthetic. No historical binary/schema or original provider-journal migration, real model, merchant, or content-quality acceptance."
+}
