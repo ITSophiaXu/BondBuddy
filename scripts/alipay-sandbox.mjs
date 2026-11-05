@@ -5,6 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {createAlipayPayProvider,AlipayPayError} from '../apps/api/dist/alipay-pay.js';
 import {alipaySandboxOptions} from '../apps/api/dist/payment-provider-config.js';
+import {canReopenSandboxCheckout,prepareSandboxCheckout,withSandboxSession} from './alipay-sandbox-order.mjs';
 
 const app=Fastify({logger:false,bodyLimit:1024});
 const sessions=new Map();let provider,origin;
@@ -18,16 +19,19 @@ const session=(request,reply,create=false)=>{
   reply.header('set-cookie',`bb_alipay_sandbox=${key}; Path=/; HttpOnly; SameSite=Lax`);return value;
 };
 const stateText={pending:'等待沙箱付款',paid:'已通过支付宝查询确认沙箱付款成功',expired:'订单已关闭或过期',unknown:'付款结果待核对',refunded:'已通过支付宝查询确认沙箱退款成功'};
-const page=value=>shell(`<h1>网站支付测试</h1><p>本页使用支付宝沙箱测试资金，金额固定为 0.01 元。不会给正式账户充值。</p><p role="status">${stateText[value?.state]??'尚未创建测试订单'}</p>${value?.order?`<small>测试订单：${escape(value.order.id)}</small><br>`:''}
-  ${!value?.order||value.state==='pending'||value.state==='unknown'?'<form method="post" action="/checkout"><button>进入支付宝沙箱收银台</button></form>':''}
+const page=value=>shell(`<h1>网站支付测试</h1><p>本页使用支付宝沙箱测试资金，金额固定为 0.01 元。不会给正式账户充值。</p><p role="status">${stateText[value?.state]??'尚未创建测试订单'}</p>${value?.order?`<small>测试订单：${escape(value.order.id)}<br>有效期至：${escape(new Date(value.order.expires_at).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false}))}（北京时间）</small><br>`:''}
+  ${!value?.order||canReopenSandboxCheckout(value)?'<form method="post" action="/checkout"><button>进入支付宝沙箱收银台</button></form>':''}
+  ${value?.order&&['pending','unknown'].includes(value.state)&&!canReopenSandboxCheckout(value)?'<p>订单已到期或即将到期。请先查询支付结果；确认已关闭或过期后，才能创建新测试订单。</p>':''}
+  ${value?.state==='expired'?`<form method="post" action="/new-order"><input type="hidden" name="previous_order_id" value="${escape(value.order.id)}"><button>创建新测试订单并进入收银台</button></form>`:''}
   ${value?.order?'<form method="post" action="/query"><button>查询支付结果</button></form>':''}
   ${value?.order&&['pending','unknown'].includes(value.state)?'<form method="post" action="/close"><button>关闭未付款订单</button></form>':''}
   ${value?.state==='paid'?'<form method="post" action="/refund"><button>退回本笔沙箱付款</button></form>':''}
+  <p>每笔测试订单有效期为 30 分钟，刷新收银台不会延长有效期。二维码不能使用时，可在收银台选择“使用电脑支付”，输入沙箱账号和支付密码。</p>
   <p>同步回跳和页面参数不表示付款成功，结果以服务端验签查询为准。这里验证支付接口，不验证正式账户的订阅与积分入账。</p>`);
 const observe=async value=>{
   try{const receipt=await provider.query(value.order);value.state=receipt.state;value.receipt=receipt;
     process.stdout.write(JSON.stringify({event:'sandbox_query',state:receipt.state})+'\n');}
-  catch(error){value.state='unknown';process.stdout.write(JSON.stringify({event:'sandbox_query',state:'unknown',code:error instanceof AlipayPayError?error.code:'UNKNOWN'})+'\n');}
+  catch(error){value.state='unknown';delete value.receipt;process.stdout.write(JSON.stringify({event:'sandbox_query',state:'unknown',code:error instanceof AlipayPayError?error.code:'UNKNOWN'})+'\n');}
 };
 app.addContentTypeParser('application/x-www-form-urlencoded',{parseAs:'string'},(_r,body,done)=>done(null,body));
 app.addHook('onRequest',async(request,reply)=>{
@@ -39,17 +43,20 @@ app.get('/',async(request,reply)=>reply.type('text/html').send(page(session(requ
 app.get('/health',async()=>({sandbox:true,configured:!!provider,productionDatabase:false}));
 app.get('/payment/alipay/return.html',async(request,reply)=>{
   const value=session(request,reply);
-  if(value?.order){await observe(value);return reply.type('text/html').send(page(value));}
+  if(value?.order)return withSandboxSession(value,async()=>{await observe(value);return reply.type('text/html').send(page(value));});
   return reply.type('text/html').send(readFileSync(new URL('../apps/web/public/payment/alipay/return.html',import.meta.url),'utf8'));
 });
-app.post('/checkout',async(request,reply)=>{
+for(const route of ['/checkout','/new-order'])app.post(route,async(request,reply)=>{
   const value=session(request,reply);if(!value)return reply.code(403).send('Open the sandbox page first');
-  if(!value.order){value.order={id:'bb_sandbox_'+randomUUID().replaceAll('-',''),merchant_id:provider.merchantId,currency:'CNY',amount_fen:1,expires_at:new Date(Date.now()+1800000).toISOString()};value.state='pending';}
-  if(!['pending','unknown'].includes(value.state))return reply.redirect('/');
-  return reply.type('text/html').send(await provider.createCheckoutForm(value.order));
+  return withSandboxSession(value,async()=>{
+    const replaceOrderId=route==='/new-order'?new URLSearchParams(typeof request.body==='string'?request.body:'').get('previous_order_id')??'':undefined;
+    if(!await prepareSandboxCheckout(value,{provider,observe,replaceOrderId}))return reply.type('text/html').send(page(value));
+    return reply.type('text/html').send(await provider.createCheckoutForm(value.order));
+  });
 });
 for(const action of ['query','close','refund'])app.post('/'+action,async(request,reply)=>{
   const value=session(request,reply);if(!value?.order)return reply.code(404).send('No sandbox order');
+  return withSandboxSession(value,async()=>{
   if(action==='query')await observe(value);
   if(action==='close'){const result=await provider.closePayment(value.order);value.state=result.state;value.receipt=result;}
   if(action==='refund'){
@@ -59,6 +66,7 @@ for(const action of ['query','close','refund'])app.post('/'+action,async(request
     const result=await provider.refunds.recoverSameRequest(value.refund);if(result.state==='succeeded')value.state='refunded';
   }
   return reply.type('text/html').send(page(value));
+  });
 });
 app.setErrorHandler((error,_request,reply)=>{
   process.stdout.write(JSON.stringify({event:'sandbox_operation_unresolved',code:error instanceof AlipayPayError?error.code:'UNKNOWN'})+'\n');
