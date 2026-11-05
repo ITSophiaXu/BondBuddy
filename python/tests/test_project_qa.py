@@ -1,4 +1,5 @@
 import hashlib
+import copy
 import json
 import tempfile
 import unittest
@@ -171,16 +172,24 @@ class ProjectQaTests(unittest.TestCase):
             qs=[dict(qs[0],end=qs[1]['end'],question=qs[0]['question']+'\n'+qs[1]['question']),qs[2]]
             facts=inspect(root/'synthetic-materials.docx')
             answer={'question_id':qs[0]['id'],'answer':'本期募集资金 5 亿元用于偿还有息债务，金额与发行规模一致。','status':'draft','missing_materials':[],
-                    'citations':[{'asset_index':0,'span_id':'p1','quote':facts['spans'][1]['text']}],'case_ids':[],'approach':'按用途核对金额。'}
+                    'citations':[{'asset_index':0,'span_id':'p1','quote':facts['spans'][1]['text']}],'case_ids':['synthetic-case'],'approach':'按用途核对金额。'}
             missing={'question_id':qs[1]['id'],'answer':'缺少回款证据，暂无法判断回收安排可行性。','status':'missing','missing_materials':['往来占款明细、回款计划与最新回款凭证。'],'citations':[],'case_ids':[],'approach':'先核对形成原因，再评估回收依据。'}
-            req={'source_sha256':hashlib.sha256(prepared.read_bytes()).hexdigest(),'questions':qs,'answers':[answer,missing],'evidence':[{'filename':'合成材料.docx','snapshot':facts}],'cases':[]}
+            req={'source_sha256':hashlib.sha256(prepared.read_bytes()).hexdigest(),'questions':qs,'answers':[answer,missing],'evidence':[{'filename':'合成材料.docx','snapshot':facts}],'cases':[{'id':'synthetic-case','content':{'title':'合成案例标题','url':'https://example.test/audit-only'}}]}
+            before=copy.deepcopy(req)
             output=root/'filled.docx';fill(prepared,req,output)
             with ZipFile(source) as a,ZipFile(output) as b:
                 self.assertEqual(a.read('word/footer1.xml'),b.read('word/footer1.xml'))
                 self.assertEqual(a.read('word/styles.xml'),b.read('word/styles.xml'))
                 xml=b.read('word/document.xml').decode();self.assertIn('往来占款明细',xml);self.assertNotIn('w:hRule="exact"',xml)
+                self.assertIn(answer['answer'],xml)
+                for internal in ['回答依据：','合成材料.docx','段落 2',facts['spans'][1]['text'],'参考公开案例','合成案例标题','https://example.test/audit-only']:
+                    self.assertNotIn(internal,xml)
+            self.assertEqual(req,before,'rendering must retain structured citation/case audit data')
             result=Document(output);self.assertEqual(len(result.tables),1);self.assertIn('待补材料',result.tables[0].cell(0,0).text)
             self.assertEqual(hashlib.sha256(prepared.read_bytes()).hexdigest(),req['source_sha256'])
+            bad=copy.deepcopy(req);bad['answers'][0]['citations'][0]['quote']='无依据的金额'
+            with self.assertRaisesRegex(ValueError,'QA_CITATION_CHANGED'):
+                fill(prepared,bad,root/'invalid-citation.docx')
             req['questions'][0]['question']='伪造定位';self.assertRaises(ValueError,fill,prepared,req,root/'invalid.docx')
 
     def test_spreadsheet_evidence_keeps_sheet_and_row_locations(self):

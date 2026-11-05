@@ -14,6 +14,9 @@ for(const width of [1440,390])test(`prospectus answer table retains facts and on
  await expect(details.locator('table')).toHaveCount(1);await expect(details.locator('thead')).toContainText('2024年');
  await expect(details.locator('tbody tr')).toHaveCount(2);await expect(details).toContainText('单位：万元');
  await expect(details).toContainText('增幅20%');await expect(details.locator('.qa-warning li')).toHaveCount(1);
+ expect(answer.citations.length).toBeGreaterThan(0);
+ await expect(details.locator('.qa-citation')).toHaveCount(0);
+ await expect(details).not.toContainText(run.result!.evidence[0].snapshot.spans[0].text);
  await expect(details).not.toContainText('回答思路');expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
  const dir=process.env.BB_UX_EVIDENCE_DIR;
  if(dir){await mkdir(dir,{recursive:true});await details.screenshot({path:join(dir,`answer-table-${width}.png`)});

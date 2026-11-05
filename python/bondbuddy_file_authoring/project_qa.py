@@ -210,17 +210,17 @@ def fill(source, request, output):
             if not answer['missing_materials']:
                 raise ValueError('QA_MISSING_LIST_REQUIRED')
             content.append(('待补材料或待确认事项\n' + '\n'.join('• ' + m for m in answer['missing_materials']), True))
+        # Citations remain in the result for grounding/audit, not in the reply.
+        # Keep validating them even though their metadata is not rendered.
         for cite in answer['citations']:
             evidence = request['evidence'][cite['asset_index']]
             span = next(s for s in evidence['snapshot']['spans'] if s['id'] == cite['span_id'])
             if cite['quote'] not in span['text']:
                 raise ValueError('QA_CITATION_CHANGED')
-            content.append(('回答依据：' + evidence['filename'] + ' · ' + span['location'] + '\n' + cite['quote'], False))
         if answer['approach']:
             content.append(('回答思路：' + answer['approach'], False))
         for case_id in answer['case_ids']:
-            case = next(c for c in request['cases'] if c['id'] == case_id)['content']
-            content.append(('参考公开案例（仅供回答思路）：' + case['title'] + '\n' + case['url'], False))
+            next(c for c in request['cases'] if c['id'] == case_id)
         anchor = nodes[end]
         # Fixed-height template rows must expand to fit the answer.
         for ancestor in anchor.iterancestors():
