@@ -40,6 +40,14 @@ node scripts/alipay-sandbox.mjs
 本地订单生命周期回归：`node --test scripts/alipay-sandbox-order.test.mjs`，覆盖到期、
 状态不明、付款竞态、重复换单及旧订单证据保留。
 
+2026-11-05 实际联调记录：用户已完成 0.01 元沙箱订单付款并回跳本地页面。
+共享适配器查询真实沙箱网关，RSA2 验签和订单、金额核对通过，取得
+`TRADE_SUCCESS`。这证明本笔订单的付款、回跳及查询链路已验证。
+同一查询返回 `buyer_pay_amount=0.00`、`receipt_amount=0.00`，与订单总额
+`total_amount=0.01` 不同，尚不能确认原因。退款前实付校验已阻止退款提交；
+不得用订单总额替换买家实付金额，也不能称退款验证完成。
+公网通知和独立测试数据库中的订阅、积分入账仍待集成验收。
+
 完整 API 的隔离测试环境也可使用 `NODE_ENV=test`、
 `BB_ALIPAY_PAY_ENABLED=1`、`BB_ALIPAY_ENVIRONMENT=sandbox` 和实际
 `BB_ALIPAY_RETURN_URL`。只能连接独立测试数据库；不能同时设置生产应用/密钥字段，
