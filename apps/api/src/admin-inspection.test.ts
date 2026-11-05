@@ -16,3 +16,11 @@ test('anonymous and ungranted accounts cannot read any operational rows',async()
 test('snapshot access is audited before a repeatable read only transaction and is non-cacheable',async()=>{const {app,calls}=await appFor(true);try{const r=await app.inject('/api/v1/admin/inspection/snapshot');assert.equal(r.statusCode,200,r.body);assert.match(r.headers['cache-control'] as string,/no-store/);assert.equal(r.json().source,'live_database');assert.ok(calls.findIndex(c=>c.startsWith('INSERT INTO bb_log_access_audit'))<calls.indexOf('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'));assert.ok(calls.includes('COMMIT'));assert.equal(calls.some(c=>/^UPDATE |^DELETE /.test(c)),false);}finally{await app.close();}});
 test('snapshot rejects arbitrary SQL-like filter parameters before export',async()=>{const {app,calls}=await appFor(true);try{assert.equal((await app.inject('/api/v1/admin/inspection/snapshot?user_id=all')).statusCode,422);assert.equal(calls.some(c=>c.includes('information_schema')),false);}finally{await app.close();}});
 test('missing optional tables are visible, never fabricated as observed zero',async()=>{const {pool}=fake(true);const s=await collectAdminInspection(pool);assert.equal(s.tables.find(t=>t.name==='bb_codex_exec_logs')?.available,false);assert.equal(s.tables.find(t=>t.name==='bb_runs')?.available,true);assert.equal(s.scope.run_count,0);});
+
+test('only one export may occupy memory and the slot is released after sending',async()=>{
+ const {pool}=fake(true),connect=pool.connect.bind(pool);let entered!:()=>void,unblock!:()=>void;
+ const started=new Promise<void>(r=>entered=r),gate=new Promise<void>(r=>unblock=r);
+ pool.connect=(async()=>{entered();await gate;return connect();}) as typeof pool.connect;
+ const app=Fastify();app.setErrorHandler((e:any,_r,reply)=>reply.code(e.status??500).send({code:e.code}));installAdminInspectionRoutes(app,{db:()=>pool,owner:async()=> 'operator'});
+ try{await app.ready();const first=app.inject('/api/v1/admin/inspection/snapshot').then(r=>r);await started;const second=await app.inject('/api/v1/admin/inspection/snapshot');assert.equal(second.statusCode,503);assert.equal(second.headers['retry-after'],'5');unblock();assert.equal((await first).statusCode,200);assert.equal((await app.inject('/api/v1/admin/inspection/snapshot')).statusCode,200);}finally{unblock();await app.close();}
+});
