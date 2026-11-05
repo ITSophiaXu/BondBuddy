@@ -233,7 +233,10 @@ def add_layout_comments(src, root, mapping, tasks, replacements):
         ref = ET.SubElement(p, q('r'))
         ET.SubElement(ref, q('commentReference'), {q('id'):cid})
         comment = ET.SubElement(comments, q('comment'), {q('id'):cid,q('author'):'BondBuddy',q('date'):datetime.now(timezone.utc).isoformat()})
-        cp = ET.SubElement(comment,q('p'))
-        cr = ET.SubElement(cp,q('r'))
-        ET.SubElement(cr,q('t')).text = task['text']
+        # A newline inside w:t is XML whitespace, not a native Word line break.
+        # Keep category, problem, evidence and handling on readable separate lines.
+        for line in task['text'].split('\n'):
+            cp = ET.SubElement(comment,q('p'))
+            cr = ET.SubElement(cp,q('r'))
+            ET.SubElement(cr,q('t')).text = line
     replacements[comment_path] = serialized(comments)
