@@ -211,6 +211,27 @@ jobs:
           grep -Eq '^# skipped 0$' "$RUNNER_TEMP/m4-core-web.tap"
           grep -Eq '^# todo 0$' "$RUNNER_TEMP/m4-core-web.tap"
 
+      - name: Combined-candidate continuation and host quality refusal integration
+        run: |
+          # The preceding Web unit step compiled this candidate's dist-test guards.
+          # The runner owns a private PG clone and strips provider credentials.
+          node scripts/prelaunch-quality-continuation.mjs | tee "$RUNNER_TEMP/prelaunch-continuation.tap"
+          grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/prelaunch-continuation.tap"
+          grep -Eq '^# fail 0$' "$RUNNER_TEMP/prelaunch-continuation.tap"
+          grep -Eq '^# cancelled 0$' "$RUNNER_TEMP/prelaunch-continuation.tap"
+          grep -Eq '^# skipped 0$' "$RUNNER_TEMP/prelaunch-continuation.tap"
+          grep -Eq '^# todo 0$' "$RUNNER_TEMP/prelaunch-continuation.tap"
+
+      - name: Retain combined-candidate continuation mechanical logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: prelaunch-continuation-${{ github.sha }}
+          path: .local/prelaunch-continuation-logs/
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 7
+
       - name: Stop the disposable Blob service
         if: always()
         run: |
