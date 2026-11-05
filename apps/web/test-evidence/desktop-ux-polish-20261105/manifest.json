@@ -1,0 +1,77 @@
+{
+  "data": "synthetic",
+  "browser": "Playwright Chromium",
+  "runtime": "Node 24.14.0 / macOS",
+  "captures": [
+    {
+      "surface": "tasks",
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "before_sha": "3bb7baf12dba1c75465e9c5dd71ef7b073c176a9",
+      "source_and_prototype_sha": "b5aec3ac8db7a8b7984844e362f24bd3dd914f61",
+      "files": [
+        "tasks-before.png",
+        "tasks-after.png",
+        "tasks-prototype.png"
+      ]
+    },
+    {
+      "surface": "materials",
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "before_sha": "3bb7baf12dba1c75465e9c5dd71ef7b073c176a9",
+      "source_and_prototype_sha": "b5aec3ac8db7a8b7984844e362f24bd3dd914f61",
+      "files": [
+        "materials-before.png",
+        "materials-after.png",
+        "materials-prototype.png"
+      ]
+    },
+    {
+      "surface": "review",
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "before_sha": "3bb7baf12dba1c75465e9c5dd71ef7b073c176a9",
+      "source_and_prototype_sha": "b5aec3ac8db7a8b7984844e362f24bd3dd914f61",
+      "files": [
+        "review-before.png",
+        "review-after.png",
+        "review-prototype.png"
+      ]
+    },
+    {
+      "surface": "qa",
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "before_sha": "3bb7baf12dba1c75465e9c5dd71ef7b073c176a9",
+      "source_and_prototype_sha": "b5aec3ac8db7a8b7984844e362f24bd3dd914f61",
+      "files": [
+        "qa-before.png",
+        "qa-after.png",
+        "qa-prototype.png"
+      ]
+    },
+    {
+      "surface": "files",
+      "viewport": {
+        "width": 1366,
+        "height": 768
+      },
+      "before_sha": "3bb7baf12dba1c75465e9c5dd71ef7b073c176a9",
+      "source_and_prototype_sha": "b5aec3ac8db7a8b7984844e362f24bd3dd914f61",
+      "files": [
+        "files-before.png",
+        "files-after.png",
+        "files-prototype.png"
+      ]
+    }
+  ]
+}
