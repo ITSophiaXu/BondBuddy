@@ -69,6 +69,8 @@ export * from './upload-inspection-errors.js';
 export * from './update-project.js';
 import { adminSchemas, ADMIN_LOG_FILTERS } from './admin-logs.js';
 export * from './admin-logs.js';
+import {adminInspectionSchemas} from './admin-inspection.js';
+export * from './admin-inspection.js';
 import { browserErrorSchemas } from './browser-errors.js';
 export * from './browser-errors.js';
 export * from './data-lifecycle.js';
@@ -247,6 +249,7 @@ export const schemas = {
   ...generationIssuerBindingSchemas,
   ...recoverySchemas,
   ...adminSchemas,
+  ...adminInspectionSchemas,
   ...runtimeSchemas, // #17 worker runtime
   ...trialSchemas, // #35 trial guard
   ...agreementSchemas, // #7 registration agreement
