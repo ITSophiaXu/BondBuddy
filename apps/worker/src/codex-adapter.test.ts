@@ -1,7 +1,7 @@
 // Uses the SYNTHETIC fake codex in test-fixtures/codex; no real provider is called.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -273,13 +273,14 @@ test('Copilot command auth is explicit, bounded and rejects incomplete or mixed 
 
 test('DeepSeek uses a 1M context for ordinary, material, image and file authoring calls', async () => {
   const config = loadCodexAdapterConfig({});
-  const base = { cwd: '/x/cwd', schemaFile: null, ephemeral: true, resumeThreadId: null };
+  assert.equal(config.model_config_version, 'codex-deepseek-v4.1-flash-1m-20261105');
+  const base = { cwd: '/x/cwd', codexHome: '/x/codex-home', schemaFile: null, ephemeral: true, resumeThreadId: null };
   for (const extra of [{}, { materialDataFile: '/x/cwd/materials.json' }, { imageFile: '/x/input.png' }, { fileAuthoring: true, fileCompletion: true }]) {
     const args = buildCodexArgs(config, { ...base, ...extra });
     assert.equal(args.filter(a => a.startsWith('model_context_window=')).length, 1);
     assert.ok(args.includes('model_context_window=1000000'));
     assert.ok(args.includes('model_auto_compact_token_limit=900000'));
-    assert.deepEqual(args.filter(a => a.startsWith('model_catalog_json=')), ['model_catalog_json="/opt/bondbuddy/codex-deepseek-model-catalog.json"']);
+    assert.deepEqual(args.filter(a => a.startsWith('model_catalog_json=')), [`model_catalog_json=${JSON.stringify(join(base.codexHome, 'models_cache.json'))}`]);
   }
   const catalog = JSON.parse(await readFile(new URL('../../../deploy/m1/codex-deepseek-model-catalog.json', import.meta.url), 'utf8'));
   const model = catalog.models.find((m: { slug: string }) => m.slug === config.model_id);
@@ -294,6 +295,26 @@ test('DeepSeek uses a 1M context for ordinary, material, image and file authorin
   assert.ok(!other.some(a => a.startsWith('model_context_window=') || a.startsWith('model_auto_compact_token_limit=')));
   const unknown = buildCodexArgs({ ...config, model_id: 'future-deepseek-model' }, base);
   assert.ok(!unknown.some(a => a.startsWith('model_catalog_json=')));
+});
+
+test('DeepSeek child reads the pinned models_cache.json from its own CODEX_HOME', async () => {
+  const { config, cleanup } = await setup();
+  let observed = false;
+  try {
+    const result = await runContainedModelCall(call('SCENARIO:structured', { onEvent: event => {
+      if (event.type !== 'fake.trace') return;
+      const option = (event.argv as string[]).find(a => a.startsWith('model_catalog_json='))!;
+      const path = JSON.parse(option.slice('model_catalog_json='.length));
+      assert.equal(path.split(/[\\/]/).at(-1), 'models_cache.json');
+      const cached = JSON.parse(readFileSync(path, 'utf8'));
+      const model = cached.models.find((m: { slug: string }) => m.slug === 'deepseek-flash');
+      assert.equal(model.max_context_window, 1000000);
+      assert.equal(model.auto_compact_token_limit, 900000);
+      observed = true;
+    } }), new MemoryCodexJournal(), config);
+    assert.equal(result.status, 'completed');
+    assert.equal(observed, true);
+  } finally { await cleanup(); }
 });
 
 test('Copilot child receives the credential file path but no ambient provider secret', async () => {

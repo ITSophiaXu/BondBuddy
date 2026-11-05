@@ -103,7 +103,9 @@ node scripts/local-integration/configure-generation.mjs
 node scripts/local-integration/status.mjs
 ```
 
-Codex 0.154.0 从 OpenAI 官方 GitHub Release 下载，与产品固定的 SHA512 一致。由于本地网络对 npm/files.pythonhosted.org 的 TLS 握手失败，Python 包经清华 PyPI 镜像获取，逐包对照官方 PyPI 发布的 SHA256。没有关闭 TLS 校验。Linux 镜像包含固定版本 Tesseract 与中文/英文/方向检测数据、Python 文档依赖和冻结的产品编译结果；详细依赖版本保存在镜像 `/opt/venv/install-report.json`。M3/M4 共 10 份运行资源通过产品 manifest/hash 校验；当前固定镜像为 `sha256:bf8a9d10635a910532912abf1579f152bb4e1bdd8c25eb02587d344c92634487`。
+当前构建固定 Codex 0.166.0，从 OpenAI 官方 GitHub Release 下载，与产品固定的 SHA512 一致。DeepSeek 使用 `deepseek-flash`（官方当前版本 DeepSeek-V4.1-Flash-1017），每次进程明确读取自己 `CODEX_HOME/models_cache.json` 内的 1M 模型目录。此改动需要重新构建并集成本地 worker；不会替换正在运行的集成实例。验证记录见 [1M 上下文与 CLI 升级](../../docs/acceptance/deepseek-context-1m-20261105.md)。
+
+2026-10-12 的依赖构建记录：由于本地网络对 npm/files.pythonhosted.org 的 TLS 握手失败，Python 包经清华 PyPI 镜像获取，逐包对照官方 PyPI 发布的 SHA256。没有关闭 TLS 校验。Linux 镜像包含固定版本 Tesseract 与中文/英文/方向检测数据、Python 文档依赖和冻结的产品编译结果；详细依赖版本保存在镜像 `/opt/venv/install-report.json`。M3/M4 共 10 份运行资源通过产品 manifest/hash 校验；当时的固定镜像为 `sha256:bf8a9d10635a910532912abf1579f152bb4e1bdd8c25eb02587d344c92634487`，不代表已包含本次升级。
 
 模型认证从已有 `gh auth token --hostname github.com` 获取，经本机已配置的 `https://api.enterprise.githubcopilot.com` 直接认证。它与生产的 OAuth 交换 helper 不同，替换仅存在于本地镜像。令牌存于 `%LOCALAPPDATA%/BondBuddy/local-integration-20261012/model-token`，只允许当前用户和 SYSTEM 读取；不进入 OneDrive、仓库、镜像层或日志。worker 启动时刷新该文件，以只读方式挂载到容器。没有继承或访问生产数据库/存储。
 

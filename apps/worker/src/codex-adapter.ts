@@ -4,7 +4,7 @@
 // scratch/output, no command network or credentials. Unapproved tool items fail closed.
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -168,7 +168,7 @@ export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): Co
     model_provider: env.BB_CODEX_PROVIDER || 'deepseek',
     base_url: env.BB_CODEX_BASE_URL ?? 'https://api.deepseek.com',
     wire_api: 'responses',
-    model_config_version: env.BB_CODEX_CONFIG_VERSION || 'codex-deepseek-flash-20260925',
+    model_config_version: env.BB_CODEX_CONFIG_VERSION || 'codex-deepseek-v4.1-flash-1m-20261105',
     reasoning_effort: env.BB_CODEX_REASONING_EFFORT || null,
     credential,
     work_root: env.BB_CODEX_WORK_ROOT ?? join(tmpdir(), 'bb-codex'),
@@ -205,7 +205,10 @@ export function assertCodexConfig(c: CodexAdapterConfig) {
 }
 
 // -c overrides, applied with --ignore-user-config so no host or user config can widen them.
-export function codexConfigOverrides(c: CodexAdapterConfig, files = false): string[] {
+const deepseekCatalogSource = fileURLToPath(new URL('../../../deploy/m1/codex-deepseek-model-catalog.json', import.meta.url));
+const isDeepSeekFlash = (c: CodexAdapterConfig) => c.model_provider === 'deepseek' && c.model_id === 'deepseek-flash';
+
+export function codexConfigOverrides(c: CodexAdapterConfig, files = false, codexHome?: string): string[] {
   const q = (v: string) => JSON.stringify(v);
   const p = `model_providers.${c.model_provider}`;
   const kv: string[] = [
@@ -218,9 +221,9 @@ export function codexConfigOverrides(c: CodexAdapterConfig, files = false): stri
   ];
   if (c.reasoning_effort) kv.push(`model_reasoning_effort=${q(c.reasoning_effort)}`);
   // The pinned CLI also clamps overrides to the catalog's max_context_window.
-  if (c.model_provider === 'deepseek' && c.model_id === 'deepseek-flash') kv.push(
+  if (isDeepSeekFlash(c)) kv.push(
     'model_context_window=1000000', 'model_auto_compact_token_limit=900000',
-    'model_catalog_json="/opt/bondbuddy/codex-deepseek-model-catalog.json"');
+    `model_catalog_json=${q(codexHome ? join(codexHome, 'models_cache.json') : deepseekCatalogSource)}`);
   if (c.credential.kind === 'command') kv.push('model_context_window=872000', 'model_auto_compact_token_limit=780000',
     `model_catalog_json=${q('/opt/bondbuddy/codex-model-catalog.json')}`,
     `${p}.auth.timeout_ms=10000`, `${p}.auth.refresh_interval_ms=300000`,
@@ -230,13 +233,13 @@ export function codexConfigOverrides(c: CodexAdapterConfig, files = false): stri
   return kv.flatMap(v => ['-c', v]);
 }
 
-export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileCompletion?: boolean; imageFile?: string }): string[] {
+export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; codexHome?: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileCompletion?: boolean; imageFile?: string }): string[] {
   if(o.fileCompletion && !o.fileAuthoring)throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (o.materialDataFile && o.reviewDataFile || !!o.reviewDataFile !== !!o.reviewTraceFile) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (c.web_search==='live' && (o.materialDataFile || o.reviewDataFile)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (o.materialTraceFile && (!o.materialDataFile || resolve(o.materialTraceFile)!==resolve(o.cwd,'..','materials-trace.json') || c.web_search==='live')) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const args = ['exec', '--json', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules', ...(o.fileAuthoring?[]:['--sandbox', 'read-only']), '--cd', o.cwd,
-    ...codexConfigOverrides(c,o.fileAuthoring), ...c.disabled_features.filter(f=>(!o.fileAuthoring || !['shell_tool','unified_exec','view_image'].includes(f)) && !(o.fileCompletion && f==='hooks')).flatMap(f => ['--disable', f])];
+    ...codexConfigOverrides(c,o.fileAuthoring,o.codexHome), ...c.disabled_features.filter(f=>(!o.fileAuthoring || !['shell_tool','unified_exec','view_image'].includes(f)) && !(o.fileCompletion && f==='hooks')).flatMap(f => ['--disable', f])];
   if(o.fileAuthoring){
     if(o.schemaFile || o.materialDataFile || o.reviewDataFile || o.reviewTraceFile || !o.ephemeral)throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
     args.push(...filePermissionArgs(o.cwd),'--enable','shell_tool','--enable','unified_exec','--enable','view_image',
@@ -362,6 +365,17 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
   const r: CodexProcessResult = { started_at: startedAt.toISOString(), duration_ms: 0, exit_code: null, exit_signal: null, thread_id: null, turn_completed: false, usage: normalizeCodexUsage(null), last_message: null, tool_attempts: 0, turn_failed: false, saw_error: false, provider_error_code: null, stop: null };
   // Cancellation can win while the durable intent is being written. In that
   // case do not launch a process, even briefly, with an already-aborted signal.
+  if (o.signal?.aborted) { r.stop = 'cancelled'; return r; }
+  if (isDeepSeekFlash(c)) {
+    // The automatic remote cache is version/identity/TTL scoped. Load this pinned
+    // local catalog explicitly so fresh and resumed task homes cannot fall back.
+    await mkdir(o.codexHome, { recursive: true, mode: 0o700 });
+    const staged = join(o.codexHome, `.models-cache-${randomUUID()}.tmp`);
+    try {
+      await writeFile(staged, await readFile(deepseekCatalogSource), { mode: 0o600, flag: 'wx' });
+      await rename(staged, join(o.codexHome, 'models_cache.json'));
+    } finally { await rm(staged, { force: true }); }
+  }
   if (o.signal?.aborted) { r.stop = 'cancelled'; return r; }
   return new Promise(resolveResult => {
     let child: ReturnType<typeof spawn>;

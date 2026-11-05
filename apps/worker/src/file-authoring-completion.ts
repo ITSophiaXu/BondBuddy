@@ -1,4 +1,4 @@
-// A fixed, read-only Stop hook for the pinned Codex 0.154.0 CLI. This checks
+// A fixed, read-only Stop hook for the pinned Codex 0.166.0 CLI. This checks
 // required file availability, not content quality or layout. Never writes a
 // journal, invents no_changes, executes model text, or starts another CLI.
 import { createHash } from 'node:crypto';
