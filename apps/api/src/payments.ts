@@ -204,10 +204,18 @@ export function installPayments(app:FastifyInstance,pool:Pool,owner:(r:FastifyRe
     child.removeContentTypeParser('application/json');
     child.addContentTypeParser('application/json',{parseAs:'string',bodyLimit:65536},(_r,body,done)=>done(null,body));
     child.addContentTypeParser('application/x-www-form-urlencoded',{parseAs:'string',bodyLimit:65536},(_r,body,done)=>done(null,body));
-    child.post('/api/v1/payments/:provider/callback',{bodyLimit:65536},async r=>{
+    child.post('/api/v1/payments/:provider/callback',{bodyLimit:65536},async(r,reply)=>{
       const p=adapter(providers,(r.params as {provider:string}).provider);
-      let receipt:VerifiedPayment;try{receipt=await p.verifyCallback(r.headers,r.body as string);}catch{throw new Problem(401,'PAYMENT_INVALID','Payment signature verification failed');}
-      await applyVerifiedPayment(pool,p,receipt);return p.acknowledgement;
+      let receipt:VerifiedPayment;try{receipt=await p.verifyCallback(r.headers,r.body as string);}catch{
+        if(p.name==='alipay')return reply.code(401).type('text/plain').send('fail');
+        throw new Problem(401,'PAYMENT_INVALID','Payment signature verification failed');
+      }
+      try{await applyVerifiedPayment(pool,p,receipt);}catch(error){
+        if(p.name==='alipay')return reply.code(error instanceof Problem?error.status:500).type('text/plain').send('fail');
+        throw error;
+      }
+      if(p.name==='alipay')return reply.type('text/plain').send(p.acknowledgement);
+      return p.acknowledgement;
     });
   });
 }

@@ -34,6 +34,17 @@ test('query posts SDK-signed form through bounded fetch and verifies the exact r
   assert.equal(calls,1);
 });
 
+test('gateway JSON labelled text/html still requires a valid signed response; HTML and unsigned or tampered JSON fail closed',async()=>{
+  const valid=f.signedResponse('alipay.trade.query',f.paid);
+  const provider=(raw:string)=>createAlipayPayProvider(f.options,{...dependencies,fetch:async()=>new Response(raw,{headers:{'content-type':'text/html;charset=utf-8'}})});
+  assert.equal((await provider(valid).query(f.order)).state,'paid');
+  await assert.rejects(()=>provider('<html><body>Gateway unavailable</body></html>').query(f.order),rejected('PAYLOAD_INVALID'));
+  await assert.rejects(()=>provider(JSON.stringify({alipay_trade_query_response:f.paid})).query(f.order),rejected('SIGNATURE_INVALID'));
+  await assert.rejects(()=>provider(valid.replace('100.00','1.00')).query(f.order),rejected('SIGNATURE_INVALID'));
+  const unexpected=createAlipayPayProvider(f.options,{...dependencies,fetch:async()=>new Response(valid,{headers:{'content-type':'application/octet-stream'}})});
+  await assert.rejects(()=>unexpected.query(f.order),rejected('HTTP_INVALID'));
+});
+
 test('signed callbacks decode form once, preserve percent/plus, accept delayed retries and reject forgery, duplicate fields, wrong product identities and currency',async()=>{
   const p=createAlipayPayProvider(f.options,dependencies),callback=f.callback();
   const result=await p.verifyCallback(callback.headers,callback.raw);assert.equal(result.paidAt,'2026-10-29T04:00:00.000Z');assert.equal(result.payerCash?.amountFen,10000);

@@ -141,7 +141,7 @@ function values(header:string[],cells:string[]){
 const blank=(row:CsvRow)=>row.cells.every(cell=>cell==='');
 const joined=(row:CsvRow)=>unpadded(row.cells).join(',');
 function metadata(value:string,billDate:string):boolean{
-  if(/^#账号[:：][^\r\n]{1,128}$/.test(value))return true;
+  if(/^#账号[:：][^\r\n]{1,128}$/.exec(value)!==null)return true;
   const dates=/^#起始日期[:：]\s*\[(\d{4})年(\d{2})月(\d{2})日 00:00:00\]\s*终止日期[:：]\s*\[(\d{4})年(\d{2})月(\d{2})日 00:00:00\]$/.exec(value);
   if(dates){const begin=dates.slice(1,4).join('-'),end=dates.slice(4,7).join('-');
     return begin===billDate&&validDay(end)&&Date.parse(end+'T00:00:00Z')-Date.parse(begin+'T00:00:00Z')===86400000;}

@@ -1,8 +1,9 @@
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { PaymentProvider } from './payments.js';
 import { createWechatPayProvider, type WechatPayDependencies, type WechatPayPlatformKey } from './wechat-pay.js';
-import {createAlipayPayProvider,type AlipayWebProduct} from './alipay-pay.js';
+import {createAlipayPayProvider,type AlipayWebProduct,type AlipayPayOptions} from './alipay-pay.js';
 
 export type PaymentProviderConfiguration = { providers: readonly PaymentProvider[]; status: 'disabled' | 'ready' | 'invalid' };
 export type PaymentProviderConfigDependencies = WechatPayDependencies & { readSecretFile?: (path: string) => string };
@@ -19,6 +20,25 @@ function readProtectedFile(path: string): string {
     }
     return readFileSync(fd, 'utf8');
   } finally { closeSync(fd); }
+}
+// Anchored to this checkout, independent of the shell's working directory.
+export const alipaySandboxConfigPath=fileURLToPath(new URL('../../../.alipay-sandbox.json',import.meta.url));
+const productionAlipayFields=['BB_ALIPAY_APP_ID','BB_ALIPAY_SELLER_ID','BB_ALIPAY_APP_PRIVATE_KEY','BB_ALIPAY_APP_PRIVATE_KEY_FILE','BB_ALIPAY_PUBLIC_KEY','BB_ALIPAY_PUBLIC_KEY_FILE'];
+/** The Skill owns this file. Read the verified original values without copying keys into env or logs. */
+export function alipaySandboxOptions(env:NodeJS.ProcessEnv,read:(path:string)=>string=readProtectedFile):AlipayPayOptions{
+  if(env.NODE_ENV!=='test'||env.BB_ALIPAY_ENVIRONMENT!=='sandbox'||productionAlipayFields.some(key=>env[key])
+    ||env.BB_ALIPAY_WEB_PRODUCT&&env.BB_ALIPAY_WEB_PRODUCT!=='page'||env.BB_ALIPAY_PAY_STATEMENTS_ENABLED==='1')throw new Error('Invalid sandbox configuration');
+  try{
+    const text=read(alipaySandboxConfigPath);if(Buffer.byteLength(text)>65536)throw new Error();
+    const config=JSON.parse(text),app=config.appIds?.[0],seller=config.sandboxAccounts?.partner;
+    if(!app||typeof app.appId!=='string'||typeof app.pid!=='string'||app.pid!==seller?.userId
+      ||typeof app.appPrivatePkcsKey!=='string'||typeof app.alipayPublicKey!=='string'
+      ||!env.BB_ALIPAY_RETURN_URL)throw new Error();
+    return {environment:'sandbox',webProduct:'page',appId:app.appId,merchantId:app.pid,
+      appPrivateKeyPem:app.appPrivatePkcsKey,appPrivateKeyType:'PKCS1',alipayPublicKeyPem:app.alipayPublicKey,
+      returnUrl:env.BB_ALIPAY_RETURN_URL,...(env.BB_ALIPAY_NOTIFY_URL?{notifyUrl:env.BB_ALIPAY_NOTIFY_URL}:{}),
+      refundsEnabled:env.BB_ALIPAY_REFUND_ENABLED==='1',statementsEnabled:false};
+  }catch{throw new Error('Invalid sandbox configuration');}
 }
 /** No merchant config or invalid config yields no payable channel. Never includes secret values/errors in the result. */
 export function paymentProvidersFromEnv(env: NodeJS.ProcessEnv = process.env, dependencies: PaymentProviderConfigDependencies = {}): PaymentProviderConfiguration {
@@ -59,11 +79,14 @@ export function paymentProvidersFromEnv(env: NodeJS.ProcessEnv = process.env, de
     providers.push(provider);
     }
     if(alipay==='1'){
+      const environment=env.BB_ALIPAY_ENVIRONMENT??'production';
+      if(!['production','sandbox'].includes(environment))throw new Error('Invalid payment environment');
       const timeoutText=env.BB_ALIPAY_PAY_TIMEOUT_MS;
       if(timeoutText!==undefined&&!/^[0-9]{1,5}$/.test(timeoutText))throw new Error('Invalid payment timeout');
       if(env.BB_ALIPAY_REFUND_ENABLED!==undefined&&!['0','1'].includes(env.BB_ALIPAY_REFUND_ENABLED))throw new Error('Invalid refund setting');
-      providers.push(createAlipayPayProvider({appId:required('BB_ALIPAY_APP_ID'),merchantId:required('BB_ALIPAY_SELLER_ID'),
+      providers.push(createAlipayPayProvider(environment==='sandbox'?alipaySandboxOptions(env,read):{appId:required('BB_ALIPAY_APP_ID'),merchantId:required('BB_ALIPAY_SELLER_ID'),
         webProduct:required('BB_ALIPAY_WEB_PRODUCT') as AlipayWebProduct,appPrivateKeyPem:secret('BB_ALIPAY_APP_PRIVATE_KEY'),alipayPublicKeyPem:secret('BB_ALIPAY_PUBLIC_KEY'),
+        appPrivateKeyType:env.BB_ALIPAY_APP_PRIVATE_KEY_TYPE as AlipayPayOptions['appPrivateKeyType'],
         notifyUrl:required('BB_ALIPAY_NOTIFY_URL'),returnUrl:required('BB_ALIPAY_RETURN_URL'),refundsEnabled:env.BB_ALIPAY_REFUND_ENABLED==='1',
         statementsEnabled:alipayStatements==='1',
         timeoutMs:timeoutText===undefined?undefined:Number(timeoutText)},dependencies));
