@@ -224,6 +224,8 @@ export function codexConfigOverrides(c: CodexAdapterConfig, files = false): stri
     `${p}.http_headers.Copilot-Integration-Id=${q('vscode-chat')}`, `${p}.http_headers.Editor-Version=${q('vscode/1.105.1')}`,
     `${p}.http_headers.Editor-Plugin-Version=${q('copilot-chat/0.32.3')}`, `${p}.http_headers.User-Agent=${q('GitHubCopilotChat/0.32.3')}`,
     `${p}.http_headers.OpenAI-Intent=${q('conversation-panel')}`, `${p}.http_headers.X-GitHub-Api-Version=${q('2025-04-01')}`);
+  else if (c.model_provider === 'deepseek' && c.model_id === 'deepseek-flash')
+    kv.push(`model_catalog_json=${q('/opt/bondbuddy/codex-deepseek-model-catalog.json')}`);
   return kv.flatMap(v => ['-c', v]);
 }
 

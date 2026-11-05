@@ -142,6 +142,8 @@ COPY --chmod=0644 deploy/m1/codex-model-catalog.json /opt/bondbuddy/codex-model-
 COPY --chmod=0644 deploy/m1/codex-image-model-catalog.json /opt/bondbuddy/codex-image-model-catalog.json
 COPY --chmod=0644 deploy/m1/codex-authoring-model-catalog.json /opt/bondbuddy/codex-authoring-model-catalog.json
 COPY --chmod=0644 deploy/m1/codex-file-authoring-model-catalog.json /opt/bondbuddy/codex-file-authoring-model-catalog.json
+COPY --chmod=0644 deploy/m1/codex-deepseek-model-catalog.json /opt/bondbuddy/codex-deepseek-model-catalog.json
+COPY --chmod=0644 deploy/m1/codex-deepseek-LICENSE.txt /opt/bondbuddy/codex-deepseek-LICENSE.txt
 COPY --from=build --chown=root:root /app/python python
 RUN python3 -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r python/requirements.txt
 COPY --chmod=0755 deploy/m1/scripts/verify-ocr-runtime.sh /usr/local/bin/bb-verify-ocr-runtime
