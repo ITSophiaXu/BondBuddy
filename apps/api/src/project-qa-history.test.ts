@@ -4,12 +4,13 @@ import assert from 'node:assert/strict';
 import {Pool} from 'pg';
 import {Value} from '@sinclair/typebox/value';
 import {Type} from '@sinclair/typebox';
-import {QA_HISTORY_CAPABILITY,PROJECT_QA_PRICE,QaRunSchema,QaWorkspaceSchema,type QaInput,type QaWorkspace} from '@bondbuddy/contracts';
+import {QA_HISTORY_CAPABILITY,PROJECT_QA_PRICE,QaRunSchema,QaWorkspaceSchema,billingDtoSchema,Int64Schema,type QaInput,type QaWorkspace} from '@bondbuddy/contracts';
 import {createServer} from './server.js';
 import {isolatedTestDatabase} from './test-database.js';
 import {digest,uid} from './data.js';
 
 const connection=await isolatedTestDatabase(undefined,'qa-answer-history');
+const wireWorkspaceSchema=billingDtoSchema(QaWorkspaceSchema,'qaWorkspace',Int64Schema) as typeof QaWorkspaceSchema;
 test('answer history counts the whole project, keeps recent answers through preparations, and preserves direct task links', {skip:!connection},async()=>{
  const pool=new Pool({connectionString:connection}),origin='http://bondbuddy.test';
  let owner='synthetic-qa-history-owner';
@@ -36,7 +37,7 @@ test('answer history counts the whole project, keeps recent answers through prep
  const read=async(project:string,run?:string)=>{
   const response=await app.inject({method:'GET',headers:{[QA_HISTORY_CAPABILITY.header]:QA_HISTORY_CAPABILITY.value},url:`/api/v1/projects/${project}/qa${run?'?run_id='+run:''}`});
   assert.equal(response.statusCode,200,response.body);const value=response.json();
-  assert.ok(Value.Check(QaWorkspaceSchema,value),JSON.stringify([...Value.Errors(QaWorkspaceSchema,value)]));return value as QaWorkspace;
+  assert.ok(Value.Check(wireWorkspaceSchema,value),JSON.stringify([...Value.Errors(wireWorkspaceSchema,value)]));return value as QaWorkspace;
  };
  try{
   const project=await create(),records=await seed(project,['prepare','answer','prepare','answer']);
@@ -45,7 +46,7 @@ test('answer history counts the whole project, keeps recent answers through prep
   for(const headers of [{},{[QA_HISTORY_CAPABILITY.header]:'unknown'}]){
    const legacy=await app.inject({method:'GET',url:`/api/v1/projects/${project}/qa`,headers});
    assert.equal(legacy.statusCode,200);assert.ok(legacy.json().runs.every((r:any)=>!('answer_sequence' in r)));
-   assert.ok(Value.Check(legacySchema,legacy.json()),'old strict workspace DTO remains readable');
+   assert.ok(Value.Check(billingDtoSchema(legacySchema,'qaWorkspace',Int64Schema) as typeof legacySchema,legacy.json()),'old strict workspace DTO remains readable with the current int64 money wire format');
   }
   const recent=await read(project);
   assert.deepEqual(recent.runs.filter(r=>r.operation==='answer').map(r=>[r.sequence,r.answer_sequence]),[[4,2],[2,1]]);
