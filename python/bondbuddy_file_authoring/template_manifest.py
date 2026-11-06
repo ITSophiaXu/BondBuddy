@@ -16,7 +16,7 @@ VERSION = 'word-template-manifest-v1'
 KINDS = {q('p'): 'paragraph', q('tbl'): 'table', q('tr'): 'row', q('tc'): 'cell'}
 OPAQUE = {q(v) for v in ('fldChar', 'instrText', 'fldSimple', 'drawing', 'pict', 'object', 'sdt')}
 REVISION = {q(v) for v in ('ins', 'del', 'moveFrom', 'moveTo', 'pPrChange', 'rPrChange',
-                         'trPrChange', 'tcPrChange', 'cellIns', 'cellDel', 'cellMerge')}
+                         'trPrChange', 'tcPrChange', 'tblPrChange', 'tblGridChange', 'cellIns', 'cellDel', 'cellMerge')}
 
 
 def sha(data):
@@ -189,6 +189,6 @@ def build_manifest(source: Path):
             'sections': [{'part': part, 'properties': property_xml(section)}
                          for part, root in roots.items() for section in root.iter(q('sectPr'))],
             'resources': [{'part': part, 'sha256': sha(raw), 'byte_size': len(raw)} for part, raw in parts.items()],
-            'supported_operations': ['replace_text', 'replace_cell_text', 'insert_paragraph', 'insert_row', 'add_comment'],
-            'unsupported_operations': ['insert_column', 'change_cell_merges', 'move_section', 'edit_field'],
+            'supported_operations': ['replace_text', 'replace_cell_text', 'insert_paragraph', 'insert_row', 'insert_column', 'add_comment'],
+            'unsupported_operations': ['change_cell_merges', 'move_section', 'edit_field'],
             'visual_review': 'not_run'}

@@ -1,4 +1,5 @@
 // Synthetic model replies; actual API, wallet, queue, private blobs, Python Word and download authorization.
+// HTTP monetary amounts use the current int64 string protocol; database balances remain numbers.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -62,14 +63,14 @@ test('project Q&A: free extraction, confirmed count, grounded Word, knowledge re
   const draft={preparation_id:prep.run_id,questions,materials:[material],requirements:'合成测试，逐题标注依据和缺失材料',use_knowledge:true};
   assert.equal((await send('POST',base+'/draft',{expected_revision:0,draft:{...draft,questions:[{...questions[0],question:'篡改问题'}]}})).statusCode,422);
   w=await ok('POST',base+'/draft',{expected_revision:0,draft});assert.equal((await send('POST',base+'/draft',{expected_revision:0,draft})).statusCode,409);
-  const blocked=await send('POST',base+'/runs',{request_id:randomUUID(),expected_revision:1,expected_points:120,price_version:PROJECT_QA_PRICE.version});
+  const blocked=await send('POST',base+'/runs',{request_id:randomUUID(),expected_revision:1,expected_points:'120',price_version:PROJECT_QA_PRICE.version});
   assert.equal(blocked.statusCode,422);assert.equal(blocked.json().code,'INPUT_REQUIRED');
   assert.deepEqual(await creditBalance(pool,owner),{available:1000,frozen:0});assert.equal(calls,0);
   const savedProspectus=await ok('POST',path+'/prospectus-versions',{request_id:randomUUID(),expected_selection_revision:0,material_id:material.pin.material_id,material_version:material.pin.material_version,sha256:material.pin.sha256});
   await ok('POST',path+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:savedProspectus.selection_revision,version_id:savedProspectus.versions[0].version_id});
   assert.equal((await ok('GET',base)).prospectus.asset.pin.sha256,material.pin.sha256);
   w=await ok('POST',base+'/draft',{expected_revision:w.revision,draft:{...draft,materials:[]}});
-  assert.equal((await send('POST',base+'/runs',{request_id:randomUUID(),expected_revision:w.revision,expected_points:120,price_version:PROJECT_QA_PRICE.version})).statusCode,422);
+  assert.equal((await send('POST',base+'/runs',{request_id:randomUUID(),expected_revision:w.revision,expected_points:'120',price_version:PROJECT_QA_PRICE.version})).statusCode,422);
   assert.deepEqual(await creditBalance(pool,owner),{available:1000,frozen:0});assert.equal(calls,0);
   w=await ok('POST',base+'/draft',{expected_revision:w.revision,draft});
   const content={title:'合成公募用途案例',url:'https://example.com/synthetic-public-case',topic:'募集资金用途',question:'请说明募集资金用途',answer:'公开回复合成样例，不是真实发行人事实。',approach:'先说明用途，再核对债务金额与发行规模。',evidence_requirements:'募集书与债务明细。'},caseReq={request_id:randomUUID(),content};
@@ -78,20 +79,21 @@ test('project Q&A: free extraction, confirmed count, grounded Word, knowledge re
   actor=other;assert.equal((await ok('GET','/api/v1/qa/cases')).cases.length,0);assert.equal((await send('GET',base)).statusCode,404);assert.equal((await send('POST',base+'/prepare',request)).statusCode,404);actor=owner;
   await pool.query("INSERT INTO bb_qa_case_reviewers(user_id,actor,reason) VALUES($1,'synthetic','synthetic test reviewer')",[owner]);
   cases=await ok('POST',`/api/v1/qa/cases/${caseId}/review`,{expected_revision:1,status:'approved',review_note:'核对合成来源与用途问题。仅测试用途。'});assert.equal(cases.cases[0].status,'approved');
-  const submit={request_id:randomUUID(),expected_revision:w.revision,expected_points:120,price_version:PROJECT_QA_PRICE.version};
-  assert.equal((await send('POST',base+'/runs',{...submit,expected_points:60})).statusCode,409);
+  const submit={request_id:randomUUID(),expected_revision:w.revision,expected_points:'120',price_version:PROJECT_QA_PRICE.version};
+  assert.equal((await send('POST',base+'/runs',{...submit,expected_points:'60'})).statusCode,409);
   const run=await ok('POST',base+'/runs',submit);assert.equal((await ok('POST',base+'/runs',submit)).run_id,run.run_id);assert.deepEqual(await creditBalance(pool,owner),{available:880,frozen:120});
   await ok('POST',`/api/v1/qa/cases/${caseId}/review`,{expected_revision:2,status:'withdrawn',review_note:'测试后撤回；已锁定任务保留快照。'});
   assert.equal(await execute(),'paused');assert.equal(calls,1);assert.equal((await pool.query('SELECT count(*) n FROM bb_project_qa_answers WHERE run_id=$1',[run.run_id])).rows[0].n,'1');
   assert.deepEqual(await creditBalance(pool,owner),{available:880,frozen:120});
   await ok('POST','/api/v1/runs/'+run.run_id+'/resume',{reason:'synthetic checkpoint resume'});
   assert.equal(await execute(),'succeeded');assert.equal(calls,2,'completed question is reused on resume');assert.deepEqual(await creditBalance(pool,owner),{available:880,frozen:0});
-  w=await ok('GET',base);const answered=w.runs[0];assert.equal(answered.result!.answers.length,2);assert.equal(answered.result!.answers[0].status,'draft');assert.equal(answered.result!.answers[1].status,'missing');assert.equal(answered.charged_points,120);assert.equal(answered.manifest.cases[0].id,caseId);
+  w=await ok('GET',base);const answered=w.runs[0];assert.equal(answered.result!.answers.length,2);assert.equal(answered.result!.answers[0].status,'draft');assert.equal(answered.result!.answers[1].status,'missing');assert.equal(answered.charged_points,'120');assert.equal(answered.manifest.cases[0].id,caseId);
   const ungrounded=groundedQaAnswer({...answered.result!.answers[0],citations:[{asset_index:0,span_id:'p1',quote:'这条引文不存在'}],case_ids:['not-approved']},questions[0],answered.manifest,answered.result!.evidence);
   assert.equal(ungrounded.status,'missing');assert.equal(ungrounded.citations.length,0);assert.equal(ungrounded.case_ids.length,0);assert.doesNotMatch(ungrounded.answer,/5 亿元/);
   assert.equal((await pool.query("SELECT count(*) n FROM bb_outbox WHERE aggregate_type='qa_case'")).rows[0].n,'3');
   const a=await ok('GET','/api/v1/artifacts/'+answered.artifact_id),bytes=(await send('GET',a.download_url)).rawPayload;assert.equal(digest(bytes),a.sha256);assert.match(a.filename,/已回填回答/);await writeFile(join(dir,'synthetic-filled-round-1.docx'),bytes);
-  const text=execFileSync(process.env.BONDBUDDY_TEST_PYTHON!,['-c','import io,sys,zipfile; from lxml import etree; z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); print("".join(etree.fromstring(z.read("word/document.xml")).itertext()))'],{input:bytes,encoding:'utf8',env:{...process.env,PYTHONIOENCODING:'utf-8'}});assert.match(text,/待补材料/);assert.match(text,/回款计划/);assert.match(text,/回答依据/);assert.match(text,/合成公募用途案例/);
+  const text=execFileSync(process.env.BONDBUDDY_TEST_PYTHON!,['-c','import io,sys,zipfile; from lxml import etree; z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); print("".join(etree.fromstring(z.read("word/document.xml")).itertext()))'],{input:bytes,encoding:'utf8',env:{...process.env,PYTHONIOENCODING:'utf-8'}});assert.match(text,/待补材料/);assert.match(text,/回款计划/);assert.match(text,/本期募集资金 5 亿元全部用于偿还有息债务/);assert.doesNotMatch(text,/回答依据|参考公开案例|合成公募用途案例|https:\/\/example.com\/synthetic-public-case/);
+  assert.deepEqual(answered.result!.answers[0].case_ids,[caseId]);assert.equal(answered.result!.answers[0].citations[0].quote,'本期发行规模为人民币 5 亿元，募集资金全部用于偿还有息债务。');
   actor=other;assert.equal((await send('GET',a.download_url)).statusCode,404);actor=owner;
   assert.equal((await ok('GET',path+'/tasks')).items[0].operation,'qa_answer');assert.equal((await ok('GET','/api/v1/credits/consumption-history')).items[0].task_name,'项目问答');assert.equal((await ok('GET',path+'/files')).items.filter((f:any)=>f.folder==='4.2').length,1);
   const again=await ok('POST',base+'/runs',{...submit,request_id:randomUUID()});assert.equal(await execute(),'succeeded');w=await ok('GET',base);assert.equal(w.runs[0].manifest.cases.length,0,'withdrawn case excluded from new run');assert.notEqual(w.runs[0].artifact_id,answered.artifact_id);assert.equal(digest((await send('GET',a.download_url)).rawPayload),a.sha256);
@@ -110,19 +112,19 @@ test('project Q&A: free extraction, confirmed count, grounded Word, knowledge re
   assert.equal(pdfPrepared.manifest.source.asset.pin.sha256,pdf.pin.sha256);assert.equal(pdfPrepared.result!.questions.length,1);
   assert.ok(pdfPrepared.result!.warnings.some(w=>w.includes('第 2 页无法提取文字')));
   w=await ok('POST',base+'/draft',{expected_revision:w.revision,draft:{preparation_id:pdfPrep.run_id,questions:pdfPrepared.result!.questions,materials:[material],requirements:'合成 PDF 测试',use_knowledge:false}});
-  const pdfRun=await ok('POST',base+'/runs',{request_id:randomUUID(),expected_revision:w.revision,expected_points:60,price_version:PROJECT_QA_PRICE.version});
+  const pdfRun=await ok('POST',base+'/runs',{request_id:randomUUID(),expected_revision:w.revision,expected_points:'60',price_version:PROJECT_QA_PRICE.version});
   assert.equal(await execute(),'succeeded');assert.equal(calls,callsBeforePdf+1);assert.deepEqual(await creditBalance(pool,owner),{available:700,frozen:0});
   w=await ok('GET',base);const pdfAnswer=w.runs.find(r=>r.run_id===pdfRun.run_id)!,pdfArtifact=await ok('GET','/api/v1/artifacts/'+pdfAnswer.artifact_id),pdfWord=(await send('GET',pdfArtifact.download_url)).rawPayload;
   assert.equal(digest(pdfWord),pdfArtifact.sha256);await writeFile(join(dir,'synthetic-pdf-answered.docx'),pdfWord);
   const pdfText=execFileSync(process.env.BONDBUDDY_TEST_PYTHON!,['-c','import io,sys; from docx import Document; print("\\n".join(p.text for p in Document(io.BytesIO(sys.stdin.buffer.read())).paragraphs))'],{input:pdfWord,encoding:'utf8',env:{...process.env,PYTHONIOENCODING:'utf-8'}});
-  assert.match(pdfText,/What is the funding purpose/);assert.match(pdfText,/回答依据/);assert.match(pdfText,/第 2 页无法提取文字/);
+  assert.match(pdfText,/What is the funding purpose/);assert.match(pdfText,/本期募集资金 5 亿元全部用于偿还有息债务/);assert.doesNotMatch(pdfText,/回答依据|参考公开案例/);assert.match(pdfText,/第 2 页无法提取文字/);
   // An unreadable mandatory prospectus fails before a model call and releases the reservation.
   execFileSync(process.env.BONDBUDDY_TEST_PYTHON!,['-c','from docx import Document; import sys; Document().save(sys.argv[1])',join(dir,'synthetic-empty-prospectus.docx')]);
   const blank=await upload('synthetic-empty-prospectus.docx','historical'),current=await ok('GET',path+'/prospectus-versions');
   await ok('POST',path+'/prospectus-versions',{request_id:randomUUID(),expected_selection_revision:current.selection_revision,material_id:blank.pin.material_id,material_version:blank.pin.material_version,sha256:blank.pin.sha256});
   w=await ok('GET',base);w=await ok('POST',base+'/draft',{expected_revision:w.revision,draft:{...w.draft,materials:[blank]}});
   const beforeUnreadable=await creditBalance(pool,owner),callsBeforeUnreadable=calls;
-  const unreadable=await ok('POST',base+'/runs',{request_id:randomUUID(),expected_revision:w.revision,expected_points:w.draft.questions.length*60,price_version:PROJECT_QA_PRICE.version});
+  const unreadable=await ok('POST',base+'/runs',{request_id:randomUUID(),expected_revision:w.revision,expected_points:String(w.draft.questions.length*60),price_version:PROJECT_QA_PRICE.version});
   assert.equal(await execute(),'failed');assert.equal(calls,callsBeforeUnreadable);assert.deepEqual(await creditBalance(pool,owner),beforeUnreadable);
   const failed=(await ok('GET',base)).runs.find((r:any)=>r.run_id===unreadable.run_id);assert.equal(failed.error_code,'MATERIAL_UNREADABLE');assert.equal(failed.artifact_id,null);
  }finally{await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}

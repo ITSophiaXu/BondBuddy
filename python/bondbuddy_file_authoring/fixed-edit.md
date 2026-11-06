@@ -56,6 +56,18 @@ position 可为 before 或 after，默认 after。style_node_id 默认插入位�
 
 values 与物理单元格一一对应。多段落单元格对应项使用数组，例如 values=[["项目名称","项目说明"],"50"]。逐段继承原有样式；段落数量必须匹配。新增行 ID 为 op:new_row_1:row，单元格为 op:new_row_1:cell:0（从0开始），第一段为 op:new_row_1:cell:0:paragraph，第二段为 op:new_row_1:cell:0:paragraph:1。
 
+新增财务期间列（普通矩形表）：
+
+```json
+{"id":"half_year_2026","kind":"insert_column","node_id":"inspect返回的table节点ID","before":"该表当前完整text","column_index":1,"position":"before","values":["2026年6月末","120","50"],"reason":"根据本发行人最新报表新增一期，保留历史比较列。"}
+```
+
+node_id为整张表的节点，before为该表当前完整text。column_index从0开始，指定沿用样式的原列；position为before或after，默认before。在常见“项目、2025年、2024年”三列表中，column_index=1、position=before会得到“项目、2026年半年、2025年、2024年”。values必须覆盖该表每一行，含表头；多段落单元格使用逐段字符串数组，数量与样式来源单元格一致。新列逐行继承相邻列的单元格、段落及文字样式，不复制旧数据；各列按原宽度比例分配，并保持原表总宽度，避免增列导致超出页面。增列不等于重排目录或重建表格。
+
+新增节点为op:half_year_2026:cell:0（行序号从0开始），段落为op:half_year_2026:cell:0:paragraph，第二段为op:half_year_2026:cell:0:paragraph:1。原节点ID保持有效，可继续改写新增单元格、插入表行或挂接批注。增列的真实修订包括cellIns、tblGridChange及原单元格宽度变更；接受修订得到新列，拒绝本轮修订恢复原表和宽度。
+
+合并单元格、嵌套表、旧修订、域／嵌入对象或无法可靠确定列宽的表暂不支持增列，返回WORD_EDIT_*_UNSUPPORTED；须逐表记录实际限制，继续处理支持的表，不能以一张复杂表为由跳过全部财务更新。
+
 追加批注（正文或表格内段落）：
 
 ```json
@@ -76,7 +88,7 @@ values 与物理单元格一一对应。多段落单元格对应项使用数组�
 
 如工具返回 WORD_EDIT_*_UNSUPPORTED，读取具体位置和能力限制，继续处理其他支持的更新。将未完成的结构变化及原因记录到 scratch/工作记录.md 和 output/delivery.md；有适用正文位置时用 add_comment 挂接待处理事项。不要用 no_changes 跳过应完成的更新，不宣称不支持的改动已经完成。
 
-当前尚不支持新增列、修改合并关系、整章移动、域结果编辑及与旧修订重叠的文字修改；普通多段落单元格和表行可以逐段处理。正文增长引起的自然分页不是格式错误。
+当前支持普通矩形表增列；尚不支持修改合并关系、整章移动、域结果编辑及与旧修订重叠的文字修改。普通多段落单元格、表行及新增列可以逐段处理。正文增长引起的自然分页不是格式错误。
 
 ## 完成编制
 
