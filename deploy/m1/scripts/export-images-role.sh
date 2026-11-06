@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Usage: export-images-role.sh main|execution <git-sha> <output.tar.gz>
+# Usage: export-images-role.sh main|execution <git-sha> <output.tar.gz> [beijing|direct|disabled]
 set -euo pipefail
 role="${1:?role required}"; ref="${2:?git-sha required}"; output="${3:?output archive required}"
-case "$role" in main) targets=(api worker web egress);; execution) targets=(worker egress pg-tunnel integrity-egress);; *) exit 2;; esac
+case "$role" in main) targets=(api worker web egress);; execution)
+ targets=(worker egress pg-tunnel)
+ case "${4:-beijing}" in beijing) targets+=(integrity-tunnel);; direct) targets+=(integrity-egress);; disabled) ;; *) echo 'invalid integrity mode' >&2; exit 2;; esac;; *) exit 2;; esac
 repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 sha="$(git -C "$repo" rev-parse --verify "$ref^{commit}")"; tag="${sha:0:12}"
 # Keep checkout/build/archive on the data filesystem. Do not copy credentials into the context.
@@ -10,11 +12,17 @@ ctx="$(mktemp -d "$(dirname "$repo")/.bb-role-build.XXXXXX")"; trap 'rm -rf "$ct
 git -C "$repo" archive "$sha" | tar -x -C "$ctx"
 images=()
 for target in "${targets[@]}"; do
-  image="bondbuddy-m1-$target:$tag"; images+=("$image")
-  if docker image inspect "$image" >/dev/null 2>&1; then continue; fi
+  if [ "$target" = integrity-tunnel ]; then image="bondbuddy-integrity-tunnel:$tag"; else image="bondbuddy-m1-$target:$tag"; fi
+  images+=("$image")
+  if docker image inspect "$image" >/dev/null 2>&1; then
+    revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")"
+    [ "$revision" = "$sha" ] || { echo "image $target has no matching source revision; do not reuse a drifting tag" >&2; exit 3; }
+    continue
+  fi
   case "$target" in
-    egress|pg-tunnel) docker build -q -t "$image" "$ctx/deploy/m1/$target" >/dev/null;;
-    *) docker build -q -f "$ctx/deploy/m1/Dockerfile" --target "$target" --build-arg BB_RELEASE_SHA="$sha" -t "$image" "$ctx" >/dev/null;;
+    integrity-tunnel) docker build --network "${BB_BUILD_NETWORK:-default}" -q --label "org.opencontainers.image.revision=$sha" -f "$ctx/deploy/beijing/Dockerfile.tunnel" -t "$image" "$ctx/deploy/beijing" >/dev/null;;
+    egress|pg-tunnel) docker build --network "${BB_BUILD_NETWORK:-default}" -q --label "org.opencontainers.image.revision=$sha" -t "$image" "$ctx/deploy/m1/$target" >/dev/null;;
+    *) docker build --network "${BB_BUILD_NETWORK:-default}" -q -f "$ctx/deploy/m1/Dockerfile" --target "$target" --build-arg BB_RELEASE_SHA="$sha" -t "$image" "$ctx" >/dev/null;;
   esac
 done
 # pipefail prevents a partial archive being reported as success. No images are pruned here.

@@ -15,10 +15,14 @@ compose config --quiet
 targets=(api worker web egress)
 if [ "$BB_DEPLOY_ROLE" = execution ]; then
   targets=(worker egress pg-tunnel)
-  [ "$(env_value BB_INTEGRITY_BROWSER)" != 1 ] || targets+=(integrity-egress)
+  case "$BB_INTEGRITY_MODE" in beijing) targets+=(integrity-tunnel);; direct) targets+=(integrity-egress);; esac
 fi
+declare -A image_ids
 for target in "${targets[@]}"; do
-  docker image inspect "bondbuddy-m1-$target:$BB_IMAGE_TAG" >/dev/null 2>&1 || { echo "missing release image: $target; prepare with export-images-role.sh" >&2; exit 3; }
+  docker image inspect "$(role_image_ref "$target")" >/dev/null 2>&1 || { echo "missing release image: $target; prepare with export-images-role.sh" >&2; exit 3; }
+  revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$(role_image_ref "$target")")"
+  [ "$revision" = "$sha" ] || { echo "release image $target has no matching source revision; refusing tag-only reuse" >&2; exit 3; }
+  image_ids[$target]="$(docker image inspect --format '{{.Id}}' "$(role_image_ref "$target")")"
 done
 # No switch while the old role is active. The release procedure must first close new submissions
 # and inspect provider processes as well: a DB gate cannot prove an unrecorded external call ended.
@@ -42,9 +46,23 @@ else
   compose up -d --wait pg-tunnel egress
   role_probe schema
   services=(worker worker-review worker-parse)
-  [ "$(env_value BB_INTEGRITY_BROWSER)" != 1 ] || services=(integrity-egress "${services[@]}")
+  case "$BB_INTEGRITY_MODE" in
+    beijing) services=(integrity-beijing-tunnel "${services[@]}");;
+    direct) services=(integrity-egress "${services[@]}");;
+  esac
   compose up -d --wait "${services[@]}"
 fi
+# Bind evidence to immutable image IDs and actual running containers, not mutable tags.
+if [ "$BB_DEPLOY_ROLE" = main ]; then services=(api ops egress web); else services+=(egress pg-tunnel); fi
+for service in "${services[@]}"; do
+  case "$service" in ops|worker|worker-review|worker-parse) target=worker;; integrity-beijing-tunnel) target=integrity-tunnel;; *) target="$service";; esac
+  containers="$(compose ps -q "$service")"
+  [ -n "$containers" ] || { echo "missing runtime container: $service" >&2; exit 4; }
+  while read -r container; do
+    [ "$(docker inspect --format '{{.Image}}' "$container")" = "${image_ids[$target]}" ] || { echo "runtime image mismatch: $service" >&2; exit 4; }
+  done <<< "$containers"
+done
+{ echo "commit=$sha"; for target in "${targets[@]}"; do echo "$target=${image_ids[$target]}"; done; } > "$BB_STATE/images-$BB_IMAGE_TAG.txt"
 # Readiness and file/payment/integrity acceptance are separate release steps in the runbook.
 echo "$BB_IMAGE_TAG" > "$BB_STATE/current"
 [ -z "$previous" ] || echo "$previous" > "$BB_STATE/previous"

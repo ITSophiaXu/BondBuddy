@@ -2,10 +2,13 @@
 // Tests the existing business catalog and parameter builder, real CLI context event and a shell tool.
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, readdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { codexConfigOverrides } from '../../../apps/worker/dist/codex-adapter.js';
+const actualVersion=execFileSync('/opt/codex/bin/codex',['--version'],{encoding:'utf8'}).trim();
+const pinnedVersion=(await readFile(new URL('../Dockerfile',import.meta.url),'utf8')).match(/ARG CODEX_VERSION=([^\s]+)/)[1];
+assert.equal(actualVersion,`codex-cli ${pinnedVersion}`);
 const root=await mkdtemp('/tmp/bb-codex-business-');
 let server;
 try {
@@ -47,5 +50,5 @@ try {
  for(const path of await files(join(root,'home')))if(path.endsWith('.jsonl'))for(const line of (await readFile(path,'utf8')).split('\n').filter(Boolean))events.push(JSON.parse(line));
  const windows=events.filter(e=>e.payload?.type==='token_count').map(e=>e.payload.info?.model_context_window).filter(Boolean);
  assert.ok(windows.length,'real CLI emits context diagnostics');assert.ok(windows.every(n=>n===1000000),JSON.stringify(windows));
- console.log(JSON.stringify({cli:'0.167.0',provider:'synthetic-loopback',actual_context_windows:windows,configured_compression:900000,tool:toolName,tool_output_observed:toolOutput,calls}));
+ console.log(JSON.stringify({cli:actualVersion,provider:'synthetic-loopback',actual_context_windows:windows,configured_compression:900000,tool:toolName,tool_output_observed:toolOutput,calls}));
 } finally {server?.close();await rm(root,{recursive:true,force:true});}
