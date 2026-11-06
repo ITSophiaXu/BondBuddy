@@ -1,0 +1,44 @@
+# Main site: the only business database and the only migration entry.
+name: ${COMPOSE_PROJECT_NAME:-bb-main}
+x-main-db-url: &main-db-url ${BB_MAIN_DATABASE_URL:?set a URL with encoded password and host postgres}
+services:
+  postgres:
+    extends: {file: compose.yaml, service: postgres}
+    # Reachable only by the restricted SSH forwarding account on this host.
+    ports: ['127.0.0.1:${BB_PG_FORWARD_PORT:-15432}:5432']
+  migrate:
+    extends: {file: compose.yaml, service: migrate}
+    environment: {DATABASE_URL: *main-db-url}
+  api:
+    extends: {file: compose.yaml, service: api}
+    environment:
+      DATABASE_URL: *main-db-url
+      NODE_OPTIONS: --max-old-space-size=320 --expose-gc
+      BB_FILE_TEMPLATE_BUNDLE: /opt/bondbuddy/private-file-templates
+    volumes:
+      - type: bind
+        source: ${BB_PAYMENT_SECRETS_DIR:?set the existing payment secrets directory}
+        target: /run/bondbuddy-payments
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${BB_FILE_TEMPLATE_HOST_DIR:?set the private immutable bundle directory}
+        target: /opt/bondbuddy/private-file-templates
+        read_only: true
+        bind: {create_host_path: false}
+  ops:
+    extends: {file: compose.yaml, service: ops}
+    environment: {DATABASE_URL: *main-db-url}
+  egress:
+    extends: {file: compose.yaml, service: egress}
+  web:
+    extends: {file: compose.yaml, service: web}
+networks:
+  backend:
+    internal: true
+    ipam: {config: [{subnet: "${BB_BACKEND_SUBNET:-10.231.0.0/24}"}]}
+  edge: {}
+volumes:
+  pgdata:
+  logsink:
+  uploadspool:

@@ -89,3 +89,10 @@ docs/acceptance/reporting-period-hints-20261105/*
 !docs/acceptance/reporting-period-hints-20261105/*.png
 !docs/FILE-TEMPLATE-IMPLEMENTATION.md
 /.alipay-sandbox.json
+
+# Split-deployment documentation and synthetic configuration examples.
+!docs/runbooks/
+docs/runbooks/*
+!docs/runbooks/m1-split-deployment.md
+!deploy/m1/.env.main.example
+!deploy/m1/.env.execution.example
