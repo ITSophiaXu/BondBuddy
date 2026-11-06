@@ -63,7 +63,8 @@ test('execution needs no main-site password; URL-encoded special characters surv
  assert.equal(c.services.postgres,undefined); assert.equal(c.services.migrate,undefined);
  const mainUrl=value.replace('@pg-tunnel:', '@postgres:');
  const main=config('main',{POSTGRES_PASSWORD:`'${raw}'`,BB_MAIN_DATABASE_URL:mainUrl});
- assert.equal(main.services.postgres.environment.POSTGRES_PASSWORD,raw);
+ // Canonical Compose output doubles literal dollars so it can be reloaded safely.
+ assert.equal(main.services.postgres.environment.POSTGRES_PASSWORD.replaceAll('$$','$'),raw);
  for(const name of ['api','migrate','ops'])assert.equal(decodeURIComponent(new URL(main.services[name].environment.DATABASE_URL).password),raw);
 });
 test('legacy deployment, backup, restore and rollback reject a split env before touching Docker', () => {

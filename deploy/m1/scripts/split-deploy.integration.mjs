@@ -28,7 +28,7 @@ function config(role,override,...args) {
  const project=role==='main'?main:execution;
  return ['compose','--project-directory',join(root,'deploy/m1'),'--env-file',join(temp,`${role}.env`),'-p',project,'-f',join(root,`deploy/m1/compose.${role}.yaml`),'-f',join(temp,override),...args];
 }
-function docker(role,override,...args) {return run('docker',config(role,override,...args),{env:{...process.env,POSTGRES_PASSWORD:role==='main'?pgPassword:'unused-no-local-database'}});}
+function docker(role,override,...args) {const env={...process.env};delete env.POSTGRES_PASSWORD;if(role==='execution')env.POSTGRES_PASSWORD='unused-no-local-database';return run('docker',config(role,override,...args),{env});}
 const env={BB_IMAGE_TAG:'synthetic',POSTGRES_PASSWORD:`'${pgPassword}'`,BB_MAIN_DATABASE_URL:`postgresql://bondbuddy:${pgEncoded}@postgres:5432/bondbuddy`,BB_PUBLIC_ORIGIN:'https://bondbuddy.test',BB_TERMS_VERSION:'synthetic',BB_TRIAL_SOURCE_SALT:'synthetic',
  AZURE_STORAGE_CONNECTION_STRING:'UseDevelopmentStorage=true',BB_PARSE_CACHE_OCR_VERSION:'synthetic',BB_PARSE_CACHE_BASIS_VERSION:'synthetic',BB_FILE_TEMPLATE_HOST_DIR:join(temp,'templates'),BB_PAYMENT_SECRETS_DIR:join(temp,'payments'),BB_HTTP_PORT:'0',BB_INTEGRITY_MODE:'disabled',
  BB_PG_SSH_HOST:'sshd',BB_PG_SSH_PORT:'2222',BB_PG_SSH_USER:'tunnel',BB_PG_SSH_KEY_FILE:join(temp,'client'),BB_PG_SSH_KNOWN_HOSTS_FILE:join(temp,'known_hosts'),
@@ -81,7 +81,7 @@ try {
  docker('main','main.json','up','-d','--no-deps','--wait','api','ops','egress');
  docker('main','main.json','up','-d','--no-deps','--force-recreate','--wait','web');
  const mainProbe=spawnSync('docker',config('main','main.json','run','--rm','--no-deps','-T','api','node','--input-type=module','-','main','schema'),{
-  cwd:root,env:{...process.env,POSTGRES_PASSWORD:pgPassword},input:readFileSync(join(root,'deploy/m1/scripts/role-probe.mjs')),encoding:'utf8'});
+  cwd:root,env:{...process.env},input:readFileSync(join(root,'deploy/m1/scripts/role-probe.mjs')),encoding:'utf8'});
  assert.equal(mainProbe.status,0,mainProbe.stderr);
  docker('main','main.json','exec','-T','api','node','--input-type=module','-e',`
   import assert from 'node:assert/strict';import {readdir,readFile,writeFile,unlink} from 'node:fs/promises';import {builtinBundle,bundleBytes} from './apps/api/dist/file-template-library.js';
