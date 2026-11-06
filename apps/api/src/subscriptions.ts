@@ -19,6 +19,9 @@ export interface RecurringPaymentProvider {
   cancelMandate(input:MandateRequest):Promise<VerifiedMandate>;
   /** The order id is the persistent channel idempotency key; a timeout is queried, never charged under a new id. */
   charge(order:PaymentOrder & {mandateId:string}):Promise<VerifiedPayment>;
+  /** Optional only with a documented same-order/mandate idempotency guarantee.
+   * Recover a dispatch interrupted before sending; never create another intent. */
+  recoverSameRequest?(order:PaymentOrder & {mandateId:string}):Promise<VerifiedPayment>;
 }
 export const supportsAutomaticRenewal=(p:PaymentProvider):boolean=>!!p.recurring&&
   ['createMandate','queryMandate','cancelMandate','charge'].every(k=>typeof (p.recurring as any)[k]==='function');
@@ -263,7 +266,20 @@ export async function processDueSubscriptionRenewals(pool:Pool,providers:readonl
     }).catch(error=>{if(error instanceof Problem&&error.code==='BILLING_NOT_READY')return null;throw error;});
     if(!claimed)continue;
     try{
-      const receipt=claimed.create?await withBillingDispatch(pool,target.owner_user_id,claimed.provider.name,claimed.provider.merchantId,()=>claimed.provider.recurring!.charge({...paymentOrder(claimed.order),mandateId:claimed.mandateId})):await claimed.provider.query(paymentOrder(claimed.order));
+      const input={...paymentOrder(claimed.order),mandateId:claimed.mandateId},recurring=claimed.provider.recurring!;
+      let receipt:VerifiedPayment|undefined;
+      if(claimed.create)receipt=await withBillingDispatch(pool,target.owner_user_id,claimed.provider.name,claimed.provider.merchantId,()=>recurring.charge(input));
+      else{
+        // The dispatch marker commits before I/O, so a process can stop before
+        // the channel ever receives the authorised original request. Query is
+        // still read-only; only an explicitly capable adapter may recover it.
+        try{receipt=await claimed.provider.query(paymentOrder(claimed.order));}
+        catch(error){if(!recurring.recoverSameRequest)throw error;}
+        if(receipt&&receipt.orderId!==claimed.order.id)throw invalid('续费渠道查单与原订单不一致。');
+        if((!receipt||receipt.state==='pending')&&recurring.recoverSameRequest)
+          receipt=await withBillingDispatch(pool,target.owner_user_id,claimed.provider.name,claimed.provider.merchantId,()=>recurring.recoverSameRequest!(input));
+      }
+      if(!receipt||receipt.orderId!==claimed.order.id)throw invalid('续费渠道回执与原订单不一致。');
       await applyVerifiedPayment(pool,claimed.provider,receipt);
     }catch{
       // Unknown payment or a mismatched receipt leaves the same intent pending for query/reconciliation.

@@ -1,0 +1,147 @@
+{
+  "startedAt": "2026-11-05T09:00:31.884Z",
+  "attempt": "2e7e4f60-7c92-4e8e-bfeb-54dcb6483be8",
+  "owner": "2bf4a82b-d8ac-4427-bfb4-08c17f582a65",
+  "database": "bb_pay_core_20261105_8af97841_t56512_ef86cdfb",
+  "samePool": true,
+  "synthetic": true,
+  "limitation": "Multiple API instances intentionally share one Pool. This does not establish a defect in the ordinary one-API-per-process deployment.",
+  "checks": [
+    {
+      "name": "automatic API baseline has an executable automatic quote",
+      "passed": true
+    },
+    {
+      "name": "creating a legacy API on the same Pool cannot change the existing automatic API catalogue",
+      "passed": false
+    },
+    {
+      "name": "creating a legacy API on the same Pool cannot turn a new automatic task into pending manual scope",
+      "passed": false
+    },
+    {
+      "name": "creating an automatic API on the same Pool cannot advertise its tariff in the existing legacy API",
+      "passed": false
+    },
+    {
+      "name": "creating a later API does not require the original automatic API to be rebuilt",
+      "passed": true
+    },
+    {
+      "name": "closing the other API cannot leave the legacy API with an automatic tariff",
+      "passed": false
+    },
+    {
+      "name": "the configuration probe performs no payment, charge, task or model call",
+      "passed": true
+    }
+  ],
+  "observations": [
+    {
+      "name": "automatic API baseline has an executable automatic quote",
+      "passed": true,
+      "catalog": "subscription_and_topup",
+      "quote": {
+        "price_version": "bb-task-price-170-20261029-v3",
+        "quote_id": "a546d853-dc15-42e6-b5a3-bb31d7fd512d",
+        "project_id": "950ebbf0-fccd-47b6-9735-fb43263c4bea",
+        "input_revision": 1,
+        "input_hash": "fb8ee0db9523e63e91da550a989487f20ca8864a001239adaa28cd6948906ada",
+        "task_type": "full_review",
+        "points": "27195",
+        "reason": "按本次已核实的复核范围明细锁定人民币总价；交付后结算，失败或取消释放。",
+        "created_at": "2026-11-05T09:00:32.973Z",
+        "auto_charge": true,
+        "pricing_mode": "outcome_cny_v1",
+        "currency": "CNY",
+        "amount_fen": "27195",
+        "unit_amount_fen": "27195",
+        "units": "1",
+        "scope_quote_id": "8b1e3efd-cc42-48a9-adaf-7d947566fe9a",
+        "quote_status": "ready",
+        "scope_expires_at": "2026-11-12T09:00:32.998Z",
+        "scope_lines": [
+          {
+            "key": "review",
+            "label": "独立全面复核",
+            "quantity": "1",
+            "unit": "份／轮",
+            "unit_price_fen": "27195",
+            "amount_fen": "27195",
+            "evidence": [
+              "服务端已锁定review的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "creating a legacy API on the same Pool cannot change the existing automatic API catalogue",
+      "passed": false,
+      "expected": "subscription_and_topup",
+      "actual": "pay_as_you_go"
+    },
+    {
+      "name": "creating a legacy API on the same Pool cannot turn a new automatic task into pending manual scope",
+      "passed": false,
+      "expected": {
+        "auto_charge": true,
+        "quote_status": "ready",
+        "price_version": "bb-task-price-170-20261029-v3"
+      },
+      "actual": {
+        "price_version": "outcome-cny-20261028-v2",
+        "quote_id": "d4b42247-bb58-4dc3-981e-8ae023bdf045",
+        "project_id": "b3a2273e-77fe-4724-9650-9e1edb0c32c5",
+        "input_revision": 1,
+        "input_hash": "f0ba2d4116a600ed7f88f843f8885f93dddf0ca35685877f6b8029ec588b82d4",
+        "task_type": "full_review",
+        "points": "0",
+        "reason": "本次复核范围待核实；核定覆盖范围及所需成果后，才能确认费用并执行。",
+        "created_at": "2026-11-05T09:00:33.131Z",
+        "pricing_mode": "outcome_cny_v1",
+        "currency": "CNY",
+        "amount_fen": "0",
+        "unit_amount_fen": "0",
+        "units": "1",
+        "scope_quote_id": "d4b42247-bb58-4dc3-981e-8ae023bdf045",
+        "quote_status": "pending_scope",
+        "scope_expires_at": null,
+        "scope_lines": []
+      }
+    },
+    {
+      "name": "creating an automatic API on the same Pool cannot advertise its tariff in the existing legacy API",
+      "passed": false,
+      "expected": {
+        "model": "pay_as_you_go",
+        "enabled": false
+      },
+      "actual": {
+        "model": "subscription_and_topup",
+        "enabled": true
+      }
+    },
+    {
+      "name": "creating a later API does not require the original automatic API to be rebuilt",
+      "passed": true,
+      "actual": "subscription_and_topup"
+    },
+    {
+      "name": "closing the other API cannot leave the legacy API with an automatic tariff",
+      "passed": false,
+      "expected": "pay_as_you_go",
+      "actual": "subscription_and_topup"
+    },
+    {
+      "name": "the configuration probe performs no payment, charge, task or model call",
+      "passed": true,
+      "facts": {
+        "runs": 0,
+        "credit_events": 0,
+        "model_calls": 0
+      }
+    }
+  ],
+  "passed": false
+}

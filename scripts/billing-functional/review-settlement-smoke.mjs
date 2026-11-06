@@ -27,6 +27,7 @@ try{
   const ready=await(await fetch(apiURL+'/__billing-test/status')).json(),launch=JSON.parse(readFileSync(join(runtime,'state.json'),'utf8'));assert.equal(ready.ready,true);assert.equal(ready.launch_id,launch.launchId);
   owner=(await send('POST','/api/v1/auth/register',{username,password:'Synthetic-Settlement-2026!',accepted_terms_version:terms},201)).user_id;
   const paid=await send('POST','/api/v1/commerce/topups',{request_id:randomUUID(),amount_fen:'100000',provider:'wechat'},201);
+  await send('POST','/__billing-test/api/payment/outcome',{id:paid.order_id,outcome:'paid',delivery:'query'});
   await send('POST','/api/v1/commerce/topups/'+paid.order_id+'/refresh',{});balance(await state(),100000);checks.push('one new random account funds its real wallet through a synthetic verified topup');
   const failed=await prepare();let current=await send('POST','/__billing-test/api/review/start',{id:failed});balance(current,72805,27195);const failedRun=task(current,failed).run_id;
   current=await send('POST','/__billing-test/api/review/finish',{id:failed,outcome:'failed'});balance(current,100000);assert.equal(task(current,failed).charge_state,'released');assert.equal(BigInt(task(current,failed).charged_points??0),0n);

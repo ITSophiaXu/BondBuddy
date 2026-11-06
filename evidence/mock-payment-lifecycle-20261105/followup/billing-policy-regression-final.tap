@@ -1,0 +1,154 @@
+TAP version 13
+# Subtest: automatic authoring produces an executable locked quote without operator pricing; shortages have no hold
+ok 1 - automatic authoring produces an executable locked quote without operator pricing; shortages have no hold
+  ---
+  duration_ms: 164.7843
+  type: 'test'
+  ...
+# Subtest: two competing executions cannot consume the same automatic scope twice
+ok 2 - two competing executions cannot consume the same automatic scope twice
+  ---
+  duration_ms: 302.4506
+  type: 'test'
+  ...
+# Subtest: HTTP exposes automatic price metadata, rejects client amounts and preserves owner isolation
+ok 3 - HTTP exposes automatic price metadata, rejects client amounts and preserves owner isolation
+  ---
+  duration_ms: 1628.6594
+  type: 'test'
+  ...
+# Subtest: failed and released authoring can retry with a new immutable quote; closed=false
+ok 4 - failed and released authoring can retry with a new immutable quote; closed=false
+  ---
+  duration_ms: 326.4997
+  type: 'test'
+  ...
+# Subtest: failed and released authoring can retry with a new immutable quote; closed=true
+ok 5 - failed and released authoring can retry with a new immutable quote; closed=true
+  ---
+  duration_ms: 287.939
+  type: 'test'
+  ...
+# Subtest: HTTP automatic billing includes same-scope revision in a settled new check without another hold
+ok 6 - HTTP automatic billing includes same-scope revision in a settled new check without another hold
+  ---
+  duration_ms: 3140.6777
+  type: 'test'
+  ...
+# Subtest: HTTP automatic billing preserves the 1000-point revision upgrade for a settled old 990-point check
+ok 7 - HTTP automatic billing preserves the 1000-point revision upgrade for a settled old 990-point check
+  ---
+  duration_ms: 2172.5356
+  type: 'test'
+  ...
+# Subtest: partial file-check quality refund revokes only that file and rejects only its stale included-maintenance quote
+ok 8 - partial file-check quality refund revokes only that file and rejects only its stale included-maintenance quote
+  ---
+  duration_ms: 1309.5998
+  type: 'test'
+  ...
+# Subtest: HTTP project file batch carries automatic tariff metadata and accepts the matching executable quote
+ok 9 - HTTP project file batch carries automatic tariff metadata and accepts the matching executable quote
+  ---
+  duration_ms: 1069.0818
+  type: 'test'
+  ...
+# Subtest: HTTP automatic workpaper generation returns 402 without creating a batch or hold when points are insufficient
+ok 10 - HTTP automatic workpaper generation returns 402 without creating a batch or hold when points are insufficient
+  ---
+  duration_ms: 811.488
+  type: 'test'
+  ...
+# Subtest: asynchronous workpaper shortage resumes only the original batch once and never overrides a later manual pause
+ok 11 - asynchronous workpaper shortage resumes only the original batch once and never overrides a later manual pause
+  ---
+  duration_ms: 1354.5235
+  type: 'test'
+  ...
+# Subtest: retired source-diff route remains replayable while automatic workpaper checks use independent paid files
+ok 12 - retired source-diff route remains replayable while automatic workpaper checks use independent paid files
+  ---
+  duration_ms: 896.8068
+  type: 'test'
+  ...
+# Subtest: retired workpaper assessment rejects new free work but preserves historical replay and reads
+ok 13 - retired workpaper assessment rejects new free work but preserves historical replay and reads
+  ---
+  duration_ms: 795.676
+  type: 'test'
+  ...
+# Subtest: a paid v2 subscription and cancellation retain v2 task prices after v3 release
+ok 14 - a paid v2 subscription and cancellation retain v2 task prices after v3 release
+  ---
+  duration_ms: 803.7636
+  type: 'test'
+  ...
+# Subtest: new non-subscribers and new paid subscriptions use the published v3 comprehensive review tariff
+ok 15 - new non-subscribers and new paid subscriptions use the published v3 comprehensive review tariff
+  ---
+  duration_ms: 309.7696
+  type: 'test'
+  ...
+# Subtest: an unexpired v2 quote keeps its immutable price and remains executable after v3 release
+ok 16 - an unexpired v2 quote keeps its immutable price and remains executable after v3 release
+  ---
+  duration_ms: 114.2629
+  type: 'test'
+  ...
+# Subtest: stored batch price protection is scoped to its transaction callback and survives current-price changes
+ok 17 - stored batch price protection is scoped to its transaction callback and survives current-price changes
+  ---
+  duration_ms: 43.9027
+  type: 'test'
+  ...
+# Subtest: full review locks 27195 points, settles once on report delivery, and releases a failed retry
+ok 18 - full review locks 27195 points, settles once on report delivery, and releases a failed retry
+  ---
+  duration_ms: 2907.3728
+  type: 'test'
+  ...
+# Subtest: outcome quote pins full delivery price, ignores progress debit, releases failures, settles delivered pair once and supports idempotent correction
+ok 19 - outcome quote pins full delivery price, ignores progress debit, releases failures, settles delivered pair once and supports idempotent correction
+  ---
+  duration_ms: 1113.911
+  type: 'test'
+  ...
+# Subtest: outcome M4 needs no metering rate, freezes complete pinned price and releases a cancelled task
+ok 20 - outcome M4 needs no metering rate, freezes complete pinned price and releases a cancelled task
+  ---
+  duration_ms: 264.9467
+  type: 'test'
+  ...
+# Subtest: durable file batch preserves a different approved amount per document and never charges a completed predecessor again
+ok 21 - durable file batch preserves a different approved amount per document and never charges a completed predecessor again
+  ---
+  duration_ms: 647.081
+  type: 'test'
+  ...
+# Subtest: paid file checks settle only complete report and new update scope includes settled same-version evidence
+ok 22 - paid file checks settle only complete report and new update scope includes settled same-version evidence
+  ---
+  duration_ms: 778.4999
+  type: 'test'
+  ...
+# Subtest: review API exposes pending scope without a charge and executes only the approved input-bound amount
+ok 23 - review API exposes pending scope without a charge and executes only the approved input-bound amount
+  ---
+  duration_ms: 2003.4856
+  type: 'test'
+  ...
+# Subtest: QA original-scope evidence followup requires owned settled original and cannot introduce new questions or changed requirements
+ok 24 - QA original-scope evidence followup requires owned settled original and cannot introduce new questions or changed requirements
+  ---
+  duration_ms: 422.202
+  type: 'test'
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16939.3995

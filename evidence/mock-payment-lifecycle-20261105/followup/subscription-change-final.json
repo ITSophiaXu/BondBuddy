@@ -1,0 +1,58 @@
+{
+  "synthetic": true,
+  "realHttp": true,
+  "realPostgres": true,
+  "realPaymentCallsPerformed": 0,
+  "modelCallsPerformed": 0,
+  "startedAt": "2026-11-05T09:20:42.688Z",
+  "finishedAt": "2026-11-05T09:20:46.927Z",
+  "instanceId": "85f66562-58b4-4af1-b6d1-995d6477e2e2",
+  "launchId": "982d76730703e1b28255bfa28f12f0adb4606a26e0fa9548",
+  "accounts": [
+    {
+      "username": "billing_change_bdb24c6e",
+      "owner": "5c5a90ce-9233-4e69-893b-e4641e0040c2",
+      "firstOrderId": "dce5aa396aa14cc4afe38a85cc0a7b17",
+      "subscriptionId": "8c1ce522-53e0-4276-86c1-ad9c1da95fd5"
+    },
+    {
+      "username": "billing_change_c5f9c19a",
+      "owner": "f2979c6d-cdd9-4db5-981c-8b7b4efc120e",
+      "firstOrderId": "b39f387d45344656a35bbc0ced6d51bd",
+      "subscriptionId": "563133ec-c60c-4d04-bef3-44be3387eb7a"
+    },
+    {
+      "username": "billing_change_896162c7",
+      "owner": "60a5602f-315c-4cfc-852f-1a3eaddee41f",
+      "firstOrderId": "8bd7fcd5e6d74eef85b0fb3b777e58b2",
+      "subscriptionId": "aabccda8-d5e0-4aac-926d-77975f61cf3d"
+    },
+    {
+      "username": "billing_change_4e5208bd",
+      "owner": "47d26026-2aa0-4789-a79c-3becaf5558f2",
+      "firstOrderId": "3dae198da4fa45eeb4c124475b545960",
+      "subscriptionId": "7859e394-bb9b-473a-a989-e26592c480fc"
+    },
+    {
+      "username": "billing_change_25968132",
+      "owner": "31253b79-377b-4ef5-8ec1-070dac3e84bc",
+      "firstOrderId": "76bf472f2f9d463ca3ba6fc2992779aa",
+      "subscriptionId": "b8c43566-d33f-4811-bf21-4129e122a01c"
+    }
+  ],
+  "checks": [
+    "professional monthly upgrade freezes 55000 transferable points, offsets 499 yuan and verifies old renewal cancellation",
+    "checkout and verified-payment replay creates one new 500-yuan order and one intensive contract without restoring old points",
+    "task-frozen points stay with original source during month-to-year conversion; real queued-task cancellation restores only that 27195-point hold",
+    "after a real synthetic-delivery settlement of 27195 points, upgrade offsets ceil(original paid consideration) and charges 746.73 yuan",
+    "light month to professional month to intensive year preserves three original cash sources and exact unequal-cent installment allocation",
+    "annual next-month release grants 114000 more points once with all funding sources and no new payment",
+    "unknown payment retains original contract and transfer hold without granting new points",
+    "verified failed change releases exact held points and keeps the original monthly contract",
+    "another authenticated owner cannot spend an existing change quote",
+    "all five new accounts pass authoritative wallet/funding audit with zero model calls"
+  ],
+  "skipped": [],
+  "passed": 10,
+  "failed": 0
+}

@@ -1,0 +1,14 @@
+{
+  "recordedAt": "2026-11-05T09:05:00Z",
+  "command": "node --test apps/api/dist/automatic-billing.pg.test.js apps/api/dist/automatic-review-billing.pg.test.js apps/api/dist/automatic-file-billing.pg.test.js apps/api/dist/automatic-price-versions.pg.test.js apps/api/dist/outcome-billing.pg.test.js",
+  "tests": 24,
+  "passed": 18,
+  "failed": 6,
+  "failures": [
+    {"file": "apps/api/src/automatic-billing.pg.test.ts", "count": 5},
+    {"file": "apps/api/src/outcome-billing.pg.test.ts", "count": 1}
+  ],
+  "cause": "Saved authoring fixtures used materials:[] and source_prospectuses:[]; the 2026-11-05 mandatory reference rule correctly rejects them with INPUT_REQUIRED before quotation or reservation.",
+  "error": "请先上传并采用一份历史／参考募集书，填写原稿信息后再开始更新。",
+  "fixScope": "Add declared, owned synthetic reference metadata to existing saved-input fixtures. Preserve all original billing assertions and production source requirement."
+}

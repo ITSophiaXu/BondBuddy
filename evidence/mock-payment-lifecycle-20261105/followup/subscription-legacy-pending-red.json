@@ -1,0 +1,212 @@
+{
+  "synthetic": true,
+  "realBrowser": "Microsoft Edge",
+  "realHttp": true,
+  "realPostgres": true,
+  "realPaymentCallsPerformed": 0,
+  "modelCallsPerformed": 0,
+  "startedAt": "2026-11-05T09:13:12.170Z",
+  "finishedAt": "2026-11-05T09:13:28.547Z",
+  "instanceId": "85f66562-58b4-4af1-b6d1-995d6477e2e2",
+  "selectedCase": "4",
+  "passed": 0,
+  "failed": 1,
+  "skipped": 3,
+  "cases": [
+    {
+      "number": 4,
+      "name": "legacy-ID-only-pending-records-can-only-recover-an-existing-event",
+      "faults": [],
+      "screenshots": [],
+      "branches": [
+        {
+          "mode": "existing",
+          "account": {
+            "username": "two_tab_063da1d6",
+            "owner": "25005616-e1f2-41d4-9b6d-3ccc147a1b22"
+          },
+          "original": {
+            "id": "264b373c-e6d0-4496-9084-b8ce711d7298"
+          },
+          "applied": {
+            "synthetic": true,
+            "owner_user_id": "25005616-e1f2-41d4-9b6d-3ccc147a1b22",
+            "username": "two_tab_063da1d6",
+            "account": {
+              "subscription": {
+                "id": "116b7124-c063-4fef-b8ef-700b00dd7e28",
+                "plan_id": "light",
+                "status": "active",
+                "auto_renew": true,
+                "mandate_status": "active",
+                "current_period_start": "2026-12-05T09:13:14.265Z",
+                "current_period_end": "2027-01-05T09:13:14.265Z",
+                "task_price_version": "bb-task-price-170-20261029-v3",
+                "billing_cycle": "monthly",
+                "next_charge_at": "2027-01-05T09:13:14.265Z",
+                "next_charge_amount_fen": "19900"
+              },
+              "available_points": "42000",
+              "held_points": "0",
+              "task_held_points": "0",
+              "refund_held_points": "0",
+              "change_held_points": "0",
+              "subscription_available_points": "42000",
+              "topup_available_points": "0",
+              "other_available_points": "0",
+              "periods": [
+                {
+                  "id": "aa3abc16-ab38-4d19-ac63-ab46ccb11807",
+                  "order_id": "d4ef1040a66d455e866a7d00c0fcef25",
+                  "plan_id": "light",
+                  "status": "active",
+                  "amount_fen": "19900",
+                  "points": "21000",
+                  "face_amount_fen": "19900",
+                  "funding_kind": "cash",
+                  "change_held_points": "0",
+                  "billing_cycle": "monthly",
+                  "monthly_points": "21000",
+                  "release_count": 1,
+                  "released_count": 1,
+                  "next_release_at": null,
+                  "available_points": "21000",
+                  "held_points": "0",
+                  "task_held_points": "0",
+                  "refund_held_points": "0",
+                  "starts_at": "2026-12-05T09:13:14.265Z",
+                  "ends_at": "2027-01-05T09:13:14.265Z",
+                  "credits_expires_at": "2027-03-05T09:13:14.265Z",
+                  "refundable_until": "2026-12-12T09:13:14.265Z"
+                },
+                {
+                  "id": "982489cc-9086-4b17-87b0-451344da6e43",
+                  "order_id": "62a159190a844c3a80ea7eb18329a47e",
+                  "plan_id": "light",
+                  "status": "active",
+                  "amount_fen": "19900",
+                  "points": "21000",
+                  "face_amount_fen": "19900",
+                  "funding_kind": "cash",
+                  "change_held_points": "0",
+                  "billing_cycle": "monthly",
+                  "monthly_points": "21000",
+                  "release_count": 1,
+                  "released_count": 1,
+                  "next_release_at": null,
+                  "available_points": "21000",
+                  "held_points": "0",
+                  "task_held_points": "0",
+                  "refund_held_points": "0",
+                  "starts_at": "2026-11-05T09:13:13.265Z",
+                  "ends_at": "2026-12-05T09:13:13.265Z",
+                  "credits_expires_at": "2027-02-03T09:13:13.265Z",
+                  "refundable_until": "2026-11-12T09:13:13.265Z"
+                }
+              ]
+            },
+            "tasks": [],
+            "payments": [
+              {
+                "id": "d4ef1040a66d455e866a7d00c0fcef25",
+                "state": "paid",
+                "amount_fen": "19900",
+                "points": "21000",
+                "order_kind": "subscription",
+                "created_at": "2026-11-05T09:13:13.449Z",
+                "automatic": true,
+                "channel_state": "paid",
+                "refundable": {
+                  "order_id": "d4ef1040a66d455e866a7d00c0fcef25",
+                  "currency": "CNY",
+                  "order_amount_fen": 19900,
+                  "original_points": 21000,
+                  "paid_amount_fen": 19900,
+                  "refundable_fen": 19900,
+                  "held_refund_fen": 0,
+                  "refunded_fen": 0,
+                  "request_unit": "amount_fen",
+                  "refundable_points": 21000,
+                  "refunded_points": 0,
+                  "enabled": true,
+                  "reason": "",
+                  "refunds": []
+                }
+              },
+              {
+                "id": "62a159190a844c3a80ea7eb18329a47e",
+                "state": "paid",
+                "amount_fen": "19900",
+                "points": "21000",
+                "order_kind": "subscription",
+                "created_at": "2026-11-05T09:13:13.202Z",
+                "automatic": false,
+                "channel_state": "paid",
+                "refundable": {
+                  "order_id": "62a159190a844c3a80ea7eb18329a47e",
+                  "currency": "CNY",
+                  "order_amount_fen": 19900,
+                  "original_points": 21000,
+                  "paid_amount_fen": 19900,
+                  "refundable_fen": 0,
+                  "held_refund_fen": 0,
+                  "refunded_fen": 0,
+                  "request_unit": "amount_fen",
+                  "refundable_points": 0,
+                  "refunded_points": 0,
+                  "enabled": false,
+                  "reason": "订阅仅支持到账后7天内、整份合同从未消费且未被任务预留的全额退款；取消续订保留已付款期间的按月权益。",
+                  "refunds": []
+                }
+              }
+            ],
+            "refunds": [],
+            "subscription_test": {
+              "clock_at": "2026-12-05T09:13:14.265Z",
+              "simulated": true,
+              "next_event": {
+                "at": "2027-01-05T09:13:14.265Z",
+                "event_kind": "renewal"
+              },
+              "charges": {
+                "paid_orders": 2,
+                "recurring_paid_orders": 1,
+                "recurring_pending_orders": 0,
+                "recurring_failed_orders": 0,
+                "simulated_paid_fen": "39800"
+              }
+            },
+            "subscription_action": {
+              "request_id": "264b373c-e6d0-4496-9084-b8ce711d7298",
+              "advanced": true,
+              "replayed": false,
+              "event_changed": false,
+              "target_at": "2026-12-05T09:13:14.265Z",
+              "event_kind": "renewal"
+            }
+          },
+          "before": {
+            "orders": 2,
+            "periods": 2,
+            "recurring_paid": 1,
+            "advances": 1,
+            "grants": 2,
+            "paid_fen": "39800",
+            "clock": "2026-12-05T09:13:14.265Z"
+          }
+        }
+      ],
+      "passed": false,
+      "error": "Error: expect(received).toEqual(expected) // deep equality\n\n- Expected  - 2\n+ Received  + 4\n\n  Object {\n-   \"error\": false,\n-   \"pending\": null,\n+   \"error\": true,\n+   \"pending\": Object {\n+     \"id\": \"264b373c-e6d0-4496-9084-b8ce711d7298\",\n+   },\n  }\n\nCall Log:\n- Timeout 15000ms exceeded while waiting on the predicate",
+      "stack": "Error: expect(received).toEqual(expected) // deep equality\n\n- Expected  - 2\n+ Received  + 4\n\n  Object {\n-   \"error\": false,\n-   \"pending\": null,\n+   \"error\": true,\n+   \"pending\": Object {\n+     \"id\": \"264b373c-e6d0-4496-9084-b8ce711d7298\",\n+   },\n  }\n\nCall Log:\n- Timeout 15000ms exceeded while waiting on the predicate\n    at captureRawStack (C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\node_modules\\playwright-core\\lib\\coreBundle.js:8588:17)\n    at callMatcherAsStep (C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\node_modules\\playwright\\lib\\matchers\\expect.js:13310:57)\n    at Object.toEqual (C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\node_modules\\playwright\\lib\\matchers\\expect.js:13302:23)\n    at C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\scripts\\billing-functional\\subscription-two-tab-verify.mjs:118:130\n    at async run (C:\\Users\\lezhai\\Downloads\\Bondbuddy\\mock-payment-lifecycle-20261105\\scripts\\billing-functional\\subscription-two-tab-verify.mjs:45:159)\n    at async file:///C:/Users/lezhai/Downloads/Bondbuddy/mock-payment-lifecycle-20261105/scripts/billing-functional/subscription-two-tab-verify.mjs:102:3"
+    }
+  ],
+  "audits": [
+    {
+      "username": "two_tab_063da1d6",
+      "owner": "25005616-e1f2-41d4-9b6d-3ccc147a1b22",
+      "consistent": true,
+      "modelCalls": 0
+    }
+  ]
+}

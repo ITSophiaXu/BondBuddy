@@ -134,6 +134,108 @@ class FixedEditTests(unittest.TestCase):
         self.assertTrue((output / 'tracked.docx').is_file(), 'diagnostics do not block delivery')
         self.assertTrue((output / 'clean.docx').is_file())
 
+    def test_new_reporting_column_preserves_comparatives_width_and_rejectable_edits(self):
+        table = self.node('项目\n2024年度\n净资产\n100', 'table')
+        old_cell = self.node('100', 'cell')
+        output, receipt = self.generate([
+            {'id': 'period', 'kind': 'insert_column', 'node_id': table['node_id'], 'before': table['text'],
+             'column_index': 1, 'position': 'before', 'values': ['2025年度', '120']},
+            {'id': 'new_amount', 'kind': 'replace_cell_text', 'node_id': 'op:period:cell:1', 'before': '120', 'after': '125'},
+            {'id': 'old_amount', 'kind': 'replace_cell_text', 'node_id': old_cell['node_id'], 'before': '100', 'after': '101'},
+            {'id': 'note', 'kind': 'add_comment', 'node_id': 'op:period:cell:1:paragraph', 'before': '125', 'text': '合成测试核对。'}])
+        self.assertEqual(receipt['format_status'], 'passed', (output / 'format-report.json').read_text(encoding='utf-8'))
+        clean = Document(output / 'clean.docx').tables[0]
+        self.assertEqual([[c.text for c in r.cells] for r in clean.rows], [['项目', '2025年度', '2024年度'], ['净资产', '125', '101']])
+        before = xml(package(self.source)['word/document.xml'])
+        tracked = xml(package(output / 'tracked.docx')['word/document.xml'])
+        self.assertEqual(len(tracked.findall('.//' + q('cellIns'))), 2)
+        self.assertEqual(len(tracked.findall('.//' + q('tblGridChange'))), 1)
+        self.assertEqual(len(tracked.findall('.//' + q('tcPrChange'))), 4)
+        old_grid = before.find('.//' + q('tblGrid'))
+        new_grid = tracked.find('.//' + q('tblGrid'))
+        self.assertEqual(sum(int(c.get(q('w'))) for c in old_grid.findall(q('gridCol'))),
+                         sum(int(c.get(q('w'))) for c in new_grid.findall(q('gridCol'))))
+        accepted = resolve_revisions(copy.deepcopy(tracked), True)
+        self.assertEqual(canonical(accepted), canonical(xml(package(output / 'clean.docx')['word/document.xml'])))
+        wrong_author = resolve_revisions(copy.deepcopy(tracked), False, only_new='Someone else')
+        self.assertEqual(canonical(wrong_author), canonical(tracked))
+
+    def test_repeated_columns_and_row_insertions_restore_exact_original(self):
+        editor = Editor(self.data, self.source)
+        table_id = next(k for k, (_, n) in editor.nodes.items() if n.tag == q('tbl'))
+        row_id = next(k for k, (_, n) in editor.nodes.items() if n.tag == q('tr') and node_text(n) == '净资产\n100')
+        operations = []
+        def append(kind, node_id, **values):
+            op = {'id': 'step_' + str(len(operations)), 'kind': kind, 'node_id': node_id,
+                  'before': node_text(editor.nodes[node_id][1]), **values}
+            editor.apply(op)
+            operations.append(op)
+        append('insert_column', table_id, column_index=1, values=['2025年度', '120'])
+        append('insert_row', row_id, values=['负债', '60', '50'])
+        append('insert_column', table_id, column_index=1, values=['2026年6月末', '130', '65'])
+        append('insert_paragraph', 'op:step_2:cell:1:paragraph', text='合成注释')
+        output, receipt = self.generate(operations)
+        self.assertEqual(receipt['format_status'], 'passed', (output / 'format-report.json').read_text(encoding='utf-8'))
+        final = Document(output / 'clean.docx').tables[0]
+        self.assertEqual([[c.text for c in r.cells] for r in final.rows],
+                         [['项目', '2026年6月末', '2025年度', '2024年度'], ['净资产', '130\n合成注释', '120', '100'], ['负债', '65', '60', '50']])
+        tracked = xml(package(output / 'tracked.docx')['word/document.xml'])
+        rejected = resolve_revisions(copy.deepcopy(tracked), False, only_new=self.data['revision_author'])
+        self.assertEqual(canonical(rejected), canonical(xml(package(self.source)['word/document.xml'])))
+        self.assertFalse(tracked.findall('.//' + q('ins') + '//' + q('ins')))
+        self.assertEqual(len(tracked.findall('.//' + q('tblGridChange'))), 1)
+        first_bytes = (output / 'tracked.docx').read_bytes()
+        second, _ = self.generate(operations)
+        self.assertEqual(first_bytes, (second / 'tracked.docx').read_bytes())
+
+    def test_selective_column_rejection_does_not_guess_missing_or_other_author_grid(self):
+        table = self.node('项目\n2024年度\n净资产\n100', 'table')
+        output, _ = self.generate([{'id': 'period', 'kind': 'insert_column', 'node_id': table['node_id'],
+                                  'before': table['text'], 'column_index': 1, 'values': ['2025年度', '120']}])
+        for mutation in ['missing_grid', 'mixed_authors']:
+            root = xml(package(output / 'tracked.docx')['word/document.xml'])
+            if mutation == 'missing_grid':
+                change = root.find('.//' + q('tblGridChange'))
+                change.getparent().remove(change)
+            else:
+                root.find('.//' + q('cellIns')).set(q('author'), 'Other author')
+            with self.subTest(mutation=mutation), self.assertRaisesRegex(ValueError, 'WORD_REVISION_UNSUPPORTED'):
+                resolve_revisions(root, False, only_new=self.data['revision_author'])
+            if mutation == 'mixed_authors':
+                with self.assertRaisesRegex(ValueError, 'WORD_REVISION_UNSUPPORTED'):
+                    resolve_revisions(root, True, only_new=self.data['revision_author'])
+
+    def test_column_values_require_every_row_and_support_multiline_cells(self):
+        doc = Document(self.source)
+        doc.tables[0].cell(1, 1).add_paragraph('口径说明')
+        doc.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        write_json(self.input, self.data)
+        self.log = empty_log(self.data, self.source.read_bytes())
+        table = next(n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'table')
+        base = {'id': 'period', 'kind': 'insert_column', 'node_id': table['node_id'], 'before': table['text'], 'column_index': 1}
+        for values, expected in [(['2025'], 'WORD_EDIT_COLUMN_VALUES_INVALID'), (['2025', '120'], 'WORD_EDIT_COMPLEX_CELL_UNSUPPORTED')]:
+            with self.subTest(values=values), self.assertRaisesRegex(ValueError, expected):
+                self.generate([{**base, 'values': values}])
+        for index in [-1, 2, True, '1']:
+            with self.subTest(index=index), self.assertRaisesRegex(ValueError, 'WORD_EDIT_COLUMN_INDEX_INVALID'):
+                self.generate([{**base, 'column_index': index, 'values': ['2025', ['120', '新口径']]}])
+        output, receipt = self.generate([{**base, 'position': 'after', 'values': ['2025', ['120', '新口径']]}])
+        self.assertEqual(receipt['format_status'], 'passed')
+        self.assertEqual(Document(output / 'clean.docx').tables[0].cell(1, 2).text, '120\n新口径')
+
+    def test_column_rejects_merges_and_existing_revisions_without_partial_table_changes(self):
+        table = next(n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'table')
+        for tag in ['gridSpan', 'vMerge', 'tblGridChange', 'fldSimple']:
+            editor = Editor(self.data, self.source)
+            node = editor.nodes[table['node_id']][1]
+            ET.SubElement(node.find('.//' + q('tcPr')), q(tag))
+            previous = serialized(node)
+            with self.subTest(tag=tag), self.assertRaisesRegex(ValueError, 'WORD_EDIT_COMPLEX_COLUMN_UNSUPPORTED'):
+                editor.apply({'id': 'column', 'kind': 'insert_column', 'node_id': table['node_id'],
+                              'before': node_text(node), 'column_index': 1, 'values': ['2025', '120']})
+            self.assertEqual(serialized(node), previous)
+
     def test_wrong_hash_stale_anchor_unknown_fields_and_no_log_are_rejected(self):
         node = self.node('保留😀的原始段落。')
         with self.assertRaisesRegex(ValueError, 'WORD_EDIT_ANCHOR_MISMATCH'):

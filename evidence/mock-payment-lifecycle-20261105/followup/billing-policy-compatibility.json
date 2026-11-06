@@ -1,0 +1,182 @@
+{
+  "synthetic": true,
+  "realHttp": true,
+  "realPostgres": true,
+  "oneDatabase": true,
+  "oneAccount": true,
+  "realPaymentCallsPerformed": 0,
+  "modelCallsPerformed": 0,
+  "startedAt": "2026-11-05T09:15:16.444Z",
+  "finishedAt": "2026-11-05T09:15:23.540Z",
+  "instanceId": "85f66562-58b4-4af1-b6d1-995d6477e2e2",
+  "username": "policy_compat_c352f5c9",
+  "owner": "cae09419-02dc-4322-8aac-cd2faa639830",
+  "runs": [
+    "1ae75d8c-160f-47ec-ae40-2b92ef688920",
+    "3157e7fc-b4d9-4191-91b0-7ea9ce41a475",
+    "5b803800-4cb4-4706-affa-51845e52df2c",
+    "565b36ce-f866-4896-a6e4-015bf5ccab12",
+    "35043606-c551-40ca-97f2-bb7c774ee58d",
+    "4eac1a9a-e897-4703-8e33-c874ec604abc",
+    "45035a99-ffd1-440a-b4db-05074b8a7507"
+  ],
+  "orders": [
+    "14882628cdad435bb8e7ebf8cd91fbcf",
+    "35b8e2bdddbc427eb890c06179b7a17c",
+    "2f2ab043113143fd8185cbd2d998b27e",
+    "59fb3be4e831439c8a0d4c974db74167",
+    "932bc422ea214df49007fcc80da98328"
+  ],
+  "workerGates": [
+    {
+      "run": "1ae75d8c-160f-47ec-ae40-2b92ef688920",
+      "automatic": false,
+      "inputRevision": 1,
+      "inputHash": "ffd37c41dc075f5d2614dc5db3c5ec273cd4776572540b62330d59d21de5226c",
+      "reservationId": "bf94a927-b2b8-41ad-9034-37d0c940710c",
+      "quoteId": "5a370118-2e48-47dd-851f-3a8f2a8d8cb7",
+      "billingPolicy": "authoring_balance_v2",
+      "gate": {
+        "review_mode": "review_v1",
+        "file_delivery": "review-correction-v2"
+      }
+    },
+    {
+      "run": "1ae75d8c-160f-47ec-ae40-2b92ef688920",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "ffd37c41dc075f5d2614dc5db3c5ec273cd4776572540b62330d59d21de5226c",
+      "reservationId": "bf94a927-b2b8-41ad-9034-37d0c940710c",
+      "quoteId": "5a370118-2e48-47dd-851f-3a8f2a8d8cb7",
+      "billingPolicy": "authoring_balance_v2",
+      "gate": {
+        "review_mode": "review_v1",
+        "file_delivery": "review-correction-v2"
+      }
+    },
+    {
+      "run": "1ae75d8c-160f-47ec-ae40-2b92ef688920",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "ffd37c41dc075f5d2614dc5db3c5ec273cd4776572540b62330d59d21de5226c",
+      "reservationId": "bf94a927-b2b8-41ad-9034-37d0c940710c",
+      "quoteId": "5a370118-2e48-47dd-851f-3a8f2a8d8cb7",
+      "billingPolicy": "authoring_balance_v2",
+      "gate": {
+        "review_mode": "review_v1",
+        "file_delivery": "review-correction-v2"
+      }
+    },
+    {
+      "run": "3157e7fc-b4d9-4191-91b0-7ea9ce41a475",
+      "automatic": true,
+      "inputRevision": 2,
+      "inputHash": "97c27c4918de68d05db87c29a97a2d3c78dfaf4de42d2f6046ce962104440a00",
+      "reservationId": "6cf4e6ab-2c41-4b48-a56d-cfce47f51188",
+      "quoteId": "107c7b54-89b0-4d8e-a283-f845c02ecc82",
+      "billingPolicy": "on_delivery",
+      "gate": {
+        "authoring_mode": "unified_v1",
+        "review_revision": false
+      }
+    },
+    {
+      "run": "5b803800-4cb4-4706-affa-51845e52df2c",
+      "automatic": true,
+      "inputRevision": 3,
+      "inputHash": "5a15eeb85c6bb2fabb0333073603cafdae235524e988beeb0ea557ac7ca56f3a",
+      "reservationId": "cf055b87-0a35-46ae-9f21-9cb5f4c60904",
+      "quoteId": "fc43289e-2790-4f7c-8658-5c19ef81bf68",
+      "billingPolicy": "on_delivery",
+      "gate": {
+        "authoring_mode": "unified_v1",
+        "review_revision": false
+      }
+    },
+    {
+      "run": "565b36ce-f866-4896-a6e4-015bf5ccab12",
+      "automatic": true,
+      "inputRevision": 4,
+      "inputHash": "035b31e3ee9c9f02c06aca00a3d3b58acb5d9291d2211ea50226a4208174f9fa",
+      "reservationId": "b155e349-e011-48a6-b10d-417c4af3572c",
+      "quoteId": "1c21ca8c-95af-46e5-b68d-20f2662d6618",
+      "billingPolicy": "on_delivery",
+      "gate": {
+        "authoring_mode": "unified_v1",
+        "review_revision": false
+      }
+    },
+    {
+      "run": "4eac1a9a-e897-4703-8e33-c874ec604abc",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "ec6aae42880d19d45b8febdbb4a7ad2bffb045730d77e5ee430886cbb67dd7b0",
+      "reservationId": "6bf74480-3ac2-41bf-b492-b48fb997f1da",
+      "quoteId": "76e9983e-f368-4561-96fd-667784e3e04a",
+      "billingPolicy": "authoring_balance_v2",
+      "gate": {
+        "review_mode": "review_v1",
+        "file_delivery": "review-correction-v2"
+      }
+    },
+    {
+      "run": "45035a99-ffd1-440a-b4db-05074b8a7507",
+      "automatic": false,
+      "inputRevision": 1,
+      "inputHash": "284e46169e6d154a947408fa515f04b39ecb49e5484e4151e341ef669c72cc1b",
+      "reservationId": "df966c46-563f-470a-81b7-9a7c8f65658b",
+      "quoteId": "8668db37-86ef-48ba-99c3-cd72ccdb3dbc",
+      "billingPolicy": "authoring_balance_v2",
+      "gate": {
+        "review_mode": "review_v1",
+        "file_delivery": "review-correction-v2"
+      }
+    },
+    {
+      "run": "45035a99-ffd1-440a-b4db-05074b8a7507",
+      "automatic": true,
+      "inputRevision": 1,
+      "inputHash": "284e46169e6d154a947408fa515f04b39ecb49e5484e4151e341ef669c72cc1b",
+      "reservationId": "df966c46-563f-470a-81b7-9a7c8f65658b",
+      "quoteId": "8668db37-86ef-48ba-99c3-cd72ccdb3dbc",
+      "billingPolicy": "authoring_balance_v2",
+      "gate": {
+        "review_mode": "review_v1",
+        "file_delivery": "review-correction-v2"
+      }
+    }
+  ],
+  "workerPipelines": [
+    {
+      "run": "45035a99-ffd1-440a-b4db-05074b8a7507",
+      "outcome": "succeeded",
+      "productionStages": [
+        "input_lock",
+        "materials_ready"
+      ],
+      "syntheticStages": [
+        "model_generation",
+        "word_delivery"
+      ],
+      "billingPolicy": "authoring_balance_v2"
+    }
+  ],
+  "contentQualityEvaluated": false,
+  "compatibilityScope": "Current binary under legacy/automatic configuration; immutable policy compatibility, not historical schema or binary migration.",
+  "passed": 10,
+  "failed": 0,
+  "skipped": 0,
+  "checks": [
+    "same marker database and authenticated account are shared by real legacy and automatic HTTP servers",
+    "automatic HTTP accepts an old v2 quotation with one point, retains its locked 27195 price and never imposes a full-price hold",
+    "new automatic worker resumes the legacy checkpoint with a partial recharge, debits only available funds and pauses the same run again",
+    "new worker delivers the old saved run once; current topup and old bonus pack coexist and old pack replays preserve its original 50000/52500 consideration",
+    "new worker settles an already-started legacy on_delivery task at 14900, using both old bonus and new 1:1 lots without incremental charges",
+    "automatic HTTP starts legacy revision quotations without repricing; new worker failure and cancellation each release the original hold exactly once",
+    "new automatic cancellation and old v2 failure interleave on one account without policy drift, duplicate debit or lost original bonus-pack cash basis",
+    "remaining legacy bonus rights including restored failure slices refund at original cash consideration once, never at the new 1:1 rate",
+    "production runPipelineOnce replays an old v2 input lock through real input/material gates and delivery settlement; only model/file output is synthetic",
+    "shared-account final authoritative audit passes with no active run and zero real payment or model calls"
+  ],
+  "cleanup": []
+}

@@ -166,6 +166,8 @@ class Editor:
         self.touched = set()
         self.inserted_paragraphs = set()
         self.inserted_rows = set()
+        self.inserted_cells = set()
+        self.property_changes = {}
         self.changed_parts = set()
         self.operations = []
         self.operation_ids = set()
@@ -211,6 +213,90 @@ class Editor:
         node.append(run_with_text(reference, text))
         return node
 
+    def remember_properties(self, part, node):
+        # Preserve the first state, including across several new reporting columns.
+        self.property_changes.setdefault(node, (part, copy.deepcopy(node)))
+
+    def insert_column(self, part, table, operation):
+        """Add a period to a rectangular table without widening its original grid."""
+        if table.tag != q('tbl'):
+            error('WORD_EDIT_NODE_KIND_MISMATCH')
+        if capability_limits(table) or table.findall('.//' + q('tbl')):
+            error('WORD_EDIT_COMPLEX_COLUMN_UNSUPPORTED')
+        grid = table.find(q('tblGrid'))
+        rows = table.findall(q('tr'))
+        columns = grid.findall(q('gridCol')) if grid is not None else []
+        index = operation.get('column_index')
+        position = operation.get('position', 'before')
+        if type(index) is not int or not 0 <= index < len(columns):
+            error('WORD_EDIT_COLUMN_INDEX_INVALID')
+        if position not in {'before', 'after'}:
+            error('WORD_EDIT_POSITION_INVALID')
+        values = operation.get('values')
+        if not rows or not isinstance(values, list) or len(values) != len(rows):
+            error('WORD_EDIT_COLUMN_VALUES_INVALID')
+        physical = [row.findall(q('tc')) for row in rows]
+        if any(len(cells) != len(columns) for cells in physical):
+            error('WORD_EDIT_COMPLEX_COLUMN_UNSUPPORTED')
+        try:
+            widths = [int(col.get(q('w'))) for col in columns]
+        except (ValueError, TypeError):
+            error('WORD_EDIT_COLUMN_WIDTH_UNSUPPORTED')
+        if any(w <= 0 for w in widths) or sum(widths) < len(widths) + 1:
+            error('WORD_EDIT_COLUMN_WIDTH_UNSUPPORTED')
+        if any(cell.find(q('tcPr')) is None for cells in physical for cell in cells):
+            error('WORD_EDIT_COLUMN_WIDTH_UNSUPPORTED')
+
+        # Validate/construct every cell before changing the table. Copy only style
+        # properties, never source text, bookmarks, relationships or comments.
+        additions = []
+        for cells, value in zip(physical, values):
+            source = cells[index]
+            ps = source.findall(q('p'))
+            texts = [value] if isinstance(value, str) else value
+            if not isinstance(texts, list) or len(texts) != len(ps) or not ps or source.findall(q('tbl')):
+                error('WORD_EDIT_COMPLEX_CELL_UNSUPPORTED')
+            added = ET.Element(q('tc'))
+            added.append(copy.deepcopy(source.find(q('tcPr'))))
+            for p, value in zip(ps, texts):
+                added.append(self.clone_paragraph(p, text_value(value)))
+            additions.append(added)
+
+        insert_at = index + (position == 'after')
+        weights = widths[:insert_at] + [widths[index]] + widths[insert_at:]
+        total, denominator = sum(widths), sum(weights)
+        # Exact integer distribution retains total width; no cumulative drift.
+        fitted = [total * w // denominator for w in weights]
+        for i in sorted(range(len(weights)), key=lambda i: (-(total * weights[i] % denominator), i))[:total - sum(fitted)]:
+            fitted[i] += 1
+        if any(w <= 0 for w in fitted):
+            error('WORD_EDIT_COLUMN_WIDTH_UNSUPPORTED')
+        self.remember_properties(part, grid)
+        grid.insert(insert_at, copy.deepcopy(columns[index]))
+        for col, width in zip(grid.findall(q('gridCol')), fitted):
+            col.set(q('w'), str(width))
+        inserted_owners = {self.nodes[key][1] for key in self.inserted_cells | self.inserted_rows}
+        for row_index, (row, cells, added) in enumerate(zip(rows, physical, additions)):
+            anchor = cells[index]
+            row.insert(row.index(anchor) + (position == 'after'), added)
+            key = f'op:{operation["id"]}:cell:{row_index}'
+            self.nodes[key] = (part, added)
+            self.inserted_cells.add(key)
+            for pindex, p in enumerate(added.findall(q('p'))):
+                suffix = ':paragraph' if pindex == 0 else f':paragraph:{pindex}'
+                self.nodes[key + suffix] = (part, p)
+            for cell, width in zip(row.findall(q('tc')), fitted):
+                props = cell.find(q('tcPr'))
+                if cell is not added and cell not in inserted_owners and row not in inserted_owners:
+                    self.remember_properties(part, props)
+                cell_width = props.find(q('tcW'))
+                if cell_width is None:
+                    cell_width = ET.Element(q('tcW'))
+                    props.insert(0, cell_width)
+                cell_width.set(q('type'), 'dxa')
+                cell_width.set(q('w'), str(width))
+        self.changed_parts.add(part)
+
     def apply(self, operation):
         if not isinstance(operation, dict):
             error('WORD_EDIT_OPERATION_INVALID')
@@ -221,6 +307,7 @@ class Editor:
         common = {'id', 'kind', 'node_id', 'before', 'reason'}
         fields = {'replace_text': {'after'}, 'replace_cell_text': {'after'},
                   'insert_paragraph': {'text', 'style_node_id', 'position'},
+                  'insert_column': {'column_index', 'position', 'values'},
                   'insert_row': {'values', 'position'}, 'add_comment': {'text'}}
         if kind not in fields:
             error('WORD_EDIT_OPERATION_UNSUPPORTED')
@@ -244,6 +331,8 @@ class Editor:
             for p, value in zip(ps, values):
                 paragraph_id = next(key for key, (_, mapped) in self.nodes.items() if mapped is p)
                 self.replace_paragraph(paragraph_id, paragraph_text(p), text_value(value))
+        elif kind == 'insert_column':
+            self.insert_column(part, node, operation)
         elif kind == 'add_comment':
             self.target(operation['node_id'], 'p')
             if part != 'word/document.xml':
@@ -322,7 +411,7 @@ class Editor:
             patcher = ReplayPatcher(root, self.data['revision_author'], self.data.get('revision_date'))
             patcher.next_id = next_revision
             comment_targets = {item['node_id'] for item in self.comments}
-            target_keys = self.touched | self.inserted_paragraphs | self.inserted_rows | comment_targets
+            target_keys = self.touched | self.inserted_paragraphs | self.inserted_rows | self.inserted_cells | comment_targets
             destinations = {key: at_path(root, path_to(self.roots[part], node))
                             for key, (story, node) in self.nodes.items()
                             if story == part and key in target_keys}
@@ -336,24 +425,40 @@ class Editor:
                 destination = destinations[key]
                 destination.getparent().replace(destination, revised)
                 destinations[key] = revised
-            for key in sorted(self.inserted_paragraphs | self.inserted_rows):
+            for source, (story, previous) in self.property_changes.items():
+                if story != part:
+                    continue
+                destination = at_path(root, path_to(self.roots[part], source))
+                kind = 'tblGridChange' if source.tag == q('tblGrid') else 'tcPrChange'
+                marker = patcher.revision_node(ET.Element(q('r')), 'ins')
+                marker.remove(marker[0])
+                marker.tag = q(kind)
+                if kind == 'tblGridChange':
+                    # CT_TblGridChange carries only an id; its inserted cells
+                    # carry the author used for selective rejection.
+                    marker.attrib.pop(q('author'), None)
+                    marker.attrib.pop(q('date'), None)
+                marker.append(copy.deepcopy(previous))
+                destination.append(marker)
+            inserted = self.inserted_paragraphs | self.inserted_rows | self.inserted_cells
+            inserted_nodes = {self.nodes[key][1] for key in inserted}
+            for key in sorted(inserted):
                 if self.nodes[key][0] != part:
                     continue
-                if key in self.inserted_paragraphs and any(
-                        ancestor is self.nodes[row_id][1]
-                        for ancestor in self.nodes[key][1].iterancestors()
-                        for row_id in self.inserted_rows):
-                    # The inserted row owns the structural revision and wraps
-                    # all its paragraphs, including paragraphs added afterwards.
+                if any(ancestor in inserted_nodes for ancestor in self.nodes[key][1].iterancestors()):
+                    # The outer inserted row/cell owns the structural revision.
                     continue
                 node = destinations[key]
-                if node.tag == q('tr'):
-                    props = node.find(q('trPr'))
+                if node.tag in {q('tr'), q('tc')}:
+                    prop = 'trPr' if node.tag == q('tr') else 'tcPr'
+                    props = node.find(q(prop))
                     if props is None:
-                        props = ET.Element(q('trPr'))
+                        props = ET.Element(q(prop))
                         node.insert(0, props)
                     marker = patcher.revision_node(ET.Element(q('r')), 'ins')
                     marker.remove(marker[0])
+                    if node.tag == q('tc'):
+                        marker.tag = q('cellIns')
                     props.append(marker)
                 else:
                     props = node.find(q('pPr'))
@@ -428,7 +533,7 @@ class Editor:
         parts[comment_path] = serialized(comments)
 
     def has_changes(self):
-        return bool(self.inserted_paragraphs or self.inserted_rows or self.comments or any(
+        return bool(self.inserted_paragraphs or self.inserted_rows or self.inserted_cells or self.comments or any(
             paragraph_text(self.original_paragraphs[key]) != paragraph_text(self.nodes[key][1])
             for key in self.touched if key in self.original_paragraphs))
 

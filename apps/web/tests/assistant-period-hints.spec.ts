@@ -1,0 +1,32 @@
+import { expect, test } from '@playwright/test';
+import { reportingWindow } from '@bondbuddy/contracts';
+import { assistantFixture, mountAssistant, ids, noBusiness } from './assistant-upload-11th-fixtures';
+import { fixture, sourceDeclaration } from './authoring-source-guide-fixtures';
+import { fixtureBody } from './billing-fixture-wire';
+
+test('assistant updates both period hints as source and target selections change without submitting', async ({ page }) => {
+  const state = await assistantFixture(page), s = fixture();
+  s.project.project_id = ids.project;
+  s.materials = s.materials.filter(m => m.role !== 'reference');
+  s.materials[1].filename = '合成2026年半年度财务报表.pdf';
+  s.project.update_details!.reporting_cutoff = '2025-12-31';
+  s.project.update_details!.target_reporting_periods = reportingWindow('sse', 'private', '2025-12-31');
+  s.project.update_details!.source_prospectuses = [sourceDeclaration(s.materials[0], { reporting_periods: reportingWindow('sse', 'private', '2026-06-30') })];
+  const view = state.work.get(ids.topic)!.view.assistant!;
+  view.source_prospectuses = structuredClone(s.project.update_details!.source_prospectuses);
+  view.action = { business: 'update', fields: { issuer_name: '合成发行人', market: 'sse', offering: 'private', reporting_cutoff: '2025-12-31' }, requirements: '' };
+  await page.route(`**/api/v1/assistant/projects/${ids.project}`, route => route.fulfill({ json: fixtureBody(route, { project: s.project, materials: s.materials, results: [] }) }));
+  await mountAssistant(page);
+  await page.locator('[data-kind=update]').click();
+  await expect(page.locator('.ba-files [data-reporting-period-hint]')).toHaveCount(2);
+  const year = page.locator('.ba-form [data-source-field="year"]');
+  await year.selectOption('2025');
+  await expect(page.locator('.ba-files [data-reporting-period-hint="source"]')).toHaveCount(0);
+  await expect(page.locator('.ba-files [data-reporting-period-hint="material"]')).toHaveCount(1);
+  await page.locator('.ba-form [data-year]').selectOption('2026');
+  await page.locator('.ba-form [data-quarter]').selectOption('06-30');
+  await expect(page.locator('.ba-files [data-reporting-period-hint]')).toHaveCount(0);
+  await page.clock.fastForward(800);
+  await expect.poll(() => state.work.get(ids.topic)!.view.assistant!.action!.fields.reporting_cutoff).toBe('2026-06-30');
+  noBusiness(state);
+});

@@ -1,0 +1,29 @@
+▶ annual payment, monthly release, original consideration and whole-contract refunds
+  ✔ real default clock retains exact milliseconds through verified payment and lot issuance (154.9404ms)
+  ✔ one annual payment creates twelve rights, only first month is issued, payment replay cannot mint the year (228.2703ms)
+  ✔ cancelled renewal retains twelve monthly installments; retries, catch-up and calendar anchors preserve total cash (464.4378ms)
+  ✔ seven-day unused annual whole-order refund removes only issued credits, blocks future grants and never refunds twice (283.8153ms)
+  ✔ failed cash refund unfreezes its issued batch and allows overdue paid installments (248.0276ms)
+  ✔ legacy monthly request hash survives omitted or explicit monthly; annual cannot reuse that request (236.7533ms)
+  ✔ year mandate binds annual amount/interval, can be reopened after cancellation, and charges once only at anniversary (518.2427ms)
+  ✔ actual review settlement uses annual lot consideration and disqualifies whole-contract cash withdrawal (1764.6248ms)
+✔ annual payment, monthly release, original consideration and whole-contract refunds (3916.2734ms)
+▶ synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once
+  ✔ verified payment grants once, 90-day rights and cash ratio survive cancellation (249.8052ms)
+  ✔ checkout failure before channel creation stays unknown until authenticated expiry, then permits a new purchase (104.3567ms)
+  ✔ only a wholly unused period refunds 199 cash by removing 21000 points, unknown status stays held (326.6212ms)
+  ✔ task and cash-refund holds are separate in the same wallet and each period (262.6658ms)
+  ✔ consumption prevents subscription cash refund; expired correction preserves original paid ratio (159.723ms)
+  ✔ the application rejects an unused subscription after the seven-day refund window (116.5905ms)
+  ✔ topup is 1:1 permanent and does not inherit a subscription discount (121.459ms)
+  ✔ native checkout has no recurring capability; an authenticated synthetic mandate renews once after timeout (240.7853ms)
+  ✔ a delayed refund for an earlier period cannot cancel a later paid period or its mandate (251.9002ms)
+✔ synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once (1965.581ms)
+ℹ tests 19
+ℹ suites 0
+ℹ pass 19
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13550.4367
