@@ -21,6 +21,10 @@ if [ "$(env_value BB_NON_PRODUCTION_TEST_CHANNEL)" = enabled ] && [ "$(env_value
   echo 'non-production test channel requires BB_DEPLOYMENT_TIER=preprod' >&2; exit 2
 fi
 compose config --quiet
+existing="$(docker ps -aq --filter "label=com.docker.compose.project=$BB_ROLE_PROJECT")"
+if [ -n "$existing" ] && [ -z "$(current_tag)" ]; then
+  echo 'existing role project has no retained release state; adopt verified state/project/pgdata before deployment, never treat it as a first release' >&2; exit 2
+fi
 targets=(api worker web egress)
 if [ "$BB_DEPLOY_ROLE" = execution ]; then
   targets=(worker egress pg-tunnel)
@@ -81,11 +85,15 @@ for service in "${services[@]}"; do
     [ "$(docker inspect --format '{{.Image}}' "$container")" = "${image_ids[$target]}" ] || { echo "runtime image mismatch: $service" >&2; exit 4; }
   done <<< "$containers"
 done
-{ echo "commit=$sha"; echo "script_commit=$BB_SCRIPT_SHA"; echo "script_tree=$(git -C "$BB_REPO" rev-parse "$BB_SCRIPT_SHA^{tree}")";
+record="$(date -u +%Y%m%dT%H%M%S.%N)-$$"
+{ echo "record=$record"; echo "commit=$sha"; echo "script_commit=$BB_SCRIPT_SHA"; echo "script_tree=$(git -C "$BB_REPO" rev-parse "$BB_SCRIPT_SHA^{tree}")";
   echo "override_sha256=${BB_ROLE_OVERRIDE_SHA256:-none}"; echo "parse_role=$BB_PARSE_ROLE";
   for target in "${targets[@]}"; do echo "$target=${image_ids[$target]}"; done; } > "$BB_STATE/images-$BB_IMAGE_TAG.txt"
+cp "$BB_STATE/images-$BB_IMAGE_TAG.txt" "$BB_STATE/release-$record.txt"
 # Readiness and file/payment/integrity acceptance are separate release steps in the runbook.
 echo "$BB_IMAGE_TAG" > "$BB_STATE/current"
 [ -z "$previous" ] || echo "$previous" > "$BB_STATE/previous"
-log_release "deploy-$BB_DEPLOY_ROLE" "app=$sha script=$BB_SCRIPT_SHA override=${BB_ROLE_OVERRIDE_SHA256:-none} rollback=$rollback (previous ${previous:-none})"
+[ ! -f "$BB_STATE/current-release" ] || cp "$BB_STATE/current-release" "$BB_STATE/previous-release"
+echo "$record" > "$BB_STATE/current-release"
+log_release "deploy-$BB_DEPLOY_ROLE" "record=$record app=$sha script=$BB_SCRIPT_SHA override=${BB_ROLE_OVERRIDE_SHA256:-none} rollback=$rollback (previous ${previous:-none})"
 echo "deployed $BB_DEPLOY_ROLE $BB_IMAGE_TAG; complete the role acceptance checklist"

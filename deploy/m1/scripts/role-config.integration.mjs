@@ -44,7 +44,7 @@ try {
  writeFileSync(join(temp,'known_hosts'),`[${gateway}]:${sshPort} ${readFileSync(join(temp,'host.pub'),'utf8')}`,{mode:0o600});
  writeFileSync(join(temp,'sshd_config'),`Port ${sshPort}\nListenAddress ${gateway}\nHostKey /test/host\nPidFile /run/sshd.pid\nAuthorizedKeysFile /test/authorized_keys\nStrictModes no\nPasswordAuthentication no\nKbdInteractiveAuthentication no\nAllowUsers tunnel\nAllowTcpForwarding local\nPermitOpen 127.0.0.1:${pgPort}\nPermitTTY no\nX11Forwarding no\nAllowAgentForwarding no\n`,{mode:0o600});
  // Only a small synthetic SSH fixture is built, from a cached, pinned base.
- writeFileSync(join(temp,'Dockerfile'),`FROM ${buildBase}\nUSER root\nRUN apk add --no-cache openssh-server openssh-client && adduser -D -u 1000 tunnel && passwd -d tunnel\n`);
+ writeFileSync(join(temp,'Dockerfile'),`FROM ${buildBase}\nUSER root\nRUN apk add --no-cache openssh-server openssh-client && adduser -D -u 1000 -G users tunnel && passwd -d tunnel\n`);
  docker('build','--network','host','-q','-t',sshImage,temp);
  docker('run','-d','--name',sshContainer,'--network','host','--read-only','--tmpfs','/run','--mount',`type=bind,src=${temp},dst=/test,readonly`,'--entrypoint','/bin/sh',sshImage,'-c','mkdir -p /run/sshd && exec /usr/sbin/sshd -D -e -f /test/sshd_config');
  writeFileSync(join(temp,'main.yaml'),`services:
@@ -78,7 +78,7 @@ networks:
     external: true
     name: ${edge}
 `);
- for(const role of ['main','execution']){const file=join(temp,`${role}.yaml`);values[role]={...env,BB_DEPLOY_ROLE:role,COMPOSE_PROJECT_NAME:role==='main'?main:execution,BB_ROLE_OVERRIDE_FILE:file,BB_ROLE_OVERRIDE_SHA256:hash(file)};writeEnv(role);}
+ for(const role of ['main','execution']){const file=join(temp,`${role}.yaml`);values[role]={...env,BB_DEPLOY_ROLE:role,BB_ROLE_STATE_DIR:join(temp,`${role}-state`),COMPOSE_PROJECT_NAME:role==='main'?main:execution,BB_ROLE_OVERRIDE_FILE:file,BB_ROLE_OVERRIDE_SHA256:hash(file)};writeEnv(role);}
  compose('main','up','-d','--wait','postgres');
  assert.equal(sql('SELECT 1'),'1');pass('ordinary main up automatically uses override; authenticated loopback PG SQL succeeds');
  const cfg=JSON.parse(compose('main','config','--format','json')), pg=compose('main','ps','-q','postgres').trim();

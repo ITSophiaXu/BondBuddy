@@ -10,7 +10,7 @@ try {
   for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
     const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
     if (!m) continue;
-    if (!/^(BB_(DEPLOY_ROLE|ROLE_OVERRIDE_FILE|ROLE_OVERRIDE_SHA256|PARSE_ROLE|DEPLOY_SCRIPT_SHA|INTEGRITY_MODE|MAIN_DATABASE_URL|EXECUTION_DATABASE_URL|PG_FORWARD_PORT)|COMPOSE_.*|BB_(ROLE|MAIN|EXECUTION)_PARSE_.*)$/.test(m[1])) continue;
+    if (!/^(BB_(DEPLOY_ROLE|ROLE_OVERRIDE_FILE|ROLE_OVERRIDE_SHA256|ROLE_STATE_DIR|PARSE_ROLE|DEPLOY_SCRIPT_SHA|INTEGRITY_MODE|MAIN_DATABASE_URL|EXECUTION_DATABASE_URL|PG_FORWARD_PORT)|COMPOSE_.*|BB_(ROLE|MAIN|EXECUTION)_PARSE_.*)$/.test(m[1])) continue;
     let v = m[2].trim();
     if (v.startsWith("'") || v.startsWith('"')) {
       const q = v[0], end = v.lastIndexOf(q);
@@ -19,17 +19,23 @@ try {
     } else v = v.replace(/\s+#.*$/, '').trim();
     values[m[1]] = v;
   }
+  const privateState = values.BB_ROLE_STATE_DIR || '';
+  if (privateState && (!isAbsolute(privateState) || /[\r\n$`]/.test(privateState))) fail();
+  if (mode === 'state') {
+    console.log(privateState);
+  } else {
   if (values.BB_DEPLOY_ROLE !== role) fail();
   const file = values.BB_ROLE_OVERRIDE_FILE || '', digest = values.BB_ROLE_OVERRIDE_SHA256 || '';
   if (Boolean(file) !== Boolean(digest)) fail();
   if (file && (!isAbsolute(file) || /[\r\n$`]/.test(file) || !/^[a-f0-9]{64}$/.test(digest) || hash(readFileSync(file)) !== digest)) fail();
+  if (file && (!privateState || realpathSync(privateState) !== realpathSync(state))) fail();
   const parseRole = values.BB_PARSE_ROLE || (file ? '' : 'execution');
   if (!['main', 'execution'].includes(parseRole)) fail();
   const project = values.COMPOSE_PROJECT_NAME || `bb-${role}`;
   if (!/^[a-z0-9][a-z0-9_-]*$/.test(project)) fail();
   // These names are reserved for the entry point, including values in the private env itself.
   for (const key of Object.keys(values)) if ((key.startsWith('COMPOSE_') && key !== 'COMPOSE_PROJECT_NAME') || /^BB_(MAIN|EXECUTION|ROLE)_PARSE_/.test(key)) fail();
-  const binding = { version: 1, role, env: realpathSync(envPath), project, override: file ? realpathSync(file) : '',
+  const binding = { version: 1, role, state: realpathSync(state), env: realpathSync(envPath), project, override: file ? realpathSync(file) : '',
     override_sha256: digest, parse_role: parseRole, integrity: role === 'execution' ? values.BB_INTEGRITY_MODE : '',
     database: hash(values[role === 'main' ? 'BB_MAIN_DATABASE_URL' : 'BB_EXECUTION_DATABASE_URL'] || ''),
     pg_forward_port: values.BB_PG_FORWARD_PORT || '15432' };
@@ -39,6 +45,10 @@ try {
     const script = values.BB_DEPLOY_SCRIPT_SHA || '';
     if (script && !/^[a-f0-9]{40}$/.test(script)) fail();
     console.log([file, digest, parseRole, project, script, values.BB_INTEGRITY_MODE || ''].join('\n'));
+  } else if (mode === 'runtime-volume') {
+    const expected = JSON.parse(readFileSync(`${state}/pg-volume.json`)).name;
+    const mounts = JSON.parse(readFileSync(0, 'utf8')).filter(m => m.Destination === '/var/lib/postgresql/data');
+    if (mounts.length !== 1 || mounts[0].Type !== 'volume' || mounts[0].Name !== expected) fail();
   } else if (mode === 'validate') {
     const c = JSON.parse(readFileSync(0, 'utf8')), s = c.services;
     if (!c.networks.backend.internal || c.name !== project) fail();
@@ -71,6 +81,7 @@ try {
     if (file && !existsSync(bindingPath)) writeFileSync(bindingPath, JSON.stringify(binding), { mode: 0o600, flag: 'wx' });
     if (file && role === 'main' && !existsSync(`${state}/pg-volume.json`)) writeFileSync(`${state}/pg-volume.json`, JSON.stringify(c.volumes.pgdata), {mode: 0o600, flag: 'wx'});
   } else fail();
+  }
 } catch {
   console.error('role configuration rejected: verify private env, override file/hash, parser placement and persisted environment/volume binding (details withheld)');
   process.exitCode = 2;

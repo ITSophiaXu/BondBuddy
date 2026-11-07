@@ -2,7 +2,14 @@
 set -euo pipefail
 case "${BB_DEPLOY_ROLE:-}" in main|execution) ;; *) echo 'role must be main or execution' >&2; exit 2;; esac
 export BB_ROLE_COMMAND=1
-export BB_STATE_DIR="${BB_STATE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/state-$BB_DEPLOY_ROLE}"
+BB_ROLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BB_PRIVATE_STATE="$(node "$BB_ROLE_DIR/scripts/role-config.mjs" state "${BB_ENV_FILE:-$BB_ROLE_DIR/.env}")" || exit 2
+if [ -n "$BB_PRIVATE_STATE" ]; then
+  [ -z "${BB_STATE_DIR:-}" ] || [ "$(realpath -m "$BB_STATE_DIR")" = "$(realpath -m "$BB_PRIVATE_STATE")" ] || { echo 'BB_STATE_DIR must match the retained private BB_ROLE_STATE_DIR' >&2; exit 2; }
+  export BB_STATE_DIR="$BB_PRIVATE_STATE"
+else
+  export BB_STATE_DIR="${BB_STATE_DIR:-$BB_ROLE_DIR/state-$BB_DEPLOY_ROLE}"
+fi
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 # Serialize adoption, including concurrent first invocations. This lock is local to this role.
 exec 8>"$BB_STATE/config.lock"
@@ -60,7 +67,16 @@ compose() {
   role_metadata
   # Validate resolved policies without printing credentials, before every lifecycle command.
   role_compose_raw --profile '*' config --format json 2>/dev/null | node "$BB_DIR/scripts/role-config.mjs" validate "$BB_ENV" "$BB_STATE" "$BB_DEPLOY_ROLE" || return 2
+  role_runtime_volume
   role_compose_raw "$@"
+}
+role_runtime_volume() {
+  [ "$BB_DEPLOY_ROLE" = main ] && [ -f "$BB_STATE/pg-volume.json" ] || return 0
+  local containers
+  containers="$(docker ps -aq --filter "label=com.docker.compose.project=$BB_ROLE_PROJECT" --filter label=com.docker.compose.service=postgres)"
+  [ -n "$containers" ] || return 0
+  [ "$(wc -w <<< "$containers")" = 1 ] || { echo 'expected exactly one existing role PostgreSQL container' >&2; return 2; }
+  docker inspect --format '{{json .Mounts}}' "$containers" | node "$BB_DIR/scripts/role-config.mjs" runtime-volume "$BB_ENV" "$BB_STATE" "$BB_DEPLOY_ROLE"
 }
 role_compose_arguments() {
   local arg

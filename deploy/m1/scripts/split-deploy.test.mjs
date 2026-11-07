@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync, readFileSync, mkdirSync, cpSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync, mkdirSync, cpSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
 const root = resolve(import.meta.dirname, '../../..');
@@ -16,7 +16,7 @@ delete configProcessEnv.BB_WORKER_LEASE_SECONDS; // Exercise the private env fil
 function envFile(role, values = {}) { const path = join(dir, `${role}.env`); writeFileSync(path, Object.entries({...base,BB_DEPLOY_ROLE:role,...values}).map(([k,v])=>`${k}=${v}`).join('\n'), {mode:0o600}); return path; }
 function config(role, values = {}, state = join(dir,'state')) {
  return JSON.parse(execFileSync('bash', ['deploy/m1/scripts/role-compose.sh', role, 'config', '--format', 'json'],
- { cwd: root, env: {...configProcessEnv,BB_ENV_FILE:envFile(role,values),BB_STATE_DIR:state,BB_IMAGE_TAG:'synthetic'}, stdio:['ignore','pipe','pipe'] }));
+ { cwd: root, env: {...configProcessEnv,BB_ENV_FILE:envFile(role,{...values,...(values.BB_ROLE_OVERRIDE_FILE?{BB_ROLE_STATE_DIR:state}:{})}),BB_STATE_DIR:state,BB_IMAGE_TAG:'synthetic'}, stdio:['ignore','pipe','pipe'] }));
 }
 test('roles have disjoint local services; internal execution containers use only the dual-network SSH bridge', () => {
  const main=config('main'), execution=config('execution');
@@ -115,6 +115,7 @@ for(const role of ['main','execution']) test(`${role} deployment refuses in-flig
  writeFileSync(join(fixture,'bin/docker'),`#!/bin/bash
 printf '%s\\n' "$*" >> "$TEST_CALLS"
 case "$*" in
+ *'ps -aq --filter label=com.docker.compose.project='*) case "$*" in *service=postgres*) ;; *) if [ "\${TEST_EXISTING_PROJECT:-0}" = 1 ]; then echo synthetic-existing; fi;; esac;;
  *'config --format json'*) cat "$TEST_CONFIG";;
  *'ps --status running -q worker-parse'*) ;;
  *'image inspect --format'*revision*) if [ "$TEST_BAD_REVISION" = 1 ]; then echo wrong-revision; else echo "\${TEST_APP_SHA:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}"; fi;;
@@ -162,7 +163,7 @@ test('export mode chooses the same domestic tunnel image as role startup',()=>{
 const digest = path => createHash('sha256').update(readFileSync(path)).digest('hex');
 function covered(role, text='services: {}\n', extra={}) {
  const area=mkdtempSync(join(dir,'covered-')), file=join(area,'override.yaml');writeFileSync(file,text,{mode:0o600});
- return {area,file,values:{BB_ROLE_OVERRIDE_FILE:file,BB_ROLE_OVERRIDE_SHA256:digest(file),BB_PARSE_ROLE:'main',...extra}};
+ return {area,file,values:{BB_ROLE_STATE_DIR:join(area,'state'),BB_ROLE_OVERRIDE_FILE:file,BB_ROLE_OVERRIDE_SHA256:digest(file),BB_PARSE_ROLE:'main',...extra}};
 }
 const bridgeOverlay=`services:
   postgres:
@@ -260,9 +261,33 @@ test('independent app/script commits preserve source and clean-checkout protecti
   [{TEST_BAD_REVISION:'1'},a.values,3]
  ]) {
   const state=mkdtempSync(join(a.area,'state-'));writeFileSync(calls,'');
-  const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),'main','b'.repeat(40)],{env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile('main',values),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CONFIG:rendered,TEST_CALLS:calls,TEST_GATE:'0',TEST_APP_SHA:'b'.repeat(40),...flags},encoding:'utf8'});
+  const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),'main','b'.repeat(40)],{env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile('main',{...values,BB_ROLE_STATE_DIR:state}),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CONFIG:rendered,TEST_CALLS:calls,TEST_GATE:'0',TEST_APP_SHA:'b'.repeat(40),...flags},encoding:'utf8'});
   assert.equal(r.status,expected,r.stderr);
   if(expected)assert.doesNotMatch(readFileSync(calls,'utf8'),/up -d|run --rm --no-deps -T migrate/);
   else {const evidence=readFileSync(join(state,'images-bbbbbbbbbbbb.txt'),'utf8');assert.ok(evidence.includes('commit='+'b'.repeat(40)));assert.ok(evidence.includes('script_commit='+'a'.repeat(40)));assert.ok(evidence.includes('script_tree='+'c'.repeat(40)));}
  }
+});
+test('private retained state survives default checkout paths and rejects caller state substitution',()=>{
+ const a=covered('main',bridgeOverlay),state=a.values.BB_ROLE_STATE_DIR;config('main',a.values,state);
+ const shared={...process.env,BB_ENV_FILE:envFile('main',a.values),BB_IMAGE_TAG:'synthetic'};delete shared.BB_STATE_DIR;
+ let r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','main','config','--quiet'],{cwd:root,env:shared,encoding:'utf8'});assert.equal(r.status,0,r.stderr);
+ r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','main','config','--quiet'],{cwd:root,env:{...shared,BB_STATE_DIR:join(a.area,'empty-replacement')},encoding:'utf8'});assert.equal(r.status,2);assert.match(r.stderr,/must match the retained/);
+});
+for(const role of ['main','execution'])test(`${role} existing project rejects empty release state; retained state still runs in-flight SQL gate`,()=>{
+ const fixture=join(dir,role+'-fixture'),a=covered(role,role==='main'?bridgeOverlay:'services: {}\n',{BB_PARSE_ROLE:'execution',BB_DEPLOY_SCRIPT_SHA:'a'.repeat(40)}),state=a.values.BB_ROLE_STATE_DIR,calls=join(a.area,'calls');
+ const rendered=join(fixture,'config.json'); // Existing fixture is the legacy parse-on-execution layout.
+ mkdirSync(state);writeFileSync(calls,'');
+ const environment={...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile(role,a.values),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CONFIG:rendered,TEST_CALLS:calls,TEST_GATE:'76',TEST_EXISTING_PROJECT:'1'};
+ let r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),role,'a'.repeat(40)],{env:environment,encoding:'utf8'});
+ assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/existing role project has no retained release state/);assert.doesNotMatch(readFileSync(calls,'utf8'),/up -d|run --rm/);
+ writeFileSync(join(state,'current'),'old-release\n');writeFileSync(calls,'');r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),role,'a'.repeat(40)],{env:environment,encoding:'utf8'});
+ assert.equal(r.status,76,r.stderr);assert.match(readFileSync(calls,'utf8'),/ idle/);assert.doesNotMatch(readFileSync(calls,'utf8'),/up -d|run --rm --no-deps -T migrate/);
+});
+test('configuration-only deployments at one app tag retain separate immutable release evidence',()=>{
+ const fixture=join(dir,'main-fixture'),a=covered('main','services: {}\n',{BB_PARSE_ROLE:'execution',BB_DEPLOY_SCRIPT_SHA:'a'.repeat(40)}),state=a.values.BB_ROLE_STATE_DIR,calls=join(a.area,'calls');mkdirSync(state);
+ const environment={...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile('main',a.values),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CONFIG:join(fixture,'config.json'),TEST_CALLS:calls,TEST_GATE:'0'};
+ for(let i=0;i<2;i++){writeFileSync(calls,'');const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),'main','a'.repeat(40)],{env:environment,encoding:'utf8'});assert.equal(r.status,0,r.stderr);}
+ const records=readdirSync(state).filter(n=>/^release-.*\.txt$/.test(n));assert.equal(records.length,2);
+ const current=readFileSync(join(state,'current-release'),'utf8').trim(),previous=readFileSync(join(state,'previous-release'),'utf8').trim();assert.notEqual(current,previous);
+ for(const id of [current,previous]){const text=readFileSync(join(state,`release-${id}.txt`),'utf8');assert.ok(text.includes(`record=${id}`));assert.ok(text.includes('commit='+'a'.repeat(40)));assert.ok(text.includes(`override_sha256=${a.values.BB_ROLE_OVERRIDE_SHA256}`));}
 });

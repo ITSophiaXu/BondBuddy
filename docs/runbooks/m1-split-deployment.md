@@ -44,6 +44,7 @@ BB_ENV_FILE=<private-env> bash deploy/m1/scripts/role-compose.sh execution ps
 | --- | --- |
 | `BB_ROLE_OVERRIDE_FILE` | 一份环境覆盖的绝对路径；在角色与诚信 Compose 之后自动追加 |
 | `BB_ROLE_OVERRIDE_SHA256` | 覆盖文件原字节的小写 64 位 SHA-256；与路径成对设置 |
+| `BB_ROLE_STATE_DIR` | 覆盖环境必填：既有角色状态目录绝对路径，跨 checkout 沿用；进程 `BB_STATE_DIR` 如设置必须与它一致 |
 | `BB_PARSE_ROLE` | `main` 或 `execution`；有覆盖时必填，两端一致；无覆盖且未接管的旧角色默认 `execution` |
 | `BB_DEPLOY_SCRIPT_SHA` | 当前干净部署目录的完整 40 位 Git 提交；与应用 SHA 分别固定 |
 
@@ -63,7 +64,7 @@ BB_ENV_FILE=<private-env> bash deploy/m1/scripts/deploy-role.sh main <exact-app-
 
 入口禁止调用者增加 `-f/--file`、`--env-file`、项目/目录/profile/scale 改写和 `COMPOSE_*` 进程环境。`COMPOSE_PROJECT_NAME` 只能在私有 env 配置。Compose 插值优先采用该文件，进程中的业务环境变量不能替换数据库等配置。私有 env 始终按数据读取，绝不 source；校验中的真实配置只通过内部管道处理，不打印完整展开或连接细节。运行环境需有 Node.js 22、Git、Docker Compose 与 flock。
 
-首次使用有效覆盖时，角色状态目录持久化 `environment-binding.json`，固定私有 env 的真实路径、项目名称、覆盖路径/hash、解析位置、数据库连接摘要与诚信模式；主站同时固定 `pg-volume.json` 中的准确卷定义。后续漏掉覆盖、换回旧 env 或改变绑定直接拒绝，缺文件/hash、hash 不符均在 Docker 调用前拒绝；不允许旧整栈脚本绕过已绑定状态。保留同一状态目录及这两份文件；不得通过另建状态目录、删除绑定、改变项目名称来执行日常发布或回滚。首次接管本身不迁移或恢复 PG 数据，必须先核对唯一卷就是既有卷。
+首次使用有效覆盖时，角色状态目录持久化 `environment-binding.json`，固定私有 env 的真实路径、项目名称、覆盖路径/hash、解析位置、数据库连接摘要与诚信模式；主站同时固定 `pg-volume.json` 中的准确卷定义。后续漏掉覆盖、换回旧 env 或改变绑定直接拒绝，缺文件/hash、hash 不符均在 Docker 调用前拒绝；不允许旧整栈脚本绕过已绑定状态。保留同一状态目录及这两份文件；发布还检查实际 Compose 项目容器，既有项目缺少 `current` 时拒绝首发假设，必须承接已核实的版本状态；主站在每次操作前检查既有 PG 容器的实际数据卷就是被绑定的同一卷。不得通过另建状态目录、删除绑定、改变项目名称来执行日常发布或回滚。首次接管本身不迁移或恢复 PG 数据，必须先核对唯一卷就是既有卷。
 
 若确需改变网络/解析放置/数据库身份等绑定，在维护状态下先核实无在途调用，保存原私有 env、覆盖、状态绑定及其 hash，独立审查目标配置和恢复路径；再明确更新受保护绑定并用普通入口重新验证。脚本不会自行删除或降级绑定。脚本 pin 或应用版本更新不需更改拓扑绑定。线上采用与验收由 #908 执行，CI/自动整栈发布继续停用。
 
@@ -131,7 +132,7 @@ BB_ENV_FILE=<main-private-env> bash deploy/m1/scripts/deploy-role.sh main <old-a
 BB_ENV_FILE=<execution-private-env> bash deploy/m1/scripts/deploy-role.sh execution <old-app-sha> --rollback
 ```
 
-该入口复用来源标签、实际 image ID、只读 SQL 与在途门禁；主站不启动或重建 PG、不运行 migrate，应用服务显式 `--no-deps`，API 后强制重建 web；执行端先等既有 PG/诚信隧道和出口就绪，再启动编制/复核及所选解析服务。不会要求非本角色的 parser 存在，不会误启执行端 parser。配置与当前 PG 卷的绑定保持不变，成功后记录应用 SHA、脚本 SHA/tree、覆盖 SHA-256 与镜像 ID。此命令不恢复数据，也不判定 schema/checkpoint 格式向后兼容。
+该入口复用来源标签、实际 image ID、只读 SQL 与在途门禁；主站不启动或重建 PG、不运行 migrate，应用服务显式 `--no-deps`，API 后强制重建 web；执行端先等既有 PG/诚信隧道和出口就绪，再启动编制/复核及所选解析服务。不会要求非本角色的 parser 存在，不会误启执行端 parser。配置与当前 PG 卷的绑定保持不变，成功后记录应用 SHA、脚本 SHA/tree、覆盖 SHA-256 与镜像 ID。每次操作另存不可覆盖的 `release-<record>.txt` 和 `current-release` / `previous-release`，同一应用 tag 的配置更新也独立留证。此命令不恢复数据，也不判定 schema/checkpoint 格式向后兼容。
 
 回滚前后记录同一业务库和准确镜像。首次迁移若恢复流量前失败，可停止新两端、确认无新业务写入后回到旧冻结库与旧准确版本；恢复流量后不允许仅改连接字符串指回旧库。
 
