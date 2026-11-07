@@ -4,7 +4,7 @@ export BB_DEPLOY_ROLE="${1:?usage: role-compose.sh main|execution <compose argum
 source "$(dirname "$0")/role-lib.sh"
 export BB_IMAGE_TAG="${BB_IMAGE_TAG:-$(current_tag)}"
 role_compose_arguments "$@"
-case "${1:-}" in config|ps|logs|images|port|version) ;;
+case "${1:-}" in config|ps|logs|images|port|version) BB_ROLE_READONLY=1;;
   probe) role_script_source;;
   *) role_script_source; role_existing_state;;
 esac

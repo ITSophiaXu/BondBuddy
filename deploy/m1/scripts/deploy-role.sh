@@ -2,6 +2,7 @@
 # Usage: BB_ENV_FILE=<private env> deploy-role.sh main|execution <git-sha>
 # Uses prebuilt exact-SHA images; export-images-role.sh prepares each role independently.
 export BB_DEPLOY_ROLE="${1:?usage: deploy-role.sh main|execution <git-sha>}"; shift
+export BB_PENDING_COMMAND=1
 source "$(dirname "$0")/role-lib.sh"
 sha="$(git -C "$BB_REPO" rev-parse --verify "${1:?git-sha required}^{commit}")"; shift
 rollback=0
@@ -34,7 +35,30 @@ for target in "${targets[@]}"; do
   [ "$revision" = "$sha" ] || { echo "release image $target has no matching source revision; refusing tag-only reuse" >&2; exit 3; }
   image_ids[$target]="$(docker image inspect --format '{{.Id}}' "$(role_image_ref "$target")")"
 done
-role_existing_release
+previous="$(current_tag)"
+snapshots=''
+if [ -f "$BB_STATE/pending-release.json" ]; then
+  [ "$rollback" = 1 ] || { echo 'pending release retained; use --rollback to recover its verified versions' >&2; exit 3; }
+  refs="$(node "$BB_DIR/scripts/role-release.mjs" refs "$BB_STATE" "$BB_DEPLOY_ROLE")"
+  index=0
+  while read -r ref; do
+    role_trusted_source "$ref"
+    if [ "$index" -gt 0 ]; then snapshots+="$(BB_IMAGE_TAG="${ref:0:12}" role_release_snapshot "$ref")"$'\n'; fi
+    index=$((index + 1))
+  done <<< "$refs"
+  printf '%s' "$snapshots" | node "$BB_DIR/scripts/role-release.mjs" verify "$BB_STATE" "$BB_DEPLOY_ROLE" "$sha"
+else
+  role_existing_release
+  if [ -n "$previous" ]; then
+    from_sha="$(git -C "$BB_REPO" rev-parse --verify "$previous^{commit}")"
+    [ "${from_sha:0:12}" = "$previous" ] || { echo 'current must identify its exact trusted source' >&2; exit 3; }
+    role_trusted_source "$from_sha"
+    snapshots+="$(BB_IMAGE_TAG="$previous" role_release_snapshot "$from_sha")"$'\n'
+  fi
+  snapshots+="$(role_release_snapshot "$sha")"$'\n'
+  # Durable non-success state precedes even the one-off SQL probe container and every switch.
+  printf '%s' "$snapshots" | node "$BB_DIR/scripts/role-release.mjs" prepare "$BB_STATE" "$BB_DEPLOY_ROLE" "$sha" '' "$BB_ENV" "$BB_SCRIPT_SHA"
+fi
 # No switch while the old role is active. The release procedure must first close new submissions
 # and inspect provider processes as well: a DB gate cannot prove an unrecorded external call ended.
 if [ -n "$(current_tag)" ]; then
@@ -42,7 +66,6 @@ if [ -n "$(current_tag)" ]; then
   BB_IMAGE_TAG="$(current_tag)" role_probe idle
   export BB_IMAGE_TAG="$candidate"
 fi
-previous="$(current_tag)"
 [ "$rollback" = 0 ] || [ -n "$previous" ] || { echo 'rollback requires an existing role release' >&2; exit 2; }
 # Never stop a parser until the existing SQL/in-flight gate has passed.
 if [ "$BB_PARSE_ROLE" != "$BB_DEPLOY_ROLE" ]; then
@@ -89,9 +112,9 @@ record="$(date -u +%Y%m%dT%H%M%S.%N)-$$"
   for target in "${targets[@]}"; do echo "$target=${image_ids[$target]}"; done; } > "$BB_STATE/images-$BB_IMAGE_TAG.txt"
 cp "$BB_STATE/images-$BB_IMAGE_TAG.txt" "$BB_STATE/release-$record.txt"
 # Readiness and file/payment/integrity acceptance are separate release steps in the runbook.
-echo "$BB_IMAGE_TAG" > "$BB_STATE/current"
 [ -z "$previous" ] || echo "$previous" > "$BB_STATE/previous"
 [ ! -f "$BB_STATE/current-release" ] || cp "$BB_STATE/current-release" "$BB_STATE/previous-release"
 echo "$record" > "$BB_STATE/current-release"
+node "$BB_DIR/scripts/role-release.mjs" clear "$BB_STATE" "$BB_DEPLOY_ROLE" "$sha"
 log_release "deploy-$BB_DEPLOY_ROLE" "record=$record app=$sha script=$BB_SCRIPT_SHA override=${BB_ROLE_OVERRIDE_SHA256:-none} rollback=$rollback (previous ${previous:-none})"
 echo "deployed $BB_DEPLOY_ROLE $BB_IMAGE_TAG; complete the role acceptance checklist"

@@ -1,8 +1,8 @@
 // Deployment metadata only; private env is data, never executable shell code.
-import { readFileSync, realpathSync, existsSync, writeFileSync } from 'node:fs';
+import { readFileSync, realpathSync, existsSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
-import { createHash } from 'node:crypto';
-const hash = value => createHash('sha256').update(value).digest('hex');
+import { execFileSync } from 'node:child_process';
+import { hash, atomicJSON, optionalJSON } from './role-state.mjs';
 const fail = () => { throw new Error('invalid role configuration'); };
 try {
   const [mode, envPath, state, role] = process.argv.slice(2);
@@ -39,14 +39,20 @@ try {
     override_sha256: digest, parse_role: parseRole, integrity: role === 'execution' ? values.BB_INTEGRITY_MODE : '',
     database: hash(values[role === 'main' ? 'BB_MAIN_DATABASE_URL' : 'BB_EXECUTION_DATABASE_URL'] || ''),
     pg_forward_port: values.BB_PG_FORWARD_PORT || '15432' };
+  const fixedPort = value => /^[1-9][0-9]{0,4}$/.test(value) && Number(value) <= 65535;
+  if (!fixedPort(binding.pg_forward_port)) fail();
   const bindingPath = `${state}/environment-binding.json`;
-  if (existsSync(bindingPath) && JSON.stringify(JSON.parse(readFileSync(bindingPath))) !== JSON.stringify(binding)) fail();
+  const saved = optionalJSON(bindingPath);
+  if (saved) {
+    const { pg_volume, ...identity } = saved;
+    if (JSON.stringify(identity) !== JSON.stringify(binding)) fail();
+  }
   if (mode === 'metadata') {
     const script = values.BB_DEPLOY_SCRIPT_SHA || '';
     if (script && !/^[a-f0-9]{40}$/.test(script)) fail();
     console.log([file, digest, parseRole, project, script, values.BB_INTEGRITY_MODE || ''].join('\n'));
   } else if (mode === 'runtime-volume') {
-    const expected = JSON.parse(readFileSync(`${state}/pg-volume.json`)).name;
+    const expected = (saved?.pg_volume || optionalJSON(`${state}/pg-volume.json`)).name;
     const mounts = JSON.parse(readFileSync(0, 'utf8')).filter(m => m.Destination === '/var/lib/postgresql/data');
     if (mounts.length !== 1 || mounts[0].Type !== 'volume' || mounts[0].Name !== expected) fail();
   } else if (mode === 'validate') {
@@ -55,7 +61,7 @@ try {
     if (role === 'execution' && (s.postgres || s.migrate || s.api || s.web || s['pg-tunnel'].ports?.length)) fail();
     if (role === 'main') {
       const pg = s.postgres, mount = pg.volumes.find(v => v.target === '/var/lib/postgresql/data');
-      if (mount?.type !== 'volume' || mount.source !== 'pgdata' || pg.ports?.length !== 1 || pg.ports[0].host_ip !== '127.0.0.1' || Number(pg.ports[0].target) !== 5432) fail();
+      if (mount?.type !== 'volume' || mount.source !== 'pgdata' || pg.ports?.length !== 1 || pg.ports[0].host_ip !== '127.0.0.1' || Number(pg.ports[0].target) !== 5432 || !fixedPort(pg.ports[0].published) || pg.ports[0].published !== binding.pg_forward_port) fail();
       // A non-internal PG bridge is dedicated to PG and cannot masquerade traffic out.
       for (const network of Object.keys(pg.networks)) if (!c.networks[network].internal) {
         if (c.networks[network].driver_opts?.['com.docker.network.bridge.enable_ip_masquerade'] !== 'false') fail();
@@ -63,6 +69,14 @@ try {
       }
       const volumePath = `${state}/pg-volume.json`, volume = JSON.stringify(c.volumes.pgdata);
       if (existsSync(volumePath) && readFileSync(volumePath, 'utf8') !== volume) fail();
+      if (saved?.pg_volume && JSON.stringify(saved.pg_volume) !== volume) fail();
+      // Verify the candidate against the actual existing volume BEFORE adopting any binding.
+      const ids = execFileSync('docker', ['ps', '-aq', '--filter', `label=com.docker.compose.project=${project}`, '--filter', 'label=com.docker.compose.service=postgres'], {encoding:'utf8'}).trim().split(/\s+/).filter(Boolean);
+      if (ids.length > 1) fail();
+      if (ids.length) {
+        const mounts = JSON.parse(execFileSync('docker', ['inspect', '--format', '{{json .Mounts}}', ids[0]], {encoding:'utf8'})).filter(m => m.Destination === '/var/lib/postgresql/data');
+        if (mounts.length !== 1 || mounts[0].Type !== 'volume' || mounts[0].Name !== c.volumes.pgdata.name) fail();
+      }
       for (const name of ['api', 'ops', 'migrate']) if (new URL(s[name].environment.DATABASE_URL).hostname !== 'postgres') fail();
     }
     const parser = s['worker-parse'];
@@ -78,8 +92,8 @@ try {
       }
     }
     // Adopt only a fully validated configuration, before the caller can mutate Docker.
-    if (file && !existsSync(bindingPath)) writeFileSync(bindingPath, JSON.stringify(binding), { mode: 0o600, flag: 'wx' });
-    if (file && role === 'main' && !existsSync(`${state}/pg-volume.json`)) writeFileSync(`${state}/pg-volume.json`, JSON.stringify(c.volumes.pgdata), {mode: 0o600, flag: 'wx'});
+    // One atomic authoritative file includes both environment identity and the validated PG.
+    if (file && (!saved || role === 'main' && !saved.pg_volume)) atomicJSON(bindingPath, {...binding, ...(role === 'main' ? {pg_volume:c.volumes.pgdata} : {})});
   } else fail();
   }
 } catch {

@@ -67,22 +67,27 @@ compose() {
   role_metadata
   # Validate resolved policies without printing credentials, before every lifecycle command.
   role_compose_raw --profile '*' config --format json 2>/dev/null | node "$BB_DIR/scripts/role-config.mjs" validate "$BB_ENV" "$BB_STATE" "$BB_DEPLOY_ROLE" || return 2
-  role_runtime_volume
+  [ "${BB_ROLE_READONLY:-0}" != 1 ] || flock -u 8
   role_compose_raw "$@"
 }
-role_runtime_volume() {
-  [ "$BB_DEPLOY_ROLE" = main ] && [ -f "$BB_STATE/pg-volume.json" ] || return 0
-  local containers
-  containers="$(docker ps -aq --filter "label=com.docker.compose.project=$BB_ROLE_PROJECT" --filter label=com.docker.compose.service=postgres)"
-  [ -n "$containers" ] || return 0
-  [ "$(wc -w <<< "$containers")" = 1 ] || { echo 'expected exactly one existing role PostgreSQL container' >&2; return 2; }
-  docker inspect --format '{{json .Mounts}}' "$containers" | node "$BB_DIR/scripts/role-config.mjs" runtime-volume "$BB_ENV" "$BB_STATE" "$BB_DEPLOY_ROLE"
-}
 role_existing_state() {
+  if [ -f "$BB_STATE/pending-release.json" ] && [ "${BB_PENDING_COMMAND:-0}" != 1 ]; then
+    echo 'pending role release: use deploy-role.sh --rollback for verified recovery' >&2; exit 3
+  fi
   local existing
   existing="$(docker ps -aq --filter "label=com.docker.compose.project=$BB_ROLE_PROJECT")"
-  if [ -n "$existing" ] && [ -z "$(current_tag)" ]; then
+  if [ -n "$existing" ] && [ -z "$(current_tag)" ] && { [ "${BB_PENDING_COMMAND:-0}" != 1 ] || [ ! -f "$BB_STATE/pending-release.json" ]; }; then
     echo 'existing role project has no retained release state; adopt verified state/project/pgdata before deployment, never treat it as a first release' >&2; exit 2
+  fi
+}
+role_release_snapshot() {
+  local hashes snapshot status
+  hashes="$(mktemp "$BB_STATE/.release-hashes.XXXXXX")"
+  if role_compose_raw --profile '*' config --hash '*' > "$hashes" &&
+    snapshot="$(role_compose_raw --profile '*' config --format json | node "$BB_DIR/scripts/role-release.mjs" snapshot "$BB_STATE" "$BB_DEPLOY_ROLE" "$1" "$hashes" "$BB_ENV")"; then
+    rm "$hashes"; printf '%s\n' "$snapshot"
+  else
+    status=$?; rm "$hashes"; return "$status"
   fi
 }
 role_existing_release() {
@@ -107,8 +112,10 @@ role_existing_release() {
   done <<< "$containers"
 }
 role_compose_arguments() {
-  local arg
+  local arg command="${1:-}" index=0
   for arg in "$@"; do
+    if [ "$command" = logs ] && [ "$index" -gt 0 ] && [ "$arg" = -f ]; then continue; fi
+    index=$((index + 1))
     case "$arg" in -f|-f?*|--file|--file=*|--env-file|--env-file=*|--project-directory|--project-directory=*|-p|-p?*|--project-name|--project-name=*|--profile|--profile=*|--scale|--scale=*|--include-deps)
       echo 'role entry owns Compose files, env, project, profiles and parser scale; extra configuration flags are disabled' >&2; exit 2;;
     esac

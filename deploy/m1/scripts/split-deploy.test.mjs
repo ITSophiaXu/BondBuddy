@@ -109,9 +109,9 @@ test('business model catalogs retain 1M windows and 900K compression', () => {
 // Exercise actual shell branch ordering; no Docker mutation is performed by these command shims.
 for(const role of ['main','execution']) test(`${role} deployment refuses in-flight/unknown calls; only main migrates and recreates web`,()=>{
  const fixture=join(dir,role+'-fixture');mkdirSync(join(fixture,'deploy/m1/scripts'),{recursive:true});mkdirSync(join(fixture,'bin'));
- for(const name of ['lib.sh','role-lib.sh','deploy-role.sh','role-probe.mjs','role-config.mjs','role-source-lib.sh']) cpSync(join(root,'deploy/m1/scripts',name),join(fixture,'deploy/m1/scripts',name));
+ for(const name of ['lib.sh','role-lib.sh','deploy-role.sh','role-probe.mjs','role-config.mjs','role-source-lib.sh','role-state.mjs','role-release.mjs']) cpSync(join(root,'deploy/m1/scripts',name),join(fixture,'deploy/m1/scripts',name));
  for(const name of ['install-codex-file-sandbox.sh','smoke.sh']) writeFileSync(join(fixture,'deploy/m1/scripts',name),'#!/bin/sh\nexit 0\n',{mode:0o755});
- writeFileSync(join(fixture,'bin/git'),`#!/bin/sh\ncase "$*" in *--show-toplevel*) echo "$TEST_FIXTURE";; *HEAD*) echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;; *--verify*) echo "\${TEST_APP_SHA:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}";; *'remote get-url origin'*) echo https://github.com/ITSophiaXu/BondBuddy.git;; *for-each-ref*) echo refs/remotes/origin/develop;; *merge-base*) exit "\${TEST_UNTRUSTED:-0}";; *status*) [ "\${TEST_DIRTY:-0}" = 0 ] || echo " M deploy/m1/synthetic";; *diff*) exit "\${TEST_DEPLOY_DIFF:-0}";; *rev-parse*) echo cccccccccccccccccccccccccccccccccccccccc;; esac\n`,{mode:0o755});
+ writeFileSync(join(fixture,'bin/git'),`#!/bin/sh\ncase "$*" in *--show-toplevel*) echo "$TEST_FIXTURE";; *HEAD*) echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;; *'aaaaaaaaaaaa^{commit}'*) echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;; *--verify*) echo "\${TEST_APP_SHA:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}";; *'remote get-url origin'*) echo https://github.com/ITSophiaXu/BondBuddy.git;; *for-each-ref*) echo refs/remotes/origin/develop;; *merge-base*) exit "\${TEST_UNTRUSTED:-0}";; *status*) [ "\${TEST_DIRTY:-0}" = 0 ] || echo " M deploy/m1/synthetic";; *diff*) exit "\${TEST_DEPLOY_DIFF:-0}";; *rev-parse*) echo cccccccccccccccccccccccccccccccccccccccc;; esac\n`,{mode:0o755});
  writeFileSync(join(fixture,'bin/docker'),`#!/bin/bash
 printf '%s\\n' "$*" >> "$TEST_CALLS"
 case "$*" in
@@ -119,9 +119,12 @@ case "$*" in
  *'ps -q --filter label=com.docker.compose.project='*) [ "\${TEST_CURRENT_RUNTIME:-0}" = 0 ] || echo synthetic-current;;
  *'inspect --format'*com.docker.compose.service*) echo "\${TEST_CURRENT_SERVICE:-api}";;
  *'image inspect --format'*revision*sha256:synthetic*) echo "\${TEST_CURRENT_REVISION-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}";;
- *'config --format json'*) cat "$TEST_CONFIG";;
+ *'config --hash '* ) node -e 'const fs=require("fs");for(const s of Object.keys(JSON.parse(fs.readFileSync(process.env.TEST_CONFIG)).services))console.log(s+" "+"a".repeat(64))';;
+ *'config --format json'*) node -e 'const fs=require("fs");process.stdout.write(fs.readFileSync(process.env.TEST_CONFIG,"utf8").replaceAll(":synthetic",":"+process.env.BB_IMAGE_TAG))';;
+ *'inspect --format'*com.docker.compose.project*) node -e 'console.log(JSON.parse(require("fs").readFileSync(process.env.TEST_CONFIG)).name)';;
+ *'inspect --format'*com.docker.compose.config-hash*) node -e 'console.log("a".repeat(64))';;
  *'ps --status running -q worker-parse'*) ;;
- *'image inspect --format'*revision*) if [ "$TEST_BAD_REVISION" = 1 ]; then echo wrong-revision; else echo "\${TEST_APP_SHA:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}"; fi;;
+ *'image inspect --format'*revision*) if [ "$TEST_BAD_REVISION" = 1 ]; then echo wrong-revision; else case "$*" in *:bbbbbbbbbbbb*) echo bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;; *) echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;; esac; fi;;
  *'image inspect --format'*) echo sha256:synthetic;;
  *'inspect --format'*) if [ "$TEST_BAD_RUNTIME" = 1 ]; then echo sha256:wrong-runtime; else echo sha256:synthetic; fi;;
  *' ps -q '*) echo synthetic-container;;
@@ -133,20 +136,20 @@ esac
  writeFileSync(rendered,execFileSync('docker',['compose','--project-directory',join(root,'deploy/m1'),'-f',join(root,`deploy/m1/compose.${role}.yaml`),...(role==='execution'?['-f',join(root,'deploy/m1/compose.integrity-beijing.yaml')]:[]),'--profile','*','--env-file',envFile(role),'config','--format','json'],{env:{...configProcessEnv,BB_IMAGE_TAG:'synthetic'},stdio:['ignore','pipe','pipe']}));
  const state=join(fixture,'state');mkdirSync(state);const calls=join(fixture,'calls');
  for(const gate of [76,77,0]) {
-  writeFileSync(join(state,'current'),'old-release\n');writeFileSync(calls,'');
+  rmSync(join(state,'pending-release.json'),{force:true});writeFileSync(join(state,'current'),'aaaaaaaaaaaa\n');writeFileSync(calls,'');
   const run=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),role,'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],{
    env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile(role),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CONFIG:join(fixture,'config.json'),TEST_CALLS:calls,TEST_GATE:String(gate)},encoding:'utf8'});
   assert.equal(run.status,gate,run.stderr);
   const commands=readFileSync(calls,'utf8');
-  if(gate) {assert.doesNotMatch(commands,/up -d|run --rm --no-deps -T migrate/);assert.equal(readFileSync(join(state,'current'),'utf8'),'old-release\n');}
+  if(gate) {assert.doesNotMatch(commands,/up -d|run --rm --no-deps -T migrate/);assert.equal(readFileSync(join(state,'current'),'utf8'),'aaaaaaaaaaaa\n');}
   else if(role==='main') {assert.match(commands,/run --rm --no-deps -T migrate/);assert.match(commands,/up -d --no-deps --force-recreate --wait web/);}
   else {assert.doesNotMatch(commands,/migrate|up -d.*postgres/);assert.match(commands,/bondbuddy-integrity-tunnel:aaaaaaaaaaaa/);assert.match(commands,/up -d --no-deps --wait pg-tunnel egress integrity-beijing-tunnel/);assert.match(commands,/up -d --no-deps --wait worker worker-review worker-parse/);assert.doesNotMatch(commands,/bondbuddy-m1-integrity-egress/);}
  }
  for(const [kind,status] of [['revision',3],['runtime',4]]) {
-  writeFileSync(join(state,'current'),'old-release\n');writeFileSync(calls,'');
+  rmSync(join(state,'pending-release.json'),{force:true});writeFileSync(join(state,'current'),'aaaaaaaaaaaa\n');writeFileSync(calls,'');
   const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),role,'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],{
    env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile(role),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CONFIG:join(fixture,'config.json'),TEST_CALLS:calls,TEST_GATE:'0',TEST_BAD_REVISION:kind==='revision'?'1':'0',TEST_BAD_RUNTIME:kind==='runtime'?'1':'0'},encoding:'utf8'});
-  assert.equal(r.status,status,r.stderr);assert.equal(readFileSync(join(state,'current'),'utf8'),'old-release\n');
+  assert.equal(r.status,status,r.stderr);assert.equal(readFileSync(join(state,'current'),'utf8'),'aaaaaaaaaaaa\n');
   if(kind==='revision')assert.doesNotMatch(readFileSync(calls,'utf8'),/up -d|run --rm --no-deps -T migrate/);
  }
 });
@@ -243,7 +246,7 @@ for(const role of ['main','execution'])test(`${role} app rollback uses exact scr
  // Validation also includes the inactive parser; render all profiles using the same private input.
  const all=execFileSync('docker',['compose','--project-directory',join(root,'deploy/m1'),'-f',join(root,`deploy/m1/compose.${role}.yaml`),...(role==='execution'?['-f',join(root,'deploy/m1/compose.integrity-beijing.yaml')]:[]),'-f',a.file,'--profile','*','--env-file',envFile(role,a.values),'config','--format','json'],{
   env:{...configProcessEnv,BB_IMAGE_TAG:'synthetic',BB_ROLE_PARSE_PROFILE:role==='main'?'bb-parse-active':'bb-parse-inactive',BB_ROLE_PARSE_REPLICAS:role==='main'?'1':'0'},stdio:['ignore','pipe','pipe']});
- const rendered=join(a.area,'config.json');writeFileSync(rendered,all);writeFileSync(join(state,'current'),'old-release\n');writeFileSync(calls,'');
+ const rendered=join(a.area,'config.json');writeFileSync(rendered,all);rmSync(join(state,'pending-release.json'),{force:true});writeFileSync(join(state,'current'),'aaaaaaaaaaaa\n');writeFileSync(calls,'');
  const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),role,'a'.repeat(40),'--rollback'],{env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile(role,a.values),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CONFIG:rendered,TEST_CALLS:calls,TEST_GATE:'0'},encoding:'utf8'});
  assert.equal(r.status,0,r.stderr);const commands=readFileSync(calls,'utf8');assert.doesNotMatch(commands,/run --rm --no-deps -T migrate|up -d.*postgres/);
  assert.ok(commands.includes('-f '+a.file));
@@ -283,7 +286,7 @@ for(const role of ['main','execution'])test(`${role} existing project rejects em
  const environment={...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile(role,a.values),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CONFIG:rendered,TEST_CALLS:calls,TEST_GATE:'76',TEST_EXISTING_PROJECT:'1'};
  let r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),role,'a'.repeat(40)],{env:environment,encoding:'utf8'});
  assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/existing role project has no retained release state/);assert.doesNotMatch(readFileSync(calls,'utf8'),/up -d|run --rm/);
- writeFileSync(join(state,'current'),'old-release\n');writeFileSync(calls,'');r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),role,'a'.repeat(40)],{env:environment,encoding:'utf8'});
+ rmSync(join(state,'pending-release.json'),{force:true});writeFileSync(join(state,'current'),'aaaaaaaaaaaa\n');writeFileSync(calls,'');r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),role,'a'.repeat(40)],{env:environment,encoding:'utf8'});
  assert.equal(r.status,76,r.stderr);assert.match(readFileSync(calls,'utf8'),/ idle/);assert.doesNotMatch(readFileSync(calls,'utf8'),/up -d|run --rm --no-deps -T migrate/);
 });
 test('configuration-only deployments at one app tag retain separate immutable release evidence',()=>{
@@ -298,7 +301,7 @@ test('current-only retained releases require real source and ID checks before th
  const fixture=join(dir,'main-fixture'),a=covered('main','services: {}\n',{BB_PARSE_ROLE:'execution',BB_DEPLOY_SCRIPT_SHA:'a'.repeat(40)}),state=a.values.BB_ROLE_STATE_DIR,calls=join(a.area,'calls');mkdirSync(state);
  const environment={...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile('main',a.values),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CONFIG:join(fixture,'config.json'),TEST_CALLS:calls,TEST_CURRENT_RUNTIME:'1',TEST_EXISTING_PROJECT:'1'};
  for(const [revision,gate,status] of [['a'.repeat(40),'76',76],['b'.repeat(40),'0',3],['','0',3],['a'.repeat(40),'0',0]]){
-  writeFileSync(join(state,'current'),'aaaaaaaaaaaa\n');writeFileSync(calls,'');const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),'main','a'.repeat(40)],{env:{...environment,TEST_CURRENT_REVISION:revision,TEST_GATE:gate},encoding:'utf8'});assert.equal(r.status,status,r.stderr);
+  rmSync(join(state,'pending-release.json'),{force:true});writeFileSync(join(state,'current'),'aaaaaaaaaaaa\n');writeFileSync(calls,'');const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),'main','a'.repeat(40)],{env:{...environment,TEST_CURRENT_REVISION:revision,TEST_GATE:gate},encoding:'utf8'});assert.equal(r.status,status,r.stderr);
   const commands=readFileSync(calls,'utf8');assert.match(commands,/com.docker.compose.service/);
   if(status)assert.doesNotMatch(commands,/up -d|run --rm --no-deps -T migrate/);
   if(status===3)assert.doesNotMatch(commands,/ idle/);
