@@ -17,7 +17,7 @@ const name = forced || (reask && pick(/REASK_SCENARIO:([a-z_0-9]+)/)) || pick(/S
 const sentinel = pick(/SENTINEL:(\S+)/);
 const out = (v) => process.stdout.write(JSON.stringify(v) + '\n');
 const cwd = process.cwd();
-out({ type: 'fake.trace', synthetic: true, argv, cwd_entries: readdirSync(cwd), env_keys: Object.keys(process.env).sort(), codex_home_exists: !!process.env.CODEX_HOME && existsSync(process.env.CODEX_HOME), auth_link: !!process.env.CODEX_HOME && existsSync(join(process.env.CODEX_HOME, 'auth.json')) });
+out({ type: 'fake.trace', synthetic: true, reask_feedback: reask ? prompt.split('[bb-reask]').at(-1) : null, argv, cwd_entries: readdirSync(cwd), env_keys: Object.keys(process.env).sort(), codex_home_exists: !!process.env.CODEX_HOME && existsSync(process.env.CODEX_HOME), auth_link: !!process.env.CODEX_HOME && existsSync(join(process.env.CODEX_HOME, 'auth.json')) });
 const imageAt=argv.indexOf('--image');
 if(imageAt>=0)out({type:'fake.image',sha256:createHash('sha256').update(readFileSync(argv[imageAt+1])).digest('hex')});
 const resumeAt = argv.indexOf('resume');
