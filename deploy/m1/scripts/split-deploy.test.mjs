@@ -77,7 +77,7 @@ test('integrity modes are explicit, mutually exclusive and keep the PG tunnel',(
 test('main preserves payment files, complete template bundle, upload spool and remote group readiness', () => {
  const {services}=config('main'); const mounts=services.api.volumes;
  for(const target of ['/run/bondbuddy-payments','/opt/bondbuddy/private-file-templates']) {
-  const m=mounts.find(v=>v.target===target); assert.equal(m.read_only,true); assert.equal(m.bind.create_host_path,false);
+  const m=mounts.find(v=>v.target===target); assert.equal(m.read_only,true); assert.equal(m.bind.create_host_path ?? false,false);
  }
  assert.ok(mounts.find(v=>v.target==='/var/lib/bondbuddy/upload-spool' && v.type==='volume'));
  assert.equal(services.api.environment.BB_READY_WORKER_GROUPS,'authoring,review,parse');

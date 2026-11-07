@@ -17,7 +17,8 @@ const source=run('git',['rev-parse','HEAD']).trim();
 const password='synthetic:@/#?%$&=+!', pgImage=docker('image','inspect','postgres:16','--format','{{.Id}}').trim();
 const runtime=docker('image','inspect','bondbuddy-m1-api:729a5aa71612','--format','{{.Id}}').trim();
 const alternate=docker('image','inspect','bondbuddy-m1-worker:729a5aa71612','--format','{{.Id}}').trim();
-const buildBase=docker('image','inspect','redis:7-alpine','--format','{{.Id}}').trim();
+const buildBase=JSON.parse(docker('image','inspect','redis:7-alpine','--format','{{json .RepoDigests}}'))[0];
+assert.ok(buildBase?.startsWith('redis@sha256:'),'cached pinned SSH fixture base is required');
 let checks=0;const pass=text=>{checks++;console.log(`PASS ${text}`);};
 async function port(){const s=createServer();await new Promise(r=>s.listen(0,'127.0.0.1',r));const p=s.address().port;await new Promise(r=>s.close(r));return p;}
 const pgPort=await port(), sshPort=await port();
