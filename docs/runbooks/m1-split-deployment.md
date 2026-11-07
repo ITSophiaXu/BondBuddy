@@ -34,6 +34,8 @@ BB_ENV_FILE=<private-env> bash deploy/m1/scripts/role-compose.sh execution ps
 
 模板见 `.env.main.example`、`.env.execution.example`：仅补角色字段，保留原收费开关、Blob、模型、Provider、认证、超时、条款及出口白名单。不要把示例占位值用于生产。业务 Codex 的**模型目录和真实执行参数继续固定 1000000 窗口、900000 压缩**；本次将 Dockerfile 的业务 CLI 最小更新到已核对的官方稳定版0.167.0及官方包校验值，并添加来源标签；保留业务适配器参数和模型目录契约。验收实际 `token_count.info.model_context_window=1000000`，不是只看目录。业务窗口与开发环境窗口各自独立。
 
+仅 `execution` 的编制、复核、解析三组服务默认 `BB_WORKER_LEASE_SECONDS=120`，为跨云 PG 续租留出余量；可在执行端私有 env 中覆盖为 5–600 的整数秒，未设置或空值均使用 120。现有续租调度为租约的 40%，120 秒租约对应约 48 秒续租间隔。旧同机 Compose 不新增此参数，全局运行时默认仍为 30 秒，三组执行服务并发仍各为 1。该参数不改变 SIGTERM 排空时限；切换前仍须核实在途调用。
+
 ## 专用 SSH 转发契约
 
 主站 PG 只发布 `127.0.0.1:${BB_PG_FORWARD_PORT:-15432}:5432`，不开放公网 5432 或 15432。仅允许专用 SSH 账号从执行端既有出口连接 SSH 端口。目标账号只允许本地转发至 `127.0.0.1:15432`，禁止 shell、PTY、远端转发、其他目标及认证代理转发；示例（按实际端口调整）：

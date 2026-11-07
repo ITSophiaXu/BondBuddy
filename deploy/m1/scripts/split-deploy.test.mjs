@@ -10,10 +10,12 @@ const base = { BB_IMAGE_TAG: 'synthetic', POSTGRES_PASSWORD: 'synthetic', BB_MAI
  BB_TRIAL_SOURCE_SALT: 'synthetic', AZURE_STORAGE_CONNECTION_STRING: 'synthetic', BB_PARSE_CACHE_OCR_VERSION: 'synthetic', BB_PARSE_CACHE_BASIS_VERSION: 'synthetic',
  BB_EXECUTION_DATABASE_URL: 'postgresql://bondbuddy:synthetic@pg-tunnel:5432/bondbuddy', BB_PG_SSH_HOST: 'synthetic.test', BB_PG_SSH_USER: 'tunnel',
  BB_PG_SSH_KEY_FILE: '/dev/null', BB_PG_SSH_KNOWN_HOSTS_FILE: '/dev/null', BB_FILE_TEMPLATE_HOST_DIR: dir, BB_PAYMENT_SECRETS_DIR: dir, BB_INTEGRITY_MODE: 'beijing',BB_INTEGRITY_BEIJING_HOST:'synthetic.test',BB_INTEGRITY_SSH_DIR:dir };
+const configProcessEnv = {...process.env};
+delete configProcessEnv.BB_WORKER_LEASE_SECONDS; // Exercise the private env file, independent of the test host.
 function envFile(role, values = {}) { const path = join(dir, `${role}.env`); writeFileSync(path, Object.entries({...base,BB_DEPLOY_ROLE:role,...values}).map(([k,v])=>`${k}=${v}`).join('\n'), {mode:0o600}); return path; }
 function config(role, values = {}) {
  return JSON.parse(execFileSync('bash', ['deploy/m1/scripts/role-compose.sh', role, 'config', '--format', 'json'],
- { cwd: root, env: {...process.env,BB_ENV_FILE:envFile(role,values),BB_STATE_DIR:join(dir,'state'),BB_IMAGE_TAG:'synthetic'}, stdio:['ignore','pipe','pipe'] }));
+ { cwd: root, env: {...configProcessEnv,BB_ENV_FILE:envFile(role,values),BB_STATE_DIR:join(dir,'state'),BB_IMAGE_TAG:'synthetic'}, stdio:['ignore','pipe','pipe'] }));
 }
 test('roles have disjoint local services; internal execution containers use only the dual-network SSH bridge', () => {
  const main=config('main'), execution=config('execution');
@@ -37,6 +39,30 @@ test('roles have disjoint local services; internal execution containers use only
  assert.equal(execution.services['integrity-egress'],undefined);
  assert.equal(execution.services['worker-parse'].environment.BB_WORKER_JOB_KINDS,'parse');
  assert.equal(execution.services['worker-review'].environment.BB_WORKER_RUN_KINDS,'review');
+});
+test('execution lease defaults and overrides reach all three groups without local database dependencies', () => {
+ for(const lease of [undefined, '', '180']) {
+  const {services}=config('execution',lease===undefined?{}:{BB_WORKER_LEASE_SECONDS:lease});
+  assert.equal(services.postgres,undefined); assert.equal(services.migrate,undefined);
+  for(const name of ['worker','worker-review','worker-parse']) {
+   const s=services[name];
+   assert.equal(s.environment.BB_WORKER_LEASE_SECONDS,lease || '120',name);
+   assert.equal(s.environment.BB_WORKER_CONCURRENCY,'1',name);
+   assert.equal(new URL(s.environment.DATABASE_URL).hostname,'pg-tunnel',name);
+   assert.ok(s.depends_on['pg-tunnel'],name);
+   assert.equal(s.depends_on.postgres,undefined,name); assert.equal(s.depends_on.migrate,undefined,name);
+  }
+  assert.equal(services.worker.environment.BB_INTEGRITY_EGRESS_PROXY_URL,'http://integrity-beijing-tunnel:3129');
+  assert.ok(services.worker.depends_on['integrity-beijing-tunnel']);
+ }
+});
+test('execution lease setting does not change the legacy same-host environment', () => {
+ const legacy=JSON.parse(execFileSync('docker',['compose','--project-directory',join(root,'deploy/m1'),'-f',join(root,'deploy/m1/compose.yaml'),
+  '--env-file',envFile('legacy',{BB_WORKER_LEASE_SECONDS:'180'}),'config','--format','json'],
+  {cwd:root,env:configProcessEnv,stdio:['ignore','pipe','pipe']}));
+ for(const name of ['worker','worker-review','worker-parse']) {
+  assert.equal(legacy.services[name].environment.BB_WORKER_LEASE_SECONDS,undefined,name);
+ }
 });
 test('integrity modes are explicit, mutually exclusive and keep the PG tunnel',()=>{
  for(const mode of ['direct','disabled']) {
