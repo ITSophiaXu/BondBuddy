@@ -23,5 +23,5 @@ export type WorkpaperCheck={run_id:string;batch_id:string;state:string;source:Wo
 export type WorkpaperLibraryItem=WorkpaperItem&{batch_id:string;catalogue_id:string;created_at:string;source:WorkpaperChangeInput['source'];latest:boolean;version_count:number;impact:WorkpaperImpact|null;check_stale:boolean;links_count:number};
 export const WORKPAPER_CHECK_UNAVAILABLE='底稿变更检查暂未开放，已有文件和历史检查记录仍可查看、下载。';
 export type WorkpaperLibrary={items:WorkpaperLibraryItem[];total:number;offset:number;limit:number;source:WorkpaperChangeInput['source']|null;checks:WorkpaperCheck[];
- paid_checks?:WorkpaperPaidCheckBatch[];check_capability?:{enabled:boolean;reason:string;mode?:'per_file'|'legacy'}};
+ active?:boolean;paid_checks?:WorkpaperPaidCheckBatch[];check_capability?:{enabled:boolean;reason:string;mode?:'per_file'|'legacy'}};
 export type WorkpaperDependencies={links:ProjectFileLink[];warnings:string[];source_sha256:string;target_sha256:string};

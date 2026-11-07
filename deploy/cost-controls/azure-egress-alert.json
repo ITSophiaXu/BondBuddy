@@ -1,0 +1,66 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "alertName": {
+      "type": "string",
+      "defaultValue": "bondbuddy-hourly-egress"
+    },
+    "vmResourceId": {
+      "type": "string"
+    },
+    "vmRegion": {
+      "type": "string",
+      "defaultValue": "westus2"
+    },
+    "actionGroupId": {
+      "type": "string"
+    },
+    "bytesPerHour": {
+      "type": "int",
+      "minValue": 1,
+      "defaultValue": 2147483648
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Insights/metricAlerts",
+      "apiVersion": "2018-03-01",
+      "name": "[parameters('alertName')]",
+      "location": "global",
+      "properties": {
+        "description": "Unexpected VM egress: investigate application response sizes and execution traffic. Does not stop services.",
+        "severity": 2,
+        "enabled": true,
+        "scopes": [
+          "[parameters('vmResourceId')]"
+        ],
+        "evaluationFrequency": "PT5M",
+        "windowSize": "PT1H",
+        "targetResourceType": "Microsoft.Compute/virtualMachines",
+        "targetResourceRegion": "[parameters('vmRegion')]",
+        "criteria": {
+          "odata.type": "Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria",
+          "allOf": [
+            {
+              "name": "NetworkOut",
+              "metricName": "Network Out Total",
+              "metricNamespace": "Microsoft.Compute/virtualMachines",
+              "operator": "GreaterThan",
+              "timeAggregation": "Total",
+              "threshold": "[parameters('bytesPerHour')]",
+              "criterionType": "StaticThresholdCriterion"
+            }
+          ]
+        },
+        "autoMitigate": true,
+        "actions": [
+          {
+            "actionGroupId": "[parameters('actionGroupId')]",
+            "webHookProperties": {}
+          }
+        ]
+      }
+    }
+  ]
+}

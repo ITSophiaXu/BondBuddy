@@ -1,4 +1,5 @@
 import {int64,serializeInt64,shortageInt64,encodeBillingDto,type BillingWireDto} from '@bondbuddy/contracts';
+import {registerGenerationProgress} from './generation-progress.js';
 import {workpaperPreview} from './workpaper-preview.js';
 import {contentDisposition} from './material-download.js';
 import {loadWorkpaperTemplate} from './workpaper-templates.js';
@@ -64,9 +65,12 @@ async function ownedBatch(db:Db,owner:string,id:string,batch:string,lock=false){
   await project(db,owner,id);const row=(await db.query(`SELECT * FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 ${lock?'FOR UPDATE':''}`,[owner,id,batch])).rows[0];
   if(!row)throw missing();return row;
 }
-export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:string):Promise<BillingWireDto<WorkpaperBatch,'workpaperBatch'>>{
+export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:string,versionSummaries?:Map<string,NonNullable<WorkpaperBatch['items'][number]['file']>>):Promise<BillingWireDto<WorkpaperBatch,'workpaperBatch'>>{
   const b=await ownedBatch(db,owner,id,batch);
-  const items=(await db.query(`SELECT i.*,r.state run_state,r.stage,w.decision AS output_decision,coalesce(i.explanation,w.explanation) AS delivered_explanation FROM bb_workpaper_items i LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
+  const items=(await db.query(`SELECT i.item_id,i.run_id,i.state,i.attempt,i.error,
+    i.manifest->'input'->'workpaper'->'entry' AS entry,i.manifest->'input'->'workpaper'->'decision' AS input_decision,
+    coalesce(i.manifest->'input'->'template'<>'null'::jsonb,false) AS has_template,
+    r.state run_state,r.stage,w.decision AS output_decision,coalesce(i.explanation,w.explanation) AS delivered_explanation FROM bb_workpaper_items i LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
     LEFT JOIN bb_workpaper_item_results w ON w.owner_user_id=i.owner_user_id AND w.run_id=i.run_id AND r.state='succeeded'
     WHERE i.owner_user_id=$1 AND i.batch_id=$2 ORDER BY i.ordinal`,[owner,batch])).rows;
   const artifacts=(await db.query(`SELECT a.*,v.sha256,r.project_id FROM bb_workpaper_items i JOIN bb_runs r ON r.id=i.run_id AND r.owner_user_id=i.owner_user_id AND r.state='succeeded'
@@ -77,19 +81,20 @@ export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:stri
   const remaining=items.filter(i=>i.state==='queued').length;
   const required=b.state==='paused'&&b.pause_reason==='credits_insufficient'&&isAutomaticPriceVersion(b.price_version)&&remaining?remaining*(await loadAutomaticTaskTariff(db,b.price_version)).workpaper.points:0;
   const balance=required?await creditBalanceExact(db,owner):null;
-  const files=await workpaperFileVersions(db,owner,id);
+  const files=versionSummaries??await workpaperFileVersions(db,owner,id,false);
   return {batch_id:b.id,topic_id:b.topic_id,catalogue_id:b.catalogue_id,state:b.state,revision:b.revision,source:b.source,total_points:serializeInt64(b.total_points),charged_points:serializeInt64(charged.amount),created_at:date(b.created_at),error:b.error,start_mode:b.start_mode,
-    ...(items.length?{template_mode:items.every(i=>!!i.manifest.input.template)?'selected' as const:items.every(i=>!i.manifest.input.template)?'automatic' as const:'mixed' as const}:{}),
+    ...(items.length?{template_mode:items.every(i=>i.has_template)?'selected' as const:items.every(i=>!i.has_template)?'automatic' as const:'mixed' as const}:{}),
     ...(balance?{billing_resume:{price_version:b.price_version,required_points:serializeInt64(required),available_points:serializeInt64(balance.available),shortage:serializeInt64(shortageInt64(required,balance.available))}}:{}),
-    items:items.map(i=>{const file=files.get(batch+':'+i.item_id),current=file?.current;return {entry:i.manifest.input.workpaper.entry,decision:i.output_decision??i.manifest.input.workpaper.decision,...(i.delivered_explanation?{explanation:{filename:workpaperDownloadFilename(i.manifest.input.workpaper.entry,{explanation:true}),sha256:i.delivered_explanation.sha256}}:{}),...(file?{file}:{}),run_id:i.run_id,state:i.run_state??(i.state==='succeeded'?'succeeded':b.state==='cancelled'?'cancelled':i.state),stage:i.stage??null,attempt:i.attempt,error:i.error,
-      artifacts:current?.asset.kind==='artifact'?[{kind:'document' as const,filename:workpaperDownloadFilename(i.manifest.input.workpaper.entry),pin:current.asset.pin}]:artifacts.filter(a=>a.run_id===i.run_id&&!i.delivered_explanation).map(a=>({kind:a.kind,filename:workpaperDownloadFilename(i.manifest.input.workpaper.entry),pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}))};})};
+    items:items.map(i=>{const file=files.get(batch+':'+i.item_id),current=file?.current;return {entry:i.entry,decision:i.output_decision??i.input_decision??undefined,...(i.delivered_explanation?{explanation:{filename:workpaperDownloadFilename(i.entry,{explanation:true}),sha256:i.delivered_explanation.sha256}}:{}),...(file?{file}:{}),run_id:i.run_id,state:i.run_state??(i.state==='succeeded'?'succeeded':b.state==='cancelled'?'cancelled':i.state),stage:i.stage??null,attempt:i.attempt,error:i.error,
+      artifacts:current?.asset.kind==='artifact'?[{kind:'document' as const,filename:workpaperDownloadFilename(i.entry),pin:current.asset.pin}]:artifacts.filter(a=>a.run_id===i.run_id&&!i.delivered_explanation).map(a=>({kind:a.kind,filename:workpaperDownloadFilename(i.entry),pin:{source_project_id:a.project_id,artifact_id:a.artifact_id,artifact_version:a.artifact_version,sha256:a.sha256.trim()}}))};})};
 }
 export async function readWorkpapers(db:Db,owner:string,id:string):Promise<BillingWireDto<WorkpaperWorkspace,'workpaperWorkspace'>>{
   await project(db,owner,id);
   const cats=(await db.query('SELECT * FROM bb_workpaper_catalogues WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 10',[owner,id])).rows;
-  const batches=(await db.query('SELECT id FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 10',[owner,id])).rows;
+  const batches=(await db.query('SELECT id FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC,id DESC LIMIT 10',[owner,id])).rows;
   const version=automaticBillingEnabled(db)?await resolveAutomaticTaskPriceVersion(db,owner):null;
-  return encodeBillingDto('workpaperWorkspace',{price:version?{version,points:(await loadAutomaticTaskTariff(db,version)).workpaper.points,auto_charge:true}:WORKPAPER_PRICE,assessments:await readWorkpaperAssessments(db,owner,id),catalogues:cats.map(catalogueDto),batches:await Promise.all(batches.map(b=>readWorkpaperBatch(db,owner,id,b.id)))});
+  const files=batches.length?await workpaperFileVersions(db,owner,id,false):new Map();
+  return encodeBillingDto('workpaperWorkspace',{price:version?{version,points:(await loadAutomaticTaskTariff(db,version)).workpaper.points,auto_charge:true}:WORKPAPER_PRICE,assessments:await readWorkpaperAssessments(db,owner,id),catalogues:cats.map(catalogueDto),batches:await Promise.all(batches.map(b=>readWorkpaperBatch(db,owner,id,b.id,files)))});
 }
 
 /** A batch is an ordered queue of independent, immutable M4 runs. A failed file does not discard siblings. */
@@ -199,6 +204,7 @@ export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,u
 }
 
 export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs){
+  registerGenerationProgress(app,db,owner,'workpapers');
   const zipCache=new WorkpaperZipCache();
   app.addHook('onClose',()=>zipCache.close());
   registerWorkpaperAssessments(app,db,owner);

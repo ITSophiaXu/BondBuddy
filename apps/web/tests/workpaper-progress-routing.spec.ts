@@ -1,4 +1,5 @@
 import {test,expect,type Page} from '@playwright/test';
+import {createHash} from 'node:crypto';
 import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import type {WorkpaperBatch,WorkpaperWorkspace} from '@bondbuddy/contracts';
@@ -21,6 +22,7 @@ async function setup(page:Page){
     if(path==='/projects')return route.fulfill({json:{items:[{project_id:ids.api,name:'合成批量底稿项目',kind:'generation',draft_revision:1,updated_at:now,file_count:1,task_summary:{active:1,attention:0,completed:0,total:1,latest:task,recent_result:null}}],page:{has_more:false,next_cursor:null}}});
     if(path===`/projects/${ids.api}/tasks`)return route.fulfill({json:{project_id:ids.api,items:[task],page:{has_more:false,next_cursor:null}}});
     if(path===`/projects/${ids.api}/workpapers`)return route.fulfill({json:fixtureBody(route,data)});
+    if(path===`/projects/${ids.api}/workpapers/progress`)return route.fulfill({json:{revision:createHash('sha256').update(JSON.stringify([data,target])).digest('hex'),active:target.state==='running'}});
     if(path===`/projects/${ids.api}/workpapers/batches/${target.batch_id}`)return route.fulfill(state.missing?{status:404,json:{code:'NOT_FOUND'}}:{json:fixtureBody(route,target)});
     await route.fallback();
   });
@@ -243,7 +245,7 @@ test('historical target outside recent ten remains current across polling and ho
   await page.clock.install();await page.goto(s.href);await assertTarget(page);
   const path=`/projects/${ids.api}/workpapers/batches/requested-batch`,reads=()=>s.calls.filter(c=>c.path===path).length;
   expect(reads()).toBe(1);await targetPanel(page).locator('summary').click();
-  s.target.items[1].state='succeeded';await page.clock.fastForward(5100);
+  s.target.items[1].state='succeeded';await page.clock.fastForward(10100);
   await expect(targetPanel(page)).toContainText('2 / 3 份完成');await expect(targetPanel(page).locator('details')).not.toHaveAttribute('open','');expect(reads()).toBe(2);
   await page.reload();await expect(targetPanel(page).locator('details')).toHaveAttribute('open','');await expect(targetPanel(page)).toContainText('2 / 3 份完成');
   expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);expect(s.original.errors).toEqual([]);
