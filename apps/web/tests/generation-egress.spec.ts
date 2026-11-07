@@ -56,14 +56,17 @@ test('library: idle and hidden pages stop, activity and manual refresh still wor
  await page.evaluate(async()=>{
   const api='/src/api.ts',panel='/src/workpaper-library.ts';const {ApiClient}=await import(api),{WorkpaperLibraryPanel}=await import(panel);
   const instance=new WorkpaperLibraryPanel(new ApiClient(()=>{}),document.querySelector('#test-host'),'p');
+  // Wait for the response to be applied and the next timer scheduled before advancing time.
+  const refresh=instance.refresh.bind(instance);
+  instance.refresh=(...args:Parameters<typeof refresh>)=>((window as any).egressRefresh=refresh(...args));
   (window as any).egressPanel=instance;await instance.render();
  });
  expect(calls).toBe(1);await page.clock.fastForward(86_400_000);expect(calls).toBe(1);
- data.active=true;await page.getByRole('button',{name:'刷新',exact:true}).click();await expect.poll(()=>calls).toBe(2);
- await page.clock.fastForward(10_000);await expect.poll(()=>calls).toBe(3);
+ data.active=true;await page.getByRole('button',{name:'刷新',exact:true}).click();await expect.poll(()=>calls).toBe(2);await page.evaluate(()=>(window as any).egressRefresh);
+ await page.clock.fastForward(10_000);await expect.poll(()=>calls).toBe(3);await page.evaluate(()=>(window as any).egressRefresh);
  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
  await page.clock.fastForward(86_400_000);expect(calls).toBe(3);data.active=false;
  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:false});document.dispatchEvent(new Event('visibilitychange'));});
- await expect.poll(()=>calls).toBe(4);await page.clock.fastForward(86_400_000);expect(calls).toBe(4);
+ await expect.poll(()=>calls).toBe(4);await page.evaluate(()=>(window as any).egressRefresh);await page.clock.fastForward(86_400_000);expect(calls).toBe(4);
  await page.evaluate(()=>(window as any).egressPanel.dispose());
 });
