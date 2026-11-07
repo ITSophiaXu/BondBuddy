@@ -1,13 +1,13 @@
-# 主站与执行端独立发布（#907）
+# 主站与执行端独立发布（#907、#911）
 
-第一阶段：腾讯云主站运行网页、API、唯一业务 PostgreSQL 与必要运维；原 Azure 业务机器运行编制、复核、解析。继续使用 PG 队列与原私有 Azure Blob。无新增 HTTP 执行协议、批内并发、价格、状态机、模型、认证或页面变更。生产迁移及真实验收由 #908 实施；本说明和隔离检查本身不表示上线完成。
+第一阶段：腾讯云主站运行网页、API、唯一业务 PostgreSQL 与必要运维；原 Azure 业务机器运行编制、复核；当前迁移布局由主站运行纯解析。继续使用 PG 队列与原私有 Azure Blob。无新增 HTTP 执行协议、批内并发、价格、状态机、模型、认证或页面变更。双端迁移已由 #906/#908 完成；本 #911 的普通生命周期采纳与验收另行执行，隔离检查不冒充这次采纳验收。
 
 ## 角色与入口
 
 | 角色 | Compose | 常驻服务 | 单次服务 |
 | --- | --- | --- | --- |
-| `main` | `deploy/m1/compose.main.yaml` | `postgres/api/ops/egress/web` | `migrate`，仅主站运行 |
-| `execution` | `deploy/m1/compose.execution.yaml` | `worker/worker-review/worker-parse/egress/pg-tunnel` | 无迁移或本地 PG |
+| `main` | `deploy/m1/compose.main.yaml` | `postgres/api/ops/egress/web`，`BB_PARSE_ROLE=main` 时加 `worker-parse` | `migrate`，仅主站运行 |
+| `execution` | `deploy/m1/compose.execution.yaml` | `worker/worker-review/egress/pg-tunnel`；仅 `BB_PARSE_ROLE=execution` 时加 `worker-parse` | 无迁移或本地 PG |
 | 诚信核查 | 执行端按 `BB_INTEGRITY_MODE=beijing` 追加现有 `compose.integrity-beijing.yaml` | `integrity-beijing-tunnel`，保留原国内出口与浏览器配置 | 不启动 Azure 直出代理 |
 
 两端从同一准确发布提交构建、加载镜像，首次切换必须同版。后续仅在确认数据库迁移向后兼容、队列/checkpoint/provider结果格式兼容后独立发布；不得仅凭健康检查认定兼容。共用环境策略从原 Compose 继承，主站用 `BB_MAIN_DATABASE_URL`（主机名 `postgres`、密码经URL编码）与原文 `POSTGRES_PASSWORD` 分别配置连接和PG账号；执行端用固定的 `BB_EXECUTION_DATABASE_URL` 覆盖连接；不需要主站的 `POSTGRES_PASSWORD`。包装入口仅为旧配置未使用的插值提供无效占位值，不创建本地 PG。
@@ -22,7 +22,7 @@ BB_ENV_FILE=<main-private-env> bash deploy/m1/scripts/deploy-role.sh main <git-s
 BB_ENV_FILE=<execution-private-env> bash deploy/m1/scripts/deploy-role.sh execution <git-sha>
 ```
 
-构建环境若没有可用默认bridge，可为镜像准备命令显式设置 `BB_BUILD_NETWORK=host`，只影响该次构建，不修改daemon。构建前核实 Docker 数据盘、源码归档、依赖/浏览器镜像和输出镜像归档所需空间，至少保留既有部署要求的 4GiB 构建余量，另计归档实际大小；目标环境复用预装镜像，至少保留 2.5GiB，迁移备份、恢复空间另计。构建归档不包含 env、支付文件或模板原件。发布入口只使用预装准确 SHA 镜像，拒绝来源标签 `org.opencontainers.image.revision` 不匹配完整提交的镜像；启动后核对实际容器的不可变 image ID，写入角色状态目录的 `images-<tag>.txt`。不能仅凭可漂移的tag或环境字段认定版本。不自动清理其他镜像、不做备份、不安装定时任务。配置文件须与请求的提交一致。每端独立保存 `state-main` / `state-execution` 的版本和部署锁；锁仅覆盖对应角色，不冻结其他环境。首次使用单独的项目名称，不能把旧同机项目当作可自动删除的孤儿。
+构建环境若没有可用默认bridge，可为镜像准备命令显式设置 `BB_BUILD_NETWORK=host`，只影响该次构建，不修改daemon。构建前核实 Docker 数据盘、源码归档、依赖/浏览器镜像和输出镜像归档所需空间，至少保留既有部署要求的 4GiB 构建余量，另计归档实际大小；目标环境复用预装镜像，至少保留 2.5GiB，迁移备份、恢复空间另计。构建归档不包含 env、支付文件或模板原件。发布入口只使用预装准确 SHA 镜像，拒绝来源标签 `org.opencontainers.image.revision` 不匹配完整提交的镜像；启动后核对实际容器的不可变 image ID，写入角色状态目录的 `images-<tag>.txt`。不能仅凭可漂移的tag或环境字段认定版本。不自动清理其他镜像、不做备份、不安装定时任务。旧同版模式仍要求部署目录与应用提交一致；独立配置版本见下节。每端独立保存 `state-main` / `state-execution` 的版本和部署锁；锁仅覆盖对应角色，不冻结其他环境。首次使用单独的项目名称，不能把旧同机项目当作可自动删除的孤儿。
 
 只读展开、检查和运维入口：
 
@@ -34,7 +34,39 @@ BB_ENV_FILE=<private-env> bash deploy/m1/scripts/role-compose.sh execution ps
 
 模板见 `.env.main.example`、`.env.execution.example`：仅补角色字段，保留原收费开关、Blob、模型、Provider、认证、超时、条款及出口白名单。不要把示例占位值用于生产。业务 Codex 的**模型目录和真实执行参数继续固定 1000000 窗口、900000 压缩**；本次将 Dockerfile 的业务 CLI 最小更新到已核对的官方稳定版0.167.0及官方包校验值，并添加来源标签；保留业务适配器参数和模型目录契约。验收实际 `token_count.info.model_context_window=1000000`，不是只看目录。业务窗口与开发环境窗口各自独立。
 
-仅 `execution` 的编制、复核、解析三组服务默认 `BB_WORKER_LEASE_SECONDS=120`，为跨云 PG 续租留出余量；可在执行端私有 env 中覆盖为 5–600 的整数秒，未设置或空值均使用 120。现有续租调度为租约的 40%，120 秒租约对应约 48 秒续租间隔。旧同机 Compose 不新增此参数，全局运行时默认仍为 30 秒，三组执行服务并发仍各为 1。该参数不改变 SIGTERM 排空时限；切换前仍须核实在途调用。
+`execution` 的编制、复核及放置于该端的解析服务默认 `BB_WORKER_LEASE_SECONDS=120`，为跨云 PG 续租留出余量；可在执行端私有 env 中覆盖为 5–600 的整数秒，未设置或空值均使用 120。现有续租调度为租约的 40%，120 秒租约对应约 48 秒续租间隔。旧同机 Compose 不新增此参数，全局运行时默认仍为 30 秒，三组执行服务并发仍各为 1。该参数不改变 SIGTERM 排空时限；切换前仍须核实在途调用。
+
+## 私有覆盖、解析放置与独立配置版本（#911）
+
+普通 `deploy-role.sh`、`role-compose.sh` 的重建/探测及上述应用回滚统一读取同一私有 env：
+
+| 字段 | 契约 |
+| --- | --- |
+| `BB_ROLE_OVERRIDE_FILE` | 一份环境覆盖的绝对路径；在角色与诚信 Compose 之后自动追加 |
+| `BB_ROLE_OVERRIDE_SHA256` | 覆盖文件原字节的小写 64 位 SHA-256；与路径成对设置 |
+| `BB_ROLE_STATE_DIR` | 覆盖环境必填：既有角色状态目录绝对路径，跨 checkout 沿用；进程 `BB_STATE_DIR` 如设置必须与它一致 |
+| `BB_PARSE_ROLE` | `main` 或 `execution`；有覆盖时必填，两端一致；无覆盖且未接管的旧角色默认 `execution` |
+| `BB_DEPLOY_SCRIPT_SHA` | 当前干净部署目录的完整 40 位 Git 提交；与应用 SHA 分别固定 |
+
+对当前迁移布局，两端均设 `BB_PARSE_ROLE=main`。主站纯 parser 只领取 parse、并发 1、租约 120 秒、0.5 CPU/1 GiB，直连 internal `postgres`；仅挂解析暂存卷，不继承模型凭据或模型环境。执行端 parser 通过 inactive profile **及 replicas=0** 停用，发布时不启动、不要求它存在，并在在途 SQL 门禁之后停止遗留 parser、检查其未运行。主站 parser 已内置；原私有覆盖中重复的 parser 定义应删除，或确保保持相同纯解析契约，不能再继承模型凭据。
+
+PG 专用桥接可按 `deploy/m1/compose.pg-loopback.example.yaml` 整理到私有覆盖；保留已有 PG 参数、项目名称、唯一 pgdata、模板/支付/上传暂存及其他已核配置。PG 只连接业务 internal 网络与专用桥接；桥接关闭 masquerade，不能让 API/解析/其他容器加入。回环端口仍只绑定 127.0.0.1。此覆盖解决特定 Docker 环境的 internal-only PG 回环发布不通；声明端口、SSH监听或 Compose 渲染均不能替代真实认证 SQL。
+
+```sh
+# 私有文件保持受保护，不入库；校验和可写回私有 env。
+sha256sum <private-role-override>
+BB_ENV_FILE=<private-env> BB_IMAGE_TAG=<app-sha-first-12> bash deploy/m1/scripts/role-compose.sh main config --quiet
+BB_ENV_FILE=<private-env> BB_IMAGE_TAG=<app-sha-first-12> bash deploy/m1/scripts/role-compose.sh main probe connect
+BB_ENV_FILE=<private-env> bash deploy/m1/scripts/deploy-role.sh main <exact-app-sha>
+```
+
+应用镜像参数永远指真实应用源提交；仅升级这些部署脚本时，在已从可信 `origin` 获取的准确脚本提交上设置 `BB_DEPLOY_SCRIPT_SHA`，继续使用现有真实应用 SHA 镜像，无需重新打 tag 或构建应用。两种提交均须可从指定 BondBuddy `origin` 的已获取历史到达；脚本 checkout 必须等于 pin，`deploy/m1` 不得有已修改或未跟踪部署文件。缺 pin 时保留旧的“部署目录等于应用 SHA”检查，不提供忽略来源或 dirty 配置的开关。镜像导出仍按**应用 SHA**复用匹配标签的镜像，全部已存在时不创建源码归档/构建上下文。
+
+入口禁止调用者增加 `-f/--file`、`--env-file`、项目/目录/profile/scale 改写和 `COMPOSE_*` 进程环境。`COMPOSE_PROJECT_NAME` 只能在私有 env 配置。Compose 插值优先采用该文件，进程中的业务环境变量不能替换数据库等配置。私有 env 始终按数据读取，绝不 source；校验中的真实配置只通过内部管道处理，不打印完整展开或连接细节。运行环境需有 Node.js 22、Git、Docker Compose 与 flock。
+
+首次使用有效覆盖时，角色状态目录持久化 `environment-binding.json`，固定私有 env 的真实路径、项目名称、覆盖路径/hash、解析位置、数据库连接摘要与诚信模式；主站在同一原子绑定中保存准确 `pg_volume` 定义；已存在的旧 `pg-volume.json` 仍严格核对。后续漏掉覆盖、换回旧 env 或改变绑定直接拒绝，缺文件/hash、hash 不符均在 Docker 调用前拒绝；不允许旧整栈脚本绕过已绑定状态。保留同一状态目录、原子绑定及已有的旧卷绑定文件；发布还检查实际 Compose 项目容器，既有项目缺少 `current` 时，发布及普通生命周期变更均拒绝首发假设，必须承接已核实的版本状态；现有仅 `current`、无 previous/images/配置收据的状态可承接：先逐个检查实际运行镜像完整 source label 与 current tag、可信来源和不可变 ID 一致，再执行原只读在途 SQL 门禁，不补造旧收据；主站在每次操作前检查既有 PG 容器的实际数据卷就是被绑定的同一卷。不得通过另建状态目录、删除绑定、改变项目名称来执行日常发布或回滚。首次接管本身不迁移或恢复 PG 数据，必须先核对唯一卷就是既有卷。
+
+若确需改变网络/解析放置/数据库身份等绑定，在维护状态下先核实无在途调用，保存原私有 env、覆盖、状态绑定及其 hash，独立审查目标配置和恢复路径；再明确更新受保护绑定并用普通入口重新验证。脚本不会自行删除或降级绑定。脚本 pin 或应用版本更新不需更改拓扑绑定。本 #911 负责后续统一入口的采纳与验收，不复开已完成的 #908；CI/自动整栈发布暂停策略不变。
 
 ## 专用 SSH 转发契约
 
@@ -72,12 +104,14 @@ restrict,port-forwarding,permitopen="127.0.0.1:15432",command="/bin/false"
 
 ## 切换与迁移边界
 
+以下为 #907/#908 已完成迁移的操作边界记录；#911 不重新迁移数据库、不恢复日常备份或旧整栈发布。
+
 1. 保持现有自动部署停用；双端入口接入并完成验收前不恢复。只冻结同一生产环境的冲突写入。记录旧版准确镜像、环境、挂载、PG/Blob位置和已应用迁移，保留可恢复版本。
 2. 在维护入口关闭新任务、上传、助手与支付回调等写入；按既有产品维护方式实施，不改变收费逻辑。核实所有在途编制、复核、解析及助手调用、运行中容器/子进程和供应商调用记录。默认 SIGTERM 只排空 20秒（容器宽限30秒），**不能对长模型调用直接 stop**。等当前调用完成，未知调用先复核；无在途调用后才停止旧执行服务、旧 ops、旧 API/web，并再次核对没有写入进程。不能只等租约过期就认定远程调用结束。发布脚本对已登记旧角色的 running job/leased message 非零返回76，查询/连接失败返回77；该检查不能代替首次迁移的旧栈检查或维护入口。
 3. 用户已停用日常备份，不恢复 cron/定期备份。本次单独创建迁移备份及恢复演练，保留校验和、准确版本、数据量与恢复证据。迁移冻结后对旧唯一业务 PG `pg_dump -Fc`；源盘余量不足时通过既有安全通道将标准输出直接流式落到目标环境的受保护临时文件，检查整条管道退出码后再校验和、改名，不在源盘生成完整dump。恢复演练也在目标隔离库运行。随后一次性导出/保护配置、支付证书及**全量私有不可变底稿模板包（包括非发布原件及目录结构）**，记录 SHA-256。上传暂存卷必须保留：等待在途上传完成再快照/转移，不能把重建空卷当保留。解析暂存按无在途任务确认后处理，不丢未知执行证据。Blob 不迁移，保持原私有容器、账号、对象权限和 hash；恢复演练只用隔离库/测试容器，不能对共享 Blob 做覆盖导入。
 4. 先启动新主站 PG，向全新目标库恢复 dump，核对表行数、迁移记录及关键账务/任务关系，完成隔离恢复演练证据。执行端保持停止。仅主站入口运行 `migrate`，执行端 Compose 没有 postgres/migrate，`deploy-role.sh execution` 只检查目标 schema。迁移无并发执行者，失败即停止切换，不能跳过失败继续启动。
 5. 主站发布成功后，API 和 ops 接同一新库；**API 创建后强制重建 web**，避免 nginx 缓存旧 API 地址。即使支付关闭，也须显式预建空的 `BB_PAYMENT_SECRETS_DIR` 目录并设置容器可读权限；支付启用时复制完整原证书文件并保持既有文件路径，不能用空目录冒充配置。主站保留支付只读挂载 `/run/bondbuddy-payments`、完整模板包 `/opt/bondbuddy/private-file-templates`、uploadspool 卷；模板包强制存在。与 `compose.file-templates.yaml` 使用相同挂载契约，主站配置已经包含它，不额外叠加创建 API 的覆盖文件。不能只看 `/health`。
-6. 建立受限 SSH 转发，确认执行容器连接的是新唯一业务 PG，再运行执行端发布。确认三组心跳、领取和续租、原 Blob 读写、业务 Codex 实际窗口、真实编制/复核/解析和诚信核查。旧 PG 保持停止且不再有消费者连接。受控恢复流量前核对支付证书加载/签验、模板列表/预览/实际底稿生成、上传/续传与原有文件下载；配置证书存在并不证明支付业务验收。
+6. 建立受限 SSH 转发，确认执行容器连接的是新唯一业务 PG，再运行执行端发布。确认编制、复核及所选解析位置的三组心跳、领取和续租、原 Blob 读写、业务 Codex 实际窗口、真实编制/复核/解析和诚信核查。旧 PG 保持停止且不再有消费者连接。受控恢复流量前核对支付证书加载/签验、模板列表/预览/实际底稿生成、上传/续传与原有文件下载；配置证书存在并不证明支付业务验收。
 7. 比较版本与健康、就绪、审计和任务结果，按 #906/#908 记录直接证据。全程保持单一业务库和写入入口。新代码发布完成与生产迁移验收分别记录。
 
 ## 备份、恢复和回滚限制
@@ -93,18 +127,24 @@ BB_ENV_FILE=<main-private-env> BB_IMAGE_TAG=<sha-first-12> bash deploy/m1/script
 
 `pg_restore` 只用于核对过的**新空库**；不得直接覆盖当前活动库。恢复失败保持维护状态，不重启旧整栈。不要运行旧恢复脚本导入共享 Azure Blob。必要数据回退需先冻结并停止两端写入，备份新库，核对新产生账务/任务与对象，明确迁移兼容和数据合并方案后才恢复，不自动丢弃切换后的数据。
 
-仅应用回滚：先维护入口、核实在途调用和 schema/队列兼容，选择已保留的兼容双端旧版镜像，显式 `--no-deps`，避免 API 的依赖触发 migrate。以下命令使用角色对应的私有env和已核实旧tag：
+仅应用回滚：先维护入口、核实在途调用和 schema/队列兼容，选择已保留的兼容双端旧版镜像。使用**当前准确脚本版本和同一私有 env/覆盖/状态目录**，传入旧应用的完整 SHA：
 
 ```sh
-# 主站：不启动任何依赖，不运行迁移；最后重建web。
-BB_ENV_FILE=<main-private-env> BB_IMAGE_TAG=<old-tag> bash deploy/m1/scripts/role-compose.sh main up -d --no-deps --wait api ops egress
-BB_ENV_FILE=<main-private-env> BB_IMAGE_TAG=<old-tag> bash deploy/m1/scripts/role-compose.sh main up -d --no-deps --force-recreate --wait web
-# 执行端：沿用beijing模式，先恢复两条独立隧道/出口，再启动三组服务。
-BB_ENV_FILE=<execution-private-env> BB_IMAGE_TAG=<old-tag> bash deploy/m1/scripts/role-compose.sh execution up -d --no-deps --wait pg-tunnel egress integrity-beijing-tunnel
-BB_ENV_FILE=<execution-private-env> BB_IMAGE_TAG=<old-tag> bash deploy/m1/scripts/role-compose.sh execution up -d --no-deps --wait worker worker-review worker-parse
+BB_ENV_FILE=<main-private-env> bash deploy/m1/scripts/deploy-role.sh main <old-app-sha> --rollback
+BB_ENV_FILE=<execution-private-env> bash deploy/m1/scripts/deploy-role.sh execution <old-app-sha> --rollback
 ```
 
-**不运行 migrate、不使用 deploy-role.sh 回退、不启动旧 PG**。回滚前后记录实际镜像、准确提交和同一业务库。首次迁移若恢复流量前失败，可停止新两端、确认无新业务写入后回到旧冻结库与旧准确版本；恢复流量后不允许仅改连接字符串指回旧库。
+该入口复用来源标签、实际 image ID、只读 SQL 与在途门禁；主站不启动或重建 PG、不运行 migrate，应用服务显式 `--no-deps`，API 后强制重建 web；执行端先等既有 PG/诚信隧道和出口就绪，再启动编制/复核及所选解析服务。不会要求非本角色的 parser 存在，不会误启执行端 parser。配置与当前 PG 卷的绑定保持不变，成功后记录应用 SHA、脚本 SHA/tree、覆盖 SHA-256 与镜像 ID。每次操作另存不可覆盖的 `release-<record>.txt` 和 `current-release` / `previous-release`，同一应用 tag 的配置更新也独立留证。此命令不恢复数据，也不判定 schema/checkpoint 格式向后兼容。
+
+部分发布失败同样使用上面的普通 `--rollback`。首次 Docker 变更（包括 SQL 探测的单次容器）前，在既有状态目录原子保存非成功的 `pending-release.json`：完整 A/B source SHA、各服务不可变 image ID、计划 Compose hash、已核 A 运行配置 hash、环境/项目/覆盖及同一 PG 绑定。失败保留 pending 和原 current，不写成功；不把 B 的标签当作完成。pending 存在时拒绝新发布和低层生命周期改写，只允许普通 `--rollback` 指向已记录的 A/B 来源。恢复重新核定来源、标签/ID和原配置绑定，只接受各服务已核 A/B 混合或缺失，未知 C、漂移 ID、未知配置 hash 一律在 Docker 变更前拒绝，仍执行原在途 SQL 门禁。成功核验全部目标服务和 smoke 后才原子更新 current 并清 pending；不删/reset pending 或绑定来绕过保护。这不恢复 PG 数据，也不替代迁移向后兼容判断。
+
+首次发布失败、尚无 current 时，仅允许 `pending.from` 为空且封存唯一目标的安全续执行：使用 `deploy-role.sh main|execution <sealed-target-sha> --rollback`，恢复原绑定的 PG/隧道、主站迁移和 schema 所需步骤，不冒充已有 A 的应用回滚。若已运行任何业务执行服务，先用封存目标执行在途 SQL 门禁，再进行基础设施和后续步骤；若没有消费者，先启动同一绑定的基础设施、验证认证 SQL/schema（主站按原新增迁移流程补齐），再执行 idle 门禁，之后才允许消费者启动或停止。连接/schema 失败不能当 idle；有在途拒绝且保留 pending。成功记录 `resume_first=1`，写 current 后清 pending。已有 A 的普通应用回滚仍不启动/重建 PG、不迁移。
+
+只读 `logs --follow`、子命令后的 `logs -f` 在校验/必要首次采纳结束后释放配置锁；发布/重建仍保留同资源互斥。命令前 `-f`、任何 `--file/--env-file` 和项目/profile/scale 改写继续拒绝。PG 回环 published 端口必须与私有 `BB_PG_FORWARD_PORT` 一致，均为固定 1–65535，动态、0、范围或失配直接拒绝。首次采纳先检查现存实际 PG 卷，再原子提交含 PG 定义的绑定；失败不留下新绑定，纠正后正常重试。
+
+`BB_ROLE_READONLY` 与 `BB_PENDING_COMMAND` 是入口内部标记，不能由外部环境解除写锁或 pending 保护；两个入口均先清零只读标记，普通 Compose 入口固定 pending 标记为 0，仅部署入口内部设为 1 并执行封存恢复核验。
+
+回滚前后记录同一业务库和准确镜像。首次迁移若恢复流量前失败，可停止新两端、确认无新业务写入后回到旧冻结库与旧准确版本；恢复流量后不允许仅改连接字符串指回旧库。
 
 最终统一验收待办：目标网络/密钥权限、真实恢复与完整资产迁移、支付签验与回调、模板及上传、真实模型1M窗口、三类任务与续租、真实诚信核查及旧库停用证据。隔离测试仅证明配置与合成行为。
 
@@ -116,3 +156,9 @@ BB_ENV_FILE=<execution-private-env> BB_IMAGE_TAG=<old-tag> bash deploy/m1/script
 `BB_SPLIT_TEST_RUNTIME_IMAGE=<verified-local-image-id> node deploy/m1/scripts/split-deploy.integration.mjs` 在本地Linux启动两套隔离Compose：完整主站API/ops/egress/web、PG16、受限SSH服务与执行容器；使用当前编译产物和合成模板，验证主站PG探测、Node22参数、空支付目录、完整模板包读取、上传暂存、队列领取/续租、运行时退出、一次性dump/restore、断库和错误主机密钥拒绝。执行前已有 `npm run build` 的产物及依赖；复用基础镜像必须先核对不可变ID。合成检查会创建并清理专属容器、卷、网络及临时密钥，不访问生产。当前临时构建网络使用host，不修改daemon。原诚信国内出口只做真实渲染回归，真实检索由最终发布验收执行。
 
 Codex仅构建目标 `codex` 后，以断网容器运行 `deploy/m1/scripts/codex-business-runtime-smoke.mjs` 和既有 `apps/worker/test-fixtures/codex/completion-probe.mjs`：检查官方CLI实际版本、真实context事件、900K参数、目录工具回传和三种Stop续跑情形；供应商响应为本机合成服务。另运行 `node --test apps/worker/dist/codex-adapter.test.js`、`npm run check:contracts` 与 `bash deploy/m1/scripts/test-deploy-space-gate.sh`。这些检查不冒充真实供应商调用、完整候选发布镜像构建或生产验收；发布方必须基于最终准确SHA构建完整镜像并读回实际image ID。
+
+`node deploy/m1/scripts/role-config.integration.mjs` 是 #911 的轻量合成验证：只用缓存 PG16/Node 镜像及小型专属 SSH 测试镜像，普通入口验证受限回环认证 SQL、专用桥接、跨网络受限 SSH、PG 重建后覆盖/同卷、非回环拒绝、inactive parser、实际测试镜像切换/回滚、在途和断库拒绝。测试不构建应用、不调用模型、不创建业务任务、不运行真实迁移或数据库恢复；合成最小表与测试容器/卷/网络/密钥用后清理。应用完整 `deploy-role.sh --rollback` 分支、来源/实际 ID 和版本分离由定向命令替身测试覆盖，不能据此声称线上应用回滚已验收。
+
+`node --test deploy/m1/scripts/role-lifecycle-review.test.mjs` 针对上述五项审查回归：状态化 synthetic Docker 失败注入实际改变 A/B 服务 ID 并执行普通发布/回滚脚本，覆盖两端部分 B 失败、current 留 A、pending 保留、C/漂移拒绝、缺失服务恢复和同 PG/配置；同时检查首次采纳失败后纠正、非法端口、真实 Git 默认状态忽略/源码 dirty 拒绝，以及持续日志与写锁互斥。Compose 配置/hash 使用真实 CLI；容器行为为明确标注的合成命令模型，不冒充线上发布/回滚。既有 11 项真实隔离 PG/SSH SQL 证据可复用；后续 #911 采纳仍实际执行普通 deploy/rollback 入口。
+
+首次恢复补充回归覆盖两端基础设施之前失败、已有部分消费者时失败、只接受唯一封存目标、SQL 在途拒绝/连接失败、普通入口续执行以及外部内部标记不能旁路 pending 或解除写锁；同时运行已改动的 `split-deploy.test.mjs` 25 项部署用例。

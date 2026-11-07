@@ -7,9 +7,13 @@ case "$role" in main) targets=(api worker web egress);; execution)
  case "${4:-beijing}" in beijing) targets+=(integrity-tunnel);; direct) targets+=(integrity-egress);; disabled) ;; *) echo 'invalid integrity mode' >&2; exit 2;; esac;; *) exit 2;; esac
 repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 sha="$(git -C "$repo" rev-parse --verify "$ref^{commit}")"; tag="${sha:0:12}"
+BB_REPO="$repo"
+source "$(dirname "$0")/role-source-lib.sh"
+BB_DEPLOY_SCRIPT_SHA=''
+role_script_source
+role_trusted_source "$sha"
 # Keep checkout/build/archive on the data filesystem. Do not copy credentials into the context.
-ctx="$(mktemp -d "$(dirname "$repo")/.bb-role-build.XXXXXX")"; trap 'rm -rf "$ctx"' EXIT
-git -C "$repo" archive "$sha" | tar -x -C "$ctx"
+ctx=''; trap '[ -z "$ctx" ] || rm -rf "$ctx"' EXIT
 images=()
 for target in "${targets[@]}"; do
   if [ "$target" = integrity-tunnel ]; then image="bondbuddy-integrity-tunnel:$tag"; else image="bondbuddy-m1-$target:$tag"; fi
@@ -18,6 +22,10 @@ for target in "${targets[@]}"; do
     revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")"
     [ "$revision" = "$sha" ] || { echo "image $target has no matching source revision; do not reuse a drifting tag" >&2; exit 3; }
     continue
+  fi
+  if [ -z "$ctx" ]; then
+    ctx="$(mktemp -d "$(dirname "$repo")/.bb-role-build.XXXXXX")"
+    git -C "$repo" archive "$sha" | tar -x -C "$ctx"
   fi
   case "$target" in
     integrity-tunnel) docker build --network "${BB_BUILD_NETWORK:-default}" -q --label "org.opencontainers.image.revision=$sha" -f "$ctx/deploy/beijing/Dockerfile.tunnel" -t "$image" "$ctx/deploy/beijing" >/dev/null;;

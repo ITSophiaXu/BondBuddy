@@ -1,4 +1,6 @@
 state/
+/state-main/
+/state-execution/
 secrets/payments/
 backups/
 evidence/**/raw/
