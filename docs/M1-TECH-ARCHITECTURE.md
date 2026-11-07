@@ -1,3 +1,5 @@
+> 2026-11-06：#907 第一阶段将部署拆为腾讯云主站（网页/API/唯一PG/运维）和 Azure 执行端（编制/复核/解析），通过专用受限 SSH 转发复用 PG 队列，继续使用私有 Azure Blob、现有业务 Codex 1M窗口/900K压缩及诚信核查出口。迁移仅由主站执行；角色、资产挂载和停机/恢复边界见[双端部署说明](runbooks/m1-split-deployment.md)。生产迁移和真实验收由 #908 负责。
+
 > 2026-11-05：按[专业文档工作台决定](product-decisions/2026-11-05-professional-document-workspace.md)，浏览器与原型共用 `product-prototype/public/document-workspace.css`，在现有展示样式后加载；`document-deliverable.ts` 仅组织真实成果文件名、已保存版本和原下载控件。保留 Vite/TypeScript、所有业务模块和授权下载链路，无公共契约、数据或 worker 变更。
 
 > 2026-11-05：更新项目的历史／参考募集书新上传仅支持 Word（.docx）。共用入口按项目返回的 `upload_docx_only` 显示限制；API 创建、传输、完成及角色复制执行相同规则，已完成上传和旧 PDF 保留。无新增迁移；见[格式支持决定](product-decisions/2026-11-05-historical-docx-only.md)。

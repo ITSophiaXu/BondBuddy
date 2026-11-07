@@ -1,3 +1,5 @@
+> 拆分部署使用[主站与执行端独立发布说明](m1-split-deployment.md)。本页旧同机部署/备份/恢复入口不适用于设置了 `BB_DEPLOY_ROLE` 的环境。
+
 # M1 deployment runbook (#35)
 
 Everything lives in `deploy/m1/`. This runbook covers target-host requirements, first install, deploy, rollback, legacy restore tooling and TLS. It does not replace the release record: every production deploy, rollback and restore is logged in `deploy/m1/state/releases.log` on the host, and must also be noted on the release Issue/PR with the commit, migrations, verification and rollback plan. From 2026-09-29, releases and the host schedule do not create new backups by project-owner decision. Existing backups remain subject to the configured retention policy.

@@ -56,9 +56,9 @@ RUN find /app/python -name __pycache__ -prune -exec rm -rf {} + \
 # Only the static musl `codex` binary and the bundled bwrap are kept; the tarball is checked
 # against the npm registry sha512 integrity. Credentials come from env only (never auth.json).
 FROM ${NODE_IMAGE} AS codex
-ARG CODEX_VERSION=0.166.0
-ARG CODEX_INTEGRITY_LINUX_X64=sha512-CxDm3+D1cpbGJeHrdzINoG+3wn9BVncP4qpZaaNYkxe8iPtRJOYyCJnnPoVjWRIBvI9vPKbRoifsMSA5xDaUpw==
-ARG CODEX_INTEGRITY_LINUX_ARM64=sha512-w0ScAsBr9aZKtIFrh6HN6KU2yjKKeSCzYfbb7DB0Ccj4BYPzeZtUeQprbycLCwuX3AFQdbdjapmLho2iot74jQ==
+ARG CODEX_VERSION=0.167.0
+ARG CODEX_INTEGRITY_LINUX_X64=sha512-FNc7danfUng9Sp6w+Fh7kofNHHZpA6VMyNKWsWrS3OwHly69gywTWeiuwrUPXpJSho8Df4xqRsHfHRPzj7zYQg==
+ARG CODEX_INTEGRITY_LINUX_ARM64=sha512-5cv+sybRWqpRJL6KCv3YSnIx1GHRmjek997C38n1Zfno4HomKDLkNSjWLDOOc2+ISlVNSRRnySWq4zKmzlY12g==
 ARG TARGETARCH
 WORKDIR /tmp/codex
 RUN set -eu; \
@@ -97,6 +97,7 @@ COPY --from=build --chown=root:root /app/deploy/m1/scripts/backup-stream.mjs dep
 
 FROM node-runtime AS api
 ARG BB_RELEASE_SHA=unknown
+LABEL org.opencontainers.image.revision=${BB_RELEASE_SHA}
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} HOST=0.0.0.0 PORT=3000 BB_UPLOAD_SPOOL_DIR=/var/lib/bondbuddy/upload-spool PATH=/opt/template-preview/bin:$PATH
 # The API renders only allowlisted derivatives. Keep its Python dependencies
@@ -113,6 +114,8 @@ HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD ["node","-e","fetch('htt
 CMD ["node","apps/api/dist/server.js"]
 
 FROM node-runtime AS integrity-egress
+ARG BB_RELEASE_SHA=unknown
+LABEL org.opencontainers.image.revision=${BB_RELEASE_SHA}
 USER node
 EXPOSE 3129
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ["node","-e","const s=require('net').connect(3129,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"]
@@ -123,6 +126,7 @@ ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/bondbuddy-browsers
 RUN node node_modules/playwright/cli.js install --with-deps chromium && chmod -R a+rX /opt/bondbuddy-browsers
 ARG BB_RELEASE_SHA=unknown
+LABEL org.opencontainers.image.revision=${BB_RELEASE_SHA}
 ENV BB_RELEASE_SHA=${BB_RELEASE_SHA} PATH=/opt/venv/bin:$PATH \
     TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
 # Bookworm OCR engine and language data are pinned independently; osd is used on every page.
@@ -159,6 +163,8 @@ USER node
 CMD ["sh","-c","/usr/local/bin/bb-verify-ocr-runtime && exec node apps/worker/dist/runtime.js"]
 
 FROM nginxinc/nginx-unprivileged:1.29-alpine AS web
+ARG BB_RELEASE_SHA=unknown
+LABEL org.opencontainers.image.revision=${BB_RELEASE_SHA}
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
 COPY --from=build /app/deploy/m1/nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/deploy/m1/nginx/security-headers.conf /etc/nginx/conf.d/snippets/security-headers.conf

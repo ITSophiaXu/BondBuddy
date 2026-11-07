@@ -17,6 +17,12 @@ cat > "$test_dir/deploy/m1/scripts/smoke.sh" <<'SH'
 #!/usr/bin/env bash
 echo smoke >> "$TEST_CALLS"
 SH
+# The production deploy entry installs a host sandbox before starting services. This test is
+# command-only and must not invoke that installer on the machine running the test.
+cat > "$test_dir/deploy/m1/scripts/install-codex-file-sandbox.sh" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
 chmod +x "$test_dir/deploy/m1/scripts/backup.sh" "$test_dir/deploy/m1/scripts/smoke.sh"
 cat > "$test_dir/bin/git" <<'SH'
 #!/usr/bin/env bash
