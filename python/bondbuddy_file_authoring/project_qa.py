@@ -205,7 +205,7 @@ def fill(source, request, output):
             raise ValueError('QA_QUESTION_ANCHOR_CHANGED')
         last = end
         answer = answers[question['id']]
-        content = [('BondBuddy 回答草稿 待人工复核', True), (answer['answer'], False)]
+        content = [('回复：', True), (answer['answer'], False)]
         if answer['status'] == 'missing':
             if not answer['missing_materials']:
                 raise ValueError('QA_MISSING_LIST_REQUIRED')
