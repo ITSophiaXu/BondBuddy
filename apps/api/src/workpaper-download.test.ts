@@ -46,7 +46,7 @@ test('retained 248-file batch: normalized names across ZIP, explanations, batch 
     let rows:any[];
     if(statement.includes('SELECT p.*,i.input_hash'))rows=params[1]==='project'?[{id:'project'}]:[];
     else if(statement.startsWith('SELECT * FROM bb_workpaper_batches'))rows=params[2]==='batch'?[batch]:[];
-    else if(statement.startsWith('SELECT i.*,r.state'))rows=items;
+    else if(statement.startsWith('SELECT i.item_id,i.run_id,i.state'))rows=items.map(i=>({...i,entry:i.manifest.input.workpaper.entry,has_template:false}));
     else if(statement.includes('coalesce(sum(CASE'))rows=[{amount:0}];
     else if(statement.startsWith('SELECT coalesce(i.explanation'))rows=items.filter(i=>i.item_id===params[2]);
     else if(statement.startsWith('SELECT i.item_id,coalesce'))rows=items;
@@ -54,8 +54,9 @@ test('retained 248-file batch: normalized names across ZIP, explanations, batch 
     else if(statement.includes('FROM bb_artifact_versions a JOIN'))rows=[{sha256:sha,object_key:'blob'}];
     else if(statement.includes('SELECT a.*,v.sha256'))rows=artifacts;
     else if(statement.startsWith('SELECT update_project_id')||statement.includes('SELECT v.*,s.revision')||statement.includes('SELECT c.*,r.state'))rows=[];
-    else if(statement.startsWith('SELECT o.*,r.state')||statement.startsWith('SELECT a.*,r.state,v.id')||statement.startsWith('SELECT v.*,f.document_type')||statement.startsWith('WITH RECURSIVE descendants'))rows=[];
+    else if(statement.includes('FROM bb_project_file_operations o JOIN')||statement.startsWith('SELECT a.*,r.state,v.id')||statement.startsWith('SELECT v.id,v.file_id')||statement.startsWith('WITH RECURSIVE descendants'))rows=[];
     else if(statement.startsWith('SELECT * FROM bb_workpaper_paid_check_batches'))rows=[];
+    else if(statement.includes('FROM bb_workpaper_paid_check_items i'))rows=[];
     else if(statement.startsWith('WITH ranked'))rows=items.map(i=>({...i,task:i.manifest.input.workpaper,batch_id:'batch',catalogue_id:'catalogue',created_at:batch.created_at,source,position:1,version_count:1}));
     else if(statement.startsWith('SELECT id,state,stage'))rows=items.map(i=>({id:i.run_id,state:i.run_state,stage:null}));
     else if(statement.includes('jsonb_array_length'))rows=[];

@@ -514,7 +514,9 @@ export type CodexOutputNormalizationContext = { reviewToolTrace?: ReviewToolTrac
 export type ContainedCallInput = {
   owner_user_id: string; project_id: string; job_id: string; run_id: string; trace_id: string; logical_call_id: string;
   prompt_snapshot_ref: string; prompt: string; output: { kind: 'json'; schema: Record<string, unknown>; validate: (v: unknown) => boolean;
-    normalize?: (value: unknown, context: CodexOutputNormalizationContext) => unknown } | { kind: 'text' };
+    normalize?: (value: unknown, context: CodexOutputNormalizationContext) => unknown;
+    /** Trusted host diagnostics only; never return source text or model-authored instructions. */
+    validationFeedback?: (value:unknown) => string | undefined } | { kind: 'text' };
   imageInput?: ModelImageInput;
   result_schema_version: string; session?: CodexSession; signal?: AbortSignal; newCallId?: () => string;
   onEvent?: (event: Record<string, unknown>) => void;
@@ -692,6 +694,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         let materialToolTrace:MaterialToolTrace|undefined;
         let reviewTraceJson: string | null = null;
         let invalidCategory: InvalidOutputCategory = 'missing_message';
+        let parsedOutput:unknown;
         if(input.materialToolsTrace && materialTraceFile)try{
           const stored:unknown=JSON.parse(await readFile(materialTraceFile,'utf8'));
           if(validateMaterialToolTrace(input.materialTools!,stored))materialToolTrace=stored;
@@ -710,7 +713,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
           if (output.kind === 'text') return { ok: true, value: { text } };
           try {
             invalidCategory = 'json_parse';
-            const parsed: unknown = JSON.parse(text);
+            const parsed: unknown = JSON.parse(text);parsedOutput=parsed;
             invalidCategory = 'normalizer';
             const value = output.normalize ? output.normalize(parsed, { reviewToolTrace }) : parsed;
             invalidCategory = 'validator';
@@ -741,7 +744,10 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         attempts.push(attemptRecord(intent, c, runtime, obs));
         if (retryable) {
           if (input.signal?.aborted) return cancelledResult();
-          prompt = `${input.prompt}\n\n${REASK_MARKER} Your previous reply was not a single JSON value that satisfies the required output schema. Reply again with only that JSON value.`;
+          let feedback='Your previous reply failed output validation. Reply again with only the complete JSON value required by the schema.';
+          if(['json_parse','missing_message'].includes(invalidCategory))feedback='Your previous reply was not a single valid JSON value. Reply again with only the complete JSON value required by the schema.';
+          else if(output.kind==='json'&&output.validationFeedback)try{feedback=output.validationFeedback(parsedOutput)?.slice(0,2000)||feedback;}catch{ /* Diagnostics cannot weaken validation or stop durable retry. */ }
+          prompt = `${input.prompt}\n\n${REASK_MARKER} ${feedback}`;
           continue;
         }
         const status = obs.outcome === 'completed' ? 'completed' : obs.outcome === 'pending_reconcile' ? 'needs_reconcile' : 'failed';

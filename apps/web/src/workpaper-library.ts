@@ -1,4 +1,5 @@
-import {int64,workpaperDownloadFilename} from '@bondbuddy/contracts';
+import {generationBatchActive,int64,workpaperDownloadFilename} from '@bondbuddy/contracts';
+import {TaskPoller} from './task-poller.js';
 import {formatPoints} from '@bondbuddy/contracts';
 import type {WorkpaperLibrary,WorkpaperLibraryItem,WorkpaperPaidCheckRequest,WorkpaperPaidCheckQuote,WorkpaperPaidCheckBatch} from './billing-types.js';
 import {ApiClient,friendlyError,type Dto} from './api';
@@ -9,12 +10,15 @@ import './workpaper-library.css';
 const labels={needs_update:'内容需更新',manual:'需核对',current:'未发现关联变动'};
 /** A bounded page of files, independent of the generation task list. */
 export class WorkpaperLibraryPanel {
-  private abort=new AbortController();private downloads=new ArtifactDownloads();private timer?:ReturnType<typeof setTimeout>;private debounce?:ReturnType<typeof setTimeout>;
+  private abort=new AbortController();private downloads=new ArtifactDownloads();private debounce?:ReturnType<typeof setTimeout>;
+  private poller=new TaskPoller({active:()=>this.data?.active??(!!this.data&&(generationBatchActive({state:'paused',items:[...this.data.items,...this.data.checks]})||!!this.data.paid_checks?.some(generationBatchActive))),
+    live:()=>this.live(),blocked:()=>this.busy||!!this.dialog?.open,refresh:signal=>this.refresh(signal),
+    failed:stopped=>{if(stopped)this.message('自动刷新已暂停，请点击刷新重试；后台任务继续。');}});
   private checkRequests=new Map<string,string>();private data?:WorkpaperLibrary;private revision=0;private offset=0;private busy=false;private dialog?:HTMLDialogElement;
   private downloadFeedback?:{node:HTMLElement;key:string};
   private quotes=new Map<string,{request:WorkpaperPaidCheckRequest;quote?:WorkpaperPaidCheckQuote;error?:string}>();
   constructor(private api:ApiClient,private host:HTMLElement,private project:string){}
-  dispose(){this.abort.abort();clearTimeout(this.timer);clearTimeout(this.debounce);this.downloads.dispose();this.dialog?.remove();}
+  dispose(){this.abort.abort();this.poller.dispose();clearTimeout(this.debounce);this.downloads.dispose();this.dialog?.remove();}
   private get base(){return `/projects/${encodeURIComponent(this.project)}/workpapers`;}
   private live(){return !this.abort.signal.aborted&&this.host.isConnected;}
   async render(){
@@ -27,17 +31,18 @@ export class WorkpaperLibraryPanel {
     await this.refresh();
   }
   private message(s:string){if(this.live())this.host.querySelector('.wl-message')!.textContent=s;}
-  async refresh(){
+  async refresh(signal?:AbortSignal){
+    if(!signal)this.poller.pause();
     if(!this.live())return;const revision=++this.revision,form=new FormData(this.host.querySelector('form')!);
     const query=new URLSearchParams({offset:String(this.offset),limit:'50',search:String(form.get('search')??''),category:String(form.get('category')),status:String(form.get('status')),history:String(form.has('history'))});
     try{
-      const data=await this.api.request<WorkpaperLibrary>('GET',this.base+'/library?'+query,undefined,{},this.abort.signal);
+      const data=await this.api.request<WorkpaperLibrary>('GET',this.base+'/library?'+query,undefined,{},signal??this.abort.signal);
+      signal?.throwIfAborted();
       if(!this.live()||revision!==this.revision)return;this.data=data;this.paint();
       this.message(`${data.total} 份${form.has('history')?'（含历史版本）':''} · ${data.source?'当前募集书 V'+data.source.sequence:'尚未采用募集书'}`);
-    }catch(e){if(this.live()&&revision===this.revision)this.message('底稿列表读取失败，原文件已保留。'+friendlyError(e,'read'));}
-    this.scheduleRefresh();
+    }catch(e){if(this.live()&&revision===this.revision&&!signal?.aborted)this.message('底稿列表读取失败，原文件已保留。'+friendlyError(e,'read'));if(signal)throw e;}
+    if(!signal)this.poller.start();
   }
-  private scheduleRefresh(){clearTimeout(this.timer);if(this.live())this.timer=setTimeout(()=>{if(this.busy||this.dialog?.open)this.scheduleRefresh();else void this.refresh();},10000);}
   private paint(){
     const data=this.data!;
     let capability=this.host.querySelector<HTMLElement>('.wl-check-capability');
@@ -83,7 +88,7 @@ export class WorkpaperLibraryPanel {
     }catch(e){saved.error=friendlyError(e,'read');}
     if(this.live())this.paint();
   }
-  private async act(button:HTMLButtonElement,action:()=>Promise<void>){if(this.busy)return;this.busy=true;button.disabled=true;try{await action();}catch(e){this.message(friendlyError(e,'read'));}finally{this.busy=false;button.disabled=false;}}
+  private async act(button:HTMLButtonElement,action:()=>Promise<void>){if(this.busy)return;this.poller.pause();this.busy=true;button.disabled=true;try{await action();}catch(e){this.message(friendlyError(e,'read'));}finally{this.busy=false;this.poller.start();button.disabled=false;}}
   private async saveFile(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number,total?:number)=>void)=>Promise<{bytes:Blob;filename:string}>,archive=false){
     const feedback=this.downloadFeedback?.node??document.createElement('p');
     feedback.className='wl-download-feedback';feedback.setAttribute('role','status');

@@ -39,7 +39,7 @@ test('model evidence removes repeated metadata without losing cells, locators or
  const second=snapshot([{text:'附注：金额含税。'}]);
  const full=qaEvidenceContext(q,[facts,second],0),compact=qaModelEvidenceContext(q,[facts,second],0);
  assert.deepEqual(compact.selection,full.selection);
- assert.deepEqual(compact.materials.flatMap(e=>e.spans.map(([id,location,text])=>({asset_index:e.asset_index,id,location,text}))),full.materials.map(({asset_index,id,location,text})=>({asset_index,id,location,text})));
+ assert.deepEqual(compact.materials.flatMap(e=>e.spans.map(([,location,text])=>({asset_index:e.asset_index,location,text}))),full.materials.map(({asset_index,location,text})=>({asset_index,location,text})));
  assert.ok(JSON.stringify(compact).length<JSON.stringify(full).length/2);
 });
 
@@ -122,7 +122,7 @@ test('a display paragraph number resolves repeated declarations to the exact sou
  for(const citation of [{asset_index:1,span_id:'p1',quote},{asset_index:0,span_id:'p01',quote},{asset_index:0,span_id:'p5',quote},{asset_index:0,span_id:'p1',quote:quote+'不存在风险。'}]){
   assert.equal(qaHasGroundedCitations({...proposal,citations:[citation]},evidence),false);
  }
- assert.match(qaAnswerInstructions,/不得从 location 的“段落 N”推算为 pN/);
+ assert.match(qaAnswerInstructions,/不得从 location 的段落号推算编号/);
 });
 
 test('display-number repair never guesses between repeated table cells or incompatible locators',()=>{

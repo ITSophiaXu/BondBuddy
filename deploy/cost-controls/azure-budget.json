@@ -1,0 +1,72 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "budgetName": {
+      "type": "string",
+      "defaultValue": "bondbuddy-monthly-cost"
+    },
+    "amount": {
+      "type": "int",
+      "minValue": 1,
+      "metadata": {
+        "description": "Monthly budget in the subscription billing currency. An alert, not a hard cap."
+      }
+    },
+    "startDate": {
+      "type": "string",
+      "metadata": {
+        "description": "First day of the current month, e.g. 2026-11-01T00:00:00Z."
+      }
+    },
+    "contactEmails": {
+      "type": "array",
+      "minLength": 1
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Consumption/budgets",
+      "apiVersion": "2021-10-01",
+      "name": "[parameters('budgetName')]",
+      "properties": {
+        "category": "Cost",
+        "amount": "[parameters('amount')]",
+        "timeGrain": "Monthly",
+        "timePeriod": {
+          "startDate": "[parameters('startDate')]"
+        },
+        "notifications": {
+          "Actual50": {
+            "enabled": true,
+            "operator": "GreaterThanOrEqualTo",
+            "threshold": 50,
+            "thresholdType": "Actual",
+            "contactEmails": "[parameters('contactEmails')]"
+          },
+          "Actual80": {
+            "enabled": true,
+            "operator": "GreaterThanOrEqualTo",
+            "threshold": 80,
+            "thresholdType": "Actual",
+            "contactEmails": "[parameters('contactEmails')]"
+          },
+          "Actual100": {
+            "enabled": true,
+            "operator": "GreaterThanOrEqualTo",
+            "threshold": 100,
+            "thresholdType": "Actual",
+            "contactEmails": "[parameters('contactEmails')]"
+          },
+          "Forecast100": {
+            "enabled": true,
+            "operator": "GreaterThanOrEqualTo",
+            "threshold": 100,
+            "thresholdType": "Forecasted",
+            "contactEmails": "[parameters('contactEmails')]"
+          }
+        }
+      }
+    }
+  ]
+}

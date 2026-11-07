@@ -13,6 +13,7 @@ import {composeContainedPrompt,loadCodexAdapterConfig} from './codex-adapter.js'
 import {loadProjectQaInput} from './project-qa-input.js';
 import {projectFilesRoot} from './project-file-tools.js';
 import {qaModelEvidenceContext,qaAnswerInstructions} from './project-qa-evidence.js';
+import {qaAnswerOutput} from './project-qa-protocol.js';
 export {qaPromptEvidence} from './project-qa-evidence.js';
 const prefix=(ctx:StageContext)=>`owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/qa/`;
 const max=100*1024*1024;
@@ -104,7 +105,7 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
      const questionCases=input.cases.map(c=>({c,score:qaSearchTerms(Object.values(c.content).join(' ')).filter(t=>terms.has(t)).length})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,3).map(x=>x.c);
      // Question IDs may contain punctuation and exceed the checkpoint's 64-character limit.
      // Keep the durable logical call ID unchanged; reserve room for the `_prompt` suffix.
-     const outcome=await (options.model??codexModelStage)({name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:'project-qa-prospectus-first-v4',resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,
+     const outcome=await (options.model??codexModelStage)({name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:'project-qa-direct-answer-v6',resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,outputForPrompt:prompt=>qaAnswerOutput(prompt,evidence),
       // An explicit unanswered question can finish without a citation. Its model
       // prose is discarded by groundedQaAnswer; invented quotations still re-ask.
       validate:(v):v is QaAnswer=>Value.Check(QaAnswerSchema,v)&&v.question_id===question.id&&(qaHasGroundedCitations(v,evidence)||qaUnanswered(v)),
