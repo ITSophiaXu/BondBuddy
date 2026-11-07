@@ -14,7 +14,7 @@ export const QaCaseContentSchema=obj({title:Type.String({minLength:1,maxLength:2
 export const QaCaseSchema=obj({id,revision:Type.Integer({minimum:1}),content:QaCaseContentSchema,sha256:hash,status:Type.Union(['pending','approved','withdrawn'].map(x=>Type.Literal(x))),review_note:text,created_at:short});
 export type QaCase=Static<typeof QaCaseSchema>;
 export const QaCitationSchema=obj({asset_index:Type.Integer({minimum:0}),span_id:id,quote:Type.String({minLength:1,maxLength:4000})});
-export const QaAnswerSchema=obj({question_id:id,answer:Type.String({minLength:1,maxLength:16000}),status:Type.Union([Type.Literal('draft'),Type.Literal('missing')]),missing_materials:Type.Array(Type.String({minLength:1,maxLength:2000}),{maxItems:30}),citations:Type.Array(QaCitationSchema,{maxItems:30}),case_ids:Type.Array(id,{uniqueItems:true,maxItems:8}),approach:text});
+export const QaAnswerSchema=obj({question_id:id,answer:Type.String({minLength:1,maxLength:16000}),status:Type.Union([Type.Literal('draft'),Type.Literal('missing')]),missing_materials:Type.Array(Type.String({minLength:1,maxLength:2000}),{maxItems:30}),citations:Type.Array(QaCitationSchema,{maxItems:200}),case_ids:Type.Array(id,{uniqueItems:true,maxItems:8}),approach:text});
 export type QaAnswer=Static<typeof QaAnswerSchema>;
 export const QaAssetSchema=obj({filename:short,asset:ProjectFileAssetSchema});
 export const QaDraftSchema=obj({included_followup_of:Type.Optional(id),preparation_id:nullable(id),questions:Type.Array(QaQuestionSchema,{maxItems:200}),materials:Type.Array(ProjectFileAssetSchema,{maxItems:50}),requirements:text,use_knowledge:Type.Boolean()});

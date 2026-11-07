@@ -494,6 +494,8 @@ export function codexModelStage(options: {
   buildPrompt: (ctx: StageContext) => Promise<string>; schema: Record<string, unknown>; validate: (value: unknown) => boolean;
   resultSchemaVersion: string; templateVersion?: string;
   normalize?: Extract<ContainedCallInput['output'], { kind: 'json' }>['normalize'];
+  /** Resolve the wire format only after loading the immutable prompt; persisted values use validate. */
+  outputForPrompt?: (prompt:string) => Pick<Extract<ContainedCallInput['output'], {kind:'json'}>, 'schema'|'normalize'|'validationFeedback'>;
   imageInput?: ContainedCallInput['imageInput'];
   materialTools?: MaterialToolData;
   materialToolsTrace?: true;
@@ -554,7 +556,7 @@ export function codexModelStage(options: {
       let result:ContainedCallResult;
       try { result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
         logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
-        imageInput, output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate, normalize: options.normalize }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal,
+        imageInput, output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate, normalize: options.normalize, ...options.outputForPrompt?.(bytes.toString('utf8')) }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal,
         ...((progress || authoring || options.onActivity)?{onActivity:(event,intent)=>{progress?.onEvent(event,intent);authoring?.onEvent(event,intent);options.onActivity?.(event,intent);}}:{}) }, journal, config);
       } finally { await progress?.drain(); await authoring?.drain(); }
       if (result.status === 'completed' || result.status === 'reused')
