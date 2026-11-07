@@ -78,6 +78,34 @@ role_runtime_volume() {
   [ "$(wc -w <<< "$containers")" = 1 ] || { echo 'expected exactly one existing role PostgreSQL container' >&2; return 2; }
   docker inspect --format '{{json .Mounts}}' "$containers" | node "$BB_DIR/scripts/role-config.mjs" runtime-volume "$BB_ENV" "$BB_STATE" "$BB_DEPLOY_ROLE"
 }
+role_existing_state() {
+  local existing
+  existing="$(docker ps -aq --filter "label=com.docker.compose.project=$BB_ROLE_PROJECT")"
+  if [ -n "$existing" ] && [ -z "$(current_tag)" ]; then
+    echo 'existing role project has no retained release state; adopt verified state/project/pgdata before deployment, never treat it as a first release' >&2; exit 2
+  fi
+}
+role_existing_release() {
+  # current-only migration states are legal. Verify what is actually running without inventing
+  # old receipts; the SQL idle gate is still mandatory after this source/ID check.
+  local tag container service target image revision expected containers
+  tag="$(current_tag)"; [ -n "$tag" ] || return 0
+  containers="$(docker ps -q --filter "label=com.docker.compose.project=$BB_ROLE_PROJECT")"
+  while read -r container; do
+    [ -n "$container" ] || continue
+    service="$(docker inspect --format '{{ index .Config.Labels "com.docker.compose.service" }}' "$container")"
+    case "$service" in api|web|egress|pg-tunnel|integrity-egress) target="$service";;
+      ops|worker|worker-review|worker-parse) target=worker;; integrity-beijing-tunnel) target=integrity-tunnel;; postgres) continue;;
+      *) echo 'unexpected running service in the retained role project' >&2; exit 3;;
+    esac
+    image="$(docker inspect --format '{{.Image}}' "$container")"
+    revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$image")"
+    [[ "$revision" =~ ^[a-f0-9]{40}$ ]] && [ "${revision:0:12}" = "$tag" ] || { echo 'retained runtime source does not match current; nothing switched' >&2; exit 3; }
+    role_trusted_source "$revision"
+    expected="$(BB_IMAGE_TAG="$tag" role_image_ref "$target")"
+    [ "$(docker image inspect --format '{{.Id}}' "$expected")" = "$image" ] || { echo 'retained runtime ID differs from its exact source image; nothing switched' >&2; exit 3; }
+  done <<< "$containers"
+}
 role_compose_arguments() {
   local arg
   for arg in "$@"; do

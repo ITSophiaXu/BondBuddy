@@ -80,6 +80,7 @@ networks:
 `);
  for(const role of ['main','execution']){const file=join(temp,`${role}.yaml`);values[role]={...env,BB_DEPLOY_ROLE:role,BB_ROLE_STATE_DIR:join(temp,`${role}-state`),COMPOSE_PROJECT_NAME:role==='main'?main:execution,BB_ROLE_OVERRIDE_FILE:file,BB_ROLE_OVERRIDE_SHA256:hash(file)};writeEnv(role);}
  compose('main','up','-d','--wait','postgres');
+ writeFileSync(join(temp,'main-state/current'),'synthetic\n');
  assert.equal(sql('SELECT 1'),'1');pass('ordinary main up automatically uses override; authenticated loopback PG SQL succeeds');
  const cfg=JSON.parse(compose('main','config','--format','json')), pg=compose('main','ps','-q','postgres').trim();
  const pgBefore=JSON.parse(docker('inspect',pg))[0], volume=pgBefore.Mounts.find(m=>m.Destination==='/var/lib/postgresql/data').Name;
@@ -94,7 +95,7 @@ networks:
  sql("CREATE TABLE synthetic_marker (value text); INSERT INTO synthetic_marker VALUES ('same-volume'); CREATE TABLE bb_schema_migrations(filename text); CREATE TABLE bb_jobs(state text); CREATE TABLE bb_review_messages(lease_token text)");
  sql('INSERT INTO bb_schema_migrations VALUES '+readdirSync(join(root,'db/migrations')).filter(n=>/^\d+.*\.sql$/.test(n)).map(n=>`('${n.replaceAll("'","''")}')`).join(','));
  probe('main','schema');pass('current role-probe reads authenticated SQL and synthetic migration state through ordinary entry');
- compose('execution','up','-d','--no-deps','--wait','pg-tunnel');probe('execution','schema');
+ compose('execution','up','-d','--no-deps','--wait','pg-tunnel');writeFileSync(join(temp,'execution-state/current'),'synthetic\n');probe('execution','schema');
  pass('internal execution container reaches the sole PG through restricted SSH and verified host key');
  const execCfg=JSON.parse(compose('execution','config','--format','json'));assert.equal(execCfg.services['worker-parse'],undefined);assert.equal(execCfg.services.postgres,undefined);assert.equal(execCfg.services.migrate,undefined);
  assert.equal(attempt('execution',['up','-d','worker-parse']).status,2);pass('inactive execution parser is absent from ordinary selection and explicit startup is refused');

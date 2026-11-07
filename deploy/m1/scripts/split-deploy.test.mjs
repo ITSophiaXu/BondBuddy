@@ -116,6 +116,9 @@ for(const role of ['main','execution']) test(`${role} deployment refuses in-flig
 printf '%s\\n' "$*" >> "$TEST_CALLS"
 case "$*" in
  *'ps -aq --filter label=com.docker.compose.project='*) case "$*" in *service=postgres*) ;; *) if [ "\${TEST_EXISTING_PROJECT:-0}" = 1 ]; then echo synthetic-existing; fi;; esac;;
+ *'ps -q --filter label=com.docker.compose.project='*) [ "\${TEST_CURRENT_RUNTIME:-0}" = 0 ] || echo synthetic-current;;
+ *'inspect --format'*com.docker.compose.service*) echo "\${TEST_CURRENT_SERVICE:-api}";;
+ *'image inspect --format'*revision*sha256:synthetic*) echo "\${TEST_CURRENT_REVISION-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}";;
  *'config --format json'*) cat "$TEST_CONFIG";;
  *'ps --status running -q worker-parse'*) ;;
  *'image inspect --format'*revision*) if [ "$TEST_BAD_REVISION" = 1 ]; then echo wrong-revision; else echo "\${TEST_APP_SHA:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}"; fi;;
@@ -290,4 +293,14 @@ test('configuration-only deployments at one app tag retain separate immutable re
  const records=readdirSync(state).filter(n=>/^release-.*\.txt$/.test(n));assert.equal(records.length,2);
  const current=readFileSync(join(state,'current-release'),'utf8').trim(),previous=readFileSync(join(state,'previous-release'),'utf8').trim();assert.notEqual(current,previous);
  for(const id of [current,previous]){const text=readFileSync(join(state,`release-${id}.txt`),'utf8');assert.ok(text.includes(`record=${id}`));assert.ok(text.includes('commit='+'a'.repeat(40)));assert.ok(text.includes(`override_sha256=${a.values.BB_ROLE_OVERRIDE_SHA256}`));}
+});
+test('current-only retained releases require real source and ID checks before the SQL gate',()=>{
+ const fixture=join(dir,'main-fixture'),a=covered('main','services: {}\n',{BB_PARSE_ROLE:'execution',BB_DEPLOY_SCRIPT_SHA:'a'.repeat(40)}),state=a.values.BB_ROLE_STATE_DIR,calls=join(a.area,'calls');mkdirSync(state);
+ const environment={...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile('main',a.values),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CONFIG:join(fixture,'config.json'),TEST_CALLS:calls,TEST_CURRENT_RUNTIME:'1',TEST_EXISTING_PROJECT:'1'};
+ for(const [revision,gate,status] of [['a'.repeat(40),'76',76],['b'.repeat(40),'0',3],['','0',3],['a'.repeat(40),'0',0]]){
+  writeFileSync(join(state,'current'),'aaaaaaaaaaaa\n');writeFileSync(calls,'');const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),'main','a'.repeat(40)],{env:{...environment,TEST_CURRENT_REVISION:revision,TEST_GATE:gate},encoding:'utf8'});assert.equal(r.status,status,r.stderr);
+  const commands=readFileSync(calls,'utf8');assert.match(commands,/com.docker.compose.service/);
+  if(status)assert.doesNotMatch(commands,/up -d|run --rm --no-deps -T migrate/);
+  if(status===3)assert.doesNotMatch(commands,/ idle/);
+ }
 });

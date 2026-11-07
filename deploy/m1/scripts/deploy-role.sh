@@ -21,10 +21,7 @@ if [ "$(env_value BB_NON_PRODUCTION_TEST_CHANNEL)" = enabled ] && [ "$(env_value
   echo 'non-production test channel requires BB_DEPLOYMENT_TIER=preprod' >&2; exit 2
 fi
 compose config --quiet
-existing="$(docker ps -aq --filter "label=com.docker.compose.project=$BB_ROLE_PROJECT")"
-if [ -n "$existing" ] && [ -z "$(current_tag)" ]; then
-  echo 'existing role project has no retained release state; adopt verified state/project/pgdata before deployment, never treat it as a first release' >&2; exit 2
-fi
+role_existing_state
 targets=(api worker web egress)
 if [ "$BB_DEPLOY_ROLE" = execution ]; then
   targets=(worker egress pg-tunnel)
@@ -37,6 +34,7 @@ for target in "${targets[@]}"; do
   [ "$revision" = "$sha" ] || { echo "release image $target has no matching source revision; refusing tag-only reuse" >&2; exit 3; }
   image_ids[$target]="$(docker image inspect --format '{{.Id}}' "$(role_image_ref "$target")")"
 done
+role_existing_release
 # No switch while the old role is active. The release procedure must first close new submissions
 # and inspect provider processes as well: a DB gate cannot prove an unrecorded external call ended.
 if [ -n "$(current_tag)" ]; then
