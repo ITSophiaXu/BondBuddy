@@ -29,6 +29,18 @@ const env={BB_IMAGE_TAG:'synthetic',BB_DEPLOY_SCRIPT_SHA:source,POSTGRES_PASSWOR
  BB_PARSE_CACHE_OCR_VERSION:'synthetic',BB_PARSE_CACHE_BASIS_VERSION:'synthetic',BB_PAYMENT_SECRETS_DIR:join(temp,'payments'),BB_FILE_TEMPLATE_HOST_DIR:join(temp,'templates'),
  BB_INTEGRITY_MODE:'disabled',BB_PG_SSH_HOST:'synthetic.test',BB_PG_SSH_USER:'tunnel',BB_PG_SSH_KEY_FILE:join(temp,'client'),BB_PG_SSH_KNOWN_HOSTS_FILE:join(temp,'known_hosts'),BB_SYNTHETIC_APP_IMAGE:runtime};
 const values={};
+// Select two disjoint private /24s before creating any test services; preserve existing networks.
+const networkIds=docker('network','ls','-q').trim().split(/\s+/).filter(Boolean);
+const ipv4=s=>s.split('.').reduce((n,v)=>n*256+Number(v),0);
+const ranges=JSON.parse(docker('network','inspect',...networkIds)).flatMap(n=>n.IPAM.Config || []).filter(n=>n.Subnet?.includes('.')).map(n=>{
+ const [address,bits]=n.Subnet.split('/'), size=2**(32-Number(bits)), first=Math.floor(ipv4(address)/size)*size;return [first,first+size-1];
+});
+const subnets=[];
+for(let offset=0;offset<256 && subnets.length<2;offset++){
+ const octet=(process.pid+offset)%256, subnet=`10.239.${octet}.0/24`, first=ipv4(`10.239.${octet}.0`);
+ if(ranges.every(([a,b])=>first+255<a || first>b)){subnets.push(subnet);ranges.push([first,first+255]);}
+}
+assert.equal(subnets.length,2,'two unused isolated test subnets are required');
 function writeEnv(role){writeFileSync(join(temp,`${role}.env`),Object.entries(values[role]).map(([k,v])=>`${k}=${v}`).join('\n'),{mode:0o600});}
 function compose(role,...args){return run('bash',['deploy/m1/scripts/role-compose.sh',role,...args],{env:{...process.env,BB_ENV_FILE:join(temp,`${role}.env`),BB_STATE_DIR:join(temp,`${role}-state`),BB_IMAGE_TAG:'synthetic'}});}
 function attempt(role,args,extra={}){return spawnSync('bash',['deploy/m1/scripts/role-compose.sh',role,...args],{cwd:root,env:{...process.env,BB_ENV_FILE:join(temp,`${role}.env`),BB_STATE_DIR:join(temp,`${role}-state`),BB_IMAGE_TAG:'synthetic',...extra},encoding:'utf8'});}
@@ -78,7 +90,7 @@ networks:
     external: true
     name: ${edge}
 `);
- for(const role of ['main','execution']){const file=join(temp,`${role}.yaml`);values[role]={...env,BB_DEPLOY_ROLE:role,BB_ROLE_STATE_DIR:join(temp,`${role}-state`),COMPOSE_PROJECT_NAME:role==='main'?main:execution,BB_ROLE_OVERRIDE_FILE:file,BB_ROLE_OVERRIDE_SHA256:hash(file)};writeEnv(role);}
+ for(const role of ['main','execution']){const file=join(temp,`${role}.yaml`);values[role]={...env,BB_DEPLOY_ROLE:role,BB_BACKEND_SUBNET:subnets[role==='main'?0:1],BB_WEB_IP:subnets[role==='main'?0:1].replace('.0/24','.10'),BB_ROLE_STATE_DIR:join(temp,`${role}-state`),COMPOSE_PROJECT_NAME:role==='main'?main:execution,BB_ROLE_OVERRIDE_FILE:file,BB_ROLE_OVERRIDE_SHA256:hash(file)};writeEnv(role);}
  compose('main','up','-d','--wait','postgres');
  writeFileSync(join(temp,'main-state/current'),'synthetic\n');
  assert.equal(sql('SELECT 1'),'1');pass('ordinary main up automatically uses override; authenticated loopback PG SQL succeeds');
