@@ -16,7 +16,8 @@ current_tag() { cat "$BB_STATE/current" 2>/dev/null || true; }
 log_release() { printf '%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$1" "$2" >> "$BB_STATE/releases.log"; }
 env_value() { sed -n "s/^$1=//p" "$BB_ENV" | tail -1; }
 # Split deployments must never enter legacy all-in-one deploy/restore/rollback paths.
-if [ -n "$(env_value BB_DEPLOY_ROLE)" ] && [ "${BB_ROLE_COMMAND:-0}" != 1 ]; then
+if [ "${BB_ROLE_COMMAND:-0}" != 1 ] && { [ -n "$(env_value BB_DEPLOY_ROLE)" ] ||
+  [ -f "$BB_STATE/environment-binding.json" ] || [ -f "$BB_DIR/state-main/environment-binding.json" ] || [ -f "$BB_DIR/state-execution/environment-binding.json" ]; }; then
   echo 'split deployment: use role-compose.sh/deploy-role.sh and the split deployment runbook; legacy scripts are disabled' >&2
   exit 2
 fi

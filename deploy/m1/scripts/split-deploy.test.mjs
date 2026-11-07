@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync, readFileSync, mkdirSync, cpSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import { createHash } from 'node:crypto';
 const root = resolve(import.meta.dirname, '../../..');
 const dir = mkdtempSync(join(root, '.split-test-'));
 process.on('exit', () => rmSync(dir, { recursive: true, force: true }));
@@ -13,9 +14,9 @@ const base = { BB_IMAGE_TAG: 'synthetic', POSTGRES_PASSWORD: 'synthetic', BB_MAI
 const configProcessEnv = {...process.env};
 delete configProcessEnv.BB_WORKER_LEASE_SECONDS; // Exercise the private env file, independent of the test host.
 function envFile(role, values = {}) { const path = join(dir, `${role}.env`); writeFileSync(path, Object.entries({...base,BB_DEPLOY_ROLE:role,...values}).map(([k,v])=>`${k}=${v}`).join('\n'), {mode:0o600}); return path; }
-function config(role, values = {}) {
+function config(role, values = {}, state = join(dir,'state')) {
  return JSON.parse(execFileSync('bash', ['deploy/m1/scripts/role-compose.sh', role, 'config', '--format', 'json'],
- { cwd: root, env: {...configProcessEnv,BB_ENV_FILE:envFile(role,values),BB_STATE_DIR:join(dir,'state'),BB_IMAGE_TAG:'synthetic'}, stdio:['ignore','pipe','pipe'] }));
+ { cwd: root, env: {...configProcessEnv,BB_ENV_FILE:envFile(role,values),BB_STATE_DIR:state,BB_IMAGE_TAG:'synthetic'}, stdio:['ignore','pipe','pipe'] }));
 }
 test('roles have disjoint local services; internal execution containers use only the dual-network SSH bridge', () => {
  const main=config('main'), execution=config('execution');
@@ -108,13 +109,15 @@ test('business model catalogs retain 1M windows and 900K compression', () => {
 // Exercise actual shell branch ordering; no Docker mutation is performed by these command shims.
 for(const role of ['main','execution']) test(`${role} deployment refuses in-flight/unknown calls; only main migrates and recreates web`,()=>{
  const fixture=join(dir,role+'-fixture');mkdirSync(join(fixture,'deploy/m1/scripts'),{recursive:true});mkdirSync(join(fixture,'bin'));
- for(const name of ['lib.sh','role-lib.sh','deploy-role.sh','role-probe.mjs']) cpSync(join(root,'deploy/m1/scripts',name),join(fixture,'deploy/m1/scripts',name));
+ for(const name of ['lib.sh','role-lib.sh','deploy-role.sh','role-probe.mjs','role-config.mjs','role-source-lib.sh']) cpSync(join(root,'deploy/m1/scripts',name),join(fixture,'deploy/m1/scripts',name));
  for(const name of ['install-codex-file-sandbox.sh','smoke.sh']) writeFileSync(join(fixture,'deploy/m1/scripts',name),'#!/bin/sh\nexit 0\n',{mode:0o755});
- writeFileSync(join(fixture,'bin/git'),'#!/bin/sh\ncase "$*" in *--show-toplevel*) echo "$TEST_FIXTURE";; *--verify*) echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;; esac\n',{mode:0o755});
+ writeFileSync(join(fixture,'bin/git'),`#!/bin/sh\ncase "$*" in *--show-toplevel*) echo "$TEST_FIXTURE";; *HEAD*) echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;; *--verify*) echo "\${TEST_APP_SHA:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}";; *'remote get-url origin'*) echo https://github.com/ITSophiaXu/BondBuddy.git;; *for-each-ref*) echo refs/remotes/origin/develop;; *merge-base*) exit "\${TEST_UNTRUSTED:-0}";; *status*) [ "\${TEST_DIRTY:-0}" = 0 ] || echo " M deploy/m1/synthetic";; *diff*) exit "\${TEST_DEPLOY_DIFF:-0}";; *rev-parse*) echo cccccccccccccccccccccccccccccccccccccccc;; esac\n`,{mode:0o755});
  writeFileSync(join(fixture,'bin/docker'),`#!/bin/bash
 printf '%s\\n' "$*" >> "$TEST_CALLS"
 case "$*" in
- *'image inspect --format'*revision*) if [ "$TEST_BAD_REVISION" = 1 ]; then echo wrong-revision; else echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; fi;;
+ *'config --format json'*) cat "$TEST_CONFIG";;
+ *'ps --status running -q worker-parse'*) ;;
+ *'image inspect --format'*revision*) if [ "$TEST_BAD_REVISION" = 1 ]; then echo wrong-revision; else echo "\${TEST_APP_SHA:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}"; fi;;
  *'image inspect --format'*) echo sha256:synthetic;;
  *'inspect --format'*) if [ "$TEST_BAD_RUNTIME" = 1 ]; then echo sha256:wrong-runtime; else echo sha256:synthetic; fi;;
  *' ps -q '*) echo synthetic-container;;
@@ -122,21 +125,23 @@ case "$*" in
  *' node --input-type=module - '*) cat >/dev/null;;
 esac
 `,{mode:0o755});
+ const rendered=join(fixture,'config.json');
+ writeFileSync(rendered,execFileSync('docker',['compose','--project-directory',join(root,'deploy/m1'),'-f',join(root,`deploy/m1/compose.${role}.yaml`),...(role==='execution'?['-f',join(root,'deploy/m1/compose.integrity-beijing.yaml')]:[]),'--profile','*','--env-file',envFile(role),'config','--format','json'],{env:{...configProcessEnv,BB_IMAGE_TAG:'synthetic'},stdio:['ignore','pipe','pipe']}));
  const state=join(fixture,'state');mkdirSync(state);const calls=join(fixture,'calls');
  for(const gate of [76,77,0]) {
   writeFileSync(join(state,'current'),'old-release\n');writeFileSync(calls,'');
   const run=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),role,'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],{
-   env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile(role),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CALLS:calls,TEST_GATE:String(gate)},encoding:'utf8'});
+   env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile(role),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CONFIG:join(fixture,'config.json'),TEST_CALLS:calls,TEST_GATE:String(gate)},encoding:'utf8'});
   assert.equal(run.status,gate,run.stderr);
   const commands=readFileSync(calls,'utf8');
   if(gate) {assert.doesNotMatch(commands,/up -d|run --rm --no-deps -T migrate/);assert.equal(readFileSync(join(state,'current'),'utf8'),'old-release\n');}
   else if(role==='main') {assert.match(commands,/run --rm --no-deps -T migrate/);assert.match(commands,/up -d --no-deps --force-recreate --wait web/);}
-  else {assert.doesNotMatch(commands,/migrate|up -d.*postgres/);assert.match(commands,/bondbuddy-integrity-tunnel:aaaaaaaaaaaa/);assert.match(commands,/up -d --wait integrity-beijing-tunnel worker worker-review worker-parse/);assert.doesNotMatch(commands,/bondbuddy-m1-integrity-egress/);}
+  else {assert.doesNotMatch(commands,/migrate|up -d.*postgres/);assert.match(commands,/bondbuddy-integrity-tunnel:aaaaaaaaaaaa/);assert.match(commands,/up -d --no-deps --wait pg-tunnel egress integrity-beijing-tunnel/);assert.match(commands,/up -d --no-deps --wait worker worker-review worker-parse/);assert.doesNotMatch(commands,/bondbuddy-m1-integrity-egress/);}
  }
  for(const [kind,status] of [['revision',3],['runtime',4]]) {
   writeFileSync(join(state,'current'),'old-release\n');writeFileSync(calls,'');
   const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),role,'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],{
-   env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile(role),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CALLS:calls,TEST_GATE:'0',TEST_BAD_REVISION:kind==='revision'?'1':'0',TEST_BAD_RUNTIME:kind==='runtime'?'1':'0'},encoding:'utf8'});
+   env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile(role),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CONFIG:join(fixture,'config.json'),TEST_CALLS:calls,TEST_GATE:'0',TEST_BAD_REVISION:kind==='revision'?'1':'0',TEST_BAD_RUNTIME:kind==='runtime'?'1':'0'},encoding:'utf8'});
   assert.equal(r.status,status,r.stderr);assert.equal(readFileSync(join(state,'current'),'utf8'),'old-release\n');
   if(kind==='revision')assert.doesNotMatch(readFileSync(calls,'utf8'),/up -d|run --rm --no-deps -T migrate/);
  }
@@ -149,7 +154,115 @@ test('export mode chooses the same domestic tunnel image as role startup',()=>{
  for(const [mode,expected,absent] of [['beijing','bondbuddy-integrity-tunnel:aaaaaaaaaaaa','bondbuddy-m1-integrity-egress'],['direct','bondbuddy-m1-integrity-egress:aaaaaaaaaaaa','bondbuddy-integrity-tunnel'],['disabled','bondbuddy-m1-pg-tunnel:aaaaaaaaaaaa','bondbuddy-integrity-tunnel']]){
   const calls=join(fixture,'export-calls');writeFileSync(calls,'');
   const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/export-images-role.sh'),'execution','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',join(fixture,'images.tar.gz'),mode],{
-   env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,TEST_FIXTURE:fixture,TEST_CALLS:calls},encoding:'utf8'});
+   env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,TEST_FIXTURE:fixture,TEST_CONFIG:join(fixture,'config.json'),TEST_CALLS:calls},encoding:'utf8'});
   assert.equal(r.status,0,r.stderr);const commands=readFileSync(calls,'utf8');assert.ok(commands.includes(expected));assert.ok(!commands.includes(absent));
+ }
+});
+
+const digest = path => createHash('sha256').update(readFileSync(path)).digest('hex');
+function covered(role, text='services: {}\n', extra={}) {
+ const area=mkdtempSync(join(dir,'covered-')), file=join(area,'override.yaml');writeFileSync(file,text,{mode:0o600});
+ return {area,file,values:{BB_ROLE_OVERRIDE_FILE:file,BB_ROLE_OVERRIDE_SHA256:digest(file),BB_PARSE_ROLE:'main',...extra}};
+}
+const bridgeOverlay=`services:
+  postgres:
+    networks: [backend, pgbridge]
+networks:
+  pgbridge:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: 'false'
+`;
+test('ordinary role config automatically retains protected PG bridge and pure main parser; execution parser stays inactive',()=>{
+ const a=covered('main',bridgeOverlay), b=covered('execution');
+ const main=config('main',a.values,join(a.area,'state')), execution=config('execution',b.values,join(b.area,'state'));
+ assert.equal(main.networks.backend.internal,true);assert.equal(main.networks.pgbridge.driver_opts['com.docker.network.bridge.enable_ip_masquerade'],'false');
+ assert.deepEqual(Object.keys(main.services.postgres.networks).sort(),['backend','pgbridge']);
+ assert.equal(main.volumes.pgdata.name,'bb-main_pgdata');assert.equal(main.services.postgres.ports[0].host_ip,'127.0.0.1');
+ const parser=main.services['worker-parse'];assert.equal(parser.environment.BB_WORKER_LEASE_SECONDS,'120');assert.equal(parser.environment.BB_WORKER_JOB_KINDS,'parse');
+ assert.equal(parser.environment.BB_WORKER_CONCURRENCY,'1');assert.deepEqual(Object.keys(parser.networks),['backend']);
+ assert.ok(parser.volumes.every(v=>!v.target.includes('secrets')));assert.ok(Object.keys(parser.environment).every(k=>!/CODEX|COPILOT|DEEPSEEK/.test(k)));
+ assert.equal(parser.deploy.resources.limits.cpus,0.5);assert.equal(parser.deploy.resources.limits.memory,'1073741824');
+ assert.equal(execution.services['worker-parse'],undefined);assert.equal(execution.services.postgres,undefined);assert.equal(execution.services.migrate,undefined);
+ assert.equal(execution.services.worker.environment.BB_INTEGRITY_EGRESS_PROXY_URL,'http://integrity-beijing-tunnel:3129');
+});
+test('missing file/hash, mismatch and omitted parser placement fail before any Docker call',()=>{
+ const fake=join(dir,'reject-bin');mkdirSync(fake);const calls=join(fake,'calls');
+ writeFileSync(join(fake,'docker'),'#!/bin/sh\nprintf docker >> "$TEST_CALLS"\nexit 99\n',{mode:0o755});
+ const a=covered('main',bridgeOverlay), cases=[{BB_ROLE_OVERRIDE_SHA256:''},{BB_ROLE_OVERRIDE_FILE:join(a.area,'missing')},{BB_ROLE_OVERRIDE_SHA256:'0'.repeat(64)},{BB_PARSE_ROLE:''}];
+ for(const invalid of cases){writeFileSync(calls,'');const r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','main','up','-d','postgres'],{
+  cwd:root,env:{...process.env,PATH:fake+':'+process.env.PATH,TEST_CALLS:calls,BB_ENV_FILE:envFile('main',{...a.values,...invalid}),BB_STATE_DIR:join(a.area,'state'),BB_IMAGE_TAG:'synthetic'},encoding:'utf8'});
+  assert.equal(r.status,2,r.stderr);assert.equal(readFileSync(calls,'utf8'),'');assert.doesNotMatch(r.stderr,/postgresql:\/\//);
+ }
+});
+test('extra flags and Compose environment channels cannot bypass the private role env',()=>{
+ const a=covered('main',bridgeOverlay), state=join(a.area,'state');
+ for(const args of [['-f',a.file,'up'],['up','--file='+a.file],['--env-file','other','config'],['-pother','up'],['--profile','bb-parse-inactive','up'],['up','--scale','worker-parse=1']]){
+  const r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','main',...args],{cwd:root,env:{...process.env,BB_ENV_FILE:envFile('main',a.values),BB_STATE_DIR:state,BB_IMAGE_TAG:'synthetic'},encoding:'utf8'});assert.equal(r.status,2);
+ }
+ for(const key of ['COMPOSE_FILE','COMPOSE_PROFILES','COMPOSE_ENV_FILES','COMPOSE_PROJECT_NAME']){
+  const r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','main','config','--quiet'],{cwd:root,env:{...process.env,[key]:'alternate',BB_ENV_FILE:envFile('main',a.values),BB_STATE_DIR:state,BB_IMAGE_TAG:'synthetic'},encoding:'utf8'});assert.equal(r.status,2);
+ }
+ const previous=configProcessEnv.BB_MAIN_DATABASE_URL;configProcessEnv.BB_MAIN_DATABASE_URL='postgresql://different@old-database/wrong';
+ try{assert.equal(new URL(config('main',a.values,state).services.api.environment.DATABASE_URL).hostname,'postgres');}finally{if(previous===undefined)delete configProcessEnv.BB_MAIN_DATABASE_URL;else configProcessEnv.BB_MAIN_DATABASE_URL=previous;}
+});
+test('adopted state refuses dropped coverage, alternate env, volume/layout changes and legacy rollback',()=>{
+ const a=covered('main',bridgeOverlay), state=join(a.area,'state');config('main',a.values,state);
+ assert.throws(()=>config('main',{},state));
+ assert.throws(()=>config('main',{...a.values,BB_PARSE_ROLE:'execution'},state));
+ const alternate=join(a.area,'alternate.env');writeFileSync(alternate,readFileSync(envFile('main',a.values)));
+ let r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','main','config','--quiet'],{cwd:root,env:{...process.env,BB_ENV_FILE:alternate,BB_STATE_DIR:state,BB_IMAGE_TAG:'synthetic'},encoding:'utf8'});assert.equal(r.status,2);
+ writeFileSync(a.file,bridgeOverlay+'volumes:\n  pgdata:\n    name: wrong-pgdata\n');assert.throws(()=>config('main',{...a.values,BB_ROLE_OVERRIDE_SHA256:digest(a.file)},state));
+ writeFileSync(alternate,'POSTGRES_PASSWORD=synthetic\n');
+ r=spawnSync('bash',['deploy/m1/scripts/rollback.sh','synthetic'],{cwd:root,env:{...process.env,BB_ENV_FILE:alternate,BB_STATE_DIR:state},encoding:'utf8'});assert.equal(r.status,2);assert.match(r.stderr,/legacy scripts are disabled/);
+});
+test('correct hash cannot authorize public PG, masquerade, shared PG bridge or model-capable main parser',()=>{
+ for(const text of [
+  'services:\n  postgres:\n    ports: !override ["0.0.0.0:15432:5432"]\n',
+  bridgeOverlay.replace("'false'","'true'"),
+  bridgeOverlay.replace('  postgres:', '  api:\n    networks: [backend, pgbridge]\n  postgres:'),
+  'services:\n  worker-parse:\n    environment:\n      DEEPSEEK_API_KEY: synthetic\n',
+  'services:\n  worker-parse:\n    deploy:\n      replicas: 0\n'
+ ]) {const a=covered('main',text);assert.throws(()=>config('main',a.values,join(a.area,'state')),text);}
+ const a=covered('main',bridgeOverlay);const sentinel=join(a.area,'should-not-exist');
+ assert.throws(()=>config('main',{...a.values,BB_ROLE_OVERRIDE_FILE:`$(touch ${sentinel})`},join(a.area,'state')));
+ assert.throws(()=>readFileSync(sentinel));
+});
+test('inactive execution parser cannot be explicitly started by ordinary Compose entry',()=>{
+ const a=covered('execution');const r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','execution','up','-d','worker-parse'],{cwd:root,env:{...process.env,BB_ENV_FILE:envFile('execution',a.values),BB_STATE_DIR:join(a.area,'state'),BB_IMAGE_TAG:'synthetic'},encoding:'utf8'});
+ assert.equal(r.status,2);assert.match(r.stderr,/parser is inactive/);
+});
+for(const role of ['main','execution'])test(`${role} app rollback uses exact script pin, same coverage, inactive parser and no migration`,()=>{
+ const fixture=join(dir,role+'-fixture'), a=covered(role,role==='main'?bridgeOverlay:'services: {}\n',{BB_DEPLOY_SCRIPT_SHA:'a'.repeat(40)}), state=join(a.area,'state'),calls=join(a.area,'calls');mkdirSync(state);
+ // Render actual Compose separately; the shim exercises deployment branching and ID verification.
+ const c=config(role,a.values,join(a.area,'render-state'));
+ // Validation also includes the inactive parser; render all profiles using the same private input.
+ const all=execFileSync('docker',['compose','--project-directory',join(root,'deploy/m1'),'-f',join(root,`deploy/m1/compose.${role}.yaml`),...(role==='execution'?['-f',join(root,'deploy/m1/compose.integrity-beijing.yaml')]:[]),'-f',a.file,'--profile','*','--env-file',envFile(role,a.values),'config','--format','json'],{
+  env:{...configProcessEnv,BB_IMAGE_TAG:'synthetic',BB_ROLE_PARSE_PROFILE:role==='main'?'bb-parse-active':'bb-parse-inactive',BB_ROLE_PARSE_REPLICAS:role==='main'?'1':'0'},stdio:['ignore','pipe','pipe']});
+ const rendered=join(a.area,'config.json');writeFileSync(rendered,all);writeFileSync(join(state,'current'),'old-release\n');writeFileSync(calls,'');
+ const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),role,'a'.repeat(40),'--rollback'],{env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile(role,a.values),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CONFIG:rendered,TEST_CALLS:calls,TEST_GATE:'0'},encoding:'utf8'});
+ assert.equal(r.status,0,r.stderr);const commands=readFileSync(calls,'utf8');assert.doesNotMatch(commands,/run --rm --no-deps -T migrate|up -d.*postgres/);
+ assert.ok(commands.includes('-f '+a.file));
+ if(role==='main'){assert.match(commands,/up -d --no-deps --wait api ops egress worker-parse/);assert.match(commands,/--force-recreate --wait web/);assert.ok(c.services['worker-parse']);}
+ else {assert.match(commands,/stop worker-parse/);assert.doesNotMatch(commands,/up -d.*worker-review worker-parse/);assert.match(commands,/ps --status running -q worker-parse/);}
+ const evidence=readFileSync(join(state,'images-aaaaaaaaaaaa.txt'),'utf8');assert.match(evidence,/script_commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/);assert.ok(evidence.includes(`override_sha256=${a.values.BB_ROLE_OVERRIDE_SHA256}`));
+});
+test('independent app/script commits preserve source and clean-checkout protections',()=>{
+ const fixture=join(dir,'main-fixture'), a=covered('main',bridgeOverlay,{BB_DEPLOY_SCRIPT_SHA:'a'.repeat(40)}),calls=join(a.area,'calls');
+ config('main',a.values,join(a.area,'render-state'));
+ const rendered=join(a.area,'config.json');writeFileSync(rendered,execFileSync('docker',['compose','--project-directory',join(root,'deploy/m1'),'-f',join(root,'deploy/m1/compose.main.yaml'),'-f',a.file,'--profile','*','--env-file',envFile('main',a.values),'config','--format','json'],{env:{...configProcessEnv,BB_IMAGE_TAG:'synthetic',BB_ROLE_PARSE_PROFILE:'bb-parse-active',BB_ROLE_PARSE_REPLICAS:'1'},stdio:['ignore','pipe','pipe']}));
+ for(const [flags,values,expected] of [
+  [{TEST_DEPLOY_DIFF:'1'},a.values,0],
+  [{TEST_DEPLOY_DIFF:'1'},{...a.values,BB_DEPLOY_SCRIPT_SHA:''},2],
+  [{TEST_UNTRUSTED:'1'},a.values,2],
+  [{TEST_DIRTY:'1'},a.values,2],
+  [{},{...a.values,BB_DEPLOY_SCRIPT_SHA:'b'.repeat(40)},2],
+  [{TEST_BAD_REVISION:'1'},a.values,3]
+ ]) {
+  const state=mkdtempSync(join(a.area,'state-'));writeFileSync(calls,'');
+  const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),'main','b'.repeat(40)],{env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile('main',values),BB_STATE_DIR:state,TEST_FIXTURE:fixture,TEST_CONFIG:rendered,TEST_CALLS:calls,TEST_GATE:'0',TEST_APP_SHA:'b'.repeat(40),...flags},encoding:'utf8'});
+  assert.equal(r.status,expected,r.stderr);
+  if(expected)assert.doesNotMatch(readFileSync(calls,'utf8'),/up -d|run --rm --no-deps -T migrate/);
+  else {const evidence=readFileSync(join(state,'images-bbbbbbbbbbbb.txt'),'utf8');assert.ok(evidence.includes('commit='+'b'.repeat(40)));assert.ok(evidence.includes('script_commit='+'a'.repeat(40)));assert.ok(evidence.includes('script_tree='+'c'.repeat(40)));}
  }
 });

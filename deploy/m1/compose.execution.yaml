@@ -57,6 +57,7 @@ services:
     deploy: {resources: {limits: {cpus: '0.75', memory: 2G}}}
   worker-parse:
     extends: {file: compose.yaml, service: worker-parse}
+    profiles: ['${BB_ROLE_PARSE_PROFILE:-bb-parse-active}']
     environment:
       DATABASE_URL: ${BB_EXECUTION_DATABASE_URL:?set a URL with host pg-tunnel and the sole business database}
       NODE_OPTIONS: --max-old-space-size=320
@@ -65,7 +66,9 @@ services:
     depends_on: !override
       pg-tunnel: {condition: service_healthy}
       egress: {condition: service_started}
-    deploy: {resources: {limits: {cpus: '0.5', memory: 1G}}}
+    deploy:
+      replicas: ${BB_ROLE_PARSE_REPLICAS:-1}
+      resources: {limits: {cpus: '0.5', memory: 1G}}
 networks:
   backend:
     internal: true
