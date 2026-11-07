@@ -75,7 +75,10 @@ def prepare(source, output, result):
 def paragraph(text, bold=False, markdown=False):
     p = etree.Element(q('p'))
     prop = etree.SubElement(p, q('pPr'))
+    etree.SubElement(prop, q('widowControl'))
     etree.SubElement(prop, q('spacing'), {q('after'): '120', q('line'): '276', q('lineRule'): 'auto'})
+    if text == '回复：':
+        prop.insert(0, etree.Element(q('keepNext')))
     # Model answers share Markdown with the web view. Render simple emphasis as
     # native Word runs instead of exposing literal ** markers in formal replies.
     for segment in re.split(r'(\*\*[^*\n]+\*\*)', text) if markdown else [text]:
@@ -122,6 +125,11 @@ def answer_blocks(text):
         while index < len(lines) and '|' in lines[index] and lines[index].strip():
             rows.append(cells(lines[index])); index += 1
         columns = max(len(row) for row in rows)
+        # Give descriptive columns space while retaining usable numeric/header widths.
+        weights = [max(10, min(44, max(sum(2 if ord(c) > 255 else 1 for c in row[col])
+                   if col < len(row) else 0 for row in rows))) for col in range(columns)]
+        widths = [int(5000 * weight / sum(weights)) for weight in weights]
+        widths[-1] += 5000 - sum(widths)
         table = etree.Element(q('tbl'))
         prop = etree.SubElement(table, q('tblPr'))
         etree.SubElement(prop, q('tblW'), {q('w'): '5000', q('type'): 'pct'})
@@ -137,15 +145,20 @@ def answer_blocks(text):
             etree.SubElement(grid, q('gridCol'))
         for number, row in enumerate(rows):
             tr = etree.SubElement(table, q('tr'))
+            trprop = etree.SubElement(tr, q('trPr'))
+            etree.SubElement(trprop, q('cantSplit'))
             if number == 0:
-                trprop = etree.SubElement(tr, q('trPr'))
                 etree.SubElement(trprop, q('tblHeader'))
-            for value in row + [''] * (columns-len(row)):
+            for col, value in enumerate(row + [''] * (columns-len(row))):
                 cell = etree.SubElement(tr, q('tc')); cp = etree.SubElement(cell, q('tcPr'))
-                etree.SubElement(cp, q('tcW'), {q('w'): str(5000//columns), q('type'): 'pct'})
+                etree.SubElement(cp, q('tcW'), {q('w'): str(widths[col]), q('type'): 'pct'})
                 if number == 0:
                     etree.SubElement(cp, q('shd'), {q('fill'): 'EDF2EF'})
-                cell.append(paragraph(value, bold=number == 0, markdown=True))
+                etree.SubElement(cp, q('vAlign'), {q('val'): 'center'})
+                content = paragraph(value, bold=number == 0, markdown=True)
+                align = 'center' if number == 0 else 'right' if re.fullmatch(r'[\d.,%+—\-\s]+', value) else 'left'
+                etree.SubElement(content.find(q('pPr')), q('jc'), {q('val'): align})
+                cell.append(content)
         yield table
     if '\n'.join(pending).strip():
         yield paragraph('\n'.join(pending).strip(), markdown=True)
