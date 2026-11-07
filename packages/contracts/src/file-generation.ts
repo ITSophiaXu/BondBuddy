@@ -1,4 +1,5 @@
 import {Type,type Static} from '@sinclair/typebox';
+import {GenerationProgressSchema} from './generation-progress.js';
 import {M4MaterialPinSchema,M4TemplateRefSchema,type M4TemplateRef} from './m4-workspace.js';
 import {M4DocumentTypeSchema} from './m4-document-types.js';
 import type {WorkpaperCatalogue,WorkpaperBatch} from './workpapers.js';
@@ -44,7 +45,7 @@ export type FileGenerationQuote={count:number;points:number;price_version:string
 export const fileGenerationOpenApiPaths=()=>{
   const base='/api/v1/projects/{project_id}/file-generation';
   const route=(schema?:unknown)=>({security:[{sessionCookie:[]}],parameters:[{name:'project_id',in:'path',required:true,schema:{type:'string'}}],...(schema?{requestBody:{required:true,content:{'application/json':{schema}}}}:{}),responses:{200:{description:'Owner-scoped generation preparation'},404:{description:'Not found'}}});
-  return {[base]:{get:route()},[base+'/preparation']:{put:route(FilePreparationSaveSchema)},[base+'/builtin']:{post:route(FileBuiltinAdoptSchema)},[base+'/quote']:{post:route(FileGenerationSubmitSchema)},[base+'/batches']:{post:route(FileGenerationSubmitSchema)},
+  return {[base]:{get:route()},[base+'/progress']:{get:{...route(),responses:{200:{description:'Private opaque change token; no document content',content:{'application/json':{schema:GenerationProgressSchema}}},404:{description:'Not found'}}}},[base+'/preparation']:{put:route(FilePreparationSaveSchema)},[base+'/builtin']:{post:route(FileBuiltinAdoptSchema)},[base+'/quote']:{post:route(FileGenerationSubmitSchema)},[base+'/batches']:{post:route(FileGenerationSubmitSchema)},
     [base+'/stop-submission']:{post:route(FileGenerationSubmitSchema)},
     [base+'/templates/combine']:{post:route(FileTemplateCombineSchema)},
     [base+'/system-templates']:{get:route()},

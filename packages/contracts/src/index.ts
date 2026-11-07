@@ -694,3 +694,4 @@ export * from './review-update.js';
 
 export * from './project-assistant.js';
 export * from './automatic-pricing.js';
+export * from './generation-progress.js';

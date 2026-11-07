@@ -1,4 +1,6 @@
 import './upload-progress.css';
+import {GenerationProgressSchema,generationBatchActive,type GenerationProgress} from '@bondbuddy/contracts';
+import {TaskPoller} from './task-poller.js';
 import {uploadActivity,uploadProgressHtml,type UploadStatus} from './upload-progress';
 import {billingRecoverySchemas,billingRecoveryHeaders,type BillingRecoveryDto} from './billing-recovery-wire.js';
 import {serializeInt64} from '@bondbuddy/contracts';
@@ -26,7 +28,10 @@ type CatalogueUploadContext={draft?:{scope:'due_diligence'|'all';mapping?:Workpa
 
 const stateNames:Record<string,string>={queued:'等待生成',running:'正在生成',paused:'已暂停',partial:'部分完成',complete:'已完成',cancelled:'已结束排队'};
 export class WorkpaperPanel {
-  private controller=new AbortController();private downloads=new ArtifactDownloads();private timer?:ReturnType<typeof setTimeout>;
+  private controller=new AbortController();private downloads=new ArtifactDownloads();
+  private progressRevision='';
+  private poller=new TaskPoller({active:()=>this.data.batches.some(generationBatchActive),live:()=>this.live(),blocked:()=>this.busy||this.downloading,
+    refresh:(signal,force)=>this.refreshProgress(signal,force),failed:stopped=>this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=stopped?'自动刷新已暂停，请刷新页面重试；后台任务继续。':'进度暂时无法读取，后台任务继续；稍后重试。')});
   private data:WorkpaperWorkspace={catalogues:[],batches:[],assessments:[]};private selected=new Set<string>();private catalogue?:WorkpaperCatalogue;
   private progressBatch?:string;private expandedBatches=new Map<string,boolean>();
   private downloadFeedback?:{node:HTMLElement;target:Record<string,string|undefined>};
@@ -43,15 +48,15 @@ export class WorkpaperPanel {
   private get key(){return `bb-workpapers-v1:${this.owner}:${this.project}`;}
   get hasUnconfirmed(){return this.busy||!!this.pending||!!this.importReview||this.storageError;}
   async beforeLeave(){return !this.busy&&!this.storageError;}
-  dispose(){this.controller.abort();clearTimeout(this.timer);this.downloads.dispose();}
+  dispose(){this.controller.abort();this.poller.dispose();this.downloads.dispose();}
   private live(){return !this.controller.signal.aborted&&this.current()&&this.host.isConnected;}
-  private request<T>(method:string,path='',body?:unknown,headers:Record<string,string>={}){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.project)}/workpapers${path}`,body,headers,this.controller.signal);}
-  private async readWorkspace(){
-    const data=await this.request<WorkpaperWorkspace>('GET');
+  private request<T>(method:string,path='',body?:unknown,headers:Record<string,string>={},signal:AbortSignal=this.controller.signal){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.project)}/workpapers${path}`,body,headers,signal);}
+  private async readWorkspace(signal?:AbortSignal){
+    const data=await this.request<WorkpaperWorkspace>('GET','',undefined,{},signal);
     // The workspace contains only recent batches. Resolve the requested batch on every
     // refresh so a historical link never falls back to a newer batch or disappears.
     if(this.progressBatch&&!data.batches.some(b=>b.batch_id===this.progressBatch)){
-      const batch=await this.request<WorkpaperBatch>('GET','/batches/'+encodeURIComponent(this.progressBatch));
+      const batch=await this.request<WorkpaperBatch>('GET','/batches/'+encodeURIComponent(this.progressBatch),undefined,{},signal);
       data.batches.unshift(batch);
     }
     return data;
@@ -179,7 +184,7 @@ export class WorkpaperPanel {
     const disabled=this.busy||!!this.pending;
     this.host.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement|HTMLTextAreaElement>('#wp-change-directory,#wp-catalogue,#wp-upload,#wp-all,#wp-none,[data-wp-item],#wp-requirements').forEach(control=>control.disabled=disabled);
   }
-  private async act(fn:()=>Promise<void>){if(this.busy)return;this.busy=true;this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();try{await fn();}catch(e){this.status=friendlyError(e,'submit');}finally{this.busy=false;if(this.live()){this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=this.status);this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();}}}
+  private async act(fn:()=>Promise<void>){if(this.busy)return;this.poller.pause();this.busy=true;this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();try{await fn();}catch(e){this.status=friendlyError(e,'submit');}finally{this.busy=false;this.progressRevision='';this.poll();if(this.live()){this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=this.status);this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();}}}
   private async download(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number,total?:number)=>void,preparation:(state:WorkpaperZipPreparation)=>void)=>Promise<{bytes:Blob;filename:string}>){
     if(this.busy||this.downloading)return;this.downloading=true;
     const feedback=this.downloadFeedback?.node??document.createElement('div');
@@ -316,11 +321,15 @@ export class WorkpaperPanel {
     const feedback=this.downloadFeedback;
     if(feedback){const button=[...node.querySelectorAll<HTMLButtonElement>('button')].find(b=>Object.entries(feedback.target).every(([key,value])=>b.dataset[key]===value));button?.closest('.wp-actions')?.append(feedback.node);}
   }
-  private poll(){clearTimeout(this.timer);if(!this.live())return;this.timer=setTimeout(()=>void(async()=>{
-    try{if(!this.busy&&!this.downloading){const data=await this.readWorkspace();if(this.live()&&!this.busy&&!this.downloading){
-      // Keep the submit control stable while batch availability is unchanged.
-      const confirmationState=()=>this.data.batches.some(b=>['queued','running','paused'].includes(b.state));
-      const previous=confirmationState();this.data=data;this.paintBatches();if(previous!==confirmationState())this.paintConfirm();
-    }}}catch{this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent='进度暂时无法读取，后台任务继续；稍后自动重试。');}finally{this.poll();}
-  })(),5000);}
+  private poll(){this.poller.start();}
+  private async refreshProgress(signal:AbortSignal,force:boolean){
+    const progress=await this.request<GenerationProgress>('GET','/progress'+(this.progressBatch?'?batch_id='+encodeURIComponent(this.progressBatch):''),undefined,{},signal);
+    if(!Value.Check(GenerationProgressSchema,progress))throw new ApiError(503,'DATA_UNAVAILABLE');
+    if(!force&&progress.revision===this.progressRevision)return;
+    const data=await this.readWorkspace(signal);signal.throwIfAborted();
+    if(!this.live()||this.busy||this.downloading)return;
+    const confirmationState=()=>this.data.batches.some(b=>['queued','running','paused'].includes(b.state));
+    const previous=confirmationState();this.data=data;this.progressRevision=progress.revision;
+    this.paintBatches();if(previous!==confirmationState())this.paintConfirm();
+  }
 }
