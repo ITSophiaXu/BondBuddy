@@ -39,10 +39,11 @@ if(a[0]==='compose'){
  const pi=a.indexOf('ps');if(pi>=0){const s=a.at(-1);if(s==='worker-parse'&&db.role==='execution'&&db.parseRole==='main')process.exit(0);if(db.containers[s])out(s);process.exit(0);}
  const up=a.indexOf('up'),stop=a.indexOf('stop');
  if(a.includes('logs')&&(a.includes('--follow')||a.includes('-f'))||up>=0&&e.TEST_SLOW_UP){fs.writeFileSync(e.TEST_READY,'ready');setInterval(()=>{},1000);return;}
- if(a.includes('run')){if(e.TEST_DEPLOY_ENTRY==='1'&&!fs.existsSync(e.TEST_STATE+'/pending-release.json'))process.exit(99);process.stdin.resume();process.stdin.on('end',()=>process.exit(Number(e.TEST_GATE||0)));return;}
+ if(a.includes('run')){if(e.TEST_DEPLOY_ENTRY==='1'&&!fs.existsSync(e.TEST_STATE+'/pending-release.json'))process.exit(99);process.stdin.resume();process.stdin.on('end',()=>process.exit(a.at(-1)==='idle'?Number(e.TEST_GATE||0):a.at(-1)==='connect'?Number(e.TEST_CONNECT_FAIL||0):0));return;}
  if(stop>=0){delete db.containers[a.at(-1)];fs.writeFileSync(e.TEST_RUNTIME,JSON.stringify(db));process.exit(0);}
  if(up>=0){
   if(e.TEST_DEPLOY_ENTRY==='1'&&!fs.existsSync(e.TEST_STATE+'/pending-release.json'))process.exit(99);
+  if(e.TEST_FAIL_INFRA && e.BB_IMAGE_TAG===e.TEST_B.slice(0,12))process.exit(1);
   const c=JSON.parse(render([...a.slice(0,up),'--profile','*','config','--format','json']));
   const hashes=Object.fromEntries(render([...a.slice(0,up),'--profile','*','config','--hash','*']).trim().split('\\n').map(x=>x.split(/\\s+/)));
   for(const service of a.slice(up+1).filter(x=>c.services[x])){
@@ -115,7 +116,37 @@ test('legitimate first deployments atomically create current only after success 
   assert.equal(readFileSync(join(f.state,'current'),'utf8').trim(),f.A.slice(0,12));assert.equal(existsSync(join(f.state,'pending-release.json')),false);
  }
 });
-async function ready(file,child){for(let i=0;i<100;i++){if(existsSync(file))return;if(child.exitCode!==null)throw new Error('long command exited');await new Promise(r=>setTimeout(r,20));}throw new Error('long command not ready');}
+for(const role of ['main','execution'])for(const stage of ['early','partial'])test(`${role}: first-release ${stage} failure resumes only the sealed target and gates consumers`,()=>{
+ const f=fixture(role,{current:false}),primary=role==='main'?'api':'worker';f.save({...f.initial,containers:{}});
+ let r=f.cmd('deploy-role.sh',[role,f.B],stage==='early'?{TEST_FAIL_INFRA:'1'}:{TEST_FAIL_SWITCH:'1'});assert.equal(r.status,1,r.stderr);
+ assert.equal(existsSync(join(f.state,'current')),false);const pendingBytes=readFileSync(join(f.state,'pending-release.json')),p=JSON.parse(pendingBytes);
+ assert.equal(p.from,'');assert.equal(p.releases.length,1);assert.equal(p.releases[0].snapshot.commit,f.B);
+ const failed=f.read();assert.equal(stage==='partial'?failed.containers[primary].source:Object.keys(failed.containers).length,stage==='partial'?f.B:0);
+ writeFileSync(f.calls,'');r=f.cmd('deploy-role.sh',[role,f.B]);assert.equal(r.status,3,r.stderr);assert.doesNotMatch(readFileSync(f.calls,'utf8'),/"up"|"run"|"stop"/);
+ r=f.cmd('role-compose.sh',[role,'up','-d',primary],{BB_PENDING_COMMAND:'1',BB_ROLE_READONLY:'1',BB_IMAGE_TAG:f.B.slice(0,12)});assert.equal(r.status,3,r.stderr);assert.match(r.stderr,/pending role release/);assert.doesNotMatch(readFileSync(f.calls,'utf8'),/"up"|"run"|"stop"/);
+ r=f.cmd('deploy-role.sh',[role,f.A,'--rollback']);assert.equal(r.status,3,r.stderr);assert.deepEqual(readFileSync(join(f.state,'pending-release.json')),pendingBytes);
+ if(stage==='early'&&role==='main'){
+  writeFileSync(f.calls,'');r=f.cmd('deploy-role.sh',[role,f.B,'--rollback'],{TEST_CONNECT_FAIL:'77'});assert.equal(r.status,77,r.stderr);
+  assert.deepEqual(readFileSync(join(f.state,'pending-release.json')),pendingBytes);assert.equal(f.read().containers[primary],undefined);assert.doesNotMatch(readFileSync(f.calls,'utf8'),/"migrate"|"stop"/);
+ }
+ if(stage==='partial'){
+  const bad=structuredClone(failed);bad.containers[primary].image='sha256:'+hash('unknown first-release C');bad.containers[primary].source='c'.repeat(40);f.save(bad);writeFileSync(f.calls,'');
+  r=f.cmd('deploy-role.sh',[role,f.B,'--rollback']);assert.equal(r.status,3,r.stderr);assert.doesNotMatch(readFileSync(f.calls,'utf8'),/"up"|"run"|"stop"/);f.save(failed);
+ }
+ writeFileSync(f.calls,'');r=f.cmd('deploy-role.sh',[role,f.B,'--rollback'],{TEST_GATE:'76'});assert.equal(r.status,76,r.stderr);
+ assert.equal(existsSync(join(f.state,'current')),false);assert.deepEqual(readFileSync(join(f.state,'pending-release.json')),pendingBytes);
+ const blocked=readFileSync(f.calls,'utf8').split('\n').filter(Boolean).map(JSON.parse),idle=blocked.findIndex(a=>a.at(-1)==='idle');assert.ok(idle>=0);
+ if(stage==='partial'){assert.ok(!blocked.some(a=>a.includes('up')||a.includes('stop')||a.includes('migrate')));assert.deepEqual(f.read(),failed);}
+ else {assert.ok(blocked.slice(0,idle).some(a=>a.includes('up')&&a.includes(role==='main'?'postgres':'pg-tunnel')));assert.ok(!blocked.some(a=>a.includes('stop')));assert.equal(f.read().containers[primary],undefined);}
+ writeFileSync(f.calls,'');r=f.cmd('deploy-role.sh',[role,f.B,'--rollback']);assert.equal(r.status,0,r.stderr);
+ const calls=readFileSync(f.calls,'utf8').split('\n').filter(Boolean).map(JSON.parse),gate=calls.findIndex(a=>a.at(-1)==='idle'),consumer=calls.findIndex(a=>a.includes('stop')||a.includes('up')&&a.includes(primary));
+ assert.ok(gate>=0&&consumer>gate);if(stage==='partial')assert.ok(gate<calls.findIndex(a=>a.includes('up')));
+ if(role==='main')assert.ok(calls.some(a=>a.includes('up')&&a.includes('postgres'))&&calls.some(a=>a.includes('migrate')));else assert.ok(!calls.some(a=>a.includes('postgres')||a.includes('migrate')));
+ assert.equal(readFileSync(join(f.state,'current'),'utf8').trim(),f.B.slice(0,12));assert.equal(existsSync(join(f.state,'pending-release.json')),false);
+ assert.match(readFileSync(join(f.state,`images-${f.B.slice(0,12)}.txt`),'utf8'),/resume_first=1/);
+ assert.equal(f.read().containers[primary].source,f.B);assert.equal(f.read().pgName,'bb-main_pgdata');assert.equal(f.read().pgId,f.initial.pgId);
+});
+async function ready(file,child){for(let i=0;i<750;i++){if(existsSync(file))return;if(child.exitCode!==null)throw new Error(`long command exited: code=${child.exitCode}, signal=${child.signalCode}`);await new Promise(r=>setTimeout(r,20));}throw new Error('long command not ready');}
 async function stop(child){if(child.exitCode!==null)return;const exited=new Promise(r=>child.once('exit',r));process.kill(-child.pid,'SIGTERM');await exited;}
 test('logs --follow and local logs -f release the read lock; global flags reject and real write lock remains exclusive',async()=>{
  const f=fixture('main');
@@ -126,4 +157,11 @@ test('logs --follow and local logs -f release the read lock; global flags reject
  for(const args of [['-f','extra.yaml','logs'],['logs','--file=extra.yaml'],['logs','--env-file=extra.env']])assert.equal(f.cmd('role-compose.sh',['main',...args]).status,2);
  const marker=join(f.dir,'write-ready'),child=spawn('bash',[join(f.dir,'deploy/m1/scripts/role-compose.sh'),'main','up','-d','postgres'],{cwd:f.dir,env:{...f.environment,TEST_READY:marker,TEST_SLOW_UP:'1'},detached:true,stdio:'ignore'});
  try{await ready(marker,child);const r=f.cmd('deploy-role.sh',['main',f.A]);assert.equal(r.status,75,r.stderr);}finally{await stop(child);}
+});
+test('external internal markers cannot unlock either write entry on either role',async()=>{
+ for(const role of ['main','execution'])for(const script of ['role-compose.sh','deploy-role.sh']){
+  const f=fixture(role),marker=join(f.dir,'external-write-ready'),args=script==='deploy-role.sh'?[role,f.A]:[role,'up','-d',role==='main'?'postgres':'worker'];
+  const child=spawn('bash',[join(f.dir,'deploy/m1/scripts',script),...args],{cwd:f.dir,env:{...f.environment,BB_ROLE_READONLY:'1',BB_PENDING_COMMAND:'1',TEST_READY:marker,TEST_SLOW_UP:'1',TEST_DEPLOY_ENTRY:script==='deploy-role.sh'?'1':'0'},detached:true,stdio:'ignore'});
+  try{await ready(marker,child);assert.notEqual(spawnSync('flock',['-n',join(f.state,'config.lock'),'true']).status,0);const r=f.cmd('deploy-role.sh',[role,f.A],{BB_ROLE_READONLY:'1',BB_PENDING_COMMAND:'1'});assert.equal(r.status,75,r.stderr);}finally{await stop(child);}
+ }
 });

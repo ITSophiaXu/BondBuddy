@@ -12,14 +12,18 @@ const pending = () => {
  const p=readJSON(path);
  if(p.version!==1 || p.status!=='pending' || p.role!==role || !Array.isArray(p.releases) || !p.releases.length || p.releases.length>2) fail();
  for(const r of p.releases) if(!/^[a-f0-9]{40}$/.test(r.snapshot.commit)) fail();
+ if(typeof p.from!=='string' || p.from && !/^[a-f0-9]{12}$/.test(p.from) || !/^[a-f0-9]{12}$/.test(p.to)) fail();
+ if(p.from==='' && (p.releases.length!==1 || p.releases[0].snapshot.commit.slice(0,12)!==p.to)) fail();
  return p;
 };
 function inventory(records,initial=false) {
  const expected=records[0].snapshot.project;
  const ids=docker(['ps','-q','--filter',`label=com.docker.compose.project=${expected}`]).split(/\s+/).filter(Boolean);
+ let consumers=false;
  for(const id of ids) {
   const field=f=>docker(['inspect','--format',f,id]);
   const service=field('{{ index .Config.Labels "com.docker.compose.service" }}');
+  if(['api','ops','web','migrate','worker','worker-review','worker-parse'].includes(service)) consumers=true;
   if(field('{{ index .Config.Labels "com.docker.compose.project" }}')!==expected) fail();
   const actual=field('{{.Image}}');
   if(service==='postgres') {
@@ -40,6 +44,7 @@ function inventory(records,initial=false) {
    for(const r of matches) (r.observed_config_hashes[service] ||= []).push(configHash);
   } else if(!matches.some(r=>r.snapshot.services[service].config_hash===configHash || r.observed_config_hashes[service]?.includes(configHash))) fail();
  }
+ return consumers;
 }
 try {
  if(mode==='snapshot') {
@@ -77,8 +82,10 @@ try {
   } else {
    const p=pending();
    if(!p.releases.some(r=>r.snapshot.commit===commit) || current && !p.releases.some(r=>r.snapshot.commit.slice(0,12)===current)) fail();
+   if(!current && (p.from!=='' || p.releases.length!==1 || p.releases[0].snapshot.commit!==commit)) fail();
    if(snapshots.length!==p.releases.length || p.releases.some(r=>!snapshots.some(s=>JSON.stringify(s)===JSON.stringify(r.snapshot)))) fail();
-   inventory(p.releases);
+   const consumers=inventory(p.releases);
+   console.log([current || commit.slice(0,12),p.from===''?'1':'0',consumers?'1':'0'].join('\n'));
   }
  } else if(mode==='clear') {
   const p=pending(), current=existsSync(`${state}/current`)?readFileSync(`${state}/current`,'utf8').trim():'';

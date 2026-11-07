@@ -138,7 +138,11 @@ BB_ENV_FILE=<execution-private-env> bash deploy/m1/scripts/deploy-role.sh execut
 
 部分发布失败同样使用上面的普通 `--rollback`。首次 Docker 变更（包括 SQL 探测的单次容器）前，在既有状态目录原子保存非成功的 `pending-release.json`：完整 A/B source SHA、各服务不可变 image ID、计划 Compose hash、已核 A 运行配置 hash、环境/项目/覆盖及同一 PG 绑定。失败保留 pending 和原 current，不写成功；不把 B 的标签当作完成。pending 存在时拒绝新发布和低层生命周期改写，只允许普通 `--rollback` 指向已记录的 A/B 来源。恢复重新核定来源、标签/ID和原配置绑定，只接受各服务已核 A/B 混合或缺失，未知 C、漂移 ID、未知配置 hash 一律在 Docker 变更前拒绝，仍执行原在途 SQL 门禁。成功核验全部目标服务和 smoke 后才原子更新 current 并清 pending；不删/reset pending 或绑定来绕过保护。这不恢复 PG 数据，也不替代迁移向后兼容判断。
 
+首次发布失败、尚无 current 时，仅允许 `pending.from` 为空且封存唯一目标的安全续执行：使用 `deploy-role.sh main|execution <sealed-target-sha> --rollback`，恢复原绑定的 PG/隧道、主站迁移和 schema 所需步骤，不冒充已有 A 的应用回滚。若已运行任何业务执行服务，先用封存目标执行在途 SQL 门禁，再进行基础设施和后续步骤；若没有消费者，先启动同一绑定的基础设施、验证认证 SQL/schema（主站按原新增迁移流程补齐），再执行 idle 门禁，之后才允许消费者启动或停止。连接/schema 失败不能当 idle；有在途拒绝且保留 pending。成功记录 `resume_first=1`，写 current 后清 pending。已有 A 的普通应用回滚仍不启动/重建 PG、不迁移。
+
 只读 `logs --follow`、子命令后的 `logs -f` 在校验/必要首次采纳结束后释放配置锁；发布/重建仍保留同资源互斥。命令前 `-f`、任何 `--file/--env-file` 和项目/profile/scale 改写继续拒绝。PG 回环 published 端口必须与私有 `BB_PG_FORWARD_PORT` 一致，均为固定 1–65535，动态、0、范围或失配直接拒绝。首次采纳先检查现存实际 PG 卷，再原子提交含 PG 定义的绑定；失败不留下新绑定，纠正后正常重试。
+
+`BB_ROLE_READONLY` 与 `BB_PENDING_COMMAND` 是入口内部标记，不能由外部环境解除写锁或 pending 保护；两个入口均先清零只读标记，普通 Compose 入口固定 pending 标记为 0，仅部署入口内部设为 1 并执行封存恢复核验。
 
 回滚前后记录同一业务库和准确镜像。首次迁移若恢复流量前失败，可停止新两端、确认无新业务写入后回到旧冻结库与旧准确版本；恢复流量后不允许仅改连接字符串指回旧库。
 
@@ -156,3 +160,5 @@ Codex仅构建目标 `codex` 后，以断网容器运行 `deploy/m1/scripts/code
 `node deploy/m1/scripts/role-config.integration.mjs` 是 #911 的轻量合成验证：只用缓存 PG16/Node 镜像及小型专属 SSH 测试镜像，普通入口验证受限回环认证 SQL、专用桥接、跨网络受限 SSH、PG 重建后覆盖/同卷、非回环拒绝、inactive parser、实际测试镜像切换/回滚、在途和断库拒绝。测试不构建应用、不调用模型、不创建业务任务、不运行真实迁移或数据库恢复；合成最小表与测试容器/卷/网络/密钥用后清理。应用完整 `deploy-role.sh --rollback` 分支、来源/实际 ID 和版本分离由定向命令替身测试覆盖，不能据此声称线上应用回滚已验收。
 
 `node --test deploy/m1/scripts/role-lifecycle-review.test.mjs` 针对上述五项审查回归：状态化 synthetic Docker 失败注入实际改变 A/B 服务 ID 并执行普通发布/回滚脚本，覆盖两端部分 B 失败、current 留 A、pending 保留、C/漂移拒绝、缺失服务恢复和同 PG/配置；同时检查首次采纳失败后纠正、非法端口、真实 Git 默认状态忽略/源码 dirty 拒绝，以及持续日志与写锁互斥。Compose 配置/hash 使用真实 CLI；容器行为为明确标注的合成命令模型，不冒充线上发布/回滚。既有 11 项真实隔离 PG/SSH SQL 证据可复用；后续 #911 采纳仍实际执行普通 deploy/rollback 入口。
+
+首次恢复补充回归覆盖两端基础设施之前失败、已有部分消费者时失败、只接受唯一封存目标、SQL 在途拒绝/连接失败、普通入口续执行以及外部内部标记不能旁路 pending 或解除写锁；同时运行已改动的 `split-deploy.test.mjs` 25 项部署用例。
