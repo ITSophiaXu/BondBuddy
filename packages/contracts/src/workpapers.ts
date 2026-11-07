@@ -1,7 +1,8 @@
 import {WorkpaperCheckRequestSchema,WorkpaperPaidCheckRequestSchema} from './workpaper-library.js';
+import {GenerationProgressSchema} from './generation-progress.js';
 import {Type,type Static} from '@sinclair/typebox';
 import {M4MaterialPinSchema,M4_DOCUMENT_FIXED_PRICE,type M4ArtifactPin} from './m4-workspace.js';
-import type {ProjectFileSource,ProjectFileVersion} from './project-file-workspace.js';
+import type {ProjectFileSource,ProjectFileVersionSummary} from './project-file-workspace.js';
 const obj=<T extends Parameters<typeof Type.Object>[0]>(p:T)=>Type.Object(p,{additionalProperties:false});
 const id=Type.String({minLength:1,maxLength:128});
 import {WORKPAPER_LIMITS,type WorkpaperEntry} from './workpaper-entry.js';
@@ -39,7 +40,7 @@ export const WORKPAPER_PRICE=M4_DOCUMENT_FIXED_PRICE;
 export type WorkpaperCatalogue={catalogue_id:string;sha256:string;filename:string;entries:WorkpaperEntry[];warnings:string[];created_at:string};
 export type WorkpaperItem={entry:WorkpaperEntry;decision?:WorkpaperDecision;explanation?:{filename:string;sha256:string};run_id:string|null;state:string;stage:string|null;attempt:number;error:string|null;
   artifacts:{kind:'document'|'preparation_note';filename:string;pin:M4ArtifactPin}[];
-  file?:{original:ProjectFileVersion;current:ProjectFileVersion}};
+  file?:{original:ProjectFileVersionSummary;current:ProjectFileVersionSummary}};
 export type WorkpaperBatch={batch_id:string;topic_id:string;catalogue_id:string;state:'queued'|'running'|'paused'|'complete'|'partial'|'cancelled';revision:number;
   template_mode?:'automatic'|'selected'|'mixed';
   source:ProjectFileSource;items:WorkpaperItem[];total_points:number;charged_points:number;created_at:string;error:string|null;start_mode?:'direct'|'assessed';
@@ -52,7 +53,7 @@ export function workpaperOpenApiPaths(){
   const base='/api/v1/projects/{project_id}/workpapers';
   const route=(schema?:unknown,batch=false,item=false)=>({security:[{sessionCookie:[]}],parameters:(batch?['project_id','batch_id',...(item?['item_id']:[])]:['project_id']).map(name=>({name,in:'path',required:true,schema:{type:'string'}})),
     ...(schema?{requestBody:{required:true,content:{'application/json':{schema}}}}:{}),responses:{200:{description:'Owner-scoped workpaper catalogue or batch'},404:{description:'Not found'}}});
-  return {[base]:{get:route()},[base+'/library']:{get:route()},[base+'/checks']:{get:route()},
+  return {[base]:{get:route()},[base+'/progress']:{get:{...route(),parameters:[...route().parameters,{name:'batch_id',in:'query',required:false,schema:{type:'string',minLength:1,maxLength:128}}],responses:{200:{description:'Private opaque change token; no document content',content:{'application/json':{schema:GenerationProgressSchema}}},404:{description:'Not found'}}}},[base+'/library']:{get:route()},[base+'/checks']:{get:route()},
     [base+'/check-batches']:{get:route(),post:route(WorkpaperPaidCheckRequestSchema)},[base+'/check-batches/quote']:{post:route(WorkpaperPaidCheckRequestSchema)},[base+'/check-batches/{batch_id}']:{get:route(undefined,true)},
     [base+'/batches/{batch_id}/checks']:{post:route(WorkpaperCheckRequestSchema,true)},[base+'/batches/{batch_id}/items/{item_id}/preview']:{get:route(undefined,true,true)},[base+'/catalogue-preview']:{post:route(WorkpaperPreviewSchema)},[base+'/catalogues']:{post:route(WorkpaperImportSchema)},[base+'/assessments']:{post:route(WorkpaperAssessSchema)},[base+'/assessments/{run_id}']:{get:{...route(),parameters:[...route().parameters,{name:'run_id',in:'path',required:true,schema:{type:'string'}}]}},[base+'/batches']:{post:route(WorkpaperStartSchema)},
     [base+'/batches/{batch_id}']:{get:route(undefined,true)},[base+'/catalogues/{catalogue_id}']:{get:{...route(),parameters:[...route().parameters,{name:'catalogue_id',in:'path',required:true,schema:{type:'string'}}]}},

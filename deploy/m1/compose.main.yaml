@@ -1,0 +1,75 @@
+# Main site: the only business database and the only migration entry.
+name: ${COMPOSE_PROJECT_NAME:-bb-main}
+x-main-db-url: &main-db-url ${BB_MAIN_DATABASE_URL:?set a URL with encoded password and host postgres}
+services:
+  postgres:
+    extends: {file: compose.yaml, service: postgres}
+    # Reachable only by the restricted SSH forwarding account on this host.
+    ports: ['127.0.0.1:${BB_PG_FORWARD_PORT:-15432}:5432']
+  migrate:
+    extends: {file: compose.yaml, service: migrate}
+    environment: {DATABASE_URL: *main-db-url}
+  api:
+    extends: {file: compose.yaml, service: api}
+    environment:
+      DATABASE_URL: *main-db-url
+      NODE_OPTIONS: --max-old-space-size=320 --expose-gc
+      BB_FILE_TEMPLATE_BUNDLE: /opt/bondbuddy/private-file-templates
+    volumes:
+      - type: bind
+        source: ${BB_PAYMENT_SECRETS_DIR:?set the existing payment secrets directory}
+        target: /run/bondbuddy-payments
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${BB_FILE_TEMPLATE_HOST_DIR:?set the private immutable bundle directory}
+        target: /opt/bondbuddy/private-file-templates
+        read_only: true
+        bind: {create_host_path: false}
+  ops:
+    extends: {file: compose.yaml, service: ops}
+    environment: {DATABASE_URL: *main-db-url}
+  # Pure parser: no model environment, credentials or model sandbox mounts.
+  worker-parse:
+    extends: {file: compose.yaml, service: worker-parse}
+    profiles: ['${BB_ROLE_PARSE_PROFILE:-bb-parse-inactive}']
+    environment: !override
+      DATABASE_URL: *main-db-url
+      AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:?set in private env}
+      BB_LIBRARY_CONTAINER: ${BB_LIBRARY_CONTAINER:-bondbuddy-private}
+      BB_WORKER_JOB_KINDS: parse
+      BB_WORKER_GROUP: parse
+      BB_WORKER_CONCURRENCY: '1'
+      BB_WORKER_INTERACTIVE_SLOTS: '0'
+      BB_WORKER_PARSE_SLOTS: '0'
+      BB_WORKER_LEASE_SECONDS: '120'
+      BB_WORKER_DRAIN_MS: ${BB_WORKER_DRAIN_MS:-20000}
+      BB_PLATFORM_PROBE_ENABLED: '0'
+      BB_OCR_ENABLED: ${BB_OCR_ENABLED:-0}
+      BB_PARSE_CACHE_OCR_VERSION: ${BB_PARSE_CACHE_OCR_VERSION:-}
+      BB_PARSE_CACHE_BASIS_VERSION: ${BB_PARSE_CACHE_BASIS_VERSION:-}
+      BB_PARSE_STAGING_DIR: /var/lib/bondbuddy/parse-staging
+      NODE_OPTIONS: --max-old-space-size=320
+      HTTPS_PROXY: http://egress:3128
+      https_proxy: http://egress:3128
+      NO_PROXY: postgres,api,localhost,127.0.0.1
+      no_proxy: postgres,api,localhost,127.0.0.1
+    volumes: !override [materialstaging:/var/lib/bondbuddy/parse-staging]
+    security_opt: !override [no-new-privileges:true]
+    deploy:
+      replicas: ${BB_ROLE_PARSE_REPLICAS:-0}
+      resources: {limits: {cpus: '0.5', memory: 1G}}
+  egress:
+    extends: {file: compose.yaml, service: egress}
+  web:
+    extends: {file: compose.yaml, service: web}
+networks:
+  backend:
+    internal: true
+    ipam: {config: [{subnet: "${BB_BACKEND_SUBNET:-10.231.0.0/24}"}]}
+  edge: {}
+volumes:
+  pgdata:
+  logsink:
+  uploadspool:
+  materialstaging:

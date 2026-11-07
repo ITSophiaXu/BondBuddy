@@ -1,3 +1,5 @@
+> 2026-11-07：#906/#908 已完成双端迁移；腾讯云主站恒常运行网页/API/唯一PG/运维和纯解析，Azure 执行端仅编制/复核，经专用受限 SSH 转发复用 PG 队列。继续使用私有 Azure Blob、业务 Codex 1M窗口/900K压缩及既有诚信出口。迁移仅在主站执行；角色、资产与恢复边界见[双端部署说明](runbooks/m1-split-deployment.md)。#911 负责统一配置生命周期的采纳与验收。
+
 > 2026-11-05：按[专业文档工作台决定](product-decisions/2026-11-05-professional-document-workspace.md)，浏览器与原型共用 `product-prototype/public/document-workspace.css`，在现有展示样式后加载；`document-deliverable.ts` 仅组织真实成果文件名、已保存版本和原下载控件。保留 Vite/TypeScript、所有业务模块和授权下载链路，无公共契约、数据或 worker 变更。
 
 > 2026-11-05：更新项目的历史／参考募集书新上传仅支持 Word（.docx）。共用入口按项目返回的 `upload_docx_only` 显示限制；API 创建、传输、完成及角色复制执行相同规则，已完成上传和旧 PDF 保留。无新增迁移；见[格式支持决定](product-decisions/2026-11-05-historical-docx-only.md)。
@@ -886,3 +888,4 @@ Spec没有提供独立全文修订价；review_revision 不写入价目表、不
 ### 2026-10-29 统一文件生成与私有 Word 模板
 
 新增 `file-generation` 准备、模板采用/脱敏预览、报价与混合父批次接口。迁移 0122/0123 固定模板引用和提交回执，并将内部模板与普通项目证据/下载隔离。web 的默认生成入口使用目录/模板双卡和混合文种选择，保留旧任务入口；worker 从固定 Word 副本编制。私有 bundle 由 API 按需写入 Blob，不进入公开站点或 Git。API 增加 LibreOffice/Python 预览运行环境；具体依赖、验证和未完成的真实模型验收见[实施交接](FILE-TEMPLATE-IMPLEMENTATION.md)。代码尚未部署。
+> 2026-11-07：底稿/文件生成进度采用私有轻量变更标识；列表 SQL 不传出完整证据 links，前端仅在可见且有活动任务时轮询，终态停止。无迁移，完整证据仍供核查/维护使用。接口、兼容发布次序、流量回归和费用告警模板见 [费用修复说明](../deploy/cost-controls/README.md)。

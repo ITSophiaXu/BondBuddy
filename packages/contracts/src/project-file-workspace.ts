@@ -70,6 +70,9 @@ export const ProjectFileVersionSchema=obj({version_id:id,file_id:id,document_typ
  asset:ProjectFileAssetSchema,revision_asset:nullable(ProjectFileAssetSchema),source_version_id:nullable(id),template_id:nullable(id),template_version:nullable(Type.Integer({minimum:1})),
  source_name:nullable(short),source_sequence:nullable(Type.Integer({minimum:1})),created_at:Type.String(),run_id:nullable(id),links:Type.Array(ProjectFileLinkSchema),
  latest:Type.Boolean(),version_count:Type.Integer({minimum:1}),consistency:obj({status,count:Type.Integer({minimum:0}),check_run_id:nullable(id)})});
+/** Lists expose download/version metadata. Evidence is retained by the detail/check readers. */
+export const ProjectFileVersionSummarySchema=Type.Omit(ProjectFileVersionSchema,['links']);
+export type ProjectFileVersionSummary=Static<typeof ProjectFileVersionSummarySchema>;
 export const ProjectFileBatchSchema=obj({batch_id:id,state:Type.Union((['queued','running','paused','complete','cancelled'] as const).map(s=>Type.Literal(s))),
  items:Type.Array(obj({document_type:ProjectDocumentTypeSchema,run_id:nullable(id),state:Type.String(),error:nullable(text)}))});
 export const ProjectFileCheckSchema=obj({...CommerceMetadataFields,run_id:id,state:Type.String(),stage:Type.String(),created_at:Type.String(),source:ProjectFileSourceSchema,stale:Type.Boolean(),

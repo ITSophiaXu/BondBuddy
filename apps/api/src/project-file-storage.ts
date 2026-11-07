@@ -1,5 +1,5 @@
 import type {Pool,PoolClient} from 'pg';
-import { PROJECT_DOCUMENT_CATALOG, type ProjectDocumentType, type ProjectFileAsset, type ProjectFileSource, type ProjectFileVersion, type ProjectFileLink } from '@bondbuddy/contracts';
+import { PROJECT_DOCUMENT_CATALOG, type ProjectDocumentType, type ProjectFileAsset, type ProjectFileSource, type ProjectFileVersion, type ProjectFileVersionSummary, type ProjectFileLink } from '@bondbuddy/contracts';
 import { project,uid,date,missing,conflict,Problem } from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 type Db=Pool|PoolClient;
@@ -54,17 +54,25 @@ export async function appendProjectFile(c:PoolClient,owner:string,family:any,inp
   return v;
 }
 
-export async function projectFileVersions(db:Db,owner:string,id:string,includeWorkpapers=false):Promise<ProjectFileVersion[]>{
+export function projectFileVersions(db:Db,owner:string,id:string,includeWorkpapers?:boolean):Promise<ProjectFileVersion[]>;
+export function projectFileVersions(db:Db,owner:string,id:string,includeWorkpapers:boolean,includeLinks:false):Promise<ProjectFileVersionSummary[]>;
+export async function projectFileVersions(db:Db,owner:string,id:string,includeWorkpapers=false,includeLinks=true):Promise<ProjectFileVersionSummary[]>{
   await project(db,owner,id);const source=await projectFileSource(db,owner,id);
-  const checks=(await db.query(`SELECT o.*,r.state FROM bb_project_file_operations o JOIN bb_runs r ON r.owner_user_id=o.owner_user_id AND r.id=o.run_id
+  const checkColumns=includeLinks?'o.*':`o.run_id,
+    jsonb_set(o.manifest,'{files}',coalesce((SELECT jsonb_agg(f-'links') FROM jsonb_array_elements(o.manifest->'files') f),'[]'::jsonb)) AS manifest,
+    CASE WHEN o.result IS NULL THEN NULL ELSE jsonb_set(o.result,'{files}',coalesce((SELECT jsonb_agg(f-'links') FROM jsonb_array_elements(o.result->'files') f),'[]'::jsonb)) END AS result`;
+  const patchColumns=includeLinks?'patch.manifest':`jsonb_build_object('findings',coalesce((SELECT jsonb_agg(jsonb_build_object('id',f->'id')) FROM jsonb_array_elements(patch.manifest->'findings') f),'[]'::jsonb))`;
+  const checks=(await db.query(`SELECT ${checkColumns},r.state FROM bb_project_file_operations o JOIN bb_runs r ON r.owner_user_id=o.owner_user_id AND r.id=o.run_id
     WHERE o.owner_user_id=$1 AND o.project_id=$2 AND o.operation='check' ORDER BY o.created_at DESC`,[owner,id])).rows;
-  const updates=(await db.query(`SELECT a.*,r.state,v.id AS new_version_id,patch.manifest AS patch_manifest FROM bb_project_file_acceptances a
+  const updates=(await db.query(`SELECT a.*,r.state,v.id AS new_version_id,${patchColumns} AS patch_manifest FROM bb_project_file_acceptances a
     JOIN bb_project_file_operations o ON o.owner_user_id=a.owner_user_id AND o.run_id=a.check_run_id
     JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id
     JOIN bb_project_file_operations patch ON patch.owner_user_id=a.owner_user_id AND patch.run_id=a.run_id
     LEFT JOIN bb_project_file_versions v ON v.owner_user_id=a.owner_user_id AND v.run_id=a.run_id
     WHERE a.owner_user_id=$1 AND o.project_id=$2`,[owner,id])).rows;
-  const rows=(await db.query(`SELECT v.*,f.document_type,f.latest_version_id,s.filename AS source_name,s.sequence AS source_sequence,
+  // Never transfer the evidence JSON across the DB connection for list reads.
+  const columns='v.id,v.file_id,v.sequence,v.filename,v.asset,v.revision_asset,v.source_version_id,v.template_id,v.template_version,v.run_id,v.created_at';
+  const rows=(await db.query(`SELECT ${columns}${includeLinks?',v.links':''},f.document_type,f.latest_version_id,s.filename AS source_name,s.sequence AS source_sequence,
     count(*) OVER(PARTITION BY f.id)::int AS version_count FROM bb_project_files f
     JOIN bb_project_file_versions v ON v.owner_user_id=f.owner_user_id AND v.file_id=f.id
     LEFT JOIN bb_prospectus_versions s ON s.owner_user_id=v.owner_user_id AND s.id=v.source_version_id
@@ -88,14 +96,16 @@ export async function projectFileVersions(db:Db,owner:string,id:string,includeWo
     }
     return {version_id:row.id,file_id:row.file_id,document_type:row.document_type,filename:row.filename,sequence:row.sequence,asset:row.asset,revision_asset:row.revision_asset,
       source_version_id:row.source_version_id,template_id:row.template_id,template_version:row.template_version,source_name:row.source_name,source_sequence:row.source_sequence,
-      created_at:date(row.created_at),run_id:row.run_id,links:row.links,latest:row.latest_version_id===row.id,version_count:row.version_count,
+      created_at:date(row.created_at),run_id:row.run_id,...(includeLinks?{links:row.links}:{}),latest:row.latest_version_id===row.id,version_count:row.version_count,
       consistency:{status,count,check_run_id:check?.run_id??null}};
   });
 }
 
 /** Current maintenance descendants never replace another batch's original pin. */
-export async function workpaperFileVersions(db:Db,owner:string,id:string){
-  const versions=await projectFileVersions(db,owner,id,true),byId=new Map(versions.map(v=>[v.version_id,v]));
+export function workpaperFileVersions(db:Db,owner:string,id:string):Promise<Map<string,{original:ProjectFileVersion;current:ProjectFileVersion}>>;
+export function workpaperFileVersions(db:Db,owner:string,id:string,includeLinks:false):Promise<Map<string,{original:ProjectFileVersionSummary;current:ProjectFileVersionSummary}>>;
+export async function workpaperFileVersions(db:Db,owner:string,id:string,includeLinks=true){
+  const versions=await (includeLinks?projectFileVersions(db,owner,id,true):projectFileVersions(db,owner,id,true,false)),byId=new Map(versions.map(v=>[v.version_id,v]));
   const rows=(await db.query(`WITH RECURSIVE descendants AS (
     SELECT b.batch_id,b.item_id,b.original_version_id,b.original_version_id AS version_id,b.file_id
     FROM bb_workpaper_file_bindings b JOIN bb_project_files f ON f.owner_user_id=b.owner_user_id AND f.id=b.file_id

@@ -1,10 +1,12 @@
 import './upload-progress.css';
+import {GenerationProgressSchema,generationBatchActive,type GenerationProgress} from '@bondbuddy/contracts';
+import {TaskPoller} from './task-poller.js';
 import {uploadActivity,uploadTransfer,uploadProgressHtml,type FileUploadProgress,type UploadStatus} from './upload-progress';
 import {BILLING_WIRE_HEADER,BILLING_WIRE_VERSION,LEGACY_BILLING_WIRE_VERSION,formatPoints,int64,serializeInt64,FileGenerationSubmitSchema as LegacyFileGenerationSubmitSchema,type BillingWireVersion,type FileGenerationSubmit as LegacyFileGenerationSubmit} from '@bondbuddy/contracts';
 import {PROJECT_DOCUMENT_CATALOG,M4_DOCUMENT_FIXED_PRICE,FileGenerationPreparationSchema,FileGenerationSubmitSchema,emptyFileGenerationPreparation,defaultWorkpaperIds,
  type SystemWorkpaperTemplates,type FileGenerationWorkspace,type FileGenerationPreparation,type FileGenerationSubmit,type FileGenerationQuote,type FileTemplateSet,type FileTemplateRecord,type FileTemplatePin,type FileTemplatePreview,type FileTemplateMatch,type FileGenerationBatch,type WorkpaperCatalogue,type WorkpaperCataloguePreview,type WorkpaperColumnMapping,type ProjectFileWorkspace,type M4DocumentType,type M4MaterialPin} from './billing-types';
 import {Value} from '@sinclair/typebox/value';
-import {ApiClient,friendlyError} from './api';
+import {ApiClient,ApiError,friendlyError} from './api';
 import {scopeLinesHtml,scopeLifecycleHtml} from './commerce';
 import {UserFacingError} from './user-facing-error';
 import {esc,date} from './ui';
@@ -21,7 +23,11 @@ export class FileGenerationPanel {
  private reportUpload:UploadStatus=(s,p)=>{if(!this.live())return;this.status=s;this.uploadProgress=p??uploadActivity(s);this.paint();};
  private controller=new AbortController();private data?:FileGenerationWorkspace;private prep=emptyFileGenerationPreparation();private cat?:WorkpaperCatalogue;
  private activeStep=2;private busy=false;private status='';private dirty=false;private storageError=false;private custom=false;private showMatches=false;private matches:FileTemplateMatch[]=[];
- private pending?:FileGenerationSubmit|LegacyFileGenerationSubmit;private pendingWire:BillingWireVersion=BILLING_WIRE_VERSION;private receipts:UploadReceipt[]=[];private dialog?:HTMLDialogElement;private timer?:ReturnType<typeof setTimeout>;
+ private pending?:FileGenerationSubmit|LegacyFileGenerationSubmit;private pendingWire:BillingWireVersion=BILLING_WIRE_VERSION;private receipts:UploadReceipt[]=[];private dialog?:HTMLDialogElement;
+ private progressRevision='';
+ private poller=new TaskPoller({interval:15_000,active:()=>this.data?.batches.some(b=>!!b.workpapers&&generationBatchActive(b.workpapers)||!!b.documents&&generationBatchActive(b.documents))??false,
+  live:()=>this.live(),blocked:()=>this.busy||!!this.modeController,refresh:(signal,force)=>this.refreshProgress(signal,force),
+  failed:stopped=>{if(stopped){this.status='自动刷新已暂停，请刷新页面重试；后台任务继续。';if(!this.dirty&&!this.dialog?.open)this.paint();}}});
  private catalogueUpload:UploadFileMaterialState={};private cataloguePin?:M4MaterialPin;private review?:WorkpaperImportReview;private scope:'due_diligence'|'all'='due_diligence';
  private filter='';private onlyUnmapped=false;private matchPage=0;private showTemplateChoices=false;private showDocumentChoices=false;private focused?:string;private source:ProjectFileWorkspace['source'];
  private modeController?:AbortController;private modeStatus='';private modeDrafts:Partial<Record<'builtin'|'custom'|'automatic',FileGenerationPreparation>>={};
@@ -29,7 +35,7 @@ export class FileGenerationPanel {
  private get key(){return `bb-file-generation-v2:${this.owner}:${this.project}`;}
  get hasUnconfirmed(){return this.busy||this.dirty||!!this.pending||this.storageError||!!this.modeController;}
  async beforeLeave(){if(this.busy||this.storageError)return false;if(this.dirty){try{await this.save();}catch(e){this.status=friendlyError(e,'save');this.paint();return false;}}return true;}
- dispose(){this.controller.abort();this.modeController?.abort();clearTimeout(this.timer);this.dialog?.remove();}
+ dispose(){this.controller.abort();this.modeController?.abort();this.poller.dispose();this.dialog?.remove();}
  private live(){return !this.controller.signal.aborted&&this.current()&&this.host.isConnected;}
  private request<T>(method:string,path='',body?:unknown,headers:Record<string,string>={},signal?:AbortSignal){if(body===this.pending&&this.pending)headers={...headers,[BILLING_WIRE_HEADER]:this.pendingWire};const bounded=method==='GET'||path==='/preparation'||path.startsWith('/template-preview');return this.api.request<T>(method,`/projects/${encodeURIComponent(this.project)}/file-generation${path}`,body,headers,signal??(bounded?AbortSignal.any([this.controller.signal,AbortSignal.timeout(30_000)]):this.controller.signal));}
  private wp<T>(method:string,path:string,body?:unknown){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.project)}/workpapers${path}`,body,{},this.controller.signal);}
@@ -71,7 +77,7 @@ export class FileGenerationPanel {
   this.dirty=true;this.persist();const result=await this.request<{revision:number;preparation:FileGenerationPreparation}>('PUT','/preparation',{expected_revision:this.data!.revision,preparation:this.prep});
   this.data!.revision=result.revision;this.data!.preparation=structuredClone(result.preparation);this.dirty=false;this.persist();
  }
- private async act(fn:()=>Promise<void>){if(this.busy)return;this.busy=true;this.paint();try{await fn();}catch(e){this.status=friendlyError(e,'save');}finally{this.busy=false;this.uploadProgress=undefined;if(this.live())this.paint();}}
+ private async act(fn:()=>Promise<void>){if(this.busy)return;this.poller.pause();this.busy=true;this.paint();try{await fn();}catch(e){this.status=friendlyError(e,'save');}finally{this.busy=false;this.progressRevision='';this.poll();this.uploadProgress=undefined;if(this.live())this.paint();}}
  private async change(fn:()=>void){await this.act(async()=>{fn();this.dirty=true;this.persist();await this.save();});}
  private set(){return this.data?.sets.find(s=>s.set_id===this.prep.template_set_id);}
  private record(p:FileTemplatePin|undefined){return p?this.data?.sets.find(s=>s.set_id===p.set_id)?.records.find(r=>r.record_id===p.record_id):undefined;}
@@ -321,6 +327,13 @@ export class FileGenerationPanel {
  }
  private async submit(){if(!this.pending)return;const batch=await this.request<FileGenerationBatch>('POST','/batches',this.pending);this.pending=undefined;this.persist();this.data!.batches=[batch,...this.data!.batches.filter(b=>b.batch_id!==batch.batch_id)];this.status='本批文件已提交。关闭页面后任务仍会继续，成果保存在下方生成记录中。';this.activeStep=4;this.stepChanged(4);}
  private batchCard(b:FileGenerationBatch){const wp=b.workpapers,docs=b.documents;return `<article class="fg-batch"><div><strong>${date(b.created_at)} · ${formatPoints(b.points)} 积分</strong><small>${wp?'底稿 '+wp.items.filter(i=>i.state==='succeeded').length+'/'+wp.items.length+' · '+({queued:'等待生成',running:'正在生成',paused:'已暂停',complete:'已完成',partial:'部分完成',cancelled:'已结束排队'}[wp.state]):''}${wp?.template_mode?'<small>本批模板：'+({automatic:'光大模板',selected:'所选 Word 模板',mixed:'混合模板'}[wp.template_mode])+'</small>':''}${docs?'　其他文件 '+docs.items.filter(i=>i.state==='succeeded').length+'/'+docs.items.length:''}</small></div><div class="fg-actions">${wp?`<a class="btn secondary" href="#generate?project=${encodeURIComponent(this.project)}&step=workpapers&view=results&batch=${encodeURIComponent(wp.batch_id)}">底稿进度与下载</a>`:''}${docs?`<a class="btn secondary" href="#generate?project=${encodeURIComponent(this.project)}&step=results">其他文件进度与下载</a>`:''}</div></article>`;}
- private async refreshBatches(){const data=await this.request<FileGenerationWorkspace>('GET');this.data!.batches=data.batches;this.data!.pricing=data.pricing;this.status='生成状态已刷新。';}
- private poll(){clearTimeout(this.timer);this.timer=setTimeout(()=>{if(!this.live())return;if(!this.busy&&!this.modeController)void this.refreshBatches().then(()=>{if(this.live()&&!this.dirty&&!this.dialog?.open&&!this.host.contains(document.activeElement))this.paint();}).catch(()=>{}).finally(()=>this.poll());else this.poll();},15000);}
+ private async refreshBatches(signal?:AbortSignal){const data=await this.request<FileGenerationWorkspace>('GET','',undefined,{},signal);signal?.throwIfAborted();if(!this.live())return;this.data!.batches=data.batches;this.data!.pricing=data.pricing;this.status='生成状态已刷新。';}
+ private poll(){this.poller.start();}
+ private async refreshProgress(signal:AbortSignal,force:boolean){
+  const progress=await this.request<GenerationProgress>('GET','/progress',undefined,{},signal);
+  if(!Value.Check(GenerationProgressSchema,progress))throw new ApiError(503,'DATA_UNAVAILABLE');
+  if(!force&&progress.revision===this.progressRevision)return;
+  await this.refreshBatches(signal);signal.throwIfAborted();this.progressRevision=progress.revision;
+  if(this.live()&&!this.dirty&&!this.dialog?.open&&!this.host.contains(document.activeElement))this.paint();
+ }
 }

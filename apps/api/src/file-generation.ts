@@ -1,4 +1,5 @@
 import type {Pool,PoolClient} from 'pg';
+import {registerGenerationProgress} from './generation-progress.js';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import {type Static} from '@sinclair/typebox';
 import {FilePreparationSaveSchema,FileGenerationSubmitSchema,FileBuiltinAdoptSchema,FileTemplateImportQuerySchema,FileTemplateCombineSchema,FileTemplateMatchQuerySchema,FileTemplatePinSchema,emptyFileGenerationPreparation,M4_DOCUMENT_FIXED_PRICE,PROJECT_DOCUMENT_CATALOG,
@@ -11,7 +12,7 @@ import {loadAutomaticTaskTariff} from './automatic-tariff-repository.js';
 import {requireFileUpdateCredits} from './project-file-billing.js';
 import {quoteM4} from './m4-billing.js';
 import {inputManifestHash} from './production-rule-pin.js';
-import {projectFileSource} from './project-file-storage.js';
+import {projectFileSource,workpaperFileVersions} from './project-file-storage.js';
 import {readM4Workspace,readM4MaterialPin,saveM4Draft,projectFileDocumentManifest} from './m4-workspace.js';
 import {importProspectusMaterial} from './prospectus-import.js';
 import {createWorkpaperBatch,readWorkpaperBatch} from './workpapers.js';
@@ -82,16 +83,18 @@ async function quote(db:PoolClient,blobs:PrivateBlobs,user:string,id:string,b:Fi
  }
  return {quote:{count,points,price_version:price.price_version,omitted,...(commercial?{auto_charge:price.mode==='automatic',quote_status:ready?'ready':'pending_scope',documents}: {})},pricing:price,prep:p,cat,source};
 }
-async function batchDto(db:Db,user:string,id:string,row:any):Promise<BillingWireDto<FileGenerationBatch,'fileGenerationBatch'>>{
+async function batchDto(db:Db,user:string,id:string,row:any,files?:Parameters<typeof readWorkpaperBatch>[4]):Promise<BillingWireDto<FileGenerationBatch,'fileGenerationBatch'>>{
  const docs=row.document_batch_id?(await db.query('SELECT * FROM bb_project_file_batches WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,row.document_batch_id])).rows[0]:null;
- return {batch_id:row.id,created_at:date(row.created_at),points:serializeInt64(row.points),workpapers:row.workpaper_batch_id?await readWorkpaperBatch(db,user,id,row.workpaper_batch_id):null,documents:docs?await projectFileBatchDto(db,user,docs):null};
+ return {batch_id:row.id,created_at:date(row.created_at),points:serializeInt64(row.points),workpapers:row.workpaper_batch_id?await readWorkpaperBatch(db,user,id,row.workpaper_batch_id,files):null,documents:docs?await projectFileBatchDto(db,user,docs):null};
 }
 export function registerFileGeneration(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs,commercial=false){
+ registerGenerationProgress(app,db,owner,'file-generation');
  const base='/api/v1/projects/:project_id/file-generation',id=(r:FastifyRequest)=>(r.params as {project_id:string}).project_id;
  app.get(base,async r=>{
   const user=await owner(r),projectId=id(r),saved=await preparation(db(),user,projectId),bundle=await builtinBundle();
-  const rows=(await db().query('SELECT * FROM bb_file_generation_batches WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC LIMIT 20',[user,projectId])).rows;
-  return encodeBillingDto('fileGenerationWorkspace',{...saved,pricing:await pricing(db(),user,commercial),sets:await readTemplateSets(db(),user,projectId),builtin:{name:'光大证券模板',version:bundle?.version??'',available:!!bundle},batches:await Promise.all(rows.map(row=>batchDto(db(),user,projectId,row)))} satisfies Omit<FileGenerationWorkspace,'batches'> & {batches:BillingWireDto<FileGenerationBatch,'fileGenerationBatch'>[]});
+  const rows=(await db().query('SELECT * FROM bb_file_generation_batches WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at DESC,id DESC LIMIT 20',[user,projectId])).rows;
+  const files=rows.some(row=>row.workpaper_batch_id)?await workpaperFileVersions(db(),user,projectId,false):undefined;
+  return encodeBillingDto('fileGenerationWorkspace',{...saved,pricing:await pricing(db(),user,commercial),sets:await readTemplateSets(db(),user,projectId),builtin:{name:'光大证券模板',version:bundle?.version??'',available:!!bundle},batches:await Promise.all(rows.map(row=>batchDto(db(),user,projectId,row,files)))} satisfies Omit<FileGenerationWorkspace,'batches'> & {batches:BillingWireDto<FileGenerationBatch,'fileGenerationBatch'>[]});
  });
  app.put(base+'/preparation',{schema:{body:FilePreparationSaveSchema}},async r=>{
   const user=await owner(r),projectId=id(r),b=r.body as Static<typeof FilePreparationSaveSchema>;

@@ -111,11 +111,18 @@ test('JSON output normalization runs before strict validation and failures still
   const { config, cleanup } = await setup({ max_schema_reasks: 0 });
   try {
     let calls = 0;
-    const normalized = await runContainedModelCall(call('SCENARIO:structured', { output: { kind: 'json', schema: answerSchema,
+    const persisted=new MemoryCodexJournal();
+    const normalizationCall=call('SCENARIO:structured', { output: { kind: 'json', schema: answerSchema,
       normalize: (value, context) => { calls++; assert.equal(context.reviewToolTrace, undefined); return { ...(value as object), n: 17 }; },
-      validate: value => isAnswer(value) && (value as { n: number }).n === 17 } }), new MemoryCodexJournal(), config);
+      validate: value => isAnswer(value) && (value as { n: number }).n === 17 } });
+    const normalized=await runContainedModelCall(normalizationCall,persisted,config);
     assert.equal(normalized.status, 'completed'); assert.equal(calls, 1);
     assert.equal((normalized.value as { n: number }).n, 17);
+    const stored=JSON.parse([...persisted.results.values()][0].toString());assert.equal(stored.n,17);
+    persisted.prior={call_id:normalized.attempts[0].call_id,attempt_no:1,status:'completed',observed:true};
+    persisted.readCompleted=async()=>({value:stored,result_sha256:'a'.repeat(64)});
+    const replay=await runContainedModelCall(normalizationCall,persisted,config);
+    assert.equal(replay.status,'reused');assert.equal(calls,1);assert.deepEqual(replay.value,stored);assert.equal(persisted.intents.length,1);
     const rejected = await runContainedModelCall(call('SCENARIO:structured', { output: { kind: 'json', schema: answerSchema,
       normalize: () => { throw Error('Synthetic invalid alias'); }, validate: isAnswer } }), new MemoryCodexJournal(), config);
     assert.equal(rejected.error_code, 'MODEL_OUTPUT_SCHEMA_INVALID'); assert.equal(rejected.value, null);
@@ -648,5 +655,25 @@ test('host image input is attached as pixels with tools disabled and removed aft
   assert.throws(()=>buildCodexArgs(config,{cwd:config.work_root,schemaFile:null,ephemeral:true,resumeThreadId:null,imageFile:'/etc/private.png'}));
   const pending=new MemoryCodexJournal();pending.prior={call_id:'call-unknown-image',attempt_no:1,status:'pending_reconcile',observed:true};
   assert.equal((await runContainedModelCall(call('SCENARIO:structured',{imageInput}),pending,config)).status,'needs_reconcile');assert.equal(pending.intents.length,0);
+ }finally{await cleanup();}
+});
+
+
+test('schema re-ask uses bounded host feedback, preserves usage and rejects a second invalid answer',async()=>{
+ const {config,cleanup}=await setup();
+ try{
+  const t=traces(),journal=new MemoryCodexJournal();let received:unknown;
+  const result=await runContainedModelCall(call('SCENARIO:structured',{
+   output:{kind:'json',schema:answerSchema,validate:()=>false,validationFeedback:value=>{received=value;return 'UNKNOWN_EVIDENCE_REF indexes 2. '+ 'x'.repeat(3000);}},onEvent:t.onEvent
+  }),journal,config);
+  assert.ok(isAnswer(received));assert.equal(result.status,'failed');assert.equal(result.value,null);
+  assert.equal(result.attempts.length,2);assert.ok(result.attempts.every(a=>a.usage.status==='measured'));
+  assert.match(String(t.seen[1].reask_feedback),/UNKNOWN_EVIDENCE_REF indexes 2/);
+  assert.ok(String(t.seen[1].reask_feedback).trim().length<=2000);
+  assert.equal(journal.results.size,0);
+  const fallback=await runContainedModelCall(call('SCENARIO:invalid_json REASK_SCENARIO:structured',{
+   output:{kind:'json',schema:answerSchema,validate:isAnswer,validationFeedback:()=>{throw Error('must not override JSON parse failure');}}
+  }),new MemoryCodexJournal(),config);
+  assert.equal(fallback.status,'completed');
  }finally{await cleanup();}
 });

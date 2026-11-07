@@ -1,0 +1,10 @@
+# Copy into a protected environment overlay and pin its SHA-256 in the private role env.
+# Retain the existing pgdata definition and PostgreSQL parameters. Only PG joins this bridge.
+services:
+  postgres:
+    networks: [backend, pgbridge]
+networks:
+  pgbridge:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: 'false'
