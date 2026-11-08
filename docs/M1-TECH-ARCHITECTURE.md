@@ -1,3 +1,5 @@
+> 2026-11-08：新增[本地发布前基础流程脚本](../scripts/release-smoke/README.md)，从固定提交构建正式 Dockerfile 的 Web/API/worker，使用独立 PostgreSQL、Azurite、测试账号及已授权真实样本检查更新、复核、问答。逐项记录镜像/样本/任务/下载证据，未运行和失败均不能放行；实际验收结果以每次私有运行报告为准。单机测试不替代双端部署拓扑、其他镜像架构或专业内容验收，不更改生产发布入口、公共契约或数据库迁移。
+
 > 2026-11-07：#906/#908 已完成双端迁移；腾讯云主站恒常运行网页/API/唯一PG/运维和纯解析，Azure 执行端仅编制/复核，经专用受限 SSH 转发复用 PG 队列。继续使用私有 Azure Blob、业务 Codex 1M窗口/900K压缩及既有诚信出口。迁移仅在主站执行；角色、资产与恢复边界见[双端部署说明](runbooks/m1-split-deployment.md)。#911 负责统一配置生命周期的采纳与验收。
 
 > 2026-11-05：按[专业文档工作台决定](product-decisions/2026-11-05-professional-document-workspace.md)，浏览器与原型共用 `product-prototype/public/document-workspace.css`，在现有展示样式后加载；`document-deliverable.ts` 仅组织真实成果文件名、已保存版本和原下载控件。保留 Vite/TypeScript、所有业务模块和授权下载链路，无公共契约、数据或 worker 变更。
