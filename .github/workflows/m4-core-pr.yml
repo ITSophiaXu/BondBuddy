@@ -131,9 +131,13 @@ jobs:
           grep -Eq '^# skipped 0$' "$RUNNER_TEMP/m4-core-api.tap"
           grep -Eq '^# todo 0$' "$RUNNER_TEMP/m4-core-api.tap"
 
-      - name: Project QA accepted pricing and answer history
+      - name: Project QA evidence, recovery, delivery, pricing and answer history
         run: |
+          export BB_QA_TEST_OUTPUT_DIRECTORY="$RUNNER_TEMP/qa-recovery-word"
           node --test --test-concurrency=1 --test-reporter=tap \
+            apps/worker/dist/project-qa-protocol.test.js \
+            apps/worker/dist/project-qa-recovery.test.js \
+            apps/worker/dist/project-qa-e2e.pg.test.js \
             apps/worker/dist/project-qa-pricing.pg.test.js \
             apps/worker/dist/project-qa-materials.test.js \
             apps/api/dist/project-scope-quotation.pg.test.js \

@@ -20,12 +20,13 @@ import {projectFilesRoot} from './project-file-tools.js';
 import {loadCodexAdapterConfig} from './codex-adapter.js';
 const database=await isolatedTestDatabase(undefined,'project-qa-e2e'),storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 test('project Q&A: free extraction, confirmed count, grounded Word, knowledge review, versions, billing and ownership',{skip:!database||!storage||!process.env.BONDBUDDY_TEST_PYTHON,timeout:300000},async()=>{
- const pool=new Pool({connectionString:database}),owner=randomUUID(),other=randomUUID(),container='bb-qa-'+randomUUID().replaceAll('-','');let actor=owner,calls=0,fail=false,pauseOnce=true;
+ const pool=new Pool({connectionString:database}),owner=randomUUID(),other=randomUUID(),container='bb-qa-'+randomUUID().replaceAll('-','');let actor=owner,calls=0,fail=false,pauseOnce=true,failQuestion='';
  const blobs=azureBlobs(storage!,container),origin='http://bondbuddy.test',app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
  const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
  const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,method+' '+url+' '+r.body);return r.body?r.json():null;};
  const model:typeof codexModelStage=o=>({name:o.name,replay:true,run:async ctx=>{
   const gate=await ctx.validateBeforeModelCall?.();if(gate)return gate;if(fail)return {kind:'fail',code:'SYNTHETIC_PROVIDER_FAILED'};
+  if(o.logicalCallId===failQuestion)return {kind:'fail',code:'MODEL_OUTPUT_SCHEMA_INVALID'};
   if(pauseOnce&&calls===1){pauseOnce=false;return {kind:'pause',stage:'capability_not_ready',reason:'synthetic_checkpoint_pause'};}
   const journal=new CodexDurableJournal({pool,blobs,lease:ctx.lease,validateResult:o.validate}),old=await journal.latestAttempt(o.logicalCallId);
   if(old){const saved=await journal.readCompleted(o.logicalCallId,old.attempt_no);assert.ok(saved);return {kind:'done',value:saved.value};}
@@ -127,5 +128,37 @@ test('project Q&A: free extraction, confirmed count, grounded Word, knowledge re
   const unreadable=await ok('POST',base+'/runs',{request_id:randomUUID(),expected_revision:w.revision,expected_points:String(w.draft.questions.length*60),price_version:PROJECT_QA_PRICE.version});
   assert.equal(await execute(),'failed');assert.equal(calls,callsBeforeUnreadable);assert.deepEqual(await creditBalance(pool,owner),beforeUnreadable);
   const failed=(await ok('GET',base)).runs.find((r:any)=>r.run_id===unreadable.run_id);assert.equal(failed.error_code,'MATERIAL_UNREADABLE');assert.equal(failed.artifact_id,null);
+  // A later question failing must not cause completed answers to be regenerated
+  // on an unchanged, explicitly submitted retry. Original failure/credits remain.
+  const selection=await ok('GET',path+'/prospectus-versions');
+  await ok('POST',path+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:selection.selection_revision,version_id:savedProspectus.versions[0].version_id});
+  w=await ok('GET',base);w=await ok('POST',base+'/draft',{expected_revision:w.revision,draft:{...draft,use_knowledge:false}});
+  const retrySubmit={request_id:randomUUID(),expected_revision:w.revision,expected_points:'120',price_version:PROJECT_QA_PRICE.version};
+  const beforeRetry=await creditBalance(pool,owner),callsBeforeRetry=calls;
+  failQuestion='qa-'+questions[1].id;
+  const partial=await ok('POST',base+'/runs',retrySubmit);assert.equal(await execute(),'failed');assert.equal(calls,callsBeforeRetry+1);
+  assert.deepEqual(await creditBalance(pool,owner),beforeRetry);
+  const partialAnswers=(await pool.query('SELECT answer,sha256 FROM bb_project_qa_answers WHERE run_id=$1',[partial.run_id])).rows;
+  assert.equal(partialAnswers.length,1);
+  // Provider observation failures can record only the event code, as in the incident.
+  await pool.query('UPDATE bb_jobs SET error_code=NULL WHERE run_id=$1',[partial.run_id]);
+  assert.equal((await ok('GET',base)).runs.find((r:any)=>r.run_id===partial.run_id).error_code,'MODEL_OUTPUT_SCHEMA_INVALID');
+  failQuestion='';
+  const retry=await ok('POST',base+'/runs',{...retrySubmit,request_id:randomUUID()});assert.equal(await execute(),'succeeded');
+  assert.equal(calls,callsBeforeRetry+2,'only the unfinished question calls the model again');
+  const retryAnswers=(await pool.query('SELECT answer,sha256 FROM bb_project_qa_answers WHERE run_id=$1 ORDER BY question_id',[retry.run_id])).rows;
+  assert.equal(retryAnswers.length,2);assert.ok(retryAnswers.some(a=>a.sha256===partialAnswers[0].sha256));
+  const retryJob=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE run_id=$1',[retry.run_id])).rows[0];
+  assert.equal(Object.values(retryJob.checkpoint.stages).filter((v:any)=>v.source_run_id===partial.run_id).length,1);
+  assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1',[partial.run_id])).rows[0].state,'failed');
+  assert.equal((await pool.query("SELECT count(*) n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[partial.run_id])).rows[0].n,'0');
+  assert.deepEqual(await creditBalance(pool,owner),{available:beforeRetry.available-120,frozen:0});
+  const retried=(await ok('GET',base)).runs.find((r:any)=>r.run_id===retry.run_id),retryArtifact=await ok('GET','/api/v1/artifacts/'+retried.artifact_id);
+  assert.equal(digest((await send('GET',retryArtifact.download_url)).rawPayload),retryArtifact.sha256);
+  w=await ok('GET',base);w=await ok('POST',base+'/draft',{expected_revision:w.revision,draft:{...draft,use_knowledge:false,requirements:'合成测试，新增要求必须重新作答'}});
+  const changed=await ok('POST',base+'/runs',{...retrySubmit,request_id:randomUUID(),expected_revision:w.revision});
+  assert.equal(await execute(),'succeeded');assert.equal(calls,callsBeforeRetry+4,'changed requirements cannot reuse old partial answers');
+  const changedJob=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE run_id=$1',[changed.run_id])).rows[0];
+  assert.equal(Object.values(changedJob.checkpoint.stages).filter((v:any)=>v.source_run_id).length,0);
  }finally{await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}
 });

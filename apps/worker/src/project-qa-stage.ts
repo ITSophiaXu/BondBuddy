@@ -14,6 +14,8 @@ import {loadProjectQaInput} from './project-qa-input.js';
 import {projectFilesRoot} from './project-file-tools.js';
 import {qaModelEvidenceContext,qaAnswerInstructions} from './project-qa-evidence.js';
 import {qaAnswerOutput} from './project-qa-protocol.js';
+import {checkpointStage} from '@bondbuddy/api/queue';
+import {QA_ANSWER_TEMPLATE,reusableQaAnswer} from './project-qa-recovery.js';
 export {qaPromptEvidence} from './project-qa-evidence.js';
 const prefix=(ctx:StageContext)=>`owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/qa/`;
 const max=100*1024*1024;
@@ -101,11 +103,22 @@ export function projectQaModelStage(options:{model?:typeof codexModelStage;confi
     for(const question of input.questions){
      const saved=(await ctx.pool.query('SELECT answer,sha256 FROM bb_project_qa_answers WHERE owner_user_id=$1 AND run_id=$2 AND question_id=$3',[ctx.run.owner_user_id,ctx.run.id,question.id])).rows[0];
      if(saved){if(inputManifestHash(saved.answer)!==saved.sha256.trim()||!Value.Check(QaAnswerSchema,saved.answer))throw Error('INPUT_REVISION_CONFLICT');answers.push(saved.answer);continue;}
+     const recovered=await reusableQaAnswer(ctx.pool,ctx.run,input,question.id,answer=>
+      (answer.citations.length>0&&answer.citations.every(c=>c.quote.trim()&&evidence[c.asset_index]?.snapshot.spans.some(s=>s.id===c.span_id&&s.text.includes(c.quote)))||qaUnanswered(answer))
+      &&answer.case_ids.every(id=>input.cases.some(c=>c.id===id)));
+     if(recovered){
+      // Persist provenance before copying, so a crash cannot leave an unaudited
+      // recovered answer. Both writes independently enforce the active lease.
+      const {answer,...receipt}=recovered;
+      await checkpointStage(ctx.pool,ctx.lease,'qa_'+digest(question.id).slice(0,48)+'_reuse',{question_id:question.id,...receipt});
+      await transaction(ctx.pool,async c=>{await lock(ctx,c);await c.query('INSERT INTO bb_project_qa_answers(owner_user_id,run_id,question_id,answer,sha256) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',[ctx.run.owner_user_id,ctx.run.id,question.id,answer,recovered.answer_sha256]);});
+      answers.push(answer);continue;
+     }
      const terms=new Set(qaSearchTerms(question.question));
      const questionCases=input.cases.map(c=>({c,score:qaSearchTerms(Object.values(c.content).join(' ')).filter(t=>terms.has(t)).length})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,3).map(x=>x.c);
      // Question IDs may contain punctuation and exceed the checkpoint's 64-character limit.
      // Keep the durable logical call ID unchanged; reserve room for the `_prompt` suffix.
-     const outcome=await (options.model??codexModelStage)({name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:'project-qa-direct-answer-v6',resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,outputForPrompt:prompt=>qaAnswerOutput(prompt,evidence),
+     const outcome=await (options.model??codexModelStage)({name:'qa_'+digest(question.id).slice(0,48),logicalCallId:'qa-'+question.id,templateVersion:QA_ANSWER_TEMPLATE,resultSchemaVersion:'project-qa-answer-v1',schema:QaAnswerSchema,outputForPrompt:prompt=>qaAnswerOutput(prompt,evidence),
       // An explicit unanswered question can finish without a citation. Its model
       // prose is discarded by groundedQaAnswer; invented quotations still re-ask.
       validate:(v):v is QaAnswer=>Value.Check(QaAnswerSchema,v)&&v.question_id===question.id&&(qaHasGroundedCitations(v,evidence)||qaUnanswered(v)),
