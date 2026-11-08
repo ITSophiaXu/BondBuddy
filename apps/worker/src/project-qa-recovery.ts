@@ -3,9 +3,10 @@ import {Value} from '@sinclair/typebox/value';
 import {QaInputSchema,QaAnswerSchema,type QaInput,type QaAnswer} from '@bondbuddy/contracts';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 
-export const QA_ANSWER_TEMPLATE='project-qa-direct-answer-v7';
-// v7 changes reference transport only. Older writing policies are not reusable.
-const compatibleTemplates=['project-qa-direct-answer-v6',QA_ANSWER_TEMPLATE];
+export const QA_ANSWER_TEMPLATE='project-qa-direct-answer-v8';
+// v8 changes writing checks and gap placement. Do not import older prose into
+// a new run; same-run saved answers/prompts still follow their original policy.
+const compatibleTemplates=[QA_ANSWER_TEMPLATE];
 
 export function qaRecoveryScope(input:QaInput){
  const {version,operation,project_name,source,prospectus,preparation_id,questions,materials,requirements,cases}=input;

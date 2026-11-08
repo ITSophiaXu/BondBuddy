@@ -200,6 +200,15 @@ def evidence(source, result):
     Path(result).write_text(json.dumps(data, ensure_ascii=False), encoding='utf8')
 
 
+def unplaced_missing_materials(answer):
+    # Exact local markers only: never hide an unresolved item based on a fuzzy
+    # substring match. Legacy replies without markers retain their fallback list.
+    def key(text):
+        return re.sub(r'\s', '', text).rstrip('。；;')
+    placed = {key(m) for m in re.findall(r'【(?:待确认|需补充)[:：]([^【】]+)】', answer['answer'])}
+    return [item for item in answer['missing_materials'] if key(item) not in placed]
+
+
 def fill(source, request, output):
     source, output = Path(source), Path(output)
     if hashlib.sha256(source.read_bytes()).hexdigest() != request['source_sha256']:
@@ -222,7 +231,9 @@ def fill(source, request, output):
         if answer['status'] == 'missing':
             if not answer['missing_materials']:
                 raise ValueError('QA_MISSING_LIST_REQUIRED')
-            content.append(('待补材料或待确认事项\n' + '\n'.join('• ' + m for m in answer['missing_materials']), True))
+            unplaced = unplaced_missing_materials(answer)
+            if unplaced:
+                content.append(('待补材料或待确认事项\n' + '\n'.join('• ' + m for m in unplaced), True))
         # Citations remain in the result for grounding/audit, not in the reply.
         # Keep validating them even though their metadata is not rendered.
         for cite in answer['citations']:
