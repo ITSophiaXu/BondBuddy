@@ -1,26 +1,30 @@
 import {spawn,execFileSync} from 'node:child_process';
-import {readFileSync,writeFileSync,mkdirSync,copyFileSync,chmodSync,existsSync,rmSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdirSync,copyFileSync,existsSync,rmSync} from 'node:fs';
 import {join,resolve,dirname} from 'node:path';
+import {homedir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {randomBytes} from 'node:crypto';
 import {parseArgs} from 'node:util';
 import {SAMPLE_REF,CASES,writeJson,verifiedFile,verdict,assertLocalContext,assertTestReport} from './support.mjs';
+import {hostEnvironment,bindMount,protectPrivatePath,archiveExecutable} from './platform.mjs';
 
 const directory=dirname(fileURLToPath(import.meta.url)),repo=resolve(directory,'../..');
 const settingsFile=join(directory,'.local.json');
-const settings=existsSync(settingsFile)?JSON.parse(readFileSync(settingsFile,'utf8')):{};
+const settings=existsSync(settingsFile)?JSON.parse(readFileSync(settingsFile,'utf8').replace(/^\uFEFF/,'')):{};
 if(!settings||Array.isArray(settings)||Object.entries(settings).some(([k,v])=>!['dockerContext','httpProxy','platform','copilotOAuthFile'].includes(k)||typeof v!=='string'))throw Error('Invalid release-smoke/.local.json settings');
 const {values}=parseArgs({options:{ref:{type:'string'},resume:{type:'string'},keep:{type:'boolean'},help:{type:'boolean'}}});
 if(values.help){console.log('npm run test:release -- [--ref COMMIT | --resume ABSOLUTE_RUN_DIRECTORY] [--keep]\nRuns real-model local Docker smoke tests. See scripts/release-smoke/README.md.');process.exit(0);}
 if(values.ref&&values.resume)throw Error('--ref and --resume are mutually exclusive');
 const resume=values.resume,out=resume?resolve(resume):join(directory,'.runtime',new Date().toISOString().replaceAll(':','-')+'-'+randomBytes(3).toString('hex'));
 mkdirSync(out,{recursive:true,mode:0o700});
+const env=hostEnvironment();
+protectPrivatePath(out,'directory',env);
+const tar=archiveExecutable(env);
 const reportFile=join(out,'report.json');
 const report=resume?JSON.parse(readFileSync(reportFile)): {startedAt:new Date().toISOString(),status:'blocked',modelMode:'live',modelProbe:'not_run',realPayment:false,cases:CASES.map(id=>({id,status:'not_run'}))};
 if(resume)writeJson(join(out,'report-before-'+Date.now()+'.json'),report);
 delete report.error;
-const context=process.env.BB_RELEASE_DOCKER_CONTEXT||settings.dockerContext||'colima-bondbuddy-release';
-const env={PATH:process.env.PATH,HOME:process.env.HOME,DOCKER_CONTEXT:context,DOCKER_BUILDKIT:'1'};
+let context=process.env.BB_RELEASE_DOCKER_CONTEXT||settings.dockerContext||(resume?report.dockerContext:undefined);
 const proxy=process.env.BB_RELEASE_HTTP_PROXY||settings.httpProxy;
 const targetPlatform=process.env.BB_RELEASE_PLATFORM||settings.platform;
 if(targetPlatform&&!/^linux\/(amd64|arm64)$/.test(targetPlatform))throw Error('BB_RELEASE_PLATFORM must be linux/amd64 or linux/arm64');
@@ -33,7 +37,7 @@ async function command(cmd,args,logName,extraEnv={}){
  const log=createWriteStream(join(out,logName),{flags:'a',mode:0o600});
  console.log(`${new Date().toISOString()} ${logName}`);
  try{await new Promise((ok,bad)=>{
-  const child=spawn(cmd,args,{cwd:repo,env:{...env,...extraEnv},stdio:['ignore','pipe','pipe']});
+  const child=spawn(cmd,args,{cwd:repo,env:{...env,...extraEnv},windowsHide:true,stdio:['ignore','pipe','pipe']});
   const timer=setTimeout(()=>{child.kill('SIGTERM');bad(Error(logName+': timed out; preserved logs, no automatic retry'));},logName.startsWith('build-')?45*60000:5*60000);
   child.stdout.pipe(log,{end:false});child.stderr.pipe(log,{end:false});
   child.once('error',error=>{clearTimeout(timer);bad(error);});child.once('exit',(code,signal)=>{clearTimeout(timer);code===0?ok():bad(Error(`${logName}: exit ${code??signal}; see ${join(out,logName)}`));});
@@ -42,9 +46,15 @@ async function command(cmd,args,logName,extraEnv={}){
 try{
  writeJson(reportFile,report);
  if(!resume&&!values.ref&&sync('git',['status','--porcelain']))throw Error('Working tree has uncommitted changes. Commit the candidate, or explicitly select the committed version with --ref.');
+ context=context||sync('docker',['context','show']);
+ env.DOCKER_CONTEXT=context;
  assertLocalContext(JSON.parse(sync('docker',['context','inspect',context]))[0]);
  sync('docker',['info','--format','{{.ServerVersion}}']);
+ if(sync('docker',['info','--format','{{.OSType}}'])!=='linux')throw Error('Switch Docker Desktop to Linux containers before running the release test');
  sync('docker',['buildx','version']);
+ sync(tar,['--version']);
+ const {chromium}=await import('@playwright/test');
+ if(!existsSync(chromium.executablePath())&&!process.env.BB_RELEASE_BROWSER_CHANNEL)throw Error('Install the host browser first: npx playwright install chromium');
  try{sync('docker',['compose','version']);compose=(args)=>['docker',['compose','-p',report.project,'-f',join(out,'compose.json'),...args]];}
  catch{sync('docker-compose',['version']);compose=(args)=>['docker-compose',['-p',report.project,'-f',join(out,'compose.json'),...args]];}
  if(!resume){
@@ -55,11 +65,11 @@ try{
   report.baseURL='http://localhost:5288';report.model='gpt-6-sol';report.provider='copilot_enterprise';
   const source=join(out,'source');mkdirSync(source);
   writeFileSync(join(out,'source.tar'),execFileSync('git',['archive',report.sha],{cwd:repo,maxBuffer:512*1024*1024}));
-  sync('tar',['-xf',join(out,'source.tar'),'-C',source]);
+  sync(tar,['-xf',join(out,'source.tar'),'-C',source]);
   // The unmerged sample PR is data only. Do not merge its application code.
   const samples=join(out,'samples');mkdirSync(samples);
   writeFileSync(join(out,'samples.tar'),execFileSync('git',['archive',SAMPLE_REF,'tests/samples'],{cwd:repo,maxBuffer:128*1024*1024}));
-  sync('tar',['-xf',join(out,'samples.tar'),'-C',samples]);
+  sync(tar,['-xf',join(out,'samples.tar'),'-C',samples]);
   const old=join(samples,'tests/samples/2026-09-25'),recent=join(samples,'tests/samples/2026-11-05');
   const rq=JSON.parse(readFileSync(join(old,'manifest.json'))).cases.find(c=>c.case_id==='rq-202509');
   const assets=JSON.parse(readFileSync(join(recent,'manifest.json'))).assets;
@@ -68,9 +78,9 @@ try{
   report.fixtureHashes=[...rq.files,...assets.filter(a=>['nov05-f012','nov05-f013','nov05-f014','nov05-f015','nov05-f016'].includes(a.file_id))].map(a=>({id:a.file_id,sha256:a.sha256}));
   const account={username:'release_test',password:'Release-'+randomBytes(18).toString('hex')};
   writeJson(join(out,'private.json'),{fixtures,account});
-  const secret=process.env.BB_RELEASE_COPILOT_OAUTH_FILE||settings.copilotOAuthFile||join(process.env.HOME,'.local/share/copilot-api/github_token');
+  const secret=process.env.BB_RELEASE_COPILOT_OAUTH_FILE||settings.copilotOAuthFile||join(homedir(),'.local','share','copilot-api','github_token');
   if(!existsSync(secret))throw Error('Configure BB_RELEASE_COPILOT_OAUTH_FILE with your existing Copilot OAuth file');
-  copyFileSync(secret,join(out,'copilot-oauth'));chmodSync(join(out,'copilot-oauth'),0o444); // parent directory is 0700; container user needs read access.
+  copyFileSync(secret,join(out,'copilot-oauth'));protectPrivatePath(join(out,'copilot-oauth'),'file',env);
   const image={api:`bondbuddy-release-api:${report.sha.slice(0,12)}`,worker:`bondbuddy-release-worker:${report.sha.slice(0,12)}`,web:`bondbuddy-release-web:${report.sha.slice(0,12)}`};
   writeJson(reportFile,report);
   // Same production Dockerfile, no source/test overlays in any product container.
@@ -87,7 +97,7 @@ try{
   seccomp.syscalls=seccomp.syscalls.flatMap(rule=>rule.names.includes('mount')&&rule.action==='SCMP_ACT_ALLOW'?[{...rule,names:rule.names.filter(n=>n!=='mount')},{...rule,names:['mount'],args:[...(rule.args??[]),{index:3,value:14,op:'SCMP_CMP_NE'}]}]:[rule]);
   writeJson(join(out,'seccomp.json'),seccomp);
   const workerEnv={...common,BB_CODEX_AUTH_MODE:'copilot_enterprise',BB_COPILOT_OAUTH_FILE:'/run/secrets/bb-copilot-oauth',BB_CODEX_PROVIDER:report.provider,BB_CODEX_BASE_URL:'https://api.enterprise.githubcopilot.com',BB_CODEX_MODEL:report.model,BB_CODEX_REASONING_EFFORT:'max',BB_CODEX_CONFIG_VERSION:'release-smoke-v1',BB_CODEX_TIMEOUT_MS:'600000',BB_CODEX_AUTHORING_TIMEOUT_MS:'3600000',BB_CODEX_WORK_ROOT:'/tmp/bb-codex',BB_REPO_ROOT:'/app',BB_PYTHON:'/opt/venv/bin/python',BB_PYTHON_BIN:'/opt/venv/bin/python',BB_PARSE_STAGING_DIR:'/var/lib/bondbuddy/parse-staging',BB_PARSE_CACHE_OCR_VERSION:'tesseract-5.3.0-eng-chi_sim-osd-v1',BB_PARSE_CACHE_BASIS_VERSION:'release-smoke-v1',BB_WORKER_CONCURRENCY:'2',BB_WORKER_PARSE_SLOTS:'1',BB_WORKER_GROUP:'release-smoke',BB_REVIEW_WEB_SEARCH_ENABLED:'0'};
-  const worker={image:image.worker,environment:workerEnv,read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true','seccomp='+join(out,'seccomp.json')],tmpfs:['/tmp:rw,nosuid,nodev,size=4g,mode=1777'],volumes:['parse:/var/lib/bondbuddy/parse-staging',join(out,'copilot-oauth')+':/run/secrets/bb-copilot-oauth:ro'],mem_limit:'6g',cpus:4,stop_grace_period:'30s'};
+  const worker={image:image.worker,environment:workerEnv,read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true','seccomp='+join(out,'seccomp.json').replaceAll('\\','/')],tmpfs:['/tmp:rw,nosuid,nodev,size=4g,mode=1777'],volumes:['parse:/var/lib/bondbuddy/parse-staging',bindMount(join(out,'copilot-oauth'),'/run/secrets/bb-copilot-oauth')],mem_limit:'6g',cpus:4,stop_grace_period:'30s'};
   if(apparmor)worker.security_opt.push('apparmor=bondbuddy-codex-v1');
   writeJson(join(out,'compose.json'),{services:{
    postgres:{image:'postgres:16',environment:{POSTGRES_USER:'bondbuddy',POSTGRES_PASSWORD:password,POSTGRES_DB:'bb_release_smoke'},volumes:['pg:/var/lib/postgresql/data'],healthcheck:{test:['CMD-SHELL','pg_isready -U bondbuddy -d bb_release_smoke'],interval:'2s',retries:30}},

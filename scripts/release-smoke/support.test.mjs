@@ -1,5 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {posix} from 'node:path';
 import {CASES,SAMPLE_REF,verdict,contained,assertLocalContext,assertTestReport} from './support.mjs';
 test('a missing, failed, skipped or blocked journey never grants release readiness',()=>{
  const good=CASES.map(id=>({id,status:'passed'}));assert.equal(verdict(good),'passed');
@@ -14,6 +15,6 @@ test('resume cannot redirect business tests to a remote site or an incomplete ca
 test('local test harness refuses remote Docker and fixture traversal',()=>{
  assertLocalContext({Endpoints:{docker:{Host:'unix:///tmp/docker.sock'}}});
  for(const Host of ['tcp://production:2375','ssh://server',''])assert.throws(()=>assertLocalContext({Endpoints:{docker:{Host}}}));
- assert.throws(()=>contained('/tmp/samples','../secrets'));
- assert.equal(contained('/tmp/samples','case/source.docx'),'/tmp/samples/case/source.docx');
+ assert.throws(()=>contained('/tmp/samples','../secrets',posix));
+ assert.equal(contained('/tmp/samples','case/source.docx',posix),'/tmp/samples/case/source.docx');
 });
