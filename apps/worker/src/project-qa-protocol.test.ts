@@ -32,6 +32,33 @@ test('unknown, omitted, blank, duplicate and cross-material references fail clos
  assert.equal(p.normalize!({...answer,citations:[{asset_index:0,span_id:'p0',quote:'有效原文'}]}),null);
 });
 
+test('blank table structure has no selectable ID; exact blank references are removed without changing prose or gaps',()=>{
+ const e=evidence(['项目收入 0 元','', '  ', '-', '另一项目收入 12 元']);
+ e[0].snapshot.spans[0].location='表格 1 / 行 1 / 列 1';e[0].snapshot.spans[1].location='表格 1 / 行 2 / 列 1';
+ const data=qaModelEvidenceContext(q,e,0);
+ // A blank paragraph omitted from the prompt must not acquire evidentiary value.
+ assert.deepEqual(data.materials[0].spans[1],[null,'表格 1 / 行 2 / 列 1','']);
+ const p=qaAnswerOutput(composeContainedPrompt({instructions:qaAnswerInstructions,materials:[{ref:'project-qa-input',text:JSON.stringify(data)}]}),e);
+ for(const ref of ['a0s1c0','a0s2c0']){
+  const raw={...answer,status:'missing',missing_materials:['请补充具体回款日期'],evidence_refs:['a0s0c0',ref,'a0s3c0']},before=structuredClone(raw);
+  const result=p.normalize!(raw);assert.ok(Value.Check(QaAnswerSchema,result));
+  assert.deepEqual(raw,before);assert.equal(result.answer,raw.answer);assert.deepEqual(result.missing_materials,raw.missing_materials);
+  assert.deepEqual(result.citations.map(c=>c.quote),['项目收入 0 元','-']);assert.ok(qaHasGroundedCitations(result,e));
+ }
+ assert.equal(p.normalize!({...answer,evidence_refs:['a0s1c0']}),null,'blank-only answers never become grounded');
+ assert.equal(p.normalize!({...answer,evidence_refs:['a0s0c0','a0s999c0']}),null,'unknown is not a blank');
+ data.materials[0].spans[0][0]=null;
+ assert.throws(()=>qaAnswerOutput(composeContainedPrompt({instructions:qaAnswerInstructions,materials:[{ref:'project-qa-input',text:JSON.stringify(data)}]}),e),/INPUT_REVISION_CONFLICT/);
+});
+
+test('persisted v1 prompts receive the same exact-empty repair without switching their wire schema',()=>{
+ const e=evidence(['有依据的收入说明','']),data={materials:[{asset_index:0,spans:[['a0s0c0','段落 1','有依据的收入说明'],['a0s1c0','段落 2','']]}]};
+ const old=composeContainedPrompt({instructions:'project-qa-evidence-refs-v1\nOriginal instructions',materials:[{ref:'project-qa-input',text:JSON.stringify(data)}]});
+ const p=qaAnswerOutput(old,e),result=p.normalize!({...answer,evidence_refs:['a0s0c0','a0s1c0']});
+ assert.ok(Value.Check(QaAnswerSchema,result));assert.deepEqual(result.citations,[{asset_index:0,span_id:'p0',quote:'有依据的收入说明'}]);
+ assert.equal(p.normalize!({...answer,evidence_refs:['a0s0c0','a1s1c0']}),null);
+});
+
 test('long spans retain every character in bounded exact quotes and support more than thirty relevant references',()=>{
  const text='甲'.repeat(3999)+'🧾'+'乙'.repeat(4050),e=evidence([text,...Array.from({length:40},(_,i)=>String(i))]);
  const chunks=qaEvidenceParts(0,0,text);assert.equal(chunks.map(p=>p.quote).join(''),text);

@@ -78,7 +78,7 @@ export function qaModelEvidenceContext(q:QaQuestion,evidence:QaResult['evidence'
  const {materials,selection}=qaEvidenceContext(q,evidence,prospectusIndex);
  return {materials:evidence.map((e,asset_index)=>{
   const indexes=new Map(e.snapshot.spans.map((s,i)=>[s.id,i]));
-  return {asset_index,filename:e.filename,spans:materials.filter(s=>s.asset_index===asset_index).flatMap(s=>qaEvidenceParts(asset_index,indexes.get(s.id)!,s.text).map(part=>[part.ref,s.location,part.quote]))};
+  return {asset_index,filename:e.filename,spans:materials.filter(s=>s.asset_index===asset_index).flatMap(s=>qaEvidenceParts(asset_index,indexes.get(s.id)!,s.text).map(part=>[part.quote.trim()?part.ref:null,s.location,part.quote]))};
  }),selection};
 }
 
@@ -90,7 +90,7 @@ export const qaAnswerInstructions=`${QA_REFERENCE_PROTOCOL}
 问什么就回答什么。每段正文、表格、计算和限定都须服务一个明确的小问；材料中存在某项信息，不等于必须写入本题。只保留直接回答所需的事实、原因、必要解释和结论，不扩展无关业务、资质、法律、风险、尽调或文稿整改事项，不重复同一结论。问题要求风险分析、合规核查或文件核对时，应按所问范围充分回答，不能借“精简”回避实质问题。
 例如，问工程施工收入下降原因及业务可持续性，就解释收入变动及已披露的业务、进度或结算原因，再用相关订单和项目情况回答可持续性；不自行增加对营业收入总降幅的贡献率、资质丧失、业务退出等旁支，也不把“具有可持续性”替换成未被要求的“未来每年稳定增长”命题。只有该项计算或说明确实是本问所需时才加入。
 先回答已知事实，再在对应判断处标注局部不确定事项；若关键前提缺失，不得先下确定结论再在末尾补一个待确认。以 project_context.prospectus 指定的募集说明书为首要依据，综合 materials 中跨章节的正文、表格、附注和脚注；补充材料用于补足或核对。充分使用已披露事实，不把问题中的“请补充披露”误解为用户必须另交材料。
-materials 按文件分组，每组包含 asset_index、filename 和 spans。spans 每项是 [evidence_ref, location, text]，保留原始定位和文本；超过 4000 字符的长段落按原文顺序分片；同一表格的单元格按 location 中的行列归并读取，空字符串仍为空白。
+materials 按文件分组，每组包含 asset_index、filename 和 spans。spans 每项是 [evidence_ref, location, text]，保留原始定位和文本；超过 4000 字符的长段落按原文顺序分片；同一表格的单元格按 location 中的行列归并读取，空字符串仍为空白。空白位置的 evidence_ref 为 null，仅保留表格结构，不是可引用证据；不得填入 evidence_refs，也不得推算它的编号。
 evidence_refs 只填写所用原文对应的第一项 evidence_ref，由程序从固定材料物化原文引用。不得自行填写 citations、quote 或改写编号，不得从 location 的段落号推算编号。相同数字在不同项目、期间或单位下可能重复，须选择实际支持本句的对应项，连同必要表头、单位和附注。最多 200 项，覆盖实际使用的事实，不必凑满；不得为了省略引用而省略答案需要的事实。空白单元格保留为数据，不用作引文。
 answer 是答复正文，不是审核意见、写作提纲或建议清单。逐个小问直接说明主体、期间、金额、业务情况和已披露的原因；不得用“建议说明、建议补充、应核查”替代已有资料能支持的回答。只有问题本身要求意见时才给出有依据的分析。
 证据足以支持本问判断时，应明确作答，不以反复提醒“不能保证”“尚不足以证明”回避已有依据的结论；证据不足时，只限定受影响的具体判断，不人为拔高证明标准。保留会实质影响答案的条件、不利事实和不确定性，不为得到肯定结论而删去这些内容。事实说明、业务判断与申报合规结论须分别有相应依据。业务持续性可根据已披露订单、项目和经营模式作出相称判断；法规或申报结论还需规则适用范围、时点及决定性项目事实得到支持。资金用途、偿债责任或增信安排等单项事实，不能替代与其无关的资产性质、取得或入账合规条件。现有材料仅载历史规则或关键性质、时点存在冲突时，应明确该具体结论待确认，说明已知事实及最小缺口，不提前给出“符合规定”“不构成发行障碍”等确定判断。仅回答问题实际要求的合规范围，不对普通事实说明一律增加现行法规检索或核查义务。正文不自称审核部门，也不虚构项目组已执行核查、签署意见或作出承诺。
