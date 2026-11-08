@@ -60,6 +60,7 @@ export class ProjectQaWorkspace {
  private foreign?:QaRecoveryValue;
  private conflict=false;
  private message='';
+ private readProblem='';
  private followup=new Map<string,Set<string>>();
  private followupOpen=new Set<string>();
  private answerDisclosures=new Map<string,Map<string,boolean>>();
@@ -121,7 +122,9 @@ export class ProjectQaWorkspace {
  }
  dispose(){window.removeEventListener('storage',this.storageChanged);this.controller.abort();this.entry?.dispose();this.prospectusPanel?.dispose();clearTimeout(this.timer);this.dialog?.remove();this.downloads.dispose();}
  private error(e:unknown,operation:'read'|'save'|'download'|'submit'|'action'='action'){return friendlyError(e,operation);}
- private status(text:string){this.message=text;const node=document.querySelector('#project-qa-status');if(node)node.textContent=text;}
+ private statusText(){return [this.message,this.readProblem].filter(Boolean).join(' ');}
+ private syncStatus(){const node=document.querySelector('#project-qa-status');if(node)node.textContent=this.statusText();}
+ private status(text:string){this.message=text;this.syncStatus();}
  private request<T>(method:'GET'|'POST',suffix:string,body?:unknown,headers:Record<string,string>={}){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id!)}/qa${suffix}`,body,{...headers,[QA_HISTORY_CAPABILITY.header]:QA_HISTORY_CAPABILITY.value},this.controller.signal);}
  private async read(){const value=await this.request<QaWorkspace>('GET',this.query());if(!Value.Check(QaWorkspaceSchema,value))throw new ApiError(0,'DATA_UNAVAILABLE');return value;}
  private snapshot():QaRecoveryValue{return {revision:this.state!.revision,draft:structuredClone(this.state!.draft),...(this.needsKnowledgeChoice?{needsKnowledgeChoice:true}:{}),...(this.sourceRun?{sourceRun:this.sourceRun}:{}),...(this.pending?{pending:structuredClone(this.pending)}:{})};}
@@ -197,11 +200,15 @@ export class ProjectQaWorkspace {
   try{
    const [project,fresh]=await Promise.all([this.api.project(this.id,this.controller.signal),this.read()]);
    if(!this.live())return;
+   this.readProblem='';
    this.project=project;this.cache=new QaRecoveryCache(this.owner??'',this.id);this.journal=new QaRecoveryJournal(this.owner??'',this.id);this.restore(fresh);await this.loadLocalPreparation();this.scanJournal();
    this.uploadJournal=new QaUploadJournal(this.owner??'',this.id);
    if(this.owner)for(const kind of ['source','supplement'] as const)this.uploadCore.set(kind,new UploadRecovery(this.api,this.owner,this.id,`qa-${kind}`,()=>this.live()));
    this.scanUploads();this.prepareCurrentRun();if(this.live())this.paint();
-  }catch(e){if(this.live())this.shell(`<h1>项目问答暂时无法打开</h1><p role="alert">${esc(this.error(e,'read'))}</p><a href="#qa">重新选择项目</a>`,'qa');}
+  }catch(e){if(this.live()){
+   this.shell(`<h1>项目问答暂时无法打开</h1><p role="alert">${esc(this.error(e,'read'))}</p><button class="btn primary" id="qa-retry-read">重新读取</button> <a href="#qa">重新选择项目</a>`,'qa');
+   document.querySelector('#qa-retry-read')?.addEventListener('click',()=>{if(this.live())void this.render();},{once:true});
+  }}
  }
  private header(){return `<header class="page-head"><div><p class="eyebrow">PROJECT Q&amp;A</p><h1>项目问答</h1><p>基于募集说明书和项目资料逐题回答，资料不足时明确列出补充要求。</p></div><a class="text-button" href="#qa">更换项目</a></header>${navigationProjectContext(location.hash)?.projectId===this.id?'':`<div class="pf-source-strip"><strong>${esc(this.project!.name)}</strong><a href="${esc(this.filesHref())}">项目文件 →</a></div>`}`;}
 
@@ -383,7 +390,7 @@ export class ProjectQaWorkspace {
   const resultFirst=run?.operation==='answer'&&!editing;
   const supporting=this.projectMaterials(run)+upload;
   const documentPanel=empty?`<div class="qa-deliverables"><div><span aria-hidden="true">${prototypeIcon('file')}</span><div><h3>回答完成后下载 Word</h3><p>先在页面审阅回答，再下载包含回答和补件要求的文件。</p></div></div><div><span aria-hidden="true">${prototypeIcon('check')}</span><div><h3>待补材料清单</h3><p>逐题列出缺少的材料，补齐后可继续生成新版本。</p></div></div></div>${this.state.draft.preparation_id||this.uploadEnvelopes.some(e=>e.kind==='supplement')?content:''}`:`<section class="panel qa-document"><h2>${editing?'核对问题并开始回答':run?.operation==='prepare'?'识别问题清单':'回答文档'}</h2>${resultFirst?`<p class="qa-result-context ${run!.manifest.prospectus?'':'qa-warning'}">${run!.manifest.prospectus?'本轮依据：'+esc(run!.manifest.prospectus.filename)+' · V'+run!.manifest.prospectus.sequence:'此历史任务未单独记录募集说明书版本，请核对逐题引用。'}</p>`:''}<div id="qa-document-body">${content}</div></section>`;
-  this.shell(`<div class="qa-page" data-view="${resultFirst?'result':'preparation'}">${this.header()}<p id="project-qa-status" role="status">${esc(this.message)}</p>${this.preparingUpload?uploadProgressHtml(uploadActivity(),this.preparingUpload.name):''}${this.recovery()}${this.activeTasks()}
+  this.shell(`<div class="qa-page" data-view="${resultFirst?'result':'preparation'}">${this.header()}<p id="project-qa-status" role="status">${esc(this.statusText())}</p>${this.preparingUpload?uploadProgressHtml(uploadActivity(),this.preparingUpload.name):''}${this.recovery()}${this.activeTasks()}
    <div class="qa-toolbar" ${!history.length?'hidden':''}><label for="qa-history">历史记录</label><select id="qa-history" aria-label="问答历史版本" ${locked?'disabled':''}><option value="">准备下一轮</option>${history.map(r=>`<option value="${esc(r.run_id)}" ${r.run_id===run?.run_id?'selected':''}>${r.answer_sequence?`第 ${r.answer_sequence} 次 · `:''}回答问题 · ${esc(runStateLabel[r.state as keyof typeof runStateLabel]??'状态待核对')} · ${esc(date(r.created_at))}</option>`).join('')}</select></div>
    ${this.workflow(run,prepared)}<div class="qa-layout">${resultFirst?documentPanel+supporting:supporting+documentPanel}</div></div>`,'qa');
   document.querySelector('#qa-manage-prospectus')?.addEventListener('click',()=>void this.manageProspectus());
@@ -636,11 +643,13 @@ export class ProjectQaWorkspace {
   try{
    const fresh=await this.read();if(!this.live())return;
    if(!owned&&(this.busy||this.dialog?.open)){this.poll();return;}
+   // A valid read resolves only the polling error, not unconfirmed saves or submissions.
+   this.readProblem='';
    this.server=structuredClone(fresh);
    if(!this.dirty&&!this.pending&&!this.conflict&&!this.cacheProblem)this.restore(fresh);
    else{this.state!.runs=fresh.runs;this.state!.materials=fresh.materials;this.state!.prospectus=fresh.prospectus;}
    this.prepareCurrentRun();this.paint();
-  }catch(e){if(this.live()){this.status(this.error(e,'read'));this.poll();}}
+  }catch(e){if(this.live()){this.readProblem=this.error(e,'read');this.syncStatus();this.poll();}}
  }
  private poll(){this.timer=setTimeout(()=>{if(this.live()&&!this.busy&&!this.dialog?.open)void this.refresh();else if(this.live())this.poll();},3000);}
  private modal(title:string,body:string){
