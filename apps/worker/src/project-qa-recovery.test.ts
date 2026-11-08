@@ -12,7 +12,8 @@ const row=()=>({run_id:'earlier',manifest:structuredClone(input),input_hash:inpu
 
 test('recovery requires unchanged semantic inputs and verified answer hashes, policy, question and grounding',()=>{
  assert.equal(validQaRecovery(row(),input,'q0',()=>true),true);
- assert.equal(validQaRecovery({...row(),template_version:'project-qa-direct-answer-v6'},input,'q0',()=>true),true);
+ assert.equal(validQaRecovery({...row(),template_version:'project-qa-direct-answer-v6'},input,'q0',()=>true),false);
+ assert.equal(validQaRecovery({...row(),template_version:'project-qa-direct-answer-v7'},input,'q0',()=>true),false);
  assert.equal(validQaRecovery({...row(),template_version:'project-qa-direct-answer-v5'},input,'q0',()=>true),false);
  assert.equal(validQaRecovery({...row(),run_hash:'b'.repeat(64)},input,'q0',()=>true),false);
  assert.equal(validQaRecovery({...row(),sha256:'b'.repeat(64)},input,'q0',()=>true),false);
