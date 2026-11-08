@@ -1,4 +1,86 @@
-# 募集书 Cowork
+# BondBuddy
+
+## Release 前在本机跑基础测试（Mac / Windows）
+
+统一入口是 **`npm run test:release`**。测试人员在自己的电脑启动隔离的 Linux 容器，用一个测试账号运行任丘更新、东营复核、东营七题问答，并实际下载 Word。它不会发布生产，也不读取生产数据库、支付配置或生产对象存储。
+
+Windows 使用 **PowerShell + Docker Desktop 的 Linux 容器模式**；无需在 PowerShell 中运行 Linux shell。Mac 可使用 Docker Desktop 或已配置的 Colima。三个业务用例共用同一套脚本。
+
+### 第一次准备
+
+1. 安装 Git、Node.js 22+ 和 Docker；Windows 建议 Windows 11 x64，按 [Docker Desktop Windows 安装说明](https://docs.docker.com/desktop/setup/install/windows-install/) 启用 WSL 2 后端和硬件虚拟化。打开 Docker Desktop，选择 Linux containers。
+2. 在自己的测试用仓库中操作。Windows 建议使用 `C:\src\BondBuddy` 这类较短的本地目录，避免放在共享网盘或 OneDrive 同步目录。
+3. 由项目负责人提供可用于现有 `copilot_enterprise / gpt-6-sol` 适配器的测试 OAuth 文件，放在仓库外自己的用户目录。不要把令牌内容写进 README、Git 或命令行。只需配置文件路径，不要求安装本机模型代理。
+4. 确认 Docker 分配了足够资源；完整构建和文档处理建议有 8–12 GiB 可用内存、至少 20 GiB 空闲磁盘。本次测试网页只占用本机 `127.0.0.1:5288`。
+
+**Mac：** 在仓库根目录执行一次：
+
+```bash
+npm ci
+npx playwright install chromium
+docker context ls
+docker info --format '{{.OSType}}'
+```
+
+最后一条应输出 `linux`。这台 Mac 原有 Colima 配置已经保留；重启后如专用 VM 未启动，先运行 `colima start --profile bondbuddy-release --activate=false`。使用 Docker Desktop 的其他 Mac 不需要安装 Colima。
+
+**Windows PowerShell：** 在仓库根目录执行一次：
+
+```powershell
+Set-Location C:\src\BondBuddy
+npm.cmd ci
+npx.cmd playwright install chromium
+docker context ls
+docker info --format '{{.OSType}}'
+```
+
+最后一条也应输出 `linux`；若是 `windows`，先在 Docker Desktop 切换容器模式。使用 `npm.cmd` / `npx.cmd` 可避免 PowerShell 拦截同名 `.ps1` 启动文件，无需放宽执行策略。
+
+在 `scripts/release-smoke/.local.json` 保存本机设置，例如 Windows：
+
+```json
+{
+  "copilotOAuthFile": "C:/Users/your-name/.bondbuddy-test/copilot-oauth"
+}
+```
+
+把路径替换为实际已有的测试 OAuth 文件。Mac 同样可以配置绝对路径；省略时使用当前用户的 `~/.local/share/copilot-api/github_token`。该配置已被 Git 忽略。Docker context 默认读取 `docker context show` 的当前值；需要固定时增加 `"dockerContext": "desktop-linux"`，或填写 `docker context ls` 中实际的本机名称。Colima 的示例名称是 `colima-bondbuddy-release`，不要直接复制到 Windows。
+
+若网络需要代理，再按[详细说明](scripts/release-smoke/README.md)配置 `httpProxy`；它必须是容器可访问的地址。不要照抄另一台机器的代理地址。
+
+样本来自已授权的固定 Git 提交。如果脚本提示缺少样本对象，先执行一次：
+
+```sh
+git fetch origin codex/regression-samples-20261105
+```
+
+### 每次 release 前
+
+先切到待发布版本，提交工作区改动；默认只测试当前已提交的 `HEAD`，工作区不干净时会拒绝开始。
+
+```bash
+# Mac
+npm run test:release
+```
+
+```powershell
+# Windows PowerShell
+npm.cmd run test:release
+```
+
+需要明确指定候选提交时，在上述命令后加 `-- --ref <commit-sha>`。原始材料、账户与数据库都在本次隔离环境中重新准备，不复用原生产项目 ID 或旧报价。
+
+- **退出码 0，且报告中的三个用例全部 `passed`，才表示本轮基础流程通过。** 失败、暂停、未运行和未完成都不能算通过；环境问题应先解决再继续发布。
+- 报告、截图、trace 和下载文件在 `scripts/release-smoke/.runtime/<本次目录>/`，不提交 Git。
+- 成功后自动清理本次容器和测试卷，保留报告与镜像缓存；需要手动查看时加 `-- --keep`。
+- 失败时保留现场；使用 `npm run test:release -- --resume "<本次绝对目录>"` 继续检查原任务，Windows 将 `npm` 写成 `npm.cmd`。不要重新发起已存在的模型任务。
+- 完整真实材料的上一轮生成阶段约38分钟，首次依赖下载/构建另计。会使用测试模型账号额度，但不发起真实支付。
+
+范围与操作细节见 [release-smoke 使用说明](scripts/release-smoke/README.md)。Mac 上原有三个业务用例已有实测记录；**本次补充 Windows 启动路径与说明，按用户要求没有重新运行测试，尚无 Windows 实机验收记录**。基础流程通过不等于财务内容、专业结论或 Word/WPS 兼容性全部验收。
+
+## 历史 Cowork 文档
+
+以下保留仓库旧 Cowork 应用的历史说明；当前 BondBuddy 发版前测试使用上面的入口，当前应用架构见 [M1 技术架构](docs/M1-TECH-ARCHITECTURE.md)。
 
 > BondBuddy 测试执行：见 [Test Plan v6 执行入口](docs/testing/bondbuddy-test-plan-v6/README.md)。先完成受控用户测试准入U的Agent七包和Human短预检；完整发布验收并行推进，当前结果尚未执行。
 
