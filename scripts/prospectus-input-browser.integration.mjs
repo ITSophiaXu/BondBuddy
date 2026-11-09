@@ -39,12 +39,12 @@ test('synthetic browser upload, adoption and execution preserve the exact source
     cleanup.push(() => { net.Socket.prototype.connect = originalConnect; });
     const [{ Pool }, { chromium, expect }, { createServer: createViteServer }, { createServer },
       { azureBlobs }, { makeSyntheticDocxFixture }, { pdfSample },
-      { inputManifestHash }, { editingSource }, { loadUnifiedInput, unifiedInputGate }] = await Promise.all([
+      { inputManifestHash }, { editingSource }, { loadUnifiedInput, unifiedInputGate }, { runUploadConfirmationOnce }] = await Promise.all([
       import('pg'), import('@playwright/test'), import('vite'), import('../apps/api/dist/server.js'),
       import('../apps/api/dist/data.js'),
       import('../apps/api/dist/docx-fixtures.js'), import('../apps/api/dist/upload-safety.samples.js'),
       import('../apps/api/dist/production-rule-pin.js'), import('../apps/worker/dist/file-authoring-stage.js'),
-      import('../apps/worker/dist/unified-input.js')
+      import('../apps/worker/dist/unified-input.js'), import('../apps/api/dist/upload-confirmation.js')
     ]);
     assert.match(new URL(process.env.BB_TEST_DATABASE_URL).pathname, /^\/bb_prospectus_quality_browser_[a-f0-9]{32}$/);
     const pool = new Pool({ connectionString: process.env.BB_TEST_DATABASE_URL });
@@ -117,9 +117,34 @@ test('synthetic browser upload, adoption and execution preserve the exact source
       const pending = page.waitForResponse(r => r.request().method() === 'POST' &&
         r.url().includes(`/projects/${projectId}/materials/uploads/`) && r.url().endsWith('/complete'));
       await page.getByLabel(label, { exact: true }).setInputFiles({ name, mimeType, buffer });
-      const response = await pending;
+      const confirming = await pending;
+      assert.equal(confirming.status(), 202, await confirming.text());
+      assert.equal(confirming.request().headers().prefer, 'respond-async');
+      assert.equal(confirming.headers()['retry-after'], '2');
+      const upload = await confirming.json();
+      assert.equal(upload.status, 'confirming');
+      assert.ok(confirming.url().endsWith(`/uploads/${upload.upload_id}/complete`));
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_material_versions WHERE upload_id=$1',
+        [upload.upload_id])).rows[0].n, 0, 'Pending confirmation must not publish material');
+      // Run the production upload-only consumer against real PG/Blob. Do not start
+      // the worker runtime, parse queue or any model/provider execution loops.
+      const completed = page.waitForResponse(r => r.request().method() === 'POST' &&
+        r.url() === confirming.url() && r.status() !== 202);
+      assert.equal(await runUploadConfirmationOnce(pool, blobs), 'completed');
+      const response = await completed;
       assert.equal(response.status(), 200, await response.text());
-      return response.json();
+      assert.deepEqual(response.request().postDataJSON(), confirming.request().postDataJSON());
+      const material = await response.json();
+      assert.equal(material.sha256, hash(buffer));
+      assert.equal(material.byte_size, buffer.length);
+      const confirmation = (await pool.query(`SELECT c.state,c.result,o.delivered_at
+        FROM bb_upload_confirmations c JOIN bb_outbox o ON o.id=c.outbox_id WHERE c.upload_id=$1`,
+      [upload.upload_id])).rows;
+      assert.equal(confirmation.length, 1);
+      assert.equal(confirmation[0].state, 'completed');
+      assert.deepEqual(confirmation[0].result, material);
+      assert.ok(confirmation[0].delivered_at);
+      return material;
     };
     const source = await uploaded('募集书新版本文件', 'synthetic-source.docx',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sourceBytes);
@@ -210,5 +235,5 @@ test('synthetic browser upload, adoption and execution preserve the exact source
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_provider_call_observations')).rows[0].n, 0);
     assert.deepEqual(remoteSockets, []);
     assert.deepEqual(browserExternal, []);
-    t.diagnostic('Real browser/API/PostgreSQL/Azurite; synthetic inputs; model boundary not executed; provider records and off-host sockets = 0.');
+    t.diagnostic('Real browser/API/PostgreSQL/Azurite and upload confirmation consumer; synthetic inputs; model boundary not executed; provider records and off-host sockets = 0.');
   });
