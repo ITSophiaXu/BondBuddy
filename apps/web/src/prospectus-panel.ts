@@ -52,6 +52,13 @@ export class ProspectusPanel {
   private uploadRows():UploadRecoveryRecord[]{try{return this.owner?this.uploads().list():[];}catch(e){this.message=friendlyError(e,'read');return [];}}
   dispose(){this.controller.abort();this.closeDialog();this.downloads.dispose();}
   get hasUnconfirmed(){return !this.controller.signal.aborted&&(this.busy||!!this.pendingSelection?.attempted||!!this.pendingUpload?.uncertain||this.purpose==='generation'&&(!!this.pendingUpload||this.uploadRows().length>0));}
+  get blocksNavigation(){
+    if(!this.hasUnconfirmed)return false;
+    if(this.purpose!=='generation'||this.busy||this.pendingSelection?.attempted)return true;
+    // Paused uploads can be resumed from their durable record after reentry.
+    // Adoption requests and uploads without that record still need this page.
+    return !!this.pendingUpload&&!this.uploadRows().some(row=>row.id===this.pendingUpload!.id);
+  }
   get selectedVersionId(){return this.verifiedVersions()?this.state?.current_version_id:null;}
   get sourceSelectionMessage(){return this.purpose==='update'&&this.verifiedVersions()&&requiresProspectusSelection(this.state!)?PROSPECTUS_SELECTION_REQUIRED_MESSAGE:'';}
   private generationCandidate(){
@@ -62,6 +69,10 @@ export class ProspectusPanel {
   }
   get hasPendingGenerationVersion(){return this.purpose==='generation'?false:!!this.generationCandidate();}
   async beforeLeave(){
+    if(!this.blocksNavigation)return true;
+    return this.requireConfirmed();
+  }
+  async requireConfirmed(){
     if(!this.hasUnconfirmed)return true;
     this.status(this.busy?'募集书正在上传或保存，请等待本次操作确认后再离开。':'本次上传或采用结果尚未确认，请先重试确认，避免重复操作。');
     return false;
