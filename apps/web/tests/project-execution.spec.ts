@@ -1788,6 +1788,52 @@ test('M2 deferred charge prototype screenshots',async({page})=>{
  }
 });
 
+test('authoring step errors remain history while later progress and real task failure stay distinct',async({page})=>{
+  const state=fixture();state.paid=true;state.checkStatus='ready';state.available=100000;state.runState='running';state.runStage='provider_call';state.runReason='';
+  state.liveProgress={policy:'authoring_progress_v1',accrued_points:1830,charged_points:0,released_points:0,active_ms:90000,pause_requested:false,queued_at:now,sampled_at:now,last_activity_at:now,queue_ahead:null,clock_running:true};
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.setViewportSize({width:1440,height:1000});await setup(page,state);
+  await page.locator('#execute-input').click();await expect(page.locator('.execution-events li')).toHaveCount(1);
+  const run=[...state.runs.values()][0];
+  const append=(activity:NonNullable<Dto<'RunEvent'>['payload']['authoring_activity']>)=>{
+    const seq=++state.eventSeq;
+    state.publicEvents.push({event_id:`progress-${seq}`,schema_version:1,trace_id:'synthetic',run_id:run.run_id,seq,type:'run.progress',state:'running',stage:run.stage,occurred_at:now,payload:{authoring_activity:activity}});
+  };
+  const capture=async(name:string)=>{
+    const evidence=process.env.BB_UX_EVIDENCE_DIR;
+    if(evidence){await mkdir(evidence,{recursive:true});await page.locator('#execution-progress').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,`step-error-${name}-1440.png`)});}
+  };
+  append({activity_id:hash('failed-step'),code:'process_document',state:'failed'});
+  await expect(page.locator('.execution-events')).toContainText('处理文档');
+  await expect(page.locator('.task-progress-heading')).toContainText('遇到问题');
+  await capture('failed-step');
+  await expect.soft(page.locator('.execution-events')).toContainText('处理步骤出错：处理文档',{timeout:1000});
+  await expect.soft(page.locator('.task-progress-heading')).toContainText('处理步骤遇到问题',{timeout:1000});
+  await expect.soft(page.locator('.task-progress-heading')).toContainText('该步骤出错，任务尚未结束；后续状态会自动更新。',{timeout:1000});
+  append({activity_id:hash('later-step'),code:'write_document',state:'completed'});
+  await expect(page.locator('.execution-events')).toContainText('处理步骤已返回：编制募集书内容');
+  await expect(page.locator('.task-progress-heading')).toContainText('正在编制募集书内容');
+  await expect(page.locator('.task-progress-heading')).not.toContainText('遇到问题');
+  await capture('later-step');
+  const summary='已读取本次材料，正在编制募集书内容。';
+  append({activity_id:hash('later-summary'),code:'write_document',state:'started',summary});
+  await expect(page.locator('.task-progress-heading')).toContainText(`最近一次模型进度：${summary}`);
+  await page.reload();
+  await expect(page.locator('.task-progress-heading')).toContainText(summary);
+  await expect.soft(page.locator('.execution-events')).toContainText('处理步骤出错：处理文档',{timeout:1000});
+  await expect(page.locator('.task-progress-heading')).not.toContainText(/已重试|已恢复|已修复|本轮未完成/);
+  await capture('later-summary-reload');
+  run.state='failed';run.stage='failed';state.chargeState='released';
+  const seq=++state.eventSeq;
+  state.publicEvents.push({event_id:`failure-${seq}`,schema_version:1,trace_id:'synthetic',run_id:run.run_id,seq,type:'run.state_changed',state:'failed',stage:'failed',occurred_at:now,payload:{reason:'processor_failed',error_code:'MATERIAL_UNREADABLE'}});
+  await expect(page.locator('.task-progress-heading')).toContainText('本轮未完成');
+  await expect(page.locator('.execution-summary')).toContainText('有材料无法读取');
+  await expect.soft(page.locator('.execution-events')).toContainText('处理步骤出错：处理文档',{timeout:1000});
+  await expect(page.locator('.task-progress-heading')).not.toContainText('任务尚未结束');
+  await capture('terminal-failure');
+  expect(state.executes).toHaveLength(1);expect(state.runActions).toEqual([]);expect(errors).toEqual([]);
+});
+
 for(const width of [1440,390])test('model progress summaries survive tool bursts, pagination and reload '+width,async({page})=>{
   const state=fixture();state.paid=true;state.checkStatus='ready';state.available=100000;state.runState='running';state.runStage='file_authoring';state.runReason='';
   state.liveProgress={policy:'authoring_progress_v1',accrued_points:1830,charged_points:0,released_points:0,active_ms:90000,pause_requested:false,queued_at:now,sampled_at:now,last_activity_at:now,queue_ahead:null,clock_running:true};
