@@ -1,0 +1,26 @@
+[
+  {
+    "path": "apps/web/src/main.ts",
+    "sha256": "5a289ebb7eee22af839e7961f7c7ccafc87393666d84bca4ab0bf32e8dc5ec36"
+  },
+  {
+    "path": "apps/web/src/project-execution.ts",
+    "sha256": "044ced365c4e244e9cf0b48c8e53432cfcb23947f0037051b5fb0c7fc78e4f9b"
+  },
+  {
+    "path": "apps/web/src/prospectus-panel.ts",
+    "sha256": "f9559569ca6a0b2d1b0380b8a5ccab784eda390a6f6682ee7c75d19e014c276d"
+  },
+  {
+    "path": "apps/web/src/prospectus-reference.css",
+    "sha256": "311f94b945397013086a445788fc0a17f42bc9d561840a99b5366060574c7703"
+  },
+  {
+    "path": "apps/web/tests/project-execution.spec.ts",
+    "sha256": "fcd082b02c938b5801f735a78ee957b32831135fc0138cc28ead916826735193"
+  },
+  {
+    "path": "apps/web/tests/prospectus-panel.spec.ts",
+    "sha256": "299e0161c461aa636959f635edd483d4404908c4d67bdcf78001c7866ce8b814"
+  }
+]

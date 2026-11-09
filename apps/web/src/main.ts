@@ -611,8 +611,8 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
       </div></div></div>`, projectSection('workspace'));
   const prospectusEpoch=epoch;
   prospectusPanel=new ProspectusPanel(api,project.project_id,document.querySelector<HTMLElement>('#prospectus-panel')!,async()=>{
-    if(projectExecution?.hasUnconfirmedRequest||!draft)return false;
-    const saved=await draft.save();return saved&&!projectExecution?.hasUnconfirmedRequest;
+    if(projectExecution&&(!projectExecution.materialsEditable||projectExecution.hasUnconfirmedRequest)||!draft)return false;
+    const saved=await draft.save();return saved&&(!projectExecution||projectExecution.materialsEditable&&!projectExecution.hasUnconfirmedRequest);
   },async()=>{
     if(prospectusEpoch!==epoch)return;
     prospectusPanel?.dispose();prospectusPanel=undefined;
@@ -680,7 +680,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
         await refreshProjectMaterials(project.project_id,prospectusEpoch);
         const fresh=await api.project(project.project_id);
         return prospectusEpoch===epoch&&!!draft&&draft.adoptUnchanged(fresh);
-      },()=>projectMaterialReadiness(project.project_id).message);
+      },()=>projectMaterialReadiness(project.project_id).message,editable=>prospectusPanel?.setReadOnly(!editable));
     if (staleInputNoticeProjectId === project.project_id) staleInputNoticeProjectId = undefined;
     projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!, document.querySelector<HTMLElement>('#execution-actions')!);
   }

@@ -67,7 +67,7 @@ async function setup(page:Page,{versions=false,purpose='update',retry=false,docx
     const load=(path:string)=>import(path);await load('/src/style.css');await load('/src/update-entry.css');await load(prototypeRoot+'styles.css');await load(prototypeRoot+'project-workspace.css');await load('/src/prototype-adapter.css');if(purpose==='generation')await load('/src/generation-flow.css');
     const {ProspectusPanel}=await load('/src/prospectus-panel.ts'),{ApiClient}=await load('/src/api.ts');
     const panel=new ProspectusPanel(new ApiClient(()=>{}),'synthetic-panel-project',document.querySelector('#panel'),async()=>true,async()=>{},()=>{},purpose,'synthetic-owner');
-    await panel.refresh();Object.assign(window,{panelFixture:{refresh:()=>panel.refresh(),sourceSelectionMessage:()=>panel.sourceSelectionMessage,hasUnconfirmed:()=>panel.hasUnconfirmed}});
+    await panel.refresh();Object.assign(window,{panelFixture:{refresh:()=>panel.refresh(),setReadOnly:(value:boolean)=>panel.setReadOnly(value),sourceSelectionMessage:()=>panel.sourceSelectionMessage,hasUnconfirmed:()=>panel.hasUnconfirmed}});
   },{purpose,prototypeRoot});
   await expect(page.locator('[data-prospectus-heading]')).toBeVisible();};await reenter();return{state,calls,reenter};
 }
@@ -75,6 +75,39 @@ const history=(page:Page)=>page.locator('[data-prospectus-history]');
 async function dragFiles(page:Page,names:string[],empty=false){
   return page.evaluateHandle(({names,bytes})=>{const data=new DataTransfer();for(const name of names)data.items.add(new File([new Uint8Array(bytes)],name,{type:name.endsWith('.pdf')?'application/pdf':name.endsWith('.txt')?'text/plain':'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}));return data;},{names,bytes:empty?[]:[...bytes]});
 }
+
+test('locked reference blocks late upload, adoption and deletion events while retaining downloads',async({page})=>{
+  const f=await setup(page,{versions:true}),picker=page.locator('#choose-prospectus-version'),input=page.locator('#prospectus-version-file');
+  await page.evaluate(()=>window.panelFixture.setReadOnly(true));
+  await expect(picker).toBeHidden();await expect(picker).toBeDisabled();await expect(input).toBeDisabled();
+  for(const selector of ['[data-use-version="v1"]','[data-delete-version="v1"]']){
+    await expect(page.locator(selector)).toBeHidden();await expect(page.locator(selector)).toBeDisabled();
+    await page.locator(selector).dispatchEvent('click');await expect(page.locator('dialog[open]')).toHaveCount(0);
+  }
+  let choosers=0;page.on('filechooser',()=>choosers++);
+  await picker.dispatchEvent('click');expect(choosers).toBe(0);
+  await input.setInputFiles({name:'late-reference.docx',mimeType:mime,buffer:bytes});await expect(input).toHaveValue('');
+  const dropped=await dragFiles(page,['dropped-reference.docx']);
+  await page.locator('.reference-prospectus').dispatchEvent('dragover',{dataTransfer:dropped});
+  await expect(page.locator('.reference-prospectus')).not.toHaveClass(/is-dragging/);
+  await page.locator('.reference-prospectus').dispatchEvent('drop',{dataTransfer:dropped});await dropped.dispose();
+  await expect(input).toHaveValue('');
+  await page.evaluate(()=>window.panelFixture.refresh());
+  await expect(picker).toBeHidden();await expect(input).toBeDisabled();
+  const download=page.waitForEvent('download');await page.locator('[data-download-version="v1"]').click();
+  expect((await download).suggestedFilename()).toBe('合成历史募集书.docx');
+  expect(f.calls.filter(c=>c.method!=='GET')).toEqual([]);
+  await page.evaluate(()=>window.panelFixture.setReadOnly(false));
+  await expect(picker).toBeVisible();await expect(picker).toBeEnabled();await expect(input).toBeEnabled();
+  await page.locator('[data-delete-version="v1"]').click();await expect(page.locator('[data-confirm-delete]')).toBeEnabled();await page.locator('[data-cancel-delete]').click();
+  await page.locator('[data-use-version="v1"]').click();await page.locator('#confirm-prospectus-selection').click();
+  await expect(page.locator('[data-prospectus-version="v1"]')).toHaveClass(/is-selected/);
+  await input.setInputFiles({name:'next-round-reference.docx',mimeType:mime,buffer:bytes});
+  await expect(page.locator('.reference-file.is-selected')).toContainText('next-round-reference.docx');
+  expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current')&&c.method==='POST')).toHaveLength(1);
+  expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);
+  expect(f.calls.filter(c=>/runs|authoring|wallet/.test(c.path))).toEqual([]);
+});
 
 test('reference upload matches the material picker, supports keyboard selection, and fits narrow screens',async({page})=>{
   await setup(page);const picker=page.getByRole('button',{name:'上传历史／参考稿',exact:true});
@@ -259,7 +292,7 @@ test('generation upload recovery auto-selects saved source using the original re
   await expect(page.locator('.pf-selected-source')).toContainText('V3');
   expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(1);
 });
-declare global{interface Window{panelFixture:{refresh:()=>Promise<void>;sourceSelectionMessage:()=>string;hasUnconfirmed:()=>boolean}}}
+declare global{interface Window{panelFixture:{refresh:()=>Promise<void>;setReadOnly:(value:boolean)=>void;sourceSelectionMessage:()=>string;hasUnconfirmed:()=>boolean}}}
 
 test('mistaken saved upload can be cancelled, deleted, refreshed away and replaced',async({page})=>{
   const f=await setup(page);await expect(page.locator('[data-prospectus-heading]')).toHaveText('历史／参考募集书（必填）');

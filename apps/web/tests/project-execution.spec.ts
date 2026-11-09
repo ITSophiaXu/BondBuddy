@@ -416,6 +416,8 @@ test('authoring materials stay read-only after starting until an explicit next v
   state.project.update_details!.authoring_mode = 'unified_v1';
   await setup(page, state);
   const picker = page.locator('#upload-audit');
+  const referencePicker = page.locator('#choose-prospectus-version');
+  const referenceInput = page.locator('#prospectus-version-file');
   const source = page.locator('[data-source-field="relation"]');
   const capture = async (name: string) => {
     if (!process.env.BB_MATERIAL_LOCK_EVIDENCE_DIR) return;
@@ -424,16 +426,27 @@ test('authoring materials stay read-only after starting until an explicit next v
       await page.setViewportSize({ width, height });
       await page.locator('#materials-title').scrollIntoViewIfNeeded();
       await page.screenshot({ path: join(output, `${name}-${device}.png`) });
+      await page.locator('.reference-prospectus').screenshot({ path: join(output, `${name}-reference-${device}.png`) });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     }
   };
   await expect(picker).toBeEnabled();
   await expect(picker.locator('..')).toBeVisible();
+  await expect(referencePicker).toBeVisible();
+  await expect(referenceInput).toBeEnabled();
   await expect(page.locator('#materials-state-description')).toContainText('开始后材料锁定，仅可查看');
   await capture('preparing');
   await page.locator('#execute-input').click();
   await expect(page.locator('#project-materials-details')).toHaveClass(/materials-readonly/);
   await page.getByRole('button', { name: '查看材料', exact: true }).click();
+  await capture('running');
+  await expect(referencePicker).toBeHidden();
+  await expect(referenceInput).toBeDisabled();
+  await expect(page.locator('#reference-upload-hint')).toBeHidden();
+  await expect(page.locator('.reference-readonly-note')).toBeVisible();
+  await expect(page.locator('[data-download-version]').first()).toBeEnabled();
+  await page.locator('[data-prospectus-ref] summary').first().click();
+  await expect(page.locator('[data-prospectus-ref]').first()).toHaveJSProperty('open', true);
   await expect(page.locator('#materials-state-label')).toHaveText('材料已锁定，仅可查看');
   await expect(page.locator('#materials-title')).toHaveText('查看项目材料');
   await expect(picker).toBeDisabled();
@@ -453,24 +466,42 @@ test('authoring materials stay read-only after starting until an explicit next v
   await page.locator('.material-picker').first().dispatchEvent('drop');
   await source.dispatchEvent('change');
   await page.locator('[data-delete-material]').first().dispatchEvent('click');
+  await referenceInput.setInputFiles({ name: 'late-reference.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', buffer: Buffer.from('synthetic') });
+  const lateReference = await page.evaluateHandle(() => {
+    const data = new DataTransfer(); data.items.add(new File(['synthetic'], 'dropped-reference.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })); return data;
+  });
+  await page.locator('.reference-prospectus').dispatchEvent('dragover', { dataTransfer: lateReference });
+  await expect(page.locator('.reference-prospectus')).not.toHaveClass(/is-dragging/);
+  await page.locator('.reference-prospectus').dispatchEvent('drop', { dataTransfer: lateReference });
+  await lateReference.dispose();
   expect(writes).toEqual([]);
   await expect(page.locator('#material-partitions')).not.toContainText('late-audit.txt');
-  await capture('running');
   await page.reload();
   await expect(page.locator('#project-materials-details')).toHaveClass(/materials-readonly/);
   await page.getByRole('button', { name: '查看材料', exact: true }).click();
   await expect(picker).toBeDisabled();
+  await expect(referencePicker).toBeHidden();
+  await expect(referenceInput).toBeDisabled();
   const run = [...state.runs.values()][0];
-  for (const status of ['paused', 'awaiting_input', 'cancelled'] as const) {
+  for (const status of ['paused', 'awaiting_input', 'failed', 'cancelled'] as const) {
     run.state = status;
     await page.getByRole('button', { name: '重新读取', exact: true }).click();
     await expect(page.locator('#material-editing')).toHaveJSProperty('disabled', true);
     await expect(picker).toBeDisabled();
+    await expect(referencePicker).toBeHidden();
+    await expect(referenceInput).toBeDisabled();
   }
   await expect(page.locator('#materials-state-description')).toContainText('继续修改');
+  await capture('terminal');
   await continueAuthoring(page);
   await expect(picker).toBeEnabled();
   await expect(picker.locator('..')).toBeVisible();
+  await expect(referencePicker).toBeVisible();
+  await expect(referenceInput).toBeEnabled();
+  await expect(page.locator('.reference-readonly-note')).toBeHidden();
+  const chooser = page.waitForEvent('filechooser');
+  await referencePicker.click();
+  await chooser;
   await expect(source).toBeEnabled();
   await expect(page.locator('[data-delete-material]').first()).toBeVisible();
   await expect(page.locator('#materials-state-label')).toHaveText('为下一轮补充材料');

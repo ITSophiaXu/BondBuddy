@@ -198,7 +198,8 @@ export class ProjectExecution {
   constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation,
     private referenceSnapshots?: ReferenceSnapshotResolver, private onStaleInput?: () => void,
     private initialNotice = '', private onDelivered?:()=>void,
-    private refreshPreparation?:()=>Promise<boolean>, private readMaterialBlock?:()=>string) {}
+    private refreshPreparation?:()=>Promise<boolean>, private readMaterialBlock?:()=>string,
+    private onMaterialsEditable?:(editable:boolean)=>void) {}
   private get active() { return !this.controller.signal.aborted; }
   private get id() { return this.draft.project.project_id; }
   get hasUnconfirmedRequest() { return Boolean(this.pendingExecution || this.inputWriteUncertain); }
@@ -356,6 +357,7 @@ export class ProjectExecution {
     syncFormatTemplateMode(document.querySelector('#material-partitions') ?? this.host, this.inheritsResultFormat);
     const activeRun = this.run && !['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state);
     const materialsLocked = Boolean(this.pendingExecution || this.run && !this.nextRequested);
+    this.onMaterialsEditable?.(this.materialsEditable&&!this.hasUnconfirmedRequest);
     const editsFrozen=Boolean(this.pendingExecution || this.inputWriteUncertain);
     const form=document.querySelector<HTMLElement>('#draft-form');if(form)form.inert=editsFrozen;
     const versionPanel=document.querySelector<HTMLElement>('#prospectus-panel');if(versionPanel)versionPanel.inert=editsFrozen;
