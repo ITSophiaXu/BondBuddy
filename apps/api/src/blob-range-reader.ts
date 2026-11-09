@@ -6,6 +6,9 @@ import { finished } from 'node:stream/promises';
 
 export const BLOB_RANGE_BYTES = 4 * 1024 * 1024;
 export const BLOB_RANGE_CONCURRENCY = 4;
+// Small cross-region reads can lose to connection contention. Reserve the range
+// path for objects large enough to keep all four fixed slots productive.
+export const BLOB_RANGE_MIN_BYTES = BLOB_RANGE_BYTES * BLOB_RANGE_CONCURRENCY;
 export type BlobRangeResponse = { body?: Readable; etag?: string; contentRange?: string; contentLength?: number };
 export type BlobRangeDownload = (offset: number, count: number, etag: string, signal: AbortSignal) => Promise<BlobRangeResponse>;
 

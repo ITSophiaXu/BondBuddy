@@ -3,7 +3,7 @@ import { createWriteStream } from 'node:fs';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
 import { finished } from 'node:stream/promises';
-import { BLOB_RANGE_BYTES, BlobRangeReadError, readBlobRangesToFile } from './blob-range-reader.js';
+import { BLOB_RANGE_MIN_BYTES, BlobRangeReadError, readBlobRangesToFile } from './blob-range-reader.js';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient, type BlobItem } from '@azure/storage-blob';
 import { UPLOAD_BYTES_PENDING_FIELD_ERROR, PROSPECTUS_DOCX_ONLY_FIELD_ERROR, isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
@@ -293,7 +293,7 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
         const response = await container.getBlockBlobClient(key).download();
         if (response.contentLength !== undefined && response.contentLength > maxBytes) { (response.readableStreamBody as Readable | undefined)?.destroy(); throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit'); }
         if (!response.readableStreamBody) throw new Problem(503,'DATA_UNAVAILABLE','Stored object has no body');
-        if (path && response.etag && Number.isSafeInteger(response.contentLength) && response.contentLength! > BLOB_RANGE_BYTES) {
+        if (path && response.etag && Number.isSafeInteger(response.contentLength) && response.contentLength! > BLOB_RANGE_MIN_BYTES) {
           // Small objects and digest-only legacy reads retain their single streaming read.
           // The initial GET supplies a real version; every ranged GET must return that
           // same ETag with If-Match, exact Content-Range and exact streamed length.

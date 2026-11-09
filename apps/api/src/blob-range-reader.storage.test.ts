@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { test, mock } from 'node:test';
 import { BlobServiceClient, BlockBlobClient } from '@azure/storage-blob';
 import { azureBlobs, digest } from './data.js';
-import { BLOB_RANGE_BYTES } from './blob-range-reader.js';
+import { BLOB_RANGE_BYTES, BLOB_RANGE_MIN_BYTES } from './blob-range-reader.js';
 
 const storage = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 async function fixture(work: (f: { blobs: ReturnType<typeof azureBlobs>; path: string; dir: string }) => Promise<void>) {
@@ -38,8 +38,9 @@ test('real SDK large read pins every range to the downloaded version and returns
 }));
 
 test('real SDK small and digest-only reads retain the full single-stream proof', { skip: !storage }, async () => fixture(async ({ blobs, path }) => {
-  const small = randomBytes(1001), large = randomBytes(BLOB_RANGE_BYTES + 31);
+  const small = randomBytes(1001), threshold = randomBytes(BLOB_RANGE_MIN_BYTES), large = randomBytes(BLOB_RANGE_BYTES + 31);
   await blobs.put('small', small, 'application/octet-stream');
+  await blobs.put('threshold', threshold, 'application/octet-stream');
   await blobs.put('large', large, 'application/octet-stream');
   const download = BlockBlobClient.prototype.download;
   const intercepted = mock.method(BlockBlobClient.prototype, 'download', download);
@@ -47,13 +48,17 @@ test('real SDK small and digest-only reads retain the full single-stream proof',
     assert.equal((await blobs.readToFile!('small', path, small.length))!.sha256, digest(small));
     assert.deepEqual(await readFile(path), small);
     assert.equal((await blobs.readToFile!('large', null, large.length))!.sha256, digest(large));
-    assert.equal(intercepted.mock.calls.length, 2);
+    assert.equal((await blobs.readToFile!('threshold', null, threshold.length))!.sha256, digest(threshold));
+    await rm(path);
+    assert.equal((await blobs.readToFile!('threshold', path, threshold.length))!.sha256, digest(threshold));
+    assert.deepEqual(await readFile(path), threshold);
+    assert.equal(intercepted.mock.calls.length, 4);
     assert.ok(intercepted.mock.calls.every(c => c.arguments.length === 0));
   } finally { intercepted.mock.restore(); }
 }));
 
 test('real SDK changed ETag returns 503 and removes the partial spool without reading a new version', { skip: !storage }, async () => fixture(async ({ blobs, path, dir }) => {
-  const bytes = randomBytes(BLOB_RANGE_BYTES * 2 + 19);
+  const bytes = randomBytes(BLOB_RANGE_MIN_BYTES + 19);
   await blobs.put('changing', bytes, 'application/octet-stream');
   const first = await blobs.headVersion!('changing');
   const download = BlockBlobClient.prototype.download;
@@ -69,7 +74,7 @@ test('real SDK changed ETag returns 503 and removes the partial spool without re
   });
   try {
     await assert.rejects(blobs.readToFile!('changing', path, bytes.length), { status: 503, code: 'DATA_UNAVAILABLE' });
-    assert.equal(tags.length, 3);
+    assert.equal(tags.length, 4);
     assert.ok(tags.every(tag => tag === first!.etag));
     assert.deepEqual(await readdir(dir), []);
   } finally { intercepted.mock.restore(); }
