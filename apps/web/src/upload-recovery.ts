@@ -21,6 +21,8 @@ export type UploadRecoveryDependencies = {
 };
 export type UploadRecoveryResumeOptions = {
   file?: File; signal?: AbortSignal; status?: (message: string) => void; progress?: (loaded: number, total: number) => void;
+  /** Only a fresh, explicit file selection may replace an expired, unreceived session. */
+  reselectExpiredSession?: boolean;
   /** Explicit user retry only: a scoped checkpoint retained before another tab forgot it. */
   previousRecord?: UploadRecoveryRecord;
   /** Opt-in business journal safety: an in-flight transfer cannot recreate a removed or replaced durable slot. */
@@ -32,6 +34,7 @@ const prefix = 'bondbuddy:upload-recovery:v1:';
 const stages: UploadRecoveryStage[] = ['pending', 'creating', 'session', 'bytes_unknown', 'confirming', 'saved'];
 const maxRecordLength = 256_000;
 const uncertainPut = (error: unknown): error is ApiError => error instanceof ApiError && (error.status === 0 || error.status >= 500);
+const bytesPending = (error: unknown): error is ApiError => error instanceof ApiError && error.status === 422 && error.code === 'MATERIAL_UNREADABLE' && error.details.uploadBytesPending === true && error.details.uploadReason === undefined;
 const validId = (value: unknown): value is string => typeof value === 'string' && !!value.trim() && value.length <= 128 && !/[\u0000-\u001f\u007f]/.test(value);
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const canonical = (value: unknown): string => JSON.stringify(value, (_key, item) => plain(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
@@ -232,7 +235,21 @@ export class UploadRecovery {
     const accepted = (value: unknown) => {
       live(); const material = validateUploadMaterial(record.declaration, value); save({ material, stage: 'saved' }); this.sessions.delete(id); return material;
     };
+    let selectedFile: File | undefined;
+    const verifySelectedFile = async () => {
+      if (selectedFile) return selectedFile;
+      if (!options.file) throw new UploadRecoveryNeedsFileError(clone(record));
+      status('正在核对重新选择的文件内容…');
+      const file = options.file, input = record.declaration;
+      const ext = file.name.split('.').at(-1)?.toLowerCase();
+      const mediaByExtension: Record<string, typeof M1_UPLOAD_MIME_TYPES[number]> = { docx: M1_UPLOAD_MIME_TYPES[0], pdf: M1_UPLOAD_MIME_TYPES[1], xlsx: M1_UPLOAD_MIME_TYPES[2], csv: M1_UPLOAD_MIME_TYPES[3], txt: M1_UPLOAD_MIME_TYPES[4], png: M1_UPLOAD_MIME_TYPES[5], jpg: M1_UPLOAD_MIME_TYPES[6], jpeg: M1_UPLOAD_MIME_TYPES[6], doc: M1_UPLOAD_MIME_TYPES[7] };
+      // Match the original declaration, even if File.type is empty or incorrect.
+      if (file.size !== input.byte_size || mediaByExtension[ext ?? ''] !== input.media_type) throw new UploadRecoveryConflictError();
+      const digest = await (this.deps.digest ?? defaultDigest)(file); live(); if (digest !== input.sha256) throw new UploadRecoveryConflictError();
+      return selectedFile = file;
+    };
     try {
+      if (options.reselectExpiredSession) await verifySelectedFile();
       if (record.material) {
         status('正在确认原材料的准确版本…');
         const material = await this.api.material(this.projectId, record.material.material_id, signal, record.material.material_version); live();
@@ -257,30 +274,34 @@ export class UploadRecovery {
           });
           if (previous.status >= 400 && previous.status < 500 && previous.status !== 401) throw previous;
           status('正在确认上次上传的文件是否已保存…');
-          return accepted(await this.confirmUnknownPut(record, signal, live, previous));
-        }
-        save({ stage: 'confirming' }); status('正在确认上次上传的文件是否已保存…');
-        try { return accepted(await this.api.completeUpload(this.projectId, record.uploadId, { byte_size: record.declaration.byte_size, sha256: record.declaration.sha256 }, signal)); }
-        catch (error) {
-          live();
-          if (error instanceof ApiError && error.status === 404) {
-            const project = await this.api.project(this.projectId, signal); live();
-            if (!Value.Check(schemas.ProjectResponse, project) || !isDateTime(project.updated_at) || project.project_id !== this.projectId) throw new UploadRecoveryReceiptError(); needsBytes = true;
-            this.sessions.delete(id);
-          } else if (error instanceof ApiError && error.status === 422 && error.code === 'MATERIAL_UNREADABLE' && error.details.uploadReason === undefined) needsBytes = true;
-          else throw error;
+          if (!options.reselectExpiredSession || !record.expiresAt || Date.parse(record.expiresAt) > (this.deps.now?.() ?? Date.now()))
+            return accepted(await this.confirmUnknownPut(record, signal, live, previous));
+          // Expiry alone is not evidence that bytes were lost. First authorize
+          // and confirm the original upload; accepted bytes/materials still win.
+          try {
+            const material = await this.api.completeUpload(this.projectId, record.uploadId, { byte_size: record.declaration.byte_size, sha256: record.declaration.sha256 }, signal);
+            live(); if (material.upload_id === record.uploadId && material.filename !== record.declaration.filename) throw new UploadRecoveryReceiptError();
+            return accepted(material);
+          } catch (error) {
+            live(); if (!bytesPending(error)) throw error;
+            needsBytes = true; this.sessions.delete(id);
+          }
+        } else {
+          save({ stage: 'confirming' }); status('正在确认上次上传的文件是否已保存…');
+          try { return accepted(await this.api.completeUpload(this.projectId, record.uploadId, { byte_size: record.declaration.byte_size, sha256: record.declaration.sha256 }, signal)); }
+          catch (error) {
+            live();
+            if (error instanceof ApiError && error.status === 404) {
+              const project = await this.api.project(this.projectId, signal); live();
+              if (!Value.Check(schemas.ProjectResponse, project) || !isDateTime(project.updated_at) || project.project_id !== this.projectId) throw new UploadRecoveryReceiptError(); needsBytes = true;
+              this.sessions.delete(id);
+            } else if (error instanceof ApiError && error.status === 422 && error.code === 'MATERIAL_UNREADABLE' && error.details.uploadReason === undefined) needsBytes = true;
+            else throw error;
+          }
         }
       }
       if (!needsBytes) throw new UploadRecoveryReceiptError();
-      if (!options.file) throw new UploadRecoveryNeedsFileError(clone(record));
-      status('正在核对重新选择的文件内容…');
-      const file = options.file, input = record.declaration;
-      const ext = file.name.split('.').at(-1)?.toLowerCase();
-      const mediaByExtension: Record<string, typeof M1_UPLOAD_MIME_TYPES[number]> = { docx: M1_UPLOAD_MIME_TYPES[0], pdf: M1_UPLOAD_MIME_TYPES[1], xlsx: M1_UPLOAD_MIME_TYPES[2], csv: M1_UPLOAD_MIME_TYPES[3], txt: M1_UPLOAD_MIME_TYPES[4], png: M1_UPLOAD_MIME_TYPES[5], jpg: M1_UPLOAD_MIME_TYPES[6], jpeg: M1_UPLOAD_MIME_TYPES[6], doc: M1_UPLOAD_MIME_TYPES[7] };
-      // File.type can be empty, generic or wrong. Match the entry's extension
-      // policy and recompute actual bytes; keep the original declared media.
-      if (file.size !== input.byte_size || mediaByExtension[ext ?? ''] !== input.media_type) throw new UploadRecoveryConflictError();
-      const digest = await (this.deps.digest ?? defaultDigest)(file); live(); if (digest !== input.sha256) throw new UploadRecoveryConflictError();
+      const file = await verifySelectedFile(), input = record.declaration;
       let session = this.sessions.get(id);
       if (!session || session.uploadId !== record.uploadId || Date.parse(session.expiresAt) <= (this.deps.now?.() ?? Date.now())) {
         save({ stage: 'creating' });
@@ -332,7 +353,7 @@ export class UploadRecovery {
           live(); waiting.throwIfAborted();
           // Only this existing response means bytes have not arrived yet. All
           // inspection, ownership, declaration and receipt failures remain errors.
-          if (!(error instanceof ApiError && error.status === 422 && error.code === 'MATERIAL_UNREADABLE' && error.details.uploadBytesPending === true && error.details.uploadReason === undefined)) throw error;
+          if (!bytesPending(error)) throw error;
         }
         await new Promise<void>((resolve, reject) => {
           const abort = () => { clearTimeout(delay); waiting.removeEventListener('abort', abort); reject(waiting.reason); };
