@@ -1,3 +1,4 @@
+import {uploadPicker} from './upload-picker';
 import './upload-progress.css';
 import {uploadProgressHtml,type UploadStatus} from './upload-progress';
 import {WorkpaperLibraryPanel} from './workpaper-library';
@@ -10,7 +11,7 @@ import { esc, date } from './ui';
 import { prototypeIcon as ico } from './prototype-design';
 import { fileFolders, inFolder, taskLabel, taskView, taskHref, type ProjectFile } from './project-collection-model';
 import { ProspectusPanel } from './prospectus-panel';
-import {UploadRecovery,type UploadRecoveryRecord} from './upload-recovery';
+import {UploadRecovery,UploadRecoveryNeedsFileError,type UploadRecoveryRecord} from './upload-recovery';
 import {withProjectContext} from './project-navigation';
 import {refreshProjectTasks,type ProjectTaskRefreshBoundary} from './project-task-refresh';
 import {linkedConsistencyCheck} from './consistency-history';
@@ -62,7 +63,7 @@ export class ProjectFiles {
   private restoreImport(record:UploadRecoveryRecord){
     const c=record.context;
     if(!c||typeof c!=='object'||Array.isArray(c)||typeof c.request_id!=='string'||!c.request_id||typeof c.document_type!=='string'||!PROJECT_DOCUMENT_CATALOG.some(d=>d.id===c.document_type)||!(c.expected_latest_version_id===null||typeof c.expected_latest_version_id==='string'))throw new UserFacingError('原关联文件的保存范围无法核实，请保留原记录并核对项目文件。');
-    this.pendingImport={type:c.document_type as ProjectDocumentType,request:c.request_id,latest:c.expected_latest_version_id as string|null,upload:{operationId:record.id,projectId:this.id},uncertain:true,allowReselect:true};
+    this.pendingImport={type:c.document_type as ProjectDocumentType,request:c.request_id,latest:c.expected_latest_version_id as string|null,upload:{operationId:record.id,projectId:this.id},uncertain:true,allowReselect:false};
   }
   private live(){return !this.disposed&&this.current();}
   get hasUnconfirmed(){return !this.disposed&&(this.uploading||!!this.pendingImport?.uncertain||!!this.panel?.hasUnconfirmed);}
@@ -535,7 +536,7 @@ export class ProjectFiles {
     const host=document.querySelector('#pw-import-recovery');if(!host)return;
     try{
       const records=this.owner?this.imports().list():[];
-      host.innerHTML=records.map(r=>'<p class="collection-error">'+esc(r.declaration.filename)+' 的原保存待确认。继续会沿用原文件类型、操作编号和版本条件；尚未执行更新。 <button type="button" class="text-button" data-resume-project-file="'+esc(r.id)+'">继续确认关联文件</button></p>').join('');
+      host.innerHTML=records.map(r=>'<p class="collection-error bb-upload-file">'+esc(r.declaration.filename)+' 保存待确认。 <button type="button" class="bb-upload-action bb-upload-action--primary" data-resume-project-file="'+esc(r.id)+'">继续确认关联文件</button></p>').join('');
       host.querySelectorAll<HTMLButtonElement>('[data-resume-project-file]').forEach(b=>b.addEventListener('click',()=>this.importFile(undefined,b.dataset.resumeProjectFile)));
     }catch(e){host.textContent=friendlyError(e,'read');}
   }
@@ -549,9 +550,9 @@ export class ProjectFiles {
     if(target)type=target.document_type;
     let targetConflict=false,uploadFailed=!!restoring;
     d.setAttribute('aria-labelledby','pw-import-heading');
-    d.innerHTML='<header><h2 id="pw-import-heading">'+(target?'上传此文件修改稿':'上传项目关联文件')+'</h2><button class="icon-btn" data-close aria-label="关闭">'+ico('close')+'</button></header><p class="pw-import-target" id="pw-import-target">'+esc(this.name)+(target?' · '+esc(PROJECT_DOCUMENT_CATALOG.find(c=>c.id===target.document_type)!.name)+'<br><strong>原文件：'+esc(target.filename)+' · V'+target.sequence+'</strong>':restoring?.latest?'<br>原目标版本暂不可读取，将沿原文件类型与版本条件确认。':'')+'</p><form><label>文件类型<select name="type" required><option value="">请选择文件类型</option>'+PROJECT_DOCUMENT_CATALOG.map(c=>'<option value="'+c.id+'" '+(type===c.id?'selected':'')+'>'+c.name+'</option>').join('')+'</select></label><label>Word 或 PDF<input name="file" type="file" accept=".docx,.pdf" '+(restoring?'':'required')+'/></label><p>'+(restoring?'先确认原上传；已收到字节时无需重选。若需要字节，请选择原文件。':target?'保存为此类文件的新版本，原 V'+target.sequence+' 保留。本次不生成、不合并、不检查。':'保存为此类文件的新版本，保留旧版。上传后可检查与当前募集书的一致性。')+'</p><p>选好文件类型后，选择 Word 或 PDF 即自动上传保存。</p><button class="btn primary" hidden>重试保存项目文件</button></form><p role="status"></p>';
+    d.innerHTML='<header><h2 id="pw-import-heading">'+(target?'上传此文件修改稿':'上传项目关联文件')+'</h2><button class="icon-btn" data-close aria-label="关闭">'+ico('close')+'</button></header><p class="pw-import-target" id="pw-import-target">'+esc(this.name)+(target?' · '+esc(PROJECT_DOCUMENT_CATALOG.find(c=>c.id===target.document_type)!.name)+'<br><strong>原文件：'+esc(target.filename)+' · V'+target.sequence+'</strong>':restoring?.latest?'<br>原目标版本暂不可读取，将沿原文件类型与版本条件确认。':'')+'</p><form><label>文件类型<select name="type" required><option value="">请选择文件类型</option>'+PROJECT_DOCUMENT_CATALOG.map(c=>'<option value="'+c.id+'" '+(type===c.id?'selected':'')+'>'+c.name+'</option>').join('')+'</select></label><label data-project-file-picker>Word 或 PDF'+uploadPicker('<input name="file" type="file" accept=".docx,.pdf" '+(restoring?'':'required')+'/>')+'</label><p>'+(restoring?'先确认原上传；已收到字节时无需重选。若需要字节，请选择原文件。':target?'保存为此类文件的新版本，原 V'+target.sequence+' 保留。本次不生成、不合并、不检查。':'保存为此类文件的新版本，保留旧版。上传后可检查与当前募集书的一致性。')+'</p><p>选好文件类型后，选择 Word 或 PDF 即自动上传保存。</p><button class="btn primary bb-upload-action bb-upload-action--primary" hidden>重试保存项目文件</button></form><p role="status"></p>';
     if(restoring?.file){const transfer=new DataTransfer();transfer.items.add(restoring.file);d.querySelector<HTMLInputElement>('[name=file]')!.files=transfer.files;}
-    const controls=()=>{d.querySelector<HTMLInputElement>('input')!.disabled=this.uploading||!d.querySelector<HTMLSelectElement>('select')!.value||!!this.pendingImport?.uncertain&&!!this.pendingImport.file&&!this.pendingImport.allowReselect;d.querySelector<HTMLSelectElement>('select')!.disabled=this.uploading||!!this.pendingImport||!!target||!!restoring;const retry=d.querySelector<HTMLButtonElement>('form button')!;retry.disabled=this.uploading||targetConflict;retry.hidden=this.uploading||!uploadFailed;};
+    const controls=()=>{d.querySelector<HTMLElement>('[data-project-file-picker]')!.hidden=!!this.pendingImport&&!this.pendingImport.allowReselect;d.querySelector<HTMLInputElement>('input')!.disabled=this.uploading||!d.querySelector<HTMLSelectElement>('select')!.value||!!this.pendingImport?.uncertain&&!!this.pendingImport.file&&!this.pendingImport.allowReselect;d.querySelector<HTMLSelectElement>('select')!.disabled=this.uploading||!!this.pendingImport||!!target||!!restoring;const retry=d.querySelector<HTMLButtonElement>('form button')!;retry.disabled=this.uploading||targetConflict;retry.hidden=this.uploading||!uploadFailed;};
     const statusHost=d.querySelector('[role=status]')!;
     const status:UploadStatus=(text,p)=>{if(p)statusHost.innerHTML=uploadProgressHtml(p,this.pendingImport?.file?.name??'项目文件',{announce:false});else statusHost.textContent=text;};
     d.querySelector<HTMLSelectElement>('[name=type]')!.addEventListener('invalid',()=>status('请选择有效的文件类型，再保存项目文件。所选文件仍保留。'));
@@ -580,6 +581,7 @@ export class ProjectFiles {
         const rejected=e instanceof ApiError&&e.status>=400&&e.status<500&&![408,429].includes(e.status);
         if(this.pendingImport)this.pendingImport.uncertain=true;
         if(rejected&&this.pendingImport?.pin&&this.pendingImport.upload.operationId){try{await this.imports().forget(this.pendingImport.upload.operationId);this.pendingImport=undefined;}catch(storageError){status(friendlyError(storageError,'action'));this.paintImportRecovery();return;}}
+        if(e instanceof UploadRecoveryNeedsFileError&&this.pendingImport)this.pendingImport.allowReselect=true;
         const detail=friendlyError(e,'save');
         if((target||restoring)&&e instanceof ApiError&&e.status===409){targetConflict=true;status(detail+' 请关闭窗口并刷新后重新选择目标；所选文件仍保留在此窗口。');}
         else status(rejected||!this.pendingImport?detail:'关联文件保存结果尚未确认。'+detail+' 请继续确认原保存；本次操作编号和版本条件已保留。');this.paintImportRecovery();

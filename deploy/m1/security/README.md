@@ -1,6 +1,10 @@
 # Codex 原文件编制容器
 
-当前固定 Codex 0.154.0 的命名权限需要 bubblewrap。Docker 默认 seccomp 禁止创建 user namespace，默认 AppArmor 禁止 mount；不能用只读材料 MCP 或完整访问替代本次所需的原生文件编制。
+当前固定 Codex 0.167.0 的命名权限需要 bubblewrap。Docker 默认 seccomp 禁止创建 user namespace，默认 AppArmor 禁止 mount；不能用只读材料 MCP 或完整访问替代本次所需的原生文件编制。
+
+该 CLI 在处理文件系统 deny 后重新挂载 `/proc`。镜像固定安装仓库的 `scripts/codex-bwrap.sh` 为 root 所有、0755 的 `/usr/local/bin/bwrap`，由 adapter 默认 PATH 解析；wrapper 仅调用 tarball integrity 已核对的 `/opt/codex/codex-resources/bwrap`，保留原参数和继承文件描述符，在最终命令前追加权限为 000 的空 `/proc` tmpfs 并只读重挂载。它不读取参数 FD，不调用 shell 解释模型命令，缺少明确命令分隔符、参数不足或未知 option 均拒绝；升级 Codex/bwrap 时须同步复核 option 集和完整权限探针。部署安装器检查该固定源文件的存在与语法，不更换宿主 bwrap。
+
+`verifyFilePermissions` 的 `/proc/1/environ`、凭据文件、目录外读取、输入写入及网络 canary 均保留。wrapper 缺失或未被选中时，实际探针继续阻断模型调用。合成 wrapper/WSL 用例通过只证明该运行环境；仍须在待发布的准确 worker 镜像和实际 seccomp/AppArmor 组合中运行 `.github/workflows/m3-cli-review-pr.yml` 的 native 用例，不能据此签发发布凭据。
 
 `codex-seccomp.json` 基于 Moby 官方 `moby/profiles@2ceae35d351c156cb5a8efc0fdc4a08cf94569d8` 的 `seccomp/default.json`（Apache-2.0），只追加非特权 user namespace 的 clone 和 unshare/mount/umount2/pivot_root/chroot/sethostname/setdomainname/setns。保留其余默认系统调用规则，clone3 仍保持原默认 ENOSYS。
 

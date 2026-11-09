@@ -94,10 +94,10 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   assert.deepEqual(await creditBalance(pool,owner),{available:20000,frozen:0},'selecting sites is free');
   const project=await ok('POST','/api/v1/projects',{kind:'generation',name:'Synthetic integrity project',issuer_name:'Synthetic issuer',market:'sse',offering:'private'}),id=project.project_id,path='/api/v1/projects/'+id,base=path+'/integrity';
   const draft={subjects:[{id:'subject',kind:'company',name:'合成诚信测试企业',identifier:'123456789012345678',role:'发行人',province:'广东',city:'深圳市'},{id:'person',kind:'person',name:'合成测试人员',identifier:'123456789012345678',role:'董事',province:'',city:''}],site_ids:['gsxt','execution'],notes:'Synthetic only'};
-  let w=await ok('GET',base);assert.equal(w.price.points,5000);assert.equal(w.revision,0);
+  let w=await ok('GET',base);assert.equal(w.price.points,'5000');assert.equal(w.revision,0);
   w=await ok('POST',base+'/draft',{expected_revision:0,draft});assert.equal(w.revision,1);
   assert.equal((await send('POST',base+'/draft',{expected_revision:0,draft})).statusCode,409);
-  const request={request_id:randomUUID(),expected_revision:1,price_version:INTEGRITY_PRICE.version,expected_points:5000};
+  const request={request_id:randomUUID(),expected_revision:1,price_version:INTEGRITY_PRICE.version,expected_points:'5000'};
   assert.equal((await send('POST',base+'/runs',{...request,expected_points:1})).statusCode,422);
   const run=await ok('POST',base+'/runs',request);assert.equal((await ok('POST',base+'/runs',request)).run_id,run.run_id);
   assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:5000});
@@ -108,7 +108,7 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   await ok('POST','/api/v1/runs/'+run.run_id+'/resume',{reason:'synthetic resume'});
   assert.equal(await execute(),'succeeded');assert.equal(calls,2);
   assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0});
-  w=await ok('GET',base);const checked=w.rounds[0];assert.equal(checked.charged_points,5000);assert.equal(checked.artifacts.length,2);assert.equal(checked.records.length,4);assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='gsxt').status,'public_matches');assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='execution').status,'query_failed');
+  w=await ok('GET',base);const checked=w.rounds[0];assert.equal(checked.charged_points,'5000');assert.equal(checked.artifacts.length,2);assert.equal(checked.records.length,4);assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='gsxt').status,'public_matches');assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='execution').status,'query_failed');
   assert.equal(browserCalls,3,'one collection per applicable subject/site');
   const capture=checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='gsxt').browser.captures[0];
   const captureUrl=base+'/runs/'+run.run_id+'/captures/'+capture.id;
@@ -148,7 +148,7 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   assert.equal((await send('POST',base+'/runs/'+run.run_id+'/exports',{...exportRequest,expected_evidence_ids:[]})).statusCode,409);
   const exported=await ok('POST',base+'/runs/'+run.run_id+'/exports',exportRequest);assert.equal((await ok('POST',base+'/runs/'+run.run_id+'/exports',exportRequest)).run_id,exported.run_id);
   assert.equal(await execute(),'succeeded');assert.equal(calls,2,'re-export does not invoke search or model');assert.equal(browserCalls,3,'re-export reuses screenshots');assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0});
-  w=await ok('GET',base);assert.equal(w.rounds[0].charged_points,0);assert.equal(w.rounds[0].operation,'export');assert.notEqual(w.rounds[0].artifact_id,checked.artifact_id);
+  w=await ok('GET',base);assert.equal(w.rounds[0].charged_points,'0');assert.equal(w.rounds[0].operation,'export');assert.notEqual(w.rounds[0].artifact_id,checked.artifact_id);
   await documents(w.rounds[0],'supplemented');
   assert.equal(digest((await send('GET',artifact.download_url)).rawPayload),artifact.sha256,'original workpaper bytes remain available and unchanged');
   const versions=(await ok('GET',path+'/files')).items.filter((f:any)=>f.folder==='4.3');assert.equal(versions.length,4);assert.ok(versions.every((f:any)=>f.version_count===2));
@@ -156,7 +156,7 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   await ok('POST',base+'/runs/'+cancelled.run_id+'/exports',{request_id:randomUUID(),expected_evidence_ids:[]});assert.equal(await execute(),'succeeded');assert.equal(calls,2);assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0});
   const fallback=await ok('GET',base);assert.ok(fallback.rounds[0].records.every((r:any)=>!r.search_performed));
   searchEnabled=false;await ok('POST',base+'/runs',{...request,request_id:randomUUID()});assert.equal(await execute(),'failed');assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0},'no actual recorded search releases all credits');
-  w=await ok('GET',base);assert.equal(w.rounds[0].charged_points,0);assert.ok(w.rounds[0].records.every((r:any)=>!r.search_performed));
+  w=await ok('GET',base);assert.equal(w.rounds[0].charged_points,'0');assert.ok(w.rounds[0].records.every((r:any)=>!r.search_performed));
   await assert.rejects(pool.query("UPDATE bb_integrity_runs SET manifest='{}' WHERE run_id=$1",[run.run_id]),/immutable/);
   const result=(await pool.query('SELECT result,result_hash FROM bb_integrity_runs WHERE run_id=$1',[run.run_id])).rows[0];assert.equal(inputManifestHash(result.result),result.result_hash.trim());
  }finally{await browser.close();await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}

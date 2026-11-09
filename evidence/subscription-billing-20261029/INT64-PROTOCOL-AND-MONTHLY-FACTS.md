@@ -21,14 +21,16 @@ DATABASE_URL=<内部只读连接>
 node apps/api/dist/subscription-facts-report.js 2026-01 2026-12
 ```
 
-仅运行一个 PostgreSQL `REPEATABLE READ, READ ONLY` 事务。没有写账、补单、触发任务、退款或调用支付渠道。输出为 `subscription-facts-exact-v1` JSON，按北京时间自然月分组，跨度最多 36 个月。报告时点来自数据库当前时间。
+仅运行一个 PostgreSQL `REPEATABLE READ, READ ONLY` 事务。没有写账、补单、触发任务、退款或调用支付渠道。按北京时间自然月分组，跨度最多 36 个月，报告时点来自数据库当前时间。2026-11-04 起输出为 `subscription-facts-exact-v2` JSON；v1 曾使用退款事件的本地入库月份，迟到回执可能导致归月错误，历史 v1 不能代替修复后重新读取的月份事实。
 
 | 字段 | 含义 |
 |---|---|
 | `accepted_order_amount_fen` | 已付款订单面额；属于预收，不等于任务收入 |
 | `verified_payer_cash_fen` | 有认证实付证据的付款现金；任一相关订单缺证时为 null，同时保留 known 和缺证数 |
-| `cash_refunded_fen` | 原渠道成功现金退款事件；与任务返积分分开 |
-| `net_payer_cash_flow_fen` | 实付流入减成功现金退款；不用于重复冲减任务收入 |
+| `cash_refunded_fen` | 原渠道成功现金退款事件金额，按认证 `provider_succeeded_at` 的北京时间月份；存在缺成功日期的退款时，各月均为 null，与任务返积分分开 |
+| `cash_refunded_fen_known` | 已有认证成功日期的当月退款金额；缺证时仍保留此已知部分，不能当作完整总额 |
+| `unallocated_cash_refunds` | 报告时点已成功、但日期未知的退款笔数、精确金额和原退款 ID；尚无法分配到任何月份 |
+| `net_payer_cash_flow_fen` | 当月实付流入减当月成功现金退款；付款缺证或存在日期未知退款时为 null，不用于重复冲减任务收入 |
 | `redeemed_points` | on_delivery 原结算事件与原 lot 分配；分配不完整或重复时为 null |
 | `quality_returned_points` | 原任务售后/更正事件的返还积分 |
 | `net_earned_order_consideration_fen` | 各原 lot `A × 已兑付积分 / Q`，减原 lot `A × 质量返还积分 / Q`；保留精确分数 |
@@ -37,6 +39,8 @@ node apps/api/dist/subscription-facts-report.js 2026-01 2026-12
 | `excluded_legacy_progress_settlement_points` | 历史渐进扣费模式的结算数量；显式排除，不能假装已完成收入归属 |
 
 到期字段是当前快照，不能称为历史当月到期流量。现有账本没有独立的到期事件，报告不会用今天的余额伪造历史失效数量；到期额度也不计收入。未来若要固定历史到期流量，应另增可核验的到期事件，而不是改写本报告。
+
+现金退款不回填原支付月，也不用受理时间、通知外层时间或本地完成／入库时间。1 月付款、2 月认证退款成功分别记录两个月的流入与流出；1 月已成功、11 月才补入库的退款仍归 1 月。缺成功日期时不能借本地日期填补，也不能静默过滤为 0；同原退款号取得认证日期后，后续只读报告恢复归月，补证不能再次退款、增减积分或新增财务事件。此版本仅改变管理事实 CLI，无公开 HTTP DTO 变化；调用方须识别版本并接受退款和净现金流的 null。
 
 `A/Q` 与既有 exact-v2 经营口径一致：沿用原批次已锁定对价，结果不是法定收入、实际供应商支出、税后净利润或利润率。实际税务、支付补贴和公司成本需另行会计核实。未知原现金基础不会退回使用积分面额估算。
 

@@ -29,3 +29,24 @@ test('incomplete or duplicate settlement allocations cannot appear as exact earn
   const r=summarizeSubscriptionFacts({...i,redemptions:slices});assert.equal(r.months[0].redeemed_points,null);assert.equal(r.months[0].consideration_complete,false);assert.equal(r.months[0].net_earned_order_consideration_fen,null);assert.equal(r.original_batches[0].consideration_complete,false);
  }
 });
+test('cash refunds keep their authenticated success month, Shanghai month boundary and snapshot cutoff',()=>{
+ const i=base();i.orders=[order('paid','u','2026-01-30T00:00:00Z','2026-02-28T00:00:00Z')];
+ i.cash_refunds=[{refund_id:'jan',occurred_at:'2026-01-31T15:59:59.000Z',amount_fen:'100'},
+  {refund_id:'feb',occurred_at:'2026-01-31T16:00:00.000Z',amount_fen:'200'}];
+ const r=summarizeSubscriptionFacts(i);assert.equal(r.report_version,'subscription-facts-exact-v2');
+ assert.equal(r.months[0].cash_refunded_fen,'100');assert.equal(r.months[0].net_payer_cash_flow_fen,'19800');
+ assert.equal(r.months[1].cash_refunded_fen,'200');assert.equal(r.months[1].net_payer_cash_flow_fen,'-200');
+ const earlier=summarizeSubscriptionFacts({...i,as_of:'2026-01-31T15:59:59.000Z'});
+ assert.equal(earlier.months[0].cash_refunded_fen,'100');assert.equal(earlier.months[1].cash_refunded_fen,'0');
+});
+test('undated successful refunds are explicit unknown amounts instead of zero or local-date cash flow',()=>{
+ const i=base();i.cash_refunds=[{refund_id:'known',occurred_at:'2026-01-20T00:00:00Z',amount_fen:'100'},
+  {refund_id:'missing',occurred_at:null,amount_fen:'9007199254740993'}];
+ const r=summarizeSubscriptionFacts(i);
+ assert.deepEqual(r.unallocated_cash_refunds,{events:'1',amount_fen:'9007199254740993',refund_ids:['missing']});
+ assert.equal(r.months[0].cash_refunded_fen_known,'100');assert.equal(r.months[1].cash_refunded_fen_known,'0');
+ for(const m of r.months){assert.equal(m.cash_refunded_fen,null);assert.equal(m.net_payer_cash_flow_fen,null);}
+ const recovered=summarizeSubscriptionFacts({...i,cash_refunds:i.cash_refunds.map(s=>s.refund_id==='missing'?{...s,occurred_at:'2026-02-01T00:00:00Z'}:s)});
+ assert.deepEqual(recovered.unallocated_cash_refunds,{events:'0',amount_fen:'0',refund_ids:[]});
+ assert.equal(recovered.months[0].cash_refunded_fen,'100');assert.equal(recovered.months[1].cash_refunded_fen,'9007199254740993');
+});

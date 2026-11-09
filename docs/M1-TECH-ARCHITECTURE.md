@@ -5,6 +5,7 @@
 > 2026-11-05：按[专业文档工作台决定](product-decisions/2026-11-05-professional-document-workspace.md)，浏览器与原型共用 `product-prototype/public/document-workspace.css`，在现有展示样式后加载；`document-deliverable.ts` 仅组织真实成果文件名、已保存版本和原下载控件。保留 Vite/TypeScript、所有业务模块和授权下载链路，无公共契约、数据或 worker 变更。
 
 > 2026-11-05：更新项目的历史／参考募集书新上传仅支持 Word（.docx）。共用入口按项目返回的 `upload_docx_only` 显示限制；API 创建、传输、完成及角色复制执行相同规则，已完成上传和旧 PDF 保留。无新增迁移；见[格式支持决定](product-decisions/2026-11-05-historical-docx-only.md)。
+> 2026-11-01：按[募集书质量与发布门禁](product-decisions/2026-11-01-prospectus-quality-gate.md)，原件身份、双 Word 修订一致性、结构/内容保留和模板检查改为宿主交付前必要条件。失败保存私有报告与检查点，不进入正常交付；重放不增加模型调用。部署与镜像导出必须验证绑定候选 commit/tree 的 Linux 回归凭据；运行时机械检查、真实模型事实验收与页面验收分别记录。本要求覆盖旧“生成文件即交付”的冲突说明。见[本次审计](acceptance/prospectus-quality-regression-20261101.md)。
 
 > 2026-10-30：按[取消每日限额决定](product-decisions/2026-10-30-no-daily-limits.md)，API 与 worker 不再按每日任务数、模型 token、项目数或上传总量拦截；忽略旧每日限额配置，管理字段返回 0。用量统计、积分计费、并发容量及其他有效检查保留。历史每日限额暂停由已有 sweep 恢复，历史错误枚举兼容保留。此决定覆盖下文旧试用每日限额说明。
 
@@ -863,6 +864,8 @@ Spec没有提供独立全文修订价；review_revision 不写入价目表、不
 项目问答采用统一项目选择入口，复用 BondBuddy 对话、持久任务、私有文件与积分账户；Word 问题清单先免费解析并确认问题范围，再按每题 60 积分冻结、逐题回答、回填依据及待补材料，交付后结算。新增迁移 0115，worker 增加 LibreOffice Writer/CJK 字体以处理 DOC。公开案例须人工审核后用于回答思路，不替代本项目事实、不自动训练。详细接口、恢复机制、权限、迁移及运行边界见 [项目问答架构](PROJECT-QA-ARCHITECTURE.md)，开发证据见 [#722 验证](acceptance/issue-722/README.md)。尚未部署。
 
 ### 2026-10-22 诚信核查网站目录与紧凑选择器
+
+2026-11-09 增量：自动报价取消独立的20网站上限，覆盖用户选择的完整有效网站范围，包括全选；同一轮价格和不可变范围快照保持，不按网站拆单。网站目录由contracts与诚信核查入口统一校验，报价不另设数量门槛。详见[用户范围决定](product-decisions/2026-11-09-integrity-website-scope.md)。
 
 2026-10-29 增量：官网结果截图必须取得完整查询响应并通过连续稳定检查；零结果增加二次确认，脚本页面的占位 0 不作为已查询证据。截图期间请求或结果变化会丢弃重截，翻页采用相同约束。时间记录保存在内部采集批次，无公开契约或迁移变化。详见[结果加载与截图确认](acceptance/integrity-result-wait-20261029.md)。
 

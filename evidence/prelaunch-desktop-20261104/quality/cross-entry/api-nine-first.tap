@@ -1,0 +1,104 @@
+TAP version 13
+# Subtest: HTTP selected-document answers charge the response SKU; preparation and unclear inputs cannot buy or bypass an answer
+ok 1 - HTTP selected-document answers charge the response SKU; preparation and unclear inputs cannot buy or bypass an answer
+  ---
+  duration_ms: 3062.5891
+  type: 'test'
+  ...
+# (node:58572) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: real PostgreSQL (legacy): private import, builtin adoption, redacted previews, immutable mixed batch and rollback
+ok 2 - real PostgreSQL (legacy): private import, builtin adoption, redacted previews, immutable mixed batch and rollback
+  ---
+  duration_ms: 3587.975
+  type: 'test'
+  ...
+# Subtest: real PostgreSQL (automatic): private import, builtin adoption, redacted previews, immutable mixed batch and rollback
+ok 3 - real PostgreSQL (automatic): private import, builtin adoption, redacted previews, immutable mixed batch and rollback
+  ---
+  duration_ms: 2689.3768
+  type: 'test'
+  ...
+# Subtest: real PostgreSQL/Azurite: 147 templates retain order, deduplicate assets, preview, rollback and retry
+ok 4 - real PostgreSQL/Azurite: 147 templates retain order, deduplicate assets, preview, rollback and retry
+  ---
+  duration_ms: 3352.1268
+  type: 'test'
+  ...
+# {"syntheticTemplates":147,"records":148,"catalogueEntries":248,"peakBlobWrites":4,"loadMs":1482}
+# Subtest: synthetic integrity round: scope quote before execution, variable locked amount and failure release
+ok 5 - synthetic integrity round: scope quote before execution, variable locked amount and failure release
+  ---
+  duration_ms: 1453.7299
+  type: 'test'
+  ...
+# Subtest: paid full-review platform assembly repair preserves original release and forbids another model call
+    # Subtest: trusted exact result reaches delivered success once without another credit event or attempt
+    ok 1 - trusted exact result reaches delivered success once without another credit event or attempt
+      ---
+      duration_ms: 2208.2412
+      type: 'test'
+      ...
+    # Subtest: a bare flag and an unmatched result cannot authorize a released reservation
+    ok 2 - a bare flag and an unmatched result cannot authorize a released reservation
+      ---
+      duration_ms: 1786.2199
+      type: 'test'
+      ...
+    1..2
+ok 6 - paid full-review platform assembly repair preserves original release and forbids another model call
+  ---
+  duration_ms: 3996.6889
+  type: 'test'
+  ...
+# Subtest: review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund
+not ok 7 - review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund
+  ---
+  duration_ms: 1687.8
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\prelaunch-desktop-20261104\\apps\\api\\dist\\review-dynamic-balance.pg.test.js:13:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    
+    '0' !== 0
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 0
+  actual: '0'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/apps/api/dist/review-dynamic-balance.pg.test.js:47:16)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# Subtest: 248-file ZIP on real PostgreSQL/Azurite: cold/warm HTTP, legacy-read benchmark, CRC and authorization
+ok 8 - 248-file ZIP on real PostgreSQL/Azurite: cold/warm HTTP, legacy-read benchmark, CRC and authorization
+  ---
+  duration_ms: 34680.3877
+  type: 'test'
+  ...
+# {"files":248,"zipBytes":10341154,"legacySerialMs":1573,"coldPrepareMs":14490,"coldTotalMs":14544,"coldPolls":7,"maxRequestMs":218,"warmPrepareMs":43,"warmTotalMs":102}
+# Subtest: mixed workpaper batch retains settled v1 check rights at zero and reserves only the new automatic check
+ok 9 - mixed workpaper batch retains settled v1 check rights at zero and reserves only the new automatic check
+  ---
+  duration_ms: 1721.9283
+  type: 'test'
+  ...
+# Subtest: real upload and catalogue persistence accept headerless XLSX, replay once, and preserve owner isolation
+ok 10 - real upload and catalogue persistence accept headerless XLSX, replay once, and preserve owner isolation
+  ---
+  duration_ms: 1506.4844
+  type: 'test'
+  ...
+1..10
+# tests 12
+# suites 0
+# pass 11
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 184447.3861

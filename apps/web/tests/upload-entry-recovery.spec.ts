@@ -75,17 +75,35 @@ const writes=(calls:Call[],suffix:string)=>calls.filter(c=>c.method!=='GET'&&c.p
 const noBusiness= (calls:Call[])=>expect(calls.filter(c=>/\/(?:execute|credits|credit-quote|quote|answer)(?:\/|$)|prospectus-versions\/current/.test(c.path))).toEqual([]);
 async function capture(page:Page,name:string){const dir=process.env.BB_ENTRY_RECOVERY_EVIDENCE_DIR;if(!dir)return;await mkdir(dir,{recursive:true});await page.screenshot({path:join(dir,name+'.png'),fullPage:true});const layout=await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,text:document.body.innerText}));expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width);await writeFile(join(dir,name+'.json'),JSON.stringify(layout,null,2));}
 
-for(const width of [1440,390])test(`prospectus upload survives refresh without File or adoption at ${width}`,async({page})=>{
+for(const width of [1440,390])test(`prospectus recovery respects an unselected server version after refresh at ${width}`,async({page})=>{
   await page.setViewportSize({width,height:900});const s=await fixture(page);s.dropComplete=true;await mount(page,'panel');
   await page.locator('#prospectus-version-file').setInputFiles(file);
   await expect(page.locator('[data-resume-prospectus]')).toBeVisible();expect(s.puts).toBe(1);const count=s.calls.filter(c=>c.method!=='GET').length;
-  await mount(page,'panel',true);expect(s.calls.filter(c=>c.method!=='GET')).toHaveLength(count);await capture(page,`panel-recovery-${width}`);await page.locator('[data-resume-prospectus]').click();await expect(page.locator('#prospectus-status')).toContainText('已保存 V1');expect(s.puts).toBe(1);expect(s.sessions.size).toBe(1);expect(s.versions).toHaveLength(1);noBusiness(s.calls);expect(s.unexpected).toEqual([]);
+  await mount(page,'panel',true);expect(s.calls.filter(c=>c.method!=='GET')).toHaveLength(count);await capture(page,`panel-recovery-${width}`);await page.locator('[data-resume-prospectus]').click();
+  // This fixture deliberately returns current_version_id=null after saving; recovery must not invent adoption.
+  await expect(page.locator('#prospectus-status')).toContainText('文件已保存，当前原稿随后已更新，请查看当前版本。');
+  await expect(page.locator('[data-prospectus-selection-state]')).toHaveText('未选用');
+  expect(s.puts).toBe(1);expect(s.sessions.size).toBe(1);expect(s.versions).toHaveLength(1);noBusiness(s.calls);expect(s.unexpected).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 for(const width of [1440,390])test(`project file resumes the original import after refresh at ${width}`,async({page})=>{
   await page.setViewportSize({width,height:900});const s=await fixture(page);s.dropImport=true;await mount(page,'files');await page.locator('#import-project-file').click();await page.locator('dialog select').selectOption('init');await page.locator('dialog input[type=file]').setInputFiles(file);await expect(page.locator('[data-resume-project-file]')).toBeVisible();const original=writes(s.calls,'/imports')[0].body,count=s.calls.filter(c=>c.method!=='GET').length;
   await mount(page,'files',true);expect(s.calls.filter(c=>c.method!=='GET')).toHaveLength(count);await capture(page,`import-recovery-${width}`);await page.locator('[data-resume-project-file]').click();await expect(page.locator('dialog select')).toHaveValue('init');await expect(page.locator('dialog select')).toBeDisabled();await page.locator('dialog form button').click();await expect(page.locator('[data-resume-project-file]')).toHaveCount(0);expect(writes(s.calls,'/imports')).toHaveLength(2);expect(writes(s.calls,'/imports')[1].body).toEqual(original);expect(s.imports.size).toBe(1);expect(s.puts).toBe(1);expect(s.sessions.size).toBe(1);noBusiness(s.calls);expect(s.unexpected).toEqual([]);
 });
+test('project file recovery reveals the original file picker only when bytes are required',async({page})=>{
+  const s=await fixture(page);await mount(page,'files');
+  await page.evaluate(async({owner,project,name,media,sha256,size})=>{
+    const {UploadRecovery}=await import(String('/src/upload-recovery.ts')),{ApiClient}=await import(String('/src/api.ts'));
+    new UploadRecovery(new ApiClient(),owner,project,'project-file-import').begin({filename:name,media_type:media,sha256,byte_size:size,role:'other'},{request_id:'original-import-request',document_type:'init',expected_latest_version_id:null});
+  },{owner,project,name:file.name,media:mime,sha256:hash(file.buffer),size:file.buffer.length});
+  await mount(page,'files',true);await page.locator('[data-resume-project-file]').click();
+  const picker=page.locator('dialog input[type=file]');await expect(picker).toBeHidden();
+  await page.locator('dialog form button').click();await expect(picker).toBeVisible();
+  await picker.setInputFiles(file);await expect(page.locator('dialog[open]')).toHaveCount(0);
+  expect(writes(s.calls,'/imports')[0].body).toMatchObject({request_id:'original-import-request',document_type:'init',expected_latest_version_id:null});
+  expect(s.puts).toBe(1);expect(s.imports.size).toBe(1);noBusiness(s.calls);expect(s.unexpected).toEqual([]);
+});
+
 test('support resumes its original types and acknowledged CAS after refresh',async({page})=>{
   const s=await fixture(page);s.dropDraft='init';await mount(page,'generation');await addDocuments(page,['init']);await addDocuments(page,['credit']);await page.locator('#pf-support').setInputFiles(file);await expect(page.locator('#pf-support-recovery [data-generation-resume]')).toBeVisible();expect(s.work.workspace.drafts.init.materials).toHaveLength(1);
   const count=s.calls.filter(c=>c.method!=='GET').length;await mount(page,'generation',true);expect(s.calls.filter(c=>c.method!=='GET')).toHaveLength(count);await page.locator('[data-pf-remove=credit]').click();await page.locator('#pf-support-recovery [data-generation-resume]').click();await expect(page.locator('#pf-support-recovery [data-generation-resume]')).toHaveCount(0);expect(s.work.workspace.drafts.credit.materials).toHaveLength(1);expect(writes(s.calls,'/drafts/init')).toHaveLength(1);expect(s.puts).toBe(1);noBusiness(s.calls);expect(s.unexpected).toEqual([]);

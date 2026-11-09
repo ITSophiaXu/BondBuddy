@@ -1,0 +1,597 @@
+{
+  "metadata_captured_at": "2026-11-05T14:12:35.827Z",
+  "source_release": "821477976c75a7218a733d6dca0cd3ed4c733987",
+  "source_account": "customer_test",
+  "project_metadata": {
+    "id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+    "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+    "name": "新津新城发展集团有限公司-上交所-普通私募公司债-募集书更新",
+    "kind": "update",
+    "issuer_name": "新津新城发展集团有限公司",
+    "market": "sse",
+    "offering": "private",
+    "created_at": "2026-10-29T03:04:15.564532+00:00",
+    "updated_at": "2026-11-01T03:54:01.999347+00:00",
+    "deleted_at": null,
+    "archived_at": null
+  },
+  "runs": [
+    {
+      "id": "30c607c1-cd98-4e0b-9cc0-b01d348ea783",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "task_kind": "update",
+      "state": "succeeded",
+      "stage": "succeeded",
+      "created_at": "2026-10-29T03:26:08.879483+00:00",
+      "updated_at": "2026-10-29T03:53:42.626091+00:00",
+      "input_revision": "1",
+      "input_hash": "44e150315c9e63786441cbd663f804566f9f53395067342dcb1ea5defe35d396",
+      "artifact_id": "word-61107894a180e3e8f50c2bf962cc28dbdba6e0d26461fb561d0a667f216e75cf",
+      "artifact_version": "1",
+      "channel": "production",
+      "billing_mode": "fixed_credits",
+      "prompt_snapshot_ref": null
+    },
+    {
+      "id": "131186c7-2b3c-46bf-a207-5cf073d7ab20",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "task_kind": "update",
+      "state": "succeeded",
+      "stage": "succeeded",
+      "created_at": "2026-10-29T19:51:44.425867+00:00",
+      "updated_at": "2026-10-29T20:30:27.240503+00:00",
+      "input_revision": "2",
+      "input_hash": "4ff9fa5ff9490f7e3d174aa717d038d21dd24213f74075e069c8fb17e91d9462",
+      "artifact_id": "word-31d3f6682288acd89a58eb016a0f07559d680eeacf8c6f2b0f77edf8b9dba0cd",
+      "artifact_version": "1",
+      "channel": "production",
+      "billing_mode": "fixed_credits",
+      "prompt_snapshot_ref": null
+    },
+    {
+      "id": "7176561f-c65d-47f8-977a-43389aa0f241",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "task_kind": "update",
+      "state": "succeeded",
+      "stage": "succeeded",
+      "created_at": "2026-11-01T01:46:59.982134+00:00",
+      "updated_at": "2026-11-01T03:54:01.999347+00:00",
+      "input_revision": "3",
+      "input_hash": "9d5f7bef5ecfe6fc4e85dd37c5876182a9304851cfcb9b54244870dea2e20b89",
+      "artifact_id": "word-51dcd7c31610a54c40119bc36780ac6bb42a9d2e1022e148d7e64178281404e9",
+      "artifact_version": "1",
+      "channel": "production",
+      "billing_mode": "fixed_credits",
+      "prompt_snapshot_ref": null
+    }
+  ],
+  "input_revision_metadata": [
+    {
+      "run_id": "30c607c1-cd98-4e0b-9cc0-b01d348ea783",
+      "revision": 1,
+      "manifest_version": null,
+      "document_type": null,
+      "input_hash": "44e150315c9e63786441cbd663f804566f9f53395067342dcb1ea5defe35d396",
+      "created_at": "2026-10-29T03:26:05.849Z",
+      "selection_recorded": true,
+      "selected_version_id": null,
+      "selection_revision": "0",
+      "format_recorded": false,
+      "format_mode": null,
+      "format_selection": null,
+      "format_template_kind": null,
+      "format_material_id": null,
+      "format_artifact_id": null,
+      "format_hash": null,
+      "source_count": 0
+    },
+    {
+      "run_id": "131186c7-2b3c-46bf-a207-5cf073d7ab20",
+      "revision": 2,
+      "manifest_version": null,
+      "document_type": null,
+      "input_hash": "4ff9fa5ff9490f7e3d174aa717d038d21dd24213f74075e069c8fb17e91d9462",
+      "created_at": "2026-10-29T19:51:05.938Z",
+      "selection_recorded": true,
+      "selected_version_id": "0f74b1ae-cffe-44b8-b486-8bd9f7abe549",
+      "selection_revision": "1",
+      "format_recorded": false,
+      "format_mode": null,
+      "format_selection": null,
+      "format_template_kind": null,
+      "format_material_id": null,
+      "format_artifact_id": null,
+      "format_hash": null,
+      "source_count": 0
+    },
+    {
+      "run_id": "7176561f-c65d-47f8-977a-43389aa0f241",
+      "revision": 3,
+      "manifest_version": null,
+      "document_type": null,
+      "input_hash": "9d5f7bef5ecfe6fc4e85dd37c5876182a9304851cfcb9b54244870dea2e20b89",
+      "created_at": "2026-11-01T01:46:57.393Z",
+      "selection_recorded": true,
+      "selected_version_id": "2043641c-ecbd-4b8c-85c2-eaa25ff2e7a9",
+      "selection_revision": "3",
+      "format_recorded": true,
+      "format_mode": "preserve_docx",
+      "format_selection": "automatic",
+      "format_template_kind": "material",
+      "format_material_id": "8b56fd1a-38ed-470a-8a54-ac3c6115f915",
+      "format_artifact_id": null,
+      "format_hash": "c93811a0c0eb30f824fb6d9ef156974ef637bf63e23f839f3d8e070bae2ef0bb",
+      "source_count": 1
+    }
+  ],
+  "input_material_pins": [
+    {
+      "run_id": "30c607c1-cd98-4e0b-9cc0-b01d348ea783",
+      "material_id": "2dd686ba-b9da-41e8-a8a5-d5c745ad06a0",
+      "material_version": "1",
+      "sha256": "89427d2c0a12b6de2db44098c52c3b09a2de796de309cfa4af8d75d4b882e896",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "audit"
+    },
+    {
+      "run_id": "30c607c1-cd98-4e0b-9cc0-b01d348ea783",
+      "material_id": "71eacacc-4789-421d-86d8-bd37764f0646",
+      "material_version": "1",
+      "sha256": "b488f4653065eb66116087dd5a643359fa5172f6d7199b7605387924e99725e7",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "audit"
+    },
+    {
+      "run_id": "30c607c1-cd98-4e0b-9cc0-b01d348ea783",
+      "material_id": "ca54526d-c257-42a2-92a6-996d75ba3117",
+      "material_version": "1",
+      "sha256": "c13ab8fd2ac0db8479afe9d4e36e863838b34f59bc0f391cffb59eec22cef8cb",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "audit"
+    },
+    {
+      "run_id": "131186c7-2b3c-46bf-a207-5cf073d7ab20",
+      "material_id": "2dd686ba-b9da-41e8-a8a5-d5c745ad06a0",
+      "material_version": "1",
+      "sha256": "89427d2c0a12b6de2db44098c52c3b09a2de796de309cfa4af8d75d4b882e896",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "audit"
+    },
+    {
+      "run_id": "131186c7-2b3c-46bf-a207-5cf073d7ab20",
+      "material_id": "71eacacc-4789-421d-86d8-bd37764f0646",
+      "material_version": "1",
+      "sha256": "b488f4653065eb66116087dd5a643359fa5172f6d7199b7605387924e99725e7",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "audit"
+    },
+    {
+      "run_id": "131186c7-2b3c-46bf-a207-5cf073d7ab20",
+      "material_id": "ca54526d-c257-42a2-92a6-996d75ba3117",
+      "material_version": "1",
+      "sha256": "c13ab8fd2ac0db8479afe9d4e36e863838b34f59bc0f391cffb59eec22cef8cb",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "audit"
+    },
+    {
+      "run_id": "7176561f-c65d-47f8-977a-43389aa0f241",
+      "material_id": "2dd686ba-b9da-41e8-a8a5-d5c745ad06a0",
+      "material_version": "1",
+      "sha256": "89427d2c0a12b6de2db44098c52c3b09a2de796de309cfa4af8d75d4b882e896",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "audit"
+    },
+    {
+      "run_id": "7176561f-c65d-47f8-977a-43389aa0f241",
+      "material_id": "71eacacc-4789-421d-86d8-bd37764f0646",
+      "material_version": "1",
+      "sha256": "b488f4653065eb66116087dd5a643359fa5172f6d7199b7605387924e99725e7",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "audit"
+    },
+    {
+      "run_id": "7176561f-c65d-47f8-977a-43389aa0f241",
+      "material_id": "8b56fd1a-38ed-470a-8a54-ac3c6115f915",
+      "material_version": "1",
+      "sha256": "c93811a0c0eb30f824fb6d9ef156974ef637bf63e23f839f3d8e070bae2ef0bb",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "historical"
+    },
+    {
+      "run_id": "7176561f-c65d-47f8-977a-43389aa0f241",
+      "material_id": "ca54526d-c257-42a2-92a6-996d75ba3117",
+      "material_version": "1",
+      "sha256": "c13ab8fd2ac0db8479afe9d4e36e863838b34f59bc0f391cffb59eec22cef8cb",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "audit"
+    }
+  ],
+  "material_metadata": [
+    {
+      "id": "c6526b02-6dd1-4663-8ca2-fe0ec747aa32",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "role": "historical",
+      "filename": "成都九联投资集团有限公司2025年面向专业投资者非公开发行公司债券（第三期）募集说明书-1212清洁稿（马总签字）.docx",
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "byte_size": "741381",
+      "sha256": "c93811a0c0eb30f824fb6d9ef156974ef637bf63e23f839f3d8e070bae2ef0bb",
+      "state": "persisted",
+      "persisted_at": "2026-10-29T03:07:53.392556+00:00",
+      "deleted_at": "2026-10-29T03:09:32.791618+00:00"
+    },
+    {
+      "id": "71eacacc-4789-421d-86d8-bd37764f0646",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "role": "audit",
+      "filename": "Y-4-2 新津新城发展集团有限公司2024年度审计报告.pdf",
+      "media_type": "application/pdf",
+      "byte_size": "8528364",
+      "sha256": "b488f4653065eb66116087dd5a643359fa5172f6d7199b7605387924e99725e7",
+      "state": "persisted",
+      "persisted_at": "2026-10-29T03:08:25.204545+00:00",
+      "deleted_at": null
+    },
+    {
+      "id": "2dd686ba-b9da-41e8-a8a5-d5c745ad06a0",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "role": "audit",
+      "filename": "Y-4-3 新津新城发展集团有限公司2025年度审计报告.pdf",
+      "media_type": "application/pdf",
+      "byte_size": "7408558",
+      "sha256": "89427d2c0a12b6de2db44098c52c3b09a2de796de309cfa4af8d75d4b882e896",
+      "state": "persisted",
+      "persisted_at": "2026-10-29T03:08:25.237993+00:00",
+      "deleted_at": null
+    },
+    {
+      "id": "ca54526d-c257-42a2-92a6-996d75ba3117",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "role": "audit",
+      "filename": "Y-4-4 新津新城发展集团有限公司2026年度半年度财务报告.pdf",
+      "media_type": "application/pdf",
+      "byte_size": "3890195",
+      "sha256": "c13ab8fd2ac0db8479afe9d4e36e863838b34f59bc0f391cffb59eec22cef8cb",
+      "state": "persisted",
+      "persisted_at": "2026-10-29T03:08:35.951412+00:00",
+      "deleted_at": null
+    },
+    {
+      "id": "8b56fd1a-38ed-470a-8a54-ac3c6115f915",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "role": "historical",
+      "filename": "成都九联投资集团有限公司2025年面向专业投资者非公开发行公司债券（第三期）募集说明书.docx",
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "byte_size": "741381",
+      "sha256": "c93811a0c0eb30f824fb6d9ef156974ef637bf63e23f839f3d8e070bae2ef0bb",
+      "state": "persisted",
+      "persisted_at": "2026-10-29T03:10:24.36075+00:00",
+      "deleted_at": null
+    }
+  ],
+  "prospectus_versions": [
+    {
+      "id": "1eb2ea87-9139-4968-aebf-cad8c072d81c",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "sequence": "1",
+      "origin": "upload",
+      "filename": "成都九联投资集团有限公司2025年面向专业投资者非公开发行公司债券（第三期）募集说明书-1212清洁稿（马总签字）.docx",
+      "sha256": "c93811a0c0eb30f824fb6d9ef156974ef637bf63e23f839f3d8e070bae2ef0bb",
+      "material_id": "c6526b02-6dd1-4663-8ca2-fe0ec747aa32",
+      "material_version": "1",
+      "artifact_id": null,
+      "artifact_version": null,
+      "run_id": null,
+      "created_at": "2026-10-29T03:07:53.392556+00:00"
+    },
+    {
+      "id": "2043641c-ecbd-4b8c-85c2-eaa25ff2e7a9",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "sequence": "2",
+      "origin": "upload",
+      "filename": "成都九联投资集团有限公司2025年面向专业投资者非公开发行公司债券（第三期）募集说明书.docx",
+      "sha256": "c93811a0c0eb30f824fb6d9ef156974ef637bf63e23f839f3d8e070bae2ef0bb",
+      "material_id": "8b56fd1a-38ed-470a-8a54-ac3c6115f915",
+      "material_version": "1",
+      "artifact_id": null,
+      "artifact_version": null,
+      "run_id": null,
+      "created_at": "2026-10-29T03:10:24.36075+00:00"
+    },
+    {
+      "id": "0f74b1ae-cffe-44b8-b486-8bd9f7abe549",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "sequence": "3",
+      "origin": "generated",
+      "filename": "募集说明书清洁版.docx",
+      "sha256": "0831381695a0e4633d2f8d76b9a74b73a58ef7e31a14867092805e5869c3ae74",
+      "material_id": null,
+      "material_version": null,
+      "artifact_id": "word-61107894a180e3e8f50c2bf962cc28dbdba6e0d26461fb561d0a667f216e75cf",
+      "artifact_version": "1",
+      "run_id": "30c607c1-cd98-4e0b-9cc0-b01d348ea783",
+      "created_at": "2026-10-29T03:53:42.626091+00:00"
+    },
+    {
+      "id": "819133e8-9f6b-4952-85df-39d6b8747975",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "sequence": "4",
+      "origin": "generated",
+      "filename": "募集说明书清洁版.docx",
+      "sha256": "99ca40a758984a213ca96913c4a7c569a5b83dc50951696b7b4fb734ede76c75",
+      "material_id": null,
+      "material_version": null,
+      "artifact_id": "word-31d3f6682288acd89a58eb016a0f07559d680eeacf8c6f2b0f77edf8b9dba0cd",
+      "artifact_version": "1",
+      "run_id": "131186c7-2b3c-46bf-a207-5cf073d7ab20",
+      "created_at": "2026-10-29T20:30:27.240503+00:00"
+    },
+    {
+      "id": "95fdcb2b-610d-49bc-8528-b24516a91660",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "sequence": "5",
+      "origin": "generated",
+      "filename": "募集说明书清洁版.docx",
+      "sha256": "a9efd15d19f0f46f9d4446bea3a1caa20e6db46b70e1aa9cdc4340c9c427001b",
+      "material_id": null,
+      "material_version": null,
+      "artifact_id": "word-640af69a5aa7a390f701584d5e13e9584946638acc8503b1c152425fc0118d57",
+      "artifact_version": "1",
+      "run_id": "7176561f-c65d-47f8-977a-43389aa0f241",
+      "created_at": "2026-11-01T03:54:01.999347+00:00"
+    }
+  ],
+  "capture_limitations": [
+    "管理员只读索引不返回完整冻结 manifest；历史运行列表限最近1000条，缺项不代表从未执行。"
+  ],
+  "input_captured_at": "2026-11-05T14:19:56.404Z",
+  "project_detail": {
+    "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+    "draft_revision": 8,
+    "input_revision": 3,
+    "input_hash": "9d5f7bef5ecfe6fc4e85dd37c5876182a9304851cfcb9b54244870dea2e20b89",
+    "name": "新津新城发展集团有限公司-上交所-普通私募公司债-募集书更新",
+    "kind": "update",
+    "issuer_name": "新津新城发展集团有限公司",
+    "market": "sse",
+    "offering": "private",
+    "update_details": {
+      "has_historical": null,
+      "reporting_cutoff": "2026-06-30",
+      "registration_amount": {
+        "unit": "hundred_million",
+        "value": "4.8"
+      },
+      "issuance_amount": {
+        "unit": "hundred_million",
+        "value": "4.8"
+      },
+      "bond_terms": "本期拟发行不超过4.8亿元，5年期。",
+      "underwriting": "国投证券股份有限公司牵头，无联席主承销商。",
+      "other_agencies": null,
+      "rating_enhancement": "主体评级AA，无债项评级，无增信",
+      "funding_uses": [
+        {
+          "amount": {
+            "unit": "hundred_million",
+            "value": "4.8"
+          },
+          "target": "无",
+          "details": "偿还到期“24新津”公司债券本金",
+          "purpose": "refinance_bonds"
+        }
+      ],
+      "other_information": null,
+      "supplementary_notes": null,
+      "authoring_mode": "unified_v1",
+      "source_prospectuses": [
+        {
+          "market": "sse",
+          "sha256": "c93811a0c0eb30f824fb6d9ef156974ef637bf63e23f839f3d8e070bae2ef0bb",
+          "status": "user_asserted",
+          "offering": "private",
+          "relation": "similar_business",
+          "issuer_name": null,
+          "material_id": "8b56fd1a-38ed-470a-8a54-ac3c6115f915",
+          "material_version": 1,
+          "reporting_periods": [
+            {
+              "end": "2023-12-31",
+              "scope": null,
+              "start": "2023-01-01",
+              "status": "needs_confirmation",
+              "period_kind": "annual",
+              "evidence_refs": []
+            },
+            {
+              "end": "2024-12-31",
+              "scope": null,
+              "start": "2024-01-01",
+              "status": "needs_confirmation",
+              "period_kind": "annual",
+              "evidence_refs": []
+            },
+            {
+              "end": "2025-06-30",
+              "scope": null,
+              "start": "2025-01-01",
+              "status": "needs_confirmation",
+              "period_kind": "interim",
+              "evidence_refs": []
+            }
+          ]
+        }
+      ],
+      "target_reporting_periods": [
+        {
+          "end": "2024-12-31",
+          "scope": null,
+          "start": "2024-01-01",
+          "status": "needs_confirmation",
+          "period_kind": "annual",
+          "evidence_refs": []
+        },
+        {
+          "end": "2025-12-31",
+          "scope": null,
+          "start": "2025-01-01",
+          "status": "needs_confirmation",
+          "period_kind": "annual",
+          "evidence_refs": []
+        },
+        {
+          "end": "2026-06-30",
+          "scope": null,
+          "start": "2026-01-01",
+          "status": "needs_confirmation",
+          "period_kind": "interim",
+          "evidence_refs": []
+        }
+      ]
+    },
+    "updated_at": "2026-11-01T03:54:01.999Z",
+    "archived_at": null
+  },
+  "input_revision_dtos": [
+    {
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "input_revision": 3,
+      "input_hash": "9d5f7bef5ecfe6fc4e85dd37c5876182a9304851cfcb9b54244870dea2e20b89",
+      "target_confirmation": {
+        "as_of": null,
+        "market": null,
+        "status": "unconfirmed",
+        "offering": null,
+        "confirmed_at": null,
+        "confirmed_by": null,
+        "document_purpose": null,
+        "target_reporting_periods": []
+      },
+      "material_versions": [
+        {
+          "material_id": "2dd686ba-b9da-41e8-a8a5-d5c745ad06a0",
+          "material_version": 1
+        },
+        {
+          "material_id": "71eacacc-4789-421d-86d8-bd37764f0646",
+          "material_version": 1
+        },
+        {
+          "material_id": "8b56fd1a-38ed-470a-8a54-ac3c6115f915",
+          "material_version": 1
+        },
+        {
+          "material_id": "ca54526d-c257-42a2-92a6-996d75ba3117",
+          "material_version": 1
+        }
+      ],
+      "rule_pack_version": null,
+      "template_version": null,
+      "reference_release": null,
+      "created_at": "2026-11-01T01:46:57.393Z"
+    },
+    {
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "input_revision": 2,
+      "input_hash": "4ff9fa5ff9490f7e3d174aa717d038d21dd24213f74075e069c8fb17e91d9462",
+      "target_confirmation": {
+        "as_of": null,
+        "market": null,
+        "status": "unconfirmed",
+        "offering": null,
+        "confirmed_at": null,
+        "confirmed_by": null,
+        "document_purpose": null,
+        "target_reporting_periods": []
+      },
+      "material_versions": [
+        {
+          "material_id": "2dd686ba-b9da-41e8-a8a5-d5c745ad06a0",
+          "material_version": 1
+        },
+        {
+          "material_id": "71eacacc-4789-421d-86d8-bd37764f0646",
+          "material_version": 1
+        },
+        {
+          "material_id": "ca54526d-c257-42a2-92a6-996d75ba3117",
+          "material_version": 1
+        }
+      ],
+      "rule_pack_version": null,
+      "template_version": null,
+      "reference_release": null,
+      "created_at": "2026-10-29T19:51:05.938Z"
+    },
+    {
+      "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+      "input_revision": 1,
+      "input_hash": "44e150315c9e63786441cbd663f804566f9f53395067342dcb1ea5defe35d396",
+      "target_confirmation": {
+        "as_of": null,
+        "market": null,
+        "status": "unconfirmed",
+        "offering": null,
+        "confirmed_at": null,
+        "confirmed_by": null,
+        "document_purpose": null,
+        "target_reporting_periods": []
+      },
+      "material_versions": [
+        {
+          "material_id": "2dd686ba-b9da-41e8-a8a5-d5c745ad06a0",
+          "material_version": 1
+        },
+        {
+          "material_id": "71eacacc-4789-421d-86d8-bd37764f0646",
+          "material_version": 1
+        },
+        {
+          "material_id": "ca54526d-c257-42a2-92a6-996d75ba3117",
+          "material_version": 1
+        }
+      ],
+      "rule_pack_version": null,
+      "template_version": null,
+      "reference_release": null,
+      "created_at": "2026-10-29T03:26:05.849Z"
+    }
+  ]
+}

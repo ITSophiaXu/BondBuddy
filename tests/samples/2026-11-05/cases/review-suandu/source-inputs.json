@@ -1,0 +1,220 @@
+{
+  "metadata_captured_at": "2026-11-05T14:12:35.827Z",
+  "source_release": "821477976c75a7218a733d6dca0cd3ed4c733987",
+  "source_account": "wql",
+  "project_metadata": {
+    "id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+    "owner_user_id": "8cdd709d-bdfd-4c48-a411-2f6bf6f40e41",
+    "name": "山东蒜都发展投资有限公司-上交所-普通私募公司债-募集书复核",
+    "kind": "review",
+    "issuer_name": "山东蒜都发展投资有限公司",
+    "market": "sse",
+    "offering": "private",
+    "created_at": "2026-10-25T08:50:53.985635+00:00",
+    "updated_at": "2026-10-26T06:38:33.978335+00:00",
+    "deleted_at": null,
+    "archived_at": null
+  },
+  "runs": [],
+  "input_revision_metadata": [],
+  "input_material_pins": [],
+  "material_metadata": [
+    {
+      "id": "09c0b231-3828-4f55-8ff4-b43ea24e4e3e",
+      "version": "1",
+      "owner_user_id": "8cdd709d-bdfd-4c48-a411-2f6bf6f40e41",
+      "project_id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+      "role": "historical",
+      "filename": "1-2 山东蒜都发展投资有限公司2026年面向专业投资者非公开发行科技创新公司债券募集说明书1025v1清洁版.docx",
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "byte_size": "565933",
+      "sha256": "5723460065160953bf86361c84707c5b6feb8b47fecf7760a667e3d757ff6a7a",
+      "state": "persisted",
+      "persisted_at": "2026-10-25T08:51:20.764479+00:00",
+      "deleted_at": null
+    },
+    {
+      "id": "f6a04153-17cc-49b3-856f-8637fe534790",
+      "version": "1",
+      "owner_user_id": "8cdd709d-bdfd-4c48-a411-2f6bf6f40e41",
+      "project_id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+      "role": "historical",
+      "filename": "山东蒜都募集说明书_复核修订版_20261025.docx",
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "byte_size": "541578",
+      "sha256": "024830590e7a59cb1e7d4dda8ed31b5e376ebb65522edf74c6eeb59c0eead172",
+      "state": "persisted",
+      "persisted_at": "2026-10-25T12:33:47.675721+00:00",
+      "deleted_at": null
+    },
+    {
+      "id": "9d13db58-8ac0-457e-b202-932e315dcca4",
+      "version": "1",
+      "owner_user_id": "8cdd709d-bdfd-4c48-a411-2f6bf6f40e41",
+      "project_id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+      "role": "historical",
+      "filename": "山东蒜都募集说明书_复核修订版_20261025.docx",
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "byte_size": "541697",
+      "sha256": "1da428328f3dc75524594cd8b5d7041a6dda848be0f7652a0f444dbec4961a8a",
+      "state": "persisted",
+      "persisted_at": "2026-10-25T12:40:44.824702+00:00",
+      "deleted_at": null
+    }
+  ],
+  "prospectus_versions": [
+    {
+      "id": "66a45d0c-dc7f-4f3b-9fac-8477873395a1",
+      "owner_user_id": "8cdd709d-bdfd-4c48-a411-2f6bf6f40e41",
+      "project_id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+      "sequence": "1",
+      "origin": "upload",
+      "filename": "1-2 山东蒜都发展投资有限公司2026年面向专业投资者非公开发行科技创新公司债券募集说明书1025v1清洁版.docx",
+      "sha256": "5723460065160953bf86361c84707c5b6feb8b47fecf7760a667e3d757ff6a7a",
+      "material_id": "09c0b231-3828-4f55-8ff4-b43ea24e4e3e",
+      "material_version": "1",
+      "artifact_id": null,
+      "artifact_version": null,
+      "run_id": null,
+      "created_at": "2026-10-25T08:51:20.764479+00:00"
+    },
+    {
+      "id": "45066df8-b29c-4897-be12-88c0694a8d35",
+      "owner_user_id": "8cdd709d-bdfd-4c48-a411-2f6bf6f40e41",
+      "project_id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+      "sequence": "2",
+      "origin": "generated",
+      "filename": "募集说明书清洁版.docx",
+      "sha256": "03303dd016a0eb53d3d72cec9dc6da470d94397cf802c5abc1660afe85b5a3e7",
+      "material_id": null,
+      "material_version": null,
+      "artifact_id": "word-918c30f511bf8c382020095eb26471ecd29becf98eb0b2f6b3fd57f43ba075d0",
+      "artifact_version": "1",
+      "run_id": "f6d8942b-6dba-45bd-bcd4-7483a3c34886",
+      "created_at": "2026-10-25T09:01:30.110897+00:00"
+    },
+    {
+      "id": "01e10f3c-db7e-4149-aa7b-319e20deedbb",
+      "owner_user_id": "8cdd709d-bdfd-4c48-a411-2f6bf6f40e41",
+      "project_id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+      "sequence": "3",
+      "origin": "generated",
+      "filename": "募集说明书清洁版.docx",
+      "sha256": "30d264b2f937134d85f166770f3860dd843684c45750ab2222a0454faa06191c",
+      "material_id": null,
+      "material_version": null,
+      "artifact_id": "word-f52f65fae5809b2354da05d7ae7f5221ca07bf4edbadd3d91aec33be3e1c8e76",
+      "artifact_version": "1",
+      "run_id": "bcdac86e-ba37-46b8-a18d-3de1da5c3b91",
+      "created_at": "2026-10-25T12:18:00.522577+00:00"
+    },
+    {
+      "id": "c3539480-da58-462f-90ed-1ad251260a96",
+      "owner_user_id": "8cdd709d-bdfd-4c48-a411-2f6bf6f40e41",
+      "project_id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+      "sequence": "4",
+      "origin": "upload",
+      "filename": "山东蒜都募集说明书_复核修订版_20261025.docx",
+      "sha256": "024830590e7a59cb1e7d4dda8ed31b5e376ebb65522edf74c6eeb59c0eead172",
+      "material_id": "f6a04153-17cc-49b3-856f-8637fe534790",
+      "material_version": "1",
+      "artifact_id": null,
+      "artifact_version": null,
+      "run_id": null,
+      "created_at": "2026-10-25T12:33:47.675721+00:00"
+    },
+    {
+      "id": "0dc377b0-f15f-4d5a-9a2e-3f1bfcae28eb",
+      "owner_user_id": "8cdd709d-bdfd-4c48-a411-2f6bf6f40e41",
+      "project_id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+      "sequence": "5",
+      "origin": "upload",
+      "filename": "山东蒜都募集说明书_复核修订版_20261025.docx",
+      "sha256": "1da428328f3dc75524594cd8b5d7041a6dda848be0f7652a0f444dbec4961a8a",
+      "material_id": "9d13db58-8ac0-457e-b202-932e315dcca4",
+      "material_version": "1",
+      "artifact_id": null,
+      "artifact_version": null,
+      "run_id": null,
+      "created_at": "2026-10-25T12:40:44.824702+00:00"
+    }
+  ],
+  "capture_limitations": [
+    "管理员只读索引不返回完整冻结 manifest；历史运行列表限最近1000条，缺项不代表从未执行。"
+  ],
+  "input_captured_at": "2026-10-25",
+  "project_detail": {
+    "project_id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+    "draft_revision": 1,
+    "input_revision": 2,
+    "input_hash": "fa97bb758d355cef160bee75bc2f13ff4504f6e6ea403b595cda16e84cefad04",
+    "name": "山东蒜都发展投资有限公司-上交所-普通私募公司债-募集书复核",
+    "kind": "review",
+    "issuer_name": "山东蒜都发展投资有限公司",
+    "market": "sse",
+    "offering": "private",
+    "update_details": {
+      "has_historical": null,
+      "reporting_cutoff": "2026-06-30",
+      "registration_amount": null,
+      "issuance_amount": null,
+      "bond_terms": null,
+      "underwriting": null,
+      "other_agencies": null,
+      "rating_enhancement": null,
+      "funding_uses": [],
+      "other_information": null,
+      "supplementary_notes": null,
+      "authoring_mode": "unified_v1",
+      "source_prospectuses": []
+    },
+    "updated_at": "2026-10-25T12:17:07.116Z",
+    "archived_at": null
+  },
+  "input_revision_dtos": [],
+  "review_saved_draft": {
+    "as_of": "2026-06-30",
+    "requirements": [
+      "请重新完整复核待复核原稿，不能沿用上一轮空报告或把进度说明当作复核结论。重点要求：对原稿中有明确依据的财务数据前后不一致、计算或勾稽错误、年份引用错误、重复文字、错别字、编号、格式及标点问题，直接修改原文并保留 Word 原生修订痕迹，同时说明修改原因。每个已确认问题须给出可定位的逐字原文和完整替换文本，不得只写建议或全部转为待人工复核。缺少外部审计报告等材料时，只把依赖该证据的事项留作批注，不应阻止原稿内部即可验证的修改。覆盖四项复核并形成完整复核报告，最后核对修订版与原文确有实际差异；不得将仅含读取进度、零实质内容的文件作为完成成果。"
+    ],
+    "material_versions": [
+      {
+        "sha256": "5723460065160953bf86361c84707c5b6feb8b47fecf7760a667e3d757ff6a7a",
+        "material_id": "09c0b231-3828-4f55-8ff4-b43ea24e4e3e",
+        "material_version": 1
+      }
+    ],
+    "source_material_ref": {
+      "sha256": "5723460065160953bf86361c84707c5b6feb8b47fecf7760a667e3d757ff6a7a",
+      "material_id": "09c0b231-3828-4f55-8ff4-b43ea24e4e3e",
+      "material_version": 1
+    },
+    "version": 2
+  },
+  "matching_execution": {
+    "operation": "full_review",
+    "input_version": 2,
+    "input_revision": 2,
+    "input_sha256": "9d186214c097bd58d732718e7e236f0fbddbcfcda99577dfd3f8cae71ba328f5",
+    "origin": {
+      "version": "review-execution-origin-v1",
+      "entrypoint": "quick_action",
+      "accepted_proposal": null,
+      "context_report_ref": null
+    },
+    "run": {
+      "run_id": "bcdac86e-ba37-46b8-a18d-3de1da5c3b91",
+      "project_id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+      "input_revision": 2,
+      "input_hash": "fa97bb758d355cef160bee75bc2f13ff4504f6e6ea403b595cda16e84cefad04",
+      "state": "running",
+      "stage": "provider_call",
+      "updated_at": "2026-10-25T12:17:14.457Z"
+    }
+  },
+  "review_input_verification": {
+    "algorithm": "SHA-256 of recursively key-sorted compact UTF-8 JSON, excluding draft.version",
+    "sha256": "9d186214c097bd58d732718e7e236f0fbddbcfcda99577dfd3f8cae71ba328f5",
+    "matches_execution": true
+  }
+}

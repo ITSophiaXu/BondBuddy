@@ -50,6 +50,15 @@ test('a result lookup failure keeps retry available and drafts never promise res
   expect(mutations(state)).toEqual([]);
 });
 
+for(const kind of ['update','review','generation','qa'] as const)test(`an empty ${kind} project continues the same kind of work`,async({page})=>{
+  const state=fixture();state.projects.find(project=>project.project_id===ids.c)!.kind=kind;
+  await install(page,state);await page.goto('/#tasks');
+  await row(page,ids.c).getByRole('button',{name:'查看任务',exact:false}).click();
+  const route=kind==='generation'?'generate':kind;
+  await expect(page.locator(`[data-task-panel="${ids.c}"]`).getByRole('link',{name:'继续准备材料'})).toHaveAttribute('href',`#${route}?project=${ids.c}&from=projects`);
+  expect(mutations(state)).toEqual([]);
+});
+
 test('completed, QA, review and partial batch results retain their original destinations',async({page})=>{
   const state=fixture();const finished=task('a',1);
   const cases=[

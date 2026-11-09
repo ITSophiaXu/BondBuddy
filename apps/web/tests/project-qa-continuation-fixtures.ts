@@ -73,7 +73,7 @@ export const historicalRecords=(state:State)=>structuredClone(state.workspace.ru
 function queued(state:State,body:AnswerRequest|PrepareRequest,operation:'answer'|'prepare'):Accepted{
   const manifest=operation==='answer'?input('answer',state.workspace.draft.questions,state.workspace.draft.materials,state.workspace.draft.requirements):input('prepare');
   if(operation==='prepare')manifest.source={filename:state.uploadMaterial?.filename??'合成问题清单_v2.docx',asset:structuredClone((body as PrepareRequest).source)};
-  const sequence=Math.max(...state.workspace.runs.map(run=>run.sequence))+1,runId=`synthetic-qa-${operation}-${sequence}`;
+  const sequence=Math.max(0,...state.workspace.runs.map(run=>run.sequence))+1,runId=`synthetic-qa-${operation}-${sequence}`;
   const run:QaRun={run_id:runId,sequence,operation,state:'queued',stage:'queued',created_at:now,manifest,result:null,artifact_id:null,reserved_points:manifest.points,charged_points:0};
   const generic:Dto<'RunResponse'>={run_id:runId,execution_request_id:`qa-${operation}:${body.request_id}`,project_id:projectId,input_revision:100+sequence,input_hash:sha(JSON.stringify(manifest)),channel:'production',test_grant_id:null,
     uncovered_items:[],state:'queued',stage:'queued',event_cursor:0,billing_mode:'fixed_credits',reservation_id:operation==='answer'?`synthetic-reservation-${sequence}`:null,artifact_id:null,prompt_snapshot_ref:null,updated_at:now};

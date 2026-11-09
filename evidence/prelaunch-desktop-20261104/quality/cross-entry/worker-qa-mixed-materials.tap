@@ -1,0 +1,27 @@
+TAP version 13
+# Subtest: project Q&A: free extraction, confirmed count, grounded Word, knowledge review, versions, billing and ownership
+not ok 1 - project Q&A: free extraction, confirmed count, grounded Word, knowledge review, versions, billing and ownership
+  ---
+  duration_ms: 8582.8467
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\prelaunch-desktop-20261104\\apps\\worker\\dist\\project-qa-e2e.pg.test.js:21:1'
+  failureType: 'testCodeFailure'
+  error: 'column "run_id" does not exist'
+  code: '42703'
+  name: 'error'
+  stack: |-
+    C:\Users\lezhai\Downloads\Bondbuddy\prelaunch-desktop-20261104\node_modules\pg-pool\index.js:45:11
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/apps/worker/dist/project-qa-e2e.pg.test.js:138:27)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 19942.5887

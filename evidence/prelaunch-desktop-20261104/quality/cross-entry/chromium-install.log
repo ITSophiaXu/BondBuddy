@@ -1,0 +1,51 @@
+Downloading Chrome for Testing 153.0.8010.12 (playwright chromium v1243)[2m from https://cdn.playwright.dev/builds/cft/153.0.8010.12/win64/chrome-win64.zip[22m
+Error: connect EACCES 150.171.110.134:443
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2083:16) {
+  errno: -4092,
+  code: 'EACCES',
+  syscall: 'connect',
+  address: '150.171.110.134',
+  port: 443
+}
+Downloading Chrome for Testing 153.0.8010.12 (playwright chromium v1243)[2m from https://cdn.playwright.dev/builds/cft/153.0.8010.12/win64/chrome-win64.zip[22m
+Error: connect EACCES 150.171.110.134:443
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2083:16) {
+  errno: -4092,
+  code: 'EACCES',
+  syscall: 'connect',
+  address: '150.171.110.134',
+  port: 443
+}
+Downloading Chrome for Testing 153.0.8010.12 (playwright chromium v1243)[2m from https://cdn.playwright.dev/builds/cft/153.0.8010.12/win64/chrome-win64.zip[22m
+Error: connect EACCES 150.171.110.134:443
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2083:16) {
+  errno: -4092,
+  code: 'EACCES',
+  syscall: 'connect',
+  address: '150.171.110.134',
+  port: 443
+}
+Downloading Chrome for Testing 153.0.8010.12 (playwright chromium v1243)[2m from https://cdn.playwright.dev/builds/cft/153.0.8010.12/win64/chrome-win64.zip[22m
+Error: connect EACCES 150.171.110.134:443
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2083:16) {
+  errno: -4092,
+  code: 'EACCES',
+  syscall: 'connect',
+  address: '150.171.110.134',
+  port: 443
+}
+Downloading Chrome for Testing 153.0.8010.12 (playwright chromium v1243)[2m from https://cdn.playwright.dev/builds/cft/153.0.8010.12/win64/chrome-win64.zip[22m
+Error: connect EACCES 150.171.110.134:443
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:2083:16) {
+  errno: -4092,
+  code: 'EACCES',
+  syscall: 'connect',
+  address: '150.171.110.134',
+  port: 443
+}
+Failed to install browsers
+Error: Failed to download Chrome for Testing 153.0.8010.12 (playwright chromium v1243), caused by
+Error: Download failure, code=1
+    at ChildProcess.<anonymous> (C:\Users\lezhai\Downloads\Bondbuddy\prelaunch-desktop-20261104\node_modules\playwright-core\lib\coreBundle.js:32428:32)
+    at ChildProcess.emit (node:events:514:20)
+    at ChildProcess._handle.onexit (node:internal/child_process:323:12)

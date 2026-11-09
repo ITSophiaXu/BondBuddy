@@ -1,0 +1,54 @@
+{
+  "scope": "Existing isolated PostgreSQL/API/worker synthetic tests; no merchant or model connection; all business assertions retained.",
+  "base_head": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+  "uncommitted_fixture_change": true,
+  "node": "v26.13.0",
+  "started_at": "2026-11-04T05:53:29.326Z",
+  "command": [
+    "node",
+    "--test",
+    "--test-concurrency=1",
+    "--test-reporter=tap",
+    "apps/api/dist/review-dynamic-balance.pg.test.js"
+  ],
+  "environment_keys": [
+    "BB_TEST_DATABASE_URL",
+    "BB_TEST_AZURITE_CONNECTION_STRING",
+    "BONDBUDDY_TEST_PYTHON",
+    "BONDBUDDY_WORD_PYTHON",
+    "BB_PYTHON",
+    "PYTHONPATH",
+    "PYTHONDONTWRITEBYTECODE",
+    "PYTHONIOENCODING",
+    "BB_TEST_INTEGRITY_BROWSER",
+    "BB_TEST_LIVE_AUTHORING",
+    "BB_PLATFORM_PROBE_ENABLED",
+    "BB_REVIEW_WEB_SEARCH_ENABLED",
+    "PLAYWRIGHT_BROWSERS_PATH",
+    "BB_QA_TEST_OUTPUT_DIRECTORY"
+  ],
+  "source_and_build": [
+    {
+      "path": "apps/api/src/review-dynamic-balance.pg.test.ts",
+      "sha256": "c01e9c5c4ba8239a96ac9d1852977d553d4b8d8d9cc1f467af104f3d428b2b16"
+    },
+    {
+      "path": "apps/api/dist/review-dynamic-balance.pg.test.js",
+      "sha256": "3f01d00a69f235463174ac391ce7aec88b05b9c44fa7e29c5d626d77b5ff3242"
+    }
+  ],
+  "state": "complete",
+  "completed_at": "2026-11-04T05:53:42.159Z",
+  "exit_code": 0,
+  "signal": null,
+  "summary": {
+    "tests": 1,
+    "pass": 1,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "duration_ms": 12699.6768
+  },
+  "raw_sha256": "6deffb14669606348dd4e37bfb9bc1783eff58b541fc3582cd1a113804c4b9f9"
+}

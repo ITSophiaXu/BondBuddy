@@ -1,0 +1,124 @@
+{
+  "scope": "Existing synthetic API cross-entry regression; no real merchant or provider calls, no production data, no quality acceptance claim.",
+  "head": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+  "node": "v26.13.0",
+  "started_at": "2026-11-04T05:44:58.523Z",
+  "command": [
+    "node",
+    "--test",
+    "--test-concurrency=1",
+    "--test-reporter=tap",
+    "apps/api/dist/file-generation.pg.test.js",
+    "apps/api/dist/file-template-loading.pg.test.js",
+    "apps/api/dist/workpaper-upload.pg.test.js",
+    "apps/api/dist/workpaper-download.pg.test.js",
+    "apps/api/dist/workpaper-legacy-checks.pg.test.js",
+    "apps/api/dist/integrity-scope.pg.test.js",
+    "apps/api/dist/automatic-m4-boundaries.pg.test.js",
+    "apps/api/dist/paid-review-assembly-recovery.pg.test.js",
+    "apps/api/dist/review-dynamic-balance.pg.test.js"
+  ],
+  "environment_keys": [
+    "BB_TEST_DATABASE_URL",
+    "BB_TEST_AZURITE_CONNECTION_STRING",
+    "BONDBUDDY_TEST_PYTHON",
+    "BONDBUDDY_WORD_PYTHON",
+    "BB_PYTHON",
+    "PYTHONPATH",
+    "PYTHONDONTWRITEBYTECODE",
+    "PYTHONIOENCODING",
+    "BB_TEST_INTEGRITY_BROWSER",
+    "BB_TEST_LIVE_AUTHORING",
+    "BB_PLATFORM_PROBE_ENABLED",
+    "BB_REVIEW_WEB_SEARCH_ENABLED",
+    "PLAYWRIGHT_BROWSERS_PATH"
+  ],
+  "source_and_build": [
+    {
+      "path": "apps/api/src/file-generation.pg.test.ts",
+      "sha256": "fae855b7015d34ffe3555a7ca947525893d89ae1f3f66b3f46b1fd97ac4f6644"
+    },
+    {
+      "path": "apps/api/dist/file-generation.pg.test.js",
+      "sha256": "2830daf5677be661269d35b3683c9ce2ce9ce3cf41142f4cb409bc2272e24695"
+    },
+    {
+      "path": "apps/api/src/file-template-loading.pg.test.ts",
+      "sha256": "2e39566441c0bc5bf31cea608fc51a5c7ffdcf3973333dd200e625d04d1675f0"
+    },
+    {
+      "path": "apps/api/dist/file-template-loading.pg.test.js",
+      "sha256": "fe02d82e34ed878511653f0b2a58c1784f334ca324e31258c2a48fad09dc4aa6"
+    },
+    {
+      "path": "apps/api/src/workpaper-upload.pg.test.ts",
+      "sha256": "669c41fb0f375c316f2d7a739947d6807eeca1a862fd3f757c55e3f8cd04125f"
+    },
+    {
+      "path": "apps/api/dist/workpaper-upload.pg.test.js",
+      "sha256": "1fecec16914091525ce899426b847a7cb8f17b75eca8cbdf6ff423d6ffd3d23c"
+    },
+    {
+      "path": "apps/api/src/workpaper-download.pg.test.ts",
+      "sha256": "d4b8302e04b1cc3e15fe3ea1178e6544df4d5d9751fc80dbfbe16aacec9f363e"
+    },
+    {
+      "path": "apps/api/dist/workpaper-download.pg.test.js",
+      "sha256": "173da202693678cb7373655d23fcf2fa8d07fff3c1cf044853a1befef896361f"
+    },
+    {
+      "path": "apps/api/src/workpaper-legacy-checks.pg.test.ts",
+      "sha256": "5b8ec3b1d382130f456b1e1e78337a41799f2224a96467c91954b7cb5373d47f"
+    },
+    {
+      "path": "apps/api/dist/workpaper-legacy-checks.pg.test.js",
+      "sha256": "f0e00abbaad8c355f6445ab6bc1649b33ff9f95ee883f3fc282f354587f010cb"
+    },
+    {
+      "path": "apps/api/src/integrity-scope.pg.test.ts",
+      "sha256": "78be2796f227d4d9c6ae440feaf406daed1c8ce551220bdd8551b778f84b0690"
+    },
+    {
+      "path": "apps/api/dist/integrity-scope.pg.test.js",
+      "sha256": "1ee533d9adb64b71e15d1863b3de7cf8b1b26ec1791c244fc6189cfbcb9fc404"
+    },
+    {
+      "path": "apps/api/src/automatic-m4-boundaries.pg.test.ts",
+      "sha256": "f167e505ae1cac2aa82c785b82ecaac51c7468d4c4a70943d429e843cfff9ec6"
+    },
+    {
+      "path": "apps/api/dist/automatic-m4-boundaries.pg.test.js",
+      "sha256": "e14d3ad95e787a25b5428d76204893845302a81d887db095a9cd1fe8501b335c"
+    },
+    {
+      "path": "apps/api/src/paid-review-assembly-recovery.pg.test.ts",
+      "sha256": "2df0beb929a2193dd96a6650cfdba69b157869a6f9b7aac207b24595e37ad245"
+    },
+    {
+      "path": "apps/api/dist/paid-review-assembly-recovery.pg.test.js",
+      "sha256": "568b19cbff1c5b91cd364ec28fc8976fe7bfec259d3a64eeaf75af887cfd2512"
+    },
+    {
+      "path": "apps/api/src/review-dynamic-balance.pg.test.ts",
+      "sha256": "1ebffb100ca63229963c3138fe94491dc1a62867da7789ea2771ef57f6eed384"
+    },
+    {
+      "path": "apps/api/dist/review-dynamic-balance.pg.test.js",
+      "sha256": "654b8b9728cc18d5208b795f1ed421fe5b0c9d7652d283fc3295fdb6c628e157"
+    }
+  ],
+  "state": "complete",
+  "completed_at": "2026-11-04T05:48:03.125Z",
+  "exit_code": 1,
+  "signal": null,
+  "summary": {
+    "tests": 12,
+    "pass": 11,
+    "fail": 1,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "duration_ms": 184447.3861
+  },
+  "raw_sha256": "90d3149e8f54f29ac9087b9870a2e73c16e0238c253e2d3ae628aa8540132442"
+}

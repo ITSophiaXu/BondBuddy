@@ -1,0 +1,67 @@
+{
+  "name": "integrity-entry",
+  "width": 320,
+  "overflow": true,
+  "controls": [
+    {
+      "tag": "LABEL",
+      "id": "",
+      "text": "从本项目已上传文件选择选择本项目文件（不重新上传）合成历史证据_v2.pdf · 版本 2合成历史证据_v3.pdf · 版本 3合成查询截图.png · 版本 1",
+      "class": "",
+      "display": "block",
+      "width": 246,
+      "height": 68,
+      "border": "0px none rgb(37, 53, 71)",
+      "background": "rgba(0, 0, 0, 0)",
+      "cursor": "default",
+      "tabIndex": -1,
+      "accept": null,
+      "multiple": false
+    },
+    {
+      "tag": "LABEL",
+      "id": "",
+      "text": "或上传新的查询截图 / 原始证据（选文件即上传）选择文件或将文件拖到这里",
+      "class": "",
+      "display": "block",
+      "width": 246,
+      "height": 162,
+      "border": "0px none rgb(37, 53, 71)",
+      "background": "rgba(0, 0, 0, 0)",
+      "cursor": "default",
+      "tabIndex": -1,
+      "accept": null,
+      "multiple": false
+    },
+    {
+      "tag": "INPUT",
+      "id": "",
+      "text": "",
+      "class": "",
+      "display": "block",
+      "width": 244,
+      "height": 110,
+      "border": "0px none rgb(32, 59, 51)",
+      "background": "rgb(255, 255, 255)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": ".png,.jpg,.jpeg,.pdf,.docx",
+      "multiple": false
+    },
+    {
+      "tag": "BUTTON",
+      "id": "integrity-evidence-save",
+      "text": "保存补充证据 · 免费",
+      "class": "btn primary",
+      "display": "inline-flex",
+      "width": 139.5,
+      "height": 41,
+      "border": "0px none rgb(255, 255, 255)",
+      "background": "rgb(23, 62, 51)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": null,
+      "multiple": false
+    }
+  ]
+}

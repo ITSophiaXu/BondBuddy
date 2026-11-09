@@ -1,0 +1,44 @@
+{
+  "case_id": "integrity-suandu",
+  "task_type": "integrity",
+  "input_origin": "new_test_recipe_using_authorized_real_materials",
+  "source_case_ids": [
+    "review-suandu"
+  ],
+  "issuer_name": "山东蒜都发展投资有限公司",
+  "materials": [
+    {
+      "file_id": "nov05-f001",
+      "original_filename": "1-2 山东蒜都发展投资有限公司2026年面向专业投资者非公开发行科技创新公司债券募集说明书1025v1清洁版.docx",
+      "upload_role": "historical",
+      "source_material_id": "09c0b231-3828-4f55-8ff4-b43ea24e4e3e",
+      "source_material_version": 1,
+      "deleted_at": null
+    }
+  ],
+  "business_acceptance_status": "not_evaluated",
+  "notes": [],
+  "replay_policy": "新建隔离测试项目；这是新编测试设计，不是历史已执行任务或已验收成果。",
+  "draft": {
+    "subjects": [
+      {
+        "id": "issuer-suandu",
+        "kind": "company",
+        "name": "山东蒜都发展投资有限公司",
+        "identifier": "",
+        "role": "发行人",
+        "province": "",
+        "city": ""
+      }
+    ],
+    "site_ids": [
+      "credit-china",
+      "execution-dishonest",
+      "execution-debtor",
+      "csrc",
+      "sse"
+    ],
+    "notes": "记录当次实际结果；未知信用代码/注册地留空并核对，不预设无失信或有失信。"
+  },
+  "assertion_policy": "站点状态随时间变化；验证主体匹配、查询证据和失败分类，不断言永久无结果。"
+}

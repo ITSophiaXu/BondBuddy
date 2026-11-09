@@ -1,0 +1,208 @@
+TAP version 13
+# Subtest: annual statements reconcile monthly issuance against one paid contract across both channels
+    # Subtest: wechat: original monthly subscription and topup still reconcile
+    ok 1 - wechat: original monthly subscription and topup still reconcile
+      ---
+      duration_ms: 354.0616
+      type: 'test'
+      ...
+    # Subtest: wechat: first grant and all twelve annual releases produce no extra cash order or statement payment
+    ok 2 - wechat: first grant and all twelve annual releases produce no extra cash order or statement payment
+      ---
+      duration_ms: 369.1827
+      type: 'test'
+      ...
+    # Subtest: wechat: actual wrong first-grant quantity and source remain visible differences
+    ok 3 - wechat: actual wrong first-grant quantity and source remain visible differences
+      ---
+      duration_ms: 179.2121
+      type: 'test'
+      ...
+    # Subtest: wechat: largest annual refund reconciles whole cash once, removes first batch and cancels future grants
+    ok 4 - wechat: largest annual refund reconciles whole cash once, removes first batch and cancels future grants
+      ---
+      duration_ms: 184.0761
+      type: 'test'
+      ...
+    # Subtest: wechat: consecutive upgrades reconcile only new cash and preserve source rights after the new annual refund
+    not ok 5 - wechat: consecutive upgrades reconcile only new cash and preserve source rights after the new annual refund
+      ---
+      duration_ms: 391.0436
+      type: 'test'
+      location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\prelaunch-desktop-20261104\\apps\\api\\dist\\annual-payment-statements.pg.test.js:158:21'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly equal:
+        + actual - expected
+        
+        + 538920n
+        - 49900n
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 49900n
+      actual: 538920n
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/apps/api/dist/annual-payment-statements.pg.test.js:197:24)
+        process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+        async Test.run (node:internal/test_runner/test:1409:7)
+        async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/apps/api/dist/annual-payment-statements.pg.test.js:158:13)
+        async Test.run (node:internal/test_runner/test:1409:7)
+        async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+      ...
+    # Subtest: alipay: original monthly subscription and topup still reconcile
+    ok 6 - alipay: original monthly subscription and topup still reconcile
+      ---
+      duration_ms: 75.9341
+      type: 'test'
+      ...
+    # Subtest: alipay: first grant and all twelve annual releases produce no extra cash order or statement payment
+    ok 7 - alipay: first grant and all twelve annual releases produce no extra cash order or statement payment
+      ---
+      duration_ms: 186.7114
+      type: 'test'
+      ...
+    # Subtest: alipay: actual wrong first-grant quantity and source remain visible differences
+    ok 8 - alipay: actual wrong first-grant quantity and source remain visible differences
+      ---
+      duration_ms: 109.8413
+      type: 'test'
+      ...
+    # Subtest: alipay: largest annual refund reconciles whole cash once, removes first batch and cancels future grants
+    ok 9 - alipay: largest annual refund reconciles whole cash once, removes first batch and cancels future grants
+      ---
+      duration_ms: 136.8381
+      type: 'test'
+      ...
+    # Subtest: alipay: consecutive upgrades reconcile only new cash and preserve source rights after the new annual refund
+    not ok 10 - alipay: consecutive upgrades reconcile only new cash and preserve source rights after the new annual refund
+      ---
+      duration_ms: 325.3349
+      type: 'test'
+      location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\prelaunch-desktop-20261104\\apps\\api\\dist\\annual-payment-statements.pg.test.js:158:21'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly equal:
+        + actual - expected
+        
+        + 538920n
+        - 49900n
+        
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 49900n
+      actual: 538920n
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/apps/api/dist/annual-payment-statements.pg.test.js:197:24)
+        process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+        async Test.run (node:internal/test_runner/test:1409:7)
+        async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/apps/api/dist/annual-payment-statements.pg.test.js:158:13)
+        async Test.run (node:internal/test_runner/test:1409:7)
+        async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+      ...
+    1..10
+not ok 1 - annual statements reconcile monthly issuance against one paid contract across both channels
+  ---
+  duration_ms: 2503.3476
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\prelaunch-desktop-20261104\\apps\\api\\dist\\annual-payment-statements.pg.test.js:96:1'
+  failureType: 'subtestsFailed'
+  error: '2 subtests failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: complete API price lifecycle changes future real quotes, preserves paid contracts, and rolls back through a future version
+ok 2 - complete API price lifecycle changes future real quotes, preserves paid contracts, and rolls back through a future version
+  ---
+  duration_ms: 3806.8223
+  type: 'test'
+  ...
+# Subtest: owned coverage is earned after exact successful settlement; same-goal upgrades retain contract levels
+ok 3 - owned coverage is earned after exact successful settlement; same-goal upgrades retain contract levels
+  ---
+  duration_ms: 1170.5047
+  type: 'test'
+  ...
+# Subtest: 499 group uses union of separately delivered periods; the 1-yuan third purchase does not re-earn old periods
+ok 4 - 499 group uses union of separately delivered periods; the 1-yuan third purchase does not re-earn old periods
+  ---
+  duration_ms: 1080.0738
+  type: 'test'
+  ...
+# Subtest: ready zero continuation requires a real parent chain and loses inherited coverage after its source is corrected
+ok 5 - ready zero continuation requires a real parent chain and loses inherited coverage after its source is corrected
+  ---
+  duration_ms: 937.0893
+  type: 'test'
+  ...
+# Subtest: binding is replay-safe under concurrency, immutable, single-consumption and cannot turn pending zero into coverage
+ok 6 - binding is replay-safe under concurrency, immutable, single-consumption and cannot turn pending zero into coverage
+  ---
+  duration_ms: 1723.0724
+  type: 'test'
+  ...
+# Subtest: ordinary compensation and refunding unused original payment balance preserve delivered service coverage
+ok 7 - ordinary compensation and refunding unused original payment balance preserve delivered service coverage
+  ---
+  duration_ms: 829.0594
+  type: 'test'
+  ...
+# Subtest: one accepted scope supports released failure retries, but only one live or successful attempt
+ok 8 - one accepted scope supports released failure retries, but only one live or successful attempt
+  ---
+  duration_ms: 1902.2849
+  type: 'test'
+  ...
+# Subtest: subscription change funding and projection repair share one authoritative audit
+    # Subtest: held transfer is a legitimate frozen balance and a failed checkout releases it
+    ok 1 - held transfer is a legitimate frozen balance and a failed checkout releases it
+      ---
+      duration_ms: 501.0828
+      type: 'test'
+      ...
+    # Subtest: applied and refunded transfers never resurrect the old lot through repair
+    ok 2 - applied and refunded transfers never resurrect the old lot through repair
+      ---
+      duration_ms: 266.1516
+      type: 'test'
+      ...
+    # Subtest: multi-step funding survives annual cash allocation with unequal monthly cents
+    ok 3 - multi-step funding survives annual cash allocation with unequal monthly cents
+      ---
+      duration_ms: 267.7675
+      type: 'test'
+      ...
+    # Subtest: missing mixed funding is non-projection evidence and cannot be repaired into credits
+    ok 4 - missing mixed funding is non-projection evidence and cannot be repaired into credits
+      ---
+      duration_ms: 165.8165
+      type: 'test'
+      ...
+    # Subtest: missing pending source evidence cannot be classified as a repairable hold
+    ok 5 - missing pending source evidence cannot be classified as a repairable hold
+      ---
+      duration_ms: 135.6416
+      type: 'test'
+      ...
+    # Subtest: funding ownership, original consideration and restoration expiry are database-enforced
+    ok 6 - funding ownership, original consideration and restoration expiry are database-enforced
+      ---
+      duration_ms: 775.4921
+      type: 'test'
+      ...
+    1..6
+ok 9 - subscription change funding and projection repair share one authoritative audit
+  ---
+  duration_ms: 2115.4171
+  type: 'test'
+  ...
+1..9
+# tests 25
+# suites 0
+# pass 22
+# fail 3
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 66736.0697

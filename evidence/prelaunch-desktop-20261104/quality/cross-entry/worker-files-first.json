@@ -1,0 +1,55 @@
+{
+  "subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+  "group": "files",
+  "started_at": "2026-11-04T05:45:01.881Z",
+  "command": [
+    "C:\\Program Files\\nodejs\\node.exe",
+    "--test",
+    "--test-concurrency=2",
+    "--test-reporter=tap",
+    "apps/worker/dist/ordinary-file-check-batches.pg.test.js",
+    "apps/worker/dist/project-file-paid-coverage.pg.test.js",
+    "apps/worker/dist/project-files-e2e.pg.test.js"
+  ],
+  "synthetic": true,
+  "environment_keys": [
+    "BB_TEST_DATABASE_URL",
+    "BB_TEST_AZURITE_CONNECTION_STRING",
+    "BONDBUDDY_TEST_PYTHON",
+    "BONDBUDDY_WORD_PYTHON",
+    "BB_PYTHON",
+    "PYTHONPATH",
+    "PYTHONDONTWRITEBYTECODE",
+    "PYTHONIOENCODING",
+    "BB_TEST_INTEGRITY_BROWSER",
+    "BB_TEST_LIVE_AUTHORING",
+    "BB_PLATFORM_PROBE_ENABLED",
+    "BB_REVIEW_WEB_SEARCH_ENABLED",
+    "PLAYWRIGHT_BROWSERS_PATH"
+  ],
+  "bindings": [
+    {
+      "source": "apps/worker/src/ordinary-file-check-batches.pg.test.ts",
+      "source_sha256": "b1de404c298f0077105a37f46d233aaf29bde1284f5a4e9f62f2d6d17e8e6d18",
+      "dist": "apps/worker/dist/ordinary-file-check-batches.pg.test.js",
+      "dist_sha256": "b90ef4ed20b94d05dcdc1dfab0aa0e877b9978689be243b235c8d7a903b5d125"
+    },
+    {
+      "source": "apps/worker/src/project-file-paid-coverage.pg.test.ts",
+      "source_sha256": "1bb486123601b1594f9766c610ff14e9202d1f9ed987a34fa87098a864d46051",
+      "dist": "apps/worker/dist/project-file-paid-coverage.pg.test.js",
+      "dist_sha256": "dab792d02b9204c9b6f3fed87890930073b50fa736c35a92fb6238bd97312d8e"
+    },
+    {
+      "source": "apps/worker/src/project-files-e2e.pg.test.ts",
+      "source_sha256": "596460cc2bc82eecc8438fa9808c367a639149f98998844f1b1a451a941e98d8",
+      "dist": "apps/worker/dist/project-files-e2e.pg.test.js",
+      "dist_sha256": "6249877db42029ddf9db191f903e04fbd0021ed4eeb6328744c8efd0322abb19"
+    }
+  ],
+  "finished_at": "2026-11-04T05:46:06.870Z",
+  "exit_code": 1,
+  "signal": null,
+  "log": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\prelaunch-desktop-20261104\\.local\\quality-final-crossentry/worker-files-first.tap",
+  "log_sha256": "3491616e2fe2f65330435d75f1cda863a1d3d77674c43aea6b45cd8ab450b917"
+}

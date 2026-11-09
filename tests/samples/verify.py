@@ -17,6 +17,21 @@ def main():
     for manifest_path in manifests:
         batch = manifest_path.parent
         data = json.loads(manifest_path.read_text(encoding='utf-8'))
+        if data['manifest_version'] == 2:
+            from regression_pack import verify_batch
+            data, batch_paths = verify_batch(batch)
+            if listed & batch_paths:
+                raise ValueError('Duplicate sample path across batches')
+            ids = {file['file_id'] for file in data['assets']}
+            if identifiers & ids:
+                raise ValueError('Duplicate sample ID across batches')
+            listed.update(batch_paths)
+            identifiers.update(ids)
+            total_files += data['file_count']
+            total_bytes += data['total_bytes']
+            ready = sum(case.get('preparable', True) for case in data['cases'])
+            print(f"{batch.name}: integrity verified; {data['file_count']} originals; {len(data['cases'])} cases ({ready} preparable); {data['total_bytes']:,} bytes; business tests NOT run")
+            continue
         if data['manifest_version'] != 1:
             raise ValueError(f'Unsupported manifest: {manifest_path}')
         files = [file for case in data['cases'] for file in case['files']]

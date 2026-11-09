@@ -1,0 +1,161 @@
+import assert from 'node:assert/strict';
+import {test} from 'node:test';
+import {randomUUID,createHash} from 'node:crypto';
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
+import {Pool} from 'pg';
+import {emptyUpdateDetails,reportingWindow} from '@bondbuddy/contracts';
+import {createServer} from '../apps/api/dist/server.js';
+import {claim,checkpointStage,finish,promoteWordArtifact} from '../apps/api/dist/queue.js';
+import {digest} from '../apps/api/dist/data.js';
+import {makeSyntheticDocxFixture} from '../apps/api/dist/docx-fixtures.js';
+import {isolatedTestDatabase} from '../apps/api/dist/test-database.js';
+import {readContinuationBasis} from '../apps/web/dist-test/authoring-continuation.js';
+
+// Test-only, ignored probe. Real routes/queue transactions/compiled browser guard;
+// synthetic principal, content and in-memory Blob, no model or production service.
+const root=process.cwd(),evidence='evidence/prelaunch-desktop-20261104/quality';
+const connection=await isolatedTestDatabase(undefined,'quality-continuation-20261104');
+assert.ok(connection,'dedicated migrated test template is required');
+assert.equal(new URL(connection).hostname,'127.0.0.1');
+assert.equal(new URL(connection).port,'55434');
+const pool=new Pool({connectionString:connection});
+const owner='synthetic-quality-'+randomUUID(),files=new Map();
+const blobs={put:async(k,b)=>files.set(k,Buffer.from(b)),get:async k=>files.get(k),
+  getIfExists:async k=>files.get(k)??null,getIfExistsBounded:async(k,max)=>{const b=files.get(k);if(b&&b.length>max)throw Error('synthetic bounded Blob limit');return b??null;},
+  exists:async k=>files.has(k),delete:async k=>{files.delete(k);}};
+const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',enableSyntheticQueue:true,
+  enablePaidAuthoring:false,enableSubscriptionBilling:false,enableOutcomePricing:false,
+  principal:async()=>({userId:owner,csrfVerified:true})});
+const records=[];
+const send=(method,url,payload)=>app.inject({method,url,payload,headers:{origin:'http://bondbuddy.test'}});
+const ok=async(method,url,payload)=>{const r=await send(method,url,payload);assert.ok(r.statusCode>=200&&r.statusCode<300,`${method} ${url}: ${r.statusCode} ${r.body}`);return r.json();};
+const projectPath=p=>'/api/v1/projects/'+p;
+const counts=async project=>(await pool.query(`SELECT
+  (SELECT count(*)::int FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2) AS inputs,
+  (SELECT count(*)::int FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2) AS runs`,[owner,project])).rows[0];
+const reads=async(project,runId,choice)=>{
+  const [versions,run]=await Promise.all([ok('GET',projectPath(project)+'/prospectus-versions'),ok('GET','/api/v1/runs/'+runId)]);
+  const basis=await readContinuationBasis(versions,project,run,choice,id=>ok('GET','/api/v1/artifacts/'+id));
+  return {versions,run,basis};
+};
+const lock=async(project,basis,extra={})=>{
+  const p=await ok('GET',projectPath(project));
+  return send('POST',projectPath(project)+'/input-revisions',{draft_revision:p.draft_revision,
+    prospectus_selection_revision:basis.selectionRevision,material_versions:[],requirement_message_ids:[],edit_base:basis.editBase,...extra});
+};
+const create=async()=>ok('POST','/api/v1/projects',{kind:'update',name:'Synthetic continuation protocol',issuer_name:'Synthetic issuer',market:'sse',offering:'private',
+  update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1',reporting_cutoff:'2026-09-30',target_reporting_periods:reportingWindow('sse','private','2026-09-30')}});
+const author=async(project,label)=>{
+  const p=await ok('GET',projectPath(project));
+  const versions=await ok('GET',projectPath(project)+'/prospectus-versions');
+  const input=await ok('POST',projectPath(project)+'/input-revisions',{draft_revision:p.draft_revision,prospectus_selection_revision:versions.selection_revision,
+    material_versions:[],requirement_message_ids:[],edit_base:null});
+  const run=await ok('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:project,input_revision:input.input_revision,input_hash:input.input_hash,
+    task_kind:'update',input_manifest_ref:input.input_hash,storage_origin:'cloud',workspace_id:project});
+  const lease=await claim(pool,120);assert.ok(lease);assert.equal(lease.runId,run.run_id);
+  const bytes=makeSyntheticDocxFixture({text:'Synthetic first draft '+label});
+  const revision=await promoteWordArtifact(pool,lease,bytes,blobs,'generated_pair_v1');
+  const clean=await promoteWordArtifact(pool,lease,bytes,blobs,'generated_pair_v1');
+  assert.equal(revision.status,'available');assert.equal(clean.artifactId,revision.artifactId);assert.equal(clean.sha256,revision.sha256);
+  await checkpointStage(pool,lease,'word_delivery_pair',{revision_artifact_id:revision.artifactId,clean_artifact_id:clean.artifactId,
+    baseline_kind:'none',delivery_policy:'generated_pair_v1',writer_version:'synthetic-local-quality-probe'});
+  const completed=await finish(pool,lease,'succeeded',{artifactId:revision.artifactId,artifactVersion:revision.artifactVersion,blobs});
+  assert.equal(completed.state,'succeeded');
+  return {runId:run.run_id,artifact:revision,bytes,input};
+};
+
+test('current HEAD real API/PG continuation protocol with synthetic Word and Blob',async t=>{
+  const server=await pool.query('SELECT current_setting(\'data_directory\') AS directory,current_setting(\'port\') AS port,version() AS version');
+  assert.equal(server.rows[0].directory.replaceAll('\\','/'),root.replaceAll('\\','/')+'/.local/prelaunch-payment-pg');
+  await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'sq'+randomUUID().replaceAll('-','').slice(0,12)]);
+  const project=await create(),id=project.project_id,first=await author(id,'one');
+  try{
+    await t.test('Q15 same-hash shared-ID first draft is archived/current; actual result and current metadata lock the exact continuation pin',async()=>{
+      const before=await counts(id),result=await reads(id,first.runId,'result'),current=await reads(id,first.runId,'current');
+      assert.deepEqual(result.basis.editBase,{artifact_id:first.artifact.artifactId,artifact_version:1,sha256:digest(first.bytes)});
+      assert.deepEqual(current.basis.editBase,result.basis.editBase);
+      assert.equal(result.versions.versions.length,1);assert.equal(result.versions.current_version_id,result.basis.version.version_id);
+      assert.equal(result.basis.version.artifact_id,result.basis.version.revision_artifact_id);
+      const artifact=await ok('GET','/api/v1/artifacts/'+first.artifact.artifactId);
+      const download=await send('GET',artifact.download_url);assert.equal(download.statusCode,200);assert.equal(digest(download.rawPayload),first.artifact.sha256);
+      for(const choice of ['result','current']){
+        const prepared=await reads(id,first.runId,choice),fresh=await reads(id,first.runId,choice);
+        assert.equal(prepared.basis.key,fresh.basis.key);
+        const saved=await lock(id,fresh.basis);assert.equal(saved.statusCode,201,saved.body);
+        const input=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[owner,id,saved.json().input_revision])).rows[0].manifest;
+        assert.deepEqual(input.authoring.previous_output,{artifact_id:first.artifact.artifactId,version:1,sha256:first.artifact.sha256,run_id:first.runId,input_revision:first.input.input_revision});
+        assert.equal(input.authoring.format_policy.selection,'previous_output');
+        assert.equal(input.authoring.format_policy.template.artifact_id,first.artifact.artifactId);
+      }
+      assert.equal((await counts(id)).runs,before.runs,'preparing and locking continuation must not execute a run');
+      records.push({scenario:'Q15',status:'mechanical_pass',choices:['result','current'],shared_artifact:true,metadata:'real HTTP',pin:'persisted real PG input',model:'not_called'});
+    });
+    await t.test('Q17 mismatched SHA or version is refused by actual input route with zero new input/run; persisted immutable rows are untouched',async()=>{
+      const valid=await reads(id,first.runId,'result'),before=await counts(id);
+      for(const edit_base of [{...valid.basis.editBase,sha256:'f'.repeat(64)},{...valid.basis.editBase,artifact_version:2}]){
+        const response=await lock(id,valid.basis,{edit_base});assert.equal(response.statusCode,409,response.body);assert.equal(response.json().code,'INPUT_REVISION_CONFLICT');
+        assert.deepEqual(await counts(id),before);
+      }
+      const unchanged=await ok('GET','/api/v1/artifacts/'+first.artifact.artifactId);
+      assert.equal(unchanged.version,1);assert.equal(unchanged.sha256,first.artifact.sha256);
+      records.push({scenario:'Q17-stale-pin',status:'mechanical_pass',injection:'invalid request pins, no DB edits',hash_and_version_rejected:true,delta:{inputs:0,runs:0}});
+    });
+    await t.test('Q17 normal subsequent generation changes current version/hash and selection; stale prepared choice cannot persist an input or run',async()=>{
+      const prepared=await reads(id,first.runId,'current'),second=await author(id,'two'),before=await counts(id);
+      const freshCurrent=await reads(id,first.runId,'current'),oldResult=await reads(id,first.runId,'result');
+      assert.notEqual(freshCurrent.basis.key,prepared.basis.key);
+      assert.notEqual(freshCurrent.basis.version.version_id,prepared.basis.version.version_id);
+      assert.notEqual(freshCurrent.basis.editBase.sha256,prepared.basis.editBase.sha256);
+      assert.equal(freshCurrent.basis.editBase.artifact_id,second.artifact.artifactId);
+      assert.equal(oldResult.basis.editBase.artifact_id,first.artifact.artifactId,'result choice remains the accurate older run');
+      const stale=await lock(id,prepared.basis);assert.equal(stale.statusCode,409,stale.body);assert.equal(stale.json().code,'INPUT_REVISION_CONFLICT');
+      assert.deepEqual(await counts(id),before);
+      records.push({scenario:'Q17-normal-current-change',status:'mechanical_pass',change:'real routes + queue completion + generated registration',old_result_retained:true,stale_selection_rejected:true,delta:{inputs:0,runs:0}});
+    });
+    await t.test('Q17 synthetic Blob missing/corrupt faults fail real metadata reads and both compiled guard choices with zero new input/run',async()=>{
+      const current=await reads(id,first.runId,'current'),artifactId=current.basis.editBase.artifact_id;
+      const row=(await pool.query('SELECT object_key FROM bb_artifact_versions WHERE owner_user_id=$1 AND id=$2 AND version=1',[owner,artifactId])).rows[0];
+      const original=files.get(row.object_key),before=await counts(id);
+      assert.ok(original);
+      try{
+        for(const fault of ['missing','corrupt']){
+          if(fault==='missing')files.delete(row.object_key);else files.set(row.object_key,Buffer.alloc(original.length,88));
+          const meta=await send('GET','/api/v1/artifacts/'+artifactId);assert.equal(meta.statusCode,503,meta.body);
+          for(const choice of ['result','current'])await assert.rejects(reads(id,current.basis.version.run_id,choice),/503/);
+          assert.deepEqual(await counts(id),before);
+        }
+      }finally{files.set(row.object_key,original);}
+      assert.equal((await ok('GET','/api/v1/artifacts/'+artifactId)).sha256,digest(original));
+      records.push({scenario:'Q17-blob-fault',status:'mechanical_pass',injection:'synthetic in-memory Blob only; DB/evidence immutable',faults:['missing','same-size corrupt'],metadata_http:503,delta:{inputs:0,runs:0},limitation:'guard path only; not a new quality-gate rejection or durable metadata revocation'});
+    });
+    await t.test('Q18 old passed/available metadata stays generated_pair_v1/content_review not_performed after same-ID continuation reads',async()=>{
+      const before=(await pool.query('SELECT quality_status,delivery_status,word_delivery_evidence_id FROM bb_artifact_versions WHERE id=$1 AND version=1',[first.artifact.artifactId])).rows[0];
+      const artifact=await ok('GET','/api/v1/artifacts/'+first.artifact.artifactId);
+      assert.equal(artifact.word_delivery.content_review,'not_performed');assert.equal(artifact.word_delivery.delivery_policy,'generated_pair_v1');
+      assert.equal(JSON.stringify(artifact).includes('word-quality-v1'),false);
+      await reads(id,first.runId,'result');
+      assert.deepEqual((await pool.query('SELECT quality_status,delivery_status,word_delivery_evidence_id FROM bb_artifact_versions WHERE id=$1 AND version=1',[first.artifact.artifactId])).rows[0],before);
+      records.push({scenario:'Q18-old-status',status:'mechanical_pass_limited',content_review:'not_performed',new_quality_backfill:false,limitation:'#871 new quality gate not present or executed'});
+    });
+    await t.test('Q17 public project deletion revokes available artifacts; prior result/current reads and stale input request add zero input/run',async()=>{
+      const prepared=await reads(id,first.runId,'current'),before=await counts(id),deleted=await send('DELETE',projectPath(id));assert.equal(deleted.statusCode,204,deleted.body);
+      const statuses=(await pool.query('SELECT a.delivery_status FROM bb_artifact_versions a JOIN bb_runs r ON r.id=a.run_id WHERE r.project_id=$1',[id])).rows;
+      assert.ok(statuses.length>0&&statuses.every(x=>x.delivery_status==='revoked'));
+      const meta=await send('GET','/api/v1/artifacts/'+prepared.basis.editBase.artifact_id);assert.equal(meta.statusCode,404,meta.body);
+      for(const choice of ['result','current'])await assert.rejects(reads(id,first.runId,choice),/404/);
+      const stale=await send('POST',projectPath(id)+'/input-revisions',{draft_revision:project.draft_revision,prospectus_selection_revision:prepared.basis.selectionRevision,
+        material_versions:[],requirement_message_ids:[],edit_base:prepared.basis.editBase});assert.equal(stale.statusCode,404,stale.body);
+      assert.deepEqual(await counts(id),before);
+      records.push({scenario:'Q17-public-revocation',status:'mechanical_pass_limited',change:'public DELETE project revokes artifacts; no direct DB mutation',metadata_http:404,delta:{inputs:0,runs:0},limitation:'project deletion, not a standalone artifact-revoke route or #871 failed gate'});
+    });
+  }finally{
+    await app.close();await pool.end();
+    const sources=['apps/api/src/server.ts','apps/api/dist/server.js','apps/api/src/queue.ts','apps/api/dist/queue.js','apps/api/src/prospectus-versions.ts','apps/api/dist/prospectus-versions.js','apps/web/src/authoring-continuation.ts','apps/web/dist-test/authoring-continuation.js','.local/quality-continuation-probe.mjs'];
+    const hashes={};for(const path of sources)hashes[path]=createHash('sha256').update(await readFile(path)).digest('hex');
+    await mkdir(evidence,{recursive:true});
+    await writeFile(evidence+'/continuation-api-pg-results.json',JSON.stringify({observed_at:new Date().toISOString(),head:execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim(),node:process.version,
+      environment:{server:server.rows[0],authentication:'synthetic injected principal',database:'isolated clone of dedicated local template',blob:'in-memory synthetic',docx:'synthetic',models:'none'},
+      records,not_executed:['#871 trusted-host quality refusal integration','#871 first-draft expiry guard integration','final candidate real model golden and independent business/visual acceptance'],hashes},null,2)+'\n');
+  }
+});

@@ -1,0 +1,90 @@
+TAP version 13
+# Subtest: ordinary file batches settle independent outputs, retain original price on failed-only retries and isolate requests
+    # Subtest: native strings are required before AJV coercion and insufficient total funds leave no children or holds
+    ok 1 - native strings are required before AJV coercion and insufficient total funds leave no children or holds
+      ---
+      duration_ms: 131.4681
+      type: 'test'
+      ...
+    # Subtest: concurrent original requests freeze the full obligation once in independent children
+    ok 2 - concurrent original requests freeze the full obligation once in independent children
+      ---
+      duration_ms: 382.3513
+      type: 'test'
+      ...
+    # Subtest: one successful Word is delivered and billed even when another file fails
+    ok 3 - one successful Word is delivered and billed even when another file fails
+      ---
+      duration_ms: 3829.7434
+      type: 'test'
+      ...
+    # Subtest: failed-only retry and same-owner second-project create share safe lock order; original successful work is never rerun
+    ok 4 - failed-only retry and same-owner second-project create share safe lock order; original successful work is never rerun
+      ---
+      duration_ms: 4833.9579
+      type: 'test'
+      ...
+    # Subtest: new zero-price batches reuse exact succeeded outputs without model calls, child attempts or holds
+    ok 5 - new zero-price batches reuse exact succeeded outputs without model calls, child attempts or holds
+      ---
+      duration_ms: 776.9723
+      type: 'test'
+      ...
+    # Subtest: a mixed existing-plus-new batch runs and settles only its new file
+    ok 6 - a mixed existing-plus-new batch runs and settles only its new file
+      ---
+      duration_ms: 2932.7816
+      type: 'test'
+      ...
+    # Subtest: zero-price scope without an available exact original output is rejected instead of running free
+    ok 7 - zero-price scope without an available exact original output is rejected instead of running free
+      ---
+      duration_ms: 66.504
+      type: 'test'
+      ...
+    1..7
+ok 1 - ordinary file batches settle independent outputs, retain original price on failed-only retries and isolate requests
+  ---
+  duration_ms: 15626.8689
+  type: 'test'
+  ...
+# Subtest: ordinary paid checks release incomplete coverage and unverified replay, require real headers, and reject unread image content
+ok 2 - ordinary paid checks release incomplete coverage and unverified replay, require real headers, and reject unread image content
+  ---
+  duration_ms: 11480.1434
+  type: 'test'
+  ...
+# (node:45532) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: project files: template batch, provenance, real checks with synthetic model, whole-file paid updates, stale CAS, Word and isolation
+not ok 3 - project files: template batch, provenance, real checks with synthetic model, whole-file paid updates, stale CAS, Word and isolation
+  ---
+  duration_ms: 14641.2656
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\prelaunch-desktop-20261104\\apps\\worker\\dist\\project-files-e2e.pg.test.js:29:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    cannot understate quoted total
+    
+    422 !== 409
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 409
+  actual: 422
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/apps/worker/dist/project-files-e2e.pg.test.js:152:16)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+1..3
+# tests 10
+# suites 0
+# pass 9
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 64866.5154

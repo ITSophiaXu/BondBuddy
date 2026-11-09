@@ -33,7 +33,12 @@ export async function legacyBillingReplayExists(db:Pool,owner:string,kind:Billin
   case 'm4Message':sql='SELECT 1 FROM bb_m4_messages WHERE owner_user_id=$1 AND submission_request_id=$2 AND topic_id=$3';values=[owner,key,p.topic_id];break;
   case 'topup':sql=`SELECT 1 FROM bb_recharge_orders WHERE owner_user_id=$1 AND request_id=$2 AND order_kind='recharge'`;values=[owner,key];break;
   case 'subscription':sql=`SELECT 1 FROM bb_recharge_orders o JOIN bb_subscription_periods p ON p.order_id=o.id AND p.owner_user_id=o.owner_user_id
-    WHERE o.owner_user_id=$1 AND o.request_id=$2 AND o.order_kind='subscription' AND ($3::text IS NULL OR p.subscription_id=$3)`;values=[owner,key,p.subscription_id??null];break;
+    WHERE o.owner_user_id=$1 AND o.request_id=$2 AND o.order_kind='subscription' AND ($3::text IS NULL OR p.subscription_id=$3)
+    UNION ALL SELECT 1 FROM bb_subscription_checkout_rejections WHERE owner_user_id=$1 AND request_id=$2`;
+    // A durable rejection is an existing request too. It may reach only the
+    // original handler, whose immutable hash also binds plan, cycle and endpoint.
+    // No new legacy checkout is admitted by this owner/key-only lookup.
+    values=[owner,key,p.subscription_id??null];break;
   case 'refund':sql='SELECT 1 FROM bb_payment_refunds WHERE owner_user_id=$1 AND request_id=$2 AND order_id=$3';values=[owner,key,p.order_id];break;
   case 'fileBatch':sql='SELECT 1 FROM bb_project_file_batches WHERE owner_user_id=$1 AND request_id=$2 AND project_id=$3';values=[owner,key,p.project_id];break;
   case 'fileGeneration':sql='SELECT 1 FROM bb_file_generation_batches WHERE owner_user_id=$1 AND request_id=$2 AND project_id=$3';values=[owner,key,p.project_id];break;

@@ -1,0 +1,15 @@
+✔ maps only direct 2023/2024 consolidated and parent annual rows as external-source candidates (4.1979ms)
+✔ parser 1.0.7 auxiliary warnings preserve the body-only extractor result and candidate review requirements (4.0068ms)
+✔ uncertain direct cells remain needs-review and do not become facts (0.8056ms)
+✔ multiple paragraphs in a target value cell are ambiguous and review evidence stays bounded (1.461ms)
+✔ mismatched units or missing in-document section evidence fail closed for that statement (1.5327ms)
+✔ review evidence refs stay deterministic and bounded (0.5507ms)
+✔ authorized rq-202509 historical prospectus tables map through the real parser (9952.9222ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11860.1052

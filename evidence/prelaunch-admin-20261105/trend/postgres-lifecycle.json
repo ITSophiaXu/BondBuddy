@@ -1,0 +1,72 @@
+{
+  "synthetic": true,
+  "directory": "C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/.local/prelaunch-payment-pg",
+  "host": "127.0.0.1",
+  "port": 55434,
+  "start_observations": {
+    "initial_status": "no server running",
+    "initial_listener_count": 0,
+    "pg_ctl_start_failed": {
+      "exit": 1,
+      "reason": "could not create restricted token: error code 87"
+    },
+    "direct_postgres_started_at": "2026-11-05T02:40:42.572Z",
+    "direct_postgres_pid": 58148,
+    "postgres_version": "16.14",
+    "template_migrations": 168
+  },
+  "before": {
+    "checked_at": "2026-11-05T02:52:19.196Z",
+    "databases": [
+      {
+        "datname": "bb_prelaunch_payment_template"
+      }
+    ],
+    "clone_count": 0,
+    "otherClients": []
+  },
+  "statusBefore": {
+    "executable": "C:/Users/lezhai/Downloads/Bondbuddy/.m3-test-tools/node_modules/@embedded-postgres/windows-x64/native/bin/pg_ctl.exe",
+    "args": [
+      "status",
+      "-D",
+      "C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/.local/prelaunch-payment-pg"
+    ],
+    "exit": {
+      "code": 0,
+      "signal": null
+    },
+    "output": "pg_ctl: server is running (PID: 58148)\r\nC:/Users/lezhai/Downloads/Bondbuddy/.m3-test-tools/node_modules/@embedded-postgres/windows-x64/native/bin/postgres.exe \"-D\" \"C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/.local/prelaunch-payment-pg\" \"-p\" \"55434\" \"-h\" \"127.0.0.1\"\r\n"
+  },
+  "stop": {
+    "executable": "C:/Users/lezhai/Downloads/Bondbuddy/.m3-test-tools/node_modules/@embedded-postgres/windows-x64/native/bin/pg_ctl.exe",
+    "args": [
+      "stop",
+      "-w",
+      "-m",
+      "smart",
+      "-D",
+      "C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/.local/prelaunch-payment-pg"
+    ],
+    "exit": {
+      "code": 0,
+      "signal": null
+    },
+    "output": "waiting for server to shut down.... done\r\nserver stopped\r\n"
+  },
+  "statusAfter": {
+    "executable": "C:/Users/lezhai/Downloads/Bondbuddy/.m3-test-tools/node_modules/@embedded-postgres/windows-x64/native/bin/pg_ctl.exe",
+    "args": [
+      "status",
+      "-D",
+      "C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/.local/prelaunch-payment-pg"
+    ],
+    "exit": {
+      "code": 3,
+      "signal": null
+    },
+    "output": "pg_ctl: no server running\r\n"
+  },
+  "port_after_stop": "ECONNREFUSED",
+  "finished": "2026-11-05T02:52:19.537Z"
+}

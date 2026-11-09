@@ -1,0 +1,178 @@
+{
+  "case_id": "update-xinjin",
+  "task_type": "update",
+  "input_origin": "captured_real_project",
+  "source_account": "customer_test",
+  "source_project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+  "source_snapshot": "cases/update-xinjin/source-inputs.json",
+  "legal_issuer_name_for_derived_tests": "新津新城发展集团有限公司",
+  "primary_source_run": {
+    "id": "7176561f-c65d-47f8-977a-43389aa0f241",
+    "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+    "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+    "task_kind": "update",
+    "state": "succeeded",
+    "stage": "succeeded",
+    "created_at": "2026-11-01T01:46:59.982134+00:00",
+    "updated_at": "2026-11-01T03:54:01.999347+00:00",
+    "input_revision": "3",
+    "input_hash": "9d5f7bef5ecfe6fc4e85dd37c5876182a9304851cfcb9b54244870dea2e20b89",
+    "artifact_id": "word-51dcd7c31610a54c40119bc36780ac6bb42a9d2e1022e148d7e64178281404e9",
+    "artifact_version": "1",
+    "channel": "production",
+    "billing_mode": "fixed_credits",
+    "prompt_snapshot_ref": null
+  },
+  "input_capture_status": "current_saved_input_and_revision_pins",
+  "project_input": {
+    "name": "新津新城发展集团有限公司-上交所-普通私募公司债-募集书更新",
+    "kind": "update",
+    "issuer_name": "新津新城发展集团有限公司",
+    "market": "sse",
+    "offering": "private",
+    "update_details": {
+      "has_historical": null,
+      "reporting_cutoff": "2026-06-30",
+      "registration_amount": {
+        "unit": "hundred_million",
+        "value": "4.8"
+      },
+      "issuance_amount": {
+        "unit": "hundred_million",
+        "value": "4.8"
+      },
+      "bond_terms": "本期拟发行不超过4.8亿元，5年期。",
+      "underwriting": "国投证券股份有限公司牵头，无联席主承销商。",
+      "other_agencies": null,
+      "rating_enhancement": "主体评级AA，无债项评级，无增信",
+      "funding_uses": [
+        {
+          "amount": {
+            "unit": "hundred_million",
+            "value": "4.8"
+          },
+          "target": "无",
+          "details": "偿还到期“24新津”公司债券本金",
+          "purpose": "refinance_bonds"
+        }
+      ],
+      "other_information": null,
+      "supplementary_notes": null,
+      "authoring_mode": "unified_v1",
+      "source_prospectuses": [
+        {
+          "market": "sse",
+          "sha256": "c93811a0c0eb30f824fb6d9ef156974ef637bf63e23f839f3d8e070bae2ef0bb",
+          "status": "user_asserted",
+          "offering": "private",
+          "relation": "similar_business",
+          "issuer_name": null,
+          "material_id": "8b56fd1a-38ed-470a-8a54-ac3c6115f915",
+          "material_version": 1,
+          "reporting_periods": [
+            {
+              "end": "2023-12-31",
+              "scope": null,
+              "start": "2023-01-01",
+              "status": "needs_confirmation",
+              "period_kind": "annual",
+              "evidence_refs": []
+            },
+            {
+              "end": "2024-12-31",
+              "scope": null,
+              "start": "2024-01-01",
+              "status": "needs_confirmation",
+              "period_kind": "annual",
+              "evidence_refs": []
+            },
+            {
+              "end": "2025-06-30",
+              "scope": null,
+              "start": "2025-01-01",
+              "status": "needs_confirmation",
+              "period_kind": "interim",
+              "evidence_refs": []
+            }
+          ]
+        }
+      ],
+      "target_reporting_periods": [
+        {
+          "end": "2024-12-31",
+          "scope": null,
+          "start": "2024-01-01",
+          "status": "needs_confirmation",
+          "period_kind": "annual",
+          "evidence_refs": []
+        },
+        {
+          "end": "2025-12-31",
+          "scope": null,
+          "start": "2025-01-01",
+          "status": "needs_confirmation",
+          "period_kind": "annual",
+          "evidence_refs": []
+        },
+        {
+          "end": "2026-06-30",
+          "scope": null,
+          "start": "2026-01-01",
+          "status": "needs_confirmation",
+          "period_kind": "interim",
+          "evidence_refs": []
+        }
+      ]
+    }
+  },
+  "materials": [
+    {
+      "file_id": "nov05-f004",
+      "original_filename": "成都九联投资集团有限公司2025年面向专业投资者非公开发行公司债券（第三期）募集说明书-1212清洁稿（马总签字）.docx",
+      "upload_role": "historical",
+      "source_material_id": "c6526b02-6dd1-4663-8ca2-fe0ec747aa32",
+      "source_material_version": 1,
+      "deleted_at": "2026-10-29T03:09:32.791618+00:00"
+    },
+    {
+      "file_id": "nov05-f005",
+      "original_filename": "Y-4-2 新津新城发展集团有限公司2024年度审计报告.pdf",
+      "upload_role": "audit",
+      "source_material_id": "71eacacc-4789-421d-86d8-bd37764f0646",
+      "source_material_version": 1,
+      "deleted_at": null
+    },
+    {
+      "file_id": "nov05-f006",
+      "original_filename": "Y-4-3 新津新城发展集团有限公司2025年度审计报告.pdf",
+      "upload_role": "audit",
+      "source_material_id": "2dd686ba-b9da-41e8-a8a5-d5c745ad06a0",
+      "source_material_version": 1,
+      "deleted_at": null
+    },
+    {
+      "file_id": "nov05-f007",
+      "original_filename": "Y-4-4 新津新城发展集团有限公司2026年度半年度财务报告.pdf",
+      "upload_role": "audit",
+      "source_material_id": "ca54526d-c257-42a2-92a6-996d75ba3117",
+      "source_material_version": 1,
+      "deleted_at": null
+    },
+    {
+      "file_id": "nov05-f004",
+      "original_filename": "成都九联投资集团有限公司2025年面向专业投资者非公开发行公司债券（第三期）募集说明书.docx",
+      "upload_role": "historical",
+      "source_material_id": "8b56fd1a-38ed-470a-8a54-ac3c6115f915",
+      "source_material_version": 1,
+      "deleted_at": null
+    }
+  ],
+  "missing_materials": [],
+  "business_acceptance_status": "not_evaluated",
+  "notes": [
+    "参考稿是成都九联，相似企业关系必须保留，不能把其财务事实改名为新津新城。",
+    "历史输入1/2与输入3的参考稿绑定不同；主案例采用最后一次更新输入，早期输入保留作故障复现。",
+    "业务字段来自2026-11-05读取的当前保存输入；冻结版本DTO仅含绑定等元数据，未取得完整历史manifest，不声称逐字恢复早期运行输入。"
+  ],
+  "replay_policy": "隔离测试环境重新建项目、上传和报价；原生产ID/hash/报价只作追踪，不向生产重放。"
+}

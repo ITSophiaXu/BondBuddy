@@ -43,23 +43,25 @@ test('asynchronous batch shortage pays and resumes the exact remaining batch wit
   const path=new URL(route.request().url()).pathname.replace('/api/v1','');
   if(path==='/account/sessions')return route.fulfill({json:{items:[]}});
   if(path==='/account/recovery')return route.fulfill({json:{enabled:false,support_operator:false,current:null,pending:null}});
-  if(path===`/projects/${ids.api}/workpapers/batches/short-batch/actions`){const body=route.request().postDataJSON();actions.push(body);if(!funded)return route.fulfill({status:402,json:{code:'CREDITS_INSUFFICIENT'}});batch.state='queued';batch.revision++;batch.billing_resume=undefined;return route.fulfill({json:batch});}
-  if(path==='/subscriptions/catalog')return route.fulfill({json:{enabled:true,version:SUBSCRIPTION_CATALOG_VERSION,plans:SUBSCRIPTION_PLANS,providers:['wechat'],auto_renew_available:false}});
-  if(path==='/subscriptions/account')return route.fulfill({json:{subscription:null,available_points:funded?points:0,held_points:0,subscription_available_points:0,topup_available_points:funded?points:0,other_available_points:0,periods:[]}});
-  if(path==='/commerce/catalog')return route.fulfill({json:{enabled:true,version:AUTOMATIC_PRICE_VERSION,currency:'CNY',model:'subscription_and_topup',items:[],rules:[]}});
+  if(path===`/projects/${ids.api}/workpapers/batches/short-batch/actions`){const body=route.request().postDataJSON();actions.push(body);if(!funded)return route.fulfill({status:402,json:{code:'CREDITS_INSUFFICIENT'}});batch.state='queued';batch.revision++;batch.billing_resume=undefined;return route.fulfill({json:fixtureBody(route,batch)});}
+  if(path==='/subscriptions/catalog')return route.fulfill({json:fixtureBody(route,{enabled:true,version:SUBSCRIPTION_CATALOG_VERSION,plans:SUBSCRIPTION_PLANS,providers:['wechat'],auto_renew_available:false})});
+  if(path==='/subscriptions/account')return route.fulfill({json:fixtureBody(route,{subscription:null,available_points:funded?points:0,held_points:0,subscription_available_points:0,topup_available_points:funded?points:0,other_available_points:0,periods:[]})});
+  if(path==='/commerce/catalog')return route.fulfill({json:fixtureBody(route,{enabled:true,version:AUTOMATIC_PRICE_VERSION,currency:'CNY',model:'subscription_and_topup',items:[],rules:[]})});
   if(path==='/commerce/quotations')return route.fulfill({json:{items:[]}});
   if(path==='/credits/consumption-history'||path==='/credits/recharge-history')return route.fulfill({json:{items:[],page:{has_more:false,next_cursor:null}}});
-  if(path==='/commerce/topups'&&route.request().method()==='POST'){payments.push(route.request().postDataJSON());return route.fulfill({status:201,json:order()});}
+  if(path==='/commerce/topups'&&route.request().method()==='POST'){payments.push(fixtureRequest(route.request()));return route.fulfill({status:201,json:fixtureBody(route,order())});}
   if(path==='/commerce/topups/recovery-topup/refresh')throw new Error('Automatic recovery must not need the refresh-payment button');
-  if(path==='/commerce/topups/recovery-topup')return route.fulfill({json:order()});
+  if(path==='/commerce/topups/recovery-topup')return route.fulfill({json:fixtureBody(route,order())});
   await route.fallback();
  });
  await page.goto('/'+href({step:'workpapers',view:'results',batch:batch.batch_id}));
- await expect(page.locator('[data-wp-batch-id="manually-paused"]')).not.toContainText('补足积分');expect(actions).toEqual([]);
+ await expect(page.locator('[data-wp-batch-id="manually-paused"]')).not.toContainText('需足够积分');expect(actions).toEqual([]);
  if(process.env.BB_UX_EVIDENCE_DIR){await mkdir(process.env.BB_UX_EVIDENCE_DIR,{recursive:true});await page.evaluate(()=>window.scrollTo(0,0));await expect.poll(()=>page.evaluate(()=>scrollY)).toBe(0);await page.screenshot({path:resolve(process.env.BB_UX_EVIDENCE_DIR,'workpaper-shortage-1440.png'),fullPage:true});}
- await page.locator('[data-wp-batch-id="short-batch"]').getByRole('button',{name:'补足积分并继续本批'}).click();
- await expect(page.locator('#billing-task-notice')).toContainText('已完成文件保留');expect(actions).toHaveLength(1);expect(payments).toEqual([]);
- await page.locator('#billing-task-notice').getByRole('link',{name:'订阅或充值，继续原任务'}).click();
+ await page.locator('[data-wp-batch-id="short-batch"]').getByRole('button',{name:'继续本批（需足够积分）'}).click();
+ await expect(page.locator('#billing-task-notice')).toContainText('已完成文件保留，待执行请求已保存');await expect(page.locator('#billing-task-notice')).toContainText('查看积分与支付渠道状态；积分充足后返回，将自动继续这一批的剩余文件');expect(actions).toHaveLength(1);expect(payments).toEqual([]);
+ const fundingLink=page.locator('#billing-task-notice').getByRole('link',{name:'查看积分与支付状态',exact:true}),fundingHref=(await fundingLink.getAttribute('href'))!,fundingQuery=new URLSearchParams(fundingHref.split('?')[1]);
+ expect(fundingHref.split('?')[0]).toBe('#/account');expect(fundingQuery.get('return_to')).toBe(href({step:'workpapers',view:'results',batch:batch.batch_id}));expect(fundingQuery.get('resume_request')).toMatch(/^[a-f0-9]{64}$/);
+ await fundingLink.click();
  await expect(page.locator('#subscription-topup-amount')).toHaveValue((points/100).toFixed(2));
  await page.getByRole('button',{name:'充值并前往支付'}).click();await expect(page.getByRole('button',{name:'刷新支付状态'})).toBeVisible();
  expect(actions).toHaveLength(1);funded=true;await page.evaluate(()=>window.dispatchEvent(new Event('bondbuddy:credits-changed')));

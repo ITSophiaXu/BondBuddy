@@ -1,0 +1,41 @@
+[
+  {
+    "file": "prelaunch-payment-closed-1440.png",
+    "width": 1440,
+    "height": 2747,
+    "viewport": {
+      "width": 1440,
+      "height": 960
+    },
+    "capture": "fullPage; original bytes copied without crop or resize",
+    "sha256": "4392592b8a22d6041c3f5bc34461fdff56a8d8ffe54c1c92d6af63ba50fb189d",
+    "bytes": 198843,
+    "source": "outputs/prelaunch-desktop-20261104/prelaunch-payment-closed-1440.png"
+  },
+  {
+    "file": "subscription-final-monthly-1440.png",
+    "width": 1440,
+    "height": 2364,
+    "viewport": {
+      "width": 1440,
+      "height": 960
+    },
+    "capture": "fullPage; original bytes copied without crop or resize",
+    "sha256": "b71a6432a980fc21d5174ef55914f011cffe99ee50a5fd35d65bc7d64d1e933a",
+    "bytes": 178826,
+    "source": "outputs/prelaunch-desktop-20261104/subscription-final-monthly-1440.png"
+  },
+  {
+    "file": "subscription-final-prototype-monthly-1440.png",
+    "width": 1440,
+    "height": 1838,
+    "viewport": {
+      "width": 1440,
+      "height": 960
+    },
+    "capture": "fullPage; original bytes copied without crop or resize",
+    "sha256": "d5500e2785dd8a695ef983fc49fea667e174ca15594b7401eeba3eb311f1a907",
+    "bytes": 147478,
+    "source": "outputs/prelaunch-desktop-20261104/subscription-final-prototype-monthly-1440.png"
+  }
+]

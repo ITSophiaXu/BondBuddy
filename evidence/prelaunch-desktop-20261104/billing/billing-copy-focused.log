@@ -1,0 +1,47 @@
+
+Running 12 tests using 1 worker
+
+(node:59308) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 tests\automatic-task-billing.spec.ts:92:1 › insufficient balance preserves only the original task and payment return replays its exact key and body (4.7s)
+  ok  2 tests\automatic-task-billing.spec.ts:108:31 › local consistency funding link 1440 returns to the exact original update without a second price confirmation (7.1s)
+  ok  3 tests\automatic-task-billing.spec.ts:121:1 › local per-file check funding link retains original batch after reload and replays once (3.4s)
+  ok  4 tests\file-template-preparation.spec.ts:135:1 › mixed package funding return replays the exact original request without a second batch or payment (2.6s)
+  ok  5 tests\m4-workspace.spec.ts:246:1 › insufficient credits show balance and payment status, retain input and never auto-start (2.1s)
+  ok  6 tests\m4-workspace.spec.ts:604:72 › dynamic material progress, persistent tabs, pause/resume and credit progress at 1440px (5.1s)
+  ok  7 tests\project-assistant.spec.ts:121:1 › update card has no upfront price and recharge retains the project (6.1s)
+  ok  8 tests\project-execution.spec.ts:339:1 › M2 shortage preserves inputs, recharge never executes, returning starts directly (3.2s)
+  ok  9 tests\project-execution.spec.ts:1808:31 › dynamic balance: 1 point starts, exhaustion dialog, refresh and automatic same-run resume 1440 (8.5s)
+  ok 10 tests\review-workspace.spec.ts:881:31 › paid review starts with one point without confirmation and zero balance preserves inputs 1440 (3.6s)
+  ok 11 tests\subscription-account.spec.ts:207:1 › subscription account shows point rights and disables unavailable payment capabilities (2.4s)
+  x  12 tests\workpaper-batch.spec.ts:34:1 › asynchronous batch shortage pays and resumes the exact remaining batch without touching a manual pause (6.9s)
+
+
+  1) tests\workpaper-batch.spec.ts:34:1 › asynchronous batch shortage pays and resumes the exact remaining batch without touching a manual pause 
+
+    Error: expect(locator).toHaveValue(expected) failed
+
+    Locator: locator('#subscription-topup-amount')
+    Expected: "34.58"
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toHaveValue" locator('#subscription-topup-amount') with timeout 5000ms
+      - waiting for locator('#subscription-topup-amount')
+
+
+      63 |  expect(fundingHref.split('?')[0]).toBe('#/account');expect(fundingQuery.get('return_to')).toBe(href({step:'workpapers',view:'results',batch:batch.batch_id}));expect(fundingQuery.get('resume_request')).toMatch(/^[a-f0-9]{64}$/);
+      64 |  await fundingLink.click();
+    > 65 |  await expect(page.locator('#subscription-topup-amount')).toHaveValue((points/100).toFixed(2));
+         |                                                           ^
+      66 |  await page.getByRole('button',{name:'充值并前往支付'}).click();await expect(page.getByRole('button',{name:'刷新支付状态'})).toBeVisible();
+      67 |  expect(actions).toHaveLength(1);funded=true;await page.evaluate(()=>window.dispatchEvent(new Event('bondbuddy:credits-changed')));
+      68 |  await expect.poll(()=>actions.length).toBe(2);expect(actions[1]).toEqual(actions[0]);expect(payments).toHaveLength(1);expect(payments[0].amount_fen).toBe(points);
+        at C:\Users\lezhai\Downloads\Bondbuddy\prelaunch-desktop-20261104\apps\web\tests\workpaper-batch.spec.ts:65:59
+
+    Error Context: ..\..\.local\playwright-billing-copy-focused\workpaper-batch-asynchrono-437b0-out-touching-a-manual-pause\error-context.md
+
+  1 failed
+    tests\workpaper-batch.spec.ts:34:1 › asynchronous batch shortage pays and resumes the exact remaining batch without touching a manual pause 
+  11 passed (1.1m)

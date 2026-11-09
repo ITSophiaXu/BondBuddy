@@ -1,0 +1,7 @@
+{
+  "observed_at": "2026-11-04T05:55:22.676Z",
+  "host": "127.0.0.1",
+  "port": 11066,
+  "port_probe": "ECONNREFUSED",
+  "action": "Ctrl-C sent to the task-owned Azurite session; storage retained"
+}

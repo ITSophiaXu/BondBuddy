@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { addActiveRun, assertFixture, expectNoExecution, fixture, historicalId, install, projectId, referenceId, sourceDeclaration, type State } from './authoring-source-guide-fixtures';
+import { addActiveRun, assertFixture, expectNoExecution, fixture, historicalId, install, material, now, projectId, referenceId, sourceDeclaration, type State } from './authoring-source-guide-fixtures';
 
 // Synthetic HTTP integration fixtures exercise the actual material controls and
 // project save envelope. They do not claim a real worker or DOCX generation run.
@@ -15,6 +15,17 @@ function data() {
   }
   s.project.update_details!.source_prospectuses = s.materials.filter(m => ['historical', 'reference'].includes(m.role)).map(m => sourceDeclaration(m));
   return s;
+}
+function withoutAdoption(s: State) {
+  s.project.kind = 'generation';
+  s.prospectusVersions = { project_id: projectId, current_version_id: null, selection_revision: 0, inactive_material_ids: [], versions: [] };
+  return s;
+}
+function adoptedUploads(s: State, selected: string) {
+  s.prospectusVersions = { project_id: projectId, current_version_id: selected, selection_revision: s.selectionRevision, inactive_material_ids: [],
+    versions: s.materials.filter(m => m.role === 'historical').map((m, index) => ({ version_id: m.material_id, sequence: index + 1, origin: 'upload',
+      filename: m.filename, sha256: m.sha256, created_at: now, material_id: m.material_id, material_version: m.material_version,
+      artifact_id: null, artifact_version: null, revision_artifact_id: null, run_id: null })) };
 }
 async function open(page: Page, s: State) {
   await install(page, s);
@@ -39,8 +50,8 @@ test('one Word source is automatically displayed without an extra save or execut
   expect(s.patches).toEqual([]); expectNoExecution(s);
 });
 
-test('selecting another source persists its exact version and survives reload and metadata edits', async ({ page }) => {
-  const s = data(); await open(page, s);
+test('without an adopted manuscript, another source persists its exact version across reload and metadata edits', async ({ page }) => {
+  const s = withoutAdoption(data()); await open(page, s);
   await choice(page, referenceId).check(); await saved(page, s, 0);
   const expected = pin(s.materials.find(m => m.material_id === referenceId)!);
   expect(s.project.update_details!.format_template).toEqual(expected);
@@ -57,14 +68,14 @@ test('selecting another source persists its exact version and survives reload an
 });
 
 test('reference-based generation also saves an explicit format source', async ({ page }) => {
-  const s = data(); s.project.kind = 'generation'; await open(page, s);
+  const s = withoutAdoption(data()); await open(page, s);
   await choice(page, referenceId).check(); await saved(page, s, 0);
   expect(s.project.update_details!.format_template).toEqual(pin(s.materials.find(m => m.material_id === referenceId)!));
   expectNoExecution(s);
 });
 
 test('a replaced source never silently reuses the old pin; automatic selection can be restored', async ({ page }) => {
-  const s = data(), m = s.materials.find(m => m.material_id === referenceId)!;
+  const s = withoutAdoption(data()), m = s.materials.find(m => m.material_id === referenceId)!;
   s.project.update_details!.format_template = { ...pin(m), material_version: m.material_version - 1, sha256: 'f'.repeat(64) };
   await open(page, s);
   await expect(page.locator('.source-format-warning')).toContainText('已更换或移除');
@@ -78,7 +89,7 @@ test('a replaced source never silently reuses the old pin; automatic selection c
 });
 
 test('PDF selection states reconstruction and does not change source declarations', async ({ page }) => {
-  const s = data(), pdf = s.materials.find(m => m.material_id === referenceId)!;
+  const s = withoutAdoption(data()), pdf = s.materials.find(m => m.material_id === referenceId)!;
   pdf.media_type = 'application/pdf'; pdf.filename = '合成参考募集说明书.pdf';
   const declarations = structuredClone(s.project.update_details!.source_prospectuses);
   await open(page, s);
@@ -87,6 +98,46 @@ test('PDF selection states reconstruction and does not change source declaration
   expect(s.project.update_details!.format_template).toEqual(pin(pdf));
   expect(s.project.update_details!.source_prospectuses).toEqual(declarations);
   expectNoExecution(s);
+});
+
+test('an adopted PDF remains the automatic format source with a same-issuer Word reference', async ({ page }) => {
+  const s = data(), historical = s.materials.find(m => m.material_id === historicalId)!;
+  historical.media_type = 'application/pdf'; historical.filename = '合成已采用主原稿.pdf';
+  await open(page, s);
+  await expect(choice(page, historicalId)).toBeChecked();
+  await expect(choice(page, referenceId)).toBeDisabled();
+  await expect(page.locator('.source-format-notice')).toContainText('自动采用格式：合成已采用主原稿.pdf');
+  await expect(choice(page, historicalId).locator('../..')).toContainText('PDF 原稿将重建');
+  await choice(page, referenceId).evaluate(node => { (node as HTMLInputElement).disabled = false; (node as HTMLInputElement).checked = true; node.dispatchEvent(new Event('change', { bubbles: true })); });
+  expect(s.patches).toEqual([]); expectNoExecution(s);
+});
+
+test('an old explicit reference conflicting with the adopted original warns and restores its exact automatic pin', async ({ page }) => {
+  const s = data(); s.project.update_details!.format_template = pin(s.materials.find(m => m.material_id === referenceId)!);
+  await open(page, s);
+  await expect(page.locator('.source-format-warning')).toContainText('与当前已采用原稿不同');
+  await expect(page.locator('[data-format-template]:checked')).toHaveCount(0);
+  await expect(choice(page, referenceId)).toBeDisabled(); expect(s.patches).toEqual([]);
+  await page.locator('[data-format-template-auto]').click(); await saved(page, s, 0);
+  expect(s.project.update_details!.format_template).toBeNull();
+  await expect(choice(page, historicalId)).toBeChecked();
+  await expect(page.locator('.source-format-warning')).toHaveCount(0); expectNoExecution(s);
+});
+
+test('changing the adopted upload updates the format source and clears a conflicting old explicit choice', async ({ page }) => {
+  const s = data(), second = material('synthetic-second-adopted-original', 2, 'historical', '合成第二份主原稿.docx');
+  second.media_type = docx; s.materials.push(second);
+  s.project.update_details!.source_prospectuses!.push(sourceDeclaration(second));
+  s.project.update_details!.format_template = pin(s.materials.find(m => m.material_id === historicalId)!);
+  adoptedUploads(s, historicalId); await open(page, s);
+  await page.locator(`[data-use-version="${second.material_id}"]`).click();
+  await page.locator('#confirm-prospectus-selection').click();
+  await expect(page.locator(`[data-prospectus-version="${second.material_id}"]`)).toContainText('本次更新已选用');
+  await expect(page.locator('.source-format-warning')).toContainText('与当前已采用原稿不同');
+  await page.locator('[data-format-template-auto]').click(); await saved(page, s, 0);
+  await expect(choice(page, second.material_id)).toBeChecked();
+  await expect(choice(page, historicalId)).toBeDisabled();
+  await expect(choice(page, referenceId)).toBeDisabled(); expectNoExecution(s);
 });
 
 test('an active task locks template edits including synthetic change events', async ({ page }) => {

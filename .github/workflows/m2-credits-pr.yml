@@ -56,6 +56,25 @@ jobs:
           }
           JS
           DATABASE_URL="$BB_TEST_DATABASE_URL" node db/migrate.mjs
+      - name: Administrator dashboard unit and isolated PostgreSQL trend regression
+        run: |
+          set -o pipefail
+          node --test --test-concurrency=1 --test-reporter=tap \
+            apps/api/dist/admin-dashboard.test.js \
+            apps/api/dist/admin-dashboard.pg.test.js | tee "$RUNNER_TEMP/admin-dashboard.tap"
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import {readFileSync} from 'node:fs';
+          const tap = readFileSync(process.env.RUNNER_TEMP + '/admin-dashboard.tap', 'utf8');
+          const count = name => {
+            const matches = [...tap.matchAll(new RegExp('^# ' + name + ' (\\d+)$', 'gm'))];
+            assert.ok(matches.length, 'TAP summary is required for ' + name);
+            return Number(matches.at(-1)[1]);
+          };
+          assert.ok(count('tests') > 0, 'administrator regressions must execute');
+          assert.equal(count('pass'), count('tests'));
+          for (const name of ['fail', 'cancelled', 'skipped', 'todo']) assert.equal(count(name), 0, name);
+          JS
       - name: Fixed pricing, ledger, synthetic signed payments and durable worker regression
         run: |
           node --test --test-concurrency=1 \
@@ -79,3 +98,13 @@ jobs:
             apps/worker/dist/authoring-pause.pg.test.js \
             apps/worker/dist/provider-reconciliation.test.js \
             apps/api/dist/generated-word-delivery.test.js
+      - name: Subscription checkout, cash refund facts and report consumers
+        run: |
+          node --test --test-concurrency=1 \
+            apps/api/dist/billing-wire.test.js \
+            apps/api/dist/subscriptions.pg.test.js \
+            apps/api/dist/subscription-facts-report.test.js \
+            apps/api/dist/subscription-facts-report.pg.test.js \
+            apps/api/dist/annual-payment-statements.pg.test.js \
+            apps/api/dist/subscription-funding-evidence.test.js \
+            apps/api/dist/task-refunds.pg.test.js

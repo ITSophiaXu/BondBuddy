@@ -1,6 +1,7 @@
 import {runRecoverableBillingRequest,observeAutomaticQuotes} from './billing-task-recovery.js';
 import {readDownloadBytes,type DownloadProgress} from './download-progress.js';
 import {schemas as uploadSchemas,WorkpaperZipPreparationSchema,type WorkpaperZipPreparation} from '@bondbuddy/contracts';
+import {boundedDownload} from './download-timeout.js';
 import {Value} from '@sinclair/typebox/value';
 import { isUploadBytesPendingFieldError } from '@bondbuddy/contracts';
 import {BILLING_WIRE_HEADER,BILLING_WIRE_VERSION,LEGACY_BILLING_WIRE_VERSION,billingWireRoute,encodeBillingDto,validateBillingDto} from '@bondbuddy/contracts';
@@ -298,7 +299,7 @@ export class ApiClient {
     const path = `/m4/artifacts/${encodeURIComponent(artifact.artifact_id)}/versions/${artifact.artifact_version}/bytes`;
     const response = await this.response('GET', path, undefined, {}, activeSignal);
     if (response.status !== 200 || response.headers.get('content-type')?.split(';')[0].trim() !== artifact.mime_type) throw new ApiError(0, 'DATA_UNAVAILABLE');
-    const bytes = await response.arrayBuffer(); activeSignal.throwIfAborted();
+    const bytes = await readDownloadBytes(response, activeSignal); activeSignal.throwIfAborted();
     if (!bytes.byteLength || bytes.byteLength !== artifact.byte_size) throw new ApiError(0, 'DATA_UNAVAILABLE');
     const digest = await crypto.subtle.digest('SHA-256', bytes); activeSignal.throwIfAborted();
     if (Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('') !== artifact.sha256) throw new ApiError(0, 'DATA_UNAVAILABLE');
@@ -333,7 +334,7 @@ export class ApiClient {
     return this.request<Dto<'ProjectListResponse'>>('GET', `/projects${query.size ? `?${query}` : ''}`, undefined, {[PROJECT_TASK_COUNTS_CAPABILITY.header]:PROJECT_TASK_COUNTS_CAPABILITY.value}, signal);
   }
   archiveProject(id: string, archived: boolean) { return this.request<Dto<'ProjectResponse'>>('POST', `/projects/${encodeURIComponent(id)}/archive`, { archived }); }
-  artifact(id: string, signal?: AbortSignal) { return this.request<Dto<'ArtifactResponse'>>('GET', `/artifacts/${encodeURIComponent(id)}`, undefined, {}, signal); }
+  artifact(id: string, signal?: AbortSignal) { return boundedDownload(signal ?? this.controller.signal, activeSignal => this.request<Dto<'ArtifactResponse'>>('GET', `/artifacts/${encodeURIComponent(id)}`, undefined, {}, activeSignal)); }
   runAction(id: string, action: 'cancel' | 'resume' | 'pause', signal?: AbortSignal) {
     return this.request<Dto<'RunResponse'>>('POST', `/runs/${encodeURIComponent(id)}/${action}`, { reason: action === 'cancel' ? 'user_cancelled' : action === 'pause' ? 'user_paused' : 'user_resumed' }, {}, signal);
   }
@@ -352,6 +353,9 @@ export class ApiClient {
   projectMessageVersion(id: string, messageId: string, version: number, signal?: AbortSignal) {
     return this.request<Dto<'ProjectMessage'>>('GET', `/projects/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}/versions/${version}`, undefined, {}, signal);
   }
+  firstDraftExclusions(id: string, signal?: AbortSignal) {
+    return this.request<Dto<'FirstDraftExclusionsResponse'>>('GET', `/projects/${encodeURIComponent(id)}/first-draft-exclusions`, undefined, {}, signal);
+  }
   createInputRevision(id: string, input: Dto<'InputRevisionCreateRequest'>, signal?: AbortSignal) {
     return this.request<Dto<'InputRevisionResponse'>>('POST', `/projects/${encodeURIComponent(id)}/input-revisions`, input, {}, signal);
   }
@@ -365,7 +369,7 @@ export class ApiClient {
     return this.request<Dto<'RunEventsResponse'>>('GET', `/runs/${encodeURIComponent(id)}/events?after=${after}`, undefined, {}, signal);
   }
   async artifactBytes(artifact: Dto<'ArtifactResponse'>, signal?: AbortSignal, progress?: DownloadProgress): Promise<Blob> {
-    const activeSignal = signal ?? this.controller.signal;
+    return boundedDownload(signal ?? this.controller.signal, async activeSignal => {
     const url = new URL(artifact.download_url, location.origin);
     const path = `/api/v1/artifacts/${encodeURIComponent(artifact.artifact_id)}/download`;
     if (url.origin !== location.origin || url.pathname !== path || url.username || url.password || url.hash) {
@@ -383,6 +387,7 @@ export class ApiClient {
     const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
     if (sha256 !== artifact.sha256) throw new ApiError(0, 'DATA_UNAVAILABLE');
     return new Blob([bytes], { type: artifact.media_type });
+    });
   }
   dataPolicy() { return this.request<DataPolicy>('GET', '/data-policy'); }
   deleteProject(id: string) { return this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}`); }
@@ -420,7 +425,7 @@ export class ApiClient {
     if (material.state !== 'persisted') throw new ApiError(0, 'DATA_UNAVAILABLE');
     const response = await this.response('GET', `/projects/${encodeURIComponent(projectId)}/materials/${encodeURIComponent(material.material_id)}/download?version=${material.material_version}`, undefined, {}, activeSignal);
     if (response.status !== 200 || response.headers.get('content-type')?.split(';')[0].trim() !== material.media_type) throw new ApiError(0, 'DATA_UNAVAILABLE');
-    const bytes = await response.arrayBuffer();
+    const bytes = await readDownloadBytes(response, activeSignal);
     activeSignal.throwIfAborted();
     if (!bytes.byteLength || bytes.byteLength !== material.byte_size) throw new ApiError(0, 'DATA_UNAVAILABLE');
     const digest = await crypto.subtle.digest('SHA-256', bytes);

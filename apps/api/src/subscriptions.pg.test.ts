@@ -2,15 +2,17 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
-import {SUBSCRIPTION_PLANS,SUBSCRIPTION_TASK_PRICE_VERSION,INITIAL_FIXED_PRICES} from '@bondbuddy/contracts';
+import Fastify from 'fastify';
+import {BILLING_WIRE_HEADER,LEGACY_BILLING_WIRE_VERSION,SUBSCRIPTION_PLANS,SUBSCRIPTION_TASK_PRICE_VERSION,INITIAL_FIXED_PRICES} from '@bondbuddy/contracts';
 import {isolatedTestDatabase} from './test-database.js';
 import {transaction,uid} from './data.js';
+import {installBillingWire,legacyBillingReplayExists} from './billing-wire.js';
 import {creditBalance,lockCreditAccount,publishPrices} from './billing.js';
 import {auditCredits,correctSettlement} from './billing-ops.js';
 import {applyVerifiedPayment,createServiceTopup,refreshRecharge,type PaymentProvider,type VerifiedPayment} from './payments.js';
 import {applyVerifiedRefund,paymentRefundEligibility,requestPaymentRefund,refreshPaymentRefund,type VerifiedRefund} from './payment-refunds.js';
 import {createSubscriptionCheckout,subscriptionAccount,cancelSubscription,resolveActiveSubscriptionPrice,setSubscriptionAutoRenew,
-  refreshSubscriptionMandate,processDueSubscriptionRenewals,supportsAutomaticRenewal,type RecurringPaymentProvider,type MandateRequest} from './subscriptions.js';
+  refreshSubscriptionMandate,processDueSubscriptionRenewals,supportsAutomaticRenewal,installSubscriptions,type RecurringPaymentProvider,type MandateRequest} from './subscriptions.js';
 
 const database=await isolatedTestDatabase(undefined,'subscription-wallet');
 test('synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once',{skip:!database,timeout:120000},async t=>{
@@ -76,6 +78,47 @@ test('synthetic subscriptions share the wallet, retain original cash rights, ref
       audit=await auditCredits(pool);assert.equal(audit.consistent,true,JSON.stringify(audit));
       await assert.rejects(cancelSubscription(pool,await owner(),a.subscription.id,uid(),[provider]));
       assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_credit_lots WHERE source_key=$1',[`recharge:${a.order.order_id}`])).rows[0].n),1);
+    });
+    await t.test('a stale tab subscription request is durably rejected without an order and topup stays available',async()=>{
+      const who=await owner(),active=await buy(who),input={request_id:uid(),plan_id:'professional' as const,provider:'wechat' as const};
+      let channelCalls=0;const watched={...provider,create:async(o:Parameters<PaymentProvider['create']>[0])=>{channelCalls++;return provider.create(o);}};
+      const rejected=(error:unknown)=>(error as any).code==='SUBSCRIPTION_CHECKOUT_REJECTED'&&(error as any).status===409;
+      await Promise.all([assert.rejects(createSubscriptionCheckout(pool,who,input,[watched]),rejected),assert.rejects(createSubscriptionCheckout(pool,who,input,[watched]),rejected)]);
+      assert.equal(channelCalls,0,'rejected requests never reach the payment provider');
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_recharge_orders WHERE owner_user_id=$1 AND request_id=$2',[who,input.request_id])).rows[0].n,0);
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_subscription_checkout_rejections WHERE owner_user_id=$1 AND request_id=$2',[who,input.request_id])).rows[0].n,1);
+      await assert.rejects(createSubscriptionCheckout(pool,who,{...input,plan_id:'intensive'},[watched]),e=>(e as any).code==='IDEMPOTENCY_CONFLICT');
+      // An ordinary new topup is still available while the paid subscription is active.
+      const topup=await createServiceTopup(pool,who,{request_id:uid(),provider:'wechat',amount_fen:1000},[provider]);assert.equal(topup.state,'pending');
+      await pool.query("UPDATE bb_subscriptions SET current_period_start=now()-interval '1 month 1 second',current_period_end=now()-interval '1 second' WHERE id=$1",[active.subscription.id]);
+      await assert.rejects(createSubscriptionCheckout(pool,who,input,[watched]),rejected,'old rejected key stays rejected after state changes');
+      assert.equal(channelCalls,0);
+      const next=await createSubscriptionCheckout(pool,who,{...input,request_id:uid()},[watched]);assert.equal(next.order.state,'pending');assert.equal(channelCalls,1);
+      await assert.rejects(pool.query('DELETE FROM bb_subscription_checkout_rejections WHERE owner_user_id=$1',[who]),e=>(e as any).code==='23514');
+    });
+    await t.test('legacy HTTP replays only the exact owner rejection and can never create a new subscription payment',async()=>{
+      const who=await owner(),foreign=await owner(),active=await buy(who),input={request_id:uid(),plan_id:'professional',provider:'wechat'};
+      const app=Fastify(),actor=async(r:any)=>r.headers['x-synthetic-owner']??who,headers={[BILLING_WIRE_HEADER]:LEGACY_BILLING_WIRE_VERSION};
+      installBillingWire(app,{db:()=>pool,owner:actor});installSubscriptions(app,pool,actor,true,[provider]);
+      app.setErrorHandler((e:any,_r,reply)=>reply.code(e.status??e.statusCode??500).send({code:e.code}));
+      const post=(payload:object,extraHeaders:Record<string,string>={},url='/api/v1/subscriptions')=>app.inject({method:'POST',url,headers:extraHeaders,payload});
+      try{
+        const rejected=await post(input);assert.equal(rejected.statusCode,409);assert.equal(rejected.json().code,'SUBSCRIPTION_CHECKOUT_REJECTED');
+        const replay=await post(input,headers);assert.equal(replay.statusCode,409);assert.equal(replay.json().code,'SUBSCRIPTION_CHECKOUT_REJECTED');
+        for(const payload of [{...input,plan_id:'intensive'},{...input,billing_cycle:'annual'}]){
+          const altered=await post(payload,headers);assert.equal(altered.statusCode,409);assert.equal(altered.json().code,'IDEMPOTENCY_CONFLICT');
+        }
+        const wrongEndpoint=await post(input,headers,`/api/v1/subscriptions/${active.subscription.id}/renew`);
+        assert.equal(wrongEndpoint.statusCode,409);assert.equal(wrongEndpoint.json().code,'IDEMPOTENCY_CONFLICT','rejection does not authorize another endpoint/resource');
+        const other=await post(input,{...headers,'x-synthetic-owner':foreign});assert.equal(other.statusCode,409);assert.equal(other.json().code,'BILLING_PROTOCOL_REPLAY_ONLY');
+        assert.equal(await legacyBillingReplayExists(pool,who,'topup',{params:{},body:input}),false,'subscription rejection cannot admit a topup');
+        await pool.query("UPDATE bb_subscriptions SET current_period_start=now()-interval '1 month 1 second',current_period_end=now()-interval '1 second' WHERE id=$1",[active.subscription.id]);
+        const stillRejected=await post(input,headers);assert.equal(stillRejected.json().code,'SUBSCRIPTION_CHECKOUT_REJECTED');
+        const fresh={...input,request_id:uid()},blocked=await post(fresh,headers);
+        assert.equal(blocked.statusCode,409);assert.equal(blocked.json().code,'BILLING_PROTOCOL_REPLAY_ONLY','legacy protocol cannot open a newly available period');
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_recharge_orders WHERE owner_user_id=$1 AND request_id=ANY($2)',[who,[input.request_id,fresh.request_id]])).rows[0].n,0);
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_subscription_checkout_rejections WHERE owner_user_id=$1 AND request_id=$2',[who,fresh.request_id])).rows[0].n,0);
+      }finally{await app.close();}
     });
     await t.test('checkout failure before channel creation stays unknown until authenticated expiry, then permits a new purchase',async()=>{
       const who=await owner();let createFails=true,absenceVerified=false;

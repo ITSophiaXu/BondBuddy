@@ -27,7 +27,7 @@ const patterns: [InventoryKind, RegExp][] = [
   ['artifact', new RegExp(`^users/${id}/runs/${id}/artifacts/${id}/v[1-9][0-9]*\\.docx$`)],
   ['parse_cache', new RegExp(`^parse-cache/${hex}/${uuid}$`)],
   ['log_archive', new RegExp(`^log-archive/[a-z][a-z0-9_]{0,63}/${uuid}(\\.${hex})?\\.ndjson$`)],
-  ['file_authoring', new RegExp(`^${authoringRun}file-authoring/${authoringId}/${hex}/(tracked\\.docx|clean\\.docx|baseline\\.docx|delivery\\.md|operations\\.json|template-manifest\\.json|input\\.json)$`)],
+  ['file_authoring', new RegExp(`^${authoringRun}file-authoring/${authoringId}/${hex}/(tracked\\.docx|clean\\.docx|baseline\\.docx|source-original\\.pdf|delivery\\.md|operations\\.json|template-manifest\\.json|input\\.json|quality-report\\.json)$`)],
   ['format_report', new RegExp(`^${authoringRun}format-diagnostics/${hex}/format-report\\.json$`)]
 ];
 export function parseInventoryKey(key: string): InventoryKind {

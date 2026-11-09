@@ -1,0 +1,162 @@
+TAP version 13
+# Subtest: annual statements reconcile monthly issuance against one paid contract across both channels
+    # Subtest: wechat: original monthly subscription and topup still reconcile
+    ok 1 - wechat: original monthly subscription and topup still reconcile
+      ---
+      duration_ms: 254.6867
+      type: 'test'
+      ...
+    # Subtest: wechat: first grant and all twelve annual releases produce no extra cash order or statement payment
+    ok 2 - wechat: first grant and all twelve annual releases produce no extra cash order or statement payment
+      ---
+      duration_ms: 211.6103
+      type: 'test'
+      ...
+    # Subtest: wechat: actual wrong first-grant quantity and source remain visible differences
+    ok 3 - wechat: actual wrong first-grant quantity and source remain visible differences
+      ---
+      duration_ms: 134.8184
+      type: 'test'
+      ...
+    # Subtest: wechat: largest annual refund reconciles whole cash once, removes first batch and cancels future grants
+    ok 4 - wechat: largest annual refund reconciles whole cash once, removes first batch and cancels future grants
+      ---
+      duration_ms: 134.4351
+      type: 'test'
+      ...
+    # Subtest: wechat: consecutive upgrades reconcile only new cash and preserve source rights after the new annual refund
+    ok 5 - wechat: consecutive upgrades reconcile only new cash and preserve source rights after the new annual refund
+      ---
+      duration_ms: 348.8197
+      type: 'test'
+      ...
+    # Subtest: alipay: original monthly subscription and topup still reconcile
+    ok 6 - alipay: original monthly subscription and topup still reconcile
+      ---
+      duration_ms: 100.8452
+      type: 'test'
+      ...
+    # Subtest: alipay: first grant and all twelve annual releases produce no extra cash order or statement payment
+    ok 7 - alipay: first grant and all twelve annual releases produce no extra cash order or statement payment
+      ---
+      duration_ms: 170.5499
+      type: 'test'
+      ...
+    # Subtest: alipay: actual wrong first-grant quantity and source remain visible differences
+    ok 8 - alipay: actual wrong first-grant quantity and source remain visible differences
+      ---
+      duration_ms: 97.5861
+      type: 'test'
+      ...
+    # Subtest: alipay: largest annual refund reconciles whole cash once, removes first batch and cancels future grants
+    ok 9 - alipay: largest annual refund reconciles whole cash once, removes first batch and cancels future grants
+      ---
+      duration_ms: 121.8977
+      type: 'test'
+      ...
+    # Subtest: alipay: consecutive upgrades reconcile only new cash and preserve source rights after the new annual refund
+    ok 10 - alipay: consecutive upgrades reconcile only new cash and preserve source rights after the new annual refund
+      ---
+      duration_ms: 319.3562
+      type: 'test'
+      ...
+    1..10
+ok 1 - annual statements reconcile monthly issuance against one paid contract across both channels
+  ---
+  duration_ms: 2026.3942
+  type: 'test'
+  ...
+# Subtest: complete API price lifecycle changes future real quotes, preserves paid contracts, and rolls back through a future version
+ok 2 - complete API price lifecycle changes future real quotes, preserves paid contracts, and rolls back through a future version
+  ---
+  duration_ms: 3475.5614
+  type: 'test'
+  ...
+# Subtest: owned coverage is earned after exact successful settlement; same-goal upgrades retain contract levels
+ok 3 - owned coverage is earned after exact successful settlement; same-goal upgrades retain contract levels
+  ---
+  duration_ms: 1932.7858
+  type: 'test'
+  ...
+# Subtest: 499 group uses union of separately delivered periods; the 1-yuan third purchase does not re-earn old periods
+ok 4 - 499 group uses union of separately delivered periods; the 1-yuan third purchase does not re-earn old periods
+  ---
+  duration_ms: 1489.5254
+  type: 'test'
+  ...
+# Subtest: ready zero continuation requires a real parent chain and loses inherited coverage after its source is corrected
+ok 5 - ready zero continuation requires a real parent chain and loses inherited coverage after its source is corrected
+  ---
+  duration_ms: 1827.6567
+  type: 'test'
+  ...
+# Subtest: binding is replay-safe under concurrency, immutable, single-consumption and cannot turn pending zero into coverage
+ok 6 - binding is replay-safe under concurrency, immutable, single-consumption and cannot turn pending zero into coverage
+  ---
+  duration_ms: 1961.7936
+  type: 'test'
+  ...
+# Subtest: ordinary compensation and refunding unused original payment balance preserve delivered service coverage
+ok 7 - ordinary compensation and refunding unused original payment balance preserve delivered service coverage
+  ---
+  duration_ms: 976.324
+  type: 'test'
+  ...
+# Subtest: one accepted scope supports released failure retries, but only one live or successful attempt
+ok 8 - one accepted scope supports released failure retries, but only one live or successful attempt
+  ---
+  duration_ms: 1860.6279
+  type: 'test'
+  ...
+# Subtest: subscription change funding and projection repair share one authoritative audit
+    # Subtest: held transfer is a legitimate frozen balance and a failed checkout releases it
+    ok 1 - held transfer is a legitimate frozen balance and a failed checkout releases it
+      ---
+      duration_ms: 868.0394
+      type: 'test'
+      ...
+    # Subtest: applied and refunded transfers never resurrect the old lot through repair
+    ok 2 - applied and refunded transfers never resurrect the old lot through repair
+      ---
+      duration_ms: 423.2717
+      type: 'test'
+      ...
+    # Subtest: multi-step funding survives annual cash allocation with unequal monthly cents
+    ok 3 - multi-step funding survives annual cash allocation with unequal monthly cents
+      ---
+      duration_ms: 370.6197
+      type: 'test'
+      ...
+    # Subtest: missing mixed funding is non-projection evidence and cannot be repaired into credits
+    ok 4 - missing mixed funding is non-projection evidence and cannot be repaired into credits
+      ---
+      duration_ms: 211.5175
+      type: 'test'
+      ...
+    # Subtest: missing pending source evidence cannot be classified as a repairable hold
+    ok 5 - missing pending source evidence cannot be classified as a repairable hold
+      ---
+      duration_ms: 167.2318
+      type: 'test'
+      ...
+    # Subtest: funding ownership, original consideration and restoration expiry are database-enforced
+    ok 6 - funding ownership, original consideration and restoration expiry are database-enforced
+      ---
+      duration_ms: 1203.7801
+      type: 'test'
+      ...
+    1..6
+ok 9 - subscription change funding and projection repair share one authoritative audit
+  ---
+  duration_ms: 3249.5364
+  type: 'test'
+  ...
+1..9
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 49641.1412

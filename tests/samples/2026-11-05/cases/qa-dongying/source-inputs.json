@@ -1,0 +1,769 @@
+{
+  "metadata_captured_at": "2026-11-05T14:12:35.827Z",
+  "source_release": "821477976c75a7218a733d6dca0cd3ed4c733987",
+  "source_account": "customer_test",
+  "project_metadata": {
+    "id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+    "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+    "name": "东营城建私募债",
+    "kind": "generation",
+    "issuer_name": "东营城建",
+    "market": "sse",
+    "offering": "private",
+    "created_at": "2026-11-05T08:05:17.775745+00:00",
+    "updated_at": "2026-11-05T09:29:31.584339+00:00",
+    "deleted_at": null,
+    "archived_at": null
+  },
+  "runs": [
+    {
+      "id": "c7729530-cf7e-4474-9fa6-ab5af386ad76",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+      "task_kind": "generation",
+      "state": "succeeded",
+      "stage": "succeeded",
+      "created_at": "2026-11-05T08:06:57.04346+00:00",
+      "updated_at": "2026-11-05T08:07:06.452849+00:00",
+      "input_revision": "1",
+      "input_hash": "95d485b566e7e03b0f79911edf2d2b64ee0bc8e27c21811b593e3ebf93b77858",
+      "artifact_id": "word-b2621710668ac57c8868845bfb272ce1d01342069b711948b0a5539e1ee7ec31",
+      "artifact_version": "1",
+      "channel": "production",
+      "billing_mode": "platform_trial",
+      "prompt_snapshot_ref": null
+    },
+    {
+      "id": "e0315c91-8598-4ab0-9269-697c9482aa7f",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+      "task_kind": "generation",
+      "state": "failed",
+      "stage": "failed",
+      "created_at": "2026-11-05T08:07:17.829876+00:00",
+      "updated_at": "2026-11-05T08:07:18.070404+00:00",
+      "input_revision": "2",
+      "input_hash": "d62b8e08b36e8c5de03ee41f3a2aa7e3ca1864a3a2d12677f6d146bad7fc5212",
+      "artifact_id": null,
+      "artifact_version": null,
+      "channel": "production",
+      "billing_mode": "fixed_credits",
+      "prompt_snapshot_ref": null
+    },
+    {
+      "id": "b6da497a-2571-4217-8240-2014c5800129",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+      "task_kind": "generation",
+      "state": "failed",
+      "stage": "failed",
+      "created_at": "2026-11-05T09:29:31.584339+00:00",
+      "updated_at": "2026-11-05T10:01:58.099191+00:00",
+      "input_revision": "3",
+      "input_hash": "96be23f1882c6806c27d877a3fe8c2c2bed0fba9b17d64dda20d219cc734f2b3",
+      "artifact_id": null,
+      "artifact_version": null,
+      "channel": "production",
+      "billing_mode": "fixed_credits",
+      "prompt_snapshot_ref": null
+    }
+  ],
+  "input_revision_metadata": [
+    {
+      "run_id": "c7729530-cf7e-4474-9fa6-ab5af386ad76",
+      "revision": 1,
+      "manifest_version": "project-qa-v1",
+      "document_type": null,
+      "input_hash": "95d485b566e7e03b0f79911edf2d2b64ee0bc8e27c21811b593e3ebf93b77858",
+      "created_at": "2026-11-05T08:06:57.043Z",
+      "selection_recorded": false,
+      "selected_version_id": null,
+      "selection_revision": null,
+      "format_recorded": false,
+      "format_mode": null,
+      "format_selection": null,
+      "format_template_kind": null,
+      "format_material_id": null,
+      "format_artifact_id": null,
+      "format_hash": null,
+      "source_count": null
+    },
+    {
+      "run_id": "e0315c91-8598-4ab0-9269-697c9482aa7f",
+      "revision": 2,
+      "manifest_version": "project-qa-v1",
+      "document_type": null,
+      "input_hash": "d62b8e08b36e8c5de03ee41f3a2aa7e3ca1864a3a2d12677f6d146bad7fc5212",
+      "created_at": "2026-11-05T08:07:17.829Z",
+      "selection_recorded": false,
+      "selected_version_id": null,
+      "selection_revision": null,
+      "format_recorded": false,
+      "format_mode": null,
+      "format_selection": null,
+      "format_template_kind": null,
+      "format_material_id": null,
+      "format_artifact_id": null,
+      "format_hash": null,
+      "source_count": null
+    },
+    {
+      "run_id": "b6da497a-2571-4217-8240-2014c5800129",
+      "revision": 3,
+      "manifest_version": "project-qa-v1",
+      "document_type": null,
+      "input_hash": "96be23f1882c6806c27d877a3fe8c2c2bed0fba9b17d64dda20d219cc734f2b3",
+      "created_at": "2026-11-05T09:29:31.584Z",
+      "selection_recorded": false,
+      "selected_version_id": null,
+      "selection_revision": null,
+      "format_recorded": false,
+      "format_mode": null,
+      "format_selection": null,
+      "format_template_kind": null,
+      "format_material_id": null,
+      "format_artifact_id": null,
+      "format_hash": null,
+      "source_count": null
+    }
+  ],
+  "input_material_pins": [
+    {
+      "run_id": "e0315c91-8598-4ab0-9269-697c9482aa7f",
+      "material_id": null,
+      "material_version": null,
+      "sha256": null,
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": null
+    },
+    {
+      "run_id": "b6da497a-2571-4217-8240-2014c5800129",
+      "material_id": null,
+      "material_version": null,
+      "sha256": null,
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": null
+    }
+  ],
+  "material_metadata": [
+    {
+      "id": "57f63b2d-6ad6-42b3-b0f2-dcc67756b5f3",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+      "role": "historical",
+      "filename": "1-1东营市城市建设发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "byte_size": "723353",
+      "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f",
+      "state": "persisted",
+      "persisted_at": "2026-11-05T08:06:23.820138+00:00",
+      "deleted_at": null
+    },
+    {
+      "id": "ca458567-d431-4df6-af5b-6481928bf6b5",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+      "role": "other",
+      "filename": "证券发行审核部意见  东营城发(1).docx",
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "byte_size": "14934",
+      "sha256": "9d1ae4dd736a71db14722060d778c56af14af96a469f47794774618a61b27e10",
+      "state": "persisted",
+      "persisted_at": "2026-11-05T08:06:52.881641+00:00",
+      "deleted_at": null
+    }
+  ],
+  "prospectus_versions": [
+    {
+      "id": "7985dfb8-2f0d-4361-a6b8-a9ed371f5966",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+      "sequence": "1",
+      "origin": "upload",
+      "filename": "1-1东营市城市建设发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f",
+      "material_id": "57f63b2d-6ad6-42b3-b0f2-dcc67756b5f3",
+      "material_version": "1",
+      "artifact_id": null,
+      "artifact_version": null,
+      "run_id": null,
+      "created_at": "2026-11-05T08:06:23.820138+00:00"
+    }
+  ],
+  "capture_limitations": [
+    "管理员只读索引不返回完整冻结 manifest；历史运行列表限最近1000条，缺项不代表从未执行。"
+  ],
+  "input_captured_at": "2026-11-05T14:22:11.255Z",
+  "project_detail": {
+    "project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+    "draft_revision": 2,
+    "input_revision": 3,
+    "input_hash": "96be23f1882c6806c27d877a3fe8c2c2bed0fba9b17d64dda20d219cc734f2b3",
+    "name": "东营城建私募债",
+    "kind": "generation",
+    "issuer_name": "东营城建",
+    "market": "sse",
+    "offering": "private",
+    "update_details": {
+      "has_historical": null,
+      "reporting_cutoff": null,
+      "registration_amount": null,
+      "issuance_amount": null,
+      "bond_terms": null,
+      "underwriting": null,
+      "other_agencies": null,
+      "rating_enhancement": null,
+      "funding_uses": [],
+      "other_information": null,
+      "supplementary_notes": null
+    },
+    "updated_at": "2026-11-05T09:29:31.584Z",
+    "archived_at": null
+  },
+  "input_revision_dtos": [
+    {
+      "project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+      "input_revision": 3,
+      "input_hash": "96be23f1882c6806c27d877a3fe8c2c2bed0fba9b17d64dda20d219cc734f2b3",
+      "target_confirmation": {
+        "status": "unconfirmed",
+        "market": null,
+        "offering": null,
+        "document_purpose": null,
+        "as_of": null,
+        "target_reporting_periods": [],
+        "confirmed_by": null,
+        "confirmed_at": null
+      },
+      "material_versions": [],
+      "rule_pack_version": null,
+      "template_version": null,
+      "reference_release": null,
+      "created_at": "2026-11-05T09:29:31.584Z"
+    },
+    {
+      "project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+      "input_revision": 2,
+      "input_hash": "d62b8e08b36e8c5de03ee41f3a2aa7e3ca1864a3a2d12677f6d146bad7fc5212",
+      "target_confirmation": {
+        "status": "unconfirmed",
+        "market": null,
+        "offering": null,
+        "document_purpose": null,
+        "as_of": null,
+        "target_reporting_periods": [],
+        "confirmed_by": null,
+        "confirmed_at": null
+      },
+      "material_versions": [],
+      "rule_pack_version": null,
+      "template_version": null,
+      "reference_release": null,
+      "created_at": "2026-11-05T08:07:17.829Z"
+    },
+    {
+      "project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+      "input_revision": 1,
+      "input_hash": "95d485b566e7e03b0f79911edf2d2b64ee0bc8e27c21811b593e3ebf93b77858",
+      "target_confirmation": {
+        "status": "unconfirmed",
+        "market": null,
+        "offering": null,
+        "document_purpose": null,
+        "as_of": null,
+        "target_reporting_periods": [],
+        "confirmed_by": null,
+        "confirmed_at": null
+      },
+      "material_versions": [],
+      "rule_pack_version": null,
+      "template_version": null,
+      "reference_release": null,
+      "created_at": "2026-11-05T08:06:57.043Z"
+    }
+  ],
+  "qa_saved_draft": {
+    "preparation_id": "c7729530-cf7e-4474-9fa6-ab5af386ad76",
+    "questions": [
+      {
+        "id": "q6",
+        "start": 6,
+        "end": 6,
+        "question": "一、关于业务。1、报告期内，发行人工程施工业务收入规模呈持续下降趋势，对营业收入总额影响明显，且发行人报告期末在建项目较少，请项目组说明该业务板块收入下降原因，是否具有可持续性；2、报告期内，发行人房地产业务收入较小，2025年毛利率大幅下降，报告期末仍有大规模在建项目，请项目组说明发行人存量项目是否存在去化困难情况，在建项目销售安排，预计去化周期；3、根据募集说明书，最近两年发行人受让大量土地，但目前无拟建房地产项目，请项目组说明发行人是否存在闲置土地情况；4、报告期内，发行人未确认基础设施建设业务收入，但金湖银河生态工程二期项目及其他PPP项目、自营自建项目发行人已承担大量投资，请项目组结合该部分项目收入实现模式或合同约定条款，说明是否存在停工缓建、延迟确认收入情况。"
+      },
+      {
+        "id": "q7",
+        "start": 7,
+        "end": 7,
+        "question": "二、关于其他应收款。报告期末，发行人其他应收款规模较大，占总资产比例较高，主要为发行人与其他单位之间的往来款。请项目组结合发行人其他应收款主要对手方的信用状况、账龄及未来回款安排说明应收款项的可回收性，并说明是否存在较大的回款风险。"
+      },
+      {
+        "id": "q8",
+        "start": 8,
+        "end": 8,
+        "question": "三、报告期内，发行人存货金额逐期增加，主要由开发成本、开发产品构成。请项目组结合主要项目进度及履约情况等说明存货是否存在大额跌价风险。"
+      },
+      {
+        "id": "q9",
+        "start": 9,
+        "end": 9,
+        "question": "四、报告期末，发行人在建工程规模较大，部分项目组存续时间较长，请项目组说明发行人主要项目的待投资规模，评估是否存在资本支出压力。"
+      },
+      {
+        "id": "q10",
+        "start": 10,
+        "end": 10,
+        "question": "五、报告期末，发行人其他非流动资产规模较大，主要为城市基础设施、存量用地等。请项目组说明是否存在公益性资产，是否构成本次债券的申报发行障碍，并说明是否存在减值风险。"
+      },
+      {
+        "id": "q11",
+        "start": 11,
+        "end": 11,
+        "question": "六、报告期内，发行人有息债务总额呈增长趋势，且报告期末一年内到期的有息债务总额规模较大。报告期内发行人盈利较为依赖在政府补贴，但2025年补贴规模大幅下降。1、请项目组说明发行人政府补贴波动原因、可持续性；2、说明发行人短期债务偿付安排，评估债务偿付压力。"
+      },
+      {
+        "id": "q12",
+        "start": 12,
+        "end": 12,
+        "question": "七、请项目组对申报文件进行认真核对、完善，确保申报文件形式规范，文件内容真实、准确、完整。"
+      }
+    ],
+    "materials": [
+      {
+        "kind": "material",
+        "pin": {
+          "source_project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+          "material_id": "57f63b2d-6ad6-42b3-b0f2-dcc67756b5f3",
+          "material_version": 1,
+          "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f"
+        }
+      }
+    ],
+    "requirements": "",
+    "use_knowledge": false
+  },
+  "qa_runs": [
+    {
+      "run_id": "b6da497a-2571-4217-8240-2014c5800129",
+      "sequence": 3,
+      "operation": "answer",
+      "state": "failed",
+      "stage": "failed",
+      "created_at": "2026-11-05T09:29:31.584Z",
+      "error_code": null,
+      "manifest": {
+        "price_version": "bb-task-price-170-20261029-v3",
+        "version": "project-qa-v1",
+        "operation": "answer",
+        "project_name": "东营城建私募债",
+        "source": {
+          "filename": "证券发行审核部意见  东营城发(1).docx",
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+              "material_id": "ca458567-d431-4df6-af5b-6481928bf6b5",
+              "material_version": 1,
+              "sha256": "9d1ae4dd736a71db14722060d778c56af14af96a469f47794774618a61b27e10"
+            }
+          }
+        },
+        "preparation_id": "c7729530-cf7e-4474-9fa6-ab5af386ad76",
+        "questions": [
+          {
+            "id": "q6",
+            "start": 6,
+            "end": 6,
+            "question": "一、关于业务。1、报告期内，发行人工程施工业务收入规模呈持续下降趋势，对营业收入总额影响明显，且发行人报告期末在建项目较少，请项目组说明该业务板块收入下降原因，是否具有可持续性；2、报告期内，发行人房地产业务收入较小，2025年毛利率大幅下降，报告期末仍有大规模在建项目，请项目组说明发行人存量项目是否存在去化困难情况，在建项目销售安排，预计去化周期；3、根据募集说明书，最近两年发行人受让大量土地，但目前无拟建房地产项目，请项目组说明发行人是否存在闲置土地情况；4、报告期内，发行人未确认基础设施建设业务收入，但金湖银河生态工程二期项目及其他PPP项目、自营自建项目发行人已承担大量投资，请项目组结合该部分项目收入实现模式或合同约定条款，说明是否存在停工缓建、延迟确认收入情况。"
+          },
+          {
+            "id": "q7",
+            "start": 7,
+            "end": 7,
+            "question": "二、关于其他应收款。报告期末，发行人其他应收款规模较大，占总资产比例较高，主要为发行人与其他单位之间的往来款。请项目组结合发行人其他应收款主要对手方的信用状况、账龄及未来回款安排说明应收款项的可回收性，并说明是否存在较大的回款风险。"
+          },
+          {
+            "id": "q8",
+            "start": 8,
+            "end": 8,
+            "question": "三、报告期内，发行人存货金额逐期增加，主要由开发成本、开发产品构成。请项目组结合主要项目进度及履约情况等说明存货是否存在大额跌价风险。"
+          },
+          {
+            "id": "q9",
+            "start": 9,
+            "end": 9,
+            "question": "四、报告期末，发行人在建工程规模较大，部分项目组存续时间较长，请项目组说明发行人主要项目的待投资规模，评估是否存在资本支出压力。"
+          },
+          {
+            "id": "q10",
+            "start": 10,
+            "end": 10,
+            "question": "五、报告期末，发行人其他非流动资产规模较大，主要为城市基础设施、存量用地等。请项目组说明是否存在公益性资产，是否构成本次债券的申报发行障碍，并说明是否存在减值风险。"
+          },
+          {
+            "id": "q11",
+            "start": 11,
+            "end": 11,
+            "question": "六、报告期内，发行人有息债务总额呈增长趋势，且报告期末一年内到期的有息债务总额规模较大。报告期内发行人盈利较为依赖在政府补贴，但2025年补贴规模大幅下降。1、请项目组说明发行人政府补贴波动原因、可持续性；2、说明发行人短期债务偿付安排，评估债务偿付压力。"
+          },
+          {
+            "id": "q12",
+            "start": 12,
+            "end": 12,
+            "question": "七、请项目组对申报文件进行认真核对、完善，确保申报文件形式规范，文件内容真实、准确、完整。"
+          }
+        ],
+        "materials": [
+          {
+            "filename": "1-1东营市城市建设发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+            "asset": {
+              "kind": "material",
+              "pin": {
+                "source_project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+                "material_id": "57f63b2d-6ad6-42b3-b0f2-dcc67756b5f3",
+                "material_version": 1,
+                "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f"
+              }
+            }
+          }
+        ],
+        "requirements": "",
+        "cases": [],
+        "points": "8526",
+        "auto_charge": true,
+        "pricing_mode": "outcome_cny_v1",
+        "currency": "CNY",
+        "amount_fen": "8526",
+        "scope_quote_id": "c751c048-1836-4f1a-80cc-dacbe675c370",
+        "quote_status": "ready",
+        "scope_expires_at": "2026-11-12T09:29:30.925Z",
+        "scope_lines": [
+          {
+            "key": "q6",
+            "label": "问题回复",
+            "quantity": "1",
+            "unit": "题",
+            "unit_price_fen": "1218",
+            "amount_fen": "1218",
+            "evidence": [
+              "服务端已锁定project_qa_answer的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          },
+          {
+            "key": "q7",
+            "label": "问题回复",
+            "quantity": "1",
+            "unit": "题",
+            "unit_price_fen": "1218",
+            "amount_fen": "1218",
+            "evidence": [
+              "服务端已锁定project_qa_answer的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          },
+          {
+            "key": "q8",
+            "label": "问题回复",
+            "quantity": "1",
+            "unit": "题",
+            "unit_price_fen": "1218",
+            "amount_fen": "1218",
+            "evidence": [
+              "服务端已锁定project_qa_answer的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          },
+          {
+            "key": "q9",
+            "label": "问题回复",
+            "quantity": "1",
+            "unit": "题",
+            "unit_price_fen": "1218",
+            "amount_fen": "1218",
+            "evidence": [
+              "服务端已锁定project_qa_answer的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          },
+          {
+            "key": "q10",
+            "label": "问题回复",
+            "quantity": "1",
+            "unit": "题",
+            "unit_price_fen": "1218",
+            "amount_fen": "1218",
+            "evidence": [
+              "服务端已锁定project_qa_answer的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          },
+          {
+            "key": "q11",
+            "label": "问题回复",
+            "quantity": "1",
+            "unit": "题",
+            "unit_price_fen": "1218",
+            "amount_fen": "1218",
+            "evidence": [
+              "服务端已锁定project_qa_answer的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          },
+          {
+            "key": "q12",
+            "label": "问题回复",
+            "quantity": "1",
+            "unit": "题",
+            "unit_price_fen": "1218",
+            "amount_fen": "1218",
+            "evidence": [
+              "服务端已锁定project_qa_answer的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          }
+        ],
+        "prospectus": {
+          "project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+          "version_id": "7985dfb8-2f0d-4361-a6b8-a9ed371f5966",
+          "selection_revision": 1,
+          "filename": "1-1东营市城市建设发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+          "sequence": 1,
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+              "material_id": "57f63b2d-6ad6-42b3-b0f2-dcc67756b5f3",
+              "material_version": 1,
+              "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f"
+            }
+          }
+        }
+      }
+    },
+    {
+      "run_id": "e0315c91-8598-4ab0-9269-697c9482aa7f",
+      "sequence": 2,
+      "operation": "answer",
+      "state": "failed",
+      "stage": "failed",
+      "created_at": "2026-11-05T08:07:17.829Z",
+      "error_code": "INPUT_REVISION_CONFLICT",
+      "manifest": {
+        "price_version": "bb-task-price-170-20261029-v3",
+        "version": "project-qa-v1",
+        "operation": "answer",
+        "project_name": "东营城建私募债",
+        "source": {
+          "filename": "证券发行审核部意见  东营城发(1).docx",
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+              "material_id": "ca458567-d431-4df6-af5b-6481928bf6b5",
+              "material_version": 1,
+              "sha256": "9d1ae4dd736a71db14722060d778c56af14af96a469f47794774618a61b27e10"
+            }
+          }
+        },
+        "preparation_id": "c7729530-cf7e-4474-9fa6-ab5af386ad76",
+        "questions": [
+          {
+            "id": "q6",
+            "start": 6,
+            "end": 6,
+            "question": "一、关于业务。1、报告期内，发行人工程施工业务收入规模呈持续下降趋势，对营业收入总额影响明显，且发行人报告期末在建项目较少，请项目组说明该业务板块收入下降原因，是否具有可持续性；2、报告期内，发行人房地产业务收入较小，2025年毛利率大幅下降，报告期末仍有大规模在建项目，请项目组说明发行人存量项目是否存在去化困难情况，在建项目销售安排，预计去化周期；3、根据募集说明书，最近两年发行人受让大量土地，但目前无拟建房地产项目，请项目组说明发行人是否存在闲置土地情况；4、报告期内，发行人未确认基础设施建设业务收入，但金湖银河生态工程二期项目及其他PPP项目、自营自建项目发行人已承担大量投资，请项目组结合该部分项目收入实现模式或合同约定条款，说明是否存在停工缓建、延迟确认收入情况。"
+          },
+          {
+            "id": "q7",
+            "start": 7,
+            "end": 7,
+            "question": "二、关于其他应收款。报告期末，发行人其他应收款规模较大，占总资产比例较高，主要为发行人与其他单位之间的往来款。请项目组结合发行人其他应收款主要对手方的信用状况、账龄及未来回款安排说明应收款项的可回收性，并说明是否存在较大的回款风险。"
+          },
+          {
+            "id": "q8",
+            "start": 8,
+            "end": 8,
+            "question": "三、报告期内，发行人存货金额逐期增加，主要由开发成本、开发产品构成。请项目组结合主要项目进度及履约情况等说明存货是否存在大额跌价风险。"
+          },
+          {
+            "id": "q9",
+            "start": 9,
+            "end": 9,
+            "question": "四、报告期末，发行人在建工程规模较大，部分项目组存续时间较长，请项目组说明发行人主要项目的待投资规模，评估是否存在资本支出压力。"
+          },
+          {
+            "id": "q10",
+            "start": 10,
+            "end": 10,
+            "question": "五、报告期末，发行人其他非流动资产规模较大，主要为城市基础设施、存量用地等。请项目组说明是否存在公益性资产，是否构成本次债券的申报发行障碍，并说明是否存在减值风险。"
+          },
+          {
+            "id": "q11",
+            "start": 11,
+            "end": 11,
+            "question": "六、报告期内，发行人有息债务总额呈增长趋势，且报告期末一年内到期的有息债务总额规模较大。报告期内发行人盈利较为依赖在政府补贴，但2025年补贴规模大幅下降。1、请项目组说明发行人政府补贴波动原因、可持续性；2、说明发行人短期债务偿付安排，评估债务偿付压力。"
+          },
+          {
+            "id": "q12",
+            "start": 12,
+            "end": 12,
+            "question": "七、请项目组对申报文件进行认真核对、完善，确保申报文件形式规范，文件内容真实、准确、完整。"
+          }
+        ],
+        "materials": [
+          {
+            "filename": "1-1东营市城市建设发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+            "asset": {
+              "kind": "material",
+              "pin": {
+                "source_project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+                "material_id": "57f63b2d-6ad6-42b3-b0f2-dcc67756b5f3",
+                "material_version": 1,
+                "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f"
+              }
+            }
+          }
+        ],
+        "requirements": "",
+        "cases": [],
+        "points": "8526",
+        "auto_charge": true,
+        "pricing_mode": "outcome_cny_v1",
+        "currency": "CNY",
+        "amount_fen": "8526",
+        "scope_quote_id": "ec7f3882-1f5e-40b1-a32b-db2eb3fab86b",
+        "quote_status": "ready",
+        "scope_expires_at": "2026-11-12T08:07:17.374Z",
+        "scope_lines": [
+          {
+            "key": "q6",
+            "label": "问题回复",
+            "quantity": "1",
+            "unit": "题",
+            "unit_price_fen": "1218",
+            "amount_fen": "1218",
+            "evidence": [
+              "服务端已锁定project_qa_answer的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          },
+          {
+            "key": "q7",
+            "label": "问题回复",
+            "quantity": "1",
+            "unit": "题",
+            "unit_price_fen": "1218",
+            "amount_fen": "1218",
+            "evidence": [
+              "服务端已锁定project_qa_answer的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          },
+          {
+            "key": "q8",
+            "label": "问题回复",
+            "quantity": "1",
+            "unit": "题",
+            "unit_price_fen": "1218",
+            "amount_fen": "1218",
+            "evidence": [
+              "服务端已锁定project_qa_answer的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          },
+          {
+            "key": "q9",
+            "label": "问题回复",
+            "quantity": "1",
+            "unit": "题",
+            "unit_price_fen": "1218",
+            "amount_fen": "1218",
+            "evidence": [
+              "服务端已锁定project_qa_answer的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          },
+          {
+            "key": "q10",
+            "label": "问题回复",
+            "quantity": "1",
+            "unit": "题",
+            "unit_price_fen": "1218",
+            "amount_fen": "1218",
+            "evidence": [
+              "服务端已锁定project_qa_answer的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          },
+          {
+            "key": "q11",
+            "label": "问题回复",
+            "quantity": "1",
+            "unit": "题",
+            "unit_price_fen": "1218",
+            "amount_fen": "1218",
+            "evidence": [
+              "服务端已锁定project_qa_answer的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          },
+          {
+            "key": "q12",
+            "label": "问题回复",
+            "quantity": "1",
+            "unit": "题",
+            "unit_price_fen": "1218",
+            "amount_fen": "1218",
+            "evidence": [
+              "服务端已锁定project_qa_answer的材料、目标和成果范围；必要修复包含在原任务内。"
+            ]
+          }
+        ],
+        "prospectus": {
+          "project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+          "version_id": "7985dfb8-2f0d-4361-a6b8-a9ed371f5966",
+          "selection_revision": 1,
+          "filename": "1-1东营市城市建设发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+          "sequence": 1,
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+              "material_id": "57f63b2d-6ad6-42b3-b0f2-dcc67756b5f3",
+              "material_version": 1,
+              "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f"
+            }
+          }
+        }
+      }
+    },
+    {
+      "run_id": "c7729530-cf7e-4474-9fa6-ab5af386ad76",
+      "sequence": 1,
+      "operation": "prepare",
+      "state": "succeeded",
+      "stage": "succeeded",
+      "created_at": "2026-11-05T08:06:57.043Z",
+      "error_code": null,
+      "manifest": {
+        "price_version": "project-qa-question-60-v1",
+        "version": "project-qa-v1",
+        "operation": "prepare",
+        "project_name": "东营城建私募债",
+        "source": {
+          "filename": "证券发行审核部意见  东营城发(1).docx",
+          "asset": {
+            "kind": "material",
+            "pin": {
+              "source_project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+              "material_id": "ca458567-d431-4df6-af5b-6481928bf6b5",
+              "material_version": 1,
+              "sha256": "9d1ae4dd736a71db14722060d778c56af14af96a469f47794774618a61b27e10"
+            }
+          }
+        },
+        "preparation_id": null,
+        "questions": [],
+        "materials": [],
+        "requirements": "",
+        "cases": [],
+        "points": "0"
+      }
+    }
+  ],
+  "qa_input_note": "完整历史manifest保留在此；测试业务输入已排除旧报价和扣费字段，须重新报价。"
+}

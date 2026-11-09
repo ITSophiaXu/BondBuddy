@@ -111,7 +111,7 @@ test('locked reference blocks late upload, adoption and deletion events while re
 
 test('reference upload matches the material picker, supports keyboard selection, and fits narrow screens',async({page})=>{
   await setup(page);const picker=page.getByRole('button',{name:'上传历史／参考稿',exact:true});
-  await expect(picker).toHaveText('点击或拖入文件');await expect(picker).toHaveAttribute('aria-describedby','reference-upload-hint');
+  await expect(picker).toHaveText('选择文件或将文件拖到这里');await expect(picker).toHaveAttribute('aria-describedby','reference-upload-hint');
   await expect(picker).toHaveCSS('border-top-style','dashed');
   await expect(page.locator('.prospectus-panel-heading button')).toHaveCount(0);
   const out=process.env.BB_REFERENCE_DROP_EVIDENCE;if(out)await mkdir(out,{recursive:true});
@@ -283,10 +283,9 @@ test('generation drop zone validates files and automatically saves one valid fil
   expect(f.state.current_version_id).toBe('v3');
 });
 
-test('generation upload recovery auto-selects saved source using the original receipt',async({page})=>{
+test('generation lost upload acknowledgement automatically selects the saved source',async({page})=>{
   const f=await setup(page,{purpose:'generation',retry:true});await selectFile(page);
-  await expect(page.locator('#save-prospectus-version')).toBeVisible();
-  await page.locator('#save-prospectus-version').click();await expect(page.locator('.pf-selected-source')).toContainText('合成新稿.docx');
+  await expect(page.locator('.pf-selected-source')).toContainText('合成新稿.docx',{timeout:15000});
   expect(f.state.current_version_id).toBe('v3');expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);
   await expect(page.locator('dialog[open]')).toHaveCount(0);
   await expect(page.locator('.pf-selected-source')).toContainText('V3');

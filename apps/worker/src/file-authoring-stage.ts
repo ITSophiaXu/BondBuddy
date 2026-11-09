@@ -1,12 +1,16 @@
+import { authoringBaselinePin, NoneBaselineConflict } from '@bondbuddy/api/none-baseline';
 import { mkdir,writeFile,readFile,copyFile,lstat,realpath } from 'node:fs/promises';
 import { join,resolve,extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { digest } from '@bondbuddy/api/data';
+import { checkpointStage } from '@bondbuddy/api/queue';
 import { readCheckpointedProviderResult } from '@bondbuddy/api/provider-results';
+import { isDeepStrictEqual } from 'node:util';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { codexModelStage,type RunStage,type StageContext } from './run-pipeline.js';
 import { loadUnifiedInput,type UnifiedInput } from './unified-input.js';
-import { AuthoringSourceUnreadable, finalizeFormat, prepareFormatSource, FORMAT_JSON_MAX, type FormatDiagnostic } from './file-authoring-format.js';
+import { AuthoringSourceUnreadable, finalizeFormat, runFormatPython, prepareFormatSource, FORMAT_JSON_MAX, type FormatDiagnostic } from './file-authoring-format.js';
+import { verifyWordQuality } from './file-authoring-quality.js';
 
 const repo=resolve(fileURLToPath(import.meta.url),'../../../..');
 const helpers=join(repo,'python/bondbuddy_file_authoring');
@@ -14,7 +18,7 @@ const DOCX='application/vnd.openxmlformats-officedocument.wordprocessingml.docum
 const MAX=100*1024*1024;
 type FileRef={key:string;sha256:string;byte_size:number};
 export type FileAuthoringResult={version:'codex-file-word-v1';input_hash:string;files:Record<string,FileRef>;summary:Record<string,unknown>;error?:string};
-const fileNames=['tracked.docx','clean.docx','baseline.docx','delivery.md','operations.json','template-manifest.json','input.json'] as const;
+const fileNames=['tracked.docx','clean.docx','baseline.docx','delivery.md','operations.json','template-manifest.json','input.json','source-original.pdf'] as const;
 const requiredFiles=['tracked.docx','clean.docx'] as const;
 function prefix(ctx:StageContext){return `owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/file-authoring/`;}
 function validPair(r:FileAuthoringResult,ctx:StageContext){
@@ -35,19 +39,27 @@ export function validFileResult(value:unknown,ctx:StageContext):value is FileAut
 }
 
 export function editingSource(input:UnifiedInput){
-  const policy=input.manifest.authoring.format_policy;
-  // Revision sources keep their identity. A selected format source determines the
-  // first-draft editing package only when there is no previous/report baseline.
-  if(policy?.template?.kind==='material' && !input.manifest.authoring.previous_output){
-    const pin=policy.template;
-    const chosen=input.materials.find(m=>m.pin.material_id===pin.material_id && m.pin.material_version===pin.material_version && m.pin.sha256===pin.sha256);
-    if(!chosen)throw Error('INPUT_REVISION_CONFLICT');
-    return chosen;
-  }
-  return [...input.materials].filter(m=>['project_output','historical','reference'].includes(m.pin.role)).sort((a,b)=>{
-    const rank=(m:typeof a)=>m.pin.material_id===input.manifest.authoring.review_result?.source_material.material_id?-2:m.pin.role==='project_output'?-1:input.manifest.authoring.source_prospectuses.find(s=>s.material_id===m.pin.material_id)?.relation==='same_issuer'?0:1;
-    return rank(a)-rank(b)||a.pin.material_id.localeCompare(b.pin.material_id);
-  })[0]??null;
+  let pin;
+  try { pin=authoringBaselinePin(input.materials.map(material=>material.pin),input.manifest.authoring); }
+  catch(error) { if(error instanceof NoneBaselineConflict)throw Error(error.code); throw error; }
+  if(!pin)return null;
+  const matches=input.materials.filter(m=>m.pin.material_id===pin.material_id && m.pin.material_version===pin.material_version
+    && m.pin.sha256===pin.sha256 && (!input.manifest.authoring.previous_output || m.pin.role==='project_output'));
+  if(matches.length!==1)throw Error('INPUT_REVISION_CONFLICT');
+  return matches[0]!;
+}
+
+function qualityContext(input:UnifiedInput,source:ReturnType<typeof editingSource>){
+  const authoring=input.manifest.authoring;
+  const info=authoring.source_prospectuses.find(s=>s.material_id===source?.pin.material_id
+    && s.material_version===source.pin.material_version && s.sha256===source.pin.sha256);
+  const targetPeriods=input.manifest.update_details?.target_reporting_periods??[];
+  const sourcePeriods=info?.reporting_periods??[];
+  const latest=(periods:typeof targetPeriods)=>periods.map(p=>p.end).sort().at(-1);
+  return {target:{issuer_name:input.manifest.issuer_name,market:input.manifest.market,offering:input.manifest.offering,details:input.manifest.update_details},
+    source_reporting_periods:sourcePeriods,
+    update_required:!authoring.previous_output && !authoring.review_result && info?.relation==='same_issuer'
+      && !!latest(sourcePeriods) && !!latest(targetPeriods) && latest(sourcePeriods)!==latest(targetPeriods)};
 }
 
 async function checkedFile(root:string,name:string,max=MAX){
@@ -94,10 +106,12 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
         const path=`knowledge/k${i}.md`;await writeFile(join(cwd,path),k.markdown,{mode:0o400});originals.set(path,k.sha256);
         knowledge.push({...k,markdown:undefined,local_path:path});
       }
-      const data={version:'codex-file-input-v1',revision_author:`BondBuddy-${ctx.run.input_hash.trim().slice(0,12)}`,input_hash:ctx.run.input_hash.trim(),target:{issuer_name:input.manifest.issuer_name,market:input.manifest.market,offering:input.manifest.offering,details:input.manifest.update_details},
+      const data={version:'codex-file-input-v1',revision_author:`BondBuddy-${ctx.run.input_hash.trim().slice(0,12)}`,input_hash:ctx.run.input_hash.trim(),...qualityContext(input,source),
         requirements:input.requirements,materials,knowledge,source_review:input.manifest.authoring.review_result??null,previous_output:input.manifest.authoring.previous_output??null,
         baseline_path:materials.find(m=>m.editing_baseline)?.path??null,baseline_kind:!source?'none':source.pin.role==='project_output'?'project_output':source.mediaType===DOCX?'uploaded_source':'reconstructed_pdf',
-        ...(controlled?{baseline_sha256:source!.pin.sha256,revision_date:new Date().toISOString(),format_policy:input.manifest.authoring.format_policy,
+        ...(source?.mediaType===DOCX?{baseline_sha256:source.pin.sha256}:{}),
+        ...(source?.mediaType==='application/pdf'?{original_pdf_sha256:source.pin.sha256}:{}),
+        ...(controlled?{revision_date:new Date().toISOString(),format_policy:input.manifest.authoring.format_policy,
           format_tools:{version:'controlled-docx-v1',manifest:'template-manifest.json',operations:'output/operations.json'}}:{}),
         output:{tracked:'output/tracked.docx',clean:'output/clean.docx',baseline:'output/baseline.docx',delivery:'output/delivery.md'}};
       lockedInput=Buffer.from(JSON.stringify(data,null,2));
@@ -119,15 +133,19 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
       for(const name of fileNames){
         let bytes:Buffer;
         try{
-          if(controlled && name==='baseline.docx')bytes=await checkedFile(cwd,JSON.parse(lockedInput!.toString('utf8')).baseline_path);
+          if(name==='source-original.pdf'){
+            if(source?.mediaType!=='application/pdf')continue;
+            bytes=await checkedFile(cwd,JSON.parse(lockedInput!.toString('utf8')).baseline_path);
+          }
+          else if(source?.mediaType===DOCX && name==='baseline.docx')bytes=await checkedFile(cwd,JSON.parse(lockedInput!.toString('utf8')).baseline_path);
           else if(controlled && name.endsWith('.docx'))continue;
-          else if(controlled && name==='input.json')bytes=lockedInput!;
+          else if(name==='input.json')bytes=lockedInput!;
           else if(controlled && name==='template-manifest.json')bytes=await checkedFile(cwd,name,FORMAT_JSON_MAX);
-          else if(!controlled && ['input.json','operations.json','template-manifest.json'].includes(name))continue;
+          else if(!controlled && ['operations.json','template-manifest.json'].includes(name))continue;
           else bytes=await checkedFile(join(cwd,'output'),name,name==='delivery.md'?256*1024:name.endsWith('.json')?FORMAT_JSON_MAX:MAX);
         }catch{continue;}
         const sha256=digest(bytes),key=`${prefix(ctx)}${intent.call_id}/${sha256}/${name}`;
-        await ctx.blobs.put(key,bytes,name.endsWith('.docx')?DOCX:name.endsWith('.json')?'application/json':'text/markdown');
+        await ctx.blobs.put(key,bytes,name.endsWith('.docx')?DOCX:name.endsWith('.pdf')?'application/pdf':name.endsWith('.json')?'application/json':'text/markdown');
         const stored=await ctx.blobs.getIfExistsBounded(key,MAX);
         if(!stored||digest(stored)!==sha256)throw Error('AUTHORING_OUTPUT_STORE_FAILED');
         files[name]={key,sha256,byte_size:bytes.length};
@@ -167,7 +185,7 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
     return await (options.model??codexModelStage)({name:'file_authoring_v1',logicalCallId:'file-authoring-v1',
       config:{...config,work_root:join(process.env.BB_PARSE_STAGING_DIR??config.work_root,'file-authoring'),max_output_bytes:32*1024*1024},
       buildPrompt:async()=>`请在切换实际处理工作时发送一条独立的用户可见进度消息，严格使用 BB_PROGRESS:read_materials、BB_PROGRESS:read_knowledge、BB_PROGRESS:analyze、BB_PROGRESS:write_document、BB_PROGRESS:check_document 或 BB_PROGRESS:prepare_download 中的相应一项，并在其后用「 | 」附上一句不超过240字的用户可见工作摘要，说明刚完成或当前处理的具体步骤。每次取得中间进展都发送一条，不包含思考过程、材料正文、命令、内部路径或密钥。请先完整阅读 task.md 和 input.json，再自主使用本次原始材料和知识文件完成整份募集书及 output/ 下的交付文件。一次执行完成，不返回全文修改 JSON，不等待逐批请求。输入锁：${ctx.run.input_hash.trim()}。`,
-      schema:{},validate:value=>validFileResult(value,ctx),resultSchemaVersion:'codex-file-word-v1',templateVersion:controlled?'single-cli-authoring-format-v3':'single-cli-authoring-v3',fileWorkspace:{completionCheck:true,prepare,collect}}).run(ctx);
+      schema:{},validate:value=>validFileResult(value,ctx),resultSchemaVersion:'codex-file-word-v1',templateVersion:controlled?'single-cli-authoring-format-quality-v3':'single-cli-authoring-quality-v3',fileWorkspace:{completionCheck:true,prepare,collect}}).run(ctx);
     } catch (error) {
       if (!ctx.signal.aborted && error instanceof AuthoringSourceUnreadable) return {kind:'fail',code:'MATERIAL_UNREADABLE'};
       throw error;
@@ -175,13 +193,29 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
   }};
 }
 
-export function fileAuthoringDeliveryStage():RunStage{
+export function fileAuthoringDeliveryStage(options:{quality?:typeof verifyWordQuality;load?:typeof loadUnifiedInput;checkpoint?:typeof checkpointStage}={}):RunStage{
   return {name:'word_delivery',replay:true,run:async ctx=>{
     const value=ctx.values.get('model_generation');
     if(!validFileResult(value,ctx))return {kind:'fail',code:'VALIDATION_FAILED'};
     if(!validPair(value,ctx) && !validControlledInputs(value,ctx))return {kind:'fail',code:value.summary.validation_error==='WORD_FORMAT_OPERATIONS_MISSING'?'WORD_FORMAT_OPERATIONS_MISSING':'WORD_DELIVERY_UNAVAILABLE'};
+    if(value.error==='WORD_QUALITY_REJECTED')return {kind:'fail',code:'WORD_QUALITY_REJECTED'};
     const gate=await ctx.validateBeforeModelCall?.();if(gate)return gate;
-    const read=async(name:string)=>{const f=value.files[name]!;const b=await ctx.blobs.getIfExistsBounded(f.key,MAX);if(!b||b.length!==f.byte_size||digest(b)!==f.sha256)throw Error('WORD_OUTPUT_BLOB_MISMATCH');return b;};
+    const read=async(name:string)=>{
+      const f=value.files[name];
+      if(!f || !f.key.startsWith(prefix(ctx)) || f.key.includes('..') || !/^[a-f0-9]{64}$/.test(f.sha256)
+        || !Number.isSafeInteger(f.byte_size) || f.byte_size<1 || f.byte_size>(name.endsWith('.json')?FORMAT_JSON_MAX:MAX))throw Error('WORD_OUTPUT_BLOB_MISMATCH');
+      const b=await ctx.blobs.getIfExistsBounded(f.key,name.endsWith('.json')?FORMAT_JSON_MAX:MAX);
+      if(!b||b.length!==f.byte_size||digest(b)!==f.sha256)throw Error('WORD_OUTPUT_BLOB_MISMATCH');return b;
+    };
+    const check=async(input:Parameters<typeof verifyWordQuality>[0])=>{
+      const report=await (options.quality??verifyWordQuality)({...input,signal:ctx.signal});
+      const bytes=Buffer.from(JSON.stringify({...report,input_hash:ctx.run.input_hash.trim()}));
+      const sha256=digest(bytes),key=`${prefix(ctx)}quality/${sha256}/quality-report.json`;
+      await ctx.blobs.put(key,bytes,'application/json');
+      const saved=await ctx.blobs.getIfExistsBounded(key,FORMAT_JSON_MAX);
+      if(!saved||digest(saved)!==sha256)throw Error('AUTHORING_OUTPUT_STORE_FAILED');
+      return {report,ref:{key,sha256,byte_size:bytes.length}};
+    };
     if(validControlledInputs(value,ctx)){
       const lockedInput=await read('input.json'), baselineBytes=await read('baseline.docx'), operations=await read('operations.json');
       const data=JSON.parse(lockedInput.toString('utf8'));
@@ -197,8 +231,26 @@ export function fileAuthoringDeliveryStage():RunStage{
           return {kind:'fail',code:'WORD_QUALITY_REJECTED'};
         throw error;
       }
+      // Index the host-derived plan before quality checking can throw or fail to store
+      // its report. A retry may reuse this binding but must never replace its evidence.
+      const planBytes=finalized.get('format-plan.json')!;
+      const planHash=digest(planBytes),planKey=`${prefix(ctx)}finalized/${planHash}/format-plan.json`;
+      const planRef:FileRef={key:planKey,sha256:planHash,byte_size:planBytes.length};
+      const planCheckpoint={version:'word-format-plan-checkpoint-v1',input_hash:ctx.run.input_hash.trim(),
+        locked_input_sha256:digest(lockedInput),baseline_sha256:digest(baselineBytes),operations_sha256:digest(operations),plan:planRef};
+      const stages=ctx.lease.checkpoint.stages as Record<string,unknown>|undefined;
+      const hasPlan=!!stages && Object.hasOwn(stages,'word_format_plan');
+      if(hasPlan && !isDeepStrictEqual(stages.word_format_plan,planCheckpoint))return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
+      await ctx.blobs.put(planKey,planBytes,'application/json');
+      const storedPlan=await ctx.blobs.getIfExistsBounded(planKey,FORMAT_JSON_MAX);
+      if(!storedPlan||digest(storedPlan)!==planHash)throw Error('AUTHORING_OUTPUT_STORE_FAILED');
+      if(!hasPlan)await (options.checkpoint??checkpointStage)(ctx.pool,ctx.lease,'word_format_plan',planCheckpoint,false);
+      ctx.checkpoint.word_format_plan=planCheckpoint;
+      const quality=await check({data,tracked:finalized.get('tracked.docx')!,clean:finalized.get('clean.docx')!,baseline:baselineBytes,operations});
+      if(quality.report.status!=='passed')return {kind:'fail',code:'WORD_QUALITY_REJECTED',checkpoint:{quality_gate:{version:quality.report.version,status:quality.report.status,report:quality.ref,format_plan:planRef}}};
       const refs:Record<string,FileRef>={};
       for(const [name,bytes] of finalized){
+        if(name==='format-plan.json'){refs[name]=planRef;continue;}
         const sha256=digest(bytes),key=`${prefix(ctx)}finalized/${sha256}/${name}`;
         await ctx.blobs.put(key,bytes,name.endsWith('.docx')?DOCX:'application/json');
         const saved=await ctx.blobs.getIfExistsBounded(key,MAX);
@@ -207,16 +259,49 @@ export function fileAuthoringDeliveryStage():RunStage{
       }
       const diagnostic:FormatDiagnostic={version:'word-format-diagnostic-v1',status:'pending',input_hash:data.input_hash,
         revision_author:data.revision_author,revision_date:data.revision_date,
-        files:{baseline:refs['baseline.docx']!,tracked:refs['tracked.docx']!,operations:refs['operations.json']!}};
+        files:{baseline:refs['baseline.docx']!,tracked:refs['tracked.docx']!,operations:refs['operations.json']!,plan:planRef}};
       return {kind:'deliver',deliveryPolicy:'generated_pair_v1',bytes:finalized.get('tracked.docx')!,cleanBytes:finalized.get('clean.docx')!,
         wordSummary:{...value.summary,format_state:'finalized',format_diagnostic:diagnostic,writer_version:'bondbuddy-fixed-word-1.0.0',
+          quality_gate:{version:quality.report.version,status:quality.report.status,report:quality.ref},
           delivery_policy:'generated_pair_v1',content_review:'not_performed',effective_baseline_sha256:digest(baselineBytes),
           replacements:null,columns:null,pending:null,pending_review:[]}};
     }
-    // Preserve any old checker result in its original private provider record; it is not
-    // rewritten as a pass. A new policy publishes just the two generated files.
-    return {kind:'deliver',deliveryPolicy:'generated_pair_v1',bytes:await read('tracked.docx'),cleanBytes:await read('clean.docx'),
+    const tracked=await read('tracked.docx'),clean=await read('clean.docx');
+    let data:Record<string,unknown>,baseline:Buffer|undefined,originalPdf:Buffer|undefined;
+    if(value.files['input.json']){
+      data=JSON.parse((await read('input.json')).toString('utf8'));
+      if(data.input_hash!==ctx.run.input_hash.trim())return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
+      if(data.baseline_sha256){
+        baseline=await read('baseline.docx');
+        if(digest(baseline)!==data.baseline_sha256)return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
+      }else if(data.baseline_kind==='reconstructed_pdf' && value.files['baseline.docx'])baseline=await read('baseline.docx');
+      if(data.original_pdf_sha256){
+        originalPdf=await read('source-original.pdf');
+        if(digest(originalPdf)!==data.original_pdf_sha256)return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
+      }
+    }else{
+      // Old provider records did not retain host input.json. Recover their exact pinned
+      // source, rather than accepting a model-authored or missing baseline as authority.
+      const input=await (options.load??loadUnifiedInput)(ctx,{originalFiles:true});
+      const source=editingSource(input);
+      data={input_hash:ctx.run.input_hash.trim(),revision_author:`BondBuddy-${ctx.run.input_hash.trim().slice(0,12)}`,...qualityContext(input,source),
+        baseline_kind:!source?'none':source.pin.role==='project_output'?'project_output':source.mediaType===DOCX?'uploaded_source':'reconstructed_pdf'};
+      if(source?.mediaType===DOCX){
+        baseline=await ctx.blobs.getIfExistsBounded(source.objectKey,MAX)??undefined;
+        if(!baseline||digest(baseline)!==source.pin.sha256)return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
+      }else if(source){
+        if(value.files['baseline.docx'])baseline=await read('baseline.docx');
+        if(source.mediaType==='application/pdf'){
+          originalPdf=await ctx.blobs.getIfExistsBounded(source.objectKey,MAX)??undefined;
+          if(!originalPdf||digest(originalPdf)!==source.pin.sha256)return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
+        }
+      }
+    }
+    const quality=await check({data,tracked,clean,baseline,originalPdf});
+    if(quality.report.status!=='passed')return {kind:'fail',code:'WORD_QUALITY_REJECTED',checkpoint:{quality_gate:{version:quality.report.version,status:quality.report.status,report:quality.ref}}};
+    return {kind:'deliver',deliveryPolicy:'generated_pair_v1',bytes:tracked,cleanBytes:clean,
       wordSummary:{...value.summary,writer_version:'bondbuddy-file-word-1.0.0',delivery_policy:'generated_pair_v1',content_review:'not_performed',
+        quality_gate:{version:quality.report.version,status:quality.report.status,report:quality.ref},
         source_sha256:value.summary.source_sha256??null,baseline_hash:value.summary.baseline_hash??null,
         effective_baseline_sha256:value.summary.effective_baseline_sha256??null,plan_hash:value.summary.plan_hash??null,
         replacements:null,columns:null,pending:null,pending_review:[]}};

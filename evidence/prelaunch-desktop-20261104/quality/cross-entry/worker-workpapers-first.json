@@ -1,0 +1,48 @@
+{
+  "subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+  "group": "workpapers",
+  "started_at": "2026-11-04T05:45:03.411Z",
+  "command": [
+    "C:\\Program Files\\nodejs\\node.exe",
+    "--test",
+    "--test-concurrency=2",
+    "--test-reporter=tap",
+    "apps/worker/dist/workpaper-shared-stage.pg.test.js",
+    "apps/worker/dist/workpaper-paid-checks.pg.test.js"
+  ],
+  "synthetic": true,
+  "environment_keys": [
+    "BB_TEST_DATABASE_URL",
+    "BB_TEST_AZURITE_CONNECTION_STRING",
+    "BONDBUDDY_TEST_PYTHON",
+    "BONDBUDDY_WORD_PYTHON",
+    "BB_PYTHON",
+    "PYTHONPATH",
+    "PYTHONDONTWRITEBYTECODE",
+    "PYTHONIOENCODING",
+    "BB_TEST_INTEGRITY_BROWSER",
+    "BB_TEST_LIVE_AUTHORING",
+    "BB_PLATFORM_PROBE_ENABLED",
+    "BB_REVIEW_WEB_SEARCH_ENABLED",
+    "PLAYWRIGHT_BROWSERS_PATH"
+  ],
+  "bindings": [
+    {
+      "source": "apps/worker/src/workpaper-shared-stage.pg.test.ts",
+      "source_sha256": "431ece7db3d5170fc60f6e36239ee177ecadbd2576fba81d85ac71845969c69c",
+      "dist": "apps/worker/dist/workpaper-shared-stage.pg.test.js",
+      "dist_sha256": "9fdfebab1dc5f67db3cb728ad394506f4b284dd47fb333f6b95e2ac1cc60c576"
+    },
+    {
+      "source": "apps/worker/src/workpaper-paid-checks.pg.test.ts",
+      "source_sha256": "3dd9f36229ebf25ed5234b1b1b4f28dc6862a1ecbc8d8e9a7b1c2f666eccc1b2",
+      "dist": "apps/worker/dist/workpaper-paid-checks.pg.test.js",
+      "dist_sha256": "245c3c13cc764849f6ca724c256d274cc27f3cfed43f1beadb4e25a29265680e"
+    }
+  ],
+  "finished_at": "2026-11-04T05:45:50.117Z",
+  "exit_code": 1,
+  "signal": null,
+  "log": "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\prelaunch-desktop-20261104\\.local\\quality-final-crossentry/worker-workpapers-first.tap",
+  "log_sha256": "0aba732cc9d3ec98ea73a82be54bfb50266a62a3fdbfda885cfb1f6f0960ff14"
+}

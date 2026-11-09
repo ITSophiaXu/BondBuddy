@@ -103,7 +103,7 @@ test('one batch plan across deliveries, crash replay, failure/retry, pause, immu
     const material=await upload(id,'synthetic-catalogue.xlsx',await catalogueXlsx(3),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     const cat=await ok('POST',base+'/catalogues',{request_id:randomUUID(),material});
     const request={start_mode:'direct',request_id:randomUUID(),catalogue_id:cat.catalogue_id,catalogue_sha256:cat.sha256,item_ids:cat.entries.map((e:any)=>e.id),source_version_id:adopted.current_version_id,source_selection_revision:adopted.selection_revision,
-      requirements:'仅处理所选目录，正文不写来源。',price_version:WORKPAPER_PRICE.version,expected_points:3*WORKPAPER_PRICE.points};
+      requirements:'仅处理所选目录，正文不写来源。',price_version:WORKPAPER_PRICE.version,expected_points:String(3*WORKPAPER_PRICE.points)};
     let batch=await ok('POST',base+'/batches',request) as WorkpaperBatch;
     const read=async()=>((await ok('GET',base)).batches as WorkpaperBatch[]).find(b=>b.batch_id===batch.batch_id)!;
     await advanceWorkpaperBatch(pool);assert.equal(await execute(),'succeeded');assert.equal(modelCalls,1);assert.equal(modelReplays,1);
@@ -123,7 +123,7 @@ test('one batch plan across deliveries, crash replay, failure/retry, pause, immu
     await advanceWorkpaperBatch(pool);batch=await read();assert.equal(batch.state,'partial');
     batch=await ok('POST',base+`/batches/${batch.batch_id}/actions`,{action:'retry_failed',expected_revision:batch.revision});
     await advanceWorkpaperBatch(pool);assert.equal(await execute(),'succeeded');await advanceWorkpaperBatch(pool);batch=await read();
-    assert.equal(batch.state,'complete');assert.equal(modelCalls,1);assert.equal(modelReplays,1);assert.equal(batch.charged_points,2*WORKPAPER_PRICE.points);
+    assert.equal(batch.state,'complete');assert.equal(modelCalls,1);assert.equal(modelReplays,1);assert.equal(batch.charged_points,String(2*WORKPAPER_PRICE.points));
     assert.equal(batch.items[2].attempt,2);assert.ok(batch.items[1].explanation);
     const zip=await send('GET',base+`/batches/${batch.batch_id}/download`);assert.equal(zip.statusCode,200);await writeFile(join(directory,'delivery.zip'),zip.rawPayload);
     await python(['-c',`from zipfile import ZipFile\nfrom io import BytesIO\nfrom docx import Document\nimport sys\nwith ZipFile(sys.argv[1]) as z:\n assert len(z.namelist()) == 3\n assert sum(n.startswith('不适用说明/') for n in z.namelist()) == 1\n for n in z.namelist():\n  assert n.endswith('.docx') and 'preparation' not in n\n  d=Document(BytesIO(z.read(n)))\n  text=''.join(d.element.body.itertext())\n  assert '合成主体12' in text and '原文空白' in text\n  assert '资料来源' not in text and '第12页' not in text and 'span_id' not in text\n  assert len(d.tables[0].rows) == 15\n`,join(directory,'delivery.zip')]);
