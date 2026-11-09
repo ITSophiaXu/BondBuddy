@@ -13,7 +13,7 @@ const overview=(page:Page)=>page.locator('.qa-result-overview');
 const follow=(page:Page,id:string)=>page.locator(`[data-qa-followup][value="${id}"]`);
 const answer=(page:Page,id:string)=>page.locator(`details[data-qa-answer-question="${id}"]`);
 const selected=(page:Page)=>page.locator('[data-qa-followup]:checked').evaluateAll(nodes=>nodes.map(node=>(node as HTMLInputElement).value));
-const preparedIds=(page:Page)=>page.locator('[data-remove-q]').evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.removeQ));
+const preparedIds=(page:Page)=>page.locator('[data-qa-question-id]').evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.qaQuestionId));
 test.beforeEach(async({page})=>{await page.setViewportSize({width:1440,height:900});page.on('dialog',dialog=>void dialog.accept());});
 test.afterEach(async({page})=>{await assertFixture(page);});
 

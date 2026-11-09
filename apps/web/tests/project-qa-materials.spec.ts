@@ -40,16 +40,16 @@ test('only an adopted, selected prospectus enables paid answer; inline fees name
 test('prepared questions are previewed in-page; even old conversion artifacts have no download',async({page})=>{
  const s=fixture();s.workspace.prospectus=prospectus;s.workspace.draft={preparation_id:null,questions:[],materials:[],requirements:'',use_knowledge:false};const prep=s.workspace.runs.find(r=>r.run_id===prepareId)!;prep.artifact_id='legacy-conversion';
  await install(page,s);await page.goto(route(prepareId));await expect(page.locator('.qa-question-list article')).toHaveCount(prep.result!.questions.length);
- await expect(page.locator('#qa-download')).toHaveCount(0);await expect(page.locator('.qa-document')).toContainText('尚未开始回答');
+ await expect(page.locator('#qa-download')).toHaveCount(0);await expect(page.locator('#qa-start')).toBeEnabled();
  await expectConsistentType(page);
  const dir=process.env.BB_UX_EVIDENCE_DIR;if(dir)await page.screenshot({path:join(dir,'questions-1440.png'),fullPage:true});
  await expect(page.locator('#qa-use-preparation')).toHaveCount(0);await expect(page.locator('#qa-start')).toBeEnabled();expect(s.answers).toEqual([]);
 });
 
-test('zero candidates directs to manual selection and cannot answer',async({page})=>{
+test('zero candidates explains the file problem without a range editing step',async({page})=>{
  const s=fixture();s.workspace.prospectus=prospectus;s.workspace.draft={preparation_id:null,questions:[],materials:[],requirements:'',use_knowledge:false};const prep=s.workspace.runs.find(r=>r.run_id===prepareId)!;prep.result!.questions=[];
- await install(page,s);await page.goto(route(prepareId));await expect(page.getByRole('heading',{name:'未识别到明确的问题'})).toBeVisible();
- await expect(page.locator('#qa-start')).toBeDisabled();await page.locator('#qa-ranges').click();await expect(page.locator('.qa-range-list')).toBeVisible();
+ await install(page,s);await page.goto(route(prepareId));await expect(page.getByRole('heading',{name:'暂未能整理出可回答的问题'})).toBeVisible();
+ await expect(page.locator('#qa-start')).toBeDisabled();await expect(page.locator('#qa-ranges,.qa-range-list')).toHaveCount(0);
  expect(writes(s)).toEqual([]);
 });
 

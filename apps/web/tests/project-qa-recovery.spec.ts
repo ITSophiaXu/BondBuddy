@@ -9,7 +9,7 @@ import {answerId,assertFixture,checked,fixture,historicalRecords,install,newMate
 // Adversarial browser-only recovery over the frozen public HTTP fixture. No real
 // Word generation, model calls, credit settlement or production delivery occurs.
 const url=(run:string|null=answerId)=>`/#qa?project=${projectId}${run?`&run=${run}`:''}`;
-const selectedIds=(page:Page)=>page.locator('[data-remove-q]').evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.removeQ));
+const selectedIds=(page:Page)=>page.locator('[data-qa-question-id]').evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.qaQuestionId));
 test.beforeEach(async({page})=>{page.on('dialog',dialog=>void dialog.accept());});
 test('ordinary upgrade retries the original numeric QA envelope with explicit legacy wire and one accepted run',async({page})=>{
   const state=await open(page);await adopt(page);state.dropAnswer='after';await start(page);
@@ -214,9 +214,13 @@ test('a delayed active-run poll cannot replace the draft while supplementary upl
     if(route.request().method()!=='POST')return route.fallback();const body:unknown=fixtureRequest(route.request());checked('UploadCompleteRequest',body);heldUpload=true;await uploadGate;await route.fallback();
   });
   try{
-    await expect.poll(()=>heldRead,{timeout:10000}).toBe(true);await page.locator('#qa-requirements').evaluate(node=>(node as HTMLElement).dataset.syntheticDraftMarker='before-poll');
+    await expect.poll(()=>heldRead,{timeout:10000}).toBe(true);
     await page.locator('#qa-supplement').setInputFiles({name:'合成轮询竞态补充.pdf',mimeType:'application/pdf',buffer:Buffer.from('synthetic delayed supplement, not a real PDF')});
-    await expect.poll(()=>heldUpload).toBe(true);await expect(page.locator('#qa-requirements')).toBeDisabled();releaseRead();await expect.poll(()=>readDelivered).toBe(true);
+    await expect.poll(()=>heldUpload).toBe(true);await expect(page.locator('#qa-requirements')).toBeDisabled();
+    // Upload progress may repaint the form. Mark the held upload's current form
+    // so this assertion isolates the delayed GET, rather than that valid repaint.
+    await page.locator('#qa-requirements').evaluate(node=>(node as HTMLElement).dataset.syntheticDraftMarker='before-poll');
+    releaseRead();await expect.poll(()=>readDelivered).toBe(true);
     await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>resolve())));await expect(page.locator('#qa-requirements')).toHaveAttribute('data-synthetic-draft-marker','before-poll');
     releaseUpload();await expect(page.locator('.qa-materials')).toContainText('合成轮询竞态补充.pdf');await expect(page.locator('#qa-save')).toBeEnabled();await page.locator('#qa-save').click();await expect.poll(()=>state.drafts.length).toBe(1);
     const uploaded=state.uploadMaterial!,pin={kind:'material' as const,pin:{source_project_id:projectId,material_id:uploaded.material_id,material_version:uploaded.material_version,sha256:uploaded.sha256}};

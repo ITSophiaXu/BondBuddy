@@ -76,14 +76,14 @@
 .qa-followup label span{min-width:0}
 .qa-modal{width:min(880px,calc(100vw - 32px));max-height:90vh;overflow:auto}
 .qa-modal input,.qa-modal textarea,.qa-modal select{width:100%}
-.qa-range-list{max-height:55vh;overflow:auto;margin:16px 0}
-.qa-range-list>label{display:grid;grid-template-columns:24px minmax(0,1fr) 100px;align-items:start;gap:10px;padding:12px 0;border-bottom:1px solid #eee}
-.qa-range-list>label>input{width:18px}
-.qa-range-list span{white-space:pre-wrap;overflow-wrap:anywhere}
+
+
+
+
 .qa-page .pf-source-strip{margin-bottom:24px}
 .qa-page #qa-history{max-width:220px}.qa-page h2{margin-top:0}
 @media(max-width:700px){.qa-deliverables{grid-template-columns:minmax(0,1fr);gap:20px;padding:4px}.qa-download-card{align-items:stretch;flex-direction:column;padding:18px}.qa-missing-list{padding:18px}.qa-page .page-head{align-items:start}.qa-page .page-head>a{white-space:nowrap}.qa-upload-compact .qa-upload-icon{display:none}}
-@media(max-width:600px){.qa-document,.qa-upload{padding:18px}.qa-upload-empty{padding:30px 18px}.qa-answer summary{flex-wrap:wrap}.qa-answer summary span{flex-basis:75%}.qa-range-list>label{grid-template-columns:22px minmax(0,1fr)}.qa-range-list>label>span:last-child{grid-column:2}.qa-range-list input[type=number]{max-width:90px}.qa-page .pf-section-head{align-items:start;flex-direction:column}.qa-page #qa-history{max-width:100%;width:100%}.qa-actions .btn{width:100%}.qa-recovery{padding:18px}.qa-page{min-width:0}.qa-toolbar label{white-space:nowrap}}
+@media(max-width:600px){.qa-document,.qa-upload{padding:18px}.qa-upload-empty{padding:30px 18px}.qa-answer summary{flex-wrap:wrap}.qa-answer summary span{flex-basis:75%}.qa-page .pf-section-head{align-items:start;flex-direction:column}.qa-page #qa-history{max-width:100%;width:100%}.qa-actions .btn{width:100%}.qa-recovery{padding:18px}.qa-page{min-width:0}.qa-toolbar label{white-space:nowrap}}
 .qa-upload-recovery{margin-top:14px;padding-top:12px;border-top:1px solid var(--line,#dce2d5);overflow-wrap:anywhere}
 .qa-upload-recovery article{margin:10px 0;padding:10px 0;border-bottom:1px solid var(--line,#dce2d5)}
 .qa-upload-recovery strong,.qa-upload-recovery small{display:block;line-height:1.6}
@@ -136,3 +136,6 @@
 .qa-answer-body table{width:100%;border-collapse:collapse;font:inherit}
 .qa-answer-body th,.qa-answer-body td{padding:10px 12px;border:1px solid var(--line,#dce2d5);text-align:left;min-width:96px;vertical-align:top}
 .qa-answer-body th{background:#edf2ef;font-weight:600}
+
+.qa-question-preview{margin:18px 0}.qa-question-preview>summary{cursor:pointer;font-weight:600}.qa-question-preview .qa-question-list{max-height:420px;overflow:auto}
+.prototype-app .qa-page #qa-preparation-controls .qa-actions{position:static}
