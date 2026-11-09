@@ -685,7 +685,7 @@ export class ReviewWorkspace {
     if(!report&&this.workspace.artifact_run&&this.workspace.artifacts.some(a=>a.kind==='report')){
       const reportArtifacts=this.workspace.artifacts.flatMap(artifact=>artifact.kind==='report'||artifact.kind==='comments'?[{artifactId:artifact.artifact_id,kind:artifact.kind}]:[])
         .sort((a,b)=>Number(b.kind==='comments')-Number(a.kind==='comments'));
-      host.innerHTML=progress+`<div class="review-readable-result"><div class="review-readable-heading"><div><div class="document-result-title"><h2>复核报告已生成</h2><span class="document-review-note">待人工审阅</span></div><p>第 ${this.workspace.artifact_run.version} 次复核 · 分别查看财务、合规与公开信息的核对结果。</p><p>${this.workspace.artifacts.some(a=>a.kind==='comments')?'原文批注保留上传版本正文；无法定位的事项请查看报告中的“原文批注与待确认定位”。':'这次历史成果仅有独立报告，未生成原文批注版。'}</p></div></div><div class="document-downloads" role="group" aria-label="复核成果">${this.workspace.artifacts.filter(a=>a.kind==='report'||a.kind==='comments').sort((a,b)=>Number(b.kind==='comments')-Number(a.kind==='comments')).map(a=>documentDeliverable(a,`成果 V${this.workspace!.artifact_run!.version} · ${a.kind==='comments'?'原文修订与批注':'问题说明、材料依据与待确认事项'}`,`<button class="btn ${a.kind==='comments'?'primary':'secondary'}" data-review-action="download" data-artifact-id="${esc(a.artifact_id)}">${a.kind==='comments'?'下载原文批注版':'下载复核报告（Word）'}</button>`)).join('')}</div><div data-readable-report></div></div>`;
+      host.innerHTML=progress+`<div class="review-readable-result"><div class="review-readable-heading"><div><div class="document-result-title"><h2>复核报告已生成</h2><span class="document-review-note">待人工审阅</span></div><p>第 ${this.workspace.artifact_run.version} 次复核 · 分别查看财务、合规与公开信息的核对结果。</p><p>${this.workspace.artifacts.some(a=>a.kind==='comments')?'原文批注保留上传版本正文；无法定位的事项请查看报告中的“原文批注与待确认定位”。':'这次历史成果仅有独立报告，未生成原文批注版。'}</p></div></div><div class="document-downloads" role="group" aria-label="复核成果">${this.workspace.artifacts.filter(a=>a.kind==='report'||a.kind==='comments').sort((a,b)=>Number(b.kind==='comments')-Number(a.kind==='comments')).map(a=>documentDeliverable(a,`成果 V${this.workspace!.artifact_run!.version} · ${a.kind==='comments'?'原文批注 · 正文保持上传版本':'问题说明、材料依据与待确认事项'}`,`<button class="btn ${a.kind==='comments'?'primary':'secondary'}" data-review-action="download" data-artifact-id="${esc(a.artifact_id)}">${a.kind==='comments'?'下载原文批注版':'下载复核报告（Word）'}</button>`)).join('')}</div><div data-readable-report></div></div>`;
       this.readable.mount(host.querySelector<HTMLElement>('[data-readable-report]')!,this.workspace.artifact_run.run_id,{downloads:{runId:this.workspace.artifact_run.run_id,artifacts:reportArtifacts}});return;
     }
     if(!report&&this.workspace.artifact_run?.operation==='revision'&&this.workspace.artifacts.some(a=>a.kind==='clean')){
@@ -904,7 +904,7 @@ export class ReviewWorkspace {
       this.focusedTaskRunId=run.run_id;this.explicitTaskFocus=true;this.run=run;this.workspace.active_run=isActiveRun(run)?run:null;this.dialog?.close();if(this.tab==='materials')this.setTab('making');this.message(isActiveRun(run)?'任务已提交，本次输入已锁定。':`原任务状态已确认：${runStateLabel[run.state]}。新一轮需要重新确认执行。`);this.renderBody();await this.refreshSelection();
     }catch(error){
       if(error instanceof ApiError&&error.status>=400&&error.status<500&&![408,429].includes(error.status)){
-        this.executionPending=undefined;try{localStorage.removeItem(this.executionKey);}catch{}this.dialog?.close();await this.refresh();this.message(`${friendlyError(error,'submit')} 请重新核对输入与范围后再执行。`,true);
+        this.executionPending=undefined;try{localStorage.removeItem(this.executionKey);}catch{}this.dialog?.close();await this.refresh();this.message(`${friendlyError(error,'submit')}${error.code==='CREDITS_INSUFFICIENT'?'':' 请重新核对输入与范围后再执行。'}`,true);
       }else{this.dialogStatus(`${friendlyError(error,'submit')} 重试沿用同一请求，不会重复执行。`);this.message('提交结果暂未确认。点击“开始复核”重试原请求，或刷新查看状态；不会重复创建任务。',true);}
     }
   }
@@ -915,9 +915,9 @@ export class ReviewWorkspace {
     if(isAutomaticCharge(quote.quote)){request.quote_id=quote.quote.quote_id;return true;}
     if(isCnyPrice(quote.quote)?int64(quote.shortage)>0n:quote.quote.task_type in DYNAMIC_REVIEW_BILLING_TASKS?int64(quote.balance.available)<1n:int64(quote.shortage)>0n){
       if(isCnyPrice(quote.quote)){
-        this.openDialog('服务余额不足',`<p>本次总价 ${esc(displayPrice(quote.quote))}，当前余额不足。材料和问题范围已保留，尚未开始。</p><a class="btn primary" href="${esc(rechargeHref(this.projectId))}" id="review-recharge-link">按需充值</a>`,[]);return false;
+        this.openDialog('服务余额不足',`<p>本次总价 ${esc(displayPrice(quote.quote))}，当前余额不足。材料和问题范围已保留，尚未开始。请到账号页查看余额与支付渠道状态；余额充足后返回项目明确开始，任务不会自动执行。</p><a class="btn primary" href="${esc(rechargeHref(this.projectId))}" id="review-recharge-link">查看余额与支付状态</a>`,[]);return false;
       }
-      this.openDialog('积分不足',`<p>积分不足，请充值后继续任务。</p><p>本次材料、要求与问题范围已保留。充值到账后请返回项目明确开始，任务不会自动执行。</p><a class="btn primary" href="${esc(rechargeHref(this.projectId))}" id="review-recharge-link">充值积分</a>`,[]);
+      this.openDialog('积分不足',`<p>积分不足，本次任务尚未开始。</p><p>本次材料、要求与问题范围已保留。请到账号页查看积分与支付渠道状态；积分充足后请返回项目明确开始，任务不会自动执行。</p><a class="btn primary" href="${esc(rechargeHref(this.projectId))}" id="review-recharge-link">查看积分与支付状态</a>`,[]);
       this.dialog?.querySelector('#review-recharge-link')?.addEventListener('click',()=>this.dialog?.close());
       return false;
     }
@@ -941,12 +941,12 @@ export class ReviewWorkspace {
       const changed=charge.progress?.policy==='authoring_balance_v2'&&(charge.progress.charged_points!==this.charge?.progress?.charged_points||charge.progress.available_points!==this.charge?.progress?.available_points);
       this.charge=charge;this.chargeKey=key;this.chargeError=false;
       if(changed)window.dispatchEvent(new Event('bondbuddy:credits-changed'));
-      if(charge.progress?.credit_exhausted&&this.creditPromptRun!==run.run_id){if(this.dialog?.open||this.followupSaving)this.message('当前任务积分已用尽，已保留处理结果。请完成当前填写后查看任务并充值。');else{this.creditPromptRun=run.run_id;this.rechargeDialog();}}
+      if(charge.progress?.credit_exhausted&&this.creditPromptRun!==run.run_id){if(this.dialog?.open||this.followupSaving)this.message('当前任务积分已用尽，已保留处理结果。请完成当前填写后查看任务、积分与支付渠道状态。');else{this.creditPromptRun=run.run_id;this.rechargeDialog();}}
       if(!charge.progress?.credit_exhausted)this.creditPromptRun=undefined;
     }).catch(()=>{if(this.live())this.chargeError=true;}).finally(()=>{this.chargeLoading=false;this.chargeFetchedAt=Date.now();if(this.live())this.renderMaking();});
   }
   private rechargeDialog(){
-    this.openDialog('积分已用完','<p>当前复核会在保存进度后暂停，已完成的工作保留。充值到账后继续同一任务。</p><a class="btn primary" id="review-recharge-link" href="'+esc(rechargeHref(this.projectId))+'">充值积分</a>',[]);
+    this.openDialog('积分已用完','<p>当前复核会在保存进度后暂停，已完成的工作保留。请到账号页查看积分与支付渠道状态；积分充足后继续同一任务。</p><a class="btn primary" id="review-recharge-link" href="'+esc(rechargeHref(this.projectId))+'">查看积分与支付状态</a>',[]);
     this.dialog?.querySelector('#review-recharge-link')?.addEventListener('click',()=>this.dialog?.close());
   }
   private async controlRun(action:'pause'|'resume'){

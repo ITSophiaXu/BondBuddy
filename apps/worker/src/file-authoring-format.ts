@@ -16,7 +16,7 @@ export type FormatDiagnostic = {
   input_hash: string;
   revision_author: string;
   revision_date?: string;
-  files: { baseline: FormatFileRef; tracked: FormatFileRef; operations: FormatFileRef };
+  files: { baseline: FormatFileRef; tracked: FormatFileRef; operations: FormatFileRef; plan?: FormatFileRef };
   report?: FormatFileRef;
   /** Persisted before upload; retained until report registration or confirmed cleanup. */
   pending_report?: FormatFileRef;
@@ -81,7 +81,7 @@ export async function finalizeFormat(input: {
     await runFormatPython(['finalize', '--input', join(root, 'input.json'), '--operations', join(root, 'operations.json'),
       '--output-dir', join(root, 'output'), '--skip-report'], input.signal);
     const files = new Map<string, Buffer>();
-    for (const name of ['tracked.docx', 'clean.docx', 'baseline.docx', 'operations.json'])
+    for (const name of ['tracked.docx', 'clean.docx', 'baseline.docx', 'operations.json', 'format-plan.json'])
       files.set(name, await readFormatFile(join(root, 'output'), name, name.endsWith('.json') ? FORMAT_JSON_MAX : WORD_FILE_MAX));
     return files;
   } finally {

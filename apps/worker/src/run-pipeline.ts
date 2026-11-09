@@ -71,7 +71,7 @@ export type StageContext = {
 export type StageOutcome =
   | { kind: 'done'; checkpoint?: Record<string, unknown>; value?: unknown; upgradeCheckpoint?: boolean }
   | { kind: 'pause'; stage: typeof RUN_PAUSE_STAGES[number]; reason: string }
-  | { kind: 'fail'; code: string }
+  | { kind: 'fail'; code: string; checkpoint?: Record<string, unknown> }
   | { kind: 'deliver'; bytes: Buffer; cleanBytes?: Buffer; baselineBytes?: Buffer; attachments?: { kind: 'comments' | 'report'; bytes: Buffer; mediaType?:'application/pdf' }[];
       namedArtifacts?:{kind:'preparation_note';filename:string;bytes:Buffer;previewContent?:string}[];wordSummary?: Record<string, unknown>; deliveryPolicy?: import('@bondbuddy/contracts').GeneratedWordDeliveryPolicy }
   | {kind:'qa_deliver';reply:M4AssistantReply}
@@ -664,7 +664,13 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         continue;
       }
       if (outcome.kind === 'pause') { await pauseRun(pool, lease, outcome.stage, safePauseReason(outcome.reason)); return 'paused'; }
-      if (outcome.kind === 'fail') { await finish(pool, lease, 'failed', { errorCode: outcome.code, failedStage: stage.name }); return 'failed'; }
+      if (outcome.kind === 'fail') {
+        if(outcome.checkpoint){
+          if(saved)await upgradeStageCheckpoint(pool,lease,stage.name,outcome.checkpoint);
+          else await checkpointStage(pool,lease,stage.name,outcome.checkpoint,false);
+        }
+        await finish(pool, lease, 'failed', { errorCode: outcome.code, failedStage: stage.name }); return 'failed';
+      }
       if (outcome.kind === 'stopped') return 'stopped';
       if (outcome.kind === 'qa_deliver') {
         const result=await finishM4Qa(pool,lease,outcome.reply);

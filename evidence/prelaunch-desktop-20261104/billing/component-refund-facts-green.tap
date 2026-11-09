@@ -1,0 +1,119 @@
+TAP version 13
+# Subtest: monthly read-only report observes actual paid lots without recording prepayments or expiry as earned revenue
+ok 1 - monthly read-only report observes actual paid lots without recording prepayments or expiry as earned revenue
+  ---
+  duration_ms: 289.5745
+  type: 'test'
+  ...
+# Subtest: wechat: cash refunds use authenticated Shanghai success month; missing dates remain unknown until read-only original-refund recovery
+ok 2 - wechat: cash refunds use authenticated Shanghai success month; missing dates remain unknown until read-only original-refund recovery
+  ---
+  duration_ms: 4959.2064
+  type: 'test'
+  ...
+# Subtest: alipay: cash refunds use authenticated Shanghai success month; missing dates remain unknown until read-only original-refund recovery
+ok 3 - alipay: cash refunds use authenticated Shanghai success month; missing dates remain unknown until read-only original-refund recovery
+  ---
+  duration_ms: 4943.175
+  type: 'test'
+  ...
+# Subtest: refunded reopening is a new retained purchase, calendar repurchase requires a matured subsequent period
+ok 4 - refunded reopening is a new retained purchase, calendar repurchase requires a matured subsequent period
+  ---
+  duration_ms: 17.0954
+  type: 'test'
+  ...
+# Subtest: prepayment, original-lot consideration, quality returns, cash refunds and expiry remain separate
+ok 5 - prepayment, original-lot consideration, quality returns, cash refunds and expiry remain separate
+  ---
+  duration_ms: 1.115
+  type: 'test'
+  ...
+# Subtest: missing proof remains unknown and empty cohorts never imply zero retention
+ok 6 - missing proof remains unknown and empty cohorts never imply zero retention
+  ---
+  duration_ms: 0.5847
+  type: 'test'
+  ...
+# Subtest: incomplete or duplicate settlement allocations cannot appear as exact earned revenue
+ok 7 - incomplete or duplicate settlement allocations cannot appear as exact earned revenue
+  ---
+  duration_ms: 0.5462
+  type: 'test'
+  ...
+# Subtest: cash refunds keep their authenticated success month, Shanghai month boundary and snapshot cutoff
+ok 8 - cash refunds keep their authenticated success month, Shanghai month boundary and snapshot cutoff
+  ---
+  duration_ms: 0.501
+  type: 'test'
+  ...
+# Subtest: undated successful refunds are explicit unknown amounts instead of zero or local-date cash flow
+ok 9 - undated successful refunds are explicit unknown amounts instead of zero or local-date cash flow
+  ---
+  duration_ms: 0.4528
+  type: 'test'
+  ...
+# Subtest: mixed funding keeps old and new cash separate while exactly summing repeating point consideration
+ok 10 - mixed funding keeps old and new cash separate while exactly summing repeating point consideration
+  ---
+  duration_ms: 1.9051
+  type: 'test'
+  ...
+# Subtest: consumption and quality returns use mixed original consideration once; a transfer is not another cash receipt
+ok 11 - consumption and quality returns use mixed original consideration once; a transfer is not another cash receipt
+  ---
+  duration_ms: 4.9919
+  type: 'test'
+  ...
+# Subtest: task quality returns preserve frozen item/lot evidence, original cash rights and independent approval
+    # Subtest: int64 issuance overflow rolls back the whole approval and preserves the original pending request
+    ok 1 - int64 issuance overflow rolls back the whole approval and preserves the original pending request
+      ---
+      duration_ms: 626.8544
+      type: 'test'
+      ...
+    # Subtest: acceptance commits independent units and cross-lot slices before any refund read; strings and no free approval
+    ok 2 - acceptance commits independent units and cross-lot slices before any refund read; strings and no free approval
+      ---
+      duration_ms: 671.8605
+      type: 'test'
+      ...
+    # Subtest: concurrent whole repair and partial approval cannot exceed original charge
+    ok 3 - concurrent whole repair and partial approval cannot exceed original charge
+      ---
+      duration_ms: 376.1033
+      type: 'test'
+      ...
+    # Subtest: missing independent delivery, held work and rejected requests never issue a return
+    ok 4 - missing independent delivery, held work and rejected requests never issue a return
+      ---
+      duration_ms: 427.3409
+      type: 'test'
+      ...
+    # Subtest: legacy whole-task refund revokes every dependent item, without inventing separate historic allocations
+    ok 5 - legacy whole-task refund revokes every dependent item, without inventing separate historic allocations
+      ---
+      duration_ms: 211.5594
+      type: 'test'
+      ...
+    # Subtest: HTTP rejects client-supplied amounts, isolates owners, and permissions revoke independently
+    ok 6 - HTTP rejects client-supplied amounts, isolates owners, and permissions revoke independently
+      ---
+      duration_ms: 844.7071
+      type: 'test'
+      ...
+    1..6
+ok 12 - task quality returns preserve frozen item/lot evidence, original cash rights and independent approval
+  ---
+  duration_ms: 3572.4551
+  type: 'test'
+  ...
+1..12
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 49968.3564

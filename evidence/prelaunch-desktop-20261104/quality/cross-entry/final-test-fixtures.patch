@@ -1,0 +1,260 @@
+diff --git a/apps/api/src/review-dynamic-balance.pg.test.ts b/apps/api/src/review-dynamic-balance.pg.test.ts
+index be33e00..922f4fe 100644
+--- a/apps/api/src/review-dynamic-balance.pg.test.ts
++++ b/apps/api/src/review-dynamic-balance.pg.test.ts
+@@ -1,7 +1,7 @@
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+ import {Pool} from 'pg';
+-import {INITIAL_FIXED_PRICES} from '@bondbuddy/contracts';
++import {INITIAL_FIXED_PRICES,int64} from '@bondbuddy/contracts';
+ import {createServer} from './server.js';
+ import {isolatedTestDatabase} from './test-database.js';
+ import {creditBalance,grantCredits,publishPrices} from './billing.js';
+@@ -16,7 +16,7 @@ test('review dynamic balance: zero guard, one-point start, real debit, pause/res
+   const pool=new Pool({connectionString:connection}),owner='review-dynamic-'+uid();let actor=owner;
+   const files=new Map<string,Buffer>();
+   const blobs:PrivateBlobs={put:async(k,b)=>{files.set(k,Buffer.from(b));},get:async k=>files.get(k)!,getIfExists:async k=>files.get(k)??null,getIfExistsBounded:async k=>files.get(k)??null,exists:async k=>files.has(k),delete:async k=>{files.delete(k);}};
+-  const app=createServer({pool,blobs,enablePaidReview:true,principal:async()=>({userId:actor,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
++  const app=createServer({pool,blobs,enablePaidReview:true,enableSyntheticQueue:true,principal:async()=>({userId:actor,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
+   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test'}});
+   const ok=(r:any)=>{assert.ok(r.statusCode>=200&&r.statusCode<300,r.body);return r.json();};
+   const fund=(points:number)=>transaction(pool,c=>grantCredits(c,{owner,source:'existing_grant',key:uid(),points,expiresAt:null,actor:'synthetic',reason:'isolated test'}));
+@@ -40,10 +40,10 @@ test('review dynamic balance: zero guard, one-point start, real debit, pause/res
+     const prepared=await prepare();assert.equal((await prepared.start()).statusCode,402);
+     await fund(1);const concurrent=await Promise.all([prepared.start(),prepared.start()]);const run=ok(concurrent[0]);assert.equal(ok(concurrent[1]).run_id,run.run_id);
+     assert.deepEqual(await creditBalance(pool,owner),{available:1,frozen:0});
+-    assert.equal((await charge(run.run_id)).progress.policy,'authoring_balance_v2');assert.equal((await charge(run.run_id)).progress.charged_points,0);
++    assert.equal((await charge(run.run_id)).progress.policy,'authoring_balance_v2');assert.equal((await charge(run.run_id)).progress.charged_points,'0');
+     const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,run.run_id);
+     await checkpointStage(pool,lease,'input_lock',{saved:true});assert.equal((await creditBalance(pool,owner)).available,0);
+-    assert.equal((await charge(run.run_id)).progress.charged_points,1);assert.equal(await pauseAtCheckpoint(pool,lease),true);
++    assert.equal((await charge(run.run_id)).progress.charged_points,'1');assert.equal(await pauseAtCheckpoint(pool,lease),true);
+     ok(await act(run.run_id,'pause'));await fund(20);assert.equal(await resumePausedRun(pool,owner,run.run_id,'credits_recharged'),false,'topup cannot override manual pause');
+     ok(await act(run.run_id,'resume'));const resumed=await claim(pool);assert.ok(resumed);assert.equal((resumed.checkpoint.stages as any).input_lock.saved,true);
+     ok(await act(run.run_id,'pause'));const frozen=(await charge(run.run_id)).progress.charged_points;
+@@ -55,17 +55,17 @@ test('review dynamic balance: zero guard, one-point start, real debit, pause/res
+     await fund(20000);assert.equal(await resumePausedRun(pool,owner,run.run_id,'credits_recharged'),true);
+     const delivery=await claim(pool);assert.ok(delivery);assert.equal((delivery.checkpoint.stages as any).review_saved_report.artifact,report.artifactId);
+     await finish(pool,delivery,'succeeded',{artifactId:report.artifactId,artifactVersion:1,blobs});
+-    assert.equal((await charge(run.run_id)).progress.charged_points,10000);assert.equal((await act(run.run_id,'cancel')).statusCode,409);
++    assert.equal((await charge(run.run_id)).progress.charged_points,'10000');assert.equal((await act(run.run_id,'cancel')).statusCode,409);
+     assert.equal((await pool.query("SELECT sum(points)::int n FROM bb_credit_events WHERE run_id=$1 AND kind='settle'",[run.run_id])).rows[0].n,10000);
+     const next=await prepare(),cancelled=ok(await next.start()),work=await claim(pool);assert.ok(work);
+     await age(cancelled.run_id);await renew(pool,work);
+     await recordReviewAction(pool,work,{version:'review-action-v1',action_id:digest('actual synthetic check'),code:'check_financial',state:'started'});
+-    const consumed=(await charge(cancelled.run_id)).progress.charged_points;assert.ok(consumed>0);
++    const consumed=int64((await charge(cancelled.run_id)).progress.charged_points);assert.ok(consumed>0n);
+     assert.ok((await charge(cancelled.run_id)).progress.last_activity_at);
+-    ok(await act(cancelled.run_id,'cancel'));assert.ok((await charge(cancelled.run_id)).progress.charged_points>=consumed);
++    ok(await act(cancelled.run_id,'cancel'));assert.ok(int64((await charge(cancelled.run_id)).progress.charged_points)>=consumed);
+     const beforeFailure=await creditBalance(pool,owner),failed=ok(await (await prepare()).start()),failing=await claim(pool);assert.ok(failing);
+     await age(failed.run_id);await renew(pool,failing);assert.ok((await creditBalance(pool,owner)).available<beforeFailure.available);
+-    await finish(pool,failing,'failed',{errorCode:'DATA_UNAVAILABLE'});assert.deepEqual(await creditBalance(pool,owner),beforeFailure);assert.equal((await charge(failed.run_id)).progress.charged_points,0);
++    await finish(pool,failing,'failed',{errorCode:'DATA_UNAVAILABLE'});assert.deepEqual(await creditBalance(pool,owner),beforeFailure);assert.equal((await charge(failed.run_id)).progress.charged_points,'0');
+     // Reconstruct pre-change paid review reservations in this isolated database only.
+     // New code must neither debit these incrementally nor change their release policy.
+     for(const outcome of ['succeeded','cancelled','failed'] as const){
+@@ -85,7 +85,7 @@ test('review dynamic balance: zero guard, one-point start, real debit, pause/res
+       }else if(outcome==='cancelled')ok(await act(old.run_id,'cancel'));
+       else await finish(pool,oldLease,outcome,{errorCode:'DATA_UNAVAILABLE'});
+       assert.deepEqual(await creditBalance(pool,owner),{available:before.available+(outcome==='succeeded'?0:10000),frozen:before.frozen-10000});
+-      assert.equal((await charge(old.run_id)).progress.charged_points,outcome==='succeeded'?10000:0);
++      assert.equal((await charge(old.run_id)).progress.charged_points,outcome==='succeeded'?'10000':'0');
+     }
+     actor='foreign-'+uid();assert.equal((await send('GET',`/api/v1/runs/${run.run_id}/credit-charge`)).statusCode,404);actor=owner;
+     assert.equal((await auditCredits(pool)).consistent,true);
+diff --git a/apps/worker/src/integrity-e2e.pg.test.ts b/apps/worker/src/integrity-e2e.pg.test.ts
+index 27e90f4..75eda7e 100644
+--- a/apps/worker/src/integrity-e2e.pg.test.ts
++++ b/apps/worker/src/integrity-e2e.pg.test.ts
+@@ -94,10 +94,10 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
+   assert.deepEqual(await creditBalance(pool,owner),{available:20000,frozen:0},'selecting sites is free');
+   const project=await ok('POST','/api/v1/projects',{kind:'generation',name:'Synthetic integrity project',issuer_name:'Synthetic issuer',market:'sse',offering:'private'}),id=project.project_id,path='/api/v1/projects/'+id,base=path+'/integrity';
+   const draft={subjects:[{id:'subject',kind:'company',name:'合成诚信测试企业',identifier:'123456789012345678',role:'发行人',province:'广东',city:'深圳市'},{id:'person',kind:'person',name:'合成测试人员',identifier:'123456789012345678',role:'董事',province:'',city:''}],site_ids:['gsxt','execution'],notes:'Synthetic only'};
+-  let w=await ok('GET',base);assert.equal(w.price.points,5000);assert.equal(w.revision,0);
++  let w=await ok('GET',base);assert.equal(w.price.points,'5000');assert.equal(w.revision,0);
+   w=await ok('POST',base+'/draft',{expected_revision:0,draft});assert.equal(w.revision,1);
+   assert.equal((await send('POST',base+'/draft',{expected_revision:0,draft})).statusCode,409);
+-  const request={request_id:randomUUID(),expected_revision:1,price_version:INTEGRITY_PRICE.version,expected_points:5000};
++  const request={request_id:randomUUID(),expected_revision:1,price_version:INTEGRITY_PRICE.version,expected_points:'5000'};
+   assert.equal((await send('POST',base+'/runs',{...request,expected_points:1})).statusCode,422);
+   const run=await ok('POST',base+'/runs',request);assert.equal((await ok('POST',base+'/runs',request)).run_id,run.run_id);
+   assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:5000});
+@@ -108,7 +108,7 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
+   await ok('POST','/api/v1/runs/'+run.run_id+'/resume',{reason:'synthetic resume'});
+   assert.equal(await execute(),'succeeded');assert.equal(calls,2);
+   assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0});
+-  w=await ok('GET',base);const checked=w.rounds[0];assert.equal(checked.charged_points,5000);assert.equal(checked.artifacts.length,2);assert.equal(checked.records.length,4);assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='gsxt').status,'public_matches');assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='execution').status,'query_failed');
++  w=await ok('GET',base);const checked=w.rounds[0];assert.equal(checked.charged_points,'5000');assert.equal(checked.artifacts.length,2);assert.equal(checked.records.length,4);assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='gsxt').status,'public_matches');assert.equal(checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='execution').status,'query_failed');
+   assert.equal(browserCalls,3,'one collection per applicable subject/site');
+   const capture=checked.records.find((r:any)=>r.subject_id==='subject'&&r.site_id==='gsxt').browser.captures[0];
+   const captureUrl=base+'/runs/'+run.run_id+'/captures/'+capture.id;
+@@ -148,7 +148,7 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
+   assert.equal((await send('POST',base+'/runs/'+run.run_id+'/exports',{...exportRequest,expected_evidence_ids:[]})).statusCode,409);
+   const exported=await ok('POST',base+'/runs/'+run.run_id+'/exports',exportRequest);assert.equal((await ok('POST',base+'/runs/'+run.run_id+'/exports',exportRequest)).run_id,exported.run_id);
+   assert.equal(await execute(),'succeeded');assert.equal(calls,2,'re-export does not invoke search or model');assert.equal(browserCalls,3,'re-export reuses screenshots');assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0});
+-  w=await ok('GET',base);assert.equal(w.rounds[0].charged_points,0);assert.equal(w.rounds[0].operation,'export');assert.notEqual(w.rounds[0].artifact_id,checked.artifact_id);
++  w=await ok('GET',base);assert.equal(w.rounds[0].charged_points,'0');assert.equal(w.rounds[0].operation,'export');assert.notEqual(w.rounds[0].artifact_id,checked.artifact_id);
+   await documents(w.rounds[0],'supplemented');
+   assert.equal(digest((await send('GET',artifact.download_url)).rawPayload),artifact.sha256,'original workpaper bytes remain available and unchanged');
+   const versions=(await ok('GET',path+'/files')).items.filter((f:any)=>f.folder==='4.3');assert.equal(versions.length,4);assert.ok(versions.every((f:any)=>f.version_count===2));
+@@ -156,7 +156,7 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
+   await ok('POST',base+'/runs/'+cancelled.run_id+'/exports',{request_id:randomUUID(),expected_evidence_ids:[]});assert.equal(await execute(),'succeeded');assert.equal(calls,2);assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0});
+   const fallback=await ok('GET',base);assert.ok(fallback.rounds[0].records.every((r:any)=>!r.search_performed));
+   searchEnabled=false;await ok('POST',base+'/runs',{...request,request_id:randomUUID()});assert.equal(await execute(),'failed');assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:0},'no actual recorded search releases all credits');
+-  w=await ok('GET',base);assert.equal(w.rounds[0].charged_points,0);assert.ok(w.rounds[0].records.every((r:any)=>!r.search_performed));
++  w=await ok('GET',base);assert.equal(w.rounds[0].charged_points,'0');assert.ok(w.rounds[0].records.every((r:any)=>!r.search_performed));
+   await assert.rejects(pool.query("UPDATE bb_integrity_runs SET manifest='{}' WHERE run_id=$1",[run.run_id]),/immutable/);
+   const result=(await pool.query('SELECT result,result_hash FROM bb_integrity_runs WHERE run_id=$1',[run.run_id])).rows[0];assert.equal(inputManifestHash(result.result),result.result_hash.trim());
+  }finally{await browser.close();await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}
+diff --git a/apps/worker/src/project-files-e2e.pg.test.ts b/apps/worker/src/project-files-e2e.pg.test.ts
+index bc669be..9bcd059 100644
+--- a/apps/worker/src/project-files-e2e.pg.test.ts
++++ b/apps/worker/src/project-files-e2e.pg.test.ts
+@@ -119,9 +119,9 @@ test('project files: template batch, provenance, real checks with synthetic mode
+     assert.equal((await ok('POST',base+'/checks',req)).run_id,check.run_id);assert.equal(await execute(true),'succeeded');
+     let c=(await ok('GET',base+'/checks')).checks[0];assert.equal(c.result.files.length,2);assert.ok(c.result.files.every((f:any)=>f.status==='conflict'&&f.findings.length===2));
+     const target=c.result.files[0],accept={request_id:randomUUID(),expected_check_sha256:c.sha256,
+-      price_version:PROJECT_FILE_UPDATE_PRICE.version,expected_points:9000,files:c.files.map((f:any)=>({file_version_id:f.file_version_id}))};
++      price_version:PROJECT_FILE_UPDATE_PRICE.version,expected_points:'9000',files:c.files.map((f:any)=>({file_version_id:f.file_version_id}))};
+     assert.equal((await creditBalance(pool,owner)).available,91000,'checks are free');
+-    assert.equal((await send('POST',base+'/checks/'+c.run_id+'/updates',{...accept,expected_points:4500})).statusCode,409,'cannot understate quoted total');
++    assert.equal((await send('POST',base+'/checks/'+c.run_id+'/updates',{...accept,expected_points:'4500'})).statusCode,409,'cannot understate quoted total');
+     assert.equal((await send('POST',base+'/checks/'+c.run_id+'/updates',{...accept,files:[{file_version_id:target.file_version_id,issue_ids:[target.findings[0].id]}]})).statusCode,422,'per-finding updates are not a public flow');
+     await pool.query('UPDATE bb_credit_lots SET frozen=remaining WHERE owner_user_id=$1',[owner]);
+     assert.equal((await send('POST',base+'/checks/'+c.run_id+'/updates',accept)).statusCode,402,'insufficient funds do not submit a batch');
+@@ -168,7 +168,7 @@ test('project files: template batch, provenance, real checks with synthetic mode
+     assert.equal(await execute(true),'succeeded');
+     const rc=(await ok('GET',base+'/checks')).checks.find((x:any)=>x.run_id===raceCheck.run_id);
+     const rt=rc.result.files.find((x:any)=>x.findings.some((f:any)=>f.kind==='conflict'));
+-    await ok('POST',base+'/checks/'+rc.run_id+'/updates',{request_id:randomUUID(),expected_check_sha256:rc.sha256,price_version:PROJECT_FILE_UPDATE_PRICE.version,expected_points:4500,files:[{file_version_id:rt.file_version_id}]});
++    await ok('POST',base+'/checks/'+rc.run_id+'/updates',{request_id:randomUUID(),expected_check_sha256:rc.sha256,price_version:PROJECT_FILE_UPDATE_PRICE.version,expected_points:'4500',files:[{file_version_id:rt.file_version_id}]});
+     await advanceProjectFileUpdates(pool);
+     await ok('POST',base+'/imports',{request_id:randomUUID(),document_type:'issuer',material:importFile,expected_latest_version_id:rt.file_version_id});
+     const userFile=(await ok('GET',base)).files.find((f:any)=>f.latest&&f.document_type==='issuer');
+@@ -185,8 +185,8 @@ test('project files: template batch, provenance, real checks with synthetic mode
+     assert.equal((await send('GET',base)).statusCode,404);assert.equal((await send('GET',base+'/checks')).statusCode,404);assert.equal((await send('POST',base+'/checks',req)).statusCode,404);
+     actor=owner;const balance=await creditBalance(pool,owner);assert.equal(balance.available,77500,'two generated files and three delivered revisions, all checks free');
+     const charges=(await ok('GET','/api/v1/credits/consumption-history')).items.filter((x:any)=>x.task_name==='更新关联文件');
+-    assert.equal(charges.filter((x:any)=>x.state==='settled'&&x.charged_points===4500).length,3);
+-    assert.equal(charges.filter((x:any)=>x.state==='released'&&x.charged_points===0&&x.released_points===4500).length,2);
++    assert.equal(charges.filter((x:any)=>x.state==='settled'&&x.charged_points==='4500').length,3);
++    assert.equal(charges.filter((x:any)=>x.state==='released'&&x.charged_points==='0'&&x.released_points==='4500').length,2);
+   }finally{await app.close();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();await pool.end();await rm(dir,{recursive:true,force:true});}
+ });
+ 
+diff --git a/apps/worker/src/project-qa-e2e.pg.test.ts b/apps/worker/src/project-qa-e2e.pg.test.ts
+index c7d7879..390cbb7 100644
+--- a/apps/worker/src/project-qa-e2e.pg.test.ts
++++ b/apps/worker/src/project-qa-e2e.pg.test.ts
+@@ -54,22 +54,25 @@ test('project Q&A: free extraction, confirmed count, grounded Word, knowledge re
+   const p=await ok('POST','/api/v1/projects',{kind:'generation',name:'合成问答测试项目',issuer_name:'合成发行人',market:'sse',offering:'public'}),path='/api/v1/projects/'+p.project_id,base=path+'/qa';
+   const dir=process.env.BB_QA_TEST_OUTPUT_DIRECTORY!;await mkdir(dir,{recursive:true});
+   execFileSync(process.env.BONDBUDDY_TEST_PYTHON!,['-c','from pathlib import Path; import sys; import runpy; runpy.run_path("python/tests/test_project_qa.py")["fixtures"](Path(sys.argv[1]))',dir],{cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONIOENCODING:'utf-8'}});
++  // A valid supplementary Word without extractable text must not erase the
++  // readable adopted prospectus or silently disappear from the delivered gaps.
++  execFileSync(process.env.BONDBUDDY_TEST_PYTHON!,['-c','from docx import Document; import sys; Document().save(sys.argv[1])',join(dir,'synthetic-unreadable-attachment.docx')]);
+   const upload=async(filename:string,role='other')=>{const bytes=await readFile(join(dir,filename)),decl={byte_size:bytes.length,sha256:digest(bytes)},u=await ok('POST',path+'/materials/uploads',{...decl,filename,role:filename==='synthetic-materials.docx'?'historical':role,media_type:filename.endsWith('.pdf')?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});await ok('PUT',u.upload_url,bytes);const m=await ok('POST',path+'/materials/uploads/'+u.upload_id+'/complete',decl);return {kind:'material' as const,pin:{source_project_id:p.project_id,material_id:m.material_id,material_version:m.material_version,sha256:m.sha256}};};
+-  const source=await upload('synthetic-questions.docx'),material=await upload('synthetic-materials.docx'),request={request_id:randomUUID(),source};
++  const source=await upload('synthetic-questions.docx'),material=await upload('synthetic-materials.docx'),unreadableAttachment=await upload('synthetic-unreadable-attachment.docx'),request={request_id:randomUUID(),source};
+   const prep=await ok('POST',base+'/prepare',request);assert.equal((await ok('POST',base+'/prepare',request)).run_id,prep.run_id);assert.equal(await execute(),'succeeded');assert.equal(calls,0);assert.deepEqual(await creditBalance(pool,owner),{available:1000,frozen:0});
+   let w=await ok('GET',base) as QaWorkspace,prepared=w.runs[0];assert.equal(prepared.result!.questions.length,3);assert.equal(prepared.artifact_id,null);assert.equal(w.prospectus,null);
+   const questions=[{...prepared.result!.questions[0],end:prepared.result!.questions[1].end,question:prepared.result!.questions[0].question+'\n'+prepared.result!.questions[1].question},prepared.result!.questions[2]];
+-  const draft={preparation_id:prep.run_id,questions,materials:[material],requirements:'合成测试，逐题标注依据和缺失材料',use_knowledge:true};
++  const draft={preparation_id:prep.run_id,questions,materials:[material,unreadableAttachment],requirements:'合成测试，逐题标注依据和缺失材料',use_knowledge:true};
+   assert.equal((await send('POST',base+'/draft',{expected_revision:0,draft:{...draft,questions:[{...questions[0],question:'篡改问题'}]}})).statusCode,422);
+   w=await ok('POST',base+'/draft',{expected_revision:0,draft});assert.equal((await send('POST',base+'/draft',{expected_revision:0,draft})).statusCode,409);
+-  const blocked=await send('POST',base+'/runs',{request_id:randomUUID(),expected_revision:1,expected_points:120,price_version:PROJECT_QA_PRICE.version});
++  const blocked=await send('POST',base+'/runs',{request_id:randomUUID(),expected_revision:1,expected_points:'120',price_version:PROJECT_QA_PRICE.version});
+   assert.equal(blocked.statusCode,422);assert.equal(blocked.json().code,'INPUT_REQUIRED');
+   assert.deepEqual(await creditBalance(pool,owner),{available:1000,frozen:0});assert.equal(calls,0);
+   const savedProspectus=await ok('POST',path+'/prospectus-versions',{request_id:randomUUID(),expected_selection_revision:0,material_id:material.pin.material_id,material_version:material.pin.material_version,sha256:material.pin.sha256});
+   await ok('POST',path+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:savedProspectus.selection_revision,version_id:savedProspectus.versions[0].version_id});
+   assert.equal((await ok('GET',base)).prospectus.asset.pin.sha256,material.pin.sha256);
+   w=await ok('POST',base+'/draft',{expected_revision:w.revision,draft:{...draft,materials:[]}});
+-  assert.equal((await send('POST',base+'/runs',{request_id:randomUUID(),expected_revision:w.revision,expected_points:120,price_version:PROJECT_QA_PRICE.version})).statusCode,422);
++  assert.equal((await send('POST',base+'/runs',{request_id:randomUUID(),expected_revision:w.revision,expected_points:'120',price_version:PROJECT_QA_PRICE.version})).statusCode,422);
+   assert.deepEqual(await creditBalance(pool,owner),{available:1000,frozen:0});assert.equal(calls,0);
+   w=await ok('POST',base+'/draft',{expected_revision:w.revision,draft});
+   const content={title:'合成公募用途案例',url:'https://example.com/synthetic-public-case',topic:'募集资金用途',question:'请说明募集资金用途',answer:'公开回复合成样例，不是真实发行人事实。',approach:'先说明用途，再核对债务金额与发行规模。',evidence_requirements:'募集书与债务明细。'},caseReq={request_id:randomUUID(),content};
+@@ -78,20 +81,36 @@ test('project Q&A: free extraction, confirmed count, grounded Word, knowledge re
+   actor=other;assert.equal((await ok('GET','/api/v1/qa/cases')).cases.length,0);assert.equal((await send('GET',base)).statusCode,404);assert.equal((await send('POST',base+'/prepare',request)).statusCode,404);actor=owner;
+   await pool.query("INSERT INTO bb_qa_case_reviewers(user_id,actor,reason) VALUES($1,'synthetic','synthetic test reviewer')",[owner]);
+   cases=await ok('POST',`/api/v1/qa/cases/${caseId}/review`,{expected_revision:1,status:'approved',review_note:'核对合成来源与用途问题。仅测试用途。'});assert.equal(cases.cases[0].status,'approved');
+-  const submit={request_id:randomUUID(),expected_revision:w.revision,expected_points:120,price_version:PROJECT_QA_PRICE.version};
+-  assert.equal((await send('POST',base+'/runs',{...submit,expected_points:60})).statusCode,409);
++  const submit={request_id:randomUUID(),expected_revision:w.revision,expected_points:'120',price_version:PROJECT_QA_PRICE.version};
++  assert.equal((await send('POST',base+'/runs',{...submit,expected_points:'60'})).statusCode,409);
+   const run=await ok('POST',base+'/runs',submit);assert.equal((await ok('POST',base+'/runs',submit)).run_id,run.run_id);assert.deepEqual(await creditBalance(pool,owner),{available:880,frozen:120});
+   await ok('POST',`/api/v1/qa/cases/${caseId}/review`,{expected_revision:2,status:'withdrawn',review_note:'测试后撤回；已锁定任务保留快照。'});
+   assert.equal(await execute(),'paused');assert.equal(calls,1);assert.equal((await pool.query('SELECT count(*) n FROM bb_project_qa_answers WHERE run_id=$1',[run.run_id])).rows[0].n,'1');
++  const savedBeforeResume=(await pool.query('SELECT answer,sha256 FROM bb_project_qa_answers WHERE run_id=$1 AND question_id=$2',[run.run_id,questions[0].id])).rows[0];assert.ok(savedBeforeResume);
+   assert.deepEqual(await creditBalance(pool,owner),{available:880,frozen:120});
+   await ok('POST','/api/v1/runs/'+run.run_id+'/resume',{reason:'synthetic checkpoint resume'});
+   assert.equal(await execute(),'succeeded');assert.equal(calls,2,'completed question is reused on resume');assert.deepEqual(await creditBalance(pool,owner),{available:880,frozen:0});
+-  w=await ok('GET',base);const answered=w.runs[0];assert.equal(answered.result!.answers.length,2);assert.equal(answered.result!.answers[0].status,'draft');assert.equal(answered.result!.answers[1].status,'missing');assert.equal(answered.charged_points,120);assert.equal(answered.manifest.cases[0].id,caseId);
++  assert.deepEqual((await pool.query('SELECT answer,sha256 FROM bb_project_qa_answers WHERE run_id=$1 AND question_id=$2',[run.run_id,questions[0].id])).rows[0],savedBeforeResume,'resume preserves the completed answer and its hash');
++  const attempts=(await pool.query('SELECT a.logical_call_id,count(*)::int attempts FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=a.owner_user_id WHERE j.run_id=$1 GROUP BY a.logical_call_id ORDER BY a.logical_call_id',[run.run_id])).rows;
++  assert.deepEqual(attempts,questions.map(q=>({logical_call_id:'qa-'+q.id,attempts:1})).sort((a,b)=>a.logical_call_id.localeCompare(b.logical_call_id)),'each question has one durable model intent across pause/resume');
++  w=await ok('GET',base);const answered=w.runs[0];assert.equal(answered.result!.answers.length,2);assert.equal(answered.result!.answers[0].status,'draft');assert.equal(answered.result!.answers[1].status,'missing');assert.equal(answered.charged_points,'120');assert.equal(answered.manifest.cases[0].id,caseId);
++  assert.deepEqual(answered.manifest.materials.map(m=>m.asset),[material,unreadableAttachment],'one paid run pins both readable and unreadable attachments');
++  assert.deepEqual(answered.manifest.prospectus!.asset,material,'the mandatory adopted prospectus remains readable');
++  const readableEvidence=answered.result!.evidence[0],unreadableEvidence=answered.result!.evidence[1],usableAnswer=answered.result!.answers[0];
++  assert.equal(answered.result!.evidence.length,2);assert.equal(readableEvidence.filename,'synthetic-materials.docx');assert.equal(readableEvidence.snapshot.sha256,material.pin.sha256);
++  assert.equal(unreadableEvidence.filename,'synthetic-unreadable-attachment.docx');assert.equal(unreadableEvidence.snapshot.sha256,unreadableAttachment.pin.sha256);assert.equal(unreadableEvidence.snapshot.coverage,'partial');assert.ok(unreadableEvidence.snapshot.spans.every(s=>!s.text.trim()));
++  assert.ok(answered.result!.warnings.some(w=>w.includes(unreadableEvidence.filename)&&w.includes('没有可提取的文字')),'the unreadable attachment has a named extraction gap');
++  assert.match(usableAnswer.answer,/5 亿元/);assert.ok(usableAnswer.citations.length>0&&usableAnswer.citations.every(c=>c.asset_index===0&&readableEvidence.snapshot.spans.some(s=>s.id===c.span_id&&s.text.includes(c.quote))),'usable answers retain verifiable citations to the readable material');
++  assert.ok(answered.result!.answers[1].missing_materials.some(m=>m.includes('回款计划')));assert.deepEqual(answered.result!.answers[1].citations,[]);
++  const mixedSettlement=(await pool.query("SELECT count(*)::int count,coalesce(sum(points),0)::int points FROM bb_credit_events WHERE owner_user_id=$1 AND run_id=$2 AND kind='settle'",[owner,run.run_id])).rows[0];assert.deepEqual(mixedSettlement,{count:1,points:120},'resume settles the confirmed two-question scope once, with no attachment surcharge');
++  const replayCounts=async()=>(await pool.query('SELECT (SELECT count(*)::int FROM bb_runs WHERE owner_user_id=$1) runs,(SELECT count(*)::int FROM bb_credit_events WHERE owner_user_id=$1) credit_events',[owner])).rows[0];
++  const beforeCompletedReplay=await replayCounts();assert.equal((await ok('POST',base+'/runs',submit)).run_id,run.run_id);assert.deepEqual(await replayCounts(),beforeCompletedReplay,'completed-request replay adds no run or credit event');assert.deepEqual(await creditBalance(pool,owner),{available:880,frozen:0});assert.equal(calls,2);
+   const ungrounded=groundedQaAnswer({...answered.result!.answers[0],citations:[{asset_index:0,span_id:'p1',quote:'这条引文不存在'}],case_ids:['not-approved']},questions[0],answered.manifest,answered.result!.evidence);
+   assert.equal(ungrounded.status,'missing');assert.equal(ungrounded.citations.length,0);assert.equal(ungrounded.case_ids.length,0);assert.doesNotMatch(ungrounded.answer,/5 亿元/);
+   assert.equal((await pool.query("SELECT count(*) n FROM bb_outbox WHERE aggregate_type='qa_case'")).rows[0].n,'3');
+   const a=await ok('GET','/api/v1/artifacts/'+answered.artifact_id),bytes=(await send('GET',a.download_url)).rawPayload;assert.equal(digest(bytes),a.sha256);assert.match(a.filename,/已回填回答/);await writeFile(join(dir,'synthetic-filled-round-1.docx'),bytes);
+   const text=execFileSync(process.env.BONDBUDDY_TEST_PYTHON!,['-c','import io,sys,zipfile; from lxml import etree; z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); print("".join(etree.fromstring(z.read("word/document.xml")).itertext()))'],{input:bytes,encoding:'utf8',env:{...process.env,PYTHONIOENCODING:'utf-8'}});assert.match(text,/待补材料/);assert.match(text,/回款计划/);assert.match(text,/回答依据/);assert.match(text,/合成公募用途案例/);
++  assert.match(text,/synthetic-materials\.docx/);assert.match(text,/5 亿元/);assert.match(text,/synthetic-unreadable-attachment\.docx/);assert.match(text,/没有可提取的文字/);assert.match(text,/材料处理说明/);
+   actor=other;assert.equal((await send('GET',a.download_url)).statusCode,404);actor=owner;
+   assert.equal((await ok('GET',path+'/tasks')).items[0].operation,'qa_answer');assert.equal((await ok('GET','/api/v1/credits/consumption-history')).items[0].task_name,'项目问答');assert.equal((await ok('GET',path+'/files')).items.filter((f:any)=>f.folder==='4.2').length,1);
+   const again=await ok('POST',base+'/runs',{...submit,request_id:randomUUID()});assert.equal(await execute(),'succeeded');w=await ok('GET',base);assert.equal(w.runs[0].manifest.cases.length,0,'withdrawn case excluded from new run');assert.notEqual(w.runs[0].artifact_id,answered.artifact_id);assert.equal(digest((await send('GET',a.download_url)).rawPayload),a.sha256);
+@@ -110,7 +129,7 @@ test('project Q&A: free extraction, confirmed count, grounded Word, knowledge re
+   assert.equal(pdfPrepared.manifest.source.asset.pin.sha256,pdf.pin.sha256);assert.equal(pdfPrepared.result!.questions.length,1);
+   assert.ok(pdfPrepared.result!.warnings.some(w=>w.includes('第 2 页无法提取文字')));
+   w=await ok('POST',base+'/draft',{expected_revision:w.revision,draft:{preparation_id:pdfPrep.run_id,questions:pdfPrepared.result!.questions,materials:[material],requirements:'合成 PDF 测试',use_knowledge:false}});
+-  const pdfRun=await ok('POST',base+'/runs',{request_id:randomUUID(),expected_revision:w.revision,expected_points:60,price_version:PROJECT_QA_PRICE.version});
++  const pdfRun=await ok('POST',base+'/runs',{request_id:randomUUID(),expected_revision:w.revision,expected_points:'60',price_version:PROJECT_QA_PRICE.version});
+   assert.equal(await execute(),'succeeded');assert.equal(calls,callsBeforePdf+1);assert.deepEqual(await creditBalance(pool,owner),{available:700,frozen:0});
+   w=await ok('GET',base);const pdfAnswer=w.runs.find(r=>r.run_id===pdfRun.run_id)!,pdfArtifact=await ok('GET','/api/v1/artifacts/'+pdfAnswer.artifact_id),pdfWord=(await send('GET',pdfArtifact.download_url)).rawPayload;
+   assert.equal(digest(pdfWord),pdfArtifact.sha256);await writeFile(join(dir,'synthetic-pdf-answered.docx'),pdfWord);
+@@ -122,7 +141,7 @@ test('project Q&A: free extraction, confirmed count, grounded Word, knowledge re
+   await ok('POST',path+'/prospectus-versions',{request_id:randomUUID(),expected_selection_revision:current.selection_revision,material_id:blank.pin.material_id,material_version:blank.pin.material_version,sha256:blank.pin.sha256});
+   w=await ok('GET',base);w=await ok('POST',base+'/draft',{expected_revision:w.revision,draft:{...w.draft,materials:[blank]}});
+   const beforeUnreadable=await creditBalance(pool,owner),callsBeforeUnreadable=calls;
+-  const unreadable=await ok('POST',base+'/runs',{request_id:randomUUID(),expected_revision:w.revision,expected_points:w.draft.questions.length*60,price_version:PROJECT_QA_PRICE.version});
++  const unreadable=await ok('POST',base+'/runs',{request_id:randomUUID(),expected_revision:w.revision,expected_points:String(w.draft.questions.length*60),price_version:PROJECT_QA_PRICE.version});
+   assert.equal(await execute(),'failed');assert.equal(calls,callsBeforeUnreadable);assert.deepEqual(await creditBalance(pool,owner),beforeUnreadable);
+   const failed=(await ok('GET',base)).runs.find((r:any)=>r.run_id===unreadable.run_id);assert.equal(failed.error_code,'MATERIAL_UNREADABLE');assert.equal(failed.artifact_id,null);
+  }finally{await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}
+diff --git a/apps/worker/src/workpaper-shared-stage.pg.test.ts b/apps/worker/src/workpaper-shared-stage.pg.test.ts
+index ad2f983..9d5f9fc 100644
+--- a/apps/worker/src/workpaper-shared-stage.pg.test.ts
++++ b/apps/worker/src/workpaper-shared-stage.pg.test.ts
+@@ -103,7 +103,7 @@ test('one batch plan across deliveries, crash replay, failure/retry, pause, immu
+     const material=await upload(id,'synthetic-catalogue.xlsx',await catalogueXlsx(3),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+     const cat=await ok('POST',base+'/catalogues',{request_id:randomUUID(),material});
+     const request={start_mode:'direct',request_id:randomUUID(),catalogue_id:cat.catalogue_id,catalogue_sha256:cat.sha256,item_ids:cat.entries.map((e:any)=>e.id),source_version_id:adopted.current_version_id,source_selection_revision:adopted.selection_revision,
+-      requirements:'仅处理所选目录，正文不写来源。',price_version:WORKPAPER_PRICE.version,expected_points:3*WORKPAPER_PRICE.points};
++      requirements:'仅处理所选目录，正文不写来源。',price_version:WORKPAPER_PRICE.version,expected_points:String(3*WORKPAPER_PRICE.points)};
+     let batch=await ok('POST',base+'/batches',request) as WorkpaperBatch;
+     const read=async()=>((await ok('GET',base)).batches as WorkpaperBatch[]).find(b=>b.batch_id===batch.batch_id)!;
+     await advanceWorkpaperBatch(pool);assert.equal(await execute(),'succeeded');assert.equal(modelCalls,1);assert.equal(modelReplays,1);
+@@ -123,7 +123,7 @@ test('one batch plan across deliveries, crash replay, failure/retry, pause, immu
+     await advanceWorkpaperBatch(pool);batch=await read();assert.equal(batch.state,'partial');
+     batch=await ok('POST',base+`/batches/${batch.batch_id}/actions`,{action:'retry_failed',expected_revision:batch.revision});
+     await advanceWorkpaperBatch(pool);assert.equal(await execute(),'succeeded');await advanceWorkpaperBatch(pool);batch=await read();
+-    assert.equal(batch.state,'complete');assert.equal(modelCalls,1);assert.equal(modelReplays,1);assert.equal(batch.charged_points,2*WORKPAPER_PRICE.points);
++    assert.equal(batch.state,'complete');assert.equal(modelCalls,1);assert.equal(modelReplays,1);assert.equal(batch.charged_points,String(2*WORKPAPER_PRICE.points));
+     assert.equal(batch.items[2].attempt,2);assert.ok(batch.items[1].explanation);
+     const zip=await send('GET',base+`/batches/${batch.batch_id}/download`);assert.equal(zip.statusCode,200);await writeFile(join(directory,'delivery.zip'),zip.rawPayload);
+     await python(['-c',`from zipfile import ZipFile\nfrom io import BytesIO\nfrom docx import Document\nimport sys\nwith ZipFile(sys.argv[1]) as z:\n assert len(z.namelist()) == 3\n assert sum(n.startswith('不适用说明/') for n in z.namelist()) == 1\n for n in z.namelist():\n  assert n.endswith('.docx') and 'preparation' not in n\n  d=Document(BytesIO(z.read(n)))\n  text=''.join(d.element.body.itertext())\n  assert '合成主体12' in text and '原文空白' in text\n  assert '资料来源' not in text and '第12页' not in text and 'span_id' not in text\n  assert len(d.tables[0].rows) == 15\n`,join(directory,'delivery.zip')]);

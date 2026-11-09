@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {setTimeout as delay} from 'node:timers/promises';
 import {randomUUID} from 'node:crypto';
 import {writeFile,mkdir} from 'node:fs/promises';
+import {join} from 'node:path';
 import {Pool} from 'pg';
 import {createServer} from '@bondbuddy/api';
 import {digest,transaction,type PrivateBlobs} from '@bondbuddy/api/data';
@@ -102,7 +103,8 @@ test('assessment and confirmation: mixed/all-excluded packages, evidence and imm
   assert.equal(zip.statusCode,200,zip.body);assert.equal(zip.headers['content-type'],'application/zip');
   assert.equal(zip.rawPayload.readUInt16LE(zip.rawPayload.length-12),3);
   actor=randomUUID();assert.equal((await send('GET',explanationUrl)).statusCode,404);actor=user;
-  await mkdir('test-evidence/workpaper-assessment',{recursive:true});await writeFile('test-evidence/workpaper-assessment/资料不足说明.docx',explanation.rawPayload);
+  const evidenceDirectory=join(process.env.BB_WORKPAPER_ASSESSMENT_TEST_OUTPUT_DIRECTORY||'.local/workpaper-assessment-evidence',user);
+  await mkdir(evidenceDirectory,{recursive:true});await writeFile(join(evidenceDirectory,'资料不足说明.docx'),explanation.rawPayload);
   await ok('POST',base+'/batches/'+batch.batch_id+'/actions',{action:'cancel',expected_revision:batch.revision});
   allExcluded=true;const next=await ok('POST',base+'/assessments',{...body,request_id:randomUUID()});assert.equal(await execute(),'succeeded');
   const assessed=(await ok('GET',base)).assessments.find((x:any)=>x.assessment_id===next.assessment_id);

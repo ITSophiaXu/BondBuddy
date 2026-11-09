@@ -69,7 +69,7 @@ export function authoringCreditReceipt(run:Run,p?:AuthoringProgress,legacy?:{poi
   const caption=terminal?'本次已扣费':'当前已消耗';
   const dynamic=p.policy==='authoring_balance_v2';
   const note=terminal?(int64(p.released_points)>0n?'未消耗的 '+formatPoints(p.released_points)+' 积分已释放。':'结算已完成。'):
-    p.pause_requested||p.credit_exhausted||run.state==='paused'?'积分已冻结，继续处理后再累计。':run.state==='queued'?'尚未开始处理，积分不会增加。':dynamic?'已按实际进度扣减；余额归零时暂停，充值后继续。':'按有效处理时间和已完成工作累计，完成后结算。';
+    p.pause_requested||p.credit_exhausted||run.state==='paused'?'积分已冻结，继续处理后再累计。':run.state==='queued'?'尚未开始处理，积分不会增加。':dynamic?'已按实际进度扣减；余额归零时暂停，积分充足后继续。':'按有效处理时间和已完成工作累计，完成后结算。';
   return '<section class="authoring-credit-meter" aria-label="积分消耗"><div><span>'+caption+'</span><strong role="status">'+formatPoints(n)+' <small>积分</small></strong></div><div class="authoring-credit-meta">'+(dynamic?'<span>可用余额 '+formatPoints(p.available_points??'0')+' 积分</span>':'')+'<span>有效处理 '+esc(elapsedLabel(p.active_ms))+'</span><span>'+note+'</span></div><details><summary>计费说明</summary><p>'+(dynamic?'有积分即可开始，按服务端有效处理时间和已完成工作扣减；排队和暂停不扣。余额归零保存后暂停，到账后续跑。主动结束保留已扣部分，平台失败退回已扣积分，全程不超过原任务价格。':p.policy==='authoring_progress_v1'?'排队、暂停、执行连接中断时不累计。暂停冻结累计金额；结束任务按已消耗积分结算，其余释放。平台失败不收费。任务完成时按原任务价格结算，全程不超过该价格。':'本次任务保留提交时的规则：成功交付后结算，取消或失败不扣费。')+'</p></details></section>';
 }
 import type {CommercePriceMetadata} from './billing-types.js';

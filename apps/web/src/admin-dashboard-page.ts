@@ -252,6 +252,9 @@ function filtersHtml(filters: DashboardFilters): string {
 }
 
 /** Read-only operator dashboard: summary cards + per-user and per-task tables. */
+const dashboardReadError = (error: unknown) => error instanceof ApiError && error.status >= 500
+  ? '运营数据暂时无法读取，请点击“刷新数据”重试。' : friendlyError(error, 'read');
+
 export class AdminDashboardPage {
   private controller = new AbortController();
   private overview?: AdminDashboardOverview;
@@ -260,6 +263,10 @@ export class AdminDashboardPage {
   private usersCursor: string | null = null;
   private tasksCursor: string | null = null;
   private filters = emptyDashboardFilters();
+  // Keep edits separate from the submitted query while earlier reads finish.
+  private draft = {from: '', to: '', state: ''};
+  private filterRevision = 0;
+  private pendingRefresh = false;
   private loading = false;
   private error = '';
   private forbidden = false;
@@ -267,32 +274,58 @@ export class AdminDashboardPage {
   private execLogError = '';
   private execLogLoading = false;
   constructor(private api: ApiClient, private shell: (html: string, section: string) => void, private active: () => boolean) {}
-  dispose() { this.controller.abort(); }
+  dispose() { this.pendingRefresh = false; this.controller.abort(); }
   private live() { return this.active() && !this.controller.signal.aborted; }
   async render() { this.draw(); await this.refresh(); }
 
   private async refresh() {
-    if (this.loading) return;
+    if (!this.live() || this.forbidden) return;
+    if (this.loading) { this.pendingRefresh = true; this.draw(); return; }
+    const filters = {...this.filters}, revision = this.filterRevision;
     this.loading = true; this.error = ''; this.draw();
     try {
       const [overview, users, tasks] = await Promise.all([
-        this.api.request<AdminDashboardOverview>('GET', '/admin/dashboard/overview' + dashboardQuery(this.filters), undefined, {}, this.controller.signal),
-        this.api.request<AdminDashboardUsers>('GET', '/admin/dashboard/users' + dashboardQuery(this.filters), undefined, {}, this.controller.signal),
-        this.api.request<AdminDashboardTasks>('GET', '/admin/dashboard/tasks' + dashboardQuery(this.filters), undefined, {}, this.controller.signal)
+        this.api.request<AdminDashboardOverview>('GET', '/admin/dashboard/overview' + dashboardQuery(filters), undefined, {}, this.controller.signal),
+        this.api.request<AdminDashboardUsers>('GET', '/admin/dashboard/users' + dashboardQuery(filters), undefined, {}, this.controller.signal),
+        this.api.request<AdminDashboardTasks>('GET', '/admin/dashboard/tasks' + dashboardQuery(filters), undefined, {}, this.controller.signal)
       ]);
       if (!Value.Check(adminDashboardSchemas.AdminDashboardOverviewResponse, overview) ||
           !Value.Check(adminDashboardSchemas.AdminDashboardUsersResponse, users) ||
           !Value.Check(adminDashboardSchemas.AdminDashboardTasksResponse, tasks)) throw Error('Invalid dashboard data');
-      if (!this.live()) return;
+      if (!this.live() || revision !== this.filterRevision) return;
       this.overview = overview; this.users = users.items; this.usersCursor = users.next_cursor;
       this.tasks = tasks.items; this.tasksCursor = tasks.next_cursor; this.forbidden = false;
     } catch (error) {
       if (!this.live()) return;
-      if (error instanceof ApiError && error.status === 404) { this.forbidden = true; return; }
-      this.error = friendlyError(error, 'read');
+      if (error instanceof ApiError && error.status === 404) { this.forbidden = true; this.pendingRefresh = false; return; }
+      if (revision !== this.filterRevision) return;
+      this.error = dashboardReadError(error);
     } finally {
-      if (this.live()) { this.loading = false; this.draw(); }
+      this.finishLoading();
     }
+  }
+
+  private finishLoading() {
+    this.loading = false;
+    if (!this.live()) { this.pendingRefresh = false; return; }
+    if (this.pendingRefresh && !this.forbidden) {
+      this.pendingRefresh = false;
+      void this.refresh();
+    } else { this.pendingRefresh = false; this.draw(); }
+  }
+
+  private changeFilters(filters: DashboardFilters) {
+    this.filters = filters; this.filterRevision++;
+    this.overview = undefined;
+    this.users = []; this.tasks = [];
+    this.usersCursor = null; this.tasksCursor = null;
+    this.error = '';
+    void this.refresh();
+  }
+
+  private readDraft() {
+    const value = (selector: string) => document.querySelector<HTMLInputElement | HTMLSelectElement>(selector)?.value ?? '';
+    this.draft = {from: value('[data-dashboard-from]'), to: value('[data-dashboard-to]'), state: value('[data-dashboard-state]')};
   }
 
   private async moreUsers() {
@@ -304,30 +337,32 @@ export class AdminDashboardPage {
     await this.append('tasks', this.tasksCursor);
   }
   private async append(kind: 'users' | 'tasks', cursor: string) {
+    const filters = {...this.filters}, revision = this.filterRevision;
     this.loading = true; this.error = ''; this.draw();
     try {
       if (kind === 'users') {
-        const page = await this.api.request<AdminDashboardUsers>('GET', '/admin/dashboard/users' + dashboardQuery(this.filters, cursor), undefined, {}, this.controller.signal);
+        const page = await this.api.request<AdminDashboardUsers>('GET', '/admin/dashboard/users' + dashboardQuery(filters, cursor), undefined, {}, this.controller.signal);
         if (!Value.Check(adminDashboardSchemas.AdminDashboardUsersResponse, page)) throw Error('Invalid dashboard users');
-        if (!this.live()) return;
+        if (!this.live() || revision !== this.filterRevision) return;
         this.users = [...this.users, ...page.items]; this.usersCursor = page.next_cursor;
       } else {
-        const page = await this.api.request<AdminDashboardTasks>('GET', '/admin/dashboard/tasks' + dashboardQuery(this.filters, cursor), undefined, {}, this.controller.signal);
+        const page = await this.api.request<AdminDashboardTasks>('GET', '/admin/dashboard/tasks' + dashboardQuery(filters, cursor), undefined, {}, this.controller.signal);
         if (!Value.Check(adminDashboardSchemas.AdminDashboardTasksResponse, page)) throw Error('Invalid dashboard tasks');
-        if (!this.live()) return;
+        if (!this.live() || revision !== this.filterRevision) return;
         this.tasks = [...this.tasks, ...page.items]; this.tasksCursor = page.next_cursor;
       }
     } catch (error) {
-      if (this.live()) this.error = friendlyError(error, 'read');
+      if (!this.live()) return;
+      if (error instanceof ApiError && error.status === 404) { this.forbidden = true; this.pendingRefresh = false; return; }
+      if (revision !== this.filterRevision) return;
+      this.error = dashboardReadError(error);
     } finally {
-      if (this.live()) { this.loading = false; this.draw(); }
+      this.finishLoading();
     }
   }
 
   private setUser(userId: string) {
-    this.filters = {...this.filters, userId};
-    this.usersCursor = null; this.tasksCursor = null;
-    void this.refresh();
+    this.changeFilters({...this.filters, userId});
   }
 
   private async showExecLog(attemptId: string) {
@@ -358,6 +393,7 @@ export class AdminDashboardPage {
   private draw() {
     if (!this.live()) return;
     if (this.forbidden) { this.shell(dashboardForbiddenHtml(), 'projects'); return; }
+    const focusedField = ['[data-dashboard-from]', '[data-dashboard-to]', '[data-dashboard-state]'].find(selector => document.activeElement?.matches(selector));
     this.shell(`<section class="admin-dashboard">
       <div class="admin-dashboard-page-title">
         <div><h1>${ICONS.chart}运营看板</h1>
@@ -368,30 +404,31 @@ export class AdminDashboardPage {
       ${this.error ? `<p class="admin-dashboard-alert" role="alert">${esc(this.error)}</p>` : ''}
       ${this.overview ? dashboardSummaryHtml(this.overview) : this.loading ? '<p role="status">正在读取运营汇总…</p>' : ''}
       ${this.overview ? dashboardTrendHtml(this.overview) : ''}
-      ${filtersHtml(this.filters)}
+      ${filtersHtml({...this.draft, userId: this.filters.userId})}
       <section class="admin-dashboard-panel" aria-label="用户明细">
-        <div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.users}用户</div><div class="admin-dashboard-panel-tools"><span class="admin-dashboard-panel-sub">${this.users.length} 位</span><span class="admin-dashboard-scroll-hint">左右滑动查看更多</span></div></div>
-        ${this.loading && !this.users.length ? '<p role="status">正在读取用户明细…</p>' : dashboardUsersHtml(this.users, this.filters.userId || null)}
+        <div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.users}用户</div><div class="admin-dashboard-panel-tools"><span class="admin-dashboard-panel-sub">${this.overview ? `${this.users.length} 位` : '未读取'}</span><span class="admin-dashboard-scroll-hint">左右滑动查看更多</span></div></div>
+        ${!this.overview ? `<p role="status">${this.loading ? '正在读取用户明细…' : '用户明细尚未读取成功。'}</p>` : dashboardUsersHtml(this.users, this.filters.userId || null)}
         ${this.usersCursor ? `<div class="admin-dashboard-more"><button type="button" class="admin-dashboard-link" data-dashboard-more-users ${this.loading ? 'disabled' : ''}>${ICONS.more}加载更多用户</button></div>` : ''}
       </section>
       <section class="admin-dashboard-panel" aria-label="任务明细">
-        <div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.tasks}任务</div><div class="admin-dashboard-panel-tools"><span class="admin-dashboard-panel-sub">${this.tasks.length} 个</span><span class="admin-dashboard-scroll-hint">左右滑动查看更多</span></div></div>
-        ${this.loading && !this.tasks.length ? '<p role="status">正在读取任务明细…</p>' : dashboardTasksHtml(this.tasks)}
+        <div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.tasks}任务</div><div class="admin-dashboard-panel-tools"><span class="admin-dashboard-panel-sub">${this.overview ? `${this.tasks.length} 个` : '未读取'}</span><span class="admin-dashboard-scroll-hint">左右滑动查看更多</span></div></div>
+        ${!this.overview ? `<p role="status">${this.loading ? '正在读取任务明细…' : '任务明细尚未读取成功。'}</p>` : dashboardTasksHtml(this.tasks)}
         ${this.tasksCursor ? `<div class="admin-dashboard-more"><button type="button" class="admin-dashboard-link" data-dashboard-more-tasks ${this.loading ? 'disabled' : ''}>${ICONS.more}加载更多任务</button></div>` : ''}
       </section>
       ${this.execLogLoading ? '<p role="status">正在读取执行日志…</p>' : ''}
       ${dashboardExecLogHtml(this.execLog, this.execLogError)}
     </section>`, 'projects');
     document.querySelector('[data-dashboard-refresh]')?.addEventListener('click', () => void this.refresh());
+    document.querySelector('[data-dashboard-filters]')?.addEventListener('input', () => this.readDraft());
+    document.querySelector('[data-dashboard-filters]')?.addEventListener('change', () => this.readDraft());
     document.querySelector('[data-dashboard-filters]')?.addEventListener('submit', event => {
       event.preventDefault();
-      const value = (selector: string) => (document.querySelector<HTMLInputElement | HTMLSelectElement>(selector)?.value ?? '');
-      this.filters = {from: value('[data-dashboard-from]'), to: value('[data-dashboard-to]'), state: value('[data-dashboard-state]'), userId: this.filters.userId};
-      this.usersCursor = null; this.tasksCursor = null;
-      void this.refresh();
+      this.readDraft();
+      this.changeFilters({...this.draft, userId: this.filters.userId});
     });
     document.querySelector('[data-dashboard-reset]')?.addEventListener('click', () => {
-      this.filters = emptyDashboardFilters(); this.usersCursor = null; this.tasksCursor = null; void this.refresh();
+      this.draft = {from: '', to: '', state: ''};
+      this.changeFilters(emptyDashboardFilters());
     });
     document.querySelector('[data-dashboard-clear-user]')?.addEventListener('click', () => this.setUser(''));
     document.querySelectorAll<HTMLButtonElement>('[data-dashboard-user-filter]').forEach(button =>
@@ -404,5 +441,6 @@ export class AdminDashboardPage {
       this.execLog = null; this.execLogError = ''; this.draw();
     });
     document.querySelector('[data-dashboard-exec-log-download]')?.addEventListener('click', () => this.downloadExecLog());
+    if (focusedField) document.querySelector<HTMLElement>(focusedField)?.focus();
   }
 }

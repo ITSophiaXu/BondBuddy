@@ -70,6 +70,11 @@ export class ProspectusPanel {
     return !!this.pendingUpload&&!this.uploadRows().some(row=>row.id===this.pendingUpload!.id);
   }
   get selectedVersionId(){return this.verifiedVersions()?this.state?.current_version_id:null;}
+  get selectedVersion():ProspectusVersions['versions'][number]|null{
+    if(!this.verifiedVersions())return null;
+    const version=this.state!.versions.find(v=>v.version_id===this.state!.current_version_id);
+    return version?{...version}:null;
+  }
   get sourceSelectionMessage(){return this.purpose==='update'&&this.verifiedVersions()&&requiresProspectusSelection(this.state!)?PROSPECTUS_SELECTION_REQUIRED_MESSAGE:'';}
   private generationCandidate(){
     if(this.purpose!=='generation'||!this.verifiedVersions())return;

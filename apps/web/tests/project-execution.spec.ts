@@ -56,15 +56,15 @@ function fixture() {
     checkStatus: 'blocked' as Dto<'PreflightResponse'>['status'], reason: 'rule_pack:rule_applicability_overall_review_required',
     blockers: undefined as string[] | undefined };
 }
-function registerGeneratedPair(state: ReturnType<typeof fixture>, run: Dto<'RunResponse'>, revisionId: string) {
+function registerGeneratedPair(state: ReturnType<typeof fixture>, run: Dto<'RunResponse'>, revisionId: string, sharedFirstDraft = false) {
   expect(run.project_id).toBe(id); expect(run.channel).toBe('production');
   run.state='succeeded'; run.artifact_id=revisionId;
-  const cleanId=`${revisionId}-clean`;
+  const cleanId=sharedFirstDraft?revisionId:`${revisionId}-clean`;
   const wordDelivery: NonNullable<Dto<'ArtifactResponse'>['word_delivery']> = {
     variant:'revision', revision_artifact_id:revisionId, clean_artifact_id:cleanId,
     writer_version:'bondbuddy-unified-word-1.0.0', source_sha256:state.materials.find(m=>m.role==='historical')?.sha256??null,
     baseline_hash:null, effective_baseline_sha256:null, plan_hash:null, delivery_policy:'generated_pair_v1',
-    content_review:'not_performed', baseline_kind:'uploaded_source', replacements:null, columns:null,
+    content_review:'not_performed', baseline_kind:sharedFirstDraft?'none':'uploaded_source', replacements:null, columns:null,
     pending_review_count:0, pending_review:[],
   };
   const primary: Dto<'ArtifactResponse'> = { artifact_id:revisionId, run_id:run.run_id, version:1,
@@ -72,7 +72,7 @@ function registerGeneratedPair(state: ReturnType<typeof fixture>, run: Dto<'RunR
     sha256:hash(`synthetic-revision:${revisionId}`), quality_status:'passed', delivery_status:'available',
     download_url:`/api/v1/artifacts/${revisionId}/download`, expires_at:'2099-01-01T00:00:00Z', word_delivery:wordDelivery };
   const clean: Dto<'ArtifactResponse'> = { ...primary, artifact_id:cleanId, filename:'合成募集书清洁版.docx',
-    sha256:hash(`synthetic-clean:${revisionId}`), download_url:`/api/v1/artifacts/${cleanId}/download`,
+    sha256:sharedFirstDraft?primary.sha256:hash(`synthetic-clean:${revisionId}`), download_url:`/api/v1/artifacts/${cleanId}/download`,
     word_delivery:{...wordDelivery,variant:'clean'} };
   state.artifacts.set(primary.artifact_id,primary); state.artifacts.set(clean.artifact_id,clean);
   state.generatedVersions.push({version_id:`generated-${run.run_id}`,sequence:state.generatedVersions.length+2,
@@ -339,10 +339,10 @@ async function openListedRun(page: Page, run: Dto<'RunResponse'>) {
 test('M2 shortage preserves inputs, recharge never executes, returning starts directly',async({page})=>{
   const state=fixture();state.paid=true;state.checkStatus='ready';state.project.update_details!.authoring_mode='unified_v1';
   await page.setViewportSize({width:1440,height:960});await setup(page,state);
-  await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote')).toContainText('积分不足，请充值后继续更新');
+  await page.locator('#execute-input').click();await expect(page.locator('#fixed-quote h3')).toHaveText('积分不足');await expect(page.locator('#fixed-quote')).toContainText('查看余额与支付渠道状态；余额充足后返回项目点击继续更新');
   expect(state.executes).toHaveLength(0);await expect(page.locator('#execute-input')).toBeDisabled();
   const evidence=process.env.BB_UX_EVIDENCE_DIR;if(evidence){await mkdir(evidence,{recursive:true});await page.locator('#fixed-quote').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'implementation-shortage-1440.png')});await page.setViewportSize({width:390,height:844});await page.locator('#fixed-quote').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'implementation-shortage-390.png')});await page.setViewportSize({width:1440,height:960});}
-  await page.locator('#fixed-quote').getByRole('link',{name:'充值积分',exact:true}).click();
+  await page.locator('#fixed-quote').getByRole('link',{name:'查看余额与支付状态',exact:true}).click();
   await expect(page.getByRole('heading',{name:'按需充值',exact:true})).toBeVisible();
   if(evidence)await page.screenshot({path:join(evidence,'m2-billing-desktop.png')});
   await expect(page.locator('[data-pack]')).toHaveCount(4);
@@ -1327,6 +1327,29 @@ test('continuing after completion creates a new input and retains the preceding 
   expect(clean.word_delivery?.revision_artifact_id).toBe(first.artifact_id);
 });
 
+for(const changeAfterPreparation of [false,true])test(`deduplicated first draft ${changeAfterPreparation?'is revalidated before another input is submitted':'continues from the exact shared clean artifact'}`,async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.materials=state.materials.filter(material=>material.role!=='historical');
+  state.project.update_details!.has_historical=false;state.project.update_details!.source_prospectuses=[];state.sourceSelected=false;
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+  const first=[...state.runs.values()][0],{primary,clean}=registerGeneratedPair(state,first,'deduplicated-first-draft',true);
+  expect(primary.word_delivery?.source_sha256).toBeNull();
+  await page.getByRole('button',{name:'重新读取',exact:true}).click();
+  await expect(page.locator('#execution-progress')).toContainText('已生成');
+  await continueAuthoring(page);
+  await expect(page.locator('[data-next-authoring-summary]')).toContainText(clean.filename!);
+  if(changeAfterPreparation)clean.sha256=hash('changed-first-draft');
+  await page.locator('#execute-input').click();
+  if(changeAfterPreparation){
+    await expect(page.locator('#execution-message')).toContainText('清洁版成果的准确版本尚未确认');
+    expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);
+  }else{
+    await expect(page.locator('#execution-progress .task-progress')).toHaveAttribute('data-input-revision','2');
+    expect(state.inputs[1].edit_base).toEqual({artifact_id:clean.artifact_id,artifact_version:clean.version,sha256:clean.sha256});
+    expect(state.inputs[1].prospectus_selection_revision).toBe(1);expect(state.runs.size).toBe(2);
+  }
+});
+
 
 for (const [reason, message] of [
   ['model_tokens_per_user_per_day', '今日试用额度已用完，额度恢复后自动继续。'],
@@ -1958,11 +1981,11 @@ for(const width of [1440,390])test('dynamic balance: 1 point starts, exhaustion 
  const run=[...state.runs.values()][0];
  state.liveProgress={...state.liveProgress,accrued_points:1,charged_points:1,available_points:0,credit_exhausted:true,clock_running:false};state.available=0;
  run.state='paused';run.stage='credits_exhausted';state.eventSeq++;
- await expect(page.getByRole('dialog')).toBeVisible();await expect(page.getByRole('dialog')).toContainText('充值后继续');
+ await expect(page.getByRole('dialog')).toBeVisible();await expect(page.getByRole('dialog')).toContainText('查看积分与支付渠道状态；积分充足后自动继续本次任务');
  const evidence=process.env.BB_UX_EVIDENCE_DIR;
  if(evidence){await mkdir(evidence,{recursive:true});await page.screenshot({path:join(evidence,'dynamic-exhausted-'+width+'.png'),fullPage:true});}
- await page.getByRole('button',{name:'稍后充值'}).click();
- await page.reload();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'稍后充值'}).click();
+ await page.getByRole('button',{name:'稍后处理'}).click();
+ await page.reload();await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('button',{name:'稍后处理'}).click();
  state.available=20000;state.liveProgress={...state.liveProgress,available_points:20000,credit_exhausted:false,clock_running:true};run.state='running';run.stage='model_generation';state.eventSeq++;
  await expect(page.locator('.authoring-credit-meter')).toContainText('可用余额 20,000 积分');
  await expect(page.getByRole('dialog')).not.toBeVisible();expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);

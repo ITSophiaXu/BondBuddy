@@ -1,0 +1,73 @@
+name: Prospectus mechanical quality
+
+on:
+  pull_request:
+    branches: [develop, master]
+  push:
+    branches: [develop, master]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prospectus-quality-mechanical-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prospectus-quality-mechanical:
+    name: prospectus-quality-mechanical
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      BB_TEST_DATABASE_URL: postgresql://bondbuddy:synthetic-quality-only@127.0.0.1:5432/bb_prospectus_quality
+    services:
+      postgres:
+        image: postgres:16.10
+        env:
+          POSTGRES_USER: bondbuddy
+          POSTGRES_PASSWORD: synthetic-quality-only
+          POSTGRES_DB: bb_prospectus_quality
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U bondbuddy -d bb_prospectus_quality"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the exact candidate tree including authorized fixtures
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.23.3'
+          cache: npm
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.11.11'
+      - name: Install build, Word and rendering dependencies
+        run: |
+          npm ci --no-audit --no-fund
+          npx --no-install playwright install --with-deps chromium
+          docker pull mcr.microsoft.com/azure-storage/azurite:3.35.0
+          python -m pip install -r python/requirements-dev.txt
+          python -m pip check
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-writer fonts-noto-cjk ripgrep
+          echo "BONDBUDDY_TEST_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
+      # This job does not receive private acceptance or issue release receipts.
+      # The independent prospectus-release-acceptance status comes only from the
+      # controlled Linux publisher after the full gate and private human review.
+      - name: Require all mechanical regressions without authorizing release
+        run: node scripts/prospectus-quality-gate.mjs validate
+      - name: Retain mechanical logs only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: prospectus-quality-mechanical-${{ github.sha }}
+          path: .local/prospectus-quality-logs/
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 7

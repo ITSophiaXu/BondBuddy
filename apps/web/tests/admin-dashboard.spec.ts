@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test, type Page, type Route } from '@playwright/test';
 import type {
@@ -88,8 +88,18 @@ const execLog: AdminExecLog = {
 
 const json = (route: Route, status: number, value: unknown) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(value) });
 
-async function setup(page: Page, options: { forbidden?: boolean; paginate?: boolean; overview?: AdminDashboardOverview; execLog?: AdminExecLog; logoutFailures?: number; holdLogout?: boolean; holdViewSave?: boolean } = {}) {
+async function setup(page: Page, options: { forbidden?: boolean; paginate?: boolean; overview?: AdminDashboardOverview; execLog?: AdminExecLog; logoutFailures?: number; holdLogout?: boolean; holdViewSave?: boolean; tasksForQuery?: (query: URLSearchParams) => AdminDashboardTasks } = {}) {
   const calls: { path: string; query: string; method: string }[] = [];
+  const taskHolds: { requested: (query: string) => void; done: Promise<void>; status: number }[] = [];
+  function holdNextTasks() {
+    let requested = (_query: string) => {};
+    let release = (_status = 200) => {};
+    const request = new Promise<string>(resolve => { requested = resolve; });
+    const hold = { requested: (query: string) => requested(query), done: Promise.resolve(), status: 200 };
+    hold.done = new Promise<void>(resolve => { release = (status = 200) => { hold.status = status; resolve(); }; });
+    taskHolds.push(hold);
+    return { request, release };
+  }
   const now = '2026-11-05T00:00:00Z';
   const source = { source_project_id: 'assistant_scope', material_id: 'synthetic_source', material_version: 1, sha256: sha };
   const result = { source_project_id: 'assistant_scope', artifact_id: 'synthetic_result', artifact_version: 2, sha256: sha };
@@ -140,6 +150,13 @@ async function setup(page: Page, options: { forbidden?: boolean; paginate?: bool
         return json(r, 200, { items: [user], next_cursor: options.paginate ? 'u2' : null } as AdminDashboardUsers);
       }
       if (path === '/admin/dashboard/tasks') {
+        const hold = taskHolds.shift();
+        if (hold) {
+          hold.requested(url.search);
+          await hold.done;
+          if (hold.status !== 200) return json(r, hold.status, { code: hold.status === 404 ? 'NOT_FOUND' : 'DATA_UNAVAILABLE' });
+        }
+        if (options.tasksForQuery) return json(r, 200, options.tasksForQuery(url.searchParams));
         const cursor = url.searchParams.get('cursor');
         const items = options.paginate && cursor === 't2' ? [secondTask] : [task];
         return json(r, 200, { items, next_cursor: options.paginate && cursor !== 't2' ? 't2' : null } as AdminDashboardTasks);
@@ -148,7 +165,7 @@ async function setup(page: Page, options: { forbidden?: boolean; paginate?: bool
     if (path === `/admin/exec-logs/${attempt}`) return json(r, 200, options.execLog ?? execLog);
     return json(r, 404, { code: 'NOT_FOUND' });
   });
-  return { calls, workspace, releaseViewSave, releaseLogout };
+  return { calls, workspace, releaseViewSave, releaseLogout, holdNextTasks };
 }
 
 async function screenshot(page: Page, name: string, fullPage = true) {
@@ -157,6 +174,33 @@ async function screenshot(page: Page, name: string, fullPage = true) {
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: join(process.env.BB_UX_EVIDENCE_DIR, name), fullPage });
 }
+
+async function filterEvidence(page: Page, name: string, calls: { path: string; query: string; method: string }[]) {
+  const directory = process.env.BB_UX_EVIDENCE_DIR;
+  if (!directory) return;
+  await mkdir(directory, { recursive: true });
+  const fields = {
+    state: await page.locator('[data-dashboard-state]').inputValue(),
+    from: await page.locator('[data-dashboard-from]').inputValue(),
+    to: await page.locator('[data-dashboard-to]').inputValue(),
+    loading: await page.locator('[data-dashboard-refresh]').isDisabled(),
+    metrics: await page.locator('[data-dashboard-metric]').count(),
+    charts: await page.locator('.admin-dashboard-chart').count(),
+    errors: await page.locator('.admin-dashboard > [role="alert"]').allTextContents(),
+    tasks: await page.locator('[data-dashboard-task-row]').allTextContents()
+  };
+  await writeFile(join(directory, name + '.json'), JSON.stringify({ fields, calls: [...calls] }, null, 2) + '\n', { flag: 'wx' });
+  await page.screenshot({ path: join(directory, name + '.png'), fullPage: true });
+  await page.locator('[data-dashboard-filters]').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(directory, name + '-filter-controls.png'), fullPage: false });
+  await page.locator('section[aria-label="任务明细"]').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: join(directory, name + '-task-results.png'), fullPage: false });
+}
+
+const tasksReflectingFilters = (query: URLSearchParams): AdminDashboardTasks => ({
+  items: [{ ...(query.has('cursor') ? secondTask : task), project_name: query.has('cursor') ? '待退出的旧分页任务' : query.has('user_id') ? '旧用户范围任务' : query.has('state') ? '最新筛选范围任务' : '全部范围任务' }],
+  next_cursor: query.has('cursor') ? null : 't2'
+});
 
 test.afterEach(async ({ page }, testInfo) => {
   if (testInfo.title.startsWith('desktop admin')) await screenshot(page, testInfo.title.replace(/[^a-z0-9]+/gi, '-').slice(0, 180) + '.png', false);
@@ -213,17 +257,160 @@ test('selecting a user, filtering and cursor pagination use the exact query', as
 
   await page.locator('[data-dashboard-user-filter="u_test"]').click();
   await expect(page.getByText('仅显示用户 u_test 的任务')).toBeVisible();
-  expect(calls.some(c => c.path === '/admin/dashboard/tasks' && c.query.includes('user_id=u_test'))).toBe(true);
+  await expect.poll(() => calls.some(c => c.path === '/admin/dashboard/tasks' && c.query.includes('user_id=u_test'))).toBe(true);
+  await expect(page.locator('[data-dashboard-refresh]')).toBeEnabled();
   await page.locator('[data-dashboard-clear-user]').click();
+  await expect(page.locator('[data-dashboard-refresh]')).toBeEnabled();
 
   await page.locator('[data-dashboard-state]').selectOption('failed');
   await page.locator('[data-dashboard-from]').fill('2026-11-01');
   await page.locator('[data-dashboard-apply]').click();
-  expect(calls.some(c => c.path === '/admin/dashboard/tasks' && c.query.includes('state=failed') && c.query.includes('from=2026-11-01'))).toBe(true);
+  await expect.poll(() => calls.some(c => c.path === '/admin/dashboard/tasks' && c.query.includes('state=failed') && c.query.includes('from=2026-11-01'))).toBe(true);
+  await expect(page.locator('[data-dashboard-refresh]')).toBeEnabled();
 
   await page.locator('[data-dashboard-more-tasks]').click();
   await expect(page.locator('[data-dashboard-task-row="r_test2"]')).toBeVisible();
-  expect(calls.some(c => c.path === '/admin/dashboard/tasks' && c.query.includes('cursor=t2'))).toBe(true);
+  await expect.poll(() => calls.some(c => c.path === '/admin/dashboard/tasks' && c.query.includes('cursor=t2'))).toBe(true);
+});
+
+test('desktop admin filter recovery: an unsubmitted draft survives a pending user refresh', async ({ page }) => {
+  const { calls, holdNextTasks } = await setup(page, { tasksForQuery: tasksReflectingFilters });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/#/admin/dashboard');
+  await expect(page.locator('[data-dashboard-refresh]')).toBeEnabled();
+  const held = holdNextTasks();
+  try {
+    await page.locator('[data-dashboard-user-filter="u_test"]').click();
+    expect(new URLSearchParams(await held.request).get('user_id')).toBe('u_test');
+    await expect(page.locator('[data-dashboard-refresh]')).toBeDisabled();
+    await page.locator('[data-dashboard-state]').selectOption('failed');
+    await page.locator('[data-dashboard-from]').fill('2026-11-01');
+    await filterEvidence(page, 'unsubmitted-draft-pending', calls);
+    held.release();
+    await expect(page.locator('[data-dashboard-refresh]')).toBeEnabled();
+    await expect(page.locator('[data-dashboard-from]')).toBeInViewport();
+    await filterEvidence(page, 'unsubmitted-draft-completed', calls);
+    await expect.soft(page.locator('[data-dashboard-state]')).toHaveValue('failed');
+    await expect.soft(page.locator('[data-dashboard-from]')).toHaveValue('2026-11-01');
+    await expect.soft(page.locator('[data-dashboard-from]')).toBeFocused();
+    expect(calls.some(call => call.path === '/admin/dashboard/tasks' && new URLSearchParams(call.query).has('state'))).toBe(false);
+  } finally { held.release(); }
+});
+
+for (const pendingStatus of [200, 503]) test(`desktop admin filter recovery: clear and apply follow a pending user refresh with HTTP ${pendingStatus}`, async ({ page }) => {
+  const { calls, holdNextTasks } = await setup(page, { tasksForQuery: tasksReflectingFilters });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/#/admin/dashboard');
+  await expect(page.locator('[data-dashboard-refresh]')).toBeEnabled();
+  const held = holdNextTasks();
+  try {
+    await page.locator('[data-dashboard-user-filter="u_test"]').click();
+    expect(new URLSearchParams(await held.request).get('user_id')).toBe('u_test');
+    await page.locator('[data-dashboard-clear-user]').click();
+    await page.locator('[data-dashboard-state]').selectOption('failed');
+    await page.locator('[data-dashboard-from]').fill('2026-11-01');
+    await page.locator('[data-dashboard-apply]').click();
+    await filterEvidence(page, `clear-apply-${pendingStatus}-pending`, calls);
+    held.release(pendingStatus);
+    await expect(page.locator('[data-dashboard-refresh]')).toBeEnabled();
+    await filterEvidence(page, `clear-apply-${pendingStatus}-completed`, calls);
+    await expect.poll(() => calls.filter(call => {
+      const query = new URLSearchParams(call.query);
+      return call.path === '/admin/dashboard/tasks' && query.get('state') === 'failed' && query.get('from') === '2026-11-01' && !query.has('user_id') && !query.has('cursor');
+    }).length).toBe(1);
+    await expect(page.locator('[data-dashboard-task-row="r_test"]')).toContainText('最新筛选范围任务');
+    await expect(page.locator('[data-dashboard-clear-user]')).toHaveCount(0);
+    await expect(page.locator('.admin-dashboard > [role="alert"]')).toHaveCount(0);
+    await expect(page.locator('[data-dashboard-state]')).toHaveValue('failed');
+    await expect(page.locator('[data-dashboard-from]')).toHaveValue('2026-11-01');
+  } finally { held.release(); }
+});
+
+test('desktop admin filter recovery: reset during pending pagination reloads the unfiltered first page', async ({ page }) => {
+  const { calls, holdNextTasks } = await setup(page, { tasksForQuery: tasksReflectingFilters });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/#/admin/dashboard');
+  await expect(page.locator('[data-dashboard-refresh]')).toBeEnabled();
+  await page.locator('[data-dashboard-state]').selectOption('failed');
+  await page.locator('[data-dashboard-apply]').click();
+  await expect.poll(() => calls.some(call => call.path === '/admin/dashboard/tasks' && new URLSearchParams(call.query).get('state') === 'failed')).toBe(true);
+  await expect(page.locator('[data-dashboard-refresh]')).toBeEnabled();
+  const held = holdNextTasks();
+  try {
+    await page.locator('[data-dashboard-more-tasks]').click();
+    const query = new URLSearchParams(await held.request);
+    expect(query.get('state')).toBe('failed');
+    expect(query.get('cursor')).toBe('t2');
+    await page.locator('[data-dashboard-reset]').click();
+    await filterEvidence(page, 'reset-pagination-pending', calls);
+    held.release();
+    await expect(page.locator('[data-dashboard-refresh]')).toBeEnabled();
+    await filterEvidence(page, 'reset-pagination-completed', calls);
+    await expect.poll(() => calls.filter(call => call.path === '/admin/dashboard/tasks' && [...new URLSearchParams(call.query).keys()].join(',') === 'limit').length).toBe(2);
+    await expect(page.locator('[data-dashboard-task-row="r_test"]')).toContainText('全部范围任务');
+    await expect(page.locator('[data-dashboard-task-row="r_test2"]')).toHaveCount(0);
+    await expect(page.locator('[data-dashboard-state]')).toHaveValue('');
+  } finally { held.release(); }
+});
+
+test('desktop admin filter recovery: a revoked grant discards a queued filter refresh', async ({ page }) => {
+  const { calls, holdNextTasks } = await setup(page, { tasksForQuery: tasksReflectingFilters });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/#/admin/dashboard');
+  await expect(page.locator('[data-dashboard-refresh]')).toBeEnabled();
+  const held = holdNextTasks();
+  try {
+    await page.locator('[data-dashboard-user-filter="u_test"]').click();
+    await held.request;
+    await page.locator('[data-dashboard-clear-user]').click();
+    await page.locator('[data-dashboard-state]').selectOption('failed');
+    await page.locator('[data-dashboard-apply]').click();
+    held.release(404);
+    await expect(page.getByText('无运营权限。本页面仅对具备日志读取权限的运营账号开放')).toBeVisible();
+    await expect(page.locator('[data-dashboard-task-row]')).toHaveCount(0);
+    expect(calls.filter(call => call.path === '/admin/dashboard/tasks')).toHaveLength(2);
+    await screenshot(page, 'filter-recovery-revoked-grant.png', false);
+  } finally { held.release(); }
+});
+
+test('desktop admin filter recovery: changed filters do not retain prior aggregates after a failed read', async ({ page }) => {
+  const { calls, holdNextTasks } = await setup(page, { tasksForQuery: tasksReflectingFilters });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/#/admin/dashboard');
+  await expect(page.locator('[data-dashboard-metric="cost"]')).toHaveText('0.0014 USD');
+  await expect(page.locator('[data-dashboard-refresh]')).toBeEnabled();
+  const held = holdNextTasks();
+  try {
+    await page.locator('[data-dashboard-state]').selectOption('failed');
+    await page.locator('[data-dashboard-from]').fill('2026-11-01');
+    await page.locator('[data-dashboard-apply]').click();
+    const query = new URLSearchParams(await held.request);
+    expect(query.get('state')).toBe('failed');
+    expect(query.get('from')).toBe('2026-11-01');
+    await expect(page.locator('[data-dashboard-metric]')).toHaveCount(0);
+    await expect(page.locator('.admin-dashboard-chart')).toHaveCount(0);
+    await filterEvidence(page, 'changed-filter-new-read-pending', calls);
+    held.release(503);
+    await expect(page.locator('[data-dashboard-refresh]')).toBeEnabled();
+    await expect(page.locator('.admin-dashboard > [role="alert"]')).toHaveText('运营数据暂时无法读取，请点击“刷新数据”重试。');
+    await expect(page.locator('[data-dashboard-metric]')).toHaveCount(0);
+    await expect(page.locator('.admin-dashboard-chart')).toHaveCount(0);
+    await expect(page.locator('[data-dashboard-state]')).toHaveValue('failed');
+    await expect(page.locator('[data-dashboard-from]')).toHaveValue('2026-11-01');
+    await expect(page.getByText('用户明细尚未读取成功。')).toBeVisible();
+    await expect(page.getByText('任务明细尚未读取成功。')).toBeVisible();
+    await expect(page.getByText('没有符合条件的用户。', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('没有符合条件的任务。', { exact: true })).toHaveCount(0);
+    await expect(page.locator('section[aria-label="用户明细"] .admin-dashboard-panel-sub')).toHaveText('未读取');
+    await expect(page.locator('section[aria-label="任务明细"] .admin-dashboard-panel-sub')).toHaveText('未读取');
+    expect(calls.filter(call => call.path === '/admin/dashboard/tasks' && new URLSearchParams(call.query).get('state') === 'failed')).toHaveLength(1);
+    await filterEvidence(page, 'changed-filter-new-read-failed', calls);
+    await page.locator('[data-dashboard-refresh]').click();
+    await expect.poll(() => calls.filter(call => call.path === '/admin/dashboard/tasks' && new URLSearchParams(call.query).get('state') === 'failed').length).toBe(2);
+    await expect(page.locator('[data-dashboard-refresh]')).toBeEnabled();
+    await expect(page.locator('[data-dashboard-metric="cost"]')).toHaveText('0.0014 USD');
+    await expect(page.locator('.admin-dashboard > [role="alert"]')).toHaveCount(0);
+  } finally { held.release(); }
 });
 
 test('missing operator grant renders a permission notice instead of a failure', async ({ page }) => {

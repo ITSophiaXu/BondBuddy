@@ -36,7 +36,7 @@ import './admin-dashboard.css';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import { UserFacingError } from './user-facing-error';
 import { sourceFields, readSourceFields, sourcePeriodSummary, sourceRequiredMessage, clearSourceSelections } from './source-prospectus.js';
-import { formatTemplateNotice, formatTemplatePin, selectedFormatTemplate, type SourceFormatContext } from './source-format-template.js';
+import { formatTemplateNotice, formatTemplatePin, formatTemplateLocked, formatTemplateDescription, selectedFormatTemplate, type SourceFormatContext } from './source-format-template.js';
 import { retainUpdateDetails } from './update-form.js';
 import { uploadErrorMessage, InvalidUploadFileError, uploadNeedsReplacement } from './upload-error';
 import { Draft } from './draft';
@@ -75,12 +75,12 @@ function billingNotice(message:string,task?:BillingTask,retryHash?:string){
   document.querySelector('#billing-task-notice')?.remove();
   const notice=document.createElement('aside');notice.id='billing-task-notice';notice.className='billing-task-notice';notice.setAttribute('role','status');
   const text=document.createElement('p');text.textContent=message;notice.append(text);
-  if(task){const link=document.createElement('a');link.href=billingTaskRechargeHref(task);link.className='btn primary';link.textContent='订阅或充值，继续原任务';notice.append(link);
+  if(task){const link=document.createElement('a');link.href=billingTaskRechargeHref(task);link.className='btn primary';link.textContent='查看积分与支付状态';notice.append(link);
     const cancel=document.createElement('button');cancel.type='button';cancel.className='btn secondary';cancel.textContent='取消待执行任务';cancel.addEventListener('click',()=>{if(identity===task.owner)void cancelBillingTask(task.owner,task.id).then(()=>notice.remove());});notice.append(cancel);
   }else{if(retryHash){const retry=document.createElement('a');retry.href=retryHash;retry.className='btn secondary';retry.textContent='核对原任务提交';retry.addEventListener('click',event=>{if(location.hash===retryHash){event.preventDefault();void renderRoute();}});notice.append(retry);}const close=document.createElement('button');close.type='button';close.textContent='知道了';close.addEventListener('click',()=>notice.remove());notice.append(close);}
   document.body.append(notice);
 }
-window.addEventListener('bondbuddy:billing-task-needs-funds',event=>{const task=(event as CustomEvent<BillingTask>).detail;if(task.owner===identity)billingNotice(task.body.billing_resume===true?'本批底稿因积分不足暂停，已完成文件保留。完成订阅或充值并返回后，将自动继续这一批的剩余文件。':'积分不足，原任务尚未开始。完成订阅或充值并返回后，将自动继续这一个任务。',task);});
+window.addEventListener('bondbuddy:billing-task-needs-funds',event=>{const task=(event as CustomEvent<BillingTask>).detail;if(task.owner===identity)billingNotice(task.body.billing_resume===true?'本批底稿因积分不足暂停，已完成文件保留，待执行请求已保存。请到账号页查看积分与支付渠道状态；积分充足后返回，将自动继续这一批的剩余文件。':'积分不足，原任务尚未开始，待执行请求已保存。请到账号页查看积分与支付渠道状态；积分充足后返回，将自动继续这一个任务。',task);});
 let accountIdentity: { owner: string; name?: string; request?: Promise<void> } | undefined;
 let epoch = 0;
 let currentRoute = '/';
@@ -690,7 +690,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
         await refreshProjectMaterials(project.project_id,prospectusEpoch);
         const fresh=await api.project(project.project_id);
         return prospectusEpoch===epoch&&!!draft&&draft.adoptUnchanged(fresh);
-      },()=>projectMaterialReadiness(project.project_id).message,editable=>prospectusPanel?.setReadOnly(!editable));
+      },()=>projectMaterialReadiness(project.project_id).message,editable=>prospectusPanel?.setReadOnly(!editable),()=>prospectusPanel?.selectedVersion??null);
     if (staleInputNoticeProjectId === project.project_id) staleInputNoticeProjectId = undefined;
     projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!, document.querySelector<HTMLElement>('#execution-actions')!);
   }
@@ -812,8 +812,12 @@ function confirmedMaterials(projectId: string) {
 
 function sourceFormatContext(projectId: string): SourceFormatContext | undefined {
   if (!draft || !['update', 'generation'].includes(draft.project.kind)) return undefined;
+  const current = prospectusPanel?.selectedVersion;
+  const adoptedSource = current?.origin === 'upload'
+    ? { material_id: current.material_id!, material_version: current.material_version!, sha256: current.sha256 } : null;
   return { materials: confirmedMaterials(projectId), sources: draft.fields.update_details.source_prospectuses,
-    template: draft.fields.update_details.format_template, inheritedFromResult: projectExecution?.inheritsResultFormat,
+    template: draft.fields.update_details.format_template, adoptedSource,
+    inheritedFromResult: projectExecution?.inheritsResultFormat ?? current?.origin === 'generated',
     group: `source-format-${projectId}` };
 }
 
@@ -978,6 +982,13 @@ function updateMaterialWorkspace(projectId: string) {
       const row = control.closest<HTMLElement>('[data-source-material]');
       control.checked = Boolean(selected && row?.dataset.sourceMaterial === selected.material_id &&
         Number(row.dataset.sourceMaterialVersion) === selected.material_version && row.dataset.sourceSha256 === selected.sha256);
+      const material = context?.materials.find(m => m.material_id === row?.dataset.sourceMaterial &&
+        m.material_version === Number(row.dataset.sourceMaterialVersion) && m.sha256 === row.dataset.sourceSha256);
+      const locked = !material || !context || formatTemplateLocked(material, context);
+      control.toggleAttribute('data-format-template-locked', locked);
+      control.disabled = locked || Boolean(context?.inheritedFromResult);
+      const description = control.closest('.source-format-choice')?.querySelector('small');
+      if (description) description.textContent = material && context ? formatTemplateDescription(material, context) : '材料准确版本尚未确认，请刷新已保存材料后再试。';
       const label = control.parentElement?.querySelector('span');
       if (label) label.textContent = `沿用此稿格式${control.checked && !context?.template ? '（自动选择）' : ''}`;
     });
@@ -1255,7 +1266,8 @@ function bindMaterialWorkspace(projectId: string) {
       m.material_version === Number(source.dataset.sourceMaterialVersion) && m.sha256 === source.dataset.sourceSha256);
     if (!material) return;
     if (target.matches('[data-format-template]')) {
-      if (!(target instanceof HTMLInputElement) || !target.checked || target.disabled || projectExecution?.inheritsResultFormat) return;
+      const context = sourceFormatContext(projectId);
+      if (!(target instanceof HTMLInputElement) || !target.checked || target.disabled || !context || context.inheritedFromResult || formatTemplateLocked(material, context)) return;
       const details = { ...draft.fields.update_details, format_template: formatTemplatePin(material) };
       draft.edit({ update_details: details });
       retainUpdateDetails(document.querySelector<HTMLFormElement>('#draft-form')!, details);

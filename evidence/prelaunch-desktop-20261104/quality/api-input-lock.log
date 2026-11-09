@@ -1,0 +1,19 @@
+﹣ HTTP chain: register/session, project and upload drive a locked input revision that pins an approved issuer binding and exact message set (0.9214ms) # SKIP
+﹣ HTTP chain: missing, withdrawn, mismatched and cross-account refs are refused without persisting a revision (0.1159ms) # SKIP
+﹣ HTTP chain: a withdrawn approved binding is refused for the lock and leaves no new revision (0.0885ms) # SKIP
+﹣ HTTP chain: revoking only the binding approver invalidates the exact ref, lock and preflight (0.188ms) # SKIP
+﹣ HTTP chain: synthetic financial XLSX is durably parsed before scoped issuer review and successor admission (0.098ms) # SKIP
+✔ automatic adoption migration repairs missing baselines without rewriting inputs or valid continuations (376.088ms)
+✔ format template selection is owner-scoped, exact, PATCH-compatible and immutable after input locking (1877.1752ms)
+✔ explicit template overrides recommendation but cannot refer to unselected or stale bytes (2.0727ms)
+✔ empty, PDF-only and exact DOCX inputs lock distinct modes and do not mutate inputs (1.0784ms)
+✔ continuation inherits the selected clean artifact without changing its revision baseline (0.3925ms)
+✔ draft selection validates owner, project, exact version and hash without disclosing foreign materials (0.6137ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 5
+ℹ todo 0
+ℹ duration_ms 48975.8997

@@ -1,0 +1,23 @@
+{
+  "observed_at": "2026-11-04T04:48:36.540Z",
+  "server": {
+    "data_directory": "C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/.local/prelaunch-payment-pg",
+    "port": "55434",
+    "version": "16.14"
+  },
+  "remaining_clones": [],
+  "other_client_connections": [],
+  "stop": {
+    "mode": "smart",
+    "exit_code": 0,
+    "stdout": "waiting for server to shut down.... done\nserver stopped",
+    "privilege": "Initial sandbox stop denied signal permission; approved elevated retry successfully stopped only the verified dedicated instance."
+  },
+  "final": {
+    "observed_at": "2026-11-04T04:49:31.582Z",
+    "pg_ctl_status_exit_code": 3,
+    "pg_ctl_status_stdout": "pg_ctl: no server running\r\n",
+    "pg_ctl_status_stderr": "",
+    "loopback_55434_connect_error": "ECONNREFUSED"
+  }
+}

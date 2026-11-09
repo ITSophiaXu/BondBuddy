@@ -1,17 +1,6 @@
 import { ApiError, friendlyError, type Dto } from './api.js';
 import { resultFilename } from '@bondbuddy/contracts';
-import { UserFacingError } from './user-facing-error.js';
-
-/** Bound the entire read, including the response body, not just HTTP headers. */
-export async function boundedDownload<T>(parent:AbortSignal,read:(signal:AbortSignal)=>Promise<T>,timeoutMs=120_000):Promise<T>{
-  const controller=new AbortController();let timedOut=false;
-  const cancel=()=>controller.abort(parent.reason);
-  if(parent.aborted)cancel();else parent.addEventListener('abort',cancel,{once:true});
-  const timer=setTimeout(()=>{timedOut=true;controller.abort();},timeoutMs);
-  try{return await read(controller.signal);}
-  catch(error){if(timedOut&&!parent.aborted)throw new UserFacingError('下载准备超时，请重试。已生成文件仍保留，无需重新生成。');throw error;}
-  finally{clearTimeout(timer);parent.removeEventListener('abort',cancel);}
-}
+export { boundedDownload } from './download-timeout.js';
 
 export function artifactFilename(artifact: Dto<'ArtifactResponse'>): string {
   return artifact.filename ?? resultFilename({ kind: artifact.word_delivery ? ({revision:'募集书修订版',clean:'募集书清洁版',baseline:'募集书基线版'} as const)[artifact.word_delivery.variant] : '成果', version:artifact.display_version ?? artifact.version, mediaType:artifact.media_type });

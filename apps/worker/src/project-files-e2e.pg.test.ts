@@ -119,9 +119,9 @@ test('project files: template batch, provenance, real checks with synthetic mode
     assert.equal((await ok('POST',base+'/checks',req)).run_id,check.run_id);assert.equal(await execute(true),'succeeded');
     let c=(await ok('GET',base+'/checks')).checks[0];assert.equal(c.result.files.length,2);assert.ok(c.result.files.every((f:any)=>f.status==='conflict'&&f.findings.length===2));
     const target=c.result.files[0],accept={request_id:randomUUID(),expected_check_sha256:c.sha256,
-      price_version:PROJECT_FILE_UPDATE_PRICE.version,expected_points:9000,files:c.files.map((f:any)=>({file_version_id:f.file_version_id}))};
+      price_version:PROJECT_FILE_UPDATE_PRICE.version,expected_points:'9000',files:c.files.map((f:any)=>({file_version_id:f.file_version_id}))};
     assert.equal((await creditBalance(pool,owner)).available,91000,'checks are free');
-    assert.equal((await send('POST',base+'/checks/'+c.run_id+'/updates',{...accept,expected_points:4500})).statusCode,409,'cannot understate quoted total');
+    assert.equal((await send('POST',base+'/checks/'+c.run_id+'/updates',{...accept,expected_points:'4500'})).statusCode,409,'cannot understate quoted total');
     assert.equal((await send('POST',base+'/checks/'+c.run_id+'/updates',{...accept,files:[{file_version_id:target.file_version_id,issue_ids:[target.findings[0].id]}]})).statusCode,422,'per-finding updates are not a public flow');
     await pool.query('UPDATE bb_credit_lots SET frozen=remaining WHERE owner_user_id=$1',[owner]);
     assert.equal((await send('POST',base+'/checks/'+c.run_id+'/updates',accept)).statusCode,402,'insufficient funds do not submit a batch');
@@ -168,7 +168,7 @@ test('project files: template batch, provenance, real checks with synthetic mode
     assert.equal(await execute(true),'succeeded');
     const rc=(await ok('GET',base+'/checks')).checks.find((x:any)=>x.run_id===raceCheck.run_id);
     const rt=rc.result.files.find((x:any)=>x.findings.some((f:any)=>f.kind==='conflict'));
-    await ok('POST',base+'/checks/'+rc.run_id+'/updates',{request_id:randomUUID(),expected_check_sha256:rc.sha256,price_version:PROJECT_FILE_UPDATE_PRICE.version,expected_points:4500,files:[{file_version_id:rt.file_version_id}]});
+    await ok('POST',base+'/checks/'+rc.run_id+'/updates',{request_id:randomUUID(),expected_check_sha256:rc.sha256,price_version:PROJECT_FILE_UPDATE_PRICE.version,expected_points:'4500',files:[{file_version_id:rt.file_version_id}]});
     await advanceProjectFileUpdates(pool);
     await ok('POST',base+'/imports',{request_id:randomUUID(),document_type:'issuer',material:importFile,expected_latest_version_id:rt.file_version_id});
     const userFile=(await ok('GET',base)).files.find((f:any)=>f.latest&&f.document_type==='issuer');
@@ -185,8 +185,8 @@ test('project files: template batch, provenance, real checks with synthetic mode
     assert.equal((await send('GET',base)).statusCode,404);assert.equal((await send('GET',base+'/checks')).statusCode,404);assert.equal((await send('POST',base+'/checks',req)).statusCode,404);
     actor=owner;const balance=await creditBalance(pool,owner);assert.equal(balance.available,77500,'two generated files and three delivered revisions, all checks free');
     const charges=(await ok('GET','/api/v1/credits/consumption-history')).items.filter((x:any)=>x.task_name==='更新关联文件');
-    assert.equal(charges.filter((x:any)=>x.state==='settled'&&x.charged_points===4500).length,3);
-    assert.equal(charges.filter((x:any)=>x.state==='released'&&x.charged_points===0&&x.released_points===4500).length,2);
+    assert.equal(charges.filter((x:any)=>x.state==='settled'&&x.charged_points==='4500').length,3);
+    assert.equal(charges.filter((x:any)=>x.state==='released'&&x.charged_points==='0'&&x.released_points==='4500').length,2);
   }finally{await app.close();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();await pool.end();await rm(dir,{recursive:true,force:true});}
 });
 

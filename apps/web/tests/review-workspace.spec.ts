@@ -886,8 +886,8 @@ for(const width of [1440,390])test('paid review starts with one point without co
  await page.getByRole('button',{name:'开始复核',exact:true}).click();
  await expect(page.getByRole('dialog')).not.toContainText('13,900');
  const output=process.env.BB_REVIEW_CREDIT_EVIDENCE_DIR;if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/implementation-ready-${width}.png`});}
- await expect(page.getByRole('dialog')).toContainText('积分不足，请充值后继续任务');
- const recharge=await page.getByRole('dialog').getByRole('link',{name:'充值积分'}).getAttribute('href'),rechargeQuery=new URLSearchParams(recharge!.split('?')[1]);
+ await expect(page.getByRole('dialog')).toContainText('积分不足，本次任务尚未开始');await expect(page.getByRole('dialog')).toContainText('积分充足后请返回项目明确开始，任务不会自动执行');
+ const recharge=await page.getByRole('dialog').getByRole('link',{name:'查看积分与支付状态'}).getAttribute('href'),rechargeQuery=new URLSearchParams(recharge!.split('?')[1]);
  expect(rechargeQuery.get('project')).toBe(id);
  expect(rechargeQuery.get('return_to')).toBe(await page.evaluate(()=>location.hash));
  expect(state.executes).toHaveLength(0);

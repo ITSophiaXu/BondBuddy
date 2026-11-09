@@ -26,6 +26,7 @@ export interface RecurringPaymentProvider {
 export const supportsAutomaticRenewal=(p:PaymentProvider):boolean=>!!p.recurring&&
   ['createMandate','queryMandate','cancelMandate','charge'].every(k=>typeof (p.recurring as any)[k]==='function');
 const invalid=(message:string)=>new Problem(409,'PAYMENT_INVALID',message);
+const checkoutRejected=(message:string)=>new Problem(409,'SUBSCRIPTION_CHECKOUT_REJECTED',message+' 原付款请求已结束且未创建订单，请刷新账户后重新选择。');
 const safePoints=(value:unknown)=>{try{return int64(value);}catch{throw new Problem(503,'DATA_UNAVAILABLE','积分分项仍在核对，请稍后读取。');}};
 const unavailable=()=>new Problem(503,'PAYMENT_UNAVAILABLE','当前渠道未配置经核验的自动续费能力，可手动开通或续订月度方案。');
 const plan=(id:string)=>{const p=SUBSCRIPTION_PLANS.find(p=>p.id===id);if(!p)throw new Problem(422,'VALIDATION_FAILED','未知订阅方案。');return p;};
@@ -112,7 +113,7 @@ export async function createSubscriptionCheckout(pool:Pool,owner:string,input:Su
     WHERE p.owner_user_id=$1 AND p.status='pending'`,[owner])).rows[0];
   if(pending&&new Date(pending.expires_at).getTime()<=Date.now())
     try{await refreshRecharge(pool,owner,pending.id,providers);}catch{/* Unknown stays pending and the transaction below rejects another purchase. */}
-  const result=await transaction(pool,async c=>{
+  const result=await transaction<{rejected:string}|{subscription:any;order:any}>(pool,async c=>{
     await assertChannelWritable(c,provider.name,provider.merchantId);
     await lockCreditAccount(c,owner);
     const previous=(await c.query('SELECT * FROM bb_recharge_orders WHERE owner_user_id=$1 AND request_id=$2',[owner,input.request_id])).rows[0];
@@ -121,11 +122,23 @@ export async function createSubscriptionCheckout(pool:Pool,owner:string,input:Su
       const old=(await c.query(`SELECT s.* FROM bb_subscriptions s JOIN bb_subscription_periods p ON p.subscription_id=s.id WHERE p.order_id=$1 AND s.owner_user_id=$2`,[previous.id,owner])).rows[0];
       return {subscription:old,order:previous};
     }
+    const rejection=(await c.query('SELECT request_hash,message FROM bb_subscription_checkout_rejections WHERE owner_user_id=$1 AND request_id=$2',[owner,input.request_id])).rows[0];
+    if(rejection){
+      if(rejection.request_hash!==hash)throw new Problem(409,'IDEMPOTENCY_CONFLICT','付款请求键已用于另一项订阅请求。');
+      return {rejected:rejection.message as string};
+    }
+    // This transaction has confirmed that this exact key has no accepted order.
+    // Commit the rejection before responding so a stale tab cannot later turn
+    // the same rejected key into a payment when the subscription state changes.
+    const reject=async(message:string)=>{
+      await c.query('INSERT INTO bb_subscription_checkout_rejections(owner_user_id,request_id,request_hash,message) VALUES($1,$2,$3,$4)',[owner,input.request_id,hash,message]);
+      return {rejected:message};
+    };
     let s=(await c.query('SELECT *,bb_subscription_clock(owner_user_id) observed_at FROM bb_subscriptions WHERE owner_user_id=$1 FOR UPDATE',[owner])).rows[0];
     const taskPriceVersion=await currentAutomaticPriceVersion(c);
     if(subscriptionId&&s?.id!==subscriptionId)throw missing();
     if(s){
-      if(s.current_period_end&&new Date(s.current_period_end).getTime()>observed(s))throw invalid('当前订阅周期尚未结束；额度不足可直接充值，下周期再调整方案。');
+      if(s.current_period_end&&new Date(s.current_period_end).getTime()>observed(s))return reject('当前订阅周期尚未结束；额度不足可直接充值，下周期再调整方案。');
       if((await c.query("SELECT 1 FROM bb_subscription_periods WHERE subscription_id=$1 AND status='pending'",[s.id])).rowCount)throw invalid('已有订阅付款待核对，请继续原订单，避免重复付款。');
       if(s.mandate_status==='active'||s.mandate_status==='pending'||s.mandate_status==='cancel_pending')throw invalid('请先关闭并核实原自动续费授权，再手动开通下一周期。');
       s=(await c.query(`UPDATE bb_subscriptions SET plan_id=$2,provider=$3,merchant_id=$4,status='pending',auto_renew=false,auto_renew_requested=false,
@@ -136,6 +149,7 @@ export async function createSubscriptionCheckout(pool:Pool,owner:string,input:Su
     }
     const made=await insertPeriod(c,s,p,provider,input.request_id,hash,false);return {subscription:s,order:made.order};
   });
+  if('rejected' in result)throw checkoutRejected(result.rejected);
   const order=await openCheckout(pool,owner,result.order,providers);
   return {subscription:subscriptionDto(result.subscription),order};
 }

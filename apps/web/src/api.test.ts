@@ -22,7 +22,7 @@ test('missing source uses the public field code instead of server prose', () => 
   const unrelated = parseApiError(422, {code: 'INPUT_REQUIRED', field_errors: [{...SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, field: 'other'}]});
   assert.equal(unrelated.details.sourceProspectusRequired, false);
 });
-import { PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE } from '@bondbuddy/contracts';
+import { PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type M4Artifact } from '@bondbuddy/contracts';
 
 test('Word-only upload errors use the public reason without trusting server prose', () => {
   const error=parseApiError(422,{code:'MATERIAL_FORMAT_UNSUPPORTED',message:'private detail',
@@ -176,7 +176,66 @@ test('material download returns exact verified Blob bytes through the same-origi
   assert.deepEqual(new Uint8Array(await blob.arrayBuffer()),sourceBytes);
   assert.equal(calls.length,1);assert.equal(calls[0]!.url,'/api/v1/projects/project%20a/materials/material%2Fsource/download?version=2');
   assert.equal(calls[0]!.init.method,'GET');assert.equal(calls[0]!.init.credentials,'same-origin');
-  assert.equal(calls[0]!.init.cache,'no-store');assert.equal(calls[0]!.init.signal,signal);
+  assert.equal(calls[0]!.init.cache,'no-store');assert(calls[0]!.init.signal instanceof AbortSignal);assert.equal(calls[0]!.init.signal.aborted,false);
+});
+
+const sourceM4Artifact = (): M4Artifact => ({
+  source_project_id:'source-project',artifact_id:'artifact/source',artifact_version:3,sha256:sourceMaterial().sha256,
+  topic_id:'source-topic',run_id:'source-run',document_type:'annual',kind:'document',filename:'source.docx',
+  mime_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',byte_size:sourceBytes.byteLength,
+  created_at:'2026-10-03T00:00:00Z',base_artifact:null,input_hash:'a'.repeat(64),revision_number:1,
+});
+const sourceDownloads = [
+  {name:'material',type:'text/plain',read:(api:ApiClient,signal:AbortSignal)=>api.materialBytes('project a',sourceMaterial(),signal)},
+  {name:'M4 artifact',type:sourceM4Artifact().mime_type,read:(api:ApiClient,signal:AbortSignal)=>api.m4ArtifactBytes(sourceM4Artifact(),signal)},
+];
+const drainDownload = async () => { for(let i=0;i<10;i++)await Promise.resolve(); };
+
+for(const source of sourceDownloads){
+  test(`an active ${source.name} download can finish and verify after more than two minutes`,async t=>{
+    t.mock.timers.enable({apis:['setTimeout']});
+    let body!:ReadableStreamDefaultController<Uint8Array>,cancelled=false;
+    const stream=new ReadableStream<Uint8Array>({start(controller){body=controller;},cancel(){cancelled=true;}});
+    const {api,calls}=stubDownload(t,()=>new Response(stream,{headers:{'Content-Type':source.type}}));
+    const parent=new AbortController();let settled=false;
+    const result=source.read(api,parent.signal).then(blob=>{settled=true;return {blob};},error=>{settled=true;return {error};});
+    await drainDownload();assert.equal(stream.locked,true);
+    // Five real response chunks arrive over 150 seconds of controlled time.
+    // Original materials and M4 files must not inherit the workpaper deadline.
+    for(let i=0;i<5;i++){
+      t.mock.timers.tick(30_000);await drainDownload();
+      assert.equal(settled,false,`${source.name} must remain readable after ${(i+1)*30} seconds`);
+      assert.equal(calls[0].init.signal?.aborted,false);assert.equal(cancelled,false);
+      body.enqueue(sourceBytes.slice(Math.floor(i*sourceBytes.length/5),Math.floor((i+1)*sourceBytes.length/5)));
+      await drainDownload();
+    }
+    body.close();const outcome=await result;if('error' in outcome)throw outcome.error;
+    assert.equal(outcome.blob.type,source.type);
+    assert.deepEqual(new Uint8Array(await outcome.blob.arrayBuffer()),sourceBytes);
+    assert.equal(calls.length,1);assert.equal(stream.locked,false);
+  });
+
+  test(`leaving a ${source.name} download cancels a pending body and permits a verified retry`,async t=>{
+    const reason=new Error('left download page');let cancelled:unknown,retry=false;
+    const stream=new ReadableStream<Uint8Array>({start(controller){controller.enqueue(sourceBytes.slice(0,4));},cancel(value){cancelled=value;}});
+    const {api,calls}=stubDownload(t,()=>new Response(retry?sourceBytes:stream,{headers:{'Content-Type':source.type}}));
+    const parent=new AbortController(),download=source.read(api,parent.signal);
+    await drainDownload();assert.equal(stream.locked,true);
+    const failure=assert.rejects(download,error=>error===reason);
+    parent.abort(reason);await failure;
+    assert.equal(cancelled,reason);assert.equal(calls[0].init.signal?.aborted,true);assert.equal(stream.locked,false);
+    retry=true;const blob=await source.read(api,new AbortController().signal);
+    assert.deepEqual(new Uint8Array(await blob.arrayBuffer()),sourceBytes);assert.equal(calls.length,2);
+  });
+}
+
+test('artifact metadata that never finishes does not hold a download action indefinitely',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const {api,calls}=stubDownload(t,()=>new Response(new ReadableStream(),{headers:{'Content-Type':'application/json'}}));
+  const metadata=api.artifact('saved-artifact');
+  const failure=assert.rejects(metadata,/下载准备超时.*无需重新生成/);
+  t.mock.timers.tick(120_000);await failure;
+  assert.equal(calls[0].init.signal?.aborted,true);
 });
 
 test('material download rejects same-length corrupted bytes whose hash differs',async t=>{

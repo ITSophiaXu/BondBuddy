@@ -16,3 +16,11 @@ test('leaving the page cancels the same download without reporting a timeout',as
   parent.abort(reason);await assert.rejects(read,e=>e===reason);
   assert.equal(await boundedDownload(new AbortController().signal,async()=>42,10_000),42);
 });
+
+test('timeout releases a reader that never reacts to abort, and a prior abort never starts a read',async()=>{
+  let signal:AbortSignal|undefined;
+  await assert.rejects(boundedDownload(new AbortController().signal,s=>{signal=s;return new Promise(()=>{});},10),/下载准备超时/);
+  assert.equal(signal?.aborted,true);
+  const parent=new AbortController(),reason=new Error('already left');parent.abort(reason);
+  await assert.rejects(boundedDownload(parent.signal,async()=>assert.fail('aborted reads must not start')),error=>error===reason);
+});

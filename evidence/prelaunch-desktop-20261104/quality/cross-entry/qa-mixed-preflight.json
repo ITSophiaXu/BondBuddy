@@ -1,0 +1,11 @@
+{
+  "checked_at": "2026-11-04T06:05:37.238Z",
+  "server": {
+    "directory": "C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/.local/prelaunch-payment-pg",
+    "port": "55434",
+    "version": "PostgreSQL 16.14, compiled by Visual C++ build 1944, 64-bit"
+  },
+  "clones": 0,
+  "azurite_loopback_http_status": 403,
+  "scope": "same task-owned migrated template and storage; no credentials recorded"
+}

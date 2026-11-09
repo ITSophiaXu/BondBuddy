@@ -1,0 +1,14 @@
+{
+  "subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+  "checked_at": "2026-11-04T05:43:41.848Z",
+  "server": {
+    "directory": "C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/.local/prelaunch-payment-pg",
+    "port": "55434",
+    "version": "PostgreSQL 16.14, compiled by Visual C++ build 1944, 64-bit"
+  },
+  "migrations": 168,
+  "template": "bb_prelaunch_payment_template",
+  "clones": 0,
+  "credentials": "synthetic local configuration; omitted",
+  "environmentFile": ".local/quality-final-crossentry/environment.json"
+}

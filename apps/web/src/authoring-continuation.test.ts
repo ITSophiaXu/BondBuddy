@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { emptyUpdateDetails, type ProspectusVersion } from '@bondbuddy/contracts';
 import type { Dto } from './api.js';
 import type { DraftFields } from './draft.js';
-import { renderContinuationSummary, resolveContinuationBasis } from './authoring-continuation.js';
+import { readContinuationBasis, renderContinuationSummary, resolveContinuationBasis, assistantAuthoringEditBase } from './authoring-continuation.js';
 
 const projectId = 'continuation-project', sha = 'a'.repeat(64), otherSha = 'b'.repeat(64), at = '2026-10-25T00:00:00Z';
 const run = (patch: Partial<Dto<'RunResponse'>> = {}): Dto<'RunResponse'> => ({
@@ -35,6 +35,45 @@ const material = (patch: Partial<Dto<'MaterialResponse'>> = {}): Dto<'MaterialRe
   media_type: 'application/pdf', byte_size: 100, sha256: sha, state: 'persisted', persisted_at: at, error: null, ...patch,
 });
 
+function sharedFirstDraft(): Dto<'ArtifactResponse'> {
+  return { artifact_id:'old-revision', run_id:'old-run', version:7, sha256:sha,
+    media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document', quality_status:'passed', delivery_status:'available',
+    download_url:'/api/v1/artifacts/old-revision/download', expires_at:'2099-01-01T00:00:00Z',
+    word_delivery:{variant:'revision',revision_artifact_id:'old-revision',clean_artifact_id:'old-revision',
+      writer_version:'bondbuddy-unified-word-1.0.0',source_sha256:null,baseline_hash:null,effective_baseline_sha256:null,plan_hash:null,
+      baseline_kind:'none',replacements:0,columns:0,pending_review_count:0,pending_review:[]} };
+}
+
+test('a deduplicated first draft continues from the exact shared clean artifact after fresh metadata verification', async () => {
+  const value=generated({artifact_id:'old-revision'}),source=versions({current_version_id:value.version_id,versions:[value]});
+  const reads:string[]=[];
+  for(const choice of ['result','current'] as const){
+    const basis=await readContinuationBasis(source,projectId,run(),choice,async id=>{reads.push(id);return sharedFirstDraft();});
+    assert.deepEqual(basis.editBase,{artifact_id:'old-revision',artifact_version:7,sha256:sha});
+    assert.equal(basis.version?.version_id,value.version_id);
+  }
+  assert.deepEqual(reads,['old-revision','old-revision']);
+  const ordinary=await readContinuationBasis(versions(),projectId,run(),'result',async()=>assert.fail('distinct clean pins need no alias read'));
+  assert.equal(ordinary.editBase?.artifact_id,'old-clean');
+});
+
+test('shared IDs alone cannot turn a revision or changed artifact into a clean continuation', () => {
+  const value=generated({artifact_id:'old-revision'}),source=versions({current_version_id:value.version_id,versions:[value]}),alias=sharedFirstDraft();
+  const changed:Dto<'ArtifactResponse'>[]=[
+    {...alias,artifact_id:'different'},{...alias,run_id:'different-run'},{...alias,version:8},{...alias,sha256:otherSha},
+    // Deliberately malformed metadata verifies the defensive runtime boundary.
+    {...alias,quality_status:'failed'} as unknown as Dto<'ArtifactResponse'>,{...alias,delivery_status:'test_only'},{...alias,media_type:'application/pdf'},
+    {...alias,word_delivery:undefined},{...alias,word_delivery:{...alias.word_delivery!,baseline_kind:'uploaded_source'}},
+    {...alias,word_delivery:{...alias.word_delivery!,clean_artifact_id:'another-clean'}},
+    {...alias,word_delivery:{...alias.word_delivery!,revision_artifact_id:'another-revision'}},
+    {...alias,word_delivery:{...alias.word_delivery!,variant:'baseline'}},
+  ];
+  for(const choice of ['result','current'] as const){
+    assert.throws(()=>resolveContinuationBasis(source,projectId,run(),choice),/准确版本/);
+    for(const metadata of changed)assert.throws(()=>resolveContinuationBasis(source,projectId,run(),choice,metadata),/准确版本/);
+  }
+});
+
 test('a historical result pins its own clean artifact, independently of the newer current version', () => {
   const source = versions(), historical = resolveContinuationBasis(source, projectId, run(), 'result');
   const current = resolveContinuationBasis(source, projectId, run(), 'current');
@@ -48,6 +87,24 @@ test('a historical result pins its own clean artifact, independently of the newe
   source.versions[1].sha256 = otherSha;
   assert.equal(historical.version?.sha256, sha);
   assert.equal(historical.editBase?.sha256, sha);
+});
+
+test('ordinary assistant preparation omits edit_base when no result was selected', () => {
+  for (const base of [null, undefined]) {
+    const payload = assistantAuthoringEditBase(base);
+    assert.deepEqual(payload, {});
+    assert.equal(Object.hasOwn(payload, 'edit_base'), false, 'the API may adopt the current generated clean result by default');
+  }
+});
+
+test('assistant preparation keeps the explicitly viewed historical result even when current is newer', () => {
+  const historical = resolveContinuationBasis(versions(), projectId, run(), 'result');
+  const selected = { ...historical.editBase!, source_project_id: projectId };
+  const payload = assistantAuthoringEditBase(selected);
+  assert.deepEqual(payload.edit_base, historical.editBase);
+  assert.notEqual(payload.edit_base?.artifact_id, versions().versions[0].artifact_id);
+  selected.sha256 = otherSha;
+  assert.equal(payload.edit_base?.sha256, sha);
 });
 
 test('result choice never promotes failed, active or internal test runs into a formal baseline', () => {

@@ -13,18 +13,37 @@ export type ContinuationBasis = {
   key: string;
 };
 
+/** Ordinary assistant preparation uses the current manuscript default unless a result was explicitly selected. */
+export function assistantAuthoringEditBase(base: NonNullable<Dto<'InputRevisionCreateRequest'>['edit_base']> | null | undefined):
+  Pick<Dto<'InputRevisionCreateRequest'>, 'edit_base'> {
+  return base ? { edit_base: { artifact_id: base.artifact_id, artifact_version: base.artifact_version, sha256: base.sha256 } } : {};
+}
+
 const validId = (value: unknown): value is string => typeof value === 'string' && value.length > 0 && value.length <= 128 && value.trim().length > 0;
 const positiveRevision = (value: unknown): value is number => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
 const validHash = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 
-function checkedVersion(version: ProspectusVersion): ProspectusVersion {
+function checkedVersion(version: ProspectusVersion, alias?: Dto<'ArtifactResponse'>): ProspectusVersion {
   if (!validId(version.version_id) || !positiveRevision(version.sequence) || typeof version.filename !== 'string' || !validHash(version.sha256)) {
     throw new UserFacingError('募集书版本记录不完整，请重新读取后再继续。');
   }
   if (version.origin === 'generated') {
     if (!validId(version.run_id) || !validId(version.revision_artifact_id) || !validId(version.artifact_id) ||
-        !positiveRevision(version.artifact_version) || version.artifact_id === version.revision_artifact_id) {
+        !positiveRevision(version.artifact_version)) {
       throw new UserFacingError('清洁版成果的准确版本尚未确认，请重新读取后再继续。');
+    }
+    if (version.artifact_id === version.revision_artifact_id) {
+      const pair = alias?.word_delivery;
+      // A first draft has no invented revisions. Identical pair bytes may share
+      // one artifact, but only fresh server metadata can establish that alias.
+      if (!alias || alias.artifact_id !== version.artifact_id || alias.run_id !== version.run_id ||
+          alias.version !== version.artifact_version || alias.sha256 !== version.sha256 ||
+          alias.quality_status !== 'passed' || alias.delivery_status !== 'available' ||
+          alias.media_type !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+          pair?.baseline_kind !== 'none' || !['revision', 'clean'].includes(pair.variant) ||
+          pair.revision_artifact_id !== version.artifact_id || pair.clean_artifact_id !== version.artifact_id) {
+        throw new UserFacingError('清洁版成果的准确版本尚未确认，请重新读取后再继续。');
+      }
     }
   } else if (version.origin === 'upload') {
     if (!validId(version.material_id) || !positiveRevision(version.material_version)) {
@@ -42,6 +61,7 @@ export function resolveContinuationBasis(
   projectId: string,
   run: Dto<'RunResponse'>,
   choice: ContinuationChoice,
+  alias?: Dto<'ArtifactResponse'>,
 ): ContinuationBasis {
   if (!validId(projectId) || versions.project_id !== projectId || run.project_id !== projectId) {
     throw new UserFacingError('项目版本记录与当前项目不一致，请重新读取后再继续。');
@@ -58,7 +78,7 @@ export function resolveContinuationBasis(
     const matches = versions.versions.filter(item => item.origin === 'generated' && item.run_id === run.run_id);
     if (!matches.length) throw new UserFacingError('未找到本轮成果的清洁版记录，请重新读取后再继续。');
     if (matches.length !== 1) throw new UserFacingError('本轮成果的清洁版记录不唯一，请重新读取后再继续。');
-    version = checkedVersion(matches[0]);
+    version = checkedVersion(matches[0], alias);
     if (version.revision_artifact_id !== run.artifact_id) {
       throw new UserFacingError('本轮成果与募集书版本记录不一致，请重新读取后再继续。');
     }
@@ -71,7 +91,7 @@ export function resolveContinuationBasis(
       const matches = versions.versions.filter(item => item.version_id === versions.current_version_id);
       if (!matches.length) throw new UserFacingError('未找到项目当前稿的准确版本，请重新读取后再继续。');
       if (matches.length !== 1) throw new UserFacingError('项目当前稿的版本记录不唯一，请重新读取后再继续。');
-      version = checkedVersion(matches[0]);
+      version = checkedVersion(matches[0], alias);
     }
   } else {
     throw new UserFacingError('请选择本轮采用的募集书版本。');
@@ -83,6 +103,25 @@ export function resolveContinuationBasis(
     version ? [version.version_id, version.sequence, version.origin, version.material_id, version.material_version,
       version.artifact_id, version.artifact_version, version.sha256, version.revision_artifact_id, version.run_id] : null]);
   return { choice, selectionRevision: versions.selection_revision, version, editBase, key };
+}
+
+/** Re-read shared first-draft metadata at both preparation and input submission. */
+export async function readContinuationBasis(
+  versions: Dto<'ProspectusVersionsResponse'>,
+  projectId: string,
+  run: Dto<'RunResponse'>,
+  choice: ContinuationChoice,
+  readArtifact: (id: string) => Promise<Dto<'ArtifactResponse'>>,
+): Promise<ContinuationBasis> {
+  const candidates = versions.project_id === projectId && run.project_id === projectId && Array.isArray(versions.versions)
+    ? versions.versions.filter(version => choice === 'result'
+      ? version.origin === 'generated' && version.run_id === run.run_id
+      : choice === 'current' && version.version_id === versions.current_version_id)
+    : [];
+  const selected = candidates.length === 1 ? candidates[0] : undefined;
+  const alias = selected?.origin === 'generated' && validId(selected.artifact_id) && selected.artifact_id === selected.revision_artifact_id
+    ? await readArtifact(selected.artifact_id) : undefined;
+  return resolveContinuationBasis(versions, projectId, run, choice, alias);
 }
 
 function periodSummary(period: TargetReportingPeriod): string {

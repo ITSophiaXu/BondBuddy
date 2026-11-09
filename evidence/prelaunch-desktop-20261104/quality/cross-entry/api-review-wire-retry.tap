@@ -1,0 +1,30 @@
+TAP version 13
+# Subtest: review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund
+not ok 1 - review dynamic balance: zero guard, one-point start, real debit, pause/resume, preserved delivery, cancellation and refund
+  ---
+  duration_ms: 1743.5162
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\prelaunch-desktop-20261104\\apps\\api\\dist\\review-dynamic-balance.pg.test.js:13:1'
+  failureType: 'testCodeFailure'
+  error: '{"code":"CAPABILITY_NOT_READY","message":"Capability is not connected","retryable":false,"field_errors":[],"correlation_id":"7bf21bee-d929-4ab9-aa25-cb3fdebe4562"}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    ok (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/apps/api/dist/review-dynamic-balance.pg.test.js:20:32)
+    TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/apps/api/dist/review-dynamic-balance.pg.test.js:55:9)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 10072.6596
