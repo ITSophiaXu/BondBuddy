@@ -1,6 +1,6 @@
 import {runRecoverableBillingRequest,observeAutomaticQuotes} from './billing-task-recovery.js';
 import {readDownloadBytes,type DownloadProgress} from './download-progress.js';
-import {WorkpaperZipPreparationSchema,type WorkpaperZipPreparation} from '@bondbuddy/contracts';
+import {schemas as uploadSchemas,WorkpaperZipPreparationSchema,type WorkpaperZipPreparation} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import {BILLING_WIRE_HEADER,BILLING_WIRE_VERSION,LEGACY_BILLING_WIRE_VERSION,billingWireRoute,encodeBillingDto,validateBillingDto} from '@bondbuddy/contracts';
 import { UserFacingError, unknownErrorText, type ErrorOperation } from './user-facing-error.js';
@@ -449,8 +449,35 @@ export class ApiClient {
   createUpload(id: string, input: Dto<'UploadCreateRequest'>, signal?: AbortSignal) {
     return this.request<Dto<'UploadSessionResponse'>>('POST', `/projects/${encodeURIComponent(id)}/materials/uploads`, input, {}, signal);
   }
-  completeUpload(id: string, uploadId: string, input: Dto<'UploadCompleteRequest'>, signal?: AbortSignal) {
-    return this.request<Dto<'MaterialResponse'>>('POST', `/projects/${encodeURIComponent(id)}/materials/uploads/${encodeURIComponent(uploadId)}/complete`, input, {}, AbortSignal.any([signal ?? this.controller.signal, AbortSignal.timeout(30_000)]));
+  async completeUpload(id:string,uploadId:string,input:Dto<'UploadCompleteRequest'>,signal?:AbortSignal):Promise<Dto<'MaterialResponse'>>{
+    const lifetime=AbortSignal.any([signal??this.controller.signal,AbortSignal.timeout(600_000)]);
+    const path=`/projects/${encodeURIComponent(id)}/materials/uploads/${encodeURIComponent(uploadId)}/complete`;
+    let failures=0;
+    for(;;){
+      lifetime.throwIfAborted();
+      let response:Response;
+      try{response=await this.response('POST',path,input,{'Prefer':'respond-async'},AbortSignal.any([lifetime,AbortSignal.timeout(25_000)]));failures=0;}
+      catch(error){
+        if(lifetime.aborted||error instanceof ApiError&&error.status<500&&error.status!==0||++failures>3)throw error;
+        await this.uploadConfirmationDelay(2,lifetime);continue;
+      }
+      if(response.headers.get('content-type')?.split(';')[0]!=='application/json')throw new ApiError(0,'DATA_UNAVAILABLE');
+      const result:unknown=await response.json();
+      if(response.status===200){
+        if(!Value.Check(uploadSchemas.MaterialResponse,result)||result.sha256!==input.sha256||result.byte_size!==input.byte_size)throw new ApiError(0,'DATA_UNAVAILABLE');
+        return result;
+      }
+      if(response.status!==202||!Value.Check(uploadSchemas.UploadConfirmationPending,result)||result.upload_id!==uploadId)throw new ApiError(0,'DATA_UNAVAILABLE');
+      const retry=Number(response.headers.get('retry-after'));
+      await this.uploadConfirmationDelay(Number.isFinite(retry)&&retry>0?Math.min(5,retry):2,lifetime);
+    }
+  }
+  private uploadConfirmationDelay(seconds:number,signal:AbortSignal){
+    return new Promise<void>((resolve,reject)=>{
+      const abort=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);reject(signal.reason);};
+      const timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve();},Math.max(.05,seconds)*1000);
+      signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
+    });
   }
   uploadBytes(uploadUrl: string, file: File, onProgress: (loaded: number, total: number) => void, signal: AbortSignal) {
     const target = new URL(uploadUrl, window.location.href);

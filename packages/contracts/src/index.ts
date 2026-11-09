@@ -316,6 +316,7 @@ export const schemas = {
   InputRevisionResponse: obj({ project_id: id, input_revision: revision, input_hash: hash, target_confirmation: TargetConfirmationSchema, material_versions: Type.Array(obj({ material_id: id, material_version: revision })), credit_facility_supplements: Type.Optional(Type.Array(creditFacilitySupplementSchemas.CreditFacilitySupplementVersionRef, { maxItems: 60, description: 'Exact user-asserted supplement versions pinned by this immutable input revision; not verified facts.' })), rule_pack_version: nullable(Type.String()), template_version: nullable(Type.String()), reference_release: nullable(Type.String()), created_at: utc }),
   UploadCreateRequest: Type.Object({ filename: Type.String({ minLength: 1 }), media_type: uploadMediaType, byte_size: Type.Integer({ minimum: 1 }), sha256: hash, role: materialRole }, { additionalProperties: false, if: { properties: { role: { enum: ['historical', 'reference'] } } }, then: { properties: { media_type: { enum: [M1_UPLOAD_MIME_TYPES[0], M1_UPLOAD_MIME_TYPES[1]] } } } }),
   UploadSessionResponse: obj({ upload_id: id, state: Type.Literal('uploading'), upload_url: Type.String({ description: 'Short-lived, scoped URL; never store or log it.' }), expires_at: utc, max_bytes: Type.Integer({ minimum: 1 }) }),
+  UploadConfirmationPending: obj({status:Type.Literal('confirming'),upload_id:id}),
   UploadCompleteRequest: obj({ byte_size: Type.Integer({ minimum: 1 }), sha256: hash }),
   MaterialRoleCopyRequest: obj({ request_key: Type.String({ pattern: '^[A-Za-z0-9._:-]{1,128}$' }), source_material_id: id, source_material_version: revision, source_sha256: hash, source_media_type: Type.Union([Type.Literal(M1_UPLOAD_MIME_TYPES[0]), Type.Literal(M1_UPLOAD_MIME_TYPES[1])]), target_role: Type.Literal('historical') }),
   MaterialRoleCopyResponse: obj({ receipt_id: id, source_material_id: id, source_material_version: revision, material: materialResponseSchema }),
@@ -640,6 +641,9 @@ export function openApiDocument() {
     requestBody: { required: true, content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
     responses: { '204': { description: 'Bytes verified and received; call complete to register material' }, '404': { description: 'Unknown or foreign upload' }, '422': { description: 'Content mismatch or expired upload', content: { 'application/json': { schema: ref('Error') } } }, '503': { description: 'Temporary upload inspection capacity unavailable; retryable', content: { 'application/json': { schema: ref('Error') } } } }
   } };
+  const uploadComplete=paths['/api/v1/projects/{project_id}/materials/uploads/{upload_id}/complete'].post as {responses:Record<string,unknown>;parameters:unknown[]};
+  uploadComplete.parameters.push({in:'header',name:'Prefer',schema:{type:'string',enum:['respond-async']},description:'Persist confirmation and poll the same upload until the final material is verified'});
+  uploadComplete.responses['202']={description:'Confirmation durably queued or verifying',headers:{'Retry-After':{schema:{type:'integer',minimum:1}}},content:{'application/json':{schema:ref('UploadConfirmationPending')}}};
   // --- #17 worker runtime: SSE responses are text/event-stream frames whose `data:` matches the schema ---
   for (const [path, schema] of [['/runs/{run_id}/stream', 'RunEvent'], ['/projects/{project_id}/materials/{material_id}/parse-job/stream', 'JobStreamEvent']] as const) {
     const get = paths[`/api/v1${path}`].get as Record<string, any>;
