@@ -7,9 +7,11 @@ export function elapsedLabel(ms:number){const s=Math.floor(ms/1000);return s<60?
 export function authoringEventLabel(event:RunEvent):string|null{
   const a=event.payload.authoring_activity;
   if(!a)return null;
-  if(a.summary)return a.summary;
   const label=AUTHORING_ACTIVITY_LABELS[a.code];
-  return a.state==='failed'?label.replace('正在','本次处理未完成：'):a.state==='completed'?label.replace('正在','处理步骤已返回：'):label;
+  // Activity errors describe one internal step, not the run lifecycle; a summary must not hide them.
+  if(a.state==='failed')return label.replace('正在','处理步骤出错：')+(a.summary?`。进度说明：${a.summary}`:'');
+  if(a.summary)return a.summary;
+  return a.state==='completed'?label.replace('正在','处理步骤已返回：'):label;
 }
 /** Keep public summaries separately from noisy tool events, including across paginated reloads. */
 export function retainAuthoringEvents(events:RunEvent[]):RunEvent[]{
@@ -51,8 +53,8 @@ export function authoringStatus(run:Run,events:RunEvent[],p?:AuthoringProgress){
   // Tool activity cannot refresh the age of a model's public progress sentence.
   const stale=!!(reported&&p&&Date.parse(p.sampled_at)-Date.parse(reported.occurred_at)>=60000);
   const failed=a?.state==='failed';
-  const title=failed?'本次处理遇到问题':report?AUTHORING_ACTIVITY_LABELS[report.code]:a?AUTHORING_ACTIVITY_LABELS[a.code]:fallback;
-  const notice=p&&!p.clock_running?'执行连接正在恢复，积分暂不增加。':failed?'本次处理未完成，正在等待后续状态。':!report?'暂未收到模型的具体进度说明；收到后会自动显示。':stale?'暂未收到新的进度说明；收到后会自动更新。':'';
+  const title=failed?'处理步骤遇到问题':report?AUTHORING_ACTIVITY_LABELS[report.code]:a?AUTHORING_ACTIVITY_LABELS[a.code]:fallback;
+  const notice=p&&!p.clock_running?'执行连接正在恢复，积分暂不增加。':failed?'该步骤出错，任务尚未结束；后续状态会自动更新。':!report?'暂未收到模型的具体进度说明；收到后会自动显示。':stale?'暂未收到新的进度说明；收到后会自动更新。':'';
   const summary=report?.summary?`最近一次模型进度：${report.summary}${notice?' '+notice:''}`:notice;
   return {title,summary,phase:(run.stage==='claimed'||run.stage==='input_lock'||run.stage==='materials_ready'?1:run.stage?.includes('word_delivery')?3:2) as 1|2|3};
 }

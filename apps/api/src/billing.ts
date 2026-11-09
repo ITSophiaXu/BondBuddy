@@ -86,7 +86,7 @@ export async function activePrice(client: PoolClient, commercial=false) {
   validatePrices(p.prices); return p;
 }
 export const quoteDto = (q: any): FixedQuote => ({ quote_id: q.id, project_id: q.project_id, input_revision: q.input_revision,
-  input_hash: q.input_hash.trim(), task_type: q.task_type, points: Number(q.points), price_version: q.price_version, reason: q.reason, created_at: date(q.created_at),...(q.pricing_mode===OUTCOME_MODE?{...outcomeMetadata(Number(q.points),Number(q.points),1,q.price_version),scope_quote_id:q.scope_quote_id,quote_status:q.quote_status??'ready',scope_expires_at:q.scope_expires_at??null,scope_lines:q.scope_lines??[]}:{}) });
+  input_hash: q.input_hash.trim(), task_type: q.task_type, points: Number(q.points), price_version: q.price_version, reason: q.reason, created_at: date(q.created_at),...(q.pricing_mode===OUTCOME_MODE?{...outcomeMetadata(Number(q.points),Number(q.points),1,q.price_version),scope_quote_id:q.scope_quote_id,quote_status:q.quote_status??'ready',scope_expires_at:q.scope_expires_at==null?null:date(q.scope_expires_at),scope_lines:q.scope_lines??[]}:{}) });
 
 export async function quoteCreditsExact(pool: Pool, owner: string, projectId: string, revision: number, hash: string, commercial=false) {
   return transaction(pool, async c => {

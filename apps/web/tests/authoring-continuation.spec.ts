@@ -417,14 +417,34 @@ test('explicit current choice uses current_version_id and persists that choice a
   expect(writes(state)).toEqual([]); await startAndAssert(page, state, newerPin); expect(oldRecords(state)).toEqual(old);
 });
 
-test('failed task with no current version requires an explicit null edit base and reuses financial material', async ({ page }) => {
+test('failed task without a reference stays blocked until a saved uploaded source is available, then uses a null edit base', async ({ page }) => {
   const state = fixture(), oldRun = state.runs.get(oldRunId)!; oldRun.state = 'failed'; oldRun.stage = 'failed'; oldRun.artifact_id = null;
+  const source = structuredClone(state.materials[0]), sourceInformation = structuredClone(state.project.update_details!.source_prospectuses);
+  const sourceVersion = structuredClone(state.versions.versions.find(version => version.material_id === source.material_id)!);
+  const originalRun = structuredClone(oldRun), originalInput = structuredClone(state.inputs.get(7));
   state.versions.current_version_id = null; state.versions.versions = []; state.versions.selection_revision = 0;
   state.materials = [state.materials[1]]; state.versions.inactive_material_ids = [];
+  const financial = structuredClone(state.materials[0]);
   state.project.update_details!.source_prospectuses = []; state.project.update_details!.has_historical = false;
-  await install(page, state); await page.goto(routeFor()); await expect(page.locator('#prepare-next-version')).toBeVisible(); await prepare(page);
+  await install(page, state); await page.goto(routeFor()); await expect(page.locator('#prepare-next-version')).toBeVisible();
+  await page.locator('#prepare-next-version').click(); await expect(summary(page)).toBeVisible();
   await expect(basis(page)).toHaveValue('current'); await expect(summary(page)).toContainText(/尚未采用|没有|无|首稿/); expectNoExecution(state);
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  await expect(page.locator('#start-disabled-reason')).toContainText('历史／参考募集书');
+  await page.locator('#execute-input').dispatchEvent('click'); expectNoExecution(state);
+  expect(state.materials).toEqual([financial]); expect(state.inputs.get(7)).toEqual(originalInput); expect(state.runs.get(oldRunId)).toEqual(originalRun);
+
+  // This HTTP-boundary fixture now exposes a persisted, adopted original with
+  // complete declarations. Upload bytes themselves are covered by upload suites.
+  state.materials.unshift(source); state.versions.versions = [sourceVersion];
+  state.versions.current_version_id = sourceVersion.version_id; state.versions.selection_revision++;
+  state.project.update_details!.source_prospectuses = sourceInformation; state.project.update_details!.has_historical = true;
+  state.project.draft_revision++;
+  await page.reload(); await expect(summary(page)).toBeVisible(); await expect(basis(page)).toHaveValue('current');
+  await expect(summary(page)).toContainText(source.filename); await expect(page.locator('#execute-input')).toBeEnabled();
   await startAndAssert(page, state, null); expect(state.locked[0].request.material_versions).toEqual(refs(state));
+  expect(state.locked[0].request.material_versions).toContainEqual({material_id:financial.material_id,material_version:financial.material_version});
+  expect(state.inputs.get(7)).toEqual(originalInput); expect(state.runs.get(oldRunId)).toEqual(originalRun);
 });
 
 test('missing exact result mapping blocks until the user explicitly selects current, without substituting the revision file', async ({ page }) => {
@@ -660,7 +680,7 @@ test('lost continuation input response requires honest readback and never guesse
   const state = await openCompleted(page), oldInput = structuredClone(state.inputs.get(7)), oldRun = structuredClone(state.runs.get(oldRunId));
   await prepare(page); state.dropNextInputResponse = true; await page.locator('#execute-input').click();
   await expect(page.locator('#execution-message')).toContainText(/保存结果尚未确认|输入.*未确认/);
-  await expect(page.locator('#execution-message')).not.toContainText('继续上次提交');
+  await expect(page.locator('#execution-message')).not.toContainText('用已保存内容开始更新');
   await expect(page.locator('#refresh-execution')).toBeVisible(); await expect(page.locator('#execute-input')).toBeDisabled();
   await expect(page.locator('#select-saved-input')).toBeHidden(); await expect(page.locator('#retry-execution')).toBeHidden();
   expect(state.inputAttempts).toHaveLength(1); expect(state.locked).toHaveLength(1); expect(state.inputs.size).toBe(2); expect(state.runs.size).toBe(1);

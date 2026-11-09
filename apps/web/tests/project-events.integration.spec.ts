@@ -54,7 +54,7 @@ test('real PostgreSQL/Azurite material survives browser close and same-account r
   await expect(reopened.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
     await reopened.goto(`/#/projects/${encodeURIComponent(projectId)}`);
     await expect(reopened.getByRole('heading', { name: projectName, exact: true })).toBeVisible();
-    await expect(reopened.getByText('已恢复 1 份材料。')).toBeVisible();
+    await expect(reopened.getByText('已保存 1 份材料。')).toBeVisible();
     await expect(reopened.locator('.persisted-material')).toContainText('real-api-recovery.pdf');
 
     const deletedStatus = await reopened.evaluate(async ({ projectId: id, materialId: mid }) => {

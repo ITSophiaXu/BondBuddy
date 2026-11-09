@@ -341,7 +341,7 @@ function shell(content: string, section: string) {
     <nav aria-label="主导航">${nav('tasks','clock','任务进度与结果',section === 'projects')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','文件生成',section === 'generate')}${nav('integrity','shield','诚信核查',section === 'integrity')}${nav('qa','chat','项目问答',section === 'qa')}</nav>
     <div class="sidebar-bottom"><div class="user account"><a class="account-entry" href="${esc(rechargeHref())}" aria-label="我的账号" title="我的账号" ${section === 'account' ? 'aria-current="page"' : ''}><span class="avatar" aria-hidden="true">我</span><strong data-account-name aria-label="当前登录账号">当前账号</strong></a><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
     <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '文件生成' : section === 'integrity' ? '诚信核查' : section === 'qa' ? '项目问答' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '账户与计费' : '任务进度与结果'}</span></div></header>
-    <main id="main" tabindex="-1">${context?`<section class="project-context" aria-label="当前项目"><div><small>正在处理</small><strong data-project-context-name>${esc(projectNames.get(context.projectId)??'当前项目')}</strong></div><a href="${projectWorkHref('files',context.projectId)}">返回本项目文件</a></section>`:''}${content}</main></div></div>`;
+    <main id="main" tabindex="-1">${context?`<section class="project-context" aria-label="当前项目"><div><small>当前项目</small><strong data-project-context-name>${esc(projectNames.get(context.projectId)??'当前项目')}</strong></div><a href="${projectWorkHref('files',context.projectId)}">返回本项目文件</a></section>`:''}${content}</main></div></div>`;
   if(context&&!projectNames.has(context.projectId)&&!projectNameRequests.has(context.projectId)){
     const owner=identity,expectedProject=context.projectId;
     const request=api.project(expectedProject).then(project=>{
@@ -544,7 +544,7 @@ async function renderRoute() {
 function renderNew(handoffQuery=new URLSearchParams()) {
   const value = blankDraft();
   const creationRequestId=crypto.randomUUID();
-  shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>先保存项目，再添加材料。没有历史募集书，也可以编制首稿。</p></div><a class="btn secondary" href="#tasks">查看任务进度与结果</a></div>${workspaceSteps(1)}<div id="business-handoff"></div>
+  shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>先保存项目，再上传历史／参考募集书并填写原稿信息。</p></div><a class="btn secondary" href="#tasks">查看任务进度与结果</a></div>${workspaceSteps(1)}<div id="business-handoff"></div>
     <form id="create-form" class="update-form"><div class="workspace-layout authoring-workspace"><section class="panel form-panel form-card">${updateFormFields(value, true)}
     <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div><p class="field-hint">创建项目只保存信息；添加材料和补充要求后，由你明确开始任务。</p></section></div></form>`, 'new');
   const handoffEpoch=epoch;void mountBusinessHandoff(api,document.querySelector<HTMLElement>('#business-handoff')!,handoffQuery,()=>handoffEpoch===epoch);
@@ -611,8 +611,8 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
       </div></div></div>`, projectSection('workspace'));
   const prospectusEpoch=epoch;
   prospectusPanel=new ProspectusPanel(api,project.project_id,document.querySelector<HTMLElement>('#prospectus-panel')!,async()=>{
-    if(projectExecution?.hasUnconfirmedRequest||!draft)return false;
-    const saved=await draft.save();return saved&&!projectExecution?.hasUnconfirmedRequest;
+    if(projectExecution&&(!projectExecution.materialsEditable||projectExecution.hasUnconfirmedRequest)||!draft)return false;
+    const saved=await draft.save();return saved&&(!projectExecution||projectExecution.materialsEditable&&!projectExecution.hasUnconfirmedRequest);
   },async()=>{
     if(prospectusEpoch!==epoch)return;
     prospectusPanel?.dispose();prospectusPanel=undefined;
@@ -680,7 +680,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
         await refreshProjectMaterials(project.project_id,prospectusEpoch);
         const fresh=await api.project(project.project_id);
         return prospectusEpoch===epoch&&!!draft&&draft.adoptUnchanged(fresh);
-      },()=>projectMaterialReadiness(project.project_id).message);
+      },()=>projectMaterialReadiness(project.project_id).message,editable=>prospectusPanel?.setReadOnly(!editable));
     if (staleInputNoticeProjectId === project.project_id) staleInputNoticeProjectId = undefined;
     projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!, document.querySelector<HTMLElement>('#execution-actions')!);
   }
@@ -832,7 +832,7 @@ function updateProcessingRows(projectId: string) {
 
 function materialDeleteControl(id:string) {
   return prospectusPanel?.state?.versions.some(v=>v.material_id===id)
-    ? '<span class="muted">已保留在版本历史</span>'
+    ? '<span class="muted">在上方募集书版本卡管理</span>'
     : `<button type="button" class="text-button" data-delete-material="${esc(id)}">删除</button>`;
 }
 
@@ -985,13 +985,9 @@ function updateMaterialWorkspace(projectId: string) {
   else if (state?.state === 'unavailable') status.textContent = state.message ?? '材料记录读取失败，请刷新重试。';
   else {
     const savedIds = new Set((recoveredMaterials.get(projectId) ?? []).map(material => material.material_id));
-    const count = savedIds.size;
     const sessionCount = new Set((localUploads.get(projectId) ?? []).filter(upload => upload.phase === 'persisted' && upload.material && !savedIds.has(upload.material.material_id)).map(upload => upload.material!.material_id)).size;
-    status.textContent = count
-      ? `已恢复 ${count} 份材料。${sessionCount ? `本次会话另有 ${sessionCount} 份材料已获服务端保存确认。` : ''}`
-      : sessionCount
-        ? `已保存 ${sessionCount} 份材料。`
-        : '尚未添加材料。';
+    const count = savedIds.size + sessionCount;
+    status.textContent = count ? `已保存 ${count} 份材料。` : '尚未添加材料。';
     const reused = (localUploads.get(projectId) ?? []).filter(upload => upload.phase === 'persisted' && upload.uploadId && upload.material?.upload_id !== upload.uploadId).length;
     if (reused) status.textContent += ` 本次 ${reused} 份重复上传已复用原材料版本。`;
   }

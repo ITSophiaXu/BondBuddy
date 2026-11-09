@@ -1321,7 +1321,11 @@ export function createServer(settings: Settings = {}) {
     const user=await owner(request),r=await run(db(),user,param(request,'run_id'));
     const progress=await readAuthoringProgress(db(),user,r.id);
     if(!r.reservation_id)return {quote:null,state:null,...(progress?{progress}:{})};
-    const row=(await db().query('SELECT q.*,r.state AS charge_state FROM bb_credit_reservations r JOIN bb_credit_quotes q ON q.id=r.quote_id AND q.owner_user_id=r.owner_user_id WHERE r.owner_user_id=$1 AND r.id=$2',[user,r.reservation_id])).rows[0];
+    // Published scope expiry is immutable; retain the accepted terms even after the scope closes.
+    const row=(await db().query(`SELECT q.*,r.state AS charge_state,s.expires_at AS scope_expires_at
+      FROM bb_credit_reservations r JOIN bb_credit_quotes q ON q.id=r.quote_id AND q.owner_user_id=r.owner_user_id
+      LEFT JOIN bb_scope_quotations s ON s.owner_user_id=q.owner_user_id AND s.project_id=q.project_id AND s.id=q.scope_quote_id
+      WHERE r.owner_user_id=$1 AND r.id=$2`,[user,r.reservation_id])).rows[0];
     if(!row)throw missing();
     return {quote:quoteDto(row),state:row.charge_state,...(progress?{progress}:{})};
   });

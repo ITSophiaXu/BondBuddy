@@ -74,6 +74,8 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
     assert.equal(both[0].json().billing_mode,'fixed_credits');assert.ok(both[0].json().reservation_id);
     assert.equal(await count('bb_credit_reservations'),1);assert.deepEqual(await creditBalance(pool,owner),{available:P,frozen:0});
     const id=both[0].json().run_id;
+    const charge=await send('GET',`/api/v1/runs/${id}/credit-charge`);assert.equal(charge.statusCode,200,charge.body);
+    assert.deepEqual(charge.json().quote,q.quote);assert.equal(charge.json().state,'held');
     const heldHistory=await send('GET','/api/v1/credits/consumption-history');assert.equal(heldHistory.statusCode,200,heldHistory.body);
     assert.deepEqual(heldHistory.json().items.map((r:any)=>[r.run_id,r.state,r.reserved_points,r.charged_points]),[[id,'held','0','0']]);
     assert.equal(heldHistory.headers['cache-control'],'private, no-store');

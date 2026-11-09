@@ -69,6 +69,34 @@ test('HTTP exposes automatic price metadata, rejects client amounts and preserve
   }finally{await app.close();await pool.end();}
 });
 
+test('HTTP charge readback preserves the exact original scope terms after a replacement quote', {skip:!database},async()=>{
+  const pool=new Pool({connectionString:database}),f=await fixture(pool),origin='https://synthetic.invalid';let actor=f.owner;
+  const app=createServer({pool,enableSubscriptionBilling:true,allowedOrigin:origin,paymentProviders:[],principal:async()=>({userId:actor,csrfVerified:true})});
+  try{
+    const response=await app.inject({method:'POST',url:`/api/v1/projects/${f.project}/credit-quote`,headers:{origin},payload:{input_revision:1,input_hash:f.hash}});
+    assert.equal(response.statusCode,200,response.body);const original=response.json().quote;
+    assert.equal(typeof original.scope_expires_at,'string');
+    await transaction(pool,c=>grantCredits(c,{owner:f.owner,source:'purchase',key:randomUUID(),points:100000,expiresAt:null,actor:'synthetic',reason:'charge readback fixture'}));
+    const attempt=await run(pool,f);
+    await transaction(pool,async c=>reserveCredits(c,f.owner,attempt,original.quote_id,{revision:1,manifest:f.manifest},(await c.query('SELECT * FROM bb_projects WHERE id=$1',[f.project])).rows[0],undefined,true));
+    const url=`/api/v1/runs/${attempt.id}/credit-charge`;
+    const assertReadback=async(state:string)=>{
+      const before=(await pool.query('SELECT * FROM bb_credit_events WHERE owner_user_id=$1 ORDER BY id',[f.owner])).rows,balance=await creditBalance(pool,f.owner);
+      const receipt=await app.inject({method:'GET',url});assert.equal(receipt.statusCode,200,receipt.body);
+      assert.equal(receipt.json().state,state);assert.deepEqual(receipt.json().quote,original);
+      assert.deepEqual((await pool.query('SELECT * FROM bb_credit_events WHERE owner_user_id=$1 ORDER BY id',[f.owner])).rows,before);
+      assert.deepEqual(await creditBalance(pool,f.owner),balance);
+    };
+    await assertReadback('held');
+    await pool.query("UPDATE bb_runs SET state='failed' WHERE id=$1",[attempt.id]);
+    await pool.query("UPDATE bb_scope_quotations SET status='expired',closed_at=now(),closure_reason='Synthetic expired-scope boundary' WHERE id=$1",[original.scope_quote_id]);
+    const replacement=(await quoteCredits(pool,f.owner,f.project,1,f.hash,true)).quote;
+    assert.notEqual(replacement.scope_quote_id,original.scope_quote_id);assert.notEqual(replacement.scope_expires_at,original.scope_expires_at);
+    await assertReadback('released');
+    actor=randomUUID();assert.equal((await app.inject({method:'GET',url})).statusCode,404);
+  }finally{await app.close();await pool.end();}
+});
+
 for(const expired of [false,true])test(`failed and released authoring can retry with a new immutable quote; closed=${expired}`,{skip:!database},async()=>{
   const pool=new Pool({connectionString:database});configureAutomaticBilling(pool,true);
   try{

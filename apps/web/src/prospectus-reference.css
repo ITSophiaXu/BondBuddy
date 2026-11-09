@@ -25,6 +25,15 @@
 .reference-prospectus #prospectus-status:not(:empty) { margin: 12px 0 0; padding: 0; background: none; }
 .reference-prospectus #prospectus-status[data-tone="error"] { color: #923b2d; }
 .reference-prospectus .reference-upload-picker { justify-content: center; margin-top: 0; margin-bottom: 20px; }
+.reference-readonly-note { display: none; }
+.prospectus-readonly .reference-prospectus .prospectus-panel-heading p,
+.prospectus-readonly .reference-prospectus .prospectus-upload-hint,
+.prospectus-readonly .reference-prospectus .reference-upload-picker,
+.prospectus-readonly .reference-prospectus .prospectus-upload-editor,
+.prospectus-readonly .reference-prospectus [data-use-version],
+.prospectus-readonly .reference-prospectus [data-delete-version],
+.prospectus-readonly .reference-prospectus #retry-prospectus-selection { display: none; }
+.prospectus-readonly .reference-readonly-note { display: block; margin: 8px 0 20px; color: #69766b; }
 @media (max-width: 900px) {
   .reference-prospectus .reference-file { display: grid; grid-template-columns: 36px minmax(0, 1fr); }
   .reference-file .prospectus-version-actions { grid-column: 2; justify-content: flex-start; }

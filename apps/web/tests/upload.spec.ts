@@ -296,12 +296,12 @@ test('three independent files, indeterminate saving after transfer, failed file 
   expect(fixture.materials.size).toBe(3);
 
   await page.reload();
-  await expect(page.getByText('已恢复 3 份材料。')).toBeVisible();
+  await expect(page.getByText('已保存 3 份材料。')).toBeVisible();
   await expect(page.locator('.persisted-material')).toHaveCount(3);
   if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await login(page, 'owner_a');
-  await expect(page.getByText('已恢复 3 份材料。')).toBeVisible();
+  await expect(page.getByText('已保存 3 份材料。')).toBeVisible();
   await expect(page.locator('.persisted-material')).toHaveCount(3);
   if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
@@ -401,7 +401,7 @@ test('server refresh reconciles a delayed receipt but never matches only a filen
   ]) {
     Object.assign(material,invalid);
     await page.getByRole('button',{name:'刷新已保存材料'}).click();
-    await expect(page.locator('#material-recovery-status')).toContainText('已恢复 1 份材料');
+    await expect(page.locator('#material-recovery-status')).toContainText('已保存 1 份材料');
     await expect(row).toBeVisible();
     await expect(page.getByRole('button',{name:'请先处理材料状态',exact:true})).toBeDisabled();
   }

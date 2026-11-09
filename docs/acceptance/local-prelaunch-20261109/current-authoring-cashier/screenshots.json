@@ -1,0 +1,22 @@
+{
+  "syntheticOnly": true,
+  "runtime": "fabf91c716dca502f0371bec8a4f76acaca1d996",
+  "screenshots": [
+    {
+      "name": "01-authoring-zero-balance.png",
+      "sha256": "fa82a1ea1863d2915c851072083e7ddb978dd5daf7741467c2d38dfb2f7574d3"
+    },
+    {
+      "name": "02-cashier-confirmed-before-return.png",
+      "sha256": "6479a42281fe9c654b44fbb4b0177e06b82ef1ba8ce5a446ed216042c24abad1"
+    },
+    {
+      "name": "03-resumed-authoring-reference-locked.png",
+      "sha256": "f82e39c4e086b34c69ff9cd3dbc0e11aadf81b1ddb1bc321e31257ca60bc58d0"
+    },
+    {
+      "name": "final.png",
+      "sha256": "c797ad7ff4d0f8f4794c9495dabbc24a92562817cbcb779d3f9b479e92165b39"
+    }
+  ]
+}

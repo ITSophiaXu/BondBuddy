@@ -1,0 +1,131 @@
+# Isolated persistent local acceptance overlay. Never used by production deploy scripts.
+x-local-labels: &local-labels
+  io.bondbuddy.local-prelaunch.instance: ${BB_LOCAL_PRELAUNCH_INSTANCE:?use local-prelaunch launcher}
+x-local-db: &local-db postgresql://bondbuddy:${POSTGRES_PASSWORD:?set by local launcher}@postgres:5432/${BB_LOCAL_PRELAUNCH_DATABASE:?use local-prelaunch launcher}
+
+services:
+  postgres:
+    labels: *local-labels
+    environment:
+      POSTGRES_DB: ${BB_LOCAL_PRELAUNCH_DATABASE}
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U bondbuddy -d ${BB_LOCAL_PRELAUNCH_DATABASE}']
+  azurite:
+    labels: *local-labels
+    environment:
+      AZURITE_ACCOUNTS: ${AZURITE_ACCOUNTS:?local private storage key}
+  migrate:
+    labels: *local-labels
+    environment:
+      DATABASE_URL: *local-db
+  local-state-init:
+    image: bondbuddy-m1-api:${BB_IMAGE_TAG}
+    labels: *local-labels
+    user: '0:0'
+    command: ['sh', '-c', 'mkdir -p /var/lib/bondbuddy/local-prelaunch && chown 1000:1000 /var/lib/bondbuddy/local-prelaunch && chmod 0700 /var/lib/bondbuddy/local-prelaunch']
+    volumes: [localstate:/var/lib/bondbuddy/local-prelaunch]
+    networks: [backend]
+    restart: 'no'
+    read_only: true
+    security_opt: [no-new-privileges:true]
+  api:
+    labels: *local-labels
+    command: ['node', '/app/scripts/local-prelaunch/api-entry.mjs']
+    environment:
+      DATABASE_URL: *local-db
+      BB_LOCAL_PRELAUNCH_INSTANCE: ${BB_LOCAL_PRELAUNCH_INSTANCE}
+      BB_LOCAL_PRELAUNCH_DATABASE: ${BB_LOCAL_PRELAUNCH_DATABASE}
+      BB_LOCAL_PRELAUNCH_STATE_DIR: /var/lib/bondbuddy/local-prelaunch
+    volumes:
+      - ${BB_LOCAL_PRELAUNCH_ROOT}/scripts/local-prelaunch:/app/scripts/local-prelaunch:ro
+      - ${BB_LOCAL_PRELAUNCH_ROOT}/scripts/billing-functional:/app/scripts/billing-functional:ro
+      - localstate:/var/lib/bondbuddy/local-prelaunch
+    depends_on:
+      local-state-init: {condition: service_completed_successfully}
+      azurite: {condition: service_healthy}
+    deploy: {resources: {limits: {cpus: '2.0', memory: 1536M}}}
+  api-legacy:
+    # Same current binary, authentication and loaders; only persisted billing policy selection differs.
+    extends: {file: ../m1/compose.yaml, service: api}
+    profiles: [legacy-billing]
+    labels: *local-labels
+    command: ['node', '/app/scripts/local-prelaunch/api-entry.mjs']
+    environment:
+      DATABASE_URL: *local-db
+      BB_LOCAL_PRELAUNCH_INSTANCE: ${BB_LOCAL_PRELAUNCH_INSTANCE}
+      BB_LOCAL_PRELAUNCH_DATABASE: ${BB_LOCAL_PRELAUNCH_DATABASE}
+      BB_LOCAL_PRELAUNCH_STATE_DIR: /var/lib/bondbuddy/local-prelaunch
+      BB_SUBSCRIPTION_BILLING_ENABLED: '0'
+      BB_OUTCOME_PRICING_ENABLED: '0'
+      BB_PAID_AUTHORING_ENABLED: '1'
+      BB_PAID_REVIEW_ENABLED: '1'
+      BB_RUN_RUNTIME_ENABLED: '1'
+    volumes:
+      - legacyuploadspool:/var/lib/bondbuddy/upload-spool
+      - ${BB_LOCAL_PRELAUNCH_ROOT}/scripts/local-prelaunch:/app/scripts/local-prelaunch:ro
+      - ${BB_LOCAL_PRELAUNCH_ROOT}/scripts/billing-functional:/app/scripts/billing-functional:ro
+      - localstate:/var/lib/bondbuddy/local-prelaunch
+    depends_on:
+      api: {condition: service_healthy}
+      local-state-init: {condition: service_completed_successfully}
+      azurite: {condition: service_healthy}
+    deploy: {resources: {limits: {cpus: '2.0', memory: 1536M}}}
+  worker:
+    labels: *local-labels
+    environment:
+      DATABASE_URL: *local-db
+      NODE_USE_ENV_PROXY: '1'
+    # WSL lacks AppArmor. Derive the production policy with only mount flags 14 denied.
+    security_opt: !override [no-new-privileges:true, 'seccomp=../local-prelaunch/security/codex-seccomp.json']
+    deploy: {resources: {limits: {cpus: '4.0', memory: 4096M}}}
+  worker-review:
+    labels: *local-labels
+    environment:
+      DATABASE_URL: *local-db
+      NODE_USE_ENV_PROXY: '1'
+    security_opt: !override [no-new-privileges:true, 'seccomp=./security/codex-seccomp.json']
+    deploy: {resources: {limits: {cpus: '2.0', memory: 3072M}}}
+  worker-parse:
+    labels: *local-labels
+    environment:
+      DATABASE_URL: *local-db
+      NODE_USE_ENV_PROXY: '1'
+    security_opt: !override [no-new-privileges:true, 'seccomp=./security/codex-seccomp.json']
+    deploy: {resources: {limits: {cpus: '2.0', memory: 2048M}}}
+  ops:
+    labels: *local-labels
+    environment:
+      DATABASE_URL: *local-db
+  egress:
+    labels: *local-labels
+  web:
+    labels: *local-labels
+    volumes:
+      - ${BB_LOCAL_PRELAUNCH_ROOT}/deploy/local-prelaunch/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api-legacy: {condition: service_healthy}
+
+networks:
+  backend:
+    labels: *local-labels
+  edge:
+    labels: *local-labels
+volumes:
+  pgdata:
+    labels: *local-labels
+  blobdata:
+    labels: *local-labels
+  logsink:
+    labels: *local-labels
+  uploadspool:
+    labels: *local-labels
+  parsestaging:
+    labels: *local-labels
+  reviewstaging:
+    labels: *local-labels
+  materialstaging:
+    labels: *local-labels
+  localstate:
+    labels: *local-labels
+  legacyuploadspool:
+    labels: *local-labels

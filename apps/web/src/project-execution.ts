@@ -82,11 +82,12 @@ export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>
 
 /** Presentation only: the server remains authoritative about readiness and run transitions. */
 export function executionEventReason(payload: Dto<'RunEvent'>['payload'] | undefined): string | undefined {
-  return payload?.error_code === 'WORD_FORMAT_OPERATIONS_MISSING' && payload.reason === 'processor_failed'
+  return ['WORD_FORMAT_OPERATIONS_MISSING','MATERIAL_UNREADABLE'].includes(payload?.error_code ?? '') && payload?.reason === 'processor_failed'
     ? payload.error_code : payload?.reason ?? payload?.error_code;
 }
 
 export function readinessMessage(reason: string, lastProcessingStage?: string): string {
+  if (reason === 'MATERIAL_UNREADABLE') return '有材料无法读取，本轮未能交付。请点击“继续修改”，检查本轮文件并重新导出不可读材料，上传可读副本后重新开始；原任务和已保存材料会保留。';
   if (reason === 'WORD_FORMAT_OPERATIONS_MISSING') return '本轮编制未保存必需的修订记录，尚未生成可交付的 Word。已保存材料会保留，无需重新上传；请联系支持核对本轮结果。';
   if (reason === 'processor_failed') return lastProcessingStage === 'word_delivery'
     ? 'Word 文件生成或保存失败，本轮未能交付。已保存材料会保留，无需重新上传；请联系支持核对并恢复。'
@@ -127,7 +128,9 @@ export class ProjectExecution {
   private actions!: HTMLElement;
   private materialMessage = '';
   private restoring = false;
-  private offerSavedInput = false;
+  private recoveredInputMessages?: ProjectMessageSetRef;
+  private uncertainInputSave?: { generation: number; draftRevision: number; afterRevision: number;
+    materialVersions: Input['material_versions']; messages: ProjectMessageSetRef };
   private input?: Input;
   private selectedMessages?: ProjectMessageSetRef;
   private starting = false;
@@ -195,7 +198,8 @@ export class ProjectExecution {
   constructor(private api: ApiClient, private draft: Draft, private conversation: ProjectConversation,
     private referenceSnapshots?: ReferenceSnapshotResolver, private onStaleInput?: () => void,
     private initialNotice = '', private onDelivered?:()=>void,
-    private refreshPreparation?:()=>Promise<boolean>, private readMaterialBlock?:()=>string) {}
+    private refreshPreparation?:()=>Promise<boolean>, private readMaterialBlock?:()=>string,
+    private onMaterialsEditable?:(editable:boolean)=>void) {}
   private get active() { return !this.controller.signal.aborted; }
   private get id() { return this.draft.project.project_id; }
   get hasUnconfirmedRequest() { return Boolean(this.pendingExecution || this.inputWriteUncertain); }
@@ -208,34 +212,13 @@ export class ProjectExecution {
   mount(host: HTMLElement, actions: HTMLElement) {
     this.host = host; this.actions = actions;
     host.innerHTML = '<p id="execution-read-message" class="muted" role="status" hidden></p><details id="previous-execution" class="previous-execution" open><summary id="previous-execution-summary" hidden><span>上一轮任务与成果</span><small data-previous-execution-state></small></summary><section class="panel execution-panel" id="run-panel" hidden><div id="execution-progress" aria-live="polite"></div></section><div id="execution-delivery" class="embedded-artifact"></div></details>';
-    actions.innerHTML = `<div id="execution-preflight" hidden></div><p id="execution-message" role="status"></p><p id="start-disabled-reason" role="status"></p><div class="execution-submit-row"><div class="start-buttons"><button class="text-button" type="button" id="refresh-execution" hidden>重新读取</button><button class="text-button" type="button" id="select-saved-input" hidden>继续上次提交</button><button class="text-button" type="button" id="recheck-input" hidden>重新检查处理条件</button><button class="text-button" type="button" id="complete-source-information" aria-describedby="start-disabled-reason" hidden>补齐这份原稿信息</button><button class="btn primary" type="button" id="execute-input" aria-describedby="start-disabled-reason execution-message execution-credit-hint">开始更新 ${icon('arrow')}</button></div></div>`;
+    actions.innerHTML = `<div id="execution-preflight" hidden></div><p id="execution-message" role="status"></p><p id="start-disabled-reason" role="status"></p><div class="execution-submit-row"><div class="start-buttons"><button class="text-button" type="button" id="refresh-execution" hidden>重新读取</button><button class="text-button" type="button" id="recheck-input" hidden>重新检查处理条件</button><button class="text-button" type="button" id="complete-source-information" aria-describedby="start-disabled-reason" hidden>补齐这份原稿信息</button><button class="btn primary" type="button" id="execute-input" aria-describedby="start-disabled-reason execution-message execution-credit-hint">开始更新 ${icon('arrow')}</button></div></div>`;
     this.button('execute-input').addEventListener('click', () => { void this.start(); });
     this.button('complete-source-information').addEventListener('click', () => { this.focusMissingSourceInformation(); });
     this.button('refresh-execution').addEventListener('click', () => { void this.restore(); });
     const retry=document.createElement('button');retry.type='button';retry.className='text-button';retry.id='retry-execution';retry.hidden=true;retry.textContent='核对上次提交';
     this.button('refresh-execution').after(retry);
     retry.addEventListener('click',()=>{void this.retryExecution();});
-    this.button('select-saved-input').addEventListener('click', () => {
-      if (this.busy) return;
-      void (async () => {
-        this.busy = true; this.render();
-        try {
-          const ref = await this.conversation.currentRef();
-          if (!this.active) return;
-          if (ref.message_ids.length) {
-            this.offerSavedInput = false;
-            this.message = '已有已保存补充要求，不能继续未证明包含这些消息的旧输入；请重新开始以锁定新版本。';
-            return;
-          }
-          this.selectedMessages = ref; this.selected = true; this.offerSavedInput = false; this.message = '';
-        } catch (error) {
-          if (this.active) this.message = friendlyError(error,'read');
-        } finally {
-          this.busy = false; this.render();
-        }
-        if (this.selected) void this.start();
-      })();
-    });
     this.button('recheck-input').addEventListener('click', () => { void this.recheck(); });
     this.sync([], false, '正在读取已保存材料…');
     void this.restore();
@@ -344,6 +327,8 @@ export class ProjectExecution {
     if (document.activeElement !== control) unavailable();
   }
   private invalidate() {
+    if (this.recoveredInputMessages) this.message = '内容已修改，将按当前材料与要求开始更新。';
+    this.recoveredInputMessages = undefined;
     this.generation++; this.selected = false; this.selectedMessages = undefined; this.preflight = undefined;
     this.resumeVerified = false;
     this.quote = undefined;
@@ -372,6 +357,7 @@ export class ProjectExecution {
     syncFormatTemplateMode(document.querySelector('#material-partitions') ?? this.host, this.inheritsResultFormat);
     const activeRun = this.run && !['succeeded','test_completed','failed','cancelled','rejected'].includes(this.run.state);
     const materialsLocked = Boolean(this.pendingExecution || this.run && !this.nextRequested);
+    this.onMaterialsEditable?.(this.materialsEditable&&!this.hasUnconfirmedRequest);
     const editsFrozen=Boolean(this.pendingExecution || this.inputWriteUncertain);
     const form=document.querySelector<HTMLElement>('#draft-form');if(form)form.inert=editsFrozen;
     const versionPanel=document.querySelector<HTMLElement>('#prospectus-panel');if(versionPanel)versionPanel.inert=editsFrozen;
@@ -439,8 +425,6 @@ export class ProjectExecution {
     this.button('refresh-execution').hidden = !this.pendingExecution && !this.inputReadUncertain && !this.run && !this.progressMessage;
     this.button('retry-execution').hidden = !this.pendingExecution;
     this.button('retry-execution').disabled = this.busy || this.starting || this.restoring || this.pendingExecutionConflict;
-    this.button('select-saved-input').hidden = !this.offerSavedInput || this.inputReadUncertain || !this.conversation.ready || this.conversation.hasMessages;
-    this.button('select-saved-input').disabled = Boolean(blocked);
     const check = this.preflight;
     this.node('#execution-preflight').hidden = !check || check.status !== 'blocked' || Boolean(activeRun);
     this.node('#execution-preflight').textContent = check?.status === 'blocked' && !activeRun ? blockedMessage(check) : '';
@@ -470,7 +454,8 @@ export class ProjectExecution {
     const needsAttention = run && ['paused', 'awaiting_input', 'failed', 'rejected', 'cancelled'].includes(run.state);
     const lastProcessingStage = run ? [...this.events].reverse().find(event => event.run_id === run.run_id
       && event.type === 'run.progress' && event.seq <= (run.event_cursor ?? Infinity) && event.stage)?.stage ?? undefined : undefined;
-    const failedWordProgress = run?.state === 'failed' && lastProcessingStage === 'word_delivery' ? {phase: 3 as const} : undefined;
+    const failedWordProgress = run?.state !== 'failed' ? undefined : lastProcessingStage === 'word_delivery' ? {phase: 3 as const}
+      : lastProcessingStage === 'input_lock' || lastProcessingStage === 'materials_ready' ? {phase: 1 as const} : undefined;
     // The current run stage is authoritative even when event history is late or unavailable.
     const summary = run?.stage === 'user_paused' ? undefined : automaticPause
       ? (this.reason !== 'trial_limit_cleared' && runtimeMessage(this.reason)) || automaticPause
@@ -595,6 +580,19 @@ export class ProjectExecution {
     if (this.startBlock().reason) { this.render(); return; }
     this.starting = true; this.render();
     try {
+      if (!this.selected && this.recoveredInputMessages) {
+        const messages = this.recoveredInputMessages, generation = this.generation;
+        await this.action(async () => {
+          const current = await this.conversation.currentRef();
+          if (!this.active || generation !== this.generation) return;
+          if (current.version !== messages.version || current.content_sha256 !== messages.content_sha256 ||
+              JSON.stringify(current.message_ids) !== JSON.stringify(messages.message_ids)) {
+            this.invalidate(); this.message = '补充要求已变化，请按当前内容重新开始。'; return;
+          }
+          this.selectedMessages = current; this.selected = true; this.recoveredInputMessages = undefined;
+        }, 'other', 'read');
+        if (!this.selected) return;
+      }
       if (!this.selected) await this.save();
       if (!this.active || !this.selected || !this.input) return;
       if (!this.preflight) await this.check();
@@ -640,6 +638,9 @@ export class ProjectExecution {
     try { await work(); }
     catch (error) {
       if (this.active) {
+        const staleInput = error instanceof ApiError && error.status === 409 && error.code === 'INPUT_REVISION_CONFLICT' &&
+          !this.pendingExecution && !this.inputWriteUncertain;
+        if (staleInput) this.invalidate();
         if((!this.run||this.nextRequested) && error instanceof ApiError&&['QUOTE_CHANGED','QUOTE_REQUIRED','CREDITS_INSUFFICIENT'].includes(error.code)) {
           this.quote=undefined;this.awaitingCredits=true;
           if(error.code==='QUOTE_REQUIRED')this.preflight=undefined;
@@ -649,7 +650,7 @@ export class ProjectExecution {
           ? executionInputError(error, this.draft.project.kind, this.draft.fields.update_details.has_historical, this.materials, this.draft.fields.update_details.authoring_mode === 'unified_v1') : undefined;
         this.inputRejected = operation !== 'other' && error instanceof ApiError && error.status === 409 &&
           (error.code === 'INPUT_REQUIRED' || operation === 'preflight' && error.code === 'CAPABILITY_NOT_READY');
-        this.message = inputMessage ?? (error instanceof ApiError && error.code==='CREDITS_INSUFFICIENT' ? '积分不足，请充值后继续更新。' : error instanceof ApiError && error.code==='QUOTE_CHANGED' ? '计费条件已更新，请点击继续更新。' : error instanceof ApiError && error.code==='QUOTE_REQUIRED' ? '积分核验暂不可用，请稍后重新开始。' : undefined) ??
+        this.message = inputMessage ?? (staleInput && !error.details.prospectusSelectionRequired ? '输入依据已变化，请按当前材料与要求重新开始。' : error instanceof ApiError && error.code==='CREDITS_INSUFFICIENT' ? '积分不足，请充值后继续更新。' : error instanceof ApiError && error.code==='QUOTE_CHANGED' ? '计费条件已更新，请点击继续更新。' : error instanceof ApiError && error.code==='QUOTE_REQUIRED' ? '积分核验暂不可用，请稍后重新开始。' : undefined) ??
           (error instanceof ApiError && error.code === 'CAPABILITY_NOT_READY'
             ? operation === 'preflight' && error.status === 409
               ? `材料或处理条件尚未就绪，请稍后重新检查；持续未恢复时联系支持。${errorReference(error)}`
@@ -693,6 +694,9 @@ export class ProjectExecution {
       }
       let result: Input;
       let submitted=false;
+      const sent = { generation, draftRevision: p.draft_revision,
+        afterRevision: Math.max(this.knownLatestInput, this.input?.input_revision ?? 0, p.input_revision ?? 0),
+        materialVersions: selected.map(m => ({ material_id: m.material_id, material_version: m.material_version })), messages };
       try {
         const versions=await this.api.prospectusVersions(this.id,this.controller.signal);
         if(this.nextRequested){
@@ -728,6 +732,7 @@ export class ProjectExecution {
         }
         // This POST has no idempotency key. Never blindly replay after a lost response.
         if (!(error instanceof ApiError) || error.status === 0 || error.status === 408 || error.status >= 500) {
+          this.uncertainInputSave = sent;
           this.inputReadUncertain = true;
           this.inputWriteUncertain = true;
           this.message = '保存结果尚未确认，请重新读取并核对输入与任务记录；不会自动再次保存或启动。';
@@ -774,7 +779,7 @@ export class ProjectExecution {
       stale = latest.input_revision !== selected.input_revision || latest.input_hash !== selected.input_hash;
       if (stale) {
         this.input = undefined;
-        this.offerSavedInput = false;
+        this.recoveredInputMessages = undefined;
         this.invalidate();
         this.message = '项目已保存更新的输入版本，请核对最新材料与目标后重新开始。';
         this.onStaleInput?.();
@@ -913,8 +918,10 @@ export class ProjectExecution {
     clearTimeout(this.timer);
     this.restoring = true;
     await this.action(async () => {
+      const uncertain = this.uncertainInputSave;
+      this.recoveredInputMessages = undefined;
       this.inputReadUncertain = true;
-      this.selected = false; this.preflight = undefined;
+      this.selected = false; this.selectedMessages = undefined; this.preflight = undefined; this.quote = undefined;
       this.resumeVerified = false;
       const project = await this.api.project(this.id, this.controller.signal);
       const input = project.input_revision ? await this.api.inputRevision(this.id, project.input_revision, this.controller.signal) : undefined;
@@ -972,9 +979,16 @@ export class ProjectExecution {
       }
       this.inputReadUncertain = false;
       this.inputWriteUncertain = false;
-      // InputRevisionResponse does not expose the message pin. Never execute a
-      // recovered snapshot when a nonempty message set could have changed since it was locked.
-      this.offerSavedInput = Boolean(input && !this.run && !staleNotice);
+      // Only a readback after this page's lost save can reuse an input. An ordinary
+      // reload starts from current fields; edits invalidate the explicit recovery.
+      if (uncertain && input && !this.run && !staleNotice && uncertain.generation === this.generation && !this.draft.dirty &&
+          project.draft_revision === uncertain.draftRevision && input.input_revision === uncertain.afterRevision + 1 &&
+          input.material_versions.length === uncertain.materialVersions.length &&
+          input.material_versions.every(pin => uncertain.materialVersions.some(sent => pin.material_id === sent.material_id && pin.material_version === sent.material_version))) {
+        this.recoveredInputMessages = uncertain.messages;
+        this.message = '已找回保存内容，点击“开始更新”继续；不会重复保存或自动启动。';
+      }
+      this.uncertainInputSave = undefined;
       if(this.pendingExecution)this.message=this.pendingExecutionConflict?'上次提交的记录存在冲突，请联系支持核对；尚未获得对应任务回执。':'最近任务尚未核对到上次提交的准确回执。可点击“核对上次提交”，沿用原请求继续核对。';
     },'other','read');
     this.restoring = false; this.render();
