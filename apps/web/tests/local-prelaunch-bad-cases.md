@@ -95,11 +95,11 @@ These are planned coverage, not claims that the first batch passed them:
 - Two-tab duplicate upload; wrong hash or nonexistent material version in a pin.
 - Ambiguous XLSX directory mapping; correct mapping and resume the original import.
 - Upload interrupted across browser/context closure before reconciliation, and expired session.
-- Unified authoring bad-file → material correction → actual model task → downloadable Word,
-  accurate source pins/content/periods, and final settlement/refund evidence.
-- Full recharge/order/callback, concurrent/repeated payment, charge/reserve/release, restart,
-  refund and subscription acceptance. The payment suite/root agent owns those paths.
 - True password-encrypted Office files; the first batch covers a real encrypted PDF only.
+
+The later final-image run below covers unified bad-file correction through actual model/Word
+delivery and the payment, reservation, release and recovery cases. It does not turn the
+first-batch parser tests into full-document quality acceptance.
 
 ## Recorded local run: 2026-11-07
 
@@ -123,3 +123,55 @@ each case also retains its final screenshot. Source hashes in the evidence ident
 test files. Build/container identity is recorded separately by the local environment receipts.
 These parser/recovery results do not claim full model-output quality or payment acceptance;
 the generation and payment suites own those checks.
+
+## Final-image functional run: 2026-11-09
+
+The same isolated instance ran production image source
+`fc76c9c7e74aa420cba8a97962fc4e422565ee44`. The final functional result is
+**38 distinct cases passed: 24 input/material + 8 payment without model + 6 worker cases**.
+Earlier attempts and historical runs are not counted as additional cases.
+
+The 24 input/material cases comprise the existing 21 bad-file/identity cases, two browser
+input-correction cases, and one source-declaration correction case. That additional case
+changes valid but mistaken issuer relationship, market/offering and report period through
+the UI, then checks reload, immutable input and quote against the corrected declarations.
+All 24 final account-scoped database observations preserve the original task, reservation,
+credit-event and model-call counts and remaining/frozen points.
+
+These 24 cases and the eight payment cases passed together in **5.0 minutes**, with one
+worker and zero retries. Their evidence roots are:
+
+- `.local/local-prelaunch/bad-cases/final-fc76-nonmodel-2026-11-09T01-53-02-466Z-420a6094/`
+- `.local/local-prelaunch/billing/final-fc76-nonmodel-wsl/2026-11-09T01-56-04-288Z-5f7fc007/`
+
+The six worker cases cover normal authoring, corrupt adopted DOCX followed by a corrected
+immutable round, QA recharge recovery, QA unreadable-reference release, and old-policy
+credit exhaustion before/after model completion. The corrected DOCX case confirms one
+failed attempt before model use, exact release, actionable recovery, a new input revision
+and run, one successful model call, actual dual-Word downloads and one settlement. The old
+failed run and its ledger remain unchanged. Details are in
+[the billing record](local-prelaunch-billing.md#final-image-revalidation-2026-11-09).
+
+The first worker batch retained **5 passes and one harness failure**: the test incorrectly
+expected `next_cursor` to be null after the final event. The API preserves its last event
+cursor. The corrected assertion checks that cursor against the terminal run, then requests
+the next page and verifies an empty page with the same cursor. The corrected bad-file case
+passed separately in **1.8 minutes**. Its original red evidence and log remain unchanged;
+no task, ledger or generated result was changed to repair the assertion.
+
+The earlier sandbox attempt also remains preserved: WSL denied the fixture's initial
+read-only database observation, so it was stopped before business assertions and rerun
+with the reviewed WSL permission. Its prematurely saved `status: passed` values are not
+acceptance evidence; the failure log and `final-database-error` establish that failure.
+
+The combined `.local/receipts/final-fc76-functional-summary.json` records all 38 selected
+evidence paths and SHA-256 values, excluded failures and source logs. Each selected result
+was independently checked for empty errors/page errors and a complete final database or
+ledger observation. Worker debit totals, preserved recovery identities, measured model
+attempts and actual downloaded file hashes were also checked; status alone was not used.
+
+Accounts and payment-channel outcomes are synthetic; HTTP, PostgreSQL, Blob, Python,
+worker execution and five completed measured `gpt-6-sol` calls are real. These are focused
+functional and recovery checks. The authorized long-form sample and its complete content/
+rendering acceptance remain unfinished; this result does not claim real merchant payment
+or final full-document quality acceptance.

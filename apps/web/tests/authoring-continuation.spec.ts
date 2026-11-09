@@ -660,7 +660,7 @@ test('lost continuation input response requires honest readback and never guesse
   const state = await openCompleted(page), oldInput = structuredClone(state.inputs.get(7)), oldRun = structuredClone(state.runs.get(oldRunId));
   await prepare(page); state.dropNextInputResponse = true; await page.locator('#execute-input').click();
   await expect(page.locator('#execution-message')).toContainText(/保存结果尚未确认|输入.*未确认/);
-  await expect(page.locator('#execution-message')).not.toContainText('继续上次提交');
+  await expect(page.locator('#execution-message')).not.toContainText('用已保存内容开始更新');
   await expect(page.locator('#refresh-execution')).toBeVisible(); await expect(page.locator('#execute-input')).toBeDisabled();
   await expect(page.locator('#select-saved-input')).toBeHidden(); await expect(page.locator('#retry-execution')).toBeHidden();
   expect(state.inputAttempts).toHaveLength(1); expect(state.locked).toHaveLength(1); expect(state.inputs.size).toBe(2); expect(state.runs.size).toBe(1);

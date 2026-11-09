@@ -126,11 +126,51 @@ The initial failed observations remain in their original evidence directories. T
 correction scoped the recharge link to the observed dialog and checked its original
 project/run return target; it did not alter product state or weaken billing assertions.
 
-## Image-version boundary
+## Final-image revalidation: 2026-11-09
 
-The 2026-11-07 ten-case results and 2026-11-08 two-case legacy recovery results above are
-historical acceptance of image source `757a9871c890ace5fe2b408c2aac45d3948439c7`.
-They do not establish acceptance of the later checkout merged with `develop` at
-`55a073c1d280836ee14d6f8c32786baaeaf95fca` or subsequent fixes. Final-image billing
-reverification is still pending. Record the running image identities and fresh test evidence
-when it finishes; a successful image build or a cached ready receipt alone is not that result.
+The historical 2026-11-07/08 results above remain tied to image source `757a9871`.
+Fresh functional acceptance on the same isolated instance used running production image
+`fc76c9c7e74aa420cba8a97962fc4e422565ee44`, confirmed by the actual local status/readiness
+endpoints. It passed **38 distinct cases: 24 input/material + 8 payment without model +
+6 worker cases**. The first 32 passed together in 5.0 minutes with one worker and zero
+retries; their input/material details are recorded in [the bad-case report](local-prelaunch-bad-cases.md#final-image-functional-run-2026-11-09).
+
+The eight fresh non-model payment cases are 01–05/08/10/11 above. They retain actual
+orders, account-scoped PostgreSQL checkpoints and empty page-error records. All their
+final ledgers contain no business task, reservation or model call. Evidence is under
+`.local/local-prelaunch/billing/final-fc76-nonmodel-wsl/2026-11-09T01-56-04-288Z-5f7fc007/`.
+
+| Worker case | Verified final outcome |
+| --- | --- |
+| QA balance recovery (06) | The same request resumes after payment; one measured model call, an actual Word download and one 1,218-point settlement. Old/current replay preserves the complete ledger. |
+| QA unreadable reference (07) | No model call; the exact 1,218-point reservation is released once, original funds restored and terminal replay unchanged. |
+| Normal authoring | Browser refresh and duplicate execution preserve one run; actual dual-Word hashes match, one measured model call and one 8,864-point settlement. |
+| Corrupt authoring source, then correction | The first run fails once before model use and releases 8,864 points. Replacing the source creates a new immutable round, delivers both Word files and settles 8,864 points once; the old failure and ledger remain unchanged. |
+| Legacy policy, before model | One-point starting balance pauses before the model. Current payment resumes the same input/job/reservation/quote, one measured call completes, and unique debit events total the original 17,900 points. |
+| Legacy policy, after model | The completed measured call, provider result and checkpoint are reused after payment. The same task and original 17,900-point price settle without another call or duplicate debit. |
+
+The six passing worker records are selected from these roots:
+
+- QA06/07: `.local/local-prelaunch/billing/2026-11-09T01-51-19-031Z-c08b833c/`
+- Normal authoring only: `.local/local-prelaunch/bad-cases/final-fc76-model-2026-11-09T01-51-53-796Z-452ebab7/`
+- Both legacy cases: `.local/local-prelaunch/bad-cases/final-fc76-model-2026-11-09T01-54-14-818Z-f5e4629f/`
+- Corrected-source recovery: `.local/local-prelaunch/bad-cases/final-fc76-cursor-fixed-2026-11-09T01-58-34-524Z-862814ad/`
+
+The initial worker log retains 5 passes and one harness failure (6.8 minutes). The corrupt
+source case had incorrectly required `next_cursor=null`; the event API retains the last
+cursor. Its correction verifies the terminal cursor and an empty next page with that same
+cursor. The case then passed independently in 1.8 minutes. Original red evidence remains
+in the normal-authoring root; it is excluded from passing results, not overwritten. The
+earlier WSL sandbox refusal is also retained separately from the successful reviewed run.
+
+`.local/receipts/final-fc76-functional-summary.json` combines the 32-case summary and six
+worker records, with per-file hashes and original log paths. Every selected record has
+empty errors/page errors and a complete final database or ledger observation. The summary
+also independently checks worker ledger totals, unique debit events, pinned recovery
+identities, measured calls and downloaded bytes. All final worker frozen balances are zero.
+
+Only the payment channel is simulated; the five completed measured `gpt-6-sol` calls and
+product worker/Word delivery are real. Legacy policy still means current binaries with
+different policy configuration, not a historical binary/schema upgrade. The long-form
+authorized sample and complete document-quality/rendering acceptance remain unfinished.
+This functional result does not claim real merchant transactions or full-document quality.

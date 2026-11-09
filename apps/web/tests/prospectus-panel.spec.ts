@@ -278,7 +278,7 @@ test('mistaken saved upload can be cancelled, deleted, refreshed away and replac
 test('used and current uploads explain why deletion is unavailable',async({page})=>{
   const f=await setup(page,{versions:true});f.state.versions[1].delete_block_reason='used';await page.evaluate(()=>window.panelFixture.refresh());
   await history(page).evaluate(el=>(el as HTMLDetailsElement).open=true);
-  await expect(page.locator('[data-prospectus-version="v1"]')).toContainText('已被任务或关联文件使用');await expect(page.locator('[data-delete-version]')).toHaveCount(0);
+  await expect(page.locator('[data-prospectus-version="v1"]')).toContainText('已作为编制依据保留');await expect(page.locator('[data-delete-version]')).toHaveCount(0);
   f.state.current_version_id='v1';f.state.selection_revision++;f.state.versions[1].delete_block_reason='current';await page.evaluate(()=>window.panelFixture.refresh());
   await expect(page.locator('[data-prospectus-version="v1"]')).toContainText('本次更新已选用');await expect(page.locator('[data-delete-version]')).toHaveCount(0);
 });

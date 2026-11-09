@@ -528,7 +528,7 @@ test('lost snapshot response requires readback and explicit selection, without a
   await expect(page.locator('#execution-message')).toContainText('保存结果尚未确认');
   await expect(page.locator('#execute-input')).toBeDisabled(); expect(state.inputs).toHaveLength(1);
   await page.getByRole('button',{name:'重新读取',exact:true}).click();
-  await page.getByRole('button',{name:'继续上次提交'}).click();
+  await page.getByRole('button',{name:'用已保存内容开始更新'}).click();
   await expect(page.locator('#execution-preflight')).not.toBeEmpty();
   expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
 });
