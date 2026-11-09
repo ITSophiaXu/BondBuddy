@@ -617,7 +617,10 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
     if(prospectusEpoch!==epoch)return;
     prospectusPanel?.dispose();prospectusPanel=undefined;
     await renderRoute();
-  },()=>syncProjectExecution(project.project_id),'update',identity);
+  },()=>syncProjectExecution(project.project_id),'update',identity,async()=>{
+    await refreshProjectMaterials(project.project_id,prospectusEpoch);
+    if(prospectusEpoch===epoch)materialProcessing?.refresh();
+  });
   document.querySelector('#prospectus-panel')!.addEventListener('prospectus:deleted',event=>{
     const materialId=(event as CustomEvent<{materialId:string}>).detail.materialId;
     for(const upload of localUploads.get(project.project_id)??[])if(upload.material?.material_id===materialId&&!upload.journalDone){
