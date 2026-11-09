@@ -522,15 +522,96 @@ test('lost execute response retries the same key; reload restores the actual tas
   expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(2);
 });
 
-test('lost snapshot response requires readback and explicit selection, without another snapshot POST', async ({ page }) => {
+test('lost snapshot response requires readback and the single explicit start, without another snapshot POST', async ({ page }) => {
   const state=await setup(page); state.dropSave=true;
   await page.locator('#execute-input').click();
   await expect(page.locator('#execution-message')).toContainText('保存结果尚未确认');
   await expect(page.locator('#execute-input')).toBeDisabled(); expect(state.inputs).toHaveLength(1);
   await page.getByRole('button',{name:'重新读取',exact:true}).click();
-  await page.getByRole('button',{name:'用已保存内容开始更新'}).click();
+  await expect(page.locator('#execute-input')).toBeEnabled();
+  await expect(page.locator('#select-saved-input')).toHaveCount(0);
+  expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
+  await page.getByRole('button',{name:'开始更新',exact:true}).click();
   await expect(page.locator('#execution-preflight')).not.toBeEmpty();
   expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
+});
+
+test('ordinary restored preparation has one start action and locks the current input', async ({ page }) => {
+  const state=await setup(page); await prepare(page);
+  await page.reload(); await expect(page.locator('#execute-input')).toBeEnabled();
+  await expect(page.locator('#select-saved-input')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'开始更新',exact:true})).toHaveCount(1);
+  expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
+  await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-preflight')).not.toBeEmpty(); expect(state.inputs).toHaveLength(2);
+});
+
+test('a later input from another page cannot masquerade as the lost snapshot response', async ({ page }) => {
+  const state=await setup(page);state.dropSave=true;
+  await page.locator('#execute-input').click();await expect(page.locator('#execution-message')).toContainText('保存结果尚未确认');
+  const original=structuredClone(state.snapshots.get(1)!);
+  const other={...structuredClone(original),input_revision:2,input_hash:hash('another-page-input')};
+  state.snapshots.set(2,other);state.project.input_revision=2;state.project.input_hash=other.input_hash;
+  await page.locator('#refresh-execution').click();await expect(page.locator('#execute-input')).toBeEnabled();
+  expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(0);
+  await page.locator('#execute-input').click();await expect(page.locator('#execution-preflight')).not.toBeEmpty();
+  expect(state.inputs).toHaveLength(2);expect(state.preflights.at(-1)!.input_revision).toBe(3);
+  expect(state.snapshots.get(1)).toEqual(original);expect(state.executes).toHaveLength(0);
+});
+
+for (const change of ['source declaration','target draft','requirements','materials'] as const)
+test(`editing ${change} after lost snapshot readback leaves recovery and locks current content`, async ({ page }) => {
+  const state=await setup(page); state.dropSave=true;
+  await page.locator('#execute-input').click(); await expect(page.locator('#execution-message')).toContainText('保存结果尚未确认');
+  await page.locator('#refresh-execution').click(); await expect(page.locator('#execute-input')).toBeEnabled();
+  expect(state.inputs).toHaveLength(1); expect(state.executes).toHaveLength(0);
+  if(change==='source declaration'){
+    await page.locator('[data-source-field="relation"]').selectOption('parent');
+    await expect.poll(()=>state.project.update_details!.source_prospectuses?.[0]?.relation).toBe('parent');
+  }else if(change==='target draft'){
+    await page.getByRole('button',{name:'编辑项目信息',exact:true}).click();
+    await page.locator('#reporting-year').selectOption('2026');
+    await page.getByRole('button',{name:'保存并继续',exact:true}).click();
+    await expect.poll(()=>state.project.update_details!.reporting_cutoff).toBe('2026-12-31');
+  }else if(change==='requirements'){
+    // Even an unsaved edit subsequently cleared must not re-select the recovered snapshot.
+    await page.getByLabel('补充募集书更新说明').fill('重新核对本期数据');
+    await page.getByLabel('补充募集书更新说明').fill('');
+  }else{
+    const audit=state.materials.find(m=>m.role==='audit')!;
+    await page.route(`**/api/v1/projects/${id}/materials/${audit.material_id}`,async route=>{
+      if(route.request().method()!=='DELETE')return route.fallback();
+      state.materials.splice(state.materials.indexOf(audit),1); await route.fulfill({status:204});
+    });
+    page.once('dialog',dialog=>dialog.accept());
+    await page.locator('.material-file-row').filter({hasText:audit.filename}).getByRole('button',{name:'删除',exact:true}).click();
+    await expect(page.locator('.material-file-row').filter({hasText:audit.filename})).toHaveCount(0);
+  }
+  await expect(page.locator('#execute-input')).toBeEnabled();
+  await page.locator('#execute-input').click(); await expect(page.locator('#execution-preflight')).not.toBeEmpty();
+  expect(state.inputs).toHaveLength(2); expect(state.executes).toHaveLength(0);
+  expect(state.inputs[1].draft_revision).toBe(state.project.draft_revision);
+  expect(state.inputs[1].material_versions).toEqual(state.materials.map(m=>({material_id:m.material_id,material_version:m.material_version})));
+});
+
+for (const rejection of ['quotation','execution'] as const)
+test(`a definitive ${rejection} input conflict lets the next primary start lock a new input`, async ({ page }) => {
+  const state=fixture();state.paid=true;state.available=100000;state.checkStatus='ready';await setup(page,state);
+  const quotes:Dto<'PreflightRequest'>[]=[];let reject=true;
+  await page.route(`**/api/v1/projects/${id}/credit-quote`,async route=>{
+    const input=fixtureRequest(route.request());quotes.push(input);
+    if(rejection==='quotation'&&reject){reject=false;return json(route,409,{code:'INPUT_REVISION_CONFLICT'});}
+    return json(route,200,{enabled:true,quote:{quote_id:`quote-input-${input.input_revision}`,project_id:id,...input,
+      task_type:'interim',points:state.points,price_version:state.priceVersion,reason:'合成报价',created_at:now},
+      balance:{available:state.available,frozen:0},shortage:0,reason:null});
+  });
+  if(rejection==='execution')state.executeError={status:409,code:'INPUT_REVISION_CONFLICT',correlation_id:'synthetic-input-conflict'};
+  await page.locator('#execute-input').click();await expect(page.locator('#execution-message')).not.toBeEmpty();
+  await expect(page.locator('#execute-input')).toBeEnabled();expect(state.inputs).toHaveLength(1);expect(state.runs.size).toBe(0);
+  state.executeError=undefined;
+  await page.locator('#execute-input').click();await expect.poll(()=>state.runs.size).toBe(1);
+  expect(state.inputs).toHaveLength(2);expect(quotes.at(-1)!.input_revision).toBe(2);
+  expect(state.executes.at(-1)).toMatchObject({input_revision:2,input_hash:state.snapshots.get(2)!.input_hash,quote_id:'quote-input-2'});
 });
 
 test('double click and editing locks during submission preserve the locked request', async ({ page }) => {

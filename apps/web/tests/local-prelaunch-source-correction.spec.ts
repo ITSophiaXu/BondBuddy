@@ -163,6 +163,35 @@ test('user corrects valid but mistaken source declarations; reload, immutable in
     await page.locator('#project-materials-details > summary').click();
   await page.locator('.material-file-row').filter({ has: page.locator(`[data-source-material="${source.material_id}"]`) }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: join(audit.directory, 'source-material-row-1440.png') });
+
+  // Real API regression for the single start action. Reopen a changed declaration,
+  // correct it in the page, then reach the actual zero-balance admission path.
+  // No HTTP mocks, funding, accepted execution or model result is used here.
+  await chooseSource(page, source.material_id, wrong); await savedDeclaration(wrong);
+  await page.reload(); await expectSourceControls(page, source.material_id, wrong);
+  await chooseSource(page, source.material_id, corrected);
+  const latestDraft = await savedDeclaration(corrected);
+  await expect(page.locator('#select-saved-input')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '开始更新', exact: true })).toHaveCount(1);
+  const locking = page.waitForResponse(r => new URL(r.url()).pathname === `${projectPath}/input-revisions` && r.request().method() === 'POST');
+  const quoting = page.waitForResponse(r => new URL(r.url()).pathname === `${projectPath}/credit-quote` && r.request().method() === 'POST');
+  await page.locator('#execute-input').click();
+  const locked = await locking; expect(locked.status(), await locked.text()).toBe(201);
+  const latestInput = await locked.json();
+  expect(latestInput.input_revision).toBeGreaterThan(newInput.body.input_revision);
+  const latestObservation = lockedSource(audit.owner, project.project_id, latestInput.input_revision);
+  expect(latestObservation).toMatchObject({ hash: latestInput.input_hash, draftRevision: latestDraft.draft_revision,
+    target: expectedTarget, sources: [declaration(corrected)], draftSources: [declaration(corrected)] });
+  const quoted = await quoting; expect(quoted.status(), await quoted.text()).toBe(200);
+  const latestQuote = await quoted.json();
+  expect(latestQuote.quote).toMatchObject({ project_id: project.project_id, ...inputIdentity(latestInput) });
+  expect(BigInt(latestQuote.balance.available)).toBe(0n);
+  await expect(page.locator('#fixed-quote')).toContainText(/积分不足|服务余额不足/);
+  await expect(page.locator('#execute-input')).not.toHaveText('正在提交…');
+  audit.checkpoint('single-start-after-restored-source-correction', { input: latestInput, pinned: latestObservation, quote: latestQuote });
+  audit.noTaskOrDebit('single-start-zero-balance-has-no-run-reservation-or-model');
+  expect(lockedSource(audit.owner, project.project_id, oldInput.body.input_revision)).toEqual(originalObservation);
+  expect(lockedSource(audit.owner, project.project_id, newInput.body.input_revision)).toEqual(correctedObservation);
 });
 
 function inputIdentity(input: { input_revision: number; input_hash: string }) {
