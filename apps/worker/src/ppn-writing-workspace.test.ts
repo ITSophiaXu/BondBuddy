@@ -22,7 +22,7 @@ test('PPN worker receives every pinned method, clause, table and point comment u
       knowledge_status: 'authoring_reference_not_compliance_approval'},
   }};
   const ctx = {run: {id: 'synthetic-ppn-run', owner_user_id: 'synthetic-owner', project_id: 'synthetic-project',
-    input_hash: 'a'.repeat(64)}, lease: {checkpoint: {}}} as unknown as StageContext;
+    input_hash: 'a'.repeat(64)}, lease: {checkpoint: {}}, signal: new AbortController().signal} as unknown as StageContext;
   for (const scenario of ['current', 'tampered', 'legacy']) {
     const directory = await mkdtemp(join(tmpdir(), 'bb-ppn-writing-'));
     try {

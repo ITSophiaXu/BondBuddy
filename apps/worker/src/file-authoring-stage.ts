@@ -167,7 +167,7 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
     return await (options.model??codexModelStage)({name:'file_authoring_v1',logicalCallId:'file-authoring-v1',
       config:{...config,work_root:join(process.env.BB_PARSE_STAGING_DIR??config.work_root,'file-authoring'),max_output_bytes:32*1024*1024},
       buildPrompt:async()=>`请在切换实际处理工作时发送一条独立的用户可见进度消息，严格使用 BB_PROGRESS:read_materials、BB_PROGRESS:read_knowledge、BB_PROGRESS:analyze、BB_PROGRESS:write_document、BB_PROGRESS:check_document 或 BB_PROGRESS:prepare_download 中的相应一项，并在其后用「 | 」附上一句不超过240字的用户可见工作摘要，说明刚完成或当前处理的具体步骤。每次取得中间进展都发送一条，不包含思考过程、材料正文、命令、内部路径或密钥。请先完整阅读 task.md 和 input.json，再自主使用本次原始材料和知识文件完成整份募集书及 output/ 下的交付文件。一次执行完成，不返回全文修改 JSON，不等待逐批请求。输入锁：${ctx.run.input_hash.trim()}。`,
-      schema:{},validate:value=>validFileResult(value,ctx),resultSchemaVersion:'codex-file-word-v1',templateVersion:controlled?'single-cli-authoring-format-v2':'single-cli-authoring-v2',fileWorkspace:{completionCheck:true,prepare,collect}}).run(ctx);
+      schema:{},validate:value=>validFileResult(value,ctx),resultSchemaVersion:'codex-file-word-v1',templateVersion:controlled?'single-cli-authoring-format-v3':'single-cli-authoring-v3',fileWorkspace:{completionCheck:true,prepare,collect}}).run(ctx);
     } catch (error) {
       if (!ctx.signal.aborted && error instanceof AuthoringSourceUnreadable) return {kind:'fail',code:'MATERIAL_UNREADABLE'};
       throw error;
