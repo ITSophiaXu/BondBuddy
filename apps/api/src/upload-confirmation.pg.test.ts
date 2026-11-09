@@ -65,8 +65,8 @@ test('a slow Blob PUT reports explicit pending bytes without holding the project
 test('31-second real Blob validation returns 202 quickly, survives reopen, and does not hold the project lock',options,async()=>{
  const f=await fixture();const blocked=gate(),started=gate();let work:Promise<string>|undefined;
  try{
-  const big=await docxSample([],Buffer.from(`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Synthetic ${randomBytes(7*1024*1024).toString('base64')}</w:t></w:r></w:p></w:body></w:document>`));
-  const u=await f.upload(big);assert.ok(big.length>=6*1024*1024);
+  const big=await docxSample([],Buffer.from(`<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Synthetic ${randomBytes(17*1024*1024).toString('base64')}</w:t></w:r></w:p></w:body></w:document>`));
+  const u=await f.upload(big);assert.ok(big.length>16*1024*1024);
   const begin=Date.now(),responses=await Promise.all([f.send('POST',u.path,u.declaration,true),f.send('POST',u.path,u.declaration,true)]);
   assert.ok(Date.now()-begin<2000);for(const r of responses){assert.equal(r.statusCode,202,r.body);assert.equal(r.json().upload_id,u.id);assert.equal(r.headers['retry-after'],'2');}
   assert.equal((await f.pool.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_id=$1 AND event_type='upload.complete_requested'",[u.id])).rows[0].n,1);
