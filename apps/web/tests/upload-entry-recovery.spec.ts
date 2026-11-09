@@ -75,11 +75,15 @@ const writes=(calls:Call[],suffix:string)=>calls.filter(c=>c.method!=='GET'&&c.p
 const noBusiness= (calls:Call[])=>expect(calls.filter(c=>/\/(?:execute|credits|credit-quote|quote|answer)(?:\/|$)|prospectus-versions\/current/.test(c.path))).toEqual([]);
 async function capture(page:Page,name:string){const dir=process.env.BB_ENTRY_RECOVERY_EVIDENCE_DIR;if(!dir)return;await mkdir(dir,{recursive:true});await page.screenshot({path:join(dir,name+'.png'),fullPage:true});const layout=await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,text:document.body.innerText}));expect(layout.scrollWidth).toBeLessThanOrEqual(layout.width);await writeFile(join(dir,name+'.json'),JSON.stringify(layout,null,2));}
 
-for(const width of [1440,390])test(`prospectus upload survives refresh without File or adoption at ${width}`,async({page})=>{
+for(const width of [1440,390])test(`prospectus recovery respects an unselected server version after refresh at ${width}`,async({page})=>{
   await page.setViewportSize({width,height:900});const s=await fixture(page);s.dropComplete=true;await mount(page,'panel');
   await page.locator('#prospectus-version-file').setInputFiles(file);
   await expect(page.locator('[data-resume-prospectus]')).toBeVisible();expect(s.puts).toBe(1);const count=s.calls.filter(c=>c.method!=='GET').length;
-  await mount(page,'panel',true);expect(s.calls.filter(c=>c.method!=='GET')).toHaveLength(count);await capture(page,`panel-recovery-${width}`);await page.locator('[data-resume-prospectus]').click();await expect(page.locator('#prospectus-status')).toContainText('已保存 V1');expect(s.puts).toBe(1);expect(s.sessions.size).toBe(1);expect(s.versions).toHaveLength(1);noBusiness(s.calls);expect(s.unexpected).toEqual([]);
+  await mount(page,'panel',true);expect(s.calls.filter(c=>c.method!=='GET')).toHaveLength(count);await capture(page,`panel-recovery-${width}`);await page.locator('[data-resume-prospectus]').click();
+  // This fixture deliberately returns current_version_id=null after saving; recovery must not invent adoption.
+  await expect(page.locator('#prospectus-status')).toContainText('文件已保存，当前原稿随后已更新，请查看当前版本。');
+  await expect(page.locator('[data-prospectus-selection-state]')).toHaveText('未选用');
+  expect(s.puts).toBe(1);expect(s.sessions.size).toBe(1);expect(s.versions).toHaveLength(1);noBusiness(s.calls);expect(s.unexpected).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 for(const width of [1440,390])test(`project file resumes the original import after refresh at ${width}`,async({page})=>{
