@@ -10,13 +10,13 @@ COPY verify-python-packages.py /tmp/verify-python-packages.py
 RUN python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir --index-url https://pypi.tuna.tsinghua.edu.cn/simple --report /opt/venv/install-report.json -r /tmp/requirements.txt \
     && /opt/venv/bin/python /tmp/verify-python-packages.py
-COPY codex-npm-linux-x64-0.154.0.tgz /tmp/codex.tgz
-RUN node -e "const f=require('fs'),c=require('crypto');if(c.createHash('sha512').update(f.readFileSync('/tmp/codex.tgz')).digest('base64')!=='a4FI3A8sGtwGrOqltrPbrS2hajrHQG591EwmRfiRoLMb10VxdBtUGW4gu6IJVYENiYGA7k3P4jlRHEoCZU/s9Q==')process.exit(1)" \
+COPY codex-npm-linux-x64-0.167.0.tgz /tmp/codex.tgz
+RUN node -e "const f=require('fs'),c=require('crypto');if(c.createHash('sha512').update(f.readFileSync('/tmp/codex.tgz')).digest('base64')!=='FNc7danfUng9Sp6w+Fh7kofNHHZpA6VMyNKWsWrS3OwHly69gywTWeiuwrUPXpJSho8Df4xqRsHfHRPzj7zYQg==')process.exit(1)" \
     && mkdir /tmp/codex && tar -xf /tmp/codex.tgz -C /tmp/codex \
     && mv /tmp/codex/package/vendor/x86_64-unknown-linux-musl /opt/codex \
     && chmod 0755 /opt/codex/bin/codex /opt/codex/codex-resources/bwrap \
     && ln -s /opt/codex/bin/codex /usr/local/bin/codex \
-    && test "$(codex --version)" = 'codex-cli 0.154.0' \
+    && test "$(codex --version)" = 'codex-cli 0.167.0' \
     && rm -rf /tmp/codex /tmp/codex.tgz
 ADD worker-snapshot.tar /app/
 ADD runtime-assets.tar /app/

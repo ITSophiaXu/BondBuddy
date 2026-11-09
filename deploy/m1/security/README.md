@@ -1,6 +1,6 @@
 # Codex 原文件编制容器
 
-当前固定 Codex 0.154.0 的命名权限需要 bubblewrap。Docker 默认 seccomp 禁止创建 user namespace，默认 AppArmor 禁止 mount；不能用只读材料 MCP 或完整访问替代本次所需的原生文件编制。
+当前固定 Codex 0.167.0 的命名权限需要 bubblewrap。Docker 默认 seccomp 禁止创建 user namespace，默认 AppArmor 禁止 mount；不能用只读材料 MCP 或完整访问替代本次所需的原生文件编制。
 
 `codex-seccomp.json` 基于 Moby 官方 `moby/profiles@2ceae35d351c156cb5a8efc0fdc4a08cf94569d8` 的 `seccomp/default.json`（Apache-2.0），只追加非特权 user namespace 的 clone 和 unshare/mount/umount2/pivot_root/chroot/sethostname/setdomainname/setns。保留其余默认系统调用规则，clone3 仍保持原默认 ENOSYS。
 
