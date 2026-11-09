@@ -11,6 +11,7 @@ import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest
 import { isProspectusDocxOnlyFieldError, PROSPECTUS_DOCX_ONLY_MESSAGE, isUploadInspectionPublicReason, isProspectusSelectionRequiredFieldError, isSourceProspectusRequiredFieldError, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
+const UPLOAD_CONFIRMATION_TIMEOUT_MS = 600_000;
 export class ApiError extends Error {
   constructor(public status: number, public code: string, public readonly details: {
     correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean; prospectusDocxOnly?: boolean;
@@ -450,7 +451,7 @@ export class ApiClient {
     return this.request<Dto<'UploadSessionResponse'>>('POST', `/projects/${encodeURIComponent(id)}/materials/uploads`, input, {}, signal);
   }
   async completeUpload(id:string,uploadId:string,input:Dto<'UploadCompleteRequest'>,signal?:AbortSignal):Promise<Dto<'MaterialResponse'>>{
-    const lifetime=AbortSignal.any([signal??this.controller.signal,AbortSignal.timeout(600_000)]);
+    const lifetime=AbortSignal.any([signal??this.controller.signal,AbortSignal.timeout(UPLOAD_CONFIRMATION_TIMEOUT_MS)]);
     const path=`/projects/${encodeURIComponent(id)}/materials/uploads/${encodeURIComponent(uploadId)}/complete`;
     let failures=0;
     for(;;){
@@ -485,13 +486,10 @@ export class ApiClient {
     const sameOrigin = target.origin === window.location.origin;
     const send = () => new Promise<XMLHttpRequest>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      let confirmationTimer: ReturnType<typeof setTimeout> | undefined;
-      // Bound the wait after transfer; a slow transfer itself keeps real progress.
-      xhr.upload.addEventListener('load', () => {
-        confirmationTimer = setTimeout(() => xhr.abort(), 120_000);
-      }, { once: true });
-      xhr.addEventListener('loadend', () => clearTimeout(confirmationTimer), { once: true });
       xhr.open('PUT', target.href);
+      // Browser upload.load does not prove a buffering proxy's upstream received
+      // the bytes. Bound the whole PUT, including its response, like complete.
+      xhr.timeout = UPLOAD_CONFIRMATION_TIMEOUT_MS;
       xhr.withCredentials = sameOrigin;
       xhr.setRequestHeader('Content-Type', 'application/octet-stream');
       if (sameOrigin) {
@@ -505,6 +503,7 @@ export class ApiClient {
       signal.addEventListener('abort', abort, { once: true });
       xhr.addEventListener('load', () => { signal.removeEventListener('abort', abort); resolve(xhr); }, { once: true });
       xhr.addEventListener('error', () => { signal.removeEventListener('abort', abort); reject(new ApiError(0, 'DATA_UNAVAILABLE')); }, { once: true });
+      xhr.addEventListener('timeout', () => { signal.removeEventListener('abort', abort); reject(new ApiError(0, 'DATA_UNAVAILABLE')); }, { once: true });
       xhr.addEventListener('abort', () => {
         signal.removeEventListener('abort', abort);
         reject(new DOMException('Upload aborted', 'AbortError'));
