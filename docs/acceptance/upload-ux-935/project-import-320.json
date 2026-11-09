@@ -1,0 +1,37 @@
+{
+  "name": "project-import",
+  "width": 320,
+  "overflow": false,
+  "controls": [
+    {
+      "tag": "INPUT",
+      "id": "",
+      "text": "",
+      "class": "",
+      "display": "block",
+      "width": 240,
+      "height": 110,
+      "border": "0px none rgb(32, 59, 51)",
+      "background": "rgb(255, 255, 255)",
+      "cursor": "not-allowed",
+      "tabIndex": 0,
+      "accept": ".docx,.pdf",
+      "multiple": false
+    },
+    {
+      "tag": "BUTTON",
+      "id": "",
+      "text": "重试保存项目文件",
+      "class": "btn primary bb-upload-action bb-upload-action--primary",
+      "display": "none",
+      "width": 0,
+      "height": 0,
+      "border": "1px solid rgb(36, 87, 71)",
+      "background": "rgb(36, 87, 71)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": null,
+      "multiple": false
+    }
+  ]
+}
