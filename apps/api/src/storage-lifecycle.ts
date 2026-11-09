@@ -100,6 +100,7 @@ async function queueExpiredOrphans(
          WHERE u.state IN ('uploading','received')
            AND u.expires_at + ($1::integer * interval '1 hour') <= $2::timestamptz
            AND ($3::text IS NULL OR u.owner_user_id=$3)
+           AND NOT bb_upload_confirmation_bytes_pinned(u.owner_user_id,u.object_key)
            AND NOT EXISTS (
              SELECT 1 FROM bb_material_versions m
               WHERE m.owner_user_id=u.owner_user_id AND m.upload_id=u.id
@@ -159,7 +160,8 @@ async function recordDueMaterialDeadlines(
   });
 }
 
-async function isPinned(client: Pool | PoolClient, tombstone: Pick<Tombstone, 'owner_user_id' | 'project_id' | 'material_id' | 'material_version'>) {
+async function isPinned(client: Pool | PoolClient, tombstone: Pick<Tombstone, 'owner_user_id' | 'project_id' | 'material_id' | 'material_version' | 'object_key'>) {
+  if ((await client.query('SELECT bb_upload_confirmation_bytes_pinned($1,$2) pinned',[tombstone.owner_user_id,tombstone.object_key])).rows[0]?.pinned===true) return true;
   if (!tombstone.material_id || tombstone.material_version === null) return false;
   // input_revision is the canonical immutable material snapshot. Runs, artifacts and bound observability
   // snapshots point back to it, so retaining the revision also retains every material byte it names.
@@ -179,7 +181,8 @@ async function countEligiblePinnedTombstones(pool: Pool, policy: StorageLifecycl
          AND (t.retry_after IS NULL OR t.retry_after <= $1::timestamptz)
          AND t.requested_at + ($2::integer * interval '1 day') <= $1::timestamptz
          AND ($3::text IS NULL OR t.owner_user_id=$3)
-         AND bb_material_bytes_pinned(t.owner_user_id,t.project_id,t.material_id,t.material_version)
+         AND (bb_material_bytes_pinned(t.owner_user_id,t.project_id,t.material_id,t.material_version)
+              OR bb_upload_confirmation_bytes_pinned(t.owner_user_id,t.object_key))
        ORDER BY t.eligible_at,t.requested_at,t.id
        LIMIT $4
     ) AS bounded_pins`, [now, policy.materialRetentionDays, scopeParam(policy.ownerScope), batchSize]);
@@ -202,6 +205,7 @@ async function claimReadyTombstones(
          AND (t.retry_after IS NULL OR t.retry_after <= $1::timestamptz)
          AND (t.state='pending' OR (t.state='claimed' AND t.lease_until <= $1::timestamptz))
          AND ($2::text IS NULL OR t.owner_user_id=$2)
+         AND NOT bb_upload_confirmation_bytes_pinned(t.owner_user_id,t.object_key)
          AND (
            (t.object_kind='material'
             AND t.requested_at + ($3::integer * interval '1 day') <= $1::timestamptz

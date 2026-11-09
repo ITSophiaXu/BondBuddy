@@ -3,7 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { M1_UPLOAD_LIMITS, type SignatureAssessment } from '@bondbuddy/contracts';
 import { conflict, missing, Problem, project, materialDto, readBlobToFile, transaction, uid, verifiedMediaFileDetailed, type PrivateBlobs, type BlobDigest } from './data.js';
-import { recordUploadIntegrity, verifyStoredUpload } from './upload-integrity.js';
+import { assertUploadVersion, recordUploadIntegrity, verifyStoredUpload } from './upload-integrity.js';
 import { registerUploadedProspectus } from './prospectus-versions.js';
 import { assertProspectusUploadFormat } from './prospectus-upload.js';
 import { enqueueMaterialParse } from './material-jobs.js';
@@ -14,7 +14,16 @@ import { discardSpool, reserveSpool, spoolDirectory } from './upload-spool.js';
 const MAX_BYTES = M1_UPLOAD_LIMITS.fileBytes;
 const XLSX_MEDIA_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 export type UploadDeclaration = { byte_size:number; sha256:string };
-export type CompletionOptions = { traceId?:string; inspectionException?:ReturnType<typeof configuredUploadInspectionException> };
+export type PreparedUpload = {
+  proofs:Record<string,BlobDigest>;
+  source?:{ objectKey:string; mediaType:string; signatureAssessment:SignatureAssessment|null; excepted:boolean };
+};
+export type CompletionOptions = {
+  traceId?:string; inspectionException?:ReturnType<typeof configuredUploadInspectionException>;
+  prepared?:PreparedUpload;
+  beforeCommit?:(client:PoolClient)=>Promise<void>;
+  onAccepted?:(client:PoolClient,material:ReturnType<typeof materialDto>)=>Promise<void>;
+};
 export async function completeStoredUpload(pool:Pool,blobs:PrivateBlobs,user:string,id:string,uploadId:string,b:UploadDeclaration,requestId:string,options:CompletionOptions={}) {
   const traceId=options.traceId??uid(),uploadInspectionException=options.inspectionException??null;
   return transaction(pool,async client=>{
@@ -24,6 +33,7 @@ export async function completeStoredUpload(pool:Pool,blobs:PrivateBlobs,user:str
       const q=await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,uploadId]);const u=q.rows[0];if(!u)throw missing();
       if((await client.query('SELECT 1 FROM bb_material_role_copy_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId])).rowCount)throw missing();
       if(Number(u.byte_size)!==b.byte_size||u.sha256.trim()!==b.sha256)throw conflict('IDEMPOTENCY_CONFLICT','Upload declaration changed');
+      await options.beforeCommit?.(client);
       const receipt=await client.query('SELECT material_id,material_version FROM bb_upload_reuse_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId]);
       let excepted=false;
       // The storage receipt and operation commit together. Legacy projects retain auxiliary parsing.
@@ -36,11 +46,18 @@ export async function completeStoredUpload(pool:Pool,blobs:PrivateBlobs,user:str
           await enqueueMaterialParse(client,{owner:user,projectId:id,materialId:m.id,materialVersion:m.version,sha256:m.sha256.trim(),traceId});
         await recordOperation(client,{owner:user,projectId:id,requestId:requestId,traceId,kind:'material_complete',status:'submitted'});
         if(excepted)await recordOperation(client,{owner:user,projectId:id,requestId:requestId,traceId,kind:'material_upload_exception_complete',status:'submitted'});
-        return materialDto(m);
+        const result=materialDto(m);
+        await options.onAccepted?.(client,result);
+        return result;
       };
       const checkedMaterial=async (m:any,replay=false)=>{
         if(!m)throw missing();
-        await verifyStoredUpload(client,blobs,m,replay);
+        if(options.prepared){
+          const proof=options.prepared.proofs[m.object_key];
+          if(!proof)throw new Problem(503,'DATA_UNAVAILABLE','UPLOAD_REVERIFY_REQUIRED');
+          await assertUploadVersion(blobs,m,proof);
+          await recordUploadIntegrity(client,m,proof);
+        }else await verifyStoredUpload(client,blobs,m,replay);
         return accepted(m);
       };
       if(receipt.rows[0]){
@@ -53,10 +70,16 @@ export async function completeStoredUpload(pool:Pool,blobs:PrivateBlobs,user:str
       assertProspectusUploadFormat(uploadProject.kind,u.role,u.filename,u.declared_media_type);
       if(u.state!=='received')throw new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received');
       // Re-verify the stored object from a disk copy: hash while streaming, then inspect the file.
-      const release=reserveSpool(b.byte_size),copy=join(spoolDirectory(),`${uid()}.blob`);
       let media:string;
       let verifiedBlob: BlobDigest | undefined;
       let signatureAssessment: SignatureAssessment | null = null;
+      if(options.prepared){
+        const source=options.prepared.source,proof=options.prepared.proofs[u.object_key];
+        if(!source||source.objectKey!==u.object_key||!proof)throw new Problem(503,'DATA_UNAVAILABLE','UPLOAD_REVERIFY_REQUIRED');
+        await assertUploadVersion(blobs,u,proof);
+        verifiedBlob=proof;media=source.mediaType;signatureAssessment=source.signatureAssessment;excepted=source.excepted;
+      }else{
+      const release=reserveSpool(b.byte_size),copy=join(spoolDirectory(),`${uid()}.blob`);
       try{
         await mkdir(spoolDirectory(),{recursive:true,mode:0o700});
         const stored=await readBlobToFile(blobs,u.object_key,copy,MAX_BYTES).catch(error=>{if(error instanceof Problem&&error.status===413)return false as const;throw error;});
@@ -73,6 +96,7 @@ export async function completeStoredUpload(pool:Pool,blobs:PrivateBlobs,user:str
           signatureAssessment=inspection.signatureAssessment;
         }
       }finally{await discardSpool(copy);release();}
+      }
       const duplicate=await client.query(`SELECT * FROM bb_material_versions
         WHERE owner_user_id=$1 AND project_id=$2 AND role=$3 AND sha256=$4 AND byte_size=$5 AND media_type=$6 AND deleted_at IS NULL
         ORDER BY persisted_at,id,version LIMIT 1`,[user,id,u.role,b.sha256,b.byte_size,media]);
