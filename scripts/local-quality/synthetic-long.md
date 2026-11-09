@@ -74,7 +74,7 @@ node node_modules/@playwright/test/cli.js test --config=apps/web/playwright.conf
 
 The test saves the accepted run/request immediately. `session.json` is private
 and must never be printed or committed. It checks the immutable three-material
-input with exact material IDs and versions, original quote, one measured `gpt-6-sol` call, one reserve and settlement,
+input with exact material IDs, versions and hashes, original quote, one measured `gpt-6-sol` call, one reserve and settlement,
 no release or residual frozen balance, real browser downloads and file hashes,
 17 independent output checks, then exact replay without another charge/call.
 Rendering the generated clean/tracked output remains a separate required review.
@@ -84,6 +84,10 @@ After a harness interruption, first inspect the original receipt/task. Set
 only `local-prelaunch-synthetic-long-resume.spec.ts`. It restores the original
 session and observes the same task without creating an account, project, payment
 or task. Do not restart the creation spec to make up for an observation timeout.
+The resume file also includes a read-only immutable-target check; select it alone
+with `--grep 'verify the original immutable target without submitting'` when
+investigating an observer assertion without waiting for the task to finish.
+It records the test-script hashes, Git HEAD and actual running image identity.
 
 The checker imports only the pure `word_inventory`/XML helpers from the existing
 OOXML module. It never invokes its RQ baseline/authorized-file readers. Mechanical
@@ -107,3 +111,13 @@ outputs correctly fails (14/17 checks): current financial values and actual
 tracked edits are absent. Earlier v1 (55-page overflow) and v2 (one blank page)
 fixtures and their red evidence are retained. These preparation results do not
 claim that the product has generated or delivered a passing long document.
+
+The first actual submission was accepted as `e19a5883-342f-4563-b833-0f4b844a63b0`.
+Its creation observer then failed by asserting the optional legacy
+`target_confirmation` response. Read-only inspection verified that both the
+immutable manifest and the actual model workspace `input.json` contain the correct
+2026 Q3 target and all three unchanged materials. The observer now verifies the
+immutable unified-authoring manifest, including the complete reporting window,
+instead of the optional legacy DTO. Its original-task target recheck passed
+without another account, payment or task. The original red observer evidence is
+retained; this correction is not a document-quality pass.

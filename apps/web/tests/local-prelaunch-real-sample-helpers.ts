@@ -5,6 +5,7 @@ import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {expect,type Page} from '@playwright/test';
 import {billingApi,billingLedger,integer,type BillingAudit} from './local-prelaunch-billing-helpers';
+import {assertImmutableQualityInput} from './local-prelaunch-helpers';
 
 export const realSampleRepo=fileURLToPath(new URL('../../..',import.meta.url));
 const sourceRoot=join(realSampleRepo,'tests/samples/2026-09-25');
@@ -39,12 +40,14 @@ export function privateRealSampleDirectory(directory:string){
 export interface RealSampleReceipt {
   case:'rq-202509'; owner:string; username:string; outputDirectory:string; projectId:string; runId:string;
   request:any; originalQuote?:any; sourceHashes:{file_id:string;sha256:string;bytes:number}[];
+  materialVersions:{material_id:string;material_version:number}[];
 }
 export function readRealSampleReceipt(directory:string):RealSampleReceipt{
   if(dirname(resolve(directory))!==realSampleEvidenceRoot)throw Error('External real-sample run directory required');
   const receipt=JSON.parse(readFileSync(join(directory,'run.json'),'utf8'));
   if(receipt.case!=='rq-202509'||resolve(receipt.outputDirectory)!==resolve(directory)||
-      !/^[a-f0-9-]{36}$/.test(receipt.runId)||!/^[a-f0-9-]{36}$/.test(receipt.projectId)||!receipt.owner)
+      !/^[a-f0-9-]{36}$/.test(receipt.runId)||!/^[a-f0-9-]{36}$/.test(receipt.projectId)||!receipt.owner||
+      receipt.materialVersions?.length!==3||receipt.materialVersions.some((pin:any)=>!pin.material_id||!Number.isInteger(pin.material_version)||pin.material_version<1))
     throw Error('Invalid original real-sample run receipt');
   return receipt;
 }
@@ -55,6 +58,8 @@ export async function finishRealSample(page:Page,billing:BillingAudit,receipt:Re
   const originals=realSampleSources();
   expect(originals.map((s:any)=>({file_id:s.file_id,sha256:s.sha256,bytes:s.bytes}))).toEqual(receipt.sourceHashes);
   const me=await billingApi(page,'GET','/api/v1/me');expect(me.status).toBe(200);expect(me.body.user_id).toBe(receipt.owner);
+  billing.record('immutable-unified-authoring-target',assertImmutableQualityInput(receipt,
+    {issuer:'任丘市建设投资集团有限公司',cutoff:'2025-09-30'},originals.map((file:any)=>file.sha256)));
   let terminal:any,last='';
   await expect.poll(async()=>{
     const state=await billingApi(page,'GET',`/api/v1/runs/${runId}`);expect(state.status).toBe(200);terminal=state.body;

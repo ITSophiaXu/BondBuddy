@@ -68,7 +68,7 @@ test('purely invented long prospectus is updated by the actual model with scoped
   expect(input.body.input_hash).toBe(request.input_hash);expect(input.body.material_versions).toHaveLength(3);
   expect([...input.body.material_versions].sort((a:any,b:any)=>a.material_id.localeCompare(b.material_id)))
     .toEqual([...receipt.materialVersions].sort((a,b)=>a.material_id.localeCompare(b.material_id)));
-  expect(input.body.target_confirmation).toMatchObject({status:'confirmed',market:'sse',offering:'private',as_of:'2026-09-30'});
-  expect([...new Set(input.body.target_confirmation.target_reporting_periods.map((p:any)=>p.end))].sort()).toEqual(['2024-12-31','2025-12-31','2026-09-30']);
+  // finishSyntheticLong verifies the immutable unified manifest consumed by the worker.
+  // The optional legacy target_confirmation DTO is intentionally not an authoring target source.
   billing.record('synthetic-long-immutable-input',input.body);await page.reload();await finishSyntheticLong(page,billing,receipt);
 });

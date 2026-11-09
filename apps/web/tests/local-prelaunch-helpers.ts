@@ -37,6 +37,31 @@ export function localSql<T = unknown>(sql: string): T {
   return JSON.parse(result.trim());
 }
 const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
+/** Read the immutable target actually consumed by unified/file authoring, not the optional legacy confirmation DTO. */
+export function assertImmutableQualityInput(receipt: {owner:string;projectId:string;runId:string;request:any;materialVersions:{material_id:string;material_version:number}[]},
+  expected: {issuer:string;cutoff:string}, sourceHashes:string[]) {
+  const revision=receipt.request.input_revision;
+  if(!Number.isSafeInteger(revision)||revision<1)throw Error('Persisted quality input revision required');
+  const pinned=localSql<any>(`SELECT json_build_object('runId',r.id,'inputRevision',i.revision,'inputHash',btrim(i.input_hash),'runHash',btrim(r.input_hash),
+    'authoringMode',i.manifest->'update_details'->>'authoring_mode',
+    'target',json_build_object('issuer',i.manifest->>'issuer_name','market',i.manifest->>'market','offering',i.manifest->>'offering',
+      'cutoff',i.manifest->'update_details'->>'reporting_cutoff','periods',i.manifest->'update_details'->'target_reporting_periods'),
+    'materials',i.manifest->'materials') FROM bb_input_revisions i JOIN bb_runs r
+      ON r.owner_user_id=i.owner_user_id AND r.project_id=i.project_id AND r.input_revision=i.revision
+    WHERE i.owner_user_id=${literal(receipt.owner)} AND i.project_id=${literal(receipt.projectId)} AND i.revision=${revision} AND r.id=${literal(receipt.runId)};`);
+  expect(pinned).toMatchObject({runId:receipt.runId,inputRevision:revision,inputHash:receipt.request.input_hash,runHash:receipt.request.input_hash,authoringMode:'unified_v1'});
+  expect(pinned.target).toEqual({...expected,market:'sse',offering:'private',periods:reportingWindow('sse','private',expected.cutoff)});
+  expect(pinned.materials.map(({material_id,material_version}:any)=>({material_id,material_version})).sort((a:any,b:any)=>a.material_id.localeCompare(b.material_id)))
+    .toEqual([...receipt.materialVersions].sort((a,b)=>a.material_id.localeCompare(b.material_id)));
+  expect(pinned.materials.map((m:any)=>m.sha256).sort()).toEqual([...sourceHashes].sort());
+  return pinned;
+}
+export function qualityHarnessSourceIdentity(){
+  const names=['local-prelaunch-helpers.ts','local-prelaunch-billing-helpers.ts','local-prelaunch-synthetic-long.spec.ts','local-prelaunch-synthetic-long-helpers.ts',
+    'local-prelaunch-synthetic-long-resume.spec.ts','local-prelaunch-real-sample.spec.ts','local-prelaunch-real-sample-helpers.ts','local-prelaunch-real-sample-resume.spec.ts'];
+  return {head:execFileSync('git',['rev-parse','HEAD'],{cwd:repo,encoding:'utf8',windowsHide:true}).trim(),
+    scriptHashes:Object.fromEntries(names.map(name=>[name,createHash('sha256').update(readFileSync(join(repo,'apps/web/tests',name))).digest('hex')]))};
+}
 export function uploadBlobObservation(owner: string, uploadId: string) {
   const config = prelaunchConfig();
   const row = localSql<{ objectKey: string; state: string; receivedBytes: number | null }>(`SELECT json_build_object('objectKey',object_key,'state',state,'receivedBytes',received_bytes) FROM bb_uploads WHERE owner_user_id=${literal(owner)} AND id=${literal(uploadId)};`);

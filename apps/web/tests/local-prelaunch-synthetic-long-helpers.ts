@@ -5,6 +5,7 @@ import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {expect,type Page} from '@playwright/test';
 import {billingApi,billingLedger,integer,type BillingAudit} from './local-prelaunch-billing-helpers';
+import {assertImmutableQualityInput} from './local-prelaunch-helpers';
 
 export const syntheticRepo=fileURLToPath(new URL('../../..',import.meta.url));
 export const syntheticEvidenceRoot=resolve(syntheticRepo,'../quality-prelaunch-20261107');
@@ -63,6 +64,8 @@ export async function finishSyntheticLong(page:Page,audit:BillingAudit,receipt:S
   expect(input.status).toBe(200);expect(input.body.input_hash).toBe(receipt.request.input_hash);
   expect([...input.body.material_versions].sort((a:any,b:any)=>a.material_id.localeCompare(b.material_id)))
     .toEqual([...receipt.materialVersions].sort((a,b)=>a.material_id.localeCompare(b.material_id)));
+  audit.record('immutable-unified-authoring-target',assertImmutableQualityInput(receipt,
+    {issuer:fixture.manifest.issuer,cutoff:fixture.manifest.target_cutoff},fixture.files.map((file:any)=>file.sha256)));
   let terminal:any,last='';
   await expect.poll(async()=>{
     const state=await billingApi(page,'GET',`/api/v1/runs/${receipt.runId}`);expect(state.status).toBe(200);terminal=state.body;

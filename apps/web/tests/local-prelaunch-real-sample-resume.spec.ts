@@ -4,6 +4,7 @@ import {writeFileSync} from 'node:fs';
 import {billingApi,billingConfig,billingLedger,type BillingAudit} from './local-prelaunch-billing-helpers';
 import {finishRealSample,readRealSampleReceipt} from './local-prelaunch-real-sample-helpers';
 import {evidenceLifecycle,finalizeEvidence} from './local-prelaunch-evidence';
+import {qualityHarnessSourceIdentity} from './local-prelaunch-helpers';
 
 const directory=process.env.BB_PRELAUNCH_RQ_RESUME_DIR;
 test.skip(!directory||process.env.BB_E2E_LOCAL_PRELAUNCH!=='1'||process.env.BB_E2E_REAL_MODEL!=='1'||process.env.BB_E2E_RQ_REAL_SAMPLE!=='1',
@@ -13,11 +14,12 @@ test.setTimeout(7200000);
 
 test('observe the original full-prospectus run after a harness interruption without starting another task',async({page},info)=>{
   const receipt=readRealSampleReceipt(directory!),timeline:any[]=[],lifecycle=evidenceLifecycle();
+  const sourceIdentity=qualityHarnessSourceIdentity();
   let finalLedgerObserved=false,ownerVerified=false;
   const evidence=join(directory!,'observation-'+new Date().toISOString().replace(/[:.]/g,'-')+'.json');
   const render=(finalized=false)=>JSON.stringify({schema:'local-prelaunch-real-sample-resumed-observation-v1',
     originalRunId:receipt.runId,projectId:receipt.projectId,owner:receipt.owner,...lifecycle.state(info,finalized),timeline,
-    taskCreated:false,taskResumed:false,originalCredentialsDisclosed:false,finalLedgerObserved},null,2);
+    taskCreated:false,taskResumed:false,originalCredentialsDisclosed:false,sourceIdentity,finalLedgerObserved},null,2);
   const write=(text:string)=>writeFileSync(evidence,text),save=()=>write(render());
   const audit:BillingAudit={owner:receipt.owner,username:receipt.username,directory:directory!,
     record(label,value){timeline.push({at:new Date().toISOString(),label,value});save();},

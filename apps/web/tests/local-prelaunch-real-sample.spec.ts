@@ -86,7 +86,8 @@ test('authorized RQ Q3 full prospectus uses actual queue and model then preserve
   const submission=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/runs/execute'&&r.request().method()==='POST',{timeout:180000});
   await page.locator('#execute-input').click();
   const submitted=await submission,accepted=await submitted.json(),request=submitted.request().postDataJSON();
-  const receipt={...provenance,projectId:project.project_id,runId:accepted.run_id,request,originalQuote:undefined as any};
+  const receipt={...provenance,projectId:project.project_id,runId:accepted.run_id,request,originalQuote:undefined as any,
+    materialVersions:[source,main,note].map(value=>({material_id:value.material_id,material_version:value.material_version}))};
   // Persist the accepted identity before assertions so a harness interruption never requires resubmission.
   writeFileSync(join(directory,'run.json'),JSON.stringify(receipt,null,2));
   billing.record('real-full-prospectus-run-submission',{status:submitted.status(),request,accepted});
@@ -101,9 +102,8 @@ test('authorized RQ Q3 full prospectus uses actual queue and model then preserve
     .sort((a:any,b:any)=>a.material_id.localeCompare(b.material_id)))
     .toEqual([source,main,note].map(value=>({material_id:value.material_id,material_version:value.material_version}))
       .sort((a,b)=>a.material_id.localeCompare(b.material_id)));
-  expect(input.body.target_confirmation).toMatchObject({status:'confirmed',market:'sse',offering:'private',as_of:'2025-09-30'});
-  expect([...new Set(input.body.target_confirmation.target_reporting_periods.map((value:any)=>value.end))].sort())
-    .toEqual(['2023-12-31','2024-12-31','2025-09-30']);
+  // finishRealSample checks the exact immutable manifest used by unified/file authoring.
+  // The optional legacy target_confirmation DTO is not the worker target source.
   billing.record('real-task-immutable-input',input.body);
   const duplicate=await billingApi(page,'POST','/api/v1/runs/execute',request);expect(duplicate.status).toBe(202);expect(duplicate.body.run_id).toBe(accepted.run_id);
   await page.reload();await finishRealSample(page,billing,receipt);
