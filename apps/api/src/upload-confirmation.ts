@@ -19,6 +19,17 @@ function safeError(error:unknown){
 
 /** Enqueue and pin before replying. Polls authorize the original upload, never an arbitrary material ID. */
 export async function requestUploadConfirmation(pool:Pool,blobs:PrivateBlobs,owner:string,projectId:string,uploadId:string,b:UploadDeclaration,requestId:string,inspectionException:ReturnType<typeof configuredUploadInspectionException>=null,traceId=uid()){
+  // A PUT can hold the upload row while staging to Blob. Do not take the project
+  // lock and then wait for that row merely to report that bytes are not ready.
+  const pre=(await pool.query(`SELECT u.byte_size,u.sha256 FROM bb_uploads u
+    JOIN bb_projects p ON p.owner_user_id=u.owner_user_id AND p.id=u.project_id AND p.deleted_at IS NULL
+    WHERE u.owner_user_id=$1 AND u.project_id=$2 AND u.id=$3 AND u.state='uploading'
+      AND NOT EXISTS(SELECT 1 FROM bb_upload_reuse_receipts r WHERE r.owner_user_id=u.owner_user_id AND r.project_id=u.project_id AND r.upload_id=u.id)
+      AND NOT EXISTS(SELECT 1 FROM bb_material_role_copy_receipts r WHERE r.owner_user_id=u.owner_user_id AND r.project_id=u.project_id AND r.upload_id=u.id)`,[owner,projectId,uploadId])).rows[0];
+  if(pre){
+    if(Number(pre.byte_size)!==b.byte_size||pre.sha256.trim()!==b.sha256)throw conflict('IDEMPOTENCY_CONFLICT','Upload declaration changed');
+    throw Object.assign(new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received'),{uploadBytesPending:true});
+  }
   const c=await transaction(pool,async client=>{
     await project(client,owner,projectId,true);
     const u=(await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[owner,projectId,uploadId])).rows[0];
@@ -50,7 +61,7 @@ export async function requestUploadConfirmation(pool:Pool,blobs:PrivateBlobs,own
       }
       return existing;
     }
-    if(!reused&&!['received','completed'].includes(u.state))throw new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received');
+    if(!reused&&!['received','completed'].includes(u.state))throw Object.assign(new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received'),{uploadBytesPending:true});
     await lockStorageObject(client,owner,u.object_key);
     const outbox=uid();
     await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'upload',$3,'upload.complete_requested',$4)`,[outbox,owner,uploadId,{project_id:projectId,upload_id:uploadId,request_id:requestId,trace_id:traceId}]);

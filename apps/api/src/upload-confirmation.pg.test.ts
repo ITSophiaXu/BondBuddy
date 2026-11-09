@@ -12,6 +12,7 @@ import {claimUploadConfirmation,processUploadConfirmation,runUploadConfirmationO
 import {runStorageLifecycle} from './storage-lifecycle.js';
 import {lockStorageObject} from './storage-object-lock.js';
 import {isolatedTestDatabase} from './test-database.js';
+import {UPLOAD_BYTES_PENDING_FIELD_ERROR} from '@bondbuddy/contracts';
 const connection=await isolatedTestDatabase(undefined,'async-confirmation');
 const storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const options={skip:!connection||!storage};
@@ -22,7 +23,7 @@ async function fixture(){
   const pool=new Pool({connectionString:connection,options:'-c jit=off'}),owner='async-'+randomUUID(),container='bb-async-'+randomUUID().replaceAll('-','');
   const blobs=azureBlobs(storage!,container),origin='http://bondbuddy.test';let actor=owner;
   let app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});
-  const send=(method:string,url:string,payload?:unknown,async=false)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{}),...(async?{prefer:'respond-async'}:{})}});
+  const send=(method:string,url:string,payload?:unknown,async=false,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload:payload as any,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{}),...(async?{prefer:'respond-async'}:{}),...headers}});
   const p=await send('POST','/api/v1/projects',{name:'Synthetic confirmation',kind:'update',issuer_name:null,market:null,offering:null});assert.equal(p.statusCode,201,p.body);
   const id=p.json().project_id;
   await pool.query("UPDATE bb_projects SET update_details=jsonb_build_object('authoring_mode','unified_v1') WHERE id=$1",[id]);
@@ -34,8 +35,32 @@ async function fixture(){
     const row=(await pool.query('SELECT * FROM bb_uploads WHERE id=$1',[u.upload_id])).rows[0];
     return {id:u.upload_id,key:row.object_key,bytes,declaration,path:`/api/v1/projects/${id}/materials/uploads/${u.upload_id}/complete`};
   };
-  return {pool,blobs,owner,id,container,upload,send,foreign:()=>actor='foreign-'+randomUUID(),reopen:async()=>{const previous=app;app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});await previous.close();},close:async()=>{await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}};
+  return {pool,blobs,owner,id,container,upload,send,foreign:()=>actor='foreign-'+randomUUID(),own:()=>actor=owner,reopen:async()=>{const previous=app;app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});await previous.close();},close:async()=>{await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}};
 }
+
+test('a slow Blob PUT reports explicit pending bytes without holding the project lock or accepting confirmation',options,async()=>{
+ const f=await fixture(),entered=gate(),blocked=gate();let put:ReturnType<typeof f.send>|undefined;
+ const original=f.blobs.putFile!.bind(f.blobs);
+ f.blobs.putFile=async(...args)=>{entered.release();await blocked.wait;return original(...args);};
+ try{
+  const bytes=await docxSample(),declaration={byte_size:bytes.length,sha256:digest(bytes)};
+  const created=await f.send('POST',`/api/v1/projects/${f.id}/materials/uploads`,{...declaration,filename:'synthetic.docx',role:'historical',media_type:DOCX});assert.equal(created.statusCode,201,created.body);
+  const uploadId=created.json().upload_id,path=`/api/v1/projects/${f.id}/materials/uploads/${uploadId}/complete`;
+  put=f.send('PUT',created.json().upload_url,bytes);await entered.wait;
+  const fast=async<T>(work:Promise<T>):Promise<T>=>{let timer:ReturnType<typeof setTimeout>|undefined;try{return await Promise.race([work,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Pending bytes held a project lock')),1500);})]);}finally{clearTimeout(timer);}};
+  const start=Date.now(),pending=await fast(f.send('POST',path,declaration,true));assert.equal(pending.statusCode,422,pending.body);assert.ok(Date.now()-start<1500);
+  assert.equal(pending.json().code,'MATERIAL_UNREADABLE');assert.deepEqual(pending.json().field_errors,[UPLOAD_BYTES_PENDING_FIELD_ERROR]);
+  const mismatch=await fast(f.send('POST',path,{...declaration,sha256:'f'.repeat(64)},true));assert.equal(mismatch.statusCode,409);assert.deepEqual(mismatch.json().field_errors,[]);
+  f.foreign();const denied=await fast(f.send('POST',path,declaration,true));assert.equal(denied.statusCode,404);assert.deepEqual(denied.json().field_errors,[]);f.own();
+  const revision=(await f.pool.query('SELECT draft_revision FROM bb_projects WHERE id=$1',[f.id])).rows[0].draft_revision;
+  const patch=await fast(f.send('PATCH',`/api/v1/projects/${f.id}`,{name:'Synthetic edit while bytes are pending'},false,{'if-match':String(revision)}));assert.equal(patch.statusCode,200,patch.body);
+  const u=(await f.pool.query('SELECT state,received_bytes FROM bb_uploads WHERE id=$1',[uploadId])).rows[0];assert.equal(u.state,'uploading');assert.equal(u.received_bytes,null);
+  assert.equal((await f.pool.query("SELECT count(*)::int n FROM bb_outbox WHERE aggregate_id=$1 AND event_type='upload.complete_requested'",[uploadId])).rows[0].n,0);
+  blocked.release();assert.equal((await put).statusCode,204);
+  assert.equal((await f.send('POST',path,declaration,true)).statusCode,202);assert.equal(await runUploadConfirmationOnce(f.pool,f.blobs),'completed');
+  const final=await f.send('POST',path,declaration,true);assert.equal(final.statusCode,200,final.body);assert.equal(final.json().sha256,declaration.sha256);
+ }finally{blocked.release();if(put)await put.catch(()=>{});await f.close();}
+});
 
 test('31-second real Blob validation returns 202 quickly, survives reopen, and does not hold the project lock',options,async()=>{
  const f=await fixture();const blocked=gate(),started=gate();let work:Promise<string>|undefined;

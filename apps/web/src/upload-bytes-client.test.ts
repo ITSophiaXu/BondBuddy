@@ -104,12 +104,14 @@ class Store implements UploadRecoveryStorage {
 }
 
 for (const failure of ['timeout', 'network'] as const) {
-  test(`${failure} preserves the original upload and error; reopen confirms without another PUT or session`, async t => {
+  test(`${failure} preserves the original upload and error while automatically confirming`, async t => {
     const f = transport(t), store = new Store(), calls: string[] = [];
     const input: Dto<'UploadCreateRequest'> = { filename: file().name, media_type: file().type as Dto<'UploadCreateRequest'>['media_type'],
       role: 'other', byte_size: file().size, sha256: createHash('sha256').update(bytes).digest('hex') };
     const material: Dto<'MaterialResponse'> = { ...input, material_id: 'material-a', material_version: 1, upload_id: 'upload-a',
       state: 'persisted', persisted_at: '2026-11-09T00:00:00Z', error: null };
+    let confirm!: (value: Dto<'MaterialResponse'>) => void;
+    const receipt = new Promise<Dto<'MaterialResponse'>>(resolve => { confirm = resolve; });
     const api: ConstructorParameters<typeof UploadRecovery>[0] = {
       createUpload: async () => {
         calls.push('create');
@@ -118,7 +120,7 @@ for (const failure of ['timeout', 'network'] as const) {
       uploadBytes: (...args) => { calls.push('put'); return f.api.uploadBytes(...args); },
       completeUpload: async (_project, id, declaration) => {
         calls.push('complete'); assert.equal(id, 'upload-a');
-        assert.deepEqual(declaration, { sha256: input.sha256, byte_size: input.byte_size }); return material;
+        assert.deepEqual(declaration, { sha256: input.sha256, byte_size: input.byte_size }); return receipt;
       },
       material: async () => { throw new Error('Unexpected material read'); },
       project: async () => { throw new Error('Unexpected project read'); },
@@ -128,17 +130,17 @@ for (const failure of ['timeout', 'network'] as const) {
       lock: { run: async (_name, action) => action() },
     });
     const recovery = make(); recovery.begin(input, { request_id: 'original-request' }, 'operation-a');
-    const work = recovery.resume('operation-a', { file: file() }); const rejected = assert.rejects(work, unavailable);
+    const work = recovery.resume('operation-a', { file: file() });
     await flush(); assert.equal(f.requests.length, 1); f.requests[0].transferred();
     if (failure === 'timeout') t.mock.timers.tick(600_000); else f.requests[0].fail();
-    await rejected;
+    await flush();
     const record = make().list()[0];
     assert.equal(record.uploadId, 'upload-a'); assert.equal(record.stage, 'bytes_unknown');
     assert.deepEqual(record.declaration, input); assert.deepEqual(record.context, { request_id: 'original-request' });
     assert.deepEqual(record.lastError, { status: 0, code: 'DATA_UNAVAILABLE' }); assert.equal(record.material, undefined);
-    assert.deepEqual(calls, ['create', 'put']);
-    const reopened = make(); assert.deepEqual(await reopened.resume('operation-a'), material);
+    assert.deepEqual(calls, ['create', 'put', 'complete']);
+    confirm(material); assert.deepEqual(await work, material);
     assert.deepEqual(calls, ['create', 'put', 'complete']); assert.equal(f.requests.length, 1);
-    assert.equal(reopened.list()[0].stage, 'saved'); assert.equal(reopened.list()[0].lastError, undefined);
+    assert.equal(recovery.list()[0].stage, 'saved'); assert.equal(recovery.list()[0].lastError, undefined);
   });
 }
