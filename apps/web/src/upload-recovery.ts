@@ -3,6 +3,7 @@ import { Value } from '@sinclair/typebox/value';
 import { UserFacingError } from './user-facing-error.js';
 import { ApiError, type ApiClient, type Dto } from './api.js';
 import { isDateTime } from './schema-formats.js';
+import { isUploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type UploadRecoveryJson = null | boolean | number | string | UploadRecoveryJson[] | { [key: string]: UploadRecoveryJson };
 export type UploadRecoveryStage = 'pending' | 'creating' | 'session' | 'bytes_unknown' | 'confirming' | 'saved';
@@ -30,6 +31,7 @@ type MemorySession = { uploadId: string; url: string; expiresAt: string };
 const prefix = 'bondbuddy:upload-recovery:v1:';
 const stages: UploadRecoveryStage[] = ['pending', 'creating', 'session', 'bytes_unknown', 'confirming', 'saved'];
 const maxRecordLength = 256_000;
+const uncertainPut = (error: unknown): error is ApiError => error instanceof ApiError && (error.status === 0 || error.status >= 500);
 const validId = (value: unknown): value is string => typeof value === 'string' && !!value.trim() && value.length <= 128 && !/[\u0000-\u001f\u007f]/.test(value);
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const canonical = (value: unknown): string => JSON.stringify(value, (_key, item) => plain(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
@@ -222,6 +224,11 @@ export class UploadRecovery {
     };
     const status = (message: string) => { live(); options.status?.(message); if (options.requireDurableRecord) live(); };
     const save = (change: Partial<UploadRecoveryRecord>) => { live(); const next = { ...record, ...change }; delete next.lastError; this.write(key, next); record = next; };
+    const rememberError = (error: ApiError) => {
+      live();
+      const lastError = { status: error.status, code: error.code, ...(error.details.uploadReason ? { uploadReason: error.details.uploadReason } : {}), ...(error.details.correlationId ? { correlationId: error.details.correlationId } : {}) };
+      const next = { ...record, lastError }; this.write(key, next); record = next;
+    };
     const accepted = (value: unknown) => {
       live(); const material = validateUploadMaterial(record.declaration, value); save({ material, stage: 'saved' }); this.sessions.delete(id); return material;
     };
@@ -243,6 +250,15 @@ export class UploadRecovery {
       }
       let needsBytes = !record.uploadId;
       if (record.uploadId) {
+        if (record.stage === 'bytes_unknown') {
+          const previous = new ApiError(record.lastError?.status ?? 0, record.lastError?.code ?? 'DATA_UNAVAILABLE', {
+            correlationId: record.lastError?.correlationId,
+            ...(isUploadInspectionPublicReason(record.lastError?.uploadReason) ? { uploadReason: record.lastError.uploadReason } : {}),
+          });
+          if (previous.status >= 400 && previous.status < 500 && previous.status !== 401) throw previous;
+          status('正在确认上次上传的文件是否已保存…');
+          return accepted(await this.confirmUnknownPut(record, signal, live, previous));
+        }
         save({ stage: 'confirming' }); status('正在确认上次上传的文件是否已保存…');
         try { return accepted(await this.api.completeUpload(this.projectId, record.uploadId, { byte_size: record.declaration.byte_size, sha256: record.declaration.sha256 }, signal)); }
         catch (error) {
@@ -278,7 +294,13 @@ export class UploadRecovery {
         status('已准备好，开始上传文件…');
       }
       save({ stage: 'bytes_unknown' }); status('正在上传文件…');
-      await this.api.uploadBytes(session.url, file, (loaded, total) => { if (this.current() && !signal.aborted) options.progress?.(loaded, total); }, signal); live();
+      try {
+        await this.api.uploadBytes(session.url, file, (loaded, total) => { if (this.current() && !signal.aborted) options.progress?.(loaded, total); }, signal); live();
+      } catch (error) {
+        live(); if (!uncertainPut(error)) throw error;
+        rememberError(error); status('正在确认上次上传的文件是否已保存…');
+        return accepted(await this.confirmUnknownPut(record, signal, live, error));
+      }
       // Tiny successful PUTs need not emit an XHR progress event. Its accepted
       // receipt proves the declared bytes arrived, while material saving remains
       // unconfirmed until the separate complete receipt is checked and stored.
@@ -287,11 +309,37 @@ export class UploadRecovery {
       return accepted(await this.api.completeUpload(this.projectId, record.uploadId!, { byte_size: input.byte_size, sha256: input.sha256 }, signal));
     } catch (error) {
       live();
-      if (error instanceof ApiError) {
-        const lastError = { status: error.status, code: error.code, ...(error.details.uploadReason ? { uploadReason: error.details.uploadReason } : {}), ...(error.details.correlationId ? { correlationId: error.details.correlationId } : {}) };
-        this.write(key, { ...record, lastError });
-      }
+      if (error instanceof ApiError) rememberError(error);
       throw error;
     }
+  }
+  private async confirmUnknownPut(record: UploadRecoveryRecord, signal: AbortSignal, live: () => void, putError: ApiError): Promise<Dto<'MaterialResponse'>> {
+    // One budget covers waiting for bytes and complete's existing 202/200 polling.
+    // Expiry keeps the original uncertain PUT error and identity recoverable.
+    const deadline = new AbortController(), waiting = AbortSignal.any([signal, deadline.signal]);
+    const timer = setTimeout(() => deadline.abort(putError), 600_000);
+    try {
+      for (;;) {
+        live(); waiting.throwIfAborted();
+        try {
+          const material = await this.api.completeUpload(this.projectId, record.uploadId!, { byte_size: record.declaration.byte_size, sha256: record.declaration.sha256 }, waiting);
+          live(); waiting.throwIfAborted();
+          // Reuse can legitimately name an older canonical upload. A receipt for
+          // this upload itself must retain its original filename.
+          if (material.upload_id === record.uploadId && material.filename !== record.declaration.filename) throw new UploadRecoveryReceiptError();
+          return material;
+        } catch (error) {
+          live(); waiting.throwIfAborted();
+          // Only this existing response means bytes have not arrived yet. All
+          // inspection, ownership, declaration and receipt failures remain errors.
+          if (!(error instanceof ApiError && error.status === 422 && error.code === 'MATERIAL_UNREADABLE' && error.details.uploadBytesPending === true && error.details.uploadReason === undefined)) throw error;
+        }
+        await new Promise<void>((resolve, reject) => {
+          const abort = () => { clearTimeout(delay); waiting.removeEventListener('abort', abort); reject(waiting.reason); };
+          const delay = setTimeout(() => { waiting.removeEventListener('abort', abort); resolve(); }, 2000);
+          waiting.addEventListener('abort', abort, { once: true }); if (waiting.aborted) abort();
+        });
+      }
+    } finally { clearTimeout(timer); }
   }
 }

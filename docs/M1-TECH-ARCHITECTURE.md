@@ -891,3 +891,18 @@ Spec没有提供独立全文修订价；review_revision 不写入价目表、不
 
 新增 `file-generation` 准备、模板采用/脱敏预览、报价与混合父批次接口。迁移 0122/0123 固定模板引用和提交回执，并将内部模板与普通项目证据/下载隔离。web 的默认生成入口使用目录/模板双卡和混合文种选择，保留旧任务入口；worker 从固定 Word 副本编制。私有 bundle 由 API 按需写入 Blob，不进入公开站点或 Git。API 增加 LibreOffice/Python 预览运行环境；具体依赖、验证和未完成的真实模型验收见[实施交接](FILE-TEMPLATE-IMPLEMENTATION.md)。代码尚未部署。
 > 2026-11-07：底稿/文件生成进度采用私有轻量变更标识；列表 SQL 不传出完整证据 links，前端仅在可见且有活动任务时轮询，终态停止。无迁移，完整证据仍供核查/维护使用。接口、兼容发布次序、流量回归和费用告警模板见 [费用修复说明](../deploy/cost-controls/README.md)。
+
+
+### 可恢复材料确认（#925）
+
+浏览器完成字节上传后发送 `Prefer: respond-async`，首次确认将 `upload.complete_requested` 与不可变上传声明/pin 一起提交，再返回 `202`、`UploadConfirmationPending` 和 `Retry-After: 2`。重复请求使用同一个 upload ID，最终返回既有 `MaterialResponse`；浏览器只在最终 DTO、hash 与大小验证后返回保存成功。旧客户端的同步确认保留，完整读取也移到项目锁外。
+
+`0165_upload_confirmation_outbox.sql` 只新增确认状态与 pin。现有 `runtime.js` 在纯解析服务通过 `BB_UPLOAD_CONFIRMATION_ENABLED=1` 显式启用独立的单确认槽，精确 claim 上述事件，租约 120 秒，每 40 秒条件续租。慢 Blob 全读/hash/检查不持项目锁；最终按 project → upload → 当前 outbox lease 锁顺序重查归属、不可变声明、对象键、同次完整读取的 ETag 与 token，原子提交材料、募集书采用、完整性回执、outbox 与确认终态。进程退出后过期租约可被接续；旧 token 拒绝最终提交。临时故障持久化原错误并有界重试，确定性终态错误保留供同上传编号读取；临时 5xx 达到重试上限后，同声明原上传再次 complete 可在对象锁和可用性核查后恢复一个有界批次，保留 last_error，不要求重传。
+
+`compose.main.yaml` 的纯解析 `!override` 环境明确传入该开关（默认 `0`）；主站私有环境将其设为 `1`。确认 spool 为现有 `materialstaging` 卷内的 `/var/lib/bondbuddy/parse-staging/upload-confirmation`，默认预算 128 MiB，由 `BB_UPLOAD_CONFIRMATION_SPOOL_MAX_BYTES` 调整；API 的 `uploadspool` 独立。运行时启用时要求绝对 spool 路径及正整数预算。`compose.execution.yaml` 的各执行服务显式为 `0`，避免跨端重复消费者；现有纯解析 0.5 CPU / 1 GiB 上限保留。部署必须核查实际容器环境、事件消费和退出/重启后的同上传恢复，不能只修改 `.env`。
+
+pin 登记、过期上传清理登记与实际 Blob 删除共用 owner/object advisory 锁；慢读取在锁外，删除在对象锁内重新核 pin 与删除租约。候选 canonical 对象 pin 只追加，替换候选时保留旧 pin 到终态。复用回执的证据属于 canonical material 对象，冗余 staging 不能借出完整性证据。删除/归属/声明变化拒绝保存，重复确认不生成第二份材料或重新采用旧稿。
+
+本切片需从同一准确提交编译 contracts、API、后台运行时和 web；domain 等未变组件可按源码树核对复用。发布依次应用新增迁移、采用准确技术产物并在主站启用确认槽，编制端保持关闭；回滚先停止新确认入队/消费，保留新增表和已确认材料，不逆向删除迁移数据。公共验收使用原页面的小型 synthetic DOCX 与至少 6 MiB synthetic DOCX，验证 202 短回执、刷新重开后原上传最终 200、原 material/version/hash、同项目小文件及说明保存无长锁阻塞。该验收由部署后的公共入口直接证明，定向合成测试不代替上线验收。
+
+公共浏览器夹具可在准确 API 编译后运行 `node scripts/upload-confirmation-fixtures.mjs <isolated-output-directory>` 生成两份 synthetic DOCX 与 hash/大小清单。原页面选择文件，记录短 202，确认期间刷新或重开后恢复原 upload ID；最终 200 的 material/version/hash 与刷新后的已保存材料一致。在大文件验证期间保存同项目说明并提交小文件，确认这些请求不会等待项目长锁。

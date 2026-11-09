@@ -4,7 +4,7 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient, type BlobItem } from '@azure/storage-blob';
-import { PROSPECTUS_DOCX_ONLY_FIELD_ERROR, isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
+import { UPLOAD_BYTES_PENDING_FIELD_ERROR, PROSPECTUS_DOCX_ONLY_FIELD_ERROR, isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
 import { inspectMaterialUpload, inspectMaterialUploadFile, inspectMaterialUploadFileDetailed } from './original-material-upload.js';
 import { UploadSafetyError, type UploadInspectionResult, type UploadRejectionReason, type UploadStructureDetail } from './upload-safety.js';
 
@@ -39,6 +39,7 @@ export class Problem extends Error {
   prospectusSelectionRequired?: boolean;
   sourceProspectusRequired?: boolean;
   prospectusDocxOnly?: boolean;
+  uploadBytesPending?: boolean;
   constructor(public status: number, public code: string, message: string, public readonly uploadReason?: UploadRejectionReason, public readonly uploadDetail?: UploadStructureDetail) { super(message); }
 }
 export function publicProblem(error: Problem, correlationId: string) {
@@ -48,9 +49,11 @@ export function publicProblem(error: Problem, correlationId: string) {
     : undefined;
   return {
     code: error.code, message: inspection ? 'Material inspection was not completed' : error.message,
-    retryable: error.status === 503 || inspection === 'inspection_queue_timeout' ||
+    retryable: error.status === 503 || error.uploadBytesPending === true || inspection === 'inspection_queue_timeout' ||
       inspection === 'inspection_timeout' || inspection === 'inspection_worker_failed',
     field_errors: inspection ? [{ field: 'material_upload', code: inspection, message: 'File inspection was not completed' }]
+      : error.status === 422 && error.code === 'MATERIAL_UNREADABLE' && error.uploadBytesPending
+        ? [UPLOAD_BYTES_PENDING_FIELD_ERROR]
       : error.code === 'TRIAL_QUOTA_EXCEEDED' && error.trialLimit && TRIAL_LIMIT_KINDS.includes(error.trialLimit)
         ? [{ field: TRIAL_LIMIT_ERROR_FIELD, code: error.trialLimit, message: 'Current processing limit reached' }]
         : error.code === 'INPUT_REVISION_CONFLICT' && error.prospectusSelectionRequired
