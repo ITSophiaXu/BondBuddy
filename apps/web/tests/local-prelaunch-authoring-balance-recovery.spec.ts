@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, billingApi, billingLedger, integer, channelState, accountAmounts } from './local-prelaunch-billing-helpers';
 import { createSyntheticProject, fillSourceInformation, openProject, uploadFromPicker, localSql } from './local-prelaunch-helpers';
@@ -12,6 +12,15 @@ test.skip(process.env.BB_E2E_LOCAL_PRELAUNCH !== '1' || process.env.BB_E2E_REAL_
   process.env.BB_E2E_AUTHORING_BALANCE_RECOVERY !== '1', 'Requires an explicitly coordinated local authoring recovery/model window.');
 test.use({ viewport: { width: 1440, height: 1000 } });
 test.setTimeout(1800000);
+
+// Keep a private current session separately from audit evidence so an observer
+// failure after admission can inspect the same task without another payment/run.
+test.afterEach(async ({ page, billing }) => {
+  if (!billing?.directory || page.isClosed()) return;
+  const file = join(billing.directory, `session-final-${randomUUID()}.json`);
+  writeFileSync(file, JSON.stringify(await page.context().storageState()), { flag: 'wx', mode: 0o600 });
+  billing.record('private-final-session-retained', { path: file, credentialsIncludedInAudit: false });
+});
 
 const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
 function inputIdentities(owner: string, project: string) {
@@ -129,6 +138,13 @@ test('current authoring zero balance returns from real cashier to the original i
   const inputAfterReturn = await billingApi(page, 'GET', inputPath);
   expect(inputAfterReturn.status).toBe(200); expect(inputAfterReturn.body).toEqual(locked.body);
   billing.record('cashier-return-automatically-resumed-identical-authoring-request', { original, resumed: resumed.request().postDataJSON(), accepted });
+  const sessionFile = join(billing.directory, 'session-after-admission.json');
+  writeFileSync(sessionFile, JSON.stringify(await page.context().storageState()), { flag: 'wx', mode: 0o600 });
+  writeFileSync(join(billing.directory, 'accepted-run.json'), JSON.stringify({
+    schema: 'current-authoring-cashier-accepted-v1', owner: billing.owner, projectId: project.project_id,
+    runId, originalRequest: original, originalQuote, lockedInput: locked.body, inputs,
+    fundedLedger: funded, originalReturn, sourceHash: fixture.sha256, sessionFile,
+  }, null, 2), { flag: 'wx', mode: 0o600 });
   await expect(page.locator('#prospectus-panel')).toHaveClass(/prospectus-readonly/);
   await expect(page.locator('#choose-prospectus-version')).toBeHidden();
   await expect(page.locator('#prospectus-version-file')).toBeDisabled();
