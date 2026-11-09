@@ -112,7 +112,7 @@ const projectNameRequests=new Map<string,Promise<void>>();
 
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
 type UploadPhase = 'queued' | 'hashing' | 'checking' | 'uploading' | 'saving' | 'persisted' | 'failed' | 'cancelled' | 'uncertain';
-type LocalUpload = { key: string; owner: string; projectId: string; role: UploadRole; file?: File; declaration?:Dto<'UploadCreateRequest'>; uploadId?:string; recoveryRecord?:UploadRecoveryRecord; explicitResume?:boolean; restored?:boolean; needsFile?:boolean; needsReplacement?:boolean; journalDone?:boolean; phase: UploadPhase; sentBytes: number; material?: Dto<'MaterialResponse'>; error?: string; controller?: AbortController; hash?: string };
+type LocalUpload = { key: string; owner: string; projectId: string; role: UploadRole; file?: File; declaration?:Dto<'UploadCreateRequest'>; uploadId?:string; recoveryRecord?:UploadRecoveryRecord; explicitResume?:boolean; explicitFileReselection?:boolean; restored?:boolean; needsFile?:boolean; needsReplacement?:boolean; journalDone?:boolean; phase: UploadPhase; sentBytes: number; material?: Dto<'MaterialResponse'>; error?: string; controller?: AbortController; hash?: string };
 let runningUploads = 0;
 let preparingUploads=0;
 type MaterialRecovery = { state: 'loading' | 'ready' | 'unavailable'; message?: string };
@@ -1044,7 +1044,7 @@ function restoreUploadRows(projectId:string){
     const rows=localUploads.get(projectId)??[],known=new Set(rows.map(row=>row.key));
     for(const record of uploadRecovery(projectId).list()){
       if(known.has(record.id))continue;
-      rows.push({key:record.id,owner:identity,projectId,role:record.declaration.role,declaration:record.declaration,hash:record.declaration.sha256,uploadId:record.uploadId,recoveryRecord:record,phase:'uncertain',sentBytes:0,restored:true});
+      rows.push({key:record.id,owner:identity,projectId,role:record.declaration.role,declaration:record.declaration,hash:record.declaration.sha256,uploadId:record.uploadId,recoveryRecord:record,phase:'uncertain',sentBytes:0,restored:true,needsFile:!record.material&&!!record.uploadId&&!!record.expiresAt&&Date.parse(record.expiresAt)<=Date.now()});
     }
     localUploads.set(projectId,rows);uploadJournalErrors.delete(projectId);
   }catch(error){uploadJournalErrors.set(projectId,uploadRecoveryMessage(error));}
@@ -1057,7 +1057,7 @@ function reselectUploadFile(upload:LocalUpload,replace=false){
   input.addEventListener('change',async()=>{
     const file=input.files?.[0];clear();if(!file||identity!==upload.owner||!(localUploads.get(upload.projectId)??[]).includes(upload))return;
     if(replace){await removeUploadRow(upload);if(identity===upload.owner&&!(localUploads.get(upload.projectId)??[]).includes(upload))addUpload(upload.projectId,upload.role,file);return;}
-    upload.file=file;upload.explicitResume=true;upload.phase='queued';upload.error=undefined;updateMaterialWorkspace(upload.projectId);pumpUploads();
+    upload.file=file;upload.explicitResume=true;upload.explicitFileReselection=true;upload.phase='queued';upload.error=undefined;updateMaterialWorkspace(upload.projectId);pumpUploads();
   },{once:true});
   document.body.append(input);uploadReselectInputs.set(upload.key,input);input.click();
 }
@@ -1117,13 +1117,14 @@ async function performUpload(upload: LocalUpload) {
   const isCurrentOwner=()=>identity===upload.owner&&(localUploads.get(upload.projectId)??[]).includes(upload);
   const recovery=uploadRecovery(upload.projectId,upload.owner);
   const previousRecord=upload.explicitResume?upload.recoveryRecord:undefined;upload.explicitResume=false;
+  const explicitFileReselection=upload.explicitFileReselection===true;upload.explicitFileReselection=false;
   const syncRecord=()=>{const record=recovery.list().find(item=>item.id===upload.key);if(record){upload.uploadId=record.uploadId;upload.recoveryRecord=record;}};
   const accept=(material:Dto<'MaterialResponse'>)=>{
     if(controller.signal.aborted||!isCurrentOwner())return;
     syncRecord();upload.material=material;upload.phase='persisted';upload.error=undefined;upload.restored=false;upload.needsFile=false;upload.sentBytes=uploadSize(upload);
     recoveryStates.set(upload.projectId,{state:'ready'});updateMaterialWorkspace(upload.projectId);void refreshProjectMaterials(upload.projectId,epoch);
   };
-  const resume=(file?:File)=>recovery.resume(upload.key,{file,previousRecord,signal:controller.signal,status:()=>{
+  const resume=(file?:File)=>recovery.resume(upload.key,{file,reselectExpiredSession:!!file&&explicitFileReselection,previousRecord,signal:controller.signal,status:()=>{
     if(!isCurrentOwner()||controller.signal.aborted)return;
     const record=recovery.list().find(item=>item.id===upload.key);if(record){upload.uploadId=record.uploadId;upload.recoveryRecord=record;}
     upload.phase=record?.stage==='confirming'?'saving':record?.stage==='bytes_unknown'?'uploading':'checking';updateMaterialWorkspace(upload.projectId);
