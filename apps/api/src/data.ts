@@ -143,6 +143,8 @@ export interface PrivateBlobs {
   getIfExists(key: string): Promise<Buffer | null>;
   getIfExistsBounded(key: string, maxBytes: number): Promise<Buffer | null>;
   exists(key: string): Promise<boolean>;
+  /** Authoritative identity of the current stored object; never a content digest. */
+  headVersion?(key: string): Promise<{ etag: string; byteSize: number } | null>;
   delete(key: string): Promise<void>;
   deleteIfMatch?(key: string, etag: string): Promise<boolean>;
   /** One bounded listing page; continuation is opaque and must never be logged. */
@@ -154,7 +156,7 @@ export interface PrivateBlobs {
   /** Opens the object as a stream (with its stored length); null when absent. */
   openRead?(key: string, signal?: AbortSignal): Promise<{ body: Readable; contentLength: number | undefined } | null>;
 }
-export type BlobDigest = { byteSize: number; sha256: string };
+export type BlobDigest = { byteSize: number; sha256: string; etag?: string };
 const BLOB_BLOCK_BYTES = 4 * 1024 * 1024;
 const notFound = (error: unknown) => Boolean(error && typeof error === 'object' && ('statusCode' in error && error.statusCode === 404 || 'code' in error && error.code === 'BlobNotFound'));
 async function hashStream(body: Readable, path: string | null, maxBytes: number, expected?: number): Promise<BlobDigest> {
@@ -247,6 +249,14 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
         throw error;
       }
     },
+    async headVersion(key) {
+      await ensure();
+      try {
+        const response = await container.getBlockBlobClient(key).getProperties();
+        if (!response.etag || !Number.isSafeInteger(response.contentLength)) throw new Problem(503,'DATA_UNAVAILABLE','Stored object version is unavailable');
+        return { etag: response.etag, byteSize: response.contentLength! };
+      } catch (error) { if (notFound(error)) return null; throw error; }
+    },
     async delete(key) { await ensure(); await container.getBlockBlobClient(key).deleteIfExists(); },
     async deleteIfMatch(key, etag) { return (await container.getBlockBlobClient(key).deleteIfExists({ conditions: { ifMatch: etag } })).succeeded; },
     async listPage(prefix, continuation, pageSize) {
@@ -278,7 +288,9 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
         const response = await container.getBlockBlobClient(key).download();
         if (response.contentLength !== undefined && response.contentLength > maxBytes) { (response.readableStreamBody as Readable | undefined)?.destroy(); throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit'); }
         if (!response.readableStreamBody) throw new Problem(503,'DATA_UNAVAILABLE','Stored object has no body');
-        return await hashStream(response.readableStreamBody as Readable, path, maxBytes, response.contentLength);
+        const verified = await hashStream(response.readableStreamBody as Readable, path, maxBytes, response.contentLength);
+        // Capture the version from this same full-read response, never a later HEAD.
+        return { ...verified, ...(response.etag ? { etag: response.etag } : {}) };
       } catch (error) {
         if (error instanceof Problem) throw error;
         if (notFound(error)) return null;
