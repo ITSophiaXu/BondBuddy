@@ -247,10 +247,19 @@ export class ProjectQaWorkspace {
  private async manageProspectus(){
   if(this.locked()||this.busy)return;
   this.prospectusPanel?.dispose();
-  const d=this.modal('本项目募集说明书','<p>上传并采用募集说明书后，回到此页确认问题与材料。</p><div id="qa-prospectus-panel"></div>');
+  const d=this.modal('本项目募集说明书','<p>上传成功后自动用于本轮问答，无需再次确认。</p><div id="qa-prospectus-panel"></div>');
   const panel=this.prospectusPanel=new ProspectusPanel(this.api,this.state!.prospectus?.project_id??this.id!,d.querySelector('#qa-prospectus-panel')!,async()=>!this.busy&&!this.locked(),async()=>{
    const fresh=await this.read();if(!this.live())return;
+   const previous=this.state!.prospectus;
    this.state!.prospectus=fresh.prospectus;this.state!.materials=fresh.materials;
+   // A deliberate upload or version choice also updates the editable answer inputs.
+   // Historical runs retain their immutable manifests.
+   if(fresh.prospectus){
+    const draft=this.state!.draft,next=structuredClone(fresh.prospectus.asset);
+    const materials=draft.materials.filter(a=>key(a)!==key(next)&&(!previous||key(a)!==key(previous.asset)));
+    if(materials.length<50){draft.materials=[next,...materials];this.changed();}
+    else this.status('募集说明书已选用。本轮材料已达 50 份，请移除一份补充材料后选入募集说明书。');
+   }
    d.close();this.paint();
   },()=>{},'qa',this.owner);
   const guard=(e:Event)=>{if(panel.hasUnconfirmed){e.preventDefault();e.stopImmediatePropagation();void panel.beforeLeave();}};
