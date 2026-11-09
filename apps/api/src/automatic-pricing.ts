@@ -41,7 +41,9 @@ export function resolveAutomaticTaskPrice(action:string,snapshot:any,version:Aut
     sku=snapshot.billing_task==='m4_workpaper'||snapshot.input.workpaper?'workpaper':'related';
   }else if(action==='integrity_round'){
     sku='integrity';const d=snapshot.draft;
-    if(!d||!Array.isArray(d.subjects)||!Array.isArray(d.site_ids)||d.subjects.length<1||d.subjects.length>5||d.site_ids.length<1||d.site_ids.length>20)return unsupported('每轮诚信核查支持1至5个主体、至多20个适用官网；请调整本轮范围。');
+    if(!d||!Array.isArray(d.subjects)||!Array.isArray(d.site_ids)||d.subjects.length<1||d.subjects.length>5)return unsupported('每轮诚信核查支持1至5个主体，请核对本轮名单。');
+    if(!d.site_ids.length)return unsupported('请至少选择一个核查网站。');
+    // The integrity workflow validates the website catalogue; pricing includes the full selected scope in one round.
     if(new Set(d.subjects.map((s:any)=>s.id)).size!==d.subjects.length||new Set(d.site_ids).size!==d.site_ids.length)return unsupported('核查主体或网站重复。');
   }else if(action==='project_file_check'){
     sku='check';const files=snapshot.manifest?.files,charged=snapshot.charged_file_versions;
