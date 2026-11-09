@@ -95,10 +95,10 @@ test('pending without file prompts locally without creating a session', async ()
   await assert.rejects(r.resume('op-a'), error => error instanceof UploadRecoveryNeedsFileError && error.record.declaration.filename === '原始.docx'); assert.deepEqual(methods(h), []);
 });
 
-test('unknown PUT followed by same-page confirmation accepts without another PUT or File', async () => {
+test('unknown PUT automatically confirms without another PUT or File', async () => {
   const h = harness(), r = h.make(); r.begin(declaration(), undefined, 'op-a'); h.state.put = async () => { throw new ApiError(0, 'DATA_UNAVAILABLE'); };
-  await assert.rejects(r.resume('op-a', { file: file() }), ApiError); assert.equal(r.list()[0].stage, 'bytes_unknown');
-  assert.deepEqual(await r.resume('op-a'), material()); assert.deepEqual(methods(h), ['create', 'put', 'complete']);
+  assert.deepEqual(await r.resume('op-a', { file: file() }), material()); assert.equal(r.list()[0].stage, 'saved');
+  assert.deepEqual(methods(h), ['create', 'put', 'complete']);
 });
 
 test('unknown complete after registration is confirmed by original ID after reload', async () => {
@@ -124,11 +124,11 @@ test('reselection after URL loss confirms old upload before explicit replacement
   assert.equal((h.calls[1].input as Dto<'UploadCreateRequest'>).filename, '原始.docx'); assert.deepEqual(r.list()[0].previousUploadIds, ['upload-a']);
 });
 
-test('same-page not-received retry can reuse its unexpired in-memory URL only after original complete', async () => {
-  const h = harness(), r = h.make(); r.begin(declaration(), undefined, 'op-a'); h.state.put = async () => { throw new ApiError(0, 'DATA_UNAVAILABLE'); };
-  await assert.rejects(r.resume('op-a', { file: file() })); h.state.put = async () => {}; let confirmations = 0;
-  h.state.complete = async () => { if (++confirmations === 1) throw new ApiError(422, 'MATERIAL_UNREADABLE'); return material(); };
-  await r.resume('op-a', { file: file() }); assert.deepEqual(methods(h), ['create', 'put', 'complete', 'put', 'complete']);
+test('authentication recovery confirms the original upload without replaying rejected PUT bytes', async () => {
+  const h = harness(), r = h.make(); r.begin(declaration(), undefined, 'op-a'); h.state.put = async () => { throw new ApiError(401, 'UNAUTHENTICATED'); };
+  await assert.rejects(r.resume('op-a', { file: file() }));
+  assert.deepEqual(await r.resume('op-a'), material());
+  assert.deepEqual(methods(h), ['create', 'put', 'complete']);
 });
 
 for (const reason of UPLOAD_INSPECTION_PUBLIC_REASONS) test('inspection reason ' + reason + ' preserves original identity and never means missing bytes', async () => {
@@ -441,11 +441,12 @@ test('small successful PUT without XHR progress reports all bytes while complete
   completeGate.resolve(material()); await pending; assert.equal(r.list()[0].stage, 'saved');
 });
 
-test('unknown PUT without progress cannot report successful 100 percent or material confirmation', async () => {
+test('unknown PUT without progress cannot report successful 100 percent before its exact receipt', async () => {
   const h = harness(), r = h.make(); r.begin(declaration(), undefined, 'op-a'); h.state.emitProgress = false;
   h.state.put = async () => { throw new ApiError(0, 'DATA_UNAVAILABLE'); }; const progress: number[] = [];
+  h.state.complete = async () => { throw new ApiError(503, 'DATA_UNAVAILABLE'); };
   await assert.rejects(r.resume('op-a', { file: file(), progress: loaded => progress.push(loaded) }), ApiError);
-  assert.deepEqual(progress, []); assert.equal(r.list()[0].stage, 'bytes_unknown'); assert.deepEqual(methods(h), ['create', 'put']);
+  assert.deepEqual(progress, []); assert.equal(r.list()[0].stage, 'bytes_unknown'); assert.deepEqual(methods(h), ['create', 'put', 'complete']);
 });
 
 test('opt-in durable transfer completes normally without changing the journal schema', async () => {

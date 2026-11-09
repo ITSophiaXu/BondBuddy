@@ -2,7 +2,19 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test, type TestContext } from 'node:test';
 import { ApiClient, ApiError, friendlyError, parseApiError, type Dto } from './api.js';
+import { UPLOAD_BYTES_PENDING_FIELD_ERROR } from '@bondbuddy/contracts';
 import { PROSPECTUS_DOCX_ONLY_FIELD_ERROR, PROSPECTUS_DOCX_ONLY_MESSAGE, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_MESSAGE } from '@bondbuddy/contracts';
+
+test('pending bytes requires its exact field/code and 422 envelope, without any inspection failure', () => {
+  assert.equal(parseApiError(422, { code: 'MATERIAL_UNREADABLE', field_errors: [UPLOAD_BYTES_PENDING_FIELD_ERROR] }).details.uploadBytesPending, true);
+  for (const [status, body] of [
+    [503, { code: 'MATERIAL_UNREADABLE', field_errors: [UPLOAD_BYTES_PENDING_FIELD_ERROR] }],
+    [422, { code: 'VALIDATION_FAILED', field_errors: [UPLOAD_BYTES_PENDING_FIELD_ERROR] }],
+    [422, { code: 'MATERIAL_UNREADABLE', field_errors: [] }],
+    [422, { code: 'MATERIAL_UNREADABLE', field_errors: [{ ...UPLOAD_BYTES_PENDING_FIELD_ERROR, field: 'other' }] }],
+    [422, { code: 'MATERIAL_UNREADABLE', field_errors: [UPLOAD_BYTES_PENDING_FIELD_ERROR, { field: 'material_upload', code: 'structure_invalid' }] }],
+  ] as const) assert.equal(parseApiError(status, body).details.uploadBytesPending, undefined);
+});
 
 test('missing source uses the public field code instead of server prose', () => {
   const error = parseApiError(422, {code: 'INPUT_REQUIRED', message: 'untrusted server prose', field_errors: [SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR]});

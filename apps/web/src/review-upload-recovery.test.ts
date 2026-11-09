@@ -105,10 +105,10 @@ test('a later batch item cannot run before its original prefix has been fully ad
   await assert.rejects(h.helper.resume(e.id, 1, { file: file('later.pdf') }), /前一份/); assert.equal(h.calls.length, before); assert.equal(drafts(h).length, 0);
 });
 
-test('unknown byte response refresh confirms the original upload with no File and no second create or byte PUT', async () => {
-  const h = harness(), e = await h.helper.prepare([file()], 'other'); h.state.dropPut = true; await assert.rejects(h.helper.resume(e.id, 0, { file: file() }));
-  const before = h.calls.length, r = await h.make().resume(e.id, 0); assert.equal(r.state, 'complete'); assert.equal(h.calls.filter(call => call.method === 'create').length, 1); assert.equal(h.calls.filter(call => call.method === 'put').length, 1);
-  assert.equal(h.calls.slice(before)[0].method, 'complete'); assert.equal(r.draft!.version, 8);
+test('unknown byte response automatically confirms the original upload without a second create or PUT', async () => {
+  const h = harness(), e = await h.helper.prepare([file()], 'other'); h.state.dropPut = true;
+  const r = await h.helper.resume(e.id, 0, { file: file() }); assert.equal(r.state, 'complete'); assert.equal(h.calls.filter(call => call.method === 'create').length, 1); assert.equal(h.calls.filter(call => call.method === 'put').length, 1);
+  assert.equal(h.calls.filter(call => call.method === 'complete').length, 1); assert.equal(r.draft!.version, 8);
 });
 
 test('lost original draft response after acceptance converges only through exact v+1 and the complete input', async () => {

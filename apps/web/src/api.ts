@@ -2,6 +2,7 @@ import {runRecoverableBillingRequest,observeAutomaticQuotes} from './billing-tas
 import {readDownloadBytes,type DownloadProgress} from './download-progress.js';
 import {schemas as uploadSchemas,WorkpaperZipPreparationSchema,type WorkpaperZipPreparation} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
+import { isUploadBytesPendingFieldError } from '@bondbuddy/contracts';
 import {BILLING_WIRE_HEADER,BILLING_WIRE_VERSION,LEGACY_BILLING_WIRE_VERSION,billingWireRoute,encodeBillingDto,validateBillingDto} from '@bondbuddy/contracts';
 import { UserFacingError, unknownErrorText, type ErrorOperation } from './user-facing-error.js';
 import type { Static } from '@sinclair/typebox';
@@ -14,7 +15,7 @@ export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
 const UPLOAD_CONFIRMATION_TIMEOUT_MS = 600_000;
 export class ApiError extends Error {
   constructor(public status: number, public code: string, public readonly details: {
-    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean; prospectusDocxOnly?: boolean;
+    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; uploadBytesPending?: boolean; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean; prospectusDocxOnly?: boolean;
   } = {}) { super(code); }
 }
 
@@ -57,6 +58,7 @@ export function parseApiError(status: number, value: unknown, fallbackCode = 'DA
     ...(correlationId ? { correlationId } : {}),
     ...(typeof problem.retryable === 'boolean' ? { retryable: problem.retryable } : {}),
     ...(uploadReason ? { uploadReason } : {}),
+    ...(status === 422 && code === 'MATERIAL_UNREADABLE' && fields.length === 1 && isUploadBytesPendingFieldError(fields[0]) ? { uploadBytesPending: true } : {}),
     ...(trialLimit ? { trialLimit } : {}),
   });
 }
