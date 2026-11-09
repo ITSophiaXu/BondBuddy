@@ -59,56 +59,36 @@ test('update none rejects omitted unadopted history; draft flags and ordinary ta
   try {
     const before = await f.state();
     const rejected = await f.lock();
-    assert.equal(rejected.statusCode, 409, rejected.body);
-    assert.equal(rejected.json().code, 'HISTORICAL_BASELINE_REQUIRED');
+    assert.equal(rejected.statusCode, 422, rejected.body);
+    assert.equal(rejected.json().code, 'INPUT_REQUIRED');
     assert.deepEqual(await f.state(), before);
     await assert.rejects(validateNoneBaseline(f.pool, f.scope, { ...f.manifest(),
       target_confirmation: { status: 'confirmed' } } as ReturnType<typeof f.manifest>), code('HISTORICAL_BASELINE_REQUIRED'));
   } finally { await f.close(); }
 });
 
-test('generation requires an independent exact confirmation and server stamps it into the immutable hash', { skip: !connection }, async () => {
-  const f = await fixture();
-  try {
-    const before = await f.state(), rejected = await f.lock();
-    assert.equal(rejected.statusCode, 409, rejected.body);
-    assert.equal(rejected.json().code, 'FIRST_DRAFT_CONFIRMATION_REQUIRED');
-    assert.deepEqual(await f.state(), before);
-    const preview = await f.send('GET', `${f.base}/first-draft-exclusions`);
-    assert.equal(preview.statusCode, 200, preview.body);
-    assert.match(String(preview.headers['cache-control']), /no-store/);
-    assert.deepEqual(preview.json(), { project_id: f.projectId, draft_revision: f.payload.draft_revision, project_kind: 'generation',
-      scope: FIRST_DRAFT_EXCLUSION_SCOPE, excluded_historical: f.history.map(pin => ({ ...pin, filename: 'synthetic-none.txt' })) });
-    const response = await f.lock({ first_draft_confirmation: confirmation(f.history) });
-    assert.equal(response.statusCode, 201, response.body);
-    const locked = (await f.state()).inputs[0], snapshot = locked.manifest.authoring.none_baseline;
-    assert.equal(snapshot.owner_user_id, f.owner);
-    assert.equal(snapshot.project_id, f.projectId);
-    assert.equal(snapshot.first_draft_confirmation.confirmed_by, f.owner);
-    assert.equal(snapshot.first_draft_confirmation.confirmed_at, snapshot.checked_at);
-    assert.ok(Number.isFinite(Date.parse(snapshot.checked_at)));
-    assert.deepEqual(snapshot.excluded_historical, f.history);
-    assert.deepEqual(snapshot.first_draft_confirmation.excluded_historical, f.history);
-    assert.equal(inputManifestHash(locked.manifest), String(locked.input_hash).trim());
-    const changed = structuredClone(locked.manifest);
-    changed.authoring.none_baseline.first_draft_confirmation.confirmed_by = 'someone-else';
-    assert.notEqual(inputManifestHash(changed), String(locked.input_hash).trim());
-    await validateNoneBaseline(f.pool, f.scope, locked.manifest);
-  } finally { await f.close(); }
-});
-
-test('new none inputs with no omitted historical versions remain valid without a confirmation', { skip: !connection }, async () => {
-  for (const kind of ['update', 'generation'] as const) {
-    const f = await fixture(kind, false);
-    try {
-      const locked = await f.lock();
-      assert.equal(locked.statusCode, 201, locked.body);
-      const m = (await f.state()).inputs[0].manifest;
-      assert.deepEqual(m.authoring.none_baseline.excluded_historical, []);
-      assert.equal(m.authoring.none_baseline.first_draft_confirmation, null);
-      await validateNoneBaseline(f.pool, f.scope, m);
-    } finally { await f.close(); }
+// The November 5 source rule supersedes new first-draft admission. The older
+// snapshot validator is still exercised directly for immutable legacy inputs.
+test('new generation cannot bypass required source with an exact historical exclusion confirmation', { skip: !connection }, async () => {
+ const f=await fixture();try{
+  const before=await f.state();
+  for(const extra of [{},{first_draft_confirmation:confirmation(f.history)}]){
+   const response=await f.lock(extra);assert.equal(response.statusCode,422,response.body);assert.equal(response.json().code,'INPUT_REQUIRED');
   }
+  const preview=await f.send('GET',f.base+'/first-draft-exclusions');assert.equal(preview.statusCode,200);assert.match(String(preview.headers['cache-control']),/no-store/);
+  assert.deepEqual(preview.json().excluded_historical,f.history.map(pin=>({...pin,filename:'synthetic-none.txt'})));
+  const m=f.manifest();m.authoring.none_baseline=await lockNoneBaseline(f.pool,f.scope,'generation',m.materials,m.authoring,confirmation(f.history),stamp);
+  const snapshot=m.authoring.none_baseline!;assert.equal(snapshot.first_draft_confirmation!.confirmed_by,f.owner);assert.equal(snapshot.checked_at,stamp);assert.deepEqual(snapshot.excluded_historical,f.history);
+  const changed=structuredClone(m);changed.authoring.none_baseline!.first_draft_confirmation!.confirmed_by='someone-else';assert.notEqual(inputManifestHash(changed),inputManifestHash(m));
+  await validateNoneBaseline(f.pool,f.scope,m);assert.deepEqual(await f.state(),before);
+ }finally{await f.close();}
+});
+test('new inputs require a source even without omitted history; legacy empty snapshots stay valid', { skip: !connection }, async()=>{
+ for(const kind of ['update','generation'] as const){const f=await fixture(kind,false);try{
+  const before=await f.state(),response=await f.lock();assert.equal(response.statusCode,422,response.body);assert.equal(response.json().code,'INPUT_REQUIRED');
+  const m=f.manifest();m.authoring.none_baseline=await lockNoneBaseline(f.pool,f.scope,kind,m.materials,m.authoring,undefined,stamp);
+  assert.deepEqual(m.authoring.none_baseline!.excluded_historical,[]);await validateNoneBaseline(f.pool,f.scope,m);assert.deepEqual(await f.state(),before);
+ }finally{await f.close();}}
 });
 
 test('missing, extra, duplicate, wrong version/hash/scope and client actor/time confirmations fail without writes', { skip: !connection }, async () => {
@@ -117,14 +97,12 @@ test('missing, extra, duplicate, wrong version/hash/scope and client actor/time 
     const pin = f.history[0]!, before = await f.state();
     for (const pins of [[], [{ ...pin, material_version: 2 }], [{ ...pin, sha256: 'e'.repeat(64) }],
       [pin, { ...pin, material_id: 'unknown' }]]) {
-      const rejected = await f.lock({ first_draft_confirmation: confirmation(pins) });
-      assert.equal(rejected.statusCode, 409, rejected.body);
-      assert.equal(rejected.json().code, 'FIRST_DRAFT_EXCLUSION_STALE');
+      const m=f.manifest();
+      await assert.rejects(lockNoneBaseline(f.pool,f.scope,'generation',m.materials,m.authoring,confirmation(pins),stamp),code('FIRST_DRAFT_EXCLUSION_STALE'));
       assert.deepEqual(await f.state(), before);
     }
-    const duplicate = await f.lock({ first_draft_confirmation: confirmation([pin, pin]) });
-    assert.equal(duplicate.statusCode, 409, duplicate.body);
-    assert.equal(duplicate.json().code, 'INPUT_REVISION_CONFLICT');
+    const m=f.manifest();
+    await assert.rejects(lockNoneBaseline(f.pool,f.scope,'generation',m.materials,m.authoring,confirmation([pin,pin]),stamp),code('INPUT_REVISION_CONFLICT'));
     for (const bad of [{ ...confirmation([pin]), scope: 'latest_version_only' },
       { ...confirmation([pin]), confirmed_by: f.owner }, { ...confirmation([pin]), confirmed_at: stamp }]) {
       const rejected = await f.lock({ first_draft_confirmation: bad });
@@ -148,9 +126,10 @@ test('the exclusion query includes all undeleted versions and isolates owner/pro
     assert.deepEqual(await historicalExclusions(f.pool, { owner: other.owner, projectId: f.projectId }, []), []);
     const selected = await historicalExclusions(f.pool, f.scope, [{ ...v2, role: 'historical' }]);
     assert.deepEqual(selected.map(({ filename, ...p }) => p), f.history, 'only exact selected version is excluded from omission');
-    const rejected = await f.lock({ first_draft_confirmation: confirmation([v2]) });
-    assert.equal(rejected.json().code, 'FIRST_DRAFT_EXCLUSION_STALE');
-    assert.equal((await f.lock({ first_draft_confirmation: confirmation([v2, ...f.history]) })).statusCode, 201, 'input order is normalized');
+    const m=f.manifest();
+    await assert.rejects(lockNoneBaseline(f.pool,f.scope,'generation',m.materials,m.authoring,confirmation([v2]),stamp),code('FIRST_DRAFT_EXCLUSION_STALE'));
+    const locked=await lockNoneBaseline(f.pool,f.scope,'generation',m.materials,m.authoring,confirmation([v2,...f.history]),stamp);
+    assert.deepEqual(locked!.excluded_historical,[...f.history,v2],'input order is normalized');
   } finally { await f.close(); await other.close(); }
 });
 
@@ -158,8 +137,9 @@ test('worker/recovery invalidates later additions, deletion, version, role and p
   for (const change of ['addition', 'deletion', 'version', 'role', 'kind'] as const) {
     const f = await fixture();
     try {
-      assert.equal((await f.lock({ first_draft_confirmation: confirmation(f.history) })).statusCode, 201);
-      const before = await f.state(), manifest = before.inputs[0].manifest;
+      const before=await f.state(),manifest=f.manifest();
+      manifest.authoring.none_baseline=await lockNoneBaseline(f.pool,f.scope,'generation',manifest.materials,manifest.authoring,confirmation(f.history),stamp);
+      const original=structuredClone(manifest);
       await validateNoneBaseline(f.pool, f.scope, manifest);
       if (change === 'addition') await f.add(`new-${randomUUID()}`, 1, 'historical', 'b'.repeat(64));
       if (change === 'version') await f.add(f.history[0]!.material_id, 2, 'historical', 'b'.repeat(64));
@@ -167,7 +147,8 @@ test('worker/recovery invalidates later additions, deletion, version, role and p
       if (change === 'role') await f.pool.query("UPDATE bb_material_versions SET role='reference' WHERE id=$1", [f.history[0]!.material_id]);
       if (change === 'kind') await f.pool.query("UPDATE bb_projects SET kind='update' WHERE id=$1", [f.projectId]);
       await assert.rejects(validateNoneBaseline(f.pool, f.scope, manifest), code(change === 'kind' ? 'INPUT_REVISION_CONFLICT' : 'FIRST_DRAFT_EXCLUSION_STALE'));
-      assert.deepEqual(await f.state(), before, 'old input/hash/confirmation and outbox remain byte-equivalent');
+      assert.deepEqual(manifest,original,'legacy input and confirmation remain unchanged');
+      assert.deepEqual(await f.state(),before,'validation does not create inputs or outbox events');
     } finally { await f.close(); }
   }
 });
@@ -203,8 +184,7 @@ test('API and worker fail closed on a real PostgreSQL history-query timeout', { 
     await blocker.query('BEGIN');
     await blocker.query('SELECT id FROM bb_material_versions WHERE id=$1 FOR UPDATE', [f.history[0]!.material_id]);
     const before = await f.state();
-    for (const request of [{ method: 'GET' as const, url: `${f.base}/first-draft-exclusions` },
-      { method: 'POST' as const, url: `${f.base}/input-revisions`, payload: { ...f.payload, first_draft_confirmation: confirmation(f.history) } }]) {
+    for (const request of [{ method: 'GET' as const, url: `${f.base}/first-draft-exclusions` }]) {
       const result = await timedApp.inject({ ...request, headers: { origin } });
       assert.equal(result.statusCode, 503, result.body);
       assert.equal(result.json().code, 'DATA_UNAVAILABLE');
@@ -219,7 +199,7 @@ test('invalid historical hash data cannot issue a preview or lock an unchecked s
   try {
     const before = await f.state();
     await f.pool.query('UPDATE bb_material_versions SET sha256=$2 WHERE id=$1', [f.history[0]!.material_id, 'z'.repeat(64)]);
-    for (const response of [await f.send('GET', `${f.base}/first-draft-exclusions`), await f.lock()]) {
+    for (const response of [await f.send('GET', `${f.base}/first-draft-exclusions`)]) {
       assert.equal(response.statusCode, 503, response.body);
       assert.equal(response.json().code, 'DATA_UNAVAILABLE');
     }

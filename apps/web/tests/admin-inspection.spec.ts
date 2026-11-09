@@ -207,7 +207,7 @@ test('inspection refresh preserves six unsent fields and pending input focus', a
 
 test('inspection failed refresh retains snapshot draft and actionable read feedback', async ({ page }, info) => {
   const fixture = await setup(page);
-  await page.locator('[data-view="tasks"]').click();
+  await page.locator('nav [data-view="tasks"]').click();
   await page.locator('[name="search"]').fill('unsent-search');
   const before = await evidence(page, info, fixture, '00-before');
   const held = fixture.holdNextSnapshot(503, { code: 'DATA_UNAVAILABLE' });
@@ -227,7 +227,7 @@ test('inspection failed refresh retains snapshot draft and actionable read feedb
 
 test('inspection failed logout keeps the page reports failure and permits one retry', async ({ page }, info) => {
   const fixture = await setup(page, snapshot(), 1);
-  await page.locator('[data-view="tasks"]').click();
+  await page.locator('nav [data-view="tasks"]').click();
   const before = await evidence(page, info, fixture, '00-before');
   await logout(page);
   const failed = await evidence(page, info, fixture, '01-failed');
@@ -266,7 +266,7 @@ test('inspection logout prevents a delayed snapshot from restoring the dashboard
 
 test('inspection permission loss clears the previous snapshot instead of displaying it', async ({ page }, info) => {
   const fixture = await setup(page);
-  await page.locator('[data-view="tasks"]').click();
+  await page.locator('nav [data-view="tasks"]').click();
   await evidence(page, info, fixture, '00-before');
   const held = fixture.holdNextSnapshot(404, { code: 'NOT_FOUND' });
   await page.locator('[data-refresh]').click();
@@ -283,7 +283,7 @@ test('inspection permission loss clears the previous snapshot instead of display
 
 test('inspection refresh clamps page three when fifty one tasks become five', async ({ page }, info) => {
   const fixture = await setup(page, snapshot(51));
-  await page.locator('[data-view="tasks"]').click();
+  await page.locator('nav [data-view="tasks"]').click();
   await page.locator('[data-next]').click();
   await page.locator('[data-next]').click();
   const before = await evidence(page, info, fixture, '00-page-three');
@@ -303,7 +303,7 @@ test('inspection refresh clamps page three when fifty one tasks become five', as
 
 test('inspection refresh retains selected state kind and channel when their options disappear', async ({ page }, info) => {
   const fixture = await setup(page, snapshot(5));
-  await page.locator('[data-view="tasks"]').click();
+  await page.locator('nav [data-view="tasks"]').click();
   await page.locator('[name="state"]').selectOption('running');
   await page.locator('[name="kind"]').selectOption('update');
   await page.locator('[name="channel"]').selectOption('production');

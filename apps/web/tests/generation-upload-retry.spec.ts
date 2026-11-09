@@ -1,13 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { mkdir } from 'node:fs/promises';
 import { sourceFixture } from './generation-source-fixtures';
 import { href, file, batches } from './generation-entry-fixtures';
 
-const evidence = 'test-evidence/generation-upload-retry-20261109';
 const sourceFile = { ...file, name: '合成港务集团有限公司2026年度中期票据募集说明书及补充披露材料-长文件名.docx' };
 
 for (const width of [1440, 390, 320]) for (const restored of [false, true]) {
-  test(`generation retry matches standard buttons beside filename at ${width}, restored=${restored}`, async ({ page }) => {
+  test(`generation retry matches standard buttons beside filename at ${width}, restored=${restored}`, async ({ page }, info) => {
     await page.setViewportSize({ width, height: 960 });
     const state = await sourceFixture(page, false);
     let fail = true;
@@ -16,19 +14,19 @@ for (const width of [1440, 390, 320]) for (const restored of [false, true]) {
       : route.fallback());
     await page.goto('/' + href({ step: 'source', mode: 'documents' }));
     await page.locator('#prospectus-version-file').setInputFiles(sourceFile);
-    await expect(page.locator('#save-prospectus-version')).toBeEnabled();
+    // Completion now retries transient failures three times at two-second intervals.
+    await expect(page.locator('#save-prospectus-version')).toBeEnabled({timeout:12_000});
     if (restored) await page.reload();
     const retry = page.locator(restored ? '[data-resume-prospectus]' : '#save-prospectus-version');
     await expect(retry).toBeVisible(); await expect(retry).toBeEnabled();
     const row = page.locator('.pf-source-upload-state').filter({ hasText: sourceFile.name });
     await row.scrollIntoViewIfNeeded();
-    await mkdir(evidence, { recursive: true });
-    await page.screenshot({ path: `${evidence}/${process.env.BB_RETRY_BASELINE ? 'before-' : ''}${restored ? 'restored' : 'retry'}-${width}.png` });
+    await page.screenshot({ path: info.outputPath(`${restored ? 'restored' : 'retry'}-${width}.png`) });
 
-    // Compare computed appearance with the shared secondary button in the same panel.
+    // Compare computed appearance with the shared primary button in the same panel.
     const appearance = await retry.evaluate(button => {
       const standard = document.createElement('button');
-      standard.className = 'btn secondary'; standard.textContent = button.textContent;
+      standard.className = 'bb-upload-action bb-upload-action--primary btn primary'; standard.style.margin = '0'; standard.textContent = button.textContent;
       button.closest('.pf-source-picker')!.append(standard);
       const read = (element: Element) => {
         const css = getComputedStyle(element);

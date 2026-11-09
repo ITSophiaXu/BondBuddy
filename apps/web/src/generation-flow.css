@@ -43,3 +43,6 @@
 .pf-source-upload-state .pf-upload-file span{grid-column:1;grid-row:2;margin:0}
 .pf-source-upload-state .pf-upload-actions>.primary{grid-column:2;grid-row:1;align-self:center}
 .pf-source-upload-state .pf-upload-actions>.secondary{grid-column:2;grid-row:2}
+
+/* Grid gap supplies spacing; extra button margins would offset the filename alignment. */
+:root body .pf-source-upload-state .bb-upload-action {margin:0}

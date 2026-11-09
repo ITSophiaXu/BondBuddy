@@ -9,13 +9,14 @@ import {resolve} from 'node:path';
 const catalogue:WorkpaperCatalogue={catalogue_id:'save-feedback-cat',filename:'合成体验底稿目录.xlsx',sha256:sha,created_at:now,warnings:[],entries:['1','2'].map((code,i)=>({id:'entry-'+code,code,title:i?'关联方情况说明':'基本情况核查记录',folder:'',sheet:'尽职调查文件',row:i+2,instructions:'',kind:'file',path:code+'.docx'}))};
 type Save={expected_revision:number;preparation:FileGenerationWorkspace['preparation']};
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
-async function setup(page:Page){
+async function setup(page:Page,active=false){
  const transport=await fixture(page);
  const preparation={...emptyFileGenerationPreparation(),workpaper_template_mode:'automatic' as const,catalogue_id:catalogue.catalogue_id,item_ids:['entry-1','entry-2']};
  const state={data:{revision:1,preparation,sets:[],builtin:{name:'光大证券模板',version:'synthetic-v1',available:true},pricing:{mode:'automatic',price_version:AUTOMATIC_PRICE_VERSION,workpaper_points:3458,document_points:7965},batches:[]} as FileGenerationWorkspace,saves:[] as Save[],quotes:[] as any[],submissions:[] as any[],transport};
  await page.route('**/api/v1/projects/*/file-generation**',async route=>{
   const req=route.request(),path=new URL(req.url()).pathname,body=req.method()==='GET'?undefined:fixtureRequest(req);
   const reply=(value:unknown)=>route.fulfill({json:fixtureBody(route,value)});
+  if(req.method()==='GET'&&path.endsWith('/progress'))return reply({revision:sha,active});
   if(req.method()==='GET'&&path.endsWith('/file-generation'))return reply(state.data);
   if(path.endsWith('/preparation')){
    state.saves.push(structuredClone(body));
@@ -40,9 +41,11 @@ async function setup(page:Page){
   return route.fulfill({status:404,json:{code:'NOT_FOUND'}});
  });
  await page.route('**/api/v1/projects/*/workpapers/catalogues/*',route=>route.fulfill({json:catalogue}));
+ if(active)state.data.batches=[{batch_id:'active-poll-batch',created_at:now,points:0,workpapers:null,documents:{batch_id:'active-docs',state:'running',items:[]}}];
  await page.goto('/'+href({step:'prepare'}));
  await expect(page.locator('#fg-confirm')).toBeEnabled();
  await page.getByRole('button',{name:'调整生成范围',exact:true}).click();
+ await page.getByText('补充资料与编制要求（选填）',{exact:true}).click();
  return state;
 }
 const first=(page:Page)=>page.locator('[data-fg-item="entry-1"]');
@@ -179,7 +182,7 @@ test('changing the source waits for the full queue and stays put if its final sa
 });
 
 test('progress refresh and the polling reply preserve an active requirements draft and caret',async({page})=>{
- await page.clock.install();const state=await setup(page);let release!:()=>void,reads=0;
+ await page.clock.install();const state=await setup(page,true);let release!:()=>void,reads=0;
  await page.route('**/api/v1/projects/*/file-generation',async route=>{if(++reads===1)await new Promise<void>(r=>release=r);return route.fallback();});
  const note=page.locator('#fg-requirements');await note.fill('保留当前输入');await note.focus();await note.evaluate((n:HTMLTextAreaElement)=>n.setSelectionRange(1,3));
  // Trigger the real refresh handler while the editor keeps keyboard focus.

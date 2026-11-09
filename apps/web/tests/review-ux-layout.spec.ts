@@ -1,9 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
-import { mkdir, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { install, mount, file, recovery, noBusiness } from './review-upload-twelfth-fixtures';
 import { hold } from './upload-progress-fixtures';
 
-const evidence = 'test-evidence/review-ux-20261109';
 const projectName = '合成交通投资集团有限公司-上交所-普通私募公司债-募集书复核';
 const sourceFile = { ...file, name: '合成交通投资集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx' };
 
@@ -14,8 +13,7 @@ async function styles(page: Page) {
   }
 }
 async function screenshot(page: Page, name: string) {
-  await mkdir(evidence, { recursive: true });
-  await page.screenshot({ path: `${evidence}/${process.env.BB_REVIEW_UX_BASELINE ? 'before-' : ''}${name}.png` });
+  await page.screenshot({ path: test.info().outputPath(`${name}.png`) });
 }
 
 for (const width of [2560, 1440, 390, 320]) {
@@ -50,8 +48,12 @@ for (const width of [2560, 1440, 390, 320]) {
     async function aligned() {
       const upload = (await group.locator('.material-picker').boundingBox())!;
       const activity = (await progress.boundingBox())!;
-      expect(Math.abs(activity.x - upload.x)).toBeLessThanOrEqual(1);
-      expect(Math.abs(activity.width - upload.width)).toBeLessThanOrEqual(1);
+      const card=(await row.boundingBox())!;
+      const inset=await row.evaluate(element=>{const s=getComputedStyle(element);return {left:parseFloat(s.paddingLeft)+parseFloat(s.borderLeftWidth),right:parseFloat(s.paddingRight)+parseFloat(s.borderRightWidth)};});
+      expect(Math.abs(card.x-upload.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(card.width-upload.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(activity.x-card.x-inset.left)).toBeLessThanOrEqual(1);
+      expect(Math.abs(activity.width-(card.width-inset.left-inset.right))).toBeLessThanOrEqual(1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     }
     await aligned();

@@ -164,125 +164,19 @@ test.afterEach(async ({ page }) => {
   const state = installed.get(page); if (!state) return;
   expect(state.unexpected).toEqual([]); expect(state.errors).toEqual([]);
 });
-async function openProject(page: Page, state = fixture()) {
-  await install(page, state); await page.goto(`/#/projects/${projectId}?step=materials`);
-  await expect(page.locator('#materials-title')).toBeVisible(); await expect(page.locator('#execute-input')).toBeEnabled();
-  await expect(page.locator('#execution-first-draft')).toBeHidden(); expect(state.previews).toEqual([]); expect(state.requests).toEqual([]);
-  return state;
-}
-async function expectReview(page: Page, expected: Exclusion[]) {
-  const panel = page.locator('#execution-first-draft'); await expect(panel).toBeVisible();
-  await expect(panel.getByRole('button', { name: '按首稿执行', exact: true })).toBeEnabled();
-  const rows = panel.locator('#first-draft-exclusions > li'); await expect(rows).toHaveCount(expected.length);
-  for (let i = 0; i < expected.length; i++) {
-    await expect(rows.nth(i)).toContainText(expected[i].filename);
-    await expect(rows.nth(i)).toContainText(`版本 ${expected[i].material_version}`);
-    await expect(rows.nth(i)).toContainText(expected[i].sha256);
-  }
-  await expect(page.locator('#execute-input')).toBeDisabled();
-}
-async function beginReview(page: Page, state: State) {
-  await page.locator('#execute-input').click(); await expectReview(page, state.excluded);
-  expect(state.requests.at(-1)).not.toHaveProperty('first_draft_confirmation'); expect(state.locked).toEqual([]);
-}
-async function expectLocked(page: Page, state: State, expected: Exclusion[]) {
-  await expect.poll(() => state.preflights.length).toBe(1); expect(state.locked).toHaveLength(1);
-  expect(state.requests.at(-1)?.first_draft_confirmation).toEqual(confirmation(expected));
-  await expect(page.locator('#execution-first-draft')).toBeHidden();
-}
 
-for (const code of ['FIRST_DRAFT_CONFIRMATION_REQUIRED', 'FIRST_DRAFT_EXCLUSION_STALE']) {
-  test(`synthetic: ${code} opens exact exclusions only after POST; explicit confirmation re-reads before resubmitting`, async ({ page }) => {
-    const state = fixture(); state.rejection = code; await openProject(page, state); await beginReview(page, state);
-    expect(decisionCalls(state)).toEqual([`POST ${inputPath}`, `GET ${exclusionPath}`]);
-    if(code==='FIRST_DRAFT_CONFIRMATION_REQUIRED'&&process.env.BB_FIRST_DRAFT_QA_DIR){
-      await page.locator('#execution-actions').screenshot({path:join(process.env.BB_FIRST_DRAFT_QA_DIR,'first-draft-desktop.png')});
-      await page.setViewportSize({width:375,height:812});
-      const dimensions=await page.locator('#execution-actions').evaluate(element=>{
-        const rows=[];for(let node:Element|null=element;node;node=node.parentElement){const s=getComputedStyle(node);rows.push({id:node.id,className:node.className,width:s.width,maxWidth:s.maxWidth,display:s.display,flex:s.flex,flexDirection:s.flexDirection,alignItems:s.alignItems,rect:node.getBoundingClientRect().toJSON()});}return rows;
-      });
-      await writeFile(join(process.env.BB_FIRST_DRAFT_QA_DIR,'first-draft-mobile-dimensions.json'),JSON.stringify(dimensions,null,2));
-      expect(dimensions[0].rect.width).toBeGreaterThan(280);
-      await page.locator('#first-draft-exclusions details').first().locator('summary').click();
-      await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
-      await page.locator('#execution-actions').screenshot({path:join(process.env.BB_FIRST_DRAFT_QA_DIR,'first-draft-mobile.png')});
-      await page.setViewportSize({width:1280,height:720});
-    }
-    await page.locator('#confirm-first-draft').click(); await expectLocked(page, state, state.excluded);
-    expect(state.requests).toHaveLength(2); expect(decisionCalls(state)).toEqual([
-      `POST ${inputPath}`, `GET ${exclusionPath}`, `GET ${exclusionPath}`, `POST ${inputPath}`]);
-  });
-}
-const changes: { name: string; apply: (state: State) => void }[] = [
-  { name: 'added file', apply: state => state.excluded.push({ material_id: 'third-history', material_version: 1, sha256: hash('third'), filename: '新出现的第三份历史稿.pdf' }) },
-  { name: 'removed file', apply: state => { state.excluded = state.excluded.slice(1); } },
-  { name: 'material version', apply: state => { state.excluded[0].material_version++; } },
-  { name: 'content hash', apply: state => { state.excluded[0].sha256 = hash('changed-content'); } },
-  { name: 'filename', apply: state => { state.excluded[0].filename = '历史稿已更名.pdf'; } },
-  { name: 'prospectus selection revision', apply: state => { state.selectionRevision++; } }
-];
-for (const change of changes) test(`synthetic: changed ${change.name} requires another explicit confirmation click`, async ({ page }) => {
-  const state = await openProject(page); await beginReview(page, state); change.apply(state);
-  await page.locator('#confirm-first-draft').click(); await expect.poll(() => state.previews.length).toBe(2);
-  await expectReview(page, state.excluded); await expect(page.locator('#execution-message')).toContainText('历史稿列表已变化');
-  expect(state.requests).toHaveLength(1); expect(state.preflights).toEqual([]);
-  await page.locator('#confirm-first-draft').click(); await expectLocked(page, state, state.excluded);
-  expect(decisionCalls(state)).toEqual([`POST ${inputPath}`, `GET ${exclusionPath}`, `GET ${exclusionPath}`, `GET ${exclusionPath}`, `POST ${inputPath}`]);
+// Current new-task policy requires a historical/reference source. Old first-draft
+// confirmation responses must not restore the superseded source-free path.
+for(const kind of ['update','generation'] as const) test('required source blocks '+kind+' before any first-draft confirmation or input write',async({page})=>{
+ const state=fixture(kind);await install(page,state);await page.goto('/#/projects/'+projectId+'?step=materials');
+ await expect(page.locator('#materials-title')).toBeVisible();await expect(page.locator('#execute-input')).toBeDisabled();
+ await expect(page.locator('#start-disabled-reason')).toContainText('历史／参考募集书');
+ await expect(page.locator('#execution-first-draft')).toBeHidden();expect(decisionCalls(state)).toEqual([]);
+ await page.reload();await expect(page.locator('#execute-input')).toBeDisabled();expect(state.requests).toEqual([]);expect(state.previews).toEqual([]);
 });
-test('synthetic: list order alone does not change the exact exclusion set', async ({ page }) => {
-  const state = await openProject(page); await beginReview(page, state); state.excluded.reverse();
-  await page.locator('#confirm-first-draft').click(); await expectLocked(page, state, state.excluded);
-  expect(state.requests).toHaveLength(2); expect(state.previews).toHaveLength(2);
-});
-test('synthetic: server rejects a just-confirmed stale set and requires review of the newly returned inventory', async ({ page }) => {
-  const state = await openProject(page); await beginReview(page, state); const original = structuredClone(state.excluded);
-  state.rejectConfirmedOnce = true; await page.locator('#confirm-first-draft').click();
-  await expect.poll(() => state.previews.length).toBe(3); await expectReview(page, state.excluded);
-  expect(state.requests).toHaveLength(2); expect(state.requests[1].first_draft_confirmation).toEqual(confirmation(original));
-  expect(state.locked).toEqual([]); expect(state.preflights).toEqual([]);
-  await page.locator('#confirm-first-draft').click(); await expectLocked(page, state, state.excluded);
-  expect(state.requests).toHaveLength(3); expect(decisionCalls(state)).toEqual([
-    `POST ${inputPath}`, `GET ${exclusionPath}`, `GET ${exclusionPath}`, `POST ${inputPath}`,
-    `GET ${exclusionPath}`, `GET ${exclusionPath}`, `POST ${inputPath}`]);
-});
-test('synthetic: reload clears a pending first-draft review and never restores consent', async ({ page }) => {
-  const state = await openProject(page); await beginReview(page, state); await page.reload();
-  await expect(page.locator('#execute-input')).toBeEnabled(); await expect(page.locator('#execution-first-draft')).toBeHidden();
-  expect(state.requests).toHaveLength(1); expect(state.previews).toHaveLength(1);
-  await beginReview(page, state); expect(state.requests).toHaveLength(2);
-  expect(state.requests.every(value => value.first_draft_confirmation === undefined)).toBe(true);
-});
-test('synthetic: editing target reporting year clears the review and the next input has no consent', async ({ page }) => {
-  const state = await openProject(page); await beginReview(page, state);
-  await page.locator('#edit-project-details').click(); await page.locator('#reporting-year').selectOption('2025');
-  await page.locator('#continue-materials').click(); await expect(page.locator('#materials-title')).toBeVisible();
-  await expect(page.locator('#execution-first-draft')).toBeHidden(); await expect(page.locator('#execute-input')).toBeEnabled();
-  await beginReview(page, state); expect(state.requests).toHaveLength(2);
-  expect(state.requests[1].first_draft_confirmation).toBeUndefined(); expect(state.project.update_details?.reporting_cutoff).toBe('2025-06-30');
-});
-test('synthetic: adding material clears the review and the next input pins the new materials without consent', async ({ page }) => {
-  const state = await openProject(page); await beginReview(page, state);
-  await page.locator('[data-upload-role=audit]').setInputFiles({ name: '补充合成财务材料.pdf', mimeType: 'application/pdf',
-    buffer: Buffer.from('%PDF-1.7\nsynthetic additional finance\n%%EOF') });
-  await expect(page.locator('[data-material-role=audit] .material-file-row')).toHaveCount(2);
-  await expect(page.locator('#execute-input')).toBeEnabled(); await expect(page.locator('#execution-first-draft')).toBeHidden();
-  await beginReview(page, state); expect(state.requests).toHaveLength(2);
-  expect(state.requests[1].first_draft_confirmation).toBeUndefined(); expect(state.requests[1].material_versions).toHaveLength(2);
-});
-for (const scenario of [{ kind: 'update' as const, adopted: false }, { kind: 'generation' as const, adopted: true }]) {
-  test(`synthetic: ${scenario.kind} project with adopted=${scenario.adopted} never offers first-draft consent`, async ({ page }) => {
-    const state = fixture(scenario.kind, scenario.adopted);
-    state.rejection = scenario.kind === 'update' ? 'HISTORICAL_BASELINE_REQUIRED' : 'FIRST_DRAFT_CONFIRMATION_REQUIRED';
-    await openProject(page, state); await page.locator('#execute-input').click();
-    await expect.poll(() => state.requests.length).toBe(1); await expect(page.locator('#execute-input')).toBeEnabled();
-    await expect(page.locator('#execution-first-draft')).toBeHidden(); await expect(page.locator('#confirm-first-draft')).toBeHidden();
-    expect(state.requests[0].first_draft_confirmation).toBeUndefined(); expect(state.locked).toEqual([]);
-    if (scenario.kind === 'update') expect(state.previews).toEqual([]);
-  });
-}
-test('synthetic: a baseline adopted in another page during review prevents a confirmed resubmission', async ({ page }) => {
-  const state = await openProject(page); await beginReview(page, state); state.adopted = true; state.selectionRevision++;
-  await page.locator('#confirm-first-draft').click(); await expect.poll(() => state.previews.length).toBe(2);
-  await expect(page.locator('#execution-first-draft')).toBeHidden();
-  expect(state.requests).toHaveLength(1); expect(state.locked).toEqual([]); expect(state.preflights).toEqual([]);
+test('an adopted reference never permits the obsolete first-draft confirmation path',async({page})=>{
+ const state=fixture('generation',true);await install(page,state);await page.goto('/#/projects/'+projectId+'?step=materials');
+ await expect(page.locator('#execute-input')).toBeEnabled();await page.locator('#execute-input').click();
+ await expect.poll(()=>state.requests.length).toBe(1);await expect(page.locator('#execution-first-draft')).toBeHidden();
+ expect(state.requests[0].first_draft_confirmation).toBeUndefined();expect(state.locked).toEqual([]);
 });

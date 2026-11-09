@@ -329,6 +329,12 @@ export class ProspectusPanel {
     const dialogStatus=this.dialog?.querySelector('[role="status"]');if(dialogStatus)dialogStatus.textContent=s;
   }
   private disableControls(){
+    // Execution readiness may change while the initial version read is pending.
+    // Its material lock callback must not enable an unverified upload picker.
+    if(this.purpose==='update'&&!this.state){
+      this.host.querySelectorAll<HTMLButtonElement|HTMLInputElement>('button,input').forEach(b=>b.disabled=this.busy||!b.matches('[data-retry-prospectus-read]'));
+      return;
+    }
     for(const root of [this.host,this.dialog])root?.querySelectorAll<HTMLButtonElement|HTMLInputElement>('button,input').forEach(b=>b.disabled=this.busy||this.readOnly&&!b.matches('[data-download-version],[data-download-revision]'));
     const save=this.host.querySelector<HTMLButtonElement>('#save-prospectus-version');if(save&&((!this.host.querySelector<HTMLInputElement>('#prospectus-version-file')?.files?.length&&!this.pendingUpload)||this.fileError())){save.disabled=true;if(this.fileError())this.status(this.fileError(),true);}
     this.host.querySelector('.prospectus-panel')?.setAttribute('aria-busy',String(this.busy));
