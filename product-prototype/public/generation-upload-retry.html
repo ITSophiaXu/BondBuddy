@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>募集书上传重试 · BondBuddy 局部原型</title>
+  <link rel="stylesheet" href="../../apps/web/src/style.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="project-workspace.css">
+  <link rel="stylesheet" href="../../apps/web/src/prototype-adapter.css">
+  <link rel="stylesheet" href="file-generation-ux.css">
+  <link rel="stylesheet" href="../../apps/web/src/generation-flow.css">
+  <link rel="stylesheet" href="upload-progress.css">
+  <link rel="stylesheet" href="workspace-typography.css">
+  <link rel="stylesheet" href="document-workspace.css">
+  <style>body{margin:0;padding:24px}.prototype-note{color:var(--muted);font-size:12px;margin:0 0 20px}@media(max-width:600px){body{padding:16px}}</style>
+</head>
+<body class="prototype-app">
+<main class="pf-source-workspace">
+  <p class="prototype-note">局部交互原型 · 合成文件，不执行上传或文件生成</p>
+  <section class="panel pf-generation-prospectus pf-source-picker">
+    <h2>选择募集说明书</h2>
+    <p class="pf-source-help">上传本次用于文件生成的募集说明书。单份不超过 100 MB。</p>
+    <div id="pf-source-upload">
+      <p class="pf-source-help">上传一份用于文件生成的募集说明书，支持 Word（.docx）和 PDF。</p>
+      <button class="pf-source-drop" type="button">↑　点击或拖入文件</button>
+      <div class="pf-source-upload-state">
+        <strong>合成港务集团有限公司2026年度中期票据募集说明书及补充披露材料-长文件名.docx</strong>
+        <span class="prospectus-upload-label"></span>
+        <button type="button" class="btn secondary" id="save-prospectus-version">重试上传</button>
+      </div>
+      <button class="text-button" type="button">停止继续上传</button>
+    </div>
+    <p class="pf-source-help">尚未选择本次生成依据。</p>
+    <span class="file-upload-progress" data-upload-state="error">
+      <span class="file-upload-progress-track"><progress max="100" value="0" aria-label="上传进度"></progress></span>
+      <span class="file-upload-message" role="alert">服务暂时无法完成操作，结果尚未确认。请刷新项目状态；仍无法继续时联系支持。</span>
+    </span>
+  </section>
+  <div class="pf-source-actions"><p>请上传或选择募集说明书，保存完成后继续。</p><button class="btn primary" disabled>下一步：选择生成内容 →</button></div>
+</main>
+<script>
+  const retry=document.querySelector('#save-prospectus-version');
+  if(new URLSearchParams(location.search).has('restored')){
+    retry.removeAttribute('id');retry.textContent='重试此文件';
+    document.querySelector('.prospectus-upload-label').textContent='原上传待确认';
+  }
+  retry.addEventListener('click',()=>{
+    document.querySelector('.file-upload-message').textContent='交互原型：已触发重试，未实际上传文件。';
+  });
+</script>
+</body>
+</html>
