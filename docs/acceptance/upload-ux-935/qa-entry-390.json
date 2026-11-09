@@ -1,0 +1,52 @@
+{
+  "name": "qa-entry",
+  "width": 390,
+  "overflow": false,
+  "controls": [
+    {
+      "tag": "INPUT",
+      "id": "qa-upload",
+      "text": "",
+      "class": "",
+      "display": "block",
+      "width": 144,
+      "height": 42,
+      "border": "0px none rgb(36, 45, 41)",
+      "background": "rgb(255, 255, 255)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": ".docx,.doc,.pdf",
+      "multiple": false
+    },
+    {
+      "tag": "INPUT",
+      "id": "qa-supplement",
+      "text": "",
+      "class": "",
+      "display": "block",
+      "width": 144,
+      "height": 42,
+      "border": "0px none rgb(36, 45, 41)",
+      "background": "rgb(255, 255, 255)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": ".docx,.doc,.pdf,.xlsx",
+      "multiple": true
+    },
+    {
+      "tag": "BUTTON",
+      "id": "qa-save",
+      "text": "保存准备内容",
+      "class": "btn secondary",
+      "display": "flex",
+      "width": 297,
+      "height": 43,
+      "border": "1px solid rgb(214, 221, 214)",
+      "background": "rgb(255, 255, 255)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": null,
+      "multiple": false
+    }
+  ]
+}

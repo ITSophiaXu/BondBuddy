@@ -90,6 +90,20 @@ for(const width of [1440,390])test(`project file resumes the original import aft
   await page.setViewportSize({width,height:900});const s=await fixture(page);s.dropImport=true;await mount(page,'files');await page.locator('#import-project-file').click();await page.locator('dialog select').selectOption('init');await page.locator('dialog input[type=file]').setInputFiles(file);await expect(page.locator('[data-resume-project-file]')).toBeVisible();const original=writes(s.calls,'/imports')[0].body,count=s.calls.filter(c=>c.method!=='GET').length;
   await mount(page,'files',true);expect(s.calls.filter(c=>c.method!=='GET')).toHaveLength(count);await capture(page,`import-recovery-${width}`);await page.locator('[data-resume-project-file]').click();await expect(page.locator('dialog select')).toHaveValue('init');await expect(page.locator('dialog select')).toBeDisabled();await page.locator('dialog form button').click();await expect(page.locator('[data-resume-project-file]')).toHaveCount(0);expect(writes(s.calls,'/imports')).toHaveLength(2);expect(writes(s.calls,'/imports')[1].body).toEqual(original);expect(s.imports.size).toBe(1);expect(s.puts).toBe(1);expect(s.sessions.size).toBe(1);noBusiness(s.calls);expect(s.unexpected).toEqual([]);
 });
+test('project file recovery reveals the original file picker only when bytes are required',async({page})=>{
+  const s=await fixture(page);await mount(page,'files');
+  await page.evaluate(async({owner,project,name,media,sha256,size})=>{
+    const {UploadRecovery}=await import(String('/src/upload-recovery.ts')),{ApiClient}=await import(String('/src/api.ts'));
+    new UploadRecovery(new ApiClient(),owner,project,'project-file-import').begin({filename:name,media_type:media,sha256,byte_size:size,role:'other'},{request_id:'original-import-request',document_type:'init',expected_latest_version_id:null});
+  },{owner,project,name:file.name,media:mime,sha256:hash(file.buffer),size:file.buffer.length});
+  await mount(page,'files',true);await page.locator('[data-resume-project-file]').click();
+  const picker=page.locator('dialog input[type=file]');await expect(picker).toBeHidden();
+  await page.locator('dialog form button').click();await expect(picker).toBeVisible();
+  await picker.setInputFiles(file);await expect(page.locator('dialog[open]')).toHaveCount(0);
+  expect(writes(s.calls,'/imports')[0].body).toMatchObject({request_id:'original-import-request',document_type:'init',expected_latest_version_id:null});
+  expect(s.puts).toBe(1);expect(s.imports.size).toBe(1);noBusiness(s.calls);expect(s.unexpected).toEqual([]);
+});
+
 test('support resumes its original types and acknowledged CAS after refresh',async({page})=>{
   const s=await fixture(page);s.dropDraft='init';await mount(page,'generation');await addDocuments(page,['init']);await addDocuments(page,['credit']);await page.locator('#pf-support').setInputFiles(file);await expect(page.locator('#pf-support-recovery [data-generation-resume]')).toBeVisible();expect(s.work.workspace.drafts.init.materials).toHaveLength(1);
   const count=s.calls.filter(c=>c.method!=='GET').length;await mount(page,'generation',true);expect(s.calls.filter(c=>c.method!=='GET')).toHaveLength(count);await page.locator('[data-pf-remove=credit]').click();await page.locator('#pf-support-recovery [data-generation-resume]').click();await expect(page.locator('#pf-support-recovery [data-generation-resume]')).toHaveCount(0);expect(s.work.workspace.drafts.credit.materials).toHaveLength(1);expect(writes(s.calls,'/drafts/init')).toHaveLength(1);expect(s.puts).toBe(1);noBusiness(s.calls);expect(s.unexpected).toEqual([]);

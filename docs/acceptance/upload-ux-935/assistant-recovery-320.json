@@ -1,0 +1,67 @@
+{
+  "name": "assistant-recovery",
+  "width": 320,
+  "overflow": false,
+  "controls": [
+    {
+      "tag": "BUTTON",
+      "id": "",
+      "text": "确认保存并加入对话",
+      "class": "bb-upload-action bb-upload-action--primary",
+      "display": "inline-flex",
+      "width": 156,
+      "height": 44,
+      "border": "1px solid rgb(36, 87, 71)",
+      "background": "rgb(36, 87, 71)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": null,
+      "multiple": false
+    },
+    {
+      "tag": "BUTTON",
+      "id": "",
+      "text": "移除此待办",
+      "class": "bb-upload-action",
+      "display": "inline-flex",
+      "width": 100,
+      "height": 44,
+      "border": "1px solid rgb(135, 151, 125)",
+      "background": "rgb(255, 255, 255)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": null,
+      "multiple": false
+    },
+    {
+      "tag": "LABEL",
+      "id": "",
+      "text": "添加附件",
+      "class": "bb-upload-picker bb-upload-picker--compact ba-attach",
+      "display": "flex",
+      "width": 118,
+      "height": 44,
+      "border": "1px solid rgb(135, 151, 125)",
+      "background": "rgb(255, 255, 255)",
+      "cursor": "pointer",
+      "tabIndex": -1,
+      "accept": null,
+      "multiple": false
+    },
+    {
+      "tag": "INPUT",
+      "id": "",
+      "text": "",
+      "class": "",
+      "display": "block",
+      "width": 116,
+      "height": 42,
+      "border": "0px none rgb(32, 59, 51)",
+      "background": "rgb(255, 255, 255)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": null,
+      "multiple": true
+    }
+  ]
+}

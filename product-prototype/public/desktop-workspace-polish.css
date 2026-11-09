@@ -145,7 +145,6 @@
   .prototype-app .material-role-heading > div > span { font-size: 12px; }
   .prototype-app .authoring-preparation-guide { padding: 14px 24px; }
   .prototype-app .reference-prospectus { padding: 20px 24px; }
-  .prototype-app .reference-prospectus .reference-upload-picker { min-height: 72px; }
   .prototype-app .reference-empty { margin: 8px 0; }
 
   /* The actual footer stays in its original form/fieldset: existing disabled

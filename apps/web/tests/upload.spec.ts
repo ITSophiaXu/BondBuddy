@@ -140,9 +140,14 @@ function state(): FixtureState {
 test('reference and audit upload areas share styling and audit drops keep the correct role',async({page})=>{
   const s=state();await installApi(page,s);await login(page,'owner_a');
   const reference=page.locator('.reference-upload-picker'),audit=page.locator('[data-material-role="audit"] .material-picker');
-  await expect(reference).toHaveText('点击或拖入文件');await expect(audit).toContainText('点击或拖入文件');
+  await expect(reference).toHaveText('选择文件或将文件拖到这里');await expect(audit).toContainText('选择文件或将文件拖到这里');
   const styles=(element:Element)=>{const css=getComputedStyle(element);return {height:css.minHeight,border:css.borderTopStyle,color:css.borderTopColor,background:css.backgroundColor,radius:css.borderRadius,padding:css.padding};};
   expect(await reference.evaluate(styles)).toEqual(await audit.evaluate(styles));
+  for(const width of [1440,390,320]){
+    await page.setViewportSize({width,height:960});expect(await reference.evaluate(styles)).toEqual(await audit.evaluate(styles));
+    expect(await reference.evaluate(e=>e.getBoundingClientRect().height)).toBe(112);
+    const out=process.env.BB_UPLOAD_UX_EVIDENCE;if(out){await mkdir(out,{recursive:true});await reference.screenshot({path:join(out,`update-reference-${width}.png`)});await audit.screenshot({path:join(out,`update-audit-${width}.png`)});}
+  }
   const data=await page.evaluateHandle(()=>{const data=new DataTransfer();data.items.add(new File(['%PDF synthetic audit drag fixture'],'拖入审计报告.pdf',{type:'application/pdf'}));return data;});
   await audit.dispatchEvent('dragover',{dataTransfer:data});await expect(audit).toHaveClass(/is-dragging/);
   await audit.evaluate(el=>el.dispatchEvent(new DragEvent('dragleave',{bubbles:true,relatedTarget:el.querySelector('span')})));

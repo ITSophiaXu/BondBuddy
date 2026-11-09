@@ -1,0 +1,37 @@
+{
+  "name": "topic-recovery",
+  "width": 390,
+  "overflow": false,
+  "controls": [
+    {
+      "tag": "BUTTON",
+      "id": "",
+      "text": "继续保存原文件",
+      "class": "bb-upload-action bb-upload-action--primary text-btn",
+      "display": "flex",
+      "width": 128,
+      "height": 44,
+      "border": "1px solid rgb(36, 87, 71)",
+      "background": "rgb(36, 87, 71)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": null,
+      "multiple": false
+    },
+    {
+      "tag": "BUTTON",
+      "id": "",
+      "text": "取消本次上传",
+      "class": "bb-upload-action text-btn",
+      "display": "flex",
+      "width": 114,
+      "height": 44,
+      "border": "1px solid rgb(135, 151, 125)",
+      "background": "rgb(255, 255, 255)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": null,
+      "multiple": false
+    }
+  ]
+}
