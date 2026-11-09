@@ -500,5 +500,492 @@ class DebtAdversarialTests(unittest.TestCase):
         self.assertTrue(self.definition()["passed"])
 
 
+class NarrativeExpressionTests(unittest.TestCase):
+    def setUp(self):
+        self.controls = source_controls(source_fixture())
+        self.document = document_fixture()
+
+    def checked(self, identifier):
+        return next(r for r in check_document(self.document, self.controls)["results"] if r["id"] == identifier)
+
+    def expense(self):
+        return self.checked("current_nonoperating_expense_narrative")
+
+    def debt(self):
+        return self.checked("current_one_year_debt_narrative")
+
+    def test_bookkeeping_amount_sequence_wording(self):
+        for wording in ["账面值为", "账面余额为", "账面值分别为", "账面余额分别为"]:
+            for amounts in ["1万元、2万元和123.46万元", "1、2、123.46万元"]:
+                with self.subTest(wording=wording, amounts=amounts):
+                    self.document["paragraphs"][1]["text"] = f"报告期内，发行人营业外支出{wording}{amounts}。"
+                    self.assertTrue(self.expense()["passed"])
+
+    def test_bookkeeping_sequence_still_binds_explicit_period_positions(self):
+        self.document["paragraphs"][1]["text"] = "2032年1-9月、2031年度、2030年度，发行人营业外支出账面值为123.46万元、2万元和1万元。"
+        self.assertTrue(self.expense()["passed"])
+        self.document["paragraphs"][1]["text"] = self.document["paragraphs"][1]["text"].replace("123.46万元、2万元和1万元", "1万元、2万元和123.46万元")
+        self.assertFalse(self.expense()["passed"])
+
+    def test_bookkeeping_sequence_rejects_bad_last_item_count_and_units(self):
+        for amounts in ["1万元、2万元和3万元", "1万元、123.46万元",
+                        "1万元、2万元、123.46万元和123.46万元", "1万元、错误2万元和123.46万元",
+                        "1、2、123.46", "1千元、2千元和123.46千元", "1、2亿元和123.46万元"]:
+            with self.subTest(amounts=amounts):
+                self.document["paragraphs"][1]["text"] = f"报告期内，发行人营业外支出账面余额为{amounts}。"
+                self.assertFalse(self.expense()["passed"])
+
+    def test_bookkeeping_repeated_amount_cannot_hide_behind_correct_first(self):
+        for tail in ["账面值为123.46万元，账面值为3万元", "账面余额为123.46万元，错误3万元",
+                     "账面值为123.46万元，账面值为3", "账面值为123.46万元，账面值为3千元"]:
+            with self.subTest(tail=tail):
+                self.document["paragraphs"][1]["text"] = f"2032年1-9月，发行人营业外支出{tail}。"
+                self.assertFalse(self.expense()["passed"])
+
+    def test_bookkeeping_second_bad_candidate_cannot_be_ignored(self):
+        self.document["paragraphs"].append({"body_index": 30, "text": "2032年1-9月，发行人营业外支出账面值为3万元。"})
+        self.assertFalse(self.expense()["passed"])
+        self.assertEqual(self.expense()["candidate_count"], 2)
+
+    def test_bookkeeping_single_debt_balance_remains_exact(self):
+        for wording in ["账面值为", "账面余额为"]:
+            with self.subTest(wording=wording):
+                self.document["paragraphs"][2]["text"] = f"截至报告期末，公司一年以内到期的债务{wording}0.32亿元，占有息债务总额的比例为35.56%。"
+                self.assertTrue(self.debt()["passed"])
+                self.document["paragraphs"][2]["text"] = self.document["paragraphs"][2]["text"].replace("0.32", "0.31")
+                self.assertFalse(self.debt()["passed"])
+
+    def test_interest_bearing_liability_ratio_synonym(self):
+        self.document["paragraphs"][2]["text"] = self.document["paragraphs"][2]["text"].replace("有息债务总额", "有息负债总额")
+        self.assertTrue(self.debt()["passed"])
+        self.document["paragraphs"][2]["text"] = self.document["paragraphs"][2]["text"].replace("35.56", "99.00")
+        self.assertFalse(self.debt()["passed"])
+
+    def test_ratio_synonym_does_not_accept_ordinary_liabilities_or_duplicate_ratio(self):
+        for tail in ["占负债总额的比例为35.56%", "占有息债务总额的比例为35.56%，占有息负债总额的比例为99.00%"]:
+            with self.subTest(tail=tail):
+                self.document["paragraphs"][2]["text"] = f"截至报告期末，公司一年以内到期的债务为0.32亿元，{tail}。"
+                self.assertFalse(self.debt()["passed"])
+
+    def test_hypothetical_liquidity_simulation_is_not_a_balance_candidate(self):
+        self.document["paragraphs"].append({"body_index": 30, "text": "假设公司以新债同额置换一年内到期债务，模拟流动比率由1.20升至1.35，前述仅为模拟结果。"})
+        result = self.debt()
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["candidate_count"], 1)
+        self.assertEqual(result["ignored"][-1]["reason"], "hypothetical_liquidity_simulation_not_balance_disclosure")
+
+    def test_hypothetical_simulation_alone_does_not_supply_actual_coverage(self):
+        self.document["paragraphs"][2]["text"] = "在以新债同额置换一年内到期债务的假设下，公司模拟流动比率由1.20升至1.35。"
+        result = self.debt()
+        self.assertTrue(result["missing_candidate"])
+        self.assertFalse(result["passed"])
+
+    def test_hypothesis_cannot_hide_separately_disclosed_actual_balance(self):
+        simulation = "假设公司同额置换一年内到期债务，模拟流动比率升至1.35"
+        for amount, expected in [("0.32", True), ("9.99", False)]:
+            with self.subTest(amount=amount):
+                self.document["paragraphs"][2]["text"] = simulation + f"，截至2032年9月末，公司一年内到期债务账面值为{amount}亿元，占有息负债总额的比例为35.56%。"
+                result = self.debt()
+                self.assertEqual(result["passed"], expected)
+                self.assertEqual(result["candidate_count"], 1)
+
+    def test_hypothesis_does_not_ignore_embedded_or_elided_actual_amount(self):
+        for text in [
+            "假设公司同额置换一年内到期债务（当前实际余额为9.99亿元），模拟流动比率升至1.35。",
+            "假设公司同额置换一年内到期债务，当前实际账面余额为9.99亿元，模拟流动比率升至1.35。",
+            "假设公司同额置换一年内到期债务为9.99，模拟流动比率升至1.35。",
+            "假设公司通过置换改善偿债能力，截至报告期末，公司一年内到期债务账面值为9.99亿元，占有息负债总额的比例为35.56%，模拟流动比率为1.35。",
+        ]:
+            with self.subTest(text=text):
+                self.document["paragraphs"].append({"body_index": 30, "text": text})
+                result = self.debt()
+                self.assertFalse(result["passed"])
+                self.assertEqual(result["candidate_count"], 2)
+                self.document["paragraphs"].pop()
+
+
+class ContextBindingTests(unittest.TestCase):
+    def setUp(self):
+        self.controls = source_controls(source_fixture())
+        self.document = document_fixture()
+
+    def checked(self, identifier):
+        return next(r for r in check_document(self.document, self.controls)["results"] if r["id"] == identifier)
+
+    def debt(self):
+        return self.checked("current_one_year_debt_narrative")
+
+    def test_explicit_issuer_is_inherited_only_within_the_same_paragraph(self):
+        self.document["paragraphs"][2]["text"] = "发行人披露本期偿债情况。截至报告期末，一年内到期债务账面值为0.32亿元，占有息债务总额的比例为35.56%。"
+        result = self.debt()
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["candidates"][0]["scope_source"], "same_paragraph_preceding_explicit_subject")
+        self.document["paragraphs"][2]["text"] = self.document["paragraphs"][2]["text"].replace("0.32", "9.99")
+        self.assertFalse(self.debt()["passed"])
+
+    def test_subject_is_not_inherited_from_a_different_paragraph(self):
+        self.document["paragraphs"].insert(2, {"body_index": 19, "text": "发行人披露本期偿债情况。"})
+        self.document["paragraphs"][3]["text"] = "截至报告期末，一年内到期债务账面值为0.32亿元，占有息债务总额的比例为35.56%。"
+        result = self.debt()
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["candidates"][0]["scope"], "unresolved")
+
+    def test_subject_switch_blocks_inheritance_and_cannot_hide_new_current_candidate(self):
+        self.document["paragraphs"].append({"body_index": 30, "text": "发行人披露偿债情况。子公司甲公司另有安排。截至报告期末，一年内到期债务账面值为9.99亿元，占有息债务总额的比例为35.56%。"})
+        result = self.debt()
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["candidate_count"], 2)
+        self.assertEqual(result["candidates"][-1]["scope"], "unresolved")
+
+    def test_comparison_does_not_turn_ambiguous_subject_into_other_entity_exclusion(self):
+        self.document["paragraphs"].append({"body_index": 30, "text": "发行人披露偿债情况。与母公司相比，截至报告期末，一年内到期债务账面值为9.99亿元，占有息债务总额的比例为35.56%。"})
+        self.assertFalse(self.debt()["passed"])
+        self.assertEqual(self.debt()["candidate_count"], 2)
+
+    def test_balance_date_is_not_overridden_by_named_cash_flow_period(self):
+        self.document["paragraphs"][2]["text"] = "截至2032年9月末，公司货币资金为7亿元，2032年1-9月经营活动现金流量净额为2亿元，公司一年内到期债务账面值为0.32亿元，占有息负债总额的比例为35.56%。"
+        result = self.debt()
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["candidates"][0]["periods"], ["2032年9月末"])
+        self.assertEqual(result["candidates"][0]["other_metric_period_bindings"][0]["bound_measure"], "现金流量")
+
+    def test_target_flow_without_a_balance_anchor_remains_unresolved(self):
+        for prefix in ["2032年1-9月，公司", "2032年1-9月公司经营活动现金流量净额为2亿元，公司"]:
+            with self.subTest(prefix=prefix):
+                self.document["paragraphs"].append({"body_index": 30, "text": f"{prefix}一年内到期债务账面值为0.32亿元，占有息债务总额的比例为35.56%。"})
+                result = self.debt()
+                self.assertFalse(result["passed"])
+                self.assertEqual(result["candidate_count"], 2)
+                self.assertEqual(result["candidates"][-1]["period_classification"], "unresolved")
+                self.document["paragraphs"].pop()
+
+    def test_other_period_must_bind_to_an_explicit_supported_measure(self):
+        self.document["paragraphs"][2]["text"] = "截至2032年9月末，公司货币资金为7亿元，2032年1-9月业务规模为2亿元，公司一年内到期债务账面值为0.32亿元，占有息债务总额的比例为35.56%。"
+        self.assertFalse(self.debt()["passed"])
+        self.assertEqual(self.debt()["candidates"][0]["period_classification"], "ambiguous")
+
+    def test_conflicting_balance_dates_are_never_removed_as_cash_flow_context(self):
+        self.document["paragraphs"][2]["text"] = "截至2032年9月末，公司货币资金为7亿元，截至2032年6月末现金流量净额为2亿元，公司一年内到期债务账面值为0.32亿元，占有息债务总额的比例为35.56%。"
+        self.assertFalse(self.debt()["passed"])
+        self.assertEqual(self.debt()["candidates"][0]["period_classification"], "ambiguous")
+
+    def test_flow_metric_keeps_its_own_flow_period(self):
+        self.document["paragraphs"][1]["text"] = "截至2032年9月末，公司货币资金为7亿元，2032年1-9月，发行人营业外支出账面值为123.46万元。"
+        result = self.checked("current_nonoperating_expense_narrative")
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["candidates"][0]["periods"], ["2032年1-9月"])
+
+    def test_interest_bearing_liability_alias_is_not_ordinary_liability(self):
+        self.document["paragraphs"][2]["text"] = "截至报告期末，公司一年内到期有息负债账面值为0.32亿元，占有息负债总额的比例为35.56%。"
+        self.assertTrue(self.debt()["passed"])
+        self.document["paragraphs"][2]["text"] = self.document["paragraphs"][2]["text"].replace("到期有息负债", "到期负债")
+        self.assertFalse(self.debt()["passed"])
+        self.assertTrue(self.debt()["missing_candidate"])
+
+    def test_book_value_control_does_not_verify_face_principal(self):
+        self.document["paragraphs"][2]["text"] = "截至报告期末，公司一年内到期债务账面值为0.32亿元（即票面本金），占有息债务总额的比例为35.56%。"
+        self.assertFalse(self.debt()["passed"])
+        self.assertIn("face_principal_not_supported_by_book_value_control", self.debt()["candidates"][0]["errors"])
+
+
+class BookValueDefinitionTests(unittest.TestCase):
+    terms = ["短期借款", "一年内到期的长期借款", "一年内到期的应付债券", "一年内到期的融资租赁款",
+             "长期借款", "应付债券", "长期应付款中的应付融资租赁款"]
+    title = "全部债务（期末账面值，不含单列应付利息）="
+    note = "；其中应付债券按期末摊余成本列示，专项应付款及单列应付利息不计入。"
+
+    def setUp(self):
+        self.controls = source_controls(source_fixture())
+        self.document = document_fixture()
+        self.document["paragraphs"][0]["text"] = self.title + "+".join(self.terms) + self.note
+
+    def definition(self):
+        return next(r for r in check_document(self.document, self.controls)["results"]
+                    if r["id"] == "debt_definition_interest_treatment")
+
+    def table(self):
+        return {"body_index": 18, "context": ["有息负债总体情况", "单位：万元、%"],
+                "rows": [["项目", "2032年9月末"],
+                         ["一年内到期的非流动有息负债（不含应付利息）", "1200.00"],
+                         ["合计", "9000.00"]]}
+
+    def test_expanded_carrying_value_definition_passes_complete_document(self):
+        checked = check_document(self.document, self.controls)
+        self.assertEqual((checked["passed"], checked["total"]), (5, 5))
+        self.assertEqual(self.definition()["basis"], "principal")
+
+    def test_compatibility_basis_explicitly_is_not_face_value_principal(self):
+        self.assertIn("期末账面额", self.controls["basis_descriptions"]["principal"])
+        self.assertIn("不代表票面本金", self.definition()["basis_description"])
+        self.assertIn("not face-value principal", self.controls["basis_limit"])
+
+    def test_parenthetical_comma_preserves_whole_definition(self):
+        original = self.document["paragraphs"][0]["text"]
+        for title in [self.title, "全部债务(期末账面值,不含单列应付利息)="]:
+            with self.subTest(title=title):
+                self.document["paragraphs"][0]["text"] = original.replace(self.title, title)
+                self.assertTrue(self.definition()["passed"])
+
+    def test_unique_expanded_components_can_change_order(self):
+        self.document["paragraphs"][0]["text"] = self.title + "+".join(reversed(self.terms)) + self.note
+        self.assertTrue(self.definition()["passed"])
+
+    def test_expansion_rejects_missing_duplicate_extra_and_negative_terms(self):
+        expressions = ["+".join(self.terms[:-1]), "+".join(self.terms + [self.terms[0]]),
+                       "+".join(self.terms + ["其他债务"]), "+".join(self.terms).replace("+长期借款", "-长期借款"),
+                       "+".join(self.terms).replace("+长期借款", "×长期借款"), "+".join(self.terms) + "+单列应付利息"]
+        for expression in expressions:
+            with self.subTest(expression=expression):
+                self.document["paragraphs"][0]["text"] = self.title + expression + self.note
+                self.assertEqual(self.definition()["status"], "clarification_required")
+                self.assertFalse(self.definition()["passed"])
+
+    def test_expansion_requires_book_value_interest_special_and_bond_disclosures(self):
+        original = self.document["paragraphs"][0]["text"]
+        for old, new in [("期末账面值", "债务金额"), ("，不含单列应付利息", ""),
+                         ("专项应付款及单列应付利息不计入", "单列应付利息不计入"),
+                         ("其中应付债券按期末摊余成本列示，", ""),
+                         ("期末摊余成本", "票面本金")]:
+            with self.subTest(old=old):
+                self.document["paragraphs"][0]["text"] = original.replace(old, new)
+                self.assertFalse(self.definition()["passed"])
+
+    def test_conflicting_or_negated_exclusions_never_pass(self):
+        original = self.document["paragraphs"][0]["text"]
+        for extra in ["全部债务包含单列应付利息", "专项应付款计入", "全部债务包含专项应付款",
+                      "专项应付款并非不计入", "单列应付利息并非不计入", "并非不含单列应付利息",
+                      "全部债务未剔除单列应付利息"]:
+            with self.subTest(extra=extra):
+                self.document["paragraphs"][0]["text"] = original + extra
+                self.assertFalse(self.definition()["passed"])
+
+    def test_unknown_and_pending_formula_do_not_pass(self):
+        original = self.document["paragraphs"][0]["text"]
+        for changed in [original + "上述口径待人工确认", original + "专项应付款是否计入待核",
+                        original.replace(self.title, "全部债务（未知方法）="),
+                        original.replace(self.title, "全部债务（期末账面值，不含单列应付利息="),
+                        original.replace("期末账面值", "票面金额")]:
+            with self.subTest(changed=changed):
+                self.document["paragraphs"][0]["text"] = changed
+                self.assertFalse(self.definition()["passed"])
+
+    def test_explicit_prefix_special_exclusion_is_not_mistaken_for_inclusion(self):
+        self.document["paragraphs"][0]["text"] = self.document["paragraphs"][0]["text"].replace(
+            "专项应付款及单列应付利息不计入", "全部债务不包含专项应付款且不包含单列应付利息")
+        self.assertTrue(self.definition()["passed"])
+
+    def test_matching_excluded_interest_alias_and_total_are_checked(self):
+        self.document["tables"].append(self.table())
+        result = self.definition()
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["current_table_coverage"], "bounded_rows_checked")
+        self.assertEqual({row["metric"] for row in result["current_table_comparisons"]},
+                         {"current_noncurrent_yuan", "total_debt_yuan"})
+
+    def test_wrong_alias_value_or_total_fails(self):
+        for row in [1, 2]:
+            with self.subTest(row=row):
+                table = self.table()
+                table["rows"][row][1] = "1.00"
+                self.document["tables"] = [document_fixture()["tables"][0], table]
+                self.assertFalse(self.definition()["passed"])
+
+    def test_duplicate_alias_canonical_or_total_rows_fail(self):
+        for added in [["一年内到期的非流动有息负债（不含应付利息）", "1200.00"],
+                      ["一年内到期的非流动负债", "1200.00"], ["合计", "9000.00"]]:
+            with self.subTest(added=added):
+                table = self.table()
+                table["rows"].append(added)
+                self.document["tables"] = [document_fixture()["tables"][0], table]
+                self.assertFalse(self.definition()["passed"])
+                self.assertEqual(self.definition()["current_table_coverage"], "incomplete_or_ambiguous")
+
+    def test_missing_total_cannot_claim_complete_table_comparison(self):
+        table = self.table()
+        table["rows"].pop()
+        self.document["tables"].append(table)
+        result = self.definition()
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["current_table_coverage"], "incomplete_or_ambiguous")
+        self.assertIn("total_debt_row_missing_or_duplicate", result["current_table_comparisons"][0]["errors"])
+
+    def test_excluded_interest_alias_conflicts_with_inclusive_definition(self):
+        self.document["paragraphs"][0]["text"] = document_fixture()["paragraphs"][0]["text"].replace("剔除应付利息", "包含应付利息")
+        table = self.table()
+        table["rows"][1][1], table["rows"][2][1] = "1260.00", "9060.00"
+        self.document["tables"].append(table)
+        result = self.definition()
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["current_table_comparisons"][0]["comparisons"]["including_current_interest"]["error"],
+                         "table_row_interest_treatment_conflicts_with_definition")
+
+    def test_unsupported_interest_alias_is_not_silently_ignored(self):
+        table = self.table()
+        table["rows"][1][0] = table["rows"][1][0].replace("不含", "包含")
+        self.document["tables"].append(table)
+        self.assertFalse(self.definition()["passed"])
+        self.assertEqual(self.definition()["current_table_coverage"], "incomplete_or_ambiguous")
+
+    def test_second_bad_expanded_formula_cannot_hide_behind_correct_first(self):
+        self.document["paragraphs"].append({"body_index": 30,
+            "text": self.title + "+".join(self.terms[:-1]) + self.note})
+        self.assertFalse(self.definition()["passed"])
+        self.assertEqual(self.definition()["candidate_count"], 2)
+
+
+class IndependentReviewRegressionTests(unittest.TestCase):
+    def setUp(self):
+        self.controls = source_controls(source_fixture())
+        self.document = document_fixture()
+
+    def checked(self, identifier):
+        return next(r for r in check_document(self.document, self.controls)["results"] if r["id"] == identifier)
+
+    def debt(self):
+        return self.checked("current_one_year_debt_narrative")
+
+    def use_book_definition(self):
+        self.document["paragraphs"][0]["text"] = (BookValueDefinitionTests.title +
+            "+".join(BookValueDefinitionTests.terms) + BookValueDefinitionTests.note)
+
+    def definition(self):
+        return self.checked("debt_definition_interest_treatment")
+
+    def test_unknown_named_subject_cannot_inherit_issuer(self):
+        for subject in ["甲银行", "乙基金", "丙合作社"]:
+            with self.subTest(subject=subject):
+                self.document["paragraphs"][2]["text"] = f"发行人披露本期偿债情况。{subject}截至报告期末，一年内到期债务账面值为0.32亿元，占有息债务总额的比例为35.56%。"
+                result = self.debt()
+                self.assertFalse(result["passed"])
+                self.assertEqual(result["candidates"][0]["scope"], "unresolved")
+                self.assertNotEqual(result["candidates"][0]["scope_source"], "same_paragraph_preceding_explicit_subject")
+
+    def test_intervening_unknown_subject_breaks_issuer_inheritance(self):
+        self.document["paragraphs"][2]["text"] = "发行人披露本期偿债情况。甲银行另有安排。截至报告期末，一年内到期债务账面值为0.32亿元，占有息债务总额的比例为35.56%。"
+        self.assertFalse(self.debt()["passed"])
+        self.assertEqual(self.debt()["candidates"][0]["scope"], "unresolved")
+
+    def test_supported_temporal_prefix_still_allows_adjacent_issuer_inheritance(self):
+        self.document["paragraphs"][2]["text"] = "发行人披露本期偿债情况。截至2032年9月末，一年内到期债务账面值为0.32亿元，占有息债务总额的比例为35.56%。"
+        self.assertTrue(self.debt()["passed"])
+
+    def test_hypothesis_preposed_actual_balance_is_never_ignored(self):
+        for description in ["当前实际账面余额为9.99亿元", "账面值为9.99亿元", "现有余额为9.99亿元"]:
+            with self.subTest(description=description):
+                self.document["paragraphs"].append({"body_index": 30, "text": f"假设公司以新债同额置换{description}的一年内到期债务，模拟流动比率由1.20升至1.35。"})
+                result = self.debt()
+                self.assertFalse(result["passed"])
+                self.assertEqual(result["candidate_count"], 2)
+                self.assertFalse(any(row.get("reason") == "hypothetical_liquidity_simulation_not_balance_disclosure" for row in result["ignored"]))
+                self.document["paragraphs"].pop()
+
+    def test_negated_bond_carrying_value_disclosure_does_not_pass(self):
+        self.use_book_definition()
+        original = self.document["paragraphs"][0]["text"]
+        for wording in ["并非应付债券按期末摊余成本列示", "应付债券不按期末摊余成本列示", "不是应付债券按期末摊余成本列示"]:
+            with self.subTest(wording=wording):
+                self.document["paragraphs"][0]["text"] = original.replace("其中应付债券按期末摊余成本列示", wording)
+                self.assertEqual(self.definition()["status"], "clarification_required")
+
+    def test_correct_bond_disclosure_cannot_hide_a_second_negated_one(self):
+        self.use_book_definition()
+        self.document["paragraphs"][0]["text"] += "并非应付债券按期末摊余成本列示。"
+        self.assertFalse(self.definition()["passed"])
+
+    def test_undetermined_bond_measurement_remains_clarification(self):
+        self.use_book_definition()
+        self.document["paragraphs"][0]["text"] += "上述债券的实际列示方法尚未确定。"
+        self.assertEqual(self.definition()["status"], "clarification_required")
+
+    def test_no_need_to_exclude_special_payables_conflicts_with_exclusion(self):
+        self.use_book_definition()
+        original = self.document["paragraphs"][0]["text"]
+        for phrase in ["无须扣除", "无须剔除", "无需扣除", "不予剔除"]:
+            with self.subTest(phrase=phrase):
+                self.document["paragraphs"][0]["text"] = original + f"全部债务{phrase}专项应付款。"
+                self.assertFalse(self.definition()["passed"])
+
+    def test_generic_cash_flow_mention_cannot_remove_a_conflicting_period(self):
+        for description in ["根据现金流预测", "现金流情况较好", "经营活动现金流量净额尚未披露"]:
+            with self.subTest(description=description):
+                self.document["paragraphs"][2]["text"] = f"截至2032年9月末，公司货币资金为7亿元，2032年1-9月，{description}，公司一年内到期债务账面值为0.32亿元，占有息负债总额的比例为35.56%。"
+                result = self.debt()
+                self.assertFalse(result["passed"])
+                self.assertEqual(result["candidates"][0]["period_classification"], "ambiguous")
+                self.assertEqual(result["candidates"][0]["other_metric_period_bindings"], [])
+
+    def test_named_measured_cash_flows_bind_only_their_own_period(self):
+        for activity in ["经营", "投资", "筹资"]:
+            with self.subTest(activity=activity):
+                self.document["paragraphs"][2]["text"] = f"截至2032年9月末，公司货币资金为7亿元，2032年1-9月{activity}活动产生的现金流量净额为2亿元，公司一年内到期债务账面值为0.32亿元，占有息负债总额的比例为35.56%。"
+                self.assertTrue(self.debt()["passed"])
+
+
+class BoundedGrammarRegressionTests(unittest.TestCase):
+    def setUp(self):
+        self.controls = source_controls(source_fixture())
+        self.document = document_fixture()
+
+    def checked(self, identifier):
+        return next(r for r in check_document(self.document, self.controls)["results"] if r["id"] == identifier)
+
+    def debt(self):
+        return self.checked("current_one_year_debt_narrative")
+
+    def use_book_definition(self):
+        self.document["paragraphs"][0]["text"] = (BookValueDefinitionTests.title +
+            "+".join(BookValueDefinitionTests.terms) + BookValueDefinitionTests.note)
+
+    def test_simulation_object_must_not_contain_an_unknown_amount_modifier(self):
+        for modifier in ["当前总额为9.99亿元的", "现有金额为9.99亿元的", "总额为9.99的", "总额为九亿元的"]:
+            with self.subTest(modifier=modifier):
+                self.document["paragraphs"].append({"body_index": 30, "text": f"假设公司以新债同额置换{modifier}一年内到期债务，模拟流动比率由1.20升至1.35。"})
+                result = self.debt()
+                self.assertFalse(result["passed"])
+                self.assertEqual(result["candidate_count"], 2)
+                self.assertFalse(any(row.get("reason") == "hypothetical_liquidity_simulation_not_balance_disclosure" for row in result["ignored"]))
+                self.document["paragraphs"].pop()
+
+    def test_supported_amount_free_operation_objects_remain_ignored(self):
+        for prefix in ["假设公司以新债同额置换", "假定发行人以新债偿还", "在以新债同额置换"]:
+            with self.subTest(prefix=prefix):
+                ending = "的假设下" if prefix.startswith("在") else ""
+                self.document["paragraphs"].append({"body_index": 30, "text": f"{prefix}一年内到期债务{ending}，公司模拟流动比率升至1.35。"})
+                result = self.debt()
+                self.assertTrue(result["passed"])
+                self.assertEqual(result["candidate_count"], 1)
+                self.document["paragraphs"].pop()
+
+    def test_every_special_payable_declaration_must_match_supported_exclusion(self):
+        self.use_book_definition()
+        original = self.document["paragraphs"][0]["text"]
+        for declaration in ["全部债务不必扣除专项应付款", "全部债务不需要剔除专项应付款", "专项应付款另按其他方法处理"]:
+            with self.subTest(declaration=declaration):
+                self.document["paragraphs"][0]["text"] = original + declaration + "。"
+                self.assertEqual(self.checked("debt_definition_interest_treatment")["status"], "clarification_required")
+
+    def test_every_bond_measurement_declaration_must_match_supported_basis(self):
+        self.use_book_definition()
+        original = self.document["paragraphs"][0]["text"]
+        for declaration in ["应付债券按公允价值计量", "应付债券以公允价值计价", "应付债券采用其他方法", "上述债券按其他方法计量"]:
+            with self.subTest(declaration=declaration):
+                self.document["paragraphs"][0]["text"] = original + declaration + "。"
+                self.assertEqual(self.checked("debt_definition_interest_treatment")["status"], "clarification_required")
+
+    def test_issuer_reporting_another_entity_is_not_an_inheritance_anchor(self):
+        for introduction in ["发行人披露甲银行本期偿债情况", "发行人披露本期偿债情况及甲银行情况", "发行人与甲银行共同披露本期偿债情况"]:
+            with self.subTest(introduction=introduction):
+                self.document["paragraphs"][2]["text"] = introduction + "。截至报告期末，一年内到期债务账面值为0.32亿元，占有息债务总额的比例为35.56%。"
+                result = self.debt()
+                self.assertFalse(result["passed"])
+                self.assertEqual(result["candidates"][0]["scope"], "unresolved")
+
+    def test_exact_owned_issuer_introduction_retains_temporal_continuation(self):
+        for subject in ["发行人", self.controls["target"]["issuer"]]:
+            with self.subTest(subject=subject):
+                self.document["paragraphs"][2]["text"] = subject + "披露本期偿债情况。截至报告期末，一年内到期债务账面值为0.32亿元，占有息债务总额的比例为35.56%。"
+                self.assertTrue(self.debt()["passed"])
+
+
 if __name__ == "__main__":
     unittest.main()

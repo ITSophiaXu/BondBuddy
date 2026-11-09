@@ -24,7 +24,8 @@ AMOUNT = re.compile(rf"(?P<number>{NUMBER})(?P<unit>亿元|万元|元)?")
 PERIOD = re.compile(r"\d{4}年1月1日[至到](?:\d{4}年)?\d{1,2}月\d{1,2}日|"
                     r"\d{4}年(?:1[-—－–~～至]\d{1,2}月|前三季度|上半年|\d{1,2}月(?:\d{1,2}日|末)?|度|末)?|"
                     r"\d{4}[-./]\d{2}[-./]\d{2}")
-DEBT = re.compile(r"(?:一年|1年)(?:以内|内)(?:到期)?的?(?:有息)?债务(?:本金)?")
+DEBT = re.compile(r"(?:一年|1年)(?:以内|内)(?:到期)?的?(?:(?:有息)?债务|有息负债)(?:本金)?")
+DEBT_RATIO = re.compile(rf"占(?:全部债务|有息(?:债务|负债))(?:总额)?(?:的)?(?:比例)?(?:为|是)?({NUMBER})%")
 SECTION = re.compile(r"^[（(][一二三四五六七八九十百]+[）)]")
 
 
@@ -121,7 +122,7 @@ def note_value(tables: list[dict], metric: str, unit: str) -> dict:
 
 
 def source_controls(source: dict) -> dict:
-    """Reconcile issuer principal independently; no generated-table inputs allowed."""
+    """Reconcile issuer saved carrying values; no generated-table inputs allowed."""
     notes, target = source["notes_word"], source["target"]
     flow, balance = period_patterns(target)
     opening = "".join(p["text"] for p in notes["paragraphs"][:4])
@@ -174,7 +175,11 @@ def source_controls(source: dict) -> dict:
     return {"target": target, "components": controls, "lease_components": lease_rows, "reconciliations": reconciliations,
             "debt_variants": variants, "source_period_caveats": caveats,
             "source_is_approved_fact": False, "external_links_evaluated": False,
-            "basis_limit": "Principal and interest-inclusive variants are comparison controls, not a choice of document definition. Notes period boilerplate is retained as a caveat; current components reconcile to the visible target statement."}
+            "basis_descriptions": {
+                "principal": "期末账面额，扣除单列应付利息；principal 仅为兼容键，不代表票面本金。应付债券沿用已保存的期末账面值，不重新解释为票面金额。",
+                "including_current_interest": "上述期末账面额加回附注单列应付利息；不代表票面本金。",
+            },
+            "basis_limit": "The compatibility key principal means saved period-end carrying amounts excluding separately stated interest, not face-value principal. The interest-inclusive variant adds only the separately stated source interest. These are comparison controls, not a choice of document definition or approval of facts. Notes period boilerplate is retained as a caveat; current components reconcile to the visible target statement."}
 
 
 def result(identifier: str, candidates: list[dict], ignored: list[dict] | None = None) -> dict:
@@ -228,6 +233,8 @@ def issuer_scope(prefix: str, target: dict) -> str:
     if issuer and other:
         return "other_entity_or_scope" if re.search(r"(?:发行人|本公司)(?:的)?(?:子公司|母公司)", subject) else "unresolved"
     if other:
+        if re.search(r"与[^,，;；。]*(?:相比|比较)", subject):
+            return "unresolved"
         return "other_entity_or_scope"
     if issuer:
         return "issuer"
@@ -256,7 +263,8 @@ def classify_period(prefix: str, target: dict, flow_kind: bool, *, sequence: boo
 
 
 def amount_sequence(tail: str) -> list[dict]:
-    intro = re.match(r"(?:分别)?(?:发生额|金额|余额)?(?:分别)?(?:为|是|[:：])", tail)
+    bookkeeping = bool(re.match(r"(?:分别)?账面(?:值|余额)", tail))
+    intro = re.match(r"(?:分别)?(?:账面值|账面余额|发生额|金额|余额)?(?:分别)?(?:为|是|[:：])", tail)
     if not intro:
         return []
     tail = tail[intro.end():]
@@ -275,6 +283,11 @@ def amount_sequence(tail: str) -> list[dict]:
             return []
     if re.match(r"(?:以及|还有|另有|和|与|及)(?:-?\d|$)", tail[position:]):
         return []
+    # A supported bookkeeping declaration must not silently stop before another
+    # monetary value. Ordinary percentage prose is not another money amount.
+    if bookkeeping and (any(match["unit"] for match in AMOUNT.finditer(tail[position:])) or
+                        re.search(r"账面(?:值|余额)(?:分别)?(?:为|是|[:：])", tail[position:])):
+        return []
     # A single final unit may apply to an enumerated sequence; competing explicit
     # units must stay local to each amount rather than being silently unified.
     explicit = {x["unit"] for x in found if x["unit"]}
@@ -282,6 +295,10 @@ def amount_sequence(tail: str) -> list[dict]:
         for item in found:
             item["unit"] = item["unit"] or next(iter(explicit))
     return found
+
+
+def amount_series(tail: str, values: list[dict]) -> bool:
+    return "分别" in tail or (bool(re.match(r"账面(?:值|余额)(?:为|是|[:：])", tail)) and len(values) > 1)
 
 
 def amount_match(actual: dict, expected_yuan: str) -> dict:
@@ -295,9 +312,55 @@ def amount_match(actual: dict, expected_yuan: str) -> dict:
             "expected_value_at_display_precision": str(expected)}
 
 
+def bound_metric_period(prefix: str, target: dict, flow_kind: bool, *, sequence: bool = False) -> tuple[str, list[str], list[dict]]:
+    """Keep a metric's own period; exclude only a named opposite-kind measure."""
+    flow, balance = period_patterns(target)
+    opposite = balance if flow_kind else flow
+    mentions = list(PERIOD.finditer(prefix))
+    excluded = []
+    if not sequence:
+        for index, mention in enumerate(mentions):
+            if not opposite.fullmatch(mention[0]):
+                continue
+            end = mentions[index + 1].start() if index + 1 < len(mentions) else len(prefix)
+            attached = prefix[mention.end():end]
+            measure = re.search(r"现金流(?:量)?|货币资金|资产总额|总资产|负债总额", attached)
+            name = r"(?:货币资金|资产总额|总资产|负债总额)" if flow_kind else r"(?:经营|投资|筹资)活动(?:产生的)?现金流量净额"
+            disclosure = re.search(rf"{name}(?:为|是|[:：]){NUMBER}(?:亿元|万元|元)", attached)
+            # A period is attached to an explicit measured financial statement,
+            # not a general forecast/reference that merely contains its name.
+            if (measure and disclosure and disclosure.start() <= measure.start() < disclosure.end()
+                    and re.fullmatch(r"[,，]*(?:发行人|本公司|公司)?[,，]*", attached[:disclosure.start()])):
+                excluded.append({"start": mention.start(), "end": mention.end(), "period": mention[0],
+                                 "bound_measure": measure[0], "reason": "explicit_other_metric_period"})
+    filtered = prefix
+    for item in reversed(excluded):
+        filtered = filtered[:item["start"]] + filtered[item["end"]:]
+    status, periods = classify_period(filtered, target, flow_kind, sequence=sequence)
+    # A target flow range is not a historical balance date, nor vice versa.
+    # Keep it unresolved instead of letting another correct candidate hide it.
+    if status == "explicit_other_period" and any(opposite.fullmatch(p) for p in periods):
+        status = "unresolved"
+    return status, periods, excluded
+
+
+def temporal_only_prefix(prefix: str) -> bool:
+    """Only a fully recognized temporal continuation may inherit a subject."""
+    remainder = PERIOD.sub("", prefix)
+    remainder = re.sub(r"最近两年及一期(?:末)?|报告期(?:内|末)|本期(?:末)?|截至|期末|于|在", "", remainder)
+    return not re.sub(r"[,，:：()（）]", "", remainder)
+
+
+def owned_issuer_introduction(text: str, target: dict) -> bool:
+    """The supported inheritance anchor introduces the issuer's own subject."""
+    clean = text.replace(compact(target["issuer"]), "发行人")
+    return bool(re.fullmatch(r"(?:发行人|本公司|公司)披露(?:本期)?偿债情况", clean))
+
+
 def metric_clauses(document: dict, pattern: re.Pattern, target: dict, flow_kind: bool) -> tuple[list[dict], list[dict]]:
     candidates, ignored = [], []
     for paragraph in document["paragraphs"]:
+        inherited_issuer = False
         for text in re.split(r"[。；;\n]", compact(paragraph["text"])):
             matches = list(pattern.finditer(text))
             starts = [0]
@@ -313,9 +376,14 @@ def metric_clauses(document: dict, pattern: re.Pattern, target: dict, flow_kind:
                 prefix = text[start:match.start()].strip(",")
                 tail = text[match.end():end].rstrip(",")
                 scope = issuer_scope(prefix, target)
-                period, periods = classify_period(prefix, target, flow_kind, sequence="分别" in tail)
+                scope_source = "local_prefix"
+                if scope == "unresolved" and inherited_issuer and temporal_only_prefix(prefix):
+                    scope, scope_source = "issuer", "same_paragraph_preceding_explicit_subject"
+                period, periods, bindings = bound_metric_period(prefix, target, flow_kind,
+                                                               sequence=amount_series(tail, amount_sequence(tail)))
                 row = {"body_index": paragraph["body_index"], "text": clause, "prefix": prefix,
-                       "tail": tail, "scope": scope, "period_classification": period, "periods": periods}
+                       "tail": tail, "scope": scope, "scope_source": scope_source,
+                       "period_classification": period, "periods": periods, "other_metric_period_bindings": bindings}
                 if re.fullmatch(r"(?:分析|明细|情况)?[:：]?", row["tail"]) or re.match(r"^表\d", clause):
                     row["reason"] = "heading_or_table_caption_not_narrative"
                     ignored.append(row)
@@ -324,6 +392,10 @@ def metric_clauses(document: dict, pattern: re.Pattern, target: dict, flow_kind:
                     ignored.append(row)
                 else:
                     candidates.append(row)
+            # Mentioning the issuer as the reporting actor is not evidence that
+            # the reported facts concern it. Only a complete supported anchor
+            # may establish ownership for the next temporal continuation.
+            inherited_issuer = owned_issuer_introduction(text, target)
     return candidates, ignored
 
 
@@ -336,7 +408,9 @@ def expense_check(document: dict, controls: dict) -> dict:
         errors, selected = [], None
         if candidate["scope"] != "issuer" or candidate["period_classification"] not in {"current", "current_relative"}:
             errors.append("unresolved_issuer_or_period")
-        if "分别" in candidate["tail"]:
+        if any(value["unit"] not in UNITS for value in values):
+            errors.append("missing_or_unsupported_sequence_unit")
+        if amount_series(candidate["tail"], values):
             periods = candidate["periods"]
             if periods:
                 indexes = [i for i, p in enumerate(periods) if flow.fullmatch(p)]
@@ -359,10 +433,15 @@ def expense_check(document: dict, controls: dict) -> dict:
 def debt_basis_declarations(text: str) -> list[str]:
     # Consume a complete negative phrase before its positive suffix. Retain all
     # declarations so a correct first phrase cannot hide a contradictory one.
-    inclusive_negative = r"(?:不|未|不予|不得|无需|无须)(?:扣除|剔除)应付利息"
-    phrases = re.finditer(rf"{inclusive_negative}|(?:不含|不包括|不包含|扣除|剔除)应付利息|(?:包含|包括|含)应付利息|[+＋\-−－]应付利息", text)
-    return ["including_current_interest" if re.fullmatch(inclusive_negative, match[0]) or
-            re.fullmatch(r"(?:包含|包括|含|[+＋])应付利息", match[0]) else "principal"
+    interest = r"(?:单列)?应付利息"
+    inclusive_negative = rf"(?:不|未|不予|不得|无需|无须)(?:扣除|剔除){interest}"
+    double_negative = rf"(?:并非|不是|并不)(?:不含|不包括|不包含){interest}|{interest}(?:并非|不是|并不)不计入"
+    inclusive = rf"{inclusive_negative}|{double_negative}|(?:包含|包括|含|[+＋]){interest}|{interest}(?:仍|亦|也)?计入"
+    principal = rf"(?:不含|不包括|不包含|扣除|剔除|[\-−－]){interest}|{interest}不计入"
+    # Full negative forms precede their positive suffixes. The suffix form also
+    # covers an explicit shared exclusion: 专项应付款及单列应付利息不计入.
+    phrases = re.finditer(rf"{double_negative}|{inclusive_negative}|{principal}|{inclusive}", text)
+    return ["including_current_interest" if re.fullmatch(inclusive, match[0]) else "principal"
             for match in phrases]
 
 
@@ -376,7 +455,20 @@ def declared_basis(text: str) -> str | None:
 def current_debt_clauses(text: str, target: dict) -> tuple[str, bool]:
     """Keep the current/undated declaration; retain ambiguity, skip explicit history."""
     selected, active, ambiguous = [], True, False
-    for clause in re.split(r"[,，。；;]", text):
+    clauses, start, depth = [], 0, 0
+    for index, character in enumerate(text):
+        if character in "(（":
+            depth += 1
+        elif character in ")）":
+            depth -= 1
+            if depth < 0:
+                ambiguous, depth = True, 0
+        elif character in ",，。；;" and depth == 0:
+            clauses.append(text[start:index])
+            start = index + 1
+    clauses.append(text[start:])
+    ambiguous = ambiguous or depth != 0
+    for clause in clauses:
         period, _ = classify_period(clause, target, False)
         if period in {"explicit_other_period", "historical"}:
             active = False
@@ -390,19 +482,55 @@ def current_debt_clauses(text: str, target: dict) -> tuple[str, bool]:
 
 def supported_debt_formulas(text: str) -> bool:
     """Recognize a bounded sum, not arbitrary mathematical/prose expressions."""
-    expressions = re.findall(r"(?:全部|有息)债务(?:的)?(?:计算公式)?[=＝]([^。；;\n]+)", text)
+    text = text.translate(str.maketrans({"（": "(", "）": ")", "＋": "+", "－": "-", "−": "-"}))
+    expressions = list(re.finditer(r"(?:全部|有息)债务([^=＝。；;\n]{0,160})[=＝]([^。；;\n]+)", text))
     expected = {"短期借款", "一年内到期的非流动负债", "长期借款", "应付债券", "长期应付款中有息债务"}
-    for expression in expressions:
+    expanded = {"短期借款", "一年内到期的长期借款", "一年内到期的应付债券", "一年内到期的融资租赁款",
+                "长期借款", "应付债券", "长期应付款中的应付融资租赁款"}
+    explanations = text
+    for expression_match in reversed(expressions):
+        explanations = explanations[:expression_match.start()] + ";" + explanations[expression_match.end():]
+    explanation_clauses = [clause for clause in re.split(r"[,，。；;\n]", explanations) if clause]
+    for match in expressions:
+        qualifier, expression = match[1], match[2]
+        qualifier = re.sub(r"^(?:的)?(?:计算公式)?", "", qualifier)
+        expanded_terms = expression.split("+")
+        if len(expanded_terms) == len(expanded) and set(expanded_terms) == expanded:
+            # The expanded formula contains saved carrying-value components. Its
+            # exclusions and bond basis must be stated, never inferred from a sum.
+            annotation = re.fullmatch(r"\(([^()]*)\)", qualifier)
+            declarations = re.split(r"[,，]", annotation[1]) if annotation else []
+            if len(declarations) != 2 or set(declarations) != {"期末账面值", "不含单列应付利息"}:
+                return False
+            interest_excluded = declared_basis(text) == "principal"
+            # Whole declarations are checked. An unknown or negative prefix
+            # cannot become an exclusion merely because it contains "扣除".
+            special_disclosures = [clause for clause in explanation_clauses if "专项应付款" in clause]
+            special_exclusion = (r"专项应付款(?:及单列应付利息)?不计入|"
+                r"(?:(?:全部|有息)债务)?(?:不含|不包括|不包含|扣除|剔除)专项应付款"
+                r"(?:且(?:不含|不包括|不包含)(?:单列)?应付利息)?")
+            special_excluded = bool(special_disclosures) and all(
+                re.fullmatch(special_exclusion, clause) for clause in special_disclosures)
+            # Every current bond declaration outside the formulas is retained,
+            # including other measurement methods and unrecognized wording.
+            bond_disclosures = [clause for clause in explanation_clauses if "债券" in clause]
+            bond_carrying_value = bool(bond_disclosures) and all(
+                re.fullmatch(r"(?:其中)?应付债券按期末摊余成本列示", clause) for clause in bond_disclosures)
+            pending_or_face_value = bool(re.search(r"待(?:定|核|确认)|未(?:明确|确定)|是否|票面(?:本金|金额|价值)|(?<!账)面值", text))
+            if not interest_excluded or not special_excluded or not bond_carrying_value or pending_or_face_value:
+                return False
+            continue
         # A note may explain the interest treatment, but cannot change a sign,
         # add a sixth debt component, or subtract the same interest twice.
-        expression = expression.translate(str.maketrans({"（": "(", "）": ")", "＋": "+", "－": "-", "−": "-"}))
+        if qualifier:
+            return False
         annotations = re.findall(r"\(([^()]*)\)", expression)
         if any(declared_basis(annotation) is None for annotation in annotations):
             return False
         if len(debt_basis_declarations(expression)) > 1:
             return False
         expression = re.sub(r"\([^()]*\)", "", expression)
-        expression = expression.replace("-应付利息", "")
+        expression = re.sub(r"-(?:单列)?应付利息", "", expression)
         terms = expression.split("+")
         if len(terms) != len(expected) or set(terms) != expected:
             return False
@@ -413,6 +541,9 @@ def debt_table_comparisons(document: dict, controls: dict) -> list[dict]:
     """Generated tables corroborate definition consistency, never supply controls."""
     _, balance = period_patterns(controls["target"])
     candidates = []
+    row_bases = {"一年内到期的非流动负债": None,
+                 "一年内到期的非流动有息负债(不含应付利息)": "principal",
+                 "一年内到期的非流动有息负债(不含单列应付利息)": "principal"}
     for table in document["tables"]:
         context = table.get("context", [])
         if not any(re.search(r"有息(?:债务|负债)|全部债务", text) for text in context):
@@ -422,7 +553,9 @@ def debt_table_comparisons(document: dict, controls: dict) -> list[dict]:
         # This control covers the debt composition table, not a maturity table
         # whose first column represents a different measure.
         rows = table["rows"]
-        if not any(row and compact(row[0]) == "一年内到期的非流动负债" for row in rows):
+        current_rows = [(i, row) for i, row in enumerate(rows) if row and
+                        re.fullmatch(r"一年内到期的非流动(?:有息)?负债(?:\([^()]*\))?", compact(row[0]))]
+        if not current_rows:
             continue
         header_matches = [(r, i) for r, row in enumerate(rows[:2]) for i, value in enumerate(row)
                           if balance.fullmatch(compact(value))]
@@ -435,6 +568,20 @@ def debt_table_comparisons(document: dict, controls: dict) -> list[dict]:
                                                for basis in controls["debt_variants"]}})
         if not header_matches:
             continue
+        total_rows = [(i, row) for i, row in enumerate(rows) if row and compact(row[0]) == "合计"]
+        coverage_errors = []
+        if len(current_rows) != 1:
+            coverage_errors.append("current_noncurrent_row_must_be_unique")
+        if len(total_rows) != 1:
+            coverage_errors.append("total_debt_row_missing_or_duplicate")
+        if any(compact(row[0]) not in row_bases for _, row in current_rows):
+            coverage_errors.append("unsupported_current_noncurrent_row_label")
+        if coverage_errors:
+            candidates.append({"body_index": table["body_index"], "metric": "incomplete_or_ambiguous_debt_table",
+                               "coverage": "incomplete_or_ambiguous", "errors": coverage_errors,
+                               "current_row_count": len(current_rows), "total_row_count": len(total_rows),
+                               "comparisons": {basis: {"matches": False, "error": "incomplete_or_ambiguous_debt_table"}
+                                               for basis in controls["debt_variants"]}})
         units = [text for text in [*context, *(";".join(row) for row in rows[:2])] if "单位" in text]
         try:
             unit = unit_in(units[-1]) if units else None
@@ -449,15 +596,20 @@ def debt_table_comparisons(document: dict, controls: dict) -> list[dict]:
                 amount_columns = [i for i, value in enumerate(subheader) if compact(value) == "金额"]
                 if 0 < column <= len(amount_columns):
                     data_column = amount_columns[column - 1]
-            for row_number, row in enumerate(rows):
-                if not row or compact(row[0]) not in {"一年内到期的非流动负债", "合计"}:
-                    continue
+            for row_number, row in current_rows + total_rows:
                 metric = "current_noncurrent_yuan" if compact(row[0]) != "合计" else "total_debt_yuan"
                 value = row[data_column] if data_column < len(row) else ""
                 comparisons = {basis: amount_match({"number": value, "unit": unit}, amounts[metric])
                                for basis, amounts in controls["debt_variants"].items()}
+                row_basis = row_bases.get(compact(row[0]))
+                if row_basis:
+                    for basis, comparison in comparisons.items():
+                        if basis != row_basis:
+                            comparison.update(matches=False, error="table_row_interest_treatment_conflicts_with_definition")
                 candidates.append({"body_index": table["body_index"], "row": row_number, "column": data_column,
-                                   "metric": metric, "comparisons": comparisons})
+                                   "metric": metric, "row_label": row[0], "row_basis": row_basis,
+                                   "coverage": "bounded_rows_checked" if not coverage_errors else "incomplete_or_ambiguous",
+                                   "comparisons": comparisons})
     return candidates
 
 
@@ -466,7 +618,7 @@ def debt_definition_check(document: dict, controls: dict) -> dict:
     paragraphs = sorted(document["paragraphs"], key=lambda p: p["body_index"])
     for i, paragraph in enumerate(paragraphs):
         text = compact(paragraph["text"])
-        definition_match = re.search(r"(?:全部|有息)债务(?:的)?(?:计算公式)?[=＝]|(?:全部|有息)债务(?:均)?(?:按本金|按[^,，。;；]{0,20}口径|不?包括|不?包含|的定义|的口径)", text)
+        definition_match = re.search(r"(?:全部|有息)债务[^=＝。；;\n]{0,160}[=＝]|(?:全部|有息)债务(?:均)?(?:按本金|按[^,，。;；]{0,20}口径|不?包括|不?包含|的定义|的口径)", text)
         if not definition_match:
             continue
         if "母公司" in text or "子公司" in text or "担保人" in text:
@@ -483,6 +635,7 @@ def debt_definition_check(document: dict, controls: dict) -> dict:
                   "conflicting_debt_interest_treatments" if len(set(debt_basis_declarations(basis_text))) > 1 else
                   "explicit_debt_interest_treatment" if basis else "debt_definition_must_state_interest_treatment")
         candidates.append({"body_index": paragraph["body_index"], "text": text, "basis": basis,
+                           "basis_description": controls.get("basis_descriptions", {}).get(basis),
                            "status": "passed" if basis and formula_supported else "clarification_required",
                            "reason": reason})
     bases = {c["basis"] for c in candidates if c["basis"]}
@@ -493,17 +646,48 @@ def debt_definition_check(document: dict, controls: dict) -> dict:
     if not candidates:
         checked["status"] = "clarification_required"
     checked["basis"] = next(iter(bases)) if checked["passed"] and len(bases) == 1 else None
+    checked["basis_description"] = controls.get("basis_descriptions", {}).get(checked["basis"])
     checked["current_table_comparisons"] = debt_table_comparisons(document, controls)
+    checked["current_table_coverage"] = ("not_present" if not checked["current_table_comparisons"] else
+        "incomplete_or_ambiguous" if any(item.get("coverage") == "incomplete_or_ambiguous" or
+            item["metric"] == "ambiguous_current_table_header" for item in checked["current_table_comparisons"]) else "bounded_rows_checked")
     if checked["basis"] and any(not item["comparisons"][checked["basis"]]["matches"] for item in checked["current_table_comparisons"]):
         checked.update(passed=False, status="failed", reason="current_debt_table_disagrees_with_explicit_definition")
     return checked
 
 
+def hypothetical_liquidity_simulation(candidate: dict) -> bool:
+    """Exclude only an action object in an explicit simulation, never a balance."""
+    text, prefix, tail = candidate["text"], candidate["prefix"], candidate["tail"]
+    if not (re.search(r"假设|假定", text) and re.search(r"置换|偿还|替换", prefix)
+            and "模拟" in text and "流动比率" in tail):
+        return False
+    # Only a plain supported operation may take the debt as its object. Any
+    # additional modifier, including an unknown amount phrase, remains reviewable.
+    if not re.fullmatch(r"(?:假设|假定|在)?(?:发行人|本公司|公司)?(?:以新债)?(?:同额)?(?:置换|偿还|替换)", prefix):
+        return False
+    # Actual balance wording on either side of the debt reference stays a
+    # candidate; a hypothetical action cannot conceal a preposed actual balance.
+    if re.search(r"账面|余额|本金|实际", prefix):
+        return False
+    if re.match(r"(?:分别)?(?:为|是|[:：])", tail) or re.search(r"账面|余额|金额|本金|实际", tail) or DEBT_RATIO.search(tail):
+        return False
+    return not any(match["unit"] for match in AMOUNT.finditer(tail))
+
+
 def debt_narrative_check(document: dict, controls: dict, definition: dict) -> dict:
     candidates, ignored = metric_clauses(document, DEBT, controls["target"], False)
+    actual = []
+    for candidate in candidates:
+        if hypothetical_liquidity_simulation(candidate):
+            candidate["reason"] = "hypothetical_liquidity_simulation_not_balance_disclosure"
+            ignored.append(candidate)
+        else:
+            actual.append(candidate)
+    candidates = actual
     for candidate in candidates:
         amounts = amount_sequence(candidate["tail"])
-        all_ratios = list(re.finditer(rf"占(?:全部|有息)债务(?:总额)?(?:的)?(?:比例)?(?:为|是)?({NUMBER})%", candidate["tail"]))
+        all_ratios = list(DEBT_RATIO.finditer(candidate["tail"]))
         ratios, ambiguous_ratio_period = [], False
         for item in all_ratios:
             ratio_prefix = re.split(r"[,，]", candidate["tail"][:item.start()])[-1]
@@ -515,6 +699,8 @@ def debt_narrative_check(document: dict, controls: dict, definition: dict) -> di
         errors = []
         if candidate["scope"] != "issuer" or candidate["period_classification"] not in {"current", "current_relative"}:
             errors.append("unresolved_issuer_or_period")
+        if re.search(r"票面(?:本金|金额)", candidate["text"]):
+            errors.append("face_principal_not_supported_by_book_value_control")
         if len(ratios) > 1:
             errors.append("multiple_current_debt_ratios")
         if ambiguous_ratio_period:
@@ -539,7 +725,9 @@ def debt_narrative_check(document: dict, controls: dict, definition: dict) -> di
                                   "expected_ratio_at_display_precision": expected_ratio,
                                   "matches": amount["matches"] and ratio_matches}
         basis = definition["basis"]
-        if errors or not any(c["matches"] for c in comparisons.values()) or (basis and not comparisons[basis]["matches"]):
+        if errors == ["unresolved_issuer_or_period"]:
+            status = "clarification_required"
+        elif errors or not any(c["matches"] for c in comparisons.values()) or (basis and not comparisons[basis]["matches"]):
             status = "failed"
         else:
             status = "passed" if basis else "clarification_required"
