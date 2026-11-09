@@ -53,7 +53,7 @@ function fixture(t: TestContext, putError = new ApiError(524, 'DATA_UNAVAILABLE'
     material: async () => { throw new Error('Unexpected material read'); },
     project: async () => { throw new Error('Unexpected project read'); },
   };
-  const make = () => new UploadRecovery(api, 'owner-a', 'project-a', 'purpose-a', () => true, {
+  const make = (owner = 'owner-a', current = () => true) => new UploadRecovery(api, owner, 'project-a', 'purpose-a', current, {
     store, digest: async () => declaration.sha256, now: () => Date.parse('2026-11-09T00:00:00Z'),
     lock: { run: async (_name, action) => action() },
   });
@@ -126,8 +126,34 @@ for (const [status, code, fields] of [
   assert.equal(f.recovery.list()[0].lastError!.code, code); assert.equal(f.recovery.list()[0].lastError!.correlationId, 'final-error');
   if (fields.length) assert.equal(f.recovery.list()[0].lastError!.uploadReason, 'structure_invalid');
   await assert.rejects(f.make().resume('operation-a', { file: file() }), (error: unknown) => error instanceof ApiError && error.status === status && error.code === code);
+  const expected = status === 401 ? ['create', 'put', 'complete', 'complete'] : ['create', 'put', 'complete'];
+  assert.deepEqual(f.calls, expected);
+  t.mock.timers.tick(600_000); assert.deepEqual(f.calls, expected);
+});
+
+test('524 then complete 401 stops; reauthenticated original owner resumes one complete and saves without bytes', async t => {
+  const f = fixture(t); f.state.reply = () => response({ code: 'UNAUTHENTICATED', correlation_id: 'expired-session' }, 401);
+  await assert.rejects(f.recovery.resume('operation-a', { file: file() }), error => error instanceof ApiError && error.status === 401);
   assert.deepEqual(f.calls, ['create', 'put', 'complete']);
+  const record = f.recovery.list()[0]; assert.equal(record.stage, 'bytes_unknown'); assert.equal(record.lastError!.status, 401);
+  assert.equal(record.uploadId, 'upload-a'); assert.deepEqual(record.declaration, declaration); assert.equal(record.material, undefined);
   t.mock.timers.tick(600_000); assert.deepEqual(f.calls, ['create', 'put', 'complete']);
+  f.state.reply = () => response(material);
+  const reopened = f.make(); assert.deepEqual(await reopened.resume('operation-a'), material);
+  assert.deepEqual(f.calls, ['create', 'put', 'complete', 'complete']);
+  assert.equal(reopened.list()[0].stage, 'saved'); assert.equal(reopened.list()[0].lastError, undefined);
+});
+
+test('authentication resume cannot bypass cancellation, foreign owner or current-page scope', async t => {
+  const f = fixture(t); f.state.reply = () => response({ code: 'UNAUTHENTICATED' }, 401);
+  await assert.rejects(f.recovery.resume('operation-a', { file: file() }), error => error instanceof ApiError && error.status === 401);
+  f.state.reply = () => response(material);
+  const cancelled = new AbortController(); cancelled.abort();
+  await assert.rejects(f.make().resume('operation-a', { signal: cancelled.signal }), { name: 'AbortError' });
+  await assert.rejects(f.make('foreign-owner').resume('operation-a'));
+  await assert.rejects(f.make('owner-a', () => false).resume('operation-a'), { name: 'AbortError' });
+  assert.deepEqual(f.calls, ['create', 'put', 'complete']);
+  assert.equal(f.recovery.list()[0].material, undefined); assert.equal(f.recovery.list()[0].lastError!.status, 401);
 });
 
 for (const phase of ['bytes', '202', 'request'] as const) test(`cancellation during ${phase} stops confirmation immediately and retains original upload`, async t => {

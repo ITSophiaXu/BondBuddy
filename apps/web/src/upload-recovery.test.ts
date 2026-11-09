@@ -124,11 +124,11 @@ test('reselection after URL loss confirms old upload before explicit replacement
   assert.equal((h.calls[1].input as Dto<'UploadCreateRequest'>).filename, '原始.docx'); assert.deepEqual(r.list()[0].previousUploadIds, ['upload-a']);
 });
 
-test('rejected PUT retains its authentication failure and never replays bytes on resume', async () => {
+test('authentication recovery confirms the original upload without replaying rejected PUT bytes', async () => {
   const h = harness(), r = h.make(); r.begin(declaration(), undefined, 'op-a'); h.state.put = async () => { throw new ApiError(401, 'UNAUTHENTICATED'); };
   await assert.rejects(r.resume('op-a', { file: file() }));
-  await assert.rejects(r.resume('op-a', { file: file() }), error => error instanceof ApiError && error.status === 401);
-  assert.deepEqual(methods(h), ['create', 'put']);
+  assert.deepEqual(await r.resume('op-a'), material());
+  assert.deepEqual(methods(h), ['create', 'put', 'complete']);
 });
 
 for (const reason of UPLOAD_INSPECTION_PUBLIC_REASONS) test('inspection reason ' + reason + ' preserves original identity and never means missing bytes', async () => {

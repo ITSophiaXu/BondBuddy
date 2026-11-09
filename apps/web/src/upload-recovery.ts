@@ -255,7 +255,7 @@ export class UploadRecovery {
             correlationId: record.lastError?.correlationId,
             ...(isUploadInspectionPublicReason(record.lastError?.uploadReason) ? { uploadReason: record.lastError.uploadReason } : {}),
           });
-          if (previous.status >= 400 && previous.status < 500) throw previous;
+          if (previous.status >= 400 && previous.status < 500 && previous.status !== 401) throw previous;
           status('正在确认上次上传的文件是否已保存…');
           return accepted(await this.confirmUnknownPut(record, signal, live, previous));
         }
