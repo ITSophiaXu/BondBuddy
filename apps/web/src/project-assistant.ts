@@ -79,6 +79,7 @@ export class ProjectAssistant {
   private narrow=window.matchMedia('(max-width:960px)');
   private resize=()=>this.syncLayout();
   private open=false;
+  private suspended=false;
   private embeddedProject?:string;
   private embedPending=false;
   async embedProject(container:HTMLElement,projectId:string){
@@ -93,7 +94,7 @@ export class ProjectAssistant {
     }
     this.paint();
   }
-  detachProject(){if(!this.embeddedProject)return;this.embeddedProject=undefined;this.embedPending=false;document.body.append(this.host);this.host.classList.remove('ba-embedded');this.open=false;this.paint();}
+  detachProject(){if(!this.embeddedProject)return;this.embeddedProject=undefined;this.embedPending=false;if(!this.suspended)document.body.append(this.host);this.host.classList.remove('ba-embedded');this.open=false;this.paint();}
   private active=false;
   private wide=false;
   private history=false;
@@ -137,7 +138,10 @@ export class ProjectAssistant {
     window.addEventListener('bondbuddy:assistant',this.event);window.addEventListener('storage',this.storageChanged);this.paint();
   }
   dispose(){this.controller.abort();clearTimeout(this.timer);clearTimeout(this.saveTimer);window.removeEventListener('bondbuddy:assistant',this.event);window.removeEventListener('storage',this.storageChanged);this.narrow.removeEventListener('change',this.resize);this.open=false;this.syncLayout();this.host.remove();this.dock.remove();}
+  /** Detach the product UI while retaining complete input, journals and pending saves. */
+  suspend(){this.suspended=true;this.host.remove();this.dock.remove();this.syncLayout();}
   mount(){
+    this.suspended=false;
     if(!this.host.isConnected)document.body.append(this.host);
     if(!this.dock.isConnected)document.body.append(this.dock);
     this.paintDock();this.syncLayout();

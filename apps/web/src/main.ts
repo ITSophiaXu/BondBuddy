@@ -367,11 +367,12 @@ function adminTab(route: string, ico: string, label: string, active: boolean) {
 /** Standalone administrator console shell: no product sidebar, no product assistant. */
 function adminShell(content: string, _section: string) {
   const operator = identity || '当前账号';
+  globalAssistant?.suspend();
   root.innerHTML = `<div class="admin-app">
     <header class="admin-topbar">
-      <a class="admin-brand" href="#admin/dashboard"><span class="admin-mark">${prototypeIcon('lock')}</span><span>BondBuddy <span class="admin-tag">ADMIN CONSOLE</span></span></a>
+      <a class="admin-brand" href="#/admin/dashboard"><span class="admin-mark">${prototypeIcon('lock')}</span><span>BondBuddy <span class="admin-tag">ADMIN CONSOLE</span></span></a>
       <nav class="admin-tabs" aria-label="管理导航">
-        ${adminTab('admin/dashboard','grid','运营看板',true)}
+        ${adminTab('/admin/dashboard','grid','运营看板',true)}
         <span class="admin-tab disabled" title="用户管理即将上线">${prototypeIcon('building')}<span>用户管理</span><small>即将上线</small></span>
         <span class="admin-tab disabled" title="审计日志即将上线">${prototypeIcon('file')}<span>审计日志</span><small>即将上线</small></span>
       </nav>
@@ -381,19 +382,24 @@ function adminShell(content: string, _section: string) {
         <button id="admin-logout" class="admin-text-button" type="button">${prototypeIcon('arrow')}退出</button>
       </div>
     </header>
-    <div id="admin-main" class="admin-main">${content}</div>
+    <div id="admin-main" class="admin-main"><p id="admin-page-error" class="admin-dashboard-alert" role="alert" hidden></p>${content}</div>
   </div>`;
   document.querySelector('#admin-logout')?.addEventListener('click', () => { void logout(); });
 }
 
-function showError(error: unknown, operation:'save'|'action'='action') {
-  const target = document.querySelector<HTMLElement>('#page-error');
-  if (target) { target.textContent = friendlyError(error,operation); target.hidden = false; }
+function showError(error: unknown, operation:'save'|'action'|'logout'='action') {
+  const target = document.querySelector<HTMLElement>(operation === 'logout' ? '#admin-page-error, #page-error' : '#page-error');
+  if (target) {
+    target.textContent = operation === 'logout' && target.id === 'admin-page-error'
+      ? '退出结果尚未确认，请重试退出；如需继续操作，请刷新核对登录状态。' + (error instanceof ApiError ? errorReference(error) : '')
+      : friendlyError(error,operation === 'logout' ? 'action' : operation);
+    target.hidden = false;
+  }
 }
 
 async function logout() {
-  const button = document.querySelector<HTMLButtonElement>('#logout');
-  if (!button) return;
+  const button = document.querySelector<HTMLButtonElement>('#logout, #admin-logout');
+  if (!button || button.disabled) return;
   if (creating) return;
   if (prospectusPanel && !await prospectusPanel.beforeLeave()) return;
   if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) return;
@@ -416,7 +422,7 @@ async function logout() {
   }
   try {
     await api.logout(); signedOut(); sessionChannel?.postMessage('changed');
-  } catch (error) { showError(error); button.disabled = false; }
+  } catch (error) { showError(error, 'logout'); button.disabled = false; }
 }
 
 async function renderRoute() {

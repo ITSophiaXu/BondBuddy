@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: phone masking keeps only the last four digits and never returns the full number
+ok 1 - phone masking keeps only the last four digits and never returns the full number
+  ---
+  duration_ms: 1.0444
+  type: 'test'
+  ...
+# Subtest: range parsing normalises UTC days and rejects unknown or unsafe filter input
+ok 2 - range parsing normalises UTC days and rejects unknown or unsafe filter input
+  ---
+  duration_ms: 1.1043
+  type: 'test'
+  ...
+# Subtest: trend defaults to 14 inclusive UTC calendar days anchored to to or now
+ok 3 - trend defaults to 14 inclusive UTC calendar days anchored to to or now
+  ---
+  duration_ms: 0.4235
+  type: 'test'
+  ...
+# Subtest: only trend window is capped at 90 calendar days and the original filter stays complete
+ok 4 - only trend window is capped at 90 calendar days and the original filter stays complete
+  ---
+  duration_ms: 0.4556
+  type: 'test'
+  ...
+# Subtest: trend preserves explicit intraday boundaries while including their UTC calendar dates
+ok 5 - trend preserves explicit intraday boundaries while including their UTC calendar dates
+  ---
+  duration_ms: 0.7502
+  type: 'test'
+  ...
+# Subtest: keyset cursors round-trip the created_at and id pair and are section-scoped
+ok 6 - keyset cursors round-trip the created_at and id pair and are section-scoped
+  ---
+  duration_ms: 0.3812
+  type: 'test'
+  ...
+# Subtest: cost text stays exact decimal and rejects floating-point or malformed values
+ok 7 - cost text stays exact decimal and rejects floating-point or malformed values
+  ---
+  duration_ms: 0.2978
+  type: 'test'
+  ...
+# Subtest: users query applies time/state/user filters, keyset pagination and masked rows
+ok 8 - users query applies time/state/user filters, keyset pagination and masked rows
+  ---
+  duration_ms: 4.6782
+  type: 'test'
+  ...
+# Subtest: tasks query filters by state/time/user, maps usage and continues from the encoded cursor
+ok 9 - tasks query filters by state/time/user, maps usage and continues from the encoded cursor
+  ---
+  duration_ms: 0.7942
+  type: 'test'
+  ...
+# Subtest: routes deny non-operators with the same 404 and return masked rows for log_reader
+ok 10 - routes deny non-operators with the same 404 and return masked rows for log_reader
+  ---
+  duration_ms: 1134.728
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3793.9368

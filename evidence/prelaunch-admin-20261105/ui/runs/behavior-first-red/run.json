@@ -1,0 +1,32 @@
+{
+  "base": "3bb7baf12dba1c75465e9c5dd71ef7b073c176a9",
+  "started": "2026-11-05T02:38:33.477Z",
+  "completed": "2026-11-05T02:39:13.215Z",
+  "command": [
+    "C:\\Program Files\\nodejs\\node.exe",
+    "node_modules/@playwright/test/cli.js",
+    "test",
+    "--config",
+    "apps/web/playwright.config.ts",
+    "apps/web/tests/admin-dashboard.spec.ts",
+    "--grep",
+    "desktop admin",
+    "--trace",
+    "retain-on-failure",
+    "--output",
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\prelaunch-admin-navigation-20261105\\.local\\admin-navigation-evidence\\behavior-first-red\\output"
+  ],
+  "runtime": "v26.13.0",
+  "browsersPath": "C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/.local/quality-final-crossentry/browsers",
+  "exitCode": 1,
+  "before": {
+    "apps/web/src/main.ts": "c12df5de1d5e9013457156bd9fd9d88cf5a13ef1a2329f06535351611ae77481",
+    "apps/web/src/project-assistant.ts": "8a153b574bf58d6a56d07d0dec0d32a0c09f6c448edd1bdc6cf317a97f482c2a",
+    "apps/web/tests/admin-dashboard.spec.ts": "a338b234faa02b0202d874666931b77a7843c5f00db39f0769bf449022a17bfa"
+  },
+  "after": {
+    "apps/web/src/main.ts": "c12df5de1d5e9013457156bd9fd9d88cf5a13ef1a2329f06535351611ae77481",
+    "apps/web/src/project-assistant.ts": "8a153b574bf58d6a56d07d0dec0d32a0c09f6c448edd1bdc6cf317a97f482c2a",
+    "apps/web/tests/admin-dashboard.spec.ts": "a338b234faa02b0202d874666931b77a7843c5f00db39f0769bf449022a17bfa"
+  }
+}

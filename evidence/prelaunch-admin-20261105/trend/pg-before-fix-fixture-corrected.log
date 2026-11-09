@@ -1,0 +1,157 @@
+✖ default UTC trend contains all 14 calendar days including idle dates, while summary remains unrestricted (212.5859ms)
+✖ historical to anchors the default 14-day trend without discarding older summary tasks (183.7033ms)
+✖ 90, 91 and 120-day filters keep complete summaries and paginated details with a schema-valid last-90-day trend (339.2273ms)
+✖ UTC midnight grouping and credit dates remain unchanged in an Asia/Shanghai PostgreSQL session (164.432ms)
+✖ owner and state filters count runs/users once and do not multiply usage or settlement rows (310.9726ms)
+✖ an empty window contains idle calendar days without inventing measured zero costs (152.3809ms)
+✖ a measured but unpriced attempt stays null beside an idle day (176.1508ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 0
+ℹ fail 7
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8081.5217
+
+✖ failing tests:
+
+test at apps\api\dist\admin-dashboard.pg.test.js:42:1
+✖ default UTC trend contains all 14 calendar days including idle dates, while summary remains unrestricted (212.5859ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  2 !== 14
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:52:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 14,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\admin-dashboard.pg.test.js:63:1
+✖ historical to anchors the default 14-day trend without discarding older summary tasks (183.7033ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 14
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:71:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 14,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\admin-dashboard.pg.test.js:80:1
+✖ 90, 91 and 120-day filters keep complete summaries and paginated details with a schema-valid last-90-day trend (339.2273ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  91 !== 90
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:89:20)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 91,
+    expected: 90,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\admin-dashboard.pg.test.js:107:1
+✖ UTC midnight grouping and credit dates remain unchanged in an Asia/Shanghai PostgreSQL session (164.432ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      {
+  +     credits: '18',
+  -     credits: '7',
+  -     date: '2026-01-01',
+  -     tasks: 1
+  -   },
+  -   {
+  -     credits: '11',
+        date: '2026-01-02',
+  +     tasks: 2
+  -     tasks: 1
+      }
+    ]
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:114:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ { date: '2026-01-02', tasks: 2, credits: '18' } ],
+    expected: [ { date: '2026-01-01', tasks: 1, credits: '7' }, { date: '2026-01-02', tasks: 1, credits: '11' } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\admin-dashboard.pg.test.js:124:1
+✖ owner and state filters count runs/users once and do not multiply usage or settlement rows (310.9726ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:146:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\admin-dashboard.pg.test.js:155:1
+✖ an empty window contains idle calendar days without inventing measured zero costs (152.3809ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 3
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:160:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 3,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at apps\api\dist\admin-dashboard.pg.test.js:167:1
+✖ a measured but unpriced attempt stays null beside an idle day (176.1508ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:173:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

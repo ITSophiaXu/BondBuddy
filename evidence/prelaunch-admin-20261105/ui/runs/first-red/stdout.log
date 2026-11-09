@@ -1,0 +1,126 @@
+
+Running 5 tests using 1 worker
+
+  x  1 apps\web\tests\admin-dashboard.spec.ts:230:3 › desktop admin navigation keeps the dashboard route after clicking .admin-tabs a (2ms)
+  x  2 apps\web\tests\admin-dashboard.spec.ts:230:3 › desktop admin navigation keeps the dashboard route after clicking .admin-brand (2ms)
+  x  3 apps\web\tests\admin-dashboard.spec.ts:243:1 › desktop admin logout sends one request and clears the current session view (2ms)
+  x  4 apps\web\tests\admin-dashboard.spec.ts:255:1 › desktop admin logout failure is visible and the same session can retry (2ms)
+  x  5 apps\web\tests\admin-dashboard.spec.ts:270:1 › desktop admin hides the product assistant while preserving a pending complete conversation save (2ms)
+
+
+  1) apps\web\tests\admin-dashboard.spec.ts:230:3 › desktop admin navigation keeps the dashboard route after clicking .admin-tabs a 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\admin-navigation-evidence\first-red\output\admin-dashboard-desktop-ad-bd387-after-clicking-admin-tabs-a\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\admin-navigation-evidence\first-red\output\admin-dashboard-desktop-ad-bd387-after-clicking-admin-tabs-a\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\admin-navigation-evidence\first-red\output\admin-dashboard-desktop-ad-bd387-after-clicking-admin-tabs-a\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  2) apps\web\tests\admin-dashboard.spec.ts:230:3 › desktop admin navigation keeps the dashboard route after clicking .admin-brand 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\admin-navigation-evidence\first-red\output\admin-dashboard-desktop-ad-175ea--after-clicking-admin-brand\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\admin-navigation-evidence\first-red\output\admin-dashboard-desktop-ad-175ea--after-clicking-admin-brand\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\admin-navigation-evidence\first-red\output\admin-dashboard-desktop-ad-175ea--after-clicking-admin-brand\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  3) apps\web\tests\admin-dashboard.spec.ts:243:1 › desktop admin logout sends one request and clears the current session view 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\admin-navigation-evidence\first-red\output\admin-dashboard-desktop-ad-12de4-rs-the-current-session-view\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\admin-navigation-evidence\first-red\output\admin-dashboard-desktop-ad-12de4-rs-the-current-session-view\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\admin-navigation-evidence\first-red\output\admin-dashboard-desktop-ad-12de4-rs-the-current-session-view\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  4) apps\web\tests\admin-dashboard.spec.ts:255:1 › desktop admin logout failure is visible and the same session can retry 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\admin-navigation-evidence\first-red\output\admin-dashboard-desktop-ad-f83f6--the-same-session-can-retry\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\admin-navigation-evidence\first-red\output\admin-dashboard-desktop-ad-f83f6--the-same-session-can-retry\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\admin-navigation-evidence\first-red\output\admin-dashboard-desktop-ad-f83f6--the-same-session-can-retry\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5) apps\web\tests\admin-dashboard.spec.ts:270:1 › desktop admin hides the product assistant while preserving a pending complete conversation save 
+
+    Error: browserType.launch: Executable doesn't exist at C:\Users\lezhai\AppData\Local\ms-playwright\chromium_headless_shell-1243\chrome-headless-shell-win64\chrome-headless-shell.exe
+    ╔════════════════════════════════════════════════════════════╗
+    ║ Looks like Playwright was just installed or updated.       ║
+    ║ Please run the following command to download new browsers: ║
+    ║                                                            ║
+    ║     npx playwright install                                 ║
+    ║                                                            ║
+    ║ <3 Playwright Team                                         ║
+    ╚════════════════════════════════════════════════════════════╝
+
+    Error Context: .local\admin-navigation-evidence\first-red\output\admin-dashboard-desktop-ad-c1ce1--complete-conversation-save\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .local\admin-navigation-evidence\first-red\output\admin-dashboard-desktop-ad-c1ce1--complete-conversation-save\trace.zip
+    Usage:
+
+        npx playwright show-trace .local\admin-navigation-evidence\first-red\output\admin-dashboard-desktop-ad-c1ce1--complete-conversation-save\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  5 failed
+    apps\web\tests\admin-dashboard.spec.ts:230:3 › desktop admin navigation keeps the dashboard route after clicking .admin-tabs a 
+    apps\web\tests\admin-dashboard.spec.ts:230:3 › desktop admin navigation keeps the dashboard route after clicking .admin-brand 
+    apps\web\tests\admin-dashboard.spec.ts:243:1 › desktop admin logout sends one request and clears the current session view 
+    apps\web\tests\admin-dashboard.spec.ts:255:1 › desktop admin logout failure is visible and the same session can retry 
+    apps\web\tests\admin-dashboard.spec.ts:270:1 › desktop admin hides the product assistant while preserving a pending complete conversation save 

@@ -1,0 +1,22 @@
+{
+  "synthetic": true,
+  "started": "2026-11-05T02:45:21.687Z",
+  "finished": "2026-11-05T02:45:29.815Z",
+  "node": "v26.13.0",
+  "command": [
+    "--test",
+    "--test-concurrency=1",
+    "apps/api/dist/admin-dashboard.pg.test.js"
+  ],
+  "exit": {
+    "code": 1,
+    "signal": null
+  },
+  "bindings": {
+    "apps/api/src/admin-dashboard.ts": "4626161152b0890c03e1a5a6471ad6b638b8a32130c53a3f028c5ab0479c943d",
+    "apps/api/src/admin-dashboard.pg.test.ts": "ce87e55071c2fd26645e3a64a2f7418ff20df4af42262cb44e139abe7fb21c25",
+    "apps/api/dist/admin-dashboard.js": "5c01d85212b77dacd2b5480fac162bd5c58e7d1e188f645e22246c58e298120f",
+    "apps/api/dist/admin-dashboard.pg.test.js": "21e5498f1e02fc32a662f0f81d5bf1631de050a04af8e2a7702a524ecc91ce32"
+  },
+  "raw_sha256": "e303b55ba6a3b0a7900e0a7a214f9334fc07f062f388a7aea0852ec4fa39d406"
+}

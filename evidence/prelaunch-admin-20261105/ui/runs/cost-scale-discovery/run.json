@@ -1,0 +1,38 @@
+{
+  "base": "3bb7baf12dba1c75465e9c5dd71ef7b073c176a9",
+  "started": "2026-11-05T02:54:51.825Z",
+  "completed": "2026-11-05T02:55:06.827Z",
+  "command": [
+    "C:\\Program Files\\nodejs\\node.exe",
+    "node_modules/@playwright/test/cli.js",
+    "test",
+    "--config",
+    "apps/web/playwright.config.ts",
+    "apps/web/tests/admin-dashboard.spec.ts",
+    "--reporter",
+    "line,json",
+    "--trace",
+    "retain-on-failure",
+    "--output",
+    "C:\\Users\\lezhai\\Downloads\\Bondbuddy\\prelaunch-admin-navigation-20261105\\.local\\admin-navigation-evidence\\final-source-bound-ten-green\\output"
+  ],
+  "runtime": "v26.13.0",
+  "browsersPath": "C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/.local/quality-final-crossentry/browsers",
+  "exitCode": 0,
+  "before": {
+    "apps/web/src/main.ts": "f236c4825e0157db904ce418ca3421492fac1e25d00d146ff7396d496162c55c",
+    "apps/web/src/project-assistant.ts": "d9e088fc91f2a00a0538ac5421b568e0ec0b86ed2e24570ef2032f89982fd47c",
+    "apps/web/src/admin-dashboard-page.ts": "9c3f3036c7a5580fa1a335f91e6190ce279c07b9bfb5bc5c60f33a784db514fa",
+    "apps/api/src/admin-dashboard.ts": "6050fd9af019fcf7e4d146b4c52a3887c3424af40f4cea0cf487d13d57fc71ea",
+    "apps/web/tests/admin-dashboard.spec.ts": "5f0aec89d017d7f8689cb6ab8e8b3f01d1053417294b93c70a29e6260742f114",
+    ".github/workflows/desktop-ux-pr.yml": "b7ffa78e0e148a306aafa447201b09b1b9f1a6f9ed043d6445c38e398e45f54e"
+  },
+  "after": {
+    "apps/web/src/main.ts": "f236c4825e0157db904ce418ca3421492fac1e25d00d146ff7396d496162c55c",
+    "apps/web/src/project-assistant.ts": "d9e088fc91f2a00a0538ac5421b568e0ec0b86ed2e24570ef2032f89982fd47c",
+    "apps/web/src/admin-dashboard-page.ts": "9c3f3036c7a5580fa1a335f91e6190ce279c07b9bfb5bc5c60f33a784db514fa",
+    "apps/api/src/admin-dashboard.ts": "6050fd9af019fcf7e4d146b4c52a3887c3424af40f4cea0cf487d13d57fc71ea",
+    "apps/web/tests/admin-dashboard.spec.ts": "5f0aec89d017d7f8689cb6ab8e8b3f01d1053417294b93c70a29e6260742f114",
+    ".github/workflows/desktop-ux-pr.yml": "b7ffa78e0e148a306aafa447201b09b1b9f1a6f9ed043d6445c38e398e45f54e"
+  }
+}
