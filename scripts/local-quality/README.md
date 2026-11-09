@@ -93,3 +93,58 @@ the private evidence directory. Rendering success alone leaves visual inspection
 pending. A render of the original establishes a source baseline only; a one-page
 synthetic result does not establish full-document preservation. LibreOffice
 rendering does not prove Word/WPS compatibility or financial correctness.
+
+## First actual RQ result and retained content failure: 2026-11-09
+
+Original run `97d26241-09fc-4338-a2bf-9f1253ef5ace` completed on image `50554262`.
+The creation observer passed in 31.1 minutes: both actual downloads match storage
+hashes, 15/15 mechanical checks and 38 financial controls per output pass, and one
+measured model execution settles the original 8,864-point quote exactly once.
+Original-request replay leaves the ledger unchanged. These results remain preserved.
+
+Independent semantic review then found current-period definitions left at the old
+half-year, narrative amounts/ratios inconsistent with updated tables, and an unclear
+debt-principal formula. The user-facing delivery note also exposed internal paths,
+hashes and tool operations. This is a **content/experience failure**, not a passing
+RQ acceptance or a reason to silently replace the Word files. It does not change the
+product's generated-file availability policy or retrospectively alter the original
+15-check mechanical report.
+
+Private evidence is under
+`../quality-prelaunch-20261107/2026-11-09T03-17-00-444Z-00c6c2b2/`, including the
+original words, `rq-q3-quality-report.json`, `rq-narrative-semantic-review.json` and
+read-only render receipts. Clean renders to 246 pages and tracked to 248; complete
+visual acceptance is not claimed for these content-failing outputs. General
+generation guidance and independent narrative checks are being strengthened before
+a separate actual revalidation; customer numbers are not copied into synthetic tests.
+
+## Separate narrative and user-note checks
+
+`rq_q3_narrative_check.py` adds five bounded checks per output: flow and balance
+period definitions, current nonoperating-expense narrative, one-year debt narrative,
+and the disclosed treatment of interest in the debt definition. Controls come from
+the authorized original statements and notes, with independent component/total
+reconciliation; generated tables cannot supply expected amounts. Explicit principal
+and interest-inclusive treatments are distinguished. Unknown formulas or ambiguous
+periods/scopes require clarification rather than a passing result. This does not
+replace manual checks of qualitative claims or source-note inconsistencies.
+
+The checker passed **58 purely synthetic tests**, including mixed dates, conflicting
+scope, incomplete/extra amount sequences, conflicting definitions and ratios, and
+valid historical comparisons. A root recheck of the original failing pair still
+returns **0/10, exit 1**, while original Word, mechanical and manual-review hashes
+remain unchanged. The new private report is under
+`narrative-independent-recheck-20261109T041708-ac410786/` in the original run folder.
+
+The actual browser observer now checks the Artifact API's user-facing delivery note
+for bounded internal-execution details. Its **16 synthetic boundary/evidence tests**
+pass; that lexical result alone does not establish business completeness. Each
+creation/resume observation writes its reports and screenshot into a new
+`quality-observation-*` directory, records checker source hashes and preserves
+earlier reports. Existing downloaded bytes are reused only when their SHA-256 still
+matches the actual artifact; different bytes never overwrite saved evidence.
+
+Generation prompt/template v3, committed in `05ed9bc1`, addresses fact-location
+coverage, definitions, table/narrative/formula consistency, unsupported qualitative
+claims and user-facing explanations. Static and focused worker checks pass; actual
+full-document revalidation remains required before these changes are called accepted.

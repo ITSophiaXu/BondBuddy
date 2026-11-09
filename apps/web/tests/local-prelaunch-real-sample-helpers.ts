@@ -1,4 +1,4 @@
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
 import {join,resolve,dirname} from 'node:path';
@@ -6,12 +6,26 @@ import {fileURLToPath} from 'node:url';
 import {expect,type Page} from '@playwright/test';
 import {billingApi,billingLedger,integer,type BillingAudit} from './local-prelaunch-billing-helpers';
 import {assertImmutableQualityInput} from './local-prelaunch-helpers';
+import {checkRealSampleDeliveryNotes} from './local-prelaunch-real-sample-summary';
 
 export const realSampleRepo=fileURLToPath(new URL('../../..',import.meta.url));
 const sourceRoot=join(realSampleRepo,'tests/samples/2026-09-25');
 export const realSampleEvidenceRoot=resolve(realSampleRepo,'../quality-prelaunch-20261107');
 export const qualityPython=process.env.BB_PRELAUNCH_QUALITY_PYTHON??'C:/Users/lezhai/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe';
 export const sha256=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
+
+export function retainedRealSampleDownload(path:string,expectedHash:string):Buffer|undefined {
+  let bytes:Buffer;
+  try{bytes=readFileSync(path);}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return undefined;throw error;}
+  if(sha256(bytes)!==expectedHash)throw Error('Existing downloaded evidence differs from the artifact hash; file preserved.');
+  return bytes;
+}
+export function preserveRealSampleDownload(path:string,bytes:Buffer,expectedHash:string):'saved'|'reused' {
+  if(sha256(bytes)!==expectedHash)throw Error('Downloaded bytes do not match the artifact hash; evidence not written.');
+  try{writeFileSync(path,bytes,{flag:'wx',mode:0o600});return 'saved';}
+  catch(error){if((error as NodeJS.ErrnoException).code!=='EEXIST')throw error;}
+  retainedRealSampleDownload(path,expectedHash);return 'reused';
+}
 
 export function realSampleSources(){
   const manifest=JSON.parse(readFileSync(join(sourceRoot,'manifest.json'),'utf8'));
@@ -87,25 +101,51 @@ export async function finishRealSample(page:Page,billing:BillingAudit,receipt:Re
   expect(settled.lots.reduce((sum:bigint,row:any)=>sum+integer(row.frozen),0n)).toBe(0n);
   const calls=settled.modelCalls.filter((row:any)=>row.run_id===runId);expect(calls).toHaveLength(1);
   expect(calls[0]).toMatchObject({status:'completed',model_id:'gpt-6-sol',usage_status:'measured'});
-  const artifact=await billingApi(page,'GET',`/api/v1/artifacts/${terminal.artifact_id}`);expect(artifact.status).toBe(200);expect(artifact.body.run_id).toBe(runId);
+  const artifact=await billingApi(page,'GET',`/api/v1/artifacts/${terminal.artifact_id}`);expect(artifact.status).toBe(200);
+  expect(artifact.body.artifact_id).toBe(terminal.artifact_id);expect(artifact.body.run_id).toBe(runId);
   const pair=artifact.body.word_delivery;expect(pair.revision_artifact_id).toBe(terminal.artifact_id);expect(pair.clean_artifact_id).toBeTruthy();
+  // Both a new submission and same-run observation inspect the actual artifact API value.
+  // Preserve earlier observations and Word reports; never redact or rewrite saved notes.
+  const observationDirectory=join(directory,`quality-observation-${new Date().toISOString().replace(/[:.]/g,'-')}-${randomUUID().slice(0,8)}`);
+  mkdirSync(observationDirectory,{mode:0o700});
+  const notesCheck=checkRealSampleDeliveryNotes(pair.authoring_summary);
+  const notesReportPath=join(observationDirectory,'user-delivery-notes-check.json');
+  const notesEvidence={...notesCheck,checkedAt:new Date().toISOString(),
+    checkerSourceSha256:sha256(readFileSync(fileURLToPath(new URL('./local-prelaunch-real-sample-summary.ts',import.meta.url)))),source:{kind:'actual-artifact-api',
+    artifactId:artifact.body.artifact_id,runId,artifactVersion:artifact.body.version},reportPath:notesReportPath};
+  writeFileSync(notesReportPath,JSON.stringify(notesEvidence,null,2),{flag:'wx',mode:0o600});
+  billing.record('actual-api-user-delivery-notes-check',notesEvidence);
   await page.goto(`/#/artifacts/${terminal.artifact_id}`);
   for(const [label,name,id] of [['下载修订版','tracked.docx',pair.revision_artifact_id],['下载清洁版','clean.docx',pair.clean_artifact_id]] as const){
     const descriptor=await billingApi(page,'GET',`/api/v1/artifacts/${id}`);expect(descriptor.status).toBe(200);expect(descriptor.body.run_id).toBe(runId);
-    const pending=page.waitForEvent('download',{timeout:120000});await page.getByRole('button',{name:label,exact:true}).click();
-    const path=join(directory,name);await(await pending).saveAs(path);const bytes=readFileSync(path);
+    const path=join(directory,name);let bytes=retainedRealSampleDownload(path,descriptor.body.sha256);
+    let downloadedThisObservation=false,evidenceReused=!!bytes;
+    if(!bytes){
+      const pending=page.waitForEvent('download',{timeout:120000});await page.getByRole('button',{name:label,exact:true}).click();
+      const receivedPath=join(observationDirectory,name);await(await pending).saveAs(receivedPath);bytes=readFileSync(receivedPath);
+      evidenceReused=preserveRealSampleDownload(path,bytes,descriptor.body.sha256)==='reused';downloadedThisObservation=true;
+    }
     expect(sha256(bytes)).toBe(descriptor.body.sha256);expect(bytes.length).toBeGreaterThan(1000);
-    billing.record('full-prospectus-actual-Word-download',{name,artifactId:id,bytes:bytes.length,sha256:sha256(bytes)});
+    billing.record('full-prospectus-actual-Word-download',{name,artifactId:id,bytes:bytes.length,sha256:sha256(bytes),downloadedThisObservation,evidenceReused});
   }
-  await page.screenshot({path:join(directory,'dual-Word-delivered.png'),fullPage:true});
+  await page.screenshot({path:join(observationDirectory,'dual-Word-delivered.png'),fullPage:true});
+  const checkerSourceHashes=Object.fromEntries(['rq_q3_baseline.py','rq_q3_check.py','rq_q3_narrative_check.py']
+    .map(name=>[name,sha256(readFileSync(join(realSampleRepo,'scripts/local-quality',name)))]));
   const check=spawnSync(qualityPython,[join(realSampleRepo,'scripts/local-quality/rq_q3_check.py'),'--clean',join(directory,'clean.docx'),
-    '--tracked',join(directory,'tracked.docx'),'--output-dir',directory],{cwd:realSampleRepo,encoding:'utf8',windowsHide:true,
+    '--tracked',join(directory,'tracked.docx'),'--output-dir',observationDirectory],{cwd:realSampleRepo,encoding:'utf8',windowsHide:true,
     env:{...process.env,PYTHONIOENCODING:'utf-8'},timeout:120000});
-  billing.record('independent-downloaded-Word-quality-check',{exitCode:check.status,summary:check.stdout,diagnostic:check.stderr,
-    reportPath:join(directory,'rq-q3-quality-report.json'),visualReview:'not_performed'});
+  billing.record('independent-downloaded-Word-quality-check',{exitCode:check.status,summary:check.stdout,diagnostic:check.stderr,checkerSourceHashes,
+    reportPath:join(observationDirectory,'rq-q3-quality-report.json'),visualReview:'not_performed'});
+  const narrative=spawnSync(qualityPython,[join(realSampleRepo,'scripts/local-quality/rq_q3_narrative_check.py'),
+    '--clean',join(directory,'clean.docx'),'--tracked',join(directory,'tracked.docx'),'--output-dir',observationDirectory],
+    {cwd:realSampleRepo,encoding:'utf8',windowsHide:true,env:{...process.env,PYTHONIOENCODING:'utf-8'},timeout:120000});
+  billing.record('independent-downloaded-Word-narrative-check',{exitCode:narrative.status,summary:narrative.stdout,diagnostic:narrative.stderr,checkerSourceHashes,
+    reportPath:join(observationDirectory,'rq-q3-narrative-report.json'),visualReview:'not_performed'});
   for(const file of originals)expect(sha256(readFileSync(file.absolutePath))).toBe(file.sha256);
   // Replay remains the original immutable execution request; never create a new request to observe an old run.
   const replay=await billingApi(page,'POST','/api/v1/runs/execute',request);expect(replay.status).toBe(202);expect(replay.body.run_id).toBe(runId);
   expect(billingLedger(billing.owner)).toEqual(settled);
-  expect(check.status,'Independent Word quality report retained at '+directory).toBe(0);
+  expect.soft(notesCheck.status,'User delivery-note technical-detail check retained at '+notesReportPath).toBe('passed');
+  expect.soft(check.status,'Independent Word quality report retained at '+observationDirectory).toBe(0);
+  expect(narrative.status,'Independent Word narrative report retained at '+observationDirectory).toBe(0);
 }
