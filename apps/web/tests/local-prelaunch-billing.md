@@ -171,6 +171,45 @@ identities, measured calls and downloaded bytes. All final worker frozen balance
 
 Only the payment channel is simulated; the five completed measured `gpt-6-sol` calls and
 product worker/Word delivery are real. Legacy policy still means current binaries with
-different policy configuration, not a historical binary/schema upgrade. The long-form
-authorized sample and complete document-quality/rendering acceptance remain unfinished.
-This functional result does not claim real merchant transactions or full-document quality.
+different policy configuration, not a historical binary/schema upgrade. The long-document
+case below adds separate evidence. This batch does not establish real merchant transactions
+or complete document quality.
+
+## Long-document payment and settlement: 2026-11-09
+
+The fully synthetic long-document task `e19a5883-342f-4563-b833-0f4b844a63b0` completed
+on actual image `76b8e3c1dece9b50a745c3ff4e144f63d88aebfc`. It is one additional worker
+scenario, making **39 distinct functional cases: 24 input/material, 8 non-model payment
+and 7 worker cases** across the recorded `fc76c9c7` and `76b8e3c1` images. The passing cases
+contain six completed, measured model calls in total. Harness retries, read-only rechecks,
+UI regression runs and matcher unit cases are not extra functional scenarios.
+
+| Observation | Verified result |
+| --- | --- |
+| Recharge | One synthetic-channel payment credits 1,000,000 points through the actual local product transaction. |
+| Reservation and delivery | One run and reservation; one reserve and one settlement event, each for the original 8,864-point quote under `on_delivery`. |
+| Release and balance | No release event; final available balance 991,136 points, frozen balance zero. |
+| Model and downloads | One completed measured `gpt-6-sol` call; actual dual-Word browser downloads match their stored hashes, independently rehashed after rendering. |
+| Replay | The original immutable execution request returns the same task and leaves the complete ledger and model-call count unchanged. |
+
+The authoritative final observation is
+`../quality-prelaunch-20261107/synthetic-long-run-2026-11-09T02-38-12-193Z-e1ec14d5/observation-2026-11-09T02-49-30-500Z.json`
+relative to the checkout. It is finalized, has empty errors/page errors and records a
+complete final ledger. The creation observer's earlier legacy-target assertion failure
+remains preserved. It was repaired by checking the real unified input/worker target and
+observing the same accepted task; no second payment or task replaced the first attempt.
+
+Both outputs pass 17 mechanical checks and 24 financial controls each. Their 43 pages
+each were fully inspected, with sparse-page and spacing findings retained; billing success
+does not convert those findings into a flawless visual pass. See the
+[long-document record](../../../scripts/local-quality/synthetic-long.md#completed-actual-synthetic-product-run-2026-11-09)
+for content, render and pagination evidence. The combined ignored summary is
+`.local/receipts/final-functional-with-synthetic-long.json`.
+
+The separately authorized RQ task `97d26241-09fc-4338-a2bf-9f1253ef5ace` is being
+observed; its outcome is not included in this passing count. The later single-start
+UI image `50554262` passed its real zero-balance source-correction regression in
+32.5 seconds, with a new correctly pinned input/quote and no task or debit, as
+documented in the [UI acceptance record](../../../docs/acceptance/local-prelaunch-20261109/README.md).
+No result here claims real merchant SDK/payment acceptance, historical-binary migration,
+professional financial signoff or production deployment.

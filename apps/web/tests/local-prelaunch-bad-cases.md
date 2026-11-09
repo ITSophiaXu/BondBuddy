@@ -172,6 +172,45 @@ attempts and actual downloaded file hashes were also checked; status alone was n
 
 Accounts and payment-channel outcomes are synthetic; HTTP, PostgreSQL, Blob, Python,
 worker execution and five completed measured `gpt-6-sol` calls are real. These are focused
-functional and recovery checks. The authorized long-form sample and its complete content/
-rendering acceptance remain unfinished; this result does not claim real merchant payment
-or final full-document quality acceptance.
+functional and recovery checks. The later long-document run below is separate evidence;
+this 38-case batch does not establish real merchant payment or complete document quality.
+
+## Added long-document scenario and combined count: 2026-11-09
+
+The real synthetic long-document task `e19a5883-342f-4563-b833-0f4b844a63b0` completed
+on image `76b8e3c1dece9b50a745c3ff4e144f63d88aebfc`. It adds **one distinct scenario**:
+the combined result is **39 functional cases: 24 input/material + 8 payment without
+model + 7 worker cases**. The first 38 remain tied to `fc76c9c7`; this is not a claim
+that all 39 ran on one later image. Repeated observations, the corrected target recheck,
+and the 32/51 synthetic checker tests are excluded from the functional count.
+
+The 40-page synthetic source, six-sheet workbook and notes went through the actual
+browser/API/storage/worker/model/download path. Both delivered Word files passed all
+17 mechanical checks, including 24 financial controls each, 14 retained chapters, six
+tables and 26 anchors, and correct clean/tracked semantics. One measured model call and
+one 8,864-point settlement were recorded; replay did not create another call or charge.
+
+The clean and tracked outputs each render to 43 pages. All 86 pages were inspected,
+with no clipping, overlap, garbled text, missing images or repeated-header loss observed.
+The result retains sparse-page findings at pages 6 and 31 and table/paragraph-spacing
+warnings. Read-only diagnosis found natural content overflow before preserved original
+page breaks, with unchanged styles and no added pagination properties; it did not alter
+the outputs or erase the warnings. This is not a flawless-layout or Word/WPS signoff.
+
+The creation observer initially failed on the optional legacy `target_confirmation`
+field after the task was accepted. Read-only checks verified the correct immutable and
+actual worker target; the observer was corrected and resumed observation of that original
+run. The first red evidence remains, and no replacement account/payment/task was created.
+The final observation is finalized, has empty errors/page errors and contains the final
+ledger. Detailed paths and version boundaries are in the
+[long-document record](../../../scripts/local-quality/synthetic-long.md#completed-actual-synthetic-product-run-2026-11-09).
+The ignored `.local/receipts/final-functional-with-synthetic-long.json` links the original
+38-case summary and the added task, quality, render and pagination evidence with hashes.
+
+The RQ three-original generation has explicit destination-specific user authorization;
+its separate task `97d26241-09fc-4338-a2bf-9f1253ef5ace` is still being observed and is
+not counted as passed here. On the later `50554262` image, the expanded source-correction
+case passed in 32.5 seconds: one start action locks corrected input, obtains its own
+zero-balance quote and creates no task, reservation, debit or model call. This is a
+focused repeat of an existing scenario, not a rerun of all 39. See the
+[UI acceptance record](../../../docs/acceptance/local-prelaunch-20261109/README.md).

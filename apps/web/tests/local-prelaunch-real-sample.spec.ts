@@ -90,6 +90,7 @@ test('authorized RQ Q3 full prospectus uses actual queue and model then preserve
     materialVersions:[source,main,note].map(value=>({material_id:value.material_id,material_version:value.material_version}))};
   // Persist the accepted identity before assertions so a harness interruption never requires resubmission.
   writeFileSync(join(directory,'run.json'),JSON.stringify(receipt,null,2));
+  console.log(`RQ Q3 accepted ${accepted.run_id}; private evidence ${directory}`);
   billing.record('real-full-prospectus-run-submission',{status:submitted.status(),request,accepted});
   expect(submitted.status(),JSON.stringify(accepted)).toBe(202);
   const charge=await billingApi(page,'GET',`/api/v1/runs/${accepted.run_id}/credit-charge`);expect(charge.status).toBe(200);

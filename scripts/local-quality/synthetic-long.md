@@ -121,3 +121,61 @@ immutable unified-authoring manifest, including the complete reporting window,
 instead of the optional legacy DTO. Its original-task target recheck passed
 without another account, payment or task. The original red observer evidence is
 retained; this correction is not a document-quality pass.
+
+## Completed actual synthetic product run: 2026-11-09
+
+The original task `e19a5883-342f-4563-b833-0f4b844a63b0` completed on production
+image source `76b8e3c1dece9b50a745c3ff4e144f63d88aebfc`. Its final observation used
+test-source HEAD `aafd5f76e6e7a7b4b5edd272a02fd1748a1de432`; the observation records
+the individual script hashes separately from the running image. The final record
+is `synthetic-long-run-2026-11-09T02-38-12-193Z-e1ec14d5/observation-2026-11-09T02-49-30-500Z.json`
+under the external quality root. It has `status:passed`, `finalized:true`, empty
+errors/page errors and a complete final ledger. Observation created or resumed
+no task; the accepted original run was preserved after the initial harness failure.
+
+The real downloaded clean and tracked Word files pass **17/17 mechanical checks**,
+including all **24 financial controls in each output**, all 14 chapters, six tables,
+26 retention anchors, media, styles, section geometry, repeated table headers and
+directory/bookmark relationships. Accepting tracked changes matches the clean
+body; rejecting them matches the original body. Both browser download hashes were
+independently rechecked against the saved files after rendering.
+
+One completed, measured `gpt-6-sol` call produced the result. The local ledger has
+one run, one reservation, one 8,864-point reserve event and one 8,864-point settlement,
+with no release event. The synthetic-channel recharge credited 1,000,000 points;
+the final balance is 991,136 available and zero frozen. Exact original-request
+replay leaves the complete ledger and model-call count unchanged.
+
+Both generated files render to **43 pages**, and all **86 pages** were inspected at
+their original rendered resolution. No clipping, overlap, garbled text, completely
+blank page, missing image or missing repeated table header was observed. This is
+**completed visual review with retained layout findings**, not a flawless-layout
+pass: page 6 contains only two ending lines, page 31 contains a four-line financial
+explanation, and several table-following analysis paragraphs have tight spacing.
+The tracked review also notes substantial unused space after the table tail on
+page 20. The original inspection findings remain unchanged in
+`synthetic-long-generated-render-20261109/{clean,tracked}/inspection.json`.
+
+The same run's `pagination-investigation/pagination-root-cause.json` records that
+`styles.xml` bytes are unchanged, all 32 original explicit page breaks remain,
+and the 15 inserted paragraphs add no pagination properties. Added disclosure
+naturally overflows before preserved page breaks; no inherited pagination-property
+defect was established. This supports retaining the sparse-page/spacing warnings,
+not deleting disclosure or silently editing generated outputs. Source and output
+hashes remain intact. LibreOffice inspection does not establish Word/WPS compatibility
+or professional financial approval.
+
+Together with the 38 distinct functional cases on `fc76c9c7`, this is the **39th
+functional scenario**. Observation retries, target rechecks, and the 32 synthetic or
+51 RQ matcher cases do not increase that count. The ignored combined record is
+`.local/receipts/final-functional-with-synthetic-long.json`; the original 38-case
+summary and all red attempts remain preserved.
+
+The three RQ originals have explicit user authorization for this acceptance through
+`https://api.enterprise.githubcopilot.com/` using `gpt-6-sol`. Their separate task
+`97d26241-09fc-4338-a2bf-9f1253ef5ace` is being observed and is not included as a pass
+in this synthetic result. The later single-start UI image
+`50554262e64962785cb964440ebf5e250d333269` is running and passed its expanded real
+zero-balance source-correction case in 32.5 seconds. That focused UI repeat does not
+change this generated-document result's `76b8e3c1` image identity. See the
+[UI acceptance record](../../docs/acceptance/local-prelaunch-20261109/README.md).

@@ -1,5 +1,25 @@
 # Persistent local prelaunch environment
 
+## 本机使用
+
+在本工作区执行 `node scripts/local-prelaunch/start.mjs`，然后打开
+<http://localhost:18087>。可在页面注册独立测试账号、创建项目、上传材料，
+并通过账号页的充值入口进入模拟收银台。模拟支付会走真实订单与积分账务；
+可验证支付失败、支付结果待确认、到账查询和重复回调。它不会向真实商户付款。
+解析、队列、模型生成和 Word 下载则执行实际产品代码。
+
+开始募集书更新前，先上传并采用历史／参考募集书，填完整原稿信息。
+错误输入、损坏文件、断网恢复和零余额后的继续操作可按正常页面流程测试。
+自动化场景与已发现的问题记录在
+[输入和文件测试](../../apps/web/tests/local-prelaunch-bad-cases.md)、
+[支付与计费测试](../../apps/web/tests/local-prelaunch-billing.md)及
+[全文质量验收](../local-quality/README.md)。
+
+`node scripts/local-prelaunch/status.mjs` 检查实际服务状态；
+`node scripts/local-prelaunch/stop.mjs` 停止本实例并保留账号、文件和账务。
+更新产品代码后先提交，再执行 `build.mjs` 和 `start.mjs`；构建本身不替换正在运行的服务，
+启动器会拒绝在有活动任务时升级。首次环境准备与隔离细节见下文。
+
 This launcher runs the **current production Dockerfile and full product stack** in an isolated Docker Compose project. The API uses `createProductionServer` with the local synthetic payment provider; generation, parsing, reviewed-context loaders, task queues, immutable inputs and billing settlement remain product code. Synthetic payment is visibly labelled in the local browser. It does not connect to a merchant or production account.
 
 The launcher also enables the `legacy-billing` profile: `/__legacy/api/v1/` reaches `api-legacy`, using the **same current API image**, database, authentication and loaders with subscription/outcome policy selection disabled and paid authoring/review enabled. This supports persisted `authoring_balance_v2` compatibility scenarios against the current production worker. It is a configuration of current code, not an old binary. This profile starts with the web service so its nginx upstream is always available.
