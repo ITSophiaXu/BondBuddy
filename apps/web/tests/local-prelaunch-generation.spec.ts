@@ -116,8 +116,12 @@ async function verifySettlement(page:Page,audit:Audit,runId:string,quote:any){
 test('real queued authoring survives browser refresh and delivers source-based Word with exactly one settlement',async({page,audit})=>{
   const marker='real_'+randomUUID().slice(0,8),fixtures=createLocalPrelaunchBasicFixtures({marker});
   const project=await createSyntheticProject(page,marker);await openProject(page,project.project_id);
+  await page.locator('#prospectus-panel').scrollIntoViewIfNeeded();
+  await page.screenshot({path:join(audit.directory,'reference-empty-1440.png')});
   const source=await uploadFromPicker(page,project.project_id,asUploadFile(fixtures.normalDocx),true);
   await fillSourceInformation(page,source.material_id);
+  await page.locator('#prospectus-panel').scrollIntoViewIfNeeded();
+  await page.screenshot({path:join(audit.directory,'reference-adopted-1440.png')});
   await saveInstruction(page);
   const funded=await fund(page,audit);
   const {terminal,request,quote}=await startFromPage(page,audit);
@@ -156,9 +160,11 @@ test('corrupt adopted DOCX releases credits without model use then corrected sou
   expect(failedLedger.events.filter((e:any)=>e.kind==='settle')).toHaveLength(0);
   audit.record('confirmed-unreadable-no-model-single-release',{events:events.body,attempts,failedLedger});
   await page.goto(`/#/projects/${project.project_id}?run=${terminal.run_id}`);
-  await expect(page.locator('.execution-summary')).toContainText('本次采用的募集书无法读取');
+  await expect(page.locator('.execution-summary')).toContainText('有材料无法读取');
   await expect(page.locator('.execution-summary')).toContainText('点击“继续修改”');
   await page.screenshot({path:join(audit.directory,'unreadable-source-actionable.png'),fullPage:true});
+  await page.locator('#execution-progress').scrollIntoViewIfNeeded();
+  await page.screenshot({path:join(audit.directory,'unreadable-source-actionable-1440.png')});
   const replay=await browserApi(page,'POST','/api/v1/runs/execute',request);expect(replay.status).toBe(202);expect(replay.body.run_id).toBe(terminal.run_id);
   const after=audit.checkpoint('failed-replay-no-repeat-fee');
   for(const field of ['runs','creditEvents','reservations','modelCalls','remaining','frozen'] as const)expect(after[field]).toBe(failed[field]);

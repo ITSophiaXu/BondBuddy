@@ -1056,7 +1056,7 @@ test('provider timeout explains service recovery and keeps the same task after a
   await expect(page.locator('#prepare-next-version')).toBeVisible();
 });
 
-for (const stage of ['word_delivery', 'provider_call', 'future_processing_stage', 'missing_operations', 'unreadable_source', undefined]) {
+for (const stage of ['word_delivery', 'provider_call', 'future_processing_stage', 'missing_operations', 'unreadable_source', 'unreadable_material', undefined]) {
   test(`processor failure explains ${stage ?? 'unavailable history'} without inventing missing materials`, async ({ page }) => {
     const state=fixture();state.checkStatus='ready';state.runState='running';state.runStage='word_delivery';state.runReason='stage_started';
     await setup(page,state);await page.locator('#execute-input').click();
@@ -1067,25 +1067,26 @@ for (const stage of ['word_delivery', 'provider_call', 'future_processing_stage'
       stage:eventStage,type,state:type==='run.progress'?'running':'failed',payload:{reason}
     });
     state.publicEvents=[
-      ...(stage?[event(3,'word_delivery','run.progress','stage_started'),event(4,stage,'run.progress','stage_started')]:[]),
+      ...(stage?[event(3,'word_delivery','run.progress','stage_started'),event(4,stage==='unreadable_material'?'materials_ready':stage==='unreadable_source'?'model_generation':stage,'run.progress','stage_started')]:[]),
       {...event(5,'failed','run.state_changed','processor_failed'),payload:{reason:'processor_failed',
-        ...(stage==='missing_operations'?{error_code:'WORD_FORMAT_OPERATIONS_MISSING' as const}:stage==='unreadable_source'?{error_code:'MATERIAL_UNREADABLE' as const}:{})}}
+        ...(stage==='missing_operations'?{error_code:'WORD_FORMAT_OPERATIONS_MISSING' as const}:stage==='unreadable_source'||stage==='unreadable_material'?{error_code:'MATERIAL_UNREADABLE' as const}:{})}}
     ];
     run.state='failed';run.stage='failed';run.event_cursor=5;state.eventSeq=5;
     state.chargeState='released';
     for(let refresh=0;refresh<2;refresh++){
       await page.reload();
       const summary=page.locator('.execution-summary');
-      await expect(summary).toContainText(stage==='unreadable_source'?'本次采用的募集书无法读取':stage==='missing_operations'?'未保存必需的修订记录':stage==='word_delivery'?'Word 文件生成或保存失败':'系统处理失败');
-      if(stage==='unreadable_source'){
+      await expect(summary).toContainText(stage==='unreadable_source'||stage==='unreadable_material'?'有材料无法读取':stage==='missing_operations'?'未保存必需的修订记录':stage==='word_delivery'?'Word 文件生成或保存失败':'系统处理失败');
+      if(stage==='unreadable_source'||stage==='unreadable_material'){
         await expect(summary).toContainText('点击“继续修改”');
-        await expect(summary).toContainText('重新导出并上传可读取的 Word 原稿');
+        await expect(summary).toContainText('检查本轮文件并重新导出不可读材料');
+        await expect(summary).not.toContainText('本次采用的募集书无法读取');
         await expect(summary).not.toContainText('无需因本提示补充材料');
       }
       await expect(summary).not.toContainText('待处理条件');
       await expect(summary).not.toContainText('请查看材料信息');
       await expect(summary).not.toContainText('processor_failed');
-      await expect(page.locator('.task-progress-steps [aria-current="step"]')).toContainText(stage==='word_delivery'?'保存文档':'编制募集书');
+      await expect(page.locator('.task-progress-steps [aria-current="step"]')).toContainText(stage==='unreadable_material'?'准备材料':stage==='word_delivery'?'保存文档':'编制募集书');
       await expect(page.locator('#prepare-next-version')).toBeVisible();
       await expect(page.locator('#resume-run')).toHaveCount(0);
       expect(state.executes).toHaveLength(1);expect(run.input_hash).toBe(inputHash);expect(state.runActions).toEqual([]);

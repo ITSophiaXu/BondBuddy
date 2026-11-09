@@ -87,7 +87,7 @@ export function executionEventReason(payload: Dto<'RunEvent'>['payload'] | undef
 }
 
 export function readinessMessage(reason: string, lastProcessingStage?: string): string {
-  if (reason === 'MATERIAL_UNREADABLE') return '本次采用的募集书无法读取，本轮未能交付。请点击“继续修改”，重新导出并上传可读取的 Word 原稿，填写原稿信息后重新开始；原任务和已保存材料会保留。';
+  if (reason === 'MATERIAL_UNREADABLE') return '有材料无法读取，本轮未能交付。请点击“继续修改”，检查本轮文件并重新导出不可读材料，上传可读副本后重新开始；原任务和已保存材料会保留。';
   if (reason === 'WORD_FORMAT_OPERATIONS_MISSING') return '本轮编制未保存必需的修订记录，尚未生成可交付的 Word。已保存材料会保留，无需重新上传；请联系支持核对本轮结果。';
   if (reason === 'processor_failed') return lastProcessingStage === 'word_delivery'
     ? 'Word 文件生成或保存失败，本轮未能交付。已保存材料会保留，无需重新上传；请联系支持核对并恢复。'
@@ -471,7 +471,8 @@ export class ProjectExecution {
     const needsAttention = run && ['paused', 'awaiting_input', 'failed', 'rejected', 'cancelled'].includes(run.state);
     const lastProcessingStage = run ? [...this.events].reverse().find(event => event.run_id === run.run_id
       && event.type === 'run.progress' && event.seq <= (run.event_cursor ?? Infinity) && event.stage)?.stage ?? undefined : undefined;
-    const failedWordProgress = run?.state === 'failed' && lastProcessingStage === 'word_delivery' ? {phase: 3 as const} : undefined;
+    const failedWordProgress = run?.state !== 'failed' ? undefined : lastProcessingStage === 'word_delivery' ? {phase: 3 as const}
+      : lastProcessingStage === 'input_lock' || lastProcessingStage === 'materials_ready' ? {phase: 1 as const} : undefined;
     // The current run stage is authoritative even when event history is late or unavailable.
     const summary = run?.stage === 'user_paused' ? undefined : automaticPause
       ? (this.reason !== 'trial_limit_cleared' && runtimeMessage(this.reason)) || automaticPause

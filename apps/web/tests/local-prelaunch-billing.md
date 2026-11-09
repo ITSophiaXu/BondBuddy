@@ -51,8 +51,8 @@ Case06 also rejects an unaccepted legacy numeric task request and the actual old
 `project-qa-question-60-v1` price version before creating a new run, then restores the
 current UI request after payment. Its completed real task is replayed through the old wire
 without changing the locked price, result, model calls or charge. This covers transport and
-price-version compatibility; it does not claim a separately booted old business-policy API
-or a persisted historical `authoring_balance_v2` task was exercised in this instance.
+price-version compatibility. The separate legacy-policy suite below also exercises persisted
+`authoring_balance_v2` tasks through a separately started API configured for that policy.
 
 Each execution creates a new `.local/local-prelaunch/billing/<invocation>/` evidence tree
 with real HTTP statuses, current source hashes, account-scoped SQL checkpoints, screenshots,
@@ -90,3 +90,47 @@ seccomp was narrowed to preserve the proc deny mask, and the production verifier
 kept. A passing local synthetic-payment test is not a real merchant transaction,
 production-payment acceptance, future installment/recurring mandate acceptance, or
 complete document-quality acceptance.
+
+## Persisted legacy-policy recovery: 2026-11-08
+
+`local-prelaunch-legacy-billing.spec.ts` passed both cases on the same isolated instance
+and production image source `757a9871c890ace5fe2b408c2aac45d3948439c7`.
+The legacy API uses the same current binary with subscription/outcome policy selection
+disabled and paid authoring/review enabled; the main API and real worker use the current
+configuration. This verifies persisted policy compatibility, not a historical binary/schema
+upgrade or reproduction of the user's unidentified production failure.
+
+| Case | Observed real chain |
+| --- | --- |
+| Before model | A legacy task starts with 1 point, durably pauses at `credits_exhausted` before any model call, and a verified payment through the current API automatically resumes the same run. It completes one measured `gpt-6-sol` call and settles the original 17,900-point price. |
+| After model | A legacy task starts with 1,790 points and pauses after the measured model call and provider result are persisted. Current-API payment resumes the same run, reuses the exact call/result and model checkpoint, and settles the original 17,900-point price without another model call. |
+
+Both cases preserve the run, execution request, job, input revision/hash, reservation and
+quote identities across recovery. The ledger contains unique debit event keys totaling the
+original price, no remaining frozen points, and only one run/reservation. Both actual Word
+downloads match their persisted artifact hashes. Terminal replay through either API leaves
+the ledger, model attempts, result and original price unchanged.
+
+Reproduce after model preflight and shared-queue coordination, using the same environment
+variables above with `BB_E2E_REAL_MODEL=1`:
+
+```powershell
+node node_modules/@playwright/test/cli.js test --config=apps/web/playwright.config.ts local-prelaunch-legacy-billing.spec.ts --workers=1 --retries=0 --reporter=line
+```
+
+The two passing case records are under
+`.local/local-prelaunch/bad-cases/legacy-recovery-correcte-2026-11-08T10-44-43-588Z-3f197e1c/`;
+the account-scoped ledger/model summary is
+`.local/local-prelaunch/legacy-recovery-summary-20261108.json`.
+The initial failed observations remain in their original evidence directories. The harness
+correction scoped the recharge link to the observed dialog and checked its original
+project/run return target; it did not alter product state or weaken billing assertions.
+
+## Image-version boundary
+
+The 2026-11-07 ten-case results and 2026-11-08 two-case legacy recovery results above are
+historical acceptance of image source `757a9871c890ace5fe2b408c2aac45d3948439c7`.
+They do not establish acceptance of the later checkout merged with `develop` at
+`55a073c1d280836ee14d6f8c32786baaeaf95fca` or subsequent fixes. Final-image billing
+reverification is still pending. Record the running image identities and fresh test evidence
+when it finishes; a successful image build or a cached ready receipt alone is not that result.

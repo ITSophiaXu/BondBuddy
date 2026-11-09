@@ -1,17 +1,12 @@
-import {createHash,randomUUID} from 'node:crypto';
-import {execFileSync,spawnSync} from 'node:child_process';
-import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
+import {randomUUID} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import {writeFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
-import {fileURLToPath} from 'node:url';
-import {test,expect,billingApi,billingLedger,topupUI,integer} from './local-prelaunch-billing-helpers';
+import {test,expect,billingApi,topupUI,integer} from './local-prelaunch-billing-helpers';
 import {downloadedHash,openProject} from './local-prelaunch-helpers';
+import {finishRealSample,privateRealSampleDirectory,qualityPython,realSampleEvidenceRoot as evidenceRoot,
+  realSampleRepo as repo,realSampleSources} from './local-prelaunch-real-sample-helpers';
 import type {Page} from '@playwright/test';
-
-const repo=fileURLToPath(new URL('../../..',import.meta.url));
-const sourceRoot=join(repo,'tests/samples/2026-09-25');
-const evidenceRoot=resolve(repo,'../quality-prelaunch-20261107');
-// Artifact reading/checks use the bundled runtime; product execution remains in the Linux worker image.
-const bundledPython=process.env.BB_PRELAUNCH_QUALITY_PYTHON??'C:/Users/lezhai/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe';
 
 test.skip(process.env.BB_E2E_LOCAL_PRELAUNCH!=='1'||process.env.BB_E2E_REAL_MODEL!=='1'||process.env.BB_E2E_RQ_REAL_SAMPLE!=='1',
   'Explicit owned local stack, authorized RQ files, and shared real-model window required.');
@@ -21,18 +16,6 @@ test.beforeAll(()=>{
   if(!process.env.BB_PRELAUNCH_EVIDENCE_ROOT||resolve(process.env.BB_PRELAUNCH_EVIDENCE_ROOT)!==join(evidenceRoot,'billing-evidence'))
     throw Error('Run this real-sample spec alone with BB_PRELAUNCH_EVIDENCE_ROOT set to the external quality-prelaunch-20261107/billing-evidence directory.');
 });
-
-function sources(){
-  const manifest=JSON.parse(readFileSync(join(sourceRoot,'manifest.json'),'utf8'));
-  const selected=manifest.cases.find((entry:any)=>(entry.case_id??entry.id)==='rq-202509');
-  if(!selected||selected.files.length!==3)throw Error('Exactly the three authorized RQ Q3 inputs are required.');
-  return selected.files.map((entry:any)=>{
-    const path=resolve(sourceRoot,entry.path),bytes=readFileSync(path);
-    if(!path.startsWith(resolve(sourceRoot,'rq-202509')+'/')&&!path.startsWith(resolve(sourceRoot,'rq-202509')+'\\'))throw Error('Unauthorized input path');
-    expect(bytes.length).toBe(entry.bytes);expect(createHash('sha256').update(bytes).digest('hex')).toBe(entry.sha256);
-    return {...entry,absolutePath:path};
-  });
-}
 
 async function upload(page:Page,projectId:string,source:any,label:string){
   await expect(page.getByLabel(label,{exact:true})).toBeEnabled();
@@ -45,14 +28,15 @@ async function upload(page:Page,projectId:string,source:any,label:string){
 }
 
 test('authorized RQ Q3 full prospectus uses actual queue and model then preserves chapters, financial scope and dual Word semantics',async({page,billing})=>{
-  const original=sources(),directory=join(evidenceRoot,new Date().toISOString().replace(/[:.]/g,'-')+'-'+randomUUID().slice(0,8));
-  mkdirSync(directory,{recursive:true});
-  const provenance={schema:'local-prelaunch-real-sample-v1',case:'rq-202509',realCustomerInputs:true,syntheticAccounts:true,
+  const original=realSampleSources(),directory=join(evidenceRoot,new Date().toISOString().replace(/[:.]/g,'-')+'-'+randomUUID().slice(0,8));
+  privateRealSampleDirectory(directory);
+  await page.context().storageState({path:join(directory,'session.json')});
+  const provenance={schema:'local-prelaunch-real-sample-v1',case:'rq-202509' as const,realCustomerInputs:true,syntheticAccounts:true,
     syntheticPaymentChannel:true,httpMocked:false,taskResultsFabricated:false,industrySignoff:false,financialFactApproval:false,
     sourceHashes:original.map((s:any)=>({file_id:s.file_id,sha256:s.sha256,bytes:s.bytes})),sourceCutoff:'2025-06-30',targetCutoff:'2025-09-30',
     outputDirectory:directory,owner:billing.owner,username:billing.username};
   writeFileSync(join(directory,'provenance.json'),JSON.stringify(provenance,null,2));billing.record('real-customer-input-provenance',provenance);
-  const baseline=execFileSync(bundledPython,[join(repo,'scripts/local-quality/rq_q3_baseline.py'),'--output-dir',directory],
+  const baseline=execFileSync(qualityPython,[join(repo,'scripts/local-quality/rq_q3_baseline.py'),'--output-dir',directory],
     {cwd:repo,encoding:'utf8',windowsHide:true,env:{...process.env,PYTHONIOENCODING:'utf-8'},timeout:120000});
   billing.record('independent-original-baseline-summary',JSON.parse(baseline.trim()));
 
@@ -101,9 +85,16 @@ test('authorized RQ Q3 full prospectus uses actual queue and model then preserve
   await expect(page.locator('#execute-input')).toBeEnabled();
   const submission=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/v1/runs/execute'&&r.request().method()==='POST',{timeout:180000});
   await page.locator('#execute-input').click();
-  const submitted=await submission,accepted=await submitted.json();expect(submitted.status(),JSON.stringify(accepted)).toBe(200);
-  const request=submitted.request().postDataJSON();billing.record('real-full-prospectus-run-submission',{request,accepted});
-  writeFileSync(join(directory,'run.json'),JSON.stringify({...provenance,projectId:project.project_id,runId:accepted.run_id,request},null,2));
+  const submitted=await submission,accepted=await submitted.json(),request=submitted.request().postDataJSON();
+  const receipt={...provenance,projectId:project.project_id,runId:accepted.run_id,request,originalQuote:undefined as any};
+  // Persist the accepted identity before assertions so a harness interruption never requires resubmission.
+  writeFileSync(join(directory,'run.json'),JSON.stringify(receipt,null,2));
+  billing.record('real-full-prospectus-run-submission',{status:submitted.status(),request,accepted});
+  expect(submitted.status(),JSON.stringify(accepted)).toBe(202);
+  const charge=await billingApi(page,'GET',`/api/v1/runs/${accepted.run_id}/credit-charge`);expect(charge.status).toBe(200);
+  receipt.originalQuote=charge.body.quote;writeFileSync(join(directory,'run.json'),JSON.stringify(receipt,null,2));
+  expect(receipt.originalQuote.quote_id).toBe(request.quote_id);
+  billing.record('original-full-prospectus-locked-quote',receipt.originalQuote);
   const input=await billingApi(page,'GET',`/api/v1/projects/${project.project_id}/input-revisions/${request.input_revision}`);
   expect(input.status,JSON.stringify(input.body)).toBe(200);expect(input.body.input_hash).toBe(request.input_hash);
   expect(input.body.material_versions.map((value:any)=>({material_id:value.material_id,material_version:value.material_version}))
@@ -114,32 +105,6 @@ test('authorized RQ Q3 full prospectus uses actual queue and model then preserve
   expect([...new Set(input.body.target_confirmation.target_reporting_periods.map((value:any)=>value.end))].sort())
     .toEqual(['2023-12-31','2024-12-31','2025-09-30']);
   billing.record('real-task-immutable-input',input.body);
-  const duplicate=await billingApi(page,'POST','/api/v1/runs/execute',request);expect(duplicate.status).toBe(200);expect(duplicate.body.run_id).toBe(accepted.run_id);
-  await page.reload();let terminal:any,last='';
-  await expect.poll(async()=>{
-    const state=await billingApi(page,'GET',`/api/v1/runs/${accepted.run_id}`);expect(state.status).toBe(200);terminal=state.body;
-    const next=`${terminal.state}/${terminal.stage}`;if(next!==last){last=next;billing.record('real-full-prospectus-worker-progress',terminal);console.log(`RQ Q3 ${accepted.run_id} ${next}`);}
-    return ['succeeded','failed','cancelled','rejected','paused'].includes(terminal.state);
-  },{timeout:6600000,intervals:[3000,10000,15000]}).toBe(true);
-  billing.record('real-full-prospectus-terminal',terminal);expect(terminal.state,JSON.stringify(terminal)).toBe('succeeded');expect(terminal.artifact_id).toBeTruthy();
-  const charge=await billingApi(page,'GET',`/api/v1/runs/${accepted.run_id}/credit-charge`);expect(charge.status).toBe(200);billing.record('full-prospectus-final-charge',charge.body);
-  const settled=billing.checkpoint('real-full-prospectus-delivered-and-settled');expect(settled.runs).toHaveLength(1);
-  const reservation=settled.reservations.find((row:any)=>row.run_id===accepted.run_id);
-  expect(reservation.state).toBe('settled');expect(integer(reservation.charged_points)).toBeGreaterThan(0n);
-  expect(settled.modelCalls.some((row:any)=>row.run_id===accepted.run_id&&row.status==='completed'&&row.model_id==='gpt-6-sol')).toBe(true);
-  await page.goto(`/#/artifacts/${terminal.artifact_id}`);
-  for(const [label,name] of [['下载修订版','tracked.docx'],['下载清洁版','clean.docx']] as const){
-    const pending=page.waitForEvent('download',{timeout:120000});await page.getByRole('button',{name:label,exact:true}).click();
-    await(await pending).saveAs(join(directory,name));
-  }
-  await page.screenshot({path:join(directory,'dual-Word-delivered.png'),fullPage:true});
-  const check=spawnSync(bundledPython,[join(repo,'scripts/local-quality/rq_q3_check.py'),'--clean',join(directory,'clean.docx'),
-    '--tracked',join(directory,'tracked.docx'),'--output-dir',directory],{cwd:repo,encoding:'utf8',windowsHide:true,
-    env:{...process.env,PYTHONIOENCODING:'utf-8'},timeout:120000});
-  billing.record('independent-downloaded-Word-quality-check',{exitCode:check.status,summary:check.stdout,diagnostic:check.stderr,
-    reportPath:join(directory,'rq-q3-quality-report.json'),visualReview:'not_performed'});
-  for(const file of original)expect(createHash('sha256').update(readFileSync(file.absolutePath)).digest('hex')).toBe(file.sha256);
-  const replay=await billingApi(page,'POST','/api/v1/runs/execute',request);expect(replay.status).toBe(200);expect(replay.body.run_id).toBe(accepted.run_id);
-  expect(billingLedger(billing.owner)).toEqual(settled);
-  expect(check.status,'Independent Word quality report retained at '+directory).toBe(0);
+  const duplicate=await billingApi(page,'POST','/api/v1/runs/execute',request);expect(duplicate.status).toBe(202);expect(duplicate.body.run_id).toBe(accepted.run_id);
+  await page.reload();await finishRealSample(page,billing,receipt);
 });

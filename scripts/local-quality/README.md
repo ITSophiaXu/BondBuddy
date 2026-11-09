@@ -57,3 +57,37 @@ actual browser downloads, independent quality results and final original hashes.
 A failed generator or checker must remain a red result until its cause is fixed;
 do not manually finish a task, substitute a miniature Word, copy the original as
 an output, or weaken the assertions to make this full-document case pass.
+
+## Read-only Word rendering on this Windows host
+
+`render_docx_readonly.py` calls the documents skill's `render_docx.py` with the
+bundled Windows Python and Poppler. This host has no bundled Windows LibreOffice;
+the explicit conversion bridge uses the existing `/usr/bin/soffice` in WSL
+`BondBuddyM3` (24.2.7.2). It runs only the converter and font matching in a new
+network namespace, with a temporary LibreOffice profile and fontconfig cache.
+It reads installed Windows fonts without copying or installing them. It does not
+start the user's desktop office application or change its profile.
+
+Resolve the current Python and renderer paths from the workspace dependency
+loader and documents skill. From the repository root:
+
+```powershell
+& '<bundled-python.exe>' scripts/local-quality/render_docx_readonly.py '<downloaded.docx>' `
+  --renderer '<documents-skill>/render_docx.py' `
+  --output-dir '../quality-prelaunch-20261107/<unique-render-directory>'
+```
+
+The output directory must be new and inside the private evidence roots. Customer
+input renders and all customer-generated output renders belong outside the Git
+checkout. The original is hashed before and after; conversion receives a separate
+copy. The bridge does not repair malformed OOXML paths. WSL uses `--exec` so file
+names and font-match formatting are passed as arguments, never shell commands.
+The receipt records exact bridge/renderer hashes, runtime, font matches, command
+results, page/PDF hashes and whether the input remained unchanged. Old failed
+receipts stay in their original directories.
+
+Open every generated page image at full resolution and record the inspection in
+the private evidence directory. Rendering success alone leaves visual inspection
+pending. A render of the original establishes a source baseline only; a one-page
+synthetic result does not establish full-document preservation. LibreOffice
+rendering does not prove Word/WPS compatibility or financial correctness.
