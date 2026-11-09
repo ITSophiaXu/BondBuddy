@@ -147,7 +147,11 @@ test('corrupt adopted DOCX releases credits without model use then corrected sou
   const failed=audit.checkpoint('corrupt-reference-wallet-restored');expect(failed.remaining).toBe(funded.remaining);expect(failed.frozen).toBe(funded.frozen);
   expect(failed.modelCalls).toBe(funded.modelCalls);
   const events=await browserApi(page,'GET',`/api/v1/runs/${terminal.run_id}/events`);expect(events.status).toBe(200);
-  expect(events.body.next_cursor).toBeNull();
+  expect(events.body.items.at(-1)?.seq).toBe(terminal.event_cursor);
+  expect(events.body.next_cursor).toBe(terminal.event_cursor);
+  const eventTail=await browserApi(page,'GET',`/api/v1/runs/${terminal.run_id}/events?after=${events.body.next_cursor}`);
+  expect(eventTail.status).toBe(200);
+  expect(eventTail.body).toEqual({items:[],next_cursor:terminal.event_cursor});
   expect(events.body.items.at(-1)).toMatchObject({state:'failed',payload:{reason:'processor_failed',error_code:'MATERIAL_UNREADABLE'}});
   expect(events.body.items.some((e:any)=>e.payload.reason==='lease_recovered')).toBe(false);
   const attempts=localSql<{attempts:number}>(`SELECT json_build_object('attempts',attempts) FROM bb_jobs WHERE run_id='${terminal.run_id}' AND owner_user_id='${audit.owner}';`);

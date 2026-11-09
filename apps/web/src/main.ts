@@ -341,7 +341,7 @@ function shell(content: string, section: string) {
     <nav aria-label="主导航">${nav('tasks','clock','任务进度与结果',section === 'projects')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','文件生成',section === 'generate')}${nav('integrity','shield','诚信核查',section === 'integrity')}${nav('qa','chat','项目问答',section === 'qa')}</nav>
     <div class="sidebar-bottom"><div class="user account"><a class="account-entry" href="${esc(rechargeHref())}" aria-label="我的账号" title="我的账号" ${section === 'account' ? 'aria-current="page"' : ''}><span class="avatar" aria-hidden="true">我</span><strong data-account-name aria-label="当前登录账号">当前账号</strong></a><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
     <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '文件生成' : section === 'integrity' ? '诚信核查' : section === 'qa' ? '项目问答' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '账户与计费' : '任务进度与结果'}</span></div></header>
-    <main id="main" tabindex="-1">${context?`<section class="project-context" aria-label="当前项目"><div><small>正在处理</small><strong data-project-context-name>${esc(projectNames.get(context.projectId)??'当前项目')}</strong></div><a href="${projectWorkHref('files',context.projectId)}">返回本项目文件</a></section>`:''}${content}</main></div></div>`;
+    <main id="main" tabindex="-1">${context?`<section class="project-context" aria-label="当前项目"><div><small>当前项目</small><strong data-project-context-name>${esc(projectNames.get(context.projectId)??'当前项目')}</strong></div><a href="${projectWorkHref('files',context.projectId)}">返回本项目文件</a></section>`:''}${content}</main></div></div>`;
   if(context&&!projectNames.has(context.projectId)&&!projectNameRequests.has(context.projectId)){
     const owner=identity,expectedProject=context.projectId;
     const request=api.project(expectedProject).then(project=>{
@@ -985,13 +985,9 @@ function updateMaterialWorkspace(projectId: string) {
   else if (state?.state === 'unavailable') status.textContent = state.message ?? '材料记录读取失败，请刷新重试。';
   else {
     const savedIds = new Set((recoveredMaterials.get(projectId) ?? []).map(material => material.material_id));
-    const count = savedIds.size;
     const sessionCount = new Set((localUploads.get(projectId) ?? []).filter(upload => upload.phase === 'persisted' && upload.material && !savedIds.has(upload.material.material_id)).map(upload => upload.material!.material_id)).size;
-    status.textContent = count
-      ? `已恢复 ${count} 份材料。${sessionCount ? `本次会话另有 ${sessionCount} 份材料已获服务端保存确认。` : ''}`
-      : sessionCount
-        ? `已保存 ${sessionCount} 份材料。`
-        : '尚未添加材料。';
+    const count = savedIds.size + sessionCount;
+    status.textContent = count ? `已保存 ${count} 份材料。` : '尚未添加材料。';
     const reused = (localUploads.get(projectId) ?? []).filter(upload => upload.phase === 'persisted' && upload.uploadId && upload.material?.upload_id !== upload.uploadId).length;
     if (reused) status.textContent += ` 本次 ${reused} 份重复上传已复用原材料版本。`;
   }

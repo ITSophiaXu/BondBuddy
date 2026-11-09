@@ -5,6 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {evidenceLifecycle,finalizeEvidence} from './local-prelaunch-evidence';
 
 const repo=fileURLToPath(new URL('../../..',import.meta.url));
 export const billingOrigin='http://localhost:18087';
@@ -92,20 +93,28 @@ export async function payViaQuery(page:Page,owner:string,orderId:string){
 export interface BillingAudit {owner:string;username:string;directory:string;record(label:string,value?:unknown):void;checkpoint(label:string):any;}
 const invocation=new Date().toISOString().replace(/[:.]/g,'-')+'-'+randomUUID().slice(0,8);
 export const test=base.extend<{billing:BillingAudit}>({billing:async({page},use,info)=>{
-  const config=billingConfig(),directory=join(process.env.BB_PRELAUNCH_EVIDENCE_ROOT??join(repo,'.local/local-prelaunch/billing'),invocation,info.title.replace(/[^A-Za-z0-9_-]/g,'-').slice(0,90));mkdirSync(directory,{recursive:true});
-  const timeline:any[]=[],requests:any[]=[],pageErrors:string[]=[];let account:{owner:string;username:string}|undefined,environmentStatus:any;
+  const directory=join(process.env.BB_PRELAUNCH_EVIDENCE_ROOT??join(repo,'.local/local-prelaunch/billing'),invocation,info.title.replace(/[^A-Za-z0-9_-]/g,'-').slice(0,90));mkdirSync(directory,{recursive:true});
+  const lifecycle=evidenceLifecycle();
+  const timeline:any[]=[],requests:any[]=[],pageErrors:string[]=[];let account:{owner:string;username:string}|undefined,environmentStatus:any,config:ReturnType<typeof billingConfig>,finalLedgerObserved=false;
   page.on('pageerror',e=>pageErrors.push(e.message));page.on('response',r=>{const path=new URL(r.url()).pathname;if((path.startsWith('/api/v1/')&&!path.startsWith('/api/v1/auth/'))||path.startsWith('/__billing-test/api/'))requests.push({method:r.request().method(),path,status:r.status()});});
-  const save=()=>writeFileSync(join(directory,'evidence.json'),JSON.stringify({schema:'local-prelaunch-billing-v1',syntheticAccounts:true,syntheticPaymentChannel:true,httpMocked:false,taskResultsFabricated:false,
-    instanceId:config.instanceId,database:config.database,origin:config.origin,environmentStatus,test:info.title,status:info.status,expectedStatus:info.expectedStatus,...account,timeline,requests,pageErrors,
-    sourceHashes:Object.fromEntries(readdirSync(join(repo,'apps/web/tests')).filter(p=>p.startsWith('local-prelaunch-')&&p.endsWith('.ts')).map(p=>[p,createHash('sha256').update(readFileSync(join(repo,'apps/web/tests',p))).digest('hex')])),errors:info.errors.map(e=>({message:e.message,stack:e.stack}))},null,2));
-  try{await page.setViewportSize({width:1440,height:1000});
+  const render=(finalized=false)=>JSON.stringify({schema:'local-prelaunch-billing-v1',syntheticAccounts:true,syntheticPaymentChannel:true,httpMocked:false,taskResultsFabricated:false,
+    instanceId:config?.instanceId,database:config?.database,origin:config?.origin,environmentStatus,test:info.title,...lifecycle.state(info,finalized),expectedStatus:info.expectedStatus,...account,timeline,requests,pageErrors,finalLedgerObserved,
+    sourceHashes:Object.fromEntries(readdirSync(join(repo,'apps/web/tests')).filter(p=>p.startsWith('local-prelaunch-')&&p.endsWith('.ts')).map(p=>[p,createHash('sha256').update(readFileSync(join(repo,'apps/web/tests',p))).digest('hex')]))},null,2);
+  const write=(text:string)=>writeFileSync(join(directory,'evidence.json'),text),save=()=>write(render());
+  try{save();config=billingConfig();await page.setViewportSize({width:1440,height:1000});
     const status=await page.request.get('/__prelaunch/status');expect(status.status()).toBe(200);environmentStatus=await status.json();
     expect(environmentStatus.instance_id).toBe(config.instanceId);expect(environmentStatus.production_server).toBe(true);
     expect(environmentStatus.synthetic_payment).toBe(true);expect(environmentStatus.model_results_synthetic).toBe(false);save();
     account=await registerBillingAccount(page);save();
+    lifecycle.enter('test');
     await use({...account,directory,record(label,value){timeline.push({at:new Date().toISOString(),label,value});save();},checkpoint(label){const ledger=billingLedger(account!.owner);timeline.push({at:new Date().toISOString(),label,ledger});save();return ledger;}});
+    lifecycle.enter('teardown');
     expect(pageErrors).toEqual([]);
-  }finally{if(account){try{timeline.push({label:'final-ledger',ledger:billingLedger(account.owner)});}catch(e){timeline.push({label:'final-ledger-error',error:String(e)});}}
-    try{await page.screenshot({path:join(directory,info.status==='passed'?'final.png':'red.png'),fullPage:true});}catch{}save();await info.attach('real-billing-evidence',{path:join(directory,'evidence.json'),contentType:'application/json'});}
+  }catch(error){lifecycle.fail(error);}
+  finally{lifecycle.enter('teardown');
+    if(account){try{timeline.push({label:'final-ledger',ledger:billingLedger(account.owner)});finalLedgerObserved=true;}catch(error){timeline.push({label:'final-ledger-error',error:String(error)});lifecycle.fail(error,'final-ledger');}}
+    if(!finalLedgerObserved&&lifecycle.state(info,true).status==='passed')lifecycle.fail(new Error('A successful billing audit requires a final ledger observation'),'final-ledger');
+    if(!page.isClosed()){try{await page.screenshot({path:join(directory,lifecycle.state(info,true).status==='passed'?'final.png':'red.png'),fullPage:true});}catch(error){lifecycle.fail(error,'final-screenshot');}}
+    await finalizeEvidence({lifecycle,render,write,attach:text=>info.attach('real-billing-evidence',{body:Buffer.from(text),contentType:'application/json'})});}
 }});
 export {expect};

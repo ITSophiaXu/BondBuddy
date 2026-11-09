@@ -428,6 +428,7 @@ test('authoring materials stay read-only after starting until an explicit next v
     }
   };
   await expect(picker).toBeEnabled();
+  await expect(picker.locator('..')).toBeVisible();
   await expect(page.locator('#materials-state-description')).toContainText('开始后材料锁定，仅可查看');
   await capture('preparing');
   await page.locator('#execute-input').click();
@@ -444,7 +445,7 @@ test('authoring materials stay read-only after starting until an explicit next v
   page.on('request', request => { if (request.method() !== 'GET' && request.url().includes('/api/v1/')) writes.push(request.method() + ' ' + new URL(request.url()).pathname); });
   // Refresh replaces material rows; native fieldset locking must survive that replacement.
   await page.getByRole('button', { name: '刷新已保存材料', exact: true }).click();
-  await expect(page.locator('#material-recovery-status')).toContainText('已恢复');
+  await expect(page.locator('#material-recovery-status')).toContainText('已保存');
   await expect(source).toBeDisabled();
   await expect(page.locator('[data-delete-material]').first()).toBeDisabled();
   // A late file-chooser event or a drop must not enqueue a file after the run starts.
@@ -1468,12 +1469,12 @@ for (const scenario of [
   await page.getByRole('button', { name: '停止本次任务', exact: true }).click();
   await expect(page.locator('#execution-progress')).toContainText('本轮已停止');
   await continueAuthoring(page);
-  await expect(page.locator('#material-recovery-status')).toContainText('已恢复 2 份材料');
+  await expect(page.locator('#material-recovery-status')).toContainText('已保存 2 份材料');
   await expect(page.locator('.material-file-row')).toHaveCount(2);
   // Re-entering the cancelled project must recover the same files before editing.
   await page.reload();
   await continueAuthoring(page);
-  await expect(page.locator('#material-recovery-status')).toContainText('已恢复 2 份材料');
+  await expect(page.locator('#material-recovery-status')).toContainText('已保存 2 份材料');
   const picker = page.getByLabel('为审计报告（可含报表及附注）选择文件');
   await expect(picker).toBeEnabled();
   let byteUploads = 0;
@@ -1491,7 +1492,7 @@ for (const scenario of [
   await picker.setInputFiles({ name: 'supplement.txt', mimeType: 'text/plain', buffer: Buffer.from('synthetic supplementary material') });
   await expect(page.locator('.material-file-row').filter({ hasText: 'supplement.txt' })).toContainText('服务器已确认保存');
   await expect(page.locator('#workspace-material-count')).toHaveText('3 份已保存材料');
-  await expect(page.locator('#material-recovery-status')).toContainText('已恢复 3 份材料');
+  await expect(page.locator('#material-recovery-status')).toContainText('已保存 3 份材料');
   await expect(page.locator('#execute-input')).toBeEnabled();
   await page.locator('#execute-input').click({ trial: true });
   const evidence = process.env.BB_UX_EVIDENCE_DIR;

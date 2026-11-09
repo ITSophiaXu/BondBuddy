@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { emptyUpdateDetails, reportingWindow } from '@bondbuddy/contracts';
+import { evidenceLifecycle, finalizeEvidence } from './local-prelaunch-evidence';
 
 const repo = fileURLToPath(new URL('../../..', import.meta.url));
 export const prelaunchOrigin = 'http://localhost:18087';
@@ -118,9 +119,9 @@ export async function registerSynthetic(page: Page, config: PrelaunchConfig) {
 
 export const test = base.extend<{ audit: Audit }>({
   audit: async ({ page }, use, info) => {
-    const config = prelaunchConfig();
     const directory = join(process.env.BB_PRELAUNCH_EVIDENCE ?? join(repo, '.local/local-prelaunch/bad-cases'), invocation, safeName(info.title));
     mkdirSync(directory, { recursive: true });
+    const lifecycle = evidenceLifecycle();
     const timeline: unknown[] = [], requests: Audit['requests'] = [], pageErrors: string[] = [];
     page.on('pageerror', error => pageErrors.push(error.message));
     page.on('response', response => {
@@ -128,14 +129,19 @@ export const test = base.extend<{ audit: Audit }>({
       if (path.startsWith('/api/v1/') && !path.startsWith('/api/v1/auth/')) requests.push({ method: response.request().method(), path, status: response.status() });
     });
     let account: { owner: string; username: string } | undefined;
+    let config: PrelaunchConfig | undefined;
     let before: DatabaseSnapshot | undefined;
-    const save = () => writeFileSync(join(directory, 'evidence.json'), JSON.stringify({
-      schema: 'local-prelaunch-bad-case-v1', synthetic: true, apiMocked: false, instanceId: config.instanceId, database: config.database,
-      origin: config.origin, sourceHashes, test: info.title, status: info.status, expectedStatus: info.expectedStatus,
+    let finalDatabaseObserved = false;
+    const render = (finalized = false) => JSON.stringify({
+      schema: 'local-prelaunch-bad-case-v1', synthetic: true, apiMocked: false, instanceId: config?.instanceId, database: config?.database,
+      origin: config?.origin, sourceHashes, test: info.title, ...lifecycle.state(info, finalized), expectedStatus: info.expectedStatus,
       owner: account?.owner, username: account?.username, before, requests, timeline, pageErrors,
-      errors: info.errors.map(e => ({ message: e.message, stack: e.stack })),
-    }, null, 2));
+      finalDatabaseObserved,
+    }, null, 2);
+    const write = (text: string) => writeFileSync(join(directory, 'evidence.json'), text);
+    const save = () => write(render());
     try {
+      save(); config = prelaunchConfig();
       account = await registerSynthetic(page, config); before = databaseSnapshot(account.owner); save();
       const audit: Audit = {
         ...account, directory, before, requests,
@@ -147,13 +153,26 @@ export const test = base.extend<{ audit: Audit }>({
             expect(current[key], `${label}: ${key} changed`).toBe(before![key]);
         },
       };
+      lifecycle.enter('test');
       await use(audit);
+      lifecycle.enter('teardown');
       if (info.status === 'passed') expect(pageErrors, 'Unexpected uncaught browser errors').toEqual([]);
+    } catch (error) {
+      lifecycle.fail(error);
     } finally {
-      if (account) { try { timeline.push({ label: 'final-database', database: databaseSnapshot(account.owner) }); } catch (error) { timeline.push({ label: 'final-database-error', error: String(error) }); } }
-      if (!page.isClosed()) { try { await page.screenshot({ path: join(directory, info.status === 'passed' ? 'final.png' : 'red.png'), fullPage: true }); } catch {} }
-      save();
-      await info.attach('real-api-and-database-evidence', { path: join(directory, 'evidence.json'), contentType: 'application/json' });
+      lifecycle.enter('teardown');
+      if (account) {
+        try { timeline.push({ label: 'final-database', database: databaseSnapshot(account.owner) }); finalDatabaseObserved = true; }
+        catch (error) { timeline.push({ label: 'final-database-error', error: String(error) }); lifecycle.fail(error, 'final-database'); }
+      }
+      if (!finalDatabaseObserved && lifecycle.state(info, true).status === 'passed')
+        lifecycle.fail(new Error('A successful audit requires a final database observation'), 'final-database');
+      if (!page.isClosed()) {
+        try { await page.screenshot({ path: join(directory, lifecycle.state(info, true).status === 'passed' ? 'final.png' : 'red.png'), fullPage: true }); }
+        catch (error) { lifecycle.fail(error, 'final-screenshot'); }
+      }
+      await finalizeEvidence({ lifecycle, render, write,
+        attach: text => info.attach('real-api-and-database-evidence', { body: Buffer.from(text), contentType: 'application/json' }) });
     }
   },
 });
