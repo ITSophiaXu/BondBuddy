@@ -1,4 +1,5 @@
 import { appendProjectMaterialEvent } from './project-material-events.js';import { registerProjectQa } from './project-qa.js';
+import { requestUploadConfirmation } from './upload-confirmation.js';
 import { completeStoredUpload } from './complete-upload.js';
 import { registerQaKnowledge } from './qa-knowledge.js';
 import { registerIntegrity } from './integrity.js';
@@ -1243,10 +1244,18 @@ export function createServer(settings: Settings = {}) {
     }
     return reply.code(204).send();
   });
-  app.post('/api/v1/projects/:project_id/materials/uploads/:upload_id/complete',{schema:{body:schemas.UploadCompleteRequest}},async request=>{
+  app.post('/api/v1/projects/:project_id/materials/uploads/:upload_id/complete',{schema:{body:schemas.UploadCompleteRequest}},async (request,reply)=>{
     const user=await owner(request),id=param(request,'project_id'),uploadId=param(request,'upload_id'),b=body<{byte_size:number;sha256:string}>(request);
     const traceId=uid();
-    try { return await completeStoredUpload(db(),blob(),user,id,uploadId,b,request.id,{traceId,inspectionException:uploadInspectionException}); } catch(error) {
+    try {
+      if(String(request.headers.prefer??'').split(',').some(v=>v.trim()==='respond-async')){
+        const result=await requestUploadConfirmation(db(),blob(),user,id,uploadId,b,request.id,uploadInspectionException);
+        reply.header('Cache-Control','no-store');
+        if(result.statusCode===202)reply.header('Retry-After','2');
+        return reply.code(result.statusCode).send(result.body);
+      }
+      return await completeStoredUpload(db(),blob(),user,id,uploadId,b,request.id,{traceId,inspectionException:uploadInspectionException});
+    } catch(error) {
       if(error instanceof Problem){
         if(error.uploadReason)process.stderr.write(`${JSON.stringify({event:'material_upload_inspection_rejected',error_id:request.id,code:error.code,reason:error.uploadReason,...(error.uploadDetail?{detail:error.uploadDetail}:{}),project_id:id,upload_id:uploadId})}\n`);
         const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,id]);

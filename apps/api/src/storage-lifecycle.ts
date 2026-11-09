@@ -1,3 +1,4 @@
+import {lockStorageObject} from './storage-object-lock.js';
 import { pathToFileURL } from 'node:url';
 import { Pool, type PoolClient } from 'pg';
 import { azureBlobs, digest, transaction, uid, type PrivateBlobs } from './data.js';
@@ -93,29 +94,21 @@ async function queueExpiredOrphans(
   now: Date
 ): Promise<number> {
   return transaction(pool, async client => {
-    const due = await client.query(`
-      WITH candidates AS (
-        SELECT u.id
-          FROM bb_uploads u
-         WHERE u.state IN ('uploading','received')
-           AND u.expires_at + ($1::integer * interval '1 hour') <= $2::timestamptz
-           AND ($3::text IS NULL OR u.owner_user_id=$3)
-           AND NOT EXISTS (
-             SELECT 1 FROM bb_material_versions m
-              WHERE m.owner_user_id=u.owner_user_id AND m.upload_id=u.id
-           )
-         ORDER BY u.expires_at,u.id
-         LIMIT $4
-         FOR UPDATE OF u SKIP LOCKED
-      )
-      UPDATE bb_uploads u
-         SET state='deleting'
-        FROM candidates c
-       WHERE u.id=c.id AND u.state IN ('uploading','received')
-      RETURNING u.*,(u.expires_at + ($1::integer * interval '1 hour')) AS purge_after`,
+    const due = await client.query(`SELECT u.*,(u.expires_at + ($1::integer * interval '1 hour')) AS purge_after
+      FROM bb_uploads u WHERE u.state IN ('uploading','received')
+        AND u.expires_at + ($1::integer * interval '1 hour') <= $2::timestamptz
+        AND ($3::text IS NULL OR u.owner_user_id=$3)
+        AND NOT bb_upload_confirmation_bytes_pinned(u.owner_user_id,u.object_key)
+        AND NOT EXISTS(SELECT 1 FROM bb_material_versions m WHERE m.owner_user_id=u.owner_user_id AND m.upload_id=u.id)
+      ORDER BY u.expires_at,u.id LIMIT $4 FOR UPDATE OF u SKIP LOCKED`,
       [policy.orphanUploadGraceHours, now, scopeParam(policy.ownerScope), batchSize]);
 
+    let queued=0;
     for (const upload of due.rows) {
+      await lockStorageObject(client,upload.owner_user_id,upload.object_key);
+      if((await client.query('SELECT bb_upload_confirmation_bytes_pinned($1,$2) pinned',[upload.owner_user_id,upload.object_key])).rows[0]?.pinned)continue;
+      await client.query("UPDATE bb_uploads SET state='deleting' WHERE id=$1",[upload.id]);
+      queued++;
       const tombstoneId = uid();
       await client.query(`INSERT INTO bb_storage_tombstones
         (id,owner_user_id,project_id,object_kind,upload_id,object_key,sha256,requested_at,eligible_at)
@@ -127,7 +120,7 @@ async function queueExpiredOrphans(
         VALUES($1,$2,'upload',$3,'upload.orphan_purge_requested',$4)`,
         [uid(), upload.owner_user_id, upload.id, { project_id: upload.project_id, tombstone_id: tombstoneId }]);
     }
-    return due.rowCount ?? 0;
+    return queued;
   });
 }
 
@@ -159,7 +152,8 @@ async function recordDueMaterialDeadlines(
   });
 }
 
-async function isPinned(client: Pool | PoolClient, tombstone: Pick<Tombstone, 'owner_user_id' | 'project_id' | 'material_id' | 'material_version'>) {
+async function isPinned(client: Pool | PoolClient, tombstone: Pick<Tombstone, 'owner_user_id' | 'project_id' | 'material_id' | 'material_version' | 'object_key'>) {
+  if ((await client.query('SELECT bb_upload_confirmation_bytes_pinned($1,$2) pinned',[tombstone.owner_user_id,tombstone.object_key])).rows[0]?.pinned===true) return true;
   if (!tombstone.material_id || tombstone.material_version === null) return false;
   // input_revision is the canonical immutable material snapshot. Runs, artifacts and bound observability
   // snapshots point back to it, so retaining the revision also retains every material byte it names.
@@ -179,7 +173,8 @@ async function countEligiblePinnedTombstones(pool: Pool, policy: StorageLifecycl
          AND (t.retry_after IS NULL OR t.retry_after <= $1::timestamptz)
          AND t.requested_at + ($2::integer * interval '1 day') <= $1::timestamptz
          AND ($3::text IS NULL OR t.owner_user_id=$3)
-         AND bb_material_bytes_pinned(t.owner_user_id,t.project_id,t.material_id,t.material_version)
+         AND (bb_material_bytes_pinned(t.owner_user_id,t.project_id,t.material_id,t.material_version)
+              OR bb_upload_confirmation_bytes_pinned(t.owner_user_id,t.object_key))
        ORDER BY t.eligible_at,t.requested_at,t.id
        LIMIT $4
     ) AS bounded_pins`, [now, policy.materialRetentionDays, scopeParam(policy.ownerScope), batchSize]);
@@ -202,6 +197,7 @@ async function claimReadyTombstones(
          AND (t.retry_after IS NULL OR t.retry_after <= $1::timestamptz)
          AND (t.state='pending' OR (t.state='claimed' AND t.lease_until <= $1::timestamptz))
          AND ($2::text IS NULL OR t.owner_user_id=$2)
+         AND NOT bb_upload_confirmation_bytes_pinned(t.owner_user_id,t.object_key)
          AND (
            (t.object_kind='material'
             AND t.requested_at + ($3::integer * interval '1 day') <= $1::timestamptz
@@ -302,10 +298,21 @@ async function processTombstone(
     if (bytes !== null && digest(bytes) !== tombstone.sha256.trim()) {
       throw safeFailure('StorageBlobHashMismatch');
     }
-    if (bytes !== null) {
-      try { await blobs.delete(tombstone.object_key); }
-      catch { throw safeFailure('StorageBlobDeleteFailed'); }
-    }
+    // Registering a confirmation pin takes the same object lock. Keep the fresh
+    // pin/lease checks and the actual delete in this critical section; no full
+    // body read or project lock is held here.
+    const deletion=await transaction(pool,async client=>{
+      await lockStorageObject(client,tombstone.owner_user_id,tombstone.object_key);
+      if(await isPinned(client,tombstone))return 'pinned';
+      const active=await client.query("SELECT 1 FROM bb_storage_tombstones WHERE id=$1 AND state='claimed' AND claim_token=$2 AND lease_until>clock_timestamp()",[tombstone.id,tombstone.claim_token]);
+      if(!active.rowCount)return 'lease_lost';
+      if(bytes!==null){
+        try{await blobs.delete(tombstone.object_key);}catch{throw safeFailure('StorageBlobDeleteFailed');}
+      }
+      return 'deleted';
+    });
+    if(deletion==='pinned'){await releasePinnedClaim(pool,tombstone);return 'pinned';}
+    if(deletion==='lease_lost')return 'lease_lost';
     try { await policy.afterBlobDelete?.(tombstone.id); }
     catch { throw safeFailure('StoragePurgeFinalizeFailed'); }
     try {

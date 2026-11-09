@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./upload-confirmation": {"types":"./dist/upload-confirmation.d.ts","default":"./dist/upload-confirmation.js"},
     "./test-authoring-source": {"types":"./dist/test-authoring-source.d.ts","default":"./dist/test-authoring-source.js"},
     "./docx-inspector": {"types":"./dist/docx-inspector.d.ts","default":"./dist/docx-inspector.js"},
     "./project-qa": {"types":"./dist/project-qa.d.ts","default":"./dist/project-qa.js"},
