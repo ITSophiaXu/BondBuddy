@@ -17,7 +17,8 @@ from rq_q3_baseline import ROOT, baseline, normalized, output_directory, word_in
 BALANCE_PERIOD = re.compile(r"2025(?:年)?(?:9月(?:30日|末)|[-./]0?9[-./]30)")
 FLOW_PERIOD = re.compile(r"2025(?:年)?(?:1[-—－–~～至]9月|前三季度)")
 SCOPE = re.compile(r"(合并|母公司)(资产负债表|利润表|现金流量表)")
-UNIT = re.compile(r"(?:金额)?单位[:：]?(?:人民币)?(亿元|万元|元)")
+UNIT_DECLARATION = re.compile(r"(?<!编制)(?<!填报)(?<!编报)(?<!被审计)单位\s*[:：]?\s*")
+STATEMENTS = ("资产负债表", "利润表", "现金流量表")
 
 
 def metric_label(text: str) -> str:
@@ -61,21 +62,44 @@ def table_scope(table: dict) -> str | None:
 
 
 def table_unit(table: dict) -> str | None:
-    for row in table["rows"][:2]:
-        match = UNIT.search("".join(map(compact, row)))
-        if match:
-            return match.group(1)
-    for text in reversed(table["context"]):
-        match = UNIT.search(compact(text))
-        if match:
-            return match.group(1)
-    return None
+    units = table_declarations(table)[2]
+    return next(iter(units)) if len(units) == 1 and units <= {"元", "万元", "亿元"} else None
+
+
+def table_declarations(table: dict) -> tuple[set[str], set[str], set[str]]:
+    # Older statement captions and their units cannot leak into the nearest table.
+    context = table["context"]
+    caption = next((i for i in reversed(range(len(context))) if SCOPE.search(compact(context[i]))), None)
+    relevant = context[caption:] if caption is not None else context
+    header_statements = [match.groups() for row in table["rows"][:2]
+                         for match in SCOPE.finditer("".join(map(compact, row)))]
+    if header_statements and caption is not None:
+        context_statement = list(SCOPE.finditer(compact(context[caption])))[-1].groups()
+        if header_statements[-1] != context_statement:
+            # Match table_statement's in-table title precedence. Its own title
+            # starts a new statement; previous-caption units belong to that old table.
+            relevant = []
+    headers = table["rows"][:6]
+    cells = [*relevant, *(" ".join(row) for row in headers)]
+    scopes, statements, units = set(), set(), set()
+    for cell in cells:
+        value = compact(cell)
+        kinds = {kind for kind in STATEMENTS if kind in value}
+        if kinds or re.search(r"(?:合并|母公司)(?:口径|数据|范围)", value):
+            scopes.update(re.findall(r"合并|母公司", value))
+            statements.update(kinds)
+        unit_text = unicodedata.normalize("NFKC", cell)
+        for marker in UNIT_DECLARATION.finditer(unit_text):
+            tail = unit_text[marker.end():]
+            declaration = re.match(r"(?:人民币\s*)?([^\s,，;；。()（）]+)", tail)
+            units.add(declaration[1] if declaration else "<unparsed-unit>")
+    return scopes, statements, units
 
 
 def period_header(text: str, pattern: re.Pattern) -> bool:
     value = compact(text)
     value = re.sub(r"\((?:未经审计|未审计|经审计|已审计)\)$", "", value)
-    value = re.sub(r"(?:余额|累计)$", "", value)
+    value = re.sub(r"余额$" if pattern is BALANCE_PERIOD else r"累计$", "", value)
     # A date mentioned in a prediction or explanation cannot identify a financial column.
     return pattern.fullmatch(value) is not None
 
@@ -92,24 +116,47 @@ def finance_checks(document: dict, controls: list[dict]) -> list[dict]:
         if control["metric"] == "所有者权益（或股东权益）合计":
             aliases.update({"所有者权益合计", "股东权益合计"})
         for table in document["tables"]:
-            if table_statement(table) != (control["scope"], statement_kind):
+            statement = table_statement(table)
+            scopes, _, units = table_declarations(table)
+            if statement is None or statement[1] != statement_kind or control["scope"] not in scopes:
                 continue
-            unit = table_unit(table)
-            if unit is None:
-                continue
-            target_columns = {i for row in table["rows"][:6] for i, text in enumerate(row) if period_header(text, period)}
-            if not target_columns:
-                continue
-            divisor = {"元": Decimal(1), "万元": Decimal(10000), "亿元": Decimal(100000000)}[unit]
-            expected = (Decimal(control["saved_value"]) / divisor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            metric_rows = []
             for row_number, row in enumerate(table["rows"]):
                 if not row:
                     continue
                 label = metric_label(row[0])
-                if not any(alias and (label == alias or label.removeprefix("其中:") == alias or label.removeprefix("其中：") == alias or label.startswith(alias + "(")) for alias in aliases):
-                    continue
+                if any(alias and (label == alias or label.removeprefix("其中:") == alias or label.removeprefix("其中：") == alias or label.startswith(alias + "(")) for alias in aliases):
+                    metric_rows.append((row_number, row))
+            if not metric_rows:
+                continue
+            headers = table["rows"][:6]
+            current_labels = [text for row in headers for text in row[1:]
+                              if BALANCE_PERIOD.search(compact(text)) or FLOW_PERIOD.search(compact(text))]
+            # A separate historical statement is allowed. Only disclosures actually
+            # labelled with the target quarter can invalidate a current-period match.
+            if not current_labels:
+                continue
+            invalid_periods = [text for text in current_labels if not period_header(text, period)]
+            errors = []
+            if scopes != {control["scope"]}:
+                errors.append("conflicting_scope")
+            if len(units) != 1 or not units <= {"元", "万元", "亿元"}:
+                errors.append("missing_conflicting_or_unsupported_units")
+            if invalid_periods:
+                errors.append("ambiguous_or_invalid_current_period")
+            if errors:
+                candidates.append({"table": table["table_index"], "matches": False, "errors": errors,
+                                   "scopes": sorted(scopes), "units": sorted(units), "invalid_periods": invalid_periods})
+                continue
+            unit = next(iter(units))
+            target_columns = {i for row in headers for i, text in enumerate(row) if i > 0 and period_header(text, period)}
+            divisor = {"元": Decimal(1), "万元": Decimal(10000), "亿元": Decimal(100000000)}[unit]
+            expected = (Decimal(control["saved_value"]) / divisor).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            for row_number, row in metric_rows:
                 for column in target_columns:
-                    if column == 0 or column >= len(row):
+                    if column >= len(row):
+                        candidates.append({"table": table["table_index"], "row": row_number, "column": column,
+                                           "matches": False, "errors": ["required_value_cell_missing"]})
                         continue
                     value = numeric(row[column])
                     candidates.append({"table": table["table_index"], "row": row_number, "column": column,

@@ -30,9 +30,11 @@ unapproved; missing or uncertain facts must remain marked for human review.
 The checker records the delivered result independently and does not change the
 product's download availability or run state.
 
-The checker itself was verified with 19 synthetic in-memory cases, including
-wrong units, prior periods, wrong scope/statement, conflicting current values,
-prediction dates, and headings-only chapters. This does not create product runs
+The checker itself was verified with 51 synthetic in-memory cases, including
+wrong, conflicting or unsupported units; missing current-value cells; prior or
+mixed periods; wrong or conflicting scope; conflicting current values;
+prediction dates; and headings-only chapters. Historical tables and valid
+in-table statement titles retain their own scope and units. This does not create product runs
 or generated documents. Reusing the original document as both outputs correctly
 fails five of the 15 checks: current financial controls and actual tracked
 changes. Its full red report is retained outside the checkout.
