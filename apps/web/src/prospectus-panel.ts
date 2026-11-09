@@ -7,7 +7,7 @@ import { ArtifactDownloads, artifactFilename } from './artifact-download';
 import { esc, date } from './ui';
 import { prototypeIcon as icon } from './prototype-design';
 import '../../../product-prototype/public/prospectus-panel.css';
-import {UploadRecovery,type UploadRecoveryRecord} from './upload-recovery';
+import {UploadRecovery,UploadRecoveryNeedsFileError,type UploadRecoveryRecord} from './upload-recovery';
 import './update-entry.css';
 import './prospectus-saved-reentry.css';
 import './prospectus-reference.css';
@@ -16,8 +16,9 @@ import '../../../product-prototype/public/file-generation-ux.css';
 export class ProspectusPanel {
   private uploadProgress?:FileUploadProgress; private uploadProgressError?:string;
   private paintUploadProgress(){
-    for(const slot of this.host.querySelectorAll<HTMLElement>("[data-file-upload-progress]"))slot.innerHTML=this.uploadProgress?uploadProgressHtml(this.uploadProgress,this.pendingUpload?.file?.name??this.host.querySelector<HTMLInputElement>("#prospectus-version-file")?.files?.[0]?.name??"募集说明书",{error:this.uploadProgressError,paused:!this.busy&&!this.uploadProgressError}):"";
-    const status=this.host.querySelector<HTMLElement>('#prospectus-status');if(status)status.hidden=!!this.uploadProgress;
+    const showProgress=!!this.uploadProgress&&(this.purpose!=='generation'||this.busy);
+    for(const slot of this.host.querySelectorAll<HTMLElement>("[data-file-upload-progress]"))slot.innerHTML=showProgress?uploadProgressHtml(this.uploadProgress!,this.pendingUpload?.file?.name??this.host.querySelector<HTMLInputElement>("#prospectus-version-file")?.files?.[0]?.name??"募集说明书",{error:this.uploadProgressError,paused:!this.busy&&!this.uploadProgressError}):"";
+    const status=this.host.querySelector<HTMLElement>('#prospectus-status');if(status)status.hidden=showProgress;
     const label=this.host.querySelector(".prospectus-upload-label");if(label&&this.uploadProgress)label.textContent="";
   }
   state?:ProspectusVersions;
@@ -38,6 +39,7 @@ export class ProspectusPanel {
   private pendingUpload?:{id:string;file?:File;uncertain?:boolean};
   private recovery?:UploadRecovery;
   private generationSourceMode?:'upload'|'project';
+  private generationNeedsFile=false;
   constructor(private api:ApiClient,private id:string,private host:HTMLElement,private beforeChange:()=>Promise<boolean>,private changed:()=>Promise<void>,private busyChanged:()=>void=()=>{},private purpose:'update'|'generation'|'consistency'|'project'|'qa'='update',private owner?:string){}
   setReadOnly(readOnly:boolean){
     if(this.readOnly===readOnly)return;
@@ -247,19 +249,23 @@ export class ProspectusPanel {
     const selectedFile=previous?.files?.length?previous:null,rows=this.uploadRows();
     const hasSources=verified&&state.versions.length>0;
     const mode=hasSources?(this.generationSourceMode??(rows.length||this.pendingUpload?'upload':'project')):'upload';
-    this.host.innerHTML=`<section class="panel pf-generation-prospectus pf-source-picker"><h2 data-prospectus-heading tabindex="-1">选择募集说明书</h2><p class="pf-source-help">${hasSources?'选择一种方式，确定本次使用的募集说明书。':'上传本次用于文件生成的募集说明书。'}单份不超过 100 MB。</p>
+    const recovering=!!this.pendingUpload||rows.length>0;
+    const uploadRow=(name:string,id?:string,active=false)=>`<article class="pf-source-upload-state ${id?'needs-attention':''}"><div class="pf-upload-file">${icon('file')}<div><strong>${esc(name)}</strong>${id?'<span>上传待确认</span>':''}</div></div><div class="pf-upload-actions">${active?'<button type="button" class="btn primary" id="save-prospectus-version">重试上传</button>':`<button type="button" class="btn primary" data-resume-prospectus="${esc(id!)}">重试上传</button>`}${id?`<button type="button" class="btn secondary" data-stop-generation-upload="${esc(id)}">取消本次上传</button>`:'<button type="button" class="btn secondary" id="cancel-prospectus-version">清除选择</button>'}</div></article>`;
+    const activeRecord=rows.find(row=>row.id===this.pendingUpload?.id);
+    this.host.innerHTML=`<section class="panel pf-generation-prospectus pf-source-picker"><h2 data-prospectus-heading tabindex="-1">选择募集说明书</h2>
       <fieldset class="pf-source-modes" ${hasSources?'':'hidden'}><legend class="sr-only">提供募集说明书的方式</legend><label><input type="radio" name="generation-source-mode" value="upload" aria-controls="pf-source-upload" ${mode==='upload'?'checked':''}>上传新募集说明书</label><label><input type="radio" name="generation-source-mode" value="project" aria-controls="pf-source-existing" ${mode==='project'?'checked':''}>选择项目已有募集说明书</label></fieldset>
-      <div id="pf-source-upload" ${mode==='upload'?'':'hidden'}><p class="pf-source-help">上传一份用于文件生成的募集说明书，${this.uploadFormats}。</p><button class="pf-source-drop" id="choose-prospectus-version" type="button">${icon('upload')}点击或拖入文件</button><input id="prospectus-version-file" type="file" accept="${this.uploadAccept}" aria-label="募集书新版本文件" hidden>
-      ${selectedFile||this.pendingUpload?`<div class="pf-source-upload-state"><strong>${esc(selectedFile?.files?.[0]?.name??rows.find(r=>r.id===this.pendingUpload?.id)?.declaration.filename??'募集说明书')}</strong><span class="prospectus-upload-label">等待保存</span><button type="button" class="text-button" id="save-prospectus-version">重试上传</button>${!this.pendingUpload&&!rows.length?'<button type="button" class="text-button" id="cancel-prospectus-version">清除选择</button>':''}</div>`:'<button type="button" id="save-prospectus-version" hidden>重试上传</button>'}
-      ${rows.filter(r=>r.id!==this.pendingUpload?.id).map(r=>`<div class="pf-source-upload-state"><strong>${esc(r.declaration.filename)}</strong><span>原上传待确认</span><button class="text-button" data-resume-prospectus="${esc(r.id)}">重试此文件</button></div>`).join('')}
-      ${rows.map(r=>`<button class="text-button" data-stop-generation-upload="${esc(r.id)}">停止继续上传${rows.length>1?' '+esc(r.declaration.filename):''}</button>`).join('')}</div>
-      <div id="pf-source-existing" ${mode==='project'?'':'hidden'}><label for="pf-project-source">选择募集说明书版本</label><select id="pf-project-source"><option value="">请选择募集说明书版本</option>${state.versions.map(v=>`<option value="${esc(v.version_id)}" ${v.version_id===current?.version_id?'selected':''}>V${v.sequence} · ${esc(v.filename)}${v.version_id===current?.version_id?' · 项目当前版本':''}</option>`).join('')}</select><p class="pf-source-help">${state.versions.length?'选用后作为项目文件生成依据，已提交任务保留原版本。':'项目还没有可选的募集说明书，请切换到“上传新募集说明书”。'}</p></div>
-      ${current?`<section class="pf-selected-source" aria-label="本次生成依据"><strong>本次生成依据</strong><div><strong>${esc(current.filename)}</strong><small>募集说明书 · V${current.sequence} · 已保存</small></div><p class="pf-source-help">上传新稿或选择其他版本后，将替换本次生成依据。</p></section>`:'<p class="pf-source-help">尚未选择本次生成依据。</p>'}
-      <div data-file-upload-progress></div><p id="prospectus-status" role="status">${esc(this.message)}</p>${this.pendingSelection?.attempted?'<button type="button" class="text-button" id="retry-prospectus-selection">重试确认采用结果</button>':''}</section>`;
+      <div id="pf-source-upload" ${mode==='upload'?'':'hidden'}>
+      ${!recovering?`<p class="pf-source-help">${this.uploadFormats} · 单份不超过 100 MB</p><button class="pf-source-drop" id="choose-prospectus-version" type="button">${icon('upload')}<span><strong>选择文件</strong><small>或将文件拖到这里</small></span></button>`:''}<input id="prospectus-version-file" type="file" accept="${this.uploadAccept}" aria-label="募集书新版本文件" hidden>
+      ${this.pendingUpload||selectedFile&&!rows.length?uploadRow(activeRecord?.declaration.filename??this.pendingUpload?.file?.name??selectedFile?.files?.[0]?.name??'募集说明书',this.pendingUpload?.id,true):'<button type="button" id="save-prospectus-version" hidden>重试上传</button>'}
+      ${rows.filter(row=>row.id!==this.pendingUpload?.id).map(row=>uploadRow(row.declaration.filename,row.id)).join('')}
+      ${recovering?`<p class="pf-source-help pf-recovery-help">重试可继续处理；取消不会删除已保存的文件。</p><button class="btn secondary pf-source-reselect" id="choose-prospectus-version" type="button" ${this.generationNeedsFile?'':'hidden'}>${icon('upload')}重新选择原文件</button>`:''}</div>
+      <div id="pf-source-existing" ${mode==='project'?'':'hidden'}><label for="pf-project-source">选择募集说明书版本</label><select id="pf-project-source"><option value="">请选择募集说明书版本</option>${state.versions.map(v=>`<option value="${esc(v.version_id)}" ${v.version_id===current?.version_id?'selected':''}>V${v.sequence} · ${esc(v.filename)}${v.version_id===current?.version_id?' · 项目当前版本':''}</option>`).join('')}</select></div>
+      ${current?`<section class="pf-selected-source" aria-label="本次生成依据"><span class="pf-selected-label">已选择 · V${current.sequence}</span><strong>${esc(current.filename)}</strong></section>`:''}
+      <div data-file-upload-progress></div><p id="prospectus-status" role="status">${esc(this.message)}</p>${this.pendingSelection?.attempted?'<button type="button" class="btn primary" id="retry-prospectus-selection">重试确认采用结果</button>':''}</section>`;
     if(selectedFile)this.host.querySelector('#prospectus-version-file')!.replaceWith(selectedFile);
     const input=this.host.querySelector<HTMLInputElement>('#prospectus-version-file')!,drop=this.host.querySelector<HTMLElement>('#choose-prospectus-version')!;
     drop.addEventListener('click',()=>input.click());
-    input.onchange=()=>{if(this.busy)return;this.generationSourceMode='upload';this.render();const error=this.fileError();if(error){this.status(error,true);return;}if(this.pendingUpload||rows.length){this.status('已重新选择文件，请重试原上传。');return;}if(input.files?.length)void this.upload();};
+    input.onchange=()=>{if(this.busy)return;this.generationSourceMode='upload';this.render();const error=this.fileError();if(error){this.status(error,true);return;}if(this.generationNeedsFile&&this.pendingUpload&&input.files?.length){void this.upload(this.pendingUpload.id);return;}if(this.pendingUpload||rows.length){this.status('已重新选择文件，请重试原上传。');return;}if(input.files?.length)void this.upload();};
     drop.addEventListener('dragover',e=>{e.preventDefault();if(!this.busy)drop.classList.add('is-dragging');});
     drop.addEventListener('dragleave',()=>drop.classList.remove('is-dragging'));
     drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('is-dragging');if(this.busy)return;const files=e.dataTransfer?.files;if(!files?.length)return;if(files.length!==1){this.status('每次请选择一份募集说明书。',true);return;}input.files=files;input.dispatchEvent(new Event('change',{bubbles:true}));});
@@ -268,7 +274,7 @@ export class ProspectusPanel {
     this.host.querySelector('#save-prospectus-version')!.addEventListener('click',()=>void this.upload());
     this.host.querySelector('#cancel-prospectus-version')?.addEventListener('click',()=>{if(this.busy||this.pendingUpload||this.uploadRows().length)return;input.value='';this.message='';this.render(false);this.host.querySelector<HTMLElement>('#choose-prospectus-version')?.focus();});
     this.host.querySelectorAll<HTMLElement>('[data-resume-prospectus]').forEach(b=>b.onclick=()=>void this.upload(b.dataset.resumeProspectus));
-    this.host.querySelectorAll<HTMLElement>('[data-stop-generation-upload]').forEach(b=>b.onclick=()=>void this.action(async()=>{await this.uploads().forget(b.dataset.stopGenerationUpload!);if(this.pendingUpload?.id===b.dataset.stopGenerationUpload)this.pendingUpload=undefined;this.uploadProgress=undefined;this.uploadProgressError=undefined;this.render(false);this.status('已停止继续上传；服务器已保存的材料保留。');}));
+    this.host.querySelectorAll<HTMLElement>('[data-stop-generation-upload]').forEach(b=>b.onclick=()=>void this.action(async()=>{await this.uploads().forget(b.dataset.stopGenerationUpload!);if(this.pendingUpload?.id===b.dataset.stopGenerationUpload){this.pendingUpload=undefined;this.generationNeedsFile=false;}this.uploadProgress=undefined;this.uploadProgressError=undefined;this.render(false);this.status('已取消本次上传，已保存的文件仍保留。');}));
     this.host.querySelector('#retry-prospectus-selection')?.addEventListener('click',()=>this.confirmSelection(this.pendingSelection!.request.version_id));
     this.disableControls();this.paintUploadProgress();
   }
@@ -298,6 +304,8 @@ export class ProspectusPanel {
       const label=this.host.querySelector('.prospectus-upload-label');if(label&&!this.fileError())label.textContent=this.uploadProgress?'':this.busy?'正在处理':'等待重试';
     }
     if(this.purpose==='generation'){
+      this.host.querySelectorAll<HTMLElement>('.pf-upload-actions,.pf-recovery-help').forEach(element=>element.hidden=this.busy);
+      const reselect=this.host.querySelector<HTMLElement>('.pf-source-reselect');if(reselect)reselect.hidden=this.busy||!this.generationNeedsFile;
       this.host.querySelectorAll<HTMLInputElement>('[name=generation-source-mode]').forEach(r=>r.disabled=this.hasUnconfirmed);
       const select=this.host.querySelector<HTMLSelectElement>('#pf-project-source');if(select)select.disabled=this.hasUnconfirmed||!this.verifiedVersions()||!this.state?.versions.length;
       const chooser=this.host.querySelector<HTMLButtonElement>('#choose-prospectus-version');if(chooser)chooser.disabled=this.busy||!!this.pendingSelection?.attempted;
@@ -397,7 +405,7 @@ export class ProspectusPanel {
       this.state=state;this.pendingSelection=undefined;this.closeDialog();this.render();
       const adopted=state.current_version_id===selection.request.version_id;
       const message=adopted?`已采用 V${selection.version.sequence} · ${selection.version.filename}，关联文件请按新版重新核对。`:'本次采用请求已确认，但项目当前稿随后已变化。文件仍保留，请查看当前版本。';
-      this.status(message);
+      this.status(this.purpose==='generation'&&adopted?'':message);
       notifyChanged=adopted||!['generation','qa'].includes(this.purpose);
     });
     // Let navigation guards observe the completed save before moving to the next step.
@@ -437,6 +445,7 @@ export class ProspectusPanel {
         material=await recovery.resume(id,{file,signal:this.controller.signal,status:s=>this.status(s),progress:(bytes,total)=>{const p=uploadTransfer(bytes,total);this.status(p.message,false,p);}});
         pending.uncertain=false;
       }catch(e){
+        if(this.purpose==='generation'&&e instanceof UploadRecoveryNeedsFileError)this.generationNeedsFile=true;
         this.render();
         throw e;
       }
@@ -447,7 +456,7 @@ export class ProspectusPanel {
         const saved=state.versions.find(v=>v.material_id===material.material_id&&v.material_version===material.material_version&&v.sha256===material.sha256);
         if(!saved)throw new UserFacingError('募集书版本尚未确认。');
         await recovery.forget(id);
-        this.state=state;this.savedVersionId=saved.version_id;this.ignoredSavedVersions.delete(saved.version_id);this.pendingUpload=undefined;this.uploadProgress=undefined;this.uploadProgressError=undefined;this.render(false);
+        this.state=state;this.savedVersionId=saved.version_id;this.ignoredSavedVersions.delete(saved.version_id);this.pendingUpload=undefined;this.generationNeedsFile=false;this.uploadProgress=undefined;this.uploadProgressError=undefined;this.render(false);
         this.status(this.purpose==='update'?(state.current_version_id===saved.version_id?`已保存并自动采用 V${saved.sequence} · ${saved.filename}，将在原文基础上修改。`:'文件已保存，当前原稿随后已更新，请查看当前版本。'):['generation','qa'].includes(this.purpose)&&state.current_version_id!==saved.version_id?'':state.current_version_id===saved.version_id?`文件已保存，与当前采用的 V${saved.sequence} 相同，当前选择保持不变。`:`已保存 V${saved.sequence} · ${saved.filename}，尚未采用。${['generation','qa'].includes(this.purpose)?'点击“使用此版继续”准备文件。':'请查看后选择“采用此版”；当前稿保持不变。'}`);
       }catch{
         pending.uncertain=true;

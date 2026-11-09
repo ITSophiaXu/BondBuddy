@@ -45,6 +45,7 @@ test('independent catalogue/template cards, safe preview and mixed confirmation 
  await expect(page.locator('.fg-match-summary')).toContainText('已匹配 2 / 2 项');expect(Object.keys(state.data.preparation.mappings)).toHaveLength(2);
  await page.locator('#fg-more-types').click();await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  await page.locator('[data-fg-general="annual"]').selectOption('builtin-set|annual');
+ await expect(page.locator('#fg-requirements')).toBeHidden();await page.getByText('补充资料与编制要求（选填）',{exact:true}).click();
  await page.locator('#fg-requirements').fill('合成验收要求，保留原 Word 格式');await page.getByRole('button',{name:'保存准备清单'}).click();
  await page.getByRole('button',{name:'核对清单与费用'}).click();await expect(page.getByRole('dialog')).toContainText('3 份文件 · 13,500 积分');
  await expect(page.locator('[data-flow-step="3"]')).toHaveAttribute('aria-current','step');

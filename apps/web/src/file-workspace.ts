@@ -209,7 +209,7 @@ export class FileWorkspace {
   private status(s:string){this.message=s;if(!this.live())return;const node=document.querySelector('#pf-status');if(node)node.textContent=s;}
   private syncSourceAction(){
     const button=document.querySelector<HTMLButtonElement>('#pf-source-next');
-    if(button){button.disabled=this.busy||!!this.panel?.hasUnconfirmed||!this.state?.source;const footer=button.closest<HTMLElement>('footer')!;footer.hidden=false;footer.querySelector('p')!.textContent=this.state?.source?`将使用 V${this.state.source.sequence} 作为本次生成依据。`:'请上传或选择募集说明书，保存完成后继续。';}
+    if(button)button.disabled=this.busy||!!this.panel?.hasUnconfirmed||!this.state?.source;
   }
   private sourceDestination():string{const mode=new URLSearchParams(location.hash.split('?')[1]).get('mode');return this.entryHasOriginalOperation()||this.entryIntent||this.entryAdopted?'documents':mode==='documents'?'documents':'prepare';}
   private async continueFromSource(){
@@ -228,7 +228,7 @@ export class FileWorkspace {
     const unified=step==='prepare'||step==='source'&&this.sourceDestination()==='prepare';
     const workpapers=step==='workpapers'||step==='source'&&this.sourceDestination()==='workpapers',results=step==='results'||workpapers&&new URLSearchParams(location.hash.split('?')[1]).get('view')==='results';
     const active=step==='source'||step==='choose'?1:step==='confirm'?3:results?4:2;
-    return `<header class="pf-workspace-heading pf-generation-heading"><div class="pf-title-row"><div><p class="eyebrow">FILE GENERATION</p><h1>生成文件</h1><p>从募集说明书出发，生成项目所需文件。</p></div><nav class="pf-workspace-actions" aria-label="文件生成导航"><a class="btn secondary" href="${esc(this.href(workpapers?{step:'workpapers',view:'results'}:{step:'results'}))}">生成记录</a>${results?`<a class="btn secondary" href="${esc(this.href(workpapers?{step:'results'}:{step:'workpapers',view:'results'}))}">${workpapers?'模板文件生成记录':'底稿生成记录'}</a>`:''}<a class="btn secondary" href="${esc(this.filesHref())}">项目文件</a></nav></div></header>
+    return `<header class="pf-workspace-heading pf-generation-heading"><div class="pf-title-row"><div><h1>生成文件</h1></div><nav class="pf-workspace-actions" aria-label="文件生成导航"><a class="btn secondary" href="${esc(this.href(workpapers?{step:'workpapers',view:'results'}:{step:'results'}))}">生成记录</a>${results?`<a class="btn secondary" href="${esc(this.href(workpapers?{step:'results'}:{step:'workpapers',view:'results'}))}">${workpapers?'模板文件生成记录':'底稿生成记录'}</a>`:''}</nav></div></header>
       <nav class="pf-flow-steps" aria-label="文件生成步骤">${['选择募集说明书','选择生成内容','确认并生成','查看成果'].map((label,i)=>{const n=i+1,href=unified?this.href({step:n===1?'source':'prepare'}):n===1?this.href({step:'source',mode:workpapers?'workpapers':'documents'}):this.href({step:workpapers?'workpapers':'documents'});return `<${n<active&&n<3?'a':'span'} ${n<active&&n<3?`href="${esc(href)}"`:''} data-flow-step="${n}" class="${n===active?'is-current':n<active?'is-complete':''}" ${n===active?'aria-current="step"':''}><b>${n<active?'✓':n}</b>${label}</${n<active&&n<3?'a':'span'}>`;}).join('')}</nav>
       ${active===2&&step!=='prepare'?this.generationModes(workpapers?'workpapers':'documents'):''}<section id="pf-entry-intent" aria-label="准备生成所选文种" hidden></section>`;
   }
@@ -283,7 +283,7 @@ export class FileWorkspace {
     }
     if(step==='source'){
       const nextLabel='下一步：选择生成内容';
-      this.shell(`${this.header(step)}<div class="pf-source-workspace"><div id="pf-prospectus"></div><p id="pf-status" role="status">${esc(this.message)}</p><footer class="pf-source-actions"><p>${this.state.source?`将使用 V${this.state.source.sequence} 作为本次生成依据。`:'选择文件后自动上传，上传完成后继续。'}</p><button class="btn primary" id="pf-source-next" ${this.state.source?'':'disabled'}>${nextLabel} ${ico('arrow')}</button></footer></div>`,'generate');this.paintEntryIntent();
+      this.shell(`${this.header(step)}<div class="pf-source-workspace"><div id="pf-prospectus"></div><p id="pf-status" role="status">${esc(this.message)}</p><footer class="pf-source-actions"><button class="btn primary" id="pf-source-next" ${this.state.source?'':'disabled'}>${nextLabel} ${ico('arrow')}</button></footer></div>`,'generate');this.paintEntryIntent();
       const sourceProject=this.state.source?.project_id??this.id!;
       this.panel=new ProspectusPanel(this.api,sourceProject,document.querySelector('#pf-prospectus')!,async()=>!this.busy,async()=>{this.state=await this.request<Workspace>('GET','/workspace');if(this.live())this.syncSourceAction();},()=>this.syncSourceAction(),'generation',this.owner);await this.panel.refresh();this.syncSourceAction();
       document.querySelector('#pf-source-next')!.addEventListener('click',()=>void this.act(async()=>{
