@@ -1,0 +1,33 @@
+{
+  "case_id": "workpaper-zhongjie",
+  "task_type": "workpaper",
+  "input_origin": "new_test_recipe_using_authorized_real_materials",
+  "source_case_ids": [
+    "update-zhongjie"
+  ],
+  "issuer_name": "河北省国营中捷友谊农场集团有限公司",
+  "materials": [
+    {
+      "file_id": "nov05-f011",
+      "original_filename": "2 河北省国营中捷友谊农场集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "upload_role": "historical",
+      "source_material_id": "315114ef-7704-44e3-8260-77524f13def2",
+      "source_material_version": 1,
+      "deleted_at": null
+    },
+    {
+      "file_id": "nov05-f009",
+      "upload_role": "workpaper_catalogue",
+      "original_filename": "底稿目录清单-高投非公开.xlsx"
+    }
+  ],
+  "business_acceptance_status": "not_evaluated",
+  "notes": [
+    "目录来自新津复核项目，复用目录要求；不沿用旧项目事实、签字或执行状态。"
+  ],
+  "replay_policy": "新建隔离测试项目；这是新编测试设计，不是历史已执行任务或已验收成果。",
+  "catalogue_scope": "1 尽职调查文件",
+  "reporting_period_policy": "按选定募集说明书实际披露期间，不自动套用更新任务目标期间",
+  "requirements": "仅处理底稿目录“1 尽职调查文件”。完整利用本募集说明书正文、表格、附注、脚注和图片。逐项形成实质成果或准确区分业务不适用/资料不足的说明。保留编号和主体，按文件类型使用对应模板；不得编造原件、签字或实际履职。正文不写内部来源追踪；ZIP仅含可生成文件和不适用说明。",
+  "bug_bash_subset": "先选系统解析目录中确实存在的财务报表及附注、主要资产、对外担保、关联交易及一项需原件/实际履职的条目，登记实际编号；完整验收再跑本范围全量，数量以本目录解析结果为准。"
+}

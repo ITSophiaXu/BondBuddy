@@ -1,0 +1,85 @@
+{
+  "case_id": "update-zhongjie",
+  "task_type": "update",
+  "input_origin": "captured_real_project",
+  "source_account": "yyx",
+  "source_project_id": "588988d5-5890-4dc2-abc8-3b8e5d69a41d",
+  "source_snapshot": "cases/update-zhongjie/source-inputs.json",
+  "legal_issuer_name_for_derived_tests": "河北省国营中捷友谊农场集团有限公司",
+  "primary_source_run": {
+    "id": "15d794aa-fca1-4eff-bb13-a1ed144cb1a4",
+    "owner_user_id": "a34eda12-8ea3-4157-978e-357a8f471a61",
+    "project_id": "588988d5-5890-4dc2-abc8-3b8e5d69a41d",
+    "task_kind": "update",
+    "state": "succeeded",
+    "stage": "succeeded",
+    "created_at": "2026-10-31T14:14:14.370074+00:00",
+    "updated_at": "2026-10-31T14:52:05.009659+00:00",
+    "input_revision": "2",
+    "input_hash": "db24a0895bf7ebd5d2f6dff0565cdd8709dbd9eb9471c5eb66bfb0b82af1696d",
+    "artifact_id": "word-ed73d110f973aa82818c13871337d0fb327a2371f31cfe636d512132ba044248",
+    "artifact_version": "1",
+    "channel": "production",
+    "billing_mode": "fixed_credits",
+    "prompt_snapshot_ref": null
+  },
+  "input_capture_status": "blocked_source_capture",
+  "project_input": {
+    "name": "河北省国营中捷友谊农场集团有限公司-深交所-普通私募公司债-募集书更新",
+    "kind": "update",
+    "issuer_name": "河北省国营中捷友谊农场集团有限公司",
+    "market": "szse",
+    "offering": "private"
+  },
+  "materials": [
+    {
+      "file_id": "nov05-f011",
+      "original_filename": "2 河北省国营中捷友谊农场集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "upload_role": "historical",
+      "source_material_id": "315114ef-7704-44e3-8260-77524f13def2",
+      "source_material_version": 1,
+      "deleted_at": null
+    }
+  ],
+  "missing_materials": [
+    {
+      "project_id": "588988d5-5890-4dc2-abc8-3b8e5d69a41d",
+      "id": "5de5ff06-e557-4302-894b-f185f8038749",
+      "version": "1",
+      "filename": "12-1 河北省国营中捷友谊农场集团有限公司2024-2025年审计报告.pdf",
+      "role": "audit",
+      "sha256": "66ac523596a806f13cdd02caf4f90d6e5d9d3f0a7adf15f154fc03e5fb6b69d4",
+      "bytes": 7020871,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    },
+    {
+      "project_id": "588988d5-5890-4dc2-abc8-3b8e5d69a41d",
+      "id": "d8be200d-214a-45f0-86de-ca3b58277db7",
+      "version": "1",
+      "filename": "2-国营中捷3季报报表.xlsx",
+      "role": "audit",
+      "sha256": "7b1cafffbe74c8b803441ee2f2c2168f26917f700385c7cc6e684b13d232e3c8",
+      "bytes": 147581,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    },
+    {
+      "project_id": "588988d5-5890-4dc2-abc8-3b8e5d69a41d",
+      "id": "83c5e740-6d9c-454a-be08-8a325fa15991",
+      "version": "1",
+      "filename": "3-附注--国营中捷20260930.docx",
+      "role": "audit",
+      "sha256": "54896f3cbb01c0902563b9575d70a48f2ed3e84e9a2b6c61a7c77df79966a6e8",
+      "bytes": 237586,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    }
+  ],
+  "business_acceptance_status": "not_evaluated",
+  "notes": [
+    "以冻结输入核对原稿和目标报告期；项目曾有多个同名副本，本包固定2026-10-31建立的指定项目。",
+    "待补齐：源项目完整业务输入、目标报告期/补充要求/参考稿关系，以及本案例缺失清单中的财务附件。不可用当前不完整材料验收更新效果。"
+  ],
+  "replay_policy": "隔离测试环境重新建项目、上传和报价；原生产ID/hash/报价只作追踪，不向生产重放。"
+}

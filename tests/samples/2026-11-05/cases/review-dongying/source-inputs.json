@@ -1,0 +1,312 @@
+{
+  "metadata_captured_at": "2026-11-05T14:12:35.827Z",
+  "source_release": "821477976c75a7218a733d6dca0cd3ed4c733987",
+  "source_account": "customer_test",
+  "project_metadata": {
+    "id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+    "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+    "name": "东营城建-上交所-普通私募公司债-募集书复核",
+    "kind": "review",
+    "issuer_name": "东营城建",
+    "market": "sse",
+    "offering": "private",
+    "created_at": "2026-11-05T08:15:39.165305+00:00",
+    "updated_at": "2026-11-05T08:21:25.775344+00:00",
+    "deleted_at": null,
+    "archived_at": null
+  },
+  "runs": [
+    {
+      "id": "5a015c40-c130-4b23-90a1-ba0b3ffb199e",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+      "task_kind": "review",
+      "state": "paused",
+      "stage": "provider_reconcile",
+      "created_at": "2026-11-05T08:21:25.775344+00:00",
+      "updated_at": "2026-11-05T08:52:24.659122+00:00",
+      "input_revision": "1",
+      "input_hash": "e93f138cfc402967e6e0b14481dc11c1f24d6f28069bbdc7e450aa887d68961d",
+      "artifact_id": null,
+      "artifact_version": null,
+      "channel": "production",
+      "billing_mode": "fixed_credits",
+      "prompt_snapshot_ref": null
+    }
+  ],
+  "input_revision_metadata": [
+    {
+      "run_id": "5a015c40-c130-4b23-90a1-ba0b3ffb199e",
+      "revision": 1,
+      "manifest_version": null,
+      "document_type": null,
+      "input_hash": "e93f138cfc402967e6e0b14481dc11c1f24d6f28069bbdc7e450aa887d68961d",
+      "created_at": "2026-11-05T08:21:25.775Z",
+      "selection_recorded": false,
+      "selected_version_id": null,
+      "selection_revision": null,
+      "format_recorded": false,
+      "format_mode": null,
+      "format_selection": null,
+      "format_template_kind": null,
+      "format_material_id": null,
+      "format_artifact_id": null,
+      "format_hash": null,
+      "source_count": null
+    }
+  ],
+  "input_material_pins": [
+    {
+      "run_id": "5a015c40-c130-4b23-90a1-ba0b3ffb199e",
+      "material_id": "4541d04e-32bb-49b9-a03d-6f8636debdfc",
+      "material_version": "1",
+      "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "historical"
+    },
+    {
+      "run_id": "5a015c40-c130-4b23-90a1-ba0b3ffb199e",
+      "material_id": "a23e9750-da68-4ef7-a880-81212ed8985b",
+      "material_version": "1",
+      "sha256": "18e450d7708b14524439dbca16a62ffff18a3570597dbcdc15dabcd9b7b81a94",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "audit"
+    },
+    {
+      "run_id": "5a015c40-c130-4b23-90a1-ba0b3ffb199e",
+      "material_id": "52977841-2404-4a71-bcaa-b3fa48708d1a",
+      "material_version": "1",
+      "sha256": "44023471983b049ff955ae6af159a8a1f3e67404344ea3d504d01b21c0d116de",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "audit"
+    },
+    {
+      "run_id": "5a015c40-c130-4b23-90a1-ba0b3ffb199e",
+      "material_id": "54da1f47-c404-4cac-94bc-cb3376cb01cd",
+      "material_version": "1",
+      "sha256": "c175434ecfde27bba694116ab5620dc0ea1b1824428181f232bcb99cc9af4c8c",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "audit"
+    }
+  ],
+  "material_metadata": [
+    {
+      "id": "4541d04e-32bb-49b9-a03d-6f8636debdfc",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+      "role": "historical",
+      "filename": "1-1东营市城市建设发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "byte_size": "723353",
+      "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f",
+      "state": "persisted",
+      "persisted_at": "2026-11-05T08:19:35.253737+00:00",
+      "deleted_at": null
+    },
+    {
+      "id": "a23e9750-da68-4ef7-a880-81212ed8985b",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+      "role": "audit",
+      "filename": "5-2-1东营市城市建设发展集团有限公司2024年度经审计的合并及母公司财务报告.pdf",
+      "media_type": "application/pdf",
+      "byte_size": "8526194",
+      "sha256": "18e450d7708b14524439dbca16a62ffff18a3570597dbcdc15dabcd9b7b81a94",
+      "state": "persisted",
+      "persisted_at": "2026-11-05T08:19:49.352655+00:00",
+      "deleted_at": null
+    },
+    {
+      "id": "52977841-2404-4a71-bcaa-b3fa48708d1a",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+      "role": "audit",
+      "filename": "5-2-2东营市城市建设发展集团有限公司2025年度经审计的合并及母公司财务报告.pdf",
+      "media_type": "application/pdf",
+      "byte_size": "19431101",
+      "sha256": "44023471983b049ff955ae6af159a8a1f3e67404344ea3d504d01b21c0d116de",
+      "state": "persisted",
+      "persisted_at": "2026-11-05T08:20:13.888805+00:00",
+      "deleted_at": null
+    },
+    {
+      "id": "54da1f47-c404-4cac-94bc-cb3376cb01cd",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+      "role": "audit",
+      "filename": "5-2-3东营市城市建设发展集团有限公司2026年半年度财务报表及附注.pdf",
+      "media_type": "application/pdf",
+      "byte_size": "8315077",
+      "sha256": "c175434ecfde27bba694116ab5620dc0ea1b1824428181f232bcb99cc9af4c8c",
+      "state": "persisted",
+      "persisted_at": "2026-11-05T08:20:26.77559+00:00",
+      "deleted_at": null
+    }
+  ],
+  "prospectus_versions": [
+    {
+      "id": "3fefc5e7-d61e-48c3-95a1-ec5a31e32ea7",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+      "sequence": "1",
+      "origin": "upload",
+      "filename": "1-1东营市城市建设发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f",
+      "material_id": "4541d04e-32bb-49b9-a03d-6f8636debdfc",
+      "material_version": "1",
+      "artifact_id": null,
+      "artifact_version": null,
+      "run_id": null,
+      "created_at": "2026-11-05T08:19:35.253737+00:00"
+    }
+  ],
+  "capture_limitations": [
+    "管理员只读索引不返回完整冻结 manifest；历史运行列表限最近1000条，缺项不代表从未执行。"
+  ],
+  "input_captured_at": "2026-11-05T14:20:43.561Z",
+  "project_detail": {
+    "project_id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+    "draft_revision": 1,
+    "input_revision": 1,
+    "input_hash": "e93f138cfc402967e6e0b14481dc11c1f24d6f28069bbdc7e450aa887d68961d",
+    "name": "东营城建-上交所-普通私募公司债-募集书复核",
+    "kind": "review",
+    "issuer_name": "东营城建",
+    "market": "sse",
+    "offering": "private",
+    "update_details": {
+      "has_historical": null,
+      "reporting_cutoff": "2026-06-30",
+      "registration_amount": null,
+      "issuance_amount": null,
+      "bond_terms": null,
+      "underwriting": null,
+      "other_agencies": null,
+      "rating_enhancement": null,
+      "funding_uses": [],
+      "other_information": null,
+      "supplementary_notes": null,
+      "authoring_mode": "unified_v1",
+      "source_prospectuses": []
+    },
+    "updated_at": "2026-11-05T08:21:25.775Z",
+    "archived_at": null
+  },
+  "input_revision_dtos": [
+    {
+      "project_id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+      "input_revision": 1,
+      "input_hash": "e93f138cfc402967e6e0b14481dc11c1f24d6f28069bbdc7e450aa887d68961d",
+      "target_confirmation": {
+        "status": "unconfirmed",
+        "market": null,
+        "offering": null,
+        "document_purpose": null,
+        "as_of": null,
+        "target_reporting_periods": [],
+        "confirmed_by": null,
+        "confirmed_at": null
+      },
+      "material_versions": [
+        {
+          "role": "historical",
+          "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f",
+          "material_id": "4541d04e-32bb-49b9-a03d-6f8636debdfc",
+          "material_version": 1
+        },
+        {
+          "role": "audit",
+          "sha256": "18e450d7708b14524439dbca16a62ffff18a3570597dbcdc15dabcd9b7b81a94",
+          "material_id": "a23e9750-da68-4ef7-a880-81212ed8985b",
+          "material_version": 1
+        },
+        {
+          "role": "audit",
+          "sha256": "44023471983b049ff955ae6af159a8a1f3e67404344ea3d504d01b21c0d116de",
+          "material_id": "52977841-2404-4a71-bcaa-b3fa48708d1a",
+          "material_version": 1
+        },
+        {
+          "role": "audit",
+          "sha256": "c175434ecfde27bba694116ab5620dc0ea1b1824428181f232bcb99cc9af4c8c",
+          "material_id": "54da1f47-c404-4cac-94bc-cb3376cb01cd",
+          "material_version": 1
+        }
+      ],
+      "rule_pack_version": null,
+      "template_version": null,
+      "reference_release": null,
+      "created_at": "2026-11-05T08:21:25.775Z"
+    }
+  ],
+  "review_saved_draft": {
+    "as_of": "2026-06-30",
+    "requirements": [],
+    "material_versions": [
+      {
+        "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f",
+        "material_id": "4541d04e-32bb-49b9-a03d-6f8636debdfc",
+        "material_version": 1
+      },
+      {
+        "sha256": "18e450d7708b14524439dbca16a62ffff18a3570597dbcdc15dabcd9b7b81a94",
+        "material_id": "a23e9750-da68-4ef7-a880-81212ed8985b",
+        "material_version": 1
+      },
+      {
+        "sha256": "44023471983b049ff955ae6af159a8a1f3e67404344ea3d504d01b21c0d116de",
+        "material_id": "52977841-2404-4a71-bcaa-b3fa48708d1a",
+        "material_version": 1
+      },
+      {
+        "sha256": "c175434ecfde27bba694116ab5620dc0ea1b1824428181f232bcb99cc9af4c8c",
+        "material_id": "54da1f47-c404-4cac-94bc-cb3376cb01cd",
+        "material_version": 1
+      }
+    ],
+    "source_material_ref": {
+      "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f",
+      "material_id": "4541d04e-32bb-49b9-a03d-6f8636debdfc",
+      "material_version": 1
+    },
+    "version": 5
+  },
+  "matching_execution": {
+    "operation": "full_review",
+    "input_version": 5,
+    "input_revision": 1,
+    "input_sha256": "55708289415c0eb9e765028239cb2ca7dda8484bf76ecb34b63e193aa6f7e96f",
+    "origin": {
+      "version": "review-execution-origin-v1",
+      "entrypoint": "quick_action",
+      "accepted_proposal": null,
+      "context_report_ref": null
+    },
+    "run": {
+      "run_id": "5a015c40-c130-4b23-90a1-ba0b3ffb199e",
+      "project_id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+      "input_revision": 1,
+      "input_hash": "e93f138cfc402967e6e0b14481dc11c1f24d6f28069bbdc7e450aa887d68961d",
+      "state": "paused",
+      "stage": "provider_reconcile",
+      "updated_at": "2026-11-05T08:52:24.659Z"
+    }
+  },
+  "review_input_verification": {
+    "algorithm": "SHA-256 of recursively key-sorted compact UTF-8 JSON, excluding draft.version",
+    "sha256": "55708289415c0eb9e765028239cb2ca7dda8484bf76ecb34b63e193aa6f7e96f",
+    "matches_execution": true
+  }
+}

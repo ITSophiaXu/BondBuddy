@@ -1,0 +1,341 @@
+{
+  "metadata_captured_at": "2026-11-05T14:12:35.827Z",
+  "source_release": "821477976c75a7218a733d6dca0cd3ed4c733987",
+  "source_account": "customer_test",
+  "project_metadata": {
+    "id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+    "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+    "name": "新津新城发展集团有限公司-上交所-普通私募公司债-募集书复核",
+    "kind": "review",
+    "issuer_name": "新津新城发展集团有限公司",
+    "market": "sse",
+    "offering": "private",
+    "created_at": "2026-10-29T03:28:52.553333+00:00",
+    "updated_at": "2026-10-29T03:33:55.261933+00:00",
+    "deleted_at": null,
+    "archived_at": null
+  },
+  "runs": [
+    {
+      "id": "e09e8562-50ba-4ea8-b1d1-7910bb12ba51",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+      "task_kind": "review",
+      "state": "succeeded",
+      "stage": "succeeded",
+      "created_at": "2026-10-29T03:30:44.213596+00:00",
+      "updated_at": "2026-10-29T04:14:55.361454+00:00",
+      "input_revision": "1",
+      "input_hash": "b413cc129717a7e9884e39d69c66775fed04b48b0c30629f0d02a8bbcbfb84e2",
+      "artifact_id": "word-0c8771086e7e54187df8caa22cfa6300f7a6aacb73448431a98a77a53bb75dec",
+      "artifact_version": "1",
+      "channel": "production",
+      "billing_mode": "fixed_credits",
+      "prompt_snapshot_ref": null
+    }
+  ],
+  "input_revision_metadata": [
+    {
+      "run_id": "e09e8562-50ba-4ea8-b1d1-7910bb12ba51",
+      "revision": 1,
+      "manifest_version": null,
+      "document_type": null,
+      "input_hash": "b413cc129717a7e9884e39d69c66775fed04b48b0c30629f0d02a8bbcbfb84e2",
+      "created_at": "2026-10-29T03:30:44.213Z",
+      "selection_recorded": false,
+      "selected_version_id": null,
+      "selection_revision": null,
+      "format_recorded": false,
+      "format_mode": null,
+      "format_selection": null,
+      "format_template_kind": null,
+      "format_material_id": null,
+      "format_artifact_id": null,
+      "format_hash": null,
+      "source_count": null
+    }
+  ],
+  "input_material_pins": [
+    {
+      "run_id": "e09e8562-50ba-4ea8-b1d1-7910bb12ba51",
+      "material_id": "9baebe62-6494-4c06-89b0-7c3d66986996",
+      "material_version": "1",
+      "sha256": "ffd1191fd011b151e634a77532590820697cf8df6444aa5b85a76d2569bd0166",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "historical"
+    },
+    {
+      "run_id": "e09e8562-50ba-4ea8-b1d1-7910bb12ba51",
+      "material_id": "8e25cee1-c235-412c-a050-ea073c2e9b10",
+      "material_version": "1",
+      "sha256": "b488f4653065eb66116087dd5a643359fa5172f6d7199b7605387924e99725e7",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "audit"
+    },
+    {
+      "run_id": "e09e8562-50ba-4ea8-b1d1-7910bb12ba51",
+      "material_id": "23fe8679-e76f-48dd-800f-a4368190d3f1",
+      "material_version": "1",
+      "sha256": "89427d2c0a12b6de2db44098c52c3b09a2de796de309cfa4af8d75d4b882e896",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "audit"
+    },
+    {
+      "run_id": "e09e8562-50ba-4ea8-b1d1-7910bb12ba51",
+      "material_id": "cdb1849c-abe9-41d5-89c7-910a97a73e68",
+      "material_version": "1",
+      "sha256": "c13ab8fd2ac0db8479afe9d4e36e863838b34f59bc0f391cffb59eec22cef8cb",
+      "version_id": null,
+      "artifact_id": null,
+      "artifact_version": null,
+      "role": "audit"
+    }
+  ],
+  "material_metadata": [
+    {
+      "id": "9baebe62-6494-4c06-89b0-7c3d66986996",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+      "role": "historical",
+      "filename": "2-2 新津新城发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "byte_size": "1197859",
+      "sha256": "ffd1191fd011b151e634a77532590820697cf8df6444aa5b85a76d2569bd0166",
+      "state": "persisted",
+      "persisted_at": "2026-10-29T03:29:44.170603+00:00",
+      "deleted_at": null
+    },
+    {
+      "id": "8e25cee1-c235-412c-a050-ea073c2e9b10",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+      "role": "audit",
+      "filename": "Y-4-2 新津新城发展集团有限公司2024年度审计报告.pdf",
+      "media_type": "application/pdf",
+      "byte_size": "8528364",
+      "sha256": "b488f4653065eb66116087dd5a643359fa5172f6d7199b7605387924e99725e7",
+      "state": "persisted",
+      "persisted_at": "2026-10-29T03:30:01.884562+00:00",
+      "deleted_at": null
+    },
+    {
+      "id": "23fe8679-e76f-48dd-800f-a4368190d3f1",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+      "role": "audit",
+      "filename": "Y-4-3 新津新城发展集团有限公司2025年度审计报告.pdf",
+      "media_type": "application/pdf",
+      "byte_size": "7408558",
+      "sha256": "89427d2c0a12b6de2db44098c52c3b09a2de796de309cfa4af8d75d4b882e896",
+      "state": "persisted",
+      "persisted_at": "2026-10-29T03:30:15.347036+00:00",
+      "deleted_at": null
+    },
+    {
+      "id": "cdb1849c-abe9-41d5-89c7-910a97a73e68",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+      "role": "audit",
+      "filename": "Y-4-4 新津新城发展集团有限公司2026年度半年度财务报告.pdf",
+      "media_type": "application/pdf",
+      "byte_size": "3890195",
+      "sha256": "c13ab8fd2ac0db8479afe9d4e36e863838b34f59bc0f391cffb59eec22cef8cb",
+      "state": "persisted",
+      "persisted_at": "2026-10-29T03:30:25.45806+00:00",
+      "deleted_at": null
+    },
+    {
+      "id": "c72a7a2b-b1e8-4bda-9adb-04703417e5c1",
+      "version": "1",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+      "role": "other",
+      "filename": "底稿目录清单-高投非公开.xlsx",
+      "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "byte_size": "28752",
+      "sha256": "a82d6544dcf588d3e95e789ac1d37bd4c173dd7f4260dc15fae03795f8cc643e",
+      "state": "persisted",
+      "persisted_at": "2026-10-29T03:40:20.465475+00:00",
+      "deleted_at": null
+    }
+  ],
+  "prospectus_versions": [
+    {
+      "id": "026af179-d053-4b63-808b-376c85f2cd2e",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+      "sequence": "1",
+      "origin": "upload",
+      "filename": "2-2 新津新城发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "sha256": "ffd1191fd011b151e634a77532590820697cf8df6444aa5b85a76d2569bd0166",
+      "material_id": "9baebe62-6494-4c06-89b0-7c3d66986996",
+      "material_version": "1",
+      "artifact_id": null,
+      "artifact_version": null,
+      "run_id": null,
+      "created_at": "2026-10-29T03:29:44.170603+00:00"
+    },
+    {
+      "id": "68d5cdf1-4b6e-4723-88fc-d46cdb4bd542",
+      "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+      "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+      "sequence": "2",
+      "origin": "generated",
+      "filename": "募集说明书清洁版.docx",
+      "sha256": "d73ac9d7d708da09b4f8d7dd9ed4c4ee999e599f76a5ea01c9c7bb4a6a956514",
+      "material_id": null,
+      "material_version": null,
+      "artifact_id": "word-616b65be02e883c0fe8c2c6bdb2af4c649788a682d20b78bdc9a349d943ec82e",
+      "artifact_version": "1",
+      "run_id": "e09e8562-50ba-4ea8-b1d1-7910bb12ba51",
+      "created_at": "2026-10-29T04:14:55.361454+00:00"
+    }
+  ],
+  "capture_limitations": [
+    "管理员只读索引不返回完整冻结 manifest；历史运行列表限最近1000条，缺项不代表从未执行。"
+  ],
+  "input_captured_at": "2026-11-05T14:22:04.221Z",
+  "project_detail": {
+    "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+    "draft_revision": 2,
+    "input_revision": 1,
+    "input_hash": "b413cc129717a7e9884e39d69c66775fed04b48b0c30629f0d02a8bbcbfb84e2",
+    "name": "新津新城发展集团有限公司-上交所-普通私募公司债-募集书复核",
+    "kind": "review",
+    "issuer_name": "新津新城发展集团有限公司",
+    "market": "sse",
+    "offering": "private",
+    "update_details": {
+      "has_historical": null,
+      "reporting_cutoff": "2026-06-30",
+      "registration_amount": null,
+      "issuance_amount": null,
+      "bond_terms": null,
+      "underwriting": null,
+      "other_agencies": null,
+      "rating_enhancement": null,
+      "funding_uses": [],
+      "other_information": null,
+      "supplementary_notes": null,
+      "authoring_mode": "unified_v1",
+      "source_prospectuses": []
+    },
+    "updated_at": "2026-10-29T03:33:55.261Z",
+    "archived_at": null
+  },
+  "input_revision_dtos": [
+    {
+      "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+      "input_revision": 1,
+      "input_hash": "b413cc129717a7e9884e39d69c66775fed04b48b0c30629f0d02a8bbcbfb84e2",
+      "target_confirmation": {
+        "status": "unconfirmed",
+        "market": null,
+        "offering": null,
+        "document_purpose": null,
+        "as_of": null,
+        "target_reporting_periods": [],
+        "confirmed_by": null,
+        "confirmed_at": null
+      },
+      "material_versions": [
+        {
+          "role": "historical",
+          "sha256": "ffd1191fd011b151e634a77532590820697cf8df6444aa5b85a76d2569bd0166",
+          "material_id": "9baebe62-6494-4c06-89b0-7c3d66986996",
+          "material_version": 1
+        },
+        {
+          "role": "audit",
+          "sha256": "b488f4653065eb66116087dd5a643359fa5172f6d7199b7605387924e99725e7",
+          "material_id": "8e25cee1-c235-412c-a050-ea073c2e9b10",
+          "material_version": 1
+        },
+        {
+          "role": "audit",
+          "sha256": "89427d2c0a12b6de2db44098c52c3b09a2de796de309cfa4af8d75d4b882e896",
+          "material_id": "23fe8679-e76f-48dd-800f-a4368190d3f1",
+          "material_version": 1
+        },
+        {
+          "role": "audit",
+          "sha256": "c13ab8fd2ac0db8479afe9d4e36e863838b34f59bc0f391cffb59eec22cef8cb",
+          "material_id": "cdb1849c-abe9-41d5-89c7-910a97a73e68",
+          "material_version": 1
+        }
+      ],
+      "rule_pack_version": null,
+      "template_version": null,
+      "reference_release": null,
+      "created_at": "2026-10-29T03:30:44.213Z"
+    }
+  ],
+  "review_saved_draft": {
+    "as_of": "2026-06-30",
+    "requirements": [],
+    "material_versions": [
+      {
+        "sha256": "ffd1191fd011b151e634a77532590820697cf8df6444aa5b85a76d2569bd0166",
+        "material_id": "9baebe62-6494-4c06-89b0-7c3d66986996",
+        "material_version": 1
+      },
+      {
+        "sha256": "b488f4653065eb66116087dd5a643359fa5172f6d7199b7605387924e99725e7",
+        "material_id": "8e25cee1-c235-412c-a050-ea073c2e9b10",
+        "material_version": 1
+      },
+      {
+        "sha256": "89427d2c0a12b6de2db44098c52c3b09a2de796de309cfa4af8d75d4b882e896",
+        "material_id": "23fe8679-e76f-48dd-800f-a4368190d3f1",
+        "material_version": 1
+      },
+      {
+        "sha256": "c13ab8fd2ac0db8479afe9d4e36e863838b34f59bc0f391cffb59eec22cef8cb",
+        "material_id": "cdb1849c-abe9-41d5-89c7-910a97a73e68",
+        "material_version": 1
+      }
+    ],
+    "source_material_ref": {
+      "sha256": "ffd1191fd011b151e634a77532590820697cf8df6444aa5b85a76d2569bd0166",
+      "material_id": "9baebe62-6494-4c06-89b0-7c3d66986996",
+      "material_version": 1
+    },
+    "version": 5
+  },
+  "matching_execution": {
+    "operation": "full_review",
+    "input_version": 5,
+    "input_revision": 1,
+    "input_sha256": "873d006e6ea2b5ad2f4eaf1998c988ab5e758a94866edcd7c3a99c169491ffc9",
+    "origin": {
+      "version": "review-execution-origin-v1",
+      "entrypoint": "quick_action",
+      "accepted_proposal": null,
+      "context_report_ref": null
+    },
+    "run": {
+      "run_id": "e09e8562-50ba-4ea8-b1d1-7910bb12ba51",
+      "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+      "input_revision": 1,
+      "input_hash": "b413cc129717a7e9884e39d69c66775fed04b48b0c30629f0d02a8bbcbfb84e2",
+      "state": "succeeded",
+      "stage": "succeeded",
+      "updated_at": "2026-10-29T04:14:55.361Z"
+    }
+  },
+  "review_input_verification": {
+    "algorithm": "SHA-256 of recursively key-sorted compact UTF-8 JSON, excluding draft.version",
+    "sha256": "873d006e6ea2b5ad2f4eaf1998c988ab5e758a94866edcd7c3a99c169491ffc9",
+    "matches_execution": true
+  }
+}

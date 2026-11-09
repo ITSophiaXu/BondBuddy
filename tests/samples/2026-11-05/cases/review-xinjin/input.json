@@ -1,0 +1,120 @@
+{
+  "case_id": "review-xinjin",
+  "task_type": "review",
+  "input_origin": "captured_real_project",
+  "source_account": "customer_test",
+  "source_project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+  "source_snapshot": "cases/review-xinjin/source-inputs.json",
+  "legal_issuer_name_for_derived_tests": "新津新城发展集团有限公司",
+  "primary_source_run": {
+    "run_id": "e09e8562-50ba-4ea8-b1d1-7910bb12ba51",
+    "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+    "input_revision": 1,
+    "input_hash": "b413cc129717a7e9884e39d69c66775fed04b48b0c30629f0d02a8bbcbfb84e2",
+    "state": "succeeded",
+    "stage": "succeeded",
+    "updated_at": "2026-10-29T04:14:55.361Z"
+  },
+  "input_capture_status": "review_input_hash_matches_execution",
+  "project_input": {
+    "name": "新津新城发展集团有限公司-上交所-普通私募公司债-募集书复核",
+    "kind": "review",
+    "issuer_name": "新津新城发展集团有限公司",
+    "market": "sse",
+    "offering": "private",
+    "update_details": {
+      "has_historical": null,
+      "reporting_cutoff": "2026-06-30",
+      "registration_amount": null,
+      "issuance_amount": null,
+      "bond_terms": null,
+      "underwriting": null,
+      "other_agencies": null,
+      "rating_enhancement": null,
+      "funding_uses": [],
+      "other_information": null,
+      "supplementary_notes": null,
+      "authoring_mode": "unified_v1",
+      "source_prospectuses": []
+    }
+  },
+  "review_input": {
+    "as_of": "2026-06-30",
+    "requirements": [],
+    "material_versions": [
+      {
+        "sha256": "ffd1191fd011b151e634a77532590820697cf8df6444aa5b85a76d2569bd0166",
+        "material_id": "9baebe62-6494-4c06-89b0-7c3d66986996",
+        "material_version": 1
+      },
+      {
+        "sha256": "b488f4653065eb66116087dd5a643359fa5172f6d7199b7605387924e99725e7",
+        "material_id": "8e25cee1-c235-412c-a050-ea073c2e9b10",
+        "material_version": 1
+      },
+      {
+        "sha256": "89427d2c0a12b6de2db44098c52c3b09a2de796de309cfa4af8d75d4b882e896",
+        "material_id": "23fe8679-e76f-48dd-800f-a4368190d3f1",
+        "material_version": 1
+      },
+      {
+        "sha256": "c13ab8fd2ac0db8479afe9d4e36e863838b34f59bc0f391cffb59eec22cef8cb",
+        "material_id": "cdb1849c-abe9-41d5-89c7-910a97a73e68",
+        "material_version": 1
+      }
+    ],
+    "source_material_ref": {
+      "sha256": "ffd1191fd011b151e634a77532590820697cf8df6444aa5b85a76d2569bd0166",
+      "material_id": "9baebe62-6494-4c06-89b0-7c3d66986996",
+      "material_version": 1
+    }
+  },
+  "materials": [
+    {
+      "file_id": "nov05-f008",
+      "original_filename": "2-2 新津新城发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "upload_role": "historical",
+      "source_material_id": "9baebe62-6494-4c06-89b0-7c3d66986996",
+      "source_material_version": 1,
+      "deleted_at": null
+    },
+    {
+      "file_id": "nov05-f005",
+      "original_filename": "Y-4-2 新津新城发展集团有限公司2024年度审计报告.pdf",
+      "upload_role": "audit",
+      "source_material_id": "8e25cee1-c235-412c-a050-ea073c2e9b10",
+      "source_material_version": 1,
+      "deleted_at": null
+    },
+    {
+      "file_id": "nov05-f006",
+      "original_filename": "Y-4-3 新津新城发展集团有限公司2025年度审计报告.pdf",
+      "upload_role": "audit",
+      "source_material_id": "23fe8679-e76f-48dd-800f-a4368190d3f1",
+      "source_material_version": 1,
+      "deleted_at": null
+    },
+    {
+      "file_id": "nov05-f007",
+      "original_filename": "Y-4-4 新津新城发展集团有限公司2026年度半年度财务报告.pdf",
+      "upload_role": "audit",
+      "source_material_id": "cdb1849c-abe9-41d5-89c7-910a97a73e68",
+      "source_material_version": 1,
+      "deleted_at": null
+    },
+    {
+      "file_id": "nov05-f009",
+      "original_filename": "底稿目录清单-高投非公开.xlsx",
+      "upload_role": "other",
+      "source_material_id": "c72a7a2b-b1e8-4bda-9adb-04703417e5c1",
+      "source_material_version": 1,
+      "deleted_at": null
+    }
+  ],
+  "missing_materials": [],
+  "business_acceptance_status": "not_evaluated",
+  "notes": [
+    "项目上传了底稿目录，该目录是后续底稿衍生测试输入；不能自动当作财务复核证据。"
+  ],
+  "replay_policy": "隔离测试环境重新建项目、上传和报价；原生产ID/hash/报价只作追踪，不向生产重放。"
+}
