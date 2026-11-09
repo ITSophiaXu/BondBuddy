@@ -1,0 +1,18 @@
+[
+  {
+    "path": "src/file-generation-panel.ts",
+    "sha256": "7F3409A066641DC7D9B18EA78581DF384D2A1BCA63E9E2B901C74A6790F0FC06"
+  },
+  {
+    "path": "src/file-generation-panel.css",
+    "sha256": "2581F470E336B1C400CE4ADFC7E094F92437859DE1C88E316BEFD9E911AF924E"
+  },
+  {
+    "path": "tests/generation-save-feedback.spec.ts",
+    "sha256": "BD8C5E5E6F3F829B8AFBD170B333E51B1D27924BFFBFBF7AABB8A99ACFBA9D8D"
+  },
+  {
+    "path": "tests/file-template-preparation.spec.ts",
+    "sha256": "84E81E03F024BE2CEC1A96AEF0AB29E47288DDF21D4D31D1F52193E654BF1D1B"
+  }
+]
