@@ -64,12 +64,12 @@ export function qaPreparationFor(draft:QaDraft,runs:readonly QaRun[],projectId:s
     const preparation=matches[0];
     if(!validRun(preparation))return {error:'原问题清单的解析记录不完整，请重新读取后再继续。'};
     if(preparation.operation!=='prepare'||preparation.manifest.operation!=='prepare'||preparation.state!=='succeeded'||preparation.result===null)
-      return {error:'原问题清单尚未成功解析，请先完成识别。'};
+      return {error:'原问题清单尚未成功解析，请稍后重试。'};
     if(preparation.manifest.preparation_id!==null||int64(preparation.manifest.points)!==0n||preparation.manifest.questions.length||
       preparation.manifest.materials.length||preparation.manifest.cases.length)return {error:'原问题清单的解析来源不一致，请重新读取后再继续。'};
     const source=preparation.manifest.source.asset;
     if(source.kind!=='material'||source.pin.source_project_id!==projectId)return {error:'原问题清单与当前项目不一致，请选择本项目的 Word 清单。'};
-    if(!questionsMatch(draft.questions,preparation.result.snapshot))return {error:'问题与原文定位不一致，请重新核对问题范围。'};
+    if(!questionsMatch(draft.questions,preparation.result.snapshot))return {error:'问题与原文定位不一致，请重新上传问题清单。'};
     if(draft.materials.some(asset=>qaAssetKey(asset)===qaAssetKey(source)))return {error:'问题清单不能同时作为回答的事实依据，请重新选择材料。'};
     return {preparation};
   }catch{return {error:'问题清单记录不完整，请重新读取后再继续。'};}

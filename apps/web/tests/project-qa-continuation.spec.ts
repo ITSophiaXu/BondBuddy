@@ -8,7 +8,7 @@ import {answerId,assertFixture,fixture,historicalRecords,install,newMaterial,old
 // All HTTP responses and request bodies use public schemas. Browser recovery is
 // exercised with synthetic records; no real Word, supplier, payment or worker runs.
 const followup=(page:Page,id:string)=>page.locator(`[data-qa-followup][value="${id}"]`);
-const selectedIds=(page:Page)=>page.locator('[data-remove-q]').evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.removeQ));
+const selectedIds=(page:Page)=>page.locator('[data-qa-question-id]').evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.qaQuestionId));
 const missingQuestions=()=>[structuredClone(questions[0]),structuredClone(questions[2])];
 const originalRequirements='保留历史要求：逐题说明依据与待补材料。';
 const preparedDraft=(selected:QaQuestion[]=missingQuestions(),useKnowledge=false):QaDraft=>({preparation_id:prepareId,questions:structuredClone(selected),materials:[structuredClone(oldMaterial),structuredClone(oldArtifact)],requirements:originalRequirements,use_knowledge:useKnowledge});
