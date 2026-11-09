@@ -1,0 +1,32 @@
+<!doctype html>
+<!-- Local design record for the user's 2026-11-09 Integrity notes refinement.
+     Matches the authoring supplement's type and spacing. No API or billing. -->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BondBuddy · 本轮核查说明</title>
+  <link rel="stylesheet" href="../../apps/web/src/style.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="../../apps/web/src/prototype-adapter.css">
+  <link rel="stylesheet" href="workspace-typography.css">
+  <style>
+    main{max-width:1100px;padding:24px}
+    .notes-preview{padding:18px 20px;margin:20px 0}
+    .notes-preview>label{display:flex;align-items:baseline;gap:8px;margin:0 0 12px;font-size:14px;font-weight:600;line-height:1.6}
+    .notes-preview>label>span{font-size:12px;font-weight:400;color:var(--muted)}
+    .notes-preview>textarea{display:block;box-sizing:border-box;width:100%;max-width:100%;min-width:0;height:88px;min-height:88px;margin:0;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:inherit;font:inherit;font-size:13px;line-height:1.7;resize:vertical}
+    .notes-preview>textarea::placeholder{color:var(--muted);opacity:1}
+    .notes-preview>textarea:focus-visible{outline:2px solid var(--primary,#078b80);outline-offset:2px}
+    @media(max-width:650px){main{padding:16px}.notes-preview{padding:16px}}
+  </style>
+</head>
+<body>
+  <main>
+    <section class="panel notes-preview">
+      <label for="integrity-notes">本轮核查说明 <span>选填</span></label>
+      <textarea id="integrity-notes" rows="3" maxlength="12000" placeholder="补充核查范围与需要关注的事项"></textarea>
+    </section>
+  </main>
+</body>
+</html>
