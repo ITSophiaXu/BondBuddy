@@ -13,9 +13,10 @@ import posixpath
 import re
 import sys
 import tempfile
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
-from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
+from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile, ZipInfo
 
 from lxml import etree as ET
 
@@ -99,6 +100,21 @@ def load_input(input_path):
         except (AttributeError, TypeError, ValueError):
             error('WORD_EDIT_REVISION_DATE_INVALID')
     return data, source, raw
+
+
+def prepare_source_manifest(source):
+    """Classify confirmed source data faults without hiding host/IO failures."""
+    try:
+        return build_manifest(source)
+    except (BadZipFile, ET.XMLSyntaxError, zlib.error):
+        error('WORD_EDIT_SOURCE_UNREADABLE')
+    except ValueError as exc:
+        # These are the bounded package reader's fixed source-data errors. A
+        # missing file, permission error or unexpected manifest bug still reaches
+        # the CLI as WORD_EDIT_FAILED rather than blaming the user's document.
+        if str(exc) in {'WORD_PACKAGE_TOO_LARGE', 'WORD_PACKAGE_INVALID', 'WORD_XML_UNSAFE'}:
+            error('WORD_EDIT_SOURCE_UNREADABLE')
+        raise
 
 
 def empty_log(data, raw):
@@ -610,7 +626,7 @@ def main():
             data, source, raw = load_input(args.input)
             if not args.manifest:
                 error('WORD_EDIT_MANIFEST_REQUIRED')
-            manifest = build_manifest(source)
+            manifest = prepare_source_manifest(source)
             write_json(args.manifest, manifest)
             result = {'version': manifest['version'], 'baseline_sha256': manifest['baseline_sha256'],
                       'node_count': len(manifest['nodes']), 'heading_count': len(manifest['headings']),

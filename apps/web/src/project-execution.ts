@@ -82,11 +82,12 @@ export function executionInputError(error: unknown, kind: Dto<'ProjectResponse'>
 
 /** Presentation only: the server remains authoritative about readiness and run transitions. */
 export function executionEventReason(payload: Dto<'RunEvent'>['payload'] | undefined): string | undefined {
-  return payload?.error_code === 'WORD_FORMAT_OPERATIONS_MISSING' && payload.reason === 'processor_failed'
+  return ['WORD_FORMAT_OPERATIONS_MISSING','MATERIAL_UNREADABLE'].includes(payload?.error_code ?? '') && payload?.reason === 'processor_failed'
     ? payload.error_code : payload?.reason ?? payload?.error_code;
 }
 
 export function readinessMessage(reason: string, lastProcessingStage?: string): string {
+  if (reason === 'MATERIAL_UNREADABLE') return '本次采用的募集书无法读取，本轮未能交付。请点击“继续修改”，重新导出并上传可读取的 Word 原稿，填写原稿信息后重新开始；原任务和已保存材料会保留。';
   if (reason === 'WORD_FORMAT_OPERATIONS_MISSING') return '本轮编制未保存必需的修订记录，尚未生成可交付的 Word。已保存材料会保留，无需重新上传；请联系支持核对本轮结果。';
   if (reason === 'processor_failed') return lastProcessingStage === 'word_delivery'
     ? 'Word 文件生成或保存失败，本轮未能交付。已保存材料会保留，无需重新上传；请联系支持核对并恢复。'

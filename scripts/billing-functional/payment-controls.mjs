@@ -27,7 +27,7 @@ export async function paymentState(pool,user,saved){
   return{payments,refunds};
 }
 
-export function installPaymentControls(app,{pool,saved,provider,owner,serial,product,state}){
+export function installPaymentControls(app,{pool,saved,provider,owner,serial,product,state,origin=baseURL}){
   if(provider.merchantId!==merchant(saved)||!provider.synthetic)throw Error('Local simulation provider identity mismatch');
   async function payment(user,id){
     const row=(await pool.query('SELECT id FROM bb_recharge_orders WHERE id=$1 AND owner_user_id=$2 AND merchant_id=$3',[id,user,provider.merchantId])).rows[0];
@@ -59,7 +59,7 @@ export function installPaymentControls(app,{pool,saved,provider,owner,serial,pro
     // Exercise the product's raw-body parser, signature verification and normal
     // applyVerifiedPayment/applyVerifiedRefund transaction, without an external socket.
     const response=await app.inject({method:'POST',url:`/api/v1/payments/${provider.name}/${kind==='payment'?'callback':'refund-callback'}`,
-      remoteAddress:'127.0.0.1',headers:{host:new URL(baseURL).host,
+      remoteAddress:'127.0.0.1',headers:{host:new URL(origin).host,
         'content-type':'application/json',...envelope.headers},payload:envelope.body});
     if(response.statusCode>=400){
       let detail;try{detail=response.json();}catch{}

@@ -544,7 +544,7 @@ async function renderRoute() {
 function renderNew(handoffQuery=new URLSearchParams()) {
   const value = blankDraft();
   const creationRequestId=crypto.randomUUID();
-  shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>先保存项目，再添加材料。没有历史募集书，也可以编制首稿。</p></div><a class="btn secondary" href="#tasks">查看任务进度与结果</a></div>${workspaceSteps(1)}<div id="business-handoff"></div>
+  shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>先保存项目，再上传历史／参考募集书并填写原稿信息。</p></div><a class="btn secondary" href="#tasks">查看任务进度与结果</a></div>${workspaceSteps(1)}<div id="business-handoff"></div>
     <form id="create-form" class="update-form"><div class="workspace-layout authoring-workspace"><section class="panel form-panel form-card">${updateFormFields(value, true)}
     <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div><p class="field-hint">创建项目只保存信息；添加材料和补充要求后，由你明确开始任务。</p></section></div></form>`, 'new');
   const handoffEpoch=epoch;void mountBusinessHandoff(api,document.querySelector<HTMLElement>('#business-handoff')!,handoffQuery,()=>handoffEpoch===epoch);
@@ -832,7 +832,7 @@ function updateProcessingRows(projectId: string) {
 
 function materialDeleteControl(id:string) {
   return prospectusPanel?.state?.versions.some(v=>v.material_id===id)
-    ? '<span class="muted">已保留在版本历史</span>'
+    ? '<span class="muted">在上方募集书版本卡管理</span>'
     : `<button type="button" class="text-button" data-delete-material="${esc(id)}">删除</button>`;
 }
 

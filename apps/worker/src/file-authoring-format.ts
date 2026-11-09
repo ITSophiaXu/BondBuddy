@@ -39,6 +39,28 @@ export async function runFormatPython(args: string[], signal?: AbortSignal) {
       timeout: 300000, maxBuffer: FORMAT_JSON_MAX, signal });
 }
 
+export class AuthoringSourceUnreadable extends Error {
+  constructor() { super('MATERIAL_UNREADABLE'); this.name = 'AuthoringSourceUnreadable'; }
+}
+
+/** Only the trusted prepare command can establish an unreadable editing source. */
+export async function prepareFormatSource(input: string, manifest: string, signal?: AbortSignal) {
+  try {
+    return await runFormatPython(['prepare', '--input', input, '--manifest', manifest], signal);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    const failure = error as { code?: unknown; signal?: unknown; killed?: unknown; stderr?: unknown };
+    if (failure?.code === 1 && failure.signal == null && failure.killed !== true && typeof failure.stderr === 'string') {
+      let report: unknown;
+      try { report = JSON.parse(failure.stderr.trim()); } catch { /* Non-protocol failures keep the infrastructure retry path. */ }
+      if (report && typeof report === 'object' && !Array.isArray(report) &&
+          Object.keys(report).length === 1 && (report as { error?: unknown }).error === 'WORD_EDIT_SOURCE_UNREADABLE')
+        throw new AuthoringSourceUnreadable();
+    }
+    throw error;
+  }
+}
+
 /** Reconstruct deliverables from the pinned source and data-only operations after the CLI exits. */
 export async function finalizeFormat(input: {
   lockedInput: Buffer; baselineBytes: Buffer; operations: Buffer; signal?: AbortSignal;
