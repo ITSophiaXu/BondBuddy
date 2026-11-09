@@ -1249,7 +1249,7 @@ export function createServer(settings: Settings = {}) {
     const traceId=uid();
     try {
       if(String(request.headers.prefer??'').split(',').some(v=>v.trim()==='respond-async')){
-        const result=await requestUploadConfirmation(db(),blob(),user,id,uploadId,b,request.id,uploadInspectionException);
+        const result=await requestUploadConfirmation(db(),blob(),user,id,uploadId,b,request.id,uploadInspectionException,traceId);
         reply.header('Cache-Control','no-store');
         if(result.statusCode===202)reply.header('Retry-After','2');
         return reply.code(result.statusCode).send(result.body);

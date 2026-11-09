@@ -346,6 +346,8 @@ function intEnv(env: NodeJS.ProcessEnv, name: string, fallback: number, min: num
  */
 export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env: NodeJS.ProcessEnv = process.env,
   ocr?: (pool: Pool, blobs: PrivateBlobs) => MaterialParseJobDependencies['ocr']): WorkerRuntimeOptions {
+  if(env.BB_UPLOAD_CONFIRMATION_ENABLED==='1'&&(!env.BB_UPLOAD_SPOOL_DIR?.startsWith('/')||!Number.isSafeInteger(Number(env.BB_UPLOAD_SPOOL_MAX_BYTES))||Number(env.BB_UPLOAD_SPOOL_MAX_BYTES)<1))
+    throw new Error('Upload confirmation requires an explicit absolute spool path and byte budget');
   const kinds = (env.BB_WORKER_JOB_KINDS || 'run,parse').split(',').map(k => k.trim());
   if (!kinds.length || kinds.some(k => k !== 'run' && k !== 'parse')) throw new Error('Invalid BB_WORKER_JOB_KINDS');
   const runKinds = checkedRunKinds(env.BB_WORKER_RUN_KINDS === undefined ? undefined : env.BB_WORKER_RUN_KINDS.split(',').map(k => k.trim()) as RunKind[]);
@@ -411,7 +413,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   const options = workerRuntimeOptionsFromEnv(pool, blobs, process.env, (db, store) => input => processOcrMaterial(db, store, { ...input, purpose: 'source_preflight' }));
   if (options.stagingRoot) await sweepParseStaging(options.stagingRoot);
   const runtime = new WorkerRuntime({ ...options, log: event => process.stdout.write(`${JSON.stringify(event)}\n`) }).start();
-  process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, run_kinds: options.runKinds, worker_group: process.env.BB_WORKER_GROUP ?? null, concurrency: options.concurrency, interactive_slots: interactiveSlots, parse_slots: options.kinds?.includes('run') && options.kinds.includes('parse') ? options.parseSlots : 0, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe })}\n`);
+  process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, run_kinds: options.runKinds, worker_group: process.env.BB_WORKER_GROUP ?? null, concurrency: options.concurrency, interactive_slots: interactiveSlots, parse_slots: options.kinds?.includes('run') && options.kinds.includes('parse') ? options.parseSlots : 0, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe,upload_confirmation:!!options.uploadConfirmationEnabled })}\n`);
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;

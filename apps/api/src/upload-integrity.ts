@@ -56,7 +56,7 @@ export async function verifyStoredUpload(client: PoolClient, blobs: PrivateBlobs
   await recordUploadIntegrity(client, material, verified);
 }
 
-async function boundedVersion(blobs:PrivateBlobs,key:string){
+export async function boundedVersion(blobs:PrivateBlobs,key:string){
   let timer:ReturnType<typeof setTimeout>|undefined;
   try{return await Promise.race([blobs.headVersion!(key),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Problem(503,'DATA_UNAVAILABLE','Stored object version is temporarily unavailable')),4000);})]);}
   finally{clearTimeout(timer);}

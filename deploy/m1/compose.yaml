@@ -156,6 +156,7 @@ services:
       # #17: stage materials on disk; the /tmp tmpfs is charged to the worker memory limit and a
       # 100 MiB DOCX staged there OOM-killed the parser on the 320M production profile.
       BB_PARSE_STAGING_DIR: /var/lib/bondbuddy/parse-staging
+      BB_UPLOAD_CONFIRMATION_ENABLED: '0'
       # Capacity is reserved per process; reviews cannot consume authoring slots.
       BB_WORKER_JOB_KINDS: run
       BB_WORKER_RUN_KINDS: update,generation,qa

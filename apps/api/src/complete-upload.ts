@@ -26,7 +26,16 @@ export type CompletionOptions = {
   onAccepted?:(client:PoolClient,material:ReturnType<typeof materialDto>)=>Promise<void>;
 };
 export async function completeStoredUpload(pool:Pool,blobs:PrivateBlobs,user:string,id:string,uploadId:string,b:UploadDeclaration,requestId:string,options:CompletionOptions={}) {
-  const prepared=options.prepared??await prepareStoredUpload(pool,blobs,user,id,uploadId,b,options.inspectionException??null);
+  if(options.prepared)return commitPreparedUpload(pool,blobs,user,id,uploadId,b,requestId,options);
+  for(let attempt=0;attempt<3;attempt++){
+    const prepared=await prepareStoredUpload(pool,blobs,user,id,uploadId,b,options.inspectionException??null);
+    try{return await commitPreparedUpload(pool,blobs,user,id,uploadId,b,requestId,{...options,prepared});}
+    catch(error){if(!(error instanceof Problem&&error.status===503&&error.message==='UPLOAD_REVERIFY_REQUIRED')||attempt===2)throw error;}
+  }
+  throw new Problem(503,'DATA_UNAVAILABLE','UPLOAD_REVERIFY_REQUIRED');
+}
+async function commitPreparedUpload(pool:Pool,blobs:PrivateBlobs,user:string,id:string,uploadId:string,b:UploadDeclaration,requestId:string,options:CompletionOptions) {
+  const prepared=options.prepared!;
   const traceId=options.traceId??uid(),uploadInspectionException=options.inspectionException??null;
   return transaction(pool,async client=>{
 
@@ -71,7 +80,8 @@ export async function completeStoredUpload(pool:Pool,blobs:PrivateBlobs,user:str
       if(u.state==='completed'){const existing=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND upload_id=$2 AND deleted_at IS NULL',[user,uploadId]);return checkedMaterial(existing.rows[0],true);}
       if(u.state==='deleting'||u.state==='purged')throw missing();
       assertProspectusUploadFormat(uploadProject.kind,u.role,u.filename,u.declared_media_type);
-      if(u.state!=='received')throw new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received');
+      if(u.state==='deleting'||u.state==='purged')throw missing();
+  if(u.state!=='received')throw new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received');
       // Re-verify the stored object from a disk copy: hash while streaming, then inspect the file.
       let media:string;
       let verifiedBlob: BlobDigest | undefined;
@@ -116,7 +126,7 @@ export async function completeStoredUpload(pool:Pool,blobs:PrivateBlobs,user:str
 export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:string,id:string,uploadId:string,b:UploadDeclaration,inspectionException:ReturnType<typeof configuredUploadInspectionException>=null,beforeMaterialRead?:(m:any)=>Promise<void>):Promise<PreparedUpload> {
   const p=await project(pool,user,id);
   const u=(await pool.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,uploadId])).rows[0];
-  if(!u||u.state==='deleting'||u.state==='purged')throw missing();
+  if(!u)throw missing();
   if(Number(u.byte_size)!==b.byte_size||u.sha256.trim()!==b.sha256)throw conflict('IDEMPOTENCY_CONFLICT','Upload declaration changed');
   const result:PreparedUpload={proofs:{}};
   const receipt=(await pool.query('SELECT material_id,material_version FROM bb_upload_reuse_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId])).rows[0];
@@ -128,6 +138,7 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
     result.proofs[m.object_key]=await cachedUploadVersion(pool,blobs,m)??await fullMaterialProof(blobs,m);
     return result;
   }
+  if(u.state==='deleting'||u.state==='purged')throw missing();
   if(u.state!=='received')throw new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received');
   assertProspectusUploadFormat(p.kind,u.role,u.filename,u.declared_media_type);
   const release=reserveSpool(b.byte_size),copy=join(spoolDirectory(),`${uid()}.blob`);
@@ -145,7 +156,7 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
     return result;
   }finally{await discardSpool(copy);release();}
 }
-async function fullMaterialProof(blobs:PrivateBlobs,m:any):Promise<BlobDigest>{
+export async function fullMaterialProof(blobs:PrivateBlobs,m:any):Promise<BlobDigest>{
   const proof=await readBlobToFile(blobs,m.object_key,null,Number(m.byte_size));
   if(!proof||proof.byteSize!==Number(m.byte_size)||proof.sha256!==m.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Saved material is temporarily unavailable');
   return proof;
