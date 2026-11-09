@@ -59,16 +59,34 @@ for(const width of [1440,390])test(`current dual-card prototype reference ${widt
  await expect(page.getByRole('heading',{name:'生成文件',exact:true})).toBeVisible();
  const evidence=resolve('test-evidence/file-template-preparation');await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,`prototype-${width}.png`),fullPage:true});
 });
-for(const received of [false,true])test(`support upload interruption resumes once, bytes received=${received}`,async({page})=>{
- const state=await setup(page);let fail=true;
- await page.route('**/materials/uploads/*/bytes',async route=>{if(fail){fail=false;if(received){state.transport.sessions.get(new URL(route.request().url()).pathname.split('/').at(-2)!)!.received=true;state.transport.puts++;}return route.abort('failed');}return route.fallback();});
- await page.route('**/materials/uploads/*/complete',async route=>state.transport.sessions.get(new URL(route.request().url()).pathname.split('/').at(-2)!)?.received?route.fallback():route.fulfill({status:422,json:{code:'MATERIAL_UNREADABLE',message:'Upload bytes not received'}}));
- await page.locator('#fg-support').setInputFiles(file);await expect(page.getByRole('button',{name:'继续保存',exact:true})).toBeEnabled();
- await page.reload();await page.getByRole('button',{name:'继续保存',exact:true}).click();
- if(!received){await expect(page.locator('.fg-status')).toContainText('相同内容');await page.locator('#fg-controls > section:last-child .fg-notice input[type=file]').setInputFiles(file);}
- await expect(page.locator('#fg-controls'),await page.locator('.fg-status').innerText()).toContainText('已采用 1 份补充资料');await expect(page.getByRole('button',{name:'继续保存',exact:true})).toHaveCount(0);
+test('support recovery only asks for original bytes after retry and keeps the original operation',async({page})=>{
+ const state=await setup(page);
+ const original=await page.evaluate(async({owner,project,name,mime,bytes})=>{
+  const {UploadRecovery}=await import(String('/src/upload-recovery.ts')),{ApiClient}=await import(String('/src/api.ts'));
+  const data=new Uint8Array(bytes),digest=await crypto.subtle.digest('SHA-256',data);
+  const sha256=[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,'0')).join('');
+  return new UploadRecovery(new ApiClient(),owner,project,'file-generation-support').begin({filename:name,media_type:mime,byte_size:bytes.length,sha256,role:'other'}).id;
+ },{owner:ids.owner,project:ids.api,name:file.name,mime:file.mimeType,bytes:[...file.buffer]});
+ await page.reload();
+ const reselect=page.locator('#fg-controls > section:last-child .fg-notice input[type=file]');
+ await expect(reselect).toBeHidden();await page.getByRole('button',{name:'继续保存',exact:true}).click();
+ await expect(reselect).toBeVisible();await expect(page.locator('.fg-status')).toContainText('相同内容');
+ const changed=Buffer.from(file.buffer);changed[0]^=1;await reselect.setInputFiles({...file,buffer:changed});
+ await expect(page.locator('.fg-status')).toContainText('冲突');expect(state.transport.sessions.size).toBe(0);
+ const records=await page.evaluate(()=>Object.values(localStorage).filter(s=>s.includes('file-generation-support')).flatMap(s=>{try{return [JSON.parse(s)];}catch{return [];}}));
+ expect(records.some(r=>r.id===original)).toBe(true);
+ await reselect.setInputFiles(file);
+ await expect(page.locator('#fg-controls')).toContainText('已采用 1 份补充资料');await expect(page.getByRole('button',{name:'继续保存',exact:true})).toHaveCount(0);
  expect(state.transport.puts).toBe(1);expect(state.data.preparation.materials).toHaveLength(1);expect(state.submissions).toHaveLength(0);
 });
+test('support automatically confirms a lost PUT acknowledgement without sending bytes twice',async({page})=>{
+ const state=await setup(page);let fail=true;
+ await page.route('**/materials/uploads/*/bytes',async route=>{if(fail){fail=false;state.transport.sessions.get(new URL(route.request().url()).pathname.split('/').at(-2)!)!.received=true;state.transport.puts++;return route.abort('failed');}return route.fallback();});
+ await page.locator('#fg-support').setInputFiles(file);
+ await expect(page.locator('#fg-controls')).toContainText('已采用 1 份补充资料');
+ expect(state.transport.puts).toBe(1);expect(state.data.preparation.materials).toHaveLength(1);expect(state.submissions).toHaveLength(0);
+});
+
 test('custom templates have independent selections, upload actual bytes and survive mode changes and refresh',async({page})=>{
  const state=await setup(page);await expect(page.locator('#fg-preview-set')).toBeEnabled();await useWord(page,'custom');
  await expect(page.locator('#fg-template-upload')).toBeEnabled();

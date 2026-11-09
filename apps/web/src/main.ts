@@ -1,3 +1,4 @@
+import {uploadPickerContent} from './upload-picker';
 import './upload-progress.css';
 import {uploadActivity,uploadProgressHtml,uploadTransfer} from './upload-progress';
 import {configureBillingTaskRecovery, resumeBillingTask, cleanBillingReturn, cancelBillingTask, billingTaskRechargeHref, type BillingTask} from './billing-task-recovery';
@@ -842,15 +843,15 @@ function renderUploadRow(upload: LocalUpload) {
   const progress = Math.min(uploadSize(upload), upload.sentBytes);
   const confirmation=(upload.restored||!upload.file)&&['failed','cancelled','uncertain'].includes(upload.phase);
   const controls = upload.needsReplacement
-    ? `<button type="button" class="text-button" data-upload-action="replace" data-upload-key="${esc(upload.key)}">选择其他文件</button>`
+    ? `<button type="button" class="bb-upload-action text-button" data-upload-action="replace" data-upload-key="${esc(upload.key)}">选择其他文件</button>`
     : confirmation
-    ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">确认原上传</button>${upload.needsFile?`<button type="button" class="text-button" data-upload-action="reselect" data-upload-key="${esc(upload.key)}" aria-label="为${esc(uploadName(upload))}重新选择原文件">重新选择原文件继续</button>`:''}`
+    ? `<button type="button" class="bb-upload-action bb-upload-action--primary text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">确认原上传</button>${upload.needsFile?`<button type="button" class="bb-upload-action text-button" data-upload-action="reselect" data-upload-key="${esc(upload.key)}" aria-label="为${esc(uploadName(upload))}重新选择原文件">重新选择原文件继续</button>`:''}`
     : upload.phase === 'failed' || upload.phase === 'cancelled'
-    ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">重试此文件</button>`
+    ? `<button type="button" class="bb-upload-action bb-upload-action--primary text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">重试此文件</button>`
     : upload.phase === 'uncertain'
-      ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">重试保存</button>`
+      ? `<button type="button" class="bb-upload-action bb-upload-action--primary text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">重试保存</button>`
       : active
-        ? `<button type="button" class="text-button" data-upload-action="cancel" data-upload-key="${esc(upload.key)}">${upload.sentBytes >= uploadSize(upload) ? '停止等待' : '取消此文件'}</button>`
+        ? `<button type="button" class="bb-upload-action text-button" data-upload-action="cancel" data-upload-key="${esc(upload.key)}">${upload.sentBytes >= uploadSize(upload) ? '停止等待' : '取消此文件'}</button>`
         : '';
   const canRemove = upload.phase === 'persisted' && upload.material
     ? materialDeleteControl(upload.material.material_id)
@@ -858,7 +859,7 @@ function renderUploadRow(upload: LocalUpload) {
     ? `<button type="button" class="text-button" data-upload-action="remove" data-upload-key="${esc(upload.key)}">移除此行</button>`
     : '';
   const processing = upload.phase === 'persisted' && upload.material ? (materialProcessing?.render(upload.material) ?? '') : '';
-  return `<li class="material-file-row" data-upload-phase="${upload.phase}" data-upload-id="${esc(upload.key)}"><div class="material-file-main"><strong>${esc(upload.phase === 'persisted' && upload.material ? upload.material.filename : uploadName(upload))}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(uploadSize(upload))}</span>${showProgress ? uploadProgressHtml(upload.phase==='uploading'?uploadTransfer(progress,uploadSize(upload)):uploadActivity(uploadStatus(upload)),uploadName(upload),{showMessage:false,error:upload.phase==='failed'?uploadStatus(upload):undefined,paused:['cancelled','uncertain'].includes(upload.phase)}) : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p>${processing}${upload.material ? sourceFields(upload.material, draft?.fields.update_details.source_prospectuses, draft ? sourceFormatContext(draft.project.project_id) : undefined, draft?.fields.update_details.reporting_cutoff ?? null) : ''}${upload.phase === 'persisted' && upload.material ? materialPeriodHintSlot(upload.material, draft?.fields.update_details.reporting_cutoff ?? null) : ''}</div>${controls || canRemove ? `<div class="material-file-actions">${controls}${canRemove}</div>` : ''}</li>`;
+  return `<li class="material-file-row bb-upload-file" data-upload-phase="${upload.phase}" data-upload-id="${esc(upload.key)}"><div class="material-file-main"><strong>${esc(upload.phase === 'persisted' && upload.material ? upload.material.filename : uploadName(upload))}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(uploadSize(upload))}</span>${showProgress ? uploadProgressHtml(upload.phase==='uploading'?uploadTransfer(progress,uploadSize(upload)):uploadActivity(uploadStatus(upload)),uploadName(upload),{showMessage:false,error:upload.phase==='failed'?uploadStatus(upload):undefined,paused:['cancelled','uncertain'].includes(upload.phase)}) : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p>${processing}${upload.material ? sourceFields(upload.material, draft?.fields.update_details.source_prospectuses, draft ? sourceFormatContext(draft.project.project_id) : undefined, draft?.fields.update_details.reporting_cutoff ?? null) : ''}${upload.phase === 'persisted' && upload.material ? materialPeriodHintSlot(upload.material, draft?.fields.update_details.reporting_cutoff ?? null) : ''}</div>${controls || canRemove ? `<div class="material-file-actions">${controls}${canRemove}</div>` : ''}</li>`;
 }
 
 function renderMaterialPartitions(projectId: string) {
@@ -893,8 +894,8 @@ function renderMaterialPartitions(projectId: string) {
     const accept = role.code === 'historical' || role.code === 'reference'
       ? '.docx'
       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
-    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses, sourceFormatContext(projectId), draft?.fields.update_details.reporting_cutoff ?? null)}${materialPeriodHintSlot(material, draft?.fields.update_details.reporting_cutoff ?? null)}</div><div class="material-file-actions">${materialDeleteControl(material.material_id)}</div></li>`).join('');
-    const picker = canAdd ? `<label class="button secondary material-picker" for="upload-${esc(role.code)}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" ${partition.optional ? `aria-describedby="material-formats-${index}"` : ''} data-upload-role="${esc(role.code)}"/></label>` : '';
+    const saved = roleMaterials.map(material => `<li class="material-file-row bb-upload-file persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses, sourceFormatContext(projectId), draft?.fields.update_details.reporting_cutoff ?? null)}${materialPeriodHintSlot(material, draft?.fields.update_details.reporting_cutoff ?? null)}</div><div class="material-file-actions">${materialDeleteControl(material.material_id)}</div></li>`).join('');
+    const picker = canAdd ? `<label class="button secondary material-picker bb-upload-picker bb-upload-picker--standard" for="upload-${esc(role.code)}">${uploadPickerContent()}<input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" ${partition.optional ? `aria-describedby="material-formats-${index}"` : ''} data-upload-role="${esc(role.code)}"/></label>` : '';
     return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong>${canAdd ? `<span>${esc(roleGuidance(role.code))}</span>` : ''}</div>${picker}</div>${role.code==='audit'?renderFinancialUploadGuidance(draft?.fields.market??null,draft?.fields.offering??null,draft?.fields.update_details.reporting_cutoff??null):''}<ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}${duplicateUploadNotices(duplicates)}</ul></li>`;
   }).join('')}</ul></section>`;
   }).join('');

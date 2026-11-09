@@ -14,6 +14,11 @@ async function failedUpload(page:Page,existing=false){
   const fixture=await sourceFixture(page,existing);
   let release!:()=>void;
   const gate=new Promise<void>(resolve=>release=resolve);
+  // Persist bytes, but keep confirmation unavailable after the client's automatic retries.
+  let confirmationUnavailable=true;
+  await page.route('**/materials/uploads/*/complete',route=>confirmationUnavailable
+    ?route.fulfill({status:503,json:{code:'DATA_UNAVAILABLE',message:'Synthetic confirmation outage',retryable:true}})
+    :route.fallback());
   await page.route('**/materials/uploads/*/bytes',async route=>{
     await gate;
     const id=new URL(route.request().url()).pathname.split('/').at(-2)!;
@@ -27,8 +32,9 @@ async function failedUpload(page:Page,existing=false){
   await expect(page.locator('#pf-source-next')).toBeDisabled();
   return {...fixture,release,settle:async()=>{
     release();
-    await expect(page.locator('#save-prospectus-version')).toBeVisible();
-    await expect(page.locator('#save-prospectus-version')).toBeEnabled();
+    await expect(page.locator('#save-prospectus-version')).toBeVisible({timeout:15000});
+    await expect(page.locator('#save-prospectus-version')).toBeEnabled({timeout:15000});
+    confirmationUnavailable=false;
   }};
 }
 
