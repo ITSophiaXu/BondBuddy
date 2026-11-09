@@ -142,6 +142,8 @@ def main() -> None:
             if sha(copied) != original_hash:
                 raise RuntimeError('Input copy hash mismatch')
             pages = module.rasterize(str(copied), str(out), args.dpi, verbose=False, emit_pdf=True)
+        if not pages:
+            raise RuntimeError('Renderer produced no page images; use a shorter output path on Windows and inspect converter evidence')
         receipt['pages'] = [{'path': str(Path(page)), 'sha256': sha(Path(page))} for page in pages]
         receipt['page_count'] = len(pages)
         pdf = out / (source.stem + '.pdf')

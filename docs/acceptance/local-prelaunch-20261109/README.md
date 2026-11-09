@@ -230,3 +230,12 @@ fc76 截图暴露的两处既有文案歧义，已在 f79 实际页面复核修�
 | progress-green-later-step-1440.png | `8b246545134ab31806af14755a857eda43e219c8f6ba6a74517035b6764b7311` |
 | progress-green-later-summary-reload-1440.png | `905b2bd231699ef8b4c324d5dc27de6aa55564cde8bcd6aeadce189ff2efbbcd` |
 | progress-green-terminal-failure-1440.png | `6827f4f8fe2961ee3d0a13b2135a10af30bf220afb21ef0ef9502c7f148347ad` |
+
+## 4866 参考稿锁定状态
+
+实际运行截图进一步发现参考稿上传区未接入其余材料的只读状态。`48669848` 修复上传、
+拖放、采用和删除入口，保留详情与下载，继续修改后恢复编辑。独立模拟页面回归为
+123 通过、1 项已有条件跳过；三组同尺寸旧／新截图及精确源码哈希见
+[参考稿锁定验收](reference-material-lock/README.md)。完整环境已升级至 `fabf91c7`；实际
+收银台返回后和刷新后的运行状态均验证锁定上传、保留详情与下载，见
+[当前编制收银台回跳](current-authoring-cashier/README.md)。

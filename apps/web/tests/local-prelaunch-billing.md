@@ -213,3 +213,37 @@ UI image `50554262` passed its real zero-balance source-correction regression in
 documented in the [UI acceptance record](../../../docs/acceptance/local-prelaunch-20261109/README.md).
 No result here claims real merchant SDK/payment acceptance, historical-binary migration,
 professional financial signoff or production deployment.
+
+## Current authoring cashier recovery: final independent case
+
+The final selected functional total is **42 distinct scenarios**: 26 input/material,
+8 payment without model calls, and 8 worker scenarios. Two material cases on
+`50554262` extend the earlier 39-case record; the final current-authoring cashier case
+on `fabf91c7` adds one more. Passing cases contain seven measured completed model
+calls. The authorized full RQ quality scenario is recorded separately and excluded
+from this functional passing count; observer retries are never additional cases.
+
+The current-authoring case traversed actual UI start at zero balance, the product
+account page, the mock cashier's query-confirmed payment, and automatic return to
+the unchanged original request. Before payment verification there was no credit or
+task. One original order then credited exactly the shortage. The task preserved the
+input identity and entire quote, including scope expiry; actual dual-Word downloads,
+two reloads and three concurrent terminal replays passed in 1.7 minutes. There was
+one measured model call, one 8,864-point reserve/settle, no release, and zero remaining
+or frozen balance. Final evidence is finalized with empty errors/page errors and a
+complete final ledger. Independent read-only checks preserved all three prior terminal
+task ledgers, including the first failed observer's successful task.
+
+The first current-authoring run on `48669848` exposed a genuine API metadata defect:
+charge readback omitted the original scope expiry. Price and debit identity were
+unchanged, and the task actually succeeded; the observer stopped before Word download
+assertions. That red evidence remains. `fabf91c7` fixes only the exact stored scope
+readback and date serialization. Four independent Linux PostgreSQL suites passed
+14/14, including exact quote preservation after scope replacement, legacy behavior,
+foreign-owner denial and unchanged balances/events on reads. The repaired case used
+a new independent test account, not a rewritten old ledger.
+
+Evidence: `.local/receipts/final-functional-with-authoring-cashier.json` points to the
+41-case base and the added finalized record, each with SHA-256. Screenshots, source
+versions and output checks are in the [current-authoring acceptance record](../../../docs/acceptance/local-prelaunch-20261109/current-authoring-cashier/README.md).
+The product image remains `fabf91c7`; later commits only amend observers and evidence.

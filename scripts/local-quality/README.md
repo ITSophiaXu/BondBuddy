@@ -129,7 +129,7 @@ and interest-inclusive treatments are distinguished. Unknown formulas or ambiguo
 periods/scopes require clarification rather than a passing result. This does not
 replace manual checks of qualitative claims or source-note inconsistencies.
 
-The checker passed **58 purely synthetic tests**, including mixed dates, conflicting
+The first frozen checker passed **58 purely synthetic tests**, including mixed dates, conflicting
 scope, incomplete/extra amount sequences, conflicting definitions and ratios, and
 valid historical comparisons. A root recheck of the original failing pair still
 returns **0/10, exit 1**, while original Word, mechanical and manual-review hashes
@@ -147,4 +147,69 @@ matches the actual artifact; different bytes never overwrite saved evidence.
 Generation prompt/template v3, committed in `05ed9bc1`, addresses fact-location
 coverage, definitions, table/narrative/formula consistency, unsupported qualitative
 claims and user-facing explanations. Static and focused worker checks pass; actual
-full-document revalidation remains required before these changes are called accepted.
+full-document revalidation was performed separately below.
+
+## Second actual RQ result and bounded observer correction
+
+New task `303d314f-d8b4-44cf-a3f4-78ec1408c04b` ran on `05ed9bc1` / template v3,
+using only the three explicitly authorized originals. It succeeded after 33.2 minutes,
+with 15/15 mechanical checks and 38/38 financial controls per Word. The original
+8,864-point quote settled once, one measured model call completed, frozen balance
+returned to zero, and original-request replay left the complete ledger unchanged.
+The public delivery note passed its bounded internal-detail check. The original
+observer nevertheless finished red because its frozen narrative checker returned
+6/10; that report and the original files remain unchanged.
+
+Two independent semantic reviews compared the authorized originals, source caveats,
+definitions, narratives and formulas. Current short debt, total debt and the ratio
+reconcile with independently extracted source controls. The delivered definition is the sum of
+seven carrying-value components, excluding separately reported interest. It uses
+amortized bond carrying values; it must not be described as face principal. The
+checker's historical internal key `principal` does not redefine that accounting basis.
+Source contradictions remain in anchored comments and the user-facing delivery note;
+unsupported business material remains pending confirmation.
+
+The observer was then corrected for valid carrying-value wording and made conservative
+about unknown entities, negated definitions, conflicting bond measurement, simulated
+liquidity scenarios and mixed stock/flow dates. Its final `4827c8e4` version passes
+**113 synthetic tests** and **21 independently rerun probes**. No customer output was
+changed to accommodate the checker, and no new model call was made for these rechecks.
+The original defective pair remains **0/10**. The second pair is **8/10**: both
+one-year-debt narrative checks remain `clarification_required` because the bounded
+parser does not establish all document-wide issuer/period links. These are not
+reported as automatic passes or as fresh generation failures. The separate manual
+reviews record the wider context explicitly; unsupported wording remains conservative.
+
+Private evidence is under
+`../quality-prelaunch-20261107/2026-11-09T04-21-40-551Z-a9776370/`:
+`quality-observation-2026-11-09T04-54-24-940Z-3a506863/` retains the original 6/10,
+semantic and transaction reviews; `narrative-113-independent-recheck-20261109T0529/`
+retains the later 8/10. Clean SHA-256 is
+`e5565aa696355830c8b7d939e0c57f5e7cd92d0c2e430faa4491410175af4ce9`;
+tracked is `caad858c5210eddad776ad3edeef705faeaaf41692d894d8219fd8feb96a5334`.
+
+The new files render to 246 clean pages and 253 tracked pages. Full visual review is
+complete under `visual-review-v1/complete-visual-review.json`: all 486 unique PNGs
+were actually inspected across 21 batches; 13 exact duplicate PNG hashes account for
+the other page instances. The record covers all 499 pages with zero uninspected pages,
+and retains all findings rather than declaring flawless layout. Source comparison confirms inherited split numeric lines and clipped
+project-name cells. In the affected table, all 37 exact row heights, column widths and
+name cells match the original in both outputs. These visible risks remain findings;
+they do not become a flawless layout result merely because the source also has them.
+
+The final independent layout diagnosis inspected 13 corresponding source/clean/tracked
+pages. Tracked pages 149 and 163 have visible LibreOffice revision bars crossing text
+in inherited wide tables; table widths, grids, borders and affected first-cell XML are
+unchanged. This is a retained display finding, not evidence of new table corruption.
+The page-150 overlap attribution was corrected: its line is in empty cell space.
+Repeated numbering in tracked page 231 also matches the original source. Neither
+the comparisons nor mechanical hashes establish Word/WPS compatibility.
+
+## Rendering-observer boundary
+
+The short current-authoring cashier case exposed a Windows output-path limit:
+LibreOffice produced one-page PDFs, but Poppler returned zero PNG paths for deeply
+nested output directories. Both original receipts remain preserved. The wrapper now
+rejects zero page images instead of calling that a successful render. A targeted long
+path reproduced the guarded failure; new short directories rendered one page per Word,
+both actually inspected. No business task or model was repeated for this correction.
