@@ -92,7 +92,6 @@ no shell interpolated SQL or credential printing is used.
 
 These are planned coverage, not claims that the first batch passed them:
 
-- Two-tab duplicate upload; wrong hash or nonexistent material version in a pin.
 - Ambiguous XLSX directory mapping; correct mapping and resume the original import.
 - Upload interrupted across browser/context closure before reconciliation, and expired session.
 - True password-encrypted Office files; the first batch covers a real encrypted PDF only.
@@ -214,3 +213,32 @@ case passed in 32.5 seconds: one start action locks corrected input, obtains its
 zero-balance quote and creates no task, reservation, debit or model call. This is a
 focused repeat of an existing scenario, not a rerun of all 39. See the
 [UI acceptance record](../../../docs/acceptance/local-prelaunch-20261109/README.md).
+
+## Concurrent upload and invalid-version recovery: 2026-11-09
+
+`local-prelaunch-material-race.spec.ts` passed **2/2 in 36.6 seconds**, one worker and
+zero retries, against the unchanged running `50554262` image. Two same-account tabs
+submitted distinct uploads of identical bytes in the same role. A timing barrier let
+both original completion requests reach the real API together; no response was mocked.
+Both returned 200, with one material and one reuse receipt. Both tabs recovered that
+single material after reload and downloaded the original hash.
+
+The second case submitted a nonexistent version of a real saved material. The API
+returned 404 and the full before/after account snapshot was unchanged, including zero
+input revisions. Correcting the version then created exactly one input and a valid
+quote. Both cases ended with zero tasks, reservations, credit events and model calls,
+unchanged balances, empty page errors and finalized database evidence.
+
+Evidence is under
+`.local/local-prelaunch/bad-cases/material-race-version-2026-11-09T03-33-19-730Z-07cbea65/`.
+Actual API/web/worker image IDs, container IDs and start times match before and after;
+the tests did not restart or modify the ongoing RQ task. The source pin contract has
+only material ID and version; byte/hash rejection is covered separately by upload tests.
+
+These are two new scenarios, giving **41 distinct passing cases: 26 input/material,
+8 non-model payment and 7 worker cases** across the three explicitly recorded images.
+The new ignored aggregate `.local/receipts/final-functional-with-material-race.json`
+links the unchanged 39-case predecessor and the two finalized evidence hashes. RQ
+remains excluded until its own acceptance finishes. To repeat only these cases, use
+the environment above and select `local-prelaunch-material-race.spec.ts` with the
+same Playwright command.
