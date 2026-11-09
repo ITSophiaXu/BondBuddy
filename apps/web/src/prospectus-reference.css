@@ -32,7 +32,7 @@
 .prospectus-readonly .reference-prospectus .prospectus-upload-editor,
 .prospectus-readonly .reference-prospectus [data-use-version],
 .prospectus-readonly .reference-prospectus [data-delete-version],
-.prospectus-readonly .reference-prospectus #retry-prospectus-selection { display: none; }
+.prospectus-readonly .reference-prospectus #retry-prospectus-selection { display: none !important; }
 .prospectus-readonly .reference-readonly-note { display: block; margin: 8px 0 20px; color: #69766b; }
 @media (max-width: 900px) {
   .reference-prospectus .reference-file { display: grid; grid-template-columns: 36px minmax(0, 1fr); }
