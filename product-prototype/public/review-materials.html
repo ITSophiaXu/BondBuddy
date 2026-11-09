@@ -2,6 +2,8 @@
 <html lang="zh-CN">
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>复核材料 · BondBuddy 交互原型</title>
+<link rel="stylesheet" href="upload-progress.css">
+<style>.upload-example{margin-top:22px;padding-top:14px;border-top:1px solid #e1e6dc;overflow-wrap:anywhere}.upload-example>small{display:block;color:#73816e}.upload-example .file-upload-progress{margin-top:20px}</style>
 <style>
 *{box-sizing:border-box}body{margin:0;padding:24px;color:#213c33;background:#f5f6f1;font:14px/1.7 system-ui,sans-serif}main{max-width:1180px;margin:auto;padding:28px;background:white;border:1px solid #e1e6dc;border-radius:10px}h1{font-size:20px;margin:0}h2{font-size:15px;margin:0 0 12px}p{color:#73816e;font-size:12px;margin:8px 0 16px}.section{border-top:1px solid #e1e6dc;margin-top:24px;padding-top:24px}.modes{display:flex;flex-wrap:wrap;gap:12px;border:0;padding:0;margin:16px 0 20px;min-width:0}.modes label{display:flex;align-items:center;gap:9px;flex:1 1 220px;padding:14px 16px;border:1px solid #e1e6dc;border-radius:8px;cursor:pointer;font-weight:600}.modes label:has(:checked){border-color:#173e33;background:#f1f5e8}.modes input{width:16px;height:16px;accent-color:#173e33}.drop{position:relative;display:flex;justify-content:center;align-items:center;min-height:110px;border:1px dashed #dfe5d6;border-radius:8px;background:#fafbf7;color:#73816e;cursor:pointer}.drop input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}.selected{padding:16px;border:1px solid #e1e6dc;border-radius:8px;background:#fafbf7;margin-top:16px}.selected b{display:block}.selected small{color:#73816e}select{font:inherit;width:100%;padding:12px;border:1px solid #d5dfcc;border-radius:6px;margin-top:8px}button{font:inherit;color:#173e33;cursor:pointer}header small{color:#73816e}[hidden]{display:none!important}:focus-visible{outline:2px solid #658a48;outline-offset:4px}@media(max-width:600px){body{padding:12px}main{padding:16px}}
 </style>
@@ -9,7 +11,7 @@
 <div id="materials">
 <section class="section"><h2>待复核募集书</h2><p>选择一种方式，确定一份本次待复核稿。</p>
 <fieldset class="modes" aria-label="提供待复核募集说明书的方式"><label><input type="radio" name="mode" value="upload" aria-controls="upload">上传新募集说明书</label><label><input type="radio" name="mode" value="existing" aria-controls="existing" checked>选择项目已有募集说明书</label></fieldset>
-<div id="upload" hidden><p>上传一份需要复核的募集说明书，支持 Word / PDF</p><label class="drop">↑　点击或拖入文件<input type="file" accept=".docx,.pdf" aria-label="为待复核募集书选择文件"></label><p>PDF 将转换为 Word，版式、表格和分页可能与原 PDF 不同。</p></div>
+<div id="upload" hidden><p>上传一份需要复核的募集说明书，支持 Word / PDF</p><label class="drop">↑　点击或拖入文件<input type="file" accept=".docx,.pdf" aria-label="为待复核募集书选择文件"></label><p>PDF 将转换为 Word，版式、表格和分页可能与原 PDF 不同。</p><div class="upload-example" hidden><strong>合成交通投资集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx</strong><small>待复核募集书</small><span class="file-upload-progress"><span class="file-upload-progress-track"><progress max="100" value="40" aria-label="募集书上传进度"></progress><span class="file-upload-percent">40%</span></span><span class="file-upload-message" role="status">正在上传</span></span></div></div>
 <div id="existing"><label for="versions">选择募集说明书版本</label><select id="versions"><option value="合成募集书.docx">合成募集书.docx · 上传 V1</option><option value="合成募集书第二稿.pdf">合成募集书第二稿.pdf · 上传 V2</option></select><p>所选版本只用于本轮复核。PDF 将转换为 Word，版式、表格和分页可能与原 PDF 不同。</p></div>
 <div class="selected"><strong>本次待复核稿</strong><b id="selected">合成募集书.docx</b><small>已保存</small><p>上传新稿或选择其他版本后，将替换本次待复核稿。</p></div></section>
 <section class="section"><h2>审计报告 / 财务报表及附注</h2><p>选填。用于核对募集说明书中的财务数据；审计报告、报表和附注可一起上传。</p><p>选中文件后立即上传，也可直接拖入文件</p><label class="drop">↑　点击或拖入文件<input type="file" multiple aria-label="补充财务核验材料"></label></section>
@@ -17,11 +19,20 @@
 </div></main>
 <script>
 const upload=document.querySelector('#upload'),existing=document.querySelector('#existing'),selected=document.querySelector('#selected');
-if(new URLSearchParams(location.search).has('empty')){
+const query=new URLSearchParams(location.search),state=query.get('state');
+if(query.has('empty')||state==='uploading'||state==='saving'){
   document.querySelector('.modes').hidden=true;existing.hidden=true;upload.hidden=false;
   document.querySelector('.selected').hidden=true;
   document.querySelector('[name=mode][value=upload]').checked=true;
   document.querySelector('.modes').previousElementSibling.textContent='上传本次待复核的募集说明书。';
+}
+if(state==='uploading'||state==='saving'){
+  document.querySelector('.upload-example').hidden=false;
+  if(state==='saving'){
+    document.querySelector('progress').removeAttribute('value');
+    document.querySelector('.file-upload-percent').hidden=true;
+    document.querySelector('.file-upload-message').textContent='文件传输完成，正在保存…';
+  }
 }
 document.querySelectorAll('[name=mode]').forEach(radio=>radio.addEventListener('change',()=>{upload.hidden=radio.value!=='upload';existing.hidden=radio.value!=='existing';}));
 document.querySelector('#versions').addEventListener('change',event=>{selected.textContent=event.target.value;});

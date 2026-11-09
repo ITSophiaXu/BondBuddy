@@ -1,0 +1,61 @@
+
+Running 2 tests using 1 worker
+
+  x  1 tests\review-upload-twelfth.spec.ts:97:1 › an explicit same-file reselect validates bytes before replacing an original upload that never received them (1.7s)
+  x  2 tests\review-workspace.spec.ts:851:1 › review navigation retains the app scale while keeping its own layout (30.0s)
+
+
+  1) tests\review-upload-twelfth.spec.ts:97:1 › an explicit same-file reselect validates bytes before replacing an original upload that never received them
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('[data-review-recovery-id]').filter({ hasText: '原现金流补证-手机长文件名换行检查.pdf' }).first().locator('[role=alert]')
+    Expected substring: "上传恢复记录发生冲突"
+    Error: strict mode violation: locator('[data-review-recovery-id]').filter({ hasText: '原现金流补证-手机长文件名换行检查.pdf' }).first().locator('[role=alert]') resolved to 2 elements:
+        1) <span role="alert" class="file-upload-message">“原现金流补证-手机长文件名换行检查.pdf”需要重新上传，请选择相同内容的文件后继续。</span> aka getByText('“原现金流补证-手机长文件名换行检查.pdf').nth(1)
+        2) <p role="alert" class="material-file-status material-file-error">“原现金流补证-手机长文件名换行检查.pdf”需要重新上传，请选择相同内容的文件后继续。</p> aka getByRole('tabpanel', { name: '材料与要求' }).locator('p').filter({ hasText: '“原现金流补证-手机长文件名换行检查.pdf' })
+
+    Call log:
+      - Expect "toContainText" locator('[data-review-recovery-id]').filter({ hasText: '原现金流补证-手机长文件名换行检查.pdf' }).first().locator('[role=alert]') with timeout 5000ms
+      - waiting for locator('[data-review-recovery-id]').filter({ hasText: '原现金流补证-手机长文件名换行检查.pdf' }).first().locator('[role=alert]')
+
+
+       98 |   const state = await install(page); state.dropPut = 'before'; await mount(page); await pending(page, state); await refreshReadOnly(page, state); await resume(page).click();
+       99 |   const reselect = recovery(page).locator('[data-review-recovery-reselect]'); await expect(reselect).toBeAttached();
+    > 100 |   await reselect.setInputFiles({ ...file, buffer: Buffer.from('x'.repeat(file.buffer.length)) }); await expect(recovery(page).locator('[role=alert]')).toContainText('上传恢复记录发生冲突'); await expect(resume(page)).toBeEnabled(); await expect(reselect).toBeEnabled(); expect(uploads(state, 'create')).toHaveLength(1); expect(draftWrites(state)).toHaveLength(0);
+          |                                                                                                                                                        ^
+      101 |   await reselect.setInputFiles(file); await saved(page, state); expect(uploads(state, 'create')).toHaveLength(2); expect(uploads(state, 'bytes')).toHaveLength(2); expect(draftWrites(state)).toHaveLength(1);
+      102 |   expect(uploads(state, 'create').map(call => call.body)).toEqual([uploads(state, 'create')[0].body, uploads(state, 'create')[0].body]);
+      103 | });
+        at <workspace>\apps\web\tests\review-upload-twelfth.spec.ts:100:152
+
+    Error Context: ..\..\..\..\..\..\..\AppData\Local\Temp\bondbuddy-web-test-results\review-upload-twelfth-an-e-661cb-ad-that-never-received-them\error-context.md
+
+  2) tests\review-workspace.spec.ts:851:1 › review navigation retains the app scale while keeping its own layout
+
+    Test timeout of 30000ms exceeded.
+
+    Error: locator.click: Test timeout of 30000ms exceeded.
+    Call log:
+      - waiting for getByRole('link', { name: '复核募集书', exact: true })
+
+
+      863 |   const output=process.env.BB_SCALE_EVIDENCE;if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/update-entry-${width}.png`,fullPage:true});}
+      864 |   if(width===390)await page.getByRole('button',{name:'打开菜单',exact:true}).click();
+    > 865 |   await page.getByRole('link',{name:'复核募集书',exact:true}).click();
+          |                                                          ^
+      866 |   await page.getByRole('link',{name:'＋ 新建项目',exact:true}).click();
+      867 |   await expect(page.getByRole('heading',{name:'准备复核项目'})).toBeVisible();const review=await measure();expect(review).toEqual(update);
+      868 |   const reviewCard=await page.locator('#review-create-form').boundingBox();
+        at <workspace>\apps\web\tests\review-workspace.spec.ts:865:58
+
+    Error Context: ..\..\..\..\..\..\..\AppData\Local\Temp\bondbuddy-web-test-results\review-workspace-review-na-a60e9-hile-keeping-its-own-layout\error-context.md
+
+  2 failed
+    tests\review-upload-twelfth.spec.ts:97:1 › an explicit same-file reselect validates bytes before replacing an original upload that never received them
+    tests\review-workspace.spec.ts:851:1 › review navigation retains the app scale while keeping its own layout
+
+(node:18100) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:10692) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
