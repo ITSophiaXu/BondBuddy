@@ -74,6 +74,7 @@ services:
     environment:
       <<: *bb-policy-env
       DATABASE_URL: *db-url
+      BB_DIRECT_BLOB_UPLOADS: ${BB_DIRECT_BLOB_UPLOADS:-0}
       AZURE_STORAGE_CONNECTION_STRING: *blob
       BB_BLOB_BACKUP_CONTAINERS: ${BB_BLOB_BACKUP_CONTAINERS:-}
       BB_BACKUP_CONTAINER: ${BB_BACKUP_CONTAINER:-bb-backups}

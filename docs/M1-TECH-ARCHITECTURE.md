@@ -909,3 +909,15 @@ pin 登记、过期上传清理登记与实际 Blob 删除共用 owner/object ad
 本切片需从同一准确提交编译 contracts、API、后台运行时和 web；domain 等未变组件可按源码树核对复用。发布依次应用新增迁移、采用准确技术产物并在主站启用确认槽，编制端保持关闭；回滚先停止新确认入队/消费，保留新增表和已确认材料，不逆向删除迁移数据。公共验收使用原页面的小型 synthetic DOCX 与至少 6 MiB synthetic DOCX，验证 202 短回执、刷新重开后原上传最终 200、原 material/version/hash、同项目小文件及说明保存无长锁阻塞。该验收由部署后的公共入口直接证明，定向合成测试不代替上线验收。
 
 公共浏览器夹具可在准确 API 编译后运行 `node scripts/upload-confirmation-fixtures.mjs <isolated-output-directory>` 生成两份 synthetic DOCX 与 hash/大小清单。原页面选择文件，记录短 202，确认期间刷新或重开后恢复原 upload ID；最终 200 的 material/version/hash 与刷新后的已保存材料一致。在大文件验证期间保存同项目说明并提交小文件，确认这些请求不会等待项目长锁。
+
+### 可协商的私有 Blob 直传
+
+材料上传保留原同源 `/bytes` → 204 通道。API 的 `BB_DIRECT_BLOB_UPLOADS` 默认 `0`；设为 `1` 后，也只为通过公共契约 `X-BB-Upload-Transport: azure_blob` 请求头明确声明能力的客户端签发直传会话。旧客户端继续得到同源地址；新客户端连接旧 API 时，旧 API 忽略该头并继续返回同源会话。响应可选 `upload_transport` 标记由 `packages/contracts` 唯一定义。页面、进度文案、100 MiB 单文件上限及计费规则不变。
+
+API 将传输方式与不可变的 owner/project/upload/object key 一起保存，仅在内存签出最长 15 分钟、HTTPS、单 blob、仅 `c` 创建权限的 SAS。没有覆盖、读、列举或删除权限。浏览器使用单次 PUT，头为 `Content-Type: application/octet-stream`、`x-ms-blob-type: BlockBlob`、`If-None-Match: *`；不向 Blob 发送应用 Cookie、Authorization 或 CSRF。Blob 的 201 仅代表传输返回成功。
+
+刷新、关页重开和丢失回执优先对原 upload 执行 complete。尚未收到字节时，客户端在核对重新选择文件的大小、类型及 SHA 后，可调用原 upload 的 `/session`，按原 owner/project/声明重取票据，不改变 upload ID、object key 或材料身份。已收到、已确认、已完成或已清理的会话不会重签；create-only 再次 PUT 被拒后仍可 complete 原对象。URL/SAS 不进入数据库、恢复日志、localStorage 或业务诊断；恢复记录只保存 upload ID、传输标记及原声明。票据响应设置 `Cache-Control: no-store`。
+
+直传对象通过既有异步确认消费器完整下载，校验实际大小、SHA 及声明类型白名单，并在提交事务中再次比对同一 ETag、归属与不可变会话。沿用原件直存政策，不嗅探、解压或扫描文档内容；保存不证明内容类型或安全。只有字节完整性和归属检查通过才记录 received 和唯一材料；HEAD 存在或客户端 201 均不作为已保存证明。确定性拒收仅在归属、租约及材料引用检查后以拒收版本的 ETag 条件回收，不能删除替换版本。SAS 无法绑定字节上限，服务端实际读取仍执行 100 MiB 上限。
+
+启用前，在私有 Blob 服务 CORS 中保留已有规则并增量允许正式应用 Origin、方法 `PUT`、请求头 `content-type,x-ms-blob-type,if-none-match`。无需暴露响应头。Web CSP 的 `connect-src` 只增加配置对应的 `https://myopenhands.blob.core.windows.net`，不放开通配 Azure 域名；外层代理若另加 CSP，也须允许同一精确 Origin。正式浏览器验收需确认 CORS/CSP 均未拦截，并完成小文件和至少 6 MiB synthetic 文件上传、刷新恢复及 SHA/归属复核。回退采用关闭新会话 flag，既有直传会话仍可完成；保留新增迁移，不在回退时删除材料。部署继续遵守当前 commit/tree 的质量与发布凭据要求。
