@@ -134,7 +134,9 @@ export async function processUploadConfirmation(pool:Pool,blobs:PrivateBlobs,lea
     const retry=e.status>=500&&lease.attempts<12;
     const changed=await transaction(pool,async client=>{
       try{
-        await project(client,lease.owner,lease.projectId,true);
+        // A deleted project must still receive its durable rejection; lock its
+        // identity without requiring that it remains an active business project.
+        await client.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[lease.owner,lease.projectId]);
         await client.query('SELECT id FROM bb_uploads WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[lease.owner,lease.uploadId]);
         await fence(client,lease);
       }catch{return false;}
