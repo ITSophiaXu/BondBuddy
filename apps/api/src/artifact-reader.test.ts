@@ -98,3 +98,19 @@ test('large PDF uses the same cold full integrity proof and exact read limit', a
   assert.deepEqual(await readVerifiedArtifact(blobs, { ...artifact, media_type: 'application/pdf' }), bytes);
   await assert.rejects(readVerifiedArtifact(blobs, { ...artifact, media_type: 'application/pdf', delivery_evidence_byte_size: 7 }), failure);
 }));
+
+test('spool admission and directory creation failures release capacity without starting a Blob read', async () => fixture(async directory => {
+  let reads = 0;
+  const blobs = storage(async () => { reads++; throw Error('unexpected Blob read'); });
+  const previousBudget = process.env.BB_UPLOAD_SPOOL_MAX_BYTES;
+  process.env.BB_UPLOAD_SPOOL_MAX_BYTES = String(bytes.length - 1);
+  try { await assert.rejects(readVerifiedArtifact(blobs, artifact), failure); }
+  finally {
+    if (previousBudget === undefined) delete process.env.BB_UPLOAD_SPOOL_MAX_BYTES; else process.env.BB_UPLOAD_SPOOL_MAX_BYTES = previousBudget;
+  }
+  const file = join(directory, 'directory-blocker');
+  await writeFile(file, 'synthetic');process.env.BB_UPLOAD_SPOOL_DIR = file;
+  try { await assert.rejects(readVerifiedArtifact(blobs, artifact), failure); }
+  finally { process.env.BB_UPLOAD_SPOOL_DIR = directory; await rm(file); }
+  assert.equal(reads, 0);assert.equal(reservedSpoolBytes(), 0);
+}));
