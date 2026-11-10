@@ -113,7 +113,6 @@ export async function listArtifactHistory(
   for (const row of page) {
     const primary: Artifact = { id: row.primary_id, version: row.primary_version, media_type: WORD,
       sha256: row.primary_sha256, object_key: row.primary_object_key, delivery_evidence_byte_size: row.primary_size };
-    await verify(primary);
     let wordDelivery: { revision: { artifact_id: string; version: number };
       clean: { artifact_id: string; version: number }; baseline: { artifact_id: string; version: number } } | null = null;
     if (row.has_pair) {
@@ -121,12 +120,15 @@ export async function listArtifactHistory(
         sha256: row.clean_sha256!, object_key: row.clean_object_key!, delivery_evidence_byte_size: row.clean_size! };
       const baseline: Artifact = { id: row.baseline_id!, version: row.baseline_version!, media_type: WORD,
         sha256: row.baseline_sha256!, object_key: row.baseline_object_key!, delivery_evidence_byte_size: row.baseline_size! };
-      await verify(clean);
+      // Keep at most two full artifact reads active. Wait for both to settle on
+      // failure as well, so their streams/spool reservations are fully released.
+      const verified = await Promise.allSettled([primary, clean].map(async artifact => { await verify(artifact); }));
+      for (const result of verified) if (result.status === 'rejected') throw result.reason;
       await verify(baseline);
       wordDelivery = { revision: { artifact_id: primary.id, version: primary.version },
         clean: { artifact_id: clean.id, version: clean.version },
         baseline: { artifact_id: baseline.id, version: baseline.version } };
-    }
+    } else await verify(primary);
     items.push({ run_id: row.run_id, input_revision: row.input_revision, completed_at: date(row.completed_at),
       state: row.state, channel: row.channel, primary_artifact: { artifact_id: primary.id, version: primary.version },
       word_delivery: wordDelivery });
