@@ -1,5 +1,10 @@
 # BondBuddy
 
+## Bug 提交与修复统计
+
+- [仓库](https://github.com/ITSophiaXu/BondBuddy) · [提交问题](https://github.com/ITSophiaXu/BondBuddy/issues/new/choose) · [全部 Bug](https://github.com/ITSophiaXu/BondBuddy/issues?q=is%3Aissue%20label%3Abug%20-label%3Aduplicate%20-label%3Ainvalid)
+- [开发者提交规范与每日统计入口](docs/BUG-REPORTING.md)：使用功能故障、页面UX或生成结果UX模板，记录发现日期、复现步骤、修复 PR 和验证结果；区分部分修复、合入 develop 与实际部署。
+
 ## Release 前在本机跑基础测试（Mac / Windows）
 
 统一入口是 **`npm run test:release`**。测试人员在自己的电脑启动隔离的 Linux 容器，用一个测试账号运行任丘更新、东营复核、东营七题问答，并实际下载 Word。它不会发布生产，也不读取生产数据库、支付配置或生产对象存储。

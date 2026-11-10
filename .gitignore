@@ -8,6 +8,7 @@ dist/
 dist-test/
 work/
 docs/*
+!docs/BUG-REPORTING.md
 !docs/testing/
 docs/testing/*
 !docs/testing/bondbuddy-test-plan-v6/
