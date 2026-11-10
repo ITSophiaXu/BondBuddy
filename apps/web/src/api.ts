@@ -3,7 +3,7 @@ import {readDownloadBytes,type DownloadProgress} from './download-progress.js';
 import {schemas as uploadSchemas,WorkpaperZipPreparationSchema,type WorkpaperZipPreparation} from '@bondbuddy/contracts';
 import {boundedDownload} from './download-timeout.js';
 import {Value} from '@sinclair/typebox/value';
-import { isUploadBytesPendingFieldError } from '@bondbuddy/contracts';
+import { DIRECT_UPLOAD_TRANSPORT, UPLOAD_TRANSPORT_HEADER, type UploadTransport, isUploadBytesPendingFieldError } from '@bondbuddy/contracts';
 import {BILLING_WIRE_HEADER,BILLING_WIRE_VERSION,LEGACY_BILLING_WIRE_VERSION,billingWireRoute,encodeBillingDto,validateBillingDto} from '@bondbuddy/contracts';
 import { UserFacingError, unknownErrorText, type ErrorOperation } from './user-facing-error.js';
 import type { Static } from '@sinclair/typebox';
@@ -176,11 +176,13 @@ export class ApiClient {
   createRecharge(input: Dto<'RechargeOrderRequest'>, signal?: AbortSignal) { return this.request<Dto<'RechargeOrderResponse'>>('POST','/credits/recharge-orders',input,{},signal); }
   rechargeOrder(id: string, signal?: AbortSignal) { return this.request<Dto<'RechargeOrderResponse'>>('GET',`/credits/recharge-orders/${encodeURIComponent(id)}`,undefined,{},signal); }
   refreshRecharge(id: string, signal?: AbortSignal) { return this.request<Dto<'RechargeOrderResponse'>>('POST',`/credits/recharge-orders/${encodeURIComponent(id)}/refresh`,{}, {},signal); }
+  private uploadTransports = new Map<string, UploadTransport>();
   private controller = new AbortController();
   private refresh: Promise<void> | undefined;
   constructor(private sessionLost: () => void) {}
 
   reset() {
+    this.uploadTransports.clear();
     this.controller.abort();
     this.controller = new AbortController();
     this.refresh = undefined;
@@ -454,8 +456,15 @@ export class ApiClient {
   projectEvents(id: string, after: number, signal?: AbortSignal) {
     return this.request<Dto<'ProjectEventsResponse'>>('GET', `/projects/${encodeURIComponent(id)}/events?after=${after}`, undefined, {}, AbortSignal.any([signal ?? this.controller.signal, AbortSignal.timeout(30_000)]));
   }
-  createUpload(id: string, input: Dto<'UploadCreateRequest'>, signal?: AbortSignal) {
-    return this.request<Dto<'UploadSessionResponse'>>('POST', `/projects/${encodeURIComponent(id)}/materials/uploads`, input, {}, signal);
+  async createUpload(id: string, input: Dto<'UploadCreateRequest'>, signal?: AbortSignal) {
+    const session=await this.request<Dto<'UploadSessionResponse'>>('POST', `/projects/${encodeURIComponent(id)}/materials/uploads`, input, {[UPLOAD_TRANSPORT_HEADER]:DIRECT_UPLOAD_TRANSPORT}, signal);
+    if(session.upload_transport===DIRECT_UPLOAD_TRANSPORT)this.uploadTransports.set(session.upload_url,DIRECT_UPLOAD_TRANSPORT);
+    return session;
+  }
+  async refreshUpload(id:string,uploadId:string,input:Dto<'UploadCompleteRequest'>,signal?:AbortSignal){
+    const session=await this.request<Dto<'UploadSessionResponse'>>('POST',`/projects/${encodeURIComponent(id)}/materials/uploads/${encodeURIComponent(uploadId)}/session`,input,{[UPLOAD_TRANSPORT_HEADER]:DIRECT_UPLOAD_TRANSPORT},signal);
+    if(session.upload_transport===DIRECT_UPLOAD_TRANSPORT)this.uploadTransports.set(session.upload_url,DIRECT_UPLOAD_TRANSPORT);
+    return session;
   }
   async completeUpload(id:string,uploadId:string,input:Dto<'UploadCompleteRequest'>,signal?:AbortSignal):Promise<Dto<'MaterialResponse'>>{
     const lifetime=AbortSignal.any([signal??this.controller.signal,AbortSignal.timeout(UPLOAD_CONFIRMATION_TIMEOUT_MS)]);
@@ -487,19 +496,22 @@ export class ApiClient {
       signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
     });
   }
-  uploadBytes(uploadUrl: string, file: File, onProgress: (loaded: number, total: number) => void, signal: AbortSignal) {
+  uploadBytes(uploadUrl: string, file: File, onProgress: (loaded: number, total: number) => void, signal: AbortSignal, transport?: UploadTransport) {
+    const direct=(transport??this.uploadTransports.get(uploadUrl))===DIRECT_UPLOAD_TRANSPORT;
     const target = new URL(uploadUrl, window.location.href);
     if (!['http:', 'https:'].includes(target.protocol)) return Promise.reject(new ApiError(0, 'DATA_UNAVAILABLE'));
     const sameOrigin = target.origin === window.location.origin;
+    if(target.username||target.password||target.hash||(!sameOrigin||direct)&&target.protocol!=='https:')return Promise.reject(new ApiError(0,'DATA_UNAVAILABLE'));
     const send = () => new Promise<XMLHttpRequest>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', target.href);
       // Browser upload.load does not prove a buffering proxy's upstream received
       // the bytes. Bound the whole PUT, including its response, like complete.
       xhr.timeout = UPLOAD_CONFIRMATION_TIMEOUT_MS;
-      xhr.withCredentials = sameOrigin;
+      xhr.withCredentials = sameOrigin && !direct;
       xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-      if (sameOrigin) {
+      if(direct){xhr.setRequestHeader('x-ms-blob-type','BlockBlob');xhr.setRequestHeader('If-None-Match','*');}
+      if (sameOrigin && !direct) {
         const csrf = document.cookie.split('; ').find(value => value.startsWith('bb_csrf='))?.slice('bb_csrf='.length);
         if (csrf) xhr.setRequestHeader('X-BB-CSRF', csrf);
       }
@@ -522,14 +534,16 @@ export class ApiClient {
       let refreshed = false;
       for (;;) {
         const xhr = await send();
-        if (xhr.status === 204) return;
-        if (xhr.status === 401 && sameOrigin && !refreshed && document.cookie.includes('bb_csrf=')) {
+        if (xhr.status === (direct ? 201 : 204)) { this.uploadTransports.delete(uploadUrl); return; }
+        if (xhr.status === 401 && sameOrigin && !direct && !refreshed && document.cookie.includes('bb_csrf=')) {
           refreshed = true;
           await this.request<void>('POST', '/auth/refresh', undefined, {}, signal);
           signal.throwIfAborted();
           onProgress(0, file.size); // The next progress events describe the fresh, real retry attempt.
           continue;
         }
+      // Blob XML/error bodies can include signing details; never feed them into diagnostics.
+      if(direct)throw new ApiError(xhr.status,'DATA_UNAVAILABLE');
       let problem: unknown;
       try { problem = JSON.parse(xhr.responseText); } catch { /* response may be empty */ }
       throw parseApiError(xhr.status, problem);

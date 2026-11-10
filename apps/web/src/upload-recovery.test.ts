@@ -489,3 +489,24 @@ test('opt-in durable transfer rejects checkpoint restoration while default trans
   r.begin(declaration(), undefined, 'op-a'); h.state.complete = async () => { h.store.data.clear(); return material(); };
   assert.deepEqual(await r.resume('op-a', { file: file() }), material()); assert.equal(r.list()[0].stage, 'saved');
 });
+
+for(const stage of ['session','bytes_unknown','confirming'] as const)test(`direct reload ${stage} confirms before renewing the same upload, without persisting SAS`,async()=>{
+ const h=harness(),r=h.make();seed(h,r,{stage,uploadTransport:'azure_blob'});let n=0;
+ h.state.complete=async()=>{if(++n===1)throw new ApiError(422,'MATERIAL_UNREADABLE',{uploadBytesPending:true});return material();};
+ h.api.refreshUpload=async(p,id,input)=>{h.calls.push({method:'refresh',project:p,id,input});return session({upload_transport:'azure_blob',upload_url:'https://storage.invalid/private?sig=synthetic-secret'});};
+ const result=await h.make().resume('op-a',{file:file()});assert.equal(result.material_id,'material-a');
+ assert.deepEqual(methods(h),['complete','refresh','put','complete']);assert.equal(r.list()[0].uploadId,'upload-a');assert.deepEqual(r.list()[0].previousUploadIds,[]);
+ assert.ok(![...h.store.data.values()].join('').includes('synthetic-secret'));
+});
+for(const status of [403,409,412])test(`direct create-only ${status} confirms the original object without another PUT or new upload`,async()=>{
+ const h=harness(),r=h.make();h.state.create=async()=>session({upload_transport:'azure_blob'});h.state.put=async()=>{throw new ApiError(status,'DATA_UNAVAILABLE');};r.begin(declaration(),undefined,'op-a');
+ assert.equal((await r.resume('op-a',{file:file()})).material_id,'material-a');assert.deepEqual(methods(h),['create','put','complete']);
+});
+test('direct reload with accepted bytes reuses complete without ticket or file',async()=>{
+ const h=harness(),r=h.make();seed(h,r,{stage:'bytes_unknown',uploadTransport:'azure_blob'});
+ assert.equal((await h.make().resume('op-a')).material_id,'material-a');assert.deepEqual(methods(h),['complete']);
+});
+test('direct original identity is retained when the ticket endpoint is unavailable or foreign',async()=>{
+ const h=harness(),r=h.make();seed(h,r,{uploadTransport:'azure_blob'});h.state.complete=async()=>{throw new ApiError(404,'NOT_FOUND');};
+ await assert.rejects(h.make().resume('op-a',{file:file()}),ApiError);assert.deepEqual(methods(h),['complete']);assert.equal(r.list()[0].uploadId,'upload-a');
+});

@@ -1,6 +1,6 @@
 import {lockStorageObject} from './storage-object-lock.js';
 import type {Pool,PoolClient} from 'pg';
-import {schemas,type Material} from '@bondbuddy/contracts';
+import {DIRECT_UPLOAD_TRANSPORT,schemas,type Material} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import {Problem,project,transaction,uid,missing,conflict,materialDto,type PrivateBlobs} from './data.js';
 import {completeStoredUpload,prepareStoredUpload,fullMaterialProof,type UploadDeclaration} from './complete-upload.js';
@@ -21,14 +21,17 @@ function safeError(error:unknown){
 export async function requestUploadConfirmation(pool:Pool,blobs:PrivateBlobs,owner:string,projectId:string,uploadId:string,b:UploadDeclaration,requestId:string,inspectionException:ReturnType<typeof configuredUploadInspectionException>=null,traceId=uid()){
   // A PUT can hold the upload row while staging to Blob. Do not take the project
   // lock and then wait for that row merely to report that bytes are not ready.
-  const pre=(await pool.query(`SELECT u.byte_size,u.sha256 FROM bb_uploads u
+  const pre=(await pool.query(`SELECT u.byte_size,u.sha256,u.upload_transport,u.object_key FROM bb_uploads u
     JOIN bb_projects p ON p.owner_user_id=u.owner_user_id AND p.id=u.project_id AND p.deleted_at IS NULL
     WHERE u.owner_user_id=$1 AND u.project_id=$2 AND u.id=$3 AND u.state='uploading'
       AND NOT EXISTS(SELECT 1 FROM bb_upload_reuse_receipts r WHERE r.owner_user_id=u.owner_user_id AND r.project_id=u.project_id AND r.upload_id=u.id)
-      AND NOT EXISTS(SELECT 1 FROM bb_material_role_copy_receipts r WHERE r.owner_user_id=u.owner_user_id AND r.project_id=u.project_id AND r.upload_id=u.id)`,[owner,projectId,uploadId])).rows[0];
+      AND NOT EXISTS(SELECT 1 FROM bb_material_role_copy_receipts r WHERE r.owner_user_id=u.owner_user_id AND r.project_id=u.project_id AND r.upload_id=u.id)
+      AND NOT EXISTS(SELECT 1 FROM bb_upload_confirmations c WHERE c.owner_user_id=u.owner_user_id AND c.project_id=u.project_id AND c.upload_id=u.id)`,[owner,projectId,uploadId])).rows[0];
   if(pre){
     if(Number(pre.byte_size)!==b.byte_size||pre.sha256.trim()!==b.sha256)throw conflict('IDEMPOTENCY_CONFLICT','Upload declaration changed');
-    throw Object.assign(new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received'),{uploadBytesPending:true});
+    // HEAD only decides whether there is work to queue. It never proves saved bytes.
+    if(pre.upload_transport!==DIRECT_UPLOAD_TRANSPORT||!blobs.headVersion||!await boundedVersion(blobs,pre.object_key))
+      throw Object.assign(new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received'),{uploadBytesPending:true});
   }
   const c=await transaction(pool,async client=>{
     await project(client,owner,projectId,true);
@@ -61,12 +64,12 @@ export async function requestUploadConfirmation(pool:Pool,blobs:PrivateBlobs,own
       }
       return existing;
     }
-    if(!reused&&!['received','completed'].includes(u.state))throw Object.assign(new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received'),{uploadBytesPending:true});
+    if(!reused&&!['received','completed'].includes(u.state)&&!(u.state==='uploading'&&u.upload_transport===DIRECT_UPLOAD_TRANSPORT))throw Object.assign(new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received'),{uploadBytesPending:true});
     await lockStorageObject(client,owner,u.object_key);
     const outbox=uid();
     await client.query(`INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'upload',$3,'upload.complete_requested',$4)`,[outbox,owner,uploadId,{project_id:projectId,upload_id:uploadId,request_id:requestId,trace_id:traceId}]);
     const excepted=uploadInspectionExceptionMatches(inspectionException,{ownerUserId:owner,projectId,role:u.role,byteSize:b.byte_size,sha256:b.sha256,mediaType:u.declared_media_type});
-    return (await client.query(`INSERT INTO bb_upload_confirmations(upload_id,owner_user_id,project_id,outbox_id,object_key,sha256,byte_size,inspection_excepted,upload_identity) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,[uploadId,owner,projectId,outbox,u.object_key,b.sha256,b.byte_size,excepted,{object_key:u.object_key,role:u.role,filename:u.filename,declared_media_type:u.declared_media_type}])).rows[0];
+    return (await client.query(`INSERT INTO bb_upload_confirmations(upload_id,owner_user_id,project_id,outbox_id,object_key,sha256,byte_size,inspection_excepted,upload_identity) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,[uploadId,owner,projectId,outbox,u.object_key,b.sha256,b.byte_size,excepted,{object_key:u.object_key,role:u.role,filename:u.filename,declared_media_type:u.declared_media_type,upload_transport:u.upload_transport}])).rows[0];
   });
   if(c.state==='failed')throw restoreError(c.error);
   if(c.state!=='completed')return {statusCode:202 as const,body:pending(uploadId)};
@@ -130,7 +133,20 @@ export async function processUploadConfirmation(pool:Pool,blobs:PrivateBlobs,lea
     const e=safeError(error);
     const retry=e.status>=500&&lease.attempts<12;
     const changed=await transaction(pool,async client=>{
-      try{await fence(client,lease);}catch{return false;}
+      try{
+        // A deleted project must still receive its durable rejection; lock its
+        // identity without requiring that it remains an active business project.
+        await client.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[lease.owner,lease.projectId]);
+        await client.query('SELECT id FROM bb_uploads WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[lease.owner,lease.uploadId]);
+        await fence(client,lease);
+      }catch{return false;}
+      const rejected=(error as {rejectedUploadVersion?:{key:string;etag:string}})?.rejectedUploadVersion;
+      if(!retry&&rejected&&lease.upload.upload_transport===DIRECT_UPLOAD_TRANSPORT&&blobs.deleteIfMatch){
+        // Never delete a replacement, a material, or an object claimed by another upload.
+        await lockStorageObject(client,lease.owner,rejected.key);
+        const owned=await client.query("SELECT 1 FROM bb_uploads u WHERE u.owner_user_id=$1 AND u.project_id=$2 AND u.id=$3 AND u.object_key=$4 AND u.state='uploading' AND NOT EXISTS(SELECT 1 FROM bb_material_versions m WHERE m.owner_user_id=u.owner_user_id AND m.object_key=u.object_key)",[lease.owner,lease.projectId,lease.uploadId,rejected.key]);
+        if(owned.rowCount)await blobs.deleteIfMatch(rejected.key,rejected.etag).catch(()=>false);
+      }
       await client.query("UPDATE bb_upload_confirmations SET state=$2,error=$3,last_error=$4,updated_at=now() WHERE outbox_id=$1",[lease.id,retry?'queued':'failed',retry?null:e,e]);
       await client.query(`UPDATE bb_outbox SET lease_token=NULL,lease_until=NULL,last_delivery_error=$2,next_attempt_at=CASE WHEN $3 THEN now()+interval '5 seconds' ELSE NULL END,delivered_at=CASE WHEN $3 THEN NULL ELSE now() END WHERE id=$1`,[lease.id,retry?'sink_unavailable':'evidence_missing',retry]);
       return true;

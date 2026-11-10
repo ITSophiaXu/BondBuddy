@@ -1,3 +1,5 @@
+import { DIRECT_UPLOAD_TRANSPORT, UPLOAD_TRANSPORT_HEADER } from '@bondbuddy/contracts';
+import { refreshUploadTicket, uploadTicket } from './upload-session.js';
 import { appendProjectMaterialEvent } from './project-material-events.js';import { registerProjectQa } from './project-qa.js';
 import { requestUploadConfirmation } from './upload-confirmation.js';
 import { completeStoredUpload } from './complete-upload.js';
@@ -104,7 +106,7 @@ import {installPaymentReconciliation} from './payment-reconciliation.js';
 import {installProjectFileCheckBatches} from './project-file-check-batches.js';
 
 export type Principal = { userId: string; csrfVerified: boolean; sessionId?: string };
-export type Settings = { enableSubscriptionBilling?: boolean; enableOutcomePricing?: boolean; paymentProviders?: readonly PaymentProvider[]; enablePaidAuthoring?: boolean; enablePaidReview?: boolean; pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
+export type Settings = { directBlobUploads?: boolean; enableSubscriptionBilling?: boolean; enableOutcomePricing?: boolean; paymentProviders?: readonly PaymentProvider[]; enablePaidAuthoring?: boolean; enablePaidReview?: boolean; pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -1092,7 +1094,8 @@ export function createServer(settings: Settings = {}) {
     const expectedExtensions:Record<string,string[]>={[PDF_MEDIA_TYPE]:['pdf'],[DOCX_MEDIA_TYPE]:['docx'],[XLSX_MEDIA_TYPE]:['xlsx'],[CSV_MEDIA_TYPE]:['csv'],[TEXT_MEDIA_TYPE]:['txt'],[PNG_MEDIA_TYPE]:['png'],[JPEG_MEDIA_TYPE]:['jpg','jpeg'],'application/msword':['doc']};
     if(!suffix || !expectedExtensions[b.media_type]?.includes(suffix))throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Filename extension and declared type differ');
     const uploadId=uid(),key=`users/${user}/projects/${id}/uploads/${uploadId}`,expires=new Date(Date.now()+15*60_000);
-    await transaction(db(),async client=>{
+    const transport=(settings.directBlobUploads??process.env.BB_DIRECT_BLOB_UPLOADS==='1')&&request.headers[UPLOAD_TRANSPORT_HEADER.toLowerCase()]===DIRECT_UPLOAD_TRANSPORT?DIRECT_UPLOAD_TRANSPORT:'same_origin';
+    const ticket=await transaction(db(),async client=>{
       const uploadProject=await project(client,user,id,true);
       assertProspectusUploadFormat(uploadProject.kind,b.role,b.filename,b.media_type);
       if(b.role==='historical'){
@@ -1100,11 +1103,17 @@ export function createServer(settings: Settings = {}) {
         if(converted.rowCount)throw conflict('INPUT_REVISION_CONFLICT','Converted no-history project cannot accept historical prospectus material');
       }
       await admitUploadCreate(client,trial,user,sourceHash(request.ip),b.byte_size);
-      await client.query('INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[uploadId,user,id,b.filename,b.media_type,b.byte_size,b.sha256,b.role,key,expires]);
+      await client.query('INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,upload_transport) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',[uploadId,user,id,b.filename,b.media_type,b.byte_size,b.sha256,b.role,key,expires,transport]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'upload',uploadId,'upload.created',{project_id:id}]);
       await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'material_upload_start',status:'submitted'});
+      return uploadTicket(blob(),id,{id:uploadId,object_key:key,upload_transport:transport,expires_at:expires});
     }).catch(async error=>{await trialRejected(error,user,'upload_create',id,request.id);throw error;});
-    return reply.code(201).send({upload_id:uploadId,state:'uploading',upload_url:`/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`,expires_at:expires.toISOString(),max_bytes:MAX_BYTES});
+    return reply.header('Cache-Control','no-store').code(201).send(ticket);
+  });
+  app.post('/api/v1/projects/:project_id/materials/uploads/:upload_id/session',{schema:{body:schemas.UploadCompleteRequest}},async(request,reply)=>{
+    const user=await owner(request),id=param(request,'project_id'),uploadId=param(request,'upload_id');
+    const ticket=await refreshUploadTicket(db(),blob(),user,id,uploadId,body<{byte_size:number;sha256:string}>(request),request.headers[UPLOAD_TRANSPORT_HEADER.toLowerCase()]===DIRECT_UPLOAD_TRANSPORT);
+    return reply.header('Cache-Control','no-store').send(ticket);
   });
   app.post('/api/v1/projects/:project_id/materials/role-copies',{schema:{body:schemas.MaterialRoleCopyRequest}},async (request,reply)=>{
     const user=await owner(request),id=param(request,'project_id');
@@ -1219,9 +1228,10 @@ export function createServer(settings: Settings = {}) {
     const user=await owner(request),id=param(request,'project_id'),uploadId=param(request,'upload_id');const uploadProject=await project(db(),user,id);
     const stream=request.body as Readable|undefined;if(!stream||typeof stream.pipe!=='function')throw new Problem(422,'VALIDATION_FAILED','Binary upload required');
     // Reject unknown, finished or expired uploads before accepting any bytes; the locked re-check below stays authoritative.
-    const pre=(await db().query('SELECT state,byte_size,expires_at,role,filename,declared_media_type FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,uploadId])).rows[0];
+    const pre=(await db().query('SELECT state,byte_size,expires_at,role,filename,declared_media_type,upload_transport FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,uploadId])).rows[0];
     if((await db().query('SELECT 1 FROM bb_material_role_copy_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId])).rowCount)throw missing();
     if(!pre)throw missing();
+    if(pre.upload_transport===DIRECT_UPLOAD_TRANSPORT)throw conflict('IDEMPOTENCY_CONFLICT','Direct uploads must use their scoped ticket');
     if(pre.state==='completed')throw conflict('IDEMPOTENCY_CONFLICT','Upload already completed');
     if(pre.state!=='uploading'&&pre.state!=='received')throw missing();
     if(new Date(pre.expires_at).getTime()<Date.now())throw new Problem(422,'VALIDATION_FAILED','Upload expired');

@@ -12,10 +12,11 @@ function transport(t: TestContext) {
   class Xhr extends EventTarget {
     upload = new EventTarget(); timeout = 0; status = 0; responseText = '';
     withCredentials = false; url = ''; sent = false; ended = false; aborts = 0;
+    headers:Record<string,string>={};
     private timer?: ReturnType<typeof setTimeout>;
     constructor() { super(); requests.push(this); }
     open(method: string, url: string) { assert.equal(method, 'PUT'); this.url = url; }
-    setRequestHeader() {}
+    setRequestHeader(name:string,value:string) {this.headers[name]=value;}
     send() {
       this.sent = true;
       if (this.timeout) this.timer = setTimeout(() => this.end('timeout'), this.timeout);
@@ -144,3 +145,34 @@ for (const failure of ['timeout', 'network'] as const) {
     assert.equal(recovery.list()[0].stage, 'saved'); assert.equal(recovery.list()[0].lastError, undefined);
   });
 }
+
+test('negotiated Blob PUT accepts 201, sends only storage headers, and never includes application credentials',async t=>{
+ const f=transport(t);Object.defineProperty(globalThis,'document',{configurable:true,value:{cookie:'bb_csrf=synthetic-cookie'}});
+ const work=f.api.uploadBytes('https://storage.invalid/private?sig=synthetic',file(),()=>{},new AbortController().signal,'azure_blob');
+ const xhr=f.requests[0];assert.equal(xhr.withCredentials,false);
+ assert.deepEqual(xhr.headers,{'Content-Type':'application/octet-stream','x-ms-blob-type':'BlockBlob','If-None-Match':'*'});
+ xhr.finish(201);await work;
+});
+test('201 requires explicit negotiation; a legacy same-origin upload still requires 204',async t=>{
+ const f=transport(t),work=f.api.uploadBytes(uploadUrl,file(),()=>{},new AbortController().signal);f.requests[0].finish(201);await assert.rejects(work,ApiError);
+});
+test('Blob rejection keeps only the status, never XML response or signing details',async t=>{
+ const f=transport(t),work=f.api.uploadBytes('https://storage.invalid/private?sig=synthetic',file(),()=>{},new AbortController().signal,'azure_blob');
+ f.requests[0].responseText='<Error>sig=synthetic</Error>';f.requests[0].finish(412);
+ await assert.rejects(work,(e:unknown)=>e instanceof ApiError&&e.status===412&&!JSON.stringify(e).includes('synthetic'));
+ assert.equal(f.requests.length,1);
+});
+test('direct upload rejects HTTP and preserves immediate cancellation',async t=>{
+ const f=transport(t);
+ await assert.rejects(f.api.uploadBytes('http://storage.invalid/private',file(),()=>{},new AbortController().signal,'azure_blob'),unavailable);
+ assert.equal(f.requests.length,0);
+ const controller=new AbortController(),work=f.api.uploadBytes('https://storage.invalid/private',file(),()=>{},controller.signal,'azure_blob');controller.abort();await assert.rejects(work,{name:'AbortError'});assert.equal(f.requests[0].aborts,1);
+});
+
+test('new client advertises capability to an old API, then successfully uses its unchanged 204 transport',async t=>{
+ const f=transport(t);let headers:Headers|undefined;
+ t.mock.method(globalThis,'fetch',async(_url:unknown,init?:RequestInit)=>{headers=new Headers(init?.headers);return new Response(JSON.stringify({upload_id:'upload-a',state:'uploading',upload_url:uploadUrl,expires_at:'2026-11-10T00:15:00Z',max_bytes:104857600}),{status:201,headers:{'content-type':'application/json'}});});
+ const created=await f.api.createUpload('project-a',{filename:file().name,media_type:file().type as Dto<'UploadCreateRequest'>['media_type'],byte_size:file().size,sha256:'f'.repeat(64),role:'other'});
+ assert.equal(headers!.get('X-BB-Upload-Transport'),'azure_blob');assert.equal(created.upload_transport,undefined);
+ const work=f.api.uploadBytes(created.upload_url,file(),()=>{},new AbortController().signal);assert.deepEqual(f.requests[0].headers,{'Content-Type':'application/octet-stream'});f.requests[0].finish(204);await work;
+});

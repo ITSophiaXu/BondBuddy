@@ -1,9 +1,9 @@
 import { Pool, type PoolClient } from 'pg';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { M1_UPLOAD_LIMITS, type SignatureAssessment } from '@bondbuddy/contracts';
+import { DIRECT_UPLOAD_TRANSPORT, M1_UPLOAD_LIMITS, type SignatureAssessment } from '@bondbuddy/contracts';
 import { conflict, missing, Problem, project, materialDto, readBlobToFile, transaction, uid, verifiedMediaFileDetailed, type PrivateBlobs, type BlobDigest } from './data.js';
-import { assertUploadVersion, cachedUploadVersion, recordUploadIntegrity } from './upload-integrity.js';
+import { assertUploadVersion, cachedUploadVersion, recordUploadIntegrity, boundedVersion } from './upload-integrity.js';
 import { registerUploadedProspectus } from './prospectus-versions.js';
 import { assertProspectusUploadFormat } from './prospectus-upload.js';
 import { enqueueMaterialParse } from './material-jobs.js';
@@ -81,7 +81,7 @@ async function commitPreparedUpload(pool:Pool,blobs:PrivateBlobs,user:string,id:
       if(u.state==='deleting'||u.state==='purged')throw missing();
       assertProspectusUploadFormat(uploadProject.kind,u.role,u.filename,u.declared_media_type);
       if(u.state==='deleting'||u.state==='purged')throw missing();
-  if(u.state!=='received')throw new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received');
+  if(u.state!=='received'&&!(u.state==='uploading'&&u.upload_transport===DIRECT_UPLOAD_TRANSPORT))throw Object.assign(new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received'),{uploadBytesPending:true});
       // Re-verify the stored object from a disk copy: hash while streaming, then inspect the file.
       let media:string;
       let verifiedBlob: BlobDigest | undefined;
@@ -91,6 +91,10 @@ async function commitPreparedUpload(pool:Pool,blobs:PrivateBlobs,user:string,id:
         if(!source||source.objectKey!==u.object_key||!proof)throw new Problem(503,'DATA_UNAVAILABLE','UPLOAD_REVERIFY_REQUIRED');
         await assertUploadVersion(blobs,u,proof);
         verifiedBlob=proof;media=source.mediaType;signatureAssessment=source.signatureAssessment;excepted=source.excepted;
+      }
+      if(u.state==='uploading'&&u.upload_transport===DIRECT_UPLOAD_TRANSPORT){
+        await client.query("UPDATE bb_uploads SET state='received',received_sha256=$4,received_bytes=$5 WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND state='uploading'",[user,id,uploadId,verifiedBlob!.sha256,verifiedBlob!.byteSize]);
+        await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'upload',$3,'upload.received',$4)",[uid(),user,uploadId,{project_id:id,byte_size:verifiedBlob!.byteSize}]);
       }
       const duplicate=await client.query(`SELECT * FROM bb_material_versions
         WHERE owner_user_id=$1 AND project_id=$2 AND role=$3 AND sha256=$4 AND byte_size=$5 AND media_type=$6 AND deleted_at IS NULL
@@ -139,13 +143,17 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
     return result;
   }
   if(u.state==='deleting'||u.state==='purged')throw missing();
-  if(u.state!=='received')throw new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received');
+  if(u.state!=='received'&&!(u.state==='uploading'&&u.upload_transport===DIRECT_UPLOAD_TRANSPORT))throw Object.assign(new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received'),{uploadBytesPending:true});
   assertProspectusUploadFormat(p.kind,u.role,u.filename,u.declared_media_type);
+  const direct=u.upload_transport===DIRECT_UPLOAD_TRANSPORT;
+  const version=direct&&blobs.headVersion?await boundedVersion(blobs,u.object_key):null;
+  if(direct&&!version)throw Object.assign(new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received'),{uploadBytesPending:true});
   const release=reserveSpool(b.byte_size),copy=join(spoolDirectory(),`${uid()}.blob`);
   try{
     await mkdir(spoolDirectory(),{recursive:true,mode:0o700});
     const proof=await readBlobToFile(blobs,u.object_key,copy,MAX_BYTES);
     if(!proof)throw new Problem(503,'DATA_UNAVAILABLE','Stored upload bytes are temporarily unavailable');
+    if(direct&&proof.etag!==version!.etag)throw new Problem(503,'DATA_UNAVAILABLE','UPLOAD_REVERIFY_REQUIRED');
     if(proof.byteSize!==b.byte_size||proof.sha256!==b.sha256)throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes or hash mismatch');
     const excepted=uploadInspectionExceptionMatches(inspectionException,{ownerUserId:user,projectId:id,role:u.role,byteSize:proof.byteSize,sha256:proof.sha256,mediaType:u.declared_media_type});
     const inspection=excepted?{mediaType:XLSX_MEDIA_TYPE,signatureAssessment:null}:await verifiedMediaFileDetailed(copy,proof.byteSize,u.declared_media_type);
@@ -154,6 +162,10 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
     const m=(await pool.query(`SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND role=$3 AND sha256=$4 AND byte_size=$5 AND media_type=$6 AND deleted_at IS NULL ORDER BY persisted_at,id,version LIMIT 1`,[user,id,u.role,b.sha256,b.byte_size,inspection.mediaType])).rows[0];
     if(m){await beforeMaterialRead?.(m);result.proofs[m.object_key]=await fullMaterialProof(blobs,m);}
     return result;
+  }catch(error){
+    const e=direct&&error instanceof Problem&&error.status===413?new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes exceed the upload limit'):error;
+    if(direct&&version&&e instanceof Problem&&[415,422].includes(e.status))Object.assign(e,{rejectedUploadVersion:{key:u.object_key,etag:version.etag}});
+    throw e;
   }finally{await discardSpool(copy);release();}
 }
 export async function fullMaterialProof(blobs:PrivateBlobs,m:any):Promise<BlobDigest>{

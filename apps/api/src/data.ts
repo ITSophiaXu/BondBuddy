@@ -5,7 +5,7 @@ import type { Readable } from 'node:stream';
 import { finished } from 'node:stream/promises';
 import { BLOB_RANGE_MIN_BYTES, BlobRangeReadError, readBlobRangesToFile } from './blob-range-reader.js';
 import { Pool, type PoolClient } from 'pg';
-import { BlobServiceClient, type BlobItem } from '@azure/storage-blob';
+import { BlobServiceClient, BlobSASPermissions, SASProtocol, type BlobItem } from '@azure/storage-blob';
 import { UPLOAD_BYTES_PENDING_FIELD_ERROR, PROSPECTUS_DOCX_ONLY_FIELD_ERROR, isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
 import { inspectMaterialUpload, inspectMaterialUploadFile, inspectMaterialUploadFileDetailed } from './original-material-upload.js';
 import { UploadSafetyError, type UploadInspectionResult, type UploadRejectionReason, type UploadStructureDetail } from './upload-safety.js';
@@ -143,6 +143,8 @@ export async function material(pool: Pool | PoolClient, owner: string, projectId
   return result.rows[0];
 }
 export interface PrivateBlobs {
+  /** HTTPS, one immutable object, create-only, short-lived; never persist/log the returned URL. */
+  createUploadUrl?(key: string, expiresAt: Date): Promise<string>;
   put(key: string, bytes: Buffer, mediaType: string): Promise<void>;
   get(key: string): Promise<Buffer>;
   getIfExists(key: string): Promise<Buffer | null>;
@@ -212,6 +214,16 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
     return Buffer.concat(chunks);
   };
   return {
+    async createUploadUrl(key, expiresAt) {
+      const blob = container.getBlockBlobClient(key);
+      if (new URL(blob.url).protocol !== 'https:' || expiresAt.getTime() <= Date.now() || expiresAt.getTime() > Date.now() + 15 * 60_000)
+        throw new Problem(503,'DATA_UNAVAILABLE','Direct upload signing is unavailable');
+      try {
+        await ensure();
+        return await blob.generateSasUrl({ permissions: BlobSASPermissions.parse('c'), protocol: SASProtocol.Https,
+          startsOn: new Date(Date.now() - 60_000), expiresOn: expiresAt });
+      } catch { throw new Problem(503,'DATA_UNAVAILABLE','Direct upload signing is unavailable'); }
+    },
     async put(key, bytes, mediaType) { await ensure(); await container.getBlockBlobClient(key).uploadData(bytes,{ blobHTTPHeaders: { blobContentType: mediaType } }); },
     async get(key) { await ensure(); return read(key); },
     async getIfExists(key) {

@@ -35,6 +35,7 @@ services:
     profiles: ['${BB_ROLE_PARSE_PROFILE:-bb-parse-inactive}']
     environment: !override
       DATABASE_URL: *main-db-url
+      BB_DIRECT_BLOB_UPLOADS: ${BB_DIRECT_BLOB_UPLOADS:-0}
       AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:?set in private env}
       BB_LIBRARY_CONTAINER: ${BB_LIBRARY_CONTAINER:-bondbuddy-private}
       BB_WORKER_JOB_KINDS: parse

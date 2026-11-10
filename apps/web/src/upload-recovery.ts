@@ -3,14 +3,14 @@ import { Value } from '@sinclair/typebox/value';
 import { UserFacingError } from './user-facing-error.js';
 import { ApiError, type ApiClient, type Dto } from './api.js';
 import { isDateTime } from './schema-formats.js';
-import { isUploadInspectionPublicReason } from '@bondbuddy/contracts';
+import { DIRECT_UPLOAD_TRANSPORT, type UploadTransport, isUploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type UploadRecoveryJson = null | boolean | number | string | UploadRecoveryJson[] | { [key: string]: UploadRecoveryJson };
 export type UploadRecoveryStage = 'pending' | 'creating' | 'session' | 'bytes_unknown' | 'confirming' | 'saved';
 export type UploadRecoveryRecord = {
   version: 1; id: string; owner: string; projectId: string; purpose: string;
   declaration: Dto<'UploadCreateRequest'>; context?: UploadRecoveryJson; stage: UploadRecoveryStage;
-  uploadId?: string; expiresAt?: string; previousUploadIds?: string[]; material?: Dto<'MaterialResponse'>;
+  uploadId?: string; expiresAt?: string; uploadTransport?: UploadTransport; previousUploadIds?: string[]; material?: Dto<'MaterialResponse'>;
   lastError?: { status: number; code: string; uploadReason?: string; correlationId?: string };
 };
 export type UploadRecoveryStorage = Pick<Storage, 'length' | 'key' | 'getItem' | 'setItem' | 'removeItem'>;
@@ -28,8 +28,8 @@ export type UploadRecoveryResumeOptions = {
   /** Opt-in business journal safety: an in-flight transfer cannot recreate a removed or replaced durable slot. */
   requireDurableRecord?: boolean;
 };
-type UploadApi = Pick<ApiClient, 'createUpload' | 'completeUpload' | 'uploadBytes' | 'material' | 'project'>;
-type MemorySession = { uploadId: string; url: string; expiresAt: string };
+type UploadApi = Pick<ApiClient, 'createUpload' | 'completeUpload' | 'uploadBytes' | 'material' | 'project'> & Partial<Pick<ApiClient,'refreshUpload'>>;
+type MemorySession = { uploadId: string; url: string; expiresAt: string; transport?: UploadTransport };
 const prefix = 'bondbuddy:upload-recovery:v1:';
 const stages: UploadRecoveryStage[] = ['pending', 'creating', 'session', 'bytes_unknown', 'confirming', 'saved'];
 const maxRecordLength = 256_000;
@@ -115,12 +115,13 @@ export class UploadRecovery {
     try {
       if (raw.length > maxRecordLength) throw new Error();
       const r: unknown = JSON.parse(raw);
-      if (!plain(r) || !exactKeys(r, ['version', 'id', 'owner', 'projectId', 'purpose', 'declaration', 'context', 'stage', 'uploadId', 'expiresAt', 'previousUploadIds', 'material', 'lastError']) ||
+      if (!plain(r) || !exactKeys(r, ['version', 'id', 'owner', 'projectId', 'purpose', 'declaration', 'context', 'stage', 'uploadId', 'expiresAt', 'uploadTransport', 'previousUploadIds', 'material', 'lastError']) ||
         r.version !== 1 || !validId(r.id) || r.owner !== this.owner || r.projectId !== this.projectId || r.purpose !== this.purpose ||
         !key.startsWith(this.namespace + encodeURIComponent(r.id) + ':') || !stages.includes(r.stage as UploadRecoveryStage)) throw new Error();
       declaration(r.declaration);
       if (Object.hasOwn(r, 'context') && !jsonContext(r.context)) throw new Error();
       if (r.uploadId !== undefined && !validId(r.uploadId) || r.expiresAt !== undefined && (typeof r.expiresAt !== 'string' || !isDateTime(r.expiresAt))) throw new Error();
+      if(r.uploadTransport!==undefined&&r.uploadTransport!==DIRECT_UPLOAD_TRANSPORT)throw new Error();
       if ((r.uploadId === undefined) !== (r.expiresAt === undefined)) throw new Error();
       if (['session', 'bytes_unknown', 'confirming', 'saved'].includes(r.stage as string) && !r.uploadId) throw new Error();
       if (r.previousUploadIds !== undefined && (!Array.isArray(r.previousUploadIds) || !r.previousUploadIds.every(validId) || new Set(r.previousUploadIds).size !== r.previousUploadIds.length || r.uploadId !== undefined && r.previousUploadIds.includes(r.uploadId))) throw new Error();
@@ -262,7 +263,7 @@ export class UploadRecovery {
       const memory = this.sessions.get(id);
       if (memory && memory.uploadId !== record.uploadId) {
         const previous = [...new Set([...(record.previousUploadIds ?? []), ...(record.uploadId ? [record.uploadId] : [])])];
-        save({ uploadId: memory.uploadId, expiresAt: memory.expiresAt, previousUploadIds: previous, stage: 'session' });
+        save({ uploadId: memory.uploadId, expiresAt: memory.expiresAt, uploadTransport:memory.transport, previousUploadIds: previous, stage: 'session' });
         status('已保留上次上传，正在继续确认…');
       }
       let needsBytes = !record.uploadId;
@@ -272,30 +273,35 @@ export class UploadRecovery {
             correlationId: record.lastError?.correlationId,
             ...(isUploadInspectionPublicReason(record.lastError?.uploadReason) ? { uploadReason: record.lastError.uploadReason } : {}),
           });
-          if (previous.status >= 400 && previous.status < 500 && previous.status !== 401) throw previous;
-          status('正在确认上次上传的文件是否已保存…');
-          if (!options.reselectExpiredSession || !record.expiresAt || Date.parse(record.expiresAt) > (this.deps.now?.() ?? Date.now()))
-            return accepted(await this.confirmUnknownPut(record, signal, live, previous));
-          // Expiry alone is not evidence that bytes were lost. First authorize
-          // and confirm the original upload; accepted bytes/materials still win.
-          try {
-            const material = await this.api.completeUpload(this.projectId, record.uploadId, { byte_size: record.declaration.byte_size, sha256: record.declaration.sha256 }, signal);
-            live(); if (material.upload_id === record.uploadId && material.filename !== record.declaration.filename) throw new UploadRecoveryReceiptError();
-            return accepted(material);
-          } catch (error) {
-            live(); if (!bytesPending(error)) throw error;
-            needsBytes = true; this.sessions.delete(id);
+          if (record.uploadTransport===DIRECT_UPLOAD_TRANSPORT) {
+            try{return accepted(await this.api.completeUpload(this.projectId,record.uploadId,{byte_size:record.declaration.byte_size,sha256:record.declaration.sha256},signal));}
+            catch(error){live();if(!bytesPending(error))throw error;needsBytes=true;}
+          } else {
+            if (previous.status >= 400 && previous.status < 500 && previous.status !== 401) throw previous;
+            status('正在确认上次上传的文件是否已保存…');
+            if (!options.reselectExpiredSession || !record.expiresAt || Date.parse(record.expiresAt) > (this.deps.now?.() ?? Date.now()))
+              return accepted(await this.confirmUnknownPut(record, signal, live, previous));
+            // Expiry alone is not evidence that bytes were lost. First authorize
+            // and confirm the original upload; accepted bytes/materials still win.
+            try {
+              const material = await this.api.completeUpload(this.projectId, record.uploadId, { byte_size: record.declaration.byte_size, sha256: record.declaration.sha256 }, signal);
+              live(); if (material.upload_id === record.uploadId && material.filename !== record.declaration.filename) throw new UploadRecoveryReceiptError();
+              return accepted(material);
+            } catch (error) {
+              live(); if (!bytesPending(error)) throw error;
+              needsBytes = true; this.sessions.delete(id);
+            }
           }
         } else {
           save({ stage: 'confirming' }); status('正在确认上次上传的文件是否已保存…');
           try { return accepted(await this.api.completeUpload(this.projectId, record.uploadId, { byte_size: record.declaration.byte_size, sha256: record.declaration.sha256 }, signal)); }
           catch (error) {
             live();
-            if (error instanceof ApiError && error.status === 404) {
+            if (error instanceof ApiError && error.status === 404 && record.uploadTransport!==DIRECT_UPLOAD_TRANSPORT) {
               const project = await this.api.project(this.projectId, signal); live();
               if (!Value.Check(schemas.ProjectResponse, project) || !isDateTime(project.updated_at) || project.project_id !== this.projectId) throw new UploadRecoveryReceiptError(); needsBytes = true;
               this.sessions.delete(id);
-            } else if (error instanceof ApiError && error.status === 422 && error.code === 'MATERIAL_UNREADABLE' && error.details.uploadReason === undefined) needsBytes = true;
+            } else if (record.uploadTransport===DIRECT_UPLOAD_TRANSPORT?bytesPending(error):error instanceof ApiError&&error.status===422&&error.code==='MATERIAL_UNREADABLE'&&error.details.uploadReason===undefined) needsBytes=true;
             else throw error;
           }
         }
@@ -306,19 +312,33 @@ export class UploadRecovery {
       if (!session || session.uploadId !== record.uploadId || Date.parse(session.expiresAt) <= (this.deps.now?.() ?? Date.now())) {
         save({ stage: 'creating' });
         status(record.uploadId ? '正在准备重新上传这份文件…' : '正在准备上传文件…');
-        const created = await this.api.createUpload(this.projectId, clone(input), signal); live();
+        const renewing=!!record.uploadId&&record.uploadTransport===DIRECT_UPLOAD_TRANSPORT;
+        if(renewing&&!this.api.refreshUpload)throw new UploadRecoveryReceiptError();
+        const created = renewing?await this.api.refreshUpload!(this.projectId,record.uploadId!,{byte_size:input.byte_size,sha256:input.sha256},signal):await this.api.createUpload(this.projectId, clone(input), signal); live();
+        if(renewing&&(created.upload_id!==record.uploadId||created.upload_transport!==DIRECT_UPLOAD_TRANSPORT))throw new UploadRecoveryReceiptError();
         if (!Value.Check(schemas.UploadSessionResponse, created) || !isDateTime(created.expires_at) || Date.parse(created.expires_at) <= (this.deps.now?.() ?? Date.now()) || created.max_bytes < input.byte_size || !/^https?:\/\//i.test(created.upload_url) && !created.upload_url.startsWith('/')) throw new UploadRecoveryReceiptError();
+        if(created.upload_transport===DIRECT_UPLOAD_TRANSPORT){
+          let target:URL;try{target=new URL(created.upload_url);}catch{throw new UploadRecoveryReceiptError();}
+          if(target.protocol!=='https:'||target.username||target.password||target.hash)throw new UploadRecoveryReceiptError();
+        }
         const previous = [...new Set([...(record.previousUploadIds ?? []), ...(record.uploadId ? [record.uploadId] : [])])];
+        if (renewing)previous.splice(previous.indexOf(created.upload_id),1);
         if (previous.includes(created.upload_id)) throw new UploadRecoveryReceiptError();
-        session = { uploadId: created.upload_id, url: created.upload_url, expiresAt: created.expires_at }; this.sessions.set(id, session);
-        save({ uploadId: session.uploadId, expiresAt: session.expiresAt, previousUploadIds: previous, stage: 'session' });
+        session = { uploadId: created.upload_id, url: created.upload_url, expiresAt: created.expires_at, transport:created.upload_transport }; this.sessions.set(id, session);
+        save({ uploadId: session.uploadId, expiresAt: session.expiresAt, uploadTransport:session.transport, previousUploadIds: previous, stage: 'session' });
         status('已准备好，开始上传文件…');
       }
       save({ stage: 'bytes_unknown' }); status('正在上传文件…');
       try {
-        await this.api.uploadBytes(session.url, file, (loaded, total) => { if (this.current() && !signal.aborted) options.progress?.(loaded, total); }, signal); live();
+        await this.api.uploadBytes(session.url, file, (loaded, total) => { if (this.current() && !signal.aborted) options.progress?.(loaded, total); }, signal, session.transport); live();
       } catch (error) {
-        live(); if (!uncertainPut(error)) throw error;
+        live(); if(session.transport===DIRECT_UPLOAD_TRANSPORT&&error instanceof ApiError&&[403,409,412].includes(error.status)){
+          rememberError(error);
+          // A create-only retry may have been rejected because the original PUT succeeded.
+          try{return accepted(await this.api.completeUpload(this.projectId,record.uploadId!,{byte_size:input.byte_size,sha256:input.sha256},signal));}
+          catch(completion){live();if(!bytesPending(completion))throw completion;throw error;}
+        }
+        if (!uncertainPut(error)) throw error;
         rememberError(error); status('正在确认上次上传的文件是否已保存…');
         return accepted(await this.confirmUnknownPut(record, signal, live, error));
       }
