@@ -15,8 +15,8 @@ export class UpdateEntry {
   dispose(){this.controller.abort();this.generation++;}
   constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean){}
   async render(projectId?:string){
-    this.shell(`<div class="update-entry project-entry-page project-entry-update"><header class="page-head"><div><p class="eyebrow">PROSPECTUS WORKSPACE</p><h1>更新募集书</h1><p>有原稿可更新，没有原稿也可根据发行人材料编制首稿。</p></div></header>
-      <section class="update-entry-primary"><div class="update-entry-icon">${icon('M14 2H5v20h14V7h-5ZM12 11v6M9 14h6')}</div><div><p class="eyebrow">开始新一期工作</p><h2>新建项目，准备募集书</h2><p>先保存项目，再添加材料和要求。各轮成果保留，后续可在同一项目继续修改。</p><a href="#/new" class="btn primary">＋ 新建项目</a></div></section>
+    this.shell(`<div class="update-entry project-entry-page project-entry-update"><header class="page-head"><div><p class="eyebrow">PROSPECTUS WORKSPACE</p><h1>更新募集书</h1><p>先保存项目；开始编制前需上传历史／参考募集书并填写原稿信息，已有核验成果可继续修改。</p></div></header>
+      <section class="update-entry-primary"><div class="update-entry-icon">${icon('M14 2H5v20h14V7h-5ZM12 11v6M9 14h6')}</div><div><p class="eyebrow">开始新一期工作</p><h2>新建项目，准备募集书</h2><p>先保存项目，再添加历史／参考募集书、原稿信息、财务材料和补充要求。可用本企业历史稿、母子公司稿或相似企业参考稿；参考稿事实不作为本发行人的既有事实。各轮成果保留，后续可在同一项目继续修改。</p><a href="#/new" class="btn primary">＋ 新建项目</a></div></section>
       <details class="update-entry-existing" ${projectId?'open':''}><summary>继续已有项目 <span>已有项目的材料与填写内容可继续使用</span></summary>
         <div class="project-picker"><form id="update-project-search"><label class="sr-only" for="update-project-query">搜索项目名称或发行人</label><input id="update-project-query" type="search" placeholder="搜索项目名称或发行人" maxlength="200"/><button class="btn secondary" type="submit">搜索</button></form>
         <p id="update-entry-status" class="project-picker-status" role="status"></p><div class="project-picker-scroll" tabindex="0" role="region" aria-label="可选择的项目"><div id="update-project-list"></div><button id="update-project-more" class="text-button" hidden>加载更多项目</button></div>
