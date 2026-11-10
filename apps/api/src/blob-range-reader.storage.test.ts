@@ -37,6 +37,28 @@ test('real SDK large read pins every range to the downloaded version and returns
   } finally { intercepted.mock.restore(); }
 }));
 
+test('artifact opt-in uses bounded ranges below the unchanged default threshold', { skip: !storage }, async () => fixture(async ({ blobs, path }) => {
+  const bytes = randomBytes(6561975);
+  await blobs.put('artifact', bytes, 'application/octet-stream');
+  const version = await blobs.headVersion!('artifact');
+  const download = BlockBlobClient.prototype.download;
+  const calls: { offset?: number; count?: number; ifMatch?: string }[] = [];
+  const intercepted = mock.method(BlockBlobClient.prototype, 'download', function(this: BlockBlobClient, ...args: Parameters<typeof download>) {
+    calls.push({ offset: args[0], count: args[1], ifMatch: args[2]?.conditions?.ifMatch });
+    return download.apply(this, args);
+  });
+  try {
+    const proof = await blobs.readToFile!('artifact', path, bytes.length, { useRanges: true });
+    assert.deepEqual(proof, { byteSize: bytes.length, sha256: digest(bytes), etag: version!.etag });
+    assert.deepEqual(await readFile(path), bytes);
+    assert.equal(calls.length, 3);
+    assert.ok(calls.slice(1).every(c => c.ifMatch === version!.etag && c.count! <= BLOB_RANGE_BYTES));
+    await rm(path); calls.length = 0;
+    await blobs.readToFile!('artifact', path, bytes.length);
+    assert.deepEqual(calls, [{ offset: undefined, count: undefined, ifMatch: undefined }], 'ordinary uploads retain the default single stream below 16MiB');
+  } finally { intercepted.mock.restore(); }
+}));
+
 test('real SDK small and digest-only reads retain the full single-stream proof', { skip: !storage }, async () => fixture(async ({ blobs, path }) => {
   const small = randomBytes(1001), threshold = randomBytes(BLOB_RANGE_MIN_BYTES), large = randomBytes(BLOB_RANGE_BYTES + 31);
   await blobs.put('small', small, 'application/octet-stream');

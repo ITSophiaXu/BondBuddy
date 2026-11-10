@@ -46,7 +46,7 @@ import { executionKeyHash, isPgInputRevision, recordLogicalJob, recordOperation,
 import { installAdminRoutes } from './admin-routes.js';
 import { installAdminDashboardRoutes } from './admin-dashboard.js';
 import { installAdminInspectionRoutes } from './admin-inspection.js';
-import { DOCX_LIMITS, WORD_MEDIA_TYPE } from './docx-inspector.js';
+import { readVerifiedArtifact } from './artifact-reader.js';
 import { installEventStreams, type StreamSettings } from './stream.js';
 import { sendMaterial, contentDisposition } from './material-download.js';
 import { artifactNameColumns, artifactNameJoins, artifactDownloadName } from './artifact-filename.js';
@@ -296,24 +296,7 @@ export function createServer(settings: Settings = {}) {
   }
   function blob() { if (!blobs) throw unavailable(); return blobs; }
   async function verifiedArtifactBytes(artifact:any):Promise<Buffer> {
-    let bytes:Buffer|null;
-    if(artifact.media_type===WORD_MEDIA_TYPE){
-      const expectedSize=Number(artifact.delivery_evidence_byte_size);
-      if(!Number.isSafeInteger(expectedSize)||expectedSize<0||expectedSize>DOCX_LIMITS.archiveBytes)
-        throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
-      try { bytes=await blob().getIfExistsBounded(artifact.object_key,expectedSize); }
-      catch { throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed'); }
-      if(!bytes||bytes.length!==expectedSize)throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
-    }else if(artifact.media_type==='application/pdf'){
-      const expectedSize=Number(artifact.delivery_evidence_byte_size);
-      if(!Number.isSafeInteger(expectedSize)||expectedSize<8||expectedSize>100*1024*1024)throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
-      try {bytes=await blob().getIfExistsBounded(artifact.object_key,expectedSize);}catch{throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');}
-      if(!bytes||bytes.length!==expectedSize)throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
-    }else{
-      bytes=await blob().get(artifact.object_key);
-    }
-    if(digest(bytes)!==artifact.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
-    return bytes;
+    return readVerifiedArtifact(blob(),artifact);
   }
   installAdminRoutes(app,{db,blobs:blob,owner,promptViewDeadlineMs:settings.promptViewDeadlineMs});
   installAdminDashboardRoutes(app,{db,owner});
