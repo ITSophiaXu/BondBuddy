@@ -27,8 +27,10 @@ export async function readVerifiedArtifact(blobs: PrivateBlobs, artifact: Stored
     const release = reserveSpool(expectedSize);
     activeReads++;
     const path = join(spoolDirectory(), `${uid()}.blob`);
+    let directoryReady = false;
     try {
       await mkdir(spoolDirectory(), { recursive: true, mode: 0o700 });
+      directoryReady = true;
       const receipt = await blobs.readToFile(artifact.object_key, path, expectedSize, { useRanges: true });
       if (!receipt || receipt.byteSize !== expectedSize || receipt.sha256 !== artifact.sha256.trim()) throw integrityFailure();
       const chunks: Buffer[] = [];
@@ -42,7 +44,7 @@ export async function readVerifiedArtifact(blobs: PrivateBlobs, artifact: Stored
       bytes = Buffer.concat(chunks, total);
     } catch { throw integrityFailure(); }
     finally {
-      try { await rm(path, { force: true }); release(); }
+      try { if (directoryReady) await rm(path, { force: true }); release(); }
       finally { activeReads--; }
     }
   } else if (bounded) {
