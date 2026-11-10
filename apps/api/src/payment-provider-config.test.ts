@@ -109,3 +109,24 @@ test('Alipay statements default off, require explicit merchant enablement and re
   assert.deepEqual(paymentProvidersFromEnv({BB_ALIPAY_PAY_ENABLED:'0',BB_ALIPAY_PAY_STATEMENTS_ENABLED:'0'},noExternal),{providers:[],status:'disabled'});
   assert.deepEqual(calls,{files:0,requests:0});
 });
+
+test('production file configuration preserves raw key type and empty Compose values retain PEM compatibility',async()=>{
+  const a=syntheticAlipayFixture(),privatePath=resolve('synthetic-alipay-private.key'),publicPath=resolve('synthetic-alipay-public.key');
+  const base:NodeJS.ProcessEnv={BB_ALIPAY_PAY_ENABLED:'1',BB_ALIPAY_ENVIRONMENT:'production',BB_ALIPAY_APP_ID:a.options.appId,
+    BB_ALIPAY_SELLER_ID:a.options.merchantId,BB_ALIPAY_WEB_PRODUCT:'page',BB_ALIPAY_APP_PRIVATE_KEY_FILE:privatePath,
+    BB_ALIPAY_PUBLIC_KEY_FILE:publicPath,BB_ALIPAY_NOTIFY_URL:a.options.notifyUrl,BB_ALIPAY_RETURN_URL:a.options.returnUrl};
+  for(const keyType of ['', 'PKCS1', 'PKCS8']){
+    const privateValue=keyType?a.app.privateKey.export({type:keyType==='PKCS1'?'pkcs1':'pkcs8',format:'der'}).toString('base64'):a.options.appPrivateKeyPem;
+    const publicValue=keyType?a.platform.publicKey.export({type:'spki',format:'der'}).toString('base64'):a.options.alipayPublicKeyPem;
+    const config=paymentProvidersFromEnv({...base,BB_ALIPAY_APP_PRIVATE_KEY_TYPE:keyType},{now:()=>a.now,readSecretFile:path=>{
+      assert.ok(path===privatePath||path===publicPath);return path===privatePath?privateValue:publicValue;
+    }});
+    assert.equal(config.status,'ready',keyType||'empty PEM setting');
+    const checkout=await config.providers[0].create(a.order),url=new URL(checkout.checkoutUrl!);
+    assert.equal(url.origin,'https://openapi.alipay.com');
+    const {fields,biz}=a.request(url.searchParams.toString());
+    assert.equal(fields.method,'alipay.trade.page.pay');assert.equal(fields.notify_url,a.options.notifyUrl);
+    assert.equal(biz.total_amount,'100.00');
+    assert.equal(JSON.stringify(config).includes(privateValue),false);
+  }
+});
