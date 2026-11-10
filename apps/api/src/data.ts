@@ -159,7 +159,7 @@ export interface PrivateBlobs {
   /** Streaming variants for large objects (Azure/Azurite). In-memory test doubles may omit them. */
   putFile?(key: string, path: string, mediaType: string): Promise<void>;
   /** Streams the object, hashing it and (with `path`) writing it to a file; null when absent. */
-  readToFile?(key: string, path: string | null, maxBytes: number): Promise<BlobDigest | null>;
+  readToFile?(key: string, path: string | null, maxBytes: number, options?: { useRanges?: boolean }): Promise<BlobDigest | null>;
   /** Opens the object as a stream (with its stored length); null when absent. */
   openRead?(key: string, signal?: AbortSignal): Promise<{ body: Readable; contentLength: number | undefined } | null>;
 }
@@ -298,14 +298,18 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
         throw error;
       }
     },
-    async readToFile(key, path, maxBytes) {
+    async readToFile(key, path, maxBytes, options) {
       if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Problem(422,'VALIDATION_FAILED','Invalid Blob read limit');
       await ensure();
       try {
         const response = await container.getBlockBlobClient(key).download();
         if (response.contentLength !== undefined && response.contentLength > maxBytes) { (response.readableStreamBody as Readable | undefined)?.destroy(); throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit'); }
         if (!response.readableStreamBody) throw new Problem(503,'DATA_UNAVAILABLE','Stored object has no body');
-        if (path && response.etag && Number.isSafeInteger(response.contentLength) && response.contentLength! > BLOB_RANGE_MIN_BYTES) {
+        if (options?.useRanges && (!response.etag || !Number.isSafeInteger(response.contentLength))) {
+          (response.readableStreamBody as Readable).destroy();
+          throw new Problem(503,'DATA_UNAVAILABLE','Stored object version is unavailable');
+        }
+        if (path && response.etag && Number.isSafeInteger(response.contentLength) && (options?.useRanges || response.contentLength! > BLOB_RANGE_MIN_BYTES)) {
           // Small objects and digest-only legacy reads retain their single streaming read.
           // The initial GET supplies a real version; every ranged GET must return that
           // same ETag with If-Match, exact Content-Range and exact streamed length.
