@@ -123,28 +123,38 @@ function providerErrorCode(eventError: unknown): ModelAdapterErrorCode | null {
   let inner: Record<string, unknown> = outer;
   try {
     if (typeof outer.message === 'string' && outer.message.length <= 8192) {
-      const parsed = JSON.parse(outer.message) as { error?: unknown; status?: unknown };
+      const parsed = JSON.parse(outer.message) as { error?: unknown; status?: unknown; status_code?: unknown };
       if (parsed.error && typeof parsed.error === 'object') inner = parsed.error as Record<string, unknown>;
       if (Number.isInteger(parsed.status)) inner = { ...inner, status: parsed.status };
+      if (Number.isInteger(parsed.status_code)) inner = { ...inner, status_code: parsed.status_code };
     }
   } catch { /* Only bounded status markers in CLI diagnostics are used below. */ }
-  const status = [inner.status, inner.status_code, outer.status, outer.status_code].find(v => v === 402 || v === 401 || v === 429);
+  const status = [inner.status, inner.status_code, outer.status, outer.status_code].find(v => typeof v === 'number' && Number.isInteger(v) && v >= 400 && v <= 599);
   const type = inner.type ?? outer.type;
   const code = inner.code ?? outer.code;
+  const typedRejection = type === 'invalid_request_error' || code === 'invalid_request_body' || code === 'invalid_json_schema'
+    ? 'MODEL_PROVIDER_REQUEST_REJECTED' : null;
   if (status === 402 || code === 'insufficient_balance') return 'MODEL_PROVIDER_BALANCE_EXHAUSTED';
   if (status === 401 || code === 'invalid_api_key') return 'MODEL_PROVIDER_AUTH_FAILED';
   if (status === 429 || code === 'rate_limit_exceeded') return 'MODEL_PROVIDER_RATE_LIMITED';
+  if (status === 413) return 'MODEL_PROVIDER_REQUEST_REJECTED';
+  // An explicit different status must not be overridden by quoted payload text or an incidental number.
+  if (status !== undefined) return typedRejection;
   const providerMessage = typeof inner.message === 'string' ? inner.message.slice(0, 4096) : '';
   if (/^Insufficient Balance\.?$/i.test(providerMessage.trim())) return 'MODEL_PROVIDER_BALANCE_EXHAUSTED';
   // Some CLI versions wrap an HTTP error as plain text. Match only an explicit status
   // marker; never store the surrounding diagnostic, which can contain prompt text.
   const message = typeof outer.message === 'string' ? outer.message.slice(0, 4096) : '';
-  const http = /(?:\bHTTP\s*|\bstatus(?:\s+code)?\s*[:=]?\s*)(402|401|429)\b/i.exec(message)?.[1];
+  const http = /(?:\bHTTP(?:\/\d(?:\.\d)?)?\s*|\bstatus(?:[\s_]+code)?\s*[:=]?\s*)([45]\d{2})\b/i.exec(message)?.[1];
   if (http === '402') return 'MODEL_PROVIDER_BALANCE_EXHAUSTED';
   if (http === '401') return 'MODEL_PROVIDER_AUTH_FAILED';
   if (http === '429') return 'MODEL_PROVIDER_RATE_LIMITED';
-  return type === 'invalid_request_error' || code === 'invalid_request_body' || code === 'invalid_json_schema'
-    ? 'MODEL_PROVIDER_REQUEST_REJECTED' : null;
+  if (http === '413') return 'MODEL_PROVIDER_REQUEST_REJECTED';
+  if (http !== undefined) return typedRejection;
+  const combined = `${providerMessage} ${message}`;
+  if (/\bpayload too large\b|\brequest body\b.{0,80}\b(?:too large|length limit exceeded)\b/i.test(combined))
+    return 'MODEL_PROVIDER_REQUEST_REJECTED';
+  return typedRejection;
 }
 
 const safeId = (v: unknown): v is string => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);

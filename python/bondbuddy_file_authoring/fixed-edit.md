@@ -12,6 +12,8 @@
 
 首次没有 operations.json 是正常状态。inspect 分页返回 node_id、kind、text、属性和 limitations；通过 --node 指定一个位置可取完整原文。template-manifest.json 保存整体结构、标题候选、样式链及 property_formats 属性字典。清单中的 *_ref 字段引用该字典；text_truncated=true 的原文必须用 inspect 读取完整内容。
 
+不要用 `cat`、`printf` 或其他方式整份输出 template-manifest.json；单次工具输出应保持在 16KB 以内。需要结构时用 inspect 分页或 `--node` 按需读取，避免把整份清单塞进模型上下文。
+
 原节点 ID 绑定原稿部件、原始序号和原文指纹，新增段落或行后仍然可用。不要自己拼原节点 ID。before 必须等于该节点当前完整 text，不能只写拟替换的词句。重新 inspect 能看到已应用操作之后的文字。
 
 ## 提交操作

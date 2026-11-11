@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -523,7 +523,7 @@ test('timeout kills the process group, records the attempt, usage unknown, no re
 test('interrupted, non-zero exit, broken stream and turn.failed map to stable codes with unknown usage', async () => {
   const { config, cleanup } = await setup();
   try {
-    const cases: [string, string, string][] = [['interrupted', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['nonzero_exit', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['broken_stream', 'needs_reconcile', 'MODEL_STREAM_BROKEN'], ['turn_failed', 'failed', 'MODEL_TURN_FAILED']];
+    const cases: [string, string, string][] = [['interrupted', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['nonzero_exit', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['broken_stream', 'needs_reconcile', 'MODEL_STREAM_BROKEN'], ['turn_failed', 'failed', 'MODEL_TURN_FAILED'], ['payload_413', 'failed', 'MODEL_PROVIDER_REQUEST_REJECTED']];
     for (const [scenario, status, code] of cases) {
       const r = await runContainedModelCall(call(`SCENARIO:${scenario}`), new MemoryCodexJournal(), config);
       assert.equal(r.status, status, scenario); assert.equal(r.error_code, code, scenario);
@@ -544,6 +544,51 @@ test('explicit provider request rejection is a failed attempt with unknown usage
     assert.equal(r.attempts[0].usage.status, 'unknown');
     assert.equal(j.observations[0].observation.outcome, 'failed');
     assert.ok(!JSON.stringify(r.attempts).includes('synthetic rejected request'), 'raw error is never recorded');
+    }
+  } finally { await cleanup(); }
+});
+
+test('413 rejection requires structured HTTP status or an explicit bounded payload diagnostic', async () => {
+  const { root, config, cleanup } = await setup();
+  try {
+    const command = join(root, 'synthetic-provider-error.mjs');
+    await writeFile(command, `
+      const error=JSON.parse(process.argv[2]);
+      for await(const _ of process.stdin){}
+      for(const event of [{type:'thread.started',thread_id:'synthetic-413-thread'},{type:'turn.started'},{type:'error',...error},{type:'turn.failed',error}])process.stdout.write(JSON.stringify(event)+'\\n');
+      process.exitCode=1;
+    `);
+    const rejected = 'MODEL_PROVIDER_REQUEST_REJECTED', generic = 'MODEL_TURN_FAILED';
+    const cases: [string, Record<string, unknown>, string][] = [
+      ['status', { status: 413, message: 'Request rejected' }, rejected],
+      ['status_code', { status_code: 413, message: 'Request rejected' }, rejected],
+      ['wrapped status', { message: JSON.stringify({ status: 413, error: { message: 'Request rejected' } }) }, rejected],
+      ['wrapped status_code', { message: JSON.stringify({ status_code: 413, error: { message: 'Request rejected' } }) }, rejected],
+      ['HTTP status', { message: 'HTTP 413' }, rejected],
+      ['HTTP version', { message: 'HTTP/1.1 413' }, rejected],
+      ['CLI status', { message: 'unexpected status 413' }, rejected],
+      ['CLI status_code', { message: 'status_code: 413' }, rejected],
+      ['payload text', { message: 'Payload Too Large' }, rejected],
+      ['body length', { message: 'Failed to buffer the request body: length limit exceeded' }, rejected],
+      ['incidental duration', { message: 'Connection failed after 413 milliseconds' }, generic],
+      ['incidental trace', { status: 500, message: 'Internal server error; trace 413' }, generic],
+      ['structured status wins', { status: 500, message: 'Internal server error while logging Payload Too Large' }, generic],
+      ['text status wins', { message: 'HTTP 500 while logging Payload Too Large' }, generic],
+      ['unrelated length', { message: 'Output filename length limit exceeded' }, generic],
+      ['bounded diagnostic', { message: 'x'.repeat(4096) + ' HTTP 413' }, generic],
+      ['rate limit precedence', { status: 429, message: 'trace 413' }, 'MODEL_PROVIDER_RATE_LIMITED'],
+    ];
+    for (const [label, error, expected] of cases) {
+      const journal = new MemoryCodexJournal();
+      const result = await runContainedModelCall(call('Synthetic HTTP rejection boundary'), journal, { ...config, command: [process.execPath, command, JSON.stringify(error)] });
+      assert.equal(result.error_code, expected, label);
+      assert.equal(result.attempts.length, 1, `${label}: no automatic second call`);
+      assert.equal(journal.intents.length, 1, label); assert.equal(journal.observations.length, 1, label);
+      const observed = journal.observations[0];
+      assert.equal(observed.observation.outcome, 'failed', label); assert.equal(observed.retryable, false, label);
+      assert.deepEqual(observed.observation.usage, { status: 'unknown', input_tokens: null, cached_input_tokens: null, output_tokens: null, reasoning_tokens: null, total_tokens: null }, label);
+      assert.equal(observed.observation.result_ref, null, label);
+      assert.equal(result.attempts[0].pricing_status, 'unknown', label);
     }
   } finally { await cleanup(); }
 });
