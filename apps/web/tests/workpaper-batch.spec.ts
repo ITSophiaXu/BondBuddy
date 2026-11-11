@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {AUTOMATIC_PRICE_VERSION,AUTOMATIC_TASK_TARIFF,SUBSCRIPTION_PLANS,SUBSCRIPTION_CATALOG_VERSION,WORKPAPER_PRICE,type WorkpaperWorkspace,type WorkpaperStart,type WorkpaperBatch,type WorkpaperAssess} from '@bondbuddy/contracts';
-import {fixture,href,ids,now,sha} from './generation-entry-fixtures';
+import {fixture,href,ids,now,sha,workspace as generationWorkspace} from './generation-entry-fixtures';
 import {fixtureBody,fixtureRequest} from './billing-fixture-wire';
 
 async function setup(page:import('@playwright/test').Page,count=350){
@@ -20,7 +20,7 @@ async function setup(page:import('@playwright/test').Page,count=350){
     items:data.catalogues[0].entries.filter(e=>body.item_ids.includes(e.id)).map(entry=>({entry,run_id:null,state:'queued',stage:null,attempt:1,error:null,artifacts:[]}))};data.batches.push(b);}
    if(state.uncertain){state.uncertain=false;return route.abort('failed');}return route.fulfill({json:fixtureBody(route,data.batches[0])});
   }
-  if(url.pathname.endsWith('/actions')){const b=data.batches[0],action=fixtureRequest(request).action;b.state=action==='pause'?'paused':action==='cancel'?'cancelled':'queued';b.revision++;return route.fulfill({json:fixtureBody(route,b)});}
+  if(url.pathname.endsWith('/actions')){const b=data.batches[0],action=fixtureRequest(request).action;b.state=action==='pause'?'paused':action==='cancel'?'cancelled':'queued';b.revision++;if(action==='cancel')b.items.filter(i=>!i.run_id).forEach(i=>i.state='cancelled');return route.fulfill({json:fixtureBody(route,b)});}
   return route.fulfill({status:404,json:{code:'NOT_FOUND'}});
  });return state;
 }
@@ -29,6 +29,64 @@ const assertNoPreflight=async(page:import('@playwright/test').Page)=>{
  if(page.url().includes('workpaper-batch.html'))await expect(page.locator('.wp-workflow')).toContainText('选择底稿');
  else {await expect(page.locator('.pf-flow-steps')).toContainText('选择募集说明书');await expect(page.locator('.pf-flow-steps')).toContainText('选择生成内容');await expect(page.locator('.pf-flow-steps')).toContainText('确认并生成');}
 };
+// Real result route: preparation now uses FileGenerationPanel, while historical
+// and unified batches both use WorkpaperPanel for queue controls and downloads.
+async function existingBatch(page:import('@playwright/test').Page,count:number){
+ const s=await setup(page,count);s.data.batches.push({batch_id:'batch-1',topic_id:'topic-workpapers',catalogue_id:'catalogue-1',revision:1,state:'running',start_mode:'direct',source:s.source,total_points:0,charged_points:0,created_at:now,error:null,items:s.data.catalogues[0].entries.map(entry=>({entry,run_id:null,state:'queued',stage:null,attempt:1,error:null,artifacts:[]}))});return s;
+}
+test('current-file recovery opens the exact paused run and its controls through the real material route',async({page})=>{
+ const s=await existingBatch(page,2),b=s.data.batches[0],w=generationWorkspace().workspace;
+ b.state='cancelled';b.topic_id=w.topic.topic_id;b.items[0].run_id='paused-current';b.items[0].state='paused';
+ const run:import('@bondbuddy/contracts').Run={run_id:'paused-current',project_id:w.topic.project_id,execution_request_id:'synthetic-current',input_revision:1,input_hash:sha,state:'paused',stage:'user_paused',channel:'production',test_grant_id:null,uncovered_items:[],event_cursor:0,billing_mode:'platform_trial',reservation_id:null,artifact_id:null,prompt_snapshot_ref:null,updated_at:now};
+ w.drafts.workpaper={...structuredClone(w.drafts.init),document_type:'workpaper'};
+ const {version,sha256,updated_at,...input}=w.drafts.workpaper;
+ w.active_run=run;w.tasks=[{run,manifest:{version:'m4-document-input-v1',kind:'document',topic_id:w.topic.topic_id,execution_scope_project_id:ids.api,draft_version:version,input,template_material:null,market:'sse',offering:'private',billing_task:'m4_workpaper'},created_at:now,events:[],artifacts:[]}];
+ await page.route('**/api/v1/m4/topics',r=>r.fulfill({json:{topics:[w.topic]}}));
+ await page.route('**/api/v1/m4/topics/*/workspace',r=>r.fulfill({json:fixtureBody(r,w)}));
+ await page.goto('/'+href({step:'workpapers',view:'results',batch:'batch-1'}));
+ await page.getByRole('link',{name:'查看当前文件',exact:true}).click();
+ await expect(page.locator('#m4-content')).toHaveAttribute('data-tab','run:paused-current');
+ const task=page.locator('.m4-delivery[data-run-id="paused-current"]');await expect(task.getByRole('button',{name:'继续生成',exact:true})).toBeVisible();await expect(task.getByRole('button',{name:'结束本次生成',exact:true})).toBeVisible();expect(s.requests).toHaveLength(0);
+});
+for(const width of [1440,390])test(`stopped queue waits for its current file and settlement before retry ${width}`,async({page})=>{
+ const s=await existingBatch(page,3);await page.setViewportSize({width,height:960});await page.clock.install();
+ let progress=0;await page.route('**/workpapers/progress*',r=>r.fulfill({json:{revision:(++progress).toString(16).padStart(64,'0'),active:true}}));
+ await page.goto('/'+href({step:'workpapers',view:'results',batch:'batch-1'}));
+ const b=s.data.batches[0];b.state='running';b.items[0].state='succeeded';b.items[0].run_id='delivered';b.items[1].run_id='current';b.items[1].state='running';
+ await page.getByRole('button',{name:'刷新进度',exact:true}).click();
+ await page.getByRole('button',{name:'结束后续排队',exact:true}).click();
+ await expect(page.locator('.wp-batch-state')).toContainText('当前文件处理中');
+ await expect(page.getByRole('button',{name:'重试未完成项',exact:true})).toBeDisabled();
+ await expect(page.getByRole('link',{name:'查看当前文件',exact:true})).toHaveAttribute('href','#generate?from=projects&topic=topic-workpapers&run=current');
+ await page.reload();await expect(page.getByRole('button',{name:'重试未完成项',exact:true})).toBeDisabled();
+ b.items[1].state='settlement_pending';await page.clock.fastForward(10100);
+ await expect(page.locator('.wp-items')).toContainText('确认结果中');await expect(page.getByRole('button',{name:'重试未完成项',exact:true})).toBeDisabled();
+ b.items[1].state='failed';await page.clock.fastForward(10100);await expect(page.getByRole('button',{name:'重试未完成项',exact:true})).toBeEnabled();
+ b.items[1].state='paused';await page.getByRole('button',{name:'刷新进度',exact:true}).click();
+ await expect(page.locator('.wp-batch-state')).toContainText('当前文件待处理');await expect(page.locator('.wp-queue-hint')).toContainText('打开当前文件继续或结束');
+ await mkdir('test-evidence/workpaper-stop-retry',{recursive:true});await page.screenshot({path:`test-evidence/workpaper-stop-retry/stopped-${width}.png`,fullPage:true});await page.locator(".wp-batch").scrollIntoViewIfNeeded();await page.screenshot({path:`test-evidence/workpaper-stop-retry/implementation-viewport-${width}.png`});
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ b.items[1].state='failed';await page.getByRole('button',{name:'刷新进度',exact:true}).click();
+ await expect(page.getByRole('button',{name:'重试未完成项',exact:true})).toBeEnabled();await page.getByRole('button',{name:'重试未完成项',exact:true}).click();
+ await expect(page.locator('#wp-results-status')).toContainText('已继续本批未完成文件');expect(s.requests).toHaveLength(0);expect(b.items[0].run_id).toBe('delivered');
+});
+for(const [reason,expected] of [['current_item_active','当前文件尚未结束'],['other_batch_active','其他底稿文件包'],['source_task_active','其他任务尚未结束']] as const)test(`retry conflict ${reason} refreshes state and exposes recovery without leaking server text`,async({page})=>{
+ const s=await existingBatch(page,2);await page.goto('/'+href({step:'workpapers',view:'results',batch:'batch-1'}));
+ const b=s.data.batches[0];b.state='cancelled';await page.getByRole('button',{name:'刷新进度',exact:true}).click();let calls=0;
+ await page.route('**/workpapers/batches/*/actions',route=>{calls++;return route.fulfill({status:409,json:{code:'PROJECT_RUN_ACTIVE',message:'private provider path',field_errors:[{field:'workpaper_batch',code:reason,message:'untrusted prose'}]}});});
+ await page.getByRole('button',{name:'重试未完成项',exact:true}).click();await expect(page.locator('#wp-results-status')).toContainText(expected);
+ await expect(page.locator('#wp-results-status')).not.toContainText('private');await expect(page.locator('#wp-batches').getByRole('link',{name:'查看任务进度与结果',exact:true})).toHaveAttribute('href','#tasks');
+ expect(calls).toBe(1);expect(s.requests).toHaveLength(0);
+});
+test('stale retry refreshes revision, and in-flight action buttons prevent duplicate submits',async({page})=>{
+ const s=await existingBatch(page,2);await page.goto('/'+href({step:'workpapers',view:'results',batch:'batch-1'}));const b=s.data.batches[0];b.state='cancelled';await page.getByRole('button',{name:'刷新进度',exact:true}).click();
+ let calls=0,release=()=>{};const held=new Promise<void>(resolve=>{release=resolve;});
+ await page.route('**/workpapers/batches/*/actions',async route=>{calls++;const request=fixtureRequest(route.request());if(calls===1){b.revision=7;return route.fulfill({status:409,json:{code:'INPUT_REVISION_CONFLICT'}});}expect(request.expected_revision).toBe(7);await held;b.state='queued';b.revision++;return route.fulfill({json:fixtureBody(route,b)});});
+ await page.getByRole('button',{name:'重试未完成项',exact:true}).click();await expect(page.locator('#wp-results-status')).toContainText('已刷新最新进度');
+ await page.getByRole('button',{name:'重试未完成项',exact:true}).click();await expect.poll(()=>calls).toBe(2);await expect(page.getByRole('button',{name:'重试未完成项',exact:true})).toBeDisabled();
+ await page.getByRole('button',{name:'重试未完成项',exact:true}).dispatchEvent('click');expect(calls).toBe(2);release();
+ await expect(page.locator('#wp-results-status')).toContainText('已继续本批未完成文件');await expect(page.locator('#wp-results-status')).not.toContainText('状态已变化');
+});
 async function submitSelection(page:import('@playwright/test').Page){await page.locator('#wp-start').click();if(await page.locator('#wp-confirm-start').isVisible()){await expect(page.locator('[data-flow-step="3"]')).toHaveAttribute('aria-current','step');await page.locator('#wp-confirm-start').click();}}
 
 test('asynchronous batch shortage pays and resumes the exact remaining batch without touching a manual pause',async({page})=>{
@@ -174,7 +232,7 @@ for(const width of [1440,390])test(`direct generation prototype ${width}`,async(
  const file=resolve(process.cwd(),'../../product-prototype/public/workpaper-batch.html').replaceAll('\\','/');await page.goto('/@fs/'+file);await assertNoPreflight(page);
  await page.locator('#wp-filter').fill('核查 350');await page.locator('#entries input').uncheck();await page.locator('#wp-filter').fill('');await page.locator('#wp-requirements').fill('访谈只准备提纲，缺原件处如实说明');await page.locator('#wp-requirements').press('Tab');
  await mkdir('test-evidence/workpaper-direct',{recursive:true});await page.screenshot({path:`test-evidence/workpaper-direct/prototype-preparation-${width}.png`,fullPage:true});await page.locator('#wp-confirm').screenshot({path:`test-evidence/workpaper-direct/prototype-preparation-card-${width}.png`});
- await page.locator('#wp-start').click();await expect(page.locator('#wp-batches')).toContainText('3 / 349 份完成');await page.screenshot({path:`test-evidence/workpaper-direct/prototype-progress-${width}.png`,fullPage:true});expect(errors).toEqual([]);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await page.locator('#wp-start').click();await expect(page.locator('#wp-batches')).toContainText('3 / 349 份完成');await page.screenshot({path:`test-evidence/workpaper-direct/prototype-progress-${width}.png`,fullPage:true});await mkdir("test-evidence/workpaper-stop-retry",{recursive:true});await page.locator("#wp-batches").scrollIntoViewIfNeeded();await page.screenshot({path:`test-evidence/workpaper-stop-retry/prototype-viewport-${width}.png`});expect(errors).toEqual([]);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
 
 
