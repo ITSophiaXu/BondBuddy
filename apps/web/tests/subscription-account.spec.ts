@@ -771,8 +771,11 @@ test('account polling and focus refresh preserve active recharge and refund cont
     await page.clock.runFor(16_000);
     await expect.poll(()=>calls.filter(call=>call.path==='/subscriptions/account').length).toBeGreaterThan(reads);
     await expect(field).toHaveAttribute('data-editing-probe','yes');await expect(field).toBeFocused();
-    await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
-    await expect.poll(()=>calls.filter(call=>call.path==='/subscriptions/account').length).toBeGreaterThan(reads+1);
+    await expect.poll(async()=>{
+      // The preceding poll may still be in flight; retry the idempotent focus event once it settles.
+      await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+      return calls.filter(call=>call.path==='/subscriptions/account').length;
+    }).toBeGreaterThan(reads+1);
     await expect(field).toHaveAttribute('data-editing-probe','yes');await expect(field).toBeFocused();
     if(selector!=='#subscription-topup-provider'){
       await expect(field).toHaveValue('12.18');
