@@ -45,6 +45,7 @@ docs/product-decisions/*
 !docs/product-decisions/2026-10-28-workpaper-shared-batch.md
 !docs/acceptance/
 docs/acceptance/*
+!docs/acceptance/integrity-billing-consistency-20261111.md
 !docs/acceptance/project-qa-direct-answer-20261107.md
 !docs/acceptance/financial-period-rollforward-20261105.md
 !docs/acceptance/prospectus-auto-adoption-20261031.md
