@@ -5,6 +5,7 @@ import type { Readable } from 'node:stream';
 import { finished } from 'node:stream/promises';
 import { BLOB_RANGE_MIN_BYTES, BlobRangeReadError, readBlobRangesToFile } from './blob-range-reader.js';
 import { Pool, type PoolClient } from 'pg';
+import {WORKPAPER_CONFLICT_FIELD,type WorkpaperConflictReason} from '@bondbuddy/contracts';
 import { BlobServiceClient, BlobSASPermissions, SASProtocol, type BlobItem } from '@azure/storage-blob';
 import { UPLOAD_BYTES_PENDING_FIELD_ERROR, PROSPECTUS_DOCX_ONLY_FIELD_ERROR, isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
 import { inspectMaterialUpload, inspectMaterialUploadFile, inspectMaterialUploadFileDetailed } from './original-material-upload.js';
@@ -42,6 +43,7 @@ export class Problem extends Error {
   sourceProspectusRequired?: boolean;
   prospectusDocxOnly?: boolean;
   uploadBytesPending?: boolean;
+  workpaperConflict?: WorkpaperConflictReason;
   constructor(public status: number, public code: string, message: string, public readonly uploadReason?: UploadRejectionReason, public readonly uploadDetail?: UploadStructureDetail) { super(message); }
 }
 export function publicProblem(error: Problem, correlationId: string) {
@@ -53,7 +55,9 @@ export function publicProblem(error: Problem, correlationId: string) {
     code: error.code, message: inspection ? 'Material inspection was not completed' : error.message,
     retryable: error.status === 503 || error.uploadBytesPending === true || inspection === 'inspection_queue_timeout' ||
       inspection === 'inspection_timeout' || inspection === 'inspection_worker_failed',
-    field_errors: inspection ? [{ field: 'material_upload', code: inspection, message: 'File inspection was not completed' }]
+    field_errors: error.code==='PROJECT_RUN_ACTIVE'&&error.workpaperConflict
+      ? [{field:WORKPAPER_CONFLICT_FIELD,code:error.workpaperConflict,message:'Workpaper queue is occupied'}]
+      : inspection ? [{ field: 'material_upload', code: inspection, message: 'File inspection was not completed' }]
       : error.status === 422 && error.code === 'MATERIAL_UNREADABLE' && error.uploadBytesPending
         ? [UPLOAD_BYTES_PENDING_FIELD_ERROR]
       : error.code === 'TRIAL_QUOTA_EXCEEDED' && error.trialLimit && TRIAL_LIMIT_KINDS.includes(error.trialLimit)
