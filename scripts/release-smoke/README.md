@@ -37,11 +37,15 @@ Windows 通过系统 `tar.exe` 展开源码和样本，保留启动进程所需�
 
 默认模型沿用现有适配器 `copilot_enterprise / gpt-6-sol / max`，凭据默认读取当前用户的 `~/.local/share/copilot-api/github_token`，可用 `copilotOAuthFile` 或 `BB_RELEASE_COPILOT_OAUTH_FILE` 指定已有 OAuth 文件。Windows 推荐明确配置实际文件路径，例如 `C:/Users/your-name/.bondbuddy-test/copilot-oauth`。这是 Copilot OAuth 文件，不是任意厂商 API key；测试人员应由项目负责人按现有安全方式取得可用凭据，不在聊天或命令行粘贴令牌。
 
-通过正式 credential helper 交换短期令牌，不要求安装本机 Copilot API 代理、不修改代理配置、不静默切换模型。凭据不进入镜像或 Git，运行目录受本机文件权限保护。模型调用会使用该账号的额度。
+默认通过正式 credential helper 交换短期令牌，不要求安装本机 Copilot API 代理、不修改代理配置、不静默切换模型。凭据不进入镜像或 Git，运行目录受本机文件权限保护。模型调用会使用该账号的额度。
+
+已获准使用本机现成 Copilot 凭据时，可显式设置 `BB_RELEASE_COPILOT_AUTH_FILE` 或本机配置 `copilotAuthFile`，指向含非空 `OPENAI_API_KEY` 的私有 Codex auth JSON。它优先于 OAuth 文件；没有显式设置时仍走原 OAuth 路径，OAuth 换票失败不会自动切换。JSON 必须为对象，密钥必须为不含空白或控制字符的 ASCII 字符串；解析错误不会回显原值。只将这一字段复制到受私有权限保护的运行目录，不复制其他认证信息，不修改原文件。
+
+该选项只读挂载本地 command helper，保持 `copilot_enterprise / gpt-6-sol / max`、专用工具 catalog 和沙箱配置。不要改成通用 auth-file 模式。报告记录 `credentialMode`、helper SHA-256，并明确正式 OAuth 换票未经验证；不能把本地功能测试通过称为正式换票通过。恢复时沿用原报告模式并核对 helper 散列与只读挂载，不根据新配置切换凭据路径。令牌不得写入聊天、命令参数、Git 或日志。
 
 网络需要本地代理时，显式设置容器内可访问的 `BB_RELEASE_HTTP_PROXY`（例如 Colima 的宿主地址 `http://192.168.5.2:10808`）。它用于依赖下载及模型请求，数据库/存储走内部网络。不要填写带用户名或密码的代理 URL。必须安装并启用 Docker Buildx，旧 builder 不支持此仓库的 Dockerfile 专属忽略规则，脚本会提前拒绝。
 
-本机固定设置可保存到已忽略的 `scripts/release-smoke/.local.json`，之后直接运行 npm 命令。可用字段为 `dockerContext`、`httpProxy`、`platform`、`copilotOAuthFile`；环境变量优先。不把令牌内容写入此文件。例如本机 Colima 配置：
+本机固定设置可保存到已忽略的 `scripts/release-smoke/.local.json`，之后直接运行 npm 命令。可用字段为 `dockerContext`、`httpProxy`、`platform`、`copilotOAuthFile`、`copilotAuthFile`；环境变量优先。不把令牌内容写入此文件。例如本机 Colima 配置：
 
 ```json
 {"dockerContext":"colima-bondbuddy-release","httpProxy":"http://192.168.5.2:10808"}
