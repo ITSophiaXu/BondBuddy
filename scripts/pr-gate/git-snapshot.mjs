@@ -139,7 +139,7 @@ function cli(args) {
   const [mode, ...rest] = args, options = {};
   if (rest.length % 2) throw new Error('Expected --key value pairs');
   for (let i = 0; i < rest.length; i += 2) {
-    if (!/^--[a-z-]+$/.test(rest[i]) || Object.hasOwn(options, rest[i].slice(2))) throw new Error('Invalid or duplicate snapshot option');
+    if (!/^--[a-z][a-z0-9-]*$/.test(rest[i]) || Object.hasOwn(options, rest[i].slice(2))) throw new Error('Invalid or duplicate snapshot option');
     options[rest[i].slice(2)] = rest[i + 1];
   }
   if (mode === 'create' && Object.keys(options).sort().join(',') === 'commit,out,source-root,tree') return createGitSnapshot({ sourceRoot: options['source-root'], commit: options.commit, tree: options.tree, outputDirectory: options.out });
