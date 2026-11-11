@@ -27,9 +27,11 @@ docker info --format '{{.OSType}}'  # 应为 linux
 npm.cmd run test:release -- --ref HEAD
 ```
 
-Windows 通过系统 `tar.exe` 展开源码和样本，保留启动进程所需的 Windows 系统环境变量；不会继承业务数据库/支付/模型或远程 Docker 连接变量。挂载使用 Compose 的长格式，支持盘符、空格及中文路径。本次私有运行目录与 OAuth 副本使用 Windows ACL 限定为当前用户和 SYSTEM；Mac 使用原有文件权限。脚本不修改原凭据文件权限。
+Windows 通过已有 Python 3.12+ 标准库的 Unicode 路径和 `tarfile.data_filter` 展开源码与样本，避免系统 `tar.exe` 跳过中文路径。默认使用 `python`，可设置 `$env:BB_RELEASE_TEST_PYTHON = 'C:\path\to\existing\python.exe'` 指定已有解释器；脚本不安装软件。整份归档先检查路径，拒绝越界、盘符/ADS、Windows设备名、链接和特殊文件，保留每个普通文件的原始字节。Mac/Linux继续使用本机tar。主机子进程只保留启动所需的系统环境，不继承业务数据库/支付/模型或远程 Docker 变量。挂载使用 Compose 的长格式，支持盘符、空格及中文路径。本次私有运行目录与 OAuth 副本使用 Windows ACL 限定为当前用户和 SYSTEM；Mac 使用原有文件权限。脚本不修改原凭据文件权限。
 
 使用仓库 `deploy/m1/Dockerfile` 的正式 api/worker/web targets，从固定 Git commit 的 archive 构建，不包含工作区未提交的产品代码。报告记录 SHA、tree、镜像 ID、样本 hash、任务 ID 和下载文件 hash；发布时应使用本次验证过的镜像。改动产品代码后先提交，再验证新的提交。
+
+源码和样本归档均以单次 Git 命令的 `core.autocrlf=false`、`core.eol=lf` 覆盖宿主换行配置，避免 Windows 将 Linux helper 的 shebang 改为 CRLF；不修改用户/仓库 Git 配置，也不在解包后重写文件。归档文件按 Git 中固定的内容提取，样本另按既有 manifest 核对 SHA-256。
 
 不带 `--ref` 时要求工作区干净，避免用旧提交的通过结果误认未提交修改已通过。显式 `--ref` 表示只验证指定提交；报告始终写出解析后的完整 SHA。
 
