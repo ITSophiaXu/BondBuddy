@@ -1,17 +1,17 @@
 import {spawn,execFileSync} from 'node:child_process';
-import {readFileSync,writeFileSync,mkdirSync,copyFileSync,existsSync,rmSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdirSync,existsSync,rmSync} from 'node:fs';
 import {join,resolve,dirname} from 'node:path';
-import {homedir} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {randomBytes} from 'node:crypto';
 import {parseArgs} from 'node:util';
 import {SAMPLE_REF,CASES,writeJson,verifiedFile,verdict,assertLocalContext,assertTestReport} from './support.mjs';
-import {hostEnvironment,bindMount,protectPrivatePath,archiveExecutable} from './platform.mjs';
+import {hostEnvironment,protectPrivatePath,archiveExecutable} from './platform.mjs';
+import {prepareReleaseCredential,assertReleaseCredential} from './credentials.mjs';
 
 const directory=dirname(fileURLToPath(import.meta.url)),repo=resolve(directory,'../..');
 const settingsFile=join(directory,'.local.json');
 const settings=existsSync(settingsFile)?JSON.parse(readFileSync(settingsFile,'utf8').replace(/^\uFEFF/,'')):{};
-if(!settings||Array.isArray(settings)||Object.entries(settings).some(([k,v])=>!['dockerContext','httpProxy','platform','copilotOAuthFile'].includes(k)||typeof v!=='string'))throw Error('Invalid release-smoke/.local.json settings');
+if(!settings||Array.isArray(settings)||Object.entries(settings).some(([k,v])=>!['dockerContext','httpProxy','platform','copilotOAuthFile','copilotAuthFile'].includes(k)||typeof v!=='string'))throw Error('Invalid release-smoke/.local.json settings');
 const {values}=parseArgs({options:{ref:{type:'string'},resume:{type:'string'},keep:{type:'boolean'},help:{type:'boolean'}}});
 if(values.help){console.log('npm run test:release -- [--ref COMMIT | --resume ABSOLUTE_RUN_DIRECTORY] [--keep]\nRuns real-model local Docker smoke tests. See scripts/release-smoke/README.md.');process.exit(0);}
 if(values.ref&&values.resume)throw Error('--ref and --resume are mutually exclusive');
@@ -78,9 +78,8 @@ try{
   report.fixtureHashes=[...rq.files,...assets.filter(a=>['nov05-f012','nov05-f013','nov05-f014','nov05-f015','nov05-f016'].includes(a.file_id))].map(a=>({id:a.file_id,sha256:a.sha256}));
   const account={username:'release_test',password:'Release-'+randomBytes(18).toString('hex')};
   writeJson(join(out,'private.json'),{fixtures,account});
-  const secret=process.env.BB_RELEASE_COPILOT_OAUTH_FILE||settings.copilotOAuthFile||join(homedir(),'.local','share','copilot-api','github_token');
-  if(!existsSync(secret))throw Error('Configure BB_RELEASE_COPILOT_OAUTH_FILE with your existing Copilot OAuth file');
-  copyFileSync(secret,join(out,'copilot-oauth'));protectPrivatePath(join(out,'copilot-oauth'),'file',env);
+  const credential=prepareReleaseCredential({out,directory,settings,hostEnv:env});
+  Object.assign(report,credential.report);
   const image={api:`bondbuddy-release-api:${report.sha.slice(0,12)}`,worker:`bondbuddy-release-worker:${report.sha.slice(0,12)}`,web:`bondbuddy-release-web:${report.sha.slice(0,12)}`};
   writeJson(reportFile,report);
   // Same production Dockerfile, no source/test overlays in any product container.
@@ -97,7 +96,7 @@ try{
   seccomp.syscalls=seccomp.syscalls.flatMap(rule=>rule.names.includes('mount')&&rule.action==='SCMP_ACT_ALLOW'?[{...rule,names:rule.names.filter(n=>n!=='mount')},{...rule,names:['mount'],args:[...(rule.args??[]),{index:3,value:14,op:'SCMP_CMP_NE'}]}]:[rule]);
   writeJson(join(out,'seccomp.json'),seccomp);
   const workerEnv={...common,BB_CODEX_AUTH_MODE:'copilot_enterprise',BB_COPILOT_OAUTH_FILE:'/run/secrets/bb-copilot-oauth',BB_CODEX_PROVIDER:report.provider,BB_CODEX_BASE_URL:'https://api.enterprise.githubcopilot.com',BB_CODEX_MODEL:report.model,BB_CODEX_REASONING_EFFORT:'max',BB_CODEX_CONFIG_VERSION:'release-smoke-v1',BB_CODEX_TIMEOUT_MS:'600000',BB_CODEX_AUTHORING_TIMEOUT_MS:'3600000',BB_CODEX_WORK_ROOT:'/tmp/bb-codex',BB_REPO_ROOT:'/app',BB_PYTHON:'/opt/venv/bin/python',BB_PYTHON_BIN:'/opt/venv/bin/python',BB_PARSE_STAGING_DIR:'/var/lib/bondbuddy/parse-staging',BB_PARSE_CACHE_OCR_VERSION:'tesseract-5.3.0-eng-chi_sim-osd-v1',BB_PARSE_CACHE_BASIS_VERSION:'release-smoke-v1',BB_WORKER_CONCURRENCY:'2',BB_WORKER_PARSE_SLOTS:'1',BB_WORKER_GROUP:'release-smoke',BB_REVIEW_WEB_SEARCH_ENABLED:'0'};
-  const worker={image:image.worker,environment:workerEnv,read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true','seccomp='+join(out,'seccomp.json').replaceAll('\\','/')],tmpfs:['/tmp:rw,nosuid,nodev,size=4g,mode=1777'],volumes:['parse:/var/lib/bondbuddy/parse-staging',bindMount(join(out,'copilot-oauth'),'/run/secrets/bb-copilot-oauth')],mem_limit:'6g',cpus:4,stop_grace_period:'30s'};
+  const worker={image:image.worker,environment:workerEnv,read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true','seccomp='+join(out,'seccomp.json').replaceAll('\\','/')],tmpfs:['/tmp:rw,nosuid,nodev,size=4g,mode=1777'],volumes:['parse:/var/lib/bondbuddy/parse-staging',...credential.volumes],mem_limit:'6g',cpus:4,stop_grace_period:'30s'};
   if(apparmor)worker.security_opt.push('apparmor=bondbuddy-codex-v1');
   writeJson(join(out,'compose.json'),{services:{
    postgres:{image:'postgres:16',environment:{POSTGRES_USER:'bondbuddy',POSTGRES_PASSWORD:password,POSTGRES_DB:'bb_release_smoke'},volumes:['pg:/var/lib/postgresql/data'],healthcheck:{test:['CMD-SHELL','pg_isready -U bondbuddy -d bb_release_smoke'],interval:'2s',retries:30}},
@@ -117,6 +116,7 @@ try{
   await command(...compose(['exec','-T','-e','BB_RELEASE_ACCOUNT','api','node','--input-type=module','-e',readFileSync(join(directory,'seed.mjs'),'utf8')]),'seed.log',{BB_RELEASE_ACCOUNT:JSON.stringify([account.username,account.password])});
  }
  assertTestReport(report);
+ assertReleaseCredential(report,JSON.parse(readFileSync(join(out,'compose.json'),'utf8')),out);
  for(const service of ['api','worker','web']){
   const container=sync(...compose(['ps','-q',service]));
   if(!container||sync('docker',['inspect','--format','{{.Image}}',container])!==report.images[service].id)throw Error('Running '+service+' does not match the recorded test image');
@@ -133,12 +133,13 @@ try{
 finally{
  if(compose&&existsSync(join(out,'compose.json')))try{await command(...compose(['logs','--no-color','--tail','150']),'services.log');}catch{}
  if(report.status==='passed'&&!values.keep){
-  try{await command(...compose(['down','--volumes']),'cleanup.log');rmSync(join(out,'copilot-oauth'),{force:true});report.cleanup='completed';}
+  try{await command(...compose(['down','--volumes']),'cleanup.log');for(const name of ['copilot-oauth','copilot-auth.json'])rmSync(join(out,name),{force:true});report.cleanup='completed';}
   catch(error){report.status='blocked';report.cleanup='failed';report.error='Business flows passed, but isolated environment cleanup failed: '+error.message;}
  }else report.cleanup='retained';
  report.finishedAt=new Date().toISOString();writeJson(reportFile,report);
+ const credentialSummary=report.credentialMode==='existing-local-codex-command-helper'?`显式本地 command helper；SHA-256：${report.credentialAdaptation?.sha256??'缺失'}。正式 OAuth 换票未经验证。`:(report.credentialMode??'尚未选择');
  const rows=report.cases.map(c=>`| ${c.id} | ${c.status} | ${c.runId??'—'} | ${(c.error??'').replaceAll('|','/').replaceAll('\n',' ')} |`).join('\n');
- writeFileSync(join(out,'report.md'),`# 本地发布前测试\n\n结论：${report.status}\n\n候选提交：${report.sha??'尚未锁定'}\n\n模型：${report.model??'未调用'}；真实支付：未执行。\n\n| 用例 | 状态 | 任务 | 错误 |\n|---|---|---|---|\n${rows}\n\n${report.error??''}\n\n本报告只判断已列出的基础流程，不表示财务内容或专业审核通过。\n`,{mode:0o600});
+ writeFileSync(join(out,'report.md'),`# 本地发布前测试\n\n结论：${report.status}\n\n候选提交：${report.sha??'尚未锁定'}\n\n模型：${report.model??'未调用'}；真实支付：未执行。\n\n凭据模式：${credentialSummary}\n\n| 用例 | 状态 | 任务 | 错误 |\n|---|---|---|---|\n${rows}\n\n${report.error??''}\n\n本报告只判断已列出的基础流程，不表示财务内容或专业审核通过。\n`,{mode:0o600});
  console.log(JSON.stringify({status:report.status,report:reportFile,cases:report.cases.map(({id,status})=>({id,status}))},null,2));
  if(report.status!=='passed')process.exitCode=1;
  // Failed/unfinished jobs are retained. Cleanup targets only this random project,
