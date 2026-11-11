@@ -148,10 +148,12 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
   const direct=u.upload_transport===DIRECT_UPLOAD_TRANSPORT;
   const version=direct&&blobs.headVersion?await boundedVersion(blobs,u.object_key):null;
   if(direct&&!version)throw Object.assign(new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received'),{uploadBytesPending:true});
+  if(direct&&version!.byteSize!==b.byte_size)
+    throw Object.assign(new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes differ from the upload declaration'),{rejectedUploadVersion:{key:u.object_key,etag:version!.etag}});
   const release=reserveSpool(b.byte_size),copy=join(spoolDirectory(),`${uid()}.blob`);
   try{
     await mkdir(spoolDirectory(),{recursive:true,mode:0o700});
-    const proof=await readBlobToFile(blobs,u.object_key,copy,MAX_BYTES);
+    const proof=await readBlobToFile(blobs,u.object_key,copy,direct?b.byte_size:MAX_BYTES);
     if(!proof)throw new Problem(503,'DATA_UNAVAILABLE','Stored upload bytes are temporarily unavailable');
     if(direct&&proof.etag!==version!.etag)throw new Problem(503,'DATA_UNAVAILABLE','UPLOAD_REVERIFY_REQUIRED');
     if(proof.byteSize!==b.byte_size||proof.sha256!==b.sha256)throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes or hash mismatch');
@@ -163,7 +165,7 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
     if(m){await beforeMaterialRead?.(m);result.proofs[m.object_key]=await fullMaterialProof(blobs,m);}
     return result;
   }catch(error){
-    const e=direct&&error instanceof Problem&&error.status===413?new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes exceed the upload limit'):error;
+    const e=direct&&error instanceof Problem&&error.status===413?new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes exceed the upload declaration'):error;
     if(direct&&version&&e instanceof Problem&&[415,422].includes(e.status))Object.assign(e,{rejectedUploadVersion:{key:u.object_key,etag:version.etag}});
     throw e;
   }finally{await discardSpool(copy);release();}
