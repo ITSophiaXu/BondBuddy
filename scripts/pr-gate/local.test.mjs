@@ -1,10 +1,85 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { cleanupContainers, dependencySources } from './local.mjs';
+import { cleanupContainers, dependencySources, persistReceipts } from './local.mjs';
+
+function receiptFiles(check) {
+  const directory = mkdtempSync(join(tmpdir(), 'bb-pr-gate-receipts-'));
+  const latest = join(directory, 'receipt.json'), archive = join(directory, 'run-receipt.json');
+  const receipt = { status: 'passed', commit: 'a'.repeat(40), errors: [] };
+  for (const file of [latest, archive]) writeFileSync(file, JSON.stringify(receipt));
+  try { check({ latest, archive, receipt }); }
+  finally { rmSync(directory, { recursive: true, force: true }); }
+}
+
+test('active passing receipt is published only after the per-run copy', () => {
+  receiptFiles(({ latest, archive, receipt }) => {
+    const published = [];
+    persistReceipts(receipt, latest, archive, {
+      writeFileSync, rmSync,
+      renameSync(from, to) {
+        if (to === archive) assert.equal(existsSync(latest), false, 'an earlier active pass must already be invalidated');
+        if (to === latest) assert.deepEqual(JSON.parse(readFileSync(archive, 'utf8')), receipt);
+        published.push(to); renameSync(from, to);
+      },
+    });
+    assert.deepEqual(published, [archive, latest]);
+    assert.deepEqual(JSON.parse(readFileSync(latest, 'utf8')), receipt);
+  });
+});
+
+test('write or rename failure at either destination demotes both receipts before returning failure', () => {
+  for (const destination of ['latest', 'archive']) for (const operation of ['writeFileSync', 'renameSync']) {
+    receiptFiles(files => {
+      let failed = false;
+      const io = { writeFileSync, renameSync, rmSync };
+      io[operation] = (...args) => {
+        const path = operation === 'renameSync' ? args[1] : args[0];
+        const affected = operation === 'renameSync' ? files[destination] : `${files[destination]}.tmp`;
+        if (!failed && path === affected) { failed = true; throw new Error(`synthetic ${destination} ${operation} failure`); }
+        return ({ writeFileSync, renameSync })[operation](...args);
+      };
+      assert.throws(() => persistReceipts(files.receipt, files.latest, files.archive, io), /synthetic/);
+      assert.equal(failed, true);
+      assert.equal(files.receipt.status, 'failed');
+      assert.equal(files.receipt.errors.length, 1);
+      for (const path of [files.latest, files.archive]) {
+        assert.deepEqual(JSON.parse(readFileSync(path, 'utf8')), files.receipt, `${destination}/${operation} must not retain passed`);
+        assert.equal(existsSync(`${path}.tmp`), false);
+      }
+    });
+  }
+});
+
+test('persistent write failure removes old passes when neither failed receipt can be saved', () => {
+  receiptFiles(({ latest, archive, receipt }) => {
+    assert.throws(() => persistReceipts(receipt, latest, archive, {
+      renameSync, rmSync, writeFileSync() { throw new Error('synthetic disk full'); },
+    }), /synthetic disk full/);
+    assert.equal(receipt.status, 'failed');
+    assert.equal(existsSync(latest), false);
+    assert.equal(existsSync(archive), false);
+  });
+});
+
+test('persistent active-copy failure removes it and replaces the already-written passing archive with failed', () => {
+  receiptFiles(({ latest, archive, receipt }) => {
+    assert.throws(() => persistReceipts(receipt, latest, archive, {
+      writeFileSync, rmSync,
+      renameSync(from, to) {
+        if (to === latest) throw new Error('synthetic active receipt rename failure');
+        renameSync(from, to);
+      },
+    }), /synthetic active receipt rename failure/);
+    assert.equal(existsSync(latest), false);
+    assert.equal(existsSync(`${latest}.tmp`), false);
+    assert.deepEqual(JSON.parse(readFileSync(archive, 'utf8')), receipt);
+    assert.equal(receipt.status, 'failed');
+  });
+});
 
 test('dependency-only sources honor npm configuration without accepting insecure URLs or credentials', () => {
   assert.equal(dependencySources({ npm_config_registry: 'https://packagefeedproxy.microsoft.io/npm/' }).npm, 'https://packagefeedproxy.microsoft.io/npm/');
