@@ -1,11 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { UPLOAD_BYTES_PENDING_FIELD_ERROR } from '@bondbuddy/contracts';
+import { fixtureBody } from './billing-fixture-wire';
 import { assertFixture, calls, fixture, hash, ids, latestUpload, now, pdf, secretUrlToken, seedMaterial, setup, writes,
   type FilePayload, type ReceiptFault, type State } from './upload-session-recovery-fixtures';
 
 test.afterEach(({ page }) => assertFixture(page));
 test.beforeEach(async ({ page }) => { await page.clock.install({ time: new Date(now) }); });
+test.setTimeout(60_000);
 const row = (page: Page, operation: string) => page.locator(`[data-upload-id="${operation}"]`);
 const confirm = (page: Page, operation: string) => row(page, operation).locator('[data-upload-action="retry"]');
 const picker = (page: Page) => page.locator('[data-upload-role="audit"]');
@@ -21,11 +24,22 @@ async function selectedOperation(page: Page, file: FilePayload) {
   const selected = page.locator('.material-file-row[data-upload-id]').filter({ hasText: file.name });
   await expect(selected).toHaveCount(1); return (await selected.getAttribute('data-upload-id'))!;
 }
+async function settledUncertain(page: Page, operation: string, advance = 2000) {
+  // The UI enters uncertain briefly before each automatic confirmation. Wait
+  // for the final recovery message, advancing the real retry budget in the
+  // browser clock, so a subsequent reload cannot race the old page's retries.
+  await expect.poll(async () => {
+    if (advance > 2000) await page.clock.fastForward(advance);
+    else await page.clock.runFor(advance);
+    return await row(page, operation).textContent();
+  }, { timeout: 20_000, intervals: [100] }).toContain('暂时无法确认保存结果');
+  await expect(row(page, operation)).toHaveAttribute('data-upload-phase', 'uncertain');
+}
 async function lostPut(page: Page, state = fixture(), file = pdf()) {
   state.dropPutReplies = 1; state.completeUnavailable = true;
   await setup(page, state); await picker(page).setInputFiles(file); const operation = await selectedOperation(page, file);
   await expect.poll(() => latestUpload(state)?.state).toBe('received');
-  await expect(row(page, operation)).toHaveAttribute('data-upload-phase', 'uncertain');
+  await settledUncertain(page, operation);
   const upload = latestUpload(state).id;
   expect(calls(state, 'create')).toHaveLength(1); expect(calls(state, 'put')).toHaveLength(1); expect(state.materials.size).toBe(0);
   return { state, file, operation, upload };
@@ -77,7 +91,7 @@ test('a lost complete reply returns the original material after reload without r
   state.dropCompleteReplies = 1; state.blockAfterCompleteDrop = true; state.discoveryUnavailable = true;
   await setup(page, state); await picker(page).setInputFiles(file); const operation = await selectedOperation(page, file);
   await expect.poll(() => state.materials.size).toBe(1);
-  await expect(row(page, operation)).toHaveAttribute('data-upload-phase', 'uncertain');
+  await settledUncertain(page, operation);
   const original = [...state.materials.keys()][0], upload = latestUpload(state).id;
   await reloadPending(page, state, operation); state.completeUnavailable = false; state.discoveryUnavailable = false;
   await confirm(page, operation).click(); await saved(page, state, file.name);
@@ -106,8 +120,14 @@ for (const fault of ['role', 'media', 'size', 'hash', 'schema', 'state'] as Rece
     const { state, operation } = await lostPut(page); await reloadPending(page, state, operation);
     state.completeUnavailable = false; state.receiptFault = fault;
     await confirm(page, operation).click();
-    await expect(row(page, operation)).toHaveAttribute('data-upload-phase', 'failed');
-    await expect(row(page, operation)).toContainText(/回执|不一致|未确认/);
+    if (['size', 'hash', 'schema'].includes(fault)) {
+      // The API client rejects these before UploadRecovery receives a DTO, so
+      // the result remains unconfirmed rather than becoming an accepted file.
+      await settledUncertain(page, operation);
+    } else {
+      await expect(row(page, operation)).toHaveAttribute('data-upload-phase', 'failed');
+      await expect(row(page, operation)).toContainText(/回执|不一致|未确认/);
+    }
     await expect(row(page, operation)).not.toContainText('服务器已确认保存');
     expect(state.materials.size).toBe(0); unchangedTransport(state);
     state.receiptFault = undefined; await confirm(page, operation).click(); await saved(page, state); unchangedTransport(state);
@@ -115,24 +135,50 @@ for (const fault of ['role', 'media', 'size', 'hash', 'schema', 'state'] as Rece
 }
 
 for (const reason of ['inspection_timeout', 'structure_invalid'] as const) {
-  test(`422 ${reason} preserves the received session and never asks to replace its bytes`, async ({ page }) => {
+  test(`422 ${reason} preserves the rejected upload and offers the appropriate explicit recovery`, async ({ page }) => {
     const { state, operation, upload } = await lostPut(page); await reloadPending(page, state, operation);
     state.completeUnavailable = false; state.inspectionReason = reason;
     await confirm(page, operation).click(); await expect(row(page, operation)).toHaveAttribute('data-upload-phase', 'failed');
-    await expect(row(page, operation)).toContainText(/检查|读取|超时|确认/);
+    await expect(row(page, operation)).toContainText(/检查|读取|超时|确认|核验/);
     await expect(row(page, operation).locator('[data-upload-action="reselect"]')).toHaveCount(0);
     expect(latestUpload(state).id).toBe(upload); expect(latestUpload(state).state).toBe('received'); unchangedTransport(state);
-    state.inspectionReason = undefined; await confirm(page, operation).click(); await saved(page, state); unchangedTransport(state);
+    state.inspectionReason = undefined;
+    if (reason === 'structure_invalid') {
+      await expect(confirm(page, operation)).toHaveCount(0);
+      const chooser = page.waitForEvent('filechooser');
+      await row(page, operation).locator('[data-upload-action="replace"]').click();
+      const replacement = pdf('结构检查失败后明确选择的新文件.pdf', 'different valid replacement');
+      await (await chooser).setFiles(replacement);
+      await saved(page, state, replacement.name);
+      expect(latestUpload(state).id).not.toBe(upload); unchangedTransport(state, 2, 2);
+      expect(state.uploads.get(upload)!.state).toBe('received');
+    } else {
+      await confirm(page, operation).click(); await saved(page, state); unchangedTransport(state);
+    }
   });
 }
 
 test('a same-name same-size changed file cannot replace a missing original; renamed equal bytes can continue its declaration', async ({ page }) => {
   const state = fixture(), file = pdf('需要重新选择的原稿.pdf'); state.dropBeforeReceive = 1;
-  await setup(page, state); await picker(page).setInputFiles(file); const operation = await selectedOperation(page, file);
+  await setup(page, state);
+  // Model the current server's explicit unreceived-bytes receipt. A generic
+  // unreadable-file rejection is deliberately insufficient to replace bytes.
+  await page.route('**/materials/uploads/*/complete', async route => {
+    const uploadId = new URL(route.request().url()).pathname.split('/').at(-2)!;
+    if (state.uploads.get(uploadId)?.state !== 'uploading') return route.fallback();
+    return route.fulfill({ status: 422, json: fixtureBody(route, {
+      code: 'MATERIAL_UNREADABLE', message: 'Synthetic original bytes have not arrived', retryable: false,
+      correlation_id: 'missing-original-bytes',
+      field_errors: [{ ...UPLOAD_BYTES_PENDING_FIELD_ERROR, message: 'Upload bytes not received' }],
+    }) });
+  });
+  await picker(page).setInputFiles(file); const operation = await selectedOperation(page, file);
   await expect.poll(() => calls(state, 'put').length).toBe(1);
-  await expect(row(page, operation)).toHaveAttribute('data-upload-phase', /failed|uncertain/);
+  await settledUncertain(page, operation, 600_001);
+  state.clock = await page.evaluate(() => Date.now());
+  expect(Date.parse(latestUpload(state).expiresAt)).toBeLessThan(state.clock);
   const upload = latestUpload(state).id; await reloadPending(page, state, operation);
-  await confirm(page, operation).click(); await expect(row(page, operation).locator('[data-upload-action="reselect"]')).toBeVisible();
+  await expect(row(page, operation).locator('[data-upload-action="reselect"]')).toBeVisible();
   const changed = Buffer.from(file.buffer); changed[changed.length - 8] ^= 1;
   await reselect(page, operation, { ...file, buffer: changed });
   await expect(row(page, operation)).toHaveAttribute('data-upload-phase', 'failed');
@@ -208,11 +254,16 @@ for (const fault of ['quota', 'write-readback'] as const) {
 
 test('three queued files keep every prepared original declaration across reload while both transfer slots are blocked', async ({ page }) => {
   const state = fixture(); state.completeUnavailable = true;
-  const files = [pdf('批量一-审计原稿.pdf'), pdf('批量二-年度报表.pdf', 'second financial document'), pdf('批量三-其他资料.pdf', 'third pending original')];
-  const roles = ['audit', 'financial', 'other'] as const, releases: (() => void)[] = [];
+  const files = [pdf('批量一-审计原稿.pdf'), pdf('批量二-债务资料.pdf', 'second debt document'), pdf('批量三-其他资料.pdf', 'third pending original')];
+  // Financial documents now share the audit picker; use three current upload
+  // partitions to continue testing queued declaration/role identity.
+  const roles = ['audit', 'debt', 'other'] as const, releases: (() => void)[] = [];
   state.putGate = () => new Promise<void>(resolve => { releases.push(resolve); });
   await setup(page, state);
-  for (let i = 0; i < files.length; i++) await page.locator(`[data-upload-role="${roles[i]}"]`).setInputFiles(files[i]);
+  for (let i = 0; i < files.length; i++) {
+    const input = page.locator(`[data-upload-role="${roles[i]}"]`);
+    await expect(input).toHaveCount(1); await input.setInputFiles(files[i]);
+  }
   await expect.poll(() => releases.length).toBe(2);
   await expect.poll(async () => (await journal(page)).length).toBe(3);
   const records: { id: string; uploadId?: string; declaration: { filename: string; role: string; sha256: string; byte_size: number } }[] =
