@@ -148,15 +148,28 @@ for(const mismatch of ['amount','points'])test(`refund acknowledgement with mism
   await expect(page.locator('[data-refund="wrong-refund"]')).toHaveCount(0);
 });
 
-test('a definite pre-admission refund quote change permits a fresh request while uncertain failures do not',async({page})=>{
+test('a durable pre-admission refund rejection permits a fresh request while uncertain failures do not',async({page})=>{
   await setup(page,{legacyBonus:true});const requests:any[]=[];
   await page.route('**/api/v1/commerce/topups/owned-order/refunds',route=>{
     const body=fixtureRequest(route.request());requests.push(body);
-    if(requests.length===1)return json(route,409,{code:'QUOTE_CHANGED'});
+    if(requests.length===1)return json(route,409,{code:'BILLING_REQUEST_REJECTED'});
     return json(route,202,{refund_id:'requote-refund',order_id:'owned-order',currency:'CNY',amount_fen:40000,credit_points:42000,state:'requested',created_at:now,updated_at:now,completed_at:null,failure_code:null});
   });
   await page.goto('/#/account?order=owned-order');await page.locator('[data-refund-amount]').fill('42000');await page.getByRole('button',{name:'核对原路退款申请',exact:true}).click();await page.locator('[data-refund-submit]').click();
   await expect(page.locator('.commerce-refunds [role="alert"]')).toContainText('本次申请未受理、未冻结积分');await expect(page.locator('[data-refund-amount]')).not.toHaveAttribute('readonly','');
-  await page.getByRole('button',{name:'核对原路退款申请',exact:true}).click();await page.locator('[data-refund-submit]').click();await expect.poll(()=>requests.length).toBe(2);
+  await page.locator('[data-refund-amount]').fill('42000');await page.getByRole('button',{name:'核对原路退款申请',exact:true}).click();await page.locator('[data-refund-submit]').click();await expect.poll(()=>requests.length).toBe(2);
   expect(requests[0].request_id).not.toBe(requests[1].request_id);expect(requests[1].points).toBe(42000);expect(requests[1].expected_amount_fen).toBe(40000);
+});
+
+for(const code of ['PAYMENT_INVALID','QUOTE_CHANGED','BILLING_PROTOCOL_REPLAY_ONLY'])test(`unconfirmed refund ${code} preserves the original immutable intent across reload`,async({page})=>{
+  await setup(page,{legacyBonus:true});const requests:any[]=[];
+  await page.route('**/api/v1/commerce/topups/owned-order/refunds',route=>{
+    const body=fixtureRequest(route.request());requests.push(body);
+    if(requests.length===1)return json(route,409,{code});
+    return json(route,202,{refund_id:'recovered-original',order_id:'owned-order',currency:'CNY',amount_fen:40000,credit_points:42000,state:'requested',created_at:now,updated_at:now,completed_at:null,failure_code:null});
+  });
+  await page.goto('/#/account?order=owned-order');await page.locator('[data-refund-amount]').fill('42000');await page.getByRole('button',{name:'核对原路退款申请',exact:true}).click();await page.locator('[data-refund-submit]').click();
+  await expect(page.locator('[data-refund-submit-status]')).toContainText('原申请结果尚未确认');
+  await page.reload();await expect(page.locator('[data-refund-amount]')).toHaveValue('42000');await expect(page.locator('[data-refund-amount]')).toHaveAttribute('readonly','');expect(requests).toHaveLength(1);
+  await page.getByRole('button',{name:'重试确认原退款申请',exact:true}).click();await page.locator('[data-refund-submit]').click();await expect.poll(()=>requests.length).toBe(2);expect(requests[1]).toEqual(requests[0]);
 });

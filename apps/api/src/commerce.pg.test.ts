@@ -14,7 +14,7 @@ test('synthetic PAYG: exact payment, pinned order, replay safety, isolation and 
   const provider:PaymentProvider={name:'wechat',merchantId:'synthetic-merchant',acknowledgement:{code:'SUCCESS'},
     create:async o=>{creates++;receipts.set(o.id,{orderId:o.id,merchantId:o.merchant_id,amountFen:o.amount_fen,currency:'CNY',transactionId:null,state:'pending'});return{checkoutUrl:'weixin://wxpay/bizpayurl?pr=synthetic'};},
     query:async o=>receipts.get(o.id)!,verifyCallback:async()=>{throw Error('Use the separate signed-provider tests');}};
-  const app=createServer({pool,enableOutcomePricing:true,paymentProviders:[provider],allowedOrigin:'http://commerce.test',principal:async()=>({userId:actor,csrfVerified:true})});
+  const app=createServer({pool,historicalBillingFixture:true,enableOutcomePricing:true,paymentProviders:[provider],allowedOrigin:'http://commerce.test',principal:async()=>({userId:actor,csrfVerified:true})});
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin:'http://commerce.test'}});
   try{
     await pool.query("INSERT INTO bb_users(id,username) VALUES('commerce-owner','synthetic_commerce_owner'),('commerce-other','synthetic_commerce_other')");
@@ -41,7 +41,7 @@ test('synthetic PAYG: exact payment, pinned order, replay safety, isolation and 
     actor='commerce-other';assert.equal((await send('GET',`/api/v1/commerce/topups/${order.order_id}`)).statusCode,404);
     assert.equal((await send('POST',`/api/v1/commerce/topups/${order.order_id}/refresh`,{})).statusCode,404);
     assert.equal((await send('POST','/api/v1/commerce/feedback',{request_id:'foreign',run_id:'absent',outcome:'adopted'})).statusCode,404);
-    const disabled=createServer({pool,enableOutcomePricing:true,paymentProviders:[],allowedOrigin:'http://commerce.test',principal:async()=>({userId:actor,csrfVerified:true})});
+    const disabled=createServer({pool,historicalBillingFixture:true,enableOutcomePricing:true,paymentProviders:[],allowedOrigin:'http://commerce.test',principal:async()=>({userId:actor,csrfVerified:true})});
     try{
       assert.equal((await disabled.inject({url:'/api/v1/commerce/account'})).json().payment_enabled,false);
       assert.equal((await disabled.inject({method:'POST',url:'/api/v1/commerce/topups',headers:{origin:'http://commerce.test'},payload:{...request,request_id:'not-configured'}})).statusCode,503);

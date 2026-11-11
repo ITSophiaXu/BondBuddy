@@ -1,0 +1,108 @@
+{
+  "synthetic": true,
+  "productionAccess": false,
+  "prototypeOrigin": "http://127.0.0.1:57806",
+  "observations": [
+    {
+      "name": "prototype-annual-account-1440x960.png",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "source": "product-prototype/public/account-credits.html?subscription=1&cycle=annual",
+      "exactCounterpart": false,
+      "reason": "原型展示年度套餐及规则，没有整期现金退款输入状态。"
+    },
+    {
+      "name": "prototype-integrity-notes-1440x960.png",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "source": "product-prototype/public/integrity-notes.html",
+      "exactCounterpart": false,
+      "reason": "仓库只提供诚信说明区原型，未提供完整名单／五主体限制／pending恢复原型。"
+    },
+    {
+      "name": "prototype-task-results-1440x960.png",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "source": "product-prototype/public/task-results.html",
+      "exactCounterpart": false,
+      "reason": "任务列表为最接近原型，没有billing_reconcile状态卡。"
+    },
+    {
+      "name": "implementation-annual-refund-1440x960.png",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "source": "apps/web/src/commerce-refunds.ts",
+      "render": "真实组件，合成年度资格，独立临时宿主",
+      "amount": "10789.20",
+      "readonly": true
+    },
+    {
+      "name": "implementation-integrity-five-subjects-1440x960.png",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "source": "apps/web/src/integrity-workspace.ts",
+      "render": "真实工作区控制器，合成只读API，独立临时宿主",
+      "subjects": 5
+    },
+    {
+      "name": "implementation-integrity-limit-feedback-1440x960.png",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "source": "apps/web/src/integrity-workspace.ts",
+      "subjects": 5,
+      "status": "每轮最多 5 个对象。"
+    },
+    {
+      "name": "implementation-integrity-pending-before-1440x960.png",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "source": "apps/web/src/integrity-workspace.ts",
+      "pending": "原numeric5000/key保持",
+      "autoSubmissions": 0
+    },
+    {
+      "name": "implementation-integrity-pending-rejected-1440x960.png",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "source": "apps/web/src/integrity-workspace.ts",
+      "pending": false,
+      "submissions": 1,
+      "autoNewTask": false
+    },
+    {
+      "name": "implementation-integrity-rejected-feedback-1440x960.png",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "source": "apps/web/src/integrity-workspace.ts",
+      "status": "上次请求未受理，已结束该申请。请刷新当前资格或任务范围后重新开始。"
+    },
+    {
+      "name": "implementation-billing-reconcile-1440x960.png",
+      "viewport": {
+        "width": 1440,
+        "height": 960
+      },
+      "source": "apps/web/src/authoring-progress.ts + task-progress.ts",
+      "render": "真实生产进度组件及状态函数，合成paused/billing_reconcile",
+      "noSuccessOrRechargeClaim": true
+    }
+  ]
+}

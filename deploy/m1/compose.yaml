@@ -11,8 +11,9 @@ x-bb-policy-env: &bb-policy-env
   BB_DEPLOYMENT_TIER: ${BB_DEPLOYMENT_TIER:-production}
   BB_NON_PRODUCTION_TEST_CHANNEL: ${BB_NON_PRODUCTION_TEST_CHANNEL:-disabled}
   # Shared by API and all worker groups, including prod/optional overlays.
-  # Keep off until the same release and all its migrations are present; this does not configure a merchant.
-  BB_SUBSCRIPTION_BILLING_ENABLED: ${BB_SUBSCRIPTION_BILLING_ENABLED:-0}
+  # Current automatic policy is mandatory; install the same release and migrations together.
+  # Payment merchant configuration remains independent.
+  BB_SUBSCRIPTION_BILLING_ENABLED: '1'
   # Trial guard (#35, docs/runbooks/m1-trial-operations.md). NODE_ENV=production in the image turns the guard on.
   BB_TRIAL_GUARD: ${BB_TRIAL_GUARD:-on}
   BB_TRIAL_SOURCE_SALT: ${BB_TRIAL_SOURCE_SALT:?set a random per-environment value in .env}
@@ -90,10 +91,10 @@ services:
       BB_UPLOAD_EXCEPTION_SCOPE: ${BB_UPLOAD_EXCEPTION_SCOPE:-}
       # #17: run submission commits durable jobs for the deployed WorkerRuntime to claim.
       BB_RUN_RUNTIME_ENABLED: '1'
-      # M2 stays off until the official payment adapter and release acceptance are complete.
-      BB_PAID_AUTHORING_ENABLED: ${BB_PAID_AUTHORING_ENABLED:-0}
-      BB_PAID_REVIEW_ENABLED: ${BB_PAID_REVIEW_ENABLED:-0}
-      BB_OUTCOME_PRICING_ENABLED: ${BB_OUTCOME_PRICING_ENABLED:-0}
+      # Historical flags cannot restore fixed/manual new-task pricing.
+      BB_PAID_AUTHORING_ENABLED: '1'
+      BB_PAID_REVIEW_ENABLED: '1'
+      BB_OUTCOME_PRICING_ENABLED: '1'
       BB_WECHAT_PAY_ENABLED: ${BB_WECHAT_PAY_ENABLED:-0}
       BB_WECHAT_PAY_MERCHANT_ID: ${BB_WECHAT_PAY_MERCHANT_ID:-}
       BB_WECHAT_PAY_APP_ID: ${BB_WECHAT_PAY_APP_ID:-}

@@ -529,6 +529,7 @@ export class ProjectExecution {
         : run?.state === 'paused' ? run.stage === 'awaiting_materials'
           ? '等待材料处理完成，条件满足后后台会继续。'
           : run.stage === 'provider_reconcile' ? '正在核对编制服务响应；已保存材料会保留，无需重新上传。'
+          : run.stage === 'billing_reconcile' ? '正在核对积分账务，已保存进度和已有成果；核对完成后继续，已请求停止的任务会优先结束。'
           : '处理条件尚未就绪，请联系支持核对。' : undefined;
     const needsRecharge = !!this.charge?.progress?.credit_exhausted && !!activeRun;
     if (!needsRecharge) { this.creditPromptShown = false; this.creditDialog?.close(); }

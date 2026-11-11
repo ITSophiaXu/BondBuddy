@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: integrity legacy: accepted quote reaches actual Word delivery, settles once, and exports free
+ok 1 - integrity legacy: accepted quote reaches actual Word delivery, settles once, and exports free
+  ---
+  duration_ms: 6865.1964
+  type: 'test'
+  ...
+# Subtest: integrity reviewed: accepted quote reaches actual Word delivery, settles once, and exports free
+ok 2 - integrity reviewed: accepted quote reaches actual Word delivery, settles once, and exports free
+  ---
+  duration_ms: 7094.098
+  type: 'test'
+  ...
+# Subtest: integrity automatic: accepted quote reaches actual Word delivery, settles once, and exports free
+ok 3 - integrity automatic: accepted quote reaches actual Word delivery, settles once, and exports free
+  ---
+  duration_ms: 8952.2419
+  type: 'test'
+  ...
+# Subtest: integrity automatic-v2: accepted quote reaches actual Word delivery, settles once, and exports free
+ok 4 - integrity automatic-v2: accepted quote reaches actual Word delivery, settles once, and exports free
+  ---
+  duration_ms: 6287.7128
+  type: 'test'
+  ...
+# Subtest: integrity automatic-v3: accepted quote reaches actual Word delivery, settles once, and exports free
+ok 5 - integrity automatic-v3: accepted quote reaches actual Word delivery, settles once, and exports free
+  ---
+  duration_ms: 5931.7228
+  type: 'test'
+  ...
+# Subtest: integrity managed: accepted quote reaches actual Word delivery, settles once, and exports free
+ok 6 - integrity managed: accepted quote reaches actual Word delivery, settles once, and exports free
+  ---
+  duration_ms: 7128.5246
+  type: 'test'
+  ...
+# Subtest: integrity coverage: accepted quote reaches actual Word delivery, settles once, and exports free
+ok 7 - integrity coverage: accepted quote reaches actual Word delivery, settles once, and exports free
+  ---
+  duration_ms: 6706.2714
+  type: 'test'
+  ...
+# Subtest: integrity automatic failures and cancellation release exactly once; a released hold cannot pass the worker gate
+ok 8 - integrity automatic failures and cancellation release exactly once; a released hold cannot pass the worker gate
+  ---
+  duration_ms: 9033.0448
+  type: 'test'
+  ...
+# Subtest: integrity rejects mismatched reservation, missing scope binding and changed quote lines before collection
+ok 9 - integrity rejects mismatched reservation, missing scope binding and changed quote lines before collection
+  ---
+  duration_ms: 6371.8047
+  type: 'test'
+  ...
+# Subtest: historical zero-source web searches require matching durable provider actions, never model claims
+ok 10 - historical zero-source web searches require matching durable provider actions, never model claims
+  ---
+  duration_ms: 5159.3258
+  type: 'test'
+  ...
+# Subtest: v4 partial delivery settles only verified distinct pairs and preserves actual lot/refund caps
+ok 11 - v4 partial delivery settles only verified distinct pairs and preserves actual lot/refund caps
+  ---
+  duration_ms: 7691.2021
+  type: 'test'
+  ...
+# Subtest: a valid historical v3 draft-only quote remains executable under the new global v4 standard
+ok 12 - a valid historical v3 draft-only quote remains executable under the new global v4 standard
+  ---
+  duration_ms: 6297.6762
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 119585.3492

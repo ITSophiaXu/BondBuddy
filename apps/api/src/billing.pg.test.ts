@@ -20,7 +20,7 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
   const bytes=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const v=bytes.get(k);assert.ok(v);return v;},
     getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bound');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
-  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true,enablePaidAuthoring:true});
+  const app=createServer({pool,historicalBillingFixture:true,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true,enablePaidAuthoring:true});
   const failures:string[]=[];app.addHook('onError',async(_request,_reply,error)=>{failures.push(String(error)+' '+((error as any).where??''));});
   const send=(method:string,url:string,payload?:any,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test',...headers}});
   const fund=(points:number,key:string=randomUUID(),expiresAt:string|null=null)=>transaction(pool,c=>grantCredits(c,{owner,points,key,source:expiresAt?'existing_grant':'purchase',expiresAt,actor:'synthetic-test',reason:'synthetic-only'}));

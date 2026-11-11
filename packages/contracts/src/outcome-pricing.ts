@@ -1,11 +1,11 @@
 import {Type,type Static} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
-import {AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION,MANAGED_AUTOMATIC_PRICE_PATTERN,isAutomaticPriceVersion,type AutomaticPriceVersion} from './automatic-pricing.js';
+import {AUTOMATIC_PRICE_VERSION,PREVIOUS_AUTOMATIC_PRICE_VERSION,LEGACY_AUTOMATIC_PRICE_VERSION,MANAGED_AUTOMATIC_PRICE_PATTERN,isAutomaticPriceVersion,type AutomaticPriceVersion} from './automatic-pricing.js';
 import type {ScopeLine} from './commerce.js';
 
 export const LEGACY_OUTCOME_PRICE_VERSION='outcome-cny-20261028-v1' as const;
 export const OUTCOME_PRICE_VERSION='outcome-cny-20261028-v2' as const;
-export const OutcomePriceVersionSchema=Type.Union([Type.Literal(LEGACY_OUTCOME_PRICE_VERSION),Type.Literal(OUTCOME_PRICE_VERSION),Type.Literal(LEGACY_AUTOMATIC_PRICE_VERSION),Type.Literal(AUTOMATIC_PRICE_VERSION),Type.Unsafe<AutomaticPriceVersion>(Type.String({pattern:MANAGED_AUTOMATIC_PRICE_PATTERN}))]);
+export const OutcomePriceVersionSchema=Type.Union([Type.Literal(LEGACY_OUTCOME_PRICE_VERSION),Type.Literal(OUTCOME_PRICE_VERSION),Type.Literal(LEGACY_AUTOMATIC_PRICE_VERSION),Type.Literal(PREVIOUS_AUTOMATIC_PRICE_VERSION),Type.Literal(AUTOMATIC_PRICE_VERSION),Type.Unsafe<AutomaticPriceVersion>(Type.String({pattern:MANAGED_AUTOMATIC_PRICE_PATTERN}))]);
 export type OutcomePriceVersion=Static<typeof OutcomePriceVersionSchema>;
 export const isOutcomePriceVersion=(value:unknown):value is OutcomePriceVersion=>value===OUTCOME_PRICE_VERSION||value===LEGACY_OUTCOME_PRICE_VERSION||isAutomaticPriceVersion(value);
 

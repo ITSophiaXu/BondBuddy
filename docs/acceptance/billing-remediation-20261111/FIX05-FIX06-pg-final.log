@@ -1,0 +1,30 @@
+✔ a refund eligibility race commits an immutable rejection and a later release cannot revive its key (6976.8069ms)
+✔ full HTTP legacy refunds distinguish durable non-acceptance from exact accepted receipt replay (5981.3936ms)
+✔ synthetic signed cash refunds bind original payment/lot, exclude consumed/held/noncash money and settle once under callback/query concurrency (7505.9604ms)
+✔ synthetic timeout/unknown retains freeze, reconciles same refund ID, and explicit CLOSED releases without reusing a failed request (8483.6923ms)
+✔ synthetic task/refund races serialize on original account and rollback cannot send cash before a durable freeze (7897.8424ms)
+✔ historical bonus package refunds consumed remainder at original A/Q and quality restoration keeps the same cash ceiling (9219.7692ms)
+✔ historical package cumulative one-cent rounding preserves sub-cent credits and strict request units (7231.18ms)
+✔ cash refunds allocate only authenticated original-source family and serialize races with consumption (8118.3791ms)
+▶ synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once
+  ✔ verified payment grants once, 90-day rights and cash ratio survive cancellation (510.0549ms)
+  ✔ a stale tab subscription request is durably rejected without an order and topup stays available (84.2826ms)
+  ✔ legacy HTTP replays only the exact owner rejection and can never create a new subscription payment (473.1834ms)
+  ✔ expired manual renewals with pending, active or cancel-pending mandates durably reject without blocking topups (582.0699ms)
+  ✔ checkout failure before channel creation stays unknown until authenticated expiry, then permits a new purchase (38.9411ms)
+  ✔ only a wholly unused period refunds 199 cash by removing 21000 points, unknown status stays held (339.6695ms)
+  ✔ task and cash-refund holds are separate in the same wallet and each period (367.3702ms)
+  ✔ consumption prevents subscription cash refund; expired correction preserves original paid ratio (94.0523ms)
+  ✔ the application rejects an unused subscription after the seven-day refund window (206.9027ms)
+  ✔ topup is 1:1 permanent and does not inherit a subscription discount (59.6994ms)
+  ✔ native checkout has no recurring capability; an authenticated synthetic mandate renews once after timeout (128.015ms)
+  ✔ a delayed refund for an earlier period cannot cancel a later paid period or its mandate (110.3338ms)
+✔ synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once (3102.3473ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 85920.8497
