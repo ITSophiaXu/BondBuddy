@@ -22,11 +22,40 @@ const blob = (commit, path) => {
   return result.stdout;
 };
 const clean = () => git(['status', '--porcelain', '--untracked-files=normal']) === '';
-const atomic = value => {
-  writeFileSync(`${receiptPath}.tmp`, `${JSON.stringify(value, null, 2)}\n`);
-  renameSync(`${receiptPath}.tmp`, receiptPath);
-};
 const json = path => existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
+
+/** Publish the active receipt last, after its per-run evidence is durable. */
+export function persistReceipts(receipt, latestPath, archivePath, io = { writeFileSync, renameSync, rmSync }) {
+  const paths = [archivePath, latestPath];
+  const publish = path => {
+    io.writeFileSync(`${path}.tmp`, `${JSON.stringify(receipt, null, 2)}\n`);
+    io.renameSync(`${path}.tmp`, path);
+  };
+  try {
+    // Invalidate even a previous pass before any write can fail. A missing
+    // active receipt is safer than retaining evidence from an earlier attempt.
+    io.rmSync(latestPath, { force: true });
+    for (const path of paths) publish(path);
+  } catch (error) {
+    receipt.status = 'failed';
+    receipt.errors.push(`Cannot save receipt: ${error.message}`);
+    const recoveryErrors = [];
+    // A failure publishing the active copy may follow a successful archive
+    // write. Demote both copies; if a failed receipt cannot be written, remove
+    // that copy rather than leaving a passing receipt available to verify.
+    for (const path of paths) {
+      try { publish(path); }
+      catch (writeError) {
+        try { io.rmSync(path, { force: true }); }
+        catch (removeError) { recoveryErrors.push(`Cannot invalidate ${path}: ${removeError.message}`); }
+        recoveryErrors.push(`Cannot write failed receipt ${path}: ${writeError.message}`);
+      }
+      try { io.rmSync(`${path}.tmp`, { force: true }); }
+      catch (tempError) { recoveryErrors.push(`Cannot remove temporary receipt ${path}: ${tempError.message}`); }
+    }
+    throw new Error([`Cannot save receipt: ${error.message}`, ...recoveryErrors].join('; '));
+  }
+}
 
 export function dependencySources(env) {
   const sources = {
@@ -79,15 +108,12 @@ async function run() {
   const receipt = { schema_version: 'pr-gate-local-v1', status: 'failed', started_at: new Date().toISOString(), finished_at: null,
     commit: null, tree: null, develop_commit: null, clean_tree: false, platform: 'linux', host_platform: process.platform,
     host_arch: arch(), host_release: release(), run_id: id, artifacts: `runs/${id}`, preparation: [], shards: [], merge: null, cleanup: { status: 'pending' }, errors: [] };
-  try { atomic(receipt); } // A failed/dirty new invocation must never leave an older passed receipt active.
+  const archiveReceiptPath = join(directory, 'receipt.json');
+  try { persistReceipts(receipt, receiptPath, archiveReceiptPath); }
   catch (error) { rmSync(lock, { recursive: true }); throw error; }
   const save = () => {
-    try {
-      atomic(receipt);
-      writeFileSync(join(directory, 'receipt.json.tmp'), `${JSON.stringify(receipt, null, 2)}\n`);
-      renameSync(join(directory, 'receipt.json.tmp'), join(directory, 'receipt.json'));
-    }
-    catch (error) { receipt.errors.push(`Cannot save receipt: ${error.message}`); console.error(error.message); }
+    try { persistReceipts(receipt, receiptPath, archiveReceiptPath); }
+    catch (error) { console.error(error.message); }
   };
   let currentChild, interrupted = false, dockerAvailable = false, expected, workflow;
   const signal = () => { interrupted = true; currentChild?.kill('SIGTERM'); };
@@ -151,7 +177,7 @@ async function run() {
     await step('image', async () => {
       await docker('build-test-image', ['build', '--tag', image, '--file', join(root, 'scripts/pr-gate/Dockerfile'), join(root, 'scripts/pr-gate')]);
       // No host credentials, .env, source mount, ports, Docker socket or existing DB enter this container.
-      await docker('start-runner', ['run', '--detach', '--name', runner, '--shm-size', '1g', '--mount', `type=bind,source=${directory},target=/evidence`,
+      await docker('start-runner', ['run', '--detach', '--init', '--name', runner, '--shm-size', '1g', '--mount', `type=bind,source=${directory},target=/evidence`,
         ...envArgs({ ...workflow.env, CI: '1', GITHUB_SHA: expected.commit, GITHUB_WORKSPACE: '/workspace', RUNNER_TEMP: '/tmp',
           BONDBUDDY_TEST_PYTHON: '/usr/local/bin/python', BONDBUDDY_WORD_PYTHON: '/usr/local/bin/python', BB_PYTHON: '/usr/local/bin/python',
           PYTHONPATH: '/workspace/python:/workspace/python/tests' }), image]);
@@ -207,10 +233,11 @@ async function run() {
       try { verifyReceipt({ ...receipt, status: 'passed' }, expected); receipt.status = 'passed'; }
       catch (error) { receipt.errors.push(`Receipt validation: ${error.message}`); }
     }
-    save();
     if (receipt.errors.length) receipt.status = 'failed';
+    save();
     process.off('SIGINT', signal); process.off('SIGTERM', signal);
-    rmSync(lock, { recursive: true });
+    try { rmSync(lock, { recursive: true }); }
+    catch (error) { receipt.status = 'failed'; receipt.errors.push(`Cannot release gate lock: ${error.message}`); save(); }
   }
   console.log(`[pr-gate] ${receipt.status}; receipt: ${receiptPath}; elapsed: ${((Date.parse(receipt.finished_at) - Date.parse(receipt.started_at)) / 1000).toFixed(1)}s`);
   return receipt.status === 'passed' ? 0 : 1;
