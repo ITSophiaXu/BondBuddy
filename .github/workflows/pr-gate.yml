@@ -1,18 +1,12 @@
-# 合并前检查：对每个 PR 的合并结果运行仓库里的全部自动化测试。
+# 合并前检查：默认使用 npm run pr-gate 在本机运行并提交回执摘要。
 #
 # - 测试按目录自动发现，新加的测试文件不用登记就会运行。
 # - 判定逻辑在 scripts/pr-gate/run.mjs；例外只能登记在 scripts/pr-gate/exclusions.json。
-# - 最后的 pr-gate 任务是唯一需要设为“必需检查”的项目：设好以后，未通过的 PR 无法合并。
+# - 因 GitHub 计费限制，暂时只保留手动触发；本地命令复用以下矩阵和环境。
 # - 这里只用模拟模型，不调用真实模型，也不替代发布前的真实样本测试（npm run test:release）。
 name: PR gate
 
 on:
-  pull_request:
-    branches: [develop, master]
-  # develop 合并后直接部署，所以合并后的结果也再检查一次。
-  push:
-    branches: [develop]
-  merge_group:
   workflow_dispatch:
     inputs:
       report_only:
