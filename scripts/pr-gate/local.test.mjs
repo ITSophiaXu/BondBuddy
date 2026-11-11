@@ -4,7 +4,16 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { cleanupContainers } from './local.mjs';
+import { cleanupContainers, dependencySources } from './local.mjs';
+
+test('dependency-only sources honor npm configuration without accepting insecure URLs or credentials', () => {
+  assert.equal(dependencySources({ npm_config_registry: 'https://packagefeedproxy.microsoft.io/npm/' }).npm, 'https://packagefeedproxy.microsoft.io/npm/');
+  assert.equal(dependencySources({}).pip, 'https://pypi.org/simple/');
+  for (const invalid of ['http://example.test/', 'https://user:secret@example.test/', 'https://example.test/?token=secret', 'file:///cache', 'invalid']) {
+    assert.throws(() => dependencySources({ PR_GATE_NPM_REGISTRY: invalid }));
+    assert.throws(() => dependencySources({ PR_GATE_PIP_INDEX_URL: invalid }));
+  }
+});
 
 test('one cleanup failure does not hide behind an absent sibling or prevent runner cleanup', async () => {
   const calls = [];
