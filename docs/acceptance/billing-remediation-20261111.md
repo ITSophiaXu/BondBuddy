@@ -2,7 +2,7 @@
 
 日期：2026-11-11。基线：`f0b8817938c20a91e7b0c86429f80e7e9ac98215`（develop）。本记录承接《积分计价与扣费排查报告》《诚信核查积分专项审核报告》《计费任务失败-case台账》及其合并修复计划。用户已授权执行修复、退役旧计价报价，并设计新的诚信核查标准。
 
-代码完成，尚未部署，待统一发布。测试使用 Windows、Node.js、独立 PostgreSQL、Microsoft Edge、合成账户/材料/查询与支付响应；Python Word 生成及私有字节 readback 为真实本地执行。没有访问或修改生产账本，没有真实商户退款或真实模型/官网收费验收。
+代码完成，尚未部署，待统一发布。测试使用 Windows、Node.js v26.13.0 / npm 11.20.0、独立 PostgreSQL、Microsoft Edge、合成账户/材料/查询与支付响应；Python Word 生成及私有字节 readback 为真实本地执行。没有访问或修改生产账本，没有真实商户退款或真实模型/官网收费验收。
 
 ## 修复与 case 对照
 
@@ -71,6 +71,10 @@ node --test --test-concurrency=2 apps/api/dist/automatic-pricing.test.js apps/ap
 浏览器已有22个不同案例通过，覆盖年度输入、旧numeric/string pending、明确重试、持久拒绝解锁与普通错误保留。使用现有生产组件的7张实现图和3张最接近原型图均为1440×960并逐张查看，见[界面核对及限制](./billing-remediation-20261111/README.md)。原型缺少完整异常态，记录不声称逐状态像素一致或完整页面用户验收；没有新增布局或页面步骤。
 
 ## 发布、回退与最终统一验收
+
+交付 PR：[计费修复与诚信 v4 #1014](https://github.com/ITSophiaXu/BondBuddy/pull/1014)，base 为 develop。业务源码与回归证据提交 `530c1773880af98bd6fd424962d97c92d1d65b19`；后续报告补记不改变源码。最终 develop 合并提交、时间及 Issue 状态以该 PR 和 #997—#1011 的完成回执为准。
+
+远程 CI 六项均在执行任何 step 前失败，逐项注释一致：`The job was not started because recent account payments have failed or your spending limit needs to be increased.` 参见[检查实例](https://github.com/ITSophiaXu/BondBuddy/actions/runs/43026149682)。因此本记录只声明本地验证通过，不声明 GitHub CI 通过或 Linux/容器验收通过。未更改检查配置、账号付费设置或使用管理权限绕过检查。远程 CI 补跑列入最终统一验收待办。
 
 - 迁移与contracts/API/worker/web必须来自同一准确提交；新v4不能由未识别v4的旧worker执行。统一发布先核验在途合同、排空或安全暂停，再应用迁移及更新服务，保留回滚与恢复记录。
 - 回退保留新增表、不可变报价、拒绝及资金事件；不得删除迁移或把v4数据交给不兼容旧镜像。应停止新受理并使用识别v4的兼容版本恢复，或向前修复。
