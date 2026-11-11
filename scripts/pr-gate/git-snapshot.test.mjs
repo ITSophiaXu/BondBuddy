@@ -7,6 +7,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { createGitSnapshot, restoreGitSnapshot } from './git-snapshot.mjs';
@@ -116,6 +117,25 @@ function restore(snapshotDirectory, destination, candidate, manifest, overrides 
     expectedPackSha256: manifest.pack_sha256, ...overrides,
   });
 }
+
+test('create and restore CLI carry the expected pack SHA-256 through a real shallow checkout', () => fixture(({ directory, git, source }) => {
+  const candidate = source(), output = join(directory, 'cli-snapshot'), destination = join(directory, 'cli-restored');
+  const helper = fileURLToPath(new URL('./git-snapshot.mjs', import.meta.url));
+  const cli = args => spawnSync(process.execPath, [helper, ...args], { encoding: 'utf8', windowsHide: true, timeout: 120_000 });
+  const created = cli(['create', '--source-root', candidate.repository, '--commit', candidate.commit, '--tree', candidate.tree, '--out', output]);
+  assert.ifError(created.error); assert.equal(created.status, 0, created.stderr);
+  const manifest = JSON.parse(created.stdout);
+  const args = ['restore', '--snapshot', output, '--destination', destination, '--commit', candidate.commit, '--tree', candidate.tree, '--pack-sha256'];
+  const rejected = cli([...args, '0'.repeat(64)]);
+  assert.ifError(rejected.error); assert.equal(rejected.status, 1);
+  assert.match(rejected.stderr, /pack hash does not match/);
+  assert.equal(existsSync(destination), false, 'mismatched evidence must not create the checkout');
+  const restored = cli([...args, manifest.pack_sha256]);
+  assert.ifError(restored.error); assert.equal(restored.status, 0, restored.stderr);
+  assert.equal(JSON.parse(restored.stdout).clean_tree, true);
+  assert.equal(git(destination, ['rev-parse', 'HEAD']), candidate.commit);
+  assert.equal(git(destination, ['rev-parse', 'HEAD^{tree}']), candidate.tree);
+}));
 
 test('real shallow roundtrip retains original tree bytes, archive attributes, ignored tracked files and executable modes', () => fixture(({ directory, git, source }) => {
   const candidate = source(), output = join(directory, 'snapshot'), destination = join(directory, 'restored');
