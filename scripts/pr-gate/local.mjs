@@ -11,13 +11,14 @@ import { exclusionsEvidence, verifyReceipt } from './receipt.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const output = join(root, '.local/pr-gate');
 const receiptPath = join(output, 'receipt.json');
+const objectEnvironment = { ...process.env, GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1', GIT_ALLOW_PROTOCOL: '' };
 const git = args => {
-  const result = spawnSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+  const result = spawnSync('git', ['--no-replace-objects', ...args], { cwd: root, env: objectEnvironment, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
   if (result.error || result.status !== 0) throw new Error(`git ${args[0]} failed: ${result.error?.message ?? result.stderr}`);
   return result.stdout.trim();
 };
 const blob = (commit, path) => {
-  const result = spawnSync('git', ['show', `${commit}:${path}`], { cwd: root, maxBuffer: 8 * 1024 * 1024 });
+  const result = spawnSync('git', ['--no-replace-objects', 'show', `${commit}:${path}`], { cwd: root, env: objectEnvironment, maxBuffer: 8 * 1024 * 1024 });
   if (result.error || result.status !== 0) throw new Error(`Cannot read ${path} at ${commit}`);
   return result.stdout;
 };
@@ -171,8 +172,12 @@ async function run() {
     const os = (await docker('docker-platform', ['info', '--format', '{{.OSType}}'], { capture: true })).text;
     if (os !== 'linux') throw new Error('Docker must be running local Linux containers');
     dockerAvailable = true;
-    const archive = join(directory, 'source.tar');
-    await command('snapshot', 'git', ['archive', '--format=tar', `--output=${archive}`, expected.commit]);
+    // Transfer only this original commit and its tree/blob objects; never copy host Git configuration.
+    const snapshotHelper = join(directory, 'git-snapshot.mjs');
+    writeFileSync(snapshotHelper, blob(expected.commit, 'scripts/pr-gate/git-snapshot.mjs'));
+    await command('snapshot', process.execPath, [snapshotHelper, 'create', '--source-root', root,
+      '--commit', expected.commit, '--tree', expected.tree, '--out', join(directory, 'source')]);
+    const sourceSnapshot = json(join(directory, 'source', 'manifest.json'));
     const image = `bondbuddy-pr-gate:${createHash('sha256').update(blob(expected.commit, 'scripts/pr-gate/Dockerfile')).digest('hex').slice(0, 16)}`;
     await step('image', async () => {
       await docker('build-test-image', ['build', '--tag', image, '--file', join(root, 'scripts/pr-gate/Dockerfile'), join(root, 'scripts/pr-gate')]);
@@ -181,7 +186,9 @@ async function run() {
         ...envArgs({ ...workflow.env, CI: '1', GITHUB_SHA: expected.commit, GITHUB_WORKSPACE: '/workspace', RUNNER_TEMP: '/tmp',
           BONDBUDDY_TEST_PYTHON: '/usr/local/bin/python', BONDBUDDY_WORD_PYTHON: '/usr/local/bin/python', BB_PYTHON: '/usr/local/bin/python',
           PYTHONPATH: '/workspace/python:/workspace/python/tests' }), image]);
-      await exec('extract-source', ['tar', '-xf', '/evidence/source.tar', '-C', '/workspace']);
+      await exec('restore-source', ['node', '/evidence/git-snapshot.mjs', 'restore', '--snapshot', '/evidence/source',
+        '--destination', '/workspace', '--commit', expected.commit, '--tree', expected.tree,
+        '--pack-sha256', sourceSnapshot.pack_sha256]);
     });
     await step('services', startServices);
     await step('dependencies', async () => {
