@@ -1,3 +1,4 @@
+import {paymentLoginReturn} from './payment-return-route';
 import {uploadPickerContent} from './upload-picker';
 import './upload-progress.css';
 import {uploadActivity,uploadProgressHtml,uploadTransfer} from './upload-progress';
@@ -177,8 +178,9 @@ function signedOut(message = '') {
   clearPrivateState();
   currentRoute = '/';
   if (anonymous) { routeSignedOut(hash); return; } // e.g. the first /me 401 on #/register or #/data-policy
-  history.replaceState(null, '', `${location.pathname}${location.search}#/`);
-  renderLogin(message);
+  const paymentReturn=paymentLoginReturn(hash);
+  history.replaceState(null, '', `${location.pathname}${location.search}${paymentReturn??'#/'}`);
+  renderLogin(paymentReturn?'请登录下单时使用的 BondBuddy 账号，登录后将继续核对本次付款。':message);
 }
 sessionChannel?.addEventListener('message', () => signedOut('账号会话已在其他页面更改，请重新登录。'));
 
@@ -200,14 +202,15 @@ function publicRecovery(mode: 'request' | 'reset') {
 }
 function routeSignedOut(hash = location.hash) {
   epoch++;
-  const route = ['#/data-policy', '#/register', '#/recover', '#/reset'].includes(hash) ? hash : '#/';
+  const paymentReturn=paymentLoginReturn(hash);
+  const route = paymentReturn??(['#/data-policy', '#/register', '#/recover', '#/reset'].includes(hash) ? hash : '#/');
   if(route!=='#/reset')recoveryToken=undefined;
   if (location.hash !== route) history.replaceState(null, '', `${location.pathname}${location.search}${route}`);
   if (route === '#/recover') publicRecovery('request');
   else if (route === '#/reset') publicRecovery('reset');
   else if (route === '#/data-policy') renderPublicPolicy();
   else if (route === '#/register') renderLogin('', 'register');
-  else renderLogin();
+  else renderLogin(paymentReturn?'请登录下单时使用的 BondBuddy 账号，登录后将继续核对本次付款。':'');
 }
 
 // The agreement links here, so the data-policy page is also readable before an account exists.
@@ -265,7 +268,7 @@ function bindLogin() {
       if (token !== epoch) return;
       (form.elements.namedItem('password') as HTMLInputElement).value = '';
       identity = result.user_id; signedOutView = false; sessionChannel?.postMessage('changed');
-      history.replaceState(null, '', `${location.pathname}${location.search}#tasks`);
+      history.replaceState(null, '', `${location.pathname}${location.search}${paymentLoginReturn(location.hash)??'#tasks'}`);
       await renderRoute();
     } catch (error) {
       if (token !== epoch) return;

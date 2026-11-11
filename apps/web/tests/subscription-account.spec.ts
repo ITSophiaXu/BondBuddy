@@ -30,12 +30,12 @@ const responseFamily=(path:string,method:string):BillingWireDtoName|undefined=>{
 const json=(route:Route,status:number,body:unknown)=>{const path=new URL(route.request().url()).pathname.replace('/api/v1',''),family=responseFamily(path,route.request().method());return route.fulfill({status,contentType:'application/json',body:JSON.stringify(status<400&&family?encodeBillingDto(family,body):body)});};
 async function evidence(page:Page,name:string){const directory=process.env.BB_UX_EVIDENCE_DIR;if(!directory)return;await mkdir(directory,{recursive:true});await page.screenshot({path:join(directory,name),fullPage:true});}
 async function regionEvidence(page:Page,name:string,selector:string){const directory=process.env.BB_UX_EVIDENCE_DIR;if(!directory)return;await mkdir(directory,{recursive:true});const region=page.locator(selector);await region.evaluate(element=>element.scrollIntoView({block:'center'}));await region.screenshot({path:join(directory,name)});}
-async function setup(page:Page,options:{payment?:boolean;active?:boolean;renewal?:boolean;manualActive?:boolean;uncertainCheckout?:boolean;uncertainTopup?:boolean;expired?:boolean;refundHeld?:boolean;orderPaid?:boolean;priceVersion?:AutomaticPriceVersion;subscriptionCatalog?:SubscriptionCatalog;cancelPending?:boolean;zeroTask?:boolean;periodHistoryOverflow?:boolean;periodUnavailable?:404|503;topupOrder?:boolean;annual?:boolean;closeResult?:'pending'|'paid'|'expired';closeUnknown?:boolean}={}){
+async function setup(page:Page,options:{alipay?:boolean;payment?:boolean;active?:boolean;renewal?:boolean;manualActive?:boolean;uncertainCheckout?:boolean;uncertainTopup?:boolean;expired?:boolean;refundHeld?:boolean;orderPaid?:boolean;priceVersion?:AutomaticPriceVersion;subscriptionCatalog?:SubscriptionCatalog;cancelPending?:boolean;zeroTask?:boolean;periodHistoryOverflow?:boolean;periodUnavailable?:404|503;topupOrder?:boolean;annual?:boolean;closeResult?:'pending'|'paid'|'expired';closeUnknown?:boolean}={}){
   const calls:{method:string;path:string;body:any}[]=[];let attempts=0,topupAttempts=0,cancelRefreshes=0,periodUnavailable=options.periodUnavailable;
   const priceVersion=options.priceVersion??AUTOMATIC_PRICE_VERSION,tariff=automaticTaskTariff(priceVersion);
   const contractEnd=options.annual?'2027-10-29T04:00:00Z':end;
   let subscription:any=options.active||options.expired?{id:'subscription-1',plan_id:'light',status:'active',auto_renew:!!options.renewal&&!options.manualActive,mandate_status:options.renewal&&!options.manualActive?'active':'none',current_period_start:now,current_period_end:options.expired?'2026-10-28T04:00:00Z':contractEnd,task_price_version:priceVersion,billing_cycle:options.annual?'annual':'monthly',next_charge_at:options.renewal&&!options.manualActive?contractEnd:null,next_charge_amount_fen:options.renewal&&!options.manualActive?options.annual?214920:19900:null}:null;
-  let order={order_id:options.topupOrder?'topup-order-1':'subscription-order-1',provider:'wechat',state:options.orderPaid||options.active?'paid':'pending',amount_fen:options.topupOrder?5000:19900,points:options.topupOrder?5000:21000,currency:'CNY',checkout_url:'weixin://wxpay/bizpayurl?pr=synthetic-subscription',project_id:null,expires_at:end,credited_at:options.orderPaid||options.active?now:null};
+  let order={order_id:options.topupOrder?'topup-order-1':'subscription-order-1',provider:options.alipay?'alipay':'wechat',state:options.orderPaid||options.active?'paid':'pending',amount_fen:options.topupOrder?5000:19900,points:options.topupOrder?5000:21000,currency:'CNY',checkout_url:options.alipay?'https://openapi.alipay.com/gateway.do?synthetic=true':'weixin://wxpay/bizpayurl?pr=synthetic-subscription',project_id:null,expires_at:end,credited_at:options.orderPaid||options.active?now:null};
   const period=()=>({id:'period-1',order_id:order.order_id,plan_id:subscription?.plan_id??'light',status:order.state==='paid'?'active':'pending',amount_fen:order.amount_fen,points:order.points,available_points:options.refundHeld?0:order.state==='paid'?options.annual?21000:order.points:0,held_points:options.refundHeld?21000:0,task_held_points:0,refund_held_points:options.refundHeld?21000:0,starts_at:order.state==='paid'?now:null,ends_at:order.state==='paid'?contractEnd:null,credits_expires_at:order.state==='paid'?expiry:null,refundable_until:order.state==='paid'?'2026-11-05T04:00:00Z':null,billing_cycle:subscription?.billing_cycle??'monthly',monthly_points:plans.find(p=>p.id===subscription?.plan_id)?.points??21000,release_count:subscription?.billing_cycle==='annual'?12:1,released_count:order.state==='paid'?1:0,next_release_at:subscription?.billing_cycle==='annual'&&order.state==='paid'?end:null});
   const refunds:any[]=[];
   await page.clock.install({time:new Date(now)});
@@ -46,7 +46,7 @@ async function setup(page:Page,options:{payment?:boolean;active?:boolean;renewal
     if(path==='/account/sessions')return json(route,200,{items:[{session_id:'session-1',current:true,created_at:now,last_refreshed_at:now,refresh_expires_at:'2030-01-01T00:00:00Z'}]});
     if(path==='/account/recovery')return json(route,200,{enabled:false,support_operator:false,current:null,pending:null});
     if(path==='/data-policy')return json(route,200,policy);
-    if(path==='/subscriptions/catalog')return json(route,200,options.subscriptionCatalog??{enabled:true,version:'bb-subscriptions-20261029-v1',plans,providers:options.payment?['wechat']:[],auto_renew_available:!!options.renewal});
+    if(path==='/subscriptions/catalog')return json(route,200,options.subscriptionCatalog??{enabled:true,version:'bb-subscriptions-20261029-v1',plans,providers:options.payment?[options.alipay?'alipay':'wechat']:[],auto_renew_available:!!options.renewal});
     if(path==='/subscriptions/account')return json(route,200,{subscription,available_points:options.refundHeld?800:subscription&&order.state==='paid'?22000:19782,held_points:options.refundHeld?21200:subscription&&order.state==='paid'?0:1218,task_held_points:options.refundHeld?200:subscription&&order.state==='paid'?0:1218,refund_held_points:options.refundHeld?21000:0,subscription_available_points:options.refundHeld?0:subscription&&order.state==='paid'?21000:0,topup_available_points:options.refundHeld?800:subscription&&order.state==='paid'?1000:19782,other_available_points:0,periods:subscription?options.periodHistoryOverflow?Array.from({length:50},(_,index)=>({...period(),id:`newer-period-${index+1}`,order_id:`newer-order-${index+1}`})):[period()]:[]});
     if(path==='/subscriptions/orders/'+order.order_id+'/period'){
       if(periodUnavailable)return json(route,periodUnavailable,{code:periodUnavailable===404?'NOT_FOUND':'DATA_UNAVAILABLE'});
@@ -84,6 +84,160 @@ async function setup(page:Page,options:{payment?:boolean;active?:boolean;renewal
 }
 
 test.beforeEach(async({page})=>page.setViewportSize({width:1440,height:960}));
+
+test('Alipay return ignores URL success claims, verifies only the original order and retains the receipt',async({page})=>{
+  const {calls,settle}=await setup(page,{payment:true,alipay:true,topupOrder:true});
+  await page.goto('/payment/alipay/return.html?out_trade_no=topup-order-1&trade_status=TRADE_SUCCESS&total_amount=999&sign=untrusted');
+  await expect(page).toHaveURL(/\/#\/account\?order=topup-order-1&payment_return=alipay$/);
+  await expect(page.getByRole('heading',{name:'等待支付确认',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'积分已到账',exact:true})).toHaveCount(0);
+  await expect.poll(()=>calls.filter(c=>c.path.endsWith('/refresh')).length).toBe(1);
+  await expect(page.locator('.payment-amount')).toHaveText('¥50.00');
+  await evidence(page,'payment-pending-desktop.png');
+  await regionEvidence(page,'payment-pending-desktop-card.png','.payment-experience');
+  settle();await page.clock.runFor(5000);
+  await expect(page.getByRole('heading',{name:'积分已到账',exact:true})).toBeVisible();
+  await expect(page.locator('[data-payment-validity]')).toHaveText('5,000 积分 · 永久有效');
+  await expect(page.locator('.payment-credited-at')).toContainText('到账时间');
+  await page.clock.runFor(20_000);
+  await expect(page.getByRole('heading',{name:'积分已到账',exact:true})).toBeVisible();
+  expect(calls.filter(c=>c.method==='POST'&&!c.path.endsWith('/refresh'))).toHaveLength(0);
+  await evidence(page,'payment-paid-desktop.png');
+  await expect(page.locator('#subscription-payment-refunds')).toHaveCount(0);
+  await regionEvidence(page,'payment-paid-desktop-card.png','.payment-experience');
+  await page.setViewportSize({width:390,height:844});
+  await expect(page.locator('.payment-experience')).toBeVisible();
+  await page.locator('.payment-experience').evaluate(element=>element.scrollIntoView({block:'start'}));
+  expect(await page.locator('.payment-experience').evaluate(element=>element.getBoundingClientRect().top)).toBeGreaterThanOrEqual(70);
+  if(process.env.BB_UX_EVIDENCE_DIR)await page.screenshot({path:join(process.env.BB_UX_EVIDENCE_DIR,'payment-paid-mobile-viewport.png')});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await evidence(page,'payment-paid-mobile.png');
+  await regionEvidence(page,'payment-paid-mobile-card.png','.payment-experience');
+});
+
+for(const state of ['expired','failed'] as const)test(`returned ${state} order never claims crediting or offers its old checkout link`,async({page})=>{
+  await setup(page,{payment:true,alipay:true,topupOrder:true});
+  await page.route('**/api/v1/commerce/topups/topup-order-1',route=>json(route,200,{order_id:'topup-order-1',provider:'alipay',state,amount_fen:'5000',points:'5000',currency:'CNY',checkout_url:'https://openapi.alipay.com/gateway.do?synthetic=true',project_id:null,expires_at:end,credited_at:null}));
+  await page.goto('/payment/alipay/return.html?out_trade_no=topup-order-1');
+  await expect(page.getByRole('heading',{name:state==='expired'?'订单已过期':'支付未完成',exact:true})).toBeVisible();
+  await expect(page.getByRole('link',{name:'前往支付宝',exact:false})).toHaveCount(0);
+  await expect(page.locator('.payment-credited-at')).toHaveCount(0);
+});
+
+test('an unrelated paid response cannot replace the original pending return order',async({page})=>{
+  await setup(page,{payment:true,alipay:true,topupOrder:true});
+  await page.route('**/api/v1/commerce/topups/topup-order-1/refresh',route=>json(route,200,{order_id:'different-order',provider:'alipay',state:'paid',amount_fen:'5000',points:'5000',currency:'CNY',checkout_url:null,project_id:null,expires_at:end,credited_at:now}));
+  await page.goto('/payment/alipay/return.html?out_trade_no=topup-order-1');
+  await expect(page.locator('.account-billing-error')).toBeVisible();
+  await expect(page.getByRole('heading',{name:'等待支付确认',exact:true})).toBeVisible();
+  await expect(page.locator('[data-payment-state=paid]')).toHaveCount(0);
+});
+
+test('payment prototype covers pending and paid states at the same desktop and mobile viewport sizes',async({page})=>{
+  const directory=fileURLToPath(new URL('../../../product-prototype/public/',import.meta.url));
+  const apiCalls:string[]=[];page.on('request',request=>{if(request.url().includes('/api/'))apiCalls.push(request.url());});
+  await page.route('**/prototype-payment/**',async route=>{
+    const filename=new URL(route.request().url()).pathname.split('/').at(-1)!;
+    if(!['payment-experience.html','payment-experience.css'].includes(filename))return route.abort();
+    return route.fulfill({contentType:filename.endsWith('.html')?'text/html':'text/css',body:await readFile(join(directory,filename),'utf8')});
+  });
+  await page.goto('/prototype-payment/payment-experience.html');
+  await expect(page.getByRole('heading',{name:'等待支付确认'})).toBeVisible();
+  await evidence(page,'payment-prototype-pending-desktop.png');
+  await regionEvidence(page,'payment-prototype-pending-desktop-card.png','.payment-experience');
+  await page.getByRole('link',{name:'已到账',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'积分已到账'})).toBeVisible();
+  await expect(page.locator('#deadline')).toBeHidden();
+  await evidence(page,'payment-prototype-paid-desktop.png');
+  await regionEvidence(page,'payment-prototype-paid-desktop-card.png','.payment-experience');
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await evidence(page,'payment-prototype-paid-mobile.png');
+  await regionEvidence(page,'payment-prototype-paid-mobile-card.png','.payment-experience');
+  expect(apiCalls).toEqual([]);
+});
+
+test('Alipay automatic queries are bounded and manual retry keeps the original order',async({page})=>{
+  const {calls,settle}=await setup(page,{payment:true,alipay:true,topupOrder:true});
+  await page.goto('/#/account?order=topup-order-1&payment_return=alipay');
+  for(let n=1;n<=6;n++){
+    await expect.poll(()=>calls.filter(c=>c.path.endsWith('/refresh')).length).toBe(n);
+    await expect(page.locator('#refresh-subscription-payment')).toBeEnabled();
+    await page.clock.runFor(5000);
+  }
+  await page.clock.runFor(60_000);
+  expect(calls.filter(c=>c.path.endsWith('/refresh'))).toHaveLength(6);
+  await expect(page.locator('.payment-check-status')).toContainText('尚未确认到账');
+  await page.locator('#refresh-subscription-payment').click();
+  await expect.poll(()=>calls.filter(c=>c.path.endsWith('/refresh')).length).toBe(7);
+  expect(calls.filter(c=>c.method==='POST').every(c=>c.path==='/commerce/topups/topup-order-1/refresh')).toBe(true);
+  await expect(page.locator('#refresh-subscription-payment')).toBeEnabled();
+  await page.clock.runFor(35_000);await expect(page.locator('#refresh-subscription-payment')).toBeEnabled();settle();
+  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  await expect(page.getByRole('heading',{name:'积分已到账',exact:true})).toBeVisible();
+});
+
+test('Alipay return restores only the saved original task context for the authenticated owner',async({page})=>{
+  const {calls,settle}=await setup(page,{payment:true,alipay:true,topupOrder:true});const resumed:unknown[]=[];
+  await page.route('**/api/v1/projects/project-1/qa/runs',route=>{resumed.push(route.request().postDataJSON());return json(route,200,{run_id:'returned-run'});});
+  await page.goto('/#/account');await expect(page.locator('#account-balance-title')).toBeVisible();
+  await page.evaluate(async()=>{
+    const recovery=await import('/src/'+'billing-task-recovery.ts');
+    const task=await recovery.createBillingTask('subscription-owner','/projects/project-1/qa/runs',{request_id:'return-task-975',expected_revision:1,expected_points:'1218',price_version:'bb-task-price-170-20261029-v2',scope_quote_id:'return-scope'},{'x-bb-billing-format':'int64-decimal-v1'},'#qa?project=project-1');
+    localStorage.setItem('bondbuddy:billing-task:v2:'+task.id,JSON.stringify({...task,state:'needs_funds'}));
+    localStorage.setItem('bondbuddy:checkout-intent:v1:subscription-owner',JSON.stringify({version:2,owner:'subscription-owner',request_id:'original-purchase-975',created_at:Date.now(),choice:{kind:'topup',provider:'alipay',amount_fen:'5000'},order:{order_id:'topup-order-1',provider:'alipay',state:'pending',amount_fen:'5000',points:'5000'},context:{return_to:task.returnTo,resume_request:task.id}}));
+  });
+  settle();await page.goto('/payment/alipay/return.html?out_trade_no=topup-order-1');
+  await expect(page).toHaveURL(/#qa\?project=project-1$/);
+  await expect.poll(()=>resumed.length).toBe(1);
+  expect(calls.filter(c=>c.path==='/commerce/topups'&&c.method==='POST')).toHaveLength(0);
+});
+
+test('return to a different owner or unavailable order never displays crediting or creates a payment',async({page})=>{
+  const {calls}=await setup(page,{payment:true,alipay:true,topupOrder:true});
+  await page.route('**/api/v1/commerce/topups/topup-order-1',route=>json(route,404,{code:'NOT_FOUND'}));
+  await page.goto('/payment/alipay/return.html?out_trade_no=topup-order-1&trade_status=TRADE_SUCCESS');
+  await expect(page.getByRole('heading',{name:'暂时无法核对本次订单'})).toBeVisible();
+  await expect(page.getByText('请确认已登录下单时使用的 BondBuddy 账号。',{exact:false})).toBeVisible();
+  await expect(page.locator('[data-payment-state=paid]')).toHaveCount(0);
+  expect(calls.filter(c=>c.method==='POST')).toHaveLength(0);
+});
+
+test('missing or ambiguous return order stays on the branded recovery page without querying a guessed order',async({page})=>{
+  const {calls}=await setup(page,{payment:true});
+  for(const query of ['trade_status=TRADE_SUCCESS','out_trade_no=a&out_trade_no=b']){
+    await page.goto('/payment/alipay/return.html?'+query);
+    await expect(page.getByRole('heading',{name:'需要核对本次订单'})).toBeVisible();
+    await expect(page).toHaveURL(/\/payment\/alipay\/return.html$/);
+  }
+  expect(calls).toHaveLength(0);
+});
+
+test('signed-out payment return survives reload and login before showing authenticated crediting',async({page})=>{
+  await setup(page,{payment:true,alipay:true,topupOrder:true,orderPaid:true});let loggedIn=false;
+  await page.route('**/api/v1/me',route=>loggedIn?json(route,200,{user_id:'subscription-owner',session_status:'active'}):json(route,401,{code:'UNAUTHENTICATED'}));
+  await page.route('**/api/v1/auth/login',route=>{loggedIn=true;return json(route,200,{user_id:'subscription-owner',session_status:'active'});});
+  await page.goto('/payment/alipay/return.html?out_trade_no=topup-order-1');
+  await expect(page.locator('#login-form')).toBeVisible();await page.reload();
+  await expect(page.getByText('请登录下单时使用的 BondBuddy 账号，登录后将继续核对本次付款。')).toBeVisible();
+  await page.locator('#login-form [name=username]').fill('synthetic_user');
+  await page.locator('#login-form [name=password]').fill('synthetic-password');
+  await page.locator('#login-form button[type=submit]').click();
+  await expect(page.getByRole('heading',{name:'积分已到账',exact:true})).toBeVisible();
+  await expect(page).toHaveURL(/order=topup-order-1&payment_return=alipay/);
+});
+
+test('late original-order verification cannot repaint after navigation',async({page})=>{
+  await setup(page,{payment:true,alipay:true,topupOrder:true});let release:()=>void=()=>{};
+  const pending=new Promise<void>(resolve=>{release=resolve;});let requested=false;
+  await page.route('**/api/v1/commerce/topups/topup-order-1/refresh',async route=>{requested=true;await pending;await json(route,503,{code:'PAYMENT_UNAVAILABLE'}).catch(()=>{});});
+  await page.goto('/#/account?order=topup-order-1&payment_return=alipay');
+  await expect.poll(()=>requested).toBe(true);
+  await page.goto('/#/account');release();
+  await expect(page.locator('#subscription-topup-form')).toBeVisible();
+  await expect(page.locator('.subscription-payment')).toHaveCount(0);
+  await expect(page.locator('.payment-return-unavailable')).toHaveCount(0);
+});
 
 test('closing the selected unpaid order allows a new amount only after the original is confirmed closed',async({page})=>{
   const {calls}=await setup(page,{payment:true});await page.goto('/#/account');
