@@ -47,6 +47,9 @@ docs/product-decisions/*
 !docs/acceptance/
 docs/acceptance/*
 !docs/acceptance/prospectus-size-gate-20261111.md
+!docs/acceptance/prospectus-size-repair-20261111.md
+!docs/acceptance/prospectus-size-repair-20261111/
+!docs/acceptance/prospectus-size-repair-20261111/*.png
 !docs/acceptance/reference-text-flexibility-20261111.md
 !docs/acceptance/integrity-billing-consistency-20261111.md
 !docs/acceptance/project-qa-direct-answer-20261107.md

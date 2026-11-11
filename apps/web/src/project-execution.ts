@@ -89,6 +89,7 @@ export function executionEventReason(payload: Dto<'RunEvent'>['payload'] | undef
 }
 
 export function readinessMessage(reason: string, lastProcessingStage?: string): string {
+  if (reason === 'word_size_repair_exhausted') return '募集说明书篇幅异常，自动修复两轮后仍未通过检查，任务已暂停。原始材料、草稿和检查记录已保留，请联系支持继续处理，无需重新上传材料。';
   if (reason === 'MATERIAL_UNREADABLE') return '有材料无法读取，本轮未能交付。请点击“继续修改”，检查本轮文件并重新导出不可读材料，上传可读副本后重新开始；原任务和已保存材料会保留。';
   if (reason === 'WORD_FORMAT_OPERATIONS_MISSING') return '本轮编制未保存必需的修订记录，尚未生成可交付的 Word。已保存材料会保留，无需重新上传；请联系支持核对本轮结果。';
   if (reason === 'processor_failed') return lastProcessingStage === 'word_delivery'
