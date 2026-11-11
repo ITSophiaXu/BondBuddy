@@ -8,7 +8,9 @@ if [ "$(env_value BB_NON_PRODUCTION_TEST_CHANNEL)" = enabled ] && [ "$(env_value
   exit 2
 fi
 sha="$(git -C "$BB_REPO" rev-parse --verify "${1:?usage: deploy.sh <git-sha>}^{commit}")"
-node "$BB_REPO/scripts/prospectus-quality-gate.mjs" verify "$sha" "${BB_RELEASE_QUALITY_RECEIPT:?set BB_RELEASE_QUALITY_RECEIPT to passing evidence for this exact commit}"
+source "$(dirname "$0")/release-evidence.sh"
+ctx=''; trap 'cleanup_release_evidence; [ -z "$ctx" ] || rm -rf "$ctx"' EXIT
+verify_release_evidence "$BB_REPO" "$sha"
 tag="${sha:0:12}"
 build_required_bytes=$(( 4 * 1024 * 1024 * 1024 ))
 # Images already present (e.g. loaded with `docker load` from scripts/export-images.sh on a build
@@ -53,7 +55,7 @@ check_space() {
   fi
 }
 check_space "$required_bytes" "$threshold_reason"
-ctx="$(mktemp -d)"; trap 'rm -rf "$ctx"' EXIT
+ctx="$(mktemp -d)"
 git -C "$BB_REPO" archive "$sha" | tar -x -C "$ctx"
 for target in api worker web; do
   have "bondbuddy-m1-$target:$tag" && continue
@@ -97,10 +99,8 @@ echo "$tag" > "$BB_STATE/current"
 "$(dirname "$0")/smoke.sh" "http://127.0.0.1:$(env_value BB_HTTP_PORT)"
 # Keep the exact passing receipt for a later emergency rollback. Record success
 # only after smoke: a failed deployment must never authorize the rollback exception.
-quality_digest="$(sha256sum "$BB_RELEASE_QUALITY_RECEIPT" | awk '{print $1}')"
-mkdir -p "$BB_STATE/quality"
-[ "$BB_RELEASE_QUALITY_RECEIPT" -ef "$BB_STATE/quality/$sha.json" ] || cp "$BB_RELEASE_QUALITY_RECEIPT" "$BB_STATE/quality/$sha.json"
-log_release deploy "$tag commit=$sha quality_sha256=$quality_digest (previous ${previous:-none})"
+save_release_evidence "$sha" "$BB_STATE"
+log_release deploy "$tag commit=$sha quality_sha256=$BB_RELEASE_QUALITY_DIGEST smoke_sha256=$BB_RELEASE_SMOKE_DIGEST (previous ${previous:-none})"
 # Keep only the current and previous release images on disk.
 keep="$tag ${previous:-}"
 docker image ls --format '{{.Repository}}:{{.Tag}}' | grep '^bondbuddy-m1-' | while read -r ref; do

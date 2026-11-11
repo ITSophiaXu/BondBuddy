@@ -9,13 +9,18 @@ sha="$(git -C "$BB_REPO" rev-parse --verify "${1:?git-sha required}^{commit}")";
 rollback=0
 case "${1:-}" in '') ;; --rollback) rollback=1; shift;; *) echo 'unexpected deployment argument' >&2; exit 2;; esac
 [ "$#" = 0 ] || exit 2
+source "$(dirname "$0")/release-evidence.sh"
+trap cleanup_release_evidence EXIT
 role_compose_arguments
 role_script_source
 role_trusted_source "$sha"
 # Legacy same-version mode stays valid. Decoupling requires an explicit exact script pin.
 if [ -z "$BB_DEPLOY_SCRIPT_SHA" ]; then
-  git -C "$BB_REPO" diff --quiet "$sha" -- deploy/m1 || { echo 'deployment files differ from the app commit; pin BB_DEPLOY_SCRIPT_SHA for independent configuration' >&2; exit 2; }
+  git -C "$BB_REPO" diff --quiet "$sha" -- deploy/m1 "${BB_RELEASE_VALIDATOR_PATHS[@]}" || { echo 'deployment files or evidence validators differ from the app commit; pin BB_DEPLOY_SCRIPT_SHA for independent configuration' >&2; exit 2; }
 fi
+# Validate the trusted script sources before executing either evidence validator.
+# Normal releases must be refused before pending state or any one-off SQL container.
+if [ "$rollback" = 0 ]; then verify_release_evidence "$BB_REPO" "$sha"; fi
 export BB_IMAGE_TAG="${sha:0:12}"
 exec 9>"$BB_STATE/deploy.lock"
 flock -n 9 || { echo 'this role is already being deployed' >&2; exit 75; }
@@ -38,6 +43,7 @@ for target in "${targets[@]}"; do
 done
 previous="$(current_tag)"
 first_resume=0
+resume_candidate=0
 resume_consumers=0
 gate_tag="$previous"
 prepared=0
@@ -56,7 +62,19 @@ if [ -f "$BB_STATE/pending-release.json" ]; then
   gate_tag="${recovery_fields[0]}"
   first_resume="${recovery_fields[1]}"
   resume_consumers="${recovery_fields[2]}"
+  pending_target="$(node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).to)' "$BB_STATE/pending-release.json")"
+  if [ "$pending_target" = "$BB_IMAGE_TAG" ]; then resume_candidate=1; fi
+  if [ "$first_resume" = 1 ] || [ "$resume_candidate" = 1 ]; then
+    # Continuing a sealed candidate (including A -> B after a partial B failure)
+    # is a new release attempt. Never borrow the rollback age waiver for it.
+    verify_release_evidence "$BB_REPO" "$sha"
+  else
+    verify_release_evidence "$BB_REPO" "$sha" verify-rollback "$BB_STATE/releases.log" "$BB_DEPLOY_ROLE"
+  fi
 else
+  if [ "$rollback" = 1 ]; then
+    verify_release_evidence "$BB_REPO" "$sha" verify-rollback "$BB_STATE/releases.log" "$BB_DEPLOY_ROLE"
+  fi
   role_existing_release
   if [ -n "$previous" ]; then
     from_sha="$(git -C "$BB_REPO" rev-parse --verify "$previous^{commit}")"
@@ -102,7 +120,7 @@ if [ "$BB_PARSE_ROLE" != "$BB_DEPLOY_ROLE" ]; then
 fi
 if [ "$BB_DEPLOY_ROLE" = main ]; then
   if [ "$prepared" = 0 ]; then
-    if [ "$rollback" = 0 ] || [ "$first_resume" = 1 ]; then role_prepare_publish
+    if [ "$rollback" = 0 ] || [ "$first_resume" = 1 ] || [ "$resume_candidate" = 1 ]; then role_prepare_publish
     else role_probe connect; role_probe schema; fi
   fi
   services=(api ops egress)
@@ -133,8 +151,10 @@ for service in "${services[@]}"; do
   done <<< "$containers"
 done
 record="$(date -u +%Y%m%dT%H%M%S.%N)-$$"
+save_release_evidence "$sha" "$BB_STATE"
 { echo "record=$record"; echo "commit=$sha"; echo "script_commit=$BB_SCRIPT_SHA"; echo "script_tree=$(git -C "$BB_REPO" rev-parse "$BB_SCRIPT_SHA^{tree}")";
-  echo "resume_first=$first_resume";
+  echo "quality_sha256=$BB_RELEASE_QUALITY_DIGEST"; echo "smoke_sha256=$BB_RELEASE_SMOKE_DIGEST";
+  echo "resume_first=$first_resume"; echo "resume_candidate=$resume_candidate";
   echo "override_sha256=${BB_ROLE_OVERRIDE_SHA256:-none}"; echo "parse_role=$BB_PARSE_ROLE";
   for target in "${targets[@]}"; do echo "$target=${image_ids[$target]}"; done; } > "$BB_STATE/images-$BB_IMAGE_TAG.txt"
 cp "$BB_STATE/images-$BB_IMAGE_TAG.txt" "$BB_STATE/release-$record.txt"
@@ -143,5 +163,5 @@ cp "$BB_STATE/images-$BB_IMAGE_TAG.txt" "$BB_STATE/release-$record.txt"
 [ ! -f "$BB_STATE/current-release" ] || cp "$BB_STATE/current-release" "$BB_STATE/previous-release"
 echo "$record" > "$BB_STATE/current-release"
 node "$BB_DIR/scripts/role-release.mjs" clear "$BB_STATE" "$BB_DEPLOY_ROLE" "$sha"
-log_release "deploy-$BB_DEPLOY_ROLE" "record=$record app=$sha script=$BB_SCRIPT_SHA override=${BB_ROLE_OVERRIDE_SHA256:-none} rollback=$rollback resume_first=$first_resume (previous ${previous:-none})"
+log_release "deploy-$BB_DEPLOY_ROLE" "record=$record app=$sha script=$BB_SCRIPT_SHA quality_sha256=$BB_RELEASE_QUALITY_DIGEST smoke_sha256=$BB_RELEASE_SMOKE_DIGEST override=${BB_ROLE_OVERRIDE_SHA256:-none} rollback=$rollback resume_first=$first_resume resume_candidate=$resume_candidate (previous ${previous:-none})"
 echo "deployed $BB_DEPLOY_ROLE $BB_IMAGE_TAG; complete the role acceptance checklist"

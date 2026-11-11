@@ -16,7 +16,8 @@
   ],
   "scripts": {
     "test:release": "node scripts/release-smoke/run.mjs",
-    "test:release:unit": "node --test scripts/release-smoke/support.test.mjs",
+    "test:release:unit": "node --test scripts/release-smoke/support.test.mjs scripts/release-smoke/verify.test.mjs scripts/release-smoke/quality-role.test.mjs",
+    "test:release:verify": "node scripts/release-smoke/verify.mjs verify",
     "billing:mock": "node scripts/billing-functional/start.mjs",
     "billing:mock:stop": "node scripts/billing-functional/stop.mjs",
     "test:billing:mock": "node --test scripts/billing-functional/payment-provider.test.mjs scripts/billing-functional/billing-client.test.mjs",

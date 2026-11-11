@@ -91,7 +91,7 @@ networks:
     name: ${edge}
 `);
  for(const role of ['main','execution']){const file=join(temp,`${role}.yaml`);values[role]={...env,BB_DEPLOY_ROLE:role,BB_BACKEND_SUBNET:subnets[role==='main'?0:1],BB_WEB_IP:subnets[role==='main'?0:1].replace('.0/24','.10'),BB_ROLE_STATE_DIR:join(temp,`${role}-state`),COMPOSE_PROJECT_NAME:role==='main'?main:execution,BB_ROLE_OVERRIDE_FILE:file,BB_ROLE_OVERRIDE_SHA256:hash(file)};writeEnv(role);}
- compose('main','up','-d','--wait','postgres');
+ compose('main','up','-d','--no-deps','--wait','postgres');
  writeFileSync(join(temp,'main-state/current'),'synthetic\n');
  assert.equal(sql('SELECT 1'),'1');pass('ordinary main up automatically uses override; authenticated loopback PG SQL succeeds');
  const cfg=JSON.parse(compose('main','config','--format','json')), pg=compose('main','ps','-q','postgres').trim();

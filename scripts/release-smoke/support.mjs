@@ -10,6 +10,14 @@ export function writeJson(path,value){mkdirSync(dirname(path),{recursive:true,mo
 export function contained(root,relative,paths=path){const base=paths.resolve(root),p=paths.resolve(base,relative),inside=paths.relative(base,p);if(!inside||inside==='..'||inside.startsWith('..'+paths.sep)||paths.isAbsolute(inside))throw Error('Sample path escapes its root');return p;}
 export function verifiedFile(root,relative,hash){const path=contained(root,relative),bytes=readFileSync(path);if(!/^[a-f0-9]{64}$/.test(hash)||sha256(bytes)!==hash)throw Error('Sample hash mismatch: '+relative);return path;}
 export function verdict(results){return CASES.every(id=>results.find(r=>r.id===id)?.status==='passed')?'passed':'blocked';}
+// Completed journeys keep their original timestamps on --resume. A later
+// inspection/cleanup attempt must not renew an already completed suite.
+export function caseCompletionTime(cases){
+ if(!Array.isArray(cases)||cases.length===0)throw Error('Release smoke case completion timestamps are missing or invalid');
+ const times=cases.map(entry=>typeof entry?.finishedAt==='string'?Date.parse(entry.finishedAt):NaN);
+ if(times.some(time=>!Number.isFinite(time)))throw Error('Release smoke case completion timestamps are missing or invalid');
+ return Math.max(...times);
+}
 export function assertLocalContext(inspect,platform=process.platform){
  const host=inspect?.Endpoints?.docker?.Host;
  const localUnix=typeof host==='string'&&host.startsWith('unix:///');

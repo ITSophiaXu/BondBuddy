@@ -87,8 +87,27 @@ npm run test:release -- --resume /absolute/path/to/scripts/release-smoke/.runtim
 DOCKER_CONTEXT=colima-bondbuddy-release docker-compose -p <report.project> -f <run>/compose.json down --volumes
 ```
 
-不要使用全局 prune。当前脚本只提供发布前检查及退出码，不自动发布或更改生产部署规则。
+不要使用全局 prune。测试命令不自动发布。按2026-11-11用户决定，部署和镜像导出入口现在强制核对同一候选应用提交的本报告与募集书质量凭据；缺任一证据即拒绝。
+
+## 部署前核验（2026-11-11）
+
+```sh
+npm run test:release:verify -- <完整候选SHA> /private/test-release/report.json
+export BB_RELEASE_SMOKE_REPORT=/private/test-release/report.json
+export BB_RELEASE_QUALITY_RECEIPT=/private/prospectus-quality.json
+# 沿既有授权和运行手册调用对应部署入口；本命令不授予发布权限。
+```
+
+`verify.mjs` 核对 `status`、`modelProbe` 均为 `passed`，完整 `sha`、`tree` 与候选一致，当前 `support.mjs` 的每个必需用例各一条且通过，api/worker/web 均有完整镜像 ID，以及合法的报告起止时间和每个用例的 `finishedAt`。24小时有效期按最后一个必需用例实际完成的时间计算。runner 完整通过时把报告 `finishedAt` 固定为该时间，另用 `lastAttemptFinishedAt` 记录恢复或清理尝试；对全部已经通过的流程执行 `--resume` 不能续期。既有报告即使在清理后才记录顶层 `finishedAt`，仍以其用例完成时间为准，不使用顶层时间或新字段兜底。额外/重复/未通过用例或缺字段均拒绝。修改提交后重测，不能把 PR head 的结果用于不同 merge SHA。报告是受控本机的私有执行证据，不是签名或自动专业质量认证，不能接受客户或不可信来源生成的报告。
+
+`deploy.sh`、`export-images.sh`、`deploy-role.sh`、`export-images-role.sh` 均在构建、迁移或切换前验证两份证据。先制作权限受限的临时副本，再验证副本；成功后保存相同字节至 state 的 `quality/<sha>.json`、`release-smoke/<sha>.json`，发布日志记录 `quality_sha256` 和 `smoke_sha256`。拆分部署绑定应用 SHA，部署脚本 pin 另外记录。
+
+`rollback.sh` 与 `deploy-role.sh --rollback` 使用 `verify-rollback <sha> <report> <releases.log> [main|execution]`：只允许相同原始文件 hash 曾记录在该版本/角色的成功发布中时免除24小时限制，其他字段仍完整验证。首次发布失败恢复，以及A→B失败后继续封存的B候选，均须正常24小时验证，并保留既有 pending 来源/镜像/配置检查；继续B仍执行其正常迁移。只有完成后写入的成功恢复记录才可供将来回滚使用。旧版本缺少原始证据会拒绝，不能事后补造。门禁启用前的回滚衔接须由发布负责人单独审定。
+
+运维 `role-compose.sh` 和数据 `restore.sh` 不能通过外部image tag顺带换版；换版必须走上述门禁。角色首次基础设施启动仅限明确服务和 `--no-deps`，不能启动应用、worker或迁移绕过检查。
+
+目前验证报告中镜像 ID 的完整性、候选 SHA/tree 和部署镜像既有 revision 标签；是否进一步强制测试/部署镜像 ID 相同，特别是跨架构场景，按用户要求在 PR 中提出建议、待用户决定。本 PR 不宣称两种架构已经互相验证。实际入口证据和建议见[入口盘点](../../docs/testing/release-smoke-deployment-entrypoints-2026-11-11.md)。
 
 ## 验证状态
 
-此前 Mac/Colima 的三个真实业务用例3/3通过，见[2026-11-08记录](../../docs/testing/local-release-smoke-2026-11-08.md)。本次只补跨平台启动路径和操作说明；按用户要求，没有重跑业务测试、模型调用或其他测试。Windows 实机端到端结果尚未记录，不能把此前 Mac 结果写成 Windows 已通过。
+此前 Mac/Colima 的三个真实业务用例3/3通过，见[2026-11-08记录](../../docs/testing/local-release-smoke-2026-11-08.md)。本次任务1只改部署前验证与部署脚本，不签发新的真实模型报告；测试执行状态以关联PR的准确提交与证据为准。任务2须在本机环境齐备且#1013测试结束后先跑现有三流程基线，再添加两条新流程，不能把历史Mac结果或另一候选的运行结果写成本次Windows已通过。

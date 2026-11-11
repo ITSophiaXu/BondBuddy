@@ -7,13 +7,15 @@ case "$role" in main) targets=(api worker web egress);; execution)
  case "${4:-beijing}" in beijing) targets+=(integrity-tunnel);; direct) targets+=(integrity-egress);; disabled) ;; *) echo 'invalid integrity mode' >&2; exit 2;; esac;; *) exit 2;; esac
 repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 sha="$(git -C "$repo" rev-parse --verify "$ref^{commit}")"; tag="${sha:0:12}"
+source "$(dirname "$0")/release-evidence.sh"
+ctx=''; trap 'cleanup_release_evidence; [ -z "$ctx" ] || rm -rf "$ctx"' EXIT
 BB_REPO="$repo"
 source "$(dirname "$0")/role-source-lib.sh"
 BB_DEPLOY_SCRIPT_SHA=''
 role_script_source
 role_trusted_source "$sha"
+verify_release_evidence "$repo" "$sha"
 # Keep checkout/build/archive on the data filesystem. Do not copy credentials into the context.
-ctx=''; trap '[ -z "$ctx" ] || rm -rf "$ctx"' EXIT
 images=()
 for target in "${targets[@]}"; do
   if [ "$target" = integrity-tunnel ]; then image="bondbuddy-integrity-tunnel:$tag"; else image="bondbuddy-m1-$target:$tag"; fi

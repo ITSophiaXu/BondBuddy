@@ -1,5 +1,11 @@
 # BondBuddy 开发约定
 
+## 发布前双证据门禁（2026-11-11 用户决定）
+
+部署和镜像导出必须先核对同一候选应用 commit/tree 的募集书质量凭据与 `npm run test:release` 通过报告；通过 `BB_RELEASE_QUALITY_RECEIPT`、`BB_RELEASE_SMOKE_REPORT` 传入，两者正常发布有效期均为24小时。单机与 main/execution 角色入口都适用。缺字段、用例失败/遗漏/重复、模型探针失败或提交不符一律拒绝，不能用 PR 绿灯、旧提交结果或手工声明替代。成功日志并列保留两份原始证据的 hash；回滚免时效仅限对应角色、已成功发布版本的原始证据，首次失败恢复仍需新鲜证据及既有封存校验。详见[发布门禁决定](docs/product-decisions/2026-11-01-prospectus-quality-gate.md)及[入口盘点与镜像建议](docs/testing/release-smoke-deployment-entrypoints-2026-11-11.md)。
+
+本批三个真实样本测试扩展任务独立于 #1013 的分支和工作区，测试不同时运行。Windows 真实流程前先检查环境，缺软件或系统配置不得自行安装、更改；先原样跑通现有三流程再添加新流程。老账号升级场景先交方案，用户确认后实现。产品问题按 BUG-REPORTING 单独登记，不在测试 PR 中修产品或放宽判定。本批 PR 均以 develop 为 base，知会 ChrisLiu95，交付后等待用户确认，不合并、不部署；本地结果不等于用户验收。
+
 ## Bug 提报与修复统计（2026-11-10）
 
 发现缺陷按[Bug 提报与每日统计规范](docs/BUG-REPORTING.md)登记：一项可独立修复的问题一条 Issue，使用 `bug` 与对应分类标签，生成成果问题使用 `type:生成结果UX`。认领及修复后同步状态、Fix PR、测试证据和剩余范围；部分修复只用 `Refs #编号`，完整修复才用关闭关键词。合入 `develop`、部署和用户验收分别记录，不能用关闭状态代替部署证据。
