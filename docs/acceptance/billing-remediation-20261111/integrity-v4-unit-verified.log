@@ -1,0 +1,184 @@
+TAP version 13
+# Subtest: all twelve tariff rows preserve separate base-fen and 1.7 rounding
+ok 1 - all twelve tariff rows preserve separate base-fen and 1.7 rounding
+  ---
+  duration_ms: 0.9039
+  type: 'test'
+  ...
+# Subtest: comprehensive review uses its planning cost, with exact two-stage rounding
+ok 2 - comprehensive review uses its planning cost, with exact two-stage rounding
+  ---
+  duration_ms: 1.4179
+  type: 'test'
+  ...
+# Subtest: independent question list charges one unit each; malformed or oversized lists are rejected
+ok 3 - independent question list charges one unit each; malformed or oversized lists are rejected
+  ---
+  duration_ms: 0.2601
+  type: 'test'
+  ...
+# Subtest: historical integrity website selections retain their accepted fixed round tariff
+ok 4 - historical integrity website selections retain their accepted fixed round tariff
+  ---
+  duration_ms: 0.5954
+  type: 'test'
+  ...
+# Subtest: v4 integrity bills executable subject/section pairs with an explicit round ceiling
+ok 5 - v4 integrity bills executable subject/section pairs with an explicit round ceiling
+  ---
+  duration_ms: 10.6907
+  type: 'test'
+  ...
+# Subtest: integrity still requires a nonempty distinct scope and at most five subjects
+ok 6 - integrity still requires a nonempty distinct scope and at most five subjects
+  ---
+  duration_ms: 1.7946
+  type: 'test'
+  ...
+# Subtest: v4 requotes price the validated immutable query pairs instead of rederiving the current catalogue
+ok 7 - v4 requotes price the validated immutable query pairs instead of rederiving the current catalogue
+  ---
+  duration_ms: 0.4527
+  type: 'test'
+  ...
+# Subtest: one-question chat cannot accept an explicit multi-question list at one-unit price
+ok 8 - one-question chat cannot accept an explicit multi-question list at one-unit price
+  ---
+  duration_ms: 2.7226
+  type: 'test'
+  ...
+# Subtest: one question includes its calculation process and numbered verification steps
+ok 9 - one question includes its calculation process and numbered verification steps
+  ---
+  duration_ms: 0.4981
+  type: 'test'
+  ...
+# Subtest: clear independent questions without question marks use the owned question list
+ok 10 - clear independent questions without question marks use the owned question list
+  ---
+  duration_ms: 0.3902
+  type: 'test'
+  ...
+# Subtest: new check includes repair; older checks retain their original upgrade rights
+ok 11 - new check includes repair; older checks retain their original upgrade rights
+  ---
+  duration_ms: 0.2212
+  type: 'test'
+  ...
+# Subtest: workpaper is a separately commissioned document and not an automatic 280-unit purchase
+ok 12 - workpaper is a separately commissioned document and not an automatic 280-unit purchase
+  ---
+  duration_ms: 0.1079
+  type: 'test'
+  ...
+# Subtest: more than three new annual periods is unsupported rather than silently capped
+ok 13 - more than three new annual periods is unsupported rather than silently capped
+  ---
+  duration_ms: 0.5437
+  type: 'test'
+  ...
+# Subtest: new saves and checks reject each retired item, including mixed active scopes
+ok 14 - new saves and checks reject each retired item, including mixed active scopes
+  ---
+  duration_ms: 1.3189
+  type: 'test'
+  ...
+# Subtest: 49 current items remain executable; empty and unknown scopes still fail
+ok 15 - 49 current items remain executable; empty and unknown scopes still fail
+  ---
+  duration_ms: 0.7205
+  type: 'test'
+  ...
+# Subtest: retirement filters new preparation without mutating historical scope or metadata
+ok 16 - retirement filters new preparation without mutating historical scope or metadata
+  ---
+  duration_ms: 1.531
+  type: 'test'
+  ...
+# Subtest: new preparation enforces five subjects and each subject needs an executable applicable website
+ok 17 - new preparation enforces five subjects and each subject needs an executable applicable website
+  ---
+  duration_ms: 0.5431
+  type: 'test'
+  ...
+# Subtest: expanded scope supports the screenshot inventory and keeps old saved IDs readable
+ok 18 - expanded scope supports the screenshot inventory and keeps old saved IDs readable
+  ---
+  duration_ms: 3.0982
+  type: 'test'
+  ...
+# Subtest: separate topics on one domain require their own actual search scope
+ok 19 - separate topics on one domain require their own actual search scope
+  ---
+  duration_ms: 1.2924
+  type: 'test'
+  ...
+# Subtest: regional links distinguish special cities and reject incomplete or mismatched registration
+ok 20 - regional links distinguish special cities and reject incomplete or mismatched registration
+  ---
+  duration_ms: 0.3495
+  type: 'test'
+  ...
+# Subtest: evidence only accepts configured official host and the selected CSRC bureau path
+ok 21 - evidence only accepts configured official host and the selected CSRC bureau path
+  ---
+  duration_ms: 0.2917
+  type: 'test'
+  ...
+# Subtest: model-only links, generic queries and unverifiable quotations never become actual checks or clearance
+ok 22 - model-only links, generic queries and unverifiable quotations never become actual checks or clearance
+  ---
+  duration_ms: 0.4445
+  type: 'test'
+  ...
+# Subtest: actual site-restricted search without results remains manual; quotations require returned text and subject name
+ok 23 - actual site-restricted search without results remains manual; quotations require returned text and subject name
+  ---
+  duration_ms: 0.641
+  type: 'test'
+  ...
+# Subtest: scope units distinguish applicable, excluded and unresolved pairs without inventing costs
+ok 24 - scope units distinguish applicable, excluded and unresolved pairs without inventing costs
+  ---
+  duration_ms: 2.3531
+  type: 'test'
+  ...
+# Subtest: accepted website URLs and applicability come from the locked input instead of the current catalogue
+ok 25 - accepted website URLs and applicability come from the locked input instead of the current catalogue
+  ---
+  duration_ms: 1.0391
+  type: 'test'
+  ...
+# Subtest: commercial points charge zero for no success and never exceed the round ceiling
+ok 26 - commercial points charge zero for no success and never exceed the round ceiling
+  ---
+  duration_ms: 0.6777
+  type: 'test'
+  ...
+# Subtest: verified zero result is successful; blocked, failed, unverified and screenshotless requests are not
+ok 27 - verified zero result is successful; blocked, failed, unverified and screenshotless requests are not
+  ---
+  duration_ms: 0.3686
+  type: 'test'
+  ...
+# Subtest: journal observation times require complete UTC ISO timestamps and real calendar dates
+ok 28 - journal observation times require complete UTC ISO timestamps and real calendar dates
+  ---
+  duration_ms: 0.5132
+  type: 'test'
+  ...
+# Subtest: historical search actions support empty results but reject queued, failed or fabricated events
+ok 29 - historical search actions support empty results but reject queued, failed or fabricated events
+  ---
+  duration_ms: 0.5519
+  type: 'test'
+  ...
+1..29
+# tests 29
+# suites 0
+# pass 29
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2278.1694

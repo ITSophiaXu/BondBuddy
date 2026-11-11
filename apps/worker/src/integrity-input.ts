@@ -1,6 +1,6 @@
 import type {Pool} from 'pg';
 import {Value} from '@sinclair/typebox/value';
-import {IntegrityInputSchema,INTEGRITY_PRICE,isOutcomePriceVersion,isAutomaticPriceVersion,type IntegrityInput} from '@bondbuddy/contracts';
+import {IntegrityInputSchema,INTEGRITY_PRICE,integrityPricingScope,integrityLockedScopeValid,isOutcomePriceVersion,isAutomaticPriceVersion,type IntegrityInput} from '@bondbuddy/contracts';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {readProjectFileAsset} from '@bondbuddy/api/project-file-storage';
 import type {InputRevisionRow,RunRow,StageOutcome,StageContext} from './run-pipeline.js';
@@ -19,7 +19,9 @@ export async function integrityPriceValid(pool:Pool,run:RunRow,m:IntegrityInput)
   &&!m.pricing_mode&&!m.scope_quote_id&&q.scope_quote_id===null;
  if(m.pricing_mode!=='outcome_cny_v1'||m.currency!=='CNY'||m.amount_fen!==m.points||m.quote_status!=='ready'
   ||inputManifestHash(q.scope_lines)!==inputManifestHash(m.scope_lines))return false;
- const scopeHash=inputManifestHash({draft:m.draft});
+ if(m.scope_round_id&&m.scope_round_id!==m.round_id)return false;
+ if(m.scope_measurement&&!integrityLockedScopeValid(m.draft,m.scope_measurement))return false;
+ const scopeHash=inputManifestHash(integrityPricingScope(m.draft,m.scope_round_id,m.scope_round_id?m.scope_measurement:undefined));
  if(!m.scope_quote_id||q.scope_quote_id!==m.scope_quote_id||q.scope_work_hash?.trim()!==scopeHash)return false;
  const scope=(await pool.query(`SELECT s.*,
    EXISTS(SELECT 1 FROM bb_automatic_scope_runs b WHERE b.owner_user_id=s.owner_user_id AND b.scope_quote_id=s.id AND b.run_id=$6) automatic_bound,

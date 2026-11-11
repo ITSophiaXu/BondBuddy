@@ -122,10 +122,10 @@ export async function readSubscriptionFacts(pool:Pool,from:string,to:string){
     LEFT JOIN LATERAL(SELECT sum(amount_fen) amount FROM bb_payment_refunds WHERE order_id=o.id AND owner_user_id=o.owner_user_id AND state='succeeded') refunds ON true
     WHERE o.state='paid' AND o.credited_at IS NOT NULL ORDER BY o.credited_at,o.id`)).rows;
   const slices=(await c.query(`SELECT e.id event_id,e.reservation_id,e.points::text event_total_points,e.created_at occurred_at,COALESCE(a.lot_id,'unmapped:'||e.id) lot_id,l.cash_origin_lot_id origin_lot_id,l.cash_order_id order_id,COALESCE(l.source,'unknown') source,
-    COALESCE(a.charged_points,a.points,e.points)::text points,l.cash_basis_fen::text basis_fen,l.cash_basis_points::text basis_points,
+    COALESCE(bb_credit_allocation_charge(a.reservation_id,a.lot_id),e.points)::text points,l.cash_basis_fen::text basis_fen,l.cash_basis_points::text basis_points,
     (l.cash_order_id IS NULL AND l.cash_basis_fen>0) funding_required,${lotFundingEvidenceSql()} funding_slices
     FROM bb_credit_events e JOIN bb_credit_reservations r ON r.id=e.reservation_id AND r.owner_user_id=e.owner_user_id
-    LEFT JOIN bb_credit_allocations a ON a.reservation_id=r.id AND COALESCE(a.charged_points,a.points)>0 LEFT JOIN bb_credit_lots l ON l.id=a.lot_id AND l.owner_user_id=e.owner_user_id
+    LEFT JOIN bb_credit_allocations a ON a.reservation_id=r.id AND bb_credit_allocation_charge(a.reservation_id,a.lot_id)>0 LEFT JOIN bb_credit_lots l ON l.id=a.lot_id AND l.owner_user_id=e.owner_user_id
     WHERE e.kind='settle' AND r.billing_policy='on_delivery' AND e.points>0
     AND e.created_at>=($1||'-01')::date::timestamp AT TIME ZONE 'Asia/Shanghai' AND e.created_at<(($2||'-01')::date+interval '1 month')::timestamp AT TIME ZONE 'Asia/Shanghai'`,[from,to])).rows;
   const corrections=(await c.query(`SELECT e.id event_id,e.created_at occurred_at,COALESCE(e.lot_id,'unmapped:'||e.id) lot_id,l.cash_origin_lot_id origin_lot_id,l.cash_order_id order_id,COALESCE(l.source,'unknown') source,e.points::text,

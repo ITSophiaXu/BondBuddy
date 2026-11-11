@@ -1,0 +1,19 @@
+✔ every mount allowance is constrained; every other syscall has identical conditions (5.0643ms)
+✔ checked-in local profile equals complete production derivation (7.1452ms)
+✔ actual Docker profiles match by content despite JSON object order (6.7376ms)
+✔ old running and stopped images yield readable pending upgrade; service mappings include one-shots (1.7873ms)
+✔ live upgrade requires actual idle verification; stopped stacks retain recovery path (0.5525ms)
+✔ retired legacy API requires an idle upgrade while stopped retained containers do not block readiness (0.1558ms)
+✔ idle stop retires the owned orphan before Compose and leaves a restartable retained stack (0.8786ms)
+✔ failed orphan stop keeps the main API and database running for the next idle proof (0.3166ms)
+✔ queued work, active runs, all leases and Word sidecars reject even a falsely idle successful probe (0.4112ms)
+✔ Compose uses the published receipt even when inherited or operator settings name another build (0.3616ms)
+✔ failed receipt publication preserves last completed build and leaves no partial alias (20.9452ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 187.7432

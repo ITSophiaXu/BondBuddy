@@ -22,6 +22,12 @@ export async function syncAuthoringProgress(c:PoolClient,r:any,next?:{state:stri
   if(!['update','generation','review'].includes(r.task_kind))return;
   const j=(await c.query('SELECT * FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2',[r.id,r.owner_user_id])).rows[0];
   if(!j||String(j.subtype).startsWith('m4_')&&j.subtype!=='m4_document_v1')return;
+  // Control-only billing pauses must remain writable while the money ledger is
+  // isolated. Freeze the clock without creating a progress debit or catch-up bill.
+  if(next?.stage==='billing_reconcile'||j.stage==='billing_reconcile'){
+    await c.query('UPDATE bb_authoring_progress SET clock_at=clock_timestamp(),lease_until=NULL WHERE run_id=$1 AND owner_user_id=$2',[r.id,r.owner_user_id]);
+    return;
+  }
   await c.query('INSERT INTO bb_authoring_progress(run_id,owner_user_id) VALUES($1,$2) ON CONFLICT DO NOTHING',[r.id,r.owner_user_id]);
   const m=(await c.query('SELECT *,clock_timestamp() AS sampled_at FROM bb_authoring_progress WHERE run_id=$1 AND owner_user_id=$2 FOR UPDATE',[r.id,r.owner_user_id])).rows[0];
   const active=measuredActiveMs(m,new Date(m.sampled_at));

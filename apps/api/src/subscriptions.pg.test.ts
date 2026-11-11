@@ -3,7 +3,7 @@ import test from 'node:test';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import Fastify from 'fastify';
-import {BILLING_WIRE_HEADER,LEGACY_BILLING_WIRE_VERSION,SUBSCRIPTION_PLANS,SUBSCRIPTION_TASK_PRICE_VERSION,INITIAL_FIXED_PRICES} from '@bondbuddy/contracts';
+import {BILLING_WIRE_HEADER,LEGACY_BILLING_WIRE_VERSION,SUBSCRIPTION_PLANS,SUBSCRIPTION_TASK_PRICE_VERSION,INITIAL_FIXED_PRICES,type SubscriptionCheckoutRequest} from '@bondbuddy/contracts';
 import {isolatedTestDatabase} from './test-database.js';
 import {transaction,uid} from './data.js';
 import {installBillingWire,legacyBillingReplayExists} from './billing-wire.js';
@@ -120,6 +120,40 @@ test('synthetic subscriptions share the wallet, retain original cash rights, ref
         assert.equal((await pool.query('SELECT count(*)::int n FROM bb_subscription_checkout_rejections WHERE owner_user_id=$1 AND request_id=$2',[who,fresh.request_id])).rows[0].n,0);
       }finally{await app.close();}
     });
+    await t.test('expired manual renewals with pending, active or cancel-pending mandates durably reject without blocking topups',async()=>{
+      for(const status of ['pending','active','cancel_pending'] as const){
+        const who=await owner(),paid=await buy(who),subscriptionId=paid.subscription.id;
+        await setSubscriptionAutoRenew(pool,who,subscriptionId,{request_id:uid(),enabled:true},[provider]);
+        const row=(await pool.query('SELECT * FROM bb_subscriptions WHERE id=$1',[subscriptionId])).rows[0];
+        if(status!=='pending'){
+          mandateStates.set(row.mandate_request_id,'active');await refreshSubscriptionMandate(pool,who,subscriptionId,[provider]);
+        }
+        if(status==='cancel_pending'){
+          const unknownCancellation={...provider,recurring:{...recurring,cancelMandate:async()=>{throw Error('Synthetic unknown mandate cancellation');}}};
+          await setSubscriptionAutoRenew(pool,who,subscriptionId,{request_id:uid(),enabled:false},[unknownCancellation]);
+        }
+        assert.equal((await subscriptionAccount(pool,who)).subscription!.mandate_status,status);
+        // Advance only the synthetic scheduler projection, leaving paid-period facts intact.
+        await pool.query("UPDATE bb_subscriptions SET current_period_start=now()-interval '1 month 1 second',current_period_end=now()-interval '1 second' WHERE id=$1",[subscriptionId]);
+        const input:SubscriptionCheckoutRequest={request_id:uid(),plan_id:'professional',provider:'wechat'},app=Fastify();
+        installBillingWire(app,{db:()=>pool,owner:async()=>who});installSubscriptions(app,pool,async()=>who,true,[provider]);
+        app.setErrorHandler((e:any,_r,reply)=>reply.code(e.status??e.statusCode??500).send({code:e.code}));
+        const renew=(body=input)=>app.inject({method:'POST',url:`/api/v1/subscriptions/${subscriptionId}/renew`,payload:body});
+        try{
+          const response=await renew();assert.equal(response.statusCode,409,response.body);assert.equal(response.json().code,'SUBSCRIPTION_CHECKOUT_REJECTED',status);
+          assert.equal((await pool.query('SELECT count(*)::int n FROM bb_recharge_orders WHERE owner_user_id=$1 AND request_id=$2',[who,input.request_id])).rows[0].n,0);
+          assert.equal((await pool.query('SELECT count(*)::int n FROM bb_subscription_checkout_rejections WHERE owner_user_id=$1 AND request_id=$2',[who,input.request_id])).rows[0].n,1);
+          const original=(await pool.query('SELECT request_id FROM bb_recharge_orders WHERE id=$1',[paid.order.order_id])).rows[0];
+          assert.equal((await createSubscriptionCheckout(pool,who,{request_id:original.request_id,plan_id:'light',provider:'wechat'},[provider])).order.order_id,paid.order.order_id,'accepted checkout replays before mandate checks');
+          await setSubscriptionAutoRenew(pool,who,subscriptionId,{request_id:uid(),enabled:false},[provider]);
+          assert.equal((await subscriptionAccount(pool,who)).subscription!.mandate_status,'cancelled');
+          assert.equal((await renew()).json().code,'SUBSCRIPTION_CHECKOUT_REJECTED','clearing the mandate never revives a rejected key');
+          assert.equal((await renew({...input,plan_id:'intensive'})).json().code,'IDEMPOTENCY_CONFLICT');
+          assert.equal((await createServiceTopup(pool,who,{request_id:uid(),provider:'wechat',amount_fen:5000},[provider])).state,'pending');
+          assert.equal((await renew({...input,request_id:uid()})).statusCode,201,'a new explicit renewal is possible after verified cancellation');
+        }finally{await app.close();}
+      }
+    });
     await t.test('checkout failure before channel creation stays unknown until authenticated expiry, then permits a new purchase',async()=>{
       const who=await owner();let createFails=true,absenceVerified=false;
       const faultProvider:PaymentProvider={...provider,
@@ -216,13 +250,13 @@ test('synthetic subscriptions share the wallet, retain original cash rights, ref
       assert.equal((await paymentRefundEligibility(pool,who,topup.order_id,[provider])).refundable_fen,1000);assert.ok(a.subscription.id);
     });
     await t.test('native checkout has no recurring capability; an authenticated synthetic mandate renews once after timeout',async()=>{
-      const who=await owner(),a=await buy(who,'intensive'),native={...provider,recurring:undefined};assert.equal(supportsAutomaticRenewal(native),false);
+      const priorMandateCreates=mandateCreates,who=await owner(),a=await buy(who,'intensive'),native={...provider,recurring:undefined};assert.equal(supportsAutomaticRenewal(native),false);
       await assert.rejects(setSubscriptionAutoRenew(pool,who,a.subscription.id,{request_id:uid(),enabled:true},[native]),e=>(e as any).code==='PAYMENT_UNAVAILABLE');
       const input={request_id:uid(),enabled:true},requested=await setSubscriptionAutoRenew(pool,who,a.subscription.id,input,[provider]);
-      assert.equal(requested.subscription.auto_renew,false);assert.ok(requested.authorization_url);assert.equal(mandateCreates,1);
+      assert.equal(requested.subscription.auto_renew,false);assert.ok(requested.authorization_url);assert.equal(mandateCreates,priorMandateCreates+1);
       const row=(await pool.query('SELECT * FROM bb_subscriptions WHERE id=$1',[a.subscription.id])).rows[0];mandateStates.set(row.mandate_request_id,'active');
       assert.equal((await refreshSubscriptionMandate(pool,who,a.subscription.id,[provider])).subscription.auto_renew,true);
-      await setSubscriptionAutoRenew(pool,who,a.subscription.id,input,[provider]);assert.equal(mandateCreates,1);
+      await setSubscriptionAutoRenew(pool,who,a.subscription.id,input,[provider]);assert.equal(mandateCreates,priorMandateCreates+1);
       // Synthetic advancement of the renewal scheduler projection; period/lot facts remain immutable.
       await pool.query("UPDATE bb_subscriptions SET current_period_start=now()-interval '1 month 1 second',current_period_end=now()-interval '1 second' WHERE id=$1",[a.subscription.id]);
       chargeTimeout=true;await processDueSubscriptionRenewals(pool,[provider]);assert.equal(charges,1);

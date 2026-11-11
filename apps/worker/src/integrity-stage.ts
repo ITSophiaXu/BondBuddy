@@ -4,7 +4,8 @@ import {tmpdir} from 'node:os';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {Value} from '@sinclair/typebox/value';
-import {integrityRecordPresentation,IntegrityProposalSchema,IntegrityRecordSchema,INTEGRITY_SITES,resolveIntegritySite,inferIntegrityRegion,type IntegrityRecord,type IntegrityProposal,type IntegrityInput} from '@bondbuddy/contracts';
+import {integrityRecordPresentation,integrityInputSite,integrityQueryMeasurement,IntegrityProposalSchema,IntegrityRecordSchema,INTEGRITY_SITES,resolveIntegritySite,inferIntegrityRegion,type IntegrityRecord,type IntegrityProposal,type IntegrityInput} from '@bondbuddy/contracts';
+import {integrityVerifiedQueryPairs} from '@bondbuddy/api/integrity-billing-evidence';
 import {promoteWordArtifact} from '@bondbuddy/api/queue';
 import {digest,transaction} from '@bondbuddy/api/data';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
@@ -31,11 +32,11 @@ async function lockObservationWrite(c:import('pg').PoolClient,ctx:StageContext){
  const r=await c.query("SELECT 1 FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE r.owner_user_id=$1 AND r.id=$2 AND r.state='running' AND j.id=$3 AND j.state='running' AND j.lease_token=$4 AND j.lease_until>now() FOR UPDATE OF r,j",[ctx.run.owner_user_id,ctx.run.id,ctx.lease.jobId,ctx.lease.token]);
  if(!r.rowCount)throw Error('WORKER_LEASE_LOST');
 }
-async function persistResult(ctx:StageContext,records:IntegrityRecord[]){
- const result={version:'integrity-records-v1',records},hash=inputManifestHash(result);
+async function persistResult(ctx:StageContext,records:IntegrityRecord[],verifiedPairs?:string[]){
+ const result={version:'integrity-records-v1',records,measurement:{...integrityQueryMeasurement(records),...(verifiedPairs?{verified_successful_pairs:verifiedPairs.length,verified_query_pairs:verifiedPairs}:{}),planned_cost_cny:null}},hash=inputManifestHash(result);
  await transaction(ctx.pool,async c=>{await lockObservationWrite(c,ctx);await c.query('UPDATE bb_integrity_runs SET result=$3,result_hash=$4 WHERE owner_user_id=$1 AND run_id=$2 AND result IS NULL',[ctx.run.owner_user_id,ctx.run.id,result,hash]);});
- const row=(await ctx.pool.query('SELECT result_hash FROM bb_integrity_runs WHERE owner_user_id=$1 AND run_id=$2',[ctx.run.owner_user_id,ctx.run.id])).rows[0];
- if(row.result_hash.trim()!==hash)throw Error('INPUT_REVISION_CONFLICT');
+ const row=(await ctx.pool.query('SELECT result,result_hash FROM bb_integrity_runs WHERE owner_user_id=$1 AND run_id=$2',[ctx.run.owner_user_id,ctx.run.id])).rows[0];
+ if(inputManifestHash(row.result)!==row.result_hash.trim()||inputManifestHash(row.result.records)!==inputManifestHash(records))throw Error('INPUT_REVISION_CONFLICT');
 }
 async function workpaper(ctx:StageContext,input:IntegrityInput,records:IntegrityRecord[]):Promise<Report>{
  const dir=await mkdtemp(join(tmpdir(),'bb-integrity-'));
@@ -88,7 +89,7 @@ export function integrityModelStage(options:IntegrityBrowserOptions={}):RunStage
     for(const siteId of input.draft.site_ids){
      if(ctx.signal?.aborted)return {kind:'stopped'};
      const stored=old.find(r=>r.site_id===siteId);if(stored){records.push(stored);continue;}
-     const site=resolveIntegritySite(INTEGRITY_SITES.find(s=>s.id===siteId)!,subject),next=await officialIntegrityRecord(ctx,site,subject,options);
+     const site=integrityInputSite(input,siteId,subject),next=await officialIntegrityRecord(ctx,site,subject,options);
      if('kind' in next)return next;
      await transaction(ctx.pool,async c=>{await lockObservationWrite(c,ctx);await c.query('INSERT INTO bb_integrity_observations(owner_user_id,run_id,subject_id,site_id,record,sha256) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',[ctx.run.owner_user_id,ctx.run.id,subject.id,siteId,next,inputManifestHash(next)]);});
      records.push((await storedRecords(ctx,subject.id)).find(r=>r.site_id===siteId)!);
@@ -96,7 +97,7 @@ export function integrityModelStage(options:IntegrityBrowserOptions={}):RunStage
     continue;
    }
    if(old.length){if(old.length!==input.draft.site_ids.length||old.some(r=>!input.draft.site_ids.includes(r.site_id)))throw Error('INPUT_REVISION_CONFLICT');records.push(...old);continue;}
-   const sites=input.draft.site_ids.map(id=>resolveIntegritySite(INTEGRITY_SITES.find(s=>s.id===id)!,subject)).filter(s=>!(s.companyOnly&&subject.kind==='person')&&s.links.length);
+   const sites=input.draft.site_ids.map(id=>integrityInputSite(input,id,subject)).filter(s=>!(s.companyOnly&&subject.kind==='person')&&s.links.length);
    let proposal:IntegrityProposal|null=null,events:IntegritySearchEvent[]=[];
    if(sites.length){
     const logicalCallId='integrity-'+inputManifestHash(subject.id).slice(0,24);
@@ -113,8 +114,9 @@ export function integrityModelStage(options:IntegrityBrowserOptions={}):RunStage
    await transaction(ctx.pool,async c=>{await lockObservationWrite(c,ctx);for(const record of next)await c.query('INSERT INTO bb_integrity_observations(owner_user_id,run_id,subject_id,site_id,record,sha256) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',[ctx.run.owner_user_id,ctx.run.id,subject.id,record.site_id,record,inputManifestHash(record)]);});
    records.push(...await storedRecords(ctx,subject.id));
   }
-  await persistResult(ctx,records);
-  if(input.operation==='check'&&!records.some(r=>r.search_performed))return {kind:'fail',code:'INTEGRITY_SEARCH_UNAVAILABLE'};
+  const verified=input.operation==='check'?await integrityVerifiedQueryPairs(ctx.pool,ctx.run.owner_user_id,ctx.run.id,records):undefined;
+  await persistResult(ctx,records,verified);
+  if(input.operation==='check'&&!verified?.length)return {kind:'fail',code:'INTEGRITY_SEARCH_UNAVAILABLE'};
   const output=await workpaper(ctx,input,records);return {kind:'done',value:output,checkpoint:{integrity_result:output}};
  }};
 }

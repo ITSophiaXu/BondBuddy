@@ -33,6 +33,7 @@ export function authoringVisibleEvents(run:Run,events:RunEvent[]):RunEvent[]{
 }
 export function authoringStatus(run:Run,events:RunEvent[],p?:AuthoringProgress){
   if(ended(run))return undefined;
+  if(run.state==='paused'&&run.stage==='billing_reconcile')return {title:'正在核对积分账务，任务已暂停',summary:'已保存处理进度和已有成果。核对完成后会继续；若已请求停止，将优先结束并处理原预留。'};
   if(p?.credit_exhausted)return {title:run.state==='paused'?'积分已用完，任务已暂停':'积分已用完，正在保存进度后暂停',summary:'积分已停止扣减，已完成的工作会保留。充值到账后自动继续本次任务。',phase:2 as const};
   if(p?.pause_requested&&run.state==='running')return {title:'正在保存进度后暂停',summary:'积分已冻结。当前模型处理结果保存后暂停，继续时会复用已保存的结果。',phase:2 as const};
   if(run.state==='paused'&&run.stage==='user_paused')return {title:'任务已暂停',summary:'进度已保存，积分停止累计。可继续本次任务，或结束并结算已消耗积分。'};

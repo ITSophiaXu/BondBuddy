@@ -214,7 +214,7 @@ test('paid file checks settle only complete report and new update scope includes
 
 test('review API exposes pending scope without a charge and executes only the approved input-bound amount', {skip:!database,timeout:120000},async()=>{
  const pool=new Pool({connectionString:database}),blobs=memoryBlobs(),owner=await setup(pool);
- const app=createServer({pool,blobs,enableOutcomePricing:true,principal:async()=>({userId:owner,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
+ const app=createServer({pool,historicalBillingFixture:true,blobs,enableOutcomePricing:true,principal:async()=>({userId:owner,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
  const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test'}});
  const ok=(r:any)=>{assert.ok(r.statusCode>=200&&r.statusCode<300,r.body);return r.json();};
  try{

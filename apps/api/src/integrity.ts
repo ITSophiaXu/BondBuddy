@@ -2,7 +2,8 @@ import {isAutomaticPriceVersion} from '@bondbuddy/contracts';
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
-import {OUTCOME_PRICE_VERSION,commerceMetadata,INTEGRITY_PRICE,INTEGRITY_SITES,isRetiredIntegritySite,integritySchemas,resolveIntegritySite,integritySourceAllowed,type IntegrityDraft,type IntegrityInput,type IntegrityWorkspace,type IntegrityRound,type IntegrityManual} from '@bondbuddy/contracts';
+import {Value} from '@sinclair/typebox/value';
+import {OUTCOME_PRICE_VERSION,commerceMetadata,INTEGRITY_PRICE,INTEGRITY_SUBJECT_LIMIT,INTEGRITY_COMMERCIAL_RULE,IntegrityScopeMeasurementSchema,integrityLockedScopeValid,integrityPricingScope,integrityScopeMeasurement,inferIntegrityRegion,INTEGRITY_SITES,isRetiredIntegritySite,integritySchemas,resolveIntegritySite,integritySourceAllowed,type IntegrityDraft,type IntegrityInput,type IntegrityWorkspace,type IntegrityRound,type IntegrityManual} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,Problem,date,assertCanonicalBusinessRunIdle,digest,type PrivateBlobs} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {enqueue} from './queue.js';
@@ -10,10 +11,14 @@ import {creditBalanceExact,lockCreditAccount,reserveCreditLots} from './billing.
 import {readProjectFileAsset} from './project-file-storage.js';
 import {requestScope,assertScopeQuote,scopePriceMetadata,workScopeHash} from './scope-quotations.js';
 import {bindCommerceScopeRun} from './commerce-coverage.js';
+import {automaticBillingEnabled} from './automatic-billing-context.js';
+import {resolveAutomaticTaskPriceVersion} from './automatic-price-versions.js';
+import {readBillingRequestRejection,recordBillingRequestRejection,billingRequestRejectedProblem,type BillingRequestRejection} from './billing-request-rejections.js';
 
 const empty=():IntegrityDraft=>({subjects:[],site_ids:[],notes:''});
 const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
 export function validateIntegrityDraft(d:IntegrityDraft,start=false){
+ if(d.subjects.length>INTEGRITY_SUBJECT_LIMIT)throw new Problem(422,'VALIDATION_FAILED','每轮最多 5 个核查对象，请减少名单后保存。');
  if(start&&(!d.subjects.length||!d.site_ids.length))throw new Problem(422,'INPUT_REQUIRED','请添加核查对象并选择网站。');
  if(d.site_ids.some(id=>!INTEGRITY_SITES.some(s=>s.id===id)))throw new Problem(422,'VALIDATION_FAILED','网站范围已变化，请重新选择。');
  if(d.site_ids.some(isRetiredIntegritySite))throw new Problem(422,'VALIDATION_FAILED','所选范围包含已移除的网站，请刷新并保存当前网站范围。');
@@ -21,7 +26,7 @@ export function validateIntegrityDraft(d:IntegrityDraft,start=false){
  for(const s of d.subjects){
   if(!s.name.trim()||ids.has(s.id)||names.has(s.kind+':'+s.name.trim()+':'+s.identifier.trim()))throw new Problem(422,'VALIDATION_FAILED','请填写对象名称，并移除重复对象。');
   if(s.kind==='company'&&s.identifier&&!/^[0-9A-Z]{18}$/.test(s.identifier))throw new Problem(422,'VALIDATION_FAILED','统一社会信用代码应为 18 位大写字母或数字，也可暂不填写。');
-  if(start&&s.kind==='person'&&!d.site_ids.some(id=>!INTEGRITY_SITES.find(x=>x.id===id)?.companyOnly))throw new Problem(422,'INPUT_REQUIRED','人员需要选择支持人员核查的网站。');
+  if(start&&!d.site_ids.some(id=>{const site=INTEGRITY_SITES.find(x=>x.id===id)!;return !(s.kind==='person'&&site.companyOnly)&&resolveIntegritySite(site,{...s,...inferIntegrityRegion(s)}).links.length>0;}))throw new Problem(422,'INPUT_REQUIRED','每个对象至少需要一个可查询的适用官网；请核对人员适用网站和企业注册地。');
   ids.add(s.id);names.add(s.kind+':'+s.name.trim()+':'+s.identifier.trim());
  }
 }
@@ -72,7 +77,8 @@ export async function readIntegrity(db:Pool,owner:string,id:string,requested?:st
  const evidence=(await db.query('SELECT * FROM bb_integrity_evidence WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at,id',[owner,id])).rows;
  const observations=(await db.query('SELECT run_id,record FROM bb_integrity_observations WHERE owner_user_id=$1 AND run_id=ANY($2::text[]) ORDER BY subject_id,site_id',[owner,rows.map(r=>r.run_id)])).rows;
  const artifacts=(await db.query('SELECT a.* FROM bb_integrity_artifacts a JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id WHERE a.owner_user_id=$1 AND r.project_id=$2 AND r.state=\'succeeded\'',[owner,id])).rows;
- return {draft:draft?.draft??empty(),revision:draft?.revision??0,price:commercial?{points:0,version:OUTCOME_PRICE_VERSION,...commerceMetadata(0),quote_status:'pending_scope'}:INTEGRITY_PRICE,rounds:rows.map(r=>({
+ const priceVersion=commercial&&automaticBillingEnabled(db)?await resolveAutomaticTaskPriceVersion(db,owner):OUTCOME_PRICE_VERSION;
+ return {draft:draft?.draft??empty(),revision:draft?.revision??0,price:commercial?{points:0,version:priceVersion,...commerceMetadata(0),price_version:priceVersion,quote_status:'pending_scope'}:INTEGRITY_PRICE,rounds:rows.map(r=>({
   run_id:r.run_id,round_id:r.round_id,operation:r.operation,sequence:r.sequence,state:r.state,stage:r.stage??null,created_at:date(r.created_at),manifest:r.manifest,
   records:r.result?.records??observations.filter(x=>x.run_id===r.run_id).map(x=>x.record),
   evidence:evidence.filter(e=>e.round_id===r.round_id).map(e=>({...e.record,id:e.id,created_at:date(e.created_at)})),
@@ -88,7 +94,8 @@ export function registerIntegrity(app:FastifyInstance,db:()=>Pool,owner:(r:Fasti
    await project(c,user,id);const draft=(await c.query('SELECT * FROM bb_integrity_drafts WHERE owner_user_id=$1 AND project_id=$2',[user,id])).rows[0];
    if(!draft||draft.revision!==b.expected_revision)throw conflict('INPUT_REVISION_CONFLICT','请保存名单与网站范围后获取报价。');validateIntegrityDraft(draft.draft,true);
    if(!commercial)return {points:INTEGRITY_PRICE.points,price_version:INTEGRITY_PRICE.version};
-   const snapshot={draft:draft.draft},price=await requestScope(c,user,id,'integrity_round',workScopeHash(snapshot),snapshot);
+   if(!b.round_id)throw new Problem(422,'INPUT_REQUIRED','请重新准备本次核查，取得独立的核查轮标识。');
+   const snapshot=integrityPricingScope(draft.draft,b.round_id,integrityScopeMeasurement(draft.draft)),price=await requestScope(c,user,id,'integrity_round',workScopeHash(snapshot),snapshot);
    return{points:price.amount_fen,price_version:OUTCOME_PRICE_VERSION,...scopePriceMetadata(price)};
   });
  });
@@ -113,13 +120,24 @@ export function registerIntegrity(app:FastifyInstance,db:()=>Pool,owner:(r:Fasti
  });
  app.post(base+'/runs',{schema:{body:integritySchemas.IntegrityRunRequest,response:{200:integritySchemas.IntegrityRunResponse}}},async r=>{
   const user=await owner(r),id=params(r).project_id,b=r.body as Static<typeof integritySchemas.IntegrityRunRequest>;
-  const runId=await transaction(db(),async c=>{const p=await project(c,user,id,true),hash=inputManifestHash({id,...b}),key='integrity:'+b.request_id,old=await existing(c,user,key,hash);if(old)return old;
+  const outcome=await transaction(db(),async c=>{const p=await project(c,user,id,true),hash=inputManifestHash({id,...b}),key='integrity:'+b.request_id,old=await existing(c,user,key,hash);if(old)return {runId:old};
+   const identity={owner:user,kind:'integrity' as const,requestId:b.request_id,resourceId:id,hash},rejection=await readBillingRequestRejection(c,identity);if(rejection)return {rejection};
+   const reject=async(reason_code:BillingRequestRejection['reason_code'],message:string)=>({rejection:await recordBillingRequestRejection(c,identity,{reason_code,message})});
+   if(commercial&&!b.scope_quote_id)return reject('QUOTE_REQUIRED','本次核查需要重新确认独立核查轮及当前范围积分。');
    const draft=(await c.query('SELECT * FROM bb_integrity_drafts WHERE owner_user_id=$1 AND project_id=$2',[user,id])).rows[0];
    if(!draft||draft.revision!==b.expected_revision)throw conflict('INPUT_REVISION_CONFLICT','请保存名单与网站范围后开始。');validateIntegrityDraft(draft.draft,true);
-   const price=commercial?await assertScopeQuote(c,b.scope_quote_id,user,id,'integrity_round',workScopeHash({draft:draft.draft}),b.expected_points):null;
-   if(b.price_version!==(price?.price_version??INTEGRITY_PRICE.version)||!commercial&&b.expected_points!==INTEGRITY_PRICE.points)throw conflict('QUOTE_CHANGED','请核对本轮范围报价。');
-   return createRun(c,user,p,key,hash,{version:'integrity-round-v1',operation:'check',round_id:uid(),project_name:p.name,draft:draft.draft,points:price?.amount_fen??INTEGRITY_PRICE.points,...(price?scopePriceMetadata(price):{}),price_version:price?.price_version??INTEGRITY_PRICE.version,records:[],evidence_ids:[],collector:'official-browser-v1'},commercial?workScopeHash({draft:draft.draft}):undefined);
-  });return {run_id:runId};
+   if(b.round_id&&(await c.query('SELECT 1 FROM bb_runs WHERE id=$1',[b.round_id])).rowCount)throw conflict('IDEMPOTENCY_CONFLICT','此核查轮已开始，请查看原任务；新一轮需重新准备。');
+   const quoted=commercial?(await c.query("SELECT snapshot,price_version FROM bb_scope_quotations WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 AND action='integrity_round'",[b.scope_quote_id,user,id])).rows[0]:undefined;
+   if(commercial&&(!quoted||inputManifestHash(quoted.snapshot.draft)!==inputManifestHash(draft.draft)||quoted.snapshot.round_id&&quoted.snapshot.round_id!==b.round_id))return reject('QUOTE_CHANGED','名单或核查轮与原范围积分不一致，请重新确认。');
+   const measurement=quoted?.snapshot.scope_measurement??integrityScopeMeasurement(draft.draft);
+   if(!Value.Check(IntegrityScopeMeasurementSchema,measurement)||!integrityLockedScopeValid(draft.draft,measurement))return reject('QUOTE_CHANGED','锁定官网查询范围无法核实，请重新确认。');
+   if(quoted?.price_version===INTEGRITY_COMMERCIAL_RULE.version&&(!b.round_id||quoted.snapshot.round_id!==b.round_id||!quoted.snapshot.scope_measurement))return reject('QUOTE_REQUIRED','新计价标准需要明确核查轮和锁定的官网查询范围。');
+   const scope=quoted?.snapshot??integrityPricingScope(draft.draft,b.round_id,measurement);let price:Awaited<ReturnType<typeof assertScopeQuote>>|null=null;
+   try{price=commercial?await assertScopeQuote(c,b.scope_quote_id,user,id,'integrity_round',workScopeHash(scope),b.expected_points):null;}
+   catch(error){if(error instanceof Problem&&['QUOTE_REQUIRED','QUOTE_CHANGED'].includes(error.code))return reject(error.code as 'QUOTE_REQUIRED'|'QUOTE_CHANGED',error.message);throw error;}
+   if(b.price_version!==(price?.price_version??INTEGRITY_PRICE.version)||!commercial&&b.expected_points!==INTEGRITY_PRICE.points)return reject('QUOTE_CHANGED','请核对本轮范围积分。');
+   return {runId:await createRun(c,user,p,key,hash,{version:'integrity-round-v1',operation:'check',round_id:b.round_id??uid(),...((commercial?quoted?.snapshot.round_id:b.round_id)?{scope_round_id:b.round_id}:{}),scope_measurement:measurement,project_name:p.name,draft:draft.draft,points:price?.amount_fen??INTEGRITY_PRICE.points,...(price?scopePriceMetadata(price):{}),price_version:price?.price_version??INTEGRITY_PRICE.version,records:[],evidence_ids:[],collector:'official-browser-v1'},commercial?workScopeHash(scope):undefined)};
+  });if(outcome.rejection)throw billingRequestRejectedProblem(outcome.rejection);return {run_id:outcome.runId};
  });
  app.post(base+'/runs/:run_id/evidence',{schema:{body:integritySchemas.IntegrityManualRequest,response:{200:integritySchemas.IntegrityWorkspaceResponse}}},async r=>{
   const user=await owner(r),{project_id:id,run_id}=params(r),b=r.body as IntegrityManual;
