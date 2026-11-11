@@ -143,6 +143,9 @@ function providerErrorCode(eventError: unknown): ModelAdapterErrorCode | null {
   if (http === '402') return 'MODEL_PROVIDER_BALANCE_EXHAUSTED';
   if (http === '401') return 'MODEL_PROVIDER_AUTH_FAILED';
   if (http === '429') return 'MODEL_PROVIDER_RATE_LIMITED';
+  const combined = `${typeof inner.message === 'string' ? inner.message : ''} ${typeof outer.message === 'string' ? outer.message : ''}`.slice(0, 4096);
+  if (/\b413\b|payload too large|length limit exceeded|request body.{0,80}too large/i.test(combined))
+    return 'MODEL_PROVIDER_REQUEST_REJECTED';
   return type === 'invalid_request_error' || code === 'invalid_request_body' || code === 'invalid_json_schema'
     ? 'MODEL_PROVIDER_REQUEST_REJECTED' : null;
 }
