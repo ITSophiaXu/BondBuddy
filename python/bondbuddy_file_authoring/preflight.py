@@ -16,7 +16,7 @@ from . import quality
 from .check import STORY, package, resolve_revisions
 from .fixed_edit import (Editor, MAX_LOG, load_input, regular_bytes, validate_log,
                          write_json, write_package)
-from .source_outline import compare_outlines, heading_role, style_map
+from .source_outline import compare_outlines, heading_role, outline, style_map
 from .template_manifest import build_nodes, sha
 from .word_patch import paragraph_text, q, serialized, xml
 
@@ -96,17 +96,19 @@ def diagnostics(source_path, editor, clean_parts, report, operations):
         raise ValueError('WORD_PREFLIGHT_LOCATIONS_UNAVAILABLE')
     before = chapter_locations(source_parts, source_root, source_ids)
     after = chapter_locations(clean_parts, current_root, current_ids)
-    old_keys, chapters = list(before), []
+    old_keys, new_keys, chapters = list(before), list(after), []
     for issue in report['issues']:
         if issue['code'] != 'WORD_SOURCE_CHAPTER_CONTENT_LOST':
             continue
         for finding in issue['chapters'][:25]:
             key = old_keys[finding['chapter_index']]
-            source_entries, current_entries = before[key], after.get(key, [])
+            current_key = new_keys[finding['chapter_index']] if finding['chapter_index'] < len(new_keys) else None
+            source_entries, current_entries = before[key], after.get(current_key, [])
             targets = {node_id for p in source_entries + current_entries
                        for node_id in [p['node_id'], *p['container_node_ids']] if node_id}
             operation_ids = [op['id'] for op in operations if op.get('node_id') in targets]
             detail = {**finding, 'chapter_key': list(key), 'title': key[0], 'current_key_found': key in after,
+                             'current_chapter_key': list(current_key) if current_key is not None else None,
                              'source': bounded_paragraphs(source_entries), 'current': bounded_paragraphs(current_entries),
                              'operation_ids': operation_ids[:200], 'operations_truncated': len(operation_ids) > 200}
             if key not in after:
@@ -114,7 +116,7 @@ def diagnostics(source_path, editor, clean_parts, report, operations):
                 detail['current_matching_source_nodes'] = bounded_paragraphs([
                     p for entries in after.values() for p in entries if p['node_id'] in source_node_ids])
             chapters.append(detail)
-    structural = compare_outlines(quality.normalized_outline(source_parts), quality.normalized_outline(clean_parts))
+    structural = compare_outlines(outline(source_parts), outline(clean_parts), flexible_text=True)
     for kind in ('headings', 'toc'):
         changes = structural[kind]['changes']
         structural[kind]['changes_truncated'] = len(changes) > 20
