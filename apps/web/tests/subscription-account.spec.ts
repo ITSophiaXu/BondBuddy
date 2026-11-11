@@ -173,7 +173,8 @@ test('Alipay automatic queries are bounded and manual retry keeps the original o
   await expect.poll(()=>calls.filter(c=>c.path.endsWith('/refresh')).length).toBe(7);
   expect(calls.filter(c=>c.method==='POST').every(c=>c.path==='/commerce/topups/topup-order-1/refresh')).toBe(true);
   await expect(page.locator('#refresh-subscription-payment')).toBeEnabled();
-  await page.clock.runFor(35_000);await expect(page.locator('#refresh-subscription-payment')).toBeEnabled();settle();
+  // Age the completed check without starting an unrelated account timer before focus.
+  await page.clock.setSystemTime(await page.evaluate(()=>Date.now()+35_000));settle();
   await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await expect(page.getByRole('heading',{name:'积分已到账',exact:true})).toBeVisible();
 });
