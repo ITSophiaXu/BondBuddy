@@ -1,6 +1,6 @@
 import {expect, test} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
-import {fixture, install, projectId, sourceDeclaration, expectNoExecution, assertFixture} from './authoring-source-guide-fixtures';
+import {fixture, install, projectId, sourceDeclaration, expectNoExecution, assertFixture, sha256, now} from './authoring-source-guide-fixtures';
 
 test.afterEach(async ({page}) => { await assertFixture(page); });
 
@@ -23,6 +23,21 @@ test('financial materials alone cannot start; a saved source with complete infor
   await page.reload();
   await expect(page.locator('#execute-input')).toBeEnabled();
   expectNoExecution(s); expect(s.locked).toEqual([]);
+});
+
+test('a verified previous result can be continued without uploading another source', async ({page}) => {
+  const s = fixture();
+  s.materials = s.materials.filter(m => m.role === 'audit');
+  s.project.update_details!.source_prospectuses = [];
+  s.prospectusVersions = {project_id: projectId, current_version_id: 'synthetic-guide-generated', selection_revision: 3, inactive_material_ids: [], versions: [{
+    version_id: 'synthetic-guide-generated', sequence: 1, origin: 'generated', filename: '合成上一轮募集书.docx', sha256: sha256('synthetic-generated-result'),
+    created_at: now, material_id: null, material_version: null, artifact_id: 'synthetic-guide-artifact', artifact_version: 1, revision_artifact_id: null, run_id: 'synthetic-guide-run'}]};
+  await install(page, s);
+  await page.goto(`/#/projects/${projectId}?step=materials`);
+  await expect(page.locator('[data-prospectus-heading]')).toHaveText('历史／参考募集书（必填）');
+  await expect(page.locator('#execute-input')).toBeEnabled();
+  await expect(page.locator('#start-disabled-reason')).toBeEmpty();
+  expectNoExecution(s);
 });
 
 test('source information precedes financial materials and redundant preparation actions are absent', async ({page}) => {

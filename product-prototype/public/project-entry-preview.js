@@ -3,7 +3,7 @@ const view = new URLSearchParams(location.search).get('view') ?? 'generate';
 const variants = {
   review: { title: '复核募集书', english: 'PROSPECTUS REVIEW', description: '先选择项目，复用募集书和核验材料，生成带修订痕迹的复核成果。', steps: ['选择项目', '材料与要求', '复核结果'], action: '下一步：材料与要求' },
   qa: { title: '项目问答', english: 'PROJECT Q&A', description: '先确认本项目募集说明书，再上传问题清单。结合项目资料逐题回答，缺少的材料会逐项列明。', steps: ['确认项目资料', '确认问题', '回答与补件'], action: '下一步：确认项目资料' },
-  update: { title: '更新募集书', english: 'PROSPECTUS WORKSPACE', description: '有原稿可更新，没有原稿也可根据发行人材料编制首稿。', steps: [], action: '进入更新募集书' },
+  update: { title: '更新募集书', english: 'PROSPECTUS WORKSPACE', description: '先保存项目；开始编制前需上传历史／参考募集书并填写原稿信息，已有核验成果可继续修改。', steps: [], action: '进入更新募集书' },
 };
 const variant = variants[view];
 if (variant) {
@@ -25,7 +25,7 @@ if (variant) {
     page.classList.add('project-entry-update');
     heading.querySelector('#project-entry-new').remove();
     const primary = document.createElement('section'); primary.className = 'update-entry-primary';
-    primary.innerHTML = '<div class="update-entry-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H5v20h14V7h-5ZM12 11v6M9 14h6"></path></svg></div><div><p class="eyebrow">开始新一期工作</p><h2>新建项目，准备募集书</h2><p>先保存项目，再添加材料和要求。各轮成果保留，后续可在同一项目继续修改。</p><a href="#" class="btn primary">＋ 新建项目</a></div>';
+    primary.innerHTML = '<div class="update-entry-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H5v20h14V7h-5ZM12 11v6M9 14h6"></path></svg></div><div><p class="eyebrow">开始新一期工作</p><h2>新建项目，准备募集书</h2><p>先保存项目，再添加历史／参考募集书、原稿信息、财务材料和补充要求。可用本企业历史稿、母子公司稿或相似企业参考稿；参考稿事实不作为本发行人的既有事实。各轮成果保留，后续可在同一项目继续修改。</p><a href="#" class="btn primary">＋ 新建项目</a></div>';
     heading.after(primary);
     const picker = page.querySelector('.project-picker');
     picker.classList.remove('update-entry-existing', 'review-panel'); picker.querySelector('h2').remove();
