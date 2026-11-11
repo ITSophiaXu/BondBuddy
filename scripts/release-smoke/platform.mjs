@@ -6,7 +6,9 @@ import {join,win32} from 'node:path';
 // Keep OS process-launch variables, but never inherit production application,
 // payment, model, database or remote Docker connection variables.
 export function hostEnvironment(source=process.env,home=homedir()){
- const allowed=['PATH','SystemRoot','WINDIR','COMSPEC','PATHEXT','USERPROFILE','HOMEDRIVE','HOMEPATH','LOCALAPPDATA','APPDATA','TEMP','TMP'];
+ // Docker Desktop locates system CLI plugins (buildx/compose) through
+ // ProgramFiles. PATH alone locates docker.exe, but not those plugins.
+ const allowed=['PATH','SystemRoot','WINDIR','COMSPEC','PATHEXT','USERPROFILE','HOMEDRIVE','HOMEPATH','LOCALAPPDATA','APPDATA','TEMP','TMP','ProgramFiles'];
  const result={HOME:home,DOCKER_BUILDKIT:'1'};
  for(const name of allowed){const key=Object.keys(source).find(k=>k.toLowerCase()===name.toLowerCase());if(key&&source[key])result[name]=source[key];}
  return result;
