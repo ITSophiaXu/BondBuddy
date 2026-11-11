@@ -92,6 +92,7 @@ test('Alipay return ignores URL success claims, verifies only the original order
   await expect(page.getByRole('heading',{name:'等待支付确认',exact:true})).toBeVisible();
   await expect(page.getByRole('heading',{name:'积分已到账',exact:true})).toHaveCount(0);
   await expect.poll(()=>calls.filter(c=>c.path.endsWith('/refresh')).length).toBe(1);
+  await expect(page.locator('#refresh-subscription-payment')).toBeEnabled();
   await expect(page.locator('.payment-amount')).toHaveText('¥50.00');
   await evidence(page,'payment-pending-desktop.png');
   await regionEvidence(page,'payment-pending-desktop-card.png','.payment-experience');
