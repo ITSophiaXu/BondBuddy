@@ -35,6 +35,8 @@ const stages: UploadRecoveryStage[] = ['pending', 'creating', 'session', 'bytes_
 const maxRecordLength = 256_000;
 const uncertainPut = (error: unknown): error is ApiError => error instanceof ApiError && (error.status === 0 || error.status >= 500);
 const bytesPending = (error: unknown): error is ApiError => error instanceof ApiError && error.status === 422 && error.code === 'MATERIAL_UNREADABLE' && error.details.uploadBytesPending === true && error.details.uploadReason === undefined;
+const temporaryInspectionFailure = (error: ApiError) => error.status === 422 && error.code === 'MATERIAL_UNREADABLE' &&
+  ['inspection_timeout', 'inspection_queue_timeout', 'inspection_worker_failed'].includes(String(error.details.uploadReason));
 const validId = (value: unknown): value is string => typeof value === 'string' && !!value.trim() && value.length <= 128 && !/[\u0000-\u001f\u007f]/.test(value);
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const canonical = (value: unknown): string => JSON.stringify(value, (_key, item) => plain(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
@@ -42,7 +44,7 @@ const plain = (value: unknown): value is Record<string, unknown> => !!value && t
 const exactKeys = (value: Record<string, unknown>, allowed: string[]) => Object.keys(value).every(key => allowed.includes(key));
 
 export class UploadRecoveryStorageError extends UserFacingError {
-  constructor(public readonly record?: UploadRecoveryRecord) { super('无法可靠保存上传恢复记录，请保留原文件并在本页重试确认。'); this.name = 'UploadRecoveryStorageError'; }
+  constructor(public readonly record?: UploadRecoveryRecord, public readonly confirmedMaterial?: Dto<'MaterialResponse'>) { super('无法可靠保存上传恢复记录，请保留原文件并在本页重试确认。'); this.name = 'UploadRecoveryStorageError'; }
 }
 export class UploadRecoveryLockError extends UserFacingError {
   constructor() { super('另一页面正在处理这项上传，或当前浏览器暂不支持继续确认。请保留原文件，稍后重试。'); this.name = 'UploadRecoveryLockError'; }
@@ -234,7 +236,15 @@ export class UploadRecovery {
       const next = { ...record, lastError }; this.write(key, next); record = next;
     };
     const accepted = (value: unknown) => {
-      live(); const material = validateUploadMaterial(record.declaration, value); save({ material, stage: 'saved' }); this.sessions.delete(id); return material;
+      live(); const material = validateUploadMaterial(record.declaration, value);
+      try { save({ material, stage: 'saved' }); }
+      catch (error) {
+        // Only a freshly validated server receipt can outlive a journal failure.
+        // An older saved checkpoint may instead be recording a failed recheck.
+        if (error instanceof UploadRecoveryStorageError) throw new UploadRecoveryStorageError(error.record, material);
+        throw error;
+      }
+      this.sessions.delete(id); return material;
     };
     let selectedFile: File | undefined;
     const verifySelectedFile = async () => {
@@ -277,7 +287,9 @@ export class UploadRecovery {
             try{return accepted(await this.api.completeUpload(this.projectId,record.uploadId,{byte_size:record.declaration.byte_size,sha256:record.declaration.sha256},signal));}
             catch(error){live();if(!bytesPending(error))throw error;needsBytes=true;}
           } else {
-            if (previous.status >= 400 && previous.status < 500 && previous.status !== 401) throw previous;
+            // A temporary complete/inspection error after an unknown PUT must
+            // not become a permanent rejection of those same uploaded bytes.
+            if (previous.status >= 400 && previous.status < 500 && previous.status !== 401 && !temporaryInspectionFailure(previous)) throw previous;
             status('正在确认上次上传的文件是否已保存…');
             if (!options.reselectExpiredSession || !record.expiresAt || Date.parse(record.expiresAt) > (this.deps.now?.() ?? Date.now()))
               return accepted(await this.confirmUnknownPut(record, signal, live, previous));

@@ -137,6 +137,32 @@ for (const reason of UPLOAD_INSPECTION_PUBLIC_REASONS) test('inspection reason '
   assert.deepEqual(methods(h), ['complete']); assert.equal(r.list()[0].lastError!.uploadReason, reason); assert.equal(r.list()[0].lastError!.correlationId, 'trace-a');
 });
 
+for (const reason of ['inspection_timeout', 'inspection_queue_timeout', 'inspection_worker_failed'] as const) test('explicit retry after unknown PUT and temporary ' + reason + ' rechecks only the original upload', async () => {
+  const h = harness(), r = h.make(); r.begin(declaration(), undefined, 'op-a');
+  h.state.put = async () => { throw new ApiError(0, 'DATA_UNAVAILABLE'); };
+  h.state.complete = async () => { throw new ApiError(422, 'MATERIAL_UNREADABLE', { uploadReason: reason }); };
+  await assert.rejects(r.resume('op-a', { file: file() }), error => error instanceof ApiError && error.details.uploadReason === reason);
+  assert.equal(r.list()[0].stage, 'bytes_unknown'); assert.equal(r.list()[0].lastError!.status, 422);
+  h.state.complete = async () => material();
+  assert.deepEqual(await h.make().resume('op-a'), material());
+  assert.deepEqual(methods(h), ['create', 'put', 'complete', 'complete']);
+  assert.ok(h.calls.filter(call => call.method === 'complete').every(call => call.id === 'upload-a'));
+  assert.equal(r.list()[0].stage, 'saved'); assert.equal(r.list()[0].lastError, undefined);
+});
+
+for (const reason of ['structure_invalid', 'content_mismatch', 'unsupported_content', 'encrypted_content', 'external_link_invalid', 'size_limit']) test('unknown PUT with terminal ' + reason + ' remains rejected without another request', async () => {
+  const h = harness(), r = h.make();
+  seed(h, r, { stage: 'bytes_unknown', lastError: { status: 422, code: 'MATERIAL_UNREADABLE', uploadReason: reason } });
+  await assert.rejects(r.resume('op-a', { file: file() }), error => error instanceof ApiError && error.status === 422 && error.details.uploadReason === reason);
+  assert.deepEqual(methods(h), []); assert.equal(r.list()[0].uploadId, 'upload-a'); assert.equal(r.list()[0].stage, 'bytes_unknown');
+});
+
+for (const previous of [{ status: 422, code: 'MATERIAL_UNREADABLE' }, { status: 422, code: 'MATERIAL_CONTENT_MISMATCH', uploadReason: 'inspection_timeout' }, { status: 403, code: 'FORBIDDEN', uploadReason: 'inspection_timeout' }]) test('unknown PUT cannot treat non-temporary response ' + JSON.stringify(previous) + ' as a retryable inspection', async () => {
+  const h = harness(), r = h.make(); seed(h, r, { stage: 'bytes_unknown', lastError: previous });
+  await assert.rejects(r.resume('op-a', { file: file() }), error => error instanceof ApiError && error.status === previous.status && error.code === previous.code);
+  assert.deepEqual(methods(h), []); assert.equal(r.list()[0].uploadId, 'upload-a');
+});
+
 for (const [status, code] of [[503, 'DATA_UNAVAILABLE'], [422, 'MATERIAL_CONTENT_MISMATCH'], [409, 'IDEMPOTENCY_CONFLICT'], [415, 'UNSUPPORTED_MEDIA_TYPE'], [401, 'UNAUTHENTICATED']] as const) test('complete ' + status + ' ' + code + ' cannot replace or retransmit', async () => {
   const h = harness(), r = h.make(); seed(h, r); h.state.complete = async () => { throw new ApiError(status, code); };
   await assert.rejects(r.resume('op-a', { file: file() }), ApiError); assert.deepEqual(methods(h), ['complete']); assert.equal(r.list()[0].uploadId, 'upload-a');
@@ -211,8 +237,31 @@ test('session receipt followed by local save failure must not PUT; same instance
 
 test('material receipt followed by local save failure keeps durable original ID and re-confirms after reload', async () => {
   const h = harness(), r = h.make(); seed(h, r); h.store.onSet = (_key, raw) => { if (JSON.parse(raw).stage === 'saved') throw new Error('full'); };
-  await assert.rejects(r.resume('op-a'), UploadRecoveryStorageError); assert.equal(r.list()[0].uploadId, 'upload-a'); assert.equal(r.list()[0].material, undefined);
+  await assert.rejects(r.resume('op-a'), error => {
+    assert.ok(error instanceof UploadRecoveryStorageError);
+    assert.deepEqual(error.confirmedMaterial, material());
+    assert.deepEqual(error.record?.material, material());
+    assert.equal(error.record?.lastError, undefined);
+    return true;
+  });
+  assert.equal(r.list()[0].uploadId, 'upload-a'); assert.equal(r.list()[0].material, undefined);
   h.store.onSet = undefined; await h.make().resume('op-a'); assert.deepEqual(methods(h), ['complete', 'complete']);
+});
+
+for (const status of [404, 503]) test('saved checkpoint cannot masquerade as a fresh receipt when recheck ' + status + ' and error journaling fail', async () => {
+  const h = harness(), r = h.make();
+  const original = seed(h, r, { stage: 'saved', material: material() }).record;
+  h.state.get = async () => { throw new ApiError(status, status === 404 ? 'NOT_FOUND' : 'DATA_UNAVAILABLE'); };
+  h.store.onSet = (_key, raw) => { if (JSON.parse(raw).lastError) throw new Error('full'); };
+  await assert.rejects(r.resume('op-a'), error => {
+    assert.ok(error instanceof UploadRecoveryStorageError);
+    assert.deepEqual(error.record?.material, material());
+    assert.equal(error.record?.lastError?.status, status);
+    assert.equal(error.confirmedMaterial, undefined);
+    return true;
+  });
+  assert.deepEqual(r.list()[0], original);
+  assert.deepEqual(h.calls, [{ method: 'material', project: 'project-a', id: 'material-a', version: 2 }]);
 });
 
 test('a second tab cannot concurrently confirm the same operation; it can verify the saved pin later', async () => {
