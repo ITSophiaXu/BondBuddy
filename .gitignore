@@ -46,6 +46,7 @@ docs/product-decisions/*
 !docs/product-decisions/2026-10-28-workpaper-shared-batch.md
 !docs/acceptance/
 docs/acceptance/*
+!docs/acceptance/prospectus-size-gate-20261111.md
 !docs/acceptance/reference-text-flexibility-20261111.md
 !docs/acceptance/integrity-billing-consistency-20261111.md
 !docs/acceptance/project-qa-direct-answer-20261107.md

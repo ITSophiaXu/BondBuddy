@@ -221,6 +221,24 @@ class DocumentQualityTests(unittest.TestCase):
         restored = resolve_revisions(xml(package(self.root / 'output/tracked.docx')['word/document.xml']), False, only_new=self.data['revision_author'])
         self.assertEqual(len(restored.find(q('body')).findall(q('p'))), 104)
 
+    def test_long_manuscript_cannot_keep_all_paragraphs_but_shrink_every_body_to_a_summary(self):
+        doc = Document()
+        doc.add_heading('第一章 发行人基本情况', level=1)
+        for index in range(310):
+            doc.add_paragraph(f'第{index + 1}项业务披露：' + '本期发行人业务、经营及财务情况需要完整说明。' * 20)
+        doc.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        nodes = [n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'paragraph' and '项业务披露：' in n['text']]
+        self.data['document_size_check'] = {'status': 'passed', 'page_count': 310, 'enabled': False}
+        report = self.generate([{'id': f'condense-{i}', 'kind': 'replace_text', 'node_id': n['node_id'],
+                                 'before': n['text'], 'after': f'第{i + 1}项业务说明已更新。'} for i, n in enumerate(nodes)])
+        self.assertEqual(report['metrics']['ratios']['nonempty_paragraphs'], 1)
+        self.assertEqual(report['metrics']['outline_status'], 'unchanged')
+        self.assertEqual(report['status'], 'failed')
+        finding = next(i for i in report['issues'] if i['code'] == 'WORD_DOCUMENT_SIZE_REDUCED')
+        self.assertEqual(finding['metric'], 'body_characters')
+        self.assertLess(report['document_size_check']['character_ratio'], .1)
+
     def test_unrecorded_rewrite_cannot_pass_by_retaining_character_count(self):
         self.generate()
         def replace(parts):
