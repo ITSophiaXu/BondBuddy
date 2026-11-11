@@ -28,6 +28,20 @@ const atomic = value => {
 };
 const json = path => existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
 
+export function dependencySources(env) {
+  const sources = {
+    npm: env.PR_GATE_NPM_REGISTRY ?? env.npm_config_registry ?? 'https://registry.npmjs.org/',
+    pip: env.PR_GATE_PIP_INDEX_URL ?? 'https://pypi.org/simple/',
+  };
+  for (const [name, raw] of Object.entries(sources)) {
+    let url;
+    try { url = new URL(raw); } catch { throw new Error(`Invalid ${name} dependency source`); }
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error(`${name} dependency source must be HTTPS without credentials, query or fragment`);
+    sources[name] = url.href;
+  }
+  return sources;
+}
+
 export async function cleanupContainers(names, docker, cleanup = true) {
   // Attempt every exact name even if another removal fails. Confirm absence so
   // a missing container cannot hide a permission/daemon error for its sibling.
@@ -68,7 +82,11 @@ async function run() {
   try { atomic(receipt); } // A failed/dirty new invocation must never leave an older passed receipt active.
   catch (error) { rmSync(lock, { recursive: true }); throw error; }
   const save = () => {
-    try { atomic(receipt); }
+    try {
+      atomic(receipt);
+      writeFileSync(join(directory, 'receipt.json.tmp'), `${JSON.stringify(receipt, null, 2)}\n`);
+      renameSync(join(directory, 'receipt.json.tmp'), join(directory, 'receipt.json'));
+    }
     catch (error) { receipt.errors.push(`Cannot save receipt: ${error.message}`); console.error(error.message); }
   };
   let currentChild, interrupted = false, dockerAvailable = false, expected, workflow;
@@ -120,6 +138,7 @@ async function run() {
     await command('fetch-develop', 'git', ['fetch', 'origin', 'develop']);
     expected = expectedFor('HEAD'); Object.assign(receipt, expected); delete receipt.matrix;
     workflow = readWorkflow(blob(expected.commit, '.github/workflows/pr-gate.yml').toString());
+    receipt.dependency_sources = dependencySources(process.env);
     if (process.env.DOCKER_HOST && !/^(unix|npipe):\/\//.test(process.env.DOCKER_HOST)) throw new Error('Only a local Docker Engine is allowed');
     const endpoint = (await docker('docker-context', ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}'], { capture: true })).text;
     if (!/^(unix|npipe):\/\//.test(endpoint)) throw new Error('Only a local Docker context is allowed');
@@ -140,8 +159,8 @@ async function run() {
     });
     await step('services', startServices);
     await step('dependencies', async () => {
-      await exec('npm-ci', ['npm', 'ci', '--no-audit', '--no-fund']);
-      await exec('python-dependencies', ['python', '-m', 'pip', 'install', '-r', 'python/requirements-dev.txt']);
+      await exec('npm-ci', ['npm', 'ci', '--no-audit', '--no-fund'], { npm_config_registry: receipt.dependency_sources.npm, npm_config_logs_dir: '/evidence/npm-logs' });
+      await exec('python-dependencies', ['python', '-m', 'pip', 'install', '-r', 'python/requirements-dev.txt'], { PIP_INDEX_URL: receipt.dependency_sources.pip });
       await exec('python-check', ['python', '-m', 'pip', 'check']);
       await exec('flock-check', ['flock', '--version']);
     });
