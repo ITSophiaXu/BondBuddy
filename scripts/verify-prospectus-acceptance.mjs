@@ -31,6 +31,7 @@ const TOOL_FILES=Object.freeze([
   'python/bondbuddy_file_authoring/reverse_audit.py','python/tests/test_reverse_audit_fixed.py',
   'python/bondbuddy_file_authoring/period_definitions.py','python/tests/test_period_definition_guard.py',
   'python/bondbuddy_file_authoring/quality.py','python/bondbuddy_file_authoring/source_outline.py',
+  'python/bondbuddy_file_authoring/document_size.py','python/tests/test_document_size.py','python/tests/test_document_size_render.py',
   'python/bondbuddy_file_authoring/format_diff.py','python/bondbuddy_file_authoring/format_plan.py',
   'python/tests/test_format_plan.py','python/bondbuddy_file_authoring/template_manifest.py',
   'python/bondbuddy_file_authoring/word_patch.py','python/bondbuddy_file_authoring/read_material.py',

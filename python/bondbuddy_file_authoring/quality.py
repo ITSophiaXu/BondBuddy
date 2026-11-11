@@ -1,7 +1,7 @@
 """Fail-closed template checks with flexible prose for authored Word pairs.
 
 This verifies the files independently of model completion and delivery notes. It
-does not certify financial facts, legal applicability or rendered pagination.
+does not certify financial facts, legal applicability or visual layout quality.
 The host must construct the input from its locked source, never model metadata.
 """
 from __future__ import annotations
@@ -17,6 +17,7 @@ from .check import REV, STORY, package, resolve_revisions
 from .format_diff import audit, canonical, strip_added_comment_markers
 from .source_outline import compare_financial_formulas, compare_outlines, heading_role, outline, style_map
 from .period_definitions import check_definitions
+from .document_size import compare_size
 from .template_manifest import sha
 from .word_patch import paragraph_text, q, xml
 
@@ -302,6 +303,14 @@ def verify(input_path):
                             if label == 'baseline' and (retained < .65 or length_ratio < .8):
                                 issue('WORD_PDF_SOURCE_CONTENT_LOST', output=label, retained_ratio=retained, character_ratio=length_ratio)
                     report['limitations'].append('Original PDF text was checked independently; original PDF visual layout remains unverified.')
+
+            # This whole-manuscript floor is independent of lexical overlap and
+            # per-section wording. A model-provided page count cannot bypass it.
+            extent = compare_size(source, clean, already_rejected=bool(report['issues']))
+            report['document_size_check'] = extent
+            report['validation_scope'].append('whole_document_size')
+            for finding in extent['issues']:
+                report['issues'].append(finding)
 
         # Trusted release fixtures may add factual acceptance anchors. Their
         # absence is explicitly not an assertion of financial correctness.

@@ -639,6 +639,28 @@ class WordQualityPreflightTests(unittest.TestCase):
         self.assertEqual(result['factual_accuracy'], 'not_verified')
         self.assertEqual(result['visual_review'], 'not_run')
 
+    def test_whole_manuscript_collapse_is_rejected_identically_by_preflight_and_host(self):
+        from bondbuddy_file_authoring.quality import verify
+        doc = Document(self.source)
+        self.financial *= 4
+        doc.paragraphs[3].text = self.financial
+        for _ in range(19):
+            doc.add_paragraph(self.financial)
+        doc.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        self.log = empty_log(self.data, self.source.read_bytes())
+        nodes = [n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'paragraph' and n['text'] == self.financial]
+        self.assertEqual(len(nodes), 20)
+        self.log['operations'] = [{'id': f'condense-{i}', 'kind': 'replace_text', 'node_id': n['node_id'],
+                                   'before': n['text'], 'after': '本期财务信息已更新为新的简短说明。'} for i, n in enumerate(nodes)]
+        self.save()
+        result = self.check()
+        finalize(self.input, self.log_path, self.root / 'delivered', skip_report=True)
+        self.assertEqual(result['quality_report'], verify(self.input))
+        self.assertEqual(result['status'], 'failed')
+        self.assertIn('WORD_DOCUMENT_SIZE_REDUCED', {i['code'] for i in result['issues']})
+        self.assertEqual(result['quality_report']['metrics']['ratios']['nonempty_paragraphs'], 1)
+
     def test_preflight_preserves_locked_files_and_formal_outputs_and_cleans_temporary_area(self):
         paths = [self.input, self.source, self.log_path, self.root / 'output/tracked.docx', self.root / 'output/clean.docx']
         for path in paths[-2:]:
