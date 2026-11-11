@@ -1,4 +1,4 @@
-"""Fail-closed structural and content-retention checks for authored Word pairs.
+"""Fail-closed template checks with flexible prose for authored Word pairs.
 
 This verifies the files independently of model completion and delivery notes. It
 does not certify financial facts, legal applicability or rendered pagination.
@@ -7,7 +7,6 @@ The host must construct the input from its locked source, never model metadata.
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import re
 import sys
@@ -69,15 +68,7 @@ def stats(roots):
             'sections': len(list(body.iter(q('sectPr'))))}
 
 
-def normalized_outline(parts):
-    value = copy.deepcopy(outline(parts))
-    for kind in ('headings', 'toc'):
-        for item in value[kind]:
-            item['text'] = outline_text(item['text'])
-    return value
-
-
-def chapters(parts, root):
+def chapters(parts, root, *, include_heading=True):
     """Group body content by source headings, independently of operation claims."""
     styles, result, key = style_map(parts), {}, ('preamble', 0)
     seen = Counter()
@@ -92,6 +83,8 @@ def chapters(parts, root):
             seen[title] += 1
             key = (title, seen[title])
             result[key] = []
+            if not include_heading:
+                continue
         result[key].append(text)
     return {key: '\n'.join(texts) for key, texts in result.items()}
 
@@ -104,7 +97,8 @@ def same_part(name, before, after):
 
 def verify(input_path):
     report = {'version': VERSION, 'status': 'failed', 'issues': [], 'metrics': {},
-              'validation_scope': ['word_pair_consistency', 'source_structure', 'source_content_retention', 'source_format_preservation'],
+              'validation_scope': ['word_pair_consistency', 'source_structure', 'source_body_presence', 'source_format_preservation'],
+              'content_policy': 'template_structure_flexible_text_v1',
               'factual_accuracy': 'not_verified', 'visual_review': 'not_run',
               'limitations': ['Financial facts and legal conclusions require source-evidence acceptance.',
                               'OOXML page-count metadata is not rendered pagination; no visual acceptance is claimed.']}
@@ -181,7 +175,7 @@ def verify(input_path):
             source_stats = stats(before_roots)
             report['metrics']['baseline'] = source_stats
             report['metrics']['ratios'] = {key: ratio(result_stats[key], value) for key, value in source_stats.items()}
-            for key, threshold in [('characters', .8), ('nonempty_paragraphs', .85),
+            for key, threshold in [('nonempty_paragraphs', .85),
                                    ('tables', 1), ('rows', .95), ('cells', .95), ('sections', 1)]:
                 if source_stats[key] and result_stats[key] < source_stats[key] * threshold:
                     issue('WORD_SOURCE_CONTENT_REDUCED', metric=key,
@@ -198,9 +192,9 @@ def verify(input_path):
                     issue('WORD_REPORTING_UPDATE_INCOMPLETE', reason='reporting_dates_only')
             coverage = retention(before_text, after_text)
             report['metrics']['prose_retention'] = coverage
-            if len(normalized(before_text)) >= 80 and coverage < .65:
-                issue('WORD_SOURCE_PROSE_LOST', retained_ratio=coverage, minimum_ratio=.65)
-            structural = compare_outlines(normalized_outline(source), normalized_outline(clean))
+            # Text overlap/length are diagnostic only. Cross-issuer and cross-
+            # product updates can legitimately replace every word in a section.
+            structural = compare_outlines(outline(source), outline(clean), flexible_text=True)
             if structural['status'] != 'unchanged':
                 issue('WORD_SOURCE_OUTLINE_CHANGED')
             report['metrics']['outline_status'] = structural['status']
@@ -208,19 +202,29 @@ def verify(input_path):
             if formulas['status'] != 'unchanged':
                 issue('WORD_SOURCE_FORMULA_CHANGED', formulas=formulas['changes'][:100])
             report['metrics']['formula_status'] = formulas['status']
-            old_chapters = chapters(source, before_roots['word/document.xml'])
-            new_chapters = chapters(clean, cleaned['word/document.xml'])
+            old_chapters = chapters(source, before_roots['word/document.xml'], include_heading=False)
+            new_chapters = list(chapters(clean, cleaned['word/document.xml'], include_heading=False).values())
             deficient = []
             for index, (key, old_text) in enumerate(old_chapters.items()):
-                if len(normalized(old_text)) < 100:
+                if not old_text.strip():
                     continue
-                new_text = new_chapters.get(key, '')
+                # Headings retain their structural slots, not their old wording.
+                # Missing/reordered slots are independently rejected above.
+                new_text = new_chapters[index] if index < len(new_chapters) else ''
                 size = ratio(len(normalized(new_text)), len(normalized(old_text)))
                 kept = retention(old_text, new_text)
-                if size < .75 or kept < .55:
-                    deficient.append({'chapter_index': index, 'character_ratio': size, 'prose_retention': kept})
+                if not new_text.strip():
+                    deficient.append({'chapter_index': index, 'reason': 'empty_body',
+                                      'character_ratio': size, 'prose_retention': kept})
             if deficient:
                 issue('WORD_SOURCE_CHAPTER_CONTENT_LOST', chapters=deficient[:100])
+            old_tables = list(before_roots['word/document.xml'].iter(q('tbl')))
+            new_tables = list(cleaned['word/document.xml'].iter(q('tbl')))
+            emptied = [index for index, (old, new) in enumerate(zip(old_tables, new_tables))
+                       if any(paragraph_text(p).strip() for p in old.iter(q('p')))
+                       and not any(paragraph_text(p).strip() for p in new.iter(q('p')))]
+            if emptied:
+                issue('WORD_SOURCE_TABLE_CONTENT_LOST', table_indices=emptied[:100])
 
             author = data.get('revision_author')
             if not isinstance(author, str) or not author:
@@ -229,10 +233,7 @@ def verify(input_path):
                 operations_path = path(data['operations_path'])
                 diagnostics = audit(source_path, tracked_path, author, input_path, operations_path)
                 for finding in diagnostics['issues']:
-                    # The independent normalized outline above permits reporting
-                    # date changes while retaining names, hierarchy and order.
-                    if finding['code'] != 'SOURCE_OUTLINE_CHANGED':
-                        issue('WORD_SOURCE_FORMAT_CHANGED', finding=finding)
+                    issue('WORD_SOURCE_FORMAT_CHANGED', finding=finding)
                 if diagnostics['status'] not in {'passed', 'failed'}:
                     issue('WORD_SOURCE_FORMAT_CHECK_UNAVAILABLE')
             else:
@@ -295,7 +296,10 @@ def verify(input_path):
                             retained = retention(original_text, candidate)
                             length_ratio = ratio(len(normalized(candidate)), len(normalized(original_text)))
                             report['metrics']['pdf'][label] = {'character_ratio': length_ratio, 'prose_retention': retained}
-                            if retained < .65 or length_ratio < .8:
+                            # Reconstruction must faithfully capture the PDF;
+                            # subsequent authored prose follows the same flexible
+                            # policy as a DOCX source.
+                            if label == 'baseline' and (retained < .65 or length_ratio < .8):
                                 issue('WORD_PDF_SOURCE_CONTENT_LOST', output=label, retained_ratio=retained, character_ratio=length_ratio)
                     report['limitations'].append('Original PDF text was checked independently; original PDF visual layout remains unverified.')
 

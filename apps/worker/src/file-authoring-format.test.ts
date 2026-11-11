@@ -16,8 +16,8 @@ import { unifiedInputGate } from './unified-input.js';
 import type { StageContext } from './run-pipeline.js';
 
 const python = !!(process.env.BONDBUDDY_TEST_PYTHON || process.env.BONDBUDDY_WORD_PYTHON);
-function fixture(controlled = true) {
-  const source = makeWorkerDocxFixture({ externalLink: false, text: '截至2024年净资产100万元。' });
+function fixture(controlled = true, text = '截至2024年净资产100万元。') {
+  const source = makeWorkerDocxFixture({ externalLink: false, text });
   const pin = { material_id: 'source', material_version: 1, sha256: digest(source), role: 'historical' };
   const input: UnifiedInput = { requirements: [], materials: [{ pin, filename: 'source.docx', mediaType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', objectKey: 'source', records: [], pending: [] }],
     manifest: { issuer_name: '合成发行人', market: 'sse', offering: 'private', update_details: { ...emptyUpdateDetails(), authoring_mode: 'unified_v1' }, materials: [pin],
@@ -208,6 +208,38 @@ test('a same-issuer new reporting period cannot be delivered as unchanged source
     assert.equal(digest(plan),gate.format_plan.sha256);
     assert.equal(JSON.parse(plan.toString()).input_hash,f.ctx.run.input_hash);
     assert.equal(JSON.parse(plan.toString()).visual_review,'not_run');
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test('cross-issuer cross-product prose passes both preflight and host delivery without old-text padding', {skip:!python,timeout:60000}, async()=>{
+  const f=fixture(true,'母公司非公开发行公司债券在上交所挂牌转让，投资者人数不得超过二百人。'.repeat(10));
+  f.input.manifest.market='nafmii';f.input.manifest.offering='mtn';
+  f.input.manifest.authoring.source_prospectuses=[{...f.input.materials[0]!.pin,issuer_name:'合成母公司',relation:'parent',
+    market:'sse',offering:'private',reporting_periods:[],status:'user_asserted'}];
+  const root=await mkdtemp(join(tmpdir(),'bb-flexible-template-'));
+  try{
+    const stage=fileAuthoringStage({load:async()=>f.input,model:options=>({name:'model_generation',run:async()=>{
+      await options.fileWorkspace!.prepare(root);
+      const data=JSON.parse(await readFile(join(root,'input.json'),'utf8'));
+      const inspected=JSON.parse((await runFormatPython(['inspect','--input',join(root,'input.json')])).stdout);
+      const node=inspected.nodes.find((n:{kind:string})=>n.kind==='paragraph');
+      await writeFile(join(root,'output/operations.json'),JSON.stringify({version:'word-operations-v1',input_hash:data.input_hash,
+        baseline_sha256:data.baseline_sha256,operations:[{id:'rewrite',kind:'replace_text',node_id:node.node_id,
+          before:node.text,after:'合成子公司本期中期票据在银行间市场交易流通。'}]}));
+      await runFormatPython(['preflight','--input',join(root,'input.json'),'--operations',join(root,'output/operations.json'),
+        '--report',join(root,'scratch/preflight.json')]);
+      const preview=JSON.parse(await readFile(join(root,'scratch/preflight.json'),'utf8'));
+      assert.equal(preview.status,'passed');assert.equal(preview.host_acceptance,false);
+      assert.ok(preview.quality_report.metrics.prose_retention<.1);
+      return {kind:'done',value:await options.fileWorkspace!.collect(root,{call_id:'synthetic-call'} as any)};
+    }})});
+    const result=await stage.run(f.ctx);
+    assert.equal(result.kind,'done');if(result.kind!=='done')throw Error('expected completion');
+    f.ctx.values.set('model_generation',result.value);
+    const delivered=await f.delivery().run(f.ctx);
+    assert.equal(delivered.kind,'deliver',JSON.stringify(delivered));
+    if(delivered.kind!=='deliver')throw Error('expected delivery');
+    assert.equal((delivered.wordSummary!.quality_gate as {status:string}).status,'passed');
   }finally{await rm(root,{recursive:true,force:true});}
 });
 

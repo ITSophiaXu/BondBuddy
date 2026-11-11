@@ -26,11 +26,14 @@ test('host quality rejects unequal clean text even when the provider completed a
 });
 test('host quality rejects the 104-to-39 content-collapse regression against the locked source',{skip:!python},async()=>{
   const parts=Array.from({length:104},(_,i)=>`第${i+1}项合成发行人的原有业务风险、法定条款和财务信息均应按本轮范围逐项保留。`);
-  const baseline=makeWorkerDocxFixture({externalLink:false,text:parts.join('\n')});
-  const truncated=makeWorkerDocxFixture({externalLink:false,text:parts.slice(0,39).join('\n')});
+  // Real OOXML paragraphs: newlines inside one w:t are only prose shortening.
+  const baseline=makeWorkerDocxFixture({externalLink:false,paragraphs:parts});
+  const truncated=makeWorkerDocxFixture({externalLink:false,paragraphs:parts.slice(0,39)});
   const report=await verifyWordQuality({data:{baseline_kind:'uploaded_source',revision_author:'BondBuddy-synthetic'},
     baseline,tracked:truncated,clean:truncated});
   assert.equal(report.status,'failed');assert.match(JSON.stringify(report.issues),/WORD_SOURCE_CONTENT_REDUCED/);
+  assert.equal((report.metrics.baseline as {nonempty_paragraphs:number}).nonempty_paragraphs,104);
+  assert.equal((report.metrics.output as {nonempty_paragraphs:number}).nonempty_paragraphs,39);
 });
 test('host quality reports corrupt packages as a failed check instead of accepting their magic bytes',{skip:!python},async()=>{
   const broken=Buffer.from('PK synthetic corrupt package');

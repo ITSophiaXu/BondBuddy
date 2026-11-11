@@ -5,6 +5,8 @@
 > 2026-11-05：按[专业文档工作台决定](product-decisions/2026-11-05-professional-document-workspace.md)，浏览器与原型共用 `product-prototype/public/document-workspace.css`，在现有展示样式后加载；`document-deliverable.ts` 仅组织真实成果文件名、已保存版本和原下载控件。保留 Vite/TypeScript、所有业务模块和授权下载链路，无公共契约、数据或 worker 变更。
 
 > 2026-11-05：更新项目的历史／参考募集书新上传仅支持 Word（.docx）。共用入口按项目返回的 `upload_docx_only` 显示限制；API 创建、传输、完成及角色复制执行相同规则，已完成上传和旧 PDF 保留。无新增迁移；见[格式支持决定](product-decisions/2026-11-05-historical-docx-only.md)。
+> 2026-11-11：按[参考募集书文字灵活更新](product-decisions/2026-11-11-reference-text-flexibility.md)，`quality.verify` 取消全文及分节文字相似度／字数比例的硬门槛，保留章节编号、层级、顺序及格式校验；标题措辞可变，章节正文按结构位置检查清空。`format_diff` 与 `preflight` 同步执行该规则，可信重放、双稿一致性、期间／公式／事实锚点检查保持。PDF 原文保真仅用于重建基线，随后改写采用同一规则。报告增加内容政策标识，不改公共请求契约或数据库。
+
 > 2026-11-01：按[募集书质量与发布门禁](product-decisions/2026-11-01-prospectus-quality-gate.md)，原件身份、双 Word 修订一致性、结构/内容保留和模板检查改为宿主交付前必要条件。失败保存私有报告与检查点，不进入正常交付；重放不增加模型调用。部署与镜像导出必须验证绑定候选 commit/tree 的 Linux 回归凭据；运行时机械检查、真实模型事实验收与页面验收分别记录。本要求覆盖旧“生成文件即交付”的冲突说明。见[本次审计](acceptance/prospectus-quality-regression-20261101.md)。
 
 > 2026-10-30：按[取消每日限额决定](product-decisions/2026-10-30-no-daily-limits.md)，API 与 worker 不再按每日任务数、模型 token、项目数或上传总量拦截；忽略旧每日限额配置，管理字段返回 0。用量统计、积分计费、并发容量及其他有效检查保留。历史每日限额暂停由已有 sweep 恢复，历史错误枚举兼容保留。此决定覆盖下文旧试用每日限额说明。
