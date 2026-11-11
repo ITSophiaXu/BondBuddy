@@ -119,8 +119,72 @@ export class ReviewEditor {
     }).join('');
     this.host!.querySelector('[data-editor-document]')!.innerHTML=`<p class="review-muted">${this.dirty?'尚未保存的文字预览':'正文文字预览'} · 排版以下载 Word 为准</p><article class="review-paper">${html}</article>`;
   }
+  private issueDetail(issue?:ReviewEditorIssue){
+    if(!issue)return '';
+    return `<section class="review-issue-detail"><h3>${esc(issue.title)}</h3><p>${esc(issue.reason)}</p><blockquote>${esc(issue.original||'无可定位原文')}</blockquote><p><strong>建议文本</strong><br>${esc(issue.replacement||'保留原文，待补充材料后确认')}</p><p><strong>依据</strong><br>${esc(issue.evidence||'待补充')}</p>${issue.missing?`<p class="review-warning">缺少材料：${esc(issue.missing)}</p>`:''}${issue.limitation?`<p class="review-warning">${esc(issue.limitation)}</p>`:''}<fieldset><legend>处理这项发现</legend>${[['suggested',issue.uncertain?'保留待确认批注':'采用建议'],['original','保留原文'],['manual','手动修改']].map(([key,label])=>`<label><input type="radio" name="review-decision" value="${key}" ${issue.decision===key?'checked':''} ${key==='manual'&&!issue.paragraph_id?'disabled':''}>${label}</label>`).join('')}</fieldset>${issue.decision==='manual'?`<label for="review-manual-text">替换原文的内容</label><textarea id="review-manual-text" rows="6" maxlength="12000">${esc(issue.manual_text)}</textarea>`:''}${this.onFollowup?`<div class="review-issue-followup"><button class="btn secondary" data-editor-followup ${this.dirty||this.locked?'disabled':''}>补充材料与要求</button><p class="review-muted" data-editor-followup-help>${this.dirty||this.locked?'请先免费导出并确认当前处理结果，或放弃未保存处理，再准备下一轮。':'补料后可开始新一轮完整复核；本页处理选择可免费重新导出。'}</p></div>`:''}</section>`;
+  }
+  private refreshIssueDetail(){
+    if(!this.host||!this.state)return;
+    const selectedIssue=this.state.snapshot.issues.find(item=>item.id===this.selected);
+    const aside=this.host.querySelector('.review-editor-grid aside');
+    if(!aside)return;
+    const current=aside.querySelector<HTMLElement>('.review-issue-detail');
+    if(!selectedIssue){current?.remove();return;}
+    const wrapper=document.createElement('div');
+    wrapper.innerHTML=this.issueDetail(selectedIssue);
+    const replacement=wrapper.firstElementChild as HTMLElement|null;
+    if(!replacement)return;
+    if(current)current.replaceWith(replacement);
+    else aside.append(replacement);
+  }
+  private refreshSelectionClasses(previous:string,next:string){
+    if(!this.host)return;
+    if(previous)this.host.querySelector<HTMLElement>(`[data-editor-issue="${CSS.escape(previous)}"]`)?.classList.remove('active');
+    if(next)this.host.querySelector<HTMLElement>(`[data-editor-issue="${CSS.escape(next)}"]`)?.classList.add('active');
+    const previousParagraph=this.state?.snapshot.issues.find(item=>item.id===previous)?.paragraph_id;
+    const nextParagraph=this.state?.snapshot.issues.find(item=>item.id===next)?.paragraph_id;
+    if(previousParagraph)this.host.querySelector(`#review-paragraph-${CSS.escape(previousParagraph)}`)?.classList.remove('selected');
+    if(nextParagraph)this.host.querySelector(`#review-paragraph-${CSS.escape(nextParagraph)}`)?.classList.add('selected');
+  }
+  private bindIssueDetailInteractions(){
+    if(!this.state||!this.host)return;
+    const issue=this.state.snapshot.issues.find(item=>item.id===this.selected);
+    if(!issue)return;
+    this.host.querySelectorAll<HTMLInputElement>('[name=review-decision]').forEach(control=>{
+      control.onchange=()=>{
+        if(this.locked){this.syncControls();return;}
+        issue.decision=control.value as ReviewEditorIssue['decision'];
+        if(control.value==='manual'&&!issue.manual_text)issue.manual_text=issue.replacement||issue.original;
+        this.remember();
+        this.refreshIssueDetail();
+        this.bindIssueDetailInteractions();
+        this.preview();
+        this.syncControls();
+      };
+    });
+    const manual=this.host.querySelector<HTMLTextAreaElement>('#review-manual-text');
+    if(manual)manual.oninput=()=>{
+      if(this.locked){this.syncControls();return;}
+      issue.manual_text=manual.value;
+      this.remember();
+      if(this.locked){
+        this.refreshIssueDetail();
+        this.bindIssueDetailInteractions();
+        this.syncControls();
+        return;
+      }
+      this.preview();
+      this.syncControls();
+    };
+    const followup=this.host.querySelector<HTMLElement>('[data-editor-followup]');
+    if(followup)followup.onclick=()=>{
+      if(this.dirty||this.locked||!this.state)return;
+      this.onFollowup?.({runId:this.state.run_id,version:this.history.find(h=>h.run.run_id===this.state!.run_id)?.version,title:issue.title,sourceFilename:this.state.snapshot.source_filename,details:[`原文：${issue.original}`,`复核说明：${issue.reason}`,`依据：${issue.evidence||'待补充'}`,issue.missing?`缺少材料：${issue.missing}`:'',issue.limitation?`限制：${issue.limitation}`:''],clean:this.artifacts.find(a=>a.kind==='clean')});
+    };
+  }
   private paint(){
     if(!this.state||!this.live())return;
+    const issueListScrollTop=this.host!.querySelector<HTMLElement>('.review-editor-issues')?.scrollTop??0;
     const s=this.state.snapshot;
     const changed=s.issues.filter(i=>i.applied&&i.decision!=='original'&&this.text(i)!==i.original).length;
     const savedDecisions=new Map(this.baseline.map(value=>[value.id,value]));
@@ -133,16 +197,25 @@ export class ReviewEditor {
     const filtered=s.issues.filter(i=>this.category==='all'||i.category===this.category);if(!filtered.some(issue=>issue.id===this.selected))this.selected=filtered[0]?.id??'';
     const issue=filtered.find(i=>i.id===this.selected);
     this.host!.innerHTML=`<div class="review-editor-head"><div><p class="review-kicker">REVIEW RESULTS</p><h2>复核成果</h2><p>${summary} · 成果独立保存，可手动设为项目当前版本</p></div></div><div class="document-downloads" role="group" aria-label="已保存的复核文档">${this.artifacts.filter(a=>['revision','clean','report'].includes(a.kind)).map(a=>documentDeliverable(a,savedDocumentDetail,`<button class="btn ${a.kind==='revision'?'primary':'secondary'}" data-editor-download data-artifact-id="${esc(a.artifact_id)}" ${this.downloading.has(a.artifact_id)?'disabled':''}>${this.downloading.has(a.artifact_id)?'正在读取…':'下载'+(a.kind==='revision'?revisionLabel:a.kind==='clean'?'清洁版':'复核报告')}</button>`)).join('')}</div><div class="review-downloads document-editor-actions"><button class="btn secondary" data-editor-current ${this.dirty||this.locked?'disabled':''}>设为项目当前版本</button><a class="btn secondary" href="#consistency?project=${encodeURIComponent(this.project)}">检查文件一致性</a></div>${s.warnings.map(w=>`<p class="review-notice">${esc(w)}</p>`).join('')}<div class="review-editor-toolbar"><label>成果历史 <select data-editor-history>${this.history.map(h=>`<option value="${esc(h.run.run_id)}" ${h.run.run_id===this.state!.run_id?'selected':''}>成果 V${h.version} · ${esc(new Date(h.created_at).toLocaleString())}</option>`).join('')}</select></label><span data-editor-state>${this.pending?'新版导出回执待确认':this.dirty?'有未保存的处理选择':'当前查看已保存版本'}</span><button class="btn primary" data-editor-save ${(!this.dirty&&!this.pending)||this.busy||this.recoveryBlocked?'disabled':''}>${this.busy?'正在确认…':this.pending?'重试确认新版导出':'保存处理结果并生成新版'}</button><button class="btn secondary" data-editor-discard ${!this.dirty||this.locked?'disabled':''}>放弃未保存处理</button></div><p class="review-muted">下载按钮始终提供当前已保存的 Word，不包含本页尚未保存的预览修改。保存处理结果只重新导出文档，不重复 AI 复核或收取 AI 费用。存疑内容保留原文，批注说明缺少材料；问题类别及复核说明只在批注、报告和结果页显示，清洁版正文不附复核说明。</p><p data-editor-status role="status" aria-live="polite">${esc(this.notice)}</p><div class="review-editor-grid"><aside><label for="review-editor-category">复核发现</label><select id="review-editor-category"><option value="all">全部类别</option>${[...new Set(s.issues.map(i=>i.category))].map(c=>`<option value="${esc(c)}" ${c===this.category?'selected':''}>${esc(c)}</option>`).join('')}</select><div class="review-editor-issues">${filtered.map(i=>`<button class="review-issue ${i.id===this.selected?'active':''}" data-editor-issue="${esc(i.id)}"><small>${esc(i.category)} · ${i.uncertain||i.limitation?'待确认':'修改建议'}</small><strong>${esc(i.title)}</strong><span>${i.decision==='original'?'保留原文':i.decision==='manual'?'手动修改':i.applied?'已采用建议':'查看建议'}</span></button>`).join('')||'<p>未提取到可处理的问题条目，请查看复核报告；这不表示未发现问题。</p>'}</div>${issue?`<section class="review-issue-detail"><h3>${esc(issue.title)}</h3><p>${esc(issue.reason)}</p><blockquote>${esc(issue.original||'无可定位原文')}</blockquote><p><strong>建议文本</strong><br>${esc(issue.replacement||'保留原文，待补充材料后确认')}</p><p><strong>依据</strong><br>${esc(issue.evidence||'待补充')}</p>${issue.missing?`<p class="review-warning">缺少材料：${esc(issue.missing)}</p>`:''}${issue.limitation?`<p class="review-warning">${esc(issue.limitation)}</p>`:''}<fieldset><legend>处理这项发现</legend>${[['suggested',issue.uncertain?'保留待确认批注':'采用建议'],['original','保留原文'],['manual','手动修改']].map(([key,label])=>`<label><input type="radio" name="review-decision" value="${key}" ${issue.decision===key?'checked':''} ${key==='manual'&&!issue.paragraph_id?'disabled':''}>${label}</label>`).join('')}</fieldset>${issue.decision==='manual'?`<label for="review-manual-text">替换原文的内容</label><textarea id="review-manual-text" rows="6" maxlength="12000">${esc(issue.manual_text)}</textarea>`:''}${this.onFollowup?`<div class="review-issue-followup"><button class="btn secondary" data-editor-followup ${this.dirty||this.locked?'disabled':''}>补充材料与要求</button><p class="review-muted" data-editor-followup-help>${this.dirty||this.locked?'请先免费导出并确认当前处理结果，或放弃未保存处理，再准备下一轮。':'补料后可开始新一轮完整复核；本页处理选择可免费重新导出。'}</p></div>`:''}</section>`:''}</aside><section class="review-editor-preview"><div role="group" aria-label="文档预览版本">${[['original','原文'],['tracked',changed?'修订版':s.issues.length?'批注版':'未修订正文'],['clean','清洁版']].map(([v,label])=>`<button class="btn ${this.view===v?'primary':'secondary'}" data-editor-view="${v}" aria-pressed="${this.view===v}">${label}</button>`).join('')}</div><div data-editor-document></div></section></div>`;
+    const issueList=this.host!.querySelector<HTMLElement>('.review-editor-issues');
+    if(issueList)issueList.scrollTop=issueListScrollTop;
     this.preview();
     this.syncControls();
     this.host!.querySelectorAll<HTMLElement>('[data-editor-download]').forEach(button=>button.onclick=()=>void this.download(button.dataset.artifactId!));
-    this.host!.querySelectorAll<HTMLElement>('[data-editor-issue]').forEach(b=>b.onclick=()=>{this.selected=b.dataset.editorIssue!;this.paint();this.host!.querySelector(`#review-paragraph-${CSS.escape(this.state!.snapshot.issues.find(i=>i.id===this.selected)?.paragraph_id??'')}`)?.scrollIntoView({block:'nearest'});});
+    this.host!.querySelectorAll<HTMLElement>('[data-editor-issue]').forEach(button=>button.onclick=()=>{
+      const next=button.dataset.editorIssue;
+      if(!next||next===this.selected)return;
+      const previous=this.selected;
+      this.selected=next;
+      this.refreshSelectionClasses(previous,next);
+      this.refreshIssueDetail();
+      this.bindIssueDetailInteractions();
+      this.syncControls();
+      this.host!.querySelector(`#review-paragraph-${CSS.escape(this.state!.snapshot.issues.find(i=>i.id===this.selected)?.paragraph_id??'')}`)?.scrollIntoView({block:'nearest'});
+    });
     this.host!.querySelectorAll<HTMLElement>('[data-editor-view]').forEach(b=>b.onclick=()=>{this.view=b.dataset.editorView!;this.paint();});
     this.host!.querySelector<HTMLSelectElement>('#review-editor-category')!.onchange=e=>{this.category=(e.target as HTMLSelectElement).value;this.paint();};
-    this.host!.querySelectorAll<HTMLInputElement>('[name=review-decision]').forEach(r=>r.onchange=()=>{if(this.locked){this.paint();return;}issue!.decision=r.value as ReviewEditorIssue['decision'];if(r.value==='manual'&&!issue!.manual_text)issue!.manual_text=issue!.replacement||issue!.original;this.remember();this.paint();});
-    const manual=this.host!.querySelector<HTMLTextAreaElement>('#review-manual-text');if(manual)manual.oninput=()=>{if(!this.locked){issue!.manual_text=manual.value;this.remember();}if(this.locked){this.paint();return;}this.preview();this.syncControls();};
-    const followup=this.host!.querySelector<HTMLElement>('[data-editor-followup]');
-    if(followup)followup.onclick=()=>{if(this.dirty||this.locked||!issue||!this.state)return;this.onFollowup?.({runId:this.state.run_id,version:this.history.find(h=>h.run.run_id===this.state!.run_id)?.version,title:issue.title,sourceFilename:this.state.snapshot.source_filename,details:[`原文：${issue.original}`,`复核说明：${issue.reason}`,`依据：${issue.evidence||'待补充'}`,issue.missing?`缺少材料：${issue.missing}`:'',issue.limitation?`限制：${issue.limitation}`:''],clean:this.artifacts.find(a=>a.kind==='clean')});};
+    this.bindIssueDetailInteractions();
     this.host!.querySelector<HTMLElement>('[data-editor-save]')!.onclick=()=>void this.save();
     this.host!.querySelector<HTMLElement>('[data-editor-discard]')!.onclick=()=>this.discard();
     this.host!.querySelector<HTMLElement>('[data-editor-current]')!.onclick=()=>void this.selectCurrent();
