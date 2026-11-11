@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
-import {OUTCOME_PRICE_VERSION,emptyUpdateDetails,type OutcomeWorkPlan,type OutcomePricingItem,type GoalOutcomePriceKey} from '@bondbuddy/contracts';
+import {OUTCOME_PRICE_VERSION,emptyUpdateDetails,reportingWindow,type OutcomeWorkPlan,type OutcomePricingItem,type GoalOutcomePriceKey} from '@bondbuddy/contracts';
 import {transaction,digest,type PrivateBlobs} from './data.js';
 import {grantCredits,quoteCredits,reserveCredits} from './billing.js';
 import {requestScope,publishScopeQuote,publishStandardScopeQuote,assertScopeQuote,workScopeHash} from './scope-quotations.js';
@@ -34,9 +34,13 @@ async function setup(pool:Pool){
 }
 async function stage(pool:Pool,owner:string,project:string){
  const draftRevision=Number((await pool.query('SELECT draft_revision FROM bb_projects WHERE owner_user_id=$1 AND id=$2',[owner,project])).rows[0].draft_revision);
- const runId=randomUUID(),manifest={draft_revision:draftRevision,issuer_name:'Synthetic issuer',market:'sse',offering:'private',materials:[],
+ const material=randomUUID(),upload=randomUUID(),sha=digest(makeSyntheticDocxFixture({text:'Synthetic historical reference for billing compatibility only'}));
+ await pool.query("INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state) VALUES($1,$2,$3,'synthetic-reference.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',1,$4,'reference',$1,now()+interval '1 hour','completed')",[upload,owner,project,sha]);
+ await pool.query("INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state) VALUES($1,1,$2,$3,$4,'reference','synthetic-reference.docx','application/vnd.openxmlformats-officedocument.wordprocessingml.document',1,$5,$1,'persisted')",[material,owner,project,upload,sha]);
+ const pin={material_id:material,material_version:1,sha256:sha};
+ const runId=randomUUID(),manifest={draft_revision:draftRevision,issuer_name:'Synthetic issuer',market:'sse',offering:'private',materials:[{...pin,role:'reference'}],
   update_details:{...emptyUpdateDetails(),reporting_cutoff:'2026-09-30',supplementary_notes:'Synthetic input revision '+runId},
-  authoring:{version:'unified_v1',source_prospectuses:[],requirements:[],knowledge:[],knowledge_status:'authoring_reference_not_compliance_approval'}};
+  authoring:{version:'unified_v1',source_prospectuses:[{...pin,issuer_name:'Synthetic reference issuer',relation:'same_issuer',market:'sse',offering:'private',reporting_periods:reportingWindow('sse','private','2025-12-31'),status:'user_asserted'}],requirements:[],knowledge:[],knowledge_status:'authoring_reference_not_compliance_approval'}};
  const hash=inputManifestHash(manifest),revision=Number((await pool.query('SELECT coalesce(max(revision),0)+1 n FROM bb_input_revisions WHERE project_id=$1',[project])).rows[0].n);
  await pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,$2,$3,$4,$5,$6,'[]','[]')",[project,revision,owner,draftRevision,hash,manifest]);
  await pool.query('UPDATE bb_projects SET latest_input_revision=$2 WHERE id=$1',[project,revision]);

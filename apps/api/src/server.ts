@@ -106,7 +106,7 @@ import {installPaymentReconciliation} from './payment-reconciliation.js';
 import {installProjectFileCheckBatches} from './project-file-check-batches.js';
 
 export type Principal = { userId: string; csrfVerified: boolean; sessionId?: string };
-export type Settings = { directBlobUploads?: boolean; enableSubscriptionBilling?: boolean; enableOutcomePricing?: boolean; paymentProviders?: readonly PaymentProvider[]; enablePaidAuthoring?: boolean; enablePaidReview?: boolean; pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
+export type Settings = { /** Node test runner only: replay synthetic historical billing policies. */ historicalBillingFixture?: boolean; directBlobUploads?: boolean; enableSubscriptionBilling?: boolean; enableOutcomePricing?: boolean; paymentProviders?: readonly PaymentProvider[]; enablePaidAuthoring?: boolean; enablePaidReview?: boolean; pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -160,10 +160,14 @@ export function createServer(settings: Settings = {}) {
   // Fastify runs onClose hooks in reverse registration order. Register the
   // owned pool first so in-flight payment/statement reconciliation drains first.
   if(!settings.pool)app.addHook('onClose',async()=>{await pool.end();});
-  const subscriptionBilling=settings.enableSubscriptionBilling??process.env.BB_SUBSCRIPTION_BILLING_ENABLED==='1';
+  // Historical tariffs remain executable through their persisted contracts. They
+  // are no longer selectable by deployment flags for a new HTTP commission.
+  // The explicit fixture seam exists only inside Node's test runner.
+  if(settings.historicalBillingFixture&&!process.env.NODE_TEST_CONTEXT)throw new Error('Historical billing fixtures require node --test');
+  const subscriptionBilling=settings.historicalBillingFixture?settings.enableSubscriptionBilling??false:true;
   configureAutomaticBilling(pool,subscriptionBilling);
   app.addHook('onRequest',(_request,_reply,done)=>withAutomaticBillingRequest(subscriptionBilling,done));
-  const commercial = subscriptionBilling || (settings.enableOutcomePricing ?? process.env.BB_OUTCOME_PRICING_ENABLED === '1');
+  const commercial = subscriptionBilling || (!!settings.historicalBillingFixture&&settings.enableOutcomePricing===true);
   const paidAuthoring = commercial || (settings.enablePaidAuthoring ?? process.env.BB_PAID_AUTHORING_ENABLED === '1');
   const paidReview = commercial || (settings.enablePaidReview ?? process.env.BB_PAID_REVIEW_ENABLED === '1');
   const paymentProviders = settings.paymentProviders ?? paymentProvidersFromEnv(process.env).providers;

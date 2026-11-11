@@ -377,6 +377,7 @@ export class FileGenerationPanel {
   const request:FileGenerationSubmit={request_id:crypto.randomUUID(),expected_revision:this.data!.revision,source_version_id:this.source!.version_id,source_selection_revision:this.source!.selection_revision,expected_points:this.estimate(),price_version:this.data!.pricing?.price_version??M4_DOCUMENT_FIXED_PRICE.version};
   const q=await this.request<FileGenerationQuote>('POST','/quote',request);
   request.expected_points=q.points;request.price_version=q.price_version;
+  if(q.quote_id)request.quote_id=q.quote_id;
   if(q.documents)request.document_quotes=q.documents.filter(d=>d.scope_quote_id).map(d=>({document_type:d.document_type,draft_version:d.draft_version,scope_quote_id:d.scope_quote_id!}));
   if(q.auto_charge&&q.quote_status==='ready'){this.pending=request;this.pendingWire=BILLING_WIRE_VERSION;this.persist();await this.submit();return;}
   this.activeStep=3;this.stepChanged(3);

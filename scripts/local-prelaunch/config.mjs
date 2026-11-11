@@ -86,5 +86,5 @@ export function composeArgs(config) {
   const modelCompose=path.join(stateDir,'model.compose.yaml');
   const files=existsSync(modelCompose)?[...composeFiles,modelCompose]:composeFiles;
   return ['compose','--project-name',config.projectName,'--project-directory',path.join(root,'deploy/m1'),'--env-file',envFile,'--env-file',modelEnvFile,
-    ...files.flatMap(file=>['-f',file]),'--profile','staging-blob','--profile','legacy-billing'];
+    ...files.flatMap(file=>['-f',file]),'--profile','staging-blob'];
 }

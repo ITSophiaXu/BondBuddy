@@ -84,10 +84,10 @@ export class CommerceRefunds{
     this.busy=true;this.request=request;this.error='';dialog.querySelectorAll<HTMLButtonElement>('button').forEach(button=>button.disabled=true);
     try{const refund=await this.api.request<Refund>('POST','/commerce/topups/'+encodeURIComponent(orderId)+'/refunds',this.legacyIntent?this.originalLegacy:request,this.legacyIntent?{[BILLING_WIRE_HEADER]:LEGACY_BILLING_WIRE_VERSION}:{},this.controller.signal);if(!Value.Check(schemas.PaymentRefundResponse,refund)||refund.order_id!==orderId||('points' in request&&refund.credit_points!==request.points)||(refundRequestCash(request)!==undefined&&refund.amount_fen!==refundRequestCash(request)))throw new Error('Invalid refund acknowledgement');if(this.current(orderId)){try{this.clearIntent(orderId,request);this.request=undefined;this.originalLegacy=undefined;this.legacyIntent=false;this.amount='';}catch{this.storageBlocked=true;this.error='原退款申请已受理，但本机重试记录清理尚未确认，请核对原退款单。';}dialog.close();await this.refresh();window.dispatchEvent(new Event('bondbuddy:credits-changed'));}}
     catch(error){if(this.current(orderId)){
-      // The refund endpoint emits this only before insertion/hold, after rolling back.
+      // These responses confirm no receipt/hold exists for the original request.
       // All uncertain or conflicting acknowledgements keep the original durable request.
-      if(error instanceof ApiError&&error.status===409&&error.code==='QUOTE_CHANGED'){
-        try{this.clearIntent(orderId,request);this.request=undefined;this.originalLegacy=undefined;this.legacyIntent=false;dialog.close();await this.refresh();this.error='累计退款已变化，本次申请未受理、未冻结积分。已重新核对可退额度，请核对后重新申请。';}
+      if(error instanceof ApiError&&error.status===409&&error.code==='BILLING_REQUEST_REJECTED'){
+        try{this.clearIntent(orderId,request);this.request=undefined;this.originalLegacy=undefined;this.legacyIntent=false;this.amount='';dialog.close();await this.refresh();this.error='退款资格或计费规则已变化，本次申请未受理、未冻结积分。已重新核对可退额度，请核对后重新申请。';}
         catch{this.storageBlocked=true;this.error='本次申请未受理，但本机申请记录清理未确认，请联系支持核对原订单。';}
       }else{this.error=friendlyError(error,'submit')+' 原申请结果尚未确认；请沿用原金额或积分数量及同一请求重试，不要另建申请。';dialog.querySelector('[data-refund-submit-status]')!.textContent=this.error;}
     }}

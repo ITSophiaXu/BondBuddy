@@ -60,7 +60,7 @@ export function fixture(){
   return {owner:ownerId,workspace,otherWorkspace,project:project(projectId),otherProject:project(otherProjectId),materials,calls:[] as Call[],unexpected:[] as string[],errors:[] as string[],
     drafts:[] as DraftRequest[],checks:[] as CheckRequest[],exports:[] as {checkId:string;body:ExportRequest}[],manuals:[] as {checkId:string;body:IntegrityManual}[],accepted:new Map<string,Accepted>(),acceptedManuals:new Map<string,{checkId:string;body:IntegrityManual}>(),
     dropDraft:false,dropCheck:undefined as 'before'|'after'|undefined,dropExport:undefined as 'before'|'after'|undefined,dropManual:undefined as 'before'|'after'|undefined,
-    rejectCheck:undefined as 'CREDITS_INSUFFICIENT'|'INPUT_REVISION_CONFLICT'|'QUOTE_CHANGED'|undefined,rejectExport:false,rejectManual:false,
+    rejectCheck:undefined as 'CREDITS_INSUFFICIENT'|'INPUT_REVISION_CONFLICT'|'QUOTE_CHANGED'|'BILLING_REQUEST_REJECTED'|'BILLING_PROTOCOL_REPLAY_ONLY'|undefined,rejectExport:false,rejectManual:false,
     workspaceRead:undefined as IntegrityWorkspace|undefined,omitRequestedRun:false,allowUploads:false,uploads:[] as Dto<'UploadCreateRequest'>[],uploadBytes:0,uploadMaterial:undefined as Dto<'MaterialResponse'>|undefined,reusedUploadMaterial:undefined as Dto<'MaterialResponse'>|undefined,uploadReceiptMismatch:undefined as 'sha256'|'byte_size'|'media_type'|'role'|undefined,available:10000};
 }
 export type State=ReturnType<typeof fixture>;

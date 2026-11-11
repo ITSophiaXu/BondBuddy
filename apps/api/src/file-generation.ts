@@ -5,8 +5,8 @@ import {type Static} from '@sinclair/typebox';
 import {FilePreparationSaveSchema,FileGenerationSubmitSchema,FileBuiltinAdoptSchema,FileTemplateImportQuerySchema,FileTemplateCombineSchema,FileTemplateMatchQuerySchema,FileTemplatePinSchema,emptyFileGenerationPreparation,M4_DOCUMENT_FIXED_PRICE,PROJECT_DOCUMENT_CATALOG,
  type FileGenerationPreparation,type FileGenerationSubmit,type FileGenerationBatch,type FileGenerationWorkspace,type FileGenerationQuote,type FileTemplateChoice,type M4DocumentType,type M4MaterialPin,type M4TemplateRef,type WorkpaperEntry} from '@bondbuddy/contracts';
 import {project,transaction,uid,date,conflict,missing,digest,Problem,type PrivateBlobs} from './data.js';
-import {encodeBillingDto,serializeInt64,isOutcomePriceVersion,OUTCOME_PRICE_VERSION,type BillingWireDto,type FileGenerationPricing} from '@bondbuddy/contracts';
-import {automaticBillingEnabled} from './automatic-billing-context.js';
+import {encodeBillingDto,serializeInt64,isOutcomePriceVersion,isAutomaticPriceVersion,OUTCOME_PRICE_VERSION,type BillingWireDto,type FileGenerationPricing} from '@bondbuddy/contracts';
+import {automaticBillingEnabled,withAutomaticBilling} from './automatic-billing-context.js';
 import {resolveAutomaticTaskPriceVersion} from './automatic-price-versions.js';
 import {loadAutomaticTaskTariff} from './automatic-tariff-repository.js';
 import {requireFileUpdateCredits} from './project-file-billing.js';
@@ -23,6 +23,7 @@ import {templateStructure} from './file-template-preview.js';
 import {renderTemplatePreview} from './file-template-renderer.js';
 import {builtinBundle,bundleBytes,storeTemplateSet,readTemplateSets,templateSetDto,templateRecord,storeTemplateMaterial,resolveTemplate,unpackTemplates,templateMatches,TEMPLATE_MAX_BYTES} from './file-template-library.js';
 type Db=Pool|PoolClient;
+const quotationInput=(b:FileGenerationSubmit)=>({expected_revision:b.expected_revision,source_version_id:b.source_version_id,source_selection_revision:b.source_selection_revision});
 const invalid=(message:string):never=>{throw new Problem(422,'VALIDATION_FAILED',message);};
 async function preparation(db:Db,user:string,id:string){
  await project(db,user,id);const r=(await db.query('SELECT * FROM bb_file_generation_preparations WHERE owner_user_id=$1 AND project_id=$2',[user,id])).rows[0];
@@ -79,7 +80,7 @@ async function quote(db:PoolClient,blobs:PrivateBlobs,user:string,id:string,b:Fi
  if(enforcePrice||!commercial){
   if(!ready)throw conflict('QUOTE_REQUIRED','文件范围报价待核实，请查看各份文件的报价状态。');
   if(points!==b.expected_points||b.price_version!==price.price_version)throw conflict('QUOTE_CHANGED','文件数量或价格已变化，请重新核对。');
-  if(documents&&(b.document_quotes?.length!==documents.length||documents.some(d=>!b.document_quotes?.some(q=>q.document_type===d.document_type&&q.draft_version===d.draft_version&&q.scope_quote_id===d.scope_quote_id))))throw conflict('QUOTE_CHANGED','文件模板、要求或范围报价已变化，请重新核对。');
+  if(documents?.length&&(b.document_quotes?.length!==documents.length||documents.some(d=>!b.document_quotes?.some(q=>q.document_type===d.document_type&&q.draft_version===d.draft_version&&q.scope_quote_id===d.scope_quote_id))))throw conflict('QUOTE_CHANGED','文件模板、要求或范围报价已变化，请重新核对。');
  }
  return {quote:{count,points,price_version:price.price_version,omitted,...(commercial?{auto_charge:price.mode==='automatic',quote_status:ready?'ready':'pending_scope',documents}: {})},pricing:price,prep:p,cat,source};
 }
@@ -171,7 +172,14 @@ export function registerFileGeneration(app:FastifyInstance,db:()=>Pool,owner:(r:
  });
  app.post(base+'/quote',{schema:{body:FileGenerationSubmitSchema}},async r=>{
   const user=await owner(r),projectId=id(r);
-  return transaction(db(),async c=>{await project(c,user,projectId,true);return (await quote(c,blobs(),user,projectId,r.body as FileGenerationSubmit,commercial)).quote;});
+  return transaction(db(),async c=>{
+   await project(c,user,projectId,true);const b=r.body as FileGenerationSubmit,result=(await quote(c,blobs(),user,projectId,b,commercial)).quote;
+   if(!result.auto_charge||result.quote_status!=='ready')return result;
+   const quoteId=uid(),expires=new Date(Math.min(Date.now()+7*86400000,...(result.documents??[]).map(d=>Date.parse(d.scope_expires_at??'')||Infinity))).toISOString();
+   const saved={...result,quote_id:quoteId,expires_at:expires};
+   await c.query('INSERT INTO bb_file_generation_quotes(id,owner_user_id,project_id,input_hash,quote,price_version,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)',[quoteId,user,projectId,inputManifestHash(quotationInput(b)),saved,result.price_version,expires]);
+   return saved;
+  });
  });
  app.post(base+'/stop-submission',{schema:{body:FileGenerationSubmitSchema}},async r=>{
   const user=await owner(r),projectId=id(r),b=r.body as FileGenerationSubmit,hash=inputManifestHash({projectId,...b});
@@ -190,23 +198,30 @@ export function registerFileGeneration(app:FastifyInstance,db:()=>Pool,owner:(r:
    await project(c,user,projectId,true);await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[user+':file-generation:'+b.request_id]);
    const old=(await c.query('SELECT * FROM bb_file_generation_batches WHERE owner_user_id=$1 AND request_id=$2',[user,b.request_id])).rows[0];if(old){if(old.request_hash.trim()!==hash)throw conflict('IDEMPOTENCY_CONFLICT','请求已用于其他文件包。');return old;}
    if((await c.query('SELECT 1 FROM bb_file_generation_cancellations WHERE owner_user_id=$1 AND request_id=$2',[user,b.request_id])).rowCount)throw conflict('INPUT_REVISION_CONFLICT','这次提交已停止，请重新确认生成。');
-   const {quote:q,pricing:price,prep,cat,source}=await quote(c,blobs(),user,projectId,b,commercial,true);let workpapers:string|null=null,documents:string|null=null;
+   const locked=b.quote_id?(await c.query('SELECT *,expires_at>clock_timestamp() AS valid FROM bb_file_generation_quotes WHERE id=$1 AND owner_user_id=$2 AND project_id=$3 FOR UPDATE',[b.quote_id,user,projectId])).rows[0]:null;
+   if(b.quote_id&&(!locked||!locked.valid||locked.input_hash.trim()!==inputManifestHash(quotationInput(b))||locked.accepted_batch_id||locked.price_version!==b.price_version||Number(locked.quote.points)!==b.expected_points))throw conflict('QUOTE_CHANGED','原文件包报价已失效或范围不一致，请重新准备。');
+   const pin=locked&&isAutomaticPriceVersion(locked.price_version)?locked.price_version:undefined;
+   const prepared=pin?await withAutomaticBilling(c,true,()=>quote(c,blobs(),user,projectId,b,commercial,true),pin):await quote(c,blobs(),user,projectId,b,commercial,true);
+   const {quote:q,pricing:price,prep,cat,source}=prepared;let workpapers:string|null=null,documents:string|null=null;
    // Check the entire mixed package under the wallet lock before either child is
    // admitted. Each original child keeps its own accepted tariff and settlement.
    if(price.mode==='automatic')await requireFileUpdateCredits(c,user,q.points,true);
    if(prep.document_types.includes('workpaper')){
     const automatic=prep.workpaper_template_mode==='automatic';
     const templates:Record<string,{template:M4TemplateRef;material:M4MaterialPin}>={};if(!automatic)for(const item of prep.item_ids)templates[item]=await resolveTemplate(c,blobs(),user,projectId,prep.mappings[item],'workpaper');
-    workpapers=await createWorkpaperBatch(c,blobs,user,projectId,{request_id:'fg-wp:'+b.request_id,start_mode:'direct',catalogue_id:cat.id,catalogue_sha256:cat.sha256.trim(),item_ids:prep.item_ids,source_version_id:source.version_id,source_selection_revision:source.selection_revision,requirements:prep.requirements,expected_points:prep.item_ids.length*price.workpaper_points,price_version:price.mode==='automatic'?price.price_version:M4_DOCUMENT_FIXED_PRICE.version},automatic?undefined:{templates,materials:prep.materials},automatic?prep.materials:[]);
+    const create=()=>createWorkpaperBatch(c,blobs,user,projectId,{request_id:'fg-wp:'+b.request_id,start_mode:'direct',catalogue_id:cat.id,catalogue_sha256:cat.sha256.trim(),item_ids:prep.item_ids,source_version_id:source.version_id,source_selection_revision:source.selection_revision,requirements:prep.requirements,expected_points:prep.item_ids.length*price.workpaper_points,price_version:price.mode==='automatic'?price.price_version:M4_DOCUMENT_FIXED_PRICE.version},automatic?undefined:{templates,materials:prep.materials},automatic?prep.materials:[]);
+    workpapers=pin?await withAutomaticBilling(c,true,create,pin):await create();
    }
    const types=prep.document_types.filter(t=>t!=='workpaper');
    if(types.length){
     const drafts=q.documents??await prepareDocuments(c,blobs(),user,projectId,prep,source,false);
-    const batch=await createProjectFileBatch(c,user,projectId,{request_id:'fg-doc:'+b.request_id,source_version_id:source.version_id,expected_selection_revision:source.selection_revision,documents:drafts.map(d=>({document_type:d.document_type as (typeof types)[number],draft_version:d.draft_version,...(commercial?{scope_quote_id:d.scope_quote_id}:{})})),...(commercial&&isOutcomePriceVersion(q.price_version)?{price_version:q.price_version,expected_points:drafts.reduce((sum,d)=>sum+d.points,0)}:{})},commercial);
+    const create=()=>createProjectFileBatch(c,user,projectId,{request_id:'fg-doc:'+b.request_id,source_version_id:source.version_id,expected_selection_revision:source.selection_revision,documents:drafts.map(d=>({document_type:d.document_type as (typeof types)[number],draft_version:d.draft_version,...(commercial?{scope_quote_id:d.scope_quote_id}:{})})),...(commercial&&isOutcomePriceVersion(q.price_version)?{price_version:q.price_version,expected_points:drafts.reduce((sum,d)=>sum+d.points,0)}:{})},commercial);
+    const batch=pin?await withAutomaticBilling(c,true,create,pin):await create();
     if('scope_pending' in batch)throw conflict('QUOTE_REQUIRED','文件范围报价尚未就绪，本批文件均未提交。');
     documents=batch.id;
    }
-   return (await c.query('INSERT INTO bb_file_generation_batches(id,owner_user_id,project_id,request_id,request_hash,snapshot,workpaper_batch_id,document_batch_id,points) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[uid(),user,projectId,b.request_id,hash,{preparation:prep,source,quote:q},workpapers,documents,q.points])).rows[0];
+   const batch=(await c.query('INSERT INTO bb_file_generation_batches(id,owner_user_id,project_id,request_id,request_hash,snapshot,workpaper_batch_id,document_batch_id,points) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',[uid(),user,projectId,b.request_id,hash,{preparation:prep,source,quote:locked?.quote??q},workpapers,documents,q.points])).rows[0];
+   if(locked)await c.query('UPDATE bb_file_generation_quotes SET accepted_batch_id=$2 WHERE id=$1',[locked.id,batch.id]);return batch;
   });return batchDto(db(),user,projectId,row);
  });
  app.get(base+'/batches/:batch_id',async r=>{const user=await owner(r),projectId=id(r);await project(db(),user,projectId);const row=(await db().query('SELECT * FROM bb_file_generation_batches WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,projectId,(r.params as {batch_id:string}).batch_id])).rows[0];if(!row)throw missing();return batchDto(db(),user,projectId,row);});
