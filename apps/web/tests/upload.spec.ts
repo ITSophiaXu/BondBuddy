@@ -388,14 +388,21 @@ test('lost byte acknowledgement automatically completes the received upload with
 });
 
 test('server refresh reconciles a delayed receipt but never matches only a filename', async ({ page }) => {
+  await page.clock.install();
   const fixture = state();
   await installApi(page, fixture);
   await page.route('**/materials/uploads/*/complete', route => json(route,503,{code:'DATA_UNAVAILABLE'}));
   await login(page, 'owner_a');
   const buffer = Buffer.from('%PDF synthetic delayed receipt');
   await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'delayed.pdf', mimeType:'application/pdf', buffer});
+  const pending = page.locator('.material-file-row[data-upload-id]').filter({hasText:'delayed.pdf'});
+  // Wait for automatic confirmation to settle before testing explicit discovery.
+  await expect.poll(async () => {
+    await page.clock.runFor(2000);
+    return await pending.textContent();
+  }, {timeout:20_000,intervals:[100]}).toContain('暂时无法确认保存结果');
   const row = page.locator('[data-upload-phase="uncertain"]').filter({hasText:'delayed.pdf'});
-  await expect(row).toContainText('暂时无法确认保存结果');
+  await expect(row).toHaveAttribute('data-upload-phase','uncertain');
   const material: Material = {material_id:'delayed-material', material_version:1, upload_id:[...fixture.uploads.keys()][0], role:'audit', filename:'delayed.pdf', media_type:'application/pdf', byte_size:buffer.length, sha256:'a'.repeat(64), state:'persisted', persisted_at:now, error:null};
   fixture.materials.set(material.material_id,material);
   for (const invalid of [

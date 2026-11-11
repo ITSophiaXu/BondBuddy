@@ -50,7 +50,7 @@ import { agreementHref, PASSWORD_HELP, registerErrorMessage, USERNAME_HELP, USER
 import { referenceSnapshotResolver } from './reference';
 import { MaterialProcessing, materialProcessingKey } from './material-processing';
 import './material-processing.css';
-import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES, hasAuthoringSource, SOURCE_PROSPECTUS_REQUIRED_MESSAGE } from '@bondbuddy/contracts';
+import { M1_MATERIAL_PARTITIONS, M1_UPLOAD_MIME_TYPES, M1_UPLOAD_LIMITS, FUNDING_PURPOSES, hasAuthoringSource, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, isUploadInspectionPublicReason } from '@bondbuddy/contracts';
 import './style.css';
 import './update-form.css';
 import './authoring-onboarding.css';
@@ -1034,6 +1034,39 @@ function sha256(bytes: ArrayBuffer) {
 
 function uploadName(upload:LocalUpload){return upload.declaration?.filename??upload.file?.name??'待确认材料';}
 function uploadSize(upload:LocalUpload){return upload.declaration?.byte_size??upload.file?.size??0;}
+function uploadIsSaved(upload:LocalUpload){return upload.phase==='persisted'&&!!upload.material;}
+function acceptUploadMaterial(upload:LocalUpload,material:Dto<'MaterialResponse'>){
+  upload.material=validateUploadMaterial(upload.declaration!,material);
+  upload.phase='persisted';upload.error=undefined;upload.restored=false;upload.needsFile=false;upload.needsReplacement=false;
+  upload.sentBytes=uploadSize(upload);
+}
+function matchingUploadMaterial(upload:LocalUpload,materials:Dto<'MaterialResponse'>[]){
+  if(!upload.declaration||upload.role!==upload.declaration.role)return;
+  const record=upload.recoveryRecord;
+  const uploadIds=new Set([upload.uploadId,record?.uploadId,...(record?.previousUploadIds??[])].filter((id):id is string=>!!id));
+  if(!uploadIds.size)return; // A prepared declaration alone is not an attempted upload.
+  const matches=materials.filter(material=>{try{validateUploadMaterial(upload.declaration!,material);return true;}catch{return false;}});
+  if(matches.length!==1)return;
+  const material=matches[0],pin=record?.material;
+  const original=uploadIds.has(material.upload_id)||!!pin&&pin.material_id===material.material_id&&pin.material_version===material.material_version&&pin.upload_id===material.upload_id;
+  const rejected=upload.needsReplacement||!!record?.lastError&&uploadNeedsReplacement(new ApiError(record.lastError.status,record.lastError.code,
+    isUploadInspectionPublicReason(record.lastError.uploadReason)?{uploadReason:record.lastError.uploadReason}:{}));
+  // An in-flight operation may only settle from its own receipt. Once waiting
+  // has ended, exact content in this scoped partition also proves dedup reuse.
+  if(!original&&(!['failed','cancelled','uncertain'].includes(upload.phase)||rejected))return;
+  return material;
+}
+async function forgetSavedUpload(upload:LocalUpload){
+  // resume() holds this operation's journal lock until it settles. Its finally
+  // retries cleanup after releasing the lock when discovery confirms it first.
+  if(!uploadIsSaved(upload)||upload.controller||upload.journalDone||upload.owner!==identity)return;
+  try{
+    const recovery=uploadRecovery(upload.projectId,upload.owner);
+    if(recovery.list().some(item=>item.id===upload.key))await recovery.forget(upload.key);
+    if(!recovery.list().length)uploadJournalErrors.delete(upload.projectId);
+    upload.journalDone=true;
+  }catch(error){if(upload.owner===identity)uploadJournalErrors.set(upload.projectId,'材料已保存，本机恢复记录尚未清除。'+uploadRecoveryMessage(error));}
+}
 function uploadRecovery(projectId:string,owner=identity){
   if(!owner)throw new UserFacingError('请重新登录后确认原上传。');const key=JSON.stringify([owner,projectId]);
   let recovery=uploadRecoveries.get(key);if(!recovery){recovery=new UploadRecovery(api,owner,projectId,'authoring-material',()=>identity===owner);uploadRecoveries.set(key,recovery);}return recovery;
@@ -1124,15 +1157,18 @@ async function performUpload(upload: LocalUpload) {
   const syncRecord=()=>{const record=recovery.list().find(item=>item.id===upload.key);if(record){upload.uploadId=record.uploadId;upload.recoveryRecord=record;}};
   const accept=(material:Dto<'MaterialResponse'>)=>{
     if(controller.signal.aborted||!isCurrentOwner())return;
-    syncRecord();upload.material=material;upload.phase='persisted';upload.error=undefined;upload.restored=false;upload.needsFile=false;upload.sentBytes=uploadSize(upload);
+    if(uploadIsSaved(upload))return;
+    acceptUploadMaterial(upload,material);
+    // Local bookkeeping must not discard an already validated server receipt.
+    try{syncRecord();}catch(error){uploadJournalErrors.set(upload.projectId,'材料已保存，本机恢复记录暂不可读。'+uploadRecoveryMessage(error));}
     recoveryStates.set(upload.projectId,{state:'ready'});updateMaterialWorkspace(upload.projectId);void refreshProjectMaterials(upload.projectId,epoch);
   };
   const resume=(file?:File)=>recovery.resume(upload.key,{file,reselectExpiredSession:!!file&&explicitFileReselection,previousRecord,signal:controller.signal,status:()=>{
-    if(!isCurrentOwner()||controller.signal.aborted)return;
+    if(!isCurrentOwner()||controller.signal.aborted||uploadIsSaved(upload))return;
     const record=recovery.list().find(item=>item.id===upload.key);if(record){upload.uploadId=record.uploadId;upload.recoveryRecord=record;}
     upload.phase=record?.stage==='confirming'?'saving':record?.stage==='bytes_unknown'?'uploading':'checking';updateMaterialWorkspace(upload.projectId);
   },progress:(loaded)=>{
-    if(!isCurrentOwner()||controller.signal.aborted)return;upload.sentBytes=Math.min(uploadSize(upload),Math.max(0,loaded));upload.phase=upload.sentBytes>=uploadSize(upload)?'saving':'uploading';updateMaterialWorkspace(upload.projectId);
+    if(!isCurrentOwner()||controller.signal.aborted||uploadIsSaved(upload))return;upload.sentBytes=Math.min(uploadSize(upload),Math.max(0,loaded));upload.phase=upload.sentBytes>=uploadSize(upload)?'saving':'uploading';updateMaterialWorkspace(upload.projectId);
   }});
   try{
     if(!upload.declaration){
@@ -1162,7 +1198,19 @@ async function performUpload(upload: LocalUpload) {
     }
     const material=await resume(upload.file);if(controller.signal.aborted||!isCurrentOwner())return;accept(material);
   }catch(error){
-    if(!isCurrentOwner())return;
+    if(!isCurrentOwner()||uploadIsSaved(upload))return;
+    // The final journal write can fail after complete returned a valid receipt.
+    // Keep that scoped receipt as success and report local cleanup separately.
+    const record=error instanceof UploadRecoveryStorageError?error.record:undefined;
+    const confirmed=error instanceof UploadRecoveryStorageError?error.confirmedMaterial:undefined;
+    if(confirmed&&record?.stage==='saved'&&record.id===upload.key&&record.owner===upload.owner&&record.projectId===upload.projectId&&record.purpose==='authoring-material'){
+      try{
+        const material=validateUploadMaterial(upload.declaration!,confirmed);
+        upload.uploadId=record.uploadId;upload.recoveryRecord=record;accept(material);
+        uploadJournalErrors.set(upload.projectId,'材料已保存，本机恢复记录尚未清除。'+uploadRecoveryMessage(error));
+        updateMaterialWorkspace(upload.projectId);return;
+      }catch{/* An invalid receipt must retain the original failure. */}
+    }
     if(controller.signal.aborted&&upload.phase==='queued')return;
     if(upload.phase==='cancelled'||upload.phase==='uncertain'&&controller.signal.aborted)return;
     try{syncRecord();}catch{/* Keep the visible original file and the storage error. */}
@@ -1176,19 +1224,22 @@ async function performUpload(upload: LocalUpload) {
     if(uncertain){
       upload.error='正在确认原上传的保存结果，无需重复上传…';updateMaterialWorkspace(upload.projectId);
       await refreshProjectMaterials(upload.projectId,epoch);
-      for(let attempt=0;attempt<3&&isCurrentOwner()&&!controller.signal.aborted&&upload.phase==='uncertain';attempt++){
+      for(let attempt=0;attempt<3&&isCurrentOwner()&&!controller.signal.aborted&&!uploadIsSaved(upload)&&upload.phase==='uncertain';attempt++){
         if(attempt)await new Promise(resolve=>setTimeout(resolve,2000));
         if(!isCurrentOwner()||controller.signal.aborted||upload.phase!=='uncertain')break;
         try{const material=await resume();if(controller.signal.aborted||!isCurrentOwner())return;accept(material);}
         catch(confirmationError){
-          if(!isCurrentOwner()||controller.signal.aborted)return;upload.phase='uncertain';upload.error=uploadRecoveryMessage(confirmationError);
+          if(!isCurrentOwner()||controller.signal.aborted||uploadIsSaved(upload))return;upload.phase='uncertain';upload.error=uploadRecoveryMessage(confirmationError);
           if(confirmationError instanceof UploadRecoveryNeedsFileError){upload.needsFile=true;upload.phase='failed';break;}
           if(confirmationError instanceof ApiError&&confirmationError.status>0&&confirmationError.status<500||confirmationError instanceof UploadRecoveryStorageError||confirmationError instanceof UploadRecoveryLockError||confirmationError instanceof UploadRecoveryConflictError||confirmationError instanceof UploadRecoveryReceiptError)break;
         }
       }
       if(isCurrentOwner()&&!controller.signal.aborted&&!upload.material){if(upload.phase==='uncertain')upload.error='暂时无法确认保存结果。上传记录已保留，可稍后重试保存。'+(error instanceof ApiError?errorReference(error):'');else upload.error??='暂时无法确认保存结果，请稍后确认原上传。';updateMaterialWorkspace(upload.projectId);}
     }
-  }finally{if(upload.controller===controller)upload.controller=undefined;}
+  }finally{
+    if(upload.controller===controller)upload.controller=undefined;
+    if(isCurrentOwner()&&uploadIsSaved(upload)){await forgetSavedUpload(upload);updateMaterialWorkspace(upload.projectId);}
+  }
 }
 async function refreshProjectMaterials(projectId: string, token: number) {
   if (!identity) return;
@@ -1208,6 +1259,7 @@ async function refreshProjectMaterials(projectId: string, token: number) {
       cursor = page.next_cursor;
     }
     const fetched: Dto<'MaterialResponse'>[] = [];
+    const missingIds = new Set<string>();
     const checkedIds = new Set<string>();
     while (!controller.signal.aborted) {
       for (const upload of localUploads.get(projectId) ?? []) {
@@ -1218,7 +1270,7 @@ async function refreshProjectMaterials(projectId: string, token: number) {
       for (const id of batch) checkedIds.add(id);
       const records = await Promise.all(batch.map(async id => {
         try { return await api.material(projectId, id, controller.signal); }
-        catch (error) { if (error instanceof ApiError && error.status === 404) return undefined; throw error; }
+        catch (error) { if (error instanceof ApiError && error.status === 404) { missingIds.add(id); return undefined; } throw error; }
       }));
       fetched.push(...records.filter((item): item is Dto<'MaterialResponse'> => item !== undefined));
     }
@@ -1226,31 +1278,33 @@ async function refreshProjectMaterials(projectId: string, token: number) {
     const current = fetched.filter((item): item is Dto<'MaterialResponse'> => item !== undefined);
     recoveredMaterials.set(projectId, current);
     for (const upload of localUploads.get(projectId) ?? []) {
-      if (upload.owner !== owner || upload.projectId !== projectId || upload.phase !== 'uncertain' || !upload.declaration || upload.restored) continue;
-      // Match the content and partition, including server-side duplicate reuse.
-      // A matching filename or upload ID alone is not a persistence receipt.
-      const matches = current.filter(material => {try{validateUploadMaterial(upload.declaration!,material);return true;}catch{return false;}});
-      if (matches.length !== 1) continue;
-      upload.material = matches[0]; upload.phase = 'persisted'; upload.error = undefined;
-      upload.sentBytes = uploadSize(upload);
+      if (upload.owner !== owner || upload.projectId !== projectId || uploadIsSaved(upload)) continue;
+      const material=matchingUploadMaterial(upload,current);
+      if(material){
+        acceptUploadMaterial(upload,material);
+        // The authoritative saved receipt ends this transfer too. A late
+        // bytes-pending response must not start another PUT or session.
+        upload.controller?.abort();
+      }
     }
-    const currentIds = new Set(current.map(item => item.material_id));
     for(const upload of localUploads.get(projectId)??[]){
       if(upload.owner!==owner||upload.phase!=='persisted'||!upload.material||upload.journalDone||!upload.declaration)continue;
       const material=current.find(item=>item.material_id===upload.material!.material_id&&item.material_version===upload.material!.material_version);if(!material)continue;
       try{validateUploadMaterial(upload.declaration,material);}catch{continue;}
-      try{const recovery=uploadRecovery(projectId,owner);if(recovery.list().some(item=>item.id===upload.key))await recovery.forget(upload.key);upload.journalDone=true;}
-      catch(error){if(owner===identity)uploadJournalErrors.set(projectId,'材料已保存，本机恢复记录尚未清除。'+uploadRecoveryMessage(error));}
+      await forgetSavedUpload(upload);
       if(controller.signal.aborted||token!==epoch||owner!==identity)return;
     }
-    localUploads.set(projectId, (localUploads.get(projectId) ?? []).filter(upload => upload.phase !== 'persisted' || !!upload.material && currentIds.has(upload.material.material_id)));
+    // Cleanup can yield while another upload completes. Only an explicit 404
+    // invalidates a local receipt; absence from this older snapshot does not.
+    localUploads.set(projectId, (localUploads.get(projectId) ?? []).filter(upload => !uploadIsSaved(upload) || !missingIds.has(upload.material!.material_id)));
     recoveryStates.set(projectId, { state: 'ready' });
   } catch (error) {
     if (controller.signal.aborted || token !== epoch || owner !== identity) return;
     recoveredMaterials.delete(projectId);
-    localUploads.set(projectId, (localUploads.get(projectId) ?? []).filter(upload => upload.phase !== 'persisted'));
+    // A failed discovery read cannot invalidate this page's trusted complete
+    // receipts. Readiness remains blocked until the server list is available.
     const message = error instanceof ApiError && error.status === 501
-      ? '材料事件恢复接口暂不可用；当前项目的服务器材料记录尚未确认。本地选择不会显示为已保存。'
+      ? '材料事件恢复接口暂不可用，请稍后刷新材料列表。'
       : `无法读取服务器材料记录。${friendlyError(error,'read')}`;
     recoveryStates.set(projectId, { state: 'unavailable', message });
   } finally {
