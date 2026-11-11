@@ -8,6 +8,8 @@
 
 前提：本机安装 Node.js 22 或更新版本、npm、Git 和 Docker，Docker 正在运行 Linux 容器，并可下载所需镜像与依赖。Windows/macOS 可使用 Docker Desktop 的 Linux 容器环境；Linux 可使用本机 Docker Engine。命令不连接远程 Docker 主机。
 
+依赖安装沿用 npm 传入的 registry 配置；也可用 `PR_GATE_NPM_REGISTRY`、`PR_GATE_PIP_INDEX_URL` 指定本机可访问的公共 HTTPS 包代理。地址不得携带凭据、查询参数或片段；下载源会记录在回执中，仅用于安装步骤，不传给测试。保留 npm 锁文件的完整性校验，不关闭 TLS 校验。npm 诊断日志与每次运行的回执保留在 `.local/pr-gate/runs/<运行编号>/`。
+
 先 `git fetch` 并 rebase 到最新 `origin/develop`，提交全部改动，确认工作区干净，然后从仓库根目录运行：
 
 ```sh
