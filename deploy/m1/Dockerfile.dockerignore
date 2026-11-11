@@ -20,6 +20,7 @@ product-prototype
 !product-prototype/public/credits.css
 !product-prototype/public/subscription-billing.css
 !product-prototype/public/billing-price-admin.css
+!product-prototype/public/payment-experience.css
 !product-prototype/public/workpaper-entry.css
 !product-prototype/public/upload-progress.css
 !product-prototype/public/material-results.css
