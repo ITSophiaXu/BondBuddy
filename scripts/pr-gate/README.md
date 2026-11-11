@@ -19,7 +19,7 @@ npm run pr-gate
 命令依次完成：
 
 1. 检查已跟踪和未跟踪文件均无改动，记录 HEAD commit、tree 和 develop 基点。
-2. 从该提交准备固定源码，在本机 Linux 容器中启动一次性 PostgreSQL 16 和 Azurite；不挂载宿主凭据或已有数据库。
+2. 传递该提交及其完整源码树的 Git 对象，在本机 Linux 容器里还原同一 commit/tree 的干净浅检出，然后启动一次性 PostgreSQL 16 和 Azurite；不复制宿主 Git 配置、凭据、hooks 或父提交历史，不挂载已有数据库。
 3. 安装 JavaScript、Python、浏览器和文档渲染依赖，执行 `npm run build` 与 `npm run check:contracts`。
 4. 依次运行 `.github/workflows/pr-gate.yml` 矩阵的全部 8 行；每行使用全新的测试数据库和 Blob 状态。分片失败仍继续收集其余分片的结果。
 5. 调用原有 `run.mjs merge` 汇总全部分片，写入 `.local/pr-gate/receipt.json`；保留失败和跳过清单、日志及脚本生成的建议例外。
@@ -52,6 +52,7 @@ pr-gate 回执：commit=<完整提交>；tree=<完整树哈希>；通过数=<测
 | 文件 | 作用 |
 | --- | --- |
 | `scripts/pr-gate/local.mjs` | 本地环境编排、回执写入与核对 |
+| `scripts/pr-gate/git-snapshot.mjs` | 固定提交的对象传递、浅检出与 commit/tree 完整性校验 |
 | `.github/workflows/pr-gate.yml` | 测试环境、8 行矩阵及手动 GitHub Actions 入口 |
 | `scripts/pr-gate/run.mjs` | 自动发现测试、逐个运行、判定和 merge 汇总；保持原判定规则 |
 | `scripts/pr-gate/exclusions.json` | 经确认的例外清单，每条必须写原因 |
