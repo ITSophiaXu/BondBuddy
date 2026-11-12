@@ -1,3 +1,4 @@
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun } from './test-authoring-source.js';
 import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
 import { test } from 'node:test';
@@ -163,11 +164,11 @@ test('admin library routes: 404 for ordinary users, read-only for readers, actio
     // A selection trace may contain private library identifiers and review details. It belongs only
     // in the durable job checkpoint, never in run polling, SSE, or Word delivery metadata.
     const projectId = created.json().project_id as string;
-    const input = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`, headers,
-      payload: JSON.stringify({ draft_revision: 1, material_versions: [], requirement_message_ids: [] }) });
+    const input = await lockSyntheticAuthoringInput(app,projectId,headers);
     assert.equal(input.statusCode, 201, input.body);
+    const quoteId = await quoteSyntheticAuthoringRun(app,pool,plain,projectId,input.json(),headers);
     const runRequest = { execution_request_id: `library-output-${suffix}`, project_id: projectId, input_revision: 1,
-      input_hash: input.json().input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest',
+      input_hash: input.json().input_hash, quote_id: quoteId, task_kind: 'update', input_manifest_ref: 'synthetic-manifest',
       storage_origin: 'cloud', workspace_id: 'synthetic-workspace' };
     const started = await app.inject({ method: 'POST', url: '/api/v1/runs/execute', headers, payload: JSON.stringify(runRequest) });
     assert.equal(started.statusCode, 202, started.body);
