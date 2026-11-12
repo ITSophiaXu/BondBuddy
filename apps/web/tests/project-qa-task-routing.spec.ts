@@ -44,7 +44,7 @@ for(const operation of ['prepare','answer'] as const)for(const status of ['pause
         await expect(page.locator('.qa-question-list')).toContainText(state.workspace.draft.questions[0].question);
         await expect(page.locator('#qa-download')).toHaveCount(0);
       }else{
-        await expect(page.locator('.qa-run-head')).toContainText(operation==='prepare'?'识别问题清单':'回答问题');
+        await expect(page.locator('.qa-run-head')).toContainText(operation==='prepare'?'处理问题清单':'回填回复文件');
         await expect(page.locator('.qa-run-head')).toContainText(status==='paused'?'等待恢复':'已完成');
       }
       await expect(page.getByText('募集书全文更新',{exact:true})).toHaveCount(0);
