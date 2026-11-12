@@ -1,0 +1,148 @@
+import assert from 'node:assert/strict';
+import { fork, spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { get } from 'node:https';
+import { join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { BROWSER_API_ORIGIN, BROWSER_DATABASE, BROWSER_ORIGIN, BROWSER_PROTOTYPE_ORIGIN, BROWSER_TERMS, browserEnvironment, browserHash, verifyBrowserPlan } from './browser-profiles.mjs';
+import { BROWSER_TOOLS_ROOT, browserToolsEnvironment, probeBrowserTools, verifyBrowserTools } from './browser-tools.mjs';
+
+const here = fileURLToPath(import.meta.url);
+const source = (root, commit, path) => {
+  const result = spawnSync('git', ['--no-replace-objects', 'show', `${commit}:${path}`], { cwd: root, env: { ...process.env, GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1', GIT_ALLOW_PROTOCOL: '' }, maxBuffer: 8 * 1024 * 1024 });
+  assert.ifError(result.error); assert.equal(result.status, 0); return result.stdout;
+};
+export function loadBrowserPlan(root, items, env) {
+  assert.match(env.PR_GATE_BROWSER_PLAN_SHA256, /^[a-f0-9]{64}$/);
+  const bytes = readFileSync(env.PR_GATE_BROWSER_PLAN); assert.equal(browserHash(bytes), env.PR_GATE_BROWSER_PLAN_SHA256);
+  const plan = JSON.parse(bytes);
+  return verifyBrowserPlan(plan, { candidate: { commit: env.GITHUB_SHA, tree: env.PR_GATE_TREE }, runId: env.PR_GATE_RUN_ID,
+    shard: env.PR_GATE_BROWSER_SHARD, files: items.map(item => item.id), sourceBlob: path => source(root, env.GITHUB_SHA, path) });
+}
+
+export function browserInvocation(items, reportFile, env) {
+  return { command: 'npx', args: ['playwright', 'test', ...items.map(item => 'tests/' + item.id.split('/').at(-1)), '--reporter=line,json'],
+    env: { ...env, PLAYWRIGHT_JSON_OUTPUT_FILE: reportFile, CI: env.CI ?? '1' } };
+}
+
+/** The child owns API/Vite/prototype lifetimes and reports actual readiness. */
+export async function startBrowserRuntime(root, items, inherited) {
+  const plan = loadBrowserPlan(root, items, inherited);
+  let { env, removed } = browserEnvironment(inherited, plan);
+  if (plan.needs.ocr) { assert.match(inherited.PR_GATE_BROWSER_TOOLS_SHA256, /^[a-f0-9]{64}$/); env = browserToolsEnvironment(env); }
+  const control = { ...env, PR_GATE_BROWSER_CONTROL: JSON.stringify({ root, plan, removed, environment: Object.fromEntries(Object.entries(env).filter(([key]) => key in plan.environment || ['PATH', 'TESSDATA_PREFIX', 'BB_OCR_TEST_FONT'].includes(key))) }) };
+  const child = fork(here, ['serve'], { cwd: root, env: control, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+  let final, ready, failure;
+  const ended = new Promise(done => child.once('exit', (code, signal) => done({ code, signal })));
+  try {
+    ready = await new Promise((done, reject) => {
+      const timer = setTimeout(() => reject(new Error('Browser runtime readiness timed out')), 120_000);
+      child.on('message', message => { if (message.type === 'ready') { clearTimeout(timer); done(message.evidence); }
+        if (message.type === 'failed') { clearTimeout(timer); reject(new Error(message.error)); }
+        if (message.type === 'finished') final = message.evidence;
+      });
+      child.once('error', error => { clearTimeout(timer); reject(error); });
+      child.once('exit', () => { clearTimeout(timer); if (!ready) reject(new Error('Browser runtime exited before readiness')); });
+    });
+  } catch (error) { failure = error; }
+  const cleanup = async () => {
+    if (child.connected) child.send({ type: 'stop' }); else child.kill('SIGTERM');
+    const result = await Promise.race([ended, new Promise(done => { const timer = setTimeout(() => done(null), 30_000); timer.unref(); })]);
+    if (!result) { child.kill('SIGKILL'); await ended; throw new Error('Browser runtime cleanup timed out'); }
+    assert.equal(result.code, 0, 'Browser runtime did not shut down cleanly'); assert.equal(final?.cleanup?.status, 'passed');
+    return final;
+  };
+  if (failure) { try { await cleanup(); } catch { /* original readiness failure remains blocking */ } throw failure; }
+  return { env, plan, evidence: ready, cleanup };
+}
+
+function httpsRead(url, ca) {
+  return new Promise((done, reject) => {
+    const request = get(url, { ca, rejectUnauthorized: true, timeout: 15_000 }, response => {
+      let body = ''; response.setEncoding('utf8'); response.on('data', data => body += data);
+      response.on('end', () => done({ status: response.statusCode, body }));
+    });
+    request.on('error', reject); request.on('timeout', () => request.destroy(new Error('HTTPS readiness timeout')));
+  });
+}
+
+async function serve() {
+  const { root, plan, removed, environment } = JSON.parse(process.env.PR_GATE_BROWSER_CONTROL);
+  delete process.env.PR_GATE_BROWSER_CONTROL;
+  assert.equal(process.platform, 'linux'); assert.equal(root, '/workspace');
+  verifyBrowserPlan(plan, { candidate: plan, runId: process.env.PR_GATE_RUN_ID, shard: process.env.PR_GATE_BROWSER_SHARD,
+    files: plan.files.map(row => row.test_id), sourceBlob: path => source(root, plan.commit, path) });
+  for (const [key, value] of Object.entries(environment)) assert.equal(process.env[key], value, 'Actual browser runtime environment differs');
+  mkdirSync(plan.output_root, { recursive: true });
+  const evidence = { schema: 'pr-gate-browser-runtime-v1', commit: plan.commit, tree: plan.tree, run_id: plan.run_id, shard: plan.shard,
+    plan_sha256: process.env.PR_GATE_BROWSER_PLAN_SHA256, profile_sha256: plan.profile_sha256, files: plan.files,
+    environment, removed_environment_keys: removed, started_at: new Date().toISOString(), pid: process.pid, probes: {}, model_calls: 0,
+    status: 'failed', cleanup: { status: 'pending' } };
+  let api, pool, vite, prototype, prototypeExit, stopping;
+  const save = () => writeFileSync(join(plan.output_root, 'runtime.json'), JSON.stringify(evidence, null, 2) + '\n');
+  const stop = async () => {
+    if (stopping) return stopping;
+    stopping = (async () => {
+      const errors = [];
+      if (evidence.status === 'prepared') {
+        evidence.services_alive_before_cleanup = { web: vite?.httpServer?.listening === true,
+          ...(plan.needs.api ? { api: api?.server?.listening === true } : {}),
+          ...(plan.needs.prototype ? { prototype: prototype?.exitCode === null && prototype?.signalCode === null } : {}) };
+        if (Object.values(evidence.services_alive_before_cleanup).some(value => value !== true)) errors.push('A prepared browser service exited before batch cleanup');
+      }
+      for (const close of [async () => { if (prototype) { prototype.kill('SIGTERM'); const result = await Promise.race([prototypeExit, new Promise(done => { const t = setTimeout(() => done(null), 10_000); t.unref(); })]); if (!result) { prototype.kill('SIGKILL'); await prototypeExit; throw Error('Prototype shutdown timed out'); } } },
+        async () => { await vite?.close(); }, async () => { await api?.close(); }, async () => { await pool?.end(); }]) {
+        try { await close(); } catch (error) { errors.push(error.message); }
+      }
+      if (plan.needs.ocr) try { evidence.tools_final = verifyBrowserTools(BROWSER_TOOLS_ROOT, process.env.PR_GATE_BROWSER_TOOLS_SHA256); } catch (error) { errors.push(error.message); }
+      evidence.finished_at = new Date().toISOString(); evidence.cleanup = { status: errors.length ? 'failed' : 'passed', errors }; save();
+      process.send?.({ type: 'finished', evidence }); process.exitCode = errors.length ? 1 : 0; process.disconnect?.();
+    })(); return stopping;
+  };
+  process.once('SIGTERM', () => void stop()); process.once('SIGINT', () => void stop());
+  process.on('message', message => { if (message.type === 'stop') void stop(); });
+  try {
+    // Candidate source restoration does not carry an ignored .env. Reject it
+    // rather than allowing prototype/API startup to read a user's credentials.
+    for (const path of ['.env', 'product-prototype/.env', 'apps/web/.env', 'apps/web/.env.local', 'apps/web/.env.development', 'apps/web/.env.development.local']) assert.ok(!existsSync(join(root, path)), 'Unexpected environment file in candidate');
+    if (plan.needs.ocr) evidence.probes.ocr = probeBrowserTools(process.env.PR_GATE_BROWSER_TOOLS_SHA256, process.env, plan.output_root);
+    if (plan.needs.parser || plan.needs.ocr) {
+      const result = spawnSync(process.env.BB_PYTHON, ['-c', 'import json,sys,sysconfig;import docx,PIL,pypdf;import bondbuddy_document_parser,bondbuddy_ocr;print(json.dumps(dict(python=sys.version.split()[0],abi=sysconfig.get_config_var("SOABI"))))'], { env: process.env, cwd: root, encoding: 'utf8', timeout: 30_000 });
+      assert.ifError(result.error); assert.equal(result.status, 0, result.stderr); evidence.probes.python = { status: 'passed', ...JSON.parse(result.stdout) };
+    }
+    if (plan.needs.api) {
+      assert.equal(process.env.BB_TEST_DATABASE_URL, BROWSER_DATABASE);
+      const { Pool } = await import('pg'), { createServer } = await import(pathToFileURL(join(root, 'apps/api/dist/server.js'))), { azureBlobs } = await import(pathToFileURL(join(root, 'apps/api/dist/data.js')));
+      pool = new Pool({ connectionString: BROWSER_DATABASE });
+      const row = (await pool.query('SELECT current_database() AS database, inet_server_port() AS port, current_setting(\'server_version_num\') AS version')).rows[0];
+      assert.equal(row.database, 'bondbuddy_local'); assert.equal(row.port, 55433); assert.ok(Number(row.version) >= 160000 && Number(row.version) < 170000);
+      evidence.probes.database = { status: 'passed', ...row };
+      api = createServer({ pool, blobs: azureBlobs('UseDevelopmentStorage=true'), allowedOrigin: BROWSER_ORIGIN, auth: { termsVersion: BROWSER_TERMS, supportContact: 'Synthetic local test support' },
+        enableRunStaging: true, enableSyntheticQueue: false, enableRunRuntime: false });
+      await api.listen({ host: '127.0.0.1', port: 3000 });
+      const health = await fetch(BROWSER_API_ORIGIN + '/health'); assert.equal(health.status, 200);
+      evidence.probes.api = { status: 'passed', origin: BROWSER_API_ORIGIN, health_sha256: browserHash(await health.text()), runtime_enabled: false, synthetic_queue: false };
+    }
+    const { createServer } = await import('vite');
+    vite = await createServer({ root: join(root, 'apps/web'), configFile: join(root, 'apps/web/vite.config.ts'), server: { host: '127.0.0.1', port: 5173, strictPort: true } }); await vite.listen();
+    const ca = readFileSync(process.env.NODE_EXTRA_CA_CERTS), web = await httpsRead(BROWSER_ORIGIN, ca); assert.equal(web.status, 200); assert.match(web.body, /<html/i);
+    evidence.probes.web = { status: 'passed', origin: BROWSER_ORIGIN, ca_sha256: browserHash(ca), tls_verified: true, response_sha256: browserHash(web.body) };
+    if (plan.needs.api) {
+      const response = await httpsRead(BROWSER_ORIGIN + '/api/v1/auth/agreement', ca); assert.equal(response.status, 200);
+      assert.equal(JSON.parse(response.body).terms_version, BROWSER_TERMS);
+      evidence.probes.proxy = { status: 'passed', terms_version: BROWSER_TERMS, response_sha256: browserHash(response.body) };
+    }
+    if (plan.needs.prototype) {
+      prototype = spawn(process.execPath, ['product-prototype/server.mjs'], { cwd: root, env: { PATH: process.env.PATH, HOME: '/tmp', LANG: 'C.UTF-8', PORT: '4320', BOND_BUDDY_RUNTIME: join(plan.output_root, 'prototype-state'),
+        DEEPSEEK_API_KEY: '', TAVILY_API_KEY: '', REGISTRY_API_KEY: '', BOND_BUDDY_ADMIN_TOKEN: '' }, stdio: ['ignore', 'inherit', 'inherit'] });
+      prototypeExit = new Promise(done => { prototype.once('exit', (code, signal) => done({ code, signal })); prototype.once('error', error => done({ error: error.message })); });
+      for (let attempt = 0; ; attempt++) {
+        try { const response = await fetch(BROWSER_PROTOTYPE_ORIGIN + '/api/health'); assert.equal(response.status, 200); evidence.probes.prototype = { status: 'passed', origin: BROWSER_PROTOTYPE_ORIGIN, response_sha256: browserHash(await response.text()), model_calls: 0 }; break; }
+        catch (error) { if (attempt >= 29 || prototype.exitCode !== null) throw error; await new Promise(done => setTimeout(done, 500)); }
+      }
+    }
+    evidence.status = 'prepared'; evidence.prepared_at = new Date().toISOString(); save(); process.send?.({ type: 'ready', evidence });
+  } catch (error) { evidence.error = error.message; process.send?.({ type: 'failed', error: error.message }); await stop(); }
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === here) serve().catch(error => { console.error(error); process.exitCode = 1; process.disconnect?.(); });
