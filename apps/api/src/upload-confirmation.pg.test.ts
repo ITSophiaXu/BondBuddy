@@ -13,6 +13,7 @@ import {runStorageLifecycle} from './storage-lifecycle.js';
 import {lockStorageObject} from './storage-object-lock.js';
 import {isolatedTestDatabase} from './test-database.js';
 import {UPLOAD_BYTES_PENDING_FIELD_ERROR} from '@bondbuddy/contracts';
+import {UPLOAD_CONFIRMATION_SMALL_MAX_BYTES} from './upload-confirmation.js';
 const connection=await isolatedTestDatabase(undefined,'async-confirmation');
 const storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const options={skip:!connection||!storage};
@@ -37,6 +38,40 @@ async function fixture(){
   };
   return {pool,blobs,owner,id,container,upload,send,foreign:()=>actor='foreign-'+randomUUID(),own:()=>actor=owner,reopen:async()=>{const previous=app;app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});await previous.close();},close:async()=>{await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}};
 }
+
+test('small claims filter the immutable byte pin atomically without leasing larger FIFO work',options,async()=>{
+ const f=await fixture();try{
+  const large=await f.upload(Buffer.alloc(UPLOAD_CONFIRMATION_SMALL_MAX_BYTES+1,120),'large.docx');
+  const edge=await f.upload(Buffer.alloc(UPLOAD_CONFIRMATION_SMALL_MAX_BYTES,121),'edge.docx');
+  const small=await f.upload(Buffer.from('synthetic small opaque bytes'),'small.docx');
+  for(const u of [large,edge,small])assert.equal((await f.send('POST',u.path,u.declaration,true)).statusCode,202);
+  const claims=await Promise.all(Array.from({length:3},()=>claimUploadConfirmation(f.pool,120,'small')));
+  assert.deepEqual(claims.filter(Boolean).map(c=>c!.uploadId).sort(),[edge.id,small.id].sort());
+  assert.equal((await f.pool.query('SELECT o.delivery_attempts FROM bb_outbox o JOIN bb_upload_confirmations c ON c.outbox_id=o.id WHERE c.upload_id=$1',[large.id])).rows[0].delivery_attempts,0);
+  const general=await claimUploadConfirmation(f.pool);assert.equal(general?.uploadId,large.id);
+  // Finish every lease created by this fixture: claims are intentionally global
+  // within the test database, so pending work must not escape to the next test.
+  for(const lease of [...claims.filter((c):c is NonNullable<typeof c>=>c!==null),general!])
+    assert.equal(await processUploadConfirmation(f.pool,f.blobs,lease),'completed');
+ }finally{await f.close();}
+});
+
+test('a small reuse pin cannot read a larger or changed canonical declaration',options,async()=>{
+ const f=await fixture();try{
+  const first=await f.upload();await f.send('POST',first.path,first.declaration,true);assert.equal(await runUploadConfirmationOnce(f.pool,f.blobs),'completed');
+  const duplicate=await f.upload(first.bytes,'copy.docx');await f.send('POST',duplicate.path,duplicate.declaration,true);assert.equal(await runUploadConfirmationOnce(f.pool,f.blobs),'completed');
+  // Corrupt legacy metadata cannot turn a small pin into an unbounded canonical read.
+  await f.pool.query('UPDATE bb_material_versions SET byte_size=$2 WHERE upload_id=$1',[first.id,UPLOAD_CONFIRMATION_SMALL_MAX_BYTES+1]);
+  await f.pool.query("UPDATE bb_upload_confirmations SET state='queued',result=NULL WHERE upload_id=$1",[duplicate.id]);
+  await f.pool.query('UPDATE bb_outbox SET delivered_at=NULL WHERE id=(SELECT outbox_id FROM bb_upload_confirmations WHERE upload_id=$1)',[duplicate.id]);
+  let reads=0;const read=f.blobs.readToFile!;f.blobs.readToFile=async(...args)=>{reads++;return read(...args);};
+  assert.equal(await runUploadConfirmationOnce(f.pool,f.blobs,'small'),'retry');assert.equal(reads,0);
+  assert.equal((await f.pool.query('SELECT count(*)::int n FROM bb_material_versions WHERE owner_user_id=$1',[f.owner])).rows[0].n,1);
+  await f.pool.query('UPDATE bb_material_versions SET byte_size=$2 WHERE upload_id=$1',[first.id,first.declaration.byte_size]);
+  await f.pool.query('UPDATE bb_outbox SET next_attempt_at=NULL WHERE id=(SELECT outbox_id FROM bb_upload_confirmations WHERE upload_id=$1)',[duplicate.id]);
+  assert.equal(await runUploadConfirmationOnce(f.pool,f.blobs,'small'),'completed');
+ }finally{await f.close();}
+});
 
 test('a slow Blob PUT reports explicit pending bytes without holding the project lock or accepting confirmation',options,async()=>{
  const f=await fixture(),entered=gate(),blocked=gate();let put:ReturnType<typeof f.send>|undefined;

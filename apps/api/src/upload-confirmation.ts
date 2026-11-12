@@ -8,6 +8,8 @@ import {cachedUploadVersion,boundedVersion} from './upload-integrity.js';
 import {configuredUploadInspectionException,uploadInspectionExceptionMatches} from './upload-inspection-exception.js';
 
 export type UploadConfirmationLease={id:string;owner:string;projectId:string;uploadId:string;token:string;requestId:string;traceId:string;declaration:UploadDeclaration;upload:any;excepted:boolean;attempts:number};
+export const UPLOAD_CONFIRMATION_SMALL_MAX_BYTES=16*1024*1024;
+export type UploadConfirmationLane='general'|'small';
 const pending=(uploadId:string)=>({status:'confirming' as const,upload_id:uploadId});
 function restoreError(e:any):Problem{
   return new Problem(e.status,e.code,e.message,e.uploadReason,e.uploadDetail);
@@ -94,9 +96,14 @@ export async function requestUploadConfirmation(pool:Pool,blobs:PrivateBlobs,own
 }
 
 /** Claims exactly this event type; log forwarding owns only observability events. */
-export async function claimUploadConfirmation(pool:Pool,leaseSeconds=120):Promise<UploadConfirmationLease|null>{
+export async function claimUploadConfirmation(pool:Pool,leaseSeconds=120,lane:UploadConfirmationLane='general'):Promise<UploadConfirmationLease|null>{
   return transaction(pool,async client=>{
-    const row=(await client.query(`SELECT * FROM bb_outbox WHERE aggregate_type='upload' AND event_type='upload.complete_requested' AND delivered_at IS NULL AND (lease_until IS NULL OR lease_until<=now()) AND (next_attempt_at IS NULL OR next_attempt_at<=now()) ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1`)).rows[0];
+    // Filter before taking the lease. A reserved small-file slot must never
+    // claim a large upload and consume its retries while waiting for capacity.
+    // The general slot keeps FIFO order, including large files.
+    const row=(await client.query(`SELECT o.* FROM bb_outbox o WHERE o.aggregate_type='upload' AND o.event_type='upload.complete_requested' AND o.delivered_at IS NULL AND (o.lease_until IS NULL OR o.lease_until<=now()) AND (o.next_attempt_at IS NULL OR o.next_attempt_at<=now())
+      AND ($1::bigint IS NULL OR EXISTS(SELECT 1 FROM bb_upload_confirmations c WHERE c.outbox_id=o.id AND c.owner_user_id=o.owner_user_id AND c.upload_id=o.aggregate_id AND c.byte_size BETWEEN 1 AND $1::bigint))
+      ORDER BY o.created_at,o.id FOR UPDATE OF o SKIP LOCKED LIMIT 1`,[lane==='small'?UPLOAD_CONFIRMATION_SMALL_MAX_BYTES:null])).rows[0];
     if(!row)return null;
     const token=uid();
     await client.query("UPDATE bb_outbox SET lease_token=$2,lease_until=now()+($3::integer*interval '1 second'),delivery_attempts=delivery_attempts+1 WHERE id=$1",[row.id,token,leaseSeconds]);
@@ -113,6 +120,10 @@ export async function processUploadConfirmation(pool:Pool,blobs:PrivateBlobs,lea
   try{
     const exception=lease.excepted?{ownerUserId:lease.owner,projectId:lease.projectId,role:lease.upload.role,byteSize:lease.declaration.byte_size,sha256:lease.declaration.sha256,mediaType:lease.upload.declared_media_type} as ReturnType<typeof configuredUploadInspectionException>:null;
     const prepared=await prepareStoredUpload(pool,blobs,lease.owner,lease.projectId,lease.uploadId,lease.declaration,exception,async m=>{
+      // Canonical reuse may read a different object, but must keep the same
+      // scoped content declaration and size bound as the claimed upload.
+      if(m.owner_user_id!==lease.owner||m.project_id!==lease.projectId||m.role!==lease.upload.role||Number(m.byte_size)!==lease.declaration.byte_size||m.sha256.trim()!==lease.declaration.sha256)
+        throw new Problem(503,'DATA_UNAVAILABLE','Saved material identity differs from upload');
       await transaction(pool,async client=>{
         await project(client,lease.owner,lease.projectId,true);
         await client.query('SELECT id FROM bb_uploads WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[lease.owner,lease.uploadId]);
@@ -154,8 +165,8 @@ export async function processUploadConfirmation(pool:Pool,blobs:PrivateBlobs,lea
     return changed?(retry?'retry':'failed'):'lease_lost';
   }
 }
-export async function runUploadConfirmationOnce(pool:Pool,blobs:PrivateBlobs){
-  const lease=await claimUploadConfirmation(pool);
+export async function runUploadConfirmationOnce(pool:Pool,blobs:PrivateBlobs,lane:UploadConfirmationLane='general'){
+  const lease=await claimUploadConfirmation(pool,120,lane);
   if(!lease)return 'idle';
   const timer=setInterval(()=>{void pool.query("UPDATE bb_outbox SET lease_until=now()+interval '120 seconds' WHERE id=$1 AND lease_token=$2 AND delivered_at IS NULL AND lease_until>now()",[lease.id,lease.token]).catch(()=>{});},40000);
   try{return await processUploadConfirmation(pool,blobs,lease);}finally{clearInterval(timer);}
