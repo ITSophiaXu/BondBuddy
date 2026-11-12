@@ -46,6 +46,8 @@ npm run pr-gate
 
 `browser-profiles.mjs` 明确启用 10 个真实本地 API 文件的原开关：account-live、account-recovery-live、live、register-live、project-management-live、update-form.integration、material-processing.integration、ocr.integration、project-events.integration、project-execution.integration。准备层按需创建独立 PostgreSQL 16，固定为 core 私有网络中的 `127.0.0.1:55433/bondbuddy_local`，执行当前迁移并使用本分片新建的 Azurite。API 使用当前编译产物及正常商业计费语义，不启用历史计费 fixture；实际 worker 解析/OCR 函数由原用例调用，运行消费者和真实模型调用关闭。
 
+API 分片另启动受控子进程中的当前 `UploadConfirmationRuntime`，只消费 `upload.complete_requested`；不启动 run、parse 或模型消费者。使用同分片 PG/私有 Blob 及独占 128 MiB spool，正常处理页面 `Prefer: respond-async` 的 202→200 确认链路，不改为同步 API 或手工代替页面完成上传。准备记录实际 PG/Blob、进程 PID/启动身份和源码/编译产物 hash；结束先停止新领取并排空在途确认，再释放 spool、关闭池及证明独占目录已移除。consumer 的最多120秒清理窗口独立于所有原测试/batch超时；父服务保留150秒清理余量。缺消费者、提前退出、排空失败或跨候选证据均阻断回执。本模块依赖 #1137 的实际独立上传确认 runtime/spool 入口。
+
 所有分片使用 HTTPS `https://127.0.0.1:5173` 的当前 Vite 网页。API 固定为 `http://127.0.0.1:3000`，注册协议版本固定为 `synthetic-web-test-v1`；准备探针实际经过 HTTPS 代理读取协议，并核对严格 CA 校验、PG 端口/数据库/版本。review-agent-progress-prototype、review-readable-prototype 和 review-workspace 三个文件按需启动 `127.0.0.1:4320` 的仓库原型及独立临时状态目录；前两者使用原 `BB_E2E_PROTOTYPE_URL`，workspace 的原消费者使用 `BB_PROTOTYPE_URL`。以上端口均不发布到宿主，不接入现有用户服务。
 
 已有镜像模式的 core 使用本轮独有的 Docker `--internal` bridge，而非使 Chromium `navigator.onLine=false` 的 `network=none`。仅 core 连接该网络，其一次性测试服务共享 core namespace；native 工具导出容器仍保持 `network=none`。内部网络无公网出口、不发布宿主端口、禁用 masquerade、IPv6 和外部 DNS 转发。准备、各分片开始、结束时实际核对网络 ID/labels、唯一成员和容器附件，并读取 namespace 的路由/接口以拒绝默认路由、网关或额外接口；不向公网发探针。Chromium 必须实际报告 online 且同源 HTTPS 访问成功，不改写 navigator 或产品离线行为。清理先逐个移除本轮容器，再核对网络为空，按精确 ID 删除并验证不存在；发现外来成员时拒绝删除并记录失败。回执绑定本轮初始/最终网络、路由、浏览器探针及清理证明。
