@@ -226,11 +226,22 @@ for (const [device, width, height] of [['desktop',1440,960],['mobile',390,844]] 
   });
 }
 
-test('no uploaded prospectus requires no source fields and can start authoring', async ({page}) => {
+test('financial materials without a reference prospectus preserve saved notes but cannot start authoring', async ({page}) => {
   const f=fixture();f.state.materials.splice(0,1);f.state.project.update_details!.source_prospectuses=[];
   await setup(page,f);await expect(page.locator('[data-source-material]')).toHaveCount(0);
-  await expect(page.locator('#execute-input')).toBeEnabled();await page.locator('#execute-input').click();
-  await expect.poll(()=>f.state.executes.length).toBe(1);
+  await expect(page.locator('#start-disabled-reason')).toContainText('请先上传并采用一份历史／参考募集书');
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  await send(page,'待提供参考募集书，先保存本次补充要求。');
+  expect(f.state.messages.map(message=>({body:message.body,version:message.message_version}))).toEqual([{body:'待提供参考募集书，先保存本次补充要求。',version:1}]);
+  expect(f.state.project.update_details!.source_prospectuses).toEqual([]);
+  expect(f.state.materials.map(material=>material.role)).toEqual(['audit']);
+  expect(f.state.inputs).toHaveLength(0);expect(f.state.executes).toHaveLength(0);
+  await page.reload();await expect(page.locator('.cowork-message')).toContainText('待提供参考募集书，先保存本次补充要求。');
+  await expect(page.locator('[data-source-material]')).toHaveCount(0);
+  await expect(page.locator('#start-disabled-reason')).toContainText('请先上传并采用一份历史／参考募集书');
+  await expect(page.locator('#execute-input')).toBeDisabled();
+  expect(f.state.project.update_details!.source_prospectuses).toEqual([]);
+  expect(f.state.inputs).toHaveLength(0);expect(f.state.executes).toHaveLength(0);
 });
 
 test('unified source metadata is material-version-bound, survives reopening and never starts on save', async ({page}) => {

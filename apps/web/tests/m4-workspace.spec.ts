@@ -5,8 +5,10 @@ import { createHash } from 'node:crypto';
 import { mkdir,readFile,writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { duplicateUploadFixture } from './duplicate-upload-fixture';
+import {sourceFixture} from './generation-source-fixtures';
+import {href as generationHref,batches as generationBatches} from './generation-entry-fixtures';
 import { Value } from '@sinclair/typebox/value';
-import { M4_DOCUMENT_TYPES,M4_DOCUMENT_BILLING_TASKS,M4DraftRequestSchema,M4ViewRequestSchema,M4MessageRequestSchema,M4ExecuteRequestSchema,
+import { emptyFileGenerationPreparation,PROJECT_DOCUMENT_CATALOG,M4_DOCUMENT_BILLING_TASKS,M4DraftRequestSchema,M4ViewRequestSchema,M4MessageRequestSchema,M4ExecuteRequestSchema,
   type M4Workspace,type M4DocumentType,type M4Draft,type M4Artifact,type M4Task,type M4MessageRequest,type M4ExecuteRequest,type M4QuoteRequest,type Run } from '@bondbuddy/contracts';
 
 // Owner-scoped synthetic HTTP fixtures. These verify browser behavior, not model or DOCX quality.
@@ -26,7 +28,7 @@ for(const width of [1440,390])test(`case template application and recommendation
   await page.setViewportSize({width,height:960});
   const s=fixture();s.workspace.drafts.application.materials=[s.workspace.materials[0]];s.workspace.drafts.recommendation.materials=[s.workspace.materials[0]];
   await mount(page,s);await choose(page,'application');
-  await expect(page.locator('[data-m4-type]')).toHaveCount(M4_DOCUMENT_TYPES.length);
+  await expectTemplateCatalog(page);
   await expect(page.locator('#m4-case-template')).toBeVisible();
   await page.locator('#m4-market').selectOption('szse');await page.locator('#m4-case-template').selectOption('szse-private-application-alt');
   await page.getByText('查看模板结构',{exact:true}).click();await expect(page.locator('.studio-template-details')).toContainText('一、发行人概况');
@@ -131,6 +133,12 @@ async function mount(page:Page,state:ReturnType<typeof fixture>,mode:'generate'=
   await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
 }
 
+async function expectTemplateCatalog(page:Page){
+  const controls=page.locator('[data-m4-type]');
+  await expect(controls).toHaveCount(PROJECT_DOCUMENT_CATALOG.length);
+  expect(await controls.evaluateAll(nodes=>nodes.map(node=>(node as HTMLInputElement).value).sort())).toEqual(PROJECT_DOCUMENT_CATALOG.map(type=>type.id).sort());
+  await expect(page.locator('[data-m4-type][value="workpaper"]')).toHaveCount(0);
+}
 const choose=async(page:Page,type:M4DocumentType)=>page.locator(`[data-m4-type][value="${type}"]`).check();
 const start=async(page:Page)=>{await page.getByRole('button',{name:'生成募集说明书摘要',exact:true}).click();await expect(page.getByRole('button',{name:'正在提交…',exact:true})).toHaveCount(0);};
 for(const kind of ['qa','document'] as const)for(const insufficient of [false,true])test(`legacy send controller ${insufficient?'blocks a positive':'accepts a zero'} string shortage for ${kind}`,async({page})=>{
@@ -307,7 +315,7 @@ test('prototype material navigation, cards, source modes and only one optional r
   await expect(page.locator('.sidebar').getByRole('link',{name:'文件生成',exact:true})).toHaveCount(1);
   await expect(page.locator('.sidebar').getByRole('link',{name:'项目问答',exact:true})).toHaveCount(1);
   await expect(page.locator('#m4-agent,#m4-message,[data-m4-action=discuss],#m4-topic,[data-m4-action=new-topic],#m4-source')).toHaveCount(0);
-  await expect(page.locator('[data-m4-type]')).toHaveCount(M4_DOCUMENT_TYPES.length);await expect(page.getByText('推荐函',{exact:true})).toBeVisible();
+  await expectTemplateCatalog(page);await expect(page.getByText('推荐函',{exact:true})).toBeVisible();
   await choose(page,'legal');await expect(page.getByRole('heading',{name:'这份材料依据哪份募集书'})).toBeVisible();
   await expect(page.locator('#m4-content textarea')).toHaveCount(1);await expect(page.locator('#m4-requirements')).toBeVisible();
   await page.getByRole('radio',{name:'关联募集书项目',exact:true}).check();await expect(page.getByRole('button',{name:'选择募集书项目'})).toBeVisible();
@@ -315,6 +323,21 @@ test('prototype material navigation, cards, source modes and only one optional r
   await expect(page.locator('[data-m4-upload=source]')).toHaveCount(1);expect(s.executions).toHaveLength(0);expect(s.messages).toHaveLength(0);
   await page.route('**/projects/m4-project',route=>reply(route,s.workspace.project));
   await page.goto('/#/projects/m4-project');await expect(page.getByRole('heading',{name:'文件生成',exact:true})).toBeVisible();
+  // The current entry retains directory-based workpapers separately from the legacy template catalog.
+  const entry=await page.context().newPage();
+  try{
+    const current=await sourceFixture(entry,true);
+    await entry.route('**/api/v1/projects/*/file-generation',route=>route.fulfill({json:fixtureBody(route,{revision:0,preparation:emptyFileGenerationPreparation(),sets:[],builtin:{name:'光大证券模板',version:'synthetic-v1',available:true},batches:[]})}));
+    await entry.goto('/'+generationHref());await entry.locator('#pf-source-next').click();
+    await expect(entry).toHaveURL(/step=prepare/);
+    const workpaper=entry.locator('[data-fg-type="workpaper"]');await expect(workpaper).toBeChecked();
+    await expect(entry.getByRole('heading',{name:'生成范围',exact:true})).toBeVisible();
+    await expect(entry.locator('#fg-catalogue-upload')).toHaveAttribute('accept','.xlsx');
+    await entry.locator('#fg-more-types').click();
+    expect(await entry.locator('.fg-types [data-fg-type]').evaluateAll(nodes=>nodes.map(node=>node.getAttribute('data-fg-type')).sort())).toEqual(['workpaper',...PROJECT_DOCUMENT_CATALOG.map(type=>type.id)].sort());
+    await expect(workpaper).toHaveCount(1);expect(generationBatches(current.state)).toHaveLength(0);
+    expect(current.state.calls.filter(call=>call.method==='POST'&&/\/(?:execute|batches)$/.test(call.path))).toEqual([]);
+  }finally{await entry.close();}
 });
 
 test('direct requirements save without a message or charge, remain per type and survive reload',async({page})=>{

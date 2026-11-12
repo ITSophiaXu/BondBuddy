@@ -39,7 +39,7 @@ function fixture(){
   const makeRun=(runId:string,state:Run['state'],requestId='old'):Run=>({run_id:runId,execution_request_id:requestId,project_id:id,input_revision:1,input_hash:hash('input'),channel:'production',test_grant_id:null,uncovered_items:[],state,stage:null,event_cursor:0,billing_mode:'platform_trial',reservation_id:null,artifact_id:state==='succeeded'?'artifact-1':null,prompt_snapshot_ref:null,updated_at:now});
   const oldRun=makeRun('run-1','succeeded');
   const history:ReviewHistoryEntry[]=[{run:oldRun,operation:'full_review',version:1,source_report_id:null,report_id:report.report_id,input:structuredClone(workspace.draft),input_revision:1,finding_ids:[],plan:null,artifacts:workspace.artifacts,created_at:now}];
-  const state={workspace,history,owner:'owner-a',requests:[] as ReviewMessageRequest[],plans:[] as ReviewPlanRequest[],executes:[] as ReviewExecutionRequest[],projectPatches:[] as Dto<'ProjectPatchRequest'>[],failProjectPatch:false,failPlan:false,runs:new Map([['old',oldRun]]),uploads:[] as Dto<'UploadCreateRequest'>[],uploadBytes:0,uploadCompletions:[] as string[],inputSaves:[] as {kind:'input';expected_version:number;input:ReviewDraftInput}[],quoteCalls:[] as string[],dropMessageOnce:false,dropExecutionOnce:false,dropUploadOnce:false,failDrafts:false,delayMessage:false,workspaceReads:0,makeRun,artifacts:new Map<string,Dto<'ArtifactResponse'>>(),artifactReads:[] as string[],materialReads:[] as string[],materialDownloads:[] as string[]};
+  const state={workspace,history,owner:'owner-a',requests:[] as ReviewMessageRequest[],plans:[] as ReviewPlanRequest[],executes:[] as ReviewExecutionRequest[],projectPatches:[] as Dto<'ProjectPatchRequest'>[],failProjectPatch:false,failPlan:false,runs:new Map([['old',oldRun]]),uploads:[] as Dto<'UploadCreateRequest'>[],uploadBytes:0,uploadCompletions:[] as string[],inputSaves:[] as {kind:'input';expected_version:number;input:ReviewDraftInput}[],quoteCalls:[] as string[],dropMessageOnce:false,dropExecutionOnce:false,dropUploadOnce:false,dropUploadReceipts:{} as Record<string,number>,failDrafts:false,delayMessage:false,workspaceReads:0,makeRun,artifacts:new Map<string,Dto<'ArtifactResponse'>>(),artifactReads:[] as string[],materialReads:[] as string[],materialDownloads:[] as string[]};
   return {...state,uploadGates:{} as {bytes?:(id:string)=>Promise<void>;complete?:(id:string)=>Promise<void>;draft?:(input:ReviewDraftInput)=>Promise<void>},linked:false,deferCancellation:false,allReports:new Map([[report.report_id,report]]),adoptions:[] as ReviewProposalAdoptionRequest[],adoptionResults:new Map<string,ReviewProposalAdoptionResponse>(),dropAdoptionOnce:false,events:new Map<string,RunEvent[]>()};
 }
 async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/review?tab=results`){
@@ -152,6 +152,8 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
       const materialId='evidence-new'+(index?'-'+(index+1):'');
       const upload=state.uploads[index];let material=state.workspace.materials.find(m=>m.material_id===materialId || m.sha256===upload.sha256&&m.role===upload.role);
       if(!material){material={...upload,material_id:materialId,material_version:1,upload_id:uploadId,state:'persisted',persisted_at:now,error:null};state.workspace.materials.push(material);}
+      // Count actual HTTP attempts per original upload; never reset request evidence.
+      if(state.uploadCompletions.filter(value=>value===uploadId).length<=(state.dropUploadReceipts[uploadId]??0))return route.abort('connectionreset');
       if(state.dropUploadOnce){state.dropUploadOnce=false;return route.abort('connectionreset');}return reply(route,200,material);
     }
     if(path.startsWith('/artifacts/')&&!path.endsWith('/download')){state.artifactReads.push(path);const artifact=state.artifacts.get(path.split('/').at(-1)!);if(artifact)return reply(route,200,artifact);}
@@ -436,11 +438,18 @@ test('latest revision downloads identify their execution and retain the source r
 });
 
 test('evidence upload retries the same session and pins original finding; differential execution stays explicit',async({page})=>{
-  const state=await setup(page);state.dropUploadOnce=true;await (await openFinding(page,'F02')).getByRole('button',{name:'补充材料',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('报告 R1 · 历史名称需要补充说明');
+  await page.clock.install();
+  const state=await setup(page);state.dropUploadReceipts['upload-evidence']=4;await (await openFinding(page,'F02')).getByRole('button',{name:'补充材料',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('报告 R1 · 历史名称需要补充说明');
   await page.getByLabel('选择 DOCX／PDF／XLSX／CSV／TXT 或图片').setInputFiles({name:'更名证明.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic name change evidence')});
-  const row=page.locator('[data-review-recovery-id]').filter({hasText:'更名证明.txt'});await expect(row.locator('[data-review-recovery-action=resume]')).toBeEnabled();
+  const row=page.locator('[data-review-recovery-id]').filter({hasText:'更名证明.txt'});
+  // Three bounded automatic retries follow the original request at the production 2s delay.
+  await expect.poll(async()=>{await page.clock.runFor(2000);return state.uploadCompletions.length;}).toBe(4);
+  expect(state.uploadCompletions).toEqual(Array(4).fill('upload-evidence'));
+  await expect(row.locator('[data-review-recovery-action=resume]')).toBeEnabled();
+  expect(state.uploads).toHaveLength(1);expect(state.uploadBytes).toBe(1);
+  expect(state.executes).toHaveLength(0);expect(state.quoteCalls).toHaveLength(0);
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();await page.locator('#review-tab-materials').click();await row.locator('[data-review-recovery-action=resume]').click();
-  await expect(page.getByRole('dialog')).toContainText('材料已补充，核对下一步');expect(state.uploads).toHaveLength(1);expect(state.uploadBytes).toBe(1);expect(state.uploadCompletions).toEqual(['upload-evidence','upload-evidence']);expect(state.workspace.draft.evidence_links).toEqual([{report_id:'report-v1',finding_id:'F02',material_ref:{material_id:'evidence-new',material_version:1,sha256:hash('Synthetic name change evidence')}}]);expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);expect(state.plans).toHaveLength(0);expect(state.quoteCalls).toHaveLength(0);
+  await expect(page.getByRole('dialog')).toContainText('材料已补充，核对下一步');expect(state.uploads).toHaveLength(1);expect(state.uploadBytes).toBe(1);expect(state.uploadCompletions).toEqual(Array(5).fill('upload-evidence'));expect(state.workspace.draft.evidence_links).toEqual([{report_id:'report-v1',finding_id:'F02',material_ref:{material_id:'evidence-new',material_version:1,sha256:hash('Synthetic name change evidence')}}]);expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);expect(state.plans).toHaveLength(0);expect(state.quoteCalls).toHaveLength(0);
   await page.getByRole('button',{name:'核对并重新核验'}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0]).toMatchObject({operation:'differential_review',source_report_id:'report-v1',finding_ids:['F02']});
 });
 
