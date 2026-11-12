@@ -11,12 +11,17 @@ async function expectOriginal(page:Page){
   await selected(page,2);await expect(context(page)).toBeVisible();await expect(context(page)).toContainText('本轮成果 · 第 2 版');
   await expect(context(page)).toContainText('任务记录时间');await expect(context(page).locator('time')).toHaveAttribute('datetime',oldTime);
   await expect(context(page)).not.toContainText('第 7 版');await expect(context(page)).not.toContainText('第 3 版');
-  await expect(page.locator('.prospectus-panel header')).toContainText('当前版本：V3');
+  const current=page.getByRole('region',{name:'本次更新已选用',exact:true}).locator('[data-prospectus-version="result-handoff-version-3"]');
+  await expect(current).toHaveCount(1);await expect(current).toBeVisible();
+  await expect(current.locator('[data-prospectus-selection-state]')).toHaveText('本次更新已选用');
+  await expect(current.locator('.reference-file-meta small')).toContainText(/\bV3\b/);
+  await expect(current.locator('.prospectus-version-info strong')).toHaveText('合成第3轮清洁版.docx');
   expect(await context(page).innerText()).not.toContain(ids.oldRun);
   expect(await page.locator('#execution-delivery .artifact-download-panel').innerText()).not.toContain('合成原项目_');
 }
-async function downloadOriginal(page:Page,s:State,variant:Variant){
-  const event=page.waitForEvent('download');await page.getByRole('button',{name:variant==='clean'?'下载清洁版':'下载修订版',exact:true}).click();
+async function downloadOriginal(page:Page,s:State,variant:Variant,scope:'#execution-delivery'|'#main'='#execution-delivery'){
+  const panel=page.locator(scope).locator('.artifact-download-panel');await expect(panel).toHaveCount(1);await expect(panel).toBeVisible();
+  const event=page.waitForEvent('download');await panel.getByRole('button',{name:variant==='clean'?'下载清洁版':'下载修订版',exact:true}).click();
   const download=await event,id=artifactId(2,variant),stored=s.artifacts.get(id)!;
   expect(download.suggestedFilename()).toBe(stored.metadata.filename);expect(await downloadBytes(download)).toEqual(stored.bytes);expect(s.byteReads.at(-1)).toBe(id);
 }
@@ -59,7 +64,7 @@ test('authoring handoff: missing display version stays explicit and never substi
 test('authoring handoff: standalone result retains its existing version heading and does not duplicate the embedded context',async({page})=>{
   const s=await open(page,fixture(),'/#/artifacts/'+artifactId(2,'revision'));
   await expect(page.locator('.page-heading')).toContainText('第 2 版');await expect(page.locator('[data-artifact-result-context]')).toBeHidden();
-  await downloadOriginal(page,s,'revision');expect(writes(s)).toEqual([]);
+  await downloadOriginal(page,s,'revision','#main');expect(writes(s)).toEqual([]);
 });
 
 test('authoring handoff desktop component comparison preserves the same historical result after editing and refreshing',async({page})=>{
