@@ -155,21 +155,35 @@ for(const kind of ['qa','document'] as const)for(const insufficient of [false,tr
 });
 
 for(const purpose of ['source','material'] as const)test(`duplicate feedback: material generation ${purpose} keeps the original and explains reuse`,async({page})=>{
-  const s=fixture();await mount(page,s);await choose(page,'private_summary');
+  const s=fixture(),before=structuredClone(s.workspace.drafts);await mount(page,s);await choose(page,'private_summary');
   const receipts=await duplicateUploadFixture(page,m=>{
     const pin={source_project_id:'m4-project',material_id:m.material_id,material_version:m.material_version,sha256:m.sha256};
     if(!s.workspace.materials.some(p=>p.material_id===m.material_id)){s.workspace.materials.push(pin);s.workspace.material_details!.push({...pin,filename:m.filename,state:m.state,media_type:m.media_type});}
   });
   const picker=page.locator(`[data-m4-upload="${purpose}"]`),file={name:'合成材料.docx',mimeType:mime,buffer:Buffer.from('Synthetic repeated material')};
   await picker.setInputFiles(file);await expect.poll(()=>s.workspace.materials.length).toBe(2);
+  const pin={source_project_id:'m4-project',material_id:'duplicate-test-0',material_version:1,sha256:hash('Synthetic repeated material')};
+  // Library registration precedes draft adoption and cleanup; the next upload needs an unlocked picker.
+  await expect.poll(()=>purpose==='source'?s.workspace.drafts.private_summary.source_material:s.workspace.drafts.private_summary.materials).toEqual(purpose==='source'?pin:[pin]);
+  await expect(page.locator('.m4-upload-recovery')).toHaveCount(0);await expect(picker).toBeEnabled();
   await expect(page.locator('.m4-status').filter({hasText:'正在'})).toHaveCount(0);
+  const adopted=structuredClone(s.workspace.drafts.private_summary),material=structuredClone(receipts.materials[0]);
+  expect(adopted.version).toBe(before.private_summary.version+1);
+  expect(adopted.source_material).toEqual(purpose==='source'?pin:before.private_summary.source_material);
+  expect(adopted.materials).toEqual(purpose==='source'?before.private_summary.materials:[pin]);
+  expect(material).toMatchObject({material_id:pin.material_id,material_version:pin.material_version,sha256:pin.sha256,filename:file.name,upload_id:'0',state:'persisted'});
+  expect(receipts.uploads).toHaveLength(1);
   await picker.setInputFiles({...file,name:'合成材料副本.docx'});
   const notice=page.locator('.duplicate-upload-notice');await expect(notice).toHaveCount(1);
   await expect(notice).toContainText('合成材料副本.docx：重复文件，已存在，未重复添加');await expect(notice).toContainText('已保留原文件“合成材料.docx”');
+  await expect(picker).toBeEnabled();await expect(page.locator('.m4-upload-recovery')).toHaveCount(0);
   expect(receipts.materials).toHaveLength(1);expect(s.workspace.materials).toHaveLength(2);
+  expect(receipts.uploads).toEqual([file.name,'合成材料副本.docx'].map(filename=>({filename,media_type:mime,byte_size:file.buffer.length,sha256:pin.sha256,role:purpose==='source'?'historical':'other'})));
+  expect(receipts.materials).toEqual([material]);expect(s.workspace.materials.filter(p=>p.material_id===pin.material_id)).toEqual([pin]);
+  expect(s.workspace.drafts).toEqual({...before,private_summary:adopted});
   if(purpose==='source')await expect(page.locator('.m4-source-file')).toContainText('合成材料.docx');
   else expect(s.workspace.drafts.private_summary.materials).toHaveLength(1);
-  expect(s.executions).toHaveLength(0);expect(s.messages).toHaveLength(0);
+  expect(s.executions).toHaveLength(0);expect(s.messages).toHaveLength(0);expect(s.quotes).toHaveLength(0);expect(s.charged).toBe(0);expect(s.balance).toEqual({available:10000,frozen:0});
   if(process.env.BB_DUPLICATE_EVIDENCE)await notice.screenshot({path:`${process.env.BB_DUPLICATE_EVIDENCE}/material-${purpose}.png`});
 });
 
