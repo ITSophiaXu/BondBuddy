@@ -46,7 +46,9 @@ npm run pr-gate
 
 `browser-profiles.mjs` 明确启用 10 个真实本地 API 文件的原开关：account-live、account-recovery-live、live、register-live、project-management-live、update-form.integration、material-processing.integration、ocr.integration、project-events.integration、project-execution.integration。准备层按需创建独立 PostgreSQL 16，固定为 core 私有网络中的 `127.0.0.1:55433/bondbuddy_local`，执行当前迁移并使用本分片新建的 Azurite。API 使用当前编译产物及正常商业计费语义，不启用历史计费 fixture；实际 worker 解析/OCR 函数由原用例调用，运行消费者和真实模型调用关闭。
 
-所有分片使用 HTTPS `https://127.0.0.1:5173` 的当前 Vite 网页。API 固定为 `http://127.0.0.1:3000`，注册协议版本固定为 `synthetic-web-test-v1`；准备探针实际经过 HTTPS 代理读取协议，并核对严格 CA 校验、PG 端口/数据库/版本。两个 prototype 用例按需启动 `127.0.0.1:4320` 的仓库原型及独立临时状态目录。以上端口均不发布到宿主，不接入现有用户服务。
+所有分片使用 HTTPS `https://127.0.0.1:5173` 的当前 Vite 网页。API 固定为 `http://127.0.0.1:3000`，注册协议版本固定为 `synthetic-web-test-v1`；准备探针实际经过 HTTPS 代理读取协议，并核对严格 CA 校验、PG 端口/数据库/版本。review-agent-progress-prototype、review-readable-prototype 和 review-workspace 三个文件按需启动 `127.0.0.1:4320` 的仓库原型及独立临时状态目录；前两者使用原 `BB_E2E_PROTOTYPE_URL`，workspace 的原消费者使用 `BB_PROTOTYPE_URL`。以上端口均不发布到宿主，不接入现有用户服务。
+
+`review-workspace.spec.ts` 的完整场景 producer 必须先把 JSON/CSS 写入本轮源树外的 `BB_WORKSPACE_SCENES_DIR`，两个原型消费者只读取同 worker 完成的同一产物。该维护修复在独立 PR #1152（`4bac6f12`），固定集成候选必须包含它；旧候选会写 tracked 产品资产，最终源码证明必须失败，不能用旧产物或修改后的 source proof 兜底。`M4_UX_EVIDENCE_DIR` 与原 `M4_UX_EVIDENCE=1` 同时提供。部分用例自行 route `prototype.test` 或本地固定 URL 到候选静态文件，保持原 fixture，不额外启动服务；project-entry/task-results 的可选产品原型导出开关不启用，它们不属于 skip 条件。
 
 OCR 分片从 `--host-worker-image` 指定的已有不可变本地镜像复制 Tesseract、完整 ELF 依赖、eng/chi_sim/osd 和 Noto 字体。文件写入本次 core 的专用目录，以独立 ELF loader/library path 调用；逐文件 hash、CPU ABI、真实中文/数字 OCR 探针及测试后的文件复验均进入回执。Windows 传输后的可执行位仅按已校验 manifest 在临时 core 恢复。此步骤无软件安装、下载或宿主设置修改；缺工具/语言包、ABI 不符或探针失败均停止该分片。
 

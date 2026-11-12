@@ -39,7 +39,7 @@ export const BROWSER_EVIDENCE_PROFILES = Object.freeze(Object.fromEntries(Object
   'material-draft-comparison.spec.ts': ['BB_MATERIAL_DRAFT_COMPARISON_EVIDENCE_DIR'],
   'qa-upload-11th-reference.spec.ts': ['BB_ELEVENTH_EVIDENCE_DIR'],
   'review-upload-twelfth.spec.ts': ['BB_TWELFTH_EVIDENCE_DIR'],
-  'review-workspace.spec.ts': ['BB_ANNOTATION_EVIDENCE_DIR', 'BB_WORKSPACE_EVIDENCE', 'BB_REVIEW_LIVE_EVIDENCE', 'BB_REVIEW_CREDIT_EVIDENCE_DIR'],
+  'review-workspace.spec.ts': ['BB_ANNOTATION_EVIDENCE_DIR', 'BB_WORKSPACE_EVIDENCE', 'BB_REVIEW_LIVE_EVIDENCE', 'BB_REVIEW_CREDIT_EVIDENCE_DIR', 'BB_WORKSPACE_SCENES_DIR'],
   'ux-review-comparison.spec.ts': ['BB_UX_COMPARE'],
 }).map(([file, keys]) => [prefix + file, Object.freeze(keys)])));
 export const BROWSER_OPT_INS = Object.freeze({
@@ -47,7 +47,7 @@ export const BROWSER_OPT_INS = Object.freeze({
   [prefix + 'project-assistant.spec.ts']: { ASSISTANT_EVIDENCE: '1' },
   [prefix + 'review-workspace.spec.ts']: { BB_WORKSPACE_DESIGN: '1' },
 });
-export const BROWSER_PROTOTYPE_FILES = Object.freeze([prefix + 'review-agent-progress-prototype.spec.ts', prefix + 'review-readable-prototype.spec.ts']);
+export const BROWSER_PROTOTYPE_FILES = Object.freeze([prefix + 'review-agent-progress-prototype.spec.ts', prefix + 'review-readable-prototype.spec.ts', prefix + 'review-workspace.spec.ts']);
 export const BROWSER_PROFILE_SHA256 = browserHash({ api: BROWSER_API_PROFILES, evidence: BROWSER_EVIDENCE_PROFILES, optIns: BROWSER_OPT_INS, prototype: BROWSER_PROTOTYPE_FILES });
 
 export function createBrowserPlan({ candidate, runId, shard, files, sourceBlob, sourceSha256 }) {
@@ -75,6 +75,7 @@ export function createBrowserPlan({ candidate, runId, shard, files, sourceBlob, 
   });
   const prototype = files.some(file => BROWSER_PROTOTYPE_FILES.includes(file));
   if (prototype) environment.BB_E2E_PROTOTYPE_URL = BROWSER_PROTOTYPE_ORIGIN;
+  if (files.includes(prefix + 'review-workspace.spec.ts')) environment.BB_PROTOTYPE_URL = BROWSER_PROTOTYPE_ORIGIN;
   return { schema: BROWSER_PROFILE_SCHEMA, commit: candidate.commit, tree: candidate.tree, run_id: runId, shard,
     profile_sha256: BROWSER_PROFILE_SHA256, files: entries, environment, needs: {
       api: entries.some(row => row.profile === 'real-local-api'), prototype,
