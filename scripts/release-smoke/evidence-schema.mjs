@@ -137,6 +137,22 @@ function modelEvidence(entry,report){
  // Unknown usage stays null with explicit counts. It is not replaced with zero
  // and cannot stand in for the separate real-model/quality acceptance receipt.
 }
+function integrityBillingPageEvidence(entry){
+ const page=entry.integrityBillingPageEvidence;
+ assert.equal(page?.version,'release-integrity-visible-settlement-v1','Visible integrity settlement version missing');
+ assert.equal(page.status,'passed');assert.equal(page.runId,entry.runId);assert.equal(page.priceVersion,entry.accepted.priceVersion);
+ for(const [field,billing] of [['quotedPoints','reserved'],['chargedPoints','charged'],['releasedPoints','released']])assert.equal(amount(page[field]),amount(entry.billingEvidence[billing]),'Visible integrity amount mismatch: '+field);
+ assert.equal(page.quotedPoints,entry.accepted.points);assert.equal(amount(page.quotedPoints),amount(page.chargedPoints)+amount(page.releasedPoints));
+ assert.equal(page.executablePairs,5,'The fixed integrity case needs five executable pairs');
+ const pairs=values=>{assert.ok(Array.isArray(values)&&values.length>0&&values.length<=page.executablePairs,'Visible verified integrity scope missing');const keys=values.map(p=>{assert.ok(id(p.subject_id)&&id(p.site_id));return JSON.stringify([p.subject_id,p.site_id]);});assert.equal(new Set(keys).size,keys.length,'Visible verified integrity pairs duplicated');return keys.sort();};
+ const expected=pairs(entry.integrityVerifiedPairs);assert.deepEqual(pairs(page.verifiedPairs),expected,'Visible integrity scope differs from verified queries');
+ assert.ok(Array.isArray(page.observations)&&page.observations.length>=2,'Original and refreshed visible settlement observations required');
+ for(const observation of page.observations){
+  assert.ok(typeof observation.observedAt==='string'&&Number.isFinite(Date.parse(observation.observedAt))&&id(observation.amountsText)&&id(observation.reasonText),'Visible integrity amount or reason text missing');
+  assert.ok(Array.isArray(observation.items)&&observation.items.every(x=>id(x.text)),'Expanded visible integrity scope text missing');
+  assert.deepEqual(pairs(observation.items.map(x=>({subject_id:x.subjectId,site_id:x.siteId}))),expected,'Expanded visible scope differs from verified queries');
+ }
+}
 function originalWordQuality(entry){
  const quality=entry.qualityEvidence,report=quality?.report,page=report?.document_size_check?.page_check;
  assert.equal(quality?.version,'release-word-quality-evidence-v1','Original server quality evidence missing');
@@ -173,6 +189,7 @@ export function verifyFiveFlowEvidence(report,expected){
   assert.equal(entry.refreshEvidence.billingPage.available,entry.billingPageEvidence.available,'Visible available balance changed after refresh');
   if(entry.id==='update-rq-202509')originalWordQuality(entry);
   if(entry.id==='integrity-dongying'){
+   integrityBillingPageEvidence(entry);
    const pairs=entry.integrityVerifiedPairs;
    assert.ok(Array.isArray(pairs)&&pairs.length>0&&pairs.every(p=>id(p.subject_id)&&id(p.site_id)),'Verified official integrity query pairs missing');
    assert.equal(new Set(pairs.map(p=>JSON.stringify([p.subject_id,p.site_id]))).size,pairs.length,'Verified integrity pairs duplicated');
