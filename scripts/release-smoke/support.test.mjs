@@ -32,6 +32,7 @@ test('a missing, failed, skipped or blocked journey never grants release readine
  for(const key of ['artifactEvidence','billingEvidence','refreshEvidence','modelEvidence','qualityEvidence','billingPageEvidence'])assert.equal(verdict(good.map((r,i)=>i===0?{...r,[key]:null}:r)),'blocked');
  assert.equal(verdict(good.map(e=>e.id==='integrity-dongying'?{...e,integrityBillingPageEvidence:null}:e)),'blocked');
  assert.equal(verdict(good.map(e=>e.id==='integrity-dongying'?{...e,integrityBillingPageEvidence:{...e.integrityBillingPageEvidence,observations:[{}]}}:e)),'blocked');
+ assert.equal(verdict(good.map(e=>e.id==='integrity-dongying'?{...e,integrityBillingPageEvidence:{version:'release-integrity-visible-settlement-v1',status:'passed'}}:e)),'blocked');
  assert.equal(verdict(good.slice(0,3)),'blocked');
  for(const state of ['failed','skipped','blocked','not_run'])assert.equal(verdict([...good.slice(0,2),{id:CASES[2],status:state}]),'blocked');
  assert.equal(verdict(good.slice(1)),'blocked');assert.equal(verdict([]),'blocked');
