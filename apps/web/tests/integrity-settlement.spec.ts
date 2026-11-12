@@ -38,7 +38,7 @@ test('all completed queries and a failed fully released round use their own actu
  const s=state();s.round.charged_points=2425;s.round.settlement={...s.round.settlement!,charged_points:2425,released_points:0,verified_query_pairs:sites.map(site=>({subject_id:'issuer',site_id:site}))};await open(page,s);
  await expect(explanation(page)).toContainText('5 项完成查询并保留官网证据；已全部完成有效查询。');await expect(explanation(page)).toContainText('已释放 0 积分');
  s.round.state='failed';s.round.charged_points=0;s.round.settlement={...s.round.settlement!,outcome:'not_delivered',charged_points:0,released_points:2425,verified_query_pairs:[]};await page.reload();
- await expect(explanation(page)).toContainText('本轮未完成交付，未扣费，原预留已全部释放。');await expect(explanation(page)).toContainText('实际扣除 0 积分，已释放 2,425 积分');await expect(page.locator('[data-integrity-settlement-scope]')).toHaveCount(0);expect(writes(s.value)).toEqual([]);
+ await expect(explanation(page)).toContainText('本轮未完成交付，未扣费，原预留已全部释放。');await expect(explanation(page)).toContainText('实际扣除 0 积分，已释放 2,425 积分');await expect(page.locator('.integrity-panel').first()).not.toContainText('预留费用会释放');await expect(page.locator('[data-integrity-settlement-scope]')).toHaveCount(0);expect(writes(s.value)).toEqual([]);
 });
 test('missing evidence stays unresolved, and running/legacy/free exports retain their prior fee descriptions',async({page})=>{
  const s=state();s.round.settlement=null;await open(page,s);await expect(page.locator('[data-integrity-settlement-unavailable]')).toContainText('本轮费用明细暂无法核对');await expect(explanation(page)).toHaveCount(0);
