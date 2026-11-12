@@ -167,26 +167,32 @@ def _outline(parts):
         return {'headings': [], 'toc': [], 'formulas': []}
     root = resolve_revisions(xml(parts['word/document.xml']), True)
     styles = style_map(parts)
+    return outline_resolved(root, styles)
+
+
+def outline_resolved(root, styles, *, text_of=paragraph_text):
+    """Inspect an already resolved, immutable story with the same outline rules."""
     result = {'headings': [], 'toc': [], 'formulas': []}
     field_stack = []
+    field_char, instruction, simple_field = (q(name) for name in ('fldChar', 'instrText', 'fldSimple'))
     for index, p in enumerate(root.iter(q('p'))):
         # TOC fields often span multiple paragraphs without a TOC style.
         in_toc = any(field_stack)
-        for n in p.iter():
-            if n.tag == q('fldChar'):
+        for n in p.iter(field_char, instruction, simple_field):
+            if n.tag == field_char:
                 kind = n.get(q('fldCharType'))
                 if kind == 'begin':
                     field_stack.append(False)
                 elif kind == 'end' and field_stack:
                     field_stack.pop()
-            elif n.tag == q('instrText') and re.match(r'^\s*TOC\b', n.text or '', re.I) and field_stack:
+            elif n.tag == instruction and re.match(r'^\s*TOC\b', n.text or '', re.I) and field_stack:
                 field_stack[-1] = True
-            elif n.tag == q('fldSimple') and re.match(r'^\s*TOC\b', n.get(q('instr'), ''), re.I):
+            elif n.tag == simple_field and re.match(r'^\s*TOC\b', n.get(q('instr'), ''), re.I):
                 in_toc = True
             in_toc = in_toc or any(field_stack)
         if any(a.tag in {q('tc'), q('txbxContent')} for a in p.iterancestors()):
             continue
-        text = paragraph_text(p).strip()
+        text = text_of(p).strip()
         if not text:
             continue
         role = heading_role(p, styles)

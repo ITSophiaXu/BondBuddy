@@ -37,6 +37,7 @@ const TOOL_FILES=Object.freeze([
   'python/tests/test_format_plan.py','python/bondbuddy_file_authoring/template_manifest.py',
   'python/bondbuddy_file_authoring/word_patch.py','python/bondbuddy_file_authoring/read_material.py',
   'scripts/verify-prospectus-acceptance.mjs','scripts/verify-prospectus-acceptance.test.mjs',
+  'scripts/verify-prospectus-expanded-amounts.test.mjs',
   'scripts/prospectus_acceptance_inspect.py','scripts/prospectus_acceptance_inspect_test.py','scripts/prospectus-financial-policy.json','scripts/prospectus_extended_financial_test.py']);
 const fail=code=>{throw new Error(`PROSPECTUS_ACCEPTANCE_${code}`);};
 const ensure=(value,code)=>{if(!value)fail(code);};
