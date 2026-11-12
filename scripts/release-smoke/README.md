@@ -1,6 +1,6 @@
-# 本地发布前基础流程检查
+# 本地发布前五流程检查
 
-`npm run test:release` 在独立的本地 Docker Compose 项目运行待发布版本，使用一个新建的 `release_test` 账号验证任丘九月募集书更新、东营复核、东营七题问答。先按顺序提交三个独立项目，再核验各自的持久任务和下载，后台可使用现有 worker 并发槽位。真实材料、网页、API、PostgreSQL、Azurite、worker、模型调用和浏览器下载都参与执行。不会修改生产环境或发送真实支付请求；初始测试积分明确为 synthetic。
+`npm run test:release` 在独立的本地 Docker Compose 项目运行待发布版本，使用一个新建的 `release_test` 账号验证任丘九月募集书更新、东营复核、东营七题问答、东营诚信核查和固定五项底稿。五个独立项目串行执行：上一流程完成成果和账务核对后才提交下一流程。真实材料、网页、API、PostgreSQL、Azurite、worker、模型调用和浏览器下载都参与执行。不会修改生产环境或发送真实支付请求；初始测试积分明确为 synthetic。
 
 本地 worker 启用异步上传确认消费者，在自身 parse 卷内使用独立、有界的暂存目录。上传检查等待同一原文件声明的最终 HTTP 200 并核对 material/upload ID、版本、持久时间、原文件名、字节数和 SHA-256；HTTP 202 仅表示已排队，不能当作材料已保存。等待预算与网页现有的十分钟确认预算一致。Windows 上传使用 Playwright 原始字节、文件名和 MIME，避免长路径在 Edge 中变成空文件；报告明确记录这项浏览器传输适配，不改样本字节。
 
@@ -81,7 +81,7 @@ $env:BB_RELEASE_PIP_INDEX_URL = 'https://your-approved-feed.example/pypi/simple/
 
 Mac 使用专用 Colima 时，重启后如 VM 未运行，先执行 `colima start --profile bondbuddy-release --activate=false`。Docker Desktop 用户打开应用并确认 Linux 引擎已启动即可。不需要在 Windows 安装 Colima。
 
-启用 AppArmor 的 Colima 实例会加载该候选版本的 `bondbuddy-codex-v1` 配置；其他 Linux 引擎须预先按仓库脚本安装该配置。缺少配置时拒绝启动 worker，不改用 privileged/unconfined。所有平台保留只读根目录、cap_drop ALL 和 Codex 文件权限，并沿用本地集成测试对 proc mount 的额外限制。
+启用 AppArmor 的 Colima 实例会加载该候选版本的 `bondbuddy-codex-v1` 配置；其他 Linux 引擎须预先按仓库脚本安装该配置。缺少配置时拒绝启动 worker，不改用 privileged/unconfined。worker采用仓库integrity-browser-seccomp.json并启用init，保留只读根目录、cap_drop ALL、no-new-privileges、Codex文件权限和proc mount额外限制，不使用unconfined或额外capability。
 
 样本来自既有授权批次：9 月任丘九月，以及 PR #903 的固定数据提交 `6480f7c1bda41e3d49dc757e1b305de21de4edfa` 中的东营原件。后者无需合并产品代码；本地需要已有该 Git object（缺少时先 `git fetch origin codex/regression-samples-20261105`）。每次复制后校验 SHA-256，原件不裁剪、不改写，源生产 ID 不重放。
 
@@ -91,11 +91,15 @@ Mac 使用专用 Colima 时，重启后如 VM 未运行，先执行 `colima star
 
 单次文件编制预算与正式适配器及部署Compose一致为5小时。文件编制允许首轮及最多两轮篇幅修复，共3次；它使用text输出，不叠加JSON schema重问。因此本地业务监测预算为3×5小时+30分钟收尾=15.5小时（55,800,000ms）。这是严格上限，不是完成时间预测，也不增加产品重试次数；失败、暂停、模型超时或成果检查失败仍不能通过。
 
-报告在启动前保存 `executionBudget`，监测开始时保存 `journeyWaitStartedAt` 与 `journeyWaitDeadlineAt`。resume核对原预算、Compose及实际worker单次超时一致，并沿用绝对截止时间，不重新获得15.5小时；期限已过时不再提交其他用例。缺少原预算的旧报告拒绝自动续跑，原任务保留，不能据此重建付费任务。到期只结束测试监测并记失败，不终止原业务任务或触发新的模型调用。
+报告在启动前保存 `executionBudget` 和 `flowBudget`，监测开始时保存suite及各case的原始绝对截止时间。更新15.5小时；复核、诚信、底稿各5.5小时；问答按七题、每题最多一次schema重问的十分钟调用及30分钟收尾，合计170分钟。底稿共享一次编制计划，不能把五文件解释为五次编制调用。suite预算为五条之和；这些有限监测预算不增加产品重试次数，也不是完成时间承诺。resume核对原预算、Compose及实际worker单次超时一致，沿用各自绝对截止时间；过期不提交其他用例。缺少原预算的旧报告拒绝自动续跑，原任务保留，不能据此重建付费任务。到期只结束测试监测并记失败，不终止原业务任务或触发新的模型调用。
 
-- 三条流程全部完成，并能从页面下载相应 Word，才返回 0。
+- 五条流程全部完成、所有必需成果和刷新下载通过、报价/冻结/结算/钱包核对一致，才返回 0。旧三流程、缺项或重复项报告均拒绝。
 - 任一失败、暂停、超时或未执行均返回非零；`report.json` 保留每项状态和原因。
-- 更新检查双 Word；复核检查报告；问答检查七个问题都有可见内容和回答 Word。刷新后再次读取成果。
+- 更新检查双 Word；复核检查报告；问答检查七个问题都有可见内容和回答 Word。每个角色刷新后独立再次下载，全部副本保留并要求hash一致。
+- 诚信核对一个发行人及信用中国、失信被执行人、被执行人、证监会、上交所五站。真实查询记录、结果capture下载hash与数据库有效pair必须一致；全阻断/失败/未经核验不能通过。未知代码/地区留空，不预设无失信结论。
+- 底稿使用原f009目录中的2-1-4、2-3-6、2-4-2、1-5-7-1、1-5-5五项，不代表原目录1的全量。保存原recipe及本次明确五项范围；batch complete、五项全部成功、ZIP全部DOCX的路径和hash对应可信API映射才通过。缺资料说明不得伪造记录，说明免费。
+- 所有ZIP普通文件CRC、XML、关系和正文在同一固定API镜像内断网只读校验；采用现有有界流式解析，保留原大小和膨胀限制。结构检查不替代内容/版式/人工审核。
+- HTTP明确采用int64十进制字符串，完整分页；隔离库只读事务核对原报价、所有底稿attempts、事件、积分lot、钱包差额。刷新下载不得新增扣费。v4诚信按实际验证pair核对，不强套旧版本价格。
 - 这是基础功能冒烟检查，不声称验证了全部财务数字、专业结论、全部排版、收费渠道、跨账号权限或浏览器兼容性。
 - `.runtime/<时间>/` 内保存报告、截图、trace、日志和成果，均为本地私有数据，不提交 Git。trace 会包含这个测试账号的会话，只在受控本机查看。
 
@@ -105,7 +109,7 @@ Mac 使用专用 Colima 时，重启后如 VM 未运行，先执行 `colima star
 npm run test:release -- --resume /absolute/path/to/scripts/release-smoke/.runtime/<run>
 ```
 
-`--resume` 跳过已经通过的用例，已记录 run ID 的用例只读取原任务并重试成果检查。首次提交前失败的用例可能新建测试项目。继续检查前自动保存报告副本，每次尝试使用独立证据目录，保留原始失败和 trace。
+`--resume` 跳过已经通过的用例，已记录 run ID 的用例只读取原任务并重试成果检查。实际POST发送时先保存request ID/原字节hash，接受后立即保存run/batch ID。回执丢失拒绝自动重提，已接受任务只读回原任务；错误与每次attempt证据保留。继续检查前自动保存报告副本，每次尝试使用独立证据目录，保留原始失败和 trace。
 
 全部通过后自动清理本次容器和测试卷，保留本机报告、trace、下载成果和镜像缓存，释放 5288 端口供下次执行。需要手动查看测试账号时加 `--keep`。清理失败会返回非零，报告仍保留各业务流程已通过的事实。
 
@@ -119,4 +123,4 @@ DOCKER_CONTEXT=colima-bondbuddy-release docker-compose -p <report.project> -f <r
 
 ## 验证状态
 
-此前 Mac/Colima 的三个真实业务用例3/3通过，见[2026-11-08记录](../../docs/testing/local-release-smoke-2026-11-08.md)。本次只补跨平台启动路径和操作说明；按用户要求，没有重跑业务测试、模型调用或其他测试。Windows 实机端到端结果尚未记录，不能把此前 Mac 结果写成 Windows 已通过。
+原Windows三流程在固定f298bc80候选已跑通；其原报告、失败和后续结构诊断分别保留，不能拼接为新五流程通过。五流程实现的无模型单元和实际隔离账务只读查询已验证；最终固定候选真实五流程报告应以本次.runtime实际运行结果为准。脚本本身不签发专业人工验收，也不自动部署。

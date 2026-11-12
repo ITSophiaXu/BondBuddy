@@ -1,16 +1,19 @@
 import {spawn,execFileSync} from 'node:child_process';
 import {readFileSync,writeFileSync,mkdirSync,copyFileSync,existsSync,rmSync} from 'node:fs';
 import {join,resolve,dirname} from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {randomBytes} from 'node:crypto';
 import {parseArgs} from 'node:util';
-import {SAMPLE_REF,CASES,writeJson,verifiedFile,verdict,assertLocalContext,assertTestReport} from './support.mjs';
+import {SAMPLE_REF,CASES,REPORT_SCHEMA,sha256,writeJson,verifiedFile,verdict,assertLocalContext,assertTestReport} from './support.mjs';
 import {hostEnvironment,protectPrivatePath} from './platform.mjs';
 import {prepareReleaseCredential,assertReleaseCredential} from './credentials.mjs';
 import {assertArchiveSupport,extractArchive,gitArchive} from './archive.mjs';
 import {dependencyOptions,dependencyDockerfile,dependencyBuildArgs,assertNodeBaseUnchanged} from './dependencies.mjs';
 import {uploadConfirmationEnvironment} from './uploads.mjs';
 import {newExecutionBudget,assertExecutionBudget,assertWorkerBudget} from './budget.mjs';
+import {newFlowBudget,assertFlowBudget} from './journey-state.mjs';
+import {createEvidenceReaders} from './runtime-evidence.mjs';
+import {assertControllerCandidate} from './controller.mjs';
 
 const directory=dirname(fileURLToPath(import.meta.url)),repo=resolve(directory,'../..');
 const settingsFile=join(directory,'.local.json');
@@ -24,8 +27,9 @@ mkdirSync(out,{recursive:true,mode:0o700});
 const env=hostEnvironment();
 protectPrivatePath(out,'directory',env);
 const reportFile=join(out,'report.json');
-const report=resume?JSON.parse(readFileSync(reportFile)): {startedAt:new Date().toISOString(),status:'blocked',modelMode:'live',modelProbe:'not_run',realPayment:false,executionBudget:newExecutionBudget(),cases:CASES.map(id=>({id,status:'not_run'}))};
+const report=resume?JSON.parse(readFileSync(reportFile)): {schema:REPORT_SCHEMA,flowBudget:newFlowBudget(),startedAt:new Date().toISOString(),status:'blocked',modelMode:'live',modelProbe:'not_run',realPayment:false,executionBudget:newExecutionBudget(),cases:CASES.map(id=>({id,status:'not_run'}))};
 if(resume)writeJson(join(out,'report-before-'+Date.now()+'.json'),report);
+report.commandHistory??=[];report.commandHistory.push({at:new Date().toISOString(),executable:process.execPath,args:process.argv.slice(1)});
 delete report.error;
 let context=process.env.BB_RELEASE_DOCKER_CONTEXT||settings.dockerContext||(resume?report.dockerContext:undefined);
 const proxy=process.env.BB_RELEASE_HTTP_PROXY||settings.httpProxy;
@@ -48,7 +52,7 @@ async function command(cmd,args,logName,extraEnv={}){
  });}finally{await new Promise(r=>log.end(r));}
 }
 try{
- assertExecutionBudget(report.executionBudget);
+ assertExecutionBudget(report.executionBudget);assertFlowBudget(report.flowBudget);
  writeJson(reportFile,report);
  if(!resume&&!values.ref&&sync('git',['status','--porcelain']))throw Error('Working tree has uncommitted changes. Commit the candidate, or explicitly select the committed version with --ref.');
  context=context||sync('docker',['context','show']);
@@ -65,6 +69,7 @@ try{
  if(!resume){
   report.sha=sync('git',['rev-parse','--verify',(values.ref||'HEAD')+'^{commit}']);
   report.tree=sync('git',['rev-parse',report.sha+'^{tree}']);
+  report.controllerFiles=assertControllerCandidate({repo,directory,sha:report.sha,env});
   report.sampleRef=SAMPLE_REF;report.project='bb-release-'+randomBytes(5).toString('hex');
   report.dockerContext=context;report.platform=sync('docker',['info','--format','{{.OSType}}/{{.Architecture}}']);
   report.baseURL='http://localhost:5288';report.model='gpt-6-sol';report.provider='copilot_enterprise';
@@ -79,8 +84,12 @@ try{
   const rq=JSON.parse(readFileSync(join(old,'manifest.json'))).cases.find(c=>c.case_id==='rq-202509');
   const assets=JSON.parse(readFileSync(join(recent,'manifest.json'))).assets;
   const asset=id=>{const a=assets.find(x=>x.file_id===id);if(!a)throw Error('Missing fixture '+id);return verifiedFile(recent,a.path,a.sha256);};
-  const fixtures={rq:rq.files.map(f=>({path:verifiedFile(old,f.path,f.sha256),role:f.upload_role})),dongying:asset('nov05-f012'),financial:['nov05-f014','nov05-f015','nov05-f016'].map(asset),questions:asset('nov05-f013')};
-  report.fixtureHashes=[...rq.files,...assets.filter(a=>['nov05-f012','nov05-f013','nov05-f014','nov05-f015','nov05-f016'].includes(a.file_id))].map(a=>({id:a.file_id,sha256:a.sha256}));
+  const fixtures={rq:rq.files.map(f=>({path:verifiedFile(old,f.path,f.sha256),role:f.upload_role})),dongying:asset('nov05-f012'),financial:['nov05-f014','nov05-f015','nov05-f016'].map(asset),questions:asset('nov05-f013'),workpaperCatalogue:asset('nov05-f009')};
+  const recipe=(id)=>{const bytes=readFileSync(join(recent,'cases',id,'input.json'));return {body:JSON.parse(bytes),sha256:sha256(bytes)};};
+  const integrityRecipe=recipe('integrity-dongying'),workpaperRecipe=recipe('workpaper-dongying');
+  fixtures.integrityRecipe=integrityRecipe.body;fixtures.workpaperRecipe=workpaperRecipe.body;
+  report.fixtureHashes=[...rq.files,...assets.filter(a=>['nov05-f009','nov05-f012','nov05-f013','nov05-f014','nov05-f015','nov05-f016'].includes(a.file_id))].map(a=>({id:a.file_id,sha256:a.sha256}));
+  report.fixtureHashes.push({id:'integrity-dongying/input.json',sha256:integrityRecipe.sha256},{id:'workpaper-dongying/input.json',sha256:workpaperRecipe.sha256});
   const account={username:'release_test',password:'Release-'+randomBytes(18).toString('hex')};
   writeJson(join(out,'private.json'),{fixtures,account});
   const credential=prepareReleaseCredential({out,directory,settings,hostEnv:env});
@@ -109,13 +118,14 @@ try{
   Object.assign(common,proxyEnv);
   const apparmor=JSON.parse(sync('docker',['info','--format','{{json .SecurityOptions}}'])).some(x=>x==='name=apparmor');
   if(apparmor&&context.startsWith('colima-'))await command('colima',['ssh','--profile',context.slice('colima-'.length),'--','sudo','bash',join(source,'deploy/m1/scripts/install-codex-file-sandbox.sh')],'sandbox-install.log');
-  const seccomp=JSON.parse(readFileSync(join(source,'deploy/m1/security/codex-seccomp.json')));
+  const seccomp=JSON.parse(readFileSync(join(source,'deploy/m1/security/integrity-browser-seccomp.json')));
   // Narrow proc-mount permissions as in local-integration/linux-worker.mjs.
   // AppArmor engines additionally use the repository's product profile.
   seccomp.syscalls=seccomp.syscalls.flatMap(rule=>rule.names.includes('mount')&&rule.action==='SCMP_ACT_ALLOW'?[{...rule,names:rule.names.filter(n=>n!=='mount')},{...rule,names:['mount'],args:[...(rule.args??[]),{index:3,value:14,op:'SCMP_CMP_NE'}]}]:[rule]);
   writeJson(join(out,'seccomp.json'),seccomp);
-  const workerEnv={...common,BB_CODEX_AUTH_MODE:'copilot_enterprise',BB_COPILOT_OAUTH_FILE:'/run/secrets/bb-copilot-oauth',BB_CODEX_PROVIDER:report.provider,BB_CODEX_BASE_URL:'https://api.enterprise.githubcopilot.com',BB_CODEX_MODEL:report.model,BB_CODEX_REASONING_EFFORT:'max',BB_CODEX_CONFIG_VERSION:'release-smoke-v1',BB_CODEX_TIMEOUT_MS:'600000',BB_CODEX_AUTHORING_TIMEOUT_MS:String(report.executionBudget.authoringTimeoutMs),BB_CODEX_WORK_ROOT:'/tmp/bb-codex',BB_REPO_ROOT:'/app',BB_PYTHON:'/opt/venv/bin/python',BB_PYTHON_BIN:'/opt/venv/bin/python',BB_PARSE_STAGING_DIR:'/var/lib/bondbuddy/parse-staging',BB_PARSE_CACHE_OCR_VERSION:'tesseract-5.3.0-eng-chi_sim-osd-v1',BB_PARSE_CACHE_BASIS_VERSION:'release-smoke-v1',BB_WORKER_CONCURRENCY:'2',BB_WORKER_PARSE_SLOTS:'1',BB_WORKER_GROUP:'release-smoke',BB_REVIEW_WEB_SEARCH_ENABLED:'0'};
-  const worker={image:image.worker,environment:workerEnv,read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true','seccomp='+join(out,'seccomp.json').replaceAll('\\','/')],tmpfs:['/tmp:rw,nosuid,nodev,size=4g,mode=1777'],volumes:['parse:/var/lib/bondbuddy/parse-staging',...credential.volumes],mem_limit:'6g',cpus:4,stop_grace_period:'30s'};
+  report.workerSandbox={profile:'integrity-browser-seccomp.json',sha256:sha256(readFileSync(join(out,'seccomp.json'))),init:true,procMountRestriction:true};
+  const workerEnv={...common,BB_CODEX_AUTH_MODE:'copilot_enterprise',BB_COPILOT_OAUTH_FILE:'/run/secrets/bb-copilot-oauth',BB_CODEX_PROVIDER:report.provider,BB_CODEX_BASE_URL:'https://api.enterprise.githubcopilot.com',BB_CODEX_MODEL:report.model,BB_CODEX_REASONING_EFFORT:'max',BB_CODEX_CONFIG_VERSION:'release-smoke-v1',BB_CODEX_TIMEOUT_MS:String(report.flowBudget.structuredTimeoutMs),BB_CODEX_MAX_SCHEMA_REASKS:String(report.flowBudget.maxSchemaReasks),BB_CODEX_AUTHORING_TIMEOUT_MS:String(report.executionBudget.authoringTimeoutMs),BB_CODEX_WORK_ROOT:'/tmp/bb-codex',BB_REPO_ROOT:'/app',BB_PYTHON:'/opt/venv/bin/python',BB_PYTHON_BIN:'/opt/venv/bin/python',BB_PARSE_STAGING_DIR:'/var/lib/bondbuddy/parse-staging',BB_PARSE_CACHE_OCR_VERSION:'tesseract-5.3.0-eng-chi_sim-osd-v1',BB_PARSE_CACHE_BASIS_VERSION:'release-smoke-v1',BB_WORKER_CONCURRENCY:'2',BB_WORKER_PARSE_SLOTS:'1',BB_WORKER_GROUP:'release-smoke',BB_REVIEW_WEB_SEARCH_ENABLED:'0'};
+  const worker={image:image.worker,init:true,environment:workerEnv,read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true','seccomp='+join(out,'seccomp.json').replaceAll('\\','/')],tmpfs:['/tmp:rw,nosuid,nodev,size=4g,mode=1777'],volumes:['parse:/var/lib/bondbuddy/parse-staging',...credential.volumes],mem_limit:'6g',cpus:4,stop_grace_period:'30s'};
   Object.assign(workerEnv,uploadConfirmationEnvironment());
   if(apparmor)worker.security_opt.push('apparmor=bondbuddy-codex-v1');
   writeJson(join(out,'compose.json'),{services:{
@@ -144,14 +154,13 @@ try{
   const container=sync(...compose(['ps','-q',service]));
   if(!container||sync('docker',['inspect','--format','{{.Image}}',container])!==report.images[service].id)throw Error('Running '+service+' does not match the recorded test image');
  }
- for(const entry of report.cases.filter(c=>c.status==='passed')){
-  const required=entry.id==='update-rq-202509'?2:1,files=(entry.downloads??[]).slice(-required);
-  if(files.length!==required)throw Error('Passed case is missing its download evidence: '+entry.id);
-  for(const file of files)verifiedFile(out,file.path,file.sha256);
- }
- const {runJourneys}=await import('./flows.mjs');
- await runJourneys({out,report,privateData:JSON.parse(readFileSync(join(out,'private.json'))),save:()=>writeJson(reportFile,report)});
- report.status=verdict(report.cases);
+ const save=()=>writeJson(reportFile,report);
+ report.controllerFiles=assertControllerCandidate({repo,directory,sha:report.sha,env});
+ const fixedDirectory=join(out,'source/scripts/release-smoke');
+ const readers=createEvidenceReaders({out,repo,directory:fixedDirectory,report,env,compose,save});
+ const {runJourneys}=await import(pathToFileURL(join(fixedDirectory,'flows.mjs')).href);
+ await runJourneys({out,report,privateData:JSON.parse(readFileSync(join(out,'private.json'))),save,...readers});
+ report.status=verdict(report.cases);if(report.status==='passed')report.completedAt??=new Date().toISOString();
 }catch(error){report.status='blocked';report.error=String(error.message);console.error(report.error);process.exitCode=1;}
 finally{
  if(compose&&existsSync(join(out,'compose.json')))try{await command(...compose(['logs','--no-color','--tail','150']),'services.log');}catch{}
@@ -159,7 +168,7 @@ finally{
   try{await command(...compose(['down','--volumes']),'cleanup.log');for(const name of ['copilot-oauth','copilot-auth.json'])rmSync(join(out,name),{force:true});report.cleanup='completed';}
   catch(error){report.status='blocked';report.cleanup='failed';report.error='Business flows passed, but isolated environment cleanup failed: '+error.message;}
  }else report.cleanup='retained';
- report.finishedAt=new Date().toISOString();writeJson(reportFile,report);
+ report.lastAttemptFinishedAt=new Date().toISOString();report.finishedAt=report.completedAt??report.lastAttemptFinishedAt;writeJson(reportFile,report);
  const credentialSummary=report.credentialMode==='existing-local-codex-command-helper'?`显式本地 command helper；SHA-256：${report.credentialAdaptation?.sha256??'缺失'}。正式 OAuth 换票未经验证。`:(report.credentialMode??'尚未选择');
  const rows=report.cases.map(c=>`| ${c.id} | ${c.status} | ${c.runId??'—'} | ${(c.error??'').replaceAll('|','/').replaceAll('\n',' ')} |`).join('\n');
  writeFileSync(join(out,'report.md'),`# 本地发布前测试\n\n结论：${report.status}\n\n候选提交：${report.sha??'尚未锁定'}\n\n模型：${report.model??'未调用'}；真实支付：未执行。\n\n凭据模式：${credentialSummary}\n\n| 用例 | 状态 | 任务 | 错误 |\n|---|---|---|---|\n${rows}\n\n${report.error??''}\n\n本报告只判断已列出的基础流程，不表示财务内容或专业审核通过。\n`,{mode:0o600});

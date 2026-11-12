@@ -3,18 +3,21 @@ import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {join,basename} from 'node:path';
 import {sha256} from './support.mjs';
 import {uploadFixture} from './uploads.mjs';
-import {assertExecutionBudget,journeyDeadline,expirePendingJourneys} from './budget.mjs';
+import {assertExecutionBudget} from './budget.mjs';
+import {assertFlowBudget,caseDeadline,classifyState,expireCase,assertSubmissionCanStart} from './journey-state.mjs';
+import {extendedFlows} from './flows-extended.mjs';
+import {CASE_KINDS,isQuotePath,retainSubmissionRequest,retainSubmissionReceipt,acceptedQuote} from './submission.mjs';
+import {BILLING_HEADERS,readBillingSnapshot,assertBillingTerminal,assertBillingUnchanged} from './billing.mjs';
+import {assertCaseArtifacts} from './artifacts.mjs';
+import {requiredArtifacts,assertCaseComplete} from './support.mjs';
 
 import {qaProspectusFixture,confirmQaProspectus} from './qa-prospectus.mjs';
 import {retainQaPreparation,qaPreparationURL} from './qa-preparation.mjs';
 
-export async function runJourneys({out,report,privateData,save}){
+export async function runJourneys({out,report,privateData,save,inspect,execReadOnly,mapWorkpapers}){
  report.browserInputTransport=process.platform==='win32'?'original bytes, filename and MIME via Playwright buffer':'original file path';save();
  assertExecutionBudget(report.executionBudget);
- // An expired resumed run must not submit any previously unsubmitted case.
- if(report.journeyWaitStartedAt!==undefined||report.journeyWaitDeadlineAt!==undefined){
-  journeyDeadline(report);if(expirePendingJourneys(report)){save();return;}
- }
+ assertFlowBudget(report.flowBudget);
  const browser=await chromium.launch(process.env.BB_RELEASE_BROWSER_CHANNEL?{channel:process.env.BB_RELEASE_BROWSER_CHANNEL}:{});
  const context=await browser.newContext({baseURL:report.baseURL,viewport:{width:1440,height:1000},acceptDownloads:true});
  const page=await context.newPage();page.setDefaultTimeout(45000);
@@ -28,30 +31,58 @@ export async function runJourneys({out,report,privateData,save}){
   await expect(locator).toBeEnabled();
   return uploadFixture(page,locator,path);
  }
- async function submit(locator,pathPattern){
-  await expect(locator).toBeEnabled({timeout:300000});
-  const receipt=page.waitForResponse(r=>r.request().method()==='POST'&&pathPattern.test(new URL(r.url()).pathname),{timeout:120000});
-  receipt.catch(()=>{});
-  await locator.click();
-  // Existing product confirmation dialogs are part of the user journey.
-  for(let i=0;i<220;i++){
-   const received=await Promise.race([receipt.then(response=>({response})),page.waitForTimeout(500).then(()=>null)]);
-   if(received){const r=received.response;if(!r.ok())throw Error('Task submission failed: '+r.status()+' '+(await r.text()).slice(0,600));return r.json();}
-   const confirm=page.locator('dialog[open]').getByRole('button',{name:/^(确认并开始|确认开始|确认编制|确认并执行|开始执行|确认回填|确认并回答)/});
-   if(await confirm.count()){await confirm.first().click();break;}
-   if(await page.locator('#qa-confirm').isVisible()){await page.locator('#qa-confirm').click();break;}
+ let activeEntry=null;const pendingQuotes=new Set();
+ const observeQuote=response=>{
+  const entry=activeEntry;
+  if(!entry||response.request().method()!=='POST'||!isQuotePath(entry.id,response.url()))return;
+  const pending=(async()=>{
+   const body=await response.json();entry.quoteCaptures??=[];
+   entry.quoteCaptures.push({url:response.url(),status:response.status(),body,observedAt:new Date().toISOString()});save();
+  })().catch(error=>{entry.quoteCaptureError=String(error.message);save();}).finally(()=>pendingQuotes.delete(pending));
+  pendingQuotes.add(pending);
+ };
+ page.on('response',observeQuote);
+ async function submit(locator,pathPattern,entry){
+  if(!entry)throw Error('Submission requires its durable case record');
+  assertSubmissionCanStart(entry);
+  if(entry.submissionReceipt){
+   if(entry.submissionReceipt.status<200||entry.submissionReceipt.status>=300)throw Error('Prior submission was refused; preserve its evidence');
+   return entry.submissionReceipt.body;
   }
-  const r=await receipt;if(!r.ok())throw Error('Task submission failed: '+r.status()+' '+(await r.text()).slice(0,600));return r.json();
+  await expect(locator).toBeEnabled({timeout:300000});
+  let requestError;
+  const observed=request=>{
+   if(request.method()==='POST'&&pathPattern.test(new URL(request.url()).pathname)){
+    try{retainSubmissionRequest(entry,{url:request.url(),method:request.method(),body:request.postData()},save);}catch(error){requestError=error;}
+   }
+  };
+  page.on('request',observed);
+  const receipt=page.waitForResponse(r=>r.request().method()==='POST'&&pathPattern.test(new URL(r.url()).pathname),{timeout:120000});receipt.catch(()=>{});
+  try{
+   await locator.click();
+   for(let i=0;i<220;i++){
+    if(requestError)throw requestError;
+    const received=await Promise.race([receipt.then(response=>({response})),page.waitForTimeout(500).then(()=>null)]);
+    if(received)break;
+    const confirm=page.locator('dialog[open]').getByRole('button',{name:/^(确认并开始|确认开始|确认编制|确认并执行|开始执行|确认回填|确认并回答|确认生成\s*\d+\s*份文件)/});
+    if(await confirm.count()){await confirm.first().click();break;}
+    for(const selector of ['#qa-confirm','#integrity-confirm']){
+     if(await page.locator(selector).isVisible()){await page.locator(selector).click();break;}
+    }
+   }
+   const response=await receipt;if(requestError)throw requestError;
+   const body=await response.json();
+   const result=retainSubmissionReceipt(entry,{url:response.url(),status:response.status(),body},save);
+   await Promise.all([...pendingQuotes]);entry.accepted=acceptedQuote(entry);save();return result;
+  }finally{page.off('request',observed);}
+ }
+ async function readJson(url){
+  let response=await page.request.get(url,{headers:BILLING_HEADERS});
+  if(response.status()===401){await page.reload();await expect(page.getByRole('link',{name:'任务进度与结果',exact:true})).toBeVisible({timeout:60000});response=await page.request.get(url,{headers:BILLING_HEADERS});}
+  if(!response.ok())throw Error('Cannot read persisted state: '+response.status());return response.json();
  }
  async function readRun(id,entry){
-  let response=await page.request.get('/api/v1/runs/'+encodeURIComponent(id));
-  if(response.status()===401){
-   // Restore through the real app, never by patching cookies or resubmitting work.
-   await page.reload();await expect(page.getByRole('link',{name:'任务进度与结果',exact:true})).toBeVisible({timeout:60000});
-   response=await page.request.get('/api/v1/runs/'+encodeURIComponent(id));
-  }
-  if(!response.ok())throw Error('Cannot read submitted run: '+response.status());
-  const run=await response.json();entry.runState=run.state;entry.stage=run.stage;
+  const run=await readJson('/api/v1/runs/'+encodeURIComponent(id));entry.runState=run.state;entry.stage=run.stage;
   entry.projectId=run.project_id;entry.inputHash=run.input_hash;entry.inputRevision=run.input_revision;entry.artifactId=run.artifact_id;save();return run;
  }
  async function waitRun(id,entry){
@@ -60,11 +91,14 @@ export async function runJourneys({out,report,privateData,save}){
   return run;
  }
  async function download(button,name,entry){
-  await expect(button).toBeVisible({timeout:60000});const downloading=page.waitForEvent('download',{timeout:120000});downloading.catch(()=>{});await button.click();
-  const item=await downloading;if(await item.failure())throw Error('Download failed');
-  const path=join(entry.evidenceDirectory,name);await item.saveAs(path);const bytes=readFileSync(path);
-  if(bytes.length<1000||bytes.subarray(0,2).toString()!=='PK')throw Error('Download is not a nonempty Word file');
-  entry.downloads??=[];entry.downloads.push({filename:item.suggestedFilename(),path,bytes:bytes.length,sha256:sha256(bytes)});save();
+  await expect(button).toBeVisible({timeout:60000});
+  const downloading=page.waitForEvent('download',{timeout:name==='workpaper.zip'?20*60000:120000});downloading.catch(()=>{});await button.click();
+  const item=await downloading;if(await item.failure())throw Error('Download failed: '+await item.failure());
+  entry.downloads??=[];
+  const path=join(entry.evidenceDirectory,String(entry.downloads.length+1).padStart(3,'0')+'-'+name);
+  await item.saveAs(path);const bytes=readFileSync(path);
+  entry.downloads.push({role:name,filename:item.suggestedFilename(),path,bytes:bytes.length,sha256:sha256(bytes),observedAt:new Date().toISOString()});save();
+  return entry.downloads.at(-1);
  }
  const flows={
   'update-rq-202509':async (entry,phase)=>{
@@ -87,7 +121,7 @@ export async function runJourneys({out,report,privateData,save}){
     await expect(page.locator('#save-state')).toHaveText('已保存',{timeout:60000});
     entry.projectURL=page.url();save();await page.reload();
     await expect(page.getByLabel('原稿最新报告期年份',{exact:true})).toHaveValue('2025');
-    const run=await submit(page.getByRole('button',{name:'开始更新',exact:true}),/\/runs\/execute$/);
+    const run=await submit(page.getByRole('button',{name:'开始更新',exact:true}),/\/runs\/execute$/,entry);
     entry.runId=run.run_id;save();
    }
    if(phase==='submit')return;
@@ -107,7 +141,7 @@ export async function runJourneys({out,report,privateData,save}){
     await expect(page.getByRole('button',{name:'删除 '+basename(f.dongying),exact:true})).toBeEnabled();
     for(const path of f.financial){await upload(page.locator('[data-review-upload-role=audit]'),path);await expect(page.getByRole('button',{name:'删除 '+basename(path),exact:true})).toBeEnabled();}
     entry.projectURL=page.url();save();await page.reload();
-    const run=await submit(page.getByRole('button',{name:'开始复核',exact:true}),/\/review-executions$/);entry.runId=run.run_id;save();
+    const run=await submit(page.getByRole('button',{name:'开始复核',exact:true}),/\/review-executions$/,entry);entry.runId=run.run_id;save();
    }
    if(phase==='submit')return;
    await waitRun(entry.runId,entry);await page.goto(entry.projectURL);
@@ -135,7 +169,7 @@ export async function runJourneys({out,report,privateData,save}){
     await page.reload();await expect(page.locator('.qa-question-list article')).toHaveCount(7,{timeout:60000});
     await page.locator('#qa-save').click();
     entry.qaProspectus=await confirmQaProspectus(page,{projectURL:entry.projectURL,expected:qaProspectusFixture(f.dongying),round:true,previous:entry.qaProspectus});save();
-    const run=await submit(page.locator('#qa-start'),/\/qa\/runs$/);entry.runId=run.run_id;save();
+    const run=await submit(page.locator('#qa-start'),/\/qa\/runs$/,entry);entry.runId=run.run_id;save();
    }
    if(phase==='submit')return;
    await waitRun(entry.runId,entry);
@@ -151,27 +185,64 @@ export async function runJourneys({out,report,privateData,save}){
    await download(page.locator('#qa-download'),'answers.docx',entry);
   }
  };
- async function attempt(entry,phase){
+ Object.assign(flows,extendedFlows({page,fixtures:f,report,save,upload,submit,readJson,waitRun,download,mapWorkpapers}));
+ async function snapshot(entry,stage){
+  const value=await readBillingSnapshot({page,ownerId:report.ownerId,runIds:entry.runId?[entry.runId]:[],workpaperBatchId:entry.workpaperBatchId??null,stage,execReadOnly});
+  entry.billingSnapshots??=[];entry.billingSnapshots.push(value);save();return value;
+ }
+ async function attempt(entry,phase,action){
   entry.attempt=(entry.attempt??0)+1;
   const path=join(out,entry.id,'attempt-'+entry.attempt+'-'+phase);mkdirSync(path,{recursive:true,mode:0o700});entry.evidenceDirectory=path;
-  entry.status='running';entry.startedAt??=new Date().toISOString();delete entry.error;save();
+  const record={attempt:entry.attempt,phase,startedAt:new Date().toISOString(),evidenceDirectory:path};
+  entry.attemptHistory??=[];entry.attemptHistory.push(record);entry.startedAt??=record.startedAt;save();
   await context.tracing.start({screenshots:true,snapshots:true,sources:false});
-  try{await flows[entry.id](entry,phase);entry.status=phase==='submit'?'submitted':'passed';if(phase==='submit')entry.submittedAt??=new Date().toISOString();console.log(entry.id,entry.status);}
-  catch(error){entry.status='failed';entry.error=String(error.message);console.error(entry.id,entry.error);writeFileSync(join(path,'page.txt'),await page.locator('body').innerText().catch(()=>''),{mode:0o600});}
-  finally{entry.finishedAt=new Date().toISOString();await page.screenshot({path:join(path,'page.png'),fullPage:true}).catch(()=>{});await context.tracing.stop({path:join(path,'trace.zip')});save();}
+  try{await action();record.status='passed';}
+  catch(error){record.status='failed';record.error=String(error.message);entry.status='failed';entry.error=record.error;console.error(entry.id,entry.error);writeFileSync(join(path,'page.txt'),await page.locator('body').innerText().catch(()=>''),{mode:0o600});throw error;}
+  finally{record.finishedAt=new Date().toISOString();await page.screenshot({path:join(path,'page.png'),fullPage:true}).catch(()=>{});await context.tracing.stop({path:join(path,'trace.zip')});save();}
  }
  try{
-  await login();
-  for(const entry of report.cases)if(entry.status!=='passed')await attempt(entry,'submit');
-  journeyDeadline(report);save();let lastPrinted=0;
-  while(report.cases.some(c=>c.status==='submitted')){
-   if(expirePendingJourneys(report)){save();break;}
-   for(const entry of report.cases.filter(c=>c.status==='submitted')){
-    const run=await readRun(entry.runId,entry);
-    if(!['queued','running'].includes(run.state))await attempt(entry,'check');
+  await login();const me=await readJson('/api/v1/me');
+  if(!me.user_id||(report.ownerId&&report.ownerId!==me.user_id))throw Error('Release test account identity changed');report.ownerId=me.user_id;save();
+  for(const entry of report.cases){
+   activeEntry=entry;
+   if(entry.status==='passed'){
+    assertCaseComplete(entry);
+    entry.artifactEvidence=await assertCaseArtifacts(entry,{required:requiredArtifacts(entry.id),inspect});save();continue;
    }
-   if(Date.now()-lastPrinted>=60000){lastPrinted=Date.now();console.log(report.cases.map(c=>c.id+': '+c.status+(c.status==='submitted'?' / '+c.runState+'/'+c.stage:'')).join(' | '));}
-   if(report.cases.some(c=>c.status==='submitted'))await page.waitForTimeout(5000);
+   if(expireCase(report,entry)){save();throw Error(entry.error);}
+   assertSubmissionCanStart(entry);save();
+   if(!entry.billingBefore){
+    if(entry.submissionRequest||entry.runId||entry.workpaperBatchId)throw Error('Accepted task is missing its pre-submission billing snapshot');
+    entry.billingBefore=await snapshot(entry,'before');save();
+   }
+   await attempt(entry,'submit',async()=>{
+    await flows[entry.id](entry,'submit');
+    entry.accepted=acceptedQuote(entry);entry.submittedAt??=new Date().toISOString();entry.status='submitted';
+    entry.billingAccepted=await snapshot(entry,'accepted');save();
+   });
+   let lastPrinted=0;
+   while(true){
+    if(expireCase(report,entry)){save();throw Error(entry.error);}
+    const state=flows[entry.id].readState?await flows[entry.id].readState(entry):await readRun(entry.runId,entry);
+    if(entry.workpaperBatchId)entry.batchState=state.state;
+    const category=classifyState(state.state,{batch:!!entry.workpaperBatchId});save();
+    if(category==='ready')break;
+    if(category!=='waiting')throw Error('Original task requires attention or failed: '+state.state+'/'+(state.stage??''));
+    if(Date.now()-lastPrinted>=60000){lastPrinted=Date.now();console.log(entry.id+': '+state.state+'/'+(state.stage??''));}
+    await page.waitForTimeout(5000);
+   }
+   await attempt(entry,'check',async()=>{
+    await flows[entry.id](entry,'check');
+    entry.billingTerminal=await snapshot(entry,'terminal');
+    entry.billingEvidence=assertBillingTerminal({before:entry.billingBefore,terminal:entry.billingTerminal,accepted:entry.accepted,kind:CASE_KINDS[entry.id],expectedItemIds:entry.expectedItemIds??[],integrityVerifiedPairs:entry.integrityVerifiedPairs});save();
+    const identity=JSON.stringify([entry.runId??null,entry.workpaperBatchId??null]);
+    await page.reload();await flows[entry.id](entry,'check');
+    if(identity!==JSON.stringify([entry.runId??null,entry.workpaperBatchId??null]))throw Error('Refresh changed accepted task identity');
+    entry.artifactEvidence=await assertCaseArtifacts(entry,{required:requiredArtifacts(entry.id),inspect});
+    const after=await snapshot(entry,'refresh-download');
+    entry.refreshEvidence={status:'passed',sameTask:true,downloads:entry.downloads.map(({role,sha256,bytes})=>({role,sha256,bytes})),billing:assertBillingUnchanged({before:entry.billingTerminal,after})};
+    entry.status='passed';assertCaseComplete(entry);entry.finishedAt=new Date().toISOString();delete entry.error;save();console.log(entry.id,'passed');
+   });
   }
- }finally{await context.close();await browser.close();}
+ }finally{await Promise.all([...pendingQuotes]);page.off('response',observeQuote);await context.close();await browser.close();}
 }
