@@ -3,13 +3,14 @@ export function qaPreparationURL(projectURL,runId){
  params.set('run',runId);url.hash='#qa?'+params;return url.href;
 }
 
-export function qaPreparationResponse(response,projectId,hash){
+export function qaPreparationRequest(request,projectId,hash){
  try{
-  if(response.request().method()!=='POST'||new URL(response.url()).pathname!=='/api/v1/projects/'+encodeURIComponent(projectId)+'/qa/prepare')return false;
-  const input=response.request().postDataJSON();
+  if(request.method()!=='POST'||new URL(request.url()).pathname!=='/api/v1/projects/'+encodeURIComponent(projectId)+'/qa/prepare')return false;
+  const input=request.postDataJSON();
   return !!input?.request_id&&input.source?.kind==='material'&&input.source.pin?.source_project_id===projectId&&input.source.pin.sha256===hash;
  }catch{return false;}
 }
+export const qaPreparationResponse=(response,projectId,hash)=>qaPreparationRequest(response.request(),projectId,hash);
 
 /** Record acceptance before waiting for recognition. Resume follows the original
  * prepare run; it must not upload another question list just because prepared=false.
@@ -19,17 +20,29 @@ export async function retainQaPreparation(page,{entry,expected,upload,save}){
  if(!projectId||!/^[a-f0-9]{64}$/.test(expected.sha256??''))throw Error('Invalid QA preparation source');
  const resumed=!!entry.preparationId;
  if(!entry.preparationId){
-  if(entry.preparationReceipt)throw Error('QA preparation receipt is unresolved; retain the original request, do not upload again');
+  if(entry.preparationRequest||entry.preparationReceipt)throw Error('QA preparation receipt is unresolved; retain the original request, do not upload again');
+  const recordRequest=request=>{
+   if(!qaPreparationRequest(request,projectId,expected.sha256))return;
+   const input=request.postDataJSON(),original=entry.preparationRequest;
+   if(original){
+    if(original.request_id!==input.request_id||JSON.stringify(original.source)!==JSON.stringify(input.source))entry.preparationRequestConflict=true;
+   }else entry.preparationRequest={request_id:input.request_id,source:input.source,sent_at:new Date().toISOString()};
+   save();
+  };
+  // The actual request is durable before waiting for a response. A lost receipt
+  // must not turn a resumed invocation into another preparation submission.
+  page.on('request',recordRequest);
   const received=page.waitForResponse(r=>qaPreparationResponse(r,projectId,expected.sha256),{timeout:600000}).then(async response=>{
    const request=response.request().postDataJSON();
    entry.preparationReceipt={request_id:request.request_id,source:request.source,http_status:response.status(),received_at:new Date().toISOString()};save();
+   if(entry.preparationRequestConflict||entry.preparationRequest?.request_id!==request.request_id)throw Error('QA preparation request identity is unresolved; do not upload again');
    if(response.status()!==200)throw Error('Question preparation failed: HTTP '+response.status());
    const receipt=await response.json();
    if(typeof receipt?.run_id!=='string'||!receipt.run_id)throw Error('Question preparation returned no run ID; do not upload again');
    entry.preparationId=receipt.run_id;save();
   });
   received.catch(()=>{});
-  await upload();await received;
+  try{await upload();await received;}finally{page.off('request',recordRequest);}
  }
  if(resumed)await page.goto(qaPreparationURL(entry.projectURL,entry.preparationId));
  else await page.waitForURL(url=>new URLSearchParams(url.hash.split('?')[1]).get('run')===entry.preparationId,{timeout:60000});
