@@ -33,7 +33,7 @@ async function bundle(commit, tree) {
   // The worker runtime intentionally carries only production Python packages.
   // Restore the already-verified core ReportLab cache for this synthetic OCR
   // test; no installer, registry, host software or production path is involved.
-  sync('/usr/local/bin/python', ['-c', `import hashlib,json,sys,tarfile
+  sync('/usr/local/bin/python', ['-c', `import hashlib,json,sys,sysconfig,tarfile
 from importlib.metadata import distribution
 from pathlib import Path
 d=distribution('reportlab'); base=Path(d.locate_file('')).resolve(); rows=[]
@@ -48,7 +48,7 @@ with tarfile.open('/evidence/native-reportlab.tar','w') as archive:
    info.uid=info.gid=0; info.uname=info.gname=''; info.mode=0o644
    return info
   archive.add(path,arcname=name,recursive=False,filter=regular)
-Path('/evidence/native-reportlab.json').write_text(json.dumps(dict(distribution='reportlab',version=d.version,python=sys.version.split()[0],files=rows)))
+Path('/evidence/native-reportlab.json').write_text(json.dumps(dict(distribution='reportlab',version=d.version,python=sys.version.split()[0],abi=sysconfig.get_config_var('SOABI'),files=rows)))
 print('Existing ReportLab cache exported:',d.version,len(rows))`]);
   sync('tar', ['-C', '/workspace', '--mode=a+rX,go-w', '--owner=0', '--group=0', '-cf', '/evidence/native-app.tar',
     'apps', 'packages', 'python', 'node_modules', 'package.json', 'package-lock.json', 'scripts/pr-gate',
@@ -83,6 +83,12 @@ async function probe(profile) {
   const report = { ...verifyRuntime(), profile, started_at: new Date().toISOString(), checks: {}, status: 'failed' };
   try {
     report.checks.python = sync('/opt/venv/bin/python', ['--version']);
+    report.checks.cache_abi = JSON.parse(sync('/opt/venv/bin/python', ['-c', `import json,sys,sysconfig
+from pathlib import Path
+cached=json.loads(Path('/transfer/native-reportlab.json').read_text())
+assert tuple(map(int,cached['python'].split('.')[:2]))==sys.version_info[:2]
+assert cached['abi']==sysconfig.get_config_var('SOABI')
+print(json.dumps(dict(cached_python=cached['python'],runtime_python=sys.version.split()[0],abi=cached['abi'],compatible=True)))`]));
     report.checks.pip = sync('/opt/venv/bin/python', ['-m', 'pip', 'check']);
     // Validate the actual installed versions; no installer or download runs.
     report.checks.requirements = JSON.parse(sync('/opt/venv/bin/python', ['-c', `import json

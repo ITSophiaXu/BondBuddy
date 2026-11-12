@@ -89,6 +89,8 @@ export async function prepareNativeRuntime({ candidate, runId, imageId, core, ev
     assert.ok((image.Config.Env ?? []).every(row => !/(TOKEN|PASSWORD|SECRET|API_KEY|CREDENTIAL)/i.test(row.split('=')[0])), 'Native image contains credential-like environment');
     evidence.image = { id: image.Id, os: image.Os, architecture: image.Architecture, dependency_base_revision: image.Config.Labels?.['org.opencontainers.image.revision'] ?? null };
     runtime.security = JSON.parse((await docker('engine-security', ['info', '--format', '{{json .SecurityOptions}}'])).stdout);
+    evidence.core_image_id = (await core.docker('native-core-image', ['inspect', '--format', '{{.Image}}', core.runner], { capture: true })).text;
+    assert.match(evidence.core_image_id, /^sha256:[a-f0-9]{64}$/);
     await core.exec('bundle-current-native-app', ['node', helper, 'bundle', candidate.commit, candidate.tree]);
     // Move the built candidate outside the core's writable /evidence mount
     // before any test starts. The old image's /app is always hidden by a volume.
