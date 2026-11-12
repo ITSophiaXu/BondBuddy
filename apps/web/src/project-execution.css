@@ -18,6 +18,15 @@
 .execution-confirm input { width: auto; flex: 0 0 auto; margin: 4px 0 0; }
 .execution-summary { border: 1px solid var(--border, #ddd); border-radius: 10px; padding: 16px; margin: 16px 0; overflow-wrap: anywhere; }
 .execution-panel p { overflow-wrap: anywhere; }
+.prototype-app .execution-summary.execution-recovery { font-size: 14px; }
+.prototype-app .execution-summary.execution-recovery h3, .execution-recovery h3 { font-size: 16px; line-height: 1.6; margin: 0 0 8px; }
+.prototype-app .execution-summary.execution-recovery .muted { font-size: 13px; }
+.execution-recovery p { margin: 8px 0; line-height: 1.7; }
+.execution-recovery .form-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 8px; }
+.execution-recovery .muted { font-size: 13px; }
+.execution-recovery [role="status"]:empty { display: none; }
+.execution-support-fallback { display: grid; gap: 8px; font-size: 13px; }
+.execution-support-fallback textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: 10px; font: inherit; line-height: 1.6; color: inherit; border: 1px solid var(--border, #ddd); border-radius: 6px; }
 .fixed-quote { padding: 18px 20px; margin: 0 0 16px; border: 1px solid var(--border, #ddd); border-radius: 12px; background: var(--pale, #f5f8f0); }
 .fixed-quote h3 { margin: 0 0 8px; font-size: 18px; }
 .fixed-quote p { margin: 8px 0; }

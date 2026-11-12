@@ -320,7 +320,7 @@ test('a failed newly selected file blocks existing saved materials until explici
 });
 async function continueAuthoring(page: Page) {
   if(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('prepare')!=='next'){
-    await page.getByRole('button',{name:'继续修改',exact:true}).click();
+    await page.locator('#prepare-next-version').click();
   }
   await expect(page.locator('[data-next-authoring-summary] .continuation-summary')).toBeVisible();
 }
@@ -1118,7 +1118,7 @@ test('paginated recovery and real task actions keep one run', async ({ page }) =
     }
   }
   state.checkStatus='ready'; await page.locator('#recheck-paused').click();
-  await page.getByRole('button',{name:'继续更新',exact:true}).click();
+  await page.getByRole('button',{name:'继续原任务',exact:true}).click();
   await expect(page.locator('#execution-progress')).toContainText('正在编制募集书');
   const run=[...state.runs.values()][0]; run.state='paused'; state.eventSeq=4;
   state.eventHistory=[
@@ -1218,7 +1218,7 @@ for (const stage of ['word_delivery', 'provider_call', 'future_processing_stage'
       const summary=page.locator('.execution-summary');
       await expect(summary).toContainText(stage==='unreadable_source'||stage==='unreadable_material'?'有材料无法读取':stage==='missing_operations'?'未保存必需的修订记录':stage==='word_delivery'?'Word 文件生成或保存失败':'系统处理失败');
       if(stage==='unreadable_source'||stage==='unreadable_material'){
-        await expect(summary).toContainText('点击“继续修改”');
+        await expect(summary).toContainText('点击“准备新一轮”');
         await expect(summary).toContainText('检查本轮文件并重新导出不可读材料');
         await expect(summary).not.toContainText('本次采用的募集书无法读取');
         await expect(summary).not.toContainText('无需因本提示补充材料');
@@ -1390,9 +1390,9 @@ for (const [reason, message] of [
     await setup(page, state);
     state.priorTasks=priorPage.items;
     await page.locator('#execute-input').click();
-    await expect(page.locator('.execution-summary')).toHaveText(message);
+    await expect(page.locator('[data-recovery-reason]')).toHaveText(message);
     await page.getByRole('button',{name:'重新读取',exact:true}).click();
-    await expect(page.locator('.execution-summary')).toHaveText(message);
+    await expect(page.locator('[data-recovery-reason]')).toHaveText(message);
     await expect(page.getByRole('button', { name: '继续更新', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '查看材料', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: '查看此前成功成果' })).toBeVisible();
@@ -1406,7 +1406,7 @@ for (const [reason, message] of [
       }
     }
     await page.reload();
-    await expect(page.locator('.execution-summary')).toHaveText(message);
+    await expect(page.locator('[data-recovery-reason]')).toHaveText(message);
     await expect(page.getByRole('link', { name: '查看此前成功成果' })).toHaveAttribute('href',`#/artifacts/${priorArtifact.artifact_id}?return_project=${id}`);
     await expect(page.locator('#resume-run')).toHaveCount(0);
     const run = [...state.runs.values()][0];
@@ -1424,7 +1424,9 @@ for (const [reason, message] of [
 test('trial stage stays honest without events; a different paused stage discards the old limit reason', async ({ page }) => {
   const state = fixture(); state.checkStatus = 'ready'; state.runStage = 'trial_limit'; state.failEvents = true;
   await setup(page, state); await page.locator('#execute-input').click();
-  await expect(page.locator('.execution-summary')).toHaveText('当前更新暂受试用限制，限制解除后自动继续。');
+  await expect(page.locator('#execution-progress')).toContainText('最新任务状态暂不可获取');
+  await expect(page.locator('.execution-summary')).toContainText('不能确认后台的最新进展');
+  await expect(page.locator('.execution-summary')).not.toContainText('自动继续');
   await expect(page.locator('#resume-run')).toHaveCount(0);
   state.failEvents = false; state.runReason = 'model_tokens_per_user_per_day';
   await expect(page.locator('.execution-summary')).toContainText('今日试用额度已用完', { timeout: 10000 });
@@ -1447,7 +1449,7 @@ test('operator denial remains a failed task without automatic-recovery guidance'
   state.runReason = ''; state.eventError = 'TRIAL_ACCESS_DENIED';
   await setup(page, state); await page.locator('#execute-input').click();
   await expect(page.locator('#execution-progress')).toContainText('本轮未完成');
-  await expect(page.locator('.execution-summary')).toHaveText('当前账号的试用权限已停用，请联系支持。');
+  await expect(page.locator('[data-recovery-reason]')).toHaveText('当前账号的试用权限已停用，请联系支持。');
   await expect(page.locator('#execution-progress')).not.toContainText('自动继续');
   await expect(page.locator('#resume-run')).toHaveCount(0);
   expect(state.runActions).toEqual([]); expect(state.executes).toHaveLength(1);
@@ -2092,4 +2094,98 @@ test('upload automatically adopts the original and submits it without a selectio
   expect(state.inputs[0].material_versions).toContainEqual({material_id:'synthetic-history',material_version:1});
   expect(state.inputs[0].prospectus_selection_revision).toBe(1);
   expect(state.selectionRequests).toEqual([]);
+});
+
+// #961: real Chromium and application UI; synthetic HTTP only, no provider or billing service.
+test('recovery UX: named material issue leads to preparation, not resubmission',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runState='failed';state.runStage='failed';state.runReason='material_parse_failed:synthetic-audit:1';
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.locator('[data-execution-recovery="materials"]')).toContainText('audit.docx · 版本 1');
+  await page.getByRole('button',{name:'查看需处理材料'}).click();
+  await expect(page.locator('#project-materials-details')).toHaveAttribute('open','');
+  await expect(page.locator('#prepare-next-version')).toHaveText('准备新一轮');
+  await page.locator('#prepare-next-version').click();
+  await expect(page.locator('[data-next-authoring-summary] .continuation-summary')).toBeVisible();
+  expect(state.executes).toHaveLength(1);expect(state.inputs).toHaveLength(1);expect(state.runActions).toEqual([]);
+});
+
+test('recovery UX: user pause keeps the original run and fee policy',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runStage='user_paused';state.runReason='user_paused';
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.locator('[data-execution-recovery="resume"]')).toContainText('不创建新一轮');
+  const run=[...state.runs.values()][0],hash=run.input_hash;
+  await page.locator('#resume-run').click();await expect.poll(()=>state.runActions.length).toBe(1);
+  expect(state.runActions[0]).toBe('/runs/'+run.run_id+'/resume');
+  expect(run.input_hash).toBe(hash);expect(state.executes).toHaveLength(1);expect(state.inputs).toHaveLength(1);
+});
+
+test('recovery UX: stale refresh reads only the original run, never the latest project task',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='provider_reconciliation_required';
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.locator('[data-execution-recovery="refresh"]')).toBeVisible();
+  const run=[...state.runs.values()][0];let unavailable=true,badIdentity=false;const reads:string[]=[];
+  await page.route('**/api/v1/runs/'+run.run_id,route=>{reads.push(run.run_id);return unavailable?json(route,503,{code:'DATA_UNAVAILABLE'}):json(route,200,badIdentity?{...run,run_id:'synthetic-newer-run'}:run);});
+  state.runs.set('newer-request',{...run,run_id:'synthetic-newer-run',execution_request_id:'newer-request',state:'running'});
+  await page.locator('#refresh-run-status').click();
+  await expect(page.locator('#execution-progress')).toContainText('最新任务状态暂不可获取');
+  await expect(page.locator('#execution-progress')).toContainText('最近已知状态');
+  await expect(page.locator('[data-execution-recovery]')).toContainText('不能确认后台');
+  unavailable=false;await page.locator('#refresh-run-status').click();
+  await expect(page.locator('#execution-progress')).not.toContainText('最新任务状态暂不可获取');
+  await expect(page.locator('#execution-progress')).toContainText('编制服务暂未返回结果，正在核对并恢复');
+  badIdentity=true;await page.locator('#refresh-run-status').click();
+  await expect(page.locator('#execution-progress')).toContainText('最新任务状态暂不可获取');
+  badIdentity=false;await page.locator('#refresh-run-status').click();
+  await expect(page.locator('#execution-progress')).not.toContainText('最新任务状态暂不可获取');
+  expect(reads.length).toBeGreaterThanOrEqual(2);expect(new Set(reads)).toEqual(new Set([run.run_id]));
+  expect(state.executes).toHaveLength(1);expect(state.inputs).toHaveLength(1);expect(state.runActions).toEqual([]);
+});
+
+for(const clipboard of ['allowed','denied'] as const){
+  test(`recovery UX: support summary is safe with clipboard ${clipboard}`,async({page})=>{
+    await page.addInitScript(mode=>Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(text:string)=>{if(mode==='denied')throw new Error('synthetic denial');(window as any).copiedRecovery=text;}}}),clipboard);
+    const state=fixture();state.checkStatus='ready';state.runState=clipboard==='denied'?'paused':'failed';state.runStage=clipboard==='denied'?'capability_not_ready':'failed';state.runReason='private_customer_token=https://private.invalid/raw';
+    await setup(page,state);await page.locator('#execute-input').click();
+    await expect(page.locator('[data-execution-recovery="support"]')).toBeVisible();
+    await page.locator('#copy-run-support').click();
+    const text=clipboard==='allowed'?await page.evaluate(()=>(window as any).copiedRecovery):await page.getByLabel('任务定位摘要',{exact:true}).inputValue();
+    expect(text).toContain('synthetic-run-1');expect(text).not.toMatch(/private_customer|private.invalid|合成发行人|audit.docx|input_hash/);
+    await expect(page.locator('[data-execution-recovery]')).toContainText(clipboard==='allowed'?'定位摘要已复制':'可手动选取');
+    if(clipboard==='denied'){
+      const area=page.getByLabel('任务定位摘要',{exact:true}),reads=state.runReads;
+      await area.evaluate((element:HTMLTextAreaElement)=>{element.focus();element.setSelectionRange(0,12);});
+      await expect.poll(()=>state.runReads).toBeGreaterThan(reads);
+      await expect(area).toBeFocused();
+      expect(await area.evaluate((element:HTMLTextAreaElement)=>[element.selectionStart,element.selectionEnd])).toEqual([0,12]);
+    }
+    expect(state.executes).toHaveLength(1);expect(state.runActions).toEqual([]);
+  });
+}
+
+test('recovery UX: desktop and mobile recovery prototype comparison',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runState='running';state.runStage='word_delivery';state.runReason='stage_started';
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.locator('#execution-progress')).toContainText('正在保存 Word 文件');
+  const run=[...state.runs.values()][0];run.state='failed';run.stage='failed';state.eventSeq=4;state.runReason='processor_failed';
+  state.publicEvents=[{event_id:'recovery-stage',schema_version:1,trace_id:'synthetic',run_id:run.run_id,seq:3,occurred_at:now,type:'run.progress',state:'running',stage:'word_delivery',payload:{}},{event_id:'recovery-failed',schema_version:1,trace_id:'synthetic',run_id:run.run_id,seq:4,occurred_at:now,type:'run.state_changed',state:'failed',stage:'failed',payload:{reason:'processor_failed'}}];
+  await page.reload();await expect(page.locator('[data-execution-recovery]')).toContainText('Word 文件生成或保存失败');
+  const output=process.env.BB_RECOVERY_EVIDENCE;
+  const prototype=await page.context().newPage();
+  for(const width of [1440,390]){
+    await page.setViewportSize({width,height:960});await prototype.setViewportSize({width,height:960});
+    await prototype.goto('/@fs'+resolve('../../product-prototype/public/authoring-recovery.html')+'?state=failed');
+    await expect(prototype.getByRole('heading',{name:'建议下一步：请支持人员核对本轮任务'})).toBeVisible();
+    await prototype.getByRole('button',{name:'刷新原任务状态'}).click();
+    await expect(prototype.locator('#prototype-feedback')).toContainText('不提交新任务');
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    expect(await prototype.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    if(output){
+      await mkdir(output,{recursive:true});
+      const box=await page.locator('[data-execution-recovery]').boundingBox();
+      await prototype.locator('main').evaluate((el,width)=>{el.style.width=width+'px';el.style.maxWidth='none';el.style.boxSizing='content-box';},box!.width);
+      await page.locator('[data-execution-recovery]').screenshot({path:join(output,`implementation-${width}.png`)});
+      await prototype.locator('.execution-recovery').screenshot({path:join(output,`prototype-${width}.png`)});
+    }
+  }
+  await prototype.close();expect(state.executes).toHaveLength(1);expect(state.runActions).toEqual([]);
 });

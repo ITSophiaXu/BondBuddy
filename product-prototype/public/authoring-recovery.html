@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BondBuddy · 原任务恢复 · 合成原型</title>
+<link rel="stylesheet" href="../../apps/web/src/style.css"><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="../../apps/web/src/project-execution.css"><link rel="stylesheet" href="../../apps/web/src/prototype-adapter.css"><link rel="stylesheet" href="document-workspace.css">
+<style>body{background:#f7f8f3;color:#24483e}main{max-width:1120px;margin:24px auto;padding:0 20px}nav{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}.execution-summary{margin:0}.prototype-note{font-size:13px;margin-top:20px}#prototype-feedback:empty{display:none}@media(max-width:600px){main{padding:0 16px}}</style></head>
+<body><div class="prototype-app" style="display:block"><main><h1>原任务恢复</h1><nav aria-label="合成状态"><a href="?state=failed">系统失败</a><a href="?state=materials">材料问题</a><a href="?state=paused">用户暂停</a><a href="?state=reconcile">系统核对中</a><a href="?state=stale">状态未知</a></nav>
+<div id="recovery-panel"></div><p id="prototype-feedback" role="status"></p><p class="prototype-note">#961 局部设计原型 · 所有数据为 synthetic，不连接 API、不提交任务、不计费。放在现有运行页异常提示位置，不增加页面或步骤；完整进度对照 authoring-live-progress 原型。</p></main></div>
+<script>
+const samples={
+ failed:['请支持人员核对本轮任务','Word 文件生成或保存失败，本轮未能交付。已保存材料会保留，无需重新上传；请联系支持核对并恢复。','请复制定位摘要交给支持人员，核对原因和可用恢复方式。无需仅因系统提示重传材料；不要把准备新一轮当成原任务恢复。','准备新一轮'],
+ materials:['核对本轮材料与要求','有材料无法读取，本轮未能交付。请点击“准备新一轮”，检查本轮文件并重新导出不可读材料，上传可读副本后重新开始；原任务和已保存材料会保留。','先查看需处理材料；需要替换或补充时，选择“准备新一轮”。准备只打开草稿，明确开始后才提交新任务。','准备新一轮'],
+ paused:['继续原任务','','继续会沿用本任务的材料、已保存进度和原计费规则，不创建新一轮。需要更换材料时，请先停止本次任务。','继续本次任务'],
+ reconcile:['核对原任务的恢复状态','正在核对编制服务响应；已保存材料会保留，无需重新上传。','请刷新原任务状态，查看处理条件是否恢复。无需重复提交或重新上传；是否能够继续以服务端返回为准。','停止本次任务'],
+ stale:['先核对原任务状态','','当前显示最近已知记录，不能确认后台的最新进展。刷新只读取原任务，不重新提交；持续无法同步时可复制定位摘要联系支持。','']
+};
+const state=new URLSearchParams(location.search).get('state')||'failed',s=samples[state]||samples.failed,support=['failed','reconcile','stale'].includes(state);
+document.querySelector('#recovery-panel').innerHTML=`<div class="execution-summary execution-recovery"><h3>建议下一步：${s[0]}</h3>${s[1]?`<p>${s[1]}</p>`:''}<p>${s[2]}</p>${state==='materials'?'<p class="muted">本轮未返回可准确定位的文件，请结合材料区状态核对，不自动替换任何文件。</p>':''}<div class="form-actions"><button class="button secondary" data-action="refresh">刷新原任务状态</button>${support?'<button class="button secondary" data-action="copy">复制定位摘要</button>':''}</div>${support?'<p class="muted">定位摘要不含材料正文，可交给你已使用的支持渠道核对。</p>':''}<p class="muted" role="status"></p></div><p class="muted">准备只打开下一轮草稿；明确开始后按新任务的适用规则计费，原材料和成果保留。</p><div class="form-actions">${s[3]?`<button class="button secondary" data-action="next">${s[3]}</button>`:''}<button class="text-button" data-action="materials">${state==='materials'?'查看需处理材料':'查看材料'}</button></div>`;
+document.querySelectorAll('[data-action]').forEach(button=>button.onclick=()=>{document.querySelector('#prototype-feedback').textContent=({refresh:'合成预览：只核对原任务状态，不提交新任务。',copy:'合成预览：提供不含材料正文的定位摘要。',next:'合成预览：展示操作后果，不调用执行接口。',materials:'合成预览：定位现有材料区。'})[button.dataset.action];});
+</script></body></html>
