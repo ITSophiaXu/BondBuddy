@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool, type PoolClient } from 'pg';
+import { reportingWindow } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
+import { quoteSyntheticAuthoringRun } from './test-authoring-source.js';
 import {
   appendIssuerIdentitySourceRecord,
   authorizeIssuerIdentityReviewer,
@@ -74,8 +76,10 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
     const send = (method: string, url: string, payload?: unknown) => app.inject({ method: method as any, url,
       headers: { origin }, payload: payload as any });
     const lockInput = async (targetProject: string, materials: { material_id: string; material_version: number }[]) => {
+      const current = await send('GET', `/api/v1/projects/${targetProject}`);
+      assert.equal(current.statusCode, 200, current.body);
       const response = await send('POST', `/api/v1/projects/${targetProject}/input-revisions`, {
-        draft_revision: 1, material_versions: materials, requirement_message_ids: [],
+        draft_revision: current.json().draft_revision, material_versions: materials, requirement_message_ids: [],
       });
       assert.equal(response.statusCode, 201, response.body);
       const dto = response.json();
@@ -332,8 +336,27 @@ test('synthetic PostgreSQL: update input revisions pin exact reviewed issuer sou
       const noneSelected = await lockInput(projectId, []);
       assert.equal((noneSelected.manifest.issuer_identity as Record<string, unknown>).reason, 'historical_material_not_selected');
 
+      // Preserve the legacy identity snapshots above; only a new current input enters paid execution.
+      const current = await send('GET', `/api/v1/projects/${projectId}`);
+      assert.equal(current.statusCode, 200, current.body);
+      const declared = await app.inject({ method: 'PATCH', url: `/api/v1/projects/${projectId}`,
+        headers: { origin, 'if-match': String(current.json().draft_revision) }, payload: {
+          issuer_name: '合成发行人甲', update_details: { ...current.json().update_details,
+            authoring_mode: 'unified_v1', reporting_cutoff: '2026-09-30',
+            source_prospectuses: [{ material_id: historicalA, material_version: 1, sha256: sourceA.contentHash,
+              issuer_name: '合成发行人甲', relation: 'same_issuer', market: 'sse', offering: 'private',
+              reporting_periods: reportingWindow('sse', 'private', '2025-12-31'), status: 'user_asserted' }] }
+        } });
+      assert.equal(declared.statusCode, 200, declared.body);
+      const executionInput = await lockInput(projectId, [{ material_id: historicalA, material_version: 1 }]);
+      assert.deepEqual(executionInput.manifest.issuer_identity, verifiedInput.manifest.issuer_identity,
+        'current admission retains the exact reviewed source pin');
+      assert.deepEqual((await connection.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
+        [owner, projectId, verifiedInput.input_revision])).rows[0].manifest, verifiedInput.manifest,
+        'preparing current admission does not rewrite the legacy verified snapshot');
+      const quoteId = await quoteSyntheticAuthoringRun(app, scopedPool, owner, projectId, executionInput);
       const replayRequest = { execution_request_id: `execution-${suffix}`, project_id: projectId,
-        input_revision: verifiedInput.input_revision, input_hash: verifiedInput.input_hash, task_kind: 'update',
+        input_revision: executionInput.input_revision, input_hash: executionInput.input_hash, task_kind: 'update', quote_id: quoteId,
         input_manifest_ref: 'synthetic-manifest', storage_origin: 'cloud', workspace_id: 'synthetic-worker' };
       const runA = await send('POST', '/api/v1/runs/execute', replayRequest);
       const runReplay = await send('POST', '/api/v1/runs/execute', replayRequest);

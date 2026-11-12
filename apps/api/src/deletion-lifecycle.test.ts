@@ -3,11 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Ajv } from 'ajv';
 import { Pool } from 'pg';
-import { dataLifecycleSchemas } from '@bondbuddy/contracts';
+import { dataLifecycleSchemas, emptyUpdateDetails, reportingWindow } from '@bondbuddy/contracts';
 import { azureBlobs, digest, type PrivateBlobs } from './data.js';
 import { createServer } from './server.js';
 import { dataPolicyFromEnv, runDeletedContentPurge, runUserDeletionLifecycle } from './deletion-lifecycle.js';
-import { PDF, pdfSample } from './upload-safety.samples.js';
+import { DOCX } from './upload-safety.samples.js';
+import { makeSyntheticDocxFixture } from './docx-fixtures.js';
+import { quoteSyntheticAuthoringRun } from './test-authoring-source.js';
 
 // Synthetic data only. Integration tests need a migrated PostgreSQL 16 and Azurite; otherwise they skip.
 import { isolatedTestDatabase } from './test-database.js';
@@ -111,20 +113,22 @@ test('PostgreSQL/Azurite user deletion tombstones, 404s, then purges bytes and d
   const app = createServer({ pool, blobs, principal: async () => ({ userId: activeOwner, csrfVerified: true }), allowedOrigin: origin, enableRunStaging: true });
   const send = (method: string, url: string, payload?: unknown, extra: Record<string, string> = {}) =>
     app.inject({ method: method as any, url, headers: { origin, ...extra }, payload: payload as any });
-  const pdf = pdfSample();
-  const sha = digest(pdf);
+  // Both materials retain identical bytes, so deleting one must preserve their shared parse cache.
+  const bytes = makeSyntheticDocxFixture({ text: 'Synthetic deletion source' });
+  const sha = digest(bytes);
 
   const createProject = async (name: string) => {
-    const response = await send('POST', '/api/v1/projects', { name, kind: 'update', issuer_name: null, market: null, offering: null });
+    const response = await send('POST', '/api/v1/projects', { name, kind: 'update', issuer_name: 'Synthetic deletion issuer', market: 'sse', offering: 'private',
+      update_details: { ...emptyUpdateDetails(), authoring_mode: 'unified_v1', reporting_cutoff: '2026-09-30' } });
     assert.equal(response.statusCode, 201, response.body);
     return response.json().project_id as string;
   };
   const upload = async (projectId: string, role: string) => {
-    const created = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, { filename: `${role}.pdf`, media_type: PDF, byte_size: pdf.length, sha256: sha, role });
+    const created = await send('POST', `/api/v1/projects/${projectId}/materials/uploads`, { filename: `${role}.docx`, media_type: DOCX, byte_size: bytes.length, sha256: sha, role });
     assert.equal(created.statusCode, 201, created.body);
-    const put = await send('PUT', created.json().upload_url, pdf, { 'content-type': 'application/octet-stream' });
+    const put = await send('PUT', created.json().upload_url, bytes, { 'content-type': 'application/octet-stream' });
     assert.equal(put.statusCode, 204, put.body);
-    const done = await send('POST', `/api/v1/projects/${projectId}/materials/uploads/${created.json().upload_id}/complete`, { byte_size: pdf.length, sha256: sha });
+    const done = await send('POST', `/api/v1/projects/${projectId}/materials/uploads/${created.json().upload_id}/complete`, { byte_size: bytes.length, sha256: sha });
     assert.equal(done.statusCode, 200, done.body);
     const m = done.json() as { material_id: string; material_version: number; upload_id: string };
     return { ...m, key: `users/${owner}/projects/${projectId}/uploads/${m.upload_id}` };
@@ -152,7 +156,7 @@ test('PostgreSQL/Azurite user deletion tombstones, 404s, then purges bytes and d
     await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [owner, `u${owner.replace(/-/g, '_')}`.slice(0, 32)]);
     // ---- material deletion inside a live project
     const projectId = await createProject('合成删除项目');
-    const kept = await upload(projectId, 'audit');
+    const kept = await upload(projectId, 'historical');
     const doomed = await upload(projectId, 'notes');
     const doomedDerived = await derive(projectId, doomed);
     const cacheKey = `parse-cache/${randomUUID()}`;
@@ -192,10 +196,24 @@ test('PostgreSQL/Azurite user deletion tombstones, 404s, then purges bytes and d
     const keptDerived = await derive(projectId, kept);
     await assert.rejects(pool.query(`DO $$BEGIN PERFORM set_config('bb.deleted_content_purge','on',true); DELETE FROM bb_parse_evidence WHERE owner_user_id='${owner}'; END$$`),
       (e: any) => e.code === '23514', 'evidence of live materials stays immutable, even inside the purge session');
-    const revision = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: 1, material_versions: [{ material_id: kept.material_id, material_version: kept.material_version }], requirement_message_ids: [] });
+    const current = await send('GET', `/api/v1/projects/${projectId}`);
+    assert.equal(current.statusCode, 200, current.body);
+    const declared = await send('PATCH', `/api/v1/projects/${projectId}`, { update_details: { ...current.json().update_details,
+      source_prospectuses: [{ material_id: kept.material_id, material_version: kept.material_version, sha256: sha,
+        issuer_name: 'Synthetic deletion issuer', relation: 'same_issuer', market: 'sse', offering: 'private',
+        reporting_periods: reportingWindow('sse', 'private', '2025-12-31'), status: 'user_asserted' }] }
+    }, { 'if-match': String(current.json().draft_revision) });
+    assert.equal(declared.statusCode, 200, declared.body);
+    const versions = await send('GET', `/api/v1/projects/${projectId}/prospectus-versions`);
+    assert.equal(versions.statusCode, 200, versions.body);
+    assert.equal(versions.json().versions.find((v: any) => v.version_id === versions.json().current_version_id)?.material_id, kept.material_id);
+    const revision = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: declared.json().draft_revision,
+      prospectus_selection_revision: versions.json().selection_revision,
+      material_versions: [{ material_id: kept.material_id, material_version: kept.material_version }], requirement_message_ids: [] });
     assert.equal(revision.statusCode, 201, revision.body);
     const input = revision.json();
-    const staged = await send('POST', '/api/v1/runs/execute', { execution_request_id: randomUUID(), project_id: projectId, input_revision: input.input_revision, input_hash: input.input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest', storage_origin: 'cloud', workspace_id: 'synthetic-workspace' });
+    const quoteId = await quoteSyntheticAuthoringRun(app, pool, owner, projectId, input);
+    const staged = await send('POST', '/api/v1/runs/execute', { execution_request_id: randomUUID(), project_id: projectId, input_revision: input.input_revision, input_hash: input.input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest', storage_origin: 'cloud', workspace_id: 'synthetic-workspace', quote_id: quoteId });
     assert.equal(staged.statusCode, 202, staged.body);
     const runId = staged.json().run_id as string;
     const promptKey = `users/${owner}/projects/${projectId}/snapshots/${randomUUID()}`;
