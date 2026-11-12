@@ -12,6 +12,8 @@ import { recordPotentialCall, type Lease } from './queue.js';
 import { resetProcessGateForTests, tripEvidenceGate } from './evidence-gate.js';
 import { grantOperator } from './log-ops.js';
 import { checkTrialHealth, configureTrialGuard, recordWorkerHeartbeat, trialConfigFromEnv, type TrialConfig } from './trial-guard.js';
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun, syntheticAuthoringBlobs } from './test-authoring-source.js';
+import { creditBalanceExact } from './billing.js';
 
 // #35 trial guard. Synthetic data only: no real provider, credential or customer material.
 import { isolatedTestDatabase } from './test-database.js';
@@ -35,7 +37,9 @@ async function openGate(pool: Pool) {
 
 function harness(pool: Pool, trial: TrialConfig, options: { blobs?: boolean } = {}) {
   let current = '';
-  const app = createServer({ pool, blobs: options.blobs === false ? undefined : azureBlobs(blobConnection!), allowedOrigin: ORIGIN, principal: async () => ({ userId: current, csrfVerified: true }), enableSyntheticQueue: true, trial });
+  // These original trial/model-usage contracts reuse uncharged inputs across attempts.
+  const app = createServer({ pool, blobs: options.blobs === false ? undefined : azureBlobs(blobConnection!), allowedOrigin: ORIGIN, principal: async () => ({ userId: current, csrfVerified: true }), enableSyntheticQueue: true, trial,
+    historicalBillingFixture: true, enablePaidAuthoring: false });
   const as = (userId: string, remoteAddress = '198.51.100.7') => (method: string, url: string, payload?: unknown) => { current = userId; return app.inject({ method: method as never, url, remoteAddress, headers: { origin: ORIGIN }, payload: payload as never }); };
   async function project(owner: string, remoteAddress?: string) {
     const created = await as(owner, remoteAddress)('POST', '/api/v1/projects', { name: 'synthetic trial', kind: 'update', issuer_name: null, market: null, offering: null });
@@ -502,4 +506,72 @@ test('trial health pass raises stale heartbeat, backlog, error-rate and global-q
     await pool.query("UPDATE bb_jobs SET state='cancelled' WHERE owner_user_id=$1", [owner]);
     await recordWorkerHeartbeat(pool, { workerId, startedAt: new Date(), kinds: ['run'], concurrency: 1, stopped: true });
   } finally { await pool.end(); }
+});
+
+test('current paid admission serializes quota and retries the exact rejected key, input and unconsumed quote', { skip: !connection }, async () => {
+  const database = await isolatedTestDatabase(undefined, 'current-trial-admission');
+  const pool = new Pool({ connectionString: database });
+  const owner = await user(pool, 'trial-current');
+  const app = createServer({ pool, blobs: syntheticAuthoringBlobs(), allowedOrigin: ORIGIN,
+    principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true, paymentProviders: [],
+    trial: base({ active_runs_per_user: 1 }) });
+  const send = (method: string, url: string, payload?: unknown) =>
+    app.inject({ method: method as any, url, headers: { origin: ORIGIN }, payload: payload as any });
+  const prepare = async () => {
+    const created = await send('POST', '/api/v1/projects', { name: 'Synthetic current quota', kind: 'update',
+      issuer_name: 'Synthetic trial issuer', market: 'sse', offering: 'private' });
+    assert.equal(created.statusCode, 201, created.body);
+    const project = created.json().project_id, input = (await lockSyntheticAuthoringInput(app, project)).json();
+    const quoteId = await quoteSyntheticAuthoringRun(app, pool, owner, project, input);
+    return { execution_request_id: `current-trial-${uid()}`, project_id: project, input_revision: input.input_revision,
+      input_hash: input.input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest',
+      storage_origin: 'cloud', workspace_id: 'synthetic-workspace', quote_id: quoteId };
+  };
+  try {
+    await openGate(pool);
+    const requests = [await prepare(), await prepare()];
+    const fundedBalance = await creditBalanceExact(pool, owner);
+    const raced = await Promise.all(requests.map(request => send('POST', '/api/v1/runs/execute', request)));
+    assert.equal(raced.filter(response => response.statusCode === 202).length, 1, raced.map(response => response.body).join('\n'));
+    assert.equal(raced.filter(response => response.statusCode === 429 && response.json().code === 'TRIAL_QUOTA_EXCEEDED').length, 1);
+    const winnerIndex = raced.findIndex(response => response.statusCode === 202), rejectedIndex = 1 - winnerIndex;
+    const winner = raced[winnerIndex].json(), request = requests[rejectedIndex];
+    assert.equal(winner.billing_mode, 'fixed_credits');
+    assert.deepEqual(raced[rejectedIndex].json().field_errors, [{ field: 'trial_limit', code: 'active_runs_per_user', message: 'Current processing limit reached' }]);
+    const winningReplay = await send('POST', '/api/v1/runs/execute', requests[winnerIndex]);
+    assert.equal(winningReplay.statusCode, 202, winningReplay.body);assert.equal(winningReplay.json().run_id, winner.run_id);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1', [owner])).rows[0].n, 1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1', [owner])).rows[0].n, 1);
+    const auditSql = "SELECT id,request_hash,error_code FROM bb_jobs WHERE project_id=$1 AND subtype='execute_rejected'";
+    const audit = (await pool.query(auditSql, [request.project_id])).rows;
+    assert.equal(audit.length, 1);assert.equal(audit[0].error_code, 'TRIAL_QUOTA_EXCEEDED');
+    const retry = () => send('POST', '/api/v1/runs/execute', request);
+    const stillFull = await retry();assert.equal(stillFull.statusCode, 429, stillFull.body);
+    assert.equal(stillFull.json().code, 'TRIAL_QUOTA_EXCEEDED');
+    assert.equal(await alertFor(pool, 'active_runs_per_user', owner), 1);
+    const changed = await send('POST', '/api/v1/runs/execute', { ...request, input_manifest_ref: 'changed-manifest' });
+    assert.equal(changed.statusCode, 409, changed.body);assert.equal(changed.json().code, 'IDEMPOTENCY_CONFLICT');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1', [request.project_id])).rows[0].n, 0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE quote_id=$1', [request.quote_id])).rows[0].n, 0);
+
+    const cancelled = await send('POST', `/api/v1/runs/${winner.run_id}/cancel`, { reason: 'synthetic quota release' });
+    assert.equal(cancelled.statusCode, 200, cancelled.body);assert.equal(cancelled.json().state, 'cancelled');
+    assert.equal((await pool.query('SELECT state FROM bb_credit_reservations WHERE run_id=$1', [winner.run_id])).rows[0].state, 'released');
+    assert.deepEqual(await creditBalanceExact(pool, owner), fundedBalance, 'cancellation releases the actual reserved funds');
+    // Quota rejection never consumed this quote: retry the identical request without re-locking or re-quoting.
+    const concurrent = await Promise.all([retry(), retry(), retry()]), resumed = concurrent[0];
+    assert.equal(resumed.statusCode, 202, resumed.body);
+    assert.ok(concurrent.every(response => response.statusCode === 202 && response.json().run_id === resumed.json().run_id));
+    assert.equal((await retry()).json().run_id, resumed.json().run_id);
+    assert.equal(resumed.json().execution_request_id, request.execution_request_id);
+    assert.equal(resumed.json().input_revision, request.input_revision);assert.equal(resumed.json().input_hash, request.input_hash);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1', [request.project_id])).rows[0].n, 1);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_input_revisions WHERE project_id=$1', [request.project_id])).rows[0].n, 1);
+    assert.deepEqual((await pool.query('SELECT quote_id,state FROM bb_credit_reservations WHERE run_id=$1', [resumed.json().run_id])).rows,
+      [{ quote_id: request.quote_id, state: 'held' }]);
+    assert.deepEqual((await pool.query(auditSql, [request.project_id])).rows, audit, 'the original quota rejection remains immutable after successful retry');
+    assert.equal(await alertFor(pool, 'active_runs_per_user', owner), 1, 'replays do not duplicate the quota alert');
+    const cleaned = await send('POST', `/api/v1/runs/${resumed.json().run_id}/cancel`, { reason: 'synthetic fixture complete' });
+    assert.equal(cleaned.statusCode, 200, cleaned.body);
+  } finally { await app.close(); await pool.end(); }
 });
