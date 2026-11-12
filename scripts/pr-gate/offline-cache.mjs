@@ -55,7 +55,7 @@ export function compareCacheFiles(cached, candidate) {
   return CACHE_FILES.map(path => {
     const raw = cached[path], exact = candidate[path];
     assert.ok(Buffer.isBuffer(raw) && Buffer.isBuffer(exact), `Cache input missing: ${path}`);
-    const converted = Buffer.from(raw.toString('utf8').replaceAll('\r\n', '\n'), 'utf8');
+    const converted = Buffer.from(raw.toString('latin1').replaceAll('\r\n', '\n'), 'latin1');
     assert.ok(converted.equals(exact), `Cached ${path} differs from candidate beyond CRLF conversion`);
     return { path, raw_sha256: hash(raw), candidate_sha256: hash(exact), normalized_sha256: hash(converted),
       raw_bytes: raw.length, candidate_bytes: exact.length, conversion: 'CRLF pairs to LF only', exact_normalized_bytes_equal: true };

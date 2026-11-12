@@ -90,21 +90,23 @@ test('dependency-only sources honor npm configuration without accepting insecure
   }
 });
 
-test('one cleanup failure does not hide behind an absent sibling or prevent runner cleanup', async () => {
+test('cleanup verifies exact IDs, attempts siblings after failure, and requires confirmed absence', async () => {
+  const containers = ['pg', 'blob', 'runner'].map((suffix, index) => ({ id: String(index + 1).repeat(64), name: 'bb-pr-gate-test-' + suffix }));
   const calls = [];
-  await assert.rejects(cleanupContainers(['pg', 'blob', 'runner'], async (label, args) => {
-    calls.push(label);
-    if (label === 'remove-pg') return { code: 1, text: 'permission denied' };
-    if (label === 'inspect-pg') return { code: 0, text: 'still-running-id' };
-    if (label === 'remove-blob') return { code: 1, text: 'No such container' };
+  await assert.rejects(cleanupContainers(containers, async (label, args) => {
+    calls.push({ label, args });
+    const container = containers.find(row => label.endsWith(row.name));
+    if (label.startsWith('identify-')) return { code: 0, text: container.id + ' /' + container.name };
+    if (label === 'remove-' + containers[0].name) throw new Error('permission denied');
+    if (label.startsWith('absent-')) return { code: 1, text: 'Error: No such object: ' + container.id };
     return { code: 0, text: '' };
-  }), /pg still exists/);
-  assert.ok(calls.includes('remove-runner'));
-  assert.ok(calls.includes('inspect-runner'));
-  await assert.rejects(cleanupContainers(['pg', 'runner'], async label => {
-    if (label.startsWith('inspect-')) throw new Error('daemon unavailable');
-    return { code: 0, text: '' };
-  }), /daemon unavailable/);
+  }), /permission denied/);
+  assert.ok(calls.some(row => row.label === 'remove-' + containers[2].name));
+  for (const row of calls.filter(row => row.label.startsWith('remove-'))) assert.match(row.args.at(-1), /^[a-f0-9]{64}$/);
+  await assert.rejects(cleanupContainers([containers[0]], async label => ({ code: 0, text: label.startsWith('identify-') ? 'wrong identity' : '' })), /identity changed/);
+  await assert.rejects(cleanupContainers([containers[0]], async label => ({ code: label.startsWith('absent-') ? 1 : 0,
+    text: label.startsWith('identify-') ? containers[0].id + ' /' + containers[0].name : 'daemon unavailable' })), /confirm owned container absence/);
+  await assert.rejects(cleanupContainers([{ id: 'not-an-id', name: 'bb-pr-gate-test' }], async () => { throw Error('must not call Docker'); }), /Invalid owned/);
 });
 
 test('dirty invocation invalidates a prior passed receipt, merges missing results, and releases its lock without Docker', () => {

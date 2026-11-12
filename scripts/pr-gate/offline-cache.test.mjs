@@ -40,6 +40,7 @@ test('cached process command explicitly replaces rather than extends inherited e
 
 test('dependency comparison permits CRLF pairs only, preserves byte hashes, rejects semantic or whitespace edits', () => {
   const crlf = Object.fromEntries(CACHE_FILES.map(path => [path, Buffer.from(candidate[path].toString().replaceAll('\n', '\r\n'))]));
+  assert.throws(() => compareCacheFiles({ ...candidate, 'package-lock.json': Buffer.from([255]) }, { ...candidate, 'package-lock.json': Buffer.from('\uFFFD') }));
   const rows = compareCacheFiles(crlf, candidate);
   assert.equal(rows.length, 3); assert.ok(rows.every(row => row.raw_sha256 !== row.candidate_sha256 && row.exact_normalized_bytes_equal));
   for (const path of CACHE_FILES) {

@@ -75,18 +75,21 @@ export function dependencySources(env) {
   return sources;
 }
 
-export async function cleanupContainers(names, docker, cleanup = true) {
-  // Attempt every exact name even if another removal fails. Confirm absence so
-  // a missing container cannot hide a permission/daemon error for its sibling.
-  const errors = [];
-  for (const name of names) {
+export async function cleanupContainers(containers, docker, cleanup = true) {
+  const errors = [], removed = [];
+  for (const { id, name } of containers) {
     try {
-      await docker(`remove-${name}`, ['rm', '--force', '--volumes', name], { allowFailure: true, capture: true, cleanup });
-      const remaining = await docker(`inspect-${name}`, ['container', 'ls', '--all', '--quiet', '--filter', `name=^/${name}$`], { capture: true, cleanup });
-      if (remaining.text) throw new Error(`${name} still exists`);
-    } catch (error) { errors.push(error.message); }
+      if (!/^[a-f0-9]{64}$/.test(id ?? '') || !/^bb-pr-gate-[a-zA-Z0-9-]+$/.test(name ?? '')) throw new Error('Invalid owned container identity');
+      const inspected = await docker('identify-' + name, ['inspect', '--format', '{{.Id}} {{.Name}}', id], { capture: true, cleanup });
+      if (inspected.text !== id + ' /' + name) throw new Error('Owned container identity changed');
+      await docker('remove-' + name, ['rm', '--force', '--volumes', id], { cleanup });
+      const absent = await docker('absent-' + name, ['inspect', id], { capture: true, allowFailure: true, cleanup });
+      if (absent.code === 0 || !/no such (object|container)/i.test(absent.text)) throw new Error('Cannot confirm owned container absence');
+      removed.push(name);
+    } catch (error) { errors.push(name + ': ' + error.message); }
   }
-  if (errors.length) throw new Error(errors.join('; '));
+  if (errors.length) { const error = new Error(errors.join('; ')); error.removedContainers = removed; throw error; }
+  return removed;
 }
 
 export function expectedFor(ref) {
@@ -168,19 +171,9 @@ async function run(offlineImage = null) {
     return id;
   };
   const removeOwned = async (names, cleanup = true) => {
-    const errors = [];
-    for (const name of names) {
-      const container = owned.get(name); if (!container) continue;
-      try {
-        const inspected = await docker('identify-' + name, ['inspect', '--format', '{{.Id}} {{.Name}}', container.id], { capture: true, cleanup });
-        if (inspected.text !== container.id + ' /' + name) throw new Error('Owned container identity changed');
-        await docker('remove-' + name, ['rm', '--force', '--volumes', container.id], { cleanup });
-        const absent = await docker('absent-' + name, ['inspect', container.id], { capture: true, allowFailure: true, cleanup });
-        if (absent.code === 0 || !/no such (object|container)/i.test(absent.text)) throw new Error('Cannot confirm owned container absence');
-        owned.delete(name);
-      } catch (error) { errors.push(name + ': ' + error.message); }
-    }
-    if (errors.length) throw new Error(errors.join('; '));
+    const containers = names.flatMap(name => owned.has(name) ? [owned.get(name)] : []);
+    try { for (const name of await cleanupContainers(containers, docker, cleanup)) owned.delete(name); }
+    catch (error) { for (const name of error.removedContainers ?? []) owned.delete(name); throw error; }
   };
   const startServices = async () => {
     await start('start-postgres', postgres, ['--network', `container:${runner}`, '--cpus', '0.5', '--memory', '512m', '--memory-swap', '512m', ...envArgs(workflow.credentials), serviceImages.postgres ?? workflow.postgres]);
