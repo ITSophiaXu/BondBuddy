@@ -24,6 +24,7 @@ import { taskProgress } from './task-progress';
 import { taskHref,taskView } from './project-collection-model';
 import { esc } from './ui';
 import { assistantIcon as icon } from './assistant-icons';
+import { canReselectExpiredUpload } from './upload-reselection';
 import { AssistantUploadRecovery, AssistantUploadRecoveryError, type AssistantUploadEntry } from './assistant-upload-recovery';
 import { AssistantTemplateUploadRecovery, assistantTemplateUploadRecordMatches, type AssistantTemplateUploadEnvelope, type AssistantTemplateUploadResult } from './assistant-template-upload-recovery';
 import { AssistantProjectCopyRecovery, assistantProjectCopyRecordMatches, type AssistantProjectCopyEnvelope, type AssistantProjectCopyResult } from './assistant-project-copy-recovery';
@@ -58,7 +59,7 @@ export class ProjectAssistant {
   private templateEnvelopes:AssistantTemplateUploadEnvelope[]=[];
   private templateOrphans:UploadRecoveryRecord[]=[];
   private templateProblem='';private templatePreparing=false;private templateReading=false;
-  private templateFiles=new Map<string,File>();private templateErrors=new Map<string,string>();private templateStatuses=new Map<string,string>();private templateProgress=new Map<string,FileUploadProgress>();private templateNeedsFile=new Set<string>();
+  private templateFiles=new Map<string,File>();private templateErrors=new Map<string,string>();private templateStatuses=new Map<string,string>();private templateProgress=new Map<string,FileUploadProgress>();private templateNeedsFile=new Set<string>();private templateReselected=new Set<string>();
   private cacheQueue:Promise<void>=Promise.resolve();private cachePending=0;private cacheProblem='';
   private cacheBaselines=new Map<string,AssistantViewCacheRecord|null>();
   private editGeneration=0;private runtimeGeneration=0;private actionPending=0;private actionUncertain=false;
@@ -203,7 +204,7 @@ export class ProjectAssistant {
     if(!helper){helper=new AssistantTemplateUploadRecovery(this.api,this.m4,this.owner,project,topic,{current:()=>this.scopeCurrent(topic,project),snapshot:()=>this.scopeCurrent(topic,project)?this.viewSnapshot():undefined,signal:this.controller.signal});this.templateHelpers.set(key,helper);}this.assistantTemplateUploads=helper;this.scanTemplates();
   }
   private scanTemplates(){
-    if(!this.assistantTemplateUploads)return;try{const envelopes=this.assistantTemplateUploads.list(),records=this.assistantTemplateUploads.transportRecords();this.templateEnvelopes=envelopes;this.templateOrphans=records.filter(r=>!envelopes.some(e=>e.items.some(i=>assistantTemplateUploadRecordMatches(e,i.index,r))));if(this.workspace&&!envelopes.length&&!this.templateOrphans.length&&!this.copyEnvelopes.length&&!this.copyOrphans.length&&!this.copyPreparing)assertAssistantTemplateClear(this.api,this.owner,this.workspace.topic.topic_id,()=>this.live);this.templateProblem='';for(const e of envelopes)if(e.items[0].templateReceipt)this.templateSaved.set(e.id,e);}catch(e){this.templateProblem=assistantError(e,'read');}
+    if(!this.assistantTemplateUploads)return;try{const envelopes=this.assistantTemplateUploads.list(),records=this.assistantTemplateUploads.transportRecords();this.templateEnvelopes=envelopes;this.templateOrphans=records.filter(r=>!envelopes.some(e=>e.items.some(i=>assistantTemplateUploadRecordMatches(e,i.index,r))));if(this.workspace&&!envelopes.length&&!this.templateOrphans.length&&!this.copyEnvelopes.length&&!this.copyOrphans.length&&!this.copyPreparing)assertAssistantTemplateClear(this.api,this.owner,this.workspace.topic.topic_id,()=>this.live);this.templateProblem='';for(const e of envelopes){const item=e.items[0];if(item.templateReceipt)this.templateSaved.set(e.id,e);const record=records.find(r=>assistantTemplateUploadRecordMatches(e,item.index,r));if(record&&canReselectExpiredUpload(record))this.templateNeedsFile.add(item.id);}}catch(e){this.templateProblem=assistantError(e,'read');}
   }
   private templateBlocked(show=true){
     this.scanCopies();this.scanTemplates();const blocked=this.templatePreparing||this.templateReading||this.copyPreparing||this.copyReading||!!this.copyProblem||!!this.copyEnvelopes.length||!!this.copyOrphans.length||!!this.templateProblem||!!this.templateEnvelopes.length||!!this.templateOrphans.length||!!this.cacheProblem||this.viewConflict||this.actionUncertain;
@@ -274,7 +275,7 @@ export class ProjectAssistant {
   }
   private async resumeTemplate(id:string,explicit=true){
     const helper=this.assistantTemplateUploads;if(!helper||!this.workspace)return;this.scanTemplates();const e=this.templateEnvelopes.find(e=>e.id===id);if(!e)throw new AssistantInputError('原模板保存待办已变化，请重新读取。');const item=e.items[0],topic=e.topicId,project=e.projectId,wasPreparing=this.templatePreparing;this.templatePreparing=true;this.templateGeneration++;this.templateErrors.delete(item.id);await this.cacheQueue;
-    try{const result=await helper.resume(id,0,{file:this.templateFiles.get(item.id),retryMembership:explicit,retryTemplate:explicit,retryView:explicit,status:message=>{if(this.scopeCurrent(topic,project)){this.templateStatuses.set(item.id,message);this.templateProgress.set(item.id,uploadActivity(message));this.paintStatus();}},progress:(loaded,total)=>{if(this.scopeCurrent(topic,project)){this.templateStatuses.set(item.id,"正在上传文件…");this.templateProgress.set(item.id,uploadTransfer(loaded,total));this.paintStatus();}}});if(this.scopeCurrent(topic,project)){this.templateNeedsFile.delete(item.id);this.applyAssistantTemplateUploadResult(result);this.templateStatuses.set(item.id,result.reason??(result.state==='template_unknown'?'模板创建结果待确认，请继续原保存。':result.state==='retryable'?'原会话尚未保存，请明确继续原保存。':this.status));}}
+    try{const result=await helper.resume(id,0,{file:this.templateFiles.get(item.id),reselectExpiredSession:explicit&&this.templateReselected.has(item.id),retryMembership:explicit,retryTemplate:explicit,retryView:explicit,status:message=>{if(this.scopeCurrent(topic,project)){this.templateStatuses.set(item.id,message);this.templateProgress.set(item.id,uploadActivity(message));this.paintStatus();}},progress:(loaded,total)=>{if(this.scopeCurrent(topic,project)){this.templateStatuses.set(item.id,"正在上传文件…");this.templateProgress.set(item.id,uploadTransfer(loaded,total));this.paintStatus();}}});if(this.scopeCurrent(topic,project)){this.templateNeedsFile.delete(item.id);this.templateReselected.delete(item.id);this.applyAssistantTemplateUploadResult(result);this.templateStatuses.set(item.id,result.reason??(result.state==='template_unknown'?'模板创建结果待确认，请继续原保存。':result.state==='retryable'?'原会话尚未保存，请明确继续原保存。':this.status));}}
     catch(error){if(this.scopeCurrent(topic,project)){this.templateStatuses.delete(item.id);this.templateErrors.set(item.id,assistantError(error,'save'));if(error instanceof UploadRecoveryNeedsFileError)this.templateNeedsFile.add(item.id);const now=this.viewSnapshot();if(now?.dirty&&now.version===e.basePage.version&&!assistantSame(now.view,e.basePage.view)){this.viewConflict=true;this.cache();}this.error=assistantError(error,'save');}throw error;}
     finally{if(this.scopeCurrent(topic,project)){this.templatePreparing=wasPreparing;this.scanTemplates();this.paint();}}
   }
@@ -548,7 +549,7 @@ export class ProjectAssistant {
     if(this.action?.business==='update'&&this.data)syncReportingPeriodHints(this.host,this.data.materials,this.data.project.update_details?.source_prospectuses??[],this.action.fields.reporting_cutoff??null);
   }
   private async change(event:Event){const el=event.target as HTMLInputElement;
-    if(el.matches('[data-assistant-template-recovery-reselect]')){const file=el.files?.[0],id=el.dataset.assistantTemplateRecoveryReselect!;el.value='';if(file){this.templateFiles.set(id,file);this.templateStatuses.set(id,'已选择文件，请点击继续原保存，核对内容相同后再继续。');this.templateErrors.delete(id);this.paintStatus();}return;}
+    if(el.matches('[data-assistant-template-recovery-reselect]')){const file=el.files?.[0],id=el.dataset.assistantTemplateRecoveryReselect!;el.value='';if(file){this.templateFiles.set(id,file);this.templateReselected.add(id);this.templateStatuses.set(id,'已选择文件，请点击继续原保存，核对内容相同后再继续。');this.templateErrors.delete(id);this.paintStatus();}return;}
     if(el.matches('[data-primary-source]')){this.view.unsent_context.source_material=this.workspace?.materials.find(m=>m.material_id===el.value)??null;this.invalidateTask();return;}
     if(el.matches('[data-project-select]')){const id=el.value;if(id)await this.work(async()=>{this.projects=[];await this.newConversation(id);},'submit');return;}
     if(el.matches('[data-template]')){this.view.assistant!.template_key=el.value;this.invalidateTask();return;}
