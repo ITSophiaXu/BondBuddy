@@ -5,8 +5,9 @@ import {fileURLToPath} from 'node:url';
 import {randomBytes} from 'node:crypto';
 import {parseArgs} from 'node:util';
 import {SAMPLE_REF,CASES,writeJson,verifiedFile,verdict,assertLocalContext,assertTestReport} from './support.mjs';
-import {hostEnvironment,protectPrivatePath,archiveExecutable} from './platform.mjs';
+import {hostEnvironment,bindMount,protectPrivatePath} from './platform.mjs';
 import {prepareReleaseCredential,assertReleaseCredential} from './credentials.mjs';
+import {assertArchiveSupport,extractArchive,gitArchive} from './archive.mjs';
 
 const directory=dirname(fileURLToPath(import.meta.url)),repo=resolve(directory,'../..');
 const settingsFile=join(directory,'.local.json');
@@ -19,7 +20,6 @@ const resume=values.resume,out=resume?resolve(resume):join(directory,'.runtime',
 mkdirSync(out,{recursive:true,mode:0o700});
 const env=hostEnvironment();
 protectPrivatePath(out,'directory',env);
-const tar=archiveExecutable(env);
 const reportFile=join(out,'report.json');
 const report=resume?JSON.parse(readFileSync(reportFile)): {startedAt:new Date().toISOString(),status:'blocked',modelMode:'live',modelProbe:'not_run',realPayment:false,cases:CASES.map(id=>({id,status:'not_run'}))};
 if(resume)writeJson(join(out,'report-before-'+Date.now()+'.json'),report);
@@ -52,7 +52,7 @@ try{
  sync('docker',['info','--format','{{.ServerVersion}}']);
  if(sync('docker',['info','--format','{{.OSType}}'])!=='linux')throw Error('Switch Docker Desktop to Linux containers before running the release test');
  sync('docker',['buildx','version']);
- sync(tar,['--version']);
+ assertArchiveSupport(env);
  const {chromium}=await import('@playwright/test');
  if(!existsSync(chromium.executablePath())&&!process.env.BB_RELEASE_BROWSER_CHANNEL)throw Error('Install the host browser first: npx playwright install chromium');
  try{sync('docker',['compose','version']);compose=(args)=>['docker',['compose','-p',report.project,'-f',join(out,'compose.json'),...args]];}
@@ -64,12 +64,12 @@ try{
   report.dockerContext=context;report.platform=sync('docker',['info','--format','{{.OSType}}/{{.Architecture}}']);
   report.baseURL='http://localhost:5288';report.model='gpt-6-sol';report.provider='copilot_enterprise';
   const source=join(out,'source');mkdirSync(source);
-  writeFileSync(join(out,'source.tar'),execFileSync('git',['archive',report.sha],{cwd:repo,maxBuffer:512*1024*1024}));
-  sync(tar,['-xf',join(out,'source.tar'),'-C',source]);
+  writeFileSync(join(out,'source.tar'),gitArchive(repo,report.sha,env));
+  extractArchive(join(out,'source.tar'),source,env);
   // The unmerged sample PR is data only. Do not merge its application code.
   const samples=join(out,'samples');mkdirSync(samples);
-  writeFileSync(join(out,'samples.tar'),execFileSync('git',['archive',SAMPLE_REF,'tests/samples'],{cwd:repo,maxBuffer:128*1024*1024}));
-  sync(tar,['-xf',join(out,'samples.tar'),'-C',samples]);
+  writeFileSync(join(out,'samples.tar'),gitArchive(repo,SAMPLE_REF,env,['tests/samples']));
+  extractArchive(join(out,'samples.tar'),samples,env);
   const old=join(samples,'tests/samples/2026-09-25'),recent=join(samples,'tests/samples/2026-11-05');
   const rq=JSON.parse(readFileSync(join(old,'manifest.json'))).cases.find(c=>c.case_id==='rq-202509');
   const assets=JSON.parse(readFileSync(join(recent,'manifest.json'))).assets;
