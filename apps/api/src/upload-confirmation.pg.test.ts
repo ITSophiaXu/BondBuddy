@@ -43,7 +43,7 @@ test('release confirmation SQL executes against migrated schema and counts only 
  const {CONFIRMATION_SQL,assertConfirmationReceipt}=await import(new URL('../../../scripts/release-smoke/upload-confirmation-evidence.mjs',import.meta.url).href);
  const f=await fixture();try{
   const u=await f.upload(),upload={uploadId:u.id,sha256:u.declaration.sha256,bytes:u.bytes.length,filename:'synthetic.docx'};
-  const read=async(owner=f.owner,projectId=f.id,uploadId=u.id)=>(await f.pool.query(CONFIRMATION_SQL,[owner,projectId,uploadId])).rows;
+  const read=async(owner=f.owner,projectId=f.id,uploadId=u.id)=>(await f.pool.query<{model_calls:number}>(CONFIRMATION_SQL,[owner,projectId,uploadId])).rows;
   assert.deepEqual(await read(),[],'the real query must parse before confirmation exists');
   assert.equal((await f.send('POST',u.path,u.declaration,true)).statusCode,202);
   assert.equal(await runUploadConfirmationOnce(f.pool,f.blobs),'completed');
