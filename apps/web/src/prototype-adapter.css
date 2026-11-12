@@ -97,7 +97,7 @@
 .prototype-app .materials-readonly .material-picker,
 .materials-readonly [data-delete-material],
 .materials-readonly .material-file-actions,
-.materials-readonly .material-role-heading>div>span { display:none; }
+.materials-readonly .material-role-heading>div>span { display:none!important; }
 .project-materials-details.has-run>summary { gap:12px; flex-wrap:wrap; }
 .unavailable-panel { padding:32px; }
 .unavailable-panel p { margin:14px 0 24px; }
