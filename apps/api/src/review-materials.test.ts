@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { Pool } from 'pg';
 import { createServer } from './server.js';
 import { isolatedTestDatabase } from './test-database.js';
-import { digest, uid } from './data.js';
+import { digest, uid, transaction } from './data.js';
+import { grantCredits } from './billing.js';
 import { inputManifestHash } from './production-rule-pin.js';
 
 const connection=await isolatedTestDatabase(undefined,'review-materials');
@@ -14,6 +15,7 @@ test('QA and file-generation task inputs stay out of review display, legacy draf
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
   const ok=(r:{statusCode:number;body:string})=>assert.ok(r.statusCode>=200&&r.statusCode<300,r.body);
   try{
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'synthetic_review_materials']);
     const created=await send('POST','/api/v1/projects',{name:'Synthetic review materials',kind:'review',issuer_name:null,market:null,offering:null});ok(created);
     const id=created.json().project_id,base=`/api/v1/projects/${id}`;
     const material=async(role:string,name:string,projectId=id)=>{
@@ -46,7 +48,13 @@ test('QA and file-generation task inputs stay out of review display, legacy draf
     assert.deepEqual(workspace.json().draft.material_versions,[source,evidence]);
     assert.deepEqual((await send('GET',`${base}/review-draft`)).json().draft.requirements,legacy.requirements);
     for(const blocked of workflow)assert.equal((await send('PUT',`${base}/review-draft`,{kind:'input',expected_version:1,input:{...legacy,material_versions:[source,evidence,blocked]}})).statusCode,422);
-    const executed=await send('POST',`${base}/review-executions`,{execution_request_id:uid(),operation:'full_review',expected_input_version:1,source_report_id:null,expected_plan_version:null,finding_ids:[]});ok(executed);
+    const intent={execution_request_id:uid(),operation:'full_review',expected_input_version:1,source_report_id:null,expected_plan_version:null,finding_ids:[]};
+    const quoted=await send('POST',`${base}/review-executions/quote`,intent);ok(quoted);
+    const quote=quoted.json().quote;
+    assert.equal(quote.quote_status,'ready');assert.equal(quote.auto_charge,true);
+    await transaction(pool,client=>grantCredits(client,{owner,source:'existing_grant',key:`synthetic-review-materials-${quote.quote_id}`,
+      points:quote.points,expiresAt:null,actor:'synthetic-test',reason:'isolated review materials fixture'}));
+    const executed=await send('POST',`${base}/review-executions`,{...intent,quote_id:quote.quote_id});ok(executed);
     const snapshot=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',[id,executed.json().input_revision])).rows[0].manifest;
     assert.deepEqual(snapshot.materials.map((m:any)=>m.material_id),[source.material_id,evidence.material_id]);
     assert.deepEqual((await pool.query('SELECT input FROM bb_review_drafts WHERE project_id=$1',[id])).rows[0].input,legacy,'GET and execution do not rewrite stored legacy input');
