@@ -178,10 +178,14 @@ test('M4 template unresolved operation blocks source and material selection, aut
 });
 
 test('M4 template original file reselect rejects changed bytes and replaces only the sealed original declaration', async ({ page }) => {
-  const state = await install(page); state.dropPut = 'before'; await mount(page); await pending(page, state); await refreshReadOnly(page, state); await resume(page).click(); const reselect = recovery(page).locator('[data-m4-template-recovery-reselect]'); await expect(reselect).toBeAttached(); await expect(resume(page)).toBeEnabled();
-  const before = writes(state).length, original = structuredClone((await records(page))[0].value.items[0].declaration), upload = [...state.uploads.keys()][0]; await reselect.setInputFiles({ ...templateFile, buffer: Buffer.from('x'.repeat(templateFile.buffer.length)) }); await expect(resume(page)).toBeEnabled();
-  expect(writes(state).slice(before)).toEqual([{ method: 'POST', path: `/projects/${ids.project}/materials/uploads/${upload}/complete`, search: '', body: { byte_size: original.byte_size, sha256: original.sha256 } }]); expect(uploads(state, 'create')).toHaveLength(1); expect(uploads(state, 'bytes')).toHaveLength(1); expect(templatePosts(state)).toEqual([]); expect((await records(page))[0].value.items[0].declaration).toEqual(original);
-  await reselect.setInputFiles(templateFile); await saved(page, state); expect(uploads(state, 'create')).toHaveLength(2); expect(uploads(state, 'bytes')).toHaveLength(2); expect(uploads(state, 'create')[1].body).toEqual(uploads(state, 'create')[0].body); expect(templatePosts(state)).toHaveLength(1); expect(draftWrites(state)).toHaveLength(1);
+  const state = await install(page); state.dropPut = 'before'; state.sessionLifetimeMs = 10_000; await mount(page); await pending(page, state); await refreshReadOnly(page, state); const reselect = recovery(page).locator('[data-m4-template-recovery-reselect]'); await expect(reselect).toBeAttached(); await expect(resume(page)).toBeEnabled();
+  const before = writes(state).length, record = (await records(page))[0], original = structuredClone(record.value.items[0].declaration), upload = [...state.uploads.keys()][0]; await reselect.setInputFiles({ ...templateFile, buffer: Buffer.from('x'.repeat(templateFile.buffer.length)) }); await expect(resume(page)).toBeEnabled();
+  // Explicit original-file selection verifies the hash before any old-complete request.
+  expect(writes(state).slice(before)).toEqual([]); expect(uploads(state, 'create')).toHaveLength(1); expect(uploads(state, 'bytes')).toHaveLength(1); expect(templatePosts(state)).toEqual([]); expect((await records(page))[0].value.items[0].declaration).toEqual(original);
+  expect((await records(page))[0].value.id).toBe(record.value.id); expect(libraryWrites(state)).toEqual([]); expect(draftWrites(state)).toEqual([]);
+  await reselect.setInputFiles(templateFile); await saved(page, state);
+  expect(writes(state).slice(before, before + 1)).toEqual([{ method: 'POST', path: `/projects/${ids.project}/materials/uploads/${upload}/complete`, search: '', body: { byte_size: original.byte_size, sha256: original.sha256 } }]);
+  expect(uploads(state, 'create')).toHaveLength(2); expect(uploads(state, 'bytes')).toHaveLength(2); expect(uploads(state, 'create')[1].body).toEqual(uploads(state, 'create')[0].body); expect(templatePosts(state)).toHaveLength(1); expect(draftWrites(state)).toHaveLength(1);
 });
 
 test('M4 template late transport response after account disposal cannot reveal the filename or continue the original business', async ({ page }) => {
