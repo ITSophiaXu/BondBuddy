@@ -19,7 +19,8 @@ try {
     // lease is also unsafe: a provider call may still be executing after a lost connection.
     const jobs = Number((await pool.query("SELECT count(*) n FROM bb_jobs WHERE state='running'")).rows[0].n);
     const messages = Number((await pool.query('SELECT count(*) n FROM bb_review_messages WHERE lease_token IS NOT NULL')).rows[0].n);
-    if (jobs || messages) { console.error(`role gate: ${jobs} running jobs, ${messages} leased messages; nothing switched`); process.exitCode = 76; }
+    const confirmations = Number((await pool.query("SELECT count(*) n FROM bb_outbox WHERE event_type='upload.complete_requested' AND lease_token IS NOT NULL AND delivered_at IS NULL")).rows[0].n);
+    if (jobs || messages || confirmations) { console.error(`role gate: ${jobs} running jobs, ${messages} leased messages, ${confirmations} leased confirmations; nothing switched`); process.exitCode = 76; }
   }
   if (!process.exitCode) console.log(`role ${role}: ${mode} ok`);
 } catch {

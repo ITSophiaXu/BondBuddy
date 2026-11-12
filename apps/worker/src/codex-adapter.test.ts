@@ -523,7 +523,7 @@ test('timeout kills the process group, records the attempt, usage unknown, no re
 test('interrupted, non-zero exit, broken stream and turn.failed map to stable codes with unknown usage', async () => {
   const { config, cleanup } = await setup();
   try {
-    const cases: [string, string, string][] = [['interrupted', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['nonzero_exit', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['broken_stream', 'needs_reconcile', 'MODEL_STREAM_BROKEN'], ['turn_failed', 'failed', 'MODEL_TURN_FAILED']];
+    const cases: [string, string, string][] = [['interrupted', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['nonzero_exit', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['broken_stream', 'needs_reconcile', 'MODEL_STREAM_BROKEN'], ['turn_failed', 'failed', 'MODEL_TURN_FAILED'], ['payload_413', 'failed', 'MODEL_PROVIDER_REQUEST_REJECTED']];
     for (const [scenario, status, code] of cases) {
       const r = await runContainedModelCall(call(`SCENARIO:${scenario}`), new MemoryCodexJournal(), config);
       assert.equal(r.status, status, scenario); assert.equal(r.error_code, code, scenario);
