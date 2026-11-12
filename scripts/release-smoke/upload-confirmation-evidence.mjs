@@ -30,15 +30,22 @@ export function assertConfirmationReceipt(upload,row,owner,project){
  assert.equal(row.model_calls,0,'Upload-only preflight executed a model');
 }
 export function verifyConfirmationRuntime(runtime,mode,images){
- const names=mode==='legacy'?['api','worker']:['api','worker','upload-confirmation'];
+ const names=mode==='legacy'?['api','worker']:['api','worker','worker-parse','upload-confirmation'];
  assert.deepEqual(Object.keys(runtime).sort(),[...names].sort(),'Unexpected active upload consumers');
+ assert.equal(new Set(Object.values(runtime).map(r=>r.containerId)).size,names.length,'Runtime roles must have distinct containers');
  for(const name of names){
-  const r=runtime[name];assert.match(r.containerId??'',/^[a-f0-9]{64}$/);assert.equal(r.imageId,images[name].id);assert.equal(r.platform,images[name].platform);
+  const r=runtime[name],target=name==='worker-parse'?'worker':name;assert.match(r.containerId??'',/^[a-f0-9]{64}$/);assert.equal(r.imageId,images[target].id);assert.equal(r.platform,images[target].platform);
   assert.equal(r.running,true);assert.ok(Number.isFinite(Date.parse(r.startedAt)));
  }
- const w=runtime.worker;assert.equal(w.enabled,'1');assert.equal(w.smallSlot,'0');assert.equal(w.lane,mode==='legacy'?'general':'small');assert.equal(w.spoolBytes,'134217728');
+ const w=runtime.worker;assert.equal(w.enabled,mode==='legacy'?'1':'0');assert.equal(w.smallSlot,'0');assert.equal(w.lane,'general');assert.equal(w.spoolBytes,'134217728');
+ assert.equal(w.jobKinds,mode==='legacy'?'run,parse':'run');assert.equal(w.concurrency,'2');assert.equal(w.parseSlots,mode==='legacy'?'1':'0');assert.equal(w.interactiveSlots,'1');
  assert.deepEqual(w.command,['sh','-c','/usr/local/bin/bb-verify-ocr-runtime && exec node apps/worker/dist/runtime.js'],'Worker preflight must use the real runtime entry');
  if(mode==='size-split'){
+  const p=runtime['worker-parse'];assert.equal(p.enabled,'1');assert.equal(p.lane,'small');assert.equal(p.smallSlot,'0');assert.equal(p.spoolBytes,'134217728');
+  assert.equal(p.jobKinds,'parse');assert.equal(p.concurrency,'1');assert.equal(p.parseSlots,'0');assert.equal(p.interactiveSlots,'0');
+  assert.deepEqual(p.command,w.command);assert.equal(p.readOnly,true);assert.equal(p.modelConfiguration,false);assert.equal(p.credentialMounts,false);assert.equal(p.memoryBytes,1024*1024*1024);
+  assert.equal(p.spoolType,'volume');assert.equal(p.spoolDestination,'/var/lib/bondbuddy/parse-staging');assert.equal(p.spoolDirectory,'/var/lib/bondbuddy/parse-staging/upload-confirmation');
+  assert.ok(id(w.stagingVolume)&&id(p.stagingVolume));assert.notEqual(p.stagingVolume,w.stagingVolume,'Parser and business worker must use separate staging volumes');
   const c=runtime['upload-confirmation'];assert.equal(c.enabled,'1');assert.equal(c.lane,'large');assert.equal(c.smallSlot,'0');assert.equal(c.spoolBytes,'134217728');
   assert.equal(c.readOnly,true);assert.equal(c.modelConfiguration,false);assert.equal(c.credentialMounts,false);assert.equal(c.memoryBytes,512*1024*1024);
   assert.equal(c.spoolType,'volume');assert.equal(c.spoolDestination,'/var/lib/bondbuddy/upload-confirmation');
@@ -67,7 +74,7 @@ export function verifyConfirmationEvidence(report,expected){
    assert.ok(Date.parse(upload.acceptedAt)>=start&&Date.parse(upload.finishedAt)<=end&&Date.parse(upload.finishedAt)>=Date.parse(upload.acceptedAt));
    assertConfirmationReceipt(upload,upload.database,p.ownerId,mode.projectId);
    assert.deepEqual(upload.httpReceipt,upload.database.result,'HTTP receipt does not match persisted material');
-   const target=mode.name==='size-split'&&upload.sizeClass==='large'?'upload-confirmation':'worker';
+   const target=mode.name==='legacy'?'worker':upload.sizeClass==='large'?'upload-confirmation':'worker-parse';
    const lane=mode.name==='legacy'?'general':upload.sizeClass;
    assert.ok(Array.isArray(upload.phases)&&upload.phases.length>=3);
    for(const phase of ['read','inspection','commit'])assert.ok(upload.phases.some(e=>e.phase===phase));

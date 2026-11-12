@@ -18,15 +18,16 @@ function fixture(){
  const images=Object.fromEntries(requiredImageTargets(expected).map((t,i)=>[t,{id:'sha256:'+String(i+1).repeat(64),platform:'linux/amd64'}]));
  const report=fiveFlowFixture(expected,stamp(30000),images);report.startedAt=stamp(0);report.imageContract=expected.imageContract;
  report.fixtureHashes=[{sha256:'6'.repeat(64)},{sha256:'7'.repeat(64)}];
- const runtime=(name,index)=>Object.fromEntries((name==='legacy'?['api','worker']:['api','worker','upload-confirmation']).map((service,i)=>[service,{containerId:String(index*3+i+1).repeat(64),imageId:images[service].id,revision:expected.commit,platform:'linux/amd64',startedAt:stamp(index*10000+100),running:true,
-  ...(service==='api'?{}:{enabled:'1',smallSlot:'0',spoolBytes:'134217728',lane:service==='upload-confirmation'?'large':name==='legacy'?'general':'small'}),
-  ...(service==='worker'?{command:['sh','-c','/usr/local/bin/bb-verify-ocr-runtime && exec node apps/worker/dist/runtime.js']}:{}),
+ const runtime=(name,index)=>Object.fromEntries((name==='legacy'?['api','worker']:['api','worker','worker-parse','upload-confirmation']).map((service,i)=>[service,{containerId:String(index*4+i+1).repeat(64),imageId:images[service==='worker-parse'?'worker':service].id,revision:expected.commit,platform:'linux/amd64',startedAt:stamp(index*10000+100),running:true,
+  ...(service==='api'?{}:{enabled:service==='worker'&&name==='size-split'?'0':'1',smallSlot:'0',spoolBytes:'134217728',lane:service==='upload-confirmation'?'large':service==='worker-parse'?'small':'general'}),
+  ...(['worker','worker-parse'].includes(service)?{stagingVolume:service==='worker'?'synthetic-business-staging':'synthetic-confirmation-small',jobKinds:service==='worker-parse'?'parse':name==='legacy'?'run,parse':'run',concurrency:service==='worker-parse'?'1':'2',parseSlots:service==='worker'&&name==='legacy'?'1':'0',interactiveSlots:service==='worker'?'1':'0',command:['sh','-c','/usr/local/bin/bb-verify-ocr-runtime && exec node apps/worker/dist/runtime.js']}:{}),
+  ...(service==='worker-parse'?{readOnly:true,modelConfiguration:false,credentialMounts:false,memoryBytes:1024*1024*1024,spoolType:'volume',spoolDestination:'/var/lib/bondbuddy/parse-staging',spoolDirectory:'/var/lib/bondbuddy/parse-staging/upload-confirmation'}:{}),
   ...(service==='upload-confirmation'?{readOnly:true,modelConfiguration:false,credentialMounts:false,memoryBytes:512*1024*1024,spoolType:'volume',spoolDestination:'/var/lib/bondbuddy/upload-confirmation',command:['node','apps/worker/dist/upload-confirmation-runtime.js']}:{}),}]));
  const modes=['legacy','size-split'].map((name,index)=>{
   const offset=index*10000,r=runtime(name,index),projectId='project-'+index;
   return {name,status:'passed',startedAt:stamp(offset),deadlineAt:stamp(offset+CONFIRMATION_BUDGET_MS),budgetMs:CONFIRMATION_BUDGET_MS,finishedAt:stamp(offset+5000),projectId,runtime:r,
    uploads:['small','large'].map((sizeClass,i)=>{
-    const uploadId=name+'-'+sizeClass,bytes=SMALL_MAX_BYTES+i,sha256=String(i+6).repeat(64),filename=sizeClass+'.pdf',service=name==='size-split'&&i===1?'upload-confirmation':'worker';
+    const uploadId=name+'-'+sizeClass,bytes=SMALL_MAX_BYTES+i,sha256=String(i+6).repeat(64),filename=sizeClass+'.pdf',service=name==='legacy'?'worker':i===1?'upload-confirmation':'worker-parse';
     const httpReceipt={upload_id:uploadId,sha256,byte_size:bytes,filename,material_id:'material-'+uploadId,material_version:1};
     return {sizeClass,uploadId,bytes,sha256,filename,acceptedAt:stamp(offset+1000),finishedAt:stamp(offset+4000),httpReceipt,
      database:{state:'completed',drained:true,inspection_excepted:false,owner_user_id:'owner',project_id:projectId,upload_id:uploadId,outbox_id:'outbox-'+uploadId,delivery_attempts:1,delivered_at:stamp(offset+2000),sha256,material_sha256:sha256,byte_size:String(bytes),material_bytes:String(bytes),filename,material_id:httpReceipt.material_id,material_version:1,result:structuredClone(httpReceipt),model_calls:0},
@@ -55,6 +56,21 @@ test('role selection verifies only deployed services while exported source inclu
 test('every missing, stale or contradictory actual upload proof blocks the final release verifier',()=>{
  const changes=[r=>delete r.uploadConfirmation,r=>delete r.images['upload-confirmation'],r=>r.uploadConfirmation.modes.pop(),r=>r.uploadConfirmation.controllerSha256='f'.repeat(64),r=>r.uploadConfirmation.commit='f'.repeat(40),
   r=>r.uploadConfirmation.modes[1].runtime['upload-confirmation'].imageId=r.images.worker.id,
+  r=>delete r.uploadConfirmation.modes[1].runtime['worker-parse'],
+  r=>r.uploadConfirmation.modes[1].runtime.worker.enabled='1',
+  r=>r.uploadConfirmation.modes[1].runtime.worker.jobKinds='parse',
+  r=>r.uploadConfirmation.modes[1].runtime['worker-parse'].jobKinds='run,parse',
+  r=>r.uploadConfirmation.modes[1].runtime['worker-parse'].lane='general',
+  r=>r.uploadConfirmation.modes[1].runtime['worker-parse'].smallSlot='1',
+  r=>r.uploadConfirmation.modes[1].runtime['worker-parse'].concurrency='2',
+  r=>r.uploadConfirmation.modes[1].runtime['worker-parse'].imageId=r.images.api.id,
+  r=>r.uploadConfirmation.modes[1].runtime['worker-parse'].credentialMounts=true,
+  r=>r.uploadConfirmation.modes[1].runtime['worker-parse'].modelConfiguration=true,
+  r=>r.uploadConfirmation.modes[1].runtime['worker-parse'].spoolDirectory='/tmp/shared',
+  r=>r.uploadConfirmation.modes[1].runtime['worker-parse'].stagingVolume=r.uploadConfirmation.modes[1].runtime.worker.stagingVolume,
+  r=>delete r.uploadConfirmation.modes[1].runtime['worker-parse'].stagingVolume,
+  r=>r.uploadConfirmation.modes[1].runtime['worker-parse'].containerId=r.uploadConfirmation.modes[1].runtime.worker.containerId,
+  r=>r.uploadConfirmation.modes[1].uploads[0].phases[0].service='worker',
   r=>r.uploadConfirmation.modes[1].runtime['upload-confirmation'].credentialMounts=true,
   r=>r.uploadConfirmation.modes[1].runtime['upload-confirmation'].modelConfiguration=true,
   r=>r.uploadConfirmation.modes[1].uploads[1].phases[0].lane='general',

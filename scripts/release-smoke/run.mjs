@@ -16,7 +16,7 @@ import {createEvidenceReaders} from './runtime-evidence.mjs';
 import {assertControllerCandidate} from './controller.mjs';
 import {loadFixedFixtures,assertFixtureBindings} from './fixtures.mjs';
 import {imageContract,requiredImageTargets} from './image-contract.mjs';
-import {confirmationService,describeConfirmationRuntime,runConfirmationPreflight} from './upload-confirmation-preflight.mjs';
+import {confirmationService,workerParseService,configureConfirmationMode,describeConfirmationRuntime,runConfirmationPreflight} from './upload-confirmation-preflight.mjs';
 import {verifyConfirmationEvidence} from './upload-confirmation-evidence.mjs';
 
 const directory=dirname(fileURLToPath(import.meta.url)),repo=resolve(directory,'../..');
@@ -132,9 +132,9 @@ try{
    migrate:{image:image.api,environment:common,command:['node','db/migrate.mjs']},
    api:{image:image.api,environment:common,read_only:true,tmpfs:['/tmp:rw,nosuid,nodev,size=1g,mode=1777'],cap_drop:['ALL'],security_opt:['no-new-privileges:true'],volumes:['upload:/var/lib/bondbuddy/upload-spool'],mem_limit:'2g'},
    worker,
-   ...(report.imageContract.confirmation?{'upload-confirmation':confirmationService(image['upload-confirmation'],common)}:{}),
+   ...(report.imageContract.confirmation?{'upload-confirmation':confirmationService(image['upload-confirmation'],common),'worker-parse':workerParseService(image.worker,common,workerEnv)}:{}),
    web:{image:image.web,ports:['127.0.0.1:5288:8080'],depends_on:['api']}
-  },volumes:{pg:{},blob:{},upload:{},parse:{},...(report.imageContract.confirmation?{confirmation:{}}:{})}});
+  },volumes:{pg:{},blob:{},upload:{},parse:{},...(report.imageContract.confirmation?{confirmation:{},'confirmation-small':{}}:{})}});
   writeJson(reportFile,report);
   await command(...compose(['up','-d','--wait','postgres','azurite']),'infra.log');
   await command(...compose(['run','--rm','migrate']),'migration.log');
@@ -163,9 +163,9 @@ try{
   if(!report.uploadConfirmation&&report.cases.some(c=>c.status!=='not_run'))throw Error('Upload preflight must precede the original five flows; do not backfill an old run');
   const snapshot=async mode=>{
    const runtime={};
-   for(const service of ['api','worker','upload-confirmation']){
+   for(const service of ['api','worker','worker-parse','upload-confirmation']){
     const container=sync(...compose(['ps','--status','running','-q',service]));
-    if(service==='upload-confirmation'&&mode==='legacy'){if(container)throw Error('Standalone confirmation is active during legacy preflight');continue;}
+    if(['worker-parse','upload-confirmation'].includes(service)&&mode==='legacy'){if(container)throw Error('A split confirmation consumer is active during legacy preflight');continue;}
     if(!/^[a-f0-9]{64}$/.test(container))throw Error('Missing or ambiguous preflight container: '+service);
     const actual=JSON.parse(sync('docker',['inspect',container]))[0],image=JSON.parse(sync('docker',['image','inspect',actual.Image]))[0];
     runtime[service]=describeConfirmationRuntime(service,actual,image);
@@ -176,11 +176,9 @@ try{
   await runConfirmationPreflight({report,privateData,save,directory:fixedDirectory,requestFactory:options=>request.newContext(options),snapshot,
    async configure(mode){
     const file=join(out,'compose.json'),config=JSON.parse(readFileSync(file));
-    if(!config.services['upload-confirmation'])throw Error('Candidate confirmation service missing');
-    config.services.worker.environment.BB_UPLOAD_CONFIRMATION_LANE=mode==='legacy'?'general':'small';
-    config.services.worker.environment.BB_UPLOAD_CONFIRMATION_SMALL_SLOT='0';config.services.worker.stop_grace_period='10m';writeJson(file,config);
-    if(mode==='legacy')await command(...compose(['stop','upload-confirmation']),'confirmation-legacy-stop.log');
-    await command(...compose(['up','-d','--no-deps','--force-recreate','--wait','worker',...(mode==='size-split'?['upload-confirmation']:[])]),'confirmation-'+mode+'-startup.log');
+    configureConfirmationMode(config,mode);writeJson(file,config);
+    if(mode==='legacy')await command(...compose(['stop','worker-parse','upload-confirmation']),'confirmation-legacy-stop.log');
+    await command(...compose(['up','-d','--no-deps','--force-recreate','--wait','worker',...(mode==='size-split'?['worker-parse','upload-confirmation']:[])]),'confirmation-'+mode+'-startup.log');
    },logs:async(container,since)=>sync('docker',['logs','--since',since,container]),execReadOnly:readers.execReadOnly});
   verifyConfirmationEvidence({...report,completedAt:new Date().toISOString()},{commit:report.sha,tree:report.tree,imageContract:rawContract,confirmationInspectorSha256:sha256(readFileSync(join(fixedDirectory,'upload-confirmation-preflight.mjs')))});
  }

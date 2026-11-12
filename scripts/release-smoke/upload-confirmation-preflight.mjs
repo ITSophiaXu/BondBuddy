@@ -11,6 +11,19 @@ export function confirmationService(image,common){
  Object.assign(environment,{BB_UPLOAD_CONFIRMATION_ENABLED:'1',BB_UPLOAD_CONFIRMATION_LANE:'large',BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'0',BB_UPLOAD_CONFIRMATION_CONTAINER:'bondbuddy-private',BB_UPLOAD_SPOOL_DIR:'/var/lib/bondbuddy/upload-confirmation',BB_UPLOAD_SPOOL_MAX_BYTES:'134217728',NODE_OPTIONS:'--max-old-space-size=320'});
  return {image,init:true,user:'1000:1000',command:['node','apps/worker/dist/upload-confirmation-runtime.js'],environment,read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true'],tmpfs:['/tmp:rw,nosuid,nodev,size=16m'],volumes:['confirmation:/var/lib/bondbuddy/upload-confirmation'],mem_limit:'512m',cpus:0.5,stop_grace_period:'10m',profiles:['upload-size-split']};
 }
+export function workerParseService(image,common,parseEnvironment){
+ // The parser shares the tested worker image, never its model environment or mounts.
+ const environment=Object.fromEntries(['DATABASE_URL','AZURE_STORAGE_CONNECTION_STRING','BB_LIBRARY_CONTAINER','BB_DEPLOYMENT_TIER','BB_RELEASE_TEST_INSTANCE'].map(k=>[k,common[k]]));
+ for(const key of ['BB_PARSE_CACHE_OCR_VERSION','BB_PARSE_CACHE_BASIS_VERSION'])environment[key]=parseEnvironment[key];
+ Object.assign(environment,{BB_WORKER_JOB_KINDS:'parse',BB_WORKER_GROUP:'release-parse',BB_WORKER_CONCURRENCY:'1',BB_WORKER_PARSE_SLOTS:'0',BB_WORKER_INTERACTIVE_SLOTS:'0',BB_WORKER_LEASE_SECONDS:'120',BB_UPLOAD_CONFIRMATION_ENABLED:'1',BB_UPLOAD_CONFIRMATION_LANE:'small',BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'0',BB_PARSE_STAGING_DIR:'/var/lib/bondbuddy/parse-staging',BB_UPLOAD_SPOOL_DIR:'/var/lib/bondbuddy/parse-staging/upload-confirmation',BB_UPLOAD_SPOOL_MAX_BYTES:'134217728',NODE_OPTIONS:'--max-old-space-size=320'});
+ return {image,init:true,environment,read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true'],tmpfs:['/tmp:rw,nosuid,nodev,size=512m,mode=1777'],volumes:['confirmation-small:/var/lib/bondbuddy/parse-staging'],mem_limit:'1g',cpus:0.5,stop_grace_period:'10m',profiles:['upload-size-split']};
+}
+export function configureConfirmationMode(config,mode){
+ assert.ok(CONFIRMATION_MODES.includes(mode),'Unknown upload confirmation mode');
+ assert.ok(config.services['worker-parse']&&config.services['upload-confirmation'],'Candidate confirmation services missing');
+ Object.assign(config.services.worker.environment,{BB_WORKER_JOB_KINDS:mode==='legacy'?'run,parse':'run',BB_WORKER_PARSE_SLOTS:mode==='legacy'?'1':'0',BB_UPLOAD_CONFIRMATION_ENABLED:mode==='legacy'?'1':'0',BB_UPLOAD_CONFIRMATION_LANE:'general',BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'0'});
+ config.services.worker.stop_grace_period='10m';return config;
+}
 export function describeConfirmationRuntime(service,actual,image){
  assert.equal(image.Id,actual.Image,'Container image inspection differs');
  assert.deepEqual(actual.Config?.Cmd,image.Config?.Cmd,'Container command differs from the tested image');
@@ -18,7 +31,15 @@ export function describeConfirmationRuntime(service,actual,image){
  const env=Object.fromEntries((actual.Config?.Env??[]).map(s=>{const n=s.indexOf('=');return [s.slice(0,n),s.slice(n+1)];}));
  const result={containerId:actual.Id,imageId:actual.Image,revision:actual.Config?.Labels?.['org.opencontainers.image.revision'],platform:image.Os+'/'+image.Architecture,startedAt:actual.State?.StartedAt,running:actual.State?.Running,command:actual.Config?.Cmd};
  if(service==='api')return result;
- Object.assign(result,{enabled:env.BB_UPLOAD_CONFIRMATION_ENABLED,lane:env.BB_UPLOAD_CONFIRMATION_LANE??'general',smallSlot:env.BB_UPLOAD_CONFIRMATION_SMALL_SLOT??'0',spoolBytes:env.BB_UPLOAD_SPOOL_MAX_BYTES});
+ Object.assign(result,{enabled:env.BB_UPLOAD_CONFIRMATION_ENABLED,lane:env.BB_UPLOAD_CONFIRMATION_LANE??'general',smallSlot:env.BB_UPLOAD_CONFIRMATION_SMALL_SLOT??'0',spoolBytes:env.BB_UPLOAD_SPOOL_MAX_BYTES,jobKinds:env.BB_WORKER_JOB_KINDS??'run,parse',concurrency:env.BB_WORKER_CONCURRENCY??'2',parseSlots:env.BB_WORKER_PARSE_SLOTS??'1',interactiveSlots:env.BB_WORKER_INTERACTIVE_SLOTS??'1'});
+ if(['worker','worker-parse'].includes(service)){
+  const staging=(actual.Mounts??[]).find(m=>m.Destination==='/var/lib/bondbuddy/parse-staging');
+  result.stagingVolume=staging?.Type==='volume'?staging.Name:null;
+ }
+ if(service==='worker-parse'){
+  const mounts=actual.Mounts??[],spool=mounts.find(m=>m.Destination==='/var/lib/bondbuddy/parse-staging');
+  Object.assign(result,{readOnly:actual.HostConfig?.ReadonlyRootfs,modelConfiguration:Object.entries(env).some(([k,v])=>v&&/^(BB_(CODEX|COPILOT|OPENAI|ANTHROPIC|MODEL|DEEPSEEK|WORKER_RUN_KINDS|PLATFORM_PROBE)|CODEX_|COPILOT_|OPENAI_|DEEPSEEK_|ANTHROPIC_)/.test(k)),credentialMounts:mounts.some(m=>!['/var/lib/bondbuddy/parse-staging','/tmp'].includes(m.Destination)),memoryBytes:actual.HostConfig?.Memory,spoolType:spool?.Type,spoolDestination:spool?.Destination,spoolDirectory:env.BB_UPLOAD_SPOOL_DIR});
+ }
  if(service==='upload-confirmation'){
   const mounts=actual.Mounts??[],spool=mounts.find(m=>m.Destination==='/var/lib/bondbuddy/upload-confirmation');
   Object.assign(result,{readOnly:actual.HostConfig?.ReadonlyRootfs,modelConfiguration:Object.entries(env).some(([k,v])=>v&&/^(BB_(CODEX|MODEL|DEEPSEEK|WORKER_JOB_KINDS|WORKER_RUN_KINDS|PLATFORM_PROBE)|CODEX_|COPILOT_|OPENAI_|DEEPSEEK_|ANTHROPIC_)/.test(k)),credentialMounts:mounts.some(m=>!['/var/lib/bondbuddy/upload-confirmation','/tmp'].includes(m.Destination)),memoryBytes:actual.HostConfig?.Memory,spoolType:spool?.Type,spoolDestination:spool?.Destination,command:actual.Config?.Cmd});
