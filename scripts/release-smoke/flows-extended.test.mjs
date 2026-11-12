@@ -1,0 +1,88 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {INTEGRITY_SITE_IDS,WORKPAPER_SUBSET,selectWorkpaperSubset,subsetRequirements,assertWorkpaperBatch,assertCatalogueUpload,recoverWorkpaperReceipt,sourceBinding,assertIntegrityRound,verifiedCaptureCandidates,extendedFlows} from './flows-extended.mjs';
+
+const issuer='东营市城市建设发展集团有限公司',hash='a'.repeat(64),otherHash='b'.repeat(64);
+const recipe=JSON.parse(readFileSync(new URL('../../tests/samples/2026-11-05/cases/workpaper-dongying/input.json',import.meta.url)));
+const catalogue=()=>({catalogue_id:'catalogue',sha256:otherHash,filename:'原目录.xlsx',entries:WORKPAPER_SUBSET.map(({code,row},i)=>({id:'selected-'+i,code,row,sheet:'目录',kind:'file',title:'事项 '+i,path:code+' 事项 '+i+'.docx',folder:'目录'}))});
+const expected={filename:'原募集说明书.docx',byte_size:12345,sha256:hash};
+const source=()=>({project_id:'source-project',version_id:'prospectus',selection_revision:3,sequence:1,filename:expected.filename,asset:{kind:'material',pin:{source_project_id:'source-project',material_id:'material',material_version:2,sha256:hash}}});
+const material=()=>({material_id:'material',material_version:2,...expected,persisted_at:'2026-11-12T01:00:00Z'});
+function saved(){const selectedWorkpapers=selectWorkpaperSubset(catalogue());return {id:'workpaper-dongying',projectId:'navigation-project',projectURL:'http://localhost:5288/#generate?project=navigation-project',batchId:'package-batch',workpaperBatchId:'workpaper-batch',catalogueId:'catalogue',source:sourceBinding(source(),material(),expected),selectedWorkpapers,expectedItemIds:selectedWorkpapers.map(e=>e.id)};}
+const batch=entry=>({batch_id:entry.workpaperBatchId,catalogue_id:entry.catalogueId,state:'complete',source:source(),items:entry.selectedWorkpapers.map((e,i)=>({entry:{...e},state:'succeeded',run_id:'item-run-'+i,stage:null}))});
+function round(){const subject={id:'issuer',name:issuer,kind:'company',role:'发行人'};return {run_id:'integrity-run',operation:'check',state:'succeeded',manifest:{draft:{subjects:[subject],site_ids:[...INTEGRITY_SITE_IDS]}},records:INTEGRITY_SITE_IDS.map(site_id=>({subject_id:subject.id,site_id,status:'no_public_results',checked_at:'2026-11-12T01:00:00Z',query:issuer,search_performed:true,browser:{outcome:'no_results',captures:[{id:site_id,kind:'result',url:site_id==='sse'?'https://www.sse.com.cn/search/':site_id==='csrc'?'https://neris.csrc.gov.cn/shixinchaxun/':site_id==='credit-china'?'https://www.creditchina.gov.cn/':'https://zxgk.court.gov.cn/',screenshot_sha256:hash}]}}))};}
+
+test('selects only the five exact f009 codes with original rows, names and paths',()=>{
+ const cat=catalogue();cat.entries.reverse();cat.entries.push({...cat.entries[0],id:'unrelated',code:'9-9',row:300});
+ const selected=selectWorkpaperSubset(cat);assert.deepEqual(selected.map(e=>e.code),WORKPAPER_SUBSET.map(e=>e.code));assert.deepEqual(selected.map(e=>e.row),[97,117,132,79,76]);assert.equal(selected[0].path,'2-1-4 事项 0.docx');assert.equal(cat.entries.length,6);
+});
+test('rejects missing, duplicate, wrong-row, wrong-sheet and incomplete workpaper identities',()=>{
+ for(const mutate of [c=>c.entries.pop(),c=>c.entries.push({...c.entries[0],id:'duplicate'}),c=>c.entries[0].row++,c=>c.entries[0].sheet='替代工作表',c=>c.entries[0].path='',c=>c.entries[0].title=' ',c=>c.entries[0].kind='folder',c=>c.entries[1].id=c.entries[0].id]){const c=catalogue();mutate(c);assert.throws(()=>selectWorkpaperSubset(c));}
+});
+test('changes only the approved five-item subset prefix and preserves the actual recipe file',()=>{
+ const original=recipe.requirements,result=subsetRequirements(recipe);assert.ok(result.startsWith('本次隔离验证仅处理已勾选的五项（2-1-4、2-3-6、2-4-2、1-5-7-1、1-5-5）'));assert.ok(result.endsWith(original.slice('仅处理底稿目录“1 尽职调查文件”。'.length)));assert.equal(recipe.requirements,original);assert.throws(()=>subsetRequirements({requirements:'其它范围'}));
+});
+test('binds original bytes to the real source project, material and selection revision',()=>{
+ const actual=sourceBinding(source(),material(),expected);assert.equal(actual.project_id,'source-project');assert.equal(actual.material_version,2);assert.equal(actual.selection_revision,3);
+ for(const mutate of [s=>s.asset.pin.sha256=otherHash,s=>s.asset.pin.source_project_id='other',s=>s.selection_revision=-1,s=>s.filename='旧稿.docx',s=>s.asset.kind='artifact']){const s=source();mutate(s);assert.throws(()=>sourceBinding(s,material(),expected));}
+ for(const mutate of [m=>m.sha256=otherHash,m=>m.material_version=1,m=>m.byte_size--,m=>m.persisted_at=null]){const m=material();mutate(m);assert.throws(()=>sourceBinding(source(),m,expected));}
+});
+test('verifies workbook upload bytes separately from parsed catalogue hash',()=>{
+ const request={material:source().asset.pin,scope:'due_diligence'},m=material();assert.equal(assertCatalogueUpload(request,m,expected).sha256,hash);assert.notEqual(catalogue().sha256,hash);
+ assert.throws(()=>assertCatalogueUpload({...request,scope:'all'},m,expected));assert.throws(()=>assertCatalogueUpload({...request,material:{...request.material,sha256:otherHash}},m,expected));assert.throws(()=>assertCatalogueUpload(request,{...m,byte_size:1},expected));
+});
+test('batch validation preserves selected IDs, exact source pin and catalogue',()=>{
+ const e=saved(),b=batch(e);assert.equal(assertWorkpaperBatch(b,e,{complete:true}),b);
+ for(const mutate of [v=>v.batch_id=e.batchId,v=>v.catalogue_id='other',v=>v.items.pop(),v=>v.items[0].entry.id='other',v=>v.items[0].entry.title='other',v=>v.items[0].entry.path='other',v=>v.items[0].entry.code='other',v=>v.items[1].entry=v.items[0].entry,v=>v.source.selection_revision++,v=>v.source.version_id='other',v=>v.source.asset.pin.sha256=otherHash,v=>v.source.asset.pin.material_id='other',v=>v.source.asset.pin.material_version++,v=>v.source.asset.pin.source_project_id='other']){const v=batch(e);mutate(v);assert.throws(()=>assertWorkpaperBatch(v,e,{complete:true}));}
+ assert.throws(()=>assertWorkpaperBatch(b,{...e,expectedItemIds:[]},{complete:true}));assert.throws(()=>assertWorkpaperBatch(b,{...e,source:undefined},{complete:true}));
+});
+test('partial, cancelled, paused and unfinished batches never pass completion',()=>{
+ const e=saved();for(const state of ['partial','cancelled','paused','queued','running']){const b=batch(e);b.state=state;assert.throws(()=>assertWorkpaperBatch(b,e,{complete:true}));assert.equal(assertWorkpaperBatch(b,e),b);}
+ for(const state of ['queued','running','failed','cancelled']){const b=batch(e);b.items[0].state=state;assert.throws(()=>assertWorkpaperBatch(b,e,{complete:true}));}
+});
+test('accepted receipts recover package and workpaper identities without accepting a changed receipt',()=>{
+ const e=saved(),body={batch_id:e.batchId,workpapers:batch(e)},resume={packageBatchId:e.batchId,workpaperBatchId:e.workpaperBatchId,submissionReceipt:{body}};recoverWorkpaperReceipt(resume);assert.equal(resume.batchId,e.batchId);assert.equal(resume.workpaperBatchId,e.workpaperBatchId);assert.deepEqual(resume.fileGenerationReceipt,body);
+ for(const property of ['batchId','packageBatchId','workpaperBatchId'])assert.throws(()=>recoverWorkpaperReceipt({...resume,[property]:'other'}));assert.throws(()=>recoverWorkpaperReceipt({submissionReceipt:{body:{batch_id:'only-package'}}}));
+});
+test('integrity verifies the saved run, one issuer and the exact five official sites',()=>{
+ const e={runId:'integrity-run',issuerName:issuer};assert.equal(assertIntegrityRound(round(),e).id,'issuer');
+ for(const mutate of [r=>r.run_id='other',r=>r.state='failed',r=>r.operation='export',r=>r.manifest.draft.subjects[0].name='other',r=>r.manifest.draft.subjects[0].role='other',r=>r.manifest.draft.subjects.push({...r.manifest.draft.subjects[0]}),r=>r.manifest.draft.site_ids[0]='other',r=>r.records.pop(),r=>r.records[0].subject_id='other',r=>r.records[0].site_id=r.records[1].site_id]){const r=round();mutate(r);assert.throws(()=>assertIntegrityRound(r,e));}
+});
+test('only actual official result captures for the issuer become verification candidates',()=>{
+ const r=round();assert.equal(verifiedCaptureCandidates(r,issuer).length,5);
+ for(const mutate of [x=>x.search_performed=false,x=>x.query='其它企业',x=>x.status='query_failed',x=>x.browser.outcome='blocked',x=>x.browser.outcome='unverified',x=>x.browser.captures[0].kind='blocker',x=>x.browser.captures[0].url='https://sse.com.cn.example.org/',x=>x.browser.captures[0].url='javascript:void(0)',x=>x.browser.captures[0].screenshot_sha256='bad',x=>x.browser.captures[0].id='']){const invalid=round();invalid.records.forEach(mutate);assert.deepEqual(verifiedCaptureCandidates(invalid,issuer),[]);}
+});
+test('workpaper readState polls only its batch endpoint and preserves item runs',async()=>{
+ const e=saved(),b=batch(e),urls=[];b.state='running';b.items[2].state='running';b.items[2].stage='delivering';let saves=0;
+ const flows=extendedFlows({readJson:async url=>{urls.push(url);return b;},save:()=>saves++});assert.deepEqual(await flows[e.id].readState(e),{state:'running',stage:'delivering'});assert.deepEqual(urls,['/api/v1/projects/navigation-project/workpapers/batches/workpaper-batch']);assert.equal(urls.some(u=>u.includes('/runs/')),false);assert.equal(e.itemRunIds.length,5);assert.equal(e.batchState,'running');assert.equal(saves,1);
+ b.batch_id='package-batch';await assert.rejects(()=>flows[e.id].readState(e));assert.equal(saves,1);
+});
+test('existing accepted tasks in submit phase never upload, create or submit again',async()=>{
+ const forbidden=()=>{throw Error('Unexpected browser/model/submission action');};
+ const page=new Proxy({},{get:()=>forbidden}),flows=extendedFlows({page,fixtures:{workpaperRecipe:recipe,integrityRecipe:{case_id:'integrity-dongying',issuer_name:issuer,draft:{site_ids:INTEGRITY_SITE_IDS}}},save:()=>{},upload:forbidden,submit:forbidden,readJson:forbidden,waitRun:forbidden,download:forbidden});
+ const e=saved();await flows['workpaper-dongying'](e,'submit');await flows['integrity-dongying']({runId:'integrity-run'},'submit');
+ const resumed=saved();delete resumed.batchId;resumed.submissionReceipt={body:{batch_id:'package-batch',workpapers:batch(resumed)}};await flows['workpaper-dongying'](resumed,'submit');assert.equal(resumed.batchId,'package-batch');
+});
+test('uncertain project receipts fail closed before any upload or paid submission',async()=>{
+ const forbidden=()=>{throw Error('Unexpected side effect');},flows=extendedFlows({page:{goto:forbidden},fixtures:{workpaperRecipe:recipe},save:forbidden,upload:forbidden,submit:forbidden});
+ await assert.rejects(()=>flows['workpaper-dongying']({projectCreationAttempted:true},'submit'),/receipt is unknown/);
+});
+test('workpaper check derives trusted output mapping before one ZIP download per driver pass',async()=>{
+ const e=saved(),b=batch(e),events=[];let downloads=0;
+ const locator={locator(){return this;},async waitFor(){},async innerText(){return '5';}};
+ const expectedMap=e.selectedWorkpapers.map(item=>({entryId:item.id,archivePath:item.path,disposition:'generated',sha256:hash}));
+ const flows=extendedFlows({page:{async goto(url){assert.ok(url.includes('batch=workpaper-batch'));},locator(){return locator;}},fixtures:{workpaperRecipe:recipe},save(){events.push('save');},readJson:async url=>{assert.equal(url,'/api/v1/projects/navigation-project/workpapers/batches/workpaper-batch');return b;},mapWorkpapers:async value=>{assert.equal(value,b);events.push('map');return structuredClone(expectedMap);},download:async(_,role,entry)=>{assert.equal(role,'workpaper.zip');assert.deepEqual(entry.expectedWorkpapers,expectedMap);assert.equal(entry.batchState,'complete');downloads++;events.push('download');}});
+ await flows[e.id](e,'check');assert.equal(downloads,1);assert.ok(events.indexOf('map')<events.indexOf('download'));await flows[e.id](e,'check');assert.equal(downloads,2);
+ b.state='partial';await assert.rejects(()=>flows[e.id](e,'check'));assert.equal(downloads,2);
+});
+test('integrity verifies each capture before recording pairs and downloads once per check',async()=>{
+ const bytes=Buffer.from([137,80,78,71,13,10,26,10,1,2]),r=round(),entry={runId:r.run_id,projectId:'navigation-project',projectURL:'http://localhost:5288/#integrity?project=navigation-project'};
+ r.artifacts=[{kind:'company',artifact_id:'report'}];for(const record of r.records)record.browser.captures[0].screenshot_sha256=createHash('sha256').update(bytes).digest('hex');
+ const locator={locator(){return this;},getByRole(){return this;},async waitFor(){},async getAttribute(){return 'open';},async click(){}};let downloads=0,verified=0;
+ const page={async goto(){},locator(){return locator;},request:{async get(url){assert.ok(url.includes('/integrity/runs/integrity-run/captures/'));return {ok:()=>true,body:async()=>{verified++;return bytes;}};}}};
+ const flows=extendedFlows({page,fixtures:{integrityRecipe:{case_id:'integrity-dongying',issuer_name:issuer,draft:{site_ids:INTEGRITY_SITE_IDS}}},save:()=>{},waitRun:async run=>assert.equal(run,r.run_id),readJson:async()=>({rounds:[r]}),download:async(_,role,e)=>{assert.equal(role,'integrity.docx');assert.equal(verified,5);assert.equal(e.integrityVerifiedPairs.length,5);downloads++;}});
+ await flows['integrity-dongying'](entry,'check');assert.equal(downloads,1);assert.deepEqual(entry.integrityVerifiedPairs,INTEGRITY_SITE_IDS.map(site_id=>({subject_id:'issuer',site_id})));
+ r.records[0].browser.captures[0].screenshot_sha256=otherHash;await assert.rejects(()=>flows['integrity-dongying'](entry,'check'));assert.equal(downloads,1);assert.deepEqual(entry.integrityVerifiedPairs,[]);
+});
