@@ -19,4 +19,8 @@ export function installSyntheticEvidenceGates(repository) {
   writeFileSync(join(repository, 'scripts/prospectus-quality-gate.mjs'), gate);
   writeFileSync(join(repository, 'scripts/release-smoke/verify.mjs'), gate);
   writeFileSync(join(repository, 'scripts/release-smoke/support.mjs'), '// Synthetic validator dependency fixture.\n');
+  writeFileSync(join(repository, 'scripts/release-smoke/evidence-schema.mjs'), '// Synthetic schema dependency fixture.\n');
+  writeFileSync(join(repository, 'scripts/release-smoke/model-quality-evidence.mjs'), '// Synthetic model-evidence dependency fixture.\n');
+  writeFileSync(join(repository, 'scripts/release-smoke/verify-images.mjs'), `// Synthetic topology-only image gate.\nif (!['reuse','verify','verify-rollback'].includes(process.argv[2])) process.exit(91);\n`);
+  writeFileSync(join(repository, 'scripts/release-smoke/rollback-readiness.mjs'), '// Synthetic topology-only rollback preflight.\n');
 }

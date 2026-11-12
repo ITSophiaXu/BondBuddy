@@ -8,7 +8,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { POLICY, REQUIRED_CHECKS } from '../../../scripts/prospectus-quality-gate.mjs';
-import { CASES } from '../../../scripts/release-smoke/support.mjs';
+import {fiveFlowFixture,SYNTHETIC_INSPECTOR_SOURCE} from '../../../scripts/release-smoke/evidence-fixtures.mjs';
 
 const root = resolve(import.meta.dirname, '../../..');
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -32,7 +32,8 @@ function fixture(t) {
   for (const name of ['deploy.sh', 'export-images.sh', 'rollback.sh', 'deploy-role.sh', 'export-images-role.sh', 'lib.sh', 'release-evidence.sh'])
     cpSync(join(root, 'deploy/m1/scripts', name), join(scripts, name));
   cpSync(join(root, 'scripts/prospectus-quality-gate.mjs'), join(dir, 'scripts/prospectus-quality-gate.mjs'));
-  for (const name of ['verify.mjs', 'support.mjs']) cpSync(join(root, 'scripts/release-smoke', name), join(dir, 'scripts/release-smoke', name));
+  for (const name of ['verify.mjs', 'support.mjs','evidence-schema.mjs','verify-images.mjs','rollback-readiness.mjs','model-quality-evidence.mjs']) cpSync(join(root, 'scripts/release-smoke', name), join(dir, 'scripts/release-smoke', name));
+  writeFileSync(join(dir,'scripts/release-smoke/artifact-inspect-cli.mjs'),SYNTHETIC_INSPECTOR_SOURCE);
   writeFileSync(join(dir, 'apps/worker/src/runtime.ts'), '// synthetic BB_WORKER_RUN_KINDS marker\n');
   writeFileSync(join(dir, 'deploy/m1/.env'), 'BB_PROFILE=prod\nBB_HTTP_PORT=18090\n');
   for (const name of ['smoke.sh', 'install-codex-file-sandbox.sh']) writeFileSync(join(scripts, name), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
@@ -68,7 +69,8 @@ const a=process.argv.slice(2),e=process.env;
 fs.appendFileSync(e.TEST_CALLS,JSON.stringify(a)+'\\n');
 if(e.TEST_REWRITE_REPORTS==='1'){fs.writeFileSync(e.BB_RELEASE_QUALITY_RECEIPT,'{"status":"failed"}');fs.writeFileSync(e.BB_RELEASE_SMOKE_REPORT,'{"status":"failed"}');}
 const out=x=>process.stdout.write(String(x)+'\\n');
-if(a[0]==='image'&&a[1]==='inspect'){if(a.includes('--format'))out(a[a.indexOf('--format')+1].includes('revision')?e.TEST_SHA:e.TEST_IMAGE_ID);}
+if(a[0]==='image'&&a[1]==='inspect'){if(e.TEST_IMAGES_MISSING==='1')process.exit(1);if(a.includes('--format'))out(a[a.indexOf('--format')+1].includes('revision')?e.TEST_SHA:e.TEST_IMAGE_ID);else out(JSON.stringify([{Id:e.TEST_IMAGE_ID,Os:'linux',Architecture:'amd64',Config:{Labels:{'org.opencontainers.image.revision':e.TEST_SHA}}}]));}
+else if(a[0]==='version')out(e.TEST_ENGINE_PLATFORM??'linux/amd64');
 else if(a[0]==='inspect')out(e.TEST_IMAGE_ID);
 else if(a[0]==='context')out('unix:///synthetic/docker.sock');
 else if(a[0]==='info')out(e.TEST_ROOT+'/docker-root');
@@ -91,8 +93,7 @@ else if(a[0]==='compose'&&a.includes('ps')&&a.includes('-q'))out('synthetic-cont
       ...(id === 'document-regressions' ? { summary: { tests: 1, passed: 1, failures: 0, errors: 0, skipped: 0, expected_failures: 0, unexpected_successes: 0, render_required: true, authorized_render_reports: 1, rendered_documents: 3 } } : {}),
       ...(id === 'real-model-acceptance' ? { summary: { status: 'passed', commit: sha, tree, real_model: true, case_count: 1, evidence_sha256: 'e'.repeat(64) } } : {}),
     })) };
-  const smoke = { status: 'passed', modelProbe: 'passed', sha, tree, startedAt: stamp, finishedAt: stamp,
-    cases: CASES.map(id => ({ id, status: 'passed', finishedAt: stamp })), images: Object.fromEntries(['api', 'worker', 'web'].map(target => [target, { id: imageId }])) };
+  const smoke=fiveFlowFixture({commit:sha,tree,inspectorSha256:digest(SYNTHETIC_INSPECTOR_SOURCE)},stamp,Object.fromEntries(['api','worker','web'].map(target=>[target,{id:imageId,platform:'linux/amd64'}])));
   const save = () => { writeFileSync(qualityPath, JSON.stringify(quality)); writeFileSync(smokePath, JSON.stringify(smoke)); };
   save(); writeFileSync(calls, ''); writeFileSync(join(state, 'current'), sha.slice(0, 12) + '\n'); writeFileSync(join(state, 'releases.log'), '');
   const environment = { ...process.env, PATH: bin + ':' + process.env.PATH, BB_ENV_FILE: join(dir, 'deploy/m1/.env'), BB_STATE_DIR: state,
@@ -110,15 +111,46 @@ else if(a[0]==='compose'&&a.includes('ps')&&a.includes('-q'))out('synthetic-cont
     const args = [...(entry.role ? [entry.role] : []), sha, ...(entry.exporting ? [join(dir, 'images.tar.gz'), ...(entry.role ? ['disabled'] : [])] : []), ...(entry.script === 'deploy-role.sh' && entry.rollback ? ['--rollback'] : [])];
     return spawnSync('bash', [join(scripts, entry.script), ...args], { cwd: dir, env, encoding: 'utf8' });
   };
-  return { dir, state, sha, tree, quality, smoke, qualityPath, smokePath, calls, save, log, run };
+  return { dir, state, sha, tree, quality, smoke, qualityPath, smokePath, calls, save, log, run, git };
 }
 
-function noReleaseEffects(f) {
+function noReleaseEffects(f, current = f.sha.slice(0, 12)) {
   const calls = readFileSync(f.calls, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
   assert.ok(calls.every(args => !['build', 'save', 'up', 'run', 'stop', 'rm'].some(word => args.includes(word))), JSON.stringify(calls));
   assert.equal(existsSync(join(f.dir, 'images.tar.gz')), false);
   assert.equal(existsSync(join(f.state, 'pending-release.json')), false);
-  assert.equal(readFileSync(join(f.state, 'current'), 'utf8'), f.sha.slice(0, 12) + '\n');
+  assert.equal(readFileSync(join(f.state, 'current'), 'utf8'), current + '\n');
+}
+
+for (const entry of entries) for (const [condition, overrides, error] of [
+  ['different image ID', { TEST_IMAGE_ID: 'sha256:' + 'b'.repeat(64) }, /differs from the tested image ID/],
+  ['different target architecture', { TEST_ENGINE_PLATFORM: 'linux/arm64' }, /different architecture/],
+  ['unavailable tested image', { TEST_IMAGES_MISSING: '1' }, /[Mm]issing.*image|[Ii]mage.*(?:missing|unavailable)|[Tt]ested image is unavailable/],
+]) {
+  test(`${label(entry)} rejects ${condition} before release effects`, t => {
+    const f = fixture(t);
+    if (entry.rollback) f.log(entry.role);
+    const before = readFileSync(join(f.state, 'releases.log'), 'utf8');
+    const result = f.run(entry, overrides);
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stderr, error);
+    noReleaseEffects(f);
+    assert.equal(readFileSync(join(f.state, 'releases.log'), 'utf8'), before);
+  });
+}
+
+for (const entry of entries.filter(entry => !entry.rollback && !entry.exporting)) {
+  test(`${label(entry)} refuses a legacy current version with no original rollback receipts`, t => {
+    const f = fixture(t);
+    f.git('commit', '--allow-empty', '-qm', 'synthetic previously deployed version');
+    const legacy = f.git('rev-parse', 'HEAD').slice(0, 12);
+    writeFileSync(join(f.state, 'current'), legacy + '\n');
+    const result = f.run(entry);
+    assert.notEqual(result.status, 0, result.stdout);
+    assert.match(result.stderr, /no verifiable rollback evidence/);
+    noReleaseEffects(f, legacy);
+    assert.equal(readFileSync(join(f.state, 'releases.log'), 'utf8'), '');
+  });
 }
 
 for (const entry of entries) for (const kind of ['quality', 'smoke']) for (const missing of [true, false]) {
@@ -155,7 +187,7 @@ for (const entry of entries.filter(entry => entry.rollback)) {
   test(`${label(entry)} needs an exact successful deployment record before reusing expired evidence`, t => {
     const f = fixture(t), expired = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
     f.quality.started_at = f.quality.finished_at = expired;
-    f.smoke.startedAt = f.smoke.finishedAt = expired;
+    f.smoke.startedAt = f.smoke.completedAt = f.smoke.finishedAt = expired;
     for (const entry of f.smoke.cases) entry.finishedAt = expired;
     f.save();
     let result = f.run(entry);
@@ -193,7 +225,7 @@ for (const role of ['main', 'execution']) for (const expired of [false, true]) {
     if (expired) {
       const stamp = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
       f.quality.started_at = f.quality.finished_at = stamp;
-      f.smoke.startedAt = f.smoke.finishedAt = stamp;
+      f.smoke.startedAt = f.smoke.completedAt = f.smoke.finishedAt = stamp;
       for (const entry of f.smoke.cases) entry.finishedAt = stamp;
       f.save();
       // Even a prior success must not grant an age waiver to a new pending attempt.

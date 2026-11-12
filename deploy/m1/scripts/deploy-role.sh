@@ -24,6 +24,10 @@ if [ "$rollback" = 0 ]; then verify_release_evidence "$BB_REPO" "$sha"; fi
 export BB_IMAGE_TAG="${sha:0:12}"
 exec 9>"$BB_STATE/deploy.lock"
 flock -n 9 || { echo 'this role is already being deployed' >&2; exit 75; }
+if [ "$rollback" = 0 ]; then
+  verify_rollback_readiness "$BB_REPO" "$sha" "$BB_STATE" "$BB_DEPLOY_ROLE"
+  verify_release_images "$BB_REPO" "$sha" "$BB_DEPLOY_ROLE" reuse
+fi
 if [ "$(env_value BB_NON_PRODUCTION_TEST_CHANNEL)" = enabled ] && [ "$(env_value BB_DEPLOYMENT_TIER)" != preprod ]; then
   echo 'non-production test channel requires BB_DEPLOYMENT_TIER=preprod' >&2; exit 2
 fi
@@ -83,8 +87,15 @@ else
     snapshots+="$(BB_IMAGE_TAG="$previous" role_release_snapshot "$from_sha")"$'\n'
   fi
   snapshots+="$(role_release_snapshot "$sha")"$'\n'
+  if [ "$rollback" = 1 ]; then
+    verify_release_images "$BB_REPO" "$sha" "$BB_DEPLOY_ROLE" verify-rollback "$BB_STATE/releases.log"
+  else verify_release_images "$BB_REPO" "$sha" "$BB_DEPLOY_ROLE"; fi
   # Durable non-success state precedes even the one-off SQL probe container and every switch.
   printf '%s' "$snapshots" | node "$BB_DIR/scripts/role-release.mjs" prepare "$BB_STATE" "$BB_DEPLOY_ROLE" "$sha" '' "$BB_ENV" "$BB_SCRIPT_SHA"
+fi
+if [ "$rollback" = 1 ]; then
+  if [ "$first_resume" = 1 ] || [ "$resume_candidate" = 1 ]; then verify_release_images "$BB_REPO" "$sha" "$BB_DEPLOY_ROLE"
+  else verify_release_images "$BB_REPO" "$sha" "$BB_DEPLOY_ROLE" verify-rollback "$BB_STATE/releases.log"; fi
 fi
 infrastructure=(pg-tunnel egress)
 if [ "$BB_DEPLOY_ROLE" = execution ]; then

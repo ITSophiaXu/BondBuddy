@@ -4,7 +4,8 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CASES, caseCompletionTime, sha256 } from './support.mjs';
+import { sha256 } from './support.mjs';
+import { REQUIRED_RELEASE_CASES, verifyFiveFlowEvidence } from './evidence-schema.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const gitHash = /^[a-f0-9]{40}$/;
@@ -19,20 +20,24 @@ export function verifyReport(report, expected, now = Date.now(), allowExpired = 
       !gitHash.test(report.sha ?? '') || !gitHash.test(report.tree ?? '') ||
       report.sha !== expected.commit || report.tree !== expected.tree)
     throw new Error('Release smoke evidence belongs to another commit or source tree');
-  if (!Array.isArray(report.cases) || report.cases.length !== CASES.length ||
-      CASES.some(id => report.cases.filter(entry => entry?.id === id).length !== 1) ||
+  if (!Array.isArray(report.cases) || report.cases.length !== REQUIRED_RELEASE_CASES.length ||
+      REQUIRED_RELEASE_CASES.some(id => report.cases.filter(entry => entry?.id === id).length !== 1) ||
       report.cases.some(entry => entry?.status !== 'passed'))
     throw new Error('Required release smoke cases are missing, duplicated, unexpected or not passed');
   for (const target of ['api', 'worker', 'web']) {
     if (!imageId.test(report.images?.[target]?.id ?? ''))
       throw new Error(`Release smoke image identity is missing or invalid: ${target}`);
   }
+  verifyFiveFlowEvidence(report, expected);
   const started = typeof report.startedAt === 'string' ? Date.parse(report.startedAt) : NaN;
   const finished = typeof report.finishedAt === 'string' ? Date.parse(report.finishedAt) : NaN;
-  const completed = caseCompletionTime(report.cases);
-  if (!Number.isFinite(now) || !Number.isFinite(started) || !Number.isFinite(finished) ||
-      started > finished || finished > now + 60_000 ||
-      report.cases.some(entry => Date.parse(entry.finishedAt) < started) || completed > finished ||
+  const completedAt = typeof report.completedAt === 'string' ? Date.parse(report.completedAt) : NaN;
+  const caseTimes = report.cases.map(entry => typeof entry.finishedAt === 'string' ? Date.parse(entry.finishedAt) : NaN);
+  if (caseTimes.some(time => !Number.isFinite(time))) throw new Error('Release smoke case completion timestamps are missing or invalid');
+  const completed = Math.max(...caseTimes);
+  if (!Number.isFinite(now) || !Number.isFinite(started) || !Number.isFinite(finished) || !Number.isFinite(completedAt) ||
+      started > completedAt || completedAt > finished || finished > now + 60_000 ||
+      report.cases.some(entry => Date.parse(entry.finishedAt) < started) || completed > completedAt ||
       (!allowExpired && now - completed > MAX_REPORT_AGE_MS))
     throw new Error('Release smoke evidence is expired or has invalid timestamps');
   return report;
@@ -86,7 +91,8 @@ function main() {
   const [ref, filename, logFile, role] = args;
   const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
   const commit = git(['rev-parse', '--verify', `${ref}^{commit}`]);
-  const expected = { commit, tree: git(['rev-parse', `${commit}^{tree}`]) };
+  const expected = { commit, tree: git(['rev-parse', `${commit}^{tree}`]),
+    inspectorSha256: sha256(execFileSync('git', ['show', `${commit}:scripts/release-smoke/artifact-inspect-cli.mjs`], { cwd: root, windowsHide: true })) };
   const raw = readFileSync(filename, 'utf8');
   if (mode === 'verify-rollback') verifyRollbackReport(raw, expected, readFileSync(logFile, 'utf8'), Date.now(), role);
   else verifyReport(JSON.parse(raw), expected);

@@ -1,17 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CASES, sha256 } from './support.mjs';
+import { sha256 } from './support.mjs';
+import { REQUIRED_RELEASE_CASES as CASES } from './evidence-schema.mjs';
+import {fiveFlowFixture} from './evidence-fixtures.mjs';
 import { MAX_REPORT_AGE_MS, hasSuccessfulDeployment, verifyReport, verifyRollbackReport } from './verify.mjs';
 
 const now = Date.parse('2026-11-11T12:00:00.000Z');
-const expected = { commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
+const expected = { commit: 'a'.repeat(40), tree: 'b'.repeat(40), inspectorSha256: '9'.repeat(64) };
 function fixture() {
-  return {
-    status: 'passed', modelProbe: 'passed', sha: expected.commit, tree: expected.tree,
-    startedAt: new Date(now - 3_600_000).toISOString(), finishedAt: new Date(now - 60_000).toISOString(),
-    cases: CASES.map(id => ({ id, status: 'passed', finishedAt: new Date(now - 60_000).toISOString() })),
-    images: Object.fromEntries(['api', 'worker', 'web'].map((target, i) => [target, { id: `sha256:${String(i + 1).repeat(64)}` }])),
-  };
+  const report=fiveFlowFixture(expected,new Date(now-60_000).toISOString(),Object.fromEntries(['api','worker','web'].map((target,i)=>[target,{id:`sha256:${String(i+1).repeat(64)}`,platform:'linux/amd64'}])));
+  report.startedAt=new Date(now-3_600_000).toISOString();return report;
 }
 function logFor(raw, { role, operation, commit = expected.commit, digest = sha256(raw), rollback = '0', resumeFirst = '0' } = {}) {
   const event = operation ?? (role ? `deploy-${role}` : 'deploy');
@@ -73,7 +71,7 @@ test('every API, worker and web image requires its full immutable identity', () 
 
 test('24-hour expiry includes the exact boundary and rejects older evidence', () => {
   const finished = now - MAX_REPORT_AGE_MS;
-  const report = { ...fixture(), startedAt: new Date(finished - 1000).toISOString(), finishedAt: new Date(finished).toISOString() };
+  const report = { ...fixture(), startedAt: new Date(finished - 1000).toISOString(), completedAt:new Date(finished).toISOString(), finishedAt: new Date(finished).toISOString() };
   for (const entry of report.cases) entry.finishedAt = report.finishedAt;
   assert.equal(verifyReport(report, expected, now), report);
   assert.throws(() => verifyReport(report, expected, now + 1), /expired or has invalid timestamps/);
@@ -88,6 +86,7 @@ test('resuming a completed suite cannot renew expired execution evidence', () =>
   // The actual suite ends when its final unfinished journey completes. Earlier
   // passed journeys remain reusable without resubmitting their model jobs.
   report.cases.at(-1).finishedAt = new Date(now - 1).toISOString();
+  report.completedAt = report.cases.at(-1).finishedAt;
   assert.doesNotThrow(() => verifyReport(report, expected, now));
 });
 
@@ -104,7 +103,7 @@ test('every journey needs a valid completion inside the report interval', () => 
 });
 
 test('missing, malformed, reversed and future timestamps reject', () => {
-  for (const field of ['startedAt', 'finishedAt']) {
+  for (const field of ['startedAt', 'finishedAt','completedAt']) {
     for (const value of [undefined, null, 0, '', 'invalid']) {
       assert.throws(() => verifyReport({ ...fixture(), [field]: value }, expected, now), /timestamps/);
     }

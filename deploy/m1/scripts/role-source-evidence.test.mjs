@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '../../..');
-const validators = ['scripts/prospectus-quality-gate.mjs', 'scripts/release-smoke/verify.mjs', 'scripts/release-smoke/support.mjs'];
+const validators = ['scripts/prospectus-quality-gate.mjs', 'scripts/release-smoke/verify.mjs', 'scripts/release-smoke/support.mjs','scripts/release-smoke/evidence-schema.mjs','scripts/release-smoke/verify-images.mjs','scripts/release-smoke/rollback-readiness.mjs','scripts/release-smoke/model-quality-evidence.mjs'];
 const entries = ['main', 'execution'].flatMap(role => [
   { role, script: 'deploy-role.sh' }, { role, script: 'export-images-role.sh', exporting: true },
 ]);
@@ -31,7 +31,7 @@ appendFileSync(process.env.TEST_TRACE,'synthetic evidence command executed\\n');
 process.exit(89);
 `;
   for (const file of validators.slice(0, 2)) writeFileSync(join(dir, file), gate);
-  writeFileSync(join(dir, validators[2]), '// Synthetic dependency, not a production validator.\n');
+  for (const file of validators.slice(2)) writeFileSync(join(dir, file), '// Synthetic dependency, not a production validator.\n');
   const git = (...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   git('init', '-q'); git('config', 'user.name', 'Synthetic source test');
   git('config', 'user.email', 'synthetic@example.invalid'); git('config', 'commit.gpgsign', 'false');

@@ -43,6 +43,10 @@ case "$*" in
   *'release-smoke/verify.mjs verify '*)
     echo release-smoke-verify >> "$TEST_CALLS"
     [ "${TEST_SMOKE_MODE:-pass}" = pass ] || exit 9 ;;
+  *'release-smoke/verify-images.mjs '*|*'release-smoke/rollback-readiness.mjs '*)
+    # These synthetic gates isolate disk/in-flight behavior; real entry tests
+    # exercise the production validators, immutable IDs and legacy refusal.
+    echo synthetic-image-readiness-verify >> "$TEST_CALLS" ;;
   *) exit 1 ;;
 esac
 SH
@@ -61,7 +65,7 @@ case " $* " in
     ;;
   *' image inspect '*)
     if [ "$TEST_IMAGES" = all ]; then exit 0; fi
-    if [ "$TEST_IMAGES" = partial ] && [[ "$*" = *'bondbuddy-m1-api:'* ]]; then exit 0; fi
+    if [ "$TEST_IMAGES" = partial ] && [[ "$*" != *'bondbuddy-m1-egress:'* ]]; then exit 0; fi
     if [[ "$TEST_IMAGES" = vanish-* ]]; then
       count="$(cat "$TEST_INSPECT_COUNT")"
       count=$((count + 1))
@@ -85,6 +89,8 @@ case " $* " in
     printf '%s\n' "$*" >> "$TEST_CALLS"
     printf 'postgres\n'
     ;;
+  *' compose '*' ps -q '*) printf 'synthetic-container\n' ;;
+  *' inspect --format '*) printf '%s\n' "${TEST_IMAGE_REVISION:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}" ;;
   *' compose '*|*' build '*|*' image rm '*)
     printf '%s\n' "$*" >> "$TEST_CALLS"
     ;;
@@ -158,10 +164,10 @@ printf 'BB_PROFILE=prod\nBB_HTTP_PORT=18090\nBB_DEPLOYMENT_TIER=production\nBB_N
 run_case 'production rejects enabled test channel before archive' reject
 grep -Eq 'requires BB_DEPLOYMENT_TIER=preprod' "$test_dir/error"
 printf 'BB_PROFILE=prod\nBB_HTTP_PORT=18090\nBB_DEPLOYMENT_TIER=production\nBB_NON_PRODUCTION_TEST_CHANNEL=disabled\n' > "$test_dir/deploy/m1/.env"
-run_case 'local build rejects at 2.5 GiB' reject
+run_case 'auxiliary egress build rejects at 2.5 GiB' reject
 grep -Eq '2684354560 bytes available; requires 4294967296 bytes.*local Docker build' "$test_dir/error"
 export TEST_FREE_BYTES=4294967296
-run_case 'local build passes at 4 GiB' pass
+run_case 'auxiliary egress build passes at 4 GiB' pass
 grep -Eq 'build' "$TEST_CALLS"
 export TEST_IMAGES=all TEST_FREE_BYTES=2684354560
 run_case 'four preloaded images pass at 2.5 GiB' pass
@@ -190,8 +196,8 @@ run_case 'remote Docker endpoint rejects' reject
 grep -Eq 'not a local Unix socket' "$test_dir/error"
 unset DOCKER_HOST
 export TEST_IMAGES=vanish-api TEST_FREE_BYTES=2684354560
-run_case 'preloaded api disappears before build' reject_after_archive
-grep -Eq 'requires 4294967296 bytes.*api image missing' "$test_dir/error"
+run_case 'preloaded api disappears and cannot be rebuilt' reject_after_archive
+grep -Eq 'tested api image disappeared' "$test_dir/error"
 export TEST_IMAGES=vanish-egress
 run_case 'preloaded egress disappears before build' reject_after_archive
 grep -Eq 'requires 4294967296 bytes.*egress image missing' "$test_dir/error"

@@ -1,5 +1,6 @@
 # Private, immutable copies of both release records. Sourced by release entry points.
-# No Docker, database, network or model operation belongs in this helper.
+# Evidence verification never runs models or migrations. The separate image
+# helper may only inspect or locally tag an already tested immutable image.
 BB_RELEASE_EVIDENCE_DIR=''
 cleanup_release_evidence() {
   [ -z "${BB_RELEASE_EVIDENCE_DIR:-}" ] || rm -rf -- "$BB_RELEASE_EVIDENCE_DIR"
@@ -35,4 +36,13 @@ save_release_evidence() {
   mkdir -p "$state/quality" "$state/release-smoke"
   cp -- "$BB_RELEASE_EVIDENCE_DIR/quality.json" "$state/quality/$sha.json"
   cp -- "$BB_RELEASE_EVIDENCE_DIR/smoke.json" "$state/release-smoke/$sha.json"
+}
+verify_release_images() {
+  local repo="$1" sha="$2" scope="${3:-all}" mode="${4:-verify}" releases_log="${5:-}"
+  local suffix=()
+  [ "$mode" != verify-rollback ] || suffix=("${releases_log:?rollback image check requires deployment log}")
+  node "$repo/scripts/release-smoke/verify-images.mjs" "$mode" "$sha" "$BB_RELEASE_EVIDENCE_DIR/smoke.json" "$scope" "${suffix[@]}"
+}
+verify_rollback_readiness() {
+  node "$1/scripts/release-smoke/rollback-readiness.mjs" "$2" "$3" "${4:-all}"
 }

@@ -15,6 +15,7 @@ BB_DEPLOY_SCRIPT_SHA=''
 role_script_source
 role_trusted_source "$sha"
 verify_release_evidence "$repo" "$sha"
+verify_release_images "$repo" "$sha" "$role" reuse
 # Keep checkout/build/archive on the data filesystem. Do not copy credentials into the context.
 images=()
 for target in "${targets[@]}"; do
@@ -30,11 +31,13 @@ for target in "${targets[@]}"; do
     git -C "$repo" archive "$sha" | tar -x -C "$ctx"
   fi
   case "$target" in
+    api|worker|web) echo "tested image disappeared: $target; reload the exact tested image archive" >&2; exit 3;;
     integrity-tunnel) docker build --network "${BB_BUILD_NETWORK:-default}" -q --label "org.opencontainers.image.revision=$sha" -f "$ctx/deploy/beijing/Dockerfile.tunnel" -t "$image" "$ctx/deploy/beijing" >/dev/null;;
     egress|pg-tunnel) docker build --network "${BB_BUILD_NETWORK:-default}" -q --label "org.opencontainers.image.revision=$sha" -t "$image" "$ctx/deploy/m1/$target" >/dev/null;;
     *) docker build --network "${BB_BUILD_NETWORK:-default}" -q -f "$ctx/deploy/m1/Dockerfile" --target "$target" --build-arg BB_RELEASE_SHA="$sha" -t "$image" "$ctx" >/dev/null;;
   esac
 done
+verify_release_images "$repo" "$sha" "$role"
 # pipefail prevents a partial archive being reported as success. No images are pruned here.
 docker save "${images[@]}" | gzip > "$output"
 echo "prepared $role $tag"
