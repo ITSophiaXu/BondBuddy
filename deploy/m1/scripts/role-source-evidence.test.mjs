@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '../../..');
-const validators = ['scripts/prospectus-quality-gate.mjs', 'scripts/release-smoke/verify.mjs', 'scripts/release-smoke/support.mjs','scripts/release-smoke/evidence-schema.mjs','scripts/release-smoke/verify-images.mjs','scripts/release-smoke/rollback-readiness.mjs','scripts/release-smoke/model-quality-evidence.mjs'];
+const validators = ['scripts/prospectus-quality-gate.mjs', 'scripts/release-smoke/verify.mjs', 'scripts/release-smoke/support.mjs','scripts/release-smoke/evidence-schema.mjs','scripts/release-smoke/verify-images.mjs','scripts/release-smoke/rollback-readiness.mjs','scripts/release-smoke/model-quality-evidence.mjs','scripts/release-smoke/image-contract.mjs','scripts/release-smoke/upload-confirmation-evidence.mjs'];
 const entries = ['main', 'execution'].flatMap(role => [
   { role, script: 'deploy-role.sh' }, { role, script: 'export-images-role.sh', exporting: true },
 ]);
