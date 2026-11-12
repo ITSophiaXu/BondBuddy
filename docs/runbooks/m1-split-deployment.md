@@ -162,3 +162,24 @@ Codex仅构建目标 `codex` 后，以断网容器运行 `deploy/m1/scripts/code
 `node --test deploy/m1/scripts/role-lifecycle-review.test.mjs` 针对上述五项审查回归：状态化 synthetic Docker 失败注入实际改变 A/B 服务 ID 并执行普通发布/回滚脚本，覆盖两端部分 B 失败、current 留 A、pending 保留、C/漂移拒绝、缺失服务恢复和同 PG/配置；同时检查首次采纳失败后纠正、非法端口、真实 Git 默认状态忽略/源码 dirty 拒绝，以及持续日志与写锁互斥。Compose 配置/hash 使用真实 CLI；容器行为为明确标注的合成命令模型，不冒充线上发布/回滚。既有 11 项真实隔离 PG/SSH SQL 证据可复用；后续 #911 采纳仍实际执行普通 deploy/rollback 入口。
 
 首次恢复补充回归覆盖两端基础设施之前失败、已有部分消费者时失败、只接受唯一封存目标、SQL 在途拒绝/连接失败、普通入口续执行以及外部内部标记不能旁路 pending 或解除写锁；同时运行已改动的 `split-deploy.test.mjs` 25 项部署用例。
+
+
+## 独立上传确认（#943）
+
+`node apps/worker/dist/upload-confirmation-runtime.js` 只消费已有 `upload.complete_requested`，没有 run/parse 领取、扫描或模型调用。复用原 PG 租约、续期、最终 fence、归属、幂等、失败清理和全文件 SHA/大小/ETag 凭据；API 仍使用原异步接口，缓存命中仍检查当前 ETag。兼容 `1fee1d38797044dd13b6bfee57c16f99e7160ab4` API 与 PG 178 个迁移，不新增迁移、DTO 或计费行为。解析继续在主站。
+
+执行端 `upload-confirmation` 服务默认 `BB_UPLOAD_CONFIRMATION_ROLE=disabled`，inactive profile 且 replicas=0，普通入口禁止显式启动。启用仅接受 `execution`，两端配置同一放置；主站解析进程的 `BB_UPLOAD_CONFIRMATION_ENABLED` 和 `BB_UPLOAD_CONFIRMATION_SMALL_SLOT` 都须为 0。原编制、复核及旧解析的确认开关保持 0，旧解析仍 inactive。独立镜像 target `upload-confirmation` 仅安装 Node、CA 与 flock，不安装模型 CLI、浏览器、OCR 或认证 helper，不继承其环境、挂载或 AppArmor 配置。现有 egress/PG 转发保留。
+
+入口最小配置：显式 `BB_UPLOAD_CONFIRMATION_ENABLED=1`、原 `DATABASE_URL`/`AZURE_STORAGE_CONNECTION_STRING`、绝对 `BB_UPLOAD_SPOOL_DIR`、严格 `BB_UPLOAD_SPOOL_MAX_BYTES=134217728`。`BB_UPLOAD_CONFIRMATION_SMALL_SLOT=1` 增加一个不超过 16MiB 的槽，与通用槽在同一进程共享 128MiB 预算；默认 0，非法值拒绝。`BB_UPLOAD_CONFIRMATION_CONTAINER` 默认 `bondbuddy-private`，隔离测试必须设专属 container；不会用 `BB_LIBRARY_CONTAINER` 选择材料容器。`BB_UPLOAD_CONFIRMATION_POLL_MS` 默认 1000ms，允许 100–60000 的整数。模型环境或执行 kind 配置导致启动拒绝。
+
+`BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR` 是执行端预建的独立 bind 目录，运行 UID 所有、0700，固定挂到 `/var/lib/bondbuddy/upload-confirmation`。不得使用 parser 目录、共享上传目录或 tmpfs。启动核目录/文件身份及至少预算加 16MiB 的空余磁盘，取得进程期内排他 flock 后才清理遗留私有 UUID `.blob/.part`。第二进程不能扫除第一进程的文件；未知文件导致拒绝，先完整检查再清理。Azure 可按实际余量选 `/mnt` 上专用可重建目录，禁止额外占用根盘预算。持久依据仍是 PG/Blob。
+
+启用放置及本端 spool 路径进入原 `environment-binding.json` 和发布配置摘要。默认 disabled 保留旧 v1 binding 形状；已有 binding 下改变放置严格拒绝。维护时保存原 env/overlay/binding 原字节、权限与 hash，审查前后字段差异；明确更新受保护绑定，再由普通配置校验复核，不能删除 binding 或换 state。恢复时使用同一份已备份前像并复核 hash。新增服务进入来源标签/不可变镜像 ID 检查、pending 快照、恢复消费者清单和发布白名单；disabled 不要求旧提交存在从未构建的新镜像。
+
+**现有组件混版环境不能运行整角色 deploy/rollback 完成本次切换。** 新源码通过现行发布门禁后，发布者先记录主站 API/解析/Web 与执行端编制/复核各自准确镜像、源码、配置摘要和挂载，保留整角色 current，不将组件升级记成整角色升级。取得既有配置/部署锁并检查 pending；停止旧确认新领取、排空所有确认租约及暂存，仅将主站解析的确认开关关闭并新增执行端确认容器，使用 `--no-deps`。不得重建 PG 转发、编制、复核、旧解析或其他在途组件。实际执行前仍须核磁盘增量、镜像 UID/文件权限、来源与独立组件收据。回滚先停止新增确认领取并排空，保存新收据后恢复旧主站确认配置/镜像及原 binding/overlay，禁用新增服务；不降库、不删除 Blob、不重启编制/复核。
+
+SIGTERM/SIGINT 停止新领取，持续续租并等待现有读取/提交结束，不提前释放暂存或 fence。Compose 宽限 10 分钟，这不是全量读取总 deadline。强制杀死后仍按 PG 租约和原 fence 恢复，不能把未返回当成已取消；正常切换先排空。
+
+分段日志 `upload_confirmation_phase` 含 upload ID、lane、phase 与实测 `elapsed_ms`：`read` 包括完整读取、hash 和可选落盘，canonical 另读另记，缓存命中不伪造 read；`inspection` 是原声明/落盘文件检查（例外路径照实计时）；`commit` 包括事务、ETag复查和提交。失败阶段也计时，必须结合最终 outcome 与持久凭据判定成功。总 `upload_confirmation.elapsed_ms` 还含领取和准备查询，不能称为 reader 时间，也不能相加并行 lane 耗时。不记录连接、SAS、文件名或内容。
+
+功能回归覆盖新入口不领取 run/parse、SIGTERM、共享暂存、202→200/同一材料重放及 owner/fence/完整性。性能验收须 Azure 确认经现有 PG 隧道连接腾讯**独立 synthetic 测试库/队列**，原认证仅在内存切换 dbname，不接业务队列、不复制客户数据、不新开公网 PG、不改业务迁移或权限；由一次创建/清理协调避免重建。Azure 本地 PG 只能证明功能。正式同一 71MiB 文件分别记录 PUT、整段确认、分段计时、服务端完成、浏览器 200 与 ESA 等待；与 372.895 秒比较须统一整段确认口径，不预先承诺秒数。#960 的 429 单列。机械回归不代表准确版本真实模型金样、独立业务复核或生产性能已通过，新源码不继承旧热修例外。

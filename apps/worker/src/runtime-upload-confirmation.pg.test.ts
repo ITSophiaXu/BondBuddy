@@ -9,6 +9,7 @@ import {BlobServiceClient} from '@azure/storage-blob';
 import {createServer} from '@bondbuddy/api';
 import {azureBlobs,digest} from '@bondbuddy/api/data';
 import {WorkerRuntime} from './runtime.js';
+import {UploadConfirmationRuntime} from './upload-confirmation-runtime.js';
 import {isolatedTestDatabase} from './test-database.js';
 
 const connection=await isolatedTestDatabase(undefined,'confirmation-reserved-slot');
@@ -18,12 +19,12 @@ const sleep=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 function gate(){let release!:()=>void;const wait=new Promise<void>(resolve=>{release=resolve;});return {wait,release};}
 async function until(check:()=>Promise<boolean>,ms=15000){const end=Date.now()+ms;while(!await check()){if(Date.now()>end)throw new Error('Synthetic confirmation timed out');await sleep(25);}}
 
-for(const smallSlot of [false,true])test(`one 71 MiB confirmation and a reserved small lane: enabled=${smallSlot}`,{skip:!connection||!storage},async()=>{
+for(const standalone of [false,true])for(const smallSlot of [false,true])test(`one 71 MiB confirmation and a reserved small lane: standalone=${standalone}, enabled=${smallSlot}`,{skip:!connection||!storage},async()=>{
   const pool=new Pool({connectionString:connection,options:'-c jit=off'}),owner='reserved-'+randomUUID(),container='bb943-'+randomUUID().replaceAll('-','');
   const blobs=azureBlobs(storage!,container),origin='http://bondbuddy.test',blocked=gate(),started=gate();
   const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true})});
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{}),...(url.endsWith('/complete')?{prefer:'respond-async'}:{})}});
-  let runtime:WorkerRuntime|undefined;
+  let runtime:WorkerRuntime|UploadConfirmationRuntime|undefined;
   const before=process.env.BB_UPLOAD_SPOOL_MAX_BYTES;process.env.BB_UPLOAD_SPOOL_MAX_BYTES=String(128*MiB);
   try{
     const project=await send('POST','/api/v1/projects',{name:'Synthetic reserved confirmation',kind:'update',issuer_name:null,market:null,offering:null});assert.equal(project.statusCode,201,project.body);
@@ -55,7 +56,7 @@ for(const smallSlot of [false,true])test(`one 71 MiB confirmation and a reserved
       finally{active--;}
     };
     const events:Record<string,unknown>[]=[];
-    runtime=new WorkerRuntime({pool,blobs,kinds:['parse'],concurrency:1,interactiveSlots:0,parseSlots:0,uploadConfirmationEnabled:true,uploadConfirmationSmallSlot:smallSlot,pollMs:100,drainMs:10000,heartbeatMs:1000,workerId:'synthetic943-'+randomUUID(),log:event=>events.push(event)});
+    runtime=standalone?new UploadConfirmationRuntime({pool,blobs,smallSlot,pollMs:100,log:event=>events.push(event)}):new WorkerRuntime({pool,blobs,kinds:['parse'],concurrency:1,interactiveSlots:0,parseSlots:0,uploadConfirmationEnabled:true,uploadConfirmationSmallSlot:smallSlot,pollMs:100,drainMs:10000,heartbeatMs:1000,workerId:'synthetic943-'+randomUUID(),log:event=>events.push(event)});
     const start=Date.now();runtime.start();await started.wait;
     const savedSmall=async()=>Number((await pool.query("SELECT count(*)::int n FROM bb_material_versions WHERE owner_user_id=$1 AND upload_id=ANY($2::text[])",[owner,small.map(u=>u.id)])).rows[0].n);
     if(smallSlot){
@@ -74,6 +75,7 @@ for(const smallSlot of [false,true])test(`one 71 MiB confirmation and a reserved
     const rows=(await pool.query('SELECT u.id,u.byte_size,u.sha256,u.received_bytes,u.received_sha256,count(m.id)::int materials FROM bb_uploads u LEFT JOIN bb_material_versions m ON m.upload_id=u.id WHERE u.owner_user_id=$1 GROUP BY u.id',[owner])).rows;
     assert.equal(rows.length,5);for(const row of rows){assert.equal(row.materials,1);assert.equal(row.byte_size,row.received_bytes);assert.equal(row.sha256,row.received_sha256);}
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE owner_user_id=$1',[owner])).rows[0].n,0);
+    if(standalone)for(const phase of ['read','inspection','commit'])assert.ok(events.some(e=>e.kind==='upload_confirmation_phase'&&e.phase===phase&&Number(e.elapsed_ms)>=0));
     console.log(JSON.stringify({synthetic:true,small_slot:smallSlot,bulk_bytes:71*MiB,small_completed_before_bulk:smallSlot?small.length:0,peak_reads:peak,peak_spool_bytes:peakSpoolBytes,blocked_observation_ms:blockedElapsed}));
   }finally{
     blocked.release();await runtime?.stop();await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();

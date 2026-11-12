@@ -13,6 +13,13 @@ import { configuredUploadInspectionException, uploadInspectionExceptionMatches }
 import { discardSpool, reserveSpool, spoolDirectory } from './upload-spool.js';
 const XLSX_MEDIA_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 export type UploadDeclaration = { byte_size:number; sha256:string };
+/** Internal measurements, never content, storage URLs or connection errors. */
+export type UploadPhaseTiming = {phase:'read'|'inspection'|'commit';elapsed_ms:number};
+export type UploadTimingObserver = (event:UploadPhaseTiming)=>void;
+export async function measureUploadPhase<T>(phase:UploadPhaseTiming['phase'],observe:UploadTimingObserver|undefined,work:()=>Promise<T>):Promise<T>{
+  const started=performance.now();
+  try{return await work();}finally{try{observe?.({phase,elapsed_ms:performance.now()-started});}catch{/* Logging cannot change persistence. */}}
+}
 export type PreparedUpload = {
   proofs:Record<string,BlobDigest>;
   source?:{ objectKey:string; mediaType:string; signatureAssessment:SignatureAssessment|null; excepted:boolean };
@@ -126,7 +133,7 @@ async function commitPreparedUpload(pool:Pool,blobs:PrivateBlobs,user:string,id:
 
 /** Capture full-read proofs before taking the project lock. The final transaction
  * checks metadata and ETags again; a new competing canonical object asks for retry. */
-export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:string,id:string,uploadId:string,b:UploadDeclaration,inspectionException:ReturnType<typeof configuredUploadInspectionException>=null,beforeMaterialRead?:(m:any)=>Promise<void>):Promise<PreparedUpload> {
+export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:string,id:string,uploadId:string,b:UploadDeclaration,inspectionException:ReturnType<typeof configuredUploadInspectionException>=null,beforeMaterialRead?:(m:any)=>Promise<void>,observe?:UploadTimingObserver):Promise<PreparedUpload> {
   const p=await project(pool,user,id);
   const u=(await pool.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,uploadId])).rows[0];
   if(!u)throw missing();
@@ -138,7 +145,7 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
       ${receipt?'id=$3 AND version=$4':'upload_id=$3'}`,[user,id,receipt?receipt.material_id:uploadId,...(receipt?[receipt.material_version]:[])])).rows[0];
     if(!m)throw missing();
     await beforeMaterialRead?.(m);
-    result.proofs[m.object_key]=await cachedUploadVersion(pool,blobs,m)??await fullMaterialProof(blobs,m);
+    result.proofs[m.object_key]=await cachedUploadVersion(pool,blobs,m)??await fullMaterialProof(blobs,m,observe);
     return result;
   }
   if(u.state==='deleting'||u.state==='purged')throw missing();
@@ -155,16 +162,16 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
     await mkdir(spoolDirectory(),{recursive:true,mode:0o700});
     // Both lanes reserve this declaration, so the real stream must share its
     // hard byte ceiling, including legacy received uploads and raced changes.
-    const proof=await readBlobToFile(blobs,u.object_key,copy,b.byte_size);
+    const proof=await measureUploadPhase('read',observe,()=>readBlobToFile(blobs,u.object_key,copy,b.byte_size));
     if(!proof)throw new Problem(503,'DATA_UNAVAILABLE','Stored upload bytes are temporarily unavailable');
     if(direct&&proof.etag!==version!.etag)throw new Problem(503,'DATA_UNAVAILABLE','UPLOAD_REVERIFY_REQUIRED');
     if(proof.byteSize!==b.byte_size||proof.sha256!==b.sha256)throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes or hash mismatch');
     const excepted=uploadInspectionExceptionMatches(inspectionException,{ownerUserId:user,projectId:id,role:u.role,byteSize:proof.byteSize,sha256:proof.sha256,mediaType:u.declared_media_type});
-    const inspection=excepted?{mediaType:XLSX_MEDIA_TYPE,signatureAssessment:null}:await verifiedMediaFileDetailed(copy,proof.byteSize,u.declared_media_type);
+    const inspection=await measureUploadPhase('inspection',observe,async()=>excepted?{mediaType:XLSX_MEDIA_TYPE,signatureAssessment:null}:verifiedMediaFileDetailed(copy,proof.byteSize,u.declared_media_type));
     result.proofs[u.object_key]=proof;
     result.source={objectKey:u.object_key,mediaType:inspection.mediaType,signatureAssessment:inspection.signatureAssessment,excepted};
     const m=(await pool.query(`SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND role=$3 AND sha256=$4 AND byte_size=$5 AND media_type=$6 AND deleted_at IS NULL ORDER BY persisted_at,id,version LIMIT 1`,[user,id,u.role,b.sha256,b.byte_size,inspection.mediaType])).rows[0];
-    if(m){await beforeMaterialRead?.(m);result.proofs[m.object_key]=await fullMaterialProof(blobs,m);}
+    if(m){await beforeMaterialRead?.(m);result.proofs[m.object_key]=await fullMaterialProof(blobs,m,observe);}
     return result;
   }catch(error){
     const e=direct&&error instanceof Problem&&error.status===413?new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes exceed the upload limit'):error;
@@ -172,8 +179,8 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
     throw e;
   }finally{await discardSpool(copy);release();}
 }
-export async function fullMaterialProof(blobs:PrivateBlobs,m:any):Promise<BlobDigest>{
-  const proof=await readBlobToFile(blobs,m.object_key,null,Number(m.byte_size));
+export async function fullMaterialProof(blobs:PrivateBlobs,m:any,observe?:UploadTimingObserver):Promise<BlobDigest>{
+  const proof=await measureUploadPhase('read',observe,()=>readBlobToFile(blobs,m.object_key,null,Number(m.byte_size)));
   if(!proof||proof.byteSize!==Number(m.byte_size)||proof.sha256!==m.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Saved material is temporarily unavailable');
   return proof;
 }

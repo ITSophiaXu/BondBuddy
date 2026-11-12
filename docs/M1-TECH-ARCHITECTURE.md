@@ -933,3 +933,8 @@ API 将传输方式与不可变的 owner/project/upload/object key 一起保存�
 直传对象通过既有异步确认消费器完整下载，校验实际大小、SHA 及声明类型白名单，并在提交事务中再次比对同一 ETag、归属与不可变会话。沿用原件直存政策，不嗅探、解压或扫描文档内容；保存不证明内容类型或安全。只有字节完整性和归属检查通过才记录 received 和唯一材料；HEAD 存在或客户端 201 均不作为已保存证明。确定性拒收仅在归属、租约及材料引用检查后以拒收版本的 ETag 条件回收，不能删除替换版本。SAS 无法绑定字节上限，服务端实际读取仍执行 100 MiB 上限。
 
 启用前，在私有 Blob 服务 CORS 中保留已有规则并增量允许正式应用 Origin、方法 `PUT`、请求头 `content-type,x-ms-blob-type,if-none-match`。无需暴露响应头。Web CSP 的 `connect-src` 只增加配置对应的 `https://myopenhands.blob.core.windows.net`，不放开通配 Azure 域名；外层代理若另加 CSP，也须允许同一精确 Origin。正式浏览器验收需确认 CORS/CSP 均未拦截，并完成小文件和至少 6 MiB synthetic 文件上传、刷新恢复及 SHA/归属复核。回退采用关闭新会话 flag，既有直传会话仍可完成；保留新增迁移，不在回退时删除材料。部署继续遵守当前 commit/tree 的质量与发布凭据要求。
+
+
+### #943 upload confirmation placement
+
+The optional standalone `upload-confirmation-runtime.ts` consumes only the existing upload outbox event, using the API's unchanged confirmation lease/fence and full integrity receipts. It does not construct the general runtime or claim run/parse work. A dedicated disk spool and process lock protect a shared 128 MiB general/small-lane budget. The main API continues its existing cached ETag/receipt response. Placement, immutable image identity and configuration remain under the existing role binding/pending release protections; mixed component releases require component-only changes. See [split deployment](runbooks/m1-split-deployment.md) for opt-in configuration, drain and rollback. No public contract, migration or model behavior changes.

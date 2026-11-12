@@ -3,7 +3,7 @@
 set -euo pipefail
 role="${1:?role required}"; ref="${2:?git-sha required}"; output="${3:?output archive required}"
 case "$role" in main) targets=(api worker web egress);; execution)
- targets=(worker egress pg-tunnel)
+ targets=(worker egress pg-tunnel upload-confirmation)
  case "${4:-beijing}" in beijing) targets+=(integrity-tunnel);; direct) targets+=(integrity-egress);; disabled) ;; *) echo 'invalid integrity mode' >&2; exit 2;; esac;; *) exit 2;; esac
 repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 sha="$(git -C "$repo" rev-parse --verify "$ref^{commit}")"; tag="${sha:0:12}"

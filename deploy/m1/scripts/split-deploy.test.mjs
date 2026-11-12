@@ -123,7 +123,7 @@ case "$*" in
  *'config --format json'*) node -e 'const fs=require("fs");process.stdout.write(fs.readFileSync(process.env.TEST_CONFIG,"utf8").replaceAll(":synthetic",":"+process.env.BB_IMAGE_TAG))';;
  *'inspect --format'*com.docker.compose.project*) node -e 'console.log(JSON.parse(require("fs").readFileSync(process.env.TEST_CONFIG)).name)';;
  *'inspect --format'*com.docker.compose.config-hash*) node -e 'console.log("a".repeat(64))';;
- *'ps --status running -q worker-parse'*) ;;
+ *'ps --status running -q worker-parse'*|*'ps --status running -q upload-confirmation'*) ;;
  *'image inspect --format'*revision*) if [ "$TEST_BAD_REVISION" = 1 ]; then echo wrong-revision; else case "$*" in *:bbbbbbbbbbbb*) echo bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;; *) echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;; esac; fi;;
  *'image inspect --format'*) echo sha256:synthetic;;
  *'inspect --format'*) if [ "$TEST_BAD_RUNTIME" = 1 ]; then echo sha256:wrong-runtime; else echo sha256:synthetic; fi;;
@@ -306,4 +306,28 @@ test('current-only retained releases require real source and ID checks before th
   if(status)assert.doesNotMatch(commands,/up -d|run --rm --no-deps -T migrate/);
   if(status===3)assert.doesNotMatch(commands,/ idle/);
  }
+});
+
+// Confirmation placement reuses the role binding and configuration lock.
+test('standalone confirmation defaults inactive; protected enablement keeps parse/model settings separate',()=>{
+ const off=covered('execution');
+ assert.equal(config('execution',off.values,join(off.area,'state')).services['upload-confirmation'],undefined);
+ const a=covered('execution','services: {}\n',{BB_UPLOAD_CONFIRMATION_ROLE:'execution',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir,BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1'}),state=join(a.area,'state');
+ const c=config('execution',a.values,state),service=c.services['upload-confirmation'];
+ assert.equal(c.services['worker-parse'],undefined);assert.equal(service.deploy.replicas,1);
+ assert.equal(service.environment.BB_UPLOAD_SPOOL_MAX_BYTES,'134217728');assert.equal(service.environment.BB_UPLOAD_CONFIRMATION_SMALL_SLOT,'1');
+ assert.equal(service.image,'bondbuddy-m1-upload-confirmation:synthetic');assert.deepEqual(service.command,['node','apps/worker/dist/upload-confirmation-runtime.js']);
+ assert.deepEqual(Object.keys(service.networks),['backend']);assert.equal(service.volumes.length,1);assert.equal(service.volumes[0].source,dir);
+ assert.ok(Object.keys(service.environment).every(k=>!/CODEX|MODEL|COPILOT|OPENAI|DEEPSEEK|BB_WORKER_/.test(k)));
+ const binding=JSON.parse(readFileSync(join(state,'environment-binding.json')));assert.equal(binding.upload_confirmation_role,'execution');assert.equal(binding.upload_confirmation_spool,dir);
+ assert.throws(()=>config('execution',{...a.values,BB_UPLOAD_CONFIRMATION_ROLE:'disabled'},state),'cannot silently drop adopted placement');
+ for(const change of [{BB_UPLOAD_CONFIRMATION_ROLE:'main'},{BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:'relative'},{BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'yes'},{BB_ROLE_CONFIRMATION_REPLICAS:'1'}]){
+  const b=covered('execution','services: {}\n',{...a.values,...change});
+  assert.throws(()=>config('execution',b.values,join(b.area,'state')));
+ }
+ for(const text of ['services:\n  upload-confirmation:\n    environment:\n      OPENAI_API_KEY: synthetic\n','services:\n  upload-confirmation:\n    command: [node, apps/worker/dist/runtime.js]\n']){
+  const b=covered('execution',text,{BB_UPLOAD_CONFIRMATION_ROLE:'execution',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir});assert.throws(()=>config('execution',b.values,join(b.area,'state')));
+ }
+ const r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','execution','up','-d','upload-confirmation'],{cwd:root,env:{...process.env,BB_ENV_FILE:envFile('execution',off.values),BB_STATE_DIR:join(off.area,'state'),BB_IMAGE_TAG:'synthetic'},encoding:'utf8'});
+ assert.equal(r.status,2);assert.match(r.stderr,/confirmation is inactive/);
 });
