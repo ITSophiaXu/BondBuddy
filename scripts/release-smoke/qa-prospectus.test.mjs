@@ -11,11 +11,11 @@ const response=(body,status=200)=>({status:()=>status,json:async()=>structuredCl
 
 // Model the public page/API boundary, including the absent post-upload modal.
 // Unsupported selectors/actions fail, so the former modal wait cannot pass here.
-function pageFor({readWorkspace=()=>workspace(),readMaterial=()=>response(material()),text=()=>ready}={}){
+function pageFor({readWorkspace=()=>workspace(),readMaterial=()=>response(material()),text=()=>ready,materialProject='qa-project'}={}){
  const events=[];let phase=0,reads=0,materialReads=0;
  const page={events,request:{async get(url){
   if(url==='/api/v1/projects/qa-project/qa'){events.push('qa:'+phase);return response(readWorkspace(phase,++reads));}
-  assert.equal(url,'/api/v1/projects/qa-project/materials/material-1?version=1');events.push('material:'+phase);return readMaterial(phase,++materialReads);
+  assert.equal(url,'/api/v1/projects/'+materialProject+'/materials/material-1?version=1');events.push('material:'+phase);return readMaterial(phase,++materialReads);
  }},locator(selector){
   if(selector==='.qa-project-materials')return {innerText:async()=>text(phase)};
   if(selector==='#qa-prospectus-panel')return {};
@@ -40,11 +40,35 @@ test('queued upload and delayed adoption wait for a final HTTP 200 persisted mat
 });
 
 test('a closed modal or ready label alone cannot pass without the exact adopted source',async()=>{
- for(const options of [{readWorkspace:()=>({prospectus:null})},{text:()=>ready.replace('已纳入本轮材料','回答前需选入本轮材料')},{readMaterial:()=>response({...material(),sha256:'b'.repeat(64)})}]){
+ for(const options of [{readWorkspace:()=>({prospectus:null})},{readMaterial:()=>response({...material(),sha256:'b'.repeat(64)})}]){
   const page=pageFor(options);
   await assert.rejects(confirmQaProspectus(page,{projectURL,expected},{timeoutMs:15,pollMs:1}),/not adopted/);
   assert.ok(!page.events.includes('refresh'));assert.ok(!page.events.includes('reload'));
  }
+});
+
+test('a resumed fresh context can have a ready source before question preparation selects round materials',async()=>{
+ const page=pageFor({readWorkspace:()=>({...workspace(),draft:{preparation_id:null,materials:[]},runs:[]}),text:()=>ready.replace('已纳入本轮材料','回答前需选入本轮材料')});
+ const proof=await confirmQaProspectus(page,{projectURL,expected});
+ assert.equal(proof.material_id,'material-1');assert.ok(page.events.includes('reload'));
+});
+
+test('the navigation QA API may resolve the adopted source from its related update workspace',async()=>{
+ const page=pageFor({materialProject:'related-update',readWorkspace:()=>{const w=workspace();w.prospectus.project_id=w.prospectus.asset.pin.source_project_id='related-update';return w;}});
+ const proof=await confirmQaProspectus(page,{projectURL,expected});
+ assert.equal(proof.project_id,'related-update');assert.equal(page.events.filter(x=>x.startsWith('qa:')).length,3);
+});
+
+test('before answering the persisted draft must contain the exact source pin and retain it on reload',async()=>{
+ const saved=()=>{const w=workspace();w.draft={preparation_id:'prepare-1',materials:[structuredClone(w.prospectus.asset)]};return w;};
+ const proof=await confirmQaProspectus(pageFor({readWorkspace:saved}),{projectURL,expected,round:true});
+ assert.equal(proof.material_id,'material-1');
+ for(const patch of [w=>{w.draft.materials=[];},w=>{w.draft.materials[0].pin.material_version=2;},w=>{w.draft.materials[0].pin.sha256='b'.repeat(64);},w=>{w.draft.preparation_id=null;}]){
+  const page=pageFor({readWorkspace:()=>{const w=saved();patch(w);return w;}});
+  await assert.rejects(confirmQaProspectus(page,{projectURL,expected,round:true},{timeoutMs:15,pollMs:1}),/saved draft/);
+ }
+ const lost=pageFor({readWorkspace:phase=>{const w=saved();if(phase===2)w.draft.materials=[];return w;}});
+ await assert.rejects(confirmQaProspectus(lost,{projectURL,expected,round:true},{timeoutMs:15,pollMs:1}),/saved draft/);
 });
 
 test('source identity and persisted original bytes reject wrong project, version, name, hash, size or timestamp',()=>{
