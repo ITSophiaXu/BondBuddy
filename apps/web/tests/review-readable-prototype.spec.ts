@@ -10,6 +10,6 @@ for (const viewport of [{width:1360,height:900},{width:581,height:753}]) test(`r
   await expect(page.locator('.readable-item[open]')).toHaveCount(2);
   await expect(page.locator('.readable-body')).toContainText('确认口径后统一金额');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await mkdir('test-evidence/review-readable',{recursive:true});
-  await page.screenshot({path:`test-evidence/review-readable/prototype-${viewport.width}.png`,fullPage:true});
+  await mkdir(test.info().outputPath('review-readable'),{recursive:true});
+  await page.screenshot({path:test.info().outputPath('review-readable',`prototype-${viewport.width}.png`),fullPage:true});
 });
