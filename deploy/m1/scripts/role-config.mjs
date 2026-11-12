@@ -32,9 +32,10 @@ try {
   const parseRole = values.BB_PARSE_ROLE || (file ? '' : 'execution');
   if (!['main', 'execution'].includes(parseRole)) fail();
   const confirmationRole = values.BB_UPLOAD_CONFIRMATION_ROLE || 'disabled';
-  if (!['disabled','execution'].includes(confirmationRole)) fail();
+  if (!['disabled','execution','size-split'].includes(confirmationRole)) fail();
+  if (confirmationRole === 'size-split' && parseRole !== 'main') fail();
   const spoolHost = values.BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR || '';
-  if (confirmationRole === 'execution' && role === 'execution' && (!isAbsolute(spoolHost) || /[\r\n$`]/.test(spoolHost))) fail();
+  if (confirmationRole !== 'disabled' && role === 'execution' && (!isAbsolute(spoolHost) || /[\r\n$`]/.test(spoolHost))) fail();
   const project = values.COMPOSE_PROJECT_NAME || `bb-${role}`;
   if (!/^[a-z0-9][a-z0-9_-]*$/.test(project)) fail();
   // These names are reserved for the entry point, including values in the private env itself.
@@ -43,7 +44,9 @@ try {
     override_sha256: digest, parse_role: parseRole, integrity: role === 'execution' ? values.BB_INTEGRITY_MODE : '',
     database: hash(values[role === 'main' ? 'BB_MAIN_DATABASE_URL' : 'BB_EXECUTION_DATABASE_URL'] || ''),
     pg_forward_port: values.BB_PG_FORWARD_PORT || '15432',
-    ...(confirmationRole === 'disabled' ? {} : {upload_confirmation_role:confirmationRole,...(role==='execution'?{upload_confirmation_spool:spoolHost}:{})}) };
+    ...(confirmationRole === 'disabled' ? {} : {upload_confirmation_role:confirmationRole,
+      ...(confirmationRole==='size-split'?{upload_confirmation_lane:role==='main'?'small':'large'}:{}),
+      ...(role==='execution'?{upload_confirmation_spool:spoolHost}:{})}) };
   const fixedPort = value => /^[1-9][0-9]{0,4}$/.test(value) && Number(value) <= 65535;
   if (!fixedPort(binding.pg_forward_port)) fail();
   const bindingPath = `${state}/environment-binding.json`;
@@ -96,15 +99,26 @@ try {
         if (Object.keys(e).some(k => /CODEX|COPILOT|DEEPSEEK/.test(k)) || parser.volumes.some(v => /secrets|oauth|codex/i.test(v.target))) fail();
       }
     }
-    // A separate consumer may never coexist with the parser's confirmation loop.
-    if (confirmationRole !== 'disabled' && parseRole === role &&
-        (parser.environment.BB_UPLOAD_CONFIRMATION_ENABLED !== '0' || parser.environment.BB_UPLOAD_CONFIRMATION_SMALL_SLOT !== '0')) fail();
+    // Filtered lanes belong only to the explicit, disjoint size-split placement.
+    if (parseRole === role && confirmationRole !== 'size-split' &&
+        (parser.environment.BB_UPLOAD_CONFIRMATION_LANE??'general') !== 'general') fail();
+    // The only concurrent placement is the exact, disjoint small/large split.
+    if (confirmationRole === 'size-split' && role === 'main') {
+      const e=parser.environment;
+      if(e.BB_UPLOAD_CONFIRMATION_ENABLED!=='1' || e.BB_UPLOAD_CONFIRMATION_LANE!=='small' ||
+        e.BB_UPLOAD_CONFIRMATION_SMALL_SLOT!=='0' || e.BB_UPLOAD_SPOOL_MAX_BYTES!=='134217728' ||
+        !['10m','10m0s'].includes(parser.stop_grace_period)) fail();
+    } else if (confirmationRole !== 'disabled' && parseRole === role &&
+        (parser.environment.BB_UPLOAD_CONFIRMATION_ENABLED !== '0' || parser.environment.BB_UPLOAD_CONFIRMATION_SMALL_SLOT !== '0' ||
+         (parser.environment.BB_UPLOAD_CONFIRMATION_LANE??'general')!=='general')) fail();
     if (role === 'execution') {
-      const service=s['upload-confirmation'], active=confirmationRole==='execution', e=service.environment;
-      const environmentKeys=new Set(['DATABASE_URL','AZURE_STORAGE_CONNECTION_STRING','BB_UPLOAD_CONFIRMATION_ENABLED','BB_UPLOAD_CONFIRMATION_SMALL_SLOT','BB_UPLOAD_CONFIRMATION_CONTAINER','BB_UPLOAD_SPOOL_DIR','BB_UPLOAD_SPOOL_MAX_BYTES','NODE_OPTIONS','HTTPS_PROXY','https_proxy','NO_PROXY','no_proxy']);
+      const service=s['upload-confirmation'], active=confirmationRole!=='disabled', e=service.environment;
+      const environmentKeys=new Set(['DATABASE_URL','AZURE_STORAGE_CONNECTION_STRING','BB_UPLOAD_CONFIRMATION_ENABLED','BB_UPLOAD_CONFIRMATION_LANE','BB_UPLOAD_CONFIRMATION_SMALL_SLOT','BB_UPLOAD_CONFIRMATION_CONTAINER','BB_UPLOAD_SPOOL_DIR','BB_UPLOAD_SPOOL_MAX_BYTES','NODE_OPTIONS','HTTPS_PROXY','https_proxy','NO_PROXY','no_proxy']);
       if (Number(service.deploy.replicas)!==(active?1:0) || !service.profiles.includes(active?'bb-confirmation-active':'bb-confirmation-inactive')) fail();
       if (JSON.stringify(service.command)!==JSON.stringify(['node','apps/worker/dist/upload-confirmation-runtime.js']) ||
           e.BB_UPLOAD_CONFIRMATION_ENABLED!=='1' || !['0','1'].includes(e.BB_UPLOAD_CONFIRMATION_SMALL_SLOT) ||
+          e.BB_UPLOAD_CONFIRMATION_LANE!==(confirmationRole==='size-split'?'large':'general') ||
+          (confirmationRole==='size-split' && e.BB_UPLOAD_CONFIRMATION_SMALL_SLOT!=='0') ||
           e.BB_UPLOAD_SPOOL_DIR!=='/var/lib/bondbuddy/upload-confirmation' || e.BB_UPLOAD_SPOOL_MAX_BYTES!=='134217728' ||
           new URL(e.DATABASE_URL).hostname!=='pg-tunnel' || Object.keys(service.networks).join()!=='backend' ||
           Object.keys(e).some(k=>!environmentKeys.has(k)) || service.user!=='1000:1000' || service.entrypoint?.length || service.privileged ||

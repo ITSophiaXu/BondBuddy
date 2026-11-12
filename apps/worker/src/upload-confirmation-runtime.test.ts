@@ -6,16 +6,34 @@ import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {confirmationConfig} from './upload-confirmation-runtime.js';
 import {acquireConfirmationSpool} from './upload-confirmation-spool.js';
+import {WorkerRuntime,workerRuntimeOptionsFromEnv} from './runtime.js';
+import type {Pool} from 'pg';
+import type {PrivateBlobs} from '@bondbuddy/api/data';
 
 const env={DATABASE_URL:'postgresql://synthetic@127.0.0.1/synthetic',AZURE_STORAGE_CONNECTION_STRING:'synthetic',BB_UPLOAD_CONFIRMATION_ENABLED:'1',BB_UPLOAD_SPOOL_DIR:'/synthetic/confirmation',BB_UPLOAD_SPOOL_MAX_BYTES:'134217728'};
 test('confirmation entry is opt-in, bounded and rejects execution/model settings',()=>{
   assert.throws(()=>confirmationConfig({}));
   assert.equal(confirmationConfig(env).smallSlot,false);
+  assert.equal(confirmationConfig(env).lane,'general');
+  assert.equal(confirmationConfig({...env,BB_UPLOAD_CONFIRMATION_LANE:'large'}).lane,'large');
   assert.equal(confirmationConfig({...env,BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1'}).smallSlot,true);
   assert.equal(confirmationConfig({...env,BB_LIBRARY_CONTAINER:'unrelated-library'}).container,'bondbuddy-private');
   assert.equal(confirmationConfig({...env,BB_UPLOAD_CONFIRMATION_CONTAINER:'synthetic-materials'}).container,'synthetic-materials');
-  for(const change of [{BB_UPLOAD_CONFIRMATION_ENABLED:'0'},{DATABASE_URL:''},{AZURE_STORAGE_CONNECTION_STRING:''},{BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'yes'},{BB_UPLOAD_SPOOL_MAX_BYTES:'1073741824'},{BB_UPLOAD_SPOOL_DIR:'relative'},{BB_UPLOAD_CONFIRMATION_POLL_MS:'0'},{BB_UPLOAD_CONFIRMATION_CONTAINER:'invalid--name'},{BB_WORKER_JOB_KINDS:'parse'},{BB_WORKER_RUN_KINDS:'update'},{BB_CODEX_BIN:'synthetic'},{OPENAI_API_KEY:'synthetic'},{COPILOT_TOKEN:'synthetic'}])
+  for(const change of [{BB_UPLOAD_CONFIRMATION_LANE:'small'},{BB_UPLOAD_CONFIRMATION_LANE:'other'},{BB_UPLOAD_CONFIRMATION_LANE:'large',BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1'},{BB_UPLOAD_CONFIRMATION_ENABLED:'0'},{DATABASE_URL:''},{AZURE_STORAGE_CONNECTION_STRING:''},{BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'yes'},{BB_UPLOAD_SPOOL_MAX_BYTES:'1073741824'},{BB_UPLOAD_SPOOL_DIR:'relative'},{BB_UPLOAD_CONFIRMATION_POLL_MS:'0'},{BB_UPLOAD_CONFIRMATION_CONTAINER:'invalid--name'},{BB_WORKER_JOB_KINDS:'parse'},{BB_WORKER_RUN_KINDS:'update'},{BB_CODEX_BIN:'synthetic'},{OPENAI_API_KEY:'synthetic'},{COPILOT_TOKEN:'synthetic'}])
     assert.throws(()=>confirmationConfig({...env,...change}),JSON.stringify(Object.keys(change)));
+});
+
+test('main factory defaults general and accepts exactly one bounded small confirmation loop',()=>{
+  const base={...env,BB_WORKER_JOB_KINDS:'parse',BB_PARSE_CACHE_OCR_VERSION:'synthetic',BB_PARSE_CACHE_BASIS_VERSION:'synthetic'};
+  const options=(change:NodeJS.ProcessEnv={})=>workerRuntimeOptionsFromEnv({} as Pool,{} as PrivateBlobs,{...base,...change});
+  assert.equal(options().uploadConfirmationLane,'general');
+  const small=options({BB_UPLOAD_CONFIRMATION_LANE:'small'});
+  assert.equal(small.uploadConfirmationLane,'small');assert.equal(small.uploadConfirmationSmallSlot,false);assert.ok(small.parse);
+  assert.doesNotThrow(()=>new WorkerRuntime(small));
+  for(const change of [{BB_UPLOAD_CONFIRMATION_LANE:'other'},{BB_UPLOAD_CONFIRMATION_LANE:'small',BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1'},
+    {BB_UPLOAD_CONFIRMATION_LANE:'small',BB_UPLOAD_CONFIRMATION_ENABLED:'0'}, {BB_UPLOAD_CONFIRMATION_LANE:'small',BB_WORKER_JOB_KINDS:'run,parse'},
+    {BB_UPLOAD_CONFIRMATION_LANE:'small',BB_UPLOAD_SPOOL_MAX_BYTES:'268435456'}])assert.throws(()=>options(change));
+  assert.throws(()=>new WorkerRuntime({...small,uploadConfirmationSmallSlot:true}));
 });
 
 test('dedicated spool locks exclude a second process and only clean managed private files',async()=>{

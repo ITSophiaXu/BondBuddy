@@ -338,6 +338,34 @@ test('moving confirmation requires disabling both legacy main parser confirmatio
   assert.throws(()=>config('main',{...a.values,...change},state));
 });
 
+test('size-split permits only main small and execution large single loops with protected binding',()=>{
+ const small={BB_UPLOAD_CONFIRMATION_ROLE:'size-split',BB_UPLOAD_CONFIRMATION_ENABLED:'1',BB_UPLOAD_CONFIRMATION_LANE:'small',BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'0'};
+ const main=covered('main',bridgeOverlay,small),state=join(main.area,'state'),c=config('main',main.values,state);
+ assert.equal(c.services['worker-parse'].environment.BB_UPLOAD_CONFIRMATION_LANE,'small');
+ assert.equal(c.services['worker-parse'].environment.BB_WORKER_JOB_KINDS,'parse');
+ assert.equal(c.services['worker-parse'].environment.BB_UPLOAD_SPOOL_MAX_BYTES,'134217728');
+ assert.equal(c.services['worker-parse'].stop_grace_period,'10m0s');
+ assert.equal(JSON.parse(readFileSync(join(state,'environment-binding.json'))).upload_confirmation_lane,'small');
+ for(const change of [{BB_UPLOAD_CONFIRMATION_ENABLED:'0'},{BB_UPLOAD_CONFIRMATION_LANE:'general'},{BB_UPLOAD_CONFIRMATION_LANE:'large'},{BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1'},{BB_UPLOAD_CONFIRMATION_SPOOL_MAX_BYTES:'268435456'},{BB_PARSE_ROLE:'execution'},{BB_UPLOAD_CONFIRMATION_ROLE:'disabled'}])
+  assert.throws(()=>config('main',{...main.values,...change},join(main.area,'reject-'+Object.keys(change)[0])));
+ assert.throws(()=>config('main',{...main.values,BB_UPLOAD_CONFIRMATION_ROLE:'disabled',BB_UPLOAD_CONFIRMATION_LANE:'general'},state),'cannot silently migrate binding');
+ const large=covered('execution','services: {}\n',{BB_UPLOAD_CONFIRMATION_ROLE:'size-split',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir,BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'0'}),ls=join(large.area,'state'),x=config('execution',large.values,ls);
+ assert.equal(x.services['upload-confirmation'].environment.BB_UPLOAD_CONFIRMATION_LANE,'large');
+ assert.equal(x.services['upload-confirmation'].environment.BB_UPLOAD_CONFIRMATION_SMALL_SLOT,'0');
+ assert.equal(x.services['worker-parse'],undefined);
+ for(const name of ['worker','worker-review'])assert.equal(x.services[name].environment.BB_UPLOAD_CONFIRMATION_ENABLED,'0');
+ assert.equal(JSON.parse(readFileSync(join(ls,'environment-binding.json'))).upload_confirmation_lane,'large');
+ for(const change of [{BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1'},{BB_PARSE_ROLE:'execution'},{BB_ROLE_CONFIRMATION_LANE:'general'}])
+  assert.throws(()=>config('execution',{...large.values,...change},join(large.area,'reject-'+Object.keys(change)[0])));
+ for(const overlay of ['services:\n  upload-confirmation:\n    environment:\n      BB_UPLOAD_CONFIRMATION_LANE: general\n','services:\n  worker-parse:\n    stop_grace_period: 30s\n']) {
+  const role=overlay.includes('upload-confirmation:')?'execution':'main';
+  const a=covered(role,role==='main'?bridgeOverlay.replace('  postgres:',overlay.slice('services:\n'.length)+'  postgres:'):overlay,role==='main'?small:{BB_UPLOAD_CONFIRMATION_ROLE:'size-split',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir});
+  assert.throws(()=>config(role,a.values,join(a.area,'state')));
+ }
+ const off=covered('execution');const os=join(off.area,'state');config('execution',off.values,os);
+ assert.equal(Object.hasOwn(JSON.parse(readFileSync(join(os,'environment-binding.json'))),'upload_confirmation_role'),false);
+});
+
 test('export inspects the requested source target, preserving uncached historical rollback and source checks',()=>{
  const fixture=join(dir,'export-ref-fixture');mkdirSync(join(fixture,'deploy/m1/scripts'),{recursive:true});mkdirSync(join(fixture,'bin'));
  for(const name of ['export-images-role.sh','role-source-lib.sh'])cpSync(join(root,'deploy/m1/scripts',name),join(fixture,'deploy/m1/scripts',name));

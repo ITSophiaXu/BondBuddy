@@ -10,7 +10,7 @@ import {configuredUploadInspectionException,uploadInspectionExceptionMatches} fr
 
 export type UploadConfirmationLease={id:string;owner:string;projectId:string;uploadId:string;token:string;requestId:string;traceId:string;declaration:UploadDeclaration;upload:any;excepted:boolean;attempts:number};
 export const UPLOAD_CONFIRMATION_SMALL_MAX_BYTES=16*1024*1024;
-export type UploadConfirmationLane='general'|'small';
+export type UploadConfirmationLane='general'|'small'|'large';
 const pending=(uploadId:string)=>({status:'confirming' as const,upload_id:uploadId});
 function restoreError(e:any):Problem{
   return new Problem(e.status,e.code,e.message,e.uploadReason,e.uploadDetail);
@@ -98,13 +98,15 @@ export async function requestUploadConfirmation(pool:Pool,blobs:PrivateBlobs,own
 
 /** Claims exactly this event type; log forwarding owns only observability events. */
 export async function claimUploadConfirmation(pool:Pool,leaseSeconds=120,lane:UploadConfirmationLane='general'):Promise<UploadConfirmationLease|null>{
+  if(!['general','small','large'].includes(lane))throw new Error('Invalid upload confirmation lane');
   return transaction(pool,async client=>{
     // Filter before taking the lease. A reserved small-file slot must never
     // claim a large upload and consume its retries while waiting for capacity.
     // The general slot keeps FIFO order, including large files.
     const row=(await client.query(`SELECT o.* FROM bb_outbox o WHERE o.aggregate_type='upload' AND o.event_type='upload.complete_requested' AND o.delivered_at IS NULL AND (o.lease_until IS NULL OR o.lease_until<=now()) AND (o.next_attempt_at IS NULL OR o.next_attempt_at<=now())
-      AND ($1::bigint IS NULL OR EXISTS(SELECT 1 FROM bb_upload_confirmations c WHERE c.outbox_id=o.id AND c.owner_user_id=o.owner_user_id AND c.upload_id=o.aggregate_id AND c.byte_size BETWEEN 1 AND $1::bigint))
-      ORDER BY o.created_at,o.id FOR UPDATE OF o SKIP LOCKED LIMIT 1`,[lane==='small'?UPLOAD_CONFIRMATION_SMALL_MAX_BYTES:null])).rows[0];
+      AND ($1::text='general' OR EXISTS(SELECT 1 FROM bb_upload_confirmations c WHERE c.outbox_id=o.id AND c.owner_user_id=o.owner_user_id AND c.upload_id=o.aggregate_id AND c.byte_size>=1
+        AND (($1='small' AND c.byte_size<=$2::bigint) OR ($1='large' AND c.byte_size>$2::bigint))))
+      ORDER BY o.created_at,o.id FOR UPDATE OF o SKIP LOCKED LIMIT 1`,[lane,UPLOAD_CONFIRMATION_SMALL_MAX_BYTES])).rows[0];
     if(!row)return null;
     const token=uid();
     await client.query("UPDATE bb_outbox SET lease_token=$2,lease_until=now()+($3::integer*interval '1 second'),delivery_attempts=delivery_attempts+1 WHERE id=$1",[row.id,token,leaseSeconds]);

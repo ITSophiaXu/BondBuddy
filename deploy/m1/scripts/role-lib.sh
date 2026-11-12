@@ -27,6 +27,9 @@ role_metadata() {
   BB_UPLOAD_CONFIRMATION_ROLE="${BB_ROLE_METADATA[6]:-disabled}"
 }
 role_metadata
+role_confirmation_active() {
+  [ "$BB_DEPLOY_ROLE" = execution ] && [ "$BB_UPLOAD_CONFIRMATION_ROLE" != disabled ]
+}
 source "$BB_DIR/scripts/role-source-lib.sh"
 # compose.yaml is extended for its shared policies. Its unused legacy DB interpolation must not
 # require the main-site password on execution hosts; the actual URL is BB_EXECUTION_DATABASE_URL.
@@ -51,11 +54,12 @@ role_compose_raw() (
   else
     export BB_ROLE_PARSE_PROFILE=bb-parse-inactive BB_ROLE_PARSE_REPLICAS=0
   fi
-  if [ "$confirmation" = "$role" ]; then
+  if [ "$role" = execution ] && [ "$confirmation" != disabled ]; then
     export BB_ROLE_CONFIRMATION_PROFILE=bb-confirmation-active BB_ROLE_CONFIRMATION_REPLICAS=1
   else
     export BB_ROLE_CONFIRMATION_PROFILE=bb-confirmation-inactive BB_ROLE_CONFIRMATION_REPLICAS=0
   fi
+  if [ "$confirmation" = size-split ]; then export BB_ROLE_CONFIRMATION_LANE=large; else export BB_ROLE_CONFIRMATION_LANE=general; fi
   [ "$role" != execution ] || export POSTGRES_PASSWORD=unused-no-local-database
   local files=(-f "$directory/compose.$role.yaml")
   if [ "$role" = execution ]; then
@@ -67,7 +71,7 @@ role_compose_raw() (
   [ -z "$override" ] || files+=(-f "$override")
   local profiles=()
   [ "$parse" != "$role" ] || profiles+=(--profile bb-parse-active)
-  [ "$confirmation" != "$role" ] || profiles+=(--profile bb-confirmation-active)
+  if [ "$role" = execution ] && [ "$confirmation" != disabled ]; then profiles+=(--profile bb-confirmation-active); fi
   docker compose --project-directory "$directory" --project-name "$project" "${files[@]}" "${profiles[@]}" --env-file "$environment" "$@"
 )
 compose() {
@@ -126,7 +130,7 @@ role_compose_arguments() {
     case "$arg" in -f|-f?*|--file|--file=*|--env-file|--env-file=*|--project-directory|--project-directory=*|-p|-p?*|--project-name|--project-name=*|--profile|--profile=*|--scale|--scale=*|--include-deps)
       echo 'role entry owns Compose files, env, project, profiles and parser scale; extra configuration flags are disabled' >&2; exit 2;;
     esac
-    if [ "$BB_UPLOAD_CONFIRMATION_ROLE" != "$BB_DEPLOY_ROLE" ] && [ "$arg" = upload-confirmation ]; then
+    if ! role_confirmation_active && [ "$arg" = upload-confirmation ]; then
       echo 'upload confirmation is inactive in this role' >&2; exit 2
     fi
     if [ "$BB_PARSE_ROLE" != "$BB_DEPLOY_ROLE" ] && [ "$arg" = worker-parse ]; then
