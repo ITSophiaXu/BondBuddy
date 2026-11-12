@@ -37,7 +37,9 @@ test('assessment and confirmation: mixed/all-excluded packages, evidence and imm
  const pool=new Pool({connectionString:database}),user=randomUUID();let actor=user;
  const store=new Map<string,Buffer>();const blobs:PrivateBlobs={put:async(k,b)=>{store.set(k,Buffer.from(b));},get:async k=>Buffer.from(store.get(k)!),getIfExists:async k=>store.get(k)??null,
   getIfExistsBounded:async(k,max)=>{const b=store.get(k);if(b&&b.length>max)throw Error('too large');return b??null;},exists:async k=>store.has(k),delete:async k=>{store.delete(k);}};
- const origin='http://bondbuddy.test',app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
+ const origin='http://bondbuddy.test',app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,
+    // Replay the original 4500-point contract, retired assessment and progress-refund semantics.
+    historicalBillingFixture:true,principal:async()=>({userId:actor,csrfVerified:true})});
  const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
  const ok=async(method:string,url:string,payload?:any)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,r.statusCode+': '+r.body);return r.json();};
  const upload=async(id:string,name:string,bytes:Buffer,media_type:string,role='other')=>{
@@ -65,6 +67,15 @@ test('assessment and confirmation: mixed/all-excluded packages, evidence and imm
   const versions=await ok('GET',path+'/prospectus-versions'),adopted=await ok('POST',path+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:0,version_id:versions.versions[0].version_id});
   const material=await upload(id,'catalogue.xlsx',await catalogueXlsx(4),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),cat=await ok('POST',base+'/catalogues',{request_id:randomUUID(),material});
   const body={request_id:randomUUID(),catalogue_id:cat.catalogue_id,catalogue_sha256:cat.sha256,item_ids:cat.entries.map((e:any)=>e.id),source_version_id:adopted.current_version_id,source_selection_revision:adopted.selection_revision,requirements:'按募集书判断，不造原始证据'};
+  // Current HTTP policy still refuses new retired assessments on the identical owned input.
+  const currentPool=new Pool({connectionString:database});
+  const current=createServer({pool:currentPool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});
+  try{
+    const rejected=await current.inject({method:'POST',url:base+'/assessments',payload:body,headers:{origin}});
+    assert.equal(rejected.statusCode,409,rejected.body);assert.equal(rejected.json().code,'BILLING_NOT_READY');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_workpaper_assessments WHERE project_id=$1',[id])).rows[0].n,0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[id])).rows[0].n,0);
+  }finally{await current.close();await currentPool.end();}
   const started=await ok('POST',base+'/assessments',body);assert.equal(started.state,'queued');assert.deepEqual(await ok('POST',base+'/assessments',body),started);
   const start={...body,request_id:randomUUID(),assessment_id:started.assessment_id,assessment_hash:'a'.repeat(64),price_version:WORKPAPER_PRICE.version,expected_points:String(WORKPAPER_PRICE.points)};
   assert.equal((await send('POST',base+'/batches',start)).statusCode,409);

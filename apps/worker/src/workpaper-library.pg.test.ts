@@ -21,7 +21,9 @@ test('real API/PG: generation → library/preview/ZIP → changed prospectus →
   const pool=new Pool({connectionString:database}),user=randomUUID();let actor=user;
   const store=new Map<string,Buffer>();const blobs:PrivateBlobs={put:async(k,b)=>{store.set(k,Buffer.from(b));},get:async k=>Buffer.from(store.get(k)!),getIfExists:async k=>store.get(k)??null,
     getIfExistsBounded:async(k,max)=>{const b=store.get(k);if(b&&b.length>max)throw Error('too large');return b??null;},exists:async k=>store.has(k),delete:async k=>{store.delete(k);}};
-  const origin='http://workpaper.test',app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
+  const origin='http://workpaper.test',app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,
+    // Replay the original 4500-point contract, retired assessment and progress-refund semantics.
+    historicalBillingFixture:true,principal:async()=>({userId:actor,csrfVerified:true})});
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
   const ok=async(method:string,url:string,payload?:any)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,`${r.statusCode} ${r.body}`);return r.json();};
   const upload=async(id:string,name:string,bytes:Buffer,media_type:string,role='other')=>{
@@ -82,7 +84,16 @@ test('real API/PG: generation → library/preview/ZIP → changed prospectus →
     versions=await ok('GET',base+'/prospectus-versions');const next=versions.versions.find((v:any)=>v.sha256===newPin.sha256||v.material_id===newPin.material_id)??versions.versions[0];
     source=await ok('POST',base+'/prospectus-versions/current',{request_id:randomUUID(),expected_selection_revision:source.selection_revision,version_id:next.version_id});
     assert.equal((await ok('GET',wp+'/library?status=stale')).total,2);
-    const body={request_id:randomUUID(),source_version_id:source.current_version_id,source_selection_revision:source.selection_revision},check=await ok('POST',wp+`/batches/${batch.batch_id}/checks`,body);
+    const body={request_id:randomUUID(),source_version_id:source.current_version_id,source_selection_revision:source.selection_revision};
+    // The old free impact-check workflow remains a historical contract, never a current entry point.
+    const currentPool=new Pool({connectionString:database});
+    const current=createServer({pool:currentPool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});
+    try{
+      const rejected=await current.inject({method:'POST',url:wp+'/batches/'+batch.batch_id+'/checks',payload:body,headers:{origin}});
+      assert.equal(rejected.statusCode,409,rejected.body);assert.equal(rejected.json().code,'BILLING_NOT_READY');
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_workpaper_checks WHERE project_id=$1',[id])).rows[0].n,0);
+    }finally{await current.close();await currentPool.end();}
+    const check=await ok('POST',wp+'/batches/'+batch.batch_id+'/checks',body);
     assert.deepEqual(await ok('POST',wp+`/batches/${batch.batch_id}/checks`,body),check);
     assert.equal(await execute([workpaperChangeStage(),workpaperChangeDelivery()]),'succeeded');
     library=await ok('GET',wp+'/library?status=needs_update');assert.equal(library.total,2);assert.match(library.items[0]!.impact!.changes[0]!.after,/200万元/);assert.deepEqual(library.items[0]!.impact!.changes[0]!.target_locations,['资产表第1行']);
