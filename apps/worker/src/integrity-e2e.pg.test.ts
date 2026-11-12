@@ -28,7 +28,9 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
  {skip:!database||!storage||!process.env.BONDBUDDY_TEST_PYTHON||!process.env.BB_TEST_INTEGRITY_BROWSER,timeout:300000},async()=>{
  const pool=new Pool({connectionString:database}),owner=randomUUID(),other=randomUUID(),container='bb-integrity-'+randomUUID().replaceAll('-','');let actor=owner,calls=0,searchEnabled=true;
  const blobs=azureBlobs(storage!,container),origin='http://bondbuddy.test';
- const app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
+ // The fixed 5,000-point contract is a persisted historical tariff, not a new HTTP default.
+ const settings={pool,blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})};
+ const app=createServer({...settings,historicalBillingFixture:true}),current=createServer(settings);
  const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
  const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,r.body);return r.body?r.json():null;};
  let firstPause=true;
@@ -100,6 +102,15 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   const request={request_id:randomUUID(),expected_revision:1,price_version:INTEGRITY_PRICE.version,expected_points:'5000'};
   assert.equal((await send('POST',base+'/runs',{...request,expected_points:1})).statusCode,422);
   const run=await ok('POST',base+'/runs',request);assert.equal((await ok('POST',base+'/runs',request)).run_id,run.run_id);
+  const currentWorkspace=await current.inject({method:'GET',url:base,headers:{origin}});
+  assert.equal(currentWorkspace.statusCode,200,currentWorkspace.body);
+  assert.equal(currentWorkspace.json().price.points,'0','current HTTP keeps pending-scope pricing');
+  assert.equal(currentWorkspace.json().price.quote_status,'pending_scope');
+  assert.equal(currentWorkspace.json().rounds[0].run_id,run.run_id,'current HTTP reads the accepted historical round');
+  const acceptedReplay=await current.inject({method:'POST',url:base+'/runs',payload:request,headers:{origin}});
+  assert.equal(acceptedReplay.statusCode,200,acceptedReplay.body);
+  assert.equal(acceptedReplay.json().run_id,run.run_id,'accepted historical request replays without a new round');
+  assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[id])).rows[0].n,1);
   assert.deepEqual(await creditBalance(pool,owner),{available:15000,frozen:5000});
   assert.equal((await send('POST',base+'/runs',{...request,request_id:randomUUID()})).statusCode,409);
   actor=other;assert.equal((await send('GET',base)).statusCode,404);actor=owner;
@@ -159,5 +170,5 @@ test('integrity E2E: saved scope, paid round, evidence, free exports, archive, r
   w=await ok('GET',base);assert.equal(w.rounds[0].charged_points,'0');assert.ok(w.rounds[0].records.every((r:any)=>!r.search_performed));
   await assert.rejects(pool.query("UPDATE bb_integrity_runs SET manifest='{}' WHERE run_id=$1",[run.run_id]),/immutable/);
   const result=(await pool.query('SELECT result,result_hash FROM bb_integrity_runs WHERE run_id=$1',[run.run_id])).rows[0];assert.equal(inputManifestHash(result.result),result.result_hash.trim());
- }finally{await browser.close();await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}
+ }finally{await browser.close();await current.close();await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}
 });
