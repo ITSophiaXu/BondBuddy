@@ -28,3 +28,10 @@ test('quote matching rejects wrong points and conflicting receipts',()=>{
 test('failed preview cannot supply acceptance evidence',()=>{
  const entry={id:'qa-dongying',quoteCaptures:[{status:500,body:quote}]};retainSubmissionRequest(entry,{url,body:JSON.stringify(request)});retainSubmissionReceipt(entry,{url,status:202,body:{run_id:'run1'}});assert.throws(()=>acceptedQuote(entry),/No captured/);
 });
+
+test('the persisted quote for the release gate is the accepted capture, never the latest unrelated preview',()=>{
+ const entry={id:'qa-dongying',quoteCaptures:[{status:200,body:quote},{status:200,body:{...quote,points:'9999',scope_quote_id:'other'}}]};
+ retainSubmissionRequest(entry,{url,body:JSON.stringify(request)});retainSubmissionReceipt(entry,{url,status:202,body:{run_id:'run1'}});
+ const accepted=acceptedQuote(entry);assert.deepEqual(entry.quoteResponse,quote);assert.equal(entry.quoteResponse.points,accepted.points);assert.notEqual(entry.quoteResponse,quote);
+ entry.quoteCaptures[0].body={...quote,points:'8527'};assert.throws(()=>acceptedQuote(entry),/No captured/);assert.deepEqual(entry.quoteResponse,quote);
+});
