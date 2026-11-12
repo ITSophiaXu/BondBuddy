@@ -559,3 +559,29 @@ test('direct original identity is retained when the ticket endpoint is unavailab
  const h=harness(),r=h.make();seed(h,r,{uploadTransport:'azure_blob'});h.state.complete=async()=>{throw new ApiError(404,'NOT_FOUND');};
  await assert.rejects(h.make().resume('op-a',{file:file()}),ApiError);assert.deepEqual(methods(h),['complete']);assert.equal(r.list()[0].uploadId,'upload-a');
 });
+
+for(const stage of ['session','bytes_unknown','confirming'] as const)test(`direct renewal conflict after ${stage} confirms the original PUT without retransmission`,async()=>{
+ const h=harness(),r=h.make();seed(h,r,{stage,uploadTransport:'azure_blob'});let confirmations=0;
+ h.state.complete=async()=>{if(++confirmations===1)throw new ApiError(422,'MATERIAL_UNREADABLE',{uploadBytesPending:true});return material();};
+ h.api.refreshUpload=async(p,id,input)=>{h.calls.push({method:'refresh',project:p,id,input});throw new ApiError(409,'IDEMPOTENCY_CONFLICT');};
+ assert.deepEqual(await h.make().resume('op-a',{file:file()}),material());
+ assert.deepEqual(methods(h),['complete','refresh','complete']);assert.ok(h.calls.every(call=>call.id==='upload-a'));
+ assert.equal(r.list()[0].stage,'saved');assert.equal(r.list()[0].uploadId,'upload-a');assert.deepEqual(r.list()[0].previousUploadIds,undefined);
+});
+
+for(const [status,code] of [[403,'FORBIDDEN'],[404,'NOT_FOUND'],[409,'INPUT_REVISION_CONFLICT'],[503,'DATA_UNAVAILABLE']] as const)test(`direct renewal ${status}/${code} does not retry or create another upload`,async()=>{
+ const h=harness(),r=h.make();seed(h,r,{uploadTransport:'azure_blob'});
+ h.state.complete=async()=>{throw new ApiError(422,'MATERIAL_UNREADABLE',{uploadBytesPending:true});};
+ const denied=new ApiError(status,code);h.api.refreshUpload=async()=>{h.calls.push({method:'refresh'});throw denied;};
+ await assert.rejects(h.make().resume('op-a',{file:file()}),e=>e===denied);
+ assert.deepEqual(methods(h),['complete','refresh']);assert.equal(r.list()[0].uploadId,'upload-a');
+});
+
+for(const result of ['missing','foreign','invalid-receipt'] as const)test(`direct renewal conflict with ${result} confirmation never assumes the upload succeeded`,async()=>{
+ const h=harness(),r=h.make();seed(h,r,{uploadTransport:'azure_blob'});let confirmations=0;
+ const conflict=new ApiError(409,'IDEMPOTENCY_CONFLICT');
+ h.state.complete=async()=>{if(++confirmations===1||result==='missing')throw new ApiError(422,'MATERIAL_UNREADABLE',{uploadBytesPending:true});if(result==='foreign')throw new ApiError(404,'NOT_FOUND');return material({sha256:'f'.repeat(64)});};
+ h.api.refreshUpload=async()=>{h.calls.push({method:'refresh'});throw conflict;};
+ await assert.rejects(h.make().resume('op-a',{file:file()}),e=>result==='missing'?e===conflict:result==='foreign'?e instanceof ApiError&&e.status===404:e instanceof UploadRecoveryReceiptError);
+ assert.deepEqual(methods(h),['complete','refresh','complete']);assert.equal(r.list()[0].uploadId,'upload-a');assert.notEqual(r.list()[0].stage,'saved');
+});
