@@ -26,7 +26,7 @@ test('host plan uses original discovery, exclusions and modulo order including n
   const plan = createHostPlan({ root, candidate, matrix, runId: 'synthetic-run', sourceBlob: file => file.endsWith('exclusions.json') ? Buffer.from('{"notInCi":[],"knownFailing":[],"allowSkip":[]}') : readFileSync(join(root, file)) });
   assert.deepEqual(plan.entries.map(entry => [entry.shard, entry.testId]), [
     ['worker-1', 'apps/worker/src/integrity-desktop.test.ts'], ['worker-2', 'apps/worker/src/codex-file-authoring.test.ts'], ['worker-2', 'apps/worker/src/review-revision-cli-native.test.ts'],
-    ['misc', 'scripts/billing-functional/panel-session.test.mjs'], ['misc', 'python/tests/test_ocr.py'],
+    ['misc', 'scripts/billing-functional/panel-session.test.mjs'], ['misc', 'scripts/release-smoke/archive.test.mjs'], ['misc', 'python/tests/test_ocr.py'],
   ]);
   assert.ok(plan.entries.every(entry => entry.fileTimeoutMs === 300_000));
 }));
@@ -109,5 +109,29 @@ test('host receipt rejects stale, missing, reordered, rewritten, failed and skip
     record => { record.evidence.original_command.args.push('--test-name-pattern=partial'); }, record => { record.evidence.source_bundle_sha256 = '0'.repeat(64); }]) {
     const value = receipt(), record = value.host_dispatch.records[0]; mutate(record); record.evidence_sha256 = sha256(record.evidence);
     value.shards[0].summary.host_dispatch[0].evidence_sha256 = record.evidence_sha256; assert.throws(() => verifyHostRuns(value, expected));
+  }
+});
+
+test('Windows archive receipt retains real platform, exact original command, source and all four cases', () => {
+  const expected = { ...candidate, host_source_sha256: syntheticHostSources() };
+  const receipt = () => {
+    const dispatch = syntheticHostDispatch(candidate);
+    return { ...candidate, run_id: dispatch.plan.run_id, started_at: '2026-11-11T13:00:00Z', finished_at: '2026-11-11T13:01:00Z',
+      host_dispatch: dispatch, shards: ['worker-1', 'misc'].map(name => ({ name, summary: { host_dispatch: syntheticHostReferences(dispatch, name) } })) };
+  };
+  assert.doesNotThrow(() => verifyHostRuns(receipt(), expected));
+  for (const mutate of [r => { r.evidence.platform = 'linux'; }, r => { r.evidence.python.version = [3, 11, 9]; },
+    r => { r.evidence.node.platform = 'linux'; }, r => { r.evidence.test_source_sha256 = '0'.repeat(64); },
+    r => { r.evidence.source_after.manifest_sha256 = '0'.repeat(64); }, r => { r.evidence.temporary_remaining = ['leaked-fixture']; },
+    r => { r.evidence.original_command.args.push('--test-name-pattern=partial'); }, r => { r.evidence.original_command.timeout_ms++; },
+    r => { r.evidence.original_command.stdout_sha256 = '0'.repeat(64); }, r => { r.evidence.original_command.cancelled = true; },
+    r => { r.evidence.commands = r.evidence.commands.filter(c => c.label !== 'archive-support'); },
+    r => { r.evidence.commands.find(c => c.label === 'python-identity').code = 1; },
+    r => { r.evaluated.tests = 1; }, r => { r.evaluated.skipped = 3; }]) {
+    const value = receipt(), record = value.host_dispatch.records.find(r => r.profile_id === 'windows-archive');
+    mutate(record); record.evidence_sha256 = sha256(record.evidence);
+    const row = value.shards.find(s => s.name === 'misc').summary.host_dispatch.find(r => r.profile_id === 'windows-archive');
+    Object.assign(row, { evidence_sha256: record.evidence_sha256, tests: record.evaluated.tests, skipped: record.evaluated.skipped });
+    assert.throws(() => verifyHostRuns(value, expected));
   }
 });

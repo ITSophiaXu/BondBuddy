@@ -192,7 +192,9 @@ npm run pr-gate -- --offline-image sha256:<64位本地镜像ID> --host-worker-im
 
 完整本地入口还需上述`--host-worker-image`和`--host-dependency-root`。宿主只使用已经存在的依赖，不安装软件、不拉取镜像。Windows计费适配器使用一个本轮Git snapshot还原的独立checkout；第三方依赖来自同锁缓存，产品workspace和构建产物属于本次候选。普通core容器仍没有Docker socket、宿主源码或宿主凭据挂载。
 
-当前五个精确文件走宿主调度：原生文件沙箱2个、诚信桌面1个、OCR1个、Windows计费面板1个。`host-profiles.mjs`只决定执行环境；发现、原矩阵、原文件顺序、5分钟文件预算、70分钟分片预算、断言和失败/skip判定保持不变。浏览器分片仍批量按原配置执行，尚缺的真实API或历史基准不会因此获得通过。
+当前六个精确文件走宿主调度：原生文件沙箱2个、诚信桌面1个、OCR1个、Windows计费面板1个、Windows归档1个。`host-profiles.mjs`只决定执行环境；发现、原矩阵、原文件顺序、5分钟文件预算、70分钟分片预算、断言和失败/skip判定保持不变。浏览器分片仍批量按原配置执行，尚缺的真实API或历史基准不会因此获得通过。
+
+Windows 归档适配器使用已有 Node 22+、Git 和 Python 3.12+，在真实 Windows 宿主完整执行原 `scripts/release-smoke/archive.test.mjs` 的四个用例。可通过既有 `BB_RELEASE_TEST_PYTHON` 指定宿主已安装解释器；没有能力则失败，不安装软件、不伪造平台、不筛选用例。原文件保持不变；新增 `archive-portable.test.mjs` 在 Linux core 逐字保留原通用 Git/归档样本与断言，继续覆盖真实 tar 路径。适配器无需构建、Docker 或浏览器，检查候选原始字节、工具身份和本轮短临时目录清理，保留原始输出及回执；`allowSkip` 和判定规则不变。
 
 宿主从固定候选和原发现结果生成内存计划。容器请求仅含run ID、计划hash、顺序、分片和精确test ID，不能传命令、argv、环境、路径或镜像。拒绝额外字段、重复、错序、旧版本以及符号/硬链接请求。每个适配器执行原完整文件，保留原stdout、stderr、退出码、耗时、环境准备与资源清理证据。准备或清理失败会独立阻断，不能把原测试退出码0改写成“全部通过”。
 

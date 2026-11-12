@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 import { GROUPS, evaluateNode, evaluatePython, parseExclusions } from './run.mjs';
 import { HOST_PROFILES } from './host-profiles.mjs';
 import { DISPATCH_SCHEMA, makeRequest, planHash, requestName, sha256, verifyExecution, verifyPlan, verifyRequest } from './host-dispatch-protocol.mjs';
@@ -53,6 +53,10 @@ export function verifyAdapterResult(result, { candidate, runId, entry }) {
 }
 
 export async function executeRegisteredAdapter(context) {
+  if (context.entry.profileId === 'windows-archive') {
+    const { executeWindowsArchive } = await import('./host-adapters/windows-archive.mjs');
+    return executeWindowsArchive(context);
+  }
   if (context.entry.profileId === 'windows-billing') {
     const { executeWindowsBilling } = await import('./host-adapters/windows-billing.mjs');
     return executeWindowsBilling(context);
@@ -176,6 +180,37 @@ export function verifyHostRuns(receipt, expected) {
     assert.equal(record.evidence.test_id, entry.testId, 'Host evidence belongs to another test');
     assert.equal(record.evidence.profile_id, entry.profileId, 'Host evidence belongs to another capability');
     for (const key of ['commit', 'tree']) assert.equal(record.evidence[key], expected[key]);
+    if (entry.profileId === 'windows-archive') {
+      const evidence = record.evidence, command = evidence.original_command;
+      assert.equal(record.evaluated.tests, 4, 'All four original archive cases must run');
+      assert.equal(evidence.platform, 'win32'); assert.equal(evidence.node?.platform, 'win32');
+      assert.ok(Number(evidence.node.version.split('.')[0]) >= 22);
+      assert.equal(evidence.python?.platform, 'win32');
+      const version = evidence.python.version;
+      assert.ok(Array.isArray(version) && version.length === 3 && version.every(n => Number.isSafeInteger(n) && n >= 0));
+      assert.ok(version[0] > 3 || (version[0] === 3 && version[1] >= 12));
+      for (const tool of [evidence.node, evidence.python]) { assert.ok(win32.isAbsolute(tool.executable) && win32.parse(tool.executable).root.length > 1); assert.match(tool.sha256, /^[a-f0-9]{64}$/); }
+      assert.ok(win32.isAbsolute(evidence.source_root)); assert.equal(evidence.test_source_sha256, entry.sourceSha256);
+      assert.equal(evidence.source_before?.raw_bytes_verified, true); assert.ok(evidence.source_before.files > 0);
+      assert.match(evidence.source_before.manifest_sha256, /^[a-f0-9]{64}$/);
+      assert.deepEqual(evidence.source_after, evidence.source_before);
+      assert.deepEqual(evidence.temporary_remaining, []); assert.deepEqual(evidence.cleanup.errors, []);
+      assert.equal(command?.executable, evidence.node.executable); assert.equal(command.cwd, evidence.source_root);
+      assert.deepEqual(command.args, ['--test', '--test-reporter=tap', entry.runPath]);
+      assert.equal(command.timeout_ms, entry.fileTimeoutMs); assert.equal(command.cancelled, false); assert.equal(command.output_limit_failed, false);
+      for (const key of ['code', 'signal', 'timedOut', 'durationMs']) assert.deepEqual(command[key], record.execution[key]);
+      for (const key of ['stdout_sha256', 'stderr_sha256']) assert.equal(command[key], record[key]);
+      assert.deepEqual(evidence.commands.filter(row => row.label === 'archive-test'), [command]);
+      for (const label of ['python-identity', 'archive-support']) {
+        const probes = evidence.commands.filter(row => row.label === label); assert.equal(probes.length, 1);
+        assert.equal(probes[0].code, 0); assert.equal(probes[0].timedOut, false); assert.equal(probes[0].cancelled, false);
+        assert.equal(probes[0].output_limit_failed, false); assert.equal(probes[0].cwd, evidence.source_root);
+        assert.match(probes[0].stdout_sha256, /^[a-f0-9]{64}$/); assert.match(probes[0].stderr_sha256, /^[a-f0-9]{64}$/);
+      }
+      const support = evidence.commands.find(row => row.label === 'archive-support');
+      assert.equal(support.executable, evidence.python.executable);
+      assert.deepEqual(support.args, ['-I', win32.join(evidence.source_root, 'scripts/release-smoke/extract-archive.py'), '--check']);
+    }
     if (entry.profileId.startsWith('native-')) {
       assert.equal(dispatch.runtime.source.files[entry.testId], entry.sourceSha256);
       assert.equal(record.evidence.source_bundle_sha256, dispatch.runtime.bundle_sha256);
