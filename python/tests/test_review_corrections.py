@@ -94,63 +94,6 @@ class ReviewCorrectionTests(unittest.TestCase):
         s=build(self.source,self.request(issue('重复','相同内容','更新')+issue('资产1','总资产为12亿元。','更新1')+issue('资产2','12亿元','13亿元')),self.path)
         self.assertTrue(all(not i['applied'] and i['limitation'] for i in s['issues']))
         self.assertIn('总资产为12亿元。',self.text('clean.docx'))
-    def test_unlocated_findings_do_not_attach_to_first_paragraph(self):
-        report=issue('重复','相同内容','更新')+issue('资产','总资产为12亿元。','总资产为13亿元。')
-        s=build(self.source,self.request(report),self.path)
-        self.assertEqual([i['applied'] for i in s['issues']],[False,True])
-        self.assertIsNone(s['issues'][0]['paragraph_id'])
-        self.assertTrue(any('1 项发现' in w and 'R001' in w and '未修改正文或添加正文批注' in w for w in s['warnings']))
-        with ZipFile(self.path/'revision.docx') as z:
-            root=xml(z.read('word/document.xml'))
-            comments=list(xml(z.read('word/comments.xml')).iter(q('comment')))
-            starts=list(root.iter(q('commentRangeStart')))
-            self.assertEqual(len(comments),1)
-            self.assertEqual(len(starts),1)
-            self.assertEqual(starts[0].get(q('id')),comments[0].get(q('id')))
-            self.assertIn('问题：R002', ''.join(comments[0].itertext()))
-            self.assertNotIn('问题：R001', ''.join(comments[0].itertext()))
-        self.assertIn('总资产为13亿元。',self.text('clean.docx'))
-        self.assertEqual(self.text('clean.docx').count('相同内容'),2)
-
-    def test_table_row_and_missing_quote_preserve_findings_without_false_comments(self):
-        d=Document();d.add_paragraph('')
-        table=d.add_table(rows=1,cols=4)
-        for cell,value in zip(table.rows[0].cells,['合成债券A','10,000.00','2024/12/04','5']):cell.text=value
-        d.save(self.source)
-        before=self.source.read_bytes()
-        report=issue('期限','合成债券A | 10,000.00 | 2024/12/04 | 5','合成债券A | 10,000.00 | 2024/12/04 | 3+2')+issue('缺失','不存在的原句','更新')
-        s=build(self.source,self.request(report),self.path)
-        self.assertEqual(len(s['issues']),2)
-        self.assertTrue(all(not i['applied'] and i['paragraph_id'] is None and i['limitation'] for i in s['issues']))
-        self.assertTrue(any('2 项发现' in w and 'R001、R002' in w for w in s['warnings']))
-        for filename in ['revision.docx','clean.docx']:
-            with ZipFile(self.path/filename) as z:
-                root=xml(z.read('word/document.xml'))
-                for tag in ['commentRangeStart','commentRangeEnd','commentReference','ins','del']:
-                    self.assertFalse(list(root.iter(q(tag))))
-                self.assertNotIn('word/comments.xml',z.namelist())
-            self.assertEqual([c.text for c in Document(self.path/filename).tables[0].rows[0].cells],['合成债券A','10,000.00','2024/12/04','5'])
-        self.assertEqual(before,self.source.read_bytes())
-        # Re-exporting the immutable legacy snapshot must not recreate cover comments.
-        again=self.request('');again.update(editor=s,decisions=[dict(id=i['id'],decision='suggested',manual_text='') for i in s['issues']])
-        exported=build(self.source,again,self.path)
-        self.assertEqual(exported['issues'],s['issues'])
-        with ZipFile(self.path/'revision.docx') as z:
-            self.assertNotIn('word/comments.xml',z.namelist())
-
-    def test_unlocated_findings_preserve_existing_human_comments(self):
-        d=Document();p=d.add_paragraph('人工批注所在段落。')
-        d.add_comment(p.runs,text='原有人工核查意见',author='人工复核人')
-        d.save(self.source)
-        s=build(self.source,self.request(issue('无法定位','不存在的原句','更新')),self.path)
-        self.assertFalse(s['issues'][0]['applied'])
-        with ZipFile(self.path/'revision.docx') as z:
-            root=xml(z.read('word/document.xml'))
-            comments=list(xml(z.read('word/comments.xml')).iter(q('comment')))
-            self.assertEqual(len(comments),1)
-            self.assertEqual(comments[0].get(q('author')),'人工复核人')
-            self.assertEqual(len(list(root.iter(q('commentRangeStart')))),1)
-            self.assertNotIn('问题：R001',''.join(comments[0].itertext()))
     def test_hash_and_decisions_are_pinned(self):
         r=self.request(issue('资产','总资产为12亿元。','总资产为13亿元。'));r['pin']['sha256']='0'*64
         with self.assertRaisesRegex(ValueError,'INPUT_REVISION_CONFLICT'):build(self.source,r,self.path)

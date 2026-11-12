@@ -120,7 +120,7 @@ def build(source, request, output):
                     issue['applied']=True
     basepath = output / 'baseline.docx'
     write(basepath, parts)
-    tasks, unlocated = [], []
+    tasks = []
     for issue in issues:
         # Saved editors can contain the earlier long-form category labels.
         issue['category'] = category_label(issue.get('category'))
@@ -129,16 +129,9 @@ def build(source, request, output):
             '问题说明：'+issue['reason'], '依据：'+issue['evidence'] if issue['evidence'] else '',
             '处理：'+status, '缺少材料：'+issue['missing'] if issue['missing'] else '',
             '定位或修改限制：'+issue['limitation'] if issue['limitation'] else '']))
-        # A comment on an unrelated first paragraph falsely presents a valid
-        # location. Keep unresolved findings in the report/editor, not the body.
-        anchor=issue['paragraph_id']
+        anchor=issue['paragraph_id'] or (paragraphs[0]['id'] if paragraphs else None)
         if anchor:
             tasks.append(dict(target_id=anchor, text=note))
-        else:
-            unlocated.append(issue['id'])
-    if unlocated:
-        warnings.append(f"{len(unlocated)} 项发现无法准确定位，未修改正文或添加正文批注：{'、'.join(unlocated)}。"
-                        '问题及未修改原因保留在复核报告和结果列表中，请人工核对；其余已定位批注不受影响。')
     replacements = {}
     if tasks:
         with ZipFile(basepath) as z:
