@@ -1458,8 +1458,10 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
   test(`lost upload acknowledgement restores start without resending ${label}`, async ({ page, context }) => {
     const state = fixture();
     state.project.update_details!.authoring_mode='unified_v1';
-    const puts: string[] = [];
+    const puts: string[] = [], completeRequests: { method: string; path: string; body: Dto<'UploadCompleteRequest'> }[] = [];
+    const contents = '%PDF synthetic lost acknowledgement';
     let completes = 0, creates = 0;
+    await page.clock.install({ time: new Date(now) });
     await page.setViewportSize({ width, height });
     await page.route('**/api/v1/**/materials/uploads**', async route => {
       const request = route.request(), path = new URL(request.url()).pathname;
@@ -1470,21 +1472,26 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       if (path.endsWith('/bytes')) { puts.push(path); return route.fulfill({status:204}); }
       if (path.endsWith('/complete')) {
         completes++;
-        const body = fixtureRequest(request);
-        state.materials.push({material_id:'lost-material', material_version:1, upload_id:'lost-upload', role:'audit', filename:'lost.pdf', media_type:'application/pdf', byte_size:body.byte_size, sha256:body.sha256, state:'persisted', persisted_at:now, error:null});
+        const body = fixtureRequest(request); completeRequests.push({ method: request.method(), path, body });
+        if (completes === 1) state.materials.push({material_id:'lost-material', material_version:1, upload_id:'lost-upload', role:'audit', filename:'lost.pdf', media_type:'application/pdf', byte_size:body.byte_size, sha256:body.sha256, state:'persisted', persisted_at:now, error:null});
         return route.abort('connectionreset');
       }
       return route.fallback();
     });
     await setup(page, state);
-    await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'lost.pdf', mimeType:'application/pdf', buffer:Buffer.from('%PDF synthetic lost acknowledgement')});
+    await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'lost.pdf', mimeType:'application/pdf', buffer:Buffer.from(contents)});
     const row = page.locator('.material-file-row').filter({hasText:'lost.pdf'});
     await expect(row).toHaveCount(1);
+    // Advance the existing confirmation retries without changing the UI assertion budget.
+    await expect.poll(() => completes).toBeGreaterThan(0);
+    await expect.poll(async () => { await page.clock.runFor(2_000); return completes; }).toBe(4);
     await expect(row).toContainText('服务器已确认保存');
     await expect(page.locator('[data-processing-key]')).toHaveCount(0);
     await expect(page.getByText('处理状态不可用', {exact:true})).toHaveCount(0);
     await expect(page.getByRole('button',{name:'开始更新',exact:true})).toBeEnabled();
-    expect({creates, completes, puts:puts.length}).toEqual({creates:1, completes:1, puts:1});
+    expect({creates, completes, puts:puts.length}).toEqual({creates:1, completes:4, puts:1});
+    expect(completeRequests).toEqual(Array.from({ length: 4 }, () => ({ method: 'POST', path: `/api/v1/projects/${id}/materials/uploads/lost-upload/complete`, body: { byte_size: Buffer.byteLength(contents), sha256: hash(contents) } })));
+    expect(state.materials.filter(material => material.upload_id === 'lost-upload')).toHaveLength(1);
     expect(state.inputs).toHaveLength(0); expect(state.executes).toHaveLength(0);
     if (process.env.BB_UPLOAD_RECOVERY_EVIDENCE_DIR) {
       const output = resolve(process.env.BB_UPLOAD_RECOVERY_EVIDENCE_DIR); await mkdir(output, {recursive:true});
