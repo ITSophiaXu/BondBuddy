@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {posix} from 'node:path';
-import {CASES,SAMPLE_REF,REPORT_SCHEMA,requiredArtifacts,verdict,contained,assertLocalContext,assertTestReport} from './support.mjs';
+import {CASES,SAMPLE_REF,REPORT_SCHEMA,requiredArtifacts,caseCompletionTime,verdict,contained,assertLocalContext,assertTestReport} from './support.mjs';
 import {hostEnvironment} from './platform.mjs';
 test('Windows Docker plugin discovery keeps ProgramFiles regardless of environment key casing',()=>{
  for(const key of ['ProgramFiles','PROGRAMFILES','programfiles']){
@@ -44,4 +44,13 @@ test('local test harness refuses remote Docker and fixture traversal',()=>{
  for(const Host of ['tcp://production:2375','ssh://server',''])assert.throws(()=>assertLocalContext({Endpoints:{docker:{Host}}}));
  assert.throws(()=>contained('/tmp/samples','../secrets',posix));
  assert.equal(contained('/tmp/samples','case/source.docx',posix),'/tmp/samples/case/source.docx');
+});
+
+test('suite completion is the latest actual journey completion, independent of later resume attempts',()=>{
+ const first='2026-11-09T10:00:00.000Z',last='2026-11-09T11:00:00.000Z';
+ const cases=CASES.map((id,i)=>({id,status:'passed',finishedAt:i===0?last:first}));
+ assert.equal(caseCompletionTime(cases),Date.parse(last));
+ assert.equal(caseCompletionTime([...cases].reverse()),Date.parse(last));
+ for(const value of [undefined,null,0,'','invalid'])assert.throws(()=>caseCompletionTime([{...cases[0],finishedAt:value},...cases.slice(1)]),/timestamps/);
+ assert.throws(()=>caseCompletionTime([]),/timestamps/);
 });

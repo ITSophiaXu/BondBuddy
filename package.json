@@ -18,7 +18,7 @@
     "pr-gate": "node scripts/pr-gate/local.mjs run",
     "pr-gate:verify": "node scripts/pr-gate/local.mjs verify",
     "test:release": "node scripts/release-smoke/run.mjs",
-    "test:release:unit": "node --test scripts/release-smoke/support.test.mjs scripts/release-smoke/credentials.test.mjs scripts/release-smoke/archive.test.mjs scripts/release-smoke/dependencies.test.mjs scripts/release-smoke/uploads.test.mjs scripts/release-smoke/budget.test.mjs scripts/release-smoke/platform-acl.test.mjs scripts/release-smoke/qa-prospectus.test.mjs scripts/release-smoke/qa-preparation.test.mjs scripts/release-smoke/journey-state.test.mjs scripts/release-smoke/submission.test.mjs scripts/release-smoke/billing.test.mjs scripts/release-smoke/artifacts.test.mjs scripts/release-smoke/flows-extended.test.mjs scripts/release-smoke/controller.test.mjs scripts/release-smoke/model-quality-evidence.test.mjs scripts/release-smoke/word-quality-evidence.test.mjs scripts/release-smoke/fixtures.test.mjs",
+    "test:release:unit": "node --test scripts/release-smoke/support.test.mjs scripts/release-smoke/credentials.test.mjs scripts/release-smoke/archive.test.mjs scripts/release-smoke/dependencies.test.mjs scripts/release-smoke/uploads.test.mjs scripts/release-smoke/budget.test.mjs scripts/release-smoke/platform-acl.test.mjs scripts/release-smoke/qa-prospectus.test.mjs scripts/release-smoke/qa-preparation.test.mjs scripts/release-smoke/journey-state.test.mjs scripts/release-smoke/submission.test.mjs scripts/release-smoke/billing.test.mjs scripts/release-smoke/artifacts.test.mjs scripts/release-smoke/flows-extended.test.mjs scripts/release-smoke/controller.test.mjs scripts/release-smoke/model-quality-evidence.test.mjs scripts/release-smoke/word-quality-evidence.test.mjs scripts/release-smoke/fixtures.test.mjs scripts/release-smoke/verify.test.mjs scripts/release-smoke/quality-role.test.mjs scripts/release-smoke/evidence-schema.test.mjs scripts/release-smoke/verify-images.test.mjs scripts/release-smoke/rollback-readiness.test.mjs",
     "billing:mock": "node scripts/billing-functional/start.mjs",
     "billing:mock:stop": "node scripts/billing-functional/stop.mjs",
     "test:billing:mock": "node --test scripts/billing-functional/payment-provider.test.mjs scripts/billing-functional/billing-client.test.mjs",
@@ -41,6 +41,7 @@
     "migrate:api": "node db/migrate.mjs",
     "storage:lifecycle": "npm run build -w @bondbuddy/contracts && npm run build -w @bondbuddy/api && npm run storage:lifecycle -w @bondbuddy/api",
     "ocr:preflight": "node apps/worker/dist/ocr.js",
-    "ocr:v2": "node apps/worker/dist/ocr-v2.js"
+    "ocr:v2": "node apps/worker/dist/ocr-v2.js",
+    "test:release:verify": "node scripts/release-smoke/verify.mjs verify"
   }
 }

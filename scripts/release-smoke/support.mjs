@@ -48,3 +48,12 @@ export function assertTestReport(report){
  if(!Array.isArray(report.cases)||report.cases.length!==CASES.length||CASES.some(id=>report.cases.filter(c=>c.id===id).length!==1))throw Error('Required test cases are missing or duplicated');
  for(const name of ['api','worker','web'])if(!/^sha256:[a-f0-9]{64}$/.test(report.images?.[name]?.id??''))throw Error('Test image identity missing');
 }
+
+// Completed journeys keep their original timestamps on --resume. A later
+// inspection/cleanup attempt must not renew an already completed suite.
+export function caseCompletionTime(cases){
+ if(!Array.isArray(cases)||cases.length===0)throw Error('Release smoke case completion timestamps are missing or invalid');
+ const times=cases.map(entry=>typeof entry?.finishedAt==='string'?Date.parse(entry.finishedAt):NaN);
+ if(times.some(time=>!Number.isFinite(time)))throw Error('Release smoke case completion timestamps are missing or invalid');
+ return Math.max(...times);
+}
