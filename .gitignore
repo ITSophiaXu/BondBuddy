@@ -20,6 +20,7 @@ docs/testing/*
 !docs/product-decisions/
 docs/product-decisions/*
 !docs/product-decisions/2026-11-11-integrity-scope-pricing.md
+!docs/product-decisions/2026-11-11-reference-text-flexibility.md
 !docs/product-decisions/2026-11-07-project-qa-direct-answer.md
 !docs/product-decisions/2026-11-05-latest-financial-window.md
 !docs/product-decisions/2026-10-11-authoring-dynamic-balance.md
@@ -47,8 +48,15 @@ docs/product-decisions/*
 !docs/acceptance/
 docs/acceptance/*
 !docs/acceptance/issue-943-reserved-confirmation-20261112.md
+!docs/acceptance/issue-1063-prospectus-reader-timeout-20261112.md
+!docs/acceptance/issue-1063-coverage.json
 !docs/acceptance/billing-remediation-20261111.md
 !docs/acceptance/billing-remediation-20261111/
+!docs/acceptance/prospectus-size-gate-20261111.md
+!docs/acceptance/prospectus-size-repair-20261111.md
+!docs/acceptance/prospectus-size-repair-20261111/
+!docs/acceptance/prospectus-size-repair-20261111/*.png
+!docs/acceptance/reference-text-flexibility-20261111.md
 !docs/acceptance/integrity-billing-consistency-20261111.md
 !docs/acceptance/project-qa-direct-answer-20261107.md
 !docs/acceptance/financial-period-rollforward-20261105.md
@@ -107,3 +115,4 @@ docs/runbooks/*
 !docs/runbooks/m1-split-deployment.md
 !deploy/m1/.env.main.example
 !deploy/m1/.env.execution.example
+!docs/acceptance/issue-1123-prospectus-browser-fixture-20261112.md

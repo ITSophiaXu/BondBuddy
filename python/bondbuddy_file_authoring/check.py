@@ -18,7 +18,7 @@ sha = lambda b: hashlib.sha256(b).hexdigest()
 def fail(code):
     raise ValueError(code)
 
-def package(path):
+def package(path, *, parsed_xml=None):
     if path.is_symlink() or not path.is_file() or not 0 < path.stat().st_size <= 100*1024*1024:
         fail('WORD_FILE_INVALID')
     with ZipFile(path) as z:
@@ -31,10 +31,17 @@ def package(path):
         parts={i.filename:z.read(i) for i in info}
     if not {'[Content_Types].xml','word/document.xml','_rels/.rels'}.issubset(parts):
         fail('WORD_PACKAGE_INVALID')
+    validated_trees = {} if parsed_xml is not None else None
     for name,data in parts.items():
         if name.endswith(('.xml','.rels')):
             if b'<!DOCTYPE' in data or b'<!ENTITY' in data: fail('WORD_XML_UNSAFE')
-            parse_xml(data)
+            root = parse_xml(data)
+            # Optional readback of trees that have already passed every package
+            # and XML check. Never accept caller-supplied trees as validation.
+            if validated_trees is not None:
+                validated_trees[name] = root
+    if parsed_xml is not None:
+        parsed_xml.update(validated_trees)
     return parts
 
 def unwrap(node):
@@ -74,8 +81,8 @@ def resolve_revisions(root, accept, only_new=False):
             if remove is not None and node.getparent() is not None:node.getparent().remove(node)
     for table in list(root.iter(Q('tbl'))):
         if not table.findall(Q('tr')) and table.getparent() is not None:table.getparent().remove(table)
-    for node in list(root.iter()):
-        if node.getparent() is None or node.tag not in REV or not (selected(node) or node in selected_grids):continue
+    for node in list(root.iter(*REV)):
+        if node.getparent() is None or not (selected(node) or node in selected_grids):continue
         local=ET.QName(node).localname
         if local.endswith('Change'):
             if not accept:
