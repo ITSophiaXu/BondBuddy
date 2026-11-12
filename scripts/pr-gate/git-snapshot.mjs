@@ -144,7 +144,7 @@ function changedSourceDiagnostics(git, root, commit, format) {
             hash.update(buffer.subarray(0, size));
           }
           const after = fstatSync(fd);
-          if (seen !== stat.size || after.size !== stat.size || after.mtimeMs !== stat.mtimeMs || after.ctimeMs !== stat.ctimeMs) return { kind: 'unavailable', reason: 'changed_during_diagnostic' };
+          if (seen !== stat.size || after.size !== stat.size || after.mtimeMs !== opened.mtimeMs || after.ctimeMs !== opened.ctimeMs) return { kind: 'unavailable', reason: 'changed_during_diagnostic' };
           return { kind: 'file', mode_bits: (stat.mode & 0o777).toString(8), bytes: seen, blob: hash.digest('hex') };
         } finally { closeSync(fd); }
       } catch (error) {
