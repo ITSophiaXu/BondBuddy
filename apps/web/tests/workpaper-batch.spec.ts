@@ -150,6 +150,20 @@ test('delivered explanations are visible and batch pause/resume do not submit an
  await expect(page.locator('#wp-batches')).toContainText('0 积分');expect(state.requests).toHaveLength(1);expect(state.assessmentRequests).toHaveLength(0);
 });
 
+test('cancelled batch keeps current item state and delays retry until the current file settles',async({page})=>{
+ const state=await setup(page,2);await page.clock.install();await page.goto('/'+href({step:'workpapers'}));await submitSelection(page);
+ const batch=state.data.batches[0];batch.state='cancelled';batch.items[0].state='running';batch.items[0].run_id='running-item';batch.items[1].state='queued';batch.items[1].run_id=null;
+ await page.clock.fastForward(5100);
+ const card=page.locator('[data-wp-batch-id="batch-1"]');
+ await expect(card).toContainText('当前文件收尾中（后续已结束排队）');
+ await expect(card).toContainText('已结束排队');
+ await expect(card.getByRole('button',{name:'重试未完成项'})).toHaveCount(0);
+ await expect(card).toContainText('等待当前文件结束后重试未完成项');
+ batch.items[0].state='cancelled';
+ await page.clock.fastForward(5100);
+ await expect(card.getByRole('button',{name:'重试未完成项'})).toBeVisible();
+});
+
 test('empty selection explains why submit is disabled and never sends requests',async({page})=>{
  const state=await setup(page,4);await page.goto('/'+href({step:'workpapers'}));await page.locator('#wp-none').click();await expect(page.locator('#wp-start')).toBeDisabled();await expect(page.locator('#wp-action-hint')).toContainText('请先在目录中勾选');expect(state.requests).toHaveLength(0);expect(state.assessmentRequests).toHaveLength(0);
 });
