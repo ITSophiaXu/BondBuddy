@@ -24,6 +24,25 @@ test('PostgreSQL execute keys preserve JS identity, legacy replay, owner isolati
     const {project,input}=await makeProject();
     const fields={project_id:project,input_revision:1,input_hash:input.input_hash as string,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace',quote_id:undefined as string|undefined};
     const execute=(key:string,changes:Record<string,unknown>={})=>send('POST','/api/v1/runs/execute',{execution_request_id:key,...fields,...changes});
+    // Independent new executions need independent current scopes; exact-key retries below reuse one body.
+    const prepareScope=async(label:string)=>{
+      const current=await send('GET',`/api/v1/projects/${project}`);
+      assert.equal(current.statusCode,200,current.body);
+      const edited=await app.inject({method:'PATCH',url:`/api/v1/projects/${project}`,
+        headers:{origin:'http://bondbuddy.test','if-match':String(current.json().draft_revision)},
+        payload:{name:'Synthetic key test '+label}});
+      assert.equal(edited.statusCode,200,edited.body);
+      const versions=await send('GET',`/api/v1/projects/${project}/prospectus-versions`);
+      assert.equal(versions.statusCode,200,versions.body);
+      const locked=await send('POST',`/api/v1/projects/${project}/input-revisions`,{
+        draft_revision:edited.json().draft_revision,prospectus_selection_revision:versions.json().selection_revision,
+        material_versions:input.material_versions,requirement_message_ids:[]});
+      assert.equal(locked.statusCode,201,locked.body);
+      const next=locked.json(),quoteId=await quoteSyntheticAuthoringRun(app,pool,first,project,next);
+      assert.notEqual(next.input_hash,fields.input_hash,'a distinct execution locks its own current scope');
+      assert.notEqual(quoteId,fields.quote_id,'a new business scope has its own unused quote');
+      fields.input_revision=next.input_revision;fields.input_hash=next.input_hash;fields.quote_id=quoteId;
+    };
 
     // A pre-existing run stores the contract key in its original PostgreSQL text column.
     const legacyKey='legacy.key-1',legacyRun=uid();
@@ -52,7 +71,7 @@ test('PostgreSQL execute keys preserve JS identity, legacy replay, owner isolati
       assert.equal((await execute(rejectedKey,{input_hash:'f'.repeat(64)})).statusCode,409);
     } finally {await disabled.close();}
 
-    fields.quote_id=await quoteSyntheticAuthoringRun(app,pool,first,project,input);
+    await prepareScope('NUL key');
     const nulKey='opaque\0key';
     const concurrent=await Promise.all(Array.from({length:5},()=>execute(nulKey)));
     assert.ok(concurrent.every(r=>r.statusCode===202),concurrent.map(r=>r.body).join('\n'));
@@ -68,9 +87,9 @@ test('PostgreSQL execute keys preserve JS identity, legacy replay, owner isolati
     assert.equal(changed.json().code,'IDEMPOTENCY_CONFLICT');
 
     const lone='\ud800',replacement='\ufffd';
-    fields.quote_id=await quoteSyntheticAuthoringRun(app,pool,first,project,input);
+    await prepareScope('lone surrogate key');
     const loneResult=await execute(lone);
-    fields.quote_id=await quoteSyntheticAuthoringRun(app,pool,first,project,input);
+    await prepareScope('replacement key');
     const replacementResult=await execute(replacement);
     assert.equal(loneResult.statusCode,202,loneResult.body);
     assert.equal(replacementResult.statusCode,202,replacementResult.body);
@@ -83,7 +102,7 @@ test('PostgreSQL execute keys preserve JS identity, legacy replay, owner isolati
     actor=second;
     const other=await makeProject();
     const otherQuote=await quoteSyntheticAuthoringRun(app,pool,second,other.project,other.input);
-    const otherRun=await execute(nulKey,{project_id:other.project,input_hash:other.input.input_hash,quote_id:otherQuote});
+    const otherRun=await execute(nulKey,{project_id:other.project,input_revision:other.input.input_revision,input_hash:other.input.input_hash,quote_id:otherQuote});
     assert.equal(otherRun.statusCode,202,otherRun.body);
     assert.notEqual(otherRun.json().run_id,nulRun);
     assert.equal((await send('GET',`/api/v1/runs/${nulRun}`)).statusCode,404);
@@ -94,8 +113,8 @@ test('PostgreSQL execute keys preserve JS identity, legacy replay, owner isolati
     assert.equal((await execute('no-session.opaque')).statusCode,401);
 
     actor=first;
-    // Prepare funds before the rollback counter and failure trigger; retry the same quote.
-    fields.quote_id=await quoteSyntheticAuthoringRun(app,pool,first,project,input);
+    // Prepare the current scope and funds before the rollback counter and failure trigger.
+    await prepareScope('outbox rollback');
     await pool.query("CREATE FUNCTION bb_execution_key_fail_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='run.staged' THEN RAISE EXCEPTION 'synthetic rollback'; END IF; RETURN NEW; END $$");
     await pool.query('CREATE TRIGGER bb_execution_key_fail_outbox BEFORE INSERT ON bb_outbox FOR EACH ROW EXECUTE FUNCTION bb_execution_key_fail_outbox()');
     const outboxBefore=(await pool.query('SELECT count(*)::int n FROM bb_outbox')).rows[0].n;
