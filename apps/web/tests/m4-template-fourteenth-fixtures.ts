@@ -3,6 +3,7 @@ import {fixtureBody} from './billing-fixture-wire';
 import {fixtureRequest} from './billing-fixture-wire';
 import { expect, type Page, type Route } from '@playwright/test';
 import { isDeepStrictEqual } from 'node:util';
+import { settleUploadConfirmationFault } from './upload-confirmation-faults';
 import { M4TemplateCreateRequestSchema, type M4DraftRequest, type M4Template, type M4TemplateCreateRequest } from '@bondbuddy/contracts';
 import type { Dto } from './billing-fixture-wire';
 import { fixture as sourceFixture, install as installSourceFixture, mount as mountSourceComponent, materialOf, addMaterial, check, ids, now, mime, hash, pin, pinKey, inputOf } from './m4-upload-thirteenth-fixtures';
@@ -66,5 +67,10 @@ export const select = (page: Page) => page.locator('[data-m4-upload=template]').
 export async function records(page: Page) { return page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('bb-m4-template-upload-v1:')).map(key => ({ key, raw: localStorage.getItem(key)!, value: JSON.parse(localStorage.getItem(key)!) }))); }
 export async function settle(page: Page) { await expect.poll(() => page.evaluate(async () => { const component = (window as unknown as { m4Component: { refreshing?: unknown; uploadReading: boolean; uploadPreparing: boolean; uploading: boolean; cacheQueue: Promise<void> } }).m4Component; if (component.refreshing || component.uploadReading || component.uploadPreparing || component.uploading) return false; const queue = component.cacheQueue; await queue; return !component.refreshing && !component.uploadReading && !component.uploadPreparing && !component.uploading && component.cacheQueue === queue; })).toBe(true); }
 export async function refreshReadOnly(page: Page, state: State) { const before = state.calls.filter(call => call.method !== 'GET').length; await mount(page, { navigation: 'reload' }); await page.clock.runFor(1_000); await page.evaluate(() => { dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); }); await page.clock.runFor(1_000); await settle(page); expect(state.calls.filter(call => call.method !== 'GET')).toHaveLength(before); noBusiness(state); return before; }
-export async function pending(page: Page, state: State) { await select(page); await expect(resume(page)).toBeEnabled(); expect(await records(page)).toHaveLength(1); noBusiness(state); }
+export async function pending(page: Page, state: State) {
+  const confirmationFault = state.dropPut === 'after';
+  await select(page);
+  if (confirmationFault) await settleUploadConfirmationFault(page, state.confirmationFaults);
+  await expect(resume(page)).toBeEnabled(); expect(await records(page)).toHaveLength(1); noBusiness(state);
+}
 export async function saved(page: Page, state: State, settlePage = true) { await expect.poll(() => templatePosts(state).length).toBeGreaterThan(0); await expect.poll(async () => (await records(page)).length).toBe(0); if (settlePage) await settle(page); noBusiness(state); }
