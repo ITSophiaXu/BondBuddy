@@ -25,6 +25,35 @@ export function lddPaths(output) {
   assert.ok(paths.length > 0); return [...new Set(paths)].sort();
 }
 
+/** ICU's data-only shared object has a dynamic table but no DT_NEEDED entries;
+ * glibc ldd calls that library "statically linked". Prove that exact ELF case
+ * instead of treating arbitrary/unresolved ldd output as an empty closure. */
+export function lddLibraryPaths(output, bytes) {
+  if (output.trim() !== 'statically linked') return lddPaths(output);
+  assert.ok(Buffer.isBuffer(bytes) && bytes.length >= 64);
+  assert.deepEqual(bytes.subarray(0, 7), Buffer.from([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1]), 'Expected ELF64 little-endian version 1');
+  assert.equal(bytes.readUInt16LE(16), 3, 'Only a shared object can be a dependency-free library');
+  assert.equal(bytes.readUInt16LE(18), 62, 'Expected the selected x64 native ABI');
+  const offset = position => { const value = bytes.readBigUInt64LE(position); assert.ok(value <= BigInt(bytes.length)); return Number(value); };
+  const phoff = offset(32), phsize = bytes.readUInt16LE(54), count = bytes.readUInt16LE(56);
+  assert.equal(phsize, 56); assert.ok(count > 0 && count < 0xffff); assert.ok(phoff >= 64 && phoff + count * phsize <= bytes.length);
+  const tables = [];
+  for (let index = 0; index < count; index++) {
+    const start = phoff + index * phsize;
+    if (bytes.readUInt32LE(start) === 2) tables.push({ start: offset(start + 8), size: offset(start + 32) });
+  }
+  assert.equal(tables.length, 1, 'Expected exactly one ELF dynamic table');
+  const table = tables[0]; assert.ok(table.size >= 16 && table.size % 16 === 0 && table.start + table.size <= bytes.length);
+  let terminated = false;
+  for (let position = table.start; position < table.start + table.size; position += 16) {
+    const tag = bytes.readBigInt64LE(position);
+    if (tag === 0n) { terminated = true; break; }
+    assert.notEqual(tag, 1n, 'A library with DT_NEEDED cannot be accepted as dependency-free');
+  }
+  assert.equal(terminated, true, 'ELF dynamic table is unterminated');
+  return [];
+}
+
 /** Export only existing runtime files from the immutable, offline worker image. */
 export function exportBrowserTools(directory, imageId) {
   assert.equal(process.platform, 'linux'); assert.match(imageId, /^sha256:[a-f0-9]{64}$/);
@@ -45,7 +74,7 @@ export function exportBrowserTools(directory, imageId) {
   // rejects unresolved dependencies of a library before the bundle is used.
   for (let index = 0; index < libraries.length; index++) {
     const library = libraries[index];
-    if (!/\/ld(?:-linux|64)/.test(library)) for (const child of lddPaths(command('ldd', [library]))) if (!libraries.includes(child)) libraries.push(child);
+    if (!/\/ld(?:-linux|64)/.test(library)) for (const child of lddLibraryPaths(command('ldd', [library]), readFileSync(library))) if (!libraries.includes(child)) libraries.push(child);
   }
   const loaders = libraries.filter(path => /\/ld(?:-linux|64)/.test(path)); assert.equal(loaders.length, 1);
   for (const path of libraries) add(path, 'lib/' + basename(path), true);

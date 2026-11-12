@@ -59,7 +59,9 @@ export async function prepareBrowserServices({ candidate, runId, row, sourceBlob
         '--mount', `type=bind,source=${join(sourceRoot, 'scripts/pr-gate/browser-tools.mjs')},target=/browser-tools.mjs,readonly`,
         '--mount', `type=bind,source=${exportDirectory},target=/export`, '--entrypoint', '/usr/bin/env', images.native,
         '-i', 'PATH=/usr/local/bin:/usr/bin:/bin', 'LANG=C.UTF-8', 'node', '/browser-tools.mjs', 'export', '/export', images.native]);
-      const completed = await core.docker(`${row.name}-ocr-export-wait`, ['wait', id], { capture: true }); assert.equal(completed.text, '0');
+      const completed = await core.docker(`${row.name}-ocr-export-wait`, ['wait', id], { capture: true });
+      await core.docker(`${row.name}-ocr-export-logs`, ['logs', id], { capture: true });
+      assert.equal(completed.text, '0', 'OCR tool export failed; original container output was retained before cleanup');
       const bytes = readFileSync(join(exportDirectory, 'manifest.json')); proof.tools = { image_id: images.native, manifest_sha256: browserHash(bytes), manifest: JSON.parse(bytes) };
       await core.exec(`${row.name}-ocr-tools-must-be-new`, ['node', '-e', `if(require('fs').existsSync(${JSON.stringify(BROWSER_TOOLS_ROOT)}))throw Error('Browser tools directory already exists')`]);
       await core.docker(`${row.name}-ocr-copy-existing-tools`, ['cp', exportDirectory, `${core.runner}:${BROWSER_TOOLS_ROOT}`]);

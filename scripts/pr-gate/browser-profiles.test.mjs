@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { BROWSER_API_PROFILES, BROWSER_DATABASE, BROWSER_ORIGIN, BROWSER_PROTOTYPE_ORIGIN, browserEnvironment, browserHash, createBrowserPlan, verifyBrowserPlan } from './browser-profiles.mjs';
 import { browserFilesForShard, verifyBrowserDatabaseContainer } from './browser-host.mjs';
 import { browserInvocation } from './browser-runtime.mjs';
-import { lddPaths } from './browser-tools.mjs';
+import { lddLibraryPaths, lddPaths } from './browser-tools.mjs';
 import { verifyBrowserRuns } from './browser-receipt.mjs';
 import { syntheticBrowserSources, syntheticBrowserShard } from './browser.test-fixture.mjs';
 import { GROUPS, parseExclusions } from './run.mjs';
@@ -69,6 +69,22 @@ test('host and original discovery assign the same entire source file table to ev
 test('Tesseract ELF closure rejects unresolved or unrecognized dependency output', () => {
   assert.deepEqual(lddPaths(' linux-vdso.so.1 (0xabc)\n libfoo.so.1 => /lib/x86_64-linux-gnu/libfoo.so.1 (0xabc)\n /lib64/ld-linux-x86-64.so.2 (0x123)\n'), ['/lib/x86_64-linux-gnu/libfoo.so.1', '/lib64/ld-linux-x86-64.so.2']);
   for (const output of ['libx => not found', 'statically linked', '', 'libx => relative/path (0x123)']) assert.throws(() => lddPaths(output));
+});
+
+test('data-only ELF libraries need an intact x64 dynamic table with no DT_NEEDED, not a bare ldd assertion', () => {
+  // Synthetic ELF metadata only, never an executable or native runtime proof.
+  const leaf = Buffer.alloc(184); Buffer.from([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1]).copy(leaf);
+  leaf.writeUInt16LE(3, 16); leaf.writeUInt16LE(62, 18); leaf.writeBigUInt64LE(64n, 32); leaf.writeUInt16LE(56, 54); leaf.writeUInt16LE(1, 56);
+  leaf.writeUInt32LE(2, 64); leaf.writeBigUInt64LE(120n, 72); leaf.writeBigUInt64LE(64n, 96); leaf.writeBigInt64LE(14n, 120);
+  assert.deepEqual(lddLibraryPaths('statically linked', leaf), []);
+  assert.throws(() => lddPaths('statically linked'));
+  for (const mutate of [b => b.writeBigInt64LE(1n, 120), b => b.writeUInt16LE(2, 16), b => b.writeUInt16LE(183, 18), b => b.writeUInt8(2, 5),
+    b => b.writeUInt16LE(0, 56), b => b.writeBigUInt64LE(185n, 72), b => b.writeBigUInt64LE(65n, 96),
+    b => { for (let p = 120; p < b.length; p += 16) b.writeBigInt64LE(14n, p); }]) {
+    const changed = Buffer.from(leaf); mutate(changed); assert.throws(() => lddLibraryPaths('statically linked', changed));
+  }
+  assert.throws(() => lddLibraryPaths('statically linked', leaf.subarray(0, 128)));
+  assert.throws(() => lddLibraryPaths('libfoo.so => not found', leaf));
 });
 
 test('browser PG evidence rejects production database, wrong image, ports, or shared external network', () => {

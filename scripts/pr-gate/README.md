@@ -48,9 +48,11 @@ npm run pr-gate
 
 所有分片使用 HTTPS `https://127.0.0.1:5173` 的当前 Vite 网页。API 固定为 `http://127.0.0.1:3000`，注册协议版本固定为 `synthetic-web-test-v1`；准备探针实际经过 HTTPS 代理读取协议，并核对严格 CA 校验、PG 端口/数据库/版本。review-agent-progress-prototype、review-readable-prototype 和 review-workspace 三个文件按需启动 `127.0.0.1:4320` 的仓库原型及独立临时状态目录；前两者使用原 `BB_E2E_PROTOTYPE_URL`，workspace 的原消费者使用 `BB_PROTOTYPE_URL`。以上端口均不发布到宿主，不接入现有用户服务。
 
-`review-workspace.spec.ts` 的完整场景 producer 必须先把 JSON/CSS 写入本轮源树外的 `BB_WORKSPACE_SCENES_DIR`，两个原型消费者只读取同 worker 完成的同一产物。该维护修复在独立 PR #1152（`4bac6f12`），固定集成候选必须包含它；旧候选会写 tracked 产品资产，最终源码证明必须失败，不能用旧产物或修改后的 source proof 兜底。`M4_UX_EVIDENCE_DIR` 与原 `M4_UX_EVIDENCE=1` 同时提供。部分用例自行 route `prototype.test` 或本地固定 URL 到候选静态文件，保持原 fixture，不额外启动服务；project-entry/task-results 的可选产品原型导出开关不启用，它们不属于 skip 条件。
+`review-workspace.spec.ts` 的完整场景 producer 必须先把 JSON/CSS 写入本轮源树外的 `BB_WORKSPACE_SCENES_DIR`，两个原型消费者只读取同 worker 完成的同一产物。该维护修复在独立 PR #1152（含 `b95324ff` 的模块声明）；两个 standalone prototype 截图输出另由 #1156 隔离。固定集成候选必须包含这些维护修复；旧候选会写 tracked 产品资产，最终源码证明必须失败，不能用旧产物或修改后的 source proof 兜底。`M4_UX_EVIDENCE_DIR` 与原 `M4_UX_EVIDENCE=1` 同时提供。部分用例自行 route `prototype.test` 或本地固定 URL 到候选静态文件，保持原 fixture，不额外启动服务；project-entry/task-results 的可选产品原型导出开关不启用，它们不属于 skip 条件。
 
 OCR 分片从 `--host-worker-image` 指定的已有不可变本地镜像复制 Tesseract、完整 ELF 依赖、eng/chi_sim/osd 和 Noto 字体。文件写入本次 core 的专用目录，以独立 ELF loader/library path 调用；逐文件 hash、CPU ABI、真实中文/数字 OCR 探针及测试后的文件复验均进入回执。Windows 传输后的可执行位仅按已校验 manifest 在临时 core 恢复。此步骤无软件安装、下载或宿主设置修改；缺工具/语言包、ABI 不符或探针失败均停止该分片。
+
+已有镜像的 `libicudata.so.72` 为无 `DT_NEEDED` 的数据共享库，`ldd` 会输出 `statically linked`。仅在原文件的 ELF64 little-endian/x64/shared-object 头和完整动态表证明没有 `DT_NEEDED` 时，将该叶节点视为无递归依赖；顶层 Tesseract 的空依赖、未解析依赖和未知输出仍拒绝。导出容器的原日志先落盘，再判断退出码并清理。
 
 浏览器子进程从明确的环境允许清单启动，清除继承的 reference/baseline、旧 evidence 路径、模型/支付凭据、服务地址和 Node 启动钩子，再应用该分片 profile。可选截图用例获得独立证据目录；共用 `BB_UX_EVIDENCE_DIR` 的用例在计划中明确列出 shard 共享目录。不打开历史模式代替当前模式，缺失的历史封存源码、基线或断言仍按原规则真实失败。
 
