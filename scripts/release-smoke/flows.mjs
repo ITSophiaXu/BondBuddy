@@ -3,6 +3,7 @@ import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {join,basename} from 'node:path';
 import {sha256} from './support.mjs';
 import {qaProspectusFixture,confirmQaProspectus} from './qa-prospectus.mjs';
+import {retainQaPreparation,qaPreparationURL} from './qa-preparation.mjs';
 
 export async function runJourneys({out,report,privateData,save}){
  const browser=await chromium.launch(process.env.BB_RELEASE_BROWSER_CHANNEL?{channel:process.env.BB_RELEASE_BROWSER_CHANNEL}:{});
@@ -115,7 +116,7 @@ export async function runJourneys({out,report,privateData,save}){
     await modal.locator('select[name="market"]').selectOption('sse');await modal.locator('select[name="offering"]').selectOption('private');
     await modal.getByRole('button',{name:'创建项目并开始问答',exact:true}).click();await expect(page.locator('#qa-manage-prospectus')).toBeVisible();
     entry.projectURL=page.url();save();
-   }else await page.goto(entry.projectURL);
+   }else await page.goto(entry.preparationId&&!entry.runId?qaPreparationURL(entry.projectURL,entry.preparationId):entry.projectURL);
    if(!entry.runId){
     if(!entry.prepared){
      await expect(page.locator('#qa-manage-prospectus')).toBeVisible();
@@ -123,7 +124,7 @@ export async function runJourneys({out,report,privateData,save}){
      await page.locator('#qa-manage-prospectus').click();await upload(page.getByLabel('募集书新版本文件',{exact:true}),f.dongying);
      }
      entry.qaProspectus=await confirmQaProspectus(page,{projectURL:entry.projectURL,expected:qaProspectusFixture(f.dongying)});save();
-     await upload(page.locator('#qa-upload'),f.questions);
+     await retainQaPreparation(page,{entry,expected:qaProspectusFixture(f.questions),upload:()=>upload(page.locator('#qa-upload'),f.questions),save});
      await expect(page.locator('.qa-question-list article')).toHaveCount(7,{timeout:180000});entry.prepared=true;save();
     }
     await page.reload();await expect(page.locator('.qa-question-list article')).toHaveCount(7,{timeout:60000});
