@@ -331,3 +331,9 @@ test('standalone confirmation defaults inactive; protected enablement keeps pars
  const r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','execution','up','-d','upload-confirmation'],{cwd:root,env:{...process.env,BB_ENV_FILE:envFile('execution',off.values),BB_STATE_DIR:join(off.area,'state'),BB_IMAGE_TAG:'synthetic'},encoding:'utf8'});
  assert.equal(r.status,2);assert.match(r.stderr,/confirmation is inactive/);
 });
+test('moving confirmation requires disabling both legacy main parser confirmation lanes',()=>{
+ const a=covered('main',bridgeOverlay,{BB_UPLOAD_CONFIRMATION_ROLE:'execution',BB_UPLOAD_CONFIRMATION_ENABLED:'0',BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'0'}),state=join(a.area,'state');
+ assert.equal(config('main',a.values,state).services['worker-parse'].environment.BB_UPLOAD_CONFIRMATION_ENABLED,'0');
+ for(const change of [{BB_UPLOAD_CONFIRMATION_ENABLED:'1'},{BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1'}])
+  assert.throws(()=>config('main',{...a.values,...change},state));
+});

@@ -97,7 +97,8 @@ try {
       }
     }
     // A separate consumer may never coexist with the parser's confirmation loop.
-    if (confirmationRole !== 'disabled' && parseRole === role && parser.environment.BB_UPLOAD_CONFIRMATION_ENABLED !== '0') fail();
+    if (confirmationRole !== 'disabled' && parseRole === role &&
+        (parser.environment.BB_UPLOAD_CONFIRMATION_ENABLED !== '0' || parser.environment.BB_UPLOAD_CONFIRMATION_SMALL_SLOT !== '0')) fail();
     if (role === 'execution') {
       const service=s['upload-confirmation'], active=confirmationRole==='execution', e=service.environment;
       const environmentKeys=new Set(['DATABASE_URL','AZURE_STORAGE_CONNECTION_STRING','BB_UPLOAD_CONFIRMATION_ENABLED','BB_UPLOAD_CONFIRMATION_SMALL_SLOT','BB_UPLOAD_CONFIRMATION_CONTAINER','BB_UPLOAD_SPOOL_DIR','BB_UPLOAD_SPOOL_MAX_BYTES','NODE_OPTIONS','HTTPS_PROXY','https_proxy','NO_PROXY','no_proxy']);
