@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { exclusionsEvidence, PREPARATION_IDS, RECEIPT_SCHEMA, verifyReceipt } from './receipt.mjs';
+import { syntheticCapabilities, syntheticCapabilityRuns, syntheticCapabilityService } from './capabilities.test-fixture.mjs';
 
 const matrix = [
   { name: 'api-1', groups: 'api', shard: '1/2' },
@@ -20,18 +21,22 @@ const expected = {
 };
 const now = Date.parse('2026-11-11T13:02:00.000Z');
 function fixture() {
+  const capabilities = syntheticCapabilities(expected);
   return {
     schema_version: RECEIPT_SCHEMA, status: 'passed',
     commit: expected.commit, tree: expected.tree, develop_commit: expected.develop_commit,
     clean_tree: true, platform: 'linux', host_platform: 'win32',
     started_at: '2026-11-11T13:00:00.000Z', finished_at: '2026-11-11T13:01:00.000Z',
     exclusions: structuredClone(expected.exclusions),
+    capabilities,
     preparation: PREPARATION_IDS.map(id => ({ id, status: 'passed' })),
     shards: matrix.map(row => ({
       name: row.name, groups: row.groups, shard: row.shard, exit_code: 0,
+      capability_preparation: syntheticCapabilityService(capabilities, row.name),
       summary: {
         schema: 'pr-gate-summary-v1', job: row.name, groups: row.groups.split(','), shard: row.shard,
         expectedJobs: matrix.length, report: false, commit: expected.commit,
+        capabilities: row.name === 'worker-1' ? syntheticCapabilityRuns(capabilities, 'apps/worker/') : row.name === 'api-1' ? syntheticCapabilityRuns(capabilities, 'apps/api/') : [],
         finishedAt: '2026-11-11T13:00:30.000Z', status: 'passed',
         counts: { selected: 2, passed: 2, blocking: 0, tolerated: 0, notInCi: row.name === 'browser-1' ? 1 : 0 },
         problems: [], blocking: [], tolerated: [], recovered: [], skipsAllowed: [], slowest: [],

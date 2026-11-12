@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
 import { parseExclusions, SUMMARY_SCHEMA } from './run.mjs';
+import { verifyCapabilityRuns } from './capabilities.mjs';
 
 export const RECEIPT_SCHEMA = 'pr-gate-local-v1';
-export const PREPARATION_IDS = Object.freeze(['image', 'services', 'dependencies', 'build', 'contracts', 'browser']);
+export const PREPARATION_IDS = Object.freeze(['image', 'capabilities', 'services', 'dependencies', 'build', 'contracts', 'browser']);
 const EXCLUSION_LISTS = ['notInCi', 'knownFailing', 'allowSkip'];
 const COUNT_KEYS = ['selected', 'passed', 'blocking', 'tolerated', 'notInCi'];
 const SHA = /^[a-f0-9]{40}$/;
@@ -71,5 +72,6 @@ export function verifyReceipt(receipt, expected, now = Date.now()) {
 
   const merged = receipt.merge?.result;
   requireEvidence(receipt.merge?.exit_code === 0 && merged?.schema === 'pr-gate-result-v1' && merged.status === 'passed' && merged.report === false && merged.expected === matrix.length && merged.received === matrix.length && emptyArray(merged.problems) && emptyArray(merged.failed) && emptyArray(merged.suggestion?.knownFailing) && emptyArray(merged.suggestion?.allowSkip), 'merge did not confirm every shard passed');
+  verifyCapabilityRuns(receipt, expected, now);
   return receipt;
 }

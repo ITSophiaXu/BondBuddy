@@ -21,6 +21,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { capabilityEnvironment, verifyPreparedCapabilities } from './capabilities.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(HERE, '../..');
@@ -254,19 +255,25 @@ async function runSequential(root, group, runner, items, context, workingDirecto
       results.push({ id: item.id, status: 'failed', reason: '本分片的总时间预算已用完，没有运行（请增加分片数）', tests: 0, skipped: 0, durationMs: 0 });
       console.log(`未运行 ${label}`); continue;
     }
-    let execution, evaluated;
+    let execution, evaluated, capability;
+    try { capability = capabilityEnvironment(item.id, childEnvironment(), context.capabilities); }
+    catch (error) {
+      results.push({ id: item.id, status: 'failed', reason: `能力准备无效：${error.message}`, tests: 0, skipped: 0, durationMs: 0 });
+      continue;
+    }
     if (runner === 'node') {
       if (!existsSync(join(root, item.run))) {
         results.push({ id: item.id, status: 'failed', reason: `找不到编译产物 ${item.run}（是否先执行了 npm run build）`, tests: 0, skipped: 0, durationMs: 0 });
         console.log(`失败   ${label}：找不到 ${item.run}`); continue;
       }
-      execution = await execute(process.execPath, ['--test', '--test-reporter=tap', join(root, item.run)], { cwd, env: childEnvironment(), timeoutMs: context.fileTimeoutMs });
+      execution = await execute(process.execPath, ['--test', '--test-reporter=tap', join(root, item.run)], { cwd, env: capability.env, timeoutMs: context.fileTimeoutMs });
       evaluated = evaluateNode(execution);
     } else {
-      execution = await execute(python, ['-m', 'unittest', '-v', basename(item.run, '.py')], { cwd, env: childEnvironment({ PYTHONPATH: pythonPath, PYTHONDONTWRITEBYTECODE: '1', PYTHONIOENCODING: 'utf-8' }), timeoutMs: context.fileTimeoutMs });
+      execution = await execute(python, ['-m', 'unittest', '-v', basename(item.run, '.py')], { cwd, env: { ...capability.env, PYTHONPATH: pythonPath, PYTHONDONTWRITEBYTECODE: '1', PYTHONIOENCODING: 'utf-8' }, timeoutMs: context.fileTimeoutMs });
       evaluated = evaluatePython(execution);
     }
     results.push({ id: item.id, ...evaluated, durationMs: execution.durationMs });
+    if (capability.record) context.capabilityRuns.push({ ...capability.record, status: evaluated.status, tests: evaluated.tests, skipped: evaluated.skipped });
     const note = evaluated.status === 'passed' ? (evaluated.skipped ? `通过（跳过 ${evaluated.skipped} 项）` : '通过') : `失败：${evaluated.reason}`;
     console.log(`${evaluated.status === 'passed' ? '通过  ' : '失败  '} ${label} ${seconds(execution.durationMs)}${evaluated.status === 'passed' && !evaluated.skipped ? '' : ` — ${note}`}`);
     if (evaluated.status === 'failed' || evaluated.skipped) {
@@ -374,7 +381,8 @@ async function commandRun(options) {
 
   mkdirSync(out, { recursive: true });
   const results = [];
-  const context = { out, fileTimeoutMs, deadline };
+  const capabilities = process.env.PR_GATE_CAPABILITIES_FILE ? verifyPreparedCapabilities(JSON.parse(readFileSync(process.env.PR_GATE_CAPABILITIES_FILE, 'utf8')), { commit: process.env.GITHUB_SHA, tree: process.env.PR_GATE_TREE }) : null;
+  const context = { out, fileTimeoutMs, deadline, capabilities, capabilityRuns: [] };
   for (const part of plan) {
     if (!part.selected.length) continue;
     console.log(`\n===== ${part.group}：运行 ${part.selected.length} 个测试文件 =====`);
@@ -394,6 +402,7 @@ async function commandRun(options) {
   const summary = {
     schema: SUMMARY_SCHEMA, job: name, groups, shard: `${shardIndex}/${shardTotal}`, expectedJobs, report: Boolean(options.report),
     commit: process.env.GITHUB_SHA ?? null, finishedAt: new Date().toISOString(), status: verdict.status,
+    capabilities: context.capabilityRuns,
     counts: { selected: results.length, passed: verdict.passed, blocking: verdict.blocking.length, tolerated: verdict.tolerated.length, notInCi: plan.reduce((total, part) => total + part.notInCi, 0) },
     problems: verdict.problems, blocking: verdict.blocking, tolerated: verdict.tolerated, recovered: verdict.recovered, skipsAllowed: verdict.skipsAllowed,
     slowest: [...results].sort((a, b) => b.durationMs - a.durationMs).slice(0, 10).filter(row => row.durationMs >= 5000).map(row => ({ id: row.id, durationMs: row.durationMs })),
