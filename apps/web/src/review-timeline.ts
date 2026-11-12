@@ -130,6 +130,8 @@ export function reviewTaskProgress(task: ReviewTask): ReviewTaskProgress {
   const laterStage=events.find(event=>event.seq>latestAction.seq&&!event.payload.action&&reviewStageLabel(event.stage,event.state));
   if(laterStage)return fallback;
   const action=latestAction.payload.action!,copy=actionCopy[action.code];
+  const stageProgress=reviewRunProgress(run);
+  if(action.state==='started'&&stageProgress.title!==copy.started&&stageProgress.title!=='正在执行本轮任务')return fallback;
   return{title:copy[action.state],summary:action.state==='started'?copy.summary:action.state==='completed'?'这项动作已完成，任务继续以已确认范围执行。':'这项动作未完成，正在核对任务的后续处理状态。',completed};
 }
 
