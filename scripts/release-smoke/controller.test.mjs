@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {join,resolve,sep} from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {assertControllerCandidate} from './controller.mjs';
 test('controller uses committed bytes, accepts checkout EOL only, and rejects hidden extra modules',()=>{
@@ -11,7 +11,11 @@ test('controller uses committed bytes, accepts checkout EOL only, and rejects hi
  try{
   mkdirSync(directory,{recursive:true});git(['init','-q']);git(['config','core.autocrlf','false']);writeFileSync(join(directory,'run.mjs'),'export const example=1;\n');git(['add','scripts']);git(['-c','user.name=Synthetic','-c','user.email=synthetic@example.invalid','commit','-qm','synthetic']);const sha=git(['rev-parse','HEAD']);
   writeFileSync(join(directory,'run.mjs'),'export const example=1;\r\n');const result=assertControllerCandidate({repo,directory,sha});assert.equal(result[0].checkoutEolNormalized,true);
+  const archive=join(repo,'archive'),archiveDirectory=join(archive,'scripts/release-smoke');mkdirSync(archiveDirectory,{recursive:true});writeFileSync(join(archiveDirectory,'run.mjs'),'export const example=1;\n');
+  assertControllerCandidate({repo,directory:archiveDirectory,sourceRoot:archive,strictRaw:true,sha});
+  writeFileSync(join(archiveDirectory,'run.mjs'),'export const example=2;\n');assert.throws(()=>assertControllerCandidate({repo,directory:archiveDirectory,sourceRoot:archive,strictRaw:true,sha}),/Archived/);
+  writeFileSync(join(archiveDirectory,'run.mjs'),'export const example=1;\r\n');assert.throws(()=>assertControllerCandidate({repo,directory:archiveDirectory,sourceRoot:archive,strictRaw:true,sha}),/Archived/);
   writeFileSync(join(directory,'run.mjs'),'export const example=2;\n');assert.throws(()=>assertControllerCandidate({repo,directory,sha}),/differs/);
   writeFileSync(join(directory,'run.mjs'),'export const example=1;\n');writeFileSync(join(directory,'shadow.mjs'),'export {};');assert.throws(()=>assertControllerCandidate({repo,directory,sha}),/files differ/);
- }finally{rmSync(repo,{recursive:true,force:true});}
+ }finally{assert.ok(resolve(repo).startsWith(resolve(tmpdir())+sep));rmSync(repo,{recursive:true,force:true});}
 });

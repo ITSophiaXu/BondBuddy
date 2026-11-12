@@ -4,7 +4,7 @@ import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {randomBytes} from 'node:crypto';
 import {parseArgs} from 'node:util';
-import {SAMPLE_REF,CASES,REPORT_SCHEMA,sha256,writeJson,verifiedFile,verdict,assertLocalContext,assertTestReport} from './support.mjs';
+import {SAMPLE_REF,CASES,REPORT_SCHEMA,sha256,writeJson,verdict,assertLocalContext,assertTestReport} from './support.mjs';
 import {hostEnvironment,protectPrivatePath} from './platform.mjs';
 import {prepareReleaseCredential,assertReleaseCredential} from './credentials.mjs';
 import {assertArchiveSupport,extractArchive,gitArchive} from './archive.mjs';
@@ -14,6 +14,7 @@ import {newExecutionBudget,assertExecutionBudget,assertWorkerBudget} from './bud
 import {newFlowBudget,assertFlowBudget} from './journey-state.mjs';
 import {createEvidenceReaders} from './runtime-evidence.mjs';
 import {assertControllerCandidate} from './controller.mjs';
+import {loadFixedFixtures,assertFixtureBindings} from './fixtures.mjs';
 
 const directory=dirname(fileURLToPath(import.meta.url)),repo=resolve(directory,'../..');
 const settingsFile=join(directory,'.local.json');
@@ -76,20 +77,12 @@ try{
   const source=join(out,'source');mkdirSync(source);
   writeFileSync(join(out,'source.tar'),gitArchive(repo,report.sha,env));
   extractArchive(join(out,'source.tar'),source,env);
+  report.archivedControllerFiles=assertControllerCandidate({repo,directory:join(source,'scripts/release-smoke'),sourceRoot:source,strictRaw:true,sha:report.sha,env});
   // The unmerged sample PR is data only. Do not merge its application code.
   const samples=join(out,'samples');mkdirSync(samples);
   writeFileSync(join(out,'samples.tar'),gitArchive(repo,SAMPLE_REF,env,['tests/samples']));
   extractArchive(join(out,'samples.tar'),samples,env);
-  const old=join(samples,'tests/samples/2026-09-25'),recent=join(samples,'tests/samples/2026-11-05');
-  const rq=JSON.parse(readFileSync(join(old,'manifest.json'))).cases.find(c=>c.case_id==='rq-202509');
-  const assets=JSON.parse(readFileSync(join(recent,'manifest.json'))).assets;
-  const asset=id=>{const a=assets.find(x=>x.file_id===id);if(!a)throw Error('Missing fixture '+id);return verifiedFile(recent,a.path,a.sha256);};
-  const fixtures={rq:rq.files.map(f=>({path:verifiedFile(old,f.path,f.sha256),role:f.upload_role})),dongying:asset('nov05-f012'),financial:['nov05-f014','nov05-f015','nov05-f016'].map(asset),questions:asset('nov05-f013'),workpaperCatalogue:asset('nov05-f009')};
-  const recipe=(id)=>{const bytes=readFileSync(join(recent,'cases',id,'input.json'));return {body:JSON.parse(bytes),sha256:sha256(bytes)};};
-  const integrityRecipe=recipe('integrity-dongying'),workpaperRecipe=recipe('workpaper-dongying');
-  fixtures.integrityRecipe=integrityRecipe.body;fixtures.workpaperRecipe=workpaperRecipe.body;
-  report.fixtureHashes=[...rq.files,...assets.filter(a=>['nov05-f009','nov05-f012','nov05-f013','nov05-f014','nov05-f015','nov05-f016'].includes(a.file_id))].map(a=>({id:a.file_id,sha256:a.sha256}));
-  report.fixtureHashes.push({id:'integrity-dongying/input.json',sha256:integrityRecipe.sha256},{id:'workpaper-dongying/input.json',sha256:workpaperRecipe.sha256});
+  const locked=loadFixedFixtures({repo,samples,env}),fixtures=locked.fixtures;report.fixtureHashes=locked.fixtureHashes;
   const account={username:'release_test',password:'Release-'+randomBytes(18).toString('hex')};
   writeJson(join(out,'private.json'),{fixtures,account});
   const credential=prepareReleaseCredential({out,directory,settings,hostEnv:env});
@@ -157,9 +150,12 @@ try{
  const save=()=>writeJson(reportFile,report);
  report.controllerFiles=assertControllerCandidate({repo,directory,sha:report.sha,env});
  const fixedDirectory=join(out,'source/scripts/release-smoke');
+ report.archivedControllerFiles=assertControllerCandidate({repo,directory:fixedDirectory,sourceRoot:join(out,'source'),strictRaw:true,sha:report.sha,env});
+ const locked=loadFixedFixtures({repo,samples:join(out,'samples'),env});
+ const privateData=assertFixtureBindings(JSON.parse(readFileSync(join(out,'private.json'))),report,locked);
  const readers=createEvidenceReaders({out,repo,directory:fixedDirectory,report,env,compose,save});
  const {runJourneys}=await import(pathToFileURL(join(fixedDirectory,'flows.mjs')).href);
- await runJourneys({out,report,privateData:JSON.parse(readFileSync(join(out,'private.json'))),save,...readers});
+ await runJourneys({out,report,privateData,save,...readers});
  report.status=verdict(report.cases);if(report.status==='passed')report.completedAt??=new Date().toISOString();
 }catch(error){report.status='blocked';report.error=String(error.message);console.error(report.error);process.exitCode=1;}
 finally{

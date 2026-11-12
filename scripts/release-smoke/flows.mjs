@@ -92,6 +92,18 @@ export async function runJourneys({out,report,privateData,save,inspect,execReadO
   if(run.state!=='succeeded')throw Error('Run did not succeed: '+run.state+'/'+run.stage);
   return run;
  }
+ async function waitPreparation(entry){
+  while(true){
+   if(expireCase(report,entry)){save();throw Error(entry.error);}
+   const run=await readJson('/api/v1/runs/'+encodeURIComponent(entry.preparationId));entry.preparationState={state:run.state,stage:run.stage};save();
+   const status=classifyState(run.state);if(status==='ready')break;
+   if(status!=='waiting')throw Error('Original QA preparation requires attention or failed: '+run.state+'/'+run.stage);
+   await page.waitForTimeout(5000);
+  }
+  await page.goto(qaPreparationURL(entry.projectURL,entry.preparationId));
+  const remaining=caseDeadline(report,entry)-Date.now();if(remaining<=0)throw Error('Original QA case deadline expired');
+  await expect(page.locator('.qa-question-list article')).toHaveCount(7,{timeout:Math.min(60000,remaining)});
+ }
  async function download(button,name,entry){
   await expect(button).toBeVisible({timeout:60000});
   const downloading=page.waitForEvent('download',{timeout:name==='workpaper.zip'?20*60000:120000});downloading.catch(()=>{});await button.click();
@@ -166,7 +178,7 @@ export async function runJourneys({out,report,privateData,save,inspect,execReadO
      }
      entry.qaProspectus=await confirmQaProspectus(page,{projectURL:entry.projectURL,expected:qaProspectusFixture(f.dongying)});save();
      await retainQaPreparation(page,{entry,expected:qaProspectusFixture(f.questions),upload:()=>upload(page.locator('#qa-upload'),f.questions),save});
-     await expect(page.locator('.qa-question-list article')).toHaveCount(7,{timeout:180000});entry.prepared=true;save();
+     await waitPreparation(entry);entry.prepared=true;save();
     }
     await page.reload();await expect(page.locator('.qa-question-list article')).toHaveCount(7,{timeout:60000});
     await page.locator('#qa-save').click();
@@ -247,6 +259,7 @@ export async function runJourneys({out,report,privateData,save,inspect,execReadO
     if(entry.id==='update-rq-202509')entry.qualityEvidence=await readWordQuality({ownerId:report.ownerId,runId:entry.runId,inputHash:entry.inputHash,downloads:entry.downloads.map(d=>({role:d.role.replace('.docx',''),sha256:d.sha256,bytes:d.bytes})),requireRenderedPages:true});
     const after=await snapshot(entry,'refresh-download');entry.billingRefreshPage=await readBillingPage({page,entry,snapshot:after});
     entry.refreshEvidence={status:'passed',sameTask:true,billingPage:entry.billingRefreshPage,downloads:entry.downloads.slice(refreshDownloadOffset).map(({role,sha256,bytes})=>({role,sha256,bytes})),billing:assertBillingUnchanged({before:entry.billingTerminal,after})};
+    if(expireCase(report,entry)){save();throw Error(entry.error);}
     entry.status='passed';assertCaseComplete(entry);entry.finishedAt=new Date().toISOString();delete entry.error;save();console.log(entry.id,'passed');
    });
   }
