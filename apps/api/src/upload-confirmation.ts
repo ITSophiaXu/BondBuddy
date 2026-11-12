@@ -3,13 +3,14 @@ import type {Pool,PoolClient} from 'pg';
 import {DIRECT_UPLOAD_TRANSPORT,schemas,type Material} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import {Problem,project,transaction,uid,missing,conflict,materialDto,type PrivateBlobs} from './data.js';
-import {completeStoredUpload,prepareStoredUpload,fullMaterialProof,type UploadDeclaration} from './complete-upload.js';
+import {completeStoredUpload,prepareStoredUpload,fullMaterialProof,measureUploadPhase,type UploadDeclaration,type UploadTimingObserver} from './complete-upload.js';
+export type {UploadPhaseTiming} from './complete-upload.js';
 import {cachedUploadVersion,boundedVersion} from './upload-integrity.js';
 import {configuredUploadInspectionException,uploadInspectionExceptionMatches} from './upload-inspection-exception.js';
 
 export type UploadConfirmationLease={id:string;owner:string;projectId:string;uploadId:string;token:string;requestId:string;traceId:string;declaration:UploadDeclaration;upload:any;excepted:boolean;attempts:number};
 export const UPLOAD_CONFIRMATION_SMALL_MAX_BYTES=16*1024*1024;
-export type UploadConfirmationLane='general'|'small';
+export type UploadConfirmationLane='general'|'small'|'large';
 const pending=(uploadId:string)=>({status:'confirming' as const,upload_id:uploadId});
 function restoreError(e:any):Problem{
   return new Problem(e.status,e.code,e.message,e.uploadReason,e.uploadDetail);
@@ -97,13 +98,15 @@ export async function requestUploadConfirmation(pool:Pool,blobs:PrivateBlobs,own
 
 /** Claims exactly this event type; log forwarding owns only observability events. */
 export async function claimUploadConfirmation(pool:Pool,leaseSeconds=120,lane:UploadConfirmationLane='general'):Promise<UploadConfirmationLease|null>{
+  if(!['general','small','large'].includes(lane))throw new Error('Invalid upload confirmation lane');
   return transaction(pool,async client=>{
     // Filter before taking the lease. A reserved small-file slot must never
     // claim a large upload and consume its retries while waiting for capacity.
     // The general slot keeps FIFO order, including large files.
     const row=(await client.query(`SELECT o.* FROM bb_outbox o WHERE o.aggregate_type='upload' AND o.event_type='upload.complete_requested' AND o.delivered_at IS NULL AND (o.lease_until IS NULL OR o.lease_until<=now()) AND (o.next_attempt_at IS NULL OR o.next_attempt_at<=now())
-      AND ($1::bigint IS NULL OR EXISTS(SELECT 1 FROM bb_upload_confirmations c WHERE c.outbox_id=o.id AND c.owner_user_id=o.owner_user_id AND c.upload_id=o.aggregate_id AND c.byte_size BETWEEN 1 AND $1::bigint))
-      ORDER BY o.created_at,o.id FOR UPDATE OF o SKIP LOCKED LIMIT 1`,[lane==='small'?UPLOAD_CONFIRMATION_SMALL_MAX_BYTES:null])).rows[0];
+      AND ($1::text='general' OR EXISTS(SELECT 1 FROM bb_upload_confirmations c WHERE c.outbox_id=o.id AND c.owner_user_id=o.owner_user_id AND c.upload_id=o.aggregate_id AND c.byte_size>=1
+        AND (($1='small' AND c.byte_size<=$2::bigint) OR ($1='large' AND c.byte_size>$2::bigint))))
+      ORDER BY o.created_at,o.id FOR UPDATE OF o SKIP LOCKED LIMIT 1`,[lane,UPLOAD_CONFIRMATION_SMALL_MAX_BYTES])).rows[0];
     if(!row)return null;
     const token=uid();
     await client.query("UPDATE bb_outbox SET lease_token=$2,lease_until=now()+($3::integer*interval '1 second'),delivery_attempts=delivery_attempts+1 WHERE id=$1",[row.id,token,leaseSeconds]);
@@ -116,7 +119,7 @@ async function fence(client:PoolClient,lease:UploadConfirmationLease){
   const row=(await client.query(`SELECT id FROM bb_outbox WHERE id=$1 AND owner_user_id=$2 AND aggregate_type='upload' AND aggregate_id=$3 AND event_type='upload.complete_requested' AND delivered_at IS NULL AND lease_token=$4 AND lease_until>clock_timestamp() FOR UPDATE`,[lease.id,lease.owner,lease.uploadId,lease.token])).rows[0];
   if(!row)throw new Problem(409,'ALREADY_TERMINAL','Upload confirmation lease is no longer active');
 }
-export async function processUploadConfirmation(pool:Pool,blobs:PrivateBlobs,lease:UploadConfirmationLease){
+export async function processUploadConfirmation(pool:Pool,blobs:PrivateBlobs,lease:UploadConfirmationLease,observe?:UploadTimingObserver){
   try{
     const exception=lease.excepted?{ownerUserId:lease.owner,projectId:lease.projectId,role:lease.upload.role,byteSize:lease.declaration.byte_size,sha256:lease.declaration.sha256,mediaType:lease.upload.declared_media_type} as ReturnType<typeof configuredUploadInspectionException>:null;
     const prepared=await prepareStoredUpload(pool,blobs,lease.owner,lease.projectId,lease.uploadId,lease.declaration,exception,async m=>{
@@ -133,12 +136,12 @@ export async function processUploadConfirmation(pool:Pool,blobs:PrivateBlobs,lea
         if((await client.query("SELECT 1 FROM bb_storage_tombstones WHERE owner_user_id=$1 AND object_key=$2 AND state='purged'",[lease.owner,m.object_key])).rowCount)throw missing();
         await client.query('UPDATE bb_upload_confirmations SET canonical_object_key=COALESCE(canonical_object_key,$2),canonical_object_keys=CASE WHEN $2=ANY(canonical_object_keys) THEN canonical_object_keys ELSE array_append(canonical_object_keys,$2) END WHERE outbox_id=$1',[lease.id,m.object_key]);
       });
-    });
-    await completeStoredUpload(pool,blobs,lease.owner,lease.projectId,lease.uploadId,lease.declaration,lease.requestId,{prepared,traceId:lease.traceId,expectedUpload:lease.upload,beforeCommit:client=>fence(client,lease),onAccepted:async(client,material)=>{
+    },observe);
+    await measureUploadPhase('commit',observe,()=>completeStoredUpload(pool,blobs,lease.owner,lease.projectId,lease.uploadId,lease.declaration,lease.requestId,{prepared,traceId:lease.traceId,expectedUpload:lease.upload,beforeCommit:client=>fence(client,lease),onAccepted:async(client,material)=>{
       await fence(client,lease); // Recheck expiry after the bounded version probes.
       await client.query("UPDATE bb_upload_confirmations SET state='completed',result=$2,error=NULL,updated_at=now() WHERE outbox_id=$1",[lease.id,material]);
       await client.query('UPDATE bb_outbox SET delivered_at=now(),lease_token=NULL,lease_until=NULL,last_delivery_error=NULL,next_attempt_at=NULL WHERE id=$1',[lease.id]);
-    }});
+    }}));
     return 'completed' as const;
   }catch(error){
     const e=safeError(error);
@@ -165,9 +168,9 @@ export async function processUploadConfirmation(pool:Pool,blobs:PrivateBlobs,lea
     return changed?(retry?'retry':'failed'):'lease_lost';
   }
 }
-export async function runUploadConfirmationOnce(pool:Pool,blobs:PrivateBlobs,lane:UploadConfirmationLane='general'){
+export async function runUploadConfirmationOnce(pool:Pool,blobs:PrivateBlobs,lane:UploadConfirmationLane='general',observe?:(event:import('./complete-upload.js').UploadPhaseTiming&{upload_id:string})=>void){
   const lease=await claimUploadConfirmation(pool,120,lane);
   if(!lease)return 'idle';
   const timer=setInterval(()=>{void pool.query("UPDATE bb_outbox SET lease_until=now()+interval '120 seconds' WHERE id=$1 AND lease_token=$2 AND delivered_at IS NULL AND lease_until>now()",[lease.id,lease.token]).catch(()=>{});},40000);
-  try{return await processUploadConfirmation(pool,blobs,lease);}finally{clearInterval(timer);}
+  try{return await processUploadConfirmation(pool,blobs,lease,event=>observe?.({...event,upload_id:lease.uploadId}));}finally{clearInterval(timer);}
 }
