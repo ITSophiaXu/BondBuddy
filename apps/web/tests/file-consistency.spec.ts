@@ -13,8 +13,9 @@ const project='synthetic-review',base='/projects/'+project,filename='合成募�
 const mime='application/vnd.openxmlformats-officedocument.wordprocessingml.document',bytes=Buffer.from('synthetic upload bytes'),sha256=createHash('sha256').update(bytes).digest('hex');
 function checked(schema:TSchema,value:unknown){expect([...Value.Errors(schema,value)].map(e=>({path:e.path,message:e.message}))).toEqual([]);}
 async function reply<K extends keyof typeof schemas>(route:Route,name:K,value:Dto<K>,status=200){checked(schemas[name],value);return route.fulfill({status,json:value});}
+type SetupOptions={files?:number;source?:boolean;saveFailure?:boolean;completionFailures?:number;readFailure?:boolean;history?:boolean};
 // Real page, ApiClient and recoverable uploader; synthetic API receipts and bytes, no backend/model/billing.
-async function setup(page:Page,{files=0,source=false,saveFailure=false,completionFailures=saveFailure?1:0,readFailure=false,history=false}={}){
+async function setup(page:Page,{files=0,source=false,saveFailure=false,completionFailures=saveFailure?1:0,readFailure=false,history=false}:SetupOptions={}){
   const calls:{method:string;path:string;body:any}[]=[];
   let failComplete=completionFailures,failRead=readFailure,checkStarted=false;
   const version:ProspectusVersion={version_id:'source-v1',sequence:1,filename,origin:'upload',created_at:now,material_id:'material-1',material_version:1,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null,sha256};
