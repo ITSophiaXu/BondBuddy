@@ -2,7 +2,7 @@
 /** Transfer one original commit and its complete tree without repository configuration or parent history. */
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readlinkSync, readSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,7 +33,7 @@ function isolatedGit(task) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_/i.test(key)));
   Object.assign(env, { GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: empty, GIT_CONFIG_GLOBAL: empty, GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1', GIT_ALLOW_PROTOCOL: '', GIT_TERMINAL_PROMPT: '0' });
   const git = (cwd, args, options = {}) => {
-    const result = spawnSync('git', ['--no-replace-objects', '-c', `core.hooksPath=${hooks}`, '-c', 'core.fsmonitor=false', '-c', 'core.autocrlf=false', '-c', `core.attributesFile=${empty}`, '-c', 'credential.helper=', ...args],
+    const result = spawnSync('git', ['--no-replace-objects', '-c', `core.hooksPath=${hooks}`, '-c', 'core.fsmonitor=false', '-c', 'core.autocrlf=false', '-c', 'core.eol=lf', '-c', `core.attributesFile=${empty}`, '-c', 'credential.helper=', ...args],
       { cwd, env, encoding: 'utf8', maxBuffer: MAX_OUTPUT, timeout: 600_000, windowsHide: true, ...options });
     if (result.error || result.status !== 0) throw new Error(`git ${args[0]} failed: ${result.error?.message ?? result.stderr ?? `exit ${result.status}`}`);
     return result.stdout;
@@ -62,6 +62,48 @@ function verifyExactPack(rows, commit, ids) {
   const expected = new Set([commit, ...ids]), actual = new Set(rows.map(row => row.id));
   if (actual.size !== expected.size || rows.length !== actual.size || [...expected].some(id => !actual.has(id))) throw new Error('Pack does not contain exactly the original commit and its complete tree');
   if (rows.filter(row => row.type === 'commit').length !== 1 || !rows.some(row => row.id === commit && row.type === 'commit') || rows.some(row => !['commit', 'tree', 'blob'].includes(row.type))) throw new Error('Pack contains unexpected history or object types');
+}
+
+/** Raw bytes are independent of Git status, which can normalize CRLF to a clean index. */
+function rawSourceProof(git, root, commit, format) {
+  const base = realpathSync(root), parents = new Set([base]), manifest = [], buffer = Buffer.allocUnsafe(1024 * 1024);
+  let byteCount = 0;
+  for (const entry of git(root, ['ls-tree', '-r', '-z', commit]).split('\0').filter(Boolean)) {
+    const tab = entry.indexOf('\t'), [mode, kind, expected] = entry.slice(0, tab).split(' '), name = entry.slice(tab + 1), file = resolve(base, name);
+    const rel = relative(base, file);
+    if (!rel || isAbsolute(rel) || rel === '..' || rel.startsWith('..' + sep) || kind !== 'blob') throw new Error('Unsupported or escaping snapshot entry');
+    const parent = dirname(file);
+    if (!parents.has(parent)) { if (realpathSync(parent) !== parent) throw new Error('Snapshot parent is redirected: ' + name); parents.add(parent); }
+    const stat = lstatSync(file);
+    let actual, bytes;
+    if (mode === '120000') {
+      if (!stat.isSymbolicLink()) throw new Error('Snapshot symlink is missing: ' + name);
+      const target = readlinkSync(file, { encoding: 'buffer' }); bytes = target.length;
+      actual = createHash(format).update('blob ' + bytes + '\0').update(target).digest('hex');
+    } else {
+      if (!['100644', '100755'].includes(mode) || !stat.isFile() || stat.isSymbolicLink()) throw new Error('Snapshot regular file is missing: ' + name);
+      bytes = stat.size;
+      const hash = createHash(format).update('blob ' + bytes + '\0'), fd = openSync(file, 'r');
+      try { for (;;) { const size = readSync(fd, buffer, 0, buffer.length, null); if (!size) break; hash.update(buffer.subarray(0, size)); } }
+      finally { closeSync(fd); }
+      actual = hash.digest('hex');
+    }
+    if (actual !== expected) throw new Error('Snapshot raw bytes differ from Git blob: ' + name);
+    byteCount += bytes; manifest.push({ path: name, mode, blob: actual, bytes });
+  }
+  return { files: manifest.length, byte_count: byteCount, manifest_sha256: createHash('sha256').update(JSON.stringify(manifest)).digest('hex') };
+}
+
+export function verifyGitSnapshotSource({ sourceRoot, expectedCommit, expectedTree }) {
+  const source = resolve(sourceRoot);
+  return isolatedGit(({ git }) => {
+    const format = git(source, ['rev-parse', '--show-object-format']).trim();
+    if (!['sha1', 'sha256'].includes(format)) throw new Error('Unsupported Git object format');
+    requireOid(expectedCommit, format, 'expected commit'); requireOid(expectedTree, format, 'expected tree');
+    if (git(source, ['rev-parse', 'HEAD']).trim() !== expectedCommit || git(source, ['rev-parse', 'HEAD^{tree}']).trim() !== expectedTree || git(source, ['write-tree']).trim() !== expectedTree) throw new Error('Snapshot candidate changed');
+    if (git(source, ['status', '--porcelain', '--untracked-files=no']).trim()) throw new Error('Snapshot tracked source changed');
+    return rawSourceProof(git, source, expectedCommit, format);
+  });
 }
 
 export function createGitSnapshot({ sourceRoot, commit, tree, outputDirectory }) {
@@ -99,6 +141,7 @@ export function restoreGitSnapshot({ snapshotDirectory, destination, expectedCom
   return isolatedGit(({ git, template }) => {
     git(target, ['init', '--quiet', `--template=${template}`, `--object-format=${format}`]);
     git(target, ['config', '--local', 'core.autocrlf', 'false']);
+    git(target, ['config', '--local', 'core.eol', 'lf']);
     git(target, ['config', '--local', 'core.fileMode', process.platform === 'win32' ? 'false' : 'true']);
     git(target, ['config', '--local', 'core.symlinks', 'true']);
     git(target, ['config', '--local', 'core.fsmonitor', 'false']);
@@ -131,7 +174,8 @@ export function restoreGitSnapshot({ snapshotDirectory, destination, expectedCom
     if (git(target, ['status', '--porcelain', '--untracked-files=all']).trim()) throw new Error('Restored working tree is not clean');
     if (git(target, ['rev-parse', '--is-bare-repository']).trim() !== 'false' || git(target, ['rev-parse', '--is-shallow-repository']).trim() !== 'true' || git(target, ['rev-list', '--count', 'HEAD']).trim() !== '1') throw new Error('Restored repository is not a one-commit shallow checkout');
     git(target, ['fsck', '--connectivity-only', '--no-reflogs']);
-    return { commit: expectedCommit, tree: expectedTree, clean_tree: true, shallow: true, object_count: rows.length };
+    const raw_source = rawSourceProof(git, target, expectedCommit, format);
+    return { commit: expectedCommit, tree: expectedTree, clean_tree: true, shallow: true, object_count: rows.length, raw_source };
   });
 }
 
