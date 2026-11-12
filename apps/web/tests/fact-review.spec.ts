@@ -3,6 +3,7 @@ import type { FactCandidate } from '@bondbuddy/contracts';
 import { groupFactCandidates, decisionInput } from '../src/fact-review';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fixtureJson, serveDisabledBillingCatalog, type Dto } from './billing-fixture-wire';
 
 const projectId = 'project-fact-review-synthetic';
 const hash = 'a'.repeat(64);
@@ -34,38 +35,42 @@ test('grouping refuses inconsistent identities and decision request omits server
   expect(request.selected_candidate_id).toBe('candidate-a');
 });
 
-const json = (route: Route, status: number, body: unknown) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-async function installApi(page: Page, state: { requests: any[]; fail: number; cursors: string[] }) {
+const json = (route: Route, status: number, body: unknown) => route.fulfill({ status, contentType: 'application/json', body: fixtureJson(route, body) });
+const emptyVersions: Dto<'ProspectusVersionsResponse'> = { project_id: projectId, current_version_id: null,
+  selection_revision: 0, inactive_material_ids: [], versions: [] };
+const emptyTasks: Dto<'ProjectTasksResponse'> = { project_id: projectId, items: [], page: { next_cursor: null, has_more: false } };
+async function installApi(page: Page, state: { requests: any[]; fail: number; cursors: string[] }, incompletePagination = false) {
+  const unhandled: string[] = [];
   await page.route('**/api/v1/**', async route => {
+    if (await serveDisabledBillingCatalog(route)) return;
     const url = new URL(route.request().url());
-    const path = url.pathname;
-    if (path === '/api/v1/me') return json(route, 200, { user_id: 'owner-1', session_status: 'active' });
-    if (path === '/api/v1/account') return json(route, 200, { user_id: 'owner-1', username: 'synthetic', phone_masked: null,
+    const path = url.pathname, method = route.request().method();
+    if (method === 'GET' && path === '/api/v1/me') return json(route, 200, { user_id: 'owner-1', session_status: 'active' });
+    if (method === 'GET' && path === '/api/v1/account') return json(route, 200, { user_id: 'owner-1', username: 'synthetic', phone_masked: null,
       status: 'active', created_at: now, accepted_terms_version: null, current_terms_version: null,
       password_updated_at: null, support_contact: null });
-    if (path === '/api/v1/credits/balance') return json(route, 200, { enabled: false, available: 0, frozen: 0 });
-    if (path === '/api/v1/data-policy') return json(route, 200, policy);
+    if (method === 'GET' && path === '/api/v1/credits/balance') return json(route, 200, { enabled: false, available: 0, frozen: 0 });
+    if (method === 'GET' && path === '/api/v1/data-policy') return json(route, 200, policy);
     // The surrounding project workspace also recovers the current run and old artifact.
-    if (path === '/api/v1/projects') return json(route, 200, { items: [{ project_id: projectId, name: '合成事实审核项目',
+    if (method === 'GET' && path === '/api/v1/projects') return json(route, 200, { items: [{ project_id: projectId, name: '合成事实审核项目',
       draft_revision: 1, updated_at: now, latest_run: null, latest_artifact: null }], page: { next_cursor: null, has_more: false } });
-    if (path === `/api/v1/projects/${projectId}`) return json(route, 200, { project_id: projectId, draft_revision: 1, input_revision: null,
+    if (method === 'GET' && path === `/api/v1/projects/${projectId}`) return json(route, 200, { project_id: projectId, draft_revision: 1, input_revision: null,
       input_hash: null, name: '合成事实审核项目', kind: 'update', issuer_name: null, market: null, offering: null, updated_at: now });
-    if (path === `/api/v1/projects/${projectId}/messages`) return json(route, 200, {
+    if (method === 'GET' && path === `/api/v1/projects/${projectId}/prospectus-versions`) return json(route, 200, emptyVersions);
+    if (method === 'GET' && path === `/api/v1/projects/${projectId}/tasks`) return json(route, 200, emptyTasks);
+    if (method === 'GET' && path === `/api/v1/projects/${projectId}/messages`) return json(route, 200, {
       conversation_id: projectId, items: [], project_message_set_ref: { version: 1, content_sha256: hash, message_ids: [] },
       next_cursor: null, has_more: false
     });
-    if (path === `/api/v1/projects/${projectId}/events`) return json(route, 200, { items: [], next_cursor: 0 });
-    if (path === `/api/v1/projects/${projectId}/messages`) return json(route, 200, {
-      conversation_id: projectId, items: [], project_message_set_ref: { version: 1, content_sha256: hash, message_ids: [] },
-      next_cursor: null, has_more: false
-    });
-    if (path === `/api/v1/projects/${projectId}/facts/candidates`) {
+    if (method === 'GET' && path === `/api/v1/projects/${projectId}/events`) return json(route, 200, { items: [], next_cursor: 0 });
+    if (method === 'GET' && path === `/api/v1/projects/${projectId}/facts/candidates`) {
       const cursor = url.searchParams.get('cursor') ?? '';
       state.cursors.push(cursor);
+      if (incompletePagination) return json(route, 200, { items: [first], next_cursor: null, has_more: true });
       return cursor ? json(route, 200, { items: [second], next_cursor: null, has_more: false })
         : json(route, 200, { items: [first], next_cursor: 'page-2', has_more: true });
     }
-    if (path === `/api/v1/projects/${projectId}/facts/decisions`) {
+    if (method === 'POST' && path === `/api/v1/projects/${projectId}/facts/decisions`) {
       const body = route.request().postDataJSON();
       state.requests.push(body);
       if (state.fail) {
@@ -77,8 +82,10 @@ async function installApi(page: Page, state: { requests: any[]; fail: number; cu
         selected_candidate_id: body.selected_candidate_id ?? null, reason: body.reason,
         actor_kind: 'user', created_at: now, replayed: false, verification_effect: 'none' });
     }
+    unhandled.push(`${method} ${path}`);
     return json(route, 404, { code: 'NOT_FOUND' });
   });
+  return unhandled;
 }
 
 // The retained component is exercised only by this test harness; #384 removes it from
@@ -97,11 +104,12 @@ async function mountIsolatedReview(page: Page) {
 
 test('ordinary upload workspace never offers or fetches a content fact review', async ({ page }) => {
   const state = { requests: [] as any[], fail: 0, cursors: [] as string[] };
-  await installApi(page, state); await page.goto(`/#/projects/${projectId}`);
+  const unhandled = await installApi(page, state); await page.goto(`/#/projects/${projectId}`);
   await expect(page.getByRole('heading', { name: '合成事实审核项目' })).toBeVisible();
   await expect(page.locator('.workspace-evidence, .fact-review, #fact-review-root')).toHaveCount(0);
   await expect(page.getByText('核对材料事实与来源冲突')).toHaveCount(0);
   expect(state.requests).toEqual([]); expect(state.cursors).toEqual([]);
+  expect(unhandled).toEqual([]);
 });
 
 test('isolated fact review component loads all pages, keeps a retry ID, and never labels a choice verified', async ({ page }) => {
@@ -109,7 +117,7 @@ test('isolated fact review component loads all pages, keeps a retry ID, and neve
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(`${message.text()} @${message.location().url}`); });
-  await installApi(page, state);
+  const unhandled = await installApi(page, state);
   await page.goto(`/#/projects/${projectId}`);
   await expect(page.getByRole('heading', { name: '合成事实审核项目' })).toBeVisible();
   await mountIsolatedReview(page);
@@ -143,11 +151,12 @@ test('isolated fact review component loads all pages, keeps a retry ID, and neve
   await expect(page.locator('.fact-result')).toContainText('来源核验状态未改变');
   expect(state.requests[2].expected_version).toBe(2);
   expect(errors.filter(message => !message.includes(`/api/v1/projects/${projectId}/facts/decisions`) || !message.includes('503'))).toEqual([]);
+  expect(unhandled).toEqual([]);
 });
 
 test('409 keeps input, disables stale submission, and allows deliberate refresh', async ({ page }) => {
   const state = { requests: [] as any[], fail: 409, cursors: [] as string[] };
-  await installApi(page, state);
+  const unhandled = await installApi(page, state);
   await page.goto(`/#/projects/${projectId}`);
   await mountIsolatedReview(page);
   await page.getByRole('button', { name: '读取事实候选' }).click();
@@ -165,23 +174,16 @@ test('409 keeps input, disables stale submission, and allows deliberate refresh'
   await expect(page.locator('.fact-result')).toContainText('来源核验状态未改变');
   expect(state.requests[0].request_id).not.toBe(state.requests[1].request_id);
   expect(state.requests[0].expected_version).toBe(0);
+  expect(unhandled).toEqual([]);
 });
 
 test('incomplete candidate pagination never opens the decision form', async ({ page }) => {
-  await page.route('**/api/v1/**', route => {
-    const path = new URL(route.request().url()).pathname;
-    if (path === '/api/v1/me') return json(route, 200, { user_id: 'owner-1', session_status: 'active' });
-    if (path === '/api/v1/data-policy') return json(route, 200, policy);
-    if (path === `/api/v1/projects/${projectId}`) return json(route, 200, { project_id: projectId, draft_revision: 1,
-      input_revision: null, input_hash: null, name: '合成事实审核项目', kind: 'update', issuer_name: null,
-      market: null, offering: null, updated_at: now });
-    if (path === `/api/v1/projects/${projectId}/events`) return json(route, 200, { items: [], next_cursor: 0 });
-    if (path === `/api/v1/projects/${projectId}/facts/candidates`) return json(route, 200, { items: [first], next_cursor: null, has_more: true });
-    return json(route, 404, { code: 'NOT_FOUND' });
-  });
+  const state = { requests: [] as any[], fail: 0, cursors: [] as string[] };
+  const unhandled = await installApi(page, state, true);
   await page.goto(`/#/projects/${projectId}`);
   await mountIsolatedReview(page);
   await page.getByRole('button', { name: '读取事实候选' }).click();
   await expect(page.locator('[data-fact-load-status]')).toContainText('候选集合未完整读取');
   await expect(page.locator('[data-fact-form]')).toHaveCount(0);
+  expect(state.cursors).toEqual(['']); expect(state.requests).toEqual([]); expect(unhandled).toEqual([]);
 });
