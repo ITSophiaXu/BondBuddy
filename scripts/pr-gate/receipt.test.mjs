@@ -7,7 +7,7 @@ import { CACHE_FILES, OFFLINE_SCHEMA, compareCacheFiles, hash } from './offline-
 import { syntheticHostDispatch, syntheticHostReferences, syntheticHostSources } from './host-dispatch.test-fixture.mjs';
 import { CORE_SOURCE_SCHEMA } from './core-source.mjs';
 import { syntheticBrowserShard, syntheticBrowserSources } from './browser.test-fixture.mjs';
-import { syntheticReferenceRuns } from './browser-reference.test-fixture.mjs';
+import { syntheticReferenceRuns, syntheticQaBaselineRuns } from './browser-reference.test-fixture.mjs';
 import { syntheticInternalNetwork } from './internal-network.test-fixture.mjs';
 
 const matrix = [
@@ -41,6 +41,7 @@ function fixture() {
     exclusions: structuredClone(expected.exclusions),
     capabilities,
     reference_components: syntheticReferenceRuns(expected, hostDispatch.plan.run_id),
+    qa_single_start_baseline: syntheticQaBaselineRuns(expected, hostDispatch.plan.run_id),
     run_id: hostDispatch.plan.run_id, host_dispatch: hostDispatch,
     host_source: { commit: expected.commit, tree: expected.tree, clean_tree: true, raw_source: structuredClone(hostDispatch.runtime.source.raw_source) },
     core_source_final: { schema: CORE_SOURCE_SCHEMA, status: 'passed', phase: 'after-all-shards', source_root: '/workspace', run_id: hostDispatch.plan.run_id,
@@ -229,6 +230,15 @@ test('complete current-candidate offline preparation still requires every origin
 test('normal receipt cannot omit or substitute fixed reference lifecycle evidence', () => {
   for (const mutate of [r => delete r.reference_components, r => delete r.reference_components.container_after,
     r => r.reference_components.shards.pop(), r => r.reference_components.mount_after.writable = true]) {
+    const receipt = fixture(); mutate(receipt); assert.throws(() => verifyReceipt(receipt, expected, now), { code: 'ERR_ASSERTION' });
+  }
+});
+test('normal eight-shard receipt requires QA baseline source lifecycle as well as actual alias use', () => {
+  for (const mutate of [r => delete r.qa_single_start_baseline, r => delete r.qa_single_start_baseline.container_after,
+    r => r.qa_single_start_baseline.shards.pop(), r => r.qa_single_start_baseline.mount_after.qa_baseline.writable = true,
+    r => r.qa_single_start_baseline.host_before.source = r.reference_components.host_before.source,
+    r => { const shard = r.shards.find(s => s.summary.browser_runtime?.qa_single_start_baseline);
+      shard.summary.browser_runtime.qa_single_start_baseline.after.aliases[1].loads = 0; }]) {
     const receipt = fixture(); mutate(receipt); assert.throws(() => verifyReceipt(receipt, expected, now), { code: 'ERR_ASSERTION' });
   }
 });

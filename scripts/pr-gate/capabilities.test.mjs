@@ -69,6 +69,13 @@ test('prepared capabilities require pinned old-component identity without claimi
     const value = syntheticCapabilities(expected); mutate(value); assert.throws(() => verifyPreparedCapabilities(value, expected, now));
   }
 });
+test('prepared capabilities require independent QA baseline identity and cannot substitute the earlier QA source', () => {
+  for (const mutate of [p => delete p.qa_single_start_baseline, p => p.qa_single_start_baseline = p.reference_components,
+    p => p.qa_single_start_baseline.source.commit = expected.commit, p => p.qa_single_start_baseline.files.pop(),
+    p => p.qa_single_start_baseline.not_execution_evidence = false]) {
+    const value = syntheticCapabilities(expected); mutate(value); assert.throws(() => verifyPreparedCapabilities(value, expected, now));
+  }
+});
 test('completed historical receipt survives later certificate expiry; the actual run must fit certificate lifetime', () => {
   verifyCapabilityRuns(receipt(), expected, now + 365 * 86400000);
   const value = receipt(); value.finished_at = '2027-01-01T00:00:00Z'; assert.throws(() => verifyCapabilityRuns(value, expected, now));

@@ -23,6 +23,21 @@ export const REFERENCE_FILES = Object.freeze([
 ].map(([name, blob, bytes, sha256]) => Object.freeze({ path: 'apps/web/src/' + name, blob, bytes, sha256 })).sort((a, b) => a.path.localeCompare(b.path)));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 export const REFERENCE_PROFILE_SHA256 = hash(JSON.stringify({ source: REFERENCE_SOURCE, files: REFERENCE_FILES, tests: REFERENCE_TESTS, root: REFERENCE_ROOT }));
+// A different historical component, never attributed to the ffd637f snapshot.
+export const QA_BASELINE_ROOT = '/qa-single-start-baseline-20261029-5ec099a/BondBuddy-develop';
+export const QA_BASELINE_TEST = 'apps/web/tests/qa-single-start-baseline.spec.ts';
+export const QA_BASELINE_SOURCE = Object.freeze({ commit: '5ec099a27d6e754cf9b7b8c75d0f3616746918a1', tree: 'ab8cdb7dcc208c51cbc7765c8172241838eda63c' });
+export const QA_BASELINE_FILES = Object.freeze([
+  { path: 'apps/web/src/project-qa-workspace.css', blob: 'bc3c8d634f341bb11eed86083ce07360c15edf9b', bytes: 13428, sha256: '961f51dfd3a2567bd17ce1c529cfa964a3c358e4948c83c315f2641e7cdf2d0a' },
+  { path: 'apps/web/src/project-qa-workspace.ts', blob: '066befd98de13db490ea897315b2e41040073efc', bytes: 86962, sha256: '1399cff0258d510d0bdeda5a81ebd27cb8cb5683e63406db4c681b5218266c2e' },
+].map(Object.freeze));
+export const QA_BASELINE_ALIASES = Object.freeze(QA_BASELINE_FILES.map(file => Object.freeze({
+  url: '/src/qa-single-start-baseline.' + file.path.split('.').at(-1),
+  id: '/workspace/apps/web/src/qa-single-start-baseline.' + file.path.split('.').at(-1),
+  source_path: file.path, blob: file.blob, bytes: file.bytes, sha256: file.sha256,
+})));
+export const QA_BASELINE_PROFILE_SHA256 = hash(JSON.stringify({ source: QA_BASELINE_SOURCE, files: QA_BASELINE_FILES,
+  test: QA_BASELINE_TEST, root: QA_BASELINE_ROOT, aliases: QA_BASELINE_ALIASES }));
 const canonical = path => resolve(path).replaceAll('\\', '/');
 const exists = path => { try { lstatSync(path); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; } };
 const overlap = (a, b) => a === b || a.startsWith(b + '/') || b.startsWith(a + '/');
@@ -43,6 +58,19 @@ export function verifyReferenceRecord(value, root = REFERENCE_ROOT) {
   assert.deepEqual(value, record(root), 'Pinned reference component identity differs'); return value;
 }
 export function verifyReferenceDirectory(directory = REFERENCE_ROOT) {
+  return verifyPinnedDirectory(directory, REFERENCE_FILES, root => record(root), verifyReferenceRecord);
+}
+function qaRecord(root) {
+  return { schema: 'pr-gate-qa-baseline-components-v1', scope: 'old-components-only', not_a_seal: true, not_execution_evidence: true,
+    source: QA_BASELINE_SOURCE, profile_sha256: QA_BASELINE_PROFILE_SHA256, root, files: QA_BASELINE_FILES };
+}
+export function verifyQaBaselineRecord(value, root = QA_BASELINE_ROOT) {
+  assert.deepEqual(value, qaRecord(root), 'Pinned QA baseline identity differs'); return value;
+}
+export function verifyQaBaselineDirectory(directory = QA_BASELINE_ROOT) {
+  return verifyPinnedDirectory(directory, QA_BASELINE_FILES, qaRecord, verifyQaBaselineRecord);
+}
+function verifyPinnedDirectory(directory, expectedFiles, makeRecord, verifyRecord) {
   const root = realDirectory(directory), paths = [];
   const visit = (dir, prefix = '') => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -56,23 +84,29 @@ export function verifyReferenceDirectory(directory = REFERENCE_ROOT) {
       }
     }
   };
-  visit(directory); assert.deepEqual(paths.sort(), REFERENCE_FILES.map(file => file.path), 'Reference source file set changed');
-  const files = REFERENCE_FILES.map(file => {
+  visit(directory); assert.deepEqual(paths.sort(), expectedFiles.map(file => file.path), 'Reference source file set changed');
+  const files = expectedFiles.map(file => {
     const path = join(directory, file.path); assert.equal(lstatSync(path).size, file.bytes, 'Reference size differs: ' + file.path);
     const actual = fileIdentity(file.path, readFileSync(path)); assert.deepEqual(actual, file, 'Reference bytes differ: ' + file.path); return actual;
   });
-  return verifyReferenceRecord(record(root, files), root);
+  return verifyRecord({ ...makeRecord(root), files }, root);
 }
 export function readReferenceObjects(repository) {
+  return readPinnedObjects(repository, REFERENCE_SOURCE, REFERENCE_FILES);
+}
+export function readQaBaselineObjects(repository) {
+  return readPinnedObjects(repository, QA_BASELINE_SOURCE, QA_BASELINE_FILES);
+}
+function readPinnedObjects(repository, expectedSource, expectedFiles) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_/i.test(key)));
   Object.assign(env, { GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1', GIT_ALLOW_PROTOCOL: '', GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null' });
   const git = args => {
     const result = spawnSync('git', ['--no-replace-objects', '-c', 'credential.helper=', '-c', 'core.fsmonitor=false', ...args], { cwd: repository, env, windowsHide: true, timeout: 30000, maxBuffer: 1024 * 1024 });
     assert.ifError(result.error); assert.equal(result.status, 0, 'Exact reference Git objects must already be available'); return result.stdout;
   };
-  assert.equal(git(['rev-parse', REFERENCE_SOURCE.commit + '^{tree}']).toString().trim(), REFERENCE_SOURCE.tree, 'Reference source tree differs');
-  return new Map(REFERENCE_FILES.map(file => {
-    assert.equal(git(['ls-tree', REFERENCE_SOURCE.commit, '--', file.path]).toString().trim(), `100644 blob ${file.blob}\t${file.path}`, 'Reference Git path/mode/blob differs');
+  assert.equal(git(['rev-parse', expectedSource.commit + '^{tree}']).toString().trim(), expectedSource.tree, 'Reference source tree differs');
+  return new Map(expectedFiles.map(file => {
+    assert.equal(git(['ls-tree', expectedSource.commit, '--', file.path]).toString().trim(), `100644 blob ${file.blob}\t${file.path}`, 'Reference Git path/mode/blob differs');
     const bytes = git(['cat-file', 'blob', file.blob]); assert.deepEqual(fileIdentity(file.path, bytes), file, 'Reference Git bytes differ'); return [file.path, bytes];
   }));
 }
@@ -82,12 +116,21 @@ export function restoreReferenceSource(repository, ownerRoot, evidenceRoot) {
 }
 /** Shared byte-level restore; the gate always obtains these from readReferenceObjects. */
 export function restoreVerifiedReferenceObjects(bytes, ownerRoot, evidenceRoot) {
+  return restorePinnedObjects(bytes, ownerRoot, evidenceRoot, REFERENCE_FILES, verifyReferenceDirectory);
+}
+export function restoreQaBaselineSource(repository, ownerRoot, evidenceRoot) {
+  return restoreVerifiedQaBaselineObjects(readQaBaselineObjects(repository), ownerRoot, evidenceRoot);
+}
+export function restoreVerifiedQaBaselineObjects(bytes, ownerRoot, evidenceRoot) {
+  return restorePinnedObjects(bytes, ownerRoot, evidenceRoot, QA_BASELINE_FILES, verifyQaBaselineDirectory);
+}
+function restorePinnedObjects(bytes, ownerRoot, evidenceRoot, expectedFiles, verifyDirectory) {
   const parent = realDirectory(dirname(ownerRoot)), evidence = realDirectory(evidenceRoot), owner = canonical(ownerRoot);
   assert.equal(canonical(dirname(ownerRoot)), parent); assert.ok(!overlap(owner.toLowerCase(), evidence.toLowerCase()), 'Reference source overlaps writable evidence');
   assert.equal(exists(ownerRoot), false, 'Reference destination already exists');
   assert.ok(bytes instanceof Map);
-  assert.deepEqual([...bytes.keys()].sort(), REFERENCE_FILES.map(file => file.path), 'Reference restore file set differs');
-  for (const file of REFERENCE_FILES) {
+  assert.deepEqual([...bytes.keys()].sort(), expectedFiles.map(file => file.path), 'Reference restore file set differs');
+  for (const file of expectedFiles) {
     assert.ok(Buffer.isBuffer(bytes.get(file.path)));
     assert.deepEqual(fileIdentity(file.path, bytes.get(file.path)), file, 'Reference restore bytes differ');
   } // Validate the entire allowlist before the first write.
@@ -96,7 +139,7 @@ export function restoreVerifiedReferenceObjects(bytes, ownerRoot, evidenceRoot) 
     const target = join(destination, path); assert.ok(!relative(destination, target).startsWith('..'));
     mkdirSync(dirname(target), { recursive: true }); realDirectory(dirname(target)); writeFileSync(target, content, { flag: 'wx' });
   }
-  return verifyReferenceDirectory(destination);
+  return verifyDirectory(destination);
 }
 // Docker Desktop may render a Windows bind as its Linux host bridge path.
 export function mountSourceIdentity(value) {
@@ -109,49 +152,82 @@ export function mountSourceIdentity(value) {
 export function verifyReferenceMount(value, sourceRoot, evidenceRoot, containerId) {
   const source = mountSourceIdentity(sourceRoot), evidence = mountSourceIdentity(evidenceRoot);
   assert.ok(!overlap(source, evidence), 'Reference source overlaps writable evidence');
+  const qaSourceRoot = sourceRoot.replace('/reference-sources/', '/qa-baseline-sources/');
+  assert.notEqual(qaSourceRoot, sourceRoot, 'Reference source must be in its owned source directory');
+  const qaSource = mountSourceIdentity(qaSourceRoot);
+  assert.ok(!overlap(qaSource, evidence) && !overlap(qaSource, source), 'QA baseline source overlaps another input');
   const mounts = value.Mounts ?? [];
   assert.deepEqual(mounts.map(m => ({ type: m.Type, destination: m.Destination, writable: m.RW })).sort((a, b) => a.destination.localeCompare(b.destination)),
-    [{ type: 'bind', destination: '/evidence', writable: true }, { type: 'bind', destination: '/opt/pr-gate-parser106', writable: false }, { type: 'bind', destination: REFERENCE_ROOT, writable: false }]);
+    [{ type: 'bind', destination: '/evidence', writable: true }, { type: 'bind', destination: '/opt/pr-gate-parser106', writable: false },
+      { type: 'bind', destination: QA_BASELINE_ROOT, writable: false }, { type: 'bind', destination: REFERENCE_ROOT, writable: false }]);
   const reference = mounts.find(m => m.Destination === REFERENCE_ROOT), writable = mounts.find(m => m.Destination === '/evidence');
   assert.equal(mountSourceIdentity(reference.Source), source, 'Reference bind source differs from the verified realpath');
   assert.equal(mountSourceIdentity(writable.Source), evidence, 'Writable evidence bind source differs');
+  const qa = mounts.find(m => m.Destination === QA_BASELINE_ROOT);
+  assert.equal(mountSourceIdentity(qa.Source), qaSource, 'QA baseline bind source differs from the verified realpath');
   assert.match(value.Id, /^[a-f0-9]{64}$/);
   assert.equal(value.Id, containerId, 'Reference container differs from this run\'s owned runner');
   return { container_id: value.Id, type: 'bind', root: REFERENCE_ROOT, writable: false, host_source: sourceRoot, host_evidence: evidenceRoot,
-    actual_source: reference.Source, actual_evidence: writable.Source };
+    actual_source: reference.Source, actual_evidence: writable.Source,
+    qa_baseline: { root: QA_BASELINE_ROOT, writable: false, host_source: qaSourceRoot, actual_source: qa.Source } };
 }
 /** Execute committed verifier bytes, never the copy writable by browser tests. */
 export function referenceVerifyCommand(verifierBytes) {
+  return pinnedVerifyCommand(verifierBytes, 'verifyReferenceDirectory');
+}
+export function qaBaselineVerifyCommand(verifierBytes) {
+  return pinnedVerifyCommand(verifierBytes, 'verifyQaBaselineDirectory');
+}
+function pinnedVerifyCommand(verifierBytes, name) {
   assert.ok(Buffer.isBuffer(verifierBytes) && verifierBytes.length > 0);
-  return ['node', '--input-type=module', '-e', `const {verifyReferenceDirectory}=await import(${JSON.stringify('data:text/javascript;base64,' + verifierBytes.toString('base64'))});process.stdout.write(JSON.stringify(verifyReferenceDirectory()));`];
+  return ['node', '--input-type=module', '-e', `const {${name}}=await import(${JSON.stringify('data:text/javascript;base64,' + verifierBytes.toString('base64'))});process.stdout.write(JSON.stringify(${name}()));`];
 }
 export async function collectReferenceCheck({ candidate, runId, containerId, stage, verifierBytes, execute }) {
+  return collectPinnedCheck({ candidate, runId, containerId, stage, verifierBytes, execute }, 'reference', referenceVerifyCommand, verifyReferenceRecord);
+}
+export async function collectQaBaselineCheck(options) {
+  return collectPinnedCheck(options, 'qa-baseline', qaBaselineVerifyCommand, verifyQaBaselineRecord);
+}
+async function collectPinnedCheck({ candidate, runId, containerId, stage, verifierBytes, execute }, label, command, verify) {
   const startedAt = new Date().toISOString();
-  const execution = await execute('reference-' + stage.replaceAll(':', '-'), referenceVerifyCommand(verifierBytes));
+  const execution = await execute(label + '-' + stage.replaceAll(':', '-'), command(verifierBytes));
   assert.equal(execution.code, 0, 'Reference byte verification did not exit successfully');
   return { commit: candidate.commit, tree: candidate.tree, run_id: runId, container_id: containerId, stage,
     verifier_sha256: hash(verifierBytes), started_at: startedAt, finished_at: new Date().toISOString(), execution: { code: execution.code },
-    identity: verifyReferenceRecord(JSON.parse(execution.text)) };
+    identity: verify(JSON.parse(execution.text)) };
 }
 /** Required by the normal receipt validator; a missing input is not an allowed skip. */
 export function verifyReferenceRuns(receipt, expected) {
-  const proof = receipt.reference_components;
-  assert.equal(proof?.schema, 'pr-gate-reference-components-run-v1');
+  return verifyPinnedRuns(receipt, expected, 'reference_components', 'pr-gate-reference-components-run-v1', 'reference-sources', verifyReferenceRecord, REFERENCE_TESTS);
+}
+export function verifyQaBaselineRuns(receipt, expected) {
+  const proof = verifyPinnedRuns(receipt, expected, 'qa_single_start_baseline', 'pr-gate-qa-baseline-components-run-v1', 'qa-baseline-sources', verifyQaBaselineRecord, [QA_BASELINE_TEST]);
+  assert.deepEqual(proof.mount_before, receipt.reference_components.mount_before);
+  assert.deepEqual(proof.mount_after, receipt.reference_components.mount_after);
+  assert.equal(proof.host_before.root, proof.mount_before.qa_baseline.host_source);
+  return proof;
+}
+function verifyPinnedRuns(receipt, expected, key, schema, directory, verifyRecord, tests) {
+  const proof = receipt[key];
+  assert.equal(proof?.schema, schema);
   for (const key of ['commit', 'tree']) assert.equal(proof[key], expected[key]);
   assert.equal(proof.run_id, receipt.run_id);
   assert.match(proof.run_id, /^[a-zA-Z0-9-]{8,80}$/);
   assert.match(proof.container_id, /^[a-f0-9]{64}$/);
   if (receipt.cache_runtime) assert.equal(proof.container_id, receipt.cache_runtime.container_id);
   assert.match(expected.reference_verifier_sha256, /^[a-f0-9]{64}$/, 'Committed reference verifier hash missing');
-  const hostRoot = proof.host_before?.root; assert.ok(typeof hostRoot === 'string' && hostRoot.endsWith('/reference-sources/' + receipt.run_id + '/BondBuddy-develop'));
-  verifyReferenceRecord(proof.host_before, hostRoot); assert.deepEqual(proof.host_after, proof.host_before, 'Host reference source changed during run');
-  const evidenceRoot = hostRoot.slice(0, -('/reference-sources/' + receipt.run_id + '/BondBuddy-develop').length) + '/runs/' + receipt.run_id;
+  const suffix = '/' + directory + '/' + receipt.run_id + '/BondBuddy-develop';
+  const hostRoot = proof.host_before?.root; assert.ok(typeof hostRoot === 'string' && hostRoot.endsWith(suffix));
+  verifyRecord(proof.host_before, hostRoot); assert.deepEqual(proof.host_after, proof.host_before, 'Host reference source changed during run');
+  const evidenceRoot = hostRoot.slice(0, -suffix.length) + '/runs/' + receipt.run_id;
+  const referenceHost = directory === 'reference-sources' ? hostRoot : hostRoot.replace('/qa-baseline-sources/', '/reference-sources/');
   for (const mount of [proof.mount_before, proof.mount_after]) {
     const reconstructed = verifyReferenceMount({ Id: mount?.container_id, Mounts: [
       { Type: 'bind', Destination: '/evidence', Source: mount?.actual_evidence, RW: true },
       { Type: 'bind', Destination: '/opt/pr-gate-parser106', RW: false },
       { Type: 'bind', Destination: mount?.root, Source: mount?.actual_source, RW: mount?.writable },
-    ] }, hostRoot, evidenceRoot, proof.container_id);
+      { Type: 'bind', Destination: mount?.qa_baseline?.root, Source: mount?.qa_baseline?.actual_source, RW: mount?.qa_baseline?.writable },
+    ] }, referenceHost, evidenceRoot, proof.container_id);
     assert.deepEqual(mount, reconstructed, 'Reference mount proof differs');
   }
   assert.deepEqual(proof.mount_before, proof.mount_after, 'Reference bind changed during run');
@@ -162,16 +238,16 @@ export function verifyReferenceRuns(receipt, expected) {
     assert.equal(value.execution?.code, 0);
     const start = Date.parse(value.started_at), end = Date.parse(value.finished_at);
     assert.ok(Number.isFinite(start) && Number.isFinite(end) && start >= Date.parse(receipt.started_at) && end >= start && end <= Date.parse(receipt.finished_at), 'Reference check timestamp outside this run');
-    verifyReferenceRecord(value.identity); return { start, end };
+    verifyRecord(value.identity); return { start, end };
   };
   const before = check(proof.container_before, 'prepared'), after = check(proof.container_after, 'final');
-  assert.deepEqual(proof.container_before.identity, receipt.capabilities.reference_components);
+  assert.deepEqual(proof.container_before.identity, receipt.capabilities[key]);
   for (const shard of receipt.shards) {
     assert.ok(before.end <= Date.parse(shard.started_at) && after.start >= Date.parse(shard.finished_at), 'Reference final/prepared checks do not enclose all shards');
   }
   const rows = (expected.matrix ?? []).filter(row => row.groups === 'browser');
   assert.ok(rows.length > 0); assert.deepEqual(proof.shards?.map(row => row.name), rows.map(row => row.name), 'Reference source checks omitted a browser shard');
-  for (const file of REFERENCE_TESTS) assert.ok(expected.browser_source_sha256?.[file], 'Reference test missing from original browser discovery');
+  for (const file of tests) assert.ok(expected.browser_source_sha256?.[file], 'Reference test missing from original browser discovery');
   for (const row of proof.shards) {
     const shard = receipt.shards.find(s => s.name === row.name), first = check(row.before, row.name + ':before'), last = check(row.after, row.name + ':after');
     assert.ok(first.start >= Date.parse(shard.started_at) && first.end <= Date.parse(shard.summary?.browser_runtime?.started_at) &&
@@ -179,6 +255,39 @@ export function verifyReferenceRuns(receipt, expected) {
     'Reference checks do not surround the original browser execution');
   }
   return proof;
+}
+/** Gate-only virtual source files: Vite keeps the current src-relative imports.
+ * No historical file is written into the candidate or included in its build. */
+export function createQaBaselineAliases(directory = QA_BASELINE_ROOT) {
+  // Alternate roots are only for byte-verifier unit fixtures. Runtime and
+  // receipt validation require the fixed read-only container root.
+  verifyQaBaselineDirectory(directory);
+  const loads = new Map(QA_BASELINE_ALIASES.map(alias => [alias.id, 0]));
+  const snapshot = () => ({ schema: 'pr-gate-qa-baseline-aliases-v1', source: verifyQaBaselineDirectory(directory),
+    aliases: QA_BASELINE_ALIASES.map(alias => ({ ...alias, loads: loads.get(alias.id) })) });
+  const find = id => QA_BASELINE_ALIASES.find(alias => alias.id === id.split('?')[0] || alias.url === id.split('?')[0]);
+  return { before: snapshot(), snapshot, plugin: { name: 'pr-gate-pinned-qa-baseline', enforce: 'pre',
+    resolveId(id) { const alias = find(id); return alias ? alias.id + (id.includes('?') ? '?' + id.split('?').slice(1).join('?') : '') : null; },
+    load(id) {
+      const alias = QA_BASELINE_ALIASES.find(alias => alias.id === id.split('?')[0]); if (!alias) return null;
+      const bytes = readFileSync(join(directory, alias.source_path));
+      const file = QA_BASELINE_FILES.find(file => file.path === alias.source_path);
+      assert.deepEqual(fileIdentity(file.path, bytes), file, 'QA alias source bytes changed');
+      const text = bytes.toString('utf8'); assert.deepEqual(Buffer.from(text), bytes, 'QA alias UTF-8 roundtrip differs');
+      loads.set(alias.id, loads.get(alias.id) + 1); return text;
+    },
+  } };
+}
+export function verifyQaBaselineAliases(before, after) {
+  for (const [phase, value] of [['before', before], ['after', after]]) {
+    assert.equal(value?.schema, 'pr-gate-qa-baseline-aliases-v1'); verifyQaBaselineRecord(value.source);
+    assert.equal(value.aliases?.length, 2);
+    for (let index = 0; index < QA_BASELINE_ALIASES.length; index++) {
+      const { loads, ...identity } = value.aliases[index]; assert.deepEqual(identity, QA_BASELINE_ALIASES[index]);
+      assert.ok(Number.isSafeInteger(loads) && (phase === 'before' ? loads === 0 : loads > 0), 'Both pinned QA aliases must actually load during the original tests');
+    }
+  }
+  assert.deepEqual(before.source, after.source, 'QA baseline changed during browser execution');
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { assert.deepEqual(process.argv.slice(2), ['verify']); console.log(JSON.stringify(verifyReferenceDirectory())); }

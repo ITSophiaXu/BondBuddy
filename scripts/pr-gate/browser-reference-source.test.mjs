@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { REFERENCE_FILES, REFERENCE_ROOT, REFERENCE_TESTS, collectReferenceCheck, mountSourceIdentity, readReferenceObjects,
+import { REFERENCE_FILES, REFERENCE_ROOT, REFERENCE_TESTS, QA_BASELINE_ROOT, collectReferenceCheck, mountSourceIdentity, readReferenceObjects,
   referenceVerifyCommand, restoreReferenceSource, restoreVerifiedReferenceObjects, verifyReferenceDirectory, verifyReferenceMount, verifyReferenceRuns } from './browser-reference-source.mjs';
 import { syntheticReferenceIdentity, syntheticReferenceRuns } from './browser-reference.test-fixture.mjs';
 
@@ -64,11 +64,13 @@ const inspection = () => ({ Id: containerId, Mounts: [
   { Type: 'bind', Destination: '/evidence', Source: evidence, RW: true },
   { Type: 'bind', Destination: '/opt/pr-gate-parser106', Source: 'C:/synthetic/parser', RW: false },
   { Type: 'bind', Destination: REFERENCE_ROOT, Source: host, RW: false },
+  { Type: 'bind', Destination: QA_BASELINE_ROOT, Source: host.replace('/reference-sources/', '/qa-baseline-sources/'), RW: false },
 ] });
-test('actual mount inspection binds owned container, verified host path and exact three-mount policy', () => {
+test('actual mount inspection binds owned container, verified host paths and exact four-mount policy', () => {
   assert.equal(verifyReferenceMount(inspection(), host, evidence, containerId).container_id, containerId);
   for (const mutate of [x => x.Id = 'd'.repeat(64), x => x.Mounts[2].Source = evidence, x => x.Mounts[0].Source += '-old',
     x => x.Mounts[2].RW = true, x => x.Mounts[2].Type = 'volume', x => x.Mounts[2].Destination += '-old', x => x.Mounts.pop(),
+    x => x.Mounts[3].RW = true, x => x.Mounts[3].Source = evidence, x => x.Mounts[3].Source = host, x => x.Mounts[3].Destination += '-old',
     x => x.Mounts.push({ Type: 'bind', Destination: '/workspace', Source: host, RW: true })]) {
     const value = inspection(); mutate(value); assert.throws(() => verifyReferenceMount(value, host, evidence, containerId));
   }
@@ -100,6 +102,7 @@ test('lifecycle rejects missing, stale, cross-run or cross-container proof and u
     p => p.container_before.container_id = 'f'.repeat(64), p => p.container_after.run_id += '-old', p => p.container_after.execution.code = 1,
     p => p.container_after.verifier_sha256 = 'f'.repeat(64), p => p.container_before.identity.not_a_seal = false,
     p => p.mount_after.writable = true, p => p.mount_before.actual_source += '-old', p => p.mount_before.actual_evidence += '-old',
+    p => delete p.mount_before.qa_baseline, p => p.mount_after.qa_baseline.writable = true, p => p.mount_before.qa_baseline.actual_source += '-old',
     p => p.shards.pop(), p => p.shards.push(p.shards[0]), p => delete p.shards[0].before, p => delete p.shards[1].after,
     p => p.shards[2].after.identity.files[0].blob = 'f'.repeat(40), p => p.shards[0].before.finished_at = '2026-11-11T13:00:12Z',
     p => p.shards[0].after.started_at = '2026-11-11T13:00:22Z', p => p.container_after.started_at = '2026-11-11T13:00:39Z']) {

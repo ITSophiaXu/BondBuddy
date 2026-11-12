@@ -36,6 +36,7 @@ export function inspectOfflineContainer(value, imageId, network) {
   assert.ok(!value.HostConfig.CapAdd?.length); assert.ok(!value.HostConfig.PortBindings || !Object.keys(value.HostConfig.PortBindings).length);
   const mounts = (value.Mounts ?? []).map(row => ({ type: row.Type, destination: row.Destination, writable: row.RW })).sort((a, b) => a.destination.localeCompare(b.destination));
   assert.deepEqual(mounts, [{ type: 'bind', destination: '/evidence', writable: true }, { type: 'bind', destination: '/opt/pr-gate-parser106', writable: false },
+    { type: 'bind', destination: '/qa-single-start-baseline-20261029-5ec099a/BondBuddy-develop', writable: false },
     { type: 'bind', destination: '/remote-review-20261025-ffd637f/BondBuddy-develop', writable: false }]);
   return { container_id: value.Id, image_id: value.Image, user: '0:0', network: 'internal', ...attachment, privileged: false, published_ports: 0, mounts };
 }

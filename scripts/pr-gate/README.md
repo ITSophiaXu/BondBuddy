@@ -66,7 +66,11 @@ OCR 分片从 `--host-worker-image` 指定的已有不可变本地镜像复制 T
 
 `integrity-reference`、`parallel-projects-reference`、`project-qa-reference`、`review-followup-reference` 保留原 4 个 spec / 12 个用例。本地入口从已有 Git 对象 `ffd637fac6c1fdf1581112e728f21ec29a94c67c`（tree `9ddc983bf5bf09de5236afd3076830a46649723a`）读取固定 11 个 TS/CSS blob，共 136,905 字节，核对 100644 模式、blob ID、长度和 SHA-256。缺对象直接失败；不下载、不 checkout、不转换换行，不将当前组件写入旧路径。
 
-原字节恢复到本次新建 `.local/pr-gate/reference-sources/<run-id>/BondBuddy-develop`，置于可写 evidence 之外，只读挂载到原固定 `/remote-review-20261025-ffd637f/BondBuddy-develop`。只允许 evidence、parser106、历史组件三个精确挂载；核对实际容器 ID、宿主来源和只读属性。准备后、每个原 browser 分片前后及最终清理前，使用候选提交固定的 verifier 原字节复验文件集合和 hash，最终也复验宿主与挂载。缺少任一检查、跨候选/运行/容器记录或字节漂移均拒绝普通通过回执。
+原字节恢复到本次新建 `.local/pr-gate/reference-sources/<run-id>/BondBuddy-develop`，置于可写 evidence 之外，只读挂载到原固定 `/remote-review-20261025-ffd637f/BondBuddy-develop`。只允许 evidence、parser106、该历史组件和下述 QA 基线四个精确挂载；核对实际容器 ID、宿主来源和只读属性。准备后、每个原 browser 分片前后及最终清理前，使用候选提交固定的 verifier 原字节复验文件集合和 hash，最终也复验宿主与挂载。缺少任一检查、跨候选/运行/容器记录或字节漂移均拒绝普通通过回执。
+
+`qa-single-start-baseline.spec.ts` 的原两项历史对照另使用 `5ec099a27d6e754cf9b7b8c75d0f3616746918a1` / tree `ab8cdb7dcc208c51cbc7765c8172241838eda63c`，不混用上述 `ffd637f` QA 组件。固定 `project-qa-workspace.ts` blob `066befd98de13db490ea897315b2e41040073efc`（86,962 字节）和 CSS blob `bc3c8d634f341bb11eed86083ce07360c15edf9b`（13,428 字节），独立核对模式、长度、Git blob 与 SHA-256。原字节仅恢复到 `.local/pr-gate/qa-baseline-sources/<run-id>/BondBuddy-develop`，只读绑定 `/qa-single-start-baseline-20261029-5ec099a/BondBuddy-develop`；独立 `qa_single_start_baseline` 回执沿用前后/清理复验，明确 `not_a_seal` 和 `not_execution_evidence`。
+
+包含原 QA spec 的完整 browser 分片显式设置 `BB_QA_SINGLE_START_BASELINE=1`。仅 gate 的 Vite 启动配置提供 `/src/qa-single-start-baseline.ts/.css` 两个虚拟源文件：每次实际加载核对对应原字节，保留当前 `src` 目录的相对依赖解析，再由正常 Vite 转换。浏览器回执要求两个 alias 都实际加载且清理时源身份未变。候选工作树和产品 Vite 配置不写入历史组件；原 spec、断言、预算、分片和跳过拦截保持原状。缺 Git 对象、缺 opt-in、缺用例、未加载任一 alias、未知或可写挂载、源漂移均继续阻断，不重封 R38/R9。
 
 这些只是旧组件对照：原 spec 将历史 TS/CSS 编译/路由到当前候选网页，main、其他 helpers、contracts 和 synthetic HTTP fixture 仍来自当前候选。记录明确 `old-components-only` / `not_a_seal` / `not_execution_evidence`；不恢复完整旧应用，不补造 R38/R35/R36/R9 封存，不代表新界面设计批准或浏览器已经执行。未解决的其他历史封存依旧阻断。
 
