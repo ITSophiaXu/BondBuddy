@@ -448,7 +448,15 @@
     "networkInternal": true
   },
   "logs": {
-    "after-test.log": "ab45e9e6e693dfa49bd80fde5e262519b028206cc4488778d8bdd195c2d5404f",
-    "recheck-test.log": "f7347d3adc1e0fba19f7879952a813ad336f8c10ff985d46f6cd14404ce4da61"
+    "after-test.log": {
+      "rawSha256": "ab45e9e6e693dfa49bd80fde5e262519b028206cc4488778d8bdd195c2d5404f",
+      "displaySha256": "0bbeb3e31077484dcf81892744b73ea48382ff1ff6a10f41cb5eac89e501c97e",
+      "displayNormalization": "remove trailing horizontal whitespace only"
+    },
+    "recheck-test.log": {
+      "rawSha256": "f7347d3adc1e0fba19f7879952a813ad336f8c10ff985d46f6cd14404ce4da61",
+      "displaySha256": "f7347d3adc1e0fba19f7879952a813ad336f8c10ff985d46f6cd14404ce4da61",
+      "displayNormalization": "remove trailing horizontal whitespace only"
+    }
   }
 }

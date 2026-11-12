@@ -25,7 +25,7 @@ library-admin 的成功夹具现在准备两份不同的合成 DOCX，分别保�
 
 原 gate 版本为 `d3028cb2f5e98e5b9a9ad36deb68e461de4a6df2`；本次基线为 `8a7dc38a9546831346805d8cb36ce88aae456da3`。这四个测试文件的 Git blob 完全一致，但两次运行版本不同，保留原门禁失败，不冒充本次重新执行的 red。
 
-首轮固定提交 `2cc6a47d6c364b3cd2c7a802361b8ecd0f78b046`：**10 pass / 3 fail / 0 skip**，71.546 秒，原始 [TAP](execution-admission-fixtures-20261112/initial-test.tap) 保留。
+首轮固定提交 `2cc6a47d6c364b3cd2c7a802361b8ecd0f78b046`：**10 pass / 3 fail / 0 skip**，71.546 秒，失败 [TAP](execution-admission-fixtures-20261112/initial-test.tap) 保留。
 
 - schema-rejection 到达管理统计后出现 '4' !== 4，随后只修正两项 wire 类型预期。
 - library-admin 的手工成功夹具只有一份 Word，被真实结算触发器以 “Both generated Word files required” 拒绝，随后补齐双产物前提。
@@ -53,7 +53,7 @@ node --test --test-concurrency=1 \
 
 最终克隆库清理核验为 0。首轮自写审计的 LIKE 错误匹配了模板名；改用精确克隆命名正则复核确认实际无残留，原审计错误不隐藏。本任务运行完成后清理自身两个容器和内部网络，不触碰其他验证资源。
 
-准确版本、两轮命令结果、原断言核对、lock 换行等价核验、源文件 blob 与日志校验值见 [proof.json](execution-admission-fixtures-20261112/proof.json)。
+准确版本、两轮命令结果、原断言核对、lock 换行等价核验、源文件 blob 与日志校验值见 [proof.json](execution-admission-fixtures-20261112/proof.json)。PR 中 TAP 展示副本只移除了行尾空白；原始字节日志保存在本地证据目录，proof 同时记录原始与展示副本 SHA-256。
 
 ## 剩余 50 个 A 类文件
 

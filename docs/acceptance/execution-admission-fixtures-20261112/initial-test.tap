@@ -57,11 +57,11 @@ not ok 9 - operator imports inspect every item before staging or enqueueing
   error: |-
     Expected values to be strictly equal:
     + actual - expected
-    
+
     + 'items[0].content_base64'
     - 'items[1].content_base64'
              ^
-    
+
   code: 'ERR_ASSERTION'
   name: 'AssertionError'
   expected: 'items[1].content_base64'
@@ -111,9 +111,9 @@ not ok 13 - authenticated schema rejections retain bounded owned evidence and at
   failureType: 'testCodeFailure'
   error: |-
     Expected values to be strictly equal:
-    
+
     '4' !== 4
-    
+
   code: 'ERR_ASSERTION'
   name: 'AssertionError'
   expected: 4
