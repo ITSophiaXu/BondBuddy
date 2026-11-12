@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,mkdtempSync,writeFileSync,unlinkSync,rmdirSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {ORIGINAL_INTEGRITY_SITE_IDS,INTEGRITY_SITE_IDS,integrityScopeRevision,assertIntegrityVisibleSettlement,WORKPAPER_SUBSET,selectWorkpaperSubset,subsetRequirements,assertWorkpaperBatch,assertCatalogueUpload,recoverWorkpaperReceipt,sourceBinding,assertIntegrityRound,verifiedCaptureCandidates,extendedFlows} from './flows-extended.mjs';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {ORIGINAL_INTEGRITY_SITE_IDS,INTEGRITY_SITE_IDS,integrityScopeRevision,assertIntegrityVisibleSettlement,WORKPAPER_SUBSET,selectWorkpaperSubset,subsetRequirements,assertWorkpaperBatch,assertCatalogueUpload,recoverWorkpaperReceipt,sourceBinding,selectedProspectusBinding,adoptProspectusSource,assertIntegrityRound,verifiedCaptureCandidates,extendedFlows} from './flows-extended.mjs';
 
 const issuer='东营市城市建设发展集团有限公司',hash='a'.repeat(64),otherHash='b'.repeat(64);
 const recipe=JSON.parse(readFileSync(new URL('../../tests/samples/2026-11-05/cases/workpaper-dongying/input.json',import.meta.url)));
@@ -43,6 +45,52 @@ test('binds original bytes to the real source project, material and selection re
  const actual=sourceBinding(source(),material(),expected);assert.equal(actual.project_id,'source-project');assert.equal(actual.material_version,2);assert.equal(actual.selection_revision,3);
  for(const mutate of [s=>s.asset.pin.sha256=otherHash,s=>s.asset.pin.source_project_id='other',s=>s.selection_revision=-1,s=>s.filename='旧稿.docx',s=>s.asset.kind='artifact']){const s=source();mutate(s);assert.throws(()=>sourceBinding(s,material(),expected));}
  for(const mutate of [m=>m.sha256=otherHash,m=>m.material_version=1,m=>m.byte_size--,m=>m.persisted_at=null]){const m=material();mutate(m);assert.throws(()=>sourceBinding(source(),m,expected));}
+});
+const prospectuses=()=>({project_id:'source-project',current_version_id:'prospectus',selection_revision:3,versions:[{version_id:'prospectus',sequence:1,origin:'upload',filename:expected.filename,sha256:hash,material_id:'material',material_version:2,artifact_id:null,artifact_version:null}]});
+test('ordinary selected prospectus binds the real DTO without manufacturing a workspace',()=>{
+ assert.deepEqual(selectedProspectusBinding(prospectuses(),material(),expected,'source-project'),sourceBinding(source(),material(),expected));
+ for(const mutate of [v=>v.project_id='other',v=>v.current_version_id=null,v=>v.current_version_id='other',v=>v.selection_revision=0,v=>v.selection_revision=1.5,v=>v.versions=[],v=>v.versions.push({...v.versions[0]}),v=>v.versions[0].origin='generated',v=>v.versions[0].artifact_id='artifact',v=>v.versions[0].artifact_version=1,v=>v.versions[0].material_id='other',v=>v.versions[0].material_version++,v=>v.versions[0].sequence=0,v=>v.versions[0].sha256=otherHash,v=>v.versions[0].filename='other.docx']){const v=prospectuses();mutate(v);assert.throws(()=>selectedProspectusBinding(v,material(),expected,'source-project'));}
+ for(const mutate of [m=>m.material_id='other',m=>m.material_version++,m=>m.sha256=otherHash,m=>m.filename='other.docx',m=>m.byte_size--,m=>m.persisted_at=null]){const m=material();mutate(m);assert.throws(()=>selectedProspectusBinding(prospectuses(),m,expected,'source-project'));}
+});
+function sourcePage(t,{generation=false,existing=false,autoAdopt=false}={}){
+ const directory=mkdtempSync(join(tmpdir(),'bb-source-adoption-')),fixture=join(directory,expected.filename),bytes=Buffer.from('synthetic source bytes; no model, browser or product API');writeFileSync(fixture,bytes);t.after(()=>{unlinkSync(fixture);rmdirSync(directory);});
+ const actual={filename:expected.filename,byte_size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
+ const projectId='navigation-project',sourceProject=generation?'source-project':projectId,entry={projectId,projectURL:'http://localhost:5288/#integrity?project='+projectId,projectCreationAttempted:true};
+ const version={...prospectuses().versions[0],...actual},versions={...prospectuses(),project_id:sourceProject,current_version_id:existing?version.version_id:null,selection_revision:existing?3:0,versions:existing?[version]:[]};
+ const state={versions,material:{...material(),...actual},uploads:0,saves:0,reloads:0,calls:[],actions:[],onReload:()=>{},readError:null};
+ const adopt=()=>{versions.current_version_id=version.version_id;versions.selection_revision++;};
+ const locator=selector=>({locator:child=>locator(child),async getAttribute(){return null;},async click(){state.actions.push(selector);if(selector==='#confirm-prospectus-selection')adopt();else assert.ok(selector==='summary'||selector.startsWith('[data-use-version='));},async check(){assert.ok(generation);state.actions.push(selector);},async selectOption(value){assert.ok(generation);assert.equal(value,version.version_id);state.actions.push(selector);adopt();}});
+ const page={locator,getByLabel(name){assert.equal(name,'募集书新版本文件');return {upload:true};},getByText(name){assert.equal(name,actual.filename);return {first:()=>({async waitFor(){}})};},async reload(){state.reloads++;state.onReload();},async waitForTimeout(){throw Error('Unexpected polling delay');}};
+ const ctx={page,fixture,save(){state.saves++;},async upload(target,path){assert.equal(target.upload,true);assert.equal(path,fixture);assert.deepEqual(entry.sourceUploadStarted,actual);state.uploads++;versions.versions=[version];if(autoAdopt)adopt();},async readJson(url){
+  state.calls.push(url);if(state.readError)throw state.readError;
+  if(url.endsWith('/project-files/workspace')){assert.ok(generation,'Ordinary project must not request an M4 workspace');const selected=versions.current_version_id===version.version_id;return {project_id:projectId,source:selected?{...source(),project_id:sourceProject,selection_revision:versions.selection_revision,filename:actual.filename,asset:{kind:'material',pin:{...source().asset.pin,source_project_id:sourceProject,sha256:actual.sha256}}}:null};}
+  if(url.endsWith('/prospectus-versions')){assert.equal(url,'/api/v1/projects/'+sourceProject+'/prospectus-versions');return structuredClone(versions);}
+  assert.equal(url,'/api/v1/projects/'+sourceProject+'/materials/material?version=2');return structuredClone(state.material);
+ }};
+ return {ctx,entry,state,actual};
+}
+test('fresh ordinary project uploads, selects and reloads exact source without any M4 workspace',async t=>{
+ const h=sourcePage(t);await adoptProspectusSource(h.ctx,h.entry,false);assert.equal(h.state.uploads,1);assert.equal(h.state.reloads,1);assert.deepEqual(h.entry.sourceUploadStarted,h.actual);assert.equal(h.entry.source.project_id,h.entry.projectId);assert.equal(h.entry.source.selection_revision,1);assert.equal(h.state.actions.filter(a=>a==='#confirm-prospectus-selection').length,1);assert.equal(h.state.calls.some(url=>url.includes('/workspace')),false);assert.equal(h.entry.projectCreationAttempted,true);assert.equal(h.entry.submissionRequest,undefined);
+});
+test('auto-adopted ordinary upload does not issue a second selection action',async t=>{
+ const h=sourcePage(t,{autoAdopt:true});await adoptProspectusSource(h.ctx,h.entry,false);assert.equal(h.state.uploads,1);assert.deepEqual(h.state.actions,[]);assert.equal(h.entry.source.selection_revision,1);
+});
+test('ordinary source resume reuses the saved project and bytes without duplicate upload or selection',async t=>{
+ const h=sourcePage(t,{existing:true});h.entry.sourceUploadStarted={...h.actual};await adoptProspectusSource(h.ctx,h.entry,false);const original=structuredClone(h.entry.source);await adoptProspectusSource(h.ctx,h.entry,false);assert.equal(h.state.uploads,0);assert.deepEqual(h.state.actions,[]);assert.deepEqual(h.entry.source,original);assert.equal(h.state.reloads,2);
+});
+test('unresolved ordinary upload remains failed without retransmission',async t=>{
+ const h=sourcePage(t);h.entry.sourceUploadStarted={...h.actual};await assert.rejects(()=>adoptProspectusSource(h.ctx,h.entry,false),/unresolved/);assert.equal(h.state.uploads,0);assert.equal(h.state.reloads,0);assert.equal(h.entry.source,undefined);
+});
+test('wrong project and non-workspace HTTP errors fail before ordinary upload',async t=>{
+ const wrong=sourcePage(t);wrong.state.versions.project_id='other';await assert.rejects(()=>adoptProspectusSource(wrong.ctx,wrong.entry,false),/another project/);assert.equal(wrong.state.uploads,0);
+ for(const status of [404,403,503]){const h=sourcePage(t);const error=Error('Cannot read persisted state: '+status);h.state.readError=error;await assert.rejects(()=>adoptProspectusSource(h.ctx,h.entry,false),value=>value===error);assert.equal(h.state.uploads,0);}
+});
+test('ordinary refresh rejects changed selection, source bytes and missing material',async t=>{
+ for(const change of [h=>h.state.versions.selection_revision++,h=>h.state.versions.current_version_id='other',h=>h.state.versions.versions[0].sha256=otherHash,h=>h.state.material.byte_size--,h=>h.state.readError=Error('Cannot read persisted state: 404')]){const h=sourcePage(t,{existing:true});h.state.onReload=()=>change(h);await assert.rejects(()=>adoptProspectusSource(h.ctx,h.entry,false));assert.equal(h.state.uploads,0);assert.ok(h.entry.source,'Keep the original binding when refresh fails');assert.deepEqual(h.state.actions,[]);}
+});
+test('generation still reads a real workspace and its source project',async t=>{
+ const h=sourcePage(t,{generation:true,existing:true});await adoptProspectusSource(h.ctx,h.entry,true);assert.equal(h.entry.source.project_id,'source-project');assert.ok(h.state.calls.filter(url=>url.endsWith('/project-files/workspace')).length>=3);assert.equal(h.state.uploads,0);
+ const absent=sourcePage(t,{generation:true});absent.state.readError=Error('Cannot read persisted state: 404');await assert.rejects(()=>adoptProspectusSource(absent.ctx,absent.entry,true),/404/);assert.deepEqual(absent.state.calls,['/api/v1/projects/navigation-project/project-files/workspace']);assert.equal(absent.state.uploads,0);
 });
 test('verifies workbook upload bytes separately from parsed catalogue hash',()=>{
  const request={material:source().asset.pin,scope:'due_diligence'},m=material();assert.equal(assertCatalogueUpload(request,m,expected).sha256,hash);assert.notEqual(catalogue().sha256,hash);

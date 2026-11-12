@@ -90,6 +90,54 @@ export function sourceBinding(source,material,expected){
  assert.equal(material?.material_id,pin.material_id);assert.equal(material.material_version,pin.material_version);assert.equal(material.sha256,expected.sha256);assert.equal(material.filename,expected.filename);assert.equal(material.byte_size,expected.byte_size);assert.ok(material.persisted_at);
  return {project_id:source.project_id,version_id:source.version_id,selection_revision:source.selection_revision,sequence:source.sequence,material_id:pin.material_id,material_version:pin.material_version,...expected};
 }
+export function selectedProspectusBinding(versions,material,expected,projectId){
+ assert.equal(versions?.project_id,id(projectId),'Prospectus belongs to another project');
+ assert.ok(Number.isSafeInteger(versions.selection_revision)&&versions.selection_revision>0,'Missing saved prospectus selection');
+ const selected=versions.versions.filter(v=>v.version_id===id(versions.current_version_id));assert.equal(selected.length,1,'Selected prospectus is missing or ambiguous');
+ const version=selected[0];assert.equal(version.origin,'upload');assert.equal(version.artifact_id,null);assert.equal(version.artifact_version,null);
+ assert.ok(Number.isSafeInteger(version.sequence)&&version.sequence>0);id(version.material_id);assert.ok(Number.isSafeInteger(version.material_version)&&version.material_version>0);
+ assert.equal(version.filename,expected.filename);assert.equal(version.sha256,expected.sha256);
+ assert.equal(material?.material_id,version.material_id);assert.equal(material.material_version,version.material_version);assert.equal(material.sha256,expected.sha256);assert.equal(material.filename,expected.filename);assert.equal(material.byte_size,expected.byte_size);assert.ok(material.persisted_at);
+ return {project_id:projectId,version_id:version.version_id,selection_revision:versions.selection_revision,sequence:version.sequence,material_id:version.material_id,material_version:version.material_version,...expected};
+}
+/** Ordinary project files do not create an M4 workspace. Read their selected
+ * prospectus directly; generation still requires its real workspace source. */
+export async function adoptProspectusSource({page,fixture,readJson,save,upload},entry,generation){
+ const expected=sourceFixture(fixture),base=projectBase(entry);
+ async function until(read,valid,message,timeoutMs=120000){const end=Date.now()+timeoutMs;do{const value=await read();if(valid(value))return value;await page.waitForTimeout(500);}while(Date.now()<end);throw Error(message);}
+ const workspace=generation?await readJson(base+'/project-files/workspace'):null,sourceProject=workspace?.source?.project_id??entry.projectId;
+ const versionURL='/api/v1/projects/'+encodeURIComponent(id(sourceProject))+'/prospectus-versions';
+ const readVersions=async()=>{const v=await readJson(versionURL);assert.equal(v?.project_id,sourceProject,'Prospectus belongs to another project');assert.ok(Array.isArray(v.versions));return v;};
+ let versions=await readVersions(),matches=versions.versions.filter(v=>v.sha256===expected.sha256&&v.filename===expected.filename);
+ assert.ok(matches.length<=1,'Multiple source versions match the original fixture');
+ if(!matches.length){
+  if(entry.sourceUploadStarted)throw Error('Original prospectus upload is unresolved; refusing another upload');
+  entry.sourceUploadStarted={...expected};save();await upload(page.getByLabel('募集书新版本文件',{exact:true}),fixture);
+  versions=await until(readVersions,v=>v.versions.some(x=>x.sha256===expected.sha256&&x.filename===expected.filename),'Original prospectus was not persisted',600000);
+  matches=versions.versions.filter(v=>v.sha256===expected.sha256&&v.filename===expected.filename);assert.equal(matches.length,1);
+ }
+ const version=matches[0];versions=await readVersions();
+ if(versions.current_version_id!==version.version_id){
+  if(generation){await page.locator('input[name="generation-source-mode"][value="project"]').check();await page.locator('#pf-project-source').selectOption(version.version_id);}
+  else{const history=page.locator('[data-prospectus-history]');if(await history.getAttribute('open')===null)await history.locator('summary').click();await page.locator(field('data-use-version',version.version_id)).click();await page.locator('#confirm-prospectus-selection').click();}
+  await until(readVersions,v=>v.current_version_id===version.version_id,'Original prospectus was not adopted');
+ }
+ async function readBinding(){
+  if(generation){
+   const w=await until(()=>readJson(base+'/project-files/workspace'),v=>v.source?.version_id===version.version_id,'Adopted source is not available in the workspace');
+   const pin=w.source.asset.pin,material=await readJson('/api/v1/projects/'+encodeURIComponent(pin.source_project_id)+'/materials/'+encodeURIComponent(pin.material_id)+'?version='+pin.material_version);
+   return sourceBinding(w.source,material,expected);
+  }
+  const v=await readVersions();assert.equal(v.current_version_id,version.version_id,'Adopted prospectus changed');
+  const selected=v.versions.filter(value=>value.version_id===v.current_version_id);assert.equal(selected.length,1,'Selected prospectus is missing or ambiguous');
+  const pin=selected[0];id(pin.material_id);assert.ok(Number.isSafeInteger(pin.material_version)&&pin.material_version>0);
+  const material=await readJson(base+'/materials/'+encodeURIComponent(pin.material_id)+'?version='+pin.material_version);
+  return selectedProspectusBinding(v,material,expected,entry.projectId);
+ }
+ const binding=await readBinding();if(entry.source)assert.deepEqual(binding,entry.source,'Adopted original source changed');entry.source=binding;save();
+ await page.reload();assert.deepEqual(await readBinding(),binding,'Reload changed the adopted original source');
+ await page.getByText(expected.filename,{exact:false}).first().waitFor({state:'visible'});
+}
 export function assertIntegrityRound(round,entry){
  assert.equal(round?.run_id,entry.runId);assert.equal(round.operation,'check');assert.equal(round.state,'succeeded');
  const draft=round.manifest?.draft;assert.equal(draft?.subjects?.length,1);const subject=draft.subjects[0];
@@ -126,31 +174,7 @@ export function extendedFlows(ctx){
   const result=await response;assert.ok(result.ok(),'Project creation failed');entry.projectId=id((await result.json()).project_id);save();
   await page.waitForURL(u=>new URLSearchParams(u.hash.split('?')[1]).get('project')===entry.projectId);entry.projectURL=page.url();save();
  }
- async function adoptSource(entry,generation){
-  const expected=sourceFixture(f.dongying),base=projectBase(entry);
-  let workspace=await readJson(base+'/project-files/workspace');const sourceProject=workspace.source?.project_id??entry.projectId;
-  const versionURL='/api/v1/projects/'+encodeURIComponent(sourceProject)+'/prospectus-versions';
-  let versions=await readJson(versionURL),matches=versions.versions.filter(v=>v.sha256===expected.sha256&&v.filename===expected.filename);
-  assert.ok(matches.length<=1,'Multiple source versions match the original fixture');
-  if(!matches.length){
-   if(entry.sourceUploadStarted)throw Error('Original prospectus upload is unresolved; refusing another upload');
-   entry.sourceUploadStarted={...expected};save();await upload(page.getByLabel('募集书新版本文件',{exact:true}),f.dongying);
-   versions=await until(()=>readJson(versionURL),v=>v.versions.some(x=>x.sha256===expected.sha256&&x.filename===expected.filename),'Original prospectus was not persisted',600000);
-   matches=versions.versions.filter(v=>v.sha256===expected.sha256&&v.filename===expected.filename);assert.equal(matches.length,1);
-  }
-  const version=matches[0];
-  versions=await readJson(versionURL);
-  if(versions.current_version_id!==version.version_id){
-   if(generation){await page.locator('input[name="generation-source-mode"][value="project"]').check();await page.locator('#pf-project-source').selectOption(version.version_id);}
-   else{const history=page.locator('[data-prospectus-history]');if(await history.getAttribute('open')===null)await history.locator('summary').click();await page.locator(field('data-use-version',version.version_id)).click();await page.locator('#confirm-prospectus-selection').click();}
-   await until(()=>readJson(versionURL),v=>v.current_version_id===version.version_id,'Original prospectus was not adopted');
-  }
-  workspace=await until(()=>readJson(base+'/project-files/workspace'),w=>w.source?.version_id===version.version_id,'Adopted source is not available in the workspace');
-  const pin=workspace.source.asset.pin,material=await readJson('/api/v1/projects/'+encodeURIComponent(pin.source_project_id)+'/materials/'+encodeURIComponent(pin.material_id)+'?version='+pin.material_version);
-  const binding=sourceBinding(workspace.source,material,expected);if(entry.source)assert.deepEqual(binding,entry.source,'Adopted original source changed');entry.source=binding;save();
-  await page.reload();const after=await readJson(base+'/project-files/workspace');assert.equal(after.source?.version_id,binding.version_id);assert.equal(after.source?.selection_revision,binding.selection_revision);assert.equal(after.source?.asset?.pin?.sha256,binding.sha256);
-  await page.getByText(expected.filename,{exact:false}).first().waitFor({state:'visible'});
- }
+  const adoptSource=(entry,generation)=>adoptProspectusSource({page,fixture:f.dongying,readJson,save,upload},entry,generation);
  const integrity=async(entry,phase)=>{
    const recipe=f.integrityRecipe,revision=integrityScopeRevision(recipe,report?.fixtureHashes?.find(f=>f.id==='integrity-dongying/input.json')?.sha256);
    if(entry.integrityScopeRevision)assert.deepEqual(entry.integrityScopeRevision,revision,'Accepted integrity test scope changed');
