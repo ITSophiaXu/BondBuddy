@@ -880,7 +880,7 @@ test('review navigation retains the app scale while keeping its own layout',asyn
   const updateStepsBottom=await page.locator('.stepper').evaluate(el=>el.getBoundingClientRect().bottom);
   const updateSteps=await page.locator('.stepper').evaluate(el=>({font:getComputedStyle(el).fontSize,gap:getComputedStyle(el).gap,height:el.getBoundingClientRect().height}));
   const output=process.env.BB_SCALE_EVIDENCE;if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/update-entry-${width}.png`,fullPage:true});}
-  if(width===390)await page.getByRole('button',{name:'打开菜单',exact:true}).click();
+  if(await page.getByRole('button',{name:'打开菜单',exact:true}).isVisible())await page.getByRole('button',{name:'打开菜单',exact:true}).click();
   await page.getByRole('link',{name:'复核募集书',exact:true}).click();
   await page.getByRole('link',{name:'＋ 新建项目',exact:true}).click();
   await expect(page.getByRole('heading',{name:'准备复核项目'})).toBeVisible();const review=await measure();expect(review).toEqual(update);
