@@ -1,12 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
 import { emptyUpdateDetails, schemas } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
+import { FormatRegistry } from '@sinclair/typebox';
+import { isDateTime } from '../src/schema-formats';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdir, readFile } from 'node:fs/promises';
 import type { Dto } from '../src/api';
 import { taskPage } from './collection-fixtures';
+
+test.beforeEach(() => { FormatRegistry.Set('date-time',isDateTime); });
 
 // Synthetic HTTP boundary; no model, database, OCR or document acceptance.
 const now='2026-09-28T03:00:00Z', id='synthetic-quarter-project';
@@ -32,7 +36,7 @@ async function install(page:Page,state=fixture()) {
     let result:unknown={},status=200;
     if(path==='/me')result={user_id:'synthetic-owner',session_status:'active'};
     else if(path==='/projects') {
-      if(method==='POST'){expect(Value.Check(schemas.ProjectCreateRequest,body)).toBe(true);state.project={...state.project,...body};status=201;result=state.project;}
+      if(method==='POST'){expect(Value.Check(schemas.ProjectCreateRequest,body)).toBe(true);const {creation_request_id,...projectFields}=body;state.project={...state.project,...projectFields};expect(Value.Check(schemas.ProjectResponse,state.project)).toBe(true);status=201;result=state.project;}
       else result={items:[{...state.project,latest_run:state.run?{run_id:state.run.run_id,state:state.run.state,updated_at:now}:null}],page:{next_cursor:null,has_more:false}};
     } else if(path===`/projects/${id}`) {
       if(method==='PATCH'){expect(Value.Check(schemas.ProjectPatchRequest,body)).toBe(true);state.project={...state.project,...body,draft_revision:state.project.draft_revision+1};}
