@@ -10,9 +10,9 @@ import * as integrity from './integrity-upload-eleventh-fixtures';
 import {ownerId,projectId,checkId,exportId} from './integrity-continuation-fixtures';
 import * as files from './project-file-status-fixtures';
 
-const out=process.env.BB_UPLOAD_UX_EVIDENCE??'test-evidence/upload-ux-consistency';
+const evidenceDirectory=()=>process.env.BB_UPLOAD_UX_EVIDENCE??test.info().outputPath('upload-ux-consistency');
 async function capture(page:Page,name:string,selector:string){
- await mkdir(out,{recursive:true});
+ const out=evidenceDirectory();await mkdir(out,{recursive:true});
  const root=page.locator(selector).first();await expect(root).toBeVisible();
  for(const width of [1440,390,320]){
   await page.setViewportSize({width,height:960});
@@ -93,7 +93,7 @@ test('audit assistant attachment entry and recovery',async({page})=>{
 });
 
 test('shared upload reference at desktop and mobile widths',async({page})=>{
- const {resolve}=await import('node:path');await mkdir(out,{recursive:true});
+ const {resolve}=await import('node:path');const out=evidenceDirectory();await mkdir(out,{recursive:true});
  await page.goto('/@fs/'+resolve(process.cwd(),'../../product-prototype/public/upload-ux-unified.html').replaceAll('\\','/'));
  for(const width of [1440,390,320]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:join(out,`prototype-${width}.png`),fullPage:true});}
 });

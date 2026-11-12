@@ -119,7 +119,7 @@ test('a newly saved financial upload shows its hint without a page reload or par
 
 test('desktop and mobile warnings match the prototype with readable wrapping', async ({ page }) => {
   const s = data(); await open(page, s);
-  const directory = resolve('../../docs/acceptance/reporting-period-hints-20261105');
+  const directory = test.info().outputPath('reporting-period-hints-20261105');
   await mkdir(directory, { recursive: true });
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 1000 });
