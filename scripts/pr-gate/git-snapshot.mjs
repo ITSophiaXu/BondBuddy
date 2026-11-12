@@ -2,7 +2,7 @@
 /** Transfer one original commit and its complete tree without repository configuration or parent history. */
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readlinkSync, readSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readlinkSync, readSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -94,6 +94,72 @@ function rawSourceProof(git, root, commit, format) {
   return { files: manifest.length, byte_count: byteCount, manifest_sha256: createHash('sha256').update(JSON.stringify(manifest)).digest('hex') };
 }
 
+/** Failure-only metadata: never emit file contents or follow a replaced link. */
+function changedSourceDiagnostics(git, root, commit, format) {
+  const maxFiles = 20, maxBytes = 64 * 1024 * 1024;
+  try {
+    const base = realpathSync(root), expected = new Map(), changes = [];
+    for (const entry of git(root, ['ls-tree', '-r', '-z', commit]).split('\0').filter(Boolean)) {
+      const tab = entry.indexOf('\t'), [mode, kind, blob] = entry.slice(0, tab).split(' ');
+      expected.set(entry.slice(tab + 1), { mode, kind, blob });
+    }
+    const rows = git(root, ['status', '--porcelain=v1', '-z', '--untracked-files=no']).split('\0');
+    for (let i = 0; i < rows.length; i++) {
+      if (!rows[i]) continue;
+      if (rows[i].length < 4 || rows[i][2] !== ' ') throw new Error('Invalid status row');
+      const status = rows[i].slice(0, 2), path = rows[i].slice(3), item = { path, status };
+      // In -z mode a rename/copy emits destination then original as a second field.
+      if (/[RC]/.test(status)) { if (!rows[i + 1]) throw new Error('Missing original path'); item.original_path = rows[++i]; }
+      changes.push(item);
+    }
+    let hashedBytes = 0;
+    const buffer = Buffer.allocUnsafe(1024 * 1024);
+    const inspect = name => {
+      try {
+        const file = resolve(base, name), rel = relative(base, file), parent = dirname(file);
+        if (!rel || isAbsolute(rel) || rel === '..' || rel.startsWith('..' + sep)) return { kind: 'unavailable', reason: 'outside_root' };
+        if (realpathSync(parent) !== parent) return { kind: 'unavailable', reason: 'redirected_parent' };
+        const stat = lstatSync(file);
+        if (stat.isSymbolicLink()) {
+          const bytes = readlinkSync(file, { encoding: 'buffer' });
+          if (bytes.length > maxBytes - hashedBytes) return { kind: 'symlink', bytes: bytes.length, reason: 'hash_byte_limit' };
+          hashedBytes += bytes.length;
+          return { kind: 'symlink', bytes: bytes.length, blob: createHash(format).update('blob ' + bytes.length + '\0').update(bytes).digest('hex') };
+        }
+        if (!stat.isFile()) return { kind: 'unavailable', reason: 'unsupported_file_type' };
+        if (stat.size > maxBytes || stat.size > maxBytes - hashedBytes) return { kind: 'file', mode_bits: (stat.mode & 0o777).toString(8), bytes: stat.size, reason: 'hash_byte_limit' };
+        if (realpathSync(file) !== file) return { kind: 'unavailable', reason: 'redirected_file' };
+        const fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+        try {
+          const opened = fstatSync(fd);
+          if (!opened.isFile() || opened.dev !== stat.dev || opened.ino !== stat.ino || opened.size !== stat.size || realpathSync(parent) !== parent) return { kind: 'unavailable', reason: 'changed_during_diagnostic' };
+          const hash = createHash(format).update('blob ' + stat.size + '\0');
+          let seen = 0;
+          while (seen < stat.size) {
+            // Bound reads to the observed size; the final stat rejects growth.
+            const size = readSync(fd, buffer, 0, Math.min(buffer.length, stat.size - seen), null);
+            if (!size) break;
+            seen += size; hashedBytes += size;
+            if (seen > stat.size) return { kind: 'unavailable', reason: 'changed_during_diagnostic' };
+            hash.update(buffer.subarray(0, size));
+          }
+          const after = fstatSync(fd);
+          if (seen !== stat.size || after.size !== stat.size || after.mtimeMs !== stat.mtimeMs || after.ctimeMs !== stat.ctimeMs) return { kind: 'unavailable', reason: 'changed_during_diagnostic' };
+          return { kind: 'file', mode_bits: (stat.mode & 0o777).toString(8), bytes: seen, blob: hash.digest('hex') };
+        } finally { closeSync(fd); }
+      } catch (error) {
+        return error.code === 'ENOENT' ? { kind: 'missing' } : { kind: 'unavailable', reason: 'read_failed' };
+      }
+    };
+    const files = changes.slice(0, maxFiles).map(change => ({ ...change, expected: expected.get(change.path) ?? null, actual: inspect(change.path) }));
+    return { schema: 'pr-gate-source-change-diagnostics-v1', total_changes: changes.length, reported_changes: files.length,
+      truncated: changes.length > files.length, max_files: maxFiles, max_hash_bytes: maxBytes, hashed_bytes: hashedBytes, files };
+  } catch {
+    // Diagnostics cannot replace the original rejection or disclose Git/OS errors.
+    return { schema: 'pr-gate-source-change-diagnostics-v1', unavailable: true };
+  }
+}
+
 export function verifyGitSnapshotSource({ sourceRoot, expectedCommit, expectedTree }) {
   const source = resolve(sourceRoot);
   return isolatedGit(({ git }) => {
@@ -101,7 +167,10 @@ export function verifyGitSnapshotSource({ sourceRoot, expectedCommit, expectedTr
     if (!['sha1', 'sha256'].includes(format)) throw new Error('Unsupported Git object format');
     requireOid(expectedCommit, format, 'expected commit'); requireOid(expectedTree, format, 'expected tree');
     if (git(source, ['rev-parse', 'HEAD']).trim() !== expectedCommit || git(source, ['rev-parse', 'HEAD^{tree}']).trim() !== expectedTree || git(source, ['write-tree']).trim() !== expectedTree) throw new Error('Snapshot candidate changed');
-    if (git(source, ['status', '--porcelain', '--untracked-files=no']).trim()) throw new Error('Snapshot tracked source changed');
+    if (git(source, ['status', '--porcelain', '--untracked-files=no']).trim()) {
+      const diagnostics = changedSourceDiagnostics(git, source, expectedCommit, format);
+      throw new Error('Snapshot tracked source changed\nSnapshot change diagnostics: ' + JSON.stringify(diagnostics));
+    }
     return rawSourceProof(git, source, expectedCommit, format);
   });
 }
