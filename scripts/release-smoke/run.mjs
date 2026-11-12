@@ -1,5 +1,5 @@
 import {spawn,execFileSync} from 'node:child_process';
-import {readFileSync,writeFileSync,mkdirSync,copyFileSync,existsSync,rmSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdirSync,copyFileSync,existsSync} from 'node:fs';
 import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {randomBytes} from 'node:crypto';
@@ -18,6 +18,7 @@ import {loadFixedFixtures,assertFixtureBindings} from './fixtures.mjs';
 import {imageContract,requiredImageTargets} from './image-contract.mjs';
 import {confirmationService,workerParseService,configureConfirmationMode,describeConfirmationRuntime,runConfirmationPreflight} from './upload-confirmation-preflight.mjs';
 import {verifyConfirmationEvidence} from './upload-confirmation-evidence.mjs';
+import {cleanupReleaseEnvironment} from './cleanup.mjs';
 
 const directory=dirname(fileURLToPath(import.meta.url)),repo=resolve(directory,'../..');
 const settingsFile=join(directory,'.local.json');
@@ -192,10 +193,7 @@ try{
 }catch(error){report.status='blocked';report.error=String(error.message);console.error(report.error);process.exitCode=1;}
 finally{
  if(compose&&existsSync(join(out,'compose.json')))try{await command(...compose(['logs','--no-color','--tail','150']),'services.log');}catch{}
- if(report.status==='passed'&&!values.keep){
-  try{await command(...compose(['down','--volumes']),'cleanup.log');for(const name of ['copilot-oauth','copilot-auth.json'])rmSync(join(out,name),{force:true});report.cleanup='completed';}
-  catch(error){report.status='blocked';report.cleanup='failed';report.error='Business flows passed, but isolated environment cleanup failed: '+error.message;}
- }else report.cleanup='retained';
+ await cleanupReleaseEnvironment({report,keep:values.keep,out,compose,command});
  report.lastAttemptFinishedAt=new Date().toISOString();report.finishedAt=report.completedAt??report.lastAttemptFinishedAt;writeJson(reportFile,report);
  const credentialSummary=report.credentialMode==='existing-local-codex-command-helper'?`显式本地 command helper；SHA-256：${report.credentialAdaptation?.sha256??'缺失'}。正式 OAuth 换票未经验证。`:(report.credentialMode??'尚未选择');
  const rows=report.cases.map(c=>`| ${c.id} | ${c.status} | ${c.runId??'—'} | ${(c.error??'').replaceAll('|','/').replaceAll('\n',' ')} |`).join('\n');

@@ -85,12 +85,12 @@ npm run test:release -- --resume /absolute/path/to/scripts/release-smoke/.runtim
 
 `--resume` 跳过已经通过的用例，已记录 run ID 的用例只读取原任务并重试成果检查。首次提交前失败的用例可能新建测试项目。继续检查前自动保存报告副本，每次尝试使用独立证据目录，保留原始失败和 trace。
 
-全部通过后自动清理本次容器和测试卷，保留本机报告、trace、下载成果和镜像缓存，释放 5288 端口供下次执行。需要手动查看测试账号时加 `--keep`。清理失败会返回非零，报告仍保留各业务流程已通过的事实。
+全部通过后自动启用本次 Compose 配置声明的所有 profile，清理本次容器和测试卷，包括 worker-parse、upload-confirmation 及各自暂存卷；保留本机报告、trace、下载成果和镜像缓存，释放 5288 端口供下次执行。需要手动查看测试账号时加 `--keep`。清理失败会返回非零，报告仍保留各业务流程已通过的事实。
 
 失败或未完成时保留环境，不自动停止业务任务。此时先用 `--resume` 继续检查原任务；不要直接另开一次测试抢占相同端口。确认无需保留后，使用报告中的准确 project 和该次 Compose 文件清理：
 
 ```sh
-DOCKER_CONTEXT=colima-bondbuddy-release docker-compose -p <report.project> -f <run>/compose.json down --volumes
+DOCKER_CONTEXT=colima-bondbuddy-release docker-compose -p <report.project> -f <run>/compose.json --profile upload-size-split down --volumes
 ```
 
 不要使用全局 prune。当前脚本只提供发布前检查及退出码，不自动发布或更改生产部署规则。
