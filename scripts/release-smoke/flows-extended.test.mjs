@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
-import {INTEGRITY_SITE_IDS,WORKPAPER_SUBSET,selectWorkpaperSubset,subsetRequirements,assertWorkpaperBatch,assertCatalogueUpload,recoverWorkpaperReceipt,sourceBinding,assertIntegrityRound,verifiedCaptureCandidates,extendedFlows} from './flows-extended.mjs';
+import {ORIGINAL_INTEGRITY_SITE_IDS,INTEGRITY_SITE_IDS,integrityScopeRevision,assertIntegrityVisibleSettlement,WORKPAPER_SUBSET,selectWorkpaperSubset,subsetRequirements,assertWorkpaperBatch,assertCatalogueUpload,recoverWorkpaperReceipt,sourceBinding,assertIntegrityRound,verifiedCaptureCandidates,extendedFlows} from './flows-extended.mjs';
 
 const issuer='东营市城市建设发展集团有限公司',hash='a'.repeat(64),otherHash='b'.repeat(64);
 const recipe=JSON.parse(readFileSync(new URL('../../tests/samples/2026-11-05/cases/workpaper-dongying/input.json',import.meta.url)));
@@ -12,7 +12,22 @@ const source=()=>({project_id:'source-project',version_id:'prospectus',selection
 const material=()=>({material_id:'material',material_version:2,...expected,persisted_at:'2026-11-12T01:00:00Z'});
 function saved(){const selectedWorkpapers=selectWorkpaperSubset(catalogue());return {id:'workpaper-dongying',projectId:'navigation-project',projectURL:'http://localhost:5288/#generate?project=navigation-project',batchId:'package-batch',workpaperBatchId:'workpaper-batch',catalogueId:'catalogue',source:sourceBinding(source(),material(),expected),selectedWorkpapers,expectedItemIds:selectedWorkpapers.map(e=>e.id)};}
 const batch=entry=>({batch_id:entry.workpaperBatchId,catalogue_id:entry.catalogueId,state:'complete',source:source(),items:entry.selectedWorkpapers.map((e,i)=>({entry:{...e},state:'succeeded',run_id:'item-run-'+i,stage:null}))});
-function round(){const subject={id:'issuer',name:issuer,kind:'company',role:'发行人'};return {run_id:'integrity-run',operation:'check',state:'succeeded',manifest:{draft:{subjects:[subject],site_ids:[...INTEGRITY_SITE_IDS]}},records:INTEGRITY_SITE_IDS.map(site_id=>({subject_id:subject.id,site_id,status:'no_public_results',checked_at:'2026-11-12T01:00:00Z',query:issuer,search_performed:true,browser:{outcome:'no_results',captures:[{id:site_id,kind:'result',url:site_id==='sse'?'https://www.sse.com.cn/search/':site_id==='csrc'?'https://neris.csrc.gov.cn/shixinchaxun/':site_id==='credit-china'?'https://www.creditchina.gov.cn/':'https://zxgk.court.gov.cn/',screenshot_sha256:hash}]}}))};}
+const integrityRecipe={case_id:'integrity-dongying',issuer_name:issuer,draft:{site_ids:[...ORIGINAL_INTEGRITY_SITE_IDS]}};
+const report={fixtureHashes:[{id:'integrity-dongying/input.json',sha256:hash}]};
+const integrityEntry=()=>({runId:'integrity-run',projectId:'navigation-project',projectURL:'http://localhost:5288/#integrity?project=navigation-project',integrityScopeRevision:integrityScopeRevision(integrityRecipe,hash),originalIntegrityRecipe:structuredClone(integrityRecipe),accepted:{points:'2425'},integrityVerifiedPairs:INTEGRITY_SITE_IDS.map(site_id=>({subject_id:'issuer',site_id}))});
+function round(){const subject={id:'issuer',name:issuer,kind:'company',role:'发行人'},urls={pbc:'https://www.pbc.gov.cn/',nfra:'https://www.nfra.gov.cn/',csrc:'https://neris.csrc.gov.cn/shixinchaxun/',sse:'https://www.sse.com.cn/search/',szse:'https://www.szse.cn/'};return {run_id:'integrity-run',operation:'check',state:'succeeded',charged_points:'2425',settlement:{version:'integrity-settlement-v1',outcome:'delivered',quoted_points:'2425',charged_points:'2425',released_points:'0',verified_query_pairs:INTEGRITY_SITE_IDS.map(site_id=>({subject_id:subject.id,site_id}))},manifest:{price_version:'bb-task-price-scope-20261111-v4',scope_measurement:{executable_pairs:5},draft:{subjects:[subject],site_ids:[...INTEGRITY_SITE_IDS]}},records:INTEGRITY_SITE_IDS.map(site_id=>({subject_id:subject.id,site_id,site_name:'官网 '+site_id,status:'no_public_results',checked_at:'2026-11-12T01:00:00Z',query:issuer,search_performed:true,browser:{outcome:'no_results',captures:[{id:site_id,kind:'result',url:urls[site_id],screenshot_sha256:hash}]}}))};}
+function visibleSettlement(r){const s=r.settlement,n=s.verified_query_pairs.length,amount=v=>BigInt(v).toLocaleString('zh-CN')+' 积分';return {amountsText:`原预留 ${amount(s.quoted_points)}，实际扣除 ${amount(s.charged_points)}，已释放 ${amount(s.released_points)}。`,reasonText:`本轮 5 项可查询范围中，${n} 项完成查询并保留官网证据；${n===5?'已全部完成有效查询。':`其余 ${5-n} 项未完成有效查询，不计费。`}官网明确零结果也计为完成查询。`,items:s.verified_query_pairs.map(p=>({subjectId:p.subject_id,siteId:p.site_id,text:issuer+' · 官网 '+p.site_id}))};}
+
+test('explicit versioned current-site override preserves exact original recipe/hash and five sites',()=>{
+ const original=structuredClone(integrityRecipe),revision=integrityScopeRevision(integrityRecipe,hash);assert.deepEqual(integrityRecipe,original);assert.deepEqual(revision.originalSiteIds,ORIGINAL_INTEGRITY_SITE_IDS);assert.deepEqual(revision.effectiveSiteIds,['pbc','nfra','csrc','sse','szse']);assert.deepEqual(revision.removedSiteIds,ORIGINAL_INTEGRITY_SITE_IDS.slice(0,3));assert.equal(revision.sourceRecipeSha256,hash);assert.equal(revision.decision.path,'docs/product-decisions/2026-10-30-integrity-retired-sites.md');
+ assert.throws(()=>integrityScopeRevision({...original,draft:{site_ids:INTEGRITY_SITE_IDS}},hash));assert.throws(()=>integrityScopeRevision(original,'wrong'));
+});
+test('visible fee evidence requires exact actual amounts, completed scope, reason and named billed pairs',()=>{
+ const r=round(),entry=integrityEntry();assert.equal(assertIntegrityVisibleSettlement(r,entry,visibleSettlement(r)).status,'passed');
+ r.settlement.verified_query_pairs=r.settlement.verified_query_pairs.slice(0,2);r.settlement.charged_points=r.charged_points='2170';r.settlement.released_points='255';entry.integrityVerifiedPairs=r.settlement.verified_query_pairs;assert.equal(assertIntegrityVisibleSettlement(r,entry,visibleSettlement(r)).releasedPoints,'255');
+ for(const mutate of [v=>v.amountsText=v.amountsText.replace('255','0'),v=>v.reasonText='',v=>v.reasonText=v.reasonText.replace('不计费','仍计费'),v=>v.items.pop(),v=>v.items[0].text='其它项目',v=>v.items[0].siteId='other']){const visible=visibleSettlement(r);mutate(visible);assert.throws(()=>assertIntegrityVisibleSettlement(r,entry,visible));}
+ const visible=visibleSettlement(r);assert.throws(()=>assertIntegrityVisibleSettlement({...r,settlement:null},entry,visible));assert.throws(()=>assertIntegrityVisibleSettlement(r,{...entry,integrityVerifiedPairs:[]},visible));
+});
 
 test('selects only the five exact f009 codes with original rows, names and paths',()=>{
  const cat=catalogue();cat.entries.reverse();cat.entries.push({...cat.entries[0],id:'unrelated',code:'9-9',row:300});
@@ -61,8 +76,8 @@ test('workpaper readState polls only its batch endpoint and preserves item runs'
 });
 test('existing accepted tasks in submit phase never upload, create or submit again',async()=>{
  const forbidden=()=>{throw Error('Unexpected browser/model/submission action');};
- const page=new Proxy({},{get:()=>forbidden}),flows=extendedFlows({page,fixtures:{workpaperRecipe:recipe,integrityRecipe:{case_id:'integrity-dongying',issuer_name:issuer,draft:{site_ids:INTEGRITY_SITE_IDS}}},save:()=>{},upload:forbidden,submit:forbidden,readJson:forbidden,waitRun:forbidden,download:forbidden});
- const e=saved();await flows['workpaper-dongying'](e,'submit');await flows['integrity-dongying']({runId:'integrity-run'},'submit');
+ const page=new Proxy({},{get:()=>forbidden}),flows=extendedFlows({page,report,fixtures:{workpaperRecipe:recipe,integrityRecipe},save:()=>{},upload:forbidden,submit:forbidden,readJson:forbidden,waitRun:forbidden,download:forbidden});
+ const e=saved();await flows['workpaper-dongying'](e,'submit');await flows['integrity-dongying'](integrityEntry(),'submit');await assert.rejects(()=>flows['integrity-dongying']({runId:'integrity-run'},'submit'),/no original scope revision/);
  const resumed=saved();delete resumed.batchId;resumed.submissionReceipt={body:{batch_id:'package-batch',workpapers:batch(resumed)}};await flows['workpaper-dongying'](resumed,'submit');assert.equal(resumed.batchId,'package-batch');
 });
 test('uncertain project receipts fail closed before any upload or paid submission',async()=>{
@@ -78,11 +93,11 @@ test('workpaper check derives trusted output mapping before one ZIP download per
  b.state='partial';await assert.rejects(()=>flows[e.id](e,'check'));assert.equal(downloads,2);
 });
 test('integrity verifies each capture before recording pairs and downloads once per check',async()=>{
- const bytes=Buffer.from([137,80,78,71,13,10,26,10,1,2]),r=round(),entry={runId:r.run_id,projectId:'navigation-project',projectURL:'http://localhost:5288/#integrity?project=navigation-project'};
+ const bytes=Buffer.from([137,80,78,71,13,10,26,10,1,2]),r=round(),entry=integrityEntry();
  r.artifacts=[{kind:'company',artifact_id:'report'}];for(const record of r.records)record.browser.captures[0].screenshot_sha256=createHash('sha256').update(bytes).digest('hex');
- const locator={locator(){return this;},getByRole(){return this;},async waitFor(){},async getAttribute(){return 'open';},async click(){}};let downloads=0,verified=0;
- const page={async goto(){},locator(){return locator;},request:{async get(url){assert.ok(url.includes('/integrity/runs/integrity-run/captures/'));return {ok:()=>true,body:async()=>{verified++;return bytes;}};}}};
- const flows=extendedFlows({page,fixtures:{integrityRecipe:{case_id:'integrity-dongying',issuer_name:issuer,draft:{site_ids:INTEGRITY_SITE_IDS}}},save:()=>{},waitRun:async run=>assert.equal(run,r.run_id),readJson:async()=>({rounds:[r]}),download:async(_,role,e)=>{assert.equal(role,'integrity.docx');assert.equal(verified,5);assert.equal(e.integrityVerifiedPairs.length,5);downloads++;}});
- await flows['integrity-dongying'](entry,'check');assert.equal(downloads,1);assert.deepEqual(entry.integrityVerifiedPairs,INTEGRITY_SITE_IDS.map(site_id=>({subject_id:'issuer',site_id})));
- r.records[0].browser.captures[0].screenshot_sha256=otherHash;await assert.rejects(()=>flows['integrity-dongying'](entry,'check'));assert.equal(downloads,1);assert.deepEqual(entry.integrityVerifiedPairs,[]);
+ const locator=selector=>({locator:child=>locator(child),getByRole(){return this;},async waitFor(){},async getAttribute(){return 'open';},async click(){},async innerText(){return selector.includes('amounts')?visibleSettlement(r).amountsText:visibleSettlement(r).reasonText;},async evaluateAll(){return visibleSettlement(r).items;}});let downloads=0,verified=0;
+ const page={async goto(){},locator,request:{async get(url){assert.ok(url.includes('/integrity/runs/integrity-run/captures/'));return {ok:()=>true,body:async()=>{verified++;return bytes;}};}}};
+ const flows=extendedFlows({page,report,fixtures:{integrityRecipe},save:()=>{},waitRun:async run=>assert.equal(run,r.run_id),readJson:async()=>({rounds:[r]}),download:async(_,role,e)=>{assert.equal(role,'integrity.docx');assert.equal(verified%5,0);assert.equal(e.integrityVerifiedPairs.length,5);downloads++;}});
+ await flows['integrity-dongying'](entry,'check');assert.equal(downloads,1);assert.deepEqual(entry.integrityVerifiedPairs,INTEGRITY_SITE_IDS.map(site_id=>({subject_id:'issuer',site_id})));await flows['integrity-dongying'](entry,'check');assert.equal(downloads,2);assert.equal(entry.integrityBillingPageEvidence.observations.length,2);
+ r.records[0].browser.captures[0].screenshot_sha256=otherHash;await assert.rejects(()=>flows['integrity-dongying'](entry,'check'));assert.equal(downloads,2);assert.deepEqual(entry.integrityVerifiedPairs,[]);
 });

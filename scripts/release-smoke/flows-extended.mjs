@@ -3,7 +3,8 @@ import {readFileSync} from 'node:fs';
 import {basename} from 'node:path';
 import {sha256} from './support.mjs';
 
-export const INTEGRITY_SITE_IDS=['credit-china','execution-dishonest','execution-debtor','csrc','sse'];
+export const ORIGINAL_INTEGRITY_SITE_IDS=['credit-china','execution-dishonest','execution-debtor','csrc','sse'];
+export const INTEGRITY_SITE_IDS=['pbc','nfra','csrc','sse','szse'];
 export const WORKPAPER_SUBSET=[
  {code:'2-1-4',row:97},{code:'2-3-6',row:117},{code:'2-4-2',row:132},{code:'1-5-7-1',row:79},{code:'1-5-5',row:76},
 ];
@@ -13,6 +14,28 @@ const field=(name,value)=>`[${name}=${JSON.stringify(String(value))}]`;
 const projectBase=entry=>'/api/v1/projects/'+encodeURIComponent(id(entry.projectId));
 const sourceFixture=path=>{const bytes=readFileSync(path);assert.ok(bytes.length);return {filename:basename(path),byte_size:bytes.length,sha256:sha256(bytes)};};
 const withQuery=(url,values)=>{const u=new URL(url),[route,search='']=u.hash.split('?'),query=new URLSearchParams(search);for(const [key,value] of Object.entries(values))query.set(key,value);u.hash=route+'?'+query;return u.href;};
+
+export function integrityScopeRevision(recipe,sourceRecipeSha256){
+ assert.equal(recipe?.case_id,'integrity-dongying');assert.deepEqual(recipe.draft?.site_ids,ORIGINAL_INTEGRITY_SITE_IDS,'Original integrity recipe changed');assert.match(sourceRecipeSha256??'',/^[a-f0-9]{64}$/);
+ return {version:'release-integrity-scope-20261112-v1',sourceRecipe:'integrity-dongying/input.json',sourceRecipeSha256,originalSiteIds:[...ORIGINAL_INTEGRITY_SITE_IDS],removedSiteIds:ORIGINAL_INTEGRITY_SITE_IDS.slice(0,3),effectiveSiteIds:[...INTEGRITY_SITE_IDS],decision:{path:'docs/product-decisions/2026-10-30-integrity-retired-sites.md',commit:'65297990a9733187319d7be0674d272c619b2334'},reason:'The user retired the three original sites for new queries. Preserve the original recipe and use five current financial-regulatory sites; keep csrc/sse and add pbc/nfra/szse.'};
+}
+const pairKeys=pairs=>pairs.map(p=>JSON.stringify([p.subject_id,p.site_id]));
+export function assertIntegrityVisibleSettlement(round,entry,visible){
+ const settlement=round.settlement,scope=round.manifest.scope_measurement;
+ assert.equal(round.manifest.price_version,'bb-task-price-scope-20261111-v4');assert.equal(settlement?.version,'integrity-settlement-v1');assert.equal(settlement.outcome,'delivered');
+ for(const field of ['quoted_points','charged_points','released_points'])assert.match(settlement[field],/^(0|[1-9][0-9]*)$/);
+ assert.equal(settlement.quoted_points,entry.accepted?.points);assert.equal(settlement.charged_points,round.charged_points);assert.equal(BigInt(settlement.quoted_points),BigInt(settlement.charged_points)+BigInt(settlement.released_points));
+ assert.equal(scope?.executable_pairs,5);assert.ok(Array.isArray(settlement.verified_query_pairs)&&settlement.verified_query_pairs.length>0);
+ assert.ok(sameSet(pairKeys(settlement.verified_query_pairs),pairKeys(entry.integrityVerifiedPairs)),'Visible settlement differs from verified official captures');
+ const amount=value=>BigInt(value).toLocaleString('zh-CN')+' 积分',completed=settlement.verified_query_pairs.length,remaining=scope.executable_pairs-completed;
+ assert.equal(visible.amountsText,`原预留 ${amount(settlement.quoted_points)}，实际扣除 ${amount(settlement.charged_points)}，已释放 ${amount(settlement.released_points)}。`,'Visible accepted/charged/released points mismatch');
+ assert.ok(visible.reasonText.includes(`本轮 ${scope.executable_pairs} 项可查询范围中，${completed} 项完成查询并保留官网证据；`),'Visible completed query count missing');
+ assert.ok(visible.reasonText.includes(remaining?`其余 ${remaining} 项未完成有效查询，不计费。`:'已全部完成有效查询。'),'Visible partial-query billing explanation missing');
+ assert.ok(visible.reasonText.includes('官网明确零结果也计为完成查询。'),'Visible zero-result meaning missing');
+ assert.ok(sameSet(visible.items.map(i=>JSON.stringify([i.subjectId,i.siteId])),pairKeys(settlement.verified_query_pairs)),'Visible billed query identities mismatch');
+ for(const item of visible.items){const subject=round.manifest.draft.subjects.find(s=>s.id===item.subjectId),record=round.records.find(r=>r.subject_id===item.subjectId&&r.site_id===item.siteId);assert.ok(subject?.name&&record?.site_name);assert.equal(item.text,subject.name+' · '+record.site_name,'Visible billed subject/site name mismatch');}
+ return {version:'release-integrity-visible-settlement-v1',status:'passed',runId:entry.runId,priceVersion:round.manifest.price_version,quotedPoints:settlement.quoted_points,chargedPoints:settlement.charged_points,releasedPoints:settlement.released_points,executablePairs:scope.executable_pairs,verifiedPairs:structuredClone(settlement.verified_query_pairs)};
+}
 
 export function selectWorkpaperSubset(catalogue){
  assert.ok(catalogue?.catalogue_id&&Array.isArray(catalogue.entries),'Missing parsed catalogue');
@@ -78,7 +101,7 @@ export function assertIntegrityRound(round,entry){
  return subject;
 }
 export function verifiedCaptureCandidates(round,issuerName){
- const hosts={'credit-china':'creditchina.gov.cn','execution-dishonest':'zxgk.court.gov.cn','execution-debtor':'zxgk.court.gov.cn',csrc:'csrc.gov.cn',sse:'sse.com.cn'};
+ const hosts={pbc:'pbc.gov.cn',nfra:'nfra.gov.cn',csrc:'csrc.gov.cn',sse:'sse.com.cn',szse:'szse.cn'};
  return round.records.flatMap(record=>{
   if(record.search_performed!==true||!record.query?.includes(issuerName)||!['results','no_results'].includes(record.browser?.outcome)||!['public_matches','no_public_results'].includes(record.status))return [];
   return (record.browser.captures??[]).filter(c=>{try{const u=new URL(c.url),host=u.hostname,official=hosts[record.site_id];return typeof c.id==='string'&&c.id&&c.kind==='result'&&['http:','https:'].includes(u.protocol)&&official&&(host===official||host.endsWith('.'+official))&&/^[a-f0-9]{64}$/.test(c.screenshot_sha256);}catch{return false;}}).map(capture=>({record,capture}));
@@ -89,7 +112,7 @@ export function verifiedCaptureCandidates(round,issuerName){
  * budgets, request receipts, credentials, artifacts and billing reconciliation.
  */
 export function extendedFlows(ctx){
- const {page,fixtures:f,save,upload,submit,readJson,waitRun,download,mapWorkpapers}=ctx;
+ const {page,fixtures:f,report,save,upload,submit,readJson,waitRun,download,mapWorkpapers}=ctx;
  async function until(read,valid,message,timeoutMs=120000){const end=Date.now()+timeoutMs;do{const value=await read();if(valid(value))return value;await page.waitForTimeout(500);}while(Date.now()<end);throw Error(message);}
  async function createProject(entry,kind){
   if(entry.projectURL){id(entry.projectId);await page.goto(entry.projectURL);return;}
@@ -129,7 +152,10 @@ export function extendedFlows(ctx){
   await page.getByText(expected.filename,{exact:false}).first().waitFor({state:'visible'});
  }
  const integrity=async(entry,phase)=>{
-  const recipe=f.integrityRecipe;assert.equal(recipe?.case_id,'integrity-dongying');assert.ok(sameSet(recipe.draft?.site_ids,INTEGRITY_SITE_IDS));entry.issuerName=recipe.issuer_name;
+   const recipe=f.integrityRecipe,revision=integrityScopeRevision(recipe,report?.fixtureHashes?.find(f=>f.id==='integrity-dongying/input.json')?.sha256);
+   if(entry.integrityScopeRevision)assert.deepEqual(entry.integrityScopeRevision,revision,'Accepted integrity test scope changed');
+   else{assert.ok(!entry.prepared&&!entry.runId,'Existing integrity task has no original scope revision; preserve it without resubmission');entry.integrityScopeRevision=revision;entry.originalIntegrityRecipe=structuredClone(recipe);save();}
+   assert.deepEqual(entry.originalIntegrityRecipe,recipe,'Original integrity recipe changed on resume');entry.issuerName=recipe.issuer_name;
   if(!entry.runId){
    await createProject(entry,'integrity');
    if(!entry.prepared){
@@ -155,6 +181,10 @@ export function extendedFlows(ctx){
    entry.queryEvidence.push({siteId:record.site_id,captureId:capture.id,outcome:record.browser.outcome,query:record.query,url:capture.url,sha256:capture.screenshot_sha256,bytes:bytes.length});if(!entry.integrityVerifiedPairs.some(p=>p.subject_id===record.subject_id&&p.site_id===record.site_id))entry.integrityVerifiedPairs.push({subject_id:record.subject_id,site_id:record.site_id});save();
   }
   const first=candidates[0];await section.locator(field('data-evidence','0:'+first.record.site_id)).click();const modal=page.locator('dialog[open]');const index=first.record.browser.captures.findIndex(c=>c.id===first.capture.id);await modal.locator(field('data-auto-capture',index)).click();await modal.locator(field('data-auto-preview',index)+' img').waitFor({state:'visible'});await modal.getByRole('button',{name:'关闭',exact:true}).click();
+   const billing=page.locator('[data-integrity-settlement]');await billing.waitFor({state:'visible'});const billedScope=billing.locator('[data-integrity-settlement-scope]');if(await billedScope.getAttribute('open')===null)await billedScope.locator('summary').click();
+   const visible={observedAt:new Date().toISOString(),amountsText:await billing.locator('[data-integrity-settlement-amounts]').innerText(),reasonText:await billing.locator('[data-integrity-settlement-reason]').innerText(),items:await billedScope.locator('[data-integrity-billed-site]').evaluateAll(nodes=>nodes.map(node=>({subjectId:node.getAttribute('data-integrity-billed-subject'),siteId:node.getAttribute('data-integrity-billed-site'),text:node.innerText})))};
+   const explained=assertIntegrityVisibleSettlement(round,entry,visible),previous=entry.integrityBillingPageEvidence;if(previous){const {observations,...identity}=previous;assert.deepEqual(identity,explained,'Refresh changed visible integrity settlement');}
+   entry.integrityBillingPageEvidence={...explained,observations:[...(previous?.observations??[]),visible]};save();
   const company=round.artifacts.filter(a=>a.kind==='company');assert.equal(company.length,1,'Expected one company report');const button=page.locator(field('data-integrity-download',company[0].artifact_id));await download(button,'integrity.docx',entry);
  };
  const workpaper=async(entry,phase)=>{
