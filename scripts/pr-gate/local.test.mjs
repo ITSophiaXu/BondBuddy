@@ -136,7 +136,7 @@ test('dirty invocation invalidates a prior passed receipt, merges missing result
   try {
     const directory = join(fixture, 'scripts/pr-gate'); mkdirSync(directory, { recursive: true });
     for (const name of ['local.mjs', 'run.mjs', 'receipt.mjs', 'workflow.mjs', 'capabilities.mjs', 'parser-source.mjs', 'offline-cache.mjs', 'host-profiles.mjs', 'host-dispatch.mjs', 'host-dispatch-client.mjs', 'host-dispatch-protocol.mjs', 'core-source.mjs',
-      'browser-host.mjs', 'browser-profiles.mjs', 'browser-receipt.mjs', 'browser-runtime.mjs', 'browser-tools.mjs', 'browser-reference-source.mjs', 'internal-network.mjs', 'browser-upload-confirmation.mjs']) copyFileSync(new URL(name, import.meta.url), join(directory, name));
+      'browser-host.mjs', 'browser-profiles.mjs', 'browser-receipt.mjs', 'browser-runtime.mjs', 'browser-tools.mjs', 'browser-reference-source.mjs', 'internal-network.mjs', 'browser-upload-confirmation.mjs', 'docker-evidence.mjs']) copyFileSync(new URL(name, import.meta.url), join(directory, name));
     writeFileSync(join(fixture, '.gitignore'), '.local/\n');
     const git = args => execFileSync('git', args, { cwd: fixture, stdio: 'pipe' });
     git(['init']); git(['add', '.']); git(['-c', 'user.name=Gate Test', '-c', 'user.email=gate@example.invalid', 'commit', '-m', 'fixture']);

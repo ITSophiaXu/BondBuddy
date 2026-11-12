@@ -26,7 +26,8 @@ test('host plan uses original discovery, exclusions and modulo order including n
   const plan = createHostPlan({ root, candidate, matrix, runId: 'synthetic-run', sourceBlob: file => file.endsWith('exclusions.json') ? Buffer.from('{"notInCi":[],"knownFailing":[],"allowSkip":[]}') : readFileSync(join(root, file)) });
   assert.deepEqual(plan.entries.map(entry => [entry.shard, entry.testId]), [
     ['worker-1', 'apps/worker/src/integrity-desktop.test.ts'], ['worker-2', 'apps/worker/src/codex-file-authoring.test.ts'], ['worker-2', 'apps/worker/src/review-revision-cli-native.test.ts'],
-    ['misc', 'scripts/billing-functional/panel-session.test.mjs'], ['misc', 'python/tests/test_ocr.py'],
+    ['misc', 'scripts/billing-functional/panel-session.test.mjs'], ['misc', 'scripts/release-smoke/credentials.linux.test.mjs'],
+    ['misc', 'deploy/m1/scripts/backup-integration.test.mjs'], ['misc', 'python/tests/test_ocr.py'],
   ]);
   assert.ok(plan.entries.every(entry => entry.fileTimeoutMs === 300_000));
 }));

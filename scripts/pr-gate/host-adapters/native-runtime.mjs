@@ -18,6 +18,8 @@ const sync = (command, args, options = {}) => {
   return result.stdout.trim();
 };
 const requiredFiles = ['package-lock.json', 'python/requirements.txt', 'python/requirements-dev.txt',
+  'deploy/m1/scripts/backup-integration.test.mjs', 'deploy/m1/scripts/backup-stream.mjs',
+  'deploy/m1/scripts/blob-snapshot.mjs', 'deploy/m1/scripts/backup-offhost.mjs',
   'deploy/m1/scripts/codex-bwrap.sh', 'deploy/m1/security/codex-seccomp.json', 'deploy/m1/security/integrity-browser-seccomp.json',
   ...Object.entries(tests).flatMap(([file, value]) => [file, value.run])];
 
@@ -52,7 +54,7 @@ Path('/evidence/native-reportlab.json').write_text(json.dumps(dict(distribution=
 print('Existing ReportLab cache exported:',d.version,len(rows))`]);
   sync('tar', ['-C', '/workspace', '--mode=a+rX,go-w', '--owner=0', '--group=0', '-cf', '/evidence/native-app.tar',
     'apps', 'packages', 'python', 'node_modules', 'package.json', 'package-lock.json', 'scripts/pr-gate',
-    'deploy/m1/scripts/codex-bwrap.sh', 'deploy/m1/security/codex-seccomp.json', 'deploy/m1/security/integrity-browser-seccomp.json'], { timeout: 300_000 });
+    'deploy/m1/scripts', 'deploy/m1/security/codex-seccomp.json', 'deploy/m1/security/integrity-browser-seccomp.json'], { timeout: 300_000 });
 }
 
 function initialize() {
