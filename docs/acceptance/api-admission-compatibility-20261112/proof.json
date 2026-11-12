@@ -1,0 +1,601 @@
+{
+  "issue": 1109,
+  "scope": {
+    "originalRun": "1794418350450-38278111",
+    "originalCommit": "d3028cb2f5e98e5b9a9ad36deb68e461de4a6df2",
+    "categoryA": 54,
+    "previouslyExactPassed": 9,
+    "otherPR1053CandidateEvidence": 2,
+    "selected": [
+      "apps/api/src/execution-key.test.ts",
+      "apps/api/src/project-list.test.ts"
+    ],
+    "boundaries": [
+      "apps/api/src/billing-int64.test.ts",
+      "apps/api/src/billing-wire.test.ts"
+    ],
+    "remainingWithoutSelected": 41,
+    "testsRun": true,
+    "exactPassedAfter": 11
+  },
+  "source": {
+    "commit": "e7cd7f5724d036d61ee4ac29f8ef3e73c4a24de3",
+    "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+    "tree": "d7901f9384f10c09e88c272124595f1050527344",
+    "archiveBase": "8a7dc38a9546831346805d8cb36ce88aae456da3",
+    "baseArchiveSha256": "8dc4f5e9082c34ab6369736776508e4f47f5e872edcc67efcd26be229352581e",
+    "deltaArchiveSha256": "37b7bc1643604d17ae107c13718b11a5c54b9ddb3cbd46186e181e0c6aa7b717",
+    "rawFiles": 6430,
+    "originalGateComparison": [
+      {
+        "path": "apps/api/src/execution-key.test.ts",
+        "oldBlob": "d2b5b84a6ff690bad9faec8da0c9a1eb001bf3e4",
+        "baseBlob": "d2b5b84a6ff690bad9faec8da0c9a1eb001bf3e4",
+        "identical": true
+      },
+      {
+        "path": "apps/api/src/project-list.test.ts",
+        "oldBlob": "0c6665bceb8f78890311e50c8800ff4424345023",
+        "baseBlob": "0c6665bceb8f78890311e50c8800ff4424345023",
+        "identical": true
+      }
+    ],
+    "selectedFiles": [
+      {
+        "path": "apps/api/src/billing-int64.test.ts",
+        "mode": "100644",
+        "blob": "784d0392f61014584f5ea4d1ed4dec891506ccd0"
+      },
+      {
+        "path": "apps/api/src/billing-wire.test.ts",
+        "mode": "100644",
+        "blob": "34e580d282069f1498b0fe439019c891f3478897"
+      },
+      {
+        "path": "apps/api/src/execution-key.test.ts",
+        "mode": "100644",
+        "blob": "0dc257dd018aae2b5472db72593cf3a4bcc6cd8a"
+      },
+      {
+        "path": "apps/api/src/project-list.test.ts",
+        "mode": "100644",
+        "blob": "617ccee2e2f98393d0ec9feab6839361d7372ae1"
+      },
+      {
+        "path": "apps/api/src/test-authoring-source.ts",
+        "mode": "100644",
+        "blob": "ae31c871b79d2f89467dffe3a49c769f795cfc36"
+      }
+    ]
+  },
+  "result": {
+    "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+    "commit": "e7cd7f5724d036d61ee4ac29f8ef3e73c4a24de3",
+    "tree": "d7901f9384f10c09e88c272124595f1050527344",
+    "harnessSha256": {
+      "run.mjs": "3e7ad98d23756c61b6d63c01932d71d8da2c1af9a2a771413dcbf8c0f726b7ec",
+      "start.mjs": "142910af2961050680a5b8b484cde2fd3ec89e43a30b5cc5fad70c7fe280b64a",
+      "cleanup.mjs": "57e412c756fdb25c816dfaaddfe2ae44f3abf0fe866baab0aa375691849c74ed",
+      "audit.mjs": "0fdb065a9e91a0433d2cc34801d80f1cb4c3c1172cac06a4bc123d8b2647df60"
+    },
+    "started": "2026-11-12T05:34:02.977Z",
+    "finished": "2026-11-12T05:35:26.832Z",
+    "results": [
+      {
+        "name": "source-audit",
+        "command": [
+          "node",
+          "/evidence/audit.mjs"
+        ],
+        "pid": 21,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 1629,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 5454978\nuser_usec 263254\nsystem_usec 5191723\nnice_usec 0\nnr_periods 184\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "465559552"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 7434333\nuser_usec 1593071\nsystem_usec 5841262\nnice_usec 0\nnr_periods 201\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "623288320"
+        }
+      },
+      {
+        "name": "build-contracts",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/contracts"
+        ],
+        "pid": 28,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 11397,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 7550876\nuser_usec 1612890\nsystem_usec 5937985\nnice_usec 0\nnr_periods 202\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "623288320"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 26953108\nuser_usec 20013159\nsystem_usec 6939949\nnice_usec 0\nnr_periods 316\nnr_throttled 44\nthrottled_usec 2078585\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866480128"
+        }
+      },
+      {
+        "name": "build-domain",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/domain"
+        ],
+        "pid": 47,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 7756,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 26955694\nuser_usec 20015744\nsystem_usec 6939949\nnice_usec 0\nnr_periods 316\nnr_throttled 44\nthrottled_usec 2078585\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866480128"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 40910894\nuser_usec 33074678\nsystem_usec 7836216\nnice_usec 0\nnr_periods 394\nnr_throttled 85\nthrottled_usec 3707175\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866480128"
+        }
+      },
+      {
+        "name": "build-rule-pack-registry",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/rule-pack-registry"
+        ],
+        "pid": 66,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 2888,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 40912335\nuser_usec 33075843\nsystem_usec 7836492\nnice_usec 0\nnr_periods 394\nnr_throttled 85\nthrottled_usec 3707175\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866480128"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 45996050\nuser_usec 37688376\nsystem_usec 8307674\nnice_usec 0\nnr_periods 423\nnr_throttled 100\nthrottled_usec 4453079\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866480128"
+        }
+      },
+      {
+        "name": "build-rule-applicability-context",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/rule-applicability-context"
+        ],
+        "pid": 85,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 2678,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 45997455\nuser_usec 37688376\nsystem_usec 8309079\nnice_usec 0\nnr_periods 423\nnr_throttled 100\nthrottled_usec 4453079\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866480128"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 50526871\nuser_usec 41773085\nsystem_usec 8753786\nnice_usec 0\nnr_periods 449\nnr_throttled 110\nthrottled_usec 4878218\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866480128"
+        }
+      },
+      {
+        "name": "build-api-targets",
+        "command": [
+          "node",
+          "node_modules/typescript/bin/tsc",
+          "-p",
+          "apps/api/tsconfig.issue1109.json"
+        ],
+        "pid": 104,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 19187,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 50528323\nuser_usec 41774285\nsystem_usec 8754037\nnice_usec 0\nnr_periods 449\nnr_throttled 110\nthrottled_usec 4878218\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866480128"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 81449808\nuser_usec 70876939\nsystem_usec 10572869\nnice_usec 0\nnr_periods 641\nnr_throttled 162\nthrottled_usec 8576592\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1197379584"
+        }
+      },
+      {
+        "name": "migrate",
+        "command": [
+          "node",
+          "db/migrate.mjs"
+        ],
+        "pid": 115,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 5867,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 81485592\nuser_usec 70907195\nsystem_usec 10578397\nnice_usec 0\nnr_periods 643\nnr_throttled 162\nthrottled_usec 8576592\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1197379584"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 82157393\nuser_usec 71347945\nsystem_usec 10809447\nnice_usec 0\nnr_periods 700\nnr_throttled 162\nthrottled_usec 8576592\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1197379584"
+        }
+      },
+      {
+        "name": "wire-boundaries",
+        "command": [
+          "node",
+          "--test",
+          "--test-reporter=tap",
+          "--test-concurrency=1",
+          "apps/api/dist/billing-int64.test.js",
+          "apps/api/dist/billing-wire.test.js"
+        ],
+        "pid": 126,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 1446,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 82158493\nuser_usec 71348901\nsystem_usec 10809592\nnice_usec 0\nnr_periods 700\nnr_throttled 162\nthrottled_usec 8576592\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1197379584"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 84091241\nuser_usec 72899586\nsystem_usec 11191654\nnice_usec 0\nnr_periods 715\nnr_throttled 162\nthrottled_usec 8576592\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1197379584"
+        }
+      },
+      {
+        "name": "test",
+        "command": [
+          "node",
+          "--test",
+          "--test-reporter=tap",
+          "--test-concurrency=1",
+          "apps/api/dist/execution-key.test.js",
+          "apps/api/dist/project-list.test.js"
+        ],
+        "pid": 148,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 12809,
+        "timeoutMs": 600000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 84092213\nuser_usec 72900428\nsystem_usec 11191784\nnice_usec 0\nnr_periods 715\nnr_throttled 162\nthrottled_usec 8576592\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1197379584"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 97606332\nuser_usec 85192071\nsystem_usec 12414261\nnice_usec 0\nnr_periods 843\nnr_throttled 165\nthrottled_usec 8613407\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1197379584"
+        }
+      }
+    ]
+  },
+  "audit": {
+    "commit": "e7cd7f5724d036d61ee4ac29f8ef3e73c4a24de3",
+    "tree": "d7901f9384f10c09e88c272124595f1050527344",
+    "rawFiles": 6430,
+    "rawMatch": true,
+    "assertions": [
+      {
+        "path": "apps/api/src/execution-key.test.ts",
+        "testCount": 1,
+        "before": 36,
+        "after": 42,
+        "unchangedExpressions": 36,
+        "added": 6,
+        "namesSkipTimeoutUnchanged": true
+      },
+      {
+        "path": "apps/api/src/project-list.test.ts",
+        "testCount": 2,
+        "before": 45,
+        "after": 51,
+        "unchangedExpressions": 45,
+        "added": 6,
+        "namesSkipTimeoutUnchanged": true
+      }
+    ]
+  },
+  "localAST": {
+    "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+    "head": "e7cd7f5724d036d61ee4ac29f8ef3e73c4a24de3",
+    "typescript": "5.9.3",
+    "testsRun": false,
+    "helperBlob": "ae31c871b79d2f89467dffe3a49c769f795cfc36",
+    "changed": [
+      "apps/api/src/execution-key.test.ts",
+      "apps/api/src/project-list.test.ts",
+      "apps/api/src/test-authoring-source.ts"
+    ],
+    "rows": [
+      {
+        "path": "apps/api/src/execution-key.test.ts",
+        "testCount": 1,
+        "beforeAssertions": 36,
+        "afterAssertions": 42,
+        "unchangedAssertions": 36,
+        "addedAssertions": [
+          "assert.equal(current.statusCode,200,current.body)",
+          "assert.equal(edited.statusCode,200,edited.body)",
+          "assert.equal(versions.statusCode,200,versions.body)",
+          "assert.equal(locked.statusCode,201,locked.body)",
+          "assert.notEqual(next.input_hash,fields.input_hash,'a distinct execution locks its own current scope')",
+          "assert.notEqual(quoteId,fields.quote_id,'a new business scope has its own unused quote')"
+        ],
+        "testNamesOptionsUnchanged": true,
+        "sourceSha256": "d9fb22aef994f0aa22304de4d80fb712089cad8e464caa37978c995248b86476"
+      },
+      {
+        "path": "apps/api/src/project-list.test.ts",
+        "testCount": 2,
+        "beforeAssertions": 45,
+        "afterAssertions": 51,
+        "unchangedAssertions": 45,
+        "addedAssertions": [
+          "assert.equal(artifact.status,'available')",
+          "assert.equal(clean.status,'available')",
+          "assert.notEqual(clean.artifactId,artifact.artifactId,'both generated Word files are independently persisted')",
+          "assert.equal(current.statusCode,200,current.body)",
+          "assert.equal(versions.statusCode,200,versions.body)",
+          "assert.equal(nextInput.statusCode,201,nextInput.body)"
+        ],
+        "testNamesOptionsUnchanged": true,
+        "sourceSha256": "d25e5e63d6593ff2bde95752589bbb628a3166415e9f85144d6dab9fdd98decf"
+      }
+    ],
+    "assertions": 81,
+    "addedAssertions": 12
+  },
+  "runtime": {
+    "node": "v22.23.3",
+    "locale": {
+      "LANG": "C.UTF-8",
+      "LC_ALL": "C.UTF-8"
+    },
+    "typescript": "5.9.3",
+    "pg": "8.23.0",
+    "fastify": "5.12.5",
+    "cachedLockSha256": "69ce90eb0ff8cb11578c419ad3c5a1221da099fdb5fce17c190aef2052255701",
+    "sourceLockSha256": "81833914ef0ba232e249040685bb93ac1e3b63e640b960d2d217985fa4b5ed8c",
+    "sourceLockCRLFSha256": "69ce90eb0ff8cb11578c419ad3c5a1221da099fdb5fce17c190aef2052255701",
+    "lockMatches": true
+  },
+  "images": {
+    "runner": "sha256:e081d9ca27e8ef07e6a658183b50b15a568a8126a67d70a3065ff630dfb7fdb9",
+    "azurite": "sha256:647c63a91102a9d8e8000aab803436e1fc85fbb285e7ce830a82ee5d6661cf37",
+    "postgres": "sha256:20edbde7749f822887a1a022ad526fde0a47d6b2be9a8364433605cf65099416"
+  },
+  "cleanup": {
+    "timestamp": "2026-11-12T05:36:01.691Z",
+    "testFinished": "2026-11-12T05:35:26.832Z",
+    "resources": [
+      {
+        "id": "d77a37783b2a443a3ae2474b706e66f0da52ef984f7e0f566afe2e54a745c27b",
+        "name": "/bb-issue1109-pg",
+        "image": "sha256:20edbde7749f822887a1a022ad526fde0a47d6b2be9a8364433605cf65099416",
+        "cpu": 1,
+        "memoryBytes": 536870912,
+        "ports": {},
+        "status": "running"
+      },
+      {
+        "id": "2d962c1d6eb8883fec590446283724c8f7ea2c66236b224548f30246ab96c882",
+        "name": "/bb-issue1109-azurite",
+        "image": "sha256:647c63a91102a9d8e8000aab803436e1fc85fbb285e7ce830a82ee5d6661cf37",
+        "cpu": 0.5,
+        "memoryBytes": 268435456,
+        "ports": {},
+        "status": "running"
+      },
+      {
+        "id": "a0733c5f380e3cc90cb9b14aaba11ff601ae97b1f64a563177d0cb45e4b81baf",
+        "name": "/bb-issue1109-runner",
+        "image": "sha256:e081d9ca27e8ef07e6a658183b50b15a568a8126a67d70a3065ff630dfb7fdb9",
+        "cpu": 2,
+        "memoryBytes": 2415919104,
+        "ports": {},
+        "status": "running"
+      }
+    ],
+    "runnerProcessesBeforeRemoval": "PID                 COMMAND             COMMAND\n50207               docker-init         /sbin/docker-init -- sleep infinity\n50229               sleep               sleep infinity",
+    "network": {
+      "id": "7f6ccf2710755d56c9144cbed766878b2859a7b174775947714d0259dd333c16",
+      "name": "bb-issue1109-net",
+      "internal": true
+    },
+    "removal": "d77a37783b2a443a3ae2474b706e66f0da52ef984f7e0f566afe2e54a745c27b\n2d962c1d6eb8883fec590446283724c8f7ea2c66236b224548f30246ab96c882\na0733c5f380e3cc90cb9b14aaba11ff601ae97b1f64a563177d0cb45e4b81baf",
+    "networkRemoval": "7f6ccf2710755d56c9144cbed766878b2859a7b174775947714d0259dd333c16",
+    "absent": [
+      {
+        "id": "d77a37783b2a443a3ae2474b706e66f0da52ef984f7e0f566afe2e54a745c27b",
+        "name": "/bb-issue1109-pg",
+        "absent": true
+      },
+      {
+        "id": "2d962c1d6eb8883fec590446283724c8f7ea2c66236b224548f30246ab96c882",
+        "name": "/bb-issue1109-azurite",
+        "absent": true
+      },
+      {
+        "id": "a0733c5f380e3cc90cb9b14aaba11ff601ae97b1f64a563177d0cb45e4b81baf",
+        "name": "/bb-issue1109-runner",
+        "absent": true
+      }
+    ],
+    "networkAbsent": true
+  },
+  "remainingClones": [],
+  "logs": {
+    "final-test.tap": {
+      "rawSha256": "9d0679a6d76b6b591ca304ff680c4ac24e43358b1ae0f3c09c4736f0363ddddd",
+      "displaySha256": "9d0679a6d76b6b591ca304ff680c4ac24e43358b1ae0f3c09c4736f0363ddddd",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "wire-boundaries.tap": {
+      "rawSha256": "f2226b989dc4ef763cdf80240c82ab627c9203715f4e75884caddc352a846fb2",
+      "displaySha256": "f2226b989dc4ef763cdf80240c82ab627c9203715f4e75884caddc352a846fb2",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "original-execution-key.tap": {
+      "rawSha256": "3c3bd3f4948ac9ad0f74d837c26ef0c1c80252bf8112075b2672c97619974f29",
+      "displaySha256": "46d2f810a07a7bb5e3b3e3d1325a470bc9812c86f5ac306a4ca828f2b49b25ca",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "original-project-list.tap": {
+      "rawSha256": "49b58dbad19d2af5ceb902d170a602e1b8d8f5999dd7f71447bf44c0deda2a09",
+      "displaySha256": "f8c002f203c98fcc5457b5fe127b21879d58bbac4d1cdd47e45ea7f55a7d0147",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "build-contracts.log": {
+      "rawSha256": "ac5e311e2cca183fb01b2b070336210ca3ad23a4280e52f6d239752d6c97fefa",
+      "displaySha256": "e4f84f56e5547e9bf393077e15d5d35453aec5d355e5ab0ba2a1394b1d52685e",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "build-domain.log": {
+      "rawSha256": "06822fbd0e1081ad85f5254cdbd5c766c1419fa684c59351011551edaf218c70",
+      "displaySha256": "25caac3f23b24e25abf74fd2e66b8234181cf0866890ba9e02aaa072f8551849",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "build-rule-pack-registry.log": {
+      "rawSha256": "e17760588e47d9c624ef5180dd45ba53af6c1731235bd63c513ead739402fc48",
+      "displaySha256": "b9f5278ddac5f7758c91f3fc57e45bc88b0ffe778d38b31d331cfcb93906ca82",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "build-rule-applicability-context.log": {
+      "rawSha256": "a3f4fe86cc5b1cc0fe27b3da2e4e432e5633bbe843f3f29b9184cdadd2fb1e80",
+      "displaySha256": "36f70da50dca465621e3a56213fc269bce24b7ae74d67fd38ea598a0366a8435",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "build-api-targets.log": {
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "displaySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "migrate.log": {
+      "rawSha256": "8e40b533deeb3d8d8f0783e998add1e6888c19aeffebccfd375459098d44c42c",
+      "displaySha256": "8e40b533deeb3d8d8f0783e998add1e6888c19aeffebccfd375459098d44c42c",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    }
+  },
+  "existingPRScope": {
+    "checkedAt": "2026-11-12T05:13:25.731Z",
+    "names": [
+      "execution-key",
+      "issuer-identity-input-lock",
+      "non-production-test",
+      "project-list",
+      "project-kind-conversion",
+      "quotation-safety",
+      "scope-quotations",
+      "project-scope-quotation"
+    ],
+    "openPRCount": 60,
+    "matches": [
+      {
+        "number": 770,
+        "title": "feat: outcome PAYG pricing, contract coverage and delivery settlement",
+        "url": "https://github.com/ITSophiaXu/BondBuddy/pull/770",
+        "head": "b005719a5bef882e3d6f169471597cfc907d2428",
+        "branch": "feat/commercial-billing-20261028",
+        "base": "develop",
+        "matches": [
+          "apps/api/src/project-scope-quotation.pg.test.ts",
+          "apps/api/src/scope-quotations.pg.test.ts",
+          "apps/api/src/scope-quotations.ts"
+        ]
+      },
+      {
+        "number": 756,
+        "title": "feat: 完善桌面任务恢复、准确成果续改与 B1 同任务补料",
+        "url": "https://github.com/ITSophiaXu/BondBuddy/pull/756",
+        "head": "0ac729745985b31e3515dde956905f6c9e52401b",
+        "branch": "codex/desktop-ux-coverage-20261026",
+        "base": "develop",
+        "matches": [
+          "apps/api/src/non-production-test.test.ts",
+          "apps/api/src/project-list.test.ts",
+          "apps/api/src/project-list.ts"
+        ]
+      }
+    ]
+  },
+  "staticDraft": "d175abca was not run: static review found active scopes cannot reuse consumed quotes; e7cd7f57 uses distinct normal draft/input scopes for independent business keys."
+}
