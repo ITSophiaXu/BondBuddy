@@ -1,0 +1,32 @@
+TAP version 13
+# Subtest: dedicated parse slot finishes an upload before a blocked run, and zero restores serial scheduling
+not ok 1 - dedicated parse slot finishes an upload before a blocked run, and zero restores serial scheduling
+  ---
+  duration_ms: 11854.863539
+  type: 'test'
+  location: '/workspace/apps/worker/dist/runtime-parse-slots.test.js:37:1'
+  failureType: 'testCodeFailure'
+  error: 'timed out waiting for job'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    waitFor (file:///workspace/apps/worker/dist/runtime-parse-slots.test.js:24:19)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async TestContext.<anonymous> (file:///workspace/apps/worker/dist/runtime-parse-slots.test.js:77:21)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: parse-only workers keep their configured capacity and never claim runs; invalid slot values fail
+ok 2 - parse-only workers keep their configured capacity and never claim runs; invalid slot values fail
+  ---
+  duration_ms: 225.75903
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 1
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 34080.889871
