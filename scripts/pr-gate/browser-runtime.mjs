@@ -26,6 +26,13 @@ export function browserInvocation(items, reportFile, env) {
     env: { ...env, PLAYWRIGHT_JSON_OUTPUT_FILE: reportFile, CI: env.CI ?? '1' } };
 }
 
+export function createBrowserStartupBarrier() {
+  let finish, stopped = false;
+  const settled = new Promise(done => { finish = done; });
+  return { requestStop: () => { stopped = true; }, finish,
+    wait: () => settled, requireStarting: () => assert.equal(stopped, false, 'Browser runtime stopped during preparation') };
+}
+
 /** The child owns API/Vite/prototype lifetimes and reports actual readiness. */
 export async function startBrowserRuntime(root, items, inherited) {
   const plan = loadBrowserPlan(root, items, inherited);
@@ -82,10 +89,15 @@ async function serve() {
     environment, removed_environment_keys: removed, started_at: new Date().toISOString(), pid: process.pid, probes: {}, model_calls: 0,
     status: 'failed', cleanup: { status: 'pending' } };
   let api, pool, vite, prototype, prototypeExit, stopping, uploadConfirmation;
+  const startup = createBrowserStartupBarrier(), requireStarting = startup.requireStarting;
   const save = () => writeFileSync(join(plan.output_root, 'runtime.json'), JSON.stringify(evidence, null, 2) + '\n');
   const stop = async () => {
+    startup.requestStop();
     if (stopping) return stopping;
     stopping = (async () => {
+      // An in-flight startup owns resources before its promise resolves. Wait
+      // for that acquisition to settle, then clean every acquired handle once.
+      await startup.wait();
       const errors = [];
       if (evidence.status === 'prepared') {
         evidence.services_alive_before_cleanup = { web: vite?.httpServer?.listening === true,
@@ -103,12 +115,14 @@ async function serve() {
       }
       if (plan.needs.ocr) try { evidence.tools_final = verifyBrowserTools(BROWSER_TOOLS_ROOT, process.env.PR_GATE_BROWSER_TOOLS_SHA256); } catch (error) { errors.push(error.message); }
       evidence.finished_at = new Date().toISOString(); evidence.cleanup = { status: errors.length ? 'failed' : 'passed', errors }; save();
-      process.send?.({ type: 'finished', evidence }); process.exitCode = errors.length ? 1 : 0; process.disconnect?.();
+      if (process.connected) process.send({ type: 'finished', evidence }); process.exitCode = errors.length ? 1 : 0; if (process.connected) process.disconnect();
     })(); return stopping;
   };
   process.once('SIGTERM', () => void stop()); process.once('SIGINT', () => void stop());
+  process.once('disconnect', () => void stop());
   process.on('message', message => { if (message.type === 'stop') void stop(); });
   try {
+    requireStarting();
     // Candidate source restoration does not carry an ignored .env. Reject it
     // rather than allowing prototype/API startup to read a user's credentials.
     for (const path of ['.env', 'product-prototype/.env', 'apps/web/.env', 'apps/web/.env.local', 'apps/web/.env.development', 'apps/web/.env.development.local']) assert.ok(!existsSync(join(root, path)), 'Unexpected environment file in candidate');
@@ -120,32 +134,42 @@ async function serve() {
     if (plan.needs.api) {
       assert.equal(process.env.BB_TEST_DATABASE_URL, BROWSER_DATABASE);
       const { Pool } = await import('pg'), { createServer } = await import(pathToFileURL(join(root, 'apps/api/dist/server.js'))), { azureBlobs } = await import(pathToFileURL(join(root, 'apps/api/dist/data.js')));
+      requireStarting();
       pool = new Pool({ connectionString: BROWSER_DATABASE });
       const row = (await pool.query('SELECT current_database() AS database, inet_server_port() AS port, current_setting(\'server_version_num\') AS version')).rows[0];
+      requireStarting();
       assert.equal(row.database, 'bondbuddy_local'); assert.equal(row.port, 55433); assert.ok(Number(row.version) >= 160000 && Number(row.version) < 170000);
       evidence.probes.database = { status: 'passed', ...row };
       api = createServer({ pool, blobs: azureBlobs('UseDevelopmentStorage=true'), allowedOrigin: BROWSER_ORIGIN, auth: { termsVersion: BROWSER_TERMS, supportContact: 'Synthetic local test support' },
         enableRunStaging: true, enableSyntheticQueue: false, enableRunRuntime: false });
       await api.listen({ host: '127.0.0.1', port: 3000 });
+      requireStarting();
       const health = await fetch(BROWSER_API_ORIGIN + '/health'); assert.equal(health.status, 200);
+      requireStarting();
       evidence.probes.api = { status: 'passed', origin: BROWSER_API_ORIGIN, health_sha256: browserHash(await health.text()), runtime_enabled: false, synthetic_queue: false };
+      requireStarting();
       try { uploadConfirmation = await startBrowserUploadConfirmation({ root, plan }); evidence.upload_confirmation = uploadConfirmation.evidence; }
       catch (error) { evidence.upload_confirmation = error.uploadConfirmationEvidence; throw error; }
+      requireStarting();
     }
     const { createServer } = await import('vite');
-    vite = await createServer({ root: join(root, 'apps/web'), configFile: join(root, 'apps/web/vite.config.ts'), server: { host: '127.0.0.1', port: 5173, strictPort: true } }); await vite.listen();
+    requireStarting();
+    vite = await createServer({ root: join(root, 'apps/web'), configFile: join(root, 'apps/web/vite.config.ts'), server: { host: '127.0.0.1', port: 5173, strictPort: true } }); requireStarting(); await vite.listen(); requireStarting();
     const ca = readFileSync(process.env.NODE_EXTRA_CA_CERTS), web = await httpsRead(BROWSER_ORIGIN, ca); assert.equal(web.status, 200); assert.match(web.body, /<html/i);
     evidence.probes.web = { status: 'passed', origin: BROWSER_ORIGIN, ca_sha256: browserHash(ca), tls_verified: true, response_sha256: browserHash(web.body) };
+    requireStarting();
     if (plan.needs.api) {
       const response = await httpsRead(BROWSER_ORIGIN + '/api/v1/auth/agreement', ca); assert.equal(response.status, 200);
       assert.equal(JSON.parse(response.body).terms_version, BROWSER_TERMS);
       evidence.probes.proxy = { status: 'passed', terms_version: BROWSER_TERMS, response_sha256: browserHash(response.body) };
+      requireStarting();
     }
     if (plan.needs.prototype) {
       prototype = spawn(process.execPath, ['product-prototype/server.mjs'], { cwd: root, env: { PATH: process.env.PATH, HOME: '/tmp', LANG: 'C.UTF-8', PORT: '4320', BOND_BUDDY_RUNTIME: join(plan.output_root, 'prototype-state'),
         DEEPSEEK_API_KEY: '', TAVILY_API_KEY: '', REGISTRY_API_KEY: '', BOND_BUDDY_ADMIN_TOKEN: '' }, stdio: ['ignore', 'inherit', 'inherit'] });
       prototypeExit = new Promise(done => { prototype.once('exit', (code, signal) => done({ code, signal })); prototype.once('error', error => done({ error: error.message })); });
       for (let attempt = 0; ; attempt++) {
+        requireStarting();
         try { const response = await fetch(BROWSER_PROTOTYPE_ORIGIN + '/api/health'); assert.equal(response.status, 200); evidence.probes.prototype = { status: 'passed', origin: BROWSER_PROTOTYPE_ORIGIN, response_sha256: browserHash(await response.text()), model_calls: 0 }; break; }
         catch (error) { if (attempt >= 29 || prototype.exitCode !== null) throw error; await new Promise(done => setTimeout(done, 500)); }
       }
@@ -153,8 +177,10 @@ async function serve() {
     // Check the browser's real interface state. Do not patch navigator or any
     // application's online/offline handlers to hide an isolated-network defect.
     const { chromium } = await import('playwright');
+    requireStarting();
     const probeBrowser = await chromium.launch({ headless: true });
     try {
+      requireStarting();
       const page = await probeBrowser.newPage({ ignoreHTTPSErrors: true });
       await page.goto(BROWSER_ORIGIN);
       const observed = await page.evaluate(async () => ({ navigator_online: navigator.onLine, origin: location.origin, same_origin_status: (await fetch('/')).status }));
@@ -162,8 +188,9 @@ async function serve() {
       assert.equal(observed.origin, BROWSER_ORIGIN); assert.equal(observed.same_origin_status, 200);
       evidence.probes.browser_network = { status: 'passed', ...observed, browser_version: probeBrowser.version(), public_probe_requests: 0 };
     } finally { await probeBrowser.close(); }
-    evidence.status = 'prepared'; evidence.prepared_at = new Date().toISOString(); save(); process.send?.({ type: 'ready', evidence });
-  } catch (error) { evidence.error = error.message; process.send?.({ type: 'failed', error: error.message }); await stop(); }
+    requireStarting();
+    evidence.status = 'prepared'; evidence.prepared_at = new Date().toISOString(); save(); startup.finish(); if (process.connected) process.send({ type: 'ready', evidence });
+  } catch (error) { startup.finish(); evidence.error = error.message; if (process.connected) process.send({ type: 'failed', error: error.message }); await stop(); }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === here) serve().catch(error => { console.error(error); process.exitCode = 1; process.disconnect?.(); });

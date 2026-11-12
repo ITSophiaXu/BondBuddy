@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { BROWSER_API_PROFILES, BROWSER_DATABASE, BROWSER_ORIGIN, BROWSER_PROTOTYPE_ORIGIN, browserEnvironment, browserHash, createBrowserPlan, verifyBrowserPlan } from './browser-profiles.mjs';
 import { browserFilesForShard, verifyBrowserDatabaseContainer } from './browser-host.mjs';
-import { browserInvocation } from './browser-runtime.mjs';
+import { browserInvocation, createBrowserStartupBarrier } from './browser-runtime.mjs';
 import { lddLibraryPaths, lddPaths } from './browser-tools.mjs';
 import { verifyBrowserRuns } from './browser-receipt.mjs';
 import { syntheticBrowserSources, syntheticBrowserShard } from './browser.test-fixture.mjs';
@@ -14,6 +14,18 @@ const candidate = { commit: 'a'.repeat(40), tree: 'b'.repeat(40), browser_source
 const runId = 'synthetic-browser-1234';
 const options = { candidate, runId, shard: 'browser-1', files: Object.keys(candidate.browser_source_sha256), sourceBlob: path => Buffer.from(path) };
 const disabled = { BB_TEST_LIVE_AUTHORING: '0', BB_PLATFORM_PROBE_ENABLED: '0', BB_REVIEW_WEB_SEARCH_ENABLED: '0' };
+
+test('stop waits for an in-flight startup handle and blocks any later service acquisition', async () => {
+  const barrier = createBrowserStartupBarrier(), events = []; let acquire;
+  const pending = new Promise(done => { acquire = done; });
+  const startup = (async () => { barrier.requireStarting(); await pending; events.push('handle acquired');
+    try { barrier.requireStarting(); events.push('next service started'); } finally { barrier.finish(); } })();
+  const failed = assert.rejects(startup, /stopped during preparation/);
+  barrier.requestStop(); const cleanup = (async () => { await barrier.wait(); events.push('handle drained'); })();
+  await Promise.resolve(); assert.deepEqual(events, []);
+  acquire(); await failed; await cleanup; assert.deepEqual(events, ['handle acquired', 'handle drained']);
+  assert.throws(() => barrier.requireStarting());
+});
 
 test('all ten actual local API profiles retain their strict original loopback prerequisites', () => {
   assert.equal(Object.keys(BROWSER_API_PROFILES).length, 10);
@@ -118,6 +130,7 @@ test('browser receipt binds complete batch, actual runtime probes, environment, 
     r => r.shards[0].summary.browser_runtime.probes.web.tls_verified = false, r => r.shards[0].summary.browser_runtime.probes.proxy.terms_version = 'old',
     r => r.shards[0].summary.browser_runtime.probes.browser_network.navigator_online = false,
     r => delete r.shards[0].summary.browser_runtime.upload_confirmation,
+    r => delete r.shards[0].summary.browser_runtime.pid,
     r => r.shards[0].summary.browser_runtime.upload_confirmation.consumers.run.push('run'),
     r => r.shards[0].summary.browser_runtime.upload_confirmation.cleanup.steps[0].status = 'failed',
     r => delete r.shards[0].summary.browser_runtime.probes.browser_network,

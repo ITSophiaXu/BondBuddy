@@ -20,6 +20,7 @@ export function verifyBrowserRuns(receipt, expected) {
       assert.equal(record.run_id, receipt.run_id); assert.equal(record.shard, row.name); assert.equal(record.cleanup?.status, 'passed');
     }
     assert.equal(runtime.schema, 'pr-gate-browser-runtime-v1'); assert.equal(runtime.profile_sha256, plan.profile_sha256);
+    assert.ok(Number.isSafeInteger(runtime.pid) && runtime.pid > 0, 'Actual browser runtime process identity is required');
     assert.deepEqual(runtime.files, plan.files); assert.equal(runtime.model_calls, 0);
     assert.equal(shard.summary.counts.selected, files.length, 'Browser summary does not cover the original full shard');
     for (const [key, value] of Object.entries(plan.environment)) assert.equal(runtime.environment[key], value, 'Actual browser env differs: ' + key);
