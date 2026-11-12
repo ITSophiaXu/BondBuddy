@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
 import { test } from 'node:test';
-import { DOCX_LIMITS, inspectDocx } from './docx-inspector.js';
+import { DOCX_LIMITS, inspectDocx, readBoundedZipParts, readDocxBodyText } from './docx-inspector.js';
 
 const relNs='http://schemas.openxmlformats.org/package/2006/relationships';
 const typesNs='http://schemas.openxmlformats.org/package/2006/content-types';
@@ -10,7 +10,7 @@ const officeRelNs='http://schemas.openxmlformats.org/officeDocument/2006/relatio
 const relsType='application/vnd.openxmlformats-package.relationships+xml';
 const mainType='application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml';
 
-type FixturePart={name:string;bytes:Buffer;method?:0|8;flags?:number;crcXor?:number;compressedSize?:number;uncompressedSize?:number;compressedSuffix?:Buffer};
+type FixturePart={name:string;bytes:Buffer;method?:0|8;flags?:number;crcXor?:number;compressedSize?:number;uncompressedSize?:number;localUncompressedSize?:number;compressedSuffix?:Buffer;unixMode?:number};
 
 function crc32(bytes:Buffer):number {
   let value=0xffffffff;
@@ -33,7 +33,7 @@ function zip(parts:FixturePart[]):Buffer {
     const uncompressedSize=item.uncompressedSize??item.bytes.length;
     const header=Buffer.alloc(30);
     header.writeUInt32LE(0x04034b50,0);header.writeUInt16LE(20,4);header.writeUInt16LE(flags,6);header.writeUInt16LE(method,8);
-    header.writeUInt32LE(crc,14);header.writeUInt32LE(compressedSize,18);header.writeUInt32LE(uncompressedSize,22);header.writeUInt16LE(name.length,26);header.writeUInt16LE(0,28);
+    header.writeUInt32LE(crc,14);header.writeUInt32LE(compressedSize,18);header.writeUInt32LE(item.localUncompressedSize??uncompressedSize,22);header.writeUInt16LE(name.length,26);header.writeUInt16LE(0,28);
     local.push(header,name,compressed);
 
     const record=Buffer.alloc(46);
@@ -41,7 +41,7 @@ function zip(parts:FixturePart[]):Buffer {
     record.writeUInt32LE(crc,16);record.writeUInt32LE(compressedSize,20);record.writeUInt32LE(uncompressedSize,24);record.writeUInt16LE(name.length,28);
     record.writeUInt16LE(0,30);record.writeUInt16LE(0,32);record.writeUInt16LE(0,34);record.writeUInt32LE(0,38);
     const directory=item.name.endsWith('/');
-    record.writeUInt32LE(((directory?0o040755:0o100644)<<16)>>>0,38);
+    record.writeUInt32LE(((item.unixMode??(directory?0o040755:0o100644))<<16)>>>0,38);
     record.writeUInt32LE(offset,42);
     central.push(record,name);
     offset+=header.length+name.length+compressed.length;
@@ -80,6 +80,39 @@ test('synthetic valid WordprocessingML package passes bounded OOXML and referenc
   assert.equal(result.checks.ooxml_relationships,'passed');
   assert.equal(result.checks.word_document,'passed');
   assert.ok(result.zip.entry_count>=7,'explicit ZIP directory entries are accepted');
+});
+
+for(const method of [0,8] as const)test(`empty ZIP directory with compression method ${method} passes every bounded reader`,()=>{
+  if(method===8)assert.equal(deflateRawSync(Buffer.alloc(0)).toString('hex'),'0300');
+  const bytes=docx({extra:[part('word/empty/',Buffer.alloc(0),{method})]});
+  const result=inspectDocx(bytes);
+  assert.equal(result.quality_status,'passed',result.failure_codes.join(','));
+  assert.equal(result.checks.entry_integrity,'passed');
+  assert.match(readDocxBodyText(bytes)??'',/BondBuddy synthetic fixture/);
+  const parts=readBoundedZipParts(bytes);
+  assert.equal(parts.has('word/empty/'),false,'directory metadata is not exposed as a file');
+  assert.ok(parts.has('word/document.xml'));
+});
+
+const directoryPayload=Buffer.from('hidden directory content');
+for(const [label,directory,code] of [
+  ['declared nonempty payload',part('word/empty/',directoryPayload),'DOCX_ZIP_INVALID'],
+  ['payload disguised as empty',part('word/empty/',directoryPayload,{uncompressedSize:0,crcXor:crc32(directoryPayload)}),'DOCX_DECOMPRESSION_FAILED'],
+  ['stored payload disguised as empty',part('word/empty/',directoryPayload,{method:0,uncompressedSize:0,crcXor:crc32(directoryPayload)}),'DOCX_ZIP_SIZE_MISMATCH'],
+  ['one-byte payload disguised as empty',part('word/empty/','x',{uncompressedSize:0,crcXor:crc32(Buffer.from('x'))}),'DOCX_ZIP_SIZE_MISMATCH'],
+  ['stored directory with wrong CRC',part('word/empty/',Buffer.alloc(0),{method:0,crcXor:1}),'DOCX_CRC_MISMATCH'],
+  ['deflated directory with wrong CRC',part('word/empty/',Buffer.alloc(0),{crcXor:1}),'DOCX_CRC_MISMATCH'],
+  ['trailing deflate data',part('word/empty/',Buffer.alloc(0),{compressedSuffix:Buffer.from('hidden suffix')}),'DOCX_DEFLATE_TRAILING_DATA'],
+  ['local and central size mismatch',part('word/empty/',Buffer.alloc(0),{localUncompressedSize:1}),'DOCX_ZIP_INVALID'],
+  ['Unix directory mode with hidden payload',part('word/empty',directoryPayload,{uncompressedSize:0,crcXor:crc32(directoryPayload),unixMode:0o040755}),'DOCX_DECOMPRESSION_FAILED'],
+  ['Unix directory mode with wrong CRC',part('word/empty',Buffer.alloc(0),{crcXor:1,unixMode:0o040755}),'DOCX_CRC_MISMATCH'],
+] as const)test(`ZIP directory rejects ${label} in every bounded reader`,()=>{
+  const bytes=docx({extra:[directory]}),result=inspectDocx(bytes);
+  assert.equal(result.quality_status,'failed');
+  assert.ok(result.failure_codes.includes(code),result.failure_codes.join(','));
+  assert.equal(readDocxBodyText(bytes),null);
+  assert.throws(()=>readBoundedZipParts(bytes));
+  assert.throws(()=>readBoundedZipParts(bytes,()=>false),'directory validation cannot be bypassed by a file filter');
 });
 
 test('synthetic hostile DOCX variants fail closed before they can be promoted',()=>{
