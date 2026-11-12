@@ -16,6 +16,7 @@ import { collectCoreSource } from './core-source.mjs';
 import { parseExclusions } from './run.mjs';
 import { prepareBrowserServices } from './browser-host.mjs';
 import { REFERENCE_ROOT, restoreReferenceSource, verifyReferenceDirectory, verifyReferenceMount, collectReferenceCheck } from './browser-reference-source.mjs';
+import { createInternalNetwork, auditInternalNetwork, cleanupInternalNetwork } from './internal-network.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const output = join(root, '.local/pr-gate');
@@ -171,7 +172,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
     try { persistReceipts(receipt, receiptPath, archiveReceiptPath); }
     catch (error) { console.error(error.message); }
   };
-  let currentChild, interrupted = false, dockerAvailable = false, expected, workflow, runtimeEnvironment, hostBroker, nativeRuntime, nativeAdapter;
+  let currentChild, interrupted = false, dockerAvailable = false, expected, workflow, runtimeEnvironment, hostBroker, nativeRuntime, nativeAdapter, internalNetwork;
   const owned = new Map();
   const serviceImages = {};
   const signal = () => { interrupted = true; currentChild?.kill('SIGTERM'); };
@@ -275,6 +276,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
       runtimeEnvironment.PR_GATE_OFFLINE_IMAGE = offlineImage;
       runtimeEnvironment.PR_GATE_SNAPSHOT_PACK_SHA256 = sourceSnapshot.pack_sha256;
       writeFileSync(join(directory, 'offline-cache.mjs'), blob(expected.commit, 'scripts/pr-gate/offline-cache.mjs'));
+      writeFileSync(join(directory, 'internal-network.mjs'), blob(expected.commit, 'scripts/pr-gate/internal-network.mjs'));
       for (const path of CACHE_FILES) {
         const destination = join(directory, 'cache-candidate', path); mkdirSync(dirname(destination), { recursive: true });
         writeFileSync(destination, blob(expected.commit, path));
@@ -293,9 +295,14 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
         }
         receipt.cache_service_images = { ...serviceImages };
       } else await docker('build-test-image', ['build', '--tag', image, '--file', join(root, 'scripts/pr-gate/Dockerfile'), join(root, 'scripts/pr-gate')]);
+      if (offlineImage) {
+        internalNetwork = await createInternalNetwork({ runId: id, docker }); receipt.internal_network = internalNetwork;
+        await auditInternalNetwork({ network: internalNetwork, docker, phase: 'created' });
+        runtimeEnvironment.PR_GATE_NETWORK_ID = internalNetwork.id;
+      }
       // No host credentials, source mount, ports, socket or existing database.
       await start('start-runner', runner, ['--init', '--user', '0:0', '--workdir', '/workspace', '--shm-size', '1g',
-        ...(offlineImage ? ['--network', 'none'] : []), '--cpus', '2', '--memory', '4g', '--memory-swap', '4g', '--pids-limit', '512',
+        ...(offlineImage ? ['--network', internalNetwork.id, '--dns', '127.0.0.1'] : []), '--cpus', '2', '--memory', '4g', '--memory-swap', '4g', '--pids-limit', '512',
         '--mount', `type=bind,source=${directory},target=/evidence`,
         '--mount', `type=bind,source=${parserDirectory},target=${CAPABILITY_PATHS.parser},readonly`,
         '--mount', `type=bind,source=${receipt.reference_components.host_before.root},target=${REFERENCE_ROOT},readonly`,
@@ -305,7 +312,8 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
       receipt.reference_components.mount_before = await referenceMount('inspect-reference-mount-before');
       if (offlineImage) {
         const inspected = JSON.parse((await docker('inspect-cache-runner', ['inspect', owned.get(runner).id], { capture: true, privateCapture: true })).text)[0];
-        receipt.cache_runtime = inspectOfflineContainer(inspected, image);
+        receipt.cache_runtime = inspectOfflineContainer(inspected, image, internalNetwork);
+        internalNetwork.prepared = await auditInternalNetwork({ network: internalNetwork, docker, containerId: owned.get(runner).id, exec, phase: 'prepared' });
         writeFileSync(join(directory, 'cache-runtime.json'), JSON.stringify(receipt.cache_runtime, null, 2) + '\n');
         await exec('restore-cached-source', ['node', '/evidence/offline-cache.mjs', 'restore']);
       }
@@ -355,6 +363,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
       receipt.shards.push(record);
       let browserServices, referenceShard;
       try {
+        if (internalNetwork) await auditInternalNetwork({ network: internalNetwork, docker, containerId: owned.get(runner).id, exec, phase: row.name });
         if (index) { await removeOwned([postgres, azurite, httpsAzurite], false); await startServices(); }
         await exec(`${row.name}-blob-readiness`, ['node', '--input-type=module', '-e', `import { BlobServiceClient } from '@azure/storage-blob'; const c=BlobServiceClient.fromConnectionString(process.env.BB_TEST_AZURITE_CONNECTION_STRING).getContainerClient('bb-pr-gate-readiness'); for(let i=0;;i++){try{await c.createIfNotExists();await c.deleteIfExists();break;}catch(e){if(i>=29)throw e;await new Promise(r=>setTimeout(r,1000));}}`]);
         await exec(`${row.name}-migrate`, ['node', 'db/migrate.mjs'], { DATABASE_URL: workflow.env.BB_TEST_DATABASE_URL });
@@ -405,6 +414,13 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
         catch (error) { receipt.errors.push(`Final container reference verification: ${error.message}`); }
       }
     }
+    if (internalNetwork && owned.has(runner)) {
+      try {
+        internalNetwork.final = await auditInternalNetwork({ network: internalNetwork, docker: (label, args, settings) => docker(label, args, { ...settings, cleanup: true }),
+          containerId: owned.get(runner).id, exec: (label, args, env, settings) => exec(label, args, env, { ...settings, cleanup: true }), phase: 'final' });
+        internalNetwork.status = 'passed';
+      } catch (error) { internalNetwork.status = 'failed'; receipt.errors.push(`Final internal network: ${error.message}`); }
+    }
     // Verify the disposable core before removing it. Outer host Git cleanliness
     // cannot detect tracked screenshots or source files changed inside /workspace.
     try {
@@ -424,6 +440,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
       if (nativeRuntime) { try { await nativeAdapter.cleanupNativeRuntime(nativeRuntime); } catch (error) { cleanupErrors.push(error.message); } }
       if (dockerAvailable) {
         try { await removeOwned([postgres, azurite, httpsAzurite, runner]); } catch (error) { cleanupErrors.push(error.message); }
+        if (internalNetwork) try { await cleanupInternalNetwork({ network: internalNetwork, docker }); } catch (error) { internalNetwork.cleanup = { status: 'failed', error: error.message }; cleanupErrors.push(error.message); }
       }
       if (hostBroker) { hostBroker.save(); receipt.host_dispatch = hostBroker.snapshot(); }
       if (cleanupErrors.length) throw new Error(cleanupErrors.join('; '));

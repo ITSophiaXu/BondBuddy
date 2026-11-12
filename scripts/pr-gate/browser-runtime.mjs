@@ -141,6 +141,18 @@ async function serve() {
         catch (error) { if (attempt >= 29 || prototype.exitCode !== null) throw error; await new Promise(done => setTimeout(done, 500)); }
       }
     }
+    // Check the browser's real interface state. Do not patch navigator or any
+    // application's online/offline handlers to hide an isolated-network defect.
+    const { chromium } = await import('playwright');
+    const probeBrowser = await chromium.launch({ headless: true });
+    try {
+      const page = await probeBrowser.newPage({ ignoreHTTPSErrors: true });
+      await page.goto(BROWSER_ORIGIN);
+      const observed = await page.evaluate(async () => ({ navigator_online: navigator.onLine, origin: location.origin, same_origin_status: (await fetch('/')).status }));
+      assert.equal(observed.navigator_online, true, 'Browser environment reports offline');
+      assert.equal(observed.origin, BROWSER_ORIGIN); assert.equal(observed.same_origin_status, 200);
+      evidence.probes.browser_network = { status: 'passed', ...observed, browser_version: probeBrowser.version(), public_probe_requests: 0 };
+    } finally { await probeBrowser.close(); }
     evidence.status = 'prepared'; evidence.prepared_at = new Date().toISOString(); save(); process.send?.({ type: 'ready', evidence });
   } catch (error) { evidence.error = error.message; process.send?.({ type: 'failed', error: error.message }); await stop(); }
 }

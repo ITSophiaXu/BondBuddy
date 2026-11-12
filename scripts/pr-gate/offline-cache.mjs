@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inspectInternalAttachment } from './internal-network.mjs';
 
 export const CACHE_FILES = Object.freeze(['package-lock.json', 'python/requirements.txt', 'python/requirements-dev.txt']);
 export const OFFLINE_SCHEMA = 'pr-gate-offline-cache-v1';
@@ -28,15 +29,15 @@ export function inspectOfflineImage(metadata, expectedId) {
   return { image_id: expectedId, os: metadata.Os, architecture: metadata.Architecture, cached_environment_keys: names.sort() };
 }
 
-export function inspectOfflineContainer(value, imageId) {
+export function inspectOfflineContainer(value, imageId, network) {
   assert.match(value?.Id, /^[a-f0-9]{64}$/); assert.equal(value.Image, imageId);
   assert.equal(value.Config?.User, '0:0'); assert.equal(value.Config?.WorkingDir, '/workspace');
-  assert.equal(value.HostConfig?.NetworkMode, 'none'); assert.equal(value.HostConfig.Privileged, false);
+  const attachment = inspectInternalAttachment(value, network); assert.equal(value.HostConfig.Privileged, false);
   assert.ok(!value.HostConfig.CapAdd?.length); assert.ok(!value.HostConfig.PortBindings || !Object.keys(value.HostConfig.PortBindings).length);
   const mounts = (value.Mounts ?? []).map(row => ({ type: row.Type, destination: row.Destination, writable: row.RW })).sort((a, b) => a.destination.localeCompare(b.destination));
   assert.deepEqual(mounts, [{ type: 'bind', destination: '/evidence', writable: true }, { type: 'bind', destination: '/opt/pr-gate-parser106', writable: false },
     { type: 'bind', destination: '/remote-review-20261025-ffd637f/BondBuddy-develop', writable: false }]);
-  return { container_id: value.Id, image_id: value.Image, user: '0:0', network: 'none', privileged: false, published_ports: 0, mounts };
+  return { container_id: value.Id, image_id: value.Image, user: '0:0', network: 'internal', ...attachment, privileged: false, published_ports: 0, mounts };
 }
 
 /** Every process starts with an allowlisted environment; image flags never leak into a test. */
@@ -67,7 +68,7 @@ export function verifyOfflineCache(record, expected) {
   assert.equal(record?.schema, OFFLINE_SCHEMA); assert.equal(record.status, 'passed');
   assert.equal(record.commit, expected.commit); assert.equal(record.tree, expected.tree);
   assert.match(record.image_id, /^sha256:[a-f0-9]{64}$/);
-  assert.equal(record.network, 'none'); assert.equal(record.environment, 'allowlist-env-i');
+  assert.equal(record.network, 'internal'); assert.match(record.network_id, /^[a-f0-9]{64}$/); assert.equal(record.environment, 'allowlist-env-i');
   assert.equal(record.old_source_removed, true); assert.equal(record.old_node_modules_removed, true);
   assert.equal(record.restored?.commit, expected.commit); assert.equal(record.restored?.tree, expected.tree);
   assert.equal(record.restored?.clean_tree, true); assert.equal(record.restored?.shallow, true);
@@ -80,7 +81,7 @@ export function verifyOfflineCache(record, expected) {
   }
   assert.equal(record.npm?.mode, 'ci-offline'); assert.equal(record.npm?.tree_check, 'passed');
   assert.equal(record.python?.status, 'passed'); assert.ok(record.python.requirements.length > 0);
-  assert.equal(record.browser?.status, 'passed'); assert.ok(record.browser.version && record.browser.executable_sha256);
+  assert.equal(record.browser?.status, 'passed'); assert.ok(record.browser.version && record.browser.executable_sha256); assert.equal(record.browser.navigator_online, true);
   return record;
 }
 
@@ -98,7 +99,7 @@ export async function restoreOfflineSource(environment = process.env) {
     candidate[path] = readFileSync(join('/evidence/cache-candidate', path));
   }
   const record = { schema: OFFLINE_SCHEMA, status: 'failed', commit: environment.GITHUB_SHA, tree: environment.PR_GATE_TREE,
-    image_id: environment.PR_GATE_OFFLINE_IMAGE, network: 'none', environment: 'allowlist-env-i',
+    image_id: environment.PR_GATE_OFFLINE_IMAGE, network: 'internal', network_id: environment.PR_GATE_NETWORK_ID, environment: 'allowlist-env-i',
     files: compareCacheFiles(cached, candidate), old_source_removed: false, old_node_modules_removed: false };
   for (const path of CACHE_FILES) writeFileSync(join(evidence, path.replaceAll('/', '__') + '.raw'), cached[path]);
   const save = () => writeFileSync(join(evidence, 'record.json'), JSON.stringify(record, null, 2) + '\n');
@@ -150,7 +151,8 @@ export async function inspectBrowser() {
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage(); await page.setContent('<title>synthetic offline gate probe</title><p>local only</p>');
     assert.equal(await page.title(), 'synthetic offline gate probe');
-    return { status: 'passed', version: browser.version(), executable, executable_sha256: hash(readFileSync(executable)), synthetic: true, model_calls: 0 };
+    const navigator_online = await page.evaluate(() => navigator.onLine); assert.equal(navigator_online, true, 'Chromium reports an offline interface');
+    return { status: 'passed', navigator_online, version: browser.version(), executable, executable_sha256: hash(readFileSync(executable)), synthetic: true, model_calls: 0 };
   } finally { await browser?.close(); }
 }
 

@@ -2,16 +2,17 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CACHE_FILES, OFFLINE_SCHEMA, compareCacheFiles, hash, inspectOfflineContainer, inspectOfflineImage, isolatedCommand, offlineImageArgument, verifyOfflineCache } from './offline-cache.mjs';
 import { REFERENCE_ROOT } from './browser-reference-source.mjs';
+import { syntheticInternalNetwork } from './internal-network.test-fixture.mjs';
 
 const image = 'sha256:' + 'd'.repeat(64);
 const candidate = Object.fromEntries(CACHE_FILES.map((path, i) => [path, Buffer.from(`synthetic dependency input ${i}\n`)]));
 const expected = { commit: 'a'.repeat(40), tree: 'b'.repeat(40), cache_files: Object.fromEntries(CACHE_FILES.map(path => [path, hash(candidate[path])])) };
 function fixture() {
-  return { schema: OFFLINE_SCHEMA, status: 'passed', ...expected, image_id: image, network: 'none', environment: 'allowlist-env-i',
+  return { schema: OFFLINE_SCHEMA, status: 'passed', ...expected, image_id: image, network: 'internal', network_id: 'a'.repeat(64), environment: 'allowlist-env-i',
     old_source_removed: true, old_node_modules_removed: true, restored: { commit: expected.commit, tree: expected.tree, clean_tree: true, shallow: true },
     files: compareCacheFiles(candidate, candidate), npm: { mode: 'ci-offline', tree_check: 'passed' },
     python: { status: 'passed', requirements: [{ requirement: 'synthetic>=1', installed: '1' }] },
-    browser: { status: 'passed', version: 'synthetic', executable_sha256: 'e'.repeat(64) } };
+    browser: { status: 'passed', navigator_online: true, version: 'synthetic', executable_sha256: 'e'.repeat(64) } };
 }
 
 test('offline mode requires one immutable local image ID and never accepts tags or extra options', () => {
@@ -51,16 +52,16 @@ test('dependency comparison permits CRLF pairs only, preserves byte hashes, reje
   assert.throws(() => compareCacheFiles({ ...candidate, 'package-lock.json': Buffer.from('{"x":1}\n') }, { ...candidate, 'package-lock.json': Buffer.from('{ "x": 1 }\n') }));
 });
 
-test('actual runner inspection rejects a network, published port, source mount or privileged mode', () => {
-  const value = { Id: 'c'.repeat(64), Image: image, Config: { User: '0:0', WorkingDir: '/workspace' },
-    HostConfig: { NetworkMode: 'none', Privileged: false, PortBindings: {}, CapAdd: null },
+test('actual runner inspection rejects an unowned network, published port, source mount or privileged mode', () => {
+  const { identity, container } = syntheticInternalNetwork();
+  const value = { ...container, Image: image, Config: { User: '0:0', WorkingDir: '/workspace' },
     Mounts: [{ Type: 'bind', Destination: '/evidence', RW: true }, { Type: 'bind', Destination: '/opt/pr-gate-parser106', RW: false }, { Type: 'bind', Destination: REFERENCE_ROOT, RW: false }] };
-  assert.equal(inspectOfflineContainer(value, image).published_ports, 0);
+  assert.equal(inspectOfflineContainer(value, image, identity).published_ports, 0);
   for (const mutate of [x => x.HostConfig.NetworkMode = 'host', x => x.HostConfig.PortBindings = { '5432/tcp': [{}] },
     x => x.HostConfig.Privileged = true, x => x.HostConfig.CapAdd = ['SYS_ADMIN'], x => x.Mounts[1].RW = true,
     x => x.Mounts[2].RW = true, x => x.Mounts[2].Destination += '-wrong', x => x.Mounts.pop(),
     x => x.Mounts.push({ Type: 'bind', Destination: '/workspace', RW: true }), x => x.Image = 'sha256:' + 'f'.repeat(64)]) {
-    const copy = structuredClone(value); mutate(copy); assert.throws(() => inspectOfflineContainer(copy, image));
+    const copy = structuredClone(value); mutate(copy); assert.throws(() => inspectOfflineContainer(copy, image, identity));
   }
 });
 
@@ -70,7 +71,8 @@ test('offline receipt requires current candidate blobs, fresh source and real de
     x => x.old_node_modules_removed = false, x => x.network = 'bridge', x => x.environment = 'inherited',
     x => x.restored.clean_tree = false, x => x.restored.tree = 'f'.repeat(40), x => x.files.pop(),
     x => x.files[0].candidate_sha256 = 'f'.repeat(64), x => x.npm.mode = 'ci-online', x => x.npm.tree_check = 'failed',
-    x => delete x.python, x => x.python.requirements = [], x => delete x.browser, x => x.browser.status = 'failed']) {
+    x => delete x.python, x => x.python.requirements = [], x => delete x.browser, x => x.browser.status = 'failed', x => x.browser.navigator_online = false,
+    x => delete x.network_id]) {
     const copy = structuredClone(valid); mutate(copy); assert.throws(() => verifyOfflineCache(copy, expected));
   }
 });

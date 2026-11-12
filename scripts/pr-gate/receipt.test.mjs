@@ -8,6 +8,7 @@ import { syntheticHostDispatch, syntheticHostReferences, syntheticHostSources } 
 import { CORE_SOURCE_SCHEMA } from './core-source.mjs';
 import { syntheticBrowserShard, syntheticBrowserSources } from './browser.test-fixture.mjs';
 import { syntheticReferenceRuns } from './browser-reference.test-fixture.mjs';
+import { syntheticInternalNetwork } from './internal-network.test-fixture.mjs';
 
 const matrix = [
   { name: 'api-1', groups: 'api', shard: '1/2' },
@@ -212,13 +213,15 @@ test('complete current-candidate offline preparation still requires every origin
   const cacheExpected = { ...expected, cache_files: Object.fromEntries(CACHE_FILES.map(path => [path, hash(inputs[path])])) };
   const image_id = 'sha256:' + 'd'.repeat(64);
   receipt.dependency_mode = 'offline-cache'; receipt.dependency_sources = { downloads: false };
-  receipt.cache_image = { image_id }; receipt.cache_runtime = { container_id: 'c'.repeat(64), network: 'none', image_id, published_ports: 0, privileged: false };
+  const { evidence: network } = syntheticInternalNetwork(receipt.run_id);
+  receipt.internal_network = network;
+  receipt.cache_image = { image_id }; receipt.cache_runtime = { network: 'internal', network_id: network.id, container_id: network.prepared.container_id, image_id, published_ports: 0, privileged: false };
   receipt.cache_service_images = { postgres: image_id, azurite: image_id };
   receipt.offline_cache = { schema: OFFLINE_SCHEMA, status: 'passed', commit: expected.commit, tree: expected.tree, image_id,
-    network: 'none', environment: 'allowlist-env-i', old_source_removed: true, old_node_modules_removed: true,
+    network: 'internal', network_id: network.id, environment: 'allowlist-env-i', old_source_removed: true, old_node_modules_removed: true,
     restored: { commit: expected.commit, tree: expected.tree, clean_tree: true, shallow: true }, files: compareCacheFiles(inputs, inputs),
     npm: { mode: 'ci-offline', tree_check: 'passed' }, python: { status: 'passed', requirements: [{ requirement: 'synthetic>=1', installed: '1' }] },
-    browser: { status: 'passed', version: 'synthetic', executable_sha256: 'e'.repeat(64) } };
+    browser: { status: 'passed', navigator_online: true, version: 'synthetic', executable_sha256: 'e'.repeat(64) } };
   assert.equal(verifyReceipt(receipt, cacheExpected, now), receipt);
   receipt.shards.pop(); assert.throws(() => verifyReceipt(receipt, cacheExpected, now), /shards are missing/);
 });
