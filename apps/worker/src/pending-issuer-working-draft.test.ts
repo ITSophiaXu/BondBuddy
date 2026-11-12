@@ -21,7 +21,9 @@ test('two identical unreviewed issuer anchors are pinned together; conflicts and
   const settings={pool,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true};
   // Keep the original unpriced production input so the worker's issuer gate is exercised.
   const app=createServer({...settings,historicalBillingFixture:true,enablePaidAuthoring:false});
-  const current=createServer(settings);
+  // Keep the worker's out-of-request billing default on its original historical Pool.
+  const currentPool=new Pool({connectionString:databaseUrl});
+  const current=createServer({...settings,pool:currentPool});
   const send=(url:string,payload:unknown)=>app.inject({method:'POST',url,headers:{origin},payload:payload as any});
   try{
     const projectResponse=await send('/api/v1/projects',{name:'Synthetic pending issuer',kind:'update',
@@ -173,7 +175,7 @@ test('two identical unreviewed issuer anchors are pinned together; conflicts and
       [owner,project])).rows[0].manifest;
     assert.equal(conflictManifest.test_issuer_candidate,undefined,'a true issuer conflict has no candidate');
   }finally{
-    await current.close();await app.close();await pool.end();
+    await current.close();await currentPool.end();await app.close();await pool.end();
     if(oldTier===undefined)delete process.env.BB_DEPLOYMENT_TIER;else process.env.BB_DEPLOYMENT_TIER=oldTier;
     if(oldSwitch===undefined)delete process.env.BB_NON_PRODUCTION_TEST_CHANNEL;else process.env.BB_NON_PRODUCTION_TEST_CHANNEL=oldSwitch;
   }
