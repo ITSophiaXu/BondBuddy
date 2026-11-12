@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { M4ViewState } from '@bondbuddy/contracts';
 import { installSixteenthReference } from './upload-sixteenth-reference';
+import { settleUploadConfirmationFault } from './upload-confirmation-faults';
 import { fixture, install, mount, mountQa, ids, now, hash, pin, pinKey, declaration, sourceInfo, savedMaterial, addSaved, currentMaterials, ordinaryFile, work, target, writes, creates, patches, views, members, transfers, downstream, noDownstream, clean, recovery, resume, begin, records, cache, localView, settle, pending, completed, refreshReadOnly, hold, type State } from './assistant-project-copy-sixteenth-fixtures';
 
 const envelope = async (page: Page) => (await records(page))[0].value;
@@ -136,7 +137,7 @@ for (const prefix of ['bb-assistant-project-copy-v1:', 'bb-assistant-view-v1:'])
 });
 
 for (const missing of ['core', 'business'] as const) for (const accepted of ['before', 'after'] as const) test('assistant copy missing ' + missing + ' during complete ' + accepted + ' acceptance cannot resurrect or advance its operation', async ({ page }) => {
-  const state = await install(page); state.drops.complete = accepted; await mount(page); const release = await hold(state, 'complete', page); await page.evaluate(kind => { for (const key of Object.keys(localStorage)) if (kind === 'business' ? key.startsWith('bb-assistant-project-copy-v1:') : key.startsWith('bondbuddy:upload-recovery:v1:') && key.includes(':assistant-project-copy:')) { localStorage.removeItem(key); dispatchEvent(new StorageEvent('storage', { key, newValue: null })); } }, missing); release(); await settle(page); expect(members(state)).toEqual([]); expect(patchCalls(state)).toEqual([]); expect(views(state)).toEqual([]); expect(transfers(state, 'create')).toHaveLength(1); if (missing === 'business') expect(await records(page)).toEqual([]); noDownstream(state);
+  const state = await install(page); state.drops.complete = accepted; await mount(page); const release = await hold(state, 'complete', page); await page.evaluate(kind => { for (const key of Object.keys(localStorage)) if (kind === 'business' ? key.startsWith('bb-assistant-project-copy-v1:') : key.startsWith('bondbuddy:upload-recovery:v1:') && key.includes(':assistant-project-copy:')) { localStorage.removeItem(key); dispatchEvent(new StorageEvent('storage', { key, newValue: null })); } }, missing); release(); if (accepted === 'after') await settleUploadConfirmationFault(page, state.confirmationFaults); await settle(page); expect(members(state)).toEqual([]); expect(patchCalls(state)).toEqual([]); expect(views(state)).toEqual([]); expect(transfers(state, 'create')).toHaveLength(1); if (missing === 'business') expect(await records(page)).toEqual([]); noDownstream(state);
 });
 
 for (const contender of ['material', 'copy'] as const) test('assistant copy and ' + contender + ' preparation in two pages admit exactly one durable original-topic operation', async ({ page, context }) => {
