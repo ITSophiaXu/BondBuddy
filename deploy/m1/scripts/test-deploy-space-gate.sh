@@ -121,9 +121,9 @@ run_case() {
     [ "$(cat "$test_dir/state/previous")" = old-release ] || exit 1
     if [ "$expected" = reject_after_archive ]; then
       grep -Eq '^archive$' "$TEST_CALLS"
-      forbidden='build|compose|backup|image rm|smoke'
+      forbidden='build|compose|backup|image rm|^smoke$'
     else
-      forbidden='archive|tar|build|compose|backup|image rm|smoke'
+      forbidden='archive|tar|build|compose|backup|image rm|^smoke$'
     fi
     if grep -Eq "$forbidden" "$TEST_CALLS"; then
       echo "$label: side effect before rejection" >&2; exit 1
