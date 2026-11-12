@@ -6,8 +6,8 @@ import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import { uploadSyntheticReference, quoteSyntheticAuthoringRun } from '@bondbuddy/api/test-authoring-source';
-import { azureBlobs } from '@bondbuddy/api/data';
-import { DEFAULT_DOCUMENT_PARSER_VERSION } from '@bondbuddy/api/material-jobs';
+import { azureBlobs, transaction } from '@bondbuddy/api/data';
+import { DEFAULT_DOCUMENT_PARSER_VERSION, enqueueMaterialParse } from '@bondbuddy/api/material-jobs';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
 import { WorkerRuntime, workerRuntimeOptionsFromEnv } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -53,6 +53,9 @@ test('dedicated parse slot finishes an upload before a blocked run, and zero res
     const completed = await send('POST', `/api/v1/projects/${projectId}/materials/uploads/${started.json().upload_id}/complete`,
       { byte_size: bytes.length, sha256: sha(bytes) });
     assert.equal(completed.statusCode, 200, completed.body);
+    // Unified uploads intentionally skip auxiliary parsing; enqueue only the audit job this scheduling fixture exercises.
+    await transaction(pool, client => enqueueMaterialParse(client, { owner, projectId, materialId: completed.json().material_id,
+      materialVersion: completed.json().material_version, sha256: sha(bytes), traceId: randomUUID() }));
     return completed.json() as { material_id: string; material_version: number };
   };
   const jobState = async (materialId: string) => (await pool.query("SELECT state FROM bb_jobs WHERE job_type='parse' AND material_id=$1", [materialId])).rows[0]?.state as string | undefined;
