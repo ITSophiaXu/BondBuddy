@@ -7,6 +7,7 @@ import {fixture,href,ids,sha,now,file} from './generation-entry-fixtures';
 import {AUTOMATIC_PRICE_VERSION,emptyFileGenerationPreparation,type FileGenerationWorkspace,type FileTemplateSet,type FileTemplateMatch,type WorkpaperCatalogue} from '@bondbuddy/contracts';
 const catalogue:WorkpaperCatalogue={catalogue_id:'builtin-cat',filename:'光大证券底稿目录.xlsx',sha256:sha,created_at:now,warnings:[],entries:['1','2'].map((code,i)=>({id:'entry-'+code,code,title:i?'关联方情况说明':'基本情况核查记录',folder:'',sheet:'尽职调查文件',row:i+2,instructions:'',kind:'file',path:code+'.docx'}))};
 const set:FileTemplateSet={set_id:'builtin-set',name:'光大证券模板',version:'synthetic-v1',origin:'builtin',warnings:[],records:[...['1','2'].map(code=>({set_id:'builtin-set',record_id:'word-'+code,sha256:sha,name:code+' 核查模板',code,role:'核查记录',document_type:'workpaper' as const})),{set_id:'builtin-set',record_id:'annual',sha256:sha,name:'年度报告',code:'',role:'年度报告',document_type:'annual'}]};
+const evidenceDirectory=()=>process.env.BB_UX_EVIDENCE_DIR?resolve(process.env.BB_UX_EVIDENCE_DIR):test.info().outputPath('screenshots');
 async function setup(page:Page,automatic=false,configure?:(state:any)=>void,builtinHandler?:(route:Route)=>Promise<unknown>){
  const transport=await fixture(page);const state={transport,data:{revision:0,preparation:emptyFileGenerationPreparation(),sets:[],builtin:{name:'光大证券模板',version:'synthetic-v1',available:true},batches:[]} as FileGenerationWorkspace,submissions:[] as any[],lost:false,imports:[] as Buffer[],catalogue:structuredClone(catalogue),matches:undefined as FileTemplateMatch[]|undefined,quotes:0};
  if(automatic)state.data.pricing={mode:'automatic',price_version:AUTOMATIC_PRICE_VERSION,workpaper_points:3458,document_points:7965};
@@ -51,13 +52,13 @@ test('independent catalogue/template cards, safe preview and mixed confirmation 
  await expect(page.locator('[data-flow-step="3"]')).toHaveAttribute('aria-current','step');
  await page.getByRole('button',{name:'确认生成 3 份文件'}).click();await expect(page.locator('.fg-status')).toContainText('已提交');expect(state.submissions).toHaveLength(1);
  await expect(page.locator('[data-flow-step="4"]')).toHaveAttribute('aria-current','step');
- const evidence=resolve('test-evidence/file-template-preparation');await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,'desktop-synthetic.png'),fullPage:true});
+ const evidence=evidenceDirectory();await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,'desktop-synthetic.png'),fullPage:true});
 });
 for(const width of [1440,390])test(`current dual-card prototype reference ${width}`,async({page})=>{
  await page.setViewportSize({width,height:width===1440?960:844});
  const path=resolve('../../product-prototype/public/file-templates-v2.html').replaceAll('\\','/');await page.goto('/@fs/'+path);
  await expect(page.getByRole('heading',{name:'生成文件',exact:true})).toBeVisible();
- const evidence=resolve('test-evidence/file-template-preparation');await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,`prototype-${width}.png`),fullPage:true});
+ const evidence=evidenceDirectory();await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,`prototype-${width}.png`),fullPage:true});
 });
 test('support recovery only asks for original bytes after retry and keeps the original operation',async({page})=>{
  const state=await setup(page);
@@ -96,7 +97,7 @@ test('custom templates have independent selections, upload actual bytes and surv
  await expect(page.locator('.fg-match-summary')).toContainText('已匹配 2 / 2 项');await expect(page.locator('#fg-confirm')).toBeEnabled();await expect(page.locator('.fg-template-panel')).toContainText('我的模板包');expect(state.imports[0]).toEqual(bytes);expect(state.data.preparation.catalogue_id).toBe(catalogue.catalogue_id);expect(Object.values(state.data.preparation.mappings).every(p=>p.set_id==='uploaded-set')).toBe(true);expect(Object.keys(state.data.preparation.mappings)).toHaveLength(2);
  await page.reload();await expect(page.locator('.fg-template-panel')).toContainText('我的模板包');await expect(page.locator('.fg-template-panel')).toContainText('光大证券底稿目录.xlsx');
  await page.setViewportSize({width:390,height:844});await expect(page.locator('#fg-confirm')).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
- const evidence=resolve('test-evidence/file-template-preparation');await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,'mobile-synthetic.png'),fullPage:true});
+ const evidence=evidenceDirectory();await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,'mobile-synthetic.png'),fullPage:true});
 });
 
 test('a late builtin reply cannot replace custom mode; cancellation and retry keep the page usable',async({page})=>{
@@ -227,7 +228,7 @@ for(const width of [1440,390])test(`old 248-item preparation exposes matching, p
  await expect(page.locator('.fg-match-pages')).toContainText('共 78 项');await page.locator('#fg-next-page').click();await expect(page.locator('.fg-match-pages')).toContainText('第 2 / 4 页');
  await page.reload();await expect(page.locator('.fg-match-summary')).toContainText('已匹配 170 / 248 项');await expect(page.locator('[data-fg-mapping]')).toHaveCount(20);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
- const evidence=resolve('test-evidence/template-selection');await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,`unresolved-${width}.png`),fullPage:true});await page.locator('.fg-combination').screenshot({path:resolve(evidence,`matching-summary-${width}.png`)});
+ const evidence=evidenceDirectory();await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,`unresolved-${width}.png`),fullPage:true});await page.locator('.fg-combination').screenshot({path:resolve(evidence,`matching-summary-${width}.png`)});
  await page.locator('#fg-match-toggle').click();await expect(page.locator('[data-fg-mapping]')).toHaveCount(0);
  await page.locator('#fg-confirm').click();await expect(page.locator('#fg-matches')).toBeFocused();expect(state.quotes).toBe(0);expect(state.submissions).toHaveLength(0);
 });
@@ -245,7 +246,7 @@ for(const width of [1440,390])test(`Guangda templates are the named default and 
  await expect(page.locator('.fg-template-panel')).toContainText('光大模板');await expect(page.locator('.fg-template-panel')).not.toContainText('系统模板');
  expect(state.data.preparation.workpaper_template_mode).toBe('automatic');expect(state.data.preparation.mappings).toEqual({});expect(state.data.sets).toHaveLength(0);
  await page.getByRole('button',{name:'预览模板',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('综合核查记录');await page.getByRole('button',{name:'关闭',exact:true}).click();
- const evidence=resolve('test-evidence/template-selection');await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,`system-default-${width}.png`),fullPage:true});await page.locator('.fg-template-panel').screenshot({path:resolve(evidence,`system-panel-${width}.png`),style:'.fg-footer,.topbar,.skip-link,.ba-dock{visibility:hidden!important}'});
+ const evidence=evidenceDirectory();await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,`system-default-${width}.png`),fullPage:true});await page.locator('.fg-template-panel').screenshot({path:resolve(evidence,`system-panel-${width}.png`),style:'.fg-footer,.topbar,.skip-link,.ba-dock{visibility:hidden!important}'});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await page.locator('#fg-confirm').click();await expect(page.locator('.fg-status')).toContainText('已提交');expect(state.submissions).toHaveLength(1);expect(state.quotes).toBe(1);
 });
