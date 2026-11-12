@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { parseExclusions, SUMMARY_SCHEMA } from './run.mjs';
 import { verifyCapabilityRuns } from './capabilities.mjs';
+import { verifyOfflineCache } from './offline-cache.mjs';
 
 export const RECEIPT_SCHEMA = 'pr-gate-local-v1';
 export const PREPARATION_IDS = Object.freeze(['image', 'capabilities', 'services', 'dependencies', 'build', 'contracts', 'browser']);
@@ -72,6 +73,13 @@ export function verifyReceipt(receipt, expected, now = Date.now()) {
 
   const merged = receipt.merge?.result;
   requireEvidence(receipt.merge?.exit_code === 0 && merged?.schema === 'pr-gate-result-v1' && merged.status === 'passed' && merged.report === false && merged.expected === matrix.length && merged.received === matrix.length && emptyArray(merged.problems) && emptyArray(merged.failed) && emptyArray(merged.suggestion?.knownFailing) && emptyArray(merged.suggestion?.allowSkip), 'merge did not confirm every shard passed');
+  if (receipt.dependency_mode === 'offline-cache') {
+    requireEvidence(receipt.dependency_sources?.downloads === false, 'offline cache declared a download');
+    requireEvidence(receipt.cache_image?.image_id === receipt.offline_cache?.image_id, 'cache image identity differs');
+    requireEvidence(receipt.cache_runtime?.network === 'none' && receipt.cache_runtime?.image_id === receipt.cache_image.image_id && receipt.cache_runtime?.published_ports === 0 && receipt.cache_runtime?.privileged === false, 'offline runner isolation missing');
+    for (const service of ['postgres', 'azurite']) requireEvidence(/^sha256:[a-f0-9]{64}$/.test(receipt.cache_service_images?.[service] ?? ''), 'cached service identity missing');
+    verifyOfflineCache(receipt.offline_cache, expected);
+  } else requireEvidence(receipt.dependency_mode === 'download', 'dependency mode is missing or unknown');
   verifyCapabilityRuns(receipt, expected, now);
   return receipt;
 }
