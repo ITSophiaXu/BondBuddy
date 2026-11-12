@@ -243,11 +243,11 @@ for(const viewport of [{width:1440,height:1100},{width:430,height:932}])test(`le
   if(process.env.M4_UX_EVIDENCE){await page.screenshot({path:resolve(process.env.M4_UX_EVIDENCE_DIR || 'test-evidence/m4-one-click-20261008',`success-${viewport.width}.png`)});}
 });
 
-test('insufficient credits show a recharge action, retain input and never auto-start',async({page})=>{
+test('insufficient credits show balance and payment status, retain input and never auto-start',async({page})=>{
   const s=fixture();s.balance.available=1000;await mount(page,s);await choose(page,'private_summary');
   await page.locator('#m4-requirements').fill('积分不足时保留这份输入');await start(page);
   await expect(page.locator('#m4-submit-status [role=alert]')).toContainText('积分不足');
-  const recharge=await page.locator('#m4-submit-status').getByRole('link',{name:'充值积分'}).getAttribute('href'),rechargeQuery=new URLSearchParams(recharge!.split('?')[1]);
+  const recharge=await page.locator('#m4-submit-status').getByRole('link',{name:'查看积分与支付状态'}).getAttribute('href'),rechargeQuery=new URLSearchParams(recharge!.split('?')[1]);
   expect(rechargeQuery.get('project')).toBe(s.workspace.topic.project_id);
   expect(rechargeQuery.get('return_to')).toBe(await page.evaluate(()=>location.hash));
   expect(s.executions).toHaveLength(0);expect(s.balance.frozen).toBe(0);await expect(page.locator('.m4-price')).toHaveCount(0);
@@ -618,7 +618,7 @@ for(const viewport of [{width:1440,height:960},{width:390,height:844}])test(`dyn
   await expect(page.locator('[aria-label=积分消耗] strong')).toHaveText('125 积分');await page.reload();await expect(page.getByRole('button',{name:'继续生成'})).toBeVisible();
   await page.getByRole('button',{name:'继续生成'}).click();await expect(page.getByRole('button',{name:'暂停生成'})).toBeVisible();expect(s.controls).toEqual(['pause','resume']);
   p.credit_exhausted=true;p.clock_running=false;p.available_points=s.balance.available=0;p.charged_points=p.accrued_points=1000;task.run.state='paused';task.run.stage='credits_exhausted';
-  await page.getByRole('button',{name:'刷新状态'}).click();await expect(page.locator('.task-progress')).toContainText('积分已用完');await expect(page.getByRole('link',{name:'充值积分',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'刷新状态'}).click();await expect(page.locator('.task-progress')).toContainText('积分已用完');await expect(page.getByRole('link',{name:'查看积分与支付状态',exact:true})).toBeVisible();
   await expect(page.locator('[data-m4-action=download]')).toHaveCount(0);
   if(process.env.M4_DYNAMIC_EVIDENCE){await page.screenshot({path:resolve('test-evidence/material-dynamic-20261013',`exhausted-${viewport.width}.png`),fullPage:true});}
   await page.getByRole('button',{name:'结束本次生成'}).click();await expect(page.locator('[aria-label=积分消耗]')).toContainText('本次已扣费');

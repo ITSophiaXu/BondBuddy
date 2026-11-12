@@ -188,19 +188,16 @@ test('a later adoption shows its target and effect, can be cancelled, and only s
 
 test('a temporary completion failure retries the saved upload session without retransmitting bytes',async({page})=>{
   const f=await fixture(page,{failCompleteOnce:true});
-  await upload(page);await expect(page.locator('#save-prospectus-version')).toBeEnabled();
-  await expect(page.locator('#prospectus-status')).toContainText(/未.*确认|稍后|重试|暂时/);
-  expect(f.counts()).toMatchObject({puts:1,completions:1});expect(f.state.current_version_id).toBe(oldVersion.version_id);
-  await page.locator('#save-prospectus-version').click();await savedStatus(page);
+  await upload(page);await expect(page.locator('#prospectus-status')).toContainText(/已保存并自动采用/,{timeout:15000});
+  expect(f.counts()).toMatchObject({puts:1,completions:2});
   expect(f.counts().puts).toBe(1);expect(f.declarations).toHaveLength(1);expect(f.selections).toHaveLength(0);
 });
 
 test('a lost completion receipt reconciles the same session without a second byte transfer',async({page})=>{
   const f=await fixture(page,{dropCompleteOnce:true});
-  await upload(page);await expect(page.locator('#save-prospectus-version')).toBeEnabled();
+  await upload(page);await expect(page.locator('#prospectus-status')).toContainText(/已保存并自动采用/,{timeout:15000});
   expect(f.state.versions.some(v=>v.version_id===newVersion.version_id)).toBe(true);
-  expect(await f.unconfirmed()).toBe(true);
-  await page.locator('#save-prospectus-version').click();await savedStatus(page);
+  expect(await f.unconfirmed()).toBe(false);
   expect(f.counts().puts).toBe(1);expect(f.counts().completions).toBe(2);expect(f.declarations).toHaveLength(1);
   expect(f.state.current_version_id).toBe(newVersion.version_id);expect(f.state.selection_revision).toBe(8);
   expect(f.selections).toHaveLength(0);await expect.poll(f.changes).toBe('1');

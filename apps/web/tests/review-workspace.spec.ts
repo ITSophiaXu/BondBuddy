@@ -886,8 +886,8 @@ for(const width of [1440,390])test('paid review starts with one point without co
  await page.getByRole('button',{name:'开始复核',exact:true}).click();
  await expect(page.getByRole('dialog')).not.toContainText('13,900');
  const output=process.env.BB_REVIEW_CREDIT_EVIDENCE_DIR;if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/implementation-ready-${width}.png`});}
- await expect(page.getByRole('dialog')).toContainText('积分不足，请充值后继续任务');
- const recharge=await page.getByRole('dialog').getByRole('link',{name:'充值积分'}).getAttribute('href'),rechargeQuery=new URLSearchParams(recharge!.split('?')[1]);
+ await expect(page.getByRole('dialog')).toContainText('积分不足，本次任务尚未开始');await expect(page.getByRole('dialog')).toContainText('积分充足后请返回项目明确开始，任务不会自动执行');
+ const recharge=await page.getByRole('dialog').getByRole('link',{name:'查看积分与支付状态'}).getAttribute('href'),rechargeQuery=new URLSearchParams(recharge!.split('?')[1]);
  expect(rechargeQuery.get('project')).toBe(id);
  expect(rechargeQuery.get('return_to')).toBe(await page.evaluate(()=>location.hash));
  expect(state.executes).toHaveLength(0);
@@ -969,6 +969,10 @@ test('review live progress refreshes actual debit and activities, survives reloa
   const task=state.workspace.timeline[0];if(task.kind==='task')task.task.events.push({...event,event_id:'live-event-2',seq:2,payload:{...event.payload,action:{...event.payload.action,state:'completed'}}});
   await expect(page.locator('.authoring-credit-meter')).toContainText('120 积分');await expect(page.getByRole('region',{name:'复核过程'})).toContainText('已执行财务数据核对');
   await page.reload();await expect(page.locator('.authoring-credit-meter')).toContainText('120 积分');
+  await expect(page.locator('.review-header').getByText(state.workspace.project.name,{exact:true})).toBeVisible();
+  await expect(page.locator('#review-phase-badge')).toHaveText('处理中');
+  await expect(page.locator('#review-project-meta')).toHaveCount(0);
+  await expect(page.locator('.review-header')).not.toContainText('提供复核材料和要求');
   await expect(page.locator('#review-making-panel')).not.toContainText('SHA-256');await expect(page.locator('#review-making-panel .review-empty')).toHaveCount(0);
   if(process.env.BB_REVIEW_LIVE_EVIDENCE){await mkdir(process.env.BB_REVIEW_LIVE_EVIDENCE,{recursive:true});for(const width of [1440,390]){await page.setViewportSize({width,height:width===1440?960:844});await page.screenshot({path:`${process.env.BB_REVIEW_LIVE_EVIDENCE}/running-${width}.png`,fullPage:true});}}
   await page.getByRole('button',{name:'暂停复核',exact:true}).click();await expect(page.getByRole('button',{name:'继续复核',exact:true})).toBeVisible();expect(pauses).toBe(1);

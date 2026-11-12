@@ -1,0 +1,168 @@
+TAP version 13
+# Subtest: headerless numbered due-diligence lists retain the first item and summary rows
+ok 1 - headerless numbered due-diligence lists retain the first item and summary rows
+  ---
+  duration_ms: 5.2182
+  type: 'test'
+  ...
+# Subtest: uncertain and competing layouts require review rather than guessing silently
+ok 2 - uncertain and competing layouts require review rather than guessing silently
+  ---
+  duration_ms: 2.8345
+  type: 'test'
+  ...
+# Subtest: Chinese XML decimal references preserve catalogue headers, cells and sheet names
+ok 3 - Chinese XML decimal references preserve catalogue headers, cells and sheet names
+  ---
+  duration_ms: 28.8818
+  type: 'test'
+  ...
+# Subtest: Chinese XML hex references preserve catalogue headers, cells and sheet names
+ok 4 - Chinese XML hex references preserve catalogue headers, cells and sheet names
+  ---
+  duration_ms: 8.417
+  type: 'test'
+  ...
+# Subtest: 500 real XLSX rows, shared strings and merged classification cells retain exact ordering
+ok 5 - 500 real XLSX rows, shared strings and merged classification cells retain exact ordering
+  ---
+  duration_ms: 63.2262
+  type: 'test'
+  ...
+# Subtest: directories, duplicate paths, unsafe characters and multiple worksheets
+ok 6 - directories, duplicate paths, unsafe characters and multiple worksheets
+  ---
+  duration_ms: 1.2765
+  type: 'test'
+  ...
+# Subtest: formula titles are never executed or treated as cached facts
+ok 7 - formula titles are never executed or treated as cached facts
+  ---
+  duration_ms: 5.6569
+  type: 'test'
+  ...
+# Subtest: unnumbered directory groups retain following files; duplicate row IDs are rejected
+ok 8 - unnumbered directory groups retain following files; duplicate row IDs are rejected
+  ---
+  duration_ms: 5.6276
+  type: 'test'
+  ...
+# Subtest: empty, oversized catalogues and malformed ZIP fail explicitly
+ok 9 - empty, oversized catalogues and malformed ZIP fail explicitly
+  ---
+  duration_ms: 13.5325
+  type: 'test'
+  ...
+# Subtest: audit checklist 项目 headers and numbered summary records are retained
+ok 10 - audit checklist 项目 headers and numbered summary records are retained
+  ---
+  duration_ms: 1.0456
+  type: 'test'
+  ...
+# Subtest: import keeps complete requirements but bounds download names and resolves annotation collisions
+ok 11 - import keeps complete requirements but bounds download names and resolves annotation collisions
+  ---
+  duration_ms: 0.7404
+  type: 'test'
+  ...
+# Subtest: workpapers: real per-file paid batch, atomic shortage, partial delivery, maintenance, version identity and isolation
+ok 12 - workpapers: real per-file paid batch, atomic shortage, partial delivery, maintenance, version identity and isolation
+  ---
+  duration_ms: 19344.1497
+  type: 'test'
+  ...
+# Subtest: headerless numbered due-diligence lists retain the first item and summary rows
+ok 13 - headerless numbered due-diligence lists retain the first item and summary rows
+  ---
+  duration_ms: 5.7753
+  type: 'test'
+  ...
+# Subtest: uncertain and competing layouts require review rather than guessing silently
+ok 14 - uncertain and competing layouts require review rather than guessing silently
+  ---
+  duration_ms: 1.9364
+  type: 'test'
+  ...
+# Subtest: Chinese XML decimal references preserve catalogue headers, cells and sheet names
+ok 15 - Chinese XML decimal references preserve catalogue headers, cells and sheet names
+  ---
+  duration_ms: 24.0764
+  type: 'test'
+  ...
+# Subtest: Chinese XML hex references preserve catalogue headers, cells and sheet names
+ok 16 - Chinese XML hex references preserve catalogue headers, cells and sheet names
+  ---
+  duration_ms: 7.8619
+  type: 'test'
+  ...
+# Subtest: 500 real XLSX rows, shared strings and merged classification cells retain exact ordering
+ok 17 - 500 real XLSX rows, shared strings and merged classification cells retain exact ordering
+  ---
+  duration_ms: 68.9379
+  type: 'test'
+  ...
+# Subtest: directories, duplicate paths, unsafe characters and multiple worksheets
+ok 18 - directories, duplicate paths, unsafe characters and multiple worksheets
+  ---
+  duration_ms: 1.5557
+  type: 'test'
+  ...
+# Subtest: formula titles are never executed or treated as cached facts
+ok 19 - formula titles are never executed or treated as cached facts
+  ---
+  duration_ms: 8.2919
+  type: 'test'
+  ...
+# Subtest: unnumbered directory groups retain following files; duplicate row IDs are rejected
+ok 20 - unnumbered directory groups retain following files; duplicate row IDs are rejected
+  ---
+  duration_ms: 6.0302
+  type: 'test'
+  ...
+# Subtest: empty, oversized catalogues and malformed ZIP fail explicitly
+ok 21 - empty, oversized catalogues and malformed ZIP fail explicitly
+  ---
+  duration_ms: 11.955
+  type: 'test'
+  ...
+# Subtest: audit checklist 项目 headers and numbered summary records are retained
+ok 22 - audit checklist 项目 headers and numbered summary records are retained
+  ---
+  duration_ms: 1.0701
+  type: 'test'
+  ...
+# Subtest: import keeps complete requirements but bounds download names and resolves annotation collisions
+ok 23 - import keeps complete requirements but bounds download names and resolves annotation collisions
+  ---
+  duration_ms: 0.7824
+  type: 'test'
+  ...
+# Subtest: one batch plan across deliveries, crash replay, failure/retry, pause, immutable owner cache, refund and source-free ZIP
+not ok 24 - one batch plan across deliveries, crash replay, failure/retry, pause, immutable owner cache, refund and source-free ZIP
+  ---
+  duration_ms: 4121.6159
+  type: 'test'
+  location: 'C:\\Users\\lezhai\\Downloads\\Bondbuddy\\prelaunch-desktop-20261104\\apps\\worker\\dist\\workpaper-shared-stage.pg.test.js:28:1'
+  failureType: 'testCodeFailure'
+  error: '422: {"code":"VALIDATION_FAILED","message":"积分、金额和累计数量必须使用 int64 十进制整数字符串。","retryable":false,"field_errors":[],"correlation_id":"8c418c58-7b6a-4549-ad20-ced0b6fff140"}'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    ok (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/apps/worker/dist/workpaper-shared-stage.pg.test.js:38:101)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/apps/worker/dist/workpaper-shared-stage.pg.test.js:132:21)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 23
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 46583.6653

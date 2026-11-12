@@ -1,0 +1,213 @@
+✖ default UTC trend contains all 14 calendar days including idle dates, while summary remains unrestricted (90.3731ms)
+✖ historical to anchors the default 14-day trend without discarding older summary tasks (76.4747ms)
+✖ 90, 91 and 120-day filters keep complete summaries and paginated details with a schema-valid last-90-day trend (73.0501ms)
+✖ UTC midnight grouping and credit dates remain unchanged in an Asia/Shanghai PostgreSQL session (72.2519ms)
+✖ owner and state filters count runs/users once and do not multiply usage or settlement rows (74.3596ms)
+✖ an empty window contains idle calendar days without inventing measured zero costs (76.0302ms)
+✖ a measured but unpriced attempt stays null beside an idle day (80.3657ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 0
+ℹ fail 7
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8000.1195
+
+✖ failing tests:
+
+test at apps\api\dist\admin-dashboard.pg.test.js:42:1
+✖ default UTC trend contains all 14 calendar days including idle dates, while summary remains unrestricted (90.3731ms)
+  error: new row for relation "bb_users" violates check constraint "bb_username_format"
+      at C:\Users\lezhai\Downloads\Bondbuddy\prelaunch-admin-navigation-20261105\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:15:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:43:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    length: 342,
+    severity: 'ERROR',
+    code: '23514',
+    detail: 'Failing row contains (c59746ab-9350-4a6d-9724-24c640c11825, null, active, 2026-11-05 10:45:28.735179+08, admin_trend_c59746ab-9350-4a6d-9724-24c640c11825, null).',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'bb_users',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_username_format',
+    file: 'execMain.c',
+    line: '2114',
+    routine: 'ExecConstraints'
+  }
+
+test at apps\api\dist\admin-dashboard.pg.test.js:63:1
+✖ historical to anchors the default 14-day trend without discarding older summary tasks (76.4747ms)
+  error: new row for relation "bb_users" violates check constraint "bb_username_format"
+      at C:\Users\lezhai\Downloads\Bondbuddy\prelaunch-admin-navigation-20261105\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:15:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:64:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 342,
+    severity: 'ERROR',
+    code: '23514',
+    detail: 'Failing row contains (570ee34c-0ba7-4f06-ab45-9ebbd9552914, null, active, 2026-11-05 10:45:28.812986+08, admin_trend_570ee34c-0ba7-4f06-ab45-9ebbd9552914, null).',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'bb_users',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_username_format',
+    file: 'execMain.c',
+    line: '2114',
+    routine: 'ExecConstraints'
+  }
+
+test at apps\api\dist\admin-dashboard.pg.test.js:80:1
+✖ 90, 91 and 120-day filters keep complete summaries and paginated details with a schema-valid last-90-day trend (73.0501ms)
+  error: new row for relation "bb_users" violates check constraint "bb_username_format"
+      at C:\Users\lezhai\Downloads\Bondbuddy\prelaunch-admin-navigation-20261105\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:15:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:81:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 342,
+    severity: 'ERROR',
+    code: '23514',
+    detail: 'Failing row contains (1ff05e1d-56e5-4c55-a873-6a0049d19c2e, null, active, 2026-11-05 10:45:28.886382+08, admin_trend_1ff05e1d-56e5-4c55-a873-6a0049d19c2e, null).',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'bb_users',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_username_format',
+    file: 'execMain.c',
+    line: '2114',
+    routine: 'ExecConstraints'
+  }
+
+test at apps\api\dist\admin-dashboard.pg.test.js:107:1
+✖ UTC midnight grouping and credit dates remain unchanged in an Asia/Shanghai PostgreSQL session (72.2519ms)
+  error: new row for relation "bb_users" violates check constraint "bb_username_format"
+      at C:\Users\lezhai\Downloads\Bondbuddy\prelaunch-admin-navigation-20261105\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:15:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:108:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 342,
+    severity: 'ERROR',
+    code: '23514',
+    detail: 'Failing row contains (4ef7d480-244a-40ce-95bf-58ace5300478, null, active, 2026-11-05 10:45:28.958853+08, admin_trend_4ef7d480-244a-40ce-95bf-58ace5300478, null).',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'bb_users',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_username_format',
+    file: 'execMain.c',
+    line: '2114',
+    routine: 'ExecConstraints'
+  }
+
+test at apps\api\dist\admin-dashboard.pg.test.js:124:1
+✖ owner and state filters count runs/users once and do not multiply usage or settlement rows (74.3596ms)
+  error: new row for relation "bb_users" violates check constraint "bb_username_format"
+      at C:\Users\lezhai\Downloads\Bondbuddy\prelaunch-admin-navigation-20261105\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:15:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:125:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 342,
+    severity: 'ERROR',
+    code: '23514',
+    detail: 'Failing row contains (7a322e7f-18a0-458d-bb74-ed60d8f4c825, null, active, 2026-11-05 10:45:29.033254+08, admin_trend_7a322e7f-18a0-458d-bb74-ed60d8f4c825, null).',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'bb_users',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_username_format',
+    file: 'execMain.c',
+    line: '2114',
+    routine: 'ExecConstraints'
+  }
+
+test at apps\api\dist\admin-dashboard.pg.test.js:155:1
+✖ an empty window contains idle calendar days without inventing measured zero costs (76.0302ms)
+  error: new row for relation "bb_users" violates check constraint "bb_username_format"
+      at C:\Users\lezhai\Downloads\Bondbuddy\prelaunch-admin-navigation-20261105\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:15:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:156:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 342,
+    severity: 'ERROR',
+    code: '23514',
+    detail: 'Failing row contains (e3855825-1e9c-44ab-9b86-fb9545aba07c, null, active, 2026-11-05 10:45:29.109446+08, admin_trend_e3855825-1e9c-44ab-9b86-fb9545aba07c, null).',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'bb_users',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_username_format',
+    file: 'execMain.c',
+    line: '2114',
+    routine: 'ExecConstraints'
+  }
+
+test at apps\api\dist\admin-dashboard.pg.test.js:167:1
+✖ a measured but unpriced attempt stays null beside an idle day (80.3657ms)
+  error: new row for relation "bb_users" violates check constraint "bb_username_format"
+      at C:\Users\lezhai\Downloads\Bondbuddy\prelaunch-admin-navigation-20261105\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async fixture (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:15:5)
+      at async TestContext.<anonymous> (file:///C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-admin-navigation-20261105/apps/api/dist/admin-dashboard.pg.test.js:168:15)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 342,
+    severity: 'ERROR',
+    code: '23514',
+    detail: 'Failing row contains (c1199c4b-e03c-4995-a8c2-797e19641337, null, active, 2026-11-05 10:45:29.189697+08, admin_trend_c1199c4b-e03c-4995-a8c2-797e19641337, null).',
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: 'public',
+    table: 'bb_users',
+    column: undefined,
+    dataType: undefined,
+    constraint: 'bb_username_format',
+    file: 'execMain.c',
+    line: '2114',
+    routine: 'ExecConstraints'
+  }

@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: headerless numbered due-diligence lists retain the first item and summary rows
+ok 1 - headerless numbered due-diligence lists retain the first item and summary rows
+  ---
+  duration_ms: 16.3724
+  type: 'test'
+  ...
+# Subtest: uncertain and competing layouts require review rather than guessing silently
+ok 2 - uncertain and competing layouts require review rather than guessing silently
+  ---
+  duration_ms: 3.2909
+  type: 'test'
+  ...
+# Subtest: Chinese XML decimal references preserve catalogue headers, cells and sheet names
+ok 3 - Chinese XML decimal references preserve catalogue headers, cells and sheet names
+  ---
+  duration_ms: 41.6222
+  type: 'test'
+  ...
+# Subtest: Chinese XML hex references preserve catalogue headers, cells and sheet names
+ok 4 - Chinese XML hex references preserve catalogue headers, cells and sheet names
+  ---
+  duration_ms: 18.8241
+  type: 'test'
+  ...
+# Subtest: 500 real XLSX rows, shared strings and merged classification cells retain exact ordering
+ok 5 - 500 real XLSX rows, shared strings and merged classification cells retain exact ordering
+  ---
+  duration_ms: 133.1119
+  type: 'test'
+  ...
+# Subtest: directories, duplicate paths, unsafe characters and multiple worksheets
+ok 6 - directories, duplicate paths, unsafe characters and multiple worksheets
+  ---
+  duration_ms: 1.6614
+  type: 'test'
+  ...
+# Subtest: formula titles are never executed or treated as cached facts
+ok 7 - formula titles are never executed or treated as cached facts
+  ---
+  duration_ms: 9.8726
+  type: 'test'
+  ...
+# Subtest: unnumbered directory groups retain following files; duplicate row IDs are rejected
+ok 8 - unnumbered directory groups retain following files; duplicate row IDs are rejected
+  ---
+  duration_ms: 5.0934
+  type: 'test'
+  ...
+# Subtest: empty, oversized catalogues and malformed ZIP fail explicitly
+ok 9 - empty, oversized catalogues and malformed ZIP fail explicitly
+  ---
+  duration_ms: 26.5781
+  type: 'test'
+  ...
+# Subtest: audit checklist 项目 headers and numbered summary records are retained
+ok 10 - audit checklist 项目 headers and numbered summary records are retained
+  ---
+  duration_ms: 1.0576
+  type: 'test'
+  ...
+# Subtest: import keeps complete requirements but bounds download names and resolves annotation collisions
+ok 11 - import keeps complete requirements but bounds download names and resolves annotation collisions
+  ---
+  duration_ms: 1.004
+  type: 'test'
+  ...
+# Subtest: one batch plan across deliveries, crash replay, failure/retry, pause, immutable owner cache, refund and source-free ZIP
+ok 12 - one batch plan across deliveries, crash replay, failure/retry, pause, immutable owner cache, refund and source-free ZIP
+  ---
+  duration_ms: 18753.1661
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 30986.7143

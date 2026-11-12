@@ -1,0 +1,277 @@
+import {serveDisabledBillingCatalog} from './billing-fixture-wire';
+import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
+import { taskPage } from './collection-fixtures';
+import { expect, test, type Page, type Route } from '@playwright/test';
+import { commerceMetadata, AUTOMATIC_PRICE_VERSION, OUTCOME_PRICE_VERSION, emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR } from '@bondbuddy/contracts';
+import { Value } from '@sinclair/typebox/value';
+import { createHash } from 'node:crypto';
+import type { Dto } from './billing-fixture-wire';
+import { join, resolve } from 'node:path';
+import { mkdir, readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+
+// Synthetic HTTP boundary tests in real Chromium; no actual API/PG/model/Word acceptance.
+const now = '2026-09-27T12:00:00Z';
+const id = 'synthetic-execution-project';
+const priorArtifact = { artifact_id: 'synthetic-old-artifact', run_id: 'synthetic-old-run', version: 1, created_at: now };
+const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+const emptyMessages = { version: 1, content_sha256: hash('bondbuddy:empty-project-messages'), message_ids: [] };
+const json = (route: Route, status: number, body: unknown) => route.fulfill({ status, contentType: 'application/json', body: fixtureJson(route,body) });
+const periods: NonNullable<Dto<'InputRevisionCreateRequest'>['target_confirmation']>['target_reporting_periods'] = [{ start: '2025-01-01', end: '2025-12-31', period_kind: 'annual', scope: 'consolidated', status: 'user_asserted', evidence_refs: [] }];
+function fixture() {
+  const project: Dto<'ProjectResponse'> = { project_id: id, name: '合成任务项目', issuer_name: '合成发行人', kind: 'update',
+    market: 'sse', offering: 'private', draft_revision: 2, input_revision: null, input_hash: null, updated_at: now,
+    update_details: { ...emptyUpdateDetails(), has_historical: true, reporting_cutoff: '2025-12-31', target_reporting_periods: structuredClone(periods) } };
+  const materials: Dto<'MaterialResponse'>[] = ['history', 'audit'].map((name, i) => ({ material_id: `synthetic-${name}`, material_version: 1,
+    upload_id: `synthetic-upload-${i}`, role: i === 0 ? 'historical' : 'audit', filename: `${name}.docx`,
+    media_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', byte_size: 1024, sha256: hash(name), state: 'persisted', persisted_at: now, error: null }));
+  project.update_details!.source_prospectuses=[{material_id:materials[0].material_id,material_version:1,sha256:materials[0].sha256,
+    issuer_name:'合成发行人',relation:'same_issuer',market:'sse',offering:'private',
+    reporting_periods:reportingWindow('sse','private','2024-12-31'),status:'user_asserted'}];
+  return { project, materials, inputs: [] as Dto<'InputRevisionCreateRequest'>[], snapshots: new Map<number, Dto<'InputRevisionResponse'>>(),
+    executes: [] as Dto<'ExecuteRequest'>[], runs: new Map<string, Dto<'RunResponse'>>(), preflights: [] as Dto<'PreflightRequest'>[],
+    artifacts: new Map<string, Dto<'ArtifactResponse'>>(),
+    generatedVersions: [] as Dto<'ProspectusVersionsResponse'>['versions'], sourceSelected: true, selectionRequests: [] as unknown[],
+    priorTasks: [] as Dto<'ProjectTasksResponse'>['items'],
+    nextInputRevision: undefined as number | undefined, patchRequests: 0,
+    holdProjectRead: false, releaseProjectRead: undefined as (() => void) | undefined,
+    loggedOut: false, dropSave: false, dropExecute: false, conflictSave: false, holdExecute: false, holdCheck: false,
+    releaseExecute: undefined as (() => void) | undefined, releaseCheck: undefined as (() => void) | undefined,
+    holdRunRead: false, runReads: 0, releaseRunRead: undefined as (() => void) | undefined,
+    listPages: [] as string[], eventPages: [] as string[], paginate: false, lateRunForeign: false,
+    liveProgress: undefined as Dto<'RunCreditChargeResponse'>['progress'],
+    liveActivity: undefined as Dto<'RunEvent'>['payload']['authoring_activity'],
+    publicEvents: [] as Dto<'RunEvent'>[],
+    chargeState: 'held' as 'held'|'settled'|'released', chargeFailure:false, frozen:0,
+    paid:false,freeClassification:false,points:17900,available:0,priceVersion:'test-v1',
+    order:undefined as Dto<'RechargeOrderResponse'>|undefined,
+    parseSucceeded: false,
+    runStage: 'capability_not_ready', runState: 'paused' as Dto<'RunResponse'>['state'],
+    runReason: 'rule_applicability_overall_review_required', eventSeq: 2, failEvents: false,
+    eventStage: undefined as string | undefined, eventError: undefined as string | undefined,
+    eventHistory: [] as { seq: number; state: Dto<'RunResponse'>['state']; stage: string; reason: string }[],
+    executeError: undefined as { status: number; code: string; correlation_id: string; field_errors?: {field:string;code:string;message:string}[] } | undefined,
+    preflightError: undefined as { status: number; code: string; correlation_id: string } | undefined,
+    runActions: [] as string[],
+    checkStatus: 'blocked' as Dto<'PreflightResponse'>['status'], reason: 'rule_pack:rule_applicability_overall_review_required',
+    blockers: undefined as string[] | undefined };
+}
+function registerGeneratedPair(state: ReturnType<typeof fixture>, run: Dto<'RunResponse'>, revisionId: string, sharedFirstDraft = false) {
+  expect(run.project_id).toBe(id); expect(run.channel).toBe('production');
+  run.state='succeeded'; run.artifact_id=revisionId;
+  const cleanId=sharedFirstDraft?revisionId:`${revisionId}-clean`;
+  const wordDelivery: NonNullable<Dto<'ArtifactResponse'>['word_delivery']> = {
+    variant:'revision', revision_artifact_id:revisionId, clean_artifact_id:cleanId,
+    writer_version:'bondbuddy-unified-word-1.0.0', source_sha256:state.materials.find(m=>m.role==='historical')?.sha256??null,
+    baseline_hash:null, effective_baseline_sha256:null, plan_hash:null, delivery_policy:'generated_pair_v1',
+    content_review:'not_performed', baseline_kind:sharedFirstDraft?'none':'uploaded_source', replacements:null, columns:null,
+    pending_review_count:0, pending_review:[],
+  };
+  const primary: Dto<'ArtifactResponse'> = { artifact_id:revisionId, run_id:run.run_id, version:1,
+    filename:'合成募集书修订版.docx', media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    sha256:hash(`synthetic-revision:${revisionId}`), quality_status:'passed', delivery_status:'available',
+    download_url:`/api/v1/artifacts/${revisionId}/download`, expires_at:'2099-01-01T00:00:00Z', word_delivery:wordDelivery };
+  const clean: Dto<'ArtifactResponse'> = { ...primary, artifact_id:cleanId, filename:'合成募集书清洁版.docx',
+    sha256:sharedFirstDraft?primary.sha256:hash(`synthetic-clean:${revisionId}`), download_url:`/api/v1/artifacts/${cleanId}/download`,
+    word_delivery:{...wordDelivery,variant:'clean'} };
+  state.artifacts.set(primary.artifact_id,primary); state.artifacts.set(clean.artifact_id,clean);
+  state.generatedVersions.push({version_id:`generated-${run.run_id}`,sequence:state.generatedVersions.length+2,
+    origin:'generated',filename:clean.filename!,sha256:clean.sha256,created_at:now,material_id:null,material_version:null,
+    artifact_id:clean.artifact_id,artifact_version:clean.version,revision_artifact_id:primary.artifact_id,run_id:run.run_id});
+  return {primary,clean};
+}
+async function setup(page: Page, state = fixture(), canStart = true) {
+  await page.context().route('**/api/v1/**', async route => {
+    if(await serveDisabledBillingCatalog(route))return;
+    const request = route.request(), url = new URL(request.url()), path = url.pathname.replace('/api/v1', '');
+    const method = request.method();
+    if (path === '/auth/logout') { state.loggedOut = true; return route.fulfill({ status: 204 }); }
+    if (state.loggedOut) return json(route, 401, { code: 'UNAUTHENTICATED' });
+    if(path==='/account')return json(route,200,{user_id:'synthetic-owner',username:'synthetic',phone_masked:null,status:'active',created_at:now,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,support_contact:null});
+    if(path==='/account/sessions')return json(route,200,{items:[]});
+    if(path==='/account/recovery')return json(route,200,{enabled:false,support_operator:false,current:null,pending:null});
+    if (path === '/m4/topics') return json(route,200,{topics:[]});
+    if (path === '/me') return json(route, 200, { user_id: 'synthetic-owner', session_status: 'active' });
+    if (path === `/projects/${id}`) {
+      if (method === 'PATCH') { state.patchRequests++; Object.assign(state.project, fixtureRequest(request), { draft_revision: state.project.draft_revision + 1 }); }
+      if (method === 'GET' && state.holdProjectRead) {
+        state.holdProjectRead=false;
+        await new Promise<void>(resolve=>{state.releaseProjectRead=resolve;});
+      }
+      return json(route, 200, state.project);
+    }
+    if(path===`/projects/${id}/tasks`){state.listPages.push(url.searchParams.get('cursor')??'first');const skip=state.paginate&&!url.searchParams.has('cursor');const tasks=taskPage(id,[...state.runs.values()].reverse(),state.project.kind);return json(route,200,{...tasks,items:skip?[]:[...tasks.items,...state.priorTasks],page:{has_more:skip,next_cursor:skip?'page-two':null}});}
+    if (path === '/projects') {
+      state.listPages.push(url.searchParams.get('cursor') ?? 'first');
+      const lastRun = [...state.runs.values()].at(-1);
+      const skip = state.paginate && !url.searchParams.has('cursor');
+      return json(route, 200, { items: skip ? [] : [{ ...state.project, latest_run: lastRun ? { run_id: lastRun.run_id, state: lastRun.state, updated_at: now } : null,
+        latest_artifact: priorArtifact }], page: { next_cursor: skip ? 'page-two' : null, has_more: skip } });
+    }
+    if (path === `/projects/${id}/events`) return json(route, 200, { items: state.materials.map((m, i) => ({ event_id: `event-${i}`, schema_version: 1, project_id: id, trace_id: 'trace', seq: i + 1, occurred_at: now, type: 'material.upload_progress', payload: { material_id: m.material_id } })), next_cursor: null });
+    if(path===`/projects/${id}/prospectus-versions`&&method==='GET'){
+      const material=state.materials.find(m=>m.role==='historical');
+      const versions:Dto<'ProspectusVersionsResponse'>={project_id:id,current_version_id:material?'source-version':null,selection_revision:material?1:0,inactive_material_ids:[],versions:material?[{version_id:'source-version',sequence:1,origin:'upload',filename:material.filename,sha256:material.sha256,created_at:now,material_id:material.material_id,material_version:material.material_version,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null}]:[]};
+      if(state.generatedVersions.length){
+        versions.versions.push(...state.generatedVersions);
+        versions.current_version_id=state.generatedVersions.at(-1)!.version_id;
+        versions.selection_revision+=state.generatedVersions.length;
+      }
+      if(material&&!state.sourceSelected){versions.current_version_id=null;versions.selection_revision=0;versions.inactive_material_ids=[material.material_id];}
+      return json(route,200,versions);
+    }
+    if(path===`/projects/${id}/prospectus-versions/current`&&method==='POST'){
+      state.selectionRequests.push(request.postDataJSON());
+      expect(request.postDataJSON().version_id).toBe('source-version');
+      state.sourceSelected=true;state.project.draft_revision++;
+      const material=state.materials.find(m=>m.role==='historical')!;
+      return json(route,200,{project_id:id,current_version_id:'source-version',selection_revision:1,inactive_material_ids:[],versions:[{version_id:'source-version',sequence:1,origin:'upload',filename:material.filename,sha256:material.sha256,created_at:now,material_id:material.material_id,material_version:material.material_version,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null}]});
+    }
+    const artifactMatch=path.match(/^\/artifacts\/([^/]+)$/);
+    if(artifactMatch&&method==='GET'){
+      const artifact=state.artifacts.get(decodeURIComponent(artifactMatch[1]));
+      return artifact?json(route,200,artifact):json(route,404,{code:'NOT_FOUND'});
+    }
+    if (path === `/projects/${id}/messages` && method === 'GET') return json(route, 200,
+      { conversation_id: id, items: [], project_message_set_ref: emptyMessages, next_cursor: null, has_more: false });
+    if (!canStart && (path.endsWith('/parse-job') || path.includes('/materials/uploads') || path.endsWith('/source-profile'))) return route.fallback();
+    if (path.endsWith('/parse-job')) {
+      const material = state.materials.find(m => m.material_id === path.split('/').at(-2));
+      if (!state.parseSucceeded || !material) return json(route, 404, { code: 'NOT_FOUND' });
+      return json(route, 200, { job_id: `job-${material.material_id}`, job_type: 'parse', subtype: 'material_parse', project_id: id,
+        material_id: material.material_id, material_version: material.material_version, material_sha256: material.sha256,
+        parser_version: 'synthetic-v1', state: 'succeeded', stage: 'succeeded', completed_stages: ['parse_evidence'],
+        attempts: 1, max_attempts: 3, error_code: null, outcome: 'needs_confirmation', parse_status: 'needs_confirmation',
+        profile_version: material.role === 'historical' ? 1 : null, pending_capabilities: [], updated_at: now });
+    }
+    const material = state.materials.find(m => path === `/projects/${id}/materials/${m.material_id}`);
+    if (material) return json(route, 200, material);
+    if (path === `/projects/${id}/input-revisions` && method === 'POST') {
+      const body = fixtureRequest(request);
+      expect(Value.Check(schemas.InputRevisionCreateRequest, body)).toBe(true);
+      state.inputs.push(body);
+      if (state.conflictSave) return json(route, 409, { code: 'INPUT_REVISION_CONFLICT' });
+      const revision = state.nextInputRevision ?? state.snapshots.size + 1;
+      const snapshot: Dto<'InputRevisionResponse'> = { project_id: id, input_revision: revision, input_hash: hash(JSON.stringify(body)),
+        material_versions: body.material_versions, ...(body.credit_facility_supplements ? { credit_facility_supplements: body.credit_facility_supplements } : {}), target_confirmation: {status:'unconfirmed',market:null,offering:null,as_of:null,document_purpose:null,target_reporting_periods:[],confirmed_at:null,confirmed_by:null},
+        rule_pack_version: null, template_version: null, reference_release: null, created_at: now };
+      state.snapshots.set(revision, snapshot); state.project.input_revision = revision; state.project.input_hash = snapshot.input_hash;
+      if (state.dropSave) { state.dropSave = false; return route.abort('connectionreset'); }
+      return json(route, 201, snapshot);
+    }
+    const rev = path.match(/\/input-revisions\/(\d+)$/);
+    if (rev) return json(route, 200, state.snapshots.get(Number(rev[1])));
+    if (path === `/projects/${id}/preflight`) {
+      const body = fixtureRequest(request);
+      state.preflights.push(body);
+      if (state.preflightError) return json(route, state.preflightError.status, state.preflightError);
+      if (state.holdCheck) await new Promise<void>(resolve => { state.releaseCheck = resolve; });
+      const blocking = state.checkStatus === 'blocked' ? state.blockers ?? [state.reason] : [];
+      return json(route, 200, { project_id: id, ...body, status: state.checkStatus, missing_inputs: blocking,
+        blocking_inputs: blocking, advisory_inputs: [], uncertainty: ['material_needs_confirmation:synthetic-audit:1'], billing_mode: state.paid?'fixed_credits':'platform_trial' });
+    }
+    if(path.endsWith('/credit-quote'))return json(route,200,{enabled:true,quote:state.freeClassification?null:{quote_id:`quote-${state.priceVersion}`,project_id:id,...fixtureRequest(request),task_type:'interim',points:state.points,price_version:state.priceVersion,reason:'合成一期更新',created_at:now},balance:{available:state.available,frozen:0},shortage:state.freeClassification?0:Math.max(0,state.points-state.available),reason:state.freeClassification?'原稿信息不足，本次保留 M1 免费编制，不补扣。':null});
+    if(path==='/credits/balance')return json(route,200,{enabled:state.paid,available:state.available,frozen:state.frozen});
+    if(path==='/credits/recharge-config')return json(route,200,{enabled:true,providers:['alipay'],packs:RECHARGE_PACKS,pack_version:'synthetic-v1'});
+    if(path==='/credits/recharge-orders'){
+      state.order={order_id:'synthetic-order',provider:'alipay',state:'pending',amount_fen:20000,points:20000,currency:'CNY',checkout_url:'https://synthetic.invalid/pay',project_id:id,expires_at:now,credited_at:null};
+      return json(route,201,state.order);
+    }
+    if(path.startsWith('/credits/recharge-orders/'))return json(route,200,state.order);
+    if (path === '/runs/execute') {
+      const body = fixtureRequest(request);
+      expect(Value.Check(schemas.ExecuteRequest, body)).toBe(true);
+      state.executes.push(body);
+      if (state.executeError) return json(route, state.executeError.status, state.executeError);
+      let run = state.runs.get(body.execution_request_id);
+      if (!run) {
+        run = { run_id: `synthetic-run-${state.runs.size + 1}`, execution_request_id: body.execution_request_id, project_id: id,
+          input_revision: body.input_revision, input_hash: body.input_hash, state: state.runState, stage: state.runStage, event_cursor: state.eventSeq,
+          channel: 'production', test_grant_id: null, uncovered_items: [], billing_mode: state.paid?'fixed_credits':'platform_trial',
+          reservation_id: null, artifact_id: null, prompt_snapshot_ref: null, updated_at: now };
+        state.runs.set(body.execution_request_id, run);
+      }
+      if (state.holdExecute) await new Promise<void>(resolve => { state.releaseExecute = resolve; });
+      if (state.dropExecute) { state.dropExecute = false; return route.abort('connectionreset'); }
+      return json(route, 202, state.lateRunForeign ? { ...run, project_id: 'synthetic-foreign' } : run);
+    }
+    if (path.startsWith('/runs/')) {
+      const run = [...state.runs.values()].find(run => path.startsWith(`/runs/${run.run_id}`));
+      if (!run) return json(route, 404, { code: 'NOT_FOUND' });
+      if(path.endsWith('/credit-charge'))return state.chargeFailure?json(route,503,{code:'DATA_UNAVAILABLE'}):json(route,200,{quote:{points:state.points},state:state.chargeState,...(state.liveProgress?{progress:state.liveProgress}:{})});
+      if (path.endsWith('/stream'))return route.fulfill({status:200,contentType:'text/event-stream',body:': synthetic stream; polling exercises refresh\n\n'});
+      if (method === 'POST' && ['/cancel','/resume','/pause'].some(a=>path.endsWith(a))) {
+        state.runActions.push(path);
+        if(path.endsWith('/pause')&&state.liveProgress){state.liveProgress.pause_requested=true;state.liveProgress.clock_running=false;}
+        else {run.state=path.endsWith('/cancel')?'cancelled':'running';if(state.liveProgress){state.liveProgress.pause_requested=false;state.liveProgress.clock_running=run.state==='running';if(run.state==='cancelled'){state.chargeState='settled';state.liveProgress.charged_points=state.liveProgress.accrued_points;state.liveProgress.released_points=state.points-state.liveProgress.charged_points;}}}
+        return json(route,200,run);
+      }
+      if (path.endsWith('/events')) {
+        const cursor = url.searchParams.get('after') ?? '0'; state.eventPages.push(cursor);
+        const more = state.paginate && cursor === '0';
+        if (state.failEvents) return json(route, 503, { code: 'DATA_UNAVAILABLE' });
+        if(state.publicEvents.length){
+          const pending=state.publicEvents.filter(e=>e.seq>Number(cursor)),items=pending.slice(0,10);
+          return json(route,200,{items,next_cursor:pending.length>items.length?items.at(-1)!.seq:null});
+        }
+        if (state.eventHistory.length) return json(route, 200, { items: state.eventHistory.filter(event => event.seq > Number(cursor)).map(event => ({
+          event_id: `run-event-${event.seq}`, schema_version: 1, trace_id: 'trace', run_id: run.run_id, seq: event.seq,
+          occurred_at: now, stage: event.stage, type: 'run.state_changed', state: event.state, payload: { reason: event.reason }
+        })), next_cursor: null });
+        const seq = more ? 1 : state.eventSeq;
+        return json(route, 200, { items: Number(cursor) >= state.eventSeq ? [] : [{ event_id: `run-event-${seq}`, schema_version: 1, trace_id: 'trace', run_id: run.run_id, seq,
+          occurred_at: now, stage: state.eventStage ?? run.stage, type: 'run.state_changed', state: more ? 'queued' : run.state,
+          payload: more ? {} : { ...(state.liveActivity?{authoring_activity:state.liveActivity}:{}), ...(state.runReason ? { reason: state.runReason } : {}), ...(state.eventError ? { error_code: state.eventError } : {}) } }], next_cursor: more ? 1 : null });
+      }
+      state.runReads++;
+      const snapshot={...structuredClone(run),event_cursor:state.eventSeq};
+      if (state.holdRunRead) {
+        state.holdRunRead=false;
+        await new Promise<void>(resolve=>{state.releaseRunRead=resolve;});
+      }
+      return json(route, 200, snapshot);
+    }
+    if (path.endsWith('/facts/candidates')) return json(route, 200, { items: [], page: { next_cursor: null, has_more: false } });
+    return json(route, 404, { code: 'NOT_FOUND' });
+  });
+  await page.goto(`/#/projects/${id}`);
+  await expect(page.getByRole('heading', { name: '合成任务项目', exact: true })).toBeVisible();
+  if (canStart) await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeEnabled();
+  else await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeDisabled();
+  return state;
+}
+import {fixture as qaFixture,install as qaInstall,assertFixture as qaAssert,projectId as qaProjectId,answerId as qaAnswerId,writes as qaWrites} from './project-qa-continuation-fixtures';
+import {fixture as tasksFixture,install as tasksInstall,assertFixture as tasksAssert,ids as taskIds,mutations as taskMutations} from './parallel-projects-fixtures';
+const output=process.env.BB_TASK_FLOW_EVIDENCE!;
+const root=resolve('../..');
+async function shot(page:Page,name:string){await page.evaluate(()=>{(document.activeElement as HTMLElement|null)?.blur();});await page.screenshot({path:join(output,name),fullPage:false});}
+async function prototype(page:Page,file:string){await page.goto('/@fs/'+join(root,'product-prototype/public',file).replaceAll('\\','/'));}
+test('capture task-flow desktop evidence with synthetic HTTP only',async({browser})=>{
+  const context=await browser.newContext({viewport:{width:1440,height:960}});
+  const tasks=await context.newPage(),tasksState=tasksFixture();tasksState.projects.find(project=>project.project_id===taskIds.c)!.kind='qa';
+  await tasksInstall(tasks,tasksState);await tasks.goto('/#tasks');
+  await tasks.locator(`[data-project-id="${taskIds.c}"]`).getByRole('button',{name:'查看任务',exact:false}).click();
+  await expect(tasks.locator(`[data-task-panel="${taskIds.c}"]`).getByRole('link',{name:'继续准备材料'})).toHaveAttribute('href',`#qa?project=${taskIds.c}&from=projects`);
+  await tasks.locator(`[data-task-panel="${taskIds.c}"]`).scrollIntoViewIfNeeded();await shot(tasks,'tasks-empty-implementation-1440x960.png');expect(taskMutations(tasksState)).toEqual([]);await tasksAssert(tasks);
+  const q=await context.newPage(),qState=qaFixture();await qaInstall(q,qState);await q.goto(`/#qa?project=${qaProjectId}&run=${qaAnswerId}`);
+  await expect(q.locator('#qa-download')).toBeVisible();await shot(q,'qa-result-implementation-1440x960.png');
+  await q.clock.install();let reads=0;await q.route('**/api/v1/artifacts/synthetic-artifact-5',async()=>{reads++;});
+  await q.locator('#qa-download').click();await expect.poll(()=>reads).toBe(1);await q.clock.fastForward(120001);
+  await expect(q.locator('#project-qa-status')).toContainText('下载准备超时');await expect(q.locator('#qa-history')).toBeEnabled();
+  await q.locator('#project-qa-status').scrollIntoViewIfNeeded();await shot(q,'qa-timeout-implementation-1440x960.png');expect(qaWrites(qState)).toEqual([]);await qaAssert(q);
+  const authoring=await context.newPage(),state=fixture();state.checkStatus='ready';state.materials=state.materials.filter(material=>material.role!=='historical');
+  state.project.update_details!.has_historical=false;state.project.update_details!.source_prospectuses=[];state.sourceSelected=false;
+  await setup(authoring,state);await authoring.locator('#execute-input').click();await expect(authoring.locator('#execution-progress')).toContainText('任务已暂停');
+  registerGeneratedPair(state,[...state.runs.values()][0],'evidence-deduplicated-first-draft',true);
+  await authoring.getByRole('button',{name:'重新读取',exact:true}).click();await expect(authoring.locator('#execution-progress')).toContainText('已生成');
+  await authoring.getByRole('button',{name:'继续修改',exact:true}).click();await expect(authoring.locator('[data-next-authoring-summary] .continuation-summary')).toBeVisible();
+  await authoring.locator('[data-next-authoring-summary]').scrollIntoViewIfNeeded();await shot(authoring,'first-draft-continuation-implementation-1440x960.png');expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(1);
+  const prototypeContext=await browser.newContext({viewport:{width:1440,height:960}}),p=await prototypeContext.newPage();
+  const prototypeRequests:string[]=[];p.on('request',request=>{if(new URL(request.url()).pathname.includes('/api/'))prototypeRequests.push(request.url());});
+  await prototype(p,'task-results.html');await expect(p.getByRole('heading',{name:'任务进度与结果',exact:true})).toBeVisible();
+  await p.locator('[data-tasks="parallel-project-c"]').click();await expect(p.locator('[data-task-panel="parallel-project-c"]')).toBeVisible();await p.locator('[data-task-panel="parallel-project-c"]').scrollIntoViewIfNeeded();await shot(p,'tasks-empty-prototype-1440x960.png');
+  await prototype(p,'qa-document.html');await p.locator('[data-show="result"]').click();await expect(p.locator('[data-view="result"]')).toBeVisible();await shot(p,'qa-result-prototype-1440x960.png');
+  await prototype(p,'qa-materials.html');await p.locator('.prototype-controls [data-show="result"]').click();await expect(p.locator('[data-view="result"]')).toBeVisible();await shot(p,'qa-materials-result-prototype-1440x960.png');
+  await prototype(p,'authoring-materials-entry.html');await expect(p.locator('[data-authoring-preparation-guide]')).toBeVisible();await p.locator('[data-authoring-preparation-guide]').evaluate(n=>n.scrollIntoView({block:'start'}));await shot(p,'materials-entry-prototype-1440x960.png');
+  expect(prototypeRequests).toEqual([]);await prototypeContext.close();await context.close();
+});

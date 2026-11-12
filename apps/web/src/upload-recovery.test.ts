@@ -95,10 +95,10 @@ test('pending without file prompts locally without creating a session', async ()
   await assert.rejects(r.resume('op-a'), error => error instanceof UploadRecoveryNeedsFileError && error.record.declaration.filename === '原始.docx'); assert.deepEqual(methods(h), []);
 });
 
-test('unknown PUT followed by same-page confirmation accepts without another PUT or File', async () => {
+test('unknown PUT automatically confirms without another PUT or File', async () => {
   const h = harness(), r = h.make(); r.begin(declaration(), undefined, 'op-a'); h.state.put = async () => { throw new ApiError(0, 'DATA_UNAVAILABLE'); };
-  await assert.rejects(r.resume('op-a', { file: file() }), ApiError); assert.equal(r.list()[0].stage, 'bytes_unknown');
-  assert.deepEqual(await r.resume('op-a'), material()); assert.deepEqual(methods(h), ['create', 'put', 'complete']);
+  assert.deepEqual(await r.resume('op-a', { file: file() }), material()); assert.equal(r.list()[0].stage, 'saved');
+  assert.deepEqual(methods(h), ['create', 'put', 'complete']);
 });
 
 test('unknown complete after registration is confirmed by original ID after reload', async () => {
@@ -124,11 +124,11 @@ test('reselection after URL loss confirms old upload before explicit replacement
   assert.equal((h.calls[1].input as Dto<'UploadCreateRequest'>).filename, '原始.docx'); assert.deepEqual(r.list()[0].previousUploadIds, ['upload-a']);
 });
 
-test('same-page not-received retry can reuse its unexpired in-memory URL only after original complete', async () => {
-  const h = harness(), r = h.make(); r.begin(declaration(), undefined, 'op-a'); h.state.put = async () => { throw new ApiError(0, 'DATA_UNAVAILABLE'); };
-  await assert.rejects(r.resume('op-a', { file: file() })); h.state.put = async () => {}; let confirmations = 0;
-  h.state.complete = async () => { if (++confirmations === 1) throw new ApiError(422, 'MATERIAL_UNREADABLE'); return material(); };
-  await r.resume('op-a', { file: file() }); assert.deepEqual(methods(h), ['create', 'put', 'complete', 'put', 'complete']);
+test('authentication recovery confirms the original upload without replaying rejected PUT bytes', async () => {
+  const h = harness(), r = h.make(); r.begin(declaration(), undefined, 'op-a'); h.state.put = async () => { throw new ApiError(401, 'UNAUTHENTICATED'); };
+  await assert.rejects(r.resume('op-a', { file: file() }));
+  assert.deepEqual(await r.resume('op-a'), material());
+  assert.deepEqual(methods(h), ['create', 'put', 'complete']);
 });
 
 for (const reason of UPLOAD_INSPECTION_PUBLIC_REASONS) test('inspection reason ' + reason + ' preserves original identity and never means missing bytes', async () => {
@@ -441,11 +441,12 @@ test('small successful PUT without XHR progress reports all bytes while complete
   completeGate.resolve(material()); await pending; assert.equal(r.list()[0].stage, 'saved');
 });
 
-test('unknown PUT without progress cannot report successful 100 percent or material confirmation', async () => {
+test('unknown PUT without progress cannot report successful 100 percent before its exact receipt', async () => {
   const h = harness(), r = h.make(); r.begin(declaration(), undefined, 'op-a'); h.state.emitProgress = false;
   h.state.put = async () => { throw new ApiError(0, 'DATA_UNAVAILABLE'); }; const progress: number[] = [];
+  h.state.complete = async () => { throw new ApiError(503, 'DATA_UNAVAILABLE'); };
   await assert.rejects(r.resume('op-a', { file: file(), progress: loaded => progress.push(loaded) }), ApiError);
-  assert.deepEqual(progress, []); assert.equal(r.list()[0].stage, 'bytes_unknown'); assert.deepEqual(methods(h), ['create', 'put']);
+  assert.deepEqual(progress, []); assert.equal(r.list()[0].stage, 'bytes_unknown'); assert.deepEqual(methods(h), ['create', 'put', 'complete']);
 });
 
 test('opt-in durable transfer completes normally without changing the journal schema', async () => {
@@ -487,4 +488,25 @@ test('opt-in durable transfer rejects checkpoint restoration while default trans
   await assert.rejects(r.resume('op-a', { previousRecord: record, requireDurableRecord: true }), UploadRecoveryConflictError); assert.equal(h.store.length, 0); assert.deepEqual(methods(h), []);
   r.begin(declaration(), undefined, 'op-a'); h.state.complete = async () => { h.store.data.clear(); return material(); };
   assert.deepEqual(await r.resume('op-a', { file: file() }), material()); assert.equal(r.list()[0].stage, 'saved');
+});
+
+for(const stage of ['session','bytes_unknown','confirming'] as const)test(`direct reload ${stage} confirms before renewing the same upload, without persisting SAS`,async()=>{
+ const h=harness(),r=h.make();seed(h,r,{stage,uploadTransport:'azure_blob'});let n=0;
+ h.state.complete=async()=>{if(++n===1)throw new ApiError(422,'MATERIAL_UNREADABLE',{uploadBytesPending:true});return material();};
+ h.api.refreshUpload=async(p,id,input)=>{h.calls.push({method:'refresh',project:p,id,input});return session({upload_transport:'azure_blob',upload_url:'https://storage.invalid/private?sig=synthetic-secret'});};
+ const result=await h.make().resume('op-a',{file:file()});assert.equal(result.material_id,'material-a');
+ assert.deepEqual(methods(h),['complete','refresh','put','complete']);assert.equal(r.list()[0].uploadId,'upload-a');assert.deepEqual(r.list()[0].previousUploadIds,[]);
+ assert.ok(![...h.store.data.values()].join('').includes('synthetic-secret'));
+});
+for(const status of [403,409,412])test(`direct create-only ${status} confirms the original object without another PUT or new upload`,async()=>{
+ const h=harness(),r=h.make();h.state.create=async()=>session({upload_transport:'azure_blob'});h.state.put=async()=>{throw new ApiError(status,'DATA_UNAVAILABLE');};r.begin(declaration(),undefined,'op-a');
+ assert.equal((await r.resume('op-a',{file:file()})).material_id,'material-a');assert.deepEqual(methods(h),['create','put','complete']);
+});
+test('direct reload with accepted bytes reuses complete without ticket or file',async()=>{
+ const h=harness(),r=h.make();seed(h,r,{stage:'bytes_unknown',uploadTransport:'azure_blob'});
+ assert.equal((await h.make().resume('op-a')).material_id,'material-a');assert.deepEqual(methods(h),['complete']);
+});
+test('direct original identity is retained when the ticket endpoint is unavailable or foreign',async()=>{
+ const h=harness(),r=h.make();seed(h,r,{uploadTransport:'azure_blob'});h.state.complete=async()=>{throw new ApiError(404,'NOT_FOUND');};
+ await assert.rejects(h.make().resume('op-a',{file:file()}),ApiError);assert.deepEqual(methods(h),['complete']);assert.equal(r.list()[0].uploadId,'upload-a');
 });

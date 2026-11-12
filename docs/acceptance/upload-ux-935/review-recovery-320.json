@@ -1,0 +1,82 @@
+{
+  "name": "review-recovery",
+  "width": 320,
+  "overflow": false,
+  "controls": [
+    {
+      "tag": "LABEL",
+      "id": "",
+      "text": "上传新募集说明书",
+      "class": "",
+      "display": "flex",
+      "width": 0,
+      "height": 0,
+      "border": "1px solid rgb(23, 62, 51)",
+      "background": "rgb(241, 245, 232)",
+      "cursor": "default",
+      "tabIndex": -1,
+      "accept": null,
+      "multiple": false
+    },
+    {
+      "tag": "INPUT",
+      "id": "review-upload-historical",
+      "text": "",
+      "class": "",
+      "display": "block",
+      "width": 231,
+      "height": 110,
+      "border": "0px none rgb(32, 59, 51)",
+      "background": "rgb(255, 255, 255)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": ".docx,.pdf",
+      "multiple": false
+    },
+    {
+      "tag": "INPUT",
+      "id": "review-upload-audit",
+      "text": "",
+      "class": "",
+      "display": "block",
+      "width": 231,
+      "height": 110,
+      "border": "0px none rgb(32, 59, 51)",
+      "background": "rgb(255, 255, 255)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": ".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg",
+      "multiple": true
+    },
+    {
+      "tag": "BUTTON",
+      "id": "",
+      "text": "重试",
+      "class": "bb-upload-action bb-upload-action--primary text-button",
+      "display": "flex",
+      "width": 58,
+      "height": 44,
+      "border": "1px solid rgb(36, 87, 71)",
+      "background": "rgb(36, 87, 71)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": null,
+      "multiple": false
+    },
+    {
+      "tag": "INPUT",
+      "id": "review-upload-other",
+      "text": "",
+      "class": "",
+      "display": "block",
+      "width": 231,
+      "height": 110,
+      "border": "0px none rgb(32, 59, 51)",
+      "background": "rgb(255, 255, 255)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": ".docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg",
+      "multiple": true
+    }
+  ]
+}

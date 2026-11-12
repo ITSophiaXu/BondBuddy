@@ -1,3 +1,5 @@
+import {paymentLoginReturn} from './payment-return-route';
+import {uploadPickerContent} from './upload-picker';
 import './upload-progress.css';
 import {uploadActivity,uploadProgressHtml,uploadTransfer} from './upload-progress';
 import {configureBillingTaskRecovery, resumeBillingTask, cleanBillingReturn, cancelBillingTask, billingTaskRechargeHref, type BillingTask} from './billing-task-recovery';
@@ -35,7 +37,7 @@ import './admin-dashboard.css';
 import { ApiClient, ApiError, errorReference, friendlyError, type Dto } from './api';
 import { UserFacingError } from './user-facing-error';
 import { sourceFields, readSourceFields, sourcePeriodSummary, sourceRequiredMessage, clearSourceSelections } from './source-prospectus.js';
-import { formatTemplateNotice, formatTemplatePin, selectedFormatTemplate, type SourceFormatContext } from './source-format-template.js';
+import { formatTemplateNotice, formatTemplatePin, formatTemplateLocked, formatTemplateDescription, selectedFormatTemplate, type SourceFormatContext } from './source-format-template.js';
 import { retainUpdateDetails } from './update-form.js';
 import { uploadErrorMessage, InvalidUploadFileError, uploadNeedsReplacement } from './upload-error';
 import { Draft } from './draft';
@@ -74,12 +76,12 @@ function billingNotice(message:string,task?:BillingTask,retryHash?:string){
   document.querySelector('#billing-task-notice')?.remove();
   const notice=document.createElement('aside');notice.id='billing-task-notice';notice.className='billing-task-notice';notice.setAttribute('role','status');
   const text=document.createElement('p');text.textContent=message;notice.append(text);
-  if(task){const link=document.createElement('a');link.href=billingTaskRechargeHref(task);link.className='btn primary';link.textContent='订阅或充值，继续原任务';notice.append(link);
+  if(task){const link=document.createElement('a');link.href=billingTaskRechargeHref(task);link.className='btn primary';link.textContent='查看积分与支付状态';notice.append(link);
     const cancel=document.createElement('button');cancel.type='button';cancel.className='btn secondary';cancel.textContent='取消待执行任务';cancel.addEventListener('click',()=>{if(identity===task.owner)void cancelBillingTask(task.owner,task.id).then(()=>notice.remove());});notice.append(cancel);
   }else{if(retryHash){const retry=document.createElement('a');retry.href=retryHash;retry.className='btn secondary';retry.textContent='核对原任务提交';retry.addEventListener('click',event=>{if(location.hash===retryHash){event.preventDefault();void renderRoute();}});notice.append(retry);}const close=document.createElement('button');close.type='button';close.textContent='知道了';close.addEventListener('click',()=>notice.remove());notice.append(close);}
   document.body.append(notice);
 }
-window.addEventListener('bondbuddy:billing-task-needs-funds',event=>{const task=(event as CustomEvent<BillingTask>).detail;if(task.owner===identity)billingNotice(task.body.billing_resume===true?'本批底稿因积分不足暂停，已完成文件保留。完成订阅或充值并返回后，将自动继续这一批的剩余文件。':'积分不足，原任务尚未开始。完成订阅或充值并返回后，将自动继续这一个任务。',task);});
+window.addEventListener('bondbuddy:billing-task-needs-funds',event=>{const task=(event as CustomEvent<BillingTask>).detail;if(task.owner===identity)billingNotice(task.body.billing_resume===true?'本批底稿因积分不足暂停，已完成文件保留，待执行请求已保存。请到账号页查看积分与支付渠道状态；积分充足后返回，将自动继续这一批的剩余文件。':'积分不足，原任务尚未开始，待执行请求已保存。请到账号页查看积分与支付渠道状态；积分充足后返回，将自动继续这一个任务。',task);});
 let accountIdentity: { owner: string; name?: string; request?: Promise<void> } | undefined;
 let epoch = 0;
 let currentRoute = '/';
@@ -111,7 +113,7 @@ const projectNameRequests=new Map<string,Promise<void>>();
 
 type UploadRole = Dto<'UploadCreateRequest'>['role'];
 type UploadPhase = 'queued' | 'hashing' | 'checking' | 'uploading' | 'saving' | 'persisted' | 'failed' | 'cancelled' | 'uncertain';
-type LocalUpload = { key: string; owner: string; projectId: string; role: UploadRole; file?: File; declaration?:Dto<'UploadCreateRequest'>; uploadId?:string; recoveryRecord?:UploadRecoveryRecord; explicitResume?:boolean; restored?:boolean; needsFile?:boolean; needsReplacement?:boolean; journalDone?:boolean; phase: UploadPhase; sentBytes: number; material?: Dto<'MaterialResponse'>; error?: string; controller?: AbortController; hash?: string };
+type LocalUpload = { key: string; owner: string; projectId: string; role: UploadRole; file?: File; declaration?:Dto<'UploadCreateRequest'>; uploadId?:string; recoveryRecord?:UploadRecoveryRecord; explicitResume?:boolean; explicitFileReselection?:boolean; restored?:boolean; needsFile?:boolean; needsReplacement?:boolean; journalDone?:boolean; phase: UploadPhase; sentBytes: number; material?: Dto<'MaterialResponse'>; error?: string; controller?: AbortController; hash?: string };
 let runningUploads = 0;
 let preparingUploads=0;
 type MaterialRecovery = { state: 'loading' | 'ready' | 'unavailable'; message?: string };
@@ -176,8 +178,9 @@ function signedOut(message = '') {
   clearPrivateState();
   currentRoute = '/';
   if (anonymous) { routeSignedOut(hash); return; } // e.g. the first /me 401 on #/register or #/data-policy
-  history.replaceState(null, '', `${location.pathname}${location.search}#/`);
-  renderLogin(message);
+  const paymentReturn=paymentLoginReturn(hash);
+  history.replaceState(null, '', `${location.pathname}${location.search}${paymentReturn??'#/'}`);
+  renderLogin(paymentReturn?'请登录下单时使用的 BondBuddy 账号，登录后将继续核对本次付款。':message);
 }
 sessionChannel?.addEventListener('message', () => signedOut('账号会话已在其他页面更改，请重新登录。'));
 
@@ -199,14 +202,15 @@ function publicRecovery(mode: 'request' | 'reset') {
 }
 function routeSignedOut(hash = location.hash) {
   epoch++;
-  const route = ['#/data-policy', '#/register', '#/recover', '#/reset'].includes(hash) ? hash : '#/';
+  const paymentReturn=paymentLoginReturn(hash);
+  const route = paymentReturn??(['#/data-policy', '#/register', '#/recover', '#/reset'].includes(hash) ? hash : '#/');
   if(route!=='#/reset')recoveryToken=undefined;
   if (location.hash !== route) history.replaceState(null, '', `${location.pathname}${location.search}${route}`);
   if (route === '#/recover') publicRecovery('request');
   else if (route === '#/reset') publicRecovery('reset');
   else if (route === '#/data-policy') renderPublicPolicy();
   else if (route === '#/register') renderLogin('', 'register');
-  else renderLogin();
+  else renderLogin(paymentReturn?'请登录下单时使用的 BondBuddy 账号，登录后将继续核对本次付款。':'');
 }
 
 // The agreement links here, so the data-policy page is also readable before an account exists.
@@ -264,7 +268,7 @@ function bindLogin() {
       if (token !== epoch) return;
       (form.elements.namedItem('password') as HTMLInputElement).value = '';
       identity = result.user_id; signedOutView = false; sessionChannel?.postMessage('changed');
-      history.replaceState(null, '', `${location.pathname}${location.search}#tasks`);
+      history.replaceState(null, '', `${location.pathname}${location.search}${paymentLoginReturn(location.hash)??'#tasks'}`);
       await renderRoute();
     } catch (error) {
       if (token !== epoch) return;
@@ -341,7 +345,7 @@ function shell(content: string, section: string) {
     <nav aria-label="主导航">${nav('tasks','clock','任务进度与结果',section === 'projects')}<div class="nav-label">开始工作</div>${nav('update','update','更新募集书',section === 'new' || section === 'workspace')}${nav('review','review','复核募集书',section === 'review')}${nav('generate','spark','文件生成',section === 'generate')}${nav('integrity','shield','诚信核查',section === 'integrity')}${nav('qa','chat','项目问答',section === 'qa')}</nav>
     <div class="sidebar-bottom"><div class="user account"><a class="account-entry" href="${esc(rechargeHref())}" aria-label="我的账号" title="我的账号" ${section === 'account' ? 'aria-current="page"' : ''}><span class="avatar" aria-hidden="true">我</span><strong data-account-name aria-label="当前登录账号">当前账号</strong></a><button id="logout" class="text-button" type="button">退出</button></div></div></aside>
     <div class="shell"><header class="topbar"><div class="breadcrumb"><button class="mobile-menu icon-btn" id="toggle-menu" aria-label="打开菜单" aria-expanded="false">${prototypeIcon('menu')}</button><span>工作空间</span>${prototypeIcon('chevron')}<span>${section === 'new' || section === 'workspace' ? '更新募集书' : section === 'review' ? '复核募集书' : section === 'generate' ? '文件生成' : section === 'integrity' ? '诚信核查' : section === 'qa' ? '项目问答' : section === 'account' ? '我的账号' : section === 'policy' ? '数据说明' : section === 'billing' ? '账户与计费' : '任务进度与结果'}</span></div></header>
-    <main id="main" tabindex="-1">${context?`<section class="project-context" aria-label="当前项目"><div><small>正在处理</small><strong data-project-context-name>${esc(projectNames.get(context.projectId)??'当前项目')}</strong></div><a href="${projectWorkHref('files',context.projectId)}">返回本项目文件</a></section>`:''}${content}</main></div></div>`;
+    <main id="main" tabindex="-1">${context?`<section class="project-context" aria-label="当前项目"><div><small>当前项目</small><strong data-project-context-name>${esc(projectNames.get(context.projectId)??'当前项目')}</strong></div><a href="${projectWorkHref('files',context.projectId)}">返回本项目文件</a></section>`:''}${content}</main></div></div>`;
   if(context&&!projectNames.has(context.projectId)&&!projectNameRequests.has(context.projectId)){
     const owner=identity,expectedProject=context.projectId;
     const request=api.project(expectedProject).then(project=>{
@@ -366,11 +370,12 @@ function adminTab(route: string, ico: string, label: string, active: boolean) {
 /** Standalone administrator console shell: no product sidebar, no product assistant. */
 function adminShell(content: string, _section: string) {
   const operator = identity || '当前账号';
+  globalAssistant?.suspend();
   root.innerHTML = `<div class="admin-app">
     <header class="admin-topbar">
-      <a class="admin-brand" href="#admin/dashboard"><span class="admin-mark">${prototypeIcon('lock')}</span><span>BondBuddy <span class="admin-tag">ADMIN CONSOLE</span></span></a>
+      <a class="admin-brand" href="#/admin/dashboard"><span class="admin-mark">${prototypeIcon('lock')}</span><span>BondBuddy <span class="admin-tag">ADMIN CONSOLE</span></span></a>
       <nav class="admin-tabs" aria-label="管理导航">
-        ${adminTab('admin/dashboard','grid','运营看板',true)}
+        ${adminTab('/admin/dashboard','grid','运营看板',true)}
         <span class="admin-tab disabled" title="用户管理即将上线">${prototypeIcon('building')}<span>用户管理</span><small>即将上线</small></span>
         <span class="admin-tab disabled" title="审计日志即将上线">${prototypeIcon('file')}<span>审计日志</span><small>即将上线</small></span>
       </nav>
@@ -380,19 +385,24 @@ function adminShell(content: string, _section: string) {
         <button id="admin-logout" class="admin-text-button" type="button">${prototypeIcon('arrow')}退出</button>
       </div>
     </header>
-    <div id="admin-main" class="admin-main">${content}</div>
+    <div id="admin-main" class="admin-main"><p id="admin-page-error" class="admin-dashboard-alert" role="alert" hidden></p>${content}</div>
   </div>`;
   document.querySelector('#admin-logout')?.addEventListener('click', () => { void logout(); });
 }
 
-function showError(error: unknown, operation:'save'|'action'='action') {
-  const target = document.querySelector<HTMLElement>('#page-error');
-  if (target) { target.textContent = friendlyError(error,operation); target.hidden = false; }
+function showError(error: unknown, operation:'save'|'action'|'logout'='action') {
+  const target = document.querySelector<HTMLElement>(operation === 'logout' ? '#admin-page-error, #page-error' : '#page-error');
+  if (target) {
+    target.textContent = operation === 'logout' && target.id === 'admin-page-error'
+      ? '退出结果尚未确认，请重试退出；如需继续操作，请刷新核对登录状态。' + (error instanceof ApiError ? errorReference(error) : '')
+      : friendlyError(error,operation === 'logout' ? 'action' : operation);
+    target.hidden = false;
+  }
 }
 
 async function logout() {
-  const button = document.querySelector<HTMLButtonElement>('#logout');
-  if (!button) return;
+  const button = document.querySelector<HTMLButtonElement>('#logout, #admin-logout');
+  if (!button || button.disabled) return;
   if (creating) return;
   if (prospectusPanel && !await prospectusPanel.beforeLeave()) return;
   if (reviewWorkspace && !await reviewWorkspace.beforeLeave()) return;
@@ -415,7 +425,7 @@ async function logout() {
   }
   try {
     await api.logout(); signedOut(); sessionChannel?.postMessage('changed');
-  } catch (error) { showError(error); button.disabled = false; }
+  } catch (error) { showError(error, 'logout'); button.disabled = false; }
 }
 
 async function renderRoute() {
@@ -544,7 +554,7 @@ async function renderRoute() {
 function renderNew(handoffQuery=new URLSearchParams()) {
   const value = blankDraft();
   const creationRequestId=crypto.randomUUID();
-  shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>先保存项目，再添加材料。没有历史募集书，也可以编制首稿。</p></div><a class="btn secondary" href="#tasks">查看任务进度与结果</a></div>${workspaceSteps(1)}<div id="business-handoff"></div>
+  shell(`<div class="page-head"><div><div class="eyebrow">PROSPECTUS WORKSPACE</div><h1>更新募集说明书</h1><p>先保存项目，再上传历史／参考募集书并填写原稿信息。</p></div><a class="btn secondary" href="#tasks">查看任务进度与结果</a></div>${workspaceSteps(1)}<div id="business-handoff"></div>
     <form id="create-form" class="update-form"><div class="workspace-layout authoring-workspace"><section class="panel form-panel form-card">${updateFormFields(value, true)}
     <p id="page-error" class="form-message" role="alert" hidden></p><div class="form-actions"><button class="button primary" type="submit">创建项目，继续提供材料</button><a class="button secondary" href="#/">取消</a></div><p class="field-hint">创建项目只保存信息；添加材料和补充要求后，由你明确开始任务。</p></section></div></form>`, 'new');
   const handoffEpoch=epoch;void mountBusinessHandoff(api,document.querySelector<HTMLElement>('#business-handoff')!,handoffQuery,()=>handoffEpoch===epoch);
@@ -611,13 +621,16 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
       </div></div></div>`, projectSection('workspace'));
   const prospectusEpoch=epoch;
   prospectusPanel=new ProspectusPanel(api,project.project_id,document.querySelector<HTMLElement>('#prospectus-panel')!,async()=>{
-    if(projectExecution?.hasUnconfirmedRequest||!draft)return false;
-    const saved=await draft.save();return saved&&!projectExecution?.hasUnconfirmedRequest;
+    if(projectExecution&&(!projectExecution.materialsEditable||projectExecution.hasUnconfirmedRequest)||!draft)return false;
+    const saved=await draft.save();return saved&&(!projectExecution||projectExecution.materialsEditable&&!projectExecution.hasUnconfirmedRequest);
   },async()=>{
     if(prospectusEpoch!==epoch)return;
     prospectusPanel?.dispose();prospectusPanel=undefined;
     await renderRoute();
-  },()=>syncProjectExecution(project.project_id),'update',identity);
+  },()=>syncProjectExecution(project.project_id),'update',identity,async()=>{
+    await refreshProjectMaterials(project.project_id,prospectusEpoch);
+    if(prospectusEpoch===epoch)materialProcessing?.refresh();
+  });
   document.querySelector('#prospectus-panel')!.addEventListener('prospectus:deleted',event=>{
     const materialId=(event as CustomEvent<{materialId:string}>).detail.materialId;
     for(const upload of localUploads.get(project.project_id)??[])if(upload.material?.material_id===materialId&&!upload.journalDone){
@@ -680,7 +693,7 @@ function renderProject(project: Dto<'ProjectResponse'>, step: 'details' | 'mater
         await refreshProjectMaterials(project.project_id,prospectusEpoch);
         const fresh=await api.project(project.project_id);
         return prospectusEpoch===epoch&&!!draft&&draft.adoptUnchanged(fresh);
-      },()=>projectMaterialReadiness(project.project_id).message);
+      },()=>projectMaterialReadiness(project.project_id).message,editable=>prospectusPanel?.setReadOnly(!editable),()=>prospectusPanel?.selectedVersion??null);
     if (staleInputNoticeProjectId === project.project_id) staleInputNoticeProjectId = undefined;
     projectExecution.mount(document.querySelector<HTMLElement>('#execution-root')!, document.querySelector<HTMLElement>('#execution-actions')!);
   }
@@ -802,8 +815,12 @@ function confirmedMaterials(projectId: string) {
 
 function sourceFormatContext(projectId: string): SourceFormatContext | undefined {
   if (!draft || !['update', 'generation'].includes(draft.project.kind)) return undefined;
+  const current = prospectusPanel?.selectedVersion;
+  const adoptedSource = current?.origin === 'upload'
+    ? { material_id: current.material_id!, material_version: current.material_version!, sha256: current.sha256 } : null;
   return { materials: confirmedMaterials(projectId), sources: draft.fields.update_details.source_prospectuses,
-    template: draft.fields.update_details.format_template, inheritedFromResult: projectExecution?.inheritsResultFormat,
+    template: draft.fields.update_details.format_template, adoptedSource,
+    inheritedFromResult: projectExecution?.inheritsResultFormat ?? current?.origin === 'generated',
     group: `source-format-${projectId}` };
 }
 
@@ -832,7 +849,7 @@ function updateProcessingRows(projectId: string) {
 
 function materialDeleteControl(id:string) {
   return prospectusPanel?.state?.versions.some(v=>v.material_id===id)
-    ? '<span class="muted">已保留在版本历史</span>'
+    ? '<span class="muted">在上方募集书版本卡管理</span>'
     : `<button type="button" class="text-button" data-delete-material="${esc(id)}">删除</button>`;
 }
 
@@ -842,15 +859,15 @@ function renderUploadRow(upload: LocalUpload) {
   const progress = Math.min(uploadSize(upload), upload.sentBytes);
   const confirmation=(upload.restored||!upload.file)&&['failed','cancelled','uncertain'].includes(upload.phase);
   const controls = upload.needsReplacement
-    ? `<button type="button" class="text-button" data-upload-action="replace" data-upload-key="${esc(upload.key)}">选择其他文件</button>`
+    ? `<button type="button" class="bb-upload-action text-button" data-upload-action="replace" data-upload-key="${esc(upload.key)}">选择其他文件</button>`
     : confirmation
-    ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">确认原上传</button>${upload.needsFile?`<button type="button" class="text-button" data-upload-action="reselect" data-upload-key="${esc(upload.key)}" aria-label="为${esc(uploadName(upload))}重新选择原文件">重新选择原文件继续</button>`:''}`
+    ? `<button type="button" class="bb-upload-action bb-upload-action--primary text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">确认原上传</button>${upload.needsFile?`<button type="button" class="bb-upload-action text-button" data-upload-action="reselect" data-upload-key="${esc(upload.key)}" aria-label="为${esc(uploadName(upload))}重新选择原文件">重新选择原文件继续</button>`:''}`
     : upload.phase === 'failed' || upload.phase === 'cancelled'
-    ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">重试此文件</button>`
+    ? `<button type="button" class="bb-upload-action bb-upload-action--primary text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">重试此文件</button>`
     : upload.phase === 'uncertain'
-      ? `<button type="button" class="text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">重试保存</button>`
+      ? `<button type="button" class="bb-upload-action bb-upload-action--primary text-button" data-upload-action="retry" data-upload-key="${esc(upload.key)}">重试保存</button>`
       : active
-        ? `<button type="button" class="text-button" data-upload-action="cancel" data-upload-key="${esc(upload.key)}">${upload.sentBytes >= uploadSize(upload) ? '停止等待' : '取消此文件'}</button>`
+        ? `<button type="button" class="bb-upload-action text-button" data-upload-action="cancel" data-upload-key="${esc(upload.key)}">${upload.sentBytes >= uploadSize(upload) ? '停止等待' : '取消此文件'}</button>`
         : '';
   const canRemove = upload.phase === 'persisted' && upload.material
     ? materialDeleteControl(upload.material.material_id)
@@ -858,7 +875,7 @@ function renderUploadRow(upload: LocalUpload) {
     ? `<button type="button" class="text-button" data-upload-action="remove" data-upload-key="${esc(upload.key)}">移除此行</button>`
     : '';
   const processing = upload.phase === 'persisted' && upload.material ? (materialProcessing?.render(upload.material) ?? '') : '';
-  return `<li class="material-file-row" data-upload-phase="${upload.phase}" data-upload-id="${esc(upload.key)}"><div class="material-file-main"><strong>${esc(upload.phase === 'persisted' && upload.material ? upload.material.filename : uploadName(upload))}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(uploadSize(upload))}</span>${showProgress ? uploadProgressHtml(upload.phase==='uploading'?uploadTransfer(progress,uploadSize(upload)):uploadActivity(uploadStatus(upload)),uploadName(upload),{showMessage:false,error:upload.phase==='failed'?uploadStatus(upload):undefined,paused:['cancelled','uncertain'].includes(upload.phase)}) : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p>${processing}${upload.material ? sourceFields(upload.material, draft?.fields.update_details.source_prospectuses, draft ? sourceFormatContext(draft.project.project_id) : undefined, draft?.fields.update_details.reporting_cutoff ?? null) : ''}${upload.phase === 'persisted' && upload.material ? materialPeriodHintSlot(upload.material, draft?.fields.update_details.reporting_cutoff ?? null) : ''}</div>${controls || canRemove ? `<div class="material-file-actions">${controls}${canRemove}</div>` : ''}</li>`;
+  return `<li class="material-file-row bb-upload-file" data-upload-phase="${upload.phase}" data-upload-id="${esc(upload.key)}"><div class="material-file-main"><strong>${esc(upload.phase === 'persisted' && upload.material ? upload.material.filename : uploadName(upload))}</strong><span>${esc(roleLabel(upload.role))} · ${formatBytes(uploadSize(upload))}</span>${showProgress ? uploadProgressHtml(upload.phase==='uploading'?uploadTransfer(progress,uploadSize(upload)):uploadActivity(uploadStatus(upload)),uploadName(upload),{showMessage:false,error:upload.phase==='failed'?uploadStatus(upload):undefined,paused:['cancelled','uncertain'].includes(upload.phase)}) : ''}<p class="material-file-status${upload.phase === 'failed' ? ' material-file-error' : ''}" role="${upload.phase === 'failed' ? 'alert' : 'status'}">${esc(uploadStatus(upload))}</p>${processing}${upload.material ? sourceFields(upload.material, draft?.fields.update_details.source_prospectuses, draft ? sourceFormatContext(draft.project.project_id) : undefined, draft?.fields.update_details.reporting_cutoff ?? null) : ''}${upload.phase === 'persisted' && upload.material ? materialPeriodHintSlot(upload.material, draft?.fields.update_details.reporting_cutoff ?? null) : ''}</div>${controls || canRemove ? `<div class="material-file-actions">${controls}${canRemove}</div>` : ''}</li>`;
 }
 
 function renderMaterialPartitions(projectId: string) {
@@ -893,8 +910,8 @@ function renderMaterialPartitions(projectId: string) {
     const accept = role.code === 'historical' || role.code === 'reference'
       ? '.docx'
       : '.docx,.pdf,.xlsx,.csv,.txt,.png,.jpg,.jpeg';
-    const saved = roleMaterials.map(material => `<li class="material-file-row persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses, sourceFormatContext(projectId), draft?.fields.update_details.reporting_cutoff ?? null)}${materialPeriodHintSlot(material, draft?.fields.update_details.reporting_cutoff ?? null)}</div><div class="material-file-actions">${materialDeleteControl(material.material_id)}</div></li>`).join('');
-    const picker = canAdd ? `<label class="button secondary material-picker" for="upload-${esc(role.code)}">${prototypeIcon('upload')}<span>点击或拖入文件</span><input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" ${partition.optional ? `aria-describedby="material-formats-${index}"` : ''} data-upload-role="${esc(role.code)}"/></label>` : '';
+    const saved = roleMaterials.map(material => `<li class="material-file-row bb-upload-file persisted-material"><div class="material-file-main"><strong>${esc(material.filename)}</strong><span>${esc(role.label)} · ${formatBytes(material.byte_size)} · 版本 ${material.material_version}</span><p class="material-file-status">服务器已确认保存</p>${materialProcessing?.render(material) ?? ''}${sourceFields(material, draft?.fields.update_details.source_prospectuses, sourceFormatContext(projectId), draft?.fields.update_details.reporting_cutoff ?? null)}${materialPeriodHintSlot(material, draft?.fields.update_details.reporting_cutoff ?? null)}</div><div class="material-file-actions">${materialDeleteControl(material.material_id)}</div></li>`).join('');
+    const picker = canAdd ? `<label class="button secondary material-picker bb-upload-picker bb-upload-picker--standard" for="upload-${esc(role.code)}">${uploadPickerContent()}<input id="upload-${esc(role.code)}" type="file" multiple accept="${accept}" aria-label="为${esc(role.label)}选择文件" ${partition.optional ? `aria-describedby="material-formats-${index}"` : ''} data-upload-role="${esc(role.code)}"/></label>` : '';
     return `<li class="material-role" data-material-role="${esc(role.code)}"><div class="material-role-heading"><div><strong>${esc(role.label)}</strong>${canAdd ? `<span>${esc(roleGuidance(role.code))}</span>` : ''}</div>${picker}</div>${role.code==='audit'?renderFinancialUploadGuidance(draft?.fields.market??null,draft?.fields.offering??null,draft?.fields.update_details.reporting_cutoff??null):''}<ul class="material-file-list">${saved}${roleUploads.map(renderUploadRow).join('')}${duplicateUploadNotices(duplicates)}</ul></li>`;
   }).join('')}</ul></section>`;
   }).join('');
@@ -968,6 +985,13 @@ function updateMaterialWorkspace(projectId: string) {
       const row = control.closest<HTMLElement>('[data-source-material]');
       control.checked = Boolean(selected && row?.dataset.sourceMaterial === selected.material_id &&
         Number(row.dataset.sourceMaterialVersion) === selected.material_version && row.dataset.sourceSha256 === selected.sha256);
+      const material = context?.materials.find(m => m.material_id === row?.dataset.sourceMaterial &&
+        m.material_version === Number(row.dataset.sourceMaterialVersion) && m.sha256 === row.dataset.sourceSha256);
+      const locked = !material || !context || formatTemplateLocked(material, context);
+      control.toggleAttribute('data-format-template-locked', locked);
+      control.disabled = locked || Boolean(context?.inheritedFromResult);
+      const description = control.closest('.source-format-choice')?.querySelector('small');
+      if (description) description.textContent = material && context ? formatTemplateDescription(material, context) : '材料准确版本尚未确认，请刷新已保存材料后再试。';
       const label = control.parentElement?.querySelector('span');
       if (label) label.textContent = `沿用此稿格式${control.checked && !context?.template ? '（自动选择）' : ''}`;
     });
@@ -985,13 +1009,9 @@ function updateMaterialWorkspace(projectId: string) {
   else if (state?.state === 'unavailable') status.textContent = state.message ?? '材料记录读取失败，请刷新重试。';
   else {
     const savedIds = new Set((recoveredMaterials.get(projectId) ?? []).map(material => material.material_id));
-    const count = savedIds.size;
     const sessionCount = new Set((localUploads.get(projectId) ?? []).filter(upload => upload.phase === 'persisted' && upload.material && !savedIds.has(upload.material.material_id)).map(upload => upload.material!.material_id)).size;
-    status.textContent = count
-      ? `已恢复 ${count} 份材料。${sessionCount ? `本次会话另有 ${sessionCount} 份材料已获服务端保存确认。` : ''}`
-      : sessionCount
-        ? `已保存 ${sessionCount} 份材料。`
-        : '尚未添加材料。';
+    const count = savedIds.size + sessionCount;
+    status.textContent = count ? `已保存 ${count} 份材料。` : '尚未添加材料。';
     const reused = (localUploads.get(projectId) ?? []).filter(upload => upload.phase === 'persisted' && upload.uploadId && upload.material?.upload_id !== upload.uploadId).length;
     if (reused) status.textContent += ` 本次 ${reused} 份重复上传已复用原材料版本。`;
   }
@@ -1027,7 +1047,7 @@ function restoreUploadRows(projectId:string){
     const rows=localUploads.get(projectId)??[],known=new Set(rows.map(row=>row.key));
     for(const record of uploadRecovery(projectId).list()){
       if(known.has(record.id))continue;
-      rows.push({key:record.id,owner:identity,projectId,role:record.declaration.role,declaration:record.declaration,hash:record.declaration.sha256,uploadId:record.uploadId,recoveryRecord:record,phase:'uncertain',sentBytes:0,restored:true});
+      rows.push({key:record.id,owner:identity,projectId,role:record.declaration.role,declaration:record.declaration,hash:record.declaration.sha256,uploadId:record.uploadId,recoveryRecord:record,phase:'uncertain',sentBytes:0,restored:true,needsFile:!record.material&&!!record.uploadId&&!!record.expiresAt&&Date.parse(record.expiresAt)<=Date.now()});
     }
     localUploads.set(projectId,rows);uploadJournalErrors.delete(projectId);
   }catch(error){uploadJournalErrors.set(projectId,uploadRecoveryMessage(error));}
@@ -1040,7 +1060,7 @@ function reselectUploadFile(upload:LocalUpload,replace=false){
   input.addEventListener('change',async()=>{
     const file=input.files?.[0];clear();if(!file||identity!==upload.owner||!(localUploads.get(upload.projectId)??[]).includes(upload))return;
     if(replace){await removeUploadRow(upload);if(identity===upload.owner&&!(localUploads.get(upload.projectId)??[]).includes(upload))addUpload(upload.projectId,upload.role,file);return;}
-    upload.file=file;upload.explicitResume=true;upload.phase='queued';upload.error=undefined;updateMaterialWorkspace(upload.projectId);pumpUploads();
+    upload.file=file;upload.explicitResume=true;upload.explicitFileReselection=true;upload.phase='queued';upload.error=undefined;updateMaterialWorkspace(upload.projectId);pumpUploads();
   },{once:true});
   document.body.append(input);uploadReselectInputs.set(upload.key,input);input.click();
 }
@@ -1100,13 +1120,14 @@ async function performUpload(upload: LocalUpload) {
   const isCurrentOwner=()=>identity===upload.owner&&(localUploads.get(upload.projectId)??[]).includes(upload);
   const recovery=uploadRecovery(upload.projectId,upload.owner);
   const previousRecord=upload.explicitResume?upload.recoveryRecord:undefined;upload.explicitResume=false;
+  const explicitFileReselection=upload.explicitFileReselection===true;upload.explicitFileReselection=false;
   const syncRecord=()=>{const record=recovery.list().find(item=>item.id===upload.key);if(record){upload.uploadId=record.uploadId;upload.recoveryRecord=record;}};
   const accept=(material:Dto<'MaterialResponse'>)=>{
     if(controller.signal.aborted||!isCurrentOwner())return;
     syncRecord();upload.material=material;upload.phase='persisted';upload.error=undefined;upload.restored=false;upload.needsFile=false;upload.sentBytes=uploadSize(upload);
     recoveryStates.set(upload.projectId,{state:'ready'});updateMaterialWorkspace(upload.projectId);void refreshProjectMaterials(upload.projectId,epoch);
   };
-  const resume=(file?:File)=>recovery.resume(upload.key,{file,previousRecord,signal:controller.signal,status:()=>{
+  const resume=(file?:File)=>recovery.resume(upload.key,{file,reselectExpiredSession:!!file&&explicitFileReselection,previousRecord,signal:controller.signal,status:()=>{
     if(!isCurrentOwner()||controller.signal.aborted)return;
     const record=recovery.list().find(item=>item.id===upload.key);if(record){upload.uploadId=record.uploadId;upload.recoveryRecord=record;}
     upload.phase=record?.stage==='confirming'?'saving':record?.stage==='bytes_unknown'?'uploading':'checking';updateMaterialWorkspace(upload.projectId);
@@ -1249,7 +1270,8 @@ function bindMaterialWorkspace(projectId: string) {
       m.material_version === Number(source.dataset.sourceMaterialVersion) && m.sha256 === source.dataset.sourceSha256);
     if (!material) return;
     if (target.matches('[data-format-template]')) {
-      if (!(target instanceof HTMLInputElement) || !target.checked || target.disabled || projectExecution?.inheritsResultFormat) return;
+      const context = sourceFormatContext(projectId);
+      if (!(target instanceof HTMLInputElement) || !target.checked || target.disabled || !context || context.inheritedFromResult || formatTemplateLocked(material, context)) return;
       const details = { ...draft.fields.update_details, format_template: formatTemplatePin(material) };
       draft.edit({ update_details: details });
       retainUpdateDetails(document.querySelector<HTMLFormElement>('#draft-form')!, details);

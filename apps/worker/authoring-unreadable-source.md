@@ -1,0 +1,15 @@
+# Unreadable authoring source: prelaunch correction
+
+2026-11-07. The local full-stack corrupt-source scenario uploaded and adopted a truncated DOCX, created a durable run and reserved its quoted credits. Before any model intent was recorded, the controlled-format `prepare` command failed. The worker treated its generic `WORD_EDIT_FAILED` response as infrastructure trouble, released/recovered the lease three times, then reported `DATA_UNAVAILABLE`. Original evidence remains in the local prelaunch receipts; it is not rewritten as a pass.
+
+The Python `prepare` path now identifies confirmed ZIP/CRC/decompression faults, malformed XML, missing mandatory package parts and bounded package-reader data errors as `WORD_EDIT_SOURCE_UNREADABLE`. This classification is confined to reading the editing source for the manifest. The trusted subprocess wrapper accepts only exit code 1 with an exact, single-field JSON error response. The authoring stage returns the existing `MATERIAL_UNREADABLE` code, so the pipeline uses its normal terminal failure and reservation-release path without another provider attempt.
+
+Hash drift, missing files, permission/IO errors, unexpected implementation errors, signals and cancellation are not reclassified. A started task is still required; no synchronous material gate was added to project creation or execution. Public contracts, billing tariffs, old run inputs and generated Word availability checks are unchanged. Existing direct-file delivery and controlled finalization tests remain green.
+
+Validation used the production worker image's installed Python dependencies, with the current test/Python sources mounted read-only into a separate network-disabled container. No model credentials, real provider calls, application tasks or wallet modifications were used by these tests.
+
+- `npm run build -w @bondbuddy/worker`: passed.
+- `PYTHONPATH=python python3 -B -s -m unittest discover -s python/tests -p test_authoring_source_errors.py -v`: 11 passed. Synthetic actual CLI files cover valid, truncated, mislabeled, bad CRC, missing required parts, malformed primary/auxiliary XML, unsafe XML/member paths, hash mismatch and manifest destination failure. Fault-injection checks verify IO/programming failures retain their original exception.
+- With `BONDBUDDY_WORD_PYTHON` pointing to the installed interpreter, `node --test apps/worker/dist/file-authoring-bad-input.test.js apps/worker/dist/file-authoring-format.test.js apps/worker/dist/file-authoring-delivery.test.js`: 16 passed, zero skipped. The new stage scenarios use actual Python preparation; only the provider boundary and storage adapter are test doubles.
+
+The running prelaunch worker must be rebuilt from the committed fix before claiming full-stack acceptance of this correction. That acceptance must verify `MATERIAL_UNREADABLE`, zero model intents, one reservation release, unchanged original failed run, then a newly locked corrected source and real successful Word delivery. These unit/regression results do not constitute that browser/ledger acceptance or professional document-quality sign-off.

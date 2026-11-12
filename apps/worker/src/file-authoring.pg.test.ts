@@ -213,8 +213,12 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
           const selectedArtifact=(await send('GET',`/api/v1/artifacts/${(await send('GET',`/api/v1/runs/${selectedRun.run_id}`)).json().artifact_id}`)).json();
           assert.equal(selectedArtifact.word_delivery.source_sha256,firstClean.sha256);
           assert.equal((await lockResponse({artifact_id:firstClean.artifact_id,artifact_version:1,sha256:'0'.repeat(64)})).statusCode,409);
-          const noBase=await lockResponse(null);assert.equal(noBase.statusCode,201,noBase.body);
-          assert.equal((await pool.query('SELECT manifest FROM bb_input_revisions WHERE project_id=$1 AND revision=$2',[project,noBase.json().input_revision])).rows[0].manifest.authoring.previous_output,undefined);
+          // Once a clean result is adopted, null cannot discard it and restart a first draft.
+          const inputCount=async()=>(await pool.query('SELECT count(*)::int n FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2',[owner,project])).rows[0].n;
+          const beforeRejectedInput=await inputCount();
+          const noBase=await lockResponse(null);assert.equal(noBase.statusCode,409,noBase.body);
+          assert.equal(noBase.json().code,'INPUT_REVISION_CONFLICT');
+          assert.equal(await inputCount(),beforeRejectedInput);
         }
         active=`other-${randomUUID()}`;
         assert.equal((await send('GET',`/api/v1/runs/${run.run_id}`)).statusCode,404);

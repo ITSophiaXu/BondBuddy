@@ -17,6 +17,8 @@ test('explicit PC and WAP products create official SDK signed Web checkout with 
     assert.equal(biz.product_code,webProduct==='page'?'FAST_INSTANT_TRADE_PAY':'QUICK_WAP_WAY');assert.equal(biz.out_trade_no,f.order.id);assert.equal(biz.total_amount,'100.00');assert.equal(biz.time_expire,'2026-10-29 12:30:00');
     assert.equal(p.recurring,undefined);assert.equal(p.refunds,undefined);assert.equal(p.acknowledgement,'success');
     assert.equal(biz.agreement_sign_params,undefined);
+    assert.equal(biz.subject,'BondBuddy 券商助手 · 积分服务');
+    assert.equal(biz.qr_pay_mode,undefined); // Official SDK default, no forced QR-only surface.
   }
 });
 

@@ -44,11 +44,10 @@ test('assistant journal discovery is local and fixes owner, actual project, topi
   assert.deepEqual(original.context, { version: 1, kind: 'assistant-material', topic_id: 'topic-a', entrypoint: 'business' }); assert.deepEqual(methods(h), []);
 });
 
-test('a refreshed helper confirms the original upload without File, a new session or a second PUT', async () => {
+test('unknown PUT automatically confirms and associates the original upload without a second PUT', async () => {
   const h = harness(), helper = h.make(), original = await h.begin(helper); h.state.put = async () => { throw new ApiError(0, 'DATA_UNAVAILABLE'); };
-  await assert.rejects(helper.resume(original, { file: file() })); h.state.put = async () => {};
-  const refreshed = h.make(), restored = refreshed.list('topic-a')[0], before = h.calls.length; const result = await refreshed.resume(restored);
-  assert.deepEqual(h.calls.slice(before).map(call => call.method), ['complete', 'workspace', 'associate', 'workspace']);
+  const result = await helper.resume(original, { file: file() });
+  assert.deepEqual(methods(h), ['create', 'put', 'complete', 'workspace', 'associate', 'workspace']);
   assert.equal(result.associated, true); assert.equal(result.uploadId, 'upload-a'); assert.equal(h.calls.filter(call => call.method === 'put').length, 1);
   assert.equal(h.calls.find(call => call.method === 'associate')!.topic, 'topic-a'); assert.equal(h.store.length, 0);
 });

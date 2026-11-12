@@ -95,9 +95,10 @@ test('insufficient balance preserves only the original task and payment return r
   await page.route(`**/api/v1/projects/${qaProject}/qa/runs`,route=>{starts.push(rawRequest(route));rawStarts.push(route.request().postData()!);return starts.length===1?json(route,{code:'CREDITS_INSUFFICIENT'},402):json(route,{run_id:'paid-original'});});
   await page.route('**/api/v1/subscriptions',route=>{payments.push(rawRequest(route));return json(route,{code:'MUST_NOT_PAY'},500);});
   await page.goto(`/#qa?project=${qaProject}`);await page.locator('#qa-start').click();await expect(page.locator('#billing-task-notice')).toContainText('原任务尚未开始');expect(payments).toEqual([]);expect(starts).toHaveLength(1);
+  await expect(page.locator('#billing-task-notice')).toContainText('待执行请求已保存');await expect(page.locator('#billing-task-notice')).toContainText('查看积分与支付渠道状态；积分充足后返回，将自动继续这一个任务');await expect(page.locator('#billing-task-notice')).not.toContainText('完成订阅或充值');
   // The subscription page supplies this same validated return route only after a paid order.
-  const rechargeHref=await page.locator('#billing-task-notice').getByRole('link',{name:'订阅或充值，继续原任务',exact:true}).getAttribute('href');
-  expect(rechargeHref).toBeTruthy();const resumeRequest=new URLSearchParams(rechargeHref!.split('?')[1]).get('resume_request');expect(resumeRequest).toMatch(/^[a-f0-9]{64}$/);
+  const rechargeHref=await page.locator('#billing-task-notice').getByRole('link',{name:'查看积分与支付状态',exact:true}).getAttribute('href');
+  expect(rechargeHref?.split('?')[0]).toBe('#/account');const fundingQuery=new URLSearchParams(rechargeHref!.split('?')[1]),resumeRequest=fundingQuery.get('resume_request');expect(resumeRequest).toMatch(/^[a-f0-9]{64}$/);expect(fundingQuery.get('return_to')).toBe(`#qa?project=${qaProject}`);
   const saved=await page.evaluate(async({owner,id})=>{const recovery=await import('/src/'+'billing-task-recovery.ts');return {task:await recovery.readBillingTask(owner,id),returnTo:await recovery.billingTaskReturnTo(owner,id)};},{owner:qaOwner,id:resumeRequest!});
   expect(saved.task).toMatchObject({version:2,owner:qaOwner,id:resumeRequest,state:'needs_funds',requiredPoints:'1218',body:starts[0]});
   expect(saved.returnTo).toBeTruthy();await page.goto('/'+saved.returnTo);await expect.poll(()=>starts.length).toBe(2);expect(starts[1]).toEqual(starts[0]);expect(starts[0].expected_points).toBe('1218');expect(rawStarts[1]).toBe(rawStarts[0]);
@@ -110,6 +111,7 @@ for(const width of [1440,390])test(`local consistency funding link ${width} retu
  await page.route(`**/api/v1${base}/checks/${checkId}/updates`,route=>{starts.push(rawRequest(route));raw.push(route.request().postData()!);return starts.length===1?json(route,{code:'CREDITS_INSUFFICIENT'},402):json(route,{batch_id:'original-local-update'});});
  await page.goto(`/#consistency?project=${ids.root}&run=${checkId}`);await page.locator(`[data-fc-select="${fileIds.issuer}"]`).check();await page.locator('#fc-accept-top').click();
  const link=page.locator('[data-fc-funding]');await expect(link).toHaveAttribute('href',/resume_request=/);await expect(page.locator('#fc-confirm-update')).toHaveCount(0);
+ await expect(link).toHaveText('查看积分与支付状态');
  const href=(await link.getAttribute('href'))!;await page.reload();await expect(link).toHaveAttribute('href',href);expect(starts).toHaveLength(1);
  await evidence(page,`consistency-local-funding-${width}`);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  const saved=await exactFundingReturn(page,href,ids.owner);expect(saved.task.body).toEqual(starts[0]);await page.goto('/'+saved.returnTo);await expect.poll(()=>starts.length).toBe(2);expect(raw[1]).toBe(raw[0]);
@@ -126,6 +128,7 @@ test('local per-file check funding link retains original batch after reload and 
   const batch={batch_id:'original-check-batch',request_id:body.request_id,source:state.source,created_at:'2026-10-30T02:00:00Z',price_version:body.price_version,price_versions:[body.price_version],points:body.expected_points,charged_points:'0',state:'queued',items:body.file_version_ids.map((version:string)=>({file_version_id:version,filename:state.files.find(f=>f.version_id===version)!.filename,price_version:body.price_version,points:'6095',scope_quote_id:'scope-'+version,reused_run_id:null,run_id:'check-'+version,state:'queued',attempt:1,charged_points:'0'}))};batches.splice(0,batches.length,batch);return route.fulfill({json:batch});
  });
  await page.goto(`/#consistency?project=${ids.root}&run=${checkId}`);await page.locator('[data-fc-start]').first().click();const link=page.locator('[data-file-check-funding]');await expect(link).toHaveAttribute('href',/resume_request=/);
+ await expect(link).toHaveText('查看积分与支付状态');
  const href=(await link.getAttribute('href'))!;await page.reload();await expect(link).toHaveAttribute('href',href);expect(starts).toHaveLength(1);
  const saved=await exactFundingReturn(page,href,ids.owner);expect(saved.task.body).toEqual(starts[0]);await page.goto('/'+saved.returnTo);await expect.poll(()=>starts.length).toBe(2);expect(starts[1]).toEqual(starts[0]);await expect(page.locator('[data-file-check-batch]')).toHaveCount(1);await expect(page.locator('[data-file-check-pending],[data-file-check-funding]')).toHaveCount(0);await page.reload();expect(starts).toHaveLength(2);
 });

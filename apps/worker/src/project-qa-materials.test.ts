@@ -52,7 +52,16 @@ test('long documents retain complete matching tables, units, notes and distant e
  assert.equal(selected.filter(s=>s.location.startsWith('表格 1')).length,90);
  for(const phrase of ['单位：万元','附注：金额含税','市场可比价格'])assert.ok(selected.some(s=>s.text.includes(phrase)),phrase);
  assert.ok(context.selection[0].omitted_spans>0);assert.deepEqual(context.selection[0].partial_tables,[]);
+ assert.ok(selected.length<110,'spare context must not be filled with unrelated background');
  assert.ok(selected.reduce((n,s)=>n+s.text.length,0)<=120000);
+});
+
+test('a broad question with no lexical matches gets bounded context and honest coverage',()=>{
+ const facts=snapshot(Array.from({length:400},(_,i)=>({text:`背景${i}。`+'普通说明'.repeat(90)})));
+ const context=qaEvidenceContext({...q,question:'特定安排是否适当？'},[facts],0);
+ assert.ok(context.materials.length>0);
+ assert.ok(context.materials.reduce((n,s)=>n+s.text.length,0)<=12000);
+ assert.ok(context.selection[0].omitted_spans>0);
 });
 
 test('adopted prospectus is not crowded out by repetitive supplement matches',()=>{

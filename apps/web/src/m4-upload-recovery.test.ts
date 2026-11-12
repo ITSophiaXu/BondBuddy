@@ -74,8 +74,8 @@ test('ordered batch uses only previous confirmed complete input and version', as
   const h = harness(), files = [file(), file('second.pdf', 'second')], e = await h.prepare(files), before = h.calls.length; await assert.rejects(h.helper.resume(e.id, 1, { file: files[1] })); assert.equal(h.calls.length, before);
   const one = await h.helper.resume(e.id, 0, { file: files[0] }); assert.equal(one.state, 'content_confirmed'); h.apply(one.draft!); const two = await h.helper.resume(e.id, 1, { file: files[1] }); assert.equal(two.state, 'complete'); assert.equal(two.draft!.materials.length, 3); assert.equal((writes(h)[1].body as M4DraftRequest).expected_version, 8);
 });
-test('lost byte reply resumes original complete with no new File/create/bytes', async () => {
-  const h = harness(), e = await h.prepare(); h.state.dropBytes = true; await assert.rejects(h.helper.resume(e.id, 0, { file: file() })); const before = h.calls.length; const r = await h.make().resume(e.id, 0); assert.equal(r.state, 'complete'); assert.equal(h.calls[before].method, 'complete'); assert.equal(writes(h, 'create').length, 1); assert.equal(writes(h, 'bytes').length, 1);
+test('lost byte reply automatically confirms the original upload without another create or bytes', async () => {
+  const h = harness(), e = await h.prepare(); h.state.dropBytes = true; const r = await h.helper.resume(e.id, 0, { file: file() }); assert.equal(r.state, 'complete'); assert.equal(writes(h, 'complete').length, 1); assert.equal(writes(h, 'create').length, 1); assert.equal(writes(h, 'bytes').length, 1);
 });
 test('lost membership receipt confirms exact four-part pin with GET and does not POST again', async () => {
   const h = harness(), e = await h.prepare(); h.state.failMembershipAfter = true; const r = await h.helper.resume(e.id, 0, { file: file() }); assert.equal(r.state, 'complete'); assert.equal(writes(h, 'membership').length, 1);

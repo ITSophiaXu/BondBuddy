@@ -1,0 +1,30 @@
+✔ material search finds facts past the first page; bounded reads retain table source coordinates (2.7336ms)
+✔ material tools reject arbitrary paths, commands, other-project identifiers and oversized ranges (0.8402ms)
+✔ the stdio MCP transport actually serves run-local material tools (1745.3521ms)
+✔ failed host writes cannot later commit unread records, knowledge or unreturned receipts (1337.9805ms)
+✔ previous consistency rejection is advisory: both files delivered without baseline or summary file (2.3766ms)
+✔ a missing pair or foreign file reference still cannot be delivered (1.1691ms)
+✔ missing or changed stored bytes are never a successful download (0.8695ms)
+✔ explicit template choice is independent of random material ids; previous output remains the revision source (18.1945ms)
+✔ a pinned review source can use a non-historical material role (1.1364ms)
+✔ normal model exit without operations preserves private evidence and reports the actual failure (529.8168ms)
+✔ trusted finalization ignores arbitrary model DOCX and preserves the original package (3374.5646ms)
+✔ trusted finalization rejects wrong anchors without accepting model DOCX (2219.266ms)
+✔ an existing snapshot without format policy retains the original direct-file delivery path (41.7642ms)
+✔ diagnostics reject foreign or oversized references before reading storage (0.5521ms)
+✔ maps only direct 2023/2024 consolidated and parent annual rows as external-source candidates (5.5461ms)
+✔ parser 1.0.7 auxiliary warnings preserve the body-only extractor result and candidate review requirements (4.7483ms)
+✔ uncertain direct cells remain needs-review and do not become facts (1.4573ms)
+✔ multiple paragraphs in a target value cell are ambiguous and review evidence stays bounded (2.8739ms)
+✔ mismatched units or missing in-document section evidence fail closed for that statement (1.6897ms)
+✔ review evidence refs stay deterministic and bounded (0.9473ms)
+﹣ authorized rq-202509 historical prospectus tables map through the real parser (0.1486ms) # set BB_RUN_AUTHORIZED_RQ_ANNUAL_FACT_TESTS=1 with the authorized sample parser environment
+✔ optional absent and partial source context does not gate an uploaded-source-only run; ownership/hash checks remain (5.2962ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 23312.9037

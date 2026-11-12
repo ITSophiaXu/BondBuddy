@@ -1,0 +1,50 @@
+/* Shared upload surfaces. Root/body scope wins over legacy page classes, regardless of load order. */
+:root body .bb-upload-picker.bb-upload-picker {
+  box-sizing:border-box;position:relative;display:inline-flex;flex-direction:row;align-items:center;justify-content:center;gap:10px;
+  min-width:0;max-width:100%;margin:0;padding:10px 16px;border:1px solid #87977d;border-radius:8px;
+  background:#fff;color:#294a37;font:inherit;font-size:14px;line-height:1.5;text-align:center;cursor:pointer;
+  vertical-align:middle;overflow-wrap:anywhere;box-shadow:none;
+}
+:root body .bb-upload-picker.bb-upload-picker--standard {display:flex;width:100%;min-height:112px;padding:20px;border-style:dashed;background:#fafcf6;margin:12px 0;}
+:root body .bb-upload-picker.bb-upload-picker--compact {min-height:44px;width:auto;}
+:root body .bb-upload-picker>svg {width:22px;height:22px;flex:none;margin:0;}
+:root body .bb-upload-picker--compact>svg {width:18px;height:18px;}
+:root body .bb-upload-picker--compact:not(:has(svg))::before {content:"";width:18px;height:18px;flex:none;background:currentColor;mask:center/contain no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8'%3E%3Cpath d='M12 16V3m-5 5 5-5 5 5M4 15v6h16v-6'/%3E%3C/svg%3E");}
+:root body .bb-upload-copy {display:block;min-width:0;}
+:root body .bb-upload-copy strong {display:block;font-size:16px;line-height:1.5;font-weight:600;}
+:root body .bb-upload-copy small {display:block;margin-top:4px;font-size:13px;font-weight:400;color:#63745b;}
+:root body .bb-upload-picker--compact .bb-upload-copy strong {font-size:14px;}
+:root body .bb-upload-picker:hover,:root body .bb-upload-picker.is-dragging {background:#edf4e5;border-color:#526f43;}
+:root body .bb-upload-picker.is-dragging {outline:2px solid #526f43;outline-offset:2px;}
+:root body .reference-prospectus.is-dragging .bb-upload-picker {background:#edf4e5;border-color:#526f43;outline:2px solid #526f43;outline-offset:2px;}
+:root body .bb-upload-picker:focus-visible,:root body .bb-upload-picker:focus-within,:root body .bb-upload-action:focus-visible {outline:2px solid #526f43;outline-offset:3px;}
+/* Label-based pickers keep the native input keyboard-focusable and its FileList intact. */
+:root body .bb-upload-picker input[type=file] {position:absolute!important;inset:0!important;display:block!important;width:100%!important;height:100%!important;min-height:0!important;max-width:none!important;margin:0!important;padding:0!important;border:0!important;opacity:0;clip-path:none!important;cursor:pointer;z-index:1;}
+:root body .bb-upload-picker:disabled,:root body .bb-upload-picker:has(input:disabled),:root body [inert] .bb-upload-picker {opacity:.55;cursor:not-allowed;}
+:root body .bb-upload-picker:disabled:hover,:root body .bb-upload-picker:has(input:disabled):hover {background:#fff;}
+:root body .bb-upload-picker input:disabled {cursor:not-allowed;}
+:root body .bb-upload-picker-error {display:block;color:#923b2d;font-size:13px;}
+:root body .bb-upload-picker [hidden] {display:none!important;}
+:root body .bb-upload-picker input[type=file][hidden] {display:block!important;}
+:root body .bb-upload-picker[hidden] {display:none!important;}
+:root body .bb-upload-action.bb-upload-action {box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;min-width:44px;max-width:100%;padding:10px 14px;margin:6px 8px 0 0;border:1px solid #87977d;border-radius:8px;background:#fff;color:#294a37;font:inherit;font-size:14px;font-weight:600;line-height:1.5;text-decoration:none;cursor:pointer;white-space:normal;overflow-wrap:anywhere;}
+:root body .bb-upload-action.bb-upload-action--primary {background:#245747;border-color:#245747;color:#fff;}
+:root body .bb-upload-action:hover {background:#edf4e5;}
+:root body .bb-upload-action--primary:hover {background:#1b4537;}
+:root body .bb-upload-action:disabled {opacity:.55;cursor:not-allowed;}
+:root body .bb-upload-action[hidden] {display:none!important;}
+:root body .bb-upload-file.bb-upload-file {min-width:0;max-width:100%;box-sizing:border-box;margin:12px 0;padding:16px;border:1px solid #dce5d5;border-radius:8px;background:#fafcf6;overflow-wrap:anywhere;}
+:root body .bb-upload-file:has([data-upload-state=error]),:root body .bb-upload-file:has([data-upload-state=paused]),:root body .bb-upload-file.needs-attention {border-color:#d8b979;background:#fffaf0;}
+:root body .bb-upload-file:has([data-upload-state=uploading]),:root body .bb-upload-file:has([data-upload-state=processing]) {border-color:#dce5d5;background:#fafcf6;}
+:root body .bb-upload-file:has([data-upload-state=complete]) {border-color:#dce5d5;background:#f4f8ef;}
+:root body .bb-upload-file .file-upload-progress {width:100%;max-width:none;flex-basis:100%;}
+:root body .bb-upload-file .review-file-progress {width:100%;max-width:none;}
+:root body .bb-upload-file .material-file-main {min-width:0;flex:1;}
+:root body .bb-upload-file .material-file-actions {display:flex;flex-direction:row;align-items:center;flex-wrap:wrap;justify-content:flex-end;}
+:root body .bb-upload-file .material-file-actions[hidden] {display:none!important;}
+@media(max-width:600px){
+  :root body .bb-upload-picker.bb-upload-picker--standard {min-height:112px;padding:16px;}
+  :root body .bb-upload-file.bb-upload-file {padding:14px;}
+  :root body .bb-upload-file.material-file-row {display:flex;flex-wrap:wrap;}
+  :root body .bb-upload-file .material-file-actions {width:100%;justify-content:flex-start;}
+}

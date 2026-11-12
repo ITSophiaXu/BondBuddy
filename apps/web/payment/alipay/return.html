@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>核对付款 · BondBuddy</title></head>
+<body class="payment-return-page">
+  <header class="payment-return-brand"><img src="/favicon.svg" alt="" width="32" height="32"><span>BondBuddy</span><small>券商助手</small></header>
+  <main class="payment-return-shell">
+    <span class="payment-status-icon" aria-hidden="true">↗</span>
+    <p class="payment-eyebrow">付款结果</p><h1 id="payment-return-title">正在返回 BondBuddy</h1>
+    <p id="payment-return-message" role="status">正在核对本次订单与积分到账结果，请稍候。</p>
+    <a class="payment-primary" id="payment-return-link" href="/#/account">返回账户查看订单</a>
+    <noscript><p>自动核对需要启用 JavaScript。你也可以返回账户，在充值记录中查看原订单。</p></noscript>
+    <p class="payment-fine-print">付款状态以账户内核实的结果为准。</p>
+  </main>
+  <script type="module" src="../../src/payment-return.ts"></script>
+</body>
+</html>

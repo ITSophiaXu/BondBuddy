@@ -1,8 +1,11 @@
+> 2026-11-08：新增[本地发布前基础流程脚本](../scripts/release-smoke/README.md)，从固定提交构建正式 Dockerfile 的 Web/API/worker，使用独立 PostgreSQL、Azurite、测试账号及已授权真实样本检查更新、复核、问答。启动层补充 Mac/Windows 本机 Docker 连接、路径、挂载和权限处理，Windows 使用 PowerShell 与 Docker Desktop Linux 容器；统一操作入口见根 README。本轮平台适配按用户要求未重跑测试，Windows 实机验收尚未记录。逐项记录镜像/样本/任务/下载证据，未运行和失败均不能放行；实际验收结果以每次私有运行报告为准。单机测试不替代双端部署拓扑、其他镜像架构或专业内容验收，不更改生产发布入口、公共契约或数据库迁移。
+
 > 2026-11-07：#906/#908 已完成双端迁移；腾讯云主站恒常运行网页/API/唯一PG/运维和纯解析，Azure 执行端仅编制/复核，经专用受限 SSH 转发复用 PG 队列。继续使用私有 Azure Blob、业务 Codex 1M窗口/900K压缩及既有诚信出口。迁移仅在主站执行；角色、资产与恢复边界见[双端部署说明](runbooks/m1-split-deployment.md)。#911 负责统一配置生命周期的采纳与验收。
 
 > 2026-11-05：按[专业文档工作台决定](product-decisions/2026-11-05-professional-document-workspace.md)，浏览器与原型共用 `product-prototype/public/document-workspace.css`，在现有展示样式后加载；`document-deliverable.ts` 仅组织真实成果文件名、已保存版本和原下载控件。保留 Vite/TypeScript、所有业务模块和授权下载链路，无公共契约、数据或 worker 变更。
 
 > 2026-11-05：更新项目的历史／参考募集书新上传仅支持 Word（.docx）。共用入口按项目返回的 `upload_docx_only` 显示限制；API 创建、传输、完成及角色复制执行相同规则，已完成上传和旧 PDF 保留。无新增迁移；见[格式支持决定](product-decisions/2026-11-05-historical-docx-only.md)。
+> 2026-11-01：按[募集书质量与发布门禁](product-decisions/2026-11-01-prospectus-quality-gate.md)，原件身份、双 Word 修订一致性、结构/内容保留和模板检查改为宿主交付前必要条件。失败保存私有报告与检查点，不进入正常交付；重放不增加模型调用。部署与镜像导出必须验证绑定候选 commit/tree 的 Linux 回归凭据；运行时机械检查、真实模型事实验收与页面验收分别记录。本要求覆盖旧“生成文件即交付”的冲突说明。见[本次审计](acceptance/prospectus-quality-regression-20261101.md)。
 
 > 2026-10-30：按[取消每日限额决定](product-decisions/2026-10-30-no-daily-limits.md)，API 与 worker 不再按每日任务数、模型 token、项目数或上传总量拦截；忽略旧每日限额配置，管理字段返回 0。用量统计、积分计费、并发容量及其他有效检查保留。历史每日限额暂停由已有 sweep 恢复，历史错误枚举兼容保留。此决定覆盖下文旧试用每日限额说明。
 
@@ -862,6 +865,8 @@ Spec没有提供独立全文修订价；review_revision 不写入价目表、不
 
 ### 2026-10-22 诚信核查网站目录与紧凑选择器
 
+2026-11-09 增量：自动报价取消独立的20网站上限，覆盖用户选择的完整有效网站范围，包括全选；同一轮价格和不可变范围快照保持，不按网站拆单。网站目录由contracts与诚信核查入口统一校验，报价不另设数量门槛。详见[用户范围决定](product-decisions/2026-11-09-integrity-website-scope.md)。
+
 2026-10-29 增量：官网结果截图必须取得完整查询响应并通过连续稳定检查；零结果增加二次确认，脚本页面的占位 0 不作为已查询证据。截图期间请求或结果变化会丢弃重截，翻页采用相同约束。时间记录保存在内部采集批次，无公开契约或迁移变化。详见[结果加载与截图确认](acceptance/integrity-result-wait-20261029.md)。
 
 2026-10-26 增量：官网采集分别等待首页控件与查询结果，支持可见 iframe/弹窗、有限重试及地区条件复用；代理空闲限时同步到 120 秒。技术失败和空白页面不转成人工补证，结果界面移除上传入口并保留历史证据读取。无迁移或新依赖，真实官网访问限制仍需验收。详见[开发验证与发布依赖](acceptance/integrity-readiness-20261026/README.md)。
@@ -889,3 +894,42 @@ Spec没有提供独立全文修订价；review_revision 不写入价目表、不
 
 新增 `file-generation` 准备、模板采用/脱敏预览、报价与混合父批次接口。迁移 0122/0123 固定模板引用和提交回执，并将内部模板与普通项目证据/下载隔离。web 的默认生成入口使用目录/模板双卡和混合文种选择，保留旧任务入口；worker 从固定 Word 副本编制。私有 bundle 由 API 按需写入 Blob，不进入公开站点或 Git。API 增加 LibreOffice/Python 预览运行环境；具体依赖、验证和未完成的真实模型验收见[实施交接](FILE-TEMPLATE-IMPLEMENTATION.md)。代码尚未部署。
 > 2026-11-07：底稿/文件生成进度采用私有轻量变更标识；列表 SQL 不传出完整证据 links，前端仅在可见且有活动任务时轮询，终态停止。无迁移，完整证据仍供核查/维护使用。接口、兼容发布次序、流量回归和费用告警模板见 [费用修复说明](../deploy/cost-controls/README.md)。
+
+
+### 可恢复材料确认（#925）
+
+浏览器完成字节上传后发送 `Prefer: respond-async`，首次确认将 `upload.complete_requested` 与不可变上传声明/pin 一起提交，再返回 `202`、`UploadConfirmationPending` 和 `Retry-After: 2`。重复请求使用同一个 upload ID，最终返回既有 `MaterialResponse`；浏览器只在最终 DTO、hash 与大小验证后返回保存成功。旧客户端的同步确认保留，完整读取也移到项目锁外。
+
+`0165_upload_confirmation_outbox.sql` 只新增确认状态与 pin。现有 `runtime.js` 在纯解析服务通过 `BB_UPLOAD_CONFIRMATION_ENABLED=1` 显式启用独立的单确认槽，精确 claim 上述事件，租约 120 秒，每 40 秒条件续租。慢 Blob 全读/hash/检查不持项目锁；最终按 project → upload → 当前 outbox lease 锁顺序重查归属、不可变声明、对象键、同次完整读取的 ETag 与 token，原子提交材料、募集书采用、完整性回执、outbox 与确认终态。进程退出后过期租约可被接续；旧 token 拒绝最终提交。临时故障持久化原错误并有界重试，确定性终态错误保留供同上传编号读取；临时 5xx 达到重试上限后，同声明原上传再次 complete 可在对象锁和可用性核查后恢复一个有界批次，保留 last_error，不要求重传。
+
+`compose.main.yaml` 的纯解析 `!override` 环境明确传入该开关（默认 `0`）；主站私有环境将其设为 `1`。确认 spool 为现有 `materialstaging` 卷内的 `/var/lib/bondbuddy/parse-staging/upload-confirmation`，默认预算 128 MiB，由 `BB_UPLOAD_CONFIRMATION_SPOOL_MAX_BYTES` 调整；API 的 `uploadspool` 独立。运行时启用时要求绝对 spool 路径及正整数预算。`compose.execution.yaml` 的各执行服务显式为 `0`，避免跨端重复消费者；现有纯解析 0.5 CPU / 1 GiB 上限保留。部署必须核查实际容器环境、事件消费和退出/重启后的同上传恢复，不能只修改 `.env`。
+
+pin 登记、过期上传清理登记与实际 Blob 删除共用 owner/object advisory 锁；慢读取在锁外，删除在对象锁内重新核 pin 与删除租约。候选 canonical 对象 pin 只追加，替换候选时保留旧 pin 到终态。复用回执的证据属于 canonical material 对象，冗余 staging 不能借出完整性证据。删除/归属/声明变化拒绝保存，重复确认不生成第二份材料或重新采用旧稿。
+
+本切片需从同一准确提交编译 contracts、API、后台运行时和 web；domain 等未变组件可按源码树核对复用。发布依次应用新增迁移、采用准确技术产物并在主站启用确认槽，编制端保持关闭；回滚先停止新确认入队/消费，保留新增表和已确认材料，不逆向删除迁移数据。公共验收使用原页面的小型 synthetic DOCX 与至少 6 MiB synthetic DOCX，验证 202 短回执、刷新重开后原上传最终 200、原 material/version/hash、同项目小文件及说明保存无长锁阻塞。该验收由部署后的公共入口直接证明，定向合成测试不代替上线验收。
+
+公共浏览器夹具可在准确 API 编译后运行 `node scripts/upload-confirmation-fixtures.mjs <isolated-output-directory>` 生成两份 synthetic DOCX 与 hash/大小清单。原页面选择文件，记录短 202，确认期间刷新或重开后恢复原 upload ID；最终 200 的 material/version/hash 与刷新后的已保存材料一致。在大文件验证期间保存同项目说明并提交小文件，确认这些请求不会等待项目长锁。
+
+### 2026-11-11 计价退役、实扣审计与任务恢复
+
+按用户要求执行三份积分排查报告的合并修复。新 HTTP 委托统一进入自动范围报价，旧固定价/人工报价 CLI 停止发布，本地旧 API 入口退役。历史执行显式加载原合同与版本；Node 测试夹具必须声明旧策略，不能用生产开关重新开放旧委托。
+
+contracts 统一定义 `billing_reconcile` 暂停阶段及 `BILLING_REQUEST_REJECTED` 确定拒绝码。钱包隔离时保留成果、租约安全停止并持久化取消意图；独立修复与显式恢复后复用原 Word 交付或释放原预留。未知供应商状态先转入既有 reconcile 流程。已释放的付费超时任务不能通过私有修复入口复活。
+
+新增迁移 0167/0168/0170—0174：补实际 lot 扣费投影及可证明的历史只读重建；退款上限使用实际已扣及已退；拒绝收据与业务接受共用锁并提供数据库互斥；诚信收费必须有持久化成功查询证据；文件包报价保存不可变 owner/input/price/expiry，并仅允许一次绑定批次。已受理子任务按原批次合同执行，不受普通未接受报价的七天期限阻断。所有新增财务行为继续使用既有账户/lot 锁、不可变事件及终态结算事务。
+
+诚信 v4 商业标准为基础 2,000 + 每项适用可执行主体/官网栏目 85，最高 22,738；按锁定范围内不同成功组合结算，全部失败释放。分页和重试不增加收费单位，成本未知保持 null。规则和历史边界见[商业决定](product-decisions/2026-11-11-integrity-scope-pricing.md)。年度退款输入使用原订单可退额度，旧请求只有收到持久化确定拒绝后才允许安全创建新请求；网络不明继续保留原键重放。
+
+代码完成，尚未部署，待统一发布。合成回归不代表真实官网、模型、商户支付或最终用户验收。
+
+### 可协商的私有 Blob 直传
+
+材料上传保留原同源 `/bytes` → 204 通道。API 的 `BB_DIRECT_BLOB_UPLOADS` 默认 `0`；设为 `1` 后，也只为通过公共契约 `X-BB-Upload-Transport: azure_blob` 请求头明确声明能力的客户端签发直传会话。旧客户端继续得到同源地址；新客户端连接旧 API 时，旧 API 忽略该头并继续返回同源会话。响应可选 `upload_transport` 标记由 `packages/contracts` 唯一定义。页面、进度文案、100 MiB 单文件上限及计费规则不变。
+
+API 将传输方式与不可变的 owner/project/upload/object key 一起保存，仅在内存签出最长 15 分钟、HTTPS、单 blob、仅 `c` 创建权限的 SAS。没有覆盖、读、列举或删除权限。浏览器使用单次 PUT，头为 `Content-Type: application/octet-stream`、`x-ms-blob-type: BlockBlob`、`If-None-Match: *`；不向 Blob 发送应用 Cookie、Authorization 或 CSRF。Blob 的 201 仅代表传输返回成功。
+
+刷新、关页重开和丢失回执优先对原 upload 执行 complete。尚未收到字节时，客户端在核对重新选择文件的大小、类型及 SHA 后，可调用原 upload 的 `/session`，按原 owner/project/声明重取票据，不改变 upload ID、object key 或材料身份。已收到、已确认、已完成或已清理的会话不会重签；create-only 再次 PUT 被拒后仍可 complete 原对象。URL/SAS 不进入数据库、恢复日志、localStorage 或业务诊断；恢复记录只保存 upload ID、传输标记及原声明。票据响应设置 `Cache-Control: no-store`。
+
+直传对象通过既有异步确认消费器完整下载，校验实际大小、SHA 及声明类型白名单，并在提交事务中再次比对同一 ETag、归属与不可变会话。沿用原件直存政策，不嗅探、解压或扫描文档内容；保存不证明内容类型或安全。只有字节完整性和归属检查通过才记录 received 和唯一材料；HEAD 存在或客户端 201 均不作为已保存证明。确定性拒收仅在归属、租约及材料引用检查后以拒收版本的 ETag 条件回收，不能删除替换版本。SAS 无法绑定字节上限，服务端实际读取仍执行 100 MiB 上限。
+
+启用前，在私有 Blob 服务 CORS 中保留已有规则并增量允许正式应用 Origin、方法 `PUT`、请求头 `content-type,x-ms-blob-type,if-none-match`。无需暴露响应头。Web CSP 的 `connect-src` 只增加配置对应的 `https://myopenhands.blob.core.windows.net`，不放开通配 Azure 域名；外层代理若另加 CSP，也须允许同一精确 Origin。正式浏览器验收需确认 CORS/CSP 均未拦截，并完成小文件和至少 6 MiB synthetic 文件上传、刷新恢复及 SHA/归属复核。回退采用关闭新会话 flag，既有直传会话仍可完成；保留新增迁移，不在回退时删除材料。部署继续遵守当前 commit/tree 的质量与发布凭据要求。

@@ -1,4 +1,5 @@
 .local/
+/.tmp/
 __pycache__/
 *.pyc
 .venv/
@@ -7,6 +8,7 @@ dist/
 dist-test/
 work/
 docs/*
+!docs/BUG-REPORTING.md
 !docs/testing/
 docs/testing/*
 !docs/testing/bondbuddy-test-plan-v6/
@@ -17,6 +19,7 @@ docs/testing/*
 !docs/PROJECT-FILES-ARCHITECTURE.md
 !docs/product-decisions/
 docs/product-decisions/*
+!docs/product-decisions/2026-11-11-integrity-scope-pricing.md
 !docs/product-decisions/2026-11-07-project-qa-direct-answer.md
 !docs/product-decisions/2026-11-05-latest-financial-window.md
 !docs/product-decisions/2026-10-11-authoring-dynamic-balance.md
@@ -38,10 +41,14 @@ docs/product-decisions/*
 !docs/product-decisions/2026-10-29-project-qa-prospectus-first.md
 !docs/product-decisions/2026-11-05-project-qa-reply-content.md
 !docs/product-decisions/2026-10-29-source-format-preservation.md
+!docs/product-decisions/2026-11-01-prospectus-quality-gate.md
 !docs/product-decisions/2026-10-31-automatic-prospectus-adoption.md
 !docs/product-decisions/2026-10-28-workpaper-shared-batch.md
 !docs/acceptance/
 docs/acceptance/*
+!docs/acceptance/billing-remediation-20261111.md
+!docs/acceptance/billing-remediation-20261111/
+!docs/acceptance/integrity-billing-consistency-20261111.md
 !docs/acceptance/project-qa-direct-answer-20261107.md
 !docs/acceptance/financial-period-rollforward-20261105.md
 !docs/acceptance/prospectus-auto-adoption-20261031.md
@@ -51,6 +58,7 @@ docs/acceptance/prospectus-auto-adoption-20261031/*
 !docs/acceptance/integrity-result-wait-20261029.md
 !docs/acceptance/project-qa-prospectus-first-20261029.md
 !docs/acceptance/source-format-preservation-20261029.md
+!docs/acceptance/prospectus-quality-regression-20261101.md
 !docs/acceptance/source-structure-2026-10-31.md
 !docs/acceptance/source-structure-2026-10-31/
 docs/acceptance/source-structure-2026-10-31/*

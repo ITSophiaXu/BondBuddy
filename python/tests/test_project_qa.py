@@ -10,7 +10,7 @@ from zipfile import ZipFile
 from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from bondbuddy_file_authoring.project_qa import prepare, fill, evidence
+from bondbuddy_file_authoring.project_qa import prepare, fill, evidence, unplaced_missing_materials
 from bondbuddy_file_authoring.project_files import inspect
 
 
@@ -93,8 +93,17 @@ class ProjectQaTests(unittest.TestCase):
                 xml=z.read('word/document.xml').decode('utf8')
             self.assertIn('单位：万元',xml);self.assertIn('附注：金额含税',xml);self.assertIn('待确认：期后回款金额',xml)
             self.assertNotIn('**答复正文**',xml)
+            self.assertNotIn('待补材料或待确认事项',xml)
+            self.assertEqual(xml.count('待确认：期后回款金额'),2)
             self.assertTrue(any(r.text=='答复正文' and r.bold for p in doc.paragraphs for r in p.runs))
             self.assertEqual(xml.count('<w:tblHeader'),2);self.assertNotIn('w:hRule="exact"',xml)
+
+    def test_only_exact_local_gap_markers_suppress_fallback_items(self):
+        answer = dict(answer='金额尚待确认。\n【待确认：2026年末回款金额】',
+                      missing_materials=['2026年末回款金额。', '2026年末回款金额及回款日期', '金额'])
+        before = copy.deepcopy(answer)
+        self.assertEqual(unplaced_missing_materials(answer), ['2026年末回款金额及回款日期', '金额'])
+        self.assertEqual(answer, before)
 
     def test_word_numbered_review_comments_are_candidates_without_literal_numbers(self):
         with tempfile.TemporaryDirectory() as td:

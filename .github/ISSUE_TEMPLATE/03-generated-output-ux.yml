@@ -1,0 +1,80 @@
+name: 03 生成结果UX
+description: 生成文件的批注定位、修订落地、内容呈现或成果使用问题。
+title: "[生成结果UX][成果] 简述问题"
+labels: ["bug", "type:生成结果UX", "fix:待排查"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        一条 Issue 记录一个可独立修复的问题。先搜索现有 Issue；相同问题补充原单。
+        [提交与统计规范](https://github.com/ITSophiaXu/BondBuddy/blob/develop/docs/BUG-REPORTING.md)
+  - type: input
+    id: discovered_on
+    attributes:
+      label: 首次发现日期（北京时间）
+      description: YYYY-MM-DD；补录时填真实发现日期，不用登记日期代替。不清楚时填“未知”，不要猜测。
+      placeholder: "2026-11-10"
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: 发现环境
+      options:
+        - 生产环境
+        - 本地集成测试版
+        - 开发或自动化测试
+        - 代码审查（未线上复现）
+        - 尚未确认
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 影响范围与版本
+      description: 页面/功能、浏览器或 Word/WPS 版本、应用 commit/版本；相关项目、run ID、成果版本或时间。未知项如实写未知。
+      placeholder: "入口：\n应用版本：\n客户端版本：\n项目/run/成果版本：\n影响："
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 写出别人可以重现的操作；仅用户反馈或静态审查发现时说明证据边界。
+      placeholder: "1.\n2.\n3."
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 实际结果与预期结果
+      placeholder: "实际结果：\n预期结果："
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 证据与关联问题
+      description: 截图、脱敏错误、日志时间、已有 Issue/PR；不要上传令牌、密钥或未经授权的客户原件。
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 用可核实的结果说明怎样算修好；生成成果需核对实际文件内容和版本，页面问题写明对应页面/原型。
+      placeholder: "- [ ] 原复现步骤通过\n- [ ] 相关回归通过\n- [ ] 已记录实际验证环境与版本"
+    validations:
+      required: true
+  - type: textarea
+    id: fix_tracking
+    attributes:
+      label: 修复跟踪（开发认领后更新）
+      description: 报告人不必先找出根因。负责人维护此处和标签；部分修复用 Refs，完整修复才用 Fixes。
+      value: |
+        - 负责人：待认领
+        - 根因与修复方案：待排查
+        - Fix PR：未创建
+        - 已覆盖 / 剩余范围：待排查
+        - 验证命令、结果及环境：未执行
+        - develop 合并 commit / 时间：未合并
+        - 部署版本 / 时间：未部署
+        - 最终统一验收待办：待记录

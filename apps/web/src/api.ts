@@ -1,7 +1,9 @@
 import {runRecoverableBillingRequest,observeAutomaticQuotes} from './billing-task-recovery.js';
 import {readDownloadBytes,type DownloadProgress} from './download-progress.js';
-import {WorkpaperZipPreparationSchema,type WorkpaperZipPreparation} from '@bondbuddy/contracts';
+import {schemas as uploadSchemas,WorkpaperZipPreparationSchema,type WorkpaperZipPreparation} from '@bondbuddy/contracts';
+import {boundedDownload} from './download-timeout.js';
 import {Value} from '@sinclair/typebox/value';
+import { DIRECT_UPLOAD_TRANSPORT, UPLOAD_TRANSPORT_HEADER, type UploadTransport, isUploadBytesPendingFieldError } from '@bondbuddy/contracts';
 import {BILLING_WIRE_HEADER,BILLING_WIRE_VERSION,LEGACY_BILLING_WIRE_VERSION,billingWireRoute,encodeBillingDto,validateBillingDto} from '@bondbuddy/contracts';
 import { UserFacingError, unknownErrorText, type ErrorOperation } from './user-facing-error.js';
 import type { Static } from '@sinclair/typebox';
@@ -11,9 +13,10 @@ import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest
 import { isProspectusDocxOnlyFieldError, PROSPECTUS_DOCX_ONLY_MESSAGE, isUploadInspectionPublicReason, isProspectusSelectionRequiredFieldError, isSourceProspectusRequiredFieldError, SOURCE_PROSPECTUS_REQUIRED_MESSAGE, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, m4InputIssue, PROJECT_TASK_COUNTS_CAPABILITY, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, type TrialLimitKind, type M4InputIssue, type UploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
+const UPLOAD_CONFIRMATION_TIMEOUT_MS = 600_000;
 export class ApiError extends Error {
   constructor(public status: number, public code: string, public readonly details: {
-    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean; prospectusDocxOnly?: boolean;
+    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; uploadBytesPending?: boolean; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean; prospectusDocxOnly?: boolean;
   } = {}) { super(code); }
 }
 
@@ -56,6 +59,7 @@ export function parseApiError(status: number, value: unknown, fallbackCode = 'DA
     ...(correlationId ? { correlationId } : {}),
     ...(typeof problem.retryable === 'boolean' ? { retryable: problem.retryable } : {}),
     ...(uploadReason ? { uploadReason } : {}),
+    ...(status === 422 && code === 'MATERIAL_UNREADABLE' && fields.length === 1 && isUploadBytesPendingFieldError(fields[0]) ? { uploadBytesPending: true } : {}),
     ...(trialLimit ? { trialLimit } : {}),
   });
 }
@@ -98,6 +102,7 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
     case 'CAPABILITY_NOT_READY': return `这项功能暂未开放，请联系支持。${reference}`;
     case 'CREDITS_INSUFFICIENT': return '积分不足，本次任务尚未开始。请通过原任务入口补足积分后继续。';
     case 'QUOTE_REQUIRED': return '请查看本次任务报价后确认开始。';
+    case 'BILLING_REQUEST_REJECTED': return '上次请求未受理，已结束该申请。请刷新当前资格或任务范围后重新开始。';
     case 'QUOTE_CHANGED': return '价格或项目输入已变化，请查看新报价后重新确认。';
     case 'QUOTE_EXPIRED': return '报价已过期，本次未开始、未扣费。准备内容保留，请重新申请范围报价。';
     case 'QUOTE_UNAVAILABLE': return '当前范围暂无法承接，本次未开始、未扣费。请查看报价原因或调整准备内容。';
@@ -172,11 +177,13 @@ export class ApiClient {
   createRecharge(input: Dto<'RechargeOrderRequest'>, signal?: AbortSignal) { return this.request<Dto<'RechargeOrderResponse'>>('POST','/credits/recharge-orders',input,{},signal); }
   rechargeOrder(id: string, signal?: AbortSignal) { return this.request<Dto<'RechargeOrderResponse'>>('GET',`/credits/recharge-orders/${encodeURIComponent(id)}`,undefined,{},signal); }
   refreshRecharge(id: string, signal?: AbortSignal) { return this.request<Dto<'RechargeOrderResponse'>>('POST',`/credits/recharge-orders/${encodeURIComponent(id)}/refresh`,{}, {},signal); }
+  private uploadTransports = new Map<string, UploadTransport>();
   private controller = new AbortController();
   private refresh: Promise<void> | undefined;
   constructor(private sessionLost: () => void) {}
 
   reset() {
+    this.uploadTransports.clear();
     this.controller.abort();
     this.controller = new AbortController();
     this.refresh = undefined;
@@ -295,7 +302,7 @@ export class ApiClient {
     const path = `/m4/artifacts/${encodeURIComponent(artifact.artifact_id)}/versions/${artifact.artifact_version}/bytes`;
     const response = await this.response('GET', path, undefined, {}, activeSignal);
     if (response.status !== 200 || response.headers.get('content-type')?.split(';')[0].trim() !== artifact.mime_type) throw new ApiError(0, 'DATA_UNAVAILABLE');
-    const bytes = await response.arrayBuffer(); activeSignal.throwIfAborted();
+    const bytes = await readDownloadBytes(response, activeSignal); activeSignal.throwIfAborted();
     if (!bytes.byteLength || bytes.byteLength !== artifact.byte_size) throw new ApiError(0, 'DATA_UNAVAILABLE');
     const digest = await crypto.subtle.digest('SHA-256', bytes); activeSignal.throwIfAborted();
     if (Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('') !== artifact.sha256) throw new ApiError(0, 'DATA_UNAVAILABLE');
@@ -330,7 +337,7 @@ export class ApiClient {
     return this.request<Dto<'ProjectListResponse'>>('GET', `/projects${query.size ? `?${query}` : ''}`, undefined, {[PROJECT_TASK_COUNTS_CAPABILITY.header]:PROJECT_TASK_COUNTS_CAPABILITY.value}, signal);
   }
   archiveProject(id: string, archived: boolean) { return this.request<Dto<'ProjectResponse'>>('POST', `/projects/${encodeURIComponent(id)}/archive`, { archived }); }
-  artifact(id: string, signal?: AbortSignal) { return this.request<Dto<'ArtifactResponse'>>('GET', `/artifacts/${encodeURIComponent(id)}`, undefined, {}, signal); }
+  artifact(id: string, signal?: AbortSignal) { return boundedDownload(signal ?? this.controller.signal, activeSignal => this.request<Dto<'ArtifactResponse'>>('GET', `/artifacts/${encodeURIComponent(id)}`, undefined, {}, activeSignal)); }
   runAction(id: string, action: 'cancel' | 'resume' | 'pause', signal?: AbortSignal) {
     return this.request<Dto<'RunResponse'>>('POST', `/runs/${encodeURIComponent(id)}/${action}`, { reason: action === 'cancel' ? 'user_cancelled' : action === 'pause' ? 'user_paused' : 'user_resumed' }, {}, signal);
   }
@@ -349,6 +356,9 @@ export class ApiClient {
   projectMessageVersion(id: string, messageId: string, version: number, signal?: AbortSignal) {
     return this.request<Dto<'ProjectMessage'>>('GET', `/projects/${encodeURIComponent(id)}/messages/${encodeURIComponent(messageId)}/versions/${version}`, undefined, {}, signal);
   }
+  firstDraftExclusions(id: string, signal?: AbortSignal) {
+    return this.request<Dto<'FirstDraftExclusionsResponse'>>('GET', `/projects/${encodeURIComponent(id)}/first-draft-exclusions`, undefined, {}, signal);
+  }
   createInputRevision(id: string, input: Dto<'InputRevisionCreateRequest'>, signal?: AbortSignal) {
     return this.request<Dto<'InputRevisionResponse'>>('POST', `/projects/${encodeURIComponent(id)}/input-revisions`, input, {}, signal);
   }
@@ -362,7 +372,7 @@ export class ApiClient {
     return this.request<Dto<'RunEventsResponse'>>('GET', `/runs/${encodeURIComponent(id)}/events?after=${after}`, undefined, {}, signal);
   }
   async artifactBytes(artifact: Dto<'ArtifactResponse'>, signal?: AbortSignal, progress?: DownloadProgress): Promise<Blob> {
-    const activeSignal = signal ?? this.controller.signal;
+    return boundedDownload(signal ?? this.controller.signal, async activeSignal => {
     const url = new URL(artifact.download_url, location.origin);
     const path = `/api/v1/artifacts/${encodeURIComponent(artifact.artifact_id)}/download`;
     if (url.origin !== location.origin || url.pathname !== path || url.username || url.password || url.hash) {
@@ -380,6 +390,7 @@ export class ApiClient {
     const sha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
     if (sha256 !== artifact.sha256) throw new ApiError(0, 'DATA_UNAVAILABLE');
     return new Blob([bytes], { type: artifact.media_type });
+    });
   }
   dataPolicy() { return this.request<DataPolicy>('GET', '/data-policy'); }
   deleteProject(id: string) { return this.request<void>('DELETE', `/projects/${encodeURIComponent(id)}`); }
@@ -417,7 +428,7 @@ export class ApiClient {
     if (material.state !== 'persisted') throw new ApiError(0, 'DATA_UNAVAILABLE');
     const response = await this.response('GET', `/projects/${encodeURIComponent(projectId)}/materials/${encodeURIComponent(material.material_id)}/download?version=${material.material_version}`, undefined, {}, activeSignal);
     if (response.status !== 200 || response.headers.get('content-type')?.split(';')[0].trim() !== material.media_type) throw new ApiError(0, 'DATA_UNAVAILABLE');
-    const bytes = await response.arrayBuffer();
+    const bytes = await readDownloadBytes(response, activeSignal);
     activeSignal.throwIfAborted();
     if (!bytes.byteLength || bytes.byteLength !== material.byte_size) throw new ApiError(0, 'DATA_UNAVAILABLE');
     const digest = await crypto.subtle.digest('SHA-256', bytes);
@@ -446,28 +457,62 @@ export class ApiClient {
   projectEvents(id: string, after: number, signal?: AbortSignal) {
     return this.request<Dto<'ProjectEventsResponse'>>('GET', `/projects/${encodeURIComponent(id)}/events?after=${after}`, undefined, {}, AbortSignal.any([signal ?? this.controller.signal, AbortSignal.timeout(30_000)]));
   }
-  createUpload(id: string, input: Dto<'UploadCreateRequest'>, signal?: AbortSignal) {
-    return this.request<Dto<'UploadSessionResponse'>>('POST', `/projects/${encodeURIComponent(id)}/materials/uploads`, input, {}, signal);
+  async createUpload(id: string, input: Dto<'UploadCreateRequest'>, signal?: AbortSignal) {
+    const session=await this.request<Dto<'UploadSessionResponse'>>('POST', `/projects/${encodeURIComponent(id)}/materials/uploads`, input, {[UPLOAD_TRANSPORT_HEADER]:DIRECT_UPLOAD_TRANSPORT}, signal);
+    if(session.upload_transport===DIRECT_UPLOAD_TRANSPORT)this.uploadTransports.set(session.upload_url,DIRECT_UPLOAD_TRANSPORT);
+    return session;
   }
-  completeUpload(id: string, uploadId: string, input: Dto<'UploadCompleteRequest'>, signal?: AbortSignal) {
-    return this.request<Dto<'MaterialResponse'>>('POST', `/projects/${encodeURIComponent(id)}/materials/uploads/${encodeURIComponent(uploadId)}/complete`, input, {}, AbortSignal.any([signal ?? this.controller.signal, AbortSignal.timeout(30_000)]));
+  async refreshUpload(id:string,uploadId:string,input:Dto<'UploadCompleteRequest'>,signal?:AbortSignal){
+    const session=await this.request<Dto<'UploadSessionResponse'>>('POST',`/projects/${encodeURIComponent(id)}/materials/uploads/${encodeURIComponent(uploadId)}/session`,input,{[UPLOAD_TRANSPORT_HEADER]:DIRECT_UPLOAD_TRANSPORT},signal);
+    if(session.upload_transport===DIRECT_UPLOAD_TRANSPORT)this.uploadTransports.set(session.upload_url,DIRECT_UPLOAD_TRANSPORT);
+    return session;
   }
-  uploadBytes(uploadUrl: string, file: File, onProgress: (loaded: number, total: number) => void, signal: AbortSignal) {
+  async completeUpload(id:string,uploadId:string,input:Dto<'UploadCompleteRequest'>,signal?:AbortSignal):Promise<Dto<'MaterialResponse'>>{
+    const lifetime=AbortSignal.any([signal??this.controller.signal,AbortSignal.timeout(UPLOAD_CONFIRMATION_TIMEOUT_MS)]);
+    const path=`/projects/${encodeURIComponent(id)}/materials/uploads/${encodeURIComponent(uploadId)}/complete`;
+    let failures=0;
+    for(;;){
+      lifetime.throwIfAborted();
+      let response:Response;
+      try{response=await this.response('POST',path,input,{'Prefer':'respond-async'},AbortSignal.any([lifetime,AbortSignal.timeout(25_000)]));failures=0;}
+      catch(error){
+        if(lifetime.aborted||error instanceof ApiError&&error.status<500&&error.status!==0||++failures>3)throw error;
+        await this.uploadConfirmationDelay(2,lifetime);continue;
+      }
+      if(response.headers.get('content-type')?.split(';')[0]!=='application/json')throw new ApiError(0,'DATA_UNAVAILABLE');
+      const result:unknown=await response.json();
+      if(response.status===200){
+        if(!Value.Check(uploadSchemas.MaterialResponse,result)||result.sha256!==input.sha256||result.byte_size!==input.byte_size)throw new ApiError(0,'DATA_UNAVAILABLE');
+        return result;
+      }
+      if(response.status!==202||!Value.Check(uploadSchemas.UploadConfirmationPending,result)||result.upload_id!==uploadId)throw new ApiError(0,'DATA_UNAVAILABLE');
+      const retry=Number(response.headers.get('retry-after'));
+      await this.uploadConfirmationDelay(Number.isFinite(retry)&&retry>0?Math.min(5,retry):2,lifetime);
+    }
+  }
+  private uploadConfirmationDelay(seconds:number,signal:AbortSignal){
+    return new Promise<void>((resolve,reject)=>{
+      const abort=()=>{clearTimeout(timer);signal.removeEventListener('abort',abort);reject(signal.reason);};
+      const timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve();},Math.max(.05,seconds)*1000);
+      signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
+    });
+  }
+  uploadBytes(uploadUrl: string, file: File, onProgress: (loaded: number, total: number) => void, signal: AbortSignal, transport?: UploadTransport) {
+    const direct=(transport??this.uploadTransports.get(uploadUrl))===DIRECT_UPLOAD_TRANSPORT;
     const target = new URL(uploadUrl, window.location.href);
     if (!['http:', 'https:'].includes(target.protocol)) return Promise.reject(new ApiError(0, 'DATA_UNAVAILABLE'));
     const sameOrigin = target.origin === window.location.origin;
+    if(target.username||target.password||target.hash||(!sameOrigin||direct)&&target.protocol!=='https:')return Promise.reject(new ApiError(0,'DATA_UNAVAILABLE'));
     const send = () => new Promise<XMLHttpRequest>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      let confirmationTimer: ReturnType<typeof setTimeout> | undefined;
-      // Bound the wait after transfer; a slow transfer itself keeps real progress.
-      xhr.upload.addEventListener('load', () => {
-        confirmationTimer = setTimeout(() => xhr.abort(), 120_000);
-      }, { once: true });
-      xhr.addEventListener('loadend', () => clearTimeout(confirmationTimer), { once: true });
       xhr.open('PUT', target.href);
-      xhr.withCredentials = sameOrigin;
+      // Browser upload.load does not prove a buffering proxy's upstream received
+      // the bytes. Bound the whole PUT, including its response, like complete.
+      xhr.timeout = UPLOAD_CONFIRMATION_TIMEOUT_MS;
+      xhr.withCredentials = sameOrigin && !direct;
       xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-      if (sameOrigin) {
+      if(direct){xhr.setRequestHeader('x-ms-blob-type','BlockBlob');xhr.setRequestHeader('If-None-Match','*');}
+      if (sameOrigin && !direct) {
         const csrf = document.cookie.split('; ').find(value => value.startsWith('bb_csrf='))?.slice('bb_csrf='.length);
         if (csrf) xhr.setRequestHeader('X-BB-CSRF', csrf);
       }
@@ -478,6 +523,7 @@ export class ApiClient {
       signal.addEventListener('abort', abort, { once: true });
       xhr.addEventListener('load', () => { signal.removeEventListener('abort', abort); resolve(xhr); }, { once: true });
       xhr.addEventListener('error', () => { signal.removeEventListener('abort', abort); reject(new ApiError(0, 'DATA_UNAVAILABLE')); }, { once: true });
+      xhr.addEventListener('timeout', () => { signal.removeEventListener('abort', abort); reject(new ApiError(0, 'DATA_UNAVAILABLE')); }, { once: true });
       xhr.addEventListener('abort', () => {
         signal.removeEventListener('abort', abort);
         reject(new DOMException('Upload aborted', 'AbortError'));
@@ -489,14 +535,16 @@ export class ApiClient {
       let refreshed = false;
       for (;;) {
         const xhr = await send();
-        if (xhr.status === 204) return;
-        if (xhr.status === 401 && sameOrigin && !refreshed && document.cookie.includes('bb_csrf=')) {
+        if (xhr.status === (direct ? 201 : 204)) { this.uploadTransports.delete(uploadUrl); return; }
+        if (xhr.status === 401 && sameOrigin && !direct && !refreshed && document.cookie.includes('bb_csrf=')) {
           refreshed = true;
           await this.request<void>('POST', '/auth/refresh', undefined, {}, signal);
           signal.throwIfAborted();
           onProgress(0, file.size); // The next progress events describe the fresh, real retry attempt.
           continue;
         }
+      // Blob XML/error bodies can include signing details; never feed them into diagnostics.
+      if(direct)throw new ApiError(xhr.status,'DATA_UNAVAILABLE');
       let problem: unknown;
       try { problem = JSON.parse(xhr.responseText); } catch { /* response may be empty */ }
       throw parseApiError(xhr.status, problem);

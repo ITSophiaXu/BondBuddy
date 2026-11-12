@@ -1,0 +1,27 @@
+{
+  "server": {
+    "directory": "C:/Users/lezhai/Downloads/Bondbuddy/prelaunch-desktop-20261104/.local/prelaunch-payment-pg",
+    "port": "55434",
+    "version": "PostgreSQL 16.14, compiled by Visual C++ build 1944, 64-bit"
+  },
+  "remaining_clones": [],
+  "other_connections": [],
+  "attempts": [
+    {
+      "observed_at": "2026-11-04T06:10:10.838Z",
+      "mode": "smart",
+      "exit_code": 0,
+      "stdout": "waiting for server to shut down.... done\r\nserver stopped",
+      "stderr": ""
+    }
+  ],
+  "final": {
+    "observed_at": "2026-11-04T06:10:10.838Z",
+    "status": {
+      "exit_code": 3,
+      "stdout": "pg_ctl: no server running",
+      "stderr": ""
+    },
+    "port_probe": "ECONNREFUSED"
+  }
+}

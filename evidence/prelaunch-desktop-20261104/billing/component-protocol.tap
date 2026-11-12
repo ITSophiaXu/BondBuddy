@@ -1,0 +1,394 @@
+TAP version 13
+# Subtest: official-SDK synthetic form callback credits once, acknowledges plain text after commit, and query repairs a failed commit
+ok 1 - official-SDK synthetic form callback credits once, acknowledges plain text after commit, and query repairs a failed commit
+  ---
+  duration_ms: 1029.1188
+  type: 'test'
+  ...
+# Subtest: Alipay refund integration preserves its hold without buyer cash evidence, then settles the original refund once after authenticated repair
+ok 2 - Alipay refund integration preserves its hold without buyer cash evidence, then settles the original refund once after authenticated repair
+  ---
+  duration_ms: 512.626
+  type: 'test'
+  ...
+# Subtest: explicit PC and WAP products create official SDK signed Web checkout with immutable amount and absolute expiry, no network or mandate
+ok 3 - explicit PC and WAP products create official SDK signed Web checkout with immutable amount and absolute expiry, no network or mandate
+  ---
+  duration_ms: 17.5008
+  type: 'test'
+  ...
+# Subtest: query posts SDK-signed form through bounded fetch and verifies the exact response bytes, not reserialized JSON
+ok 4 - query posts SDK-signed form through bounded fetch and verifies the exact response bytes, not reserialized JSON
+  ---
+  duration_ms: 20.9241
+  type: 'test'
+  ...
+# Subtest: signed callbacks decode form once, preserve percent/plus, accept delayed retries and reject forgery, duplicate fields, wrong product identities and currency
+ok 5 - signed callbacks decode form once, preserve percent/plus, accept delayed retries and reject forgery, duplicate fields, wrong product identities and currency
+  ---
+  duration_ms: 55.3102
+  type: 'test'
+  ...
+# Subtest: query validates original identity/currency/amount and keeps cash proof separate from nominal and seller transfer date
+ok 6 - query validates original identity/currency/amount and keeps cash proof separate from nominal and seller transfer date
+  ---
+  duration_ms: 91.0587
+  type: 'test'
+  ...
+# Subtest: only authenticated absent query after immutable expiry resolves missing order, and close follows original-order query across payment races
+ok 7 - only authenticated absent query after immutable expiry resolves missing order, and close follows original-order query across payment races
+  ---
+  duration_ms: 16.0424
+  type: 'test'
+  ...
+# Subtest: strict original response envelope rejects unsigned, tampered, duplicate-key and method-substitution responses without leaking details
+ok 8 - strict original response envelope rejects unsigned, tampered, duplicate-key and method-substitution responses without leaking details
+  ---
+  duration_ms: 30.4315
+  type: 'test'
+  ...
+# Subtest: fetch fails closed on redirects, HTTP errors, oversized streams and timeouts including response bodies
+ok 9 - fetch fails closed on redirects, HTTP errors, oversized streams and timeouts including response bodies
+  ---
+  duration_ms: 78.8814
+  type: 'test'
+  ...
+# Subtest: cash refund validates independent buyer fields, queries original request and never treats cumulative refund_fee as this refund
+ok 10 - cash refund validates independent buyer fields, queries original request and never treats cumulative refund_fee as this refund
+  ---
+  duration_ms: 41.3643
+  type: 'test'
+  ...
+# Subtest: refund refuses missing/discounted original cash before dispatch and leaves missing or mismatched per-request cash unresolved
+ok 11 - refund refuses missing/discounted original cash before dispatch and leaves missing or mismatched per-request cash unresolved
+  ---
+  duration_ms: 89.6076
+  type: 'test'
+  ...
+# Subtest: refund query requests and preserves authenticated completion time without fabricating missing or invalid dates
+ok 12 - refund query requests and preserves authenticated completion time without fabricating missing or invalid dates
+  ---
+  duration_ms: 99.817
+  type: 'test'
+  ...
+# Subtest: refund recovery retries only the same signed original request when the channel has not yet recorded it
+ok 13 - refund recovery retries only the same signed original request when the channel has not yet recorded it
+  ---
+  duration_ms: 28.6366
+  type: 'test'
+  ...
+# Subtest: configuration and minor-unit conversion reject weak keys, unsupported products, guessed callback endpoints and unsafe money
+ok 14 - configuration and minor-unit conversion reject weak keys, unsupported products, guessed callback endpoints and unsafe money
+  ---
+  duration_ms: 11.0636
+  type: 'test'
+  ...
+# Subtest: exact account read supports balances above MAX_SAFE while legacy narrowing fails explicitly
+ok 15 - exact account read supports balances above MAX_SAFE while legacy narrowing fails explicitly
+  ---
+  duration_ms: 2.6915
+  type: 'test'
+  ...
+# Subtest: int64 lot with large original and frozen values allocates the exact small difference
+ok 16 - int64 lot with large original and frozen values allocates the exact small difference
+  ---
+  duration_ms: 0.6311
+  type: 'test'
+  ...
+# Subtest: multiple source slices preserve query order and never reallocate existing holds
+ok 17 - multiple source slices preserve query order and never reallocate existing holds
+  ---
+  duration_ms: 0.4621
+  type: 'test'
+  ...
+# Subtest: usage aggregates preserve MAX_SAFE+1 and distinguish unknown counts from measured zero
+ok 18 - usage aggregates preserve MAX_SAFE+1 and distinguish unknown counts from measured zero
+  ---
+  duration_ms: 0.4048
+  type: 'test'
+  ...
+# Subtest: trial usage and platform ledger keep exact cumulative and per-attempt token strings
+ok 19 - trial usage and platform ledger keep exact cumulative and per-attempt token strings
+  ---
+  duration_ms: 35.2552
+  type: 'test'
+  ...
+# Subtest: default HTTP balance preserves MAX_SAFE+1 and zero/holds as strings through the response schema
+ok 20 - default HTTP balance preserves MAX_SAFE+1 and zero/holds as strings through the response schema
+  ---
+  duration_ms: 498.1957
+  type: 'test'
+  ...
+# Subtest: raw JSON number/fraction/negative/overflow are rejected before AJV coercion or financial handler
+ok 21 - raw JSON number/fraction/negative/overflow are rejected before AJV coercion or financial handler
+  ---
+  duration_ms: 42.2342
+  type: 'test'
+  ...
+# Subtest: numeric-v1 only replays persisted owner/resource/request and original handler still rejects changed amount
+ok 22 - numeric-v1 only replays persisted owner/resource/request and original handler still rejects changed amount
+  ---
+  duration_ms: 24.9639
+  type: 'test'
+  ...
+# Subtest: legacy responses preserve the original response schema field filtering
+ok 23 - legacy responses preserve the original response schema field filtering
+  ---
+  duration_ms: 25.1109
+  type: 'test'
+  ...
+# Subtest: callback bodies are excluded from billing transforms and unauthenticated replay does not open the DB
+ok 24 - callback bodies are excluded from billing transforms and unauthenticated replay does not open the DB
+  ---
+  duration_ms: 22.6069
+  type: 'test'
+  ...
+# Subtest: OpenAPI distinguishes modern wire components from original domain schemas
+ok 25 - OpenAPI distinguishes modern wire components from original domain schemas
+  ---
+  duration_ms: 40.853
+  type: 'test'
+  ...
+# Subtest: factory disables absent/disabled config without reading files; invalid config exposes no payable channel or secrets
+ok 26 - factory disables absent/disabled config without reading files; invalid config exposes no payable channel or secrets
+  ---
+  duration_ms: 4.3502
+  type: 'test'
+  ...
+# Subtest: factory permits injected absolute secret files and an explicit platform rotation pin file
+ok 27 - factory permits injected absolute secret files and an explicit platform rotation pin file
+  ---
+  duration_ms: 1.8157
+  type: 'test'
+  ...
+# Subtest: factory reads bounded regular files; on POSIX rejects loose permissions and symlinks
+ok 28 - factory reads bounded regular files; on POSIX rejects loose permissions and symlinks
+  ---
+  duration_ms: 22.273
+  type: 'test'
+  ...
+# Subtest: Alipay is independently disabled, requires an explicit contracted Web product and never exposes a mandate
+ok 29 - Alipay is independently disabled, requires an explicit contracted Web product and never exposes a mandate
+  ---
+  duration_ms: 185.4199
+  type: 'test'
+  ...
+# Subtest: Alipay statements default off, require explicit merchant enablement and reject malformed switches before reading secrets
+ok 30 - Alipay statements default off, require explicit merchant enablement and reject malformed switches before reading secrets
+  ---
+  duration_ms: 135.7844
+  type: 'test'
+  ...
+# Subtest: original consideration excludes consumed cash and rounds cumulative partial refunds exactly
+ok 31 - original consideration excludes consumed cash and rounds cumulative partial refunds exactly
+  ---
+  duration_ms: 2.1514
+  type: 'test'
+  ...
+# Subtest: integer arithmetic does not lose precision and rejects invalid cumulative cursors
+ok 32 - integer arithmetic does not lose precision and rejects invalid cumulative cursors
+  ---
+  duration_ms: 0.8061
+  type: 'test'
+  ...
+# Subtest: synthetic WeChat RSA/AES notifications reject locked-order mismatch; duplicates credit the original ledger once
+ok 33 - synthetic WeChat RSA/AES notifications reject locked-order mismatch; duplicates credit the original ledger once
+  ---
+  duration_ms: 2461.0072
+  type: 'test'
+  ...
+# Subtest: synthetic Native mock HTTP: signs exact request bytes and verifies signed create/query responses
+ok 34 - synthetic Native mock HTTP: signs exact request bytes and verifies signed create/query responses
+  ---
+  duration_ms: 82.0882
+  type: 'test'
+  ...
+# Subtest: valid signed AES-GCM callback is deterministic on repeat and performs no network lookup
+ok 35 - valid signed AES-GCM callback is deterministic on repeat and performs no network lookup
+  ---
+  duration_ms: 3.1815
+  type: 'test'
+  ...
+# Subtest: rejects forged, stale, future, unknown-serial, duplicate-header and altered callbacks
+ok 36 - rejects forged, stale, future, unknown-serial, duplicate-header and altered callbacks
+  ---
+  duration_ms: 9.8064
+  type: 'test'
+  ...
+# Subtest: rejects signed but invalid AEAD event/resource and receipts, including merchant/app/currency
+ok 37 - rejects signed but invalid AEAD event/resource and receipts, including merchant/app/currency
+  ---
+  duration_ms: 26.851
+  type: 'test'
+  ...
+# Subtest: authenticated queries match locked order/amount/currency and preserve pending/terminal states
+ok 38 - authenticated queries match locked order/amount/currency and preserve pending/terminal states
+  ---
+  duration_ms: 30.701
+  type: 'test'
+  ...
+# Subtest: rejects HTTP errors, unsigned/tampered responses, unsafe checkout, excess bodies and timeouts
+ok 39 - rejects HTTP errors, unsigned/tampered responses, unsafe checkout, excess bodies and timeouts
+  ---
+  duration_ms: 91.9551
+  type: 'test'
+  ...
+# Subtest: only signed ORDER_NOT_EXIST after the immutable Native deadline resolves an absent payment
+ok 40 - only signed ORDER_NOT_EXIST after the immutable Native deadline resolves an absent payment
+  ---
+  duration_ms: 17.2007
+  type: 'test'
+  ...
+# Subtest: configuration fails closed and supports pinned certificate validity/serial and controlled rotation
+ok 41 - configuration fails closed and supports pinned certificate validity/serial and controlled rotation
+  ---
+  duration_ms: 19.1177
+  type: 'test'
+  ...
+# Subtest: synthetic refund mock HTTP signs original transaction, exact nominal total and same out_refund_no for query
+ok 42 - synthetic refund mock HTTP signs original transaction, exact nominal total and same out_refund_no for query
+  ---
+  duration_ms: 74.5709
+  type: 'test'
+  ...
+# Subtest: same-request recovery preserves the original refund payload after either pre-send crash or lost response
+ok 43 - same-request recovery preserves the original refund payload after either pre-send crash or lost response
+  ---
+  duration_ms: 17.0937
+  type: 'test'
+  ...
+# Subtest: refund recovery retains authenticated matching response requirements and never turns a missing order into failure
+ok 44 - refund recovery retains authenticated matching response requirements and never turns a missing order into failure
+  ---
+  duration_ms: 66.5232
+  type: 'test'
+  ...
+# Subtest: refund status mapping retains ABNORMAL as unresolved and only CLOSED is explicit failure
+ok 45 - refund status mapping retains ABNORMAL as unresolved and only CLOSED is explicit failure
+  ---
+  duration_ms: 15.1561
+  type: 'test'
+  ...
+# Subtest: authenticated API application and success times normalize separately across offsets and bill days
+ok 46 - authenticated API application and success times normalize separately across offsets and bill days
+  ---
+  duration_ms: 30.1608
+  type: 'test'
+  ...
+# Subtest: API refund dates reject missing acceptance, impossible calendars, unknown offsets and conflicting chronology
+ok 47 - API refund dates reject missing acceptance, impossible calendars, unknown offsets and conflicting chronology
+  ---
+  duration_ms: 193.691
+  type: 'test'
+  ...
+# Subtest: callback refund dates use only decrypted success_time and never notification or undocumented application time
+ok 48 - callback refund dates use only decrypted success_time and never notification or undocumented application time
+  ---
+  duration_ms: 16.6245
+  type: 'test'
+  ...
+# Subtest: RSA/AES refund callbacks validate event/status, merchant, channel identities and payer cash fields
+ok 49 - RSA/AES refund callbacks validate event/status, merchant, channel identities and payer cash fields
+  ---
+  duration_ms: 46.7422
+  type: 'test'
+  ...
+# Subtest: cash proof is independent from valid nominal payment; missing evidence is unknown and discounts still pay
+ok 50 - cash proof is independent from valid nominal payment; missing evidence is unknown and discounts still pay
+  ---
+  duration_ms: 12.4633
+  type: 'test'
+  ...
+# Subtest: refund capability defaults off; explicit verified configuration enables it; unknown transport results throw
+ok 51 - refund capability defaults off; explicit verified configuration enables it; unknown transport results throw
+  ---
+  duration_ms: 43.7885
+  type: 'test'
+  ...
+# Subtest: disabled default and explicit merchant configuration pass without credentials
+ok 52 - disabled default and explicit merchant configuration pass without credentials
+  ---
+  duration_ms: 4.5369
+  type: 'test'
+  ...
+# Subtest: a worker missing the billing switch cannot pass the release check
+ok 53 - a worker missing the billing switch cannot pass the release check
+  ---
+  duration_ms: 0.4138
+  type: 'test'
+  ...
+# Subtest: HTTPS_PROXY alone is insufficient for Node fetch
+ok 54 - HTTPS_PROXY alone is insufficient for Node fetch
+  ---
+  duration_ms: 0.2521
+  type: 'test'
+  ...
+# Subtest: production case mismatch and merchant proxy bypass fail
+ok 55 - production case mismatch and merchant proxy bypass fail
+  ---
+  duration_ms: 0.4114
+  type: 'test'
+  ...
+# Subtest: merchant enabled without its exact allowed hostname fails
+ok 56 - merchant enabled without its exact allowed hostname fails
+  ---
+  duration_ms: 0.3645
+  type: 'test'
+  ...
+# Subtest: wildcard, suffix and URL allow-list entries fail
+ok 57 - wildcard, suffix and URL allow-list entries fail
+  ---
+  duration_ms: 0.5278
+  type: 'test'
+  ...
+# Subtest: API cannot acquire an internet network or lose its egress dependency
+ok 58 - API cannot acquire an internet network or lose its egress dependency
+  ---
+  duration_ms: 0.2343
+  type: 'test'
+  ...
+# Subtest: checker output contains no other resolved configuration values
+ok 59 - checker output contains no other resolved configuration values
+  ---
+  duration_ms: 0.4577
+  type: 'test'
+  ...
+# Subtest: malformed Compose JSON produces a redacted CLI failure
+ok 60 - malformed Compose JSON produces a redacted CLI failure
+  ---
+  duration_ms: 186.5162
+  type: 'test'
+  ...
+# Subtest: statement enablement requires the merchant channel and an explicit supported account list
+ok 61 - statement enablement requires the merchant channel and an explicit supported account list
+  ---
+  duration_ms: 0.6121
+  type: 'test'
+  ...
+# Subtest: Alipay deployment needs its exact gateway, one explicit Web product and an enabled parent for refunds
+ok 62 - Alipay deployment needs its exact gateway, one explicit Web product and an enabled parent for refunds
+  ---
+  duration_ms: 1.3579
+  type: 'test'
+  ...
+# Subtest: Alipay daily statements remain off by default and cannot bypass a disabled merchant or invalid switch
+ok 63 - Alipay daily statements remain off by default and cannot bypass a disabled merchant or invalid switch
+  ---
+  duration_ms: 0.3565
+  type: 'test'
+  ...
+# Subtest: Alipay statement downloads require the exact official host through the enforced proxy
+ok 64 - Alipay statement downloads require the exact official host through the enforced proxy
+  ---
+  duration_ms: 0.5296
+  type: 'test'
+  ...
+1..64
+# tests 64
+# suites 0
+# pass 64
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 32790.1007

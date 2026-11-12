@@ -1,0 +1,15 @@
+✔ default UTC trend contains all 14 calendar days including idle dates, while summary remains unrestricted (207.2968ms)
+✔ historical to anchors the default 14-day trend without discarding older summary tasks (190.3776ms)
+✔ 90, 91 and 120-day filters keep complete summaries and paginated details with a schema-valid last-90-day trend (379.4296ms)
+✔ UTC midnight grouping and credit dates remain unchanged in an Asia/Shanghai PostgreSQL session (206.9487ms)
+✔ owner and state filters count runs/users once and do not multiply usage or settlement rows (316.9054ms)
+✔ an empty window contains idle calendar days without inventing measured zero costs (164.7356ms)
+✔ a measured but unpriced attempt stays null beside an idle day (207.5395ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7937.5751

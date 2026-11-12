@@ -40,6 +40,7 @@ services:
       NODE_OPTIONS: --max-old-space-size=768
       BB_WORKER_LEASE_SECONDS: ${BB_WORKER_LEASE_SECONDS:-120}
       BB_WORKER_CONCURRENCY: '1'
+      BB_UPLOAD_CONFIRMATION_ENABLED: '0'
     depends_on: !override
       pg-tunnel: {condition: service_healthy}
       egress: {condition: service_started}
@@ -51,6 +52,7 @@ services:
       NODE_OPTIONS: --max-old-space-size=768
       BB_WORKER_LEASE_SECONDS: ${BB_WORKER_LEASE_SECONDS:-120}
       BB_WORKER_CONCURRENCY: '1'
+      BB_UPLOAD_CONFIRMATION_ENABLED: '0'
     depends_on: !override
       pg-tunnel: {condition: service_healthy}
       egress: {condition: service_started}
@@ -63,6 +65,7 @@ services:
       NODE_OPTIONS: --max-old-space-size=320
       BB_WORKER_LEASE_SECONDS: ${BB_WORKER_LEASE_SECONDS:-120}
       BB_WORKER_CONCURRENCY: '1'
+      BB_UPLOAD_CONFIRMATION_ENABLED: '0'
     depends_on: !override
       pg-tunnel: {condition: service_healthy}
       egress: {condition: service_started}

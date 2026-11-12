@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Bug 提报、修复关联与每日统计规范
+    url: https://github.com/ITSophiaXu/BondBuddy/blob/develop/docs/BUG-REPORTING.md
+    about: 查看分类、修复状态、PR 关联方式和北京时间统计口径；需求和普通任务使用空白 Issue。

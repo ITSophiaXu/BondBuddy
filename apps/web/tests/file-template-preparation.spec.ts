@@ -15,7 +15,7 @@ async function setup(page:Page,automatic=false,configure?:(state:any)=>void,buil
   const req=route.request(),url=new URL(req.url()),path=url.pathname,body=req.method()==='GET'?undefined:req.headers()['content-type']==='application/octet-stream'?undefined:fixtureRequest(req);
   const reply=(body:unknown)=>route.fulfill({json:fixtureBody(route,body)});
   if(req.method()==='GET'&&path.endsWith('/file-generation'))return reply(state.data);
-  if(path.endsWith('/preparation')){state.data.revision++;state.data.preparation=body.preparation;return reply({revision:state.data.revision,preparation:state.data.preparation});}
+  if(path.endsWith('/preparation')){if(state.data.revision===body.expected_revision+1&&JSON.stringify(state.data.preparation)===JSON.stringify(body.preparation))return reply({revision:state.data.revision,preparation:state.data.preparation});if(state.data.revision!==body.expected_revision)return route.fulfill({status:409,json:{code:'INPUT_REVISION_CONFLICT'}});state.data.revision++;state.data.preparation=structuredClone(body.preparation);return reply({revision:state.data.revision,preparation:state.data.preparation});}
   if(path.endsWith('/builtin')){if(builtinHandler)return builtinHandler(route);if(body.part!=='catalogue'&&!state.data.sets.length)state.data.sets.push(set);return reply({...(body.part!=='catalogue'?{set}:{}),...(body.part!=='templates'?{catalogue:state.catalogue}:{})});}
   if(path.endsWith('/matches')){const chosen=state.data.sets.find(s=>s.set_id===url.searchParams.get('set_id'))??set;return reply({matches:state.matches??state.catalogue.entries.map(e=>{const record=chosen.records.find(r=>r.document_type==='workpaper'&&r.code===e.code);return {item_id:e.id,status:record?'suggested':'missing',reason:record?'same code':'no candidate',candidates:record?[{set_id:chosen.set_id,record_id:record.record_id,sha256:sha}]:[]};})});}
   if(path.endsWith('/system-templates'))return reply({templates:[{family:'综合核查记录',preview:{title:'合成核查记录',blocks:[{kind:'paragraph',text:'项目名称：【本项信息】',bold:false,align:'left'}]}}]});
@@ -45,6 +45,7 @@ test('independent catalogue/template cards, safe preview and mixed confirmation 
  await expect(page.locator('.fg-match-summary')).toContainText('已匹配 2 / 2 项');expect(Object.keys(state.data.preparation.mappings)).toHaveLength(2);
  await page.locator('#fg-more-types').click();await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  await page.locator('[data-fg-general="annual"]').selectOption('builtin-set|annual');
+ await expect(page.locator('#fg-requirements')).toBeHidden();await page.getByText('补充资料与编制要求（选填）',{exact:true}).click();
  await page.locator('#fg-requirements').fill('合成验收要求，保留原 Word 格式');await page.getByRole('button',{name:'保存准备清单'}).click();
  await page.getByRole('button',{name:'核对清单与费用'}).click();await expect(page.getByRole('dialog')).toContainText('3 份文件 · 13,500 积分');
  await expect(page.locator('[data-flow-step="3"]')).toHaveAttribute('aria-current','step');
@@ -58,16 +59,34 @@ for(const width of [1440,390])test(`current dual-card prototype reference ${widt
  await expect(page.getByRole('heading',{name:'生成文件',exact:true})).toBeVisible();
  const evidence=resolve('test-evidence/file-template-preparation');await mkdir(evidence,{recursive:true});await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();window.scrollTo({top:0,left:0,behavior:'instant'});});await page.screenshot({path:resolve(evidence,`prototype-${width}.png`),fullPage:true});
 });
-for(const received of [false,true])test(`support upload interruption resumes once, bytes received=${received}`,async({page})=>{
- const state=await setup(page);let fail=true;
- await page.route('**/materials/uploads/*/bytes',async route=>{if(fail){fail=false;if(received){state.transport.sessions.get(new URL(route.request().url()).pathname.split('/').at(-2)!)!.received=true;state.transport.puts++;}return route.abort('failed');}return route.fallback();});
- await page.route('**/materials/uploads/*/complete',async route=>state.transport.sessions.get(new URL(route.request().url()).pathname.split('/').at(-2)!)?.received?route.fallback():route.fulfill({status:422,json:{code:'MATERIAL_UNREADABLE',message:'Upload bytes not received'}}));
- await page.locator('#fg-support').setInputFiles(file);await expect(page.getByRole('button',{name:'继续保存',exact:true})).toBeEnabled();
- await page.reload();await page.getByRole('button',{name:'继续保存',exact:true}).click();
- if(!received){await expect(page.locator('.fg-status')).toContainText('相同内容');await page.locator('#fg-controls > section:last-child .fg-notice input[type=file]').setInputFiles(file);}
- await expect(page.locator('#fg-controls'),await page.locator('.fg-status').innerText()).toContainText('已采用 1 份补充资料');await expect(page.getByRole('button',{name:'继续保存',exact:true})).toHaveCount(0);
+test('support recovery only asks for original bytes after retry and keeps the original operation',async({page})=>{
+ const state=await setup(page);
+ const original=await page.evaluate(async({owner,project,name,mime,bytes})=>{
+  const {UploadRecovery}=await import(String('/src/upload-recovery.ts')),{ApiClient}=await import(String('/src/api.ts'));
+  const data=new Uint8Array(bytes),digest=await crypto.subtle.digest('SHA-256',data);
+  const sha256=[...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,'0')).join('');
+  return new UploadRecovery(new ApiClient(),owner,project,'file-generation-support').begin({filename:name,media_type:mime,byte_size:bytes.length,sha256,role:'other'}).id;
+ },{owner:ids.owner,project:ids.api,name:file.name,mime:file.mimeType,bytes:[...file.buffer]});
+ await page.reload();
+ const reselect=page.locator('#fg-controls > section:last-child .fg-notice input[type=file]');
+ await expect(reselect).toBeHidden();await page.getByRole('button',{name:'继续保存',exact:true}).click();
+ await expect(reselect).toBeVisible();await expect(page.locator('.fg-status')).toContainText('相同内容');
+ const changed=Buffer.from(file.buffer);changed[0]^=1;await reselect.setInputFiles({...file,buffer:changed});
+ await expect(page.locator('.fg-status')).toContainText('冲突');expect(state.transport.sessions.size).toBe(0);
+ const records=await page.evaluate(()=>Object.values(localStorage).filter(s=>s.includes('file-generation-support')).flatMap(s=>{try{return [JSON.parse(s)];}catch{return [];}}));
+ expect(records.some(r=>r.id===original)).toBe(true);
+ await reselect.setInputFiles(file);
+ await expect(page.locator('#fg-controls')).toContainText('已采用 1 份补充资料');await expect(page.getByRole('button',{name:'继续保存',exact:true})).toHaveCount(0);
  expect(state.transport.puts).toBe(1);expect(state.data.preparation.materials).toHaveLength(1);expect(state.submissions).toHaveLength(0);
 });
+test('support automatically confirms a lost PUT acknowledgement without sending bytes twice',async({page})=>{
+ const state=await setup(page);let fail=true;
+ await page.route('**/materials/uploads/*/bytes',async route=>{if(fail){fail=false;state.transport.sessions.get(new URL(route.request().url()).pathname.split('/').at(-2)!)!.received=true;state.transport.puts++;return route.abort('failed');}return route.fallback();});
+ await page.locator('#fg-support').setInputFiles(file);
+ await expect(page.locator('#fg-controls')).toContainText('已采用 1 份补充资料');
+ expect(state.transport.puts).toBe(1);expect(state.data.preparation.materials).toHaveLength(1);expect(state.submissions).toHaveLength(0);
+});
+
 test('custom templates have independent selections, upload actual bytes and survive mode changes and refresh',async({page})=>{
  const state=await setup(page);await expect(page.locator('#fg-preview-set')).toBeEnabled();await useWord(page,'custom');
  await expect(page.locator('#fg-template-upload')).toBeEnabled();
@@ -111,7 +130,7 @@ test('template timeout keeps the selected system mode and allows retry',async({p
 
 test('directory loading failure and cancellation leave upload and retry available',async({page})=>{
  let calls=0;await setup(page,false,undefined,async route=>{calls++;if(calls===1)return route.fulfill({status:503,json:{code:'DATA_UNAVAILABLE'}});if(calls===2)return;return route.fulfill({json:fixtureBody(route,{catalogue})});});
- await expect(page.locator('#fg-load-builtin')).toBeEnabled();await page.locator('#fg-load-builtin').click();await expect(page.locator('#fg-cancel-builtin')).toBeVisible();await page.locator('#fg-cancel-builtin').click();
+ await expect(page.locator('#fg-load-builtin')).toBeEnabled();await page.locator('#fg-load-builtin').click();await expect(page.locator('#fg-cancel-builtin')).toBeVisible();await expect.poll(()=>calls).toBe(2);await page.locator('#fg-cancel-builtin').click();
  await expect(page.locator('#fg-catalogue-upload')).toBeEnabled();await page.locator('#fg-load-builtin').click();await expect(page.locator('#fg-preview-catalogue')).toBeEnabled();expect(calls).toBe(3);
 });
 
@@ -144,13 +163,13 @@ test('mixed package funding return replays the exact original request without a 
  await expect(page.locator('.fg-match-summary')).toContainText('已匹配 2 / 2 项');
  await page.locator('#fg-more-types').click();await page.locator('[data-fg-type="annual"]').check();await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  await page.getByRole('button',{name:'生成本批文件',exact:true}).click();
- const link=page.locator('#billing-task-notice').getByRole('link',{name:'订阅或充值，继续原任务',exact:true});await expect(link).toBeVisible();
+ const link=page.locator('#billing-task-notice').getByRole('link',{name:'查看积分与支付状态',exact:true});await expect(link).toBeVisible();
  expect(requests).toHaveLength(1);expect(state.submissions).toHaveLength(0);
  const resumeId=new URLSearchParams((await link.getAttribute('href'))!.split('?')[1]).get('resume_request')!;
  const saved=await page.evaluate(async({owner,id})=>{const recovery=await import('/src/'+'billing-task-recovery.ts');return {task:await recovery.readBillingTask(owner,id),returnTo:await recovery.billingTaskReturnTo(owner,id)};},{owner:ids.owner,id:resumeId});
  expect(saved.task).toMatchObject({version:2,state:'needs_funds',requiredPoints:'14881',body:JSON.parse(requests[0])});
  expect(saved.returnTo).toBeTruthy();await page.goto('/'+saved.returnTo);
- await expect.poll(()=>requests.length).toBe(2);expect(requests[1]).toBe(requests[0]);expect(state.submissions).toHaveLength(1);
+ await expect.poll(()=>requests.length).toBe(2);await expect.poll(()=>state.submissions.length).toBe(1);expect(requests[1]).toBe(requests[0]);expect(state.submissions).toHaveLength(1);
  await expect(page.locator('.fg-history')).toContainText('其他文件 0/1');
  await page.reload();await expect(page.locator('.fg-history')).toContainText('其他文件 0/1');
  expect(requests).toHaveLength(2);expect(state.submissions).toHaveLength(1);expect(payments).toEqual([]);
@@ -182,7 +201,7 @@ test('unresolved templates stay visible and stop quotes until the user chooses a
  await page.locator('[data-fg-mapping="entry-2"]').selectOption('word-2');
  await expect(page.locator('.fg-match-summary')).toContainText('已匹配 2 / 2 项');
  await page.getByRole('button',{name:'核对清单与费用',exact:true}).click();
- await page.getByRole('button',{name:'确认生成 2 份文件'}).click();expect(state.quotes).toBe(1);expect(state.submissions).toHaveLength(1);
+ await page.getByRole('button',{name:'确认生成 2 份文件'}).click();await expect.poll(()=>state.submissions.length).toBe(1);expect(state.quotes).toBe(1);expect(state.submissions).toHaveLength(1);
 });
 
 test('reselecting the same package keeps manual choices and the selected scope',async({page})=>{
@@ -217,7 +236,7 @@ test('a failed preparation save cannot submit the locally auto-matched selection
  const state=await setup(page);let failing=true;
  await page.route('**/file-generation/preparation',route=>failing?route.fulfill({status:503,json:{code:'DATA_UNAVAILABLE',retryable:true}}):route.fallback());
  await useWord(page);await expect(page.locator('.fg-status')).toContainText('结果尚未确认');
- await page.locator('#fg-confirm').click();expect(state.quotes).toBe(0);expect(state.submissions).toHaveLength(0);
+ await page.locator('#fg-confirm').click();await expect(page.locator('#fg-save-retry')).toBeVisible();await expect(page.locator('#fg-save-retry')).toBeEnabled();expect(state.quotes).toBe(0);expect(state.submissions).toHaveLength(0);
  failing=false;await page.locator('#fg-confirm').click();await expect(page.getByRole('dialog')).toContainText('2 份文件');expect(Object.keys(state.data.preparation.mappings)).toHaveLength(2);
 });
 

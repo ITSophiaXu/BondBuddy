@@ -2,9 +2,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
+import { finished } from 'node:stream/promises';
+import { BLOB_RANGE_MIN_BYTES, BlobRangeReadError, readBlobRangesToFile } from './blob-range-reader.js';
 import { Pool, type PoolClient } from 'pg';
-import { BlobServiceClient, type BlobItem } from '@azure/storage-blob';
-import { PROSPECTUS_DOCX_ONLY_FIELD_ERROR, isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
+import { BlobServiceClient, BlobSASPermissions, SASProtocol, type BlobItem } from '@azure/storage-blob';
+import { UPLOAD_BYTES_PENDING_FIELD_ERROR, PROSPECTUS_DOCX_ONLY_FIELD_ERROR, isMarketOffering, emptyUpdateDetails, isUploadInspectionPublicReason, TRIAL_LIMIT_KINDS, TRIAL_LIMIT_ERROR_FIELD, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_FIELD_ERROR, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type TrialLimitKind, type Market, type Offering, type M4InputIssue } from '@bondbuddy/contracts';
 import { inspectMaterialUpload, inspectMaterialUploadFile, inspectMaterialUploadFileDetailed } from './original-material-upload.js';
 import { UploadSafetyError, type UploadInspectionResult, type UploadRejectionReason, type UploadStructureDetail } from './upload-safety.js';
 
@@ -39,6 +41,7 @@ export class Problem extends Error {
   prospectusSelectionRequired?: boolean;
   sourceProspectusRequired?: boolean;
   prospectusDocxOnly?: boolean;
+  uploadBytesPending?: boolean;
   constructor(public status: number, public code: string, message: string, public readonly uploadReason?: UploadRejectionReason, public readonly uploadDetail?: UploadStructureDetail) { super(message); }
 }
 export function publicProblem(error: Problem, correlationId: string) {
@@ -48,9 +51,11 @@ export function publicProblem(error: Problem, correlationId: string) {
     : undefined;
   return {
     code: error.code, message: inspection ? 'Material inspection was not completed' : error.message,
-    retryable: error.status === 503 || inspection === 'inspection_queue_timeout' ||
+    retryable: error.status === 503 || error.uploadBytesPending === true || inspection === 'inspection_queue_timeout' ||
       inspection === 'inspection_timeout' || inspection === 'inspection_worker_failed',
     field_errors: inspection ? [{ field: 'material_upload', code: inspection, message: 'File inspection was not completed' }]
+      : error.status === 422 && error.code === 'MATERIAL_UNREADABLE' && error.uploadBytesPending
+        ? [UPLOAD_BYTES_PENDING_FIELD_ERROR]
       : error.code === 'TRIAL_QUOTA_EXCEEDED' && error.trialLimit && TRIAL_LIMIT_KINDS.includes(error.trialLimit)
         ? [{ field: TRIAL_LIMIT_ERROR_FIELD, code: error.trialLimit, message: 'Current processing limit reached' }]
         : error.code === 'INPUT_REVISION_CONFLICT' && error.prospectusSelectionRequired
@@ -138,11 +143,15 @@ export async function material(pool: Pool | PoolClient, owner: string, projectId
   return result.rows[0];
 }
 export interface PrivateBlobs {
+  /** HTTPS, one immutable object, create-only, short-lived; never persist/log the returned URL. */
+  createUploadUrl?(key: string, expiresAt: Date): Promise<string>;
   put(key: string, bytes: Buffer, mediaType: string): Promise<void>;
   get(key: string): Promise<Buffer>;
   getIfExists(key: string): Promise<Buffer | null>;
   getIfExistsBounded(key: string, maxBytes: number): Promise<Buffer | null>;
   exists(key: string): Promise<boolean>;
+  /** Authoritative identity of the current stored object; never a content digest. */
+  headVersion?(key: string): Promise<{ etag: string; byteSize: number } | null>;
   delete(key: string): Promise<void>;
   deleteIfMatch?(key: string, etag: string): Promise<boolean>;
   /** One bounded listing page; continuation is opaque and must never be logged. */
@@ -150,11 +159,11 @@ export interface PrivateBlobs {
   /** Streaming variants for large objects (Azure/Azurite). In-memory test doubles may omit them. */
   putFile?(key: string, path: string, mediaType: string): Promise<void>;
   /** Streams the object, hashing it and (with `path`) writing it to a file; null when absent. */
-  readToFile?(key: string, path: string | null, maxBytes: number): Promise<BlobDigest | null>;
+  readToFile?(key: string, path: string | null, maxBytes: number, options?: { useRanges?: boolean }): Promise<BlobDigest | null>;
   /** Opens the object as a stream (with its stored length); null when absent. */
   openRead?(key: string, signal?: AbortSignal): Promise<{ body: Readable; contentLength: number | undefined } | null>;
 }
-export type BlobDigest = { byteSize: number; sha256: string };
+export type BlobDigest = { byteSize: number; sha256: string; etag?: string };
 const BLOB_BLOCK_BYTES = 4 * 1024 * 1024;
 const notFound = (error: unknown) => Boolean(error && typeof error === 'object' && ('statusCode' in error && error.statusCode === 404 || 'code' in error && error.code === 'BlobNotFound'));
 async function hashStream(body: Readable, path: string | null, maxBytes: number, expected?: number): Promise<BlobDigest> {
@@ -205,6 +214,16 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
     return Buffer.concat(chunks);
   };
   return {
+    async createUploadUrl(key, expiresAt) {
+      const blob = container.getBlockBlobClient(key);
+      if (new URL(blob.url).protocol !== 'https:' || expiresAt.getTime() <= Date.now() || expiresAt.getTime() > Date.now() + 15 * 60_000)
+        throw new Problem(503,'DATA_UNAVAILABLE','Direct upload signing is unavailable');
+      try {
+        await ensure();
+        return await blob.generateSasUrl({ permissions: BlobSASPermissions.parse('c'), protocol: SASProtocol.Https,
+          startsOn: new Date(Date.now() - 60_000), expiresOn: expiresAt });
+      } catch { throw new Problem(503,'DATA_UNAVAILABLE','Direct upload signing is unavailable'); }
+    },
     async put(key, bytes, mediaType) { await ensure(); await container.getBlockBlobClient(key).uploadData(bytes,{ blobHTTPHeaders: { blobContentType: mediaType } }); },
     async get(key) { await ensure(); return read(key); },
     async getIfExists(key) {
@@ -247,6 +266,14 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
         throw error;
       }
     },
+    async headVersion(key) {
+      await ensure();
+      try {
+        const response = await container.getBlockBlobClient(key).getProperties();
+        if (!response.etag || !Number.isSafeInteger(response.contentLength)) throw new Problem(503,'DATA_UNAVAILABLE','Stored object version is unavailable');
+        return { etag: response.etag, byteSize: response.contentLength! };
+      } catch (error) { if (notFound(error)) return null; throw error; }
+    },
     async delete(key) { await ensure(); await container.getBlockBlobClient(key).deleteIfExists(); },
     async deleteIfMatch(key, etag) { return (await container.getBlockBlobClient(key).deleteIfExists({ conditions: { ifMatch: etag } })).succeeded; },
     async listPage(prefix, continuation, pageSize) {
@@ -271,14 +298,39 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
         throw error;
       }
     },
-    async readToFile(key, path, maxBytes) {
+    async readToFile(key, path, maxBytes, options) {
       if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Problem(422,'VALIDATION_FAILED','Invalid Blob read limit');
       await ensure();
       try {
         const response = await container.getBlockBlobClient(key).download();
         if (response.contentLength !== undefined && response.contentLength > maxBytes) { (response.readableStreamBody as Readable | undefined)?.destroy(); throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit'); }
         if (!response.readableStreamBody) throw new Problem(503,'DATA_UNAVAILABLE','Stored object has no body');
-        return await hashStream(response.readableStreamBody as Readable, path, maxBytes, response.contentLength);
+        if (options?.useRanges && (!response.etag || !Number.isSafeInteger(response.contentLength))) {
+          (response.readableStreamBody as Readable).destroy();
+          throw new Problem(503,'DATA_UNAVAILABLE','Stored object version is unavailable');
+        }
+        if (path && response.etag && Number.isSafeInteger(response.contentLength) && (options?.useRanges || response.contentLength! > BLOB_RANGE_MIN_BYTES)) {
+          // Small objects and digest-only legacy reads retain their single streaming read.
+          // The initial GET supplies a real version; every ranged GET must return that
+          // same ETag with If-Match, exact Content-Range and exact streamed length.
+          const initial = response.readableStreamBody as Readable;
+          initial.destroy(); await finished(initial).catch(() => undefined);
+          try {
+            return await readBlobRangesToFile(async (offset, count, etag, signal) => {
+              const range = await container.getBlockBlobClient(key).download(offset, count, { conditions: { ifMatch: etag }, abortSignal: signal });
+              return { body: range.readableStreamBody as Readable | undefined, etag: range.etag, contentRange: range.contentRange, contentLength: range.contentLength };
+            }, path, response.contentLength!, response.etag);
+          } catch (error) {
+            // A missing/changed range is a failed full read, never absence or permission
+            // to retry a new version within this receipt.
+            if (error instanceof BlobRangeReadError || (error && typeof error === 'object' && 'statusCode' in error && [404, 412, 416].includes(Number(error.statusCode))))
+              throw new Problem(503,'DATA_UNAVAILABLE','Stored object range or version could not be verified');
+            throw error;
+          }
+        }
+        const verified = await hashStream(response.readableStreamBody as Readable, path, maxBytes, response.contentLength);
+        // Capture the version from this same full-read response, never a later HEAD.
+        return { ...verified, ...(response.etag ? { etag: response.etag } : {}) };
       } catch (error) {
         if (error instanceof Problem) throw error;
         if (notFound(error)) return null;

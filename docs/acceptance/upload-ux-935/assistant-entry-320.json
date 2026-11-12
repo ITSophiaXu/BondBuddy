@@ -1,0 +1,37 @@
+{
+  "name": "assistant-entry",
+  "width": 320,
+  "overflow": false,
+  "controls": [
+    {
+      "tag": "LABEL",
+      "id": "",
+      "text": "添加附件",
+      "class": "bb-upload-picker bb-upload-picker--compact ba-attach",
+      "display": "flex",
+      "width": 118,
+      "height": 44,
+      "border": "1px solid rgb(135, 151, 125)",
+      "background": "rgb(255, 255, 255)",
+      "cursor": "pointer",
+      "tabIndex": -1,
+      "accept": null,
+      "multiple": false
+    },
+    {
+      "tag": "INPUT",
+      "id": "",
+      "text": "",
+      "class": "",
+      "display": "block",
+      "width": 116,
+      "height": 42,
+      "border": "0px none rgb(32, 59, 51)",
+      "background": "rgb(255, 255, 255)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": null,
+      "multiple": true
+    }
+  ]
+}

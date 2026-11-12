@@ -1,0 +1,244 @@
+# Desktop prelaunch bad cases (real local stack)
+
+This suite uses the public HTTP API, real cookie authentication/CSRF, dedicated PostgreSQL,
+private Azurite objects, and the real Python material worker. It does not inject a principal,
+fabricate an API response, seed a successful task, or call a model. All account names and
+documents are synthetic. It performs no real payment or production operation.
+
+## Run
+
+First build and start the current checkout with `scripts/local-prelaunch/`. The environment
+must have its own `.local/local-prelaunch/config.json` and answer at `http://localhost:18087`.
+The helpers validate the origin, instance ID, Compose project name, and isolated database name.
+
+From the repository root on Windows:
+
+```powershell
+$env:BB_E2E_LOCAL_PRELAUNCH = '1'
+$env:BB_E2E_BASE_URL = 'http://localhost:18087'
+$env:BB_E2E_BROWSER_CHANNEL = 'msedge'
+$env:BB_PRELAUNCH_WSL_DISTRO = 'BondBuddyM3'
+npm run build -w @bondbuddy/contracts
+node node_modules/@playwright/test/cli.js test --config=apps/web/playwright.config.ts local-prelaunch-bad-cases.spec.ts local-prelaunch-material-identity.spec.ts --workers=1 --retries=0 --reporter=line
+```
+
+The encrypted PDF fixture uses `BB_PRELAUNCH_FIXTURE_PYTHON` if set, otherwise the bundled
+desktop Python path on Windows or `python3` on Linux. It requires `pypdf`. On Linux run
+the same Playwright command with a local installed browser and omit the Edge channel.
+
+Optional controls:
+
+- `BB_PRELAUNCH_CONFIG`: explicit path to this instance's configuration JSON.
+- `BB_PRELAUNCH_EVIDENCE`: evidence parent folder; defaults to `.local/local-prelaunch/bad-cases`.
+- `BB_PRELAUNCH_EVIDENCE_RUN`: unique invocation label for a coordinated acceptance run.
+
+Each test registers an actual local account through the UI. The suite uses 22 accounts for
+21 cases (the ownership case needs a second account); keep local registration admission
+limits large enough for these synthetic accounts while preserving normal authentication.
+
+## First batch: 16 cases
+
+| Case | Expected real behavior |
+| --- | --- |
+| Financial materials alone; incomplete source metadata | Start is disabled with a concrete explanation. Input lock rejects missing source/information. Fill source fields, reload, lock and quote successfully. |
+| Wrong market/product; impossible reporting date | API rejects both without saving a project. Correct project can be saved/opened. |
+| Unsupported browser file | Actionable replacement; no upload write or misleading retry. The replacement saves and downloads exactly. |
+| Zero-byte browser file | Actionable error; no upload write. A valid file can then be selected. |
+| Zero size, unsupported MIME, over-limit API declarations | Reject before creating any upload or material. A normal browser upload still works. |
+| Short PUT; same-size incorrect hash | Real API rejects; no private Blob or material. Original declaration accepts correct bytes; duplicate PUT/complete return one material. |
+| Interrupt before PUT reaches server | Retry selected file; original upload ID is retained and one material exists after reload. |
+| Lose PUT response after server commits | `route.fetch` reaches the real server, then `route.abort` loses the browser reply. Automatic reconciliation saves one original upload/material. |
+| Lose complete response after server commits | Same mechanism; reconcile the existing real completion and recover after reload. |
+| DOCX bytes declared as PDF | Raw upload stores exact bytes; legacy real Python parser fails and UI offers readable recovery guidance. Normal replacement parses. |
+| Damaged DOCX | Same actual parse failure/recovery chain. |
+| Truncated DOCX | Same actual parse failure/recovery chain. |
+| Corrupt PDF | Same actual parse failure/recovery chain. |
+| Password-encrypted PDF | Real password encryption; `MATERIAL_ENCRYPTED` and unencrypted-copy guidance. Normal replacement parses. |
+| Empty-content DOCX | Preserve actual parser outcome and inspect persisted parse evidence for no invented nonempty quote. Normal replacement parses. |
+| Foreign account | Read, download, delete, input lock and execute denied without filenames leaking or task/credit writes. Foreign account can create/use its own project. |
+
+The current unified authoring path intentionally stores supported original bytes opaquely and
+does not start an auxiliary parser at upload. The bad-content tests explicitly use the existing
+legacy material-processing path to inspect the real parser and UI. This establishes parser
+error/recovery behavior, not the quality of a complete unified model-generated document.
+
+Three additional material-identity cases cover renamed equal bytes with role-specific
+deduplication, changed source adoption/metadata and stale pins, and same-account material
+pins from a different project. Every rejected identity is corrected through the real API/UI
+before a successful saved input, without executing or charging a business task.
+
+Two financial-material cases upload malformed and truncated XLSX bytes into the financial/audit
+partition, wait for the real Linux/Python parser failure, and then upload a valid native synthetic
+financial workbook. The replacement must parse successfully and persist real cell evidence;
+all periods/figures are explicitly synthetic. Upload admission is still raw byte storage.
+
+## Evidence and assertions
+
+Every test saves `evidence.json` with the synthetic account owner, local instance/database,
+test source SHA256 values, real HTTP statuses, before/checkpoint/final SQL snapshots, errors,
+and `final.png` or `red.png`. Passwords and cookie values are not captured. Each invocation
+gets a fresh directory; red evidence is retained when a later run passes. Playwright attaches
+the JSON evidence to its own result as well.
+
+At each relevant rejection/recovery point, direct `docker exec psql` assertions verify no new
+`bb_runs`, `bb_credit_events`, `bb_credit_reservations`, or `bb_model_call_attempts`, and no
+change in remaining/frozen credit lots. Auxiliary material parse jobs may be created. Saved
+files are downloaded through the actual authorized API and compared with original bytes/hash.
+The PUT mismatch case additionally reads the private Blob from inside the local API container
+and verifies no object was written. SQL and container commands use argument arrays/stdin;
+no shell interpolated SQL or credential printing is used.
+
+## Remaining complete-acceptance cases
+
+These are planned coverage, not claims that the first batch passed them:
+
+- Ambiguous XLSX directory mapping; correct mapping and resume the original import.
+- Upload interrupted across browser/context closure before reconciliation, and expired session.
+- True password-encrypted Office files; the first batch covers a real encrypted PDF only.
+
+The later final-image run below covers unified bad-file correction through actual model/Word
+delivery and the payment, reservation, release and recovery cases. It does not turn the
+first-batch parser tests into full-document quality acceptance.
+
+## Recorded local run: 2026-11-07
+
+The command above completed against instance `45811ffb-4ea8-4ee2-92d5-44c96cdae454`:
+**21 passed, 0 failed, 3.6 minutes**. This was a real local HTTP/browser/PostgreSQL/Blob/Python
+run, not the earlier fixture-only preparation checks. All 21 final database observations
+confirm unchanged run, credit-event, credit-reservation and model-call counts, and unchanged
+remaining/frozen credits. Both corrected native XLSX files persisted 15 nonempty cell quotes.
+
+The first attempt retained 15 passes and six failures in separate `red-*` directories.
+Four failures used a nonexistent material-list endpoint; recovery actually uses the public
+project-events API followed by material reads. Two failures selected a file during execution
+restoration: `setInputFiles` can dispatch even while the real picker is disabled. The helper
+now waits for the actual input to be enabled rather than testing the fieldset. No fixed sleep,
+fabricated response or silent re-selection was added. The full 21-case run then passed.
+
+The retained local evidence folder is
+`.local/local-prelaunch/bad-cases/corrected-harness-2026-11-07T02-42-12-751Z-57c67e9a/`.
+Its `summary.json` checks all final observations and records SHA256 for each case's evidence;
+each case also retains its final screenshot. Source hashes in the evidence identify the tested
+test files. Build/container identity is recorded separately by the local environment receipts.
+These parser/recovery results do not claim full model-output quality or payment acceptance;
+the generation and payment suites own those checks.
+
+## Final-image functional run: 2026-11-09
+
+The same isolated instance ran production image source
+`fc76c9c7e74aa420cba8a97962fc4e422565ee44`. The final functional result is
+**38 distinct cases passed: 24 input/material + 8 payment without model + 6 worker cases**.
+Earlier attempts and historical runs are not counted as additional cases.
+
+The 24 input/material cases comprise the existing 21 bad-file/identity cases, two browser
+input-correction cases, and one source-declaration correction case. That additional case
+changes valid but mistaken issuer relationship, market/offering and report period through
+the UI, then checks reload, immutable input and quote against the corrected declarations.
+All 24 final account-scoped database observations preserve the original task, reservation,
+credit-event and model-call counts and remaining/frozen points.
+
+These 24 cases and the eight payment cases passed together in **5.0 minutes**, with one
+worker and zero retries. Their evidence roots are:
+
+- `.local/local-prelaunch/bad-cases/final-fc76-nonmodel-2026-11-09T01-53-02-466Z-420a6094/`
+- `.local/local-prelaunch/billing/final-fc76-nonmodel-wsl/2026-11-09T01-56-04-288Z-5f7fc007/`
+
+The six worker cases cover normal authoring, corrupt adopted DOCX followed by a corrected
+immutable round, QA recharge recovery, QA unreadable-reference release, and old-policy
+credit exhaustion before/after model completion. The corrected DOCX case confirms one
+failed attempt before model use, exact release, actionable recovery, a new input revision
+and run, one successful model call, actual dual-Word downloads and one settlement. The old
+failed run and its ledger remain unchanged. Details are in
+[the billing record](local-prelaunch-billing.md#final-image-revalidation-2026-11-09).
+
+The first worker batch retained **5 passes and one harness failure**: the test incorrectly
+expected `next_cursor` to be null after the final event. The API preserves its last event
+cursor. The corrected assertion checks that cursor against the terminal run, then requests
+the next page and verifies an empty page with the same cursor. The corrected bad-file case
+passed separately in **1.8 minutes**. Its original red evidence and log remain unchanged;
+no task, ledger or generated result was changed to repair the assertion.
+
+The earlier sandbox attempt also remains preserved: WSL denied the fixture's initial
+read-only database observation, so it was stopped before business assertions and rerun
+with the reviewed WSL permission. Its prematurely saved `status: passed` values are not
+acceptance evidence; the failure log and `final-database-error` establish that failure.
+
+The combined `.local/receipts/final-fc76-functional-summary.json` records all 38 selected
+evidence paths and SHA-256 values, excluded failures and source logs. Each selected result
+was independently checked for empty errors/page errors and a complete final database or
+ledger observation. Worker debit totals, preserved recovery identities, measured model
+attempts and actual downloaded file hashes were also checked; status alone was not used.
+
+Accounts and payment-channel outcomes are synthetic; HTTP, PostgreSQL, Blob, Python,
+worker execution and five completed measured `gpt-6-sol` calls are real. These are focused
+functional and recovery checks. The later long-document run below is separate evidence;
+this 38-case batch does not establish real merchant payment or complete document quality.
+
+## Added long-document scenario and combined count: 2026-11-09
+
+The real synthetic long-document task `e19a5883-342f-4563-b833-0f4b844a63b0` completed
+on image `76b8e3c1dece9b50a745c3ff4e144f63d88aebfc`. It adds **one distinct scenario**:
+the combined result is **39 functional cases: 24 input/material + 8 payment without
+model + 7 worker cases**. The first 38 remain tied to `fc76c9c7`; this is not a claim
+that all 39 ran on one later image. Repeated observations, the corrected target recheck,
+and the 32/51 synthetic checker tests are excluded from the functional count.
+
+The 40-page synthetic source, six-sheet workbook and notes went through the actual
+browser/API/storage/worker/model/download path. Both delivered Word files passed all
+17 mechanical checks, including 24 financial controls each, 14 retained chapters, six
+tables and 26 anchors, and correct clean/tracked semantics. One measured model call and
+one 8,864-point settlement were recorded; replay did not create another call or charge.
+
+The clean and tracked outputs each render to 43 pages. All 86 pages were inspected,
+with no clipping, overlap, garbled text, missing images or repeated-header loss observed.
+The result retains sparse-page findings at pages 6 and 31 and table/paragraph-spacing
+warnings. Read-only diagnosis found natural content overflow before preserved original
+page breaks, with unchanged styles and no added pagination properties; it did not alter
+the outputs or erase the warnings. This is not a flawless-layout or Word/WPS signoff.
+
+The creation observer initially failed on the optional legacy `target_confirmation`
+field after the task was accepted. Read-only checks verified the correct immutable and
+actual worker target; the observer was corrected and resumed observation of that original
+run. The first red evidence remains, and no replacement account/payment/task was created.
+The final observation is finalized, has empty errors/page errors and contains the final
+ledger. Detailed paths and version boundaries are in the
+[long-document record](../../../scripts/local-quality/synthetic-long.md#completed-actual-synthetic-product-run-2026-11-09).
+The ignored `.local/receipts/final-functional-with-synthetic-long.json` links the original
+38-case summary and the added task, quality, render and pagination evidence with hashes.
+
+The RQ three-original generation has explicit destination-specific user authorization;
+its separate task `97d26241-09fc-4338-a2bf-9f1253ef5ace` is still being observed and is
+not counted as passed here. On the later `50554262` image, the expanded source-correction
+case passed in 32.5 seconds: one start action locks corrected input, obtains its own
+zero-balance quote and creates no task, reservation, debit or model call. This is a
+focused repeat of an existing scenario, not a rerun of all 39. See the
+[UI acceptance record](../../../docs/acceptance/local-prelaunch-20261109/README.md).
+
+## Concurrent upload and invalid-version recovery: 2026-11-09
+
+`local-prelaunch-material-race.spec.ts` passed **2/2 in 36.6 seconds**, one worker and
+zero retries, against the unchanged running `50554262` image. Two same-account tabs
+submitted distinct uploads of identical bytes in the same role. A timing barrier let
+both original completion requests reach the real API together; no response was mocked.
+Both returned 200, with one material and one reuse receipt. Both tabs recovered that
+single material after reload and downloaded the original hash.
+
+The second case submitted a nonexistent version of a real saved material. The API
+returned 404 and the full before/after account snapshot was unchanged, including zero
+input revisions. Correcting the version then created exactly one input and a valid
+quote. Both cases ended with zero tasks, reservations, credit events and model calls,
+unchanged balances, empty page errors and finalized database evidence.
+
+Evidence is under
+`.local/local-prelaunch/bad-cases/material-race-version-2026-11-09T03-33-19-730Z-07cbea65/`.
+Actual API/web/worker image IDs, container IDs and start times match before and after;
+the tests did not restart or modify the ongoing RQ task. The source pin contract has
+only material ID and version; byte/hash rejection is covered separately by upload tests.
+
+These are two new scenarios, giving **41 distinct passing cases: 26 input/material,
+8 non-model payment and 7 worker cases** across the three explicitly recorded images.
+The new ignored aggregate `.local/receipts/final-functional-with-material-race.json`
+links the unchanged 39-case predecessor and the two finalized evidence hashes. RQ
+remains excluded until its own acceptance finishes. To repeat only these cases, use
+the environment above and select `local-prelaunch-material-race.spec.ts` with the
+same Playwright command.

@@ -1,0 +1,1388 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-11-04T06:11:13.288Z",
+  "base_head": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+  "subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b plus the five final test-fixture files at the recorded actual working-tree byte hashes, including new mixed-material QA quality/recovery/accounting assertions; no product runtime source changes",
+  "scope": {
+    "existing_pg_test_files": 18,
+    "api_files": 9,
+    "worker_files": 9,
+    "all_files_have_successful_execution": true,
+    "one_combined_final_run": false,
+    "counts_policy": "Per-run counts are authoritative. Do not sum first/red/retry runs or imported catalogue units across runs. Unchanged successful files from partially failing first groups were not rerun. QA final source binding is the expanded mixed-material test; its earlier wire-only successful run keeps its own original source/dist hashes.",
+    "synthetic_material_cross_entry_files": 17,
+    "authorized_historical_parser_pg_files": 1
+  },
+  "environment": {
+    "platform": "win32",
+    "architecture": "x64",
+    "node": "v26.13.0",
+    "npm": "11.20.0",
+    "typescript": "Version 5.9.3",
+    "python": "Python 3.12.14",
+    "postgresql": "PostgreSQL 16.14, compiled by Visual C++ build 1944, 64-bit",
+    "migrations": 168,
+    "azurite": "3.35.0",
+    "chromium": "153.0.8010.12",
+    "playwright_chromium_revision": "1243",
+    "host": "127.0.0.1",
+    "postgres_port": 55434,
+    "azurite_blob_port": 11066,
+    "template": "bb_prelaunch_payment_template",
+    "credentials": "omitted; synthetic task-owned local services"
+  },
+  "boundaries": {
+    "real": [
+      "PostgreSQL template/isolated-clone execution",
+      "API and worker queue/journal/settlement code",
+      "Azurite Blob storage for tests requiring it",
+      "Playwright Chromium for synthetic Integrity routes",
+      "native Word generation and test text/XML assertions",
+      "one already-authorized historical DOCX parsed locally for the 16-candidate annual-fact PostgreSQL integration; original bytes not copied into evidence"
+    ],
+    "synthetic": [
+      "models and their outputs in the 17 cross-entry files",
+      "issuer facts and materials in the 17 cross-entry files, including the QA no-text supplementary DOCX",
+      "database identities and reviewer authorization",
+      "Integrity web routes/search results",
+      "billing credit grants; no merchant charge"
+    ],
+    "not_established": [
+      "real merchant payment acceptance",
+      "real model golden-sample quality",
+      "industry factual correctness",
+      "independent complete-text and rendered-document acceptance",
+      "candidate integration of PR #871 and its Linux quality gate",
+      "formal paid-launch approval",
+      "QA tolerance for missing or hash-mismatched Blob inputs; mixed-material success covers a valid uploaded DOCX with no extractable text, while mandatory unreadable prospectus still fails"
+    ]
+  },
+  "fixture_changes": {
+    "paths": [
+      "apps/api/src/review-dynamic-balance.pg.test.ts",
+      "apps/worker/src/project-files-e2e.pg.test.ts",
+      "apps/worker/src/workpaper-shared-stage.pg.test.ts",
+      "apps/worker/src/project-qa-e2e.pg.test.ts",
+      "apps/worker/src/integrity-e2e.pg.test.ts"
+    ],
+    "patch": "final-test-fixtures.patch",
+    "patch_sha256": "f981d38c41961e955153e55b1f48e0ade0f9e81e4e8ec50bacf5c481330f2596",
+    "description": "The five existing test files align lawful HTTP money/count requests/responses to exact int64 decimal strings and explicitly enable the review synthetic queue. In addition, the QA test now verifies one mixed readable/no-text-material draft through grounded useful and missing answers, named extraction gaps in result/Word, pause/resume answer/hash preservation, one durable intent per question, one 120 settlement and completed-request replay without new runs or credit events. Existing domain balances, BigInt arithmetic, underquote 409, INPUT_REQUIRED 422, mandatory unreadable-prospectus failure/refund, owner/version and deliberately malformed Integrity number1→422 remain.",
+    "earlier_patch": "pre-mixed-test-fixtures.patch"
+  },
+  "runs": [
+    {
+      "id": "api-nine-first",
+      "raw_log": "api-nine-first.tap",
+      "metadata": "api-nine-first.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T05:44:58.523Z",
+      "finished_at": "2026-11-04T05:48:03.125Z",
+      "command": [
+        "node",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "apps/api/dist/file-generation.pg.test.js",
+        "apps/api/dist/file-template-loading.pg.test.js",
+        "apps/api/dist/workpaper-upload.pg.test.js",
+        "apps/api/dist/workpaper-download.pg.test.js",
+        "apps/api/dist/workpaper-legacy-checks.pg.test.js",
+        "apps/api/dist/integrity-scope.pg.test.js",
+        "apps/api/dist/automatic-m4-boundaries.pg.test.js",
+        "apps/api/dist/paid-review-assembly-recovery.pg.test.js",
+        "apps/api/dist/review-dynamic-balance.pg.test.js"
+      ],
+      "exit_code": 1,
+      "counts": {
+        "tests": 12,
+        "pass": 11,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 184447.3861
+      },
+      "log_sha256": "90d3149e8f54f29ac9087b9870a2e73c16e0238c253e2d3ae628aa8540132442",
+      "source_build_bindings": [
+        {
+          "source": "apps/api/src/file-generation.pg.test.ts",
+          "source_sha256": "fae855b7015d34ffe3555a7ca947525893d89ae1f3f66b3f46b1fd97ac4f6644",
+          "dist": "apps/api/dist/file-generation.pg.test.js",
+          "dist_sha256": "2830daf5677be661269d35b3683c9ce2ce9ce3cf41142f4cb409bc2272e24695"
+        },
+        {
+          "source": "apps/api/src/file-template-loading.pg.test.ts",
+          "source_sha256": "2e39566441c0bc5bf31cea608fc51a5c7ffdcf3973333dd200e625d04d1675f0",
+          "dist": "apps/api/dist/file-template-loading.pg.test.js",
+          "dist_sha256": "fe02d82e34ed878511653f0b2a58c1784f334ca324e31258c2a48fad09dc4aa6"
+        },
+        {
+          "source": "apps/api/src/workpaper-upload.pg.test.ts",
+          "source_sha256": "669c41fb0f375c316f2d7a739947d6807eeca1a862fd3f757c55e3f8cd04125f",
+          "dist": "apps/api/dist/workpaper-upload.pg.test.js",
+          "dist_sha256": "1fecec16914091525ce899426b847a7cb8f17b75eca8cbdf6ff423d6ffd3d23c"
+        },
+        {
+          "source": "apps/api/src/workpaper-download.pg.test.ts",
+          "source_sha256": "d4b8302e04b1cc3e15fe3ea1178e6544df4d5d9751fc80dbfbe16aacec9f363e",
+          "dist": "apps/api/dist/workpaper-download.pg.test.js",
+          "dist_sha256": "173da202693678cb7373655d23fcf2fa8d07fff3c1cf044853a1befef896361f"
+        },
+        {
+          "source": "apps/api/src/workpaper-legacy-checks.pg.test.ts",
+          "source_sha256": "5b8ec3b1d382130f456b1e1e78337a41799f2224a96467c91954b7cb5373d47f",
+          "dist": "apps/api/dist/workpaper-legacy-checks.pg.test.js",
+          "dist_sha256": "f0e00abbaad8c355f6445ab6bc1649b33ff9f95ee883f3fc282f354587f010cb"
+        },
+        {
+          "source": "apps/api/src/integrity-scope.pg.test.ts",
+          "source_sha256": "78be2796f227d4d9c6ae440feaf406daed1c8ce551220bdd8551b778f84b0690",
+          "dist": "apps/api/dist/integrity-scope.pg.test.js",
+          "dist_sha256": "1ee533d9adb64b71e15d1863b3de7cf8b1b26ec1791c244fc6189cfbcb9fc404"
+        },
+        {
+          "source": "apps/api/src/automatic-m4-boundaries.pg.test.ts",
+          "source_sha256": "f167e505ae1cac2aa82c785b82ecaac51c7468d4c4a70943d429e843cfff9ec6",
+          "dist": "apps/api/dist/automatic-m4-boundaries.pg.test.js",
+          "dist_sha256": "e14d3ad95e787a25b5428d76204893845302a81d887db095a9cd1fe8501b335c"
+        },
+        {
+          "source": "apps/api/src/paid-review-assembly-recovery.pg.test.ts",
+          "source_sha256": "2df0beb929a2193dd96a6650cfdba69b157869a6f9b7aac207b24595e37ad245",
+          "dist": "apps/api/dist/paid-review-assembly-recovery.pg.test.js",
+          "dist_sha256": "568b19cbff1c5b91cd364ec28fc8976fe7bfec259d3a64eeaf75af887cfd2512"
+        },
+        {
+          "source": "apps/api/src/review-dynamic-balance.pg.test.ts",
+          "source_sha256": "1ebffb100ca63229963c3138fe94491dc1a62867da7789ea2771ef57f6eed384",
+          "dist": "apps/api/dist/review-dynamic-balance.pg.test.js",
+          "dist_sha256": "654b8b9728cc18d5208b795f1ed421fe5b0c9d7652d283fc3295fdb6c628e157"
+        }
+      ],
+      "finding": "One legacy HTTP numeric balance assertion expected 0 instead of the current exact int64 string \"0\"."
+    },
+    {
+      "id": "api-review-wire-retry",
+      "raw_log": "api-review-wire-retry.tap",
+      "metadata": "api-review-wire-retry.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T05:50:12.003Z",
+      "finished_at": "2026-11-04T05:50:22.215Z",
+      "command": [
+        "node",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "apps/api/dist/review-dynamic-balance.pg.test.js"
+      ],
+      "exit_code": 1,
+      "counts": {
+        "tests": 1,
+        "pass": 0,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 10072.6596
+      },
+      "log_sha256": "ab5c95b275909ecec47e7eac4b63c104d7d21949a835ed45bbee810c7eca34fa",
+      "source_build_bindings": [
+        {
+          "source": "apps/api/src/review-dynamic-balance.pg.test.ts",
+          "source_sha256": "3bc29d26d493e738e004118ee88332668b1a07298653492b2f94b76581f56cdb",
+          "dist": "apps/api/dist/review-dynamic-balance.pg.test.js",
+          "dist_sha256": "2bf0eb62c559222f730774c692b71798b40751fdfdaed66c40d1bef6f4ecabc4"
+        }
+      ],
+      "finding": "After int64 fixture alignment, the existing fixture had no runtime or synthetic queue enabled; the initial pause reached CAPABILITY_NOT_READY (Capability is not connected), before resume. No run using enableRunRuntime:true alone was performed."
+    },
+    {
+      "id": "api-review-runtime-retry",
+      "raw_log": "api-review-runtime-retry.tap",
+      "metadata": "api-review-runtime-retry.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T05:53:29.326Z",
+      "finished_at": "2026-11-04T05:53:42.159Z",
+      "command": [
+        "node",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "apps/api/dist/review-dynamic-balance.pg.test.js"
+      ],
+      "exit_code": 0,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 12699.6768
+      },
+      "log_sha256": "6deffb14669606348dd4e37bfb9bc1783eff58b541fc3582cd1a113804c4b9f9",
+      "source_build_bindings": [
+        {
+          "source": "apps/api/src/review-dynamic-balance.pg.test.ts",
+          "source_sha256": "c01e9c5c4ba8239a96ac9d1852977d553d4b8d8d9cc1f467af104f3d428b2b16",
+          "dist": "apps/api/dist/review-dynamic-balance.pg.test.js",
+          "dist_sha256": "3f01d00a69f235463174ac391ce7aec88b05b9c44fa7e29c5d626d77b5ff3242"
+        }
+      ],
+      "finding": "Final fixture adds enableSyntheticQueue:true; existing dynamic debit, pause/resume, platform-refund and legacy business assertions pass."
+    },
+    {
+      "id": "worker-files-first",
+      "raw_log": "worker-files-first.tap",
+      "metadata": "worker-files-first.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T05:45:01.881Z",
+      "finished_at": "2026-11-04T05:46:06.870Z",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "--test",
+        "--test-concurrency=2",
+        "--test-reporter=tap",
+        "apps/worker/dist/ordinary-file-check-batches.pg.test.js",
+        "apps/worker/dist/project-file-paid-coverage.pg.test.js",
+        "apps/worker/dist/project-files-e2e.pg.test.js"
+      ],
+      "exit_code": 1,
+      "counts": {
+        "tests": 10,
+        "pass": 9,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 64866.5154
+      },
+      "log_sha256": "3491616e2fe2f65330435d75f1cda863a1d3d77674c43aea6b45cd8ab450b917",
+      "source_build_bindings": [
+        {
+          "source": "apps/worker/src/ordinary-file-check-batches.pg.test.ts",
+          "source_sha256": "b1de404c298f0077105a37f46d233aaf29bde1284f5a4e9f62f2d6d17e8e6d18",
+          "dist": "apps/worker/dist/ordinary-file-check-batches.pg.test.js",
+          "dist_sha256": "b90ef4ed20b94d05dcdc1dfab0aa0e877b9978689be243b235c8d7a903b5d125"
+        },
+        {
+          "source": "apps/worker/src/project-file-paid-coverage.pg.test.ts",
+          "source_sha256": "1bb486123601b1594f9766c610ff14e9202d1f9ed987a34fa87098a864d46051",
+          "dist": "apps/worker/dist/project-file-paid-coverage.pg.test.js",
+          "dist_sha256": "dab792d02b9204c9b6f3fed87890930073b50fa736c35a92fb6238bd97312d8e"
+        },
+        {
+          "source": "apps/worker/src/project-files-e2e.pg.test.ts",
+          "source_sha256": "596460cc2bc82eecc8438fa9808c367a639149f98998844f1b1a451a941e98d8",
+          "dist": "apps/worker/dist/project-files-e2e.pg.test.js",
+          "dist_sha256": "6249877db42029ddf9db191f903e04fbd0021ed4eeb6328744c8efd0322abb19"
+        }
+      ],
+      "finding": "Only project-files failed: numeric expected_points was rejected with wire 422 before the intended business underquote 409."
+    },
+    {
+      "id": "worker-files-wire-retry",
+      "raw_log": "worker-files-wire-retry.tap",
+      "metadata": "worker-files-wire-retry.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T05:48:06.189Z",
+      "finished_at": "2026-11-04T05:48:42.245Z",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "--test",
+        "--test-concurrency=2",
+        "--test-reporter=tap",
+        "apps/worker/dist/project-files-e2e.pg.test.js"
+      ],
+      "exit_code": 0,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 35957.4846
+      },
+      "log_sha256": "76faba36e8d1ae3b0a8ed27a97a20d419d5004d0927f2a2ac18e2ee2061f213e",
+      "source_build_bindings": [
+        {
+          "source": "apps/worker/src/project-files-e2e.pg.test.ts",
+          "source_sha256": "3fbf8d4fc106917845cf7bc4be1ccb8a8f21f2247bf4a870976fcc05100870ae",
+          "dist": "apps/worker/dist/project-files-e2e.pg.test.js",
+          "dist_sha256": "892ad0989fe67e6774648a39391eba18622e6b3c5119ba5c73f9d35e5b0b564b"
+        }
+      ],
+      "finding": "Only project-files rerun; legal requests and HTTP history fields aligned to int64 strings, business underquote remains 409."
+    },
+    {
+      "id": "worker-workpapers-first",
+      "raw_log": "worker-workpapers-first.tap",
+      "metadata": "worker-workpapers-first.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T05:45:03.411Z",
+      "finished_at": "2026-11-04T05:45:50.117Z",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "--test",
+        "--test-concurrency=2",
+        "--test-reporter=tap",
+        "apps/worker/dist/workpaper-shared-stage.pg.test.js",
+        "apps/worker/dist/workpaper-paid-checks.pg.test.js"
+      ],
+      "exit_code": 1,
+      "counts": {
+        "tests": 24,
+        "pass": 23,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 46583.6653
+      },
+      "log_sha256": "0aba732cc9d3ec98ea73a82be54bfb50266a62a3fdbfda885cfb1f6f0960ff14",
+      "source_build_bindings": [
+        {
+          "source": "apps/worker/src/workpaper-shared-stage.pg.test.ts",
+          "source_sha256": "431ece7db3d5170fc60f6e36239ee177ecadbd2576fba81d85ac71845969c69c",
+          "dist": "apps/worker/dist/workpaper-shared-stage.pg.test.js",
+          "dist_sha256": "9fdfebab1dc5f67db3cb728ad394506f4b284dd47fb333f6b95e2ac1cc60c576"
+        },
+        {
+          "source": "apps/worker/src/workpaper-paid-checks.pg.test.ts",
+          "source_sha256": "3dd9f36229ebf25ed5234b1b1b4f28dc6862a1ecbc8d8e9a7b1c2f666eccc1b2",
+          "dist": "apps/worker/dist/workpaper-paid-checks.pg.test.js",
+          "dist_sha256": "245c3c13cc764849f6ca724c256d274cc27f3cfed43f1beadb4e25a29265680e"
+        }
+      ],
+      "finding": "Only shared-stage failed: a legacy numeric expected_points request hit the exact int64 wire boundary."
+    },
+    {
+      "id": "worker-workpapers-wire-retry",
+      "raw_log": "worker-workpapers-wire-retry.tap",
+      "metadata": "worker-workpapers-wire-retry.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T05:48:07.569Z",
+      "finished_at": "2026-11-04T05:48:38.663Z",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "--test",
+        "--test-concurrency=2",
+        "--test-reporter=tap",
+        "apps/worker/dist/workpaper-shared-stage.pg.test.js"
+      ],
+      "exit_code": 0,
+      "counts": {
+        "tests": 12,
+        "pass": 12,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 30986.7143
+      },
+      "log_sha256": "715ae1f8b26976e6e3ec085f71ebd1d5e90d50bfa1479c1644bf089b5aa9838b",
+      "source_build_bindings": [
+        {
+          "source": "apps/worker/src/workpaper-shared-stage.pg.test.ts",
+          "source_sha256": "dc8a492683865532a9f227b4914dcb28606bdf75b8829c554d80dfccc7d00277",
+          "dist": "apps/worker/dist/workpaper-shared-stage.pg.test.js",
+          "dist_sha256": "821761012f76dd334fa91b9173b8b814a8ff45361860471985d477d4d7a99bf9"
+        }
+      ],
+      "finding": "Only shared-stage rerun; lawful int64 request/response fixtures aligned; 11 imported catalogue units are included."
+    },
+    {
+      "id": "worker-qa-first",
+      "raw_log": "worker-qa-first.tap",
+      "metadata": "worker-qa-first.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T05:45:38.539Z",
+      "finished_at": "2026-11-04T05:46:05.724Z",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "--test",
+        "--test-concurrency=2",
+        "--test-reporter=tap",
+        "apps/worker/dist/project-qa-e2e.pg.test.js"
+      ],
+      "exit_code": 1,
+      "counts": {
+        "tests": 1,
+        "pass": 0,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 27057.7289
+      },
+      "log_sha256": "c24f904caad9b8137a9c04931cf85230e5ba048c3079e6300c83d45bd32daf91",
+      "source_build_bindings": [
+        {
+          "source": "apps/worker/src/project-qa-e2e.pg.test.ts",
+          "source_sha256": "fa47be0d30b2305c4f4e3f7186f7e577162290ac52ba29923ca706f5c48bbf9b",
+          "dist": "apps/worker/dist/project-qa-e2e.pg.test.js",
+          "dist_sha256": "fe4f116975b3cea71a3a08b4b8479605f29b5e7f04054d9e799f88bf7f0802ba"
+        }
+      ],
+      "finding": "Environment setup failure: BB_QA_TEST_OUTPUT_DIRECTORY was absent when mkdir was called."
+    },
+    {
+      "id": "worker-qa-wire-retry",
+      "raw_log": "worker-qa-wire-retry.tap",
+      "metadata": "worker-qa-wire-retry.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T05:48:08.780Z",
+      "finished_at": "2026-11-04T05:48:38.687Z",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "--test",
+        "--test-concurrency=2",
+        "--test-reporter=tap",
+        "apps/worker/dist/project-qa-e2e.pg.test.js"
+      ],
+      "exit_code": 0,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 29806.2532
+      },
+      "log_sha256": "165b40350ac79004a6cfddf43642ca68ab0ea5372c52c541d77ccd14714d8658",
+      "source_build_bindings": [
+        {
+          "source": "apps/worker/src/project-qa-e2e.pg.test.ts",
+          "source_sha256": "0fd58c0d5ebfeafea8cd5015cdc73c5693f4acdbaac4eed750964a083b95f4bd",
+          "dist": "apps/worker/dist/project-qa-e2e.pg.test.js",
+          "dist_sha256": "5d712dab7dca7d2301cb34d1e32aec9eed2b1819329c65a09bc7d1a4de010059"
+        }
+      ],
+      "finding": "QA output directory supplied; lawful int64 fixtures aligned, INPUT_REQUIRED and 409 underquote assertions retained."
+    },
+    {
+      "id": "worker-integrity-first",
+      "raw_log": "worker-integrity-first.tap",
+      "metadata": "worker-integrity-first.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T05:46:03.552Z",
+      "finished_at": "2026-11-04T05:46:24.197Z",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "--test",
+        "--test-concurrency=2",
+        "--test-reporter=tap",
+        "apps/worker/dist/integrity-e2e.pg.test.js"
+      ],
+      "exit_code": 1,
+      "counts": {
+        "tests": 1,
+        "pass": 0,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 20504.7584
+      },
+      "log_sha256": "26b86fbf6060d560ae0bda17233cc2f09470a18955574734372240aa5bd7940a",
+      "source_build_bindings": [
+        {
+          "source": "apps/worker/src/integrity-e2e.pg.test.ts",
+          "source_sha256": "4de600e6fa2c8d5b06a84ea817aab204ff8472b41009df72d77f411ccc1a57e0",
+          "dist": "apps/worker/dist/integrity-e2e.pg.test.js",
+          "dist_sha256": "7f97d88b60c1ab51197423084e0bab0850fbcc9569f8871f3a03b88ece1712a0"
+        }
+      ],
+      "finding": "Legacy HTTP number 5000 assertion conflicts with current exact int64 string \"5000\"."
+    },
+    {
+      "id": "worker-integrity-wire-retry",
+      "raw_log": "worker-integrity-wire-retry.tap",
+      "metadata": "worker-integrity-wire-retry.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T05:48:10.175Z",
+      "finished_at": "2026-11-04T05:48:38.628Z",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "--test",
+        "--test-concurrency=2",
+        "--test-reporter=tap",
+        "apps/worker/dist/integrity-e2e.pg.test.js"
+      ],
+      "exit_code": 1,
+      "counts": {
+        "tests": 1,
+        "pass": 0,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 28328.3083
+      },
+      "log_sha256": "8a1b34e9c6cabd2788204a7d5973165f2c86d0cc79e07c9dc0beed02d989fbb3",
+      "source_build_bindings": [
+        {
+          "source": "apps/worker/src/integrity-e2e.pg.test.ts",
+          "source_sha256": "e79dcd30d3e370064e79850c50cf8c94858566f573234058c799677b7969d0b6",
+          "dist": "apps/worker/dist/integrity-e2e.pg.test.js",
+          "dist_sha256": "e97051f14aa3a43521956c59934d105b745e5aafca7c0f77e3e137b68471f2f9"
+        }
+      ],
+      "finding": "Intermediate fixture-edit mistake: deliberately invalid number expected_points:1 was also converted to string \"1\", reaching business 409 while the test correctly retained expected wire 422. This is a test-fixture failure, not a product bug."
+    },
+    {
+      "id": "worker-integrity-wire-retry-2",
+      "raw_log": "worker-integrity-wire-retry-2.tap",
+      "metadata": "worker-integrity-wire-retry-2.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T05:49:36.607Z",
+      "finished_at": "2026-11-04T05:50:01.476Z",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "--test",
+        "--test-concurrency=2",
+        "--test-reporter=tap",
+        "apps/worker/dist/integrity-e2e.pg.test.js"
+      ],
+      "exit_code": 0,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 24779.1738
+      },
+      "log_sha256": "aafd782a8e5b617ceba43277e0ff8ac841497d74d87304ed79bae58878115836",
+      "source_build_bindings": [
+        {
+          "source": "apps/worker/src/integrity-e2e.pg.test.ts",
+          "source_sha256": "54fc44f257a01ad6eb3c6d3b8d4421ba1c5acfecfa7f36a8ae4384f406819646",
+          "dist": "apps/worker/dist/integrity-e2e.pg.test.js",
+          "dist_sha256": "bdebec9c682e13f1cb18b991a1a698489bb5793d017d30957bc6297994355270"
+        }
+      ],
+      "finding": "Deliberately invalid expected_points:1 restored as number and wire 422 retained; all original recovery, evidence, billing and isolation assertions pass."
+    },
+    {
+      "id": "worker-m4-case-first",
+      "raw_log": "worker-m4-case-first.tap",
+      "metadata": "worker-m4-case-first.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T05:54:00.057Z",
+      "finished_at": "2026-11-04T05:54:26.949Z",
+      "command": [
+        "node",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "apps/worker/dist/m4-case-templates.pg.test.js"
+      ],
+      "exit_code": 0,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 26740.6911
+      },
+      "log_sha256": "6cf477a42100afd9cf18ce5477c4db00649faa20def70aca81dfcd3671c26b3c",
+      "source_build_bindings": [
+        {
+          "source": "apps/worker/src/m4-case-templates.pg.test.ts",
+          "source_sha256": "701b0ff4c9a7772c8e7fad0f77e9b13c8477bfe04c91d12bee80341bf0690f86",
+          "dist": "apps/worker/dist/m4-case-templates.pg.test.js",
+          "dist_sha256": "f4f5ef8f603ec250f3426f7f5a662b30569da302c0e20afef1e5c1e054c2e93b"
+        }
+      ],
+      "finding": "Six default scopes exercised through real isolated PostgreSQL/API/worker/native Word pairs with a synthetic model; one test, six scoped deliveries."
+    },
+    {
+      "id": "worker-qa-mixed-materials",
+      "raw_log": "worker-qa-mixed-materials.tap",
+      "metadata": "worker-qa-mixed-materials.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T06:05:48.156Z",
+      "finished_at": "2026-11-04T06:06:08.192Z",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "apps/worker/dist/project-qa-e2e.pg.test.js"
+      ],
+      "exit_code": 1,
+      "counts": {
+        "tests": 1,
+        "pass": 0,
+        "fail": 1,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 19942.5887
+      },
+      "log_sha256": "9c691a8bd88d3d5cfb676d803985e1da90d8489af402b0589e78f26090a988c4",
+      "source_build_bindings": [
+        {
+          "source": "apps/worker/src/project-qa-e2e.pg.test.ts",
+          "source_sha256": "f0d14e394b5538aa3750bf860d2cd6482c9b5f0c49c0df84bef68fd2eefa6bd8",
+          "dist": "apps/worker/dist/project-qa-e2e.pg.test.js",
+          "dist_sha256": "75014ba9892c1b1ec7e8748b62456ce36a664641f357bf32990cab384e259818"
+        }
+      ],
+      "finding": "New mixed-material QA assertions reached pause/resume but the added journal-count SQL incorrectly referenced nonexistent bb_model_call_attempts.run_id (42703). This is an added test-query defect, not a product bug; all raw output is retained."
+    },
+    {
+      "id": "worker-qa-mixed-materials-query-fix",
+      "raw_log": "worker-qa-mixed-materials-query-fix.tap",
+      "metadata": "worker-qa-mixed-materials-query-fix.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T06:07:40.672Z",
+      "finished_at": "2026-11-04T06:08:03.851Z",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "apps/worker/dist/project-qa-e2e.pg.test.js"
+      ],
+      "exit_code": 0,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 23086.7453
+      },
+      "log_sha256": "20466329c5e8dd67f32db53b374954b6243c068bb1605c1e035c9e0658ecbdd2",
+      "source_build_bindings": [
+        {
+          "source": "apps/worker/src/project-qa-e2e.pg.test.ts",
+          "source_sha256": "8018fca2f486c3857f0150105a9787d6e84d5c07ae0a3164f6b4f7df71a26351",
+          "dist": "apps/worker/dist/project-qa-e2e.pg.test.js",
+          "dist_sha256": "d425a69fa128769d702ac2c80288b0910913fdc1a50c7c7ed631418dcd774474"
+        }
+      ],
+      "finding": "The added query joins bb_model_call_attempts to bb_jobs by job_id and owner. One draft pins a readable adopted prospectus plus a valid supplementary DOCX without extractable text. Named partial-evidence warnings, useful cited answer and specific missing answer reach Word; completed answer/hash and one intent per question survive pause/resume; 120 settles once and completed-request replay adds no run or credit event. Existing mandatory-prospectus failure/refund and other assertions remain."
+    },
+    {
+      "id": "worker-rq-annual-pg-first",
+      "raw_log": "worker-rq-annual-pg-first.tap",
+      "metadata": "worker-rq-annual-pg-first.json",
+      "base_subject": "da5974ba96d318c1dbdc6c9c22909099d220c41b",
+      "started_at": "2026-11-04T06:08:51.338Z",
+      "finished_at": "2026-11-04T06:09:20.938Z",
+      "command": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=tap",
+        "apps/worker/dist/rq-prospectus-annual-fact-pg.integration.test.js"
+      ],
+      "exit_code": 0,
+      "counts": {
+        "tests": 1,
+        "pass": 1,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0,
+        "duration_ms": 29431.4361
+      },
+      "log_sha256": "16732ff73921f7490bc44220f57d94ac3f984f7c3ceff7ae4a8b89f6fe670ea1",
+      "source_build_bindings": [
+        {
+          "source": "apps/worker/src/rq-prospectus-annual-fact-pg.integration.test.ts",
+          "source_sha256": "8f9b52aa4a24766133ad74c690e4aa2e7498f4e89dfdabd4c57903679b905b40",
+          "source_lf_normalized_sha256": "e6a84b89997c21019df678f14127e1eb7cb23b2a8ba7330dd665ed667327d62b",
+          "dist": "apps/worker/dist/rq-prospectus-annual-fact-pg.integration.test.js",
+          "dist_sha256": "97d53e4832b65b7fe32aa72530f83c53a53927088ccc2efce9f70d813bce65c2"
+        },
+        {
+          "source": "apps/worker/src/rq-prospectus-annual-fact-extractor.ts",
+          "source_sha256": "0e77fd2dfd06ca1f9a64fe0f6db90796c3ca23a18619286cda911a068298bc40",
+          "source_lf_normalized_sha256": "358d69d661205adc48ec7d83cc203815cb413f33bfc6ba6b5bd985be3fbe791e",
+          "dist": "apps/worker/dist/rq-prospectus-annual-fact-extractor.js",
+          "dist_sha256": "dc1a34bf4e8d6a24cb9971165cc122a6ce90a30c14eef701f6a659b421d054ad"
+        },
+        {
+          "source": "apps/worker/src/controlled-native-fact-candidate-producer.ts",
+          "source_sha256": "fac56a8fe20c693cafd452dcc2b25c88e408d9589ed408981968dff149a66b9c",
+          "source_lf_normalized_sha256": "11340b8601bde3c4857d567927562e3faff1544a1c1d8ffb40c2e0ab1105836d",
+          "dist": "apps/worker/dist/controlled-native-fact-candidate-producer.js",
+          "dist_sha256": "516436a7d023e81c931b668d3a3b1e7b73399b2efc6e510fac86a0718c9d4526"
+        },
+        {
+          "source": "apps/worker/src/test-database.ts",
+          "source_sha256": "95d43468dc2e1450f65857435c1c31b23e6815244a0d082c340f8cdfdd591bb2",
+          "source_lf_normalized_sha256": "06e06ea7000a6237e83d12038bc95a6d8a6d76eaca0843eadd6a1220642fa9b6",
+          "dist": "apps/worker/dist/test-database.js",
+          "dist_sha256": "aea636fa4850da032d1961a2e28816e738eda46d70980b6554f3d9bf7d586e13"
+        },
+        {
+          "source": "apps/worker/src/run-pipeline.ts",
+          "source_sha256": "0dd32daa1b41fa1e172a0f8b74f45735654926bdccb7b1afd96b6c7fe327dc86",
+          "source_lf_normalized_sha256": "fef031b3b57dd4c9dfb9a09173f3f8ad4e44f221348e6c1b7b67cf798d2bfa6a",
+          "dist": "apps/worker/dist/run-pipeline.js",
+          "dist_sha256": "4a32082b61b1f44c3ee7c5c6e79083ae4e0c7c09cc53029bd5c8fd3a97a4d7df"
+        },
+        {
+          "source": "apps/worker/src/document-parser.ts",
+          "source_sha256": "034dbaed7fe4d633639bbbecf45bb6157eaefe04aa036dfb1868dcf836972683",
+          "source_lf_normalized_sha256": "ac9ded8ec93598acbfa527e7876543fe51fd99f3b13845073cc64b107e7d8a4d",
+          "dist": "apps/worker/dist/document-parser.js",
+          "dist_sha256": "520f87f7544d599ab6de3fd907f6edc7cd352ebe0d8b49e8754b25e55b00cb50"
+        }
+      ],
+      "authorized_sample": {
+        "case_id": "rq-202509",
+        "file_id": "rq-202509-01",
+        "sha256": "51f77e36dcdc8b565f9a7b58ebf87cb6be4839a3444b8602df833e3fd61ef678"
+      },
+      "additional_artifact_bindings": [
+        {
+          "path": "tests/samples/2026-09-25/manifest.json",
+          "sha256": "b191b6c8bf1ce62bf679b1bda33bd609629a2832119e4eedd5947feb9ab0a67d"
+        }
+      ],
+      "material_boundary": "The existing authorized historical DOCX was read locally by the real parser; sample bytes and ledger payloads were not copied into evidence. PostgreSQL identities/reviewer authorization were synthetic. No model or external website was called.",
+      "finding": "Existing opt-in integration reads the already-authorized historical DOCX with the real local parser and persists 16 fail-closed annual fact candidates through isolated PostgreSQL material readiness and the controlled producer. No model, merchant or external website is used; synthetic database identities and reviewer authorization are used. This is separate from the 17 synthetic-material cross-entry files."
+    }
+  ],
+  "final_file_bindings": [
+    {
+      "source": "apps/api/src/file-generation.pg.test.ts",
+      "source_sha256": "fae855b7015d34ffe3555a7ca947525893d89ae1f3f66b3f46b1fd97ac4f6644",
+      "source_lf_normalized_sha256": "b022b008970c4447640cad1f4b7cc255747ef6a8e4f3022c1ba2dbf598dbf74c",
+      "source_crlf_count": 136,
+      "source_lf_count": 0,
+      "dist": "apps/api/dist/file-generation.pg.test.js",
+      "dist_sha256": "2830daf5677be661269d35b3683c9ce2ce9ce3cf41142f4cb409bc2272e24695",
+      "successful_run": "api-nine-first",
+      "successful_in_partially_failing_group": true,
+      "fixture_changed": false
+    },
+    {
+      "source": "apps/api/src/file-template-loading.pg.test.ts",
+      "source_sha256": "2e39566441c0bc5bf31cea608fc51a5c7ffdcf3973333dd200e625d04d1675f0",
+      "source_lf_normalized_sha256": "23651223a1d73fea2031462b077a1a44ec80edde33f68a597e9da8ea0d58fcf5",
+      "source_crlf_count": 58,
+      "source_lf_count": 0,
+      "dist": "apps/api/dist/file-template-loading.pg.test.js",
+      "dist_sha256": "fe02d82e34ed878511653f0b2a58c1784f334ca324e31258c2a48fad09dc4aa6",
+      "successful_run": "api-nine-first",
+      "successful_in_partially_failing_group": true,
+      "fixture_changed": false
+    },
+    {
+      "source": "apps/api/src/workpaper-upload.pg.test.ts",
+      "source_sha256": "669c41fb0f375c316f2d7a739947d6807eeca1a862fd3f757c55e3f8cd04125f",
+      "source_lf_normalized_sha256": "c9159923f6ce9c41f4e93b9af4b385a5a070e011e190eb4bfc062de4e572f181",
+      "source_crlf_count": 57,
+      "source_lf_count": 0,
+      "dist": "apps/api/dist/workpaper-upload.pg.test.js",
+      "dist_sha256": "1fecec16914091525ce899426b847a7cb8f17b75eca8cbdf6ff423d6ffd3d23c",
+      "successful_run": "api-nine-first",
+      "successful_in_partially_failing_group": true,
+      "fixture_changed": false
+    },
+    {
+      "source": "apps/api/src/workpaper-download.pg.test.ts",
+      "source_sha256": "d4b8302e04b1cc3e15fe3ea1178e6544df4d5d9751fc80dbfbe16aacec9f363e",
+      "source_lf_normalized_sha256": "4482790928b48c428cfeff1f1e7607b7d930535f54ac0e9d53f8390eaa16eb57",
+      "source_crlf_count": 109,
+      "source_lf_count": 0,
+      "dist": "apps/api/dist/workpaper-download.pg.test.js",
+      "dist_sha256": "173da202693678cb7373655d23fcf2fa8d07fff3c1cf044853a1befef896361f",
+      "successful_run": "api-nine-first",
+      "successful_in_partially_failing_group": true,
+      "fixture_changed": false
+    },
+    {
+      "source": "apps/api/src/workpaper-legacy-checks.pg.test.ts",
+      "source_sha256": "5b8ec3b1d382130f456b1e1e78337a41799f2224a96467c91954b7cb5373d47f",
+      "source_lf_normalized_sha256": "1a1eedcc4c05d22ed0faa93879e35281f490c98f0a01cdd96a641539f01b4cf2",
+      "source_crlf_count": 111,
+      "source_lf_count": 0,
+      "dist": "apps/api/dist/workpaper-legacy-checks.pg.test.js",
+      "dist_sha256": "f0e00abbaad8c355f6445ab6bc1649b33ff9f95ee883f3fc282f354587f010cb",
+      "successful_run": "api-nine-first",
+      "successful_in_partially_failing_group": true,
+      "fixture_changed": false
+    },
+    {
+      "source": "apps/api/src/integrity-scope.pg.test.ts",
+      "source_sha256": "78be2796f227d4d9c6ae440feaf406daed1c8ce551220bdd8551b778f84b0690",
+      "source_lf_normalized_sha256": "bea84d53dd48ed54a04cd8ac2cf199485756c3395c7c081a6a852f34cfff56b4",
+      "source_crlf_count": 33,
+      "source_lf_count": 0,
+      "dist": "apps/api/dist/integrity-scope.pg.test.js",
+      "dist_sha256": "1ee533d9adb64b71e15d1863b3de7cf8b1b26ec1791c244fc6189cfbcb9fc404",
+      "successful_run": "api-nine-first",
+      "successful_in_partially_failing_group": true,
+      "fixture_changed": false
+    },
+    {
+      "source": "apps/api/src/automatic-m4-boundaries.pg.test.ts",
+      "source_sha256": "f167e505ae1cac2aa82c785b82ecaac51c7468d4c4a70943d429e843cfff9ec6",
+      "source_lf_normalized_sha256": "3be022f24681d7d89de90d14f273ec1c7332bb46c9b4159fcabdaf4401dbec11",
+      "source_crlf_count": 41,
+      "source_lf_count": 0,
+      "dist": "apps/api/dist/automatic-m4-boundaries.pg.test.js",
+      "dist_sha256": "e14d3ad95e787a25b5428d76204893845302a81d887db095a9cd1fe8501b335c",
+      "successful_run": "api-nine-first",
+      "successful_in_partially_failing_group": true,
+      "fixture_changed": false
+    },
+    {
+      "source": "apps/api/src/paid-review-assembly-recovery.pg.test.ts",
+      "source_sha256": "2df0beb929a2193dd96a6650cfdba69b157869a6f9b7aac207b24595e37ad245",
+      "source_lf_normalized_sha256": "9e124c7192237bd137dfe2d48150977332902ad9ec27b85fc956c6dfc3f2645e",
+      "source_crlf_count": 91,
+      "source_lf_count": 0,
+      "dist": "apps/api/dist/paid-review-assembly-recovery.pg.test.js",
+      "dist_sha256": "568b19cbff1c5b91cd364ec28fc8976fe7bfec259d3a64eeaf75af887cfd2512",
+      "successful_run": "api-nine-first",
+      "successful_in_partially_failing_group": true,
+      "fixture_changed": false
+    },
+    {
+      "source": "apps/api/src/review-dynamic-balance.pg.test.ts",
+      "source_sha256": "c01e9c5c4ba8239a96ac9d1852977d553d4b8d8d9cc1f467af104f3d428b2b16",
+      "source_lf_normalized_sha256": "5eab96556fe2f87781cc99b3c5738f065707de19f513ebe0f9a5d3fec67af1b1",
+      "source_crlf_count": 93,
+      "source_lf_count": 0,
+      "dist": "apps/api/dist/review-dynamic-balance.pg.test.js",
+      "dist_sha256": "3f01d00a69f235463174ac391ce7aec88b05b9c44fa7e29c5d626d77b5ff3242",
+      "successful_run": "api-review-runtime-retry",
+      "successful_in_partially_failing_group": false,
+      "fixture_changed": true
+    },
+    {
+      "source": "apps/worker/src/ordinary-file-check-batches.pg.test.ts",
+      "source_sha256": "b1de404c298f0077105a37f46d233aaf29bde1284f5a4e9f62f2d6d17e8e6d18",
+      "source_lf_normalized_sha256": "02b75b87fd2c9c873a493077ff2d5a6826a859a66360f46c09feff1c051ebc2b",
+      "source_crlf_count": 132,
+      "source_lf_count": 0,
+      "dist": "apps/worker/dist/ordinary-file-check-batches.pg.test.js",
+      "dist_sha256": "b90ef4ed20b94d05dcdc1dfab0aa0e877b9978689be243b235c8d7a903b5d125",
+      "successful_run": "worker-files-first",
+      "successful_in_partially_failing_group": true,
+      "fixture_changed": false
+    },
+    {
+      "source": "apps/worker/src/project-file-paid-coverage.pg.test.ts",
+      "source_sha256": "1bb486123601b1594f9766c610ff14e9202d1f9ed987a34fa87098a864d46051",
+      "source_lf_normalized_sha256": "0aaad8795d75acec904be3d8a46ce8ed2e863233e973c5432131c5b7b22a7416",
+      "source_crlf_count": 121,
+      "source_lf_count": 0,
+      "dist": "apps/worker/dist/project-file-paid-coverage.pg.test.js",
+      "dist_sha256": "dab792d02b9204c9b6f3fed87890930073b50fa736c35a92fb6238bd97312d8e",
+      "successful_run": "worker-files-first",
+      "successful_in_partially_failing_group": true,
+      "fixture_changed": false
+    },
+    {
+      "source": "apps/worker/src/project-files-e2e.pg.test.ts",
+      "source_sha256": "3fbf8d4fc106917845cf7bc4be1ccb8a8f21f2247bf4a870976fcc05100870ae",
+      "source_lf_normalized_sha256": "53ed8d881e8da89e02bbc071d324f8a60ba3d58208343e4d73b6b019d9e54770",
+      "source_crlf_count": 192,
+      "source_lf_count": 0,
+      "dist": "apps/worker/dist/project-files-e2e.pg.test.js",
+      "dist_sha256": "892ad0989fe67e6774648a39391eba18622e6b3c5119ba5c73f9d35e5b0b564b",
+      "successful_run": "worker-files-wire-retry",
+      "successful_in_partially_failing_group": false,
+      "fixture_changed": true
+    },
+    {
+      "source": "apps/worker/src/workpaper-shared-stage.pg.test.ts",
+      "source_sha256": "dc8a492683865532a9f227b4914dcb28606bdf75b8829c554d80dfccc7d00277",
+      "source_lf_normalized_sha256": "a84d8450f74c44cd3ea1eb3a25acbf41ee34cbb76cc613ad1e6d69cf0386dae4",
+      "source_crlf_count": 133,
+      "source_lf_count": 0,
+      "dist": "apps/worker/dist/workpaper-shared-stage.pg.test.js",
+      "dist_sha256": "821761012f76dd334fa91b9173b8b814a8ff45361860471985d477d4d7a99bf9",
+      "successful_run": "worker-workpapers-wire-retry",
+      "successful_in_partially_failing_group": false,
+      "fixture_changed": true
+    },
+    {
+      "source": "apps/worker/src/workpaper-paid-checks.pg.test.ts",
+      "source_sha256": "3dd9f36229ebf25ed5234b1b1b4f28dc6862a1ecbc8d8e9a7b1c2f666eccc1b2",
+      "source_lf_normalized_sha256": "70a0cd7f948d4ebed1843998ad429a5e243e5ab1d876eec4142f93db217099f7",
+      "source_crlf_count": 169,
+      "source_lf_count": 0,
+      "dist": "apps/worker/dist/workpaper-paid-checks.pg.test.js",
+      "dist_sha256": "245c3c13cc764849f6ca724c256d274cc27f3cfed43f1beadb4e25a29265680e",
+      "successful_run": "worker-workpapers-first",
+      "successful_in_partially_failing_group": true,
+      "fixture_changed": false
+    },
+    {
+      "source": "apps/worker/src/project-qa-e2e.pg.test.ts",
+      "source_sha256": "8018fca2f486c3857f0150105a9787d6e84d5c07ae0a3164f6b4f7df71a26351",
+      "dist": "apps/worker/dist/project-qa-e2e.pg.test.js",
+      "dist_sha256": "d425a69fa128769d702ac2c80288b0910913fdc1a50c7c7ed631418dcd774474",
+      "source_lf_normalized_sha256": "884906efc9280b81604300d58b7a8a04d23623c34201f9d106d045342287c755",
+      "source_crlf_count": 148,
+      "source_lf_count": 0,
+      "successful_run": "worker-qa-mixed-materials-query-fix",
+      "successful_in_partially_failing_group": false,
+      "fixture_changed": true
+    },
+    {
+      "source": "apps/worker/src/integrity-e2e.pg.test.ts",
+      "source_sha256": "54fc44f257a01ad6eb3c6d3b8d4421ba1c5acfecfa7f36a8ae4384f406819646",
+      "source_lf_normalized_sha256": "d1f6785b99f2215858758f07073e38e81643c88feaf749135f2dc89c0dcbef43",
+      "source_crlf_count": 163,
+      "source_lf_count": 0,
+      "dist": "apps/worker/dist/integrity-e2e.pg.test.js",
+      "dist_sha256": "bdebec9c682e13f1cb18b991a1a698489bb5793d017d30957bc6297994355270",
+      "successful_run": "worker-integrity-wire-retry-2",
+      "successful_in_partially_failing_group": false,
+      "fixture_changed": true
+    },
+    {
+      "source": "apps/worker/src/m4-case-templates.pg.test.ts",
+      "source_sha256": "701b0ff4c9a7772c8e7fad0f77e9b13c8477bfe04c91d12bee80341bf0690f86",
+      "source_lf_normalized_sha256": "620c7b21a287fa42b48a998371ff34df948969f1090d73123777675f568b6f02",
+      "source_crlf_count": 74,
+      "source_lf_count": 0,
+      "dist": "apps/worker/dist/m4-case-templates.pg.test.js",
+      "dist_sha256": "f4f5ef8f603ec250f3426f7f5a662b30569da302c0e20afef1e5c1e054c2e93b",
+      "successful_run": "worker-m4-case-first",
+      "successful_in_partially_failing_group": false,
+      "fixture_changed": false
+    },
+    {
+      "source": "apps/worker/src/rq-prospectus-annual-fact-pg.integration.test.ts",
+      "source_sha256": "8f9b52aa4a24766133ad74c690e4aa2e7498f4e89dfdabd4c57903679b905b40",
+      "source_lf_normalized_sha256": "e6a84b89997c21019df678f14127e1eb7cb23b2a8ba7330dd665ed667327d62b",
+      "dist": "apps/worker/dist/rq-prospectus-annual-fact-pg.integration.test.js",
+      "dist_sha256": "97d53e4832b65b7fe32aa72530f83c53a53927088ccc2efce9f70d813bce65c2",
+      "source_crlf_count": 287,
+      "source_lf_count": 0,
+      "successful_run": "worker-rq-annual-pg-first",
+      "successful_in_partially_failing_group": false,
+      "fixture_changed": false
+    }
+  ],
+  "compilation": {
+    "api": {
+      "metadata": "api-final-fixture-build.json",
+      "raw": "api-final-fixture-build.log"
+    },
+    "worker": {
+      "metadata": "worker-final-fixture-build.json",
+      "raw": "worker-final-fixture-build.log",
+      "historical_protocol_alignment_dist8_unchanged_after_that_compilation": true,
+      "scope": "Historical protocol-alignment compilation before the QA mixed-material expansion; its original metadata remains unchanged."
+    },
+    "historical_note": "Earlier successful tsc invocations were observed in tool output without persisted compilation logs. The archived final builds and run-specific source/dist hashes are the verifiable build records; historical output was not fabricated.",
+    "qa_mixed_builds": [
+      {
+        "metadata": "worker-qa-mixed-materials-fixture-build.json",
+        "raw": "worker-qa-mixed-materials-fixture-build.log",
+        "exit_code": 0
+      },
+      {
+        "metadata": "worker-qa-mixed-final-fixture-build.json",
+        "raw": "worker-qa-mixed-final-fixture-build.log",
+        "exit_code": 0
+      },
+      {
+        "metadata": "worker-qa-mixed-query-fix-fixture-build.json",
+        "raw": "worker-qa-mixed-query-fix-fixture-build.log",
+        "exit_code": 0
+      }
+    ],
+    "final_worker": {
+      "metadata": "worker-qa-mixed-query-fix-fixture-build.json",
+      "raw": "worker-qa-mixed-query-fix-fixture-build.log",
+      "scope": "Last worker compilation after correcting only the added journal SQL; all eight recorded source/dist bindings match final files."
+    }
+  },
+  "cleanup": {
+    "postgres": "postgres-qa-mixed-cleanup.json",
+    "azurite": "azurite-qa-mixed-cleanup.json",
+    "test_owner": "billing-owned-cleanup.json",
+    "no_clones_or_other_clients_before_postgres_stop": true,
+    "smart_postgres_stop_exit_code": 0,
+    "postgres_status_exit_code": 3,
+    "ports_refuse_connections": true,
+    "data_directories_retained": true,
+    "previous_lifecycle": {
+      "postgres": "postgres-cleanup.json",
+      "azurite": "azurite-cleanup.json"
+    },
+    "annual_test_cleanup": "worker-rq-annual-pg-first.json#cleanup",
+    "scope": "Both task-owned services restored for QA mixed-material and annual-fact PG execution, then stopped after both owners closed pools/maintenance clients. Prior lifecycle records remain archived."
+  },
+  "secret_scan": {
+    "configured_local_database_password_absent": true,
+    "configured_local_storage_key_absent": true,
+    "connection_strings_absent": true,
+    "raw_logs_unmodified": true,
+    "environment_configuration_excluded": true
+  },
+  "artifacts": [
+    {
+      "path": "api-nine-first.tap",
+      "bytes": 4825,
+      "sha256": "90d3149e8f54f29ac9087b9870a2e73c16e0238c253e2d3ae628aa8540132442",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "api-nine-first.json",
+      "bytes": 4483,
+      "sha256": "d728f165331940f6586fbe884ca73e7dfeac5c2e1d6e38a70f6df4a7b8449d55",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "api-review-wire-retry.tap",
+      "bytes": 1403,
+      "sha256": "ab5c95b275909ecec47e7eac4b63c104d7d21949a835ed45bbee810c7eca34fa",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "api-review-wire-retry.json",
+      "bytes": 1710,
+      "sha256": "25f87ec067d51a298bb95fb2dd4e06edd5bc6dd04bdbfb9ee959cb1d71ad31d3",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "api-review-runtime-retry.tap",
+      "bytes": 435,
+      "sha256": "6deffb14669606348dd4e37bfb9bc1783eff58b541fc3582cd1a113804c4b9f9",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "api-review-runtime-retry.json",
+      "bytes": 1590,
+      "sha256": "65701e2555974b3614391b30cf75c80ceeb91cfe62261ce1bae0636d17668ccc",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-files-first.tap",
+      "bytes": 4054,
+      "sha256": "3491616e2fe2f65330435d75f1cda863a1d3d77674c43aea6b45cd8ab450b917",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-files-first.json",
+      "bytes": 2180,
+      "sha256": "1d588da925d750a214b22df499e2e0403c46271c6337707f096cd72082c778dd",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-files-wire-retry.tap",
+      "bytes": 748,
+      "sha256": "76faba36e8d1ae3b0a8ed27a97a20d419d5004d0927f2a2ac18e2ee2061f213e",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-files-wire-retry.json",
+      "bytes": 1446,
+      "sha256": "766850d6698f0123f7b3fadea19feebe0b436e19278d34a964c0c278ccf1d270",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-workpapers-first.tap",
+      "bytes": 6667,
+      "sha256": "0aba732cc9d3ec98ea73a82be54bfb50266a62a3fdbfda885cfb1f6f0960ff14",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-workpapers-first.json",
+      "bytes": 1788,
+      "sha256": "cc2731929545022e18b51c9c3b7e1c82c77b04f05515e0611401f19adc9a2d57",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-workpapers-wire-retry.tap",
+      "bytes": 2878,
+      "sha256": "715ae1f8b26976e6e3ec085f71ebd1d5e90d50bfa1479c1644bf089b5aa9838b",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-workpapers-wire-retry.json",
+      "bytes": 1471,
+      "sha256": "d460f3058edabe5efc5c9ad9596d279316f578c7eaebf6734edac16bcacda10c",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-qa-first.tap",
+      "bytes": 1167,
+      "sha256": "c24f904caad9b8137a9c04931cf85230e5ba048c3079e6300c83d45bd32daf91",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-qa-first.json",
+      "bytes": 1364,
+      "sha256": "794f39457910c2e738e7d4d2adc74db2b7a8f5ab490845badb11736ed6b98d3c",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-qa-wire-retry.tap",
+      "bytes": 414,
+      "sha256": "165b40350ac79004a6cfddf43642ca68ab0ea5372c52c541d77ccd14714d8658",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-qa-wire-retry.json",
+      "bytes": 1431,
+      "sha256": "430950b485c802defd1ab869270712277f2b953a39dd1b805f435f51e0890d97",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-integrity-first.tap",
+      "bytes": 1149,
+      "sha256": "26b86fbf6060d560ae0bda17233cc2f09470a18955574734372240aa5bd7940a",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-integrity-first.json",
+      "bytes": 1375,
+      "sha256": "ac8625f66d3057fb6c676264fb69518c69d719c9c107cd9ab7f63fae154bf8c5",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-integrity-wire-retry.tap",
+      "bytes": 1140,
+      "sha256": "8a1b34e9c6cabd2788204a7d5973165f2c86d0cc79e07c9dc0beed02d989fbb3",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-integrity-wire-retry.json",
+      "bytes": 1442,
+      "sha256": "bab78892a190bafac7845761a5db9621ba35479ff68ea4b4af60b5ff4f09113f",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-integrity-wire-retry-2.tap",
+      "bytes": 406,
+      "sha256": "aafd782a8e5b617ceba43277e0ff8ac841497d74d87304ed79bae58878115836",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-integrity-wire-retry-2.json",
+      "bytes": 1446,
+      "sha256": "6086e41f6e317d1c6ab939b45dfd54ecc1c33a30292bf6cd1877a36c0deda37e",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-m4-case-first.tap",
+      "bytes": 410,
+      "sha256": "6cf477a42100afd9cf18ce5477c4db00649faa20def70aca81dfcd3671c26b3c",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-m4-case-first.json",
+      "bytes": 1584,
+      "sha256": "03f416a5ef129722e82ffcd5f5363b82be8af357a0bf7185c3c37c365eda55e9",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "api-final-fixture-build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "api-final-fixture-build.json",
+      "bytes": 458,
+      "sha256": "ed90dce9c8c9ad34e4cf6ee18c326ad95e166e30a32783b445ededaac0cfae3f",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-final-fixture-build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-final-fixture-build.json",
+      "bytes": 5946,
+      "sha256": "ac1396308afdc92d8e86dc8c9d65b78b98b75a271b1ef223c1aa1896d29ada09",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "preflight.json",
+      "bytes": 547,
+      "sha256": "ca4df9cf0f506007bd810d800508c0943a8e0d30f80ca5382f244a04d474ef08",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "billing-owned-cleanup.json",
+      "bytes": 194,
+      "sha256": "e4b4e7d63006f15399aa72c055bbb1d4aa28f49f47e1840afb410ed3f3c74c9c",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "postgres-cleanup.json",
+      "bytes": 715,
+      "sha256": "cccf2a0c6436eb3a0ec54d1f751800dfbebc8d993e65abf7f69849d6dce97ef3",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "azurite-cleanup.json",
+      "bytes": 199,
+      "sha256": "6167b1d730a17d372cc2f9b87c2557eeb0059b191b5918070753b6f5ef4c731e",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "chromium-install.log",
+      "bytes": 2359,
+      "sha256": "0c1d6322453e340d8b11059229f81812c1a008d92ef3ed2332faef0e0aeee736",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "chromium-install-elevated.log",
+      "bytes": 8884,
+      "sha256": "5c262775edf4689154cac847fe254a2a44fec22b5b5191ed79f5f69143399f07",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "final-test-fixtures.patch",
+      "bytes": 37606,
+      "sha256": "f981d38c41961e955153e55b1f48e0ade0f9e81e4e8ec50bacf5c481330f2596",
+      "generated_from": "git diff --binary -- <the five named fixture source paths>"
+    },
+    {
+      "path": "worker-qa-mixed-materials.tap",
+      "bytes": 1148,
+      "sha256": "9c691a8bd88d3d5cfb676d803985e1da90d8489af402b0589e78f26090a988c4",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-qa-mixed-materials.json",
+      "bytes": 1441,
+      "sha256": "31b73e2f2210cc7d3b8ec0a4ebbb28de752aa5d20c7cfdeeec1ae71e16b3af2d",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-qa-mixed-materials-query-fix.tap",
+      "bytes": 414,
+      "sha256": "20466329c5e8dd67f32db53b374954b6243c068bb1605c1e035c9e0658ecbdd2",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-qa-mixed-materials-query-fix.json",
+      "bytes": 1461,
+      "sha256": "d074b1a09bc7c7204c1ce139100b1f091403c6ad645050abac80c44e5d7238be",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-rq-annual-pg-first.tap",
+      "bytes": 450,
+      "sha256": "16732ff73921f7490bc44220f57d94ac3f984f7c3ceff7ae4a8b89f6fe670ea1",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-rq-annual-pg-first.json",
+      "bytes": 7448,
+      "sha256": "ffdfcb7e048a0e0b9fc5e515f77568f541ef2cca737e5f462fbef3bfb477eab3",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-qa-mixed-materials-fixture-build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-qa-mixed-materials-fixture-build.json",
+      "bytes": 5960,
+      "sha256": "e3cf5a2df27b839dd775f6bc57c1df119fcf88f9a0adf1c7d3500ac6fe287978",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-qa-mixed-final-fixture-build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-qa-mixed-final-fixture-build.json",
+      "bytes": 5956,
+      "sha256": "981d4b64d338eeb071e06edfb8dc6c5c393043c803831797d788519d9d495c67",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-qa-mixed-query-fix-fixture-build.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "worker-qa-mixed-query-fix-fixture-build.json",
+      "bytes": 5960,
+      "sha256": "924120236770d4d254d5ec3a1161d7429952b41bb432995f8224e8cdab08a564",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "qa-mixed-preflight.json",
+      "bytes": 414,
+      "sha256": "4c138291dff7b06e93b7b52cc3526503ec039d70fd487c1d5d7353327bb33236",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "postgres-qa-mixed-cleanup.json",
+      "bytes": 715,
+      "sha256": "c161015ca94af5159022c50627a3d6db3ac7a00a73d059589b4f772fd6d577cc",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "azurite-qa-mixed-cleanup.json",
+      "bytes": 199,
+      "sha256": "9e011898765f7b91549b0716c9191f130aa936311cf919ff106abb5309ae9105",
+      "copied_raw_bytes": true
+    },
+    {
+      "path": "pre-mixed-test-fixtures.patch",
+      "bytes": 29650,
+      "sha256": "4dacd20a9511ea7de4b3b764a40ec582f3927ad702b01025ffa36bd5c14fe276",
+      "copied_raw_bytes": true,
+      "scope": "Preserved earlier protocol/queue-only fixture patch before the mixed-material QA expansion."
+    }
+  ],
+  "mixed_material_qa": {
+    "successful_run": "worker-qa-mixed-materials-query-fix",
+    "failed_added_query_run": "worker-qa-mixed-materials",
+    "materials": "one readable adopted mandatory prospectus plus one valid supplementary DOCX without extractable text, in the same pinned draft",
+    "extraction_boundary": "partial text extraction, not missing Blob/hash/owner bypass or malformed-package tolerance",
+    "validated": [
+      "both immutable material pins and retained readable prospectus",
+      "named unreadable-file warning and partial evidence with matching SHA",
+      "useful answer cites exact readable spans; missing answer lists specific recovery evidence",
+      "Word retains useful facts/citations and named extraction gap",
+      "completed answer and hash preserved across pause/resume",
+      "exactly one durable intent per question and two synthetic model calls",
+      "confirmed two-question scope settled exactly once for 120, no attachment surcharge",
+      "completed request replay adds no run or credit event",
+      "mandatory unreadable-prospectus failure before model calls with complete release remains"
+    ],
+    "not_claimed": [
+      "new insufficient-funds 402 coverage in this QA file",
+      "supplier model judgment or real payment acceptance"
+    ]
+  },
+  "authorized_annual_fact_pg": {
+    "successful_run": "worker-rq-annual-pg-first",
+    "scope": "Existing authorized historical DOCX local parsing, controlled native producer, real isolated PostgreSQL persistence/readiness and 16 fail-closed candidates; no generated prospectus or complete financial quality acceptance",
+    "authorized_sample": {
+      "case_id": "rq-202509",
+      "file_id": "rq-202509-01",
+      "sha256": "51f77e36dcdc8b565f9a7b58ebf87cb6be4839a3444b8602df833e3fd61ef678"
+    },
+    "material_boundary": "The existing authorized historical DOCX was read locally by the real parser; sample bytes and ledger payloads were not copied into evidence. PostgreSQL identities/reviewer authorization were synthetic. No model or external website was called."
+  }
+}

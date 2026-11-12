@@ -1,7 +1,9 @@
 import type {PoolClient} from 'pg';
-import {AUTOMATIC_PRICE_VERSION,automaticTaskTariff,isAutomaticPriceVersion,type AutomaticPriceVersion,type AutomaticTaskSku,type AutomaticTaskTariff,type ScopeLine} from '@bondbuddy/contracts';
+import {AUTOMATIC_PRICE_VERSION,automaticTaskTariff,isAutomaticPriceVersion,integrityScopeMeasurement,integrityLockedScopeValid,IntegrityScopeMeasurementSchema,integrityRoundPoints,INTEGRITY_COMMERCIAL_RULE,type AutomaticPriceVersion,type AutomaticTaskSku,type AutomaticTaskTariff,type ScopeLine} from '@bondbuddy/contracts';
+import {Value} from '@sinclair/typebox/value';
 import {classifyFixedPrice} from './billing-classification.js';
 import {Problem} from './data.js';
+import {requiresQuestionList} from './qa-question-scope.js';
 
 export type AutomaticPrice={version:AutomaticPriceVersion;sku:AutomaticTaskSku|'differential_review'|'review_revision';lines:ScopeLine[];points:number;source_quote_ids:string[]};
 const unsupported=(message:string):never=>{throw new Problem(422,'SCOPE_UNSUPPORTED',message);};
@@ -24,25 +26,29 @@ export function resolveAutomaticTaskPrice(action:string,snapshot:any,version:Aut
     units=questions.map(q=>({id:q.id,label:'问题回复'}));
   }else if(action==='m4_qa'){
     sku='response';if(typeof snapshot.content!=='string'||!snapshot.content.trim()||snapshot.content.length>16000)return unsupported('请提供一个明确的问题或使用问题清单批量回复。');
-    const numbered=snapshot.content.match(/(?:^|\n)\s*(?:\d+[.、)）]|[（(]\d+[)）]|问题\s*\d+)/g)??[];
-    const clauses=snapshot.content.split(/[，,；;\n]|(?=(?:并|另外|同时|另行)(?:请你|请|帮我)?(?:说明|解释|回答|回复|分析|核对|计算|比较|对比))/);
-    const separateQuestions=clauses.filter((raw:string)=>{
-      const clause=raw.trim(),request=/^(?:(?:并|另外|同时|另行)\s*)?(?:请你|请|帮我)?(?:说明|解释|回答|回复|总结|归纳|概括|列出|写出|分析|核对|计算|比较|对比)(.+)$/.exec(clause);
-      if(!request)return /[^\s]{1,40}(?:为什么|为何)[^\s]+/.test(clause);
-      // Evidence, citations, methods and arithmetic supporting the same answer
-      // remain included. Count only separately requested substantive subjects.
-      const subject=request[1].trim();
-      return !/^(?:其|该题|上述|本题|相关|所用|具体|详细|相应)?(?:依据|证据|出处|引用|来源|计算方法|计算公式|公式|口径|步骤|差额|数据来源|财务数据|数据|该问题|该问询|问题|问询)(?:[。.!！?？]|$|和|及)/.test(subject)
-        && !/^(?:如何|怎么|怎样).*(?:上传|下载|查看积分|查看余额|任务进度|任务状态)/.test(subject);
-    });
-    if(numbered.length>1||separateQuestions.length>1||(snapshot.content.match(/[?？]/g)??[]).length>1)return unsupported('该输入包含多项提问，请使用问题清单逐题回复，系统会按实际题数处理。');
+    if(requiresQuestionList(snapshot.content))return unsupported('该输入包含多项提问，请使用问题清单逐题回复，系统会按实际题数处理。');
   }else if(action==='m4_document'){
     if(snapshot.kind!=='document'||!snapshot.input)return unsupported('请选择本次独立生成的文件。');
     sku=snapshot.billing_task==='m4_workpaper'||snapshot.input.workpaper?'workpaper':'related';
   }else if(action==='integrity_round'){
     sku='integrity';const d=snapshot.draft;
-    if(!d||!Array.isArray(d.subjects)||!Array.isArray(d.site_ids)||d.subjects.length<1||d.subjects.length>5||d.site_ids.length<1||d.site_ids.length>20)return unsupported('每轮诚信核查支持1至5个主体、至多20个适用官网；请调整本轮范围。');
+    if(!d||!Array.isArray(d.subjects)||!Array.isArray(d.site_ids)||d.subjects.length<1||d.subjects.length>5)return unsupported('每轮诚信核查支持1至5个主体，请核对本轮名单。');
+    if(!d.site_ids.length)return unsupported('请至少选择一个核查网站。');
+    // The integrity workflow validates the website catalogue; pricing includes the full selected scope in one round.
     if(new Set(d.subjects.map((s:any)=>s.id)).size!==d.subjects.length||new Set(d.site_ids).size!==d.site_ids.length)return unsupported('核查主体或网站重复。');
+    if(version===INTEGRITY_COMMERCIAL_RULE.version){
+      const measurement=snapshot.scope_measurement===undefined?integrityScopeMeasurement(d):snapshot.scope_measurement;
+      if(!Value.Check(IntegrityScopeMeasurementSchema,measurement)||!integrityLockedScopeValid(d,measurement))return unsupported('本轮锁定核查范围不一致，请重新准备核查范围。');
+      const pairs=measurement.executable_pairs,points=integrityRoundPoints(pairs);
+      if(!pairs)return unsupported('本轮没有可查询的适用官网，请核对人员适用范围和企业注册地。');
+      const base=INTEGRITY_COMMERCIAL_RULE.base_points,raw=pairs*INTEGRITY_COMMERCIAL_RULE.pair_points,pairCharge=points-base,capped=pairCharge<raw;
+      const evidence=[`商业计价规则：基础${base}积分＋每项主体×适用官网栏目${INTEGRITY_COMMERCIAL_RULE.pair_points}积分，整轮封顶${INTEGRITY_COMMERCIAL_RULE.cap_points}积分；不是供应商成本测算。`,
+        `锁定${measurement.subjects}个主体、${measurement.selected_sites}个网站栏目，${pairs}项可查询、${measurement.excluded_pairs}项不适用、${measurement.unresolved_pairs}项官网未定位。`,
+        '按有证据的成功查询项目结算，不超过预留；官网明确零结果计为完成查询；全部失败不扣费；分页、跳转、重试和原范围修复不加费。'];
+      const lines:ScopeLine[]=[{key:'integrity-base',label:'核查底稿基础服务',quantity:1,unit:'轮',unit_price_fen:base,amount_fen:base,evidence},
+        {key:'integrity-query-pairs',label:capped?`适用官网核查${pairs}项（轮价封顶减免${raw-pairCharge}积分）`:'主体×适用官网栏目核查',quantity:capped?1:pairs,unit:capped?'批':'项',unit_price_fen:capped?pairCharge:INTEGRITY_COMMERCIAL_RULE.pair_points,amount_fen:pairCharge,evidence}];
+      return {version,sku,lines,points,source_quote_ids:[]};
+    }
   }else if(action==='project_file_check'){
     sku='check';const files=snapshot.manifest?.files,charged=snapshot.charged_file_versions;
     if(!Array.isArray(files)||!files.length||files.length>100||!Array.isArray(charged))return unsupported('请明确本次检查的文件清单，单批至多100份。');

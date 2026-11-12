@@ -1,0 +1,215 @@
+TAP version 13
+# Subtest: automatic authoring produces an executable locked quote without operator pricing; shortages have no hold
+ok 1 - automatic authoring produces an executable locked quote without operator pricing; shortages have no hold
+  ---
+  duration_ms: 273.2144
+  type: 'test'
+  ...
+# Subtest: two competing executions cannot consume the same automatic scope twice
+ok 2 - two competing executions cannot consume the same automatic scope twice
+  ---
+  duration_ms: 356.3021
+  type: 'test'
+  ...
+# Subtest: HTTP exposes automatic price metadata, rejects client amounts and preserves owner isolation
+ok 3 - HTTP exposes automatic price metadata, rejects client amounts and preserves owner isolation
+  ---
+  duration_ms: 1303.9147
+  type: 'test'
+  ...
+# Subtest: failed and released authoring can retry with a new immutable quote; closed=false
+ok 4 - failed and released authoring can retry with a new immutable quote; closed=false
+  ---
+  duration_ms: 348.8737
+  type: 'test'
+  ...
+# Subtest: failed and released authoring can retry with a new immutable quote; closed=true
+ok 5 - failed and released authoring can retry with a new immutable quote; closed=true
+  ---
+  duration_ms: 389.2769
+  type: 'test'
+  ...
+# Subtest: HTTP automatic billing includes same-scope revision in a settled new check without another hold
+ok 6 - HTTP automatic billing includes same-scope revision in a settled new check without another hold
+  ---
+  duration_ms: 2317.9387
+  type: 'test'
+  ...
+# Subtest: HTTP automatic billing preserves the 1000-point revision upgrade for a settled old 990-point check
+ok 7 - HTTP automatic billing preserves the 1000-point revision upgrade for a settled old 990-point check
+  ---
+  duration_ms: 2183.361
+  type: 'test'
+  ...
+# Subtest: partial file-check quality refund revokes only that file and rejects only its stale included-maintenance quote
+ok 8 - partial file-check quality refund revokes only that file and rejects only its stale included-maintenance quote
+  ---
+  duration_ms: 1419.0261
+  type: 'test'
+  ...
+# Subtest: HTTP project file batch carries automatic tariff metadata and accepts the matching executable quote
+ok 9 - HTTP project file batch carries automatic tariff metadata and accepts the matching executable quote
+  ---
+  duration_ms: 1571.9635
+  type: 'test'
+  ...
+# Subtest: HTTP automatic workpaper generation returns 402 without creating a batch or hold when points are insufficient
+ok 10 - HTTP automatic workpaper generation returns 402 without creating a batch or hold when points are insufficient
+  ---
+  duration_ms: 1010.6068
+  type: 'test'
+  ...
+# Subtest: asynchronous workpaper shortage resumes only the original batch once and never overrides a later manual pause
+ok 11 - asynchronous workpaper shortage resumes only the original batch once and never overrides a later manual pause
+  ---
+  duration_ms: 1721.499
+  type: 'test'
+  ...
+# Subtest: retired source-diff route remains replayable while automatic workpaper checks use independent paid files
+ok 12 - retired source-diff route remains replayable while automatic workpaper checks use independent paid files
+  ---
+  duration_ms: 1048.0928
+  type: 'test'
+  ...
+# Subtest: retired workpaper assessment rejects new free work but preserves historical replay and reads
+ok 13 - retired workpaper assessment rejects new free work but preserves historical replay and reads
+  ---
+  duration_ms: 1102.7867
+  type: 'test'
+  ...
+# Subtest: full review locks 27195 points, settles once on report delivery, and releases a failed retry
+ok 14 - full review locks 27195 points, settles once on report delivery, and releases a failed retry
+  ---
+  duration_ms: 2450.7771
+  type: 'test'
+  ...
+# Subtest: synthetic PG HTTP tasks preserve large balances, exact string writes, idempotency and terminal release
+ok 15 - synthetic PG HTTP tasks preserve large balances, exact string writes, idempotency and terminal release
+  ---
+  duration_ms: 818.0699
+  type: 'test'
+  ...
+# Subtest: paid API: insufficient funds, recharge, concurrent execution, settlement, failed/cancelled release and price changes
+ok 16 - paid API: insufficient funds, recharge, concurrent execution, settlement, failed/cancelled release and price changes
+  ---
+  duration_ms: 6695.9212
+  type: 'test'
+  ...
+# Subtest: synthetic PAYG: exact payment, pinned order, replay safety, isolation and honest unavailable state
+ok 17 - synthetic PAYG: exact payment, pinned order, replay safety, isolation and honest unavailable state
+  ---
+  duration_ms: 2025.7519
+  type: 'test'
+  ...
+# Subtest: synthetic fixed M4: no rate dependency, immutable terms, competing wallets, full release and old quotation rejection
+ok 18 - synthetic fixed M4: no rate dependency, immutable terms, competing wallets, full release and old quotation rejection
+  ---
+  duration_ms: 526.5034
+  type: 'test'
+  ...
+# Subtest: outcome quote pins full delivery price, ignores progress debit, releases failures, settles delivered pair once and supports idempotent correction
+ok 19 - outcome quote pins full delivery price, ignores progress debit, releases failures, settles delivered pair once and supports idempotent correction
+  ---
+  duration_ms: 1771.894
+  type: 'test'
+  ...
+# Subtest: outcome M4 needs no metering rate, freezes complete pinned price and releases a cancelled task
+ok 20 - outcome M4 needs no metering rate, freezes complete pinned price and releases a cancelled task
+  ---
+  duration_ms: 391.6353
+  type: 'test'
+  ...
+# Subtest: durable file batch preserves a different approved amount per document and never charges a completed predecessor again
+ok 21 - durable file batch preserves a different approved amount per document and never charges a completed predecessor again
+  ---
+  duration_ms: 739.2558
+  type: 'test'
+  ...
+# Subtest: paid file checks settle only complete report and new update scope includes settled same-version evidence
+ok 22 - paid file checks settle only complete report and new update scope includes settled same-version evidence
+  ---
+  duration_ms: 698.19
+  type: 'test'
+  ...
+# Subtest: review API exposes pending scope without a charge and executes only the approved input-bound amount
+ok 23 - review API exposes pending scope without a charge and executes only the approved input-bound amount
+  ---
+  duration_ms: 2304.8496
+  type: 'test'
+  ...
+# Subtest: QA original-scope evidence followup requires owned settled original and cannot introduce new questions or changed requirements
+ok 24 - QA original-scope evidence followup requires owned settled original and cannot introduce new questions or changed requirements
+  ---
+  duration_ms: 737.9647
+  type: 'test'
+  ...
+# Subtest: synthetic signed provider: forged/mismatched/replayed callbacks and query-based credit repair
+ok 25 - synthetic signed provider: forged/mismatched/replayed callbacks and query-based credit repair
+  ---
+  duration_ms: 2433.7367
+  type: 'test'
+  ...
+# Subtest: subscription mode closes legacy bonus-pack sales while replaying original paid and pending orders unchanged
+ok 26 - subscription mode closes legacy bonus-pack sales while replaying original paid and pending orders unchanged
+  ---
+  duration_ms: 2033.878
+  type: 'test'
+  ...
+# Subtest: paid review: quote only, insufficient/concurrent submissions, immutable price, report settlement and revision release
+ok 27 - paid review: quote only, insufficient/concurrent submissions, immutable price, report settlement and revision release
+  ---
+  duration_ms: 3218.023
+  type: 'test'
+  ...
+# Subtest: task quality returns preserve frozen item/lot evidence, original cash rights and independent approval
+    # Subtest: int64 issuance overflow rolls back the whole approval and preserves the original pending request
+    ok 1 - int64 issuance overflow rolls back the whole approval and preserves the original pending request
+      ---
+      duration_ms: 475.1378
+      type: 'test'
+      ...
+    # Subtest: acceptance commits independent units and cross-lot slices before any refund read; strings and no free approval
+    ok 2 - acceptance commits independent units and cross-lot slices before any refund read; strings and no free approval
+      ---
+      duration_ms: 699.9918
+      type: 'test'
+      ...
+    # Subtest: concurrent whole repair and partial approval cannot exceed original charge
+    ok 3 - concurrent whole repair and partial approval cannot exceed original charge
+      ---
+      duration_ms: 175.5992
+      type: 'test'
+      ...
+    # Subtest: missing independent delivery, held work and rejected requests never issue a return
+    ok 4 - missing independent delivery, held work and rejected requests never issue a return
+      ---
+      duration_ms: 357.551
+      type: 'test'
+      ...
+    # Subtest: legacy whole-task refund revokes every dependent item, without inventing separate historic allocations
+    ok 5 - legacy whole-task refund revokes every dependent item, without inventing separate historic allocations
+      ---
+      duration_ms: 238.0917
+      type: 'test'
+      ...
+    # Subtest: HTTP rejects client-supplied amounts, isolates owners, and permissions revoke independently
+    ok 6 - HTTP rejects client-supplied amounts, isolates owners, and permissions revoke independently
+      ---
+      duration_ms: 1016.9506
+      type: 'test'
+      ...
+    1..6
+ok 28 - task quality returns preserve frozen item/lot evidence, original cash rights and independent approval
+  ---
+  duration_ms: 3145.1425
+  type: 'test'
+  ...
+1..28
+# tests 34
+# suites 0
+# pass 34
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 92260.2031

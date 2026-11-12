@@ -115,7 +115,8 @@ export async function readQa(db:Pool,owner:string,id:string,requested?:string,an
  SELECT run_id FROM selected UNION SELECT run_id FROM answer_history UNION SELECT $3::text UNION SELECT $4::text
  UNION SELECT manifest->>'preparation_id' FROM bb_project_qa_runs WHERE owner_user_id=$1 AND project_id=$2 AND run_id=$3
  ) SELECT q.*,a.answer_sequence,r.state,r.stage,r.artifact_id,c.points,c.charged_points,c.state reservation_state,
- (SELECT j.error_code FROM bb_jobs j WHERE j.owner_user_id=q.owner_user_id AND j.run_id=q.run_id AND j.subtype='project_qa_v1' LIMIT 1) AS error_code FROM bb_project_qa_runs q
+ COALESCE((SELECT j.error_code FROM bb_jobs j WHERE j.owner_user_id=q.owner_user_id AND j.run_id=q.run_id AND j.subtype='project_qa_v1' LIMIT 1),
+  CASE WHEN r.state='failed' THEN (SELECT e.payload->>'error_code' FROM bb_run_events e WHERE e.run_id=q.run_id AND e.state='failed' AND e.payload->>'error_code' IS NOT NULL ORDER BY e.seq DESC LIMIT 1) END) AS error_code FROM bb_project_qa_runs q
  JOIN bb_runs r ON r.id=q.run_id AND r.owner_user_id=q.owner_user_id LEFT JOIN bb_credit_reservations c ON c.run_id=r.id
  LEFT JOIN answers a ON a.run_id=q.run_id
  WHERE q.owner_user_id=$1 AND q.project_id=$2 AND q.run_id IN(SELECT run_id FROM included)

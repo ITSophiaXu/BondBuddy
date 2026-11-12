@@ -1,0 +1,11 @@
+Applied 0164_subscription_checkout_rejections.sql
+Applied 0164_upload_integrity_receipts.sql
+Applied 0165_upload_confirmation_outbox.sql
+Applied 0166_direct_blob_uploads.sql
+Applied 0167_actual_credit_charge_evidence.sql
+Applied 0168_billing_task_recovery.sql
+Applied 0170_billing_request_rejections.sql
+Applied 0171_integrity_successful_query_billing.sql
+Applied 0172_integrity_commercial_scope_price.sql
+Applied 0173_file_generation_locked_quotes.sql
+Applied 0174_integrity_actual_scope_settlement.sql

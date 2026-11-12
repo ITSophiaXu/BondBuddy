@@ -94,7 +94,7 @@
 .project-materials-details.has-run .materials-panel { border:0; }
 #material-editing { border:0; padding:0; margin:0; min-width:0; }
 .materials-readonly .material-upload-guidance,
-.materials-readonly .material-picker,
+.prototype-app .materials-readonly .material-picker,
 .materials-readonly [data-delete-material],
 .materials-readonly .material-file-actions,
 .materials-readonly .material-role-heading>div>span { display:none; }

@@ -63,13 +63,44 @@ test('old stages, other runs, future events and summaries before resume cannot b
   assert.match(authoringStatus({...run,stage:'word_delivery'},[event(1,{summary})],progress)!.title,/保存 Word/);
 });
 
-test('failure, connection, pause, queue and terminal states take precedence over old summaries',()=>{
+test('step failure, connection, pause, queue and terminal states take precedence over old summaries',()=>{
   const events=[event(1,{summary}),event(2,{state:'failed'})];
-  assert.equal(authoringStatus(run,events,progress)!.title,'本次处理遇到问题');
+  assert.equal(authoringStatus(run,events,progress)!.title,'处理步骤遇到问题');
   assert.match(authoringStatus(run,events,{...progress,clock_running:false})!.summary,/执行连接正在恢复/);
   assert.match(authoringStatus(run,events,{...progress,pause_requested:true})!.title,/保存进度后暂停/);
   assert.match(authoringStatus(run,events,{...progress,credit_exhausted:true})!.title,/积分已用完/);
   assert.equal(authoringStatus({...run,state:'paused',stage:'user_paused'},events,progress)!.title,'任务已暂停');
   assert.match(authoringStatus({...run,state:'queued'},events,{...progress,queued_at:at,queue_ahead:2})!.summary,/排队期间不消耗积分/);
   for(const state of ['succeeded','failed','cancelled'] as const)assert.equal(authoringStatus({...run,state},events,progress),undefined);
+});
+
+test('a failed activity reports a step error without declaring task failure or recovery',()=>{
+  const failed=event(1,{state:'failed'});
+  assert.equal(authoringEventLabel(failed),'处理步骤出错：处理文档');
+  assert.equal(authoringEventLabel(event(2,{state:'failed',summary})),`处理步骤出错：处理文档。进度说明：${summary}`);
+  const status=authoringStatus(run,[failed],progress)!;
+  assert.equal(status.title,'处理步骤遇到问题');
+  assert.equal(status.summary,'该步骤出错，任务尚未结束；后续状态会自动更新。');
+  assert.doesNotMatch(status.title+status.summary,/本次处理未完成|本轮未完成|任务失败|已重试|已恢复|已修复/);
+});
+
+test('later completed steps and public summaries advance current progress without erasing a failed step',()=>{
+  const providerRun={...run,stage:'provider_call'};
+  const failed=event(1,{state:'failed'},{stage:providerRun.stage});
+  const returned=event(2,{code:'write_document',state:'completed'},{stage:providerRun.stage});
+  const reported=event(3,{code:'write_document',state:'started',summary},{stage:providerRun.stage});
+  for(const events of [[failed,returned],[failed,returned,reported]]){
+    const retained=retainAuthoringEvents([...events,...events]);
+    const visible=authoringVisibleEvents(providerRun,retained);
+    assert.equal(authoringEventLabel(visible[0]),'处理步骤出错：处理文档');
+    assert.deepEqual(visible.map(e=>e.seq),events.length===2?[1,2]:[1,3]);
+    const current=authoringStatus(providerRun,retained,progress)!;
+    assert.equal(current.title,'正在编制募集书内容');
+    assert.match(current.summary,events.length===2?/暂未收到模型的具体进度说明/:/最近一次模型进度：已完成目录核对/);
+    assert.doesNotMatch(current.title+current.summary,/步骤遇到问题|任务失败|已重试|已恢复|已修复/);
+  }
+  assert.equal(authoringEventLabel(returned),'处理步骤已返回：编制募集书内容');
+  const terminal=event(4,undefined,{state:'failed',stage:'failed'});
+  assert.deepEqual(authoringVisibleEvents({...providerRun,state:'failed',stage:'failed'},[failed,returned,reported,terminal]).map(e=>e.seq),[1,3,4]);
+  assert.equal(authoringStatus({...providerRun,state:'failed',stage:'failed'},[failed,returned,reported,terminal],progress),undefined);
 });

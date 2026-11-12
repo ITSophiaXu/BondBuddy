@@ -1,0 +1,37 @@
+{
+  "name": "qa-recovery",
+  "width": 320,
+  "overflow": false,
+  "controls": [
+    {
+      "tag": "BUTTON",
+      "id": "",
+      "text": "确认原上传并加入原准备",
+      "class": "bb-upload-action bb-upload-action--primary btn secondary",
+      "display": "inline-flex",
+      "width": 184,
+      "height": 44,
+      "border": "1px solid rgb(36, 87, 71)",
+      "background": "rgb(36, 87, 71)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": null,
+      "multiple": false
+    },
+    {
+      "tag": "BUTTON",
+      "id": "",
+      "text": "取消本次上传",
+      "class": "bb-upload-action text-button",
+      "display": "inline-flex",
+      "width": 114,
+      "height": 44,
+      "border": "1px solid rgb(135, 151, 125)",
+      "background": "rgb(255, 255, 255)",
+      "cursor": "pointer",
+      "tabIndex": 0,
+      "accept": null,
+      "multiple": false
+    }
+  ]
+}

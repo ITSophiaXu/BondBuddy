@@ -1,0 +1,44 @@
+{
+  "case_id": "integrity-zouping",
+  "task_type": "integrity",
+  "input_origin": "new_test_recipe_using_authorized_real_materials",
+  "source_case_ids": [
+    "update-zouping"
+  ],
+  "issuer_name": "邹平国信招商发展有限公司",
+  "materials": [
+    {
+      "file_id": "nov05-f010",
+      "original_filename": "DY-3邹平市汇融产业投资集团有限公司2025年度第一期债务融资工具定向募集说明书.docx",
+      "upload_role": "historical",
+      "source_material_id": "92ff4498-4456-49e0-936f-459728dfc586",
+      "source_material_version": 1,
+      "deleted_at": null
+    }
+  ],
+  "business_acceptance_status": "not_evaluated",
+  "notes": [],
+  "replay_policy": "新建隔离测试项目；这是新编测试设计，不是历史已执行任务或已验收成果。",
+  "draft": {
+    "subjects": [
+      {
+        "id": "issuer-zouping",
+        "kind": "company",
+        "name": "邹平国信招商发展有限公司",
+        "identifier": "",
+        "role": "发行人",
+        "province": "",
+        "city": ""
+      }
+    ],
+    "site_ids": [
+      "credit-china",
+      "execution-dishonest",
+      "execution-debtor",
+      "csrc",
+      "nafmii"
+    ],
+    "notes": "记录当次实际结果；未知信用代码/注册地留空并核对，不预设无失信或有失信。"
+  },
+  "assertion_policy": "站点状态随时间变化；验证主体匹配、查询证据和失败分类，不断言永久无结果。"
+}

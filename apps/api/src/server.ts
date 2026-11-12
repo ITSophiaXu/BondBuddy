@@ -1,4 +1,10 @@
-import { registerProjectQa } from './project-qa.js';
+import { DIRECT_UPLOAD_TRANSPORT, UPLOAD_TRANSPORT_HEADER } from '@bondbuddy/contracts';
+import { refreshUploadTicket, uploadTicket } from './upload-session.js';
+import { appendProjectMaterialEvent } from './project-material-events.js';import { registerProjectQa } from './project-qa.js';
+import { requestUploadConfirmation } from './upload-confirmation.js';
+import { completeStoredUpload } from './complete-upload.js';
+import { historicalExclusions, lockNoneBaseline, NoneBaselineConflict } from './none-baseline.js';
+import { FIRST_DRAFT_EXCLUSION_SCOPE, type FirstDraftConfirmationRequest } from '@bondbuddy/contracts';
 import { registerQaKnowledge } from './qa-knowledge.js';
 import { registerIntegrity } from './integrity.js';
 import { readAuthoringProgress } from './authoring-progress.js';
@@ -40,7 +46,7 @@ import { executionKeyHash, isPgInputRevision, recordLogicalJob, recordOperation,
 import { installAdminRoutes } from './admin-routes.js';
 import { installAdminDashboardRoutes } from './admin-dashboard.js';
 import { installAdminInspectionRoutes } from './admin-inspection.js';
-import { DOCX_LIMITS, WORD_MEDIA_TYPE } from './docx-inspector.js';
+import { readVerifiedArtifact } from './artifact-reader.js';
 import { installEventStreams, type StreamSettings } from './stream.js';
 import { sendMaterial, contentDisposition } from './material-download.js';
 import { artifactNameColumns, artifactNameJoins, artifactDownloadName } from './artifact-filename.js';
@@ -71,7 +77,7 @@ import { appendRuleApplicabilityOverallReview, type AppendRuleApplicabilityOvera
 import { assertGenerationIssuerBinding, assertLockedInputIntegrity, assertTestChannelReadable, assertTestGrant, autoWorkingDraftGrant, testChannelEnabled, workingDraftConfigured } from './non-production-test.js';
 import { isTestIssuerCandidate, loadTestIssuerCandidate, testIssuerCandidateMatches } from './test-issuer-candidate.js';
 import { classifyPreflightReadiness } from './preflight-readiness.js';
-import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertAuthoringSourceRequired, assertOwnedFormatTemplate, inheritPreviousOutputFormat } from './unified-authoring.js';
+import { isUnifiedInput, lockUnifiedAuthoring, assertAuthoringSourceInformation, assertAuthoringSourceRequired, assertOwnedFormatTemplate, inheritPreviousOutputFormat, lockProspectusEditBase } from './unified-authoring.js';
 import { lockTestRuleApplicabilityRef } from './test-rule-applicability-pin.js';
 import { installIssuerAnnualProfileReviewRoutes } from './issuer-annual-profile-reviews.js';
 import { runEventPayloadDto } from './run-event-dto.js';
@@ -100,7 +106,7 @@ import {installPaymentReconciliation} from './payment-reconciliation.js';
 import {installProjectFileCheckBatches} from './project-file-check-batches.js';
 
 export type Principal = { userId: string; csrfVerified: boolean; sessionId?: string };
-export type Settings = { enableSubscriptionBilling?: boolean; enableOutcomePricing?: boolean; paymentProviders?: readonly PaymentProvider[]; enablePaidAuthoring?: boolean; enablePaidReview?: boolean; pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
+export type Settings = { /** Node test runner only: replay synthetic historical billing policies. */ historicalBillingFixture?: boolean; directBlobUploads?: boolean; enableSubscriptionBilling?: boolean; enableOutcomePricing?: boolean; paymentProviders?: readonly PaymentProvider[]; enablePaidAuthoring?: boolean; enablePaidReview?: boolean; pool?: Pool; blobs?: PrivateBlobs; principal?: (request: FastifyRequest) => Promise<Principal | null>; allowedOrigin?: string; auth?: Omit<AuthConfig,'pool'|'allowedOrigin'>; enableRunStaging?: boolean; enableSyntheticQueue?: boolean; /** #17: queue real runs for the worker runtime (env BB_RUN_RUNTIME_ENABLED=1). */ enableRunRuntime?: boolean; /** Controlled message persistence seam, disabled until conversation integration. */ enableUserSubmissionSeam?: boolean; stream?: StreamSettings; /** #35 trial limits; defaults to BB_TRIAL_* configuration. */ trial?: TrialConfig; reviewedContextLoader?: ReviewedContextLoader; /** #79 plaintext route deadline; defaults to 60 seconds. */ promptViewDeadlineMs?: number; /** Legacy injectable seam; admission reads only the immutable input pin. */ generationIssuerBinding?: GenerationIssuerBindingSeam };
 const param = (request: FastifyRequest, name: string) => (request.params as Record<string,string>)[name];
 const body = <T>(request: FastifyRequest) => request.body as T;
 const now = () => new Date().toISOString();
@@ -129,13 +135,6 @@ function isBrowserUpdateKey(value:unknown, projectId:unknown, revision:unknown, 
     value===`web-update-${digest(JSON.stringify([projectId,revision,inputHash]))}`;
 }
 
-async function appendProjectMaterialEvent(client: PoolClient, ownerId: string, projectId: string, materialId: string, byteSize: number) {
-  const allocated = await client.query('UPDATE bb_projects SET event_cursor=event_cursor+1 WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL RETURNING event_cursor', [ownerId, projectId]);
-  if (!allocated.rows[0]) throw missing();
-  const payload = { material_id: materialId, uploaded_bytes: byteSize, total_bytes: byteSize };
-  await client.query('INSERT INTO bb_project_events(id,owner_user_id,project_id,seq,trace_id,type,payload) VALUES($1,$2,$3,$4,$5,$6,$7)',
-    [uid(), ownerId, projectId, allocated.rows[0].event_cursor, uid(), 'material.upload_progress', payload]);
-}
 
 function projectEventCursor(value: string | undefined) {
   if (value === undefined) return 0;
@@ -161,10 +160,14 @@ export function createServer(settings: Settings = {}) {
   // Fastify runs onClose hooks in reverse registration order. Register the
   // owned pool first so in-flight payment/statement reconciliation drains first.
   if(!settings.pool)app.addHook('onClose',async()=>{await pool.end();});
-  const subscriptionBilling=settings.enableSubscriptionBilling??process.env.BB_SUBSCRIPTION_BILLING_ENABLED==='1';
+  // Historical tariffs remain executable through their persisted contracts. They
+  // are no longer selectable by deployment flags for a new HTTP commission.
+  // The explicit fixture seam exists only inside Node's test runner.
+  if(settings.historicalBillingFixture&&!process.env.NODE_TEST_CONTEXT)throw new Error('Historical billing fixtures require node --test');
+  const subscriptionBilling=settings.historicalBillingFixture?settings.enableSubscriptionBilling??false:true;
   configureAutomaticBilling(pool,subscriptionBilling);
   app.addHook('onRequest',(_request,_reply,done)=>withAutomaticBillingRequest(subscriptionBilling,done));
-  const commercial = subscriptionBilling || (settings.enableOutcomePricing ?? process.env.BB_OUTCOME_PRICING_ENABLED === '1');
+  const commercial = subscriptionBilling || (!!settings.historicalBillingFixture&&settings.enableOutcomePricing===true);
   const paidAuthoring = commercial || (settings.enablePaidAuthoring ?? process.env.BB_PAID_AUTHORING_ENABLED === '1');
   const paidReview = commercial || (settings.enablePaidReview ?? process.env.BB_PAID_REVIEW_ENABLED === '1');
   const paymentProviders = settings.paymentProviders ?? paymentProvidersFromEnv(process.env).providers;
@@ -297,24 +300,7 @@ export function createServer(settings: Settings = {}) {
   }
   function blob() { if (!blobs) throw unavailable(); return blobs; }
   async function verifiedArtifactBytes(artifact:any):Promise<Buffer> {
-    let bytes:Buffer|null;
-    if(artifact.media_type===WORD_MEDIA_TYPE){
-      const expectedSize=Number(artifact.delivery_evidence_byte_size);
-      if(!Number.isSafeInteger(expectedSize)||expectedSize<0||expectedSize>DOCX_LIMITS.archiveBytes)
-        throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
-      try { bytes=await blob().getIfExistsBounded(artifact.object_key,expectedSize); }
-      catch { throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed'); }
-      if(!bytes||bytes.length!==expectedSize)throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
-    }else if(artifact.media_type==='application/pdf'){
-      const expectedSize=Number(artifact.delivery_evidence_byte_size);
-      if(!Number.isSafeInteger(expectedSize)||expectedSize<8||expectedSize>100*1024*1024)throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
-      try {bytes=await blob().getIfExistsBounded(artifact.object_key,expectedSize);}catch{throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');}
-      if(!bytes||bytes.length!==expectedSize)throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
-    }else{
-      bytes=await blob().get(artifact.object_key);
-    }
-    if(digest(bytes)!==artifact.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Artifact integrity check failed');
-    return bytes;
+    return readVerifiedArtifact(blob(),artifact);
   }
   installAdminRoutes(app,{db,blobs:blob,owner,promptViewDeadlineMs:settings.promptViewDeadlineMs});
   installAdminDashboardRoutes(app,{db,owner});
@@ -741,14 +727,32 @@ export function createServer(settings: Settings = {}) {
     });
     return reply.code(204).send();
   });
+  app.get('/api/v1/projects/:project_id/first-draft-exclusions',{schema:{response:{200:schemas.FirstDraftExclusionsResponse}}},async(request,reply)=>{
+    const user=await owner(request),id=param(request,'project_id');
+    reply.header('cache-control','private, no-store');
+    try {
+      return await transaction(db(),async client=>{
+        // The same project lock used by uploads/deletion keeps the displayed set coherent.
+        const p=await project(client,user,id,true);
+        if(!['update','generation'].includes(p.kind))throw conflict('INPUT_REVISION_CONFLICT','该项目不支持无原稿编制。');
+        return {project_id:id,draft_revision:p.draft_revision,project_kind:p.kind,scope:FIRST_DRAFT_EXCLUSION_SCOPE,
+          excluded_historical:await historicalExclusions(client,{owner:user,projectId:id},[])};
+      });
+    } catch(error) {
+      if(error instanceof Problem)throw error;
+      throw new Problem(503,'DATA_UNAVAILABLE','无法读取项目历史稿集合，请稍后重试。');
+    }
+  });
   app.post('/api/v1/projects/:project_id/input-revisions',{schema:{body:schemas.InputRevisionCreateRequest}},async (request,reply)=>{
     const user=await owner(request), id=param(request,'project_id');
-    const b=body<{prospectus_selection_revision?:number;edit_base?:{artifact_id:string;artifact_version:number;sha256:string}|null;draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];target_confirmation?:TargetConfirmationRequest;user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;test_rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[];generation_issuer_binding_ref?:GenerationIssuerBindingRef;project_message_set_ref?:ProjectMessageSetRef}>(request);
+    const b=body<{first_draft_confirmation?:FirstDraftConfirmationRequest;prospectus_selection_revision?:number;edit_base?:{artifact_id:string;artifact_version:number;sha256:string}|null;draft_revision:number;material_versions:{material_id:string;material_version:number}[];requirement_message_ids:string[];target_confirmation?:TargetConfirmationRequest;user_reference?:UserReferenceChoice;rule_applicability_context_ref?:RuleApplicabilityContextRef;test_rule_applicability_context_ref?:RuleApplicabilityContextRef;credit_facility_supplements?:{supplement_id:string;version:number;request_hash:string}[];generation_issuer_binding_ref?:GenerationIssuerBindingRef;project_message_set_ref?:ProjectMessageSetRef}>(request);
     if(b.test_rule_applicability_context_ref && !testChannelEnabled())
       throw new Problem(403,'TEST_CHANNEL_DISABLED','Test channel is disabled');
     const result=await transaction(db(),async client=>{
       const p=await project(client,user,id,true);
       if(p.draft_revision!==b.draft_revision) throw conflict('INPUT_REVISION_CONFLICT','Draft revision changed');
+      if(b.first_draft_confirmation && (p.kind!=='generation' || p.update_details?.authoring_mode!=='unified_v1'))
+        throw conflict('INPUT_REVISION_CONFLICT','首稿确认只适用于无原稿的统一编制生成项目。');
       let targetConfirmation;
       if (b.target_confirmation) {
         try {
@@ -765,7 +769,7 @@ export function createServer(settings: Settings = {}) {
       if(p.kind==='update'&&p.update_details?.authoring_mode==='unified_v1'&&requiresProspectusSelection(prospectus))
         throw prospectusSelectionRequired();
       const currentProspectus=prospectus.versions.find(v=>v.version_id===prospectus.current_version_id);
-      if(currentProspectus && b.edit_base===undefined)b.edit_base=currentProspectus.artifact_id?{artifact_id:currentProspectus.artifact_id,artifact_version:currentProspectus.artifact_version!,sha256:currentProspectus.sha256}:null;
+      b.edit_base=lockProspectusEditBase(currentProspectus,b.edit_base);
       const refs=[...b.material_versions].sort((a,z)=>a.material_id.localeCompare(z.material_id)||a.material_version-z.material_version);
       if(new Set(refs.map(r=>r.material_id)).size!==refs.length) throw new Problem(422,'VALIDATION_FAILED','Duplicate material IDs');
       const resolved=[];
@@ -901,10 +905,16 @@ export function createServer(settings: Settings = {}) {
         if(b.edit_base && !previous)throw conflict('INPUT_REVISION_CONFLICT','所选成果已不可用，请重新选择准确版本。');
         const continuesPrevious = b.edit_base !== null && previous && isUnifiedInput(previous.manifest) && previous.manifest.issuer_name === p.issuer_name &&
           sourceKey(previous.manifest.materials as typeof resolved) === sourceKey(resolved);
+        if(b.edit_base && !continuesPrevious)throw conflict('INPUT_REVISION_CONFLICT','所选成果与本次来源材料或发行人不一致，请恢复对应依据后重新开始。');
         // A continuation inherits its verified clean artifact. An unrelated draft
         // template choice cannot block or replace that already selected baseline.
+        // An adopted upload is the editing manuscript, even when an auxiliary
+        // reference wins the older DOCX/relationship/order recommendation.
+        const adoptedSource = !continuesPrevious && currentProspectus?.material_id
+          ? { material_id: currentProspectus.material_id, material_version: currentProspectus.material_version!, sha256: currentProspectus.sha256 }
+          : undefined;
         const authoring: import('@bondbuddy/contracts').UnifiedAuthoringInput = await lockUnifiedAuthoring(
-          continuesPrevious ? {...p,update_details:{...p.update_details,format_template:null}} : p, formatMaterials, currentMessageSet);
+          continuesPrevious ? {...p,update_details:{...p.update_details,format_template:null}} : p, formatMaterials, currentMessageSet, adoptedSource);
         if (continuesPrevious) {
           authoring.previous_output = { artifact_id:previous.id,version:previous.version,sha256:String(previous.sha256).trim(),run_id:previous.run_id,input_revision:previous.input_revision };
           if(b.edit_base)authoring.edit_baseline = {market:previous.manifest.market,offering:previous.manifest.offering,
@@ -915,6 +925,13 @@ export function createServer(settings: Settings = {}) {
         if(b.edit_base&&!authoring.previous_output)throw conflict('INPUT_REVISION_CONFLICT','所选版本的发行人或来源与当前材料不同，请核对后再修改。');
         if (['update','generation'].includes(p.kind)) assertAuthoringSourceRequired(resolved, authoring.previous_output);
         inheritPreviousOutputFormat(authoring);
+        try {
+          const snapshot=await lockNoneBaseline(client,{owner:user,projectId:id},p.kind,resolved,authoring,b.first_draft_confirmation,new Date().toISOString());
+          if(snapshot)authoring.none_baseline=snapshot;
+        } catch(error) {
+          if(error instanceof NoneBaselineConflict)throw conflict(error.code,error.message);
+          throw new Problem(503,'DATA_UNAVAILABLE','无法核对项目历史稿集合，请稍后重试。');
+        }
         Object.assign(manifest, { issuer_name: p.issuer_name, authoring });
       }
       Object.assign(manifest,{prospectus_selection:{revision:prospectus.selection_revision,version_id:prospectus.current_version_id}});
@@ -1064,7 +1081,8 @@ export function createServer(settings: Settings = {}) {
     const expectedExtensions:Record<string,string[]>={[PDF_MEDIA_TYPE]:['pdf'],[DOCX_MEDIA_TYPE]:['docx'],[XLSX_MEDIA_TYPE]:['xlsx'],[CSV_MEDIA_TYPE]:['csv'],[TEXT_MEDIA_TYPE]:['txt'],[PNG_MEDIA_TYPE]:['png'],[JPEG_MEDIA_TYPE]:['jpg','jpeg'],'application/msword':['doc']};
     if(!suffix || !expectedExtensions[b.media_type]?.includes(suffix))throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Filename extension and declared type differ');
     const uploadId=uid(),key=`users/${user}/projects/${id}/uploads/${uploadId}`,expires=new Date(Date.now()+15*60_000);
-    await transaction(db(),async client=>{
+    const transport=(settings.directBlobUploads??process.env.BB_DIRECT_BLOB_UPLOADS==='1')&&request.headers[UPLOAD_TRANSPORT_HEADER.toLowerCase()]===DIRECT_UPLOAD_TRANSPORT?DIRECT_UPLOAD_TRANSPORT:'same_origin';
+    const ticket=await transaction(db(),async client=>{
       const uploadProject=await project(client,user,id,true);
       assertProspectusUploadFormat(uploadProject.kind,b.role,b.filename,b.media_type);
       if(b.role==='historical'){
@@ -1072,11 +1090,17 @@ export function createServer(settings: Settings = {}) {
         if(converted.rowCount)throw conflict('INPUT_REVISION_CONFLICT','Converted no-history project cannot accept historical prospectus material');
       }
       await admitUploadCreate(client,trial,user,sourceHash(request.ip),b.byte_size);
-      await client.query('INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[uploadId,user,id,b.filename,b.media_type,b.byte_size,b.sha256,b.role,key,expires]);
+      await client.query('INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,upload_transport) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',[uploadId,user,id,b.filename,b.media_type,b.byte_size,b.sha256,b.role,key,expires,transport]);
       await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'upload',uploadId,'upload.created',{project_id:id}]);
       await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId:request.id,kind:'material_upload_start',status:'submitted'});
+      return uploadTicket(blob(),id,{id:uploadId,object_key:key,upload_transport:transport,expires_at:expires});
     }).catch(async error=>{await trialRejected(error,user,'upload_create',id,request.id);throw error;});
-    return reply.code(201).send({upload_id:uploadId,state:'uploading',upload_url:`/api/v1/projects/${id}/materials/uploads/${uploadId}/bytes`,expires_at:expires.toISOString(),max_bytes:MAX_BYTES});
+    return reply.header('Cache-Control','no-store').code(201).send(ticket);
+  });
+  app.post('/api/v1/projects/:project_id/materials/uploads/:upload_id/session',{schema:{body:schemas.UploadCompleteRequest}},async(request,reply)=>{
+    const user=await owner(request),id=param(request,'project_id'),uploadId=param(request,'upload_id');
+    const ticket=await refreshUploadTicket(db(),blob(),user,id,uploadId,body<{byte_size:number;sha256:string}>(request),request.headers[UPLOAD_TRANSPORT_HEADER.toLowerCase()]===DIRECT_UPLOAD_TRANSPORT);
+    return reply.header('Cache-Control','no-store').send(ticket);
   });
   app.post('/api/v1/projects/:project_id/materials/role-copies',{schema:{body:schemas.MaterialRoleCopyRequest}},async (request,reply)=>{
     const user=await owner(request),id=param(request,'project_id');
@@ -1191,9 +1215,10 @@ export function createServer(settings: Settings = {}) {
     const user=await owner(request),id=param(request,'project_id'),uploadId=param(request,'upload_id');const uploadProject=await project(db(),user,id);
     const stream=request.body as Readable|undefined;if(!stream||typeof stream.pipe!=='function')throw new Problem(422,'VALIDATION_FAILED','Binary upload required');
     // Reject unknown, finished or expired uploads before accepting any bytes; the locked re-check below stays authoritative.
-    const pre=(await db().query('SELECT state,byte_size,expires_at,role,filename,declared_media_type FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,uploadId])).rows[0];
+    const pre=(await db().query('SELECT state,byte_size,expires_at,role,filename,declared_media_type,upload_transport FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,uploadId])).rows[0];
     if((await db().query('SELECT 1 FROM bb_material_role_copy_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId])).rowCount)throw missing();
     if(!pre)throw missing();
+    if(pre.upload_transport===DIRECT_UPLOAD_TRANSPORT)throw conflict('IDEMPOTENCY_CONFLICT','Direct uploads must use their scoped ticket');
     if(pre.state==='completed')throw conflict('IDEMPOTENCY_CONFLICT','Upload already completed');
     if(pre.state!=='uploading'&&pre.state!=='received')throw missing();
     if(new Date(pre.expires_at).getTime()<Date.now())throw new Problem(422,'VALIDATION_FAILED','Upload expired');
@@ -1249,88 +1274,18 @@ export function createServer(settings: Settings = {}) {
     }
     return reply.code(204).send();
   });
-  app.post('/api/v1/projects/:project_id/materials/uploads/:upload_id/complete',{schema:{body:schemas.UploadCompleteRequest}},async request=>{
+  app.post('/api/v1/projects/:project_id/materials/uploads/:upload_id/complete',{schema:{body:schemas.UploadCompleteRequest}},async (request,reply)=>{
     const user=await owner(request),id=param(request,'project_id'),uploadId=param(request,'upload_id'),b=body<{byte_size:number;sha256:string}>(request);
     const traceId=uid();
-    try { return await transaction(db(),async client=>{
-      // Same lock order as deletion/snapshot creation; concurrent equal uploads resolve once.
-      const uploadProject = await project(client,user,id,true);
-      const q=await client.query('SELECT * FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 FOR UPDATE',[user,id,uploadId]);const u=q.rows[0];if(!u)throw missing();
-      if((await client.query('SELECT 1 FROM bb_material_role_copy_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId])).rowCount)throw missing();
-      if(Number(u.byte_size)!==b.byte_size||u.sha256.trim()!==b.sha256)throw conflict('IDEMPOTENCY_CONFLICT','Upload declaration changed');
-      const receipt=await client.query('SELECT material_id,material_version FROM bb_upload_reuse_receipts WHERE owner_user_id=$1 AND project_id=$2 AND upload_id=$3',[user,id,uploadId]);
-      let excepted=false;
-      // The storage receipt and operation commit together. Legacy projects retain auxiliary parsing.
-      const accepted=async (m:any)=>{
-        if(m.role==='historical')await registerUploadedProspectus(client,user,id,m,
-          uploadProject.kind==='update'&&uploadProject.update_details?.authoring_mode==='unified_v1'&&!receipt.rowCount&&u.state!=='completed');
-        // Unified authoring reads the original in the Codex task. Do not start an
-        // independent parsing/OCR pass simply because the original has been stored.
-        if (uploadProject.update_details?.authoring_mode !== 'unified_v1')
-          await enqueueMaterialParse(client,{owner:user,projectId:id,materialId:m.id,materialVersion:m.version,sha256:m.sha256.trim(),traceId});
-        await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'material_complete',status:'submitted'});
-        if(excepted)await recordOperation(client,{owner:user,projectId:id,requestId:request.id,traceId,kind:'material_upload_exception_complete',status:'submitted'});
-        return materialDto(m);
-      };
-      const checkedMaterial=async (m:any)=>{
-        if(!m)throw missing();
-        const stored=await readBlobToFile(blob(),m.object_key,null,Number(m.byte_size)).catch(error=>{if(error instanceof Problem)return null;throw error;});
-        if(!stored||stored.byteSize!==Number(m.byte_size)||stored.sha256!==m.sha256.trim())throw new Problem(503,'DATA_UNAVAILABLE','Saved material is temporarily unavailable');
-        return accepted(m);
-      };
-      if(receipt.rows[0]){
-        const r=receipt.rows[0];
-        const existing=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND version=$4 AND deleted_at IS NULL',[user,id,r.material_id,r.material_version]);
-        return checkedMaterial(existing.rows[0]);
+    try {
+      if(String(request.headers.prefer??'').split(',').some(v=>v.trim()==='respond-async')){
+        const result=await requestUploadConfirmation(db(),blob(),user,id,uploadId,b,request.id,uploadInspectionException,traceId);
+        reply.header('Cache-Control','no-store');
+        if(result.statusCode===202)reply.header('Retry-After','2');
+        return reply.code(result.statusCode).send(result.body);
       }
-      if(u.state==='completed'){const existing=await client.query('SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND upload_id=$2 AND deleted_at IS NULL',[user,uploadId]);return checkedMaterial(existing.rows[0]);}
-      if(u.state==='deleting'||u.state==='purged')throw missing();
-      assertProspectusUploadFormat(uploadProject.kind,u.role,u.filename,u.declared_media_type);
-      if(u.state!=='received')throw new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received');
-      // Re-verify the stored object from a disk copy: hash while streaming, then inspect the file.
-      const release=reserveSpool(b.byte_size),copy=join(spoolDirectory(),`${uid()}.blob`);
-      let media:string;
-      let signatureAssessment: SignatureAssessment | null = null;
-      try{
-        await mkdir(spoolDirectory(),{recursive:true,mode:0o700});
-        const stored=await readBlobToFile(blob(),u.object_key,copy,MAX_BYTES).catch(error=>{if(error instanceof Problem&&error.status===413)return false as const;throw error;});
-        if(stored===null)throw new Problem(503,'DATA_UNAVAILABLE','Stored upload bytes are temporarily unavailable');
-        if(!stored||stored.byteSize!==b.byte_size||stored.sha256!==b.sha256)throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes or hash mismatch');
-        excepted=uploadInspectionExceptionMatches(uploadInspectionException,{
-          ownerUserId:user,projectId:id,role:u.role,byteSize:stored.byteSize,sha256:stored.sha256,mediaType:u.declared_media_type
-        });
-        if(excepted) media=XLSX_MEDIA_TYPE;
-        else {
-          const inspection=await verifiedMediaFileDetailed(copy,stored.byteSize,u.declared_media_type);
-          media=inspection.mediaType;
-          signatureAssessment=inspection.signatureAssessment;
-        }
-      }finally{await discardSpool(copy);release();}
-      const duplicate=await client.query(`SELECT * FROM bb_material_versions
-        WHERE owner_user_id=$1 AND project_id=$2 AND role=$3 AND sha256=$4 AND byte_size=$5 AND media_type=$6 AND deleted_at IS NULL
-        ORDER BY persisted_at,id,version LIMIT 1`,[user,id,u.role,b.sha256,b.byte_size,media]);
-      if(duplicate.rows[0]){
-        const priorAssessment=duplicate.rows[0].signature_assessment;
-        // New PDF uploads do not assess signatures. Reuse an identical old material
-        // with its immutable historical assessment instead of rejecting or erasing it.
-        if (media !== 'application/pdf' && (signatureAssessment
-          ? priorAssessment?.status!==signatureAssessment.status || priorAssessment?.profile_version!==signatureAssessment.profile_version || priorAssessment?.signature_count!==signatureAssessment.signature_count
-          : priorAssessment!==null)) throw new Problem(503,'DATA_UNAVAILABLE','Stored material inspection metadata is inconsistent');
-        const m=duplicate.rows[0], result=await checkedMaterial(m);
-        await client.query('INSERT INTO bb_upload_reuse_receipts(upload_id,owner_user_id,project_id,material_id,material_version) VALUES($1,$2,$3,$4,$5)',[uploadId,user,id,m.id,m.version]);
-        await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'upload',$3,'upload.reused',$4)",[uid(),user,uploadId,{project_id:id,material_id:m.id,material_version:m.version}]);
-        return result;
-      }
-      const capacity=(await client.query('SELECT count(*)::int AS files,COALESCE(sum(byte_size),0)::bigint AS bytes FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND deleted_at IS NULL AND NOT internal_template',[user,id])).rows[0];
-      if(capacity.files>=M1_UPLOAD_LIMITS.projectFiles||Number(capacity.bytes)+b.byte_size>M1_UPLOAD_LIMITS.projectBytes)
-        throw new Problem(422,'VALIDATION_FAILED','Project material limit: 60 files / 500 MiB');
-      const materialId=uid();
-      const inserted=await client.query("INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state,signature_assessment) VALUES($1,1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'persisted',$11::jsonb) RETURNING *",[materialId,user,id,uploadId,u.role,u.filename,media,b.byte_size,b.sha256,u.object_key,signatureAssessment===null?null:JSON.stringify(signatureAssessment)]);
-      await client.query("UPDATE bb_uploads SET state='completed' WHERE owner_user_id=$1 AND id=$2",[user,uploadId]);
-      await client.query('INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,$3,$4,$5,$6)',[uid(),user,'material',materialId,'material.persisted',{material_id:materialId,material_version:1,project_id:id}]);
-      await appendProjectMaterialEvent(client, user, id, materialId, Number(inserted.rows[0].byte_size));
-      return accepted(inserted.rows[0]);
-    }); } catch(error) {
+      return await completeStoredUpload(db(),blob(),user,id,uploadId,b,request.id,{traceId,inspectionException:uploadInspectionException});
+    } catch(error) {
       if(error instanceof Problem){
         if(error.uploadReason)process.stderr.write(`${JSON.stringify({event:'material_upload_inspection_rejected',error_id:request.id,code:error.code,reason:error.uploadReason,...(error.uploadDetail?{detail:error.uploadDetail}:{}),project_id:id,upload_id:uploadId})}\n`);
         const owned=await db().query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL',[user,id]);
@@ -1405,7 +1360,11 @@ export function createServer(settings: Settings = {}) {
     const user=await owner(request),r=await run(db(),user,param(request,'run_id'));
     const progress=await readAuthoringProgress(db(),user,r.id);
     if(!r.reservation_id)return {quote:null,state:null,...(progress?{progress}:{})};
-    const row=(await db().query('SELECT q.*,r.state AS charge_state FROM bb_credit_reservations r JOIN bb_credit_quotes q ON q.id=r.quote_id AND q.owner_user_id=r.owner_user_id WHERE r.owner_user_id=$1 AND r.id=$2',[user,r.reservation_id])).rows[0];
+    // Published scope expiry is immutable; retain the accepted terms even after the scope closes.
+    const row=(await db().query(`SELECT q.*,r.state AS charge_state,s.expires_at AS scope_expires_at
+      FROM bb_credit_reservations r JOIN bb_credit_quotes q ON q.id=r.quote_id AND q.owner_user_id=r.owner_user_id
+      LEFT JOIN bb_scope_quotations s ON s.owner_user_id=q.owner_user_id AND s.project_id=q.project_id AND s.id=q.scope_quote_id
+      WHERE r.owner_user_id=$1 AND r.id=$2`,[user,r.reservation_id])).rows[0];
     if(!row)throw missing();
     return {quote:quoteDto(row),state:row.charge_state,...(progress?{progress}:{})};
   });

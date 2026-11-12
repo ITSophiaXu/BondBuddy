@@ -86,7 +86,8 @@ export function paymentProvidersFromEnv(env: NodeJS.ProcessEnv = process.env, de
       if(env.BB_ALIPAY_REFUND_ENABLED!==undefined&&!['0','1'].includes(env.BB_ALIPAY_REFUND_ENABLED))throw new Error('Invalid refund setting');
       providers.push(createAlipayPayProvider(environment==='sandbox'?alipaySandboxOptions(env,read):{appId:required('BB_ALIPAY_APP_ID'),merchantId:required('BB_ALIPAY_SELLER_ID'),
         webProduct:required('BB_ALIPAY_WEB_PRODUCT') as AlipayWebProduct,appPrivateKeyPem:secret('BB_ALIPAY_APP_PRIVATE_KEY'),alipayPublicKeyPem:secret('BB_ALIPAY_PUBLIC_KEY'),
-        appPrivateKeyType:env.BB_ALIPAY_APP_PRIVATE_KEY_TYPE as AlipayPayOptions['appPrivateKeyType'],
+        // Compose emits an empty value for the existing PEM configuration.
+        appPrivateKeyType:(env.BB_ALIPAY_APP_PRIVATE_KEY_TYPE||undefined) as AlipayPayOptions['appPrivateKeyType'],
         notifyUrl:required('BB_ALIPAY_NOTIFY_URL'),returnUrl:required('BB_ALIPAY_RETURN_URL'),refundsEnabled:env.BB_ALIPAY_REFUND_ENABLED==='1',
         statementsEnabled:alipayStatements==='1',
         timeoutMs:timeoutText===undefined?undefined:Number(timeoutText)},dependencies));

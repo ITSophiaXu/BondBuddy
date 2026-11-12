@@ -43,9 +43,82 @@ jobs:
           tests/prospectus-panel.spec.ts
           tests/prospectus-selection.spec.ts
           tests/prospectus-saved-reentry.spec.ts
+          tests/source-format-template.spec.ts
+          tests/authoring-continuation.spec.ts
+          tests/first-draft-confirmation.spec.ts
           tests/file-consistency.spec.ts
           tests/consistency-confirmation.spec.ts
           tests/review-editor.spec.ts
           tests/review-editor-recovery.spec.ts
           tests/review-flow-editor.spec.ts
+          tests/project-execution.spec.ts
+          tests/project-qa-continuation.spec.ts
+          tests/task-results.spec.ts
+          tests/subscription-account.spec.ts
           --reporter=line
+      - name: Current desktop workspace layout and selected-result journeys
+        working-directory: apps/web
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/desktop-workspace-browser.json
+        run: |
+          npx playwright test tests/desktop-ux-polish.spec.ts --reporter=line,json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_FILE, 'utf8'));
+          const tests = [];
+          function collect(suite) {
+            for (const spec of suite.specs ?? []) tests.push(...spec.tests ?? []);
+            for (const child of suite.suites ?? []) collect(child);
+          }
+          for (const suite of report.suites ?? []) collect(suite);
+          if (!tests.length || report.errors?.length || report.stats?.expected !== tests.length ||
+              report.stats.skipped !== 0 || report.stats.unexpected !== 0 || report.stats.flaky !== 0 ||
+              tests.some(test => test.status !== 'expected' || test.results.at(-1)?.status !== 'passed')) {
+            throw new Error('Desktop workspace tests must all execute and pass without skips or retries.');
+          }
+          console.log(`Desktop workspaces: ${tests.length} passed; 0 skipped, unexpected or flaky.`);
+          NODE
+      - name: Review funding and exact-intent recovery
+        working-directory: apps/web
+        run: >-
+          npx playwright test
+          tests/review-workspace.spec.ts
+          --grep 'paid review starts.*1440|enabled review never starts free|review task receipt displays|paid review response loss'
+          --reporter=line
+      - name: Billing state guidance across desktop journeys
+        working-directory: apps/web
+        run: >-
+          npx playwright test
+          tests/automatic-task-billing.spec.ts
+          tests/workpaper-batch.spec.ts
+          tests/file-template-preparation.spec.ts
+          tests/project-execution.spec.ts
+          tests/review-workspace.spec.ts
+          tests/project-assistant.spec.ts
+          tests/m4-workspace.spec.ts
+          tests/subscription-account.spec.ts
+          --grep 'insufficient balance preserves only|local consistency funding link 1440|local per-file check funding|asynchronous batch shortage|mixed package funding|M2 shortage preserves|dynamic balance:.*1440|paid review starts.*1440|update card has no upfront|insufficient credits show balance|dynamic material progress.*1440|disables unavailable payment capabilities'
+          --reporter=line
+      - name: Administrator dashboard and recovery journeys
+        working-directory: apps/web
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/admin-dashboard-browser.json
+        run: |
+          set -o pipefail
+          npx playwright test tests/admin-dashboard.spec.ts tests/admin-inspection.spec.ts --reporter=line,json
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync(process.env.PLAYWRIGHT_JSON_OUTPUT_FILE, 'utf8'));
+          const tests = [];
+          function collect(suite) {
+            for (const spec of suite.specs ?? []) tests.push(...spec.tests ?? []);
+            for (const child of suite.suites ?? []) collect(child);
+          }
+          for (const suite of report.suites ?? []) collect(suite);
+          if (!tests.length || report.errors?.length || report.stats?.expected !== tests.length ||
+              report.stats.skipped !== 0 || report.stats.unexpected !== 0 || report.stats.flaky !== 0 ||
+              tests.some(test => test.status !== 'expected' || test.results.at(-1)?.status !== 'passed')) {
+            throw new Error('Admin dashboard browser tests must all execute and pass without skips or retries.');
+          }
+          console.log(`Admin dashboard: ${tests.length} passed; 0 skipped, unexpected or flaky.`);
+          NODE

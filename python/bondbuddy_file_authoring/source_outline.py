@@ -13,6 +13,106 @@ CHAPTER = re.compile(rf'^第[{NUM}]+\s*(?:章|节|篇|部分)\s*')
 SECTION = re.compile(rf'^(?:[{NUM}]+[、．.]|[（(][{NUM}]+[）)])\s*')
 STYLE_HEADING = re.compile(r'^(?:heading|标题)\s*([1-9])$', re.I)
 STYLE_TOC = re.compile(r'^(?:toc|目录)\s*[1-9]?$', re.I)
+BASIC_INFORMATION_LABELS = frozenset({
+    '发行人名称', '法定代表人', '设立日期', '设立（工商注册）日期', '工商注册日期',
+    '注册资本', '实缴资本', '统一社会信用代码', '社会统一信用编码',
+    '注册地址', '邮政编码', '电话', '传真', '信息披露事务负责人', '联系地址',
+})
+BASIC_INFORMATION_ROW = re.compile(r'^(?:([0-9]{1,3})[、．.]|[（(]([0-9]{1,3})[）)])\s*([^:：]+)[:：]\s*(\S.*)$')
+FINANCIAL_FORMULA_LABELS = frozenset({
+    '毛利润', '毛利率', '全部债务', '流动比率', '速动比率', '资产负债率', '债务资本比率',
+    '营业毛利率', '平均总资产收益率', '加权平均净资产收益率', '总资产周转率',
+    '应收账款周转率', '存货周转率', 'EBITDA，即息税折旧摊销前利润', 'EBITDA利息保障倍数',
+})
+FINANCIAL_FORMULA_ROW = re.compile(r'^((?:([0-9]{1,3})[、．.]|[（(]([0-9]{1,3})[）)]))\s*([^=＝]+)[=＝]\s*(\S.*)$')
+FORMULA_TOKEN = re.compile(r'[A-Za-z0-9\u4e00-\u9fff.%％]+|[()（）+\-−/×÷]')
+FORMULA_NOTE = re.compile(r'(?:（[^()（）=＝+\-−/×÷*^∗·∙／－＋。；;！？!?]+）|\([^()（）=＝+\-−/×÷*^∗·∙／－＋。；;！？!?]+\))')
+
+
+def financial_formula_note(text):
+    return FORMULA_NOTE.fullmatch(text) is not None and re.search(r'[\u4e00-\u9fff]', text) is not None
+
+
+def arithmetic_expression(text):
+    """A bounded operand/operator grammar, not any sentence containing '='."""
+    tokens = FORMULA_TOKEN.findall(text)
+    if ''.join(tokens) != text:
+        return False
+    stack, operand, operations = [], True, 0
+    for token in tokens:
+        if token in ('(', '（'):
+            if not operand:
+                return False
+            stack.append(token)
+        elif token in (')', '）'):
+            if operand or not stack or stack.pop() != {')': '(', '）': '（'}[token]:
+                return False
+        elif token in ('+', '-', '−', '/', '×', '÷'):
+            if operand:
+                return False
+            operand = True
+            operations += 1
+        else:
+            if not operand:
+                return False
+            operand = False
+    return not operand and not stack and operations > 0
+
+
+def financial_formula_field(paragraph):
+    if paragraph is None or paragraph.tag != q('p'):
+        return None
+    match = FINANCIAL_FORMULA_ROW.fullmatch(paragraph_text(paragraph).strip())
+    if not match:
+        return None
+    number, label = int(match[2] or match[3]), re.sub(r'\s+', '', match[4])
+    expression = re.sub(r'\s+', '', match[5])
+    if number <= 0 or label not in FINANCIAL_FORMULA_LABELS:
+        return None
+    valid = arithmetic_expression(expression)
+    if not valid:
+        # A trailing prose note is distinct from a parenthesized arithmetic term.
+        note = next((m for m in FORMULA_NOTE.finditer(expression) if m.end() == len(expression)), None)
+        valid = note is not None and financial_formula_note(note[0]) and arithmetic_expression(expression[:note.start()])
+    if not valid:
+        return None
+    return {'number': number, 'marker': match[1], 'label': label, 'expression': expression}
+
+
+def in_financial_formula_block(paragraph):
+    parent = paragraph.getparent()
+    field = financial_formula_field(paragraph)
+    if parent is None or parent.tag != q('body') or field is None:
+        return False
+    for sibling, step in ((paragraph.getprevious(), -1), (paragraph.getnext(), 1)):
+        adjacent = financial_formula_field(sibling)
+        if adjacent and adjacent['number'] == field['number'] + step and adjacent['label'] != field['label']:
+            return True
+    return False
+
+
+def basic_information_field(paragraph):
+    if paragraph is None or paragraph.tag != q('p'):
+        return None
+    match = BASIC_INFORMATION_ROW.fullmatch(paragraph_text(paragraph).strip())
+    if not match:
+        return None
+    number = int(match[1] or match[2])
+    label = re.sub(r'\s+', '', match[3])
+    return (number, label) if number > 0 and label in BASIC_INFORMATION_LABELS else None
+
+
+def in_basic_information_block(paragraph):
+    """Recognize consecutive fixed issuer fields, never arbitrary colon titles."""
+    parent = paragraph.getparent()
+    field = basic_information_field(paragraph)
+    if parent is None or parent.tag != q('body') or field is None:
+        return False
+    for sibling, step in ((paragraph.getprevious(), -1), (paragraph.getnext(), 1)):
+        adjacent = basic_information_field(sibling)
+        if adjacent and adjacent[0] == field[0] + step and adjacent[1] != field[1]:
+            return True
+    return False
 
 
 def style_map(parts):
@@ -54,16 +154,20 @@ def heading_role(paragraph, styles):
     if len(text) <= 120 and CHAPTER.match(text):
         return {'kind': 'heading', 'level': 0, 'recognition': 'text_candidate'}
     if len(text) <= 80 and SECTION.match(text) and not re.search(r'[。；;！？!?]', text):
+        # Explicit outline/style headings returned above always remain protected.
+        # Unknown labels and isolated rows remain title candidates and fail closed.
+        if in_basic_information_block(paragraph) or in_financial_formula_block(paragraph):
+            return None
         return {'kind': 'heading', 'level': 1, 'recognition': 'text_candidate'}
     return None
 
 
-def outline(parts):
+def _outline(parts):
     if 'word/document.xml' not in parts:
-        return {'headings': [], 'toc': []}
+        return {'headings': [], 'toc': [], 'formulas': []}
     root = resolve_revisions(xml(parts['word/document.xml']), True)
     styles = style_map(parts)
-    result = {'headings': [], 'toc': []}
+    result = {'headings': [], 'toc': [], 'formulas': []}
     field_stack = []
     for index, p in enumerate(root.iter(q('p'))):
         # TOC fields often span multiple paragraphs without a TOC style.
@@ -97,7 +201,37 @@ def outline(parts):
                 c.tag.rsplit('}', 1)[-1]: c.get(q('val')) for c in num if c.tag in {q('numId'), q('ilvl')}}
             result['headings'].append({'text': text, 'level': role['level'], 'numbering': numbering,
                                        'paragraph': index, 'recognition': role['recognition']})
+        elif in_financial_formula_block(p):
+            # Retain formulas independently of the heading exemption, including
+            # an appended note that takes a line beyond the title length limit.
+            result['formulas'].append({**financial_formula_field(p), 'paragraph': index,
+                                       'heading_index': len(result['headings']) - 1})
     return result
+
+
+def outline(parts):
+    result = _outline(parts)
+    return {kind: result[kind] for kind in ('headings', 'toc')}
+
+
+def compare_financial_formulas(before, after):
+    """Protect source formula identity/order/RHS; only append a prose note."""
+    old, new = _outline(before)['formulas'], _outline(after)['formulas']
+    changes = []
+    for index in range(max(len(old), len(new))):
+        a, b = old[index] if index < len(old) else None, new[index] if index < len(new) else None
+        same_identity = a is not None and b is not None and all(
+            a[key] == b[key] for key in ('number', 'marker', 'label', 'heading_index'))
+        same_expression = False
+        if same_identity:
+            original, current = a['expression'], b['expression']
+            same_expression = current == original or (
+                current.startswith(original) and financial_formula_note(current[len(original):]))
+        if not same_expression:
+            changes.append({'formula_index': index, 'before': a, 'after': b})
+    return {'status': 'changed' if changes else 'unchanged', 'before_count': len(old),
+            'after_count': len(new), 'changes': changes,
+            'factual_accuracy': 'not_verified'}
 
 
 def compare_outlines(before, after):

@@ -5,10 +5,10 @@ import {transaction,Problem} from './data.js';
 import {ZERO,ratio,add,subtract,ratioJson,type ExactRatio} from './commerce-economics-math.js';
 import {lotFundingEvidenceSql,lotFundingMatches,type LotFundingEvidence} from './subscription-funding-evidence.js';
 
-export const SUBSCRIPTION_FACTS_VERSION='subscription-facts-exact-v1';
+export const SUBSCRIPTION_FACTS_VERSION='subscription-facts-exact-v2';
 type Order={order_id:string;owner_user_id:string;order_kind:string;occurred_at:string;amount_fen:string;cash_amount_fen:string|null;refunded_fen:string;period_start:string|null;period_end:string|null};
 type Slice={event_id:string;occurred_at:string;lot_id:string;origin_lot_id:string|null;order_id:string|null;source:string;points:string;basis_fen:string|null;basis_points:string|null;event_total_points?:string;reservation_id?:string;funding_required?:boolean;funding_slices?:LotFundingEvidence[]};
-type Refund={occurred_at:string;amount_fen:string};
+type Refund={refund_id?:string;occurred_at:string|null;amount_fen:string};
 type Expiry={expires_at:string;remaining:string;frozen:string};
 export type SubscriptionFactsInput={from:string;to:string;as_of:string;orders:Order[];redemptions:Slice[];corrections:Slice[];cash_refunds:Refund[];expired_lots:Expiry[];excluded_legacy_settlement_points:string};
 const monthPattern=/^\d{4}-(?:0[1-9]|1[0-2])$/;
@@ -38,7 +38,9 @@ function inconsistentRedemptionEvents(slices:Slice[]){
 /** Exact observed facts. No estimated users, retention, breakage income or future cash. */
 export function summarizeSubscriptionFacts(input:SubscriptionFactsInput){
  checkRange(input.from,input.to);const at=Date.parse(input.as_of);if(!Number.isFinite(at))throw new RangeError('Invalid report snapshot');
- const redemptions=input.redemptions.filter(s=>Date.parse(s.occurred_at)<=at),corrections=input.corrections.filter(s=>Date.parse(s.occurred_at)<=at),cashRefunds=input.cash_refunds.filter(s=>Date.parse(s.occurred_at)<=at);
+ const datedRefunds=input.cash_refunds.filter((s):s is Refund&{occurred_at:string}=>s.occurred_at!==null&&Number.isFinite(Date.parse(s.occurred_at)));
+ const undatedRefunds=input.cash_refunds.filter(s=>s.occurred_at===null||!Number.isFinite(Date.parse(s.occurred_at)));
+ const redemptions=input.redemptions.filter(s=>Date.parse(s.occurred_at)<=at),corrections=input.corrections.filter(s=>Date.parse(s.occurred_at)<=at),cashRefunds=datedRefunds.filter(s=>Date.parse(s.occurred_at)<=at);
  const inconsistent=inconsistentRedemptionEvents(redemptions);
  const orders=input.orders.filter(o=>Date.parse(o.occurred_at)<=at),inMonth=(m:string)=>(item:{occurred_at:string})=>month(item.occurred_at)===m;
  // Full cash refunds remove a period from the retained-purchase cohort. A reopened
@@ -66,7 +68,8 @@ export function summarizeSubscriptionFacts(input:SubscriptionFactsInput){
    retained_renewal_orders:String(retained.filter(o=>renewals.has(o.order_id)&&month(o.period_start!)===m).length),
    retained_same_or_overlapping_period_orders:String(retained.filter(o=>overlap.has(o.order_id)&&month(o.period_start!)===m).length),
    accepted_order_amount_fen:sumPoints(paid.map(o=>o.amount_fen)),verified_payer_cash_fen_known:cashKnown.toString(),cash_proof_missing_orders:String(cashMissing.length),
-   verified_payer_cash_fen:cashMissing.length?null:cashKnown.toString(),cash_refunded_fen:refund.toString(),net_payer_cash_flow_fen:cashMissing.length?null:(cashKnown-refund).toString(),
+   verified_payer_cash_fen:cashMissing.length?null:cashKnown.toString(),cash_refunded_fen_known:refund.toString(),cash_refunded_fen:undatedRefunds.length?null:refund.toString(),
+   net_payer_cash_flow_fen:cashMissing.length||undatedRefunds.length?null:(cashKnown-refund).toString(),
    redeemed_points:unverified.length?null:sumPoints(redemption.map(s=>s.points)),known_mapped_redeemed_points:sumPoints(mapped.map(s=>s.points)),unverified_redemption_event_ids:unverified,
    quality_returned_points:sumPoints(correction.map(s=>s.points)),
    original_order_consideration_earned_fen:ratioJson(earned.total),quality_return_consideration_fen:ratioJson(reversed.total),
@@ -95,6 +98,7 @@ export function summarizeSubscriptionFacts(input:SubscriptionFactsInput){
   if(kind==='redeem'){b.redeemed_points+=int64(s.points);b.earned=add(b.earned,value.known);}else{b.returned_points+=int64(s.points);b.reversed=add(b.reversed,value.known);}originalBatches.set(key,b);
  }
  return{report_version:SUBSCRIPTION_FACTS_VERSION,from:input.from,to:input.to,as_of:input.as_of,time_zone:'Asia/Shanghai',months,cohorts,
+  unallocated_cash_refunds:{events:String(undatedRefunds.length),amount_fen:sumPoints(undatedRefunds.map(r=>r.amount_fen)),refund_ids:undatedRefunds.flatMap(r=>r.refund_id?[r.refund_id]:[])},
   cohort_status:cohorts.length?'observed_retained_paid_cohorts':'no_observed_retained_paid_cohort',
   original_batches:[...originalBatches.values()].sort((a,b)=>a.month.localeCompare(b.month)||a.origin_lot_id.localeCompare(b.origin_lot_id)).map(b=>({month:b.month,origin_lot_id:b.origin_lot_id,order_id:b.order_id,source:b.source,
    redeemed_points:serializeInt64(b.redeemed_points),quality_returned_points:serializeInt64(b.returned_points),consideration_complete:b.complete,net_earned_order_consideration_fen:b.complete?ratioJson(subtract(b.earned,b.reversed)):null})),
@@ -102,7 +106,7 @@ export function summarizeSubscriptionFacts(input:SubscriptionFactsInput){
    .filter(s=>s.funding_required||s.funding_slices?.length).map(s=>({kind:s.kind,event_id:s.event_id,lot_id:s.lot_id,origin_lot_id:s.origin_lot_id,
     points:s.points,consideration_complete:consideration([s]).complete,funding:s.funding_slices??[]})),
   excluded_legacy_progress_settlement_points:input.excluded_legacy_settlement_points,
-  accounting_notice:'Read-only management facts, not statutory revenue or company profit. Paid orders are prepayments; verified payer cash and cash refunds are separate from earned original-lot A*p/Q consideration. Quality returns reverse earned consideration; cash refunds are not deducted again from earned consideration. Expired balances are current unfrozen/frozen snapshots grouped by expiry month, not historical expiry flows or breakage income. Cohorts exclude fully cash-refunded periods and missing/zero payer cash proof as of this snapshot; historical cohorts can restate after refunds. Renewal requires a new period after an earlier retained period ended; same/overlapping-month purchases and refunded reopenings do not establish renewal. Only fully observed later calendar months have repurchase rates; this is purchase recurrence, not product retention. Legacy progress-billing settlements are excluded explicitly. No forecast, supplier expense, tax or profit is inferred.'};
+  accounting_notice:'Read-only management facts, not statutory revenue or company profit. Paid orders are prepayments; verified payer cash and cash refunds are separate from earned original-lot A*p/Q consideration. Cash refunds follow authenticated channel success time, never original payment, refund application or local recording time. Missing refund success dates leave all monthly refund totals and net cash flow unknown; known monthly refunds and unallocated amounts remain explicit until authenticated dates arrive. Quality returns reverse earned consideration; cash refunds are not deducted again from earned consideration. Expired balances are current unfrozen/frozen snapshots grouped by expiry month, not historical expiry flows or breakage income. Cohorts exclude fully cash-refunded periods and missing/zero payer cash proof as of this snapshot; historical cohorts can restate after refunds. Renewal requires a new period after an earlier retained period ended; same/overlapping-month purchases and refunded reopenings do not establish renewal. Only fully observed later calendar months have repurchase rates; this is purchase recurrence, not product retention. Legacy progress-billing settlements are excluded explicitly. No forecast, supplier expense, tax or profit is inferred.'};
 }
 
 /** One repeatable-read, read-only snapshot. This CLI has no financial writer. */
@@ -118,10 +122,10 @@ export async function readSubscriptionFacts(pool:Pool,from:string,to:string){
     LEFT JOIN LATERAL(SELECT sum(amount_fen) amount FROM bb_payment_refunds WHERE order_id=o.id AND owner_user_id=o.owner_user_id AND state='succeeded') refunds ON true
     WHERE o.state='paid' AND o.credited_at IS NOT NULL ORDER BY o.credited_at,o.id`)).rows;
   const slices=(await c.query(`SELECT e.id event_id,e.reservation_id,e.points::text event_total_points,e.created_at occurred_at,COALESCE(a.lot_id,'unmapped:'||e.id) lot_id,l.cash_origin_lot_id origin_lot_id,l.cash_order_id order_id,COALESCE(l.source,'unknown') source,
-    COALESCE(a.charged_points,a.points,e.points)::text points,l.cash_basis_fen::text basis_fen,l.cash_basis_points::text basis_points,
+    COALESCE(bb_credit_allocation_charge(a.reservation_id,a.lot_id),e.points)::text points,l.cash_basis_fen::text basis_fen,l.cash_basis_points::text basis_points,
     (l.cash_order_id IS NULL AND l.cash_basis_fen>0) funding_required,${lotFundingEvidenceSql()} funding_slices
     FROM bb_credit_events e JOIN bb_credit_reservations r ON r.id=e.reservation_id AND r.owner_user_id=e.owner_user_id
-    LEFT JOIN bb_credit_allocations a ON a.reservation_id=r.id AND COALESCE(a.charged_points,a.points)>0 LEFT JOIN bb_credit_lots l ON l.id=a.lot_id AND l.owner_user_id=e.owner_user_id
+    LEFT JOIN bb_credit_allocations a ON a.reservation_id=r.id AND bb_credit_allocation_charge(a.reservation_id,a.lot_id)>0 LEFT JOIN bb_credit_lots l ON l.id=a.lot_id AND l.owner_user_id=e.owner_user_id
     WHERE e.kind='settle' AND r.billing_policy='on_delivery' AND e.points>0
     AND e.created_at>=($1||'-01')::date::timestamp AT TIME ZONE 'Asia/Shanghai' AND e.created_at<(($2||'-01')::date+interval '1 month')::timestamp AT TIME ZONE 'Asia/Shanghai'`,[from,to])).rows;
   const corrections=(await c.query(`SELECT e.id event_id,e.created_at occurred_at,COALESCE(e.lot_id,'unmapped:'||e.id) lot_id,l.cash_origin_lot_id origin_lot_id,l.cash_order_id order_id,COALESCE(l.source,'unknown') source,e.points::text,
@@ -131,7 +135,9 @@ export async function readSubscriptionFacts(pool:Pool,from:string,to:string){
     LEFT JOIN bb_credit_lots l ON l.id=e.lot_id AND l.owner_user_id=e.owner_user_id
     WHERE e.kind='correction' AND r.billing_policy='on_delivery'
     AND e.created_at>=($1||'-01')::date::timestamp AT TIME ZONE 'Asia/Shanghai' AND e.created_at<(($2||'-01')::date+interval '1 month')::timestamp AT TIME ZONE 'Asia/Shanghai'`,[from,to])).rows;
-  const cash=(await c.query("SELECT created_at occurred_at,cash_refunded_fen::text amount_fen FROM bb_payment_refund_events WHERE kind='succeeded'")).rows;
+  const cash=(await c.query(`SELECT e.refund_id,r.provider_succeeded_at occurred_at,e.cash_refunded_fen::text amount_fen
+    FROM bb_payment_refund_events e LEFT JOIN bb_payment_refunds r ON r.id=e.refund_id AND r.owner_user_id=e.owner_user_id
+    WHERE e.kind='succeeded'`)).rows;
   const expired=(await c.query('SELECT expires_at,remaining::text,frozen::text FROM bb_credit_lots WHERE expires_at<=now() AND remaining>0')).rows;
   const excluded=(await c.query(`SELECT COALESCE(sum(e.points),0)::text points FROM bb_credit_events e JOIN bb_credit_reservations r ON r.id=e.reservation_id AND r.owner_user_id=e.owner_user_id
     WHERE e.kind='settle' AND r.billing_policy<>'on_delivery' AND e.created_at>=($1||'-01')::date::timestamp AT TIME ZONE 'Asia/Shanghai' AND e.created_at<(($2||'-01')::date+interval '1 month')::timestamp AT TIME ZONE 'Asia/Shanghai'`,[from,to])).rows[0].points;

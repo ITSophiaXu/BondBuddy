@@ -1,13 +1,11 @@
-import {INTEGRITY_SITES,resolveIntegritySite,integritySourceAllowed,integrityQueryAllowed,type IntegritySubject,type IntegrityRecord,type IntegrityProposal} from '@bondbuddy/contracts';
+import {INTEGRITY_SITES,resolveIntegritySite,integritySourceAllowed,integrityQueryAllowed,integritySearchQueries,type IntegritySubject,type IntegrityRecord,type IntegrityProposal} from '@bondbuddy/contracts';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {verifiedSearchSources} from './review-public-stage.js';
 
 export type IntegritySearchEvent={observed_at:string;item:Record<string,unknown>};
 // Only the provider's real search actions establish execution. Model prose and URLs do not.
 export function integrityQueries(events:IntegritySearchEvent[]):string[]{
- return events.filter(e=>e.item.type==='web_search'&&typeof e.item.id==='string'&&Number.isFinite(Date.parse(e.observed_at))&&e.item.status!=='failed')
-  .flatMap(e=>{const a=e.item.action as Record<string,unknown>|undefined;if(!a||!['search',undefined].includes(a.type as string|undefined))return [];
-   return [a.query,...(Array.isArray(a.queries)?a.queries:[])].filter((v):v is string=>typeof v==='string');});
+ return integritySearchQueries(events);
 }
 export function integrityRecords(subject:IntegritySubject,siteIds:string[],proposal:IntegrityProposal|null,events:IntegritySearchEvent[],time:string):IntegrityRecord[]{
  const verified=verifiedSearchSources(events),queries=integrityQueries(events);

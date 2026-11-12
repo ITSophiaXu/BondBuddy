@@ -32,3 +32,11 @@ test('retirement filters new preparation without mutating historical scope or me
   }
   assert.doesNotThrow(() => validateIntegrityDraft(draft(['gsxt', 'execution', 'judgments', 'food-drug']), true));
 });
+
+test('new preparation enforces five subjects and each subject needs an executable applicable website',()=>{
+ const six=draft(['tax']);six.subjects=Array.from({length:6},(_,n)=>({...six.subjects[0],id:String(n),name:'合成企业'+n}));
+ assert.throws(()=>validateIntegrityDraft(six),{code:'VALIDATION_FAILED'});
+ const onlyPerson=draft(['gsxt']);onlyPerson.subjects[0].kind='person';assert.throws(()=>validateIntegrityDraft(onlyPerson,true),{code:'INPUT_REQUIRED'});
+ const unresolved=draft(['local-csrc']);unresolved.subjects[0].province='';unresolved.subjects[0].city='';assert.throws(()=>validateIntegrityDraft(unresolved,true),{code:'INPUT_REQUIRED'});
+ unresolved.site_ids.push('tax');assert.doesNotThrow(()=>validateIntegrityDraft(unresolved,true));
+});

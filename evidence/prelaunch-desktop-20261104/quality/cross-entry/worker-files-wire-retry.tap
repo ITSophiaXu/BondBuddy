@@ -1,0 +1,18 @@
+TAP version 13
+# (node:15772) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+# (Use `node --trace-deprecation ...` to show where the warning was created)
+# Subtest: project files: template batch, provenance, real checks with synthetic model, whole-file paid updates, stale CAS, Word and isolation
+ok 1 - project files: template batch, provenance, real checks with synthetic model, whole-file paid updates, stale CAS, Word and isolation
+  ---
+  duration_ms: 25280.6396
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 35957.4846

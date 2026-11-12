@@ -59,6 +59,29 @@ def paragraph_text(p):
     return ''.join(item[1] for item in leaves(p))
 
 
+def paragraph_run_reference(p):
+    """Use an existing run, or the empty paragraph's explicit mark formatting.
+
+    An empty cell can store its font and size only in pPr/rPr. A new bare run
+    does not inherit those mark properties, so copy them when no run exists.
+    Keep normal style inheritance when neither source specifies properties.
+    """
+    runs = (run for run in p.iter(q('r'))
+            if next((a for a in run.iterancestors() if a.tag == q('p')), None) is p)
+    if not paragraph_text(p):
+        # A comment/footnote symbol is not a typing-format reference. This
+        # matters when continuing a previously annotated empty table cell.
+        runs = (run for run in runs if all(child.tag in {q('rPr'), q('t')} for child in run))
+    reference = next(runs, None)
+    if reference is not None:
+        return reference
+    reference = ET.Element(q('r'))
+    props = p.find(q('pPr') + '/' + q('rPr'))
+    if props is not None:
+        reference.append(copy.deepcopy(props))
+    return reference
+
+
 def run_with_text(run, text, deleted=False):
     r = ET.Element(q('r'), dict(run.attrib))
     props = run.find(q('rPr'))
@@ -132,9 +155,7 @@ class Patcher:
         if start == end:
             anchor = next((x for x in mapping if x[2] <= start < x[3]), mapping[-1] if mapping else None)
             if anchor is None:
-                r = p.find(q('r'))
-                r = r if r is not None else ET.Element(q('r'))
-                added = run_with_text(r, new)
+                added = run_with_text(paragraph_run_reference(p), new)
                 p.append(self.revision_node(added, 'ins') if self.revision else added)
                 return
             touched = [anchor]

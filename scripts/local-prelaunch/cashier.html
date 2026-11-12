@@ -1,0 +1,7 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BondBuddy 本地模拟收银台</title><link rel="stylesheet" href="/__prelaunch/local.css"><script src="/__prelaunch/checkout.js" type="module"></script></head><body class="prelaunch-cashier"><main>
+<h1>本地模拟收银台</h1><p class="notice">支付与退款结果是模拟渠道回执，不扣真钱。到账、扣费、冻结及退款由产品真实 API 和独立数据库账本处理。文件和后台任务真实执行。</p>
+<p id="identity" role="status">正在核实当前账号与原订单…</p><p id="error" class="error" role="alert" hidden></p><p id="message" class="status" role="status" aria-live="polite" hidden></p>
+<section id="checkout" aria-labelledby="checkout-title"><h2 id="checkout-title">读取原订单</h2><p>正在核实本账号订单…</p></section>
+<section id="refunds" aria-labelledby="refund-title" hidden></section>
+<div class="actions"><button type="button" id="reload-state">刷新测试账本</button><a id="return-account" class="button" href="/#/account">返回原付款</a></div>
+</main></body></html>

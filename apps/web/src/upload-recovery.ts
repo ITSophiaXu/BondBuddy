@@ -3,13 +3,14 @@ import { Value } from '@sinclair/typebox/value';
 import { UserFacingError } from './user-facing-error.js';
 import { ApiError, type ApiClient, type Dto } from './api.js';
 import { isDateTime } from './schema-formats.js';
+import { DIRECT_UPLOAD_TRANSPORT, type UploadTransport, isUploadInspectionPublicReason } from '@bondbuddy/contracts';
 
 export type UploadRecoveryJson = null | boolean | number | string | UploadRecoveryJson[] | { [key: string]: UploadRecoveryJson };
 export type UploadRecoveryStage = 'pending' | 'creating' | 'session' | 'bytes_unknown' | 'confirming' | 'saved';
 export type UploadRecoveryRecord = {
   version: 1; id: string; owner: string; projectId: string; purpose: string;
   declaration: Dto<'UploadCreateRequest'>; context?: UploadRecoveryJson; stage: UploadRecoveryStage;
-  uploadId?: string; expiresAt?: string; previousUploadIds?: string[]; material?: Dto<'MaterialResponse'>;
+  uploadId?: string; expiresAt?: string; uploadTransport?: UploadTransport; previousUploadIds?: string[]; material?: Dto<'MaterialResponse'>;
   lastError?: { status: number; code: string; uploadReason?: string; correlationId?: string };
 };
 export type UploadRecoveryStorage = Pick<Storage, 'length' | 'key' | 'getItem' | 'setItem' | 'removeItem'>;
@@ -20,16 +21,20 @@ export type UploadRecoveryDependencies = {
 };
 export type UploadRecoveryResumeOptions = {
   file?: File; signal?: AbortSignal; status?: (message: string) => void; progress?: (loaded: number, total: number) => void;
+  /** Only a fresh, explicit file selection may replace an expired, unreceived session. */
+  reselectExpiredSession?: boolean;
   /** Explicit user retry only: a scoped checkpoint retained before another tab forgot it. */
   previousRecord?: UploadRecoveryRecord;
   /** Opt-in business journal safety: an in-flight transfer cannot recreate a removed or replaced durable slot. */
   requireDurableRecord?: boolean;
 };
-type UploadApi = Pick<ApiClient, 'createUpload' | 'completeUpload' | 'uploadBytes' | 'material' | 'project'>;
-type MemorySession = { uploadId: string; url: string; expiresAt: string };
+type UploadApi = Pick<ApiClient, 'createUpload' | 'completeUpload' | 'uploadBytes' | 'material' | 'project'> & Partial<Pick<ApiClient,'refreshUpload'>>;
+type MemorySession = { uploadId: string; url: string; expiresAt: string; transport?: UploadTransport };
 const prefix = 'bondbuddy:upload-recovery:v1:';
 const stages: UploadRecoveryStage[] = ['pending', 'creating', 'session', 'bytes_unknown', 'confirming', 'saved'];
 const maxRecordLength = 256_000;
+const uncertainPut = (error: unknown): error is ApiError => error instanceof ApiError && (error.status === 0 || error.status >= 500);
+const bytesPending = (error: unknown): error is ApiError => error instanceof ApiError && error.status === 422 && error.code === 'MATERIAL_UNREADABLE' && error.details.uploadBytesPending === true && error.details.uploadReason === undefined;
 const validId = (value: unknown): value is string => typeof value === 'string' && !!value.trim() && value.length <= 128 && !/[\u0000-\u001f\u007f]/.test(value);
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const canonical = (value: unknown): string => JSON.stringify(value, (_key, item) => plain(item) ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
@@ -110,12 +115,13 @@ export class UploadRecovery {
     try {
       if (raw.length > maxRecordLength) throw new Error();
       const r: unknown = JSON.parse(raw);
-      if (!plain(r) || !exactKeys(r, ['version', 'id', 'owner', 'projectId', 'purpose', 'declaration', 'context', 'stage', 'uploadId', 'expiresAt', 'previousUploadIds', 'material', 'lastError']) ||
+      if (!plain(r) || !exactKeys(r, ['version', 'id', 'owner', 'projectId', 'purpose', 'declaration', 'context', 'stage', 'uploadId', 'expiresAt', 'uploadTransport', 'previousUploadIds', 'material', 'lastError']) ||
         r.version !== 1 || !validId(r.id) || r.owner !== this.owner || r.projectId !== this.projectId || r.purpose !== this.purpose ||
         !key.startsWith(this.namespace + encodeURIComponent(r.id) + ':') || !stages.includes(r.stage as UploadRecoveryStage)) throw new Error();
       declaration(r.declaration);
       if (Object.hasOwn(r, 'context') && !jsonContext(r.context)) throw new Error();
       if (r.uploadId !== undefined && !validId(r.uploadId) || r.expiresAt !== undefined && (typeof r.expiresAt !== 'string' || !isDateTime(r.expiresAt))) throw new Error();
+      if(r.uploadTransport!==undefined&&r.uploadTransport!==DIRECT_UPLOAD_TRANSPORT)throw new Error();
       if ((r.uploadId === undefined) !== (r.expiresAt === undefined)) throw new Error();
       if (['session', 'bytes_unknown', 'confirming', 'saved'].includes(r.stage as string) && !r.uploadId) throw new Error();
       if (r.previousUploadIds !== undefined && (!Array.isArray(r.previousUploadIds) || !r.previousUploadIds.every(validId) || new Set(r.previousUploadIds).size !== r.previousUploadIds.length || r.uploadId !== undefined && r.previousUploadIds.includes(r.uploadId))) throw new Error();
@@ -222,10 +228,29 @@ export class UploadRecovery {
     };
     const status = (message: string) => { live(); options.status?.(message); if (options.requireDurableRecord) live(); };
     const save = (change: Partial<UploadRecoveryRecord>) => { live(); const next = { ...record, ...change }; delete next.lastError; this.write(key, next); record = next; };
+    const rememberError = (error: ApiError) => {
+      live();
+      const lastError = { status: error.status, code: error.code, ...(error.details.uploadReason ? { uploadReason: error.details.uploadReason } : {}), ...(error.details.correlationId ? { correlationId: error.details.correlationId } : {}) };
+      const next = { ...record, lastError }; this.write(key, next); record = next;
+    };
     const accepted = (value: unknown) => {
       live(); const material = validateUploadMaterial(record.declaration, value); save({ material, stage: 'saved' }); this.sessions.delete(id); return material;
     };
+    let selectedFile: File | undefined;
+    const verifySelectedFile = async () => {
+      if (selectedFile) return selectedFile;
+      if (!options.file) throw new UploadRecoveryNeedsFileError(clone(record));
+      status('正在核对重新选择的文件内容…');
+      const file = options.file, input = record.declaration;
+      const ext = file.name.split('.').at(-1)?.toLowerCase();
+      const mediaByExtension: Record<string, typeof M1_UPLOAD_MIME_TYPES[number]> = { docx: M1_UPLOAD_MIME_TYPES[0], pdf: M1_UPLOAD_MIME_TYPES[1], xlsx: M1_UPLOAD_MIME_TYPES[2], csv: M1_UPLOAD_MIME_TYPES[3], txt: M1_UPLOAD_MIME_TYPES[4], png: M1_UPLOAD_MIME_TYPES[5], jpg: M1_UPLOAD_MIME_TYPES[6], jpeg: M1_UPLOAD_MIME_TYPES[6], doc: M1_UPLOAD_MIME_TYPES[7] };
+      // Match the original declaration, even if File.type is empty or incorrect.
+      if (file.size !== input.byte_size || mediaByExtension[ext ?? ''] !== input.media_type) throw new UploadRecoveryConflictError();
+      const digest = await (this.deps.digest ?? defaultDigest)(file); live(); if (digest !== input.sha256) throw new UploadRecoveryConflictError();
+      return selectedFile = file;
+    };
     try {
+      if (options.reselectExpiredSession) await verifySelectedFile();
       if (record.material) {
         status('正在确认原材料的准确版本…');
         const material = await this.api.material(this.projectId, record.material.material_id, signal, record.material.material_version); live();
@@ -238,47 +263,85 @@ export class UploadRecovery {
       const memory = this.sessions.get(id);
       if (memory && memory.uploadId !== record.uploadId) {
         const previous = [...new Set([...(record.previousUploadIds ?? []), ...(record.uploadId ? [record.uploadId] : [])])];
-        save({ uploadId: memory.uploadId, expiresAt: memory.expiresAt, previousUploadIds: previous, stage: 'session' });
+        save({ uploadId: memory.uploadId, expiresAt: memory.expiresAt, uploadTransport:memory.transport, previousUploadIds: previous, stage: 'session' });
         status('已保留上次上传，正在继续确认…');
       }
       let needsBytes = !record.uploadId;
       if (record.uploadId) {
-        save({ stage: 'confirming' }); status('正在确认上次上传的文件是否已保存…');
-        try { return accepted(await this.api.completeUpload(this.projectId, record.uploadId, { byte_size: record.declaration.byte_size, sha256: record.declaration.sha256 }, signal)); }
-        catch (error) {
-          live();
-          if (error instanceof ApiError && error.status === 404) {
-            const project = await this.api.project(this.projectId, signal); live();
-            if (!Value.Check(schemas.ProjectResponse, project) || !isDateTime(project.updated_at) || project.project_id !== this.projectId) throw new UploadRecoveryReceiptError(); needsBytes = true;
-            this.sessions.delete(id);
-          } else if (error instanceof ApiError && error.status === 422 && error.code === 'MATERIAL_UNREADABLE' && error.details.uploadReason === undefined) needsBytes = true;
-          else throw error;
+        if (record.stage === 'bytes_unknown') {
+          const previous = new ApiError(record.lastError?.status ?? 0, record.lastError?.code ?? 'DATA_UNAVAILABLE', {
+            correlationId: record.lastError?.correlationId,
+            ...(isUploadInspectionPublicReason(record.lastError?.uploadReason) ? { uploadReason: record.lastError.uploadReason } : {}),
+          });
+          if (record.uploadTransport===DIRECT_UPLOAD_TRANSPORT) {
+            try{return accepted(await this.api.completeUpload(this.projectId,record.uploadId,{byte_size:record.declaration.byte_size,sha256:record.declaration.sha256},signal));}
+            catch(error){live();if(!bytesPending(error))throw error;needsBytes=true;}
+          } else {
+            if (previous.status >= 400 && previous.status < 500 && previous.status !== 401) throw previous;
+            status('正在确认上次上传的文件是否已保存…');
+            if (!options.reselectExpiredSession || !record.expiresAt || Date.parse(record.expiresAt) > (this.deps.now?.() ?? Date.now()))
+              return accepted(await this.confirmUnknownPut(record, signal, live, previous));
+            // Expiry alone is not evidence that bytes were lost. First authorize
+            // and confirm the original upload; accepted bytes/materials still win.
+            try {
+              const material = await this.api.completeUpload(this.projectId, record.uploadId, { byte_size: record.declaration.byte_size, sha256: record.declaration.sha256 }, signal);
+              live(); if (material.upload_id === record.uploadId && material.filename !== record.declaration.filename) throw new UploadRecoveryReceiptError();
+              return accepted(material);
+            } catch (error) {
+              live(); if (!bytesPending(error)) throw error;
+              needsBytes = true; this.sessions.delete(id);
+            }
+          }
+        } else {
+          save({ stage: 'confirming' }); status('正在确认上次上传的文件是否已保存…');
+          try { return accepted(await this.api.completeUpload(this.projectId, record.uploadId, { byte_size: record.declaration.byte_size, sha256: record.declaration.sha256 }, signal)); }
+          catch (error) {
+            live();
+            if (error instanceof ApiError && error.status === 404 && record.uploadTransport!==DIRECT_UPLOAD_TRANSPORT) {
+              const project = await this.api.project(this.projectId, signal); live();
+              if (!Value.Check(schemas.ProjectResponse, project) || !isDateTime(project.updated_at) || project.project_id !== this.projectId) throw new UploadRecoveryReceiptError(); needsBytes = true;
+              this.sessions.delete(id);
+            } else if (record.uploadTransport===DIRECT_UPLOAD_TRANSPORT?bytesPending(error):error instanceof ApiError&&error.status===422&&error.code==='MATERIAL_UNREADABLE'&&error.details.uploadReason===undefined) needsBytes=true;
+            else throw error;
+          }
         }
       }
       if (!needsBytes) throw new UploadRecoveryReceiptError();
-      if (!options.file) throw new UploadRecoveryNeedsFileError(clone(record));
-      status('正在核对重新选择的文件内容…');
-      const file = options.file, input = record.declaration;
-      const ext = file.name.split('.').at(-1)?.toLowerCase();
-      const mediaByExtension: Record<string, typeof M1_UPLOAD_MIME_TYPES[number]> = { docx: M1_UPLOAD_MIME_TYPES[0], pdf: M1_UPLOAD_MIME_TYPES[1], xlsx: M1_UPLOAD_MIME_TYPES[2], csv: M1_UPLOAD_MIME_TYPES[3], txt: M1_UPLOAD_MIME_TYPES[4], png: M1_UPLOAD_MIME_TYPES[5], jpg: M1_UPLOAD_MIME_TYPES[6], jpeg: M1_UPLOAD_MIME_TYPES[6], doc: M1_UPLOAD_MIME_TYPES[7] };
-      // File.type can be empty, generic or wrong. Match the entry's extension
-      // policy and recompute actual bytes; keep the original declared media.
-      if (file.size !== input.byte_size || mediaByExtension[ext ?? ''] !== input.media_type) throw new UploadRecoveryConflictError();
-      const digest = await (this.deps.digest ?? defaultDigest)(file); live(); if (digest !== input.sha256) throw new UploadRecoveryConflictError();
+      const file = await verifySelectedFile(), input = record.declaration;
       let session = this.sessions.get(id);
       if (!session || session.uploadId !== record.uploadId || Date.parse(session.expiresAt) <= (this.deps.now?.() ?? Date.now())) {
         save({ stage: 'creating' });
         status(record.uploadId ? '正在准备重新上传这份文件…' : '正在准备上传文件…');
-        const created = await this.api.createUpload(this.projectId, clone(input), signal); live();
+        const renewing=!!record.uploadId&&record.uploadTransport===DIRECT_UPLOAD_TRANSPORT;
+        if(renewing&&!this.api.refreshUpload)throw new UploadRecoveryReceiptError();
+        const created = renewing?await this.api.refreshUpload!(this.projectId,record.uploadId!,{byte_size:input.byte_size,sha256:input.sha256},signal):await this.api.createUpload(this.projectId, clone(input), signal); live();
+        if(renewing&&(created.upload_id!==record.uploadId||created.upload_transport!==DIRECT_UPLOAD_TRANSPORT))throw new UploadRecoveryReceiptError();
         if (!Value.Check(schemas.UploadSessionResponse, created) || !isDateTime(created.expires_at) || Date.parse(created.expires_at) <= (this.deps.now?.() ?? Date.now()) || created.max_bytes < input.byte_size || !/^https?:\/\//i.test(created.upload_url) && !created.upload_url.startsWith('/')) throw new UploadRecoveryReceiptError();
+        if(created.upload_transport===DIRECT_UPLOAD_TRANSPORT){
+          let target:URL;try{target=new URL(created.upload_url);}catch{throw new UploadRecoveryReceiptError();}
+          if(target.protocol!=='https:'||target.username||target.password||target.hash)throw new UploadRecoveryReceiptError();
+        }
         const previous = [...new Set([...(record.previousUploadIds ?? []), ...(record.uploadId ? [record.uploadId] : [])])];
+        if (renewing)previous.splice(previous.indexOf(created.upload_id),1);
         if (previous.includes(created.upload_id)) throw new UploadRecoveryReceiptError();
-        session = { uploadId: created.upload_id, url: created.upload_url, expiresAt: created.expires_at }; this.sessions.set(id, session);
-        save({ uploadId: session.uploadId, expiresAt: session.expiresAt, previousUploadIds: previous, stage: 'session' });
+        session = { uploadId: created.upload_id, url: created.upload_url, expiresAt: created.expires_at, transport:created.upload_transport }; this.sessions.set(id, session);
+        save({ uploadId: session.uploadId, expiresAt: session.expiresAt, uploadTransport:session.transport, previousUploadIds: previous, stage: 'session' });
         status('已准备好，开始上传文件…');
       }
       save({ stage: 'bytes_unknown' }); status('正在上传文件…');
-      await this.api.uploadBytes(session.url, file, (loaded, total) => { if (this.current() && !signal.aborted) options.progress?.(loaded, total); }, signal); live();
+      try {
+        await this.api.uploadBytes(session.url, file, (loaded, total) => { if (this.current() && !signal.aborted) options.progress?.(loaded, total); }, signal, session.transport); live();
+      } catch (error) {
+        live(); if(session.transport===DIRECT_UPLOAD_TRANSPORT&&error instanceof ApiError&&[403,409,412].includes(error.status)){
+          rememberError(error);
+          // A create-only retry may have been rejected because the original PUT succeeded.
+          try{return accepted(await this.api.completeUpload(this.projectId,record.uploadId!,{byte_size:input.byte_size,sha256:input.sha256},signal));}
+          catch(completion){live();if(!bytesPending(completion))throw completion;throw error;}
+        }
+        if (!uncertainPut(error)) throw error;
+        rememberError(error); status('正在确认上次上传的文件是否已保存…');
+        return accepted(await this.confirmUnknownPut(record, signal, live, error));
+      }
       // Tiny successful PUTs need not emit an XHR progress event. Its accepted
       // receipt proves the declared bytes arrived, while material saving remains
       // unconfirmed until the separate complete receipt is checked and stored.
@@ -287,11 +350,37 @@ export class UploadRecovery {
       return accepted(await this.api.completeUpload(this.projectId, record.uploadId!, { byte_size: input.byte_size, sha256: input.sha256 }, signal));
     } catch (error) {
       live();
-      if (error instanceof ApiError) {
-        const lastError = { status: error.status, code: error.code, ...(error.details.uploadReason ? { uploadReason: error.details.uploadReason } : {}), ...(error.details.correlationId ? { correlationId: error.details.correlationId } : {}) };
-        this.write(key, { ...record, lastError });
-      }
+      if (error instanceof ApiError) rememberError(error);
       throw error;
     }
+  }
+  private async confirmUnknownPut(record: UploadRecoveryRecord, signal: AbortSignal, live: () => void, putError: ApiError): Promise<Dto<'MaterialResponse'>> {
+    // One budget covers waiting for bytes and complete's existing 202/200 polling.
+    // Expiry keeps the original uncertain PUT error and identity recoverable.
+    const deadline = new AbortController(), waiting = AbortSignal.any([signal, deadline.signal]);
+    const timer = setTimeout(() => deadline.abort(putError), 600_000);
+    try {
+      for (;;) {
+        live(); waiting.throwIfAborted();
+        try {
+          const material = await this.api.completeUpload(this.projectId, record.uploadId!, { byte_size: record.declaration.byte_size, sha256: record.declaration.sha256 }, waiting);
+          live(); waiting.throwIfAborted();
+          // Reuse can legitimately name an older canonical upload. A receipt for
+          // this upload itself must retain its original filename.
+          if (material.upload_id === record.uploadId && material.filename !== record.declaration.filename) throw new UploadRecoveryReceiptError();
+          return material;
+        } catch (error) {
+          live(); waiting.throwIfAborted();
+          // Only this existing response means bytes have not arrived yet. All
+          // inspection, ownership, declaration and receipt failures remain errors.
+          if (!bytesPending(error)) throw error;
+        }
+        await new Promise<void>((resolve, reject) => {
+          const abort = () => { clearTimeout(delay); waiting.removeEventListener('abort', abort); reject(waiting.reason); };
+          const delay = setTimeout(() => { waiting.removeEventListener('abort', abort); resolve(); }, 2000);
+          waiting.addEventListener('abort', abort, { once: true }); if (waiting.aborted) abort();
+        });
+      }
+    } finally { clearTimeout(timer); }
   }
 }

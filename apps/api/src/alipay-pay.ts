@@ -213,8 +213,10 @@ export function createAlipayPayProvider(options:AlipayPayOptions,dependencies:Al
     orderValid(order,true);const page=options.webProduct==='page';
     return sdk.pageExecute(page?'alipay.trade.page.pay':'alipay.trade.wap.pay',method,{
       timestamp:chinaTime(now()),...(options.notifyUrl?{notifyUrl:options.notifyUrl}:{}),returnUrl:options.returnUrl,
-      bizContent:{out_trade_no:order.id,total_amount:yuan(order.amount_fen),subject:'BondBuddy service balance',product_code:page?'FAST_INSTANT_TRADE_PAY':'QUICK_WAP_WAY',
-        time_expire:chinaTime(Date.parse(order.expires_at)),...(page?{qr_pay_mode:'2'}:{seller_id:options.merchantId,quit_url:options.returnUrl})}});
+      // Use the official SDK's default cashier presentation. qr_pay_mode=2
+      // explicitly forces the QR redirect surface; neither mode is our UI.
+      bizContent:{out_trade_no:order.id,total_amount:yuan(order.amount_fen),subject:'BondBuddy 券商助手 · 积分服务',product_code:page?'FAST_INSTANT_TRADE_PAY':'QUICK_WAP_WAY',
+        time_expire:chinaTime(Date.parse(order.expires_at)),...(!page?{seller_id:options.merchantId,quit_url:options.returnUrl}:{})}});
   };
   const provider:AlipayPaymentProvider={name:'alipay',merchantId:options.merchantId,acknowledgement:'success',
     createCheckoutForm:async order=>checkout(order,'POST'),

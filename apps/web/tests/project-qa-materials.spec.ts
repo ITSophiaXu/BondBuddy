@@ -40,16 +40,16 @@ test('only an adopted, selected prospectus enables paid answer; inline fees name
 test('prepared questions are previewed in-page; even old conversion artifacts have no download',async({page})=>{
  const s=fixture();s.workspace.prospectus=prospectus;s.workspace.draft={preparation_id:null,questions:[],materials:[],requirements:'',use_knowledge:false};const prep=s.workspace.runs.find(r=>r.run_id===prepareId)!;prep.artifact_id='legacy-conversion';
  await install(page,s);await page.goto(route(prepareId));await expect(page.locator('.qa-question-list article')).toHaveCount(prep.result!.questions.length);
- await expect(page.locator('#qa-download')).toHaveCount(0);await expect(page.locator('.qa-document')).toContainText('尚未开始回答');
+ await expect(page.locator('#qa-download')).toHaveCount(0);await expect(page.locator('#qa-start')).toBeEnabled();
  await expectConsistentType(page);
  const dir=process.env.BB_UX_EVIDENCE_DIR;if(dir)await page.screenshot({path:join(dir,'questions-1440.png'),fullPage:true});
  await expect(page.locator('#qa-use-preparation')).toHaveCount(0);await expect(page.locator('#qa-start')).toBeEnabled();expect(s.answers).toEqual([]);
 });
 
-test('zero candidates directs to manual selection and cannot answer',async({page})=>{
+test('zero candidates explains the file problem without a range editing step',async({page})=>{
  const s=fixture();s.workspace.prospectus=prospectus;s.workspace.draft={preparation_id:null,questions:[],materials:[],requirements:'',use_knowledge:false};const prep=s.workspace.runs.find(r=>r.run_id===prepareId)!;prep.result!.questions=[];
- await install(page,s);await page.goto(route(prepareId));await expect(page.getByRole('heading',{name:'未识别到明确的问题'})).toBeVisible();
- await expect(page.locator('#qa-start')).toBeDisabled();await page.locator('#qa-ranges').click();await expect(page.locator('.qa-range-list')).toBeVisible();
+ await install(page,s);await page.goto(route(prepareId));await expect(page.getByRole('heading',{name:'暂未能整理出可回答的问题'})).toBeVisible();
+ await expect(page.locator('#qa-start')).toBeDisabled();await expect(page.locator('#qa-ranges,.qa-range-list')).toHaveCount(0);
  expect(writes(s)).toEqual([]);
 });
 
@@ -63,13 +63,13 @@ test('answered document and question-specific missing materials remain available
  expect(writes(s)).toEqual([]);
 });
 
-test('adopt a saved prospectus inside QA, then explicitly include it in the answer',async({page})=>{
+test('choosing a saved prospectus inside QA also includes it in the editable answer',async({page})=>{
  const s=fixture();s.workspace.prospectus=null;await install(page,s);
  const versions={project_id:projectId,current_version_id:null as string|null,selection_revision:0,inactive_material_ids:[],versions:[{version_id:prospectus.version_id,sequence:4,origin:'generated',filename:prospectus.filename,sha256:oldArtifact.pin.sha256,created_at:'2026-10-28T06:00:00Z',material_id:null,material_version:null,artifact_id:oldArtifact.kind==='artifact'?oldArtifact.pin.artifact_id:null,artifact_version:4,revision_artifact_id:null,run_id:'synthetic-run'}]};let selections=0;
  await page.route('**/api/v1/projects/**/prospectus-versions**',async r=>{if(r.request().method()==='POST'){expect(r.request().postDataJSON().version_id).toBe(prospectus.version_id);selections++;versions.current_version_id=prospectus.version_id;versions.selection_revision=1;s.workspace.prospectus=prospectus;}await r.fulfill({json:versions});});
  await page.goto(route(null));await page.getByRole('button',{name:'上传或选择募集说明书'}).click();await expect(page.locator('#qa-prospectus-panel')).toContainText('合成募集书_清洁版_v4.docx');
- await page.locator('[data-use-saved]').click();await expect(page.locator('#qa-prospectus-panel')).toHaveCount(0);expect(selections).toBe(1);
- await expect(page.locator('#qa-start')).toBeDisabled();await page.locator('#qa-select-prospectus').click();await expect(page.locator('#qa-start')).toBeEnabled();expect(s.answers).toEqual([]);
+ await page.locator('[data-prospectus-history-summary]').click();await page.getByRole('button',{name:'用于本轮问答',exact:true}).click();await expect(page.locator('#qa-prospectus-panel')).toHaveCount(0);expect(selections).toBe(1);
+ await expect(page.locator('#qa-select-prospectus')).toHaveCount(0);await expect(page.locator('#qa-start')).toBeEnabled();expect(s.answers).toEqual([]);
 });
 
 test('unreadable mandatory prospectus gives a specific replacement request and no download',async({page})=>{

@@ -13,16 +13,17 @@ import posixpath
 import re
 import sys
 import tempfile
+import zlib
 from datetime import datetime, timezone
 from pathlib import Path
-from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
+from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile, ZipInfo
 
 from lxml import etree as ET
 
 from .check import STORY, package, resolve_revisions
 from .template_manifest import (build_manifest, build_nodes, capability_limits,
                                 describe_nodes, node_text, sha)
-from .word_patch import Patcher, paragraph_text, q, run_with_text, serialized, xml
+from .word_patch import Patcher, paragraph_run_reference, paragraph_text, q, run_with_text, serialized, xml
 
 VERSION = 'word-operations-v1'
 MAX_LOG = 32 * 1024 * 1024
@@ -101,6 +102,21 @@ def load_input(input_path):
     return data, source, raw
 
 
+def prepare_source_manifest(source):
+    """Classify confirmed source data faults without hiding host/IO failures."""
+    try:
+        return build_manifest(source)
+    except (BadZipFile, ET.XMLSyntaxError, zlib.error):
+        error('WORD_EDIT_SOURCE_UNREADABLE')
+    except ValueError as exc:
+        # These are the bounded package reader's fixed source-data errors. A
+        # missing file, permission error or unexpected manifest bug still reaches
+        # the CLI as WORD_EDIT_FAILED rather than blaming the user's document.
+        if str(exc) in {'WORD_PACKAGE_TOO_LARGE', 'WORD_PACKAGE_INVALID', 'WORD_XML_UNSAFE'}:
+            error('WORD_EDIT_SOURCE_UNREADABLE')
+        raise
+
+
 def empty_log(data, raw):
     return {'version': VERSION, 'input_hash': data['input_hash'],
             'baseline_sha256': sha(raw), 'operations': []}
@@ -172,6 +188,8 @@ class Editor:
         self.operations = []
         self.operation_ids = set()
         self.comments = []
+        self.format_origins = {}
+        self.format_plan = None
 
     def target(self, node_id, tag=None):
         if not isinstance(node_id, str) or node_id not in self.nodes:
@@ -207,7 +225,7 @@ class Editor:
         props = source.find(q('pPr'))
         if props is not None:
             node.append(copy.deepcopy(props))
-        reference = next(iter(source.iter(q('r'))), ET.Element(q('r')))
+        reference = paragraph_run_reference(source)
         # Only format properties are inherited. No bookmark, drawing, comment or
         # relationship IDs from the source content are cloned into the new text.
         node.append(run_with_text(reference, text))
@@ -354,6 +372,8 @@ class Editor:
                 added = self.clone_paragraph(style_node, text_value(operation.get('text')))
                 key = f'op:{op_id}:paragraph'
                 self.nodes[key] = (part, added)
+                source_key = operation.get('style_node_id', operation['node_id'])
+                self.format_origins[key] = self.format_origins.get(source_key, source_key)
                 self.inserted_paragraphs.add(key)
             else:
                 self.target(operation['node_id'], 'tr')
@@ -385,7 +405,10 @@ class Editor:
                         new_p = self.clone_paragraph(source_p, text_value(paragraph_value))
                         new_cell.append(new_p)
                         suffix = ':paragraph' if pindex == 0 else f':paragraph:{pindex}'
-                        self.nodes[f'op:{op_id}:cell:{index}{suffix}'] = (part, new_p)
+                        new_key = f'op:{op_id}:cell:{index}{suffix}'
+                        source_key = next(key for key, (_, mapped) in self.nodes.items() if mapped is source_p)
+                        self.format_origins[new_key] = self.format_origins.get(source_key, source_key)
+                        self.nodes[new_key] = (part, new_p)
                 key = f'op:{op_id}:row'
                 self.nodes[key] = (part, added)
                 self.inserted_rows.add(key)
@@ -401,6 +424,8 @@ class Editor:
         return self
 
     def tracked_parts(self):
+        from .format_plan import build_plan, apply_plan
+        self.format_plan = build_plan(self)
         result = dict(self.parts)
         next_revision = max([int(n.get(q('id'))) for root in self.roots.values() for n in root.iter()
                              if (n.get(q('id')) or '').isdigit()] + [0]) + 1
@@ -412,6 +437,7 @@ class Editor:
             patcher.next_id = next_revision
             comment_targets = {item['node_id'] for item in self.comments}
             target_keys = self.touched | self.inserted_paragraphs | self.inserted_rows | self.inserted_cells | comment_targets
+            target_keys |= {item['node_id'] for item in self.format_plan['properties'] + self.format_plan['numeric_fonts']}
             destinations = {key: at_path(root, path_to(self.roots[part], node))
                             for key, (story, node) in self.nodes.items()
                             if story == part and key in target_keys}
@@ -476,6 +502,7 @@ class Editor:
                         index = p.index(run)
                         p.remove(run)
                         p.insert(index, patcher.revision_node(run, 'ins'))
+            apply_plan(self.format_plan, part, destinations, patcher, self.inserted_paragraphs | self.inserted_rows)
             if part == 'word/document.xml' and self.comments:
                 self.add_comments(result, root, destinations, self.data.get('revision_date'))
             result[part] = serialized(root)
@@ -566,13 +593,14 @@ def finalize(input_path, operations_path, output_dir, skip_report=False):
     if output_dir.is_symlink():
         error('WORD_EDIT_OUTPUT_UNSAFE')
     output_dir.mkdir(parents=True, exist_ok=True)
-    names = ['baseline.docx', 'tracked.docx', 'clean.docx', 'operations.json', 'format-report.json']
+    names = ['baseline.docx', 'tracked.docx', 'clean.docx', 'operations.json', 'format-report.json', 'format-plan.json']
     for name in names:
         path = output_dir / name
         if path.exists() and (path.is_symlink() or not path.is_file() or path.stat().st_nlink != 1):
             error('WORD_EDIT_OUTPUT_UNSAFE')
     (output_dir / 'baseline.docx').write_bytes(raw)
     tracked_parts = editor.tracked_parts()
+    write_json(output_dir / 'format-plan.json', editor.format_plan)
     write_package(output_dir / 'tracked.docx', tracked_parts)
     clean_parts = {name: serialized(resolve_revisions(xml(raw), True)) if STORY.fullmatch(name) else raw
                    for name, raw in tracked_parts.items()}
@@ -593,7 +621,7 @@ def finalize(input_path, operations_path, output_dir, skip_report=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['prepare', 'inspect', 'apply', 'finalize', 'no_changes'])
+    parser.add_argument('command', choices=['prepare', 'inspect', 'apply', 'finalize', 'no_changes', 'preflight'])
     parser.add_argument('--input', required=True)
     parser.add_argument('--operations')
     parser.add_argument('--operation-file')
@@ -604,17 +632,31 @@ def main():
     parser.add_argument('--offset', type=int, default=0)
     parser.add_argument('--limit', type=int, default=30)
     parser.add_argument('--reason')
+    parser.add_argument('--report')
     args = parser.parse_args()
     try:
         if args.command == 'prepare':
             data, source, raw = load_input(args.input)
             if not args.manifest:
                 error('WORD_EDIT_MANIFEST_REQUIRED')
-            manifest = build_manifest(source)
+            manifest = prepare_source_manifest(source)
             write_json(args.manifest, manifest)
             result = {'version': manifest['version'], 'baseline_sha256': manifest['baseline_sha256'],
                       'node_count': len(manifest['nodes']), 'heading_count': len(manifest['headings']),
                       'supported_operations': manifest['supported_operations']}
+        elif args.command == 'preflight':
+            if not args.operations or not args.report:
+                error('WORD_EDIT_ARGUMENT_REQUIRED')
+            from .preflight import preflight
+            report = preflight(args.input, args.operations, args.report)
+            result = {key: value for key, value in report.items() if key not in {'quality_report', 'diagnostics'}}
+            result['issues'] = [{'code': issue['code']} for issue in report['issues']]
+            result['report'] = args.report
+            print(json.dumps(result, ensure_ascii=False))
+            if report['status'] != 'passed':
+                print(json.dumps({'error': 'WORD_PREFLIGHT_REJECTED'}), file=sys.stderr)
+                return 1
+            return 0
         elif args.command == 'finalize':
             if not args.operations or not args.output_dir:
                 error('WORD_EDIT_ARGUMENT_REQUIRED')

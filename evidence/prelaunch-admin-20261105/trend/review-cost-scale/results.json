@@ -1,0 +1,120 @@
+{
+  "synthetic": true,
+  "base_commit": "3bb7baf12dba1c75465e9c5dd71ef7b073c176a9",
+  "finalized_at": "2026-11-05T02:57:49.972Z",
+  "review_fix": {
+    "problem": "Small positive costs used a denominator at least 1 and were rounded to zero-height bars (0.0001 * 88 = 0.0088 -> 0.0).",
+    "change": "Use the maximum nonnegative value as the denominator, fallback 1 only for all-zero values. Continue skipping zero values.",
+    "verification": "0.0001 and 0.0002 draw two positive bars with heights 44 and 88; known zero and null cost days do not draw bars.",
+    "business_effect": "None: no cost, billing, API, schema or date-window changes."
+  },
+  "reused_api_pg_evidence": {
+    "path": "../ci-admin-final.json",
+    "metadata_sha256": "120562809cb0f5c06ba8e85259816b3e3f892d650392e2db1f94062cd6623a6c",
+    "raw_path": "../ci-admin-final.log",
+    "raw_sha256": "27984347b144590f0d2ecb728a4b179b8acb1ac5c592aeb894384a33c62e88e3",
+    "counts": {
+      "tests": 17,
+      "pass": 17,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    },
+    "guard_exit": 0
+  },
+  "final_page_evidence": {
+    "path": "page-units-cost-scale-final.json",
+    "metadata_sha256": "642ea98bc9e9399c81f6b1db1f223bda9e9d3788ef0be516dc6fa73c544649b3",
+    "raw_path": "page-units-cost-scale-final.log",
+    "raw_sha256": "b57a4067a0af175867a5a5831431ccc8040333e712affe88829b211420460cc2",
+    "counts": {
+      "tests": 13,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0
+    }
+  },
+  "previous_rounds": {
+    "path": "../results.json",
+    "sha256": "4ceb7c127c3b8bdd767f2b1b2f6672abea72aa91e766fd9091947e55df45acea",
+    "sums_path": "../SHA256SUMS",
+    "sums_sha256": "bf3b33e8b24aa607f9894ec8e0370d24ec874f801e468bb37f36c234a3fb8d49",
+    "original_sum_entries": 15,
+    "preserved_exact_bytes": true,
+    "meaning": "Original product red, fixture-setup error, API/PG green and pre-review page green are historical evidence. This review manifest supersedes only the prior final page binding; API/PG bindings and their cleanup remain valid."
+  },
+  "final_bindings": [
+    {
+      "path": "apps/api/src/admin-dashboard.ts",
+      "sha256": "6050fd9af019fcf7e4d146b4c52a3887c3424af40f4cea0cf487d13d57fc71ea",
+      "lf_normalized_sha256": "5d53f5f7ed5658715a9e2570530901bf1690075a453db708d20d75860b137856"
+    },
+    {
+      "path": "apps/api/src/admin-dashboard.test.ts",
+      "sha256": "eef66b722ed7a88ff9acfd3cf5c89b02da0768533d1163230d3abef2920f3f47",
+      "lf_normalized_sha256": "9e0af1babd4d51a946fb6a8293d467aff8f731904b25d702d41a0269189bda51"
+    },
+    {
+      "path": "apps/api/src/admin-dashboard.pg.test.ts",
+      "sha256": "177b7d7709d898e0b00e30c588985926919c35e9658225c2d58a54912afa7672",
+      "lf_normalized_sha256": "177b7d7709d898e0b00e30c588985926919c35e9658225c2d58a54912afa7672"
+    },
+    {
+      "path": "apps/web/src/admin-dashboard-page.ts",
+      "sha256": "acddc04090638fcd6f648404c309af3534cd9c8392eb0d6763c8e95f4e8c62cd",
+      "lf_normalized_sha256": "43c4aa6f990274cfc5cd563e2d9d42f0b8843a7a606fdc56becae4eed313e0f3"
+    },
+    {
+      "path": "apps/web/src/admin-dashboard-page.test.ts",
+      "sha256": "b2daba3f85809e5ba404bfaa17d5b2f02ade2b9921521025f91faec29ef14c09",
+      "lf_normalized_sha256": "5b6c7fcbcac9bd973016d72235650114421954548434ec66073c67ebf47120bf"
+    },
+    {
+      "path": ".github/workflows/m2-credits-pr.yml",
+      "sha256": "5979760866d49ded016f1805ac3d1e6d8c2e47d70ac23dea8e52cb0d1fb44912",
+      "lf_normalized_sha256": "974bed346a22c69261bd3d00ff92199e592e2e91e1c4a366aa3dc300f97ffdab"
+    },
+    {
+      "path": "apps/api/dist/admin-dashboard.js",
+      "sha256": "acf07d69297dd024d752e6d0bba94c6b679d776acd5ff5699f6044c265062c0c"
+    },
+    {
+      "path": "apps/api/dist/admin-dashboard.test.js",
+      "sha256": "aa79f4092b5723240485d1a85d265dc4ddb78fd85692811a099eb9c0a1b5d75e"
+    },
+    {
+      "path": "apps/api/dist/admin-dashboard.pg.test.js",
+      "sha256": "2043a4f32f889572dcce72b506fb19629f56d8320dc8499fa7f1a0b2549b1430"
+    },
+    {
+      "path": "apps/web/dist-test/admin-dashboard-page.js",
+      "sha256": "977e1b46f6b1cac49beb2e716361f0ddc8959e6e9d075eaaa92f8ac84561d3aa"
+    },
+    {
+      "path": "apps/web/dist-test/admin-dashboard-page.test.js",
+      "sha256": "7596866334f6dcb001a9757783d7826c3f3ea66938211a909507370d19c476bc"
+    }
+  ],
+  "evidence_attributes": {
+    "path": "evidence/prelaunch-admin-20261105/.gitattributes",
+    "sha256": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da",
+    "text": "unset",
+    "verification": "git check-attr reports text unset for original raw logs/results, ui files and new cost-scale raw log; not staged by this agent."
+  },
+  "cleanup": {
+    "clones": 0,
+    "other_clients": 0,
+    "smart_stop_exit": 0,
+    "status_exit": 3,
+    "port": "ECONNREFUSED"
+  },
+  "boundaries": [
+    "Synthetic PostgreSQL and UI/unit fixtures; not live production operator/data acceptance.",
+    "The local CI-like test uses Node26 on Windows; the updated GitHub Actions step still requires its Linux run.",
+    "No real model, merchant, payment or professional content acceptance.",
+    "Do not sum overlapping test rounds."
+  ]
+}

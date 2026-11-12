@@ -5,7 +5,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CODEX_EXEC_LOG_MAX_BYTES } from '@bondbuddy/api/exec-logs';
 import {
+  createCodexExecLogCapture,
   DEFAULT_CODEX_EXEC_LOG_MAX_BYTES,
   DEFAULT_DISABLED_FEATURES,
   loadCodexAdapterConfig,
@@ -20,6 +22,45 @@ const fake = fileURLToPath(new URL('../test-fixtures/codex/fake-codex.mjs', impo
 const secret = 'synthetic-credential-value-for-exec-log-tests';
 const answerSchema = { type: 'object', properties: { answer: { type: 'string' }, n: { type: 'integer' } }, required: ['answer', 'n'], additionalProperties: false };
 const isAnswer = (v: unknown) => typeof v === 'object' && v !== null && typeof (v as { answer?: unknown }).answer === 'string' && Number.isInteger((v as { n?: unknown }).n);
+const markerBytes = Buffer.byteLength('[stdout]\n\n[stderr]\n');
+
+test('capture includes markers in its exact byte budget and truncates only on overflow', () => {
+  const cap = 64, capture = createCodexExecLogCapture(cap);
+  capture.stdout('a'.repeat(cap - markerBytes - 3));
+  capture.stderr('中');
+  const exact = capture.finish();
+  assert.equal(exact.bytes.length, cap);
+  assert.equal(exact.truncated, false);
+  assert.ok(exact.bytes.subarray(-3).equals(Buffer.from('中')));
+  capture.stderr('x');
+  capture.stdout('ignored after overflow');
+  const overflow = capture.finish();
+  assert.equal(overflow.truncated, true);
+  assert.deepEqual(overflow.bytes, exact.bytes);
+});
+
+test('a saturated default capture fits the API storage limit including its markers', () => {
+  assert.equal(DEFAULT_CODEX_EXEC_LOG_MAX_BYTES, CODEX_EXEC_LOG_MAX_BYTES);
+  const capture = createCodexExecLogCapture(DEFAULT_CODEX_EXEC_LOG_MAX_BYTES);
+  capture.stdout('a'.repeat(CODEX_EXEC_LOG_MAX_BYTES - markerBytes));
+  capture.stderr('one byte over the total budget');
+  const log = capture.finish();
+  assert.equal(log.bytes.length, CODEX_EXEC_LOG_MAX_BYTES);
+  assert.equal(log.truncated, true);
+  assert.ok(log.bytes.subarray(-Buffer.byteLength('\n[stderr]\n')).equals(Buffer.from('\n[stderr]\n')));
+});
+
+test('the smallest supported cap preserves complete markers and rejects unstoreable budgets', () => {
+  const capture = createCodexExecLogCapture(markerBytes);
+  assert.equal(capture.finish().truncated, false);
+  capture.stdout('x');
+  assert.deepEqual(capture.finish(), { bytes: Buffer.from('[stdout]\n\n[stderr]\n'), truncated: true });
+  assert.equal(loadCodexAdapterConfig({ BB_CODEX_EXEC_LOG_MAX_BYTES: String(markerBytes) }).exec_log_max_bytes, markerBytes);
+  for (const invalid of [markerBytes - 1, CODEX_EXEC_LOG_MAX_BYTES + 1]) {
+    assert.throws(() => createCodexExecLogCapture(invalid), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
+    assert.throws(() => loadCodexAdapterConfig({ BB_CODEX_EXEC_LOG_MAX_BYTES: String(invalid) }), { code: 'MODEL_ADAPTER_CONFIG_INVALID' });
+  }
+});
 
 async function setup(overrides: Partial<CodexAdapterConfig> = {}) {
   const root = await mkdtemp(join(tmpdir(), 'bb-codex-exec-log-'));
@@ -61,7 +102,7 @@ test('a small cap truncates the private log without interrupting the Codex run',
     assert.equal(result.turn_completed, true, 'truncating the log does not stop the provider turn');
     assert.equal(result.stop, null);
     assert.equal(result.exec_log!.truncated, true);
-    assert.ok(result.exec_log!.bytes.length <= 96 + Buffer.byteLength('[stdout]\n\n[stderr]\n'));
+    assert.ok(result.exec_log!.bytes.length <= 96);
     assert.match(result.exec_log!.bytes.toString('utf8'), /^\[stdout\]\n/);
   } finally { await cleanup(); }
 });

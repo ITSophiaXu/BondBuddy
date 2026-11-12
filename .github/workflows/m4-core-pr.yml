@@ -131,9 +131,13 @@ jobs:
           grep -Eq '^# skipped 0$' "$RUNNER_TEMP/m4-core-api.tap"
           grep -Eq '^# todo 0$' "$RUNNER_TEMP/m4-core-api.tap"
 
-      - name: Project QA accepted pricing and answer history
+      - name: Project QA evidence, recovery, delivery, pricing and answer history
         run: |
+          export BB_QA_TEST_OUTPUT_DIRECTORY="$RUNNER_TEMP/qa-recovery-word"
           node --test --test-concurrency=1 --test-reporter=tap \
+            apps/worker/dist/project-qa-protocol.test.js \
+            apps/worker/dist/project-qa-recovery.test.js \
+            apps/worker/dist/project-qa-e2e.pg.test.js \
             apps/worker/dist/project-qa-pricing.pg.test.js \
             apps/worker/dist/project-qa-materials.test.js \
             apps/api/dist/project-scope-quotation.pg.test.js \
@@ -146,6 +150,8 @@ jobs:
           grep -Eq '^# todo 0$' "$RUNNER_TEMP/qa-pricing.tap"
 
       - name: M4 worker stages, real Word pipeline and model router
+        env:
+          BB_WORKPAPER_ASSESSMENT_TEST_OUTPUT_DIRECTORY: ${{ runner.temp }}/bb-m4-worker/workpaper-assessment
         run: |
           # These suites inject synthetic model seams; they never spawn a provider CLI.
           node --test --test-concurrency=1 --test-reporter=tap \
@@ -165,6 +171,52 @@ jobs:
           grep -Eq '^# skipped 0$' "$RUNNER_TEMP/m4-core-worker.tap"
           grep -Eq '^# todo 0$' "$RUNNER_TEMP/m4-core-worker.tap"
 
+      - name: Install Chromium for synthetic Integrity integration
+        run: npm exec playwright -- install --with-deps chromium
+
+      - name: Cross-entry API delivery and recovery regressions
+        run: |
+          node --test --test-concurrency=1 --test-reporter=tap \
+            apps/api/dist/file-generation.pg.test.js \
+            apps/api/dist/file-template-loading.pg.test.js \
+            apps/api/dist/workpaper-upload.pg.test.js \
+            apps/api/dist/workpaper-download.pg.test.js \
+            apps/api/dist/workpaper-legacy-checks.pg.test.js \
+            apps/api/dist/integrity-scope.pg.test.js \
+            apps/api/dist/automatic-m4-boundaries.pg.test.js \
+            apps/api/dist/paid-review-assembly-recovery.pg.test.js \
+            apps/api/dist/review-dynamic-balance.pg.test.js \
+            | tee "$RUNNER_TEMP/m4-cross-entry-api.tap"
+          grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/m4-cross-entry-api.tap"
+          grep -Eq '^# fail 0$' "$RUNNER_TEMP/m4-cross-entry-api.tap"
+          grep -Eq '^# skipped 0$' "$RUNNER_TEMP/m4-cross-entry-api.tap"
+          grep -Eq '^# todo 0$' "$RUNNER_TEMP/m4-cross-entry-api.tap"
+
+      - name: Cross-entry worker delivery and recovery regressions
+        env:
+          BB_TEST_INTEGRITY_BROWSER: '1'
+          BB_RUN_AUTHORIZED_RQ_ANNUAL_FACT_PG_TESTS: '1'
+          BB_QA_TEST_OUTPUT_DIRECTORY: ${{ runner.temp }}/bb-cross-entry/qa
+          BB_INTEGRITY_TEST_OUTPUT_DIRECTORY: ${{ runner.temp }}/bb-cross-entry/integrity
+        run: |
+          # Models/browser routes are synthetic; the annual parser only reads the authorized repo sample locally.
+          node --test --test-concurrency=1 --test-reporter=tap \
+            apps/worker/dist/ordinary-file-check-batches.pg.test.js \
+            apps/worker/dist/project-file-paid-coverage.pg.test.js \
+            apps/worker/dist/project-files-e2e.pg.test.js \
+            apps/worker/dist/workpaper-shared-stage.pg.test.js \
+            apps/worker/dist/workpaper-paid-checks.pg.test.js \
+            apps/worker/dist/project-qa-e2e.pg.test.js \
+            apps/worker/dist/integrity-e2e.pg.test.js \
+            apps/worker/dist/integrity-pricing.pg.test.js \
+            apps/worker/dist/m4-case-templates.pg.test.js \
+            apps/worker/dist/rq-prospectus-annual-fact-pg.integration.test.js \
+            | tee "$RUNNER_TEMP/m4-cross-entry-worker.tap"
+          grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/m4-cross-entry-worker.tap"
+          grep -Eq '^# fail 0$' "$RUNNER_TEMP/m4-cross-entry-worker.tap"
+          grep -Eq '^# skipped 0$' "$RUNNER_TEMP/m4-cross-entry-worker.tap"
+          grep -Eq '^# todo 0$' "$RUNNER_TEMP/m4-cross-entry-worker.tap"
+
       - name: M4 business Python regressions
         run: |
           python -B -m unittest discover -s python/tests -p 'test_m4_*.py' -v \
@@ -179,6 +231,27 @@ jobs:
           grep -Eq '^# fail 0$' "$RUNNER_TEMP/m4-core-web.tap"
           grep -Eq '^# skipped 0$' "$RUNNER_TEMP/m4-core-web.tap"
           grep -Eq '^# todo 0$' "$RUNNER_TEMP/m4-core-web.tap"
+
+      - name: Combined-candidate continuation and host quality refusal integration
+        run: |
+          # The preceding Web unit step compiled this candidate's dist-test guards.
+          # The runner owns a private PG clone and strips provider credentials.
+          node scripts/prelaunch-quality-continuation.mjs | tee "$RUNNER_TEMP/prelaunch-continuation.tap"
+          grep -Eq '^# tests [1-9][0-9]*$' "$RUNNER_TEMP/prelaunch-continuation.tap"
+          grep -Eq '^# fail 0$' "$RUNNER_TEMP/prelaunch-continuation.tap"
+          grep -Eq '^# cancelled 0$' "$RUNNER_TEMP/prelaunch-continuation.tap"
+          grep -Eq '^# skipped 0$' "$RUNNER_TEMP/prelaunch-continuation.tap"
+          grep -Eq '^# todo 0$' "$RUNNER_TEMP/prelaunch-continuation.tap"
+
+      - name: Retain combined-candidate continuation mechanical logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: prelaunch-continuation-${{ github.sha }}
+          path: .local/prelaunch-continuation-logs/
+          if-no-files-found: warn
+          include-hidden-files: true
+          retention-days: 7
 
       - name: Stop the disposable Blob service
         if: always()

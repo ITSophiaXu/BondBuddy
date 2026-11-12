@@ -1,0 +1,1218 @@
+{
+  "manifest_version": 2,
+  "batch_id": "2026-11-05",
+  "authorization": {
+    "provided_by": "用户",
+    "authorized_on": "2026-11-05",
+    "basis": "用户指定customer_test、yyx、wql七项目材料与输入，要求提交Git用于验收及内部bug bash，并授权基于募集书/发行人准备底稿、诚信案例。",
+    "git_commit_authorized": true,
+    "repository": "ITSophiaXu/BondBuddy",
+    "repository_private_verified": true,
+    "scope": "私有仓库内部开发、回归验收和bug bash",
+    "public_redistribution_authorized": false,
+    "production_reference_library_authorized": false
+  },
+  "captured_at": "2026-11-05T14:12:35.827Z",
+  "source_release": "821477976c75a7218a733d6dca0cd3ed4c733987",
+  "source_project_count": 7,
+  "case_count": 17,
+  "preparable_case_count": 15,
+  "capture_status": "partial_pending_source_access",
+  "file_count": 16,
+  "total_bytes": 62328265,
+  "business_acceptance_status": "not_evaluated",
+  "assets": [
+    {
+      "file_id": "nov05-f001",
+      "path": "originals/nov05-f001/1-2 山东蒜都发展投资有限公司2026年面向专业投资者非公开发行科技创新公司债券募集说明书1025v1清洁版.docx",
+      "original_filename": "1-2 山东蒜都发展投资有限公司2026年面向专业投资者非公开发行科技创新公司债券募集说明书1025v1清洁版.docx",
+      "sha256": "5723460065160953bf86361c84707c5b6feb8b47fecf7760a667e3d757ff6a7a",
+      "bytes": 565933,
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {
+        "paragraphs": 5602,
+        "tables": 80,
+        "media_parts": 5,
+        "opening_paragraphs": [
+          "山东蒜都发展投资有限公司",
+          "（住所：山东省济宁市金乡县城金城路南侧安泰财富广场23层）",
+          "2026年面向专业投资者非公开发行科技创新公司债券募集说明书",
+          "申报金额",
+          "不超过6亿元（含6亿元）",
+          "债券期限",
+          "不超过10年（含10年）",
+          "增信情况"
+        ]
+      },
+      "bindings": [
+        {
+          "id": "09c0b231-3828-4f55-8ff4-b43ea24e4e3e",
+          "version": "1",
+          "project_id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+          "owner_user_id": "8cdd709d-bdfd-4c48-a411-2f6bf6f40e41",
+          "filename": "1-2 山东蒜都发展投资有限公司2026年面向专业投资者非公开发行科技创新公司债券募集说明书1025v1清洁版.docx",
+          "role": "historical",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "file_id": "nov05-f002",
+      "path": "originals/nov05-f002/山东蒜都募集说明书_复核修订版_20261025.docx",
+      "original_filename": "山东蒜都募集说明书_复核修订版_20261025.docx",
+      "sha256": "024830590e7a59cb1e7d4dda8ed31b5e376ebb65522edf74c6eeb59c0eead172",
+      "bytes": 541578,
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {
+        "paragraphs": 5602,
+        "tables": 80,
+        "media_parts": 5,
+        "opening_paragraphs": [
+          "山东蒜都发展投资有限公司",
+          "（住所：山东省济宁市金乡县城金城路南侧安泰财富广场23层）",
+          "2026年面向专业投资者非公开发行科技创新公司债券募集说明书",
+          "申报金额",
+          "不超过6亿元（含6亿元）",
+          "债券期限",
+          "不超过10年（含10年）",
+          "增信情况"
+        ]
+      },
+      "bindings": [
+        {
+          "id": "f6a04153-17cc-49b3-856f-8637fe534790",
+          "version": "1",
+          "project_id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+          "owner_user_id": "8cdd709d-bdfd-4c48-a411-2f6bf6f40e41",
+          "filename": "山东蒜都募集说明书_复核修订版_20261025.docx",
+          "role": "historical",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "file_id": "nov05-f003",
+      "path": "originals/nov05-f003/山东蒜都募集说明书_复核修订版_20261025.docx",
+      "original_filename": "山东蒜都募集说明书_复核修订版_20261025.docx",
+      "sha256": "1da428328f3dc75524594cd8b5d7041a6dda848be0f7652a0f444dbec4961a8a",
+      "bytes": 541697,
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {
+        "paragraphs": 5602,
+        "tables": 80,
+        "media_parts": 5,
+        "opening_paragraphs": [
+          "山东蒜都发展投资有限公司",
+          "（住所：山东省济宁市金乡县城金城路南侧安泰财富广场23层）",
+          "2026年面向专业投资者非公开发行科技创新公司债券募集说明书",
+          "申报金额",
+          "不超过6亿元（含6亿元）",
+          "债券期限",
+          "不超过10年（含10年）",
+          "增信情况"
+        ]
+      },
+      "bindings": [
+        {
+          "id": "9d13db58-8ac0-457e-b202-932e315dcca4",
+          "version": "1",
+          "project_id": "4f77e772-cbe0-464d-bd49-f9c4c5a74691",
+          "owner_user_id": "8cdd709d-bdfd-4c48-a411-2f6bf6f40e41",
+          "filename": "山东蒜都募集说明书_复核修订版_20261025.docx",
+          "role": "historical",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "file_id": "nov05-f004",
+      "path": "originals/nov05-f004/成都九联投资集团有限公司2025年面向专业投资者非公开发行公司债券（第三期）募集说明书-1212清洁稿（马总签字）.docx",
+      "original_filename": "成都九联投资集团有限公司2025年面向专业投资者非公开发行公司债券（第三期）募集说明书-1212清洁稿（马总签字）.docx",
+      "sha256": "c93811a0c0eb30f824fb6d9ef156974ef637bf63e23f839f3d8e070bae2ef0bb",
+      "bytes": 741381,
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {
+        "paragraphs": 10127,
+        "tables": 95,
+        "media_parts": 7,
+        "opening_paragraphs": [
+          "成都九联投资集团有限公司",
+          "（注册地址：成都市温江区芙蓉大道二段733号3栋1层1号）",
+          "2025面向专业投资者非公开发行公司债券（第三期）",
+          "募集说明书",
+          "注册金额",
+          "人民币14.41亿元",
+          "本期发行金额",
+          "不超过人民币7.71亿元（含7.71亿元）"
+        ]
+      },
+      "bindings": [
+        {
+          "id": "c6526b02-6dd1-4663-8ca2-fe0ec747aa32",
+          "version": "1",
+          "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "成都九联投资集团有限公司2025年面向专业投资者非公开发行公司债券（第三期）募集说明书-1212清洁稿（马总签字）.docx",
+          "role": "historical",
+          "deleted_at": "2026-10-29T03:09:32.791618+00:00",
+          "kind": "material"
+        },
+        {
+          "id": "8b56fd1a-38ed-470a-8a54-ac3c6115f915",
+          "version": "1",
+          "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "成都九联投资集团有限公司2025年面向专业投资者非公开发行公司债券（第三期）募集说明书.docx",
+          "role": "historical",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "file_id": "nov05-f005",
+      "path": "originals/nov05-f005/Y-4-2 新津新城发展集团有限公司2024年度审计报告.pdf",
+      "original_filename": "Y-4-2 新津新城发展集团有限公司2024年度审计报告.pdf",
+      "sha256": "b488f4653065eb66116087dd5a643359fa5172f6d7199b7605387924e99725e7",
+      "bytes": 8528364,
+      "media_type": "application/pdf",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {},
+      "bindings": [
+        {
+          "id": "71eacacc-4789-421d-86d8-bd37764f0646",
+          "version": "1",
+          "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "Y-4-2 新津新城发展集团有限公司2024年度审计报告.pdf",
+          "role": "audit",
+          "deleted_at": null,
+          "kind": "material"
+        },
+        {
+          "id": "8e25cee1-c235-412c-a050-ea073c2e9b10",
+          "version": "1",
+          "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "Y-4-2 新津新城发展集团有限公司2024年度审计报告.pdf",
+          "role": "audit",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "file_id": "nov05-f006",
+      "path": "originals/nov05-f006/Y-4-3 新津新城发展集团有限公司2025年度审计报告.pdf",
+      "original_filename": "Y-4-3 新津新城发展集团有限公司2025年度审计报告.pdf",
+      "sha256": "89427d2c0a12b6de2db44098c52c3b09a2de796de309cfa4af8d75d4b882e896",
+      "bytes": 7408558,
+      "media_type": "application/pdf",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {},
+      "bindings": [
+        {
+          "id": "2dd686ba-b9da-41e8-a8a5-d5c745ad06a0",
+          "version": "1",
+          "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "Y-4-3 新津新城发展集团有限公司2025年度审计报告.pdf",
+          "role": "audit",
+          "deleted_at": null,
+          "kind": "material"
+        },
+        {
+          "id": "23fe8679-e76f-48dd-800f-a4368190d3f1",
+          "version": "1",
+          "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "Y-4-3 新津新城发展集团有限公司2025年度审计报告.pdf",
+          "role": "audit",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "file_id": "nov05-f007",
+      "path": "originals/nov05-f007/Y-4-4 新津新城发展集团有限公司2026年度半年度财务报告.pdf",
+      "original_filename": "Y-4-4 新津新城发展集团有限公司2026年度半年度财务报告.pdf",
+      "sha256": "c13ab8fd2ac0db8479afe9d4e36e863838b34f59bc0f391cffb59eec22cef8cb",
+      "bytes": 3890195,
+      "media_type": "application/pdf",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {},
+      "bindings": [
+        {
+          "id": "ca54526d-c257-42a2-92a6-996d75ba3117",
+          "version": "1",
+          "project_id": "aad405cb-196c-4a15-8b39-5b3df382f4da",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "Y-4-4 新津新城发展集团有限公司2026年度半年度财务报告.pdf",
+          "role": "audit",
+          "deleted_at": null,
+          "kind": "material"
+        },
+        {
+          "id": "cdb1849c-abe9-41d5-89c7-910a97a73e68",
+          "version": "1",
+          "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "Y-4-4 新津新城发展集团有限公司2026年度半年度财务报告.pdf",
+          "role": "audit",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "file_id": "nov05-f008",
+      "path": "originals/nov05-f008/2-2 新津新城发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "original_filename": "2-2 新津新城发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "sha256": "ffd1191fd011b151e634a77532590820697cf8df6444aa5b85a76d2569bd0166",
+      "bytes": 1197859,
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {
+        "paragraphs": 7821,
+        "tables": 69,
+        "media_parts": 5,
+        "opening_paragraphs": [
+          "新津新城发展集团有限公司",
+          "2026年面向专业投资者非公开发行公司债券",
+          "募集说明书",
+          "发行金额",
+          "不超过人民币4.80亿元（含）",
+          "发行人",
+          "新津新城发展集团有限公司",
+          "主承销商、受托管理人、簿记管理人"
+        ]
+      },
+      "bindings": [
+        {
+          "id": "9baebe62-6494-4c06-89b0-7c3d66986996",
+          "version": "1",
+          "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "2-2 新津新城发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+          "role": "historical",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "file_id": "nov05-f009",
+      "path": "originals/nov05-f009/底稿目录清单-高投非公开.xlsx",
+      "original_filename": "底稿目录清单-高投非公开.xlsx",
+      "sha256": "a82d6544dcf588d3e95e789ac1d37bd4c173dd7f4260dc15fae03795f8cc643e",
+      "bytes": 28752,
+      "media_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {
+        "worksheets": [
+          {
+            "name": "目录",
+            "sheetId": "1",
+            "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id": "rId1"
+          }
+        ]
+      },
+      "bindings": [
+        {
+          "id": "c72a7a2b-b1e8-4bda-9adb-04703417e5c1",
+          "version": "1",
+          "project_id": "cb9a79c6-cbbc-4aed-affe-fcf8b6cd8ce3",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "底稿目录清单-高投非公开.xlsx",
+          "role": "other",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "file_id": "nov05-f010",
+      "path": "originals/nov05-f010/DY-3邹平市汇融产业投资集团有限公司2025年度第一期债务融资工具定向募集说明书.docx",
+      "original_filename": "DY-3邹平市汇融产业投资集团有限公司2025年度第一期债务融资工具定向募集说明书.docx",
+      "sha256": "11514ca065b622a011c38ed28a33a576df1f661baceff99f814c6900149bc18d",
+      "bytes": 836122,
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {
+        "paragraphs": 11017,
+        "tables": 106,
+        "media_parts": 5,
+        "opening_paragraphs": [
+          "邹平市汇融产业投资集团有限公司",
+          "2025年度第一期债务融资工具",
+          "定向募集说明书",
+          "发行人：",
+          "邹平市汇融产业投资集团有限公司",
+          "注册金额：",
+          "人民币10亿元",
+          "本期发行金额："
+        ]
+      },
+      "bindings": [
+        {
+          "id": "92ff4498-4456-49e0-936f-459728dfc586",
+          "version": "1",
+          "project_id": "dcd85b07-a2fd-4efe-ad20-ead65612dbc0",
+          "owner_user_id": "a34eda12-8ea3-4157-978e-357a8f471a61",
+          "filename": "DY-3邹平市汇融产业投资集团有限公司2025年度第一期债务融资工具定向募集说明书.docx",
+          "role": "historical",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "file_id": "nov05-f011",
+      "path": "originals/nov05-f011/2 河北省国营中捷友谊农场集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "original_filename": "2 河北省国营中捷友谊农场集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "sha256": "14b66ab57d059dd9cc8a18b76e94643d227c2222a8b287c058a77de10e200182",
+      "bytes": 1037167,
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {
+        "paragraphs": 9746,
+        "tables": 85,
+        "media_parts": 5,
+        "opening_paragraphs": [
+          "河北省国营中捷友谊农场集团有限公司",
+          "2026年面向专业投资者非公开发行公司债券",
+          "募集说明书",
+          "发行人：河北省国营中捷友谊农场集团有限公司",
+          "主承销商：光大证券股份有限公司",
+          "联席主承销商：国投证券股份有限公司",
+          "受托管理人：国投证券股份有限公司",
+          "发行金额：10.00亿元"
+        ]
+      },
+      "bindings": [
+        {
+          "id": "315114ef-7704-44e3-8260-77524f13def2",
+          "version": "1",
+          "project_id": "588988d5-5890-4dc2-abc8-3b8e5d69a41d",
+          "owner_user_id": "a34eda12-8ea3-4157-978e-357a8f471a61",
+          "filename": "2 河北省国营中捷友谊农场集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+          "role": "historical",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "file_id": "nov05-f012",
+      "path": "originals/nov05-f012/1-1东营市城市建设发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "original_filename": "1-1东营市城市建设发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+      "sha256": "c2201263b17fd80d9e0c51bf4e32b17977e6424abffef1b2ba3b6254b6f3f12f",
+      "bytes": 723353,
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {
+        "paragraphs": 8008,
+        "tables": 121,
+        "media_parts": 5,
+        "opening_paragraphs": [
+          "8528057620",
+          "东营市城市建设发展集团有限公司",
+          "2026年面向专业投资者非公开发行公司债券",
+          "募集说明书",
+          "注册金额",
+          "不超过人民币6亿元",
+          "增信情况",
+          "无增信"
+        ]
+      },
+      "bindings": [
+        {
+          "id": "57f63b2d-6ad6-42b3-b0f2-dcc67756b5f3",
+          "version": "1",
+          "project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "1-1东营市城市建设发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+          "role": "historical",
+          "deleted_at": null,
+          "kind": "material"
+        },
+        {
+          "id": "4541d04e-32bb-49b9-a03d-6f8636debdfc",
+          "version": "1",
+          "project_id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "1-1东营市城市建设发展集团有限公司2026年面向专业投资者非公开发行公司债券募集说明书.docx",
+          "role": "historical",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "file_id": "nov05-f013",
+      "path": "originals/nov05-f013/证券发行审核部意见  东营城发(1).docx",
+      "original_filename": "证券发行审核部意见  东营城发(1).docx",
+      "sha256": "9d1ae4dd736a71db14722060d778c56af14af96a469f47794774618a61b27e10",
+      "bytes": 14934,
+      "media_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {
+        "paragraphs": 18,
+        "tables": 0,
+        "media_parts": 0,
+        "opening_paragraphs": [
+          "证券发行审核部关于",
+          "东营市城市建设发展集团有限公司2026年面向专业投资者",
+          "非公开发行公司债券项目",
+          "的审核意见",
+          "证审【2026】号",
+          "经项目组申请，证券发行审核部对东营市城市建设发展集团有限公司2026年面向专业投资者非公开发行公司债券项目的内核申报文件进行了审核。以下为审核中我们关注到的需要项目组进一步核查落实或说明的问题及提醒内核委员予以关注的事项：",
+          "一、关于业务。1、报告期内，发行人工程施工业务收入规模呈持续下降趋势，对营业收入总额影响明显，且发行人报告期末在建项目较少，请项目组说明该业务板块收入下降原因，是否具有可持续性；2、报告期内，发行人房地产业务收入较小，2025年毛利率大幅下降，报告期末仍有大规模在建项目，请项目组说明发行人存量项目是否存在去化困难情况，在建项目销售安排，预计去化周期；3、根据募集说明书，最近两年发行人受让大量土地，但目前无拟建房地产项目，请项目组说明发行人是否存在闲置土地情况；4、报告期内，发行人未确认基础设施建设业务收入，但金湖银河生态工程二期项目及其他PPP项目、自营自建项目发行人已承担大量投资，请项目组结合该部分项目收入实现模式或合同约定条款，说明是否存在停工缓建、延迟确认收入情况。",
+          "二、关于其他应收款。报告期末，发行人其他应收款规模较大，占总资产比例较高，主要为发行人与其他单位之间的往来款。请项目组结合发行人其他应收款主要对手方的信用状况、账龄及未来回款安排说明应收款项的可回收性，并说明是否存在较大的回款风险。"
+        ]
+      },
+      "bindings": [
+        {
+          "id": "ca458567-d431-4df6-af5b-6481928bf6b5",
+          "version": "1",
+          "project_id": "d4db95a8-e0a9-430b-9c1e-510b20396cb3",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "证券发行审核部意见  东营城发(1).docx",
+          "role": "other",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "file_id": "nov05-f014",
+      "path": "originals/nov05-f014/5-2-1东营市城市建设发展集团有限公司2024年度经审计的合并及母公司财务报告.pdf",
+      "original_filename": "5-2-1东营市城市建设发展集团有限公司2024年度经审计的合并及母公司财务报告.pdf",
+      "sha256": "18e450d7708b14524439dbca16a62ffff18a3570597dbcdc15dabcd9b7b81a94",
+      "bytes": 8526194,
+      "media_type": "application/pdf",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {},
+      "bindings": [
+        {
+          "id": "a23e9750-da68-4ef7-a880-81212ed8985b",
+          "version": "1",
+          "project_id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "5-2-1东营市城市建设发展集团有限公司2024年度经审计的合并及母公司财务报告.pdf",
+          "role": "audit",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "file_id": "nov05-f015",
+      "path": "originals/nov05-f015/5-2-2东营市城市建设发展集团有限公司2025年度经审计的合并及母公司财务报告.pdf",
+      "original_filename": "5-2-2东营市城市建设发展集团有限公司2025年度经审计的合并及母公司财务报告.pdf",
+      "sha256": "44023471983b049ff955ae6af159a8a1f3e67404344ea3d504d01b21c0d116de",
+      "bytes": 19431101,
+      "media_type": "application/pdf",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {},
+      "bindings": [
+        {
+          "id": "52977841-2404-4a71-bcaa-b3fa48708d1a",
+          "version": "1",
+          "project_id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "5-2-2东营市城市建设发展集团有限公司2025年度经审计的合并及母公司财务报告.pdf",
+          "role": "audit",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    },
+    {
+      "file_id": "nov05-f016",
+      "path": "originals/nov05-f016/5-2-3东营市城市建设发展集团有限公司2026年半年度财务报表及附注.pdf",
+      "original_filename": "5-2-3东营市城市建设发展集团有限公司2026年半年度财务报表及附注.pdf",
+      "sha256": "c175434ecfde27bba694116ab5620dc0ea1b1824428181f232bcb99cc9af4c8c",
+      "bytes": 8315077,
+      "media_type": "application/pdf",
+      "synthetic": false,
+      "original_bytes_preserved": true,
+      "inspection": {},
+      "bindings": [
+        {
+          "id": "54da1f47-c404-4cac-94bc-cb3376cb01cd",
+          "version": "1",
+          "project_id": "8dea69ec-f021-4f38-a3c1-713f7ce6af1f",
+          "owner_user_id": "4a08bf99-bfad-42c5-9c02-ecd399f733bd",
+          "filename": "5-2-3东营市城市建设发展集团有限公司2026年半年度财务报表及附注.pdf",
+          "role": "audit",
+          "deleted_at": null,
+          "kind": "material"
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "update-xinjin",
+      "title": "新津新城：相似企业参考稿编制",
+      "task_type": "update",
+      "source_case_ids": [],
+      "input_path": "cases/update-xinjin/input.json",
+      "file_ids": [
+        "nov05-f004",
+        "nov05-f005",
+        "nov05-f006",
+        "nov05-f007"
+      ],
+      "preparable": true,
+      "readiness": "current_saved_input_and_revision_pins",
+      "checks": [
+        "核对目标发行人、市场、品种、目标期间及原稿关系与 input.json 一致。",
+        "核对交付 Word 的资产负债表、利润表、现金流量表及对应正文确已采用目标期间材料；历史比较数按口径保留。",
+        "记录至少资产总额、负债总额、净资产、营业收入、净利润、经营现金流六项原材料定位和输出定位；不得只看任务 succeeded。",
+        "核对单位、合并/母公司口径、表格明细及附注；未披露的数字不编造，空白、横线与零不互换。",
+        "相似企业/旧稿中的名称、财务数据、发行安排不得作为目标公司的事实；募集资金和承销安排按原输入处理。",
+        "清洁版和修订版可下载并正常打开，业务正文一致，修订可核对；记录原有和新出现的版式问题。",
+        "刷新、关闭浏览器后重开能找回同一任务；失败重试不重复扣费。"
+      ],
+      "notes": [
+        "参考稿是成都九联，相似企业关系必须保留，不能把其财务事实改名为新津新城。",
+        "历史输入1/2与输入3的参考稿绑定不同；主案例采用最后一次更新输入，早期输入保留作故障复现。",
+        "业务字段来自2026-11-05读取的当前保存输入；冻结版本DTO仅含绑定等元数据，未取得完整历史manifest，不声称逐字恢复早期运行输入。"
+      ],
+      "missing_material_count": 0
+    },
+    {
+      "case_id": "update-zhongjie",
+      "title": "中捷农场：深交所私募更新",
+      "task_type": "update",
+      "source_case_ids": [],
+      "input_path": "cases/update-zhongjie/input.json",
+      "file_ids": [
+        "nov05-f011"
+      ],
+      "preparable": false,
+      "readiness": "incomplete_source_capture",
+      "checks": [
+        "核对目标发行人、市场、品种、目标期间及原稿关系与 input.json 一致。",
+        "核对交付 Word 的资产负债表、利润表、现金流量表及对应正文确已采用目标期间材料；历史比较数按口径保留。",
+        "记录至少资产总额、负债总额、净资产、营业收入、净利润、经营现金流六项原材料定位和输出定位；不得只看任务 succeeded。",
+        "核对单位、合并/母公司口径、表格明细及附注；未披露的数字不编造，空白、横线与零不互换。",
+        "相似企业/旧稿中的名称、财务数据、发行安排不得作为目标公司的事实；募集资金和承销安排按原输入处理。",
+        "清洁版和修订版可下载并正常打开，业务正文一致，修订可核对；记录原有和新出现的版式问题。",
+        "刷新、关闭浏览器后重开能找回同一任务；失败重试不重复扣费。"
+      ],
+      "notes": [
+        "以冻结输入核对原稿和目标报告期；项目曾有多个同名副本，本包固定2026-10-31建立的指定项目。",
+        "待补齐：源项目完整业务输入、目标报告期/补充要求/参考稿关系，以及本案例缺失清单中的财务附件。不可用当前不完整材料验收更新效果。"
+      ],
+      "missing_material_count": 3
+    },
+    {
+      "case_id": "update-zouping",
+      "title": "邹平国信：PPN 更新",
+      "task_type": "update",
+      "source_case_ids": [],
+      "input_path": "cases/update-zouping/input.json",
+      "file_ids": [
+        "nov05-f010"
+      ],
+      "preparable": false,
+      "readiness": "incomplete_source_capture",
+      "checks": [
+        "核对目标发行人、市场、品种、目标期间及原稿关系与 input.json 一致。",
+        "核对交付 Word 的资产负债表、利润表、现金流量表及对应正文确已采用目标期间材料；历史比较数按口径保留。",
+        "记录至少资产总额、负债总额、净资产、营业收入、净利润、经营现金流六项原材料定位和输出定位；不得只看任务 succeeded。",
+        "核对单位、合并/母公司口径、表格明细及附注；未披露的数字不编造，空白、横线与零不互换。",
+        "相似企业/旧稿中的名称、财务数据、发行安排不得作为目标公司的事实；募集资金和承销安排按原输入处理。",
+        "清洁版和修订版可下载并正常打开，业务正文一致，修订可核对；记录原有和新出现的版式问题。",
+        "刷新、关闭浏览器后重开能找回同一任务；失败重试不重复扣费。"
+      ],
+      "notes": [
+        "参考稿原文件名含“邹平市汇融产业投资集团”；不能仅凭项目名称认定同一主体。源文件名称、正文主体及原输入关系需分别核对。",
+        "同时保留审计PDF、提取的Word和Excel；不能将不同格式的同组材料重复计为多个独立证据来源。",
+        "待补齐：源项目完整业务输入、目标报告期/补充要求/参考稿关系，以及本案例缺失清单中的财务附件。不可用当前不完整材料验收更新效果。"
+      ],
+      "missing_material_count": 6
+    },
+    {
+      "case_id": "review-dongying",
+      "title": "东营城建：完整复核与暂停排查",
+      "task_type": "review",
+      "source_case_ids": [],
+      "input_path": "cases/review-dongying/input.json",
+      "file_ids": [
+        "nov05-f012",
+        "nov05-f014",
+        "nov05-f015",
+        "nov05-f016"
+      ],
+      "preparable": true,
+      "readiness": "review_input_hash_matches_execution",
+      "checks": [
+        "确认本次采用的原稿版本和配套证据，不能把多个同名版本混成一个原稿。",
+        "材料齐全且余额充足时完整交付；如暂停，必须记录明确原因、检查点与恢复结果。",
+        "复核结果引用可定位原文并说明问题；不能将进度日志、空报告当作完成成果。",
+        "缺少审计/外部资料的事项说明限制，原稿内部可验证的勾稽、期间、文字问题继续检查。",
+        "按当前产品范围检查报告、批注及适用的 Word 成果；不把未确认的问题编造成已核实错误。",
+        "运行中刷新、暂停/继续、超时后重试保留输入和已完成步骤，计费按实际规则核对。"
+      ],
+      "notes": [
+        "项目字段使用简称“东营城建”，原稿法定主体为东营市城市建设发展集团有限公司。",
+        "冻结复核任务在本次取样时为 paused；保留为暂停排查案例，不预判暂停原因。"
+      ],
+      "missing_material_count": 0
+    },
+    {
+      "case_id": "review-xinjin",
+      "title": "新津新城：原稿与审计材料复核",
+      "task_type": "review",
+      "source_case_ids": [],
+      "input_path": "cases/review-xinjin/input.json",
+      "file_ids": [
+        "nov05-f008",
+        "nov05-f005",
+        "nov05-f006",
+        "nov05-f007",
+        "nov05-f009"
+      ],
+      "preparable": true,
+      "readiness": "review_input_hash_matches_execution",
+      "checks": [
+        "确认本次采用的原稿版本和配套证据，不能把多个同名版本混成一个原稿。",
+        "材料齐全且余额充足时完整交付；如暂停，必须记录明确原因、检查点与恢复结果。",
+        "复核结果引用可定位原文并说明问题；不能将进度日志、空报告当作完成成果。",
+        "缺少审计/外部资料的事项说明限制，原稿内部可验证的勾稽、期间、文字问题继续检查。",
+        "按当前产品范围检查报告、批注及适用的 Word 成果；不把未确认的问题编造成已核实错误。",
+        "运行中刷新、暂停/继续、超时后重试保留输入和已完成步骤，计费按实际规则核对。"
+      ],
+      "notes": [
+        "项目上传了底稿目录，该目录是后续底稿衍生测试输入；不能自动当作财务复核证据。"
+      ],
+      "missing_material_count": 0
+    },
+    {
+      "case_id": "review-suandu",
+      "title": "山东蒜都：原稿内部复核与版本切换",
+      "task_type": "review",
+      "source_case_ids": [],
+      "input_path": "cases/review-suandu/input.json",
+      "file_ids": [
+        "nov05-f001",
+        "nov05-f002",
+        "nov05-f003"
+      ],
+      "preparable": true,
+      "readiness": "review_input_hash_matches_execution",
+      "checks": [
+        "确认本次采用的原稿版本和配套证据，不能把多个同名版本混成一个原稿。",
+        "材料齐全且余额充足时完整交付；如暂停，必须记录明确原因、检查点与恢复结果。",
+        "复核结果引用可定位原文并说明问题；不能将进度日志、空报告当作完成成果。",
+        "缺少审计/外部资料的事项说明限制，原稿内部可验证的勾稽、期间、文字问题继续检查。",
+        "按当前产品范围检查报告、批注及适用的 Word 成果；不把未确认的问题编造成已核实错误。",
+        "运行中刷新、暂停/继续、超时后重试保留输入和已完成步骤，计费按实际规则核对。"
+      ],
+      "notes": [
+        "项目标题为普通私募，但原稿文件名含科技创新公司债券；不得以标题替代正文品种核对。",
+        "所提供主要是原稿及修订版本，未取得同项目审计材料；适合内部一致性和缺少外部证据场景，不代表完整财务复核样本。",
+        "本案例采用2026-10-25既有输入快照；原件及两份后续上传修订稿均与11月5日源项目hash一致。原输入与执行记录hash匹配，但不是11月5日最新草稿。"
+      ],
+      "missing_material_count": 0
+    },
+    {
+      "case_id": "qa-dongying",
+      "title": "东营城建：七项审核意见问答",
+      "task_type": "project_qa",
+      "source_case_ids": [],
+      "input_path": "cases/qa-dongying/input.json",
+      "file_ids": [
+        "nov05-f012",
+        "nov05-f013"
+      ],
+      "preparable": true,
+      "readiness": "qa_execution_manifest_captured",
+      "checks": [
+        "识别并确认 q6—q12 共7个问题块，不把标题算作问题；块内子问必须逐项回答。",
+        "问题清单 Word 只控制问题和回填位置，不能作为发行人事实证据；募集说明书使用指定原件。",
+        "七个问题全部得到实质回答或具体资料缺口；不编造未披露原因、安排、合同或履职。",
+        "数值、期间、单位和引文逐项可追溯；显示段落号与机器定位 ID 混淆不能导致整批已完成答案丢失。",
+        "在最新计费规则下重新报价，不能复用线上 scope_quote_id、旧8526积分报价或冻结记录。",
+        "最终 Word 保留问题顺序和回填位置，输出可下载；失败的冻结积分按规则释放，重试不重复结算。"
+      ],
+      "notes": [
+        "源项目有同名副本，本包选择最近完成问题识别并提交七题回答的项目。",
+        "历史真实执行出现计费校验和引文定位失败；历史生成/本地恢复答案不是本包的标准正确答案。"
+      ],
+      "missing_material_count": 0
+    },
+    {
+      "case_id": "workpaper-xinjin",
+      "title": "新津新城发展集团有限公司：底稿目录生成",
+      "task_type": "workpaper",
+      "source_case_ids": [
+        "review-xinjin"
+      ],
+      "input_path": "cases/workpaper-xinjin/input.json",
+      "file_ids": [
+        "nov05-f008",
+        "nov05-f009"
+      ],
+      "preparable": true,
+      "readiness": "derived_recipe_not_executed",
+      "checks": [
+        "只选目录的“1 尽职调查文件”，完整解析编号；不漏项、重复或把其他工作表加入。",
+        "募集说明书事实、全部相关明细和单位期间进入正文，不以摘要或大量空表替代。",
+        "按目录逐项判断可形成成果、业务不适用和资料不足；不得编造原件、签章或已履行程序。",
+        "模板只控制格式；旧项目事实、签字和日期不带入本项目。",
+        "文件名保留编号和主体，按规则处理提示括注；成果 ZIP 仅含可生成文件和不适用说明。",
+        "逐页检查表格超宽、裁切、重复标题、空白页和断表；内部来源/追踪表不进入交付 ZIP。",
+        "批次暂停、继续、失败项重试与 ZIP 下载不丢成功文件、不重复生成或扣费。"
+      ],
+      "notes": [
+        "目录来自新津复核项目，复用目录要求；不沿用旧项目事实、签字或执行状态。"
+      ]
+    },
+    {
+      "case_id": "integrity-xinjin",
+      "title": "新津新城发展集团有限公司：诚信核查",
+      "task_type": "integrity",
+      "source_case_ids": [
+        "review-xinjin"
+      ],
+      "input_path": "cases/integrity-xinjin/input.json",
+      "file_ids": [
+        "nov05-f008"
+      ],
+      "preparable": true,
+      "readiness": "derived_recipe_not_executed",
+      "checks": [
+        "以发行人法定全称查询，区别同名/近似主体；信用代码未知时不编造。",
+        "每个所选站点记录实际查询时间、条件、网址和证据；不能用历史截图冒充当天查询。",
+        "严格区分查询有结果、已查询无结果、验证码/登录阻塞、网络失败及未执行。",
+        "受阻或未覆盖的站点不能汇总成“无失信记录”；同名主体命中需人工核实。",
+        "暂停/继续、人工补证及导出保留同一轮证据，报告不伪造查询或签章。"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "workpaper-zhongjie",
+      "title": "河北省国营中捷友谊农场集团有限公司：底稿目录生成",
+      "task_type": "workpaper",
+      "source_case_ids": [
+        "update-zhongjie"
+      ],
+      "input_path": "cases/workpaper-zhongjie/input.json",
+      "file_ids": [
+        "nov05-f011",
+        "nov05-f009"
+      ],
+      "preparable": true,
+      "readiness": "derived_recipe_not_executed",
+      "checks": [
+        "只选目录的“1 尽职调查文件”，完整解析编号；不漏项、重复或把其他工作表加入。",
+        "募集说明书事实、全部相关明细和单位期间进入正文，不以摘要或大量空表替代。",
+        "按目录逐项判断可形成成果、业务不适用和资料不足；不得编造原件、签章或已履行程序。",
+        "模板只控制格式；旧项目事实、签字和日期不带入本项目。",
+        "文件名保留编号和主体，按规则处理提示括注；成果 ZIP 仅含可生成文件和不适用说明。",
+        "逐页检查表格超宽、裁切、重复标题、空白页和断表；内部来源/追踪表不进入交付 ZIP。",
+        "批次暂停、继续、失败项重试与 ZIP 下载不丢成功文件、不重复生成或扣费。"
+      ],
+      "notes": [
+        "目录来自新津复核项目，复用目录要求；不沿用旧项目事实、签字或执行状态。"
+      ]
+    },
+    {
+      "case_id": "integrity-zhongjie",
+      "title": "河北省国营中捷友谊农场集团有限公司：诚信核查",
+      "task_type": "integrity",
+      "source_case_ids": [
+        "update-zhongjie"
+      ],
+      "input_path": "cases/integrity-zhongjie/input.json",
+      "file_ids": [
+        "nov05-f011"
+      ],
+      "preparable": true,
+      "readiness": "derived_recipe_not_executed",
+      "checks": [
+        "以发行人法定全称查询，区别同名/近似主体；信用代码未知时不编造。",
+        "每个所选站点记录实际查询时间、条件、网址和证据；不能用历史截图冒充当天查询。",
+        "严格区分查询有结果、已查询无结果、验证码/登录阻塞、网络失败及未执行。",
+        "受阻或未覆盖的站点不能汇总成“无失信记录”；同名主体命中需人工核实。",
+        "暂停/继续、人工补证及导出保留同一轮证据，报告不伪造查询或签章。"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "workpaper-zouping",
+      "title": "邹平市汇融产业投资集团有限公司：底稿目录生成",
+      "task_type": "workpaper",
+      "source_case_ids": [
+        "update-zouping"
+      ],
+      "input_path": "cases/workpaper-zouping/input.json",
+      "file_ids": [
+        "nov05-f010",
+        "nov05-f009"
+      ],
+      "preparable": true,
+      "readiness": "derived_recipe_not_executed",
+      "checks": [
+        "只选目录的“1 尽职调查文件”，完整解析编号；不漏项、重复或把其他工作表加入。",
+        "募集说明书事实、全部相关明细和单位期间进入正文，不以摘要或大量空表替代。",
+        "按目录逐项判断可形成成果、业务不适用和资料不足；不得编造原件、签章或已履行程序。",
+        "模板只控制格式；旧项目事实、签字和日期不带入本项目。",
+        "文件名保留编号和主体，按规则处理提示括注；成果 ZIP 仅含可生成文件和不适用说明。",
+        "逐页检查表格超宽、裁切、重复标题、空白页和断表；内部来源/追踪表不进入交付 ZIP。",
+        "批次暂停、继续、失败项重试与 ZIP 下载不丢成功文件、不重复生成或扣费。"
+      ],
+      "notes": [
+        "目录来自新津复核项目，复用目录要求；不沿用旧项目事实、签字或执行状态。",
+        "已核对原稿封面主体为汇融；本底稿按实际原稿主体编制，不代表国信。"
+      ]
+    },
+    {
+      "case_id": "integrity-zouping",
+      "title": "邹平国信招商发展有限公司：诚信核查",
+      "task_type": "integrity",
+      "source_case_ids": [
+        "update-zouping"
+      ],
+      "input_path": "cases/integrity-zouping/input.json",
+      "file_ids": [
+        "nov05-f010"
+      ],
+      "preparable": true,
+      "readiness": "derived_recipe_not_executed",
+      "checks": [
+        "以发行人法定全称查询，区别同名/近似主体；信用代码未知时不编造。",
+        "每个所选站点记录实际查询时间、条件、网址和证据；不能用历史截图冒充当天查询。",
+        "严格区分查询有结果、已查询无结果、验证码/登录阻塞、网络失败及未执行。",
+        "受阻或未覆盖的站点不能汇总成“无失信记录”；同名主体命中需人工核实。",
+        "暂停/继续、人工补证及导出保留同一轮证据，报告不伪造查询或签章。"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "workpaper-dongying",
+      "title": "东营市城市建设发展集团有限公司：底稿目录生成",
+      "task_type": "workpaper",
+      "source_case_ids": [
+        "review-dongying"
+      ],
+      "input_path": "cases/workpaper-dongying/input.json",
+      "file_ids": [
+        "nov05-f012",
+        "nov05-f009"
+      ],
+      "preparable": true,
+      "readiness": "derived_recipe_not_executed",
+      "checks": [
+        "只选目录的“1 尽职调查文件”，完整解析编号；不漏项、重复或把其他工作表加入。",
+        "募集说明书事实、全部相关明细和单位期间进入正文，不以摘要或大量空表替代。",
+        "按目录逐项判断可形成成果、业务不适用和资料不足；不得编造原件、签章或已履行程序。",
+        "模板只控制格式；旧项目事实、签字和日期不带入本项目。",
+        "文件名保留编号和主体，按规则处理提示括注；成果 ZIP 仅含可生成文件和不适用说明。",
+        "逐页检查表格超宽、裁切、重复标题、空白页和断表；内部来源/追踪表不进入交付 ZIP。",
+        "批次暂停、继续、失败项重试与 ZIP 下载不丢成功文件、不重复生成或扣费。"
+      ],
+      "notes": [
+        "目录来自新津复核项目，复用目录要求；不沿用旧项目事实、签字或执行状态。"
+      ]
+    },
+    {
+      "case_id": "integrity-dongying",
+      "title": "东营市城市建设发展集团有限公司：诚信核查",
+      "task_type": "integrity",
+      "source_case_ids": [
+        "review-dongying"
+      ],
+      "input_path": "cases/integrity-dongying/input.json",
+      "file_ids": [
+        "nov05-f012"
+      ],
+      "preparable": true,
+      "readiness": "derived_recipe_not_executed",
+      "checks": [
+        "以发行人法定全称查询，区别同名/近似主体；信用代码未知时不编造。",
+        "每个所选站点记录实际查询时间、条件、网址和证据；不能用历史截图冒充当天查询。",
+        "严格区分查询有结果、已查询无结果、验证码/登录阻塞、网络失败及未执行。",
+        "受阻或未覆盖的站点不能汇总成“无失信记录”；同名主体命中需人工核实。",
+        "暂停/继续、人工补证及导出保留同一轮证据，报告不伪造查询或签章。"
+      ],
+      "notes": []
+    },
+    {
+      "case_id": "workpaper-suandu",
+      "title": "山东蒜都发展投资有限公司：底稿目录生成",
+      "task_type": "workpaper",
+      "source_case_ids": [
+        "review-suandu"
+      ],
+      "input_path": "cases/workpaper-suandu/input.json",
+      "file_ids": [
+        "nov05-f001",
+        "nov05-f009"
+      ],
+      "preparable": true,
+      "readiness": "derived_recipe_not_executed",
+      "checks": [
+        "只选目录的“1 尽职调查文件”，完整解析编号；不漏项、重复或把其他工作表加入。",
+        "募集说明书事实、全部相关明细和单位期间进入正文，不以摘要或大量空表替代。",
+        "按目录逐项判断可形成成果、业务不适用和资料不足；不得编造原件、签章或已履行程序。",
+        "模板只控制格式；旧项目事实、签字和日期不带入本项目。",
+        "文件名保留编号和主体，按规则处理提示括注；成果 ZIP 仅含可生成文件和不适用说明。",
+        "逐页检查表格超宽、裁切、重复标题、空白页和断表；内部来源/追踪表不进入交付 ZIP。",
+        "批次暂停、继续、失败项重试与 ZIP 下载不丢成功文件、不重复生成或扣费。"
+      ],
+      "notes": [
+        "目录来自新津复核项目，复用目录要求；不沿用旧项目事实、签字或执行状态。"
+      ]
+    },
+    {
+      "case_id": "integrity-suandu",
+      "title": "山东蒜都发展投资有限公司：诚信核查",
+      "task_type": "integrity",
+      "source_case_ids": [
+        "review-suandu"
+      ],
+      "input_path": "cases/integrity-suandu/input.json",
+      "file_ids": [
+        "nov05-f001"
+      ],
+      "preparable": true,
+      "readiness": "derived_recipe_not_executed",
+      "checks": [
+        "以发行人法定全称查询，区别同名/近似主体；信用代码未知时不编造。",
+        "每个所选站点记录实际查询时间、条件、网址和证据；不能用历史截图冒充当天查询。",
+        "严格区分查询有结果、已查询无结果、验证码/登录阻塞、网络失败及未执行。",
+        "受阻或未覆盖的站点不能汇总成“无失信记录”；同名主体命中需人工核实。",
+        "暂停/继续、人工补证及导出保留同一轮证据，报告不伪造查询或签章。"
+      ],
+      "notes": []
+    }
+  ],
+  "missing_materials": [
+    {
+      "project_id": "dcd85b07-a2fd-4efe-ad20-ead65612dbc0",
+      "id": "65d5d75d-40dc-4181-9835-1dfc21a85620",
+      "version": "1",
+      "filename": "pdf_file_澄宇审字(2026)第0359号 邹平国信招商 - 审计报告 已赋码(1)_tables.xlsx",
+      "role": "audit",
+      "sha256": "d10443fd794ccd6d487542501998df7142e60efa615a5a678a249e1a3735c6bc",
+      "bytes": 82254,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    },
+    {
+      "project_id": "dcd85b07-a2fd-4efe-ad20-ead65612dbc0",
+      "id": "75c95699-376b-432c-a0d1-12474d1f94e3",
+      "version": "1",
+      "filename": "pdf_file_澄宇审字(2026)第0359号 邹平国信招商 - 审计报告 已赋码(1)(1).docx",
+      "role": "audit",
+      "sha256": "fc7a8d0a679501280b6532a1e3fa4c30da57f08b7cd38eb4f7c09d8997c8ffde",
+      "bytes": 134563,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    },
+    {
+      "project_id": "dcd85b07-a2fd-4efe-ad20-ead65612dbc0",
+      "id": "7752b5ab-d5ce-46fe-9f28-d243a61d9356",
+      "version": "1",
+      "filename": "邹平国信招商2024-2025年两年连审审计报告 已赋码(1).pdf",
+      "role": "audit",
+      "sha256": "db66c63ec87acbfd6bb06f80f6438cbc93b9c7a73c3ce6bfbb2deed48f18d15e",
+      "bytes": 14245885,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    },
+    {
+      "project_id": "dcd85b07-a2fd-4efe-ad20-ead65612dbc0",
+      "id": "bf153e39-40c3-4046-8183-6c189c2c2aad",
+      "version": "1",
+      "filename": "2026年1-6月国信招商财务报表.pdf",
+      "role": "audit",
+      "sha256": "40e0dd36a17024070e698c4e0827ec96fa90a7d0e63728a27c1789e02e0bff98",
+      "bytes": 492829,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    },
+    {
+      "project_id": "dcd85b07-a2fd-4efe-ad20-ead65612dbc0",
+      "id": "a514a776-63db-4113-aed6-690bbf5a44e4",
+      "version": "1",
+      "filename": "2026年1-6月国信招商财务报表附注.pdf",
+      "role": "audit",
+      "sha256": "2efe3197f6ad228be3040509411fc3662b55a0840875542a878b4e27fdd95122",
+      "bytes": 1132078,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    },
+    {
+      "project_id": "dcd85b07-a2fd-4efe-ad20-ead65612dbc0",
+      "id": "bbe1b8c9-b623-4b49-9b15-a5e1b6f59848",
+      "version": "1",
+      "filename": "邹平国信招商发展有限公司主体长期信用评级报告-征求意见稿V1(3).docx",
+      "role": "other",
+      "sha256": "6dab3cf52c44cec6491bd5d331ba64e72d172d5d8fc328d6c2c39d5d23113482",
+      "bytes": 945480,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    },
+    {
+      "project_id": "588988d5-5890-4dc2-abc8-3b8e5d69a41d",
+      "id": "5de5ff06-e557-4302-894b-f185f8038749",
+      "version": "1",
+      "filename": "12-1 河北省国营中捷友谊农场集团有限公司2024-2025年审计报告.pdf",
+      "role": "audit",
+      "sha256": "66ac523596a806f13cdd02caf4f90d6e5d9d3f0a7adf15f154fc03e5fb6b69d4",
+      "bytes": 7020871,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    },
+    {
+      "project_id": "588988d5-5890-4dc2-abc8-3b8e5d69a41d",
+      "id": "d8be200d-214a-45f0-86de-ca3b58277db7",
+      "version": "1",
+      "filename": "2-国营中捷3季报报表.xlsx",
+      "role": "audit",
+      "sha256": "7b1cafffbe74c8b803441ee2f2c2168f26917f700385c7cc6e684b13d232e3c8",
+      "bytes": 147581,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    },
+    {
+      "project_id": "588988d5-5890-4dc2-abc8-3b8e5d69a41d",
+      "id": "83c5e740-6d9c-454a-be08-8a325fa15991",
+      "version": "1",
+      "filename": "3-附注--国营中捷20260930.docx",
+      "role": "audit",
+      "sha256": "54896f3cbb01c0902563b9575d70a48f2ed3e84e9a2b6c61a7c77df79966a6e8",
+      "bytes": 237586,
+      "status": "not_retrieved",
+      "reason": "原件存在于指定源项目；当前读取通道未取得，不能据此称原项目缺资料。"
+    }
+  ],
+  "metadata_files": [
+    {
+      "path": "cases/integrity-dongying/input.json",
+      "sha256": "4d3a442895adfa67f8c68f7885aeeebc93f556677e1f894983605c2c2037edae"
+    },
+    {
+      "path": "cases/integrity-suandu/input.json",
+      "sha256": "350535b11a152219494c1657e3273e96d6ae3e791e84d112b79d0398bf8dc653"
+    },
+    {
+      "path": "cases/integrity-xinjin/input.json",
+      "sha256": "76ca13c34ae3d656329de8fb780892e6b94ec8b6e9385588368b8a656312a9ff"
+    },
+    {
+      "path": "cases/integrity-zhongjie/input.json",
+      "sha256": "4307d47bac2e86a4fde1ef151fdc6be7079b869f8ecf14ec641a25c039c4e682"
+    },
+    {
+      "path": "cases/integrity-zouping/input.json",
+      "sha256": "98a6caa4a68e71d70e92de8914528d53def90eff8ef68aa096bf671c12567b7a"
+    },
+    {
+      "path": "cases/qa-dongying/input.json",
+      "sha256": "d1469d968cff43c6ea0af6afe56c386487da91a16cb163e88254a8c145794dd7"
+    },
+    {
+      "path": "cases/qa-dongying/source-inputs.json",
+      "sha256": "e8e127f38ff562362f8bab62056442212eaaa5775dedc3e56e47fdddef468c49"
+    },
+    {
+      "path": "cases/review-dongying/input.json",
+      "sha256": "b5ccf994ebe3d2759cb170f30265550fe29a7c4fdae9eb091fb00d76d1dc5787"
+    },
+    {
+      "path": "cases/review-dongying/source-inputs.json",
+      "sha256": "7707c46f7b7b55c36d0f335d78b01cd6b05539bb0f4c7088b45b60f927873979"
+    },
+    {
+      "path": "cases/review-suandu/input.json",
+      "sha256": "30698aaf4f4986967c62f50fa1bb06f72beea177397be020f55d44441e97c7ad"
+    },
+    {
+      "path": "cases/review-suandu/source-inputs.json",
+      "sha256": "63ce34c1458eda0ca8dfe2334b92e36f1e135b56dca352cb11263d3ced16fdf9"
+    },
+    {
+      "path": "cases/review-xinjin/input.json",
+      "sha256": "483f660ced4f85228683543a44f495ba60a3ea454b5bd1bb15ac2085619bccbc"
+    },
+    {
+      "path": "cases/review-xinjin/source-inputs.json",
+      "sha256": "e0be3abbf741fd5aaf89f100b9b67fe86d81c5d875b16804fb7e11e8153e09d4"
+    },
+    {
+      "path": "cases/update-xinjin/input.json",
+      "sha256": "0eeb26c60d381448978a3213185c3b3b13a074f104a7b440f11a355c1040976f"
+    },
+    {
+      "path": "cases/update-xinjin/source-inputs.json",
+      "sha256": "52a92281d7a45f7ddf1c9289233faab04453d5dea9553dc32684e4bb6df99c4d"
+    },
+    {
+      "path": "cases/update-zhongjie/input.json",
+      "sha256": "4ff180698a520eb23080b69b3bfee8fd4a5f4b05a6b23463f07d664b3704de31"
+    },
+    {
+      "path": "cases/update-zhongjie/source-inputs.json",
+      "sha256": "b0b69277e33175795b62280ca987c045d712389a3cc2ec2caf46ffe57069519a"
+    },
+    {
+      "path": "cases/update-zouping/input.json",
+      "sha256": "a5e15a33b8ee28b793abe5e4c0b4937f3314bd52a0605dd7004d86f89ac60ad7"
+    },
+    {
+      "path": "cases/update-zouping/source-inputs.json",
+      "sha256": "de50cb4213037b6b1d3bf50d4b13d11b80250c36c10d670e25b274d9a6f048f7"
+    },
+    {
+      "path": "cases/workpaper-dongying/input.json",
+      "sha256": "3f274a581a22ff394bd6b0674cb9813ad635dda9f2b2452c5dcacc4f1073f77f"
+    },
+    {
+      "path": "cases/workpaper-suandu/input.json",
+      "sha256": "f7f4bc4aed6b58fefc1b42f152e31059a49b82f2201f9e4ee7dded8d794a428e"
+    },
+    {
+      "path": "cases/workpaper-xinjin/input.json",
+      "sha256": "d626aedd8acfba3c5cad3a0832e11f056cb37f2a638a13a5f9dc6f9329c40fd8"
+    },
+    {
+      "path": "cases/workpaper-zhongjie/input.json",
+      "sha256": "5bf0da00cb00efb30482e7962929813a1d8ef21e9e4b23b800913d4fbe364444"
+    },
+    {
+      "path": "cases/workpaper-zouping/input.json",
+      "sha256": "b500d209b154a044eaeb5b50b3660d21b1098730a5a6580997fc56fba5704b1b"
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import { legacyAuthoringSourcePin, validateNoneBaseline, NoneBaselineConflict } from '@bondbuddy/api/none-baseline';
 import { ReviewResultPinSchema, SourceFormatPolicySchema, sameFormatTemplate, type ReviewResultPin } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { isUnifiedInput, isMarketOffering, UpdateDetailsSchema, isReviewReport, isReviewRevisionPin, executableRevisionFinding,
@@ -25,6 +26,12 @@ export type UnifiedRecord = Omit<DocumentParseRecord, 'extraction_method'> & { e
 export type UnifiedMaterial = { pin: UnifiedManifest['materials'][number]; filename: string; mediaType: string; objectKey: string; records: UnifiedRecord[]; pending?: string[] };
 export type UnifiedInput = { manifest: UnifiedManifest; materials: UnifiedMaterial[]; requirements: string[] };
 export class UnifiedInputPending extends Error {}
+
+/** Preserve the pre-format-policy source order for both authoring and its gate. */
+export function selectLegacySourcePin<T extends UnifiedManifest['materials'][number]>(materials:readonly T[],
+  authoring:Pick<UnifiedAuthoringInput,'source_prospectuses'|'review_result'>):T|null {
+  return legacyAuthoringSourcePin(materials,authoring);
+}
 
 export function revisionEvidenceRefs(pin: ReviewRevisionPin): ReviewEvidenceRef[] {
   return pin.selected_findings.filter(executableRevisionFinding).flatMap(finding => [...finding.target_refs, ...finding.evidence_refs]);
@@ -96,6 +103,31 @@ export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevi
       if(format.selection==='review_source' && !sameFormatTemplate(format.template,m.authoring.review_result?.source_material))return fail;
     }
   }
+  // Resolve the version pinned by this immutable input, never the project's later
+  // current selection. Older conflicting inputs fail closed without being rewritten.
+  if(!m.authoring.review_result && !m.authoring.review_revision){
+    const selection=m.prospectus_selection as {version_id?:unknown}|undefined;
+    if(selection?.version_id!=null){
+      if(typeof selection.version_id!=='string')return fail;
+      const adopted=(await pool.query(`SELECT material_id,material_version,sha256 FROM bb_prospectus_versions
+        WHERE owner_user_id=$1 AND project_id=$2 AND id=$3`,
+      [run.owner_user_id,run.project_id,selection.version_id])).rows[0];
+      if(!adopted)return fail;
+      if(adopted.material_id!==null && !m.authoring.previous_output){
+        const pin={material_id:adopted.material_id,material_version:adopted.material_version,sha256:String(adopted.sha256).trim()};
+        // Pre-format-policy snapshots use the same deterministic source order as
+        // their legacy authoring path. A safe exact-source task can still resume.
+        const legacy=!format?selectLegacySourcePin(m.materials,m.authoring):undefined;
+        const editingPin=format?.template?.kind==='material'?format.template:legacy;
+        if(!m.materials.some(material=>sameFormatTemplate(material,pin))
+          || !sameFormatTemplate(editingPin,pin))return fail;
+      }else if(adopted.material_id===null && !m.authoring.previous_output){
+        // An explicit viewed-result continuation may differ from project current.
+        // Its exact artifact/source/owner/hash is verified by previousArtifact below.
+        return fail;
+      }
+    }
+  }
   const result=m.authoring.review_result;
   const report=result?await reviewResultArtifact(pool,run,result):null;
   if(Object.hasOwn(m.authoring,'review_result')&&(!report||m.authoring.review_revision||m.authoring.previous_output))return fail;
@@ -127,6 +159,11 @@ export async function unifiedInputGate(pool: Pool, run: RunRow, input: InputRevi
   if (!revision && !result && !m.authoring.knowledge.length) return { kind: 'pause', stage: 'capability_not_ready', reason: 'authoring_knowledge_required' };
   if (m.authoring.knowledge.some(k => typeof k.markdown !== 'string' || digest(k.markdown) !== k.sha256)) return fail;
   if (m.authoring.previous_output && !await previousArtifact(pool, run, m.authoring.previous_output)) return fail;
+  // Finding revisions have their own verified report/source path, not the file-authoring none path.
+  if(!revision){
+    try { await validateNoneBaseline(pool,{owner:run.owner_user_id,projectId:run.project_id},m); }
+    catch(error) { return {kind:'fail',code:error instanceof NoneBaselineConflict?error.code:'DATA_UNAVAILABLE'}; }
+  }
   return null;
 }
 

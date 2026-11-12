@@ -26,7 +26,7 @@ export const FileGenerationPreparationSchema=obj({
 export type FileGenerationPreparation=Static<typeof FileGenerationPreparationSchema>;
 export const emptyFileGenerationPreparation=():FileGenerationPreparation=>({document_types:['workpaper'],catalogue_id:null,template_set_id:null,item_ids:[],mappings:{},document_templates:{},materials:[],requirements:'',target_year:''});
 export const FilePreparationSaveSchema=obj({expected_revision:Type.Integer({minimum:0}),preparation:FileGenerationPreparationSchema});
-export const FileGenerationSubmitSchema=obj({request_id:id,expected_revision:Type.Integer({minimum:1}),source_version_id:id,source_selection_revision:Type.Integer({minimum:0}),expected_points:Type.Integer({minimum:0}),price_version:id,document_quotes:Type.Optional(Type.Array(obj({document_type:M4DocumentTypeSchema,draft_version:Type.Integer({minimum:1}),scope_quote_id:id}),{maxItems:20}))});
+export const FileGenerationSubmitSchema=obj({request_id:id,quote_id:Type.Optional(id),expected_revision:Type.Integer({minimum:1}),source_version_id:id,source_selection_revision:Type.Integer({minimum:0}),expected_points:Type.Integer({minimum:0}),price_version:id,document_quotes:Type.Optional(Type.Array(obj({document_type:M4DocumentTypeSchema,draft_version:Type.Integer({minimum:1}),scope_quote_id:id}),{maxItems:20}))});
 export type FileGenerationSubmit=Static<typeof FileGenerationSubmitSchema>;
 export const FileTemplateImportSchema=obj({request_id:id,sha256:sha,document_type:M4DocumentTypeSchema});
 export const FileTemplateImportQuerySchema=obj({...FileTemplateImportSchema.properties,format:Type.Union([Type.Literal('zip'),Type.Literal('docx')]),filename:Type.String({minLength:1,maxLength:500})});
@@ -41,7 +41,7 @@ export type FileGenerationBatch={batch_id:string;created_at:string;points:number
 export type FileGenerationPricing={mode:'legacy'|'automatic'|'scope';price_version:string;workpaper_points:number;document_points:number|null};
 export type FileGenerationWorkspace={revision:number;preparation:FileGenerationPreparation;sets:FileTemplateSet[];builtin:{name:string;version:string;available:boolean};batches:FileGenerationBatch[];pricing?:FileGenerationPricing};
 export type FileTemplateMatch={item_id:string;status:'suggested'|'multiple'|'missing';candidates:FileTemplatePin[];reason:string};
-export type FileGenerationQuote={count:number;points:number;price_version:string;omitted:{id:string;code:string;title:string}[];auto_charge?:boolean;quote_status?:'ready'|'pending_scope';documents?:({document_type:Static<typeof M4DocumentTypeSchema>;draft_version:number;points:number}&CommercePriceMetadata)[]};
+export type FileGenerationQuote={quote_id?:string;expires_at?:string;count:number;points:number;price_version:string;omitted:{id:string;code:string;title:string}[];auto_charge?:boolean;quote_status?:'ready'|'pending_scope';documents?:({document_type:Static<typeof M4DocumentTypeSchema>;draft_version:number;points:number}&CommercePriceMetadata)[]};
 export const fileGenerationOpenApiPaths=()=>{
   const base='/api/v1/projects/{project_id}/file-generation';
   const route=(schema?:unknown)=>({security:[{sessionCookie:[]}],parameters:[{name:'project_id',in:'path',required:true,schema:{type:'string'}}],...(schema?{requestBody:{required:true,content:{'application/json':{schema}}}}:{}),responses:{200:{description:'Owner-scoped generation preparation'},404:{description:'Not found'}}});

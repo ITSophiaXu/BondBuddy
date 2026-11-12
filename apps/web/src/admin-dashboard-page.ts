@@ -108,10 +108,11 @@ export function dashboardSummaryHtml(overview: AdminDashboardOverview): string {
 
 function barSvg(items: { value: number; label: string; text: string }[], cls: string): string {
   const W = 300, H = 110, pad = 6;
-  const max = Math.max(1, ...items.map(item => item.value));
+  const max = Math.max(0, ...items.map(item => item.value)) || 1;
   const width = (W - pad * 2) / Math.max(1, items.length);
   const bars = items.map((item, index) => {
-    const height = Math.max(2, (item.value / max) * (H - 22));
+    if (item.value <= 0) return '';
+    const height = (item.value / max) * (H - 22);
     const x = pad + index * width + width * 0.16;
     return `<rect class="${cls}" x="${x.toFixed(1)}" y="${(H - 16 - height).toFixed(1)}" width="${(width * 0.68).toFixed(1)}" height="${height.toFixed(1)}" rx="1.5"><title>${esc(item.text)}</title></rect>`;
   }).join('');
@@ -129,8 +130,8 @@ function tokenSvg(items: { in: number; out: number; label: string; text: string 
     const input = (item.in / max) * (H - 22);
     const output = (item.out / max) * (H - 22);
     const x = pad + index * width + width * 0.16;
-    return `<rect class="admin-dashboard-bar token-in" x="${x.toFixed(1)}" y="${(H - 16 - input).toFixed(1)}" width="${(width * 0.68).toFixed(1)}" height="${input.toFixed(1)}" rx="1.5"><title>${esc(item.label)} 输入 ${number(item.in)}</title></rect>` +
-      `<rect class="admin-dashboard-bar token-out" x="${x.toFixed(1)}" y="${(H - 16 - input - output + 2).toFixed(1)}" width="${(width * 0.68).toFixed(1)}" height="${Math.max(1, output - 2).toFixed(1)}" rx="1.5"><title>${esc(item.label)} 输出 ${number(item.out)}</title></rect>`;
+    return (item.in > 0 ? `<rect class="admin-dashboard-bar token-in" x="${x.toFixed(1)}" y="${(H - 16 - input).toFixed(1)}" width="${(width * 0.68).toFixed(1)}" height="${input.toFixed(1)}" rx="1.5"><title>${esc(item.label)} 输入 ${number(item.in)}</title></rect>` : '') +
+      (item.out > 0 ? `<rect class="admin-dashboard-bar token-out" x="${x.toFixed(1)}" y="${(H - 16 - input - output).toFixed(1)}" width="${(width * 0.68).toFixed(1)}" height="${output.toFixed(1)}" rx="1.5"><title>${esc(item.label)} 输出 ${number(item.out)}</title></rect>` : '');
   }).join('');
   const step = Math.max(1, Math.ceil(items.length / 5));
   const labels = items.map((item, index) => index % step === 0
@@ -140,15 +141,23 @@ function tokenSvg(items: { in: number; out: number; label: string; text: string 
 
 export function dashboardTrendHtml(overview: AdminDashboardOverview): string {
   const daily = overview.daily ?? [];
-  if (!daily.length) return `<section class="admin-dashboard-panel" aria-label="时间趋势"><div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.chart}时间趋势 <span class="admin-dashboard-panel-sub">按任务创建时间（UTC）</span></div><span class="admin-dashboard-panel-sub">暂无按天数据</span></div><div class="admin-dashboard-empty">${ICONS.empty}<p>所选范围内没有任务。</p></div></section>`;
+  if (!daily.length) return `<section class="admin-dashboard-panel" aria-label="时间趋势"><div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.chart}时间趋势 <span class="admin-dashboard-panel-sub">按任务创建时间（UTC）</span></div></div><div class="admin-dashboard-empty">${ICONS.empty}<p>暂无按天趋势数据。</p></div></section>`;
+  const first = daily[0]!.date, last = daily[daily.length - 1]!.date;
+  const rangeText = `${first} 至 ${last} · ${daily.length} 个 UTC 日`;
+  const truncated = overview.range.from !== null && overview.range.from.slice(0, 10) < first;
+  const rangeNote = truncated
+    ? `趋势仅展示所选范围最后 ${daily.length} 个 UTC 日；汇总与明细保留完整筛选范围。`
+    : '图表按以上日期统计；汇总与明细按完整筛选范围统计。';
+  const panelHead = `<div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.chart}时间趋势 <span class="admin-dashboard-panel-sub">按任务创建时间（UTC）</span></div><span class="admin-dashboard-panel-sub">${esc(rangeText)}</span></div>`;
   const tasksTotal = daily.reduce((sum, d) => sum + d.tasks, 0);
+  if (tasksTotal === 0) return `<section class="admin-dashboard-panel" aria-label="时间趋势">${panelHead}<p class="admin-dashboard-range">${esc(rangeNote)}</p><div class="admin-dashboard-empty">${ICONS.empty}<p>该趋势日期范围内没有任务。</p></div></section>`;
   const inputTotal = daily.reduce((sum, d) => sum + d.input_tokens, 0);
   const outputTotal = daily.reduce((sum, d) => sum + d.output_tokens, 0);
   const priced = daily.filter(d => d.cost_amount !== null);
   const costTotal = priced.reduce((sum, d) => sum + Number(d.cost_amount), 0);
   const currencies = new Set(priced.map(d => d.currency).filter((c): c is string => !!c));
   const currency = currencies.size === 1 ? [...currencies][0] : null;
-  const costText = priced.length ? dashboardCost(costTotal.toFixed(10), currency) : '—';
+  const costText = priced.length ? dashboardCost(costTotal.toFixed(10), currency) : '未定价';
   const short = (value: string) => (value.length >= 10 ? value.slice(5) : value);
   const tasks = barSvg(daily.map(d => ({ value: d.tasks, label: short(d.date), text: `${d.date} 任务 ${d.tasks}` })), 'admin-dashboard-bar');
   const users = barSvg(daily.map(d => ({ value: d.active_users, label: short(d.date), text: `${d.date} 活跃用户 ${d.active_users}` })), 'admin-dashboard-bar users');
@@ -156,7 +165,7 @@ export function dashboardTrendHtml(overview: AdminDashboardOverview): string {
   const tokens = tokenSvg(daily.map(d => ({ in: d.input_tokens, out: d.output_tokens, label: short(d.date), text: `${d.date} ${d.input_tokens + d.output_tokens}` })));
   const costs = barSvg(daily.map(d => ({ value: d.cost_amount === null ? 0 : Number(d.cost_amount), label: short(d.date), text: `${d.date} 成本 ${d.cost_amount === null ? '未定价' : dashboardCost(d.cost_amount, d.currency)}` })), 'admin-dashboard-bar cost');
   return `<section class="admin-dashboard-panel admin-dashboard-trend" aria-label="时间趋势">
-    <div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.chart}时间趋势 <span class="admin-dashboard-panel-sub">按任务创建时间（UTC）</span></div><span class="admin-dashboard-panel-sub">最近 ${daily.length} 天</span></div>
+    ${panelHead}<p class="admin-dashboard-range">${esc(rangeNote)}</p>
     <div class="admin-dashboard-charts">
       <div class="admin-dashboard-chart"><h3>${ICONS.tasks}任务数 <small>共 ${number(tasksTotal)}</small></h3>${tasks}<div class="admin-dashboard-legend"><span><i style="background:#3f7a5e"></i>任务</span></div></div>
       <div class="admin-dashboard-chart"><h3>${ICONS.tokens}tokens <small>${number(inputTotal)} / ${number(outputTotal)}</small></h3>${tokens}<div class="admin-dashboard-legend"><span><i style="background:#2f6f9f"></i>输入</span><span><i style="background:#9cc0d8"></i>输出</span></div></div>
@@ -243,6 +252,9 @@ function filtersHtml(filters: DashboardFilters): string {
 }
 
 /** Read-only operator dashboard: summary cards + per-user and per-task tables. */
+const dashboardReadError = (error: unknown) => error instanceof ApiError && error.status >= 500
+  ? '运营数据暂时无法读取，请点击“刷新数据”重试。' : friendlyError(error, 'read');
+
 export class AdminDashboardPage {
   private controller = new AbortController();
   private overview?: AdminDashboardOverview;
@@ -251,6 +263,10 @@ export class AdminDashboardPage {
   private usersCursor: string | null = null;
   private tasksCursor: string | null = null;
   private filters = emptyDashboardFilters();
+  // Keep edits separate from the submitted query while earlier reads finish.
+  private draft = {from: '', to: '', state: ''};
+  private filterRevision = 0;
+  private pendingRefresh = false;
   private loading = false;
   private error = '';
   private forbidden = false;
@@ -258,32 +274,58 @@ export class AdminDashboardPage {
   private execLogError = '';
   private execLogLoading = false;
   constructor(private api: ApiClient, private shell: (html: string, section: string) => void, private active: () => boolean) {}
-  dispose() { this.controller.abort(); }
+  dispose() { this.pendingRefresh = false; this.controller.abort(); }
   private live() { return this.active() && !this.controller.signal.aborted; }
   async render() { this.draw(); await this.refresh(); }
 
   private async refresh() {
-    if (this.loading) return;
+    if (!this.live() || this.forbidden) return;
+    if (this.loading) { this.pendingRefresh = true; this.draw(); return; }
+    const filters = {...this.filters}, revision = this.filterRevision;
     this.loading = true; this.error = ''; this.draw();
     try {
       const [overview, users, tasks] = await Promise.all([
-        this.api.request<AdminDashboardOverview>('GET', '/admin/dashboard/overview' + dashboardQuery(this.filters), undefined, {}, this.controller.signal),
-        this.api.request<AdminDashboardUsers>('GET', '/admin/dashboard/users' + dashboardQuery(this.filters), undefined, {}, this.controller.signal),
-        this.api.request<AdminDashboardTasks>('GET', '/admin/dashboard/tasks' + dashboardQuery(this.filters), undefined, {}, this.controller.signal)
+        this.api.request<AdminDashboardOverview>('GET', '/admin/dashboard/overview' + dashboardQuery(filters), undefined, {}, this.controller.signal),
+        this.api.request<AdminDashboardUsers>('GET', '/admin/dashboard/users' + dashboardQuery(filters), undefined, {}, this.controller.signal),
+        this.api.request<AdminDashboardTasks>('GET', '/admin/dashboard/tasks' + dashboardQuery(filters), undefined, {}, this.controller.signal)
       ]);
       if (!Value.Check(adminDashboardSchemas.AdminDashboardOverviewResponse, overview) ||
           !Value.Check(adminDashboardSchemas.AdminDashboardUsersResponse, users) ||
           !Value.Check(adminDashboardSchemas.AdminDashboardTasksResponse, tasks)) throw Error('Invalid dashboard data');
-      if (!this.live()) return;
+      if (!this.live() || revision !== this.filterRevision) return;
       this.overview = overview; this.users = users.items; this.usersCursor = users.next_cursor;
       this.tasks = tasks.items; this.tasksCursor = tasks.next_cursor; this.forbidden = false;
     } catch (error) {
       if (!this.live()) return;
-      if (error instanceof ApiError && error.status === 404) { this.forbidden = true; return; }
-      this.error = friendlyError(error, 'read');
+      if (error instanceof ApiError && error.status === 404) { this.forbidden = true; this.pendingRefresh = false; return; }
+      if (revision !== this.filterRevision) return;
+      this.error = dashboardReadError(error);
     } finally {
-      if (this.live()) { this.loading = false; this.draw(); }
+      this.finishLoading();
     }
+  }
+
+  private finishLoading() {
+    this.loading = false;
+    if (!this.live()) { this.pendingRefresh = false; return; }
+    if (this.pendingRefresh && !this.forbidden) {
+      this.pendingRefresh = false;
+      void this.refresh();
+    } else { this.pendingRefresh = false; this.draw(); }
+  }
+
+  private changeFilters(filters: DashboardFilters) {
+    this.filters = filters; this.filterRevision++;
+    this.overview = undefined;
+    this.users = []; this.tasks = [];
+    this.usersCursor = null; this.tasksCursor = null;
+    this.error = '';
+    void this.refresh();
+  }
+
+  private readDraft() {
+    const value = (selector: string) => document.querySelector<HTMLInputElement | HTMLSelectElement>(selector)?.value ?? '';
+    this.draft = {from: value('[data-dashboard-from]'), to: value('[data-dashboard-to]'), state: value('[data-dashboard-state]')};
   }
 
   private async moreUsers() {
@@ -295,30 +337,32 @@ export class AdminDashboardPage {
     await this.append('tasks', this.tasksCursor);
   }
   private async append(kind: 'users' | 'tasks', cursor: string) {
+    const filters = {...this.filters}, revision = this.filterRevision;
     this.loading = true; this.error = ''; this.draw();
     try {
       if (kind === 'users') {
-        const page = await this.api.request<AdminDashboardUsers>('GET', '/admin/dashboard/users' + dashboardQuery(this.filters, cursor), undefined, {}, this.controller.signal);
+        const page = await this.api.request<AdminDashboardUsers>('GET', '/admin/dashboard/users' + dashboardQuery(filters, cursor), undefined, {}, this.controller.signal);
         if (!Value.Check(adminDashboardSchemas.AdminDashboardUsersResponse, page)) throw Error('Invalid dashboard users');
-        if (!this.live()) return;
+        if (!this.live() || revision !== this.filterRevision) return;
         this.users = [...this.users, ...page.items]; this.usersCursor = page.next_cursor;
       } else {
-        const page = await this.api.request<AdminDashboardTasks>('GET', '/admin/dashboard/tasks' + dashboardQuery(this.filters, cursor), undefined, {}, this.controller.signal);
+        const page = await this.api.request<AdminDashboardTasks>('GET', '/admin/dashboard/tasks' + dashboardQuery(filters, cursor), undefined, {}, this.controller.signal);
         if (!Value.Check(adminDashboardSchemas.AdminDashboardTasksResponse, page)) throw Error('Invalid dashboard tasks');
-        if (!this.live()) return;
+        if (!this.live() || revision !== this.filterRevision) return;
         this.tasks = [...this.tasks, ...page.items]; this.tasksCursor = page.next_cursor;
       }
     } catch (error) {
-      if (this.live()) this.error = friendlyError(error, 'read');
+      if (!this.live()) return;
+      if (error instanceof ApiError && error.status === 404) { this.forbidden = true; this.pendingRefresh = false; return; }
+      if (revision !== this.filterRevision) return;
+      this.error = dashboardReadError(error);
     } finally {
-      if (this.live()) { this.loading = false; this.draw(); }
+      this.finishLoading();
     }
   }
 
   private setUser(userId: string) {
-    this.filters = {...this.filters, userId};
-    this.usersCursor = null; this.tasksCursor = null;
-    void this.refresh();
+    this.changeFilters({...this.filters, userId});
   }
 
   private async showExecLog(attemptId: string) {
@@ -349,6 +393,7 @@ export class AdminDashboardPage {
   private draw() {
     if (!this.live()) return;
     if (this.forbidden) { this.shell(dashboardForbiddenHtml(), 'projects'); return; }
+    const focusedField = ['[data-dashboard-from]', '[data-dashboard-to]', '[data-dashboard-state]'].find(selector => document.activeElement?.matches(selector));
     this.shell(`<section class="admin-dashboard">
       <div class="admin-dashboard-page-title">
         <div><h1>${ICONS.chart}运营看板</h1>
@@ -359,30 +404,31 @@ export class AdminDashboardPage {
       ${this.error ? `<p class="admin-dashboard-alert" role="alert">${esc(this.error)}</p>` : ''}
       ${this.overview ? dashboardSummaryHtml(this.overview) : this.loading ? '<p role="status">正在读取运营汇总…</p>' : ''}
       ${this.overview ? dashboardTrendHtml(this.overview) : ''}
-      ${filtersHtml(this.filters)}
+      ${filtersHtml({...this.draft, userId: this.filters.userId})}
       <section class="admin-dashboard-panel" aria-label="用户明细">
-        <div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.users}用户</div><div class="admin-dashboard-panel-tools"><span class="admin-dashboard-panel-sub">${this.users.length} 位</span><span class="admin-dashboard-scroll-hint">左右滑动查看更多</span></div></div>
-        ${this.loading && !this.users.length ? '<p role="status">正在读取用户明细…</p>' : dashboardUsersHtml(this.users, this.filters.userId || null)}
+        <div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.users}用户</div><div class="admin-dashboard-panel-tools"><span class="admin-dashboard-panel-sub">${this.overview ? `${this.users.length} 位` : '未读取'}</span><span class="admin-dashboard-scroll-hint">左右滑动查看更多</span></div></div>
+        ${!this.overview ? `<p role="status">${this.loading ? '正在读取用户明细…' : '用户明细尚未读取成功。'}</p>` : dashboardUsersHtml(this.users, this.filters.userId || null)}
         ${this.usersCursor ? `<div class="admin-dashboard-more"><button type="button" class="admin-dashboard-link" data-dashboard-more-users ${this.loading ? 'disabled' : ''}>${ICONS.more}加载更多用户</button></div>` : ''}
       </section>
       <section class="admin-dashboard-panel" aria-label="任务明细">
-        <div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.tasks}任务</div><div class="admin-dashboard-panel-tools"><span class="admin-dashboard-panel-sub">${this.tasks.length} 个</span><span class="admin-dashboard-scroll-hint">左右滑动查看更多</span></div></div>
-        ${this.loading && !this.tasks.length ? '<p role="status">正在读取任务明细…</p>' : dashboardTasksHtml(this.tasks)}
+        <div class="admin-dashboard-panel-head"><div class="admin-dashboard-panel-title">${ICONS.tasks}任务</div><div class="admin-dashboard-panel-tools"><span class="admin-dashboard-panel-sub">${this.overview ? `${this.tasks.length} 个` : '未读取'}</span><span class="admin-dashboard-scroll-hint">左右滑动查看更多</span></div></div>
+        ${!this.overview ? `<p role="status">${this.loading ? '正在读取任务明细…' : '任务明细尚未读取成功。'}</p>` : dashboardTasksHtml(this.tasks)}
         ${this.tasksCursor ? `<div class="admin-dashboard-more"><button type="button" class="admin-dashboard-link" data-dashboard-more-tasks ${this.loading ? 'disabled' : ''}>${ICONS.more}加载更多任务</button></div>` : ''}
       </section>
       ${this.execLogLoading ? '<p role="status">正在读取执行日志…</p>' : ''}
       ${dashboardExecLogHtml(this.execLog, this.execLogError)}
     </section>`, 'projects');
     document.querySelector('[data-dashboard-refresh]')?.addEventListener('click', () => void this.refresh());
+    document.querySelector('[data-dashboard-filters]')?.addEventListener('input', () => this.readDraft());
+    document.querySelector('[data-dashboard-filters]')?.addEventListener('change', () => this.readDraft());
     document.querySelector('[data-dashboard-filters]')?.addEventListener('submit', event => {
       event.preventDefault();
-      const value = (selector: string) => (document.querySelector<HTMLInputElement | HTMLSelectElement>(selector)?.value ?? '');
-      this.filters = {from: value('[data-dashboard-from]'), to: value('[data-dashboard-to]'), state: value('[data-dashboard-state]'), userId: this.filters.userId};
-      this.usersCursor = null; this.tasksCursor = null;
-      void this.refresh();
+      this.readDraft();
+      this.changeFilters({...this.draft, userId: this.filters.userId});
     });
     document.querySelector('[data-dashboard-reset]')?.addEventListener('click', () => {
-      this.filters = emptyDashboardFilters(); this.usersCursor = null; this.tasksCursor = null; void this.refresh();
+      this.draft = {from: '', to: '', state: ''};
+      this.changeFilters(emptyDashboardFilters());
     });
     document.querySelector('[data-dashboard-clear-user]')?.addEventListener('click', () => this.setUser(''));
     document.querySelectorAll<HTMLButtonElement>('[data-dashboard-user-filter]').forEach(button =>
@@ -395,5 +441,6 @@ export class AdminDashboardPage {
       this.execLog = null; this.execLogError = ''; this.draw();
     });
     document.querySelector('[data-dashboard-exec-log-download]')?.addEventListener('click', () => this.downloadExecLog());
+    if (focusedField) document.querySelector<HTMLElement>(focusedField)?.focus();
   }
 }

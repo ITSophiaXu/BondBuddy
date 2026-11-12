@@ -17,7 +17,7 @@ RUN npm ci --no-audit --no-fund
 COPY packages packages
 COPY product-prototype/public/workpaper-entry.css product-prototype/public/
 COPY product-prototype/public/upload-progress.css product-prototype/public/
-COPY product-prototype/public/subscription-billing.css product-prototype/public/billing-price-admin.css product-prototype/public/
+COPY product-prototype/public/subscription-billing.css product-prototype/public/billing-price-admin.css product-prototype/public/payment-experience.css product-prototype/public/
 COPY apps apps
 # Web type checking includes opt-in local E2E imports; these synthetic config sources stay in the build stage.
 COPY scripts/local-integration/config.mjs scripts/local-integration/config.d.mts scripts/local-integration/
@@ -122,6 +122,8 @@ HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ["node","-e","const s=re
 CMD ["node","apps/worker/dist/integrity-egress.js"]
 
 FROM node-runtime AS worker
+ARG BB_RELEASE_SHA=unknown
+LABEL org.opencontainers.image.revision=${BB_RELEASE_SHA}
 ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/bondbuddy-browsers
 RUN node node_modules/playwright/cli.js install --with-deps chromium && chmod -R a+rX /opt/bondbuddy-browsers
@@ -139,7 +141,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       tesseract-ocr-osd=1:4.1.0-2 \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=codex --chown=root:root /opt/codex /opt/codex
-RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version
+# Default adapter PATH resolves this immutable wrapper before any system bwrap.
+# It calls only the integrity-pinned bundled binary and reapplies /proc deny last.
+COPY --chown=root:root --chmod=0755 deploy/m1/scripts/codex-bwrap.sh /usr/local/bin/bwrap
+RUN ln -s /opt/codex/bin/codex /usr/local/bin/codex && codex --version && /usr/local/bin/bwrap --version
 COPY --chmod=0755 deploy/m1/scripts/copilot-token.mjs /usr/local/bin/bb-copilot-token
 RUN install -d -m 0755 /opt/bondbuddy
 COPY --chmod=0644 deploy/m1/codex-model-catalog.json /opt/bondbuddy/codex-model-catalog.json

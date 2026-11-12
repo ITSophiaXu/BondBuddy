@@ -20,7 +20,7 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
   const bytes=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const v=bytes.get(k);assert.ok(v);return v;},
     getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bound');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
-  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true,enablePaidAuthoring:true});
+  const app=createServer({pool,historicalBillingFixture:true,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true,enablePaidAuthoring:true});
   const failures:string[]=[];app.addHook('onError',async(_request,_reply,error)=>{failures.push(String(error)+' '+((error as any).where??''));});
   const send=(method:string,url:string,payload?:any,headers:Record<string,string>={})=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test',...headers}});
   const fund=(points:number,key:string=randomUUID(),expiresAt:string|null=null)=>transaction(pool,c=>grantCredits(c,{owner,points,key,source:expiresAt?'existing_grant':'purchase',expiresAt,actor:'synthetic-test',reason:'synthetic-only'}));
@@ -74,6 +74,8 @@ test('paid API: insufficient funds, recharge, concurrent execution, settlement, 
     assert.equal(both[0].json().billing_mode,'fixed_credits');assert.ok(both[0].json().reservation_id);
     assert.equal(await count('bb_credit_reservations'),1);assert.deepEqual(await creditBalance(pool,owner),{available:P,frozen:0});
     const id=both[0].json().run_id;
+    const charge=await send('GET',`/api/v1/runs/${id}/credit-charge`);assert.equal(charge.statusCode,200,charge.body);
+    assert.deepEqual(charge.json().quote,q.quote);assert.equal(charge.json().state,'held');
     const heldHistory=await send('GET','/api/v1/credits/consumption-history');assert.equal(heldHistory.statusCode,200,heldHistory.body);
     assert.deepEqual(heldHistory.json().items.map((r:any)=>[r.run_id,r.state,r.reserved_points,r.charged_points]),[[id,'held','0','0']]);
     assert.equal(heldHistory.headers['cache-control'],'private, no-store');

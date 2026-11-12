@@ -1,0 +1,13 @@
+test_claims_must_be_unique_verbatim_chapter_text (test_no_history_word_writer.NoHistoryWordWriterTest.test_claims_must_be_unique_verbatim_chapter_text) ... ok
+test_fact_id_boundary_rejects_unknown_and_duplicates (test_no_history_word_writer.NoHistoryWordWriterTest.test_fact_id_boundary_rejects_unknown_and_duplicates) ... ok
+test_output_bytes_are_stable (test_no_history_word_writer.NoHistoryWordWriterTest.test_output_bytes_are_stable) ... ok
+test_overlapping_claim_text_is_rejected (test_no_history_word_writer.NoHistoryWordWriterTest.test_overlapping_claim_text_is_rejected) ... ok
+test_readback_order_questions_and_no_revision_markup (test_no_history_word_writer.NoHistoryWordWriterTest.test_readback_order_questions_and_no_revision_markup) ... ok
+test_rejects_existing_output_and_unsafe_directory (test_no_history_word_writer.NoHistoryWordWriterTest.test_rejects_existing_output_and_unsafe_directory) ... ok
+test_rejects_unknown_keys_malformed_text_and_oversized_input (test_no_history_word_writer.NoHistoryWordWriterTest.test_rejects_unknown_keys_malformed_text_and_oversized_input) ... ok
+test_versioned_json_cli_returns_bounded_summary (test_no_history_word_writer.NoHistoryWordWriterTest.test_versioned_json_cli_returns_bounded_summary) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 1.284s
+
+OK

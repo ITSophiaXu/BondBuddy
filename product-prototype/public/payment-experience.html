@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>付款确认与结果 · BondBuddy 原型</title><link rel="stylesheet" href="payment-experience.css">
+<style>body{margin:0;color:#203b33;background:#f7f8f2;font:14px/1.85 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}main{max-width:1120px;padding:24px;margin:auto}h2,h3,p{margin:0}.prototype-note{margin:0 0 24px;color:#63746c}.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 16px;border:1px solid #c8d3bf;border-radius:7px;background:white;font:inherit;color:inherit;text-decoration:none}.text-button{display:inline-block;padding:10px 7px;font:inherit;border:0;background:none;color:#3e6247;text-decoration:none}.prototype-note a{color:inherit;margin-right:14px}a:focus-visible,button:focus-visible{outline:3px solid #8dac69;outline-offset:3px}@media(max-width:700px){main{padding:16px}}</style></head>
+<body><main><nav class="prototype-note" aria-label="原型状态"><strong>付款体验原型 · 合成示例，无真实支付</strong><br><a href="?state=pending">待付款</a><a href="?state=paid">已到账</a><a href="?state=expired">已过期</a><a href="?state=failed">未完成</a></nav>
+<section class="payment-experience" data-payment-state="pending" aria-labelledby="payment-result-title">
+  <header class="payment-brand-row"><span class="payment-brand">BondBuddy <small>券商助手</small></span><span class="payment-channel">支付宝支付</span></header>
+  <div class="payment-content"><div class="payment-heading"><span class="payment-status-icon" aria-hidden="true">↗</span><div><p class="payment-eyebrow">订单确认</p><h2 id="payment-result-title">等待支付确认</h2><p id="description">核对订单后，在支付渠道完成付款。到账结果将在这里更新。</p></div></div>
+  <div class="payment-layout"><div class="payment-order-summary"><p data-payment-kind>按需充值</p><p class="payment-amount-label">订单金额</p><div class="payment-amount">¥50.00</div><p class="payment-points" data-payment-validity>5,000 积分 · 永久有效</p></div>
+  <div class="payment-next-step" id="next-step"><h3>前往支付宝官方收银台</h3><p>将在新页面打开支付宝。请核对订单名称与金额，在支付宝内完成付款。</p><a class="btn payment-primary" href="?state=paid">前往支付宝 <span aria-hidden="true">↗</span></a><p class="payment-check-status" role="status">正在自动核对付款结果，付款后无须再次下单。</p></div></div>
+  <footer class="payment-footer"><dl><div><dt>服务</dt><dd>BondBuddy 券商助手 · 积分服务</dd></div><div><dt>订单号</dt><dd>preview-topup-975</dd></div><div id="deadline"><dt>付款截止</dt><dd>2026年11月11日 12:30</dd></div></dl><div class="payment-secondary-actions"><button class="btn secondary" type="button">刷新支付状态</button></div><p class="payment-fine-print" id="footer-note">收款商户信息以支付宝收银台展示为准。本次付款不会自动开启续费。</p></footer></div>
+</section></main>
+<script>
+// Only local prototype presentation changes. No API, authentication or payment.
+const state=new URLSearchParams(location.search).get('state');
+if(['paid','expired','failed'].includes(state)){
+ document.querySelector('.payment-experience').dataset.paymentState=state;
+ document.querySelector('.payment-status-icon').textContent=state==='paid'?'✓':'–';
+ document.querySelector('#deadline').hidden=true;
+ document.querySelector('#payment-result-title').textContent={paid:'积分已到账',expired:'订单已过期',failed:'支付未完成'}[state];
+ document.querySelector('#description').textContent={paid:'本次付款已核实，可在账户中查看积分与使用记录。',expired:'本订单已结束，不能继续付款。若已扣款，请核对本订单，勿重复支付。',failed:'本次付款尚未完成。若已扣款，请刷新同一订单核对结果。'}[state];
+ if(state==='paid'){
+  document.querySelector('.payment-eyebrow').textContent='付款结果';
+  document.querySelector('#next-step').innerHTML='<h3>现在可以继续工作了</h3><p>本次到账记录已保存，积分按原订单约定使用。</p><p class="payment-credited-at">到账时间：2026年11月11日 12:00</p><a class="btn payment-primary" href="?state=paid">返回刚才的工作</a><a class="payment-detail-link" href="?state=paid">查看订单与退款记录</a>';
+ }else document.querySelector('#next-step').innerHTML='<h3>保留原订单，随时可查</h3><p>你可以核对付款状态，或回到账户重新选择。</p><a class="btn secondary" href="?state=pending">返回账户</a>';
+ document.querySelector('#footer-note').textContent='付款与积分记录可在账户中查询。';
+}
+</script></body></html>

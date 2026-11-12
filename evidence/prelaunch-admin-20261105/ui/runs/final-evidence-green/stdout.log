@@ -1,0 +1,10 @@
+
+Running 5 tests using 1 worker
+
+  ok 1 apps\web\tests\admin-dashboard.spec.ts:237:3 › desktop admin navigation keeps the dashboard route after clicking .admin-tabs a (1.4s)
+  ok 2 apps\web\tests\admin-dashboard.spec.ts:237:3 › desktop admin navigation keeps the dashboard route after clicking .admin-brand (1.2s)
+  ok 3 apps\web\tests\admin-dashboard.spec.ts:250:1 › desktop admin logout sends one request and clears the current session view (1.1s)
+  ok 4 apps\web\tests\admin-dashboard.spec.ts:262:1 › desktop admin logout failure is visible and the same session can retry (1.3s)
+  ok 5 apps\web\tests\admin-dashboard.spec.ts:283:1 › desktop admin hides the product assistant while preserving a pending complete conversation save (2.2s)
+
+  5 passed (8.3s)

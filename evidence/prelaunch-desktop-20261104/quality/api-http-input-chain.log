@@ -1,0 +1,13 @@
+✔ HTTP chain: register/session, project and upload drive a locked input revision that pins an approved issuer binding and exact message set (2172.4753ms)
+✔ HTTP chain: missing, withdrawn, mismatched and cross-account refs are refused without persisting a revision (1743.6291ms)
+✔ HTTP chain: a withdrawn approved binding is refused for the lock and leaves no new revision (1605.4766ms)
+✔ HTTP chain: revoking only the binding approver invalidates the exact ref, lock and preflight (1566.9421ms)
+﹣ HTTP chain: synthetic financial XLSX is durably parsed before scoped issuer review and successor admission (0.2495ms) # set BB_PYTHON to a Python parser environment with python/requirements.txt installed
+ℹ tests 5
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 14760.9048

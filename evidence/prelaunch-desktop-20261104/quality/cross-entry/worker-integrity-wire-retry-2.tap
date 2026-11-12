@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: integrity E2E: saved scope, paid round, evidence, free exports, archive, replay, cancellation and isolation
+ok 1 - integrity E2E: saved scope, paid round, evidence, free exports, archive, replay, cancellation and isolation
+  ---
+  duration_ms: 16673.4995
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 24779.1738

@@ -14,7 +14,7 @@ export type IntegrityRecoveryPending=
   | {kind:'check';request:BillingRecoveryDto<'IntegrityRunRequest'>;price?:CommercePriceMetadata}
   | {kind:'export';roundId:string;request:Dto<'IntegrityExportRequest'>}
   | {kind:'evidence';roundId:string;request:Dto<'IntegrityManualRequest'>};
-export type IntegrityRecoveryValue={revision:number;draft:IntegrityDraft;sourceRun?:string;evidenceDraft?:IntegrityEvidenceDraft;pending?:IntegrityRecoveryPending};
+export type IntegrityRecoveryValue={revision:number;draft:IntegrityDraft;roundId?:string;sourceRun?:string;evidenceDraft?:IntegrityEvidenceDraft;pending?:IntegrityRecoveryPending};
 export type IntegrityRecoveryCacheRead={status:'empty'|'invalid'|'unavailable';value?:undefined}|{status:'valid';value:IntegrityRecoveryValue};
 export type IntegrityRecoveryCacheResult=IntegrityRecoveryCacheRead|{status:'conflict';value?:undefined};
 export type IntegrityRecoveryJournalRead={status:'valid';values:IntegrityRecoveryValue[]}|{status:'invalid'|'unavailable';values?:undefined};
@@ -68,7 +68,8 @@ function validValue(value:unknown,project:string,allowUndefined=false):value is 
   try{return validValueInner(value,project,allowUndefined);}catch{return false;}
 }
 function validValueInner(value:unknown,project:string,allowUndefined=false):value is IntegrityRecoveryValue{
-  if(!exact(value,['revision','draft'],['sourceRun','evidenceDraft','pending'])||!integer(value.revision)||!validDraft(value.draft))return false;
+  if(!exact(value,['revision','draft'],['roundId','sourceRun','evidenceDraft','pending'])||!integer(value.revision)||!validDraft(value.draft))return false;
+  if(Object.hasOwn(value,'roundId')&&!(allowUndefined&&value.roundId===undefined)&&!validId(value.roundId))return false;
   if(Object.hasOwn(value,'sourceRun')&&!(allowUndefined&&value.sourceRun===undefined)&&!validId(value.sourceRun))return false;
   if(Object.hasOwn(value,'evidenceDraft')&&!(allowUndefined&&value.evidenceDraft===undefined)&&!validForm(value.evidenceDraft,project,allowUndefined))return false;
   if(!Object.hasOwn(value,'pending')||(allowUndefined&&value.pending===undefined))return true;
@@ -79,7 +80,7 @@ function validValueInner(value:unknown,project:string,allowUndefined=false):valu
   if(pending.kind==='check'){
     if(!exact(pending,['kind','request'],['price'])||(Object.hasOwn(pending,'price')&&!Value.Check(billingRecoverySchemas.CommercePriceMetadata,pending.price)))return false;
     const price=pending.price as CommercePriceMetadata|undefined;
-    return Value.Check(billingRecoverySchemas.IntegrityRunRequest,pending.request)&&validId(pending.request.request_id)&&pending.request.expected_revision===value.revision&&(price?.pricing_mode==='outcome_cny_v1'?isOutcomePriceVersion(pending.request.price_version)&&pending.request.price_version===(price.price_version??OUTCOME_PRICE_VERSION):pending.request.price_version===INTEGRITY_PRICE.version)&&
+    return Value.Check(billingRecoverySchemas.IntegrityRunRequest,pending.request)&&validId(pending.request.request_id)&&(!pending.request.round_id||pending.request.round_id===value.roundId)&&pending.request.expected_revision===value.revision&&(price?.pricing_mode==='outcome_cny_v1'?isOutcomePriceVersion(pending.request.price_version)&&pending.request.price_version===(price.price_version??OUTCOME_PRICE_VERSION):pending.request.price_version===INTEGRITY_PRICE.version)&&
       (price?.pricing_mode==='outcome_cny_v1'?price.quote_status==='ready'&&price.amount_fen!==null&&int64(price.amount_fen)===int64(pending.request.expected_points)&&validId(pending.request.scope_quote_id):int64(pending.request.expected_points)===BigInt(INTEGRITY_PRICE.points))&&validDraft(value.draft,true,true);
   }
   if(pending.kind==='export')return exact(pending,['kind','roundId','request'])&&validId(pending.roundId)&&
@@ -99,14 +100,14 @@ function clone(value:IntegrityRecoveryValue):IntegrityRecoveryValue{
   let pending:IntegrityRecoveryPending|undefined;
   if(value.pending?.kind==='draft')pending={kind:'draft',request:{expected_revision:value.pending.request.expected_revision,draft:copyDraft(value.pending.request.draft)}};
   if(value.pending?.kind==='check')pending={kind:'check',...(value.pending.price?{price:encodeBillingDto('commerceMetadata',value.pending.price)}:{}),request:{request_id:value.pending.request.request_id,expected_revision:value.pending.request.expected_revision,
-    price_version:value.pending.request.price_version,...(value.pending.request.scope_quote_id?{scope_quote_id:value.pending.request.scope_quote_id}:{}),expected_points:value.pending.request.expected_points}};
+    price_version:value.pending.request.price_version,...(value.pending.request.round_id?{round_id:value.pending.request.round_id}:{}),...(value.pending.request.scope_quote_id?{scope_quote_id:value.pending.request.scope_quote_id}:{}),expected_points:value.pending.request.expected_points}};
   if(value.pending?.kind==='export')pending={kind:'export',roundId:value.pending.roundId,request:{request_id:value.pending.request.request_id,expected_evidence_ids:[...value.pending.request.expected_evidence_ids]}};
   if(value.pending?.kind==='evidence'){
     const r=value.pending.request;pending={kind:'evidence',roundId:value.pending.roundId,request:{request_id:r.request_id,subject_id:r.subject_id,site_id:r.site_id,
       queried_at:r.queried_at,url:r.url,note:r.note,conclusion:r.conclusion,material:copyPin(r.material),...(r.registration?{registration:{province:r.registration.province,city:r.registration.city}}:{})}};
   }
   const form=value.evidenceDraft;
-  return {revision:value.revision,draft:copyDraft(value.draft),...(value.sourceRun!==undefined?{sourceRun:value.sourceRun}:{}),
+  return {revision:value.revision,draft:copyDraft(value.draft),...(value.roundId!==undefined?{roundId:value.roundId}:{}),...(value.sourceRun!==undefined?{sourceRun:value.sourceRun}:{}),
     ...(form?{evidenceDraft:{roundId:form.roundId,subjectId:form.subjectId,siteId:form.siteId,url:form.url,time:form.time,note:form.note,conclusion:form.conclusion,
       ...(form.registration?{registration:{province:form.registration.province,city:form.registration.city}}:{}),...(form.material?{material:copyPin(form.material)}:{}),...(form.uploadOperationId!==undefined?{uploadOperationId:form.uploadOperationId}:{})}}:{}),...(pending?{pending}:{})};
 }

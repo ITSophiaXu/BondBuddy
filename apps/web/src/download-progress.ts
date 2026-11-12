@@ -2,22 +2,25 @@ export type DownloadProgress = (received: number, total?: number) => void;
 
 /** Count actual response bytes. Encoded Content-Length is not a decoded total. */
 export async function readDownloadBytes(response: Response, signal: AbortSignal, progress?: DownloadProgress): Promise<ArrayBuffer> {
-  if (!progress || !response.body) return response.arrayBuffer();
+  signal.throwIfAborted();
+  if (!response.body) return response.arrayBuffer();
   const length = Number(response.headers.get('content-length'));
   const encoding = response.headers.get('content-encoding');
   const total = (!encoding || encoding === 'identity') && Number.isSafeInteger(length) && length > 0 ? length : undefined;
   const reader = response.body.getReader(), chunks: Uint8Array<ArrayBuffer>[] = [];
+  const cancel = () => { void reader.cancel(signal.reason).catch(() => {}); };
+  signal.addEventListener('abort', cancel, {once:true});
   let received = 0;
-  progress(0, total);
+  progress?.(0, total);
   try {
     while (true) {
       const { done, value } = await reader.read();
       signal.throwIfAborted();
       if (done) break;
       chunks.push(new Uint8Array(value)); received += value.byteLength;
-      progress(received, total && received <= total ? total : undefined);
+      progress?.(received, total && received <= total ? total : undefined);
     }
-  } finally { reader.releaseLock(); }
+  } finally { signal.removeEventListener('abort', cancel); reader.releaseLock(); }
   return new Blob(chunks).arrayBuffer();
 }
 

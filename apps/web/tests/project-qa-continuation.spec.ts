@@ -3,12 +3,12 @@ import {PROJECT_QA_PRICE,type QaDraft,type QaQuestion} from '@bondbuddy/contract
 import {mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
 import {answerId,assertFixture,fixture,historicalRecords,install,newMaterial,oldArtifact,oldMaterial,otherAnswerId,otherOwnerId,otherProjectId,
-  prepareId,projectId,qaWrites,questions,snapshot,workspaceReads,writes,type State} from './project-qa-continuation-fixtures';
+  prepareId,projectId,qaWrites,questions,sha,snapshot,workspaceReads,writes,type State} from './project-qa-continuation-fixtures';
 
 // All HTTP responses and request bodies use public schemas. Browser recovery is
 // exercised with synthetic records; no real Word, supplier, payment or worker runs.
 const followup=(page:Page,id:string)=>page.locator(`[data-qa-followup][value="${id}"]`);
-const selectedIds=(page:Page)=>page.locator('[data-remove-q]').evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.removeQ));
+const selectedIds=(page:Page)=>page.locator('[data-qa-question-id]').evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.qaQuestionId));
 const missingQuestions=()=>[structuredClone(questions[0]),structuredClone(questions[2])];
 const originalRequirements='保留历史要求：逐题说明依据与待补材料。';
 const preparedDraft=(selected:QaQuestion[]=missingQuestions(),useKnowledge=false):QaDraft=>({preparation_id:prepareId,questions:structuredClone(selected),materials:[structuredClone(oldMaterial),structuredClone(oldArtifact)],requirements:originalRequirements,use_knowledge:useKnowledge});
@@ -30,12 +30,55 @@ async function expectPending(page:Page,kind:'answer'|'prepare'|'draft'){
 async function start(page:Page){await page.locator('#qa-start').click();}
 async function screenshotAtTop(page:Page,directory:string,filename:string){await mkdir(directory,{recursive:true});await page.evaluate(async()=>{await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));(document.activeElement as HTMLElement|null)?.blur();window.scrollTo(0,0);});await page.screenshot({path:join(directory,filename),fullPage:true});}
 
+test('a first question upload prepares questions without claiming a historical answer or starting an answer',async({page})=>{
+  await page.setViewportSize({width:1440,height:960});
+  const state=fixture(),parsed=structuredClone(state.workspace.runs.find(run=>run.run_id===prepareId)!.result!);
+  state.workspace.runs=[];state.workspace.draft={preparation_id:null,questions:[],materials:[],requirements:'',use_knowledge:false};
+  state.workspace.prospectus=null;state.workspace.materials=[];state.allowUploads=true;
+  await install(page,state);await page.goto(route(null));await page.clock.install();
+  await page.locator('#qa-upload').setInputFiles({name:'synthetic-questions.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:Buffer.from('synthetic question upload, not a real Word file')});
+  await expect.poll(()=>state.accepted.size).toBe(1);const accepted=[...state.accepted.values()][0];
+  await expect.poll(()=>new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('run')).toBe(accepted.run.run_id);
+  accepted.run.state='succeeded';accepted.run.stage=null;
+  accepted.run.result={...parsed,input_hash:sha(JSON.stringify(accepted.run.manifest)),snapshot:{...parsed.snapshot,sha256:accepted.run.manifest.source.asset.pin.sha256}};
+  await page.clock.fastForward(3100);await expect(page.locator('.qa-question-list article')).toHaveCount(3);
+  await expect(page.locator('#qa-document-body')).not.toContainText('已从指定历史任务准备下一轮');
+  await expect(page.locator('#qa-document-body')).toContainText('已识别问题清单，尚未开始回答');
+  expect(state.prepares).toHaveLength(1);expect(state.drafts).toEqual([]);expect(state.answers).toEqual([]);
+  const evidence=process.env.BB_TASK_FLOW_EVIDENCE;
+  if(evidence){
+    await mkdir(evidence,{recursive:true});await page.locator('#qa-document-body').scrollIntoViewIfNeeded();await page.screenshot({path:join(evidence,'qa-first-upload-implementation-1440x960.png')});
+    const ref=await page.context().newPage();await ref.setViewportSize({width:1440,height:960});await ref.goto('/@fs/'+join(process.cwd(),'../../product-prototype/public/qa-materials.html').replaceAll('\\','/'));
+    await ref.locator('.prototype-controls [data-show="questions"]').click();await ref.screenshot({path:join(evidence,'qa-questions-prototype-1440x960.png')});await ref.close();
+  }
+  const before=writes(state).length;await page.reload();await expect(page.locator('#qa-document-body')).toContainText('已识别问题清单，尚未开始回答');
+  expect(writes(state)).toHaveLength(before);expect(state.answers).toEqual([]);
+});
+
+test('a stalled answer download times out, unlocks history and permits normal navigation without another task',async({page})=>{
+  const state=await open(page);await page.clock.install();let reads=0;
+  await page.route('**/api/v1/artifacts/synthetic-artifact-5',async route=>{
+    reads++;if(reads===1)return;
+    await route.fulfill({status:503,json:{code:'DATA_UNAVAILABLE'}});
+  });
+  await page.locator('#qa-download').click();await expect.poll(()=>reads).toBe(1);
+  await expect(page.locator('#qa-history')).toBeDisabled();
+  await page.clock.fastForward(120_001);
+  await expect(page.locator('#project-qa-status')).toContainText('下载准备超时，请重试下载');
+  await expect(page.locator('#qa-history')).toBeEnabled();await expect(page.locator('#qa-download')).toBeEnabled();
+  await page.locator('#qa-download').click();await expect.poll(()=>reads).toBe(2);
+  await expect(page.locator('#qa-history')).toBeEnabled();
+  await page.locator('#qa-history').selectOption(otherAnswerId);await expect(page.locator('#qa-history')).toHaveValue(otherAnswerId);
+  await page.evaluate(()=>{location.hash='tasks';});await expect.poll(()=>new URL(page.url()).hash).toBe('#tasks');
+  await expect(page.locator('.collection-project').first()).toBeVisible();expect(writes(state)).toEqual([]);
+});
+
 for(const width of [1440,390])test(`${width}: historical missing selection adopts exact local preparation and survives refresh without POST`,async({page})=>{
   await page.setViewportSize({width,height:width===390?844:960});const state=await open(page),old=historicalRecords(state),serverDraft=structuredClone(state.workspace.draft);
   await expect(followup(page,'q2')).toBeChecked();await expect(followup(page,'q4')).not.toBeChecked();await expect(followup(page,'q7')).toBeChecked();
   expect(writes(state)).toEqual([]);const evidence=process.env.BB_UX_EVIDENCE_DIR;
   if(evidence)await screenshotAtTop(page,evidence,`qa-continuation-completed-${width}.png`);
-  await adopt(page);await expectLocal(page);expect(qaWrites(state)).toEqual([]);expect(state.workspace.draft).toEqual(serverDraft);
+  await adopt(page);await expectLocal(page);await expect(page.locator('#qa-document-body')).toContainText('已从指定历史任务准备下一轮');expect(qaWrites(state)).toEqual([]);expect(state.workspace.draft).toEqual(serverDraft);
   await expect(page.locator('[data-qa-knowledge-choice]')).toHaveCount(0);await expect(page.locator('[data-qa-knowledge-choice]')).toHaveCount(0);await expect(page.locator('#qa-save')).toBeEnabled();await expect(page.locator('#qa-start')).toBeEnabled();
   await expect(page.locator('.qa-question-list')).toContainText(questions[0].question);await expect(page.locator('.qa-question-list')).toContainText(questions[2].question);await expect(page.locator('.qa-question-list')).not.toContainText(questions[1].question);
   await expect(page.locator('.qa-materials')).toContainText('合成业务报告_v2.pdf');await expect(page.locator('.qa-materials')).toContainText('合成募集书_清洁版_v4.docx');

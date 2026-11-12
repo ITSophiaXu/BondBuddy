@@ -11,6 +11,9 @@ type Deps = {db:()=>Pool; owner:(request:FastifyRequest)=>Promise<string>};
 const RANGE_KEYS = ['from','to','user_id','state','cursor','limit'] as const;
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
+const UTC_DAY_MS = 86400000;
+const DEFAULT_TREND_DAYS = 14;
+const MAX_TREND_DAYS = 90;
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
@@ -101,6 +104,20 @@ export function parseDashboardFilter(query: Record<string, unknown> | undefined,
 // Shared filter arguments: $1 from, $2 to, $3 state, $4 user_id.
 const filterArgs = (filter: DashboardFilter) => [filter.from, filter.to, filter.state, filter.userId];
 
+/** Only the chart is bounded; summary and detail queries retain the complete operator filter. */
+export function dashboardTrendWindow(filter: DashboardFilter, now = new Date()) {
+  const to = filter.to ?? now;
+  const lastDay = Math.floor(to.getTime() / UTC_DAY_MS) * UTC_DAY_MS;
+  const requestedFirst = filter.from
+    ? Math.floor(filter.from.getTime() / UTC_DAY_MS) * UTC_DAY_MS
+    : lastDay - (DEFAULT_TREND_DAYS - 1) * UTC_DAY_MS;
+  const firstDay = Math.max(requestedFirst, lastDay - (MAX_TREND_DAYS - 1) * UTC_DAY_MS);
+  const from = new Date(Math.max(firstDay, filter.from?.getTime() ?? firstDay));
+  const dates: string[] = [];
+  if (from <= to) for (let at = firstDay; at <= lastDay; at += UTC_DAY_MS) dates.push(new Date(at).toISOString().slice(0, 10));
+  return {from, to, dates};
+}
+
 function pageOf<T>(rows: T[], limit: number, kind: 'users' | 'tasks', at: (row: T) => DashboardCursor) {
   const items = rows.slice(0, limit);
   const next = rows.length > limit ? encodeDashboardCursor(kind, at(items[items.length - 1]!)) : null;
@@ -153,6 +170,8 @@ async function auditRead(client: PoolClient, actorId: string, purpose: string, f
 }
 
 export async function adminDashboardOverview(pool: Pool, actorId: string, filter: DashboardFilter) {
+  const trend = dashboardTrendWindow(filter);
+  const trendArgs = [trend.from, trend.to, filter.state, filter.userId];
   return transaction(pool, async client => {
     await auditRead(client, actorId, 'admin_dashboard_overview', filter);
     const users = await client.query('SELECT count(*)::int AS n FROM bb_users');
@@ -182,7 +201,7 @@ export async function adminDashboardOverview(pool: Pool, actorId: string, filter
         AND ($2::timestamptz IS NULL OR r.created_at<=$2)
         AND ($3::text IS NULL OR r.state=$3)
         AND ($4::text IS NULL OR r.owner_user_id=$4)`, filterArgs(filter));
-    const dailyUsage = await client.query(`SELECT to_char(date_trunc('day', r.created_at),'YYYY-MM-DD') AS date,
+    const dailyUsage = await client.query(`SELECT to_char(r.created_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS date,
         count(DISTINCT r.id)::int AS tasks,
         count(DISTINCT r.owner_user_id)::int AS active_users,
         COALESCE(sum(l.input_tokens),0)::text AS input_tokens,
@@ -191,32 +210,36 @@ export async function adminDashboardOverview(pool: Pool, actorId: string, filter
         CASE WHEN count(DISTINCT l.currency) FILTER (WHERE l.currency IS NOT NULL)=1 THEN min(l.currency) END AS currency
       FROM bb_runs r
       LEFT JOIN bb_platform_cost_ledger l ON l.owner_user_id=r.owner_user_id AND l.run_id=r.id
-      WHERE r.created_at >= COALESCE($1::timestamptz, now()-interval '14 days')
-        AND ($2::timestamptz IS NULL OR r.created_at<=$2)
+      WHERE r.created_at >= $1::timestamptz
+        AND r.created_at <= $2::timestamptz
         AND ($3::text IS NULL OR r.state=$3)
         AND ($4::text IS NULL OR r.owner_user_id=$4)
-      GROUP BY 1 ORDER BY 1`, filterArgs(filter));
-    const dailyCredits = await client.query(`SELECT to_char(date_trunc('day', r.created_at),'YYYY-MM-DD') AS date,
+      GROUP BY 1 ORDER BY 1`, trendArgs);
+    const dailyCredits = await client.query(`SELECT to_char(r.created_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS date,
         COALESCE(sum(e.points),0)::text AS points
       FROM bb_credit_events e
       JOIN bb_runs r ON r.id=e.run_id AND r.owner_user_id=e.owner_user_id
       WHERE e.kind='settle'
-        AND r.created_at >= COALESCE($1::timestamptz, now()-interval '14 days')
-        AND ($2::timestamptz IS NULL OR r.created_at<=$2)
+        AND r.created_at >= $1::timestamptz
+        AND r.created_at <= $2::timestamptz
         AND ($3::text IS NULL OR r.state=$3)
         AND ($4::text IS NULL OR r.owner_user_id=$4)
-      GROUP BY 1`, filterArgs(filter));
+      GROUP BY 1`, trendArgs);
     const creditByDay = new Map(dailyCredits.rows.map(row => [row.date as string, String(row.points)]));
-    const daily = dailyUsage.rows.map(row => ({
-      date: row.date as string,
-      tasks: integer(row.tasks),
-      active_users: integer(row.active_users),
-      input_tokens: integer(row.input_tokens),
-      output_tokens: integer(row.output_tokens),
-      cost_amount: dashboardCostText(row.cost_amount),
-      currency: row.currency ?? null,
-      credit_settled_points: points(creditByDay.get(row.date as string) ?? '0')
-    }));
+    const usageByDay = new Map(dailyUsage.rows.map(row => [row.date as string, row]));
+    const daily = trend.dates.map(date => {
+      const row = usageByDay.get(date);
+      return {
+        date,
+        tasks: integer(row?.tasks),
+        active_users: integer(row?.active_users),
+        input_tokens: integer(row?.input_tokens),
+        output_tokens: integer(row?.output_tokens),
+        cost_amount: dashboardCostText(row?.cost_amount),
+        currency: row?.currency ?? null,
+        credit_settled_points: points(creditByDay.get(date) ?? '0')
+      };
+    });
     const use = usage.rows[0] ?? {};
     return {
       range: {from: iso(filter.from), to: iso(filter.to)},

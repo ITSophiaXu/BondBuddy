@@ -150,7 +150,7 @@ body:has(.bb-assistant) .prototype-app .shell{container-type:inline-size;contain
 .ba-uploads>div{padding:5px 8px;background:#f4f7f1;border-radius:6px;margin:3px 0}
 .ba-uploads button{padding:2px 5px;font-size:10px}
 .ba-uploads:has([data-upload-kind="material"][data-associated="false"]){max-height:min(30vh,240px);font-size:13px;line-height:1.5}
-.ba-uploads [data-upload-kind="material"][data-associated="false"] button{min-height:36px;margin:6px 6px 0 0;padding:7px 10px;font-size:12px}
+.ba-uploads [data-upload-kind="material"][data-associated="false"] button:not(.bb-upload-action){min-height:36px;margin:6px 6px 0 0;padding:7px 10px;font-size:12px}
 .ba-uploads [data-upload-kind="material"][data-associated="false"] small{display:block;margin-top:6px;font-size:11px;line-height:1.5}
 @media(max-width:960px){.ba-uploads [data-upload-kind="material"][data-associated="false"] button{min-height:44px}}
 

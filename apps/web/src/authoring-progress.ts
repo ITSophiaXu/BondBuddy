@@ -7,9 +7,11 @@ export function elapsedLabel(ms:number){const s=Math.floor(ms/1000);return s<60?
 export function authoringEventLabel(event:RunEvent):string|null{
   const a=event.payload.authoring_activity;
   if(!a)return null;
-  if(a.summary)return a.summary;
   const label=AUTHORING_ACTIVITY_LABELS[a.code];
-  return a.state==='failed'?label.replace('正在','本次处理未完成：'):a.state==='completed'?label.replace('正在','处理步骤已返回：'):label;
+  // Activity errors describe one internal step, not the run lifecycle; a summary must not hide them.
+  if(a.state==='failed')return label.replace('正在','处理步骤出错：')+(a.summary?`。进度说明：${a.summary}`:'');
+  if(a.summary)return a.summary;
+  return a.state==='completed'?label.replace('正在','处理步骤已返回：'):label;
 }
 /** Keep public summaries separately from noisy tool events, including across paginated reloads. */
 export function retainAuthoringEvents(events:RunEvent[]):RunEvent[]{
@@ -31,6 +33,7 @@ export function authoringVisibleEvents(run:Run,events:RunEvent[]):RunEvent[]{
 }
 export function authoringStatus(run:Run,events:RunEvent[],p?:AuthoringProgress){
   if(ended(run))return undefined;
+  if(run.state==='paused'&&run.stage==='billing_reconcile')return {title:'正在核对积分账务，任务已暂停',summary:'已保存处理进度和已有成果。核对完成后会继续；若已请求停止，将优先结束并处理原预留。'};
   if(p?.credit_exhausted)return {title:run.state==='paused'?'积分已用完，任务已暂停':'积分已用完，正在保存进度后暂停',summary:'积分已停止扣减，已完成的工作会保留。充值到账后自动继续本次任务。',phase:2 as const};
   if(p?.pause_requested&&run.state==='running')return {title:'正在保存进度后暂停',summary:'积分已冻结。当前模型处理结果保存后暂停，继续时会复用已保存的结果。',phase:2 as const};
   if(run.state==='paused'&&run.stage==='user_paused')return {title:'任务已暂停',summary:'进度已保存，积分停止累计。可继续本次任务，或结束并结算已消耗积分。'};
@@ -51,8 +54,8 @@ export function authoringStatus(run:Run,events:RunEvent[],p?:AuthoringProgress){
   // Tool activity cannot refresh the age of a model's public progress sentence.
   const stale=!!(reported&&p&&Date.parse(p.sampled_at)-Date.parse(reported.occurred_at)>=60000);
   const failed=a?.state==='failed';
-  const title=failed?'本次处理遇到问题':report?AUTHORING_ACTIVITY_LABELS[report.code]:a?AUTHORING_ACTIVITY_LABELS[a.code]:fallback;
-  const notice=p&&!p.clock_running?'执行连接正在恢复，积分暂不增加。':failed?'本次处理未完成，正在等待后续状态。':!report?'暂未收到模型的具体进度说明；收到后会自动显示。':stale?'暂未收到新的进度说明；收到后会自动更新。':'';
+  const title=failed?'处理步骤遇到问题':report?AUTHORING_ACTIVITY_LABELS[report.code]:a?AUTHORING_ACTIVITY_LABELS[a.code]:fallback;
+  const notice=p&&!p.clock_running?'执行连接正在恢复，积分暂不增加。':failed?'该步骤出错，任务尚未结束；后续状态会自动更新。':!report?'暂未收到模型的具体进度说明；收到后会自动显示。':stale?'暂未收到新的进度说明；收到后会自动更新。':'';
   const summary=report?.summary?`最近一次模型进度：${report.summary}${notice?' '+notice:''}`:notice;
   return {title,summary,phase:(run.stage==='claimed'||run.stage==='input_lock'||run.stage==='materials_ready'?1:run.stage?.includes('word_delivery')?3:2) as 1|2|3};
 }
@@ -67,7 +70,7 @@ export function authoringCreditReceipt(run:Run,p?:AuthoringProgress,legacy?:{poi
   const caption=terminal?'本次已扣费':'当前已消耗';
   const dynamic=p.policy==='authoring_balance_v2';
   const note=terminal?(int64(p.released_points)>0n?'未消耗的 '+formatPoints(p.released_points)+' 积分已释放。':'结算已完成。'):
-    p.pause_requested||p.credit_exhausted||run.state==='paused'?'积分已冻结，继续处理后再累计。':run.state==='queued'?'尚未开始处理，积分不会增加。':dynamic?'已按实际进度扣减；余额归零时暂停，充值后继续。':'按有效处理时间和已完成工作累计，完成后结算。';
+    p.pause_requested||p.credit_exhausted||run.state==='paused'?'积分已冻结，继续处理后再累计。':run.state==='queued'?'尚未开始处理，积分不会增加。':dynamic?'已按实际进度扣减；余额归零时暂停，积分充足后继续。':'按有效处理时间和已完成工作累计，完成后结算。';
   return '<section class="authoring-credit-meter" aria-label="积分消耗"><div><span>'+caption+'</span><strong role="status">'+formatPoints(n)+' <small>积分</small></strong></div><div class="authoring-credit-meta">'+(dynamic?'<span>可用余额 '+formatPoints(p.available_points??'0')+' 积分</span>':'')+'<span>有效处理 '+esc(elapsedLabel(p.active_ms))+'</span><span>'+note+'</span></div><details><summary>计费说明</summary><p>'+(dynamic?'有积分即可开始，按服务端有效处理时间和已完成工作扣减；排队和暂停不扣。余额归零保存后暂停，到账后续跑。主动结束保留已扣部分，平台失败退回已扣积分，全程不超过原任务价格。':p.policy==='authoring_progress_v1'?'排队、暂停、执行连接中断时不累计。暂停冻结累计金额；结束任务按已消耗积分结算，其余释放。平台失败不收费。任务完成时按原任务价格结算，全程不超过该价格。':'本次任务保留提交时的规则：成功交付后结算，取消或失败不扣费。')+'</p></details></section>';
 }
 import type {CommercePriceMetadata} from './billing-types.js';

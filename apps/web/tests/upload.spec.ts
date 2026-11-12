@@ -140,9 +140,14 @@ function state(): FixtureState {
 test('reference and audit upload areas share styling and audit drops keep the correct role',async({page})=>{
   const s=state();await installApi(page,s);await login(page,'owner_a');
   const reference=page.locator('.reference-upload-picker'),audit=page.locator('[data-material-role="audit"] .material-picker');
-  await expect(reference).toHaveText('点击或拖入文件');await expect(audit).toContainText('点击或拖入文件');
+  await expect(reference).toHaveText('选择文件或将文件拖到这里');await expect(audit).toContainText('选择文件或将文件拖到这里');
   const styles=(element:Element)=>{const css=getComputedStyle(element);return {height:css.minHeight,border:css.borderTopStyle,color:css.borderTopColor,background:css.backgroundColor,radius:css.borderRadius,padding:css.padding};};
   expect(await reference.evaluate(styles)).toEqual(await audit.evaluate(styles));
+  for(const width of [1440,390,320]){
+    await page.setViewportSize({width,height:960});expect(await reference.evaluate(styles)).toEqual(await audit.evaluate(styles));
+    expect(await reference.evaluate(e=>e.getBoundingClientRect().height)).toBe(112);
+    const out=process.env.BB_UPLOAD_UX_EVIDENCE;if(out){await mkdir(out,{recursive:true});await reference.screenshot({path:join(out,`update-reference-${width}.png`)});await audit.screenshot({path:join(out,`update-audit-${width}.png`)});}
+  }
   const data=await page.evaluateHandle(()=>{const data=new DataTransfer();data.items.add(new File(['%PDF synthetic audit drag fixture'],'拖入审计报告.pdf',{type:'application/pdf'}));return data;});
   await audit.dispatchEvent('dragover',{dataTransfer:data});await expect(audit).toHaveClass(/is-dragging/);
   await audit.evaluate(el=>el.dispatchEvent(new DragEvent('dragleave',{bubbles:true,relatedTarget:el.querySelector('span')})));
@@ -296,12 +301,12 @@ test('three independent files, indeterminate saving after transfer, failed file 
   expect(fixture.materials.size).toBe(3);
 
   await page.reload();
-  await expect(page.getByText('已恢复 3 份材料。')).toBeVisible();
+  await expect(page.getByText('已保存 3 份材料。')).toBeVisible();
   await expect(page.locator('.persisted-material')).toHaveCount(3);
   if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
   await login(page, 'owner_a');
-  await expect(page.getByText('已恢复 3 份材料。')).toBeVisible();
+  await expect(page.getByText('已保存 3 份材料。')).toBeVisible();
   await expect(page.locator('.persisted-material')).toHaveCount(3);
   if (await page.getByRole('button', { name:'打开菜单', exact:true }).isVisible()) await page.getByRole('button', { name:'打开菜单', exact:true }).click();
   await page.getByRole('button', { name: '退出', exact: true }).click();
@@ -401,7 +406,7 @@ test('server refresh reconciles a delayed receipt but never matches only a filen
   ]) {
     Object.assign(material,invalid);
     await page.getByRole('button',{name:'刷新已保存材料'}).click();
-    await expect(page.locator('#material-recovery-status')).toContainText('已恢复 1 份材料');
+    await expect(page.locator('#material-recovery-status')).toContainText('已保存 1 份材料');
     await expect(row).toBeVisible();
     await expect(page.getByRole('button',{name:'请先处理材料状态',exact:true})).toBeDisabled();
   }

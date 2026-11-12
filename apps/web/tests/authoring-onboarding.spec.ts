@@ -3,7 +3,7 @@ import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
 import { emptyUpdateDetails, schemas } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
-import { FormatRegistry } from '@sinclair/typebox';
+import '../src/schema-formats';
 import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -13,9 +13,6 @@ import { taskPage } from './collection-fixtures';
 // Synthetic public HTTP boundary in Chromium. This does not accept real parsing, billing, models or Word output.
 const projectId = 'synthetic-onboarding-project';
 const now = '2026-10-25T03:00:00Z';
-// Value does not install JSON Schema formats. These fixtures use one fixed,
-// valid RFC3339 timestamp; reject anything else rather than skip the format.
-FormatRegistry.Set('date-time', value => value === now);
 const sha256 = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 const emptyMessages = { version: 1, content_sha256: sha256('bondbuddy:empty-project-messages'), message_ids: [] };
 type Details = NonNullable<Dto<'ProjectResponse'>['update_details']>;
@@ -390,6 +387,13 @@ test('finance-only uploads are saved but cannot start without the required refer
   await expect(page.locator('[data-authoring-preparation-guide]')).toBeHidden();
   await expect(page.locator('[data-authoring-requirements]')).toHaveCount(0);
   await expect(page.locator('[data-upload-role=audit]')).toBeEnabled();
+  // Historical uploads now belong to the independent adopted-prospectus panel.
+  await expect(page.locator('#prospectus-panel #prospectus-version-file')).toBeEnabled();
+  await expect(page.locator('#material-partitions [data-material-role=historical]')).toHaveCount(0);
+  expectNoExecution(state);
+  await screenshot(page, 'financial-upload-entry-desktop.png');
+  const chooserEvent = page.waitForEvent('filechooser'); await page.locator('[data-material-role=audit] .material-picker').click(); const chooser = await chooserEvent;
+  expect(await chooser.element().getAttribute('data-upload-role')).toBe('audit');
   const bytes = Buffer.from('%PDF-1.7\nsynthetic finance upload boundary\n%%EOF');
   await page.locator('[data-upload-role=audit]').setInputFiles({ name: '合成财务材料.pdf', mimeType: 'application/pdf', buffer: bytes });
   await expect(page.locator('[data-material-role=audit] .material-file-row')).toContainText('服务器已确认保存');

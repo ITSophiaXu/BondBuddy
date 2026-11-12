@@ -16,7 +16,7 @@ export type FormatDiagnostic = {
   input_hash: string;
   revision_author: string;
   revision_date?: string;
-  files: { baseline: FormatFileRef; tracked: FormatFileRef; operations: FormatFileRef };
+  files: { baseline: FormatFileRef; tracked: FormatFileRef; operations: FormatFileRef; plan?: FormatFileRef };
   report?: FormatFileRef;
   /** Persisted before upload; retained until report registration or confirmed cleanup. */
   pending_report?: FormatFileRef;
@@ -39,6 +39,28 @@ export async function runFormatPython(args: string[], signal?: AbortSignal) {
       timeout: 300000, maxBuffer: FORMAT_JSON_MAX, signal });
 }
 
+export class AuthoringSourceUnreadable extends Error {
+  constructor() { super('MATERIAL_UNREADABLE'); this.name = 'AuthoringSourceUnreadable'; }
+}
+
+/** Only the trusted prepare command can establish an unreadable editing source. */
+export async function prepareFormatSource(input: string, manifest: string, signal?: AbortSignal) {
+  try {
+    return await runFormatPython(['prepare', '--input', input, '--manifest', manifest], signal);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    const failure = error as { code?: unknown; signal?: unknown; killed?: unknown; stderr?: unknown };
+    if (failure?.code === 1 && failure.signal == null && failure.killed !== true && typeof failure.stderr === 'string') {
+      let report: unknown;
+      try { report = JSON.parse(failure.stderr.trim()); } catch { /* Non-protocol failures keep the infrastructure retry path. */ }
+      if (report && typeof report === 'object' && !Array.isArray(report) &&
+          Object.keys(report).length === 1 && (report as { error?: unknown }).error === 'WORD_EDIT_SOURCE_UNREADABLE')
+        throw new AuthoringSourceUnreadable();
+    }
+    throw error;
+  }
+}
+
 /** Reconstruct deliverables from the pinned source and data-only operations after the CLI exits. */
 export async function finalizeFormat(input: {
   lockedInput: Buffer; baselineBytes: Buffer; operations: Buffer; signal?: AbortSignal;
@@ -59,7 +81,7 @@ export async function finalizeFormat(input: {
     await runFormatPython(['finalize', '--input', join(root, 'input.json'), '--operations', join(root, 'operations.json'),
       '--output-dir', join(root, 'output'), '--skip-report'], input.signal);
     const files = new Map<string, Buffer>();
-    for (const name of ['tracked.docx', 'clean.docx', 'baseline.docx', 'operations.json'])
+    for (const name of ['tracked.docx', 'clean.docx', 'baseline.docx', 'operations.json', 'format-plan.json'])
       files.set(name, await readFormatFile(join(root, 'output'), name, name.endsWith('.json') ? FORMAT_JSON_MAX : WORD_FILE_MAX));
     return files;
   } finally {

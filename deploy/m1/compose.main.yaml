@@ -35,10 +35,14 @@ services:
     profiles: ['${BB_ROLE_PARSE_PROFILE:-bb-parse-inactive}']
     environment: !override
       DATABASE_URL: *main-db-url
+      BB_DIRECT_BLOB_UPLOADS: ${BB_DIRECT_BLOB_UPLOADS:-0}
       AZURE_STORAGE_CONNECTION_STRING: ${AZURE_STORAGE_CONNECTION_STRING:?set in private env}
       BB_LIBRARY_CONTAINER: ${BB_LIBRARY_CONTAINER:-bondbuddy-private}
       BB_WORKER_JOB_KINDS: parse
       BB_WORKER_GROUP: parse
+      BB_UPLOAD_CONFIRMATION_ENABLED: ${BB_UPLOAD_CONFIRMATION_ENABLED:-0}
+      BB_UPLOAD_SPOOL_DIR: /var/lib/bondbuddy/parse-staging/upload-confirmation
+      BB_UPLOAD_SPOOL_MAX_BYTES: ${BB_UPLOAD_CONFIRMATION_SPOOL_MAX_BYTES:-134217728}
       BB_WORKER_CONCURRENCY: '1'
       BB_WORKER_INTERACTIVE_SLOTS: '0'
       BB_WORKER_PARSE_SLOTS: '0'
