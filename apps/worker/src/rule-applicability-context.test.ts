@@ -63,7 +63,9 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
       principal: async () => ({ userId: owner, csrfVerified: true }) };
     // The original unpriced input must reach the worker's missing-review gate unchanged.
     const app = createProductionServer({ ...settings, historicalBillingFixture: true, enablePaidAuthoring: false });
-    const current = createProductionServer(settings);
+    // Keep the worker's out-of-request billing default on its original historical Pool.
+    const currentPool = new Pool({ connectionString: databaseUrl! });
+    const current = createProductionServer({ ...settings, pool: currentPool });
     try {
       for (const [id, label] of [[owner, 'owner'], [reviewerId, 'reviewer'], [grantorId, 'grantor']] as const) {
         await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [id, `rulecontext${label}${suffix}`]);
@@ -331,6 +333,7 @@ test('rule applicability context drafts pin exact source evidence, replay idempo
         'a changed project draft revision cannot pass an old context pin');
     } finally {
       await current.close();
+      await currentPool.end();
       await app.close();
       await pool.end();
     }
