@@ -159,3 +159,13 @@
 - 独立静态审查未发现阻断项；未把纯Node替身断言当作真实UI验收。
 
 原4cb若通过正常免费进入文件生成工作区补齐前提后续跑，只是显式人工辅助诊断，不能证明本补修通过，更不能代替最终发布凭据。补修尚待统一发布任务纳入新固定候选，完整运行五流程及其余门禁；#1110和#1027保持Open，PR仍Draft，尚未合并或部署。
+
+## 底稿来源可见控件定位修复（#1116，2026-11-12）
+
+同一4cb诊断轮在诚信通过后开始底稿（UTC05:38:44.111）。原稿已上传采用，source完整保存，但 `getByText(filename).first()` 匹配到原生select内不可见的已选option，导致可见等待超时；没有prepared、submissionRequest/receipt或run。该问题与#1110缺少M4 workspace是两个独立根因，原底稿attempt-1-submit的trace、截图、页面文本和哈希另行保留。
+
+本补修基于#1110交付 `9c3f7189dbda0f0320334ef801dc50e1ba15cbcb`。生成页核对可见 `#pf-project-source` 的inputValue和唯一已选option文本，再核对可见 `.pf-selected-source` 的文件名及版本；只读取option文本，不要求原生option本身可见。普通项目文件页仍要求可见当前稿区域、文件名及当前版本。既有真实source/material字节和reload后完整binding比较在可见检查之前保持；controller guard、原deadline、上传及提交防重没有变化。
+
+Windows Node22.14.0纯工具测试：扩展来源流程28/28，完整 `npm run test:release:unit` 177/177、0失败/跳过/取消。复用同一既有saxes6.0.0缓存；新增3项覆盖隐藏option但可见控件、错误selected value/option/摘要、隐藏真实控件和普通页当前版本。独立静态审查核对实际prospectus-panel DOM及reload默认模式，未发现阻断项。此次模型、真实浏览器/API调用均0；不能把替身页面单测称为真实UI已验证。
+
+原4cb仅保留四流程诊断通过及底稿失败，不继续无效resume，不改DOM或拼接成五流程通过。#1110/#1116补修仍须纳入新固定候选完整运行真实五流程，另核验完整PR gate与质量凭据；相关Issue保持Open、PR仍Draft，尚未部署。

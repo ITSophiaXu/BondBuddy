@@ -100,6 +100,23 @@ export function selectedProspectusBinding(versions,material,expected,projectId){
  assert.equal(material?.material_id,version.material_id);assert.equal(material.material_version,version.material_version);assert.equal(material.sha256,expected.sha256);assert.equal(material.filename,expected.filename);assert.equal(material.byte_size,expected.byte_size);assert.ok(material.persisted_at);
  return {project_id:projectId,version_id:version.version_id,selection_revision:versions.selection_revision,sequence:version.sequence,material_id:version.material_id,material_version:version.material_version,...expected};
 }
+export async function assertVisibleProspectusSource(page,binding,generation){
+ if(generation){
+  const select=page.locator('#pf-prospectus #pf-project-source');await select.waitFor({state:'visible'});
+  assert.equal(await select.inputValue(),binding.version_id,'Visible generation source selected a different version');
+  const selected=select.locator('option:checked');assert.equal(await selected.count(),1);
+  assert.equal((await selected.textContent())?.trim(),`V${binding.sequence} · ${binding.filename} · 项目当前版本`,'Selected option does not describe the persisted source');
+  const summary=page.locator('#pf-prospectus .pf-selected-source');await summary.waitFor({state:'visible'});
+  const filename=summary.locator('strong'),version=summary.locator('.pf-selected-label');await filename.waitFor({state:'visible'});await version.waitFor({state:'visible'});
+  assert.equal((await filename.innerText()).trim(),binding.filename);
+  assert.equal((await version.innerText()).trim(),`已选择 · V${binding.sequence}`);
+ }else{
+  const current=page.locator('#pw-prospectus .prospectus-current-file');await current.waitFor({state:'visible'});
+  const filename=current.locator('.prospectus-file-info h3');await filename.waitFor({state:'visible'});
+  assert.equal((await filename.innerText()).trim(),binding.filename);
+  const version=current.locator('.prospectus-current');await version.waitFor({state:'visible'});assert.equal((await version.innerText()).trim(),`当前版本 · V${binding.sequence}`);
+ }
+}
 /** Ordinary project files do not create an M4 workspace. Read their selected
  * prospectus directly; generation still requires its real workspace source. */
 export async function adoptProspectusSource({page,fixture,readJson,save,upload},entry,generation){
@@ -136,7 +153,7 @@ export async function adoptProspectusSource({page,fixture,readJson,save,upload},
  }
  const binding=await readBinding();if(entry.source)assert.deepEqual(binding,entry.source,'Adopted original source changed');entry.source=binding;save();
  await page.reload();assert.deepEqual(await readBinding(),binding,'Reload changed the adopted original source');
- await page.getByText(expected.filename,{exact:false}).first().waitFor({state:'visible'});
+ await assertVisibleProspectusSource(page,binding,generation);
 }
 export function assertIntegrityRound(round,entry){
  assert.equal(round?.run_id,entry.runId);assert.equal(round.operation,'check');assert.equal(round.state,'succeeded');
