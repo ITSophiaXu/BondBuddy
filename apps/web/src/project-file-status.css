@@ -32,3 +32,27 @@
     overflow-wrap: anywhere;
   }
 }
+
+/* Keep all status choices reachable without pushing the first file down on phones. */
+@media (max-width: 760px) {
+  #pw-file-status {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    padding: 4px;
+    scroll-padding-inline: 4px;
+  }
+
+  #pw-file-status > div {
+    width: max-content;
+    min-width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  #pw-file-status .collection-filter {
+    flex: 0 0 auto;
+    min-height: 44px;
+    white-space: nowrap;
+  }
+}
