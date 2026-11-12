@@ -121,6 +121,20 @@ EXPOSE 3129
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD ["node","-e","const s=require('net').connect(3129,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1))"]
 CMD ["node","apps/worker/dist/integrity-egress.js"]
 
+# Confirmation needs only Node, trusted CA roots and the kernel spool lock.
+# No model CLI, Python/OCR, browser or authentication helper is installed here.
+FROM node-runtime AS upload-confirmation
+ARG BB_RELEASE_SHA=unknown
+LABEL org.opencontainers.image.revision=${BB_RELEASE_SHA}
+ENV BB_RELEASE_SHA=${BB_RELEASE_SHA}
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates util-linux \
+ && rm -rf /var/lib/apt/lists/* \
+ && mkdir -p /var/lib/bondbuddy/upload-confirmation \
+ && chown node:node /var/lib/bondbuddy/upload-confirmation \
+ && chmod 0700 /var/lib/bondbuddy/upload-confirmation
+USER node
+CMD ["node","apps/worker/dist/upload-confirmation-runtime.js"]
+
 FROM node-runtime AS worker
 ARG BB_RELEASE_SHA=unknown
 LABEL org.opencontainers.image.revision=${BB_RELEASE_SHA}

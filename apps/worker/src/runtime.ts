@@ -84,6 +84,8 @@ export type WorkerRuntimeOptions = {
   /** M3 discussions use their own leases and never create document runs. */
   reviewAssistant?: { config?: CodexAdapterConfig; pollMs?: number };
   uploadConfirmationEnabled?: boolean;
+  /** Internal upload-only claim filter. General preserves the legacy consumer. */
+  uploadConfirmationLane?: UploadConfirmationLane;
   /** One extra <=16 MiB slot, sharing this process's bounded upload spool. */
   uploadConfirmationSmallSlot?: boolean;
   stagingRoot?: string;
@@ -106,6 +108,8 @@ export class WorkerRuntime {
   private readonly runLeases = new Map<number, Lease>();
   private readonly parseLeases = new Map<number, MaterialParseLease>();
   private loops: Promise<void>[] = [];
+  private confirmationLoops: Promise<void>[] = [];
+  private stopTask?: Promise<void>;
   readonly counters = { run: 0, parse: 0, probe: 0, assistant: 0, idle: 0, sweeps: 0, errors: 0 };
   private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>>
     & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>;
@@ -115,7 +119,7 @@ export class WorkerRuntime {
       runStages: defaultRunStages({ model_generation: modelGenerationRouter({ noHistoryAdapters: options.noHistoryGenerationAdapters,
         ...(options.factEvidenceReviewGate ? { factEvidenceReviewGate: options.factEvidenceReviewGate } : {}) }),
         word_delivery: historicalWordDeliveryStage() }, options.factCandidateProducer),
-      uploadConfirmationEnabled: false, uploadConfirmationSmallSlot: false, ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
+      uploadConfirmationEnabled: false, uploadConfirmationLane: 'general', uploadConfirmationSmallSlot: false, ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
     this.o.runKinds = checkedRunKinds(this.o.runKinds);
     // The environment factory supplies stages before the trusted producer can be installed.
     // Never replace a caller's explicit materials stage without its own integration decision.
@@ -132,6 +136,9 @@ export class WorkerRuntime {
     if (!Number.isInteger(this.o.parseSlots) || this.o.parseSlots < 0 || this.o.parseSlots > 4) throw new Error('Invalid worker parse slots');
     if(this.o.uploadConfirmationSmallSlot&&(!this.o.uploadConfirmationEnabled||this.o.kinds.length!==1||this.o.kinds[0]!=='parse'))
       throw new Error('Reserved upload confirmation slot requires the pure parser confirmation process');
+    if(!['general','small','large'].includes(this.o.uploadConfirmationLane)||this.o.uploadConfirmationLane!=='general'&&
+      (!this.o.uploadConfirmationEnabled||this.o.uploadConfirmationSmallSlot||this.o.kinds.length!==1||this.o.kinds[0]!=='parse'))
+      throw new Error('A filtered confirmation lane requires one pure parser confirmation loop');
   }
 
   private get dedicatedParseSlots() {
@@ -149,8 +156,8 @@ export class WorkerRuntime {
     for (let slot = this.o.concurrency; slot < this.o.concurrency + this.dedicatedParseSlots; slot++) this.loops.push(this.slotLoop(slot, ['parse']));
     const interactiveStart=this.o.concurrency+this.dedicatedParseSlots;
     for(let slot=interactiveStart;slot<interactiveStart+this.dedicatedInteractiveSlots;slot++)this.loops.push(this.slotLoop(slot,['run'],true));
-    if(this.o.uploadConfirmationEnabled)this.loops.push(this.uploadConfirmationLoop());
-    if(this.o.uploadConfirmationSmallSlot)this.loops.push(this.uploadConfirmationLoop('small'));
+    if(this.o.uploadConfirmationEnabled)this.confirmationLoops.push(this.uploadConfirmationLoop(this.o.uploadConfirmationLane));
+    if(this.o.uploadConfirmationSmallSlot)this.confirmationLoops.push(this.uploadConfirmationLoop('small'));
     this.loops.push(this.sweepLoop());
     this.loops.push(this.heartbeatLoop());
     if (this.o.stagingRoot) this.loops.push(this.stagingLoop(this.o.stagingRoot));
@@ -220,7 +227,7 @@ export class WorkerRuntime {
     while(!this.stopping){
       let outcome='idle';
       const started=Date.now();
-      try{outcome=await runUploadConfirmationOnce(this.o.pool,this.o.blobs,lane);}
+      try{outcome=await runUploadConfirmationOnce(this.o.pool,this.o.blobs,lane,event=>this.emit({kind:'upload_confirmation_phase',lane,...event}));}
       catch{this.counters.errors++;outcome='error';}
       if(outcome!=='idle')this.emit({kind:'upload_confirmation',lane,outcome,elapsed_ms:Date.now()-started});
       if(outcome==='idle'||outcome==='error')await sleep(this.o.pollMs,this.stopSignal.signal);
@@ -323,9 +330,11 @@ export class WorkerRuntime {
     return resumePausedRun(pool, owner, runId, 'provider_reconciled');
   }
 
-  /** Stop claiming, let in-flight work finish for drainMs, then abort it and release held leases. */
-  async stop() {
-    if (this.stopping) return;
+  stop(): Promise<void> { return this.stopTask ??= this.drain(); }
+
+  /** Preserve run/parse drain limits. Upload confirmation keeps its lease and spool
+   * until its own read/commit settles, before the entry closes the pool or exits. */
+  private async drain() {
     this.stopping = true;
     this.stopSignal.abort();
     const drained = await Promise.race([Promise.all(this.loops).then(() => true), sleep(this.o.drainMs).then(() => false)]);
@@ -335,6 +344,7 @@ export class WorkerRuntime {
     }
     for (const lease of this.runLeases.values()) await releaseLease(this.o.pool, lease).catch(() => undefined);
     for (const lease of this.parseLeases.values()) await releaseMaterialParse(this.o.pool, lease).catch(() => undefined);
+    await Promise.all(this.confirmationLoops);
     await this.heartbeat(true);
     this.emit({ kind: 'stopped', drained, released: this.runLeases.size + this.parseLeases.size });
   }
@@ -359,6 +369,10 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   const kinds = (env.BB_WORKER_JOB_KINDS || 'run,parse').split(',').map(k => k.trim());
   if (!kinds.length || kinds.some(k => k !== 'run' && k !== 'parse')) throw new Error('Invalid BB_WORKER_JOB_KINDS');
   const smallSlot=env.BB_UPLOAD_CONFIRMATION_SMALL_SLOT==='1';
+  const confirmationLane=env.BB_UPLOAD_CONFIRMATION_LANE??'general';
+  if(!['general','small','large'].includes(confirmationLane)||confirmationLane!=='general'&&
+    (env.BB_UPLOAD_CONFIRMATION_ENABLED!=='1'||smallSlot||kinds.length!==1||kinds[0]!=='parse'||Number(env.BB_UPLOAD_SPOOL_MAX_BYTES)!==128*1024*1024))
+    throw new Error('A filtered confirmation lane requires a pure parser, one loop and 128 MiB spool');
   if(smallSlot&&(env.BB_UPLOAD_CONFIRMATION_ENABLED!=='1'||kinds.length!==1||kinds[0]!=='parse'||Number(env.BB_UPLOAD_SPOOL_MAX_BYTES)<M1_UPLOAD_LIMITS.fileBytes+UPLOAD_CONFIRMATION_SMALL_MAX_BYTES))
     throw new Error('Reserved upload confirmation slot requires a pure parser and spool capacity for 100 MiB + 16 MiB');
   const runKinds = checkedRunKinds(env.BB_WORKER_RUN_KINDS === undefined ? undefined : env.BB_WORKER_RUN_KINDS.split(',').map(k => k.trim()) as RunKind[]);
@@ -397,6 +411,7 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
     factCandidateProducer: createControlledNativeFactCandidateProducer({ pool }),
     interactiveSlots: intEnv(env, 'BB_WORKER_INTERACTIVE_SLOTS', 1, 0, 4),
     uploadConfirmationEnabled: env.BB_UPLOAD_CONFIRMATION_ENABLED==='1',
+    uploadConfirmationLane: confirmationLane as UploadConfirmationLane,
     uploadConfirmationSmallSlot: smallSlot,
     concurrency: intEnv(env, 'BB_WORKER_CONCURRENCY', 2, 1, 16), parseSlots: intEnv(env, 'BB_WORKER_PARSE_SLOTS', 1, 0, 4), pollMs: intEnv(env, 'BB_WORKER_POLL_MS', 1000, 100, 60000),
     leaseSeconds: intEnv(env, 'BB_WORKER_LEASE_SECONDS', 30, 5, 600), sweepMs: intEnv(env, 'BB_WORKER_SWEEP_MS', 15000, 1000, 600000),

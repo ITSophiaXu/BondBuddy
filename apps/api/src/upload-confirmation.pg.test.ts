@@ -39,19 +39,23 @@ async function fixture(){
   return {pool,blobs,owner,id,container,upload,send,foreign:()=>actor='foreign-'+randomUUID(),own:()=>actor=owner,reopen:async()=>{const previous=app;app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});await previous.close();},close:async()=>{await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();}};
 }
 
-test('small claims filter the immutable byte pin atomically without leasing larger FIFO work',options,async()=>{
+test('small and large claims partition the exact 16 MiB boundary before taking a lease',options,async()=>{
  const f=await fixture();try{
   const large=await f.upload(Buffer.alloc(UPLOAD_CONFIRMATION_SMALL_MAX_BYTES+1,120),'large.docx');
   const edge=await f.upload(Buffer.alloc(UPLOAD_CONFIRMATION_SMALL_MAX_BYTES,121),'edge.docx');
   const small=await f.upload(Buffer.from('synthetic small opaque bytes'),'small.docx');
   for(const u of [large,edge,small])assert.equal((await f.send('POST',u.path,u.declaration,true)).statusCode,202);
+  const largeClaims=await Promise.all(Array.from({length:3},()=>claimUploadConfirmation(f.pool,120,'large')));
+  assert.deepEqual(largeClaims.filter(Boolean).map(c=>c!.uploadId),[large.id]);
+  for(const u of [edge,small])assert.equal((await f.pool.query('SELECT o.delivery_attempts FROM bb_outbox o JOIN bb_upload_confirmations c ON c.outbox_id=o.id WHERE c.upload_id=$1',[u.id])).rows[0].delivery_attempts,0,'large lane never leases or retries a small upload');
   const claims=await Promise.all(Array.from({length:3},()=>claimUploadConfirmation(f.pool,120,'small')));
   assert.deepEqual(claims.filter(Boolean).map(c=>c!.uploadId).sort(),[edge.id,small.id].sort());
-  assert.equal((await f.pool.query('SELECT o.delivery_attempts FROM bb_outbox o JOIN bb_upload_confirmations c ON c.outbox_id=o.id WHERE c.upload_id=$1',[large.id])).rows[0].delivery_attempts,0);
-  const general=await claimUploadConfirmation(f.pool);assert.equal(general?.uploadId,large.id);
+  assert.equal((await f.pool.query('SELECT o.delivery_attempts FROM bb_outbox o JOIN bb_upload_confirmations c ON c.outbox_id=o.id WHERE c.upload_id=$1',[large.id])).rows[0].delivery_attempts,1);
+  assert.equal(await claimUploadConfirmation(f.pool,120,'large'),null);
+  assert.equal(await claimUploadConfirmation(f.pool,120,'small'),null);
   // Finish every lease created by this fixture: claims are intentionally global
   // within the test database, so pending work must not escape to the next test.
-  for(const lease of [...claims.filter((c):c is NonNullable<typeof c>=>c!==null),general!])
+  for(const lease of [...claims,...largeClaims].filter((c):c is NonNullable<typeof c>=>c!==null))
     assert.equal(await processUploadConfirmation(f.pool,f.blobs,lease),'completed');
  }finally{await f.close();}
 });
