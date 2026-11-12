@@ -7,6 +7,7 @@ import {randomBytes} from 'node:crypto';
 import {parseArgs} from 'node:util';
 import {SAMPLE_REF,CASES,writeJson,verifiedFile,verdict,assertLocalContext,assertTestReport} from './support.mjs';
 import {hostEnvironment,bindMount,protectPrivatePath,archiveExecutable} from './platform.mjs';
+import {dependencyOptions,dependencyDockerfile,dependencyBuildArgs,assertNodeBaseUnchanged} from './dependencies.mjs';
 
 const directory=dirname(fileURLToPath(import.meta.url)),repo=resolve(directory,'../..');
 const settingsFile=join(directory,'.local.json');
@@ -27,6 +28,7 @@ delete report.error;
 let context=process.env.BB_RELEASE_DOCKER_CONTEXT||settings.dockerContext||(resume?report.dockerContext:undefined);
 const proxy=process.env.BB_RELEASE_HTTP_PROXY||settings.httpProxy;
 const targetPlatform=process.env.BB_RELEASE_PLATFORM||settings.platform;
+const dependencies=dependencyOptions({nodeImage:process.env.BB_RELEASE_NODE_IMAGE,cachedCodex:process.env.BB_RELEASE_CODEX_TARBALL_IN_NODE_IMAGE,pipIndexUrl:process.env.BB_RELEASE_PIP_INDEX_URL});
 if(targetPlatform&&!/^linux\/(amd64|arm64)$/.test(targetPlatform))throw Error('BB_RELEASE_PLATFORM must be linux/amd64 or linux/arm64');
 if(proxy){const u=new URL(proxy);if(!['http:','https:'].includes(u.protocol)||u.username||u.password)throw Error('Use an unauthenticated local proxy URL for this test environment');}
 const proxyEnv=proxy?{HTTPS_PROXY:proxy,HTTP_PROXY:proxy,https_proxy:proxy,http_proxy:proxy,NO_PROXY:'postgres,azurite,api,localhost,127.0.0.1',no_proxy:'postgres,azurite,api,localhost,127.0.0.1',NODE_USE_ENV_PROXY:'1'}:{};
@@ -82,9 +84,23 @@ try{
   if(!existsSync(secret))throw Error('Configure BB_RELEASE_COPILOT_OAUTH_FILE with your existing Copilot OAuth file');
   copyFileSync(secret,join(out,'copilot-oauth'));protectPrivatePath(join(out,'copilot-oauth'),'file',env);
   const image={api:`bondbuddy-release-api:${report.sha.slice(0,12)}`,worker:`bondbuddy-release-worker:${report.sha.slice(0,12)}`,web:`bondbuddy-release-web:${report.sha.slice(0,12)}`};
+  if(dependencies.nodeImage)report.nodeBase={reference:dependencies.nodeImage,id:sync('docker',['image','inspect','--format','{{.Id}}',dependencies.nodeImage])};
+  if(dependencies.pipIndexUrl)report.pipIndexUrl=dependencies.pipIndexUrl;
+  let dockerfile=join(source,'deploy/m1/Dockerfile');
+  const prepared=dependencyDockerfile(readFileSync(dockerfile,'utf8'),dependencies);
+  report.dockerfileSha256=prepared.originalSha256;
+  if(prepared.adaptation){
+   dockerfile=join(out,'Dockerfile.local-dependencies');writeFileSync(dockerfile,prepared.text);
+   copyFileSync(join(source,'deploy/m1/Dockerfile.dockerignore'),dockerfile+'.dockerignore');
+   report.dependencyAdaptation=prepared.adaptation;
+  }
   writeJson(reportFile,report);
-  // Same production Dockerfile, no source/test overlays in any product container.
-  for(const target of ['worker','api','web'])await command('docker',['build',...(targetPlatform?['--platform',targetPlatform]:[]),'-f',join(source,'deploy/m1/Dockerfile'),'--target',target,'--build-arg',`BB_RELEASE_SHA=${report.sha}`,...Object.entries(proxyEnv).filter(([k])=>k!=='NODE_USE_ENV_PROXY').flatMap(([k,v])=>['--build-arg',`${k}=${v}`]),'-t',image[target],source],`build-${target}.log`);
+  // Fixed candidate sources; explicit local dependency adaptations are recorded above.
+  for(const target of ['worker','api','web']){
+   if(report.nodeBase)assertNodeBaseUnchanged(report.nodeBase,sync('docker',['image','inspect','--format','{{.Id}}',dependencies.nodeImage]));
+   await command('docker',['build',...(targetPlatform?['--platform',targetPlatform]:[]),'-f',dockerfile,'--target',target,'--build-arg',`BB_RELEASE_SHA=${report.sha}`,...dependencyBuildArgs(dependencies),...Object.entries(proxyEnv).filter(([k])=>k!=='NODE_USE_ENV_PROXY').flatMap(([k,v])=>['--build-arg',`${k}=${v}`]),'-t',image[target],source],`build-${target}.log`);
+  }
+  if(report.nodeBase)assertNodeBaseUnchanged(report.nodeBase,sync('docker',['image','inspect','--format','{{.Id}}',dependencies.nodeImage]));
   report.images=Object.fromEntries(Object.entries(image).map(([k,v])=>[k,{tag:v,id:sync('docker',['image','inspect','--format','{{.Id}}',v]),platform:sync('docker',['image','inspect','--format','{{.Os}}/{{.Architecture}}',v])}]));
   const password=randomBytes(20).toString('hex');
   const common={DATABASE_URL:`postgresql://bondbuddy:${password}@postgres:5432/bb_release_smoke`,AZURE_STORAGE_CONNECTION_STRING:'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;',BB_LIBRARY_CONTAINER:'release-private',BB_DEPLOYMENT_TIER:'local',BB_TRIAL_GUARD:'off',BB_RUN_RUNTIME_ENABLED:'1',BB_SUBSCRIPTION_BILLING_ENABLED:'1',BB_PAID_AUTHORING_ENABLED:'1',BB_PAID_REVIEW_ENABLED:'1',BB_TERMS_VERSION:'release-smoke-v1',BB_ALLOWED_ORIGIN:report.baseURL,BB_RELEASE_TEST_INSTANCE:report.project};
