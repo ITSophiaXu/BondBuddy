@@ -228,6 +228,8 @@ for (const [device, width, height] of [['desktop',1440,960],['mobile',390,844]] 
 
 test('financial materials without a reference prospectus preserve saved notes but cannot start authoring', async ({page}) => {
   const f=fixture();f.state.materials.splice(0,1);f.state.project.update_details!.source_prospectuses=[];
+  // This current-policy case uses a unified project; the other fixtures retain their legacy mode.
+  Object.assign(f.state.project.update_details!,{authoring_mode:'unified_v1',has_historical:null});
   await setup(page,f);await expect(page.locator('[data-source-material]')).toHaveCount(0);
   await expect(page.locator('#start-disabled-reason')).toContainText('请先上传并采用一份历史／参考募集书');
   await expect(page.locator('#execute-input')).toBeDisabled();

@@ -89,8 +89,13 @@ async function addReference(page:Page,state:ReturnType<typeof fixture>){
   const file={name:'synthetic-reference.docx',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',buffer:Buffer.from('Synthetic reference prospectus bytes')};
   await page.locator('#prospectus-version-file').setInputFiles(file);
   await expect.poll(()=>state.materials.filter(material=>material.role==='historical').length).toBe(1);
-  await expect(page.locator('#prospectus-status')).toContainText('已保存并自动采用');
   const material=state.materials.find(value=>value.role==='historical')!;
+  // The changed callback remounts this panel, so verify the persisted selected version after that read.
+  const selected=page.locator('[data-prospectus-version="version-'+material.material_id+'"]');
+  await expect(selected).toBeVisible();await expect(selected).toHaveClass(/is-selected/);
+  await expect(selected.locator('[data-prospectus-selection-state]')).toHaveText('本次更新已选用');
+  await expect(selected.locator('.prospectus-version-info > strong')).toHaveText(file.name);
+  await expect(selected.locator('.reference-file-meta')).toContainText('V1');expect(state.selectionRevision).toBe(1);
   expect(material).toMatchObject({filename:file.name,byte_size:file.buffer.length,sha256:createHash('sha256').update(file.buffer).digest('hex')});
   expect(state.currentVersionId).toBe('version-'+material.material_id);
   const source=page.locator('[data-source-material="'+material.material_id+'"]');
@@ -182,7 +187,9 @@ test('unrelated edits preserve old dates and periods; quarter and year changes d
 });
 
 test('disabled reason follows actual upload/save state; capability-off only appears after API rejection',async({page})=>{
-  const state=await install(page);state.preflightOff=true;await page.goto(`/#/projects/${id}`);
+  const state=await install(page);state.preflightOff=true;
+  Object.assign(state.project.update_details!,{authoring_mode:'unified_v1',has_historical:null});
+  await page.goto(`/#/projects/${id}`);
   await expect(page.locator('#start-disabled-reason')).toContainText('请先上传并采用一份历史／参考募集书');await expect(page.locator('#execute-input')).toBeDisabled();
   await expect(page.locator('#execution-message')).toBeEmpty();expect(state.calls.some(c=>c.path.endsWith('/preflight'))).toBe(false);
   await addReference(page,state);await expect(page.locator('#execute-input')).toBeEnabled();
