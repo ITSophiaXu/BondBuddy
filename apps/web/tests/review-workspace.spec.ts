@@ -4,6 +4,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { workspaceSceneArtifacts } from '../../../scripts/pr-gate/workspace-scenes.mjs';
 import { Value } from '@sinclair/typebox/value';
 import { commerceMetadata, OUTCOME_PRICE_VERSION, schemas, INTEGRITY_PRICE, ReviewDraftRequestSchema, ReviewExecutionRequestSchema, ReviewMessageRequestSchema, ReviewPlanRequestSchema, isReviewReport,
   type ReviewWorkspace, type ReviewDraftInput, type ReviewReport, type ReviewEvidenceRef, type ReviewContext, type ReviewMessageRequest,
@@ -13,6 +14,15 @@ import type { Dto } from '../src/api';
 // Real Chromium with an owner-aware synthetic HTTP fixture. Not model, database or Word acceptance.
 const id='synthetic-review-project',now='2026-10-02T10:00:00Z',mime='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const hash=(text:string)=>createHash('sha256').update(text).digest('hex');
+const generatedWorkspaceScenes=workspaceSceneArtifacts();
+async function useGeneratedWorkspaceScenes(page:Page){
+  // The complete producer before the consumers owns these two exact assets.
+  // HTML and JS continue to come from the original prototype input.
+  for(const [name,contentType] of [['workspace-ux-scenes.json','application/json'],['workspace-ux-preview.css','text/css']]){
+    await generatedWorkspaceScenes.read(name);
+    await page.route('**/'+name,async route=>route.fulfill({contentType,body:await generatedWorkspaceScenes.read(name)}));
+  }
+}
 const reply=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:fixtureJson(route,body)});
 const key=(context:ReviewContext)=>JSON.stringify(context);
 const readableMarkdown='# 合成复核报告\n\n## 复核范围与依据\n本轮按 input.json 的 full_review 执行；输入锁与 input_hash 一致。\n材料路径 materials/m0.docx，SHA-256 为内部校验值。\n\n## 财务核对\n**本次结论：** 发现两项需要处理的事项，财务差异需要优先核对。\n\n**核对范围：** 已对照合成募集书与2025年合成审计报告。\n\n### 1. 现金流金额与审计报告不一致\n**原文位置：** 第八章，经营现金流表。\n\n**核对依据：** 合成审计报告。\n\n原文值 | 对照值 | 差异\n--- | --- | ---\n100 | 120 | 20\n\n**修改建议：** 确认口径后统一金额。\n\n### 2. 财务分析中的单位需核对\n**问题说明：** 原文分析使用元，报表使用万元。\n\n**修改建议：** 统一单位后重新核对分析文字。\n\n## 合规与披露\n**本次结论：** 历史名称披露缺少时间依据。\n\n### 3. 历史名称披露待补充证据\n**原文位置：** 第二章，发行人历史沿革。\n\n**待确认事项：** 缺少名称变更日期依据。\n\n**修改建议：** 补充变更文件及生效日期。\n\n## 公开信息核验\n**本次结论：** 公开信息核验未执行，不能据此判断无风险。\n\n**还需确认：** 发行人名称变更及重大诉讼的最新公开记录。\n\n## 建议处理顺序\n1. 核对财务口径\n2. 补充名称变更证据';
@@ -827,14 +837,14 @@ test('synthetic workspace design scenes',async({page})=>{
  await page.reload();await expect(page.locator('#review-progress-bar')).toContainText('正在复核募集书');await capture('progress');
  state.history[0].operation='revision';run.stage='file_authoring';await page.reload();await capture('updating');
  if(process.env.BB_UPLOAD_EVIDENCE)scenes.uploading=JSON.parse(await readFile(process.env.BB_UPLOAD_EVIDENCE+'/uploading-scene.json','utf8'));
- const output='../../product-prototype/public';
- await writeFile(output+'/workspace-ux-scenes.json',JSON.stringify(scenes,null,2)+'\n');
+ const json=JSON.stringify(scenes,null,2)+'\n';
  const css=await page.evaluate(()=>[...document.querySelectorAll('style[data-vite-dev-id]')].map(s=>s.textContent).join('\n'));
- await writeFile(output+'/workspace-ux-preview.css',css);
+ await generatedWorkspaceScenes.publish(json,css);
 });
 
 test('workspace prototype parity at desktop and narrow widths',async({page})=>{
  test.skip(!process.env.BB_WORKSPACE_DESIGN,'Dedicated synthetic design comparison only.');
+ await useGeneratedWorkspaceScenes(page);
  const output=process.env.BB_WORKSPACE_EVIDENCE??'../../docs/acceptance/workspace-ux-20261005';await mkdir(output,{recursive:true});
  for(const name of ['create','materials','results','progress','updating',...(process.env.BB_UPLOAD_EVIDENCE?['uploading']:[])]){
   for(const width of [1360,390]){
@@ -986,6 +996,7 @@ test('review live progress refreshes actual debit and activities, survives reloa
 test('review live design comparison uses independent synthetic markup',async({page})=>{
   const output=process.env.BB_REVIEW_LIVE_EVIDENCE;test.skip(!output,'Optional visual evidence');
   await page.route('http://prototype.test/**',async route=>{const path=new URL(route.request().url()).pathname;if(!/^\/[\w.-]+$/.test(path))return route.fulfill({status:404});return route.fulfill({body:await readFile('../../product-prototype/public'+path),contentType:path.endsWith('.css')?'text/css':path.endsWith('.js')?'text/javascript':path.endsWith('.svg')?'image/svg+xml':path.endsWith('.json')?'application/json':'text/html'});});
+  await useGeneratedWorkspaceScenes(page);
   for(const width of [1440,390])for(const scene of ['materials','running']){
     await page.setViewportSize({width,height:width===1440?960:844});await page.goto('http://prototype.test/'+(scene==='materials'?'workspace-ux.html?scene=materials':'review-live-progress.html'));
     await expect(page.locator(scene==='materials'?'#review-materials-panel':'.review-live-workspace')).toBeVisible();await page.locator('#design-controls').evaluate(el=>(el as HTMLElement).style.display='none');
