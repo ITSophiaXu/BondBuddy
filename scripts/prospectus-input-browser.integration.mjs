@@ -87,6 +87,45 @@ test('synthetic browser upload, adoption and execution preserve the exact source
       if (['http:', 'https:'].includes(url.protocol) && url.origin !== origin) browserExternal.push(url.origin);
     });
     const page = await context.newPage();
+    // Read-only, bounded diagnostics: no request bodies, cookies, headers or URL
+    // queries are recorded. They survive parent cleanup in the normal TAP log.
+    const uploadTrace = [];
+    const trace = value => {
+      uploadTrace.push({ at: new Date().toISOString(), ...value });
+      if (uploadTrace.length > 300) uploadTrace.shift();
+    };
+    const requestMeta = request => {
+      const url = new URL(request.url());
+      return { method: request.method(), path: url.pathname, resource: request.resourceType() };
+    };
+    page.on('request', request => trace({ event: 'request', ...requestMeta(request) }));
+    page.on('response', response => trace({ event: 'response', ...requestMeta(response.request()), status: response.status() }));
+    page.on('requestfailed', request => trace({ event: 'requestfailed', ...requestMeta(request), error: request.failure()?.errorText }));
+    page.on('pageerror', error => trace({ event: 'pageerror', error: error.message.slice(0, 1000) }));
+    await page.addInitScript(() => {
+      const nodes = new WeakMap(); let sequence = 0;
+      const id = node => { if (!nodes.has(node)) nodes.set(node, ++sequence); return nodes.get(node); };
+      const events = [];
+      const record = (event, node) => {
+        if (!(node instanceof HTMLInputElement) || node.type !== 'file') return;
+        events.push({ event, node: id(node), id: node.id, label: node.getAttribute('aria-label'),
+          connected: node.isConnected, disabled: node.disabled, files: [...(node.files ?? [])].map(file => ({ name: file.name, size: file.size })) });
+        if (events.length > 100) events.shift();
+      };
+      for (const event of ['input', 'change']) document.addEventListener(event, e => record(event, e.target), true);
+      new MutationObserver(records => {
+        for (const recordValue of records) for (const [event, nodesChanged] of [['added', recordValue.addedNodes], ['removed', recordValue.removedNodes]])
+          for (const node of nodesChanged) {
+            record(event, node);
+            if (node instanceof Element) for (const input of node.querySelectorAll('input[type="file"]')) record(event, input);
+          }
+      }).observe(document, { subtree: true, childList: true });
+      window.__bbSyntheticUploadObservation = () => ({ events: [...events],
+        inputs: [...document.querySelectorAll('input[type="file"]')].map(node => ({ node: id(node), id: node.id,
+          label: node.getAttribute('aria-label'), connected: node.isConnected, disabled: node.disabled,
+          files: [...(node.files ?? [])].map(file => ({ name: file.name, size: file.size })) })),
+        text: document.body?.innerText.slice(-12000) ?? '' });
+    });
     const username = `bb${randomUUID().replaceAll('-', '').slice(0, 16)}`, password = `Synthetic-${randomUUID()}-Only`;
     // Fixture account setup uses HTTP registration; the browser logs in through the normal UI.
     const registration = await context.request.post(`${origin}/api/v1/auth/register`, {
@@ -123,7 +162,25 @@ test('synthetic browser upload, adoption and execution preserve the exact source
     const projectUrl = page.url();
     const sourceBytes = makeSyntheticDocxFixture({ text: '合成原稿；2024年度；只验证输入链，不是客户资料。' });
     const financialBytes = pdfSample({ tag: 'synthetic-2025-Q3' });
+    const observeUpload = async phase => {
+      const dom = await page.evaluate(() => window.__bbSyntheticUploadObservation());
+      const database = (await pool.query({ text: `SELECT json_build_object(
+        'uploads',(SELECT coalesce(json_agg(json_build_object('id',id,'filename',filename,'state',state,
+          'byte_size',byte_size,'received_bytes',received_bytes,'created_at',created_at)), '[]'::json)
+          FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2),
+        'confirmations',(SELECT coalesce(json_agg(json_build_object('upload_id',upload_id,'state',state,
+          'updated_at',updated_at,'last_error',last_error,'error',error)), '[]'::json)
+          FROM bb_upload_confirmations WHERE owner_user_id=$1 AND project_id=$2),
+        'outbox',(SELECT coalesce(json_agg(json_build_object('id',id,'event_type',event_type,
+          'aggregate_id',aggregate_id,'delivered_at',delivered_at,'lease_token_present',to_jsonb(o)->>'lease_token' IS NOT NULL)), '[]'::json)
+          FROM bb_outbox o WHERE owner_user_id=$1 AND aggregate_id IN
+          (SELECT id FROM bb_uploads WHERE owner_user_id=$1 AND project_id=$2))) value`,
+        values: [owner, projectId], query_timeout: 5000 })).rows[0].value;
+      t.diagnostic('BROWSER_UPLOAD_OBSERVATION ' + JSON.stringify({ phase, projectId, dom, database, trace: uploadTrace }));
+    };
     const uploaded = async (label, name, mimeType, buffer) => {
+      await observeUpload(`before:${name}`);
+      try {
       const pending = page.waitForResponse(r => r.request().method() === 'POST' &&
         r.url().includes(`/projects/${projectId}/materials/uploads/`) && r.url().endsWith('/complete'));
       await page.getByLabel(label, { exact: true }).setInputFiles({ name, mimeType, buffer });
@@ -154,7 +211,13 @@ test('synthetic browser upload, adoption and execution preserve the exact source
       assert.equal(confirmation[0].state, 'completed');
       assert.deepEqual(confirmation[0].result, material);
       assert.ok(confirmation[0].delivered_at);
+      await observeUpload(`after:${name}`);
       return material;
+      } catch (error) {
+        try { await observeUpload(`failed:${name}`); }
+        catch (diagnosticError) { t.diagnostic('BROWSER_UPLOAD_DIAGNOSTIC_FAILED ' + diagnosticError.message); }
+        throw error;
+      }
     };
     const source = await uploaded('募集书新版本文件', 'synthetic-source.docx',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sourceBytes);
