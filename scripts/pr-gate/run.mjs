@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 import { capabilityEnvironment, verifyPreparedCapabilities } from './capabilities.mjs';
 import { initializeHostClient, requestHostExecution } from './host-dispatch-client.mjs';
 import { HOST_ENV_KEYS } from './host-profiles.mjs';
+import { browserInvocation, startBrowserRuntime } from './browser-runtime.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(HERE, '../..');
@@ -301,12 +302,24 @@ async function runSequential(root, group, runner, items, context, workingDirecto
 }
 async function runBrowser(root, items, context) {
   const reportFile = join(context.out, 'playwright-report.json');
-  const remaining = Math.max(context.deadline - Date.now(), 60_000);
-  const execution = await execute('npx', ['playwright', 'test', ...items.map(item => `tests/${basename(item.id)}`), '--reporter=line,json'],
-    { cwd: join(root, 'apps/web'), env: childEnvironment({ PLAYWRIGHT_JSON_OUTPUT_FILE: reportFile, CI: process.env.CI ?? '1' }), timeoutMs: remaining, inherit: true });
+  let runtime, execution, runtimeError;
+  try {
+    if (process.env.PR_GATE_BROWSER_PLAN) runtime = await startBrowserRuntime(root, items, childEnvironment());
+    const invocation = browserInvocation(items, reportFile, runtime?.env ?? childEnvironment());
+    const remaining = Math.max(context.deadline - Date.now(), 60_000);
+    if (runtime) context.browserRuntime = { ...runtime.evidence, invocation: { command: invocation.command, args: invocation.args, cwd: join(root, 'apps/web'), timeout_ms: remaining, started_at: new Date().toISOString() } };
+    execution = await execute(invocation.command, invocation.args,
+      { cwd: join(root, 'apps/web'), env: invocation.env, timeoutMs: remaining, inherit: true });
+    if (runtime) Object.assign(context.browserRuntime.invocation, { finished_at: new Date().toISOString(), exit_code: execution.code, timed_out: execution.timedOut });
+  } catch (error) { runtimeError = error.message; execution ??= { code: null, timedOut: false }; }
+  finally {
+    if (runtime) try { const final = await runtime.cleanup(); context.browserRuntime = { ...final, invocation: context.browserRuntime?.invocation }; }
+      catch (error) { runtimeError = [runtimeError, error.message].filter(Boolean).join('; '); }
+  }
   let report = null;
   try { report = JSON.parse(readFileSync(reportFile, 'utf8')); } catch { /* 没有报告，下面按失败处理 */ }
   const evaluated = evaluatePlaywright(report, items, execution);
+  if (runtimeError) evaluated.problems.push('Browser runtime preparation/cleanup failed: ' + runtimeError);
   for (const result of evaluated.results) result.durationMs = 0;
   return evaluated;
 }
@@ -419,6 +432,7 @@ async function commandRun(options) {
     commit: process.env.GITHUB_SHA ?? null, finishedAt: new Date().toISOString(), status: verdict.status,
     capabilities: context.capabilityRuns,
     host_dispatch: host?.records ?? [],
+    ...(context.browserRuntime ? { browser_runtime: context.browserRuntime } : {}),
     counts: { selected: results.length, passed: verdict.passed, blocking: verdict.blocking.length, tolerated: verdict.tolerated.length, notInCi: plan.reduce((total, part) => total + part.notInCi, 0) },
     problems: verdict.problems, blocking: verdict.blocking, tolerated: verdict.tolerated, recovered: verdict.recovered, skipsAllowed: verdict.skipsAllowed,
     slowest: [...results].sort((a, b) => b.durationMs - a.durationMs).slice(0, 10).filter(row => row.durationMs >= 5000).map(row => ({ id: row.id, durationMs: row.durationMs })),

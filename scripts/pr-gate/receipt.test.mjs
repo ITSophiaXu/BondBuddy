@@ -6,6 +6,7 @@ import { syntheticCapabilities, syntheticCapabilityRuns, syntheticCapabilityServ
 import { CACHE_FILES, OFFLINE_SCHEMA, compareCacheFiles, hash } from './offline-cache.mjs';
 import { syntheticHostDispatch, syntheticHostReferences, syntheticHostSources } from './host-dispatch.test-fixture.mjs';
 import { CORE_SOURCE_SCHEMA } from './core-source.mjs';
+import { syntheticBrowserShard, syntheticBrowserSources } from './browser.test-fixture.mjs';
 
 const matrix = [
   { name: 'api-1', groups: 'api', shard: '1/2' },
@@ -23,6 +24,7 @@ const expected = {
   matrix, exclusions: exclusionsEvidence(rawExclusions),
   host_source_sha256: syntheticHostSources(),
   source_verifier_sha256: 'a'.repeat(64),
+  browser_source_sha256: syntheticBrowserSources(),
 };
 const now = Date.parse('2026-11-11T13:02:00.000Z');
 function fixture() {
@@ -41,21 +43,26 @@ function fixture() {
       commit: expected.commit, tree: expected.tree, verifier_sha256: expected.source_verifier_sha256, execution: { code: 0 },
       started_at: '2026-11-11T13:00:50.000Z', finished_at: '2026-11-11T13:00:51.000Z', raw_source: structuredClone(hostDispatch.runtime.source.raw_source) },
     preparation: PREPARATION_IDS.map(id => ({ id, status: 'passed' })),
-    shards: matrix.map(row => ({
+    shards: matrix.map(row => {
+      const browser = row.groups === 'browser' ? syntheticBrowserShard(expected, row, capabilities, hostDispatch.plan.run_id, hostDispatch.runtime.image_id) : null;
+      return ({
       name: row.name, groups: row.groups, shard: row.shard, exit_code: 0,
+      started_at: '2026-11-11T13:00:00.000Z',
       finished_at: '2026-11-11T13:00:40.000Z',
+      ...(browser ? { browser_services: browser.services } : {}),
       capability_preparation: syntheticCapabilityService(capabilities, row.name),
       summary: {
         schema: 'pr-gate-summary-v1', job: row.name, groups: row.groups.split(','), shard: row.shard,
         expectedJobs: matrix.length, report: false, commit: expected.commit,
         capabilities: row.name === 'worker-1' ? syntheticCapabilityRuns(capabilities, 'apps/worker/') : row.name === 'api-1' ? syntheticCapabilityRuns(capabilities, 'apps/api/') : [],
         host_dispatch: syntheticHostReferences(hostDispatch, row.name),
+        ...(browser ? { browser_runtime: browser.runtime } : {}),
         finishedAt: '2026-11-11T13:00:30.000Z', status: 'passed',
-        counts: { selected: 2, passed: 2, blocking: 0, tolerated: 0, notInCi: row.name === 'browser-1' ? 1 : 0 },
+        counts: { selected: browser?.files.length ?? 2, passed: browser?.files.length ?? 2, blocking: 0, tolerated: 0, notInCi: row.name === 'browser-1' ? 1 : 0 },
         problems: [], blocking: [], tolerated: [], recovered: [], skipsAllowed: [], slowest: [],
         suggestion: { knownFailing: [], allowSkip: [] },
       },
-    })),
+    }); }),
     merge: { exit_code: 0, result: { schema: 'pr-gate-result-v1', status: 'passed', report: false, expected: 8, received: 8, problems: [], failed: [], suggestion: { knownFailing: [], allowSkip: [] } } },
     cleanup: { status: 'passed' }, errors: [],
   };

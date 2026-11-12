@@ -40,6 +40,20 @@ npm run pr-gate
 
 这一切片仍不解决Codex sandbox、OCR/desktop、billing专属服务、真实备份容器、live API浏览器或截图历史基准准备；这些失败/跳过继续按原规则阻断。修改能力脚本后需先做纯Node/Git测试，再排队实际PG/HTTPS/blob回归，最后对完整固定候选运行全量门禁。纯测试或能力预检本身都不是全量pass、真实模型验收或部署证据。
 
+## 浏览器分片的真实本地环境
+
+本地入口为每个 browser 分片保存 `browser-plan.json`：按照原自动发现与取模分片顺序列出全部测试文件、候选源码 SHA-256、每文件 profile 和证据目录。`run.mjs` 仍以原 `npx playwright test <完整分片文件表> --reporter=line,json` 一次执行，沿用原 Playwright 配置、70 分钟分片预算及失败/跳过判定；不逐文件重跑、筛选用例或增加例外。
+
+`browser-profiles.mjs` 明确启用 10 个真实本地 API 文件的原开关：account-live、account-recovery-live、live、register-live、project-management-live、update-form.integration、material-processing.integration、ocr.integration、project-events.integration、project-execution.integration。准备层按需创建独立 PostgreSQL 16，固定为 core 私有网络中的 `127.0.0.1:55433/bondbuddy_local`，执行当前迁移并使用本分片新建的 Azurite。API 使用当前编译产物及正常商业计费语义，不启用历史计费 fixture；实际 worker 解析/OCR 函数由原用例调用，运行消费者和真实模型调用关闭。
+
+所有分片使用 HTTPS `https://127.0.0.1:5173` 的当前 Vite 网页。API 固定为 `http://127.0.0.1:3000`，注册协议版本固定为 `synthetic-web-test-v1`；准备探针实际经过 HTTPS 代理读取协议，并核对严格 CA 校验、PG 端口/数据库/版本。两个 prototype 用例按需启动 `127.0.0.1:4320` 的仓库原型及独立临时状态目录。以上端口均不发布到宿主，不接入现有用户服务。
+
+OCR 分片从 `--host-worker-image` 指定的已有不可变本地镜像复制 Tesseract、完整 ELF 依赖、eng/chi_sim/osd 和 Noto 字体。文件写入本次 core 的专用目录，以独立 ELF loader/library path 调用；逐文件 hash、CPU ABI、真实中文/数字 OCR 探针及测试后的文件复验均进入回执。Windows 传输后的可执行位仅按已校验 manifest 在临时 core 恢复。此步骤无软件安装、下载或宿主设置修改；缺工具/语言包、ABI 不符或探针失败均停止该分片。
+
+浏览器子进程从明确的环境允许清单启动，清除继承的 reference/baseline、旧 evidence 路径、模型/支付凭据、服务地址和 Node 启动钩子，再应用该分片 profile。可选截图用例获得独立证据目录；共用 `BB_UX_EVIDENCE_DIR` 的用例在计划中明确列出 shard 共享目录。不打开历史模式代替当前模式，缺失的历史封存源码、基线或断言仍按原规则真实失败。
+
+`browser-services.json`、`browser/runtime.json` 与原 summary 记录服务身份、实际环境/探针、完整命令、测试和清理时间。最终回执必须与同一 run、commit/tree、原文件表及脚本调用一致，并通过宿主服务清理和 core 原字节复验。小单元、环境预检和局部诊断都不能代替完整 PR gate，更不能代替 `test:release` 的真实模型与质量凭据。
+
 ## 回执与核对
 
 ```sh

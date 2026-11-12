@@ -13,6 +13,8 @@ import { CACHE_FILES, hash, inspectOfflineImage, inspectOfflineContainer, isolat
 import { HOST_PROFILES } from './host-profiles.mjs';
 import { createHostBroker, createHostPlan } from './host-dispatch.mjs';
 import { collectCoreSource } from './core-source.mjs';
+import { parseExclusions } from './run.mjs';
+import { prepareBrowserServices } from './browser-host.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const output = join(root, '.local/pr-gate');
@@ -100,11 +102,15 @@ export function expectedFor(ref) {
   const commit = git(['rev-parse', '--verify', `${ref}^{commit}`]);
   const develop_commit = git(['rev-parse', '--verify', 'origin/develop^{commit}']);
   if (git(['merge-base', commit, develop_commit]) !== develop_commit) throw new Error('Rebase onto the fetched origin/develop before running the gate');
+  const exclusions = parseExclusions(JSON.parse(blob(commit, 'scripts/pr-gate/exclusions.json')));
+  const browserFiles = git(['ls-tree', '-r', '--name-only', commit, '--', 'apps/web/tests']).split('\n')
+    .filter(path => /^apps\/web\/tests\/[^/]+\.spec\.ts$/.test(path) && !exclusions.notInCi.some(entry => entry.expression.test(path))).sort();
   return { commit, tree: git(['rev-parse', `${commit}^{tree}`]), develop_commit,
     matrix: readWorkflow(blob(commit, '.github/workflows/pr-gate.yml').toString()).matrix,
     exclusions: exclusionsEvidence(blob(commit, 'scripts/pr-gate/exclusions.json')),
     cache_files: Object.fromEntries(CACHE_FILES.map(path => [path, hash(blob(commit, path))])),
     host_source_sha256: Object.fromEntries(Object.keys(HOST_PROFILES).map(path => [path, hash(blob(commit, path))])),
+    browser_source_sha256: Object.fromEntries(browserFiles.map(path => [path, hash(blob(commit, path))])),
     source_verifier_sha256: hash(blob(commit, 'scripts/pr-gate/git-snapshot.mjs')) };
 }
 
@@ -330,6 +336,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
     for (const [index, row] of workflow.matrix.entries()) {
       const record = { name: row.name, groups: row.groups, shard: row.shard, started_at: new Date().toISOString(), exit_code: null, summary: null };
       receipt.shards.push(record);
+      let browserServices;
       try {
         if (index) { await removeOwned([postgres, azurite, httpsAzurite], false); await startServices(); }
         await exec(`${row.name}-blob-readiness`, ['node', '--input-type=module', '-e', `import { BlobServiceClient } from '@azure/storage-blob'; const c=BlobServiceClient.fromConnectionString(process.env.BB_TEST_AZURITE_CONNECTION_STRING).getContainerClient('bb-pr-gate-readiness'); for(let i=0;;i++){try{await c.createIfNotExists();await c.deleteIfExists();break;}catch(e){if(i>=29)throw e;await new Promise(r=>setTimeout(r,1000));}}`]);
@@ -337,15 +344,24 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
         mkdirSync(join(directory, 'shards', row.name), { recursive: true });
         await exec(`${row.name}-capability-services`, ['node', 'scripts/pr-gate/capability-runtime.mjs', 'services', row.name, `/evidence/shards/${row.name}/capability-services.json`], { NODE_EXTRA_CA_CERTS: CAPABILITY_PATHS.ca });
         record.capability_preparation = json(join(directory, 'shards', row.name, 'capability-services.json'));
+        if (row.groups === 'browser') {
+          const postgresImage = (await docker(`${row.name}-postgres-image`, ['inspect', '--format', '{{.Image}}', postgres], { capture: true })).text;
+          browserServices = await prepareBrowserServices({ candidate: expected, runId: id, row, sourceBlob: path => blob(expected.commit, path),
+            core: { runner, exec, docker, start, removeOwned }, images: { postgres: postgresImage, native: workerImage }, evidenceRoot: directory, sourceRoot: receipt.host_source.directory });
+          record.browser_services = browserServices.evidence;
+        }
         const env = { BB_QA_TEST_OUTPUT_DIRECTORY: `/tmp/${row.name}/qa`, BB_INTEGRITY_TEST_OUTPUT_DIRECTORY: `/tmp/${row.name}/integrity`, BB_WORKPAPER_ASSESSMENT_TEST_OUTPUT_DIRECTORY: `/tmp/${row.name}/workpaper-assessment`,
           PR_GATE_CAPABILITIES_FILE: '/evidence/capabilities/prepared.json',
           PR_GATE_HOST_PLAN: '/evidence/host-dispatch/plan.json', PR_GATE_HOST_DIRECTORY: '/evidence/host-dispatch',
+          ...(browserServices?.env ?? {}),
           ...(row.render === 'true' ? { BONDBUDDY_RUN_AUTHORIZED_DOCX_REGRESSION: '1', BB_REQUIRE_DOCUMENT_RENDER: '1' } : {}) };
         const hostRun = hostBroker.startShard(row.name);
         try { record.exit_code = (await exec(`${row.name}-tests`, ['node', 'scripts/pr-gate/run.mjs', 'run', '--group', row.groups, '--shard', row.shard, '--name', row.name, '--jobs', String(workflow.matrix.length), '--out', `/evidence/shards/${row.name}`], env, { allowFailure: true })).code; }
         finally { await hostRun.finish(); receipt.host_dispatch = hostBroker.snapshot(); }
         record.summary = json(join(directory, 'shards', row.name, `summary-${row.name}.json`));
       } catch (error) { record.error = error.message; receipt.errors.push(`${row.name}: ${error.message}`); }
+      finally { if (browserServices) try { await browserServices.cleanup(); record.browser_services = browserServices.evidence; }
+        catch (error) { receipt.errors.push(`${row.name} browser services cleanup: ${error.message}`); } }
       record.finished_at = new Date().toISOString(); save();
       if (interrupted) break;
     }
