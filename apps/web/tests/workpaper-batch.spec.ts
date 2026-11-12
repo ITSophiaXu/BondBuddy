@@ -206,14 +206,16 @@ test('delivered explanations are visible and batch pause/resume do not submit an
  await page.getByRole('button',{name:'当前文件后暂停'}).click();await expect(page.getByRole('button',{name:'继续文件包'})).toBeVisible();await page.getByRole('button',{name:'继续文件包'}).click();
  await expect(page.getByRole('button',{name:'当前文件后暂停'})).toBeVisible();
  const b=state.data.batches[0];b.state='complete';b.items.forEach(i=>{i.state='succeeded';i.explanation={filename:i.entry.title+'-不适用说明.docx',sha256:sha};});
- await page.clock.fastForward(5100);await expect(page.getByRole('button',{name:'下载不适用说明'})).toHaveCount(3);
+ // TaskPoller uses a 10-second visible-page interval. Advance one full
+ // interval so this checks delivered results rather than the old 5s cadence.
+ await page.clock.fastForward(10_100);await expect(page.getByRole('button',{name:'下载不适用说明'})).toHaveCount(3);
  await expect(page.locator('#wp-batches')).toContainText('0 积分');expect(state.requests).toHaveLength(0);expect(state.assessmentRequests).toHaveLength(0);expect(state.data.batches).toHaveLength(1);
 });
 
 test('empty selection explains why submit is disabled and never sends requests',async({page})=>{
  const state=await setupPreparation(page,4);await openPreparation(page);await page.locator('#fg-edit-scope').click();await page.locator('#fg-select-none').click();
  await expect(page.locator('#fg-confirm')).toBeDisabled();await expect(page.locator('.fg-footer')).toContainText('本批 0 份文件');
- await expect.soft(page.locator('.fg-preparation')).toContainText(/请.*(?:选择|勾选).*(?:文件|底稿)/);
+ await expect.soft(page.locator('.fg-footer')).toContainText(/请.*(?:选择|勾选).*(?:文件|底稿)/);
  expect(state.generation.quotes).toEqual([]);expect(state.generation.submissions).toEqual([]);expect(state.requests).toEqual([]);expect(state.assessmentRequests).toEqual([]);
 });
 

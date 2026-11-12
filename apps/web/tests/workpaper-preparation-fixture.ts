@@ -3,7 +3,7 @@ import {AUTOMATIC_PRICE_VERSION, AUTOMATIC_TASK_TARIFF, WORKPAPER_PRICE, emptyFi
   type FileGenerationWorkspace, type FileGenerationSubmit, type FileGenerationPreparation,
   type WorkpaperWorkspace, type WorkpaperBatch, type ProjectFileWorkspace} from '@bondbuddy/contracts';
 import {fixtureBody, fixtureRequest} from './billing-fixture-wire';
-import {ids, now, sha} from './generation-entry-fixtures';
+import {now, sha} from './generation-entry-fixtures';
 
 type Snapshot = {request:FileGenerationSubmit; preparation:FileGenerationPreparation; source:NonNullable<ProjectFileWorkspace['source']>};
 
