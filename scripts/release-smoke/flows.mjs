@@ -5,6 +5,8 @@ import {sha256} from './support.mjs';
 import {uploadFixture} from './uploads.mjs';
 import {assertExecutionBudget,journeyDeadline,expirePendingJourneys} from './budget.mjs';
 
+import {qaProspectusFixture,confirmQaProspectus} from './qa-prospectus.mjs';
+
 export async function runJourneys({out,report,privateData,save}){
  report.browserInputTransport=process.platform==='win32'?'original bytes, filename and MIME via Playwright buffer':'original file path';save();
  assertExecutionBudget(report.executionBudget);
@@ -124,13 +126,8 @@ export async function runJourneys({out,report,privateData,save}){
      await expect(page.locator('#qa-manage-prospectus')).toBeVisible();
      if(!(await page.locator('.qa-project-materials').innerText()).includes('募集说明书已就绪')){
      await page.locator('#qa-manage-prospectus').click();await upload(page.getByLabel('募集书新版本文件',{exact:true}),f.dongying);
-     await expect.poll(async()=>await page.locator('#qa-prospectus-panel [data-current-summary="true"],#qa-prospectus-panel [data-use-saved]').count(),{timeout:60000}).toBeGreaterThan(0);
-     const use=page.locator('#qa-prospectus-panel [data-use-saved]');const explicitSelection=await use.count();if(explicitSelection)await use.click();
-     const dialog=page.locator('dialog[open]').filter({has:page.locator('#qa-prospectus-panel')});
-     if(explicitSelection)await expect(dialog).toHaveCount(0,{timeout:60000});
-     else await dialog.getByRole('button',{name:'关闭',exact:true}).click();
      }
-     await page.locator('#qa-refresh-materials').click();await expect(page.locator('.qa-project-materials')).toContainText('募集说明书已就绪');
+     entry.qaProspectus=await confirmQaProspectus(page,{projectURL:entry.projectURL,expected:qaProspectusFixture(f.dongying)});save();
      await upload(page.locator('#qa-upload'),f.questions);
      await expect(page.locator('.qa-question-list article')).toHaveCount(7,{timeout:180000});entry.prepared=true;save();
     }

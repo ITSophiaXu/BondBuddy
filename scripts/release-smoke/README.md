@@ -4,6 +4,8 @@
 
 本地 worker 启用异步上传确认消费者，在自身 parse 卷内使用独立、有界的暂存目录。上传检查等待同一原文件声明的最终 HTTP 200 并核对 material/upload ID、版本、持久时间、原文件名、字节数和 SHA-256；HTTP 202 仅表示已排队，不能当作材料已保存。等待预算与网页现有的十分钟确认预算一致。Windows 上传使用 Playwright 原始字节、文件名和 MIME，避免长路径在 Edge 中变成空文件；报告明确记录这项浏览器传输适配，不改样本字节。
 
+问答募集书上传会自动采用并关闭弹窗。脚本以项目当前稿、指定物料版本的 HTTP 200 持久记录、原文件名/大小/SHA-256 和“已纳入本轮材料”确认就绪，再刷新项目资料并重新加载页面核对相同版本；不等待已经消失的弹窗元素，也不以弹窗关闭作为成功。上传完成回执的原校验仍保留；恢复已就绪项目时只读核对来源，不重复上传。
+
 ## 运行
 
 需要 Node 22+、Git、Docker（Linux containers）、Compose、Buildx、Playwright 浏览器，以及可用于现有适配器的 Copilot 授权。Mac 可用 Docker Desktop / Colima，Windows 在 PowerShell 使用 Docker Desktop 的 WSL 2 Linux 后端；业务容器始终是 Linux。
