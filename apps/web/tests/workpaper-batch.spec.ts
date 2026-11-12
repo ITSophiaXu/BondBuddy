@@ -34,9 +34,6 @@ const assertNoPreflight=async(page:import('@playwright/test').Page)=>{
 };
 // Real result route: preparation now uses FileGenerationPanel, while historical
 // and unified batches both use WorkpaperPanel for queue controls and downloads.
-async function existingBatch(page:import('@playwright/test').Page,count:number){
- const s=await setup(page,count);s.data.batches.push({batch_id:'batch-1',topic_id:'topic-workpapers',catalogue_id:'catalogue-1',revision:1,state:'running',start_mode:'direct',source:s.source,total_points:0,charged_points:0,created_at:now,error:null,items:s.data.catalogues[0].entries.map(entry=>({entry,run_id:null,state:'queued',stage:null,attempt:1,error:null,artifacts:[]}))});return s;
-}
 test('current-file recovery opens the exact paused run and its controls through the real material route',async({page})=>{
  const s=await existingBatch(page,2),b=s.data.batches[0],w=generationWorkspace().workspace;
  b.state='cancelled';b.topic_id=w.topic.topic_id;b.items[0].run_id='paused-current';b.items[0].state='paused';
