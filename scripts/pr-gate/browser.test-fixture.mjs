@@ -3,8 +3,9 @@ import { BROWSER_API_PROFILES, BROWSER_API_ORIGIN, BROWSER_ORIGIN, BROWSER_PROTO
 import { browserFilesForShard } from './browser-host.mjs';
 import { browserInvocation } from './browser-runtime.mjs';
 import { BROWSER_TOOLS_ROOT, BROWSER_TOOLS_SCHEMA } from './browser-tools.mjs';
+import { REFERENCE_TESTS } from './browser-reference-source.mjs';
 
-export const syntheticBrowserSources = () => Object.fromEntries([...Object.keys(BROWSER_API_PROFILES), ...BROWSER_PROTOTYPE_FILES].sort().map(file => [file, browserHash(file)]));
+export const syntheticBrowserSources = () => Object.fromEntries([...new Set([...Object.keys(BROWSER_API_PROFILES), ...BROWSER_PROTOTYPE_FILES, ...REFERENCE_TESTS])].sort().map(file => [file, browserHash(file)]));
 const stamp = second => `2026-11-11T13:00:${String(second).padStart(2, '0')}.000Z`;
 export function syntheticBrowserShard(expected, row, capabilities, runId, imageId) {
   const files = browserFilesForShard(expected, row), plan = createBrowserPlan({ candidate: expected, runId, shard: row.name, files, sourceSha256: path => expected.browser_source_sha256[path] });

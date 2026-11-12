@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { REFERENCE_PROFILE_SHA256, verifyReferenceRecord, verifyReferenceRuns } from './browser-reference-source.mjs';
 
 export const CAPABILITY_SCHEMA = 'pr-gate-capabilities-v1';
 export const PARSER_106 = Object.freeze({
@@ -42,7 +43,7 @@ export const FILE_CAPABILITIES = Object.freeze(Object.fromEntries([
   ['apps/worker/src/target-period-candidate-snapshot-repository.test.ts', { id: 'dedicated-pg', env: { TARGET_PERIOD_CANDIDATE_TEST_DATABASE_URL: DEDICATED_DATABASE } }],
 ].sort(([a], [b]) => a.localeCompare(b))));
 export const capabilityHash = value => createHash('sha256').update(typeof value === 'string' || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest('hex');
-export const PROFILE_SHA256 = capabilityHash(FILE_CAPABILITIES);
+export const PROFILE_SHA256 = capabilityHash({ files: FILE_CAPABILITIES, reference_components: REFERENCE_PROFILE_SHA256 });
 export const MANAGED_ENV_KEYS = Object.freeze([...Object.values(sampleFlags), 'BB_PARSER_106_SOURCE_ROOT', 'TARGET_PERIOD_CANDIDATE_TEST_DATABASE_URL', 'NODE_EXTRA_CA_CERTS']);
 const sha = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const oid = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
@@ -52,6 +53,7 @@ export function verifyPreparedCapabilities(prepared, expected, now = Date.now())
   assert.equal(prepared.status, 'passed');
   for (const key of ['commit', 'tree']) assert.ok(oid(expected?.[key]) && prepared[key] === expected[key], `Capability ${key} differs from candidate`);
   assert.equal(prepared.profile_sha256, PROFILE_SHA256, 'Capability profile changed');
+  verifyReferenceRecord(prepared.reference_components);
   assert.deepEqual(prepared.parser?.source, PARSER_106, 'Historical parser source changed');
   assert.equal(prepared.parser.archive_sha256, PARSER_106.archive_sha256, 'Historical parser archive changed');
   assert.equal(prepared.parser.root, CAPABILITY_PATHS.parser);
@@ -87,6 +89,7 @@ export function verifyCapabilityRuns(receipt, expected, now = Date.now()) {
   // Completed evidence remains historical evidence after its disposable TLS
   // certificate expires. It had to be valid for the actual completed run.
   const prepared = verifyPreparedCapabilities(receipt.capabilities, expected, Date.parse(receipt.finished_at));
+  if (expected.matrix?.some(row => row.groups === 'browser')) verifyReferenceRuns(receipt, expected);
   for (const shard of receipt.shards) {
     const service = shard.capability_preparation;
     assert.equal(service?.status, 'passed', 'Capability service readiness missing');
