@@ -1,0 +1,889 @@
+{
+  "issue": 1125,
+  "classification": "test fixture maintenance; not an additional product bug",
+  "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+  "commit": "aaf4acd89f9a7a86f5111b66656c955891fdf30d",
+  "tree": "2b232a52fa11bfab6a260afcedc4b4b58b68c120",
+  "helperBlob": "ae31c871b79d2f89467dffe3a49c769f795cfc36",
+  "originalGate": {
+    "run": "1794418350450-38278111",
+    "commit": "d3028cb2f5e98e5b9a9ad36deb68e461de4a6df2",
+    "tests": 7,
+    "pass": 3,
+    "fail": 4,
+    "skip": 0,
+    "files": [
+      {
+        "path": "apps/worker/src/codex-durable.test.ts",
+        "baseBlob": "a7136d776a55a828c0f10d75cb1cdfe1a04df084",
+        "originalBlob": "a7136d776a55a828c0f10d75cb1cdfe1a04df084",
+        "identical": true,
+        "originalTap": {
+          "tests": 1,
+          "pass": 0,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "originalLog": {
+          "path": "C:\\Users\\yingx\\OneDrive - Microsoft\\Documents\\ChatGPT\\BondDraftAI\\BondBuddy-pr1013-local-gate-20261111\\.local\\pr-gate\\runs\\1794418350450-38278111\\shards\\worker-1\\logs\\apps__worker__src__codex-durable.test.ts.log",
+          "sha256": "f8b152f593c9ae360fb252dc739f0bb99d1bd70a0c4bc78072ef43522e63fb8c"
+        }
+      },
+      {
+        "path": "apps/worker/src/reconcile-run.test.ts",
+        "baseBlob": "941703140fa1d283ae9e91f889318a7d0ba357a5",
+        "originalBlob": "941703140fa1d283ae9e91f889318a7d0ba357a5",
+        "identical": true,
+        "originalTap": {
+          "tests": 1,
+          "pass": 0,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "originalLog": {
+          "path": "C:\\Users\\yingx\\OneDrive - Microsoft\\Documents\\ChatGPT\\BondDraftAI\\BondBuddy-pr1013-local-gate-20261111\\.local\\pr-gate\\runs\\1794418350450-38278111\\shards\\worker-1\\logs\\apps__worker__src__reconcile-run.test.ts.log",
+          "sha256": "2f1551d53878ba4a5a7d470da23ac00f364c0249bca428d911c0fc63c3290139"
+        }
+      },
+      {
+        "path": "apps/worker/src/runtime-interactive-slots.pg.test.ts",
+        "baseBlob": "dc282e5e740ce131e31619024fe93626cebdd94d",
+        "originalBlob": "dc282e5e740ce131e31619024fe93626cebdd94d",
+        "identical": true,
+        "originalTap": {
+          "tests": 2,
+          "pass": 1,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "originalLog": {
+          "path": "C:\\Users\\yingx\\OneDrive - Microsoft\\Documents\\ChatGPT\\BondDraftAI\\BondBuddy-pr1013-local-gate-20261111\\.local\\pr-gate\\runs\\1794418350450-38278111\\shards\\worker-1\\logs\\apps__worker__src__runtime-interactive-slots.pg.test.ts.log",
+          "sha256": "2470935cec9069b54b1f0d1b3419fe10a5a7ca84d0128bd47d28d4b087b65eb6"
+        }
+      },
+      {
+        "path": "apps/worker/src/runtime-isolation.test.ts",
+        "baseBlob": "7a2749005118e5516fc07829c8626f87b37d2615",
+        "originalBlob": "7a2749005118e5516fc07829c8626f87b37d2615",
+        "identical": true,
+        "originalTap": {
+          "tests": 3,
+          "pass": 2,
+          "fail": 1,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "originalLog": {
+          "path": "C:\\Users\\yingx\\OneDrive - Microsoft\\Documents\\ChatGPT\\BondDraftAI\\BondBuddy-pr1013-local-gate-20261111\\.local\\pr-gate\\runs\\1794418350450-38278111\\shards\\worker-2\\logs\\apps__worker__src__runtime-isolation.test.ts.log",
+          "sha256": "d5c73357fe1f55dd7397e5d9c4cbc6fa50f36778076f310a2ac2114270fa01d6"
+        }
+      }
+    ]
+  },
+  "exactSource": {
+    "files": 6430,
+    "manifestSha256": "e4ca1c6b75bc36d0e33b8f8df859c020f33a344ec98cc97955b70f725fa5270b",
+    "baseArchiveSha256": "8dc4f5e9082c34ab6369736776508e4f47f5e872edcc67efcd26be229352581e",
+    "deltaArchiveSha256": "9514d18b1118a98a6d8159243e2f401ac39a8d69977805d8e18d056f2797fe6c"
+  },
+  "rawAudit": {
+    "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+    "head": "aaf4acd89f9a7a86f5111b66656c955891fdf30d",
+    "typescript": "5.9.3",
+    "testsRun": false,
+    "raw": {
+      "commit": "aaf4acd89f9a7a86f5111b66656c955891fdf30d",
+      "tree": "2b232a52fa11bfab6a260afcedc4b4b58b68c120",
+      "rawFiles": 6430,
+      "rawMatch": true
+    },
+    "helper": {
+      "path": "apps/api/src/test-authoring-source.ts",
+      "blob": "ae31c871b79d2f89467dffe3a49c769f795cfc36",
+      "reusedUnchanged": true
+    },
+    "originalAssertions": 157,
+    "retainedAssertions": 157,
+    "addedAssertions": 4,
+    "tests": 7,
+    "records": [
+      {
+        "path": "apps/worker/src/codex-durable.test.ts",
+        "originalAssertions": 64,
+        "retainedAssertions": 64,
+        "addedAssertions": [
+          "assert.equal(input.json().input_revision, 1, 'fixture retains its original first locked revision')"
+        ],
+        "tests": [
+          {
+            "expression": "test",
+            "name": "synthetic durable Codex attempts write #79 rows, re-ask under lease, pause on timeout and never resend after a crash",
+            "options": "{ skip: !connection || !blobConnection }"
+          }
+        ],
+        "protectedNodeCount": 1,
+        "unchangedWholeTests": [],
+        "sourceSha256": "1a6033c8d1beb337e4387c8b13d7d32b4fca5c95a485832c921b575e9174638d"
+      },
+      {
+        "path": "apps/worker/src/reconcile-run.test.ts",
+        "originalAssertions": 54,
+        "retainedAssertions": 54,
+        "addedAssertions": [
+          "assert.equal(input.json().input_revision,1,'fixture retains its original first locked revision')"
+        ],
+        "tests": [
+          {
+            "expression": "test",
+            "name": "private reconciliation lists, retries and fails exact owned attempts with one audit/outbox transition",
+            "options": "{skip:!connection}"
+          }
+        ],
+        "protectedNodeCount": 0,
+        "unchangedWholeTests": [],
+        "sourceSha256": "43c103d665770b93e4c51807fb94ff1a56f039502b3baddacdf28fc5d6c986ac"
+      },
+      {
+        "path": "apps/worker/src/runtime-interactive-slots.pg.test.ts",
+        "originalAssertions": 8,
+        "retainedAssertions": 8,
+        "addedAssertions": [
+          "assert.equal(input.json().input_revision,1,'fixture retains its original first locked revision')"
+        ],
+        "tests": [
+          {
+            "expression": "test",
+            "name": "interactive slot configuration is bounded and can be disabled",
+            "options": null
+          },
+          {
+            "expression": "test",
+            "name": "long document work cannot monopolize QA, question recognition or consistency checks",
+            "options": "{skip:!connection,timeout:30000}"
+          }
+        ],
+        "protectedNodeCount": 1,
+        "unchangedWholeTests": [
+          0
+        ],
+        "sourceSha256": "35d0c38fe74887b1de07f63c8bb6f0fb9ff8d86041e14ca9e6b2d7efe1c0f00e"
+      },
+      {
+        "path": "apps/worker/src/runtime-isolation.test.ts",
+        "originalAssertions": 31,
+        "retainedAssertions": 31,
+        "addedAssertions": [
+          "assert.equal(input.json().input_revision, 1, 'fixture retains its original first locked revision')"
+        ],
+        "tests": [
+          {
+            "expression": "test",
+            "name": "worker filters reject invalid configuration and isolate review assistants",
+            "options": null
+          },
+          {
+            "expression": "test",
+            "name": "long review reserves only review capacity; updates run, claims are fenced and recovery stays in its group",
+            "options": "{ skip: !connection }"
+          },
+          {
+            "expression": "test",
+            "name": "readiness requires fresh authoring, review and parsing groups independently",
+            "options": "{ skip: !connection }"
+          }
+        ],
+        "protectedNodeCount": 4,
+        "unchangedWholeTests": [
+          0,
+          2
+        ],
+        "sourceSha256": "6b3ed5240a9edcf2ac8bc4532b30f84e445749febabf8964317ed35e22969cc9"
+      }
+    ]
+  },
+  "localAudit": {
+    "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+    "head": "aaf4acd89f9a7a86f5111b66656c955891fdf30d",
+    "typescript": "5.9.3",
+    "testsRun": false,
+    "raw": null,
+    "helper": {
+      "path": "apps/api/src/test-authoring-source.ts",
+      "blob": "ae31c871b79d2f89467dffe3a49c769f795cfc36",
+      "reusedUnchanged": true
+    },
+    "originalAssertions": 157,
+    "retainedAssertions": 157,
+    "addedAssertions": 4,
+    "tests": 7,
+    "records": [
+      {
+        "path": "apps/worker/src/codex-durable.test.ts",
+        "originalAssertions": 64,
+        "retainedAssertions": 64,
+        "addedAssertions": [
+          "assert.equal(input.json().input_revision, 1, 'fixture retains its original first locked revision')"
+        ],
+        "tests": [
+          {
+            "expression": "test",
+            "name": "synthetic durable Codex attempts write #79 rows, re-ask under lease, pause on timeout and never resend after a crash",
+            "options": "{ skip: !connection || !blobConnection }"
+          }
+        ],
+        "protectedNodeCount": 1,
+        "unchangedWholeTests": [],
+        "sourceSha256": "1a6033c8d1beb337e4387c8b13d7d32b4fca5c95a485832c921b575e9174638d"
+      },
+      {
+        "path": "apps/worker/src/reconcile-run.test.ts",
+        "originalAssertions": 54,
+        "retainedAssertions": 54,
+        "addedAssertions": [
+          "assert.equal(input.json().input_revision,1,'fixture retains its original first locked revision')"
+        ],
+        "tests": [
+          {
+            "expression": "test",
+            "name": "private reconciliation lists, retries and fails exact owned attempts with one audit/outbox transition",
+            "options": "{skip:!connection}"
+          }
+        ],
+        "protectedNodeCount": 0,
+        "unchangedWholeTests": [],
+        "sourceSha256": "43c103d665770b93e4c51807fb94ff1a56f039502b3baddacdf28fc5d6c986ac"
+      },
+      {
+        "path": "apps/worker/src/runtime-interactive-slots.pg.test.ts",
+        "originalAssertions": 8,
+        "retainedAssertions": 8,
+        "addedAssertions": [
+          "assert.equal(input.json().input_revision,1,'fixture retains its original first locked revision')"
+        ],
+        "tests": [
+          {
+            "expression": "test",
+            "name": "interactive slot configuration is bounded and can be disabled",
+            "options": null
+          },
+          {
+            "expression": "test",
+            "name": "long document work cannot monopolize QA, question recognition or consistency checks",
+            "options": "{skip:!connection,timeout:30000}"
+          }
+        ],
+        "protectedNodeCount": 1,
+        "unchangedWholeTests": [
+          0
+        ],
+        "sourceSha256": "35d0c38fe74887b1de07f63c8bb6f0fb9ff8d86041e14ca9e6b2d7efe1c0f00e"
+      },
+      {
+        "path": "apps/worker/src/runtime-isolation.test.ts",
+        "originalAssertions": 31,
+        "retainedAssertions": 31,
+        "addedAssertions": [
+          "assert.equal(input.json().input_revision, 1, 'fixture retains its original first locked revision')"
+        ],
+        "tests": [
+          {
+            "expression": "test",
+            "name": "worker filters reject invalid configuration and isolate review assistants",
+            "options": null
+          },
+          {
+            "expression": "test",
+            "name": "long review reserves only review capacity; updates run, claims are fenced and recovery stays in its group",
+            "options": "{ skip: !connection }"
+          },
+          {
+            "expression": "test",
+            "name": "readiness requires fresh authoring, review and parsing groups independently",
+            "options": "{ skip: !connection }"
+          }
+        ],
+        "protectedNodeCount": 4,
+        "unchangedWholeTests": [
+          0,
+          2
+        ],
+        "sourceSha256": "6b3ed5240a9edcf2ac8bc4532b30f84e445749febabf8964317ed35e22969cc9"
+      }
+    ]
+  },
+  "runtime": {
+    "node": "v22.23.3",
+    "locale": {
+      "LANG": "C.UTF-8",
+      "LC_ALL": "C.UTF-8"
+    },
+    "typescript": "5.9.3",
+    "pg": "8.23.0",
+    "fastify": "5.12.5",
+    "cachedLockSha256": "69ce90eb0ff8cb11578c419ad3c5a1221da099fdb5fce17c190aef2052255701",
+    "sourceLockSha256": "81833914ef0ba232e249040685bb93ac1e3b63e640b960d2d217985fa4b5ed8c",
+    "sourceLockCRLFSha256": "69ce90eb0ff8cb11578c419ad3c5a1221da099fdb5fce17c190aef2052255701",
+    "lockMatches": true
+  },
+  "images": {
+    "runner": "sha256:e081d9ca27e8ef07e6a658183b50b15a568a8126a67d70a3065ff630dfb7fdb9",
+    "azurite": "sha256:647c63a91102a9d8e8000aab803436e1fc85fbb285e7ce830a82ee5d6661cf37",
+    "postgres": "sha256:20edbde7749f822887a1a022ad526fde0a47d6b2be9a8364433605cf65099416"
+  },
+  "startupAttempts": [
+    {
+      "attempt": 1,
+      "stage": "docker network create --internal bb-issue1125-net",
+      "exitCode": 1,
+      "error": "all predefined address pools have been fully subnetted",
+      "containersCreated": 0,
+      "testsRun": false,
+      "resolution": "Read-only inspection found Docker allocations in 172.17.0.0/16 through 172.31.0.0/16 and 192.168.0.0/20 through 192.168.240.0/20; Windows LAN is 10.30.0.0/17. Use an explicit internal 10.238.112.0/24 subnet, with no published ports. No unrelated network was changed or removed."
+    }
+  ],
+  "result": {
+    "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+    "commit": "aaf4acd89f9a7a86f5111b66656c955891fdf30d",
+    "tree": "2b232a52fa11bfab6a260afcedc4b4b58b68c120",
+    "harnessSha256": {
+      "run.mjs": "e5d496847f0af95738e0ac7fba0c2daeb2007057f3e9dae2e7cd152972ceabf7",
+      "start.mjs": "be333df066d60f81b100e13f524788deba2c1fc61f08172e6bb3306c58218568",
+      "cleanup.mjs": "53cd174be679d05b248f8243321281cf3353e8fe85cca22acabb8db8fd49056a",
+      "assertion-audit.mjs": "dca77544f9787d866f6ca27165031e5117fccb1e351173b641c5ce72e024ef67"
+    },
+    "started": "2026-11-12T06:22:37.443Z",
+    "finished": "2026-11-12T06:24:26.619Z",
+    "results": [
+      {
+        "name": "source-audit",
+        "command": [
+          "node",
+          "/evidence/assertion-audit.mjs"
+        ],
+        "pid": 22,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 1497,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 5507508\nuser_usec 350402\nsystem_usec 5157105\nnice_usec 0\nnr_periods 186\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "467173376"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 7359663\nuser_usec 1584969\nsystem_usec 5774693\nnice_usec 0\nnr_periods 201\nnr_throttled 1\nthrottled_usec 18581\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "618930176"
+        }
+      },
+      {
+        "name": "build-contracts",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/contracts"
+        ],
+        "pid": 29,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 10037,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 7538433\nuser_usec 1620640\nsystem_usec 5917793\nnice_usec 0\nnr_periods 203\nnr_throttled 1\nthrottled_usec 18581\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "618930176"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 25024959\nuser_usec 18238056\nsystem_usec 6786903\nnice_usec 0\nnr_periods 303\nnr_throttled 38\nthrottled_usec 2508764\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866623488"
+        }
+      },
+      {
+        "name": "build-domain",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/domain"
+        ],
+        "pid": 48,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 7510,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 25026564\nuser_usec 18238056\nsystem_usec 6788507\nnice_usec 0\nnr_periods 303\nnr_throttled 38\nthrottled_usec 2508764\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866623488"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 38647997\nuser_usec 30948622\nsystem_usec 7699374\nnice_usec 0\nnr_periods 378\nnr_throttled 78\nthrottled_usec 3831149\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866623488"
+        }
+      },
+      {
+        "name": "build-rule-pack-registry",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/rule-pack-registry"
+        ],
+        "pid": 67,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 2791,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 38649436\nuser_usec 30949775\nsystem_usec 7699661\nnice_usec 0\nnr_periods 378\nnr_throttled 78\nthrottled_usec 3831149\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866623488"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 43538230\nuser_usec 35366623\nsystem_usec 8171607\nnice_usec 0\nnr_periods 406\nnr_throttled 91\nthrottled_usec 4381806\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866623488"
+        }
+      },
+      {
+        "name": "build-rule-applicability-context",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/rule-applicability-context"
+        ],
+        "pid": 86,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 2889,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 43539305\nuser_usec 35367496\nsystem_usec 8171809\nnice_usec 0\nnr_periods 406\nnr_throttled 91\nthrottled_usec 4381806\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866623488"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 48479001\nuser_usec 39855047\nsystem_usec 8623954\nnice_usec 0\nnr_periods 435\nnr_throttled 104\nthrottled_usec 4772163\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866623488"
+        }
+      },
+      {
+        "name": "build-api-production",
+        "command": [
+          "node",
+          "node_modules/typescript/bin/tsc",
+          "-p",
+          "apps/api/tsconfig.issue1125.json"
+        ],
+        "pid": 105,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 20197,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 48480895\nuser_usec 39856940\nsystem_usec 8623954\nnice_usec 0\nnr_periods 435\nnr_throttled 104\nthrottled_usec 4772163\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866623488"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 80534441\nuser_usec 70285685\nsystem_usec 10248756\nnice_usec 0\nnr_periods 637\nnr_throttled 147\nthrottled_usec 7802485\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1230913536"
+        }
+      },
+      {
+        "name": "build-worker-targets",
+        "command": [
+          "node",
+          "node_modules/typescript/bin/tsc",
+          "-p",
+          "apps/worker/tsconfig.issue1125.json"
+        ],
+        "pid": 112,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 12405,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 80536262\nuser_usec 70285685\nsystem_usec 10250577\nnice_usec 0\nnr_periods 637\nnr_throttled 147\nthrottled_usec 7802485\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1230913536"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 102145069\nuser_usec 90517702\nsystem_usec 11627367\nnice_usec 0\nnr_periods 761\nnr_throttled 193\nthrottled_usec 9442574\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1230913536"
+        }
+      },
+      {
+        "name": "migrate",
+        "command": [
+          "node",
+          "db/migrate.mjs"
+        ],
+        "pid": 123,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 6623,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 102185071\nuser_usec 90557224\nsystem_usec 11627846\nnice_usec 0\nnr_periods 762\nnr_throttled 193\nthrottled_usec 9442574\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1230913536"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 102837970\nuser_usec 90988425\nsystem_usec 11849544\nnice_usec 0\nnr_periods 826\nnr_throttled 193\nthrottled_usec 9442574\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1230913536"
+        }
+      },
+      {
+        "name": "codex-durable",
+        "command": [
+          "node",
+          "--test",
+          "--test-reporter=tap",
+          "--test-concurrency=1",
+          "apps/worker/dist/codex-durable.test.js"
+        ],
+        "pid": 134,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 7797,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 102838825\nuser_usec 90989182\nsystem_usec 11849642\nnice_usec 0\nnr_periods 826\nnr_throttled 193\nthrottled_usec 9442574\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1230913536"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 108962259\nuser_usec 95983827\nsystem_usec 12978431\nnice_usec 0\nnr_periods 901\nnr_throttled 194\nthrottled_usec 9524916\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1230913536"
+        }
+      },
+      {
+        "name": "reconcile-run",
+        "command": [
+          "node",
+          "--test",
+          "--test-reporter=tap",
+          "--test-concurrency=1",
+          "apps/worker/dist/reconcile-run.test.js"
+        ],
+        "pid": 215,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 6453,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 108966090\nuser_usec 95987658\nsystem_usec 12978431\nnice_usec 0\nnr_periods 901\nnr_throttled 194\nthrottled_usec 9524916\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1230913536"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 114954987\nuser_usec 101170260\nsystem_usec 13784726\nnice_usec 0\nnr_periods 965\nnr_throttled 194\nthrottled_usec 9524916\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1230913536"
+        }
+      },
+      {
+        "name": "runtime-interactive-slots.pg",
+        "command": [
+          "node",
+          "--test",
+          "--test-reporter=tap",
+          "--test-concurrency=1",
+          "apps/worker/dist/runtime-interactive-slots.pg.test.js"
+        ],
+        "pid": 233,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 6014,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 114956745\nuser_usec 101171808\nsystem_usec 13784937\nnice_usec 0\nnr_periods 966\nnr_throttled 194\nthrottled_usec 9524916\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1230913536"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 120644004\nuser_usec 106155579\nsystem_usec 14488425\nnice_usec 0\nnr_periods 1020\nnr_throttled 196\nthrottled_usec 9684256\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1230913536"
+        }
+      },
+      {
+        "name": "runtime-isolation",
+        "command": [
+          "node",
+          "--test",
+          "--test-reporter=tap",
+          "--test-concurrency=1",
+          "apps/worker/dist/runtime-isolation.test.js"
+        ],
+        "pid": 251,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 6950,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 120646404\nuser_usec 106155579\nsystem_usec 14490824\nnice_usec 0\nnr_periods 1020\nnr_throttled 196\nthrottled_usec 9684256\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1230913536"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 127990281\nuser_usec 112751731\nsystem_usec 15238550\nnice_usec 0\nnr_periods 1086\nnr_throttled 199\nthrottled_usec 9890287\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1230913536"
+        }
+      }
+    ]
+  },
+  "taps": [
+    {
+      "name": "codex-durable",
+      "expected": 1,
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "complete": true
+    },
+    {
+      "name": "reconcile-run",
+      "expected": 1,
+      "tests": 1,
+      "pass": 1,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "complete": true
+    },
+    {
+      "name": "runtime-interactive-slots.pg",
+      "expected": 2,
+      "tests": 2,
+      "pass": 2,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "complete": true
+    },
+    {
+      "name": "runtime-isolation",
+      "expected": 3,
+      "tests": 3,
+      "pass": 3,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0,
+      "todo": 0,
+      "complete": true
+    }
+  ],
+  "testElapsedMs": 27214,
+  "remainingClones": [],
+  "cleanup": {
+    "timestamp": "2026-11-12T06:25:04.472Z",
+    "testFinished": "2026-11-12T06:24:26.619Z",
+    "resources": [
+      {
+        "id": "a1a6645eec6cb9d02f5ca9bcc0f227c32b4c799f474a7435a9d849e336171204",
+        "name": "/bb-issue1125-pg",
+        "image": "sha256:20edbde7749f822887a1a022ad526fde0a47d6b2be9a8364433605cf65099416",
+        "cpu": 1,
+        "memoryBytes": 536870912,
+        "ports": {},
+        "status": "running"
+      },
+      {
+        "id": "a011db650606e39102e567181e639976884578884368c3226be7b160d2fd58aa",
+        "name": "/bb-issue1125-azurite",
+        "image": "sha256:647c63a91102a9d8e8000aab803436e1fc85fbb285e7ce830a82ee5d6661cf37",
+        "cpu": 0.5,
+        "memoryBytes": 268435456,
+        "ports": {},
+        "status": "running"
+      },
+      {
+        "id": "a44934ccb31d8f26f7221c63bacbf9ddf094e02f6e5aee915d58377c2eff3724",
+        "name": "/bb-issue1125-runner",
+        "image": "sha256:e081d9ca27e8ef07e6a658183b50b15a568a8126a67d70a3065ff630dfb7fdb9",
+        "cpu": 2,
+        "memoryBytes": 2415919104,
+        "ports": {},
+        "status": "running"
+      }
+    ],
+    "runnerProcessesBeforeRemoval": "PID                 COMMAND             COMMAND\n91739               docker-init         /sbin/docker-init -- sleep infinity\n91762               sleep               sleep infinity",
+    "network": {
+      "id": "1f51d7b69701e8b0e1d41a10ea8f2e58d5a9e56d0e41781ec6982410c0d3d18f",
+      "name": "bb-issue1125-net",
+      "internal": true
+    },
+    "removal": "a1a6645eec6cb9d02f5ca9bcc0f227c32b4c799f474a7435a9d849e336171204\na011db650606e39102e567181e639976884578884368c3226be7b160d2fd58aa\na44934ccb31d8f26f7221c63bacbf9ddf094e02f6e5aee915d58377c2eff3724",
+    "networkRemoval": "1f51d7b69701e8b0e1d41a10ea8f2e58d5a9e56d0e41781ec6982410c0d3d18f",
+    "absent": [
+      {
+        "id": "a1a6645eec6cb9d02f5ca9bcc0f227c32b4c799f474a7435a9d849e336171204",
+        "name": "/bb-issue1125-pg",
+        "absent": true
+      },
+      {
+        "id": "a011db650606e39102e567181e639976884578884368c3226be7b160d2fd58aa",
+        "name": "/bb-issue1125-azurite",
+        "absent": true
+      },
+      {
+        "id": "a44934ccb31d8f26f7221c63bacbf9ddf094e02f6e5aee915d58377c2eff3724",
+        "name": "/bb-issue1125-runner",
+        "absent": true
+      }
+    ],
+    "networkAbsent": true
+  },
+  "logs": [
+    {
+      "localRaw": "original-codex-durable.test.tap",
+      "display": "original-codex-durable.test.tap",
+      "rawSha256": "f8b152f593c9ae360fb252dc739f0bb99d1bd70a0c4bc78072ef43522e63fb8c",
+      "displaySha256": "0fd47f45221a5b83571430801921f3d1734abf58e7aed0a27604ee9b37996a77",
+      "normalization": "CRLF to LF and trailing display whitespace only; local raw bytes retained"
+    },
+    {
+      "localRaw": "original-reconcile-run.test.tap",
+      "display": "original-reconcile-run.test.tap",
+      "rawSha256": "2f1551d53878ba4a5a7d470da23ac00f364c0249bca428d911c0fc63c3290139",
+      "displaySha256": "7e5b48b1ccf17d9ae22575ec37b4063425a558e08c0fe44c45006f785141cd58",
+      "normalization": "CRLF to LF and trailing display whitespace only; local raw bytes retained"
+    },
+    {
+      "localRaw": "original-runtime-interactive-slots.pg.test.tap",
+      "display": "original-runtime-interactive-slots.pg.test.tap",
+      "rawSha256": "2470935cec9069b54b1f0d1b3419fe10a5a7ca84d0128bd47d28d4b087b65eb6",
+      "displaySha256": "de8ffa7d6bdb337f22fb15fb2fb319f20711d819050ecf7d77259c5efc5421db",
+      "normalization": "CRLF to LF and trailing display whitespace only; local raw bytes retained"
+    },
+    {
+      "localRaw": "original-runtime-isolation.test.tap",
+      "display": "original-runtime-isolation.test.tap",
+      "rawSha256": "d5c73357fe1f55dd7397e5d9c4cbc6fa50f36778076f310a2ac2114270fa01d6",
+      "displaySha256": "97ef85c1d0dd314cd02a9c3a0e91af249f2deaf4b960341f08707fd640cc4401",
+      "normalization": "CRLF to LF and trailing display whitespace only; local raw bytes retained"
+    },
+    {
+      "localRaw": "codex-durable.log",
+      "display": "final-codex-durable.tap",
+      "rawSha256": "06e35b3bccf39adcb0099567886fad0ed9a03a09a55eec3f627d719a2d2ed866",
+      "displaySha256": "06e35b3bccf39adcb0099567886fad0ed9a03a09a55eec3f627d719a2d2ed866",
+      "normalization": "CRLF to LF and trailing display whitespace only; local raw bytes retained"
+    },
+    {
+      "localRaw": "reconcile-run.log",
+      "display": "final-reconcile-run.tap",
+      "rawSha256": "4c0145b884653d52e4e9ac5268afd27d14a77507eef931a058ac18b2e67ab6de",
+      "displaySha256": "4c0145b884653d52e4e9ac5268afd27d14a77507eef931a058ac18b2e67ab6de",
+      "normalization": "CRLF to LF and trailing display whitespace only; local raw bytes retained"
+    },
+    {
+      "localRaw": "runtime-interactive-slots.pg.log",
+      "display": "final-runtime-interactive-slots.pg.tap",
+      "rawSha256": "b2f2424f5913a480cf2d3e3fb97d6fa34dc9a17fb61a8db4a2644bfb55299aa2",
+      "displaySha256": "b2f2424f5913a480cf2d3e3fb97d6fa34dc9a17fb61a8db4a2644bfb55299aa2",
+      "normalization": "CRLF to LF and trailing display whitespace only; local raw bytes retained"
+    },
+    {
+      "localRaw": "runtime-isolation.log",
+      "display": "final-runtime-isolation.tap",
+      "rawSha256": "1fa9f18891120bfd00533a34396ad2d5c6cc071e1a54b62229a4a6b59e0a6f05",
+      "displaySha256": "1fa9f18891120bfd00533a34396ad2d5c6cc071e1a54b62229a4a6b59e0a6f05",
+      "normalization": "CRLF to LF and trailing display whitespace only; local raw bytes retained"
+    }
+  ],
+  "categoryA": {
+    "total": 54,
+    "exactSourceDirectedPassed": 15,
+    "candidateOverlayPassed": 2,
+    "remainingWithoutEvidence": 37,
+    "original749FileGateStillFailed": true
+  },
+  "merged": false,
+  "deployed": false,
+  "userAccepted": false
+}
