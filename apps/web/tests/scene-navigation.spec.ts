@@ -1,4 +1,5 @@
 import {expect,test,type Page} from '@playwright/test';
+import {fixtureBody} from './billing-fixture-wire';
 import {INTEGRITY_PRICE,PROJECT_DOCUMENT_CATALOG,type IntegrityWorkspace} from '@bondbuddy/contracts';
 
 import {fixture as qaFixture,install as installQa,projectId as qaExecution,otherProjectId as qaOriginal,answerId as qaAnswer,assertFixture as assertQa,checked} from './project-qa-continuation-fixtures';
@@ -11,7 +12,7 @@ async function fixture(page:Page){
   const integrity:IntegrityWorkspace={draft,revision:1,price:INTEGRITY_PRICE,rounds:[{run_id:'check-1',round_id:'check-1',operation:'check',sequence:1,state:'succeeded',stage:null,created_at:now,manifest:{version:'integrity-round-v1',operation:'check',round_id:'check-1',project_name:'执行工作区',draft,price_version:INTEGRITY_PRICE.version,points:5000,records:[],evidence_ids:[]},records:[],evidence:[],artifact_id:null,artifacts:[],charged_points:5000,reserved_points:0}]};
   await page.route('**/api/v1/**',async route=>{
     const req=route.request(),path=new URL(req.url()).pathname.replace('/api/v1',''),method=req.method(),body=req.postData()?req.postDataJSON():undefined;calls.push({path,method,body});
-    const json=(value:unknown)=>route.fulfill({json:value});
+    const json=(value:unknown)=>route.fulfill({json:fixtureBody(route,value)});
     if(path==='/me')return json({user_id:'scene-owner',session_status:'active'});
     if(path==='/account')return json({user_id:'scene-owner',username:'sample_user',phone_masked:null,status:'active',created_at:now,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});
     if(path==='/credits/balance')return json({enabled:true,available:20000,frozen:0});
@@ -40,10 +41,17 @@ test('scene navigation keeps the original project through QA history and next-ro
 });
 
 test('scene navigation keeps integrity history and free exports in the original project',async({page})=>{
-  const state=await fixture(page);await page.goto(`/#integrity?project=${execution}&run=check-1&return_project=${original}`);
+  const state=await fixture(page);
+  const originalRead=page.waitForResponse(response=>{const url=new URL(response.url());return response.request().method()==='GET'&&url.pathname===`/api/v1/projects/${execution}/integrity`&&url.searchParams.get('run_id')==='check-1';});
+  await page.goto(`/#integrity?project=${execution}&run=check-1&return_project=${original}`);
+  const originalResponse=await originalRead;expect(originalResponse.status()).toBe(200);
+  expect(await originalResponse.json()).toMatchObject({price:{points:'5000',version:INTEGRITY_PRICE.version},rounds:[{run_id:'check-1',round_id:'check-1',operation:'check',charged_points:'5000',reserved_points:'0',manifest:{points:'5000',price_version:INTEGRITY_PRICE.version}}]});
   await expect(page.getByRole('link',{name:'项目文件 →'})).toHaveAttribute('href',`#/projects/${original}/files`);
   await page.getByRole('button',{name:'重新导出底稿 · 免费'}).click();await expect(page.locator('#integrity-export-free-confirm')).toBeVisible();await expectScope(page,'integrity','check-1');expect(state.calls.filter(c=>c.method==='POST')).toEqual([]);
+  const exportRead=page.waitForResponse(response=>{const url=new URL(response.url());return response.request().method()==='GET'&&url.pathname===`/api/v1/projects/${execution}/integrity`&&url.searchParams.get('run_id')==='export-2';});
   await page.locator('#integrity-export-free-confirm').click();await expectScope(page,'integrity','export-2');
+  const exportResponse=await exportRead;expect(exportResponse.status()).toBe(200);
+  expect(await exportResponse.json()).toMatchObject({rounds:[{run_id:'export-2',round_id:'check-1',operation:'export',charged_points:'0',reserved_points:'0',manifest:{points:'0',price_version:INTEGRITY_PRICE.version}},{run_id:'check-1',round_id:'check-1',operation:'check',charged_points:'5000',reserved_points:'0',manifest:{points:'5000',price_version:INTEGRITY_PRICE.version}}]});
   await page.getByRole('link',{name:'返回名单与历史'}).click();await expectScope(page,'integrity',null);
   await page.locator('.integrity-history').filter({hasText:'第 1 次任务'}).click();await expectScope(page,'integrity','check-1');
   expect(state.calls.filter(c=>c.method==='POST').map(c=>c.path)).toEqual([`/projects/${execution}/integrity/runs/check-1/exports`]);
