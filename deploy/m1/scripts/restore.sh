@@ -6,7 +6,11 @@
 # verifies every file's sha256 (and db.dump against manifest.txt) before anything is stopped.
 source "$(dirname "$0")/lib.sh"
 src="${1:?usage: restore.sh <backup-dir> | blob:<backup-id>}"
-export BB_IMAGE_TAG="${BB_IMAGE_TAG:-$(current_tag)}"
+retained_tag="$(current_tag)"
+export BB_IMAGE_TAG="${BB_IMAGE_TAG:-$retained_tag}"
+[ -n "$retained_tag" ] && [ "$BB_IMAGE_TAG" = "$retained_tag" ] || {
+  echo 'restore requires the retained current image tag; use deploy.sh or rollback.sh to change releases' >&2; exit 2
+}
 if [[ "$src" == blob:* ]]; then
   id="${src#blob:}"
   [[ "$id" =~ ^[0-9]{8}T[0-9]{6}Z-[A-Za-z0-9._-]{1,64}$ ]] || { echo "invalid backup id $id" >&2; exit 2; }
