@@ -7,7 +7,7 @@ import {dirname,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {verifyReport,verifyRollbackReport} from './verify.mjs';
 import {sha256} from './support.mjs';
-import {candidateImageContract,imageTargetsForRole} from './image-contract.mjs';
+import {candidateImageContract,imageTargetsForRole,requiresConfirmationConfiguration} from './image-contract.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
 export const targetsFor=imageTargetsForRole;
@@ -46,12 +46,15 @@ export function candidateIdentity(commit,git){
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  try{
-  const args=process.argv.slice(2),option=args.at(-1)?.startsWith('--confirmation=')?args.pop():null;
-  const selection=option?.slice('--confirmation='.length)??'source';
+  const args=process.argv.slice(2),options={};
+  while(args.at(-1)?.startsWith('--')){const option=args.pop(),match=/^--(confirmation|confirmation-role)=(.+)$/.exec(option);assert.ok(match&&!Object.hasOwn(options,match[1]),'Invalid or duplicated confirmation option');options[match[1]]=match[2];}
+  const selection=options.confirmation??'source',confirmationRole=options['confirmation-role']??'disabled';
   const [mode,ref,filename,scope,logFile]=args;
   assert.ok(['reuse','verify','verify-rollback'].includes(mode)&&ref&&filename&&scope&&(mode!=='verify-rollback'||logFile),'Usage: verify-images.mjs reuse|verify <commit> <report> all|main|execution | verify-rollback <commit> <report> <scope> <releases.log>');
   const git=args=>execFileSync('git',args,{cwd:root,windowsHide:true}),expected=candidateIdentity(ref,git),raw=readFileSync(filename,'utf8');
   const report=mode==='verify-rollback'?verifyRollbackReport(raw,expected,readFileSync(logFile,'utf8'),Date.now(),scope==='all'?undefined:scope):verifyReport(JSON.parse(raw),expected);
+  const modernConfiguration=requiresConfirmationConfiguration(scope,selection,confirmationRole);
+  if(!expected.imageContract.confirmation&&modernConfiguration)throw Error('Protected confirmation service/lane configuration requires newer source; an older worker-only candidate needs an explicitly verified topology transition');
   const docker=args=>execFileSync('docker',args,{encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','pipe']});
   const images=verifyInstalledImages(report,expected,scope,{docker,reuse:mode==='reuse',selection});
   process.stdout.write(JSON.stringify({commit:expected.commit,tree:expected.tree,images})+'\n');

@@ -4,6 +4,7 @@
 # runs migrations, starts the stack and smokes it. Releases do not create backups.
 source "$(dirname "$0")/lib.sh"
 BB_RELEASE_CONFIRMATION_SELECTION=disabled
+BB_RELEASE_CONFIRMATION_ROLE=disabled
 if [ "$(env_value BB_NON_PRODUCTION_TEST_CHANNEL)" = enabled ] && [ "$(env_value BB_DEPLOYMENT_TIER)" != preprod ]; then
   echo 'non-production test channel requires BB_DEPLOYMENT_TIER=preprod' >&2
   exit 2

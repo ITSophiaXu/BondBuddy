@@ -2,6 +2,7 @@
 # Usage: export-images-role.sh main|execution <git-sha> <output.tar.gz> [beijing|direct|disabled]
 set -euo pipefail
 BB_RELEASE_CONFIRMATION_SELECTION=source
+BB_RELEASE_CONFIRMATION_ROLE=disabled
 role="${1:?role required}"; ref="${2:?git-sha required}"; output="${3:?output archive required}"
 case "$role" in main) targets=(api worker web egress);; execution)
  targets=(worker egress pg-tunnel)

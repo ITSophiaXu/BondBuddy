@@ -42,3 +42,12 @@ test('legacy rollout has no implicit rollback waiver or image reconstruction fal
  assert.equal(verifyRollbackReadiness({candidate,current:candidate.slice(0,12),scope:'main'}).status,'same_candidate');
  assert.throws(()=>verifyRollbackReadiness({candidate,current:'',scope:'other'}));
 });
+test('new active configuration does not add a nonexistent image to the previous source inventory',()=>{
+ for(const [scope,selection,confirmationRole] of [['execution','active','size-split'],['main','disabled','size-split']]){
+  const f=fixture(scope);assert.throws(()=>verifyRollbackReadiness({...f,selection,confirmationRole}),/Previous worker-only images and original receipts are valid.*service\/lane support/);
+  const inspected=f.calls.filter(a=>a[0]==='image');assert.ok(inspected.length>0);assert.ok(inspected.every(a=>!a[2].includes('upload-confirmation')));
+  assert.ok(f.calls.every(a=>['image','version'].includes(a[0])),'no service is stopped or changed');
+ }
+ const main=fixture('main');assert.equal(verifyRollbackReadiness({...main,selection:'disabled',confirmationRole:'execution'}).status,'verified','main general-off configuration uses only supported legacy settings');
+ const absent=fixture('execution');delete absent.qualityRaw;assert.throws(()=>verifyRollbackReadiness({...absent,selection:'active',confirmationRole:'size-split'}),/rollback evidence/);assert.equal(absent.calls.length,0);
+});

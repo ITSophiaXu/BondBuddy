@@ -104,18 +104,19 @@ test('resuming a lost final HTTP receipt polls its original completed upload wit
   const r=fixture(),p=r.uploadConfirmation,mode=p.modes[1],now=Date.now();r.sha=expected.commit;r.baseURL='http://localhost:5288';
   mode.status='pending';mode.startedAt=new Date(now-5000).toISOString();mode.deadlineAt=new Date(now-5000+CONFIRMATION_BUDGET_MS).toISOString();
   p.controllerSha256=sha256(readFileSync(join(directory,'upload-confirmation-preflight.mjs')));
-  const rows=new Map();
+  const rows=new Map(),logPolls=new Map();let observationQueries=0;
   for(const [i,path] of [small,large].entries()){
    const u=mode.uploads[i],bytes=readFileSync(path);u.sha256=sha256(bytes);u.bytes=bytes.length;u.bytesPutAt=new Date(now-1000).toISOString();u.confirmationStartedAt=u.bytesPutAt;
    Object.assign(u.httpReceipt,{sha256:u.sha256,byte_size:u.bytes});Object.assign(u.database,{sha256:u.sha256,material_sha256:u.sha256,byte_size:String(u.bytes),material_bytes:String(u.bytes),result:structuredClone(u.httpReceipt)});rows.set(u.uploadId,u.database);
   }
+  const rawPhases=structuredClone(mode.uploads.flatMap(u=>u.phases));
   delete mode.uploads[1].httpReceipt;const originalId=mode.uploads[1].uploadId,deadline=mode.deadlineAt,calls=[];
   const client={async post(path){calls.push(path);if(path==='/api/v1/auth/login')return {status:()=>200,json:async()=>({user_id:'owner'})};
    assert.equal(path,`/api/v1/projects/${mode.projectId}/materials/uploads/${originalId}/complete`);return {status:()=>200,json:async()=>rows.get(originalId).result};},async put(){throw Error('Must not repeat PUT');},async storageState(){return {cookies:[{name:'bb_csrf',value:'synthetic'}]};},async dispose(){}};
   const args={report:r,privateData:{account:{username:'synthetic',password:'synthetic'},fixtures:{financial:[small,large]}},save(){},directory,requestFactory:async()=>client,configure(){throw Error('Must not recreate live mode');},snapshot:async()=>mode.runtime,
-   logs:async(containerId)=>mode.uploads.flatMap(u=>u.phases.filter(e=>e.containerId===containerId).map(JSON.stringify)).join('\n'),
-   execReadOnly:async request=>({rows:[rows.get(request.values[2])]})};
-  await runConfirmationPreflight(args);assert.equal(mode.uploads[1].uploadId,originalId);assert.equal(mode.deadlineAt,deadline);assert.equal(calls.length,2);assert.equal(mode.status,'passed');
+   logs:async(containerId)=>{const n=(logPolls.get(containerId)??0)+1;logPolls.set(containerId,n);return rawPhases.filter(e=>e.containerId===containerId&&(n>1||e.phase!=='commit')).map(JSON.stringify).join('\n');},
+   execReadOnly:async request=>{observationQueries++;const row=rows.get(request.values[2]);return {rows:[observationQueries===1?{...row,drained:false}:row]};}};
+  await runConfirmationPreflight(args);assert.equal(mode.uploads[1].uploadId,originalId);assert.equal(mode.deadlineAt,deadline);assert.equal(calls.length,2);assert.equal(mode.status,'passed');assert.ok(mode.uploads[0].observationPolls>=2,'read-only observation waits for drain/log visibility');
   await runConfirmationPreflight(args);assert.equal(calls.length,3,'completed modes only log in; no upload is sent again');
   mode.status='pending';await assert.rejects(runConfirmationPreflight({...args,snapshot:async()=>({...mode.runtime,worker:{...mode.runtime.worker,containerId:'f'.repeat(64)}})}),/runtime changed/);
   mode.startedAt=new Date(now-CONFIRMATION_BUDGET_MS-1000).toISOString();mode.deadlineAt=new Date(now-1000).toISOString();await assert.rejects(runConfirmationPreflight(args),/budget expired/);

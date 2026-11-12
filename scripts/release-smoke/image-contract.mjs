@@ -14,6 +14,12 @@ export function confirmationRequired(expected){
  return c.confirmation;
 }
 export function requiredImageTargets(expected){return ['api','worker','web',...(confirmationRequired(expected)?['upload-confirmation']:[])];}
+export function requiresConfirmationConfiguration(scope,selection,role){
+ assert.ok(['all','main','execution'].includes(scope)&&['source','active','disabled'].includes(selection)&&['disabled','execution','size-split'].includes(role),'Unknown protected confirmation configuration');
+ // Main in execution/general mode only disables its old confirmation loop;
+ // size-split additionally needs the new small-lane semantics on main.
+ return selection==='active'||role==='size-split'||scope!=='main'&&role==='execution';
+}
 export function imageTargetsForRole(scope,expected,selection='source'){
  assert.ok(['all','main','execution'].includes(scope),'Unknown deployment image scope');
  assert.ok(['source','active','disabled'].includes(selection),'Unknown confirmation service selection');

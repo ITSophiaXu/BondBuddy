@@ -96,10 +96,19 @@ export async function runConfirmationPreflight({report,privateData,save,director
      if(response.status()===200){upload.httpReceipt=await response.json();save();break;}
      assert.equal((await response.json()).upload_id,upload.uploadId);await new Promise(r=>setTimeout(r,Math.min(500,confirmationDeadline(mode))));
     }
-    const rows=(await query()).rows;assert.equal(rows.length,1);assertConfirmationReceipt(upload,rows[0],owner,mode.projectId);upload.database=rows[0];
-    // Inspect every active confirmation consumer, so a receipt from the wrong lane cannot pass.
-    upload.phases=[];
-    for(const service of Object.keys(mode.runtime).filter(k=>k!=='api'))upload.phases.push(...confirmationPhases(await logs(mode.runtime[service].containerId,mode.startedAt),service,mode.runtime[service].containerId,upload.uploadId));
+    // HTTP 200 observes the committed DB transaction, but the consumer writes
+    // its final timing log after that transaction returns. Observe rather than
+    // assuming Docker's log transport has already flushed the final phase.
+    for(;;){
+     confirmationDeadline(mode);const rows=(await query()).rows;assert.ok(rows.length<=1);upload.database=rows[0]??null;
+     if(upload.database?.state==='failed')throw Error('Accepted upload has a failed confirmation record');
+     upload.phases=[];
+     for(const service of Object.keys(mode.runtime).filter(k=>k!=='api'))upload.phases.push(...confirmationPhases(await logs(mode.runtime[service].containerId,mode.startedAt),service,mode.runtime[service].containerId,upload.uploadId));
+     upload.observationPolls=(upload.observationPolls??0)+1;save();
+     if(upload.database?.state==='completed'&&upload.database.drained===true&&['read','inspection','commit'].every(phase=>upload.phases.some(e=>e.phase===phase)))break;
+     await new Promise(r=>setTimeout(r,Math.min(500,confirmationDeadline(mode))));
+    }
+    assertConfirmationReceipt(upload,upload.database,owner,mode.projectId);
     upload.finishedAt=new Date().toISOString();save();
    }
    confirmationDeadline(mode);assert.deepEqual(await snapshot(name),mode.runtime,'Preflight runtime changed before completion');mode.finishedAt=new Date().toISOString();mode.status='passed';save();
