@@ -136,7 +136,8 @@ test('dirty invocation invalidates a prior passed receipt, merges missing result
   try {
     const directory = join(fixture, 'scripts/pr-gate'); mkdirSync(directory, { recursive: true });
     for (const name of ['local.mjs', 'run.mjs', 'receipt.mjs', 'workflow.mjs', 'capabilities.mjs', 'parser-source.mjs', 'identity-parser-source.mjs', 'offline-cache.mjs', 'host-profiles.mjs', 'host-dispatch.mjs', 'host-dispatch-client.mjs', 'host-dispatch-protocol.mjs', 'core-source.mjs',
-      'browser-host.mjs', 'browser-profiles.mjs', 'browser-receipt.mjs', 'browser-runtime.mjs', 'browser-tools.mjs', 'browser-reference-source.mjs', 'internal-network.mjs', 'browser-upload-confirmation.mjs', 'docker-evidence.mjs']) copyFileSync(new URL(name, import.meta.url), join(directory, name));
+      'browser-host.mjs', 'browser-profiles.mjs', 'browser-receipt.mjs', 'browser-runtime.mjs', 'browser-tools.mjs', 'browser-reference-source.mjs', 'internal-network.mjs', 'browser-upload-confirmation.mjs', 'docker-evidence.mjs',
+      'browser-artifacts.mjs', 'browser-dispatch.mjs', 'browser-historical-source.mjs', 'browser-historical-dependencies.mjs', 'browser-historical-runtime.mjs', 'browser-qa-collector.mjs']) copyFileSync(new URL(name, import.meta.url), join(directory, name));
     mkdirSync(join(directory, 'host-adapters'));
     for (const name of ['native.mjs', 'storage-postgres.mjs', 'native-services.mjs', 'native-services-runtime.mjs'])
       copyFileSync(new URL('host-adapters/' + name, import.meta.url), join(directory, 'host-adapters', name));
@@ -148,8 +149,10 @@ test('dirty invocation invalidates a prior passed receipt, merges missing result
     writeFileSync(join(fixture, 'uncommitted.txt'), 'dirty');
     const result = spawnSync(process.execPath, [join(directory, 'local.mjs'), 'run'], { cwd: fixture, encoding: 'utf8', timeout: 30_000 });
     assert.equal(result.status, 1, result.stdout + result.stderr);
+    assert.match(result.stderr, /^\[pr-gate\] Commit all tracked\/untracked changes before npm run pr-gate$/m, result.stdout + result.stderr);
     const receipt = JSON.parse(readFileSync(join(out, 'receipt.json'), 'utf8'));
     assert.equal(receipt.status, 'failed'); assert.equal(receipt.clean_tree, false);
+    assert.equal(receipt.errors[0], 'Commit all tracked/untracked changes before npm run pr-gate');
     assert.equal(receipt.merge.result.received, 0); assert.equal(receipt.merge.result.status, 'failed');
     assert.equal(receipt.preparation.length, 0); assert.equal(receipt.cleanup.status, 'passed');
     assert.equal(existsSync(join(out, 'run.lock')), false);
