@@ -2,8 +2,14 @@ import {chromium,expect} from '@playwright/test';
 import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {join,basename} from 'node:path';
 import {sha256} from './support.mjs';
+import {assertExecutionBudget,journeyDeadline,expirePendingJourneys} from './budget.mjs';
 
 export async function runJourneys({out,report,privateData,save}){
+ assertExecutionBudget(report.executionBudget);
+ // An expired resumed run must not submit any previously unsubmitted case.
+ if(report.journeyWaitStartedAt!==undefined||report.journeyWaitDeadlineAt!==undefined){
+  journeyDeadline(report);if(expirePendingJourneys(report)){save();return;}
+ }
  const browser=await chromium.launch(process.env.BB_RELEASE_BROWSER_CHANNEL?{channel:process.env.BB_RELEASE_BROWSER_CHANNEL}:{});
  const context=await browser.newContext({baseURL:report.baseURL,viewport:{width:1440,height:1000},acceptDownloads:true});
  const page=await context.newPage();page.setDefaultTimeout(45000);
@@ -159,9 +165,9 @@ export async function runJourneys({out,report,privateData,save}){
  try{
   await login();
   for(const entry of report.cases)if(entry.status!=='passed')await attempt(entry,'submit');
-  const started=Date.now(),deadline=started+65*60000;let lastPrinted=0;
+  journeyDeadline(report);save();let lastPrinted=0;
   while(report.cases.some(c=>c.status==='submitted')){
-   if(Date.now()>deadline){for(const c of report.cases.filter(c=>c.status==='submitted')){c.status='failed';c.error='Waiting exceeded 65 minutes; original task retained, not resubmitted';}save();break;}
+   if(expirePendingJourneys(report)){save();break;}
    for(const entry of report.cases.filter(c=>c.status==='submitted')){
     const run=await readRun(entry.runId,entry);
     if(!['queued','running'].includes(run.state))await attempt(entry,'check');

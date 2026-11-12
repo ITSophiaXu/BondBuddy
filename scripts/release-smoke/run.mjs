@@ -7,6 +7,7 @@ import {randomBytes} from 'node:crypto';
 import {parseArgs} from 'node:util';
 import {SAMPLE_REF,CASES,writeJson,verifiedFile,verdict,assertLocalContext,assertTestReport} from './support.mjs';
 import {hostEnvironment,bindMount,protectPrivatePath,archiveExecutable} from './platform.mjs';
+import {newExecutionBudget,assertExecutionBudget,assertWorkerBudget} from './budget.mjs';
 
 const directory=dirname(fileURLToPath(import.meta.url)),repo=resolve(directory,'../..');
 const settingsFile=join(directory,'.local.json');
@@ -21,7 +22,7 @@ const env=hostEnvironment();
 protectPrivatePath(out,'directory',env);
 const tar=archiveExecutable(env);
 const reportFile=join(out,'report.json');
-const report=resume?JSON.parse(readFileSync(reportFile)): {startedAt:new Date().toISOString(),status:'blocked',modelMode:'live',modelProbe:'not_run',realPayment:false,cases:CASES.map(id=>({id,status:'not_run'}))};
+const report=resume?JSON.parse(readFileSync(reportFile)): {startedAt:new Date().toISOString(),status:'blocked',modelMode:'live',modelProbe:'not_run',realPayment:false,executionBudget:newExecutionBudget(),cases:CASES.map(id=>({id,status:'not_run'}))};
 if(resume)writeJson(join(out,'report-before-'+Date.now()+'.json'),report);
 delete report.error;
 let context=process.env.BB_RELEASE_DOCKER_CONTEXT||settings.dockerContext||(resume?report.dockerContext:undefined);
@@ -44,6 +45,7 @@ async function command(cmd,args,logName,extraEnv={}){
  });}finally{await new Promise(r=>log.end(r));}
 }
 try{
+ assertExecutionBudget(report.executionBudget);
  writeJson(reportFile,report);
  if(!resume&&!values.ref&&sync('git',['status','--porcelain']))throw Error('Working tree has uncommitted changes. Commit the candidate, or explicitly select the committed version with --ref.');
  context=context||sync('docker',['context','show']);
@@ -96,7 +98,7 @@ try{
   // AppArmor engines additionally use the repository's product profile.
   seccomp.syscalls=seccomp.syscalls.flatMap(rule=>rule.names.includes('mount')&&rule.action==='SCMP_ACT_ALLOW'?[{...rule,names:rule.names.filter(n=>n!=='mount')},{...rule,names:['mount'],args:[...(rule.args??[]),{index:3,value:14,op:'SCMP_CMP_NE'}]}]:[rule]);
   writeJson(join(out,'seccomp.json'),seccomp);
-  const workerEnv={...common,BB_CODEX_AUTH_MODE:'copilot_enterprise',BB_COPILOT_OAUTH_FILE:'/run/secrets/bb-copilot-oauth',BB_CODEX_PROVIDER:report.provider,BB_CODEX_BASE_URL:'https://api.enterprise.githubcopilot.com',BB_CODEX_MODEL:report.model,BB_CODEX_REASONING_EFFORT:'max',BB_CODEX_CONFIG_VERSION:'release-smoke-v1',BB_CODEX_TIMEOUT_MS:'600000',BB_CODEX_AUTHORING_TIMEOUT_MS:'3600000',BB_CODEX_WORK_ROOT:'/tmp/bb-codex',BB_REPO_ROOT:'/app',BB_PYTHON:'/opt/venv/bin/python',BB_PYTHON_BIN:'/opt/venv/bin/python',BB_PARSE_STAGING_DIR:'/var/lib/bondbuddy/parse-staging',BB_PARSE_CACHE_OCR_VERSION:'tesseract-5.3.0-eng-chi_sim-osd-v1',BB_PARSE_CACHE_BASIS_VERSION:'release-smoke-v1',BB_WORKER_CONCURRENCY:'2',BB_WORKER_PARSE_SLOTS:'1',BB_WORKER_GROUP:'release-smoke',BB_REVIEW_WEB_SEARCH_ENABLED:'0'};
+  const workerEnv={...common,BB_CODEX_AUTH_MODE:'copilot_enterprise',BB_COPILOT_OAUTH_FILE:'/run/secrets/bb-copilot-oauth',BB_CODEX_PROVIDER:report.provider,BB_CODEX_BASE_URL:'https://api.enterprise.githubcopilot.com',BB_CODEX_MODEL:report.model,BB_CODEX_REASONING_EFFORT:'max',BB_CODEX_CONFIG_VERSION:'release-smoke-v1',BB_CODEX_TIMEOUT_MS:'600000',BB_CODEX_AUTHORING_TIMEOUT_MS:String(report.executionBudget.authoringTimeoutMs),BB_CODEX_WORK_ROOT:'/tmp/bb-codex',BB_REPO_ROOT:'/app',BB_PYTHON:'/opt/venv/bin/python',BB_PYTHON_BIN:'/opt/venv/bin/python',BB_PARSE_STAGING_DIR:'/var/lib/bondbuddy/parse-staging',BB_PARSE_CACHE_OCR_VERSION:'tesseract-5.3.0-eng-chi_sim-osd-v1',BB_PARSE_CACHE_BASIS_VERSION:'release-smoke-v1',BB_WORKER_CONCURRENCY:'2',BB_WORKER_PARSE_SLOTS:'1',BB_WORKER_GROUP:'release-smoke',BB_REVIEW_WEB_SEARCH_ENABLED:'0'};
   const worker={image:image.worker,environment:workerEnv,read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true','seccomp='+join(out,'seccomp.json').replaceAll('\\','/')],tmpfs:['/tmp:rw,nosuid,nodev,size=4g,mode=1777'],volumes:['parse:/var/lib/bondbuddy/parse-staging',bindMount(join(out,'copilot-oauth'),'/run/secrets/bb-copilot-oauth')],mem_limit:'6g',cpus:4,stop_grace_period:'30s'};
   if(apparmor)worker.security_opt.push('apparmor=bondbuddy-codex-v1');
   writeJson(join(out,'compose.json'),{services:{
@@ -111,12 +113,15 @@ try{
   await command(...compose(['up','-d','--wait','postgres','azurite']),'infra.log');
   await command(...compose(['run','--rm','migrate']),'migration.log');
   await command(...compose(['up','-d','--wait','api','web','worker']),'startup.log');
+  assertWorkerBudget(report.executionBudget,workerEnv.BB_CODEX_AUTHORING_TIMEOUT_MS,sync(...compose(['exec','-T','worker','node','-p',"process.env.BB_CODEX_AUTHORING_TIMEOUT_MS"])));
   await command(...compose(['exec','-T','worker','node','-e',"require('fs').writeFileSync('/tmp/release-probe.txt','Synthetic release preflight. Reply with exactly READY. Do not read files or use tools.')"]),'probe-prepare.log');
   await command(...compose(['exec','-T','worker','node','apps/worker/dist/codex-probe-cli.js','--prompt-file','/tmp/release-probe.txt','--timeout-ms','90000']),'model-probe.log');
   report.modelProbe='passed';writeJson(reportFile,report);
   await command(...compose(['exec','-T','-e','BB_RELEASE_ACCOUNT','api','node','--input-type=module','-e',readFileSync(join(directory,'seed.mjs'),'utf8')]),'seed.log',{BB_RELEASE_ACCOUNT:JSON.stringify([account.username,account.password])});
  }
  assertTestReport(report);
+ const workerSettings=JSON.parse(readFileSync(join(out,'compose.json'))).services.worker.environment;
+ assertWorkerBudget(report.executionBudget,workerSettings.BB_CODEX_AUTHORING_TIMEOUT_MS,sync(...compose(['exec','-T','worker','node','-p',"process.env.BB_CODEX_AUTHORING_TIMEOUT_MS"])));
  for(const service of ['api','worker','web']){
   const container=sync(...compose(['ps','-q',service]));
   if(!container||sync('docker',['inspect','--format','{{.Image}}',container])!==report.images[service].id)throw Error('Running '+service+' does not match the recorded test image');
