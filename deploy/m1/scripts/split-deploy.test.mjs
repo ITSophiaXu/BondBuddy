@@ -300,7 +300,7 @@ test('independent app/script commits preserve source and clean-checkout protecti
 });
 test('private retained state survives default checkout paths and rejects caller state substitution',()=>{
  const a=covered('main',bridgeOverlay),state=a.values.BB_ROLE_STATE_DIR;config('main',a.values,state);
- const shared={...process.env,BB_ENV_FILE:envFile('main',a.values),BB_IMAGE_TAG:'synthetic'};delete shared.BB_STATE_DIR;
+ const shared={...configProcessEnv,BB_ENV_FILE:envFile('main',a.values),BB_IMAGE_TAG:'synthetic'};delete shared.BB_STATE_DIR;
  let r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','main','config','--quiet'],{cwd:root,env:shared,encoding:'utf8'});assert.equal(r.status,0,r.stderr);
  r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','main','config','--quiet'],{cwd:root,env:{...shared,BB_STATE_DIR:join(a.area,'empty-replacement')},encoding:'utf8'});assert.equal(r.status,2);assert.match(r.stderr,/must match the retained/);
 });
