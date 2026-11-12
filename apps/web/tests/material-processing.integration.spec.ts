@@ -36,16 +36,23 @@ test('real upload/worker/Python profile, one durable job after reuse, reopen/rel
   try {
     const user = await account(playwright), foreign = await account(playwright);
     await login(page, user);
-    await page.getByRole('link', { name: '新建更新项目', exact: true }).first().click();
-    await page.getByLabel('项目名称 必填', { exact: true }).fill('合成上传识别联调');
-    await page.getByRole('radio', { name: '有', exact: true }).check();
+    const newProject = page.locator('#main > .page-head').getByRole('link', { name: '新建项目', exact: true });
+    await expect(newProject).toHaveAttribute('href', '#/new');
+    await newProject.click();
+    const issuer = '合成上传识别联调有限公司', projectName = `${issuer}-交易商协会-MTN · 中期票据-募集书更新`;
+    await page.getByLabel('发行人全称', { exact: true }).fill(issuer);
     await page.getByLabel('发行市场', { exact: true }).selectOption('nafmii');
     await page.getByLabel('发行方式', { exact: true }).selectOption('mtn');
+    await expect(page.locator('#generated-project-name')).toHaveText(projectName);
     await page.getByRole('button', { name: '创建项目，继续提供材料' }).click();
-    await expect(page.getByRole('heading', { name: '合成上传识别联调', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: projectName, exact: true })).toBeVisible();
     projectId = decodeURIComponent(new URL(page.url()).hash.split('/').at(-1)!);
-    const savedResponse = page.waitForResponse(r => r.url().endsWith('/complete') && r.request().method() === 'POST');
-    await page.getByLabel('为本企业历史募集书选择文件').setInputFiles(filename);
+    // The real upload-confirmation consumer finalizes the original declaration after 202.
+    const completedUpload = () => page.waitForResponse(r => r.url().includes(`/projects/${projectId}/materials/uploads/`) && r.url().endsWith('/complete') && r.request().method() === 'POST' && r.status() !== 202);
+    const savedResponse = completedUpload();
+    const sourceFile = () => page.getByLabel('募集书新版本文件', { exact: true });
+    await expect(sourceFile()).toBeEnabled();
+    await sourceFile().setInputFiles(filename);
     await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-history.docx' })).toContainText('服务器已确认保存', { timeout: 15000 });
     const saved = await savedResponse; expect(saved.status()).toBe(200); const material = await saved.json();
     await expect(page.locator('.material-processing')).toContainText('等待处理');
@@ -61,15 +68,20 @@ test('real upload/worker/Python profile, one durable job after reuse, reopen/rel
     expect(profile.latest_reporting_cutoff.value).toBe('2024-12-31');
     await expect(page.getByLabel('发行市场', { exact: true })).toHaveValue('nafmii');
     await expect(page.getByLabel('发行方式', { exact: true })).toHaveValue('mtn');
-    await page.getByLabel('为本企业历史募集书选择文件').setInputFiles({ name: 'renamed-history.docx', mimeType: material.media_type, buffer: readFileSync(filename) });
-    await expect(page.locator('#material-recovery-status')).toContainText('1 份重复上传');
+    const reusedResponse = completedUpload();
+    await expect(sourceFile()).toBeEnabled();
+    await sourceFile().setInputFiles({ name: 'renamed-history.docx', mimeType: material.media_type, buffer: readFileSync(filename) });
+    const reused = await reusedResponse; expect(reused.status()).toBe(200);
+    expect(await reused.json()).toMatchObject({ material_id: material.material_id, material_version: material.material_version, sha256: material.sha256, upload_id: material.upload_id });
+    await expect(page.locator('#prospectus-status')).toContainText('已保存并自动采用 V1 · synthetic-history.docx');
+    await expect(page.locator('[data-prospectus-files] [data-prospectus-version]')).toHaveCount(1);
     await expect(page.locator('.material-file-row')).toHaveCount(1);
     expect((await pool.query("SELECT id FROM bb_jobs WHERE job_type='parse' AND material_id=$1", [material.material_id])).rowCount).toBe(1);
     expect(await worker()).toBe('idle');
     expect((await pool.query('SELECT id FROM bb_runs WHERE project_id=$1', [projectId])).rowCount).toBe(0);
     expect((await pool.query('SELECT profile_version FROM bb_historical_profiles WHERE material_id=$1', [material.material_id])).rowCount).toBe(1);
 
-    const scanResponse = page.waitForResponse(r => r.url().endsWith('/complete') && r.request().method() === 'POST');
+    const scanResponse = completedUpload();
     await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: 'synthetic-scan.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
     expect((await scanResponse).status()).toBe(200); expect(await worker()).toBe('paused');
     await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-scan.png' })).toContainText('处理暂缓', { timeout: 20000 });
