@@ -154,8 +154,10 @@ async function setup(page:Page,options:FixtureOptions={}){
     const artifact=path.match(/^\/artifacts\/delivered-(revision|clean)(\/download)?$/);
     if(artifact){
       const variant=artifact[1] as 'revision'|'clean',bytes=deliveredBytes[variant],id='delivered-'+variant;
-      if(artifact[2])return route.fulfill({status:200,contentType:mime,body:bytes});
-      const value:Dto<'ArtifactResponse'>={artifact_id:id,run_id:'delivered-run',version:1,filename:resultFilename({project:'发行人基本情况',kind:variant==='revision'?'修订版':'清洁版',version:3,createdAt:now,mediaType:mime}),display_version:3,
+      const filename=resultFilename({project:'发行人基本情况',kind:variant==='revision'?'修订版':'清洁版',version:3,createdAt:now,mediaType:mime});
+      // Match the authenticated artifact endpoint's frozen filename projection.
+      if(artifact[2])return route.fulfill({status:200,contentType:mime,headers:{'Content-Disposition':`attachment; filename="delivered-${variant}.docx"; filename*=UTF-8''${encodeURIComponent(filename)}`},body:bytes});
+      const value:Dto<'ArtifactResponse'>={artifact_id:id,run_id:'delivered-run',version:1,filename,display_version:3,
         media_type:mime,sha256:hash(bytes),quality_status:'passed',delivery_status:'available',
         download_url:`/api/v1/artifacts/${id}/download?grant=synthetic`,expires_at:'2099-01-01T00:00:00Z'};
       return json(route,200,value);
@@ -199,7 +201,7 @@ test('a 402 keeps findings and selected files and requires a fresh explicit conf
   await page.locator('#fc-confirm-update').click();
   await expect(page.locator('dialog.fc-confirm[open]')).toHaveCount(0);
   await expect(page.locator('#fc-status')).toContainText('积分不足');
-  await expect(page.getByRole('link',{name:/充值/}).last()).toHaveAttribute('href',new RegExp('project='+projectId));
+  await expect(page.getByRole('link',{name:'查看余额与支付状态',exact:true})).toHaveAttribute('href',new RegExp('project='+projectId));
   await expect(page.locator('[data-fc-select="issuer-v1"]')).toBeChecked();
   await expect(page.locator('[data-fc-select="financial-v1"]')).toBeChecked();
   await expect(page.locator('.fc-file')).toHaveCount(3);expect(f.updates).toHaveLength(1);expect(f.batches).toHaveLength(0);
@@ -305,6 +307,8 @@ test('successful dual Word delivery stays downloadable while manual findings rem
   for(const [variant,label] of [['revision','下载修订版'],['clean','下载清洁版']] as const){
     const download=page.waitForEvent('download');await delivered.getByRole('button',{name:label,exact:true}).click();
     const completed=await download;expect(await completed.failure()).toBeNull();
+    await test.info().attach('download-protocol-'+variant,{body:JSON.stringify({url:completed.url(),suggestedFilename:completed.suggestedFilename()}),contentType:'application/json'});
+    expect(await readFile((await completed.path())!)).toEqual(deliveredBytes[variant]);
     expect(completed.suggestedFilename()).toContain(variant==='revision'?'修订版':'清洁版');
     expect(f.calls.some(c=>c.method==='GET'&&c.path===`/artifacts/delivered-${variant}`)).toBe(true);
     expect(f.calls.some(c=>c.method==='GET'&&c.path===`/artifacts/delivered-${variant}/download`)).toBe(true);

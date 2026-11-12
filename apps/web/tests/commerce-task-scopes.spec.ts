@@ -45,13 +45,16 @@ test('QA pending scope cannot run; ready quote total and work items survive canc
 test('QA original paid scope supplements quote zero; switching to new facts obtains a new total',async({page})=>{
   const state=qaFixture(),paid=state.workspace.runs.find(run=>run.run_id===answerId)!;
   Object.assign(paid.manifest,quote(12340,true,'paid-original'));paid.charged_points=12340;
+  const originalQuestions=structuredClone(paid.manifest.questions.filter(q=>paid.result!.answers.find(a=>a.question_id===q.id)?.status==='missing'));
   state.workspace.price=workspacePrice();await installQa(page,state);await commerce(page);
   const requests:any[]=[];
   await page.route(`**/api/v1/projects/${qaProject}/qa/quote`,route=>{const body=fixtureRequest(route.request());requests.push(body);return json(route,quote(body.included_followup_of?0:24680,true,body.included_followup_of?'scope-included':'scope-new-facts'));});
   await page.goto(`/#qa?project=${qaProject}&run=${answerId}`);await page.locator('.qa-followup>summary').click();await page.locator('#qa-continue').click();
   // The approved single-start flow retains use_knowledge:false without a reference-choice control.
-  await expect(page.locator('[data-qa-knowledge-choice]')).toHaveCount(0);await expect(page.locator('#qa-ranges')).toBeDisabled();
-  await page.locator('#qa-start').click();await expect(page.locator('#qa-confirm')).toContainText('原范围包含／已购覆盖');await expect(page.locator('.qa-modal[open]')).toContainText('无需充值或新增预留');expect(requests[0]).toMatchObject({included_followup_of:answerId});expect(state.drafts.at(-1)?.draft.use_knowledge).toBe(false);
+  await expect(page.locator('[data-qa-knowledge-choice]')).toHaveCount(0);// The approved 11/09 preparation is a read-only question preview.
+  await expect(page.locator('#qa-ranges,[data-remove-q],.qa-range-list')).toHaveCount(0);
+  await expect(page.locator('#qa-requirements')).not.toBeEditable();
+  await page.locator('#qa-start').click();await expect(page.locator('#qa-confirm')).toContainText('原范围包含／已购覆盖');await expect(page.locator('.qa-modal[open]')).toContainText('无需充值或新增预留');expect(requests[0]).toMatchObject({included_followup_of:answerId});expect(state.drafts.at(-1)?.draft.use_knowledge).toBe(false);expect(state.drafts.at(-1)?.draft.questions).toEqual(originalQuestions);
   await page.locator('.qa-modal[open] [data-close]').click();await page.locator('#qa-new-scope').click();await expect(page.locator('#qa-requirements')).toBeEditable();
   await page.locator('#qa-start').click();await expect(page.locator('#qa-confirm')).toContainText('¥246.80');expect(requests.at(-1)).not.toHaveProperty('included_followup_of');
   expect(state.answers).toEqual([]);
