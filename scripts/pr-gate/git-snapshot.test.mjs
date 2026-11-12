@@ -10,7 +10,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { fileURLToPath } from 'node:url';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
-import { createGitSnapshot, restoreGitSnapshot } from './git-snapshot.mjs';
+import { createGitSnapshot, restoreGitSnapshot, verifyGitSnapshotSource } from './git-snapshot.mjs';
 
 const PREFIX = 'bb-pr-gate-git-snapshot-test-';
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -348,4 +348,26 @@ test('commit and blob replacement refs cannot change the original snapshot or ca
   assert.equal(git(destination, ['for-each-ref', '--format=%(refname)', 'refs/replace/']), '');
   assert.notEqual(git(destination, ['cat-file', '-e', replacementBlob], { failure: true }).status, 0,
     'unreachable replacement objects are not transferred');
+}));
+
+
+test('explicit text without an eol attribute keeps LF bytes on Windows and raw verification catches clean CRLF drift', () => fixture(({ directory, git, source, write }) => {
+  const initial = source();
+  write(initial.repository, 'nested/.gitattributes', '* -text -diff\n.gitattributes text diff\n');
+  git(initial.repository, ['add', '--', 'nested/.gitattributes']); git(initial.repository, ['commit', '-qm', 'explicit text needs stable checkout eol']);
+  const candidate = { ...initial, commit: git(initial.repository, ['rev-parse', 'HEAD']), tree: git(initial.repository, ['rev-parse', 'HEAD^{tree}']) };
+  const output = join(directory, 'text-snapshot'), destination = join(directory, 'text-restored');
+  const manifest = snapshot(output, candidate), restored = restore(output, destination, candidate, manifest);
+  const path = join(destination, 'nested/.gitattributes'), original = git(candidate.repository, ['show', 'HEAD:nested/.gitattributes'], { raw: true });
+  assert.deepEqual(readFileSync(path), original);
+  assert.equal(git(destination, ['config', '--local', 'core.eol']), 'lf');
+  const before = verifyGitSnapshotSource({ sourceRoot: destination, expectedCommit: candidate.commit, expectedTree: candidate.tree });
+  assert.deepEqual(before, restored.raw_source); assert.ok(before.files > 0 && before.byte_count > 0);
+  unlinkSync(path);
+  git(destination, ['-c', 'core.eol=crlf', 'checkout-index', '--force', '--index', '--', 'nested/.gitattributes']);
+  assert.notDeepEqual(readFileSync(path), original, 'Reproduce a clean checkout with native CRLF conversion');
+  assert.equal(git(destination, ['status', '--porcelain', '--untracked-files=no']), '', 'Git normalizes the altered text for status');
+  assert.throws(() => verifyGitSnapshotSource({ sourceRoot: destination, expectedCommit: candidate.commit, expectedTree: candidate.tree }), /raw bytes differ/);
+  unlinkSync(path); git(destination, ['-c', 'core.eol=lf', 'checkout-index', '--force', '--index', '--', 'nested/.gitattributes']);
+  assert.deepEqual(readFileSync(path), original); assert.deepEqual(verifyGitSnapshotSource({ sourceRoot: destination, expectedCommit: candidate.commit, expectedTree: candidate.tree }), before);
 }));
