@@ -413,7 +413,21 @@ test('working draft admission defers parse and business gaps while retaining own
     assert.deepEqual(await counts(),{grants:5,grantEvents:5,runs:3});
     process.env.BB_DEPLOYMENT_TIER='production';
     assert.equal((await send('/api/v1/runs/execute',request(valid))).json().code,'TEST_CHANNEL_DISABLED');
+    const assertLegacyProductionRouting=async()=>{
+      const legacyRequest=request(valid);
+      const rejected=await send('/api/v1/runs/execute',legacyRequest);
+      // The unchanged legacy input cannot be priced. Its production rejection
+      // proves blank configuration did not reactivate the revoked test grant.
+      assert.equal(rejected.statusCode,422,rejected.body);
+      assert.equal(rejected.json().code,'INPUT_REQUIRED');
+      const audit=(await pool.query(`SELECT channel,test_grant_id,error_code FROM bb_jobs
+        WHERE owner_user_id=$1 AND project_id=$2 AND execution_request_key_hash=$3 AND subtype='execute_rejected'`,
+        [owner,project,executionKeyHash(legacyRequest.execution_request_id)])).rows[0];
+      assert.deepEqual(audit,{channel:'production',test_grant_id:null,error_code:'INPUT_REQUIRED'});
+      assert.deepEqual(await counts(),{grants:5,grantEvents:5,runs:3});
+    };
     for(const name of names.filter(name=>name.startsWith('BB_PREPROD_WORKING_DRAFT_')))delete process.env[name];
+    await assertLegacyProductionRouting();
     const production=await send('/api/v1/runs/execute',{...request(valid),...await productionInput(app,pool,owner)});
     assert.equal(production.statusCode,202,production.body);
     assert.equal(production.json().channel,'production');
@@ -423,6 +437,7 @@ test('working draft admission defers parse and business gaps while retaining own
     process.env.BB_DEPLOYMENT_TIER='preprod';
     for(const blank of ['', '  ']){
       for(const name of configNames)process.env[name]=blank;
+      await assertLegacyProductionRouting();
       const emptyConfig=await send('/api/v1/runs/execute',{...request(valid),...await productionInput(app,pool,owner)});
       assert.equal(emptyConfig.statusCode,202,emptyConfig.body);
       assert.equal(emptyConfig.json().channel,'production');
