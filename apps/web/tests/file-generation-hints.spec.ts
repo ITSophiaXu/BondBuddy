@@ -13,6 +13,8 @@ for(const width of [1440,390,320])test(`current preparation explains server pric
  await expect(page.locator('#fg-fee-note')).toContainText('每份底稿 6,789 积分');await expect(page.locator('#fg-fee-note')).toContainText('成功交付后扣费');await expect(page.locator('#fg-fee-note')).toContainText('仅形成资料不足或不适用说明不收费');
  await expect(page.locator('#fg-estimate')).toHaveText('13,578');await expect(page.locator('#fg-confirm')).toHaveAccessibleDescription(/每份底稿 6,789 积分/);
  await page.screenshot({path:test.info().outputPath(`implementation-fees-${width}.png`),fullPage:true});
+ generation.data.pricing!.workpaper_points=7000;await page.locator('#fg-refresh').click();
+ await expect(page.locator('#fg-fee-note')).toContainText('每份底稿 7,000 积分');await expect(page.locator('#fg-estimate')).toHaveText('14,000');await expect(page.locator('#fg-confirm')).toHaveAccessibleDescription(/每份底稿 7,000 积分/);
  await page.locator('#fg-edit-scope').click();await page.locator('#fg-select-none').click();
  await expect(page.locator('#fg-confirm')).toBeDisabled();await expect(page.locator('#fg-action-hint')).toHaveText('请至少选择一份文件。');await expect(page.locator('#fg-confirm')).toHaveAccessibleDescription(/请至少选择一份文件/);
  await page.screenshot({path:test.info().outputPath(`implementation-empty-${width}.png`),fullPage:true});
