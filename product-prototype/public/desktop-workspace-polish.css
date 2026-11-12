@@ -38,6 +38,8 @@
     font-size: var(--desktop-control); line-height: 20px; white-space: nowrap;
   }
   .prototype-app main :is(.btn.small, .button.small) { min-height: 36px; padding: 7px 12px; }
+  /* Template actions retain the file list's 44px target within compact desktop rows. */
+  .prototype-app main .pf-row-actions [data-pf-template] { min-height: 44px; }
   .prototype-app main :is(.text-button, .text-btn) {
     font-size: 12px; line-height: 20px; min-height: 32px;
   }
