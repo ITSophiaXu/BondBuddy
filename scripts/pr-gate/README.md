@@ -194,7 +194,7 @@ npm run pr-gate -- --offline-image sha256:<64位本地镜像ID> --host-worker-im
 
 当前七个精确文件走宿主调度：原生文件沙箱2个、诚信桌面1个、OCR1个、Windows计费面板1个、Linux凭据helper1个和大文件备份往返1个。`host-profiles.mjs`只决定执行环境；发现、原矩阵、原文件顺序、5分钟文件预算、70分钟分片预算、断言和失败/skip判定保持不变。浏览器分片仍批量按原配置执行，尚缺的真实API或历史基准不会因此获得通过。
 
-后两项在Windows宿主以相同候选原文件运行，由精确profile提供本轮已有不可变worker镜像和本地Docker context。凭据helper仍以Linux shebang直接执行，保持四项合成凭据成功/失败断言，容器无网络。备份仍用320 MiB合成blob、128 MiB Node heap和512 MiB容器预算完成原五次脚本调用；当前候选源码和已验证依赖只读挂载到`/app`，独占内部网络中的Azurite只映射随机localhost端口，使用宿主临时目录存放数据。两项均不向core挂Docker socket，不拉取镜像、不连接真实服务。每个子容器有本轮身份标签，记录inspect隔离配置、完整原命令和退出码，核对清理；host回执缺少任一case、来源或清理证据即失败。依赖缺失或Windows挂载shebang不可执行时真实失败，不改成模拟或skip。
+后两项在Windows宿主以相同候选原文件运行，由精确profile提供本轮已有不可变worker镜像和本地Docker context。凭据helper仍以Linux shebang直接执行，保持四项合成凭据成功/失败断言，容器无网络。备份仍用320 MiB合成blob、128 MiB Node heap和512 MiB容器预算完成原五次脚本调用；当前候选源码和已验证依赖只读挂载到`/app`，独占bridge网络中的Azurite只映射随机localhost端口，使用宿主临时目录存放数据。该bridge沿用已验证的Windows计费方案：只读避让本机路由/既有Docker子网，不修改路由，先以真实Azure SDK验证本机到空模拟存储的访问。bridge并非`network=none`或`internal`，如实记录该边界；进程只接本轮模拟存储，环境不含生产、模型或付款配置。两项均不向core挂Docker socket，不拉取镜像、不连接真实服务。每个子容器有本轮身份标签，记录inspect隔离配置、完整原命令和退出码，核对清理；host回执缺少任一case、来源、探针或清理证据即失败。依赖缺失或Windows挂载shebang不可执行时真实失败，不改成模拟或skip。
 
 宿主从固定候选和原发现结果生成内存计划。容器请求仅含run ID、计划hash、顺序、分片和精确test ID，不能传命令、argv、环境、路径或镜像。拒绝额外字段、重复、错序、旧版本以及符号/硬链接请求。每个适配器执行原完整文件，保留原stdout、stderr、退出码、耗时、环境准备与资源清理证据。准备或清理失败会独立阻断，不能把原测试退出码0改写成“全部通过”。
 

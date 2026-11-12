@@ -76,9 +76,12 @@ export function verifyDockerTestEvidence(evidence, entry, runtime) {
   if (entry.profileId === 'docker-backup') {
     assert.equal(runtime.source.files[entry.testId], entry.sourceSha256);
     for (const file of ['backup-stream.mjs','blob-snapshot.mjs','backup-offhost.mjs']) assert.match(runtime.source.files['deploy/m1/scripts/' + file], /^[a-f0-9]{64}$/);
-    assert.equal(evidence.network?.internal, true); assert.equal(evidence.network.name, config.network);
+    assert.equal(evidence.network?.internal, false); assert.equal(evidence.network.name, config.network);
+    assert.equal(evidence.network.driver, 'bridge'); assert.match(evidence.network.subnet, /^10\.238\.\d{1,3}\.0\/24$/);
+    assert.equal(evidence.network.host_routes_changed, false);
     assert.equal(evidence.azurite?.image, config.azurite_image); assert.equal(evidence.azurite.name, config.azurite_name);
     assert.equal(evidence.azurite.host_ip, '127.0.0.1'); assert.ok(Number(evidence.azurite.host_port) > 0);
+    assert.deepEqual(evidence.host_storage_probe, {status:'passed',endpoint:'http://127.0.0.1:'+evidence.azurite.host_port+'/devstoreaccount1',container_exists:false});
     assert.ok(evidence.dependencies?.normalized_lock_sha256); assert.equal(evidence.dependencies.installed, false);
     assert.equal(evidence.dependencies.product_packages, 'current candidate only');
   }

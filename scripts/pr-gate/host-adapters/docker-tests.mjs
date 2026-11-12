@@ -4,7 +4,7 @@ import { lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync
 import { join, resolve } from 'node:path';
 import { sha256 } from '../host-dispatch-protocol.mjs';
 import { DEVELOPMENT_KEY } from '../capabilities.mjs';
-import { billingHostEnvironment, prepareBillingDependencies, verifyBillingSource } from './windows-billing.mjs';
+import { billingHostEnvironment, prepareBillingDependencies, unusedBillingSubnet, verifyBillingSource } from './windows-billing.mjs';
 import { DOCKER_TESTS, validateDockerConfig, withinScratch } from './docker-cases.mjs';
 
 export function validateDockerTestRequest({ candidate, runId, entry, runtime }) {
@@ -83,11 +83,21 @@ export async function executeDockerTests(options) {
       assert.match(config.azurite_image,/^sha256:[a-f0-9]{64}$/);
       const absent=await command('network-must-be-new','docker',['--context',runtime.context,'network','inspect',config.network]);
       assert.ok(absent.code!==0&&/no such network|not found/i.test(absent.stderr));
-      networkId=await docker('network-create',['network','create','--internal','--label','bondbuddy.pr-gate.run='+runId,'--label','bondbuddy.pr-gate.scope='+prefix,config.network]);
+      const networkIds=(await docker('network-list',['network','ls','-q'])).split(/\s+/).filter(Boolean);
+      const networks=networkIds.length?JSON.parse(await docker('network-inventory',['network','inspect',...networkIds])):[];
+      const routeResult=await command('host-route-inventory','powershell.exe',['-NoProfile','-Command','Get-NetRoute -AddressFamily IPv4 -ErrorAction Stop | Select-Object -ExpandProperty DestinationPrefix | ConvertTo-Json -Compress']);
+      assert.equal(routeResult.code,0,routeResult.stderr);assert.equal(routeResult.timedOut,false);
+      const routes=JSON.parse(routeResult.stdout);
+      const subnet=unusedBillingSubnet([...networks.flatMap(n=>(n.IPAM.Config??[]).map(c=>c.Subnet)),...[routes].flat()]
+        .filter(value=>typeof value==='string'&&/^(\d+\.){3}\d+\/\d+$/.test(value)));
+      // Docker Desktop's internal networks did not publish Windows loopback
+      // ports in the prior real billing probe. Reuse its dedicated bridge design.
+      networkId=await docker('network-create',['network','create','--driver','bridge','--subnet',subnet,'--label','bondbuddy.pr-gate.run='+runId,'--label','bondbuddy.pr-gate.scope='+prefix,config.network]);
       evidence.resources.push({kind:'network',id:networkId,name:config.network});save();
       const network=JSON.parse(await docker('network-identity',['network','inspect',networkId]))[0];
-      assert.equal(network.Id,networkId);assert.equal(network.Name,config.network);assert.equal(network.Internal,true);
-      evidence.network={id:networkId,name:config.network,internal:true};
+      assert.equal(network.Id,networkId);assert.equal(network.Name,config.network);assert.equal(network.Internal,false);assert.equal(network.Driver,'bridge');
+      assert.ok(network.IPAM.Config.some(row=>row.Subnet===subnet));
+      evidence.network={id:networkId,name:config.network,internal:false,driver:'bridge',subnet,host_routes_changed:false};
       const azuriteData=join(scratch,'azurite');mkdirSync(azuriteData);
       const azuriteAbsent=await command('azurite-must-be-new','docker',['--context',runtime.context,'inspect',config.azurite_name]);
       assert.ok(azuriteAbsent.code!==0&&/no such (object|container)/i.test(azuriteAbsent.stderr));
@@ -104,6 +114,12 @@ export async function executeDockerTests(options) {
       evidence.azurite={name:config.azurite_name,image:config.azurite_image,host_ip:'127.0.0.1',host_port:bound[0].HostPort};
       const connection=endpoint=>`DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=${DEVELOPMENT_KEY};BlobEndpoint=http://${endpoint}/devstoreaccount1;`;
       config.host_connection=connection('127.0.0.1:'+bound[0].HostPort);config.container_connection=connection(config.azurite_name+':10000');
+      const endpoint='http://127.0.0.1:'+bound[0].HostPort+'/devstoreaccount1';
+      const probe=await command('azurite-host-probe',process.execPath,['--input-type=module','-e',
+        "import assert from 'node:assert/strict';import {BlobServiceClient} from '@azure/storage-blob';const service=BlobServiceClient.fromConnectionString(process.env.BB_GATE_AZURITE_CONNECTION,{retryOptions:{maxTries:1}});assert.equal(service.url.replace(/\\/$/,''),process.env.BB_GATE_AZURITE_URL);let failure;for(let i=0;i<10;i++){try{assert.equal(await service.getContainerClient('bb-pr-gate-preflight').exists({abortSignal:AbortSignal.timeout(1000)}),false);failure=null;break;}catch(error){failure=error;await new Promise(r=>setTimeout(r,250));}}if(failure)throw failure;console.log(JSON.stringify({status:'passed',endpoint:process.env.BB_GATE_AZURITE_URL,container_exists:false}));"],
+        {timeout:20000,commandEnv:{...env,BB_GATE_AZURITE_CONNECTION:config.host_connection,BB_GATE_AZURITE_URL:endpoint}});
+      assert.equal(probe.code,0,probe.stderr);assert.equal(probe.timedOut,false);
+      evidence.host_storage_probe=JSON.parse(probe.stdout);assert.equal(evidence.host_storage_probe.status,'passed');
     }
     validateDockerConfig(config,entry.testId);evidence.configuration=config;save();
     const configPath=join(out,'configuration.json');writeFileSync(configPath,JSON.stringify(config,null,2)+'\n',{flag:'wx'});

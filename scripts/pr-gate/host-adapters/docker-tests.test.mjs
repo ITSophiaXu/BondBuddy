@@ -28,7 +28,7 @@ test('Docker receipts bind every original case to isolation, candidate, images a
       v=>{v.original_command.timeout_ms++;},v=>{v.engine_endpoint='tcp://remote:2375';}]){
       const value=structuredClone(evidence);mutate(value);assert.throws(()=>verifyDockerTestEvidence(value,entry,dispatch.runtime));
     }
-    if(profile==='docker-backup')for(const mutate of [v=>{v.network.internal=false;},v=>{v.azurite.host_ip='0.0.0.0';},v=>{v.dependencies.installed=true;}]){
+    if(profile==='docker-backup')for(const mutate of [v=>{v.network.driver='host';},v=>{v.network.host_routes_changed=true;},v=>{delete v.host_storage_probe;},v=>{v.azurite.host_ip='0.0.0.0';},v=>{v.dependencies.installed=true;}]){
       const value=structuredClone(evidence);mutate(value);assert.throws(()=>verifyDockerTestEvidence(value,entry,dispatch.runtime));
     }
   }

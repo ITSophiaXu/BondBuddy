@@ -22,6 +22,6 @@ export function syntheticDockerEvidence(candidate, entry, runId) {
         memory:512*1024**2,memory_swap:512*1024**2,nano_cpus:1000000000,pids_limit:128,network:backup?configuration.network:'none',
         mounts:backup?[{destination:'/app',type:'volume',name:configuration.app_volume,rw:false},{destination:'/backup',type:'bind',rw:true}]
           :[{destination:'/run/secrets/bb-copilot-oauth',type:'bind',rw:false},{destination:'/usr/local/bin/bb-copilot-token',type:'bind',rw:false}]}})),
-    ...(backup?{network:{name:configuration.network,internal:true},azurite:{name:configuration.azurite_name,image:configuration.azurite_image,
+    ...(backup?{network:{name:configuration.network,internal:false,driver:'bridge',subnet:'10.238.10.0/24',host_routes_changed:false},host_storage_probe:{status:'passed',endpoint:'http://127.0.0.1:32100/devstoreaccount1',container_exists:false},azurite:{name:configuration.azurite_name,image:configuration.azurite_image,
       host_ip:'127.0.0.1',host_port:'32100'},dependencies:{normalized_lock_sha256:'d'.repeat(64),installed:false,product_packages:'current candidate only'}}:{})};
 }
