@@ -9,7 +9,7 @@ import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import { azureBlobs } from '../../api/dist/data.js';
 import { runMaterialParseOnce } from '../../worker/src/material-parse-job.js';
 import { runDocumentParser, validateDocumentParseResponse, type DocumentParseRequest } from '../../worker/src/document-parser.js';
-import { account, login, origin } from './live-helpers';
+import { account, login } from './live-helpers';
 
 test.skip(process.env.BB_E2E_PARSE !== '1', 'Requires a dedicated migrated PostgreSQL/API/Azurite and Python, never production.');
 
@@ -43,11 +43,17 @@ test('legacy project real upload/worker/Python profile, one durable job after re
     const details = { ...emptyUpdateDetails(), has_historical: true };
     expect(details.authoring_mode).toBeUndefined();
     const csrf = (await page.context().cookies()).find(cookie => cookie.name === 'bb_csrf')!.value;
-    const created = await page.request.post('/api/v1/projects', { headers: { Origin: origin, 'X-BB-CSRF': csrf }, data: {
-      name: '合成上传识别联调', kind: 'update', issuer_name: '合成上传识别联调有限公司', market: 'nafmii', offering: 'mtn', update_details: details
-    } });
-    expect(created.status()).toBe(201);
-    const legacy = await created.json(); projectId = legacy.project_id;
+    // Browser fetch preserves the real Secure-cookie localhost session; do not
+    // route authenticated fixture writes through Playwright's Node HTTP context.
+    const created = await page.evaluate(async ({ details, csrf }) => {
+      const response = await fetch('/api/v1/projects', { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-BB-CSRF': csrf }, body: JSON.stringify({
+          name: '合成上传识别联调', kind: 'update', issuer_name: '合成上传识别联调有限公司', market: 'nafmii', offering: 'mtn', update_details: details
+        }) });
+      return { status: response.status, body: await response.json() };
+    }, { details, csrf });
+    expect(created.status).toBe(201);
+    const legacy = created.body; projectId = legacy.project_id;
     expect(legacy.update_details.authoring_mode).toBeUndefined();
     expect(legacy).toMatchObject({ name: '合成上传识别联调', kind: 'update', market: 'nafmii', offering: 'mtn' });
     await page.goto(`/#/projects/${projectId}`);
@@ -60,8 +66,8 @@ test('legacy project real upload/worker/Python profile, one durable job after re
     await sourceFile().setInputFiles(filename);
     await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-history.docx' })).toContainText('服务器已确认保存', { timeout: 15000 });
     const saved = await savedResponse; expect(saved.status()).toBe(200); const material = await saved.json();
-    const storedProject = await page.request.get(`/api/v1/projects/${projectId}`); expect(storedProject.status()).toBe(200);
-    expect((await storedProject.json()).update_details.authoring_mode).toBeUndefined();
+    const storedProject = await page.evaluate(async path => { const response = await fetch(path, { credentials: 'same-origin' }); return { status: response.status, body: await response.json() }; }, `/api/v1/projects/${projectId}`); expect(storedProject.status).toBe(200);
+    expect(storedProject.body.update_details.authoring_mode).toBeUndefined();
     await expect(page.locator('.material-processing')).toContainText('等待处理');
     await expect(page.locator('.source-profile')).toHaveCount(0);
     const route = page.url(); await page.close(); page = await context.newPage(); await page.goto(route);
