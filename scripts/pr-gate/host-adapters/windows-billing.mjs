@@ -68,13 +68,16 @@ export function verifyBillingSource(root, candidate, env = billingHostEnvironmen
   assert.equal(git(root, ['rev-parse', 'HEAD^{tree}'], env), candidate.tree);
   assert.equal(git(root, ['status', '--porcelain', '--untracked-files=no'], env), '', 'Candidate source changed');
   const entries = git(root, ['ls-tree', '-r', '-z', candidate.commit], env, true).toString('utf8').split('\0').filter(Boolean);
-  const manifest = [];
+  const base = realpathSync(root), parents = new Set([base]), manifest = [], buffer = Buffer.allocUnsafe(1024 * 1024);
   for (const entry of entries) {
     const split = entry.indexOf('\t'), [mode, kind, expected] = entry.slice(0, split).split(' '), name = entry.slice(split + 1), file = resolve(base, name);
     assert.equal(kind, 'blob');
     assert.ok(mode === '100644' || mode === '100755', 'Billing host source must contain regular tracked files');
-    assert.ok(!lstatSync(file).isSymbolicLink() && statSync(file).isFile()); within(root, file);
-    const bytes = statSync(file).size, sha = createHash('sha1').update(`blob ${bytes}\0`), fd = openSync(file, 'r'), buffer = Buffer.allocUnsafe(1024 * 1024);
+    const rel = relative(base, file), parent = dirname(file);
+    assert.ok(rel && !isAbsolute(rel) && rel !== '..' && !rel.startsWith('..' + sep));
+    if (!parents.has(parent)) { assert.equal(realpathSync(parent), parent, 'Candidate parent must not redirect'); parents.add(parent); }
+    const stat = lstatSync(file); assert.ok(!stat.isSymbolicLink() && stat.isFile());
+    const bytes = stat.size, sha = createHash('sha1').update(`blob ${bytes}\0`), fd = openSync(file, 'r');
     try { for (;;) { const size = readSync(fd, buffer, 0, buffer.length, null); if (!size) break; sha.update(buffer.subarray(0, size)); } } finally { closeSync(fd); }
     assert.equal(sha.digest('hex'), expected, 'Candidate raw source differs: ' + name);
     manifest.push({ path: name, blob: expected, bytes });
