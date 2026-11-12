@@ -68,9 +68,11 @@ export async function records(page: Page) { return page.evaluate(() => Object.ke
 export async function settle(page: Page) { await expect.poll(() => page.evaluate(async () => { const component = (window as unknown as { m4Component: { refreshing?: unknown; uploadReading: boolean; uploadPreparing: boolean; uploading: boolean; cacheQueue: Promise<void> } }).m4Component; if (component.refreshing || component.uploadReading || component.uploadPreparing || component.uploading) return false; const queue = component.cacheQueue; await queue; return !component.refreshing && !component.uploadReading && !component.uploadPreparing && !component.uploading && component.cacheQueue === queue; })).toBe(true); }
 export async function refreshReadOnly(page: Page, state: State) { const before = state.calls.filter(call => call.method !== 'GET').length; await mount(page, { navigation: 'reload' }); await page.clock.runFor(1_000); await page.evaluate(() => { dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); }); await page.clock.runFor(1_000); await settle(page); expect(state.calls.filter(call => call.method !== 'GET')).toHaveLength(before); noBusiness(state); return before; }
 export async function pending(page: Page, state: State) {
-  const confirmationFault = state.dropPut === 'after';
+  const confirmationFault = state.dropPut === 'after', missing = state.dropPut === 'before';
+  const missingReply = missing ? page.waitForResponse(response => response.url().endsWith('/complete') && response.status() === 422) : undefined;
   await select(page);
   if (confirmationFault) await settleUploadConfirmationFault(page, state.confirmationFaults);
+  if (missing) { await missingReply; await page.clock.fastForward(600_001); }
   await expect(resume(page)).toBeEnabled(); expect(await records(page)).toHaveLength(1); noBusiness(state);
 }
 export async function saved(page: Page, state: State, settlePage = true) { await expect.poll(() => templatePosts(state).length).toBeGreaterThan(0); await expect.poll(async () => (await records(page)).length).toBe(0); if (settlePage) await settle(page); noBusiness(state); }
