@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {posix} from 'node:path';
-import {CASES,SAMPLE_REF,verdict,contained,assertLocalContext,assertTestReport} from './support.mjs';
+import {CASES,SAMPLE_REF,verdict,caseCompletionTime,contained,assertLocalContext,assertTestReport} from './support.mjs';
 import {hostEnvironment} from './platform.mjs';
 test('Windows Docker plugin discovery keeps ProgramFiles regardless of environment key casing',()=>{
  for(const key of ['ProgramFiles','PROGRAMFILES','programfiles']){
@@ -25,6 +25,15 @@ test('Windows plugin support cannot forward application credentials or remote Do
   HOME:'C:\\Users\\tester',DOCKER_BUILDKIT:'1',ProgramFiles:'C:\\Program Files',
  });
  assert.deepEqual(hostEnvironment({ProgramFiles:''},'/test-home'),{HOME:'/test-home',DOCKER_BUILDKIT:'1'});
+});
+
+test('suite completion is the latest actual journey completion, independent of later resume attempts',()=>{
+ const first='2026-11-09T10:00:00.000Z',last='2026-11-09T11:00:00.000Z';
+ const cases=CASES.map((id,i)=>({id,status:'passed',finishedAt:i===0?last:first}));
+ assert.equal(caseCompletionTime(cases),Date.parse(last));
+ assert.equal(caseCompletionTime([...cases].reverse()),Date.parse(last));
+ for(const value of [undefined,null,0,'','invalid'])assert.throws(()=>caseCompletionTime([{...cases[0],finishedAt:value},...cases.slice(1)]),/timestamps/);
+ assert.throws(()=>caseCompletionTime([]),/timestamps/);
 });
 test('a missing, failed, skipped or blocked journey never grants release readiness',()=>{
  const good=CASES.map(id=>({id,status:'passed'}));assert.equal(verdict(good),'passed');

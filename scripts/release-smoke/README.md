@@ -1,5 +1,7 @@
 # 本地发布前基础流程检查
 
+2026-11-12 门禁更新：发布必须使用 `release-five-flow-v1` 报告，包含更新、复核、问答、诚信核查、底稿五条流程。下文运行部分保留原三流程基线入口；五流程 runner、完整成果检查器与计费采集由 #1027 配套接入。本门禁分支本身不签发新的真实通过报告，旧三流程报告不能授权新发布。
+
 `npm run test:release` 在独立的本地 Docker Compose 项目运行待发布版本，使用一个新建的 `release_test` 账号验证任丘九月募集书更新、东营复核、东营七题问答。先按顺序提交三个独立项目，再核验各自的持久任务和下载，后台可使用现有 worker 并发槽位。真实材料、网页、API、PostgreSQL、Azurite、worker、模型调用和浏览器下载都参与执行。不会修改生产环境或发送真实支付请求；初始测试积分明确为 synthetic。
 
 本地 worker 启用异步上传确认消费者，在自身 parse 卷内使用独立、有界的暂存目录。上传检查等待同一原文件声明的最终 HTTP 200 并核对 material/upload ID、版本、持久时间、原文件名、字节数和 SHA-256；HTTP 202 仅表示已排队，不能当作材料已保存。等待预算与网页现有的十分钟确认预算一致。Windows 上传使用 Playwright 原始字节、文件名和 MIME，避免长路径在 Edge 中变成空文件；报告明确记录这项浏览器传输适配，不改样本字节。
@@ -115,8 +117,35 @@ npm run test:release -- --resume /absolute/path/to/scripts/release-smoke/.runtim
 DOCKER_CONTEXT=colima-bondbuddy-release docker-compose -p <report.project> -f <run>/compose.json down --volumes
 ```
 
-不要使用全局 prune。当前脚本只提供发布前检查及退出码，不自动发布或更改生产部署规则。
+不要使用全局 prune。测试命令不自动发布。按2026-11-11用户决定，部署和镜像导出入口现在强制核对同一候选应用提交的本报告与募集书质量凭据；缺任一证据即拒绝。
+
+## 部署前核验（2026-11-11）
+
+```sh
+npm run test:release:verify -- <完整候选SHA> /private/test-release/report.json
+export BB_RELEASE_SMOKE_REPORT=/private/test-release/report.json
+export BB_RELEASE_QUALITY_RECEIPT=/private/prospectus-quality.json
+# 沿既有授权和运行手册调用对应部署入口；本命令不授予发布权限。
+```
+
+`verify.mjs` 只接受 `release-five-flow-v1`、真实模型模式、成功模型探针和五个必需用例各一条。候选完整 SHA/tree、api/worker/web 镜像 ID 与平台必须齐全；`artifactInspector` 的源码 SHA-256 必须等于候选 Git blob 的原始字节，执行镜像必须等于被测试 API 镜像。检查器源码也必须已提交到候选，不使用 Windows 工作区 CRLF 字节代替 Git 源码哈希。
+
+每条流程必须保留实际接受的报价、任务/底稿批次终态、无冻结余额的可勾稽结算、完整成果结构验证、刷新不改账和重复下载证据。每种成果至少从网页下载两次，保存路径不同且字节数、SHA-256 相同。更新需要双 Word，复核/问答/诚信各有 Word；底稿 ZIP 必须精确对应五个已确认条目、包含两个分类目录，并且每个内部 Word 均通过完整检查。任何缺项、失败、重复或额外流程都拒绝。初始积分为 synthetic；此报告不代表真实支付渠道、专业内容或视觉排版验收。
+
+终态和刷新后均须从账务页面读取余额及各任务记录，覆盖全部 reservation/run，冻结为零且可用余额不变。模型证据从同一测试账号的只读数据库快照重新校验任务、调用尝试、实际模型/供应商、时长及 token 汇总，包含准备阶段和重试；未知值保留 null 和未知次数，不写成零。诚信官方网页链路允许没有模型调用，其余四条流程必须有执行调用记录。这些观测仍不能代替质量凭据中的真实模型及人工成果验收。
+
+时间必须满足 `startedAt ≤ 每条原始 case.finishedAt ≤ completedAt ≤ finishedAt`。`completedAt` 是首次全部通过时间，恢复不会重写；`finishedAt`/`lastAttemptFinishedAt` 可以记录当前尝试。24小时有效期始终从最后一个必需用例实际完成的时间计算，resume 或新顶层时间不能续期。修改提交后重测，不能把 PR head 的结果用于不同 merge SHA。报告是受控本机的私有执行证据，不是签名或自动专业质量认证，不能接受客户或不可信来源生成的报告。
+
+`deploy.sh`、`export-images.sh`、`deploy-role.sh`、`export-images-role.sh` 均在构建、迁移或切换前验证两份证据。先制作权限受限的临时副本，再验证副本；成功后保存相同字节至 state 的 `quality/<sha>.json`、`release-smoke/<sha>.json`，发布日志记录 `quality_sha256` 和 `smoke_sha256`。拆分部署绑定应用 SHA，部署脚本 pin 另外记录。募集书质量凭据仍须通过原有真实模型和人工验收规则，结构检查和计费检查不能替代它。
+
+`rollback.sh` 与 `deploy-role.sh --rollback` 使用 `verify-rollback <sha> <report> <releases.log> [main|execution]`：只允许相同原始文件 hash 曾记录在该版本/角色的成功发布中时免除24小时限制，其他字段仍完整验证。首次发布失败恢复，以及A→B失败后继续封存的B候选，均须正常24小时验证，并保留既有 pending 来源/镜像/配置检查；继续B仍执行其正常迁移。只有完成后写入的成功恢复记录才可供将来回滚使用。旧版本缺少原始证据会拒绝，不能事后补造。门禁启用前的回滚衔接须由发布负责人单独审定。
+
+运维 `role-compose.sh` 和数据 `restore.sh` 不能通过外部image tag顺带换版；换版必须走上述门禁。角色首次基础设施启动仅限明确服务和 `--no-deps`，不能启动应用、worker或迁移绕过检查。
+
+`verify-images.mjs` 强制部署/导出复用实际测试的不可变 API、worker、web 镜像 ID，同时核对源码 revision、镜像平台和目标引擎平台。release tag 尚不存在时只允许把已存在的相同 ID 加上 tag；tag 指向其他 ID、镜像缺失、架构不同都拒绝，不重建、不拉取应用镜像来替代证据。主站验证三类应用镜像，执行端验证 worker；辅助 egress/tunnel 仍按原候选源码和 revision 检查构建。启动后再次核对运行容器的实际 ID。跨架构部署必须先在目标架构重新运行测试。
+
+正常换版在相同部署锁内先运行 `rollback-readiness.mjs`：当前旧版必须已有原始质量和五流程报告、对应角色的成功发布日志及仍保留的相同镜像；缺失就会在 pending、迁移或服务切换前停止。首次部署和同版本恢复不伪造前一版。此检查不替代备份、数据库兼容性或在途任务检查。门禁启用前的旧版本若没有证据，保持旧版运行，等待明确的衔接决定；没有隐式豁免或补造历史凭据的选项。实际入口及历史边界见[入口盘点](../../docs/testing/release-smoke-deployment-entrypoints-2026-11-11.md)。
 
 ## 验证状态
 
-此前 Mac/Colima 的三个真实业务用例3/3通过，见[2026-11-08记录](../../docs/testing/local-release-smoke-2026-11-08.md)。本次只补跨平台启动路径和操作说明；按用户要求，没有重跑业务测试、模型调用或其他测试。Windows 实机端到端结果尚未记录，不能把此前 Mac 结果写成 Windows 已通过。
+此前 Mac/Colima 的三个真实业务用例3/3通过，见[2026-11-08记录](../../docs/testing/local-release-smoke-2026-11-08.md)。本次任务1只改部署前验证与部署脚本，不签发新的真实模型报告；测试执行状态以关联PR的准确提交与证据为准。任务2须在本机环境齐备且#1013测试结束后先跑现有三流程基线，再添加两条新流程，不能把历史Mac结果或另一候选的运行结果写成本次Windows已通过。

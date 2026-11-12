@@ -4,7 +4,7 @@ import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomBytes} from 'node:crypto';
 import {parseArgs} from 'node:util';
-import {SAMPLE_REF,CASES,writeJson,verifiedFile,verdict,assertLocalContext,assertTestReport} from './support.mjs';
+import {SAMPLE_REF,CASES,writeJson,verifiedFile,verdict,caseCompletionTime,assertLocalContext,assertTestReport} from './support.mjs';
 import {hostEnvironment,bindMount,protectPrivatePath} from './platform.mjs';
 import {prepareReleaseCredential,assertReleaseCredential} from './credentials.mjs';
 import {assertArchiveSupport,extractArchive,gitArchive} from './archive.mjs';
@@ -152,6 +152,7 @@ try{
  const {runJourneys}=await import('./flows.mjs');
  await runJourneys({out,report,privateData:JSON.parse(readFileSync(join(out,'private.json'))),save:()=>writeJson(reportFile,report)});
  report.status=verdict(report.cases);
+ if(report.status==='passed')report.finishedAt=new Date(caseCompletionTime(report.cases)).toISOString();
 }catch(error){report.status='blocked';report.error=String(error.message);console.error(report.error);process.exitCode=1;}
 finally{
  if(compose&&existsSync(join(out,'compose.json')))try{await command(...compose(['logs','--no-color','--tail','150']),'services.log');}catch{}
@@ -159,7 +160,9 @@ finally{
   try{await command(...compose(['down','--volumes']),'cleanup.log');for(const name of ['copilot-oauth','copilot-auth.json'])rmSync(join(out,name),{force:true});report.cleanup='completed';}
   catch(error){report.status='blocked';report.cleanup='failed';report.error='Business flows passed, but isolated environment cleanup failed: '+error.message;}
  }else report.cleanup='retained';
- report.finishedAt=new Date().toISOString();writeJson(reportFile,report);
+ report.lastAttemptFinishedAt=new Date().toISOString();
+ if(report.status!=='passed')report.finishedAt=report.lastAttemptFinishedAt;
+ writeJson(reportFile,report);
  const credentialSummary=report.credentialMode==='existing-local-codex-command-helper'?`显式本地 command helper；SHA-256：${report.credentialAdaptation?.sha256??'缺失'}。正式 OAuth 换票未经验证。`:(report.credentialMode??'尚未选择');
  const rows=report.cases.map(c=>`| ${c.id} | ${c.status} | ${c.runId??'—'} | ${(c.error??'').replaceAll('|','/').replaceAll('\n',' ')} |`).join('\n');
  writeFileSync(join(out,'report.md'),`# 本地发布前测试\n\n结论：${report.status}\n\n候选提交：${report.sha??'尚未锁定'}\n\n模型：${report.model??'未调用'}；真实支付：未执行。\n\n凭据模式：${credentialSummary}\n\n| 用例 | 状态 | 任务 | 错误 |\n|---|---|---|---|\n${rows}\n\n${report.error??''}\n\n本报告只判断已列出的基础流程，不表示财务内容或专业审核通过。\n`,{mode:0o600});

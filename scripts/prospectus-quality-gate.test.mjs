@@ -100,15 +100,20 @@ test('real-model acceptance is mandatory and must match the candidate commit and
   assert.ok(source.indexOf('if (!release)') < source.indexOf('writeFileSync(`${receiptPath}.tmp`'));
   assert.match(source, /no release receipt was issued/);
 });
-test('every release entry verifies quality before Docker or source export', () => {
-  for (const name of ['deploy.sh', 'export-images.sh', 'rollback.sh']) {
+test('every release entry invokes the dual evidence gate before release effects', () => {
+  const helper = readFileSync(fileURLToPath(new URL('../deploy/m1/scripts/release-evidence.sh', import.meta.url)), 'utf8');
+  assert.match(helper, /prospectus-quality-gate\.mjs/);
+  assert.match(helper, /release-smoke\/verify\.mjs/);
+  assert.match(helper, /BB_RELEASE_QUALITY_RECEIPT:\?/);
+  assert.match(helper, /BB_RELEASE_SMOKE_REPORT:\?/);
+  for (const name of ['deploy.sh', 'export-images.sh', 'rollback.sh', 'deploy-role.sh', 'export-images-role.sh']) {
     const source = readFileSync(fileURLToPath(new URL(`../deploy/m1/scripts/${name}`, import.meta.url)), 'utf8');
-    const guard = source.indexOf('prospectus-quality-gate.mjs');
+    const guard = source.indexOf('verify_release_evidence');
     assert.ok(guard >= 0, `${name}: missing mandatory gate`);
     for (const effect of ['docker build', 'docker save', 'compose up', 'git -C "$BB_REPO" archive', 'git -C "$repo" archive']) {
       const pos = source.indexOf(effect);
       if (pos >= 0) assert.ok(guard < pos, `${name}: quality verification must precede ${effect}`);
     }
-    assert.match(source, /BB_RELEASE_QUALITY_RECEIPT:\?/);
+    assert.match(source, /source .*release-evidence\.sh/);
   }
 });
