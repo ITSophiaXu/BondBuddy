@@ -1,3 +1,4 @@
+import {canReselectExpiredUpload} from './upload-reselection';
 import {uploadPicker} from './upload-picker';
 import './upload-progress.css';
 import {GenerationProgressSchema,generationBatchActive,workpaperItemUnfinished,type GenerationProgress} from '@bondbuddy/contracts';
@@ -165,11 +166,11 @@ export class WorkpaperPanel {
     const picker=this.host.querySelector<HTMLInputElement>('#wp-upload');if(picker)picker.disabled=disabled;
     try{const records=new UploadRecovery(this.api,this.owner,this.project,'workpaper-catalogue',()=>this.live()).list();
       node.innerHTML=records.map(r=>{
-        const needsFile=this.uploadNeedsFile.has(r.id)||!r.uploadId&&!r.material&&this.upload.operationId!==r.id;
+        const needsFile=canReselectExpiredUpload(r)||this.uploadNeedsFile.has(r.id)||!r.uploadId&&!r.material&&this.upload.operationId!==r.id;
         return `<div class="wp-upload-recovery-item bb-upload-file"><p><strong>${esc(r.declaration.filename)}</strong><span>${r.material?'已上传，目录待识别':'上传结果待确认'}</span></p><div class="wp-actions"><button class="bb-upload-action bb-upload-action--primary btn secondary" data-wp-upload="${esc(r.id)}" ${disabled?'disabled':''}>${r.material?'继续识别目录':'确认上传状态'}</button>${needsFile?`<label>重新选择原文件${uploadPicker(`<input type="file" accept=".xlsx" data-wp-reselect="${esc(r.id)}" ${disabled?'disabled':''}>`,{size:'compact',label:'选择 Excel 文件'})}</label>`:''}<button class="bb-upload-action text-button" data-wp-forget="${esc(r.id)}" ${disabled?'disabled':''}>移除待办</button></div><small>${r.material?'文件已保存，无需重新上传。':'先确认服务器是否已保存；需要补传时再选择原文件。'} 移除待办不会删除服务器文件。</small></div>`;
       }).join('');
       node.querySelectorAll<HTMLElement>('[data-wp-upload]').forEach(b=>b.onclick=()=>void this.importFile(undefined,b.dataset.wpUpload));
-      node.querySelectorAll<HTMLInputElement>('[data-wp-reselect]').forEach(b=>b.onchange=()=>void this.importFile(b.files?.[0],b.dataset.wpReselect));
+      node.querySelectorAll<HTMLInputElement>('[data-wp-reselect]').forEach(b=>b.onchange=()=>void this.importFile(b.files?.[0],b.dataset.wpReselect,true));
       node.querySelectorAll<HTMLElement>('[data-wp-forget]').forEach(b=>b.onclick=()=>void this.act(async()=>{
         const id=b.dataset.wpForget!;await new UploadRecovery(this.api,this.owner,this.project,'workpaper-catalogue',()=>this.live()).forget(id);
         if(this.upload.operationId===id){this.upload={};this.importReview=undefined;}this.uploadNeedsFile.delete(id);this.status='已移除本机待办，服务器文件仍保留。';
@@ -205,7 +206,7 @@ export class WorkpaperPanel {
     catch(e){activity?.stop();if(this.live()){feedback.setAttribute('role','status');feedback.textContent=artifactError(e);}}
     finally{activity?.stop();this.downloading=false;buttons.forEach(({b,disabled})=>b.disabled=disabled);button.textContent=text;button.removeAttribute('aria-busy');}
   }
-  private async importFile(file?:File,operation?:string){
+  private async importFile(file?:File,operation?:string,reselectExpiredSession=false){
     if(this.pending||this.busy)return;
     await this.act(async()=>{
       if(file&&(!/\.xlsx$/i.test(file.name)||file.size>WORKPAPER_LIMITS.fileBytes))throw new UserFacingError('请上传 10 MB 以内的 XLSX。');
@@ -219,7 +220,7 @@ export class WorkpaperPanel {
       if(operation&&operation!==this.upload.operationId)this.upload={operationId:operation,projectId:this.project};
       const status:UploadStatus=(s,p)=>{this.status=s;const n=this.host.querySelector('#wp-status');if(n)n.innerHTML=uploadProgressHtml(p??uploadActivity(s),file?.name??'底稿目录',{announce:false});};
       let pin:Awaited<ReturnType<typeof uploadFileMaterial>>;
-      try{pin=await uploadFileMaterial(this.api,this.project,file,this.controller.signal,status,this.upload,this.owner,'workpaper-catalogue',undefined,()=>this.live());}
+      try{pin=await uploadFileMaterial(this.api,this.project,file,this.controller.signal,status,this.upload,this.owner,'workpaper-catalogue',undefined,()=>this.live(),{reselectExpiredSession});}
       catch(e){if(e instanceof UploadRecoveryNeedsFileError&&this.upload.operationId)this.uploadNeedsFile.add(this.upload.operationId);throw new UserFacingError(uploadErrorMessage(e));}
       this.uploadNeedsFile.delete(this.upload.operationId!);status('Excel 已上传，正在识别底稿目录…');
       this.importReview=undefined;
