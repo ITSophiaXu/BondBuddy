@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import { validateTestDatabase } from './prospectus-quality-gate.mjs';
+import { browserStorageHostPort } from './prospectus-input-browser.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const loopback = host => ['localhost', '127.0.0.1', '::1', '[::1]'].includes(host);
@@ -38,10 +39,11 @@ test('synthetic browser upload, adoption and execution preserve the exact source
     };
     cleanup.push(() => { net.Socket.prototype.connect = originalConnect; });
     const [{ Pool }, { chromium, expect }, { createServer: createViteServer }, { createServer },
-      { azureBlobs }, { makeSyntheticDocxFixture }, { pdfSample },
+      { azureBlobs, transaction }, { creditBalanceExact, grantCredits }, { makeSyntheticDocxFixture }, { pdfSample },
       { inputManifestHash }, { editingSource }, { loadUnifiedInput, unifiedInputGate }, { runUploadConfirmationOnce }] = await Promise.all([
       import('pg'), import('@playwright/test'), import('vite'), import('../apps/api/dist/server.js'),
       import('../apps/api/dist/data.js'),
+      import('../apps/api/dist/billing.js'),
       import('../apps/api/dist/docx-fixtures.js'), import('../apps/api/dist/upload-safety.samples.js'),
       import('../apps/api/dist/production-rule-pin.js'), import('../apps/worker/dist/file-authoring-stage.js'),
       import('../apps/worker/dist/unified-input.js'), import('../apps/api/dist/upload-confirmation.js')
@@ -53,7 +55,7 @@ test('synthetic browser upload, adoption and execution preserve the exact source
     assert.ok(version >= 160000 && version < 170000, 'PostgreSQL 16 is required');
     const work = await mkdtemp(resolve(process.env.HOME, 'browser-fixture-'));
     cleanup.push(() => rm(work, { recursive: true, force: true }));
-    const storagePort = Number(process.env.BB_PROSPECTUS_BROWSER_STORAGE_PORT);
+    const storagePort = browserStorageHostPort(process.env.BB_PROSPECTUS_BROWSER_STORAGE_PORT);
     assert.ok(storagePort > 0 && storagePort <= 65535);
     // SDK expands only the public Azurite development account, never a production key.
     const developmentKey = 'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==';
@@ -91,6 +93,14 @@ test('synthetic browser upload, adoption and execution preserve the exact source
       headers: { origin }, data: { username, password, accepted_terms_version: 'synthetic-browser-input-v1' } });
     assert.equal(registration.status(), 201, await registration.text());
     const owner = (await registration.json()).user_id;
+    // Fund only this HTTP-registered synthetic account in the owned clone through
+    // the real immutable lot/event ledger. No billing flag or balance is mocked.
+    const syntheticCredits = 10_000;
+    assert.deepEqual(await creditBalanceExact(pool, owner), { available: 0n, frozen: 0n });
+    await transaction(pool, client => grantCredits(client, { owner, source: 'existing_grant',
+      key: `synthetic-browser-input:${owner}`, points: syntheticCredits, expiresAt: null,
+      actor: 'synthetic-browser-input', reason: 'Isolated browser input test credit; no payment or model execution' }));
+    assert.deepEqual(await creditBalanceExact(pool, owner), { available: BigInt(syntheticCredits), frozen: 0n });
     await context.clearCookies();
     const login = async target => {
       await target.goto('/');
@@ -192,6 +202,10 @@ test('synthetic browser upload, adoption and execution preserve the exact source
     const runRow = (await pool.query('SELECT * FROM bb_runs WHERE id=$1 AND owner_user_id=$2', [run.run_id, owner])).rows[0];
     assert.equal(runRow.input_hash.trim(), input.input_hash);
     assert.equal(runRow.state, 'queued');
+    assert.ok(runRow.reservation_id, 'Execution must use the real credit reservation');
+    const reservedBalance = await creditBalanceExact(pool, owner);
+    assert.ok(reservedBalance.frozen > 0n);
+    assert.equal(reservedBalance.available + reservedBalance.frozen, BigInt(syntheticCredits));
     // Stop at the actual worker input boundary. No worker/model executor is started.
     assert.equal(await unifiedInputGate(pool, runRow, persisted), null);
     const loaded = await loadUnifiedInput({ pool, run: runRow }, { originalFiles: true });
