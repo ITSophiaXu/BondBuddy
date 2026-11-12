@@ -1,0 +1,436 @@
+{
+  "component": "yaml",
+  "version": "2.9.0",
+  "license": "ISC",
+  "source": {
+    "package": "playwright-core",
+    "version": "1.63.0",
+    "url": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.63.0.tgz",
+    "integrity": "sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==",
+    "archiveBytes": 3123044,
+    "archiveSha256": "208593d4e1bcd8f8fe5f869cad1cc332dc7f1d70dc1d58c102dc3ac36e30f26c",
+    "bundle": {
+      "member": "package/lib/utilsBundle.js",
+      "bytes": 3048692,
+      "sha256": "2d1ccc01d21b7d54ca99a6305991d7fb6e072ea4e725d7fec5eb6184188c52c9"
+    },
+    "notice": {
+      "member": "package/lib/utilsBundle.js.LICENSE",
+      "bytes": 106591,
+      "sha256": "2495f30be29620d54b58339821eda0ebabdfb6ee9b09455f7285a06fd46fb9f3"
+    },
+    "parentLicense": {
+      "member": "package/LICENSE",
+      "bytes": 11601,
+      "sha256": "45873d00a0dd243596deb4aa23b2493b3d1f0671921bf2538ea431d7380220eb"
+    },
+    "parentNotice": {
+      "member": "package/NOTICE",
+      "bytes": 254,
+      "sha256": "6d602191187b35b9b01d2cffa01c8469c2c8d9de8a96f1bf868e0f264f51c81d"
+    }
+  },
+  "assembly": {
+    "helperByteRanges": [
+      [
+        139,
+        191
+      ],
+      [
+        285,
+        495
+      ]
+    ],
+    "helperSha256": "d21a16edcaa69f88147e14fe898148bc7a6a715faaa201d40d786b9b8a1dc87c",
+    "moduleByteRange": [
+      494623,
+      757677
+    ],
+    "moduleBytes": 263054,
+    "moduleSha256": "2472065c163dd869bd668f5067212327decd4cf365f87d2d3fd3b3cd859aca5a",
+    "suffix": "module.exports = require_dist();\n",
+    "outputBytes": 263349,
+    "outputSha256": "622a3fd9a2c28120fbfd5086739d15d14895127651f05feda1b5b16997cc9af0",
+    "noticeByteRange": [
+      100861,
+      101773
+    ],
+    "noticeBytes": 912,
+    "noticeSha256": "3ea4d565f2f40cfdf3bdda13baaef7c70c5b41df0f8e046cdf6d719afcb51490",
+    "internalDefinitions": 72,
+    "internalCalledSymbols": 71,
+    "externalRequires": [
+      "process",
+      "buffer",
+      "process",
+      "process"
+    ],
+    "modules": [
+      {
+        "name": "node_modules/yaml/dist/nodes/identity.js",
+        "bytes": 2166,
+        "sha256": "4b15da2e35e6be749600867d52e18a18e8dcbe4dacd4a04fd977aa6f29bb72e0"
+      },
+      {
+        "name": "node_modules/yaml/dist/visit.js",
+        "bytes": 5629,
+        "sha256": "547bd419ccaf4925b61e617e65d1be03b21eb81dcb83c21ae3ae2e05362e1a6e"
+      },
+      {
+        "name": "node_modules/yaml/dist/doc/directives.js",
+        "bytes": 5949,
+        "sha256": "dcd96850007bb9b0650f59ae20b666145556745bd52b436d7d4a2aacdf714d31"
+      },
+      {
+        "name": "node_modules/yaml/dist/doc/anchors.js",
+        "bytes": 2353,
+        "sha256": "fc6aa5c768130b439d7bc614ceab3c57abfc26a8eb8a1cb23053a4c7e04a7465"
+      },
+      {
+        "name": "node_modules/yaml/dist/doc/applyReviver.js",
+        "bytes": 1610,
+        "sha256": "2aff458c5d806354c662a80bd0985920f8d7ba2c008017026a52e171d58e0698"
+      },
+      {
+        "name": "node_modules/yaml/dist/nodes/toJS.js",
+        "bytes": 936,
+        "sha256": "4a444ebcf2af58728160d21b6a8e5109e3fcfb7846cd792b85b4513cdc641794"
+      },
+      {
+        "name": "node_modules/yaml/dist/nodes/Node.js",
+        "bytes": 1522,
+        "sha256": "e0d02b665487daee24a1516d512b8f3edb8713b515ad816c4450ec54c3b96435"
+      },
+      {
+        "name": "node_modules/yaml/dist/nodes/Alias.js",
+        "bytes": 3882,
+        "sha256": "0cafe147a17ab03fd9385bf61c6e18c7082156dc3342b7faa8c1bf807033672b"
+      },
+      {
+        "name": "node_modules/yaml/dist/nodes/Scalar.js",
+        "bytes": 953,
+        "sha256": "17881daf7a401916101ad3921bca442eb889956c244eeb4c315ad777e185125d"
+      },
+      {
+        "name": "node_modules/yaml/dist/doc/createNode.js",
+        "bytes": 2841,
+        "sha256": "fa8ba16ffd7bfc2523751a9f85d4bd75db89c6b080f99724bd98d5f622ac2162"
+      },
+      {
+        "name": "node_modules/yaml/dist/nodes/Collection.js",
+        "bytes": 5189,
+        "sha256": "11ff95d56ee89df641609b5af1341f8af3e9bc0431ac7ea0841793835e4cb19e"
+      },
+      {
+        "name": "node_modules/yaml/dist/stringify/stringifyComment.js",
+        "bytes": 805,
+        "sha256": "38f2a9fe27ef2ecf07c4db37cfc6600d58d27d71a6e6999e82897f594e22cf41"
+      },
+      {
+        "name": "node_modules/yaml/dist/stringify/foldFlowLines.js",
+        "bytes": 4137,
+        "sha256": "d88a09edab2094f16eb6d540ce365c58af0b59e66e12f92bbead66292c774300"
+      },
+      {
+        "name": "node_modules/yaml/dist/stringify/stringifyString.js",
+        "bytes": 11045,
+        "sha256": "22605474d681352421893dce72a9772d048d9a5e957592dee88f09db40cc1220"
+      },
+      {
+        "name": "node_modules/yaml/dist/stringify/stringify.js",
+        "bytes": 4633,
+        "sha256": "b7c71856486a2d45b6bdfe781ed1ee657274b4f7be369cf6cd9e347effba2214"
+      },
+      {
+        "name": "node_modules/yaml/dist/stringify/stringifyPair.js",
+        "bytes": 5307,
+        "sha256": "4074a524cbb2c9d84a8e65869375047c174ea6f2aee451458a1b89e07fad7761"
+      },
+      {
+        "name": "node_modules/yaml/dist/log.js",
+        "bytes": 613,
+        "sha256": "b815f5882ec89a38b00b2dc41133eab8d21a2fe49bbe5077ac4c49e815a1b203"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/yaml-1.1/merge.js",
+        "bytes": 2272,
+        "sha256": "073cb6d636b70a692a48da4256bbb8d84700ada3273ba6478003e2173aea58b8"
+      },
+      {
+        "name": "node_modules/yaml/dist/nodes/addPairToJSMap.js",
+        "bytes": 2327,
+        "sha256": "98a28ac0e81bcc48930f8e524308ffbeafe8aa94780bb083baa4fa2d739fe107"
+      },
+      {
+        "name": "node_modules/yaml/dist/nodes/Pair.js",
+        "bytes": 1392,
+        "sha256": "21b8481c85dfd1a7323326b3ba4f44d496ee7f38d4450a768c79e5311337bcde"
+      },
+      {
+        "name": "node_modules/yaml/dist/stringify/stringifyCollection.js",
+        "bytes": 5689,
+        "sha256": "7a2647f177c1624153d3b8e4499d6b01bc077f17feb3d8a0d761c457fecf2d8b"
+      },
+      {
+        "name": "node_modules/yaml/dist/nodes/YAMLMap.js",
+        "bytes": 5101,
+        "sha256": "810713e27e48bcab043cd6193fc77cb457e997ce4eecce49129052ae7469b4cd"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/common/map.js",
+        "bytes": 637,
+        "sha256": "c1223584ae7bbf8f99211fb21bc0f91f6e717d754ec97da557640df1a580c448"
+      },
+      {
+        "name": "node_modules/yaml/dist/nodes/YAMLSeq.js",
+        "bytes": 3830,
+        "sha256": "6ce73d51f156d2c49201a43b90bc86d7c7c7a17bdf0c1f1e9c2eb428f289767c"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/common/seq.js",
+        "bytes": 636,
+        "sha256": "b47ef7c5166cbd800f7461f9be94e8c20ccfbc30584e644d35fd33af4ca38807"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/common/string.js",
+        "bytes": 627,
+        "sha256": "c100280afc95456398ca6c1bd851d4db1a63ceccc8cbf98f896fca6fbea7b522"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/common/null.js",
+        "bytes": 619,
+        "sha256": "a99e17b10aa0c16eb22a5679403a152cd0edc3569182a1eaecc5373a06bb43dd"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/core/bool.js",
+        "bytes": 791,
+        "sha256": "671e549e6024e447037449272dc240f6c63396eb454f4067a5383e438dfcfbc2"
+      },
+      {
+        "name": "node_modules/yaml/dist/stringify/stringifyNumber.js",
+        "bytes": 987,
+        "sha256": "bc2573b50f246c09a412be52b93602d006ee01e96134388e219218aa079526f8"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/core/float.js",
+        "bytes": 1675,
+        "sha256": "40662d9e6783e150cad24ed727f73c02bc3eb1bd7b2071991864e96467fc9d02"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/core/int.js",
+        "bytes": 1637,
+        "sha256": "cbc4471637d2f0c74e211f365d8841aafedf06fb2c8716e5961496591017ca9d"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/core/schema.js",
+        "bytes": 659,
+        "sha256": "266ad12c34206a40fd1ab6803ed7b8b2a25919b10407656e00d7a4b9611a42ba"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/json/schema.js",
+        "bytes": 2100,
+        "sha256": "6164149c106378cae621efd4d302d3609fe0d2ddf74ad994617839ea139c780a"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/yaml-1.1/binary.js",
+        "bytes": 2773,
+        "sha256": "d1f753e15f21943efd3f3a7ea97e2482f7379c51f191534902160cd43359cdf7"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/yaml-1.1/pairs.js",
+        "bytes": 2743,
+        "sha256": "307f97180b56b581ab7c5f29bc22e8d9673b2125828eda1c9fd010db141a39ae"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/yaml-1.1/omap.js",
+        "bytes": 2709,
+        "sha256": "b30d1d4856fc08eb671315bc4d5512881655793e3ecb627cebc01e822a8db430"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/yaml-1.1/bool.js",
+        "bytes": 1049,
+        "sha256": "b10c36d3d5d293bfa72305f4e578b2ab728bab49a35efb9496ecfd772457b037"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/yaml-1.1/float.js",
+        "bytes": 1790,
+        "sha256": "a4fecf988cf34506f947cb5b2594f11a28367bcb5e0c81d935599acb67d3b125"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/yaml-1.1/int.js",
+        "bytes": 2495,
+        "sha256": "4374a06db0c78b7cf26c4351efa0867c142ea8dabebc898feeb29ce1b163457a"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/yaml-1.1/set.js",
+        "bytes": 3172,
+        "sha256": "327d3cd6c808a6fa096eebf85b8be4296d0eb462f8edc456870cbd2c0ff9b902"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/yaml-1.1/timestamp.js",
+        "bytes": 3546,
+        "sha256": "f1770f821cb6ff737130dfde3a0cf93f7a9ddfe3b02477ee24dc272ce9877848"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/yaml-1.1/schema.js",
+        "bytes": 1087,
+        "sha256": "e1182d346bad4b463df4f8203811db6baa19fe33a0b461ff88a0c3da33f7ff2b"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/tags.js",
+        "bytes": 3265,
+        "sha256": "0801d63083b9560441c2b7328c7cf7567c3922e25684de8b8188251c37f3ef9d"
+      },
+      {
+        "name": "node_modules/yaml/dist/schema/Schema.js",
+        "bytes": 1538,
+        "sha256": "51cd21118eb90a16127d18c10a4f2b027058bc324b2c554346b6b6df70111b3a"
+      },
+      {
+        "name": "node_modules/yaml/dist/stringify/stringifyDocument.js",
+        "bytes": 2986,
+        "sha256": "e538e748dc4212e2c26f7f575241fa8ccc8495e6f7f68c6318a8ab1d45d73f3d"
+      },
+      {
+        "name": "node_modules/yaml/dist/doc/Document.js",
+        "bytes": 12323,
+        "sha256": "fd5ae5d9e0d2108183b12fafc11f6c472931950afecc10b2829ab2312c19fead"
+      },
+      {
+        "name": "node_modules/yaml/dist/errors.js",
+        "bytes": 2178,
+        "sha256": "fec855fd3c971ee30f44af84e58c6355badbaf7af07b521611f3c36e3ec6762e"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/resolve-props.js",
+        "bytes": 4996,
+        "sha256": "aadbb17b6c080949e081a9f9e8f4534fdc192108c30fe307f2cc40362831a2c5"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/util-contains-newline.js",
+        "bytes": 1229,
+        "sha256": "0a084b41cec5eac970e2f69a4cc4a8ce764627c07215c93b8f2e90e02389e9f7"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/util-flow-indent-check.js",
+        "bytes": 727,
+        "sha256": "e54b2cb1578ea66d861de054826a584d70e29eb9350c9f729db8653488a2a8e0"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/util-map-includes.js",
+        "bytes": 652,
+        "sha256": "9f4751bdc65528ac5e50bcc8d99bc9a8e0d9a0e9d50e8b3cd1a8d1c630404246"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/resolve-block-map.js",
+        "bytes": 4856,
+        "sha256": "f733d22dcdaf643a400126c00b9c39afd3e9e6b5c82682984a8883403d6489b4"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/resolve-block-seq.js",
+        "bytes": 1916,
+        "sha256": "9617d5477fc9291ce38ae5d2a1d12ee5f247b15e6fd53ff9012744df6c70f719"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/resolve-end.js",
+        "bytes": 1318,
+        "sha256": "505c97c04225fd0011f47e436f204a1783bdc25cf3f0d700c594c852166863a9"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/resolve-flow-collection.js",
+        "bytes": 8205,
+        "sha256": "caacb972eeeefb1e0faf0e780e3d7aed68eeb0e980cb20a861798f9023b9091c"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/compose-collection.js",
+        "bytes": 3298,
+        "sha256": "773005877c87289cf2d071327037df782f0ee558cb0a6109eaf0280227b5df09"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/resolve-block-scalar.js",
+        "bytes": 7060,
+        "sha256": "c31c75e1d72c5baeff64aafbc8dbbbe833096a56aafcd35fbb6ec12a6be92002"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/resolve-flow-scalar.js",
+        "bytes": 7019,
+        "sha256": "3f6cb86d473c155d6f7b815e8b1b11dccb56c8b01bd37989e1bf9f0645ac0f9d"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/compose-scalar.js",
+        "bytes": 3506,
+        "sha256": "e463eee308033e9c769fdda74d4a3c5ed452d9ff934aa8546c0f69b1090fd0b5"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/util-empty-scalar-position.js",
+        "bytes": 875,
+        "sha256": "8225cbe4aefb6ddad2380604553a3afdb2a4539ff443a2a343c0b0ce67de5761"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/compose-node.js",
+        "bytes": 4244,
+        "sha256": "eda0832297b6314f99ba648ff4238a8b4a138ff6f1a5cffaec66a821f1c99d7a"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/compose-doc.js",
+        "bytes": 1695,
+        "sha256": "e81b69d297ad18e2713a3bf1054df21822b4fc9a38d8301b091a18a783aad19a"
+      },
+      {
+        "name": "node_modules/yaml/dist/compose/composer.js",
+        "bytes": 7948,
+        "sha256": "545e7e8a5c2417c8a5fa73232da9b4035f63ad76f665aa273e50c1ce4f278a0b"
+      },
+      {
+        "name": "node_modules/yaml/dist/parse/cst-scalar.js",
+        "bytes": 7019,
+        "sha256": "aa03ce112e90357e2eeb71b224b4cc444c51802f2485267cf732669562bd9950"
+      },
+      {
+        "name": "node_modules/yaml/dist/parse/cst-stringify.js",
+        "bytes": 1754,
+        "sha256": "ba9f67e1cf7de2f4e735b0cb874dfc9e94f070d567cbfb61aab17ee513acfa77"
+      },
+      {
+        "name": "node_modules/yaml/dist/parse/cst-visit.js",
+        "bytes": 2103,
+        "sha256": "95e228a03088e283fcf5e49e6045c1004fa8712beaade6dbcce451bca3dd43b9"
+      },
+      {
+        "name": "node_modules/yaml/dist/parse/cst.js",
+        "bytes": 2896,
+        "sha256": "80f959cdc20aff40edad76085ca7a3f22a8e15ead5ce14e0edc4be05e958b13b"
+      },
+      {
+        "name": "node_modules/yaml/dist/parse/lexer.js",
+        "bytes": 19095,
+        "sha256": "9fe630313f291bd5cadf02eef51ecf976059f616bd46021bf1f2a9b2eb6490b7"
+      },
+      {
+        "name": "node_modules/yaml/dist/parse/line-counter.js",
+        "bytes": 970,
+        "sha256": "3f0c7975abb5bf7245b1e2f549dab842e82fdc444cfdaa511fa5e124d7bcbd1e"
+      },
+      {
+        "name": "node_modules/yaml/dist/parse/parser.js",
+        "bytes": 29558,
+        "sha256": "0a98567e7e2acf939180568a57a889ea121505a43f8f637613c12dffc95e6472"
+      },
+      {
+        "name": "node_modules/yaml/dist/public-api.js",
+        "bytes": 3975,
+        "sha256": "948d2abd6af3559b4060f3a6d06c30b7b1612e8bb97f2230ed5d1143f1b3b77a"
+      },
+      {
+        "name": "node_modules/yaml/dist/index.js",
+        "bytes": 1937,
+        "sha256": "0a2ccf5f7d575a1022777b7b245cc166d51353e508e06dfd4948ef2e71f7dd39"
+      }
+    ]
+  },
+  "notes": [
+    "All ranges are zero-based, end-exclusive archive member byte offsets.",
+    "Reproduction: concatenate helper ranges, then the contiguous YAML module range, then UTF-8 suffix. No parser code is rewritten.",
+    "Archive SHA-512 verified against the existing package lock before reading members. No package install or package code execution is needed."
+  ]
+}
