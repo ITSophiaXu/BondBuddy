@@ -7,15 +7,31 @@ test('default QA entry retains active recognition and its exact run across navig
   preparation.state='queued';preparation.stage='queued';preparation.result=null;
   state.workspace.runs=[preparation];state.workspace.draft={preparation_id:null,questions:[],materials:[],requirements:'',use_knowledge:true};
   await install(page,state);const url=`/#qa?project=${projectId}`;
-  await page.goto(url);await expect(page.getByRole('region',{name:'进行中的问答任务'})).toContainText('识别问题清单');
-  await expect(page.locator('#qa-history option')).toHaveCount(2);
-  await page.getByRole('link',{name:'查看进度与操作'}).click();await expect(page).toHaveURL(new RegExp('run='+prepareId));
+  const runHref=`#qa?project=${projectId}&run=${prepareId}&return_project=${projectId}`;
+  const active=page.getByRole('region',{name:'进行中的问答任务',exact:true});
+  const progress=active.getByRole('link',{name:'查看进度与操作',exact:true});
+  const expectActivePreparation=async()=>{
+    await expect(page.locator('.qa-page')).toHaveAttribute('data-view','preparation');
+    // Preparation progress remains reachable without becoming an answer-history entry.
+    await expect(page.locator('.qa-toolbar')).toHaveAttribute('hidden','');
+    await expect(page.locator('#qa-history')).toBeHidden();
+    await expect(page.locator('#qa-history option')).toHaveText(['准备下一轮']);
+    await expect(page.locator('#qa-history option[value=""]')).toHaveText('准备下一轮');
+    await expect(page.locator(`#qa-history option[value="${prepareId}"]`)).toHaveCount(0);
+    await expect(active).toContainText('处理问题清单 · 排队中');
+    await expect(progress).toBeVisible();await expect(progress).toHaveAttribute('href',runHref);
+  };
+  await page.goto(url);await expectActivePreparation();
+  const runUrl=new URL(runHref,page.url()).href;
+  await progress.click();await expect(page).toHaveURL(runUrl);
   await expect(page.locator('#qa-document-body')).toContainText('排队');
+  await expect(page.locator('.qa-run-head').getByRole('heading',{name:'处理问题清单 · 排队中',exact:true})).toBeVisible();
+  await expect(page.locator('#qa-history')).toBeHidden();
   await page.getByRole('link',{name:'任务进度与结果',exact:true}).click();
   await expect(page.getByRole('heading',{name:'任务进度与结果',exact:true})).toBeVisible();
-  await page.goto(url);await expect(page.getByRole('region',{name:'进行中的问答任务'})).toBeVisible();
-  await page.reload();
-  await expect(page.getByRole('link',{name:'查看进度与操作'})).toBeVisible();expect(writes(state)).toEqual([]);
+  await page.goto(url);await expectActivePreparation();
+  await page.reload();await expectActivePreparation();
+  expect(writes(state)).toEqual([]);
 });
 
 for(const width of [1108,1440,390])test(`document QA keeps one global assistant and restores width at ${width}`,async({page})=>{
