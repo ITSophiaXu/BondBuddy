@@ -63,7 +63,8 @@ else if(mode==='verify'){const p=JSON.parse(readFileSync(state+'/pending-release
 else throw Error('Unexpected synthetic topology command');
 `);
   writeFileSync(join(bin, 'docker'), `#!/usr/bin/env node
-const fs=require('node:fs'),a=process.argv.slice(2),e=process.env;
+import fs from 'node:fs';
+const a=process.argv.slice(2),e=process.env;
 fs.appendFileSync(e.TEST_CALLS,JSON.stringify(a)+'\\n');
 if(e.TEST_REWRITE_REPORTS==='1'){fs.writeFileSync(e.BB_RELEASE_QUALITY_RECEIPT,'{"status":"failed"}');fs.writeFileSync(e.BB_RELEASE_SMOKE_REPORT,'{"status":"failed"}');}
 const out=x=>process.stdout.write(String(x)+'\\n');
