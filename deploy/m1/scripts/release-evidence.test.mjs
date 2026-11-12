@@ -32,7 +32,8 @@ function fixture(t) {
   for (const name of ['deploy.sh', 'export-images.sh', 'rollback.sh', 'deploy-role.sh', 'export-images-role.sh', 'lib.sh', 'release-evidence.sh'])
     cpSync(join(root, 'deploy/m1/scripts', name), join(scripts, name));
   cpSync(join(root, 'scripts/prospectus-quality-gate.mjs'), join(dir, 'scripts/prospectus-quality-gate.mjs'));
-  for (const name of ['verify.mjs', 'support.mjs','evidence-schema.mjs','verify-images.mjs','rollback-readiness.mjs','model-quality-evidence.mjs']) cpSync(join(root, 'scripts/release-smoke', name), join(dir, 'scripts/release-smoke', name));
+  for (const name of ['verify.mjs', 'support.mjs','evidence-schema.mjs','verify-images.mjs','rollback-readiness.mjs','model-quality-evidence.mjs','image-contract.mjs','upload-confirmation-evidence.mjs']) cpSync(join(root, 'scripts/release-smoke', name), join(dir, 'scripts/release-smoke', name));
+  writeFileSync(join(dir,'deploy/m1/Dockerfile'),'FROM scratch AS api\nFROM scratch AS worker\nFROM scratch AS web\n');
   writeFileSync(join(dir,'scripts/release-smoke/artifact-inspect-cli.mjs'),SYNTHETIC_INSPECTOR_SOURCE);
   writeFileSync(join(dir, 'apps/worker/src/runtime.ts'), '// synthetic BB_WORKER_RUN_KINDS marker\n');
   writeFileSync(join(dir, 'deploy/m1/.env'), 'BB_PROFILE=prod\nBB_HTTP_PORT=18090\n');
@@ -47,6 +48,8 @@ source "$(dirname "\${BASH_SOURCE[0]}")/lib.sh"
 source "$(dirname "\${BASH_SOURCE[0]}")/role-source-lib.sh"
 BB_INTEGRITY_MODE=disabled
 BB_PARSE_ROLE="$BB_DEPLOY_ROLE"
+BB_UPLOAD_CONFIRMATION_ROLE=disabled
+role_confirmation_active() { return 1; }
 role_compose_arguments() { :; }
 role_existing_state() { :; }
 role_existing_release() { :; }
@@ -76,7 +79,7 @@ else if(a[0]==='context')out('unix:///synthetic/docker.sock');
 else if(a[0]==='info')out(e.TEST_ROOT+'/docker-root');
 else if(a[0]==='image'&&a[1]==='ls')out('bondbuddy-m1-api:'+e.TEST_SHA.slice(0,12));
 else if(a[0]==='save')out('synthetic image archive');
-else if(a[0]==='compose'&&a.includes('ps')&&a.includes('-q'))out('synthetic-container');
+else if(a[0]==='compose'&&a.includes('ps')&&a.includes('-q')){if(!a.includes('upload-confirmation'))out('synthetic-container');}
 `, { mode: 0o755 });
   writeFileSync(join(bin, 'df'), '#!/bin/sh\nprintf "Avail\\n107374182400\\n"\n', { mode: 0o755 });
   const git = (...args) => execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();

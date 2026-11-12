@@ -6,6 +6,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sha256 } from './support.mjs';
 import { REQUIRED_RELEASE_CASES, verifyFiveFlowEvidence } from './evidence-schema.mjs';
+import {candidateImageContract,verifyImageContract} from './image-contract.mjs';
+import {verifyConfirmationEvidence} from './upload-confirmation-evidence.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const gitHash = /^[a-f0-9]{40}$/;
@@ -28,6 +30,8 @@ export function verifyReport(report, expected, now = Date.now(), allowExpired = 
     if (!imageId.test(report.images?.[target]?.id ?? ''))
       throw new Error(`Release smoke image identity is missing or invalid: ${target}`);
   }
+  verifyImageContract(report,expected);
+  verifyConfirmationEvidence(report,expected);
   verifyFiveFlowEvidence(report, expected);
   const started = typeof report.startedAt === 'string' ? Date.parse(report.startedAt) : NaN;
   const finished = typeof report.finishedAt === 'string' ? Date.parse(report.finishedAt) : NaN;
@@ -91,8 +95,9 @@ function main() {
   const [ref, filename, logFile, role] = args;
   const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
   const commit = git(['rev-parse', '--verify', `${ref}^{commit}`]);
-  const expected = { commit, tree: git(['rev-parse', `${commit}^{tree}`]),
+  const expected = { commit, tree: git(['rev-parse', `${commit}^{tree}`]),imageContract:candidateImageContract(commit,args=>execFileSync('git',args,{cwd:root,windowsHide:true})),
     inspectorSha256: sha256(execFileSync('git', ['show', `${commit}:scripts/release-smoke/artifact-inspect-cli.mjs`], { cwd: root, windowsHide: true })) };
+  if(expected.imageContract.confirmation)expected.confirmationInspectorSha256=sha256(execFileSync('git',['cat-file','blob',`${commit}:scripts/release-smoke/upload-confirmation-preflight.mjs`],{cwd:root,windowsHide:true}));
   const raw = readFileSync(filename, 'utf8');
   if (mode === 'verify-rollback') verifyRollbackReport(raw, expected, readFileSync(logFile, 'utf8'), Date.now(), role);
   else verifyReport(JSON.parse(raw), expected);

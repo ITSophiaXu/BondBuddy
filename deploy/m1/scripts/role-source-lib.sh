@@ -1,5 +1,5 @@
 # Exact commits must be reachable from the designated repository, never only local objects.
-BB_RELEASE_VALIDATOR_PATHS=(scripts/prospectus-quality-gate.mjs scripts/release-smoke/verify.mjs scripts/release-smoke/support.mjs scripts/release-smoke/evidence-schema.mjs scripts/release-smoke/verify-images.mjs scripts/release-smoke/rollback-readiness.mjs scripts/release-smoke/model-quality-evidence.mjs)
+BB_RELEASE_VALIDATOR_PATHS=(scripts/prospectus-quality-gate.mjs scripts/release-smoke/verify.mjs scripts/release-smoke/support.mjs scripts/release-smoke/evidence-schema.mjs scripts/release-smoke/verify-images.mjs scripts/release-smoke/rollback-readiness.mjs scripts/release-smoke/model-quality-evidence.mjs scripts/release-smoke/image-contract.mjs scripts/release-smoke/upload-confirmation-evidence.mjs)
 role_trusted_source() {
   local sha="$1" ref trusted=0
   case "$(git -C "$BB_REPO" remote get-url origin)" in

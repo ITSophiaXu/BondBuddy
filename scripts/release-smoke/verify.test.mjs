@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import { sha256 } from './support.mjs';
 import { REQUIRED_RELEASE_CASES as CASES } from './evidence-schema.mjs';
 import {fiveFlowFixture} from './evidence-fixtures.mjs';
+import {imageContract} from './image-contract.mjs';
 import { MAX_REPORT_AGE_MS, hasSuccessfulDeployment, verifyReport, verifyRollbackReport } from './verify.mjs';
 
 const now = Date.parse('2026-11-11T12:00:00.000Z');
 const expected = { commit: 'a'.repeat(40), tree: 'b'.repeat(40), inspectorSha256: '9'.repeat(64) };
+expected.imageContract=imageContract('FROM scratch AS worker\n');
 function fixture() {
   const report=fiveFlowFixture(expected,new Date(now-60_000).toISOString(),Object.fromEntries(['api','worker','web'].map((target,i)=>[target,{id:`sha256:${String(i+1).repeat(64)}`,platform:'linux/amd64'}])));
   report.startedAt=new Date(now-3_600_000).toISOString();return report;

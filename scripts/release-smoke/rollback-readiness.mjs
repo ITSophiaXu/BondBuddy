@@ -9,10 +9,12 @@ import {fileURLToPath} from 'node:url';
 import {verifyRollbackReceipt} from '../prospectus-quality-gate.mjs';
 import {verifyRollbackReport} from './verify.mjs';
 import {candidateIdentity,verifyInstalledImages,targetsFor} from './verify-images.mjs';
+import {confirmationRequired,requiresConfirmationConfiguration} from './image-contract.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
-export function verifyRollbackReadiness({candidate,current,scope,qualityRaw,smokeRaw,releasesLog,previousExpected,docker,now=Date.now()}){
- targetsFor(scope);if(!/^[a-f0-9]{40}$/.test(candidate))throw Error('Candidate commit must be exact');
+export function verifyRollbackReadiness({candidate,current,scope,qualityRaw,smokeRaw,releasesLog,previousExpected,docker,selection='source',confirmationRole='disabled',now=Date.now()}){
+ if(!['disabled','execution','size-split'].includes(confirmationRole))throw Error('Unknown protected confirmation role');
+ if(!['all','main','execution'].includes(scope))throw Error('Unknown deployment image scope');if(!/^[a-f0-9]{40}$/.test(candidate))throw Error('Candidate commit must be exact');
  if(!current)return {status:'first_deployment',previous:null};
  if(!/^[a-f0-9]{12}$/.test(current)||!/^[a-f0-9]{40}$/.test(candidate))throw Error('Current deployment must identify an exact trusted commit');
  if(current===candidate.slice(0,12))return {status:'same_candidate',previous:candidate};
@@ -20,12 +22,18 @@ export function verifyRollbackReadiness({candidate,current,scope,qualityRaw,smok
  const role=scope==='all'?undefined:scope;
  verifyRollbackReceipt(qualityRaw,previousExpected,releasesLog,now,role);
  const report=verifyRollbackReport(smokeRaw,previousExpected,releasesLog,now,role);
- const images=verifyInstalledImages(report,previousExpected,scope,{docker});
+ const previousHasConfirmation=confirmationRequired(previousExpected);
+ // The old source decides its own image list; the new service selection is not
+ // evidence that an older commit had this target.
+ const images=verifyInstalledImages(report,previousExpected,scope,{docker,selection:previousHasConfirmation?selection:'disabled'});
+ if(!previousHasConfirmation&&requiresConfirmationConfiguration(scope,selection,confirmationRole))throw Error('Previous worker-only images and original receipts are valid, but the protected confirmation configuration needs service/lane support absent from that older source; plan a verified service/configuration transition before changing versions');
  return {status:'verified',previous:previousExpected.commit,images,scope,compatibility:'database backups and migration compatibility remain separate required checks'};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  try{
-  const [ref,state,scope='all']=process.argv.slice(2);if(!ref||!state)throw Error('Usage: rollback-readiness.mjs <candidate> <state> [all|main|execution]');
+  const [ref,state,scope='all',option='--confirmation=source',roleOption='--confirmation-role=disabled']=process.argv.slice(2);if(!ref||!state||!/^--confirmation=(source|active|disabled)$/.test(option)||!/^--confirmation-role=(disabled|execution|size-split)$/.test(roleOption))throw Error('Usage: rollback-readiness.mjs <candidate> <state> [all|main|execution] [--confirmation=source|active|disabled] [--confirmation-role=disabled|execution|size-split]');
+  const selection=option.slice('--confirmation='.length);
+  const confirmationRole=roleOption.slice('--confirmation-role='.length);
   const git=args=>execFileSync('git',args,{cwd:root,windowsHide:true}),candidate=git(['rev-parse','--verify',`${ref}^{commit}`]).toString().trim();
   const currentPath=join(state,'current'),current=existsSync(currentPath)?readFileSync(currentPath,'utf8').trim():'';
   let previousExpected,qualityRaw,smokeRaw,releasesLog;
@@ -35,6 +43,6 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
    if(existsSync(quality))qualityRaw=readFileSync(quality,'utf8');if(existsSync(smoke))smokeRaw=readFileSync(smoke,'utf8');if(existsSync(log))releasesLog=readFileSync(log,'utf8');
   }
   const docker=args=>execFileSync('docker',args,{encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','pipe']});
-  process.stdout.write(JSON.stringify(verifyRollbackReadiness({candidate,current,scope,qualityRaw,smokeRaw,releasesLog,previousExpected,docker}))+'\n');
+  process.stdout.write(JSON.stringify(verifyRollbackReadiness({candidate,current,scope,qualityRaw,smokeRaw,releasesLog,previousExpected,docker,selection,confirmationRole}))+'\n');
  }catch(error){console.error('Rollback readiness blocked: '+error.message+'; no legacy quality receipt or rollback waiver was created');process.exitCode=1;}
 }

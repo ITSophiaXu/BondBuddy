@@ -41,8 +41,8 @@ verify_release_images() {
   local repo="$1" sha="$2" scope="${3:-all}" mode="${4:-verify}" releases_log="${5:-}"
   local suffix=()
   [ "$mode" != verify-rollback ] || suffix=("${releases_log:?rollback image check requires deployment log}")
-  node "$repo/scripts/release-smoke/verify-images.mjs" "$mode" "$sha" "$BB_RELEASE_EVIDENCE_DIR/smoke.json" "$scope" "${suffix[@]}"
+  node "$repo/scripts/release-smoke/verify-images.mjs" "$mode" "$sha" "$BB_RELEASE_EVIDENCE_DIR/smoke.json" "$scope" "${suffix[@]}" "--confirmation=${BB_RELEASE_CONFIRMATION_SELECTION:-source}" "--confirmation-role=${BB_RELEASE_CONFIRMATION_ROLE:-disabled}"
 }
 verify_rollback_readiness() {
-  node "$1/scripts/release-smoke/rollback-readiness.mjs" "$2" "$3" "${4:-all}"
+  node "$1/scripts/release-smoke/rollback-readiness.mjs" "$2" "$3" "${4:-all}" "--confirmation=${BB_RELEASE_CONFIRMATION_SELECTION:-source}" "--confirmation-role=${BB_RELEASE_CONFIRMATION_ROLE:-disabled}"
 }

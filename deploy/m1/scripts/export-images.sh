@@ -4,6 +4,8 @@
 # `docker load -i <out.tar.gz>` and run deploy.sh <git-sha> without building. Transfer the file with
 # scp over the authorised SSH route; it contains no secrets (those stay in the target's .env).
 set -euo pipefail
+BB_RELEASE_CONFIRMATION_SELECTION=disabled
+BB_RELEASE_CONFIRMATION_ROLE=disabled
 repo="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 sha="$(git -C "$repo" rev-parse --verify "${1:?git-sha}^{commit}")"; tag="${sha:0:12}"; out="${2:?out.tar.gz}"
 source "$(dirname "$0")/release-evidence.sh"
