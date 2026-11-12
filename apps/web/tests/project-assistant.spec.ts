@@ -146,11 +146,13 @@ test('editable task card uses quarters and optional requirements; insufficient i
 });
 test('desktop, focus and narrow assistant stay within viewport and preserve normal page layout',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await setup(page);await page.getByRole('button',{name:'打开 BondBuddy'}).click();
- for(const width of [1440,1024,390,320]){await page.setViewportSize({width,height:960});await expect(page.locator('.ba-panel')).toBeVisible();const box=await page.locator('.ba-panel').boundingBox();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(width);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ // Initialization replaces the panel; measure only after the final paint restores the composer.
+ await expect(page.locator('[data-composer]')).toBeEnabled();await expect(page.locator('[data-composer]')).toBeFocused();
+ for(const width of [1440,1024,390,320]){await page.setViewportSize({width,height:960});await expect(page.locator('.ba-panel')).toBeVisible();const box=await page.locator('.ba-panel').boundingBox();expect(box).not.toBeNull();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(width);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   if(process.env.ASSISTANT_EVIDENCE){const dir=evidenceDir;await mkdir(dir,{recursive:true});await page.mouse.move(0,0);await page.screenshot({path:resolve(dir,`implementation-${width}.png`)});if(width===1440)await page.locator('.ba-panel').screenshot({path:resolve(dir,'implementation-panel.png')});}}
- await page.setViewportSize({width:1440,height:960});const normal=(await page.locator('.ba-panel').boundingBox())!.width;
- await page.locator('[data-a=wide]').click();expect((await page.locator('.ba-panel').boundingBox())!.width).toBeGreaterThan(normal);
- const main=await page.locator('.shell').boundingBox(),panel=await page.locator('.ba-panel').boundingBox();expect(main!.x+main!.width).toBeLessThanOrEqual(panel!.x+1);expect(errors).toEqual([]);
+ await page.setViewportSize({width:1440,height:960});const normal=await page.locator('.ba-panel').boundingBox();expect(normal).not.toBeNull();
+ await page.locator('[data-a=wide]').click();const wide=await page.locator('.ba-panel').boundingBox();expect(wide).not.toBeNull();expect(wide!.width).toBeGreaterThan(normal!.width);
+ const main=await page.locator('.shell').boundingBox(),panel=await page.locator('.ba-panel').boundingBox();expect(main).not.toBeNull();expect(panel).not.toBeNull();expect(main!.x+main!.width).toBeLessThanOrEqual(panel!.x+1);expect(errors).toEqual([]);
 });
 
 test('attachments selected during an upload are queued and retained; changed cards cannot execute; results recover after reload',async({page})=>{
@@ -179,7 +181,10 @@ test('approved prototype comparison capture',async({page})=>{
  for(const file of ['project-assistant-refined']){
   const source=await readFile(new URL('../../../product-prototype/public/'+file+'.html',import.meta.url),'utf8');
   await page.setContent('<!doctype html><meta charset="utf-8"><style>:root{color-scheme:light}body{margin:0}</style>'+source);
-  await page.getByRole('textbox',{name:'发送给 BondBuddy'}).focus();
+  const dock=page.getByRole('button',{name:'打开 BondBuddy',exact:true});
+  await expect(dock).toHaveAttribute('aria-expanded','false');await dock.click();
+  await expect(dock).toHaveAttribute('aria-expanded','true');await expect(page.locator('.ba-panel')).toBeVisible();
+  const composer=page.getByRole('textbox',{name:'发送给 BondBuddy'});await composer.focus();await expect(composer).toBeFocused();
   await page.screenshot({path:resolve(evidenceDir,'prototype-1440.png')});
   await page.locator('.ba-panel').screenshot({path:resolve(evidenceDir,'prototype-panel.png')});
   await page.setViewportSize({width:390,height:960});
