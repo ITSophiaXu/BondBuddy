@@ -4,7 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {test} from 'node:test';
 import {readdir,stat} from 'node:fs/promises';
 import {join} from 'node:path';
-import {Pool} from 'pg';
+import {Pool,type QueryConfig} from 'pg';
 import {BlobServiceClient} from '@azure/storage-blob';
 import {createServer} from '@bondbuddy/api';
 import {azureBlobs,digest} from '@bondbuddy/api/data';
@@ -28,9 +28,12 @@ async function confirmationPhase(phase:string,pending:Promise<unknown>,pool:Pool
   }catch{
     // Bounded, allowlisted diagnostics: no object keys, URLs, credentials or material bytes.
     let confirmations:unknown='diagnostics unavailable';
-    try{confirmations=(await pool.query({text:`SELECT c.state,c.byte_size,c.error->>'code' AS error_code,c.last_error->>'code' AS last_error_code,
+    try{
+      const diagnosticQuery:QueryConfig<string[]> & {query_timeout:number}={text:`SELECT c.state,c.byte_size,c.error->>'code' AS error_code,c.last_error->>'code' AS last_error_code,
       o.delivery_attempts,(o.lease_until>now()) AS leased,(o.delivered_at IS NOT NULL) AS delivered
-      FROM bb_upload_confirmations c JOIN bb_outbox o ON o.id=c.outbox_id WHERE c.owner_user_id=$1 ORDER BY c.byte_size DESC,c.state`,values:[owner],query_timeout:1500})).rows;}catch{/* preserve the phase failure */}
+      FROM bb_upload_confirmations c JOIN bb_outbox o ON o.id=c.outbox_id WHERE c.owner_user_id=$1 ORDER BY c.byte_size DESC,c.state`,values:[owner],query_timeout:1500};
+      confirmations=(await pool.query(diagnosticQuery)).rows;
+    }catch{/* preserve the phase failure */}
     throw new Error(JSON.stringify({synthetic:true,phase,elapsed_ms:Date.now()-started,confirmations,
       events:events.slice(-12).map(e=>({kind:e.kind,lane:e.lane,outcome:e.outcome,phase:e.phase,elapsed_ms:e.elapsed_ms}))}));
   }finally{if(timer)clearTimeout(timer);}
