@@ -1,4 +1,4 @@
-// Synthetic entities; real owner/run/job locks, durable events and outbox. No external model or billing.
+// Synthetic entities; real owner/run/job locks, durable events and outbox. No external model or payment channels.
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
@@ -7,7 +7,10 @@ import { REVIEW_ACTION_CODES, type ReviewAction } from '@bondbuddy/contracts';
 import { recordReviewAction, type Lease } from './queue.js';
 import { isolatedTestDatabase } from './test-database.js';
 import { createServer } from './server.js';
-import { digest, uid } from './data.js';
+import { digest, transaction, uid } from './data.js';
+import { grantCredits } from './billing.js';
+import { makeSyntheticDocxFixture } from './docx-fixtures.js';
+import { syntheticAuthoringBlobs } from './test-authoring-source.js';
 
 const database=await isolatedTestDatabase(undefined,'review-actions');
 test('review actions preserve execution state and obey owner, lease, replay and terminal boundaries',{skip:!database,timeout:30000},async t=>{
@@ -73,24 +76,34 @@ test('long review timelines retain bounded completed categories with ordering, d
     const originalOwner=`synthetic-action-timeline-${randomUUID()}`;
     let owner=originalOwner;
     const origin='http://bondbuddy.test';
-    const app=createServer({pool,principal:async()=>({userId:owner,csrfVerified:true}),allowedOrigin:origin});
-    const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
+    const app=createServer({pool,blobs:syntheticAuthoringBlobs(),enableSyntheticQueue:true,paymentProviders:[],principal:async()=>({userId:owner,csrfVerified:true}),allowedOrigin:origin});
+    const send=(method:string,url:string,payload?:unknown,headers:Record<string,string>={})=>app.inject({method:method as any,url,headers:{origin,...headers},payload:payload as any});
     const ok=(response:{statusCode:number;body:string})=>assert.ok(response.statusCode>=200&&response.statusCode<300,response.body);
     async function execution(){
+      await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2) ON CONFLICT(id) DO NOTHING',[owner,'timeline_'+digest(owner).slice(0,20)]);
       const created=await send('POST','/api/v1/projects',{name:'Synthetic long action history',kind:'review',issuer_name:null,market:null,offering:null});ok(created);
       const projectId=created.json().project_id,base=`/api/v1/projects/${projectId}`;
-      const materialId=uid(),uploadId=uid(),sha256=digest(`synthetic timeline source ${projectId}`);
-      await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
-        VALUES($1,$2,$3,'synthetic.pdf','application/pdf',25,$4,'historical',$5,now()+interval '1 hour','completed')`,
-      [uploadId,owner,projectId,sha256,`synthetic/${uploadId}`]);
-      await pool.query(`INSERT INTO bb_material_versions(id,version,owner_user_id,project_id,upload_id,role,filename,media_type,byte_size,sha256,object_key,state)
-        VALUES($1,1,$2,$3,$4,'historical','synthetic.pdf','application/pdf',25,$5,$6,'persisted')`,
-      [materialId,owner,projectId,uploadId,sha256,`synthetic/${materialId}`]);
-      const pin={material_id:materialId,material_version:1,sha256};
+      const source=makeSyntheticDocxFixture({text:`Synthetic timeline source ${projectId}`});
+      const declaration={byte_size:source.length,sha256:digest(source)};
+      const upload=await send('POST',`${base}/materials/uploads`,{...declaration,filename:'synthetic-timeline.docx',
+        media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',role:'historical'});
+      assert.equal(upload.statusCode,201,upload.body);
+      assert.equal((await send('PUT',upload.json().upload_url,source,{'content-type':'application/octet-stream'})).statusCode,204);
+      const completed=await send('POST',`${base}/materials/uploads/${upload.json().upload_id}/complete`,declaration);
+      assert.equal(completed.statusCode,200,completed.body);
+      const pin={material_id:completed.json().material_id,material_version:completed.json().material_version,sha256:declaration.sha256};
       ok(await send('PUT',`${base}/review-draft`,{kind:'input',expected_version:0,
         input:{source_material_ref:pin,material_versions:[pin],requirements:[],as_of:null}}));
-      const response=await send('POST',`${base}/review-executions`,{execution_request_id:uid(),operation:'full_review',expected_input_version:1,
-        source_report_id:null,expected_plan_version:null,finding_ids:[]});ok(response);
+      const request={execution_request_id:uid(),operation:'full_review',expected_input_version:1,
+        source_report_id:null,expected_plan_version:null,finding_ids:[]};
+      const quoted=await send('POST',`${base}/review-executions/quote`,request);
+      assert.equal(quoted.statusCode,200,quoted.body);
+      const {quote,shortage}=quoted.json();
+      assert.equal(quote.quote_status,'ready');assert.equal(quote.auto_charge,true);
+      assert.ok(quote.quote_id&&quote.scope_quote_id);assert.match(shortage,/^\d+$/);
+      if(BigInt(shortage)>0n)await transaction(pool,c=>grantCredits(c,{owner,source:'purchase',key:uid(),points:shortage,expiresAt:null,
+        actor:'synthetic-review-timeline',reason:'Synthetic funds for timeline admission only'}));
+      const response=await send('POST',`${base}/review-executions`,{...request,quote_id:quote.quote_id});ok(response);
       return {base,runId:response.json().run_id as string,owner};
     }
     async function event(run:{runId:string;owner:string},seq:number,action:unknown){
