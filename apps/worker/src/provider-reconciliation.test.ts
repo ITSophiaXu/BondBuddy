@@ -32,7 +32,8 @@ test('synthetic PostgreSQL/Azurite provider result reconciliation is restart-saf
   const pool=new Pool({connectionString:connection});
   const blobs=azureBlobs(blobConnection!,'bondbuddy-m1-12-result');
   let activeOwner='synthetic-reconcile-owner';
-  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:activeOwner,csrfVerified:true}),enableSyntheticQueue:true});
+  // Preserve the free M1 reconciliation contract: missing/conflicting usage must still pause, not take the fixed-price exception.
+  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:activeOwner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true,enablePaidAuthoring:false});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
   async function fixture(label:string) {
     const p=await send('POST','/api/v1/projects',{name:`Synthetic reconciliation ${label}`,kind:'update',issuer_name:null,market:null,offering:null});
@@ -43,6 +44,7 @@ test('synthetic PostgreSQL/Azurite provider result reconciliation is restart-saf
     const request={execution_request_id:`synthetic-reconcile-${label}-${uid()}`,project_id:projectId,input_revision:1,input_hash:input.json().input_hash,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-worker'};
     const submitted=await send('POST','/api/v1/runs/execute',request);
     assert.equal(submitted.statusCode,202,submitted.body);
+    assert.equal(submitted.json().billing_mode,'platform_trial');assert.equal(submitted.json().reservation_id,null);
     const runId=submitted.json().run_id;
     const job=(await pool.query('SELECT id FROM bb_jobs WHERE run_id=$1',[runId])).rows[0];
     assert.ok(job);
