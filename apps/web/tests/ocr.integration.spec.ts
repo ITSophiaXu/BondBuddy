@@ -69,6 +69,7 @@ test('actual Chinese OCR -> source crop -> versioned user correction -> reload -
   await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:join(tmpdir(),'bondbuddy-ocr-desktop.png')});
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:join(tmpdir(),'bondbuddy-ocr-mobile.png'),fullPage:true});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+  await page.getByRole('banner').getByRole('button',{name:'打开菜单',exact:true}).click();
   await page.getByRole('button',{name:'退出',exact:true}).click();await login(page,foreign);
   expect((await page.request.get(`/api/v1/projects/${projectId}/materials/${materialId}/ocr`)).status()).toBe(404);
   expect((await page.request.get(review.pages[0].image_url)).status()).toBe(404);
