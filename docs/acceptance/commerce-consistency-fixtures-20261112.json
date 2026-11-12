@@ -1,0 +1,713 @@
+{
+  "scope": "two-complete-historical-browser-fixture-files",
+  "issue": 1094,
+  "pullRequest": 1097,
+  "testedCommit": "ab32268e72b6a1eff2184a25ae92a305cf3e7263",
+  "testedTree": "ac132eb01f902f93045dd2b9c43d469475dbdad6",
+  "base": "d06203702675e5f4f992359325c08d9f8e60ec37",
+  "runtime": {
+    "lockMatch": true,
+    "node": "v22.23.3",
+    "playwright": "1.63.0"
+  },
+  "isolation": {
+    "id": "c5805caadb69ccaffa488f0e75076da536206700923ad901432f32939532cdde",
+    "imageId": "sha256:e081d9ca27e8ef07e6a658183b50b15a568a8126a67d70a3065ff630dfb7fdb9",
+    "network": "none",
+    "cpus": 1000000000,
+    "memory": 2147483648,
+    "mounts": [],
+    "ports": {}
+  },
+  "locale": {
+    "mode": "utf8",
+    "inherited": "LANG=\nLANGUAGE=\nLC_CTYPE=\"POSIX\"\nLC_NUMERIC=\"POSIX\"\nLC_TIME=\"POSIX\"\nLC_COLLATE=\"POSIX\"\nLC_MONETARY=\"POSIX\"\nLC_MESSAGES=\"POSIX\"\nLC_PAPER=\"POSIX\"\nLC_NAME=\"POSIX\"\nLC_ADDRESS=\"POSIX\"\nLC_TELEPHONE=\"POSIX\"\nLC_MEASUREMENT=\"POSIX\"\nLC_IDENTIFICATION=\"POSIX\"\nLC_ALL=\n",
+    "selected": "LANG=C.UTF-8\nLANGUAGE=\nLC_CTYPE=\"C.UTF-8\"\nLC_NUMERIC=\"C.UTF-8\"\nLC_TIME=\"C.UTF-8\"\nLC_COLLATE=\"C.UTF-8\"\nLC_MONETARY=\"C.UTF-8\"\nLC_MESSAGES=\"C.UTF-8\"\nLC_PAPER=\"C.UTF-8\"\nLC_NAME=\"C.UTF-8\"\nLC_ADDRESS=\"C.UTF-8\"\nLC_TELEPHONE=\"C.UTF-8\"\nLC_MEASUREMENT=\"C.UTF-8\"\nLC_IDENTIFICATION=\"C.UTF-8\"\nLC_ALL=C.UTF-8\n",
+    "charmap": "UTF-8\n"
+  },
+  "rounds": [
+    {
+      "round": "round1",
+      "commit": "9a33ba3b7b5412a85d52af1ff5cca8df90671449",
+      "tree": "5537851d627b83f684ebc747553658a365020e0d",
+      "expected": 31,
+      "unexpected": 3,
+      "skipped": 0,
+      "flaky": 0,
+      "browserDurationMs": 282060.54,
+      "hostDurationMs": 342904.41240000003,
+      "files": [
+        {
+          "file": "commerce-task-scopes.spec.ts",
+          "cases": 9,
+          "statuses": {
+            "expected": 8,
+            "unexpected": 1
+          }
+        },
+        {
+          "file": "file-consistency-workbench.spec.ts",
+          "cases": 25,
+          "statuses": {
+            "expected": 23,
+            "unexpected": 2
+          }
+        }
+      ],
+      "source": {
+        "beforeFiles": 3626,
+        "afterFiles": 3626,
+        "beforeMismatches": [],
+        "afterMismatches": []
+      },
+      "cleanup": {
+        "container": "bb-commerce-consistency-round1",
+        "remaining": "",
+        "removed": true
+      },
+      "summarySha256": "3bbbe8b1c34b4d7845b12ff7bf026d69675345f19951c0b361448331337d018b",
+      "browserJsonSha256": "90b53b8c95ecb6f75eeb3e9b71b67777fa1602be90dab8d726333607f4bd1081"
+    },
+    {
+      "round": "round2",
+      "commit": "ab32268e72b6a1eff2184a25ae92a305cf3e7263",
+      "tree": "ac132eb01f902f93045dd2b9c43d469475dbdad6",
+      "expected": 33,
+      "unexpected": 1,
+      "skipped": 0,
+      "flaky": 0,
+      "browserDurationMs": 337391.213,
+      "hostDurationMs": 394954.4252,
+      "files": [
+        {
+          "file": "commerce-task-scopes.spec.ts",
+          "cases": 9,
+          "statuses": {
+            "expected": 9
+          }
+        },
+        {
+          "file": "file-consistency-workbench.spec.ts",
+          "cases": 25,
+          "statuses": {
+            "expected": 24,
+            "unexpected": 1
+          }
+        }
+      ],
+      "source": {
+        "beforeFiles": 3626,
+        "afterFiles": 3626,
+        "beforeMismatches": [],
+        "afterMismatches": []
+      },
+      "cleanup": {
+        "container": "bb-commerce-consistency-round2",
+        "remaining": "",
+        "removed": true
+      },
+      "summarySha256": "febca4783baf8b63e593c1ed319e0be68f0ead9f5b1a052fbc771e7ca374ec4d",
+      "browserJsonSha256": "d23c5e06f3443d93c0bb07052c28f7081d245ad4d2cf966895fd5f9cd865c6f9"
+    },
+    {
+      "round": "round3-utf8",
+      "commit": "ab32268e72b6a1eff2184a25ae92a305cf3e7263",
+      "tree": "ac132eb01f902f93045dd2b9c43d469475dbdad6",
+      "expected": 34,
+      "unexpected": 0,
+      "skipped": 0,
+      "flaky": 0,
+      "browserDurationMs": 335320.10000000003,
+      "hostDurationMs": 394667.41530000005,
+      "files": [
+        {
+          "file": "commerce-task-scopes.spec.ts",
+          "cases": 9,
+          "statuses": {
+            "expected": 9
+          }
+        },
+        {
+          "file": "file-consistency-workbench.spec.ts",
+          "cases": 25,
+          "statuses": {
+            "expected": 25
+          }
+        }
+      ],
+      "source": {
+        "beforeFiles": 3626,
+        "afterFiles": 3626,
+        "beforeMismatches": [],
+        "afterMismatches": []
+      },
+      "cleanup": {
+        "container": "bb-commerce-consistency-round3-utf8",
+        "containerId": "c5805caadb69ccaffa488f0e75076da536206700923ad901432f32939532cdde",
+        "remaining": "",
+        "removed": true
+      },
+      "summarySha256": "97433399bd6ada45f6d886dd93eb8bcb1cff4182c396326596d1a5d70950649b",
+      "browserJsonSha256": "d115b001e54c02d5eecb8049dbb9f14a40c90b7b30a4f783bd02911460de333c"
+    }
+  ],
+  "cases": [
+    {
+      "file": "commerce-task-scopes.spec.ts",
+      "title": "QA pending scope cannot run; ready quote total and work items survive cancellation and confirmation",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 10693
+        }
+      ]
+    },
+    {
+      "file": "commerce-task-scopes.spec.ts",
+      "title": "QA original paid scope supplements quote zero; switching to new facts obtains a new total",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 9016
+        }
+      ]
+    },
+    {
+      "file": "commerce-task-scopes.spec.ts",
+      "title": "integrity uses the current roster quote and does not treat the zero placeholder as a free run",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 9185
+        }
+      ]
+    },
+    {
+      "file": "commerce-task-scopes.spec.ts",
+      "title": "sync quotes each selected file, blocks a pending item and sends each immutable quote ID once",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 9003
+        }
+      ]
+    },
+    {
+      "file": "commerce-task-scopes.spec.ts",
+      "title": "a same-version paid consistency check reuses zero-ready coverage without interpreting pending zero as free",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 7488
+        }
+      ]
+    },
+    {
+      "file": "commerce-task-scopes.spec.ts",
+      "title": "QA expired quotation cannot start and preparation remains available",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 7789
+        }
+      ]
+    },
+    {
+      "file": "commerce-task-scopes.spec.ts",
+      "title": "QA unavailable quotation cannot start and preparation remains available",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 8892
+        }
+      ]
+    },
+    {
+      "file": "commerce-task-scopes.spec.ts",
+      "title": "QA declined quotation cannot start and preparation remains available",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 7307
+        }
+      ]
+    },
+    {
+      "file": "commerce-task-scopes.spec.ts",
+      "title": "a ready QA quote that expires while confirming is disabled without a run request",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 8297
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "two actionable files require a 9,000 point confirmation and manual-only files cannot be selected",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 8994
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "a 402 keeps findings and selected files and requires a fresh explicit confirmation after recharge",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 13437
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "changed source-version disables stale updates and explains which input needs another check",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 6426
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "changed source-revision disables stale updates and explains which input needs another check",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 5736
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "changed file-version disables stale updates and explains which input needs another check",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 6542
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "an unknown update retries the same body and check even after another check and file selection are opened",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 10197
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "an explicit missing run never silently displays the latest check",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 6310
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "an existing workspace is read with GET and page reopening never prepares it again",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 12802
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "a first workspace 404 permits one POST preparation and subsequent reads use GET",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 12111
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "an explicit check with a workspace 404 stays readable and never prepares the workspace",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 12987
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "a workspace read failure does not create a workspace as a fallback",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 6392
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "successful dual Word delivery stays downloadable while manual findings remain visible",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 7272
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "a conflict without replacement remains manual and is never presented as updated or consistent",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 6700
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "filtering keeps all eligible selections in the total and identifies the hidden selected files",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 7586
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "refresh restores an uncertain update without resubmitting and later retries its original envelope",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 15091
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "a 408 update response retains the original confirmation envelope for an explicit retry",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 7811
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "a 429 update response retains the original confirmation envelope for an explicit retry",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 8302
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "refresh restores an uncertain free check and retries its saved body without creating a second run",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 13035
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "consistency freshness component comparison: scope and original manual findings remain keyboard readable at 1440",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 9023
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "consistency freshness component comparison: scope and original manual findings remain keyboard readable at 390",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 7882
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "old consistent and manual V1 findings remain scoped to V1 after manual V2 saves with the same source",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 5899
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "added and unreadable families are explicit and only a new click checks all currently readable latest files",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 7591
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "same source ID with a new selection revision invalidates the basis while the exact historical deep link stays selected",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 7888
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "this check delivered V2 retains both downloads and original findings but other-file failed or other-check receipts cannot claim delivery",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 26009
+        }
+      ]
+    },
+    {
+      "file": "file-consistency-workbench.spec.ts",
+      "title": "missing source and missing files each give the relevant existing workbench entry without preparing or submitting work",
+      "status": "expected",
+      "runs": [
+        {
+          "status": "passed",
+          "durationMs": 14204
+        }
+      ]
+    }
+  ],
+  "caseAndSkipAudit": {
+    "totalCases": 34,
+    "files": [
+      {
+        "file": "apps/web/tests/commerce-task-scopes.spec.ts",
+        "caseListUnchanged": true,
+        "skipConditionUnchanged": true,
+        "matchersBefore": 47,
+        "matchersAfter": 51,
+        "reviewedSelectorAndLabelReplacements": [
+          "expect(page.locator('#qa-ranges')).toBeDisabled()"
+        ]
+      },
+      {
+        "file": "apps/web/tests/file-consistency-workbench.spec.ts",
+        "caseListUnchanged": true,
+        "skipConditionUnchanged": true,
+        "matchersBefore": 229,
+        "matchersAfter": 234,
+        "reviewedSelectorAndLabelReplacements": [
+          "expect(page.getByRole('link',{name:/充值/}).last()).toHaveAttribute('href',new RegExp('project='+projectId))",
+          "expect(page.locator('[data-fc-start]')).toHaveText('重试确认检查结果（免费）')",
+          "expect(page.locator('[data-fc-start]')).toHaveText('重试确认检查结果（免费）')"
+        ]
+      }
+    ]
+  },
+  "localeDiagnosis": {
+    "issue": 1103,
+    "commit": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+    "tree": "02b61cf05346af1bdea3578dc27d37cb90c01a48",
+    "browserVersion": "153.0.8010.12",
+    "harnessSHA256": {
+      "run-container.mjs": "06125af40576f9f0bed69d40f1e5b5a3c9de1ac45ced29ca17e3d2a8aab86c54",
+      "probe.mjs": "554f5992a2c72c5914136b5e1a11f907aa2a2ac557b6ae196e32c99eff773e07",
+      "http-replay.json": "983eae5fd2ecc44df36551710a1c82166a4d9b59494003f4f9054e1f5c373960"
+    },
+    "archiveSHA256": "48a3659067cde53b09c35e3d5a361eaef9de52c1f8721285d46d32dac255069f",
+    "measurements": 14,
+    "defaultMismatches": 12,
+    "utf8Mismatches": 0,
+    "allBytesUnchanged": true,
+    "allAnchorNamesCorrect": true,
+    "rows": [
+      {
+        "mode": "production",
+        "repetition": 1,
+        "filename": "发行人基本情况_修订版_V3_20261025.docx",
+        "defaultSuggestedFilename": "download",
+        "utf8SuggestedFilename": "发行人基本情况_修订版_V3_20261025.docx",
+        "bytesSha256": "be16b6f85dfd093f9c540b889f582d0681e2806b12af69e899607d0f5edc645a",
+        "utf8FilenameMatches": true
+      },
+      {
+        "mode": "production",
+        "repetition": 1,
+        "filename": "issuer_revision_V3_20261025.docx",
+        "defaultSuggestedFilename": "issuer_revision_V3_20261025.docx",
+        "utf8SuggestedFilename": "issuer_revision_V3_20261025.docx",
+        "bytesSha256": "be16b6f85dfd093f9c540b889f582d0681e2806b12af69e899607d0f5edc645a",
+        "utf8FilenameMatches": true
+      },
+      {
+        "mode": "native-removed",
+        "repetition": 1,
+        "filename": "发行人基本情况_修订版_V3_20261025.docx",
+        "defaultSuggestedFilename": "download",
+        "utf8SuggestedFilename": "发行人基本情况_修订版_V3_20261025.docx",
+        "bytesSha256": "be16b6f85dfd093f9c540b889f582d0681e2806b12af69e899607d0f5edc645a",
+        "utf8FilenameMatches": true
+      },
+      {
+        "mode": "native-retained",
+        "repetition": 1,
+        "filename": "发行人基本情况_修订版_V3_20261025.docx",
+        "defaultSuggestedFilename": "download",
+        "utf8SuggestedFilename": "发行人基本情况_修订版_V3_20261025.docx",
+        "bytesSha256": "be16b6f85dfd093f9c540b889f582d0681e2806b12af69e899607d0f5edc645a",
+        "utf8FilenameMatches": true
+      },
+      {
+        "mode": "file-backed",
+        "repetition": 1,
+        "filename": "发行人基本情况_修订版_V3_20261025.docx",
+        "defaultSuggestedFilename": "download",
+        "utf8SuggestedFilename": "发行人基本情况_修订版_V3_20261025.docx",
+        "bytesSha256": "be16b6f85dfd093f9c540b889f582d0681e2806b12af69e899607d0f5edc645a",
+        "utf8FilenameMatches": true
+      },
+      {
+        "mode": "production-fallback",
+        "repetition": 1,
+        "filename": "发行人基本情况_修订版_V3_20261025.docx",
+        "defaultSuggestedFilename": "download",
+        "utf8SuggestedFilename": "发行人基本情况_修订版_V3_20261025.docx",
+        "bytesSha256": "be16b6f85dfd093f9c540b889f582d0681e2806b12af69e899607d0f5edc645a",
+        "utf8FilenameMatches": true
+      },
+      {
+        "mode": "workbench-replay",
+        "repetition": 1,
+        "filename": "发行人基本情况_修订版_V3_20261025.docx",
+        "defaultSuggestedFilename": "download",
+        "utf8SuggestedFilename": "发行人基本情况_修订版_V3_20261025.docx",
+        "bytesSha256": "11df1f40be59ef21e0e78f3ecf85f66c94a9f8d8bda05e23208a0333f016f990",
+        "utf8FilenameMatches": true
+      },
+      {
+        "mode": "production",
+        "repetition": 2,
+        "filename": "发行人基本情况_修订版_V3_20261025.docx",
+        "defaultSuggestedFilename": "download",
+        "utf8SuggestedFilename": "发行人基本情况_修订版_V3_20261025.docx",
+        "bytesSha256": "be16b6f85dfd093f9c540b889f582d0681e2806b12af69e899607d0f5edc645a",
+        "utf8FilenameMatches": true
+      },
+      {
+        "mode": "production",
+        "repetition": 2,
+        "filename": "issuer_revision_V3_20261025.docx",
+        "defaultSuggestedFilename": "issuer_revision_V3_20261025.docx",
+        "utf8SuggestedFilename": "issuer_revision_V3_20261025.docx",
+        "bytesSha256": "be16b6f85dfd093f9c540b889f582d0681e2806b12af69e899607d0f5edc645a",
+        "utf8FilenameMatches": true
+      },
+      {
+        "mode": "native-removed",
+        "repetition": 2,
+        "filename": "发行人基本情况_修订版_V3_20261025.docx",
+        "defaultSuggestedFilename": "download",
+        "utf8SuggestedFilename": "发行人基本情况_修订版_V3_20261025.docx",
+        "bytesSha256": "be16b6f85dfd093f9c540b889f582d0681e2806b12af69e899607d0f5edc645a",
+        "utf8FilenameMatches": true
+      },
+      {
+        "mode": "native-retained",
+        "repetition": 2,
+        "filename": "发行人基本情况_修订版_V3_20261025.docx",
+        "defaultSuggestedFilename": "download",
+        "utf8SuggestedFilename": "发行人基本情况_修订版_V3_20261025.docx",
+        "bytesSha256": "be16b6f85dfd093f9c540b889f582d0681e2806b12af69e899607d0f5edc645a",
+        "utf8FilenameMatches": true
+      },
+      {
+        "mode": "file-backed",
+        "repetition": 2,
+        "filename": "发行人基本情况_修订版_V3_20261025.docx",
+        "defaultSuggestedFilename": "download",
+        "utf8SuggestedFilename": "发行人基本情况_修订版_V3_20261025.docx",
+        "bytesSha256": "be16b6f85dfd093f9c540b889f582d0681e2806b12af69e899607d0f5edc645a",
+        "utf8FilenameMatches": true
+      },
+      {
+        "mode": "production-fallback",
+        "repetition": 2,
+        "filename": "发行人基本情况_修订版_V3_20261025.docx",
+        "defaultSuggestedFilename": "download",
+        "utf8SuggestedFilename": "发行人基本情况_修订版_V3_20261025.docx",
+        "bytesSha256": "be16b6f85dfd093f9c540b889f582d0681e2806b12af69e899607d0f5edc645a",
+        "utf8FilenameMatches": true
+      },
+      {
+        "mode": "workbench-replay",
+        "repetition": 2,
+        "filename": "发行人基本情况_修订版_V3_20261025.docx",
+        "defaultSuggestedFilename": "download",
+        "utf8SuggestedFilename": "发行人基本情况_修订版_V3_20261025.docx",
+        "bytesSha256": "11df1f40be59ef21e0e78f3ecf85f66c94a9f8d8bda05e23208a0333f016f990",
+        "utf8FilenameMatches": true
+      }
+    ]
+  },
+  "fullPrGate": false,
+  "originalGate": {
+    "commit": "d3028cb2f5e98e5b9a9ad36deb68e461de4a6df2",
+    "status": "failed",
+    "relatedOriginalFailures": 15
+  },
+  "productCodeChanged": false,
+  "modelsCalled": 0,
+  "realBackend": false,
+  "deployed": false,
+  "userAccepted": false
+}
