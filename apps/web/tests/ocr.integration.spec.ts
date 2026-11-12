@@ -16,7 +16,9 @@ test('actual Chinese OCR -> source crop -> versioned user correction -> reload -
   const user=await account(playwright),foreign=await account(playwright);
   await login(page,user);
   const me=await (await page.request.get('/api/v1/me')).json();
-  await page.getByRole('main').getByRole('link',{name:'新建项目',exact:true}).click();
+  const newProject=page.locator('#main > .page-head').getByRole('link',{name:'新建项目',exact:true});
+  await expect(newProject).toHaveAttribute('href','#/new');
+  await newProject.click();
   const issuer='合成 OCR 原页核对有限公司',projectName=`${issuer}-募集书更新`;
   await page.getByLabel('发行人全称',{exact:true}).fill(issuer);
   await expect(page.locator('#generated-project-name')).toHaveText(projectName);
