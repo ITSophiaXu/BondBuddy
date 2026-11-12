@@ -1,5 +1,5 @@
 import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun } from './test-authoring-source.js';
-import type { TSchema } from '@sinclair/typebox';
+import type { Static, TUnsafe } from '@sinclair/typebox';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { chmod, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
 import { Value } from '@sinclair/typebox/value';
-import { schemas, billingDtoSchema, Int64Schema } from '@bondbuddy/contracts';
+import { schemas, billingDtoSchema, Int64Schema, type BillingWireDto } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
 import { azureBlobs, digest, transaction, uid } from './data.js';
 import { emitInternal, internalEvent, observeUsage, recordStructuredError } from './observability.js';
@@ -23,8 +23,8 @@ const connection = await isolatedTestDatabase();
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const skip = !connection || !blobConnection;
 const ORIGIN = 'http://bondbuddy.test';
-const timelineWireSchema = billingDtoSchema(schemas.AdminJobTimelineResponse, 'adminJobTimeline', Int64Schema) as TSchema;
-const metricsWireSchema = billingDtoSchema(schemas.AdminMetricsResponse, 'adminMetrics', Int64Schema) as TSchema;
+const timelineWireSchema = billingDtoSchema(schemas.AdminJobTimelineResponse, 'adminJobTimeline', Int64Schema) as TUnsafe<BillingWireDto<Static<typeof schemas.AdminJobTimelineResponse>, 'adminJobTimeline'>>;
+const metricsWireSchema = billingDtoSchema(schemas.AdminMetricsResponse, 'adminMetrics', Int64Schema) as TUnsafe<BillingWireDto<Static<typeof schemas.AdminMetricsResponse>, 'adminMetrics'>>;
 const SECRET_PROMPT = 'Synthetic prompt PLAINTEXT_MARKER_79. 验证码：482913.\nCookie: "bb_session=abc123secret"\napi_key="sk-synthetictestkey000000000000"\nAuthorization: "Bearer syntheticbearertoken"';
 const GLUED_QUOTED_SUFFIXES = [
   ...['secret', 'password', 'C_o_o_k_i_e', String.raw`Co\u006Fkie`].flatMap(key =>
