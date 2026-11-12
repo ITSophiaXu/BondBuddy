@@ -43,5 +43,6 @@ export function acceptedQuote(entry){
  if(!matches.length)throw Error('No captured ready quote matches the accepted task');
  const distinct=new Set(matches.map(x=>JSON.stringify(x.accepted)));
  if(distinct.size!==1)throw Error('Ambiguous accepted quote');
- return {...matches[0].accepted,quoteResponse:matches[0].capture.body};
+ entry.quoteResponse=structuredClone(matches[0].capture.body);
+ return {...matches[0].accepted,quoteResponse:entry.quoteResponse};
 }
