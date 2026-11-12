@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { account, login } from './live-helpers';
+import { account, login, origin } from './live-helpers';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -15,17 +16,33 @@ test('actual Chinese OCR -> source crop -> versioned user correction -> reload -
   const user=await account(playwright),foreign=await account(playwright);
   await login(page,user);
   const me=await (await page.request.get('/api/v1/me')).json();
-  await page.getByRole('link',{name:'新建更新项目',exact:true}).first().click();
-  await page.getByLabel('项目名称 必填',{exact:true}).fill('合成 OCR 原页核对');
+  const newProject=page.locator('#main > .page-head').getByRole('link',{name:'新建项目',exact:true});
+  await expect(newProject).toHaveAttribute('href','#/new');
+  await newProject.click();
+  const issuer='合成 OCR 原页核对有限公司',projectName=`${issuer}-募集书更新`;
+  await page.getByLabel('发行人全称',{exact:true}).fill(issuer);
+  await expect(page.locator('#generated-project-name')).toHaveText(projectName);
+  const created=page.waitForResponse(r=>r.url()===new URL('/api/v1/projects',origin).href&&r.request().method()==='POST');
   await page.getByRole('button',{name:'创建项目，继续提供材料'}).click();
-  await expect(page.getByRole('heading',{name:'合成 OCR 原页核对',exact:true})).toBeVisible();
+  const projectResponse=await created;expect(projectResponse.status()).toBe(201);
+  const project=await projectResponse.json();expect(project).toMatchObject({name:projectName,issuer_name:issuer,kind:'update'});
+  await expect(page.getByRole('heading',{name:projectName,exact:true})).toBeVisible();
   const projectId=new URL(page.url()).hash.split('/').at(-1)!;
+  expect(projectId).toBe(project.project_id);
   const root=resolve('../..'),fixture=join(tmpdir(),'bondbuddy-ocr-synthetic.png');
   const python=process.env.BB_PYTHON!;
   execFileSync(python,['-c',`import sys;sys.path.insert(0,${JSON.stringify(join(root,'python/tests'))});from test_ocr import sample_image;sample_image().save(${JSON.stringify(fixture)})`],{cwd:root,env:{...process.env,PYTHONPATH:join(root,'python')}});
-  const wait=page.waitForResponse(r=>r.url().endsWith('/complete')&&r.request().method()==='POST');
-  await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'synthetic-ocr.png',mimeType:'image/png',buffer:readFileSync(fixture)});
-  const saved=await wait;expect(saved.status()).toBe(200);const materialId=(await saved.json()).material_id;
+  const bytes=readFileSync(fixture),uploadsUrl=new URL(`/api/v1/projects/${projectId}/materials/uploads`,origin).href;
+  const uploaded=page.waitForResponse(r=>r.url()===uploadsUrl&&r.request().method()==='POST');
+  // The client polls this same upload after 202; only a terminal 200 is a saved Material.
+  const wait=page.waitForResponse(r=>r.url().startsWith(`${uploadsUrl}/`)&&r.url().endsWith('/complete')&&r.request().method()==='POST'&&r.status()!==202);
+  await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'synthetic-ocr.png',mimeType:'image/png',buffer:bytes});
+  const uploadResponse=await uploaded;expect(uploadResponse.status()).toBe(201);
+  const upload=await uploadResponse.json();expect(upload.upload_id).toEqual(expect.any(String));
+  const saved=await wait;expect(saved.url()).toBe(`${uploadsUrl}/${upload.upload_id}/complete`);expect(saved.status()).toBe(200);
+  const material=await saved.json();
+  expect(material).toMatchObject({material_id:expect.any(String),material_version:1,upload_id:upload.upload_id,role:'audit',filename:'synthetic-ocr.png',media_type:'image/png',byte_size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});
+  const materialId=material.material_id;
   const pool=new Pool({connectionString:process.env.BB_TEST_DATABASE_URL});
   try {
     const result=await processOcrMaterial(pool,azureBlobs(process.env.BB_TEST_AZURITE_CONNECTION_STRING!),{owner:me.user_id,projectId,materialId,version:1,requestId:`ocr-${Date.now()}`,purpose:'source_preflight',language:'chi_sim+eng',maxPages:1},{repoRoot:root,pythonExecutable:python});
@@ -52,6 +69,7 @@ test('actual Chinese OCR -> source crop -> versioned user correction -> reload -
   await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:join(tmpdir(),'bondbuddy-ocr-desktop.png')});
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:join(tmpdir(),'bondbuddy-ocr-mobile.png'),fullPage:true});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+  await page.getByRole('banner').getByRole('button',{name:'打开菜单',exact:true}).click();
   await page.getByRole('button',{name:'退出',exact:true}).click();await login(page,foreign);
   expect((await page.request.get(`/api/v1/projects/${projectId}/materials/${materialId}/ocr`)).status()).toBe(404);
   expect((await page.request.get(review.pages[0].image_url)).status()).toBe(404);

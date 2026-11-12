@@ -1,5 +1,19 @@
 # BondBuddy 开发约定
 
+## 合并前本地全量检查与回执（2026-11-11 用户决定）
+
+- 所有开发者和 agent 自行合并到 `develop` 前，必须先 `git fetch` 并 rebase 到最新 `develop`，提交全部改动、保持工作区干净，再运行 `npm run pr-gate`；全量检查通过后，使用 `npm run pr-gate:verify <commit>` 核对待合并提交，并把回执摘要（commit、tree、通过数、例外数）贴进 PR 的“证据”一节。
+- 此决定将下文“自测／相关测试通过即可自行合并”的前提替换为上述完整流程。rebase 或任何后续代码改动产生新提交后，必须对新提交重新全量运行；失败、未完成或仅报告模式的结果不能作为通过回执。
+- 修改 `scripts/pr-gate/exclusions.json` 必须取得 Maxy 确认。不得为通过检查修改或跳过现有测试、改变判定规则，或自行采用 `exclusions.suggested.json` 增加例外。
+- 本地检查只使用本机一次性 PostgreSQL 16 和 Azurite，不调用真实模型。`pr-gate.yml` 暂时仅保留手动触发，避免 GitHub 计费限制使每个 PR 显示失败。
+- 通过回执只证明该提交的合并前检查结果；开发、用户验收和统一发布职责仍分别执行。本次不接入部署脚本，部署前核对回执另开 PR。
+
+## 发布前双证据门禁（2026-11-11 用户决定）
+
+部署和镜像导出必须先核对同一候选应用 commit/tree 的募集书质量凭据与 `npm run test:release` 通过报告；通过 `BB_RELEASE_QUALITY_RECEIPT`、`BB_RELEASE_SMOKE_REPORT` 传入，两者正常发布有效期均为24小时。单机与 main/execution 角色入口都适用。缺字段、用例失败/遗漏/重复、模型探针失败或提交不符一律拒绝，不能用 PR 绿灯、旧提交结果或手工声明替代。成功日志并列保留两份原始证据的 hash；回滚免时效仅限对应角色、已成功发布版本的原始证据，首次失败恢复仍需新鲜证据及既有封存校验。详见[发布门禁决定](docs/product-decisions/2026-11-01-prospectus-quality-gate.md)及[入口盘点与镜像建议](docs/testing/release-smoke-deployment-entrypoints-2026-11-11.md)。
+
+本批三个真实样本测试扩展任务独立于 #1013 的分支和工作区，测试不同时运行。Windows 真实流程前先检查环境，缺软件或系统配置不得自行安装、更改；先原样跑通现有三流程再添加新流程。老账号升级场景先交方案，用户确认后实现。产品问题按 BUG-REPORTING 单独登记，不在测试 PR 中修产品或放宽判定。本批 PR 均以 develop 为 base，知会 ChrisLiu95，交付后等待用户确认，不合并、不部署；本地结果不等于用户验收。
+
 ## Bug 提报与修复统计（2026-11-10）
 
 发现缺陷按[Bug 提报与每日统计规范](docs/BUG-REPORTING.md)登记：一项可独立修复的问题一条 Issue，使用 `bug` 与对应分类标签，生成成果问题使用 `type:生成结果UX`。认领及修复后同步状态、Fix PR、测试证据和剩余范围；部分修复只用 `Refs #编号`，完整修复才用关闭关键词。合入 `develop`、部署和用户验收分别记录，不能用关闭状态代替部署证据。

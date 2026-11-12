@@ -8,6 +8,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {Pool} from 'pg';
 import {createServer} from '@bondbuddy/api';
+import {lockSyntheticAuthoringInput,quoteSyntheticAuthoringRun} from '@bondbuddy/api/test-authoring-source';
 import type {PrivateBlobs} from '@bondbuddy/api/data';
 import {claim} from '@bondbuddy/api/queue';
 import {codexModelStage,type StageContext} from './run-pipeline.js';
@@ -27,8 +28,10 @@ test('image and prompt pin survive worker restart; corrupt or swapped image cann
  try{
   const p=await send('/api/v1/projects',{name:'Synthetic image input',kind:'update',issuer_name:null,market:null,offering:null});assert.equal(p.statusCode,201,p.body);
   const projectId=p.json().project_id;
-  const input=await send('/api/v1/projects/'+projectId+'/input-revisions',{draft_revision:1,material_versions:[],requirement_message_ids:[]});
-  const submitted=await send('/api/v1/runs/execute',{execution_request_id:'image-'+randomUUID(),project_id:projectId,input_revision:1,input_hash:input.json().input_hash,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-worker'});assert.equal(submitted.statusCode,202,submitted.body);
+  const input=await lockSyntheticAuthoringInput(app,projectId);
+  assert.equal(input.json().input_revision,1,'fixture retains its original first locked revision');
+  const quoteId=await quoteSyntheticAuthoringRun(app,pool,owner,projectId,input.json());
+  const submitted=await send('/api/v1/runs/execute',{execution_request_id:'image-'+randomUUID(),project_id:projectId,input_revision:1,input_hash:input.json().input_hash,quote_id:quoteId,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-worker'});assert.equal(submitted.statusCode,202,submitted.body);
   const lease=await claim(pool,120);assert.ok(lease);assert.equal(lease.runId,submitted.json().run_id);
   const run=(await pool.query('SELECT * FROM bb_runs WHERE id=$1',[lease.runId])).rows[0];
   const ctx:StageContext={pool,blobs,lease,run,checkpoint:{},values:new Map(),signal:new AbortController().signal};

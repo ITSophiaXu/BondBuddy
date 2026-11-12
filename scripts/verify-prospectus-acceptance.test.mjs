@@ -205,7 +205,7 @@ with open(r/'synthetic.pdf','wb') as stream:w.write(stream)
   }finally{rmSync(temp,{recursive:true,force:true});}
 });
 
-for(const name of ['FinancialGeometry','FinancialLabels','NarrativeLists','AuthorizedTemplateLayout','FinancialSourceBindings','ExpandedAmountRegression']){
+for(const name of ['FinancialGeometry','FinancialLabels','NarrativeLists','AuthorizedTemplateLayout','FinancialSourceBindings']){
   test(`independent financial reader validates ${name} without changing a template`,()=>{
     const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
     const python=process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3';

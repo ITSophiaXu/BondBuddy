@@ -1,3 +1,4 @@
+import {settleUploadConfirmationFault} from './upload-confirmation-faults';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -7,7 +8,9 @@ import { install, mount, ids, now, file, secondFile, hash, inputOf, pin, writes,
 
 const resume = (page: Page, filename = file.name) => recovery(page, filename).locator('[data-review-recovery-action=resume]');
 async function pending(page: Page, state: State, kind: 'material' | 'evidence' = 'material') {
+  const missing=state.dropPut==='before',fault=state.dropPut==='after'||state.dropComplete||!!state.dropCompleteAt;const missingReply=missing?page.waitForResponse(r=>r.url().endsWith('/complete')&&r.status()===422):undefined;
   if (kind === 'evidence') await selectEvidence(page); else await page.locator('[data-review-upload-role=audit]').setInputFiles(file);
+  if(fault)await settleUploadConfirmationFault(page,state.confirmationFaults);if(missing){await missingReply;await page.clock.fastForward(600_001);}
   await expect(resume(page)).toBeEnabled(); expect(await records(page)).toHaveLength(1); noBusiness(state);
 }
 async function refreshReadOnly(page: Page, state: State, options: { report?: string } = {}) {
@@ -88,14 +91,14 @@ for (const targetFailure of ['inaccessible-report', 'missing-original-finding'] 
 
 test('ordered batch preserves its adopted first item and resumes the second from the verified prior full draft', async ({ page }) => {
   const state = await install(page), original = inputOf(state.draft); state.dropCompleteAt = 2; await mount(page); await page.locator('[data-review-upload-role=audit]').setInputFiles([file, secondFile]);
-  await expect(resume(page, secondFile.name)).toBeEnabled(); expect(draftWrites(state)).toHaveLength(1); expect(state.draft.version).toBe(4); const first = structuredClone(draftWrites(state)[0]);
+  await settleUploadConfirmationFault(page,state.confirmationFaults);await expect(resume(page, secondFile.name)).toBeEnabled(); expect(draftWrites(state)).toHaveLength(1); expect(state.draft.version).toBe(4); const first = structuredClone(draftWrites(state)[0]);
   await refreshReadOnly(page, state); await resume(page, secondFile.name).click(); await saved(page, state, 4);
   expect(uploads(state, 'create')).toHaveLength(2); expect(uploads(state, 'bytes')).toHaveLength(2); expect(draftWrites(state)).toHaveLength(2); expect(draftWrites(state)[0]).toEqual(first);
   const second = draftWrites(state)[1]; expect(second.expected_version).toBe(4); expect(second.input.requirements).toEqual(original.requirements); expect(second.input.evidence_links).toEqual(original.evidence_links); expect(second.input.material_versions.slice(0, 3)).toEqual(first.input.material_versions); noBusiness(state);
 });
 
 test('an explicit same-file reselect validates bytes before replacing an original upload that never received them', async ({ page }) => {
-  const state = await install(page); state.dropPut = 'before'; await mount(page); await pending(page, state); await refreshReadOnly(page, state); await resume(page).click();
+  const state = await install(page); state.dropPut = 'before'; state.sessionLifetimeMs=10_000; await mount(page); await pending(page, state); await refreshReadOnly(page, state);
   const reselect = recovery(page).locator('[data-review-recovery-reselect]'); await expect(reselect).toBeAttached();
   await reselect.setInputFiles({ ...file, buffer: Buffer.from('x'.repeat(file.buffer.length)) }); await expect(recovery(page).locator('[role=alert]')).toContainText('上传恢复记录发生冲突'); await expect(resume(page)).toBeEnabled(); await expect(reselect).toBeEnabled(); expect(uploads(state, 'create')).toHaveLength(1); expect(draftWrites(state)).toHaveLength(0);
   await reselect.setInputFiles(file); await saved(page, state); expect(uploads(state, 'create')).toHaveLength(2); expect(uploads(state, 'bytes')).toHaveLength(2); expect(draftWrites(state)).toHaveLength(1);
@@ -187,6 +190,7 @@ for (const scene of ['materials', 'target-dialog'] as const) for (const width of
   captured.push(await capture(page, directory!, `${flavor}-${scene}-ready-${width}`));
   if (scene === 'target-dialog') { await page.locator('#review-upload-role').selectOption('other'); await page.locator('#review-upload-file').setInputFiles(file);  }
   else await page.locator('[data-review-upload-role=audit]').setInputFiles(file);
+  if(!reference)await settleUploadConfirmationFault(page,state.confirmationFaults);
   if (reference) await expect(page.locator('[data-review-action=retry-upload]')).toBeEnabled(); else await expect(resume(page)).toBeEnabled();
   captured.push(await capture(page, directory!, `${flavor}-${scene}-pending-${width}`)); const before = await refreshReadOnly(page, state);
   if (reference) { await expect(page.locator('[data-review-action=retry-upload]')).toHaveCount(0); await expect(page.locator('[data-review-recovery-id]')).toHaveCount(0); }

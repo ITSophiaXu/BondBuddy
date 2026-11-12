@@ -22,13 +22,14 @@ import { loadCodexAdapterConfig } from './codex-adapter.js';
 
 const connection=await isolatedTestDatabase(undefined,'m4-cases');
 const root=resolve(fileURLToPath(import.meta.url),'../../../..'),runFile=promisify(execFile);
-test('case templates: real API -> exact worker input -> native Word pair -> one settlement for each supported scope',
+test('historical case templates: real API -> exact worker input -> native Word pair -> one settlement for each supported scope',
   {skip:!connection,timeout:240000},async()=>{
   const pool=new Pool({connectionString:connection}),owner=uid(),files=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{files.set(k,Buffer.from(b));},get:async k=>files.get(k)!,getIfExists:async k=>files.get(k)??null,
     getIfExistsBounded:async k=>files.get(k)??null,exists:async k=>files.has(k),delete:async k=>{files.delete(k);}};
   let actor:string=owner,calls=0;
-  const app=createServer({pool,blobs,enableSyntheticQueue:true,principal:async()=>({userId:actor,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
+  // Preserve the six historical 4500-point dynamic contracts and full Word checks.
+  const app=createServer({pool,historicalBillingFixture:true,blobs,enableSyntheticQueue:true,principal:async()=>({userId:actor,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as never,url,payload:payload as never,headers:{origin:'http://bondbuddy.test'}});
   const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.equal(r.statusCode,200,r.body);return r.json();};
   const base=resolve(tmpdir()),directory=await mkdtemp(join(base,'bb-case-pipeline-'));

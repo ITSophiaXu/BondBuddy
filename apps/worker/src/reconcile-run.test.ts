@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
-import { azureBlobs, uid } from '@bondbuddy/api/data';
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun, syntheticAuthoringBlobs } from '@bondbuddy/api/test-authoring-source';
+import { uid } from '@bondbuddy/api/data';
 import { claim, pauseRun, recordPotentialCall, resumePausedRun } from '@bondbuddy/api/queue';
 import { latestProviderAttempt } from '@bondbuddy/api/provider-results';
 import { runReconcileCommand } from './reconcile-run.js';
@@ -14,17 +15,19 @@ test('private reconciliation lists, retries and fails exact owned attempts with 
   {skip:!connection},async()=>{
     const pool=new Pool({connectionString:connection});
     const owner=`reconcile-owner-${uid()}`;
-    const blobs=azureBlobs('UseDevelopmentStorage=true','reconcile-test');
+    const blobs=syntheticAuthoringBlobs();
     const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
     const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
     async function fixture(label:string){
       const project=await send('POST','/api/v1/projects',{name:`Synthetic ${label}`,kind:'update',issuer_name:null,market:null,offering:null});
       assert.equal(project.statusCode,201,project.body);
       const projectId=project.json().project_id;
-      const input=await send('POST',`/api/v1/projects/${projectId}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[]});
+      const input=await lockSyntheticAuthoringInput(app,projectId);
       assert.equal(input.statusCode,201,input.body);
+      assert.equal(input.json().input_revision,1,'fixture retains its original first locked revision');
+      const quoteId=await quoteSyntheticAuthoringRun(app,pool,owner,projectId,input.json());
       const submitted=await send('POST','/api/v1/runs/execute',{execution_request_id:`synthetic-${uid()}`,project_id:projectId,input_revision:1,
-        input_hash:input.json().input_hash,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic'});
+        input_hash:input.json().input_hash,quote_id:quoteId,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic'});
       assert.equal(submitted.statusCode,202,submitted.body);
       return submitted.json().run_id as string;
     }
