@@ -145,7 +145,7 @@ node --test scripts/pr-gate/run.test.mjs
 当本机已有包含依赖与浏览器的PR gate缓存镜像时，可指定不可变本地镜像ID：
 
 ```sh
-npm run pr-gate -- --offline-image sha256:<64位本地镜像ID>
+npm run pr-gate -- --offline-image sha256:<64位本地镜像ID> --host-worker-image sha256:<64位已有worker镜像ID> --host-dependency-root <本机已有同锁依赖缓存的绝对目录>
 ```
 
 此模式仍执行原工作流的全部八个分片。它只改变环境准备，不改变自动发现、例外清单、300秒单文件预算、跳过判定或回执完整性；尚未准备好的能力仍按原测试失败或skip阻断。每次仍需干净HEAD和最新develop基点。镜像ID由本机`docker image inspect`取得，不接受tag，不自动构建或拉取。PG16和Azurite也必须已缓存，启动时固定解析后的image ID。
@@ -157,3 +157,19 @@ npm run pr-gate -- --offline-image sha256:<64位本地镜像ID>
 - 普通模式保留原下载准备。两种模式都按本次创建的精确容器ID和名称核对后清理，并inspect确认不存在；中途启动失败同样清理。
 
 离线准备回执在`.local/pr-gate/runs/<id>/offline-cache/record.json`，含原始/转换/候选输入哈希、源码恢复、依赖检查和真实浏览器探针。只有八分片与其余既有能力均通过、清理成功时才能签发PR gate通过回执。单独环境探针或旧定向日志均不能替代本次完整结果。
+
+## 同轮宿主能力调度
+
+完整本地入口还需上述`--host-worker-image`和`--host-dependency-root`。宿主只使用已经存在的依赖，不安装软件、不拉取镜像。Windows计费适配器使用一个本轮Git snapshot还原的独立checkout；第三方依赖来自同锁缓存，产品workspace和构建产物属于本次候选。普通core容器仍没有Docker socket、宿主源码或宿主凭据挂载。
+
+当前五个精确文件走宿主调度：原生文件沙箱2个、诚信桌面1个、OCR1个、Windows计费面板1个。`host-profiles.mjs`只决定执行环境；发现、原矩阵、原文件顺序、5分钟文件预算、70分钟分片预算、断言和失败/skip判定保持不变。浏览器分片仍批量按原配置执行，尚缺的真实API或历史基准不会因此获得通过。
+
+宿主从固定候选和原发现结果生成内存计划。容器请求仅含run ID、计划hash、顺序、分片和精确test ID，不能传命令、argv、环境、路径或镜像。拒绝额外字段、重复、错序、旧版本以及符号/硬链接请求。每个适配器执行原完整文件，保留原stdout、stderr、退出码、耗时、环境准备与资源清理证据。准备或清理失败会独立阻断，不能把原测试退出码0改写成“全部通过”。
+
+原生能力把本轮core完成构建后的源码、依赖和编译产物导出到新的专用volume，覆盖旧worker镜像的整个`/app`；volume初始化后只读。逐项非root、无网络、只读rootfs、drop ALL、no-new-privileges、资源限额，原生沙箱/桌面使用仓库收窄seccomp；不使用unconfined。沙箱先运行原权限探针；OCR先核验真实Tesseract语言包/中文字体/ReportLab；桌面先核验X11/面板/Chromium。缺失前提直接失败，不静默skip，也不安装依赖。
+
+worker生产依赖中没有ReportLab时，准备阶段从本轮已验证的core依赖缓存导出其包及distribution metadata，逐文件留hash并放入同一只读volume的`.pr-gate-python`；Python按实际导入后的完整候选requirements和`pip check`核验。此过程不下载或执行安装器，不能代用未核对的宿主模块。导出编译产物前额外核验全部Git原始blob字节，不能只以`git status`干净判定同源。
+
+全部分片结束后、清理core容器之前，host控制器再次将当前Git commit中的原始核验器字节传入core执行`verifyGitSnapshotSource`，不从测试可写目录导入核验器。`receipt.core_source_final`记录本轮run、commit/tree、核验器hash、全部受跟踪文件的原字节证明及执行时间；必须与准备阶段证明一致，且时间晚于全部分片完成。缺失、失败或源码变化均阻断凭据，不能用外层工作区干净替代core核对。
+
+宿主原始证据放在`.local/pr-gate/host-evidence/<runId>`，普通core不挂载此目录。分片引用和宿主内存结果必须逐项匹配相同候选、计划、输出hash、原执行结果与零skip；还必须完成本轮全部八分片及全局资源清理。旧专项回执不能导入或拼接。本轮host源码使用系统临时目录下独有的`bb-pg-*/src`短路径，避免Windows Git长路径失败；创建时核对实际父路径、非链接目录及唯一所有权记录，`owner.json`保留本轮run ID和进程身份。具体源码路径及原字节证明写入`receipt.host_source`，与core证明一致后才有效。不修改系统或全局Git设置，不省略任何长路径文件；保留此独立源码便于核对。

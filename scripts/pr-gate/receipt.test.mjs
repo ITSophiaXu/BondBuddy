@@ -4,6 +4,8 @@ import test from 'node:test';
 import { exclusionsEvidence, PREPARATION_IDS, RECEIPT_SCHEMA, verifyReceipt } from './receipt.mjs';
 import { syntheticCapabilities, syntheticCapabilityRuns, syntheticCapabilityService } from './capabilities.test-fixture.mjs';
 import { CACHE_FILES, OFFLINE_SCHEMA, compareCacheFiles, hash } from './offline-cache.mjs';
+import { syntheticHostDispatch, syntheticHostReferences, syntheticHostSources } from './host-dispatch.test-fixture.mjs';
+import { CORE_SOURCE_SCHEMA } from './core-source.mjs';
 
 const matrix = [
   { name: 'api-1', groups: 'api', shard: '1/2' },
@@ -19,10 +21,13 @@ const rawExclusions = `${JSON.stringify({ _说明: 'synthetic', notInCi: [{ patt
 const expected = {
   commit: 'a'.repeat(40), tree: 'b'.repeat(40), develop_commit: 'c'.repeat(40),
   matrix, exclusions: exclusionsEvidence(rawExclusions),
+  host_source_sha256: syntheticHostSources(),
+  source_verifier_sha256: 'a'.repeat(64),
 };
 const now = Date.parse('2026-11-11T13:02:00.000Z');
 function fixture() {
   const capabilities = syntheticCapabilities(expected);
+  const hostDispatch = syntheticHostDispatch(expected);
   return {
     schema_version: RECEIPT_SCHEMA, status: 'passed', dependency_mode: 'download',
     commit: expected.commit, tree: expected.tree, develop_commit: expected.develop_commit,
@@ -30,14 +35,21 @@ function fixture() {
     started_at: '2026-11-11T13:00:00.000Z', finished_at: '2026-11-11T13:01:00.000Z',
     exclusions: structuredClone(expected.exclusions),
     capabilities,
+    run_id: hostDispatch.plan.run_id, host_dispatch: hostDispatch,
+    host_source: { commit: expected.commit, tree: expected.tree, clean_tree: true, raw_source: structuredClone(hostDispatch.runtime.source.raw_source) },
+    core_source_final: { schema: CORE_SOURCE_SCHEMA, status: 'passed', phase: 'after-all-shards', source_root: '/workspace', run_id: hostDispatch.plan.run_id,
+      commit: expected.commit, tree: expected.tree, verifier_sha256: expected.source_verifier_sha256, execution: { code: 0 },
+      started_at: '2026-11-11T13:00:50.000Z', finished_at: '2026-11-11T13:00:51.000Z', raw_source: structuredClone(hostDispatch.runtime.source.raw_source) },
     preparation: PREPARATION_IDS.map(id => ({ id, status: 'passed' })),
     shards: matrix.map(row => ({
       name: row.name, groups: row.groups, shard: row.shard, exit_code: 0,
+      finished_at: '2026-11-11T13:00:40.000Z',
       capability_preparation: syntheticCapabilityService(capabilities, row.name),
       summary: {
         schema: 'pr-gate-summary-v1', job: row.name, groups: row.groups.split(','), shard: row.shard,
         expectedJobs: matrix.length, report: false, commit: expected.commit,
         capabilities: row.name === 'worker-1' ? syntheticCapabilityRuns(capabilities, 'apps/worker/') : row.name === 'api-1' ? syntheticCapabilityRuns(capabilities, 'apps/api/') : [],
+        host_dispatch: syntheticHostReferences(hostDispatch, row.name),
         finishedAt: '2026-11-11T13:00:30.000Z', status: 'passed',
         counts: { selected: 2, passed: 2, blocking: 0, tolerated: 0, notInCi: row.name === 'browser-1' ? 1 : 0 },
         problems: [], blocking: [], tolerated: [], recovered: [], skipsAllowed: [], slowest: [],
@@ -89,6 +101,31 @@ test('another commit, tree, develop base or exclusions cannot reuse a pass', () 
   rejects(receipt => { receipt.exclusions.counts.knownFailing = 1; receipt.exclusions.total = 2; }, /exclusions/);
   rejects(receipt => { receipt.exclusions.total = 2; }, /exclusions total/);
   rejects(receipt => { receipt.exclusions.counts.notInCi = -1; }, /exclusions counts/);
+});
+
+test('host checkout requires the same candidate and complete raw byte proof as the core', () => {
+  rejects(receipt => { delete receipt.host_source; }, /host source/);
+  for (const key of ['commit', 'tree']) rejects(receipt => { receipt.host_source[key] = 'd'.repeat(40); }, /host source/);
+  rejects(receipt => { receipt.host_source.clean_tree = false; }, /raw source/);
+  rejects(receipt => { delete receipt.host_source.raw_source; }, /raw source/);
+  for (const [key, value] of [['files', 1], ['byte_count', 1], ['manifest_sha256', 'e'.repeat(64)]]) {
+    rejects(receipt => { receipt.host_source.raw_source[key] = value; }, /raw source/);
+  }
+});
+
+test('final core proof must follow all shards with original verifier and unchanged bytes', () => {
+  rejects(receipt => { delete receipt.core_source_final; }, /Final core raw-source/);
+  for (const key of ['commit', 'tree']) rejects(receipt => { receipt.core_source_final[key] = 'd'.repeat(40); }, /another candidate/);
+  rejects(receipt => { receipt.core_source_final.run_id = 'previous-run'; }, /another run/);
+  rejects(receipt => { receipt.core_source_final.verifier_sha256 = 'd'.repeat(64); }, /verifier/);
+  rejects(receipt => { receipt.core_source_final.raw_source.manifest_sha256 = 'f'.repeat(64); }, /changed after preparation/);
+  rejects(receipt => { receipt.core_source_final.started_at = '2026-11-11T13:00:39.000Z'; }, /before a shard/);
+  rejects(receipt => { delete receipt.shards[0].finished_at; }, /before a shard/);
+  rejects(receipt => { receipt.core_source_final.execution.code = 1; }, /exit successfully/);
+  rejects(receipt => {
+    for (const shard of receipt.shards) shard.finished_at = '2026-11-11T13:00:20.000Z';
+    receipt.core_source_final.started_at = '2026-11-11T13:00:25.000Z'; receipt.core_source_final.finished_at = '2026-11-11T13:00:26.000Z';
+  }, /predates its original summary/);
 });
 
 test('failed, dirty, wrong-platform or incomplete evidence is rejected', () => {
