@@ -1,11 +1,16 @@
 import {expect,test,type Page} from '@playwright/test';
-import {INTEGRITY_PRICE,type IntegrityEvidence,type IntegrityManual} from '@bondbuddy/contracts';
+import {INTEGRITY_PRICE,INTEGRITY_SITES,resolveIntegritySite,type IntegrityDraft,type IntegrityEvidence,type IntegrityManual} from '@bondbuddy/contracts';
+import type {IntegrityRecoveryValue} from '../src/integrity-recovery';
 import {mkdir} from 'node:fs/promises';
 import {join} from 'node:path';
-import {assertFixture,checkId,exportId,fixture,historicalDraft,historicalRounds,install,integrityWrites,material,newPin,oldPin,otherOwnerId,otherProjectId,ownerId,projectId,sha,workspaceReads,writes} from './integrity-continuation-fixtures';
+import {assertFixture,checkId,exportId,fixture,historicalDraft,historicalRounds,install,integrityWrites,material,newPin,oldPin,otherOwnerId,otherProjectId,ownerId,projectId,sha,workspaceReads,writes,type State} from './integrity-continuation-fixtures';
 
 // Public-schema synthetic browser UX only. These cases never visit official
 // websites, inspect real Word files, settle credits or execute a worker.
+// The disabled-catalog fixture deliberately retains historical fixed-price
+// confirmation/recovery coverage; it does not simulate current automatic pricing.
+const cacheKey=`bb-integrity-recovery:${ownerId}:${projectId}`;
+const opened=new WeakMap<Page,State>();
 const route=(run:string|null=exportId,project=projectId)=>`/#integrity?project=${project}${run?`&run=${run}`:''}`;
 const modal=(page:Page)=>page.locator('.integrity-modal[open]');
 const subjectField=(page:Page,id:string,field:string)=>page.locator(`[data-subject="${id}"][data-field="${field}"]`);
@@ -14,7 +19,24 @@ const nextPending=(page:Page)=>page.locator('#integrity-next-pending:visible');
 const originalSubjects=()=>historicalDraft().subjects;
 const preparedDraft=()=>({...historicalDraft(),site_ids:['bankruptcy','local-tax']});
 test.afterEach(async({page})=>assertFixture(page));
-async function open(page:Page,state=fixture(),run:string|null=exportId){await install(page,state);await page.goto(route(run));await expect(page.locator(run?'#integrity-records':'#integrity-roster')).toBeVisible();return state;}
+async function open(page:Page,state=fixture(),run:string|null=exportId){opened.set(page,state);await install(page,state);await page.goto(route(run));await expect(page.locator(run?'#integrity-records':'#integrity-roster')).toBeVisible();return state;}
+async function openRetained(page:Page,state=fixture(),index=0,siteId='credit-china'){
+  // Synthetic pre-upgrade local state only. Fresh query records cannot create
+  // manual evidence (2026-10-28 decision); the real resume UI must restore it.
+  const subject=historicalDraft().subjects[index],site=resolveIntegritySite(INTEGRITY_SITES.find(value=>value.id===siteId)!,subject);
+  const value:IntegrityRecoveryValue={revision:state.workspace.revision,draft:structuredClone(state.workspace.draft),evidenceDraft:{roundId:checkId,subjectId:subject.id,siteId,url:site.links[0].url,time:'',note:'',conclusion:'unresolved',...(siteId.startsWith('local-')?{registration:{province:subject.province,city:subject.city}}:{})}};
+  await page.addInitScript(({key,owner,project,value})=>{
+    const marker=key+':synthetic-seed-once';if(sessionStorage.getItem(marker))return;sessionStorage.setItem(marker,'1');
+    if(!localStorage.getItem(key))localStorage.setItem(key,JSON.stringify({version:'integrity-recovery-cache-v1',owner,project,value}));
+  },{key:cacheKey,owner:ownerId,project:projectId,value});
+  return open(page,state);
+}
+function expectOnlySavedDraft(state:State,draft:IntegrityDraft){
+  const body={expected_revision:10,draft};
+  expect(writes(state)).toEqual([{method:'POST',path:`/projects/${projectId}/integrity/draft`,search:'',body}]);
+  expect(state.drafts).toEqual([body]);expect(state.workspace.revision).toBe(11);expect(state.workspace.draft).toEqual(draft);
+  expect(state.checks).toEqual([]);expect(state.exports).toEqual([]);expect(state.manuals).toEqual([]);expect(state.uploads).toEqual([]);expect(state.uploadBytes).toBe(0);expect(state.accepted.size).toBe(0);expect(state.acceptedManuals.size).toBe(0);expect(state.available).toBe(10000);
+}
 async function adopt(page:Page){await page.locator('#integrity-use-round').click();await expect(page.locator('#integrity-adopt-confirm')).toBeVisible();await page.locator('#integrity-adopt-confirm').click();await expect(page.locator('#integrity-roster')).toBeVisible();}
 async function expectLocal(page:Page,siteIds=preparedDraft().site_ids){
   await expect(page.locator('[data-subject-row]')).toHaveCount(3);for(const subject of originalSubjects())for(const field of ['kind','name','role','identifier'] as const)await expect(subjectField(page,subject.id,field)).toHaveValue(subject[field]);
@@ -26,7 +48,10 @@ async function expectPending(page:Page){await expect(page.locator('#integrity-re
 async function start(page:Page){await page.locator('[name=integrity-site][value=tax]').check();await page.locator('#integrity-start').click();await expect(page.locator('#integrity-confirm')).toBeVisible();await page.locator('#integrity-confirm').click();}
 async function freeExport(page:Page){await page.locator('#integrity-export').click();await expect(page.locator('#integrity-export-free-confirm')).toBeVisible();await page.locator('#integrity-export-free-confirm').click();}
 async function openEvidence(page:Page,index=0,siteId='credit-china'){
-  const button=evidenceButton(page,index,siteId);await button.locator('xpath=ancestor::details').evaluate((element:HTMLDetailsElement)=>{element.open=true;});await button.click();await expect(page.locator('#integrity-evidence-form')).toBeVisible();
+  const state=opened.get(page)!,before=structuredClone(writes(state)),button=evidenceButton(page,index,siteId);
+  await button.locator('xpath=ancestor::details').evaluate((element:HTMLDetailsElement)=>{element.open=true;});await button.click();
+  await expect(page.locator('#integrity-evidence-form')).toHaveCount(0);await expect(modal(page).locator('[name=time]')).toHaveCount(0);expect(writes(state)).toEqual(before);
+  await modal(page).locator('[data-close]').click();await page.locator('#integrity-resume-evidence').click();await expect(page.locator('#integrity-evidence-form')).toBeVisible();expect(writes(state)).toEqual(before);
 }
 async function fillEvidence(page:Page,materialIndex='0',note='合成查询：人工核对该主体与官网事项，仍待核实。'){
   await expect(page.locator('#integrity-existing-materials')).toBeVisible();await page.locator('#integrity-existing-materials').selectOption(materialIndex);
@@ -79,26 +104,42 @@ test('a terminal missing record is pending without borrowing another subject res
 });
 
 test('next pending follows original subject/site order and preserves the saved subject position',async({page})=>{
-  const state=await open(page);await page.locator('#integrity-filter').selectOption('pending');await nextPending(page).click();await expect(modal(page)).toContainText('合成发行人有限公司');await expect(modal(page).locator('[name=time]')).toHaveValue('');
+  const state=await openRetained(page),history=historicalRounds(state);await page.locator('#integrity-filter').selectOption('pending');await nextPending(page).click();await expect(modal(page)).toContainText('合成发行人有限公司');
+  await expect(modal(page).locator('h2')).toHaveText('合成发行人有限公司 · 信用中国');await expect(page.locator('#integrity-evidence-form')).toHaveCount(0);expect(writes(state)).toEqual([]);
+  await modal(page).locator('[data-close]').click();await page.locator('#integrity-resume-evidence').click();await expect(modal(page).locator('[name=time]')).toHaveValue('');
   await fillEvidence(page);await saveEvidence(page);await expect.poll(()=>state.manuals.length).toBe(1);await expect(modal(page)).toHaveCount(0);
-  await expect(page.locator('#integrity-filter')).toHaveValue('pending');await nextPending(page).click();await expect(modal(page)).toContainText('合成发行人有限公司');await expect(modal(page)).toContainText('税务局');await expect(modal(page).locator('[name=province]')).toHaveValue('上海');
+  await expect(page.locator('#integrity-filter')).toHaveValue('pending');await nextPending(page).click();await expect(modal(page)).toContainText('合成发行人有限公司');await expect(modal(page)).toContainText('税务局');
+  await expect(modal(page).locator('h2')).toHaveText('合成发行人有限公司 · 上海税务局');await expect(modal(page).getByRole('link',{name:'官网入口'})).toHaveAttribute('href','http://shanghai.chinatax.gov.cn/');
   expect(state.manuals[0].body.site_id).toBe('credit-china');expect(state.checks).toEqual([]);expect(state.exports).toEqual([]);
+  const savedWrites=structuredClone(writes(state));
+  // Every remaining pending pair and wraparound follow the original roster/site order.
+  for(const [index,siteId] of [[1,'execution-dishonest'],[1,'local-tax'],[2,'credit-china'],[0,'credit-china']] as const){
+    await modal(page).locator('[data-close]').click();await nextPending(page).click();const subject=originalSubjects()[index],site=resolveIntegritySite(INTEGRITY_SITES.find(value=>value.id===siteId)!,subject);
+    await expect(modal(page).locator('h2')).toHaveText(subject.name+' · '+site.name);await expect(page.locator('#integrity-evidence-form')).toHaveCount(0);expect(writes(state)).toEqual(savedWrites);
+  }
+  for(const round of state.workspace.rounds){const old=history.find(value=>value.run_id===round.run_id)!;expect(round.records).toEqual(old.records);expect(round.manifest).toEqual(old.manifest);}
+});
+
+test('a retained regional evidence draft preserves the original subject and registration without a new query',async({page})=>{
+  const state=await openRetained(page,fixture(),0,'local-tax'),history=historicalRounds(state);await openEvidence(page,0,'local-tax');
+  await expect(modal(page)).toContainText('合成发行人有限公司');await expect(modal(page)).toContainText('税务局');await expect(modal(page).locator('[name=province]')).toHaveValue('上海');await expect(modal(page).locator('[name=city]')).toHaveValue('');await expect(modal(page).locator('[name=time]')).toHaveValue('');
+  expect(writes(state)).toEqual([]);expect(historicalRounds(state)).toEqual(history);
 });
 
 test('reusing an existing historical version sends its exact pin to the original check from export history',async({page})=>{
-  const state=await open(page),history=historicalRounds(state);await openEvidence(page);await expect(modal(page).locator('[name=time]')).toHaveValue('');await expect(modal(page)).toContainText('PDF');await expect(modal(page)).toContainText('Word');
-  await fillEvidence(page,'0');await saveEvidence(page);await expect.poll(()=>state.manuals.length).toBe(1);expect(state.manuals[0].checkId).toBe(checkId);expect(state.manuals[0].body.material).toEqual(oldPin);
+  const state=await openRetained(page),history=historicalRounds(state);await openEvidence(page);await expect(modal(page).locator('[name=time]')).toHaveValue('');await expect(modal(page)).toContainText('PDF');await expect(modal(page)).toContainText('Word');
+  await fillEvidence(page,'0');await saveEvidence(page);await expect.poll(()=>state.manuals.length).toBe(1);expect(state.manuals[0].checkId).toBe(checkId);expect(state.manuals[0].body.material).toEqual(oldPin);expect(state.manuals[0].body.queried_at).toBe(await page.evaluate(()=>new Date('2026-10-24T10:20').toISOString()));expect(state.calls).toContainEqual({method:'GET',path:`/projects/${projectId}/materials/${oldPin.material_id}`,search:'?version=2'});
   expect(state.uploads).toEqual([]);expect(state.uploadBytes).toBe(0);expect(state.checks).toEqual([]);expect(state.exports).toEqual([]);
   for(const round of state.workspace.rounds)expect(round.records).toEqual(history.find(old=>old.run_id===round.run_id)!.records);
   await page.locator('#integrity-filter').selectOption('pending');await expect(page.locator('[data-evidence]')).toHaveCount(5);
 });
 
 test('selecting the newer material version is explicit and never substitutes it for the old exact pin',async({page})=>{
-  const state=await open(page);await openEvidence(page);await fillEvidence(page,'1');await saveEvidence(page);await expect.poll(()=>state.manuals.length).toBe(1);expect(state.manuals[0].body.material).toEqual(newPin);expect(state.manuals[0].body.material).not.toEqual(oldPin);expect(state.uploads).toEqual([]);
+  const state=await openRetained(page);await openEvidence(page);await fillEvidence(page,'1');await saveEvidence(page);await expect.poll(()=>state.manuals.length).toBe(1);expect(state.manuals[0].body.material).toEqual(newPin);expect(state.calls).toContainEqual({method:'GET',path:`/projects/${projectId}/materials/${newPin.material_id}`,search:'?version=3'});expect(state.manuals[0].body.material).not.toEqual(oldPin);expect(state.uploads).toEqual([]);
 });
 
 test('a reused material still requires a user supplied actual query time',async({page})=>{
-  const state=await open(page);await openEvidence(page);await page.locator('#integrity-existing-materials').selectOption('0');await modal(page).locator('[name=note]').fill('已选材料仍不能自动推断查询时间。');await saveEvidence(page);
+  const state=await openRetained(page);await openEvidence(page);await page.locator('#integrity-existing-materials').selectOption('0');await modal(page).locator('[name=note]').fill('已选材料仍不能自动推断查询时间。');await saveEvidence(page);
   await expect(modal(page).locator('[name=time]')).toHaveValue('');expect(state.manuals).toEqual([]);expect(state.uploads).toEqual([]);
 });
 
@@ -110,23 +151,30 @@ test('company-only websites cannot attach personnel evidence',async({page})=>{
 test('free export requires explicit confirmation and freezes all current evidence against the original check',async({page})=>{
   const state=await open(page),history=historicalRounds(state);await page.locator('#integrity-export').click();await expect(page.locator('#integrity-export-free-confirm')).toBeVisible();await expect(modal(page)).toContainText('免费');expect(writes(state)).toEqual([]);
   await page.locator('#integrity-export-free-confirm').click();await expect.poll(()=>state.exports.length).toBe(1);expect(state.exports[0]).toEqual({checkId,body:{request_id:expect.any(String),expected_evidence_ids:['synthetic-evidence-old','synthetic-evidence-new']}});
-  const accepted=[...state.accepted.values()][0];expect(accepted.round.manifest.points).toBe(0);expect(accepted.round.manifest.draft).toEqual(historicalDraft());expect(accepted.round.manifest.records).toEqual(history.find(round=>round.run_id===checkId)!.records);
+  const accepted=[...state.accepted.values()][0];expect(accepted.round.manifest.points).toBe(0);expect(accepted.generic.reservation_id).toBeNull();expect(accepted.round.reserved_points).toBe(0);expect(accepted.round.charged_points).toBe(0);expect(accepted.round.manifest.draft).toEqual(historicalDraft());expect(accepted.round.manifest.records).toEqual(history.find(round=>round.run_id===checkId)!.records);
   expect(state.checks).toEqual([]);expect(state.drafts).toEqual([]);expect(historicalRounds(state)).toEqual(history);
 });
 
 test('a paid new check confirms 5,000 and freezes the whole adopted roster without inheriting old findings',async({page})=>{
-  const state=await open(page),history=historicalRounds(state);await adopt(page);await page.locator('[name=integrity-site][value="tax"]').check();const expected={...preparedDraft(),site_ids:[...preparedDraft().site_ids,'tax']};await page.locator('#integrity-start').click();await expect(modal(page)).toContainText('5,000');for(const subject of originalSubjects())await expect(modal(page)).toContainText(subject.name);expect(writes(state)).toEqual([]);
-  await page.locator('#integrity-confirm').click();await expect.poll(()=>state.checks.length).toBe(1);expect(state.drafts).toEqual([{expected_revision:10,draft:expected}]);expect(state.checks[0]).toEqual({request_id:expect.any(String),expected_revision:11,price_version:INTEGRITY_PRICE.version,expected_points:5000});
+  const state=await open(page),history=historicalRounds(state);await adopt(page);await page.locator('[name=integrity-site][value="tax"]').check();const expected={...preparedDraft(),site_ids:[...preparedDraft().site_ids,'tax']};await page.locator('#integrity-start').click();await expect(modal(page)).toContainText('5,000');for(const subject of originalSubjects())await expect(modal(page)).toContainText(subject.name);
+  // /quote and /runs bind a saved expected_revision. Saving the exact draft
+  // is preparation; no run, reservation, export or upload exists before confirmation.
+  expectOnlySavedDraft(state,expected);expect(historicalRounds(state)).toEqual(history);
+  const roundId=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)!).value.roundId,cacheKey);expect(roundId).toMatch(/^[a-f0-9-]{36}$/);
+  await page.locator('#integrity-confirm').click();await expect.poll(()=>state.checks.length).toBe(1);expect(state.drafts).toEqual([{expected_revision:10,draft:expected}]);expect(state.checks[0]).toEqual({request_id:expect.any(String),round_id:roundId,expected_revision:11,price_version:INTEGRITY_PRICE.version,expected_points:5000});
   const accepted=[...state.accepted.values()][0];expect(accepted.round.manifest.draft).toEqual(expected);expect(accepted.round.manifest.records).toEqual([]);expect(accepted.round.manifest.evidence_ids).toEqual([]);expect(historicalRounds(state)).toEqual(history);expect(state.manuals).toEqual([]);expect(state.exports).toEqual([]);
 });
 
-test('cancelling the paid confirmation performs no save, query, export or upload',async({page})=>{
-  const state=await open(page);await adopt(page);await page.locator('[name=integrity-site][value=tax]').check();await page.locator('#integrity-start').click();await modal(page).locator('[data-close]').click();await expectLocal(page,[...preparedDraft().site_ids,'tax']);expect(writes(state)).toEqual([]);
+test('cancelling the paid confirmation retains the exact saved draft without query, export or upload',async({page})=>{
+  const state=await open(page),history=historicalRounds(state);await adopt(page);await page.locator('[name=integrity-site][value=tax]').check();const expected={...preparedDraft(),site_ids:[...preparedDraft().site_ids,'tax']};await page.locator('#integrity-start').click();await expect(page.locator('#integrity-confirm')).toBeVisible();expectOnlySavedDraft(state,expected);const before=structuredClone(writes(state));
+  await modal(page).locator('[data-close]').click();await expectLocal(page,[...preparedDraft().site_ids,'tax']);expect(writes(state)).toEqual(before);expectOnlySavedDraft(state,expected);expect(historicalRounds(state)).toEqual(history);
 });
 
 test('local storage persistence failure blocks execution before any draft or paid POST',async({page})=>{
-  const state=await open(page);await adopt(page);await page.locator('[name=integrity-site][value=tax]').check();await page.evaluate(()=>{Storage.prototype.setItem=()=>{throw new DOMException('Synthetic quota failure','QuotaExceededError');};});await start(page);
-  await expect(page.locator('#integrity-status')).not.toHaveText('');expect(integrityWrites(state)).toEqual([]);expect(state.accepted.size).toBe(0);
+  const state=await open(page),history=historicalRounds(state);await adopt(page);await page.locator('[name=integrity-site][value=tax]').check();const retained=await page.evaluate(key=>localStorage.getItem(key),cacheKey);
+  await page.evaluate(()=>{Storage.prototype.setItem=()=>{throw new DOMException('Synthetic quota failure','QuotaExceededError');};});await page.locator('#integrity-start').click();
+  await expect(page.locator('#integrity-status')).not.toHaveText('');await expect(page.locator('#integrity-recovery')).toContainText('本机保存');await expect(page.locator('#integrity-confirm')).toHaveCount(0);expect(integrityWrites(state)).toEqual([]);expect(state.accepted.size).toBe(0);
+  expect(writes(state)).toEqual([]);expect(state.drafts).toEqual([]);expect(state.checks).toEqual([]);expect(state.exports).toEqual([]);expect(state.manuals).toEqual([]);expect(state.uploads).toEqual([]);expect(state.uploadBytes).toBe(0);expect(historicalRounds(state)).toEqual(history);expect(await page.evaluate(key=>localStorage.getItem(key),cacheKey)).toBe(retained);
 });
 
 for(const acceptance of ['before','after'] as const)test(`unknown paid check ${acceptance} acceptance reopens read-only and retries the complete original body`,async({page})=>{
@@ -143,19 +191,19 @@ for(const acceptance of ['before','after'] as const)test(`unknown free export ${
 });
 
 test('unknown evidence before acceptance retries the original material pin and body without uploading',async({page})=>{
-  const state=await open(page);state.dropManual='before';await openEvidence(page);await fillEvidence(page);await saveEvidence(page);await expect.poll(()=>state.manuals.length).toBe(1);await expectPending(page);const envelope=structuredClone(state.manuals[0]);
+  const state=await openRetained(page);state.dropManual='before';await openEvidence(page);await fillEvidence(page);await saveEvidence(page);await expect.poll(()=>state.manuals.length).toBe(1);await expectPending(page);const envelope=structuredClone(state.manuals[0]);
   page.on('dialog',dialog=>void dialog.accept());await page.reload();await expectPending(page);expect(state.manuals).toEqual([envelope]);await page.locator('#integrity-retry-pending').click();await expect.poll(()=>state.manuals.length).toBe(2);await expect(page.locator('#integrity-retry-pending')).toHaveCount(0);
   expect(state.manuals).toEqual([envelope,envelope]);expect(state.acceptedManuals.size).toBe(1);expect(state.uploads).toEqual([]);expect(state.checks).toEqual([]);expect(state.exports).toEqual([]);
 });
 
 test('an accepted unknown evidence request is recognized only by complete exact authoritative readback',async({page})=>{
-  const state=await open(page);state.workspaceRead=structuredClone(state.workspace);state.dropManual='after';await openEvidence(page);await fillEvidence(page);await saveEvidence(page);await expect.poll(()=>state.manuals.length).toBe(1);await expectPending(page);const envelope=structuredClone(state.manuals[0]);
+  const state=await openRetained(page);state.workspaceRead=structuredClone(state.workspace);state.dropManual='after';await openEvidence(page);await fillEvidence(page);await saveEvidence(page);await expect.poll(()=>state.manuals.length).toBe(1);await expectPending(page);const envelope=structuredClone(state.manuals[0]);
   page.on('dialog',dialog=>void dialog.accept());await page.reload();await expectPending(page);expect(state.manuals).toEqual([envelope]);state.workspaceRead=undefined;const reads=workspaceReads(state).length;await page.locator('#integrity-refresh-pending').click();await expect.poll(()=>workspaceReads(state).length).toBeGreaterThan(reads);
   await expect(page.locator('#integrity-retry-pending')).toHaveCount(0);expect(state.manuals).toEqual([envelope]);expect(state.acceptedManuals.size).toBe(1);expect(state.uploads).toEqual([]);
 });
 
 test('an unknown uploaded evidence request retains the verified pin and never uploads the same bytes twice',async({page})=>{
-  const state=await open(page);state.allowUploads=true;state.dropManual='before';await openEvidence(page);await modal(page).locator('[name=time]').fill('2026-10-24T10:20');await modal(page).locator('[name=note]').fill('合成新上传证据。');await modal(page).locator('[name=file]').setInputFiles({name:'合成补证.pdf',mimeType:'application/pdf',buffer:Buffer.from('synthetic evidence bytes, not a real PDF')});await saveEvidence(page);
+  const state=await openRetained(page);state.allowUploads=true;state.dropManual='before';await openEvidence(page);await modal(page).locator('[name=time]').fill('2026-10-24T10:20');await modal(page).locator('[name=note]').fill('合成新上传证据。');await modal(page).locator('[name=file]').setInputFiles({name:'合成补证.pdf',mimeType:'application/pdf',buffer:Buffer.from('synthetic evidence bytes, not a real PDF')});await saveEvidence(page);
   await expect.poll(()=>state.manuals.length).toBe(1);await expectPending(page);const envelope=structuredClone(state.manuals[0]);expect(state.uploads).toHaveLength(1);expect(state.uploadBytes).toBe(1);
   page.on('dialog',dialog=>void dialog.accept());await page.reload();await expectPending(page);await page.locator('#integrity-retry-pending').click();await expect.poll(()=>state.manuals.length).toBe(2);expect(state.manuals).toEqual([envelope,envelope]);expect(state.uploads).toHaveLength(1);expect(state.uploadBytes).toBe(1);
 });
@@ -196,7 +244,7 @@ test('an export evidence conflict does not silently modify or replay its origina
 });
 
 test('a same-id evidence readback with changed note or material pin cannot settle an unknown attachment',async({page})=>{
-  const state=await open(page);state.dropManual='before';await openEvidence(page);await fillEvidence(page);await saveEvidence(page);await expect.poll(()=>state.manuals.length).toBe(1);await expectPending(page);const body:IntegrityManual=state.manuals[0].body;
+  const state=await openRetained(page);state.dropManual='before';await openEvidence(page);await fillEvidence(page);await saveEvidence(page);await expect.poll(()=>state.manuals.length).toBe(1);await expectPending(page);const body:IntegrityManual=state.manuals[0].body;
   const impostor:IntegrityEvidence={...structuredClone(body),id:'synthetic-impostor',created_at:'2026-10-25T06:00:00Z',note:'同request_id却不是原完整内容。',material:structuredClone(newPin)};state.workspace.rounds.filter(round=>round.round_id===checkId).forEach(round=>round.evidence.push(structuredClone(impostor)));
   page.on('dialog',dialog=>void dialog.accept());await page.reload();await expectPending(page);expect(state.manuals).toHaveLength(1);expect(state.acceptedManuals.size).toBe(0);expect(state.uploads).toEqual([]);
 });
@@ -249,7 +297,7 @@ test('an unknown draft GET mismatch presents both preparations and explicit loca
 });
 
 test('raw evidence fields survive close, reopen and refresh while blank actual time stays blank',async({page})=>{
-  const state=await open(page);await openEvidence(page);await modal(page).locator('[name=note]').fill('尚未提交的人工核对说明。');await modal(page).locator('[name=url]').fill('https://www.creditchina.gov.cn/synthetic-query');await modal(page).locator('[name=conclusion]').selectOption('records_found');await expect(modal(page).locator('[name=time]')).toHaveValue('');await modal(page).locator('[data-close]').click();
+  const state=await openRetained(page);await openEvidence(page);await modal(page).locator('[name=note]').fill('尚未提交的人工核对说明。');await modal(page).locator('[name=url]').fill('https://www.creditchina.gov.cn/synthetic-query');await modal(page).locator('[name=conclusion]').selectOption('records_found');await expect(modal(page).locator('[name=time]')).toHaveValue('');await modal(page).locator('[data-close]').click();
   await openEvidence(page);await expect(modal(page).locator('[name=note]')).toHaveValue('尚未提交的人工核对说明。');await expect(modal(page).locator('[name=url]')).toHaveValue('https://www.creditchina.gov.cn/synthetic-query');await expect(modal(page).locator('[name=conclusion]')).toHaveValue('records_found');await expect(modal(page).locator('[name=time]')).toHaveValue('');await modal(page).locator('[data-close]').click();await page.reload();
   await expect(page.locator('#integrity-resume-evidence')).toBeEnabled();await page.locator('#integrity-resume-evidence').click();await expect(modal(page).locator('[name=note]')).toHaveValue('尚未提交的人工核对说明。');await expect(modal(page).locator('[name=time]')).toHaveValue('');expect(writes(state)).toEqual([]);
 });
@@ -257,12 +305,12 @@ test('raw evidence fields survive close, reopen and refresh while blank actual t
 test('a deduplicated upload with the original upload ID attaches the exact existing material without adding another file',async({page})=>{
   const state=fixture(),bytes=Buffer.from('synthetic same-project evidence bytes, not a real PDF'),pin={source_project_id:projectId,material_id:'synthetic-reused-evidence-pdf',material_version:4,sha256:sha(bytes.toString())};
   const prior={...material(pin,'合成原有证据.pdf','application/pdf'),byte_size:bytes.length,upload_id:'synthetic-prior-upload'};state.allowUploads=true;state.materials.push(prior);state.reusedUploadMaterial=prior;const count=state.materials.length;
-  await open(page,state);await openEvidence(page);await modal(page).locator('[name=time]').fill('2026-10-24T10:20');await modal(page).locator('[name=note]').fill('重新选择相同字节，沿用项目中原证据版本。');await modal(page).locator('[name=file]').setInputFiles({name:'合成重新选择证据.pdf',mimeType:'application/pdf',buffer:bytes});await saveEvidence(page);
+  await openRetained(page,state);await openEvidence(page);await modal(page).locator('[name=time]').fill('2026-10-24T10:20');await modal(page).locator('[name=note]').fill('重新选择相同字节，沿用项目中原证据版本。');await modal(page).locator('[name=file]').setInputFiles({name:'合成重新选择证据.pdf',mimeType:'application/pdf',buffer:bytes});await saveEvidence(page);
   await expect.poll(()=>state.manuals.length).toBe(1);await expect(modal(page)).toHaveCount(0);expect(state.uploads).toHaveLength(1);expect(state.uploadBytes).toBe(1);expect(state.uploadMaterial!.upload_id).not.toBe(prior.upload_id);
   expect(state.materials).toHaveLength(count);expect(state.manuals[0]).toMatchObject({checkId,body:{material:pin}});expect(state.acceptedManuals.size).toBe(1);expect(state.calls.filter(call=>call.method==='POST'&&call.path.endsWith('/complete'))).toHaveLength(1);expect(state.checks).toEqual([]);expect(state.exports).toEqual([]);
 });
 
 for(const mismatch of ['sha256','byte_size','media_type','role'] as const)test(`a schema-valid upload receipt with wrong ${mismatch} is rejected before attaching evidence`,async({page})=>{
-  const state=await open(page);state.allowUploads=true;state.uploadReceiptMismatch=mismatch;await openEvidence(page);await modal(page).locator('[name=time]').fill('2026-10-24T10:20');await modal(page).locator('[name=note]').fill('回执必须匹配本次所选字节。');await modal(page).locator('[name=file]').setInputFiles({name:'合成回执核对.pdf',mimeType:'application/pdf',buffer:Buffer.from('synthetic upload receipt bytes')});await saveEvidence(page);
-  await expect.poll(()=>state.uploads.length).toBe(1);await expect(modal(page).locator('[role=status]')).toContainText('上传回执与原文件声明不一致');expect(state.uploadBytes).toBe(1);expect(state.manuals).toEqual([]);expect(state.acceptedManuals.size).toBe(0);expect(state.checks).toEqual([]);expect(state.exports).toEqual([]);
+  const state=await openRetained(page);state.allowUploads=true;state.uploadReceiptMismatch=mismatch;await openEvidence(page);await modal(page).locator('[name=time]').fill('2026-10-24T10:20');await modal(page).locator('[name=note]').fill('回执必须匹配本次所选字节。');await modal(page).locator('[name=file]').setInputFiles({name:'合成回执核对.pdf',mimeType:'application/pdf',buffer:Buffer.from('synthetic upload receipt bytes')});
+  await expect.poll(()=>state.uploads.length).toBe(1);await expect(modal(page).locator('[role=status]')).toContainText('上传回执与原文件声明不一致');await expect(page.locator('#integrity-evidence-save')).toBeDisabled();expect(state.uploadBytes).toBe(1);expect(state.manuals).toEqual([]);expect(state.acceptedManuals.size).toBe(0);expect(state.checks).toEqual([]);expect(state.exports).toEqual([]);
 });
