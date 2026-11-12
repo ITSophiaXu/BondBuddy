@@ -43,7 +43,8 @@ test('a first question upload prepares questions without claiming a historical a
   accepted.run.result={...parsed,input_hash:sha(JSON.stringify(accepted.run.manifest)),snapshot:{...parsed.snapshot,sha256:accepted.run.manifest.source.asset.pin.sha256}};
   await page.clock.fastForward(3100);await expect(page.locator('.qa-question-list article')).toHaveCount(3);
   await expect(page.locator('#qa-document-body')).not.toContainText('已从指定历史任务准备下一轮');
-  await expect(page.locator('#qa-document-body')).toContainText('已识别问题清单，尚未开始回答');
+  await expect(page.locator('#qa-document-body')).toContainText('请先上传并采用本项目的募集说明书，再开始回答。问题清单已保留。');
+  await expect(page.locator('#qa-start')).toBeDisabled();
   expect(state.prepares).toHaveLength(1);expect(state.drafts).toEqual([]);expect(state.answers).toEqual([]);
   const evidence=process.env.BB_TASK_FLOW_EVIDENCE;
   if(evidence){
@@ -51,7 +52,8 @@ test('a first question upload prepares questions without claiming a historical a
     const ref=await page.context().newPage();await ref.setViewportSize({width:1440,height:960});await ref.goto('/@fs/'+join(process.cwd(),'../../product-prototype/public/qa-materials.html').replaceAll('\\','/'));
     await ref.locator('.prototype-controls [data-show="questions"]').click();await ref.screenshot({path:join(evidence,'qa-questions-prototype-1440x960.png')});await ref.close();
   }
-  const before=writes(state).length;await page.reload();await expect(page.locator('#qa-document-body')).toContainText('已识别问题清单，尚未开始回答');
+  const before=writes(state).length;await page.reload();await expect(page.locator('#qa-document-body')).toContainText('请先上传并采用本项目的募集说明书，再开始回答。问题清单已保留。');
+  await expect(page.locator('#qa-start')).toBeDisabled();
   expect(writes(state)).toHaveLength(before);expect(state.answers).toEqual([]);
 });
 
