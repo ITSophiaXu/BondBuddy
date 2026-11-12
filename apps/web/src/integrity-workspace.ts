@@ -1,3 +1,4 @@
+import {canReselectExpiredUpload} from './upload-reselection';
 import {uploadPicker} from './upload-picker';
 import './upload-progress.css';
 import {uploadActivity,uploadTransfer,uploadProgressHtml,type UploadStatus} from './upload-progress';
@@ -325,7 +326,16 @@ export class IntegrityWorkspace {
   const fileInput=d.querySelector<HTMLInputElement>('[name=file]')!,saveButton=d.querySelector<HTMLButtonElement>('#integrity-evidence-save')!;
   const uploadStatusHost=d.querySelector('[role=status]')!;
    const uploadStatus:UploadStatus=(text,p)=>{if(p)uploadStatusHost.innerHTML=uploadProgressHtml(p,fileInput.files?.[0]?.name??'补充证据',{announce:false});else uploadStatusHost.textContent=text;};
-  const runUpload=(fn:()=>Promise<void>)=>this.act(fn,'save').finally(()=>{if(this.live()&&d.isConnected)paintUpload();});
+  const expiredUploadHint=()=>{
+   if(!this.live()||!d.isConnected||!d.open||this.locked()||!this.cacheMatches()||!this.evidenceDraft||!sameRecovery(this.evidenceDraft,form)||!form.uploadOperationId||form.material)return '';
+   try{return canReselectExpiredUpload(integrityUploadRecord(this.uploads(),form))?'上次上传的有效期已过，保存结果仍待确认。可先点击“确认原上传”；如需补传，请重新选择相同内容的文件。':'';}catch{return '';}
+  };
+  const runUpload=(fn:()=>Promise<void>)=>{
+   let failed=false,failure:unknown;
+   return this.act(async()=>{try{await fn();}catch(error){failed=true;failure=error;throw error;}},'save').finally(()=>{
+    if(this.live()&&d.isConnected){paintUpload();const hint=failed?expiredUploadHint():'';if(hint)uploadStatus(this.error(failure,'save')+' '+hint);}
+   });
+  };
   const paintUpload=()=>{
    const host=d.querySelector<HTMLElement>('#integrity-upload-recovery')!;
    d.querySelector('#integrity-selected-evidence')!.textContent=form.material?`文件已保存 · 材料版本 ${form.material.material_version}。核对后保存补充证据。`:'';
@@ -349,7 +359,7 @@ export class IntegrityWorkspace {
    if(form.material){host.replaceChildren();return;}
    let name='原文件',problem='';
    try{name=integrityUploadRecord(this.uploads(),form).declaration.filename;}catch(error){problem=this.error(error,'read');}
-   host.innerHTML=`<div class="integrity-notice bb-upload-file"><strong>${esc(name)}</strong><p>文件保存结果待确认。确认后可继续填写并保存补充证据。</p>${problem?`<p role="alert">${esc(problem)}</p>`:''}<button type="button" class="bb-upload-action bb-upload-action--primary btn secondary" id="integrity-confirm-upload">确认原上传</button><button type="button" class="bb-upload-action text-button" id="integrity-stop-upload">取消本次上传</button></div>`;
+   host.innerHTML=`<div class="integrity-notice bb-upload-file"><strong>${esc(name)}</strong><p>文件保存结果待确认。确认后可继续填写并保存补充证据。</p>${problem?`<p role="alert">${esc(problem)}</p>`:''}${expiredUploadHint()?`<p>${esc(expiredUploadHint())}</p>`:''}<button type="button" class="bb-upload-action bb-upload-action--primary btn secondary" id="integrity-confirm-upload">确认原上传</button><button type="button" class="bb-upload-action text-button" id="integrity-stop-upload">取消本次上传</button></div>`;
    host.querySelector('#integrity-confirm-upload')!.addEventListener('click',()=>void runUpload(async()=>{await transfer(fileInput.files?.[0]??this.selectedFile?.file);uploadStatus('原文件已确认并保留到此项补证。请核对实际查询时间、说明和结论，再点击“保存补充证据”。');}));
    host.querySelector('#integrity-stop-upload')!.addEventListener('click',()=>void runUpload(async()=>{
     if(this.locked()||!collect())throw new UserFacingError(this.problem||'请先核对原补证记录。');
@@ -358,7 +368,7 @@ export class IntegrityWorkspace {
     delete form.uploadOperationId;this.selectedFile=undefined;fileInput.value='';if(!collect())throw new UserFacingError(this.problem);paintUpload();uploadStatus('已移除本机待处理记录。服务器此前收到或保存的文件保留，此操作不删除材料或证据。');
    }));
   };
-  const transfer=async(file?:File)=>{
+  const transfer=async(file?:File,reselectExpiredSession=false)=>{
    if(this.locked()||!collect())throw new UserFacingError(this.problem||'请先核对原补证记录。');
    const current=()=>this.live()&&d.isConnected&&d.open&&this.cacheMatches()&&!this.locked()&&!!this.evidenceDraft&&sameIntegrityUploadPair(this.evidenceDraft,form);
    const recovery=this.uploads();
@@ -370,7 +380,7 @@ export class IntegrityWorkspace {
      form.uploadOperationId=record.id;if(!collect())throw new UserFacingError(this.problem);
     }
     const original=integrityUploadRecord(recovery,form),operationId=original.id;
-    const material=await recovery.resume(operationId,{file,signal:this.controller.signal,status:message=>uploadStatus(message,uploadActivity(message)),progress:(loaded,total)=>{const p=uploadTransfer(loaded,total);uploadStatus(p.message,p);}});
+    const material=await recovery.resume(operationId,{file,reselectExpiredSession,signal:this.controller.signal,status:message=>uploadStatus(message,uploadActivity(message)),progress:(loaded,total)=>{const p=uploadTransfer(loaded,total);uploadStatus(p.message,p);}});
     this.controller.signal.throwIfAborted();if(!current()||form.uploadOperationId!==operationId||this.evidenceDraft?.uploadOperationId!==operationId)throw new UserFacingError('原补证记录已变化，材料尚未写入本页。请重新读取并核对。');
     form.material={source_project_id:this.id!,material_id:material.material_id,material_version:material.material_version,sha256:material.sha256};
     this.selectedFile=undefined;fileInput.value='';if(!collect())throw new UserFacingError(this.problem);
@@ -388,7 +398,7 @@ export class IntegrityWorkspace {
    if(this.busy)return;
    const file=fileInput.files?.[0];if(!file)return;this.selectedFile=file?{key:JSON.stringify([r.round_id,s.id,siteId]),file}:undefined;
    if(form.material)delete form.uploadOperationId;delete form.material;select.value='';collect();paintUpload();
-   void runUpload(async()=>{await transfer(file);uploadStatus('文件已上传保存。请核对查询信息和结论，再保存补充证据。');});
+   void runUpload(async()=>{await transfer(file,true);uploadStatus('文件已上传保存。请核对查询信息和结论，再保存补充证据。');});
   });
   paintUpload();
   d.querySelector('form')!.addEventListener('submit',e=>{e.preventDefault();void runUpload(async()=>{
