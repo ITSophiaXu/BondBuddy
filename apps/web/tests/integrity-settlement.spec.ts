@@ -31,7 +31,7 @@ for(const width of [1440,390,320])test(`partial integrity settlement explains it
  await explanation(page).locator('summary').click();await expect(page.locator('[data-integrity-billed-site]')).toHaveCount(2);
  for(const site of sites.slice(0,2))await expect(page.locator(`[data-integrity-billed-site="${site}"]`)).toHaveText('合成发行人有限公司 · '+INTEGRITY_SITES.find(s=>s.id===site)!.name);
  await expect(page.locator('[data-evidence]')).toHaveCount(5);await expect(page.locator('.integrity-panel').first()).not.toContainText('原核查轮次与收费快照不一致');await capture(page,`implementation-${width}`);await expect(explanation(page)).not.toContainText(/verified|v4|pair|measurement|bb-task/);expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width+1);
- 
+
  await page.reload();await expect(explanation(page)).toContainText('已释放 255 积分');expect(s.value.workspace).toEqual(before);expect(writes(s.value)).toEqual([]);
 });
 test('all completed queries and a failed fully released round use their own actual settlement',async({page})=>{
