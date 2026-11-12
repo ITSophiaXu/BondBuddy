@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, copyFileSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, copyFileSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
@@ -70,7 +70,7 @@ export function verifyBillingSource(root, candidate, env = billingHostEnvironmen
   const entries = git(root, ['ls-tree', '-r', '-z', candidate.commit], env, true).toString('utf8').split('\0').filter(Boolean);
   const manifest = [];
   for (const entry of entries) {
-    const split = entry.indexOf('\t'), [mode, kind, expected] = entry.slice(0, split).split(' '), name = entry.slice(split + 1), file = join(root, name);
+    const split = entry.indexOf('\t'), [mode, kind, expected] = entry.slice(0, split).split(' '), name = entry.slice(split + 1), file = resolve(base, name);
     assert.equal(kind, 'blob');
     assert.ok(mode === '100644' || mode === '100755', 'Billing host source must contain regular tracked files');
     assert.ok(!lstatSync(file).isSymbolicLink() && statSync(file).isFile()); within(root, file);
