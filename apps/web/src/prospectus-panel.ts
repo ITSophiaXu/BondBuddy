@@ -43,6 +43,7 @@ export class ProspectusPanel {
     attempted:boolean;
   };
   private pendingUpload?:{id:string;file?:File;uncertain?:boolean};
+  private reselectedUploadFile?:File;
   private recovery?:UploadRecovery;
   private generationSourceMode?:'upload'|'project';
   private generationNeedsFile=false;
@@ -230,7 +231,7 @@ export class ProspectusPanel {
       if(error){this.host.querySelector<HTMLElement>('#replace-prospectus-version')?.focus();this.status(error,true);return;}
       if(input.files?.length){
         // A recovery row retains its original receipt and scope; reselecting supplies bytes only.
-        if(this.pendingUpload||recoveryRows.length){this.status('已重新选择文件，请点击“重试上传”或“确认原上传”继续原操作。');return;}
+        if(this.pendingUpload||recoveryRows.length){this.reselectedUploadFile=input.files[0];this.status('已重新选择文件，请点击“重试上传”或“确认原上传”继续原操作。');return;}
         void this.upload();
       }else this.host.querySelector<HTMLElement>('#save-prospectus-version')?.focus();
     };
@@ -298,7 +299,7 @@ export class ProspectusPanel {
     if(selectedFile)this.host.querySelector('#prospectus-version-file')!.replaceWith(selectedFile);
     const input=this.host.querySelector<HTMLInputElement>('#prospectus-version-file')!,drop=this.host.querySelector<HTMLElement>('#choose-prospectus-version')!;
     drop.addEventListener('click',()=>input.click());
-    input.onchange=()=>{if(this.busy)return;this.generationSourceMode='upload';this.render();const error=this.fileError();if(error){this.status(error,true);return;}if(this.generationNeedsFile&&this.pendingUpload&&input.files?.length){void this.upload(this.pendingUpload.id);return;}if(this.pendingUpload||rows.length){this.status('已重新选择文件，请重试原上传。');return;}if(input.files?.length)void this.upload();};
+    input.onchange=()=>{if(this.busy)return;this.generationSourceMode='upload';this.render();const error=this.fileError();if(error){this.status(error,true);return;}if(this.pendingUpload||rows.length)this.reselectedUploadFile=input.files?.[0];if(this.generationNeedsFile&&this.pendingUpload&&input.files?.length){void this.upload(this.pendingUpload.id);return;}if(this.pendingUpload||rows.length){this.status('已重新选择文件，请重试原上传。');return;}if(input.files?.length)void this.upload();};
     drop.addEventListener('dragover',e=>{e.preventDefault();if(!this.busy)drop.classList.add('is-dragging');});
     drop.addEventListener('dragleave',()=>drop.classList.remove('is-dragging'));
     drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('is-dragging');if(this.busy)return;const files=e.dataTransfer?.files;if(!files?.length)return;if(files.length!==1){this.status('每次请选择一份募集说明书。',true);return;}input.files=files;input.dispatchEvent(new Event('change',{bubbles:true}));});
@@ -489,7 +490,7 @@ export class ProspectusPanel {
       const pending:NonNullable<ProspectusPanel['pendingUpload']>=this.pendingUpload={id,file,uncertain:true};
       let material:Awaited<ReturnType<ApiClient['completeUpload']>>;
       try{
-        material=await recovery.resume(id,{file,signal:this.controller.signal,status:s=>this.status(s),progress:(bytes,total)=>{const p=uploadTransfer(bytes,total);this.status(p.message,false,p);}});
+        material=await recovery.resume(id,{file,reselectExpiredSession:!!file&&file===this.reselectedUploadFile,signal:this.controller.signal,status:s=>this.status(s),progress:(bytes,total)=>{const p=uploadTransfer(bytes,total);this.status(p.message,false,p);}});
         pending.uncertain=false;
       }catch(e){
         if(this.purpose==='generation'&&e instanceof UploadRecoveryNeedsFileError)this.generationNeedsFile=true;
@@ -503,6 +504,7 @@ export class ProspectusPanel {
         const saved=state.versions.find(v=>v.material_id===material.material_id&&v.material_version===material.material_version&&v.sha256===material.sha256);
         if(!saved)throw new UserFacingError('募集书版本尚未确认。');
         await recovery.forget(id);
+        this.reselectedUploadFile=undefined;
         this.state=state;uploadedVersionId=saved.version_id;this.savedVersionId=saved.version_id;this.ignoredSavedVersions.delete(saved.version_id);this.pendingUpload=undefined;this.generationNeedsFile=false;this.uploadProgress=undefined;this.uploadProgressError=undefined;this.render(false);
         this.status(this.purpose==='qa'?'文件已保存，正在用于本轮问答…':this.purpose==='update'?(state.current_version_id===saved.version_id?`已保存并自动采用 V${saved.sequence} · ${saved.filename}，将在原文基础上修改。`:'文件已保存，当前原稿随后已更新，请查看当前版本。'):['generation','qa'].includes(this.purpose)&&state.current_version_id!==saved.version_id?'':state.current_version_id===saved.version_id?`文件已保存，与当前采用的 V${saved.sequence} 相同，当前选择保持不变。`:`已保存 V${saved.sequence} · ${saved.filename}，尚未采用。${['generation','qa'].includes(this.purpose)?'点击“使用此版继续”准备文件。':'请查看后选择“采用此版”；当前稿保持不变。'}`);
       }catch{

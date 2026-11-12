@@ -57,7 +57,7 @@ export async function fixture(page:Page){
     workspaces:new Map([[ids.api,workspace()],[ids.other,workspace(ids.other)]]),workspaceMissing:false,
     batchFailure:undefined as 'network'|{status:409;code:'INPUT_REVISION_CONFLICT'|'PROJECT_FILE_BATCH_INPUT_EXPIRED'}|undefined,batchState:'complete' as 'complete'|'running',
     failDraft:undefined as M4DocumentType|undefined,dropDraft:undefined as M4DocumentType|undefined,dropTemplate:false,
-    sessions:new Map<string,Session>(),materials:new Map<string,Dto<'MaterialResponse'>>(),templates:new Map<string,M4Template>(),puts:0};
+    sessionLifetimeMs:undefined as number|undefined,sessions:new Map<string,Session>(),materials:new Map<string,Dto<'MaterialResponse'>>(),templates:new Map<string,M4Template>(),puts:0};
   page.on('pageerror',error=>state.errors.push(error.message));
   await page.route('**/api/v1/**',async route=>{
     if(await serveDisabledBillingCatalog(route))return;
@@ -93,7 +93,7 @@ export async function fixture(page:Page){
     }
     if(path===`/m4/topics/${ids.topic}/materials`&&method==='POST')return route.fulfill({status:204});
     const create=path.match(/^\/projects\/([^/]+)\/materials\/uploads$/);
-    if(create&&method==='POST'){const id=`entry-upload-${state.sessions.size+1}`;state.sessions.set(id,{project:create[1],declaration:body,received:false});return json(route,201,{upload_id:id,state:'uploading',upload_url:`/api/v1/projects/${create[1]}/materials/uploads/${id}/bytes`,expires_at:'2099-01-01T00:00:00Z',max_bytes:100000000});}
+    if(create&&method==='POST'){const id=`entry-upload-${state.sessions.size+1}`;state.sessions.set(id,{project:create[1],declaration:body,received:false});return json(route,201,{upload_id:id,state:'uploading',upload_url:`/api/v1/projects/${create[1]}/materials/uploads/${id}/bytes`,expires_at:state.sessionLifetimeMs===undefined?'2099-01-01T00:00:00Z':new Date(await page.evaluate(()=>Date.now())+state.sessionLifetimeMs).toISOString(),max_bytes:100000000});}
     const transfer=path.match(/^\/projects\/([^/]+)\/materials\/uploads\/([^/]+)\/(bytes|complete)$/);
     if(transfer){const session=state.sessions.get(transfer[2]);if(!session||session.project!==transfer[1])return json(route,404,{code:'NOT_FOUND'});
       if(method==='PUT'&&transfer[3]==='bytes'){const bytes=req.postDataBuffer()!;expect(bytes.length).toBe(session.declaration.byte_size);expect(hash(bytes)).toBe(session.declaration.sha256);session.received=true;state.puts++;return route.fulfill({status:204});}

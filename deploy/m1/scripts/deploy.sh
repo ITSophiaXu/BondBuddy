@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
 # Usage: deploy.sh <git-sha>
-# Builds images from the exact commit (git archive, so no uncommitted files leak in),
+# Reuses the exact tested app images; builds only auxiliary egress from git archive,
 # runs migrations, starts the stack and smokes it. Releases do not create backups.
 source "$(dirname "$0")/lib.sh"
+BB_RELEASE_CONFIRMATION_SELECTION=disabled
+BB_RELEASE_CONFIRMATION_ROLE=disabled
 if [ "$(env_value BB_NON_PRODUCTION_TEST_CHANNEL)" = enabled ] && [ "$(env_value BB_DEPLOYMENT_TIER)" != preprod ]; then
   echo 'non-production test channel requires BB_DEPLOYMENT_TIER=preprod' >&2
   exit 2
 fi
 sha="$(git -C "$BB_REPO" rev-parse --verify "${1:?usage: deploy.sh <git-sha>}^{commit}")"
-node "$BB_REPO/scripts/prospectus-quality-gate.mjs" verify "$sha" "${BB_RELEASE_QUALITY_RECEIPT:?set BB_RELEASE_QUALITY_RECEIPT to passing evidence for this exact commit}"
+source "$(dirname "$0")/release-evidence.sh"
+ctx=''; trap 'cleanup_release_evidence; [ -z "$ctx" ] || rm -rf "$ctx"' EXIT
+verify_release_evidence "$BB_REPO" "$sha"
+exec 9>"$BB_STATE/deploy.lock"
+flock -n 9 || { echo 'this environment is already being deployed or rolled back' >&2; exit 75; }
+verify_rollback_readiness "$BB_REPO" "$sha" "$BB_STATE"
+verify_release_images "$BB_REPO" "$sha" all reuse
 tag="${sha:0:12}"
 build_required_bytes=$(( 4 * 1024 * 1024 * 1024 ))
 # Images already present (e.g. loaded with `docker load` from scripts/export-images.sh on a build
@@ -53,13 +61,11 @@ check_space() {
   fi
 }
 check_space "$required_bytes" "$threshold_reason"
-ctx="$(mktemp -d)"; trap 'rm -rf "$ctx"' EXIT
+ctx="$(mktemp -d)"
 git -C "$BB_REPO" archive "$sha" | tar -x -C "$ctx"
 for target in api worker web; do
   have "bondbuddy-m1-$target:$tag" && continue
-  check_space "$build_required_bytes" "local Docker build required ($target image missing; 4 GiB minimum)"
-  docker build -q -f "$ctx/deploy/m1/Dockerfile" --target "$target" --build-arg BB_RELEASE_SHA="$sha" \
-    -t "bondbuddy-m1-$target:$tag" "$ctx" >/dev/null
+  echo "tested $target image disappeared; reload the exact tested image archive, do not rebuild" >&2; exit 3
 done
 if ! have "bondbuddy-m1-egress:$tag"; then
   check_space "$build_required_bytes" "local Docker build required (egress image missing; 4 GiB minimum)"
@@ -70,6 +76,7 @@ for target in api worker web egress; do
   revision="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "bondbuddy-m1-$target:$tag")"
   [ "$revision" = "$sha" ] || { echo "release image source mismatch: $target" >&2; exit 1; }
 done
+verify_release_images "$BB_REPO" "$sha" all
 previous="$(current_tag)"
 export BB_IMAGE_TAG="$tag"
 # Optional pre-switch gate (BB_DEPLOY_INFLIGHT_GATE=1): the build above can take many minutes, so a run
@@ -92,15 +99,23 @@ bash "$(dirname "$0")/install-codex-file-sandbox.sh"
 compose up -d postgres $( [ "$(env_value COMPOSE_PROFILES)" = staging-blob ] && echo azurite )
 compose run --rm migrate
 compose up -d --remove-orphans --wait api worker worker-review worker-parse ops egress web
+for service in api worker worker-review worker-parse ops web; do
+  case "$service" in worker*|ops) target=worker;; *) target="$service";; esac
+  tested_id="$(docker image inspect --format '{{.Id}}' "bondbuddy-m1-$target:$tag")"
+  containers="$(compose ps -q "$service")"
+  [ -n "$containers" ] || { echo "missing runtime container: $service" >&2; exit 4; }
+  while read -r container; do
+    [ "$(docker inspect --format '{{.Image}}' "$container")" = "$tested_id" ] || { echo "runtime image mismatch: $service" >&2; exit 4; }
+  done <<< "$containers"
+done
+verify_release_images "$BB_REPO" "$sha" all
 echo "$tag" > "$BB_STATE/current"
 [ -n "$previous" ] && echo "$previous" > "$BB_STATE/previous"
 "$(dirname "$0")/smoke.sh" "http://127.0.0.1:$(env_value BB_HTTP_PORT)"
 # Keep the exact passing receipt for a later emergency rollback. Record success
 # only after smoke: a failed deployment must never authorize the rollback exception.
-quality_digest="$(sha256sum "$BB_RELEASE_QUALITY_RECEIPT" | awk '{print $1}')"
-mkdir -p "$BB_STATE/quality"
-[ "$BB_RELEASE_QUALITY_RECEIPT" -ef "$BB_STATE/quality/$sha.json" ] || cp "$BB_RELEASE_QUALITY_RECEIPT" "$BB_STATE/quality/$sha.json"
-log_release deploy "$tag commit=$sha quality_sha256=$quality_digest (previous ${previous:-none})"
+save_release_evidence "$sha" "$BB_STATE"
+log_release deploy "$tag commit=$sha quality_sha256=$BB_RELEASE_QUALITY_DIGEST smoke_sha256=$BB_RELEASE_SMOKE_DIGEST (previous ${previous:-none})"
 # Keep only the current and previous release images on disk.
 keep="$tag ${previous:-}"
 docker image ls --format '{{.Repository}}:{{.Tag}}' | grep '^bondbuddy-m1-' | while read -r ref; do

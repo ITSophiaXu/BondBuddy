@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: dedicated parse slot finishes an upload before a blocked run, and zero restores serial scheduling
+ok 1 - dedicated parse slot finishes an upload before a blocked run, and zero restores serial scheduling
+  ---
+  duration_ms: 5070.890075
+  type: 'test'
+  ...
+# Subtest: parse-only workers keep their configured capacity and never claim runs; invalid slot values fail
+ok 2 - parse-only workers keep their configured capacity and never claim runs; invalid slot values fail
+  ---
+  duration_ms: 447.322673
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 27584.578733

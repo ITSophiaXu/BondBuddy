@@ -1,6 +1,7 @@
+import {canReselectExpiredUpload} from './upload-reselection';
 import {uploadPicker} from './upload-picker';
 import './upload-progress.css';
-import {GenerationProgressSchema,generationBatchActive,type GenerationProgress} from '@bondbuddy/contracts';
+import {GenerationProgressSchema,generationBatchActive,workpaperItemUnfinished,type GenerationProgress} from '@bondbuddy/contracts';
 import {TaskPoller} from './task-poller.js';
 import {uploadActivity,uploadProgressHtml,type UploadStatus} from './upload-progress';
 import {billingRecoverySchemas,billingRecoveryHeaders,type BillingRecoveryDto} from './billing-recovery-wire.js';
@@ -37,7 +38,7 @@ export class WorkpaperPanel {
   private progressBatch?:string;private expandedBatches=new Map<string,boolean>();
   private downloadFeedback?:{node:HTMLElement;target:Record<string,string|undefined>};
   // Reading existing files must not activate the unsaved-work navigation guard.
-  private downloading=false;
+  private downloading=false;private conflictRecovery=false;
   private pending?:BillingRecoveryDto<'WorkpaperStart'>;private busy=false;private status='';private requirements='';private filter='';private upload:UploadFileMaterialState={};private storageError=false;
   private view:'prepare'|'confirm'|'results'='prepare';
   private expandedFolders=new Set<string>();
@@ -133,7 +134,7 @@ export class WorkpaperPanel {
       node.innerHTML='<p>上次已提交 '+this.pending.item_ids.length+' 项，费用上限 '+this.pending.expected_points.toLocaleString()+' 积分。请先确认上次提交结果，仍使用原请求。</p><button class="btn primary" id="wp-start" '+(this.busy||this.storageError?'disabled':'')+'>继续确认上次提交</button>';
       node.querySelector('#wp-start')?.addEventListener('click',()=>void this.start());return;
     }
-    const count=this.selected.size,active=this.data.batches.some(b=>['queued','running','paused'].includes(b.state));
+    const count=this.selected.size,active=this.data.batches.some(b=>['queued','running','paused'].includes(b.state)||b.items.some(workpaperItemUnfinished));
     const disabled=!count||!this.source||this.busy||this.storageError||active||!!this.importReview;
     const hint=this.storageError?'浏览器未能保存请求，请恢复存储后重试。'
       :active?'已有底稿文件包正在处理，请在下方查看进度或继续原文件包。'
@@ -165,11 +166,11 @@ export class WorkpaperPanel {
     const picker=this.host.querySelector<HTMLInputElement>('#wp-upload');if(picker)picker.disabled=disabled;
     try{const records=new UploadRecovery(this.api,this.owner,this.project,'workpaper-catalogue',()=>this.live()).list();
       node.innerHTML=records.map(r=>{
-        const needsFile=this.uploadNeedsFile.has(r.id)||!r.uploadId&&!r.material&&this.upload.operationId!==r.id;
+        const needsFile=canReselectExpiredUpload(r)||this.uploadNeedsFile.has(r.id)||!r.uploadId&&!r.material&&this.upload.operationId!==r.id;
         return `<div class="wp-upload-recovery-item bb-upload-file"><p><strong>${esc(r.declaration.filename)}</strong><span>${r.material?'已上传，目录待识别':'上传结果待确认'}</span></p><div class="wp-actions"><button class="bb-upload-action bb-upload-action--primary btn secondary" data-wp-upload="${esc(r.id)}" ${disabled?'disabled':''}>${r.material?'继续识别目录':'确认上传状态'}</button>${needsFile?`<label>重新选择原文件${uploadPicker(`<input type="file" accept=".xlsx" data-wp-reselect="${esc(r.id)}" ${disabled?'disabled':''}>`,{size:'compact',label:'选择 Excel 文件'})}</label>`:''}<button class="bb-upload-action text-button" data-wp-forget="${esc(r.id)}" ${disabled?'disabled':''}>移除待办</button></div><small>${r.material?'文件已保存，无需重新上传。':'先确认服务器是否已保存；需要补传时再选择原文件。'} 移除待办不会删除服务器文件。</small></div>`;
       }).join('');
       node.querySelectorAll<HTMLElement>('[data-wp-upload]').forEach(b=>b.onclick=()=>void this.importFile(undefined,b.dataset.wpUpload));
-      node.querySelectorAll<HTMLInputElement>('[data-wp-reselect]').forEach(b=>b.onchange=()=>void this.importFile(b.files?.[0],b.dataset.wpReselect));
+      node.querySelectorAll<HTMLInputElement>('[data-wp-reselect]').forEach(b=>b.onchange=()=>void this.importFile(b.files?.[0],b.dataset.wpReselect,true));
       node.querySelectorAll<HTMLElement>('[data-wp-forget]').forEach(b=>b.onclick=()=>void this.act(async()=>{
         const id=b.dataset.wpForget!;await new UploadRecovery(this.api,this.owner,this.project,'workpaper-catalogue',()=>this.live()).forget(id);
         if(this.upload.operationId===id){this.upload={};this.importReview=undefined;}this.uploadNeedsFile.delete(id);this.status='已移除本机待办，服务器文件仍保留。';
@@ -185,7 +186,7 @@ export class WorkpaperPanel {
     const disabled=this.busy||!!this.pending;
     this.host.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement|HTMLTextAreaElement>('#wp-change-directory,#wp-catalogue,#wp-upload,#wp-all,#wp-none,[data-wp-item],#wp-requirements').forEach(control=>control.disabled=disabled);
   }
-  private async act(fn:()=>Promise<void>){if(this.busy)return;this.poller.pause();this.busy=true;this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();try{await fn();}catch(e){this.status=friendlyError(e,'submit');}finally{this.busy=false;this.progressRevision='';this.poll();if(this.live()){this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=this.status);this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();}}}
+  private async act(fn:()=>Promise<void>){if(this.busy)return;this.poller.pause();this.busy=true;this.paintBatches();this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();try{await fn();}catch(e){this.status=friendlyError(e,'submit');}finally{this.busy=false;this.paintBatches();this.progressRevision='';this.poll();if(this.live()){this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=this.status);this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();}}}
   private async download(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number,total?:number)=>void,preparation:(state:WorkpaperZipPreparation)=>void)=>Promise<{bytes:Blob;filename:string}>){
     if(this.busy||this.downloading)return;this.downloading=true;
     const feedback=this.downloadFeedback?.node??document.createElement('div');
@@ -205,7 +206,7 @@ export class WorkpaperPanel {
     catch(e){activity?.stop();if(this.live()){feedback.setAttribute('role','status');feedback.textContent=artifactError(e);}}
     finally{activity?.stop();this.downloading=false;buttons.forEach(({b,disabled})=>b.disabled=disabled);button.textContent=text;button.removeAttribute('aria-busy');}
   }
-  private async importFile(file?:File,operation?:string){
+  private async importFile(file?:File,operation?:string,reselectExpiredSession=false){
     if(this.pending||this.busy)return;
     await this.act(async()=>{
       if(file&&(!/\.xlsx$/i.test(file.name)||file.size>WORKPAPER_LIMITS.fileBytes))throw new UserFacingError('请上传 10 MB 以内的 XLSX。');
@@ -219,7 +220,7 @@ export class WorkpaperPanel {
       if(operation&&operation!==this.upload.operationId)this.upload={operationId:operation,projectId:this.project};
       const status:UploadStatus=(s,p)=>{this.status=s;const n=this.host.querySelector('#wp-status');if(n)n.innerHTML=uploadProgressHtml(p??uploadActivity(s),file?.name??'底稿目录',{announce:false});};
       let pin:Awaited<ReturnType<typeof uploadFileMaterial>>;
-      try{pin=await uploadFileMaterial(this.api,this.project,file,this.controller.signal,status,this.upload,this.owner,'workpaper-catalogue',undefined,()=>this.live());}
+      try{pin=await uploadFileMaterial(this.api,this.project,file,this.controller.signal,status,this.upload,this.owner,'workpaper-catalogue',undefined,()=>this.live(),{reselectExpiredSession});}
       catch(e){if(e instanceof UploadRecoveryNeedsFileError&&this.upload.operationId)this.uploadNeedsFile.add(this.upload.operationId);throw new UserFacingError(uploadErrorMessage(e));}
       this.uploadNeedsFile.delete(this.upload.operationId!);status('Excel 已上传，正在识别底稿目录…');
       this.importReview=undefined;
@@ -299,18 +300,34 @@ export class WorkpaperPanel {
       const query=new URLSearchParams(location.hash.split('?')[1]);query.set('view','results');query.set('batch',batch.batch_id);
       history.replaceState(history.state,'','#generate?'+query);
     }
-    const changed=await this.request<WorkpaperBatch>('POST',`/batches/${encodeURIComponent(batch.batch_id)}/actions`,request);
+    let changed:WorkpaperBatch;
+    try{changed=await this.request<WorkpaperBatch>('POST',`/batches/${encodeURIComponent(batch.batch_id)}/actions`,request);}
+    catch(error){
+      if(error instanceof ApiError&&['PROJECT_RUN_ACTIVE','INPUT_REVISION_CONFLICT'].includes(error.code)){
+        this.conflictRecovery=true;
+        let refreshed=false;
+        try{this.data=await this.readWorkspace();refreshed=true;this.paintBatches();}catch{/* Keep the original error and offer an explicit refresh. */}
+        if(error.code==='INPUT_REVISION_CONFLICT')throw new UserFacingError(refreshed?'本批状态已变化，已刷新最新进度。请核对后再操作；未重复提交。':'本批状态已变化，进度暂时无法刷新。请刷新进度后再操作；未重复提交。');
+      }
+      throw error;
+    }
+    this.conflictRecovery=false;this.status=action==='cancel'?'已结束后续排队。当前已开始的文件仍会继续，已完成文件保留。':action==='pause'?'后续排队已暂停。当前已开始的文件仍会继续。':'已继续本批未完成文件。已完成文件保留。';
     this.data.batches=this.data.batches.map(b=>b.batch_id===changed.batch_id?changed:b);this.paintBatches();this.poll();
   });}
   private paintBatches(){
     const node=this.host.querySelector('#wp-batches');if(!node)return;
     node.querySelectorAll<HTMLDetailsElement>('details[data-batch]').forEach(e=>this.expandedBatches.set(e.dataset.batch!,e.open));
-    node.innerHTML=`<h2>底稿生成进度</h2><p id="wp-results-status" role="status">${esc(this.status)}</p>${!this.data.batches.length?'<p class="muted">尚未提交底稿文件包。</p>':''}${this.data.batches.map(b=>{
+    node.innerHTML=`<h2>底稿生成进度</h2><p id="wp-results-status" role="status">${esc(this.status)}</p><div class="wp-actions"><button class="text-button" id="wp-refresh-progress" ${this.busy?'disabled':''}>刷新进度</button>${this.conflictRecovery?'<a class="text-button" href="#tasks">查看任务进度与结果</a>':''}</div>${!this.data.batches.length?'<p class="muted">尚未提交底稿文件包。</p>':''}${this.data.batches.map(b=>{
+      const unfinished=b.items.filter(workpaperItemUnfinished),stopped=['paused','cancelled'].includes(b.state),needsAttention=unfinished.some(i=>['paused','awaiting_input'].includes(i.state));
+      const queueState=stopped&&unfinished.length?`${b.state==='cancelled'?'已结束后续排队':'后续排队已暂停'} · 当前文件${needsAttention?'待处理':'处理中'}`:stateNames[b.state];
+      const queueHint=stopped?unfinished.length?(needsAttention?'当前文件已暂停或需要补充信息。请打开当前文件继续或结束；结束后才可重试未完成项。':'当前文件仍在处理，完成或结束前不能重试未完成项。暂停或结束排队只影响尚未开始的文件。'):'已完成文件保留，可继续处理尚未完成的文件。':(['queued','running'].includes(b.state)?'暂停或结束后续排队只影响尚未开始的文件；当前文件会继续。':'');
       const done=b.items.filter(i=>i.state==='succeeded').length,failed=b.items.filter(i=>['failed','rejected','cancelled'].includes(i.state)&&i.run_id).length;
-      return `<article class="panel wp-batch" data-wp-batch-id="${esc(b.batch_id)}"><div class="wp-batch-heading"><h3>底稿文件包 <span class="wp-batch-state" data-state="${esc(b.state)}">${esc(stateNames[b.state])}</span></h3><span class="wp-batch-count"><strong>${done}</strong> / ${b.items.length} 份完成${failed?` · ${failed} 份未完成`:''}</span></div><progress max="${b.items.length}" value="${done}" aria-label="底稿完成进度"></progress><dl class="wp-batch-meta"><div><dt>生成依据</dt><dd>${esc(b.source.filename)} · V${b.source.sequence}</dd></div>${b.template_mode?`<div><dt>本批模板</dt><dd>${({automatic:'光大模板',selected:'所选 Word 模板',mixed:'混合模板'})[b.template_mode]}</dd></div>`:''}<div><dt>提交时间</dt><dd>${date(b.created_at)}</dd></div><div><dt>已扣积分</dt><dd>${b.charged_points.toLocaleString()} 积分</dd></div></dl>${b.error?`<p role="status">${esc(b.error)}</p>`:''}
+      return `<article class="panel wp-batch" data-wp-batch-id="${esc(b.batch_id)}"><div class="wp-batch-heading"><h3>底稿文件包 <span class="wp-batch-state" data-state="${esc(b.state)}">${esc(queueState)}</span></h3><span class="wp-batch-count"><strong>${done}</strong> / ${b.items.length} 份完成${failed?` · ${failed} 份未完成`:''}</span></div><progress max="${b.items.length}" value="${done}" aria-label="底稿完成进度"></progress><dl class="wp-batch-meta"><div><dt>生成依据</dt><dd>${esc(b.source.filename)} · V${b.source.sequence}</dd></div>${b.template_mode?`<div><dt>本批模板</dt><dd>${({automatic:'光大模板',selected:'所选 Word 模板',mixed:'混合模板'})[b.template_mode]}</dd></div>`:''}<div><dt>提交时间</dt><dd>${date(b.created_at)}</dd></div><div><dt>已扣积分</dt><dd>${b.charged_points.toLocaleString()} 积分</dd></div></dl>${b.error?`<p role="status">${esc(b.error)}</p>`:''}
+      ${queueHint?`<p class="muted wp-queue-hint">${esc(queueHint)}</p>`:''}
       ${b.billing_resume?`<p>本批剩余文件需要 ${formatPoints(b.billing_resume.required_points)} 积分，当前可用 ${formatPoints(b.billing_resume.available_points)} 积分${int64(b.billing_resume.shortage)>0n?`，还差 ${formatPoints(b.billing_resume.shortage)} 积分`:''}。已完成文件保留。</p>`:''}
-      <div class="wp-actions">${done?`<button class="btn primary" data-wp-zip="${esc(b.batch_id)}">下载已完成文件（ZIP）</button>`:''}${(['queued','running'].includes(b.state)?['pause','cancel']:b.state==='paused'?['resume','cancel']:b.state==='partial'||b.state==='cancelled'?['retry_failed']:[]).map(action=>`<button class="btn secondary" data-wp-action="${action}" data-batch="${esc(b.batch_id)}">${action==='resume'&&int64(b.billing_resume?.shortage??'0')>0n?'继续本批（需足够积分）':({pause:'当前文件后暂停',resume:'继续文件包',cancel:'结束后续排队',retry_failed:'重试未完成项'} as Record<string,string>)[action]}</button>`).join('')}</div>
+      <div class="wp-actions">${done?`<button class="btn primary" data-wp-zip="${esc(b.batch_id)}">下载已完成文件（ZIP）</button>`:''}${(['queued','running'].includes(b.state)?['pause','cancel']:b.state==='paused'?['resume','cancel']:b.state==='partial'||b.state==='cancelled'?['retry_failed']:[]).map(action=>`<button class="btn secondary" data-wp-action="${action}" data-batch="${esc(b.batch_id)}" ${this.busy||action==='retry_failed'&&unfinished.length?'disabled':''}>${action==='resume'&&int64(b.billing_resume?.shortage??'0')>0n?'继续本批（需足够积分）':({pause:'当前文件后暂停',resume:'继续文件包',cancel:'结束后续排队',retry_failed:'重试未完成项'} as Record<string,string>)[action]}</button>`).join('')}${unfinished.map(i=>`<a class="text-button" href="#generate?from=projects&amp;topic=${encodeURIComponent(b.topic_id)}&amp;run=${encodeURIComponent(i.run_id!)}">查看当前文件</a>`).join('')}</div>
       <details data-batch="${esc(b.batch_id)}" ${(this.expandedBatches.get(b.batch_id)??b.batch_id===this.progressBatch)?'open':''}><summary>查看逐份状态与下载</summary><ul class="wp-items">${b.items.map(i=>`<li><div><strong>${esc(i.entry.code)} ${esc(i.entry.title)}</strong><small>${esc(runStateLabel[i.state as keyof typeof runStateLabel]??stateNames[i.state]??i.state)}${i.explanation?' · 已生成不适用说明':''}${i.error?' · '+esc(i.error):''}</small></div><div class="wp-actions">${i.explanation?'<button class="text-button" data-wp-explanation="'+esc(i.entry.id)+'" data-batch="'+esc(b.batch_id)+'">下载不适用说明</button>':''}${i.artifacts.filter(a=>a.kind==='document').map(a=>`<button class="text-button" data-wp-art="${esc(a.pin.artifact_id)}" data-wp-batch="${esc(b.batch_id)}">${a.kind==='document'?'下载底稿':'编制说明'}</button>`).join('')}</div></li>`).join('')}</ul></details></article>`;}).join('')}`;
+    node.querySelector('#wp-refresh-progress')?.addEventListener('click',()=>void this.act(async()=>{this.data=await this.readWorkspace();this.status='已刷新最新进度，请核对后再操作。';this.conflictRecovery=false;this.paintBatches();}));
     node.querySelectorAll<HTMLDetailsElement>('details[data-batch]').forEach(el=>el.addEventListener('toggle',()=>{if(el.isConnected)this.expandedBatches.set(el.dataset.batch!,el.open);}));
     node.querySelectorAll<HTMLElement>('[data-wp-action]').forEach(el=>el.onclick=()=>void this.batchAction(this.data.batches.find(b=>b.batch_id===el.dataset.batch)!,el.dataset.wpAction!));
     node.querySelectorAll<HTMLButtonElement>('[data-wp-zip]').forEach(el=>el.onclick=()=>void this.download(el,async (signal,progress,preparation)=>({bytes:await this.api.workpaperZip(this.project,el.dataset.wpZip!,signal,progress,preparation),filename:'底稿文件包.zip'})));
@@ -329,7 +346,7 @@ export class WorkpaperPanel {
     if(!force&&progress.revision===this.progressRevision)return;
     const data=await this.readWorkspace(signal);signal.throwIfAborted();
     if(!this.live()||this.busy||this.downloading)return;
-    const confirmationState=()=>this.data.batches.some(b=>['queued','running','paused'].includes(b.state));
+    const confirmationState=()=>this.data.batches.some(b=>['queued','running','paused'].includes(b.state)||b.items.some(workpaperItemUnfinished));
     const previous=confirmationState();this.data=data;this.progressRevision=progress.revision;
     this.paintBatches();if(previous!==confirmationState())this.paintConfirm();
   }

@@ -1,0 +1,369 @@
+TAP version 13
+# Subtest: target intent is an immutable owner-scoped part of the input revision and run replay
+ok 1 - target intent is an immutable owner-scoped part of the input revision and run replay
+  ---
+  duration_ms: 2830.337847
+  type: 'test'
+  ...
+# Subtest: a new request cannot execute a superseded confirmed target or freeze credits
+ok 2 - a new request cannot execute a superseded confirmed target or freeze credits
+  ---
+  duration_ms: 1511.320997
+  type: 'test'
+  ...
+# Subtest: \#79 scrubber removes secrets, captcha codes and cookies
+ok 3 - \#79 scrubber removes secrets, captcha codes and cookies
+  ---
+  duration_ms: 7.874739
+  type: 'test'
+  ...
+# Subtest: \#79 normalized loose keys never leave synthetic values in diagnostics
+ok 4 - \#79 normalized loose keys never leave synthetic values in diagnostics
+  ---
+  duration_ms: 3.456781
+  type: 'test'
+  ...
+# Subtest: \#79 quoted fields preserve ordinary continuation and ambiguous unquoted fields reject
+ok 5 - \#79 quoted fields preserve ordinary continuation and ambiguous unquoted fields reject
+  ---
+  duration_ms: 3.352472
+  type: 'test'
+  ...
+# Subtest: \#79 entire prose values and nested fields are safe in real Blob readback
+ok 6 - \#79 entire prose values and nested fields are safe in real Blob readback
+  ---
+  duration_ms: 3709.238279
+  type: 'test'
+  ...
+# Subtest: \#79 ambiguous diagnostic rejection leaves structured run error evidence writable
+ok 7 - \#79 ambiguous diagnostic rejection leaves structured run error evidence writable
+  ---
+  duration_ms: 2317.687466
+  type: 'test'
+  ...
+# Subtest: \#79 fixed-seed decoded field matrix does not retain synthetic values
+ok 8 - \#79 fixed-seed decoded field matrix does not retain synthetic values
+  ---
+  duration_ms: 162.5002
+  type: 'test'
+  ...
+# Subtest: \#79 scrubber handles nested, embedded and escaped JSON without losing surrounding text
+ok 9 - \#79 scrubber handles nested, embedded and escaped JSON without losing surrounding text
+  ---
+  duration_ms: 0.894873
+  type: 'test'
+  ...
+# Subtest: \#79 escaped JSON with quoted prose and Chinese business placeholders stays usable
+ok 10 - \#79 escaped JSON with quoted prose and Chinese business placeholders stays usable
+  ---
+  duration_ms: 0.352429
+  type: 'test'
+  ...
+# Subtest: \#79 scrubber bounds JSON depth, body length and malformed brace work
+ok 11 - \#79 scrubber bounds JSON depth, body length and malformed brace work
+  ---
+  duration_ms: 2242.706075
+  type: 'test'
+  ...
+# Subtest: \#79 large legal JSON and prompt-shaped text retain the full body
+ok 12 - \#79 large legal JSON and prompt-shaped text retain the full body
+  ---
+  duration_ms: 415.985691
+  type: 'test'
+  ...
+# Subtest: \#79 structured secrets are absent from the private diagnostic Blob readback
+ok 13 - \#79 structured secrets are absent from the private diagnostic Blob readback
+  ---
+  duration_ms: 1639.90251
+  type: 'test'
+  ...
+# Subtest: \#79 fixed-seed field matrix stays safe through real Blob and reference writes
+ok 14 - \#79 fixed-seed field matrix stays safe through real Blob and reference writes
+  ---
+  duration_ms: 1594.005577
+  type: 'test'
+  ...
+# 140 real field-matrix probes: 2 safe Blob writes, 138 zero-write rejections
+# Subtest: \#79 escaped quotes and business placeholders survive private Blob readback
+ok 15 - \#79 escaped quotes and business placeholders survive private Blob readback
+  ---
+  duration_ms: 1347.968395
+  type: 'test'
+  ...
+# Subtest: \#79 full-size synthetic model diagnostics survive private Blob readback
+ok 16 - \#79 full-size synthetic model diagnostics survive private Blob readback
+  ---
+  duration_ms: 9648.662452
+  type: 'test'
+  ...
+# Subtest: \#79 rejected diagnostics never call Blob put or register a partial snapshot
+ok 17 - \#79 rejected diagnostics never call Blob put or register a partial snapshot
+  ---
+  duration_ms: 3246.15354
+  type: 'test'
+  ...
+# Subtest: \#79 wide JSON arrays stay bounded in 128/256 MiB child heaps
+ok 18 - \#79 wide JSON arrays stay bounded in 128/256 MiB child heaps
+  ---
+  duration_ms: 7833.560256
+  type: 'test'
+  ...
+# 128 MiB heap / 4 MiB wide input: 923 CPU ms, RSS +24 MiB
+# 128 MiB heap / 9 MiB wide input: 1856 CPU ms, RSS +24 MiB
+# 256 MiB heap / 4 MiB wide input: 914 CPU ms, RSS +28 MiB
+# 256 MiB heap / 9 MiB wide input: 2099 CPU ms, RSS +24 MiB
+# Subtest: \#79 prose rules scale linearly on long ordinary whitespace in bounded child heaps
+ok 19 - \#79 prose rules scale linearly on long ordinary whitespace in bounded child heaps
+  ---
+  duration_ms: 6014.245313
+  type: 'test'
+  ...
+# 128 MiB heap / 2000 spaces: 5.0 CPU ms, peak RSS 94 MiB
+# 128 MiB heap / 4000 spaces: 4.1 CPU ms, peak RSS 93 MiB
+# 128 MiB heap / 8000 spaces: 5.7 CPU ms, peak RSS 97 MiB
+# 128 MiB heap / 16000 spaces: 6.5 CPU ms, peak RSS 93 MiB
+# 128 MiB heap / 32000 spaces: 8.8 CPU ms, peak RSS 94 MiB
+# 256 MiB heap / 2000 spaces: 3.0 CPU ms, peak RSS 92 MiB
+# 256 MiB heap / 4000 spaces: 3.9 CPU ms, peak RSS 96 MiB
+# 256 MiB heap / 8000 spaces: 6.0 CPU ms, peak RSS 92 MiB
+# 256 MiB heap / 16000 spaces: 6.5 CPU ms, peak RSS 93 MiB
+# 256 MiB heap / 32000 spaces: 7.2 CPU ms, peak RSS 98 MiB
+# Subtest: \#79 repeated non-delimiting escaped quotes have linear bounded work
+ok 20 - \#79 repeated non-delimiting escaped quotes have linear bounded work
+  ---
+  duration_ms: 2828.060967
+  type: 'test'
+  ...
+# 128 MiB heap / 4 MiB quote runs: 856 ms, peak RSS 121 MiB
+# 256 MiB heap / 4 MiB quote runs: 717 ms, peak RSS 119 MiB
+# Subtest: \#79 dense short strings and long escaped quotes share bounded scan work
+ok 21 - \#79 dense short strings and long escaped quotes share bounded scan work
+  ---
+  duration_ms: 8047.260518
+  type: 'test'
+  ...
+# 128 MiB heap / dense 3600001 B: 2999 ms, peak RSS 122 MiB
+# 128 MiB heap / long_key 9437222 B: 247 ms, peak RSS 123 MiB
+# 256 MiB heap / dense 3600001 B: 2359 ms, peak RSS 124 MiB
+# 256 MiB heap / long_key 9437222 B: 264 ms, peak RSS 124 MiB
+# Subtest: \#79 densely sensitive wide arrays reject safely when redaction exceeds 10 MiB
+ok 22 - \#79 densely sensitive wide arrays reject safely when redaction exceeds 10 MiB
+  ---
+  duration_ms: 1514.439307
+  type: 'test'
+  ...
+# 128 MiB heap / 9 MiB dense sensitive input: 237 ms, peak RSS 134 MiB
+# 256 MiB heap / 9 MiB dense sensitive input: 223 ms, peak RSS 127 MiB
+# Subtest: \#79 densely redacted valid 10 MiB arrays fit bounded child heaps
+ok 23 - \#79 densely redacted valid 10 MiB arrays fit bounded child heaps
+  ---
+  duration_ms: 3161.089827
+  type: 'test'
+  ...
+# 128 MiB heap / 10485749 B dense valid input: 799 ms, peak RSS 195 MiB
+# 256 MiB heap / 10485749 B dense valid input: 1011 ms, peak RSS 194 MiB
+# Subtest: \#79 dense ordinary colon strings stay bounded when every value is scanned
+ok 24 - \#79 dense ordinary colon strings stay bounded when every value is scanned
+  ---
+  duration_ms: 5654.219568
+  type: 'test'
+  ...
+# 128 MiB heap / 10485751 B dense colon input: 2297 ms, peak RSS 135 MiB
+# 256 MiB heap / 10485751 B dense colon input: 2057 ms, peak RSS 138 MiB
+# Subtest: \#79 near-limit multibyte ordinary JSON remains complete in bounded heaps
+ok 25 - \#79 near-limit multibyte ordinary JSON remains complete in bounded heaps
+  ---
+  duration_ms: 4271.076783
+  type: 'test'
+  ...
+# 128 MiB heap / 10485689 B multibyte: 709 ms (5 MiB baseline 442 ms), peak RSS 230 MiB
+# 256 MiB heap / 10485689 B multibyte: 1336 ms (5 MiB baseline 587 ms), peak RSS 231 MiB
+# Subtest: \#79 NDJSON sink cannot be split by log injection
+ok 26 - \#79 NDJSON sink cannot be split by log injection
+  ---
+  duration_ms: 375.364071
+  type: 'test'
+  ...
+# Subtest: \#79 file sink repeat and concurrent processes retain one durable line per key
+ok 27 - \#79 file sink repeat and concurrent processes retain one durable line per key
+  ---
+  duration_ms: 2025.796362
+  type: 'test'
+  ...
+# Subtest: \#79 file sink fails closed on torn/corrupt lines and unsafe permissions
+ok 28 - \#79 file sink fails closed on torn/corrupt lines and unsafe permissions
+  ---
+  duration_ms: 1324.696521
+  type: 'test'
+  ...
+# Subtest: \#79 replay of a complete pre-existing line still acknowledges only after file sync
+ok 29 - \#79 replay of a complete pre-existing line still acknowledges only after file sync
+  ---
+  duration_ms: 513.46627
+  type: 'test'
+  ...
+# Subtest: \#79 size cap fails closed for new keys but permits replay of a full segment
+ok 30 - \#79 size cap fails closed for new keys but permits replay of a full segment
+  ---
+  duration_ms: 1110.665668
+  type: 'test'
+  ...
+# Subtest: \#79 replay also detects a key in a legacy rotated segment
+ok 31 - \#79 replay also detects a key in a legacy rotated segment
+  ---
+  duration_ms: 994.327982
+  type: 'test'
+  ...
+# Subtest: \#79 operator API: deny by default, filters, timeline, metrics, restricted prompt, corrections
+ok 32 - \#79 operator API: deny by default, filters, timeline, metrics, restricted prompt, corrections
+  ---
+  duration_ms: 3902.043201
+  type: 'test'
+  ...
+# Subtest: \#79 forwarding drills: sink outage, process crash and replay never lose or double count
+ok 33 - \#79 forwarding drills: sink outage, process crash and replay never lose or double count
+  ---
+  duration_ms: 1963.380834
+  type: 'test'
+  ...
+# Subtest: \#79 production file sink survives two independent processes with crash before PG ack
+ok 34 - \#79 production file sink survives two independent processes with crash before PG ack
+  ---
+  duration_ms: 4288.31988
+  type: 'test'
+  ...
+# Subtest: \#79 a missing source event blocks the whole claimed batch before sink or PG ACK
+ok 35 - \#79 a missing source event blocks the whole claimed batch before sink or PG ACK
+  ---
+  duration_ms: 79.565983
+  type: 'test'
+  ...
+# Subtest: \#79 malformed outbox envelope or source event blocks the entire PG batch
+ok 36 - \#79 malformed outbox envelope or source event blocks the entire PG batch
+  ---
+  duration_ms: 167.566563
+  type: 'test'
+  ...
+# Subtest: \#79 a conflicting existing receipt cannot ACK a different outbox event
+ok 37 - \#79 a conflicting existing receipt cannot ACK a different outbox event
+  ---
+  duration_ms: 46.081512
+  type: 'test'
+  ...
+# Subtest: \#79 PG event lookup outage cannot call the sink or acknowledge the outbox
+ok 38 - \#79 PG event lookup outage cannot call the sink or acknowledge the outbox
+  ---
+  duration_ms: 56.275056
+  type: 'test'
+  ...
+# Subtest: \#79 evidence gate: DB transaction failure pauses new external calls and raises an alert
+ok 39 - \#79 evidence gate: DB transaction failure pauses new external calls and raises an alert
+  ---
+  duration_ms: 1570.539391
+  type: 'test'
+  ...
+# Subtest: \#79 retention purge and user-deletion reclamation keep accounting metadata
+ok 40 - \#79 retention purge and user-deletion reclamation keep accounting metadata
+  ---
+  duration_ms: 2094.612647
+  type: 'test'
+  ...
+# Subtest: \#79 orphan prompt Blob intent survives failed compensation, restart and delete retry
+ok 41 - \#79 orphan prompt Blob intent survives failed compensation, restart and delete retry
+  ---
+  duration_ms: 1326.195782
+  type: 'test'
+  ...
+# Subtest: \#79 prompt response and purge serialize through delivery, with audit and owner boundary
+ok 42 - \#79 prompt response and purge serialize through delivery, with audit and owner boundary
+  ---
+  duration_ms: 1284.061051
+  type: 'test'
+  ...
+# Subtest: \#79 in-flight Blob purge blocks prompt read and failed delete remains replayable
+ok 43 - \#79 in-flight Blob purge blocks prompt read and failed delete remains replayable
+  ---
+  duration_ms: 1425.324652
+  type: 'test'
+  ...
+# Subtest: \#79 TCP abort releases prompt lock during pending Blob read (resolve late)
+ok 44 - \#79 TCP abort releases prompt lock during pending Blob read (resolve late)
+  ---
+  duration_ms: 2122.022471
+  type: 'test'
+  ...
+# Subtest: \#79 TCP abort releases prompt lock during pending Blob read (reject late)
+ok 45 - \#79 TCP abort releases prompt lock during pending Blob read (reject late)
+  ---
+  duration_ms: 2374.831708
+  type: 'test'
+  ...
+# Subtest: \#79 real TCP slow response and onSend failure release the prompt lock
+ok 46 - \#79 real TCP slow response and onSend failure release the prompt lock
+  ---
+  duration_ms: 3026.155007
+  type: 'test'
+  ...
+# Subtest: \#79 disconnected lock waiter frees a two-connection PG pool (success first read)
+ok 47 - \#79 disconnected lock waiter frees a two-connection PG pool (success first read)
+  ---
+  duration_ms: 2425.101505
+  type: 'test'
+  ...
+# Subtest: \#79 disconnected lock waiter frees a two-connection PG pool (failure first read)
+ok 48 - \#79 disconnected lock waiter frees a two-connection PG pool (failure first read)
+  ---
+  duration_ms: 2471.667901
+  type: 'test'
+  ...
+# Subtest: \#79 prompt deadline ends a live TCP Blob read and permits purge
+ok 49 - \#79 prompt deadline ends a live TCP Blob read and permits purge
+  ---
+  duration_ms: 2754.55452
+  type: 'test'
+  ...
+# Subtest: \#79 prompt deadline stops a connected lock waiter without retaining its PG connection
+ok 50 - \#79 prompt deadline stops a connected lock waiter without retaining its PG connection
+  ---
+  duration_ms: 2764.51969
+  type: 'test'
+  ...
+# Subtest: \#79 prompt deadline closes a unread live TCP response and releases purge
+ok 51 - \#79 prompt deadline closes a unread live TCP response and releases purge
+  ---
+  duration_ms: 4780.165218
+  type: 'test'
+  ...
+# Subtest: \#79 prompt deadline closes a trickle live TCP response and releases purge
+ok 52 - \#79 prompt deadline closes a trickle live TCP response and releases purge
+  ---
+  duration_ms: 6451.798737
+  type: 'test'
+  ...
+# Subtest: \#79 prompt deadline allows a normal TCP response and ends a stuck onSend
+ok 53 - \#79 prompt deadline allows a normal TCP response and ends a stuck onSend
+  ---
+  duration_ms: 2396.435884
+  type: 'test'
+  ...
+# Subtest: \#79 PG statement deadline cancels a 3-second snapshot query holding the prompt lock
+ok 54 - \#79 PG statement deadline cancels a 3-second snapshot query holding the prompt lock
+  ---
+  duration_ms: 2066.250849
+  type: 'test'
+  ...
+# Subtest: \#79 PG statement deadline cancels a 3-second audit query holding the prompt lock
+ok 55 - \#79 PG statement deadline cancels a 3-second audit query holding the prompt lock
+  ---
+  duration_ms: 2463.471828
+  type: 'test'
+  ...
+1..55
+# tests 55
+# suites 0
+# pass 55
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 135252.511194

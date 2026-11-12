@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {encodeBillingDto,validateBillingDto,decodeLegacyBillingRequest,type BillingWireDto} from './billing-wire.js';
 
+test('integrity settlement money uses decimal wire while saved pair identities and counts remain unchanged',()=>{
+ const input={rounds:[{settlement:{version:'integrity-settlement-v1',quoted_points:2425,charged_points:2170,released_points:255,verified_query_pairs:[{subject_id:'company',site_id:'pbc'}]},manifest:{points:2425,scope_measurement:{executable_pairs:5}}},{settlement:null}]};
+ const before=structuredClone(input),wire=encodeBillingDto('integrityWorkspace',input);
+ assert.equal(wire.rounds[0].settlement!.quoted_points,'2425');assert.equal(wire.rounds[0].settlement!.charged_points,'2170');assert.equal(wire.rounds[0].settlement!.released_points,'255');assert.deepEqual(wire.rounds[0].settlement!.verified_query_pairs,input.rounds[0].settlement!.verified_query_pairs);assert.equal(wire.rounds[0].manifest!.scope_measurement.executable_pairs,5);assert.equal(wire.rounds[1].settlement,null);assert.deepEqual(input,before);validateBillingDto('integrityWorkspace',wire);
+ assert.throws(()=>validateBillingDto('integrityWorkspace',{rounds:[{settlement:{quoted_points:2425}}]}));
+});
+
 test('quote and scope explanations encode amounts without converting revisions or changing stored snapshots',()=>{
   const input={input_revision:4,quote:{points:123,amount_fen:123,units:1,scope_lines:[{quantity:2,unit_price_fen:100,amount_fen:123,
     pricing:{base_amount_fen:200,owned_coverage_fen:77,due_fen:123}}]},balance:{available:'9007199254740993',frozen:2n},shortage:0};

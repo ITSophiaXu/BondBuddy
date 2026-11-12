@@ -4,14 +4,38 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, rmSync, readFileSync, mkdirSync, cpSync, readdirSync, openSync, closeSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { installSyntheticEvidenceGates, syntheticEvidenceEnvironment } from './release-evidence-fixtures.mjs';
 const root = resolve(import.meta.dirname, '../../..');
 const dir = mkdtempSync(join(root, '.split-test-'));
+Object.assign(process.env, syntheticEvidenceEnvironment(join(dir, 'synthetic-evidence')));
 process.on('exit', () => rmSync(dir, { recursive: true, force: true }));
 const base = { BB_IMAGE_TAG: 'synthetic', POSTGRES_PASSWORD: 'synthetic', BB_MAIN_DATABASE_URL:'postgresql://bondbuddy:synthetic@postgres:5432/bondbuddy', BB_PUBLIC_ORIGIN: 'https://bondbuddy.test', BB_TERMS_VERSION: 'synthetic',
  BB_TRIAL_SOURCE_SALT: 'synthetic', AZURE_STORAGE_CONNECTION_STRING: 'synthetic', BB_PARSE_CACHE_OCR_VERSION: 'synthetic', BB_PARSE_CACHE_BASIS_VERSION: 'synthetic',
  BB_EXECUTION_DATABASE_URL: 'postgresql://bondbuddy:synthetic@pg-tunnel:5432/bondbuddy', BB_PG_SSH_HOST: 'synthetic.test', BB_PG_SSH_USER: 'tunnel',
  BB_PG_SSH_KEY_FILE: '/dev/null', BB_PG_SSH_KNOWN_HOSTS_FILE: '/dev/null', BB_FILE_TEMPLATE_HOST_DIR: dir, BB_PAYMENT_SECRETS_DIR: dir, BB_INTEGRITY_MODE: 'beijing',BB_INTEGRITY_BEIJING_HOST:'synthetic.test',BB_INTEGRITY_SSH_DIR:dir };
-const configProcessEnv = {...process.env};
+// Configuration-only cases use a fresh synthetic main instance. Render with the
+// real Compose CLI, but never discover the user's daemon/project/PG containers.
+// Nonempty and wrong PG bindings are covered by role-lifecycle-review.test.mjs.
+const configBin = join(dir, 'config-bin'); mkdirSync(configBin);
+const configDocker = execFileSync('which', ['docker'], { encoding: 'utf8' }).trim();
+writeFileSync(join(configBin, 'docker'), `#!/usr/bin/env node
+import {spawnSync} from 'node:child_process';
+const args=process.argv.slice(2);
+const emptyPostgres=['ps','-aq','--filter','label=com.docker.compose.project=bb-main','--filter','label=com.docker.compose.service=postgres'];
+if(JSON.stringify(args)===JSON.stringify(emptyPostgres))process.exit(0);
+const options=new Set(['--project-directory','--project-name','-f','--profile','--env-file']);
+let index=1;
+if(args[0]==='compose'){
+ while(index<args.length&&options.has(args[index]))index+=2;
+ if(args[index]==='config'){
+  const child=spawnSync(${JSON.stringify(configDocker)},args,{stdio:'inherit'});
+  if(child.error)throw child.error;
+  process.exit(child.status??1);
+ }
+}
+throw Error('Unexpected Docker operation in configuration-only fixture');
+`, {mode:0o755});
+const configProcessEnv = {...process.env,PATH:configBin+':'+process.env.PATH};
 delete configProcessEnv.BB_WORKER_LEASE_SECONDS; // Exercise the private env file, independent of the test host.
 function envFile(role, values = {}) { const path = join(dir, `${role}.env`); writeFileSync(path, Object.entries({...base,BB_DEPLOY_ROLE:role,...values}).map(([k,v])=>`${k}=${v}`).join('\n'), {mode:0o600}); return path; }
 function config(role, values = {}, state = join(dir,'state')) {
@@ -109,7 +133,8 @@ test('business model catalogs retain 1M windows and 900K compression', () => {
 // Exercise actual shell branch ordering; no Docker mutation is performed by these command shims.
 for(const role of ['main','execution']) test(`${role} deployment refuses in-flight/unknown calls; only main migrates and recreates web`,()=>{
  const fixture=join(dir,role+'-fixture');mkdirSync(join(fixture,'deploy/m1/scripts'),{recursive:true});mkdirSync(join(fixture,'bin'));
- for(const name of ['lib.sh','role-lib.sh','deploy-role.sh','role-probe.mjs','role-config.mjs','role-source-lib.sh','role-state.mjs','role-release.mjs']) cpSync(join(root,'deploy/m1/scripts',name),join(fixture,'deploy/m1/scripts',name));
+ for(const name of ['lib.sh','role-lib.sh','deploy-role.sh','role-probe.mjs','role-config.mjs','role-source-lib.sh','role-state.mjs','role-release.mjs','release-evidence.sh']) cpSync(join(root,'deploy/m1/scripts',name),join(fixture,'deploy/m1/scripts',name));
+ installSyntheticEvidenceGates(fixture);
  for(const name of ['install-codex-file-sandbox.sh','smoke.sh']) writeFileSync(join(fixture,'deploy/m1/scripts',name),'#!/bin/sh\nexit 0\n',{mode:0o755});
  writeFileSync(join(fixture,'bin/git'),`#!/bin/sh\ncase "$*" in *--show-toplevel*) echo "$TEST_FIXTURE";; *HEAD*) echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;; *'aaaaaaaaaaaa^{commit}'*) echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;; *--verify*) echo "\${TEST_APP_SHA:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}";; *'remote get-url origin'*) echo https://github.com/ITSophiaXu/BondBuddy.git;; *for-each-ref*) echo refs/remotes/origin/develop;; *merge-base*) exit "\${TEST_UNTRUSTED:-0}";; *status*) [ "\${TEST_DIRTY:-0}" = 0 ] || echo " M deploy/m1/synthetic";; *diff*) exit "\${TEST_DEPLOY_DIFF:-0}";; *rev-parse*) echo cccccccccccccccccccccccccccccccccccccccc;; esac\n`,{mode:0o755});
  writeFileSync(join(fixture,'bin/docker'),`#!/bin/bash
@@ -275,7 +300,7 @@ test('independent app/script commits preserve source and clean-checkout protecti
 });
 test('private retained state survives default checkout paths and rejects caller state substitution',()=>{
  const a=covered('main',bridgeOverlay),state=a.values.BB_ROLE_STATE_DIR;config('main',a.values,state);
- const shared={...process.env,BB_ENV_FILE:envFile('main',a.values),BB_IMAGE_TAG:'synthetic'};delete shared.BB_STATE_DIR;
+ const shared={...configProcessEnv,BB_ENV_FILE:envFile('main',a.values),BB_IMAGE_TAG:'synthetic'};delete shared.BB_STATE_DIR;
  let r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','main','config','--quiet'],{cwd:root,env:shared,encoding:'utf8'});assert.equal(r.status,0,r.stderr);
  r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','main','config','--quiet'],{cwd:root,env:{...shared,BB_STATE_DIR:join(a.area,'empty-replacement')},encoding:'utf8'});assert.equal(r.status,2);assert.match(r.stderr,/must match the retained/);
 });
@@ -403,7 +428,7 @@ test('confirmation bind policy rejects true/default/short syntax and probes omit
 
 test('confirmation probe discards valid JSON from a failed render before adopting binding',()=>{
  const shim=join(dir,'probe-failure-bin');mkdirSync(shim);
- const docker=execFileSync('bash',['-lc','command -v docker'],{encoding:'utf8'}).trim();
+ const docker=join(configBin,'docker');
  writeFileSync(join(shim,'docker'),`#!/usr/bin/env node
 import {spawnSync} from 'node:child_process';
 const args=process.argv.slice(2),r=spawnSync(${JSON.stringify(docker)},args,{encoding:'utf8'});
@@ -414,15 +439,16 @@ process.exit(which&&which===process.env.TEST_PROBE_FAILURE?51:r.status??1);
 `,{mode:0o755});
  for(const failure of ['none','false','true']){
   const a=covered('execution','services: {}\n',{BB_UPLOAD_CONFIRMATION_ROLE:'size-split',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir}),state=join(a.area,'state');
-  const r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','execution','config','--format','json'],{cwd:root,env:{...configProcessEnv,PATH:shim+':'+process.env.PATH,BB_ENV_FILE:envFile('execution',a.values),BB_STATE_DIR:state,BB_IMAGE_TAG:'synthetic',TEST_PROBE_FAILURE:failure},encoding:'utf8'});
+  const r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','execution','config','--format','json'],{cwd:root,env:{...configProcessEnv,PATH:shim+':'+configProcessEnv.PATH,BB_ENV_FILE:envFile('execution',a.values),BB_STATE_DIR:state,BB_IMAGE_TAG:'synthetic',TEST_PROBE_FAILURE:failure},encoding:'utf8'});
   assert.equal(r.status,failure==='none'?0:2,r.stderr);
   if(failure!=='none')assert.throws(()=>readFileSync(join(state,'environment-binding.json')),'failed probe must not adopt a binding');
  }
 });
 
-test('export inspects the requested source target, preserving uncached historical rollback and source checks',()=>{
+test('export inspects requested source targets and reuses tested business images for historical rollback',()=>{
  const fixture=join(dir,'export-ref-fixture');mkdirSync(join(fixture,'deploy/m1/scripts'),{recursive:true});mkdirSync(join(fixture,'bin'));
- for(const name of ['export-images-role.sh','role-source-lib.sh'])cpSync(join(root,'deploy/m1/scripts',name),join(fixture,'deploy/m1/scripts',name));
+ for(const name of ['export-images-role.sh','role-source-lib.sh','release-evidence.sh'])cpSync(join(root,'deploy/m1/scripts',name),join(fixture,'deploy/m1/scripts',name));
+ installSyntheticEvidenceGates(fixture);
  const git=(...args)=>execFileSync('git',['-C',fixture,...args],{encoding:'utf8'}).trim();
  git('init','-q');git('config','user.name','muhualing');git('config','user.email','12086605+muhualing@users.noreply.github.com');git('remote','add','origin','https://github.com/ITSophiaXu/BondBuddy.git');
  const dockerfile=join(fixture,'deploy/m1/Dockerfile');writeFileSync(dockerfile,'FROM scratch AS worker\n');git('add','.');git('commit','-qm','synthetic old image targets');const old=git('rev-parse','HEAD');
@@ -430,8 +456,8 @@ test('export inspects the requested source target, preserving uncached historica
  const calls=join(fixture,'calls');writeFileSync(join(fixture,'bin/docker'),`#!/bin/bash
 printf '%s\\n' "$*" >> "$TEST_CALLS"
 case "$*" in
- 'image inspect --format'*) echo wrong-source;;
- 'image inspect'*) [ "\${TEST_CACHED_WRONG:-0}" = 1 ];;
+ 'image inspect --format'*) if [ "\${TEST_CACHED_WRONG:-0}" = 1 ]; then echo wrong-source; else echo "$TEST_REF"; fi;;
+ 'image inspect'*) if [ "\${TEST_MISSING_CONFIRMATION:-0}" = 1 ] && [[ "$*" == *bondbuddy-m1-upload-confirmation:* ]]; then exit 1; fi;;
  'build'*)
    while [ "$#" -gt 0 ]; do if [ "$1" = --target ]; then shift; target="$1"; fi; if [ "$1" = -f ]; then shift; file="$1"; fi; shift; done
    [ "\${target:-}" != upload-confirmation ] || rg -q 'AS upload-confirmation' "$file";;
@@ -439,9 +465,11 @@ case "$*" in
 esac
 `,{mode:0o755});
  for(const [ref,wantsConfirmation]of [[old,false],[current,true]]){
-  writeFileSync(calls,'');const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/export-images-role.sh'),'execution',ref,join(fixture,'images.tar.gz'),'disabled'],{env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,TEST_CALLS:calls},encoding:'utf8'});
-  assert.equal(r.status,0,r.stderr);const commands=readFileSync(calls,'utf8');assert.equal(commands.includes('--target upload-confirmation'),wantsConfirmation);assert.equal(commands.includes('bondbuddy-m1-upload-confirmation:'),wantsConfirmation);assert.ok(commands.includes('--target worker'));assert.ok(readFileSync(join(fixture,'images.tar.gz')).length>0);
+  writeFileSync(calls,'');const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/export-images-role.sh'),'execution',ref,join(fixture,'images.tar.gz'),'disabled'],{env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,TEST_CALLS:calls,TEST_REF:ref},encoding:'utf8'});
+  assert.equal(r.status,0,r.stderr);const commands=readFileSync(calls,'utf8');assert.doesNotMatch(commands,/build|--target worker|--target upload-confirmation/);assert.equal(commands.includes('bondbuddy-m1-upload-confirmation:'),wantsConfirmation);assert.ok(commands.includes('bondbuddy-m1-worker:'));assert.ok(readFileSync(join(fixture,'images.tar.gz')).length>0);
  }
  writeFileSync(calls,'');const bad=spawnSync('bash',[join(fixture,'deploy/m1/scripts/export-images-role.sh'),'execution',old,join(fixture,'bad.tar.gz'),'disabled'],{env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,TEST_CALLS:calls,TEST_CACHED_WRONG:'1'},encoding:'utf8'});
  assert.equal(bad.status,3);assert.match(bad.stderr,/matching source revision/);assert.doesNotMatch(readFileSync(calls,'utf8'),/build|save/);
+ writeFileSync(calls,'');const missing=spawnSync('bash',[join(fixture,'deploy/m1/scripts/export-images-role.sh'),'execution',current,join(fixture,'missing.tar.gz'),'disabled'],{env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,TEST_CALLS:calls,TEST_REF:current,TEST_MISSING_CONFIRMATION:'1'},encoding:'utf8'});
+ assert.equal(missing.status,3);assert.match(missing.stderr,/tested image disappeared: upload-confirmation/);assert.doesNotMatch(readFileSync(calls,'utf8'),/build|save/);
 });

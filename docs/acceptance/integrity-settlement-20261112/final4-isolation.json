@@ -1,0 +1,9 @@
+{
+  "id": "c3602e00460be81c06da40bafc70eebf0f2fefff933d923c9dcb31b72bbc66e9",
+  "imageId": "sha256:e081d9ca27e8ef07e6a658183b50b15a568a8126a67d70a3065ff630dfb7fdb9",
+  "network": "none",
+  "cpus": 1000000000,
+  "memory": 3221225472,
+  "mounts": [],
+  "ports": {}
+}

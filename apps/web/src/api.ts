@@ -7,6 +7,7 @@ import { DIRECT_UPLOAD_TRANSPORT, UPLOAD_TRANSPORT_HEADER, type UploadTransport,
 import {BILLING_WIRE_HEADER,BILLING_WIRE_VERSION,LEGACY_BILLING_WIRE_VERSION,billingWireRoute,encodeBillingDto,validateBillingDto} from '@bondbuddy/contracts';
 import { UserFacingError, unknownErrorText, type ErrorOperation } from './user-facing-error.js';
 import type { Static } from '@sinclair/typebox';
+import {WORKPAPER_CONFLICT_FIELD,isWorkpaperConflictReason,type WorkpaperConflictReason} from '@bondbuddy/contracts';
 import type { schemas, SchemaName, DataPolicy, AgreementResponse } from './billing-types.js';
 import type { FactDecisionRequest } from '@bondbuddy/contracts';
 import type {SubscriptionCatalog,SubscriptionAccount,SubscriptionCheckoutRequest,SubscriptionCheckout,Subscription,SubscriptionAutoRenewRequest,SubscriptionAutoRenew,SubscriptionChangeQuoteRequest,SubscriptionChangeCheckoutRequest} from './billing-types.js';
@@ -16,7 +17,7 @@ export type Dto<K extends SchemaName> = Static<(typeof schemas)[K]>;
 const UPLOAD_CONFIRMATION_TIMEOUT_MS = 600_000;
 export class ApiError extends Error {
   constructor(public status: number, public code: string, public readonly details: {
-    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; uploadBytesPending?: boolean; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean; prospectusDocxOnly?: boolean;
+    correlationId?: string; retryable?: boolean; uploadReason?: UploadInspectionPublicReason; uploadBytesPending?: boolean; materialInputIssues?: M4InputIssue[]; trialLimit?: TrialLimitKind; prospectusSelectionRequired?: boolean; sourceProspectusRequired?: boolean; prospectusDocxOnly?: boolean; workpaperConflict?: WorkpaperConflictReason;
   } = {}) { super(code); }
 }
 
@@ -33,6 +34,7 @@ export function parseApiError(status: number, value: unknown, fallbackCode = 'DA
   const fields: unknown[] = Array.isArray(problem.field_errors) ? problem.field_errors : [];
   let uploadReason: UploadInspectionPublicReason | undefined;
   let trialLimit: TrialLimitKind | undefined;
+  const workpaperConflict=code==='PROJECT_RUN_ACTIVE'?fields.find(field=>isRecord(field)&&field.field===WORKPAPER_CONFLICT_FIELD&&isWorkpaperConflictReason(field.code)):undefined;
   if (code === 'TRIAL_QUOTA_EXCEEDED') for (const field of fields) {
     if (isRecord(field) && field.field === TRIAL_LIMIT_ERROR_FIELD &&
         TRIAL_LIMIT_KINDS.includes(field.code as TrialLimitKind)) {
@@ -47,6 +49,7 @@ export function parseApiError(status: number, value: unknown, fallbackCode = 'DA
     }
   }
   return new ApiError(status, code, {
+    ...(isRecord(workpaperConflict)?{workpaperConflict:workpaperConflict.code as WorkpaperConflictReason}:{}),
     ...(code === 'MATERIAL_FORMAT_UNSUPPORTED' && fields.some(isProspectusDocxOnlyFieldError)
       ? { prospectusDocxOnly: true } : {}),
     ...(code === 'INPUT_REVISION_CONFLICT' && fields.some(isProspectusSelectionRequiredFieldError)
@@ -78,7 +81,13 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
     case 'INPUT_REVISION_CONFLICT': return error.details.prospectusSelectionRequired
       ? PROSPECTUS_SELECTION_REQUIRED_MESSAGE
       : '这个项目已在其他页面修改。你的输入仍保留，请查看最新版本后再修改。';
-    case 'PROJECT_RUN_ACTIVE': return '同一来源项目已有任务正在执行。本次未开始，草稿保留。请在任务进度与结果查看任务，等待完成或停止后明确执行。';
+    case 'PROJECT_RUN_ACTIVE': return error.details.workpaperConflict==='current_item_active'
+      ? '当前文件尚未结束，结束后续排队不会停止当前文件。请查看当前文件，等待完成或结束该文件后再重试未完成项。'
+      : error.details.workpaperConflict==='other_batch_active'
+        ? '本项目还有其他底稿文件包待完成。请在任务进度与结果处理该文件包后，再重试本批未完成项。'
+        : error.details.workpaperConflict==='source_task_active'
+          ? '同一来源项目的其他任务尚未结束。请在任务进度与结果处理该任务后，再重试本批未完成项。'
+          : '同一来源项目已有任务正在执行。本次未开始，草稿保留。请在任务进度与结果查看任务，等待完成或停止后明确执行。';
     case 'UNAUTHENTICATED': return '登录已失效，请重新登录。';
     case 'NOT_FOUND': return '无法访问这个项目，它可能已移除或不属于当前账号。';
     case 'RATE_LIMITED': return '尝试次数过多，请稍后再试。';
@@ -108,7 +117,7 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
     case 'QUOTE_UNAVAILABLE': return '当前范围暂无法承接，本次未开始、未扣费。请查看报价原因或调整准备内容。';
     case 'QUOTE_DECLINED': return '本报价已拒绝，本次未开始、未扣费。准备内容保留，可重新申请范围报价。';
     case 'BILLING_NOT_READY': return '积分价格尚未配置，请联系支持；本次未扣费。';
-    case 'PAYMENT_UNAVAILABLE': return '充值渠道暂不可用，请稍后重试。项目材料已保留。';
+    case 'PAYMENT_UNAVAILABLE': return '支付渠道暂不可用，请稍后重试。如已付款，请刷新原订单核对结果。';
     case 'PAYMENT_INVALID': return '支付结果尚未核实，请刷新订单状态；无需重复付款。';
     case 'SUBSCRIPTION_CHANGE_QUOTE_STALE': return '可抵扣积分已变化或付款摘要已过期，请刷新付款摘要。';
     case 'SUBSCRIPTION_CHANGE_MANDATE_PENDING': return '原自动续费仍在解除核对中，请稍后继续同一付款请求；尚未生成新订单。';

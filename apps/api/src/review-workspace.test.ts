@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { Pool } from 'pg';
 import { createServer } from './server.js';
 import { isolatedTestDatabase } from './test-database.js';
-import { digest, uid } from './data.js';
+import { digest, uid, transaction } from './data.js';
+import { grantCredits } from './billing.js';
 import { inputManifestHash } from './production-rule-pin.js';
 import type { ReviewEvidenceRef, ReviewProposal, ReviewReport } from '@bondbuddy/contracts';
 
@@ -17,6 +18,7 @@ test('M3 ownership, independent drafts, idempotency, immutable input, mutex and 
   const send = (method: string, url: string, payload?: unknown) => app.inject({ method: method as any, url, headers: { origin }, payload: payload as any });
   const ok = (response: { statusCode: number; body: string }) => assert.ok(response.statusCode >= 200 && response.statusCode < 300, response.body);
   try {
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)', [active, 'synthetic_m3_workspace']);
     const created = await send('POST', '/api/v1/projects', { name: 'Synthetic M3', kind: 'review', issuer_name: null, market: null, offering: null }); ok(created);
     const id = created.json().project_id, base = `/api/v1/projects/${id}`, mat = uid(), upload = uid(), sha = digest('synthetic source');
     await pool.query(`INSERT INTO bb_uploads(id,owner_user_id,project_id,filename,declared_media_type,byte_size,sha256,role,object_key,expires_at,state)
@@ -34,7 +36,13 @@ test('M3 ownership, independent drafts, idempotency, immutable input, mutex and 
     assert.equal((await send('POST', `${base}/review-messages`, message)).json().message.message_id, sent.json().message.message_id);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1', [id])).rows[0].n, 0, 'sending does not execute');
     assert.equal((await send('GET', `${base}/review-workspace`)).json().message_drafts[0].content, '未发送文本', 'sending never overwrites an unsent draft');
-    const execute = { execution_request_id: uid(), operation: 'full_review', expected_input_version: 1, source_report_id: null, expected_plan_version: null, finding_ids: [] };
+    const intent = { execution_request_id: uid(), operation: 'full_review', expected_input_version: 1, source_report_id: null, expected_plan_version: null, finding_ids: [] };
+    const quoted = await send('POST', `${base}/review-executions/quote`, intent); ok(quoted);
+    const quote = quoted.json().quote;
+    assert.equal(quote.quote_status, 'ready'); assert.equal(quote.auto_charge, true);
+    await transaction(pool, client => grantCredits(client, { owner: active, source: 'existing_grant', key: `synthetic-review-${quote.quote_id}`,
+      points: quote.points, expiresAt: null, actor: 'synthetic-test', reason: 'isolated review workspace fixture' }));
+    const execute = { ...intent, quote_id: quote.quote_id };
     const concurrent = await Promise.all([send('POST', `${base}/review-executions`, execute), send('POST', `${base}/review-executions`, execute)]);
     concurrent.forEach(ok); assert.equal(concurrent[0]!.json().run_id, concurrent[1]!.json().run_id);
     const run = concurrent[0]!.json();
@@ -53,7 +61,11 @@ test('M3 ownership, independent drafts, idempotency, immutable input, mutex and 
       'editing optional project labels affects a future execution without altering the active run snapshot');
     assert.equal((await send('PUT', `${base}/review-draft`, { kind: 'input', expected_version: 1, input })).statusCode, 409);
     await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1", [run.run_id]);
-    const second = await send('POST', `${base}/review-executions`, { ...execute, execution_request_id: uid(), expected_input_version: 2 }); ok(second);
+    const nextIntent = { ...intent, execution_request_id: uid(), expected_input_version: 2 };
+    const nextQuoted = await send('POST', `${base}/review-executions/quote`, nextIntent); ok(nextQuoted);
+    const nextQuote = nextQuoted.json().quote;
+    assert.equal(nextQuote.quote_status, 'ready'); assert.equal(nextQuote.auto_charge, true);
+    const second = await send('POST', `${base}/review-executions`, { ...nextIntent, quote_id: nextQuote.quote_id }); ok(second);
     await pool.query("UPDATE bb_runs SET state='failed' WHERE id=$1", [second.json().run_id]);
     const history = (await send('GET', `${base}/review-history`)).json().items;
     assert.deepEqual(history.map((h: any) => [h.version, h.run.state]), [[2, 'failed'], [1, 'cancelled']]);

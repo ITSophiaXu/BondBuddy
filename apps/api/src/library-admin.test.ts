@@ -1,3 +1,4 @@
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun } from './test-authoring-source.js';
 import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
 import { test } from 'node:test';
@@ -163,11 +164,11 @@ test('admin library routes: 404 for ordinary users, read-only for readers, actio
     // A selection trace may contain private library identifiers and review details. It belongs only
     // in the durable job checkpoint, never in run polling, SSE, or Word delivery metadata.
     const projectId = created.json().project_id as string;
-    const input = await app.inject({ method: 'POST', url: `/api/v1/projects/${projectId}/input-revisions`, headers,
-      payload: JSON.stringify({ draft_revision: 1, material_versions: [], requirement_message_ids: [] }) });
+    const input = await lockSyntheticAuthoringInput(app,projectId,headers);
     assert.equal(input.statusCode, 201, input.body);
+    const quoteId = await quoteSyntheticAuthoringRun(app,pool,plain,projectId,input.json(),headers);
     const runRequest = { execution_request_id: `library-output-${suffix}`, project_id: projectId, input_revision: 1,
-      input_hash: input.json().input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest',
+      input_hash: input.json().input_hash, quote_id: quoteId, task_kind: 'update', input_manifest_ref: 'synthetic-manifest',
       storage_origin: 'cloud', workspace_id: 'synthetic-workspace' };
     const started = await app.inject({ method: 'POST', url: '/api/v1/runs/execute', headers, payload: JSON.stringify(runRequest) });
     assert.equal(started.statusCode, 202, started.body);
@@ -181,23 +182,31 @@ test('admin library routes: 404 for ordinary users, read-only for readers, actio
     await pool.query("UPDATE bb_jobs SET checkpoint=jsonb_build_object('stages',jsonb_build_object('reference_selection',$2::jsonb)) WHERE run_id=$1",
       [runId, JSON.stringify(trace)]);
     const artifactId = `synthetic-word-${suffix}`, wordBytes = makeSyntheticDocxFixture();
-    const wordHash = createHash('sha256').update(wordBytes).digest('hex');
-    const wordKey = `users/${plain}/runs/${runId}/artifacts/${artifactId}/v1.docx`;
-    const evidenceId = randomUUID();
-    await blobs.put(wordKey, wordBytes, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    const cleanArtifactId = `synthetic-clean-word-${suffix}`;
+    const wordPair = [
+      { id: artifactId, bytes: wordBytes },
+      { id: cleanArtifactId, bytes: makeSyntheticDocxFixture({ text: 'Synthetic clean Word' }) }
+    ].map(word => ({ ...word, sha256: createHash('sha256').update(word.bytes).digest('hex'),
+      key: `users/${plain}/runs/${runId}/artifacts/${word.id}/v1.docx`, evidenceId: randomUUID() }));
+    for (const word of wordPair) await blobs.put(word.key, word.bytes, DOCX);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query(`INSERT INTO bb_word_delivery_evidence
-        (id,owner_user_id,run_id,artifact_id,artifact_version,candidate_sha256,byte_size,validator_version,
-         quality_status,delivery_status,delivery_code,readback_sha256,readback_byte_size,quality_evidence)
-        VALUES($1,$2,$3,$4,1,$5,$6,'synthetic-validator','passed','available','readback_verified',$5,$6,$7)`,
-        [evidenceId, plain, runId, artifactId, wordHash, wordBytes.length,
-          { sha256: wordHash, byte_size: wordBytes.length, validator_version: 'synthetic-validator', quality_status: 'passed' }]);
-      await client.query(`INSERT INTO bb_artifact_versions
-        (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,word_delivery_evidence_id)
-        VALUES($1,1,$2,$3,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',$4,$5,'passed','available',$6)`,
-        [artifactId, plain, runId, wordHash, wordKey, evidenceId]);
+      for (const word of wordPair) {
+        await client.query(`INSERT INTO bb_word_delivery_evidence
+          (id,owner_user_id,run_id,artifact_id,artifact_version,candidate_sha256,byte_size,validator_version,
+           quality_status,delivery_status,delivery_code,readback_sha256,readback_byte_size,quality_evidence)
+          VALUES($1,$2,$3,$4,1,$5,$6,'synthetic-validator','passed','available','readback_verified',$5,$6,$7)`,
+          [word.evidenceId, plain, runId, word.id, word.sha256, word.bytes.length,
+            { sha256: word.sha256, byte_size: word.bytes.length, validator_version: 'synthetic-validator', quality_status: 'passed' }]);
+        await client.query(`INSERT INTO bb_artifact_versions
+          (id,version,owner_user_id,run_id,media_type,sha256,object_key,quality_status,delivery_status,word_delivery_evidence_id)
+          VALUES($1,1,$2,$3,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',$4,$5,'passed','available',$6)`,
+          [word.id, plain, runId, word.sha256, word.key, word.evidenceId]);
+      }
+      await client.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{stages,word_delivery_pair}',$2::jsonb)
+        WHERE owner_user_id=$3 AND run_id=$1`,
+        [runId, JSON.stringify({ revision_artifact_id: artifactId, clean_artifact_id: cleanArtifactId }), plain]);
       await client.query("UPDATE bb_runs SET state='succeeded',artifact_id=$2,artifact_version=1 WHERE id=$1", [runId, artifactId]);
       await client.query('COMMIT');
     } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }

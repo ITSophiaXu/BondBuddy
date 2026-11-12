@@ -1,0 +1,14 @@
+{"event":"start","commit":"4cc03789cd1481add2a076129fba19e5a328fd24","tree":"770c19adf323d9f5f27beaeff0f904d86b4d9a49","files":3625,"container":"bb-fact-review-round1"}
+{"event":"source-before","files":3625,"mismatches":0}
+
+Running 5 tests using 1 worker
+
+  ✓  1 tests/fact-review.spec.ts:27:1 › grouping refuses inconsistent identities and decision request omits server-owned account id (53ms)
+  ✓  2 tests/fact-review.spec.ts:105:1 › ordinary upload workspace never offers or fetches a content fact review (8.4s)
+  ✓  3 tests/fact-review.spec.ts:115:1 › isolated fact review component loads all pages, keeps a retry ID, and never labels a choice verified (11.9s)
+  ✓  4 tests/fact-review.spec.ts:157:1 › 409 keeps input, disables stale submission, and allows deliberate refresh (10.8s)
+  ✓  5 tests/fact-review.spec.ts:180:1 › incomplete candidate pagination never opens the decision form (5.6s)
+
+  5 passed (51.0s)
+{"event":"source-after","files":3625,"mismatches":0}
+{"event":"cleaned","container":"bb-fact-review-round1"}

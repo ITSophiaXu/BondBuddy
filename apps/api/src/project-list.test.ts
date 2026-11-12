@@ -1,10 +1,11 @@
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun } from './test-authoring-source.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from './server.js';
 import { azureBlobs } from './data.js';
-import { claim, finish, promoteWordArtifact } from './queue.js';
+import { claim, checkpointStage, finish, promoteWordArtifact } from './queue.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { isolatedTestDatabase } from './test-database.js';
 
@@ -73,8 +74,9 @@ test('#10 actual run status and previous successful Word remain available after 
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
   try {
     const p=(await send('POST','/api/v1/projects',{name:'合成任务状态',kind:'update',issuer_name:'合成发行人',market:null,offering:null})).json();
-    const snapshot=(await send('POST',`/api/v1/projects/${p.project_id}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[]})).json();
-    const request={execution_request_id:randomUUID(),project_id:p.project_id,input_revision:1,input_hash:snapshot.input_hash,task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'};
+    const snapshot=(await lockSyntheticAuthoringInput(app,p.project_id)).json();
+    const quoteId=await quoteSyntheticAuthoringRun(app,pool,owner,p.project_id,snapshot);
+    const request={execution_request_id:randomUUID(),project_id:p.project_id,input_revision:1,input_hash:snapshot.input_hash,quote_id:quoteId,task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'};
     const first=await send('POST','/api/v1/runs/execute',request);assert.equal(first.statusCode,202,first.body);
     const lease=await claim(pool,30);assert.ok(lease);assert.equal(lease.runId,first.json().run_id);
     const row=()=>send('GET','/api/v1/projects');
@@ -84,9 +86,24 @@ test('#10 actual run status and previous successful Word remain available after 
     await send('POST',`/api/v1/projects/${p.project_id}/archive`,{archived:false});
     const bytes=makeSyntheticDocxFixture();const artifact=await promoteWordArtifact(pool,lease,bytes,blobs);
     assert.equal((await row()).json().items[0].latest_artifact,null,'promotion alone is not a successful result');
+    const clean=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic clean Word'}),blobs);
+    assert.equal(artifact.status,'available');assert.equal(clean.status,'available');
+    assert.notEqual(clean.artifactId,artifact.artifactId,'both generated Word files are independently persisted');
+    await checkpointStage(pool,lease,'word_delivery_pair',{revision_artifact_id:artifact.artifactId,clean_artifact_id:clean.artifactId});
     await finish(pool,lease,'succeeded',{artifactId:artifact.artifactId,artifactVersion:artifact.artifactVersion,blobs});
     assert.equal((await row()).json().items[0].status,'succeeded');
-    const second=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:randomUUID()});assert.equal(second.statusCode,202,second.body);
+    // Successful completion adopts the generated clean Word and advances the source selection.
+    const current=await send('GET',`/api/v1/projects/${p.project_id}`);
+    assert.equal(current.statusCode,200,current.body);
+    const versions=await send('GET',`/api/v1/projects/${p.project_id}/prospectus-versions`);
+    assert.equal(versions.statusCode,200,versions.body);
+    const nextInput=await send('POST',`/api/v1/projects/${p.project_id}/input-revisions`,{
+      draft_revision:current.json().draft_revision,prospectus_selection_revision:versions.json().selection_revision,
+      material_versions:snapshot.material_versions,requirement_message_ids:[]});
+    assert.equal(nextInput.statusCode,201,nextInput.body);
+    const nextQuote=await quoteSyntheticAuthoringRun(app,pool,owner,p.project_id,nextInput.json());
+    const second=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:randomUUID(),
+      input_revision:nextInput.json().input_revision,input_hash:nextInput.json().input_hash,quote_id:nextQuote});assert.equal(second.statusCode,202,second.body);
     const secondLease=await claim(pool,30);assert.ok(secondLease);assert.equal(secondLease.runId,second.json().run_id);
     await finish(pool,secondLease,'failed',{errorCode:'DATA_UNAVAILABLE'});
     const latest=(await row()).json().items[0];assert.equal(latest.status,'failed');assert.equal(latest.latest_run.run_id,secondLease.runId);
