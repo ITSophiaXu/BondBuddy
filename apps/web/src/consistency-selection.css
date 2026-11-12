@@ -8,3 +8,6 @@
 .fc-selection-toolbar .btn { margin-left: auto; }
 .fc-selection-toolbar .text-button { font-size: 13px; }
 .fc-filter-empty { padding: 24px 0; font-size: 14px; line-height: 1.8; color: #63736b; }
+/* Result selection already has its own top toolbar. Shared preparation-page
+   sticky styles must not move this final action out of the long result flow. */
+#fc-results-view > .pf-footer { position: relative; bottom: auto; }
