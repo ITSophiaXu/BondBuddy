@@ -7,10 +7,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Ajv } from 'ajv';
+import { Ajv, type AnySchema } from 'ajv';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
-import { platformProbeSchemas } from '@bondbuddy/contracts';
+import { platformProbeSchemas, schemas, billingDtoSchema, Int64Schema, BILLING_WIRE_HEADER, BILLING_WIRE_VERSION, LEGACY_BILLING_WIRE_VERSION } from '@bondbuddy/contracts';
 import { azureBlobs, uid } from '@bondbuddy/api/data';
 import { grantOperator, purgeLogContent } from '@bondbuddy/api/log-ops';
 import { claim } from '@bondbuddy/api/queue';
@@ -112,7 +112,20 @@ test('synthetic platform probe: operator-only enqueue, separate claim, durable #
     assert.equal(timeline.statusCode, 200, timeline.body);
     const t = timeline.json();
     assert.deepEqual([t.job.job_type, t.job.user_id, t.job.state, t.outcome.state, t.outcome.artifact_available], ['platform_probe', principal, 'succeeded', 'succeeded', false]);
-    assert.deepEqual(t.attempts.map((a: any) => [a.status, a.usage_status, a.usage.input_tokens]), [['completed', 'measured', 8418]]);
+    assert.equal(timeline.headers[BILLING_WIRE_HEADER], BILLING_WIRE_VERSION);
+    assert.ok(ajv.validate(billingDtoSchema(schemas.AdminJobTimelineResponse, 'adminJobTimeline', Int64Schema) as AnySchema, t), JSON.stringify(ajv.errors));
+    assert.deepEqual(t.attempts.map((a: any) => [a.status, a.usage_status, a.usage.input_tokens]), [['completed', 'measured', '8418']]);
+    assert.deepEqual(t.attempts[0].usage, { input_tokens: '8418', cached_input_tokens: '6784', output_tokens: '46', reasoning_tokens: '33' });
+    assert.equal(t.attempts[0].attempt_no, 1);
+    assert.equal(typeof t.attempts[0].duration_ms, 'number');
+    const measuredUsage = { attempts: '1', measured_attempts: '1', unresolved_attempts: '0', ...t.attempts[0].usage };
+    assert.deepEqual(t.consumption, { all_attempts: measuredUsage, completed_attempts: measuredUsage });
+    const legacy = await app.inject({ url: probe.timeline_path, headers: { 'x-synthetic-user': reader, [BILLING_WIRE_HEADER]: LEGACY_BILLING_WIRE_VERSION } });
+    assert.equal(legacy.statusCode, 200, legacy.body);
+    assert.equal(legacy.headers[BILLING_WIRE_HEADER], LEGACY_BILLING_WIRE_VERSION);
+    assert.ok(ajv.validate(schemas.AdminJobTimelineResponse, legacy.json()), JSON.stringify(ajv.errors));
+    assert.deepEqual(legacy.json().attempts[0].usage, { input_tokens: 8418, cached_input_tokens: 6784, output_tokens: 46, reasoning_tokens: 33 });
+    assert.equal(legacy.json().consumption.all_attempts.attempts, 1);
     assert.equal(t.prompts.length, 1);
 
     // Kill switch: rejects a new probe up front, and fails an already queued probe before any intent.
