@@ -1,5 +1,5 @@
 import {expect,test,type Page} from '@playwright/test';
-import type {ProjectFileCheck} from '@bondbuddy/contracts';
+import {encodeBillingDto,type ProjectFileCheck} from '@bondbuddy/contracts';
 import {fixture,open,assertFixture,writes,serverSnapshot,fileIds,checkId,base,cacheKey,replaceCurrent,changeSource,type State} from './consistency-selection-fixtures';
 import {hash} from './consistency-task-fixtures';
 
@@ -101,16 +101,21 @@ test.describe('consistency coverage desktop journeys',()=>{
   });
 
   test('consistency coverage: reading and filtering while an update receipt is unknown preserves the original update envelope',async({page})=>{
+    const wireBodies:string[]=[];
+    page.on('request',request=>{if(request.method()==='POST'&&new URL(request.url()).pathname==='/api/v1'+base+'/checks/'+checkId+'/updates')wireBodies.push(request.postData()!);});
     const raw='合成范围说明：仅本轮原文件；原人工事项在自动更新后仍需核实。';
     const s=fixture({dropUpdateOnce:true});setCoverage(s,fileIds.issuer,raw);const before=serverSnapshot(s);await open(page,s);await reveal(page);
     await row(page).locator('[data-fc-select]').check();await page.locator('#fc-accept-top').click();await dialog(page).locator('#fc-confirm-update').click();
     await expect.poll(()=>s.posts.length).toBe(1);await expect(page.locator('#fc-pending-action')).toBeVisible();const original=structuredClone(s.posts[0]);
     await dialog(page).getByRole('button',{name:'返回调整',exact:true}).click();await page.locator('.fc-summary [data-fc-filter="manual"]').click();await reveal(page);
     expect(await text(page).textContent()).toBe(raw);await expect(row(page).locator('[data-fc-file]')).toBeDisabled();await expect(page.locator('#fc-accept-top')).toBeDisabled();
-    const cached=await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)??'null'),cacheKey);expect(cached.pendingUpdate.body).toEqual(original.body);expect(cached.pendingUpdate.checkId).toBe(checkId);
+    expect(wireBodies).toHaveLength(1);const originalWire=wireBodies[0];
+    expect(JSON.parse(originalWire)).toEqual(encodeBillingDto('projectFileUpdateRequest',original.body));
+    const cached=await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)??'null'),cacheKey);expect(cached.pendingUpdate.body).toEqual(JSON.parse(originalWire));expect(cached.pendingUpdate.checkId).toBe(checkId);
     expect(s.posts).toHaveLength(1);await page.locator('#fc-pending-action').click();await dialog(page).locator('#fc-confirm-update').click();
     await expect.poll(()=>s.posts.length).toBe(2);await expect(dialog(page)).toHaveCount(0);await reveal(page);
     expect(s.posts[1]).toEqual(original);expect(s.receipts.size).toBe(1);expect(s.batches).toHaveLength(1);expect(await text(page).textContent()).toBe(raw);
+    expect(wireBodies).toEqual([originalWire,originalWire]);
     expect(writes(s).map(c=>c.path)).toEqual([base+'/checks/'+checkId+'/updates',base+'/checks/'+checkId+'/updates']);
     expect(s.checks).toEqual(before.checks);expect(s.source).toEqual(before.source);expect(s.files).toEqual(before.files);await assertFixture(page);
   });

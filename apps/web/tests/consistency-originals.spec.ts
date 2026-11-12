@@ -1,6 +1,7 @@
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {expect,test,type Locator,type Page} from '@playwright/test';
+import {encodeBillingDto} from '@bondbuddy/contracts';
 import {assertFixture,base,cacheKey,checkId,downloadBytes,editedFile,filesRoute,fixture,hash,ids,issuerVersion,
   open,originalBytes,replaceMaterial,replaceSource,writeCalls,type ContextFault,type DownloadFault,type DownloadTarget,type State} from './consistency-originals-fixtures';
 import {captureConsistencyOriginals,installConsistencyOriginalsReference} from './consistency-originals-reference';
@@ -155,15 +156,20 @@ test.describe('consistency originals desktop journeys',()=>{
   });
 
   test('consistency originals: unknown update receipt survives download, blocked navigation and local selection changes without changing its envelope',async({page})=>{
+    const wireBodies:string[]=[];
+    page.on('request',request=>{if(request.method()==='POST'&&new URL(request.url()).pathname==='/api/v1'+base+'/project-files/checks/'+checkId+'/updates')wireBodies.push(request.postData()!);});
     const s=await open(page,fixture({dropUpdateOnce:true}));await page.locator(`[data-fc-select="${ids.version}"]`).check();await page.locator('#fc-accept-top').click();
     await page.locator('dialog[open] #fc-confirm-update').click();await expect(page.locator('#fc-pending-action')).toBeVisible();
     const originalPost=structuredClone(s.updatePosts[0]);expect(s.updateReceipts.size).toBe(1);await page.locator('dialog[open]').getByRole('button',{name:'返回调整',exact:true}).click();
     const pending=await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)!).pendingUpdate,cacheKey);
     expect(await saveDownload(page,original(page))).toEqual(originalBytes);await manualReturn(page).click();await expect(page.locator('.fc-results')).toBeVisible();await expect(page).toHaveURL(/#consistency\?/);
     await page.locator('[data-fc-clear-selection]').click();expect(s.updatePosts).toEqual([originalPost]);expect(s.updateReceipts.size).toBe(1);
-    const after=await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)!).pendingUpdate,cacheKey);expect(after).toEqual(pending);expect(after.body).toEqual(originalPost.body);
+    expect(wireBodies).toHaveLength(1);const originalWire=wireBodies[0];
+    expect(JSON.parse(originalWire)).toEqual(encodeBillingDto('projectFileUpdateRequest',originalPost.body));
+    const after=await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)!).pendingUpdate,cacheKey);expect(after).toEqual(pending);expect(after.body).toEqual(JSON.parse(originalWire));
     await page.locator('#fc-pending-action').click();await expect(page.locator('dialog[open] .fc-confirm-filename')).toHaveText([s.check.files[0].filename]);
     await page.locator('dialog[open] #fc-confirm-update').click();await expect.poll(()=>s.updatePosts.length).toBe(2);expect(s.updatePosts[1]).toEqual(originalPost);expect(s.updateReceipts.size).toBe(1);
+    expect(wireBodies).toEqual([originalWire,originalWire]);
     expect(s.imports).toEqual([]);expect(s.checkRequests).toEqual([]);assertFixture(s);
   });
 
