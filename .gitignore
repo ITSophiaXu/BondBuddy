@@ -113,3 +113,8 @@ docs/runbooks/*
 !docs/runbooks/m1-split-deployment.md
 !deploy/m1/.env.main.example
 !deploy/m1/.env.execution.example
+
+# Log operations and target confirmation fixture evidence.
+!docs/acceptance/logops-target-admission-20261112.md
+!docs/acceptance/logops-target-admission-20261112/
+!docs/acceptance/logops-target-admission-20261112/*
