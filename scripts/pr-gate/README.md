@@ -170,4 +170,6 @@ npm run pr-gate -- --offline-image sha256:<64位本地镜像ID> --host-worker-im
 
 worker生产依赖中没有ReportLab时，准备阶段从本轮已验证的core依赖缓存导出其包及distribution metadata，逐文件留hash并放入同一只读volume的`.pr-gate-python`；Python按实际导入后的完整候选requirements和`pip check`核验。此过程不下载或执行安装器，不能代用未核对的宿主模块。导出编译产物前额外核验全部Git原始blob字节，不能只以`git status`干净判定同源。
 
+全部分片结束后、清理core容器之前，host控制器再次将当前Git commit中的原始核验器字节传入core执行`verifyGitSnapshotSource`，不从测试可写目录导入核验器。`receipt.core_source_final`记录本轮run、commit/tree、核验器hash、全部受跟踪文件的原字节证明及执行时间；必须与准备阶段证明一致，且时间晚于全部分片完成。缺失、失败或源码变化均阻断凭据，不能用外层工作区干净替代core核对。
+
 宿主原始证据放在`.local/pr-gate/host-evidence/<runId>`，普通core不挂载此目录。分片引用和宿主内存结果必须逐项匹配相同候选、计划、输出hash、原执行结果与零skip；还必须完成本轮全部八分片及全局资源清理。旧专项回执不能导入或拼接。本轮host源码使用系统临时目录下独有的`bb-pg-*/src`短路径，避免Windows Git长路径失败；创建时核对实际父路径、非链接目录及唯一所有权记录，`owner.json`保留本轮run ID和进程身份。具体源码路径及原字节证明写入`receipt.host_source`，与core证明一致后才有效。不修改系统或全局Git设置，不省略任何长路径文件；保留此独立源码便于核对。

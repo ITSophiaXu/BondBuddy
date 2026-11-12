@@ -12,6 +12,7 @@ import { CAPABILITY_PATHS } from './capabilities.mjs';
 import { CACHE_FILES, hash, inspectOfflineImage, inspectOfflineContainer, isolatedCommand, offlineImageArgument } from './offline-cache.mjs';
 import { HOST_PROFILES } from './host-profiles.mjs';
 import { createHostBroker, createHostPlan } from './host-dispatch.mjs';
+import { collectCoreSource } from './core-source.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const output = join(root, '.local/pr-gate');
@@ -103,7 +104,8 @@ export function expectedFor(ref) {
     matrix: readWorkflow(blob(commit, '.github/workflows/pr-gate.yml').toString()).matrix,
     exclusions: exclusionsEvidence(blob(commit, 'scripts/pr-gate/exclusions.json')),
     cache_files: Object.fromEntries(CACHE_FILES.map(path => [path, hash(blob(commit, path))])),
-    host_source_sha256: Object.fromEntries(Object.keys(HOST_PROFILES).map(path => [path, hash(blob(commit, path))])) };
+    host_source_sha256: Object.fromEntries(Object.keys(HOST_PROFILES).map(path => [path, hash(blob(commit, path))])),
+    source_verifier_sha256: hash(blob(commit, 'scripts/pr-gate/git-snapshot.mjs')) };
 }
 
 export function localOptions(args) {
@@ -349,6 +351,14 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
     }
   } catch (error) { receipt.errors.push(error.message); console.error(`[pr-gate] ${error.message}`); }
   finally {
+    // Verify the disposable core before removing it. Outer host Git cleanliness
+    // cannot detect tracked screenshots or source files changed inside /workspace.
+    try {
+      if (!expected || !owned.has(runner)) throw new Error('Final core source verification cannot run without the owned candidate container');
+      receipt.core_source_final = await collectCoreSource({ candidate: expected, runId: id,
+        verifierBytes: blob(expected.commit, 'scripts/pr-gate/git-snapshot.mjs'), rawSource: nativeRuntime?.evidence.source.raw_source,
+        shards: receipt.shards, execute: exec });
+    } catch (error) { receipt.errors.push(`Final core source verification: ${error.message}`); }
     // Merge even partial/empty runs, using unchanged run.mjs and its original exit rules.
     try {
       const result = await command('merge', process.execPath, ['scripts/pr-gate/run.mjs', 'merge', join(directory, 'shards'), '--expect', '8', '--out', join(directory, 'final')], { allowFailure: true, cleanup: true });

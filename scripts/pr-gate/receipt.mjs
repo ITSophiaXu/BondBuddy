@@ -3,6 +3,7 @@ import { parseExclusions, SUMMARY_SCHEMA } from './run.mjs';
 import { verifyCapabilityRuns } from './capabilities.mjs';
 import { verifyOfflineCache } from './offline-cache.mjs';
 import { verifyHostRuns } from './host-dispatch.mjs';
+import { verifyCoreSource } from './core-source.mjs';
 
 export const RECEIPT_SCHEMA = 'pr-gate-local-v1';
 export const PREPARATION_IDS = Object.freeze(['image', 'capabilities', 'services', 'dependencies', 'build', 'contracts', 'browser', 'host']);
@@ -85,5 +86,7 @@ export function verifyReceipt(receipt, expected, now = Date.now()) {
   verifyHostRuns(receipt, expected);
   for (const key of ['commit', 'tree']) requireEvidence(receipt.host_source?.[key] === expected[key], 'host source belongs to another candidate');
   requireEvidence(receipt.host_source.clean_tree === true && JSON.stringify(receipt.host_source.raw_source) === JSON.stringify(receipt.host_dispatch.runtime.source.raw_source), 'host and core raw source proofs differ');
+  verifyCoreSource(receipt.core_source_final, { candidate: expected, runId: receipt.run_id, verifierSha256: expected.source_verifier_sha256,
+    rawSource: receipt.host_dispatch.runtime.source.raw_source, shards: receipt.shards, startedAt: receipt.started_at, finishedAt: receipt.finished_at });
   return receipt;
 }
