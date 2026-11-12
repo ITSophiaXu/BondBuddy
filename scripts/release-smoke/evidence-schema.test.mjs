@@ -77,3 +77,9 @@ test('zero model calls cannot hide missing or duplicated official integrity obse
   const report=fixture();mutate(report.cases[3]);assert.throws(()=>verifyReport(report,expected,now));
  }
 });
+
+test('integrity settlement must disclose reconciled amounts and the same verified scope after refresh',()=>{
+ for(const mutate of [e=>delete e.integrityBillingPageEvidence,e=>e.integrityBillingPageEvidence.chargedPoints='999',e=>e.integrityBillingPageEvidence.priceVersion='other',e=>e.integrityBillingPageEvidence.executablePairs=2,e=>e.integrityBillingPageEvidence.verifiedPairs[0].site_id='other',e=>e.integrityBillingPageEvidence.observations.pop(),e=>e.integrityBillingPageEvidence.observations[0].reasonText='',e=>e.integrityBillingPageEvidence.observations[1].items=[],e=>e.integrityBillingPageEvidence.observations[1].items[0].siteId='other']){
+  const report=fixture();mutate(report.cases[3]);assert.throws(()=>verifyReport(report,expected,now));
+ }
+});
