@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
 import { azureBlobs } from '@bondbuddy/api/data';
+import { emptyUpdateDetails, reportingWindow } from '@bondbuddy/contracts';
 import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun } from '@bondbuddy/api/test-authoring-source';
 import { appendIssuerIdentitySourceRecord, authorizeIssuerIdentityReviewer, reviewIssuerIdentitySourceRecord } from '@bondbuddy/api/issuer-identity-source';
 import { adminEvents, adminJobTimeline, forwardLogs, grantOperator, parseAdminFilter, type LogRecord } from '@bondbuddy/api/log-ops';
@@ -785,7 +786,9 @@ test('current runtime admission keeps one quoted run and reuses its model checkp
   });
   try {
     const created = await send('POST', '/api/v1/projects', { name: 'Synthetic current runtime', kind: 'update',
-      issuer_name: 'Synthetic runtime issuer', market: 'sse', offering: 'private' });
+      issuer_name: 'Synthetic runtime issuer', market: 'sse', offering: 'private',
+      update_details: { ...emptyUpdateDetails(), reporting_cutoff: '2026-09-30',
+        target_reporting_periods: reportingWindow('sse', 'private', '2026-09-30') } });
     assert.equal(created.statusCode, 201, created.body);
     const project = created.json().project_id as string;
     const input = (await lockSyntheticAuthoringInput(app, project)).json();
