@@ -79,7 +79,7 @@ test('authenticated schema rejections retain bounded owned evidence and atomic o
     assert.equal(timeline.json().attempts.length,0);assert.equal(timeline.json().consumption.all_attempts.input_tokens,null);
     const metrics=await app.inject({method:'GET',url:`/api/v1/admin/metrics?user_id=${first}&project_id=${project}`});
     assert.equal(metrics.statusCode,200,metrics.body);
-    assert.equal(metrics.json().jobs.rejected,4);assert.equal(metrics.json().operations.rejected,9);
+    assert.equal(metrics.json().jobs.rejected,'4');assert.equal(metrics.json().operations.rejected,'9');
     actor=first;
     const widePreflight=await send(`/api/v1/projects/${project}/preflight`,{input_revision:2147483648,input_hash:'bad'});
     assert.equal(widePreflight.statusCode,422,widePreflight.body);
