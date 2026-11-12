@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { test } from 'node:test';
-import { cleanupContainers, dependencySources, persistReceipts } from './local.mjs';
+import { cleanupContainers, dependencySources, hostSourceDirectory, localOptions, persistReceipts } from './local.mjs';
 
 function receiptFiles(check) {
   const directory = mkdtempSync(join(tmpdir(), 'bb-pr-gate-receipts-'));
@@ -90,28 +90,56 @@ test('dependency-only sources honor npm configuration without accepting insecure
   }
 });
 
-test('one cleanup failure does not hide behind an absent sibling or prevent runner cleanup', async () => {
+test('host runtime options require fixed local image IDs and absolute dependency caches', () => {
+  const image = 'sha256:' + 'a'.repeat(64), cache = join(tmpdir(), 'existing-cache');
+  assert.deepEqual(localOptions([]), { offlineImage: null, workerImage: null, dependencyRoot: null });
+  assert.deepEqual(localOptions(['--offline-image', image, '--host-worker-image', image, '--host-dependency-root', cache]), { offlineImage: image, workerImage: image, dependencyRoot: cache });
+  for (const args of [['--host-worker-image', 'latest'], ['--host-dependency-root', 'relative'], ['--unknown', 'x'], ['--host-worker-image'], ['--host-worker-image', image, '--host-worker-image', image]]) assert.throws(() => localOptions(args));
+});
+
+test('host source uses an owned short temp root instead of a deep worktree path', () => {
+  const base = mkdtempSync(join(tmpdir(), 'bb-short-host-test-'));
+  try {
+    const source = hostSourceDirectory(base, 'synthetic-run-1'), second = hostSourceDirectory(base, 'synthetic-run-2');
+    assert.equal(basename(source), 'src'); assert.match(basename(dirname(source)), /^bb-pg-[a-zA-Z0-9]+$/);
+    assert.equal(dirname(dirname(source)), realpathSync(base)); assert.equal(existsSync(source), false);
+    assert.equal(realpathSync(dirname(source)), dirname(source)); assert.equal(lstatSync(dirname(source)).isSymbolicLink(), false);
+    assert.notEqual(dirname(source), dirname(second));
+    const owner = JSON.parse(readFileSync(join(dirname(source), 'owner.json'), 'utf8'));
+    assert.equal(owner.run_id, 'synthetic-run-1'); assert.equal(owner.directory, dirname(source));
+    assert.equal(owner.parent, realpathSync(base)); assert.equal(owner.pid, process.pid);
+    assert.throws(() => hostSourceDirectory(base, '../bad'), /run identity/);
+  } finally { rmSync(base, { recursive: true, force: true }); }
+});
+
+test('cleanup verifies exact IDs, attempts siblings after failure, and requires confirmed absence', async () => {
+  const containers = ['pg', 'blob', 'runner'].map((suffix, index) => ({ id: String(index + 1).repeat(64), name: 'bb-pr-gate-test-' + suffix }));
   const calls = [];
-  await assert.rejects(cleanupContainers(['pg', 'blob', 'runner'], async (label, args) => {
-    calls.push(label);
-    if (label === 'remove-pg') return { code: 1, text: 'permission denied' };
-    if (label === 'inspect-pg') return { code: 0, text: 'still-running-id' };
-    if (label === 'remove-blob') return { code: 1, text: 'No such container' };
+  await assert.rejects(cleanupContainers(containers, async (label, args) => {
+    calls.push({ label, args });
+    const container = containers.find(row => label.endsWith(row.name));
+    if (label.startsWith('identify-')) return { code: 0, text: container.id + ' /' + container.name };
+    if (label === 'remove-' + containers[0].name) throw new Error('permission denied');
+    if (label.startsWith('absent-')) return { code: 1, text: 'Error: No such object: ' + container.id };
     return { code: 0, text: '' };
-  }), /pg still exists/);
-  assert.ok(calls.includes('remove-runner'));
-  assert.ok(calls.includes('inspect-runner'));
-  await assert.rejects(cleanupContainers(['pg', 'runner'], async label => {
-    if (label.startsWith('inspect-')) throw new Error('daemon unavailable');
-    return { code: 0, text: '' };
-  }), /daemon unavailable/);
+  }), /permission denied/);
+  assert.ok(calls.some(row => row.label === 'remove-' + containers[2].name));
+  for (const row of calls.filter(row => row.label.startsWith('remove-'))) assert.match(row.args.at(-1), /^[a-f0-9]{64}$/);
+  await assert.rejects(cleanupContainers([containers[0]], async label => ({ code: 0, text: label.startsWith('identify-') ? 'wrong identity' : '' })), /identity changed/);
+  await assert.rejects(cleanupContainers([containers[0]], async label => ({ code: label.startsWith('absent-') ? 1 : 0,
+    text: label.startsWith('identify-') ? containers[0].id + ' /' + containers[0].name : 'daemon unavailable' })), /confirm owned container absence/);
+  await assert.rejects(cleanupContainers([{ id: 'not-an-id', name: 'bb-pr-gate-test' }], async () => { throw Error('must not call Docker'); }), /Invalid owned/);
 });
 
 test('dirty invocation invalidates a prior passed receipt, merges missing results, and releases its lock without Docker', () => {
   const fixture = mkdtempSync(join(tmpdir(), 'bb-pr-gate-dirty-'));
   try {
     const directory = join(fixture, 'scripts/pr-gate'); mkdirSync(directory, { recursive: true });
-    for (const name of ['local.mjs', 'run.mjs', 'receipt.mjs', 'workflow.mjs']) copyFileSync(new URL(name, import.meta.url), join(directory, name));
+    for (const name of ['local.mjs', 'run.mjs', 'receipt.mjs', 'workflow.mjs', 'capabilities.mjs', 'parser-source.mjs', 'identity-parser-source.mjs', 'offline-cache.mjs', 'host-profiles.mjs', 'host-dispatch.mjs', 'host-dispatch-client.mjs', 'host-dispatch-protocol.mjs', 'core-source.mjs',
+      'browser-host.mjs', 'browser-profiles.mjs', 'browser-receipt.mjs', 'browser-runtime.mjs', 'browser-tools.mjs', 'browser-reference-source.mjs', 'internal-network.mjs', 'browser-upload-confirmation.mjs', 'docker-evidence.mjs']) copyFileSync(new URL(name, import.meta.url), join(directory, name));
+    mkdirSync(join(directory, 'host-adapters'));
+    for (const name of ['native.mjs', 'storage-postgres.mjs', 'native-services.mjs', 'native-services-runtime.mjs'])
+      copyFileSync(new URL('host-adapters/' + name, import.meta.url), join(directory, 'host-adapters', name));
     writeFileSync(join(fixture, '.gitignore'), '.local/\n');
     const git = args => execFileSync('git', args, { cwd: fixture, stdio: 'pipe' });
     git(['init']); git(['add', '.']); git(['-c', 'user.name=Gate Test', '-c', 'user.email=gate@example.invalid', 'commit', '-m', 'fixture']);
