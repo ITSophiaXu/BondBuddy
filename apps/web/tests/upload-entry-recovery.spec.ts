@@ -25,7 +25,7 @@ function workspace():ProjectFileWorkspace{
   return {project_id:project,source,files:[],batches:[],workspace:{topic:{topic_id:topic,project_id:project,source_project_id:project,name:'合成工作区',created_at:now,updated_at:now},project:{project_id:project,name:'合成项目',kind:'generation',issuer_name:'合成发行人',market:'sse',offering:'private',draft_revision:1,input_revision:null,input_hash:null,updated_at:now},drafts,templates,materials:[],material_details:[],messages:[],tasks:[],artifacts:[],pending_requirements:[],view:{selected_document_type:null,open_tabs:[],active_tab:null,unsent_content:'',unsent_context:{document_type:null,draft_version:0,source_material:null,citations:[],reading_artifact:null},version:0},active_run:null}};
 }
 async function fixture(page:Page){
-  const state={calls:[] as Call[],unexpected:[] as string[],sessions:new Map<string,Session>(),materials:new Map<string,Dto<'MaterialResponse'>>(),versions:[] as ProspectusVersion[],work:workspace(),dropBytes:false,dropComplete:false,dropImport:false,dropTemplate:false,dropDraft:undefined as M4DocumentType|undefined,failDraft:undefined as M4DocumentType|undefined,imports:new Map<string,unknown>(),templates:new Map<string,M4Template>(),puts:0};
+  const state={calls:[] as Call[],unexpected:[] as string[],sessions:new Map<string,Session>(),materials:new Map<string,Dto<'MaterialResponse'>>(),versions:[] as ProspectusVersion[],work:workspace(),dropBytes:false,dropComplete:false,completeUnavailable:false,dropImport:false,dropTemplate:false,dropDraft:undefined as M4DocumentType|undefined,failDraft:undefined as M4DocumentType|undefined,imports:new Map<string,unknown>(),templates:new Map<string,M4Template>(),puts:0};
   const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,json:body});
   await page.route('**/api/v1/**',async route=>{
     const req=route.request(),url=new URL(req.url()),path=url.pathname,method=req.method();
@@ -44,7 +44,7 @@ async function fixture(page:Page){
       if(method==='PUT'&&transfer[2]==='bytes'){const bytes=req.postDataBuffer()!;expect(bytes.length).toBe(s.declaration.byte_size);expect(hash(bytes)).toBe(s.declaration.sha256);state.puts++;if(state.dropBytes){state.dropBytes=false;return route.abort('connectionreset');}s.received=true;return route.fulfill({status:204});}
       if(method==='POST'&&transfer[2]==='complete'){expect(body).toEqual({byte_size:s.declaration.byte_size,sha256:s.declaration.sha256});if(!s.received)return json(route,422,{code:'MATERIAL_UNREADABLE'});
         if(!s.material){s.material={...s.declaration,material_id:`material-${transfer[1]}`,material_version:1,upload_id:transfer[1],state:'persisted',persisted_at:now,error:null};state.materials.set(s.material.material_id,s.material);if(s.declaration.role==='historical')state.versions.push({version_id:`version-${transfer[1]}`,sequence:1,origin:'upload',filename:s.material.filename,sha256:s.material.sha256,created_at:now,material_id:s.material.material_id,material_version:1,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null});}
-        if(state.dropComplete){state.dropComplete=false;return route.abort('connectionreset');}return json(route,200,s.material);
+        if(state.dropComplete){state.dropComplete=false;state.completeUnavailable=true;return route.abort('connectionreset');}if(state.completeUnavailable)return json(route,503,{code:'DATA_UNAVAILABLE'});return json(route,200,s.material);
       }
     }
     const material=path.match(/\/materials\/([^/]+)$/);
@@ -77,9 +77,13 @@ async function capture(page:Page,name:string){const dir=process.env.BB_ENTRY_REC
 
 for(const width of [1440,390])test(`prospectus recovery respects an unselected server version after refresh at ${width}`,async({page})=>{
   await page.setViewportSize({width,height:900});const s=await fixture(page);s.dropComplete=true;await mount(page,'panel');
-  await page.locator('#prospectus-version-file').setInputFiles(file);
+  // Lose the saved receipt and keep confirmation unavailable through all four
+  // existing automatic attempts; wait for the terminal response before reload.
+  let unavailableReplies=0;const exhausted=page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/complete')&&r.status()===503&&++unavailableReplies===3);
+  await page.locator('#prospectus-version-file').setInputFiles(file);await exhausted;
+  await expect(page.locator('[data-resume-prospectus]')).toBeEnabled();
   await expect(page.locator('[data-resume-prospectus]')).toBeVisible();expect(s.puts).toBe(1);const count=s.calls.filter(c=>c.method!=='GET').length;
-  await mount(page,'panel',true);expect(s.calls.filter(c=>c.method!=='GET')).toHaveLength(count);await capture(page,`panel-recovery-${width}`);await page.locator('[data-resume-prospectus]').click();
+  await mount(page,'panel',true);expect(s.calls.filter(c=>c.method!=='GET')).toHaveLength(count);await capture(page,`panel-recovery-${width}`);s.completeUnavailable=false;await page.locator('[data-resume-prospectus]').click();
   // This fixture deliberately returns current_version_id=null after saving; recovery must not invent adoption.
   await expect(page.locator('#prospectus-status')).toContainText('文件已保存，当前原稿随后已更新，请查看当前版本。');
   await expect(page.locator('[data-prospectus-selection-state]')).toHaveText('未选用');
