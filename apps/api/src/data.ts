@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import { readFile, rm, writeFile } from 'node:fs/promises';
-import type { Readable } from 'node:stream';
-import { finished } from 'node:stream/promises';
+import { Transform, Writable, type Readable } from 'node:stream';
+import { finished, pipeline } from 'node:stream/promises';
 import { BLOB_RANGE_MIN_BYTES, BlobRangeReadError, readBlobRangesToFile } from './blob-range-reader.js';
 import { Pool, type PoolClient } from 'pg';
 import { BlobServiceClient, BlobSASPermissions, SASProtocol, type BlobItem } from '@azure/storage-blob';
@@ -169,19 +169,20 @@ const notFound = (error: unknown) => Boolean(error && typeof error === 'object' 
 async function hashStream(body: Readable, path: string | null, maxBytes: number, expected?: number): Promise<BlobDigest> {
   const hash = createHash('sha256');
   const out = path ? createWriteStream(path, { flags: 'wx', mode: 0o600 }) : null;
+  let ownsFile=false;
+  out?.once('open',()=>{ownsFile=true;});
   let byteSize = 0;
+  const hashing=new Transform({transform(chunk,encoding,callback){
+    const value=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk,encoding);
+    if(byteSize+value.length>maxBytes){callback(new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit'));return;}
+    byteSize+=value.length;hash.update(value);callback(null,value);
+  }});
   try {
-    for await (const chunk of body) {
-      const value = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      byteSize += value.length;
-      if (byteSize > maxBytes) throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit');
-      hash.update(value);
-      if (out && !out.write(value)) await new Promise<void>(resolve => out.once('drain', () => resolve()));
-    }
-    if (out) await new Promise<void>((resolve, reject) => out.end((error?: Error | null) => error ? reject(error) : resolve()));
+    // pipeline settles the source, transform and file before the caller can
+    // release a spool reservation or let this confirmation slot claim again.
+    await pipeline(body,hashing,out??new Writable({write(_chunk,_encoding,callback){callback();}}));
   } catch (error) {
-    body.destroy();
-    if (out) { out.destroy(); await rm(path!, { force: true }).catch(() => undefined); }
+    if (ownsFile) await rm(path!, { force: true }).catch(() => undefined);
     throw error;
   }
   if (expected !== undefined && byteSize !== expected) {
@@ -303,10 +304,14 @@ export function azureBlobs(connectionString: string, containerName = 'bondbuddy-
       await ensure();
       try {
         const response = await container.getBlockBlobClient(key).download();
-        if (response.contentLength !== undefined && response.contentLength > maxBytes) { (response.readableStreamBody as Readable | undefined)?.destroy(); throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit'); }
+        if (response.contentLength !== undefined && response.contentLength > maxBytes) {
+          const body=response.readableStreamBody as Readable|undefined;
+          if(body){body.destroy();await finished(body).catch(()=>undefined);}
+          throw new Problem(413,'DATA_UNAVAILABLE','Stored object exceeds the bounded read limit');
+        }
         if (!response.readableStreamBody) throw new Problem(503,'DATA_UNAVAILABLE','Stored object has no body');
         if (options?.useRanges && (!response.etag || !Number.isSafeInteger(response.contentLength))) {
-          (response.readableStreamBody as Readable).destroy();
+          const body=response.readableStreamBody as Readable;body.destroy();await finished(body).catch(()=>undefined);
           throw new Problem(503,'DATA_UNAVAILABLE','Stored object version is unavailable');
         }
         if (path && response.etag && Number.isSafeInteger(response.contentLength) && (options?.useRanges || response.contentLength! > BLOB_RANGE_MIN_BYTES)) {

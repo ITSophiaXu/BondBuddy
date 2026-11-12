@@ -9,6 +9,7 @@ import { azureBlobs, digest } from './data.js';
 import { docxSample, DOCX } from './upload-safety.samples.js';
 import { isolatedTestDatabase } from './test-database.js';
 import { runUploadConfirmationOnce } from './upload-confirmation.js';
+import { reservedSpoolBytes } from './upload-spool.js';
 
 const connection=await isolatedTestDatabase(undefined,'direct-upload');
 const storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
@@ -116,5 +117,44 @@ test('SAS cannot bind size; an actual object above 100 MiB is refused and condit
   assert.equal((await f.put(u.session.upload_url,actual)).status,201);assert.equal((await f.complete(u)).statusCode,202);
   assert.equal(await runUploadConfirmationOnce(f.pool,f.blobs),'failed');const rejected=await f.complete(u);assert.equal(rejected.statusCode,422);assert.equal(rejected.json().code,'MATERIAL_CONTENT_MISMATCH');
   const row=(await f.pool.query('SELECT object_key FROM bb_uploads WHERE id=$1',[u.session.upload_id])).rows[0];assert.equal(await f.blobs.exists(row.object_key),false);
+ }finally{await f.close();}
+});
+
+// Declaration-bound read regressions reused from PR #1028.
+test('direct HEAD size mismatch rejects before reading or reserving the oversized object',options,async()=>{
+ const f=await fixture();try{
+  const actual=Buffer.alloc(64*1024,120),u=await f.create(actual,{byte_size:16});
+  assert.equal((await f.put(u.session.upload_url,actual)).status,201);assert.equal((await f.complete(u)).statusCode,202);
+  let reads=0;const read=f.blobs.readToFile!;f.blobs.readToFile=async(...args)=>{reads++;return read(...args);};
+  assert.equal(await runUploadConfirmationOnce(f.pool,f.blobs),'failed');assert.equal(reads,0);assert.equal(reservedSpoolBytes(),0);
+  const rejected=await f.complete(u);assert.equal(rejected.statusCode,422);assert.equal(rejected.json().code,'MATERIAL_CONTENT_MISMATCH');
+  const row=(await f.pool.query('SELECT object_key FROM bb_uploads WHERE id=$1',[u.session.upload_id])).rows[0];
+  assert.equal(await f.blobs.exists(row.object_key),false);assert.equal((await f.complete(u)).statusCode,422);
+ }finally{await f.close();}
+});
+
+test('direct read after HEAD stays within the declaration and conditional cleanup preserves a replacement',options,async()=>{
+ const f=await fixture();try{
+  const bytes=await docxSample(),u=await f.create(bytes);assert.equal((await f.put(u.session.upload_url,bytes)).status,201);assert.equal((await f.complete(u)).statusCode,202);
+  const row=(await f.pool.query('SELECT object_key FROM bb_uploads WHERE id=$1',[u.session.upload_id])).rows[0],original=await f.blobs.headVersion!(row.object_key);
+  const replacement=Buffer.alloc(bytes.length+1024,120),limits:number[]=[],deleted:string[]=[];
+  const read=f.blobs.readToFile!,remove=f.blobs.deleteIfMatch!;
+  f.blobs.readToFile=async(key,path,limit)=>{limits.push(limit);assert.equal(reservedSpoolBytes(),bytes.length);await f.blobs.put(key,replacement,DOCX);return read(key,path,limit);};
+  f.blobs.deleteIfMatch=async(key,etag)=>{deleted.push(etag);return remove(key,etag);};
+  assert.equal(await runUploadConfirmationOnce(f.pool,f.blobs),'failed');assert.deepEqual(limits,[bytes.length]);assert.deepEqual(deleted,[original!.etag]);
+  assert.equal(reservedSpoolBytes(),0);assert.deepEqual(await f.blobs.get(row.object_key),replacement);
+  assert.equal((await f.complete(u)).json().code,'MATERIAL_CONTENT_MISMATCH');
+  assert.equal((await f.pool.query('SELECT count(*)::int n FROM bb_material_versions WHERE owner_user_id=$1',[f.owner])).rows[0].n,0);
+ }finally{await f.close();}
+});
+
+test('direct matching bytes use the declared read budget and publish exactly one material',options,async()=>{
+ const f=await fixture();try{
+  const bytes=Buffer.alloc(2*1024*1024,120),u=await f.create(bytes);assert.equal((await f.put(u.session.upload_url,bytes)).status,201);assert.equal((await f.complete(u)).statusCode,202);
+  const limits:number[]=[],read=f.blobs.readToFile!;f.blobs.readToFile=async(key,path,limit)=>{limits.push(limit);return read(key,path,limit);};
+  assert.equal(await runUploadConfirmationOnce(f.pool,f.blobs),'completed');assert.deepEqual(limits,[bytes.length]);assert.equal(reservedSpoolBytes(),0);
+  const saved=await f.complete(u);assert.equal(saved.statusCode,200);assert.equal(saved.json().sha256,u.declaration.sha256);
+  assert.equal((await f.complete(u)).json().material_id,saved.json().material_id);
+  assert.equal((await f.pool.query('SELECT count(*)::int n FROM bb_material_versions WHERE owner_user_id=$1',[f.owner])).rows[0].n,1);
  }finally{await f.close();}
 });

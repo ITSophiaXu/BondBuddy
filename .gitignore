@@ -46,6 +46,7 @@ docs/product-decisions/*
 !docs/product-decisions/2026-10-28-workpaper-shared-batch.md
 !docs/acceptance/
 docs/acceptance/*
+!docs/acceptance/issue-943-reserved-confirmation-20261112.md
 !docs/acceptance/billing-remediation-20261111.md
 !docs/acceptance/billing-remediation-20261111/
 !docs/acceptance/integrity-billing-consistency-20261111.md
