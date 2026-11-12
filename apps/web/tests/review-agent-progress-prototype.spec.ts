@@ -14,9 +14,9 @@ test('approved prototype shows a compact action and folded task record on deskto
   await expect(card.locator('details')).not.toHaveAttribute('open','');await card.locator('summary').click();await card.locator('summary').click();
   await bar.getByRole('button',{name:'查看进展',exact:true}).click();await expect(card).toBeFocused();await page.evaluate(()=>window.scrollTo(0,0));
   await expect(page.locator('#agent-panel')).not.toContainText(/10:24|10:32|心跳|预计|已用时|\d+%/);await expect(page.locator('.progress-fill')).toHaveCount(0);
-  await mkdir('test-evidence/m3-agent-progress',{recursive:true});await page.screenshot({path:'test-evidence/m3-agent-progress/prototype-desktop-1360x900.png'});
-  await page.setViewportSize({width:1280,height:720});await bar.getByRole('button',{name:'查看进展',exact:true}).click();await page.screenshot({path:'test-evidence/m3-agent-progress/prototype-desktop-1280x720.png'});
+  await mkdir(test.info().outputPath('m3-agent-progress'),{recursive:true});await page.screenshot({path:test.info().outputPath('m3-agent-progress','prototype-desktop-1360x900.png')});
+  await page.setViewportSize({width:1280,height:720});await bar.getByRole('button',{name:'查看进展',exact:true}).click();await page.screenshot({path:test.info().outputPath('m3-agent-progress','prototype-desktop-1280x720.png')});
   await page.setViewportSize({width:581,height:753});await bar.getByRole('button',{name:'查看进展',exact:true}).click();await expect(card).toBeFocused();
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'test-evidence/m3-agent-progress/prototype-narrow-581x753.png'});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:test.info().outputPath('m3-agent-progress','prototype-narrow-581x753.png')});
   await page.reload();await expect(page.locator('#agent-panel')).toBeVisible();await expect(card).toHaveCount(1);await expect(card.locator('.task-current')).toContainText('正在检查合规与格式');expect(errors).toEqual([]);
 });

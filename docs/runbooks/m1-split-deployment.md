@@ -32,6 +32,10 @@ BB_ENV_FILE=<private-env> BB_IMAGE_TAG=<sha-first-12> bash deploy/m1/scripts/rol
 BB_ENV_FILE=<private-env> bash deploy/m1/scripts/role-compose.sh execution ps
 ```
 
+`role-compose.sh` 的只读检查可以指定候选 tag；`up/create/run/probe` 只能使用非空 `current` 记录的 tag，换版统一走带发布门禁的 `deploy-role.sh`。尚无 `current` 的基础设施准备仅允许显式带 `--no-deps` 的 `up/create`，并逐一列出主站的 `postgres/egress` 或执行端的 `pg-tunnel/egress`；不能省略服务名或启动 API、worker、迁移。单机 `restore.sh` 也只恢复当前版本的数据，不能借恢复选择其他镜像。
+
+运维入口要求先写子命令，不接受前置全局选项；禁止 `build/pull/watch/scale`，镜像准备和扩容须经过固定部署配置及对应发布门禁。
+
 模板见 `.env.main.example`、`.env.execution.example`：仅补角色字段，保留原收费开关、Blob、模型、Provider、认证、超时、条款及出口白名单。不要把示例占位值用于生产。业务 Codex 的**模型目录和真实执行参数继续固定 1000000 窗口、900000 压缩**；本次将 Dockerfile 的业务 CLI 最小更新到已核对的官方稳定版0.167.0及官方包校验值，并添加来源标签；保留业务适配器参数和模型目录契约。验收实际 `token_count.info.model_context_window=1000000`，不是只看目录。业务窗口与开发环境窗口各自独立。
 
 `execution` 的编制、复核及放置于该端的解析服务默认 `BB_WORKER_LEASE_SECONDS=120`，为跨云 PG 续租留出余量；可在执行端私有 env 中覆盖为 5–600 的整数秒，未设置或空值均使用 120。现有续租调度为租约的 40%，120 秒租约对应约 48 秒续租间隔。旧同机 Compose 不新增此参数，全局运行时默认仍为 30 秒，三组执行服务并发仍各为 1。该参数不改变 SIGTERM 排空时限；切换前仍须核实在途调用。
@@ -56,11 +60,11 @@ PG 专用桥接可按 `deploy/m1/compose.pg-loopback.example.yaml` 整理到私�
 # 私有文件保持受保护，不入库；校验和可写回私有 env。
 sha256sum <private-role-override>
 BB_ENV_FILE=<private-env> BB_IMAGE_TAG=<app-sha-first-12> bash deploy/m1/scripts/role-compose.sh main config --quiet
-BB_ENV_FILE=<private-env> BB_IMAGE_TAG=<app-sha-first-12> bash deploy/m1/scripts/role-compose.sh main probe connect
+BB_ENV_FILE=<private-env> bash deploy/m1/scripts/role-compose.sh main probe connect
 BB_ENV_FILE=<private-env> bash deploy/m1/scripts/deploy-role.sh main <exact-app-sha>
 ```
 
-应用镜像参数永远指真实应用源提交；仅升级这些部署脚本时，在已从可信 `origin` 获取的准确脚本提交上设置 `BB_DEPLOY_SCRIPT_SHA`，继续使用现有真实应用 SHA 镜像，无需重新打 tag 或构建应用。两种提交均须可从指定 BondBuddy `origin` 的已获取历史到达；脚本 checkout 必须等于 pin，`deploy/m1` 不得有已修改或未跟踪部署文件。缺 pin 时保留旧的“部署目录等于应用 SHA”检查，不提供忽略来源或 dirty 配置的开关。镜像导出仍按**应用 SHA**复用匹配标签的镜像，全部已存在时不创建源码归档/构建上下文。
+应用镜像参数永远指真实应用源提交；仅升级这些部署脚本时，在已从可信 `origin` 获取的准确脚本提交上设置 `BB_DEPLOY_SCRIPT_SHA`，继续使用现有真实应用 SHA 镜像，无需重新打 tag 或构建应用。两种提交均须可从指定 BondBuddy `origin` 的已获取历史到达；脚本 checkout 必须等于 pin，`deploy/m1` 不得有已修改或未跟踪部署文件。执行证据验证前还要求 `scripts/prospectus-quality-gate.mjs`、`scripts/release-smoke/verify.mjs` 及其本地依赖 `support.mjs` 已跟踪且与脚本提交一致；Git 状态无法检查时拒绝。缺 pin 时，“部署源码等于应用 SHA”同时覆盖这些验证器，不扩大到其他产品源码，也不提供忽略来源或 dirty 配置的开关。镜像导出仍按**应用 SHA**复用匹配标签的镜像，全部已存在时不创建源码归档/构建上下文。
 
 入口禁止调用者增加 `-f/--file`、`--env-file`、项目/目录/profile/scale 改写和 `COMPOSE_*` 进程环境。`COMPOSE_PROJECT_NAME` 只能在私有 env 配置。Compose 插值优先采用该文件，进程中的业务环境变量不能替换数据库等配置。私有 env 始终按数据读取，绝不 source；校验中的真实配置只通过内部管道处理，不打印完整展开或连接细节。运行环境需有 Node.js 22、Git、Docker Compose 与 flock。
 

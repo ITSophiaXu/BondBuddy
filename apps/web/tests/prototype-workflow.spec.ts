@@ -90,14 +90,31 @@ test('prototype dashboard leads through creation to materials with persistent ma
   await expect(page.locator('.step.current')).toContainText('材料与要求');
   await expect(page.locator('#draft-form')).toBeHidden();
   await expect(page.getByRole('heading',{name:'提供项目材料'})).toBeVisible();
+  const savedMessage=()=>page.waitForResponse(response=>response.request().method()==='POST'&&new URL(response.url()).pathname==='/api/v1/projects/synthetic-design-project/messages');
+  const firstSave=savedMessage();
   await page.getByLabel('补充募集书更新说明').fill('补充授信证明后核对时点。');
-  await page.locator('#send-project-message').click();
+  const firstResponse=await firstSave;expect(firstResponse.status()).toBe(201);
+  const firstReceipt=await firstResponse.json();expect(Value.Check(schemas.ProjectMessageSaveResponse,firstReceipt)).toBe(true);
+  expect(firstReceipt).toMatchObject({body:'补充授信证明后核对时点。',message_version:1,submission_version:1,is_current:true,route:'save_only'});
+  await expect(page.locator('#conversation-status')).toHaveText('已自动保存');
+  await expect(page.getByLabel('补充募集书更新说明')).toHaveValue(firstReceipt.body);
   await expect(page.locator('.cowork-message')).toContainText('补充授信证明后核对时点。');
+  expect(state.routes.some(path=>path.includes('/runs/execute'))).toBe(false);
+  await page.getByRole('button',{name:'添加另一条说明',exact:true}).click();
+  const secondSave=savedMessage();
   await page.getByLabel('补充募集书更新说明').fill('材料阶段也可保存下一轮说明。');
-  await page.locator('#send-project-message').click();
+  const secondResponse=await secondSave;expect(secondResponse.status()).toBe(201);
+  const secondReceipt=await secondResponse.json();expect(Value.Check(schemas.ProjectMessageSaveResponse,secondReceipt)).toBe(true);
+  expect(secondReceipt).toMatchObject({body:'材料阶段也可保存下一轮说明。',message_version:1,submission_version:1,is_current:true,route:'save_only'});
+  expect(secondReceipt.message_id).not.toBe(firstReceipt.message_id);
+  expect(secondReceipt.submission_id).not.toBe(firstReceipt.submission_id);
+  await expect(page.locator('#conversation-status')).toHaveText('已自动保存');
   await expect.poll(()=>state.messages.map(m=>m.body)).toEqual(['补充授信证明后核对时点。','材料阶段也可保存下一轮说明。']);
+  expect(state.messages.map(m=>m.message_version)).toEqual([1,1]);
   await page.reload(); await expect(page.locator('.step.current')).toContainText('材料与要求');
   await expect(page.locator('.cowork-message')).toHaveCount(2);
+  await expect(page.locator('.cowork-message').nth(0)).toContainText(firstReceipt.body);
+  await expect(page.locator('.cowork-message').nth(1)).toContainText(secondReceipt.body);
   await page.getByRole('button',{name:'编辑项目信息'}).click();
   await expect(page.getByLabel('发行人全称')).toHaveValue('合成发行人有限公司');
   await page.reload(); await expect(page.locator('.step.current')).toContainText('创建项目');
@@ -246,7 +263,7 @@ for (const width of [1440, 390]) {
     await expect(preview).toHaveText('合成发行人有限公司-上交所-普通私募公司债-募集书更新');
     expect(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     if(process.env.BB_NAME_EVIDENCE){
-      const dir='test-evidence/project-auto-name-20261011';await mkdir(dir,{recursive:true});
+      const dir=test.info().outputPath('test-evidence/project-auto-name-20261011');await mkdir(dir,{recursive:true});
       await page.evaluate(()=>{(document.activeElement as HTMLElement)?.blur();scrollTo(0,0);});
       await page.screenshot({path:`${dir}/implementation-${width}.png`});
     }

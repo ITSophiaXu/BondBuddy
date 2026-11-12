@@ -1,0 +1,634 @@
+{
+  "issue": 1115,
+  "scope": {
+    "issue": 1115,
+    "classification": "S: stale subscription contract fixture; not a new product defect",
+    "originalRun": "1794418350450-38278111",
+    "originalCommit": "d3028cb2f5e98e5b9a9ad36deb68e461de4a6df2",
+    "originalTap": {
+      "tests": 9,
+      "pass": 7,
+      "fail": 2,
+      "skip": 0,
+      "childTests": 8,
+      "failingChildTests": 1
+    },
+    "selected": [
+      "apps/api/src/subscriptions-annual.pg.test.ts"
+    ],
+    "boundaries": [
+      "apps/api/src/subscriptions.pg.test.ts"
+    ],
+    "expectedTapTests": {
+      "annual": 9,
+      "unchangedSubscriptions": 13
+    },
+    "testsRun": true,
+    "resources": {
+      "cpus": 3,
+      "memoryMiB": 2816,
+      "containers": [
+        "PostgreSQL",
+        "runner"
+      ],
+      "azurite": false
+    },
+    "plan": "Run strict targeted API build, migrations, complete original annual file and unchanged subscriptions file; preserve original test skips and 180000/120000 ms timeouts."
+  },
+  "source": {
+    "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+    "commit": "f4c1cef06993d1bcc7f580e7d500fe7a844b7afe",
+    "tree": "a37c2f5a837a5723034aa7060674fd50ead564bf",
+    "archiveBase": "8a7dc38a9546831346805d8cb36ce88aae456da3",
+    "baseArchiveSha256": "8dc4f5e9082c34ab6369736776508e4f47f5e872edcc67efcd26be229352581e",
+    "deltaArchiveSha256": "13b85f893406bf9b8620da27e5a42d28795c4a2d6322c4c03e350744a0249620",
+    "rawFiles": 6430,
+    "selectedFiles": [
+      {
+        "path": "apps/api/src/subscriptions-annual.pg.test.ts",
+        "mode": "100644",
+        "blob": "c81428e1a9644e9c61b16cb42212dcf6efe635a2"
+      },
+      {
+        "path": "apps/api/src/subscriptions.pg.test.ts",
+        "mode": "100644",
+        "blob": "de826d2047b3555f93d2e4a0f823224d73d6ef95"
+      }
+    ],
+    "originalGateComparison": [
+      {
+        "path": "apps/api/src/subscriptions-annual.pg.test.ts",
+        "oldBlob": "bbc646be63ce574f17d05283649432db51aa9986",
+        "baseBlob": "bbc646be63ce574f17d05283649432db51aa9986",
+        "identical": true
+      }
+    ]
+  },
+  "result": {
+    "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+    "commit": "f4c1cef06993d1bcc7f580e7d500fe7a844b7afe",
+    "tree": "a37c2f5a837a5723034aa7060674fd50ead564bf",
+    "harnessSha256": {
+      "run.mjs": "8cdf25e69cbe01e0a2ff3e3e38d24c8e3ce8e7a8a8e0f070754e02cd649908ed",
+      "start.mjs": "afb05a227cc34f03e9a6b3ef62cea32a2e7d1bd2be8388093ceb8c404eff50a2",
+      "cleanup.mjs": "a97a37383938262edc21a65812298533a901da7d6919e1dde142be1b11ee773e",
+      "assertion-audit.mjs": "793ffc1d77719e3a3924f059afdc22f47a8db9a5c53ed24033bd026589cb5157"
+    },
+    "started": "2026-11-12T05:56:31.156Z",
+    "finished": "2026-11-12T05:57:49.229Z",
+    "results": [
+      {
+        "name": "source-audit",
+        "command": [
+          "node",
+          "/evidence/assertion-audit.mjs"
+        ],
+        "pid": 22,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 1199,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 5338605\nuser_usec 234479\nsystem_usec 5104125\nnice_usec 0\nnr_periods 175\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "466792448"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 6883228\nuser_usec 1362648\nsystem_usec 5520580\nnice_usec 0\nnr_periods 187\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "619098112"
+        }
+      },
+      {
+        "name": "build-contracts",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/contracts"
+        ],
+        "pid": 29,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 11178,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 6997289\nuser_usec 1382180\nsystem_usec 5615108\nnice_usec 0\nnr_periods 188\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "619098112"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 26508828\nuser_usec 19666406\nsystem_usec 6842422\nnice_usec 0\nnr_periods 300\nnr_throttled 44\nthrottled_usec 2284704\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "868216832"
+        }
+      },
+      {
+        "name": "build-domain",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/domain"
+        ],
+        "pid": 48,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 8311,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 26510739\nuser_usec 19667823\nsystem_usec 6842915\nnice_usec 0\nnr_periods 300\nnr_throttled 44\nthrottled_usec 2284704\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "868216832"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 41282621\nuser_usec 33341946\nsystem_usec 7940674\nnice_usec 0\nnr_periods 383\nnr_throttled 87\nthrottled_usec 4139127\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "868216832"
+        }
+      },
+      {
+        "name": "build-rule-pack-registry",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/rule-pack-registry"
+        ],
+        "pid": 67,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 4492,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 41283999\nuser_usec 33343059\nsystem_usec 7940939\nnice_usec 0\nnr_periods 383\nnr_throttled 87\nthrottled_usec 4139127\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "868216832"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 48707189\nuser_usec 40056241\nsystem_usec 8650948\nnice_usec 0\nnr_periods 428\nnr_throttled 103\nthrottled_usec 4799922\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "868216832"
+        }
+      },
+      {
+        "name": "build-rule-applicability-context",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/rule-applicability-context"
+        ],
+        "pid": 86,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 2929,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 48708329\nuser_usec 40057178\nsystem_usec 8651150\nnice_usec 0\nnr_periods 428\nnr_throttled 103\nthrottled_usec 4799922\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "868216832"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 53737634\nuser_usec 44519569\nsystem_usec 9218064\nnice_usec 0\nnr_periods 458\nnr_throttled 114\nthrottled_usec 5081588\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "868216832"
+        }
+      },
+      {
+        "name": "build-api-targets",
+        "command": [
+          "node",
+          "node_modules/typescript/bin/tsc",
+          "-p",
+          "apps/api/tsconfig.issue1115.json"
+        ],
+        "pid": 105,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 18858,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 53739088\nuser_usec 44519569\nsystem_usec 9219519\nnice_usec 0\nnr_periods 458\nnr_throttled 114\nthrottled_usec 5081588\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "868216832"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 84277559\nuser_usec 73185857\nsystem_usec 11091701\nnice_usec 0\nnr_periods 646\nnr_throttled 163\nthrottled_usec 8307160\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1205882880"
+        }
+      },
+      {
+        "name": "migrate",
+        "command": [
+          "node",
+          "db/migrate.mjs"
+        ],
+        "pid": 116,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 5081,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 84315381\nuser_usec 73211905\nsystem_usec 11103476\nnice_usec 0\nnr_periods 648\nnr_throttled 163\nthrottled_usec 8307160\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1205882880"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 84872505\nuser_usec 73558861\nsystem_usec 11313644\nnice_usec 0\nnr_periods 698\nnr_throttled 163\nthrottled_usec 8307160\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1205882880"
+        }
+      },
+      {
+        "name": "annual",
+        "command": [
+          "node",
+          "--test",
+          "--test-reporter=tap",
+          "--test-concurrency=1",
+          "apps/api/dist/subscriptions-annual.pg.test.js"
+        ],
+        "pid": 127,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 5445,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 84874119\nuser_usec 73560260\nsystem_usec 11313859\nnice_usec 0\nnr_periods 699\nnr_throttled 163\nthrottled_usec 8307160\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1205882880"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 90008862\nuser_usec 77734743\nsystem_usec 12274119\nnice_usec 0\nnr_periods 752\nnr_throttled 163\nthrottled_usec 8307160\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1205882880"
+        }
+      },
+      {
+        "name": "subscriptions-boundaries",
+        "command": [
+          "node",
+          "--test",
+          "--test-reporter=tap",
+          "--test-concurrency=1",
+          "apps/api/dist/subscriptions.pg.test.js"
+        ],
+        "pid": 145,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 3384,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 90009836\nuser_usec 77735584\nsystem_usec 12274251\nnice_usec 0\nnr_periods 752\nnr_throttled 163\nthrottled_usec 8307160\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1205882880"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 92640375\nuser_usec 79791910\nsystem_usec 12848464\nnice_usec 0\nnr_periods 786\nnr_throttled 163\nthrottled_usec 8307160\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1205882880"
+        }
+      }
+    ]
+  },
+  "audit": {
+    "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+    "head": "f4c1cef06993d1bcc7f580e7d500fe7a844b7afe",
+    "typescript": "5.9.3",
+    "testsRun": false,
+    "file": "apps/api/src/subscriptions-annual.pg.test.ts",
+    "boundary": "apps/api/src/subscriptions.pg.test.ts",
+    "raw": {
+      "commit": "f4c1cef06993d1bcc7f580e7d500fe7a844b7afe",
+      "tree": "a37c2f5a837a5723034aa7060674fd50ead564bf",
+      "rawFiles": 6430,
+      "rawMatch": true
+    },
+    "tests": [
+      {
+        "expression": "test",
+        "name": "annual payment, monthly release, original consideration and whole-contract refunds",
+        "options": "{skip:!database,timeout:180000}"
+      },
+      {
+        "expression": "t.test",
+        "name": "real default clock retains exact milliseconds through verified payment and lot issuance",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "one annual payment creates twelve rights, only first month is issued, payment replay cannot mint the year",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "cancelled renewal retains twelve monthly installments; retries, catch-up and calendar anchors preserve total cash",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "seven-day unused annual whole-order refund removes only issued credits, blocks future grants and never refunds twice",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "failed cash refund unfreezes its issued batch and allows overdue paid installments",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "legacy monthly request hash survives omitted or explicit monthly; annual cannot reuse that request",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "year mandate binds annual amount/interval, can be reopened after cancellation, and charges once only at anniversary",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "actual review settlement uses annual lot consideration and disqualifies whole-contract cash withdrawal",
+        "options": null
+      }
+    ],
+    "unchangedSubtests": 7,
+    "outsideTargetUnchanged": true,
+    "beforeAssertions": 87,
+    "afterAssertions": 100,
+    "unchangedAssertions": 86,
+    "approvedErrorCodeChanges": 1,
+    "addedAssertions": [
+      "assert.equal((await pool.query('SELECT count(*)::int n FROM bb_recharge_orders WHERE owner_user_id=$1 AND request_id=$2',[who,annual.request_id])).rows[0].n,0,'a rejected annual key never creates an order')",
+      "assert.equal(await orderCount(),ordersBefore,'rejection does not create another checkout')",
+      "assert.equal(originalRejection.length,1)",
+      "assert.rejects(createSubscriptionCheckout(pool,who,annual,[provider]),{code:'SUBSCRIPTION_CHECKOUT_REJECTED',status:409})",
+      "assert.deepEqual(await rejection(),originalRejection,'active mandate retry retains the same durable rejection')",
+      "assert.equal((await subscriptionAccount(pool,who)).subscription?.mandate_status,'cancelled')",
+      "assert.rejects(createSubscriptionCheckout(pool,who,annual,[provider]),{code:'SUBSCRIPTION_CHECKOUT_REJECTED',status:409})",
+      "assert.deepEqual(await rejection(),originalRejection,'verified cancellation never revives a rejected key')",
+      "assert.notEqual(changed.order.order_id,a.order.order_id)",
+      "assert.equal((await pool.query('SELECT request_id FROM bb_recharge_orders WHERE owner_user_id=$1 AND id=$2',[who,changed.order.order_id])).rows[0].request_id,fresh.request_id)",
+      "assert.equal(await orderCount(),ordersBefore+1,'only the new explicit annual request creates one order')",
+      "assert.equal((await pool.query('SELECT count(*)::int n FROM bb_recharge_orders WHERE owner_user_id=$1 AND request_id=$2',[who,annual.request_id])).rows[0].n,0)",
+      "assert.deepEqual(await rejection(),originalRejection,'new purchase leaves the rejected annual key unchanged')"
+    ],
+    "sourceSha256": "5b2543bb42295f83d314e7ade7047d04e26a44eb4fc0653ab0b31a41cf4c1b05",
+    "boundaryTestCount": 13,
+    "boundaryTests": [
+      {
+        "expression": "test",
+        "name": "synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once",
+        "options": "{skip:!database,timeout:120000}"
+      },
+      {
+        "expression": "t.test",
+        "name": "verified payment grants once, 90-day rights and cash ratio survive cancellation",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "a stale tab subscription request is durably rejected without an order and topup stays available",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "legacy HTTP replays only the exact owner rejection and can never create a new subscription payment",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "expired manual renewals with pending, active or cancel-pending mandates durably reject without blocking topups",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "checkout failure before channel creation stays unknown until authenticated expiry, then permits a new purchase",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "only a wholly unused period refunds 199 cash by removing 21000 points, unknown status stays held",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "task and cash-refund holds are separate in the same wallet and each period",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "consumption prevents subscription cash refund; expired correction preserves original paid ratio",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "the application rejects an unused subscription after the seven-day refund window",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "topup is 1:1 permanent and does not inherit a subscription discount",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "native checkout has no recurring capability; an authenticated synthetic mandate renews once after timeout",
+        "options": null
+      },
+      {
+        "expression": "t.test",
+        "name": "a delayed refund for an earlier period cannot cancel a later paid period or its mandate",
+        "options": null
+      }
+    ]
+  },
+  "runtime": {
+    "node": "v22.23.3",
+    "locale": {
+      "LANG": "C.UTF-8",
+      "LC_ALL": "C.UTF-8"
+    },
+    "typescript": "5.9.3",
+    "pg": "8.23.0",
+    "fastify": "5.12.5",
+    "cachedLockSha256": "69ce90eb0ff8cb11578c419ad3c5a1221da099fdb5fce17c190aef2052255701",
+    "sourceLockSha256": "81833914ef0ba232e249040685bb93ac1e3b63e640b960d2d217985fa4b5ed8c",
+    "sourceLockCRLFSha256": "69ce90eb0ff8cb11578c419ad3c5a1221da099fdb5fce17c190aef2052255701",
+    "lockMatches": true
+  },
+  "images": {
+    "runner": "sha256:e081d9ca27e8ef07e6a658183b50b15a568a8126a67d70a3065ff630dfb7fdb9",
+    "postgres": "sha256:20edbde7749f822887a1a022ad526fde0a47d6b2be9a8364433605cf65099416"
+  },
+  "cleanup": {
+    "timestamp": "2026-11-12T05:58:23.543Z",
+    "testFinished": "2026-11-12T05:57:49.229Z",
+    "resources": [
+      {
+        "id": "09bffcd2fa3fc2cb00c4b4aba079cc900795e6341eca2c355e1b0dab9d4798c3",
+        "name": "/bb-issue1115-pg",
+        "image": "sha256:20edbde7749f822887a1a022ad526fde0a47d6b2be9a8364433605cf65099416",
+        "cpu": 1,
+        "memoryBytes": 536870912,
+        "ports": {},
+        "status": "running"
+      },
+      {
+        "id": "82cb8e08b19453916118891dbde0adbb8e2f38440cdf3c4b55798f2ed1656aed",
+        "name": "/bb-issue1115-runner",
+        "image": "sha256:e081d9ca27e8ef07e6a658183b50b15a568a8126a67d70a3065ff630dfb7fdb9",
+        "cpu": 2,
+        "memoryBytes": 2415919104,
+        "ports": {},
+        "status": "running"
+      }
+    ],
+    "runnerProcessesBeforeRemoval": "PID                 COMMAND             COMMAND\n17517               docker-init         /sbin/docker-init -- sleep infinity\n17580               sleep               sleep infinity",
+    "network": {
+      "id": "29a8e88614897421242da6a66beda184c5680ccca223c6bfc4d2373e444b78d4",
+      "name": "bb-issue1115-net",
+      "internal": true
+    },
+    "removal": "09bffcd2fa3fc2cb00c4b4aba079cc900795e6341eca2c355e1b0dab9d4798c3\n82cb8e08b19453916118891dbde0adbb8e2f38440cdf3c4b55798f2ed1656aed",
+    "networkRemoval": "29a8e88614897421242da6a66beda184c5680ccca223c6bfc4d2373e444b78d4",
+    "absent": [
+      {
+        "id": "09bffcd2fa3fc2cb00c4b4aba079cc900795e6341eca2c355e1b0dab9d4798c3",
+        "name": "/bb-issue1115-pg",
+        "absent": true
+      },
+      {
+        "id": "82cb8e08b19453916118891dbde0adbb8e2f38440cdf3c4b55798f2ed1656aed",
+        "name": "/bb-issue1115-runner",
+        "absent": true
+      }
+    ],
+    "networkAbsent": true
+  },
+  "remainingClones": [],
+  "tap": {
+    "annual": {
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "boundary": {
+      "tests": 13,
+      "pass": 13,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    }
+  },
+  "logs": {
+    "original-annual.tap": {
+      "rawSha256": "ef50421fef5f37a6abe75d884a0435f9f4718250e02a10a77ec3674020e9f369",
+      "displaySha256": "ff235fe2ab87ede8d30720ded2c070a036f9f5a5897726021d9c2e8331c1b449",
+      "normalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "annual.tap": {
+      "rawSha256": "cf81f9ada30cb26e6bd8cc0a7037f145219acc806e18acb8503a9744481ca608",
+      "displaySha256": "cf81f9ada30cb26e6bd8cc0a7037f145219acc806e18acb8503a9744481ca608",
+      "normalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "subscriptions-boundaries.tap": {
+      "rawSha256": "f9a4646f94303b2021d456477a816716a110805749c4908f09088e66f2c197fc",
+      "displaySha256": "f9a4646f94303b2021d456477a816716a110805749c4908f09088e66f2c197fc",
+      "normalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "build-contracts.log": {
+      "rawSha256": "ac5e311e2cca183fb01b2b070336210ca3ad23a4280e52f6d239752d6c97fefa",
+      "displaySha256": "e4f84f56e5547e9bf393077e15d5d35453aec5d355e5ab0ba2a1394b1d52685e",
+      "normalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "build-domain.log": {
+      "rawSha256": "06822fbd0e1081ad85f5254cdbd5c766c1419fa684c59351011551edaf218c70",
+      "displaySha256": "25caac3f23b24e25abf74fd2e66b8234181cf0866890ba9e02aaa072f8551849",
+      "normalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "build-rule-pack-registry.log": {
+      "rawSha256": "e17760588e47d9c624ef5180dd45ba53af6c1731235bd63c513ead739402fc48",
+      "displaySha256": "b9f5278ddac5f7758c91f3fc57e45bc88b0ffe778d38b31d331cfcb93906ca82",
+      "normalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "build-rule-applicability-context.log": {
+      "rawSha256": "a3f4fe86cc5b1cc0fe27b3da2e4e432e5633bbe843f3f29b9184cdadd2fb1e80",
+      "displaySha256": "36f70da50dca465621e3a56213fc269bce24b7ae74d67fd38ea598a0366a8435",
+      "normalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "build-api-targets.log": {
+      "rawSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "displaySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "normalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "migrate.log": {
+      "rawSha256": "8e40b533deeb3d8d8f0783e998add1e6888c19aeffebccfd375459098d44c42c",
+      "displaySha256": "8e40b533deeb3d8d8f0783e998add1e6888c19aeffebccfd375459098d44c42c",
+      "normalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    }
+  },
+  "existingPRScope": {
+    "checkedAt": "2026-11-12T05:41:56.606Z",
+    "names": [
+      "apps/api/src/subscriptions-annual.pg.test.ts",
+      "apps/api/src/subscriptions.ts",
+      "0164_subscription_checkout_rejections",
+      "apps/api/src/subscriptions.pg.test.ts"
+    ],
+    "openPRCount": 64,
+    "matches": []
+  }
+}

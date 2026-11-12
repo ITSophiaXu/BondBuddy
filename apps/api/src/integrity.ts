@@ -14,6 +14,7 @@ import {bindCommerceScopeRun} from './commerce-coverage.js';
 import {automaticBillingEnabled} from './automatic-billing-context.js';
 import {resolveAutomaticTaskPriceVersion} from './automatic-price-versions.js';
 import {readBillingRequestRejection,recordBillingRequestRejection,billingRequestRejectedProblem,type BillingRequestRejection} from './billing-request-rejections.js';
+import {integritySettlement} from './integrity-settlement.js';
 
 const empty=():IntegrityDraft=>({subjects:[],site_ids:[],notes:''});
 const terminal=['succeeded','failed','cancelled','rejected','test_completed'];
@@ -73,7 +74,7 @@ async function ownedRound(c:Pool|PoolClient,owner:string,id:string,runId:string)
 export async function readIntegrity(db:Pool,owner:string,id:string,requested?:string,commercial=false):Promise<IntegrityWorkspace>{
  await project(db,owner,id);
  const draft=(await db.query('SELECT revision,draft FROM bb_integrity_drafts WHERE owner_user_id=$1 AND project_id=$2',[owner,id])).rows[0];
- const rows=(await db.query('SELECT i.*,r.state,r.stage,r.artifact_id,c.points,c.state reservation_state,c.charged_points FROM bb_integrity_runs i JOIN bb_runs r ON r.id=i.run_id AND r.owner_user_id=i.owner_user_id LEFT JOIN bb_credit_reservations c ON c.run_id=r.id WHERE i.owner_user_id=$1 AND i.project_id=$2 ORDER BY (i.run_id=$3) DESC NULLS LAST,i.sequence DESC LIMIT 50',[owner,id,requested??null])).rows;
+ const rows=(await db.query("SELECT i.*,r.state,r.stage,r.artifact_id,c.points,c.state reservation_state,c.charged_points,(SELECT coalesce(sum(e.points),0)::text FROM bb_credit_events e WHERE e.owner_user_id=i.owner_user_id AND e.reservation_id=c.id AND e.run_id=i.run_id AND e.kind='release') released_points FROM bb_integrity_runs i JOIN bb_runs r ON r.id=i.run_id AND r.owner_user_id=i.owner_user_id LEFT JOIN bb_credit_reservations c ON c.run_id=r.id AND c.owner_user_id=i.owner_user_id WHERE i.owner_user_id=$1 AND i.project_id=$2 ORDER BY (i.run_id=$3) DESC NULLS LAST,i.sequence DESC LIMIT 50",[owner,id,requested??null])).rows;
  const evidence=(await db.query('SELECT * FROM bb_integrity_evidence WHERE owner_user_id=$1 AND project_id=$2 ORDER BY created_at,id',[owner,id])).rows;
  const observations=(await db.query('SELECT run_id,record FROM bb_integrity_observations WHERE owner_user_id=$1 AND run_id=ANY($2::text[]) ORDER BY subject_id,site_id',[owner,rows.map(r=>r.run_id)])).rows;
  const artifacts=(await db.query('SELECT a.* FROM bb_integrity_artifacts a JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id WHERE a.owner_user_id=$1 AND r.project_id=$2 AND r.state=\'succeeded\'',[owner,id])).rows;
@@ -82,7 +83,7 @@ export async function readIntegrity(db:Pool,owner:string,id:string,requested?:st
   run_id:r.run_id,round_id:r.round_id,operation:r.operation,sequence:r.sequence,state:r.state,stage:r.stage??null,created_at:date(r.created_at),manifest:r.manifest,
   records:r.result?.records??observations.filter(x=>x.run_id===r.run_id).map(x=>x.record),
   evidence:evidence.filter(e=>e.round_id===r.round_id).map(e=>({...e.record,id:e.id,created_at:date(e.created_at)})),
-  artifact_id:r.state==='succeeded'?r.artifact_id:null,artifacts:artifacts.filter(a=>a.run_id===r.run_id).map(a=>({kind:a.kind,artifact_id:a.artifact_id,artifact_version:a.artifact_version})),charged_points:r.reservation_state==='settled'?Number(r.charged_points??r.points):0,reserved_points:r.reservation_state==='held'?Number(r.points):0
+  artifact_id:r.state==='succeeded'?r.artifact_id:null,artifacts:artifacts.filter(a=>a.run_id===r.run_id).map(a=>({kind:a.kind,artifact_id:a.artifact_id,artifact_version:a.artifact_version})),charged_points:r.reservation_state==='settled'?Number(r.charged_points??r.points):0,reserved_points:r.reservation_state==='held'?Number(r.points):0,settlement:integritySettlement(r)
  }))};
 }
 export function registerIntegrity(app:FastifyInstance,db:()=>Pool,owner:(r:FastifyRequest)=>Promise<string>,blobs:()=>PrivateBlobs,commercial=false){

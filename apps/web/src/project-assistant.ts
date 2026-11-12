@@ -24,6 +24,7 @@ import { taskProgress } from './task-progress';
 import { taskHref,taskView } from './project-collection-model';
 import { esc } from './ui';
 import { assistantIcon as icon } from './assistant-icons';
+import { canReselectExpiredUpload } from './upload-reselection';
 import { AssistantUploadRecovery, AssistantUploadRecoveryError, type AssistantUploadEntry } from './assistant-upload-recovery';
 import { AssistantTemplateUploadRecovery, assistantTemplateUploadRecordMatches, type AssistantTemplateUploadEnvelope, type AssistantTemplateUploadResult } from './assistant-template-upload-recovery';
 import { AssistantProjectCopyRecovery, assistantProjectCopyRecordMatches, type AssistantProjectCopyEnvelope, type AssistantProjectCopyResult } from './assistant-project-copy-recovery';
@@ -58,7 +59,7 @@ export class ProjectAssistant {
   private templateEnvelopes:AssistantTemplateUploadEnvelope[]=[];
   private templateOrphans:UploadRecoveryRecord[]=[];
   private templateProblem='';private templatePreparing=false;private templateReading=false;
-  private templateFiles=new Map<string,File>();private templateErrors=new Map<string,string>();private templateStatuses=new Map<string,string>();private templateProgress=new Map<string,FileUploadProgress>();private templateNeedsFile=new Set<string>();
+  private templateFiles=new Map<string,File>();private templateErrors=new Map<string,string>();private templateStatuses=new Map<string,string>();private templateProgress=new Map<string,FileUploadProgress>();private templateNeedsFile=new Set<string>();private templateReselected=new Set<string>();
   private cacheQueue:Promise<void>=Promise.resolve();private cachePending=0;private cacheProblem='';
   private cacheBaselines=new Map<string,AssistantViewCacheRecord|null>();
   private editGeneration=0;private runtimeGeneration=0;private actionPending=0;private actionUncertain=false;
@@ -108,6 +109,10 @@ export class ProjectAssistant {
   private text='';
   private error='';
   private status='';
+  private replyStop?:{runId:string;state:'pending'|'unknown'|'cancelled'|'finished'};
+  private replyBlocked=false;
+  private connectionInterrupted=false;
+  private pollGeneration=0;
   private qaQuote?:{content:string;value:M4QuoteResponse;key:string};
   private timer?:ReturnType<typeof setTimeout>;
   private saveTimer?:ReturnType<typeof setTimeout>;
@@ -203,7 +208,7 @@ export class ProjectAssistant {
     if(!helper){helper=new AssistantTemplateUploadRecovery(this.api,this.m4,this.owner,project,topic,{current:()=>this.scopeCurrent(topic,project),snapshot:()=>this.scopeCurrent(topic,project)?this.viewSnapshot():undefined,signal:this.controller.signal});this.templateHelpers.set(key,helper);}this.assistantTemplateUploads=helper;this.scanTemplates();
   }
   private scanTemplates(){
-    if(!this.assistantTemplateUploads)return;try{const envelopes=this.assistantTemplateUploads.list(),records=this.assistantTemplateUploads.transportRecords();this.templateEnvelopes=envelopes;this.templateOrphans=records.filter(r=>!envelopes.some(e=>e.items.some(i=>assistantTemplateUploadRecordMatches(e,i.index,r))));if(this.workspace&&!envelopes.length&&!this.templateOrphans.length&&!this.copyEnvelopes.length&&!this.copyOrphans.length&&!this.copyPreparing)assertAssistantTemplateClear(this.api,this.owner,this.workspace.topic.topic_id,()=>this.live);this.templateProblem='';for(const e of envelopes)if(e.items[0].templateReceipt)this.templateSaved.set(e.id,e);}catch(e){this.templateProblem=assistantError(e,'read');}
+    if(!this.assistantTemplateUploads)return;try{const envelopes=this.assistantTemplateUploads.list(),records=this.assistantTemplateUploads.transportRecords();this.templateEnvelopes=envelopes;this.templateOrphans=records.filter(r=>!envelopes.some(e=>e.items.some(i=>assistantTemplateUploadRecordMatches(e,i.index,r))));if(this.workspace&&!envelopes.length&&!this.templateOrphans.length&&!this.copyEnvelopes.length&&!this.copyOrphans.length&&!this.copyPreparing)assertAssistantTemplateClear(this.api,this.owner,this.workspace.topic.topic_id,()=>this.live);this.templateProblem='';for(const e of envelopes){const item=e.items[0];if(item.templateReceipt)this.templateSaved.set(e.id,e);const record=records.find(r=>assistantTemplateUploadRecordMatches(e,item.index,r));if(record&&canReselectExpiredUpload(record))this.templateNeedsFile.add(item.id);}}catch(e){this.templateProblem=assistantError(e,'read');}
   }
   private templateBlocked(show=true){
     this.scanCopies();this.scanTemplates();const blocked=this.templatePreparing||this.templateReading||this.copyPreparing||this.copyReading||!!this.copyProblem||!!this.copyEnvelopes.length||!!this.copyOrphans.length||!!this.templateProblem||!!this.templateEnvelopes.length||!!this.templateOrphans.length||!!this.cacheProblem||this.viewConflict||this.actionUncertain;
@@ -274,7 +279,7 @@ export class ProjectAssistant {
   }
   private async resumeTemplate(id:string,explicit=true){
     const helper=this.assistantTemplateUploads;if(!helper||!this.workspace)return;this.scanTemplates();const e=this.templateEnvelopes.find(e=>e.id===id);if(!e)throw new AssistantInputError('原模板保存待办已变化，请重新读取。');const item=e.items[0],topic=e.topicId,project=e.projectId,wasPreparing=this.templatePreparing;this.templatePreparing=true;this.templateGeneration++;this.templateErrors.delete(item.id);await this.cacheQueue;
-    try{const result=await helper.resume(id,0,{file:this.templateFiles.get(item.id),retryMembership:explicit,retryTemplate:explicit,retryView:explicit,status:message=>{if(this.scopeCurrent(topic,project)){this.templateStatuses.set(item.id,message);this.templateProgress.set(item.id,uploadActivity(message));this.paintStatus();}},progress:(loaded,total)=>{if(this.scopeCurrent(topic,project)){this.templateStatuses.set(item.id,"正在上传文件…");this.templateProgress.set(item.id,uploadTransfer(loaded,total));this.paintStatus();}}});if(this.scopeCurrent(topic,project)){this.templateNeedsFile.delete(item.id);this.applyAssistantTemplateUploadResult(result);this.templateStatuses.set(item.id,result.reason??(result.state==='template_unknown'?'模板创建结果待确认，请继续原保存。':result.state==='retryable'?'原会话尚未保存，请明确继续原保存。':this.status));}}
+    try{const reselectExpiredSession=explicit&&this.templateReselected.delete(item.id);const result=await helper.resume(id,0,{file:this.templateFiles.get(item.id),reselectExpiredSession,retryMembership:explicit,retryTemplate:explicit,retryView:explicit,status:message=>{if(this.scopeCurrent(topic,project)){this.templateStatuses.set(item.id,message);this.templateProgress.set(item.id,uploadActivity(message));this.paintStatus();}},progress:(loaded,total)=>{if(this.scopeCurrent(topic,project)){this.templateStatuses.set(item.id,"正在上传文件…");this.templateProgress.set(item.id,uploadTransfer(loaded,total));this.paintStatus();}}});if(this.scopeCurrent(topic,project)){this.templateNeedsFile.delete(item.id);this.templateReselected.delete(item.id);this.applyAssistantTemplateUploadResult(result);this.templateStatuses.set(item.id,result.reason??(result.state==='template_unknown'?'模板创建结果待确认，请继续原保存。':result.state==='retryable'?'原会话尚未保存，请明确继续原保存。':this.status));}}
     catch(error){if(this.scopeCurrent(topic,project)){this.templateStatuses.delete(item.id);this.templateErrors.set(item.id,assistantError(error,'save'));if(error instanceof UploadRecoveryNeedsFileError)this.templateNeedsFile.add(item.id);const now=this.viewSnapshot();if(now?.dirty&&now.version===e.basePage.version&&!assistantSame(now.view,e.basePage.view)){this.viewConflict=true;this.cache();}this.error=assistantError(error,'save');}throw error;}
     finally{if(this.scopeCurrent(topic,project)){this.templatePreparing=wasPreparing;this.scanTemplates();this.paint();}}
   }
@@ -319,7 +324,7 @@ export class ProjectAssistant {
   }
   private async select(id:string){
     await this.flush();await this.cacheQueue;if(this.cacheProblem)throw new AssistantInputError(this.cacheProblem);const token=++this.epoch;const w=await this.m4.workspace(id);if(!this.live||token!==this.epoch)return;
-    this.workspace=w;this.templatePreparing=false;this.templateReading=false;this.copyPreparing=false;this.copyReading=false;this.readingGeneration++;this.copyReadingGeneration++;this.viewConflict=false;this.viewDirty=false;this.conflictServer=undefined;this.text=w.view.unsent_content;this.qaQuote=undefined;this.data=undefined;this.formOpen=false;this.status='';this.cacheProblem='';this.editGeneration=0;this.runtimeGeneration=0;this.actionUncertain=false;
+    this.workspace=w;this.replyStop=undefined;this.replyBlocked=false;this.connectionInterrupted=false;this.templatePreparing=false;this.templateReading=false;this.copyPreparing=false;this.copyReading=false;this.readingGeneration++;this.copyReadingGeneration++;this.viewConflict=false;this.viewDirty=false;this.conflictServer=undefined;this.text=w.view.unsent_content;this.qaQuote=undefined;this.data=undefined;this.formOpen=false;this.status='';this.cacheProblem='';this.editGeneration=0;this.runtimeGeneration=0;this.actionUncertain=false;
     this.view.assistant??={project_id:w.topic.source_project_id,action:null};
     sessionStorage.setItem(`bb-assistant:${this.owner}`,id);
     if(this.view.assistant.project_id){this.data=await this.projectData(this.view.assistant.project_id);if(this.view.assistant.source_prospectuses)(this.data.project.update_details??=emptyUpdateDetails()).source_prospectuses=structuredClone(this.view.assistant.source_prospectuses);}
@@ -345,31 +350,76 @@ export class ProjectAssistant {
       catch(e){if(this.scopeCurrent(w.topic.topic_id,w.topic.project_id)){this.viewDirty=true;if(e instanceof ApiError&&e.code==='INPUT_REVISION_CONFLICT')this.viewConflict=true;this.cache();}throw e;}
     });return this.saving;
   }
-  private async poll(){
-    clearTimeout(this.timer);if(!this.live||!this.workspace)return;const id=this.workspace.topic.topic_id,token=this.epoch,templateGeneration=this.templateGeneration;
+  private invalidatePoll(){clearTimeout(this.timer);this.pollGeneration++;}
+  private replyTask(message:M4Message){return this.workspace?.tasks.find(t=>t.run.run_id===message.run_id&&t.manifest.kind==='qa');}
+  private pendingReply(){return this.workspace?.messages.find(m=>m.role==='user'&&!['completed','failed'].includes(m.reply_status)&&!finished(this.replyTask(m)?.run.state??''));}
+  private replyStatus(){
+    if(this.connectionInterrupted)return '连接暂时中断，暂无法确认回复状态。请刷新状态后继续。';
+    if(this.replyStop?.state==='pending')return '正在停止本次回答，等待确认任务结束。消息与材料保留。';
+    if(this.replyStop?.state==='unknown')return '停止结果尚未确认，请刷新状态核对；消息与材料保留。';
+    if(this.replyStop?.state==='cancelled')return '已停止本次回答，消息与材料保留。';
+    if(this.replyStop?.state==='finished')return '本次回答已结束，消息与材料保留。';
+    const pending=this.replyBlocked?this.pendingReply():undefined;
+    if(pending)return this.replyTask(pending)?.run.stage==='provider_reconcile'?'上一轮回复仍在核对调用状态，请刷新状态或停止本次回答后继续；新问题已保留。':'上一轮回复尚未结束，请等待或停止本次回答后继续；新问题已保留。';
+    return '';
+  }
+  private async poll():Promise<boolean>{
+    clearTimeout(this.timer);if(!this.live||!this.workspace)return false;const id=this.workspace.topic.topic_id,token=this.epoch,read=++this.pollGeneration,templateGeneration=this.templateGeneration;
+    const current=()=>this.live&&token===this.epoch&&read===this.pollGeneration;
     try{const [w,c]=await Promise.all([this.m4.workspace(id),this.api.request<{cards:AssistantCard[]}>('GET',`/assistant/topics/${id}/cards`,undefined,{},this.controller.signal)]);
-      if(!this.live||token!==this.epoch)return;
+      if(!current())return false;
       // Keep local typing and explicit draft choices. Server replies are immutable.
       const protectedLists=this.templatePreparing||this.templateReading||this.templateEnvelopes.length>0||this.copyPreparing||this.copyReading||this.copyEnvelopes.length>0||templateGeneration!==this.templateGeneration;this.workspace={...w,...(protectedLists?{templates:this.workspace.templates,materials:this.workspace.materials,material_details:this.workspace.material_details}:{}),view:this.workspace.view};if(templateGeneration===this.templateGeneration)this.cards=c.cards;if(this.viewConflict)this.conflictServer=structuredClone(w.view);
-      if(this.open&&!this.busy)this.paintTimeline();
-      const active=w.messages.some(m=>m.role==='user'&&!['completed','failed'].includes(m.reply_status))||c.cards.some(c=>c.run&&!finished(c.run.state));
+      this.connectionInterrupted=false;
+      if(this.replyStop){
+        const index=w.messages.findIndex(m=>m.role==='user'&&m.run_id===this.replyStop!.runId),run=w.tasks.find(t=>t.run.run_id===this.replyStop!.runId)?.run;
+        if(index>=0&&w.messages.slice(index+1).some(m=>m.role==='user'))this.replyStop=undefined;
+        else if(run&&finished(run.state))this.replyStop.state=run.state==='cancelled'?'cancelled':'finished';
+      }
+      if(!this.pendingReply())this.replyBlocked=false;
+      if(this.open&&!this.busy)this.paintTimeline();this.paintStatus();
+      const active=!!this.pendingReply()||c.cards.some(c=>c.run&&!finished(c.run.state));
       this.active=active;this.paintDock();
-    }catch(e){if(this.live&&this.open){this.status='连接暂时中断，已提交任务继续运行。';this.paintStatus();}}
-    if(this.live&&token===this.epoch)this.timer=setTimeout(()=>void this.poll(),this.open?4000:12000);
+      return true;
+    }catch{if(current()){this.connectionInterrupted=true;this.paintStatus();}return false;}
+    finally{if(current())this.timer=setTimeout(()=>void this.poll(),this.open?4000:12000);}
+  }
+  private async cancelReply(message:M4Message){
+    const task=this.replyTask(message);if(!task||finished(task.run.state)||this.replyStop?.runId===task.run.run_id&&this.replyStop.state==='pending')return;
+    const topic=this.workspace!.topic.topic_id,token=this.epoch,runId=task.run.run_id;
+    this.invalidatePoll();this.replyStop={runId,state:'pending'};this.paintStatus();
+    try{
+      const run=await this.api.runAction(runId,'cancel',this.controller.signal);
+      if(!this.live||token!==this.epoch||this.workspace?.topic.topic_id!==topic)return;
+      this.invalidatePoll();
+      if(run.run_id!==runId)throw new ApiError(0,'DATA_UNAVAILABLE');
+      task.run={...task.run,...run};
+      if(['cancelled','failed','rejected'].includes(run.state))message.reply_status='failed';
+      this.replyStop={runId,state:run.state==='cancelled'?'cancelled':finished(run.state)?'finished':'pending'};
+    }catch{if(!this.live||token!==this.epoch)return;this.replyStop={runId,state:'unknown'};}
+    await this.poll();
   }
   private context():M4MessageContext{return {...this.view.unsent_context,document_type:null,draft_version:0};}
   private async send(){
     if(!this.text.trim()||!this.workspace)return;
     if(this.templateBlocked())throw new AssistantInputError(this.error);
     if(this.uploadRecoveryBlocked)throw new AssistantInputError('本机附件记录未能可靠读取，请保留文件并重新打开原对话后再继续。');
-    if(this.workspace.messages.some(m=>m.role==='user'&&!['completed','failed'].includes(m.reply_status)))throw new AssistantInputError('请等待本轮回复后继续。');
+    if(this.pendingReply()||this.connectionInterrupted){
+      if(!await this.poll()||this.pendingReply()){this.replyBlocked=true;return;}
+    }
     if(this.currentUploads().some(u=>!uploadReady(u)))throw new AssistantInputError('请先确认附件已保存并加入原对话，或停止本机追踪。');
     await this.flush();const id=this.workspace.topic.topic_id,content=this.text.trim(),context=this.context();
     if(!this.qaQuote||this.qaQuote.content!==content||scopePending(this.qaQuote.value.quote)){const value=await this.businessWrite(id,()=>this.m4.quote(id,{kind:'qa',content,context}));this.qaQuote={value,content,key:this.qaQuote?.content===content?this.qaQuote.key:crypto.randomUUID()};this.runtimeGeneration++;this.cache();if(!isAutomaticCharge(value.quote)&&(int64(value.quote.points)>0n||scopePending(value.quote)))return;}
     const q=this.qaQuote;if(int64(q.value.shortage)>0n&&!isAutomaticCharge(q.value.quote))throw new AssistantInputError(isCnyPrice(q.value.quote)?'服务余额不足，请核对本次总价，并到账号页查看余额与支付渠道状态；余额充足后返回重新发送。':'积分不足，原问题已保留。请到账号页查看积分与支付渠道状态；积分充足后返回重新发送。');
     if(isCnyPrice(q.value.quote)&&!await confirmCnyTask('确认本次回答费用',q.value.quote,'按当前问题和已选材料回答；新增问题或范围须另行确认。'))return;
-    await this.businessWrite(id,()=>this.m4.message(id,{submission_request_id:q.key,content,context,quote_id:q.value.quote.quote_id}));
-    this.text='';this.qaQuote=undefined;this.changed();await this.flush();await this.poll();
+    const receipt=await this.businessWrite(id,()=>this.m4.message(id,{submission_request_id:q.key,content,context,quote_id:q.value.quote.quote_id}));
+    // Discard reads started before this accepted submission, including a late previous reply.
+    this.invalidatePoll();
+    if(!this.workspace.messages.some(m=>m.message_id===receipt.message.message_id))this.workspace.messages.push(receipt.message);
+    this.replyStop=undefined;this.replyBlocked=false;this.connectionInterrupted=false;this.status='';
+    this.text='';this.qaQuote=undefined;this.changed();
+    // Saving the cleared composer may fail after the message was accepted. Keep reading that run.
+    try{await this.flush();}finally{await this.poll();}
   }
   private async useAction(action:AssistantAction){
     if(!this.workspace)return;
@@ -517,11 +567,7 @@ export class ProjectAssistant {
       if(a==='refresh-reply')await this.poll();
       if(a==='cancel-reply'){
         const message=this.workspace?.messages.find(m=>m.message_id===el.dataset.id&&m.role==='user');
-        const task=this.workspace?.tasks.find(t=>t.run.run_id===message?.run_id&&t.manifest.kind==='qa');
-        if(message&&task&&!finished(task.run.state)){
-          await this.api.runAction(task.run.run_id,'cancel',this.controller.signal);
-          await this.poll();this.status='已停止本次回答，消息与材料保留。';
-        }
+        if(message)await this.cancelReply(message);
       }
       if(a==='current-project'){const id=location.hash.match(/#\/projects\/([^/?]+)/)?.[1];if(id)await this.newConversation(decodeURIComponent(id));}
       if(a==='project'){let cursor:string|undefined;this.projects=[];do{const page=await this.api.projects(cursor,{limit:'100'},this.controller.signal);this.projects.push(...page.items.filter(p=>p.kind!=='qa'));cursor=page.page.next_cursor??undefined;}while(cursor);this.status='';this.history=false;this.projectPicker=true;}
@@ -548,7 +594,7 @@ export class ProjectAssistant {
     if(this.action?.business==='update'&&this.data)syncReportingPeriodHints(this.host,this.data.materials,this.data.project.update_details?.source_prospectuses??[],this.action.fields.reporting_cutoff??null);
   }
   private async change(event:Event){const el=event.target as HTMLInputElement;
-    if(el.matches('[data-assistant-template-recovery-reselect]')){const file=el.files?.[0],id=el.dataset.assistantTemplateRecoveryReselect!;el.value='';if(file){this.templateFiles.set(id,file);this.templateStatuses.set(id,'已选择文件，请点击继续原保存，核对内容相同后再继续。');this.templateErrors.delete(id);this.paintStatus();}return;}
+    if(el.matches('[data-assistant-template-recovery-reselect]')){const file=el.files?.[0],id=el.dataset.assistantTemplateRecoveryReselect!;el.value='';if(file){this.templateFiles.set(id,file);this.templateReselected.add(id);this.templateStatuses.set(id,'已选择文件，请点击继续原保存，核对内容相同后再继续。');this.templateErrors.delete(id);this.paintStatus();}return;}
     if(el.matches('[data-primary-source]')){this.view.unsent_context.source_material=this.workspace?.materials.find(m=>m.material_id===el.value)??null;this.invalidateTask();return;}
     if(el.matches('[data-project-select]')){const id=el.value;if(id)await this.work(async()=>{this.projects=[];await this.newConversation(id);},'submit');return;}
     if(el.matches('[data-template]')){this.view.assistant!.template_key=el.value;this.invalidateTask();return;}
@@ -610,15 +656,16 @@ export class ProjectAssistant {
   }
   private replyProgress(message:M4Message){
     if(message.role!=='user'||message.reply_status==='completed')return '';
-    const task=this.workspace?.tasks.find(t=>t.run.run_id===message.run_id&&t.manifest.kind==='qa');
+    const task=this.replyTask(message);
     if(task&&finished(task.run.state))return task.run.state==='cancelled'?'<p class="ba-thinking">本次回答已停止，消息与材料保留。</p>':'';
     if(!task&&message.reply_status==='failed')return '';
     const state=task?.run.state,stage=task?.run.stage;
     const delayed=state==='queued'&&Date.now()-Date.parse(task!.created_at)>120000;
-    const text=state==='paused'?(stage==='provider_reconcile'?'回复处理中断，正在核对本次调用状态。':stage==='credits_exhausted'?'任务已暂停，请核对可用积分。':'回复任务已暂停。')
+    const stop=this.replyStop?.runId===message.run_id?this.replyStop:undefined;
+    const text=stop?.state==='pending'?'正在停止本次回答，等待确认任务结束。':stop?.state==='unknown'?'停止结果尚未确认，请刷新状态核对或重试停止。':state==='paused'?(stage==='provider_reconcile'?'回复处理中断，正在核对本次调用状态。':stage==='credits_exhausted'?'任务已暂停，请核对可用积分。':'回复任务已暂停。')
       :state==='queued'?(delayed?'排队时间较长，尚未开始回答。无需重复发送，可继续等待或停止本次回答。':'已收到，排队等待处理。')
       :state==='awaiting_input'?'回复任务等待补充信息。':state==='settlement_pending'?'正在核对本次回复与费用。':message.reply_status==='running'?'正在阅读并整理回复…':'已收到，正在读取任务状态…';
-    return `<div class="ba-reply-progress"><p class="ba-thinking" role="status">${esc(text)}</p><button data-a="refresh-reply"${this.busy?' disabled':''}>刷新状态</button>${task&&!finished(task.run.state)?`<button data-a="cancel-reply" data-id="${esc(message.message_id)}"${this.busy?' disabled':''}>停止本次回答</button><small>停止后保留消息与材料。</small>`:''}</div>`;
+    return `<div class="ba-reply-progress"><p class="ba-thinking" role="status">${esc(text)}</p><button data-a="refresh-reply"${this.busy?' disabled':''}>刷新状态</button>${task&&!finished(task.run.state)&&stop?.state!=='pending'?`<button data-a="cancel-reply" data-id="${esc(message.message_id)}"${this.busy?' disabled':''}>停止本次回答</button><small>停止后保留消息与材料。</small>`:''}</div>`;
   }
   private paintTimeline(){const box=this.host.querySelector<HTMLElement>('[data-timeline]');if(!box)return;const atEnd=box.scrollHeight-box.scrollTop-box.clientHeight<80,scroll=box.scrollTop;
     const selection=window.getSelection();if(selection&&!selection.isCollapsed&&box.contains(selection.anchorNode))return;
@@ -636,7 +683,7 @@ export class ProjectAssistant {
       else host.innerHTML=`<button data-a="download" data-id="${esc(a.artifact_id)}">下载成果</button>`;
     }catch{/* project result remains available for a fresh authorized read */}
   }
-  private paintStatus(){const status=this.host.querySelector<HTMLElement>('[data-status]');if(status)status.textContent=this.error||this.status;
+  private paintStatus(){const status=this.host.querySelector<HTMLElement>('[data-status]');if(status)status.textContent=this.error||this.replyStatus()||this.status;
     this.host.querySelectorAll<HTMLElement>('[data-template-recovery]').forEach(el=>el.innerHTML=this.templateRecovery());
     this.host.querySelectorAll<HTMLElement>('[data-copy-recovery]').forEach(el=>el.innerHTML=this.copyRecovery());
     const uploads=this.host.querySelector<HTMLElement>('[data-uploads]');if(uploads)uploads.innerHTML=this.currentUploads().map(u=>{const reused=uploadReady(u)&&uploadReused(u),recoverable=u.kind==='material'&&!!u.recovery&&!uploadReady(u);return `<div role="status" data-assistant-upload="${esc(u.id)}" data-upload-kind="${u.kind}" data-associated="${u.associated===true}" class="bb-upload-file ${reused?'duplicate-upload-notice':''}">${reused?'':esc(u.filename)}${uploadProgressHtml(u.progress??uploadActivity(u.status),u.filename,{announce:false,error:u.error,complete:uploadReady(u),paused:!this.busy&&!uploadReady(u)})}${uploadReady(u)?esc(u.status):''}${recoverable?`<button class="bb-upload-action bb-upload-action--primary" data-a="retry-upload" data-id="${esc(u.id)}"${this.busy?' disabled':''}>确认保存并加入对话</button>${u.needsFile?`<label class="bb-upload-picker bb-upload-picker--compact ba-attach">重新选择原文件<input type="file" data-assistant-reselect="${esc(u.id)}"></label>`:''}<button class="bb-upload-action" data-a="remove-upload" data-id="${esc(u.id)}"${this.busy?' disabled':''}>移除此待办</button><small>将加入“${esc(this.workspace?.topic.name??'原对话')}”。确认不会发送消息或开始任务；移除待办会保留服务器已收到的文件。</small>`:u.error?`${u.kind==='template'?'<small>模板创建与采用尚不支持跨刷新恢复，请核对原模板；此处不能只重试上传后显示模板成功。</small>':`<button class="bb-upload-action bb-upload-action--primary" data-a="retry-upload" data-id="${esc(u.id)}">重试保存</button>`}<button class="bb-upload-action" data-a="remove-upload" data-id="${esc(u.id)}">移除本机项</button>`:''}</div>`;}).join('');

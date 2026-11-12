@@ -5,7 +5,7 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 test_dir="$(mktemp -d "${PWD}/.deploy-space-test.XXXXXX")"
 trap 'rm -rf "$test_dir"' EXIT
 mkdir -p "$test_dir/deploy/m1/scripts" "$test_dir/bin" "$test_dir/docker-root" "$test_dir/state"
-cp "$script_dir/deploy.sh" "$script_dir/lib.sh" "$test_dir/deploy/m1/scripts/"
+cp "$script_dir/deploy.sh" "$script_dir/lib.sh" "$script_dir/release-evidence.sh" "$test_dir/deploy/m1/scripts/"
 printf 'BB_PROFILE=prod\nBB_HTTP_PORT=18090\n' > "$test_dir/deploy/m1/.env"
 printf 'old-release\n' > "$test_dir/state/current"
 printf 'old-release\n' > "$test_dir/state/previous"
@@ -36,9 +36,19 @@ esac
 SH
 cat > "$test_dir/bin/node" <<'SH'
 #!/usr/bin/env bash
-[[ "$*" = *'prospectus-quality-gate.mjs verify '* ]] || exit 1
-echo quality-verify >> "$TEST_CALLS"
-[ "${TEST_QUALITY_MODE:-pass}" = pass ] || exit 9
+case "$*" in
+  *'prospectus-quality-gate.mjs verify '*)
+    echo quality-verify >> "$TEST_CALLS"
+    [ "${TEST_QUALITY_MODE:-pass}" = pass ] || exit 9 ;;
+  *'release-smoke/verify.mjs verify '*)
+    echo release-smoke-verify >> "$TEST_CALLS"
+    [ "${TEST_SMOKE_MODE:-pass}" = pass ] || exit 9 ;;
+  *'release-smoke/verify-images.mjs '*|*'release-smoke/rollback-readiness.mjs '*)
+    # These synthetic gates isolate disk/in-flight behavior; real entry tests
+    # exercise the production validators, immutable IDs and legacy refusal.
+    echo synthetic-image-readiness-verify >> "$TEST_CALLS" ;;
+  *) exit 1 ;;
+esac
 SH
 cat > "$test_dir/bin/tar" <<'SH'
 #!/usr/bin/env bash
@@ -55,7 +65,7 @@ case " $* " in
     ;;
   *' image inspect '*)
     if [ "$TEST_IMAGES" = all ]; then exit 0; fi
-    if [ "$TEST_IMAGES" = partial ] && [[ "$*" = *'bondbuddy-m1-api:'* ]]; then exit 0; fi
+    if [ "$TEST_IMAGES" = partial ] && [[ "$*" != *'bondbuddy-m1-egress:'* ]]; then exit 0; fi
     if [[ "$TEST_IMAGES" = vanish-* ]]; then
       count="$(cat "$TEST_INSPECT_COUNT")"
       count=$((count + 1))
@@ -79,6 +89,8 @@ case " $* " in
     printf '%s\n' "$*" >> "$TEST_CALLS"
     printf 'postgres\n'
     ;;
+  *' compose '*' ps -q '*) printf 'synthetic-container\n' ;;
+  *' inspect --format '*) printf '%s\n' "${TEST_IMAGE_REVISION:-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}" ;;
   *' compose '*|*' build '*|*' image rm '*)
     printf '%s\n' "$*" >> "$TEST_CALLS"
     ;;
@@ -97,6 +109,8 @@ export TEST_ROOT="$test_dir" TEST_CALLS="$test_dir/calls" TEST_INSPECT_COUNT="$t
 export BB_ENV_FILE="$test_dir/deploy/m1/.env" BB_STATE_DIR="$test_dir/state"
 export BB_RELEASE_QUALITY_RECEIPT="$test_dir/synthetic-receipt.json"
 printf '{}\n' > "$BB_RELEASE_QUALITY_RECEIPT"
+export BB_RELEASE_SMOKE_REPORT="$test_dir/synthetic-smoke-report.json"
+printf '{}\n' > "$BB_RELEASE_SMOKE_REPORT"
 export PATH="$test_dir/bin:$PATH" TEST_ROOT_MODE=valid TEST_DF_MODE=valid
 unset DOCKER_HOST DOCKER_CONTEXT
 
@@ -113,9 +127,9 @@ run_case() {
     [ "$(cat "$test_dir/state/previous")" = old-release ] || exit 1
     if [ "$expected" = reject_after_archive ]; then
       grep -Eq '^archive$' "$TEST_CALLS"
-      forbidden='build|compose|backup|image rm|smoke'
+      forbidden='build|compose|backup|image rm|^smoke$'
     else
-      forbidden='archive|tar|build|compose|backup|image rm|smoke'
+      forbidden='archive|tar|build|compose|backup|image rm|^smoke$'
     fi
     if grep -Eq "$forbidden" "$TEST_CALLS"; then
       echo "$label: side effect before rejection" >&2; exit 1
@@ -138,17 +152,28 @@ unset BB_RELEASE_QUALITY_RECEIPT
 run_case 'missing quality evidence rejects before release effects' reject
 grep -Eq 'BB_RELEASE_QUALITY_RECEIPT' "$test_dir/error"
 export BB_RELEASE_QUALITY_RECEIPT="$saved_receipt"
+TEST_SMOKE_MODE=reject run_case 'smoke failure rejects before Docker, archive or state switch' reject
+grep -Eq '^release-smoke-verify$' "$TEST_CALLS"
+if grep -Eq '^df$|compose|build|archive' "$TEST_CALLS"; then echo 'smoke failure caused release effects' >&2; exit 1; fi
+saved_report="$BB_RELEASE_SMOKE_REPORT"
+unset BB_RELEASE_SMOKE_REPORT
+run_case 'missing smoke evidence rejects before release effects' reject
+grep -Eq 'BB_RELEASE_SMOKE_REPORT' "$test_dir/error"
+export BB_RELEASE_SMOKE_REPORT="$saved_report"
 printf 'BB_PROFILE=prod\nBB_HTTP_PORT=18090\nBB_DEPLOYMENT_TIER=production\nBB_NON_PRODUCTION_TEST_CHANNEL=enabled\n' > "$test_dir/deploy/m1/.env"
 run_case 'production rejects enabled test channel before archive' reject
 grep -Eq 'requires BB_DEPLOYMENT_TIER=preprod' "$test_dir/error"
 printf 'BB_PROFILE=prod\nBB_HTTP_PORT=18090\nBB_DEPLOYMENT_TIER=production\nBB_NON_PRODUCTION_TEST_CHANNEL=disabled\n' > "$test_dir/deploy/m1/.env"
-run_case 'local build rejects at 2.5 GiB' reject
+run_case 'auxiliary egress build rejects at 2.5 GiB' reject
 grep -Eq '2684354560 bytes available; requires 4294967296 bytes.*local Docker build' "$test_dir/error"
 export TEST_FREE_BYTES=4294967296
-run_case 'local build passes at 4 GiB' pass
+run_case 'auxiliary egress build passes at 4 GiB' pass
 grep -Eq 'build' "$TEST_CALLS"
 export TEST_IMAGES=all TEST_FREE_BYTES=2684354560
 run_case 'four preloaded images pass at 2.5 GiB' pass
+quality_hash="$(sha256sum "$BB_RELEASE_QUALITY_RECEIPT" | awk '{print $1}')"
+smoke_hash="$(sha256sum "$BB_RELEASE_SMOKE_REPORT" | awk '{print $1}')"
+grep -Eq "quality_sha256=$quality_hash .*smoke_sha256=$smoke_hash|quality_sha256=$quality_hash smoke_sha256=$smoke_hash" "$test_dir/state/releases.log"
 TEST_IMAGE_REVISION=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb run_case 'preloaded image with wrong revision rejects' reject_after_archive
 if grep -Eq 'build' "$TEST_CALLS"; then echo 'unexpected build with preloaded images' >&2; exit 1; fi
 export TEST_FREE_BYTES=2684354559
@@ -171,8 +196,8 @@ run_case 'remote Docker endpoint rejects' reject
 grep -Eq 'not a local Unix socket' "$test_dir/error"
 unset DOCKER_HOST
 export TEST_IMAGES=vanish-api TEST_FREE_BYTES=2684354560
-run_case 'preloaded api disappears before build' reject_after_archive
-grep -Eq 'requires 4294967296 bytes.*api image missing' "$test_dir/error"
+run_case 'preloaded api disappears and cannot be rebuilt' reject_after_archive
+grep -Eq 'tested api image disappeared' "$test_dir/error"
 export TEST_IMAGES=vanish-egress
 run_case 'preloaded egress disappears before build' reject_after_archive
 grep -Eq 'requires 4294967296 bytes.*egress image missing' "$test_dir/error"

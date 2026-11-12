@@ -1,3 +1,4 @@
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun, syntheticAuthoringBlobs } from './test-authoring-source.js';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {test} from 'node:test';
@@ -12,7 +13,7 @@ test('contract-valid revision beyond PostgreSQL integer range has owned atomic r
   const first=`revision-${randomUUID()}`,second=`revision-${randomUUID()}`;
   const stagedOwner=`revision-${randomUUID()}`,queuedOwner=`revision-${randomUUID()}`,rollbackOwner=`revision-${randomUUID()}`;
   let actor:string|null=first,csrf=true;
-  const settings={pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>actor?{userId:actor,csrfVerified:csrf}:null};
+  const settings={pool,blobs:syntheticAuthoringBlobs(),allowedOrigin:'http://bondbuddy.test',principal:async()=>actor?{userId:actor,csrfVerified:csrf}:null};
   const disabled=createServer(settings);
   const staged=createServer({...settings,enableRunStaging:true});
   const queued=createServer({...settings,enableSyntheticQueue:true});
@@ -81,10 +82,11 @@ test('contract-valid revision beyond PostgreSQL integer range has owned atomic r
     assert.equal((await execute(disabled,{...payload,execution_request_id:normalKey,input_revision:1})).statusCode,501);
     const normalConflict=await execute(disabled,{...payload,execution_request_id:normalKey});
     assert.equal(normalConflict.statusCode,409,normalConflict.body);
-    const locked=await send(disabled,`/api/v1/projects/${project}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[]});
+    const locked=await lockSyntheticAuthoringInput(disabled,project);
     assert.equal(locked.statusCode,201,locked.body);
+    const quoteId=await quoteSyntheticAuthoringRun(staged,pool,first,project,locked.json());
     const runKey='run-then-wide';
-    const run=await execute(staged,{...payload,execution_request_id:runKey,input_revision:1,input_hash:locked.json().input_hash});
+    const run=await execute(staged,{...payload,execution_request_id:runKey,input_revision:1,input_hash:locked.json().input_hash,quote_id:quoteId});
     assert.equal(run.statusCode,202,run.body);
     const runConflict=await execute(staged,{...payload,execution_request_id:runKey});
     assert.equal(runConflict.statusCode,409,runConflict.body);

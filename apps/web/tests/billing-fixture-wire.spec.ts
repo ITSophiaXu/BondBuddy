@@ -1,7 +1,7 @@
 import {test,expect,type Route,type Request} from '@playwright/test';
 import {fixtureBody,fixtureRequest} from './billing-fixture-wire';
 
-const request=(path:string,body?:unknown)=>({method:()=>body===undefined?'GET':'POST',url:()=>`http://fixture.invalid/api/v1${path}`,postDataJSON:()=>body}) as Request;
+const request=(path:string,body?:unknown)=>({method:()=>body===undefined?'GET':'POST',url:()=>`http://fixture.invalid/api/v1${path}`,headers:()=>({}),postDataJSON:()=>body}) as Request;
 test('fixture responses encode registered money paths and retain precise existing strings and business numbers',()=>{
   const route={request:()=>request('/credits/balance')} as Route;
   expect(fixtureBody(route,{available:'9007199254740993',frozen:0,revision:7})).toEqual({available:'9007199254740993',frozen:'0',revision:7});

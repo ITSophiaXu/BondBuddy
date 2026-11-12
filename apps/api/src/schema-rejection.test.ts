@@ -1,3 +1,4 @@
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun, syntheticAuthoringBlobs } from './test-authoring-source.js';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {test} from 'node:test';
@@ -13,11 +14,12 @@ test('authenticated schema rejections retain bounded owned evidence and atomic o
   const pool=new Pool({connectionString:connection});
   const first=`schema-${randomUUID()}`,second=`schema-${randomUUID()}`;
   let actor:string|null=first;
-  const app=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>actor?{userId:actor,csrfVerified:true}:null});
+  const blobs=syntheticAuthoringBlobs();
+  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>actor?{userId:actor,csrfVerified:true}:null});
   const send=(url:string,payload:unknown)=>app.inject({method:'POST',url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
   try {
     const project=(await send('/api/v1/projects',{name:'Synthetic schema evidence',kind:'update',issuer_name:null,market:null,offering:null})).json().project_id;
-    const input=(await send(`/api/v1/projects/${project}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[]})).json();
+    const input=(await lockSyntheticAuthoringInput(app,project)).json();
     const invalid=await send(`/api/v1/projects/${project}/preflight`,{input_revision:1,input_hash:'Cookie fake-secret'});
     assert.equal(invalid.statusCode,422,invalid.body);
     assert.equal(invalid.json().code,'VALIDATION_FAILED');
@@ -41,9 +43,10 @@ test('authenticated schema rejections retain bounded owned evidence and atomic o
     assert.equal(conflict.json().code,'IDEMPOTENCY_CONFLICT');
     const valid=await send('/api/v1/runs/execute',{...bad,input_hash:input.input_hash,extra:undefined});
     assert.equal(valid.statusCode,409,valid.body);
-    const staged=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:first,csrfVerified:true}),enableRunStaging:true});
+    const staged=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:first,csrfVerified:true}),enableRunStaging:true});
     try {
-      const runRequest={...bad,execution_request_id:uid(),input_hash:input.input_hash,extra:undefined};
+      const quoteId=await quoteSyntheticAuthoringRun(staged,pool,first,project,input);
+      const runRequest={...bad,execution_request_id:uid(),input_hash:input.input_hash,extra:undefined,quote_id:quoteId};
       const created=await staged.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin:'http://bondbuddy.test'},payload:runRequest});
       const replay=await staged.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin:'http://bondbuddy.test'},payload:runRequest});
       assert.equal(created.statusCode,202,created.body);assert.equal(replay.statusCode,202,replay.body);
@@ -76,7 +79,7 @@ test('authenticated schema rejections retain bounded owned evidence and atomic o
     assert.equal(timeline.json().attempts.length,0);assert.equal(timeline.json().consumption.all_attempts.input_tokens,null);
     const metrics=await app.inject({method:'GET',url:`/api/v1/admin/metrics?user_id=${first}&project_id=${project}`});
     assert.equal(metrics.statusCode,200,metrics.body);
-    assert.equal(metrics.json().jobs.rejected,4);assert.equal(metrics.json().operations.rejected,9);
+    assert.equal(metrics.json().jobs.rejected,'4');assert.equal(metrics.json().operations.rejected,'9');
     actor=first;
     const widePreflight=await send(`/api/v1/projects/${project}/preflight`,{input_revision:2147483648,input_hash:'bad'});
     assert.equal(widePreflight.statusCode,422,widePreflight.body);

@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { delimiter, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { hasSuccessfulDeployment } from './release-smoke/verify.mjs';
 
 export const POLICY = 'prospectus-quality-v1';
 export const REQUIRED_CHECKS = Object.freeze(['build', 'contracts', 'gate-regressions', 'database-migrations', 'api-source-selection', 'browser-input-chain', 'worker-authoring', 'document-regressions', 'deploy-regressions', 'real-model-acceptance']);
@@ -58,13 +59,13 @@ export function verifyReceipt(receipt, expected, now = Date.now(), allowExpired 
   validateAcceptanceSummary(receipt.checks.find(check => check.id === 'real-model-acceptance')?.summary, expected);
   return receipt;
 }
-export function verifyRollbackReceipt(rawReceipt, expected, releasesLog, now = Date.now()) {
+export function verifyRollbackReceipt(rawReceipt, expected, releasesLog, now = Date.now(), role) {
   const receipt = verifyReceipt(JSON.parse(rawReceipt), expected, now, true);
   const digest = createHash('sha256').update(rawReceipt).digest('hex');
   // Only an identical previously deployed receipt may waive freshness. A new SHA
   // or newly fabricated receipt cannot turn rollback into the normal release path.
-  const entry = new RegExp(`^\\S+\\tdeploy\\t${receipt.commit.slice(0, 12)} commit=${receipt.commit} quality_sha256=${digest}(?: |$)`);
-  if (!releasesLog.split(/\r?\n/).some(line => entry.test(line))) throw new Error('Rollback requires the original passing receipt of a successfully deployed commit');
+  if (!hasSuccessfulDeployment(releasesLog, expected, digest, 'quality_sha256', role))
+    throw new Error('Rollback requires the original passing receipt of a successfully deployed commit and role');
   return receipt;
 }
 function cleanTree() {
@@ -108,8 +109,12 @@ function run(receiptPath, release = true) {
   };
   check('build', 'npm', ['run', 'build']);
   check('contracts', 'npm', ['run', 'check:contracts']);
-  check('gate-regressions', process.execPath, ['--test', '--test-reporter=tap', 'scripts/prospectus-quality-gate.test.mjs',
-    'scripts/verify-prospectus-acceptance.test.mjs', 'scripts/publish-prospectus-quality.test.mjs', 'scripts/prospectus-input-browser.test.mjs',
+  check('gate-regressions', process.execPath, ['--test', '--test-concurrency=1', '--test-reporter=tap', 'scripts/prospectus-quality-gate.test.mjs',
+    'scripts/release-smoke/verify.test.mjs', 'scripts/release-smoke/quality-role.test.mjs',
+    'deploy/m1/scripts/release-evidence.test.mjs',
+    'deploy/m1/scripts/maintenance-version.test.mjs',
+    'deploy/m1/scripts/role-source-evidence.test.mjs',
+    'scripts/verify-prospectus-acceptance.test.mjs', 'scripts/verify-prospectus-expanded-amounts.test.mjs', 'scripts/verify-prospectus-pagination.test.mjs', 'scripts/publish-prospectus-quality.test.mjs', 'scripts/prospectus-input-browser.test.mjs',
     'deploy/m1/scripts/codex-bwrap.test.mjs'], parseTap);
   check('database-migrations', process.execPath, ['db/migrate.mjs']);
   check('api-source-selection', process.execPath, ['--test', '--test-concurrency=1', '--test-reporter=tap',
@@ -151,16 +156,16 @@ function main() {
   const [mode, ...args] = process.argv.slice(2);
   if (mode === 'run' && args.length <= 1) return run(resolve(args[0] || '.local/prospectus-quality.json'));
   if (mode === 'validate' && args.length === 0) return run(resolve('.local/prospectus-quality.json'), false);
-  if ((mode === 'verify' && args.length === 2) || (mode === 'verify-rollback' && args.length === 3)) {
-    const [sha, filename, releasesLog] = args;
+  if ((mode === 'verify' && args.length === 2) || (mode === 'verify-rollback' && (args.length === 3 || args.length === 4))) {
+    const [sha, filename, releasesLog, role] = args;
     if (!existsSync(filename)) throw new Error('Quality receipt is required before building, exporting, deploying or rolling back');
     const commit = git(['rev-parse', '--verify', `${sha}^{commit}`]);
     const raw = readFileSync(filename, 'utf8'), expected = { commit, tree: git(['rev-parse', `${commit}^{tree}`]) };
-    if (mode === 'verify-rollback') verifyRollbackReceipt(raw, expected, readFileSync(releasesLog, 'utf8'));
+    if (mode === 'verify-rollback') verifyRollbackReceipt(raw, expected, readFileSync(releasesLog, 'utf8'), Date.now(), role);
     else verifyReceipt(JSON.parse(raw), expected);
     process.stdout.write(`Verified complete quality evidence for ${commit}\n`); return;
   }
-  throw new Error('Usage: node scripts/prospectus-quality-gate.mjs run [receipt.json] | validate | verify <commit> <receipt.json> | verify-rollback <commit> <receipt.json> <releases.log>');
+  throw new Error('Usage: node scripts/prospectus-quality-gate.mjs run [receipt.json] | validate | verify <commit> <receipt.json> | verify-rollback <commit> <receipt.json> <releases.log> [main|execution]');
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { main(); } catch (error) { console.error(`Release quality gate: ${error.message}`); process.exitCode = 1; }
