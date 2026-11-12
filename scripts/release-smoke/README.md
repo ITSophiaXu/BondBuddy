@@ -37,6 +37,18 @@ Windows 通过已有 Python 3.12+ 标准库的 Unicode 路径和 `tarfile.data_f
 
 默认构建本地 Docker 引擎的原生架构；本机 Apple Silicon 为 `linux/arm64`，常见 Windows x64 机器为 `linux/amd64`。需要指定架构时用本机 JSON 配置 `"platform": "linux/amd64"`，或设置 `BB_RELEASE_PLATFORM`；非原生架构需要引擎提供对应仿真。报告记录实际镜像架构，不把一种架构的结果冒充另一种架构已经验证。
 
+依赖网络受限时，可显式设置 `BB_RELEASE_NODE_IMAGE` 为已经存在的本地Node依赖基底，使用正式Dockerfile的 `NODE_IMAGE` 参数；报告记录镜像引用及ID，并在构建前后核对ID未变。该镜像应来自可信来源，只配置无认证的包源，不包含凭据，不关闭TLS。脚本不自动寻找或切换镜像，也不修改主机网络。
+
+若该镜像含已核验的官方同版本Codex包，可同时设置 `BB_RELEASE_CODEX_TARBALL_IN_NODE_IMAGE=/opt/.../openai-codex-版本-架构.tgz`。脚本仅在固定候选的下载语句唯一匹配且SHA512/CLI版本检查仍存在时，生成临时Dockerfile，把 `npm pack` 改为复制该包；原完整性和版本检查继续执行，原Dockerfile与源码归档不改写，专用Dockerfile忽略规则保留。报告记录缓存路径及原/实际Dockerfile的SHA256，不能将这次依赖适配构建称为默认Dockerfile成功。
+
+Python包源可显式设置 `BB_RELEASE_PIP_INDEX_URL` 为无认证、无查询参数的HTTPS地址，通过正式Dockerfile已有的 `PIP_INDEX_URL` 参数传入并记录。以上三个选项仅通过环境变量启用，不存储令牌、不安装主机软件，未配置时保持默认获取路径。一次本地示例：
+
+```powershell
+$env:BB_RELEASE_NODE_IMAGE = 'existing-local-node:tag'
+$env:BB_RELEASE_CODEX_TARBALL_IN_NODE_IMAGE = '/opt/cache/openai-codex-0.167.0-linux-x64.tgz'
+$env:BB_RELEASE_PIP_INDEX_URL = 'https://your-approved-feed.example/pypi/simple/'
+```
+
 默认模型沿用现有适配器 `copilot_enterprise / gpt-6-sol / max`，凭据默认读取当前用户的 `~/.local/share/copilot-api/github_token`，可用 `copilotOAuthFile` 或 `BB_RELEASE_COPILOT_OAUTH_FILE` 指定已有 OAuth 文件。Windows 推荐明确配置实际文件路径，例如 `C:/Users/your-name/.bondbuddy-test/copilot-oauth`。这是 Copilot OAuth 文件，不是任意厂商 API key；测试人员应由项目负责人按现有安全方式取得可用凭据，不在聊天或命令行粘贴令牌。
 
 默认通过正式 credential helper 交换短期令牌，不要求安装本机 Copilot API 代理、不修改代理配置、不静默切换模型。凭据不进入镜像或 Git，运行目录受本机文件权限保护。模型调用会使用该账号的额度。
