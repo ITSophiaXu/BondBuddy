@@ -35,7 +35,7 @@ test('manual recovery: two real browser accounts bind an original channel, issue
     await page.reload();await expect(page.locator('#account-recovery')).toContainText('已绑定邮箱');
     await expect(page.locator('#recovery-support')).toHaveCount(0);
     await page.getByRole('button',{name:'退出',exact:true}).click();
-    await page.getByRole('link',{name:'忘记密码？联系客服找回',exact:true}).click();
+    await page.getByRole('link',{name:'忘记密码？查看找回方式',exact:true}).click();
     await page.getByLabel('账号用户名').fill(user.username);await page.getByRole('button',{name:'获取找回工单号'}).click();
     const ticket=await page.locator('#recovery-public-body code').innerText();
     await operator.getByLabel('记录类型').selectOption('ticket');await operator.getByLabel('绑定编号或工单号').fill(ticket);
