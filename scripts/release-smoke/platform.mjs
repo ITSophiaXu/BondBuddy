@@ -6,7 +6,9 @@ import {join,win32} from 'node:path';
 // Keep OS process-launch variables, but never inherit production application,
 // payment, model, database or remote Docker connection variables.
 export function hostEnvironment(source=process.env,home=homedir()){
- const allowed=['PATH','SystemRoot','WINDIR','COMSPEC','PATHEXT','USERPROFILE','HOMEDRIVE','HOMEPATH','LOCALAPPDATA','APPDATA','TEMP','TMP'];
+ // Docker Desktop locates system CLI plugins (buildx/compose) through
+ // ProgramFiles. PATH alone locates docker.exe, but not those plugins.
+ const allowed=['PATH','SystemRoot','WINDIR','COMSPEC','PATHEXT','USERPROFILE','HOMEDRIVE','HOMEPATH','LOCALAPPDATA','APPDATA','TEMP','TMP','ProgramFiles'];
  const result={HOME:home,DOCKER_BUILDKIT:'1'};
  for(const name of allowed){const key=Object.keys(source).find(k=>k.toLowerCase()===name.toLowerCase());if(key&&source[key])result[name]=source[key];}
  return result;
@@ -27,6 +29,23 @@ $ErrorActionPreference = 'Stop'
 $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
 $system = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')
 $directory = $env:BB_RELEASE_PRIVATE_KIND -eq 'directory'
+function Test-PrivateAcl($value) {
+  if (!$value.AreAccessRulesProtected -or $value.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -ne $user.Value) { return $false }
+  $rules = @($value.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]))
+  if ($rules.Count -ne 2) { return $false }
+  $inherit = [System.Security.AccessControl.InheritanceFlags]::None
+  if ($directory) { $inherit = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit }
+  foreach ($sid in @($user, $system)) {
+    $match = @($rules | Where-Object { $_.IdentityReference.Value -eq $sid.Value -and $_.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Allow -and $_.FileSystemRights -eq [System.Security.AccessControl.FileSystemRights]::FullControl -and $_.InheritanceFlags -eq $inherit -and $_.PropagationFlags -eq [System.Security.AccessControl.PropagationFlags]::None -and !$_.IsInherited })
+    if ($match.Count -ne 1) { return $false }
+  }
+  return $true
+}
+# Resume often reaches an already protected path. Re-applying a fresh security
+# descriptor can request Windows audit privileges even when no access changes.
+# Only an exact owner/access policy match permits this read-only fast path.
+if (Test-PrivateAcl (Get-Acl -LiteralPath $env:BB_RELEASE_PRIVATE_PATH)) { exit 0 }
+
 if ($directory) { $acl = [System.Security.AccessControl.DirectorySecurity]::new() }
 else { $acl = [System.Security.AccessControl.FileSecurity]::new() }
 $acl.SetOwner($user)
@@ -41,6 +60,7 @@ foreach ($sid in @($user, $system)) {
   $acl.AddAccessRule($rule)
 }
 Set-Acl -LiteralPath $env:BB_RELEASE_PRIVATE_PATH -AclObject $acl
+if (!(Test-PrivateAcl (Get-Acl -LiteralPath $env:BB_RELEASE_PRIVATE_PATH))) { throw "Private path access policy was not applied" }
 `;
 
 export function protectPrivatePath(path,kind,env){
