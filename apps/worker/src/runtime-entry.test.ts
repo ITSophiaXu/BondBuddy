@@ -111,7 +111,9 @@ test('synthetic #17 production entry: heartbeat, parse claim, capability_not_rea
     const currentPool = new Pool({ connectionString: connection });
     const currentApp = createServer({ ...settings, pool: currentPool });
     try {
-      const rejected = await currentApp.inject({ method: 'POST', url: '/api/v1/runs/execute', payload: request, headers: { origin: ORIGIN } });
+      // Rejection receipts are immutable, so the historical request keeps its original execution key.
+      const rejected = await currentApp.inject({ method: 'POST', url: '/api/v1/runs/execute',
+        payload: { ...request, execution_request_id: `current-entry-${randomUUID()}` }, headers: { origin: ORIGIN } });
       assert.equal(rejected.statusCode, 422, rejected.body);
       assert.equal(rejected.json().code, 'INPUT_REQUIRED');
       assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1', [projectId])).rows[0].n, 0);
