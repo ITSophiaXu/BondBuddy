@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { BROWSER_API_ORIGIN, BROWSER_DATABASE, BROWSER_ORIGIN, BROWSER_PROTOTYPE_ORIGIN, BROWSER_TERMS, browserEnvironment, browserHash, verifyBrowserPlan } from './browser-profiles.mjs';
 import { BROWSER_TOOLS_ROOT, browserToolsEnvironment, probeBrowserTools, verifyBrowserTools } from './browser-tools.mjs';
+import { startBrowserUploadConfirmation } from './browser-upload-confirmation.mjs';
 
 const here = fileURLToPath(import.meta.url);
 const source = (root, commit, path) => {
@@ -47,7 +48,9 @@ export async function startBrowserRuntime(root, items, inherited) {
   } catch (error) { failure = error; }
   const cleanup = async () => {
     if (child.connected) child.send({ type: 'stop' }); else child.kill('SIGTERM');
-    const result = await Promise.race([ended, new Promise(done => { const timer = setTimeout(() => done(null), 30_000); timer.unref(); })]);
+    // The upload consumer may drain its owned in-flight confirmation for up to
+    // 120 seconds. This cleanup grace does not change any test/batch timeout.
+    const result = await Promise.race([ended, new Promise(done => { const timer = setTimeout(() => done(null), 150_000); timer.unref(); })]);
     if (!result) { child.kill('SIGKILL'); await ended; throw new Error('Browser runtime cleanup timed out'); }
     assert.equal(result.code, 0, 'Browser runtime did not shut down cleanly'); assert.equal(final?.cleanup?.status, 'passed');
     return final;
@@ -78,7 +81,7 @@ async function serve() {
     plan_sha256: process.env.PR_GATE_BROWSER_PLAN_SHA256, profile_sha256: plan.profile_sha256, files: plan.files,
     environment, removed_environment_keys: removed, started_at: new Date().toISOString(), pid: process.pid, probes: {}, model_calls: 0,
     status: 'failed', cleanup: { status: 'pending' } };
-  let api, pool, vite, prototype, prototypeExit, stopping;
+  let api, pool, vite, prototype, prototypeExit, stopping, uploadConfirmation;
   const save = () => writeFileSync(join(plan.output_root, 'runtime.json'), JSON.stringify(evidence, null, 2) + '\n');
   const stop = async () => {
     if (stopping) return stopping;
@@ -86,11 +89,15 @@ async function serve() {
       const errors = [];
       if (evidence.status === 'prepared') {
         evidence.services_alive_before_cleanup = { web: vite?.httpServer?.listening === true,
-          ...(plan.needs.api ? { api: api?.server?.listening === true } : {}),
+          ...(plan.needs.api ? { api: api?.server?.listening === true, upload_confirmation: uploadConfirmation?.isAlive() === true } : {}),
           ...(plan.needs.prototype ? { prototype: prototype?.exitCode === null && prototype?.signalCode === null } : {}) };
         if (Object.values(evidence.services_alive_before_cleanup).some(value => value !== true)) errors.push('A prepared browser service exited before batch cleanup');
       }
-      for (const close of [async () => { if (prototype) { prototype.kill('SIGTERM'); const result = await Promise.race([prototypeExit, new Promise(done => { const t = setTimeout(() => done(null), 10_000); t.unref(); })]); if (!result) { prototype.kill('SIGKILL'); await prototypeExit; throw Error('Prototype shutdown timed out'); } } },
+      for (const close of [async () => { if (uploadConfirmation) {
+          try { evidence.upload_confirmation = await uploadConfirmation.cleanup(); }
+          catch (error) { evidence.upload_confirmation = error.uploadConfirmationEvidence ?? uploadConfirmation.evidence; throw error; }
+        } },
+        async () => { if (prototype) { prototype.kill('SIGTERM'); const result = await Promise.race([prototypeExit, new Promise(done => { const t = setTimeout(() => done(null), 10_000); t.unref(); })]); if (!result) { prototype.kill('SIGKILL'); await prototypeExit; throw Error('Prototype shutdown timed out'); } } },
         async () => { await vite?.close(); }, async () => { await api?.close(); }, async () => { await pool?.end(); }]) {
         try { await close(); } catch (error) { errors.push(error.message); }
       }
@@ -122,6 +129,8 @@ async function serve() {
       await api.listen({ host: '127.0.0.1', port: 3000 });
       const health = await fetch(BROWSER_API_ORIGIN + '/health'); assert.equal(health.status, 200);
       evidence.probes.api = { status: 'passed', origin: BROWSER_API_ORIGIN, health_sha256: browserHash(await health.text()), runtime_enabled: false, synthetic_queue: false };
+      try { uploadConfirmation = await startBrowserUploadConfirmation({ root, plan }); evidence.upload_confirmation = uploadConfirmation.evidence; }
+      catch (error) { evidence.upload_confirmation = error.uploadConfirmationEvidence; throw error; }
     }
     const { createServer } = await import('vite');
     vite = await createServer({ root: join(root, 'apps/web'), configFile: join(root, 'apps/web/vite.config.ts'), server: { host: '127.0.0.1', port: 5173, strictPort: true } }); await vite.listen();
