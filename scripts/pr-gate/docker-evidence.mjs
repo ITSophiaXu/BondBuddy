@@ -30,13 +30,16 @@ export function validateDockerConfig(config, testId) {
 export function verifyDockerTestEvidence(evidence, entry, runtime) {
   const config = validateDockerConfig(evidence.configuration, entry.testId);
   assert.equal(config.profile_id, entry.profileId); assert.equal(config.run_id, runtime.run_id);
+  assert.equal(config.prefix, 'bb-pr-gate-docker-' + runtime.run_id + '-' + entry.sequence);
   for (const key of ['commit','tree']) assert.equal(config[key], runtime[key]);
   assert.equal(config.image, runtime.image_id); assert.equal(evidence.source_bundle_sha256, runtime.bundle_sha256);
   assert.equal(evidence.source_sha256, entry.sourceSha256);
   assert.equal(evidence.source_before?.raw_bytes_verified, true); assert.ok(evidence.source_before.files > 0);
+  assert.match(evidence.source_before.manifest_sha256, /^[a-f0-9]{64}$/);
   assert.deepEqual(evidence.source_before, evidence.source_after);
   const original = evidence.original_command;
   assert.ok(original?.executable && original.cwd); assert.equal(original.output_limit_failed, false);
+  assert.equal(original.cwd, evidence.source_root);
   assert.deepEqual(original.args, ['--test','--test-reporter=tap',entry.runPath]);
   assert.equal(original.timeout_ms, 300000); assert.equal(evidence.models, 0);
   assert.equal(evidence.engine_endpoint?.startsWith('unix://') || evidence.engine_endpoint?.startsWith('npipe://'), true);

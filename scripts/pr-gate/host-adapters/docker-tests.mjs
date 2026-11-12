@@ -31,7 +31,7 @@ export async function executeDockerTests(options) {
   const env = { ...billingHostEnvironment(), TEMP: scratch, TMP: scratch, TMPDIR: scratch };
   const prefix = 'bb-pr-gate-docker-' + runId + '-' + entry.sequence;
   const evidence = { ...candidate, run_id:runId, test_id:entry.testId, profile_id:entry.profileId, started_at:new Date().toISOString(),
-    commands:[], resources:[], models:0, source_bundle_sha256:runtime.evidence.bundle_sha256, cleanup:{status:'pending'} };
+    commands:[], resources:[], models:0, source_root:source, source_bundle_sha256:runtime.evidence.bundle_sha256, cleanup:{status:'pending'} };
   const save = () => writeFileSync(join(out,'evidence.json'), JSON.stringify(evidence,null,2)+'\n'); save();
   let commandIndex = 0;
   const command = async (label, executable, args, { timeout=30000, cleanup=false, commandEnv=env }={}) => {

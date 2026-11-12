@@ -9,7 +9,7 @@ export function syntheticDockerEvidence(candidate, entry, runId) {
       host_connection:'synthetic;BlobEndpoint=http://127.0.0.1:32100/devstoreaccount1;',
       container_connection:'synthetic;BlobEndpoint=http://'+prefix+'-azurite:10000/devstoreaccount1;'}:{})};
   return {configuration,source_bundle_sha256:'e'.repeat(64),source_sha256:entry.sourceSha256,
-    source_before:{raw_bytes_verified:true,files:10},source_after:{raw_bytes_verified:true,files:10},models:0,
+    source_before:{raw_bytes_verified:true,files:10,manifest_sha256:'d'.repeat(64)},source_after:{raw_bytes_verified:true,files:10,manifest_sha256:'d'.repeat(64)},models:0,source_root:resolve('synthetic-source'),
     engine_endpoint:'unix:///synthetic/docker.sock',original_command:{executable:'/synthetic/node',cwd:resolve('synthetic-source'),
       args:['--test','--test-reporter=tap',entry.runPath],timeout_ms:300000,output_limit_failed:false},
     cases:(backup?[1,0,0,0,0]:[0,1,1,1]).map((status,index)=>({index:index+1,name:prefix+'-case-'+(index+1),status,signal:null,error:null,

@@ -23,7 +23,8 @@ test('Docker receipts bind every original case to isolation, candidate, images a
     for(const mutate of [v=>{v.cases.pop();},v=>{v.cases[0].status=0===v.cases[0].status?1:0;},v=>{v.cases[0].cleanup.status='failed';},
       v=>{v.cases[0].isolation.network='host';},v=>{v.cases[0].isolation.mounts.push({destination:'/var/run/docker.sock'});},
       v=>{v.cases[0].isolation.rootfs_readonly=false;},v=>{v.configuration.image='worker:latest';},v=>{v.configuration.run_id+='-old';},
-      v=>{v.source_sha256='0'.repeat(64);},v=>{v.source_after.files++;},v=>{v.original_command.args.push('--test-name-pattern=partial');},
+      v=>{v.source_sha256='0'.repeat(64);},v=>{v.source_after.files++;},v=>{delete v.source_before.manifest_sha256;},v=>{v.configuration.prefix+='-other';},
+      v=>{v.source_root+='-other';},v=>{v.original_command.args.push('--test-name-pattern=partial');},
       v=>{v.original_command.timeout_ms++;},v=>{v.engine_endpoint='tcp://remote:2375';}]){
       const value=structuredClone(evidence);mutate(value);assert.throws(()=>verifyDockerTestEvidence(value,entry,dispatch.runtime));
     }
