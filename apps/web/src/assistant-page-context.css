@@ -1,0 +1,12 @@
+/* #962: only the assistant's existing context and composer surfaces. */
+.bb-assistant .ba-page-handoff{margin-top:9px;padding:10px 12px;border:1px solid #dbe4d6;border-radius:9px;background:#f6f8f2;overflow-wrap:anywhere;font-size:12px;line-height:1.6}
+.bb-assistant .ba-page-handoff p{margin:0 0 3px}
+.bb-assistant .ba-page-handoff strong{font-weight:600}
+.bb-assistant .ba-page-handoff button{margin:7px 0 5px;max-width:100%;text-align:left;white-space:normal;font-size:12px;color:var(--ba-green)}
+.bb-assistant .ba-page-handoff small{display:block;font-size:11px;color:#657466}
+.bb-assistant .ba-page-context-note{margin:7px 0 0;font-size:11px;color:#657466}
+.bb-assistant .ba-page-context-note button{padding:3px 5px;margin-left:4px;font-size:11px}
+.bb-assistant .ba-send-context{display:grid;gap:2px;margin:4px 0 7px;color:#647366;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+.bb-assistant .ba-send-context strong{font-weight:600;color:var(--ba-ink)}
+.bb-assistant .ba-context:has(.ba-page-handoff){max-height:40dvh;overflow:auto;overscroll-behavior:contain}
+@media(max-width:960px){.bb-assistant .ba-page-handoff button{min-height:40px}.bb-assistant .ba-page-context-note button{min-height:36px}}

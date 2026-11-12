@@ -1,4 +1,5 @@
 import {expect,test,type Page,type Route} from '@playwright/test';
+import {fixtureJson,serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {createHash} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
 import {FormatRegistry,type TSchema} from '@sinclair/typebox';
@@ -20,7 +21,7 @@ const artifactId=(version:number)=>`result-handoff-artifact-${version}`;
 const marker=(version:number)=>`合成原任务第${version}轮专属内容`;
 FormatRegistry.Set('date-time',value=>/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value));
 function check(schema:TSchema,value:unknown){expect(Value.Check(schema,value),JSON.stringify([...Value.Errors(schema,value)])).toBe(true);}
-const json=(route:Route,body:unknown,status=200)=>route.fulfill({status,json:body});
+const json=(route:Route,body:unknown,status=200)=>route.fulfill({status,contentType:'application/json',body:fixtureJson(route,body)});
 type Operation=AssistantCard['operation'];
 type Call={method:string;path:string;search:string};
 
@@ -109,6 +110,7 @@ function validate(s:State){
 async function install(page:Page,s:State){
   validate(s);page.on('pageerror',error=>s.errors.push(error.message));
   await page.route('**/api/v1/**',async route=>{
+    if(await serveDisabledBillingCatalog(route))return;
     const request=route.request(),url=new URL(request.url()),path=url.pathname.slice('/api/v1'.length),method=request.method();s.calls.push({method,path,search:url.search});
     if(method==='GET'){
       if(path==='/me')return json(route,{user_id:ids.owner,session_status:'active'});

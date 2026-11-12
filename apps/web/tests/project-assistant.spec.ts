@@ -145,7 +145,7 @@ test('editable task card uses quarters and optional requirements; insufficient i
  await expect.poll(()=>s.w.view.assistant.action).toMatchObject({requirements:'只改偿债能力文字，不改数字',fields:{issuer_name:'合成发行人'}});
 });
 test('desktop, focus and narrow assistant stay within viewport and preserve normal page layout',async({page})=>{
- const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await setup(page);await page.getByRole('button',{name:'打开 BondBuddy'}).click();
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await setup(page);await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('[data-composer]')).toBeEnabled();
  for(const width of [1440,1024,390,320]){await page.setViewportSize({width,height:960});await expect(page.locator('.ba-panel')).toBeVisible();const box=await page.locator('.ba-panel').boundingBox();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(width);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   if(process.env.ASSISTANT_EVIDENCE){const dir=evidenceDir;await mkdir(dir,{recursive:true});await page.mouse.move(0,0);await page.screenshot({path:resolve(dir,`implementation-${width}.png`)});if(width===1440)await page.locator('.ba-panel').screenshot({path:resolve(dir,'implementation-panel.png')});}}
  await page.setViewportSize({width:1440,height:960});const normal=(await page.locator('.ba-panel').boundingBox())!.width;
