@@ -32,7 +32,7 @@ test('generation mobile: a selected-document entry exposes its row, template and
   expect(await selected(page)).toEqual(['credit']);await expect(documentChoice(page,'credit')).toHaveValue('credit');
   expect(await isOpen(requirements(page))).toBe(false);expect(await isOpen(support(page))).toBe(false);
   await expect(page.locator('#pf-prepared')).toHaveText('1 / 1 已准备');await expect(page.locator('#pf-price')).toContainText(cost(1));
-  await expect(page.locator('#pf-generate')).toHaveCount(1);await expect(page.getByRole('button',{name:'核对文件包与费用',exact:true})).toHaveCount(1);await expect(page.locator('#pf-generate')).toBeEnabled();
+  await expect(page.locator('#pf-generate')).toHaveCount(1);await expect(page.getByRole('button',{name:'开始生成文件包',exact:true})).toHaveCount(1);await expect(page.locator('#pf-generate')).toBeEnabled();
   await precedes(page.locator('.pf-file-builder'),requirements(page));await expect(page.locator('#pf-generate')).toBeVisible();await noOverflow(page);
   expect(writes(s).map(call=>call.path)).toEqual([`/projects/${ids.api}/project-files/source`]);expect(s.workspaces.get(ids.api)!.workspace.drafts).toEqual(before);
   await page.locator('#pf-generate').click();await expect(page.locator('#pf-confirm-generation')).toBeVisible();await expect(page.locator('.pf-confirm-files li')).toHaveCount(1);await expect(page.locator('.pf-confirm-files')).toContainText(label('credit'));
