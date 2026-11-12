@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { emptyUpdateDetails, reportingWindow } from '@bondbuddy/contracts';
@@ -49,7 +49,7 @@ export function syntheticAuthoringBlobs(): PrivateBlobs {
 }
 
 /** Prepare current mandatory source/input prerequisites; create no run or payment. */
-export async function lockSyntheticAuthoringInput(app: FastifyInstance, project: string, requestHeaders: Record<string,string> = {}) {
+export async function lockSyntheticAuthoringInput(app: FastifyInstance, project: string, requestHeaders: Record<string,string> = {}): Promise<LightMyRequestResponse> {
   const headers={origin:'http://bondbuddy.test',...requestHeaders},path='/api/v1/projects/'+project;
   const current=await app.inject({method:'GET',url:path,headers});
   assert.equal(current.statusCode,200,current.body);
