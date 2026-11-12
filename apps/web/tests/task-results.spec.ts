@@ -1,7 +1,8 @@
 import {test,expect} from '@playwright/test';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join,relative,resolve} from 'node:path';
-import {artifactId,assertFixture,fixture,ids,install,mutations,runId,task} from './parallel-projects-fixtures';
+import {artifactId,assertFixture,fixture,ids,install,mutations,projectPage,runId,task} from './parallel-projects-fixtures';
+import {fixtureBody} from './billing-fixture-wire';
 
 test.afterEach(({page})=>assertFixture(page));
 const row=(page:import('@playwright/test').Page,id:string)=>page.locator(`[data-project-id="${id}"]`);
@@ -108,6 +109,49 @@ test('task and result actions remain visible without overflow on desktop, tablet
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
       if(output)await page.screenshot({path:join(output,`prototype-${width}.png`),fullPage:true});
     }
+  }
+  expect(mutations(state)).toEqual([]);
+});
+
+
+for(const withPrevious of [true,false])test('a failed latest task '+(withPrevious?'links the API-confirmed previous Word':'does not invent a missing previous Word'),async({page})=>{
+  const state=fixture(),failed=task('b',2,'failed'),previous=task('b',1);
+  state.tasks.set(ids.b,withPrevious?[failed,previous]:[failed]);
+  state.projects.find(project=>project.project_id===ids.b)!.latest_artifact=withPrevious?
+    {artifact_id:previous.artifact_id!,run_id:previous.run_id,version:1,created_at:previous.created_at}:null;
+  // A directly known task result keeps its destination even when an older Word exists.
+  state.projects.find(project=>project.project_id===ids.a)!.latest_artifact=
+    {artifact_id:artifactId('a',1),run_id:runId('a',1),version:1,created_at:task('a',1).created_at};
+  await install(page,state);
+  let listReads=0;
+  await page.route('**/api/v1/projects?*',async route=>{
+    expect(route.request().method()).toBe('GET');
+    const response=projectPage(state),listed=response.items.find(project=>project.project_id===ids.b)!;
+    // The real API counts only the latest task in each lane. Its recent_result
+    // includes failed terminal tasks; an older successful Word is independent.
+    Object.assign(listed.task_summary!,{attention:1,completed:0});
+    expect(listed.task_summary).toMatchObject({latest:{run_id:failed.run_id,state:'failed'},
+      recent_result:{run_id:failed.run_id,state:'failed'},completed:0});
+    listReads++;
+    await route.fulfill({status:200,json:fixtureBody(route,response)});
+  });
+  await page.goto('/#tasks');
+  const b=row(page,ids.b);
+  await expect(b.locator('.collection-recent').first()).toContainText('本次未完成');
+  await expect(b.getByRole('button',{name:'查看任务',exact:true})).toBeVisible();
+  await expect(row(page,ids.a).getByRole('link',{name:'查看结果',exact:true})).toHaveAttribute('href','#/artifacts/'+artifactId('a',43));
+  expect(listReads).toBeGreaterThan(0);
+  expect(state.taskReads).toEqual([]);
+  const result=b.getByRole('link',{name:'查看结果',exact:true});
+  if(withPrevious){
+    await expect(result).toHaveAttribute('href','#/artifacts/'+previous.artifact_id);
+    await expect(result).toHaveAttribute('title',/^此前完成的成果 · /);
+    await result.click();
+    await expect.poll(()=>state.artifactReads).toContain(previous.artifact_id!);
+  }else{
+    await expect(result).toHaveCount(0);
+    await expect(b.getByRole('button',{name:'暂无结果',exact:true})).toBeDisabled();
+    expect(state.artifactReads).toEqual([]);
   }
   expect(mutations(state)).toEqual([]);
 });
