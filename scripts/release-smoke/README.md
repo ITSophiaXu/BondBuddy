@@ -2,6 +2,8 @@
 
 `npm run test:release` 在独立的本地 Docker Compose 项目运行待发布版本，使用一个新建的 `release_test` 账号验证任丘九月募集书更新、东营复核、东营七题问答。先按顺序提交三个独立项目，再核验各自的持久任务和下载，后台可使用现有 worker 并发槽位。真实材料、网页、API、PostgreSQL、Azurite、worker、模型调用和浏览器下载都参与执行。不会修改生产环境或发送真实支付请求；初始测试积分明确为 synthetic。
 
+问答募集书上传会自动采用并关闭弹窗。脚本以项目当前稿、指定物料版本的 HTTP 200 持久记录、原文件名/大小/SHA-256 和“已纳入本轮材料”确认就绪，再刷新项目资料并重新加载页面核对相同版本；不等待已经消失的弹窗元素，也不以弹窗关闭作为成功。上传完成回执的原校验仍保留；恢复已就绪项目时只读核对来源，不重复上传。
+
 ## 运行
 
 需要 Node 22+、Git、Docker（Linux containers）、Compose、Buildx、Playwright 浏览器，以及可用于现有适配器的 Copilot 授权。Mac 可用 Docker Desktop / Colima，Windows 在 PowerShell 使用 Docker Desktop 的 WSL 2 Linux 后端；业务容器始终是 Linux。
