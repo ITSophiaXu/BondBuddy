@@ -1,3 +1,5 @@
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun } from './test-authoring-source.js';
+import type { TSchema } from '@sinclair/typebox';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { chmod, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
@@ -7,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Pool } from 'pg';
 import { Value } from '@sinclair/typebox/value';
-import { schemas } from '@bondbuddy/contracts';
+import { schemas, billingDtoSchema, Int64Schema } from '@bondbuddy/contracts';
 import { createServer } from './server.js';
 import { azureBlobs, digest, transaction, uid } from './data.js';
 import { emitInternal, internalEvent, observeUsage, recordStructuredError } from './observability.js';
@@ -21,6 +23,8 @@ const connection = await isolatedTestDatabase();
 const blobConnection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const skip = !connection || !blobConnection;
 const ORIGIN = 'http://bondbuddy.test';
+const timelineWireSchema = billingDtoSchema(schemas.AdminJobTimelineResponse, 'adminJobTimeline', Int64Schema) as TSchema;
+const metricsWireSchema = billingDtoSchema(schemas.AdminMetricsResponse, 'adminMetrics', Int64Schema) as TSchema;
 const SECRET_PROMPT = 'Synthetic prompt PLAINTEXT_MARKER_79. 验证码：482913.\nCookie: "bb_session=abc123secret"\napi_key="sk-synthetictestkey000000000000"\nAuthorization: "Bearer syntheticbearertoken"';
 const GLUED_QUOTED_SUFFIXES = [
   ...['secret', 'password', 'C_o_o_k_i_e', String.raw`Co\u006Fkie`].flatMap(key =>
@@ -53,8 +57,9 @@ async function fixture(pool: Pool) {
   async function runFor(owner: string, name: string) {
     const send = as(owner);
     const project = (await send('POST', '/api/v1/projects', { name, kind: 'update', issuer_name: null, market: null, offering: null })).json().project_id;
-    const input = (await send('POST', `/api/v1/projects/${project}/input-revisions`, { draft_revision: 1, material_versions: [], requirement_message_ids: [] })).json();
-    const created = await send('POST', '/api/v1/runs/execute', { execution_request_id: `exec-${uid()}`, project_id: project, input_revision: 1, input_hash: input.input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest', storage_origin: 'cloud', workspace_id: 'synthetic-workspace' });
+    const input = (await lockSyntheticAuthoringInput(app, project)).json();
+    const quoteId = await quoteSyntheticAuthoringRun(app, pool, owner, project, input);
+    const created = await send('POST', '/api/v1/runs/execute', { execution_request_id: `exec-${uid()}`, project_id: project, input_revision: 1, input_hash: input.input_hash, quote_id: quoteId, task_kind: 'update', input_manifest_ref: 'synthetic-manifest', storage_origin: 'cloud', workspace_id: 'synthetic-workspace' });
     assert.equal(created.statusCode, 202, created.body);
     const runId = created.json().run_id;
     // Take this run's lease directly: the global claim() would race other suites' leftover jobs.
@@ -1142,39 +1147,39 @@ test('#79 operator API: deny by default, filters, timeline, metrics, restricted 
     const timeline = await read('GET', `/api/v1/admin/jobs/${lease.jobId}/timeline`);
     assert.equal(timeline.statusCode, 200, timeline.body);
     const t = timeline.json();
-    assert.ok(Value.Check(schemas.AdminJobTimelineResponse, t));
+    assert.ok(Value.Check(timelineWireSchema, t));
     assert.equal(t.prompts[0].snapshot_id, snapshot);
     assert.equal(t.prompts[0].content_state, 'available');
     assert.equal(t.prompts[0].template_version, 'synthetic_template_1');
     assert.deepEqual(t.attempts.map((a: any) => [a.logical_call_id, a.attempt_no, a.status, a.usage_status]), [['draft-call', 1, 'failed', 'measured'], ['draft-call', 2, 'completed', 'measured'], ['qa-call', 1, 'pending_reconcile', 'pending']]);
-    assert.deepEqual(t.attempts[1].usage, { input_tokens: 200, output_tokens: 50, cached_input_tokens: 80, reasoning_tokens: 20 });
+    assert.deepEqual(t.attempts[1].usage, { input_tokens: '200', output_tokens: '50', cached_input_tokens: '80', reasoning_tokens: '20' });
     assert.deepEqual([t.errors[0].provider_status, t.errors[0].provider_error_type, t.errors[0].fingerprint], [502, 'upstream_failure', recordedError.fingerprint]);
-    assert.deepEqual(t.consumption.all_attempts, { attempts: 3, measured_attempts: 2, unresolved_attempts: 1, input_tokens: 300, output_tokens: 60, cached_input_tokens: 120, reasoning_tokens: 25 }, 'retry kept; cached/reasoning are subsets; duplicates once; pending adds nothing');
-    assert.deepEqual(t.consumption.completed_attempts, { attempts: 1, measured_attempts: 1, unresolved_attempts: 0, input_tokens: 200, output_tokens: 50, cached_input_tokens: 80, reasoning_tokens: 20 });
+    assert.deepEqual(t.consumption.all_attempts, { attempts: '3', measured_attempts: '2', unresolved_attempts: '1', input_tokens: '300', output_tokens: '60', cached_input_tokens: '120', reasoning_tokens: '25' }, 'retry kept; cached/reasoning are subsets; duplicates once; pending adds nothing');
+    assert.deepEqual(t.consumption.completed_attempts, { attempts: '1', measured_attempts: '1', unresolved_attempts: '0', input_tokens: '200', output_tokens: '50', cached_input_tokens: '80', reasoning_tokens: '20' });
     assert.ok(t.stages.length >= 2);
     for (const body of [events.body, timeline.body]) for (const leaked of ['PLAINTEXT_MARKER_79', '482913', 'abc123secret']) assert.ok(!body.includes(leaked), 'normal views have no plaintext');
 
     const metrics = await read('GET', `/api/v1/admin/metrics?user_id=${f.ownerA}&project_id=${project}`);
     assert.equal(metrics.statusCode, 200, metrics.body);
     const m = metrics.json();
-    assert.ok(Value.Check(schemas.AdminMetricsResponse, m));
-    assert.equal(m.jobs.total, 1);
-    assert.deepEqual([m.attempts.total, m.attempts.completed, m.attempts.failed, m.attempts.pending_reconcile], [3, 1, 1, 1]);
-    assert.equal(m.consumption.all_attempts.input_tokens, 300);
-    assert.equal(m.consumption.retry_attempts.input_tokens, 200);
-    assert.deepEqual(m.by_model.find((x: any) => x.model_id === 'synthetic-model-b'), { model_id: 'synthetic-model-b', attempts: 1, completed: 0, failed: 0, input_tokens: null, output_tokens: null, cached_input_tokens: null, reasoning_tokens: null });
-    assert.ok(m.operations.submitted >= 1);
+    assert.ok(Value.Check(metricsWireSchema, m));
+    assert.equal(m.jobs.total, '1');
+    assert.deepEqual([m.attempts.total, m.attempts.completed, m.attempts.failed, m.attempts.pending_reconcile], ['3', '1', '1', '1']);
+    assert.equal(m.consumption.all_attempts.input_tokens, '300');
+    assert.equal(m.consumption.retry_attempts.input_tokens, '200');
+    assert.deepEqual(m.by_model.find((x: any) => x.model_id === 'synthetic-model-b'), { model_id: 'synthetic-model-b', attempts: '1', completed: '0', failed: '0', input_tokens: null, output_tokens: null, cached_input_tokens: null, reasoning_tokens: null });
+    assert.ok(BigInt(m.operations.submitted) >= 1n);
     assert.ok(!metrics.body.includes('PLAINTEXT_MARKER_79'));
     const errorMetrics = await read('GET', `/api/v1/admin/metrics?error_code=DELIVERY_FAILED&error_category=delivery&fingerprint=${recordedError.fingerprint}`);
     assert.equal(errorMetrics.statusCode, 200, errorMetrics.body);
-    assert.deepEqual(errorMetrics.json().errors, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: 1 }]);
+    assert.deepEqual(errorMetrics.json().errors, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: '1' }]);
     assert.ok((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE actor_id=$1 AND purpose IN ('admin_events','admin_metrics')", [f.reader])).rows[0].n >= 2);
 
     // Conflicting report for the completed attempt: unresolved, contributes nothing until corrected.
     await observeUsage(pool, { owner: f.ownerA, attemptId: a2, source: 'framework', sourceEventId: 'f2-late', status: 'measured', inputTokens: 999, outputTokens: 50 });
     const conflicted = (await read('GET', `/api/v1/admin/jobs/${lease.jobId}/timeline`)).json();
     assert.equal(conflicted.attempts[1].usage_status, 'conflict');
-    assert.equal(conflicted.consumption.all_attempts.input_tokens, 100);
+    assert.equal(conflicted.consumption.all_attempts.input_tokens, '100');
     const health = await checkLogHealth(pool, { maxBacklogAgeSeconds: 86_400 });
     assert.ok(health.usage_conflicts >= 1);
     const providerObservation = (await pool.query("SELECT id FROM bb_usage_observations WHERE attempt_id=$1 AND source='provider'", [a2])).rows[0].id;
@@ -1188,7 +1193,7 @@ test('#79 operator API: deny by default, filters, timeline, metrics, restricted 
     assert.equal((await read('GET', '/api/v1/admin/errors')).statusCode, 404, 'log_reader cannot query operator error counts');
     const errorCounts = await op('GET', `/api/v1/admin/errors?user_id=${f.ownerA}&error_code=DELIVERY_FAILED&error_category=delivery&fingerprint=${recordedError.fingerprint}`);
     assert.equal(errorCounts.statusCode, 200, errorCounts.body);
-    assert.deepEqual(errorCounts.json().items, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: 1 }]);
+    assert.deepEqual(errorCounts.json().items, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: '1' }]);
     assert.equal((await pool.query("SELECT count(*)::int n FROM bb_log_access_audit WHERE id=$1 AND actor_id=$2 AND purpose='admin_error_counts' AND actor_role='log_operator'", [errorCounts.json().audit_id, f.operatorUser])).rows[0].n, 1);
     assert.equal((await op('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, { chosen_observation_id: null, usage_status: 'measured', reason_code: 'x' })).statusCode, 422);
     assert.equal((await op('POST', `/api/v1/admin/attempts/${a2}/usage-corrections`, { chosen_observation_id: (await pool.query("SELECT id FROM bb_usage_observations WHERE attempt_id=$1", [a1])).rows[0].id, usage_status: 'measured', reason_code: 'x' })).statusCode, 409, 'observation of another attempt');
@@ -1197,7 +1202,7 @@ test('#79 operator API: deny by default, filters, timeline, metrics, restricted 
     const after = (await read('GET', `/api/v1/admin/jobs/${lease.jobId}/timeline`)).json();
     assert.equal(after.attempts[1].usage_status, 'measured');
     assert.equal(after.attempts[1].corrected, true);
-    assert.equal(after.consumption.all_attempts.input_tokens, 300);
+    assert.equal(after.consumption.all_attempts.input_tokens, '300');
     assert.deepEqual((await pool.query('SELECT * FROM bb_usage_observations WHERE attempt_id=$1 ORDER BY id', [a2])).rows, rawBefore, 'raw rows untouched');
     await assert.rejects(pool.query('UPDATE bb_usage_observations SET input_tokens=1 WHERE id=$1', [providerObservation]), (e: any) => e.code === '23514');
     await assert.rejects(pool.query('DELETE FROM bb_usage_corrections WHERE attempt_id=$1', [a2]), (e: any) => e.code === '23514');
@@ -1531,7 +1536,7 @@ test('#79 retention purge and user-deletion reclamation keep accounting metadata
     await grantOperator(pool, { userId: f.viewer, role: 'log_reader', grantedBy: 'synthetic-setup', reasonCode: 'synthetic_test' });
     const timeline = (await f.as(f.viewer)('GET', `/api/v1/admin/jobs/${active.lease.jobId}/timeline`)).json();
     assert.equal(timeline.prompts.find((p: any) => p.snapshot_id === runBound).content_state, 'purged');
-    assert.equal(timeline.attempts[0].usage.input_tokens, 11);
+    assert.equal(timeline.attempts[0].usage.input_tokens, '11');
     assert.equal((await f.as(f.viewer)('GET', `/api/v1/admin/prompts/${runBound}?reason_code=support_case`)).statusCode, 404);
     assert.ok((await pool.query("SELECT 1 FROM bb_observability_events WHERE kind='log.content_purged' AND owner_user_id=$1", [f.ownerB])).rowCount);
     await assert.rejects(pool.query('DELETE FROM bb_log_content_tombstones WHERE content_id=$1', [runless]), (e: any) => e.code === '23514');
