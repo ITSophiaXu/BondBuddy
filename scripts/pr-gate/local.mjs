@@ -343,7 +343,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
       if (dockerAvailable) {
         try { await removeOwned([postgres, azurite, httpsAzurite, runner]); } catch (error) { cleanupErrors.push(error.message); }
       }
-      if (hostBroker) receipt.host_dispatch = hostBroker.snapshot();
+      if (hostBroker) { hostBroker.save(); receipt.host_dispatch = hostBroker.snapshot(); }
       if (cleanupErrors.length) throw new Error(cleanupErrors.join('; '));
       receipt.cleanup = { status: 'passed' };
       // These are disposable test-only keys. Retain the public identities and

@@ -76,8 +76,8 @@ export function createHostBroker({ plan, directory, evidenceRoot, sourceRoot, de
   save();
 
   return {
-    snapshot,
-    setRuntime(value) { assert.equal(running, false); runtime = value; },
+    snapshot, save,
+    setRuntime(value) { assert.equal(running, false); runtime = value; save(); },
     startShard(shard) {
       assert.equal(running, false, 'Only one host shard may run at a time'); running = true;
       const selected = plan.entries.filter(entry => entry.shard === shard), controller = new AbortController();
@@ -148,6 +148,11 @@ export function verifyHostRuns(receipt, expected) {
   assert.equal(dispatch.runtime?.cleanup?.status, 'passed', 'Native candidate runtime cleanup missing');
   assert.equal(dispatch.runtime.run_id, receipt.run_id, 'Native runtime belongs to another gate run');
   for (const key of ['commit', 'tree']) assert.equal(dispatch.runtime[key], expected[key], 'Native runtime belongs to another candidate');
+  for (const key of ['image_id', 'core_image_id']) assert.match(dispatch.runtime[key], /^sha256:[a-f0-9]{64}$/, 'Native runtime image identity missing');
+  assert.match(dispatch.runtime.bundle_sha256, /^[a-f0-9]{64}$/);
+  assert.match(dispatch.runtime.reportlab_cache_sha256, /^[a-f0-9]{64}$/);
+  assert.ok(dispatch.runtime.source?.raw_source?.files > 0 && dispatch.runtime.source.raw_source.byte_count > 0, 'Raw candidate verification missing');
+  assert.match(dispatch.runtime.source.raw_source.manifest_sha256, /^[a-f0-9]{64}$/);
   assert.equal(dispatch.records?.length, plan.entries.length, 'Host executions missing');
   const seen = receipt.shards.flatMap(shard => {
     assert.ok(Array.isArray(shard.summary?.host_dispatch), 'Shard host execution references missing');
@@ -171,6 +176,19 @@ export function verifyHostRuns(receipt, expected) {
     assert.equal(record.evidence.test_id, entry.testId, 'Host evidence belongs to another test');
     assert.equal(record.evidence.profile_id, entry.profileId, 'Host evidence belongs to another capability');
     for (const key of ['commit', 'tree']) assert.equal(record.evidence[key], expected[key]);
+    if (entry.profileId.startsWith('native-')) {
+      assert.equal(dispatch.runtime.source.files[entry.testId], entry.sourceSha256);
+      assert.equal(record.evidence.source_bundle_sha256, dispatch.runtime.bundle_sha256);
+      assert.equal(record.evidence.probe?.status, 'passed', 'Native capability probe missing');
+      for (const key of ['commit', 'tree']) assert.equal(record.evidence.probe[key], expected[key]);
+      assert.equal(record.evidence.probe.uid, 1000); assert.equal(record.evidence.probe.models, 0); assert.equal(record.evidence.probe.network, 'none');
+      assert.equal(record.evidence.isolation?.user, '1000:1000'); assert.equal(record.evidence.isolation.network, 'none');
+      assert.equal(record.evidence.isolation.rootfs_readonly, true); assert.equal(record.evidence.isolation.privileged, false);
+      const command = record.evidence.original_command;
+      assert.equal(command?.cwd, '/app'); assert.equal(command.output_limit_failed, false);
+      assert.equal(command.command, entry.runner === 'python' ? '/opt/venv/bin/python' : '/usr/local/bin/node');
+      assert.deepEqual(command.args, entry.runner === 'python' ? ['-m', 'unittest', '-v', 'test_ocr'] : ['--test', '--test-reporter=tap', '/app/' + entry.runPath]);
+    }
     const start = Date.parse(record.evidence.started_at), end = Date.parse(record.evidence.finished_at);
     assert.ok(start >= Date.parse(receipt.started_at) && end >= start && end <= Date.parse(receipt.finished_at), 'Host evidence is outside this run');
   }

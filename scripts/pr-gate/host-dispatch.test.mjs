@@ -105,4 +105,9 @@ test('host receipt rejects stale, missing, reordered, rewritten, failed and skip
     value.shards[0].summary.host_dispatch[0].evidence_sha256 = record.evidence_sha256;
     assert.throws(() => verifyHostRuns(value, expected), /another/);
   }
+  for (const mutate of [record => { delete record.evidence.probe; }, record => { record.evidence.isolation.network = 'host'; },
+    record => { record.evidence.original_command.args.push('--test-name-pattern=partial'); }, record => { record.evidence.source_bundle_sha256 = '0'.repeat(64); }]) {
+    const value = receipt(), record = value.host_dispatch.records[0]; mutate(record); record.evidence_sha256 = sha256(record.evidence);
+    value.shards[0].summary.host_dispatch[0].evidence_sha256 = record.evidence_sha256; assert.throws(() => verifyHostRuns(value, expected));
+  }
 });
