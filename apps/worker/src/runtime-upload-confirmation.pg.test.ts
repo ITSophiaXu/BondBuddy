@@ -110,7 +110,7 @@ test('split consumers claim disjoint sizes; small commits while the large full-r
     smallBlobs.readToFile=async(key,...args)=>{assert.ok(small.some(u=>u.key===key),'small consumer cannot read a large upload');smallReads++;return smallRead(key,...args);};
     azure=new UploadConfirmationRuntime({pool,blobs:largeBlobs,lane:'large',smallSlot:false,pollMs:100,log:e=>events.push(e)}).start();
     await fullRead.wait;
-    for(const u of small)assert.equal((await pool.query('SELECT delivery_attempts FROM bb_outbox WHERE aggregate_id=$1',[u.id])).rows[0].delivery_attempts,0,'large loop leaves small attempts untouched');
+    for(const u of small)assert.equal((await pool.query("SELECT delivery_attempts FROM bb_outbox WHERE aggregate_id=$1 AND event_type='upload.complete_requested'",[u.id])).rows[0].delivery_attempts,0,'large loop leaves small attempts untouched');
     main=new WorkerRuntime({pool,blobs:smallBlobs,kinds:['parse'],concurrency:1,parseSlots:0,interactiveSlots:0,uploadConfirmationEnabled:true,uploadConfirmationLane:'small',uploadConfirmationSmallSlot:false,pollMs:100,drainMs:1,heartbeatMs:1000,workerId:'split-'+randomUUID(),log:e=>events.push(e)}).start();
     await until(async()=>(await pool.query("SELECT count(*)::int n FROM bb_upload_confirmations WHERE upload_id=ANY($1::text[]) AND state='completed'",[small.map(u=>u.id)])).rows[0].n===2);
     assert.equal((await pool.query('SELECT state FROM bb_upload_confirmations WHERE upload_id=$1',[large.id])).rows[0].state,'verifying');
@@ -122,7 +122,7 @@ test('split consumers claim disjoint sizes; small commits while the large full-r
       const replay=await send('POST',u.path,u.declaration);assert.equal(replay.statusCode,200,replay.body);
       assert.deepEqual((await send('POST',u.path,u.declaration)).json(),replay.json());
       assert.equal((await pool.query('SELECT count(*)::int n FROM bb_material_versions WHERE upload_id=$1',[u.id])).rows[0].n,1);
-      assert.equal((await pool.query('SELECT delivery_attempts FROM bb_outbox WHERE aggregate_id=$1',[u.id])).rows[0].delivery_attempts,1);
+      assert.equal((await pool.query("SELECT delivery_attempts FROM bb_outbox WHERE aggregate_id=$1 AND event_type='upload.complete_requested'",[u.id])).rows[0].delivery_attempts,1);
     }
     assert.equal(largeReads,1);assert.equal(smallReads,2,'cached replay performs no extra full read');
     for(const lane of ['small','large'])for(const phase of ['read','inspection','commit'])assert.ok(events.some(e=>e.kind==='upload_confirmation_phase'&&e.lane===lane&&e.phase===phase));
