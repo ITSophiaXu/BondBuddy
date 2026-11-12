@@ -132,6 +132,8 @@ export async function runJourneys({out,report,privateData,save}){
      await expect(page.locator('.qa-question-list article')).toHaveCount(7,{timeout:180000});entry.prepared=true;save();
     }
     await page.reload();await expect(page.locator('.qa-question-list article')).toHaveCount(7,{timeout:60000});
+    await page.locator('#qa-save').click();
+    entry.qaProspectus=await confirmQaProspectus(page,{projectURL:entry.projectURL,expected:qaProspectusFixture(f.dongying),round:true,previous:entry.qaProspectus});save();
     const run=await submit(page.locator('#qa-start'),/\/qa\/runs$/);entry.runId=run.run_id;save();
    }
    if(phase==='submit')return;
