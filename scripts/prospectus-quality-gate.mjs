@@ -114,7 +114,7 @@ function run(receiptPath, release = true) {
     'deploy/m1/scripts/release-evidence.test.mjs',
     'deploy/m1/scripts/maintenance-version.test.mjs',
     'deploy/m1/scripts/role-source-evidence.test.mjs',
-    'scripts/verify-prospectus-acceptance.test.mjs', 'scripts/verify-prospectus-expanded-amounts.test.mjs', 'scripts/publish-prospectus-quality.test.mjs', 'scripts/prospectus-input-browser.test.mjs',
+    'scripts/verify-prospectus-acceptance.test.mjs', 'scripts/verify-prospectus-expanded-amounts.test.mjs', 'scripts/verify-prospectus-pagination.test.mjs', 'scripts/publish-prospectus-quality.test.mjs', 'scripts/prospectus-input-browser.test.mjs',
     'deploy/m1/scripts/codex-bwrap.test.mjs'], parseTap);
   check('database-migrations', process.execPath, ['db/migrate.mjs']);
   check('api-source-selection', process.execPath, ['--test', '--test-concurrency=1', '--test-reporter=tap',
