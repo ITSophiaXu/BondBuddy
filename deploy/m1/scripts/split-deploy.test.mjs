@@ -13,7 +13,29 @@ const base = { BB_IMAGE_TAG: 'synthetic', POSTGRES_PASSWORD: 'synthetic', BB_MAI
  BB_TRIAL_SOURCE_SALT: 'synthetic', AZURE_STORAGE_CONNECTION_STRING: 'synthetic', BB_PARSE_CACHE_OCR_VERSION: 'synthetic', BB_PARSE_CACHE_BASIS_VERSION: 'synthetic',
  BB_EXECUTION_DATABASE_URL: 'postgresql://bondbuddy:synthetic@pg-tunnel:5432/bondbuddy', BB_PG_SSH_HOST: 'synthetic.test', BB_PG_SSH_USER: 'tunnel',
  BB_PG_SSH_KEY_FILE: '/dev/null', BB_PG_SSH_KNOWN_HOSTS_FILE: '/dev/null', BB_FILE_TEMPLATE_HOST_DIR: dir, BB_PAYMENT_SECRETS_DIR: dir, BB_INTEGRITY_MODE: 'beijing',BB_INTEGRITY_BEIJING_HOST:'synthetic.test',BB_INTEGRITY_SSH_DIR:dir };
-const configProcessEnv = {...process.env};
+// Configuration-only cases use a fresh synthetic main instance. Render with the
+// real Compose CLI, but never discover the user's daemon/project/PG containers.
+// Nonempty and wrong PG bindings are covered by role-lifecycle-review.test.mjs.
+const configBin = join(dir, 'config-bin'); mkdirSync(configBin);
+const configDocker = execFileSync('which', ['docker'], { encoding: 'utf8' }).trim();
+writeFileSync(join(configBin, 'docker'), `#!/usr/bin/env node
+import {spawnSync} from 'node:child_process';
+const args=process.argv.slice(2);
+const emptyPostgres=['ps','-aq','--filter','label=com.docker.compose.project=bb-main','--filter','label=com.docker.compose.service=postgres'];
+if(JSON.stringify(args)===JSON.stringify(emptyPostgres))process.exit(0);
+const options=new Set(['--project-directory','--project-name','-f','--profile','--env-file']);
+let index=1;
+if(args[0]==='compose'){
+ while(index<args.length&&options.has(args[index]))index+=2;
+ if(args[index]==='config'){
+  const child=spawnSync(${JSON.stringify(configDocker)},args,{stdio:'inherit'});
+  if(child.error)throw child.error;
+  process.exit(child.status??1);
+ }
+}
+throw Error('Unexpected Docker operation in configuration-only fixture');
+`, {mode:0o755});
+const configProcessEnv = {...process.env,PATH:configBin+':'+process.env.PATH};
 delete configProcessEnv.BB_WORKER_LEASE_SECONDS; // Exercise the private env file, independent of the test host.
 function envFile(role, values = {}) { const path = join(dir, `${role}.env`); writeFileSync(path, Object.entries({...base,BB_DEPLOY_ROLE:role,...values}).map(([k,v])=>`${k}=${v}`).join('\n'), {mode:0o600}); return path; }
 function config(role, values = {}, state = join(dir,'state')) {
