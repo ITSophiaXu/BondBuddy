@@ -11,8 +11,8 @@ async function local(page:Page){const entries=await page.evaluate(()=>Object.fro
 async function pending(page:Page,state:QaUploadState,source=false,file=qaUploadFile(source?'合成原问题清单.doc':'合成原补充材料.pdf')){
  // Observe the real four-attempt confirmation budget before asserting recovery;
  // the original five-second UI assertion starts after the terminal response.
- let failedReplies=0;const exhausted=state.completeUnavailable?page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/complete')&&r.status()===503&&++failedReplies===4):undefined;
- await page.locator(source?'#qa-upload':'#qa-supplement').setInputFiles(file);await exhausted;await expect(confirm(page)).toBeEnabled();await expect(row(page).locator('[role=alert]').first()).toBeVisible();await expect(row(page)).toContainText(file.name);expect(state.qa.prepares).toEqual([]);
+ const missing=state.dropBeforeReceive;let failedReplies=0;const missingReply=missing?page.waitForResponse(r=>r.url().endsWith('/complete')&&r.status()===422):undefined;const exhausted=state.completeUnavailable?page.waitForResponse(r=>r.request().method()==='POST'&&r.url().endsWith('/complete')&&r.status()===503&&++failedReplies===4):undefined;
+ await page.locator(source?'#qa-upload':'#qa-supplement').setInputFiles(file);await exhausted;if(missing){await missingReply;await page.clock.fastForward(600_001);}await expect(confirm(page)).toBeEnabled();await expect(row(page).locator('[role=alert]').first()).toBeVisible();await expect(row(page)).toContainText(file.name);expect(state.qa.prepares).toEqual([]);
  const writes=qaTransportWrites(state).length;await page.reload();await expect(confirm(page)).toBeVisible();expect(qaTransportWrites(state)).toHaveLength(writes);expect(state.qa.prepares).toEqual([]);return file;
 }
 test.beforeEach(async({page})=>{page.on('dialog',d=>void d.accept());});
@@ -41,9 +41,11 @@ test('QA initial uninterrupted Word selection retains the existing free identifi
  await expect.poll(()=>state.qa.prepares.length).toBe(1);expect(state.qa.accepted.size).toBe(1);await expect(row(page)).toHaveCount(0);await assertQaUpload11th(page,state);
 });
 test('QA refuses changed original bytes before replacing a missing upload and keeps renamed equal content',async({page})=>{
- const state=qaUploadFixture();state.dropBeforeReceive=true;state.lostPut=false;state.completeUnavailable=false;await open(page,state);const file=await pending(page,state);
- await confirm(page).click();const reselect=row(page).locator('[data-qa-upload-reselect]');await expect(reselect).toBeEnabled();const changed=Buffer.from(file.buffer);changed[0]^=1;
- await reselect.setInputFiles({...file,buffer:changed});await expect(row(page).getByRole('alert')).toHaveText('上传恢复记录发生冲突，原文件声明和记录已保留，请勿改用其他文件继续。');expect(state.uploads.size).toBe(1);expect(state.calls.filter(c=>c.method==='PUT')).toHaveLength(1);
+ await page.clock.install();const state=qaUploadFixture();state.sessionLifetimeMs=10_000;state.dropBeforeReceive=true;state.lostPut=false;state.completeUnavailable=false;await open(page,state);const file=await pending(page,state);
+ // After expiry, choose the original file explicitly; a passive confirmation
+ // must keep waiting on the old upload and cannot authorize replacement.
+ const beforeReselect=qaTransportWrites(state).length;const reselect=row(page).locator('[data-qa-upload-reselect]');await expect(reselect).toBeEnabled();const changed=Buffer.from(file.buffer);changed[0]^=1;
+ await reselect.setInputFiles({...file,buffer:changed});await expect(row(page).getByRole('alert')).toHaveText('上传恢复记录发生冲突，原文件声明和记录已保留，请勿改用其他文件继续。');expect(state.uploads.size).toBe(1);expect(state.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(qaTransportWrites(state)).toHaveLength(beforeReselect);
  const originalFile=row(page).locator('[data-qa-upload-reselect]');await expect(originalFile).toBeEnabled();await originalFile.setInputFiles({...file,name:'改名但仍是原材料.pdf'});await expect(row(page)).toHaveCount(0);expect(state.uploads.size).toBe(2);expect([...state.uploads.values()][1].declaration).toEqual([...state.uploads.values()][0].declaration);await assertQaUpload11th(page,state);
 });
 test('QA server preparation changed while the original complete was pending never adopts the material into another round',async({page})=>{
