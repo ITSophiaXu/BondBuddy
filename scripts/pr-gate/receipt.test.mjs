@@ -214,16 +214,19 @@ test('offline receipts cannot omit cache identity, isolation or preparation evid
 
 test('complete current-candidate offline preparation still requires every original shard', () => {
   const receipt = fixture(), inputs = Object.fromEntries(CACHE_FILES.map(path => [path, path === 'package-lock.json' ? fixtureCandidateLockBytes() : Buffer.from('synthetic\n')]));
+  // Synthetic cached Windows bytes differ from the exact LF candidate input.
+  const cachedInputs = Object.fromEntries(CACHE_FILES.map(path => [path, Buffer.from(inputs[path].toString('latin1').replaceAll('\n', '\r\n'), 'latin1')]));
   const cacheExpected = { ...expected, cache_files: Object.fromEntries(CACHE_FILES.map(path => [path, hash(inputs[path])])) };
+  assert.throws(() => compareCacheFiles(cachedInputs, cachedInputs), /Cached package-lock.json differs/);
   const image_id = 'sha256:' + 'd'.repeat(64);
   receipt.dependency_mode = 'offline-cache'; receipt.dependency_sources = { downloads: false };
   const { evidence: network } = syntheticInternalNetwork(receipt.run_id);
   receipt.internal_network = network;
   receipt.cache_image = { image_id }; receipt.cache_runtime = { network: 'internal', network_id: network.id, container_id: network.prepared.container_id, image_id, published_ports: 0, privileged: false };
-  receipt.cache_service_images = { postgres: image_id, azurite: image_id };
+  receipt.cache_service_images = { postgres: 'sha256:' + '2'.repeat(64), azurite: 'sha256:' + '5'.repeat(64) };
   receipt.offline_cache = { schema: OFFLINE_SCHEMA, status: 'passed', commit: expected.commit, tree: expected.tree, image_id,
     network: 'internal', network_id: network.id, environment: 'allowlist-env-i', old_source_removed: true, old_node_modules_removed: true,
-    restored: { commit: expected.commit, tree: expected.tree, clean_tree: true, shallow: true }, files: compareCacheFiles(inputs, inputs),
+    restored: { commit: expected.commit, tree: expected.tree, clean_tree: true, shallow: true }, files: compareCacheFiles(cachedInputs, inputs),
     npm: { mode: 'ci-offline', tree_check: 'passed' }, python: { status: 'passed', requirements: [{ requirement: 'synthetic>=1', installed: '1' }] },
     browser: { status: 'passed', navigator_online: true, version: 'synthetic', executable_sha256: 'e'.repeat(64) } };
   assert.equal(verifyReceipt(receipt, cacheExpected, now), receipt);

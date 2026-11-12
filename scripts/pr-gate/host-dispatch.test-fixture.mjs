@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { HOST_PROFILES } from './host-profiles.mjs';
 import { DISPATCH_SCHEMA, planHash, sha256 } from './host-dispatch-protocol.mjs';
 import { syntheticDockerEvidence } from './host-adapters/docker-tests.test-fixture.mjs';
@@ -12,10 +13,20 @@ export const syntheticHostSources = () => Object.fromEntries(Object.keys(HOST_PR
 export function syntheticHostDispatch(candidate, runId = 'synthetic-host-run') {
   const files = { ...syntheticHostSources(), ...syntheticStorageFiles(), ...Object.fromEntries(SERVICE_AUTHORING_FILES.map(file => [file, 'd'.repeat(64)])),
     ...Object.fromEntries(['backup-stream.mjs','blob-snapshot.mjs','backup-offhost.mjs'].map(file=>['deploy/m1/scripts/'+file,'d'.repeat(64)])) };
+  const shardFor = file => file.startsWith('apps/worker/') ? 'worker-1' : file.startsWith('apps/api/') ? 'api-1' : 'misc';
+  // Complete receipt fixtures use their real matrix order. Focused adapter fixtures
+  // without a matrix retain their existing native-first negative-case setup.
+  let shardOrder;
+  if (candidate.matrix !== undefined) {
+    assert.ok(Array.isArray(candidate.matrix), 'Synthetic receipt matrix must be an array');
+    shardOrder = new Map(candidate.matrix.map((row, index) => [row.name, index]));
+    assert.equal(shardOrder.size, candidate.matrix.length, 'Synthetic receipt matrix has duplicate shards');
+    for (const file of Object.keys(HOST_PROFILES)) assert.ok(shardOrder.has(shardFor(file)), 'Synthetic host shard is missing from the receipt matrix');
+  }
   const entries = Object.entries(HOST_PROFILES).sort(([a], [b]) => {
     const group = file => file.startsWith('apps/worker/') ? 0 : file.startsWith('apps/api/') ? 1 : file.startsWith('scripts/') ? 2 : file.startsWith('deploy/') ? 3 : 4;
-    return group(a) - group(b) || a.localeCompare(b);
-  }).map(([testId, profile], sequence) => ({ sequence, shard: testId.startsWith('apps/worker/') ? 'worker-1' : testId.startsWith('apps/api/') ? 'api-1' : 'misc',
+    return (shardOrder ? shardOrder.get(shardFor(a)) - shardOrder.get(shardFor(b)) : 0) || group(a) - group(b) || a.localeCompare(b);
+  }).map(([testId, profile], sequence) => ({ sequence, shard: shardFor(testId),
     group: testId.startsWith('apps/worker/') ? 'worker' : testId.startsWith('apps/api/') ? 'api' : profile.runner === 'python' ? 'python' : 'scripts', testId,
     runPath: testId.endsWith('.ts') ? testId.replace('/src/', '/dist/').replace(/\.ts$/, '.js') : testId,
     runner: profile.runner, profileId: profile.id, sourceSha256: 'd'.repeat(64), fileTimeoutMs: 300_000 }));

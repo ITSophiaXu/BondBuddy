@@ -16,6 +16,15 @@ import { QA_COLLECTOR_FILES, QA_COLLECTOR_SOURCE, QA_COLLECTOR_TEST, QA_SCREENSH
 const repository = fileURLToPath(new URL('../..', import.meta.url));
 const stamp = second => `2026-11-11T13:00:${String(second).padStart(2, '0')}.000Z`;
 let sourceInputs;
+// Read only objects already present. No lazy fetch, credentials, hooks, checkout or network.
+function fixtureGitBytes(args, input) {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_/i.test(key)));
+  Object.assign(env, { GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1', GIT_ALLOW_PROTOCOL: '', GIT_TERMINAL_PROMPT: '0',
+    GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null' });
+  const result = spawnSync('git', ['--no-replace-objects', '-c', 'credential.helper=', '-c', 'core.fsmonitor=false', ...args],
+    { cwd: repository, env, input, windowsHide: true, timeout: 30000, maxBuffer: 128 * 1024 * 1024 });
+  assert.ifError(result.error); assert.equal(result.status, 0, 'Fixture requires already-local pinned Git objects'); return result.stdout;
+}
 function pinnedInputs() {
   if (sourceInputs) return sourceInputs;
   const locks = {}, sources = {};
@@ -24,15 +33,7 @@ function pinnedInputs() {
     for (const id of Object.keys(HISTORICAL_SOURCES)) locks[id] = readFileSync(`${HISTORICAL_ROOT}/${id}/package-lock.json`);
     sourceInputs = { record, locks }; return sourceInputs;
   }
-  // Read only objects already present. No lazy fetch, credentials, hooks, checkout or network.
-  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT_/i.test(key)));
-  Object.assign(env, { GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1', GIT_ALLOW_PROTOCOL: '', GIT_TERMINAL_PROMPT: '0',
-    GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null' });
-  const git = (args, input) => {
-    const result = spawnSync('git', ['--no-replace-objects', '-c', 'credential.helper=', '-c', 'core.fsmonitor=false', ...args],
-      { cwd: repository, env, input, windowsHide: true, timeout: 30000, maxBuffer: 128 * 1024 * 1024 });
-    assert.ifError(result.error); assert.equal(result.status, 0, 'Fixture requires already-local pinned historical Git objects'); return result.stdout;
-  };
+  const git = fixtureGitBytes;
   const blobs = new Map();
   for (const [id, source] of Object.entries(HISTORICAL_SOURCES)) {
     assert.equal(git(['rev-parse', source.commit + '^{tree}']).toString().trim(), source.tree);
@@ -60,7 +61,14 @@ function pinnedInputs() {
     profile_sha256: HISTORICAL_PROFILE_SHA256, not_a_seal: true, not_execution_evidence: true, sources });
   sourceInputs = { record, locks }; return sourceInputs;
 }
-export function fixtureCandidateLockBytes() { return readFileSync(new URL('../../package-lock.json', import.meta.url)); }
+export function fixtureCandidateLockBytes() {
+  const exact = fixtureGitBytes(['show', 'HEAD:package-lock.json']);
+  const checkout = readFileSync(new URL('../../package-lock.json', import.meta.url));
+  const normalized = Buffer.from(checkout.toString('latin1').replaceAll('\r\n', '\n'), 'latin1');
+  assert.ok(!exact.includes(Buffer.from('\r\n')), 'Synthetic candidate lock requires canonical LF Git bytes');
+  assert.deepEqual(normalized, exact, 'Fixture checkout lock differs from the current Git commit beyond CRLF conversion');
+  return exact;
+}
 export function fixtureHistoricalExpected() {
   return { historical_verifier_sha256: historicalHash(readFileSync(new URL('./browser-historical-source.mjs', import.meta.url))),
     cache_files: { 'package-lock.json': historicalHash(fixtureCandidateLockBytes()) } };
