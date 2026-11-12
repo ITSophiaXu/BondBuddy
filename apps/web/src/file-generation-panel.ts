@@ -400,8 +400,9 @@ export class FileGenerationPanel {
   catch{if(this.live())this.deliveryWorkspace=undefined;}
  }
  private batchCard(b:FileGenerationBatch){
-  const rows=deliveryRows(b,this.project,this.deliveryWorkspace);
-  return `<article class="fg-batch fg-delivery-container"><div class="fg-batch"><div><strong>${date(b.created_at)} · ${formatPoints(b.points)} 积分</strong><small>本批 ${rows.length} 项 · 底稿 ${b.workpapers?.items.length??0} 项 · 其他文件 ${b.documents?.items.length??0} 项</small></div>${b.workpapers?`<a class="btn secondary" href="#generate?${esc(new URLSearchParams({project:this.project,step:'workpapers',view:'results',batch:b.workpapers.batch_id}).toString())}">底稿进度与下载</a>`:''}</div>${deliveryChecklistHtml(b,rows,this.expandedDeliveries.has(b.batch_id))}</article>`;
+  const rows=deliveryRows(b,this.project,this.deliveryWorkspace),wp=b.workpapers,docs=b.documents;
+  const lifecycle=[wp?'底稿批次 · '+({queued:'等待生成',running:'正在生成',paused:'已暂停',complete:'已完成',partial:'部分完成',cancelled:'已结束排队'}[wp.state]):'',docs?'其他文件批次 · '+({queued:'等待生成',running:'正在生成',paused:'需要处理',complete:'已完成',cancelled:'已停止后续生成'}[docs.state]):''].filter(Boolean).join('；');
+  return `<article class="fg-batch fg-delivery-container" data-delivery-parent-card="${esc(b.batch_id)}"><div class="fg-batch"><div><strong>${date(b.created_at)} · ${formatPoints(b.points)} 积分</strong><small>本批 ${rows.length} 项 · 底稿 ${wp?.items.length??0} 项 · 其他文件 ${docs?.items.length??0} 项</small><small data-delivery-lifecycle>${esc(lifecycle)}</small>${wp?.template_mode?`<small data-delivery-template>本批模板：${({automatic:'光大模板',selected:'所选 Word 模板',mixed:'混合模板'})[wp.template_mode]}</small>`:''}</div>${b.workpapers?`<a class="btn secondary" href="#generate?${esc(new URLSearchParams({project:this.project,step:'workpapers',view:'results',batch:b.workpapers.batch_id}).toString())}">底稿进度与下载</a>`:''}</div>${deliveryChecklistHtml(b,rows,this.expandedDeliveries.has(b.batch_id))}</article>`;
  }
  private bindDeliveryHistory(){
   this.host.querySelectorAll<HTMLDetailsElement>('[data-delivery-batch]').forEach(details=>{
