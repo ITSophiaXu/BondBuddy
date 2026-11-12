@@ -69,7 +69,9 @@ test('synthetic #17 production entry: heartbeat, parse claim, capability_not_rea
   const container = `bb-entry-${randomUUID()}`;
   const blobs = azureBlobs(blobConnection!, container);
   const owner = `entry-owner-${randomUUID()}`, operator = `entry-operator-${randomUUID()}`;
-  const app = createServer({ pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunRuntime: true });
+  const settings = { pool, blobs, allowedOrigin: ORIGIN, principal: async () => ({ userId: owner, csrfVerified: true }), enableRunRuntime: true };
+  // Keep the original unpriced task so the real worker entry still exercises its missing-history pause.
+  const app = createServer({ ...settings, historicalBillingFixture: true, enablePaidAuthoring: false });
   const send = (method: string, url: string, payload?: unknown, contentType?: string) => app.inject({ method: method as any, url,
     headers: { origin: ORIGIN, ...(contentType ? { 'content-type': contentType } : {}) }, payload: payload as any });
   let runtime: WorkerRuntime | undefined;
@@ -103,10 +105,26 @@ test('synthetic #17 production entry: heartbeat, parse claim, capability_not_rea
     const current = (await send('GET', `/api/v1/projects/${projectId}`)).json();
     const input = (await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: current.draft_revision,
       material_versions: [{ material_id: material.material_id, material_version: material.material_version }], requirement_message_ids: [] })).json();
-    const submitted = await send('POST', '/api/v1/runs/execute', { execution_request_id: `entry-${randomUUID()}`, project_id: projectId, input_revision: input.input_revision, input_hash: input.input_hash,
-      task_kind: 'update', input_manifest_ref: 'synthetic-manifest', storage_origin: 'cloud', workspace_id: 'synthetic-worker' });
+    const request = { execution_request_id: `entry-${randomUUID()}`, project_id: projectId, input_revision: input.input_revision, input_hash: input.input_hash,
+      task_kind: 'update', input_manifest_ref: 'synthetic-manifest', storage_origin: 'cloud', workspace_id: 'synthetic-worker' };
+    // Current admission rejects this same owned input before any run or charge persists.
+    const currentPool = new Pool({ connectionString: connection });
+    const currentApp = createServer({ ...settings, pool: currentPool });
+    try {
+      // Rejection receipts are immutable, so the historical request keeps its original execution key.
+      const rejected = await currentApp.inject({ method: 'POST', url: '/api/v1/runs/execute',
+        payload: { ...request, execution_request_id: `current-entry-${randomUUID()}` }, headers: { origin: ORIGIN } });
+      assert.equal(rejected.statusCode, 422, rejected.body);
+      assert.equal(rejected.json().code, 'INPUT_REQUIRED');
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1', [projectId])).rows[0].n, 0);
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1', [owner])).rows[0].n, 0);
+    } finally { await currentApp.close(); await currentPool.end(); }
+    const submitted = await send('POST', '/api/v1/runs/execute', request);
     assert.equal(submitted.statusCode, 202, submitted.body);
     const runId = submitted.json().run_id as string;
+    const admitted = (await pool.query('SELECT channel,billing_mode FROM bb_runs WHERE id=$1', [runId])).rows[0];
+    assert.equal(admitted.channel, 'production');
+    assert.equal(admitted.billing_mode, 'platform_trial');
 
     // In-process runtime from the production options; only the parser is the synthetic stand-in.
     const options = workerRuntimeOptionsFromEnv(pool, blobs, env);
