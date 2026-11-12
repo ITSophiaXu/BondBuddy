@@ -1,0 +1,89 @@
+TAP version 13
+# Subtest: synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once
+    # Subtest: verified payment grants once, 90-day rights and cash ratio survive cancellation
+    ok 1 - verified payment grants once, 90-day rights and cash ratio survive cancellation
+      ---
+      duration_ms: 245.431414
+      type: 'test'
+      ...
+    # Subtest: a stale tab subscription request is durably rejected without an order and topup stays available
+    ok 2 - a stale tab subscription request is durably rejected without an order and topup stays available
+      ---
+      duration_ms: 116.300722
+      type: 'test'
+      ...
+    # Subtest: legacy HTTP replays only the exact owner rejection and can never create a new subscription payment
+    ok 3 - legacy HTTP replays only the exact owner rejection and can never create a new subscription payment
+      ---
+      duration_ms: 332.076069
+      type: 'test'
+      ...
+    # Subtest: expired manual renewals with pending, active or cancel-pending mandates durably reject without blocking topups
+    ok 4 - expired manual renewals with pending, active or cancel-pending mandates durably reject without blocking topups
+      ---
+      duration_ms: 653.792931
+      type: 'test'
+      ...
+    # Subtest: checkout failure before channel creation stays unknown until authenticated expiry, then permits a new purchase
+    ok 5 - checkout failure before channel creation stays unknown until authenticated expiry, then permits a new purchase
+      ---
+      duration_ms: 58.147111
+      type: 'test'
+      ...
+    # Subtest: only a wholly unused period refunds 199 cash by removing 21000 points, unknown status stays held
+    ok 6 - only a wholly unused period refunds 199 cash by removing 21000 points, unknown status stays held
+      ---
+      duration_ms: 214.68013
+      type: 'test'
+      ...
+    # Subtest: task and cash-refund holds are separate in the same wallet and each period
+    ok 7 - task and cash-refund holds are separate in the same wallet and each period
+      ---
+      duration_ms: 190.696468
+      type: 'test'
+      ...
+    # Subtest: consumption prevents subscription cash refund; expired correction preserves original paid ratio
+    ok 8 - consumption prevents subscription cash refund; expired correction preserves original paid ratio
+      ---
+      duration_ms: 89.753187
+      type: 'test'
+      ...
+    # Subtest: the application rejects an unused subscription after the seven-day refund window
+    ok 9 - the application rejects an unused subscription after the seven-day refund window
+      ---
+      duration_ms: 67.179875
+      type: 'test'
+      ...
+    # Subtest: topup is 1:1 permanent and does not inherit a subscription discount
+    ok 10 - topup is 1:1 permanent and does not inherit a subscription discount
+      ---
+      duration_ms: 93.352871
+      type: 'test'
+      ...
+    # Subtest: native checkout has no recurring capability; an authenticated synthetic mandate renews once after timeout
+    ok 11 - native checkout has no recurring capability; an authenticated synthetic mandate renews once after timeout
+      ---
+      duration_ms: 170.739836
+      type: 'test'
+      ...
+    # Subtest: a delayed refund for an earlier period cannot cancel a later paid period or its mandate
+    ok 12 - a delayed refund for an earlier period cannot cancel a later paid period or its mandate
+      ---
+      duration_ms: 154.94585
+      type: 'test'
+      ...
+    1..12
+ok 1 - synthetic subscriptions share the wallet, retain original cash rights, refund atomically and renew once
+  ---
+  duration_ms: 2423.954399
+  type: 'test'
+  ...
+1..1
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3319.602962
