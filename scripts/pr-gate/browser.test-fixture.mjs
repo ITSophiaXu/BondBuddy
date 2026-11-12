@@ -12,6 +12,7 @@ export function syntheticBrowserShard(expected, row, capabilities, runId, imageI
   const runtime = { ...common, schema: 'pr-gate-browser-runtime-v1', status: 'prepared', profile_sha256: plan.profile_sha256, plan_sha256, files: plan.files,
     environment: { ...plan.environment, PATH: '/usr/local/bin:/usr/bin:/bin' }, removed_environment_keys: [], model_calls: 0,
     started_at: stamp(11), prepared_at: stamp(12), finished_at: stamp(23), cleanup: { status: 'passed', errors: [] }, probes: {
+      browser_network: { status: 'passed', navigator_online: true, origin: BROWSER_ORIGIN, same_origin_status: 200, public_probe_requests: 0, browser_version: 'synthetic' },
       web: { status: 'passed', origin: BROWSER_ORIGIN, tls_verified: true, ca_sha256: capabilities.tls.ca_sha256, response_sha256: browserHash('synthetic-web') } },
     invocation: { command: 'npx', args: browserInvocation(files.map(id => ({ id })), '', {}).args, cwd: '/workspace/apps/web', timeout_ms: 120000,
       exit_code: 0, timed_out: false, started_at: stamp(15), finished_at: stamp(22) } };

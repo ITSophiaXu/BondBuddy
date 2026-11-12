@@ -5,6 +5,7 @@ import { verifyOfflineCache } from './offline-cache.mjs';
 import { verifyHostRuns } from './host-dispatch.mjs';
 import { verifyCoreSource } from './core-source.mjs';
 import { verifyBrowserRuns } from './browser-receipt.mjs';
+import { verifyInternalNetworkEvidence } from './internal-network.mjs';
 
 export const RECEIPT_SCHEMA = 'pr-gate-local-v1';
 export const PREPARATION_IDS = Object.freeze(['image', 'capabilities', 'services', 'dependencies', 'build', 'contracts', 'browser', 'host']);
@@ -79,7 +80,9 @@ export function verifyReceipt(receipt, expected, now = Date.now()) {
   if (receipt.dependency_mode === 'offline-cache') {
     requireEvidence(receipt.dependency_sources?.downloads === false, 'offline cache declared a download');
     requireEvidence(receipt.cache_image?.image_id === receipt.offline_cache?.image_id, 'cache image identity differs');
-    requireEvidence(receipt.cache_runtime?.network === 'none' && receipt.cache_runtime?.image_id === receipt.cache_image.image_id && receipt.cache_runtime?.published_ports === 0 && receipt.cache_runtime?.privileged === false, 'offline runner isolation missing');
+    requireEvidence(receipt.cache_runtime?.network === 'internal' && receipt.cache_runtime?.image_id === receipt.cache_image.image_id && receipt.cache_runtime?.published_ports === 0 && receipt.cache_runtime?.privileged === false, 'offline runner isolation missing');
+    verifyInternalNetworkEvidence(receipt.internal_network, { runId: receipt.run_id, containerId: receipt.cache_runtime.container_id });
+    requireEvidence(receipt.internal_network.id === receipt.cache_runtime.network_id && receipt.internal_network.id === receipt.offline_cache.network_id, 'offline network identity differs');
     for (const service of ['postgres', 'azurite']) requireEvidence(/^sha256:[a-f0-9]{64}$/.test(receipt.cache_service_images?.[service] ?? ''), 'cached service identity missing');
     verifyOfflineCache(receipt.offline_cache, expected);
   } else requireEvidence(receipt.dependency_mode === 'download', 'dependency mode is missing or unknown');

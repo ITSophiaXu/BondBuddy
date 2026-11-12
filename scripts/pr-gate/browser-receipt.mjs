@@ -34,6 +34,8 @@ export function verifyBrowserRuns(receipt, expected) {
     const stamps = order.map(time); assert.ok(stamps.every((value, i) => !i || value >= stamps[i - 1]), 'Browser readiness/test/cleanup timestamps are inconsistent');
     const web = runtime.probes?.web; assert.equal(web?.status, 'passed'); assert.equal(web.origin, BROWSER_ORIGIN); assert.equal(web.tls_verified, true);
     assert.equal(web.ca_sha256, receipt.capabilities.tls.ca_sha256); sha(web.response_sha256);
+    const network = runtime.probes.browser_network; assert.equal(network?.status, 'passed'); assert.equal(network.navigator_online, true);
+    assert.equal(network.origin, BROWSER_ORIGIN); assert.equal(network.same_origin_status, 200); assert.equal(network.public_probe_requests, 0); assert.ok(network.browser_version);
     if (plan.needs.api) {
       const pg = services.database; assert.equal(pg?.migrated, true); assert.equal(pg.port, 55433); assert.equal(pg.database, 'bondbuddy_local');
       assert.match(pg.id, /^[a-f0-9]{64}$/); assert.match(pg.image_id, /^sha256:[a-f0-9]{64}$/); assert.equal(pg.run_id, receipt.run_id);
