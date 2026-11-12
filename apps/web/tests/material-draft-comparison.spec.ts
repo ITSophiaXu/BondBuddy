@@ -129,7 +129,10 @@ test('material draft comparison: identical full inputs are folded and an explici
 test('material draft comparison: absent and explicitly empty fields remain distinct in display and the saved input', async ({ page }) => {
   const state = await install(page, fixture()), local: M4DraftInput = { ...state.localInput, supplemental_requirements: '' }, server = structuredClone(local);
   local.fields = { ...local.fields, market: 'constructor' };
-  delete server.supplemental_requirements; delete server.fields.explicit_empty; setServer(state, server); await restore(page, state, local); await openComparison(page, state);
+  expect(Value.Check(M4DraftInputSchema, local)).toBe(true);
+  delete server.supplemental_requirements; delete server.fields.explicit_empty;
+  expect(Value.Check(M4DraftInputSchema, server)).toBe(true);
+  setServer(state, server); await restore(page, state, local); await openComparison(page, state);
   for (const key of ['supplemental_requirements', 'fields.explicit_empty']) {
     await expect(row(page, key)).toHaveAttribute('data-comparison-change', 'content');
     expect(await row(page, key).locator('[data-comparison-side="local"]').textContent()).not.toBe(await row(page, key).locator('[data-comparison-side="server"]').textContent());
@@ -137,7 +140,24 @@ test('material draft comparison: absent and explicitly empty fields remain disti
   await expect(row(page, 'fields.market').locator('[data-comparison-side="local"]')).toContainText('constructor');
   await expect(row(page, 'fields.market')).not.toContainText('function Object');
   await action(page, 'keep').click(); await expect.poll(() => draftWrites(state).length).toBe(1); await expect(dialog(page)).toHaveCount(0);
-  expect(draftWrites(state)).toEqual([{ expected_version: 4, input: local }]); noBusiness(state);
+  expect(draftWrites(state)).toEqual([{ expected_version: 4, input: local }]); await waitCache(page);
+  expect((await legacyCache(page)).drafts.private_summary.input).toEqual(local); noBusiness(state);
+});
+
+test('material draft comparison: inherited toString market renders without inventing a valid market or changing the saved input', async ({ page }) => {
+  const state = await install(page, fixture()), local: M4DraftInput = { ...structuredClone(state.localInput), fields: { ...state.localInput.fields, market: 'toString' } };
+  expect(Value.Check(M4DraftInputSchema, local)).toBe(true);
+  setServer(state); await restore(page, state, local);
+  await expect(page.locator('#m4-market')).toHaveValue('');
+  await expect(page.locator('#m4-offering')).toHaveValue('');
+  await expect(page.locator('#m4-offering option')).toHaveCount(1);
+  await openComparison(page, state);
+  await expect(row(page, 'fields.market').locator('[data-comparison-side="local"]')).toContainText('toString');
+  await expect(row(page, 'fields.market')).not.toContainText('function');
+  expect(writes(state)).toEqual([]);
+  await action(page, 'keep').click(); await expect.poll(() => draftWrites(state).length).toBe(1); await expect(dialog(page)).toHaveCount(0); await waitCache(page);
+  expect(draftWrites(state)).toEqual([{ expected_version: 4, input: local }]);
+  expect((await legacyCache(page)).drafts.private_summary.input).toEqual(local); noBusiness(state);
 });
 
 test('material draft comparison: fresh names require unique complete pins and never borrow a similar file', async ({ page }) => {
