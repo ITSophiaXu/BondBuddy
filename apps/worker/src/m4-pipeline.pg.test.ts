@@ -1,5 +1,7 @@
 // SYNTHETIC materials/model. Real API, PostgreSQL, private Blob, Word delivery, leases and accounting.
 // The model seam uses the durable journal but does not spawn Codex or call a supplier.
+// Replay historical one-point authoring and capped QA contracts. Current HTTP
+// pricing is covered separately by m4-pricing-fixture-boundary.pg.test.ts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -37,7 +39,7 @@ test('synthetic M4 document and QA pipeline: real deliveries/capped metering, cr
   {skip:!database||!connection,timeout:180000},async()=>{
   const pool=new Pool({connectionString:database}),base=resolve(tmpdir()),directory=await mkdtemp(join(base,'bb-m4-pg-'));
   const container=`bb-m4-${randomUUID().replaceAll('-','')}`,blobs=azureBlobs(connection!,container),owner=`m4pg-${randomUUID()}`;let actor=owner;
-  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true});
+  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as never,url,payload:payload as never,headers:{origin:'http://bondbuddy.test'}});
   const ok=async(method:string,url:string,payload?:unknown)=>{const response=await send(method,url,payload);assert.equal(response.statusCode,200,response.body);return response.json();};
   let modelCalls=0,unknown=false;
@@ -93,6 +95,7 @@ test('synthetic M4 document and QA pipeline: real deliveries/capped metering, cr
     const cost:M4BillingConfig={model_id:config.model_id,rates:{[config.model_id]:rate},budgets:Object.fromEntries(Object.keys(M4_BILLING_TASKS).map(k=>[k,{input_tokens:1000000,output_tokens:1000000,reserve_factor:1.2}])) as M4BillingConfig['budgets']};
     await transaction(pool,c=>grantCredits(c,{owner,source:'purchase',key:'synthetic-m4-fund',points:1,expiresAt:null,actor:'synthetic-test',reason:'synthetic-only'}));
     const start=async()=>{const q=await ok('POST',path('quote'),{kind:'document',document_type:'private_summary',expected_draft_version:1});
+      assert.equal(q.quote.points,'4500');assert.equal(q.quote.billing_policy,'authoring_balance_v2');assert.equal(q.quote.billing_method,'fixed');
       const request={execution_request_id:randomUUID(),document_type:'private_summary',expected_draft_version:1,quote_id:q.quote.quote_id,entrypoint:'workspace'};
       const r=(await ok('POST',path('execute'),request)).run;assert.equal((await ok('POST',path('execute'),request)).run.run_id,r.run_id);return {r,q};};
     const verifyPendingReading=async(artifact:M4Artifact)=>{
@@ -155,6 +158,7 @@ test('synthetic M4 document and QA pipeline: real deliveries/capped metering, cr
     // Pure QA follows the same durable pipeline but delivers authenticated text without any Word promotion.
     const context={document_type:null,draft_version:0,source_material:pin,citations:[],reading_artifact:null};
     const content='解释材料中负债的概念',qaQuote=await ok('POST',path('quote'),{kind:'qa',content,context});
+    assert.equal(qaQuote.quote.billing_method,'metered_capped');assert.equal(qaQuote.quote.amount_semantics,'reservation_cap');assert.equal(qaQuote.quote.billing_policy,'on_delivery');
     const qaRun=(await ok('POST',path('messages'),{submission_request_id:randomUUID(),content,context,quote_id:qaQuote.quote.quote_id})).run;
     assert.equal(await pipeline(),'paused');assert.equal(modelCalls,3);
     assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1',[qaRun.run_id])).rows[0].state,'settlement_pending');
