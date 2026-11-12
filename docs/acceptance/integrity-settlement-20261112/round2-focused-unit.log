@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: settlement projects exact accepted/charged/released points and saved query pairs without mutating facts
+ok 1 - settlement projects exact accepted/charged/released points and saved query pairs without mutating facts
+  ---
+  duration_ms: 8.797345
+  type: 'test'
+  ...
+# Subtest: all successful pairs and zero release remain explicit
+ok 2 - all successful pairs and zero release remain explicit
+  ---
+  duration_ms: 1.49716
+  type: 'test'
+  ...
+# Subtest: undelivered terminal tasks explain actual full release without inventing successful queries
+ok 3 - undelivered terminal tasks explain actual full release without inventing successful queries
+  ---
+  duration_ms: 1.152623
+  type: 'test'
+  ...
+# Subtest: missing, duplicate, malformed and out-of-scope durable pairs never become confirmed fee explanations
+ok 4 - missing, duplicate, malformed and out-of-scope durable pairs never become confirmed fee explanations
+  ---
+  duration_ms: 1.976312
+  type: 'test'
+  ...
+# Subtest: unsettled, legacy, exported and contradictory ledger snapshots do not receive a v4 settlement
+ok 5 - unsettled, legacy, exported and contradictory ledger snapshots do not receive a v4 settlement
+  ---
+  duration_ms: 1.619474
+  type: 'test'
+  ...
+# Subtest: integrity settlement money uses decimal wire while saved pair identities and counts remain unchanged
+ok 6 - integrity settlement money uses decimal wire while saved pair identities and counts remain unchanged
+  ---
+  duration_ms: 6.647114
+  type: 'test'
+  ...
+# Subtest: quote and scope explanations encode amounts without converting revisions or changing stored snapshots
+ok 7 - quote and scope explanations encode amounts without converting revisions or changing stored snapshots
+  ---
+  duration_ms: 2.614181
+  type: 'test'
+  ...
+# Subtest: nested task progress, period hold breakdown and correction history retain full integer range
+ok 8 - nested task progress, period hold breakdown and correction history retain full integer range
+  ---
+  duration_ms: 0.982505
+  type: 'test'
+  ...
+# Subtest: mixed file generation converts nested money without changing template pins, revisions or immutable input
+ok 9 - mixed file generation converts nested money without changing template pins, revisions or immutable input
+  ---
+  duration_ms: 0.839491
+  type: 'test'
+  ...
+# Subtest: raw requests reject numeric wire values before schema coercion and normalize bounded old hash inputs exactly
+ok 10 - raw requests reject numeric wire values before schema coercion and normalize bounded old hash inputs exactly
+  ---
+  duration_ms: 0.74908
+  type: 'test'
+  ...
+# Subtest: refund null evidence and ordinary document quantities are not converted by field-name guessing
+ok 11 - refund null evidence and ordinary document quantities are not converted by field-name guessing
+  ---
+  duration_ms: 0.313934
+  type: 'test'
+  ...
+# Subtest: only cumulative admin usage counts change; rates, durations and revision numbers keep their units
+ok 12 - only cumulative admin usage counts change; rates, durations and revision numbers keep their units
+  ---
+  duration_ms: 0.425646
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1434.818731
