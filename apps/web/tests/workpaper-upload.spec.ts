@@ -145,9 +145,9 @@ for(const width of [1440,390])test(`saved directory recovery is readable without
   await page.locator('#wp-upload').setInputFiles(file);await expect(page.locator('.wp-upload-recovery-item')).toContainText('已上传，目录待识别');
   await expect(page.locator('[data-wp-upload]')).toBeEnabled();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await mkdir('test-evidence/workpaper-upload-20261029',{recursive:true});
-  await page.screenshot({path:`test-evidence/workpaper-upload-20261029/recovery-${width}.png`,fullPage:true});
-  await page.locator('.wp-upload-recovery-item').screenshot({path:`test-evidence/workpaper-upload-20261029/recovery-card-${width}.png`});
+  await mkdir(test.info().outputPath('test-evidence/workpaper-upload-20261029'),{recursive:true});
+  await page.screenshot({path:test.info().outputPath(`test-evidence/workpaper-upload-20261029/recovery-${width}.png`),fullPage:true});
+  await page.locator('.wp-upload-recovery-item').screenshot({path:test.info().outputPath(`test-evidence/workpaper-upload-20261029/recovery-card-${width}.png`)});
 });
 
 test('ambiguous directory previews before import; adjustments survive reload and lost save replays exactly',async({page})=>{
@@ -177,16 +177,16 @@ for(const width of [1440,390])test(`directory interpretation preview remains usa
   await page.setViewportSize({width,height:960});const state=await setup(page);state.review=true;await page.locator('#wp-upload').setInputFiles(file);
   await expect(page.locator('#wp-accept-mapping')).toBeEnabled();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await page.screenshot({path:`test-evidence/workpaper-upload-20261029/interpretation-${width}.png`,fullPage:true});
-  await page.locator('#wp-import-review').screenshot({path:`test-evidence/workpaper-upload-20261029/interpretation-card-${width}.png`});
+  await page.screenshot({path:test.info().outputPath(`test-evidence/workpaper-upload-20261029/interpretation-${width}.png`),fullPage:true});
+  await page.locator('#wp-import-review').screenshot({path:test.info().outputPath(`test-evidence/workpaper-upload-20261029/interpretation-card-${width}.png`)});
 });
 
 for(const width of [1440,390])test(`directory interpretation prototype ${width}`,async({page})=>{
   await page.setViewportSize({width,height:960});const prototype=resolve(process.cwd(),'../../product-prototype/public/workpaper-batch.html').replaceAll('\\','/');await page.goto('/@fs/'+prototype+'?upload=review');
   await expect(page.locator('#wp-accept-mapping')).toBeEnabled();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await page.screenshot({path:`test-evidence/workpaper-upload-20261029/prototype-interpretation-${width}.png`,fullPage:true});
-  await page.locator('#wp-import-review').screenshot({path:`test-evidence/workpaper-upload-20261029/prototype-interpretation-card-${width}.png`});
+  await page.screenshot({path:test.info().outputPath(`test-evidence/workpaper-upload-20261029/prototype-interpretation-${width}.png`),fullPage:true});
+  await page.locator('#wp-import-review').screenshot({path:test.info().outputPath(`test-evidence/workpaper-upload-20261029/prototype-interpretation-card-${width}.png`)});
   await page.locator('.wp-mapping-fields select').first().selectOption('2');await expect(page.locator('#wp-accept-mapping')).toBeDisabled();
   await page.locator('#wp-preview-again').click();await expect(page.locator('#wp-accept-mapping')).toBeEnabled();
   await page.locator('#wp-accept-mapping').click();await expect(page.locator('#wp-import-review')).toHaveCount(0);

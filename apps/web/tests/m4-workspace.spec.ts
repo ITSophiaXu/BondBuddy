@@ -30,7 +30,7 @@ for(const width of [1440,390])test(`case template application and recommendation
   await expect(page.locator('#m4-case-template')).toBeVisible();
   await page.locator('#m4-market').selectOption('szse');await page.locator('#m4-case-template').selectOption('szse-private-application-alt');
   await page.getByText('查看模板结构',{exact:true}).click();await expect(page.locator('.studio-template-details')).toContainText('一、发行人概况');
-  const dir=resolve('test-evidence/case-templates-20261015');await mkdir(dir,{recursive:true});
+  const dir=resolve(test.info().outputPath('test-evidence/case-templates-20261015'));await mkdir(dir,{recursive:true});
   await page.screenshot({path:resolve(dir,`application-${width}.png`),fullPage:true});
   await choose(page,'recommendation');await page.getByRole('button',{name:'生成推荐函',exact:true}).click();
   await expect(page.getByRole('alert',{name:'需要补充的信息'})).toContainText('请选择推荐函对应的品种');expect(s.executions).toHaveLength(0);
@@ -48,7 +48,7 @@ for(const width of [1440,390])test(`case template application and recommendation
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex');
 test('case template prototype and implementation expose the same six materials and scoped market controls',async({page})=>{
   const s=fixture();await mount(page,s);await choose(page,'application');
-  const prototype=await page.context().newPage(),dir=resolve('test-evidence/case-templates-20261015');
+  const prototype=await page.context().newPage(),dir=resolve(test.info().outputPath('test-evidence/case-templates-20261015'));
   await prototype.route('http://prototype.test/**',async route=>{
     const path=new URL(route.request().url()).pathname;
     const allowed=['/product-prototype/public/material-case-templates.html','/product-prototype/public/styles.css','/product-prototype/public/project-workspace.css','/product-prototype/public/material-results.css','/apps/web/src/m4-workspace.css','/apps/web/src/m4-prototype.css'];
@@ -206,7 +206,7 @@ test('server-reported missing input shows safe field guidance and preserves the 
 });
 
 test('material input feedback matches the prototype on desktop and mobile',async({page})=>{
-  const output=resolve('test-evidence/material-input-feedback-20261013');await mkdir(output,{recursive:true});
+  const output=resolve(test.info().outputPath('test-evidence/material-input-feedback-20261013'));await mkdir(output,{recursive:true});
   const s=fixture();s.workspace.drafts.legal.fields.market='';s.workspace.drafts.legal.source_material=s.workspace.materials[0];
   await mount(page,s);await choose(page,'legal');await page.getByRole('button',{name:'生成法律意见书',exact:true}).click();
   const prototype=await page.context().newPage();
@@ -232,7 +232,7 @@ for(const viewport of [{width:1440,height:1100},{width:430,height:932}])test(`le
   await page.setViewportSize(viewport);const s=fixture();await mount(page,s);await choose(page,'private_summary');
   await expect(page.locator('[data-credit-wallet]')).toHaveCount(0);
   await expect(page.locator('.m4-price')).toHaveCount(0);await expect(page.getByRole('button',{name:'确认并生成'})).toHaveCount(0);
-  if(process.env.M4_UX_EVIDENCE){const dir=resolve(process.env.M4_UX_EVIDENCE_DIR || 'test-evidence/m4-one-click-20261008');await mkdir(dir,{recursive:true});await page.locator('.form-footer').scrollIntoViewIfNeeded();await page.screenshot({path:resolve(dir,`ready-${viewport.width}.png`)});}
+  if(process.env.M4_UX_EVIDENCE){const dir=resolve(process.env.M4_UX_EVIDENCE_DIR || test.info().outputPath('test-evidence/m4-one-click-20261008'));await mkdir(dir,{recursive:true});await page.locator('.form-footer').scrollIntoViewIfNeeded();await page.screenshot({path:resolve(dir,`ready-${viewport.width}.png`)});}
   await start(page);await expect.poll(()=>s.executions.length).toBe(1);expect(s.quotes).toHaveLength(1);
   await expect(page.getByRole('tab',{name:'生成进度'})).toHaveAttribute('aria-selected','true');
   await expect(page.locator('.m4-price')).toHaveCount(0);
@@ -240,7 +240,7 @@ for(const viewport of [{width:1440,height:1100},{width:430,height:932}])test(`le
   const fresh={...s.artifact,artifact_id:'new-artifact',revision_number:2,filename:'合成摘要新稿.docx',run_id:'new-run'};
   s.workspace.artifacts.push(fresh);s.workspace.tasks[0].run=s.run('new-run','succeeded');s.workspace.tasks[0].artifacts=[fresh];s.workspace.active_run=null;
   await expect(page.locator('#m4-status')).toContainText('本次制作已完成',{timeout:10000});
-  if(process.env.M4_UX_EVIDENCE){await page.screenshot({path:resolve(process.env.M4_UX_EVIDENCE_DIR || 'test-evidence/m4-one-click-20261008',`success-${viewport.width}.png`)});}
+  if(process.env.M4_UX_EVIDENCE){await page.screenshot({path:resolve(process.env.M4_UX_EVIDENCE_DIR || test.info().outputPath('test-evidence/m4-one-click-20261008'),`success-${viewport.width}.png`)});}
 });
 
 test('insufficient credits show balance and payment status, retain input and never auto-start',async({page})=>{
@@ -423,7 +423,7 @@ for(const [label,width] of [['desktop',1440],['mobile',390]] as const)test(`gene
   await expect(alert).toBeInViewport();await expect(page.locator('#m4-status')).not.toBeInViewport();
   await expect(page.getByRole('button',{name:'重试保存草稿',exact:true})).toHaveCount(0);
   expect(s.executions).toHaveLength(0);expect(s.charged).toBe(0);expect(s.workspace.drafts.underwriter).toEqual(input);
-  if(process.env.M4_UX_EVIDENCE){const output=resolve(process.env.M4_UX_EVIDENCE_DIR || 'test-evidence/m4-one-click-20261008');await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/implementation-error-${label}.png`});}
+  if(process.env.M4_UX_EVIDENCE){const output=resolve(process.env.M4_UX_EVIDENCE_DIR || test.info().outputPath('test-evidence/m4-one-click-20261008'));await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/implementation-error-${label}.png`});}
 });
 
 for(const width of [1440,390,320])test(`material fits viewport ${width}`,async({page})=>{
@@ -452,7 +452,7 @@ test('polling keeps a focused native file input connected',async({page})=>{
 test('same-size original prototype and material implementation screenshots',async({page})=>{
   test.setTimeout(120000);
   test.skip(!process.env.M4_UX_EVIDENCE,'Screenshots are captured explicitly for review.');
-  const output=resolve(process.env.M4_UX_EVIDENCE_DIR || 'test-evidence/m4-one-click-20261008');await mkdir(output,{recursive:true});
+  const output=resolve(process.env.M4_UX_EVIDENCE_DIR || test.info().outputPath('test-evidence/m4-one-click-20261008'));await mkdir(output,{recursive:true});
   const s=fixture();s.workspace.materials=[];s.workspace.material_details=[];s.workspace.artifacts=[];
   for(const d of Object.values(s.workspace.drafts)){d.fields={};d.requirements=[];d.source_material=null;}
   await mount(page,s);
@@ -525,7 +525,7 @@ test('historical note from another run is not presented as this result',async({p
   await expect(page.getByRole('button',{name:'下载编制说明',exact:true})).toHaveCount(0);await expect(page.getByText('本轮暂无可下载的编制说明。')).toBeVisible();expect(s.executions).toHaveLength(0);
 });
 test('material progress and results match the reference at desktop and mobile sizes',async({page})=>{
-  test.setTimeout(120000);const output=resolve('test-evidence/material-dynamic-20261013');await mkdir(output,{recursive:true});
+  test.setTimeout(120000);const output=resolve(test.info().outputPath('test-evidence/material-dynamic-20261013'));await mkdir(output,{recursive:true});
   const s=fixture(),task=s.addDocumentTask('visual');task.run.stage='model_generation';await mount(page,s);await page.getByRole('button',{name:'查看生成进度',exact:true}).click();
   const prototype=await page.context().newPage();await prototype.route('http://prototype.test/**',async route=>{const name=new URL(route.request().url()).pathname;const file=name.startsWith('/apps/web/src/')?resolve('../..'+name):resolve('../../product-prototype/public'+name);return route.fulfill({contentType:name.endsWith('.css')?'text/css':'text/html',body:await readFile(file)});});
   task.run.event_cursor=1;task.events=[{event_id:'synthetic-progress',schema_version:1,trace_id:'synthetic',run_id:task.run.run_id,seq:1,type:'run.progress',state:'running',stage:'model_generation',occurred_at:now,payload:{authoring_activity:{activity_id:hash('material-progress'),code:'read_materials',state:'started',summary:'正在核对发行人信息与财务材料'}}}];
@@ -586,7 +586,7 @@ for(const width of [1440,390])test(`delete owned material source and support wit
   await remove.evaluate(node=>(node as HTMLElement).dataset.r40BeforeRefresh='true');await page.getByRole('button',{name:'刷新状态',exact:true}).click();await expect(remove).not.toHaveAttribute('data-r40-before-refresh','true');await expect(remove).toBeEnabled();expect(deleteAttempts).toBe(1);
   await remove.click();await expect(remove).toHaveCount(0);await expect.poll(()=>s.workspace.drafts.private_summary.materials).toEqual([]);
   await expect(page.getByRole('button',{name:'删除 误传募集书.docx',exact:true})).toBeEnabled();
-  if(process.env.BB_DELETE_EVIDENCE){const dir='test-evidence/material-delete-20261010';await mkdir(dir,{recursive:true});await page.locator('.m4-source-file').evaluate(el=>el.scrollIntoView({block:'center'}));await page.locator('.m4-source-file').screenshot({path:`${dir}/material-source-${width}.png`});}
+  if(process.env.BB_DELETE_EVIDENCE){const dir=test.info().outputPath('test-evidence/material-delete-20261010');await mkdir(dir,{recursive:true});await page.locator('.m4-source-file').evaluate(el=>el.scrollIntoView({block:'center'}));await page.locator('.m4-source-file').screenshot({path:`${dir}/material-source-${width}.png`});}
   await page.getByRole('button',{name:'删除 误传募集书.docx',exact:true}).click();await expect.poll(()=>s.workspace.drafts.private_summary.source_material).toBeNull();
   await page.reload();await choose(page,'private_summary');await expect(page.locator('.m4-source-file')).toHaveCount(0);await expect(page.getByLabel('上传最新版募集说明书',{exact:true})).toBeVisible();
   expect(JSON.stringify(s.workspace.tasks)).toBe(history);expect(s.executions).toHaveLength(0);
@@ -613,14 +613,14 @@ for(const viewport of [{width:1440,height:960},{width:390,height:844}])test(`dyn
   await expect(page.locator('[aria-label=积分消耗] strong')).toHaveText('125 积分',{timeout:10000});
   await expect(page.locator('[aria-label=生成过程]')).toContainText('正在核对发行人信息与财务材料');
   await expect(page.locator('[data-credit-wallet]')).toHaveCount(0);
-  if(process.env.M4_DYNAMIC_EVIDENCE){const dir=resolve('test-evidence/material-dynamic-20261013');await mkdir(dir,{recursive:true});await page.screenshot({path:resolve(dir,`running-${viewport.width}.png`),fullPage:true});}
+  if(process.env.M4_DYNAMIC_EVIDENCE){const dir=resolve(test.info().outputPath('test-evidence/material-dynamic-20261013'));await mkdir(dir,{recursive:true});await page.screenshot({path:resolve(dir,`running-${viewport.width}.png`),fullPage:true});}
   await page.getByRole('button',{name:'暂停生成',exact:true}).click();await expect(page.locator('.task-progress')).toContainText('任务已暂停');
   await expect(page.locator('[aria-label=积分消耗] strong')).toHaveText('125 积分');await page.reload();await expect(page.getByRole('button',{name:'继续生成'})).toBeVisible();
   await page.getByRole('button',{name:'继续生成'}).click();await expect(page.getByRole('button',{name:'暂停生成'})).toBeVisible();expect(s.controls).toEqual(['pause','resume']);
   p.credit_exhausted=true;p.clock_running=false;p.available_points=s.balance.available=0;p.charged_points=p.accrued_points=1000;task.run.state='paused';task.run.stage='credits_exhausted';
   await page.getByRole('button',{name:'刷新状态'}).click();await expect(page.locator('.task-progress')).toContainText('积分已用完');await expect(page.getByRole('link',{name:'查看积分与支付状态',exact:true})).toBeVisible();
   await expect(page.locator('[data-m4-action=download]')).toHaveCount(0);
-  if(process.env.M4_DYNAMIC_EVIDENCE){await page.screenshot({path:resolve('test-evidence/material-dynamic-20261013',`exhausted-${viewport.width}.png`),fullPage:true});}
+  if(process.env.M4_DYNAMIC_EVIDENCE){await page.screenshot({path:resolve(test.info().outputPath('test-evidence/material-dynamic-20261013'),`exhausted-${viewport.width}.png`),fullPage:true});}
   await page.getByRole('button',{name:'结束本次生成'}).click();await expect(page.locator('[aria-label=积分消耗]')).toContainText('本次已扣费');
   await expect(page.locator('[aria-label=积分消耗] strong')).toHaveText('1,000 积分');expect(s.executions).toHaveLength(1);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

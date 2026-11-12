@@ -357,7 +357,7 @@ test('revision results expose handling reasons and locations without chat or exe
   await expect(dialog).toContainText('执行版本 V2 · revision-run-2');await expect(dialog).toContainText('来源报告：report-v1 · V1');await expect(dialog).toContainText('已修改 1 项 · 未修改 1 项 · 待补证 1 项');
   await expect(dialog.locator('[data-handling-finding="F02"]')).toContainText('缺少更名生效日期依据');await expect(dialog.locator('[data-handling-finding="F03"]')).toContainText('用户未选择此项');await expect(dialog).toContainText('段落：10');await expect(dialog).toContainText('已修改不代表复核通过');await expect(dialog).toContainText('公开信息未重新核验');
   expect(state.artifactReads).toEqual(['/artifacts/revision-2']);expect(state.requests).toHaveLength(0);expect(state.executes).toHaveLength(0);
-  await mkdir('test-evidence/m3-agent-progress-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-agent-progress-review/handling-desktop.png'});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:'test-evidence/m3-agent-progress-review/handling-narrow.png'});
+  await mkdir(test.info().outputPath('test-evidence/m3-agent-progress-review'),{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:test.info().outputPath('test-evidence/m3-agent-progress-review/handling-desktop.png')});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:test.info().outputPath('test-evidence/m3-agent-progress-review/handling-narrow.png')});
 });
 
 test('workbench handling reads the exact historical revision and returns to its history',async({page})=>{
@@ -460,7 +460,7 @@ function addTypedProposal(state:ReturnType<typeof fixture>,operation:ReviewPropo
 test('workbench alone owns version history and retains stopped/failed snapshots and exact report navigation',async({page})=>{
   const state=fixture();for(const [index,status]of(['failed','cancelled'] as const).entries())state.history.push({...structuredClone(state.history[0]),version:index+2,run:state.makeRun(`run-${index+2}`,status),report_id:null,input:{...structuredClone(state.workspace.draft),requirements:[`保留的${status}版本要求`]},created_at:`2026-10-02T1${index+1}:00:00Z`});
   await setup(page,state,'#tasks');const project=page.locator(`.collection-project[data-project-id="${id}"]`);await expect(project).toBeVisible();await project.locator('[data-tasks]').click();await page.getByRole('button',{name:'复核版本记录',exact:true}).click();const dialog=page.getByRole('dialog');await expect(dialog.locator('.review-history-entry')).toHaveCount(3);await expect(dialog).toContainText('已停止');await expect(dialog).toContainText('处理失败');await dialog.getByText('查看本轮输入与处理范围',{exact:true}).first().click();await expect(dialog).toContainText('保留的cancelled版本要求');
-  await mkdir('test-evidence/m3-agent-progress-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-agent-progress-review/history-desktop.png'});
+  await mkdir(test.info().outputPath('test-evidence/m3-agent-progress-review'),{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:test.info().outputPath('test-evidence/m3-agent-progress-review/history-desktop.png')});
   await dialog.getByRole('link',{name:'打开此版报告'}).click();await expect(page).toHaveURL(/report_id=report-v1/);await expect(page.getByRole('tab')).toHaveCount(3);await expect(page.locator('#review-workspace').getByRole('button',{name:'版本记录',exact:true})).toHaveCount(0);
   await page.setViewportSize({width:390,height:844});await expect(page.locator('.sidebar a.active')).toContainText('复核募集书');await expect(page.getByRole('link',{name:'返回任务进度与结果'})).toHaveAttribute('href','#tasks');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
@@ -815,7 +815,7 @@ test('synthetic workspace design scenes',async({page})=>{
  const capture=async(name:string)=>{
    if(['results','progress','updating'].includes(name))await expect(page.getByRole('navigation',{name:'三个复核维度'})).toBeVisible();
    scenes[name]=await page.locator('#app').innerHTML();
-   const output=process.env.BB_WORKSPACE_EVIDENCE??'../../docs/acceptance/workspace-ux-20261005';await mkdir(output,{recursive:true});
+   const output=process.env.BB_WORKSPACE_EVIDENCE??test.info().outputPath('workspace-ux-20261005');await mkdir(output,{recursive:true});
    for(const width of [1360,390]){await page.setViewportSize({width,height:width===1360?900:844});await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:output+'/implementation-'+name+'-'+width+'.png',fullPage:true});}
    await page.setViewportSize({width:1360,height:900});
  };
@@ -835,7 +835,7 @@ test('synthetic workspace design scenes',async({page})=>{
 
 test('workspace prototype parity at desktop and narrow widths',async({page})=>{
  test.skip(!process.env.BB_WORKSPACE_DESIGN,'Dedicated synthetic design comparison only.');
- const output=process.env.BB_WORKSPACE_EVIDENCE??'../../docs/acceptance/workspace-ux-20261005';await mkdir(output,{recursive:true});
+ const output=process.env.BB_WORKSPACE_EVIDENCE??test.info().outputPath('workspace-ux-20261005');await mkdir(output,{recursive:true});
  for(const name of ['create','materials','results','progress','updating',...(process.env.BB_UPLOAD_EVIDENCE?['uploading']:[])]){
   for(const width of [1360,390]){
    await page.setViewportSize({width,height:width===1360?900:844});
@@ -1031,7 +1031,7 @@ for(const width of [1440,390])test(`delete review uploads, retry failures and pr
   await expect.poll(()=>s.workspace.draft.source_material_ref?.material_id).toBe('evidence-new');
   await expect(page.getByRole('button',{name:'删除 正确募集书.docx',exact:true})).toBeVisible();
   expect(deleted).toBe(2);expect(JSON.stringify(s.history)).toBe(history);expect(s.executes).toHaveLength(0);
-  if(process.env.BB_DELETE_EVIDENCE){await mkdir('test-evidence/material-delete-20261010',{recursive:true});await page.locator('[data-review-drop=historical]').screenshot({path:`test-evidence/material-delete-20261010/review-${width}.png`});}
+  if(process.env.BB_DELETE_EVIDENCE){await mkdir(test.info().outputPath('test-evidence/material-delete-20261010'),{recursive:true});await page.locator('[data-review-drop=historical]').screenshot({path:test.info().outputPath(`test-evidence/material-delete-20261010/review-${width}.png`)});}
 });
 
 test('review upload deletion unlocks after cancellation and repeated upload creates a fresh material',async({page})=>{
