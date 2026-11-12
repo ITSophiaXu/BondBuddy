@@ -126,12 +126,12 @@ try {
           (active && service.volumes[0].source!==spoolHost) ||
           Number(service.deploy.resources.limits.cpus)!==0.5 || service.deploy.resources.limits.memory!=='536870912' ||
           service.read_only!==true || service.ports?.length || service.env_file?.length) fail();
-      if (active && service.volumes[0].bind?.create_host_path !== false) {
+      if (active) {
         // Compose versions omit different boolean values. An empty bind object
         // alone cannot prove false: compare against a second render with the
         // trusted explicit-false overlay and a distinct true negative control.
         // Both probes are read-only; unknown/collapsed semantics fail closed.
-        if (!service.volumes[0].bind || service.volumes[0].bind.create_host_path !== undefined) fail();
+        if (!service.volumes[0].bind || ![false,undefined].includes(service.volumes[0].bind.create_host_path)) fail();
         const expected = JSON.parse(readFileSync(3, 'utf8')).services?.['upload-confirmation']?.volumes;
         const unsafe = JSON.parse(readFileSync(4, 'utf8')).services?.['upload-confirmation']?.volumes;
         if (!Array.isArray(expected) || !Array.isArray(unsafe) ||

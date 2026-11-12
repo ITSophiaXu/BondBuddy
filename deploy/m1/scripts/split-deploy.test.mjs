@@ -401,6 +401,25 @@ test('confirmation bind policy rejects true/default/short syntax and probes omit
  const bad=structuredClone(falseModel);bad.services['upload-confirmation'].volumes[0].bind.create_host_path=null;assert.equal(validate(bad),2,'unknown value fails closed');
 });
 
+test('confirmation probe discards valid JSON from a failed render before adopting binding',()=>{
+ const shim=join(dir,'probe-failure-bin');mkdirSync(shim);
+ const docker=execFileSync('bash',['-lc','command -v docker'],{encoding:'utf8'}).trim();
+ writeFileSync(join(shim,'docker'),`#!/usr/bin/env node
+import {spawnSync} from 'node:child_process';
+const args=process.argv.slice(2),r=spawnSync(${JSON.stringify(docker)},args,{encoding:'utf8'});
+process.stdout.write(r.stdout||'');process.stderr.write(r.stderr||'');
+const which=args.some(x=>x.endsWith('/compose.confirmation-bind-true-check.yaml'))?'true':args.some(x=>x.endsWith('/compose.confirmation-bind-check.yaml'))?'false':'';
+// Deliberately emit the real, valid JSON and then fail: the parent must not use it.
+process.exit(which&&which===process.env.TEST_PROBE_FAILURE?51:r.status??1);
+`,{mode:0o755});
+ for(const failure of ['none','false','true']){
+  const a=covered('execution','services: {}\n',{BB_UPLOAD_CONFIRMATION_ROLE:'size-split',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir}),state=join(a.area,'state');
+  const r=spawnSync('bash',['deploy/m1/scripts/role-compose.sh','execution','config','--format','json'],{cwd:root,env:{...configProcessEnv,PATH:shim+':'+process.env.PATH,BB_ENV_FILE:envFile('execution',a.values),BB_STATE_DIR:state,BB_IMAGE_TAG:'synthetic',TEST_PROBE_FAILURE:failure},encoding:'utf8'});
+  assert.equal(r.status,failure==='none'?0:2,r.stderr);
+  if(failure!=='none')assert.throws(()=>readFileSync(join(state,'environment-binding.json')),'failed probe must not adopt a binding');
+ }
+});
+
 test('export inspects the requested source target, preserving uncached historical rollback and source checks',()=>{
  const fixture=join(dir,'export-ref-fixture');mkdirSync(join(fixture,'deploy/m1/scripts'),{recursive:true});mkdirSync(join(fixture,'bin'));
  for(const name of ['export-images-role.sh','role-source-lib.sh'])cpSync(join(root,'deploy/m1/scripts',name),join(fixture,'deploy/m1/scripts',name));

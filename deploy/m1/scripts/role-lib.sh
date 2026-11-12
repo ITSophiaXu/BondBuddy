@@ -79,11 +79,13 @@ compose() {
   # Validate resolved policies without printing credentials, before every lifecycle command.
   role_compose_raw --profile '*' config --format json 2>/dev/null | node "$BB_DIR/scripts/role-config.mjs" validate "$BB_ENV" "$BB_STATE" "$BB_DEPLOY_ROLE" 3< <(
     if role_confirmation_active; then
-      role_compose_raw --profile '*' -f "$BB_DIR/compose.confirmation-bind-check.yaml" config --format json 2>/dev/null
+      local rendered
+      if rendered="$(role_compose_raw --profile '*' -f "$BB_DIR/compose.confirmation-bind-check.yaml" config --format json 2>/dev/null)"; then printf '%s\n' "$rendered"; fi
     fi
   ) 4< <(
     if role_confirmation_active; then
-      role_compose_raw --profile '*' -f "$BB_DIR/compose.confirmation-bind-true-check.yaml" config --format json 2>/dev/null
+      local rendered
+      if rendered="$(role_compose_raw --profile '*' -f "$BB_DIR/compose.confirmation-bind-true-check.yaml" config --format json 2>/dev/null)"; then printf '%s\n' "$rendered"; fi
     fi
   ) || return 2
   [ "${BB_ROLE_READONLY:-0}" != 1 ] || flock -u 8
