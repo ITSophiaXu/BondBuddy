@@ -152,7 +152,7 @@ test('an active task locks template edits including synthetic change events', as
 
 test('format choice matches the shared prototype at desktop and narrow widths', async ({ page }) => {
   const s = data(); await open(page, s);
-  const directory = resolve('test-evidence/template-fidelity-20261029'); await mkdir(directory, { recursive: true });
+  const directory = test.info().outputPath('template-fidelity-20261029'); await mkdir(directory, { recursive: true });
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     const fieldset = page.locator(`[data-source-material="${historicalId}"]`), actual = fieldset.locator('.source-format-choice');

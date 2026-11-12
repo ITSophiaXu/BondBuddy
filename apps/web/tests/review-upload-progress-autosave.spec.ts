@@ -21,8 +21,8 @@ for (const width of [1440, 390]) test(`upload progress survives repaint and keep
   await expect(first.locator('.material-file-actions')).toBeHidden();
   await expect(page.getByText('确认原上传并保存材料选择',{exact:true})).toHaveCount(0);
   await expect(page.getByText('停止本机后续保存',{exact:true})).toHaveCount(0);
-  await first.scrollIntoViewIfNeeded();await mkdir('test-evidence/upload-autosave',{recursive:true});
-  await page.screenshot({path:`test-evidence/upload-autosave/upload-${width}.png`});
+  await first.scrollIntoViewIfNeeded();const dir=test.info().outputPath('upload-autosave');await mkdir(dir,{recursive:true});
+  await page.screenshot({path:`${dir}/upload-${width}.png`});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.evaluate(()=>(window as any).continueBytes());
   await expect(first.getByRole('progressbar')).not.toHaveAttribute('value');

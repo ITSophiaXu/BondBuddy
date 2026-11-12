@@ -65,7 +65,7 @@ for(const width of [1440,390])test(`stopped queue waits for its current file and
  b.items[1].state='failed';await page.clock.fastForward(10100);await expect(page.getByRole('button',{name:'重试未完成项',exact:true})).toBeEnabled();
  b.items[1].state='paused';await page.getByRole('button',{name:'刷新进度',exact:true}).click();
  await expect(page.locator('.wp-batch-state')).toContainText('当前文件待处理');await expect(page.locator('.wp-queue-hint')).toContainText('打开当前文件继续或结束');
- await mkdir('test-evidence/workpaper-stop-retry',{recursive:true});await page.screenshot({path:`test-evidence/workpaper-stop-retry/stopped-${width}.png`,fullPage:true});await page.locator(".wp-batch").scrollIntoViewIfNeeded();await page.screenshot({path:`test-evidence/workpaper-stop-retry/implementation-viewport-${width}.png`});
+ const dir=test.info().outputPath('workpaper-stop-retry');await mkdir(dir,{recursive:true});await page.screenshot({path:`${dir}/stopped-${width}.png`,fullPage:true});await page.locator(".wp-batch").scrollIntoViewIfNeeded();await page.screenshot({path:`${dir}/implementation-viewport-${width}.png`});
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  b.items[1].state='failed';await page.getByRole('button',{name:'刷新进度',exact:true}).click();
  await expect(page.getByRole('button',{name:'重试未完成项',exact:true})).toBeEnabled();await page.getByRole('button',{name:'重试未完成项',exact:true}).click();

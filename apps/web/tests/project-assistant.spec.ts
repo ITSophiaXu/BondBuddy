@@ -3,8 +3,7 @@ import {AUTOMATIC_PRICE_VERSION,commerceMetadata} from '@bondbuddy/contracts';
 import { test,expect,type Page } from '@playwright/test';
 import { mkdir,readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-const evidenceDir=fileURLToPath(new URL('../test-evidence/assistant-refined/',import.meta.url));
+const evidenceDir=()=>test.info().outputPath('assistant-refined');
 import { createHash } from 'node:crypto';
 import { duplicateUploadFixture } from './duplicate-upload-fixture';
 const now='2026-10-08T10:00:00Z',hash='a'.repeat(64);
@@ -77,7 +76,7 @@ test('mobile assistant keeps focus inside and restores navigation and logout aft
  await page.getByRole('button',{name:'打开菜单',exact:true}).click();
  await expect(page.locator('#sidebar')).toHaveClass(/mobile-open/);
  await expect(page.locator('.ba-panel')).toHaveCount(0);
- if(process.env.ASSISTANT_EVIDENCE){await mkdir(evidenceDir,{recursive:true});await page.screenshot({path:resolve(evidenceDir,'implementation-mobile-menu-open.png')});}
+ if(process.env.ASSISTANT_EVIDENCE){await mkdir(evidenceDir(),{recursive:true});await page.screenshot({path:resolve(evidenceDir(),'implementation-mobile-menu-open.png')});}
  await page.getByRole('button',{name:'退出',exact:true}).click();
  await expect(page.getByRole('heading',{name:'登录工作区',exact:true})).toBeVisible();
  await expect(page.locator('.bb-assistant')).toHaveCount(0);
@@ -135,7 +134,7 @@ test('update card has no upfront price and recharge retains the project',async({
 test('fixed QA states the exact price and success/failure terms before confirmation',async({page})=>{
  const s=await setup(page,{fixed:true});await page.getByRole('button',{name:'打开 BondBuddy'}).click();await page.locator('[data-composer]').fill('解释担保条款');await page.locator('[data-a=send]').click();
  await expect(page.locator('[data-qa-price]')).toContainText('本次回答 60 积分');await expect(page.locator('[data-qa-price]')).toContainText('失败不扣费');await expect(page.locator('[data-qa-price]')).not.toContainText('按实际用量');expect(s.messages).toHaveLength(0);
- if(process.env.QA_PRICE_EVIDENCE){const dir=fileURLToPath(new URL('../test-evidence/assistant-qa-price/',import.meta.url));await mkdir(dir,{recursive:true});await page.setViewportSize({width:1440,height:960});await page.mouse.move(0,0);await page.locator('.ba-panel').screenshot({path:resolve(dir,'implementation-panel.png')});const source=await readFile(new URL('../../../product-prototype/public/project-assistant-refined.html',import.meta.url),'utf8');const prototype=await page.context().newPage();await prototype.setViewportSize({width:1440,height:960});await prototype.setContent(source);await prototype.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await prototype.getByRole('textbox',{name:'发送给 BondBuddy'}).fill('解释担保条款');await prototype.locator('[data-a=send]').click();await prototype.mouse.move(0,0);await prototype.locator('.ba-panel').screenshot({path:resolve(dir,'prototype-panel.png')});await prototype.close();}
+ if(process.env.QA_PRICE_EVIDENCE){const dir=test.info().outputPath('assistant-qa-price');await mkdir(dir,{recursive:true});await page.setViewportSize({width:1440,height:960});await page.mouse.move(0,0);await page.locator('.ba-panel').screenshot({path:resolve(dir,'implementation-panel.png')});const source=await readFile(new URL('../../../product-prototype/public/project-assistant-refined.html',import.meta.url),'utf8');const prototype=await page.context().newPage();await prototype.setViewportSize({width:1440,height:960});await prototype.setContent(source);await prototype.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await prototype.getByRole('textbox',{name:'发送给 BondBuddy'}).fill('解释担保条款');await prototype.locator('[data-a=send]').click();await prototype.mouse.move(0,0);await prototype.locator('.ba-panel').screenshot({path:resolve(dir,'prototype-panel.png')});await prototype.close();}
  await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(1);expect(s.messages[0].quote_id).toBe('quote');
 });
 test('editable task card uses quarters and optional requirements; insufficient input never executes',async({page})=>{
@@ -147,7 +146,7 @@ test('editable task card uses quarters and optional requirements; insufficient i
 test('desktop, focus and narrow assistant stay within viewport and preserve normal page layout',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));await setup(page);await page.getByRole('button',{name:'打开 BondBuddy'}).click();
  for(const width of [1440,1024,390,320]){await page.setViewportSize({width,height:960});await expect(page.locator('.ba-panel')).toBeVisible();const box=await page.locator('.ba-panel').boundingBox();expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(width);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  if(process.env.ASSISTANT_EVIDENCE){const dir=evidenceDir;await mkdir(dir,{recursive:true});await page.mouse.move(0,0);await page.screenshot({path:resolve(dir,`implementation-${width}.png`)});if(width===1440)await page.locator('.ba-panel').screenshot({path:resolve(dir,'implementation-panel.png')});}}
+  if(process.env.ASSISTANT_EVIDENCE){const dir=evidenceDir();await mkdir(dir,{recursive:true});await page.mouse.move(0,0);await page.screenshot({path:resolve(dir,`implementation-${width}.png`)});if(width===1440)await page.locator('.ba-panel').screenshot({path:resolve(dir,'implementation-panel.png')});}}
  await page.setViewportSize({width:1440,height:960});const normal=(await page.locator('.ba-panel').boundingBox())!.width;
  await page.locator('[data-a=wide]').click();expect((await page.locator('.ba-panel').boundingBox())!.width).toBeGreaterThan(normal);
  const main=await page.locator('.shell').boundingBox(),panel=await page.locator('.ba-panel').boundingBox();expect(main!.x+main!.width).toBeLessThanOrEqual(panel!.x+1);expect(errors).toEqual([]);
@@ -166,7 +165,7 @@ test('attachments selected during an upload are queued and retained; changed car
  await page.locator('.ba-header [data-a=toggle]').click();await expect(page.locator('.bb-assistant')).toBeHidden();
  expect(s.cards.at(-1).run.state).toBe('queued');expect(s.executions).toHaveLength(1);
  await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await expect(page.locator('.ba-task').last()).toBeVisible();
- if(process.env.ASSISTANT_EVIDENCE){await page.setViewportSize({width:1440,height:960});await page.screenshot({path:resolve(evidenceDir,'implementation-confirmed.png')});}
+ if(process.env.ASSISTANT_EVIDENCE){await page.setViewportSize({width:1440,height:960});await page.screenshot({path:resolve(evidenceDir(),'implementation-confirmed.png')});}
  await expect(page.locator('.ba-task').last()).toContainText('等待开始');await page.reload();await page.getByRole('button',{name:'打开 BondBuddy'}).click();await expect(page.locator('.ba-task').last()).toContainText('等待开始');
  s.cards.at(-1).run={...s.cards.at(-1).run,state:'succeeded',artifact_id:'result'};await expect(page.locator('[data-a=download]')).toBeVisible({timeout:12000});
  const download=page.waitForEvent('download');await page.locator('[data-a=download]').click();expect((await download).suggestedFilename()).toBe('合成项目_复核报告_V2_20261009.txt');expect(s.executions).toHaveLength(1);
@@ -174,16 +173,16 @@ test('attachments selected during an upload are queued and retained; changed car
 
 test('approved prototype comparison capture',async({page})=>{
  test.skip(!process.env.ASSISTANT_EVIDENCE,'Opt-in visual evidence');
- await mkdir(evidenceDir,{recursive:true});
+ await mkdir(evidenceDir(),{recursive:true});
  await page.setViewportSize({width:1440,height:960});
  for(const file of ['project-assistant-refined']){
   const source=await readFile(new URL('../../../product-prototype/public/'+file+'.html',import.meta.url),'utf8');
   await page.setContent('<!doctype html><meta charset="utf-8"><style>:root{color-scheme:light}body{margin:0}</style>'+source);
   await page.getByRole('textbox',{name:'发送给 BondBuddy'}).focus();
-  await page.screenshot({path:resolve(evidenceDir,'prototype-1440.png')});
-  await page.locator('.ba-panel').screenshot({path:resolve(evidenceDir,'prototype-panel.png')});
+  await page.screenshot({path:resolve(evidenceDir(),'prototype-1440.png')});
+  await page.locator('.ba-panel').screenshot({path:resolve(evidenceDir(),'prototype-panel.png')});
   await page.setViewportSize({width:390,height:960});
-  await page.screenshot({path:resolve(evidenceDir,'prototype-390.png')});
+  await page.screenshot({path:resolve(evidenceDir(),'prototype-390.png')});
  }
 });
 
