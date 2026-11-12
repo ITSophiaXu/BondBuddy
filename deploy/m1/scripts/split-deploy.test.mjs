@@ -337,3 +337,29 @@ test('moving confirmation requires disabling both legacy main parser confirmatio
  for(const change of [{BB_UPLOAD_CONFIRMATION_ENABLED:'1'},{BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1'}])
   assert.throws(()=>config('main',{...a.values,...change},state));
 });
+
+test('export inspects the requested source target, preserving uncached historical rollback and source checks',()=>{
+ const fixture=join(dir,'export-ref-fixture');mkdirSync(join(fixture,'deploy/m1/scripts'),{recursive:true});mkdirSync(join(fixture,'bin'));
+ for(const name of ['export-images-role.sh','role-source-lib.sh'])cpSync(join(root,'deploy/m1/scripts',name),join(fixture,'deploy/m1/scripts',name));
+ const git=(...args)=>execFileSync('git',['-C',fixture,...args],{encoding:'utf8'}).trim();
+ git('init','-q');git('config','user.name','muhualing');git('config','user.email','12086605+muhualing@users.noreply.github.com');git('remote','add','origin','https://github.com/ITSophiaXu/BondBuddy.git');
+ const dockerfile=join(fixture,'deploy/m1/Dockerfile');writeFileSync(dockerfile,'FROM scratch AS worker\n');git('add','.');git('commit','-qm','synthetic old image targets');const old=git('rev-parse','HEAD');
+ writeFileSync(dockerfile,'FROM scratch AS worker\nFROM scratch AS upload-confirmation\n');git('add','.');git('commit','-qm','synthetic new confirmation target');const current=git('rev-parse','HEAD');git('update-ref','refs/remotes/origin/synthetic',current);
+ const calls=join(fixture,'calls');writeFileSync(join(fixture,'bin/docker'),`#!/bin/bash
+printf '%s\\n' "$*" >> "$TEST_CALLS"
+case "$*" in
+ 'image inspect --format'*) echo wrong-source;;
+ 'image inspect'*) [ "\${TEST_CACHED_WRONG:-0}" = 1 ];;
+ 'build'*)
+   while [ "$#" -gt 0 ]; do if [ "$1" = --target ]; then shift; target="$1"; fi; if [ "$1" = -f ]; then shift; file="$1"; fi; shift; done
+   [ "\${target:-}" != upload-confirmation ] || rg -q 'AS upload-confirmation' "$file";;
+ 'save'*) printf synthetic-image-archive;;
+esac
+`,{mode:0o755});
+ for(const [ref,wantsConfirmation]of [[old,false],[current,true]]){
+  writeFileSync(calls,'');const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/export-images-role.sh'),'execution',ref,join(fixture,'images.tar.gz'),'disabled'],{env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,TEST_CALLS:calls},encoding:'utf8'});
+  assert.equal(r.status,0,r.stderr);const commands=readFileSync(calls,'utf8');assert.equal(commands.includes('--target upload-confirmation'),wantsConfirmation);assert.equal(commands.includes('bondbuddy-m1-upload-confirmation:'),wantsConfirmation);assert.ok(commands.includes('--target worker'));assert.ok(readFileSync(join(fixture,'images.tar.gz')).length>0);
+ }
+ writeFileSync(calls,'');const bad=spawnSync('bash',[join(fixture,'deploy/m1/scripts/export-images-role.sh'),'execution',old,join(fixture,'bad.tar.gz'),'disabled'],{env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,TEST_CALLS:calls,TEST_CACHED_WRONG:'1'},encoding:'utf8'});
+ assert.equal(bad.status,3);assert.match(bad.stderr,/matching source revision/);assert.doesNotMatch(readFileSync(calls,'utf8'),/build|save/);
+});

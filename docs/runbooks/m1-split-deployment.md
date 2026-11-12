@@ -176,6 +176,8 @@ Codex仅构建目标 `codex` 后，以断网容器运行 `deploy/m1/scripts/code
 
 启用放置及本端 spool 路径进入原 `environment-binding.json` 和发布配置摘要。默认 disabled 保留旧 v1 binding 形状；已有 binding 下改变放置严格拒绝。维护时保存原 env/overlay/binding 原字节、权限与 hash，审查前后字段差异；明确更新受保护绑定，再由普通配置校验复核，不能删除 binding 或换 state。恢复时使用同一份已备份前像并复核 hash。新增服务进入来源标签/不可变镜像 ID 检查、pending 快照、恢复消费者清单和发布白名单；disabled 不要求旧提交存在从未构建的新镜像。
 
+执行端镜像导出根据**传入提交**的 Dockerfile 是否提供 `upload-confirmation` target 选择新镜像；旧 `1fee`/`5e` 等提交不构建、不导出不存在的 target，包含该 target 的新提交才导出。旧调用格式、可信来源与准确 revision 校验保留，旧镜像未缓存也可按原路径重建。
+
 **现有组件混版环境不能运行整角色 deploy/rollback 完成本次切换。** 新源码通过现行发布门禁后，发布者先记录主站 API/解析/Web 与执行端编制/复核各自准确镜像、源码、配置摘要和挂载，保留整角色 current，不将组件升级记成整角色升级。取得既有配置/部署锁并检查 pending；停止旧确认新领取、排空所有确认租约及暂存，仅将主站解析的确认开关关闭并新增执行端确认容器，使用 `--no-deps`。不得重建 PG 转发、编制、复核、旧解析或其他在途组件。实际执行前仍须核磁盘增量、镜像 UID/文件权限、来源与独立组件收据。回滚先停止新增确认领取并排空，保存新收据后恢复旧主站确认配置/镜像及原 binding/overlay，禁用新增服务；不降库、不删除 Blob、不重启编制/复核。
 
 SIGTERM/SIGINT 停止新领取，持续续租并等待现有读取/提交结束，不提前释放暂存或 fence。Compose 宽限 10 分钟，这不是全量读取总 deadline。强制杀死后仍按 PG 租约和原 fence 恢复，不能把未返回当成已取消；正常切换先排空。
