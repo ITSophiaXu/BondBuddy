@@ -399,7 +399,16 @@ test('confirmation bind policy rejects true/default/short syntax and probes omit
   ['default',long(''),false],['empty-bind',long('        bind: {}\n'),false],['short',prefix+`      - ${dir}:/var/lib/bondbuddy/upload-confirmation\n`,false]];
  for(const [name,text,accept] of cases){
   const a=covered('execution',text,{BB_UPLOAD_CONFIRMATION_ROLE:'size-split',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir});
-  if(accept){const c=config('execution',a.values,join(a.area,'state'));assert.equal(c.services['upload-confirmation'].volumes[0].bind.create_host_path,false,'actual render remains untouched');}
+  if(accept){
+   const c=config('execution',a.values,join(a.area,'state'));
+   // Compare the actual CLI output, not a boolean shape that some Compose versions omit.
+   // Current role validation has already required distinct trusted false/true render probes.
+   const raw=JSON.parse(execFileSync('docker',['compose','--project-directory',join(root,'deploy/m1'),'-f',join(root,'deploy/m1/compose.execution.yaml'),'-f',join(root,'deploy/m1/compose.integrity-beijing.yaml'),'-f',a.file,'--profile','*','--env-file',envFile('execution',a.values),'config','--format','json'],{
+    env:{...configProcessEnv,BB_IMAGE_TAG:'synthetic',BB_ROLE_CONFIRMATION_REPLICAS:'1',BB_ROLE_CONFIRMATION_PROFILE:'bb-confirmation-active',BB_ROLE_CONFIRMATION_LANE:'large',BB_ROLE_PARSE_REPLICAS:'0',BB_ROLE_PARSE_PROFILE:'bb-parse-inactive'},stdio:['ignore','pipe','pipe']}));
+   const rawVolumes=raw.services['upload-confirmation'].volumes,bind=rawVolumes[0].bind;
+   assert.ok(bind && (bind.create_host_path===false || !Object.hasOwn(bind,'create_host_path')),'explicit-false input has a supported raw representation');
+   assert.deepEqual(c.services['upload-confirmation'].volumes,rawVolumes,'actual render remains untouched');
+  }
   else assert.throws(()=>config('execution',a.values,join(a.area,'state')),name);
  }
  // Synthetic old bool+omitempty representation, bound to real Compose-rendered
