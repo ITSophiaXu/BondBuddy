@@ -5,6 +5,7 @@ import { GROUPS, evaluateNode, evaluatePython, parseExclusions } from './run.mjs
 import { HOST_PROFILES } from './host-profiles.mjs';
 import { DISPATCH_SCHEMA, makeRequest, planHash, requestName, sha256, verifyExecution, verifyPlan, verifyRequest } from './host-dispatch-protocol.mjs';
 import { readPlainJson } from './host-dispatch-client.mjs';
+import { verifyDockerTestEvidence } from './docker-evidence.mjs';
 
 /** Use the original discovery and modulo sharding, in original matrix order. */
 export function createHostPlan({ root, candidate, matrix, runId, sourceBlob }) {
@@ -53,6 +54,10 @@ export function verifyAdapterResult(result, { candidate, runId, entry }) {
 }
 
 export async function executeRegisteredAdapter(context) {
+  if (['docker-credentials', 'docker-backup'].includes(context.entry.profileId)) {
+    const { executeDockerTests } = await import('./host-adapters/docker-tests.mjs');
+    return executeDockerTests(context);
+  }
   if (context.entry.profileId === 'windows-billing') {
     const { executeWindowsBilling } = await import('./host-adapters/windows-billing.mjs');
     return executeWindowsBilling(context);
@@ -176,6 +181,7 @@ export function verifyHostRuns(receipt, expected) {
     assert.equal(record.evidence.test_id, entry.testId, 'Host evidence belongs to another test');
     assert.equal(record.evidence.profile_id, entry.profileId, 'Host evidence belongs to another capability');
     for (const key of ['commit', 'tree']) assert.equal(record.evidence[key], expected[key]);
+    if (entry.profileId.startsWith('docker-')) verifyDockerTestEvidence(record.evidence, entry, dispatch.runtime);
     if (entry.profileId.startsWith('native-')) {
       assert.equal(dispatch.runtime.source.files[entry.testId], entry.sourceSha256);
       assert.equal(record.evidence.source_bundle_sha256, dispatch.runtime.bundle_sha256);
