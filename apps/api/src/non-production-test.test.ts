@@ -10,10 +10,25 @@ import { executionKeyHash } from './observability.js';
 import { isolatedTestDatabase } from './test-database.js';
 import { documentParserVersion } from './material-jobs.js';
 import { inputManifestHash } from './production-rule-pin.js';
+import type { FastifyInstance } from 'fastify';
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun, syntheticAuthoringBlobs } from './test-authoring-source.js';
 
 const databaseUrl=await isolatedTestDatabase('BB_TEST_CHANNEL_DATABASE_URL');
 const origin='http://bondbuddy.test';
 const sha=(letter:string)=>letter.repeat(64);
+
+// Production has current source/target/quote prerequisites. Keep legacy test-channel
+// fixtures incomplete so their gap, grant and isolation assertions retain coverage.
+async function productionInput(app:FastifyInstance,pool:Pool,owner:string){
+  const created=await app.inject({method:'POST',url:'/api/v1/projects',headers:{origin},
+    payload:{name:'Synthetic production channel',kind:'update',issuer_name:null,market:null,offering:null}});
+  assert.equal(created.statusCode,201,created.body);
+  const project=created.json().project_id as string;
+  const locked=await lockSyntheticAuthoringInput(app,project);
+  const input=locked.json() as {input_revision:number;input_hash:string};
+  const quoteId=await quoteSyntheticAuthoringRun(app,pool,owner,project,input);
+  return {project_id:project,input_revision:input.input_revision,input_hash:input.input_hash,quote_id:quoteId};
+}
 
 test('test submissions cannot reserve the exact browser update key', {skip:!databaseUrl}, async()=>{
   const oldTier=process.env.BB_DEPLOYMENT_TIER,oldSwitch=process.env.BB_NON_PRODUCTION_TEST_CHANNEL;
@@ -22,7 +37,7 @@ test('test submissions cannot reserve the exact browser update key', {skip:!data
   const user=`synthetic-owner-${randomUUID()}`;
   try{
     for(const staging of [true,false]){
-      const app=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:user,csrfVerified:true}),enableRunStaging:staging});
+      const app=createServer({pool,blobs:syntheticAuthoringBlobs(),allowedOrigin:origin,principal:async()=>({userId:user,csrfVerified:true}),enableRunStaging:staging});
       const send=async(payload:unknown)=>await app.inject({method:'POST',url:'/api/v1/runs/execute',headers:{origin},payload:payload as any});
       try{
         const created=await app.inject({method:'POST',url:'/api/v1/projects',headers:{origin},payload:{name:'Synthetic key guard',kind:'update',issuer_name:null,market:null,offering:null}});
@@ -58,7 +73,11 @@ test('test submissions cannot reserve the exact browser update key', {skip:!data
           assert.equal(ordinary.json().channel,'non_production_test');
           assert.equal(nearBrowser.statusCode,202,nearBrowser.body);
           assert.equal(nearBrowser.json().channel,'non_production_test');
-          const production=await send({...request,test_grant_id:undefined});
+          const productionScope=await productionInput(app,pool,user);
+          // Keep the original raw browser key: its owner-wide namespace must remain
+          // available after the test-channel attempts, even with a newer input.
+          const productionRequest={...request,...productionScope,test_grant_id:undefined};
+          const production=await send(productionRequest);
           assert.equal(production.statusCode,202,production.body);
           assert.equal(production.json().channel,'production');
           assert.equal(production.json().execution_request_id,browserKey);
@@ -106,7 +125,7 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
   process.env.BB_DEPLOYMENT_TIER='preprod';process.env.BB_NON_PRODUCTION_TEST_CHANNEL='enabled';
   const pool=new Pool({connectionString:databaseUrl});
   let user=`test-owner-${randomUUID()}`;
-  const app=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:user,csrfVerified:true}),enableSyntheticQueue:true});
+  const app=createServer({pool,blobs:syntheticAuthoringBlobs(),allowedOrigin:origin,principal:async()=>({userId:user,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
   try{
     const projectResponse=await send('POST','/api/v1/projects',{name:'Synthetic test channel',kind:'update',issuer_name:null,market:null,offering:null});
@@ -183,7 +202,7 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
     await assert.rejects(pool.query("UPDATE bb_jobs SET channel='production',test_grant_id=NULL WHERE run_id=$1",[submitted.json().run_id]),
       (error:any)=>error.code==='23514');
     await assert.rejects(pool.query("UPDATE bb_runs SET state='succeeded' WHERE id=$1",[submitted.json().run_id]),(error:any)=>error.code==='23514');
-    const production=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:randomUUID(),test_grant_id:undefined});
+    const production=await send('POST','/api/v1/runs/execute',{...request,...await productionInput(app,pool,user),execution_request_id:randomUUID(),test_grant_id:undefined});
     assert.equal(production.statusCode,202,production.body);
     await assert.rejects(pool.query("UPDATE bb_runs SET state='test_completed' WHERE id=$1",[production.json().run_id]),(error:any)=>error.code==='23514');
     const testRun=(await send('POST','/api/v1/runs/execute',{...request,execution_request_id:randomUUID(),test_grant_id:otherGrantId})).json();
@@ -210,7 +229,7 @@ test('scoped test grants reject invalid submissions, preserve idempotency and pa
       allowedOrigin:origin,principal:async()=>({userId:user,csrfVerified:true})});
     const read=(url:string)=>readApp.inject({method:'GET',url,headers:{origin}});
     try{
-      await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[user,`synthetic_${randomUUID().replaceAll('-','').slice(0,20)}`]);
+      await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2) ON CONFLICT(id) DO NOTHING',[user,`synthetic_${randomUUID().replaceAll('-','').slice(0,20)}`]);
       await pool.query("INSERT INTO bb_operator_grants(id,user_id,role,granted_by,reason_code) VALUES($1,$2,'log_reader','synthetic-test','synthetic_test')",[randomUUID(),user]);
       await pool.query("INSERT INTO bb_operator_grants(id,user_id,role,granted_by,reason_code) VALUES($1,$2,'prompt_viewer','synthetic-test','synthetic_test')",[randomUUID(),user]);
       const jobId=(await pool.query('SELECT id FROM bb_jobs WHERE run_id=$1',[testRun.run_id])).rows[0].id as string;
@@ -264,7 +283,7 @@ test('working draft admission defers parse and business gaps while retaining own
   process.env.BB_PREPROD_WORKING_DRAFT_AS_OF='2026-09-29';
   const pool=new Pool({connectionString:databaseUrl});
   let owner=`auto-owner-${randomUUID()}`;
-  const app=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
+  const app=createServer({pool,blobs:syntheticAuthoringBlobs(),allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(url:string,payload:unknown)=>app.inject({method:'POST',url,headers:{origin},payload:payload as any});
   try{
     const projectResponse=await send('/api/v1/projects',{name:'Synthetic working draft',kind:'update',
@@ -395,7 +414,7 @@ test('working draft admission defers parse and business gaps while retaining own
     process.env.BB_DEPLOYMENT_TIER='production';
     assert.equal((await send('/api/v1/runs/execute',request(valid))).json().code,'TEST_CHANNEL_DISABLED');
     for(const name of names.filter(name=>name.startsWith('BB_PREPROD_WORKING_DRAFT_')))delete process.env[name];
-    const production=await send('/api/v1/runs/execute',request(valid));
+    const production=await send('/api/v1/runs/execute',{...request(valid),...await productionInput(app,pool,owner)});
     assert.equal(production.statusCode,202,production.body);
     assert.equal(production.json().channel,'production');
     // Compose passes empty defaults to the API. They must behave like absent configuration.
@@ -404,7 +423,7 @@ test('working draft admission defers parse and business gaps while retaining own
     process.env.BB_DEPLOYMENT_TIER='preprod';
     for(const blank of ['', '  ']){
       for(const name of configNames)process.env[name]=blank;
-      const emptyConfig=await send('/api/v1/runs/execute',request(valid));
+      const emptyConfig=await send('/api/v1/runs/execute',{...request(valid),...await productionInput(app,pool,owner)});
       assert.equal(emptyConfig.statusCode,202,emptyConfig.body);
       assert.equal(emptyConfig.json().channel,'production');
       assert.equal(emptyConfig.json().test_grant_id,null);

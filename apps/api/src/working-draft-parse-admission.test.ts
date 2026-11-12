@@ -7,6 +7,7 @@ import { autoTestExecutionKeyStorage, digest } from './data.js';
 import { executionKeyHash } from './observability.js';
 import { documentParserVersion } from './material-jobs.js';
 import { isolatedTestDatabase } from './test-database.js';
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun, syntheticAuthoringBlobs } from './test-authoring-source.js';
 
 const databaseUrl = await isolatedTestDatabase('BB_TEST_CHANNEL_DATABASE_URL', 'working-draft-parse-admission');
 const origin = 'http://bondbuddy.test';
@@ -27,7 +28,7 @@ test('locked materials enter the draft queue before parsing and business review;
     process.env.BB_PREPROD_WORKING_DRAFT_AS_OF = '2026-09-29';
     const pool = new Pool({ connectionString: databaseUrl });
     let owner = `parse-owner-${randomUUID()}`;
-    const app = createServer({ pool, allowedOrigin: origin,
+    const app = createServer({ pool, blobs: syntheticAuthoringBlobs(), allowedOrigin: origin,
       principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true });
     const post = (url: string, payload: unknown) =>
       app.inject({ method: 'POST', url, headers: { origin }, payload: payload as any });
@@ -264,12 +265,27 @@ test('locked materials enter the draft queue before parsing and business review;
       }finally{await stagingOff.close();}
 
       for(const name of names.filter(name=>name.startsWith('BB_PREPROD_WORKING_DRAFT_')))delete process.env[name];
-      const production=await post('/api/v1/runs/execute',browserRequest);
+      // Keep every incomplete working-draft fixture above unchanged. Production
+      // needs a current source/target/quote but must retain the exact raw keys:
+      // test-channel rows are owner-scoped and must not reserve those keys.
+      const productionResponses=[];
+      for(const originalRequest of [browserRequest,rejectedRequest]){
+        const readyProject=await post('/api/v1/projects',
+          {name:'Synthetic production channel',kind:'update',issuer_name:null,market:null,offering:null});
+        assert.equal(readyProject.statusCode,201,readyProject.body);
+        const productionProject=readyProject.json().project_id as string;
+        const lockedProduction=await lockSyntheticAuthoringInput(app,productionProject);
+        const productionInput=lockedProduction.json() as {input_revision:number;input_hash:string};
+        const quoteId=await quoteSyntheticAuthoringRun(app,pool,owner,productionProject,productionInput);
+        productionResponses.push(await post('/api/v1/runs/execute',{...originalRequest,project_id:productionProject,
+          input_revision:productionInput.input_revision,input_hash:productionInput.input_hash,quote_id:quoteId}));
+      }
+      const production=productionResponses[0]!;
       assert.equal(production.statusCode,202,production.body);
       assert.equal(production.json().channel,'production');
       assert.equal(production.json().execution_request_id,browserKey);
       assert.notEqual(production.json().run_id,submitted.json().run_id);
-      const productionAfterRejection=await post('/api/v1/runs/execute',rejectedRequest);
+      const productionAfterRejection=productionResponses[1]!;
       assert.equal(productionAfterRejection.statusCode,202,productionAfterRejection.body);
       assert.equal(productionAfterRejection.json().channel,'production');
       const crossChannel=await post('/api/v1/runs/execute',legacyRequest);
