@@ -188,7 +188,7 @@ test.describe('manual reading current desktop journeys',()=>{
     await expect(modal.locator('[name=type]')).toHaveValue('init');await expect(modal.locator('[name=type]')).toBeDisabled();await modal.locator('[name=file]').setInputFiles(editedFile);
     await expect(modal).toHaveCount(0);await expect(page.locator('#pw-import-result')).toContainText('修改稿已保存为 V2');
     expect(s.imports).toHaveLength(1);expect(s.imports[0].expected_latest_version_id).toBe(ids.version);expect(s.imports[0].material.sha256).toBe(hash(editedFile.buffer));expect(s.check).toEqual(checked);expect(s.checkRequests).toEqual([]);
-    await page.locator('#pw-import-result').getByRole('link',{name:'免费检查全部项目文件',exact:true}).click();await expect(page.locator('.fc-results')).toBeVisible();expect(s.checkRequests).toEqual([]);
+    await page.locator('#pw-import-result').getByRole('link',{name:'检查全部项目文件',exact:true}).click();await expect(page.locator('.fc-results')).toBeVisible();expect(s.checkRequests).toEqual([]);
     await page.locator('[data-fc-start]').click();await expect.poll(()=>s.checkRequests.length).toBe(1);expect(s.checkRequests[0].expected_source_version_id).toBe(s.source.version_id);
     expect(s.checks[0].files.map(f=>f.file_version_id).sort()).toEqual(s.registry.filter(f=>f.latest).map(f=>f.version_id).sort());expect(s.check).toEqual(checked);expect(s.updatePosts).toEqual([]);expect(s.executions).toEqual([]);expect(s.quotes).toEqual([]);
   });

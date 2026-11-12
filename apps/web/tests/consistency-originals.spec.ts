@@ -46,7 +46,7 @@ test.describe('consistency originals desktop journeys',()=>{
     const saved=s.registry.find(v=>v.file_id===ids.family&&v.latest)!;expect(saved.sequence).toBe(2);expect(saved.consistency.status).toBe('unchecked');
     expect(s.imports).toHaveLength(1);expect(s.imports[0].expected_latest_version_id).toBe(ids.version);expect(s.imports[0].document_type).toBe('init');expect(s.imports[0].material.sha256).toBe(hash(editedFile.buffer));
     expect(saved.asset).toEqual({kind:'material',pin:s.imports[0].material});expect(s.puts).toBe(1);expect(s.sessions.size).toBe(1);expect(s.checkRequests).toEqual([]);expect(s.check).toEqual(checked);
-    await page.locator('#pw-import-result').getByRole('link',{name:'免费检查全部项目文件',exact:true}).click();
+    await page.locator('#pw-import-result').getByRole('link',{name:'检查全部项目文件',exact:true}).click();
     await expect(page.locator('.fc-results')).toBeVisible();expect(s.checkRequests).toEqual([]);
     await page.locator('[data-fc-start]').click();await expect.poll(()=>s.checkRequests.length).toBe(1);
     expect(s.checkRequests[0].expected_source_version_id).toBe(s.source.version_id);expect(s.checks[0].files.map(f=>f.file_version_id).sort()).toEqual(s.registry.filter(v=>v.latest).map(v=>v.version_id).sort());

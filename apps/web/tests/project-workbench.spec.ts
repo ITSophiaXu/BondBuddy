@@ -74,7 +74,7 @@ test('workbench uses the real source without preparing a workspace; optional tas
   for(const width of [1440,1024,390,320]){await page.setViewportSize({width,height:960});if(width<=760)await expect(page.locator('#pw-folder-picker')).not.toHaveAttribute('open');else await expect(page.locator('#pw-folder-picker')).toHaveAttribute('open');await page.evaluate(()=>scrollTo(0,0));expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);if(width===1440||width===390)await page.screenshot({path:test.info().outputPath(`project-workbench-${width}.png`),fullPage:true});}
 });
 
-test('adoption refreshes source, files and registry and asks for a new free check',async({page})=>{
+test('adoption refreshes source, files and registry and asks for a new check',async({page})=>{
   const state=await setup(page,{workspace:true});
   await page.getByText('版本历史（2）',{exact:true}).click();
   await page.locator('[data-use-version="source-v2"]').click();
@@ -82,7 +82,7 @@ test('adoption refreshes source, files and registry and asks for a new free chec
   expect(state.calls.filter(c=>c.method==='POST')).toHaveLength(0);
   await page.getByRole('button',{name:'确认采用',exact:true}).click();
   await expect(page.locator('#pw-current-source')).toContainText('已采用 V2');
-  await expect(page.locator('#pw-check-note')).toContainText('请先免费检查');
+  await expect(page.locator('#pw-check-note')).toHaveText('当前募集书或文件版本已变化。请先检查，再查看哪些文件需要更新。');
   await expect(page.locator('#file-list>.collection-file').first()).toContainText('募集说明书_V2.docx');
   await expect(page.locator('#file-list')).toContainText('版本已变化 · 请重查');
   expect(state.calls.filter(c=>c.path===`/projects/${root}/files`).length).toBeGreaterThan(1);
