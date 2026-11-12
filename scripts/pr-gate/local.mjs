@@ -15,6 +15,7 @@ import { createHostBroker, createHostPlan } from './host-dispatch.mjs';
 import { collectCoreSource } from './core-source.mjs';
 import { parseExclusions } from './run.mjs';
 import { prepareBrowserServices } from './browser-host.mjs';
+import { REFERENCE_ROOT, restoreReferenceSource, verifyReferenceDirectory, verifyReferenceMount, collectReferenceCheck } from './browser-reference-source.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const output = join(root, '.local/pr-gate');
@@ -111,7 +112,8 @@ export function expectedFor(ref) {
     cache_files: Object.fromEntries(CACHE_FILES.map(path => [path, hash(blob(commit, path))])),
     host_source_sha256: Object.fromEntries(Object.keys(HOST_PROFILES).map(path => [path, hash(blob(commit, path))])),
     browser_source_sha256: Object.fromEntries(browserFiles.map(path => [path, hash(blob(commit, path))])),
-    source_verifier_sha256: hash(blob(commit, 'scripts/pr-gate/git-snapshot.mjs')) };
+    source_verifier_sha256: hash(blob(commit, 'scripts/pr-gate/git-snapshot.mjs')),
+    reference_verifier_sha256: hash(blob(commit, 'scripts/pr-gate/browser-reference-source.mjs')) };
 }
 
 export function localOptions(args) {
@@ -154,6 +156,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
   const directory = join(output, 'runs', id);
   // Keep the historical source outside /evidence's writable bind mount.
   const parserDirectory = join(output, 'parser-sources', id);
+  const referenceOwner = join(output, 'reference-sources', id);
   mkdirSync(directory, { recursive: true });
   const runner = `bb-pr-gate-${id}`;
   const postgres = `${runner}-pg`, azurite = `${runner}-blob`, httpsAzurite = `${runner}-https-blob`;
@@ -204,6 +207,13 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
   const exec = (label, args, env = {}, options) => offlineImage
     ? docker(label, ['exec', runner, ...isolatedCommand(args, { ...runtimeEnvironment, ...env })], options)
     : docker(label, ['exec', ...envArgs(env), runner, ...args], options);
+  const referenceCheck = (stage, cleanup = false) => collectReferenceCheck({ candidate: expected, runId: id,
+    containerId: owned.get(runner).id, stage, verifierBytes: blob(expected.commit, 'scripts/pr-gate/browser-reference-source.mjs'),
+    execute: (label, args) => docker(label, ['exec', owned.get(runner).id, ...isolatedCommand(args, runtimeEnvironment)], { capture: true, cleanup }) });
+  const referenceMount = async (label, cleanup = false) => {
+    const inspected = JSON.parse((await docker(label, ['inspect', owned.get(runner).id], { capture: true, privateCapture: true, cleanup })).text)[0];
+    return verifyReferenceMount(inspected, receipt.reference_components.host_before.root, directory.replaceAll('\\', '/'), owned.get(runner).id);
+  };
   const start = async (label, name, args) => {
     const result = await docker(label, ['create', '--pull', offlineImage ? 'never' : 'missing', '--name', name, ...args], { capture: true });
     const id = result.text.trim();
@@ -254,6 +264,9 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
     mkdirSync(join(directory, 'capabilities'));
     createParserArchive(root, join(directory, 'capabilities/parser106.tar'));
     restoreParserArchive(join(directory, 'capabilities/parser106.tar'), parserDirectory);
+    mkdirSync(dirname(referenceOwner), { recursive: true });
+    receipt.reference_components = { schema: 'pr-gate-reference-components-run-v1', commit: expected.commit, tree: expected.tree, run_id: id,
+      host_before: restoreReferenceSource(root, referenceOwner, directory), shards: [] };
     const image = offlineImage ?? `bondbuddy-pr-gate:${createHash('sha256').update(blob(expected.commit, 'scripts/pr-gate/Dockerfile')).digest('hex').slice(0, 16)}`;
     runtimeEnvironment = { ...workflow.env, CI: '1', GITHUB_SHA: expected.commit, GITHUB_WORKSPACE: '/workspace', RUNNER_TEMP: '/tmp',
       PR_GATE_TREE: expected.tree, BONDBUDDY_TEST_PYTHON: '/usr/local/bin/python', BONDBUDDY_WORD_PYTHON: '/usr/local/bin/python', BB_PYTHON: '/usr/local/bin/python',
@@ -285,8 +298,11 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
         ...(offlineImage ? ['--network', 'none'] : []), '--cpus', '2', '--memory', '4g', '--memory-swap', '4g', '--pids-limit', '512',
         '--mount', `type=bind,source=${directory},target=/evidence`,
         '--mount', `type=bind,source=${parserDirectory},target=${CAPABILITY_PATHS.parser},readonly`,
+        '--mount', `type=bind,source=${receipt.reference_components.host_before.root},target=${REFERENCE_ROOT},readonly`,
         ...(offlineImage ? ['--entrypoint', '/usr/bin/env'] : envArgs(runtimeEnvironment)), image,
         ...(offlineImage ? isolatedCommand(['sleep', 'infinity'], runtimeEnvironment).slice(1) : [])]);
+      receipt.reference_components.container_id = owned.get(runner).id;
+      receipt.reference_components.mount_before = await referenceMount('inspect-reference-mount-before');
       if (offlineImage) {
         const inspected = JSON.parse((await docker('inspect-cache-runner', ['inspect', owned.get(runner).id], { capture: true, privateCapture: true })).text)[0];
         receipt.cache_runtime = inspectOfflineContainer(inspected, image);
@@ -300,6 +316,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
     await step('capabilities', async () => {
       await exec('prepare-capabilities', ['node', 'scripts/pr-gate/capability-runtime.mjs', 'prepare']);
       receipt.capabilities = json(join(directory, 'capabilities/prepared.json'));
+      receipt.reference_components.container_before = await referenceCheck('prepared');
     });
     await step('services', startServices);
     await step('dependencies', async () => {
@@ -336,7 +353,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
     for (const [index, row] of workflow.matrix.entries()) {
       const record = { name: row.name, groups: row.groups, shard: row.shard, started_at: new Date().toISOString(), exit_code: null, summary: null };
       receipt.shards.push(record);
-      let browserServices;
+      let browserServices, referenceShard;
       try {
         if (index) { await removeOwned([postgres, azurite, httpsAzurite], false); await startServices(); }
         await exec(`${row.name}-blob-readiness`, ['node', '--input-type=module', '-e', `import { BlobServiceClient } from '@azure/storage-blob'; const c=BlobServiceClient.fromConnectionString(process.env.BB_TEST_AZURITE_CONNECTION_STRING).getContainerClient('bb-pr-gate-readiness'); for(let i=0;;i++){try{await c.createIfNotExists();await c.deleteIfExists();break;}catch(e){if(i>=29)throw e;await new Promise(r=>setTimeout(r,1000));}}`]);
@@ -356,17 +373,38 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
           ...(browserServices?.env ?? {}),
           ...(row.render === 'true' ? { BONDBUDDY_RUN_AUTHORIZED_DOCX_REGRESSION: '1', BB_REQUIRE_DOCUMENT_RENDER: '1' } : {}) };
         const hostRun = hostBroker.startShard(row.name);
-        try { record.exit_code = (await exec(`${row.name}-tests`, ['node', 'scripts/pr-gate/run.mjs', 'run', '--group', row.groups, '--shard', row.shard, '--name', row.name, '--jobs', String(workflow.matrix.length), '--out', `/evidence/shards/${row.name}`], env, { allowFailure: true })).code; }
+        try {
+          if (row.groups === 'browser') {
+            referenceShard = { name: row.name }; receipt.reference_components.shards.push(referenceShard);
+            referenceShard.before = await referenceCheck(row.name + ':before');
+          }
+          record.exit_code = (await exec(`${row.name}-tests`, ['node', 'scripts/pr-gate/run.mjs', 'run', '--group', row.groups, '--shard', row.shard, '--name', row.name, '--jobs', String(workflow.matrix.length), '--out', `/evidence/shards/${row.name}`], env, { allowFailure: true })).code;
+        }
         finally { await hostRun.finish(); receipt.host_dispatch = hostBroker.snapshot(); }
         record.summary = json(join(directory, 'shards', row.name, `summary-${row.name}.json`));
       } catch (error) { record.error = error.message; receipt.errors.push(`${row.name}: ${error.message}`); }
-      finally { if (browserServices) try { await browserServices.cleanup(); record.browser_services = browserServices.evidence; }
+      finally {
+        if (referenceShard) try { referenceShard.after = await referenceCheck(row.name + ':after', true); }
+        catch (error) { receipt.errors.push(`${row.name} final reference verification: ${error.message}`); }
+        if (browserServices) try { await browserServices.cleanup(); record.browser_services = browserServices.evidence; }
         catch (error) { receipt.errors.push(`${row.name} browser services cleanup: ${error.message}`); } }
       record.finished_at = new Date().toISOString(); save();
       if (interrupted) break;
     }
   } catch (error) { receipt.errors.push(error.message); console.error(`[pr-gate] ${error.message}`); }
   finally {
+    // Record failures too, before removing the exact owned runner. Both the
+    // host input and container view must remain the pinned eleven blobs.
+    if (receipt.reference_components) {
+      try { receipt.reference_components.host_after = verifyReferenceDirectory(receipt.reference_components.host_before.root); }
+      catch (error) { receipt.errors.push(`Final host reference verification: ${error.message}`); }
+      if (owned.has(runner)) {
+        try { receipt.reference_components.mount_after = await referenceMount('inspect-reference-mount-after', true); }
+        catch (error) { receipt.errors.push(`Final reference mount verification: ${error.message}`); }
+        try { receipt.reference_components.container_after = await referenceCheck('final', true); }
+        catch (error) { receipt.errors.push(`Final container reference verification: ${error.message}`); }
+      }
+    }
     // Verify the disposable core before removing it. Outer host Git cleanliness
     // cannot detect tracked screenshots or source files changed inside /workspace.
     try {

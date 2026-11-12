@@ -58,6 +58,14 @@ OCR 分片从 `--host-worker-image` 指定的已有不可变本地镜像复制 T
 
 `browser-services.json`、`browser/runtime.json` 与原 summary 记录服务身份、实际环境/探针、完整命令、测试和清理时间。最终回执必须与同一 run、commit/tree、原文件表及脚本调用一致，并通过宿主服务清理和 core 原字节复验。小单元、环境预检和局部诊断都不能代替完整 PR gate，更不能代替 `test:release` 的真实模型与质量凭据。
 
+### 四个历史组件对照
+
+`integrity-reference`、`parallel-projects-reference`、`project-qa-reference`、`review-followup-reference` 保留原 4 个 spec / 12 个用例。本地入口从已有 Git 对象 `ffd637fac6c1fdf1581112e728f21ec29a94c67c`（tree `9ddc983bf5bf09de5236afd3076830a46649723a`）读取固定 11 个 TS/CSS blob，共 136,905 字节，核对 100644 模式、blob ID、长度和 SHA-256。缺对象直接失败；不下载、不 checkout、不转换换行，不将当前组件写入旧路径。
+
+原字节恢复到本次新建 `.local/pr-gate/reference-sources/<run-id>/BondBuddy-develop`，置于可写 evidence 之外，只读挂载到原固定 `/remote-review-20261025-ffd637f/BondBuddy-develop`。只允许 evidence、parser106、历史组件三个精确挂载；核对实际容器 ID、宿主来源和只读属性。准备后、每个原 browser 分片前后及最终清理前，使用候选提交固定的 verifier 原字节复验文件集合和 hash，最终也复验宿主与挂载。缺少任一检查、跨候选/运行/容器记录或字节漂移均拒绝普通通过回执。
+
+这些只是旧组件对照：原 spec 将历史 TS/CSS 编译/路由到当前候选网页，main、其他 helpers、contracts 和 synthetic HTTP fixture 仍来自当前候选。记录明确 `old-components-only` / `not_a_seal` / `not_execution_evidence`；不恢复完整旧应用，不补造 R38/R35/R36/R9 封存，不代表新界面设计批准或浏览器已经执行。未解决的其他历史封存依旧阻断。
+
 ## 回执与核对
 
 ```sh

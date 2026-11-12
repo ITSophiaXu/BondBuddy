@@ -7,6 +7,7 @@ import { CACHE_FILES, OFFLINE_SCHEMA, compareCacheFiles, hash } from './offline-
 import { syntheticHostDispatch, syntheticHostReferences, syntheticHostSources } from './host-dispatch.test-fixture.mjs';
 import { CORE_SOURCE_SCHEMA } from './core-source.mjs';
 import { syntheticBrowserShard, syntheticBrowserSources } from './browser.test-fixture.mjs';
+import { syntheticReferenceRuns } from './browser-reference.test-fixture.mjs';
 
 const matrix = [
   { name: 'api-1', groups: 'api', shard: '1/2' },
@@ -24,6 +25,7 @@ const expected = {
   matrix, exclusions: exclusionsEvidence(rawExclusions),
   host_source_sha256: syntheticHostSources(),
   source_verifier_sha256: 'a'.repeat(64),
+  reference_verifier_sha256: 'd'.repeat(64),
   browser_source_sha256: syntheticBrowserSources(),
 };
 const now = Date.parse('2026-11-11T13:02:00.000Z');
@@ -37,6 +39,7 @@ function fixture() {
     started_at: '2026-11-11T13:00:00.000Z', finished_at: '2026-11-11T13:01:00.000Z',
     exclusions: structuredClone(expected.exclusions),
     capabilities,
+    reference_components: syntheticReferenceRuns(expected, hostDispatch.plan.run_id),
     run_id: hostDispatch.plan.run_id, host_dispatch: hostDispatch,
     host_source: { commit: expected.commit, tree: expected.tree, clean_tree: true, raw_source: structuredClone(hostDispatch.runtime.source.raw_source) },
     core_source_final: { schema: CORE_SOURCE_SCHEMA, status: 'passed', phase: 'after-all-shards', source_root: '/workspace', run_id: hostDispatch.plan.run_id,
@@ -127,12 +130,12 @@ test('final core proof must follow all shards with original verifier and unchang
   rejects(receipt => { receipt.core_source_final.verifier_sha256 = 'd'.repeat(64); }, /verifier/);
   rejects(receipt => { receipt.core_source_final.raw_source.manifest_sha256 = 'f'.repeat(64); }, /changed after preparation/);
   rejects(receipt => { receipt.core_source_final.started_at = '2026-11-11T13:00:39.000Z'; }, /before a shard/);
-  rejects(receipt => { delete receipt.shards[0].finished_at; }, /before a shard/);
+  rejects(receipt => { delete receipt.shards[0].finished_at; }, /before a shard|Reference final\/prepared checks/);
   rejects(receipt => { receipt.core_source_final.execution.code = 1; }, /exit successfully/);
   rejects(receipt => {
     for (const shard of receipt.shards) shard.finished_at = '2026-11-11T13:00:20.000Z';
     receipt.core_source_final.started_at = '2026-11-11T13:00:25.000Z'; receipt.core_source_final.finished_at = '2026-11-11T13:00:26.000Z';
-  }, /predates its original summary/);
+  }, /predates its original summary|Reference checks do not surround/);
 });
 
 test('failed, dirty, wrong-platform or incomplete evidence is rejected', () => {
@@ -209,7 +212,7 @@ test('complete current-candidate offline preparation still requires every origin
   const cacheExpected = { ...expected, cache_files: Object.fromEntries(CACHE_FILES.map(path => [path, hash(inputs[path])])) };
   const image_id = 'sha256:' + 'd'.repeat(64);
   receipt.dependency_mode = 'offline-cache'; receipt.dependency_sources = { downloads: false };
-  receipt.cache_image = { image_id }; receipt.cache_runtime = { network: 'none', image_id, published_ports: 0, privileged: false };
+  receipt.cache_image = { image_id }; receipt.cache_runtime = { container_id: 'c'.repeat(64), network: 'none', image_id, published_ports: 0, privileged: false };
   receipt.cache_service_images = { postgres: image_id, azurite: image_id };
   receipt.offline_cache = { schema: OFFLINE_SCHEMA, status: 'passed', commit: expected.commit, tree: expected.tree, image_id,
     network: 'none', environment: 'allowlist-env-i', old_source_removed: true, old_node_modules_removed: true,
@@ -218,4 +221,11 @@ test('complete current-candidate offline preparation still requires every origin
     browser: { status: 'passed', version: 'synthetic', executable_sha256: 'e'.repeat(64) } };
   assert.equal(verifyReceipt(receipt, cacheExpected, now), receipt);
   receipt.shards.pop(); assert.throws(() => verifyReceipt(receipt, cacheExpected, now), /shards are missing/);
+});
+
+test('normal receipt cannot omit or substitute fixed reference lifecycle evidence', () => {
+  for (const mutate of [r => delete r.reference_components, r => delete r.reference_components.container_after,
+    r => r.reference_components.shards.pop(), r => r.reference_components.mount_after.writable = true]) {
+    const receipt = fixture(); mutate(receipt); assert.throws(() => verifyReceipt(receipt, expected, now), { code: 'ERR_ASSERTION' });
+  }
 });

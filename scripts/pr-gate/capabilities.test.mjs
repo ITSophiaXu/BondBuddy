@@ -62,6 +62,13 @@ test('all exact capability files and real service preparation are required; skip
     const value = receipt(); mutate(value); assert.throws(() => verifyCapabilityRuns(value, expected, now));
   }
 });
+
+test('prepared capabilities require pinned old-component identity without claiming a seal', () => {
+  for (const mutate of [p => delete p.reference_components, p => p.reference_components.files.pop(),
+    p => p.reference_components.source.commit = expected.commit, p => p.reference_components.not_a_seal = false]) {
+    const value = syntheticCapabilities(expected); mutate(value); assert.throws(() => verifyPreparedCapabilities(value, expected, now));
+  }
+});
 test('completed historical receipt survives later certificate expiry; the actual run must fit certificate lifetime', () => {
   verifyCapabilityRuns(receipt(), expected, now + 365 * 86400000);
   const value = receipt(); value.finished_at = '2027-01-01T00:00:00Z'; assert.throws(() => verifyCapabilityRuns(value, expected, now));

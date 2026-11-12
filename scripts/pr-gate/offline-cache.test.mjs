@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CACHE_FILES, OFFLINE_SCHEMA, compareCacheFiles, hash, inspectOfflineContainer, inspectOfflineImage, isolatedCommand, offlineImageArgument, verifyOfflineCache } from './offline-cache.mjs';
+import { REFERENCE_ROOT } from './browser-reference-source.mjs';
 
 const image = 'sha256:' + 'd'.repeat(64);
 const candidate = Object.fromEntries(CACHE_FILES.map((path, i) => [path, Buffer.from(`synthetic dependency input ${i}\n`)]));
@@ -53,10 +54,11 @@ test('dependency comparison permits CRLF pairs only, preserves byte hashes, reje
 test('actual runner inspection rejects a network, published port, source mount or privileged mode', () => {
   const value = { Id: 'c'.repeat(64), Image: image, Config: { User: '0:0', WorkingDir: '/workspace' },
     HostConfig: { NetworkMode: 'none', Privileged: false, PortBindings: {}, CapAdd: null },
-    Mounts: [{ Type: 'bind', Destination: '/evidence', RW: true }, { Type: 'bind', Destination: '/opt/pr-gate-parser106', RW: false }] };
+    Mounts: [{ Type: 'bind', Destination: '/evidence', RW: true }, { Type: 'bind', Destination: '/opt/pr-gate-parser106', RW: false }, { Type: 'bind', Destination: REFERENCE_ROOT, RW: false }] };
   assert.equal(inspectOfflineContainer(value, image).published_ports, 0);
   for (const mutate of [x => x.HostConfig.NetworkMode = 'host', x => x.HostConfig.PortBindings = { '5432/tcp': [{}] },
     x => x.HostConfig.Privileged = true, x => x.HostConfig.CapAdd = ['SYS_ADMIN'], x => x.Mounts[1].RW = true,
+    x => x.Mounts[2].RW = true, x => x.Mounts[2].Destination += '-wrong', x => x.Mounts.pop(),
     x => x.Mounts.push({ Type: 'bind', Destination: '/workspace', RW: true }), x => x.Image = 'sha256:' + 'f'.repeat(64)]) {
     const copy = structuredClone(value); mutate(copy); assert.throws(() => inspectOfflineContainer(copy, image));
   }
