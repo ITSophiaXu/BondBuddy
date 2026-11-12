@@ -1,0 +1,76 @@
+TAP version 13
+# Subtest: exact account read supports balances above MAX_SAFE while legacy narrowing fails explicitly
+ok 1 - exact account read supports balances above MAX_SAFE while legacy narrowing fails explicitly
+  ---
+  duration_ms: 2.268185
+  type: 'test'
+  ...
+# Subtest: int64 lot with large original and frozen values allocates the exact small difference
+ok 2 - int64 lot with large original and frozen values allocates the exact small difference
+  ---
+  duration_ms: 0.73296
+  type: 'test'
+  ...
+# Subtest: multiple source slices preserve query order and never reallocate existing holds
+ok 3 - multiple source slices preserve query order and never reallocate existing holds
+  ---
+  duration_ms: 0.578447
+  type: 'test'
+  ...
+# Subtest: usage aggregates preserve MAX_SAFE+1 and distinguish unknown counts from measured zero
+ok 4 - usage aggregates preserve MAX_SAFE+1 and distinguish unknown counts from measured zero
+  ---
+  duration_ms: 0.454737
+  type: 'test'
+  ...
+# Subtest: trial usage and platform ledger keep exact cumulative and per-attempt token strings
+ok 5 - trial usage and platform ledger keep exact cumulative and per-attempt token strings
+  ---
+  duration_ms: 18.019066
+  type: 'test'
+  ...
+# Subtest: default HTTP balance preserves MAX_SAFE+1 and zero/holds as strings through the response schema
+ok 6 - default HTTP balance preserves MAX_SAFE+1 and zero/holds as strings through the response schema
+  ---
+  duration_ms: 151.55743
+  type: 'test'
+  ...
+# Subtest: raw JSON number/fraction/negative/overflow are rejected before AJV coercion or financial handler
+ok 7 - raw JSON number/fraction/negative/overflow are rejected before AJV coercion or financial handler
+  ---
+  duration_ms: 42.948093
+  type: 'test'
+  ...
+# Subtest: numeric-v1 only replays persisted owner/resource/request and original handler still rejects changed amount
+ok 8 - numeric-v1 only replays persisted owner/resource/request and original handler still rejects changed amount
+  ---
+  duration_ms: 37.818077
+  type: 'test'
+  ...
+# Subtest: legacy responses preserve the original response schema field filtering
+ok 9 - legacy responses preserve the original response schema field filtering
+  ---
+  duration_ms: 29.432694
+  type: 'test'
+  ...
+# Subtest: callback bodies are excluded from billing transforms and unauthenticated replay does not open the DB
+ok 10 - callback bodies are excluded from billing transforms and unauthenticated replay does not open the DB
+  ---
+  duration_ms: 22.422824
+  type: 'test'
+  ...
+# Subtest: OpenAPI distinguishes modern wire components from original domain schemas
+ok 11 - OpenAPI distinguishes modern wire components from original domain schemas
+  ---
+  duration_ms: 41.05444
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1416.337919
