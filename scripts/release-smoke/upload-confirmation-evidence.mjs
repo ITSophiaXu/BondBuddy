@@ -7,7 +7,7 @@ export const CONFIRMATION_MODES=['legacy','size-split'];
 export const CONFIRMATION_SQL=`SELECT c.upload_id,c.owner_user_id,c.project_id,c.state,c.sha256,c.byte_size::text,c.inspection_excepted,c.result,
  o.id AS outbox_id,o.delivery_attempts,o.delivered_at,(o.lease_token IS NULL AND o.lease_until IS NULL) AS drained,
  m.id AS material_id,m.version AS material_version,m.sha256 AS material_sha256,m.byte_size::text AS material_bytes,m.filename,
- (SELECT count(*)::int FROM bb_model_call_attempts a JOIN bb_runs r ON r.id=a.run_id AND r.owner_user_id=a.owner_user_id WHERE r.project_id=c.project_id AND r.owner_user_id=c.owner_user_id) AS model_calls
+ (SELECT count(*)::int FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id AND j.owner_user_id=a.owner_user_id JOIN bb_runs r ON r.id=j.run_id AND r.owner_user_id=j.owner_user_id WHERE r.project_id=c.project_id AND r.owner_user_id=c.owner_user_id) AS model_calls
  FROM bb_upload_confirmations c JOIN bb_outbox o ON o.id=c.outbox_id AND o.owner_user_id=c.owner_user_id
  LEFT JOIN bb_material_versions m ON m.owner_user_id=c.owner_user_id AND m.project_id=c.project_id AND m.id=c.result->>'material_id' AND m.version=(c.result->>'material_version')::int AND m.deleted_at IS NULL
  WHERE c.owner_user_id=$1 AND c.project_id=$2 AND c.upload_id=$3`;
