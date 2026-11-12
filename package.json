@@ -18,7 +18,7 @@
     "pr-gate": "node scripts/pr-gate/local.mjs run",
     "pr-gate:verify": "node scripts/pr-gate/local.mjs verify",
     "test:release": "node scripts/release-smoke/run.mjs",
-    "test:release:unit": "node --test scripts/release-smoke/support.test.mjs scripts/release-smoke/credentials.test.mjs scripts/release-smoke/archive.test.mjs",
+    "test:release:unit": "node --test scripts/release-smoke/support.test.mjs scripts/release-smoke/credentials.test.mjs scripts/release-smoke/archive.test.mjs scripts/release-smoke/dependencies.test.mjs",
     "billing:mock": "node scripts/billing-functional/start.mjs",
     "billing:mock:stop": "node scripts/billing-functional/stop.mjs",
     "test:billing:mock": "node --test scripts/billing-functional/payment-provider.test.mjs scripts/billing-functional/billing-client.test.mjs",
