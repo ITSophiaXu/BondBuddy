@@ -119,6 +119,8 @@ test('real local current UI saves both selected materials and cutoff, then recov
     await expect(page.getByRole('heading', { name: projectName, exact: true })).toBeVisible();
 
     const auditBytes = pdfSample();
+    // setInputFiles bypasses disabled controls; wait for the real upload entry to be ready.
+    await expect(page.getByLabel('为审计报告（可含报表及附注）选择文件')).toBeEnabled();
     const uploadComplete = page.waitForResponse(response => response.url().includes(`/projects/${projectId}/materials/uploads/`) &&
       response.url().endsWith('/complete') && response.request().method() === 'POST' && response.status() !== 202);
     await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({
@@ -136,6 +138,7 @@ test('real local current UI saves both selected materials and cutoff, then recov
     await expect(page.locator('#execute-input')).toBeDisabled();
     const sourceBytes = await docxSample([], Buffer.from(
       `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>纯合成测试，非客户募集书。${issuer}，上海证券交易所非公开发行公司债券募集说明书。原稿报告期为2022年度、2023年度、2024年度。</w:t></w:r></w:p></w:body></w:document>`));
+    await expect(page.getByLabel('募集书新版本文件', { exact: true })).toBeEnabled();
     const sourceComplete = page.waitForResponse(response => response.url().includes(`/projects/${projectId}/materials/uploads/`) &&
       response.url().endsWith('/complete') && response.request().method() === 'POST' && response.status() !== 202);
     await page.getByLabel('募集书新版本文件', { exact: true }).setInputFiles({
