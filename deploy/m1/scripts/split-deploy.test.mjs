@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync, readFileSync, mkdirSync, cpSync, readdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync, mkdirSync, cpSync, readdirSync, openSync, closeSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
 const root = resolve(import.meta.dirname, '../../..');
@@ -364,6 +364,41 @@ test('size-split permits only main small and execution large single loops with p
  }
  const off=covered('execution');const os=join(off.area,'state');config('execution',off.values,os);
  assert.equal(Object.hasOwn(JSON.parse(readFileSync(join(os,'environment-binding.json'))),'upload_confirmation_role'),false);
+});
+
+test('confirmation bind policy rejects true/default/short syntax and probes omitted-false semantics fail closed',()=>{
+ assert.match(readFileSync(join(root,'deploy/m1/compose.execution.yaml'),'utf8'),/bind: \{create_host_path: false\}/);
+ const prefix='services:\n  upload-confirmation:\n    volumes: !override\n';
+ const long=(bind)=>prefix+`      - type: bind\n        source: ${dir}\n        target: /var/lib/bondbuddy/upload-confirmation\n${bind}`;
+ const cases=[['false',long('        bind: {create_host_path: false}\n'),true],['true',long('        bind: {create_host_path: true}\n'),false],
+  ['default',long(''),false],['empty-bind',long('        bind: {}\n'),false],['short',prefix+`      - ${dir}:/var/lib/bondbuddy/upload-confirmation\n`,false]];
+ for(const [name,text,accept] of cases){
+  const a=covered('execution',text,{BB_UPLOAD_CONFIRMATION_ROLE:'size-split',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir});
+  if(accept){const c=config('execution',a.values,join(a.area,'state'));assert.equal(c.services['upload-confirmation'].volumes[0].bind.create_host_path,false,'actual render remains untouched');}
+  else assert.throws(()=>config('execution',a.values,join(a.area,'state')),name);
+ }
+ // Synthetic old bool+omitempty representation, bound to real Compose-rendered
+ // services; actual target-version matrix is retained separately during acceptance.
+ const a=covered('execution','services: {}\n',{BB_UPLOAD_CONFIRMATION_ROLE:'size-split',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir}),state=join(a.area,'state');
+ config('execution',a.values,state);const envPath=envFile('execution',a.values);
+ const rendered=JSON.parse(execFileSync('docker',['compose','--project-directory',join(root,'deploy/m1'),'-f',join(root,'deploy/m1/compose.execution.yaml'),'-f',join(root,'deploy/m1/compose.integrity-beijing.yaml'),'-f',a.file,'--profile','*','--env-file',envPath,'config','--format','json'],{
+  env:{...configProcessEnv,BB_IMAGE_TAG:'synthetic',BB_ROLE_CONFIRMATION_REPLICAS:'1',BB_ROLE_CONFIRMATION_PROFILE:'bb-confirmation-active',BB_ROLE_CONFIRMATION_LANE:'large',BB_ROLE_PARSE_REPLICAS:'0',BB_ROLE_PARSE_PROFILE:'bb-parse-inactive'},stdio:['ignore','pipe','pipe']}));
+ const falseModel=structuredClone(rendered),trueModel=structuredClone(rendered);
+ delete falseModel.services['upload-confirmation'].volumes[0].bind.create_host_path;
+ trueModel.services['upload-confirmation'].volumes[0].bind.create_host_path=true;
+ const validate=(candidate,safe=falseModel,unsafe=trueModel)=>{
+  const safePath=join(a.area,'false.json'),unsafePath=join(a.area,'true.json');writeFileSync(safePath,JSON.stringify(safe));writeFileSync(unsafePath,JSON.stringify(unsafe));
+  const fds=[openSync(safePath,'r'),openSync(unsafePath,'r')];
+  try{return spawnSync(process.execPath,['deploy/m1/scripts/role-config.mjs','validate',envPath,state,'execution'],{cwd:root,env:configProcessEnv,input:JSON.stringify(candidate),encoding:'utf8',stdio:['pipe','pipe','pipe',...fds]}).status;}
+  finally{fds.forEach(closeSync);}
+ };
+ assert.equal(validate(falseModel),0,'omitted false accepted only against distinct trusted false/true renders');
+ assert.equal(validate(trueModel),2);
+ const missing=structuredClone(falseModel);delete missing.services['upload-confirmation'].volumes[0].bind;assert.equal(validate(missing),2,'missing bind is not evidence of false');
+ assert.equal(validate(falseModel,falseModel,falseModel),2,'collapsed true/false serialization fails closed');
+ assert.equal(validate(falseModel,{},trueModel),2,'missing probe fails closed');
+ const wrong=structuredClone(falseModel);wrong.services['upload-confirmation'].volumes[0].source='/synthetic/wrong-spool';assert.equal(validate(wrong),2,'source still exact');
+ const bad=structuredClone(falseModel);bad.services['upload-confirmation'].volumes[0].bind.create_host_path=null;assert.equal(validate(bad),2,'unknown value fails closed');
 });
 
 test('export inspects the requested source target, preserving uncached historical rollback and source checks',()=>{

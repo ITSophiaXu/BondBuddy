@@ -123,9 +123,20 @@ try {
           new URL(e.DATABASE_URL).hostname!=='pg-tunnel' || Object.keys(service.networks).join()!=='backend' ||
           Object.keys(e).some(k=>!environmentKeys.has(k)) || service.user!=='1000:1000' || service.entrypoint?.length || service.privileged ||
           service.volumes.length!==1 || service.volumes[0].target!==e.BB_UPLOAD_SPOOL_DIR || service.volumes[0].type!=='bind' ||
-          (active && (service.volumes[0].source!==spoolHost || service.volumes[0].bind?.create_host_path!==false)) ||
+          (active && service.volumes[0].source!==spoolHost) ||
           Number(service.deploy.resources.limits.cpus)!==0.5 || service.deploy.resources.limits.memory!=='536870912' ||
           service.read_only!==true || service.ports?.length || service.env_file?.length) fail();
+      if (active && service.volumes[0].bind?.create_host_path !== false) {
+        // Compose versions omit different boolean values. An empty bind object
+        // alone cannot prove false: compare against a second render with the
+        // trusted explicit-false overlay and a distinct true negative control.
+        // Both probes are read-only; unknown/collapsed semantics fail closed.
+        if (!service.volumes[0].bind || service.volumes[0].bind.create_host_path !== undefined) fail();
+        const expected = JSON.parse(readFileSync(3, 'utf8')).services?.['upload-confirmation']?.volumes;
+        const unsafe = JSON.parse(readFileSync(4, 'utf8')).services?.['upload-confirmation']?.volumes;
+        if (!Array.isArray(expected) || !Array.isArray(unsafe) ||
+            JSON.stringify(expected) === JSON.stringify(unsafe) || JSON.stringify(service.volumes) !== JSON.stringify(expected)) fail();
+      }
       for(const name of ['worker','worker-review','worker-parse']) if(s[name].environment.BB_UPLOAD_CONFIRMATION_ENABLED!=='0') fail();
     }
     // Adopt only a fully validated configuration, before the caller can mutate Docker.
