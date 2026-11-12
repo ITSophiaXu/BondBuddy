@@ -311,6 +311,32 @@ test('a deduplicated upload with the original upload ID attaches the exact exist
 });
 
 for(const mismatch of ['sha256','byte_size','media_type','role'] as const)test(`a schema-valid upload receipt with wrong ${mismatch} is rejected before attaching evidence`,async({page})=>{
-  const state=await openRetained(page);state.allowUploads=true;state.uploadReceiptMismatch=mismatch;await openEvidence(page);await modal(page).locator('[name=time]').fill('2026-10-24T10:20');await modal(page).locator('[name=note]').fill('回执必须匹配本次所选字节。');await modal(page).locator('[name=file]').setInputFiles({name:'合成回执核对.pdf',mimeType:'application/pdf',buffer:Buffer.from('synthetic upload receipt bytes')});
-  await expect.poll(()=>state.uploads.length).toBe(1);await expect(modal(page).locator('[role=status]')).toContainText('上传回执与原文件声明不一致');await expect(page.locator('#integrity-evidence-save')).toBeDisabled();expect(state.uploadBytes).toBe(1);expect(state.manuals).toEqual([]);expect(state.acceptedManuals.size).toBe(0);expect(state.checks).toEqual([]);expect(state.exports).toEqual([]);
+  const state=await openRetained(page),history=historicalRounds(state),draft=structuredClone(state.workspace.draft),bytes=Buffer.from('synthetic upload receipt bytes');
+  const declaration={filename:'合成回执核对.pdf',media_type:'application/pdf',role:'other',byte_size:bytes.length,sha256:sha(bytes.toString())};
+  state.allowUploads=true;state.uploadReceiptMismatch=mismatch;await openEvidence(page);await modal(page).locator('[name=time]').fill('2026-10-24T10:20');await modal(page).locator('[name=note]').fill('回执必须匹配本次所选字节。');
+  const completeResponse=page.waitForResponse(response=>response.request().method()==='POST'&&new URL(response.url()).pathname===`/api/v1/projects/${projectId}/materials/uploads/synthetic-upload-1/complete`);
+  await modal(page).locator('[name=file]').setInputFiles({name:declaration.filename,mimeType:declaration.media_type,buffer:bytes});
+  const complete=await completeResponse;expect(complete.status()).toBe(200);expect(complete.request().postDataJSON()).toEqual({byte_size:declaration.byte_size,sha256:declaration.sha256});
+  expect(state.uploadMaterial).toMatchObject({...declaration,upload_id:'synthetic-upload-1'});
+  expect(await complete.json()).toEqual({...state.uploadMaterial,[mismatch]:{sha256:sha('synthetic-wrong-upload-receipt'),byte_size:declaration.byte_size+1,media_type:'image/png',role:'audit'}[mismatch]});
+  await expect.poll(()=>state.uploads.length).toBe(1);
+  // Hash/size are rejected by ApiClient before recovery receives a material;
+  // media/role pass that central gate and are rejected by UploadRecovery.
+  const centralRejection=mismatch==='sha256'||mismatch==='byte_size';
+  if(centralRejection)await expect(modal(page).locator('[role=status]')).toHaveText('当前结果无法核实，请刷新后联系支持。');
+  else{await expect(modal(page).locator('[role=status]')).toContainText('上传回执与原文件声明不一致');await expect(modal(page).locator('[role=status]')).toHaveText('上传回执与原文件声明不一致，尚未确认材料保存，请重试确认原上传。');}
+  const records=await page.evaluate(async({owner,project})=>{
+    const apiModule='/src/api.ts',recoveryModule='/src/upload-recovery.ts',integrityModule='/src/integrity-upload.ts';
+    const {ApiClient}=await import(apiModule),{UploadRecovery}=await import(recoveryModule),{integrityUploadPurpose}=await import(integrityModule);
+    return new UploadRecovery(new ApiClient(()=>{}),owner,project,integrityUploadPurpose).list();
+  },{owner:ownerId,project:projectId});
+  expect(records).toHaveLength(1);expect(records[0]).toMatchObject({version:1,owner:ownerId,projectId,purpose:'integrity-evidence',declaration,stage:'confirming',uploadId:'synthetic-upload-1',context:{kind:'integrity-evidence',roundId:checkId,subjectId:'company-a',siteId:'credit-china'}});
+  expect(records[0].material).toBeUndefined();expect(records[0].previousUploadIds).toEqual([]);
+  if(centralRejection)expect(records[0].lastError).toEqual({status:0,code:'DATA_UNAVAILABLE'});else expect(records[0]).not.toHaveProperty('lastError');
+  await expect(page.locator('#integrity-evidence-save')).toBeDisabled();await expect(page.locator('#integrity-selected-evidence')).toHaveText('');
+  await expect(modal(page).locator('[name=time]')).toHaveValue('2026-10-24T10:20');await expect(modal(page).locator('[name=note]')).toHaveValue('回执必须匹配本次所选字节。');
+  expect(await modal(page).locator('[name=file]').evaluate((input:HTMLInputElement)=>Array.from(input.files??[],file=>({name:file.name,type:file.type,size:file.size})))).toEqual([{name:declaration.filename,type:declaration.media_type,size:declaration.byte_size}]);
+  expect(state.uploads).toEqual([declaration]);expect(state.uploadBytes).toBe(1);
+  expect(writes(state)).toEqual([{method:'POST',path:`/projects/${projectId}/materials/uploads`,search:'',body:declaration},{method:'POST',path:`/projects/${projectId}/materials/uploads/synthetic-upload-1/complete`,search:'',body:{byte_size:declaration.byte_size,sha256:declaration.sha256}}]);
+  expect(integrityWrites(state)).toEqual([]);expect(state.drafts).toEqual([]);expect(state.manuals).toEqual([]);expect(state.acceptedManuals.size).toBe(0);expect(state.checks).toEqual([]);expect(state.exports).toEqual([]);expect(state.accepted.size).toBe(0);expect(state.available).toBe(10000);expect(state.workspace.draft).toEqual(draft);expect(historicalRounds(state)).toEqual(history);
 });
