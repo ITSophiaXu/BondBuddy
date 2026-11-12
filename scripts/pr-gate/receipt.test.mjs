@@ -8,6 +8,7 @@ import { syntheticHostDispatch, syntheticHostReferences, syntheticHostSources } 
 import { CORE_SOURCE_SCHEMA } from './core-source.mjs';
 import { syntheticBrowserShard, syntheticBrowserSources } from './browser.test-fixture.mjs';
 import { syntheticReferenceRuns, syntheticQaBaselineRuns } from './browser-reference.test-fixture.mjs';
+import { fixtureCandidateLockBytes, fixtureHistoricalExpected, syntheticHistoricalRuns } from './browser-historical.test-fixture.mjs';
 import { syntheticInternalNetwork } from './internal-network.test-fixture.mjs';
 
 const matrix = [
@@ -22,6 +23,7 @@ const matrix = [
 ];
 const rawExclusions = `${JSON.stringify({ _说明: 'synthetic', notInCi: [{ pattern: 'local-*.test.mjs', reason: 'needs a persistent local service' }], knownFailing: [], allowSkip: [] })}\n`;
 const expected = {
+  ...fixtureHistoricalExpected(),
   commit: 'a'.repeat(40), tree: 'b'.repeat(40), develop_commit: 'c'.repeat(40),
   matrix, exclusions: exclusionsEvidence(rawExclusions),
   host_source_sha256: syntheticHostSources(),
@@ -42,6 +44,7 @@ function fixture() {
     capabilities,
     reference_components: syntheticReferenceRuns(expected, hostDispatch.plan.run_id),
     qa_single_start_baseline: syntheticQaBaselineRuns(expected, hostDispatch.plan.run_id),
+    historical_browser_apps: syntheticHistoricalRuns(expected, hostDispatch.plan.run_id),
     run_id: hostDispatch.plan.run_id, host_dispatch: hostDispatch,
     host_source: { commit: expected.commit, tree: expected.tree, clean_tree: true, raw_source: structuredClone(hostDispatch.runtime.source.raw_source) },
     core_source_final: { schema: CORE_SOURCE_SCHEMA, status: 'passed', phase: 'after-all-shards', source_root: '/workspace', run_id: hostDispatch.plan.run_id,
@@ -210,7 +213,7 @@ test('offline receipts cannot omit cache identity, isolation or preparation evid
 });
 
 test('complete current-candidate offline preparation still requires every original shard', () => {
-  const receipt = fixture(), inputs = Object.fromEntries(CACHE_FILES.map(path => [path, Buffer.from('synthetic\n')]));
+  const receipt = fixture(), inputs = Object.fromEntries(CACHE_FILES.map(path => [path, path === 'package-lock.json' ? fixtureCandidateLockBytes() : Buffer.from('synthetic\n')]));
   const cacheExpected = { ...expected, cache_files: Object.fromEntries(CACHE_FILES.map(path => [path, hash(inputs[path])])) };
   const image_id = 'sha256:' + 'd'.repeat(64);
   receipt.dependency_mode = 'offline-cache'; receipt.dependency_sources = { downloads: false };
@@ -237,8 +240,8 @@ test('normal eight-shard receipt requires QA baseline source lifecycle as well a
   for (const mutate of [r => delete r.qa_single_start_baseline, r => delete r.qa_single_start_baseline.container_after,
     r => r.qa_single_start_baseline.shards.pop(), r => r.qa_single_start_baseline.mount_after.qa_baseline.writable = true,
     r => r.qa_single_start_baseline.host_before.source = r.reference_components.host_before.source,
-    r => { const shard = r.shards.find(s => s.summary.browser_runtime?.qa_single_start_baseline);
-      shard.summary.browser_runtime.qa_single_start_baseline.after.aliases[1].loads = 0; }]) {
+    r => { const shard = r.shards.find(s => s.summary.browser_runtime?.historical_apps.some(app => app.id === 'qa'));
+      shard.summary.browser_runtime.historical_apps.find(app => app.id === 'qa').qa_baseline.after.aliases[1].loads = 0; }]) {
     const receipt = fixture(); mutate(receipt); assert.throws(() => verifyReceipt(receipt, expected, now), { code: 'ERR_ASSERTION' });
   }
 });

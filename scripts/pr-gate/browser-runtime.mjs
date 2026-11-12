@@ -8,7 +8,6 @@ import { BROWSER_API_ORIGIN, BROWSER_DATABASE, BROWSER_ORIGIN, BROWSER_PROTOTYPE
 import { BROWSER_TOOLS_ROOT, browserToolsEnvironment, probeBrowserTools, verifyBrowserTools } from './browser-tools.mjs';
 import { startBrowserUploadConfirmation } from './browser-upload-confirmation.mjs';
 import { startHistoricalApplication, historicalRemaining } from './browser-historical-runtime.mjs';
-import { QA_BASELINE_TEST, createQaBaselineAliases, verifyQaBaselineAliases } from './browser-reference-source.mjs';
 
 const here = fileURLToPath(import.meta.url);
 const source = (root, commit, path) => {
@@ -91,7 +90,7 @@ async function serve() {
     preparation_deadline: new Date(preparationDeadline).toISOString(), plan_sha256: process.env.PR_GATE_BROWSER_PLAN_SHA256, profile_sha256: plan.profile_sha256, files: plan.files,
     environment, removed_environment_keys: removed, started_at: new Date().toISOString(), pid: process.pid, probes: {}, model_calls: 0,
     status: 'failed', cleanup: { status: 'pending' } };
-  let api, pool, vite, prototype, prototypeExit, stopping, uploadConfirmation, qaBaseline;
+  let api, pool, vite, prototype, prototypeExit, stopping, uploadConfirmation;
   const historicalApps = [], historicalFailed = [];
   const startup = createBrowserStartupBarrier(), requireStarting = () => { startup.requireStarting(); historicalRemaining(preparationDeadline); };
   const save = () => writeFileSync(join(plan.output_root, 'runtime.json'), JSON.stringify(evidence, null, 2) + '\n');
@@ -120,10 +119,6 @@ async function serve() {
         try { await close(); } catch (error) { errors.push(error.message); }
       }
       if (plan.needs.ocr) try { evidence.tools_final = verifyBrowserTools(BROWSER_TOOLS_ROOT, process.env.PR_GATE_BROWSER_TOOLS_SHA256); } catch (error) { errors.push(error.message); }
-      if (qaBaseline) try {
-        evidence.qa_single_start_baseline.after = qaBaseline.snapshot();
-        verifyQaBaselineAliases(evidence.qa_single_start_baseline.before, evidence.qa_single_start_baseline.after);
-      } catch (error) { errors.push(error.message); }
       evidence.finished_at = new Date().toISOString(); evidence.cleanup = { status: errors.length ? 'failed' : 'passed', errors }; save();
       if (process.connected) process.send({ type: 'finished', evidence }); process.exitCode = errors.length ? 1 : 0; if (process.connected) process.disconnect();
     })(); return stopping;
@@ -164,12 +159,9 @@ async function serve() {
     }
     const { createServer } = await import('vite');
     requireStarting();
-    if (plan.files.some(row => row.test_id === QA_BASELINE_TEST)) {
-      assert.equal(process.env.BB_QA_SINGLE_START_BASELINE, '1'); qaBaseline = createQaBaselineAliases();
-      evidence.qa_single_start_baseline = { before: qaBaseline.before };
-    } else assert.equal(process.env.BB_QA_SINGLE_START_BASELINE, undefined);
+    assert.equal(process.env.BB_QA_SINGLE_START_BASELINE, undefined, 'QA baseline opt-in belongs only to its private test subprocess');
     vite = await createServer({ root: join(root, 'apps/web'), configFile: join(root, 'apps/web/vite.config.ts'),
-      plugins: qaBaseline ? [qaBaseline.plugin] : [], server: { host: '127.0.0.1', port: 5173, strictPort: true } }); requireStarting(); await vite.listen(); requireStarting();
+      server: { host: '127.0.0.1', port: 5173, strictPort: true } }); requireStarting(); await vite.listen(); requireStarting();
     const ca = readFileSync(process.env.NODE_EXTRA_CA_CERTS), web = await httpsRead(BROWSER_ORIGIN, ca); assert.equal(web.status, 200); assert.match(web.body, /<html/i);
     evidence.probes.web = { status: 'passed', origin: BROWSER_ORIGIN, ca_sha256: browserHash(ca), tls_verified: true, response_sha256: browserHash(web.body) };
     requireStarting();

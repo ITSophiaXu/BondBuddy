@@ -266,20 +266,30 @@ function verifyPinnedRuns(receipt, expected, key, schema, directory, verifyRecor
   }
   return proof;
 }
-/** Gate-only virtual source files: Vite keeps the current src-relative imports.
+/** Gate-only virtual source files: Vite keeps the explicitly pinned app's src-relative imports.
  * No historical file is written into the candidate or included in its build. */
-export function createQaBaselineAliases(directory = QA_BASELINE_ROOT) {
+export const QA_HISTORICAL_APP_ROOT = '/opt/pr-gate-historical-browser/qa/apps/web';
+export function qaBaselineAliasesForApp(applicationRoot) {
+  assert.ok(['/workspace/apps/web', QA_HISTORICAL_APP_ROOT].includes(applicationRoot), 'Unexpected QA alias application root');
+  return QA_BASELINE_ALIASES.map(alias => ({ ...alias, id: applicationRoot + '/src/' + alias.id.split('/').at(-1) }));
+}
+export function createQaBaselineAliases(directory = QA_BASELINE_ROOT, applicationRoot = '/workspace/apps/web') {
   // Alternate roots are only for byte-verifier unit fixtures. Runtime and
   // receipt validation require the fixed read-only container root.
   verifyQaBaselineDirectory(directory);
-  const loads = new Map(QA_BASELINE_ALIASES.map(alias => [alias.id, 0]));
+  const aliases = qaBaselineAliasesForApp(applicationRoot), historical = applicationRoot === QA_HISTORICAL_APP_ROOT;
+  const loads = new Map(aliases.map(alias => [alias.id, 0])), requests = new Map(aliases.map(alias => [alias.id, 0]));
   const snapshot = () => ({ schema: 'pr-gate-qa-baseline-aliases-v1', source: verifyQaBaselineDirectory(directory),
-    aliases: QA_BASELINE_ALIASES.map(alias => ({ ...alias, loads: loads.get(alias.id) })) });
-  const find = id => QA_BASELINE_ALIASES.find(alias => alias.id === id.split('?')[0] || alias.url === id.split('?')[0]);
+    ...(historical ? { application_root: applicationRoot } : {}),
+    aliases: aliases.map(alias => ({ ...alias, loads: loads.get(alias.id), ...(historical ? { requests: requests.get(alias.id) } : {}) })) });
+  const find = id => aliases.find(alias => alias.id === id.split('?')[0] || alias.url === id.split('?')[0]);
   return { before: snapshot(), snapshot, plugin: { name: 'pr-gate-pinned-qa-baseline', enforce: 'pre',
+    configureServer(server) { server.middlewares.use((request, _response, next) => {
+      const alias = find(request.url ?? ''); if (alias) requests.set(alias.id, requests.get(alias.id) + 1); next();
+    }); },
     resolveId(id) { const alias = find(id); return alias ? alias.id + (id.includes('?') ? '?' + id.split('?').slice(1).join('?') : '') : null; },
     load(id) {
-      const alias = QA_BASELINE_ALIASES.find(alias => alias.id === id.split('?')[0]); if (!alias) return null;
+      const alias = aliases.find(alias => alias.id === id.split('?')[0]); if (!alias) return null;
       const bytes = readFileSync(join(directory, alias.source_path));
       const file = QA_BASELINE_FILES.find(file => file.path === alias.source_path);
       assert.deepEqual(fileIdentity(file.path, bytes), file, 'QA alias source bytes changed');
@@ -288,12 +298,16 @@ export function createQaBaselineAliases(directory = QA_BASELINE_ROOT) {
     },
   } };
 }
-export function verifyQaBaselineAliases(before, after) {
+export function verifyQaBaselineAliases(before, after, applicationRoot = '/workspace/apps/web') {
+  const aliases = qaBaselineAliasesForApp(applicationRoot), historical = applicationRoot === QA_HISTORICAL_APP_ROOT;
   for (const [phase, value] of [['before', before], ['after', after]]) {
     assert.equal(value?.schema, 'pr-gate-qa-baseline-aliases-v1'); verifyQaBaselineRecord(value.source);
+    assert.equal(value.application_root, historical ? applicationRoot : undefined);
     assert.equal(value.aliases?.length, 2);
-    for (let index = 0; index < QA_BASELINE_ALIASES.length; index++) {
-      const { loads, ...identity } = value.aliases[index]; assert.deepEqual(identity, QA_BASELINE_ALIASES[index]);
+    for (let index = 0; index < aliases.length; index++) {
+      const { loads, requests, ...identity } = value.aliases[index]; assert.deepEqual(identity, aliases[index]);
+      if (historical) assert.ok(Number.isSafeInteger(requests) && (phase === 'before' ? requests === 0 : requests > 0), 'Both QA alias URLs must actually be requested');
+      else assert.equal(requests, undefined);
       assert.ok(Number.isSafeInteger(loads) && (phase === 'before' ? loads === 0 : loads > 0), 'Both pinned QA aliases must actually load during the original tests');
     }
   }

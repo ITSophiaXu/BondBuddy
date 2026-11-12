@@ -49,7 +49,7 @@ npm run pr-gate
 
 API 分片另启动受控子进程中的当前 `UploadConfirmationRuntime`，只消费 `upload.complete_requested`；不启动 run、parse 或模型消费者。使用同分片 PG/私有 Blob 及独占 128 MiB spool，正常处理页面 `Prefer: respond-async` 的 202→200 确认链路，不改为同步 API 或手工代替页面完成上传。准备记录实际 PG/Blob、进程 PID/启动身份和源码/编译产物 hash；结束先停止新领取并排空在途确认，再释放 spool、关闭池及证明独占目录已移除。consumer 的最多120秒清理窗口独立于所有原测试/batch超时；父服务保留150秒清理余量。缺消费者、提前退出、排空失败或跨候选证据均阻断回执。本模块依赖 #1137 的实际独立上传确认 runtime/spool 入口。
 
-所有分片使用 HTTPS `https://127.0.0.1:5173` 的当前 Vite 网页。API 固定为 `http://127.0.0.1:3000`，注册协议版本固定为 `synthetic-web-test-v1`；准备探针实际经过 HTTPS 代理读取协议，并核对严格 CA 校验、PG 端口/数据库/版本。review-agent-progress-prototype、review-readable-prototype 和 review-workspace 三个文件按需启动 `127.0.0.1:4320` 的仓库原型及独立临时状态目录；前两者使用原 `BB_E2E_PROTOTYPE_URL`，workspace 的原消费者使用 `BB_PROTOTYPE_URL`。以上端口均不发布到宿主，不接入现有用户服务。
+所有分片的当前应用分组使用 HTTPS `https://127.0.0.1:5173` 的当前 Vite 网页；三个精确历史 collector 使用下述独立旧应用。API 固定为 `http://127.0.0.1:3000`，注册协议版本固定为 `synthetic-web-test-v1`；准备探针实际经过 HTTPS 代理读取协议，并核对严格 CA 校验、PG 端口/数据库/版本。review-agent-progress-prototype、review-readable-prototype 和 review-workspace 三个文件按需启动 `127.0.0.1:4320` 的仓库原型及独立临时状态目录；前两者使用原 `BB_E2E_PROTOTYPE_URL`，workspace 的原消费者使用 `BB_PROTOTYPE_URL`。以上端口均不发布到宿主，不接入现有用户服务。
 
 已有镜像模式的 core 使用本轮独有的 Docker `--internal` bridge，而非使 Chromium `navigator.onLine=false` 的 `network=none`。仅 core 连接该网络，其一次性测试服务共享 core namespace；native 工具导出容器仍保持 `network=none`。内部网络无公网出口、不发布宿主端口、禁用 masquerade、IPv6 和外部 DNS 转发。准备、各分片开始、结束时实际核对网络 ID/labels、唯一成员和容器附件，并读取 namespace 的路由/接口以拒绝默认路由、网关或额外接口；不向公网发探针。Chromium 必须实际报告 online 且同源 HTTPS 访问成功，不改写 navigator 或产品离线行为。清理先逐个移除本轮容器，再核对网络为空，按精确 ID 删除并验证不存在；发现外来成员时拒绝删除并记录失败。回执绑定本轮初始/最终网络、路由、浏览器探针及清理证明。
 
@@ -67,13 +67,13 @@ OCR 分片从 `--host-worker-image` 指定的已有不可变本地镜像复制 T
 
 `integrity-reference`、`parallel-projects-reference`、`project-qa-reference`、`review-followup-reference` 保留原 4 个 spec / 12 个用例。本地入口从已有 Git 对象 `ffd637fac6c1fdf1581112e728f21ec29a94c67c`（tree `9ddc983bf5bf09de5236afd3076830a46649723a`）读取固定 11 个 TS/CSS blob，共 136,905 字节，核对 100644 模式、blob ID、长度和 SHA-256。缺对象直接失败；不下载、不 checkout、不转换换行，不将当前组件写入旧路径。
 
-原字节恢复到本次新建 `.local/pr-gate/reference-sources/<run-id>/BondBuddy-develop`，置于可写 evidence 之外，只读挂载到原固定 `/remote-review-20261025-ffd637f/BondBuddy-develop`。只允许 evidence、parser106、identityParser、该历史组件和下述 QA 基线五个精确挂载；核对实际容器 ID、宿主来源和只读属性。准备后、每个原 browser 分片前后及最终清理前，使用候选提交固定的 verifier 原字节复验文件集合和 hash，最终也复验宿主与挂载。缺少任一检查、跨候选/运行/容器记录或字节漂移均拒绝普通通过回执。
+原字节恢复到本次新建 `.local/pr-gate/reference-sources/<run-id>/BondBuddy-develop`，置于可写 evidence 之外，只读挂载到原固定 `/remote-review-20261025-ffd637f/BondBuddy-develop`。只允许 evidence、parser106、identityParser、该历史组件、下述 QA 基线及完整历史应用六个精确挂载；核对实际容器 ID、宿主来源和只读属性。准备后、每个原 browser 分片前后及最终清理前，使用候选提交固定的 verifier 原字节复验文件集合和 hash，最终也复验宿主与挂载。缺少任一检查、跨候选/运行/容器记录或字节漂移均拒绝普通通过回执。
 
 `qa-single-start-baseline.spec.ts` 的原两项历史对照另使用 `5ec099a27d6e754cf9b7b8c75d0f3616746918a1` / tree `ab8cdb7dcc208c51cbc7765c8172241838eda63c`，不混用上述 `ffd637f` QA 组件。固定 `project-qa-workspace.ts` blob `066befd98de13db490ea897315b2e41040073efc`（86,962 字节）和 CSS blob `bc3c8d634f341bb11eed86083ce07360c15edf9b`（13,428 字节），独立核对模式、长度、Git blob 与 SHA-256。原字节仅恢复到 `.local/pr-gate/qa-baseline-sources/<run-id>/BondBuddy-develop`，只读绑定 `/qa-single-start-baseline-20261029-5ec099a/BondBuddy-develop`；独立 `qa_single_start_baseline` 回执沿用前后/清理复验，明确 `not_a_seal` 和 `not_execution_evidence`。
 
-包含原 QA spec 的完整 browser 分片显式设置 `BB_QA_SINGLE_START_BASELINE=1`。仅 gate 的 Vite 启动配置提供 `/src/qa-single-start-baseline.ts/.css` 两个虚拟源文件：每次实际加载核对对应原字节，保留当前 `src` 目录的相对依赖解析，再由正常 Vite 转换。浏览器回执要求两个 alias 都实际加载且清理时源身份未变。候选工作树和产品 Vite 配置不写入历史组件；原 spec、断言、预算、分片和跳过拦截保持原状。缺 Git 对象、缺 opt-in、缺用例、未加载任一 alias、未知或可写挂载、源漂移均继续阻断，不重封 R38/R9。
+仅原 QA spec 的私有测试子进程设置 `BB_QA_SINGLE_START_BASELINE=1`，使用下述完整 `5839177e` 应用与原 fixture。gate 为该旧 Vite 提供 `/src/qa-single-start-baseline.ts/.css` 两个虚拟源文件，ID 位于该旧应用的 `apps/web/src`，其相对导入也留在该旧应用。两别名保留独立 `5ec099a` 原字节身份，回执分别记录真实请求和加载次数、明确原应用加旧组件的双来源，不能称为单一未经混合的 Git tree。当前网页不安装这些 alias；原 spec、断言、预算、分片和跳过拦截保持原状。缺来源、opt-in、任一用例/alias请求或加载、未知可写挂载、源漂移均继续阻断。
 
-这些只是旧组件对照：原 spec 将历史 TS/CSS 编译/路由到当前候选网页，main、其他 helpers、contracts 和 synthetic HTTP fixture 仍来自当前候选。记录明确 `old-components-only` / `not_a_seal` / `not_execution_evidence`；不恢复完整旧应用，不补造 R38/R35/R36/R9 封存，不代表新界面设计批准或浏览器已经执行。未解决的其他历史封存依旧阻断。
+上述四个 `ffd637f` 参考用例仍只替换旧组件，其余网页与 fixture 仍来自当前候选；QA single-start 单独按下述原应用与 fixture 闭包执行。旧组件输入记录继续明确 `old-components-only` / `not_a_seal` / `not_execution_evidence`，输入身份不能代替实际执行。不补造 R38/R35/R36/R9 封存，不代表新界面设计批准；未解决的历史封存依旧阻断。
 
 ## 回执与核对
 
@@ -216,14 +216,18 @@ worker生产依赖中没有ReportLab时，准备阶段从本轮已验证的core�
 宿主原始证据放在`.local/pr-gate/host-evidence/<runId>`，普通core不挂载此目录。分片引用和宿主内存结果必须逐项匹配相同候选、计划、输出hash、原执行结果与零skip；还必须完成本轮全部八分片及全局资源清理。旧专项回执不能导入或拼接。本轮host源码使用系统临时目录下独有的`bb-pg-*/src`短路径，避免Windows Git长路径失败；创建时核对实际父路径、非链接目录及唯一所有权记录，`owner.json`保留本轮run ID和进程身份。具体源码路径及原字节证明写入`receipt.host_source`，与core证明一致后才有效。不修改系统或全局Git设置，不省略任何长路径文件；保留此独立源码便于核对。
 
 
-## 两个完整历史应用 collector
+## 三个完整历史应用 collector
 
-本地受控 browser 分片会从原发现集合分出 `consistency-history-baseline.spec.ts` 与 `consistency-update-history-baseline.spec.ts`。其余文件继续使用本轮当前应用；每个原文件只执行一次，两 collector 各自单独调用原 Playwright 命令。只有对应调用收到原 opt-in 和 `https://127.0.0.1:5181`／`5182`，不会让当前行为测试因历史开关跳过。原分片总预算、120 秒准备窗口、断言和失败／skip 判定不变；准备、编译、启动或汇总失败均阻断。
+本地受控 browser 分片会从原发现集合分出 `consistency-history-baseline.spec.ts`、`consistency-update-history-baseline.spec.ts` 与 `qa-single-start-baseline.spec.ts`。其余文件继续使用本轮当前应用；每个原文件只执行一次，三 collector 分别执行原完整文件。只有对应调用收到原 opt-in 和 `https://127.0.0.1:5181`／`5182`／`5183`，不会让当前行为测试因历史开关跳过。原分片总预算、120 秒准备窗口、断言和失败／skip 判定不变；准备、编译、启动或汇总失败均阻断。
 
-历史版本固定为 `8c81e8f1032ba5e23657eb32a43d9dfd0c9612fe` 和 `ce3f2a8dfd8ca64d3f78334c97576fbf47a586c9`。宿主仅从已有 Git 对象恢复各版本完整 `apps/web`、`packages/contracts`、`product-prototype/public` 与原根 package/lock；重建每个固定 Git subtree 并核所有文件原字节，以独立只读挂载提供给 core。旧 public 目录包含跨目录 CSS／资源依赖。来源缺失不会 fetch、猜测别的 checkout 或降级为当前页面。
+历史版本固定为 `8c81e8f1032ba5e23657eb32a43d9dfd0c9612fe` 、`ce3f2a8dfd8ca64d3f78334c97576fbf47a586c9` 及 QA 原 collector 创建提交 `5839177e404d247947de968b58dbb430622409ff`。宿主仅从已有 Git 对象恢复各版本完整 `apps/web`、`packages/contracts`、`product-prototype/public` 与原根 package/lock；重建每个固定 Git subtree 并核所有文件原字节，以独立只读挂载提供给 core。旧 public 目录包含跨目录 CSS／资源依赖。来源缺失不会 fetch、猜测别的 checkout 或降级为当前页面。
 
 运行时核旧 lock 的实际依赖闭包与当前 lock 的准确 version/SRI/依赖关系，再用现有 npm 内容缓存中的原 SRI tarball 逐文件核对实际 installed package。缺缓存、包修改或未映射的安装派生文件都失败，不执行额外安装器、不修改共享 workspace links。旧 contracts 用原 tsconfig 单独编译，private node_modules 链接、dist 和 Vite cache 都在本轮 `/tmp/pr-gate-historical/<run>/<shard>/<id>`。原 Vite 配置以不改字节的私有 `.mjs` 加载，只覆盖 loopback 端口、cache、读取范围和隔离设置；未被原 synthetic fixture 截获的 API 请求明确拒绝并阻断，不能落入当前 API 或生产。
 
 同一 `playwright-report.json` 汇总全部分报告的原 suites、errors、失败、重试和跳过；完整文件集合、各组命令、环境、报告 hash、时间和旧源／依赖／实际模块加载记录进入同一回执。每组结束后、下一组启动前复制原 `/tmp/bondbuddy-web-test-results` 和原报告引用的受控附件到 `playwright-output-<group>`，保留原路径映射与文件 hash，避免后一次 Playwright 清理前一组证据。原报告和附件字节不改。
 
-这些输入身份和本轮运行记录明确不是 R38/R9 seal，也不能补造缺失的历史 provenance。QA single-start 等其他历史参考测试保持自身原门禁；它们的旧 API／fixture 协议错配需独立定位。新增能力代码和静态检查本身不构成执行通过，须由本轮完整 gate 实跑后判断。
+QA 在私有 `.../qa/collector/apps/web` 逐字复制原 collector、两个原 numeric DTO fixture、原 package、tsconfig 和 Playwright config。原 fixture 不导入当前金额 wire helper；私有 Node contracts link 和旧 Vite 指向同一编译输出。从实际 fixture/config 起点的 `createRequire.resolve` 与已固定 conditional exports 仅是准备解析证明，不能冒充 Node 模块实际加载；浏览器则单独记录旧 main、contracts、alias 的实际加载。测试命令绑定现有且已经字节验证的 `/usr/local/bin/node /workspace/node_modules/@playwright/test/cli.js test tests/qa-single-start-baseline.spec.ts --reporter=line,json`，不使用 npx 或安装器。
+
+只有 QA 原生报告的 rootDir、configFile 和 projects.testDir 可以是本 run/shard 的上述精确私有路径；其他配置和逻辑 argv 与原分组一致。raw 报告不改写；聚合额外绑定各组原路径、hash 和两项原 viewport 标题。原 collector 写入共享 evidence 的 `before-recognition-1440/390.png` 与 `before-preparation-1440/390.png` 另逐图保存、归档和校验大小/hash；缺任何图仍失败。三旧 app 共享原准备截止时间，准备不足直接失败，不另赠120秒。
+
+这些输入身份和本轮运行记录明确不是 R38/R9 seal，也不能补造缺失的历史 provenance。新增能力代码和静态检查本身不构成执行通过，须由本轮完整 gate 实跑后判断。#1266 跟踪两 history 环境缺口，#1267 跟踪 QA 协议闭包；原失败记录仍保留。

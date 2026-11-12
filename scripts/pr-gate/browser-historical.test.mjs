@@ -70,10 +70,10 @@ test('npm cache verifier accepts a uniform DT archive root and refuses byte drif
   }
 });
 
-test('plans name both old applications without enabling their flags in the shared current environment', () => {
+test('plans name all three old applications without enabling their flags in the shared current environment', () => {
   const files = [...Object.values(HISTORICAL_COLLECTORS).map(row => row.test_id), 'apps/web/tests/consistency-history.spec.ts'];
   const plan = createBrowserPlan({ candidate: { commit: 'a'.repeat(40), tree: 'b'.repeat(40) }, runId: 'synthetic-history', shard: 'browser-1', files, sourceBlob: path => Buffer.from(path) });
-  assert.deepEqual(plan.historical_apps, ['history', 'update']);
+  assert.deepEqual(plan.historical_apps, ['history', 'update', 'qa']);
   const env = browserEnvironment({ BB_TEST_LIVE_AUTHORING: '0', BB_PLATFORM_PROBE_ENABLED: '0', BB_REVIEW_WEB_SEARCH_ENABLED: '0', BB_CONSISTENCY_HISTORY_BASELINE: '1', BB_UPDATE_HISTORY_BASELINE: '1' }, plan).env;
   for (const { flag } of Object.values(HISTORICAL_COLLECTORS)) assert.equal(env[flag], undefined);
   assert.equal(env.BB_E2E_BASE_URL, 'https://127.0.0.1:5173');

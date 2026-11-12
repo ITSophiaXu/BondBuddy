@@ -1,14 +1,15 @@
 // Synthetic records for verifier unit tests; never runtime/release evidence.
 import { BROWSER_API_PROFILES, BROWSER_API_ORIGIN, BROWSER_ORIGIN, BROWSER_PROTOTYPE_FILES, BROWSER_PROTOTYPE_ORIGIN, BROWSER_TERMS, browserHash, createBrowserPlan } from './browser-profiles.mjs';
-import { createBrowserDispatch } from './browser-dispatch.mjs';
+import { browserGroupPaths, createBrowserDispatch } from './browser-dispatch.mjs';
 import { browserFilesForShard } from './browser-host.mjs';
 import { browserInvocation } from './browser-runtime.mjs';
 import { BROWSER_TOOLS_ROOT, BROWSER_TOOLS_SCHEMA } from './browser-tools.mjs';
 import { REFERENCE_TESTS, QA_BASELINE_TEST } from './browser-reference-source.mjs';
-import { syntheticQaBaselineAliases } from './browser-reference.test-fixture.mjs';
+import { syntheticHistoricalApplication, syntheticQaScreenshots } from './browser-historical.test-fixture.mjs';
+import { QA_COLLECTOR_FILES } from './browser-qa-collector.mjs';
 import { syntheticBrowserUploadConfirmation } from './browser-upload-confirmation.test-fixture.mjs';
 
-export const syntheticBrowserSources = () => Object.fromEntries([...new Set([...Object.keys(BROWSER_API_PROFILES), ...BROWSER_PROTOTYPE_FILES, ...REFERENCE_TESTS, QA_BASELINE_TEST])].sort().map(file => [file, browserHash(file)]));
+export const syntheticBrowserSources = () => Object.fromEntries([...new Set([...Object.keys(BROWSER_API_PROFILES), ...BROWSER_PROTOTYPE_FILES, ...REFERENCE_TESTS, QA_BASELINE_TEST])].sort().map(file => [file, file === QA_BASELINE_TEST ? QA_COLLECTOR_FILES.find(row => row.path === file).sha256 : browserHash(file)]));
 const stamp = second => `2026-11-11T13:00:${String(second).padStart(2, '0')}.000Z`;
 export function syntheticBrowserShard(expected, row, capabilities, runId, imageId) {
   const files = browserFilesForShard(expected, row), plan = createBrowserPlan({ candidate: expected, runId, shard: row.name, files, sourceSha256: path => expected.browser_source_sha256[path] });
@@ -22,13 +23,31 @@ export function syntheticBrowserShard(expected, row, capabilities, runId, imageI
       exit_code: 0, timed_out: false, started_at: stamp(15), finished_at: stamp(22) } };
   runtime.preparation_deadline = '2026-11-11T13:02:11.000Z';
   runtime.dispatch = createBrowserDispatch(files.map(id => ({ id })));
-  const call = runtime.invocation; Object.assign(call, { id: 'current', files, environment: { BB_E2E_BASE_URL: BROWSER_ORIGIN }, report_file: `/evidence/shards/${row.name}/playwright-report-current.json`,
-    report_raw_sha256: browserHash('synthetic-raw-report'), report_sha256: browserHash('synthetic-parsed-report'), output_archive: { schema: 'pr-gate-browser-output-archive-v1', source_root: '/tmp/bondbuddy-web-test-results', source_exists: false, archive_root: `/evidence/shards/${row.name}/playwright-output-current`, files: [], attachments: [], manifest_sha256: browserHash({ files: [], attachments: [] }) } });
-  runtime.invocations = [call]; runtime.historical_apps = []; runtime.deadline = '2026-11-11T13:02:15.000Z';
-  runtime.report = { file: `/evidence/shards/${row.name}/playwright-report.json`, sha256: browserHash('synthetic-combined-report'), dispatch: { schema: 'pr-gate-browser-dispatch-v1', report_hash_encoding: 'JSON.stringify/utf8', reports: [{ id: 'current', origin: BROWSER_ORIGIN, flag: null, files, attachment_paths: [], report_sha256: call.report_sha256, argv: ['node', 'playwright', ...call.args.slice(1)], stats: { expected: files.length, unexpected: 0, flaky: 0, skipped: 0 } }] } };
+  runtime.historical_apps = plan.historical_apps.map(id => syntheticHistoricalApplication(id, plan, capabilities));
+  runtime.invocations = runtime.dispatch.map((group, index) => {
+    const collector = runtime.historical_apps.find(app => app.id === group.id)?.collector;
+    const original = collector ?? browserInvocation(group.items, '', {}), paths = browserGroupPaths(group, plan);
+    return { id: group.id, files: group.items.map(row => row.id), command: original.command, args: original.args, cwd: paths.cwd,
+      timeout_ms: 5000, exit_code: 0, timed_out: false, started_at: stamp(15 + index * 2), finished_at: stamp(16 + index * 2),
+      environment: { BB_E2E_BASE_URL: group.origin, ...(group.flag ? { [group.flag]: '1' } : {}) },
+      report_file: `/evidence/shards/${row.name}/playwright-report-${group.id}.json`,
+      report_raw_sha256: browserHash('synthetic-raw-report:' + group.id), report_sha256: browserHash('synthetic-parsed-report:' + group.id),
+      output_archive: { schema: 'pr-gate-browser-output-archive-v1', source_root: '/tmp/bondbuddy-web-test-results', source_exists: false,
+        archive_root: `/evidence/shards/${row.name}/playwright-output-${group.id}`, files: [], attachments: [], manifest_sha256: browserHash({ files: [], attachments: [] }) },
+      ...(group.id === 'qa' ? { qa_screenshots: syntheticQaScreenshots(plan) } : {}) };
+  });
+  runtime.invocation = runtime.invocations.length === 1 ? runtime.invocations[0] : undefined;
+  runtime.deadline = '2026-11-11T13:02:15.000Z';
+  runtime.report = { file: `/evidence/shards/${row.name}/playwright-report.json`, sha256: browserHash('synthetic-combined-report'), dispatch: {
+    schema: 'pr-gate-browser-dispatch-v1', report_hash_encoding: 'JSON.stringify/utf8', reports: runtime.dispatch.map((group, index) => {
+      const call = runtime.invocations[index], paths = browserGroupPaths(group, plan);
+      return { id: group.id, origin: group.origin, flag: group.flag, files: call.files, attachment_paths: [], report_sha256: call.report_sha256,
+        config_paths: { rootDir: paths.rootDir, configFile: paths.configFile, projects: [{ id: '', testDir: paths.rootDir }] },
+        argv: [group.id === 'qa' ? call.command : 'node', group.id === 'qa' ? call.args[0] : 'playwright', ...call.args.slice(1)],
+        stats: { expected: group.id === 'qa' ? 2 : group.items.length, unexpected: 0, flaky: 0, skipped: 0 } };
+    }) } };
   const services = { ...common, status: 'prepared', plan, plan_sha256, started_at: stamp(1), prepared_at: stamp(10), cleanup: { status: 'passed', finished_at: stamp(35) } };
   runtime.services_alive_before_cleanup = { web: true, ...(plan.needs.api ? { api: true, upload_confirmation: true } : {}), ...(plan.needs.prototype ? { prototype: true } : {}) };
-  if (files.includes(QA_BASELINE_TEST)) runtime.qa_single_start_baseline = syntheticQaBaselineAliases();
   if (plan.needs.api) {
     runtime.upload_confirmation = syntheticBrowserUploadConfirmation(plan);
     services.database = { id: '1'.repeat(64), image_id: 'sha256:' + '2'.repeat(64), run_id: runId, port: 55433, database: 'bondbuddy_local', migrated: true,

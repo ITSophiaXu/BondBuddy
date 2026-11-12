@@ -12,6 +12,12 @@ export const HISTORICAL_SOURCES = Object.freeze({
     objects: { ...shared, 'apps/web': 'c6c5158a88cd93bc3df9dfad934f9eea123fa281', 'packages/contracts': '505b88ca7eca0d2bf91ca4a7802ea7de79efb151' } },
   update: { commit: 'ce3f2a8dfd8ca64d3f78334c97576fbf47a586c9', tree: '36214345263f5750d9187010d6900437a4cb36f7',
     objects: { ...shared, 'apps/web': '2d52945e84e83aeafbad1fc29280d0fd983b974f', 'packages/contracts': '28c170be3295643ae9bdb977a02d69f0b86b859a' } },
+  // Original collector application/fixtures; its explicit 5ec component aliases
+  // remain separately pinned. This is intentionally a declared two-source baseline.
+  qa: { commit: '5839177e404d247947de968b58dbb430622409ff', tree: '3d7b9b6d3873f64ffea40b11362255606b63524f',
+    objects: { 'package.json': 'a25c5f954da60c69b5cc58b9e6a92ac3e1fc1ca4', 'package-lock.json': 'f5f9ee92bce8a62a931cc35773a2f78b0a721354',
+      'apps/web': 'fb36bcedb71791d2e071b5ef5cc87b786635a254', 'packages/contracts': '82823b2b281c461b2483818b476861bc856d3117',
+      'product-prototype/public': '083079c68d05a89be0d35eefa7c45d4631611de0' } },
 });
 export const historicalHash = value => createHash('sha256').update(Buffer.isBuffer(value) || typeof value === 'string' ? value : JSON.stringify(value)).digest('hex');
 export const HISTORICAL_PROFILE_SHA256 = historicalHash(HISTORICAL_SOURCES);

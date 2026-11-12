@@ -3,13 +3,15 @@ import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { createBrowserDispatch, HISTORICAL_COLLECTORS, mergeBrowserReports, verifyBrowserDispatch, verifyBrowserReports } from './browser-dispatch.mjs';
+import { browserGroupPaths, createBrowserDispatch, HISTORICAL_COLLECTORS, mergeBrowserReports, verifyBrowserDispatch, verifyBrowserReports } from './browser-dispatch.mjs';
 import { evaluatePlaywright, GROUPS, judge, parseExclusions } from './run.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const prefix = 'apps/web/tests/';
 const history = prefix + 'consistency-history-baseline.spec.ts';
 const update = prefix + 'consistency-update-history-baseline.spec.ts';
+const qa = prefix + 'qa-single-start-baseline.spec.ts';
+const qaPlan = { run_id: 'synthetic-qa-dispatch', shard: 'browser-2' };
 const item = name => ({ id: name.startsWith(prefix) ? name : prefix + name, run: name.startsWith(prefix) ? name : prefix + name });
 const current = item('project-execution.spec.ts');
 const clone = value => structuredClone(value);
@@ -61,18 +63,20 @@ test('the repository browser discovery retains every selected file, including th
   assert.equal(items.filter(row => row.id === history).length, 1);
   assert.equal(items.filter(row => row.id === update).length, 1);
   const dispatch = createBrowserDispatch(items);
-  assert.deepEqual(dispatch.map(group => group.id), ['current', 'history', 'update']);
+  assert.deepEqual(dispatch.map(group => group.id), ['current', 'history', 'update', 'qa']);
+  assert.deepEqual(dispatch[3], { id: 'qa', origin: 'https://127.0.0.1:5183', flag: 'BB_QA_SINGLE_START_BASELINE', items: [item(qa)] });
   assert.deepEqual(dispatch[1], { id: 'history', origin: 'https://127.0.0.1:5181',
     flag: 'BB_CONSISTENCY_HISTORY_BASELINE', items: [item(history)] });
   assert.deepEqual(dispatch[2], { id: 'update', origin: 'https://127.0.0.1:5182',
     flag: 'BB_UPDATE_HISTORY_BASELINE', items: [item(update)] });
-  assert.deepEqual(dispatch[0].items, items.filter(row => ![history, update].includes(row.id)));
+  assert.deepEqual(dispatch[0].items, items.filter(row => ![history, update, qa].includes(row.id)));
   assert.equal(dispatch.flatMap(group => group.items).length, items.length);
   assert.deepEqual(dispatch.flatMap(group => group.items.map(row => row.id)).sort(), items.map(row => row.id).sort());
   assert.equal(verifyBrowserDispatch(dispatch, items), dispatch);
   assert.deepEqual(HISTORICAL_COLLECTORS, {
     history: { test_id: history, flag: 'BB_CONSISTENCY_HISTORY_BASELINE', origin: 'https://127.0.0.1:5181' },
     update: { test_id: update, flag: 'BB_UPDATE_HISTORY_BASELINE', origin: 'https://127.0.0.1:5182' },
+    qa: { test_id: qa, flag: 'BB_QA_SINGLE_START_BASELINE', origin: 'https://127.0.0.1:5183' },
   });
 });
 
@@ -81,11 +85,12 @@ test('partitioning is stable for unsorted shards and does not infer a historical
     item('consistency-history.spec.ts'), item('consistency-update-history.spec.ts'), current];
   const before = clone(items), dispatch = createBrowserDispatch(items);
   assert.deepEqual(dispatch[0].items.map(row => row.id), [
-    prefix + 'qa-single-start-baseline.spec.ts', prefix + 'consistency-history.spec.ts',
+    prefix + 'consistency-history.spec.ts',
     prefix + 'consistency-update-history.spec.ts', current.id,
   ]);
   assert.equal(dispatch[1].items[0], items[2]);
   assert.equal(dispatch[2].items[0], items[0]);
+  assert.equal(dispatch[3].items[0], items[1]);
   assert.deepEqual(items, before);
   assert.deepEqual(createBrowserDispatch([item(update)]).map(group => group.id), ['update']);
   assert.deepEqual(createBrowserDispatch([current]).map(group => group.id), ['current']);
@@ -157,6 +162,7 @@ test('merging keeps original failure, flaky, skip, retry, attachment and global-
   assert.equal(metadata.report_hash_encoding, 'JSON.stringify/utf8');
   for (let index = 0; index < reports.length; index++) {
     assert.deepEqual(metadata.reports[index], { id: dispatch[index].id, origin: dispatch[index].origin,
+      config_paths: { rootDir: reports[index].report.config.rootDir, configFile: reports[index].report.config.configFile, projects: reports[index].report.config.projects.map(project => ({ id: project.id, testDir: project.testDir })) },
       flag: dispatch[index].flag, files: dispatch[index].items.map(row => row.id), attachment_paths: index === 0 ? ['/evidence/failure.png'] : [],
       report_sha256: createHash('sha256').update(JSON.stringify(reports[index].report)).digest('hex'),
       argv: reports[index].report.config.argv, stats: reports[index].report.stats });
@@ -329,4 +335,41 @@ test('merged metadata retains each original attachment reference for archive ver
   const original = clone(value.reports); const merged = mergeBrowserReports(value.reports, value.dispatch);
   assert.deepEqual(value.reports, original); assert.deepEqual(merged.config.pr_gate_dispatch.reports[0].attachment_paths, [path]);
   assert.deepEqual(merged.config.pr_gate_dispatch.reports[1].attachment_paths, []);
+});
+
+
+function qaGroups() {
+  const dispatch = createBrowserDispatch([current, item(qa)]), reports = dispatch.map(group => ({ id: group.id, report: reportFor(group) }));
+  const report = reports[1].report, paths = browserGroupPaths(dispatch[1], qaPlan), specimen = report.suites[0].specs[0];
+  Object.assign(report.config, { rootDir: paths.rootDir, configFile: paths.configFile }); report.config.projects[0].testDir = paths.rootDir;
+  report.config.argv[1] = '/workspace/node_modules/@playwright/test/cli.js';
+  report.suites[0].specs = [1440, 390].map(width => ({ ...clone(specimen), id: specimen.id + ':' + width, line: 6, title: 'baseline two-page preparation at ' + width }));
+  report.stats.expected = 2;
+  return { dispatch, reports };
+}
+test('only QA uses its exact private original source path and native reports remain byte-equivalent data', () => {
+  const { dispatch, reports } = qaGroups(), before = JSON.stringify(reports);
+  verifyBrowserReports(reports, dispatch, qaPlan); const merged = mergeBrowserReports(reports, dispatch, qaPlan);
+  assert.equal(JSON.stringify(reports), before); assert.deepEqual(merged.suites, reports.flatMap(entry => entry.report.suites));
+  assert.deepEqual(merged.config.pr_gate_dispatch.reports[1].config_paths, { rootDir: reports[1].report.config.rootDir, configFile: reports[1].report.config.configFile,
+    projects: reports[1].report.config.projects.map(project => ({ id: project.id, testDir: project.testDir })) });
+  assert.throws(() => verifyBrowserReports(reports, dispatch));
+});
+test('QA private path exception never allows arbitrary roots, current helpers, a different CLI or fewer cases', () => {
+  for (const mutate of [
+    report => report.config.rootDir = '/workspace/apps/web/tests',
+    report => report.config.configFile = '/tmp/other/playwright.config.ts',
+    report => report.config.projects[0].testDir += '/nested',
+    report => report.config.argv[0] = 'npx',
+    report => report.config.argv[1] = '/workspace/node_modules/playwright/cli.js',
+    report => report.config.argv.push('--grep', '1440'),
+    report => report.config.projects[0].timeout = 60000,
+    report => { report.suites[0].specs.pop(); report.stats.expected = 1; },
+    report => report.suites[0].specs[0].title = 'replacement case',
+  ]) { const { dispatch, reports } = qaGroups(); mutate(reports[1].report); assert.throws(() => verifyBrowserReports(reports, dispatch, qaPlan)); }
+  for (const bad of [{ ...qaPlan, run_id: '../escape' }, { ...qaPlan, shard: 'browser-4' }, { ...qaPlan, run_id: 'another-run' }]) {
+    const { dispatch, reports } = qaGroups(); assert.throws(() => verifyBrowserReports(reports, dispatch, bad));
+  }
+  const { dispatch, reports } = qaGroups(); reports[0].report.config.rootDir = reports[1].report.config.rootDir;
+  assert.throws(() => verifyBrowserReports(reports, dispatch, qaPlan));
 });

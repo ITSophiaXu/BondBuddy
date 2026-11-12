@@ -4,11 +4,11 @@ import { browserFilesForShard } from './browser-host.mjs';
 import { browserInvocation } from './browser-runtime.mjs';
 import { BROWSER_TOOLS_ROOT } from './browser-tools.mjs';
 import { verifyBrowserUploadConfirmation } from './browser-upload-confirmation.mjs';
-import { createBrowserDispatch, HISTORICAL_COLLECTORS, verifyBrowserDispatch } from './browser-dispatch.mjs';
+import { browserGroupPaths, createBrowserDispatch, HISTORICAL_COLLECTORS, verifyBrowserDispatch } from './browser-dispatch.mjs';
 import { verifyHistoricalRuns } from './browser-historical-source.mjs';
 import { verifyBrowserOutputArchive } from './browser-artifacts.mjs';
 import { verifyHistoricalApplication } from './browser-historical-runtime.mjs';
-import { QA_BASELINE_TEST, verifyQaBaselineAliases } from './browser-reference-source.mjs';
+import { verifyQaScreenshots } from './browser-qa-collector.mjs';
 
 const sha = value => assert.match(value, /^[a-f0-9]{64}$/);
 const time = value => { const parsed = Date.parse(value); assert.ok(Number.isFinite(parsed)); return parsed; };
@@ -28,10 +28,8 @@ export function verifyBrowserRuns(receipt, expected) {
     assert.equal(runtime.schema, 'pr-gate-browser-runtime-v1'); assert.equal(runtime.profile_sha256, plan.profile_sha256);
     assert.ok(Number.isSafeInteger(runtime.pid) && runtime.pid > 0, 'Actual browser runtime process identity is required');
     assert.deepEqual(runtime.files, plan.files); assert.equal(runtime.model_calls, 0);
-    if (files.includes(QA_BASELINE_TEST)) {
-      assert.equal(runtime.environment.BB_QA_SINGLE_START_BASELINE, '1');
-      verifyQaBaselineAliases(runtime.qa_single_start_baseline?.before, runtime.qa_single_start_baseline?.after);
-    } else assert.equal(runtime.qa_single_start_baseline, undefined, 'QA baseline aliases enabled in another shard');
+    assert.equal(runtime.environment.BB_QA_SINGLE_START_BASELINE, undefined, 'QA opt-in leaked into shared runtime');
+    assert.equal(runtime.qa_single_start_baseline, undefined, 'QA aliases must belong to the separate historical app');
     assert.equal(shard.summary.counts.selected, files.length, 'Browser summary does not cover the original full shard');
     for (const [key, value] of Object.entries(plan.environment)) assert.equal(runtime.environment[key], value, 'Actual browser env differs: ' + key);
     assert.ok(Array.isArray(runtime.removed_environment_keys));
@@ -48,16 +46,27 @@ export function verifyBrowserRuns(receipt, expected) {
     assert.equal(runtime.report.dispatch.reports?.length, dispatch.length);
     let last = time(runtime.prepared_at);
     for (const [index, call] of calls.entries()) {
-      const group = dispatch[index], original = browserInvocation(group.items, '', {}), report = runtime.report.dispatch.reports[index];
+      const group = dispatch[index], report = runtime.report.dispatch.reports[index], paths = browserGroupPaths(group, plan);
+      const collector = group.id === 'qa' ? runtime.historical_apps.find(app => app.id === 'qa')?.collector : null;
+      if (group.id === 'qa') assert.ok(collector, 'Missing QA private collector receipt');
+      const original = collector ?? browserInvocation(group.items, '', {});
       assert.equal(call.id, group.id); assert.deepEqual(call.files, group.items.map(item => item.id));
       assert.equal(call.command, original.command); assert.deepEqual(call.args, original.args, 'Browser command omitted or changed original partition files');
-      assert.equal(call.cwd, '/workspace/apps/web'); assert.equal(call.exit_code, 0); assert.equal(call.timed_out, false);
+      assert.equal(call.cwd, paths.cwd);
+      assert.equal(report.config_paths?.rootDir, paths.rootDir); assert.equal(report.config_paths?.configFile, paths.configFile);
+      assert.ok(Array.isArray(report.config_paths?.projects) && report.config_paths.projects.length > 0);
+      assert.equal(new Set(report.config_paths.projects.map(project => project.id)).size, report.config_paths.projects.length);
+      for (const project of report.config_paths.projects) assert.equal(project.testDir, paths.rootDir);
+      assert.equal(call.output_archive_error, undefined); assert.equal(call.qa_screenshots_error, undefined);
+      if (group.id === 'qa') verifyQaScreenshots(call.qa_screenshots, plan); else assert.equal(call.qa_screenshots, undefined);
+      assert.equal(call.exit_code, 0); assert.equal(call.timed_out, false);
       assert.ok(Number.isSafeInteger(call.timeout_ms) && call.timeout_ms > 0 && call.timeout_ms <= 70 * 60_000);
       const start = time(call.started_at), end = time(call.finished_at); assert.ok(start >= last && end >= start && end <= deadline && start + call.timeout_ms <= deadline + 100, 'Browser partition exceeded the original shared deadline'); last = end;
       assert.deepEqual(call.environment, { BB_E2E_BASE_URL: group.origin, ...(group.flag ? { [group.flag]: '1' } : {}) }, 'Historical flag or origin leaked across invocations');
       assert.ok(Array.isArray(report.attachment_paths)); verifyBrowserOutputArchive(call.output_archive, { shard: row.name, group: group.id, attachmentPaths: report.attachment_paths });
       assert.equal(call.report_file, `/evidence/shards/${row.name}/playwright-report-${group.id}.json`); sha(call.report_raw_sha256); sha(call.report_sha256);
       for (const key of ['id', 'origin', 'flag']) assert.deepEqual(report[key], group[key]); assert.deepEqual(report.files, call.files); assert.equal(report.report_sha256, call.report_sha256);
+      if (group.id === 'qa') { assert.deepEqual(report.argv.slice(0, 2), [call.command, call.args[0]]); assert.equal(report.stats.expected, 2, 'Original QA two-case count differs'); }
       assert.deepEqual(report.argv.slice(2), call.args.slice(1)); assert.equal(report.stats.unexpected, 0); assert.equal(report.stats.flaky, 0); assert.equal(report.stats.skipped, 0); assert.ok(report.stats.expected > 0);
     }
     assert.deepEqual(runtime.historical_apps.map(app => app.id), plan.historical_apps);

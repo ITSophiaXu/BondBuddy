@@ -7,6 +7,8 @@ import { pathToFileURL } from 'node:url';
 import { HISTORICAL_ROOT, HISTORICAL_SOURCES, historicalHash, verifyHistoricalDirectory } from './browser-historical-source.mjs';
 import { dependencyRootForFile, historicalDependencyClosure, verifyHistoricalDependencies } from './browser-historical-dependencies.mjs';
 import { HISTORICAL_COLLECTORS } from './browser-dispatch.mjs';
+import { QA_BASELINE_ROOT, QA_BASELINE_SOURCE, QA_HISTORICAL_APP_ROOT, createQaBaselineAliases, verifyQaBaselineAliases } from './browser-reference-source.mjs';
+import { prepareQaCollector, verifyQaCollector } from './browser-qa-collector.mjs';
 
 const inside = (parent, path) => path === parent || path.startsWith(parent + '/');
 export const historicalRemaining = deadline => { const ms = deadline - Date.now(); assert.ok(Number.isSafeInteger(ms) && ms > 0, 'Original browser shard deadline exhausted'); return ms; };
@@ -29,12 +31,14 @@ export async function startHistoricalApplication({ id, plan, deadline, httpsRead
   const evidence = { schema: 'pr-gate-historical-app-runtime-v1', id, test_id: collector.test_id, origin: collector.origin, flag: collector.flag,
     candidate: { commit: plan.commit, tree: plan.tree }, run_id: plan.run_id, shard: plan.shard, pid: process.pid, model_calls: 0,
     not_a_seal: true, source_root: root, runtime_root: runtime, source_before: source, started_at: new Date().toISOString(), status: 'failed', cleanup: { status: 'pending' } };
-  let server;
+  let server, qaAliases, qaCollector;
   const loads = new Map(), resolutions = new Map(), blockedApi = [];
   const snapshot = () => { evidence.source_loads = [...loads.values()].sort((a, b) => a.path.localeCompare(b.path)); evidence.resolutions = [...resolutions.values()].sort((a, b) => a.specifier.localeCompare(b.specifier)); evidence.blocked_api_requests = [...blockedApi]; return evidence; };
   const cleanup = async () => {
     const errors = []; evidence.alive_before_cleanup = server?.httpServer?.listening === true;
-    try { await server?.close(); } catch (error) { errors.push(error.message); }
+    try { await server?.close(); evidence.listening_after_cleanup = server?.httpServer?.listening === true; assert.equal(evidence.listening_after_cleanup, false); } catch (error) { errors.push(error.message); }
+    if (qaAliases) try { evidence.qa_baseline.after = qaAliases.snapshot(); verifyQaBaselineAliases(evidence.qa_baseline.before, evidence.qa_baseline.after, QA_HISTORICAL_APP_ROOT); } catch (error) { errors.push(error.message); }
+    if (qaCollector) try { evidence.collector = qaCollector.verifyAfter(); } catch (error) { evidence.collector = error.qaCollectorEvidence ?? qaCollector.evidence; errors.push(error.message); }
     try { evidence.source_after = verifyHistoricalDirectory().sources[id]; assert.deepEqual(evidence.source_after, evidence.source_before); } catch (error) { errors.push(error.message); }
     try { evidence.dependencies_after = verifyHistoricalDependencies(root); assert.deepEqual(evidence.dependencies_after, evidence.dependencies_before); } catch (error) { errors.push(error.message); }
     try { assert.deepEqual(outputFiles(join(runtime, 'contracts/dist')), evidence.compiler.output_files, 'Historical contracts outputs changed during original collector'); } catch (error) { errors.push(error.message); }
@@ -60,10 +64,17 @@ export async function startHistoricalApplication({ id, plan, deadline, httpsRead
     assert.ifError(compiled.error); assert.equal(compiled.status, 0, 'Exact historical contracts did not compile');
     evidence.compiler.output_files = outputFiles(join(contracts, 'dist')); assert.ok(evidence.compiler.output_files.some(row => row.path === 'index.js'));
     historicalRemaining(deadline); requireStarting();
+    if (id === 'qa') {
+      qaAliases = createQaBaselineAliases(QA_BASELINE_ROOT, QA_HISTORICAL_APP_ROOT);
+      evidence.qa_baseline = { application_source: HISTORICAL_SOURCES.qa, component_source: QA_BASELINE_SOURCE,
+        composition: 'original-5839177-collector-app-with-explicit-5ec099a-component-aliases', before: qaAliases.before };
+      qaCollector = prepareQaCollector({ sourceRoot: root, source, runtimeRoot: runtime, dependencies: evidence.dependencies_before, compiler: evidence.compiler, plan });
+      evidence.collector = qaCollector.evidence; historicalRemaining(deadline); requireStarting();
+    }
     const configSource = readFileSync(join(root, 'apps/web/vite.config.ts'), 'utf8');
     const syntax = ts.createSourceFile('vite.config.ts', configSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS); assert.equal(syntax.parseDiagnostics.length, 0);
     assert.deepEqual(syntax.statements.filter(ts.isImportDeclaration).map(row => row.moduleSpecifier.text).sort(), ['node:fs', 'vite']);
-    // These two pinned configs are valid JavaScript: load an exact byte copy,
+    // These pinned configs are valid JavaScript: load an exact byte copy,
     // not a re-created config or a transpiler's semantically similar output.
     const configBytes = readFileSync(join(root, 'apps/web/vite.config.ts')); assert.deepEqual(Buffer.from(configSource), configBytes);
     const configPath = join(runtime, 'vite.config.mjs'); writeFileSync(configPath, configBytes, { flag: 'wx' });
@@ -98,7 +109,7 @@ export async function startHistoricalApplication({ id, plan, deadline, httpsRead
       },
     };
     // The pinned old config is loaded above, then only infrastructure is isolated.
-    server = await createServer({ ...originalConfig, configFile: false, envFile: false, root: join(root, 'apps/web'), cacheDir: join(runtime, 'vite-cache'), plugins: [plugin],
+    server = await createServer({ ...originalConfig, configFile: false, envFile: false, root: join(root, 'apps/web'), cacheDir: join(runtime, 'vite-cache'), plugins: [...(qaAliases ? [qaAliases.plugin] : []), plugin],
       server: { ...originalConfig.server, host: '127.0.0.1', port: Number(new URL(collector.origin).port), strictPort: true,
         fs: { strict: true, allow: [root, runtime, ...evidence.dependencies_before.packages.map(row => row.actual_root)] } } });
     requireStarting(); historicalRemaining(deadline); await server.listen(); requireStarting();
@@ -112,6 +123,7 @@ export function verifyHistoricalApplication(value, { id, plan, source, caSha256,
   const collector = HISTORICAL_COLLECTORS[id]; assert.ok(collector); assert.equal(value?.schema, 'pr-gate-historical-app-runtime-v1');
   for (const [key, expected] of Object.entries({ id, test_id: collector.test_id, origin: collector.origin, flag: collector.flag, run_id: plan.run_id, shard: plan.shard, not_a_seal: true, model_calls: 0 })) assert.deepEqual(value[key], expected);
   assert.deepEqual(value.candidate, { commit: plan.commit, tree: plan.tree }); assert.equal(value.status, 'prepared'); assert.equal(value.cleanup?.status, 'passed'); assert.equal(value.alive_before_cleanup, true);
+  assert.equal(value.listening_after_cleanup, false, 'Historical server remained listening after cleanup');
   assert.deepEqual(value.source_before, source); assert.deepEqual(value.source_after, source); assert.equal(value.source_root, HISTORICAL_ROOT + '/' + id);
   const runtime = `/tmp/pr-gate-historical/${plan.run_id}/${plan.shard}/${id}`; assert.equal(value.runtime_root, runtime);
   assert.ok(Number.isSafeInteger(value.pid) && value.pid > 0);
@@ -149,5 +161,11 @@ export function verifyHistoricalApplication(value, { id, plan, source, caSha256,
   const main = value.source_loads.find(row => row.path === 'apps/web/src/main.ts'); assert.ok(main?.loads > 0); assert.equal(main.sha256, value.probe.source_sha256);
   const contract = value.resolutions.find(row => row.specifier === '@bondbuddy/contracts'); assert.equal(contract?.path, runtime + '/contracts/dist/index.js'); assert.equal(contract.old_contracts_tree, compiler.old_contracts_tree);
   assert.ok(value.source_loads.some(row => row.path.startsWith('compiled-contracts/') && row.loads > 0), 'Historical app never loaded its own contracts');
+  if (id === 'qa') {
+    assert.deepEqual(value.qa_baseline.application_source, HISTORICAL_SOURCES.qa); assert.deepEqual(value.qa_baseline.component_source, QA_BASELINE_SOURCE);
+    assert.equal(value.qa_baseline.composition, 'original-5839177-collector-app-with-explicit-5ec099a-component-aliases');
+    verifyQaBaselineAliases(value.qa_baseline.before, value.qa_baseline.after, QA_HISTORICAL_APP_ROOT);
+    verifyQaCollector(value.collector, { source, runtimeRoot: runtime, dependencies: deps, compiler, plan });
+  } else { assert.equal(value.collector, undefined); assert.equal(value.qa_baseline, undefined); }
   return value;
 }

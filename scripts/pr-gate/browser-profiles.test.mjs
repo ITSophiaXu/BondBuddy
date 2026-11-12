@@ -10,6 +10,8 @@ import { verifyBrowserRuns } from './browser-receipt.mjs';
 import { syntheticBrowserSources, syntheticBrowserShard } from './browser.test-fixture.mjs';
 import { GROUPS, parseExclusions } from './run.mjs';
 import { QA_BASELINE_TEST } from './browser-reference-source.mjs';
+import { fixtureHistoricalExpected, syntheticHistoricalRuns } from './browser-historical.test-fixture.mjs';
+import { syntheticReferenceRuns } from './browser-reference.test-fixture.mjs';
 
 const candidate = { commit: 'a'.repeat(40), tree: 'b'.repeat(40), browser_source_sha256: syntheticBrowserSources() };
 const runId = 'synthetic-browser-1234';
@@ -63,16 +65,16 @@ test('browser env removes truthy reference/baseline switches and credentials bef
   assert.throws(() => browserEnvironment({ ...disabled, BB_TEST_LIVE_AUTHORING: '1' }, plan));
   assert.throws(() => browserEnvironment({ ...disabled, NODE_TLS_REJECT_UNAUTHORIZED: '0' }, plan));
 });
-test('only the original QA baseline shard receives its explicit opt-in after inherited flags are cleared', () => {
+test('the QA plan names its private application while the shared runtime clears its inherited opt-in', () => {
   const plan = createBrowserPlan({ ...options, files: [QA_BASELINE_TEST] });
-  assert.equal(plan.environment.BB_QA_SINGLE_START_BASELINE, '1');
+  assert.equal(plan.environment.BB_QA_SINGLE_START_BASELINE, undefined); assert.deepEqual(plan.historical_apps, ['qa']);
   assert.equal(plan.environment.BB_UX_EVIDENCE_DIR, '/evidence/shards/browser-1/browser/shared');
   const inherited = { ...disabled, PATH: '/usr/bin', BB_QA_SINGLE_START_BASELINE: '0' };
-  const result = browserEnvironment(inherited, plan); assert.equal(result.env.BB_QA_SINGLE_START_BASELINE, '1');
+  const result = browserEnvironment(inherited, plan); assert.equal(result.env.BB_QA_SINGLE_START_BASELINE, undefined);
   assert.ok(result.removed.includes('BB_QA_SINGLE_START_BASELINE'));
   const unrelated = createBrowserPlan({ ...options, files: ['apps/web/tests/account.spec.ts'] });
   assert.equal(browserEnvironment(inherited, unrelated).env.BB_QA_SINGLE_START_BASELINE, undefined);
-  const missing = structuredClone(plan); delete missing.environment.BB_QA_SINGLE_START_BASELINE;
+  const missing = structuredClone(plan); missing.historical_apps = [];
   assert.throws(() => verifyBrowserPlan(missing, { ...options, files: [QA_BASELINE_TEST] }));
 });
 
@@ -123,10 +125,11 @@ test('browser PG evidence rejects production database, wrong image, ports, or sh
   }
 });
 
-function receiptFixture() {
-  const expected = { ...candidate, matrix: [1, 2, 3].map(index => ({ name: `browser-${index}`, groups: 'browser', shard: `${index}/3` })) };
+function receiptFixture(overrides = {}) {
+  const expected = { ...candidate, ...fixtureHistoricalExpected(), matrix: [1, 2, 3].map(index => ({ name: `browser-${index}`, groups: 'browser', shard: `${index}/3` })), ...overrides };
   const capabilities = { tls: { ca_sha256: browserHash('synthetic-ca') } }, imageId = 'sha256:' + '8'.repeat(64);
-  const receipt = { run_id: runId, capabilities, host_dispatch: { runtime: { image_id: imageId } }, shards: expected.matrix.map(row => {
+  const receipt = { run_id: runId, started_at: '2026-11-11T13:00:00.000Z', finished_at: '2026-11-11T13:01:00.000Z',
+    reference_components: syntheticReferenceRuns(expected, runId), historical_browser_apps: syntheticHistoricalRuns(expected, runId), capabilities, host_dispatch: { runtime: { image_id: imageId } }, shards: expected.matrix.map(row => {
     const { services, runtime, files } = syntheticBrowserShard(expected, row, capabilities, runId, imageId);
     return { ...row, started_at: '2026-11-11T13:00:00.000Z', finished_at: '2026-11-11T13:00:40.000Z', browser_services: services,
       summary: { browser_runtime: runtime, finishedAt: '2026-11-11T13:00:30.000Z', counts: { selected: files.length } } };
@@ -164,10 +167,43 @@ test('browser receipt binds complete batch, actual runtime probes, environment, 
   }
   const qaIndex = receipt.shards.findIndex(row => row.browser_services.plan.files.some(file => file.test_id === QA_BASELINE_TEST));
   assert.ok(qaIndex >= 0);
-  for (const mutate of [r => delete r.shards[qaIndex].summary.browser_runtime.qa_single_start_baseline,
-    r => delete r.shards[qaIndex].summary.browser_runtime.environment.BB_QA_SINGLE_START_BASELINE,
-    r => r.shards[qaIndex].summary.browser_runtime.qa_single_start_baseline.after.aliases[0].loads = 0,
-    r => r.shards[qaIndex].summary.browser_runtime.qa_single_start_baseline.after.aliases[1].sha256 = 'f'.repeat(64)]) {
+  for (const mutate of [r => delete r.shards[qaIndex].summary.browser_runtime.historical_apps.find(app => app.id === 'qa').qa_baseline,
+    r => delete r.shards[qaIndex].summary.browser_runtime.invocations.find(call => call.id === 'qa').environment.BB_QA_SINGLE_START_BASELINE,
+    r => r.shards[qaIndex].summary.browser_runtime.historical_apps.find(app => app.id === 'qa').qa_baseline.after.aliases[0].loads = 0,
+    r => r.shards[qaIndex].summary.browser_runtime.historical_apps.find(app => app.id === 'qa').qa_baseline.after.aliases[1].sha256 = 'f'.repeat(64)]) {
     const altered = structuredClone(receipt); mutate(altered); assert.throws(() => verifyBrowserRuns(altered, expected));
   }
+});
+
+
+test('QA receipt binds the private CLI, native physical paths, four screenshots and exact old app', () => {
+  const { receipt, expected } = receiptFixture(); verifyBrowserRuns(receipt, expected);
+  const select = r => r.shards.find(row => row.summary.browser_runtime.historical_apps.some(app => app.id === 'qa')).summary.browser_runtime;
+  for (const change of [
+    runtime => runtime.environment.BB_QA_SINGLE_START_BASELINE = '1',
+    runtime => runtime.invocations.find(call => call.id === 'qa').cwd = '/workspace/apps/web',
+    runtime => runtime.invocations.find(call => call.id === 'qa').command = 'npx',
+    runtime => runtime.invocations.find(call => call.id === 'qa').args.push('--grep', '1440'),
+    runtime => delete runtime.invocations.find(call => call.id === 'qa').qa_screenshots,
+    runtime => runtime.invocations.find(call => call.id === 'qa').qa_screenshots.files.pop(),
+    runtime => runtime.invocations.find(call => call.id === 'qa').output_archive_error = 'synthetic archive failure',
+    runtime => runtime.report.dispatch.reports.find(report => report.id === 'qa').stats.expected = 1,
+    runtime => runtime.report.dispatch.reports.find(report => report.id === 'qa').config_paths.configFile = '/workspace/apps/web/playwright.config.ts',
+    runtime => runtime.report.dispatch.reports.find(report => report.id === 'qa').config_paths.projects[0].testDir = '/tmp/other/tests',
+    runtime => runtime.historical_apps.find(app => app.id === 'qa').qa_baseline.after.aliases[0].requests = 0,
+    runtime => runtime.historical_apps.find(app => app.id === 'qa').collector.resolutions_after[0].require_path = '/tmp/unverified/index.js',
+    runtime => runtime.historical_apps.find(app => app.id === 'qa').listening_after_cleanup = true,
+    runtime => runtime.historical_apps.find(app => app.id === 'qa').source_before.source.commit = 'f'.repeat(40),
+    runtime => runtime.historical_apps.find(app => app.id === 'qa').compiler.args.push('--skipLibCheck'),
+  ]) { const changed = structuredClone(receipt); change(select(changed)); assert.throws(() => verifyBrowserRuns(changed, expected)); }
+});
+
+
+test('current and all three historical dispatch groups fit the same synthetic shard lifecycle', () => {
+  const files = ['apps/web/tests/account.spec.ts', 'apps/web/tests/consistency-history-baseline.spec.ts',
+    'apps/web/tests/consistency-update-history-baseline.spec.ts', QA_BASELINE_TEST];
+  const { receipt, expected } = receiptFixture({ matrix: [{ name: 'browser-1', groups: 'browser', shard: '1/1' }],
+    browser_source_sha256: Object.fromEntries(files.map(file => [file, candidate.browser_source_sha256[file] ?? browserHash(file)])) });
+  assert.deepEqual(receipt.shards[0].summary.browser_runtime.dispatch.map(group => group.id), ['current', 'history', 'update', 'qa']);
+  assert.equal(verifyBrowserRuns(receipt, expected), undefined);
 });

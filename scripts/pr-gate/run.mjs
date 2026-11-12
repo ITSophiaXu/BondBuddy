@@ -27,6 +27,7 @@ import { HOST_ENV_KEYS } from './host-profiles.mjs';
 import { browserInvocation, startBrowserRuntime } from './browser-runtime.mjs';
 import { createBrowserDispatch, HISTORICAL_COLLECTORS, mergeBrowserReports, verifyBrowserDispatch } from './browser-dispatch.mjs';
 import { historicalRemaining } from './browser-historical-runtime.mjs';
+import { captureQaScreenshots } from './browser-qa-collector.mjs';
 import { browserHash } from './browser-profiles.mjs';
 import { archiveBrowserOutput } from './browser-artifacts.mjs';
 
@@ -328,8 +329,11 @@ async function runBrowser(root, items, context) {
       const env = { ...runtime.env, BB_E2E_BASE_URL: group.origin };
       for (const value of Object.values(HISTORICAL_COLLECTORS)) delete env[value.flag];
       if (group.flag) env[group.flag] = '1';
-      const invocation = browserInvocation(group.items, partFile, env);
-      const call = { id: group.id, files: group.items.map(row => row.id), command: invocation.command, args: invocation.args, cwd: join(root, 'apps/web'),
+      const standard = browserInvocation(group.items, partFile, env);
+      const privateCollector = group.id === 'qa' ? runtime.evidence.historical_apps.find(app => app.id === 'qa')?.collector : null;
+      if (group.id === 'qa') assert.ok(privateCollector, 'QA private collector was not prepared');
+      const invocation = privateCollector ? { command: privateCollector.command, args: privateCollector.args, env: standard.env } : standard;
+      const call = { id: group.id, files: group.items.map(row => row.id), command: invocation.command, args: invocation.args, cwd: privateCollector?.cwd ?? join(root, 'apps/web'),
         environment: { BB_E2E_BASE_URL: env.BB_E2E_BASE_URL, ...(group.flag ? { [group.flag]: '1' } : {}) },
         report_file: partFile, timeout_ms: remaining, started_at: new Date().toISOString() };
       calls.push(call);
@@ -339,7 +343,12 @@ async function runBrowser(root, items, context) {
       try { const bytes = readFileSync(partFile); call.report_raw_sha256 = browserHash(bytes); report = JSON.parse(bytes); call.report_sha256 = browserHash(report); }
       catch (error) { problems.push(`${group.id} report missing or invalid: ${error.message}`); }
       reports.push({ id: group.id, report });
-      call.output_archive = archiveBrowserOutput({ destination: join(context.out, `playwright-output-${group.id}`), report, evidenceRoot: runtime.plan.output_root });
+      // Save both evidence channels independently: a truncated direct PNG must
+      // not prevent preservation of the native failure output (or vice versa).
+      try { call.output_archive = archiveBrowserOutput({ destination: join(context.out, `playwright-output-${group.id}`), report, evidenceRoot: runtime.plan.output_root }); }
+      catch (error) { call.output_archive_error = error.message; problems.push(`${group.id} output archive failed: ${error.message}`); }
+      if (group.id === 'qa') try { call.qa_screenshots = captureQaScreenshots(runtime.plan); }
+      catch (error) { call.qa_screenshots_error = error.message; problems.push(`qa direct screenshot archive failed: ${error.message}`); }
     }
   } catch (error) { runtimeError = error.message; if (error.browserRuntimeEvidence) context.browserRuntime = { ...error.browserRuntimeEvidence, dispatch, invocations: calls }; }
   finally {
@@ -349,7 +358,7 @@ async function runBrowser(root, items, context) {
   }
   let evaluated;
   try {
-    const report = mergeBrowserReports(reports, dispatch); writeFileSync(reportFile, JSON.stringify(report, null, 2) + '\n');
+    const report = mergeBrowserReports(reports, dispatch, runtime?.plan); writeFileSync(reportFile, JSON.stringify(report, null, 2) + '\n');
     if (context.browserRuntime) context.browserRuntime.report = { file: reportFile, sha256: browserHash(readFileSync(reportFile)), dispatch: report.config.pr_gate_dispatch };
     evaluated = evaluatePlaywright(report, items, { code: executions.length === dispatch.length && executions.every(row => row.code === 0 && !row.timedOut) ? 0 : 1,
       timedOut: executions.some(row => row.timedOut) });

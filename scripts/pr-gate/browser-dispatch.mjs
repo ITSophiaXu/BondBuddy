@@ -3,7 +3,6 @@ import { createHash } from 'node:crypto';
 import { browserAttachments } from './browser-artifacts.mjs';
 
 const TEST_PREFIX = 'apps/web/tests/';
-const REPORT_ROOT = '/workspace/apps/web/tests';
 const STATUS_KEYS = ['expected', 'unexpected', 'flaky', 'skipped'];
 const RESULT_STATUSES = new Set(['passed', 'failed', 'timedOut', 'skipped', 'interrupted']);
 export const HISTORICAL_COLLECTORS = Object.freeze({
@@ -11,6 +10,8 @@ export const HISTORICAL_COLLECTORS = Object.freeze({
     flag: 'BB_CONSISTENCY_HISTORY_BASELINE', origin: 'https://127.0.0.1:5181' }),
   update: Object.freeze({ test_id: TEST_PREFIX + 'consistency-update-history-baseline.spec.ts',
     flag: 'BB_UPDATE_HISTORY_BASELINE', origin: 'https://127.0.0.1:5182' }),
+  qa: Object.freeze({ test_id: TEST_PREFIX + 'qa-single-start-baseline.spec.ts',
+    flag: 'BB_QA_SINGLE_START_BASELINE', origin: 'https://127.0.0.1:5183' }),
 });
 const GROUPS = Object.freeze([
   Object.freeze({ id: 'current', origin: 'https://127.0.0.1:5173', flag: null }),
@@ -54,16 +55,26 @@ function verifyDispatchShape(dispatch) {
   verifyBrowserDispatch(dispatch, dispatch.flatMap(group => group.items));
 }
 
-function verifyReport(report, group, identities) {
+export function browserGroupPaths(group, plan) {
+  let cwd = '/workspace/apps/web';
+  if (group.id === 'qa') {
+    assert.match(plan?.run_id, /^[a-zA-Z0-9-]{8,80}$/); assert.match(plan?.shard, /^browser-[123]$/);
+    cwd = `/tmp/pr-gate-historical/${plan.run_id}/${plan.shard}/qa/collector/apps/web`;
+  }
+  return { cwd, rootDir: cwd + '/tests', configFile: cwd + '/playwright.config.ts' };
+}
+function verifyReport(report, group, identities, plan) {
   requireObject(report, 'Browser report for ' + group.id);
   requireObject(report.config, 'Report config');
   const config = report.config;
-  assert.equal(config.rootDir, REPORT_ROOT, 'Unexpected report rootDir');
-  assert.equal(config.configFile, '/workspace/apps/web/playwright.config.ts', 'Unexpected report configFile');
+  const paths = browserGroupPaths(group, plan);
+  assert.equal(config.rootDir, paths.rootDir, 'Unexpected report rootDir');
+  assert.equal(config.configFile, paths.configFile, 'Unexpected report configFile');
   assert.equal(config.pr_gate_dispatch, undefined, 'An already merged report cannot be reused');
   requireArray(config.argv, 'Report argv');
   config.argv.forEach(value => requireString(value, 'Report argv entry'));
   assert.ok(config.argv.length >= 5, 'Incomplete report argv');
+  if (group.id === 'qa') assert.deepEqual(config.argv.slice(0, 2), ['/usr/local/bin/node', '/workspace/node_modules/@playwright/test/cli.js'], 'QA must use the exact verified installed CLI');
   assert.equal(config.argv[2], 'test', 'Unexpected Playwright command');
   assert.deepEqual(config.argv.slice(3), [...group.items.map(item => 'tests/' + fileName(item)), '--reporter=line,json'],
     'Report argv differs from its dispatched files');
@@ -75,14 +86,14 @@ function verifyReport(report, group, identities) {
     requireString(project.id, 'Project id');
     requireString(project.name, 'Project name');
     assert.ok(!projects.has(project.id), 'Duplicate project id');
-    assert.equal(project.testDir, REPORT_ROOT, 'Unexpected project testDir');
+    assert.equal(project.testDir, paths.rootDir, 'Unexpected project testDir');
     projects.set(project.id, project.name);
   }
 
   requireArray(report.suites, 'Report suites');
   requireArray(report.errors, 'Report errors');
   requireObject(report.stats, 'Report stats');
-  const actual = counts(), expectedFiles = new Set(group.items.map(fileName)), seenFiles = new Set();
+  const actual = counts(), expectedFiles = new Set(group.items.map(fileName)), seenFiles = new Set(), caseTitles = [];
   const visit = (suite, inheritedFile, titles) => {
     requireObject(suite, 'Report suite');
     const file = suite.file ?? inheritedFile;
@@ -97,7 +108,7 @@ function verifyReport(report, group, identities) {
       requireString(spec.id, 'Spec id');
       assert.ok(spec.id.length > 0 && !identities.ids.has(spec.id), 'Missing or duplicate spec id: ' + spec.id);
       identities.ids.add(spec.id);
-      requireString(spec.title, 'Spec title');
+      requireString(spec.title, 'Spec title'); caseTitles.push(spec.title);
       for (const key of ['line', 'column']) assert.ok(Number.isSafeInteger(spec[key]) && spec[key] >= 0, 'Invalid spec ' + key);
       const sourceIdentity = JSON.stringify([file, spec.line, spec.column, titlePath, spec.title]);
       assert.ok(!identities.sources.has(sourceIdentity), 'Duplicate spec source identity');
@@ -136,6 +147,7 @@ function verifyReport(report, group, identities) {
     visit(suite, undefined, []);
   }
   assert.deepEqual([...seenFiles].sort(), [...expectedFiles].sort(), 'Report is missing dispatched file suites');
+  if (group.id === 'qa') assert.deepEqual(caseTitles.sort(), ['baseline two-page preparation at 1440', 'baseline two-page preparation at 390'], 'Original QA two-case coverage differs');
   for (const key of STATUS_KEYS) {
     assert.ok(Number.isSafeInteger(report.stats[key]) && report.stats[key] >= 0, 'Invalid report stats.' + key);
     assert.equal(report.stats[key], actual[key], 'Report stats disagree with test outcomes: ' + key);
@@ -148,7 +160,7 @@ function verifyReport(report, group, identities) {
 }
 
 /** reports are [{ id, report }] in dispatch order; report is parsed Playwright JSON. */
-export function verifyBrowserReports(reports, dispatch) {
+export function verifyBrowserReports(reports, dispatch, plan) {
   verifyDispatchShape(dispatch);
   requireArray(reports, 'Browser reports');
   assert.equal(reports.length, dispatch.length, 'Browser report count differs from dispatch');
@@ -158,8 +170,11 @@ export function verifyBrowserReports(reports, dispatch) {
     requireObject(entry, 'Browser report wrapper');
     const group = dispatch[index];
     assert.equal(entry.id, group.id, 'Browser reports are missing, repeated or out of dispatch order');
-    verifyReport(entry.report, group, identities);
-    const { argv, ...config } = entry.report.config;
+    verifyReport(entry.report, group, identities, plan);
+    // Compare every other native setting after validating the exact group paths.
+    // The raw report/config/suites are never normalized or rewritten.
+    const { argv, rootDir, configFile, projects, ...settings } = entry.report.config;
+    const config = { ...settings, projects: projects.map(({ testDir, ...project }) => project) };
     if (index === 0) commonConfig = config;
     else assert.deepEqual(config, commonConfig, 'Browser report configuration changed between groups');
   });
@@ -167,8 +182,8 @@ export function verifyBrowserReports(reports, dispatch) {
 }
 
 /** Preserve native suites/errors and outcome counters for the existing gate judge. */
-export function mergeBrowserReports(reports, dispatch) {
-  verifyBrowserReports(reports, dispatch);
+export function mergeBrowserReports(reports, dispatch, plan) {
+  verifyBrowserReports(reports, dispatch, plan);
   assert.ok(reports.length > 0, 'Cannot merge an empty browser dispatch');
   const copies = structuredClone(reports), stats = { ...copies[0].report.stats, ...counts(), duration: 0 };
   for (const { report } of copies) {
@@ -182,6 +197,7 @@ export function mergeBrowserReports(reports, dispatch) {
     schema: 'pr-gate-browser-dispatch-v1',
     report_hash_encoding: 'JSON.stringify/utf8',
     reports: copies.map(({ id, report }, index) => ({ id, origin: dispatch[index].origin, flag: dispatch[index].flag,
+      config_paths: { rootDir: report.config.rootDir, configFile: report.config.configFile, projects: report.config.projects.map(project => ({ id: project.id, testDir: project.testDir })) },
       files: dispatch[index].items.map(item => item.id), attachment_paths: browserAttachments(report), report_sha256: hash(report), argv: report.config.argv, stats: report.stats })),
   } };
   return { ...copies[0].report, config, suites: copies.flatMap(entry => entry.report.suites),

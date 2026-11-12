@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { QA_BASELINE_ROOT, QA_BASELINE_SOURCE, QA_BASELINE_FILES, QA_BASELINE_TEST, QA_BASELINE_ALIASES, REFERENCE_SOURCE, REFERENCE_TESTS,
   readQaBaselineObjects, restoreQaBaselineSource, restoreVerifiedQaBaselineObjects, verifyQaBaselineDirectory,
-  createQaBaselineAliases, verifyQaBaselineAliases, verifyQaBaselineRuns, collectQaBaselineCheck } from './browser-reference-source.mjs';
+  QA_HISTORICAL_APP_ROOT, qaBaselineAliasesForApp, createQaBaselineAliases, verifyQaBaselineAliases, verifyQaBaselineRuns, collectQaBaselineCheck } from './browser-reference-source.mjs';
 import { syntheticReferenceRuns, syntheticReferenceIdentity, syntheticQaBaselineRuns, syntheticQaBaselineIdentity, syntheticQaBaselineAliases } from './browser-reference.test-fixture.mjs';
 
 const repository = fileURLToPath(new URL('../..', import.meta.url));
@@ -99,4 +99,24 @@ test('QA lifecycle rejects missing, stale, cross-run or mixed-source evidence wi
   assert.throws(() => verifyQaBaselineRuns(fresh(), missingSpec), /original browser discovery/);
   await assert.rejects(collectQaBaselineCheck({ candidate: expected, runId: 'synthetic-run', containerId: 'c'.repeat(64), stage: 'prepared',
     verifierBytes: Buffer.from('export function verifyQaBaselineDirectory(){}'), execute: async () => ({ code: 1, text: '{}' }) }), /successfully/);
+});
+
+
+test('QA aliases use only the exact old app import base and require both native URL requests', t => {
+  const f = fixture(t), proof = f.restore(), aliases = createQaBaselineAliases(proof.root, QA_HISTORICAL_APP_ROOT);
+  let middleware; aliases.plugin.configureServer({ middlewares: { use(value) { middleware = value; } } });
+  for (const alias of qaBaselineAliasesForApp(QA_HISTORICAL_APP_ROOT)) {
+    assert.equal(aliases.plugin.resolveId(alias.url), alias.id);
+    assert.ok(alias.id.startsWith(QA_HISTORICAL_APP_ROOT + '/src/'));
+    middleware({ url: alias.url + '?direct' }, {}, () => {});
+    assert.deepEqual(Buffer.from(aliases.plugin.load(alias.id)), bytes.get(alias.source_path));
+  }
+  const before = { ...aliases.before, source: syntheticQaBaselineIdentity() }, after = { ...aliases.snapshot(), source: syntheticQaBaselineIdentity() };
+  verifyQaBaselineAliases(before, after, QA_HISTORICAL_APP_ROOT);
+  for (const mutate of [value => value.application_root = '/workspace/apps/web', value => value.aliases[0].requests = 0,
+    value => value.aliases[1].loads = 0, value => value.aliases[0].id = QA_BASELINE_ALIASES[0].id]) {
+    const bad = structuredClone(after); mutate(bad); assert.throws(() => verifyQaBaselineAliases(before, bad, QA_HISTORICAL_APP_ROOT));
+  }
+  assert.throws(() => createQaBaselineAliases(proof.root, '/tmp/arbitrary-app'));
+  assert.throws(() => verifyQaBaselineAliases(before, after));
 });
