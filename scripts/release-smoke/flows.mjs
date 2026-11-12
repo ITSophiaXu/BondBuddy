@@ -2,8 +2,10 @@ import {chromium,expect} from '@playwright/test';
 import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {join,basename} from 'node:path';
 import {sha256} from './support.mjs';
+import {uploadFixture} from './uploads.mjs';
 
 export async function runJourneys({out,report,privateData,save}){
+ report.browserInputTransport=process.platform==='win32'?'original bytes, filename and MIME via Playwright buffer':'original file path';save();
  const browser=await chromium.launch(process.env.BB_RELEASE_BROWSER_CHANNEL?{channel:process.env.BB_RELEASE_BROWSER_CHANNEL}:{});
  const context=await browser.newContext({baseURL:report.baseURL,viewport:{width:1440,height:1000},acceptDownloads:true});
  const page=await context.newPage();page.setDefaultTimeout(45000);
@@ -15,11 +17,7 @@ export async function runJourneys({out,report,privateData,save}){
  }
  async function upload(locator,path){
   await expect(locator).toBeEnabled();
-  const saved=page.waitForResponse(r=>r.request().method()==='POST'&&/\/uploads\/[^/]+\/complete$/.test(new URL(r.url()).pathname),{timeout:180000});
-  saved.catch(()=>{});
-  await locator.setInputFiles(path);const receipt=await saved;
-  if(!receipt.ok())throw Error('Upload failed: '+receipt.status()+' '+basename(path));
-  return receipt.json();
+  return uploadFixture(page,locator,path);
  }
  async function submit(locator,pathPattern){
   await expect(locator).toBeEnabled({timeout:300000});
