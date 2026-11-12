@@ -116,3 +116,8 @@ docs/runbooks/*
 !docs/runbooks/m1-split-deployment.md
 !deploy/m1/.env.main.example
 !deploy/m1/.env.execution.example
+
+!docs/acceptance/execution-admission-fixtures-20261112.md
+!docs/acceptance/execution-admission-fixtures-20261112/
+!docs/acceptance/execution-admission-fixtures-20261112/*.json
+!docs/acceptance/execution-admission-fixtures-20261112/*.tap
