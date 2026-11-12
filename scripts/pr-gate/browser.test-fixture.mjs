@@ -3,10 +3,11 @@ import { BROWSER_API_PROFILES, BROWSER_API_ORIGIN, BROWSER_ORIGIN, BROWSER_PROTO
 import { browserFilesForShard } from './browser-host.mjs';
 import { browserInvocation } from './browser-runtime.mjs';
 import { BROWSER_TOOLS_ROOT, BROWSER_TOOLS_SCHEMA } from './browser-tools.mjs';
-import { REFERENCE_TESTS } from './browser-reference-source.mjs';
+import { REFERENCE_TESTS, QA_BASELINE_TEST } from './browser-reference-source.mjs';
+import { syntheticQaBaselineAliases } from './browser-reference.test-fixture.mjs';
 import { syntheticBrowserUploadConfirmation } from './browser-upload-confirmation.test-fixture.mjs';
 
-export const syntheticBrowserSources = () => Object.fromEntries([...new Set([...Object.keys(BROWSER_API_PROFILES), ...BROWSER_PROTOTYPE_FILES, ...REFERENCE_TESTS])].sort().map(file => [file, browserHash(file)]));
+export const syntheticBrowserSources = () => Object.fromEntries([...new Set([...Object.keys(BROWSER_API_PROFILES), ...BROWSER_PROTOTYPE_FILES, ...REFERENCE_TESTS, QA_BASELINE_TEST])].sort().map(file => [file, browserHash(file)]));
 const stamp = second => `2026-11-11T13:00:${String(second).padStart(2, '0')}.000Z`;
 export function syntheticBrowserShard(expected, row, capabilities, runId, imageId) {
   const files = browserFilesForShard(expected, row), plan = createBrowserPlan({ candidate: expected, runId, shard: row.name, files, sourceSha256: path => expected.browser_source_sha256[path] });
@@ -20,6 +21,7 @@ export function syntheticBrowserShard(expected, row, capabilities, runId, imageI
       exit_code: 0, timed_out: false, started_at: stamp(15), finished_at: stamp(22) } };
   const services = { ...common, status: 'prepared', plan, plan_sha256, started_at: stamp(1), prepared_at: stamp(10), cleanup: { status: 'passed', finished_at: stamp(35) } };
   runtime.services_alive_before_cleanup = { web: true, ...(plan.needs.api ? { api: true, upload_confirmation: true } : {}), ...(plan.needs.prototype ? { prototype: true } : {}) };
+  if (files.includes(QA_BASELINE_TEST)) runtime.qa_single_start_baseline = syntheticQaBaselineAliases();
   if (plan.needs.api) {
     runtime.upload_confirmation = syntheticBrowserUploadConfirmation(plan);
     services.database = { id: '1'.repeat(64), image_id: 'sha256:' + '2'.repeat(64), run_id: runId, port: 55433, database: 'bondbuddy_local', migrated: true,

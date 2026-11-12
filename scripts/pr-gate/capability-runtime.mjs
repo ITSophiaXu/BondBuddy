@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CAPABILITY_SCHEMA, CAPABILITY_PATHS, PROFILE_SHA256, HTTPS_BLOB, TEMPLATE_DATABASE, CAPABILITY_DATABASE, DEDICATED_DATABASE, capabilityHash, verifyPreparedCapabilities } from './capabilities.mjs';
 import { verifyParserDirectory } from './parser-source.mjs';
-import { verifyReferenceDirectory } from './browser-reference-source.mjs';
+import { verifyReferenceDirectory, verifyQaBaselineDirectory } from './browser-reference-source.mjs';
 
 const root = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 export function inspectTestCertificates(caPem, serverPem, serverKey, now = Date.now()) {
@@ -36,9 +36,10 @@ export function prepareTestTls(directory) {
 export function prepareCapabilities(environment = process.env) {
   const parser = verifyParserDirectory(join(CAPABILITY_PATHS.directory, 'parser106.tar'), CAPABILITY_PATHS.parser);
   const reference_components = verifyReferenceDirectory();
+  const qa_single_start_baseline = verifyQaBaselineDirectory();
   const tls = prepareTestTls(join(CAPABILITY_PATHS.directory, 'tls'));
   const prepared = { schema: CAPABILITY_SCHEMA, status: 'passed', commit: environment.GITHUB_SHA, tree: environment.PR_GATE_TREE,
-    profile_sha256: PROFILE_SHA256, parser, reference_components, tls, database: { template: TEMPLATE_DATABASE, dedicated: DEDICATED_DATABASE },
+    profile_sha256: PROFILE_SHA256, parser, reference_components, qa_single_start_baseline, tls, database: { template: TEMPLATE_DATABASE, dedicated: DEDICATED_DATABASE },
     authorized_manifest_sha256: capabilityHash(readFileSync(join(root, 'tests/samples/2026-09-25/manifest.json'))) };
   verifyPreparedCapabilities(prepared, { commit: environment.GITHUB_SHA, tree: environment.PR_GATE_TREE });
   writeFileSync(join(CAPABILITY_PATHS.directory, 'prepared.json'), JSON.stringify(prepared, null, 2) + '\n');

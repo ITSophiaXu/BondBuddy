@@ -46,6 +46,7 @@ export const BROWSER_OPT_INS = Object.freeze({
   [prefix + 'm4-workspace.spec.ts']: { M4_UX_EVIDENCE: '1' },
   [prefix + 'project-assistant.spec.ts']: { ASSISTANT_EVIDENCE: '1' },
   [prefix + 'review-workspace.spec.ts']: { BB_WORKSPACE_DESIGN: '1' },
+  [prefix + 'qa-single-start-baseline.spec.ts']: { BB_QA_SINGLE_START_BASELINE: '1' },
 });
 export const BROWSER_PROTOTYPE_FILES = Object.freeze([prefix + 'review-agent-progress-prototype.spec.ts', prefix + 'review-readable-prototype.spec.ts', prefix + 'review-workspace.spec.ts']);
 export const BROWSER_PROFILE_SHA256 = browserHash({ api: BROWSER_API_PROFILES, evidence: BROWSER_EVIDENCE_PROFILES, optIns: BROWSER_OPT_INS, prototype: BROWSER_PROTOTYPE_FILES });

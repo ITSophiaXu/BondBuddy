@@ -9,6 +9,7 @@ import { lddLibraryPaths, lddPaths } from './browser-tools.mjs';
 import { verifyBrowserRuns } from './browser-receipt.mjs';
 import { syntheticBrowserSources, syntheticBrowserShard } from './browser.test-fixture.mjs';
 import { GROUPS, parseExclusions } from './run.mjs';
+import { QA_BASELINE_TEST } from './browser-reference-source.mjs';
 
 const candidate = { commit: 'a'.repeat(40), tree: 'b'.repeat(40), browser_source_sha256: syntheticBrowserSources() };
 const runId = 'synthetic-browser-1234';
@@ -61,6 +62,18 @@ test('browser env removes truthy reference/baseline switches and credentials bef
   assert.notEqual(env.BB_UX_COMPARE, '1'); assert.equal(env.BB_E2E_REAL_API, undefined); assert.equal(inherited.BB_ELEVENTH_REFERENCE, '0');
   assert.throws(() => browserEnvironment({ ...disabled, BB_TEST_LIVE_AUTHORING: '1' }, plan));
   assert.throws(() => browserEnvironment({ ...disabled, NODE_TLS_REJECT_UNAUTHORIZED: '0' }, plan));
+});
+test('only the original QA baseline shard receives its explicit opt-in after inherited flags are cleared', () => {
+  const plan = createBrowserPlan({ ...options, files: [QA_BASELINE_TEST] });
+  assert.equal(plan.environment.BB_QA_SINGLE_START_BASELINE, '1');
+  assert.equal(plan.environment.BB_UX_EVIDENCE_DIR, '/evidence/shards/browser-1/browser/shared');
+  const inherited = { ...disabled, PATH: '/usr/bin', BB_QA_SINGLE_START_BASELINE: '0' };
+  const result = browserEnvironment(inherited, plan); assert.equal(result.env.BB_QA_SINGLE_START_BASELINE, '1');
+  assert.ok(result.removed.includes('BB_QA_SINGLE_START_BASELINE'));
+  const unrelated = createBrowserPlan({ ...options, files: ['apps/web/tests/account.spec.ts'] });
+  assert.equal(browserEnvironment(inherited, unrelated).env.BB_QA_SINGLE_START_BASELINE, undefined);
+  const missing = structuredClone(plan); delete missing.environment.BB_QA_SINGLE_START_BASELINE;
+  assert.throws(() => verifyBrowserPlan(missing, { ...options, files: [QA_BASELINE_TEST] }));
 });
 
 test('host and original discovery assign the same entire source file table to every browser shard', () => {
@@ -143,6 +156,14 @@ test('browser receipt binds complete batch, actual runtime probes, environment, 
   const ocrIndex = receipt.shards.findIndex(row => row.browser_services.plan.needs.ocr);
   for (const mutate of [r => r.shards[ocrIndex].summary.browser_runtime.tools_final.manifest_sha256 = 'c'.repeat(64),
     r => r.shards[ocrIndex].summary.browser_runtime.probes.ocr.languages.pop(), r => r.shards[ocrIndex].browser_services.tools.image_id = 'sha256:' + 'd'.repeat(64)]) {
+    const altered = structuredClone(receipt); mutate(altered); assert.throws(() => verifyBrowserRuns(altered, expected));
+  }
+  const qaIndex = receipt.shards.findIndex(row => row.browser_services.plan.files.some(file => file.test_id === QA_BASELINE_TEST));
+  assert.ok(qaIndex >= 0);
+  for (const mutate of [r => delete r.shards[qaIndex].summary.browser_runtime.qa_single_start_baseline,
+    r => delete r.shards[qaIndex].summary.browser_runtime.environment.BB_QA_SINGLE_START_BASELINE,
+    r => r.shards[qaIndex].summary.browser_runtime.qa_single_start_baseline.after.aliases[0].loads = 0,
+    r => r.shards[qaIndex].summary.browser_runtime.qa_single_start_baseline.after.aliases[1].sha256 = 'f'.repeat(64)]) {
     const altered = structuredClone(receipt); mutate(altered); assert.throws(() => verifyBrowserRuns(altered, expected));
   }
 });

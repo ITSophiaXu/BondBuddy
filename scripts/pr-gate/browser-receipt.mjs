@@ -4,6 +4,7 @@ import { browserFilesForShard } from './browser-host.mjs';
 import { browserInvocation } from './browser-runtime.mjs';
 import { BROWSER_TOOLS_ROOT } from './browser-tools.mjs';
 import { verifyBrowserUploadConfirmation } from './browser-upload-confirmation.mjs';
+import { QA_BASELINE_TEST, verifyQaBaselineAliases } from './browser-reference-source.mjs';
 
 const sha = value => assert.match(value, /^[a-f0-9]{64}$/);
 const time = value => { const parsed = Date.parse(value); assert.ok(Number.isFinite(parsed)); return parsed; };
@@ -22,6 +23,10 @@ export function verifyBrowserRuns(receipt, expected) {
     assert.equal(runtime.schema, 'pr-gate-browser-runtime-v1'); assert.equal(runtime.profile_sha256, plan.profile_sha256);
     assert.ok(Number.isSafeInteger(runtime.pid) && runtime.pid > 0, 'Actual browser runtime process identity is required');
     assert.deepEqual(runtime.files, plan.files); assert.equal(runtime.model_calls, 0);
+    if (files.includes(QA_BASELINE_TEST)) {
+      assert.equal(runtime.environment.BB_QA_SINGLE_START_BASELINE, '1');
+      verifyQaBaselineAliases(runtime.qa_single_start_baseline?.before, runtime.qa_single_start_baseline?.after);
+    } else assert.equal(runtime.qa_single_start_baseline, undefined, 'QA baseline aliases enabled in another shard');
     assert.equal(shard.summary.counts.selected, files.length, 'Browser summary does not cover the original full shard');
     for (const [key, value] of Object.entries(plan.environment)) assert.equal(runtime.environment[key], value, 'Actual browser env differs: ' + key);
     assert.ok(Array.isArray(runtime.removed_environment_keys));

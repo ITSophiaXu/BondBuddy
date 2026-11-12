@@ -15,7 +15,8 @@ import { createHostBroker, createHostPlan } from './host-dispatch.mjs';
 import { collectCoreSource } from './core-source.mjs';
 import { parseExclusions } from './run.mjs';
 import { prepareBrowserServices } from './browser-host.mjs';
-import { REFERENCE_ROOT, restoreReferenceSource, verifyReferenceDirectory, verifyReferenceMount, collectReferenceCheck } from './browser-reference-source.mjs';
+import { REFERENCE_ROOT, QA_BASELINE_ROOT, restoreReferenceSource, restoreQaBaselineSource, verifyReferenceDirectory,
+  verifyQaBaselineDirectory, verifyReferenceMount, collectReferenceCheck, collectQaBaselineCheck } from './browser-reference-source.mjs';
 import { createInternalNetwork, auditInternalNetwork, cleanupInternalNetwork } from './internal-network.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -158,6 +159,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
   // Keep the historical source outside /evidence's writable bind mount.
   const parserDirectory = join(output, 'parser-sources', id);
   const referenceOwner = join(output, 'reference-sources', id);
+  const qaBaselineOwner = join(output, 'qa-baseline-sources', id);
   mkdirSync(directory, { recursive: true });
   const runner = `bb-pr-gate-${id}`;
   const postgres = `${runner}-pg`, azurite = `${runner}-blob`, httpsAzurite = `${runner}-https-blob`;
@@ -209,6 +211,9 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
     ? docker(label, ['exec', runner, ...isolatedCommand(args, { ...runtimeEnvironment, ...env })], options)
     : docker(label, ['exec', ...envArgs(env), runner, ...args], options);
   const referenceCheck = (stage, cleanup = false) => collectReferenceCheck({ candidate: expected, runId: id,
+    containerId: owned.get(runner).id, stage, verifierBytes: blob(expected.commit, 'scripts/pr-gate/browser-reference-source.mjs'),
+    execute: (label, args) => docker(label, ['exec', owned.get(runner).id, ...isolatedCommand(args, runtimeEnvironment)], { capture: true, cleanup }) });
+  const qaBaselineCheck = (stage, cleanup = false) => collectQaBaselineCheck({ candidate: expected, runId: id,
     containerId: owned.get(runner).id, stage, verifierBytes: blob(expected.commit, 'scripts/pr-gate/browser-reference-source.mjs'),
     execute: (label, args) => docker(label, ['exec', owned.get(runner).id, ...isolatedCommand(args, runtimeEnvironment)], { capture: true, cleanup }) });
   const referenceMount = async (label, cleanup = false) => {
@@ -268,6 +273,9 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
     mkdirSync(dirname(referenceOwner), { recursive: true });
     receipt.reference_components = { schema: 'pr-gate-reference-components-run-v1', commit: expected.commit, tree: expected.tree, run_id: id,
       host_before: restoreReferenceSource(root, referenceOwner, directory), shards: [] };
+    mkdirSync(dirname(qaBaselineOwner), { recursive: true });
+    receipt.qa_single_start_baseline = { schema: 'pr-gate-qa-baseline-components-run-v1', commit: expected.commit, tree: expected.tree, run_id: id,
+      host_before: restoreQaBaselineSource(root, qaBaselineOwner, directory), shards: [] };
     const image = offlineImage ?? `bondbuddy-pr-gate:${createHash('sha256').update(blob(expected.commit, 'scripts/pr-gate/Dockerfile')).digest('hex').slice(0, 16)}`;
     runtimeEnvironment = { ...workflow.env, CI: '1', GITHUB_SHA: expected.commit, GITHUB_WORKSPACE: '/workspace', RUNNER_TEMP: '/tmp',
       PR_GATE_TREE: expected.tree, BONDBUDDY_TEST_PYTHON: '/usr/local/bin/python', BONDBUDDY_WORD_PYTHON: '/usr/local/bin/python', BB_PYTHON: '/usr/local/bin/python',
@@ -306,10 +314,13 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
         '--mount', `type=bind,source=${directory},target=/evidence`,
         '--mount', `type=bind,source=${parserDirectory},target=${CAPABILITY_PATHS.parser},readonly`,
         '--mount', `type=bind,source=${receipt.reference_components.host_before.root},target=${REFERENCE_ROOT},readonly`,
+        '--mount', `type=bind,source=${receipt.qa_single_start_baseline.host_before.root},target=${QA_BASELINE_ROOT},readonly`,
         ...(offlineImage ? ['--entrypoint', '/usr/bin/env'] : envArgs(runtimeEnvironment)), image,
         ...(offlineImage ? isolatedCommand(['sleep', 'infinity'], runtimeEnvironment).slice(1) : [])]);
       receipt.reference_components.container_id = owned.get(runner).id;
       receipt.reference_components.mount_before = await referenceMount('inspect-reference-mount-before');
+      receipt.qa_single_start_baseline.container_id = owned.get(runner).id;
+      receipt.qa_single_start_baseline.mount_before = structuredClone(receipt.reference_components.mount_before);
       if (offlineImage) {
         const inspected = JSON.parse((await docker('inspect-cache-runner', ['inspect', owned.get(runner).id], { capture: true, privateCapture: true })).text)[0];
         receipt.cache_runtime = inspectOfflineContainer(inspected, image, internalNetwork);
@@ -325,6 +336,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
       await exec('prepare-capabilities', ['node', 'scripts/pr-gate/capability-runtime.mjs', 'prepare']);
       receipt.capabilities = json(join(directory, 'capabilities/prepared.json'));
       receipt.reference_components.container_before = await referenceCheck('prepared');
+      receipt.qa_single_start_baseline.container_before = await qaBaselineCheck('prepared');
     });
     await step('services', startServices);
     await step('dependencies', async () => {
@@ -361,7 +373,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
     for (const [index, row] of workflow.matrix.entries()) {
       const record = { name: row.name, groups: row.groups, shard: row.shard, started_at: new Date().toISOString(), exit_code: null, summary: null };
       receipt.shards.push(record);
-      let browserServices, referenceShard;
+      let browserServices, referenceShard, qaBaselineShard;
       try {
         if (internalNetwork) await auditInternalNetwork({ network: internalNetwork, docker, containerId: owned.get(runner).id, exec, phase: row.name });
         if (index) { await removeOwned([postgres, azurite, httpsAzurite], false); await startServices(); }
@@ -386,6 +398,8 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
           if (row.groups === 'browser') {
             referenceShard = { name: row.name }; receipt.reference_components.shards.push(referenceShard);
             referenceShard.before = await referenceCheck(row.name + ':before');
+            qaBaselineShard = { name: row.name }; receipt.qa_single_start_baseline.shards.push(qaBaselineShard);
+            qaBaselineShard.before = await qaBaselineCheck(row.name + ':before');
           }
           record.exit_code = (await exec(`${row.name}-tests`, ['node', 'scripts/pr-gate/run.mjs', 'run', '--group', row.groups, '--shard', row.shard, '--name', row.name, '--jobs', String(workflow.matrix.length), '--out', `/evidence/shards/${row.name}`], env, { allowFailure: true })).code;
         }
@@ -395,6 +409,8 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
       finally {
         if (referenceShard) try { referenceShard.after = await referenceCheck(row.name + ':after', true); }
         catch (error) { receipt.errors.push(`${row.name} final reference verification: ${error.message}`); }
+        if (qaBaselineShard) try { qaBaselineShard.after = await qaBaselineCheck(row.name + ':after', true); }
+        catch (error) { receipt.errors.push(`${row.name} final QA baseline verification: ${error.message}`); }
         if (browserServices) try { await browserServices.cleanup(); record.browser_services = browserServices.evidence; }
         catch (error) { receipt.errors.push(`${row.name} browser services cleanup: ${error.message}`); } }
       record.finished_at = new Date().toISOString(); save();
@@ -412,6 +428,15 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
         catch (error) { receipt.errors.push(`Final reference mount verification: ${error.message}`); }
         try { receipt.reference_components.container_after = await referenceCheck('final', true); }
         catch (error) { receipt.errors.push(`Final container reference verification: ${error.message}`); }
+      }
+    }
+    if (receipt.qa_single_start_baseline) {
+      try { receipt.qa_single_start_baseline.host_after = verifyQaBaselineDirectory(receipt.qa_single_start_baseline.host_before.root); }
+      catch (error) { receipt.errors.push(`Final host QA baseline verification: ${error.message}`); }
+      if (owned.has(runner)) {
+        receipt.qa_single_start_baseline.mount_after = structuredClone(receipt.reference_components?.mount_after);
+        try { receipt.qa_single_start_baseline.container_after = await qaBaselineCheck('final', true); }
+        catch (error) { receipt.errors.push(`Final container QA baseline verification: ${error.message}`); }
       }
     }
     if (internalNetwork && owned.has(runner)) {
