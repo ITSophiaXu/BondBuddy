@@ -69,7 +69,8 @@ function render(args){return composeRender(args,()=>cp.execFileSync(e.TEST_REAL_
 function img(ref){if(ref==='postgres:16')return {id:db.pgId,source:null};const tag=ref.split(':').at(-1),commit=tag===e.TEST_A.slice(0,12)?e.TEST_A:tag===e.TEST_B.slice(0,12)?e.TEST_B:'c'.repeat(40);const target=ref.includes('sha256:')?null:ref.slice(0,ref.lastIndexOf(':'));if(!target){for(const x of Object.values(db.containers))if(x.image===ref)return{id:ref,source:x.source};return{id:ref,source:'c'.repeat(40)};}return{id:db.drift && tag===e.TEST_A.slice(0,12)?digest('drift'):digest(target+commit),source:commit};}
 if(a[0]==='compose'){
  const ci=a.indexOf('config');
- if(ci>=0){process.stdout.write(render(a));process.exit(0);}
+ // Flush complete Compose JSON before exiting; pipe-backed stdout writes are asynchronous.
+ if(ci>=0){fs.writeFileSync(1,render(a));process.exit(0);}
  const pi=a.indexOf('ps');if(pi>=0){const s=a.at(-1);if(s==='worker-parse'&&db.role==='execution'&&db.parseRole==='main')process.exit(0);if(db.containers[s])out(s);process.exit(0);}
  const up=a.indexOf('up'),stop=a.indexOf('stop');
  if(a.includes('logs')&&(a.includes('--follow')||a.includes('-f'))||up>=0&&e.TEST_SLOW_UP){fs.writeFileSync(e.TEST_READY,'ready');setInterval(()=>{},1000);return;}
