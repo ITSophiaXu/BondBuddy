@@ -27,6 +27,19 @@ npm run pr-gate
 
 测试环境变量与工作流一致；本地输出目录映射到隔离的运行目录。`BB_TEST_LIVE_AUTHORING=0`、平台探测和公网检索关闭，宿主的模型密钥、数据库地址和本地 opt-in 开关不会被带入测试容器。不要通过补充开关或手工排除测试把失败变成通过。
 
+## 按测试准备隔离能力（#1072）
+
+本地入口在工作流的基础环境上读取 `capabilities.mjs` 的精确源码路径清单，为19个测试文件准备额外能力。清单不使用glob，不改变测试发现、分片、断言、失败/跳过判定或例外表。新的样本开关、历史解析器路径、专用数据库和CA信任仅传给指定测试子进程；其他测试不会继承这些开关。直接运行旧CI/脚本而没有能力准备记录，不能签发新的本地通过回执。
+
+- `direct-upload.pg.test.ts` 使用同一私有容器网络中的第二个Azurite Blob服务：HTTPS `127.0.0.1:10003`。运行目录内生成有效期一天的专用CA与含localhost/127.0.0.1 SAN的服务器证书，仅使用进程级 `NODE_EXTRA_CA_CERTS`。HTTP `10000` 保留给原有测试。每个分片实际验证HTTPS Blob写入/读取和严格CORS后才执行测试，不修改宿主信任、不关闭TLS、不发布端口。
+- 三个历史财务桥接测试使用 #196 的精确commit `fb6c12c60b98d14103780da882f0d4da2303f191`、tree `d4109eedad1c16f282170cd07ddd93030a723eb9`、Python subtree `cf2eb4ae549c6ff061c7a6a3d054627eb80e03c4`。归档显式固定 `core.autocrlf=false`、`core.eol=lf`、`tar.umask=0002` 并隔离系统/全局Git配置；`git archive --format=tar <commit> python` 必须匹配规范SHA-256 `9ee74af7fe4d0e47b3a9574a3161bd9fc9e82f5ed8e3a887ec683e2d90dcb9f5`。Windows系统autocrlf不能重写原字节；复制后逐文件比对归档，并通过独立只读mount传入。宿主需已有该Git对象；缺少时明确失败，不悄悄使用当前1.0.8。当前产品源码和parser版本保持不变。
+- 14个已核实只做本地解析、合成API/PG或上传容量检查的文件，各自启用一个命名opt-in。使用仓库已授权样本及原manifest字节/hash检查，不启用真实模型、live浏览器或桌面开关。
+- `target-period-candidate-snapshot-repository.test.ts` 使用本分片新建的 `bb_pr_gate_target_period` 数据库，从本次已迁移空模板克隆。重名立即失败，不采用、清空或替换现有数据库。
+
+准备回执保存候选commit/tree、配置hash、固定历史源与归档hash、公开TLS身份/有效期、授权样本manifest hash。每个分片记录实际PG16与HTTPS/CORS探针，每个相关文件记录所用配置及实际测试/skip计数。缺能力、跨候选证据、遗漏/重复文件、准备失败或任何必需文件跳过均不能通过；旧失败报告保持原状。完成后移除本次测试私钥，保留公开证书和原始证据。历史解析器只读源位于 `.local/pr-gate/parser-sources/<run-id>/`，不提交Git。
+
+这一切片仍不解决Codex sandbox、OCR/desktop、billing专属服务、真实备份容器、live API浏览器或截图历史基准准备；这些失败/跳过继续按原规则阻断。修改能力脚本后需先做纯Node/Git测试，再排队实际PG/HTTPS/blob回归，最后对完整固定候选运行全量门禁。纯测试或能力预检本身都不是全量pass、真实模型验收或部署证据。
+
 ## 回执与核对
 
 ```sh
