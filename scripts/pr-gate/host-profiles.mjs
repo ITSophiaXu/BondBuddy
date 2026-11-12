@@ -8,6 +8,7 @@ export const HOST_PROFILES = Object.freeze({
   'scripts/billing-functional/panel-session.test.mjs': Object.freeze({ id: 'windows-billing', runner: 'node' }),
   'scripts/release-smoke/credentials.linux.test.mjs': Object.freeze({ id: 'docker-credentials', runner: 'node' }),
   'deploy/m1/scripts/backup-integration.test.mjs': Object.freeze({ id: 'docker-backup', runner: 'node' }),
+  'scripts/release-smoke/archive.test.mjs': Object.freeze({ id: 'windows-archive', runner: 'node' }),
 });
 
 export const HOST_ENV_KEYS = Object.freeze(['PR_GATE_HOST_PLAN', 'PR_GATE_HOST_DIRECTORY']);
