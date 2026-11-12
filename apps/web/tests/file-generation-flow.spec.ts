@@ -2,6 +2,8 @@ import {test,expect,type Page} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {sourceFixture} from './generation-source-fixtures';
+import {fixtureBody} from './billing-fixture-wire';
+import {settleUploadConfirmationFault} from './upload-confirmation-faults';
 import {href,ids,file,batches} from './generation-entry-fixtures';
 import {emptyFileGenerationPreparation,PROJECT_DOCUMENT_CATALOG} from '@bondbuddy/contracts';
 
@@ -63,15 +65,27 @@ test('source conflict retains prior source and asks user to choose again',async(
 });
 
 for(const reload of [false,true])test(`upload in flight locks source mode and next, failed transfer can be retried, reload=${reload}`,async({page})=>{
- const s=await sourceFixture(page,true);let fail=true;let release!:()=>void;const gate=new Promise<void>(r=>release=r);
- await page.route('**/materials/uploads/*/bytes',async route=>{if(fail){await gate;fail=false;const id=new URL(route.request().url()).pathname.split('/').at(-2)!;s.state.sessions.get(id)!.received=true;s.state.puts++;return route.abort('failed');}return route.fallback();});
+ await page.clock.install();const s=await sourceFixture(page,true);let fail=true;let release!:()=>void;const gate=new Promise<void>(r=>release=r);const confirmationFaults=new Map<string,number>();
+ // Accepted bytes can reconcile automatically. Exhaust the original complete
+ // request and its three retries so this case reaches the manual retry boundary.
+ await page.route('**/materials/uploads/*/complete',route=>{const id=new URL(route.request().url()).pathname.split('/').at(-2)!,remaining=confirmationFaults.get(id)??0;if(!remaining)return route.fallback();confirmationFaults.set(id,remaining-1);return route.fulfill({status:503,json:fixtureBody(route,{code:'DATA_UNAVAILABLE',message:'Synthetic original upload confirmation temporarily unavailable',retryable:true,correlation_id:'generation-flow-confirmation',field_errors:[]})});});
+ await page.route('**/materials/uploads/*/bytes',async route=>{if(fail){await gate;fail=false;const id=new URL(route.request().url()).pathname.split('/').at(-2)!;s.state.sessions.get(id)!.received=true;s.state.puts++;confirmationFaults.set(id,4);return route.abort('failed');}return route.fallback();});
  await page.goto('/'+href({step:'source'}));await mode(page,'upload').check();await page.locator('#prospectus-version-file').setInputFiles(file);
  await expect(mode(page,'project')).toBeDisabled();await expect(page.locator('#pf-source-next')).toBeDisabled();await expect(page.locator('.pf-selected-source')).toContainText('募集说明书_V3.docx');release();
+ await settleUploadConfirmationFault(page,confirmationFaults);expect([...confirmationFaults.values()]).toEqual([0]);expect(s.selections).toHaveLength(0);
  await expect(page.locator('#save-prospectus-version')).toBeVisible();await expect(page.locator('#save-prospectus-version')).toBeEnabled();await expect(page.locator('#pf-source-next')).toBeDisabled();await capture(page,'source-upload-failed');
  if(reload){await page.reload();await expect(mode(page,'upload')).toBeChecked();await expect(page.locator('#pf-source-next')).toBeDisabled();await page.locator('[data-resume-prospectus]').click();}else await page.locator('#save-prospectus-version').click();
  await expect(page.locator('.pf-selected-source')).toContainText(file.name);await expect(page.locator('#pf-source-next')).toBeEnabled();expect(s.selections).toHaveLength(1);expect(s.state.puts).toBe(1);
 });
 
+test('lost accepted upload response reconciles automatically when confirmation remains available',async({page})=>{
+ const s=await sourceFixture(page,true);let release!:()=>void;const gate=new Promise<void>(r=>release=r);
+ await page.route('**/materials/uploads/*/bytes',async route=>{await gate;const id=new URL(route.request().url()).pathname.split('/').at(-2)!;s.state.sessions.get(id)!.received=true;s.state.puts++;return route.abort('failed');});
+ await page.goto('/'+href({step:'source'}));await mode(page,'upload').check();await page.locator('#prospectus-version-file').setInputFiles(file);
+ await expect(mode(page,'project')).toBeDisabled();await expect(page.locator('#pf-source-next')).toBeDisabled();await expect(page.locator('.pf-selected-source')).toContainText('募集说明书_V3.docx');release();
+ await expect(page.locator('.pf-selected-source')).toContainText(file.name);await expect(page.locator('#pf-source-next')).toBeEnabled();await expect(page.locator('#save-prospectus-version')).toBeHidden();await expect(page.locator('[data-resume-prospectus]')).toHaveCount(0);
+ expect(s.selections).toHaveLength(1);expect(s.state.puts).toBe(1);expect(s.state.sessions.size).toBe(1);expect(batches(s.state)).toHaveLength(0);
+});
 for(const width of [1440,390,320])test(`table retains add/remove, template reuse and full-page confirmation, ${width}px`,async({page})=>{
  const s=await sourceFixture(page,true);await page.setViewportSize({width,height:960});await page.goto('/'+href({step:'source',mode:'documents'}));await page.locator('#pf-source-next').click();
  await page.locator('[data-pf-document=""]').selectOption('init');await page.locator('#pf-add-row').click();await expect(page.locator('[data-pf-document=""]')).toBeFocused();await page.locator('#pf-add-row').click();await expect(page.locator('[data-pf-document=""]')).toHaveCount(1);
