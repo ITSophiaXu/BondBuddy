@@ -2,18 +2,19 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import test from 'node:test';
 import {Pool} from 'pg';
-import {emptyUpdateDetails,type OutcomePricingItem,type OutcomeWorkPlan} from '@bondbuddy/contracts';
+import {type OutcomePricingItem,type OutcomeWorkPlan} from '@bondbuddy/contracts';
 import {bindCommerceScopeRun,readOwnedCommerceCoverage} from './commerce-coverage.js';
 import {creditBalance,grantCredits,quoteCredits,reserveCredits} from './billing.js';
 import {correctSettlement} from './billing-ops.js';
 import {requestScope,publishStandardScopeQuote} from './scope-quotations.js';
 import {transaction,type PrivateBlobs} from './data.js';
-import {inputManifestHash} from './production-rule-pin.js';
 import {checkpointStage,claim,enqueue,finish,promoteWordArtifact} from './queue.js';
 import {makeSyntheticDocxFixture} from './docx-fixtures.js';
 import {isolatedTestDatabase} from './test-database.js';
 import {applyVerifiedPayment,createServiceTopup,type PaymentProvider} from './payments.js';
 import {requestPaymentRefund,type RefundOrder,type VerifiedRefund} from './payment-refunds.js';
+import {createServer} from './server.js';
+import {lockSyntheticAuthoringInput} from './test-authoring-source.js';
 
 // Real PostgreSQL, real wallet reservations and real synthetic Word delivery evidence.
 // No customer materials, remote model requests or actual payment channels are used.
@@ -29,15 +30,27 @@ function memoryBlobs():PrivateBlobs{
  const bytes=new Map<string,Buffer>();return {put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const b=bytes.get(k);assert.ok(b);return b;},
   getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bounded');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
 }
+async function sourceInput(pool:Pool,owner:string,name='Synthetic coverage project'){
+ // Current HTTP input preparation must not reconfigure the separate Pool that
+ // replays the original approved outcome contracts and their exact prices.
+ const inputPool=new Pool({connectionString:database}),blobs=memoryBlobs(),origin='http://bondbuddy.test';
+ const app=createServer({pool:inputPool,blobs,allowedOrigin:origin,enableSyntheticQueue:true,paymentProviders:[],
+  principal:async()=>({userId:owner,csrfVerified:true})});
+ try{
+  const created=await app.inject({method:'POST',url:'/api/v1/projects',headers:{origin},payload:{
+   name,kind:'generation',issuer_name:'Synthetic coverage issuer',market:'sse',offering:'private'}});
+  assert.equal(created.statusCode,201,created.body);
+  const project=created.json().project_id,locked=await lockSyntheticAuthoringInput(app,project),input=locked.json();
+  assert.equal(input.input_revision,1,'Each contract fixture starts with its first real locked input');
+  const saved=(await pool.query('SELECT manifest,input_hash FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
+   [owner,project,input.input_revision])).rows[0];
+  assert.equal(saved.input_hash.trim(),input.input_hash);
+  return {project,manifest:saved.manifest,hash:input.input_hash as string,blobs};
+ }finally{await app.close();await inputPool.end();}
+}
 async function fixture(pool:Pool,owner:string,items:OutcomePricingItem[],fund=true,start=true){
- const project=randomUUID(),runId=randomUUID();
- const manifest={draft_revision:1,issuer_name:'Synthetic coverage issuer',market:'sse',offering:'private',materials:[],
-  update_details:{...emptyUpdateDetails(),reporting_cutoff:'2026-09-30'},
-  authoring:{version:'unified_v1',source_prospectuses:[],requirements:[],knowledge:[],knowledge_status:'authoring_reference_not_compliance_approval'}};
- const hash=inputManifestHash(manifest),work_plan:OutcomeWorkPlan={scope_status:'confirmed',items};
- await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic coverage project','generation')",[project,owner]);
- await pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,1,$2,1,$3,$4,'[]','[]')",[project,owner,hash,manifest]);
- await pool.query('UPDATE bb_projects SET latest_input_revision=1 WHERE id=$1',[project]);
+ const {project,manifest,hash,blobs}=await sourceInput(pool,owner),runId=randomUUID();
+ const work_plan:OutcomeWorkPlan={scope_status:'confirmed',items};
  const pending=await transaction(pool,c=>requestScope(c,owner,project,'authoring',hash,manifest));
  const scope=await publishStandardScopeQuote(pool,{id:pending.scope_quote_id,expected_input_hash:hash,work_plan,actor:'synthetic-classifier',reason:'Synthetic trusted business scope only'});
  const run=(await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,1,$4,$1,'generation',$4,'queued') RETURNING *",[runId,owner,project,hash])).rows[0];
@@ -48,10 +61,10 @@ async function fixture(pool:Pool,owner:string,items:OutcomePricingItem[],fund=tr
   await reserveCredits(c,owner,run,quote.quote_id,{revision:1,manifest},p,undefined,true);
   await bindCommerceScopeRun(c,owner,scope.scope_quote_id,run.id);
  });
- return {owner,project,run,quote,scope,manifest,hash};
+ return {owner,project,run,quote,scope,manifest,hash,blobs};
 }
 async function deliver(pool:Pool,f:Awaited<ReturnType<typeof fixture>>){
- const blobs=memoryBlobs();await transaction(pool,c=>enqueue(c,f.run));const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,f.run.id);
+ const blobs=f.blobs;await transaction(pool,c=>enqueue(c,f.run));const lease=await claim(pool);assert.ok(lease);assert.equal(lease.runId,f.run.id);
  const revision=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic covered revision'}),blobs,'generated_pair_v1');
  const clean=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic covered clean'}),blobs,'generated_pair_v1');
  await checkpointStage(pool,lease,'word_delivery_pair',{revision_artifact_id:revision.artifactId,clean_artifact_id:clean.artifactId});
@@ -129,12 +142,14 @@ test('binding is replay-safe under concurrency, immutable, single-consumption an
   await assert.rejects(transaction(pool,c=>bindCommerceScopeRun(c,owner,f.scope.scope_quote_id,otherRun)),e=>(e as any).code==='IDEMPOTENCY_CONFLICT');
   await pool.query("UPDATE bb_runs SET state='cancelled' WHERE id=$1",[f.run.id]);
   await transaction(pool,c=>bindCommerceScopeRun(c,owner,blocked.scope.scope_quote_id,blocked.run.id));
-  const pendingProject=randomUUID();await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic pending scope','generation')",[pendingProject,owner]);
-  await pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,1,$2,1,$3,$4,'[]','[]')",[pendingProject,owner,f.hash,f.manifest]);
-  await pool.query('UPDATE bb_projects SET latest_input_revision=1 WHERE id=$1',[pendingProject]);
+  {
+  // This pending scope has its own owned source/input, and no published plan.
+  const f={...candidates[attempted.findIndex(r=>r.status==='fulfilled')],...await sourceInput(pool,owner,'Synthetic pending scope')};
+  const pendingProject=f.project;
   const pending=await quoteCredits(pool,owner,pendingProject,1,f.hash,true);assert.equal(pending.quote.points,0);assert.equal(pending.quote.quote_status,'pending_scope');
-  const pendingRun={...f.run,id:randomUUID(),project_id:pendingProject};
+  const pendingRun={...f.run,id:randomUUID(),project_id:pendingProject,input_hash:f.hash,request_hash:f.hash};
   await assert.rejects(transaction(pool,async c=>{const p=(await c.query('SELECT * FROM bb_projects WHERE id=$1',[pendingProject])).rows[0];await reserveCredits(c,owner,pendingRun,pending.quote.quote_id,{revision:1,manifest:f.manifest},p,undefined,true);}),e=>['QUOTE_CHANGED','QUOTE_REQUIRED'].includes((e as any).code));
+  }
   assert.equal((await owned(pool,owner,[key])).length,1,'an accepted but undelivered continuation creates no new owned receipt');
  }finally{await pool.end();}
 });

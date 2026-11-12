@@ -1,0 +1,33 @@
+TAP version 13
+# Subtest: synthetic \#79 operation, usage, redaction, owner and outbox recovery
+not ok 1 - synthetic \#79 operation, usage, redaction, owner and outbox recovery
+  ---
+  duration_ms: 3087.019766
+  type: 'test'
+  location: '/workspace/apps/api/dist/zz_observability.test.js:11:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"code":"INPUT_REQUIRED","message":"请补齐项目信息和已上传的原稿信息，保存当前输入后重新获取报价。","retryable":false,"field_errors":[],"correlation_id":"cb1bcf4a-34f1-4c82-a1f9-8278266fae1d"}
+
+    422 !== 202
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 202
+  actual: 422
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/apps/api/dist/zz_observability.test.js:56:16)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4742.968703

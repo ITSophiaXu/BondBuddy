@@ -1,0 +1,604 @@
+TAP version 13
+# Subtest: target intent is an immutable owner-scoped part of the input revision and run replay
+ok 1 - target intent is an immutable owner-scoped part of the input revision and run replay
+  ---
+  duration_ms: 5708.627485
+  type: 'test'
+  ...
+# Subtest: a new request cannot execute a superseded confirmed target or freeze credits
+ok 2 - a new request cannot execute a superseded confirmed target or freeze credits
+  ---
+  duration_ms: 4504.228165
+  type: 'test'
+  ...
+# Subtest: \#79 scrubber removes secrets, captcha codes and cookies
+ok 3 - \#79 scrubber removes secrets, captcha codes and cookies
+  ---
+  duration_ms: 8.195396
+  type: 'test'
+  ...
+# Subtest: \#79 normalized loose keys never leave synthetic values in diagnostics
+ok 4 - \#79 normalized loose keys never leave synthetic values in diagnostics
+  ---
+  duration_ms: 5.536237
+  type: 'test'
+  ...
+# Subtest: \#79 quoted fields preserve ordinary continuation and ambiguous unquoted fields reject
+ok 5 - \#79 quoted fields preserve ordinary continuation and ambiguous unquoted fields reject
+  ---
+  duration_ms: 5.136099
+  type: 'test'
+  ...
+# Subtest: \#79 entire prose values and nested fields are safe in real Blob readback
+ok 6 - \#79 entire prose values and nested fields are safe in real Blob readback
+  ---
+  duration_ms: 11591.090384
+  type: 'test'
+  ...
+# Subtest: \#79 ambiguous diagnostic rejection leaves structured run error evidence writable
+ok 7 - \#79 ambiguous diagnostic rejection leaves structured run error evidence writable
+  ---
+  duration_ms: 4969.543587
+  type: 'test'
+  ...
+# Subtest: \#79 fixed-seed decoded field matrix does not retain synthetic values
+ok 8 - \#79 fixed-seed decoded field matrix does not retain synthetic values
+  ---
+  duration_ms: 383.35456
+  type: 'test'
+  ...
+# Subtest: \#79 scrubber handles nested, embedded and escaped JSON without losing surrounding text
+ok 9 - \#79 scrubber handles nested, embedded and escaped JSON without losing surrounding text
+  ---
+  duration_ms: 1.464344
+  type: 'test'
+  ...
+# Subtest: \#79 escaped JSON with quoted prose and Chinese business placeholders stays usable
+ok 10 - \#79 escaped JSON with quoted prose and Chinese business placeholders stays usable
+  ---
+  duration_ms: 0.634463
+  type: 'test'
+  ...
+# Subtest: \#79 scrubber bounds JSON depth, body length and malformed brace work
+ok 11 - \#79 scrubber bounds JSON depth, body length and malformed brace work
+  ---
+  duration_ms: 4617.057952
+  type: 'test'
+  ...
+# Subtest: \#79 large legal JSON and prompt-shaped text retain the full body
+ok 12 - \#79 large legal JSON and prompt-shaped text retain the full body
+  ---
+  duration_ms: 902.710346
+  type: 'test'
+  ...
+# Subtest: \#79 structured secrets are absent from the private diagnostic Blob readback
+ok 13 - \#79 structured secrets are absent from the private diagnostic Blob readback
+  ---
+  duration_ms: 4592.894462
+  type: 'test'
+  ...
+# Subtest: \#79 fixed-seed field matrix stays safe through real Blob and reference writes
+ok 14 - \#79 fixed-seed field matrix stays safe through real Blob and reference writes
+  ---
+  duration_ms: 4290.955939
+  type: 'test'
+  ...
+# 140 real field-matrix probes: 2 safe Blob writes, 138 zero-write rejections
+# Subtest: \#79 escaped quotes and business placeholders survive private Blob readback
+ok 15 - \#79 escaped quotes and business placeholders survive private Blob readback
+  ---
+  duration_ms: 4333.575672
+  type: 'test'
+  ...
+# Subtest: \#79 full-size synthetic model diagnostics survive private Blob readback
+ok 16 - \#79 full-size synthetic model diagnostics survive private Blob readback
+  ---
+  duration_ms: 22960.118372
+  type: 'test'
+  ...
+# Subtest: \#79 rejected diagnostics never call Blob put or register a partial snapshot
+ok 17 - \#79 rejected diagnostics never call Blob put or register a partial snapshot
+  ---
+  duration_ms: 5530.615117
+  type: 'test'
+  ...
+# Subtest: \#79 wide JSON arrays stay bounded in 128/256 MiB child heaps
+ok 18 - \#79 wide JSON arrays stay bounded in 128/256 MiB child heaps
+  ---
+  duration_ms: 16873.087615
+  type: 'test'
+  ...
+# 128 MiB heap / 4 MiB wide input: 1109 CPU ms, RSS +1 MiB
+# 128 MiB heap / 9 MiB wide input: 2588 CPU ms, RSS +5 MiB
+# 256 MiB heap / 4 MiB wide input: 974 CPU ms, RSS +4 MiB
+# 256 MiB heap / 9 MiB wide input: 2271 CPU ms, RSS +8 MiB
+# Subtest: \#79 prose rules scale linearly on long ordinary whitespace in bounded child heaps
+ok 19 - \#79 prose rules scale linearly on long ordinary whitespace in bounded child heaps
+  ---
+  duration_ms: 14628.326854
+  type: 'test'
+  ...
+# 128 MiB heap / 2000 spaces: 5.4 CPU ms, peak RSS 120 MiB
+# 128 MiB heap / 4000 spaces: 5.6 CPU ms, peak RSS 120 MiB
+# 128 MiB heap / 8000 spaces: 8.4 CPU ms, peak RSS 120 MiB
+# 128 MiB heap / 16000 spaces: 8.0 CPU ms, peak RSS 120 MiB
+# 128 MiB heap / 32000 spaces: 11.1 CPU ms, peak RSS 120 MiB
+# 256 MiB heap / 2000 spaces: 4.0 CPU ms, peak RSS 120 MiB
+# 256 MiB heap / 4000 spaces: 4.0 CPU ms, peak RSS 120 MiB
+# 256 MiB heap / 8000 spaces: 7.8 CPU ms, peak RSS 120 MiB
+# 256 MiB heap / 16000 spaces: 12.5 CPU ms, peak RSS 120 MiB
+# 256 MiB heap / 32000 spaces: 8.2 CPU ms, peak RSS 120 MiB
+# Subtest: \#79 repeated non-delimiting escaped quotes have linear bounded work
+ok 20 - \#79 repeated non-delimiting escaped quotes have linear bounded work
+  ---
+  duration_ms: 6872.548838
+  type: 'test'
+  ...
+# 128 MiB heap / 4 MiB quote runs: 1724 ms, peak RSS 120 MiB
+# 256 MiB heap / 4 MiB quote runs: 1887 ms, peak RSS 120 MiB
+# Subtest: \#79 dense short strings and long escaped quotes share bounded scan work
+not ok 21 - \#79 dense short strings and long escaped quotes share bounded scan work
+  ---
+  duration_ms: 15674.385568
+  type: 'test'
+  location: '/workspace/apps/api/dist/zz_log_ops.test.js:861:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+
+      assert.ok(metrics.elapsedMs < 5000)
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/apps/api/dist/zz_log_ops.test.js:887:20)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# 128 MiB heap / dense 3600001 B: 4750 ms, peak RSS 121 MiB
+# 128 MiB heap / long_key 9437222 B: 692 ms, peak RSS 123 MiB
+# Subtest: \#79 densely sensitive wide arrays reject safely when redaction exceeds 10 MiB
+ok 22 - \#79 densely sensitive wide arrays reject safely when redaction exceeds 10 MiB
+  ---
+  duration_ms: 3901.587608
+  type: 'test'
+  ...
+# 128 MiB heap / 9 MiB dense sensitive input: 547 ms, peak RSS 138 MiB
+# 256 MiB heap / 9 MiB dense sensitive input: 630 ms, peak RSS 131 MiB
+# Subtest: \#79 densely redacted valid 10 MiB arrays fit bounded child heaps
+not ok 23 - \#79 densely redacted valid 10 MiB arrays fit bounded child heaps
+  ---
+  duration_ms: 5837.432835
+  type: 'test'
+  location: '/workspace/apps/api/dist/zz_log_ops.test.js:919:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+
+      assert.ok(metrics.elapsedMs < 2000)
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/apps/api/dist/zz_log_ops.test.js:944:16)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: \#79 dense ordinary colon strings stay bounded when every value is scanned
+not ok 24 - \#79 dense ordinary colon strings stay bounded when every value is scanned
+  ---
+  duration_ms: 5796.9984
+  type: 'test'
+  location: '/workspace/apps/api/dist/zz_log_ops.test.js:948:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The expression evaluated to a falsy value:
+
+      assert.ok(metrics.elapsedMs < 2500)
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/apps/api/dist/zz_log_ops.test.js:972:16)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: \#79 near-limit multibyte ordinary JSON remains complete in bounded heaps
+ok 25 - \#79 near-limit multibyte ordinary JSON remains complete in bounded heaps
+  ---
+  duration_ms: 8364.585434
+  type: 'test'
+  ...
+# 128 MiB heap / 10485689 B multibyte: 1376 ms (5 MiB baseline 734 ms), peak RSS 230 MiB
+# 256 MiB heap / 10485689 B multibyte: 1908 ms (5 MiB baseline 916 ms), peak RSS 231 MiB
+# Subtest: \#79 NDJSON sink cannot be split by log injection
+not ok 26 - \#79 NDJSON sink cannot be split by log injection
+  ---
+  duration_ms: 101.33626
+  type: 'test'
+  location: '/workspace/apps/api/dist/zz_log_ops.test.js:1009:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    NDJSON sink refused delivery: node:internal/modules/cjs/loader:1433
+      throw err;
+      ^
+
+    Error: Cannot find module '/workspace/apps/api/dist/ndjson-file-sink.js'
+        at Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+        at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+        at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+        at Function._load (node:internal/modules/cjs/loader:1216:25)
+        at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+        at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+        at node:internal/main/run_main_module:36:49 {
+      code: 'MODULE_NOT_FOUND',
+      requireStack: []
+    }
+
+    Node.js v22.23.3
+
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+    Function._load (node:internal/modules/cjs/loader:1216:25)
+    wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    node:internal/main/run_main_module:36:49 {
+    lockedNdjsonWrite (file:///workspace/apps/api/dist/log-ops.js:990:19)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Object.deliver (file:///workspace/apps/api/dist/log-ops.js:1001:13)
+    async TestContext.<anonymous> (file:///workspace/apps/api/dist/zz_log_ops.test.js:1013:9)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: \#79 file sink repeat and concurrent processes retain one durable line per key
+not ok 27 - \#79 file sink repeat and concurrent processes retain one durable line per key
+  ---
+  duration_ms: 111.805127
+  type: 'test'
+  location: '/workspace/apps/api/dist/zz_log_ops.test.js:1022:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    NDJSON sink refused delivery: node:internal/modules/cjs/loader:1433
+      throw err;
+      ^
+
+    Error: Cannot find module '/workspace/apps/api/dist/ndjson-file-sink.js'
+        at Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+        at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+        at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+        at Function._load (node:internal/modules/cjs/loader:1216:25)
+        at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+        at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+        at node:internal/main/run_main_module:36:49 {
+      code: 'MODULE_NOT_FOUND',
+      requireStack: []
+    }
+
+    Node.js v22.23.3
+
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+    Function._load (node:internal/modules/cjs/loader:1216:25)
+    wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    node:internal/main/run_main_module:36:49 {
+    lockedNdjsonWrite (file:///workspace/apps/api/dist/log-ops.js:990:19)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Object.deliver (file:///workspace/apps/api/dist/log-ops.js:1001:13)
+    async Promise.all (index 0)
+    async TestContext.<anonymous> (file:///workspace/apps/api/dist/zz_log_ops.test.js:1028:9)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: \#79 file sink fails closed on torn/corrupt lines and unsafe permissions
+ok 28 - \#79 file sink fails closed on torn/corrupt lines and unsafe permissions
+  ---
+  duration_ms: 514.169992
+  type: 'test'
+  ...
+# Subtest: \#79 replay of a complete pre-existing line still acknowledges only after file sync
+not ok 29 - \#79 replay of a complete pre-existing line still acknowledges only after file sync
+  ---
+  duration_ms: 107.435624
+  type: 'test'
+  location: '/workspace/apps/api/dist/zz_log_ops.test.js:1065:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    NDJSON sink refused delivery: node:internal/modules/cjs/loader:1433
+      throw err;
+      ^
+
+    Error: Cannot find module '/workspace/apps/api/dist/ndjson-file-sink.js'
+        at Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+        at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+        at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+        at Function._load (node:internal/modules/cjs/loader:1216:25)
+        at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+        at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+        at node:internal/main/run_main_module:36:49 {
+      code: 'MODULE_NOT_FOUND',
+      requireStack: []
+    }
+
+    Node.js v22.23.3
+
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+    Function._load (node:internal/modules/cjs/loader:1216:25)
+    wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    node:internal/main/run_main_module:36:49 {
+    lockedNdjsonWrite (file:///workspace/apps/api/dist/log-ops.js:990:19)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Object.deliver (file:///workspace/apps/api/dist/log-ops.js:1001:13)
+    async TestContext.<anonymous> (file:///workspace/apps/api/dist/zz_log_ops.test.js:1072:9)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: \#79 size cap fails closed for new keys but permits replay of a full segment
+not ok 30 - \#79 size cap fails closed for new keys but permits replay of a full segment
+  ---
+  duration_ms: 89.625779
+  type: 'test'
+  location: '/workspace/apps/api/dist/zz_log_ops.test.js:1079:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    NDJSON sink refused delivery: node:internal/modules/cjs/loader:1433
+      throw err;
+      ^
+
+    Error: Cannot find module '/workspace/apps/api/dist/ndjson-file-sink.js'
+        at Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+        at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+        at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+        at Function._load (node:internal/modules/cjs/loader:1216:25)
+        at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+        at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+        at node:internal/main/run_main_module:36:49 {
+      code: 'MODULE_NOT_FOUND',
+      requireStack: []
+    }
+
+    Node.js v22.23.3
+
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+    Function._load (node:internal/modules/cjs/loader:1216:25)
+    wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    node:internal/main/run_main_module:36:49 {
+    lockedNdjsonWrite (file:///workspace/apps/api/dist/log-ops.js:990:19)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Object.deliver (file:///workspace/apps/api/dist/log-ops.js:1001:13)
+    async TestContext.<anonymous> (file:///workspace/apps/api/dist/zz_log_ops.test.js:1088:9)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: \#79 replay also detects a key in a legacy rotated segment
+not ok 31 - \#79 replay also detects a key in a legacy rotated segment
+  ---
+  duration_ms: 101.082837
+  type: 'test'
+  location: '/workspace/apps/api/dist/zz_log_ops.test.js:1100:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    NDJSON sink refused delivery: node:internal/modules/cjs/loader:1433
+      throw err;
+      ^
+
+    Error: Cannot find module '/workspace/apps/api/dist/ndjson-file-sink.js'
+        at Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+        at defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+        at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+        at Function._load (node:internal/modules/cjs/loader:1216:25)
+        at wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+        at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+        at node:internal/main/run_main_module:36:49 {
+      code: 'MODULE_NOT_FOUND',
+      requireStack: []
+    }
+
+    Node.js v22.23.3
+
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1430:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1040:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1045:22)
+    Function._load (node:internal/modules/cjs/loader:1216:25)
+    wrapModuleLoad (node:internal/modules/cjs/loader:254:19)
+    Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    node:internal/main/run_main_module:36:49 {
+    lockedNdjsonWrite (file:///workspace/apps/api/dist/log-ops.js:990:19)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Object.deliver (file:///workspace/apps/api/dist/log-ops.js:1001:13)
+    async TestContext.<anonymous> (file:///workspace/apps/api/dist/zz_log_ops.test.js:1106:9)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: \#79 operator API: deny by default, filters, timeline, metrics, restricted prompt, corrections
+ok 32 - \#79 operator API: deny by default, filters, timeline, metrics, restricted prompt, corrections
+  ---
+  duration_ms: 8796.821713
+  type: 'test'
+  ...
+# Subtest: \#79 forwarding drills: sink outage, process crash and replay never lose or double count
+ok 33 - \#79 forwarding drills: sink outage, process crash and replay never lose or double count
+  ---
+  duration_ms: 8506.33007
+  type: 'test'
+  ...
+# Subtest: \#79 production file sink survives two independent processes with crash before PG ack
+not ok 34 - \#79 production file sink survives two independent processes with crash before PG ack
+  ---
+  duration_ms: 10472.631125
+  type: 'test'
+  location: '/workspace/apps/api/dist/zz_log_ops.test.js:1315:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 17
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 17
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/apps/api/dist/zz_log_ops.test.js:1329:16)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: \#79 a missing source event blocks the whole claimed batch before sink or PG ACK
+ok 35 - \#79 a missing source event blocks the whole claimed batch before sink or PG ACK
+  ---
+  duration_ms: 227.035893
+  type: 'test'
+  ...
+# Subtest: \#79 malformed outbox envelope or source event blocks the entire PG batch
+ok 36 - \#79 malformed outbox envelope or source event blocks the entire PG batch
+  ---
+  duration_ms: 499.987031
+  type: 'test'
+  ...
+# Subtest: \#79 a conflicting existing receipt cannot ACK a different outbox event
+ok 37 - \#79 a conflicting existing receipt cannot ACK a different outbox event
+  ---
+  duration_ms: 206.326478
+  type: 'test'
+  ...
+# Subtest: \#79 PG event lookup outage cannot call the sink or acknowledge the outbox
+ok 38 - \#79 PG event lookup outage cannot call the sink or acknowledge the outbox
+  ---
+  duration_ms: 291.494553
+  type: 'test'
+  ...
+# Subtest: \#79 evidence gate: DB transaction failure pauses new external calls and raises an alert
+ok 39 - \#79 evidence gate: DB transaction failure pauses new external calls and raises an alert
+  ---
+  duration_ms: 3910.448787
+  type: 'test'
+  ...
+# Subtest: \#79 retention purge and user-deletion reclamation keep accounting metadata
+ok 40 - \#79 retention purge and user-deletion reclamation keep accounting metadata
+  ---
+  duration_ms: 4591.423665
+  type: 'test'
+  ...
+# Subtest: \#79 orphan prompt Blob intent survives failed compensation, restart and delete retry
+ok 41 - \#79 orphan prompt Blob intent survives failed compensation, restart and delete retry
+  ---
+  duration_ms: 2797.28331
+  type: 'test'
+  ...
+# Subtest: \#79 prompt response and purge serialize through delivery, with audit and owner boundary
+ok 42 - \#79 prompt response and purge serialize through delivery, with audit and owner boundary
+  ---
+  duration_ms: 2308.514359
+  type: 'test'
+  ...
+# Subtest: \#79 in-flight Blob purge blocks prompt read and failed delete remains replayable
+ok 43 - \#79 in-flight Blob purge blocks prompt read and failed delete remains replayable
+  ---
+  duration_ms: 3604.453315
+  type: 'test'
+  ...
+# Subtest: \#79 TCP abort releases prompt lock during pending Blob read (resolve late)
+ok 44 - \#79 TCP abort releases prompt lock during pending Blob read (resolve late)
+  ---
+  duration_ms: 5239.47859
+  type: 'test'
+  ...
+# Subtest: \#79 TCP abort releases prompt lock during pending Blob read (reject late)
+ok 45 - \#79 TCP abort releases prompt lock during pending Blob read (reject late)
+  ---
+  duration_ms: 4650.793838
+  type: 'test'
+  ...
+# Subtest: \#79 real TCP slow response and onSend failure release the prompt lock
+ok 46 - \#79 real TCP slow response and onSend failure release the prompt lock
+  ---
+  duration_ms: 4997.360832
+  type: 'test'
+  ...
+# Subtest: \#79 disconnected lock waiter frees a two-connection PG pool (success first read)
+not ok 47 - \#79 disconnected lock waiter frees a two-connection PG pool (success first read)
+  ---
+  duration_ms: 5007.088301
+  type: 'test'
+  location: '/workspace/apps/api/dist/zz_log_ops.test.js:1830:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    only the first live reader retains a connection
+
+    2 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 2
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/apps/api/dist/zz_log_ops.test.js:1868:20)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: \#79 disconnected lock waiter frees a two-connection PG pool (failure first read)
+not ok 48 - \#79 disconnected lock waiter frees a two-connection PG pool (failure first read)
+  ---
+  duration_ms: 4292.749287
+  type: 'test'
+  location: '/workspace/apps/api/dist/zz_log_ops.test.js:1830:5'
+  failureType: 'testCodeFailure'
+  error: |-
+    only the first live reader retains a connection
+
+    2 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 2
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/apps/api/dist/zz_log_ops.test.js:1868:20)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+1..48
+# tests 48
+# suites 0
+# pass 37
+# fail 11
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 458554.508435

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 const origin = process.env.BB_E2E_BASE_URL ?? 'http://127.0.0.1:5173';
 
@@ -23,21 +23,26 @@ test('real PostgreSQL/Azurite material survives browser close and same-account r
   await page.getByRole('link', { name: '任务进度与结果', exact: true }).first().click();
   await expect(page.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
   await page.goto('/#/new');
-  const projectName = `真实 API 材料恢复 ${username}`;
-  await page.getByLabel('项目名称 必填', { exact: true }).fill(projectName);
+  const issuer = `真实 API 材料恢复 ${username}`;
+  const projectName = `${issuer}-募集书更新`;
+  await page.getByLabel('发行人全称', { exact: true }).fill(issuer);
   await page.getByRole('button', { name: '创建项目，继续提供材料' }).click();
   await expect(page).toHaveURL(/#\/projects\//);
-  const projectId = new URL(page.url()).hash.split('/').at(-1)!;
+  const projectId = decodeURIComponent(new URL(page.url()).hash.split('/').at(-1)!.split('?')[0]);
   await expect(page.getByRole('heading', { name: projectName, exact: true })).toBeVisible();
 
   const { pdfSample, PDF } = await import('../../api/dist/upload-safety.samples.js');
-  const completed = page.waitForResponse(response => response.url().includes(`/projects/${projectId}/materials/uploads/`) && response.url().endsWith('/complete') && response.request().method() === 'POST');
+  const bytes = pdfSample();
+  const completed = page.waitForResponse(response => response.url().includes(`/projects/${projectId}/materials/uploads/`) && response.url().endsWith('/complete') && response.request().method() === 'POST' && response.status() === 200);
   const fileInput = page.getByLabel('为审计报告（可含报表及附注）选择文件');
   await expect(fileInput).toBeEnabled();
-  await fileInput.setInputFiles({ name: 'real-api-recovery.pdf', mimeType: PDF, buffer: pdfSample() });
+  await fileInput.setInputFiles({ name: 'real-api-recovery.pdf', mimeType: PDF, buffer: bytes });
   const completion = await completed;
   expect(completion.status()).toBe(200);
-  const materialId = (await completion.json()).material_id as string;
+  const material = await completion.json();
+  const materialId = material.material_id as string;
+  expect(material).toMatchObject({ material_id: expect.any(String), material_version: 1,
+    upload_id: expect.any(String), sha256: createHash('sha256').update(bytes).digest('hex'), byte_size: bytes.length });
   await expect(page.locator('.material-file-row').filter({ hasText: 'real-api-recovery.pdf' })).toContainText('服务器已确认保存');
 
   const browser = page.context().browser();
@@ -51,11 +56,18 @@ test('real PostgreSQL/Azurite material survives browser close and same-account r
     await reopened.getByLabel('密码').fill(password);
     await reopened.getByRole('button', { name: '登录', exact: true }).click();
     await reopened.getByRole('link', { name: '任务进度与结果', exact: true }).first().click();
-  await expect(reopened.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
+    await expect(reopened.getByRole('heading', { name: '任务进度与结果', exact: true })).toBeVisible();
     await reopened.goto(`/#/projects/${encodeURIComponent(projectId)}`);
     await expect(reopened.getByRole('heading', { name: projectName, exact: true })).toBeVisible();
     await expect(reopened.getByText('已保存 1 份材料。')).toBeVisible();
     await expect(reopened.locator('.persisted-material')).toContainText('real-api-recovery.pdf');
+    const saved = await reopened.evaluate(async path => {
+      const response = await fetch(path);
+      return { status: response.status, body: await response.json() };
+    }, `/api/v1/projects/${projectId}/materials/${materialId}?version=${material.material_version}`);
+    expect(saved.status).toBe(200);
+    expect(saved.body).toMatchObject({ material_id: materialId, material_version: material.material_version,
+      upload_id: material.upload_id, sha256: material.sha256, byte_size: material.byte_size });
 
     const deletedStatus = await reopened.evaluate(async ({ projectId: id, materialId: mid }) => {
       const csrf = document.cookie.split('; ').find(value => value.startsWith('bb_csrf='))?.slice('bb_csrf='.length) ?? '';

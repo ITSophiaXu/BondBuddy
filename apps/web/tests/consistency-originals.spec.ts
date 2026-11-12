@@ -1,6 +1,7 @@
 import {mkdir,writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {expect,test,type Locator,type Page} from '@playwright/test';
+import {encodeBillingDto} from '@bondbuddy/contracts';
 import {assertFixture,base,cacheKey,checkId,downloadBytes,editedFile,filesRoute,fixture,hash,ids,issuerVersion,
   open,originalBytes,replaceMaterial,replaceSource,writeCalls,type ContextFault,type DownloadFault,type DownloadTarget,type State} from './consistency-originals-fixtures';
 import {captureConsistencyOriginals,installConsistencyOriginalsReference} from './consistency-originals-reference';
@@ -45,7 +46,7 @@ test.describe('consistency originals desktop journeys',()=>{
     const saved=s.registry.find(v=>v.file_id===ids.family&&v.latest)!;expect(saved.sequence).toBe(2);expect(saved.consistency.status).toBe('unchecked');
     expect(s.imports).toHaveLength(1);expect(s.imports[0].expected_latest_version_id).toBe(ids.version);expect(s.imports[0].document_type).toBe('init');expect(s.imports[0].material.sha256).toBe(hash(editedFile.buffer));
     expect(saved.asset).toEqual({kind:'material',pin:s.imports[0].material});expect(s.puts).toBe(1);expect(s.sessions.size).toBe(1);expect(s.checkRequests).toEqual([]);expect(s.check).toEqual(checked);
-    await page.locator('#pw-import-result').getByRole('link',{name:'免费检查全部项目文件',exact:true}).click();
+    await page.locator('#pw-import-result').getByRole('link',{name:'检查全部项目文件',exact:true}).click();
     await expect(page.locator('.fc-results')).toBeVisible();expect(s.checkRequests).toEqual([]);
     await page.locator('[data-fc-start]').click();await expect.poll(()=>s.checkRequests.length).toBe(1);
     expect(s.checkRequests[0].expected_source_version_id).toBe(s.source.version_id);expect(s.checks[0].files.map(f=>f.file_version_id).sort()).toEqual(s.registry.filter(v=>v.latest).map(v=>v.version_id).sort());
@@ -155,15 +156,20 @@ test.describe('consistency originals desktop journeys',()=>{
   });
 
   test('consistency originals: unknown update receipt survives download, blocked navigation and local selection changes without changing its envelope',async({page})=>{
+    const wireBodies:string[]=[];
+    page.on('request',request=>{if(request.method()==='POST'&&new URL(request.url()).pathname==='/api/v1'+base+'/project-files/checks/'+checkId+'/updates')wireBodies.push(request.postData()!);});
     const s=await open(page,fixture({dropUpdateOnce:true}));await page.locator(`[data-fc-select="${ids.version}"]`).check();await page.locator('#fc-accept-top').click();
     await page.locator('dialog[open] #fc-confirm-update').click();await expect(page.locator('#fc-pending-action')).toBeVisible();
     const originalPost=structuredClone(s.updatePosts[0]);expect(s.updateReceipts.size).toBe(1);await page.locator('dialog[open]').getByRole('button',{name:'返回调整',exact:true}).click();
     const pending=await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)!).pendingUpdate,cacheKey);
     expect(await saveDownload(page,original(page))).toEqual(originalBytes);await manualReturn(page).click();await expect(page.locator('.fc-results')).toBeVisible();await expect(page).toHaveURL(/#consistency\?/);
     await page.locator('[data-fc-clear-selection]').click();expect(s.updatePosts).toEqual([originalPost]);expect(s.updateReceipts.size).toBe(1);
-    const after=await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)!).pendingUpdate,cacheKey);expect(after).toEqual(pending);expect(after.body).toEqual(originalPost.body);
+    expect(wireBodies).toHaveLength(1);const originalWire=wireBodies[0];
+    expect(JSON.parse(originalWire)).toEqual(encodeBillingDto('projectFileUpdateRequest',originalPost.body));
+    const after=await page.evaluate(key=>JSON.parse(sessionStorage.getItem(key)!).pendingUpdate,cacheKey);expect(after).toEqual(pending);expect(after.body).toEqual(JSON.parse(originalWire));
     await page.locator('#fc-pending-action').click();await expect(page.locator('dialog[open] .fc-confirm-filename')).toHaveText([s.check.files[0].filename]);
     await page.locator('dialog[open] #fc-confirm-update').click();await expect.poll(()=>s.updatePosts.length).toBe(2);expect(s.updatePosts[1]).toEqual(originalPost);expect(s.updateReceipts.size).toBe(1);
+    expect(wireBodies).toEqual([originalWire,originalWire]);
     expect(s.imports).toEqual([]);expect(s.checkRequests).toEqual([]);assertFixture(s);
   });
 

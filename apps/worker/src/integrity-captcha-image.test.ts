@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {createServer} from 'node:http';
 import {once} from 'node:events';
 import {chromium} from 'playwright';
@@ -91,6 +92,56 @@ test('captcha image loading recovers within bounds and never spends recognition 
    }finally{if(abortTimer)clearTimeout(abortTimer);await context.close();}
   });
  }finally{await browser.close();}
+});
+
+test('capture timeout retains the known challenge and unknown pixels cannot prove a refresh',async t=>{
+ t.mock.timers.enable({apis:['Date'],now:1000});
+ const png=Buffer.from('synthetic captured raster'),digest=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
+ const original={src:'https://www.creditchina.gov.cn/captcha.svg',sequence:1,sha256:digest(png)};
+ let src=original.src,sequence=original.sequence,captures=0,failCapture=2,pixels=png,replaceAfterWait=false;
+ const controls={
+  frame:{},popup:{isVisible:async()=>true},image:{
+   evaluate:async()=>({src,complete:true,width:120,height:40,loaded:true}),
+   boundingBox:async()=>({x:0,y:0,width:120,height:40}),
+   screenshot:async()=>{if(++captures===failCapture)throw new Error('synthetic screenshot timeout');return pixels;},
+   page:()=>({waitForTimeout:async(ms:number)=>{t.mock.timers.tick(ms);if(replaceAfterWait){replaceAfterWait=false;src=original.src+'?replacement=1';sequence++;}}}),
+  },
+ } as unknown as Parameters<typeof readCaptchaImage>[0];
+ const images={get:()=>({sequence,pending:false}),close:()=>{}};
+ const read=(previous:Parameters<typeof readCaptchaImage>[4])=>readCaptchaImage(controls,images,new AbortController().signal,200,previous);
+ const timedOut=await read(original);
+ assert.equal(captures,2,'the final capture failed after observing unchanged pixels');
+ assert.equal(timedOut.status,'image_failed');
+ if(timedOut.status!=='image_failed')throw new Error('Expected an unchanged challenge to fail closed');
+ assert.equal(timedOut.detail,'CAPTCHA_IMAGE_REFRESH_FAILED');
+ assert.deepEqual(timedOut.version,original,'failure retains the actual observed hash for the retry');
+ failCapture=0;
+ const retry=await read(timedOut.version);
+ assert.equal(retry.status,'image_failed','the same request cannot become fresh on the next bounded refresh');
+ if(retry.status!=='image_failed')throw new Error('Expected unchanged pixels after refresh');
+ assert.equal(retry.detail,'CAPTCHA_IMAGE_REFRESH_FAILED');
+ assert.deepEqual(retry.version,original);
+ const unknown={src,sequence};
+ assert.equal((await read(unknown)).status,'image_failed','absence of an earlier digest is not evidence that pixels changed');
+
+ // Preserve all valid freshness witnesses: a same-URL request, a different source,
+ // or changed pixels when their prior digest is known. Each uses the same budget.
+ sequence++;
+ const sameUrl=await read(original);
+ assert.equal(sameUrl.status,'ready');
+ if(sameUrl.status!=='ready')throw new Error('Expected a new request to be accepted');
+ assert.equal(sameUrl.version.sha256,original.sha256,'identical pixels still belong to a new request');
+ assert.equal(sameUrl.version.sequence,sequence);
+ sequence=original.sequence;src=original.src+'?next=1';
+ assert.equal((await read(original)).status,'ready','a new URL is also a fresh challenge');
+ src=original.src;pixels=Buffer.from('synthetic changed raster');
+ assert.equal((await read(original)).status,'ready','a known prior digest permits observing changed pixels');
+ pixels=png;failCapture=captures+2;replaceAfterWait=true;
+ const replaced=await read(original);
+ assert.equal(replaced.status,'image_failed');
+ if(replaced.status!=='image_failed')throw new Error('Expected the new image capture to time out');
+ assert.equal(replaced.detail,'CAPTCHA_IMAGE_LOAD_TIMEOUT');
+ assert.deepEqual(replaced.version,{src,sequence},'a different request discards the old image hash and unchanged state');
 });
 
 test('captcha image denial after a redirect is attributed to the original image',{skip:!process.env.BB_TEST_INTEGRITY_BROWSER,timeout:15000},async t=>{

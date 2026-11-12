@@ -60,6 +60,7 @@ const wordSkipReason = baseSkipReason || (wordPythonReady ? false
 
 const TEXT = 'text/plain';
 const PDF = 'application/pdf';
+const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const sha = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 const taxonomyHash = SSE_PRIVATE_CANDIDATE_ASSET_PIN.taxonomy.contentSha256;
 const rulePackHash = SSE_PRIVATE_CANDIDATE_ASSET_PIN.rulePack.contentSha256;
@@ -258,9 +259,18 @@ type UpdateChain = { project: string; locked: { input_revision: number; input_ha
 async function provisionUpdateChain(pool: Pool, harness: ReturnType<typeof makeHarness>, owner: string, reviewer: string, grantor: string): Promise<UpdateChain> {
   await insertUsers(pool, [owner, reviewer, grantor]);
   const project = await harness.createProject('update', 'Synthetic M1 e2e update');
-  const historical = await harness.upload(project, 'historical', 'history', pdfSample(randomUUID()), PDF, 'pdf');
+  // New historical inputs follow the approved DOCX-only contract; the test channel does not bypass it.
+  const rejectedBytes = pdfSample(randomUUID());
+  const rejectedPdf = await harness.send('POST', `/api/v1/projects/${project}/materials/uploads`, {
+    byte_size: rejectedBytes.length, sha256: sha(rejectedBytes), filename: 'history.pdf', media_type: PDF, role: 'historical',
+  });
+  assert.equal(rejectedPdf.statusCode, 422, rejectedPdf.body);
+  assert.equal(rejectedPdf.json().code, 'MATERIAL_FORMAT_UNSUPPORTED');
+  assert.ok(rejectedPdf.json().field_errors.some((field: {code: string}) => field.code === 'PROSPECTUS_DOCX_ONLY'));
+  const historicalBytes = makeWorkerDocxFixture({externalLink: false, text: '合成发行人历史募集说明书'});
+  const historical = await harness.upload(project, 'historical', 'history', historicalBytes, DOCX, 'docx');
   const financial = await harness.upload(project, 'financial', 'finance', Buffer.from(`synthetic financial ${randomUUID()}`));
-  const historicalEvidence = await insertParseEvidence(pool, { owner, projectId: project, material: historical, label: 'history', quote: '合成发行人历史募集说明书', mediaType: PDF });
+  const historicalEvidence = await insertParseEvidence(pool, { owner, projectId: project, material: historical, label: 'history', quote: '合成发行人历史募集说明书', mediaType: DOCX });
   await insertParseEvidence(pool, { owner, projectId: project, material: financial, label: 'finance', quote: '合成发行人合并资产负债表' });
   await identityGrant(pool, reviewer, grantor, owner, project);
   await reviewIdentity(pool, { owner, reviewer, projectId: project, material: historical, recordId: historicalEvidence.recordId, label: 'history' });

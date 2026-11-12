@@ -1,3 +1,4 @@
+import {canReselectExpiredUpload} from './upload-reselection';
 import {uploadPicker} from './upload-picker';
 import './upload-progress.css';
 import {uploadActivity,uploadTransfer,uploadProgressHtml,type UploadStatus} from './upload-progress';
@@ -22,6 +23,7 @@ import {IntegrityRecoveryCache,IntegrityRecoveryJournal,type IntegrityRecoveryVa
 import {UploadRecovery,UploadRecoveryNeedsFileError} from './upload-recovery';
 import {beginIntegrityUpload,integrityUploadPurpose,integrityUploadPair,integrityUploadRecord,sameIntegrityUploadPair} from './integrity-upload';
 import {integritySameDraft,integrityRoundFor,integrityWorkItems,integrityManualReadback} from './integrity-continuation';
+import {integritySettlementHtml} from './integrity-settlement';
 import './file-workspace.css';
 import './integrity-workspace.css';
 
@@ -263,10 +265,10 @@ export class IntegrityWorkspace {
   const done=terminal.has(r.state),work=integrityWorkItems(r),bound=integrityRoundFor(r,this.state!.rounds),writable=!bound.error&&!bound.originalMissing&&!work.error&&!this.locked();
   const pending=work.items.filter(i=>i.pending),total=work.items.length,attached=work.items.filter(i=>i.pending&&i.evidence.length).length,included=r.manifest.evidence_ids.length,newEvidence=r.evidence.length-included;
   if(this.openedRound!==r.run_id){this.openedRound=r.run_id;this.expanded=new Set(r.manifest.draft.subjects.slice(0,1).map(s=>s.id));}
-  this.shell(`${this.header(3)}<section class="panel integrity-panel"><div class="pf-section-head"><div><h2>${r.operation==='export'?'核查底稿导出':'本轮诚信核查'} · ${esc(runStateLabel[r.state as keyof typeof runStateLabel]??r.state)}</h2><p>${esc(date(r.created_at))} · ${r.manifest.draft.subjects.length} 个对象 · ${r.manifest.draft.site_ids.length} 个网站</p></div><div class="integrity-actions">${r.artifacts.map(a=>`<button class="btn primary" data-integrity-download="${esc(a.artifact_id)}">下载${a.kind==='company'?'企业':'人员'}核查底稿</button>`).join('')}<a class="btn secondary" href="${esc(this.href())}">返回名单与历史</a></div></div><p id="integrity-status" role="status" hidden></p><p>${int64(r.charged_points)>0n?`本轮已结算 ${displayCharge(r.manifest,r.charged_points)}`:int64(r.reserved_points)>0n?`已预留 ${displayCharge(r.manifest,r.reserved_points)}，交付后结算`:r.operation==='export'?'同轮重新导出 · 包含在原任务内':'本轮未结算费用'}</p>
+   this.shell(`${this.header(3)}<section class="panel integrity-panel"><div class="pf-section-head"><div><h2>${r.operation==='export'?'核查底稿导出':'本轮诚信核查'} · ${esc(runStateLabel[r.state as keyof typeof runStateLabel]??r.state)}</h2><p>${esc(date(r.created_at))} · ${r.manifest.draft.subjects.length} 个对象 · ${r.manifest.draft.site_ids.length} 个网站</p></div><div class="integrity-actions">${r.artifacts.map(a=>`<button class="btn primary" data-integrity-download="${esc(a.artifact_id)}">下载${a.kind==='company'?'企业':'人员'}核查底稿</button>`).join('')}<a class="btn secondary" href="${esc(this.href())}">返回名单与历史</a></div></div><p id="integrity-status" role="status" hidden></p>${integritySettlementHtml(r)||`<p>${int64(r.charged_points)>0n?`本轮已结算 ${displayCharge(r.manifest,r.charged_points)}`:int64(r.reserved_points)>0n?`已预留 ${displayCharge(r.manifest,r.reserved_points)}，交付后结算`:r.operation==='export'?'同轮重新导出 · 包含在原任务内':'本轮未结算费用'}</p>`}
    ${bound.error||work.error?`<p role="alert">${esc(bound.error??work.error)}</p>`:''}${bound.originalMissing?`<p role="alert">原核查轮不在当前历史范围，请先打开原轮核对后查看或导出。</p><a href="${esc(this.href({run:r.round_id}))}">打开原核查轮 →</a>`:''}
    <div class="integrity-progress"><progress value="${work.items.filter(i=>i.record).length}" max="${total||1}"></progress><span>${work.items.filter(i=>i.record).length} / ${total} 项已有原查询记录 · ${pending.length} 项原查询待核实</span></div><p class="muted">人工证据不覆盖原查询状态，也不代表事项已解决。${attached} 项待核实事项已附人工证据；结论仍需人工核对。</p><p>${included} 份人工证据已进入此版底稿 · ${Math.max(0,newEvidence)} 份新增证据尚未包含。${newEvidence>0?'免费重新导出后可生成包含新增证据的版本。':''}</p>
-   <div class="integrity-actions">${!done?`<button class="btn secondary" data-run-action="${r.state==='paused'||r.state==='awaiting_input'?'resume':'pause'}" ${this.locked()?'disabled':''}>${r.state==='paused'||r.state==='awaiting_input'?'继续任务':'暂停任务'}</button><button class="text-button" data-run-action="cancel" ${this.locked()?'disabled':''}>停止本轮</button>`:''}${done?`<button class="btn secondary" id="integrity-export" ${writable?'':'disabled'}>重新导出底稿 · 免费</button>`:''}<button class="btn secondary" id="integrity-use-round" ${writable?'':'disabled'}>采用此轮名单准备新核查</button></div><p class="muted">查看和导出沿用本轮记录，不重新查询。采用名单后可修改准备内容，新核查仍需单独确认本次范围与费用。</p>${['failed','cancelled'].includes(r.state)?'<p role="alert">本轮未完成交付，预留费用会释放。已有记录仍保留，可免费导出。</p>':''}</section>
+   <div class="integrity-actions">${!done?`<button class="btn secondary" data-run-action="${r.state==='paused'||r.state==='awaiting_input'?'resume':'pause'}" ${this.locked()?'disabled':''}>${r.state==='paused'||r.state==='awaiting_input'?'继续任务':'暂停任务'}</button><button class="text-button" data-run-action="cancel" ${this.locked()?'disabled':''}>停止本轮</button>`:''}${done?`<button class="btn secondary" id="integrity-export" ${writable?'':'disabled'}>重新导出底稿 · 免费</button>`:''}<button class="btn secondary" id="integrity-use-round" ${writable?'':'disabled'}>采用此轮名单准备新核查</button></div><p class="muted">查看和导出沿用本轮记录，不重新查询。采用名单后可修改准备内容，新核查仍需单独确认本次范围与费用。</p>${['failed','cancelled'].includes(r.state)?`<p role="alert">本轮未完成交付，${r.settlement?.outcome==='not_delivered'?'原预留已全部释放':'预留费用会释放'}。已有记录仍保留，可免费导出。</p>`:''}</section>
    <section class="integrity-workbar"><label>查看事项<select id="integrity-filter"><option value="all" ${this.filter==='all'?'selected':''}>全部 ${total} 项</option><option value="pending" ${this.filter==='pending'?'selected':''}>原查询待核实 ${pending.length} 项</option></select></label><button class="btn secondary" id="integrity-next-pending" ${pending.length?'':'disabled'}>下一项未完成查询</button>${this.evidenceDraft&&!this.pending?'<button class="text-button" id="integrity-resume-evidence">继续未保存的补证</button>':''}</section>
    <div id="integrity-records">${r.manifest.draft.subjects.map((s,index)=>{const items=work.items.filter(i=>i.subject.id===s.id&&(this.filter!=='pending'||i.pending));if(!items.length)return '';return `<details class="panel integrity-query" data-integrity-subject="${esc(s.id)}" ${this.expanded.has(s.id)?'open':''}><summary><strong>${esc(s.name)}</strong><span>${s.kind==='company'?'企业':'人员'} · ${esc(s.role||'角色待补充')}</span></summary><div class="integrity-table-wrap"><table><thead><tr><th>核查网站 / 查询条件</th><th>查询状态</th><th>取证记录</th></tr></thead><tbody>${items.map(item=>{const site=resolveIntegritySite(INTEGRITY_SITES.find(x=>x.id===item.siteId)!,s),record=item.record;return `<tr><td><strong>${esc(site.name)}</strong><small>${esc(s.name)}</small>${links(site)}</td><td>${record?statusChip(integrityRecordPresentation(record)):`<span class="pf-chip">${s.kind==='person'&&site.companyOnly?'网站仅适用企业 · 无查询记录':done?'未执行':'等待查询'}</span>`}<small>${esc(record?integrityRecordPresentation(record).description:'本轮尚无该项查询记录。')}</small></td><td>${record?.browser?.captures.length?`<small>${record.browser.captures.length} 张官网截图</small>`:''}${record?.sources.length?`<small>${record.sources.length} 条公开来源</small>`:''}<small>${item.evidence.length} 份人工证据（未独立核验）</small>${this.evidenceDraft?.uploadOperationId&&!this.evidenceDraft.material&&sameIntegrityUploadPair(this.evidenceDraft,{roundId:r.round_id,subjectId:s.id,siteId:item.siteId})?'<small>原文件上传尚待确认</small>':''}<small>此版已包含 ${item.includedEvidenceCount} 份 · 新增 ${item.newEvidenceCount} 份</small><button class="text-button" data-evidence="${index}:${item.siteId}">查看查询记录</button></td></tr>`;}).join('')}</tbody></table></div></details>`;}).join('')||'<p class="panel integrity-panel">当前筛选下没有待处理事项。</p>'}</div>`,'integrity');
   document.querySelectorAll<HTMLDetailsElement>('[data-integrity-subject]').forEach(d=>d.addEventListener('toggle',()=>{if(d.open)this.expanded.add(d.dataset.integritySubject!);else this.expanded.delete(d.dataset.integritySubject!);}));
@@ -324,7 +326,16 @@ export class IntegrityWorkspace {
   const fileInput=d.querySelector<HTMLInputElement>('[name=file]')!,saveButton=d.querySelector<HTMLButtonElement>('#integrity-evidence-save')!;
   const uploadStatusHost=d.querySelector('[role=status]')!;
    const uploadStatus:UploadStatus=(text,p)=>{if(p)uploadStatusHost.innerHTML=uploadProgressHtml(p,fileInput.files?.[0]?.name??'补充证据',{announce:false});else uploadStatusHost.textContent=text;};
-  const runUpload=(fn:()=>Promise<void>)=>this.act(fn,'save').finally(()=>{if(this.live()&&d.isConnected)paintUpload();});
+  const expiredUploadHint=()=>{
+   if(!this.live()||!d.isConnected||!d.open||this.locked()||!this.cacheMatches()||!this.evidenceDraft||!sameRecovery(this.evidenceDraft,form)||!form.uploadOperationId||form.material)return '';
+   try{return canReselectExpiredUpload(integrityUploadRecord(this.uploads(),form))?'上次上传的有效期已过，保存结果仍待确认。可先点击“确认原上传”；如需补传，请重新选择相同内容的文件。':'';}catch{return '';}
+  };
+  const runUpload=(fn:()=>Promise<void>)=>{
+   let failed=false,failure:unknown;
+   return this.act(async()=>{try{await fn();}catch(error){failed=true;failure=error;throw error;}},'save').finally(()=>{
+    if(this.live()&&d.isConnected){paintUpload();const hint=failed?expiredUploadHint():'';if(hint)uploadStatus(this.error(failure,'save')+' '+hint);}
+   });
+  };
   const paintUpload=()=>{
    const host=d.querySelector<HTMLElement>('#integrity-upload-recovery')!;
    d.querySelector('#integrity-selected-evidence')!.textContent=form.material?`文件已保存 · 材料版本 ${form.material.material_version}。核对后保存补充证据。`:'';
@@ -348,7 +359,7 @@ export class IntegrityWorkspace {
    if(form.material){host.replaceChildren();return;}
    let name='原文件',problem='';
    try{name=integrityUploadRecord(this.uploads(),form).declaration.filename;}catch(error){problem=this.error(error,'read');}
-   host.innerHTML=`<div class="integrity-notice bb-upload-file"><strong>${esc(name)}</strong><p>文件保存结果待确认。确认后可继续填写并保存补充证据。</p>${problem?`<p role="alert">${esc(problem)}</p>`:''}<button type="button" class="bb-upload-action bb-upload-action--primary btn secondary" id="integrity-confirm-upload">确认原上传</button><button type="button" class="bb-upload-action text-button" id="integrity-stop-upload">取消本次上传</button></div>`;
+   host.innerHTML=`<div class="integrity-notice bb-upload-file"><strong>${esc(name)}</strong><p>文件保存结果待确认。确认后可继续填写并保存补充证据。</p>${problem?`<p role="alert">${esc(problem)}</p>`:''}${expiredUploadHint()?`<p>${esc(expiredUploadHint())}</p>`:''}<button type="button" class="bb-upload-action bb-upload-action--primary btn secondary" id="integrity-confirm-upload">确认原上传</button><button type="button" class="bb-upload-action text-button" id="integrity-stop-upload">取消本次上传</button></div>`;
    host.querySelector('#integrity-confirm-upload')!.addEventListener('click',()=>void runUpload(async()=>{await transfer(fileInput.files?.[0]??this.selectedFile?.file);uploadStatus('原文件已确认并保留到此项补证。请核对实际查询时间、说明和结论，再点击“保存补充证据”。');}));
    host.querySelector('#integrity-stop-upload')!.addEventListener('click',()=>void runUpload(async()=>{
     if(this.locked()||!collect())throw new UserFacingError(this.problem||'请先核对原补证记录。');
@@ -357,7 +368,7 @@ export class IntegrityWorkspace {
     delete form.uploadOperationId;this.selectedFile=undefined;fileInput.value='';if(!collect())throw new UserFacingError(this.problem);paintUpload();uploadStatus('已移除本机待处理记录。服务器此前收到或保存的文件保留，此操作不删除材料或证据。');
    }));
   };
-  const transfer=async(file?:File)=>{
+  const transfer=async(file?:File,reselectExpiredSession=false)=>{
    if(this.locked()||!collect())throw new UserFacingError(this.problem||'请先核对原补证记录。');
    const current=()=>this.live()&&d.isConnected&&d.open&&this.cacheMatches()&&!this.locked()&&!!this.evidenceDraft&&sameIntegrityUploadPair(this.evidenceDraft,form);
    const recovery=this.uploads();
@@ -369,7 +380,7 @@ export class IntegrityWorkspace {
      form.uploadOperationId=record.id;if(!collect())throw new UserFacingError(this.problem);
     }
     const original=integrityUploadRecord(recovery,form),operationId=original.id;
-    const material=await recovery.resume(operationId,{file,signal:this.controller.signal,status:message=>uploadStatus(message,uploadActivity(message)),progress:(loaded,total)=>{const p=uploadTransfer(loaded,total);uploadStatus(p.message,p);}});
+    const material=await recovery.resume(operationId,{file,reselectExpiredSession,signal:this.controller.signal,status:message=>uploadStatus(message,uploadActivity(message)),progress:(loaded,total)=>{const p=uploadTransfer(loaded,total);uploadStatus(p.message,p);}});
     this.controller.signal.throwIfAborted();if(!current()||form.uploadOperationId!==operationId||this.evidenceDraft?.uploadOperationId!==operationId)throw new UserFacingError('原补证记录已变化，材料尚未写入本页。请重新读取并核对。');
     form.material={source_project_id:this.id!,material_id:material.material_id,material_version:material.material_version,sha256:material.sha256};
     this.selectedFile=undefined;fileInput.value='';if(!collect())throw new UserFacingError(this.problem);
@@ -387,7 +398,7 @@ export class IntegrityWorkspace {
    if(this.busy)return;
    const file=fileInput.files?.[0];if(!file)return;this.selectedFile=file?{key:JSON.stringify([r.round_id,s.id,siteId]),file}:undefined;
    if(form.material)delete form.uploadOperationId;delete form.material;select.value='';collect();paintUpload();
-   void runUpload(async()=>{await transfer(file);uploadStatus('文件已上传保存。请核对查询信息和结论，再保存补充证据。');});
+   void runUpload(async()=>{await transfer(file,true);uploadStatus('文件已上传保存。请核对查询信息和结论，再保存补充证据。');});
   });
   paintUpload();
   d.querySelector('form')!.addEventListener('submit',e=>{e.preventDefault();void runUpload(async()=>{

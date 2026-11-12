@@ -4,6 +4,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { workspaceSceneArtifacts } from '../../../scripts/pr-gate/workspace-scenes.mjs';
 import { Value } from '@sinclair/typebox/value';
 import { commerceMetadata, OUTCOME_PRICE_VERSION, schemas, INTEGRITY_PRICE, ReviewDraftRequestSchema, ReviewExecutionRequestSchema, ReviewMessageRequestSchema, ReviewPlanRequestSchema, isReviewReport,
   type ReviewWorkspace, type ReviewDraftInput, type ReviewReport, type ReviewEvidenceRef, type ReviewContext, type ReviewMessageRequest,
@@ -13,6 +14,15 @@ import type { Dto } from '../src/api';
 // Real Chromium with an owner-aware synthetic HTTP fixture. Not model, database or Word acceptance.
 const id='synthetic-review-project',now='2026-10-02T10:00:00Z',mime='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const hash=(text:string)=>createHash('sha256').update(text).digest('hex');
+const generatedWorkspaceScenes=workspaceSceneArtifacts();
+async function useGeneratedWorkspaceScenes(page:Page){
+  // The complete producer before the consumers owns these two exact assets.
+  // HTML and JS continue to come from the original prototype input.
+  for(const [name,contentType] of [['workspace-ux-scenes.json','application/json'],['workspace-ux-preview.css','text/css']]){
+    await generatedWorkspaceScenes.read(name);
+    await page.route('**/'+name,async route=>route.fulfill({contentType,body:await generatedWorkspaceScenes.read(name)}));
+  }
+}
 const reply=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:fixtureJson(route,body)});
 const key=(context:ReviewContext)=>JSON.stringify(context);
 const readableMarkdown='# 合成复核报告\n\n## 复核范围与依据\n本轮按 input.json 的 full_review 执行；输入锁与 input_hash 一致。\n材料路径 materials/m0.docx，SHA-256 为内部校验值。\n\n## 财务核对\n**本次结论：** 发现两项需要处理的事项，财务差异需要优先核对。\n\n**核对范围：** 已对照合成募集书与2025年合成审计报告。\n\n### 1. 现金流金额与审计报告不一致\n**原文位置：** 第八章，经营现金流表。\n\n**核对依据：** 合成审计报告。\n\n原文值 | 对照值 | 差异\n--- | --- | ---\n100 | 120 | 20\n\n**修改建议：** 确认口径后统一金额。\n\n### 2. 财务分析中的单位需核对\n**问题说明：** 原文分析使用元，报表使用万元。\n\n**修改建议：** 统一单位后重新核对分析文字。\n\n## 合规与披露\n**本次结论：** 历史名称披露缺少时间依据。\n\n### 3. 历史名称披露待补充证据\n**原文位置：** 第二章，发行人历史沿革。\n\n**待确认事项：** 缺少名称变更日期依据。\n\n**修改建议：** 补充变更文件及生效日期。\n\n## 公开信息核验\n**本次结论：** 公开信息核验未执行，不能据此判断无风险。\n\n**还需确认：** 发行人名称变更及重大诉讼的最新公开记录。\n\n## 建议处理顺序\n1. 核对财务口径\n2. 补充名称变更证据';
@@ -29,7 +39,7 @@ function fixture(){
   const makeRun=(runId:string,state:Run['state'],requestId='old'):Run=>({run_id:runId,execution_request_id:requestId,project_id:id,input_revision:1,input_hash:hash('input'),channel:'production',test_grant_id:null,uncovered_items:[],state,stage:null,event_cursor:0,billing_mode:'platform_trial',reservation_id:null,artifact_id:state==='succeeded'?'artifact-1':null,prompt_snapshot_ref:null,updated_at:now});
   const oldRun=makeRun('run-1','succeeded');
   const history:ReviewHistoryEntry[]=[{run:oldRun,operation:'full_review',version:1,source_report_id:null,report_id:report.report_id,input:structuredClone(workspace.draft),input_revision:1,finding_ids:[],plan:null,artifacts:workspace.artifacts,created_at:now}];
-  const state={workspace,history,owner:'owner-a',requests:[] as ReviewMessageRequest[],plans:[] as ReviewPlanRequest[],executes:[] as ReviewExecutionRequest[],projectPatches:[] as Dto<'ProjectPatchRequest'>[],failProjectPatch:false,failPlan:false,runs:new Map([['old',oldRun]]),uploads:[] as Dto<'UploadCreateRequest'>[],uploadBytes:0,uploadCompletions:[] as string[],inputSaves:[] as {kind:'input';expected_version:number;input:ReviewDraftInput}[],quoteCalls:[] as string[],dropMessageOnce:false,dropExecutionOnce:false,dropUploadOnce:false,failDrafts:false,delayMessage:false,workspaceReads:0,makeRun,artifacts:new Map<string,Dto<'ArtifactResponse'>>(),artifactReads:[] as string[],materialReads:[] as string[],materialDownloads:[] as string[]};
+  const state={workspace,history,owner:'owner-a',requests:[] as ReviewMessageRequest[],plans:[] as ReviewPlanRequest[],executes:[] as ReviewExecutionRequest[],projectPatches:[] as Dto<'ProjectPatchRequest'>[],failProjectPatch:false,failPlan:false,runs:new Map([['old',oldRun]]),uploads:[] as Dto<'UploadCreateRequest'>[],uploadBytes:0,uploadCompletions:[] as string[],uploadCompletionRequests:[] as {path:string;input:Dto<'UploadCompleteRequest'>}[],inputSaves:[] as {kind:'input';expected_version:number;input:ReviewDraftInput}[],quoteCalls:[] as string[],dropMessageOnce:false,dropExecutionOnce:false,dropUploadOnce:false,dropUploadReceipts:{} as Record<string,number>,failDrafts:false,delayMessage:false,workspaceReads:0,makeRun,artifacts:new Map<string,Dto<'ArtifactResponse'>>(),artifactReads:[] as string[],materialReads:[] as string[],materialDownloads:[] as string[]};
   return {...state,uploadGates:{} as {bytes?:(id:string)=>Promise<void>;complete?:(id:string)=>Promise<void>;draft?:(input:ReviewDraftInput)=>Promise<void>},linked:false,deferCancellation:false,allReports:new Map([[report.report_id,report]]),adoptions:[] as ReviewProposalAdoptionRequest[],adoptionResults:new Map<string,ReviewProposalAdoptionResponse>(),dropAdoptionOnce:false,events:new Map<string,RunEvent[]>()};
 }
 async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/review?tab=results`){
@@ -138,10 +148,13 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
     if(/\/upload-evidence(?:-\d+)?\/complete$/.test(path)){
       const uploadId=path.split('/').at(-2)!,index=Number(uploadId.match(/-(\d+)$/)?.[1]??1)-1;
       state.uploadCompletions.push(uploadId);
+      state.uploadCompletionRequests.push({path,input:fixtureRequest(request) as Dto<'UploadCompleteRequest'>});
       await state.uploadGates.complete?.(uploadId);
       const materialId='evidence-new'+(index?'-'+(index+1):'');
       const upload=state.uploads[index];let material=state.workspace.materials.find(m=>m.material_id===materialId || m.sha256===upload.sha256&&m.role===upload.role);
       if(!material){material={...upload,material_id:materialId,material_version:1,upload_id:uploadId,state:'persisted',persisted_at:now,error:null};state.workspace.materials.push(material);}
+      // Count actual HTTP attempts per original upload; never reset request evidence.
+      if(state.uploadCompletions.filter(value=>value===uploadId).length<=(state.dropUploadReceipts[uploadId]??0))return route.abort('connectionreset');
       if(state.dropUploadOnce){state.dropUploadOnce=false;return route.abort('connectionreset');}return reply(route,200,material);
     }
     if(path.startsWith('/artifacts/')&&!path.endsWith('/download')){state.artifactReads.push(path);const artifact=state.artifacts.get(path.split('/').at(-1)!);if(artifact)return reply(route,200,artifact);}
@@ -357,7 +370,7 @@ test('revision results expose handling reasons and locations without chat or exe
   await expect(dialog).toContainText('执行版本 V2 · revision-run-2');await expect(dialog).toContainText('来源报告：report-v1 · V1');await expect(dialog).toContainText('已修改 1 项 · 未修改 1 项 · 待补证 1 项');
   await expect(dialog.locator('[data-handling-finding="F02"]')).toContainText('缺少更名生效日期依据');await expect(dialog.locator('[data-handling-finding="F03"]')).toContainText('用户未选择此项');await expect(dialog).toContainText('段落：10');await expect(dialog).toContainText('已修改不代表复核通过');await expect(dialog).toContainText('公开信息未重新核验');
   expect(state.artifactReads).toEqual(['/artifacts/revision-2']);expect(state.requests).toHaveLength(0);expect(state.executes).toHaveLength(0);
-  await mkdir('test-evidence/m3-agent-progress-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-agent-progress-review/handling-desktop.png'});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:'test-evidence/m3-agent-progress-review/handling-narrow.png'});
+  await mkdir(test.info().outputPath('test-evidence/m3-agent-progress-review'),{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:test.info().outputPath('test-evidence/m3-agent-progress-review/handling-desktop.png')});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:test.info().outputPath('test-evidence/m3-agent-progress-review/handling-narrow.png')});
 });
 
 test('workbench handling reads the exact historical revision and returns to its history',async({page})=>{
@@ -426,11 +439,18 @@ test('latest revision downloads identify their execution and retain the source r
 });
 
 test('evidence upload retries the same session and pins original finding; differential execution stays explicit',async({page})=>{
-  const state=await setup(page);state.dropUploadOnce=true;await (await openFinding(page,'F02')).getByRole('button',{name:'补充材料',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('报告 R1 · 历史名称需要补充说明');
+  await page.clock.install();
+  const state=await setup(page);state.dropUploadReceipts['upload-evidence']=4;await (await openFinding(page,'F02')).getByRole('button',{name:'补充材料',exact:true}).click();await expect(page.getByRole('dialog')).toContainText('报告 R1 · 历史名称需要补充说明');
   await page.getByLabel('选择 DOCX／PDF／XLSX／CSV／TXT 或图片').setInputFiles({name:'更名证明.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic name change evidence')});
-  const row=page.locator('[data-review-recovery-id]').filter({hasText:'更名证明.txt'});await expect(row.locator('[data-review-recovery-action=resume]')).toBeEnabled();
+  const row=page.locator('[data-review-recovery-id]').filter({hasText:'更名证明.txt'});
+  // Three bounded automatic retries follow the original request at the production 2s delay.
+  await expect.poll(async()=>{await page.clock.runFor(2000);return state.uploadCompletions.length;}).toBe(4);
+  expect(state.uploadCompletions).toEqual(Array(4).fill('upload-evidence'));
+  await expect(row.locator('[data-review-recovery-action=resume]')).toBeEnabled();
+  expect(state.uploads).toHaveLength(1);expect(state.uploadBytes).toBe(1);
+  expect(state.executes).toHaveLength(0);expect(state.quoteCalls).toHaveLength(0);
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();await page.locator('#review-tab-materials').click();await row.locator('[data-review-recovery-action=resume]').click();
-  await expect(page.getByRole('dialog')).toContainText('材料已补充，核对下一步');expect(state.uploads).toHaveLength(1);expect(state.uploadBytes).toBe(1);expect(state.uploadCompletions).toEqual(['upload-evidence','upload-evidence']);expect(state.workspace.draft.evidence_links).toEqual([{report_id:'report-v1',finding_id:'F02',material_ref:{material_id:'evidence-new',material_version:1,sha256:hash('Synthetic name change evidence')}}]);expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);expect(state.plans).toHaveLength(0);expect(state.quoteCalls).toHaveLength(0);
+  await expect(page.getByRole('dialog')).toContainText('材料已补充，核对下一步');expect(state.uploads).toHaveLength(1);expect(state.uploadBytes).toBe(1);expect(state.uploadCompletions).toEqual(Array(5).fill('upload-evidence'));expect(state.workspace.draft.evidence_links).toEqual([{report_id:'report-v1',finding_id:'F02',material_ref:{material_id:'evidence-new',material_version:1,sha256:hash('Synthetic name change evidence')}}]);expect(state.executes).toHaveLength(0);expect(state.requests).toHaveLength(0);expect(state.plans).toHaveLength(0);expect(state.quoteCalls).toHaveLength(0);
   await page.getByRole('button',{name:'核对并重新核验'}).click();await expect(page.getByRole('dialog')).toHaveCount(0);await expect.poll(()=>state.executes.length).toBe(1);expect(state.executes[0]).toMatchObject({operation:'differential_review',source_report_id:'report-v1',finding_ids:['F02']});
 });
 
@@ -460,7 +480,7 @@ function addTypedProposal(state:ReturnType<typeof fixture>,operation:ReviewPropo
 test('workbench alone owns version history and retains stopped/failed snapshots and exact report navigation',async({page})=>{
   const state=fixture();for(const [index,status]of(['failed','cancelled'] as const).entries())state.history.push({...structuredClone(state.history[0]),version:index+2,run:state.makeRun(`run-${index+2}`,status),report_id:null,input:{...structuredClone(state.workspace.draft),requirements:[`保留的${status}版本要求`]},created_at:`2026-10-02T1${index+1}:00:00Z`});
   await setup(page,state,'#tasks');const project=page.locator(`.collection-project[data-project-id="${id}"]`);await expect(project).toBeVisible();await project.locator('[data-tasks]').click();await page.getByRole('button',{name:'复核版本记录',exact:true}).click();const dialog=page.getByRole('dialog');await expect(dialog.locator('.review-history-entry')).toHaveCount(3);await expect(dialog).toContainText('已停止');await expect(dialog).toContainText('处理失败');await dialog.getByText('查看本轮输入与处理范围',{exact:true}).first().click();await expect(dialog).toContainText('保留的cancelled版本要求');
-  await mkdir('test-evidence/m3-agent-progress-review',{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:'test-evidence/m3-agent-progress-review/history-desktop.png'});
+  await mkdir(test.info().outputPath('test-evidence/m3-agent-progress-review'),{recursive:true});await page.setViewportSize({width:1440,height:1000});await page.screenshot({path:test.info().outputPath('test-evidence/m3-agent-progress-review/history-desktop.png')});
   await dialog.getByRole('link',{name:'打开此版报告'}).click();await expect(page).toHaveURL(/report_id=report-v1/);await expect(page.getByRole('tab')).toHaveCount(3);await expect(page.locator('#review-workspace').getByRole('button',{name:'版本记录',exact:true})).toHaveCount(0);
   await page.setViewportSize({width:390,height:844});await expect(page.locator('.sidebar a.active')).toContainText('复核募集书');await expect(page.getByRole('link',{name:'返回任务进度与结果'})).toHaveAttribute('href','#tasks');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
 });
@@ -667,12 +687,20 @@ test('duplicate feedback: cached duplicate retains its notice when saving the dr
 });
 
 test('direct upload retries saved bytes without a modal or duplicate upload',async({page})=>{
- const state=fixture();state.dropUploadOnce=true;
+ await page.clock.install();const state=fixture();state.dropUploadReceipts['upload-evidence']=4;
  await setup(page,state,`#/projects/${id}/review?tab=materials`);
  await page.locator('[data-review-upload-role="audit"]').setInputFiles({name:'synthetic-evidence.txt',mimeType:'text/plain',buffer:Buffer.from('synthetic evidence')});
+ // Exhaust the first complete request and its three automatic retries before manual recovery.
+ await expect.poll(async()=>{await page.clock.runFor(2000);return state.uploadCompletions.length;}).toBe(4);
+ expect(state.uploadCompletions).toEqual(Array(4).fill('upload-evidence'));
+ const completion={path:`/projects/${id}/materials/uploads/upload-evidence/complete`,input:{byte_size:Buffer.byteLength('synthetic evidence'),sha256:hash('synthetic evidence')}};
+ expect(state.uploadCompletionRequests).toEqual(Array(4).fill(completion));
+ await expect(page.getByRole('dialog')).toHaveCount(0);expect(state.quoteCalls).toHaveLength(0);expect(state.executes).toHaveLength(0);
  const retry=page.locator('[data-review-recovery-action=resume]');await expect(retry).toBeEnabled();expect(state.uploadBytes).toBe(1);
  await retry.click();await expect(page.locator('[data-review-recovery-id]')).toHaveCount(0);
- expect(state.uploadBytes).toBe(1);expect(state.uploads).toHaveLength(1);expect(state.uploadCompletions).toEqual(['upload-evidence','upload-evidence']);expect(state.executes).toHaveLength(0);expect(state.quoteCalls).toHaveLength(0);
+ expect(state.uploadBytes).toBe(1);expect(state.uploads).toHaveLength(1);expect(state.uploadCompletions).toEqual(Array(5).fill('upload-evidence'));expect(state.executes).toHaveLength(0);expect(state.quoteCalls).toHaveLength(0);
+ expect(state.uploadCompletionRequests).toEqual(Array(5).fill(completion));expect(state.workspace.materials.filter(m=>m.material_id==='evidence-new')).toHaveLength(1);
+ await expect(page.getByRole('dialog')).toHaveCount(0);
  await expect(page.locator('.duplicate-upload-notice')).toHaveCount(0);
  await expect.poll(()=>state.workspace.draft.material_versions.some(m=>m.material_id==='evidence-new')).toBe(true);
 });
@@ -719,7 +747,7 @@ for(const width of [1360,390])test(`upload queue keeps other pickers usable thro
 });
 
 test('unknown first upload holds the ordered queue and explicit recovery preserves its original session',async({page})=>{
- const state=fixture();state.dropUploadOnce=true;
+ await page.clock.install();const state=fixture();state.dropUploadReceipts['upload-evidence']=4;
  await setup(page,state,`#/projects/${id}/review?tab=materials`);
  await page.locator('[data-review-upload-role="audit"]').setInputFiles([
   {name:'synthetic-first.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic first evidence')},
@@ -727,15 +755,45 @@ test('unknown first upload holds the ordered queue and explicit recovery preserv
  ]);
  const first=page.locator('[data-review-drop="audit"] .material-file-row').filter({hasText:'synthetic-first.txt'});
  const second=page.locator('[data-review-drop="audit"] .material-file-row').filter({hasText:'synthetic-second.txt'});
+ await expect.poll(async()=>{await page.clock.runFor(2000);return state.uploadCompletions.length;}).toBe(4);
+ expect(state.uploadCompletions).toEqual(Array(4).fill('upload-evidence'));
+ const completion={path:`/projects/${id}/materials/uploads/upload-evidence/complete`,input:{byte_size:Buffer.byteLength('Synthetic first evidence'),sha256:hash('Synthetic first evidence')}};
+ expect(state.uploadCompletionRequests).toEqual(Array(4).fill(completion));
+ expect(state.workspace.draft.material_versions.some(m=>m.material_id==='evidence-new')).toBe(false);
+ expect(state.quoteCalls).toHaveLength(0);expect(state.executes).toHaveLength(0);
  await expect(first.locator('[data-review-recovery-action=resume]')).toBeEnabled();
  await expect(second.locator('[data-review-recovery-action=resume]')).toBeDisabled();expect(state.uploadBytes).toBe(1);expect(state.uploads).toHaveLength(1);
  await expect(page.locator('#review-materials-panel .review-footer-actions [data-review-action="review"]')).toBeDisabled();
  await first.locator('[data-review-recovery-action=resume]').click();await expect(first).toContainText('已保存');
  await expect(second.locator('[data-review-recovery-action=resume]')).toBeEnabled();expect(state.uploadBytes).toBe(1);expect(state.uploads).toHaveLength(1);
+ expect(state.uploadCompletionRequests).toEqual(Array(5).fill(completion));
  await second.locator('[data-review-recovery-action=resume]').click();await expect(page.locator('[data-review-recovery-id]')).toHaveCount(0);
- expect(state.uploads).toHaveLength(2);expect(state.uploadBytes).toBe(2);expect(state.uploadCompletions).toEqual(['upload-evidence','upload-evidence','upload-evidence-2']);expect(state.quoteCalls).toHaveLength(0);expect(state.executes).toHaveLength(0);
+ expect(state.uploads).toHaveLength(2);expect(state.uploadBytes).toBe(2);expect(state.uploadCompletions).toEqual([...Array(5).fill('upload-evidence'),'upload-evidence-2']);expect(state.quoteCalls).toHaveLength(0);expect(state.executes).toHaveLength(0);
  await expect(page.locator('#review-materials-panel .review-footer-actions [data-review-action="review"]')).toBeEnabled();
  expect(state.workspace.draft.material_versions.filter(m=>m.material_id==='evidence-new')).toHaveLength(1);
+ expect(state.uploadCompletionRequests).toEqual([...Array(5).fill(completion),{path:`/projects/${id}/materials/uploads/upload-evidence-2/complete`,input:{byte_size:Buffer.byteLength('Synthetic second evidence'),sha256:hash('Synthetic second evidence')}}]);
+ expect(state.workspace.draft.material_versions.map(m=>m.material_id)).toEqual(['material-0','material-1','evidence-new','evidence-new-2']);
+});
+
+test('one lost upload receipt reconciles automatically and continues the ordered queue without replaying bytes',async({page})=>{
+ await page.clock.install();const state=fixture();state.dropUploadOnce=true;
+ await setup(page,state,`#/projects/${id}/review?tab=materials`);
+ await page.locator('[data-review-upload-role="audit"]').setInputFiles([
+  {name:'synthetic-first.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic first evidence')},
+  {name:'synthetic-second.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic second evidence')}
+ ]);
+ await expect.poll(async()=>{await page.clock.runFor(2000);return state.uploadCompletions.length;}).toBe(3);
+ await expect(page.locator('[data-review-recovery-id]')).toHaveCount(0);
+ expect(state.uploads).toHaveLength(2);expect(state.uploadBytes).toBe(2);
+ expect(state.uploadCompletions).toEqual(['upload-evidence','upload-evidence','upload-evidence-2']);
+ const completion={path:`/projects/${id}/materials/uploads/upload-evidence/complete`,input:{byte_size:Buffer.byteLength('Synthetic first evidence'),sha256:hash('Synthetic first evidence')}};
+ expect(state.uploadCompletionRequests).toEqual([completion,completion,{path:`/projects/${id}/materials/uploads/upload-evidence-2/complete`,input:{byte_size:Buffer.byteLength('Synthetic second evidence'),sha256:hash('Synthetic second evidence')}}]);
+ expect(state.uploads.map(upload=>upload.filename)).toEqual(['synthetic-first.txt','synthetic-second.txt']);
+ expect(state.workspace.draft.material_versions.map(m=>m.material_id)).toEqual(['material-0','material-1','evidence-new','evidence-new-2']);
+ expect(state.workspace.materials.filter(m=>m.material_id==='evidence-new')).toHaveLength(1);
+ expect(state.quoteCalls).toHaveLength(0);expect(state.executes).toHaveLength(0);
+ await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.duplicate-upload-notice')).toHaveCount(0);
+ await expect(page.locator('#review-materials-panel .review-footer-actions [data-review-action="review"]')).toBeEnabled();
 });
 
 test('draft-save retry continues saved material and invalid file can be removed',async({page})=>{
@@ -815,7 +873,7 @@ test('synthetic workspace design scenes',async({page})=>{
  const capture=async(name:string)=>{
    if(['results','progress','updating'].includes(name))await expect(page.getByRole('navigation',{name:'三个复核维度'})).toBeVisible();
    scenes[name]=await page.locator('#app').innerHTML();
-   const output=process.env.BB_WORKSPACE_EVIDENCE??'../../docs/acceptance/workspace-ux-20261005';await mkdir(output,{recursive:true});
+   const output=process.env.BB_WORKSPACE_EVIDENCE??test.info().outputPath('workspace-ux-20261005');await mkdir(output,{recursive:true});
    for(const width of [1360,390]){await page.setViewportSize({width,height:width===1360?900:844});await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:output+'/implementation-'+name+'-'+width+'.png',fullPage:true});}
    await page.setViewportSize({width:1360,height:900});
  };
@@ -827,15 +885,15 @@ test('synthetic workspace design scenes',async({page})=>{
  await page.reload();await expect(page.locator('#review-progress-bar')).toContainText('正在复核募集书');await capture('progress');
  state.history[0].operation='revision';run.stage='file_authoring';await page.reload();await capture('updating');
  if(process.env.BB_UPLOAD_EVIDENCE)scenes.uploading=JSON.parse(await readFile(process.env.BB_UPLOAD_EVIDENCE+'/uploading-scene.json','utf8'));
- const output='../../product-prototype/public';
- await writeFile(output+'/workspace-ux-scenes.json',JSON.stringify(scenes,null,2)+'\n');
+ const json=JSON.stringify(scenes,null,2)+'\n';
  const css=await page.evaluate(()=>[...document.querySelectorAll('style[data-vite-dev-id]')].map(s=>s.textContent).join('\n'));
- await writeFile(output+'/workspace-ux-preview.css',css);
+ await generatedWorkspaceScenes.publish(json,css);
 });
 
 test('workspace prototype parity at desktop and narrow widths',async({page})=>{
  test.skip(!process.env.BB_WORKSPACE_DESIGN,'Dedicated synthetic design comparison only.');
- const output=process.env.BB_WORKSPACE_EVIDENCE??'../../docs/acceptance/workspace-ux-20261005';await mkdir(output,{recursive:true});
+ await useGeneratedWorkspaceScenes(page);
+ const output=process.env.BB_WORKSPACE_EVIDENCE??test.info().outputPath('workspace-ux-20261005');await mkdir(output,{recursive:true});
  for(const name of ['create','materials','results','progress','updating',...(process.env.BB_UPLOAD_EVIDENCE?['uploading']:[])]){
   for(const width of [1360,390]){
    await page.setViewportSize({width,height:width===1360?900:844});
@@ -861,7 +919,7 @@ test('review navigation retains the app scale while keeping its own layout',asyn
   const updateStepsBottom=await page.locator('.stepper').evaluate(el=>el.getBoundingClientRect().bottom);
   const updateSteps=await page.locator('.stepper').evaluate(el=>({font:getComputedStyle(el).fontSize,gap:getComputedStyle(el).gap,height:el.getBoundingClientRect().height}));
   const output=process.env.BB_SCALE_EVIDENCE;if(output){await mkdir(output,{recursive:true});await page.screenshot({path:`${output}/update-entry-${width}.png`,fullPage:true});}
-  if(width===390)await page.getByRole('button',{name:'打开菜单',exact:true}).click();
+  if(await page.getByRole('button',{name:'打开菜单',exact:true}).isVisible())await page.getByRole('button',{name:'打开菜单',exact:true}).click();
   await page.getByRole('link',{name:'复核募集书',exact:true}).click();
   await page.getByRole('link',{name:'＋ 新建项目',exact:true}).click();
   await expect(page.getByRole('heading',{name:'准备复核项目'})).toBeVisible();const review=await measure();expect(review).toEqual(update);
@@ -986,6 +1044,7 @@ test('review live progress refreshes actual debit and activities, survives reloa
 test('review live design comparison uses independent synthetic markup',async({page})=>{
   const output=process.env.BB_REVIEW_LIVE_EVIDENCE;test.skip(!output,'Optional visual evidence');
   await page.route('http://prototype.test/**',async route=>{const path=new URL(route.request().url()).pathname;if(!/^\/[\w.-]+$/.test(path))return route.fulfill({status:404});return route.fulfill({body:await readFile('../../product-prototype/public'+path),contentType:path.endsWith('.css')?'text/css':path.endsWith('.js')?'text/javascript':path.endsWith('.svg')?'image/svg+xml':path.endsWith('.json')?'application/json':'text/html'});});
+  await useGeneratedWorkspaceScenes(page);
   for(const width of [1440,390])for(const scene of ['materials','running']){
     await page.setViewportSize({width,height:width===1440?960:844});await page.goto('http://prototype.test/'+(scene==='materials'?'workspace-ux.html?scene=materials':'review-live-progress.html'));
     await expect(page.locator(scene==='materials'?'#review-materials-panel':'.review-live-workspace')).toBeVisible();await page.locator('#design-controls').evaluate(el=>(el as HTMLElement).style.display='none');
@@ -1031,7 +1090,7 @@ for(const width of [1440,390])test(`delete review uploads, retry failures and pr
   await expect.poll(()=>s.workspace.draft.source_material_ref?.material_id).toBe('evidence-new');
   await expect(page.getByRole('button',{name:'删除 正确募集书.docx',exact:true})).toBeVisible();
   expect(deleted).toBe(2);expect(JSON.stringify(s.history)).toBe(history);expect(s.executes).toHaveLength(0);
-  if(process.env.BB_DELETE_EVIDENCE){await mkdir('test-evidence/material-delete-20261010',{recursive:true});await page.locator('[data-review-drop=historical]').screenshot({path:`test-evidence/material-delete-20261010/review-${width}.png`});}
+  if(process.env.BB_DELETE_EVIDENCE){await mkdir(test.info().outputPath('test-evidence/material-delete-20261010'),{recursive:true});await page.locator('[data-review-drop=historical]').screenshot({path:test.info().outputPath(`test-evidence/material-delete-20261010/review-${width}.png`)});}
 });
 
 test('review upload deletion unlocks after cancellation and repeated upload creates a fresh material',async({page})=>{

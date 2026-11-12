@@ -37,7 +37,7 @@ const TOOL_FILES=Object.freeze([
   'python/tests/test_format_plan.py','python/bondbuddy_file_authoring/template_manifest.py',
   'python/bondbuddy_file_authoring/word_patch.py','python/bondbuddy_file_authoring/read_material.py',
   'scripts/verify-prospectus-acceptance.mjs','scripts/verify-prospectus-acceptance.test.mjs',
-  'scripts/verify-prospectus-expanded-amounts.test.mjs',
+  'scripts/verify-prospectus-expanded-amounts.test.mjs', 'scripts/verify-prospectus-pagination.test.mjs',
   'scripts/prospectus_acceptance_inspect.py','scripts/prospectus_acceptance_inspect_test.py','scripts/prospectus-financial-policy.json','scripts/prospectus_extended_financial_test.py']);
 const fail=code=>{throw new Error(`PROSPECTUS_ACCEPTANCE_${code}`);};
 const ensure=(value,code)=>{if(!value)fail(code);};
@@ -52,6 +52,14 @@ export function validateHumanReviewer(reviewer,now=Date.now()){
   const reviewed=timestamp(reviewer.reviewed_at);
   ensure(reviewed<=now+60000&&now-reviewed<=7*86400000,'REVIEW_DATE_INVALID');
   return reviewed;
+}
+/** 2026-11-11 #989: the same three conditions as document_size.compare_size.
+ * These are inspected PDF page counts; neither cached Word metadata nor a
+ * model declaration can supply them. All separate human/render checks remain. */
+export function validateRenderedPagination(sourcePages,cleanPages,paginationNote){
+  ensure([sourcePages,cleanPages].every(value=>Number.isSafeInteger(value)&&value>0),'RENDER_PAGE_COVERAGE_INCOMPLETE');
+  const collapse=sourcePages>=50&&sourcePages-cleanPages>=20&&BigInt(cleanPages)*10n<BigInt(sourcePages)*7n;
+  ensure(!collapse&&text(paginationNote),'RENDER_PAGINATION_REGRESSION');
 }
 export function validateMeasuredUsage(usage){
   ensure(usage?.status==='measured'&&Number.isSafeInteger(usage.input_tokens)&&usage.input_tokens>0&&Number.isSafeInteger(usage.output_tokens)
@@ -241,7 +249,7 @@ export async function verifyProspectusAcceptance({root=repo,file=process.env.BB_
     ensure(r&&r.sha256===files[`${name}_pdf`].sha256&&r.docx_sha256===files[name].sha256&&r.pages===pages&&Number.isSafeInteger(pages)&&pages>0
       &&Array.isArray(r.inspected_pages)&&r.inspected_pages.length===pages&&r.inspected_pages.every((p,index)=>p===index+1),'RENDER_PAGE_COVERAGE_INCOMPLETE');
   }
-  ensure(inspection.pages[2]>=inspection.pages[0]*.8&&text(render.pagination_note),'RENDER_PAGINATION_REGRESSION');
+  validateRenderedPagination(inspection.pages[0],inspection.pages[2],render.pagination_note);
   ensure(files.review_record.bytes.length>=64,'HUMAN_REVIEW_RECORD_REQUIRED');
   // Detect a source or tool change while private artifacts were inspected.
   validateBinding({...expected,prompt_tools_sha256:pipelineFingerprint(root)},expected);

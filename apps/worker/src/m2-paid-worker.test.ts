@@ -21,7 +21,8 @@ test('fixed-price worker completes and reuses a durable result with unknown usag
   { skip: !database || !blobConnection, timeout: 60000 }, async () => {
   const pool = new Pool({ connectionString: database });
   const owner = `synthetic-m2-${uid()}`, blobs = azureBlobs(blobConnection!, 'bondbuddy-m2-worker');
-  const app = createServer({ pool, blobs, allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true });
+  // This historical contract submits free M1 first, then explicitly reserves the original 17900-point quote.
+  const app = createServer({ pool, blobs, allowedOrigin: 'http://bondbuddy.test', principal: async () => ({ userId: owner, csrfVerified: true }), enableSyntheticQueue: true, historicalBillingFixture: true, enablePaidAuthoring: false });
   const root = await mkdtemp(join(tmpdir(), 'bb-m2-worker-'));
   const config: CodexAdapterConfig = { command: [process.execPath, fileURLToPath(new URL('../test-fixtures/codex/fake-codex.mjs', import.meta.url))],
     model_id: 'synthetic-model', model_provider: 'deepseek', base_url: 'https://api.deepseek.com', wire_api: 'responses', model_config_version: 'synthetic-m2',
@@ -40,6 +41,7 @@ test('fixed-price worker completes and reuses a durable result with unknown usag
       const submitted = await send('POST', '/api/v1/runs/execute', { execution_request_id: uid(), project_id: projectId, input_revision: 1,
         input_hash: input.json().input_hash, task_kind: 'update', input_manifest_ref: 'synthetic', storage_origin: 'cloud', workspace_id: 'synthetic' });
       assert.equal(submitted.statusCode, 202, submitted.body);
+      assert.equal(submitted.json().billing_mode, 'platform_trial');assert.equal(submitted.json().reservation_id, null);
       const runId = submitted.json().run_id;
       if (paid) await transaction(pool, async c => {
         await grantCredits(c, { owner, source: 'purchase', key: uid(), points: 17900, expiresAt: null, actor: 'synthetic', reason: 'test only' });
@@ -53,6 +55,11 @@ test('fixed-price worker completes and reuses a durable result with unknown usag
       });
       const lease = await claim(pool); assert.ok(lease); assert.equal(lease.runId, runId);
       const run = (await pool.query('SELECT * FROM bb_runs WHERE id=$1', [runId])).rows[0];
+      assert.equal(run.billing_mode, paid ? 'fixed_credits' : 'platform_trial');
+      if (paid) {
+        const contract = (await pool.query('SELECT q.points::text,q.price_version,h.billing_policy FROM bb_credit_reservations h JOIN bb_credit_quotes q ON q.id=h.quote_id WHERE h.id=$1 AND h.run_id=$2', [run.reservation_id, runId])).rows[0];
+        assert.deepEqual(contract, { points: '17900', price_version: 'synthetic-v1', billing_policy: 'authoring_balance_v2' });
+      } else assert.equal(run.reservation_id, null);
       const ctx: StageContext = { pool, blobs, lease, run, signal: new AbortController().signal, checkpoint: {}, values: new Map() };
       const stage = codexModelStage({ name: 'synthetic_m2_model', logicalCallId: 'synthetic-m2-call', config,
         buildPrompt: async () => 'SCENARIO:missing_usage', schema: { type: 'object' }, validate: v => (v as any)?.answer === 'OK', resultSchemaVersion: 'synthetic-v1' });

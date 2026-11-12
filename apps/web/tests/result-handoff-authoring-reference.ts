@@ -39,7 +39,8 @@ export async function captureAuthoringHandoff(page:Page,directory:string,name:st
     contextText:document.querySelector<HTMLElement>('[data-artifact-result-context]')?.innerText??null,
     contextVisible:!!document.querySelector<HTMLElement>('[data-artifact-result-context]')?.getClientRects().length,
     recordTime:document.querySelector('[data-artifact-result-context] time')?.getAttribute('datetime')??null,
-    currentProspectus:document.querySelector('.prospectus-panel header p')?.textContent??null,
+    currentProspectus:document.querySelector('.prospectus-panel [data-prospectus-version].is-selected .reference-file-meta')?.textContent??null,
+    currentProspectusVersion:document.querySelector('.prospectus-panel [data-prospectus-version].is-selected')?.getAttribute('data-prospectus-version')??null,
     downloadText:document.querySelector<HTMLElement>('#execution-delivery .artifact-download-panel')?.innerText??null}));
   expect(state.width).toBe(1440);expect(state.scrollWidth).toBeLessThanOrEqual(1441);
   await panel.screenshot({path:join(directory,name+'.png')});await writeFile(join(directory,name+'.json'),JSON.stringify({...state,audit},null,2));return state;

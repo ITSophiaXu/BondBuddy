@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
+import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import { azureBlobs } from '../../api/dist/data.js';
 import { runMaterialParseOnce } from '../../worker/src/material-parse-job.js';
 import { runDocumentParser, validateDocumentParseResponse, type DocumentParseRequest } from '../../worker/src/document-parser.js';
@@ -12,7 +13,7 @@ import { account, login } from './live-helpers';
 
 test.skip(process.env.BB_E2E_PARSE !== '1', 'Requires a dedicated migrated PostgreSQL/API/Azurite and Python, never production.');
 
-test('real upload/worker/Python profile, one durable job after reuse, reopen/relogin, OCR pause and foreign denial', async ({ page, context, playwright }) => {
+test('legacy project real upload/worker/Python profile, one durable job after reuse, reopen/relogin, OCR pause and foreign denial', async ({ page, context, playwright }) => {
   test.setTimeout(120000);
   const root = resolve(fileURLToPath(new URL('../../..', import.meta.url)));
   const python = process.env.BB_PYTHON ?? 'python3';
@@ -36,18 +37,37 @@ test('real upload/worker/Python profile, one durable job after reuse, reopen/rel
   try {
     const user = await account(playwright), foreign = await account(playwright);
     await login(page, user);
-    await page.getByRole('link', { name: '新建更新项目', exact: true }).first().click();
-    await page.getByLabel('项目名称 必填', { exact: true }).fill('合成上传识别联调');
-    await page.getByRole('radio', { name: '有', exact: true }).check();
-    await page.getByLabel('发行市场', { exact: true }).selectOption('nafmii');
-    await page.getByLabel('发行方式', { exact: true }).selectOption('mtn');
-    await page.getByRole('button', { name: '创建项目，继续提供材料' }).click();
+    // Seed a pre-unified synthetic project through the authenticated public API.
+    // Current #/new creates unified_v1, whose original bytes are intentionally not
+    // enqueued for the legacy parser (covered by original-material-upload.test.ts).
+    const details = { ...emptyUpdateDetails(), has_historical: true };
+    expect(details.authoring_mode).toBeUndefined();
+    const csrf = (await page.context().cookies()).find(cookie => cookie.name === 'bb_csrf')!.value;
+    // Browser fetch preserves the real Secure-cookie localhost session; do not
+    // route authenticated fixture writes through Playwright's Node HTTP context.
+    const created = await page.evaluate(async ({ details, csrf }) => {
+      const response = await fetch('/api/v1/projects', { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-BB-CSRF': csrf }, body: JSON.stringify({
+          name: '合成上传识别联调', kind: 'update', issuer_name: '合成上传识别联调有限公司', market: 'nafmii', offering: 'mtn', update_details: details
+        }) });
+      return { status: response.status, body: await response.json() };
+    }, { details, csrf });
+    expect(created.status).toBe(201);
+    const legacy = created.body; projectId = legacy.project_id;
+    expect(legacy.update_details.authoring_mode).toBeUndefined();
+    expect(legacy).toMatchObject({ name: '合成上传识别联调', kind: 'update', market: 'nafmii', offering: 'mtn' });
+    await page.goto(`/#/projects/${projectId}`);
     await expect(page.getByRole('heading', { name: '合成上传识别联调', exact: true })).toBeVisible();
-    projectId = decodeURIComponent(new URL(page.url()).hash.split('/').at(-1)!);
-    const savedResponse = page.waitForResponse(r => r.url().endsWith('/complete') && r.request().method() === 'POST');
-    await page.getByLabel('为本企业历史募集书选择文件').setInputFiles(filename);
+    // The real upload-confirmation consumer finalizes the original declaration after 202.
+    const completedUpload = () => page.waitForResponse(r => r.url().includes(`/projects/${projectId}/materials/uploads/`) && r.url().endsWith('/complete') && r.request().method() === 'POST' && r.status() !== 202);
+    const savedResponse = completedUpload();
+    const sourceFile = () => page.getByLabel('募集书新版本文件', { exact: true });
+    await expect(sourceFile()).toBeEnabled();
+    await sourceFile().setInputFiles(filename);
     await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-history.docx' })).toContainText('服务器已确认保存', { timeout: 15000 });
     const saved = await savedResponse; expect(saved.status()).toBe(200); const material = await saved.json();
+    const storedProject = await page.evaluate(async path => { const response = await fetch(path, { credentials: 'same-origin' }); return { status: response.status, body: await response.json() }; }, `/api/v1/projects/${projectId}`); expect(storedProject.status).toBe(200);
+    expect(storedProject.body.update_details.authoring_mode).toBeUndefined();
     await expect(page.locator('.material-processing')).toContainText('等待处理');
     await expect(page.locator('.source-profile')).toHaveCount(0);
     const route = page.url(); await page.close(); page = await context.newPage(); await page.goto(route);
@@ -61,15 +81,20 @@ test('real upload/worker/Python profile, one durable job after reuse, reopen/rel
     expect(profile.latest_reporting_cutoff.value).toBe('2024-12-31');
     await expect(page.getByLabel('发行市场', { exact: true })).toHaveValue('nafmii');
     await expect(page.getByLabel('发行方式', { exact: true })).toHaveValue('mtn');
-    await page.getByLabel('为本企业历史募集书选择文件').setInputFiles({ name: 'renamed-history.docx', mimeType: material.media_type, buffer: readFileSync(filename) });
-    await expect(page.locator('#material-recovery-status')).toContainText('1 份重复上传');
+    const reusedResponse = completedUpload();
+    await expect(sourceFile()).toBeEnabled();
+    await sourceFile().setInputFiles({ name: 'renamed-history.docx', mimeType: material.media_type, buffer: readFileSync(filename) });
+    const reused = await reusedResponse; expect(reused.status()).toBe(200);
+    expect(await reused.json()).toMatchObject({ material_id: material.material_id, material_version: material.material_version, sha256: material.sha256, upload_id: material.upload_id });
+    await expect(page.locator('[data-prospectus-files] [data-prospectus-version]')).toHaveCount(1);
+    await expect(page.locator('[data-prospectus-files] [data-prospectus-version]')).toContainText('synthetic-history.docx');
     await expect(page.locator('.material-file-row')).toHaveCount(1);
     expect((await pool.query("SELECT id FROM bb_jobs WHERE job_type='parse' AND material_id=$1", [material.material_id])).rowCount).toBe(1);
     expect(await worker()).toBe('idle');
     expect((await pool.query('SELECT id FROM bb_runs WHERE project_id=$1', [projectId])).rowCount).toBe(0);
     expect((await pool.query('SELECT profile_version FROM bb_historical_profiles WHERE material_id=$1', [material.material_id])).rowCount).toBe(1);
 
-    const scanResponse = page.waitForResponse(r => r.url().endsWith('/complete') && r.request().method() === 'POST');
+    const scanResponse = completedUpload();
     await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: 'synthetic-scan.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64') });
     expect((await scanResponse).status()).toBe(200); expect(await worker()).toBe('paused');
     await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-scan.png' })).toContainText('处理暂缓', { timeout: 20000 });

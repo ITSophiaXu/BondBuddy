@@ -54,8 +54,8 @@ test('binary template POST exposes real progress, preserves CSRF and auth retry 
 
 for(const width of [1440,390])test('shared upload prototype reference at '+width,async({page})=>{
  await page.setViewportSize({width,height:960});const {resolve}=await import('node:path');const path=resolve(process.cwd(),'../../product-prototype/public/upload-progress.html').replaceAll('\\','/');
- await page.goto('/@fs/'+path);await expect(page.getByRole('progressbar')).toHaveCount(3);await mkdir('test-evidence/all-upload-progress',{recursive:true});
- await page.screenshot({path:'test-evidence/all-upload-progress/prototype-'+width+'.png',fullPage:true});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await page.goto('/@fs/'+path);await expect(page.getByRole('progressbar')).toHaveCount(3);const dir=test.info().outputPath('all-upload-progress');await mkdir(dir,{recursive:true});
+ await page.screenshot({path:dir+'/prototype-'+width+'.png',fullPage:true});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
 
 for(const failure of ['abort','server'] as const)test('binary template POST handles '+failure+' without replay',async({page})=>{

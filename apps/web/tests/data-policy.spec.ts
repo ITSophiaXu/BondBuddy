@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 // #6 synthetic browser check: policy copy is rendered from the API field, and deletion actions call the API.
@@ -25,6 +27,10 @@ async function install(page: Page, calls: string[], options: { blockProject?: bo
       calls.push('delete-project');
       return options.blockProject ? json(route, 409, { code: 'PROJECT_DELETE_BLOCKED' }) : route.fulfill({ status: 204 });
     }
+    // Current workspace reads must succeed before the original material deletion controls become editable.
+    if (path === `/api/v1/projects/${projectId}/prospectus-versions` && method === 'GET') return json(route, 200, { project_id: projectId, current_version_id: null, selection_revision: 0, inactive_material_ids: [], versions: [] });
+    if (path === `/api/v1/projects/${projectId}/tasks` && method === 'GET') return json(route, 200, taskPage(projectId, []));
+    if (path === `/api/v1/projects/${projectId}/messages` && method === 'GET') return json(route, 200, { conversation_id: projectId, items: [], project_message_set_ref: { version: 1, content_sha256: createHash('sha256').update('bondbuddy:empty-project-messages').digest('hex'), message_ids: [] }, next_cursor: null, has_more: false });
     if (path === `/api/v1/projects/${projectId}/events`) return json(route, 200, { items: materialLive ? [{ event_id: 'e1', schema_version: 1, trace_id: 't1', project_id: projectId, seq: 1, occurred_at: now, type: 'material.upload_progress', payload: { material_id: material.material_id, uploaded_bytes: 2048, total_bytes: 2048 } }] : [], next_cursor: null });
     if (path === `/api/v1/projects/${projectId}/materials/${material.material_id}` && method === 'GET') return materialLive ? json(route, 200, material) : json(route, 404, { code: 'NOT_FOUND' });
     if (path === `/api/v1/projects/${projectId}/materials/${material.material_id}` && method === 'DELETE') { calls.push('delete-material'); materialLive = false; return route.fulfill({ status: 204 }); }

@@ -110,8 +110,27 @@ test('annual payment, monthly release, original consideration and whole-contract
    assert.equal((await schedule(who)).length,0);assert.equal((await subscriptionAccount(pool,who)).available_points,'21000');await audit(who);
    await setSubscriptionAutoRenew(pool,who,a.subscription.id,{request_id:uid(),enabled:true},[provider]);await refreshSubscriptionMandate(pool,who,a.subscription.id,[provider]);
    await setClock(who,'2028-03-01T12:00:00.000Z');const annual={...a.input,request_id:uid(),billing_cycle:'annual' as const};
-   await assert.rejects(createSubscriptionCheckout(pool,who,annual,[provider]),e=>(e as any).code==='PAYMENT_INVALID');
-   await cancelSubscription(pool,who,a.subscription.id,uid(),[provider]);const changed=await createSubscriptionCheckout(pool,who,annual,[provider]);
+   const orderCount=async()=>(await pool.query('SELECT count(*)::int n FROM bb_recharge_orders WHERE owner_user_id=$1',[who])).rows[0].n;
+   const ordersBefore=await orderCount();
+   const noAnnualOrder=async()=>{
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_recharge_orders WHERE owner_user_id=$1 AND request_id=$2',[who,annual.request_id])).rows[0].n,0,'a rejected annual key never creates an order');
+    assert.equal(await orderCount(),ordersBefore,'rejection does not create another checkout');
+   };
+   const rejection=async()=>(await pool.query('SELECT request_hash,message,created_at FROM bb_subscription_checkout_rejections WHERE owner_user_id=$1 AND request_id=$2',[who,annual.request_id])).rows;
+   await assert.rejects(createSubscriptionCheckout(pool,who,annual,[provider]),e=>(e as any).code==='SUBSCRIPTION_CHECKOUT_REJECTED');
+   await noAnnualOrder();const originalRejection=await rejection();assert.equal(originalRejection.length,1);
+   await assert.rejects(createSubscriptionCheckout(pool,who,annual,[provider]),{code:'SUBSCRIPTION_CHECKOUT_REJECTED',status:409});
+   await noAnnualOrder();assert.deepEqual(await rejection(),originalRejection,'active mandate retry retains the same durable rejection');
+   await cancelSubscription(pool,who,a.subscription.id,uid(),[provider]);
+   assert.equal((await subscriptionAccount(pool,who)).subscription?.mandate_status,'cancelled');
+   await assert.rejects(createSubscriptionCheckout(pool,who,annual,[provider]),{code:'SUBSCRIPTION_CHECKOUT_REJECTED',status:409});
+   await noAnnualOrder();assert.deepEqual(await rejection(),originalRejection,'verified cancellation never revives a rejected key');
+   const fresh={...annual,request_id:uid()},changed=await createSubscriptionCheckout(pool,who,fresh,[provider]);
+   assert.notEqual(changed.order.order_id,a.order.order_id);
+   assert.equal((await pool.query('SELECT request_id FROM bb_recharge_orders WHERE owner_user_id=$1 AND id=$2',[who,changed.order.order_id])).rows[0].request_id,fresh.request_id);
+   assert.equal(await orderCount(),ordersBefore+1,'only the new explicit annual request creates one order');
+   assert.equal((await pool.query('SELECT count(*)::int n FROM bb_recharge_orders WHERE owner_user_id=$1 AND request_id=$2',[who,annual.request_id])).rows[0].n,0);
+   assert.deepEqual(await rejection(),originalRejection,'new purchase leaves the rejected annual key unchanged');
    assert.equal(changed.subscription.billing_cycle,'annual');assert.equal(changed.subscription.auto_renew,false);assert.equal(changed.order.amount_fen,214920);
   });
   await t.test('year mandate binds annual amount/interval, can be reopened after cancellation, and charges once only at anniversary',async()=>{

@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Pool } from 'pg';
+import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import { isolatedTestDatabase } from './test-database.js';
 import { azureBlobs, digest } from './data.js';
 import { createServer } from './server.js';
 import { PDF, pdfSample } from './upload-safety.samples.js';
+import { quoteSyntheticAuthoringRun, uploadSyntheticReference } from './test-authoring-source.js';
 
 const origin='http://bondbuddy.test';
 test('production seam rejects arbitrary client identity and reports honest capabilities',async()=>{
@@ -39,7 +41,9 @@ test('PostgreSQL 16 and Azurite owner isolation, snapshots, conflicts, outbox', 
   const pool=new Pool({connectionString:ownerIsolationConnection});
   let active='synthetic-alice';
   const blobs=azureBlobs(blobConnection!);
-  const app=createServer({pool,blobs,principal:async()=>({userId:active,csrfVerified:true}),allowedOrigin:origin,enableRunStaging:true});
+  // This legacy mechanics case executes an older snapshot after editing the draft and keeps exact outbox/parse counts.
+  const app=createServer({pool,blobs,principal:async()=>({userId:active,csrfVerified:true}),allowedOrigin:origin,enableRunStaging:true,
+    historicalBillingFixture:true,enablePaidAuthoring:false});
   const send=async(method:string,url:string,payload?:unknown,extra:Record<string,string>={})=>await app.inject({method:method as any,url,headers:{origin,...extra},payload:payload as any});
   const create=async(name:string)=>send('POST','/api/v1/projects',{name,kind:'update',issuer_name:null,market:'nafmii',offering:'mtn'});
   try{
@@ -164,16 +168,22 @@ test('username/password sessions preserve owner resources across relogin', {skip
     for(const header of first.headers['set-cookie'] as string[]){assert.match(header,/Secure; SameSite=Strict/);if(!header.startsWith('bb_csrf='))assert.match(header,/HttpOnly/);}
     assert.equal((await send('POST','/api/v1/projects',{name:'Denied',kind:'update',issuer_name:null,market:null,offering:null},c3,{'x-bb-csrf':'wrong'})).statusCode,403);
     assert.equal((await send('POST','/api/v1/projects',{name:'Denied',kind:'update',issuer_name:null,market:null,offering:null},c3,{origin:'https://evil.test'})).statusCode,403);
-    const created=await send('POST','/api/v1/projects',{name:'Synthetic owner project',kind:'update',issuer_name:null,market:null,offering:null},c3);assert.equal(created.statusCode,201,created.body);
+    const created=await send('POST','/api/v1/projects',{name:'Synthetic owner project',kind:'update',issuer_name:'Synthetic owner issuer',market:'sse',offering:'private',
+      update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1',reporting_cutoff:'2026-09-30'}},c3);assert.equal(created.statusCode,201,created.body);
     const project=created.json().project_id;
     const bytes=pdfSample();const sha=digest(bytes);
     const upload=await send('POST',`/api/v1/projects/${project}/materials/uploads`,{filename:'synthetic.pdf',media_type:PDF,byte_size:bytes.length,sha256:sha,role:'audit'},c3);assert.equal(upload.statusCode,201,upload.body);
     assert.equal((await send('PUT',upload.json().upload_url,bytes,c3,{'content-type':'application/octet-stream'})).statusCode,204);
     const complete=await send('POST',`/api/v1/projects/${project}/materials/uploads/${upload.json().upload_id}/complete`,{byte_size:bytes.length,sha256:sha},c3);assert.equal(complete.statusCode,200,complete.body);
     const mat=complete.json().material_id;
-    const snapshot=await send('POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:1,material_versions:[{material_id:mat,material_version:1}],requirement_message_ids:[]},c3);assert.equal(snapshot.statusCode,201,snapshot.body);
+    // Admission uses the same real login cookies and CSRF token as every resource request below.
+    const sessionHeaders={cookie:cookie(c3),'x-bb-csrf':c3.bb_csrf};
+    const source=await uploadSyntheticReference(app,project,sessionHeaders);
+    const snapshot=await send('POST',`/api/v1/projects/${project}/input-revisions`,{...source,
+      material_versions:[{material_id:mat,material_version:1},...source.material_versions]},c3);assert.equal(snapshot.statusCode,201,snapshot.body);
     const input=snapshot.json();
-    const run=await send('POST','/api/v1/runs/execute',{execution_request_id:'synthetic-relogin-run',project_id:project,input_revision:input.input_revision,input_hash:input.input_hash,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace'},c3);assert.equal(run.statusCode,202,run.body);
+    const quoteId=await quoteSyntheticAuthoringRun(app,pool,first.json().user_id,project,input,sessionHeaders);
+    const run=await send('POST','/api/v1/runs/execute',{execution_request_id:'synthetic-relogin-run',project_id:project,input_revision:input.input_revision,input_hash:input.input_hash,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace',quote_id:quoteId},c3);assert.equal(run.statusCode,202,run.body);
     assert.equal((await send('GET',`/api/v1/projects/${project}`,undefined,c2)).statusCode,404);
     assert.equal((await send('GET',`/api/v1/projects/${project}/materials/${mat}`,undefined,c2)).statusCode,404);
     assert.equal((await send('GET',`/api/v1/runs/${run.json().run_id}`,undefined,c2)).statusCode,404);

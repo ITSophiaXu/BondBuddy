@@ -6,6 +6,7 @@ import { latestProviderAttempt } from '@bondbuddy/api/provider-results';
 import { Pool } from 'pg';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { createServer } from '@bondbuddy/api';
+import { quoteSyntheticAuthoringRun } from '@bondbuddy/api/test-authoring-source';
 import { azureBlobs, digest } from '@bondbuddy/api/data';
 import { emptyUpdateDetails, type SourceProspectus } from '@bondbuddy/contracts';
 import { isolatedTestDatabase } from './test-database.js';
@@ -122,8 +123,9 @@ test(`single CLI original files → ${live?'real provider on synthetic materials
         assert.ok(manifest.authoring.knowledge[0].path.includes('sse-private'));
         assert.equal(manifest.authoring.previous_output,undefined);
         const start=async(locked:any)=>{
+          const quoteId=await quoteSyntheticAuthoringRun(app,pool,owner,project,locked);
           const request={execution_request_id:`unified-${project}-${locked.input_revision}`,project_id:project,input_revision:locked.input_revision,input_hash:locked.input_hash,
-            task_kind:'update',input_manifest_ref:'server-input',storage_origin:'cloud',workspace_id:'synthetic'};
+            task_kind:'update',input_manifest_ref:'server-input',storage_origin:'cloud',workspace_id:'synthetic',quote_id:quoteId};
           const responses=await Promise.all([send('POST','/api/v1/runs/execute',request),send('POST','/api/v1/runs/execute',request)]);
           for(const r of responses)assert.equal(r.statusCode,202,r.body);
           assert.equal(responses[0].json().run_id,responses[1].json().run_id);

@@ -8,6 +8,7 @@ import { BlobServiceClient } from '@azure/storage-blob';
 import { createServer } from '@bondbuddy/api';
 import { azureBlobs, digest, transaction } from '@bondbuddy/api/data';
 import { enqueueMaterialParse } from '@bondbuddy/api/material-jobs';
+import { quoteSyntheticAuthoringRun } from '@bondbuddy/api/test-authoring-source';
 import { emptyUpdateDetails, type SourceProspectus } from '@bondbuddy/contracts';
 import { isolatedTestDatabase } from './test-database.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
@@ -119,11 +120,15 @@ test(`legacy record authoring with explicit parse fixtures → ${live?'real prov
         assert.ok(manifest.authoring.knowledge[0].path.includes('sse-private'));
         assert.equal(manifest.authoring.previous_output,undefined);
         const start=async(locked:any)=>{
+          const quoteId=await quoteSyntheticAuthoringRun(app,pool,owner,project,locked);
           const request={execution_request_id:`unified-${project}-${locked.input_revision}`,project_id:project,input_revision:locked.input_revision,input_hash:locked.input_hash,
-            task_kind:'update',input_manifest_ref:'server-input',storage_origin:'cloud',workspace_id:'synthetic'};
+            task_kind:'update',input_manifest_ref:'server-input',storage_origin:'cloud',workspace_id:'synthetic',quote_id:quoteId};
           const responses=await Promise.all([send('POST','/api/v1/runs/execute',request),send('POST','/api/v1/runs/execute',request)]);
           for(const r of responses)assert.equal(r.statusCode,202,r.body);
           assert.equal(responses[0].json().run_id,responses[1].json().run_id);
+          assert.equal(responses[0].json().billing_mode,'fixed_credits');
+          assert.deepEqual((await pool.query('SELECT quote_id,state FROM bb_credit_reservations WHERE run_id=$1',[responses[0].json().run_id])).rows,
+            [{quote_id:quoteId,state:'held'}]);
           assert.equal(responses[0].json().channel,'production');return responses[0].json();
         };
         const run=await start(input);
@@ -147,6 +152,7 @@ test(`legacy record authoring with explicit parse fixtures → ${live?'real prov
         const execute=async()=>runPipelineOnce({pool,blobs,stages:[inputLockStage,materialsReadyStage,model,unifiedWordDeliveryStage()],
           onUnexpectedError:error=>assert.fail(JSON.stringify(error))});
         assert.equal(await execute(),'succeeded');
+        assert.deepEqual((await pool.query('SELECT state FROM bb_credit_reservations WHERE run_id=$1',[run.run_id])).rows,[{state:'settled'}]);
         if(!live)assert.ok(modelCalls>0);
         else {
           const calls=(await pool.query('SELECT logical_call_id,outcome,usage_status,total_tokens FROM bb_provider_call_observations WHERE run_id=$1',[run.run_id])).rows;
@@ -167,6 +173,7 @@ test(`legacy record authoring with explicit parse fixtures → ${live?'real prov
           const pin=(await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[owner,project,next.input_revision])).rows[0].manifest.authoring.previous_output;
           assert.equal(pin.artifact_id,artifact.word_delivery.clean_artifact_id);
           const nextRun=await start(next);assert.equal(await execute(),'succeeded');
+          assert.deepEqual((await pool.query('SELECT state FROM bb_credit_reservations WHERE run_id=$1',[nextRun.run_id])).rows,[{state:'settled'}]);
           const nextArtifact=(await send('GET',`/api/v1/artifacts/${(await send('GET',`/api/v1/runs/${nextRun.run_id}`)).json().artifact_id}`)).json();
           assert.equal(nextArtifact.word_delivery.baseline_kind,'project_output');
         }

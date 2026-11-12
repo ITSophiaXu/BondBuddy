@@ -15,7 +15,7 @@ test('review setup design snapshot supports scope details and automatic naming w
     await expect(form.locator('details[open]')).toHaveCount(0);
     await expect(page.locator('#generated-review-name')).toHaveText('合成发行人有限公司-上交所-普通私募公司债-募集书复核');
     await expect(page.locator('#review-create-status')).toBeEmpty();
-    const dir = 'test-evidence/review-setup-20261011';
+    const dir = test.info().outputPath('review-setup-20261011');
     await mkdir(dir, { recursive: true });
     await page.screenshot({ path: `${dir}/prototype-collapsed-${width}.png`, fullPage: true });
     await form.locator('[data-scope=compliance] summary').click();

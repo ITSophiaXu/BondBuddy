@@ -1,0 +1,1460 @@
+{
+  "issue": 1101,
+  "scope": {
+    "originalRun": "1794418350450-38278111",
+    "originalCommit": "d3028cb2f5e98e5b9a9ad36deb68e461de4a6df2",
+    "categoryA": 54,
+    "priorPR1084": [
+      "apps/api/src/account-recovery.test.ts",
+      "apps/api/src/schema-rejection.test.ts",
+      "apps/api/src/revision-range.test.ts",
+      "apps/api/src/library-admin.test.ts"
+    ],
+    "priorPR1099": [
+      "apps/api/src/ocr.test.ts",
+      "apps/api/src/user-submissions.test.ts",
+      "apps/api/src/zz_observability.test.ts"
+    ],
+    "selected": [
+      "apps/api/src/zz_log_ops.test.ts",
+      "apps/api/src/target-confirmation.test.ts"
+    ],
+    "boundaries": [
+      "apps/api/src/billing-int64.test.ts",
+      "apps/api/src/billing-wire.test.ts"
+    ],
+    "remaining": [
+      "apps/api/src/execution-key.test.ts",
+      "apps/api/src/issuer-identity-input-lock.test.ts",
+      "apps/api/src/non-production-test.test.ts",
+      "apps/api/src/project-list.test.ts",
+      "apps/api/src/review-linked-workspace.test.ts",
+      "apps/api/src/review-price-activation.pg.test.ts",
+      "apps/api/src/review-workspace.test.ts",
+      "apps/api/src/zz_trial_guard.test.ts",
+      "apps/api/src/authoring-task-kind.pg.test.ts",
+      "apps/api/src/commerce-coverage.pg.test.ts",
+      "apps/api/src/deletion-lifecycle.test.ts",
+      "apps/api/src/project-collection.pg.test.ts",
+      "apps/api/src/project-kind-conversion.pg.test.ts",
+      "apps/api/src/queue.test.ts",
+      "apps/api/src/review-action-events.pg.integration.test.ts",
+      "apps/api/src/review-materials.test.ts",
+      "apps/api/src/server.test.ts",
+      "apps/api/src/storage-lifecycle.test.ts",
+      "apps/api/src/working-draft-parse-admission.test.ts",
+      "apps/worker/src/codex-durable.test.ts",
+      "apps/worker/src/file-authoring.pg.test.ts",
+      "apps/worker/src/m4-pipeline.pg.test.ts",
+      "apps/worker/src/pending-issuer-working-draft.test.ts",
+      "apps/worker/src/project-qa-e2e.pg.test.ts",
+      "apps/worker/src/reconcile-run.test.ts",
+      "apps/worker/src/review-file-delivery.pg.test.ts",
+      "apps/worker/src/rule-applicability-context.test.ts",
+      "apps/worker/src/run-runtime.test.ts",
+      "apps/worker/src/runtime-interactive-slots.pg.test.ts",
+      "apps/worker/src/user-reference-outline.test.ts",
+      "apps/worker/src/workpaper-paid-checks.pg.test.ts",
+      "apps/worker/src/m2-paid-worker.test.ts",
+      "apps/worker/src/m3-review-pipeline.pg.integration.test.ts",
+      "apps/worker/src/model-image-stage.pg.test.ts",
+      "apps/worker/src/project-files-e2e.pg.test.ts",
+      "apps/worker/src/provider-reconciliation.test.ts",
+      "apps/worker/src/review-reassembly.test.ts",
+      "apps/worker/src/runtime-entry.test.ts",
+      "apps/worker/src/runtime-isolation.test.ts",
+      "apps/worker/src/runtime-parse-slots.test.ts",
+      "apps/worker/src/unified-authoring.pg.test.ts",
+      "apps/worker/src/workpaper-assessment.pg.test.ts",
+      "apps/worker/src/workpaper-library.pg.test.ts",
+      "apps/worker/src/workpaper-shared-stage.pg.test.ts",
+      "apps/worker/src/workpapers.pg.test.ts"
+    ],
+    "otherPR1053": [
+      "apps/api/src/review-workspace.test.ts",
+      "apps/api/src/review-materials.test.ts"
+    ]
+  },
+  "source": {
+    "commit": "94691eecfe2b9d20885c97f84e0c60e9307da982",
+    "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+    "tree": "542efcf7fd3cef222a9083d69c0a27ab5dd93965",
+    "archiveBase": "8a7dc38a9546831346805d8cb36ce88aae456da3",
+    "baseArchiveSha256": "8dc4f5e9082c34ab6369736776508e4f47f5e872edcc67efcd26be229352581e",
+    "deltaArchiveSha256": "b66a452660e94d6506a7676853ef75adf59fb1ce5efa8cb86cc545aab2adb4bd",
+    "rawFiles": 6430,
+    "originalGateComparison": [
+      {
+        "path": "apps/api/src/target-confirmation.test.ts",
+        "oldBlob": "2d7fa9cea681bda25c313a7250105cfacf61c729",
+        "baseBlob": "2d7fa9cea681bda25c313a7250105cfacf61c729",
+        "identical": true
+      },
+      {
+        "path": "apps/api/src/zz_log_ops.test.ts",
+        "oldBlob": "db974ce3e0018855528f973fee5defc56192ce39",
+        "baseBlob": "db974ce3e0018855528f973fee5defc56192ce39",
+        "identical": true
+      }
+    ],
+    "selectedFiles": [
+      {
+        "path": "apps/api/src/billing-int64.test.ts",
+        "mode": "100644",
+        "blob": "784d0392f61014584f5ea4d1ed4dec891506ccd0"
+      },
+      {
+        "path": "apps/api/src/billing-wire.test.ts",
+        "mode": "100644",
+        "blob": "34e580d282069f1498b0fe439019c891f3478897"
+      },
+      {
+        "path": "apps/api/src/target-confirmation.test.ts",
+        "mode": "100644",
+        "blob": "b7f0e6ecac14e17c5953d3e508524adfc7b758c8"
+      },
+      {
+        "path": "apps/api/src/test-authoring-source.ts",
+        "mode": "100644",
+        "blob": "ae31c871b79d2f89467dffe3a49c769f795cfc36"
+      },
+      {
+        "path": "apps/api/src/zz_log_ops.test.ts",
+        "mode": "100644",
+        "blob": "ce82cd257f5153b3dbca77aeda1d4d046989452a"
+      }
+    ]
+  },
+  "precheck": {
+    "result": {
+      "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+      "commit": "e19744472db3a9699ac91bbf8cc032bcda6a180a",
+      "tree": "bec059eaf5db42f847c7ae81e29bc5c829abc2f5",
+      "started": "2026-11-12T04:29:59.723Z",
+      "finished": "2026-11-12T04:30:19.978Z",
+      "results": [
+        {
+          "name": "source-audit",
+          "command": [
+            "node",
+            "/evidence/audit.mjs"
+          ],
+          "exitCode": 1,
+          "elapsedMs": 3866
+        }
+      ]
+    },
+    "runtime": {
+      "node": "v22.23.3",
+      "typescript": "5.9.3",
+      "pg": "8.23.0",
+      "fastify": "5.12.5",
+      "cachedLockSha256": "69ce90eb0ff8cb11578c419ad3c5a1221da099fdb5fce17c190aef2052255701",
+      "sourceLockSha256": "81833914ef0ba232e249040685bb93ac1e3b63e640b960d2d217985fa4b5ed8c",
+      "sourceLockCRLFSha256": "69ce90eb0ff8cb11578c419ad3c5a1221da099fdb5fce17c190aef2052255701",
+      "lockMatches": true
+    },
+    "cause": "Evidence script compared AST calls (no terminal semicolon) with full statements. Fixed by parsing both allowlist expressions with the same TypeScript AST parser; no source changes or tests ran in that attempt."
+  },
+  "firstBuild": {
+    "result": {
+      "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+      "commit": "e19744472db3a9699ac91bbf8cc032bcda6a180a",
+      "tree": "bec059eaf5db42f847c7ae81e29bc5c829abc2f5",
+      "started": "2026-11-12T04:31:09.068Z",
+      "finished": "2026-11-12T04:33:44.135Z",
+      "results": [
+        {
+          "name": "source-audit",
+          "command": [
+            "node",
+            "/evidence/audit.mjs"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 5507
+        },
+        {
+          "name": "build-contracts",
+          "command": [
+            "npm",
+            "run",
+            "build",
+            "-w",
+            "@bondbuddy/contracts"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 38149
+        },
+        {
+          "name": "build-domain",
+          "command": [
+            "npm",
+            "run",
+            "build",
+            "-w",
+            "@bondbuddy/domain"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 23794
+        },
+        {
+          "name": "build-rule-pack-registry",
+          "command": [
+            "npm",
+            "run",
+            "build",
+            "-w",
+            "@bondbuddy/rule-pack-registry"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 9103
+        },
+        {
+          "name": "build-rule-applicability-context",
+          "command": [
+            "npm",
+            "run",
+            "build",
+            "-w",
+            "@bondbuddy/rule-applicability-context"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 9717
+        },
+        {
+          "name": "build-api-targets",
+          "command": [
+            "node",
+            "node_modules/typescript/bin/tsc",
+            "-p",
+            "apps/api/tsconfig.issue1101.json"
+          ],
+          "exitCode": 2,
+          "elapsedMs": 49599
+        }
+      ]
+    },
+    "audit": {
+      "commit": "e19744472db3a9699ac91bbf8cc032bcda6a180a",
+      "tree": "bec059eaf5db42f847c7ae81e29bc5c829abc2f5",
+      "rawFiles": 6430,
+      "rawMatch": true,
+      "assertions": [
+        {
+          "path": "apps/api/src/zz_log_ops.test.ts",
+          "before": 436,
+          "after": 436,
+          "preserved": 436,
+          "unchangedExpressions": 420,
+          "protocolChanges": [
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.ok(Value.Check(schemas.AdminJobTimelineResponse, t));",
+              "after": "assert.ok(Value.Check(timelineWireSchema, t));",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminJobTimeline",
+                "paths": [
+                  "response schema"
+                ]
+              },
+              "beforeCall": "assert.ok(Value.Check(schemas.AdminJobTimelineResponse, t))",
+              "afterCall": "assert.ok(Value.Check(timelineWireSchema, t))"
+            },
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.ok(Value.Check(schemas.AdminMetricsResponse, m));",
+              "after": "assert.ok(Value.Check(metricsWireSchema, m));",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminMetrics",
+                "paths": [
+                  "response schema"
+                ]
+              },
+              "beforeCall": "assert.ok(Value.Check(schemas.AdminMetricsResponse, m))",
+              "afterCall": "assert.ok(Value.Check(metricsWireSchema, m))"
+            },
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.deepEqual(t.attempts[1].usage, { input_tokens: 200, output_tokens: 50, cached_input_tokens: 80, reasoning_tokens: 20 });",
+              "after": "assert.deepEqual(t.attempts[1].usage, { input_tokens: '200', output_tokens: '50', cached_input_tokens: '80', reasoning_tokens: '20' });",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminJobTimeline",
+                "paths": [
+                  "attempts.*.usage.*"
+                ]
+              },
+              "beforeCall": "assert.deepEqual(t.attempts[1].usage, { input_tokens: 200, output_tokens: 50, cached_input_tokens: 80, reasoning_tokens: 20 })",
+              "afterCall": "assert.deepEqual(t.attempts[1].usage, { input_tokens: '200', output_tokens: '50', cached_input_tokens: '80', reasoning_tokens: '20' })"
+            },
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.deepEqual(t.consumption.all_attempts, { attempts: 3, measured_attempts: 2, unresolved_attempts: 1, input_tokens: 300, output_tokens: 60, cached_input_tokens: 120, reasoning_tokens: 25 }, 'retry kept; cached/reasoning are subsets; duplicates once; pending adds nothing');",
+              "after": "assert.deepEqual(t.consumption.all_attempts, { attempts: '3', measured_attempts: '2', unresolved_attempts: '1', input_tokens: '300', output_tokens: '60', cached_input_tokens: '120', reasoning_tokens: '25' }, 'retry kept; cached/reasoning are subsets; duplicates once; pending adds nothing');",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminJobTimeline",
+                "paths": [
+                  "consumption.all_attempts.*"
+                ]
+              },
+              "beforeCall": "assert.deepEqual(t.consumption.all_attempts, { attempts: 3, measured_attempts: 2, unresolved_attempts: 1, input_tokens: 300, output_tokens: 60, cached_input_tokens: 120, reasoning_tokens: 25 }, 'retry kept; cached/reasoning are subsets; duplicates once; pending adds nothing')",
+              "afterCall": "assert.deepEqual(t.consumption.all_attempts, { attempts: '3', measured_attempts: '2', unresolved_attempts: '1', input_tokens: '300', output_tokens: '60', cached_input_tokens: '120', reasoning_tokens: '25' }, 'retry kept; cached/reasoning are subsets; duplicates once; pending adds nothing')"
+            },
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.deepEqual(t.consumption.completed_attempts, { attempts: 1, measured_attempts: 1, unresolved_attempts: 0, input_tokens: 200, output_tokens: 50, cached_input_tokens: 80, reasoning_tokens: 20 });",
+              "after": "assert.deepEqual(t.consumption.completed_attempts, { attempts: '1', measured_attempts: '1', unresolved_attempts: '0', input_tokens: '200', output_tokens: '50', cached_input_tokens: '80', reasoning_tokens: '20' });",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminJobTimeline",
+                "paths": [
+                  "consumption.completed_attempts.*"
+                ]
+              },
+              "beforeCall": "assert.deepEqual(t.consumption.completed_attempts, { attempts: 1, measured_attempts: 1, unresolved_attempts: 0, input_tokens: 200, output_tokens: 50, cached_input_tokens: 80, reasoning_tokens: 20 })",
+              "afterCall": "assert.deepEqual(t.consumption.completed_attempts, { attempts: '1', measured_attempts: '1', unresolved_attempts: '0', input_tokens: '200', output_tokens: '50', cached_input_tokens: '80', reasoning_tokens: '20' })"
+            },
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.equal(m.jobs.total, 1);",
+              "after": "assert.equal(m.jobs.total, '1');",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminMetrics",
+                "paths": [
+                  "jobs.total"
+                ]
+              },
+              "beforeCall": "assert.equal(m.jobs.total, 1)",
+              "afterCall": "assert.equal(m.jobs.total, '1')"
+            },
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.deepEqual([m.attempts.total, m.attempts.completed, m.attempts.failed, m.attempts.pending_reconcile], [3, 1, 1, 1]);",
+              "after": "assert.deepEqual([m.attempts.total, m.attempts.completed, m.attempts.failed, m.attempts.pending_reconcile], ['3', '1', '1', '1']);",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminMetrics",
+                "paths": [
+                  "attempts.total",
+                  "attempts.completed",
+                  "attempts.failed",
+                  "attempts.pending_reconcile"
+                ]
+              },
+              "beforeCall": "assert.deepEqual([m.attempts.total, m.attempts.completed, m.attempts.failed, m.attempts.pending_reconcile], [3, 1, 1, 1])",
+              "afterCall": "assert.deepEqual([m.attempts.total, m.attempts.completed, m.attempts.failed, m.attempts.pending_reconcile], ['3', '1', '1', '1'])"
+            },
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.equal(m.consumption.all_attempts.input_tokens, 300);",
+              "after": "assert.equal(m.consumption.all_attempts.input_tokens, '300');",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminMetrics",
+                "paths": [
+                  "consumption.all_attempts.input_tokens"
+                ]
+              },
+              "beforeCall": "assert.equal(m.consumption.all_attempts.input_tokens, 300)",
+              "afterCall": "assert.equal(m.consumption.all_attempts.input_tokens, '300')"
+            },
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.equal(m.consumption.retry_attempts.input_tokens, 200);",
+              "after": "assert.equal(m.consumption.retry_attempts.input_tokens, '200');",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminMetrics",
+                "paths": [
+                  "consumption.retry_attempts.input_tokens"
+                ]
+              },
+              "beforeCall": "assert.equal(m.consumption.retry_attempts.input_tokens, 200)",
+              "afterCall": "assert.equal(m.consumption.retry_attempts.input_tokens, '200')"
+            },
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.deepEqual(m.by_model.find((x: any) => x.model_id === 'synthetic-model-b'), { model_id: 'synthetic-model-b', attempts: 1, completed: 0, failed: 0, input_tokens: null, output_tokens: null, cached_input_tokens: null, reasoning_tokens: null });",
+              "after": "assert.deepEqual(m.by_model.find((x: any) => x.model_id === 'synthetic-model-b'), { model_id: 'synthetic-model-b', attempts: '1', completed: '0', failed: '0', input_tokens: null, output_tokens: null, cached_input_tokens: null, reasoning_tokens: null });",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminMetrics",
+                "paths": [
+                  "by_model.*.attempts",
+                  "by_model.*.completed",
+                  "by_model.*.failed"
+                ]
+              },
+              "beforeCall": "assert.deepEqual(m.by_model.find((x: any) => x.model_id === 'synthetic-model-b'), { model_id: 'synthetic-model-b', attempts: 1, completed: 0, failed: 0, input_tokens: null, output_tokens: null, cached_input_tokens: null, reasoning_tokens: null })",
+              "afterCall": "assert.deepEqual(m.by_model.find((x: any) => x.model_id === 'synthetic-model-b'), { model_id: 'synthetic-model-b', attempts: '1', completed: '0', failed: '0', input_tokens: null, output_tokens: null, cached_input_tokens: null, reasoning_tokens: null })"
+            },
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.ok(m.operations.submitted >= 1);",
+              "after": "assert.ok(BigInt(m.operations.submitted) >= 1n);",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminMetrics",
+                "paths": [
+                  "operations.submitted"
+                ]
+              },
+              "beforeCall": "assert.ok(m.operations.submitted >= 1)",
+              "afterCall": "assert.ok(BigInt(m.operations.submitted) >= 1n)"
+            },
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.deepEqual(errorMetrics.json().errors, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: 1 }]);",
+              "after": "assert.deepEqual(errorMetrics.json().errors, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: '1' }]);",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminMetrics",
+                "paths": [
+                  "errors.*.count"
+                ]
+              },
+              "beforeCall": "assert.deepEqual(errorMetrics.json().errors, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: 1 }])",
+              "afterCall": "assert.deepEqual(errorMetrics.json().errors, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: '1' }])"
+            },
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.equal(conflicted.consumption.all_attempts.input_tokens, 100);",
+              "after": "assert.equal(conflicted.consumption.all_attempts.input_tokens, '100');",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminJobTimeline",
+                "paths": [
+                  "consumption.all_attempts.input_tokens"
+                ]
+              },
+              "beforeCall": "assert.equal(conflicted.consumption.all_attempts.input_tokens, 100)",
+              "afterCall": "assert.equal(conflicted.consumption.all_attempts.input_tokens, '100')"
+            },
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.deepEqual(errorCounts.json().items, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: 1 }]);",
+              "after": "assert.deepEqual(errorCounts.json().items, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: '1' }]);",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminErrors",
+                "paths": [
+                  "items.*.count"
+                ]
+              },
+              "beforeCall": "assert.deepEqual(errorCounts.json().items, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: 1 }])",
+              "afterCall": "assert.deepEqual(errorCounts.json().items, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: '1' }])"
+            },
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.equal(after.consumption.all_attempts.input_tokens, 300);",
+              "after": "assert.equal(after.consumption.all_attempts.input_tokens, '300');",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminJobTimeline",
+                "paths": [
+                  "consumption.all_attempts.input_tokens"
+                ]
+              },
+              "beforeCall": "assert.equal(after.consumption.all_attempts.input_tokens, 300)",
+              "afterCall": "assert.equal(after.consumption.all_attempts.input_tokens, '300')"
+            },
+            {
+              "path": "apps/api/src/zz_log_ops.test.ts",
+              "before": "assert.equal(timeline.attempts[0].usage.input_tokens, 11);",
+              "after": "assert.equal(timeline.attempts[0].usage.input_tokens, '11');",
+              "reason": {
+                "kind": "approved-int64-wire",
+                "family": "adminJobTimeline",
+                "paths": [
+                  "attempts.*.usage.input_tokens"
+                ]
+              },
+              "beforeCall": "assert.equal(timeline.attempts[0].usage.input_tokens, 11)",
+              "afterCall": "assert.equal(timeline.attempts[0].usage.input_tokens, '11')"
+            }
+          ]
+        },
+        {
+          "path": "apps/api/src/target-confirmation.test.ts",
+          "before": 30,
+          "after": 44,
+          "preserved": 30,
+          "unchangedExpressions": 30,
+          "originalAssertionOrderChanged": true,
+          "added": 14,
+          "addedTest": "a new request cannot execute a superseded confirmed target or freeze credits"
+        }
+      ]
+    },
+    "cause": "The broad TSchema test annotation narrowed checked responses to unknown. Corrected only static annotations to TUnsafe<BillingWireDto<Static<domain schema>, family>>; runtime schemas, assertion expressions and values were unchanged. No migration or test cases had run."
+  },
+  "firstCore": {
+    "result": {
+      "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+      "commit": "94691eecfe2b9d20885c97f84e0c60e9307da982",
+      "tree": "542efcf7fd3cef222a9083d69c0a27ab5dd93965",
+      "started": "2026-11-12T04:35:39.394Z",
+      "finished": "2026-11-12T04:46:32.275Z",
+      "results": [
+        {
+          "name": "source-audit",
+          "command": [
+            "node",
+            "/evidence/audit.mjs"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 3954
+        },
+        {
+          "name": "build-contracts",
+          "command": [
+            "npm",
+            "run",
+            "build",
+            "-w",
+            "@bondbuddy/contracts"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 28508
+        },
+        {
+          "name": "build-domain",
+          "command": [
+            "npm",
+            "run",
+            "build",
+            "-w",
+            "@bondbuddy/domain"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 24781
+        },
+        {
+          "name": "build-rule-pack-registry",
+          "command": [
+            "npm",
+            "run",
+            "build",
+            "-w",
+            "@bondbuddy/rule-pack-registry"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 8831
+        },
+        {
+          "name": "build-rule-applicability-context",
+          "command": [
+            "npm",
+            "run",
+            "build",
+            "-w",
+            "@bondbuddy/rule-applicability-context"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 7507
+        },
+        {
+          "name": "build-api-targets",
+          "command": [
+            "node",
+            "node_modules/typescript/bin/tsc",
+            "-p",
+            "apps/api/tsconfig.issue1101.json"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 50446
+        },
+        {
+          "name": "migrate",
+          "command": [
+            "node",
+            "db/migrate.mjs"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 25513
+        },
+        {
+          "name": "wire-boundaries",
+          "command": [
+            "node",
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/billing-int64.test.js",
+            "apps/api/dist/billing-wire.test.js"
+          ],
+          "exitCode": 0,
+          "elapsedMs": 4006
+        },
+        {
+          "name": "test",
+          "command": [
+            "node",
+            "--test",
+            "--test-concurrency=1",
+            "apps/api/dist/target-confirmation.test.js",
+            "apps/api/dist/zz_log_ops.test.js"
+          ],
+          "exitCode": 1,
+          "elapsedMs": 458618
+        }
+      ]
+    },
+    "cleanup": {
+      "timestamp": "2026-11-12T04:47:00.560Z",
+      "testFinished": "2026-11-12T04:46:32.275Z",
+      "resources": [
+        {
+          "id": "958e5c8f77e93d7219159c835fb833988c0b3002c6f4dff86315165b47e5fa44",
+          "name": "/bb-issue1101-pg",
+          "image": "sha256:20edbde7749f822887a1a022ad526fde0a47d6b2be9a8364433605cf65099416",
+          "cpu": 0.2,
+          "memoryBytes": 536870912,
+          "ports": {},
+          "status": "running"
+        },
+        {
+          "id": "e46fdc6b81ddb960999b8c44ac411d98317e66d0247f0ac503002e6c37a6465c",
+          "name": "/bb-issue1101-azurite",
+          "image": "sha256:647c63a91102a9d8e8000aab803436e1fc85fbb285e7ce830a82ee5d6661cf37",
+          "cpu": 0.15,
+          "memoryBytes": 268435456,
+          "ports": {},
+          "status": "running"
+        },
+        {
+          "id": "f8e38659907d4011461d7c4a45fc755610b581998cfb5482a07f286b58c9f933",
+          "name": "/bb-issue1101-runner",
+          "image": "sha256:e081d9ca27e8ef07e6a658183b50b15a568a8126a67d70a3065ff630dfb7fdb9",
+          "cpu": 0.65,
+          "memoryBytes": 2415919104,
+          "ports": {},
+          "status": "running"
+        }
+      ],
+      "runnerProcessesBeforeRemoval": "PID                 COMMAND             COMMAND\n60779               sleep               sleep infinity",
+      "network": {
+        "id": "dd3ec6916e00537a18b90aa76ee807529191c15ecf9597e721e7c099c2386693",
+        "name": "bb-issue1101-net",
+        "internal": true
+      },
+      "removal": "958e5c8f77e93d7219159c835fb833988c0b3002c6f4dff86315165b47e5fa44\ne46fdc6b81ddb960999b8c44ac411d98317e66d0247f0ac503002e6c37a6465c\nf8e38659907d4011461d7c4a45fc755610b581998cfb5482a07f286b58c9f933",
+      "networkRemoval": "dd3ec6916e00537a18b90aa76ee807529191c15ecf9597e721e7c099c2386693",
+      "absent": [
+        {
+          "id": "958e5c8f77e93d7219159c835fb833988c0b3002c6f4dff86315165b47e5fa44",
+          "name": "/bb-issue1101-pg",
+          "absent": true
+        },
+        {
+          "id": "e46fdc6b81ddb960999b8c44ac411d98317e66d0247f0ac503002e6c37a6465c",
+          "name": "/bb-issue1101-azurite",
+          "absent": true
+        },
+        {
+          "id": "f8e38659907d4011461d7c4a45fc755610b581998cfb5482a07f286b58c9f933",
+          "name": "/bb-issue1101-runner",
+          "absent": true
+        }
+      ],
+      "networkAbsent": true
+    },
+    "remainingClonesBeforeContainerRemoval": [
+      {
+        "datname": "bb1101_template_t291_5278ec30"
+      }
+    ],
+    "hungDiagnostic": {
+      "timestamp": "2026-11-12T04:46:32.053Z",
+      "pid": 291,
+      "cmd": [
+        "/usr/local/bin/node",
+        "--test-concurrency=1",
+        "apps/api/dist/zz_log_ops.test.js"
+      ],
+      "seconds": 443,
+      "reason": "Core run did not finish; process idle with an open loopback listener after PostgreSQL connections closed. Terminate only owned test child to recover buffered TAP; record incomplete failure.",
+      "fds": [
+        {
+          "fd": "0",
+          "target": "socket:[15089749]"
+        },
+        {
+          "fd": "1",
+          "target": "socket:[15089751]"
+        },
+        {
+          "fd": "10",
+          "target": "pipe:[15089755]"
+        },
+        {
+          "fd": "11",
+          "target": "pipe:[15089755]"
+        },
+        {
+          "fd": "12",
+          "target": "anon_inode:[eventfd]"
+        },
+        {
+          "fd": "13",
+          "target": "anon_inode:[eventpoll]"
+        },
+        {
+          "fd": "14",
+          "target": "pipe:[15078222]"
+        },
+        {
+          "fd": "15",
+          "target": "pipe:[15078222]"
+        },
+        {
+          "fd": "16",
+          "target": "anon_inode:[eventfd]"
+        },
+        {
+          "fd": "17",
+          "target": "/dev/null"
+        },
+        {
+          "fd": "2",
+          "target": "socket:[15089753]"
+        },
+        {
+          "fd": "20",
+          "target": "socket:[15151282]"
+        },
+        {
+          "fd": "3",
+          "target": "anon_inode:[eventpoll]"
+        },
+        {
+          "fd": "4",
+          "target": "pipe:[15078220]"
+        },
+        {
+          "fd": "5",
+          "target": "pipe:[15078220]"
+        },
+        {
+          "fd": "6",
+          "target": "pipe:[15078221]"
+        },
+        {
+          "fd": "7",
+          "target": "pipe:[15078221]"
+        },
+        {
+          "fd": "8",
+          "target": "anon_inode:[eventfd]"
+        },
+        {
+          "fd": "9",
+          "target": "anon_inode:[eventpoll]"
+        }
+      ],
+      "tcp": "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode                                                     \n   0: 0B00007F:ACC7 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 14912951 1 00000000d941103b 100 0 0 10 0                  \n   1: 0100007F:A00D 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 15151282 1 0000000061f6c8a5 100 0 0 10 0                  \n   2: 04F0A8C0:D660 02F0A8C0:1538 06 00000000:00000000 03:00000A74 00000000     0        0 0 3 00000000e7db4058                                      \n   3: 04F0A8C0:DB9C 02F0A8C0:1538 08 00000000:00000001 00:00000000 00000000     0        0 15071869 1 0000000095140029 20 4 28 10 -1                 \n"
+    },
+    "counts": {
+      "expected": 55,
+      "reported": 48,
+      "pass": 37,
+      "fail": 11,
+      "skip": 0,
+      "unreported": 7
+    },
+    "causes": "Six sink failures came from a missing dynamically imported compile entry; three performance thresholds and two TCP waiter assertions failed under runner0.65CPU/PG0.2CPU/Azurite0.15CPU. Seven later cases had no result. Resource and compiler fixes do not alter original test assertions, test timeouts or performance thresholds."
+  },
+  "productionComparison": {
+    "oldRef": "d3028cb2f5e98e5b9a9ad36deb68e461de4a6df2",
+    "newRef": "94691eecfe2b9d20885c97f84e0c60e9307da982",
+    "rows": [
+      {
+        "path": "apps/api/src/log-ops.ts",
+        "oldBlob": "2c6bf8f27ae9fb7134a69507685e03438006190b",
+        "newBlob": "2c6bf8f27ae9fb7134a69507685e03438006190b",
+        "identical": true
+      },
+      {
+        "path": "apps/api/src/server.ts",
+        "oldBlob": "9bec66d961e39aeba8f52941722fa5f8e88b529f",
+        "newBlob": "9bec66d961e39aeba8f52941722fa5f8e88b529f",
+        "identical": true
+      },
+      {
+        "path": "apps/api/src/admin-routes.ts",
+        "oldBlob": "e05d396d5ef7f553b0fc3121c038a476359a79c6",
+        "newBlob": "e05d396d5ef7f553b0fc3121c038a476359a79c6",
+        "identical": true
+      },
+      {
+        "path": "apps/api/src/ndjson-file-sink.ts",
+        "oldBlob": "ee1248490ab574411de3c39a7bd4e8506c10afd4",
+        "newBlob": "ee1248490ab574411de3c39a7bd4e8506c10afd4",
+        "identical": true
+      },
+      {
+        "path": "apps/api/src/test-database.ts",
+        "oldBlob": "59cccc218d70ec946188c3be8d9d795b76e37edf",
+        "newBlob": "59cccc218d70ec946188c3be8d9d795b76e37edf",
+        "identical": true
+      },
+      {
+        "path": "apps/api/src/data.ts",
+        "oldBlob": "fee0fd8d16e23b3711dd7c691f355335ee496ba7",
+        "newBlob": "4406073e058952ab2e96f6c9d85ad8b9a1865984",
+        "identical": false
+      }
+    ]
+  },
+  "result": {
+    "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+    "commit": "94691eecfe2b9d20885c97f84e0c60e9307da982",
+    "tree": "542efcf7fd3cef222a9083d69c0a27ab5dd93965",
+    "harnessSha256": {
+      "run.mjs": "6f90a133d8b534c9155b9424b28be0a68055f6ba3a28b541d3fc0974793f79b4",
+      "start.mjs": "3349c1004a226598baccb517af9e692965566ab5a230b24e113c97d992b41f89",
+      "cleanup.mjs": "55fb84263986609d24bb28392c6121cb1771680f8ae9b04f99483ede365cb759",
+      "audit.mjs": "a0da563cae4f2ede9712b6bf09b2bc17008954f5dea6623db33e7c68171e067b"
+    },
+    "started": "2026-11-12T05:02:09.011Z",
+    "finished": "2026-11-12T05:05:39.741Z",
+    "results": [
+      {
+        "name": "source-audit",
+        "command": [
+          "node",
+          "/evidence/audit.mjs"
+        ],
+        "pid": 22,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 1716,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 5767826\nuser_usec 295887\nsystem_usec 5471939\nnice_usec 0\nnr_periods 223\nnr_throttled 0\nthrottled_usec 0\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "466501632"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 8062227\nuser_usec 2099041\nsystem_usec 5963186\nnice_usec 0\nnr_periods 240\nnr_throttled 2\nthrottled_usec 82641\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "640880640"
+        }
+      },
+      {
+        "name": "build-contracts",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/contracts"
+        ],
+        "pid": 29,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 10277,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 8177765\nuser_usec 2117953\nsystem_usec 6059811\nnice_usec 0\nnr_periods 241\nnr_throttled 2\nthrottled_usec 82641\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "640880640"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 26321784\nuser_usec 19003044\nsystem_usec 7318740\nnice_usec 0\nnr_periods 344\nnr_throttled 44\nthrottled_usec 2475332\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866316288"
+        }
+      },
+      {
+        "name": "build-domain",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/domain"
+        ],
+        "pid": 48,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 8106,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 26323089\nuser_usec 19004348\nsystem_usec 7318740\nnice_usec 0\nnr_periods 344\nnr_throttled 44\nthrottled_usec 2475332\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866316288"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 40948358\nuser_usec 32851678\nsystem_usec 8096680\nnice_usec 0\nnr_periods 425\nnr_throttled 82\nthrottled_usec 4021792\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866316288"
+        }
+      },
+      {
+        "name": "build-rule-pack-registry",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/rule-pack-registry"
+        ],
+        "pid": 67,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 4053,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 40949760\nuser_usec 32851678\nsystem_usec 8098081\nnice_usec 0\nnr_periods 425\nnr_throttled 82\nthrottled_usec 4021792\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866316288"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 47853137\nuser_usec 39250236\nsystem_usec 8602901\nnice_usec 0\nnr_periods 466\nnr_throttled 98\nthrottled_usec 4399217\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866316288"
+        }
+      },
+      {
+        "name": "build-rule-applicability-context",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/rule-applicability-context"
+        ],
+        "pid": 86,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 3807,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 47855037\nuser_usec 39252135\nsystem_usec 8602901\nnice_usec 0\nnr_periods 466\nnr_throttled 98\nthrottled_usec 4399217\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866316288"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 54158847\nuser_usec 44895679\nsystem_usec 9263168\nnice_usec 0\nnr_periods 504\nnr_throttled 110\nthrottled_usec 4962873\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866316288"
+        }
+      },
+      {
+        "name": "build-api-targets",
+        "command": [
+          "node",
+          "node_modules/typescript/bin/tsc",
+          "-p",
+          "apps/api/tsconfig.issue1101.json"
+        ],
+        "pid": 105,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 19627,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 54160381\nuser_usec 44896949\nsystem_usec 9263431\nnice_usec 0\nnr_periods 504\nnr_throttled 110\nthrottled_usec 4962873\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "866316288"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 85738851\nuser_usec 74983886\nsystem_usec 10754964\nnice_usec 0\nnr_periods 700\nnr_throttled 153\nthrottled_usec 8954099\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1205035008"
+        }
+      },
+      {
+        "name": "migrate",
+        "command": [
+          "node",
+          "db/migrate.mjs"
+        ],
+        "pid": 116,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 4461,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 85767950\nuser_usec 75004834\nsystem_usec 10763115\nnice_usec 0\nnr_periods 701\nnr_throttled 153\nthrottled_usec 8954099\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1205035008"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 86302740\nuser_usec 75330931\nsystem_usec 10971808\nnice_usec 0\nnr_periods 746\nnr_throttled 153\nthrottled_usec 8954099\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1205035008"
+        }
+      },
+      {
+        "name": "wire-boundaries",
+        "command": [
+          "node",
+          "--test",
+          "--test-reporter=tap",
+          "--test-concurrency=1",
+          "apps/api/dist/billing-int64.test.js",
+          "apps/api/dist/billing-wire.test.js"
+        ],
+        "pid": 127,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 1468,
+        "timeoutMs": 300000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 86303801\nuser_usec 75331857\nsystem_usec 10971943\nnice_usec 0\nnr_periods 746\nnr_throttled 153\nthrottled_usec 8954099\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1205035008"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 88301596\nuser_usec 76906807\nsystem_usec 11394789\nnice_usec 0\nnr_periods 761\nnr_throttled 153\nthrottled_usec 8954099\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1205035008"
+        }
+      },
+      {
+        "name": "test",
+        "command": [
+          "node",
+          "--test",
+          "--test-reporter=tap",
+          "--test-concurrency=1",
+          "apps/api/dist/target-confirmation.test.js",
+          "apps/api/dist/zz_log_ops.test.js"
+        ],
+        "pid": 149,
+        "exitCode": 0,
+        "signal": null,
+        "elapsedMs": 135292,
+        "timeoutMs": 600000,
+        "timedOut": false,
+        "remainingGroup": false,
+        "signals": [],
+        "cgroupBefore": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 88302517\nuser_usec 76907609\nsystem_usec 11394908\nnice_usec 0\nnr_periods 761\nnr_throttled 153\nthrottled_usec 8954099\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1205035008"
+        },
+        "cgroupAfter": {
+          "cpu.max": "200000 100000",
+          "cpu.stat": "usage_usec 232521784\nuser_usec 208841242\nsystem_usec 23680541\nnice_usec 0\nnr_periods 2097\nnr_throttled 182\nthrottled_usec 10649520\nnr_bursts 0\nburst_usec 0",
+          "memory.max": "2415919104",
+          "memory.peak": "1205035008"
+        }
+      }
+    ]
+  },
+  "audit": {
+    "commit": "94691eecfe2b9d20885c97f84e0c60e9307da982",
+    "tree": "542efcf7fd3cef222a9083d69c0a27ab5dd93965",
+    "rawFiles": 6430,
+    "rawMatch": true,
+    "assertions": [
+      {
+        "path": "apps/api/src/zz_log_ops.test.ts",
+        "before": 436,
+        "after": 436,
+        "preserved": 436,
+        "unchangedExpressions": 420,
+        "protocolChanges": [
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.ok(Value.Check(schemas.AdminJobTimelineResponse, t));",
+            "after": "assert.ok(Value.Check(timelineWireSchema, t));",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminJobTimeline",
+              "paths": [
+                "response schema"
+              ]
+            },
+            "beforeCall": "assert.ok(Value.Check(schemas.AdminJobTimelineResponse, t))",
+            "afterCall": "assert.ok(Value.Check(timelineWireSchema, t))"
+          },
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.ok(Value.Check(schemas.AdminMetricsResponse, m));",
+            "after": "assert.ok(Value.Check(metricsWireSchema, m));",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminMetrics",
+              "paths": [
+                "response schema"
+              ]
+            },
+            "beforeCall": "assert.ok(Value.Check(schemas.AdminMetricsResponse, m))",
+            "afterCall": "assert.ok(Value.Check(metricsWireSchema, m))"
+          },
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.deepEqual(t.attempts[1].usage, { input_tokens: 200, output_tokens: 50, cached_input_tokens: 80, reasoning_tokens: 20 });",
+            "after": "assert.deepEqual(t.attempts[1].usage, { input_tokens: '200', output_tokens: '50', cached_input_tokens: '80', reasoning_tokens: '20' });",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminJobTimeline",
+              "paths": [
+                "attempts.*.usage.*"
+              ]
+            },
+            "beforeCall": "assert.deepEqual(t.attempts[1].usage, { input_tokens: 200, output_tokens: 50, cached_input_tokens: 80, reasoning_tokens: 20 })",
+            "afterCall": "assert.deepEqual(t.attempts[1].usage, { input_tokens: '200', output_tokens: '50', cached_input_tokens: '80', reasoning_tokens: '20' })"
+          },
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.deepEqual(t.consumption.all_attempts, { attempts: 3, measured_attempts: 2, unresolved_attempts: 1, input_tokens: 300, output_tokens: 60, cached_input_tokens: 120, reasoning_tokens: 25 }, 'retry kept; cached/reasoning are subsets; duplicates once; pending adds nothing');",
+            "after": "assert.deepEqual(t.consumption.all_attempts, { attempts: '3', measured_attempts: '2', unresolved_attempts: '1', input_tokens: '300', output_tokens: '60', cached_input_tokens: '120', reasoning_tokens: '25' }, 'retry kept; cached/reasoning are subsets; duplicates once; pending adds nothing');",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminJobTimeline",
+              "paths": [
+                "consumption.all_attempts.*"
+              ]
+            },
+            "beforeCall": "assert.deepEqual(t.consumption.all_attempts, { attempts: 3, measured_attempts: 2, unresolved_attempts: 1, input_tokens: 300, output_tokens: 60, cached_input_tokens: 120, reasoning_tokens: 25 }, 'retry kept; cached/reasoning are subsets; duplicates once; pending adds nothing')",
+            "afterCall": "assert.deepEqual(t.consumption.all_attempts, { attempts: '3', measured_attempts: '2', unresolved_attempts: '1', input_tokens: '300', output_tokens: '60', cached_input_tokens: '120', reasoning_tokens: '25' }, 'retry kept; cached/reasoning are subsets; duplicates once; pending adds nothing')"
+          },
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.deepEqual(t.consumption.completed_attempts, { attempts: 1, measured_attempts: 1, unresolved_attempts: 0, input_tokens: 200, output_tokens: 50, cached_input_tokens: 80, reasoning_tokens: 20 });",
+            "after": "assert.deepEqual(t.consumption.completed_attempts, { attempts: '1', measured_attempts: '1', unresolved_attempts: '0', input_tokens: '200', output_tokens: '50', cached_input_tokens: '80', reasoning_tokens: '20' });",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminJobTimeline",
+              "paths": [
+                "consumption.completed_attempts.*"
+              ]
+            },
+            "beforeCall": "assert.deepEqual(t.consumption.completed_attempts, { attempts: 1, measured_attempts: 1, unresolved_attempts: 0, input_tokens: 200, output_tokens: 50, cached_input_tokens: 80, reasoning_tokens: 20 })",
+            "afterCall": "assert.deepEqual(t.consumption.completed_attempts, { attempts: '1', measured_attempts: '1', unresolved_attempts: '0', input_tokens: '200', output_tokens: '50', cached_input_tokens: '80', reasoning_tokens: '20' })"
+          },
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.equal(m.jobs.total, 1);",
+            "after": "assert.equal(m.jobs.total, '1');",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminMetrics",
+              "paths": [
+                "jobs.total"
+              ]
+            },
+            "beforeCall": "assert.equal(m.jobs.total, 1)",
+            "afterCall": "assert.equal(m.jobs.total, '1')"
+          },
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.deepEqual([m.attempts.total, m.attempts.completed, m.attempts.failed, m.attempts.pending_reconcile], [3, 1, 1, 1]);",
+            "after": "assert.deepEqual([m.attempts.total, m.attempts.completed, m.attempts.failed, m.attempts.pending_reconcile], ['3', '1', '1', '1']);",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminMetrics",
+              "paths": [
+                "attempts.total",
+                "attempts.completed",
+                "attempts.failed",
+                "attempts.pending_reconcile"
+              ]
+            },
+            "beforeCall": "assert.deepEqual([m.attempts.total, m.attempts.completed, m.attempts.failed, m.attempts.pending_reconcile], [3, 1, 1, 1])",
+            "afterCall": "assert.deepEqual([m.attempts.total, m.attempts.completed, m.attempts.failed, m.attempts.pending_reconcile], ['3', '1', '1', '1'])"
+          },
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.equal(m.consumption.all_attempts.input_tokens, 300);",
+            "after": "assert.equal(m.consumption.all_attempts.input_tokens, '300');",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminMetrics",
+              "paths": [
+                "consumption.all_attempts.input_tokens"
+              ]
+            },
+            "beforeCall": "assert.equal(m.consumption.all_attempts.input_tokens, 300)",
+            "afterCall": "assert.equal(m.consumption.all_attempts.input_tokens, '300')"
+          },
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.equal(m.consumption.retry_attempts.input_tokens, 200);",
+            "after": "assert.equal(m.consumption.retry_attempts.input_tokens, '200');",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminMetrics",
+              "paths": [
+                "consumption.retry_attempts.input_tokens"
+              ]
+            },
+            "beforeCall": "assert.equal(m.consumption.retry_attempts.input_tokens, 200)",
+            "afterCall": "assert.equal(m.consumption.retry_attempts.input_tokens, '200')"
+          },
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.deepEqual(m.by_model.find((x: any) => x.model_id === 'synthetic-model-b'), { model_id: 'synthetic-model-b', attempts: 1, completed: 0, failed: 0, input_tokens: null, output_tokens: null, cached_input_tokens: null, reasoning_tokens: null });",
+            "after": "assert.deepEqual(m.by_model.find((x: any) => x.model_id === 'synthetic-model-b'), { model_id: 'synthetic-model-b', attempts: '1', completed: '0', failed: '0', input_tokens: null, output_tokens: null, cached_input_tokens: null, reasoning_tokens: null });",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminMetrics",
+              "paths": [
+                "by_model.*.attempts",
+                "by_model.*.completed",
+                "by_model.*.failed"
+              ]
+            },
+            "beforeCall": "assert.deepEqual(m.by_model.find((x: any) => x.model_id === 'synthetic-model-b'), { model_id: 'synthetic-model-b', attempts: 1, completed: 0, failed: 0, input_tokens: null, output_tokens: null, cached_input_tokens: null, reasoning_tokens: null })",
+            "afterCall": "assert.deepEqual(m.by_model.find((x: any) => x.model_id === 'synthetic-model-b'), { model_id: 'synthetic-model-b', attempts: '1', completed: '0', failed: '0', input_tokens: null, output_tokens: null, cached_input_tokens: null, reasoning_tokens: null })"
+          },
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.ok(m.operations.submitted >= 1);",
+            "after": "assert.ok(BigInt(m.operations.submitted) >= 1n);",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminMetrics",
+              "paths": [
+                "operations.submitted"
+              ]
+            },
+            "beforeCall": "assert.ok(m.operations.submitted >= 1)",
+            "afterCall": "assert.ok(BigInt(m.operations.submitted) >= 1n)"
+          },
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.deepEqual(errorMetrics.json().errors, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: 1 }]);",
+            "after": "assert.deepEqual(errorMetrics.json().errors, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: '1' }]);",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminMetrics",
+              "paths": [
+                "errors.*.count"
+              ]
+            },
+            "beforeCall": "assert.deepEqual(errorMetrics.json().errors, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: 1 }])",
+            "afterCall": "assert.deepEqual(errorMetrics.json().errors, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: '1' }])"
+          },
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.equal(conflicted.consumption.all_attempts.input_tokens, 100);",
+            "after": "assert.equal(conflicted.consumption.all_attempts.input_tokens, '100');",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminJobTimeline",
+              "paths": [
+                "consumption.all_attempts.input_tokens"
+              ]
+            },
+            "beforeCall": "assert.equal(conflicted.consumption.all_attempts.input_tokens, 100)",
+            "afterCall": "assert.equal(conflicted.consumption.all_attempts.input_tokens, '100')"
+          },
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.deepEqual(errorCounts.json().items, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: 1 }]);",
+            "after": "assert.deepEqual(errorCounts.json().items, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: '1' }]);",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminErrors",
+              "paths": [
+                "items.*.count"
+              ]
+            },
+            "beforeCall": "assert.deepEqual(errorCounts.json().items, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: 1 }])",
+            "afterCall": "assert.deepEqual(errorCounts.json().items, [{ error_code: 'DELIVERY_FAILED', error_category: 'delivery', fingerprint: recordedError.fingerprint, count: '1' }])"
+          },
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.equal(after.consumption.all_attempts.input_tokens, 300);",
+            "after": "assert.equal(after.consumption.all_attempts.input_tokens, '300');",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminJobTimeline",
+              "paths": [
+                "consumption.all_attempts.input_tokens"
+              ]
+            },
+            "beforeCall": "assert.equal(after.consumption.all_attempts.input_tokens, 300)",
+            "afterCall": "assert.equal(after.consumption.all_attempts.input_tokens, '300')"
+          },
+          {
+            "path": "apps/api/src/zz_log_ops.test.ts",
+            "before": "assert.equal(timeline.attempts[0].usage.input_tokens, 11);",
+            "after": "assert.equal(timeline.attempts[0].usage.input_tokens, '11');",
+            "reason": {
+              "kind": "approved-int64-wire",
+              "family": "adminJobTimeline",
+              "paths": [
+                "attempts.*.usage.input_tokens"
+              ]
+            },
+            "beforeCall": "assert.equal(timeline.attempts[0].usage.input_tokens, 11)",
+            "afterCall": "assert.equal(timeline.attempts[0].usage.input_tokens, '11')"
+          }
+        ]
+      },
+      {
+        "path": "apps/api/src/target-confirmation.test.ts",
+        "before": 30,
+        "after": 44,
+        "preserved": 30,
+        "unchangedExpressions": 30,
+        "originalAssertionOrderChanged": true,
+        "added": 14,
+        "addedTest": "a new request cannot execute a superseded confirmed target or freeze credits"
+      }
+    ]
+  },
+  "runtime": {
+    "node": "v22.23.3",
+    "typescript": "5.9.3",
+    "pg": "8.23.0",
+    "fastify": "5.12.5",
+    "cachedLockSha256": "69ce90eb0ff8cb11578c419ad3c5a1221da099fdb5fce17c190aef2052255701",
+    "sourceLockSha256": "81833914ef0ba232e249040685bb93ac1e3b63e640b960d2d217985fa4b5ed8c",
+    "sourceLockCRLFSha256": "69ce90eb0ff8cb11578c419ad3c5a1221da099fdb5fce17c190aef2052255701",
+    "lockMatches": true
+  },
+  "images": {
+    "runner": "sha256:e081d9ca27e8ef07e6a658183b50b15a568a8126a67d70a3065ff630dfb7fdb9",
+    "azurite": "sha256:647c63a91102a9d8e8000aab803436e1fc85fbb285e7ce830a82ee5d6661cf37",
+    "postgres": "sha256:20edbde7749f822887a1a022ad526fde0a47d6b2be9a8364433605cf65099416"
+  },
+  "cleanup": {
+    "timestamp": "2026-11-12T05:06:13.051Z",
+    "testFinished": "2026-11-12T05:05:39.741Z",
+    "resources": [
+      {
+        "id": "a2da7c4e94949ad8c5ec19b864bacd4110cd5fe7f2c457a0b4d2548b5aa2ad9e",
+        "name": "/bb-issue1101-pg",
+        "image": "sha256:20edbde7749f822887a1a022ad526fde0a47d6b2be9a8364433605cf65099416",
+        "cpu": 1,
+        "memoryBytes": 536870912,
+        "ports": {},
+        "status": "running"
+      },
+      {
+        "id": "cf7f2d2a4467364f0a6d7009bb617b8d3a50a9d5a2ddf6d5bbb89049cf4e59d5",
+        "name": "/bb-issue1101-azurite",
+        "image": "sha256:647c63a91102a9d8e8000aab803436e1fc85fbb285e7ce830a82ee5d6661cf37",
+        "cpu": 0.5,
+        "memoryBytes": 268435456,
+        "ports": {},
+        "status": "running"
+      },
+      {
+        "id": "bf6f73ea74be32b9aacb712dec4f5d8b2909aa4b1bfcf9fa79803c1e4d1082d2",
+        "name": "/bb-issue1101-runner",
+        "image": "sha256:e081d9ca27e8ef07e6a658183b50b15a568a8126a67d70a3065ff630dfb7fdb9",
+        "cpu": 2,
+        "memoryBytes": 2415919104,
+        "ports": {},
+        "status": "running"
+      }
+    ],
+    "runnerProcessesBeforeRemoval": "PID                 COMMAND             COMMAND\n56297               docker-init         /sbin/docker-init -- sleep infinity\n56319               sleep               sleep infinity",
+    "network": {
+      "id": "35358b545e3bc97e5f2c1b46f88f158ab19d7101ad0b8f49954d3f57051a03a5",
+      "name": "bb-issue1101-net",
+      "internal": true
+    },
+    "removal": "a2da7c4e94949ad8c5ec19b864bacd4110cd5fe7f2c457a0b4d2548b5aa2ad9e\ncf7f2d2a4467364f0a6d7009bb617b8d3a50a9d5a2ddf6d5bbb89049cf4e59d5\nbf6f73ea74be32b9aacb712dec4f5d8b2909aa4b1bfcf9fa79803c1e4d1082d2",
+    "networkRemoval": "35358b545e3bc97e5f2c1b46f88f158ab19d7101ad0b8f49954d3f57051a03a5",
+    "absent": [
+      {
+        "id": "a2da7c4e94949ad8c5ec19b864bacd4110cd5fe7f2c457a0b4d2548b5aa2ad9e",
+        "name": "/bb-issue1101-pg",
+        "absent": true
+      },
+      {
+        "id": "cf7f2d2a4467364f0a6d7009bb617b8d3a50a9d5a2ddf6d5bbb89049cf4e59d5",
+        "name": "/bb-issue1101-azurite",
+        "absent": true
+      },
+      {
+        "id": "bf6f73ea74be32b9aacb712dec4f5d8b2909aa4b1bfcf9fa79803c1e4d1082d2",
+        "name": "/bb-issue1101-runner",
+        "absent": true
+      }
+    ],
+    "networkAbsent": true
+  },
+  "remainingClones": [],
+  "logs": {
+    "final-test.tap": {
+      "rawSha256": "4140f5c894977114bca22c1ba37c3951cf4ad793a34ba663ccdc294fbf3dfb4c",
+      "displaySha256": "4140f5c894977114bca22c1ba37c3951cf4ad793a34ba663ccdc294fbf3dfb4c",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "wire-boundaries.tap": {
+      "rawSha256": "1c631bff424839e31f461cca4f161b1cefdd573a0bbf0cea4f0f0ee8408f708b",
+      "displaySha256": "1c631bff424839e31f461cca4f161b1cefdd573a0bbf0cea4f0f0ee8408f708b",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "precheck-audit-failed.log": {
+      "rawSha256": "f81d15ece1cee514738638d76fb4fa137c9a53ae6a0925a75beb48e0df2066bc",
+      "displaySha256": "f81d15ece1cee514738638d76fb4fa137c9a53ae6a0925a75beb48e0df2066bc",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "initial-build-failed.log": {
+      "rawSha256": "a31368fed39d0a27eb1394ec88f365384492b93596f2f5962ba32a494fd853fa",
+      "displaySha256": "a31368fed39d0a27eb1394ec88f365384492b93596f2f5962ba32a494fd853fa",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "initial-core-incomplete.tap": {
+      "rawSha256": "c070233552e7fcb052c7d54c5e99f6b842648577baca64981ee2749f7d1f1938",
+      "displaySha256": "c4d15af80588219fab0c880f8291302ad085cb8724751066dcd17f27d442d8fd",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "original-zz_log_ops.tap": {
+      "rawSha256": "e639530139fff86df1dc4a41a8ca7bb8968d5ed31f1922788fd7e41a7655c998",
+      "displaySha256": "314506253fad0d40846be4ab95576be85672803f46e4129cadc2e879c31596cc",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    },
+    "original-target-confirmation.tap": {
+      "rawSha256": "fca5e99d11fda5e9619b9f33113fdc7237f52c875856531e3b3945446dd9e4af",
+      "displaySha256": "26d780555eda77d7709e257cd402f12072cca12fed48ea25500feb860e1754d6",
+      "displayNormalization": "remove trailing horizontal whitespace and excess final blank lines only"
+    }
+  }
+}

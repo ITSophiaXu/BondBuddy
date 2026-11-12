@@ -1,3 +1,4 @@
+import {canReselectExpiredUpload} from './upload-reselection';
 import {uploadPicker} from './upload-picker';
 import './upload-progress.css';
 import {uploadProgressHtml,type UploadStatus} from './upload-progress';
@@ -57,13 +58,13 @@ export class ProjectFiles {
   private pendingImport?:{file?:File;type:ProjectDocumentType;request:string;latest:string|null;pin?:Awaited<ReturnType<typeof uploadFileMaterial>>;upload:UploadFileMaterialState;uncertain:boolean;allowReselect?:boolean};
   private savedImport?:{type:ProjectDocumentType;pin:M4MaterialPin;fileId?:string;previous?:number};
   private folderMedia=matchMedia('(max-width:760px)');
-  private syncFolderLayout=()=>{const picker=document.querySelector<HTMLDetailsElement>('#pw-folder-picker');if(this.live()&&picker)picker.open=!this.folderMedia.matches;};
+  private syncFolderLayout=()=>{const picker=document.querySelector<HTMLDetailsElement>('#pw-folder-picker');if(this.live()&&picker){picker.open=!this.folderMedia.matches;this.revealFileStatus();}};
   constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean,private id:string,private owner?:string,private routeChanged:(route:string)=>void=()=>{}){}
   private imports(){if(!this.owner)throw new UserFacingError('当前账号身份尚未确认，不能建立可恢复的上传记录。');return new UploadRecovery(this.api,this.owner,this.id,'project-file-import',()=>this.live());}
   private restoreImport(record:UploadRecoveryRecord){
     const c=record.context;
     if(!c||typeof c!=='object'||Array.isArray(c)||typeof c.request_id!=='string'||!c.request_id||typeof c.document_type!=='string'||!PROJECT_DOCUMENT_CATALOG.some(d=>d.id===c.document_type)||!(c.expected_latest_version_id===null||typeof c.expected_latest_version_id==='string'))throw new UserFacingError('原关联文件的保存范围无法核实，请保留原记录并核对项目文件。');
-    this.pendingImport={type:c.document_type as ProjectDocumentType,request:c.request_id,latest:c.expected_latest_version_id as string|null,upload:{operationId:record.id,projectId:this.id},uncertain:true,allowReselect:false};
+    this.pendingImport={type:c.document_type as ProjectDocumentType,request:c.request_id,latest:c.expected_latest_version_id as string|null,upload:{operationId:record.id,projectId:this.id},uncertain:true,allowReselect:canReselectExpiredUpload(record)};
   }
   private live(){return !this.disposed&&this.current();}
   get hasUnconfirmed(){return !this.disposed&&(this.uploading||!!this.pendingImport?.uncertain||!!this.panel?.hasUnconfirmed);}
@@ -477,11 +478,23 @@ export class ProjectFiles {
     if(clearType)this.paint(false);else this.paintFiles(false);this.rememberFileView();
     if(!document.querySelector('dialog[open]'))document.querySelector<HTMLElement>('#pw-file-status [data-file-status="'+group+'"]')?.focus({preventScroll:true});
   }
+  private revealFileStatus(){
+    const host=document.querySelector<HTMLElement>('#pw-file-status');
+    const selected=host?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if(!host||!selected||host.scrollWidth<=host.clientWidth)return;
+    const frame=host.getBoundingClientRect(),button=selected.getBoundingClientRect();
+    const left=frame.left+host.clientLeft,right=left+host.clientWidth;
+    // Scroll only the filter strip; keep the user's vertical reading position.
+    if(button.left<left+4)host.scrollLeft+=button.left-left-4;
+    else if(button.right>right-4)host.scrollLeft+=button.right-right+4;
+  }
   private paintFileStatus(rows:ProjectFileStatusRow[],untyped:ProjectFileStatusRow[]){
     const counts=new Map(fileStatusOptions.map(option=>[option.key,option.key==='all'?rows.length:rows.filter(row=>row.group===option.key).length]));
-    const host=document.querySelector('#pw-file-status')!;
+    const host=document.querySelector<HTMLElement>('#pw-file-status')!;
+    const previous=host.querySelector('[aria-pressed="true"]')?.getAttribute('data-file-status'),scroll=host.scrollLeft;
     host.innerHTML='<div>'+fileStatusOptions.map(option=>'<button type="button" class="collection-filter" data-file-status="'+option.key+'" data-file-view-focus="'+esc(fileViewFocus('status',option.key))+'" aria-pressed="'+(this.statusFilter===option.key)+'">'+option.label+' <span data-file-status-count>'+(!this.registryLoaded&&option.key!=='all'?'—':counts.get(option.key))+'</span></button>').join('')+'</div>';
     host.querySelectorAll<HTMLButtonElement>('[data-file-status]').forEach(button=>button.addEventListener('click',()=>{const group=button.dataset.fileStatus;if(group&&isFileStatusGroup(group))this.chooseFileStatus(group);}));
+    host.scrollLeft=scroll;if(previous!==this.statusFilter)this.revealFileStatus();
     const unsynced=untyped.filter(row=>row.group==='unsynced').length;
     let note:string;
     if(!this.registryLoaded)note='文件检查状态暂未同步，当前按目录和名称显示全部匹配文件。'+(this.typeFilter?'所选文种和处理状态':'所选处理状态')+'将在刷新成功后恢复。';
@@ -536,19 +549,21 @@ export class ProjectFiles {
     const host=document.querySelector('#pw-import-recovery');if(!host)return;
     try{
       const records=this.owner?this.imports().list():[];
+      if(this.pendingImport&&records.some(r=>r.id===this.pendingImport!.upload.operationId&&canReselectExpiredUpload(r)))this.pendingImport.allowReselect=true;
       host.innerHTML=records.map(r=>'<p class="collection-error bb-upload-file">'+esc(r.declaration.filename)+' 保存待确认。 <button type="button" class="bb-upload-action bb-upload-action--primary" data-resume-project-file="'+esc(r.id)+'">继续确认关联文件</button></p>').join('');
       host.querySelectorAll<HTMLButtonElement>('[data-resume-project-file]').forEach(b=>b.addEventListener('click',()=>this.importFile(undefined,b.dataset.resumeProjectFile)));
     }catch(e){host.textContent=friendlyError(e,'read');}
   }
   private importFile(type?:ProjectDocumentType,operationId?:string,clickedTarget?:ProjectFileVersion){
-    if(operationId){try{const record=this.imports().list().find(r=>r.id===operationId);if(!record)throw new UserFacingError('原上传记录已变化，请重新读取。');if(this.pendingImport?.upload.operationId!==operationId)this.restoreImport(record);}catch(e){this.status(friendlyError(e,'read'));return;}}
+    let restoredRecord:UploadRecoveryRecord|undefined;
+    if(operationId){try{const record=this.imports().list().find(r=>r.id===operationId);if(!record)throw new UserFacingError('原上传记录已变化，请重新读取。');restoredRecord=record;if(this.pendingImport?.upload.operationId!==operationId)this.restoreImport(record);}catch(e){this.status(friendlyError(e,'read'));return;}}
     if(this.uploading||this.panel?.hasUnconfirmed){this.status('请先确认当前上传或采用操作的结果，再上传关联文件。');return;}const opener=document.activeElement instanceof HTMLElement?document.activeElement:undefined;this.dialog?.remove();const d=document.createElement('dialog');this.dialog=d;d.className='pf-modal pw-file-import';
     const restoring=this.pendingImport;if(restoring)type=restoring.type;
     const candidate=restoring?this.registry.find(v=>v.version_id===restoring.latest&&v.document_type===restoring.type):clickedTarget;
     if(candidate?.document_type==='workpaper'){this.status('请在底稿文件库中查看该文件的检查和维护版本。');return;}
     const target=candidate as (ProjectFileVersion&{document_type:ProjectDocumentType})|undefined;
     if(target)type=target.document_type;
-    let targetConflict=false,uploadFailed=!!restoring;
+    let targetConflict=false,uploadFailed=!!restoring,reselectedFile:File|undefined;
     d.setAttribute('aria-labelledby','pw-import-heading');
     d.innerHTML='<header><h2 id="pw-import-heading">'+(target?'上传此文件修改稿':'上传项目关联文件')+'</h2><button class="icon-btn" data-close aria-label="关闭">'+ico('close')+'</button></header><p class="pw-import-target" id="pw-import-target">'+esc(this.name)+(target?' · '+esc(PROJECT_DOCUMENT_CATALOG.find(c=>c.id===target.document_type)!.name)+'<br><strong>原文件：'+esc(target.filename)+' · V'+target.sequence+'</strong>':restoring?.latest?'<br>原目标版本暂不可读取，将沿原文件类型与版本条件确认。':'')+'</p><form><label>文件类型<select name="type" required><option value="">请选择文件类型</option>'+PROJECT_DOCUMENT_CATALOG.map(c=>'<option value="'+c.id+'" '+(type===c.id?'selected':'')+'>'+c.name+'</option>').join('')+'</select></label><label data-project-file-picker>Word 或 PDF'+uploadPicker('<input name="file" type="file" accept=".docx,.pdf" '+(restoring?'':'required')+'/>')+'</label><p>'+(restoring?'先确认原上传；已收到字节时无需重选。若需要字节，请选择原文件。':target?'保存为此类文件的新版本，原 V'+target.sequence+' 保留。本次不生成、不合并、不检查。':'保存为此类文件的新版本，保留旧版。上传后可检查与当前募集书的一致性。')+'</p><p>选好文件类型后，选择 Word 或 PDF 即自动上传保存。</p><button class="btn primary bb-upload-action bb-upload-action--primary" hidden>重试保存项目文件</button></form><p role="status"></p>';
     if(restoring?.file){const transfer=new DataTransfer();transfer.items.add(restoring.file);d.querySelector<HTMLInputElement>('[name=file]')!.files=transfer.files;}
@@ -556,7 +571,7 @@ export class ProjectFiles {
     const statusHost=d.querySelector('[role=status]')!;
     const status:UploadStatus=(text,p)=>{if(p)statusHost.innerHTML=uploadProgressHtml(p,this.pendingImport?.file?.name??'项目文件',{announce:false});else statusHost.textContent=text;};
     d.querySelector<HTMLSelectElement>('[name=type]')!.addEventListener('invalid',()=>status('请选择有效的文件类型，再保存项目文件。所选文件仍保留。'));
-    if(restoring?.uncertain)status('本次保存结果尚未确认。请重试保存项目文件，沿用同一次操作。'+(restoring.pin?'已上传文件不会重复上传。':'请重试确认上传与保存结果。'));controls();
+    if(restoredRecord&&canReselectExpiredUpload(restoredRecord))status('上次上传已过期。可先继续确认保存结果；如果需要重新上传，请重新选择原文件。');else if(restoring?.uncertain)status('本次保存结果尚未确认。请重试保存项目文件，沿用同一次操作。'+(restoring.pin?'已上传文件不会重复上传。':'请重试确认上传与保存结果。'));controls();
     document.body.append(d);d.showModal();d.querySelector('[data-close]')!.addEventListener('click',()=>{if(!this.uploading)d.close();});d.addEventListener('cancel',e=>{if(this.uploading)e.preventDefault();});
     d.addEventListener('close',()=>{d.remove();if(this.dialog===d)this.dialog=undefined;this.paintImportRecovery();if(opener?.isConnected)opener.focus();});
     d.querySelector('form')!.addEventListener('submit',e=>{e.preventDefault();if(this.uploading||targetConflict)return;
@@ -570,7 +585,7 @@ export class ProjectFiles {
         if(!this.pendingImport){this.savedImport=undefined;this.paintSavedImport();}
         const pending=this.pendingImport??={file,type:target?.document_type??type,request:crypto.randomUUID(),latest:target?.version_id??this.registry.find(v=>v.latest&&v.document_type===type)?.version_id??null,upload:{},uncertain:false};
         if(file)pending.file=file;
-        pending.pin=await uploadFileMaterial(this.api,this.id,pending.file,this.controller.signal,status,pending.upload,this.owner,'project-file-import',{request_id:pending.request,document_type:pending.type,expected_latest_version_id:pending.latest},()=>this.live());
+        pending.pin=await uploadFileMaterial(this.api,this.id,pending.file,this.controller.signal,status,pending.upload,this.owner,'project-file-import',{request_id:pending.request,document_type:pending.type,expected_latest_version_id:pending.latest},()=>this.live(),{reselectExpiredSession:!!file&&file===reselectedFile});
         const result=await this.api.request<{files?:ProjectFileVersion[]}>('POST','/projects/'+encodeURIComponent(this.id)+'/project-files/imports',{request_id:pending.request,document_type:pending.type,material:pending.pin,expected_latest_version_id:pending.latest},{},AbortSignal.any([this.controller.signal,AbortSignal.timeout(30000)]));
         confirmed=true;this.savedImport={type:pending.type,pin:structuredClone(pending.pin),fileId:target?.file_id,previous:target?.sequence};
         if(Array.isArray(result.files)){this.registry=result.files;this.registryLoaded=true;}
@@ -589,7 +604,7 @@ export class ProjectFiles {
     });
     const input=d.querySelector<HTMLInputElement>('[name=file]')!,select=d.querySelector<HTMLSelectElement>('[name=type]')!;
     select.addEventListener('change',controls);
-    input.addEventListener('change',()=>{if(input.files?.length&&!this.uploading)d.querySelector('form')!.requestSubmit();});
+    input.addEventListener('change',()=>{if(input.files?.length&&!this.uploading){if(this.pendingImport)reselectedFile=input.files[0];d.querySelector('form')!.requestSubmit();}});
   }
   private fileVersionLabel(f:ProjectFile){
     return `文件版本 V${f.display_version}`;
@@ -626,7 +641,8 @@ export class ProjectFiles {
         if(run.project_id!==f.project_id||run.state!=='succeeded')throw new ApiError(0,'DATA_UNAVAILABLE');
         bytes=await this.api.artifactBytes(a,this.controller.signal);
         const registered=this.registered(f);
-        filename=registered?.revision_asset?resultFilename({project:registered.filename.replace(/\.[^.]+$/,''),kind:revision?'修订版':'清洁版',version:registered.sequence,createdAt:f.created_at,mediaType:a.media_type}):artifactFilename(a);
+        // The delivered artifact name is frozen; the file catalog can have a different name/version.
+        filename=a.filename??(registered?.revision_asset?resultFilename({project:registered.filename.replace(/\.[^.]+$/,''),kind:revision?'修订版':'清洁版',version:registered.sequence,createdAt:f.created_at,mediaType:a.media_type}):artifactFilename(a));
       }
       else{const m=await this.api.material(f.project_id,f.file_id,this.controller.signal,f.version);if(m.material_version!==f.version||m.sha256!==f.sha256)throw new ApiError(409,'INPUT_REVISION_CONFLICT');bytes=await this.api.materialBytes(f.project_id,m,this.controller.signal);}
       if(!this.live())return;this.downloads.save(bytes,filename);if(status)status.textContent='文件已交给浏览器下载。';

@@ -294,14 +294,15 @@ test('a concrete editor item leads through real supplement upload to a fixed ful
   const state = await setup(page), dialog = await openEditor(page);
   const requirement = await dialog.locator('#review-followup-text').inputValue(); await save(page).click(); await expectSaved(page, state, requirement);
   const section = page.locator('.material-partition').filter({ has: page.getByRole('heading', { name: '审计报告 / 财务报表及附注', exact: true }) });
-  await section.locator('summary').click();
-  await page.locator('#review-upload-financial').setInputFiles({ name: '合成补充现金流报表.csv', mimeType: 'text/csv',
+  await expect(section).toBeVisible();
+  const picker=section.locator('#review-upload-audit');await expect(picker).toBeEnabled();await expect(picker).toHaveAttribute('data-review-upload-role','audit');
+  await picker.setInputFiles({ name: '合成补充现金流报表.csv', mimeType: 'text/csv',
     buffer: Buffer.from('期间,项目,金额\n2025,经营现金流,130\n', 'utf8') });
   await expect.poll(() => state.supplement?.state).toBe('persisted');
   const pin = { material_id: state.supplement!.material_id, material_version: 1, sha256: state.supplement!.sha256 };
   await expect.poll(() => state.draft.material_versions.some(m => m.material_id === pin.material_id && m.sha256 === pin.sha256)).toBe(true);
   await expect(page.locator('.material-file-main').filter({ hasText: '合成补充现金流报表.csv' })).toContainText('已保存');
-  expect(state.uploads).toHaveLength(1); expect(state.uploads[0].role).toBe('financial'); expect(state.uploadedBytes).toBe(1);
+  expect(state.uploads).toHaveLength(1); expect(state.uploads[0].role).toBe('audit');expect(state.supplement!.role).toBe('audit'); expect(state.uploadedBytes).toBe(1);
   expect(state.executions).toEqual([]); expect(state.quotes).toEqual([]);
   await page.getByRole('button', { name: '开始复核', exact: true }).click(); await expect.poll(() => state.executions.length).toBe(1);
   expect(state.executions[0]).toMatchObject({ operation: 'full_review', source_report_id: null, finding_ids: [], expected_plan_version: null });

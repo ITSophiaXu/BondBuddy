@@ -1,3 +1,4 @@
+import {fixtureBody} from './billing-fixture-wire';
 import {test,expect,type Page} from '@playwright/test';
 import {createHash} from 'node:crypto';
 import {mkdir,readFile} from 'node:fs/promises';
@@ -15,7 +16,7 @@ async function fixture(page:Page){
    {subject_id:'company',site_id:'csrc',site_name:'证券期货市场失信记录查询平台',urls:['https://neris.csrc.gov.cn/shixinchaxun/'],query:'合成企业',status:'needs_manual',reason:'官网要求验证码，自动查询已停止，其他网站继续。',checked_at:time,sources:[],search_performed:true,browser:{version:'official-browser-v1',outcome:'blocked',scope:'证券期货市场失信查询',limitation:'未获得数据库查询结果。',captures:[]}}],evidence:[],artifact_id:null,artifacts:[],charged_points:5000,reserved_points:0}]};
  let corrupt=false,exported=0;
  await page.route('**/api/v1/**',async route=>{
-  const path=new URL(route.request().url()).pathname,reply=(v:unknown)=>route.fulfill({json:v});
+  const path=new URL(route.request().url()).pathname,reply=(v:unknown)=>route.fulfill({json:fixtureBody(route,v)});
   if(path==='/api/v1/me')return reply({user_id:'synthetic-owner',session_status:'active'});
   if(path==='/api/v1/account')return reply({user_id:'synthetic-owner',username:'synthetic',phone_masked:null,status:'active',created_at:time,accepted_terms_version:null,current_terms_version:null,password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});
   if(path==='/api/v1/credits/balance')return reply({enabled:true,available:10000,frozen:0});
@@ -34,7 +35,7 @@ for(const width of [1440,390,1265])test(`integrity official evidence preserves c
  await page.goto('/#integrity?project=project&run=round');
  await expect(page.getByText('搜索无返回结果',{exact:true})).toBeVisible();await expect(page.getByText('需要验证码',{exact:true})).toBeVisible();
  await expect(page.getByText('1 张官网截图')).toBeVisible();
- const out=resolve('../../docs/acceptance/integrity-readiness-20261026');await mkdir(out,{recursive:true});
+ const out=resolve(test.info().outputPath('integrity-readiness-20261026'));await mkdir(out,{recursive:true});
  await page.screenshot({path:resolve(out,`results-${width}.png`),fullPage:true});
  await page.getByRole('button',{name:'查看查询记录'}).first().click();await expect(page.getByRole('heading',{name:'官网自动取证'})).toBeVisible();
  await expect(page.locator('dialog input[type=file]')).toHaveCount(0);await expect(page.getByRole('heading',{name:'人工补充证据'})).toHaveCount(0);
@@ -109,7 +110,7 @@ test('precise result states and adverse facts are visible without an evidence up
  for(const label of ['搜索无返回结果',...diagnostics.map(d=>d[2]),'发现不利记录（企业全称匹配）','发现不利线索（主体未确认）','搜索返回一般信息'])await expect(page.getByText(label,{exact:true})).toBeVisible();
  await expect(page.locator('.integrity-status-danger')).toHaveCount(1);
  await expect(page.locator('#integrity-records')).not.toContainText(/待人工补证|HTTP|403|Forbidden|GeoBL|net::|ERR_/);
- const out=resolve('../../docs/acceptance/integrity-readiness-20261026');await page.screenshot({path:resolve(out,'precise-statuses-1440.png'),fullPage:true});
+ const out=resolve(test.info().outputPath('integrity-readiness-20261026'));await page.screenshot({path:resolve(out,'precise-statuses-1440.png'),fullPage:true});
  await page.locator('tr').filter({has:page.getByText('网站拒绝访问',{exact:true})}).getByRole('button',{name:'查看查询记录'}).click();
  await expect(page.locator('dialog')).toContainText('网站拒绝了本次访问');await expect(page.locator('dialog')).not.toContainText(/HTTP|403|Forbidden|GeoBL|net::|ERR_/);
  await page.screenshot({path:resolve(out,'access-denied-1440.png')});await page.locator('dialog').press('Escape');
@@ -161,7 +162,7 @@ test('connection errors distinguish certificates and required styles without cha
  else {await expect(page.getByText('网站证书有效期异常',{exact:true})).toBeVisible();await expect(page.getByText('查询页面样式加载失败',{exact:true})).toBeVisible();}
  await expect(page.getByText('网站响应错误',{exact:true})).toBeVisible();await expect(page.getByText('搜索无返回结果',{exact:true})).toBeVisible();
  await expect(page.locator('#integrity-records')).not.toContainText(/net::|ERR_|OFFICIAL_|example\.test/);
- const out=resolve('../../docs/acceptance/integrity-connections-20261027');await mkdir(out,{recursive:true});
+ const out=resolve(test.info().outputPath('integrity-connections-20261027'));await mkdir(out,{recursive:true});
  await page.screenshot({path:resolve(out,reference?'before-1440.png':'after-1440.png'),fullPage:true});
  if(!reference){
   await page.locator('tr').filter({has:page.getByText('网站证书有效期异常',{exact:true})}).getByRole('button',{name:'查看查询记录'}).click();

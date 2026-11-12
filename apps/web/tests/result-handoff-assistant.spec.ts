@@ -8,6 +8,7 @@ import {AssistantCardRequestSchema,M4_DOCUMENT_TYPES,M4DocumentManifestSchema,M4
   type AssistantCard,type M4Artifact,type M4Draft,type M4Task,type M4Workspace,type ReviewHistoryEntry,type ReviewReport,type ReviewWorkspace,type Run} from '@bondbuddy/contracts';
 import type {Dto} from '../src/api';
 import {taskPage} from './collection-fixtures';
+import {fixtureBody,serveDisabledBillingCatalog} from './billing-fixture-wire';
 
 // Synthetic owner-scoped HTTP data, real main.ts navigation and result consumers.
 // This does not execute a model, prove DOCX quality, settle credits or contact a service.
@@ -20,7 +21,7 @@ const artifactId=(version:number)=>`result-handoff-artifact-${version}`;
 const marker=(version:number)=>`合成原任务第${version}轮专属内容`;
 FormatRegistry.Set('date-time',value=>/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(value));
 function check(schema:TSchema,value:unknown){expect(Value.Check(schema,value),JSON.stringify([...Value.Errors(schema,value)])).toBe(true);}
-const json=(route:Route,body:unknown,status=200)=>route.fulfill({status,json:body});
+const json=(route:Route,body:unknown,status=200)=>route.fulfill({status,json:fixtureBody(route,body)});
 type Operation=AssistantCard['operation'];
 type Call={method:string;path:string;search:string};
 
@@ -110,6 +111,7 @@ async function install(page:Page,s:State){
   validate(s);page.on('pageerror',error=>s.errors.push(error.message));
   await page.route('**/api/v1/**',async route=>{
     const request=route.request(),url=new URL(request.url()),path=url.pathname.slice('/api/v1'.length),method=request.method();s.calls.push({method,path,search:url.search});
+    if(await serveDisabledBillingCatalog(route))return;
     if(method==='GET'){
       if(path==='/me')return json(route,{user_id:ids.owner,session_status:'active'});
       if(path==='/account')return json(route,{user_id:ids.owner,username:'synthetic_handoff_owner',phone_masked:null,status:'active',created_at:now,accepted_terms_version:'terms-1',current_terms_version:'terms-1',password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});
@@ -165,7 +167,12 @@ async function install(page:Page,s:State){
     s.unexpected.push(`${method} ${path}${url.search}`);return json(route,{code:'DATA_UNAVAILABLE',message:'Unexpected synthetic handoff request',retryable:false,correlation_id:'handoff',field_errors:[]},500);
   });
   await page.goto('/#dashboard');
+  const cardsRead=page.waitForResponse(response=>response.request().method()==='GET'&&new URL(response.url()).pathname===`/api/v1/assistant/topics/${ids.topic}/cards`);
   await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();
+  const response=await cardsRead;expect(response.status()).toBe(200);const wire=await response.json();
+  // Preserve every historical card/run field; only monetary leaves use the current string transport.
+  expect(wire).toEqual({cards:s.cards.map(card=>({...card,balance:{available:'100000',frozen:'0'}}))});
+  expect(s.cards.map(card=>card.balance)).toEqual([{available:100000,frozen:0},{available:100000,frozen:0}]);
   await expect(page.locator('[data-card="result-handoff-card-1"]')).toContainText(marker(1));
 }
 async function openOld(page:Page,s:State,label:string){

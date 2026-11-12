@@ -10,9 +10,9 @@ import * as integrity from './integrity-upload-eleventh-fixtures';
 import {ownerId,projectId,checkId,exportId} from './integrity-continuation-fixtures';
 import * as files from './project-file-status-fixtures';
 
-const out=process.env.BB_UPLOAD_UX_EVIDENCE??'test-evidence/upload-ux-consistency';
+const evidenceDirectory=()=>process.env.BB_UPLOAD_UX_EVIDENCE??test.info().outputPath('upload-ux-consistency');
 async function capture(page:Page,name:string,selector:string){
- await mkdir(out,{recursive:true});
+ const out=evidenceDirectory();await mkdir(out,{recursive:true});
  const root=page.locator(selector).first();await expect(root).toBeVisible();
  for(const width of [1440,390,320]){
   await page.setViewportSize({width,height:960});
@@ -31,10 +31,21 @@ async function capture(page:Page,name:string,selector:string){
 test('audit review entry and recovery',async({page})=>{
  const s=review.fixture();s.materials.clear();s.draft.source_material_ref=null;s.draft.material_versions=[];s.draft.evidence_links=[];
  await review.install(page,s);await review.mount(page);await capture(page,'review-entry','#review-upload-groups');
+ const missingBytes=page.waitForResponse(response=>new URL(response.url()).pathname===`/api/v1/projects/${review.ids.project}/materials/uploads/review-twelfth-U-1/complete`&&response.status()===422);
  s.dropPut='before';await page.locator('[data-review-upload-role=audit]').setInputFiles(review.file);
+ expect(await (await missingBytes).json()).toMatchObject({code:'MATERIAL_UNREADABLE',field_errors:[{field:'upload_session',code:'bytes_pending'}]});
+ // Keep the original ten-minute unknown-PUT budget; only advance the installed browser clock.
+ await page.clock.fastForward(600_001);
  await expect(review.recovery(page).getByRole('button',{name:'重试',exact:true})).toBeVisible();
+ await expect(review.recovery(page).getByRole('button',{name:'重试',exact:true})).toBeEnabled();
+ expect(review.uploads(s,'create')).toHaveLength(1);expect(review.uploads(s,'bytes')).toHaveLength(1);
+ expect([...s.uploads.keys()]).toEqual(['review-twelfth-U-1']);expect(s.uploads.get('review-twelfth-U-1')!.received).toBe(false);
+ expect(s.materials.size).toBe(0);expect(review.draftWrites(s)).toEqual([]);expect(await review.records(page)).toHaveLength(1);
+ for(const complete of review.uploads(s,'complete'))expect(complete).toEqual({method:'POST',path:`/projects/${review.ids.project}/materials/uploads/review-twelfth-U-1/complete`,search:'',body:{byte_size:review.file.buffer.length,sha256:review.hash(review.file.buffer)}});
+ const originalWrites=structuredClone(review.writes(s));
  await capture(page,'review-recovery','#review-upload-groups');
  await review.recovery(page).locator('[data-review-recovery-remove]').click();await expect(review.recovery(page)).toHaveCount(0);review.noBusiness(s);
+ expect(review.writes(s)).toEqual(originalWrites);expect(await review.records(page)).toHaveLength(0);
 });
 
 test('shared picker supports keyboard, drag, single-file errors and disabled fields',async({page})=>{
@@ -82,7 +93,7 @@ test('audit assistant attachment entry and recovery',async({page})=>{
 });
 
 test('shared upload reference at desktop and mobile widths',async({page})=>{
- const {resolve}=await import('node:path');await mkdir(out,{recursive:true});
+ const {resolve}=await import('node:path');const out=evidenceDirectory();await mkdir(out,{recursive:true});
  await page.goto('/@fs/'+resolve(process.cwd(),'../../product-prototype/public/upload-ux-unified.html').replaceAll('\\','/'));
  for(const width of [1440,390,320]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:join(out,`prototype-${width}.png`),fullPage:true});}
 });

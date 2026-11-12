@@ -7,6 +7,7 @@ import {commerceMetadata,AUTOMATIC_PRICE_VERSION,OUTCOME_PRICE_VERSION,PROJECT_D
   type M4DocumentType,type M4Draft,type M4DraftRequest,type M4Template,
   type ProjectFileBatch,type ProjectFileWorkspace} from '@bondbuddy/contracts';
 import type {FileGenerationBatchRequest} from '../src/file-generation-cache';
+import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 
 // Synthetic HTTP fixtures exercise preparation and request recovery. They do not run
 // a model, persist production documents, charge credits, or upload external content.
@@ -14,7 +15,7 @@ const sourceProject='synthetic-source-S',apiProject='synthetic-api-P',otherApiPr
 const navigationProject='synthetic-navigation-N',owner='synthetic-file-owner',topic='synthetic-file-topic';
 const now='2026-10-25T04:00:00Z',sha='a'.repeat(64),templateSha='b'.repeat(64);
 type Call={method:string;path:string;body:unknown};
-const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
+const json=(route:Route,status:number,body:unknown)=>route.fulfill({status,contentType:'application/json',body:fixtureJson(route,body)});
 const href=(project=apiProject,extra:Record<string,string>={})=>'#generate?'+new URLSearchParams({project,return_project:navigationProject,...extra});
 const batchPath=(project=apiProject)=>`/projects/${project}/project-files/batches`;
 const draftPath=(type:M4DocumentType)=>`/m4/topics/${topic}/drafts/${type}`;
@@ -47,13 +48,13 @@ function workspace(project=apiProject):ProjectFileWorkspace{
 }
 
 async function fixture(page:Page){
-  const state={owner,calls:[] as Call[],workspaces:new Map([[apiProject,workspace()],[otherApiProject,workspace(otherApiProject)]]),
+  const state={owner,calls:[] as Call[],wireBatches:[] as unknown[],workspaces:new Map([[apiProject,workspace()],[otherApiProject,workspace(otherApiProject)]]),
     workspaceMissing:false,batchFailure:undefined as 401|408|429|'network'|{status:409;code:'INPUT_REVISION_CONFLICT'|'PROJECT_FILE_BATCH_INPUT_EXPIRED'}|undefined,
     failDraft:undefined as M4DocumentType|undefined,completeFailures:0,completed:false,holdComplete:undefined as Promise<void>|undefined,
     upload:undefined as undefined|{upload_id:string;filename:string;media_type:string;byte_size:number;sha256:string}};
   await page.route('**/api/v1/**',async route=>{
     const req=route.request(),path=new URL(req.url()).pathname.replace('/api/v1',''),method=req.method();
-    const body=path.startsWith('/synthetic-upload/')?undefined:req.postData()?req.postDataJSON():undefined;
+    const body=path.startsWith('/synthetic-upload/')?undefined:req.postData()?fixtureRequest(req):undefined;
     state.calls.push({path,method,body});
     if(path==='/me')return json(route,200,{user_id:state.owner,session_status:'active'});
     if(path==='/account')return json(route,200,{user_id:state.owner,username:'synthetic_user',phone_masked:null,status:'active',created_at:now,accepted_terms_version:'terms-1',current_terms_version:'terms-1',password_updated_at:null,self_service_recovery:'unavailable',support_contact:null});
@@ -93,14 +94,15 @@ async function fixture(page:Page){
     if(path.startsWith('/synthetic-upload/')&&method==='PUT')return route.fulfill({status:204});
     if(path===`/projects/${apiProject}/materials/synthetic-support-material`&&method==='GET')return state.completed&&new URL(req.url()).searchParams.get('version')==='1'?json(route,200,{...state.upload!,material_id:'synthetic-support-material',material_version:1,role:'other',state:'persisted',persisted_at:now,error:null}):json(route,404,{code:'NOT_FOUND'});
     if(path===`/projects/${apiProject}/materials/uploads/synthetic-support-upload/complete`&&method==='POST'){
+      const u=state.upload!;expect(body).toEqual({sha256:u.sha256,byte_size:u.byte_size});
       if(state.holdComplete)await state.holdComplete;
       if(state.completeFailures>0){state.completeFailures--;return json(route,503,{code:'DATA_UNAVAILABLE',retryable:true});}
-      const u=state.upload!;expect(body).toEqual({sha256:u.sha256,byte_size:u.byte_size});
       state.completed=true;
       return json(route,200,{...u,material_id:'synthetic-support-material',material_version:1,role:'other',state:'persisted',persisted_at:now,error:null});
     }
     const batchMatch=path.match(/^\/projects\/([^/]+)\/project-files\/batches$/);
     if(batchMatch&&method==='POST'){
+      state.wireBatches.push(req.postDataJSON());
       expect(Value.Check(projectFileSchemas.ProjectFileBatchRequest,body)).toBe(true);
       if(state.batchFailure){const failure=state.batchFailure;state.batchFailure=undefined;
         if(failure==='network')return route.abort('failed');
@@ -157,7 +159,11 @@ test('prepared source opens document selection without preparation or initial bu
   const dir=process.env.BB_UX_EVIDENCE_DIR;if(dir)await page.setViewportSize({width:1440,height:1000});
   const s=await fixture(page);await open(page);
   await expect(page.getByRole('heading',{name:'生成文件',exact:true})).toBeVisible();
-  await expect(page.locator('.pf-flow-modes [aria-current]')).toContainText('按模板生成文件');
+  await expect(page.locator('.pf-flow-steps [aria-current="step"]')).toHaveCount(1);
+  await expect(page.locator('.pf-flow-steps [data-flow-step="2"][aria-current="step"]')).toContainText('选择生成内容');
+  await expect(page.locator('.pf-flow-modes a')).toHaveCount(1);
+  await expect(page.locator('.pf-flow-modes a')).toContainText('准备生成文件');
+  await expect(page.locator('.pf-flow-modes a')).toHaveAttribute('href','#generate?'+new URLSearchParams({project:apiProject,step:'prepare',return_project:navigationProject}));
   await expect(page.locator('select[data-pf-document]')).toHaveCount(1);
   await expect(page.locator('select[data-pf-document]:not([data-pf-document=""])')).toHaveCount(0);
   await expect(page.locator('#pf-requirements')).toHaveValue('');
@@ -225,13 +231,19 @@ test('missing templates explain why only the selected package cannot run',async(
 });
 
 test('scope and authoring fees are reviewed before an exact public batch request',async({page})=>{
-  const s=await fixture(page);await open(page);await choose(page,['init','underwriter']);
-  await expect(page.locator('#pf-price')).toContainText('9,000');
+  const s=await fixture(page);await open(page);
+  // Legacy preparation shows the selected total; prove each unit price before combining the package.
+  for(const type of ['init','underwriter'] as const){
+    await choose(page,[type]);await expect(page.locator('#pf-price')).toHaveText('1 份全部完成共 4,500 积分');await clearRows(page);
+  }
+  await choose(page,['init','underwriter']);await expect(page.locator('#pf-price')).toHaveText('2 份全部完成共 9,000 积分');
   await confirm(page);
   const dialog=page.locator('.pf-flow-confirm');
   await expect(dialog).toContainText('立项报告');await expect(dialog).toContainText('主承销商核查意见');
-  await expect(dialog).toContainText('9,000');
-  await expect(dialog).toContainText(/4,500/);
+  await expect(dialog.locator('.pf-confirm-total')).toHaveText('2 份全部完成共 9,000 积分');
+  await expect(dialog.locator('.pf-confirm-files li')).toHaveCount(2);
+  await expect(dialog.locator('.pf-confirm-files li strong')).toHaveText(['立项报告','主承销商核查意见']);
+  await expect(dialog.locator('.pf-confirm-files li span')).toHaveText(['合成立项报告模板 · V1','合成主承销商核查意见模板 · V1']);
   await expect(dialog).toContainText(/排队/);await expect(dialog).toContainText(/暂停/);
   await expect(dialog).toContainText(/停止|主动结束/);await expect(dialog).toContainText(/退回|退还|退款/);
   await expect(dialog).not.toContainText('交付后扣费');
@@ -367,7 +379,8 @@ test('support save retry retains frozen document scope and never repeats accepte
 });
 
 test('uncertain upload completion reconciles the original session while selection stays frozen',async({page})=>{
-  const s=await fixture(page);s.completeFailures=1;let release!:()=>void;
+  await page.clock.install();
+  const s=await fixture(page);s.completeFailures=4;let release!:()=>void;
   s.holdComplete=new Promise<void>(resolve=>{release=resolve;});
   await open(page);await choose(page,['init','underwriter']);
   await page.locator('#pf-support').setInputFiles(supportFile);
@@ -376,13 +389,52 @@ test('uncertain upload completion reconciles the original session while selectio
     expect(await page.locator('.pf-generation-grid').evaluate(n=>(n as HTMLElement).inert)).toBe(true);
     await page.evaluate(()=>{const input=document.querySelector<HTMLSelectElement>('select[data-pf-document]')!;input.value='credit';input.dispatchEvent(new Event('change',{bubbles:true}));});
   }finally{release();s.holdComplete=undefined;}
+  // The client retries completion three times before exposing manual recovery.
+  await expect.poll(async()=>{await page.clock.runFor(2000);return s.calls.filter(c=>c.path.endsWith('/complete')).length;}).toBe(4);
   await expect(page.locator('#pf-retry-support')).toBeVisible();
+  expect(s.completed).toBe(false);expect(draftWrites(s.calls)).toEqual([]);expect(batches(s.calls)).toEqual([]);
   await page.locator('#pf-retry-support').click();await expect(page.locator('#pf-retry-support')).toBeHidden();
-  expect(s.calls.filter(c=>c.path.endsWith('/complete'))).toHaveLength(2);
+  expect(s.calls.filter(c=>c.path.endsWith('/complete'))).toEqual(Array.from({length:5},()=>({
+    method:'POST',path:`/projects/${apiProject}/materials/uploads/synthetic-support-upload/complete`,body:{sha256:s.upload!.sha256,byte_size:s.upload!.byte_size},
+  })));
   expect(s.calls.filter(c=>c.path===`/projects/${apiProject}/materials/uploads`)).toHaveLength(1);
   expect(s.calls.filter(c=>c.path.startsWith('/synthetic-upload/')&&c.method==='PUT')).toHaveLength(1);
   expect(draftWrites(s.calls).map(c=>c.path)).toEqual([draftPath('init'),draftPath('underwriter')]);
+  for(const type of ['init','underwriter'] as const)expect(s.workspaces.get(apiProject)!.workspace.drafts[type].materials).toEqual([{
+    source_project_id:apiProject,material_id:'synthetic-support-material',material_version:1,sha256:s.upload!.sha256,
+  }]);
   expect(s.workspaces.get(apiProject)!.workspace.drafts.credit.materials).toEqual([]);
+  expect(await selectedRows(page)).toEqual(['init','underwriter']);await expect(page.locator('#pf-price')).toHaveText('2 份全部完成共 9,000 积分');
+  expect(batches(s.calls)).toEqual([]);expect(s.calls.filter(c=>c.method!=='GET'&&c.path.startsWith('/credits/'))).toEqual([]);
+});
+
+test('one failed upload completion recovers automatically without another PUT or changing the selected scope',async({page})=>{
+  await page.clock.install();
+  const s=await fixture(page);s.completeFailures=1;let release!:()=>void;
+  s.holdComplete=new Promise<void>(resolve=>{release=resolve;});
+  await open(page);await choose(page,['init','underwriter']);
+  await page.locator('#pf-support').setInputFiles(supportFile);
+  try{
+    await expect.poll(()=>s.calls.filter(c=>c.path.endsWith('/complete')).length).toBe(1);
+    expect(await page.locator('.pf-generation-grid').evaluate(n=>(n as HTMLElement).inert)).toBe(true);
+    await page.evaluate(()=>{const input=document.querySelector<HTMLSelectElement>('select[data-pf-document]')!;input.value='credit';input.dispatchEvent(new Event('change',{bubbles:true}));});
+    await expect(page.locator('#pf-retry-support')).toBeHidden();
+  }finally{release();s.holdComplete=undefined;}
+  await expect.poll(async()=>{await page.clock.runFor(2000);return s.calls.filter(c=>c.path.endsWith('/complete')).length;}).toBe(2);
+  await expect(page.locator('#pf-support-feedback')).toContainText('补充依据已保存');
+  await expect(page.locator('#pf-retry-support')).toBeHidden();
+  expect(s.calls.filter(c=>c.path.endsWith('/complete'))).toEqual(Array.from({length:2},()=>({
+    method:'POST',path:`/projects/${apiProject}/materials/uploads/synthetic-support-upload/complete`,body:{sha256:s.upload!.sha256,byte_size:s.upload!.byte_size},
+  })));
+  expect(s.calls.filter(c=>c.path===`/projects/${apiProject}/materials/uploads`)).toHaveLength(1);
+  expect(s.calls.filter(c=>c.path.startsWith('/synthetic-upload/')&&c.method==='PUT')).toHaveLength(1);
+  expect(draftWrites(s.calls).map(c=>c.path)).toEqual([draftPath('init'),draftPath('underwriter')]);
+  for(const type of ['init','underwriter'] as const)expect(s.workspaces.get(apiProject)!.workspace.drafts[type].materials).toEqual([{
+    source_project_id:apiProject,material_id:'synthetic-support-material',material_version:1,sha256:s.upload!.sha256,
+  }]);
+  expect(s.workspaces.get(apiProject)!.workspace.drafts.credit.materials).toEqual([]);
+  expect(await selectedRows(page)).toEqual(['init','underwriter']);await expect(page.locator('#pf-price')).toHaveText('2 份全部完成共 9,000 积分');
+  expect(batches(s.calls)).toEqual([]);expect(s.calls.filter(c=>c.method!=='GET'&&c.path.startsWith('/credits/'))).toEqual([]);
 });
 
 test('empty or unsupported support files are rejected before upload and allow a valid replacement',async({page})=>{
@@ -649,16 +701,18 @@ async function revealRequirements(page:import('@playwright/test').Page){if(!awai
 test('commercial scope batch uses each document quote and cannot generate a partly pending package',async({page})=>{
  const state=await fixture(page);state.workspaces.get(apiProject)!.price={price_version:OUTCOME_PRICE_VERSION,points:0,...commerceMetadata(0),quote_status:'pending_scope'};
  let ready=false;
- await page.route('**/project-files/batches/quote',route=>{const body=route.request().postDataJSON();return json(route,200,{quote_status:ready?'ready':'pending_scope',points:ready?10672:0,documents:body.documents.map((doc:{document_type:string;draft_version:number},index:number)=>({...doc,points:ready?[2381,8291][index]:0,...commerceMetadata(ready?[2381,8291][index]:0),quote_status:ready?'ready':'pending_scope',scope_quote_id:'scope-doc-'+doc.document_type,scope_lines:ready?[{key:'scope-'+doc.document_type,label:'按本文件模板和材料编制正文',quantity:1,unit:'份',unit_price_fen:[2381,8291][index],amount_fen:[2381,8291][index],evidence:['固定所选募集书版本和本文件模板要求。']}]:[]}))});});
+ await page.route('**/project-files/batches/quote',route=>{const body=fixtureRequest(route.request());return json(route,200,{quote_status:ready?'ready':'pending_scope',points:ready?10672:0,documents:body.documents.map((doc:{document_type:string;draft_version:number},index:number)=>({...doc,points:ready?[2381,8291][index]:0,...commerceMetadata(ready?[2381,8291][index]:0),quote_status:ready?'ready':'pending_scope',scope_quote_id:'scope-doc-'+doc.document_type,scope_lines:ready?[{key:'scope-'+doc.document_type,label:'按本文件模板和材料编制正文',quantity:1,unit:'份',unit_price_fen:[2381,8291][index],amount_fen:[2381,8291][index],evidence:['固定所选募集书版本和本文件模板要求。']}]:[]}))});});
  await open(page);await choose(page,['init','underwriter']);await page.locator('#pf-generate').click();await expect(page.locator('#pf-refresh-scope')).toBeVisible();expect(batches(state.calls)).toEqual([]);await expect(page.locator('#pf-confirm-generation')).toHaveCount(0);
  ready=true;await page.locator('#pf-refresh-scope').click();await expect(page.locator('.pf-confirm-total')).toContainText('¥106.72');await expect(page.locator('.pf-confirm-files')).toContainText('¥23.81');await expect(page.locator('.pf-confirm-files')).toContainText('¥82.91');
  await page.locator('#pf-confirm-generation').click();await expect.poll(()=>batches(state.calls).length).toBe(1);expect(batches(state.calls)[0].body).toMatchObject({expected_points:10672,price_version:OUTCOME_PRICE_VERSION,documents:[{document_type:'init',scope_quote_id:'scope-doc-init'},{document_type:'underwriter',scope_quote_id:'scope-doc-underwriter'}]});
+ expect(state.wireBatches).toEqual([{request_id:expect.any(String),source_version_id:'source-v3',expected_selection_revision:7,price_version:OUTCOME_PRICE_VERSION,expected_points:'10672',documents:[{document_type:'init',draft_version:1,scope_quote_id:'scope-doc-init'},{document_type:'underwriter',draft_version:1,scope_quote_id:'scope-doc-underwriter'}]}]);
 });
 
 
 test('automatic file package executes once without a separate confirmation screen',async({page})=>{
  const state=await fixture(page);state.workspaces.get(apiProject)!.price={...commerceMetadata(0),price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,points:0,quote_status:'pending_scope'};
- await page.route('**/project-files/batches/quote',route=>{const body=route.request().postDataJSON();return json(route,200,{quote_status:'ready',points:15930,documents:body.documents.map((doc:{document_type:string;draft_version:number})=>({...doc,points:7965,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,quote_status:'ready',scope_quote_id:'auto-doc-'+doc.document_type,scope_lines:[]}))});});
+ await page.route('**/project-files/batches/quote',route=>{const body=fixtureRequest(route.request());return json(route,200,{quote_status:'ready',points:15930,documents:body.documents.map((doc:{document_type:string;draft_version:number})=>({...doc,points:7965,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,quote_status:'ready',scope_quote_id:'auto-doc-'+doc.document_type,scope_lines:[]}))});});
  await open(page);await choose(page,['init','underwriter']);await page.locator('#pf-generate').click();await expect.poll(()=>batches(state.calls).length).toBe(1);
  expect(batches(state.calls)[0].body).toMatchObject({price_version:AUTOMATIC_PRICE_VERSION,expected_points:15930});await expect(page.locator('#pf-confirm-generation')).toHaveCount(0);
+ expect(state.wireBatches).toEqual([{request_id:expect.any(String),source_version_id:'source-v3',expected_selection_revision:7,price_version:AUTOMATIC_PRICE_VERSION,expected_points:'15930',documents:[{document_type:'init',draft_version:1,scope_quote_id:'auto-doc-init'},{document_type:'underwriter',draft_version:1,scope_quote_id:'auto-doc-underwriter'}]}]);
 });

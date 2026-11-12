@@ -32,7 +32,9 @@ test('one batch plan across deliveries, crash replay, failure/retry, pause, immu
   const directory=await mkdtemp(join(tmpdir(),'bb-shared-test-'));
   const storage=new Map<string,Buffer>();const blobs:PrivateBlobs={put:async(k,b)=>{storage.set(k,Buffer.from(b));},get:async k=>Buffer.from(storage.get(k)!),getIfExists:async k=>storage.get(k)??null,
     getIfExistsBounded:async(k,max)=>{const b=storage.get(k);if(b&&b.length>max)throw Error('too large');return b??null;},exists:async k=>storage.has(k),delete:async k=>{storage.delete(k);}};
-  const origin='http://bondbuddy.test',app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
+  const origin='http://bondbuddy.test',app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,
+    // Replay the original 4500-point contract, retired assessment and progress-refund semantics.
+    historicalBillingFixture:true,principal:async()=>({userId:actor,csrfVerified:true})});
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
   const ok=async(method:string,url:string,payload?:any)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,`${r.statusCode}: ${r.body}`);return r.json();};
   const upload=async(id:string,name:string,bytes:Buffer,media_type:string,role='other')=>{
@@ -104,6 +106,17 @@ test('one batch plan across deliveries, crash replay, failure/retry, pause, immu
     const cat=await ok('POST',base+'/catalogues',{request_id:randomUUID(),material});
     const request={start_mode:'direct',request_id:randomUUID(),catalogue_id:cat.catalogue_id,catalogue_sha256:cat.sha256,item_ids:cat.entries.map((e:any)=>e.id),source_version_id:adopted.current_version_id,source_selection_revision:adopted.selection_revision,
       requirements:'仅处理所选目录，正文不写来源。',price_version:WORKPAPER_PRICE.version,expected_points:String(3*WORKPAPER_PRICE.points)};
+    // Independent current Pool avoids changing the historical worker's out-of-request billing context.
+    const currentPool=new Pool({connectionString:database});
+    const currentApp=createServer({pool:currentPool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});
+    try{
+      const workspace=await currentApp.inject({method:'GET',url:base,headers:{origin}});
+      assert.equal(workspace.statusCode,200,workspace.body);assert.equal(workspace.json().price.auto_charge,true);
+      assert.notEqual(workspace.json().price.version,WORKPAPER_PRICE.version);
+      const rejected=await currentApp.inject({method:'POST',url:base+'/batches',payload:request,headers:{origin}});
+      assert.equal(rejected.statusCode,409,rejected.body);assert.equal(rejected.json().code,'QUOTE_CHANGED');
+      assert.equal((await pool.query('SELECT count(*)::int n FROM bb_workpaper_batches WHERE project_id=$1',[id])).rows[0].n,0);
+    }finally{await currentApp.close();await currentPool.end();}
     let batch=await ok('POST',base+'/batches',request) as WorkpaperBatch;
     const read=async()=>((await ok('GET',base)).batches as WorkpaperBatch[]).find(b=>b.batch_id===batch.batch_id)!;
     await advanceWorkpaperBatch(pool);assert.equal(await execute(),'succeeded');assert.equal(modelCalls,1);assert.equal(modelReplays,1);

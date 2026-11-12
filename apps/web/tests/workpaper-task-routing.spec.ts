@@ -40,7 +40,7 @@ for(const width of [1440,390])test(`all projects opens paused workpaper task ${w
   await expect(page.getByText('编制募集书',{exact:true})).toHaveCount(0);
   await page.reload();await expect(content).toContainText('保留本次已确认范围');expect(s.calls.filter(c=>c.method!=='GET')).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await mkdir('test-evidence/workpaper-task-routing',{recursive:true});await page.screenshot({path:`test-evidence/workpaper-task-routing/paused-${width}.png`,fullPage:true});
+  const dir=test.info().outputPath('workpaper-task-routing');await mkdir(dir,{recursive:true});await page.screenshot({path:`${dir}/paused-${width}.png`,fullPage:true});
   await page.getByRole('button',{name:'继续检查',exact:true}).click();await expect(content).toContainText('处理中');
   expect(s.calls.filter(c=>c.method!=='GET')).toEqual([{path:`/runs/${s.runId}/resume`,method:'POST'}]);expect(s.original.errors).toEqual([]);
 });
@@ -70,7 +70,7 @@ for(const width of [1440,390])test(`task prototype companion ${width}`,async({pa
   await expect(page.getByRole('heading',{name:'检查可生成底稿'})).toBeVisible();
   await expect(page.locator('#wp-task-content')).toContainText('已检查 1 / 2 项');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await mkdir('test-evidence/workpaper-task-routing',{recursive:true});await page.screenshot({path:`test-evidence/workpaper-task-routing/prototype-paused-${width}.png`,fullPage:true});
+  const dir=test.info().outputPath('workpaper-task-routing');await mkdir(dir,{recursive:true});await page.screenshot({path:`${dir}/prototype-paused-${width}.png`,fullPage:true});
 });
 test('provider reconciliation stays on the same check and offers refresh without resubmission',async({page})=>{
   const s=await setup(page);s.state.stage='provider_reconcile';await page.goto('/'+s.href());

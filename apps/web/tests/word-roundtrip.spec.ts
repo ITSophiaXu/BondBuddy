@@ -111,7 +111,7 @@ test.describe('finite Word roundtrip contracts',()=>{
     expect(input.material.sha256).toBe(hash(editedFile.buffer));expect(saved.asset).toEqual({kind:'material',pin:input.material});
     await expect(row(page,saved.version_id)).toContainText('待检查');expect(businessCalls(s)).toEqual([]);
     expect(await historyDownloads(page,s)).toEqual(editedFile.buffer);await noOverflow(page);
-    const check=result(page).getByRole('link',{name:'免费检查全部项目文件',exact:true});
+    const check=result(page).getByRole('link',{name:'检查全部项目文件',exact:true});
     await expect(check).toHaveAttribute('href',new RegExp(`project=${ids.root}`));await check.click();
     await expect(page.getByRole('heading',{name:'准备检查项目文件',exact:true})).toBeVisible();await expect(page.locator('.fc-empty')).toContainText('本次范围：2 份文件');
     expect(s.checkRequests).toEqual([]);await page.getByRole('button',{name:'开始检查（免费）',exact:true}).click();

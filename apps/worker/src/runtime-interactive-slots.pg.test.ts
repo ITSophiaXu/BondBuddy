@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {createServer} from '@bondbuddy/api';
+import {lockSyntheticAuthoringInput,quoteSyntheticAuthoringRun,syntheticAuthoringBlobs} from '@bondbuddy/api/test-authoring-source';
 import type {PrivateBlobs} from '@bondbuddy/api/data';
 import {WorkerRuntime,workerRuntimeOptionsFromEnv} from './runtime.js';
 import {isolatedTestDatabase} from './test-database.js';
@@ -21,13 +22,16 @@ test('interactive slot configuration is bounded and can be disabled',()=>{
 
 test('long document work cannot monopolize QA, question recognition or consistency checks',{skip:!connection,timeout:30000},async()=>{
   const pool=new Pool({connectionString:connection,max:12}),owner=randomUUID(),origin='http://bondbuddy.test';
-  const app=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
+  const blobs=syntheticAuthoringBlobs();
+  const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
   const submit=async(kind:string,subtype:string)=>{
     const p=await send('POST','/api/v1/projects',{name:'Synthetic queue isolation',kind:'update',issuer_name:null,market:null,offering:null});assert.equal(p.statusCode,201,p.body);
     const id=p.json().project_id;
-    const input=await send('POST',`/api/v1/projects/${id}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[]});assert.equal(input.statusCode,201,input.body);
-    const response=await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:id,input_revision:1,input_hash:input.json().input_hash,task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'});assert.equal(response.statusCode,202,response.body);
+    const input=await lockSyntheticAuthoringInput(app,id);assert.equal(input.statusCode,201,input.body);
+    assert.equal(input.json().input_revision,1,'fixture retains its original first locked revision');
+    const quoteId=await quoteSyntheticAuthoringRun(app,pool,owner,id,input.json());
+    const response=await send('POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:id,input_revision:1,input_hash:input.json().input_hash,quote_id:quoteId,task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'});assert.equal(response.statusCode,202,response.body);
     const run=response.json().run_id;await pool.query('UPDATE bb_runs SET task_kind=$2 WHERE id=$1',[run,kind]);await pool.query('UPDATE bb_jobs SET job_type=$2,subtype=$3 WHERE run_id=$1',[run,kind,subtype]);return run;
   };
   let release!:()=>void;const blocked=new Promise<void>(resolve=>{release=resolve;});const seen:string[]=[];let worker:WorkerRuntime|undefined;

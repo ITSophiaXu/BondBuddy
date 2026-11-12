@@ -1,0 +1,13 @@
+
+Running 8 tests using 1 worker
+
+  ✓  1 tests/integrity-settlement.spec.ts:26:35 › partial integrity settlement explains its exact original scope at 1440px without writes (14.4s)
+  ✓  2 tests/integrity-settlement.spec.ts:26:35 › partial integrity settlement explains its exact original scope at 390px without writes (12.0s)
+  ✓  3 tests/integrity-settlement.spec.ts:26:35 › partial integrity settlement explains its exact original scope at 320px without writes (19.2s)
+  ✓  4 tests/integrity-settlement.spec.ts:37:1 › all completed queries and a failed fully released round use their own actual settlement (9.6s)
+  ✓  5 tests/integrity-settlement.spec.ts:43:1 › missing evidence stays unresolved, and running/legacy/free exports retain their prior fee descriptions (14.7s)
+  ✓  6 tests/integrity-settlement.spec.ts:50:35 › unchanged result component baseline comparison at 1440px (8.4s)
+  ✓  7 tests/integrity-settlement.spec.ts:50:35 › unchanged result component baseline comparison at 390px (6.6s)
+  ✓  8 tests/integrity-settlement.spec.ts:50:35 › unchanged result component baseline comparison at 320px (6.8s)
+
+  8 passed (1.7m)

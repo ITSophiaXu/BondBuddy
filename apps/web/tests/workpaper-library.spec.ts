@@ -40,7 +40,7 @@ for(const width of [1440,390])test(`library ${width}: paging, classifications, o
   await panel.locator('summary').click();await expect(panel).toContainText('总资产100万元');await expect(panel).toContainText('总资产200万元');await expect(panel).toContainText('表格1 / 行2 / 列2');
   await expect(panel.getByRole('link',{name:'重新编制受影响底稿'})).toHaveAttribute('href',/workpaper_batch=wp-batch/);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await mkdir('test-evidence/workpaper-library',{recursive:true});await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`test-evidence/workpaper-library/library-${width}.png`,fullPage:true});
+  const dir=test.info().outputPath('workpaper-library');await mkdir(dir,{recursive:true});await page.evaluate(()=>window.scrollTo(0,0));await page.screenshot({path:`${dir}/library-${width}.png`,fullPage:true});
   await panel.getByRole('button',{name:'预览正文'}).click();await expect(page.locator('dialog[open]')).toContainText('200万元');
   expect(await page.evaluate(()=>'BAD' in window)).toBe(false);await page.getByRole('button',{name:'关闭',exact:true}).click();
   await panel.getByLabel('查找底稿').fill('');await panel.getByLabel('分类',{exact:true}).selectOption('explanation');await expect(panel.locator('.wl-file')).toHaveCount(30);

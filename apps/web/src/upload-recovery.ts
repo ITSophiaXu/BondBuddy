@@ -326,7 +326,17 @@ export class UploadRecovery {
         status(record.uploadId ? '正在准备重新上传这份文件…' : '正在准备上传文件…');
         const renewing=!!record.uploadId&&record.uploadTransport===DIRECT_UPLOAD_TRANSPORT;
         if(renewing&&!this.api.refreshUpload)throw new UploadRecoveryReceiptError();
-        const created = renewing?await this.api.refreshUpload!(this.projectId,record.uploadId!,{byte_size:input.byte_size,sha256:input.sha256},signal):await this.api.createUpload(this.projectId, clone(input), signal); live();
+        let created:Dto<'UploadSessionResponse'>;
+        try {
+          created=renewing?await this.api.refreshUpload!(this.projectId,record.uploadId!,{byte_size:input.byte_size,sha256:input.sha256},signal):await this.api.createUpload(this.projectId,clone(input),signal); live();
+        } catch(error) {
+          live();
+          if(!renewing||!(error instanceof ApiError)||error.status!==409||error.code!=='IDEMPOTENCY_CONFLICT')throw error;
+          // The original PUT may finish between the missing-bytes check and
+          // ticket renewal. Only complete can authorize accepting those bytes.
+          try{return accepted(await this.api.completeUpload(this.projectId,record.uploadId!,{byte_size:input.byte_size,sha256:input.sha256},signal));}
+          catch(completion){live();if(!bytesPending(completion))throw completion;throw error;}
+        }
         if(renewing&&(created.upload_id!==record.uploadId||created.upload_transport!==DIRECT_UPLOAD_TRANSPORT))throw new UploadRecoveryReceiptError();
         if (!Value.Check(schemas.UploadSessionResponse, created) || !isDateTime(created.expires_at) || Date.parse(created.expires_at) <= (this.deps.now?.() ?? Date.now()) || created.max_bytes < input.byte_size || !/^https?:\/\//i.test(created.upload_url) && !created.upload_url.startsWith('/')) throw new UploadRecoveryReceiptError();
         if(created.upload_transport===DIRECT_UPLOAD_TRANSPORT){

@@ -35,7 +35,8 @@ test('M3 proposals explicitly adopt, lock executable requirements and project on
   const pool = new Pool({ connectionString: connection });
   let owner = 'synthetic-linked-owner';
   const origin = 'http://bondbuddy.test';
-  const app = createServer({ pool, principal: async () => ({ userId: owner, csrfVerified: true }), allowedOrigin: origin });
+  // Historical M3 contract: adoption/execution must produce no M2 billing events.
+  const app = createServer({ pool, historicalBillingFixture: true, principal: async () => ({ userId: owner, csrfVerified: true }), allowedOrigin: origin });
   const send = (method: string, url: string, payload?: unknown) => app.inject({ method: method as any, url, headers: { origin }, payload: payload as any });
   const ok = (response: { statusCode: number; body: string }) => assert.ok(response.statusCode >= 200 && response.statusCode < 300, response.body);
   try {
@@ -154,7 +155,8 @@ test('M3 proposals explicitly adopt, lock executable requirements and project on
 test('an adopted typed revision can become a new quick-action scope without losing requirements or rewriting its prior execution', { skip: !connection }, async () => {
   const pool = new Pool({ connectionString: connection });
   const owner = 'synthetic-linked-shortcut-owner', origin = 'http://bondbuddy.test';
-  const app = createServer({ pool, principal: async () => ({ userId: owner, csrfVerified: true }), allowedOrigin: origin });
+  // Preserve the original uncharged M3 typed-to-shortcut contract.
+  const app = createServer({ pool, historicalBillingFixture: true, principal: async () => ({ userId: owner, csrfVerified: true }), allowedOrigin: origin });
   const send = (method: string, url: string, payload?: unknown) => app.inject({ method: method as any, url, headers: { origin }, payload: payload as any });
   const ok = (response: { statusCode: number; body: string }) => assert.ok(response.statusCode >= 200 && response.statusCode < 300, response.body);
   try {

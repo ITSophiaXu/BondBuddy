@@ -65,7 +65,7 @@ test.describe('project file status: desktop next-step journeys',()=>{
     await expect(search).toBeFocused();await expect(rows(page)).toHaveCount(0);await count(page,'all',1);await count(page,'check',1);await count(page,'review',0);
     await choose(page,'check');await visibleKeys(page,[familyKey(s,'financial')]);await page.locator('[data-file-type="financial"]').click();
     const q=await params(page);expect(q).toMatchObject({folder:'4.1',type:'financial',q:'财务',file_status:'check'});await visibleKeys(page,[familyKey(s,'financial')]);
-    const checkLink=note(page).getByRole('link',{name:'免费检查全部当前关联文件',exact:true});await expect(note(page)).toContainText('当前筛选只影响显示');
+    const checkLink=note(page).getByRole('link',{name:'检查全部当前关联文件',exact:true});await expect(note(page)).toContainText('当前筛选只影响显示');
     const checkParams=new URLSearchParams((await checkLink.getAttribute('href'))!.split('?')[1]);expect(checkParams.get('project')).toBe(ids.root);
     for(const field of ['file','version','type','q','file_status'])expect(checkParams.has(field)).toBe(false);noBusiness(s);
   });

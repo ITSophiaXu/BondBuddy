@@ -40,6 +40,11 @@ test('user reference is owner scoped, immutable, review gated, and projects stru
   let activeOwner = owner;
   const app = createServer({ pool, allowedOrigin: origin, enableRunRuntime: true,
     principal: async () => ({ userId: activeOwner, csrfVerified: true }) });
+  // Only legacy execute/replay uses the Node-test-only historical policy. Keep reference locking on current defaults.
+  // Separate wrappers prevent the historical pool policy from leaking into current API or loader queries.
+  const historicalExecutionApp = createServer({ pool: savepointPool(connection), allowedOrigin: origin, enableRunRuntime: true,
+    historicalBillingFixture: true, enablePaidAuthoring: false,
+    principal: async () => ({ userId: activeOwner, csrfVerified: true }) });
   const request = (material: string, hash = materialHash, inputOwner = owner,
     targetProduct = 'synthetic_bond', targetStage = 'draft', parseId = snapshotId) => {
     activeOwner = inputOwner;
@@ -99,13 +104,37 @@ test('user reference is owner scoped, immutable, review gated, and projects stru
     const execution = { execution_request_id: `refexecute${suffix}`, project_id: projectId,
       input_revision: first.input_revision, input_hash: first.input_hash, task_kind: 'generation',
       input_manifest_ref: `manifest${suffix}`, storage_origin: 'cloud', workspace_id: `space${suffix}` };
-    const execute = (payload: typeof execution) => app.inject({ method: 'POST', url: '/api/v1/runs/execute',
+    const currentExecute = (payload: typeof execution) => app.inject({ method: 'POST', url: '/api/v1/runs/execute',
+      headers: { origin }, payload });
+    // The original non-unified input is intentionally unpriced; reference review cannot bypass current admission.
+    // Use a separate key because a current rejection is an immutable receipt, not a legacy execution request.
+    const currentExecution = { ...execution, execution_request_id: `current-refexecute${suffix}` };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const rejected = await currentExecute(currentExecution);
+      assert.equal(rejected.statusCode, 422, rejected.body);
+      assert.equal(rejected.json().code, 'INPUT_REQUIRED');
+    }
+    assert.equal((await connection.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2',
+      [owner,projectId])).rows[0].n, 0, 'current admission creates no run for the legacy input');
+    assert.equal((await connection.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1',
+      [owner])).rows[0].n, 0, 'current admission reserves no credits for the legacy input');
+    const rejection = (await connection.query(`SELECT error_code,rejection_http_status,input_revision,input_hash FROM bb_jobs
+      WHERE owner_user_id=$1 AND project_id=$2 AND subtype='execute_rejected'`, [owner,projectId])).rows;
+    assert.equal(rejection.length, 1, 'current rejection replay retains one logical job');
+    assert.equal(rejection[0].error_code, 'INPUT_REQUIRED');
+    assert.equal(rejection[0].rejection_http_status, 422);
+    assert.equal(rejection[0].input_revision, first.input_revision);
+    assert.equal(rejection[0].input_hash.trim(), first.input_hash);
+    const execute = (payload: typeof execution) => historicalExecutionApp.inject({ method: 'POST', url: '/api/v1/runs/execute',
       headers: { origin }, payload });
     const firstRun = await execute(execution);
     assert.equal(firstRun.statusCode, 202, firstRun.body);
     const replay = await execute(execution);
     assert.equal(replay.statusCode, 202, replay.body);
     assert.equal(replay.json().run_id, firstRun.json().run_id, 'same execution key replays one run');
+    assert.equal(firstRun.json().channel, 'production');
+    assert.equal(firstRun.json().billing_mode, 'platform_trial');
+    assert.equal(firstRun.json().reservation_id, null);
 
     const grantId = `refgrant${suffix}`, reviewId = `refreview${suffix}`;
     await connection.query(`INSERT INTO bb_user_reference_reviewer_grants(id,reviewer_user_id,granted_by)
@@ -141,6 +170,14 @@ test('user reference is owner scoped, immutable, review gated, and projects stru
       assert.deepEqual(Object.keys(loaded.outline.chapters[0]!).sort(), ['heading','order'], 'no source facts or body fields');
     }
     assert.notEqual(first.input_hash, second.input_hash, 'review decision produces a new immutable input');
+    const acceptedCurrent = await currentExecute({ ...currentExecution, execution_request_id: `accepted-current-refexecute${suffix}`,
+      input_revision: second.input_revision, input_hash: second.input_hash });
+    assert.equal(acceptedCurrent.statusCode, 422, acceptedCurrent.body);
+    assert.equal(acceptedCurrent.json().code, 'INPUT_REQUIRED', 'accepted structural review does not price a legacy input');
+    assert.equal((await connection.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2',
+      [owner,projectId])).rows[0].n, 1, 'only the original historical execution exists');
+    assert.equal((await connection.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1',
+      [owner])).rows[0].n, 0, 'accepted reference review still cannot reserve credits for a legacy input');
     const warningSnapshotId = `refwarnsnapshot${suffix}`, warningResponseHash = sha(`warningresponse${suffix}`);
     const warningMeta = { ...meta, request_id:`warningparse${suffix}`,status:'needs_confirmation',
       parser_version:'synthetic-parser-warning',warnings:[
@@ -179,6 +216,7 @@ test('user reference is owner scoped, immutable, review gated, and projects stru
   } finally {
     await connection.query('ROLLBACK');
     await app.close();
+    await historicalExecutionApp.close();
     connection.release();
     await root.end();
   }

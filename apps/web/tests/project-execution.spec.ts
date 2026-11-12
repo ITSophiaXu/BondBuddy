@@ -1357,9 +1357,23 @@ test('continuing after completion creates a new input and retains the preceding 
 for(const changeAfterPreparation of [false,true])test(`deduplicated first draft ${changeAfterPreparation?'is revalidated before another input is submitted':'continues from the exact shared clean artifact'}`,async({page})=>{
   const state=fixture();state.checkStatus='ready';state.materials=state.materials.filter(material=>material.role!=='historical');
   state.project.update_details!.has_historical=false;state.project.update_details!.source_prospectuses=[];state.sourceSelected=false;
-  await setup(page,state);await page.locator('#execute-input').click();
+  // Synthetic task accepted before the reference-required policy. Current UI must
+  // restore it without submitting a new source-free task or inventing request logs.
+  const legacyKey='synthetic-retained-first-draft-key',legacyHash=hash('synthetic-retained-first-draft-input-v1');
+  const legacyInput:Dto<'InputRevisionResponse'>={project_id:id,input_revision:1,input_hash:legacyHash,
+    material_versions:state.materials.map(m=>({material_id:m.material_id,material_version:m.material_version})),
+    target_confirmation:{status:'unconfirmed',market:null,offering:null,as_of:null,document_purpose:null,target_reporting_periods:[],confirmed_at:null,confirmed_by:null},
+    rule_pack_version:null,template_version:null,reference_release:null,created_at:now};
+  const first:Dto<'RunResponse'>={run_id:'synthetic-retained-first-draft',execution_request_id:legacyKey,project_id:id,
+    input_revision:1,input_hash:legacyHash,state:'paused',stage:state.runStage,event_cursor:state.eventSeq,
+    channel:'production',test_grant_id:null,uncovered_items:[],billing_mode:'platform_trial',reservation_id:null,
+    artifact_id:null,prompt_snapshot_ref:null,updated_at:now};
+  expect(Value.Check(schemas.InputRevisionResponse,legacyInput)).toBe(true);expect(Value.Check(schemas.RunResponse,first)).toBe(true);
+  const retainedSnapshot=structuredClone(legacyInput);state.snapshots.set(1,legacyInput);state.project.input_revision=1;state.project.input_hash=legacyHash;state.runs.set(legacyKey,first);
+  await setup(page,state,false);
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
-  const first=[...state.runs.values()][0],{primary,clean}=registerGeneratedPair(state,first,'deduplicated-first-draft',true);
+  expect(state.inputs).toEqual([]);expect(state.executes).toEqual([]);expect(state.preflights).toEqual([]);
+  const {primary,clean}=registerGeneratedPair(state,first,'deduplicated-first-draft',true);
   expect(primary.word_delivery?.source_sha256).toBeNull();
   await page.getByRole('button',{name:'重新读取',exact:true}).click();
   await expect(page.locator('#execution-progress')).toContainText('已生成');
@@ -1369,12 +1383,14 @@ for(const changeAfterPreparation of [false,true])test(`deduplicated first draft 
   await page.locator('#execute-input').click();
   if(changeAfterPreparation){
     await expect(page.locator('#execution-message')).toContainText('清洁版成果的准确版本尚未确认');
-    expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);
+    expect(state.inputs).toHaveLength(0);expect(state.executes).toHaveLength(0);expect(state.runs.size).toBe(1);
   }else{
     await expect(page.locator('#execution-progress .task-progress')).toHaveAttribute('data-input-revision','2');
-    expect(state.inputs[1].edit_base).toEqual({artifact_id:clean.artifact_id,artifact_version:clean.version,sha256:clean.sha256});
-    expect(state.inputs[1].prospectus_selection_revision).toBe(1);expect(state.runs.size).toBe(2);
+    expect(state.inputs[0].edit_base).toEqual({artifact_id:clean.artifact_id,artifact_version:clean.version,sha256:clean.sha256});
+    expect(state.inputs[0].prospectus_selection_revision).toBe(1);expect(state.runs.size).toBe(2);
+    expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(1);expect(state.executes[0].execution_request_id).not.toBe(legacyKey);
   }
+  expect(state.snapshots.get(1)).toEqual(retainedSnapshot);expect(state.runs.get(legacyKey)).toBe(first);expect(first.input_hash).toBe(legacyHash);
 });
 
 
@@ -1458,8 +1474,10 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
   test(`lost upload acknowledgement restores start without resending ${label}`, async ({ page, context }) => {
     const state = fixture();
     state.project.update_details!.authoring_mode='unified_v1';
-    const puts: string[] = [];
+    const puts: string[] = [], completeRequests: { method: string; path: string; body: Dto<'UploadCompleteRequest'> }[] = [];
+    const contents = '%PDF synthetic lost acknowledgement';
     let completes = 0, creates = 0;
+    await page.clock.install({ time: new Date(now) });
     await page.setViewportSize({ width, height });
     await page.route('**/api/v1/**/materials/uploads**', async route => {
       const request = route.request(), path = new URL(request.url()).pathname;
@@ -1470,21 +1488,26 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       if (path.endsWith('/bytes')) { puts.push(path); return route.fulfill({status:204}); }
       if (path.endsWith('/complete')) {
         completes++;
-        const body = fixtureRequest(request);
-        state.materials.push({material_id:'lost-material', material_version:1, upload_id:'lost-upload', role:'audit', filename:'lost.pdf', media_type:'application/pdf', byte_size:body.byte_size, sha256:body.sha256, state:'persisted', persisted_at:now, error:null});
+        const body = fixtureRequest(request); completeRequests.push({ method: request.method(), path, body });
+        if (completes === 1) state.materials.push({material_id:'lost-material', material_version:1, upload_id:'lost-upload', role:'audit', filename:'lost.pdf', media_type:'application/pdf', byte_size:body.byte_size, sha256:body.sha256, state:'persisted', persisted_at:now, error:null});
         return route.abort('connectionreset');
       }
       return route.fallback();
     });
     await setup(page, state);
-    await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'lost.pdf', mimeType:'application/pdf', buffer:Buffer.from('%PDF synthetic lost acknowledgement')});
+    await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'lost.pdf', mimeType:'application/pdf', buffer:Buffer.from(contents)});
     const row = page.locator('.material-file-row').filter({hasText:'lost.pdf'});
     await expect(row).toHaveCount(1);
+    // Advance the existing confirmation retries without changing the UI assertion budget.
+    await expect.poll(() => completes).toBeGreaterThan(0);
+    await expect.poll(async () => { await page.clock.runFor(2_000); return completes; }).toBe(4);
     await expect(row).toContainText('服务器已确认保存');
     await expect(page.locator('[data-processing-key]')).toHaveCount(0);
     await expect(page.getByText('处理状态不可用', {exact:true})).toHaveCount(0);
     await expect(page.getByRole('button',{name:'开始更新',exact:true})).toBeEnabled();
-    expect({creates, completes, puts:puts.length}).toEqual({creates:1, completes:1, puts:1});
+    expect({creates, completes, puts:puts.length}).toEqual({creates:1, completes:4, puts:1});
+    expect(completeRequests).toEqual(Array.from({ length: 4 }, () => ({ method: 'POST', path: `/api/v1/projects/${id}/materials/uploads/lost-upload/complete`, body: { byte_size: Buffer.byteLength(contents), sha256: hash(contents) } })));
+    expect(state.materials.filter(material => material.upload_id === 'lost-upload')).toHaveLength(1);
     expect(state.inputs).toHaveLength(0); expect(state.executes).toHaveLength(0);
     if (process.env.BB_UPLOAD_RECOVERY_EVIDENCE_DIR) {
       const output = resolve(process.env.BB_UPLOAD_RECOVERY_EVIDENCE_DIR); await mkdir(output, {recursive:true});

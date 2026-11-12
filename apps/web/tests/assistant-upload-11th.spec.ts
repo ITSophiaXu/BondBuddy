@@ -1,3 +1,4 @@
+import {settleUploadConfirmationFault} from './upload-confirmation-faults';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -18,7 +19,7 @@ for (const entrypoint of ['attachment', 'business'] as const) for (const width o
   const picker = page.locator(entrypoint === 'attachment' ? '.ba-composer [data-file]' : '.ba-form [data-file=audit]'); await expect(picker).toHaveCount(1); await expect(picker).toBeAttached(); await expect(picker).toBeEnabled();
   const viewVersion = state.work.get(ids.topic)!.view.version;
   const viewSaved = page.waitForResponse(response => response.request().method() === 'PUT' && new URL(response.url()).pathname === `/api/v1/m4/topics/${ids.topic}/view` && response.request().postDataJSON().expected_version === viewVersion);
-  await picker.setInputFiles(file);
+  await picker.setInputFiles(file);await settleUploadConfirmationFault(page,state.confirmationFaults);
   await expect(page.locator('[data-uploads] [data-a=retry-upload]')).toBeEnabled(); expect(uploadCalls(state, 'create')).toHaveLength(1); expect(uploadCalls(state, 'put')).toHaveLength(1);
   expect(uploadCalls(state, 'create')[0].path).toContain(`/projects/${ids.project}/`); expect(uploadCalls(state, 'create')[0].body).toMatchObject({ role: entrypoint === 'business' ? 'audit' : 'other' });
   // Settle the 500ms view autosave caused by selecting this file before measuring refresh-only writes.
@@ -83,9 +84,10 @@ test('a restored pending attachment retains its changed full input and blocks th
   work.view.assistant = { ...work.view.assistant!, draft_token: 'old-ready-token', prepared_card_id: 'old-ready-card' };
   state.cards.push({ card_id: 'old-ready-card', execution_request_id: 'original-explicit-execution', operation: 'generation', project_id: ids.scope, document_type: 'private_summary', expected_draft_version: 1, quote_id: 'original-ready-quote',
     draft_token: 'old-ready-token', target: { issuer_name: '合成发行人', market: 'sse', offering: 'private', reporting_cutoff: '2026-09-30' }, created_at: now, project_name: '已有待开始的合成任务', requirements: '保持原要求', material_names: ['此前已保存材料.pdf'], baseline: null, quote: null, balance: { available: 10000, frozen: 0 }, run: null });
+  state.rejectViewSaves=true; // Keep the original server card/input unsaved while retry timers advance.
   await mountAssistant(page); await expect(page.locator('[data-a=execute]')).toBeEnabled(); await page.locator('.ba-composer [data-file]').setInputFiles(file);
-  await expect(page.locator('[data-uploads] [data-a=retry-upload]')).toBeEnabled();
-  // The clock is paused: the added file's draft-token autosave has not fired.
+  await settleUploadConfirmationFault(page,state.confirmationFaults);await expect(page.locator('[data-uploads] [data-a=retry-upload]')).toBeEnabled();
+  // Autosave cannot update the server; the changed full input remains local.
   expect(state.work.get(ids.topic)!.view.assistant!.draft_token).toBe('old-ready-token'); const candidate = await page.evaluate(async ({ owner, scope, topic }) => { const c = (window as any).assistantComponent; await c.cacheQueue; const key = 'bb-assistant-view-v1:' + [owner, scope, topic].map(encodeURIComponent).join(':'); return { page: c.viewSnapshot(), cache: JSON.parse(localStorage.getItem(key)!) }; }, ids); expect(candidate.page.view.assistant.draft_token).not.toBe('old-ready-token'); expect(candidate.page.view.assistant.prepared_card_id).toBe('old-ready-card'); expect(candidate.cache.snapshot.view).toEqual(candidate.page.view); expect(candidate.cache.snapshot.version).toBe(candidate.page.version); const before = writes(state).length;
   await mountAssistant(page, { navigation: 'reload' }); await expect(page.locator('[data-uploads] [data-a=retry-upload]')).toBeEnabled(); const restored = await page.evaluate(() => (window as any).assistantComponent.viewSnapshot()); expect(restored.view).toEqual(candidate.page.view); expect(restored.version).toBe(candidate.page.version); expect(restored.conflict).toBe(true); await expect(page.locator('[data-card="old-ready-card"]')).toContainText('输入已变化，请重新核对任务'); await expect(page.locator('[data-a=execute]')).toHaveCount(0); expect(writes(state)).toHaveLength(before);
   const guard = await page.evaluate(async () => { const c = (window as any).assistantComponent, card = c.cards.find((value: any) => value.card_id === 'old-ready-card'); if (!card) throw new Error('Original prepared card missing'); try { await c.execute(card); return null; } catch (error) { return error instanceof Error ? error.message : String(error); } }); expect(guard).toContain('完整会话'); await expect(page.locator('[data-status]')).toContainText('完整会话'); await page.clock.runFor(1000);
@@ -93,11 +95,11 @@ test('a restored pending attachment retains its changed full input and blocks th
 });
 
 for (const width of [1440, 390]) test(`assistant upload component comparison before and after refresh at ${width}`, async ({ page }) => {
-  const directory = process.env.BB_ELEVENTH_EVIDENCE_DIR ?? process.env.BB_UX_EVIDENCE_DIR;
+  const directory = process.env.BB_ASSISTANT_UPLOAD_11TH_EVIDENCE_DIR ?? process.env.BB_ELEVENTH_EVIDENCE_DIR ?? process.env.BB_UX_EVIDENCE_DIR;
   test.skip(!directory, 'Explicit evidence directory is required for component comparison');
   const reference = process.env.BB_ELEVENTH_REFERENCE === '1', finish = reference ? await installEleventhReference(page, ['project-assistant']) : undefined;
-  await page.setViewportSize({ width, height: 960 }); const state = await assistantFixture(page); await page.clock.pauseAt(new Date(Date.parse(now) + 60_000)); state.dropPut = true; await mountAssistant(page);
-  await page.locator('.ba-composer [data-file]').setInputFiles(file); await expect(page.locator('[data-uploads]')).toContainText(file.name); await expect(page.locator('[data-uploads] button').first()).toBeEnabled();
+  await page.setViewportSize({ width, height: 960 }); const state = await assistantFixture(page); await page.clock.pauseAt(new Date(Date.parse(now) + 60_000)); state.dropPut = true; state.rejectViewSaves=!reference; await mountAssistant(page);
+  await page.locator('.ba-composer [data-file]').setInputFiles(file);if(!reference)await settleUploadConfirmationFault(page,state.confirmationFaults); await expect(page.locator('[data-uploads]')).toContainText(file.name); await expect(page.locator('[data-uploads] button').first()).toBeEnabled();
   const flavor = reference ? 'reference' : 'implementation', records = [await capture(page, `${flavor}-pending-${width}`)], before = writes(state).length;
   await mountAssistant(page, { navigation: 'reload' }); expect(writes(state)).toHaveLength(before);
   if (reference) { await expect(page.locator('[data-uploads]')).toBeEmpty(); expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.includes(':assistant-material:')))).toEqual([]); }

@@ -9,12 +9,15 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { hashFile, hashStream } from './backup-stream.mjs';
+import { dockerTestConfig, runOwnedDocker, withinScratch } from '../../../scripts/pr-gate/host-adapters/docker-cases.mjs';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+const owned = dockerTestConfig('deploy/m1/scripts/backup-integration.test.mjs');
 const root = mkdtempSync(join(tmpdir(), 'bb-blob-backup-test-'));
+if (owned) withinScratch(owned.scratch, root);
 const image = 'mcr.microsoft.com/azure-storage/azurite:3.35.0';
 const containerName = `bb-blob-backup-test-${process.pid}`;
-const connection = 'UseDevelopmentStorage=true';
+const connection = owned?.host_connection ?? 'UseDevelopmentStorage=true';
 const service = BlobServiceClient.fromConnectionString(connection);
 const app = ['bondbuddy-private', 'bb-test-logs'];
 const unrelated = 'bb-test-unrelated';
@@ -29,6 +32,16 @@ const docker = args => execFileSync('docker', args, { encoding: 'utf8', stdio: [
 const runLimited = (script, args, vars = {}) => {
   const env = Object.entries(vars).flatMap(([key, value]) => ['-e', `${key}=${value}`]);
   const command = `node --max-old-space-size=128 deploy/m1/scripts/${script} ${args.map(x => `'${x}'`).join(' ')} & pid=$!; peak=0; while kill -0 "$pid" 2>/dev/null; do rss=$(awk '/^VmRSS:/ {print $2 * 1024}' /proc/"$pid"/status 2>/dev/null || true); if [ -n "$rss" ] && [ "$rss" -gt "$peak" ]; then peak=$rss; fi; sleep 0.05; done; wait "$pid"; result=$?; printf 'peak_rss_bytes=%s cgroup_memory_peak_bytes=' "$peak"; cat /sys/fs/cgroup/memory.peak; exit "$result"`;
+  if (owned) {
+    const result = runOwnedDocker(owned, ['--network', owned.network, '--workdir', '/app', '--tmpfs', '/tmp:rw,nosuid,nodev,size=67108864,mode=1777',
+      '--mount', `type=volume,source=${owned.app_volume},target=/app,readonly,volume-nocopy`, '--mount', `type=bind,source=${root},target=/backup`,
+      '--entrypoint', '/usr/bin/env', owned.image, '-i', 'PATH=/usr/local/bin:/usr/bin:/bin', 'HOME=/tmp',
+      `AZURE_STORAGE_CONNECTION_STRING=${owned.container_connection}`, `BB_BACKUP_CONTAINER=${backups}`,
+      ...Object.entries(vars).map(([key,value]) => `${key}=${value}`), 'sh', '-c', command], { timeout: 300000 });
+    if (result.error || result.status !== 0) { const error = new Error(result.error?.message ?? 'Original backup process failed'); error.stderr = result.stderr; throw error; }
+    console.log(`${script} ${args.join(' ')}: ${result.stdout.trim()}`);
+    return;
+  }
   const output = docker(['run', '--rm', '--network', 'host', '--memory', '512m', '--user', `${process.getuid()}:${process.getgid()}`,
     '-v', `${repo}:/app:ro`, '-v', `${root}:/backup`, '-w', '/app',
     '-e', `AZURE_STORAGE_CONNECTION_STRING=${connection}`, '-e', `BB_BACKUP_CONTAINER=${backups}`, ...env,
@@ -37,7 +50,7 @@ const runLimited = (script, args, vars = {}) => {
 };
 
 try {
-  docker(['run', '--rm', '-d', '--name', containerName, '-p', '127.0.0.1:10000:10000', image,
+  if (!owned) docker(['run', '--rm', '-d', '--name', containerName, '-p', '127.0.0.1:10000:10000', image,
     'azurite-blob', '--blobHost', '0.0.0.0', '--skipApiVersionCheck', '--disableProductStyleUrl']);
   let ready = false;
   for (let attempt = 0; attempt < 40; attempt++) {
@@ -86,6 +99,6 @@ try {
   assert.deepEqual(await hashFile(join(downloadDir, 'blobs', 'large.bin')), { bytes: 320 * 1024 * 1024, sha256: expected });
   console.log('PASS: 2 application containers, 1 unrelated container, 320 MiB blob, snapshot and off-host round trips');
 } finally {
-  try { docker(['stop', containerName]); } catch { /* already gone */ }
+  if (!owned) { try { docker(['stop', containerName]); } catch { /* already gone */ } }
   rmSync(root, { recursive: true, force: true });
 }

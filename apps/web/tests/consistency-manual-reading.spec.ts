@@ -9,7 +9,7 @@ import {captureConsistencyManualReading,installConsistencyManualReadingReference
 // Native main.ts routes and public controls only. Defensive JSON projections are
 // explicitly labelled; none is a normal immutable worker-result claim. Root runs
 // these independently. Mobile, real services, Word/WPS and ledger acceptance are out of scope.
-const baseline=process.env.BB_CONSISTENCY_MANUAL_BASELINE==='1',reference=process.env.BB_CONSISTENCY_MANUAL_REFERENCE==='1';
+// Every run discovers current journeys, the sealed baseline and both comparison sides.
 const rows=(page:Page)=>page.locator('[data-fc-result-version]');
 const idsIn=(locator:Locator)=>locator.locator('[data-fc-finding-id]').evaluateAll(nodes=>nodes.map(node=>(node as HTMLElement).dataset.fcFindingId));
 async function setup(page:Page,options:Parameters<typeof fixture>[0]={}){await pausedClock(page);const s=await enterFromFiles(page,fixture(options));await observeCache(page);return s;}
@@ -28,7 +28,6 @@ async function pollReadOnly(page:Page,s:State,before=serverSnapshot(s),cache?:st
 test.afterEach(async({page})=>verifyInstalled(page));
 
 test.describe('manual reading sealed R38 baseline',()=>{
-  test.skip(!baseline,'Only the explicit exact R38 baseline run.');
   test('manual reading baseline: file manual facet still leaves mixed manual findings after automatic findings and has no item navigation',async({page})=>{
     await pausedClock(page);const verify=await installConsistencyManualReadingReference(page),s=await enterFromFiles(page,fixture());
     await page.locator('[data-fc-filter="manual"]').click();await expand(page);await expect(rows(page)).toHaveCount(2);
@@ -46,7 +45,6 @@ test.describe('manual reading sealed R38 baseline',()=>{
 });
 
 test.describe('manual reading current desktop journeys',()=>{
-  test.skip(baseline||reference,'Current behavioral assertions; exact reference has its own collector.');
 
   test('manual reading: native project-file entry keeps every finding, classifies null and non-null manual items, and preserves each group order',async({page})=>{
     const s=await setup(page),input=structuredClone(s.check.result!.files[0].findings);await expand(page);
@@ -190,15 +188,17 @@ test.describe('manual reading current desktop journeys',()=>{
     await expect(modal.locator('[name=type]')).toHaveValue('init');await expect(modal.locator('[name=type]')).toBeDisabled();await modal.locator('[name=file]').setInputFiles(editedFile);
     await expect(modal).toHaveCount(0);await expect(page.locator('#pw-import-result')).toContainText('修改稿已保存为 V2');
     expect(s.imports).toHaveLength(1);expect(s.imports[0].expected_latest_version_id).toBe(ids.version);expect(s.imports[0].material.sha256).toBe(hash(editedFile.buffer));expect(s.check).toEqual(checked);expect(s.checkRequests).toEqual([]);
-    await page.locator('#pw-import-result').getByRole('link',{name:'免费检查全部项目文件',exact:true}).click();await expect(page.locator('.fc-results')).toBeVisible();expect(s.checkRequests).toEqual([]);
+    await page.locator('#pw-import-result').getByRole('link',{name:'检查全部项目文件',exact:true}).click();await expect(page.locator('.fc-results')).toBeVisible();expect(s.checkRequests).toEqual([]);
     await page.locator('[data-fc-start]').click();await expect.poll(()=>s.checkRequests.length).toBe(1);expect(s.checkRequests[0].expected_source_version_id).toBe(s.source.version_id);
     expect(s.checks[0].files.map(f=>f.file_version_id).sort()).toEqual(s.registry.filter(f=>f.latest).map(f=>f.version_id).sort());expect(s.check).toEqual(checked);expect(s.updatePosts).toEqual([]);expect(s.executions).toEqual([]);expect(s.quotes).toEqual([]);
   });
 });
 
+for(const side of ['implementation','reference'] as const)test.describe('manual reading comparison '+side,()=>{
+const reference=side==='reference';
 test('manual reading component comparison: exact R38/current native entry, actual long viewport, item reading and return at 1440',async({page})=>{
-  test.skip(baseline,'Dedicated baseline evidence test above.');await pausedClock(page);const verify=reference?await installConsistencyManualReadingReference(page):undefined,s=await enterFromFiles(page,fixture());await observeCache(page);
-  const output=process.env.BB_CONSISTENCY_MANUAL_EVIDENCE??test.info().outputPath('component-capture');const side=reference?'reference':'implementation';
+  await pausedClock(page);const verify=reference?await installConsistencyManualReadingReference(page):undefined,s=await enterFromFiles(page,fixture());await observeCache(page);
+  const output=process.env.BB_CONSISTENCY_MANUAL_EVIDENCE?join(process.env.BB_CONSISTENCY_MANUAL_EVIDENCE,side):test.info().outputPath('component-capture',side);
   const audit=()=>({synthetic:true,scope:'Only sealed R38 FileConsistency versus current component; same current surrounding app and HTTP data',http:s.calls,business_writes:writeCalls(s),projection_faults:s.projectionFaults,errors:s.errors,unexpected:s.unexpected,server:serverSnapshot(s)});
   await row(page).evaluate(node=>node.scrollIntoView({block:'start',behavior:'instant'}));await frames(page);await captureConsistencyManualReading(page,output!,side+'-file-entry-1440',audit());
   await page.locator('[data-fc-filter="manual"]').click();await expand(page);await frames(page);
@@ -212,4 +212,5 @@ test('manual reading component comparison: exact R38/current native entry, actua
   else{await control(page,'file',itemIds.last).click();await expect(row(page)).toBeFocused();}
   await frames(page);await captureConsistencyManualReading(page,output!,side+'-returned-file-operations-1440',audit());expect(writeCalls(s)).toEqual([]);expect(s.updateReceipts.size).toBe(0);assertFixture(s);
   if(verify){await mkdir(output!,{recursive:true});await writeFile(join(output!,'reference-provenance-1440.json'),JSON.stringify(await verify(),null,2)+'\n');}
+});
 });

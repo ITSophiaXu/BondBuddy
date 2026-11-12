@@ -4,9 +4,11 @@ import {join,resolve} from 'node:path';
 import {expect,test,type Page,type Route} from '@playwright/test';
 import {resultFilename,PROJECT_FILE_UPDATE_PRICE,type ProjectFileAsset,type ProjectFileCheck,type ProjectFileFinding,
   type ProjectFileSource,type ProjectFileVersion,type ProjectFileWorkspace,type ProjectFileUpdateBatches} from '@bondbuddy/contracts';
-import type {Dto} from '../src/api';
+import {fixtureJson,fixtureRequest,serveDisabledBillingCatalog,type Dto} from './billing-fixture-wire';
 import {installConsistencyFreshnessReference} from './consistency-freshness-reference';
 
+// Disabled commerce/subscription catalogs explicitly select the historical free-check
+// and 4,500-point update contract; no new free-check SKU is implied.
 // Synthetic HTTP projections test the page's confirmation and recovery behavior.
 // No model, wallet, private storage or real Word generation is involved.
 const projectId='consistency-workbench-root',sourceProject='consistency-workbench-source';
@@ -42,7 +44,7 @@ function check(id:string,files:ProjectFileVersion[],basis:ProjectFileSource):Pro
 type UpdateBody=Dto<'ProjectFileUpdateRequest'>;
 type CheckBody=Dto<'ProjectFileCheckRequest'>;
 type UpdatePost={checkId:string;body:UpdateBody};
-type Call={method:string;path:string;body:unknown};
+type Call={method:string;path:string;body:unknown;rawBody:string|null};
 type FixtureOptions={
   shortageOnce?:boolean;dropUpdateOnce?:boolean;unpreparedWorkspace?:boolean;workspaceFailure?:boolean;
   changed?:'source-version'|'source-revision'|'file-version';missingRun?:boolean;delivered?:boolean;
@@ -50,7 +52,7 @@ type FixtureOptions={
   freshness?:'replaced'|'scope-gap'|'combined'|'source-selection';historyCheck?:boolean;
   emptyState?:'source'|'files';latest?:boolean;
 };
-const json=(route:Route,status:number,value:unknown)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(value)});
+const json=(route:Route,status:number,value:unknown)=>route.fulfill({status,contentType:'application/json',body:fixtureJson(route,value)});
 
 async function setup(page:Page,options:FixtureOptions={}){
   const files=structuredClone(initialFiles),basis=structuredClone(source);
@@ -98,8 +100,9 @@ async function setup(page:Page,options:FixtureOptions={}){
   if(options.emptyState==='files')files.length=0;
   await page.route('**/api/v1/**',async route=>{
     const req=route.request(),url=new URL(req.url()),path=url.pathname.replace('/api/v1',''),method=req.method();
-    const body=method==='POST'||method==='PATCH'?req.postDataJSON() as unknown:null;
-    calls.push({method,path,body});
+    const body=method==='POST'||method==='PATCH'?fixtureRequest(req) as unknown:null;
+    calls.push({method,path,body,rawBody:req.postData()});
+    if(await serveDisabledBillingCatalog(route))return;
     if(path==='/me')return json(route,200,{user_id:'synthetic-consistency-owner',session_status:'active'});
     if(path==='/account')return json(route,200,{user_id:'synthetic-consistency-owner',username:'sample_user'});
     if(path==='/credits/balance')return json(route,200,{enabled:true,available:18000,frozen:0});
@@ -151,8 +154,10 @@ async function setup(page:Page,options:FixtureOptions={}){
     const artifact=path.match(/^\/artifacts\/delivered-(revision|clean)(\/download)?$/);
     if(artifact){
       const variant=artifact[1] as 'revision'|'clean',bytes=deliveredBytes[variant],id='delivered-'+variant;
-      if(artifact[2])return route.fulfill({status:200,contentType:mime,body:bytes});
-      const value:Dto<'ArtifactResponse'>={artifact_id:id,run_id:'delivered-run',version:1,filename:resultFilename({project:'发行人基本情况',kind:variant==='revision'?'修订版':'清洁版',version:3,createdAt:now,mediaType:mime}),display_version:3,
+      const filename=resultFilename({project:'发行人基本情况',kind:variant==='revision'?'修订版':'清洁版',version:3,createdAt:now,mediaType:mime});
+      // Match the authenticated artifact endpoint's frozen filename projection.
+      if(artifact[2])return route.fulfill({status:200,contentType:mime,headers:{'Content-Disposition':`attachment; filename="delivered-${variant}.docx"; filename*=UTF-8''${encodeURIComponent(filename)}`},body:bytes});
+      const value:Dto<'ArtifactResponse'>={artifact_id:id,run_id:'delivered-run',version:1,filename,display_version:3,
         media_type:mime,sha256:hash(bytes),quality_status:'passed',delivery_status:'available',
         download_url:`/api/v1/artifacts/${id}/download?grant=synthetic`,expires_at:'2099-01-01T00:00:00Z'};
       return json(route,200,value);
@@ -196,7 +201,7 @@ test('a 402 keeps findings and selected files and requires a fresh explicit conf
   await page.locator('#fc-confirm-update').click();
   await expect(page.locator('dialog.fc-confirm[open]')).toHaveCount(0);
   await expect(page.locator('#fc-status')).toContainText('积分不足');
-  await expect(page.getByRole('link',{name:/充值/}).last()).toHaveAttribute('href',new RegExp('project='+projectId));
+  await expect(page.getByRole('link',{name:'查看余额与支付状态',exact:true})).toHaveAttribute('href',new RegExp('project='+projectId));
   await expect(page.locator('[data-fc-select="issuer-v1"]')).toBeChecked();
   await expect(page.locator('[data-fc-select="financial-v1"]')).toBeChecked();
   await expect(page.locator('.fc-file')).toHaveCount(3);expect(f.updates).toHaveLength(1);expect(f.batches).toHaveLength(0);
@@ -302,6 +307,8 @@ test('successful dual Word delivery stays downloadable while manual findings rem
   for(const [variant,label] of [['revision','下载修订版'],['clean','下载清洁版']] as const){
     const download=page.waitForEvent('download');await delivered.getByRole('button',{name:label,exact:true}).click();
     const completed=await download;expect(await completed.failure()).toBeNull();
+    await test.info().attach('download-protocol-'+variant,{body:JSON.stringify({url:completed.url(),suggestedFilename:completed.suggestedFilename()}),contentType:'application/json'});
+    expect(await readFile((await completed.path())!)).toEqual(deliveredBytes[variant]);
     expect(completed.suggestedFilename()).toContain(variant==='revision'?'修订版':'清洁版');
     expect(f.calls.some(c=>c.method==='GET'&&c.path===`/artifacts/delivered-${variant}`)).toBe(true);
     expect(f.calls.some(c=>c.method==='GET'&&c.path===`/artifacts/delivered-${variant}/download`)).toBe(true);
@@ -368,16 +375,24 @@ for(const status of [408,429] as const)
 
 test('refresh restores an uncertain free check and retries its saved body without creating a second run',async({page})=>{
   const f=await setup(page,{dropCheckOnce:true});
+  await expect(page.locator('[data-fc-start]')).toHaveText('重新检查（免费）');
   await page.locator('[data-fc-start]').click();
-  await expect(page.locator('[data-fc-start]')).toHaveText('重试确认检查结果（免费）');
+  await expect(page.locator('[data-fc-start]')).toHaveText('重试确认原检查');
   expect(f.checkPosts).toHaveLength(1);expect(f.checkReceipts.size).toBe(1);
   const first=structuredClone(f.checkPosts[0]);
+  // The shared retry label covers all price modes. Prove this legacy request is
+  // still free through its exact envelope and the absence of quote/payment calls.
+  expect(first).toEqual({request_id:expect.any(String),expected_source_version_id:f.basis.version_id});
+  const firstWire=f.calls.find(c=>c.method==='POST'&&c.path===base+'/checks')!.rawBody;
   page.once('dialog',dialog=>dialog.accept());await page.reload();
-  await expect(page.locator('[data-fc-start]')).toHaveText('重试确认检查结果（免费）');
+  await expect(page.locator('[data-fc-start]')).toHaveText('重试确认原检查');
   expect(f.checkPosts).toHaveLength(1);
   await page.locator('[data-fc-start]').click();
   await expect.poll(()=>f.checkPosts.length).toBe(2);await expect(page).toHaveURL(/run=check-recovered/);
   expect(f.checkPosts[1]).toEqual(first);expect(f.checkReceipts.size).toBe(1);expect(f.updates).toHaveLength(0);
+  const writes=f.calls.filter(c=>c.method!=='GET');
+  expect(writes.map(c=>c.path)).toEqual([base+'/checks',base+'/checks']);
+  expect(writes.map(c=>c.rawBody)).toEqual([firstWire,firstWire]);
 });
 
 const freshnessReference=process.env.BB_CONSISTENCY_FRESHNESS_REFERENCE==='1';
