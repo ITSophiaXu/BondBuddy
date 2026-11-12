@@ -38,7 +38,7 @@ test('manual recovery: two real browser accounts bind an original channel, issue
     await page.getByRole('link',{name:'忘记密码？查看找回方式',exact:true}).click();
     await page.getByLabel('账号用户名').fill(user.username);await page.getByRole('button',{name:'获取找回工单号'}).click();
     const ticket=await page.locator('#recovery-public-body code').innerText();
-    await operator.getByLabel('记录类型').selectOption('ticket');await operator.getByLabel('绑定编号或工单号').fill(ticket);
+    await operator.getByLabel('记录类型',{exact:true}).selectOption('ticket');await operator.getByLabel('绑定编号或工单号').fill(ticket);
     await operator.getByRole('button',{name:'读取记录',exact:true}).click();
     await expect(operator.getByRole('button',{name:'签发或重新签发重置链接'})).toBeDisabled();
     await operator.getByLabel('我已通过上面的原渠道联系本人，并确认本次工单。').check();
