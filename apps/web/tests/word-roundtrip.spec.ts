@@ -177,6 +177,10 @@ for(const width of [1440,390])test(`component comparison: row and import dialog 
   await page.setViewportSize({width,height:960});
   const verifyReference=referenceMode?await installWordRoundtripReference(page):undefined;
   const s=await install(page);await openFiles(page);const prefix=referenceMode?'reference':'implementation';
+  // syncPanel repaints file rows after the initial prospectus-version read.
+  const sourceSummary=page.locator('#pw-prospectus [data-current-summary="true"] p');
+  await expect(sourceSummary).toBeVisible();
+  await expect(sourceSummary).toHaveText(`项目当前稿：V${s.source.sequence} · ${s.source.filename}`);
   const original=page.locator('#file-list>.collection-file').filter({hasText:'立项报告原稿_V1.docx'});
   await original.scrollIntoViewIfNeeded();await noOverflow(page);await capture(page,`${prefix}-row-${width}`);
   if(referenceMode){
