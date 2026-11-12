@@ -1357,9 +1357,23 @@ test('continuing after completion creates a new input and retains the preceding 
 for(const changeAfterPreparation of [false,true])test(`deduplicated first draft ${changeAfterPreparation?'is revalidated before another input is submitted':'continues from the exact shared clean artifact'}`,async({page})=>{
   const state=fixture();state.checkStatus='ready';state.materials=state.materials.filter(material=>material.role!=='historical');
   state.project.update_details!.has_historical=false;state.project.update_details!.source_prospectuses=[];state.sourceSelected=false;
-  await setup(page,state);await page.locator('#execute-input').click();
+  // Synthetic task accepted before the reference-required policy. Current UI must
+  // restore it without submitting a new source-free task or inventing request logs.
+  const legacyKey='synthetic-retained-first-draft-key',legacyHash=hash('synthetic-retained-first-draft-input-v1');
+  const legacyInput:Dto<'InputRevisionResponse'>={project_id:id,input_revision:1,input_hash:legacyHash,
+    material_versions:state.materials.map(m=>({material_id:m.material_id,material_version:m.material_version})),
+    target_confirmation:{status:'unconfirmed',market:null,offering:null,as_of:null,document_purpose:null,target_reporting_periods:[],confirmed_at:null,confirmed_by:null},
+    rule_pack_version:null,template_version:null,reference_release:null,created_at:now};
+  const first:Dto<'RunResponse'>={run_id:'synthetic-retained-first-draft',execution_request_id:legacyKey,project_id:id,
+    input_revision:1,input_hash:legacyHash,state:'paused',stage:state.runStage,event_cursor:state.eventSeq,
+    channel:'production',test_grant_id:null,uncovered_items:[],billing_mode:'platform_trial',reservation_id:null,
+    artifact_id:null,prompt_snapshot_ref:null,updated_at:now};
+  expect(Value.Check(schemas.InputRevisionResponse,legacyInput)).toBe(true);expect(Value.Check(schemas.RunResponse,first)).toBe(true);
+  const retainedSnapshot=structuredClone(legacyInput);state.snapshots.set(1,legacyInput);state.project.input_revision=1;state.project.input_hash=legacyHash;state.runs.set(legacyKey,first);
+  await setup(page,state,false);
   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
-  const first=[...state.runs.values()][0],{primary,clean}=registerGeneratedPair(state,first,'deduplicated-first-draft',true);
+  expect(state.inputs).toEqual([]);expect(state.executes).toEqual([]);expect(state.preflights).toEqual([]);
+  const {primary,clean}=registerGeneratedPair(state,first,'deduplicated-first-draft',true);
   expect(primary.word_delivery?.source_sha256).toBeNull();
   await page.getByRole('button',{name:'重新读取',exact:true}).click();
   await expect(page.locator('#execution-progress')).toContainText('已生成');
@@ -1369,12 +1383,14 @@ for(const changeAfterPreparation of [false,true])test(`deduplicated first draft 
   await page.locator('#execute-input').click();
   if(changeAfterPreparation){
     await expect(page.locator('#execution-message')).toContainText('清洁版成果的准确版本尚未确认');
-    expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);
+    expect(state.inputs).toHaveLength(0);expect(state.executes).toHaveLength(0);expect(state.runs.size).toBe(1);
   }else{
     await expect(page.locator('#execution-progress .task-progress')).toHaveAttribute('data-input-revision','2');
-    expect(state.inputs[1].edit_base).toEqual({artifact_id:clean.artifact_id,artifact_version:clean.version,sha256:clean.sha256});
-    expect(state.inputs[1].prospectus_selection_revision).toBe(1);expect(state.runs.size).toBe(2);
+    expect(state.inputs[0].edit_base).toEqual({artifact_id:clean.artifact_id,artifact_version:clean.version,sha256:clean.sha256});
+    expect(state.inputs[0].prospectus_selection_revision).toBe(1);expect(state.runs.size).toBe(2);
+    expect(state.inputs).toHaveLength(1);expect(state.executes).toHaveLength(1);expect(state.executes[0].execution_request_id).not.toBe(legacyKey);
   }
+  expect(state.snapshots.get(1)).toEqual(retainedSnapshot);expect(state.runs.get(legacyKey)).toBe(first);expect(first.input_hash).toBe(legacyHash);
 });
 
 
