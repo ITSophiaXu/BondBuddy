@@ -26,6 +26,7 @@ export function assertCaseComplete(entry){
  if(entry.billingPageEvidence?.status!=='passed'||entry.billingPageEvidence.frozen!=='0'||entry.refreshEvidence?.billingPage?.status!=='passed')throw Error('Visible billing evidence missing');
  if(entry.id==='update-rq-202509'&&(entry.qualityEvidence?.version!=='release-word-quality-evidence-v1'||entry.qualityEvidence.status!=='passed'||entry.qualityEvidence.humanAcceptance!=='not_evaluated'))throw Error('Original server Word quality evidence missing');
  if(entry.id==='integrity-dongying'&&(!Array.isArray(entry.integrityVerifiedPairs)||!entry.integrityVerifiedPairs.length))throw Error('No verified real integrity query evidence');
+ if(entry.id==='integrity-dongying'&&(entry.integrityBillingPageEvidence?.version!=='release-integrity-visible-settlement-v1'||entry.integrityBillingPageEvidence.status!=='passed'||entry.integrityBillingPageEvidence.observations?.length<2))throw Error('Original and refreshed integrity settlement page evidence missing');
  return entry;
 }
 export const sha256=bytes=>createHash('sha256').update(bytes).digest('hex');
