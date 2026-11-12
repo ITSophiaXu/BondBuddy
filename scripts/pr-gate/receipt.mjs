@@ -2,9 +2,10 @@ import { createHash } from 'node:crypto';
 import { parseExclusions, SUMMARY_SCHEMA } from './run.mjs';
 import { verifyCapabilityRuns } from './capabilities.mjs';
 import { verifyOfflineCache } from './offline-cache.mjs';
+import { verifyHostRuns } from './host-dispatch.mjs';
 
 export const RECEIPT_SCHEMA = 'pr-gate-local-v1';
-export const PREPARATION_IDS = Object.freeze(['image', 'capabilities', 'services', 'dependencies', 'build', 'contracts', 'browser']);
+export const PREPARATION_IDS = Object.freeze(['image', 'capabilities', 'services', 'dependencies', 'build', 'contracts', 'browser', 'host']);
 const EXCLUSION_LISTS = ['notInCi', 'knownFailing', 'allowSkip'];
 const COUNT_KEYS = ['selected', 'passed', 'blocking', 'tolerated', 'notInCi'];
 const SHA = /^[a-f0-9]{40}$/;
@@ -81,5 +82,6 @@ export function verifyReceipt(receipt, expected, now = Date.now()) {
     verifyOfflineCache(receipt.offline_cache, expected);
   } else requireEvidence(receipt.dependency_mode === 'download', 'dependency mode is missing or unknown');
   verifyCapabilityRuns(receipt, expected, now);
+  verifyHostRuns(receipt, expected);
   return receipt;
 }

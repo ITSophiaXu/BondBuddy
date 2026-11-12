@@ -4,6 +4,7 @@ import test from 'node:test';
 import { exclusionsEvidence, PREPARATION_IDS, RECEIPT_SCHEMA, verifyReceipt } from './receipt.mjs';
 import { syntheticCapabilities, syntheticCapabilityRuns, syntheticCapabilityService } from './capabilities.test-fixture.mjs';
 import { CACHE_FILES, OFFLINE_SCHEMA, compareCacheFiles, hash } from './offline-cache.mjs';
+import { syntheticHostDispatch, syntheticHostReferences, syntheticHostSources } from './host-dispatch.test-fixture.mjs';
 
 const matrix = [
   { name: 'api-1', groups: 'api', shard: '1/2' },
@@ -19,10 +20,12 @@ const rawExclusions = `${JSON.stringify({ _说明: 'synthetic', notInCi: [{ patt
 const expected = {
   commit: 'a'.repeat(40), tree: 'b'.repeat(40), develop_commit: 'c'.repeat(40),
   matrix, exclusions: exclusionsEvidence(rawExclusions),
+  host_source_sha256: syntheticHostSources(),
 };
 const now = Date.parse('2026-11-11T13:02:00.000Z');
 function fixture() {
   const capabilities = syntheticCapabilities(expected);
+  const hostDispatch = syntheticHostDispatch(expected);
   return {
     schema_version: RECEIPT_SCHEMA, status: 'passed', dependency_mode: 'download',
     commit: expected.commit, tree: expected.tree, develop_commit: expected.develop_commit,
@@ -30,6 +33,7 @@ function fixture() {
     started_at: '2026-11-11T13:00:00.000Z', finished_at: '2026-11-11T13:01:00.000Z',
     exclusions: structuredClone(expected.exclusions),
     capabilities,
+    run_id: hostDispatch.plan.run_id, host_dispatch: hostDispatch,
     preparation: PREPARATION_IDS.map(id => ({ id, status: 'passed' })),
     shards: matrix.map(row => ({
       name: row.name, groups: row.groups, shard: row.shard, exit_code: 0,
@@ -38,6 +42,7 @@ function fixture() {
         schema: 'pr-gate-summary-v1', job: row.name, groups: row.groups.split(','), shard: row.shard,
         expectedJobs: matrix.length, report: false, commit: expected.commit,
         capabilities: row.name === 'worker-1' ? syntheticCapabilityRuns(capabilities, 'apps/worker/') : row.name === 'api-1' ? syntheticCapabilityRuns(capabilities, 'apps/api/') : [],
+        host_dispatch: syntheticHostReferences(hostDispatch, row.name),
         finishedAt: '2026-11-11T13:00:30.000Z', status: 'passed',
         counts: { selected: 2, passed: 2, blocking: 0, tolerated: 0, notInCi: row.name === 'browser-1' ? 1 : 0 },
         problems: [], blocking: [], tolerated: [], recovered: [], skipsAllowed: [], slowest: [],

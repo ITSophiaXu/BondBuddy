@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameS
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { cleanupContainers, dependencySources, persistReceipts } from './local.mjs';
+import { cleanupContainers, dependencySources, localOptions, persistReceipts } from './local.mjs';
 
 function receiptFiles(check) {
   const directory = mkdtempSync(join(tmpdir(), 'bb-pr-gate-receipts-'));
@@ -90,6 +90,13 @@ test('dependency-only sources honor npm configuration without accepting insecure
   }
 });
 
+test('host runtime options require fixed local image IDs and absolute dependency caches', () => {
+  const image = 'sha256:' + 'a'.repeat(64), cache = join(tmpdir(), 'existing-cache');
+  assert.deepEqual(localOptions([]), { offlineImage: null, workerImage: null, dependencyRoot: null });
+  assert.deepEqual(localOptions(['--offline-image', image, '--host-worker-image', image, '--host-dependency-root', cache]), { offlineImage: image, workerImage: image, dependencyRoot: cache });
+  for (const args of [['--host-worker-image', 'latest'], ['--host-dependency-root', 'relative'], ['--unknown', 'x'], ['--host-worker-image'], ['--host-worker-image', image, '--host-worker-image', image]]) assert.throws(() => localOptions(args));
+});
+
 test('cleanup verifies exact IDs, attempts siblings after failure, and requires confirmed absence', async () => {
   const containers = ['pg', 'blob', 'runner'].map((suffix, index) => ({ id: String(index + 1).repeat(64), name: 'bb-pr-gate-test-' + suffix }));
   const calls = [];
@@ -113,7 +120,7 @@ test('dirty invocation invalidates a prior passed receipt, merges missing result
   const fixture = mkdtempSync(join(tmpdir(), 'bb-pr-gate-dirty-'));
   try {
     const directory = join(fixture, 'scripts/pr-gate'); mkdirSync(directory, { recursive: true });
-    for (const name of ['local.mjs', 'run.mjs', 'receipt.mjs', 'workflow.mjs', 'capabilities.mjs', 'parser-source.mjs', 'offline-cache.mjs']) copyFileSync(new URL(name, import.meta.url), join(directory, name));
+    for (const name of ['local.mjs', 'run.mjs', 'receipt.mjs', 'workflow.mjs', 'capabilities.mjs', 'parser-source.mjs', 'offline-cache.mjs', 'host-profiles.mjs', 'host-dispatch.mjs', 'host-dispatch-client.mjs', 'host-dispatch-protocol.mjs']) copyFileSync(new URL(name, import.meta.url), join(directory, name));
     writeFileSync(join(fixture, '.gitignore'), '.local/\n');
     const git = args => execFileSync('git', args, { cwd: fixture, stdio: 'pipe' });
     git(['init']); git(['add', '.']); git(['-c', 'user.name=Gate Test', '-c', 'user.email=gate@example.invalid', 'commit', '-m', 'fixture']);

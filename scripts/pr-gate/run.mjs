@@ -22,6 +22,8 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, write
 import { basename, delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { capabilityEnvironment, verifyPreparedCapabilities } from './capabilities.mjs';
+import { initializeHostClient, requestHostExecution } from './host-dispatch-client.mjs';
+import { HOST_ENV_KEYS } from './host-profiles.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(HERE, '../..');
@@ -239,6 +241,7 @@ function childEnvironment(extra = {}) {
   const env = { ...process.env, ...extra };
   // 本脚本自身可能在 node --test 里被调用；去掉这个变量，子进程才会输出正常的 TAP 汇总。
   delete env.NODE_TEST_CONTEXT;
+  for (const key of HOST_ENV_KEYS) delete env[key];
   return env;
 }
 const tail = (text, lines) => text.split(/\r?\n/).slice(-lines).join('\n');
@@ -261,7 +264,18 @@ async function runSequential(root, group, runner, items, context, workingDirecto
       results.push({ id: item.id, status: 'failed', reason: `能力准备无效：${error.message}`, tests: 0, skipped: 0, durationMs: 0 });
       continue;
     }
-    if (runner === 'node') {
+    if (context.host?.entries.has(item.id)) {
+      try {
+        const response = await requestHostExecution(context.host, item.id, context.deadline);
+        execution = response.execution;
+        evaluated = runner === 'node' ? evaluateNode(execution) : evaluatePython(execution);
+        if (response.infrastructure_error) { evaluated.status = 'failed'; evaluated.reason = `能力准备无效：${response.infrastructure_error}`; }
+        Object.assign(context.host.records.at(-1), { status: evaluated.status, tests: evaluated.tests, skipped: evaluated.skipped });
+      } catch (error) {
+        execution = { code: null, signal: null, timedOut: false, stdout: '', stderr: error.message, durationMs: 0 };
+        evaluated = { status: 'failed', reason: `能力调度失败：${error.message}`, tests: 0, skipped: 0 };
+      }
+    } else if (runner === 'node') {
       if (!existsSync(join(root, item.run))) {
         results.push({ id: item.id, status: 'failed', reason: `找不到编译产物 ${item.run}（是否先执行了 npm run build）`, tests: 0, skipped: 0, durationMs: 0 });
         console.log(`失败   ${label}：找不到 ${item.run}`); continue;
@@ -382,7 +396,8 @@ async function commandRun(options) {
   mkdirSync(out, { recursive: true });
   const results = [];
   const capabilities = process.env.PR_GATE_CAPABILITIES_FILE ? verifyPreparedCapabilities(JSON.parse(readFileSync(process.env.PR_GATE_CAPABILITIES_FILE, 'utf8')), { commit: process.env.GITHUB_SHA, tree: process.env.PR_GATE_TREE }) : null;
-  const context = { out, fileTimeoutMs, deadline, capabilities, capabilityRuns: [] };
+  const host = initializeHostClient({ root, candidate: { commit: process.env.GITHUB_SHA, tree: process.env.PR_GATE_TREE }, shard: name, parts: plan, fileTimeoutMs });
+  const context = { out, fileTimeoutMs, deadline, capabilities, capabilityRuns: [], host };
   for (const part of plan) {
     if (!part.selected.length) continue;
     console.log(`\n===== ${part.group}：运行 ${part.selected.length} 个测试文件 =====`);
@@ -403,6 +418,7 @@ async function commandRun(options) {
     schema: SUMMARY_SCHEMA, job: name, groups, shard: `${shardIndex}/${shardTotal}`, expectedJobs, report: Boolean(options.report),
     commit: process.env.GITHUB_SHA ?? null, finishedAt: new Date().toISOString(), status: verdict.status,
     capabilities: context.capabilityRuns,
+    host_dispatch: host?.records ?? [],
     counts: { selected: results.length, passed: verdict.passed, blocking: verdict.blocking.length, tolerated: verdict.tolerated.length, notInCi: plan.reduce((total, part) => total + part.notInCi, 0) },
     problems: verdict.problems, blocking: verdict.blocking, tolerated: verdict.tolerated, recovered: verdict.recovered, skipsAllowed: verdict.skipsAllowed,
     slowest: [...results].sort((a, b) => b.durationMs - a.durationMs).slice(0, 10).filter(row => row.durationMs >= 5000).map(row => ({ id: row.id, durationMs: row.durationMs })),

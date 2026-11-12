@@ -3,13 +3,15 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { arch, release } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readWorkflow } from './workflow.mjs';
 import { exclusionsEvidence, verifyReceipt } from './receipt.mjs';
 import { createParserArchive, restoreParserArchive } from './parser-source.mjs';
 import { CAPABILITY_PATHS } from './capabilities.mjs';
 import { CACHE_FILES, hash, inspectOfflineImage, inspectOfflineContainer, isolatedCommand, offlineImageArgument } from './offline-cache.mjs';
+import { HOST_PROFILES } from './host-profiles.mjs';
+import { createHostBroker, createHostPlan } from './host-dispatch.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const output = join(root, '.local/pr-gate');
@@ -100,10 +102,25 @@ export function expectedFor(ref) {
   return { commit, tree: git(['rev-parse', `${commit}^{tree}`]), develop_commit,
     matrix: readWorkflow(blob(commit, '.github/workflows/pr-gate.yml').toString()).matrix,
     exclusions: exclusionsEvidence(blob(commit, 'scripts/pr-gate/exclusions.json')),
-    cache_files: Object.fromEntries(CACHE_FILES.map(path => [path, hash(blob(commit, path))])) };
+    cache_files: Object.fromEntries(CACHE_FILES.map(path => [path, hash(blob(commit, path))])),
+    host_source_sha256: Object.fromEntries(Object.keys(HOST_PROFILES).map(path => [path, hash(blob(commit, path))])) };
 }
 
-async function run(offlineImage = null) {
+export function localOptions(args) {
+  const options = {}, offline = [];
+  for (let index = 0; index < args.length; index += 2) {
+    const key = args[index], value = args[index + 1];
+    if (!['--offline-image', '--host-worker-image', '--host-dependency-root'].includes(key) || !value || Object.hasOwn(options, key)) throw new Error('Invalid or duplicate local gate option');
+    options[key] = value;
+    if (key === '--offline-image') offline.push(key, value);
+  }
+  const offlineImage = offlineImageArgument(offline), workerImage = options['--host-worker-image'] ?? null, dependencyRoot = options['--host-dependency-root'] ?? null;
+  if (workerImage && !/^sha256:[a-f0-9]{64}$/.test(workerImage)) throw new Error('Host worker capability requires an immutable local image ID');
+  if (dependencyRoot && !isAbsolute(dependencyRoot)) throw new Error('Host dependency root must be an absolute existing cache path');
+  return { offlineImage, workerImage, dependencyRoot };
+}
+
+async function run({ offlineImage = null, workerImage = null, dependencyRoot = null } = {}) {
   mkdirSync(output, { recursive: true });
   const lock = join(output, 'run.lock');
   try { mkdirSync(lock); } catch { throw new Error(`Another gate may be running. Inspect ${lock} before removing a stale lock.`); }
@@ -126,7 +143,7 @@ async function run(offlineImage = null) {
     try { persistReceipts(receipt, receiptPath, archiveReceiptPath); }
     catch (error) { console.error(error.message); }
   };
-  let currentChild, interrupted = false, dockerAvailable = false, expected, workflow, runtimeEnvironment;
+  let currentChild, interrupted = false, dockerAvailable = false, expected, workflow, runtimeEnvironment, hostBroker, nativeRuntime, nativeAdapter;
   const owned = new Map();
   const serviceImages = {};
   const signal = () => { interrupted = true; currentChild?.kill('SIGTERM'); };
@@ -195,6 +212,7 @@ async function run(offlineImage = null) {
     await command('fetch-develop', 'git', ['fetch', 'origin', 'develop']);
     expected = expectedFor('HEAD'); Object.assign(receipt, expected); delete receipt.matrix;
     workflow = readWorkflow(blob(expected.commit, '.github/workflows/pr-gate.yml').toString());
+    if (!workerImage || !dependencyRoot) throw new Error('Full local gate needs --host-worker-image <existing immutable image ID> and --host-dependency-root <existing matching dependency cache>; no software will be installed by host adapters');
     receipt.dependency_sources = offlineImage ? { mode: 'existing-local-cache', downloads: false } : dependencySources(process.env);
     if (process.env.DOCKER_HOST && !/^(unix|npipe):\/\//.test(process.env.DOCKER_HOST)) throw new Error('Only a local Docker Engine is allowed');
     const endpoint = (await docker('docker-context', ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}'], { capture: true })).text;
@@ -276,6 +294,19 @@ async function run(offlineImage = null) {
         receipt.offline_cache = json(join(directory, 'offline-cache/record.json'));
       } else await exec('install-chromium', ['npx', 'playwright', 'install', '--with-deps', 'chromium']);
     });
+    await step('host', async () => {
+      const sourceRoot = join(output, 'host-sources', id), hostEvidence = join(output, 'host-evidence', id);
+      mkdirSync(dirname(sourceRoot), { recursive: true }); mkdirSync(dirname(hostEvidence), { recursive: true });
+      await command('restore-host-source', process.execPath, [snapshotHelper, 'restore', '--snapshot', join(directory, 'source'), '--destination', sourceRoot,
+        '--commit', expected.commit, '--tree', expected.tree, '--pack-sha256', sourceSnapshot.pack_sha256]);
+      const plan = createHostPlan({ root, candidate: expected, matrix: workflow.matrix, runId: id, sourceBlob: path => blob(expected.commit, path) });
+      hostBroker = createHostBroker({ plan, directory: join(directory, 'host-dispatch'), evidenceRoot: hostEvidence, sourceRoot, dependencyRoot });
+      nativeAdapter = await import('./host-adapters/native.mjs');
+      nativeRuntime = await nativeAdapter.prepareNativeRuntime({ candidate: expected, runId: id, imageId: workerImage, core: { runner, exec, docker },
+        evidenceRoot: hostEvidence, transferRoot: directory, sourceRoot });
+      hostBroker.setRuntime(nativeRuntime);
+      receipt.host_dispatch = hostBroker.snapshot();
+    });
     for (const [index, row] of workflow.matrix.entries()) {
       const record = { name: row.name, groups: row.groups, shard: row.shard, started_at: new Date().toISOString(), exit_code: null, summary: null };
       receipt.shards.push(record);
@@ -288,8 +319,11 @@ async function run(offlineImage = null) {
         record.capability_preparation = json(join(directory, 'shards', row.name, 'capability-services.json'));
         const env = { BB_QA_TEST_OUTPUT_DIRECTORY: `/tmp/${row.name}/qa`, BB_INTEGRITY_TEST_OUTPUT_DIRECTORY: `/tmp/${row.name}/integrity`, BB_WORKPAPER_ASSESSMENT_TEST_OUTPUT_DIRECTORY: `/tmp/${row.name}/workpaper-assessment`,
           PR_GATE_CAPABILITIES_FILE: '/evidence/capabilities/prepared.json',
+          PR_GATE_HOST_PLAN: '/evidence/host-dispatch/plan.json', PR_GATE_HOST_DIRECTORY: '/evidence/host-dispatch',
           ...(row.render === 'true' ? { BONDBUDDY_RUN_AUTHORIZED_DOCX_REGRESSION: '1', BB_REQUIRE_DOCUMENT_RENDER: '1' } : {}) };
-        record.exit_code = (await exec(`${row.name}-tests`, ['node', 'scripts/pr-gate/run.mjs', 'run', '--group', row.groups, '--shard', row.shard, '--name', row.name, '--jobs', String(workflow.matrix.length), '--out', `/evidence/shards/${row.name}`], env, { allowFailure: true })).code;
+        const hostRun = hostBroker.startShard(row.name);
+        try { record.exit_code = (await exec(`${row.name}-tests`, ['node', 'scripts/pr-gate/run.mjs', 'run', '--group', row.groups, '--shard', row.shard, '--name', row.name, '--jobs', String(workflow.matrix.length), '--out', `/evidence/shards/${row.name}`], env, { allowFailure: true })).code; }
+        finally { await hostRun.finish(); receipt.host_dispatch = hostBroker.snapshot(); }
         record.summary = json(join(directory, 'shards', row.name, `summary-${row.name}.json`));
       } catch (error) { record.error = error.message; receipt.errors.push(`${row.name}: ${error.message}`); }
       record.finished_at = new Date().toISOString(); save();
@@ -304,9 +338,13 @@ async function run(offlineImage = null) {
     } catch (error) { receipt.errors.push(error.message); }
     receipt.finished_at = new Date().toISOString(); save();
     try {
+      const cleanupErrors = [];
+      if (nativeRuntime) { try { await nativeAdapter.cleanupNativeRuntime(nativeRuntime); } catch (error) { cleanupErrors.push(error.message); } }
       if (dockerAvailable) {
-        await removeOwned([postgres, azurite, httpsAzurite, runner]);
+        try { await removeOwned([postgres, azurite, httpsAzurite, runner]); } catch (error) { cleanupErrors.push(error.message); }
       }
+      if (hostBroker) receipt.host_dispatch = hostBroker.snapshot();
+      if (cleanupErrors.length) throw new Error(cleanupErrors.join('; '));
       receipt.cleanup = { status: 'passed' };
       // These are disposable test-only keys. Retain the public identities and
       // results, never a private TLS key in the evidence bundle.
@@ -335,7 +373,7 @@ async function run(offlineImage = null) {
 
 async function main() {
   const [mode, ...args] = process.argv.slice(2);
-  if (mode === 'run') return run(offlineImageArgument(args));
+  if (mode === 'run') return run(localOptions(args));
   if (mode === 'verify' && args.length === 1) {
     const expected = expectedFor(args[0]);
     verifyReceipt(json(receiptPath), expected);
