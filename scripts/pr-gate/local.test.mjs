@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { test } from 'node:test';
-import { cleanupContainers, dependencySources, localOptions, persistReceipts } from './local.mjs';
+import { cleanupContainers, dependencySources, hostSourceDirectory, localOptions, persistReceipts } from './local.mjs';
 
 function receiptFiles(check) {
   const directory = mkdtempSync(join(tmpdir(), 'bb-pr-gate-receipts-'));
@@ -95,6 +95,21 @@ test('host runtime options require fixed local image IDs and absolute dependency
   assert.deepEqual(localOptions([]), { offlineImage: null, workerImage: null, dependencyRoot: null });
   assert.deepEqual(localOptions(['--offline-image', image, '--host-worker-image', image, '--host-dependency-root', cache]), { offlineImage: image, workerImage: image, dependencyRoot: cache });
   for (const args of [['--host-worker-image', 'latest'], ['--host-dependency-root', 'relative'], ['--unknown', 'x'], ['--host-worker-image'], ['--host-worker-image', image, '--host-worker-image', image]]) assert.throws(() => localOptions(args));
+});
+
+test('host source uses an owned short temp root instead of a deep worktree path', () => {
+  const base = mkdtempSync(join(tmpdir(), 'bb-short-host-test-'));
+  try {
+    const source = hostSourceDirectory(base, 'synthetic-run-1'), second = hostSourceDirectory(base, 'synthetic-run-2');
+    assert.equal(basename(source), 'src'); assert.match(basename(dirname(source)), /^bb-pg-[a-zA-Z0-9]+$/);
+    assert.equal(dirname(dirname(source)), realpathSync(base)); assert.equal(existsSync(source), false);
+    assert.equal(realpathSync(dirname(source)), dirname(source)); assert.equal(lstatSync(dirname(source)).isSymbolicLink(), false);
+    assert.notEqual(dirname(source), dirname(second));
+    const owner = JSON.parse(readFileSync(join(dirname(source), 'owner.json'), 'utf8'));
+    assert.equal(owner.run_id, 'synthetic-run-1'); assert.equal(owner.directory, dirname(source));
+    assert.equal(owner.parent, realpathSync(base)); assert.equal(owner.pid, process.pid);
+    assert.throws(() => hostSourceDirectory(base, '../bad'), /run identity/);
+  } finally { rmSync(base, { recursive: true, force: true }); }
 });
 
 test('cleanup verifies exact IDs, attempts siblings after failure, and requires confirmed absence', async () => {

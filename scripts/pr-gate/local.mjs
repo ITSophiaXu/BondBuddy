@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { arch, release } from 'node:os';
+import { closeSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { arch, release, tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readWorkflow } from './workflow.mjs';
@@ -118,6 +118,23 @@ export function localOptions(args) {
   if (workerImage && !/^sha256:[a-f0-9]{64}$/.test(workerImage)) throw new Error('Host worker capability requires an immutable local image ID');
   if (dependencyRoot && !isAbsolute(dependencyRoot)) throw new Error('Host dependency root must be an absolute existing cache path');
   return { offlineImage, workerImage, dependencyRoot };
+}
+
+// Git for Windows can still reject paths longer than MAX_PATH even when Node
+// accepts them. Keep this owned snapshot near the system temp root; do not
+// change the host's registry, global Git settings or omit long tracked files.
+export function hostSourceDirectory(base = tmpdir(), runId = randomUUID()) {
+  if (!/^[a-zA-Z0-9-]{8,80}$/.test(runId)) throw new Error('Invalid host source run identity');
+  const parent = realpathSync(base), owned = mkdtempSync(join(parent, 'bb-pg-'));
+  const verify = () => {
+    const stat = lstatSync(owned);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || dirname(owned) !== parent || realpathSync(owned) !== owned) throw new Error('Host source directory identity changed');
+  };
+  verify();
+  writeFileSync(join(owned, 'owner.json'), JSON.stringify({ schema: 'pr-gate-host-source-v1', run_id: runId, pid: process.pid,
+    parent, directory: owned, created_at: new Date().toISOString() }) + '\n', { flag: 'wx', mode: 0o600 });
+  verify();
+  return join(owned, 'src');
 }
 
 async function run({ offlineImage = null, workerImage = null, dependencyRoot = null } = {}) {
@@ -295,10 +312,11 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
       } else await exec('install-chromium', ['npx', 'playwright', 'install', '--with-deps', 'chromium']);
     });
     await step('host', async () => {
-      const sourceRoot = join(output, 'host-sources', id), hostEvidence = join(output, 'host-evidence', id);
-      mkdirSync(dirname(sourceRoot), { recursive: true }); mkdirSync(dirname(hostEvidence), { recursive: true });
-      await command('restore-host-source', process.execPath, [snapshotHelper, 'restore', '--snapshot', join(directory, 'source'), '--destination', sourceRoot,
-        '--commit', expected.commit, '--tree', expected.tree, '--pack-sha256', sourceSnapshot.pack_sha256]);
+      const sourceRoot = hostSourceDirectory(tmpdir(), id), hostEvidence = join(output, 'host-evidence', id);
+      mkdirSync(dirname(hostEvidence), { recursive: true });
+      const hostRestored = await command('restore-host-source', process.execPath, [snapshotHelper, 'restore', '--snapshot', join(directory, 'source'), '--destination', sourceRoot,
+        '--commit', expected.commit, '--tree', expected.tree, '--pack-sha256', sourceSnapshot.pack_sha256], { capture: true });
+      receipt.host_source = { directory: sourceRoot, ...JSON.parse(hostRestored.text) };
       const plan = createHostPlan({ root, candidate: expected, matrix: workflow.matrix, runId: id, sourceBlob: path => blob(expected.commit, path) });
       hostBroker = createHostBroker({ plan, directory: join(directory, 'host-dispatch'), evidenceRoot: hostEvidence, sourceRoot, dependencyRoot });
       nativeAdapter = await import('./host-adapters/native.mjs');

@@ -83,5 +83,7 @@ export function verifyReceipt(receipt, expected, now = Date.now()) {
   } else requireEvidence(receipt.dependency_mode === 'download', 'dependency mode is missing or unknown');
   verifyCapabilityRuns(receipt, expected, now);
   verifyHostRuns(receipt, expected);
+  for (const key of ['commit', 'tree']) requireEvidence(receipt.host_source?.[key] === expected[key], 'host source belongs to another candidate');
+  requireEvidence(receipt.host_source.clean_tree === true && JSON.stringify(receipt.host_source.raw_source) === JSON.stringify(receipt.host_dispatch.runtime.source.raw_source), 'host and core raw source proofs differ');
   return receipt;
 }

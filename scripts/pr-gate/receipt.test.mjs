@@ -34,6 +34,7 @@ function fixture() {
     exclusions: structuredClone(expected.exclusions),
     capabilities,
     run_id: hostDispatch.plan.run_id, host_dispatch: hostDispatch,
+    host_source: { commit: expected.commit, tree: expected.tree, clean_tree: true, raw_source: structuredClone(hostDispatch.runtime.source.raw_source) },
     preparation: PREPARATION_IDS.map(id => ({ id, status: 'passed' })),
     shards: matrix.map(row => ({
       name: row.name, groups: row.groups, shard: row.shard, exit_code: 0,
@@ -94,6 +95,16 @@ test('another commit, tree, develop base or exclusions cannot reuse a pass', () 
   rejects(receipt => { receipt.exclusions.counts.knownFailing = 1; receipt.exclusions.total = 2; }, /exclusions/);
   rejects(receipt => { receipt.exclusions.total = 2; }, /exclusions total/);
   rejects(receipt => { receipt.exclusions.counts.notInCi = -1; }, /exclusions counts/);
+});
+
+test('host checkout requires the same candidate and complete raw byte proof as the core', () => {
+  rejects(receipt => { delete receipt.host_source; }, /host source/);
+  for (const key of ['commit', 'tree']) rejects(receipt => { receipt.host_source[key] = 'd'.repeat(40); }, /host source/);
+  rejects(receipt => { receipt.host_source.clean_tree = false; }, /raw source/);
+  rejects(receipt => { delete receipt.host_source.raw_source; }, /raw source/);
+  for (const [key, value] of [['files', 1], ['byte_count', 1], ['manifest_sha256', 'e'.repeat(64)]]) {
+    rejects(receipt => { receipt.host_source.raw_source[key] = value; }, /raw source/);
+  }
 });
 
 test('failed, dirty, wrong-platform or incomplete evidence is rejected', () => {
