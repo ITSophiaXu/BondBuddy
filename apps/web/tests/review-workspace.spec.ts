@@ -39,7 +39,7 @@ function fixture(){
   const makeRun=(runId:string,state:Run['state'],requestId='old'):Run=>({run_id:runId,execution_request_id:requestId,project_id:id,input_revision:1,input_hash:hash('input'),channel:'production',test_grant_id:null,uncovered_items:[],state,stage:null,event_cursor:0,billing_mode:'platform_trial',reservation_id:null,artifact_id:state==='succeeded'?'artifact-1':null,prompt_snapshot_ref:null,updated_at:now});
   const oldRun=makeRun('run-1','succeeded');
   const history:ReviewHistoryEntry[]=[{run:oldRun,operation:'full_review',version:1,source_report_id:null,report_id:report.report_id,input:structuredClone(workspace.draft),input_revision:1,finding_ids:[],plan:null,artifacts:workspace.artifacts,created_at:now}];
-  const state={workspace,history,owner:'owner-a',requests:[] as ReviewMessageRequest[],plans:[] as ReviewPlanRequest[],executes:[] as ReviewExecutionRequest[],projectPatches:[] as Dto<'ProjectPatchRequest'>[],failProjectPatch:false,failPlan:false,runs:new Map([['old',oldRun]]),uploads:[] as Dto<'UploadCreateRequest'>[],uploadBytes:0,uploadCompletions:[] as string[],inputSaves:[] as {kind:'input';expected_version:number;input:ReviewDraftInput}[],quoteCalls:[] as string[],dropMessageOnce:false,dropExecutionOnce:false,dropUploadOnce:false,dropUploadReceipts:{} as Record<string,number>,failDrafts:false,delayMessage:false,workspaceReads:0,makeRun,artifacts:new Map<string,Dto<'ArtifactResponse'>>(),artifactReads:[] as string[],materialReads:[] as string[],materialDownloads:[] as string[]};
+  const state={workspace,history,owner:'owner-a',requests:[] as ReviewMessageRequest[],plans:[] as ReviewPlanRequest[],executes:[] as ReviewExecutionRequest[],projectPatches:[] as Dto<'ProjectPatchRequest'>[],failProjectPatch:false,failPlan:false,runs:new Map([['old',oldRun]]),uploads:[] as Dto<'UploadCreateRequest'>[],uploadBytes:0,uploadCompletions:[] as string[],uploadCompletionRequests:[] as {path:string;input:Dto<'UploadCompleteRequest'>}[],inputSaves:[] as {kind:'input';expected_version:number;input:ReviewDraftInput}[],quoteCalls:[] as string[],dropMessageOnce:false,dropExecutionOnce:false,dropUploadOnce:false,dropUploadReceipts:{} as Record<string,number>,failDrafts:false,delayMessage:false,workspaceReads:0,makeRun,artifacts:new Map<string,Dto<'ArtifactResponse'>>(),artifactReads:[] as string[],materialReads:[] as string[],materialDownloads:[] as string[]};
   return {...state,uploadGates:{} as {bytes?:(id:string)=>Promise<void>;complete?:(id:string)=>Promise<void>;draft?:(input:ReviewDraftInput)=>Promise<void>},linked:false,deferCancellation:false,allReports:new Map([[report.report_id,report]]),adoptions:[] as ReviewProposalAdoptionRequest[],adoptionResults:new Map<string,ReviewProposalAdoptionResponse>(),dropAdoptionOnce:false,events:new Map<string,RunEvent[]>()};
 }
 async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/review?tab=results`){
@@ -148,6 +148,7 @@ async function setup(page:Page,state=fixture(),routePath=`#/projects/${id}/revie
     if(/\/upload-evidence(?:-\d+)?\/complete$/.test(path)){
       const uploadId=path.split('/').at(-2)!,index=Number(uploadId.match(/-(\d+)$/)?.[1]??1)-1;
       state.uploadCompletions.push(uploadId);
+      state.uploadCompletionRequests.push({path,input:fixtureRequest(request) as Dto<'UploadCompleteRequest'>});
       await state.uploadGates.complete?.(uploadId);
       const materialId='evidence-new'+(index?'-'+(index+1):'');
       const upload=state.uploads[index];let material=state.workspace.materials.find(m=>m.material_id===materialId || m.sha256===upload.sha256&&m.role===upload.role);
@@ -686,12 +687,20 @@ test('duplicate feedback: cached duplicate retains its notice when saving the dr
 });
 
 test('direct upload retries saved bytes without a modal or duplicate upload',async({page})=>{
- const state=fixture();state.dropUploadOnce=true;
+ await page.clock.install();const state=fixture();state.dropUploadReceipts['upload-evidence']=4;
  await setup(page,state,`#/projects/${id}/review?tab=materials`);
  await page.locator('[data-review-upload-role="audit"]').setInputFiles({name:'synthetic-evidence.txt',mimeType:'text/plain',buffer:Buffer.from('synthetic evidence')});
+ // Exhaust the first complete request and its three automatic retries before manual recovery.
+ await expect.poll(async()=>{await page.clock.runFor(2000);return state.uploadCompletions.length;}).toBe(4);
+ expect(state.uploadCompletions).toEqual(Array(4).fill('upload-evidence'));
+ const completion={path:`/projects/${id}/materials/uploads/upload-evidence/complete`,input:{byte_size:Buffer.byteLength('synthetic evidence'),sha256:hash('synthetic evidence')}};
+ expect(state.uploadCompletionRequests).toEqual(Array(4).fill(completion));
+ await expect(page.getByRole('dialog')).toHaveCount(0);expect(state.quoteCalls).toHaveLength(0);expect(state.executes).toHaveLength(0);
  const retry=page.locator('[data-review-recovery-action=resume]');await expect(retry).toBeEnabled();expect(state.uploadBytes).toBe(1);
  await retry.click();await expect(page.locator('[data-review-recovery-id]')).toHaveCount(0);
- expect(state.uploadBytes).toBe(1);expect(state.uploads).toHaveLength(1);expect(state.uploadCompletions).toEqual(['upload-evidence','upload-evidence']);expect(state.executes).toHaveLength(0);expect(state.quoteCalls).toHaveLength(0);
+ expect(state.uploadBytes).toBe(1);expect(state.uploads).toHaveLength(1);expect(state.uploadCompletions).toEqual(Array(5).fill('upload-evidence'));expect(state.executes).toHaveLength(0);expect(state.quoteCalls).toHaveLength(0);
+ expect(state.uploadCompletionRequests).toEqual(Array(5).fill(completion));expect(state.workspace.materials.filter(m=>m.material_id==='evidence-new')).toHaveLength(1);
+ await expect(page.getByRole('dialog')).toHaveCount(0);
  await expect(page.locator('.duplicate-upload-notice')).toHaveCount(0);
  await expect.poll(()=>state.workspace.draft.material_versions.some(m=>m.material_id==='evidence-new')).toBe(true);
 });
@@ -738,7 +747,7 @@ for(const width of [1360,390])test(`upload queue keeps other pickers usable thro
 });
 
 test('unknown first upload holds the ordered queue and explicit recovery preserves its original session',async({page})=>{
- const state=fixture();state.dropUploadOnce=true;
+ await page.clock.install();const state=fixture();state.dropUploadReceipts['upload-evidence']=4;
  await setup(page,state,`#/projects/${id}/review?tab=materials`);
  await page.locator('[data-review-upload-role="audit"]').setInputFiles([
   {name:'synthetic-first.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic first evidence')},
@@ -746,15 +755,45 @@ test('unknown first upload holds the ordered queue and explicit recovery preserv
  ]);
  const first=page.locator('[data-review-drop="audit"] .material-file-row').filter({hasText:'synthetic-first.txt'});
  const second=page.locator('[data-review-drop="audit"] .material-file-row').filter({hasText:'synthetic-second.txt'});
+ await expect.poll(async()=>{await page.clock.runFor(2000);return state.uploadCompletions.length;}).toBe(4);
+ expect(state.uploadCompletions).toEqual(Array(4).fill('upload-evidence'));
+ const completion={path:`/projects/${id}/materials/uploads/upload-evidence/complete`,input:{byte_size:Buffer.byteLength('Synthetic first evidence'),sha256:hash('Synthetic first evidence')}};
+ expect(state.uploadCompletionRequests).toEqual(Array(4).fill(completion));
+ expect(state.workspace.draft.material_versions.some(m=>m.material_id==='evidence-new')).toBe(false);
+ expect(state.quoteCalls).toHaveLength(0);expect(state.executes).toHaveLength(0);
  await expect(first.locator('[data-review-recovery-action=resume]')).toBeEnabled();
  await expect(second.locator('[data-review-recovery-action=resume]')).toBeDisabled();expect(state.uploadBytes).toBe(1);expect(state.uploads).toHaveLength(1);
  await expect(page.locator('#review-materials-panel .review-footer-actions [data-review-action="review"]')).toBeDisabled();
  await first.locator('[data-review-recovery-action=resume]').click();await expect(first).toContainText('已保存');
  await expect(second.locator('[data-review-recovery-action=resume]')).toBeEnabled();expect(state.uploadBytes).toBe(1);expect(state.uploads).toHaveLength(1);
+ expect(state.uploadCompletionRequests).toEqual(Array(5).fill(completion));
  await second.locator('[data-review-recovery-action=resume]').click();await expect(page.locator('[data-review-recovery-id]')).toHaveCount(0);
- expect(state.uploads).toHaveLength(2);expect(state.uploadBytes).toBe(2);expect(state.uploadCompletions).toEqual(['upload-evidence','upload-evidence','upload-evidence-2']);expect(state.quoteCalls).toHaveLength(0);expect(state.executes).toHaveLength(0);
+ expect(state.uploads).toHaveLength(2);expect(state.uploadBytes).toBe(2);expect(state.uploadCompletions).toEqual([...Array(5).fill('upload-evidence'),'upload-evidence-2']);expect(state.quoteCalls).toHaveLength(0);expect(state.executes).toHaveLength(0);
  await expect(page.locator('#review-materials-panel .review-footer-actions [data-review-action="review"]')).toBeEnabled();
  expect(state.workspace.draft.material_versions.filter(m=>m.material_id==='evidence-new')).toHaveLength(1);
+ expect(state.uploadCompletionRequests).toEqual([...Array(5).fill(completion),{path:`/projects/${id}/materials/uploads/upload-evidence-2/complete`,input:{byte_size:Buffer.byteLength('Synthetic second evidence'),sha256:hash('Synthetic second evidence')}}]);
+ expect(state.workspace.draft.material_versions.map(m=>m.material_id)).toEqual(['material-0','material-1','evidence-new','evidence-new-2']);
+});
+
+test('one lost upload receipt reconciles automatically and continues the ordered queue without replaying bytes',async({page})=>{
+ await page.clock.install();const state=fixture();state.dropUploadOnce=true;
+ await setup(page,state,`#/projects/${id}/review?tab=materials`);
+ await page.locator('[data-review-upload-role="audit"]').setInputFiles([
+  {name:'synthetic-first.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic first evidence')},
+  {name:'synthetic-second.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic second evidence')}
+ ]);
+ await expect.poll(async()=>{await page.clock.runFor(2000);return state.uploadCompletions.length;}).toBe(3);
+ await expect(page.locator('[data-review-recovery-id]')).toHaveCount(0);
+ expect(state.uploads).toHaveLength(2);expect(state.uploadBytes).toBe(2);
+ expect(state.uploadCompletions).toEqual(['upload-evidence','upload-evidence','upload-evidence-2']);
+ const completion={path:`/projects/${id}/materials/uploads/upload-evidence/complete`,input:{byte_size:Buffer.byteLength('Synthetic first evidence'),sha256:hash('Synthetic first evidence')}};
+ expect(state.uploadCompletionRequests).toEqual([completion,completion,{path:`/projects/${id}/materials/uploads/upload-evidence-2/complete`,input:{byte_size:Buffer.byteLength('Synthetic second evidence'),sha256:hash('Synthetic second evidence')}}]);
+ expect(state.uploads.map(upload=>upload.filename)).toEqual(['synthetic-first.txt','synthetic-second.txt']);
+ expect(state.workspace.draft.material_versions.map(m=>m.material_id)).toEqual(['material-0','material-1','evidence-new','evidence-new-2']);
+ expect(state.workspace.materials.filter(m=>m.material_id==='evidence-new')).toHaveLength(1);
+ expect(state.quoteCalls).toHaveLength(0);expect(state.executes).toHaveLength(0);
+ await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.locator('.duplicate-upload-notice')).toHaveCount(0);
+ await expect(page.locator('#review-materials-panel .review-footer-actions [data-review-action="review"]')).toBeEnabled();
 });
 
 test('draft-save retry continues saved material and invalid file can be removed',async({page})=>{
