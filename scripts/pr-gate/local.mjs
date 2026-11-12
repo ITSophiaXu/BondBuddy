@@ -7,6 +7,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readWorkflow } from './workflow.mjs';
 import { exclusionsEvidence, verifyReceipt } from './receipt.mjs';
+import { createParserArchive, restoreParserArchive } from './parser-source.mjs';
+import { CAPABILITY_PATHS } from './capabilities.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const output = join(root, '.local/pr-gate');
@@ -103,9 +105,11 @@ async function run() {
   writeFileSync(join(lock, 'owner.json'), JSON.stringify({ pid: process.pid, started_at: new Date().toISOString() }));
   const id = `${Date.now()}-${randomUUID().slice(0, 8)}`;
   const directory = join(output, 'runs', id);
+  // Keep the historical source outside /evidence's writable bind mount.
+  const parserDirectory = join(output, 'parser-sources', id);
   mkdirSync(directory, { recursive: true });
   const runner = `bb-pr-gate-${id}`;
-  const postgres = `${runner}-pg`, azurite = `${runner}-blob`;
+  const postgres = `${runner}-pg`, azurite = `${runner}-blob`, httpsAzurite = `${runner}-https-blob`;
   const receipt = { schema_version: 'pr-gate-local-v1', status: 'failed', started_at: new Date().toISOString(), finished_at: null,
     commit: null, tree: null, develop_commit: null, clean_tree: false, platform: 'linux', host_platform: process.platform,
     host_arch: arch(), host_release: release(), run_id: id, artifacts: `runs/${id}`, preparation: [], shards: [], merge: null, cleanup: { status: 'pending' }, errors: [] };
@@ -152,6 +156,9 @@ async function run() {
     await docker('start-postgres', ['run', '--detach', '--name', postgres, '--network', `container:${runner}`, ...envArgs(workflow.credentials), workflow.postgres]);
     await docker('start-azurite', ['run', '--detach', '--name', azurite, '--network', `container:${runner}`, workflow.azurite,
       'azurite-blob', '--blobHost', '0.0.0.0', '--skipApiVersionCheck', '--disableProductStyleUrl']);
+    await docker('start-https-azurite', ['run', '--detach', '--name', httpsAzurite, '--network', `container:${runner}`,
+      '--mount', `type=bind,source=${join(directory, 'capabilities/tls')},target=/tls,readonly`, workflow.azurite,
+      'azurite-blob', '--blobHost', '127.0.0.1', '--blobPort', '10003', '--cert', '/tls/server.pem', '--key', '/tls/server.key', '--skipApiVersionCheck', '--disableProductStyleUrl']);
     for (let attempt = 0; ; attempt++) {
       const ready = await docker('postgres-readiness', ['exec', postgres, 'pg_isready', '-U', workflow.credentials.POSTGRES_USER, '-d', workflow.credentials.POSTGRES_DB], { allowFailure: true, capture: true });
       if (ready.code === 0) break;
@@ -178,17 +185,26 @@ async function run() {
     await command('snapshot', process.execPath, [snapshotHelper, 'create', '--source-root', root,
       '--commit', expected.commit, '--tree', expected.tree, '--out', join(directory, 'source')]);
     const sourceSnapshot = json(join(directory, 'source', 'manifest.json'));
+    mkdirSync(join(directory, 'capabilities'));
+    createParserArchive(root, join(directory, 'capabilities/parser106.tar'));
+    restoreParserArchive(join(directory, 'capabilities/parser106.tar'), parserDirectory);
     const image = `bondbuddy-pr-gate:${createHash('sha256').update(blob(expected.commit, 'scripts/pr-gate/Dockerfile')).digest('hex').slice(0, 16)}`;
     await step('image', async () => {
       await docker('build-test-image', ['build', '--tag', image, '--file', join(root, 'scripts/pr-gate/Dockerfile'), join(root, 'scripts/pr-gate')]);
       // No host credentials, .env, source mount, ports, Docker socket or existing DB enter this container.
       await docker('start-runner', ['run', '--detach', '--init', '--name', runner, '--shm-size', '1g', '--mount', `type=bind,source=${directory},target=/evidence`,
+        '--mount', `type=bind,source=${parserDirectory},target=${CAPABILITY_PATHS.parser},readonly`,
         ...envArgs({ ...workflow.env, CI: '1', GITHUB_SHA: expected.commit, GITHUB_WORKSPACE: '/workspace', RUNNER_TEMP: '/tmp',
+          PR_GATE_TREE: expected.tree,
           BONDBUDDY_TEST_PYTHON: '/usr/local/bin/python', BONDBUDDY_WORD_PYTHON: '/usr/local/bin/python', BB_PYTHON: '/usr/local/bin/python',
           PYTHONPATH: '/workspace/python:/workspace/python/tests' }), image]);
       await exec('restore-source', ['node', '/evidence/git-snapshot.mjs', 'restore', '--snapshot', '/evidence/source',
         '--destination', '/workspace', '--commit', expected.commit, '--tree', expected.tree,
         '--pack-sha256', sourceSnapshot.pack_sha256]);
+    });
+    await step('capabilities', async () => {
+      await exec('prepare-capabilities', ['node', 'scripts/pr-gate/capability-runtime.mjs', 'prepare']);
+      receipt.capabilities = json(join(directory, 'capabilities/prepared.json'));
     });
     await step('services', startServices);
     await step('dependencies', async () => {
@@ -204,10 +220,14 @@ async function run() {
       const record = { name: row.name, groups: row.groups, shard: row.shard, started_at: new Date().toISOString(), exit_code: null, summary: null };
       receipt.shards.push(record);
       try {
-        if (index) { await cleanupContainers([postgres, azurite], docker, false); await startServices(); }
+        if (index) { await cleanupContainers([postgres, azurite, httpsAzurite], docker, false); await startServices(); }
         await exec(`${row.name}-blob-readiness`, ['node', '--input-type=module', '-e', `import { BlobServiceClient } from '@azure/storage-blob'; const c=BlobServiceClient.fromConnectionString(process.env.BB_TEST_AZURITE_CONNECTION_STRING).getContainerClient('bb-pr-gate-readiness'); for(let i=0;;i++){try{await c.createIfNotExists();await c.deleteIfExists();break;}catch(e){if(i>=29)throw e;await new Promise(r=>setTimeout(r,1000));}}`]);
         await exec(`${row.name}-migrate`, ['node', 'db/migrate.mjs'], { DATABASE_URL: workflow.env.BB_TEST_DATABASE_URL });
+        mkdirSync(join(directory, 'shards', row.name), { recursive: true });
+        await exec(`${row.name}-capability-services`, ['node', 'scripts/pr-gate/capability-runtime.mjs', 'services', row.name, `/evidence/shards/${row.name}/capability-services.json`], { NODE_EXTRA_CA_CERTS: CAPABILITY_PATHS.ca });
+        record.capability_preparation = json(join(directory, 'shards', row.name, 'capability-services.json'));
         const env = { BB_QA_TEST_OUTPUT_DIRECTORY: `/tmp/${row.name}/qa`, BB_INTEGRITY_TEST_OUTPUT_DIRECTORY: `/tmp/${row.name}/integrity`, BB_WORKPAPER_ASSESSMENT_TEST_OUTPUT_DIRECTORY: `/tmp/${row.name}/workpaper-assessment`,
+          PR_GATE_CAPABILITIES_FILE: '/evidence/capabilities/prepared.json',
           ...(row.render === 'true' ? { BONDBUDDY_RUN_AUTHORIZED_DOCX_REGRESSION: '1', BB_REQUIRE_DOCUMENT_RENDER: '1' } : {}) };
         record.exit_code = (await exec(`${row.name}-tests`, ['node', 'scripts/pr-gate/run.mjs', 'run', '--group', row.groups, '--shard', row.shard, '--name', row.name, '--jobs', String(workflow.matrix.length), '--out', `/evidence/shards/${row.name}`], env, { allowFailure: true })).code;
         record.summary = json(join(directory, 'shards', row.name, `summary-${row.name}.json`));
@@ -225,9 +245,12 @@ async function run() {
     receipt.finished_at = new Date().toISOString(); save();
     try {
       if (dockerAvailable) {
-        await cleanupContainers([postgres, azurite, runner], docker);
+        await cleanupContainers([postgres, azurite, httpsAzurite, runner], docker);
       }
       receipt.cleanup = { status: 'passed' };
+      // These are disposable test-only keys. Retain the public identities and
+      // results, never a private TLS key in the evidence bundle.
+      for (const file of ['ca.key', 'server.key']) rmSync(join(directory, 'capabilities/tls', file), { force: true });
     } catch (error) { receipt.cleanup = { status: 'failed', error: error.message }; receipt.errors.push(error.message); }
     try {
       receipt.clean_tree = receipt.clean_tree && clean();
