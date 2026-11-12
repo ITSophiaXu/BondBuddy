@@ -14,9 +14,9 @@ const mime='application/vnd.openxmlformats-officedocument.wordprocessingml.docum
 function checked(schema:TSchema,value:unknown){expect([...Value.Errors(schema,value)].map(e=>({path:e.path,message:e.message}))).toEqual([]);}
 async function reply<K extends keyof typeof schemas>(route:Route,name:K,value:Dto<K>,status=200){checked(schemas[name],value);return route.fulfill({status,json:value});}
 // Real page, ApiClient and recoverable uploader; synthetic API receipts and bytes, no backend/model/billing.
-async function setup(page:Page,{files=0,source=false,saveFailure=false,readFailure=false,history=false}={}){
+async function setup(page:Page,{files=0,source=false,saveFailure=false,completionFailures=saveFailure?1:0,readFailure=false,history=false}={}){
   const calls:{method:string;path:string;body:any}[]=[];
-  let failComplete=saveFailure,failRead=readFailure,checkStarted=false;
+  let failComplete=completionFailures,failRead=readFailure,checkStarted=false;
   const version:ProspectusVersion={version_id:'source-v1',sequence:1,filename,origin:'upload',created_at:now,material_id:'material-1',material_version:1,artifact_id:null,artifact_version:null,revision_artifact_id:null,run_id:null,sha256};
   const state:ProspectusVersions={project_id:project,current_version_id:source?version.version_id:null,selection_revision:source?1:0,versions:source||history?[structuredClone(version)]:[],inactive_material_ids:[]};
   const sessions=new Map<string,{input:Dto<'UploadCreateRequest'>;received:boolean;material?:Dto<'MaterialResponse'>}>();
@@ -44,7 +44,7 @@ async function setup(page:Page,{files=0,source=false,saveFailure=false,readFailu
       if(transfer[2]==='bytes'&&method==='PUT'){expect(req.postDataBuffer()).toEqual(bytes);session.received=true;return route.fulfill({status:204});}
       if(transfer[2]==='complete'&&method==='POST'){checked(schemas.UploadCompleteRequest,body);expect(body).toEqual({sha256:session.input.sha256,byte_size:session.input.byte_size});expect(session.received).toBe(true);
         if(!session.material){session.material={material_id:'material-1',material_version:1,upload_id:transfer[1],role:'historical',filename:session.input.filename,media_type:session.input.media_type,byte_size:session.input.byte_size,sha256:session.input.sha256,state:'persisted',persisted_at:now,error:null};state.versions=[{...version,filename:session.input.filename}];}
-        if(failComplete){failComplete=false;return route.abort('connectionreset');}return reply(route,'MaterialResponse',session.material);
+        if(failComplete>0){failComplete--;return route.abort('connectionreset');}return reply(route,'MaterialResponse',session.material);
       }
     }
     return route.fulfill({status:404,json:{code:'NOT_FOUND'}});
@@ -72,8 +72,36 @@ for(const ext of ['docx','pdf'])test(`${ext} saves without adoption and only che
 });
 test('source alone does not enable checking without related files',async({page})=>{const f=await setup(page);await choose(page);await save(page);await adopt(page);await expect(page.getByRole('heading',{name:'还没有可检查的关联文件'})).toBeVisible();await expect(page.locator('[data-fc-start]:enabled')).toHaveCount(0);expect(f.calls.filter(c=>c.method==='POST'&&c.path.endsWith('/checks'))).toHaveLength(0);});
 test('unknown completion preserves the chosen file and retries the same upload without sending bytes twice',async({page})=>{
-  const f=await setup(page,{files:1,saveFailure:true});await choose(page);await expect(page.locator('[data-resume-prospectus]')).toBeVisible();await expect(page.locator('.prospectus-selected-file')).toContainText(filename);await page.getByRole('button',{name:'确认原上传',exact:true}).click();await expect(page.locator('#prospectus-status')).toContainText(/已保存.*尚未采用/);expect(f.state.current_version_id).toBeNull();expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);const completions=f.calls.filter(c=>c.path.endsWith('/complete'));expect(completions).toHaveLength(2);expect(completions[0].body).toEqual(completions[1].body);await adopt(page);await expect(page.locator('.pf-source-strip')).toBeVisible();
+  await page.clock.install();const f=await setup(page,{files:1,saveFailure:true,completionFailures:4});await choose(page);
+  // Exhaust the existing original request plus three retries before exercising manual recovery.
+  await expect.poll(async()=>{await page.clock.runFor(2000);return f.calls.filter(c=>c.path.endsWith('/complete')).length;}).toBe(4);
+  await expect(page.locator('[data-resume-prospectus]')).toBeVisible();await expect(page.locator('.prospectus-selected-file')).toContainText(filename);
+  expect(f.state.current_version_id).toBeNull();expect(f.state.selection_revision).toBe(0);expect(f.state.versions).toHaveLength(1);
+  expect(f.calls.filter(c=>c.path===base+'/materials/uploads'&&c.method==='POST')).toHaveLength(1);expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);
+  expect(f.calls.filter(c=>c.method==='POST'&&(c.path.endsWith('/prospectus-versions/current')||c.path.endsWith('/checks')))).toEqual([]);
+  await page.getByRole('button',{name:'确认原上传',exact:true}).click();await expect(page.locator('#prospectus-status')).toContainText(/已保存.*尚未采用/);expect(f.state.current_version_id).toBeNull();expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);
+  const completions=f.calls.filter(c=>c.path.endsWith('/complete'));expect(completions).toHaveLength(5);expect(completions[0].body).toEqual(completions[1].body);
+  expect(completions).toEqual(Array.from({length:5},()=>({method:'POST',path:base+'/materials/uploads/upload-1/complete',body:{sha256,byte_size:bytes.length}})));
+  expect(f.calls.filter(c=>c.path===base+'/materials/uploads'&&c.method==='POST')).toHaveLength(1);expect(f.state.selection_revision).toBe(0);
+  expect(f.calls.filter(c=>c.method==='POST'&&(c.path.endsWith('/prospectus-versions/current')||c.path.endsWith('/checks')))).toEqual([]);
+  await adopt(page);await expect(page.locator('.pf-source-strip')).toBeVisible();expect(f.state.current_version_id).toBe('source-v1');expect(f.state.selection_revision).toBe(1);
+  expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current')&&c.method==='POST').map(c=>c.body)).toEqual([{request_id:expect.any(String),expected_selection_revision:0,version_id:'source-v1'}]);
+  expect(f.calls.filter(c=>c.path.endsWith('/checks')&&c.method==='POST')).toEqual([]);
 });
+test('one lost completion receipt is automatically confirmed without adoption or another upload',async({page})=>{
+  await page.clock.install();const f=await setup(page,{files:1,saveFailure:true});await choose(page);
+  await expect.poll(async()=>{await page.clock.runFor(2000);return f.calls.filter(c=>c.path.endsWith('/complete')).length;}).toBe(2);
+  await save(page);await expect(page.locator('[data-resume-prospectus]')).toHaveCount(0);expect(f.state.current_version_id).toBeNull();expect(f.state.selection_revision).toBe(0);
+  const completions=f.calls.filter(c=>c.path.endsWith('/complete'));expect(completions).toHaveLength(2);expect(completions[0].body).toEqual(completions[1].body);
+  expect(completions).toEqual(Array.from({length:2},()=>({method:'POST',path:base+'/materials/uploads/upload-1/complete',body:{sha256,byte_size:bytes.length}})));
+  expect(f.calls.filter(c=>c.path===base+'/materials/uploads'&&c.method==='POST')).toHaveLength(1);expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.state.versions).toHaveLength(1);
+  expect(f.state.versions[0]).toMatchObject({version_id:'source-v1',material_id:'material-1',material_version:1,filename,sha256});
+  expect(f.calls.filter(c=>c.method==='POST'&&(c.path.endsWith('/prospectus-versions/current')||c.path.endsWith('/checks')))).toEqual([]);await expect(page.getByRole('button',{name:'开始检查（免费）'})).toBeDisabled();
+  await adopt(page);await expect(page.locator('.pf-source-strip')).toBeVisible();expect(f.state.current_version_id).toBe('source-v1');expect(f.state.selection_revision).toBe(1);await expect(page.getByRole('button',{name:'开始检查（免费）'})).toBeEnabled();
+  expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current')&&c.method==='POST').map(c=>c.body)).toEqual([{request_id:expect.any(String),expected_selection_revision:0,version_id:'source-v1'}]);
+  expect(f.calls.filter(c=>c.path.endsWith('/checks')&&c.method==='POST')).toEqual([]);
+});
+
 test('failed source read offers retry; a saved version needs confirmed adoption without upload',async({page})=>{
   const f=await setup(page,{files:1,readFailure:true,history:true});await page.getByRole('button',{name:'重试读取募集说明书'}).click();await adopt(page);await expect(page.getByRole('button',{name:'开始检查（免费）'})).toBeEnabled();expect(f.calls.some(c=>c.path.includes('/materials/uploads'))).toBe(false);
 });
