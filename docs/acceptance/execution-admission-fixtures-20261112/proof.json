@@ -1,0 +1,454 @@
+{
+  "issue": 1073,
+  "scope": {
+    "originalRun": "1794418350450-38278111",
+    "originalCommit": "d3028cb2f5e98e5b9a9ad36deb68e461de4a6df2",
+    "categoryA": 54,
+    "selected": [
+      "apps/api/src/account-recovery.test.ts",
+      "apps/api/src/schema-rejection.test.ts",
+      "apps/api/src/revision-range.test.ts",
+      "apps/api/src/library-admin.test.ts"
+    ],
+    "remaining": [
+      "apps/api/src/execution-key.test.ts",
+      "apps/api/src/issuer-identity-input-lock.test.ts",
+      "apps/api/src/non-production-test.test.ts",
+      "apps/api/src/ocr.test.ts",
+      "apps/api/src/project-list.test.ts",
+      "apps/api/src/review-linked-workspace.test.ts",
+      "apps/api/src/review-price-activation.pg.test.ts",
+      "apps/api/src/review-workspace.test.ts",
+      "apps/api/src/zz_observability.test.ts",
+      "apps/api/src/zz_trial_guard.test.ts",
+      "apps/api/src/authoring-task-kind.pg.test.ts",
+      "apps/api/src/commerce-coverage.pg.test.ts",
+      "apps/api/src/deletion-lifecycle.test.ts",
+      "apps/api/src/project-collection.pg.test.ts",
+      "apps/api/src/project-kind-conversion.pg.test.ts",
+      "apps/api/src/queue.test.ts",
+      "apps/api/src/review-action-events.pg.integration.test.ts",
+      "apps/api/src/review-materials.test.ts",
+      "apps/api/src/server.test.ts",
+      "apps/api/src/storage-lifecycle.test.ts",
+      "apps/api/src/target-confirmation.test.ts",
+      "apps/api/src/user-submissions.test.ts",
+      "apps/api/src/working-draft-parse-admission.test.ts",
+      "apps/api/src/zz_log_ops.test.ts",
+      "apps/worker/src/codex-durable.test.ts",
+      "apps/worker/src/file-authoring.pg.test.ts",
+      "apps/worker/src/m4-pipeline.pg.test.ts",
+      "apps/worker/src/pending-issuer-working-draft.test.ts",
+      "apps/worker/src/project-qa-e2e.pg.test.ts",
+      "apps/worker/src/reconcile-run.test.ts",
+      "apps/worker/src/review-file-delivery.pg.test.ts",
+      "apps/worker/src/rule-applicability-context.test.ts",
+      "apps/worker/src/run-runtime.test.ts",
+      "apps/worker/src/runtime-interactive-slots.pg.test.ts",
+      "apps/worker/src/user-reference-outline.test.ts",
+      "apps/worker/src/workpaper-paid-checks.pg.test.ts",
+      "apps/worker/src/m2-paid-worker.test.ts",
+      "apps/worker/src/m3-review-pipeline.pg.integration.test.ts",
+      "apps/worker/src/model-image-stage.pg.test.ts",
+      "apps/worker/src/project-files-e2e.pg.test.ts",
+      "apps/worker/src/provider-reconciliation.test.ts",
+      "apps/worker/src/review-reassembly.test.ts",
+      "apps/worker/src/runtime-entry.test.ts",
+      "apps/worker/src/runtime-isolation.test.ts",
+      "apps/worker/src/runtime-parse-slots.test.ts",
+      "apps/worker/src/unified-authoring.pg.test.ts",
+      "apps/worker/src/workpaper-assessment.pg.test.ts",
+      "apps/worker/src/workpaper-library.pg.test.ts",
+      "apps/worker/src/workpaper-shared-stage.pg.test.ts",
+      "apps/worker/src/workpapers.pg.test.ts"
+    ],
+    "otherPR1053": [
+      "apps/api/src/review-workspace.test.ts",
+      "apps/api/src/review-materials.test.ts"
+    ]
+  },
+  "initialDependencyPrecheck": {
+    "stage": "after",
+    "commit": "2cc6a47d6c364b3cd2c7a802361b8ecd0f78b046",
+    "started": "2026-11-12T03:20:06.641Z",
+    "finished": "2026-11-12T03:20:31.190Z",
+    "results": [],
+    "runtime": {
+      "node": "v22.23.3",
+      "typescript": "5.9.3",
+      "pg": "8.23.0",
+      "fastify": "5.12.5",
+      "cachedLockSha256": "69ce90eb0ff8cb11578c419ad3c5a1221da099fdb5fce17c190aef2052255701",
+      "sourceLockSha256": "81833914ef0ba232e249040685bb93ac1e3b63e640b960d2d217985fa4b5ed8c",
+      "lockMatches": false
+    }
+  },
+  "initialCloneAudit": {
+    "pattern": "bb1073_%_t%",
+    "falsePositive": [
+      {
+        "datname": "bb1073_after"
+      }
+    ],
+    "correctedRegex": "^bb1073_(before|after)_t[0-9]+_",
+    "correctedResult": []
+  },
+  "first": {
+    "stage": "after",
+    "commit": "2cc6a47d6c364b3cd2c7a802361b8ecd0f78b046",
+    "started": "2026-11-12T03:21:48.781Z",
+    "finished": "2026-11-12T03:25:41.214Z",
+    "results": [
+      {
+        "name": "source-audit",
+        "command": [
+          "node",
+          "/evidence/audit.mjs",
+          "after"
+        ],
+        "exitCode": 0,
+        "elapsedMs": 2690
+      },
+      {
+        "name": "build-contracts",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/contracts"
+        ],
+        "exitCode": 0,
+        "elapsedMs": 26861
+      },
+      {
+        "name": "build-domain",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/domain"
+        ],
+        "exitCode": 0,
+        "elapsedMs": 22393
+      },
+      {
+        "name": "build-rule-pack-registry",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/rule-pack-registry"
+        ],
+        "exitCode": 0,
+        "elapsedMs": 7745
+      },
+      {
+        "name": "build-rule-applicability-context",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/rule-applicability-context"
+        ],
+        "exitCode": 0,
+        "elapsedMs": 7095
+      },
+      {
+        "name": "build-api-targets",
+        "command": [
+          "node",
+          "node_modules/typescript/bin/tsc",
+          "-p",
+          "apps/api/tsconfig.issue1073.json"
+        ],
+        "exitCode": 0,
+        "elapsedMs": 53034
+      },
+      {
+        "name": "migrate",
+        "command": [
+          "node",
+          "db/migrate.mjs"
+        ],
+        "exitCode": 0,
+        "elapsedMs": 21318
+      },
+      {
+        "name": "test",
+        "command": [
+          "node",
+          "--test",
+          "--test-concurrency=1",
+          "apps/api/dist/account-recovery.test.js",
+          "apps/api/dist/schema-rejection.test.js",
+          "apps/api/dist/revision-range.test.js",
+          "apps/api/dist/library-admin.test.js"
+        ],
+        "exitCode": 1,
+        "elapsedMs": 71546
+      }
+    ],
+    "audit": {
+      "commit": "2cc6a47d6c364b3cd2c7a802361b8ecd0f78b046",
+      "tree": "60e6f92c290e11810568ccbf60398eeda8975e8d",
+      "rawFiles": 6427,
+      "rawMatch": true,
+      "assertions": [
+        {
+          "path": "apps/api/src/account-recovery.test.ts",
+          "before": 76,
+          "after": 76,
+          "identical": true
+        },
+        {
+          "path": "apps/api/src/schema-rejection.test.ts",
+          "before": 79,
+          "after": 79,
+          "identical": true
+        },
+        {
+          "path": "apps/api/src/revision-range.test.ts",
+          "before": 58,
+          "after": 58,
+          "identical": true
+        },
+        {
+          "path": "apps/api/src/library-admin.test.ts",
+          "before": 48,
+          "after": 48,
+          "identical": true
+        }
+      ]
+    }
+  },
+  "final": {
+    "stage": "recheck",
+    "commit": "e39f1632a09bef23b7700cfa24ecdd2d3151b8d6",
+    "started": "2026-11-12T03:34:33.314Z",
+    "finished": "2026-11-12T03:41:01.944Z",
+    "results": [
+      {
+        "name": "source-audit",
+        "command": [
+          "node",
+          "/evidence/audit.mjs",
+          "recheck"
+        ],
+        "exitCode": 0,
+        "elapsedMs": 5119
+      },
+      {
+        "name": "build-contracts",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/contracts"
+        ],
+        "exitCode": 0,
+        "elapsedMs": 36280
+      },
+      {
+        "name": "build-domain",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/domain"
+        ],
+        "exitCode": 0,
+        "elapsedMs": 38067
+      },
+      {
+        "name": "build-rule-pack-registry",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/rule-pack-registry"
+        ],
+        "exitCode": 0,
+        "elapsedMs": 9498
+      },
+      {
+        "name": "build-rule-applicability-context",
+        "command": [
+          "npm",
+          "run",
+          "build",
+          "-w",
+          "@bondbuddy/rule-applicability-context"
+        ],
+        "exitCode": 0,
+        "elapsedMs": 9052
+      },
+      {
+        "name": "build-api-targets",
+        "command": [
+          "node",
+          "node_modules/typescript/bin/tsc",
+          "-p",
+          "apps/api/tsconfig.issue1073.json"
+        ],
+        "exitCode": 0,
+        "elapsedMs": 56285
+      },
+      {
+        "name": "migrate",
+        "command": [
+          "node",
+          "db/migrate.mjs"
+        ],
+        "exitCode": 0,
+        "elapsedMs": 23720
+      },
+      {
+        "name": "test",
+        "command": [
+          "node",
+          "--test",
+          "--test-concurrency=1",
+          "apps/api/dist/account-recovery.test.js",
+          "apps/api/dist/schema-rejection.test.js",
+          "apps/api/dist/revision-range.test.js",
+          "apps/api/dist/library-admin.test.js"
+        ],
+        "exitCode": 0,
+        "elapsedMs": 151716
+      }
+    ],
+    "audit": {
+      "commit": "e39f1632a09bef23b7700cfa24ecdd2d3151b8d6",
+      "tree": "b4cad164652853ef84967be09c2355c9a7b85841",
+      "rawFiles": 6427,
+      "rawMatch": true,
+      "assertions": [
+        {
+          "path": "apps/api/src/account-recovery.test.ts",
+          "before": 76,
+          "after": 76,
+          "protocolChanges": []
+        },
+        {
+          "path": "apps/api/src/schema-rejection.test.ts",
+          "before": 79,
+          "after": 79,
+          "protocolChanges": [
+            {
+              "before": "assert.equal(metrics.json().jobs.rejected,4)",
+              "after": "assert.equal(metrics.json().jobs.rejected,'4')"
+            },
+            {
+              "before": "assert.equal(metrics.json().operations.rejected,9)",
+              "after": "assert.equal(metrics.json().operations.rejected,'9')"
+            }
+          ]
+        },
+        {
+          "path": "apps/api/src/revision-range.test.ts",
+          "before": 58,
+          "after": 58,
+          "protocolChanges": []
+        },
+        {
+          "path": "apps/api/src/library-admin.test.ts",
+          "before": 48,
+          "after": 48,
+          "protocolChanges": []
+        }
+      ]
+    },
+    "runtime": {
+      "node": "v22.23.3",
+      "typescript": "5.9.3",
+      "pg": "8.23.0",
+      "fastify": "5.12.5",
+      "cachedLockSha256": "69ce90eb0ff8cb11578c419ad3c5a1221da099fdb5fce17c190aef2052255701",
+      "sourceLockSha256": "81833914ef0ba232e249040685bb93ac1e3b63e640b960d2d217985fa4b5ed8c",
+      "sourceLockCRLFSha256": "69ce90eb0ff8cb11578c419ad3c5a1221da099fdb5fce17c190aef2052255701",
+      "lockMatches": true
+    },
+    "remainingClones": []
+  },
+  "source": {
+    "commit": "e39f1632a09bef23b7700cfa24ecdd2d3151b8d6",
+    "tree": "b4cad164652853ef84967be09c2355c9a7b85841",
+    "baseCommit": "2cc6a47d6c364b3cd2c7a802361b8ecd0f78b046",
+    "baseArchiveSha256": "831d41d29f1b7580c033f6cc876d6d3159c293f3d138de4ae99048111da1545c",
+    "deltaArchiveSha256": "a61e5c98e1bf0d5e6f0234689e8c4662ae104346fa926eaeadedbcd905f3ac65",
+    "rawFilesChecked": 6427,
+    "originalGateFixtureComparison": [
+      {
+        "path": "apps/api/src/account-recovery.test.ts",
+        "originalBlob": "b420f6a6b1b66d15d526cac6d9e5ef6e18aa2a3e",
+        "baselineBlob": "b420f6a6b1b66d15d526cac6d9e5ef6e18aa2a3e",
+        "identical": true
+      },
+      {
+        "path": "apps/api/src/library-admin.test.ts",
+        "originalBlob": "dddadf99bdf641dfb9cd08148fd262b4e953fdef",
+        "baselineBlob": "dddadf99bdf641dfb9cd08148fd262b4e953fdef",
+        "identical": true
+      },
+      {
+        "path": "apps/api/src/revision-range.test.ts",
+        "originalBlob": "c7649dec5656d454dcc9418a5ad35bb75b643267",
+        "baselineBlob": "c7649dec5656d454dcc9418a5ad35bb75b643267",
+        "identical": true
+      },
+      {
+        "path": "apps/api/src/schema-rejection.test.ts",
+        "originalBlob": "e63b6e0f1bdded61d4d9f736784a76433cf0c32b",
+        "baselineBlob": "e63b6e0f1bdded61d4d9f736784a76433cf0c32b",
+        "identical": true
+      }
+    ],
+    "selectedFiles": [
+      {
+        "path": "apps/api/src/account-recovery.test.ts",
+        "mode": "100644",
+        "blob": "3fcbf053403b2436e6241c875ad234d579ef2250"
+      },
+      {
+        "path": "apps/api/src/library-admin.test.ts",
+        "mode": "100644",
+        "blob": "12b04d6814fdd7dbe52e4dccc88fc8846b8be992"
+      },
+      {
+        "path": "apps/api/src/revision-range.test.ts",
+        "mode": "100644",
+        "blob": "f77291ef12ac189373689b7ff2620668ab6a9957"
+      },
+      {
+        "path": "apps/api/src/schema-rejection.test.ts",
+        "mode": "100644",
+        "blob": "c1a054f9ef7f76f04559e055649bef8675ddc47d"
+      },
+      {
+        "path": "apps/api/src/test-authoring-source.ts",
+        "mode": "100644",
+        "blob": "ae31c871b79d2f89467dffe3a49c769f795cfc36"
+      }
+    ]
+  },
+  "runner": {
+    "image": "sha256:e081d9ca27e8ef07e6a658183b50b15a568a8126a67d70a3065ff630dfb7fdb9",
+    "runnerCpu": 0.75,
+    "runnerMemoryMiB": 2304,
+    "postgresCpu": 0.25,
+    "postgresMemoryMiB": 768,
+    "hostPorts": [],
+    "networkInternal": true
+  },
+  "logs": {
+    "after-test.log": "ab45e9e6e693dfa49bd80fde5e262519b028206cc4488778d8bdd195c2d5404f",
+    "recheck-test.log": "f7347d3adc1e0fba19f7879952a813ad336f8c10ff985d46f6cd14404ce4da61"
+  }
+}

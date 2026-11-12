@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: \#9 real sessions: binding, manual grant and single-use reset preserve data/tasks and revoke all old sessions
+ok 1 - \#9 real sessions: binding, manual grant and single-use reset preserve data/tasks and revoke all old sessions
+  ---
+  duration_ms: 7959.18275
+  type: 'test'
+  ...
+# Subtest: \#9 unknown/unbound users share a generic replayable ticket; staff and foreign users cannot bypass prior binding
+ok 2 - \#9 unknown/unbound users share a generic replayable ticket; staff and foreign users cannot bypass prior binding
+  ---
+  duration_ms: 4741.827389
+  type: 'test'
+  ...
+# Subtest: \#9 expiry, reissue, purpose binding and brute-force budgets fail without locking normal login
+ok 3 - \#9 expiry, reissue, purpose binding and brute-force budgets fail without locking normal login
+  ---
+  duration_ms: 2802.485035
+  type: 'test'
+  ...
+# Subtest: \#9 password change invalidates grants; closure erases recovery contacts
+ok 4 - \#9 password change invalidates grants; closure erases recovery contacts
+  ---
+  duration_ms: 3363.898349
+  type: 'test'
+  ...
+# Subtest: \#9 reset outbox failure rolls back password, grant and session revocation
+ok 5 - \#9 reset outbox failure rolls back password, grant and session revocation
+  ---
+  duration_ms: 5747.786915
+  type: 'test'
+  ...
+# Subtest: \#9 concurrent reset and an old-password login waiting on the same owner cannot leave a valid old session
+ok 6 - \#9 concurrent reset and an old-password login waiting on the same owner cannot leave a valid old session
+  ---
+  duration_ms: 8441.123838
+  type: 'test'
+  ...
+# Subtest: \#9 configured support and the exact active operator role are required; revocation also voids issued links
+ok 7 - \#9 configured support and the exact active operator role are required; revocation also voids issued links
+  ---
+  duration_ms: 7617.461805
+  type: 'test'
+  ...
+# Subtest: \#9 replacing a verified channel invalidates its old ticket and clears abandoned contact/code data
+ok 8 - \#9 replacing a verified channel invalidates its old ticket and clears abandoned contact/code data
+  ---
+  duration_ms: 3452.162563
+  type: 'test'
+  ...
+# Subtest: operator imports inspect every item before staging or enqueueing
+ok 9 - operator imports inspect every item before staging or enqueueing
+  ---
+  duration_ms: 41375.524167
+  type: 'test'
+  ...
+# Subtest: public contract has no library route, schema or candidate field
+ok 10 - public contract has no library route, schema or candidate field
+  ---
+  duration_ms: 272.751553
+  type: 'test'
+  ...
+# Subtest: admin library routes: 404 for ordinary users, read-only for readers, actions for operators; user routes never leak library data
+ok 11 - admin library routes: 404 for ordinary users, read-only for readers, actions for operators; user routes never leak library data
+  ---
+  duration_ms: 5930.608433
+  type: 'test'
+  ...
+# Subtest: contract-valid revision beyond PostgreSQL integer range has owned atomic rejection evidence
+ok 12 - contract-valid revision beyond PostgreSQL integer range has owned atomic rejection evidence
+  ---
+  duration_ms: 18082.746061
+  type: 'test'
+  ...
+# Subtest: authenticated schema rejections retain bounded owned evidence and atomic outbox
+ok 13 - authenticated schema rejections retain bounded owned evidence and atomic outbox
+  ---
+  duration_ms: 11403.068049
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 151652.57075
