@@ -6,8 +6,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { REFERENCE_FILES, REFERENCE_ROOT, REFERENCE_TESTS, QA_BASELINE_ROOT, collectReferenceCheck, mountSourceIdentity, readReferenceObjects,
-  referenceVerifyCommand, restoreReferenceSource, restoreVerifiedReferenceObjects, verifyReferenceDirectory, verifyReferenceMount, verifyReferenceRuns } from './browser-reference-source.mjs';
-import { syntheticReferenceIdentity, syntheticReferenceRuns } from './browser-reference.test-fixture.mjs';
+  referenceVerifyCommand, qaBaselineVerifyCommand, collectQaBaselineCheck, restoreReferenceSource, restoreVerifiedReferenceObjects, verifyReferenceDirectory, verifyReferenceMount, verifyReferenceRuns } from './browser-reference-source.mjs';
+import { syntheticReferenceIdentity, syntheticReferenceRuns, syntheticQaBaselineIdentity } from './browser-reference.test-fixture.mjs';
 
 const repository = fileURLToPath(new URL('../..', import.meta.url));
 // The full gate has a verified read-only mount and intentionally no historical
@@ -84,10 +84,40 @@ test('actual mount inspection binds owned container, verified host paths and exa
 test('container check executes pinned in-memory verifier and records its actual result', async () => {
   const source = Buffer.from(`export function verifyReferenceDirectory(){return ${JSON.stringify(syntheticReferenceIdentity())};}`);
   const result = await collectReferenceCheck({ candidate: { commit: 'a'.repeat(40), tree: 'b'.repeat(40) }, runId: 'synthetic-run', containerId, stage: 'prepared', verifierBytes: source,
-    execute: async (_label, args) => { assert.deepEqual(args, referenceVerifyCommand(source)); const r = spawnSync(process.execPath, args.slice(1), { encoding: 'utf8' }); return { code: r.status, text: r.stdout }; } });
+    execute: async (_label, args, { input }) => { assert.deepEqual(args, referenceVerifyCommand(source)); assert.strictEqual(input, source); const r = spawnSync(process.execPath, args.slice(1), { encoding: 'utf8', input }); return { code: r.status, text: r.stdout }; } });
   assert.equal(result.execution.code, 0); assert.equal(result.container_id, containerId); assert.equal(result.identity.not_a_seal, true);
   await assert.rejects(collectReferenceCheck({ candidate: {}, stage: 'prepared', verifierBytes: source, execute: async () => ({ code: 1, text: '{}' }) }), /successfully/);
 });
+test('short commands verify large raw stdin before executing either pinned checker', async t => {
+  const f = fixture(t), fakeHelper = join(f.root, 'scripts/pr-gate/browser-reference-source.mjs');
+  mkdirSync(dirname(fakeHelper), { recursive: true }); writeFileSync(fakeHelper, 'throw Error("WRONG_DISK_HELPER_EXECUTED");');
+  const source = Buffer.from('/*纯合成 UTF-8 verifier padding: ' + 'p'.repeat(48 * 1024) + '*/\n' +
+    'export function verifyReferenceDirectory(){return ' + JSON.stringify(syntheticReferenceIdentity()) + ';}\n' +
+    'export function verifyQaBaselineDirectory(){return ' + JSON.stringify(syntheticQaBaselineIdentity()) + ';}\n');
+  assert.ok(source.length > 32_767, 'the raw fixture alone exceeds the Windows command-line limit');
+  for (const [command, collect, identity] of [[referenceVerifyCommand, collectReferenceCheck, syntheticReferenceIdentity()],
+    [qaBaselineVerifyCommand, collectQaBaselineCheck, syntheticQaBaselineIdentity()]]) {
+    const args = command(source); assert.ok(args.join(' ').length < 2048, 'source bytes must not enter argv');
+    const execute = async (_label, actualArgs, { input }) => {
+      assert.deepEqual(actualArgs, args); assert.strictEqual(input, source);
+      const child = spawnSync(process.execPath, actualArgs.slice(1), { cwd: f.root, encoding: 'utf8', input });
+      assert.ifError(child.error); assert.equal(child.status, 0, child.stderr); assert.equal(child.stderr, '');
+      return { code: child.status, text: child.stdout };
+    };
+    const result = await collect({ candidate: { commit: 'a'.repeat(40), tree: 'b'.repeat(40) }, runId: 'synthetic-run', containerId,
+      stage: 'prepared', verifierBytes: source, execute });
+    assert.deepEqual(result.identity, identity); assert.equal(result.execution.code, 0);
+    const tampered = Buffer.from(source); tampered[tampered.length - 2] ^= 1;
+    for (const [input, reason] of [[Buffer.alloc(0), 'length'], [source.subarray(0, -1), 'length'],
+      [Buffer.concat([source, Buffer.from(' ')]), 'length'], [tampered, 'hash']]) {
+      const rejected = spawnSync(process.execPath, args.slice(1), { cwd: f.root, encoding: 'utf8', input });
+      assert.ifError(rejected.error); assert.notEqual(rejected.status, 0); assert.equal(rejected.stdout, '');
+      assert.match(rejected.stderr, new RegExp('Pinned verifier stdin ' + reason + ' mismatch'));
+      assert.doesNotMatch(rejected.stderr, /WRONG_DISK_HELPER_EXECUTED/);
+    }
+  }
+});
+
 test('lifecycle rejects missing, stale, cross-run or cross-container proof and unchecked browser shards', () => {
   const expected = { commit: 'a'.repeat(40), tree: 'b'.repeat(40), reference_verifier_sha256: 'd'.repeat(64),
     browser_source_sha256: Object.fromEntries(REFERENCE_TESTS.map(file => [file, 'e'.repeat(64)])),

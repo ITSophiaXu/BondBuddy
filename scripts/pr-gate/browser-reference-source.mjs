@@ -180,7 +180,10 @@ export function qaBaselineVerifyCommand(verifierBytes) {
 }
 function pinnedVerifyCommand(verifierBytes, name) {
   assert.ok(Buffer.isBuffer(verifierBytes) && verifierBytes.length > 0);
-  return ['node', '--input-type=module', '-e', `const {${name}}=await import(${JSON.stringify('data:text/javascript;base64,' + verifierBytes.toString('base64'))});process.stdout.write(JSON.stringify(${name}()));`];
+  // Keep the Windows command line short; verify stdin before importing its exact bytes.
+  const length = verifierBytes.length, sha256 = hash(verifierBytes);
+  const code = `import {createHash} from 'node:crypto';const chunks=[];let size=0;for await(const chunk of process.stdin){size+=chunk.length;if(size>${length})throw new Error('Pinned verifier stdin length mismatch');chunks.push(chunk);}if(size!==${length})throw new Error('Pinned verifier stdin length mismatch');const source=Buffer.concat(chunks,size);if(createHash('sha256').update(source).digest('hex')!==${JSON.stringify(sha256)})throw new Error('Pinned verifier stdin hash mismatch');const {${name}}=await import('data:text/javascript;base64,'+source.toString('base64'));process.stdout.write(JSON.stringify(${name}()));`;
+  return ['node', '--input-type=module', '-e', code];
 }
 export async function collectReferenceCheck({ candidate, runId, containerId, stage, verifierBytes, execute }) {
   return collectPinnedCheck({ candidate, runId, containerId, stage, verifierBytes, execute }, 'reference', referenceVerifyCommand, verifyReferenceRecord);
@@ -190,7 +193,7 @@ export async function collectQaBaselineCheck(options) {
 }
 async function collectPinnedCheck({ candidate, runId, containerId, stage, verifierBytes, execute }, label, command, verify) {
   const startedAt = new Date().toISOString();
-  const execution = await execute(label + '-' + stage.replaceAll(':', '-'), command(verifierBytes));
+  const execution = await execute(label + '-' + stage.replaceAll(':', '-'), command(verifierBytes), { input: verifierBytes });
   assert.equal(execution.code, 0, 'Reference byte verification did not exit successfully');
   return { commit: candidate.commit, tree: candidate.tree, run_id: runId, container_id: containerId, stage,
     verifier_sha256: hash(verifierBytes), started_at: startedAt, finished_at: new Date().toISOString(), execution: { code: execution.code },

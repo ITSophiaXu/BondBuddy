@@ -179,11 +179,12 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
   const serviceImages = {};
   const signal = () => { interrupted = true; currentChild?.kill('SIGTERM'); };
   process.on('SIGINT', signal); process.on('SIGTERM', signal);
-  const command = (label, executable, args, { allowFailure = false, capture = false, cleanup = false, privateCapture = false } = {}) => new Promise((done, reject) => {
+  const command = (label, executable, args, { allowFailure = false, capture = false, cleanup = false, privateCapture = false, input } = {}) => new Promise((done, reject) => {
     if (interrupted && !cleanup) return reject(new Error('Gate interrupted'));
+    if (input !== undefined && !Buffer.isBuffer(input)) return reject(new Error('Command stdin must be a Buffer'));
     console.log(`[pr-gate] ${label}`);
     const log = openSync(join(directory, `${label.replace(/[^a-zA-Z0-9_-]/g, '_')}.log`), 'a');
-    const child = spawn(executable, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    const child = spawn(executable, args, { cwd: root, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'], windowsHide: true });
     currentChild = child;
     let text = '', spawnError;
     const receive = (data, stream) => {
@@ -198,6 +199,11 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
       if (spawnError || (code !== 0 && !allowFailure)) reject(new Error(`${label}: ${spawnError?.message ?? `exit ${code}`} (see ${directory})`));
       else done({ code, text: text.trim() });
     });
+    if (input !== undefined) {
+      const failedInput = error => { spawnError ??= error; child.kill('SIGTERM'); };
+      child.stdin.on('error', failedInput);
+      try { child.stdin.end(input); } catch (error) { failedInput(error); }
+    }
   });
   const docker = (label, args, options) => command(label, 'docker', args, options);
   const step = async (id, task) => {
@@ -212,10 +218,10 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
     : docker(label, ['exec', ...envArgs(env), runner, ...args], options);
   const referenceCheck = (stage, cleanup = false) => collectReferenceCheck({ candidate: expected, runId: id,
     containerId: owned.get(runner).id, stage, verifierBytes: blob(expected.commit, 'scripts/pr-gate/browser-reference-source.mjs'),
-    execute: (label, args) => docker(label, ['exec', owned.get(runner).id, ...isolatedCommand(args, runtimeEnvironment)], { capture: true, cleanup }) });
+    execute: (label, args, { input }) => docker(label, ['exec', '-i', owned.get(runner).id, ...isolatedCommand(args, runtimeEnvironment)], { capture: true, cleanup, input }) });
   const qaBaselineCheck = (stage, cleanup = false) => collectQaBaselineCheck({ candidate: expected, runId: id,
     containerId: owned.get(runner).id, stage, verifierBytes: blob(expected.commit, 'scripts/pr-gate/browser-reference-source.mjs'),
-    execute: (label, args) => docker(label, ['exec', owned.get(runner).id, ...isolatedCommand(args, runtimeEnvironment)], { capture: true, cleanup }) });
+    execute: (label, args, { input }) => docker(label, ['exec', '-i', owned.get(runner).id, ...isolatedCommand(args, runtimeEnvironment)], { capture: true, cleanup, input }) });
   const referenceMount = async (label, cleanup = false) => {
     const inspected = JSON.parse((await docker(label, ['inspect', owned.get(runner).id], { capture: true, privateCapture: true, cleanup })).text)[0];
     return verifyReferenceMount(inspected, receipt.reference_components.host_before.root, directory.replaceAll('\\', '/'), owned.get(runner).id);
