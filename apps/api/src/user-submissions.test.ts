@@ -1,3 +1,5 @@
+import { emptyUpdateDetails } from '@bondbuddy/contracts';
+import { uploadSyntheticReference, quoteSyntheticAuthoringRun } from './test-authoring-source.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Pool } from 'pg';
@@ -34,7 +36,7 @@ test('submitted prompt versions, owner and role isolation, replay and lifecycle'
     await grantOperator(pool,{userId:viewer,role:'prompt_viewer',grantedBy:'synthetic_test',reasonCode:'synthetic_test'});
     await grantOperator(pool,{userId:viewer,role:'log_reader',grantedBy:'synthetic_test',reasonCode:'synthetic_test'});
     await grantOperator(pool,{userId:promptOnly,role:'prompt_viewer',grantedBy:'synthetic_test',reasonCode:'synthetic_test'});
-    const created = await send(owner,'POST','/api/v1/projects',{name:'Synthetic prompt project',kind:'update',issuer_name:null,market:null,offering:null});
+    const created = await send(owner,'POST','/api/v1/projects',{name:'Synthetic prompt project',kind:'update',issuer_name:'Synthetic prompt issuer',market:'sse',offering:'private',update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1',reporting_cutoff:'2026-09-30'}});
     assert.equal(created.statusCode,201,created.body);
     const projectId = created.json().project_id as string;
     assert.equal((await send(foreign,'POST',`/api/v1/internal/projects/${projectId}/submissions`,{message_id:'foreign-message',submission_request_id:'foreign-request',body:'Foreign submitted text',material_versions:[]})).statusCode,404);
@@ -47,11 +49,14 @@ test('submitted prompt versions, owner and role isolation, replay and lifecycle'
     const completeResponse=await send(owner,'POST',`/api/v1/projects/${projectId}/materials/uploads/${upload.upload_id}/complete`,{byte_size:materialBytes.length,sha256:materialHash});
     assert.equal(completeResponse.statusCode,200,completeResponse.body);
     const completed=completeResponse.json();
-    const materialVersions=[{material_id:completed.material_id as string,material_version:1}];
-    const inputResponse = await send(owner,'POST',`/api/v1/projects/${projectId}/input-revisions`,{draft_revision:1,material_versions:materialVersions,requirement_message_ids:[]});
+    const source=await uploadSyntheticReference(app,projectId);
+    const materialVersions=[{material_id:completed.material_id as string,material_version:1},...source.material_versions]
+      .sort((a,b)=>a.material_id.localeCompare(b.material_id)||a.material_version-b.material_version);
+    const inputResponse = await send(owner,'POST',`/api/v1/projects/${projectId}/input-revisions`,{...source,material_versions:materialVersions});
     assert.equal(inputResponse.statusCode,201,inputResponse.body);
     const input = inputResponse.json();
-    const execute = { execution_request_id:'submit-exec',project_id:projectId,input_revision:1,input_hash:input.input_hash,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace',user_prompt:'Synthetic submitted requirement one' };
+    const quoteId=await quoteSyntheticAuthoringRun(app,pool,owner,projectId,input);
+    const execute = { execution_request_id:'submit-exec',project_id:projectId,input_revision:1,input_hash:input.input_hash,quote_id:quoteId,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace',user_prompt:'Synthetic submitted requirement one' };
     const runResponse = await send(owner,'POST','/api/v1/runs/execute',execute);
     assert.equal(runResponse.statusCode,202,runResponse.body);
     const runId = runResponse.json().run_id as string;

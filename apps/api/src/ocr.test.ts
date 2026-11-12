@@ -1,7 +1,8 @@
+import { uploadSyntheticReference, quoteSyntheticAuthoringRun } from './test-authoring-source.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Pool } from 'pg';
-import { type OcrEngineResponse, type OcrCorrectionRequest } from '@bondbuddy/contracts';
+import { emptyUpdateDetails, type OcrEngineResponse, type OcrCorrectionRequest } from '@bondbuddy/contracts';
 import { azureBlobs, digest, uid } from './data.js';
 import { createServer } from './server.js';
 import { storeOcr, validateOcrResponse, readOcr, correctOcr, authorizeOcrMaterial } from './ocr.js';
@@ -36,7 +37,7 @@ test('owned OCR snapshots and user corrections are immutable, replay-safe and pr
   const app=createServer({pool,blobs,allowedOrigin:origin,enableRunStaging:true,principal:async()=>({userId:active,csrfVerified:true})});
   const send=(method:any,url:string,payload?:any,extra={})=>app.inject({method,url,headers:{origin,...extra},payload});
   try {
-    const created=await send('POST','/api/v1/projects',{name:'Synthetic OCR',kind:'update',issuer_name:null,market:null,offering:null});assert.equal(created.statusCode,201,created.body);
+    const created=await send('POST','/api/v1/projects',{name:'Synthetic OCR',kind:'update',issuer_name:'Synthetic OCR issuer',market:'sse',offering:'private',update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1',reporting_cutoff:'2026-09-30'}});assert.equal(created.statusCode,201,created.body);
     const projectId=created.json().project_id;
     const up=await send('POST',`/api/v1/projects/${projectId}/materials/uploads`,{filename:'synthetic.png',media_type:PNG,byte_size:pngSample.length,sha256:digest(pngSample),role:'audit'});assert.equal(up.statusCode,201,up.body);
     assert.equal((await send('PUT',up.json().upload_url,pngSample,{'content-type':'application/octet-stream'})).statusCode,204);
@@ -61,10 +62,12 @@ test('owned OCR snapshots and user corrections are immutable, replay-safe and pr
     assert.equal((await send('GET',review.pages[0].image_url)).statusCode,404);
     assert.equal((await send('POST',`${route}/corrections`,input)).statusCode,404);
     active=owner;assert.equal((await send('GET',review.pages[0].image_url)).statusCode,200);
-    const locked=await send('POST',`/api/v1/projects/${projectId}/input-revisions`,{draft_revision:1,material_versions:[{material_id:materialId,material_version:1}],requirement_message_ids:[]});
+    const source=await uploadSyntheticReference(app,projectId,{origin});
+    const locked=await send('POST',`/api/v1/projects/${projectId}/input-revisions`,{...source,material_versions:[{material_id:materialId,material_version:1},...source.material_versions]});
     assert.equal(locked.statusCode,201,locked.body);
     const snapshot=locked.json();
-    const execution=await send('POST','/api/v1/runs/execute',{execution_request_id:uid(),project_id:projectId,input_revision:snapshot.input_revision,input_hash:snapshot.input_hash,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace'});
+    const quoteId=await quoteSyntheticAuthoringRun(app,pool,owner,projectId,snapshot,{origin});
+    const execution=await send('POST','/api/v1/runs/execute',{execution_request_id:uid(),project_id:projectId,input_revision:snapshot.input_revision,input_hash:snapshot.input_hash,quote_id:quoteId,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace'});
     assert.equal(execution.statusCode,202,execution.body);
     const runId=execution.json().run_id;
     await assert.rejects(authorizeOcrMaterial(pool,{...context,purpose:'full_ocr',runId}),/requires an active/);

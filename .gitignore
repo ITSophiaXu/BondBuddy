@@ -51,6 +51,8 @@ docs/acceptance/*
 !docs/acceptance/issue-1045-admin-log-int64.md
 !docs/acceptance/issue-1063-prospectus-reader-timeout-20261112.md
 !docs/acceptance/issue-1063-coverage.json
+!docs/acceptance/api-observability-admission-20261112.md
+!docs/acceptance/api-observability-admission-20261112/
 !docs/acceptance/billing-remediation-20261111.md
 !docs/acceptance/billing-remediation-20261111/
 !docs/acceptance/prospectus-size-gate-20261111.md
