@@ -11,7 +11,6 @@ import { appendProjectMaterialEvent } from './project-material-events.js';
 import { recordOperation } from './observability.js';
 import { configuredUploadInspectionException, uploadInspectionExceptionMatches } from './upload-inspection-exception.js';
 import { discardSpool, reserveSpool, spoolDirectory } from './upload-spool.js';
-const MAX_BYTES = M1_UPLOAD_LIMITS.fileBytes;
 const XLSX_MEDIA_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 export type UploadDeclaration = { byte_size:number; sha256:string };
 export type PreparedUpload = {
@@ -148,10 +147,15 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
   const direct=u.upload_transport===DIRECT_UPLOAD_TRANSPORT;
   const version=direct&&blobs.headVersion?await boundedVersion(blobs,u.object_key):null;
   if(direct&&!version)throw Object.assign(new Problem(422,'MATERIAL_UNREADABLE','Upload bytes not received'),{uploadBytesPending:true});
+  // Same declaration/HEAD boundary as the pending direct-upload recovery fix.
+  if(direct&&version!.byteSize!==b.byte_size)
+    throw Object.assign(new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes differ from the upload declaration'),{rejectedUploadVersion:{key:u.object_key,etag:version!.etag}});
   const release=reserveSpool(b.byte_size),copy=join(spoolDirectory(),`${uid()}.blob`);
   try{
     await mkdir(spoolDirectory(),{recursive:true,mode:0o700});
-    const proof=await readBlobToFile(blobs,u.object_key,copy,MAX_BYTES);
+    // Both lanes reserve this declaration, so the real stream must share its
+    // hard byte ceiling, including legacy received uploads and raced changes.
+    const proof=await readBlobToFile(blobs,u.object_key,copy,b.byte_size);
     if(!proof)throw new Problem(503,'DATA_UNAVAILABLE','Stored upload bytes are temporarily unavailable');
     if(direct&&proof.etag!==version!.etag)throw new Problem(503,'DATA_UNAVAILABLE','UPLOAD_REVERIFY_REQUIRED');
     if(proof.byteSize!==b.byte_size||proof.sha256!==b.sha256)throw new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes or hash mismatch');
