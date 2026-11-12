@@ -13,7 +13,8 @@ import { promisify } from 'node:util';
 import { Pool } from 'pg';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { createServer } from '@bondbuddy/api';
-import { azureBlobs, digest } from '@bondbuddy/api/data';
+import { azureBlobs, digest, transaction } from '@bondbuddy/api/data';
+import { grantCredits } from '../../api/dist/billing.js';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
 import { isolatedTestDatabase } from './test-database.js';
 import { makeWorkerDocxFixture } from './docx-test-fixture.js';
@@ -24,14 +25,37 @@ import { reviewFileStage } from './review-file-stage.js';
 const database = await isolatedTestDatabase(undefined, 'review-files');
 const connection = process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 const python = process.env.BONDBUDDY_TEST_PYTHON;
-for (const format of ['docx','pdf'] as const) test(`file-only ${format} review: dual Word → crash recovery without resend → owner download`,
+// Keep the original free review/revision contract and exercise the same delivery chain with current quotes.
+for (const currentBilling of [false,true]) for (const format of ['docx','pdf'] as const) test(`file-only ${format} review: dual Word → crash recovery without resend → owner download${currentBilling ? ' (current quoted billing)' : ''}`,
   { skip: process.platform !== 'linux' || !database || !connection || !python, timeout: 180000 }, async () => {
     const pool = new Pool({ connectionString: database }), directory = await mkdtemp(join(tmpdir(), 'bb-review-file-pg-'));
     const container = `bb-review-file-${randomUUID().replaceAll('-', '')}`, blobs = azureBlobs(connection!, container);
     const owner = randomUUID(), marker = join(directory, 'calls.jsonl'); let active = owner;
     const origin = 'http://bondbuddy.test', app = createServer({ pool, blobs, allowedOrigin: origin, enableRunRuntime: true,
+      ...(currentBilling ? {} : { historicalBillingFixture: true, enablePaidReview: false }),
       principal: async () => ({ userId: active, csrfVerified: true }) });
     const send = (method: string, url: string, payload?: unknown, headers = {}) => app.inject({ method: method as never, url, payload: payload as never, headers: { origin, ...headers } });
+    const quotedRequest = async <T extends object>(path: string, request: T): Promise<T & {quote_id?: string}> => {
+      if (!currentBilling) return request;
+      const response = await send('POST', path+'/quote', request);
+      assert.equal(response.statusCode, 200, response.body);
+      const {quote,shortage} = response.json();
+      assert.equal(quote.quote_status, 'ready');
+      assert.ok(quote.quote_id && quote.scope_quote_id);
+      assert.ok(BigInt(quote.points)>0n, 'Independent review and revision retain a positive current price');
+      assert.match(shortage, /^\d+$/);
+      if (BigInt(shortage)>0n) await transaction(pool, client => grantCredits(client, {owner, points:shortage,
+        key:randomUUID(), source:'purchase', expiresAt:null, actor:'synthetic-review-delivery',
+        reason:'Synthetic funds for current review delivery regression only'}));
+      return {...request,quote_id:quote.quote_id};
+    };
+    const assertCurrentCharge = async (runId: string, quoteId: string | undefined, state: 'held' | 'settled') => {
+      if (!currentBilling) return;
+      const response = await send('GET', '/api/v1/runs/'+runId+'/credit-charge');
+      assert.equal(response.statusCode,200,response.body);
+      assert.equal(response.json().state,state);
+      assert.equal(response.json().quote.quote_id,quoteId);
+    };
     const config = { ...loadCodexAdapterConfig({BB_CODEX_PATH:process.env.BB_CODEX_PATH}), command: [process.execPath, fileURLToPath(new URL('../test-fixtures/codex/review-files.mjs', import.meta.url)), `--marker=${marker}`],
       work_root: join(directory, 'calls'), authoring_timeout_ms: 60000, timeout_ms: 60000 };
     try {
@@ -48,9 +72,11 @@ for (const format of ['docx','pdf'] as const) test(`file-only ${format} review: 
       const pin = { material_id: completed.json().material_id, material_version: 1, sha256: declared.sha256 };
       const input = { source_material_ref: pin, material_versions: [pin], requirements: ['original requirement'], as_of: '2026-10-05', evidence_links: [] };
       assert.equal((await send('PUT', `/api/v1/projects/${project}/review-draft`, { kind: 'input', expected_version: 0, input })).statusCode, 200);
-      const request = { execution_request_id: randomUUID(), operation: 'full_review', expected_input_version: 1, source_report_id: null, expected_plan_version: null, finding_ids: [] };
+      const request = await quotedRequest(`/api/v1/projects/${project}/review-executions`, { execution_request_id: randomUUID(), operation: 'full_review', expected_input_version: 1, source_report_id: null, expected_plan_version: null, finding_ids: [] });
       const first = await send('POST', `/api/v1/projects/${project}/review-executions`, request);
       assert.equal(first.statusCode, 200, first.body); const runId = first.json().run_id;
+      if(currentBilling)assert.equal(first.json().billing_mode,'fixed_credits');
+      await assertCurrentCharge(runId,request.quote_id,'held');
       assert.equal((await send('POST', `/api/v1/projects/${project}/review-executions`, request)).json().run_id, runId);
       const manifest = (await pool.query('SELECT manifest FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=1', [owner, project])).rows[0].manifest;
       assert.equal(manifest.review.file_delivery.version, 'review-correction-v2');
@@ -64,6 +90,7 @@ for (const format of ['docx','pdf'] as const) test(`file-only ${format} review: 
       await assert.rejects(execute(async stage => { if (stage === 'word_promoted') throw Error('SYNTHETIC_CRASH'); }), /SYNTHETIC_CRASH/);
       await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE run_id=$1 AND owner_user_id=$2", [runId, owner]);
       assert.equal(await execute(), 'succeeded');
+      await assertCurrentCharge(runId,request.quote_id,'settled');
       const calls = (await readFile(marker, 'utf8')).trim().split('\n'); assert.equal(calls.length, 1);
       const activity=(await pool.query("SELECT payload->'action' AS action FROM bb_run_events WHERE run_id=$1 AND payload ? 'action' ORDER BY seq",[runId])).rows.map(r=>r.action);
       assert.deepEqual(activity.map(a=>[a.code,a.state]),[['read_materials','started'],['read_materials','completed'],['prepare_report','started'],['prepare_report','completed']]);
@@ -123,14 +150,16 @@ for (const format of ['docx','pdf'] as const) test(`file-only ${format} review: 
       assert.equal((await pool.query('SELECT state FROM bb_runs WHERE id=$1', [runId])).rows[0].state, 'succeeded');
       assert.equal((await readFile(marker, 'utf8')).trim().split('\n').length, 1, 'reading never re-executes');
       if(format==='pdf')return; // PDF-to-Word delivery/ownership verified above; update regression remains DOCX.
-      const updateRequest={execution_request_id:randomUUID(),source_run_id:runId,requirements:'保留历史名称，依据复核报告修改本期金额。'};
       const updatePath=`/api/v1/projects/${project}/review-updates`;
+      const updateRequest=await quotedRequest(updatePath,{execution_request_id:randomUUID(),source_run_id:runId,requirements:'保留历史名称，依据复核报告修改本期金额。'});
       active=randomUUID();assert.equal((await send('POST',updatePath,updateRequest)).statusCode,404);active=owner;
       assert.equal((await send('POST',updatePath,{...updateRequest,source_run_id:randomUUID()})).statusCode,404);
       const updates=await Promise.all([send('POST',updatePath,updateRequest),send('POST',updatePath,updateRequest)]);
       for(const response of updates)assert.equal(response.statusCode,200,response.body);
       const update=updates[0].json();assert.equal(updates[1].json().run_id,update.run_id);
-      assert.equal(update.billing_mode,'platform_trial');assert.equal(update.reservation_id,null);
+      if(currentBilling){assert.equal(update.billing_mode,'fixed_credits');assert.ok(update.reservation_id);}
+      else {assert.equal(update.billing_mode,'platform_trial');assert.equal(update.reservation_id,null);}
+      await assertCurrentCharge(update.run_id,updateRequest.quote_id,'held');
       assert.equal((await send('POST',updatePath,{...updateRequest,requirements:'changed'})).statusCode,409);
       assert.equal((await send('POST',updatePath,{...updateRequest,execution_request_id:randomUUID()})).statusCode,409);
       const locked=(await pool.query('SELECT * FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',[owner,project,update.input_revision])).rows[0];
@@ -148,6 +177,7 @@ for (const format of ['docx','pdf'] as const) test(`file-only ${format} review: 
       await assert.rejects(updateOnce(async stage=>{if(stage==='word_promoted')throw Error('SYNTHETIC_CRASH');}),/SYNTHETIC_CRASH/);
       await pool.query("UPDATE bb_jobs SET lease_until=now()-interval '1 second' WHERE run_id=$1 AND owner_user_id=$2",[update.run_id,owner]);
       assert.equal(await updateOnce(),'succeeded');
+      await assertCurrentCharge(update.run_id,updateRequest.quote_id,'settled');
       assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id WHERE j.run_id=$1',[update.run_id])).rows[0].n,1);
       const updatedWorkspace=(await send('GET',`/api/v1/projects/${project}/review-workspace`)).json();
       assert.equal(updatedWorkspace.artifact_run.source_run_id,runId);
