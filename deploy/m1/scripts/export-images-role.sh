@@ -16,6 +16,11 @@ role_script_source
 role_trusted_source "$sha"
 verify_release_evidence "$repo" "$sha"
 verify_release_images "$repo" "$sha" "$role" reuse
+# Historical rollback commits predate this optional image target. Inspect the
+# requested source, not this script checkout or the availability of cached tags.
+if [ "$role" = execution ] && git -C "$repo" show "$sha:deploy/m1/Dockerfile" | rg -i '^FROM .+ AS upload-confirmation[[:space:]]*$' >/dev/null; then
+  targets+=(upload-confirmation)
+fi
 # Keep checkout/build/archive on the data filesystem. Do not copy credentials into the context.
 images=()
 for target in "${targets[@]}"; do

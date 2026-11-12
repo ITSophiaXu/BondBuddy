@@ -38,6 +38,7 @@ if [ "$BB_DEPLOY_ROLE" = execution ]; then
   targets=(worker egress pg-tunnel)
   case "$BB_INTEGRITY_MODE" in beijing) targets+=(integrity-tunnel);; direct) targets+=(integrity-egress);; esac
 fi
+if role_confirmation_active; then targets+=(upload-confirmation); fi
 declare -A image_ids
 for target in "${targets[@]}"; do
   docker image inspect "$(role_image_ref "$target")" >/dev/null 2>&1 || { echo "missing release image: $target; prepare with export-images-role.sh" >&2; exit 3; }
@@ -129,6 +130,9 @@ fi
 if [ "$BB_PARSE_ROLE" != "$BB_DEPLOY_ROLE" ]; then
   role_compose_raw stop worker-parse
 fi
+if [ "$BB_DEPLOY_ROLE" = execution ] && ! role_confirmation_active; then
+  role_compose_raw stop upload-confirmation
+fi
 if [ "$BB_DEPLOY_ROLE" = main ]; then
   if [ "$prepared" = 0 ]; then
     if [ "$rollback" = 0 ] || [ "$first_resume" = 1 ] || [ "$resume_candidate" = 1 ]; then role_prepare_publish
@@ -144,6 +148,7 @@ else
   bash "$BB_DIR/scripts/install-codex-file-sandbox.sh"
   if [ "$prepared" = 0 ]; then role_prepare_publish; fi
   services=(worker worker-review)
+  if role_confirmation_active; then services+=(upload-confirmation); fi
   [ "$BB_PARSE_ROLE" != execution ] || services+=(worker-parse)
   compose up -d --no-deps --wait "${services[@]}"
   services+=("${infrastructure[@]}")
@@ -152,6 +157,9 @@ fi
 if [ "$BB_DEPLOY_ROLE" = main ]; then services+=(web); fi
 if [ "$BB_PARSE_ROLE" != "$BB_DEPLOY_ROLE" ]; then
   [ -z "$(role_compose_raw ps --status running -q worker-parse)" ] || { echo 'inactive parser is still running' >&2; exit 4; }
+fi
+if [ "$BB_DEPLOY_ROLE" = execution ] && ! role_confirmation_active; then
+  [ -z "$(role_compose_raw ps --status running -q upload-confirmation)" ] || { echo 'inactive upload confirmation is still running' >&2; exit 4; }
 fi
 for service in "${services[@]}"; do
   case "$service" in ops|worker|worker-review|worker-parse) target=worker;; integrity-beijing-tunnel) target=integrity-tunnel;; *) target="$service";; esac
@@ -166,7 +174,7 @@ save_release_evidence "$sha" "$BB_STATE"
 { echo "record=$record"; echo "commit=$sha"; echo "script_commit=$BB_SCRIPT_SHA"; echo "script_tree=$(git -C "$BB_REPO" rev-parse "$BB_SCRIPT_SHA^{tree}")";
   echo "quality_sha256=$BB_RELEASE_QUALITY_DIGEST"; echo "smoke_sha256=$BB_RELEASE_SMOKE_DIGEST";
   echo "resume_first=$first_resume"; echo "resume_candidate=$resume_candidate";
-  echo "override_sha256=${BB_ROLE_OVERRIDE_SHA256:-none}"; echo "parse_role=$BB_PARSE_ROLE";
+  echo "override_sha256=${BB_ROLE_OVERRIDE_SHA256:-none}"; echo "parse_role=$BB_PARSE_ROLE"; echo "upload_confirmation_role=$BB_UPLOAD_CONFIRMATION_ROLE";
   for target in "${targets[@]}"; do echo "$target=${image_ids[$target]}"; done; } > "$BB_STATE/images-$BB_IMAGE_TAG.txt"
 cp "$BB_STATE/images-$BB_IMAGE_TAG.txt" "$BB_STATE/release-$record.txt"
 # Readiness and file/payment/integrity acceptance are separate release steps in the runbook.

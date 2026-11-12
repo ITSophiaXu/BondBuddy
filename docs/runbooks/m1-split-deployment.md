@@ -166,3 +166,28 @@ Codex仅构建目标 `codex` 后，以断网容器运行 `deploy/m1/scripts/code
 `node --test deploy/m1/scripts/role-lifecycle-review.test.mjs` 针对上述五项审查回归：状态化 synthetic Docker 失败注入实际改变 A/B 服务 ID 并执行普通发布/回滚脚本，覆盖两端部分 B 失败、current 留 A、pending 保留、C/漂移拒绝、缺失服务恢复和同 PG/配置；同时检查首次采纳失败后纠正、非法端口、真实 Git 默认状态忽略/源码 dirty 拒绝，以及持续日志与写锁互斥。Compose 配置/hash 使用真实 CLI；容器行为为明确标注的合成命令模型，不冒充线上发布/回滚。既有 11 项真实隔离 PG/SSH SQL 证据可复用；后续 #911 采纳仍实际执行普通 deploy/rollback 入口。
 
 首次恢复补充回归覆盖两端基础设施之前失败、已有部分消费者时失败、只接受唯一封存目标、SQL 在途拒绝/连接失败、普通入口续执行以及外部内部标记不能旁路 pending 或解除写锁；同时运行已改动的 `split-deploy.test.mjs` 25 项部署用例。
+
+
+## 独立上传确认（#943）
+
+`node apps/worker/dist/upload-confirmation-runtime.js` 只消费已有 `upload.complete_requested`，没有 run/parse 领取、扫描或模型调用。复用原 PG 租约、续期、最终 fence、归属、幂等、失败清理和全文件 SHA/大小/ETag 凭据；API 仍使用原异步接口，缓存命中仍检查当前 ETag。兼容 `1fee1d38797044dd13b6bfee57c16f99e7160ab4` API 与 PG 178 个迁移，不新增迁移、DTO 或计费行为。解析继续在主站。
+
+执行端 `upload-confirmation` 服务默认 `BB_UPLOAD_CONFIRMATION_ROLE=disabled`，inactive profile 且 replicas=0，普通入口禁止显式启动。本次采用两端同为 `size-split`、`BB_PARSE_ROLE=main`：主站原解析进程 `BB_UPLOAD_CONFIRMATION_ENABLED=1`、`BB_UPLOAD_CONFIRMATION_LANE=small`、`BB_UPLOAD_CONFIRMATION_SMALL_SLOT=0`，仅一个确认循环；执行端由受保护角色注入 `large`、small-slot=0，仅一个独立确认循环。阈值单源为 API 的 `UPLOAD_CONFIRMATION_SMALL_MAX_BYTES`：small 包含 16MiB，large 为 >16MiB。领取 SQL 在加租约/attempts 前过滤，互不领取另一尺寸。旧 `execution` 模式仍要求主站 enabled/small-slot 都为 0、lane 为 general；默认 disabled 保留旧 general 行为。原编制、复核及旧解析的确认开关保持 0，旧解析仍 inactive。独立镜像 target `upload-confirmation` 仅安装 Node、CA 与 flock，不安装模型 CLI、浏览器、OCR 或认证 helper，不继承其环境、挂载或 AppArmor 配置。现有 egress/PG 转发保留。
+
+入口最小配置：显式 `BB_UPLOAD_CONFIRMATION_ENABLED=1`、原 `DATABASE_URL`/`AZURE_STORAGE_CONNECTION_STRING`、绝对 `BB_UPLOAD_SPOOL_DIR`、严格 `BB_UPLOAD_SPOOL_MAX_BYTES=134217728`。`BB_UPLOAD_CONFIRMATION_LANE` 默认 general，独立入口可选 large；large 必须 small-slot=0。旧 general 模式的 `BB_UPLOAD_CONFIRMATION_SMALL_SLOT=1` 增加一个不超过 16MiB 的槽，与通用槽同进程共享 128MiB；size-split 两节点各保持 128MiB，不能扩大预算。默认 small-slot=0，非法值拒绝。`BB_UPLOAD_CONFIRMATION_CONTAINER` 默认 `bondbuddy-private`，独立入口隔离测试必须设专属 container；主站现有 CLI 仍使用默认材料容器，class/factory 隔离测试须显式注入专属存储，不能冒称真实 CLI。不会用 `BB_LIBRARY_CONTAINER` 选择材料容器。`BB_UPLOAD_CONFIRMATION_POLL_MS` 默认 1000ms，允许 100–60000 的整数。模型环境或执行 kind 配置导致启动拒绝。
+
+`BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR` 是执行端预建的独立 bind 目录，运行 UID 所有、0700，固定挂到 `/var/lib/bondbuddy/upload-confirmation`。不得使用 parser 目录、共享上传目录或 tmpfs。公开配置保持 `create_host_path: false`；校验拒绝 true、默认长/短语法。部分 Compose 版本会在 JSON 省略 false，省略值只在原挂载与可信显式 false 只读渲染一致、且与显式 true 对照可区分时接受；缺少 bind、探针失败或语义不可区分都拒绝。两个探针 overlay 从不用于实际生命周期命令，不改写原渲染结果。启动核目录/文件身份及至少预算加 16MiB 的空余磁盘，取得进程期内排他 flock 后才清理遗留私有 UUID `.blob/.part`。第二进程不能扫除第一进程的文件；未知文件导致拒绝，先完整检查再清理。Azure 可按实际余量选 `/mnt` 上专用可重建目录，禁止额外占用根盘预算。持久依据仍是 PG/Blob。
+
+启用放置及本端 spool 路径进入原 `environment-binding.json` 和发布配置摘要。默认 disabled 保留旧 v1 binding 形状；size-split 同时绑定本端 small/large lane；已有 binding 下改变放置严格拒绝。维护时保存原 env/overlay/binding 原字节、权限与 hash，审查前后字段差异；明确更新受保护绑定，再由普通配置校验复核，不能删除 binding 或换 state。恢复时使用同一份已备份前像并复核 hash。新增服务进入来源标签/不可变镜像 ID 检查、pending 快照、恢复消费者清单和发布白名单；disabled 不要求旧提交存在从未构建的新镜像。
+
+执行端镜像导出根据**传入提交**的 Dockerfile 是否提供 `upload-confirmation` target 选择新镜像；旧 `1fee`/`5e` 等提交不构建、不导出不存在的 target，包含该 target 的新提交才导出。旧调用格式、可信来源与准确 revision 校验保留，旧镜像未缓存也可按原路径重建。
+
+**现有组件混版环境不能运行整角色 deploy/rollback 完成本次切换。** 新源码通过现行发布门禁后，发布者先记录主站 API/解析/Web 与执行端编制/复核各自准确镜像、源码、配置摘要和挂载，保留整角色 current，不将组件升级记成整角色升级。取得既有配置/部署锁并检查 pending；停止旧确认新领取、排空所有确认租约及暂存，仅将主站解析升级为 small 单循环并新增执行端 large 单循环确认容器，使用 `--no-deps`。不得重建 PG 转发、编制、复核、旧解析或其他在途组件。实际执行前仍须核磁盘增量、镜像 UID/文件权限、来源与独立组件收据。回滚先停止新增确认领取并排空，保存新收据后恢复旧主站确认配置/镜像及原 binding/overlay，禁用新增服务；不降库、不删除 Blob、不重启编制/复核。
+
+主站解析的 `stop_grace_period=10m` 与独立入口一致，确认循环单独等待 read/commit settled 后才关闭 PG/退出；其他解析/编制 drain 语义不变。项目锁仍串行，跨 PG 的 commit 往返仍存在，不承诺所有小件始终先完成。
+
+SIGTERM/SIGINT 停止新领取，持续续租并等待现有读取/提交结束，不提前释放暂存或 fence。Compose 宽限 10 分钟，这不是全量读取总 deadline。强制杀死后仍按 PG 租约和原 fence 恢复，不能把未返回当成已取消；正常切换先排空。
+
+分段日志 `upload_confirmation_phase` 含 upload ID、lane、phase 与实测 `elapsed_ms`：`read` 包括完整读取、hash 和可选落盘，canonical 另读另记，缓存命中不伪造 read；`inspection` 是原声明/落盘文件检查（例外路径照实计时）；`commit` 包括事务、ETag复查和提交。失败阶段也计时，必须结合最终 outcome 与持久凭据判定成功。总 `upload_confirmation.elapsed_ms` 还含领取和准备查询，不能称为 reader 时间，也不能相加并行 lane 耗时。不记录连接、SAS、文件名或内容。
+
+功能回归覆盖新入口不领取 run/parse、16MiB 精确边界、wrong-lane 零领取、受控大件 full-read gate 下 small 完成、主站 SIGTERM 超过原 drain 限制仍等待确认、共享暂存、202→200/同一材料重放及 owner/fence/完整性。性能验收须 Azure 确认经现有 PG 隧道连接腾讯**独立 synthetic 测试库/队列**，原认证仅在内存切换 dbname，不接业务队列、不复制客户数据、不新开公网 PG、不改业务迁移或权限；由一次创建/清理协调避免重建。Azure 本地 PG 只能证明功能。本次 size-split 复用已封存的大文件全量读取/完整性证据，不重建或重传已清理的大对象；新验收只创建 synthetic 小件，验证主站确认与执行端 large 零领取/零读取。性能记录区分 PUT、整段确认、分段计时、服务端完成、浏览器 200 与 ESA 等待；与 372.895 秒比较须统一整段确认口径，不预先承诺秒数，旧全迁移数据不证明新分流全面提速。#960 的 429 单列。机械回归不代表准确版本真实模型金样、独立业务复核或生产性能已通过，新源码不继承旧热修例外。
