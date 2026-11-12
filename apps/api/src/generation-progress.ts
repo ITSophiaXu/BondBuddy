@@ -41,8 +41,8 @@ export async function readGenerationProgress(db:Db,owner:string,id:string,kind:'
     SELECT
       (EXISTS(SELECT 1 FROM wb WHERE state IN ('queued','running')) OR
        EXISTS(SELECT 1 FROM db WHERE state IN ('queued','running')) OR
-       EXISTS(SELECT 1 FROM wi WHERE run_state IN ('queued','preparing','running','validating','delivering')) OR
-       EXISTS(SELECT 1 FROM di WHERE state IN ('queued','preparing','running','validating','delivering'))) AS active,
+       EXISTS(SELECT 1 FROM wi WHERE run_state IN ('queued','preparing','running','validating','delivering','settlement_pending')) OR
+       EXISTS(SELECT 1 FROM di WHERE state IN ('queued','preparing','running','validating','delivering','settlement_pending'))) AS active,
       (SELECT jsonb_agg(to_jsonb(fg) ORDER BY id) FROM fg) AS generation,
       (SELECT jsonb_agg(to_jsonb(wb) ORDER BY id) FROM wb) AS batches,
       (SELECT jsonb_agg(to_jsonb(wi) ORDER BY batch_id,item_id) FROM wi) AS items,
