@@ -13,6 +13,7 @@ import { claim, finish, promoteWordArtifact } from './queue.js';
 import { syntheticReviewPair } from './review-delivery-test-fixture.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { inputManifestHash } from './production-rule-pin.js';
+import { syntheticAuthoringBlobs } from './test-authoring-source.js';
 const config=JSON.parse(readFileSync(new URL('../../../deploy/m1/config/review-prices-20261009.json',import.meta.url),'utf8'));
 test('approved review catalog preserves authoring and leaves unpriced independent revisions unavailable',()=>{
  assert.equal(config.id,'review-20261009-v1');assert.equal(config.prices.full_review,13900);assert.equal(config.prices.differential_review,1200);
@@ -25,7 +26,8 @@ test('approved review prices: zero/one-point start, concurrency, delivered settl
  const bytes=new Map<string,Buffer>();
  const blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const b=bytes.get(k);assert.ok(b);return b;},getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bound');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
  let paid=false;
- const makeApp=()=>createServer({pool,blobs,enablePaidReview:paid,principal:async()=>({userId:active,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
+ // Replay the approved 2026-10-09 catalog and its original trial transition.
+ const makeApp=()=>createServer({pool,blobs,historicalBillingFixture:true,enablePaidReview:paid,principal:async()=>({userId:active,csrfVerified:true}),allowedOrigin:'http://bondbuddy.test'});
  let app=makeApp();const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin:'http://bondbuddy.test'}});
  const ok=(r:any)=>{assert.ok(r.statusCode>=200&&r.statusCode<300,r.body);return r.json();};
  try{
@@ -75,4 +77,58 @@ test('approved review prices: zero/one-point start, concurrency, delivered settl
   assert.equal((await auditCredits(pool)).consistent,true);
   active=uid();assert.equal((await send('GET',`/api/v1/runs/${run.run_id}/credit-charge`)).statusCode,404);
  }finally{await app.close();await pool.end();}
+});
+
+test('current review requires its actual quote with either paid flag and creates no unquoted trial', {skip:!connection},async()=>{
+ const pool=new Pool({connectionString:connection}),origin='http://bondbuddy.test';
+ try{
+  for(const paid of [false,true]){
+   const owner=uid(),blobs=syntheticAuthoringBlobs();
+   const app=createServer({pool,blobs,enableSyntheticQueue:true,enablePaidReview:paid,paymentProviders:[],
+    principal:async()=>({userId:owner,csrfVerified:true}),allowedOrigin:origin});
+   const send=(method:string,url:string,payload?:any,headers:Record<string,string>={})=>
+    app.inject({method:method as any,url,payload,headers:{origin,...headers}});
+   try{
+    await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'current_review_'+owner.slice(0,8)]);
+    const created=await send('POST','/api/v1/projects',{kind:'review',name:'Synthetic current review',issuer_name:null,market:null,offering:null});
+    assert.equal(created.statusCode,201,created.body);
+    const project=created.json().project_id,base=`/api/v1/projects/${project}`;
+    const source=makeSyntheticDocxFixture({text:'Synthetic current reviewed source'}),fields={byte_size:source.length,sha256:digest(source)};
+    const upload=await send('POST',`${base}/materials/uploads`,{...fields,filename:'synthetic-review.docx',
+     media_type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',role:'historical'});
+    assert.equal(upload.statusCode,201,upload.body);
+    assert.equal((await send('PUT',upload.json().upload_url,source,{'content-type':'application/octet-stream'})).statusCode,204);
+    const completed=await send('POST',`${base}/materials/uploads/${upload.json().upload_id}/complete`,fields);
+    assert.equal(completed.statusCode,200,completed.body);
+    const pin={material_id:completed.json().material_id,material_version:1,sha256:fields.sha256};
+    const drafted=await send('PUT',`${base}/review-draft`,{kind:'input',expected_version:0,
+     input:{source_material_ref:pin,material_versions:[pin],requirements:[],as_of:null}});
+    assert.equal(drafted.statusCode,200,drafted.body);
+    const request={execution_request_id:uid(),operation:'full_review',expected_input_version:1,
+     source_report_id:null,expected_plan_version:null,finding_ids:[]};
+    const unquoted=await send('POST',`${base}/review-executions`,request);
+    assert.equal(unquoted.statusCode,409,unquoted.body);
+    assert.equal(unquoted.json().code,'QUOTE_REQUIRED');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[project])).rows[0].n,0);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_credit_events WHERE owner_user_id=$1',[owner])).rows[0].n,0);
+    const quoted=await send('POST',`${base}/review-executions/quote`,request);
+    assert.equal(quoted.statusCode,200,quoted.body);
+    const {quote,shortage}=quoted.json();
+    assert.equal(quote.quote_status,'ready');assert.equal(quote.auto_charge,true);
+    assert.ok(quote.quote_id&&quote.scope_quote_id);
+    assert.match(shortage,/^\d+$/);assert.ok(BigInt(shortage)>0n);
+    // Use the server's actual current shortage, never a hard-coded tariff.
+    await transaction(pool,c=>grantCredits(c,{owner,source:'purchase',key:uid(),points:shortage,expiresAt:null,
+     actor:'synthetic-current-review',reason:'Synthetic funds for current review admission only'}));
+    const accepted=await send('POST',`${base}/review-executions`,{...request,quote_id:quote.quote_id});
+    assert.equal(accepted.statusCode,200,accepted.body);
+    assert.equal(accepted.json().billing_mode,'fixed_credits');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[project])).rows[0].n,1);
+    const charge=await send('GET',`/api/v1/runs/${accepted.json().run_id}/credit-charge`);
+    assert.equal(charge.statusCode,200,charge.body);assert.equal(charge.json().state,'held');
+    assert.equal(charge.json().quote.quote_id,quote.quote_id);
+    assert.equal(charge.json().quote.points,quote.points);
+   }finally{await app.close();}
+  }
+ }finally{await pool.end();}
 });
