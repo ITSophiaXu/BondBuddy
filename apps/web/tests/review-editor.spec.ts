@@ -30,7 +30,7 @@ async function editor(page:any,{empty=false,fail=false,corrupt=false}={}){
 test('review editor downloads all variants and exposes progress and recoverable failures',async({page},testInfo)=>{
   const state=await editor(page,{fail:true});
   await page.getByRole('button',{name:'下载修订版',exact:true}).click();
-  await expect(page.getByRole('status')).toContainText('文件暂时未能下载，请稍后重试下载。');
+  await expect(page.getByRole('status')).toContainText('成果文件暂时无法读取或校验未通过');
   state.fail=false;
   for(const label of ['下载修订版','下载清洁版','下载复核报告']){
     let release!:()=>void;state.wait=new Promise(resolve=>release=resolve);
@@ -60,7 +60,7 @@ test('unmodified historical output is downloadable without claiming it contains 
 test('corrupt download fails visibly and retry reauthorizes and downloads verified bytes',async({page})=>{
   const state=await editor(page,{corrupt:true});let downloaded=false;page.on('download',()=>downloaded=true);
   await page.getByRole('button',{name:'下载修订版',exact:true}).click();
-  await expect(page.getByRole('status')).toContainText('文件暂时未能下载，请稍后重试下载。');expect(downloaded).toBe(false);
+  await expect(page.getByRole('status')).toContainText('校验未通过');expect(downloaded).toBe(false);
   state.corrupt=false;const download=page.waitForEvent('download');
   await page.getByRole('button',{name:'下载修订版',exact:true}).click();await download;expect(state.reads).toBe(2);
 });
