@@ -179,11 +179,15 @@ test('synthetic browser upload, adoption and execution preserve the exact source
       t.diagnostic('BROWSER_UPLOAD_OBSERVATION ' + JSON.stringify({ phase, projectId, dom, database, trace: uploadTrace }));
     };
     const uploaded = async (label, name, mimeType, buffer) => {
-      await observeUpload(`before:${name}`);
       try {
+      const input = page.getByLabel(label, { exact: true });
+      // setInputFiles itself does not wait for enabled controls. Match the real
+      // user's picker availability while project/version reads release the lock.
+      // Use Playwright's existing expectation deadline; no sleep or wider timeout.
+      await expect(input).toBeEnabled();
       const pending = page.waitForResponse(r => r.request().method() === 'POST' &&
         r.url().includes(`/projects/${projectId}/materials/uploads/`) && r.url().endsWith('/complete'));
-      await page.getByLabel(label, { exact: true }).setInputFiles({ name, mimeType, buffer });
+      await input.setInputFiles({ name, mimeType, buffer });
       const confirming = await pending;
       assert.equal(confirming.status(), 202, await confirming.text());
       assert.equal(confirming.request().headers().prefer, 'respond-async');
@@ -211,7 +215,6 @@ test('synthetic browser upload, adoption and execution preserve the exact source
       assert.equal(confirmation[0].state, 'completed');
       assert.deepEqual(confirmation[0].result, material);
       assert.ok(confirmation[0].delivered_at);
-      await observeUpload(`after:${name}`);
       return material;
       } catch (error) {
         try { await observeUpload(`failed:${name}`); }
