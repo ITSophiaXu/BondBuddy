@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { Pool } from 'pg';
+import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import { azureBlobs, digest, type PrivateBlobs } from './data.js';
 import { createServer } from './server.js';
 import { claim, finish, promoteWordArtifact } from './queue.js';
@@ -15,6 +16,7 @@ import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { runStorageLifecycle, storageLifecyclePolicyFromEnv } from './storage-lifecycle.js';
 import { PDF, pdfSample } from './upload-safety.samples.js';
 import { isolatedTestDatabase } from './test-database.js';
+import { quoteSyntheticAuthoringRun, uploadSyntheticReference } from './test-authoring-source.js';
 
 const connection = await isolatedTestDatabase(undefined,'storage-lifecycle-tombstones');
 const restoreConnection = await isolatedTestDatabase();
@@ -47,8 +49,10 @@ test('PostgreSQL/Azurite tombstones pin snapshots, retry deletion and clean orph
     headers: { origin, ...extra },
     payload: payload as any
   });
-  const createProject = async (name: string) => {
-    const response = await send('POST', '/api/v1/projects', { name, kind: 'update', issuer_name: null, market: null, offering: null });
+  const createProject = async (name: string, authoring = false) => {
+    const response = await send('POST', '/api/v1/projects', { name, kind: 'update',
+      issuer_name: authoring ? 'Synthetic storage issuer' : null, market: authoring ? 'sse' : null, offering: authoring ? 'private' : null,
+      ...(authoring ? { update_details: { ...emptyUpdateDetails(), authoring_mode: 'unified_v1', reporting_cutoff: '2026-09-30' } } : {}) });
     assert.equal(response.statusCode, 201, response.body);
     return response.json().project_id as string;
   };
@@ -69,7 +73,7 @@ test('PostgreSQL/Azurite tombstones pin snapshots, retry deletion and clean orph
   };
 
   try {
-    const projectId = await createProject('Synthetic pinned storage project');
+    const projectId = await createProject('Synthetic pinned storage project', true);
     const retryableUpload = await startUpload(projectId, 'retryable.pdf', false);
     const retryableKey = `users/${activeOwner}/projects/${projectId}/uploads/${retryableUpload.uploadId}`;
     await blobs.delete(retryableKey);
@@ -84,17 +88,23 @@ test('PostgreSQL/Azurite tombstones pin snapshots, retry deletion and clean orph
     const pinnedKey = `users/${activeOwner}/projects/${projectId}/uploads/${pinnedUpload.uploadId}`;
     const receivedEvents = await pool.query("SELECT count(*)::int AS n FROM bb_outbox WHERE aggregate_type='upload' AND aggregate_id=$1 AND event_type='upload.received'", [pinnedUpload.uploadId]);
     assert.equal(receivedEvents.rows[0].n, 1, 'repeated PUT does not duplicate the received outbox event');
+    // The added source remains a completed live material; only the original audit is tombstoned below.
+    const source = await uploadSyntheticReference(app, projectId);
     const inputResponse = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, {
-      draft_revision: 1,
-      material_versions: [{ material_id: pinned.material_id, material_version: pinned.material_version }],
-      requirement_message_ids: []
+      ...source,
+      material_versions: [{ material_id: pinned.material_id, material_version: pinned.material_version }, ...source.material_versions]
     });
     assert.equal(inputResponse.statusCode, 201, inputResponse.body);
     const input = inputResponse.json();
+    const lockedMaterials = (await pool.query('SELECT material_versions FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3',
+      [activeOwner, projectId, input.input_revision])).rows[0].material_versions;
+    assert.ok(lockedMaterials.some((material: any) => material.material_id === pinned.material_id && material.material_version === pinned.material_version),
+      'the original audit version remains pinned by this run input');
+    const quoteId = await quoteSyntheticAuthoringRun(app, pool, activeOwner, projectId, input);
     const staged = await send('POST', '/api/v1/runs/execute', {
       execution_request_id: randomUUID(), project_id: projectId, input_revision: input.input_revision,
       input_hash: input.input_hash, task_kind: 'update', input_manifest_ref: 'synthetic-manifest',
-      storage_origin: 'cloud', workspace_id: 'synthetic-workspace'
+      storage_origin: 'cloud', workspace_id: 'synthetic-workspace', quote_id: quoteId
     });
     assert.equal(staged.statusCode, 202, staged.body);
     const snapshotRef = randomUUID();
@@ -128,6 +138,8 @@ test('PostgreSQL/Azurite tombstones pin snapshots, retry deletion and clean orph
 
     let currentTime = Date.now() + 2 * 24 * 60 * 60_000;
     const oneDayPolicy = { materialRetentionDays: 1, orphanUploadGraceHours: 1, now: () => new Date(currentTime), ownerScope: activeOwner };
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_storage_tombstones WHERE owner_user_id=$1 AND material_id=$2',
+      [activeOwner, source.material_versions[0]!.material_id])).rows[0].n, 0, 'the completed live source adds no purge candidate');
     const pinnedResult = await runStorageLifecycle(pool, blobs, oneDayPolicy);
     assert.equal(pinnedResult.claimed, 0, 'an input revision/run/artifact reference pins the material bytes');
     assert.equal(pinnedResult.pinned, 1, 'the bounded status count reports an eligible pinned tombstone');
@@ -319,7 +331,9 @@ test('PostgreSQL/Azurite dump, restore, Blob copy and tombstone replay preserve 
   const sourceContainer = `bb-restore-${randomUUID().replaceAll('-', '')}`;
   const restoredContainer = `bb-isolated-${randomUUID().replaceAll('-', '')}`;
   const sourceBlobs = azureBlobs(blobConnection!, sourceContainer);
-  const app = createServer({ pool, blobs: sourceBlobs, principal: async () => ({ userId: ownerId, csrfVerified: true }), allowedOrigin: origin, enableSyntheticQueue: true });
+  // Restore compatibility includes historical single-Word runs and their one immutable delivery-evidence row.
+  const app = createServer({ pool, blobs: sourceBlobs, principal: async () => ({ userId: ownerId, csrfVerified: true }), allowedOrigin: origin, enableSyntheticQueue: true,
+    historicalBillingFixture: true, enablePaidAuthoring: false });
   const send = (method: string, url: string, payload?: unknown, extra: Record<string, string> = {}) => app.inject({ method: method as any, url, headers: { origin, ...extra }, payload: payload as any });
   const tempDir = await mkdtemp(join(tmpdir(), 'bondbuddy-storage-restore-'));
   const dumpPath = join(tempDir, 'bondbuddy.dump');
