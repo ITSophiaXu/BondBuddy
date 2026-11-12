@@ -123,3 +123,7 @@ docs/runbooks/*
 !docs/acceptance/execution-admission-fixtures-20261112/
 !docs/acceptance/execution-admission-fixtures-20261112/*.json
 !docs/acceptance/execution-admission-fixtures-20261112/*.tap
+# Log operations and target confirmation fixture evidence.
+!docs/acceptance/logops-target-admission-20261112.md
+!docs/acceptance/logops-target-admission-20261112/
+!docs/acceptance/logops-target-admission-20261112/*
