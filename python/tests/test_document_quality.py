@@ -85,6 +85,77 @@ class DocumentQualityTests(unittest.TestCase):
                                 'before': node['text'], 'text': '此处披露范围待核对。'}])
         self.assertEqual(result['status'], 'passed', result)
 
+    def test_cross_issuer_market_and_product_rewrite_preserves_template(self):
+        doc = Document()
+        doc.add_heading('合成母公司2025年非公开发行公司债券', level=1)
+        doc.add_paragraph('本公司债券拟在上交所挂牌转让，投资者人数不得超过二百人。' * 8)
+        doc.add_heading('第一章 合成母公司业务概况', level=1)
+        doc.add_paragraph('母公司负责集团股权投资及产业园区基础设施开发建设。' * 8)
+        doc.add_heading('第二章 流动性风险', level=1)
+        doc.add_paragraph('上交所挂牌交易的活跃程度及投资者人数限制影响债券流动性。' * 8)
+        doc.add_table(rows=1, cols=1).cell(0, 0).text = '公司债券交易安排'
+        doc.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        replacements = [
+            '合成子公司2026年中期票据', '本期中期票据在银行间市场交易流通。',
+            '第一章 合成子公司业务概况', '发行人提供城市运营服务，收入来源为公共设施运营。',
+            '第二章 流动性风险', '银行间市场交易活跃程度变化可能影响本期票据流动性。',
+        ]
+        operations = [{'id': f'update-{i}', 'kind': 'replace_text', 'node_id': self.node(p.text)['node_id'],
+                       'before': p.text, 'after': text} for i, (p, text) in enumerate(zip(doc.paragraphs, replacements))
+                      if p.text != text]
+        cell = next(n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'cell')
+        operations.append({'id': 'market-cell', 'kind': 'replace_cell_text', 'node_id': cell['node_id'],
+                           'before': cell['text'], 'after': '中期票据流通安排'})
+        report = self.generate(operations)
+        self.assertEqual(report['status'], 'passed', report)
+        self.assertLess(report['metrics']['prose_retention'], .1)
+        self.assertLess(report['metrics']['ratios']['characters'], .25)
+        self.assertEqual(report['metrics']['outline_status'], 'unchanged')
+        self.assertEqual(report['metrics']['ratios']['nonempty_paragraphs'], 1)
+        # This is mechanical template acceptance, not financial/legal acceptance.
+        self.assertEqual(report['factual_accuracy'], 'not_verified')
+        self.assertEqual(report['visual_review'], 'not_run')
+
+    def test_concise_local_rewrite_does_not_require_padding_or_old_phrases(self):
+        old = '发行人保持原有经营管理制度，主营基础设施项目投资和建设。' * 8
+        report = self.generate([{'id': 'concise', 'kind': 'replace_text', 'node_id': self.node(old)['node_id'],
+                                 'before': old, 'after': '发行人主营城市公共设施运营。'}])
+        self.assertEqual(report['status'], 'passed', report)
+
+    def test_legacy_direct_authoring_uses_same_flexible_policy_and_keeps_real_revisions(self):
+        self.data.pop('operations_path')
+        old = '发行人保持原有经营管理制度，主营基础设施项目投资和建设。' * 8
+        report = self.generate([{'id': 'concise', 'kind': 'replace_text', 'node_id': self.node(old)['node_id'],
+                                 'before': old, 'after': '发行人主营城市公共设施运营。'}])
+        self.assertEqual(report['status'], 'passed', report)
+
+    def test_erased_short_section_is_rejected_without_a_minimum_character_threshold(self):
+        doc = Document(self.source)
+        doc.add_heading('第三章 交易安排', level=1)
+        doc.add_paragraph('本期票据在银行间市场交易流通。')
+        doc.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        node = self.node(doc.paragraphs[-1].text)
+        report = self.generate([{'id': 'erase-short', 'kind': 'replace_text', 'node_id': node['node_id'],
+                                 'before': node['text'], 'after': '  '}])
+        self.assertIn('WORD_SOURCE_CHAPTER_CONTENT_LOST', self.codes(report))
+
+    def test_erased_table_is_rejected_even_with_other_chapter_body(self):
+        cells = [n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'cell']
+        report = self.generate([{'id': f'erase-{i}', 'kind': 'replace_cell_text', 'node_id': n['node_id'],
+                                 'before': n['text'], 'after': ''} for i, n in enumerate(cells)])
+        self.assertIn('WORD_SOURCE_TABLE_CONTENT_LOST', self.codes(report))
+
+    def test_missing_renumbered_and_reordered_chapters_are_rejected(self):
+        first, second = '第一章 发行人基本情况', '第二章 财务会计信息'
+        for titles in [('', second), ('第三章 发行人基本情况', second), (second, first)]:
+            with self.subTest(titles=titles):
+                report = self.generate([{'id': f'heading-{i}', 'kind': 'replace_text',
+                                         'node_id': self.node(old)['node_id'], 'before': old, 'after': new}
+                                        for i, (old, new) in enumerate(zip((first, second), titles)) if old != new])
+                self.assertIn('WORD_SOURCE_OUTLINE_CHANGED', self.codes(report))
+
     def test_tracked_and_clean_equal_text_with_different_styles_is_rejected(self):
         self.generate()
         def mutate(parts):
@@ -150,7 +221,25 @@ class DocumentQualityTests(unittest.TestCase):
         restored = resolve_revisions(xml(package(self.root / 'output/tracked.docx')['word/document.xml']), False, only_new=self.data['revision_author'])
         self.assertEqual(len(restored.find(q('body')).findall(q('p'))), 104)
 
-    def test_padded_rewrite_cannot_pass_by_retaining_character_count(self):
+    def test_long_manuscript_cannot_keep_all_paragraphs_but_shrink_every_body_to_a_summary(self):
+        doc = Document()
+        doc.add_heading('第一章 发行人基本情况', level=1)
+        for index in range(310):
+            doc.add_paragraph(f'第{index + 1}项业务披露：' + '本期发行人业务、经营及财务情况需要完整说明。' * 20)
+        doc.save(self.source)
+        self.data['baseline_sha256'] = sha(self.source.read_bytes())
+        nodes = [n for n in build_manifest(self.source)['nodes'] if n['kind'] == 'paragraph' and '项业务披露：' in n['text']]
+        self.data['document_size_check'] = {'status': 'passed', 'page_count': 310, 'enabled': False}
+        report = self.generate([{'id': f'condense-{i}', 'kind': 'replace_text', 'node_id': n['node_id'],
+                                 'before': n['text'], 'after': f'第{i + 1}项业务说明已更新。'} for i, n in enumerate(nodes)])
+        self.assertEqual(report['metrics']['ratios']['nonempty_paragraphs'], 1)
+        self.assertEqual(report['metrics']['outline_status'], 'unchanged')
+        self.assertEqual(report['status'], 'failed')
+        finding = next(i for i in report['issues'] if i['code'] == 'WORD_DOCUMENT_SIZE_REDUCED')
+        self.assertEqual(finding['metric'], 'body_characters')
+        self.assertLess(report['document_size_check']['character_ratio'], .1)
+
+    def test_unrecorded_rewrite_cannot_pass_by_retaining_character_count(self):
         self.generate()
         def replace(parts):
             root = xml(parts['word/document.xml'])
@@ -163,7 +252,7 @@ class DocumentQualityTests(unittest.TestCase):
             self.mutate(self.root / f'output/{name}.docx', replace)
         report = verify(self.input)
         self.assertGreater(report['metrics']['ratios']['characters'], 1)
-        self.assertIn('WORD_SOURCE_PROSE_LOST', self.codes(report))
+        self.assertIn('WORD_SOURCE_FORMAT_CHANGED', self.codes(report))
 
     def test_one_chapter_loss_is_detected_even_when_global_length_is_padded(self):
         original = '发行人保持原有经营管理制度，主营基础设施项目投资和建设。' * 8
@@ -171,11 +260,11 @@ class DocumentQualityTests(unittest.TestCase):
         report = self.generate([{'id': 'wipe', 'kind': 'replace_text', 'node_id': node['node_id'], 'before': original, 'after': ''}])
         self.assertIn('WORD_SOURCE_CHAPTER_CONTENT_LOST', self.codes(report))
 
-    def test_heading_rewrite_is_blocked_even_when_operation_log_is_valid(self):
+    def test_heading_wording_can_change_in_recorded_operations(self):
         node = self.node('第一章 发行人基本情况')
         report = self.generate([{'id': 'rename', 'kind': 'replace_text', 'node_id': node['node_id'],
-                                 'before': node['text'], 'after': '第一章 新编摘要'}])
-        self.assertIn('WORD_SOURCE_OUTLINE_CHANGED', self.codes(report))
+                                 'before': node['text'], 'after': '第一章 目标发行人基本情况'}])
+        self.assertEqual(report['status'], 'passed', report)
 
     def test_basic_information_value_update_keeps_true_heading_sequence(self):
         doc = Document(self.source)
@@ -190,7 +279,7 @@ class DocumentQualityTests(unittest.TestCase):
         self.assertEqual(report['metrics']['outline_status'], 'unchanged')
         self.assertEqual(report['factual_accuracy'], 'not_verified')
 
-    def test_unstyled_colon_title_rewrite_remains_blocked(self):
+    def test_unstyled_colon_title_wording_can_change(self):
         doc = Document(self.source)
         doc.add_paragraph('一、风险因素：财务风险')
         doc.save(self.source)
@@ -198,7 +287,7 @@ class DocumentQualityTests(unittest.TestCase):
         node = self.node('一、风险因素：财务风险')
         report = self.generate([{'id': 'rename-colon-heading', 'kind': 'replace_text', 'node_id': node['node_id'],
                                  'before': node['text'], 'after': '一、风险因素：经营风险'}])
-        self.assertIn('WORD_SOURCE_OUTLINE_CHANGED', self.codes(report))
+        self.assertEqual(report['status'], 'passed', report)
 
     def test_formula_note_update_passes_without_approving_its_financial_meaning(self):
         doc = Document(self.source)
@@ -252,14 +341,12 @@ class DocumentQualityTests(unittest.TestCase):
         doc.save(self.source)
         self.data['baseline_sha256'] = sha(self.source.read_bytes())
         node = self.node(original)
-        replacement = ('对短期现金收支及受限资产另行开展审查，本期评价等待补充资料后确定。' * 10)[:len(original)]
         report = self.generate([{'id': 'rewrite-analysis', 'kind': 'replace_text', 'node_id': node['node_id'],
-                                 'before': original, 'after': replacement}])
+                                 'before': original, 'after': ''}])
         self.assertEqual(report['metrics']['outline_status'], 'unchanged')
         self.assertEqual(report['metrics']['formula_status'], 'unchanged')
         problem = next(i for i in report['issues'] if i['code'] == 'WORD_SOURCE_CHAPTER_CONTENT_LOST')
-        self.assertGreaterEqual(problem['chapters'][0]['character_ratio'], .75)
-        self.assertLess(problem['chapters'][0]['prose_retention'], .55)
+        self.assertEqual(problem['chapters'][0]['reason'], 'empty_body')
 
     def test_arabic_heading_numbers_cannot_be_normalized_away(self):
         doc = Document(self.source)
@@ -328,6 +415,13 @@ class DocumentQualityTests(unittest.TestCase):
         self.data.update(baseline_kind='reconstructed_pdf', baseline_sha256=sha(self.source.read_bytes()), original_pdf_path='source.pdf')
         self.make_pdf(text)
         self.assertEqual(self.generate()['status'], 'passed')
+        # Once the PDF has been faithfully reconstructed, a concise cross-product
+        # update is permitted just like an editable DOCX reference.
+        node = self.node(text)
+        rewritten = self.generate([{'id': 'pdf-update', 'kind': 'replace_text', 'node_id': node['node_id'],
+                                    'before': text, 'after': 'Updated issuer and interbank note disclosure.'}])
+        self.assertEqual(rewritten['status'], 'passed', rewritten)
+        self.assertLess(rewritten['metrics']['pdf']['clean']['prose_retention'], .65)
         # A tiny model-created baseline agrees perfectly with its two outputs,
         # but must not erase the independently available original PDF text.
         doc = Document()

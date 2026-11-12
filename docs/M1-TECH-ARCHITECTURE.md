@@ -1,3 +1,5 @@
+> 2026-11-11：按用户对篇幅门禁的补充要求（#995），`file-authoring-repair` 在同一任务内对可信篇幅拒绝最多执行两轮修复，使用固定逻辑调用ID、独立报告和格式计划保存恢复依据。原始基线和输入不变，修复后仍走完整交付检查；预算耗尽暂停待处理，渲染故障重试检查，delivery-only恢复不追加模型调用。无公共枚举、迁移或计费政策变化，见[同日决定](product-decisions/2026-11-11-reference-text-flexibility.md)。
+
 > 2026-11-08：新增[本地发布前基础流程脚本](../scripts/release-smoke/README.md)，从固定提交构建正式 Dockerfile 的 Web/API/worker，使用独立 PostgreSQL、Azurite、测试账号及已授权真实样本检查更新、复核、问答。启动层补充 Mac/Windows 本机 Docker 连接、路径、挂载和权限处理，Windows 使用 PowerShell 与 Docker Desktop Linux 容器；统一操作入口见根 README。本轮平台适配按用户要求未重跑测试，Windows 实机验收尚未记录。逐项记录镜像/样本/任务/下载证据，未运行和失败均不能放行；实际验收结果以每次私有运行报告为准。单机测试不替代双端部署拓扑、其他镜像架构或专业内容验收，不更改生产发布入口、公共契约或数据库迁移。
 
 > 2026-11-07：#906/#908 已完成双端迁移；腾讯云主站恒常运行网页/API/唯一PG/运维和纯解析，Azure 执行端仅编制/复核，经专用受限 SSH 转发复用 PG 队列。继续使用私有 Azure Blob、业务 Codex 1M窗口/900K压缩及既有诚信出口。迁移仅在主站执行；角色、资产与恢复边界见[双端部署说明](runbooks/m1-split-deployment.md)。#911 负责统一配置生命周期的采纳与验收。
@@ -5,6 +7,8 @@
 > 2026-11-05：按[专业文档工作台决定](product-decisions/2026-11-05-professional-document-workspace.md)，浏览器与原型共用 `product-prototype/public/document-workspace.css`，在现有展示样式后加载；`document-deliverable.ts` 仅组织真实成果文件名、已保存版本和原下载控件。保留 Vite/TypeScript、所有业务模块和授权下载链路，无公共契约、数据或 worker 变更。
 
 > 2026-11-05：更新项目的历史／参考募集书新上传仅支持 Word（.docx）。共用入口按项目返回的 `upload_docx_only` 显示限制；API 创建、传输、完成及角色复制执行相同规则，已完成上传和旧 PDF 保留。无新增迁移；见[格式支持决定](product-decisions/2026-11-05-historical-docx-only.md)。
+> 2026-11-11：按[参考募集书文字灵活更新及同日篇幅补充](product-decisions/2026-11-11-reference-text-flexibility.md)，`quality.verify` 取消全文及分节文字相似度／逐章字数比例的硬门槛，保留章节编号、层级、顺序及格式校验；标题措辞可变，章节正文按结构位置检查清空。`document_size` 独立检查整篇长稿正文总量70%下限，并用同环境LibreOffice实际分页检查至少50页的原稿：页数低于70%且减少至少20页即拒绝。需渲染但不可用时失败关闭，已有质量失败可以跳过渲染且不宣称页数通过。`format_diff` 与 `preflight` 同步执行新口径，可信重放、双稿一致性、期间／公式／事实锚点检查保持。PDF 原文保真用于重建基线，随后改写执行相同的文字灵活与整体规模规则。不改公共请求契约或数据库。
+
 > 2026-11-01：按[募集书质量与发布门禁](product-decisions/2026-11-01-prospectus-quality-gate.md)，原件身份、双 Word 修订一致性、结构/内容保留和模板检查改为宿主交付前必要条件。失败保存私有报告与检查点，不进入正常交付；重放不增加模型调用。部署与镜像导出必须验证绑定候选 commit/tree 的 Linux 回归凭据；运行时机械检查、真实模型事实验收与页面验收分别记录。本要求覆盖旧“生成文件即交付”的冲突说明。见[本次审计](acceptance/prospectus-quality-regression-20261101.md)。
 
 > 2026-10-30：按[取消每日限额决定](product-decisions/2026-10-30-no-daily-limits.md)，API 与 worker 不再按每日任务数、模型 token、项目数或上传总量拦截；忽略旧每日限额配置，管理字段返回 0。用量统计、积分计费、并发容量及其他有效检查保留。历史每日限额暂停由已有 sweep 恢复，历史错误枚举兼容保留。此决定覆盖下文旧试用每日限额说明。

@@ -16,6 +16,37 @@ def p(text, props=''):
 
 
 class SourceOutlineTests(unittest.TestCase):
+    def test_flexible_text_preserves_heading_and_toc_slots(self):
+        heading = '<w:outlineLvl w:val="0"/>'
+        toc_style = '<w:style w:styleId="TOC1"><w:name w:val="toc 1"/></w:style>'
+        before = parts(p('第一章 合成母公司基本情况', heading)
+                       + p('第一章 合成母公司基本情况\t1', '<w:pStyle w:val="TOC1"/>'), toc_style)
+        after = parts(p('第一章 合成子公司基本情况', heading)
+                      + p('第一章 合成子公司基本情况\t3', '<w:pStyle w:val="TOC1"/>'), toc_style)
+        self.assertEqual(compare_outlines(outline(before), outline(after), flexible_text=True)['status'], 'unchanged')
+        self.assertEqual(compare_outlines(outline(before), outline(after))['status'], 'changed')
+
+    def test_flexible_text_rejects_number_hierarchy_count_and_known_order_changes(self):
+        heading = '<w:outlineLvl w:val="0"/>'
+        for old, new in [('第一章 概况', '第二章 概况'), ('1 财务', '2 财务'),
+                         ('1.2 偿债', '1.3 偿债'), ('一、风险', '二、风险'),
+                         ('（一）风险', '（二）风险')]:
+            with self.subTest(old=old):
+                self.assertEqual(compare_outlines(outline(parts(p(old, heading))), outline(parts(p(new, heading))),
+                                                  flexible_text=True)['status'], 'changed')
+        old = parts(p('概况', heading) + p('风险', heading))
+        for body in [p('概况', heading), p('风险', heading) + p('概况', heading),
+                     p('概况', '<w:outlineLvl w:val="1"/>') + p('风险', heading),
+                     p('概况', heading + '<w:numPr><w:numId w:val="2"/></w:numPr>') + p('风险', heading)]:
+            with self.subTest(body=body):
+                self.assertEqual(compare_outlines(outline(old), outline(parts(body)), flexible_text=True)['status'], 'changed')
+
+    def test_rewriting_one_repeated_title_is_not_reordering_the_other(self):
+        heading = '<w:outlineLvl w:val="1"/>'
+        old = parts(p('风险提示', heading) + p('风险提示', heading))
+        new = parts(p('风险提示', heading) + p('本期票据风险提示', heading))
+        self.assertEqual(compare_outlines(outline(old), outline(new), flexible_text=True)['status'], 'unchanged')
+
     def test_consecutive_known_arithmetic_formulas_are_body_content(self):
         debt = '1.全部债务=短期借款+一年内到期的非流动负债+长期借款+应付债券+长期应付款中有息债务'
         note = '（有息债务口径下一年内到期的非流动负债扣除应付利息）'
