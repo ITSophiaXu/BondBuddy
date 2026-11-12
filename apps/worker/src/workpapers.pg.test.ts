@@ -20,7 +20,9 @@ test('300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolati
   const pool=new Pool({connectionString:database}),user=randomUUID();let actor=user;
   const store=new Map<string,Buffer>();const blobs:PrivateBlobs={put:async(k,b)=>{store.set(k,Buffer.from(b));},get:async k=>Buffer.from(store.get(k)!),getIfExists:async k=>store.get(k)??null,
     getIfExistsBounded:async(k,max)=>{const b=store.get(k);if(b&&b.length>max)throw Error('too large');return b??null;},exists:async k=>store.has(k),delete:async k=>{store.delete(k);}};
-  const origin='http://bondbuddy.test',app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
+  const origin='http://bondbuddy.test',app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,
+    // Replay the original 4500-point contract, retired assessment and progress-refund semantics.
+    historicalBillingFixture:true,principal:async()=>({userId:actor,csrfVerified:true})});
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
   const ok=async(method:string,url:string,payload?:any)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,`${r.statusCode}: ${r.body}`);return r.json();};
   const upload=async(id:string,name:string,bytes:Buffer,media_type:string,role='other')=>{
