@@ -11,8 +11,8 @@ import {verifyRollbackReport} from './verify.mjs';
 import {candidateIdentity,verifyInstalledImages,targetsFor} from './verify-images.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
-export function verifyRollbackReadiness({candidate,current,scope,qualityRaw,smokeRaw,releasesLog,previousExpected,docker,now=Date.now()}){
- targetsFor(scope);if(!/^[a-f0-9]{40}$/.test(candidate))throw Error('Candidate commit must be exact');
+export function verifyRollbackReadiness({candidate,current,scope,qualityRaw,smokeRaw,releasesLog,previousExpected,docker,selection='source',now=Date.now()}){
+ if(!['all','main','execution'].includes(scope))throw Error('Unknown deployment image scope');if(!/^[a-f0-9]{40}$/.test(candidate))throw Error('Candidate commit must be exact');
  if(!current)return {status:'first_deployment',previous:null};
  if(!/^[a-f0-9]{12}$/.test(current)||!/^[a-f0-9]{40}$/.test(candidate))throw Error('Current deployment must identify an exact trusted commit');
  if(current===candidate.slice(0,12))return {status:'same_candidate',previous:candidate};
@@ -20,12 +20,13 @@ export function verifyRollbackReadiness({candidate,current,scope,qualityRaw,smok
  const role=scope==='all'?undefined:scope;
  verifyRollbackReceipt(qualityRaw,previousExpected,releasesLog,now,role);
  const report=verifyRollbackReport(smokeRaw,previousExpected,releasesLog,now,role);
- const images=verifyInstalledImages(report,previousExpected,scope,{docker});
+ const images=verifyInstalledImages(report,previousExpected,scope,{docker,selection});
  return {status:'verified',previous:previousExpected.commit,images,scope,compatibility:'database backups and migration compatibility remain separate required checks'};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  try{
-  const [ref,state,scope='all']=process.argv.slice(2);if(!ref||!state)throw Error('Usage: rollback-readiness.mjs <candidate> <state> [all|main|execution]');
+  const [ref,state,scope='all',option='--confirmation=source']=process.argv.slice(2);if(!ref||!state||!/^--confirmation=(source|active|disabled)$/.test(option))throw Error('Usage: rollback-readiness.mjs <candidate> <state> [all|main|execution] [--confirmation=source|active|disabled]');
+  const selection=option.slice('--confirmation='.length);
   const git=args=>execFileSync('git',args,{cwd:root,windowsHide:true}),candidate=git(['rev-parse','--verify',`${ref}^{commit}`]).toString().trim();
   const currentPath=join(state,'current'),current=existsSync(currentPath)?readFileSync(currentPath,'utf8').trim():'';
   let previousExpected,qualityRaw,smokeRaw,releasesLog;
@@ -35,6 +36,6 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
    if(existsSync(quality))qualityRaw=readFileSync(quality,'utf8');if(existsSync(smoke))smokeRaw=readFileSync(smoke,'utf8');if(existsSync(log))releasesLog=readFileSync(log,'utf8');
   }
   const docker=args=>execFileSync('docker',args,{encoding:'utf8',windowsHide:true,stdio:['ignore','pipe','pipe']});
-  process.stdout.write(JSON.stringify(verifyRollbackReadiness({candidate,current,scope,qualityRaw,smokeRaw,releasesLog,previousExpected,docker}))+'\n');
+  process.stdout.write(JSON.stringify(verifyRollbackReadiness({candidate,current,scope,qualityRaw,smokeRaw,releasesLog,previousExpected,docker,selection}))+'\n');
  }catch(error){console.error('Rollback readiness blocked: '+error.message+'; no legacy quality receipt or rollback waiver was created');process.exitCode=1;}
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Usage: export-images-role.sh main|execution <git-sha> <output.tar.gz> [beijing|direct|disabled]
 set -euo pipefail
+BB_RELEASE_CONFIRMATION_SELECTION=source
 role="${1:?role required}"; ref="${2:?git-sha required}"; output="${3:?output archive required}"
 case "$role" in main) targets=(api worker web egress);; execution)
  targets=(worker egress pg-tunnel)
@@ -36,7 +37,7 @@ for target in "${targets[@]}"; do
     git -C "$repo" archive "$sha" | tar -x -C "$ctx"
   fi
   case "$target" in
-    api|worker|web) echo "tested image disappeared: $target; reload the exact tested image archive" >&2; exit 3;;
+    api|worker|web|upload-confirmation) echo "tested image disappeared: $target; reload the exact tested image archive" >&2; exit 3;;
     integrity-tunnel) docker build --network "${BB_BUILD_NETWORK:-default}" -q --label "org.opencontainers.image.revision=$sha" -f "$ctx/deploy/beijing/Dockerfile.tunnel" -t "$image" "$ctx/deploy/beijing" >/dev/null;;
     egress|pg-tunnel) docker build --network "${BB_BUILD_NETWORK:-default}" -q --label "org.opencontainers.image.revision=$sha" -t "$image" "$ctx/deploy/m1/$target" >/dev/null;;
     *) docker build --network "${BB_BUILD_NETWORK:-default}" -q -f "$ctx/deploy/m1/Dockerfile" --target "$target" --build-arg BB_RELEASE_SHA="$sha" -t "$image" "$ctx" >/dev/null;;

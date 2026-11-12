@@ -3,6 +3,7 @@
 # Re-points the stack at images of an earlier release WITHOUT running migrations. Migrations are
 # append-only; check compatibility before release because rollback does not restore data.
 source "$(dirname "$0")/lib.sh"
+BB_RELEASE_CONFIRMATION_SELECTION=disabled
 target="${1:?usage: rollback.sh <previous-sha>}"
 sha="$(git -C "$BB_REPO" rev-parse --verify "$target^{commit}")"
 source "$(dirname "$0")/release-evidence.sh"

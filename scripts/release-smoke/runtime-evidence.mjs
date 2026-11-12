@@ -4,6 +4,7 @@ import {join,resolve} from 'node:path';
 import {sha256,contained,writeJson} from './support.mjs';
 import {BILLING_SNAPSHOT_SQL} from './billing-sql.mjs';
 import {MODEL_EVIDENCE_SQL} from './model-quality-evidence.mjs';
+import {CONFIRMATION_SQL} from './upload-confirmation-evidence.mjs';
 
 export const READ_ONLY_QUERY_CLI=`
 import pg from 'pg';
@@ -75,7 +76,7 @@ export function createEvidenceReaders({out,repo,directory,report,env,compose,sav
    return parsed;
   },
   async execReadOnly(request){
-   if(![BILLING_SNAPSHOT_SQL,MODEL_EVIDENCE_SQL].includes(request.text)||request.transaction?.isolation!=='repeatable read'||request.transaction?.readOnly!==true)throw Error('Only fixed read-only release evidence queries are allowed');
+   if(![BILLING_SNAPSHOT_SQL,MODEL_EVIDENCE_SQL,CONFIRMATION_SQL].includes(request.text)||request.transaction?.isolation!=='repeatable read'||request.transaction?.readOnly!==true)throw Error('Only fixed read-only release evidence queries are allowed');
    const [command,args]=compose(['exec','-T','api','node','--input-type=module','-e',READ_ONLY_QUERY_CLI]);
    const result=await evidenceCommand(command,args,{cwd:repo,env,input:{...request,project:report.project},timeoutMs:60000});
    const record=join(evidence,'billing-'+Date.now()+'-'+(++sequence));

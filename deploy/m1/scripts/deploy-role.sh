@@ -25,9 +25,15 @@ export BB_IMAGE_TAG="${sha:0:12}"
 exec 9>"$BB_STATE/deploy.lock"
 flock -n 9 || { echo 'this role is already being deployed' >&2; exit 75; }
 if [ "$rollback" = 0 ]; then
+  # Use the same protected, resolved service selection that lifecycle commands validate.
+  compose config --quiet
+  BB_RELEASE_CONFIRMATION_SELECTION=disabled
+  if role_confirmation_active; then BB_RELEASE_CONFIRMATION_SELECTION=active; fi
   verify_rollback_readiness "$BB_REPO" "$sha" "$BB_STATE" "$BB_DEPLOY_ROLE"
   verify_release_images "$BB_REPO" "$sha" "$BB_DEPLOY_ROLE" reuse
 fi
+BB_RELEASE_CONFIRMATION_SELECTION=disabled
+if role_confirmation_active; then BB_RELEASE_CONFIRMATION_SELECTION=active; fi
 if [ "$(env_value BB_NON_PRODUCTION_TEST_CHANNEL)" = enabled ] && [ "$(env_value BB_DEPLOYMENT_TIER)" != preprod ]; then
   echo 'non-production test channel requires BB_DEPLOYMENT_TIER=preprod' >&2; exit 2
 fi

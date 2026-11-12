@@ -2,7 +2,9 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {fiveFlowFixture} from './evidence-fixtures.mjs';
 import {verifyReport} from './verify.mjs';
+import {imageContract} from './image-contract.mjs';
 const now=Date.now(),expected={commit:'a'.repeat(40),tree:'b'.repeat(40),inspectorSha256:'c'.repeat(64)};
+expected.imageContract=imageContract('FROM scratch AS worker\n');
 const fixture=()=>fiveFlowFixture(expected,new Date(now-1000).toISOString(),Object.fromEntries(['api','worker','web'].map(target=>[target,{id:'sha256:'+'d'.repeat(64),platform:'linux/amd64'}])));
 test('five flows require their own quote, billing, artifact and repeat-download proof',()=>{
  assert.doesNotThrow(()=>verifyReport(fixture(),expected,now));

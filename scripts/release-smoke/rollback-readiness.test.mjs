@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {verifyRollbackReadiness} from './rollback-readiness.mjs';
 import {fiveFlowFixture} from './evidence-fixtures.mjs';
+import {imageContract} from './image-contract.mjs';
 import {POLICY,REQUIRED_CHECKS} from '../prospectus-quality-gate.mjs';
 const hash=b=>createHash('sha256').update(b).digest('hex'),now=Date.now(),candidate='c'.repeat(40);
 const expected={commit:'a'.repeat(40),tree:'b'.repeat(40),inspectorSha256:'d'.repeat(64)},imageId='sha256:'+'e'.repeat(64);
+expected.imageContract=imageContract('FROM scratch AS worker\n');
 function fixture(scope='main'){
  const stamp=new Date(now-48*3600*1000).toISOString(),images=Object.fromEntries(['api','worker','web'].map(t=>[t,{id:imageId,platform:'linux/amd64'}]));
  const smokeRaw=JSON.stringify(fiveFlowFixture(expected,stamp,images));

@@ -1,7 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {verifyImageIdentity,verifyInstalledImages,targetsFor} from './verify-images.mjs';
+import {imageContract} from './image-contract.mjs';
 const expected={commit:'a'.repeat(40),tree:'b'.repeat(40)},id='sha256:'+'c'.repeat(64);
+expected.imageContract=imageContract('FROM scratch AS worker\n');
 const report={sha:expected.commit,tree:expected.tree,images:Object.fromEntries(['api','worker','web'].map(t=>[t,{id,platform:'linux/amd64'}]))};
 const actual=()=>({Id:id,Os:'linux',Architecture:'amd64',Config:{Labels:{'org.opencontainers.image.revision':expected.commit}}});
 test('actual immutable image identity, source revision, platform and engine must all match',()=>{
@@ -33,7 +35,7 @@ test('drifting tags, malformed inventories and unavailable tested images cannot 
   assert.throws(()=>verifyInstalledImages(report,expected,'execution',{docker,reuse:true}));
   assert.ok(calls.every(a=>!['tag','pull','build'].includes(a[0])));
  }
- assert.deepEqual(targetsFor('execution'),['worker']);assert.throws(()=>targetsFor('other'));
+ assert.deepEqual(targetsFor('execution',expected),['worker']);assert.throws(()=>targetsFor('other',expected));
 });
 test('verification mode cannot create missing release tags',()=>{
  const calls=[],docker=args=>{calls.push(args);if(args[0]==='version')return 'linux/amd64';throw Error('missing');};
