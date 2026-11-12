@@ -1,0 +1,39 @@
+TAP version 13
+# Subtest: OCR validator rejects wrong identities, coordinates, edited pixels and certainty promotion
+ok 1 - OCR validator rejects wrong identities, coordinates, edited pixels and certainty promotion
+  ---
+  duration_ms: 7.235683
+  type: 'test'
+  ...
+# Subtest: owned OCR snapshots and user corrections are immutable, replay-safe and private
+not ok 2 - owned OCR snapshots and user corrections are immutable, replay-safe and private
+  ---
+  duration_ms: 1738.398519
+  type: 'test'
+  location: '/workspace/apps/api/dist/ocr.test.js:34:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"code":"INPUT_REQUIRED","message":"请补齐项目信息和已上传的原稿信息，保存当前输入后重新获取报价。","retryable":false,"field_errors":[],"correlation_id":"a11a2015-5499-4ec2-9175-6590fd0f0d7a"}
+
+    422 !== 202
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 202
+  actual: 422
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///workspace/apps/api/dist/ocr.test.js:83:16)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 1
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4092.223301

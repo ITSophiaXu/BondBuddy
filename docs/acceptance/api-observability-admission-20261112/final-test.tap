@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: OCR validator rejects wrong identities, coordinates, edited pixels and certainty promotion
+ok 1 - OCR validator rejects wrong identities, coordinates, edited pixels and certainty promotion
+  ---
+  duration_ms: 4.464682
+  type: 'test'
+  ...
+# Subtest: owned OCR snapshots and user corrections are immutable, replay-safe and private
+ok 2 - owned OCR snapshots and user corrections are immutable, replay-safe and private
+  ---
+  duration_ms: 6886.6868
+  type: 'test'
+  ...
+# Subtest: message persistence seam stays closed by default
+ok 3 - message persistence seam stays closed by default
+  ---
+  duration_ms: 3903.089396
+  type: 'test'
+  ...
+# Subtest: submitted prompt versions, owner and role isolation, replay and lifecycle
+ok 4 - submitted prompt versions, owner and role isolation, replay and lifecycle
+  ---
+  duration_ms: 7079.103772
+  type: 'test'
+  ...
+# Subtest: synthetic \#79 operation, usage, redaction, owner and outbox recovery
+ok 5 - synthetic \#79 operation, usage, redaction, owner and outbox recovery
+  ---
+  duration_ms: 9984.690334
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 41103.908866

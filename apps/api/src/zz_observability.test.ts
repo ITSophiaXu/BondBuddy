@@ -1,3 +1,4 @@
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun } from './test-authoring-source.js';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {Pool} from 'pg';
@@ -11,12 +12,13 @@ const connection=await isolatedTestDatabase();
 const blob=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 test('synthetic #79 operation, usage, redaction, owner and outbox recovery', {skip:!connection||!blob},async()=>{
   const pool=new Pool({connectionString:connection});
+  const blobs=azureBlobs(blob!);
   let owner='synthetic-log-a';
-  const app=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
+  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
   try {
     const project=(await send('POST','/api/v1/projects',{name:'Synthetic logging',kind:'update',issuer_name:null,market:null,offering:null})).json().project_id;
-    const input=(await send('POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[]})).json();
+    const input=(await lockSyntheticAuthoringInput(app,project)).json();
     const request={execution_request_id:'synthetic-log-1',project_id:project,input_revision:1,input_hash:input.input_hash,task_kind:'update',input_manifest_ref:'synthetic-manifest',storage_origin:'cloud',workspace_id:'synthetic-workspace'};
     owner='synthetic-log-b';
     const foreignProject=(await send('POST','/api/v1/projects',{name:'Other owner project',kind:'update',issuer_name:null,market:null,offering:null})).json().project_id;
@@ -42,7 +44,8 @@ test('synthetic #79 operation, usage, redaction, owner and outbox recovery', {sk
     assert.equal(rejection.statusCode,409);
     const rejected=await pool.query("SELECT * FROM bb_operations WHERE owner_user_id=$1 AND project_id=$2 AND status='rejected' AND error_code='INPUT_REVISION_CONFLICT'",[owner,project]);
     assert.equal(rejected.rowCount,1);assert.equal(rejected.rows[0].run_id,null);
-    const created=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:'synthetic-log-run'});assert.equal(created.statusCode,202,created.body);
+    const quoteId=await quoteSyntheticAuthoringRun(app,pool,owner,project,input);
+    const created=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:'synthetic-log-run',quote_id:quoteId});assert.equal(created.statusCode,202,created.body);
     const runId=created.json().run_id;
     // Older suites can leave expired jobs in this shared database; bind this fixture to its own run.
     const token=uid();
@@ -50,7 +53,6 @@ test('synthetic #79 operation, usage, redaction, owner and outbox recovery', {sk
     assert.ok(job);
     await pool.query("UPDATE bb_runs SET state='running' WHERE id=$1",[runId]);
     const lease={jobId:job.id as string,runId,owner,token,checkpoint:job.checkpoint,attempts:job.attempts as number};
-    const blobs=azureBlobs(blob!);
     const promptKey=`users/${owner}/projects/${project}/snapshots/synthetic_prompt_v1`;
     await blobs.put(promptKey,Buffer.from('synthetic prompt body containing OTP 123456 and Cookie secret'),'text/plain');
     const snapshot=await saveSnapshotRef(pool,{owner,projectId:project,runId,kind:'user_prompt',version:1,objectKey:promptKey,blobs,sha256:digest('synthetic prompt body containing OTP 123456 and Cookie secret'),redactionVersion:'redaction_v1',inputRevision:1,inputHash:input.input_hash});

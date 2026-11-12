@@ -6,6 +6,7 @@ import { execFileSync, spawnSync, spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, cpSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
+import { installSyntheticEvidenceGates, syntheticEvidenceEnvironment } from './release-evidence-fixtures.mjs';
 const root=resolve(import.meta.dirname,'../../..'),area=mkdtempSync(join(root,'.role-review-'));
 process.on('exit',()=>rmSync(area,{recursive:true,force:true}));
 const realDocker=execFileSync('which',['docker'],{encoding:'utf8'}).trim();
@@ -13,6 +14,7 @@ const hash=s=>createHash('sha256').update(s).digest('hex');
 const base={POSTGRES_PASSWORD:'synthetic',BB_MAIN_DATABASE_URL:'postgresql://bondbuddy:synthetic@postgres:5432/bondbuddy',BB_EXECUTION_DATABASE_URL:'postgresql://bondbuddy:synthetic@pg-tunnel:5432/bondbuddy',BB_PUBLIC_ORIGIN:'https://bondbuddy.test',BB_TERMS_VERSION:'synthetic',BB_TRIAL_SOURCE_SALT:'synthetic',AZURE_STORAGE_CONNECTION_STRING:'synthetic',BB_PARSE_CACHE_OCR_VERSION:'synthetic',BB_PARSE_CACHE_BASIS_VERSION:'synthetic',BB_PG_SSH_HOST:'synthetic.test',BB_PG_SSH_USER:'tunnel',BB_PG_SSH_KEY_FILE:'/dev/null',BB_PG_SSH_KNOWN_HOSTS_FILE:'/dev/null',BB_INTEGRITY_MODE:'disabled'};
 function fixture(role,{covered=true,current=true}={}) {
  const dir=mkdtempSync(join(area,role+'-'));mkdirSync(join(dir,'deploy'),{recursive:true});cpSync(join(root,'deploy/m1'),join(dir,'deploy/m1'),{recursive:true});mkdirSync(join(dir,'bin'));
+ installSyntheticEvidenceGates(dir);
  for(const name of ['smoke.sh','install-codex-file-sandbox.sh'])writeFileSync(join(dir,'deploy/m1/scripts',name),'#!/bin/sh\nexit 0\n');
  const git=(...a)=>execFileSync('git',['-C',dir,...a],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
  git('init','-q');git('config','user.name','muhualing');git('config','user.email','12086605+muhualing@users.noreply.github.com');git('remote','add','origin','https://github.com/ITSophiaXu/BondBuddy.git');
@@ -24,7 +26,7 @@ function fixture(role,{covered=true,current=true}={}) {
  const values={...base,BB_DEPLOY_ROLE:role,COMPOSE_PROJECT_NAME:`bb-${role}`,BB_FILE_TEMPLATE_HOST_DIR:dir,BB_PAYMENT_SECRETS_DIR:dir,BB_DEPLOY_SCRIPT_SHA:B,...(covered?{BB_ROLE_STATE_DIR:state,BB_ROLE_OVERRIDE_FILE:overlay,BB_ROLE_OVERRIDE_SHA256:hash(readFileSync(overlay)),BB_PARSE_ROLE:'main'}:{})};
  const envWrite=()=>writeFileSync(file,Object.entries(values).map(([k,v])=>`${k}=${v}`).join('\n'),{mode:0o600});envWrite();
  if(current)writeFileSync(join(state,'current'),A.slice(0,12)+'\n');writeFileSync(calls,'');
- const environment={...process.env,PATH:join(dir,'bin')+':'+process.env.PATH,BB_ENV_FILE:file,TEST_REAL_DOCKER:realDocker,TEST_CALLS:calls,TEST_RUNTIME:runtime,TEST_A:A,TEST_B:B,TEST_STATE:state};delete environment.BB_STATE_DIR;
+ const environment={...process.env,...syntheticEvidenceEnvironment(join(dir,'synthetic-evidence')),PATH:join(dir,'bin')+':'+process.env.PATH,BB_ENV_FILE:file,TEST_REAL_DOCKER:realDocker,TEST_CALLS:calls,TEST_RUNTIME:runtime,TEST_A:A,TEST_B:B,TEST_STATE:state};delete environment.BB_STATE_DIR;
  // The model is deliberately stateful: up really changes its service ID/hash before failure.
  writeFileSync(join(dir,'bin/docker'),`#!/usr/bin/env node
 const fs=require('fs'),cp=require('child_process'),crypto=require('crypto');

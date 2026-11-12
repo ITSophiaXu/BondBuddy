@@ -18,6 +18,7 @@ from docx.oxml.ns import qn
 
 from prospectus_acceptance_inspect import Reader, compact, metric_ok, period_ok, EXTENDED, STOCK, extended_lists, FinancialSources, SOURCE_BINDINGS, POLICY, RATIO_METRIC
 from bondbuddy_file_authoring.word_patch import leaves, paragraph_text, serialized, xml
+from bondbuddy_file_authoring.check import package
 
 
 class FinancialFixture(unittest.TestCase):
@@ -65,6 +66,37 @@ class FinancialFixture(unittest.TestCase):
         return doc, table
 
 class FinancialGeometry(FinancialFixture):
+    def test_reader_snapshot_is_local_and_external_editor_nodes_are_not_cached(self):
+        doc = Document()
+        paragraph = doc.add_paragraph('Original snapshot')
+        self.save(doc)
+        reader = Reader()
+        self.assertEqual(reader.node(self.path, self.p(1))['text'], 'Original snapshot')
+        self.assertEqual(reader.text(paragraph._p), 'Original snapshot')
+        paragraph.text = 'Changed input'
+        self.save(doc)
+        self.assertEqual(reader.text(paragraph._p), 'Changed input')
+        self.assertEqual(reader.node(self.path, self.p(1))['text'], 'Original snapshot')
+        self.assertEqual(Reader().node(self.path, self.p(1))['text'], 'Changed input')
+        second = str(Path(self.temp.name) / 'second.docx')
+        doc.paragraphs[0].text = 'Other document'
+        doc.save(second)
+        self.assertEqual(reader.node(second, self.p(1))['text'], 'Other document')
+        self.assertEqual(reader.node(self.path, self.p(1))['text'], 'Original snapshot')
+
+    def test_reusing_validated_trees_still_rejects_unsafe_unreferenced_xml(self):
+        doc = Document()
+        doc.add_paragraph('Safe visible content')
+        self.save(doc)
+        with ZipFile(self.path, 'a') as archive:
+            archive.writestr('word/unreferenced.xml', '<!DOCTYPE x [<!ENTITY x "unsafe">]><x>&x;</x>')
+        parsed = {}
+        with self.assertRaisesRegex(ValueError, 'WORD_XML_UNSAFE'):
+            package(Path(self.path), parsed_xml=parsed)
+        self.assertEqual(parsed, {}, 'Do not expose a partially validated package')
+        with self.assertRaisesRegex(ValueError, 'WORD_XML_UNSAFE'):
+            Reader().node(self.path, self.p(1))
+
     def test_adjacent_caption_binding(self):
         doc, _ = self.simple()
         spec = self.locator()

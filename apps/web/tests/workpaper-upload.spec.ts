@@ -1,3 +1,4 @@
+import {UPLOAD_BYTES_PENDING_FIELD_ERROR} from '@bondbuddy/contracts';
 import {hold,check} from './upload-progress-fixtures';
 import {test,expect,type Page} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
@@ -116,19 +117,18 @@ test('same filename with changed content remains a separate upload',async({page}
 });
 
 test('missing bytes after reload request the original file and preserve the original operation',async({page})=>{
-  const state=await setup(page);let loseBytes=true;
+  await page.clock.install();const state=await setup(page);state.uploads.sessionLifetimeMs=10_000;let loseBytes=true;
   await page.route('**/materials/uploads/*/bytes',async route=>{if(loseBytes){loseBytes=false;return route.abort('failed');}return route.fallback();});
   await page.route('**/materials/uploads/*/complete',async route=>{
     const id=new URL(route.request().url()).pathname.split('/').at(-2)!;
-    if(!state.uploads.sessions.get(id)?.received)return route.fulfill({status:422,json:{code:'MATERIAL_UNREADABLE'}});
+    if(!state.uploads.sessions.get(id)?.received)return route.fulfill({status:422,json:{code:'MATERIAL_UNREADABLE',message:'Synthetic original bytes have not arrived',retryable:false,correlation_id:'workpaper-bytes-pending',field_errors:[{...UPLOAD_BYTES_PENDING_FIELD_ERROR,message:'Upload bytes not received'}]}});
     return route.fallback();
   });
-  await page.locator('#wp-upload').setInputFiles(file);await expect(page.locator('[data-wp-upload]')).toHaveCount(1);
+  const missingReply=page.waitForResponse(r=>r.url().endsWith('/complete')&&r.status()===422);await page.locator('#wp-upload').setInputFiles(file);await missingReply;await page.clock.fastForward(600_001);await expect(page.locator('[data-wp-upload]')).toBeEnabled();await expect(page.locator('[data-wp-upload]')).toHaveCount(1);
   const original=(await records(page))[0].record.id;
-  await page.reload();await page.getByRole('button',{name:'确认上传状态',exact:true}).click();
-  await expect(page.locator('[data-wp-reselect]')).toBeVisible();
+  await page.reload();await expect(page.locator('[data-wp-reselect]')).toBeVisible();const beforeReselect=state.uploads.calls.filter(c=>c.method!=='GET').length;
   await page.locator('[data-wp-reselect]').setInputFiles({...file,buffer:Buffer.alloc(file.buffer.length,88)});
-  await expect(page.locator('#wp-status')).toContainText('冲突');expect(state.imports).toHaveLength(0);
+  await expect(page.locator('#wp-status')).toContainText('冲突');expect(state.imports).toHaveLength(0);expect(state.uploads.calls.filter(c=>c.method!=='GET')).toHaveLength(beforeReselect);
   await page.locator('[data-wp-reselect]').setInputFiles(file);await expect(page.locator('#wp-start')).toBeEnabled();
   expect(state.imports[0].request_id).toBe(original);expect(state.uploads.puts).toBe(1);expect(await records(page)).toEqual([]);
 });
@@ -145,9 +145,9 @@ for(const width of [1440,390])test(`saved directory recovery is readable without
   await page.locator('#wp-upload').setInputFiles(file);await expect(page.locator('.wp-upload-recovery-item')).toContainText('已上传，目录待识别');
   await expect(page.locator('[data-wp-upload]')).toBeEnabled();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await mkdir('test-evidence/workpaper-upload-20261029',{recursive:true});
-  await page.screenshot({path:`test-evidence/workpaper-upload-20261029/recovery-${width}.png`,fullPage:true});
-  await page.locator('.wp-upload-recovery-item').screenshot({path:`test-evidence/workpaper-upload-20261029/recovery-card-${width}.png`});
+  await mkdir(test.info().outputPath('test-evidence/workpaper-upload-20261029'),{recursive:true});
+  await page.screenshot({path:test.info().outputPath(`test-evidence/workpaper-upload-20261029/recovery-${width}.png`),fullPage:true});
+  await page.locator('.wp-upload-recovery-item').screenshot({path:test.info().outputPath(`test-evidence/workpaper-upload-20261029/recovery-card-${width}.png`)});
 });
 
 test('ambiguous directory previews before import; adjustments survive reload and lost save replays exactly',async({page})=>{
@@ -177,16 +177,16 @@ for(const width of [1440,390])test(`directory interpretation preview remains usa
   await page.setViewportSize({width,height:960});const state=await setup(page);state.review=true;await page.locator('#wp-upload').setInputFiles(file);
   await expect(page.locator('#wp-accept-mapping')).toBeEnabled();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await page.screenshot({path:`test-evidence/workpaper-upload-20261029/interpretation-${width}.png`,fullPage:true});
-  await page.locator('#wp-import-review').screenshot({path:`test-evidence/workpaper-upload-20261029/interpretation-card-${width}.png`});
+  await page.screenshot({path:test.info().outputPath(`test-evidence/workpaper-upload-20261029/interpretation-${width}.png`),fullPage:true});
+  await page.locator('#wp-import-review').screenshot({path:test.info().outputPath(`test-evidence/workpaper-upload-20261029/interpretation-card-${width}.png`)});
 });
 
 for(const width of [1440,390])test(`directory interpretation prototype ${width}`,async({page})=>{
   await page.setViewportSize({width,height:960});const prototype=resolve(process.cwd(),'../../product-prototype/public/workpaper-batch.html').replaceAll('\\','/');await page.goto('/@fs/'+prototype+'?upload=review');
   await expect(page.locator('#wp-accept-mapping')).toBeEnabled();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
-  await page.screenshot({path:`test-evidence/workpaper-upload-20261029/prototype-interpretation-${width}.png`,fullPage:true});
-  await page.locator('#wp-import-review').screenshot({path:`test-evidence/workpaper-upload-20261029/prototype-interpretation-card-${width}.png`});
+  await page.screenshot({path:test.info().outputPath(`test-evidence/workpaper-upload-20261029/prototype-interpretation-${width}.png`),fullPage:true});
+  await page.locator('#wp-import-review').screenshot({path:test.info().outputPath(`test-evidence/workpaper-upload-20261029/prototype-interpretation-card-${width}.png`)});
   await page.locator('.wp-mapping-fields select').first().selectOption('2');await expect(page.locator('#wp-accept-mapping')).toBeDisabled();
   await page.locator('#wp-preview-again').click();await expect(page.locator('#wp-accept-mapping')).toBeEnabled();
   await page.locator('#wp-accept-mapping').click();await expect(page.locator('#wp-import-review')).toHaveCount(0);

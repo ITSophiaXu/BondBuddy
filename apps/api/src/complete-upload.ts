@@ -174,7 +174,7 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
     if(m){await beforeMaterialRead?.(m);result.proofs[m.object_key]=await fullMaterialProof(blobs,m,observe);}
     return result;
   }catch(error){
-    const e=direct&&error instanceof Problem&&error.status===413?new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes exceed the upload limit'):error;
+    const e=direct&&error instanceof Problem&&error.status===413?new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes exceed the upload declaration'):error;
     if(direct&&version&&e instanceof Problem&&[415,422].includes(e.status))Object.assign(e,{rejectedUploadVersion:{key:u.object_key,etag:version.etag}});
     throw e;
   }finally{await discardSpool(copy);release();}

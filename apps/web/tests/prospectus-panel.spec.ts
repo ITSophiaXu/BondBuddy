@@ -2,7 +2,7 @@ import {test,expect,type Page,type Route} from '@playwright/test';
 import {createHash} from 'node:crypto';
 import {mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
-import {schemas,type ProspectusVersions,type ProspectusVersion} from '@bondbuddy/contracts';
+import {schemas,UPLOAD_BYTES_PENDING_FIELD_ERROR,type ProspectusVersions,type ProspectusVersion} from '@bondbuddy/contracts';
 import {Value} from '@sinclair/typebox/value';
 import type {Dto} from '../src/api';
 import {isDateTime} from '../src/schema-formats';
@@ -169,6 +169,43 @@ test('reference drops reject invalid files and suppress a second upload while sa
 
 async function selectFile(page:Page,name='合成新稿.docx'){const chooser=page.waitForEvent('filechooser'),replace=page.locator('#replace-prospectus-version');await(await replace.isVisible()?replace:page.locator('#choose-prospectus-version')).click();await(await chooser).setFiles({name,mimeType:name.endsWith('.txt')?'text/plain':mime,buffer:bytes});}
 
+test('expired legacy reference requires an explicit matching reselect before replacing only its missing upload',async({page})=>{
+  await page.clock.install({time:new Date('2026-11-11T00:00:00Z')});
+  const f=await setup(page),originalName='原代理上传.docx',oldPath=base+'/materials/uploads/old-proxy/complete';
+  await page.route('**/materials/uploads/old-proxy/complete',async route=>{
+    f.calls.push({method:'POST',path:oldPath,body:route.request().postDataJSON()});
+    return route.fulfill({status:422,json:{code:'MATERIAL_UNREADABLE',field_errors:[UPLOAD_BYTES_PENDING_FIELD_ERROR]}});
+  });
+  await page.route('**/materials/uploads',async route=>{
+    expect(route.request().headers()['x-bb-upload-transport']).toBe('azure_blob');
+    return route.fallback();
+  });
+  await page.evaluate(async({project,mime,sha256,size,originalName})=>{
+    const load=(path:string)=>import(path),{UploadRecovery}=await load('/src/upload-recovery.ts');
+    const recovery=new UploadRecovery({},'synthetic-owner',project,'prospectus-version',()=>true);
+    recovery.begin({filename:originalName,media_type:mime,role:'historical',byte_size:size,sha256},{purpose:'update'},'legacy-op');
+    const key=Object.keys(localStorage).find(key=>key.startsWith('bondbuddy:upload-recovery:v1:')&&JSON.parse(localStorage.getItem(key)!).id==='legacy-op')!;
+    const record=JSON.parse(localStorage.getItem(key)!);
+    localStorage.setItem(key,JSON.stringify({...record,uploadId:'old-proxy',stage:'bytes_unknown',expiresAt:'2020-01-01T00:00:00Z',lastError:{status:0,code:'DATA_UNAVAILABLE'}}));
+  },{project,mime,sha256,size:bytes.length,originalName});
+  await f.reenter();const confirm=()=>page.locator('[data-resume-prospectus="legacy-op"]');
+  await confirm().click();await expect.poll(()=>f.calls.filter(c=>c.path===oldPath).length).toBeGreaterThan(0);
+  expect(f.calls.filter(c=>c.path===base+'/materials/uploads'||c.method==='PUT')).toEqual([]);
+  await f.reenter();
+  const changed=Buffer.from(bytes);changed[0]^=1;
+  await page.locator('#prospectus-version-file').setInputFiles({name:originalName,mimeType:mime,buffer:changed});
+  await confirm().click();await expect(page.getByRole('alert')).toContainText(/原文件|相同|不一致/);
+  expect(f.calls.filter(c=>c.path===base+'/materials/uploads'||c.method==='PUT')).toEqual([]);
+  await page.locator('#prospectus-version-file').setInputFiles({name:'重选改名.docx',mimeType:mime,buffer:bytes});
+  await confirm().click();await expect(page.locator('.reference-file.is-selected')).toContainText(originalName);
+  const creates=f.calls.filter(c=>c.path===base+'/materials/uploads');expect(creates).toHaveLength(1);
+  expect(creates[0].body).toMatchObject({filename:originalName,role:'historical',byte_size:bytes.length,sha256});
+  expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);
+  expect(f.state.versions).toHaveLength(1);expect(f.state.current_version_id).toBe('v3');
+  expect(f.calls.filter(c=>/runs|authoring|wallet/.test(c.path))).toEqual([]);
+  expect(await page.evaluate(()=>Object.keys(localStorage).filter(key=>key.startsWith('bondbuddy:upload-recovery:v1:')))).toEqual([]);
+});
+
 for(const purpose of ['update','project','generation','qa'])test(purpose+' enforces the owning update project Word-only policy',async({page})=>{
   const f=await setup(page,{purpose,docxOnly:true});
   await expect(page.locator('#prospectus-version-file')).toHaveAttribute('accept','.docx');
@@ -213,9 +250,9 @@ for(const purpose of ['update','consistency'])test(purpose+' drops one file and 
   await expect(page.locator('#prospectus-status')).toContainText(purpose==='update'?/已保存并自动采用/:/已保存.*尚未采用/);expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.calls.filter(c=>c.path.endsWith('/materials/uploads'))).toHaveLength(1);expect(f.state.current_version_id).toBe(purpose==='update'?'v3':null);
 });
 
-test('unknown upload receipt retries the original session and keeps the automatically adopted source',async({page})=>{
-  const f=await setup(page,{retry:true});await selectFile(page);await expect(page.locator('[data-resume-prospectus]')).toBeVisible();await expect(page.locator('.prospectus-selected-file')).toContainText('合成新稿.docx');
-  await page.getByRole('button',{name:'确认原上传',exact:true}).click();await expect(page.locator('#prospectus-status')).toContainText(/已保存并自动采用/);expect(f.state.current_version_id).toBe('v3');expect(f.state.selection_revision).toBe(1);expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(0);
+test('unknown upload receipt automatically rechecks the original session and keeps the adopted source',async({page})=>{
+  const f=await setup(page,{retry:true});await selectFile(page);await expect(page.locator('#prospectus-status')).toContainText(/已保存并自动采用/,{timeout:15000});await expect(page.locator('.reference-file.is-selected')).toContainText('合成新稿.docx');await expect(page.locator('[data-resume-prospectus]')).toHaveCount(0);
+  expect(f.state.current_version_id).toBe('v3');expect(f.state.selection_revision).toBe(1);expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(0);
   expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.calls.filter(c=>c.path.endsWith('/materials/uploads'))).toHaveLength(1);const completions=f.calls.filter(c=>c.path.endsWith('/complete'));expect(completions).toHaveLength(2);expect(completions[0].body).toEqual(completions[1].body);
   await expect(page.locator('.reference-file.is-selected')).toContainText('本次更新已选用');await expect(page.locator('[data-use-version="v3"]')).toHaveCount(0);
   expect(await page.evaluate(()=>window.panelFixture.sourceSelectionMessage())).toBe('');

@@ -1,3 +1,4 @@
+import {settleUploadConfirmationFault} from './upload-confirmation-faults';
 import { expect, test, type Page } from '@playwright/test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -7,7 +8,7 @@ import { install, mount, ids, file, secondFile, hash, inputOf, pin, pinKey, requ
 
 const resume = (page: Page, filename = file.name) => recovery(page, filename).locator('[data-m4-recovery-action=resume]');
 const select = (page: Page, purpose: 'source' | 'material' = 'material', selected: typeof file | typeof file[] = file) => page.locator(`[data-m4-upload=${purpose}]`).last().setInputFiles(selected);
-async function pending(page: Page, state: State, purpose: 'source' | 'material' = 'material') { await select(page, purpose); await expect(resume(page)).toBeEnabled(); expect(await records(page)).toHaveLength(1); noBusiness(state); }
+async function pending(page: Page, state: State, purpose: 'source' | 'material' = 'material') { const missing=state.dropPut==='before',fault=state.dropPut==='after'||!!state.dropCompleteAt;const missingReply=missing?page.waitForResponse(r=>r.url().endsWith('/complete')&&r.status()===422):undefined;await select(page, purpose);if(fault)await settleUploadConfirmationFault(page,state.confirmationFaults);if(missing){await missingReply;await page.clock.fastForward(600_001);}await expect(resume(page)).toBeEnabled(); expect(await records(page)).toHaveLength(1); noBusiness(state); }
 async function refreshReadOnly(page: Page, state: State) {
   const before = writes(state).length; await mount(page, { navigation: 'reload' });
   // Exercise the existing 550ms autosave and return-to-page hooks; every non-GET is counted, including view.
@@ -137,7 +138,7 @@ test('M4 captured pending consumed elsewhere prevents replay of an unknown origi
 });
 
 test('M4 ordered batch resumes its interrupted second item only along the first verified complete draft', async ({ page }) => {
-  const state = await install(page), original = inputOf(state.workspace.drafts.private_summary); state.dropCompleteAt = 2; await mount(page); await select(page, 'material', [file, secondFile]); await expect(resume(page, secondFile.name)).toBeEnabled();
+  const state = await install(page), original = inputOf(state.workspace.drafts.private_summary); state.dropCompleteAt = 2; await mount(page); await select(page, 'material', [file, secondFile]);await settleUploadConfirmationFault(page,state.confirmationFaults); await expect(resume(page, secondFile.name)).toBeEnabled();
   expect(draftWrites(state)).toHaveLength(1); const first = structuredClone(draftWrites(state)[0]); expect(state.workspace.drafts.private_summary.version).toBe(4); await refreshReadOnly(page, state); await resume(page, secondFile.name).click(); await saved(page, state);
   expect(draftWrites(state)).toHaveLength(2); expect(draftWrites(state)[0]).toEqual(first); expect(draftWrites(state)[1]).toEqual({ expected_version: 4, input: expectedInput(first.input, state, 'material', 1) }); expect(state.workspace.drafts.private_summary.requirements).toEqual(original.requirements); expect(uploads(state, 'create')).toHaveLength(2); expect(uploads(state, 'bytes')).toHaveLength(2);
 });
@@ -244,10 +245,11 @@ test('M4 cleanup failure retries local cleanup only after the three server stage
 });
 
 test('M4 original-file reselect rejects different bytes and explicitly replaces only the original declaration', async ({ page }) => {
-  const state = await install(page); state.dropPut = 'before'; await mount(page); await pending(page, state); await refreshReadOnly(page, state); await resume(page).click(); const reselect = recovery(page).locator('[data-m4-recovery-reselect]'); await expect(reselect).toBeAttached(); await expect(resume(page)).toBeEnabled();
-  const before = writes(state).length, declaration = structuredClone((await records(page))[0].value.items[0].declaration), originalUploadId = [...state.uploads.keys()][0];
+  const state = await install(page); state.dropPut = 'before'; state.sessionLifetimeMs=10_000; await mount(page); await pending(page, state); await refreshReadOnly(page, state); const reselect = recovery(page).locator('[data-m4-recovery-reselect]'); await expect(reselect).toBeAttached(); await expect(resume(page)).toBeEnabled();
+  const before = writes(state).length, declaration = structuredClone((await records(page))[0].value.items[0].declaration);
   await reselect.setInputFiles({ ...file, buffer: Buffer.from('x'.repeat(file.buffer.length)) }); await expect(resume(page)).toBeEnabled();
-  expect(writes(state).slice(before)).toEqual([{ method: 'POST', path: `/projects/${ids.project}/materials/uploads/${originalUploadId}/complete`, search: '', body: { byte_size: declaration.byte_size, sha256: declaration.sha256 } }]);
+  // Explicit original selection verifies the hash before any old-complete request.
+  expect(writes(state).slice(before)).toEqual([]);
   expect(uploads(state, 'create')).toHaveLength(1); expect(uploads(state, 'bytes')).toHaveLength(1); expect(libraryWrites(state)).toHaveLength(0); expect(draftWrites(state)).toHaveLength(0); expect((await records(page))[0].value.items[0].declaration).toEqual(declaration); await expect(recovery(page)).toContainText('原文件声明和记录已保留');
   await reselect.setInputFiles(file); await saved(page, state); expect(uploads(state, 'create')).toHaveLength(2); expect(uploads(state, 'bytes')).toHaveLength(2); expect(uploads(state, 'create')[1].body).toEqual(uploads(state, 'create')[0].body); expect(libraryWrites(state)).toHaveLength(1); expect(draftWrites(state)).toHaveLength(1);
 });
@@ -283,7 +285,7 @@ for (const purpose of ['source', 'material'] as const) for (const width of [1440
   const directory = process.env.BB_M4_UPLOAD_THIRTEENTH_EVIDENCE_DIR ?? process.env.BB_THIRTEENTH_EVIDENCE_DIR; test.skip(!directory, 'Explicit thirteenth evidence directory is required'); await mkdir(directory!, { recursive: true });
   const reference = process.env.BB_THIRTEENTH_REFERENCE === '1', finish = reference ? await installThirteenthReference(page) : undefined; await page.setViewportSize({ width, height: 960 }); const state = await install(page); state.dropPut = 'after'; await mount(page);
   const flavor = reference ? 'reference' : 'implementation', captured = []; await page.locator(`[data-m4-upload=${purpose}]`).last().scrollIntoViewIfNeeded(); captured.push(await capture(page, directory!, `${flavor}-${purpose}-ready-${width}`));
-  await select(page, purpose); if (reference) await expect(page.locator('[data-m4-action=retry-upload]')).toBeEnabled(); else await expect(resume(page)).toBeEnabled(); captured.push(await capture(page, directory!, `${flavor}-${purpose}-pending-${width}`));
+  await select(page, purpose);if(!reference)await settleUploadConfirmationFault(page,state.confirmationFaults); if (reference) await expect(page.locator('[data-m4-action=retry-upload]')).toBeEnabled(); else await expect(resume(page)).toBeEnabled(); captured.push(await capture(page, directory!, `${flavor}-${purpose}-pending-${width}`));
   const before = await refreshReadOnly(page, state); if (reference) { await expect(page.locator('[data-m4-action=retry-upload]')).toHaveCount(0); await expect(page.locator('[data-m4-recovery-id]')).toHaveCount(0); await page.locator(`[data-m4-upload=${purpose}]`).last().scrollIntoViewIfNeeded(); } else { await expect(resume(page)).toBeEnabled(); await recovery(page).scrollIntoViewIfNeeded(); }
   expect(writes(state)).toHaveLength(before); captured.push(await capture(page, directory!, `${flavor}-${purpose}-refreshed-${width}`));
   await writeFile(join(directory!, `m4-upload-thirteenth-${flavor}-${purpose}-comparison-${width}.json`), JSON.stringify({ reference, source: finish ? await finish() : { scope: 'Current thirteenth implementation; no approved new recovery prototype or human signoff.' }, records: captured, writes_after_refresh: 0, original_upload_creates: uploads(state, 'create').length, original_puts: uploads(state, 'bytes').length, library_posts: libraryWrites(state).length, draft_puts: draftWrites(state).length, errors: state.errors, unexpected_requests: state.unexpected }, null, 2)); noBusiness(state);

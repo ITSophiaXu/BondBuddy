@@ -1,3 +1,4 @@
+import {canReselectExpiredUpload} from './upload-reselection';
 import {uploadPicker,uploadPickerContent} from './upload-picker';
 import { documentDeliverable } from './document-deliverable';
 import './upload-progress.css';
@@ -1029,6 +1030,7 @@ export class ReviewWorkspace {
       this.uploadRecordsPresent=!!(envelopes.length||orphans.length);
       for(const [key,row] of this.uploadRows)if(row.envelopeId||row.orphan)this.uploadRows.delete(key);
       for(const envelope of envelopes)for(const item of envelope.items){
+        if(records.some(record=>reviewUploadRecordMatches(envelope,item.index,record)&&canReselectExpiredUpload(record)))this.uploadNeedsFile.add(item.id);
         if(item.stage==='complete'&&item.localCacheResult==='cleared'&&!envelope.items.every(i=>i.stage==='complete'))continue;
         const previous=item.index>0?envelope.items[item.index-1]:undefined;
         const state=this.uploadErrors.get(item.id)||(item.localCacheResult==='preserved'?'文件已加入原准备；本页或另一页面另有修改，后续文件尚未加入。':previous&&previous.localCacheResult==='preserved'?'前一份材料已保存，但另有新修改。请停止本机后续保存后核对材料与要求。':item.stage==='complete'||item.stage==='adopted'||item.stage==='cleanup_pending'?'已加入原准备，仅需清理本机上传记录。':item.adoptionRequest?'文件已保存，材料选择待确认；请核对原保存结果。':item.material?'文件已保存，材料选择待确认。':'原文件保存结果待确认。刷新不会自动上传或保存材料选择。');
@@ -1099,7 +1101,7 @@ export class ReviewWorkspace {
     this.scanUploadRecovery();const envelope=this.recoveryEnvelopes.find(e=>e.id===id),item=envelope?.items[index];if(!envelope||!item)return;
     this.uploading=true;this.uploadErrors.delete(item.id);if(file)this.uploadFiles.set(item.id,file);this.renderMaterials();
     let done=false;
-    try{const result=await this.reviewUploads.resume(id,index,{file:file??this.uploadFiles.get(item.id),retryAdoption:true,...this.uploadCallbacks(item.id)});if(!this.live())return;this.applyUploadResult(result,index);done=result.state==='complete'&&result.applyToPage;if(done&&envelope.targetContext)this.showUploadNext(envelope.targetContext,envelope.targetGuard?.version,this.uploadTargetLabels.get(envelope.id),envelope.items.map(i=>i.id));}
+    try{const result=await this.reviewUploads.resume(id,index,{file:file??this.uploadFiles.get(item.id),reselectExpiredSession:!!file,retryAdoption:true,...this.uploadCallbacks(item.id)});if(!this.live())return;this.applyUploadResult(result,index);done=result.state==='complete'&&result.applyToPage;if(done&&envelope.targetContext)this.showUploadNext(envelope.targetContext,envelope.targetGuard?.version,this.uploadTargetLabels.get(envelope.id),envelope.items.map(i=>i.id));}
     catch(error){if(this.live()){this.recordUploadError(item.id,error);this.message(this.uploadErrorText(error),true);}}
     finally{this.uploading=false;if(this.live()){this.scanUploadRecovery();this.renderMaterials();if(done&&this.uploadQueue.length)void this.drainUploads();}}
   }

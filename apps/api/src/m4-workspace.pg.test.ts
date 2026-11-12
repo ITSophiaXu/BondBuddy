@@ -49,10 +49,11 @@ test('missing material generation input returns all actionable fields without ta
   }finally{await app.close();await pool.end();}
 });
 
-test('synthetic assistant fixed QA: approved version, no model rates, failure release, exact-once delivery and price changes',
+// Explicit historical contract: keep original prices, usage and settlement assertions.
+test('historical synthetic assistant fixed QA: approved version, no model rates, failure release, exact-once delivery and price changes',
   {skip:!fixedQaConnection,timeout:90000},async()=>{
   const pool=new Pool({connectionString:fixedQaConnection}),user=`fixed-qa-${randomUUID()}`;
-  const app=createServer({pool,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:user,csrfVerified:true}),enableSyntheticQueue:true});
+  const app=createServer({pool,historicalBillingFixture:true,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:user,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin:'http://bondbuddy.test'}});
   const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.equal(r.statusCode,200,r.body);return r.json();};
   const price={id:'synthetic-qa-v1',points:60,effective_at:'2020-01-01T00:00:00.000Z',actor:'synthetic-test',reason:'synthetic fixed-price approval, not a production price'};
@@ -356,12 +357,13 @@ test('product help remains free with selected sources while mixed professional q
       assert.equal(classifyM4Qa(question,selected),category,question);
   }
 });
-test('synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual exclusion, QA text and real wallet capped metering',{skip:!connection,timeout:180000},async()=>{
+// Explicit historical contract: keep original prices, usage and settlement assertions.
+test('historical synthetic M4 API: exact pins, topics, independent drafts, recovery, mutual exclusion, QA text and real wallet capped metering',{skip:!connection,timeout:180000},async()=>{
   const pool=new Pool({connectionString:connection}),user=`m4-${randomUUID()}`,other=`m4-${randomUUID()}`;let actor=user;
   const bytes=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{bytes.set(k,Buffer.from(b));},get:async k=>{const b=bytes.get(k);assert.ok(b);return b;},
     getIfExists:async k=>bytes.get(k)??null,getIfExistsBounded:async(k,n)=>{const b=bytes.get(k);if(b&&b.length>n)throw Error('bounded');return b??null;},exists:async k=>bytes.has(k),delete:async k=>{bytes.delete(k);}};
-  const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true});
+  const app=createServer({pool,historicalBillingFixture:true,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:actor,csrfVerified:true}),enableSyntheticQueue:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin:'http://bondbuddy.test'}});
   const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.equal(r.statusCode,200,r.body);return r.json();};
   const seedProject=async(name:string)=>{const id=randomUUID();await pool.query(`INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering) VALUES($1,$2,$3,'update','Synthetic issuer','sse','private')`,[id,user,name]);return id;};

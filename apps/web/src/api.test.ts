@@ -61,6 +61,15 @@ test('an active source-project run has a safe business message distinct from dra
   assert.match(friendlyError(error),/同一来源项目已有任务正在执行/);assert.match(friendlyError(error),/草稿保留/);assert.doesNotMatch(friendlyError(error),/其他页面|worker|provider|Synthetic/);
   assert.match(friendlyError(new ApiError(409,'INPUT_REVISION_CONFLICT')),/其他页面修改/);
 });
+test('workpaper conflicts use bounded reasons and never server prose or foreign field markers',()=>{
+  for(const [reason,expected] of [['current_item_active',/当前文件尚未结束/],['other_batch_active',/其他底稿文件包/],['source_task_active',/其他任务尚未结束/]] as const){
+    const error=parseApiError(409,{code:'PROJECT_RUN_ACTIVE',message:'private provider path',field_errors:[{field:'workpaper_batch',code:reason,message:'untrusted prose'}]});
+    assert.match(friendlyError(error),expected);assert.doesNotMatch(friendlyError(error),/private|provider|untrusted/);
+  }
+  for(const [code,field,reason] of [['PROJECT_RUN_ACTIVE','wrong','current_item_active'],['PROJECT_RUN_ACTIVE','workpaper_batch','private'],['INPUT_REVISION_CONFLICT','workpaper_batch','current_item_active']]){
+    assert.equal(parseApiError(409,{code,field_errors:[{field,code:reason}]}).details.workpaperConflict,undefined);
+  }
+});
 import { uploadErrorMessage } from './upload-error.js';
 
 test('start limits describe the recovery action without trusting server prose', () => {

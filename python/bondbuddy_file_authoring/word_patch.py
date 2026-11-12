@@ -18,6 +18,13 @@ def q(name):
     return '{' + W + '}' + name
 
 
+_TEXT, _TAB, _BREAK, _CR, _HYPHEN = (q(name) for name in ('t', 'tab', 'br', 'cr', 'noBreakHyphen'))
+_VISIBLE_LEAVES = (_TEXT, _TAB, _BREAK, _CR, _HYPHEN)
+_RUN, _PARAGRAPH = q('r'), q('p')
+_DELETED_ANCESTORS = frozenset((q('del'), q('moveFrom')))
+_BREAK_TYPE = q('type')
+
+
 def xml(raw):
     return ET.fromstring(raw, ET.XMLParser(resolve_entities=False, no_network=True))
 
@@ -33,22 +40,22 @@ def paragraphs(node):
 def leaves(p):
     """Visible text only: field instructions, drawings and other stories are opaque."""
     result, pos = [], 0
-    for leaf in p.iter():
-        if leaf.tag not in {q('t'), q('tab'), q('br'), q('cr'), q('noBreakHyphen')} or leaf.getparent().tag != q('r'):
+    for leaf in p.iter(*_VISIBLE_LEAVES):
+        if leaf.getparent().tag != _RUN:
             continue
         ancestors = list(leaf.iterancestors())
-        if next((a for a in ancestors if a.tag == q('p')), None) is not p:
+        if next((a for a in ancestors if a.tag == _PARAGRAPH), None) is not p:
             continue
-        if any(a.tag in {q('del'), q('moveFrom')} for a in ancestors):
+        if any(a.tag in _DELETED_ANCESTORS for a in ancestors):
             continue
-        if leaf.tag == q('t'):
+        if leaf.tag == _TEXT:
             text = leaf.text or ''
-        elif leaf.tag == q('tab'):
+        elif leaf.tag == _TAB:
             text = '\t'
-        elif leaf.tag == q('noBreakHyphen'):
+        elif leaf.tag == _HYPHEN:
             text = '\u2011'
         else:
-            text = '\n' if leaf.get(q('type'), 'textWrapping') == 'textWrapping' else ''
+            text = '\n' if leaf.get(_BREAK_TYPE, 'textWrapping') == 'textWrapping' else ''
         if text:
             result.append((leaf, text, pos, pos + len(text)))
             pos += len(text)

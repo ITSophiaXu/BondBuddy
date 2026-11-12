@@ -1,0 +1,16 @@
+TAP version 13
+# Subtest: private reconciliation lists, retries and fails exact owned attempts with one audit/outbox transition
+ok 1 - private reconciliation lists, retries and fails exact owned attempts with one audit/outbox transition
+  ---
+  duration_ms: 4922.053812
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6395.736586
