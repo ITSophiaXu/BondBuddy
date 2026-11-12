@@ -108,15 +108,15 @@ test('one batch plan across deliveries, crash replay, failure/retry, pause, immu
       requirements:'仅处理所选目录，正文不写来源。',price_version:WORKPAPER_PRICE.version,expected_points:String(3*WORKPAPER_PRICE.points)};
     // Independent current Pool avoids changing the historical worker's out-of-request billing context.
     const currentPool=new Pool({connectionString:database});
-    const current=createServer({pool:currentPool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});
+    const currentApp=createServer({pool:currentPool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});
     try{
-      const workspace=await current.inject({method:'GET',url:base,headers:{origin}});
+      const workspace=await currentApp.inject({method:'GET',url:base,headers:{origin}});
       assert.equal(workspace.statusCode,200,workspace.body);assert.equal(workspace.json().price.auto_charge,true);
       assert.notEqual(workspace.json().price.version,WORKPAPER_PRICE.version);
-      const rejected=await current.inject({method:'POST',url:base+'/batches',payload:request,headers:{origin}});
+      const rejected=await currentApp.inject({method:'POST',url:base+'/batches',payload:request,headers:{origin}});
       assert.equal(rejected.statusCode,409,rejected.body);assert.equal(rejected.json().code,'QUOTE_CHANGED');
       assert.equal((await pool.query('SELECT count(*)::int n FROM bb_workpaper_batches WHERE project_id=$1',[id])).rows[0].n,0);
-    }finally{await current.close();await currentPool.end();}
+    }finally{await currentApp.close();await currentPool.end();}
     let batch=await ok('POST',base+'/batches',request) as WorkpaperBatch;
     const read=async()=>((await ok('GET',base)).batches as WorkpaperBatch[]).find(b=>b.batch_id===batch.batch_id)!;
     await advanceWorkpaperBatch(pool);assert.equal(await execute(),'succeeded');assert.equal(modelCalls,1);assert.equal(modelReplays,1);

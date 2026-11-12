@@ -69,13 +69,13 @@ test('assessment and confirmation: mixed/all-excluded packages, evidence and imm
   const body={request_id:randomUUID(),catalogue_id:cat.catalogue_id,catalogue_sha256:cat.sha256,item_ids:cat.entries.map((e:any)=>e.id),source_version_id:adopted.current_version_id,source_selection_revision:adopted.selection_revision,requirements:'按募集书判断，不造原始证据'};
   // Current HTTP policy still refuses new retired assessments on the identical owned input.
   const currentPool=new Pool({connectionString:database});
-  const current=createServer({pool:currentPool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});
+  const currentApp=createServer({pool:currentPool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});
   try{
-    const rejected=await current.inject({method:'POST',url:base+'/assessments',payload:body,headers:{origin}});
+    const rejected=await currentApp.inject({method:'POST',url:base+'/assessments',payload:body,headers:{origin}});
     assert.equal(rejected.statusCode,409,rejected.body);assert.equal(rejected.json().code,'BILLING_NOT_READY');
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_workpaper_assessments WHERE project_id=$1',[id])).rows[0].n,0);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[id])).rows[0].n,0);
-  }finally{await current.close();await currentPool.end();}
+  }finally{await currentApp.close();await currentPool.end();}
   const started=await ok('POST',base+'/assessments',body);assert.equal(started.state,'queued');assert.deepEqual(await ok('POST',base+'/assessments',body),started);
   const start={...body,request_id:randomUUID(),assessment_id:started.assessment_id,assessment_hash:'a'.repeat(64),price_version:WORKPAPER_PRICE.version,expected_points:String(WORKPAPER_PRICE.points)};
   assert.equal((await send('POST',base+'/batches',start)).statusCode,409);

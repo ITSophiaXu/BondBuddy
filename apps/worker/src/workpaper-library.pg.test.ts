@@ -87,12 +87,12 @@ test('real API/PG: generation → library/preview/ZIP → changed prospectus →
     const body={request_id:randomUUID(),source_version_id:source.current_version_id,source_selection_revision:source.selection_revision};
     // The old free impact-check workflow remains a historical contract, never a current entry point.
     const currentPool=new Pool({connectionString:database});
-    const current=createServer({pool:currentPool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});
+    const currentApp=createServer({pool:currentPool,blobs,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});
     try{
-      const rejected=await current.inject({method:'POST',url:wp+'/batches/'+batch.batch_id+'/checks',payload:body,headers:{origin}});
+      const rejected=await currentApp.inject({method:'POST',url:wp+'/batches/'+batch.batch_id+'/checks',payload:body,headers:{origin}});
       assert.equal(rejected.statusCode,409,rejected.body);assert.equal(rejected.json().code,'BILLING_NOT_READY');
       assert.equal((await pool.query('SELECT count(*)::int n FROM bb_workpaper_checks WHERE project_id=$1',[id])).rows[0].n,0);
-    }finally{await current.close();await currentPool.end();}
+    }finally{await currentApp.close();await currentPool.end();}
     const check=await ok('POST',wp+'/batches/'+batch.batch_id+'/checks',body);
     assert.deepEqual(await ok('POST',wp+`/batches/${batch.batch_id}/checks`,body),check);
     assert.equal(await execute([workpaperChangeStage(),workpaperChangeDelivery()]),'succeeded');
