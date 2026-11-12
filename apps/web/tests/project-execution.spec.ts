@@ -2,7 +2,7 @@ import {serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {fixtureJson,fixtureRequest} from './billing-fixture-wire';
 import { taskPage } from './collection-fixtures';
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { commerceMetadata, AUTOMATIC_PRICE_VERSION, OUTCOME_PRICE_VERSION, emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR } from '@bondbuddy/contracts';
+import { commerceMetadata, AUTOMATIC_PRICE_VERSION, OUTCOME_PRICE_VERSION, emptyUpdateDetails, reportingWindow, RECHARGE_PACKS, schemas, PROSPECTUS_SELECTION_REQUIRED_FIELD_ERROR, SOURCE_PROSPECTUS_REQUIRED_MESSAGE } from '@bondbuddy/contracts';
 import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import type { Dto } from './billing-fixture-wire';
@@ -80,7 +80,7 @@ function registerGeneratedPair(state: ReturnType<typeof fixture>, run: Dto<'RunR
     artifact_id:clean.artifact_id,artifact_version:clean.version,revision_artifact_id:primary.artifact_id,run_id:run.run_id});
   return {primary,clean};
 }
-async function setup(page: Page, state = fixture(), canStart = true) {
+async function setup(page: Page, state = fixture(), canStart = true, options: { delegateMaterialRoutes?: boolean; initialBlockedState?: 'source_required' } = {}) {
   await page.context().route('**/api/v1/**', async route => {
     if(await serveDisabledBillingCatalog(route))return;
     const request = route.request(), url = new URL(request.url()), path = url.pathname.replace('/api/v1', '');
@@ -134,7 +134,7 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     }
     if (path === `/projects/${id}/messages` && method === 'GET') return json(route, 200,
       { conversation_id: id, items: [], project_message_set_ref: emptyMessages, next_cursor: null, has_more: false });
-    if (!canStart && (path.endsWith('/parse-job') || path.includes('/materials/uploads') || path.endsWith('/source-profile'))) return route.fallback();
+    if (options.delegateMaterialRoutes && (path.endsWith('/parse-job') || path.includes('/materials/uploads') || path.endsWith('/source-profile'))) return route.fallback();
     if (path.endsWith('/parse-job')) {
       const material = state.materials.find(m => m.material_id === path.split('/').at(-2));
       if (!state.parseSucceeded || !material) return json(route, 404, { code: 'NOT_FOUND' });
@@ -236,7 +236,10 @@ async function setup(page: Page, state = fixture(), canStart = true) {
   });
   await page.goto(`/#/projects/${id}`);
   await expect(page.getByRole('heading', { name: '合成任务项目', exact: true })).toBeVisible();
-  if (canStart) await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeEnabled();
+  if (options.initialBlockedState === 'source_required') {
+    await expect(page.getByRole('button', { name: '请先处理材料状态', exact: true })).toBeDisabled();
+    await expect(page.locator('#start-disabled-reason')).toHaveText(SOURCE_PROSPECTUS_REQUIRED_MESSAGE);
+  } else if (canStart) await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeEnabled();
   else await expect(page.getByRole('button', { name: '开始更新', exact: true })).toBeDisabled();
   return state;
 }
@@ -1546,7 +1549,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
       return route.fallback();
     });
     // setup's catch-all was registered last; it must fall back to the material fixture above.
-    await setup(page, state, false);
+    await setup(page, state, false, { delegateMaterialRoutes: true });
     let selectionPosts = 0;
     await page.route(`**/api/v1/projects/${id}/prospectus-versions**`, async route => {
       if (route.request().method() === 'POST') {
@@ -2078,7 +2081,7 @@ test('upload automatically adopts the original and submits it without a selectio
   const state=fixture();state.project.update_details!.authoring_mode='unified_v1';
   const bytes=Buffer.from('history'),source=state.materials.shift()!,profile=structuredClone(state.project.update_details!.source_prospectuses);
   source.byte_size=bytes.length;
-  await setup(page,state,false);
+  await setup(page,state,false,{initialBlockedState:'source_required'});
   let completed=false;
   await page.route(`**/api/v1/projects/${id}/materials/uploads**`,async route=>{
     const request=route.request(),path=new URL(request.url()).pathname;
