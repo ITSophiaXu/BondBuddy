@@ -193,7 +193,7 @@ test('project workbench saves then adopts a source and delivers a partially succ
   expect(f.versions.current_version_id).toBe('source-v1');
   await page.locator('#confirm-prospectus-selection').click();
   await expect(page.locator('#pw-current-source')).toContainText('已采用 V2');
-  await expect(page.locator('#pw-check-note')).toContainText('请先免费检查');
+  await expect(page.locator('#pw-check-note')).toHaveText('当前募集书或文件版本已变化。请先检查，再查看哪些文件需要更新。');
   await expect(page.locator('#file-list')).toContainText('版本已变化 · 请重查');
   expect(f.versions.current_version_id).toBe('source-v2');expect(f.versions.selection_revision).toBe(3);
   expect(f.updatePosts).toHaveLength(0);
