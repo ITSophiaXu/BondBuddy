@@ -1,7 +1,7 @@
 import {serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {fixtureBody} from './billing-fixture-wire';
 import {fixtureRequest} from './billing-fixture-wire';
-import { expect, type Page, type Route } from '@playwright/test';
+import { expect, type Page, type Request, type Route } from '@playwright/test';
 import { settleUploadConfirmationFault } from './upload-confirmation-faults';
 import { FormatRegistry, type TSchema } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
@@ -130,7 +130,31 @@ export async function records(page: Page) { return page.evaluate(() => Object.ke
 export async function cache(page: Page) { return page.evaluate(({ owner, scope, topic }) => JSON.parse(localStorage.getItem('bb-assistant-view-v1:' + [owner, scope, topic].map(encodeURIComponent).join(':')) ?? 'null'), ids); }
 export async function localView(page: Page) { return page.evaluate(() => (window as any).assistantComponent.viewSnapshot()); }
 export async function settle(page: Page) { await expect.poll(() => page.evaluate(async () => { const c = (window as any).assistantComponent; if (c.busy || c.copyPreparing || c.copyReading) return false; const q = c.cacheQueue; if (q) await q; await Promise.resolve(c.saving).catch(() => {}); return !c.busy && !c.copyPreparing && !c.copyReading && c.cacheQueue === q; })).toBe(true); }
-export async function pending(page: Page, state: State) { const confirmationFault = state.drops.bytes === 'after' || state.drops.complete === 'after'; await begin(page); if (confirmationFault) await settleUploadConfirmationFault(page, state.confirmationFaults); await expect(resume(page)).toBeEnabled(); await settle(page); expect(await records(page)).toHaveLength(1); noDownstream(state); }
+function droppedStage(request: Request, state: State, stages: Stage[]) {
+  if (request.failure()?.errorText !== 'net::ERR_CONNECTION_RESET') return undefined;
+  const path = new URL(request.url()).pathname, method = request.method(), project = '/api/v1/projects/' + target(state)?.project_id;
+  return stages.find(stage => {
+    switch (stage) {
+      case 'targetCreate': return method === 'POST' && path === '/api/v1/projects';
+      case 'uploadCreate': return method === 'POST' && path === project + '/materials/uploads';
+      case 'bytes': case 'complete': return method === (stage === 'bytes' ? 'PUT' : 'POST') && [...state.uploads.keys()].some(id => path === project + '/materials/uploads/' + id + '/' + stage);
+      case 'member': return method === 'POST' && path === '/api/v1/m4/topics/' + ids.topic + '/materials';
+      case 'patch': return method === 'PATCH' && path === project;
+      case 'view': return method === 'PUT' && path === '/api/v1/m4/topics/' + ids.topic + '/view';
+      case 'sourceBytes': return method === 'GET' && state.batch.some(value => path === '/api/v1/projects/' + value.project + '/materials/' + value.material.material_id + '/download');
+    }
+  });
+}
+export async function pending(page: Page, state: State) {
+  const stages = (Object.keys(state.drops) as Stage[]).filter(stage => state.drops[stage]);
+  const confirmationStages = stages.filter(stage => (stage === 'bytes' || stage === 'complete') && state.drops[stage] === 'after');
+  // Register before clicking. With several configured drops, the first actual
+  // matching transport failure is the boundary; preparation is not recovery time.
+  const fault = stages.length ? page.waitForEvent('requestfailed', request => droppedStage(request, state, stages) !== undefined) : Promise.resolve(undefined);
+  const [observed] = await Promise.all([fault, begin(page)]);
+  if (observed && confirmationStages.includes(droppedStage(observed, state, stages)!)) await settleUploadConfirmationFault(page, state.confirmationFaults);
+  await expect(resume(page)).toBeEnabled(); await settle(page); expect(await records(page)).toHaveLength(1); noDownstream(state);
+}
 export async function completed(page: Page, state: State) { await expect.poll(async () => (await records(page)).length).toBe(0); await settle(page); clean(state); }
 export async function refreshReadOnly(page: Page, state: State) { const before = writes(state).length; await mount(page, { navigation: 'reload' }); await page.clock.runFor(13000); await page.evaluate(() => { dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); dispatchEvent(new StorageEvent('storage', { key: null })); }); await page.clock.runFor(1000); await settle(page); expect(writes(state)).toHaveLength(before); clean(state); return before; }
 export async function hold(state: State, stage: Stage, page: Page) { let release!: () => void, entered = false; state.gates[stage] = () => { entered = true; return new Promise<void>(resolve => { release = resolve; }); }; await begin(page); await expect.poll(() => entered).toBe(true); return () => { delete state.gates[stage]; release(); }; }
