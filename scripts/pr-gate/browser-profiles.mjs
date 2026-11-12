@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { posix } from 'node:path';
+import { HISTORICAL_COLLECTORS } from './browser-dispatch.mjs';
 
 export const BROWSER_PROFILE_SCHEMA = 'pr-gate-browser-profile-v1';
 export const BROWSER_ORIGIN = 'https://127.0.0.1:5173';
@@ -49,7 +50,7 @@ export const BROWSER_OPT_INS = Object.freeze({
   [prefix + 'qa-single-start-baseline.spec.ts']: { BB_QA_SINGLE_START_BASELINE: '1' },
 });
 export const BROWSER_PROTOTYPE_FILES = Object.freeze([prefix + 'review-agent-progress-prototype.spec.ts', prefix + 'review-readable-prototype.spec.ts', prefix + 'review-workspace.spec.ts']);
-export const BROWSER_PROFILE_SHA256 = browserHash({ api: BROWSER_API_PROFILES, evidence: BROWSER_EVIDENCE_PROFILES, optIns: BROWSER_OPT_INS, prototype: BROWSER_PROTOTYPE_FILES });
+export const BROWSER_PROFILE_SHA256 = browserHash({ api: BROWSER_API_PROFILES, evidence: BROWSER_EVIDENCE_PROFILES, optIns: BROWSER_OPT_INS, prototype: BROWSER_PROTOTYPE_FILES, historical: HISTORICAL_COLLECTORS });
 
 export function createBrowserPlan({ candidate, runId, shard, files, sourceBlob, sourceSha256 }) {
   for (const key of ['commit', 'tree']) assert.match(candidate[key], /^[a-f0-9]{40}$/);
@@ -78,7 +79,7 @@ export function createBrowserPlan({ candidate, runId, shard, files, sourceBlob, 
   if (prototype) environment.BB_E2E_PROTOTYPE_URL = BROWSER_PROTOTYPE_ORIGIN;
   if (files.includes(prefix + 'review-workspace.spec.ts')) environment.BB_PROTOTYPE_URL = BROWSER_PROTOTYPE_ORIGIN;
   return { schema: BROWSER_PROFILE_SCHEMA, commit: candidate.commit, tree: candidate.tree, run_id: runId, shard,
-    profile_sha256: BROWSER_PROFILE_SHA256, files: entries, environment, needs: {
+    profile_sha256: BROWSER_PROFILE_SHA256, files: entries, environment, historical_apps: Object.keys(HISTORICAL_COLLECTORS).filter(id => files.includes(HISTORICAL_COLLECTORS[id].test_id)), needs: {
       api: entries.some(row => row.profile === 'real-local-api'), prototype,
       parser: files.includes(prefix + 'material-processing.integration.spec.ts'), ocr: files.includes(prefix + 'ocr.integration.spec.ts') }, output_root: output };
 }

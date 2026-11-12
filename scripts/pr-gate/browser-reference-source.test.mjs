@@ -66,8 +66,9 @@ const inspection = () => ({ Id: containerId, Mounts: [
   { Type: 'bind', Destination: REFERENCE_ROOT, Source: host, RW: false },
   { Type: 'bind', Destination: QA_BASELINE_ROOT, Source: host.replace('/reference-sources/', '/qa-baseline-sources/'), RW: false },
   { Type: 'bind', Destination: '/opt/pr-gate-identity-parser106', Source: 'C:/synthetic/identity-parser', RW: false },
+  { Type: 'bind', Destination: '/opt/pr-gate-historical-browser', Source: 'C:/synthetic/historical-browser-sources/synthetic-run', RW: false },
 ] });
-test('actual mount inspection binds owned container, verified host paths and exact five-mount policy', () => {
+test('actual mount inspection binds owned container, verified host paths and exact six-mount policy', () => {
   assert.equal(verifyReferenceMount(inspection(), host, evidence, containerId).container_id, containerId);
   for (const mutate of [x => x.Id = 'd'.repeat(64), x => x.Mounts[2].Source = evidence, x => x.Mounts[0].Source += '-old',
     x => x.Mounts[2].RW = true, x => x.Mounts[2].Type = 'volume', x => x.Mounts[2].Destination += '-old', x => x.Mounts.pop(),

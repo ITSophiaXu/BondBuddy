@@ -57,7 +57,7 @@ test('actual runner inspection rejects an unowned network, published port, sourc
   const value = { ...container, Image: image, Config: { User: '0:0', WorkingDir: '/workspace' },
     Mounts: [{ Type: 'bind', Destination: '/evidence', RW: true }, { Type: 'bind', Destination: '/opt/pr-gate-parser106', RW: false },
       { Type: 'bind', Destination: REFERENCE_ROOT, RW: false }, { Type: 'bind', Destination: QA_BASELINE_ROOT, RW: false },
-      { Type: 'bind', Destination: '/opt/pr-gate-identity-parser106', RW: false }] };
+      { Type: 'bind', Destination: '/opt/pr-gate-identity-parser106', RW: false }, { Type: 'bind', Destination: '/opt/pr-gate-historical-browser', RW: false }] };
   assert.equal(inspectOfflineContainer(value, image, identity).published_ports, 0);
   for (const mutate of [x => x.HostConfig.NetworkMode = 'host', x => x.HostConfig.PortBindings = { '5432/tcp': [{}] },
     x => x.HostConfig.Privileged = true, x => x.HostConfig.CapAdd = ['SYS_ADMIN'], x => x.Mounts[1].RW = true,

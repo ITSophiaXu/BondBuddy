@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { BROWSER_API_ORIGIN, BROWSER_DATABASE, BROWSER_ORIGIN, BROWSER_PROTOTYPE_ORIGIN, BROWSER_TERMS, browserEnvironment, browserHash, verifyBrowserPlan } from './browser-profiles.mjs';
 import { BROWSER_TOOLS_ROOT, browserToolsEnvironment, probeBrowserTools, verifyBrowserTools } from './browser-tools.mjs';
 import { startBrowserUploadConfirmation } from './browser-upload-confirmation.mjs';
+import { startHistoricalApplication, historicalRemaining } from './browser-historical-runtime.mjs';
 import { QA_BASELINE_TEST, createQaBaselineAliases, verifyQaBaselineAliases } from './browser-reference-source.mjs';
 
 const here = fileURLToPath(import.meta.url);
@@ -35,17 +36,18 @@ export function createBrowserStartupBarrier() {
 }
 
 /** The child owns API/Vite/prototype lifetimes and reports actual readiness. */
-export async function startBrowserRuntime(root, items, inherited) {
+export async function startBrowserRuntime(root, items, inherited, deadline) {
   const plan = loadBrowserPlan(root, items, inherited);
   let { env, removed } = browserEnvironment(inherited, plan);
   if (plan.needs.ocr) { assert.match(inherited.PR_GATE_BROWSER_TOOLS_SHA256, /^[a-f0-9]{64}$/); env = browserToolsEnvironment(env); }
-  const control = { ...env, PR_GATE_BROWSER_CONTROL: JSON.stringify({ root, plan, removed, environment: Object.fromEntries(Object.entries(env).filter(([key]) => key in plan.environment || ['PATH', 'TESSDATA_PREFIX', 'BB_OCR_TEST_FONT'].includes(key))) }) };
+  const preparationDeadline = Math.min(deadline, Date.now() + 120_000);
+  const control = { ...env, PR_GATE_BROWSER_CONTROL: JSON.stringify({ root, plan, removed, deadline, preparationDeadline, environment: Object.fromEntries(Object.entries(env).filter(([key]) => key in plan.environment || ['PATH', 'TESSDATA_PREFIX', 'BB_OCR_TEST_FONT'].includes(key))) }) };
   const child = fork(here, ['serve'], { cwd: root, env: control, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
   let final, ready, failure;
   const ended = new Promise(done => child.once('exit', (code, signal) => done({ code, signal })));
   try {
     ready = await new Promise((done, reject) => {
-      const timer = setTimeout(() => reject(new Error('Browser runtime readiness timed out')), 120_000);
+      const timer = setTimeout(() => reject(new Error('Browser runtime readiness timed out')), historicalRemaining(preparationDeadline));
       child.on('message', message => { if (message.type === 'ready') { clearTimeout(timer); done(message.evidence); }
         if (message.type === 'failed') { clearTimeout(timer); reject(new Error(message.error)); }
         if (message.type === 'finished') final = message.evidence;
@@ -60,10 +62,10 @@ export async function startBrowserRuntime(root, items, inherited) {
     // 120 seconds. This cleanup grace does not change any test/batch timeout.
     const result = await Promise.race([ended, new Promise(done => { const timer = setTimeout(() => done(null), 150_000); timer.unref(); })]);
     if (!result) { child.kill('SIGKILL'); await ended; throw new Error('Browser runtime cleanup timed out'); }
-    assert.equal(result.code, 0, 'Browser runtime did not shut down cleanly'); assert.equal(final?.cleanup?.status, 'passed');
+    try { assert.equal(result.code, 0, 'Browser runtime did not shut down cleanly'); assert.equal(final?.cleanup?.status, 'passed'); } catch (error) { error.browserRuntimeEvidence = final ?? ready; throw error; }
     return final;
   };
-  if (failure) { try { await cleanup(); } catch { /* original readiness failure remains blocking */ } throw failure; }
+  if (failure) { try { failure.browserRuntimeEvidence = await cleanup(); } catch (error) { failure.browserRuntimeEvidence = error.browserRuntimeEvidence ?? final ?? ready; } throw failure; }
   return { env, plan, evidence: ready, cleanup };
 }
 
@@ -78,7 +80,7 @@ function httpsRead(url, ca) {
 }
 
 async function serve() {
-  const { root, plan, removed, environment } = JSON.parse(process.env.PR_GATE_BROWSER_CONTROL);
+  const { root, plan, removed, deadline, preparationDeadline, environment } = JSON.parse(process.env.PR_GATE_BROWSER_CONTROL);
   delete process.env.PR_GATE_BROWSER_CONTROL;
   assert.equal(process.platform, 'linux'); assert.equal(root, '/workspace');
   verifyBrowserPlan(plan, { candidate: plan, runId: process.env.PR_GATE_RUN_ID, shard: process.env.PR_GATE_BROWSER_SHARD,
@@ -86,11 +88,12 @@ async function serve() {
   for (const [key, value] of Object.entries(environment)) assert.equal(process.env[key], value, 'Actual browser runtime environment differs');
   mkdirSync(plan.output_root, { recursive: true });
   const evidence = { schema: 'pr-gate-browser-runtime-v1', commit: plan.commit, tree: plan.tree, run_id: plan.run_id, shard: plan.shard,
-    plan_sha256: process.env.PR_GATE_BROWSER_PLAN_SHA256, profile_sha256: plan.profile_sha256, files: plan.files,
+    preparation_deadline: new Date(preparationDeadline).toISOString(), plan_sha256: process.env.PR_GATE_BROWSER_PLAN_SHA256, profile_sha256: plan.profile_sha256, files: plan.files,
     environment, removed_environment_keys: removed, started_at: new Date().toISOString(), pid: process.pid, probes: {}, model_calls: 0,
     status: 'failed', cleanup: { status: 'pending' } };
   let api, pool, vite, prototype, prototypeExit, stopping, uploadConfirmation, qaBaseline;
-  const startup = createBrowserStartupBarrier(), requireStarting = startup.requireStarting;
+  const historicalApps = [], historicalFailed = [];
+  const startup = createBrowserStartupBarrier(), requireStarting = () => { startup.requireStarting(); historicalRemaining(preparationDeadline); };
   const save = () => writeFileSync(join(plan.output_root, 'runtime.json'), JSON.stringify(evidence, null, 2) + '\n');
   const stop = async () => {
     startup.requestStop();
@@ -99,13 +102,15 @@ async function serve() {
       // An in-flight startup owns resources before its promise resolves. Wait
       // for that acquisition to settle, then clean every acquired handle once.
       await startup.wait();
-      const errors = [];
+      const errors = historicalFailed.filter(app => app.cleanup?.status !== 'passed').flatMap(app => (app.cleanup?.errors?.length ? app.cleanup.errors : [app.error ?? 'Historical app cleanup did not complete']).map(message => app.id + ': ' + message));
       if (evidence.status === 'prepared') {
         evidence.services_alive_before_cleanup = { web: vite?.httpServer?.listening === true,
           ...(plan.needs.api ? { api: api?.server?.listening === true, upload_confirmation: uploadConfirmation?.isAlive() === true } : {}),
           ...(plan.needs.prototype ? { prototype: prototype?.exitCode === null && prototype?.signalCode === null } : {}) };
         if (Object.values(evidence.services_alive_before_cleanup).some(value => value !== true)) errors.push('A prepared browser service exited before batch cleanup');
       }
+      evidence.historical_apps = [...historicalFailed];
+      for (const app of historicalApps) try { evidence.historical_apps.push(await app.cleanup()); } catch (error) { evidence.historical_apps.push(error.historicalEvidence ?? app.evidence); errors.push(error.message); }
       for (const close of [async () => { if (uploadConfirmation) {
           try { evidence.upload_confirmation = await uploadConfirmation.cleanup(); }
           catch (error) { evidence.upload_confirmation = error.uploadConfirmationEvidence ?? uploadConfirmation.evidence; throw error; }
@@ -184,6 +189,8 @@ async function serve() {
         catch (error) { if (attempt >= 29 || prototype.exitCode !== null) throw error; await new Promise(done => setTimeout(done, 500)); }
       }
     }
+    for (const id of plan.historical_apps) { requireStarting(); const app = await startHistoricalApplication({ id, plan, deadline: preparationDeadline, httpsRead, requireStarting }); historicalApps.push(app); }
+    evidence.historical_apps = historicalApps.map(app => app.evidence);
     // Check the browser's real interface state. Do not patch navigator or any
     // application's online/offline handlers to hide an isolated-network defect.
     const { chromium } = await import('playwright');
@@ -200,7 +207,7 @@ async function serve() {
     } finally { await probeBrowser.close(); }
     requireStarting();
     evidence.status = 'prepared'; evidence.prepared_at = new Date().toISOString(); save(); startup.finish(); if (process.connected) process.send({ type: 'ready', evidence });
-  } catch (error) { startup.finish(); evidence.error = error.message; if (process.connected) process.send({ type: 'failed', error: error.message }); await stop(); }
+  } catch (error) { if (error.historicalEvidence) historicalFailed.push(error.historicalEvidence); startup.finish(); evidence.error = error.message; if (process.connected) process.send({ type: 'failed', error: error.message }); await stop(); }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === here) serve().catch(error => { console.error(error); process.exitCode = 1; process.disconnect?.(); });

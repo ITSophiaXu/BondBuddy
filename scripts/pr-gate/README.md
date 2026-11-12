@@ -214,3 +214,16 @@ worker生产依赖中没有ReportLab时，准备阶段从本轮已验证的core�
 全部分片结束后、清理core容器之前，host控制器再次将当前Git commit中的原始核验器字节传入core执行`verifyGitSnapshotSource`，不从测试可写目录导入核验器。`receipt.core_source_final`记录本轮run、commit/tree、核验器hash、全部受跟踪文件的原字节证明及执行时间；必须与准备阶段证明一致，且时间晚于全部分片完成。缺失、失败或源码变化均阻断凭据，不能用外层工作区干净替代core核对。
 
 宿主原始证据放在`.local/pr-gate/host-evidence/<runId>`，普通core不挂载此目录。分片引用和宿主内存结果必须逐项匹配相同候选、计划、输出hash、原执行结果与零skip；还必须完成本轮全部八分片及全局资源清理。旧专项回执不能导入或拼接。本轮host源码使用系统临时目录下独有的`bb-pg-*/src`短路径，避免Windows Git长路径失败；创建时核对实际父路径、非链接目录及唯一所有权记录，`owner.json`保留本轮run ID和进程身份。具体源码路径及原字节证明写入`receipt.host_source`，与core证明一致后才有效。不修改系统或全局Git设置，不省略任何长路径文件；保留此独立源码便于核对。
+
+
+## 两个完整历史应用 collector
+
+本地受控 browser 分片会从原发现集合分出 `consistency-history-baseline.spec.ts` 与 `consistency-update-history-baseline.spec.ts`。其余文件继续使用本轮当前应用；每个原文件只执行一次，两 collector 各自单独调用原 Playwright 命令。只有对应调用收到原 opt-in 和 `https://127.0.0.1:5181`／`5182`，不会让当前行为测试因历史开关跳过。原分片总预算、120 秒准备窗口、断言和失败／skip 判定不变；准备、编译、启动或汇总失败均阻断。
+
+历史版本固定为 `8c81e8f1032ba5e23657eb32a43d9dfd0c9612fe` 和 `ce3f2a8dfd8ca64d3f78334c97576fbf47a586c9`。宿主仅从已有 Git 对象恢复各版本完整 `apps/web`、`packages/contracts`、`product-prototype/public` 与原根 package/lock；重建每个固定 Git subtree 并核所有文件原字节，以独立只读挂载提供给 core。旧 public 目录包含跨目录 CSS／资源依赖。来源缺失不会 fetch、猜测别的 checkout 或降级为当前页面。
+
+运行时核旧 lock 的实际依赖闭包与当前 lock 的准确 version/SRI/依赖关系，再用现有 npm 内容缓存中的原 SRI tarball 逐文件核对实际 installed package。缺缓存、包修改或未映射的安装派生文件都失败，不执行额外安装器、不修改共享 workspace links。旧 contracts 用原 tsconfig 单独编译，private node_modules 链接、dist 和 Vite cache 都在本轮 `/tmp/pr-gate-historical/<run>/<shard>/<id>`。原 Vite 配置以不改字节的私有 `.mjs` 加载，只覆盖 loopback 端口、cache、读取范围和隔离设置；未被原 synthetic fixture 截获的 API 请求明确拒绝并阻断，不能落入当前 API 或生产。
+
+同一 `playwright-report.json` 汇总全部分报告的原 suites、errors、失败、重试和跳过；完整文件集合、各组命令、环境、报告 hash、时间和旧源／依赖／实际模块加载记录进入同一回执。每组结束后、下一组启动前复制原 `/tmp/bondbuddy-web-test-results` 和原报告引用的受控附件到 `playwright-output-<group>`，保留原路径映射与文件 hash，避免后一次 Playwright 清理前一组证据。原报告和附件字节不改。
+
+这些输入身份和本轮运行记录明确不是 R38/R9 seal，也不能补造缺失的历史 provenance。QA single-start 等其他历史参考测试保持自身原门禁；它们的旧 API／fixture 协议错配需独立定位。新增能力代码和静态检查本身不构成执行通过，须由本轮完整 gate 实跑后判断。

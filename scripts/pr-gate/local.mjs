@@ -15,6 +15,7 @@ import { HOST_PROFILES } from './host-profiles.mjs';
 import { createHostBroker, createHostPlan } from './host-dispatch.mjs';
 import { collectCoreSource } from './core-source.mjs';
 import { parseExclusions } from './run.mjs';
+import { HISTORICAL_ROOT, restoreHistoricalSource, verifyHistoricalDirectory, collectHistoricalCheck } from './browser-historical-source.mjs';
 import { prepareBrowserServices } from './browser-host.mjs';
 import { REFERENCE_ROOT, QA_BASELINE_ROOT, restoreReferenceSource, restoreQaBaselineSource, verifyReferenceDirectory,
   verifyQaBaselineDirectory, verifyReferenceMount, collectReferenceCheck, collectQaBaselineCheck } from './browser-reference-source.mjs';
@@ -116,6 +117,7 @@ export function expectedFor(ref) {
     host_source_sha256: Object.fromEntries(Object.keys(HOST_PROFILES).map(path => [path, hash(blob(commit, path))])),
     browser_source_sha256: Object.fromEntries(browserFiles.map(path => [path, hash(blob(commit, path))])),
     source_verifier_sha256: hash(blob(commit, 'scripts/pr-gate/git-snapshot.mjs')),
+    historical_verifier_sha256: hash(blob(commit, 'scripts/pr-gate/browser-historical-source.mjs')),
     reference_verifier_sha256: hash(blob(commit, 'scripts/pr-gate/browser-reference-source.mjs')) };
 }
 
@@ -162,6 +164,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
   const identityParserDirectory = join(output, 'identity-parser-sources', id);
   const referenceOwner = join(output, 'reference-sources', id);
   const qaBaselineOwner = join(output, 'qa-baseline-sources', id);
+  const historicalOwner = join(output, 'historical-browser-sources', id);
   mkdirSync(directory, { recursive: true });
   const runner = `bb-pr-gate-${id}`;
   const postgres = `${runner}-pg`, azurite = `${runner}-blob`, httpsAzurite = `${runner}-https-blob`;
@@ -223,6 +226,8 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
     execute: (label, args, { input }) => docker(label, ['exec', '-i', owned.get(runner).id, ...isolatedCommand(args, runtimeEnvironment)], { capture: true, cleanup, input }) });
   const qaBaselineCheck = (stage, cleanup = false) => collectQaBaselineCheck({ candidate: expected, runId: id,
     containerId: owned.get(runner).id, stage, verifierBytes: blob(expected.commit, 'scripts/pr-gate/browser-reference-source.mjs'),
+    execute: (label, args, { input }) => docker(label, ['exec', '-i', owned.get(runner).id, ...isolatedCommand(args, runtimeEnvironment)], { capture: true, cleanup, input }) });
+  const historicalCheck = (stage, cleanup = false) => collectHistoricalCheck({ candidate: expected, runId: id, containerId: owned.get(runner).id, stage, verifierBytes: blob(expected.commit, 'scripts/pr-gate/browser-historical-source.mjs'),
     execute: (label, args, { input }) => docker(label, ['exec', '-i', owned.get(runner).id, ...isolatedCommand(args, runtimeEnvironment)], { capture: true, cleanup, input }) });
   const referenceMount = async (label, cleanup = false) => {
     const inspected = JSON.parse((await docker(label, ['inspect', owned.get(runner).id], { capture: true, privateCapture: true, cleanup })).text)[0];
@@ -286,6 +291,8 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
     mkdirSync(dirname(qaBaselineOwner), { recursive: true });
     receipt.qa_single_start_baseline = { schema: 'pr-gate-qa-baseline-components-run-v1', commit: expected.commit, tree: expected.tree, run_id: id,
       host_before: restoreQaBaselineSource(root, qaBaselineOwner, directory), shards: [] };
+    mkdirSync(dirname(historicalOwner), { recursive: true });
+    receipt.historical_browser_apps = { schema: 'pr-gate-historical-app-run-v1', commit: expected.commit, tree: expected.tree, run_id: id, host_before: restoreHistoricalSource(root, historicalOwner, directory), shards: [] };
     const image = offlineImage ?? `bondbuddy-pr-gate:${createHash('sha256').update(blob(expected.commit, 'scripts/pr-gate/Dockerfile')).digest('hex').slice(0, 16)}`;
     runtimeEnvironment = { ...workflow.env, CI: '1', GITHUB_SHA: expected.commit, GITHUB_WORKSPACE: '/workspace', RUNNER_TEMP: '/tmp',
       PR_GATE_TREE: expected.tree, BONDBUDDY_TEST_PYTHON: '/usr/local/bin/python', BONDBUDDY_WORD_PYTHON: '/usr/local/bin/python', BB_PYTHON: '/usr/local/bin/python',
@@ -326,12 +333,14 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
         '--mount', `type=bind,source=${identityParserDirectory},target=${CAPABILITY_PATHS.identityParser},readonly`,
         '--mount', `type=bind,source=${receipt.reference_components.host_before.root},target=${REFERENCE_ROOT},readonly`,
         '--mount', `type=bind,source=${receipt.qa_single_start_baseline.host_before.root},target=${QA_BASELINE_ROOT},readonly`,
+        '--mount', `type=bind,source=${receipt.historical_browser_apps.host_before.root},target=${HISTORICAL_ROOT},readonly`,
         ...(offlineImage ? ['--entrypoint', '/usr/bin/env'] : envArgs(runtimeEnvironment)), image,
         ...(offlineImage ? isolatedCommand(['sleep', 'infinity'], runtimeEnvironment).slice(1) : [])]);
       receipt.reference_components.container_id = owned.get(runner).id;
       receipt.reference_components.mount_before = await referenceMount('inspect-reference-mount-before');
       receipt.qa_single_start_baseline.container_id = owned.get(runner).id;
       receipt.qa_single_start_baseline.mount_before = structuredClone(receipt.reference_components.mount_before);
+      receipt.historical_browser_apps.container_id = owned.get(runner).id; receipt.historical_browser_apps.mount_before = structuredClone(receipt.reference_components.mount_before);
       if (offlineImage) {
         const inspected = JSON.parse((await docker('inspect-cache-runner', ['inspect', owned.get(runner).id], { capture: true, privateCapture: true })).text)[0];
         receipt.cache_runtime = inspectOfflineContainer(inspected, image, internalNetwork);
@@ -348,6 +357,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
       receipt.capabilities = json(join(directory, 'capabilities/prepared.json'));
       receipt.reference_components.container_before = await referenceCheck('prepared');
       receipt.qa_single_start_baseline.container_before = await qaBaselineCheck('prepared');
+      receipt.historical_browser_apps.container_before = await historicalCheck('prepared');
     });
     await step('services', startServices);
     await step('dependencies', async () => {
@@ -384,7 +394,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
     for (const [index, row] of workflow.matrix.entries()) {
       const record = { name: row.name, groups: row.groups, shard: row.shard, started_at: new Date().toISOString(), exit_code: null, summary: null };
       receipt.shards.push(record);
-      let browserServices, referenceShard, qaBaselineShard;
+      let browserServices, referenceShard, qaBaselineShard, historicalShard;
       try {
         if (internalNetwork) await auditInternalNetwork({ network: internalNetwork, docker, containerId: owned.get(runner).id, exec, phase: row.name });
         if (index) { await removeOwned([postgres, azurite, httpsAzurite], false); await startServices(); }
@@ -411,6 +421,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
             referenceShard.before = await referenceCheck(row.name + ':before');
             qaBaselineShard = { name: row.name }; receipt.qa_single_start_baseline.shards.push(qaBaselineShard);
             qaBaselineShard.before = await qaBaselineCheck(row.name + ':before');
+            historicalShard = { name: row.name }; receipt.historical_browser_apps.shards.push(historicalShard); historicalShard.before = await historicalCheck(row.name + ':before');
           }
           record.exit_code = (await exec(`${row.name}-tests`, ['node', 'scripts/pr-gate/run.mjs', 'run', '--group', row.groups, '--shard', row.shard, '--name', row.name, '--jobs', String(workflow.matrix.length), '--out', `/evidence/shards/${row.name}`], env, { allowFailure: true })).code;
         }
@@ -422,6 +433,7 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
         catch (error) { receipt.errors.push(`${row.name} final reference verification: ${error.message}`); }
         if (qaBaselineShard) try { qaBaselineShard.after = await qaBaselineCheck(row.name + ':after', true); }
         catch (error) { receipt.errors.push(`${row.name} final QA baseline verification: ${error.message}`); }
+        if (historicalShard) try { historicalShard.after = await historicalCheck(row.name + ':after', true); } catch (error) { receipt.errors.push(`${row.name} final historical app source verification: ${error.message}`); }
         if (browserServices) try { await browserServices.cleanup(); record.browser_services = browserServices.evidence; }
         catch (error) { receipt.errors.push(`${row.name} browser services cleanup: ${error.message}`); } }
       record.finished_at = new Date().toISOString(); save();
@@ -449,6 +461,11 @@ async function run({ offlineImage = null, workerImage = null, dependencyRoot = n
         try { receipt.qa_single_start_baseline.container_after = await qaBaselineCheck('final', true); }
         catch (error) { receipt.errors.push(`Final container QA baseline verification: ${error.message}`); }
       }
+    }
+    if (receipt.historical_browser_apps) {
+      try { receipt.historical_browser_apps.host_after = verifyHistoricalDirectory(receipt.historical_browser_apps.host_before.root); } catch (error) { receipt.errors.push(`Final historical host source: ${error.message}`); }
+      if (owned.has(runner)) { receipt.historical_browser_apps.mount_after = structuredClone(receipt.reference_components?.mount_after);
+        try { receipt.historical_browser_apps.container_after = await historicalCheck('final', true); } catch (error) { receipt.errors.push(`Final historical container source: ${error.message}`); } }
     }
     if (internalNetwork && owned.has(runner)) {
       try {

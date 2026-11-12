@@ -156,9 +156,11 @@ export function verifyReferenceMount(value, sourceRoot, evidenceRoot, containerI
   assert.notEqual(qaSourceRoot, sourceRoot, 'Reference source must be in its owned source directory');
   const qaSource = mountSourceIdentity(qaSourceRoot);
   assert.ok(!overlap(qaSource, evidence) && !overlap(qaSource, source), 'QA baseline source overlaps another input');
+  const historicalSourceRoot = sourceRoot.replace('/reference-sources/', '/historical-browser-sources/').replace(/\/BondBuddy-develop$/, '');
+  const historicalSource = mountSourceIdentity(historicalSourceRoot); assert.ok(!overlap(historicalSource, evidence));
   const mounts = value.Mounts ?? [];
   assert.deepEqual(mounts.map(m => ({ type: m.Type, destination: m.Destination, writable: m.RW })).sort((a, b) => a.destination.localeCompare(b.destination)),
-    [{ type: 'bind', destination: '/evidence', writable: true }, { type: 'bind', destination: '/opt/pr-gate-identity-parser106', writable: false },
+    [{ type: 'bind', destination: '/evidence', writable: true }, { type: 'bind', destination: '/opt/pr-gate-historical-browser', writable: false }, { type: 'bind', destination: '/opt/pr-gate-identity-parser106', writable: false },
     { type: 'bind', destination: '/opt/pr-gate-parser106', writable: false },
       { type: 'bind', destination: QA_BASELINE_ROOT, writable: false }, { type: 'bind', destination: REFERENCE_ROOT, writable: false }]);
   const reference = mounts.find(m => m.Destination === REFERENCE_ROOT), writable = mounts.find(m => m.Destination === '/evidence');
@@ -166,10 +168,12 @@ export function verifyReferenceMount(value, sourceRoot, evidenceRoot, containerI
   assert.equal(mountSourceIdentity(writable.Source), evidence, 'Writable evidence bind source differs');
   const qa = mounts.find(m => m.Destination === QA_BASELINE_ROOT);
   assert.equal(mountSourceIdentity(qa.Source), qaSource, 'QA baseline bind source differs from the verified realpath');
+  const historical = mounts.find(m => m.Destination === '/opt/pr-gate-historical-browser'); assert.equal(mountSourceIdentity(historical.Source), historicalSource);
   assert.match(value.Id, /^[a-f0-9]{64}$/);
   assert.equal(value.Id, containerId, 'Reference container differs from this run\'s owned runner');
   return { container_id: value.Id, type: 'bind', root: REFERENCE_ROOT, writable: false, host_source: sourceRoot, host_evidence: evidenceRoot,
     actual_source: reference.Source, actual_evidence: writable.Source,
+    historical_apps: { root: '/opt/pr-gate-historical-browser', writable: false, host_source: historicalSourceRoot, actual_source: historical.Source },
     qa_baseline: { root: QA_BASELINE_ROOT, writable: false, host_source: qaSourceRoot, actual_source: qa.Source } };
 }
 /** Execute committed verifier bytes, never the copy writable by browser tests. */
@@ -229,6 +233,7 @@ function verifyPinnedRuns(receipt, expected, key, schema, directory, verifyRecor
     const reconstructed = verifyReferenceMount({ Id: mount?.container_id, Mounts: [
       { Type: 'bind', Destination: '/evidence', Source: mount?.actual_evidence, RW: true },
       { Type: 'bind', Destination: '/opt/pr-gate-parser106', RW: false },
+      { Type: 'bind', Destination: mount?.historical_apps?.root, Source: mount?.historical_apps?.actual_source, RW: mount?.historical_apps?.writable },
       { Type: 'bind', Destination: '/opt/pr-gate-identity-parser106', RW: false },
       { Type: 'bind', Destination: mount?.root, Source: mount?.actual_source, RW: mount?.writable },
       { Type: 'bind', Destination: mount?.qa_baseline?.root, Source: mount?.qa_baseline?.actual_source, RW: mount?.qa_baseline?.writable },

@@ -25,6 +25,10 @@ import { capabilityEnvironment, verifyPreparedCapabilities } from './capabilitie
 import { initializeHostClient, requestHostExecution } from './host-dispatch-client.mjs';
 import { HOST_ENV_KEYS } from './host-profiles.mjs';
 import { browserInvocation, startBrowserRuntime } from './browser-runtime.mjs';
+import { createBrowserDispatch, HISTORICAL_COLLECTORS, mergeBrowserReports, verifyBrowserDispatch } from './browser-dispatch.mjs';
+import { historicalRemaining } from './browser-historical-runtime.mjs';
+import { browserHash } from './browser-profiles.mjs';
+import { archiveBrowserOutput } from './browser-artifacts.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(HERE, '../..');
@@ -302,23 +306,64 @@ async function runSequential(root, group, runner, items, context, workingDirecto
 }
 async function runBrowser(root, items, context) {
   const reportFile = join(context.out, 'playwright-report.json');
-  let runtime, execution, runtimeError;
-  try {
-    if (process.env.PR_GATE_BROWSER_PLAN) runtime = await startBrowserRuntime(root, items, childEnvironment());
-    const invocation = browserInvocation(items, reportFile, runtime?.env ?? childEnvironment());
-    const remaining = Math.max(context.deadline - Date.now(), 60_000);
-    if (runtime) context.browserRuntime = { ...runtime.evidence, invocation: { command: invocation.command, args: invocation.args, cwd: join(root, 'apps/web'), timeout_ms: remaining, started_at: new Date().toISOString() } };
-    execution = await execute(invocation.command, invocation.args,
-      { cwd: join(root, 'apps/web'), env: invocation.env, timeoutMs: remaining, inherit: true });
-    if (runtime) Object.assign(context.browserRuntime.invocation, { finished_at: new Date().toISOString(), exit_code: execution.code, timed_out: execution.timedOut });
-  } catch (error) { runtimeError = error.message; execution ??= { code: null, timedOut: false }; }
-  finally {
-    if (runtime) try { const final = await runtime.cleanup(); context.browserRuntime = { ...final, invocation: context.browserRuntime?.invocation }; }
-      catch (error) { runtimeError = [runtimeError, error.message].filter(Boolean).join('; '); }
+  // Unmanaged developer invocations retain the existing command and judge.
+  if (!process.env.PR_GATE_BROWSER_PLAN) {
+    let execution, runtimeError;
+    try { const invocation = browserInvocation(items, reportFile, childEnvironment());
+      execution = await execute(invocation.command, invocation.args, { cwd: join(root, 'apps/web'), env: invocation.env, timeoutMs: Math.max(context.deadline - Date.now(), 60_000), inherit: true });
+    } catch (error) { runtimeError = error.message; execution ??= { code: null, timedOut: false }; }
+    let report = null; try { report = JSON.parse(readFileSync(reportFile, 'utf8')); } catch { /* missing reports fail below */ }
+    const result = evaluatePlaywright(report, items, execution); if (runtimeError) result.problems.push('Browser runtime preparation/cleanup failed: ' + runtimeError);
+    for (const row of result.results) row.durationMs = 0; return result;
   }
-  let report = null;
-  try { report = JSON.parse(readFileSync(reportFile, 'utf8')); } catch { /* 没有报告，下面按失败处理 */ }
-  const evaluated = evaluatePlaywright(report, items, execution);
+
+  const dispatch = createBrowserDispatch(items.map(({ id }) => ({ id }))); verifyBrowserDispatch(dispatch, items.map(({ id }) => ({ id })));
+  const calls = [], reports = [], executions = [], problems = [];
+  let runtime, runtimeError;
+  try {
+    runtime = await startBrowserRuntime(root, items, childEnvironment(), context.deadline);
+    context.browserRuntime = { ...runtime.evidence, dispatch, invocations: calls };
+    for (const group of dispatch) {
+      const remaining = historicalRemaining(context.deadline), partFile = join(context.out, `playwright-report-${group.id}.json`);
+      const env = { ...runtime.env, BB_E2E_BASE_URL: group.origin };
+      for (const value of Object.values(HISTORICAL_COLLECTORS)) delete env[value.flag];
+      if (group.flag) env[group.flag] = '1';
+      const invocation = browserInvocation(group.items, partFile, env);
+      const call = { id: group.id, files: group.items.map(row => row.id), command: invocation.command, args: invocation.args, cwd: join(root, 'apps/web'),
+        environment: { BB_E2E_BASE_URL: env.BB_E2E_BASE_URL, ...(group.flag ? { [group.flag]: '1' } : {}) },
+        report_file: partFile, timeout_ms: remaining, started_at: new Date().toISOString() };
+      calls.push(call);
+      const execution = await execute(invocation.command, invocation.args, { cwd: call.cwd, env: invocation.env, timeoutMs: remaining, inherit: true });
+      executions.push(execution); Object.assign(call, { finished_at: new Date().toISOString(), exit_code: execution.code, timed_out: execution.timedOut });
+      let report = null;
+      try { const bytes = readFileSync(partFile); call.report_raw_sha256 = browserHash(bytes); report = JSON.parse(bytes); call.report_sha256 = browserHash(report); }
+      catch (error) { problems.push(`${group.id} report missing or invalid: ${error.message}`); }
+      reports.push({ id: group.id, report });
+      call.output_archive = archiveBrowserOutput({ destination: join(context.out, `playwright-output-${group.id}`), report, evidenceRoot: runtime.plan.output_root });
+    }
+  } catch (error) { runtimeError = error.message; if (error.browserRuntimeEvidence) context.browserRuntime = { ...error.browserRuntimeEvidence, dispatch, invocations: calls }; }
+  finally {
+    if (runtime) try { const final = await runtime.cleanup(); context.browserRuntime = { ...final, dispatch, invocations: calls,
+      ...(calls.length === 1 ? { invocation: calls[0] } : {}), deadline: new Date(context.deadline).toISOString() }; }
+    catch (error) { if (error.browserRuntimeEvidence) context.browserRuntime = { ...error.browserRuntimeEvidence, dispatch, invocations: calls }; runtimeError = [runtimeError, error.message].filter(Boolean).join('; '); }
+  }
+  let evaluated;
+  try {
+    const report = mergeBrowserReports(reports, dispatch); writeFileSync(reportFile, JSON.stringify(report, null, 2) + '\n');
+    if (context.browserRuntime) context.browserRuntime.report = { file: reportFile, sha256: browserHash(readFileSync(reportFile)), dispatch: report.config.pr_gate_dispatch };
+    evaluated = evaluatePlaywright(report, items, { code: executions.length === dispatch.length && executions.every(row => row.code === 0 && !row.timedOut) ? 0 : 1,
+      timedOut: executions.some(row => row.timedOut) });
+  } catch (error) {
+    // Preserve each actual failed/partial report; unstarted files remain failed.
+    problems.push('Complete browser report aggregation failed: ' + error.message);
+    evaluated = { results: [], problems: [] };
+    for (const [index, group] of dispatch.entries()) {
+      const selected = group.items.map(row => items.find(item => item.id === row.id));
+      const part = evaluatePlaywright(reports.find(row => row.id === group.id)?.report ?? null, selected, executions[index] ?? { code: null, timedOut: false });
+      evaluated.results.push(...part.results); evaluated.problems.push(...part.problems);
+    }
+  }
+  evaluated.problems.push(...problems);
   if (runtimeError) evaluated.problems.push('Browser runtime preparation/cleanup failed: ' + runtimeError);
   for (const result of evaluated.results) result.durationMs = 0;
   return evaluated;

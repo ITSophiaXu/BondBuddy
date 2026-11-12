@@ -150,6 +150,10 @@ test('browser receipt binds complete batch, actual runtime probes, environment, 
     r => r.shards[0].summary.browser_runtime.commit = 'c'.repeat(40), r => r.shards[0].summary.browser_runtime.run_id = 'old',
     r => r.shards[0].summary.browser_runtime.cleanup.status = 'failed', r => r.shards[0].browser_services.cleanup.status = 'failed',
     r => r.shards[0].summary.browser_runtime.invocation.started_at = '2026-11-11T12:00:00.000Z', r => r.shards[0].summary.counts.selected--,
+    r => r.shards[0].summary.browser_runtime.invocations.push(structuredClone(r.shards[0].summary.browser_runtime.invocations[0])),
+    r => r.shards[0].summary.browser_runtime.invocations[0].environment.BB_UPDATE_HISTORY_BASELINE = '1',
+    r => r.shards[0].summary.browser_runtime.preparation_deadline = '2026-11-11T13:00:11.000Z',
+    r => r.shards[0].summary.browser_runtime.report.dispatch.reports[0].attachment_paths.push('/tmp/bondbuddy-web-test-results/unarchived.png'),
     r => delete r.shards[0].summary.browser_runtime]) {
     const altered = structuredClone(receipt); mutate(altered); assert.throws(() => verifyBrowserRuns(altered, expected));
   }

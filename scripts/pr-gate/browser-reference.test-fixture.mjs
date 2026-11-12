@@ -17,6 +17,7 @@ export function syntheticReferenceRuns(expected, runId, containerId = 'c'.repeat
     { Type: 'bind', Destination: REFERENCE_ROOT, RW: false, Source: root },
     { Type: 'bind', Destination: QA_BASELINE_ROOT, RW: false, Source: root.replace('/reference-sources/', '/qa-baseline-sources/') },
     { Type: 'bind', Destination: '/opt/pr-gate-identity-parser106', RW: false, Source: '/synthetic/identity-parser' },
+    { Type: 'bind', Destination: '/opt/pr-gate-historical-browser', RW: false, Source: '/synthetic/historical-browser-sources/' + runId },
   ] }, root, evidence, containerId);
   return { schema: 'pr-gate-reference-components-run-v1', ...common,
     host_before: syntheticReferenceIdentity(root), host_after: syntheticReferenceIdentity(root), mount_before: mount, mount_after: structuredClone(mount),

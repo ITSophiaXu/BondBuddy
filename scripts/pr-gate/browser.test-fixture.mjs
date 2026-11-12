@@ -1,5 +1,6 @@
 // Synthetic records for verifier unit tests; never runtime/release evidence.
 import { BROWSER_API_PROFILES, BROWSER_API_ORIGIN, BROWSER_ORIGIN, BROWSER_PROTOTYPE_FILES, BROWSER_PROTOTYPE_ORIGIN, BROWSER_TERMS, browserHash, createBrowserPlan } from './browser-profiles.mjs';
+import { createBrowserDispatch } from './browser-dispatch.mjs';
 import { browserFilesForShard } from './browser-host.mjs';
 import { browserInvocation } from './browser-runtime.mjs';
 import { BROWSER_TOOLS_ROOT, BROWSER_TOOLS_SCHEMA } from './browser-tools.mjs';
@@ -19,6 +20,12 @@ export function syntheticBrowserShard(expected, row, capabilities, runId, imageI
       web: { status: 'passed', origin: BROWSER_ORIGIN, tls_verified: true, ca_sha256: capabilities.tls.ca_sha256, response_sha256: browserHash('synthetic-web') } },
     invocation: { command: 'npx', args: browserInvocation(files.map(id => ({ id })), '', {}).args, cwd: '/workspace/apps/web', timeout_ms: 120000,
       exit_code: 0, timed_out: false, started_at: stamp(15), finished_at: stamp(22) } };
+  runtime.preparation_deadline = '2026-11-11T13:02:11.000Z';
+  runtime.dispatch = createBrowserDispatch(files.map(id => ({ id })));
+  const call = runtime.invocation; Object.assign(call, { id: 'current', files, environment: { BB_E2E_BASE_URL: BROWSER_ORIGIN }, report_file: `/evidence/shards/${row.name}/playwright-report-current.json`,
+    report_raw_sha256: browserHash('synthetic-raw-report'), report_sha256: browserHash('synthetic-parsed-report'), output_archive: { schema: 'pr-gate-browser-output-archive-v1', source_root: '/tmp/bondbuddy-web-test-results', source_exists: false, archive_root: `/evidence/shards/${row.name}/playwright-output-current`, files: [], attachments: [], manifest_sha256: browserHash({ files: [], attachments: [] }) } });
+  runtime.invocations = [call]; runtime.historical_apps = []; runtime.deadline = '2026-11-11T13:02:15.000Z';
+  runtime.report = { file: `/evidence/shards/${row.name}/playwright-report.json`, sha256: browserHash('synthetic-combined-report'), dispatch: { schema: 'pr-gate-browser-dispatch-v1', report_hash_encoding: 'JSON.stringify/utf8', reports: [{ id: 'current', origin: BROWSER_ORIGIN, flag: null, files, attachment_paths: [], report_sha256: call.report_sha256, argv: ['node', 'playwright', ...call.args.slice(1)], stats: { expected: files.length, unexpected: 0, flaky: 0, skipped: 0 } }] } };
   const services = { ...common, status: 'prepared', plan, plan_sha256, started_at: stamp(1), prepared_at: stamp(10), cleanup: { status: 'passed', finished_at: stamp(35) } };
   runtime.services_alive_before_cleanup = { web: true, ...(plan.needs.api ? { api: true, upload_confirmation: true } : {}), ...(plan.needs.prototype ? { prototype: true } : {}) };
   if (files.includes(QA_BASELINE_TEST)) runtime.qa_single_start_baseline = syntheticQaBaselineAliases();
