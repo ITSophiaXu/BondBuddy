@@ -1,3 +1,4 @@
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun, syntheticAuthoringBlobs } from './test-authoring-source.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { randomUUID, randomBytes } from 'node:crypto';
@@ -13,7 +14,7 @@ const enabled={skip:!connection};
 async function setup(supportContact:string|undefined='synthetic-support') {
   const pool=new Pool({connectionString:connection});
   const remoteAddress=`2001:db8:${randomBytes(4).toString('hex').match(/.{4}/g)!.join(':')}::1`;
-  const app=createServer({pool,allowedOrigin:origin,auth:{termsVersion:'synthetic-recovery-v1',supportContact},enableSyntheticQueue:true});
+  const app=createServer({pool,blobs:syntheticAuthoringBlobs(),allowedOrigin:origin,auth:{termsVersion:'synthetic-recovery-v1',supportContact},enableSyntheticQueue:true});
   const publicPost=(url:string,payload:any)=>app.inject({method:'POST',url,headers:{origin},payload,remoteAddress});
   const credentials=(res:any)=>{
     const cookies=res.cookies as Array<{name:string;value:string}>;
@@ -40,8 +41,9 @@ test('#9 real sessions: binding, manual grant and single-use reset preserve data
   const s=await setup();try{
     const p=await s.send(s.a,'POST','/api/v1/projects',{name:'Synthetic recovery data',kind:'update',issuer_name:null,market:null,offering:null});assert.equal(p.statusCode,201,p.body);
     const project=p.json().project_id;
-    const input=await s.send(s.a,'POST',`/api/v1/projects/${project}/input-revisions`,{draft_revision:1,material_versions:[],requirement_message_ids:[]});assert.equal(input.statusCode,201,input.body);
-    const run=await s.send(s.a,'POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:project,input_revision:1,input_hash:input.json().input_hash,task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'});assert.equal(run.statusCode,202,run.body);
+    const input=await lockSyntheticAuthoringInput(s.app,project,s.a.headers);assert.equal(input.statusCode,201,input.body);
+    const quoteId=await quoteSyntheticAuthoringRun(s.app,s.pool,s.a.id,project,input.json(),s.a.headers);
+    const run=await s.send(s.a,'POST','/api/v1/runs/execute',{execution_request_id:randomUUID(),project_id:project,input_revision:1,input_hash:input.json().input_hash,quote_id:quoteId,task_kind:'update',input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'});assert.equal(run.statusCode,202,run.body);
     const second=s.credentials(await s.login());
     const binding=await s.bind(),ticket=await s.ticket(),token=await s.issue(ticket,binding);
     assert.equal((await s.send(s.a,'GET','/api/v1/me')).statusCode,200,'request/issuance do not log out the user');
