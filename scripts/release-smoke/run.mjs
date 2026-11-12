@@ -1,5 +1,5 @@
 import {spawn,execFileSync} from 'node:child_process';
-import {readFileSync,writeFileSync,mkdirSync,existsSync,rmSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdirSync,copyFileSync,existsSync,rmSync} from 'node:fs';
 import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {randomBytes} from 'node:crypto';
@@ -9,6 +9,7 @@ import {hostEnvironment,protectPrivatePath} from './platform.mjs';
 import {prepareReleaseCredential,assertReleaseCredential} from './credentials.mjs';
 import {assertArchiveSupport,extractArchive,gitArchive} from './archive.mjs';
 import {dependencyOptions,dependencyDockerfile,dependencyBuildArgs,assertNodeBaseUnchanged} from './dependencies.mjs';
+import {uploadConfirmationEnvironment} from './uploads.mjs';
 
 const directory=dirname(fileURLToPath(import.meta.url)),repo=resolve(directory,'../..');
 const settingsFile=join(directory,'.local.json');
@@ -113,6 +114,7 @@ try{
   writeJson(join(out,'seccomp.json'),seccomp);
   const workerEnv={...common,BB_CODEX_AUTH_MODE:'copilot_enterprise',BB_COPILOT_OAUTH_FILE:'/run/secrets/bb-copilot-oauth',BB_CODEX_PROVIDER:report.provider,BB_CODEX_BASE_URL:'https://api.enterprise.githubcopilot.com',BB_CODEX_MODEL:report.model,BB_CODEX_REASONING_EFFORT:'max',BB_CODEX_CONFIG_VERSION:'release-smoke-v1',BB_CODEX_TIMEOUT_MS:'600000',BB_CODEX_AUTHORING_TIMEOUT_MS:'3600000',BB_CODEX_WORK_ROOT:'/tmp/bb-codex',BB_REPO_ROOT:'/app',BB_PYTHON:'/opt/venv/bin/python',BB_PYTHON_BIN:'/opt/venv/bin/python',BB_PARSE_STAGING_DIR:'/var/lib/bondbuddy/parse-staging',BB_PARSE_CACHE_OCR_VERSION:'tesseract-5.3.0-eng-chi_sim-osd-v1',BB_PARSE_CACHE_BASIS_VERSION:'release-smoke-v1',BB_WORKER_CONCURRENCY:'2',BB_WORKER_PARSE_SLOTS:'1',BB_WORKER_GROUP:'release-smoke',BB_REVIEW_WEB_SEARCH_ENABLED:'0'};
   const worker={image:image.worker,environment:workerEnv,read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true','seccomp='+join(out,'seccomp.json').replaceAll('\\','/')],tmpfs:['/tmp:rw,nosuid,nodev,size=4g,mode=1777'],volumes:['parse:/var/lib/bondbuddy/parse-staging',...credential.volumes],mem_limit:'6g',cpus:4,stop_grace_period:'30s'};
+  Object.assign(workerEnv,uploadConfirmationEnvironment());
   if(apparmor)worker.security_opt.push('apparmor=bondbuddy-codex-v1');
   writeJson(join(out,'compose.json'),{services:{
    postgres:{image:'postgres:16',environment:{POSTGRES_USER:'bondbuddy',POSTGRES_PASSWORD:password,POSTGRES_DB:'bb_release_smoke'},volumes:['pg:/var/lib/postgresql/data'],healthcheck:{test:['CMD-SHELL','pg_isready -U bondbuddy -d bb_release_smoke'],interval:'2s',retries:30}},
