@@ -58,7 +58,7 @@ export class ProjectFiles {
   private pendingImport?:{file?:File;type:ProjectDocumentType;request:string;latest:string|null;pin?:Awaited<ReturnType<typeof uploadFileMaterial>>;upload:UploadFileMaterialState;uncertain:boolean;allowReselect?:boolean};
   private savedImport?:{type:ProjectDocumentType;pin:M4MaterialPin;fileId?:string;previous?:number};
   private folderMedia=matchMedia('(max-width:760px)');
-  private syncFolderLayout=()=>{const picker=document.querySelector<HTMLDetailsElement>('#pw-folder-picker');if(this.live()&&picker)picker.open=!this.folderMedia.matches;};
+  private syncFolderLayout=()=>{const picker=document.querySelector<HTMLDetailsElement>('#pw-folder-picker');if(this.live()&&picker){picker.open=!this.folderMedia.matches;this.revealFileStatus();}};
   constructor(private api:ApiClient,private shell:(html:string,section:string)=>void,private current:()=>boolean,private id:string,private owner?:string,private routeChanged:(route:string)=>void=()=>{}){}
   private imports(){if(!this.owner)throw new UserFacingError('当前账号身份尚未确认，不能建立可恢复的上传记录。');return new UploadRecovery(this.api,this.owner,this.id,'project-file-import',()=>this.live());}
   private restoreImport(record:UploadRecoveryRecord){
@@ -478,11 +478,23 @@ export class ProjectFiles {
     if(clearType)this.paint(false);else this.paintFiles(false);this.rememberFileView();
     if(!document.querySelector('dialog[open]'))document.querySelector<HTMLElement>('#pw-file-status [data-file-status="'+group+'"]')?.focus({preventScroll:true});
   }
+  private revealFileStatus(){
+    const host=document.querySelector<HTMLElement>('#pw-file-status');
+    const selected=host?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if(!host||!selected||host.scrollWidth<=host.clientWidth)return;
+    const frame=host.getBoundingClientRect(),button=selected.getBoundingClientRect();
+    const left=frame.left+host.clientLeft,right=left+host.clientWidth;
+    // Scroll only the filter strip; keep the user's vertical reading position.
+    if(button.left<left+4)host.scrollLeft+=button.left-left-4;
+    else if(button.right>right-4)host.scrollLeft+=button.right-right+4;
+  }
   private paintFileStatus(rows:ProjectFileStatusRow[],untyped:ProjectFileStatusRow[]){
     const counts=new Map(fileStatusOptions.map(option=>[option.key,option.key==='all'?rows.length:rows.filter(row=>row.group===option.key).length]));
-    const host=document.querySelector('#pw-file-status')!;
+    const host=document.querySelector<HTMLElement>('#pw-file-status')!;
+    const previous=host.querySelector('[aria-pressed="true"]')?.getAttribute('data-file-status'),scroll=host.scrollLeft;
     host.innerHTML='<div>'+fileStatusOptions.map(option=>'<button type="button" class="collection-filter" data-file-status="'+option.key+'" data-file-view-focus="'+esc(fileViewFocus('status',option.key))+'" aria-pressed="'+(this.statusFilter===option.key)+'">'+option.label+' <span data-file-status-count>'+(!this.registryLoaded&&option.key!=='all'?'—':counts.get(option.key))+'</span></button>').join('')+'</div>';
     host.querySelectorAll<HTMLButtonElement>('[data-file-status]').forEach(button=>button.addEventListener('click',()=>{const group=button.dataset.fileStatus;if(group&&isFileStatusGroup(group))this.chooseFileStatus(group);}));
+    host.scrollLeft=scroll;if(previous!==this.statusFilter)this.revealFileStatus();
     const unsynced=untyped.filter(row=>row.group==='unsynced').length;
     let note:string;
     if(!this.registryLoaded)note='文件检查状态暂未同步，当前按目录和名称显示全部匹配文件。'+(this.typeFilter?'所选文种和处理状态':'所选处理状态')+'将在刷新成功后恢复。';
