@@ -111,7 +111,7 @@ test('dirty invocation invalidates a prior passed receipt, merges missing result
   const fixture = mkdtempSync(join(tmpdir(), 'bb-pr-gate-dirty-'));
   try {
     const directory = join(fixture, 'scripts/pr-gate'); mkdirSync(directory, { recursive: true });
-    for (const name of ['local.mjs', 'run.mjs', 'receipt.mjs', 'workflow.mjs', 'capabilities.mjs', 'parser-source.mjs']) copyFileSync(new URL(name, import.meta.url), join(directory, name));
+    for (const name of ['local.mjs', 'run.mjs', 'receipt.mjs', 'workflow.mjs', 'capabilities.mjs', 'parser-source.mjs', 'offline-cache.mjs']) copyFileSync(new URL(name, import.meta.url), join(directory, name));
     writeFileSync(join(fixture, '.gitignore'), '.local/\n');
     const git = args => execFileSync('git', args, { cwd: fixture, stdio: 'pipe' });
     git(['init']); git(['add', '.']); git(['-c', 'user.name=Gate Test', '-c', 'user.email=gate@example.invalid', 'commit', '-m', 'fixture']);

@@ -139,3 +139,21 @@ node --test scripts/pr-gate/run.test.mjs
 自行合并的前提是 rebase 到最新 develop 后本地全量检查通过，并在 PR 贴回执摘要。当前本地回执不会自动配置 GitHub 分支保护，也不会部署。本 PR 不修改 `deploy.sh`；部署前核对回执另开 PR。
 
 真实模型的生成质量、用户实际验收、现有发布门禁、原生沙箱和独立兼容性测试仍按各自范围执行。仓库根目录旧 Cowork `tests/` 不属于本脚本的发现范围。任何未覆盖或跳过的检查均不能据此称为已验证。
+
+## 使用本机已有依赖缓存（不下载）
+
+当本机已有包含依赖与浏览器的PR gate缓存镜像时，可指定不可变本地镜像ID：
+
+```sh
+npm run pr-gate -- --offline-image sha256:<64位本地镜像ID>
+```
+
+此模式仍执行原工作流的全部八个分片。它只改变环境准备，不改变自动发现、例外清单、300秒单文件预算、跳过判定或回执完整性；尚未准备好的能力仍按原测试失败或skip阻断。每次仍需干净HEAD和最新develop基点。镜像ID由本机`docker image inspect`取得，不接受tag，不自动构建或拉取。PG16和Azurite也必须已缓存，启动时固定解析后的image ID。
+
+- 缓存必须把package-lock.json及两份Python requirements保留在/workspace。三份输入分别与候选Git原字节比较，只允许CRLF转LF；不按JSON等价或大致版本放行。原始字节与哈希保留。
+- 确认/workspace没有bind/volume及子挂载后，在一次性容器中删除旧源码、node_modules和编译输出，再用原Git snapshot恢复准确commit/tree。宿主源码和Git配置不挂入。
+- 每条进程使用env -i白名单，旧镜像的SHA、opt-in、NODE_OPTIONS等环境不会继承。runner network=none；专用PG/HTTP Blob/HTTPS Blob只共享该容器网络，无宿主端口、Docker socket或生产连接。记录实际隔离检查和服务镜像身份。
+- JavaScript仅npm ci --offline和npm ls --all；Python仅核对候选requirements与已安装版本并运行pip check，不运行pip install。Chromium必须已存在，真实启动本地合成页面探针后关闭，不运行Playwright install。缺缓存或不匹配直接失败。
+- 普通模式保留原下载准备。两种模式都按本次创建的精确容器ID和名称核对后清理，并inspect确认不存在；中途启动失败同样清理。
+
+离线准备回执在`.local/pr-gate/runs/<id>/offline-cache/record.json`，含原始/转换/候选输入哈希、源码恢复、依赖检查和真实浏览器探针。只有八分片与其余既有能力均通过、清理成功时才能签发PR gate通过回执。单独环境探针或旧定向日志均不能替代本次完整结果。

@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { exclusionsEvidence, PREPARATION_IDS, RECEIPT_SCHEMA, verifyReceipt } from './receipt.mjs';
 import { syntheticCapabilities, syntheticCapabilityRuns, syntheticCapabilityService } from './capabilities.test-fixture.mjs';
+import { CACHE_FILES, OFFLINE_SCHEMA, compareCacheFiles, hash } from './offline-cache.mjs';
 
 const matrix = [
   { name: 'api-1', groups: 'api', shard: '1/2' },
@@ -23,7 +24,7 @@ const now = Date.parse('2026-11-11T13:02:00.000Z');
 function fixture() {
   const capabilities = syntheticCapabilities(expected);
   return {
-    schema_version: RECEIPT_SCHEMA, status: 'passed',
+    schema_version: RECEIPT_SCHEMA, status: 'passed', dependency_mode: 'download',
     commit: expected.commit, tree: expected.tree, develop_commit: expected.develop_commit,
     clean_tree: true, platform: 'linux', host_platform: 'win32',
     started_at: '2026-11-11T13:00:00.000Z', finished_at: '2026-11-11T13:01:00.000Z',
@@ -150,4 +151,27 @@ test('run and shard timestamps must describe one completed run', () => {
   rejects(receipt => { receipt.finished_at = '2026-11-11T14:00:00.000Z'; }, /timestamps/);
   rejects(receipt => { receipt.shards[0].summary.finishedAt = '2026-11-10T13:00:30.000Z'; }, /timestamp/);
   rejects(receipt => { receipt.shards[0].summary.finishedAt = '2026-11-11T13:01:01.000Z'; }, /timestamp/);
+});
+
+test('offline receipts cannot omit cache identity, isolation or preparation evidence', () => {
+  rejects(receipt => { delete receipt.dependency_mode; }, /dependency mode/);
+  rejects(receipt => { receipt.dependency_mode = 'offline-cache'; }, /download/);
+  rejects(receipt => { receipt.dependency_mode = 'offline-cache'; receipt.dependency_sources = { downloads: false }; receipt.cache_image = { image_id: 'sha256:' + 'a'.repeat(64) }; }, /cache image identity/);
+  rejects(receipt => { receipt.dependency_mode = 'offline-cache'; receipt.dependency_sources = { downloads: false }; const image_id = 'sha256:' + 'a'.repeat(64); receipt.cache_image = { image_id }; receipt.offline_cache = { image_id }; }, /isolation/);
+});
+
+test('complete current-candidate offline preparation still requires every original shard', () => {
+  const receipt = fixture(), inputs = Object.fromEntries(CACHE_FILES.map(path => [path, Buffer.from('synthetic\n')]));
+  const cacheExpected = { ...expected, cache_files: Object.fromEntries(CACHE_FILES.map(path => [path, hash(inputs[path])])) };
+  const image_id = 'sha256:' + 'd'.repeat(64);
+  receipt.dependency_mode = 'offline-cache'; receipt.dependency_sources = { downloads: false };
+  receipt.cache_image = { image_id }; receipt.cache_runtime = { network: 'none', image_id, published_ports: 0, privileged: false };
+  receipt.cache_service_images = { postgres: image_id, azurite: image_id };
+  receipt.offline_cache = { schema: OFFLINE_SCHEMA, status: 'passed', commit: expected.commit, tree: expected.tree, image_id,
+    network: 'none', environment: 'allowlist-env-i', old_source_removed: true, old_node_modules_removed: true,
+    restored: { commit: expected.commit, tree: expected.tree, clean_tree: true, shallow: true }, files: compareCacheFiles(inputs, inputs),
+    npm: { mode: 'ci-offline', tree_check: 'passed' }, python: { status: 'passed', requirements: [{ requirement: 'synthetic>=1', installed: '1' }] },
+    browser: { status: 'passed', version: 'synthetic', executable_sha256: 'e'.repeat(64) } };
+  assert.equal(verifyReceipt(receipt, cacheExpected, now), receipt);
+  receipt.shards.pop(); assert.throws(() => verifyReceipt(receipt, cacheExpected, now), /shards are missing/);
 });
