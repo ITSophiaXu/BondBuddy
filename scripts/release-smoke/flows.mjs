@@ -9,12 +9,14 @@ import {extendedFlows} from './flows-extended.mjs';
 import {CASE_KINDS,isQuotePath,retainSubmissionRequest,retainSubmissionReceipt,acceptedQuote} from './submission.mjs';
 import {BILLING_HEADERS,readBillingSnapshot,assertBillingTerminal,assertBillingUnchanged} from './billing.mjs';
 import {assertCaseArtifacts} from './artifacts.mjs';
+import {readBillingPage} from './billing-ui.mjs';
+import {readModelEvidence} from './model-quality-evidence.mjs';
 import {requiredArtifacts,assertCaseComplete} from './support.mjs';
 
 import {qaProspectusFixture,confirmQaProspectus} from './qa-prospectus.mjs';
 import {retainQaPreparation,qaPreparationURL} from './qa-preparation.mjs';
 
-export async function runJourneys({out,report,privateData,save,inspect,execReadOnly,mapWorkpapers}){
+export async function runJourneys({out,report,privateData,save,inspect,execReadOnly,mapWorkpapers,readWordQuality}){
  report.browserInputTransport=process.platform==='win32'?'original bytes, filename and MIME via Playwright buffer':'original file path';save();
  assertExecutionBudget(report.executionBudget);
  assertFlowBudget(report.flowBudget);
@@ -213,7 +215,7 @@ export async function runJourneys({out,report,privateData,save,inspect,execReadO
    assertSubmissionCanStart(entry);save();
    if(!entry.billingBefore){
     if(entry.submissionRequest||entry.runId||entry.workpaperBatchId)throw Error('Accepted task is missing its pre-submission billing snapshot');
-    entry.billingBefore=await snapshot(entry,'before');save();
+    entry.billingBefore=await snapshot(entry,'before');entry.billingBeforePage=await readBillingPage({page,entry,snapshot:entry.billingBefore});save();
    }
    await attempt(entry,'submit',async()=>{
     await flows[entry.id](entry,'submit');
@@ -227,22 +229,31 @@ export async function runJourneys({out,report,privateData,save,inspect,execReadO
     if(entry.workpaperBatchId)entry.batchState=state.state;
     const category=classifyState(state.state,{batch:!!entry.workpaperBatchId});save();
     if(category==='ready')break;
+    if(state.state==='running'&&!entry.billingRunning){entry.billingRunning=await snapshot(entry,'running');entry.billingRunningPage=await readBillingPage({page,entry:{},snapshot:entry.billingRunning});save();}
     if(category!=='waiting')throw Error('Original task requires attention or failed: '+state.state+'/'+(state.stage??''));
     if(Date.now()-lastPrinted>=60000){lastPrinted=Date.now();console.log(entry.id+': '+state.state+'/'+(state.stage??''));}
     await page.waitForTimeout(5000);
    }
    await attempt(entry,'check',async()=>{
     await flows[entry.id](entry,'check');
+    entry.modelEvidence=await readModelEvidence({execReadOnly,ownerId:report.ownerId,runIds:entry.runId?[entry.runId]:[],workpaperBatchId:entry.workpaperBatchId??null,preparationId:entry.preparationId??null});save();
     entry.billingTerminal=await snapshot(entry,'terminal');
-    entry.billingEvidence=assertBillingTerminal({before:entry.billingBefore,terminal:entry.billingTerminal,accepted:entry.accepted,kind:CASE_KINDS[entry.id],expectedItemIds:entry.expectedItemIds??[],integrityVerifiedPairs:entry.integrityVerifiedPairs});save();
+    entry.billingEvidence=assertBillingTerminal({before:entry.billingBefore,terminal:entry.billingTerminal,accepted:entry.accepted,kind:CASE_KINDS[entry.id],expectedItemIds:entry.expectedItemIds??[],integrityVerifiedPairs:entry.integrityVerifiedPairs});entry.billingPageEvidence=await readBillingPage({page,entry,snapshot:entry.billingTerminal});save();
     const identity=JSON.stringify([entry.runId??null,entry.workpaperBatchId??null]);
+    const refreshDownloadOffset=entry.downloads.length;
     await page.reload();await flows[entry.id](entry,'check');
     if(identity!==JSON.stringify([entry.runId??null,entry.workpaperBatchId??null]))throw Error('Refresh changed accepted task identity');
     entry.artifactEvidence=await assertCaseArtifacts(entry,{required:requiredArtifacts(entry.id),inspect});
-    const after=await snapshot(entry,'refresh-download');
-    entry.refreshEvidence={status:'passed',sameTask:true,downloads:entry.downloads.map(({role,sha256,bytes})=>({role,sha256,bytes})),billing:assertBillingUnchanged({before:entry.billingTerminal,after})};
+    if(entry.id==='update-rq-202509')entry.qualityEvidence=await readWordQuality({ownerId:report.ownerId,runId:entry.runId,inputHash:entry.inputHash,downloads:entry.downloads.map(d=>({role:d.role.replace('.docx',''),sha256:d.sha256,bytes:d.bytes})),requireRenderedPages:true});
+    const after=await snapshot(entry,'refresh-download');entry.billingRefreshPage=await readBillingPage({page,entry,snapshot:after});
+    entry.refreshEvidence={status:'passed',sameTask:true,billingPage:entry.billingRefreshPage,downloads:entry.downloads.slice(refreshDownloadOffset).map(({role,sha256,bytes})=>({role,sha256,bytes})),billing:assertBillingUnchanged({before:entry.billingTerminal,after})};
     entry.status='passed';assertCaseComplete(entry);entry.finishedAt=new Date().toISOString();delete entry.error;save();console.log(entry.id,'passed');
    });
   }
- }finally{await Promise.all([...pendingQuotes]);page.off('response',observeQuote);await context.close();await browser.close();}
+ }finally{
+  if(activeEntry&&report.ownerId&&(activeEntry.runId||activeEntry.workpaperBatchId||activeEntry.preparationId)){
+   try{activeEntry.modelEvidence=await readModelEvidence({execReadOnly,ownerId:report.ownerId,runIds:activeEntry.runId?[activeEntry.runId]:[],workpaperBatchId:activeEntry.workpaperBatchId??null,preparationId:activeEntry.preparationId??null});}catch(error){activeEntry.modelEvidenceError=String(error.message);}save();
+  }
+  await Promise.all([...pendingQuotes]);page.off('response',observeQuote);await context.close();await browser.close();
+ }
 }

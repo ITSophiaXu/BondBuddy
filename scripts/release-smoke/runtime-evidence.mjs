@@ -3,6 +3,7 @@ import {readFileSync,writeFileSync,mkdirSync,copyFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {sha256,contained,writeJson} from './support.mjs';
 import {BILLING_SNAPSHOT_SQL} from './billing-sql.mjs';
+import {MODEL_EVIDENCE_SQL} from './model-quality-evidence.mjs';
 
 export const READ_ONLY_QUERY_CLI=`
 import pg from 'pg';
@@ -38,11 +39,21 @@ export function createEvidenceReaders({out,repo,directory,report,env,compose,sav
  const cli=join(directory,'artifact-inspect-cli.mjs'),cliHash=sha256(readFileSync(cli));
  if(report.artifactInspector&&(report.artifactInspector.sha256!==cliHash||report.artifactInspector.imageId!==report.images.api.id||report.artifactInspector.sha!==report.sha||report.artifactInspector.tree!==report.tree))throw Error('Artifact inspector identity changed on resume');
  report.artifactInspector={sha256:cliHash,imageId:report.images.api.id,sha:report.sha,tree:report.tree};
+ const qualityFile=join(directory,'word-quality-evidence-cli.mjs'),qualitySource=readFileSync(qualityFile,'utf8');
+ const qualityIdentity={sha256:sha256(Buffer.from(qualitySource)),imageId:report.images.api.id,sha:report.sha,tree:report.tree};
+ if(report.wordQualityInspector&&JSON.stringify(report.wordQualityInspector)!==JSON.stringify(qualityIdentity))throw Error('Quality evidence inspector changed on resume');report.wordQualityInspector=qualityIdentity;
  const fixedCli=join(evidence,'artifact-inspect-cli.mjs');copyFileSync(cli,fixedCli);
  const mapModule=join(evidence,'artifacts.mjs'),mapBytes=readFileSync(join(directory,'artifacts.mjs'));
  copyFileSync(join(directory,'artifacts.mjs'),mapModule);report.workpaperMapper={sha256:sha256(mapBytes),imageId:report.images.api.id};save();
  let sequence=0;
  return {
+  async readWordQuality(input){
+   const [command,args]=compose(['exec','-T','api','node','--input-type=module','-e',qualitySource+'\nawait qualityEvidenceMain();']);
+   const result=await evidenceCommand(command,args,{cwd:repo,env,input:{...input,project:report.project},timeoutMs:120000});
+   const record=join(evidence,'word-quality-'+Date.now()+'-'+(++sequence));
+   writeJson(record+'.json',{at:new Date().toISOString(),inspector:report.wordQualityInspector,input,result});
+   if(result.code!==0)throw Error('Stored Word quality evidence failed; see '+record+'.json');return JSON.parse(result.stdout);
+  },
   async mapWorkpapers(batch){
    if(sha256(readFileSync(mapModule))!==report.workpaperMapper.sha256)throw Error('Workpaper mapper changed');
    const source="import {createExpectedWorkpapers} from '/artifacts.mjs';import {workpaperZipPath} from '/app/packages/contracts/dist/index.js';let input='';for await(const chunk of process.stdin)input+=chunk;process.stdout.write(JSON.stringify(createExpectedWorkpapers(JSON.parse(input),{workpaperZipPath})));";
@@ -64,7 +75,7 @@ export function createEvidenceReaders({out,repo,directory,report,env,compose,sav
    return parsed;
   },
   async execReadOnly(request){
-   if(request.text!==BILLING_SNAPSHOT_SQL||request.transaction?.isolation!=='repeatable read'||request.transaction?.readOnly!==true)throw Error('Only the fixed read-only billing evidence query is allowed');
+   if(![BILLING_SNAPSHOT_SQL,MODEL_EVIDENCE_SQL].includes(request.text)||request.transaction?.isolation!=='repeatable read'||request.transaction?.readOnly!==true)throw Error('Only fixed read-only release evidence queries are allowed');
    const [command,args]=compose(['exec','-T','api','node','--input-type=module','-e',READ_ONLY_QUERY_CLI]);
    const result=await evidenceCommand(command,args,{cwd:repo,env,input:{...request,project:report.project},timeoutMs:60000});
    const record=join(evidence,'billing-'+Date.now()+'-'+(++sequence));

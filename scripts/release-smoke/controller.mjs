@@ -4,8 +4,8 @@ import {join} from 'node:path';
 import {sha256} from './support.mjs';
 
 export function assertControllerCandidate({repo,directory,sha,env}){
- const paths=execFileSync('git',['ls-tree','-r','--name-only',sha,'scripts/release-smoke'],{cwd:repo,env,encoding:'utf8'}).trim().split('\n').filter(p=>/^scripts\/release-smoke\/[^/]+\.mjs$/.test(p)&&!p.endsWith('.test.mjs'));
- const live=readdirSync(directory).filter(name=>name.endsWith('.mjs')&&!name.endsWith('.test.mjs')).map(name=>'scripts/release-smoke/'+name).sort();
+ const paths=execFileSync('git',['ls-tree','-r','--name-only',sha,'scripts/release-smoke'],{cwd:repo,env,encoding:'utf8'}).trim().split('\n').filter(p=>/^scripts\/release-smoke\/[^/]+\.(?:mjs|py)$/.test(p)&&!p.endsWith('.test.mjs'));
+ const live=readdirSync(directory).filter(name=>/\.(?:mjs|py)$/.test(name)&&!name.endsWith('.test.mjs')).map(name=>'scripts/release-smoke/'+name).sort();
  if(JSON.stringify([...paths].sort())!==JSON.stringify(live))throw Error('Release controller files differ from committed candidate');
  return paths.map(path=>{
   const original=execFileSync('git',['cat-file','blob',sha+':'+path],{cwd:repo,env,maxBuffer:4*1024*1024});

@@ -37,6 +37,7 @@ export function acceptedQuote(entry){
  if(!request||!response)throw Error('Original submission evidence missing');
  const matches=[];
  for(const capture of entry.quoteCaptures??[]){
+  if(capture.status<200||capture.status>=300||!Number.isInteger(capture.status))continue;
   try{const accepted=normalizeAcceptedQuote({kind,request,response,quoteResponse:capture.body});matches.push({accepted,capture});}catch{}
  }
  if(!matches.length)throw Error('No captured ready quote matches the accepted task');

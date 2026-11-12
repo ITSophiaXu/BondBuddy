@@ -22,6 +22,9 @@ export function assertCaseComplete(entry){
  }
  if(!entry.billingEvidence||entry.billingEvidence.held!=='0'||!Array.isArray(entry.billingEvidence.reservations)||!entry.billingEvidence.reservations.length)throw Error('Terminal billing evidence missing');
  if(entry.refreshEvidence?.status!=='passed'||entry.refreshEvidence.sameTask!==true||entry.refreshEvidence.billing?.unchanged!==true)throw Error('Refresh readback or repeat-charge evidence missing');
+ if(entry.modelEvidence?.version!=='release-model-evidence-v1'||!Array.isArray(entry.modelEvidence.scopeRunIds))throw Error('Actual model evidence missing');
+ if(entry.billingPageEvidence?.status!=='passed'||entry.billingPageEvidence.frozen!=='0'||entry.refreshEvidence?.billingPage?.status!=='passed')throw Error('Visible billing evidence missing');
+ if(entry.id==='update-rq-202509'&&(entry.qualityEvidence?.version!=='release-word-quality-evidence-v1'||entry.qualityEvidence.status!=='passed'||entry.qualityEvidence.humanAcceptance!=='not_evaluated'))throw Error('Original server Word quality evidence missing');
  if(entry.id==='integrity-dongying'&&(!Array.isArray(entry.integrityVerifiedPairs)||!entry.integrityVerifiedPairs.length))throw Error('No verified real integrity query evidence');
  return entry;
 }

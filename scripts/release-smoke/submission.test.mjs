@@ -16,11 +16,15 @@ test('accepted run survives missing quote and later evidence failure',()=>{
  const entry={id:'qa-dongying'};retainSubmissionRequest(entry,{url,body:JSON.stringify(request)});
  retainSubmissionReceipt(entry,{url,status:202,body:{run_id:'run1'}});
  assert.equal(entry.runId,'run1');assert.throws(()=>acceptedQuote(entry),/No captured/);
- entry.quoteCaptures=[{body:quote}];assert.equal(acceptedQuote(entry).runId,'run1');
+ entry.quoteCaptures=[{status:200,body:quote}];assert.equal(acceptedQuote(entry).runId,'run1');
 });
 test('quote matching rejects wrong points and conflicting receipts',()=>{
- const entry={id:'qa-dongying',quoteCaptures:[{body:{...quote,points:'8527'}}]};
+ const entry={id:'qa-dongying',quoteCaptures:[{status:200,body:{...quote,points:'8527'}}]};
  retainSubmissionRequest(entry,{url,body:JSON.stringify(request)});retainSubmissionReceipt(entry,{url,status:202,body:{run_id:'run1'}});
  assert.throws(()=>acceptedQuote(entry),/No captured/);
  assert.throws(()=>retainSubmissionReceipt(entry,{url,status:202,body:{run_id:'run2'}}),/Conflicting/);
+});
+
+test('failed preview cannot supply acceptance evidence',()=>{
+ const entry={id:'qa-dongying',quoteCaptures:[{status:500,body:quote}]};retainSubmissionRequest(entry,{url,body:JSON.stringify(request)});retainSubmissionReceipt(entry,{url,status:202,body:{run_id:'run1'}});assert.throws(()=>acceptedQuote(entry),/No captured/);
 });
