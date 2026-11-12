@@ -48,6 +48,7 @@ docs/product-decisions/*
 !docs/acceptance/
 docs/acceptance/*
 !docs/acceptance/issue-943-reserved-confirmation-20261112.md
+!docs/acceptance/issue-1045-admin-log-int64.md
 !docs/acceptance/billing-remediation-20261111.md
 !docs/acceptance/billing-remediation-20261111/
 !docs/acceptance/prospectus-size-gate-20261111.md
