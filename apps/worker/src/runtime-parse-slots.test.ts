@@ -4,6 +4,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { Pool } from 'pg';
 import { createServer } from '@bondbuddy/api';
+import { emptyUpdateDetails } from '@bondbuddy/contracts';
+import { uploadSyntheticReference, quoteSyntheticAuthoringRun } from '@bondbuddy/api/test-authoring-source';
 import { azureBlobs } from '@bondbuddy/api/data';
 import { DEFAULT_DOCUMENT_PARSER_VERSION } from '@bondbuddy/api/material-jobs';
 import type { DocumentParseRequest, DocumentParseResponse } from './document-parser.js';
@@ -56,16 +58,19 @@ test('dedicated parse slot finishes an upload before a blocked run, and zero res
   const jobState = async (materialId: string) => (await pool.query("SELECT state FROM bb_jobs WHERE job_type='parse' AND material_id=$1", [materialId])).rows[0]?.state as string | undefined;
   try {
     for (const parseSlots of [1, 0]) {
-      const project = await send('POST', '/api/v1/projects', { name: `Synthetic slots ${parseSlots}`, kind: 'update', issuer_name: null, market: null, offering: null });
+      const project = await send('POST', '/api/v1/projects', { name: `Synthetic slots ${parseSlots}`, kind: 'update', issuer_name: 'Synthetic issuer', market: 'sse', offering: 'private',
+        update_details: { ...emptyUpdateDetails(), authoring_mode: 'unified_v1', reporting_cutoff: '2026-09-30' } });
       assert.equal(project.statusCode, 201, project.body);
       const projectId = project.json().project_id as string;
       const first = await upload(projectId);
+      const source = await uploadSyntheticReference(app, projectId);
       const current = (await send('GET', `/api/v1/projects/${projectId}`)).json();
-      const input = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { draft_revision: current.draft_revision,
-        material_versions: [{ material_id: first.material_id, material_version: first.material_version }], requirement_message_ids: [] });
+      const input = await send('POST', `/api/v1/projects/${projectId}/input-revisions`, { ...source, draft_revision: current.draft_revision,
+        material_versions: [{ material_id: first.material_id, material_version: first.material_version }, ...source.material_versions], requirement_message_ids: [] });
       assert.equal(input.statusCode, 201, input.body);
+      const quoteId = await quoteSyntheticAuthoringRun(app, pool, owner, projectId, input.json());
       const submitted = await send('POST', '/api/v1/runs/execute', { execution_request_id: `slots-${randomUUID()}`,
-        project_id: projectId, input_revision: input.json().input_revision, input_hash: input.json().input_hash,
+        project_id: projectId, input_revision: input.json().input_revision, input_hash: input.json().input_hash, quote_id: quoteId,
         task_kind: 'update', input_manifest_ref: 'synthetic-manifest', storage_origin: 'cloud', workspace_id: 'synthetic-test' });
       assert.equal(submitted.statusCode, 202, submitted.body);
       const runId = submitted.json().run_id as string;
