@@ -440,8 +440,10 @@ test('confirmation probe discards valid JSON from a failed render before adoptin
  const docker=join(configBin,'docker');
  writeFileSync(join(shim,'docker'),`#!/usr/bin/env node
 import {spawnSync} from 'node:child_process';
+import {writeFileSync} from 'node:fs';
 const args=process.argv.slice(2),r=spawnSync(${JSON.stringify(docker)},args,{encoding:'utf8'});
-process.stdout.write(r.stdout||'');process.stderr.write(r.stderr||'');
+// Drain the captured render before process.exit, including a deliberate failure.
+writeFileSync(1,r.stdout||'');writeFileSync(2,r.stderr||'');
 const which=args.some(x=>x.endsWith('/compose.confirmation-bind-true-check.yaml'))?'true':args.some(x=>x.endsWith('/compose.confirmation-bind-check.yaml'))?'false':'';
 // Deliberately emit the real, valid JSON and then fail: the parent must not use it.
 process.exit(which&&which===process.env.TEST_PROBE_FAILURE?51:r.status??1);
