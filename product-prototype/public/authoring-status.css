@@ -1,0 +1,205 @@
+.authoring-status-shell {
+  --authoring-status-ink: #18231c;
+  --authoring-status-muted: #777d79;
+  --authoring-status-line: #e1e4e1;
+  --authoring-status-green: #087b36;
+  --authoring-status-green-soft: #dcfce7;
+  --authoring-status-orange: #e47b00;
+  --authoring-status-orange-soft: #fff3c4;
+  color: var(--authoring-status-ink);
+  font-family: inherit;
+  line-height: 1.65;
+  min-width: 0;
+}
+.authoring-status-shell *,
+.authoring-status-shell *::before,
+.authoring-status-shell *::after { box-sizing: border-box; }
+.authoring-status-heading { margin: 0 0 24px; font-size: 26px; font-weight: 700; line-height: 1.35; }
+.prototype-app .execution-panel.authoring-status-panel { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.prototype-app .authoring-status-panel .authoring-status-heading { font-size: 26px; }
+.authoring-retry-dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); margin: auto; padding: 28px; overflow: auto; border: 1px solid #dfe3df; border-radius: 14px; background: #fff; color: #18231c; box-shadow: 0 20px 70px #18231c30; }
+.authoring-retry-dialog::backdrop { background: rgb(18 36 30 / 35%); }
+.authoring-retry-dialog h2 { margin: 0 0 16px; font-size: 21px; }
+.authoring-retry-dialog p { margin: 0 0 14px; line-height: 1.8; }
+.authoring-retry-dialog .form-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.authoring-status-card {
+  --authoring-status-accent: var(--authoring-status-green);
+  --authoring-status-accent-soft: var(--authoring-status-green-soft);
+  --authoring-status-accent-ink: #17613a;
+  position: relative;
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid var(--authoring-status-line);
+  border-radius: 13px;
+  background: #fff;
+}
+.authoring-status-card::before { content: ""; position: absolute; inset: 0 0 auto; height: 5px; background: var(--authoring-status-accent); }
+.authoring-status-card[data-tone="paused"] {
+  --authoring-status-accent: var(--authoring-status-orange);
+  --authoring-status-accent-soft: var(--authoring-status-orange-soft);
+  --authoring-status-accent-ink: #94500c;
+}
+.authoring-status-card[data-tone="failed"] {
+  --authoring-status-accent: #b33a3a;
+  --authoring-status-accent-soft: #ffe3e3;
+  --authoring-status-accent-ink: #9c2e2e;
+}
+.authoring-status-card[data-tone="neutral"] {
+  --authoring-status-accent: #8a928d;
+  --authoring-status-accent-soft: #eef0ee;
+  --authoring-status-accent-ink: #57625a;
+}
+.authoring-status-main { padding: 30px 28px 27px; }
+.authoring-status-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.authoring-status-title-group { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 15px; min-width: 0; padding-top: 2px; }
+.authoring-status-badge { display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex-shrink: 0; min-height: 29px; padding: 3px 12px; border-radius: 999px; background: var(--authoring-status-accent-soft); color: var(--authoring-status-accent-ink); font-size: 14px; font-weight: 600; line-height: 1.5; white-space: nowrap; }
+.authoring-status-badge svg { display: block; width: 17px; height: 17px; flex: 0 0 auto; }
+.authoring-status-title { margin: 0; font-size: 21px; font-weight: 700; line-height: 1.45; overflow-wrap: anywhere; }
+.authoring-status-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; flex-shrink: 0; }
+.authoring-status-button { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; margin: 0; padding: 7px 18px; border: 1px solid #dfe3df; border-radius: 9px; background: #fff; box-shadow: 0 1px 2px #18231c0c; color: var(--authoring-status-ink); font: inherit; font-size: 16px; font-weight: 600; line-height: 1.5; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.authoring-status-button:hover { background: #f5f7f5; }
+.authoring-status-button[data-primary="true"] { border-color: #08712f; background: #08712f; color: #fff; }
+.authoring-status-button[data-primary="true"]:hover { border-color: #075f28; background: #075f28; }
+.authoring-status-button:disabled { opacity: .55; cursor: wait; }
+.authoring-status-button:focus-visible,
+.authoring-status-details > summary:focus-visible,
+.authoring-status-billing-help > summary:focus-visible,
+.authoring-status-billing-link:focus-visible { outline: 3px solid #4b9671; outline-offset: 3px; }
+.authoring-status-description { margin-top: 16px; font-size: 15px; line-height: 1.8; overflow-wrap: anywhere; }
+.authoring-status-description p { margin: 0; }
+.authoring-status-description p + p { margin-top: 1px; }
+.authoring-status-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 15px; margin: 0; padding: 24px 28px; border-top: 1px solid var(--authoring-status-line); list-style: none; }
+.authoring-status-step { min-width: 0; margin: 0; padding: 0; color: var(--authoring-status-muted); font-size: 15px; line-height: 1.45; }
+.authoring-status-step::before { display: block; content: ""; width: 100%; height: 4px; margin-bottom: 10px; border-radius: 99px; background: #e4e6e4; }
+.authoring-status-step[data-step-state="done"] { color: var(--authoring-status-ink); }
+.authoring-status-step[data-step-state="done"]::before { background: var(--authoring-status-green); }
+.authoring-status-step[data-step-state="current"] { color: var(--authoring-status-ink); font-weight: 700; }
+.authoring-status-step[data-step-state="current"]::before { background: var(--authoring-status-accent); }
+.authoring-status-step-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.authoring-status-step-icon { display: inline-flex; position: relative; align-items: center; justify-content: center; flex: 0 0 28px; width: 28px; height: 28px; border: 1px solid #dfe3df; border-radius: 50%; background: #fff; color: var(--authoring-status-muted); font-size: 14px; font-weight: 400; line-height: 1; }
+.authoring-status-step-label { min-width: 0; overflow-wrap: anywhere; }
+.authoring-status-step[data-step-state="done"] .authoring-status-step-icon { border-color: transparent; background: var(--authoring-status-green-soft); color: transparent; }
+.authoring-status-step[data-step-state="done"] .authoring-status-step-icon::after { content: ""; position: absolute; top: 8px; left: 8px; width: 11px; height: 6px; border: solid #17613a; border-width: 0 0 1.8px 1.8px; transform: rotate(-45deg); }
+.authoring-status-step[data-step-state="current"] .authoring-status-step-icon { border-color: transparent; background: var(--authoring-status-accent-soft); color: var(--authoring-status-accent-ink); font-weight: 600; }
+.authoring-status-card[data-tone="paused"] .authoring-status-step[data-step-state="current"] .authoring-status-step-icon { color: transparent; }
+.authoring-status-card[data-tone="paused"] .authoring-status-step[data-step-state="current"] .authoring-status-step-icon::after { content: ""; position: absolute; top: 8px; left: 9px; width: 9px; height: 12px; border: solid #94500c; border-width: 0 3px; border-radius: 1px; }
+.authoring-status-billing { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 5px; margin: 17px 4px 22px; color: var(--authoring-status-ink); font-size: 14px; line-height: 1.75; }
+.authoring-status-billing strong { font-weight: 700; font-variant-numeric: tabular-nums; }
+.authoring-status-billing-separator { padding: 0 3px; color: var(--authoring-status-muted); }
+.authoring-status-billing-help { position: relative; display: inline-block; margin: 0; padding: 0; border: 0; }
+.authoring-status-billing-help > summary,
+.authoring-status-billing-link { display: inline; margin: 0; padding: 0; border: 0; background: none; color: #196c38; font: inherit; font-weight: 600; text-decoration: none; list-style: none; cursor: pointer; }
+.authoring-status-billing-help > summary::-webkit-details-marker { display: none; }
+.authoring-status-billing-help > summary:hover,
+.authoring-status-billing-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.authoring-status-billing-note { margin: 8px 0 0; padding: 12px 15px; border: 1px solid var(--authoring-status-line); border-radius: 9px; background: #f8faf8; color: #57625a; font-size: 13px; font-weight: 400; line-height: 1.7; }
+.authoring-status-billing-help[open] { flex-basis: 100%; }
+.authoring-status-details { margin: 0 0 18px; overflow: hidden; border: 1px solid var(--authoring-status-line); border-radius: 12px; background: #fff; }
+.authoring-status-details > summary { display: flex; align-items: center; gap: 18px; margin: 0; padding: 16px 21px; color: var(--authoring-status-ink); font-size: 16px; font-weight: 600; line-height: 1.5; list-style: none; cursor: pointer; }
+.authoring-status-details > summary::-webkit-details-marker { display: none; }
+.authoring-status-details > summary::before { content: ""; display: block; width: 8px; height: 8px; flex: 0 0 8px; border: solid currentColor; border-width: 0 1.7px 1.7px 0; transform: rotate(-45deg); transform-origin: center; transition: transform .12s ease; }
+.authoring-status-details[open] > summary { border-bottom: 1px solid var(--authoring-status-line); }
+.authoring-status-details[open] > summary::before { transform: rotate(45deg) translate(-2px, -2px); }
+.authoring-status-record-list { display: grid; gap: 15px; margin: 0; padding: 18px 19px 20px; list-style: none; }
+.authoring-status-record { display: grid; grid-template-columns: 57px minmax(0, 1fr); align-items: baseline; gap: 13px; min-width: 0; margin: 0; padding: 0; font-size: 14px; line-height: 1.65; }
+.authoring-status-record-time { color: var(--authoring-status-muted); font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.authoring-status-record-content { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 13px; min-width: 0; }
+.authoring-status-record-text { min-width: 0; overflow-wrap: anywhere; }
+.authoring-status-record-badge { display: inline-block; flex-shrink: 0; padding: 1px 10px; border-radius: 99px; background: #eef0ee; color: #57625a; font-size: 13px; font-weight: 600; line-height: 1.65; }
+.authoring-status-record-badge[data-kind="failed"] { background: #ffe3e3; color: #a42f2f; }
+.authoring-status-record-badge[data-kind="paused"] { background: var(--authoring-status-orange-soft); color: #94500c; }
+.authoring-status-record-badge[data-kind="completed"] { background: var(--authoring-status-green-soft); color: #17613a; }
+.authoring-status-material-list { display: grid; gap: 9px; margin: 0; padding: 17px 24px 21px 51px; color: #57625a; font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
+.authoring-status-empty { margin: 0; padding: 18px 21px; color: var(--authoring-status-muted); font-size: 14px; }
+/* The live page retains its earlier classes for existing task controls and tests. */
+.authoring-status-shell .authoring-status-card { margin: 0; padding: 0; border: 1px solid var(--authoring-status-line); border-radius: 13px; background: #fff; color: var(--authoring-status-ink); }
+.authoring-status-shell .authoring-status-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.authoring-status-card > .authoring-status-header { padding: 30px 28px 27px; }
+.authoring-status-title-line { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 15px; min-width: 0; }
+.authoring-status-title-line > h3 { margin: 0; font-size: 21px; font-weight: 700; line-height: 1.45; overflow-wrap: anywhere; }
+.authoring-status-title-group > .authoring-status-description { flex-basis: 100%; width: 100%; margin-top: 0; }
+.authoring-status-shell .authoring-status-description p { margin: 0; padding: 0; border: 0; border-radius: 0; background: none; color: inherit; font-size: inherit; line-height: 1.8; }
+.authoring-status-shell .authoring-status-description p + p { margin-top: 1px; }
+.authoring-status-shell .authoring-status-description .authoring-status-retry-note { margin-top: 7px; color: #777d79; font-size: 13px; }
+.authoring-status-button[class~="primary"] { border-color: #08712f; background: #08712f; color: #fff; }
+.authoring-status-button[class~="primary"]:hover { border-color: #075f28; background: #075f28; }
+.authoring-status-shell .authoring-status-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 15px; margin: 0; padding: 24px 28px; border-top: 1px solid var(--authoring-status-line); }
+.authoring-status-shell .authoring-status-step { display: block; min-width: 0; margin: 0; padding: 0; border: 0; font-size: 15px; line-height: 1.45; }
+.authoring-status-shell .authoring-status-step[data-step-state="future"] { color: var(--authoring-status-muted); }
+.authoring-status-shell .authoring-status-step-icon { display: inline-flex; flex: 0 0 28px; width: 28px; height: 28px; margin: 0; border: 1px solid #dfe3df; background: #fff; color: var(--authoring-status-muted); font-size: 14px; }
+.authoring-status-shell .authoring-status-step-label { display: inline; width: auto; height: auto; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; color: inherit; font: inherit; flex: 0 1 auto; }
+.authoring-status-billing > section,
+.authoring-status-shell section.authoring-status-billing { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 8px; padding: 0; border: 0; border-radius: 0; background: none; }
+.authoring-status-billing > section { margin: 0; width: 100%; }
+.authoring-status-billing > section > div,
+.authoring-status-billing > div:first-child { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; margin: 0; }
+.authoring-status-billing > section > div:nth-child(2) { flex-direction: row; font-size: 13px; color: #777d79; }
+.authoring-status-billing > section > p { display: inline; margin: 0; }
+.authoring-status-shell .authoring-status-billing strong { margin: 0; font-size: 14px; font-weight: 700; line-height: inherit; letter-spacing: 0; }
+.authoring-status-shell .authoring-status-billing small { font-size: inherit; line-height: inherit; }
+.authoring-status-billing details { display: inline-block; margin: 0; font-size: inherit; }
+.authoring-status-billing details > summary { display: inline; margin: 0; padding: 0; color: #196c38; font-weight: 600; list-style: none; cursor: pointer; }
+.authoring-status-billing details > summary::-webkit-details-marker { display: none; }
+.authoring-status-billing details[open] { flex-basis: 100%; }
+.authoring-status-billing details > p { max-width: none; margin: 8px 0 0; padding: 12px 15px; border: 1px solid var(--authoring-status-line); border-radius: 9px; background: #f8faf8; color: #57625a; font-size: 13px; line-height: 1.7; }
+.authoring-status-shell :is(.authoring-status-records, .authoring-status-materials) { margin: 0 0 18px; overflow: hidden; border: 1px solid var(--authoring-status-line); border-radius: 12px; background: #fff; }
+.authoring-status-shell :is(.authoring-status-records, .authoring-status-materials) > summary { display: flex; align-items: center; gap: 18px; margin: 0; padding: 16px 21px; color: var(--authoring-status-ink); font-size: 16px; font-weight: 600; line-height: 1.5; list-style: none; cursor: pointer; }
+.authoring-status-shell :is(.authoring-status-records, .authoring-status-materials) > summary::-webkit-details-marker { display: none; }
+.authoring-status-shell :is(.authoring-status-records, .authoring-status-materials) > summary:focus-visible,
+.authoring-status-billing details > summary:focus-visible { outline: 3px solid #4b9671; outline-offset: -3px; }
+.authoring-status-shell :is(.authoring-status-records, .authoring-status-materials) > summary::before { content: ""; display: block; width: 8px; height: 8px; flex: 0 0 8px; border: solid currentColor; border-width: 0 1.7px 1.7px 0; transform: rotate(-45deg); transform-origin: center; transition: transform .12s ease; }
+.authoring-status-shell :is(.authoring-status-records, .authoring-status-materials)[open] > summary { border-bottom: 1px solid var(--authoring-status-line); }
+.authoring-status-shell :is(.authoring-status-records, .authoring-status-materials)[open] > summary::before { transform: rotate(45deg) translate(-2px, -2px); }
+.authoring-status-shell .authoring-status-record-list { display: grid; gap: 15px; margin: 0; padding: 18px 19px 20px; list-style: none; }
+.authoring-status-shell .authoring-status-record { display: grid; grid-template-columns: 57px minmax(0, 1fr); align-items: baseline; gap: 13px; min-width: 0; margin: 0; padding: 0; border: 0; font-size: 14px; line-height: 1.65; }
+.authoring-status-record > time { color: var(--authoring-status-muted); font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.authoring-status-record > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 13px; min-width: 0; }
+.authoring-status-record > div > span:not(.authoring-status-record-badge) { min-width: 0; overflow-wrap: anywhere; }
+.authoring-status-record-badge[data-tone="failed"] { background: #ffe3e3; color: #a42f2f; }
+.authoring-status-record-badge[data-tone="paused"] { background: var(--authoring-status-orange-soft); color: #94500c; }
+.authoring-status-record-badge[data-tone="success"] { background: var(--authoring-status-green-soft); color: #17613a; }
+.authoring-status-material-note { margin: 0; padding: 0 24px 19px; color: var(--authoring-status-muted); font-size: 13px; }
+.authoring-status-material-note button { margin-left: 6px; }
+@media (max-width: 760px) {
+  .prototype-app .authoring-status-panel .authoring-status-heading { font-size: 23px; }
+  .authoring-status-heading { margin-bottom: 18px; font-size: 23px; }
+  .authoring-status-main { padding: 25px 20px 21px; }
+  .authoring-status-shell .authoring-status-header { flex-wrap: wrap; gap: 15px; }
+  .authoring-status-card > .authoring-status-header { padding: 25px 20px 21px; }
+  .authoring-status-title-line > h3 { font-size: 19px; }
+  .authoring-status-title { font-size: 19px; }
+  .authoring-status-description { margin-top: 14px; font-size: 14px; }
+  .authoring-status-shell .authoring-status-steps { gap: 10px; padding: 20px; }
+  .authoring-status-step-row { flex-direction: column; align-items: flex-start; gap: 7px; }
+  .authoring-status-shell .authoring-status-step { font-size: 13px; }
+  .authoring-status-billing { margin-top: 14px; margin-bottom: 18px; font-size: 13px; }
+  .authoring-status-shell .authoring-status-record-list { gap: 13px; padding: 17px; }
+  .authoring-status-shell .authoring-status-record { grid-template-columns: 45px minmax(0, 1fr); gap: 10px; }
+  .authoring-status-record-content { gap: 4px 9px; }
+}
+@media (max-width: 420px) {
+  .prototype-app .authoring-status-panel .authoring-status-heading { font-size: 22px; }
+  .authoring-retry-dialog { padding: 22px 18px; }
+  .authoring-status-heading { font-size: 22px; }
+  .authoring-status-main { padding: 22px 15px 19px; }
+  .authoring-status-card > .authoring-status-header { padding: 22px 15px 19px; }
+  .authoring-status-title-line > h3 { font-size: 18px; }
+  .authoring-status-title-group { gap: 10px; }
+  .authoring-status-title { font-size: 18px; }
+  .authoring-status-actions { width: 100%; gap: 8px; }
+  .authoring-status-button { flex: 1; min-height: 40px; padding: 7px 12px; font-size: 14px; }
+  .authoring-status-shell .authoring-status-steps { gap: 8px; padding: 18px 15px; }
+  .authoring-status-shell .authoring-status-step { font-size: 12px; }
+  .authoring-status-shell .authoring-status-step-icon { flex-basis: 26px; width: 26px; height: 26px; }
+  .authoring-status-step[data-step-state="done"] .authoring-status-step-icon::after { top: 7px; left: 7px; }
+  .authoring-status-card[data-tone="paused"] .authoring-status-step[data-step-state="current"] .authoring-status-step-icon::after { top: 7px; left: 8px; }
+  .authoring-status-details > summary { gap: 14px; padding: 15px 17px; font-size: 14px; }
+  .authoring-status-shell :is(.authoring-status-records, .authoring-status-materials) > summary { gap: 14px; padding: 15px 17px; font-size: 14px; }
+  .authoring-status-shell .authoring-status-record { grid-template-columns: 42px minmax(0, 1fr); gap: 8px; font-size: 13px; }
+  .authoring-status-shell .authoring-status-record-list { padding: 16px 14px; }
+  .authoring-status-material-list { padding-left: 41px; font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .authoring-status-details > summary::before,
+  .authoring-status-shell :is(.authoring-status-records, .authoring-status-materials) > summary::before { transition: none; }
+}

@@ -1,3 +1,4 @@
+import { inspectAndIsolateBillingScope } from '../../api/dist/billing-safety.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Pool } from 'pg';
@@ -8,7 +9,7 @@ import { saveSnapshotRef } from '@bondbuddy/api/observability';
 import { uploadSyntheticReference } from '@bondbuddy/api/test-authoring-source';
 import { emptyUpdateDetails,INITIAL_FIXED_PRICES } from '@bondbuddy/contracts';
 import { action,claim,checkpointStage,recordPotentialCall,recoverFileAuthoringPayload,fileAuthoringPayloadRecoveryCandidates,resumePausedRun } from '@bondbuddy/api/queue';
-import { recordModelAttemptRuntime,recordProviderCallObservation,latestProviderAttempt,type ProviderCallObservation } from '@bondbuddy/api/provider-results';
+import { recordModelAttemptRuntime,recordProviderCallObservation,latestProviderAttempt,providerResultObjectKey,type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { WorkerRuntime } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
 
@@ -21,7 +22,7 @@ test('file authoring 413 recovery preserves work, unknown usage and the original
   const app=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true});
   const paidApp=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true,enablePaidAuthoring:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
-  type Options={paid?:boolean;runtime?:boolean;snapshot?:'none'|'bad';error?:string;observationError?:string;exit?:boolean;logical?:string;adapter?:string;conflict?:boolean};
+  type Options={paid?:boolean;runtime?:boolean;snapshot?:'none'|'bad';error?:string;observationError?:string;exit?:boolean;logical?:string;adapter?:string;conflict?:boolean;result?:boolean};
   type Lease=NonNullable<Awaited<ReturnType<typeof claim>>>;
   async function observe(lease:Lease,project:string,inputHash:string,n:number,options:Options={}){
     const logical=options.logical??'file-authoring-v1',content=Buffer.from('synthetic file authoring prompt');
@@ -44,6 +45,11 @@ test('file authoring 413 recovery preserves work, unknown usage and the original
     const observation:ProviderCallObservation={...intent,provider_request_id:null,finish_reason:'turn_failed',outcome:'failed',
       usage:{status:'unknown',input_tokens:null,output_tokens:null,cached_input_tokens:null,reasoning_tokens:null,total_tokens:null},
       error_code:options.observationError??options.error??'MODEL_PROVIDER_PAYLOAD_TOO_LARGE',result_ref:null,result_sha256:null,result_schema_version:null,result_byte_size:null};
+    if(options.result){
+      const result=Buffer.from(JSON.stringify({retained:'synthetic'})),key=providerResultObjectKey(observation,digest(result));
+      await blobs.put(key,result,'application/json');
+      Object.assign(observation,{outcome:'pending_reconcile',result_ref:key,result_sha256:digest(result),result_schema_version:'synthetic-v1',result_byte_size:result.length});
+    }
     await recordProviderCallObservation(pool,blobs,observation,()=>true,{lease,source:'provider'});
     if(options.conflict)await recordProviderCallObservation(pool,blobs,{...observation,outcome:'pending_reconcile',error_code:'MODEL_STREAM_BROKEN'},()=>true,{source:'provider'});
     return {lease,project,inputHash,attempt,logical,recover:()=>recoverFileAuthoringPayload(pool,owner,lease.runId,lease.jobId)};
@@ -140,6 +146,87 @@ test('file authoring 413 recovery preserves work, unknown usage and the original
     assert.deepEqual(await creditBalanceExact(pool,owner),balanceBefore);
     assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[paid.project])).rows[0].n,1);
     await end(paid.lease.runId);
+    const inspect=(f:{lease:Lease})=>send('GET',`/api/v1/runs/${f.lease.runId}/retry`);
+    const manualRequest=(f:{attempt:string},mode:'restore_checkpoint'|'restart_materials'='restore_checkpoint')=>
+      ({request_id:uid(),attempt_id:f.attempt,mode,...(mode==='restart_materials'?{confirmed_restart:true}:{})});
+    const postRetry=(f:{lease:Lease},request:unknown)=>send('POST',`/api/v1/runs/${f.lease.runId}/retry`,request);
+    const manual=await fixture({paid:true});
+    assert.deepEqual((await inspect(manual)).json(),{run_id:manual.lease.runId,mode:'restore_checkpoint',attempt_id:manual.attempt,reason_code:'checkpoint_available'});
+    const manualReservation=(await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[manual.lease.runId])).rows;
+    const manualBalance=await creditBalanceExact(pool,owner),manualEvents=(await pool.query('SELECT * FROM bb_credit_events WHERE run_id=$1 ORDER BY id',[manual.lease.runId])).rows;
+    const restoreRequest=manualRequest(manual),restoreResponses=await Promise.all([postRetry(manual,restoreRequest),postRetry(manual,restoreRequest)]);
+    for(const result of restoreResponses){assert.equal(result.statusCode,200,result.body);assert.equal(result.json().state,'queued');}
+    assert.deepEqual((await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[manual.lease.runId])).rows,manualReservation);
+    assert.deepEqual((await pool.query('SELECT * FROM bb_credit_events WHERE run_id=$1 ORDER BY id',[manual.lease.runId])).rows,manualEvents);
+    assert.deepEqual(await creditBalanceExact(pool,owner),manualBalance);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND payload->>'reason'='file_authoring_payload_retry_scheduled'",[manual.lease.runId])).rows[0].n,1);
+    const resumed=await claim(pool,300);assert.ok(resumed);assert.equal(resumed.runId,manual.lease.runId);
+    const current=await observe(resumed,manual.project,manual.inputHash,2);
+    assert.equal((await postRetry(manual,restoreRequest)).statusCode,200,'same request replay never authorizes the new attempt');
+    assert.deepEqual(await row(manual.lease.runId),{state:'paused',stage:'provider_reconcile'});
+    const stale=await postRetry(manual,manualRequest(manual));assert.equal(stale.statusCode,409,stale.body);assert.equal(stale.json().code,'INPUT_REVISION_CONFLICT');
+    const collision=await postRetry(current,{...restoreRequest,attempt_id:current.attempt});assert.equal(collision.statusCode,409,collision.body);assert.equal(collision.json().code,'IDEMPOTENCY_CONFLICT');
+    await end(manual.lease.runId);
+    const racing=await fixture(),raceRequest=manualRequest(racing);
+    const [,raceResponse]=await Promise.all([racing.recover(),postRetry(racing,raceRequest)]);
+    assert.equal(raceResponse.statusCode,200,raceResponse.body);
+    assert.equal((await pool.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND payload->>'reason'='file_authoring_payload_retry_scheduled'",[racing.lease.runId])).rows[0].n,1);
+    assert.equal((await postRetry(racing,raceRequest)).statusCode,200);await end(racing.lease.runId);
+    const legacy=await fixture({error:'MODEL_TURN_FAILED',snapshot:'none',paid:true}),restartRequest=manualRequest(legacy,'restart_materials');
+    assert.equal((await inspect(legacy)).json().mode,'restart_materials');
+    const legacyReservation=(await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[legacy.lease.runId])).rows;
+    const legacyBalance=await creditBalanceExact(pool,owner);
+    assert.equal((await postRetry(legacy,{...restartRequest,confirmed_restart:false})).statusCode,422);
+    assert.deepEqual(await row(legacy.lease.runId),{state:'paused',stage:'provider_reconcile'});
+    const restarted=await Promise.all([postRetry(legacy,restartRequest),postRetry(legacy,restartRequest)]);
+    for(const response of restarted)assert.equal(response.statusCode,200,response.body);
+    const legacyCheckpoint=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[legacy.lease.jobId])).rows[0].checkpoint;
+    assert.equal(legacyCheckpoint.stages.kept.hash,'synthetic');assert.equal(legacyCheckpoint.stages.file_authoring_recovery,undefined);
+    assert.equal(legacyCheckpoint.operator_reconciliations[legacy.attempt].reason_code,'file_authoring_manual_restart');
+    assert.equal(legacyCheckpoint.operator_reconciliations[legacy.attempt].retry_mode,'restart_materials');
+    assert.equal((await pool.query('SELECT usage_status FROM bb_call_usage WHERE attempt_id=$1',[legacy.attempt])).rows[0].usage_status,'unknown');
+    assert.deepEqual((await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[legacy.lease.runId])).rows,legacyReservation);
+    assert.deepEqual(await creditBalanceExact(pool,owner),legacyBalance);
+    const restartedLease=await claim(pool,300);assert.ok(restartedLease);assert.equal(restartedLease.runId,legacy.lease.runId);
+    const restartPrior=await latestProviderAttempt(pool,restartedLease,legacy.logical);
+    assert.equal(restartPrior?.status,'failed');assert.equal(restartPrior?.operator_retry,true);
+    assert.equal((await pool.query('SELECT input_hash FROM bb_runs WHERE id=$1',[legacy.lease.runId])).rows[0].input_hash.trim(),legacy.inputHash);
+    const nextRestart=await observe(restartedLease,legacy.project,legacy.inputHash,2,{error:'MODEL_TURN_FAILED',snapshot:'none'});
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[legacy.lease.jobId])).rows[0].n,2);
+    assert.equal((await pool.query('SELECT usage_status FROM bb_call_usage WHERE attempt_id=$1',[legacy.attempt])).rows[0].usage_status,'unknown');
+    assert.equal((await postRetry(legacy,restartRequest)).statusCode,200,'replaying the owner confirmation does not restart the next attempt');
+    assert.deepEqual(await row(nextRestart.lease.runId),{state:'paused',stage:'provider_reconcile'});
+    await end(legacy.lease.runId);
+    for(const [options,reason] of [
+      [{exit:false},'active_attempt'],[{runtime:false},'provider_evidence_unresolved'],[{conflict:true},'provider_evidence_conflict'],
+      [{observationError:'MODEL_STREAM_BROKEN'},'provider_evidence_conflict'],[{snapshot:'bad'},'checkpoint_unavailable'],
+      [{error:'MODEL_TURN_FAILED',snapshot:'none',result:true},'provider_result_present']
+    ] as [Options,string][]){
+      const blockedRetry=await fixture(options),before=(await pool.query('SELECT checkpoint,state,stage FROM bb_jobs WHERE id=$1',[blockedRetry.lease.jobId])).rows[0];
+      const inspected=await inspect(blockedRetry);assert.equal(inspected.statusCode,200,inspected.body);assert.equal(inspected.json().mode,'blocked');assert.equal(inspected.json().reason_code,reason,JSON.stringify(options));
+      assert.equal((await postRetry(blockedRetry,manualRequest(blockedRetry))).statusCode,409);
+      assert.deepEqual((await pool.query('SELECT checkpoint,state,stage FROM bb_jobs WHERE id=$1',[blockedRetry.lease.jobId])).rows[0],before);await end(blockedRetry.lease.runId);
+    }
+    const active=await fixture();await pool.query('UPDATE bb_jobs SET lease_token=$2,lease_until=now()+interval \'1 minute\' WHERE id=$1',[active.lease.jobId,uid()]);
+    assert.equal((await inspect(active)).json().reason_code,'active_attempt');assert.equal((await postRetry(active,manualRequest(active))).statusCode,409);await end(active.lease.runId);
+    const protectedRun=await fixture({paid:true});await pool.query('UPDATE bb_jobs SET billing_cancel_requested_at=now() WHERE id=$1',[protectedRun.lease.jobId]);
+    assert.equal((await inspect(protectedRun)).json().reason_code,'billing_not_ready');
+    const blockedBilling=await postRetry(protectedRun,manualRequest(protectedRun));assert.equal(blockedBilling.statusCode,409);assert.equal(blockedBilling.json().code,'BILLING_NOT_READY');await end(protectedRun.lease.runId);
+    const ownership=await fixture(),ownershipRequest=manualRequest(ownership);
+    const foreign=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:'other-owner',csrfVerified:true}),enableSyntheticQueue:true});
+    const noCsrf=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:false}),enableSyntheticQueue:true});
+    const anonymous=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>null,enableSyntheticQueue:true});
+    try{
+      for(const method of ['GET','POST'] as const){
+        const response=await foreign.inject({method,url:`/api/v1/runs/${ownership.lease.runId}/retry`,headers:{origin:'http://bondbuddy.test'},...(method==='POST'?{payload:ownershipRequest}:{})});
+        assert.equal(response.statusCode,404,response.body);
+        assert.equal((await anonymous.inject({method,url:`/api/v1/runs/${ownership.lease.runId}/retry`,headers:{origin:'http://bondbuddy.test'},...(method==='POST'?{payload:ownershipRequest}:{})})).statusCode,401);
+      }
+      assert.equal((await noCsrf.inject({method:'POST',url:`/api/v1/runs/${ownership.lease.runId}/retry`,headers:{origin:'http://bondbuddy.test'},payload:ownershipRequest})).statusCode,403);
+      assert.equal((await app.inject({method:'POST',url:`/api/v1/runs/${ownership.lease.runId}/retry`,headers:{origin:'http://foreign.test'},payload:ownershipRequest})).statusCode,403);
+    }finally{await foreign.close();await noCsrf.close();await anonymous.close();}
+    await action(pool,owner,ownership.lease.runId,'pause');assert.equal((await inspect(ownership)).json().reason_code,'user_pause_pending');
+    assert.equal(await ownership.recover(),true);assert.equal((await inspect(ownership)).json().mode,'resume');await end(ownership.lease.runId);
     // Legacy unknown calls must not consume the dedicated HTTP-413 scan. A full
     // page of ineligible 413s must also yield to later candidates without changing
     // any evidence or updated_at just to influence queue ordering.
@@ -171,5 +258,12 @@ test('file authoring 413 recovery preserves work, unknown usage and the original
     assert.deepEqual(await row(eligible.run_id),{state:'queued',stage:'queued'},'the second scan reaches the next candidate');
     assert.deepEqual(await states(untouchedIds),untouchedBefore,'blocked and unknown tasks keep their original state and timestamps');
     assert.equal((await pool.query('SELECT usage_status FROM bb_call_usage WHERE attempt_id=$1',[eligibleAttempt.attempt])).rows[0].usage_status,'unknown');
+    await end(eligible.run_id);
+    const isolated=await fixture({paid:true});
+    await pool.query(`UPDATE bb_credit_lots SET remaining=remaining-1 WHERE id=(SELECT id FROM bb_credit_lots WHERE owner_user_id=$1 AND remaining>frozen+1 LIMIT 1)`,[owner]);
+    assert.equal((await inspectAndIsolateBillingScope(pool,{kind:'wallet',owner})).status,'isolated');
+    assert.equal((await inspect(isolated)).json().reason_code,'billing_not_ready');
+    const isolatedRetry=await postRetry(isolated,manualRequest(isolated));assert.equal(isolatedRetry.statusCode,409,isolatedRetry.body);assert.equal(isolatedRetry.json().code,'BILLING_NOT_READY');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[isolated.lease.jobId])).rows[0].n,1);
   }finally{await app.close();await paidApp.close();await pool.end();}
 });

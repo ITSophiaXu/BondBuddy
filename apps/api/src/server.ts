@@ -41,7 +41,8 @@ import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { installAuth, principal as sessionPrincipal, type AuthConfig } from './auth.js';
 import { installLibraryAdminRoutes } from './library-admin-routes.js';
-import { action as queueAction, enqueue } from './queue.js';
+import { action as queueAction, enqueue, inspectRunRetry, retryRun } from './queue.js';
+import type { RunRetryRequest } from '@bondbuddy/contracts';
 import { executionKeyHash, isPgInputRevision, recordLogicalJob, recordOperation, rejectOperation, validExecutionKey } from './observability.js';
 import { installAdminRoutes } from './admin-routes.js';
 import { installAdminDashboardRoutes } from './admin-dashboard.js';
@@ -1585,6 +1586,15 @@ export function createServer(settings: Settings = {}) {
     const q=await db().query('SELECT * FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 AND seq>$3 ORDER BY seq LIMIT 100',[user,id,after]);
     const items=q.rows.map(e=>({event_id:e.id,schema_version:1,trace_id:e.trace_id,run_id:e.run_id,seq:e.seq,occurred_at:date(e.occurred_at),stage:e.stage,type:e.type,state:e.state,payload:runEventPayloadDto(e.payload)}));
     return {items,next_cursor:items.length?items.at(-1)!.seq:after};
+  });
+  app.get('/api/v1/runs/:run_id/retry',{schema:{response:{200:schemas.RunRetryResponse}}},async request=>{
+    const user=await owner(request),id=param(request,'run_id');assertTestChannelReadable((await run(db(),user,id)).channel);
+    return inspectRunRetry(db(),user,id);
+  });
+  app.post('/api/v1/runs/:run_id/retry',{schema:{body:schemas.RunRetryRequest}},async request=>{
+    const user=await owner(request),id=param(request,'run_id');assertTestChannelReadable((await run(db(),user,id)).channel);
+    if(!queueEnabled)throw unavailable();
+    return retryRun(db(),user,id,body<RunRetryRequest>(request));
   });
   for(const kind of ['cancel','resume','pause'] as const) app.post(`/api/v1/runs/:run_id/${kind}`,{schema:{body:schemas.RunActionRequest}},async request=>{
     const user=await owner(request),id=param(request,'run_id');assertTestChannelReadable((await run(db(),user,id)).channel);

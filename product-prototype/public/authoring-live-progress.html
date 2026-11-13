@@ -1,17 +1,162 @@
-<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>募集书实时进度 · 交互原型</title><style>
-*{box-sizing:border-box}body{margin:0;background:#f7f8f3;color:#24483e;font:16px/1.6 "Microsoft YaHei",sans-serif}main{max-width:1240px;margin:32px auto;padding:0 24px}nav{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px}button{font:inherit;border:1px solid #dce4d9;border-radius:8px;background:white;color:inherit;padding:10px 18px;cursor:pointer}button:hover{background:#eff4e9}.panel{padding:28px;background:white;border:1px solid #e4e9df;border-radius:16px}.eyebrow{font-size:13px;letter-spacing:2px;color:#8a9a88;margin-bottom:14px}.status{padding:26px;border:1px solid #e0e8d7;border-radius:16px;background:#f3f6ef}.status h2{font-size:24px;margin:0 0 6px}.status p{color:#7b8e80;margin:0 0 24px}.steps{display:flex;gap:12px;list-style:none;padding:0;margin:0}.steps li{flex:1;padding-top:12px;border-top:2px solid #d9e1d3;font-size:14px}.steps .current{border-color:#628253;color:#365f3c;font-weight:600}.log{padding:16px 20px;border-left:2px solid #e8eee4;margin:24px 0;color:#748778;font-size:14px}.meter{margin:22px 0;padding:22px 24px;border:1px solid #dbe4d4;border-radius:12px;background:linear-gradient(110deg,#f4f7ef,#fff)}.meter strong{font-size:30px;font-weight:600;margin-left:18px;font-variant-numeric:tabular-nums}.meter small{font-size:14px;font-weight:400}.meta{font-size:13px;color:#778778;margin-top:10px}.meter details{font-size:12px;color:#778778;margin-top:14px}.meter summary{cursor:pointer}.muted{font-size:13px;color:#89978a}.actions{display:flex;gap:12px;margin-top:26px}footer{margin:20px 0;font-size:12px;color:#94a18e}@media(max-width:600px){main{margin:16px auto;padding:0 12px}.panel{padding:18px}.status{padding:18px}.status h2{font-size:20px}.steps{gap:6px;flex-wrap:nowrap}.steps li{flex:1;min-width:0;font-size:11px}.meter{padding:18px}.meter strong{font-size:26px}.actions{flex-wrap:wrap}}
-</style><main><nav aria-label="切换合成状态"><button data-state="queued">排队</button><button data-state="running">编制中</button><button data-state="no_summary">尚无摘要</button><button data-state="stale">暂无新摘要</button><button data-state="pausing">正在暂停</button><button data-state="paused">已暂停</button><button data-state="recovering">自动恢复</button><button data-state="cancelled">已结束</button><button data-state="word_failed">Word 交付失败</button></nav><section class="panel" id="prototype-progress"></section><footer>交互原型 · 全部为合成示例。生产状态和积分由服务端事件及账务规则提供。</footer></main><script>
-const states={recovering:['正在自动恢复','请求内容超过接口容量，正在核对保存的工作进度并调整请求；无需重新提交。',2,'1,830','1分30秒','暂停期间积分不增加。'],no_summary:['正在处理文档','暂未收到模型的具体进度说明；收到后会自动显示。',2,'1,830','1分30秒','按有效处理时间和已完成工作累计，完成后结算。'],stale:['正在编制募集书内容','最近一次模型进度：已完成目录核对，正在更新财务章节。 暂未收到新的进度说明；收到后会自动更新。',2,'1,830','1分30秒','按有效处理时间和已完成工作累计，完成后结算。'],queued:['仍在排队，尚未开始处理','前方有 2 个同类任务。已排队 1分30秒。排队期间不消耗积分。',0,'0','0秒','尚未开始处理，积分不会增加。'],running:['正在编制募集书内容','最近一次模型进度：已完成目录核对，正在更新财务章节。',2,'1,830','1分30秒','按有效处理时间和已完成工作累计，完成后结算。'],pausing:['正在保存进度后暂停','积分已冻结。当前模型处理结果保存后暂停，继续时会复用已保存的结果。',2,'1,830','1分30秒','积分已冻结，继续处理后再累计。'],paused:['任务已暂停','进度已保存，积分停止累计。可继续本次任务，或结束并结算已消耗积分。',2,'1,830','1分30秒','积分已冻结，继续处理后再累计。'],cancelled:['本轮已停止','任务已停止，已保存的材料和已有成果保留。',2,'1,830','1分30秒','未消耗的 47,070 积分已释放。']};
-function render(key){if(key==='word_failed'){renderWordFailure();return;}const s=states[key];document.querySelector('#prototype-progress').innerHTML='<div class="eyebrow">募集书全文更新</div><section class="status"><h2>● '+s[0]+'</h2><p>'+s[1]+'</p><ol class="steps">'+['等待开始','准备材料','编制募集书','保存文档','可下载'].map((v,i)=>'<li class="'+(i===s[2]?'current':'')+'">'+(i+1)+' '+v+'</li>').join('')+'</ol></section><div class="log">'+(key==='queued'?'任务已提交，正在排队':key==='no_summary'?'处理步骤已返回：处理文档':'已完成目录核对，正在更新财务章节。<br>处理步骤已返回：处理文档')+'</div><section class="meter"><span>'+(key==='cancelled'?'本次已扣费':'当前已消耗')+'</span><strong>'+s[3]+' <small>积分</small></strong><div class="meta">有效处理 '+s[4]+'　'+s[5]+'</div><details><summary>计费说明</summary><p>排队、暂停、执行连接中断时不累计。暂停冻结累计金额；结束任务按已消耗积分结算，其余释放。平台失败不收费。任务完成时按原任务价格结算，全程不超过该价格。</p></details></section><p class="muted">关闭页面不会取消任务。编制开始后材料已锁定，仅可查看。</p><div class="actions">'+(key==='recovering'?'<button onclick="render(\'cancelled\')">停止本次任务</button>':key==='cancelled'?'<button onclick="render(\'queued\')">继续修改</button>':'<button onclick="render(\'cancelled\')">停止本次任务</button><button onclick="render(\''+(key==='paused'||key==='pausing'?'running':'pausing')+'\')">'+(key==='paused'||key==='pausing'?'继续本次任务':'暂停任务')+'</button>')+'<button>查看材料</button></div>'}
-function renderWordFailure(){
-  document.querySelector('#prototype-progress').innerHTML=`
-    <div class="eyebrow">募集书全文更新</div>
-    <section class="status"><h2>● 本轮未完成</h2><p>本轮未完成，已保存的材料和已有成果保留。</p>
-      <ol class="steps"><li>1 等待开始</li><li>2 准备材料</li><li>3 编制募集书</li><li class="current">4 保存文档</li><li>5 可下载</li></ol>
-    </section>
-    <p class="log">Word 文件生成或保存失败，本轮未能交付。已保存材料会保留，无需重新上传；请联系支持核对并恢复。</p>
-    <p class="muted">本次任务按提交时的试用规则执行，不扣积分。</p>
-    <div class="actions"><button onclick="render('queued')">继续修改</button><button>查看材料</button></div>`;
-}
-document.querySelectorAll('[data-state]').forEach(b=>b.onclick=()=>render(b.dataset.state));render(new URLSearchParams(location.search).get('state')||'running');
-</script></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>募集书全文更新 · 状态交互原型</title>
+  <link rel="stylesheet" href="./authoring-status.css">
+  <style>
+    .authoring-status-prototype { margin: 0; background: #fff; color: #18231c; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+    .authoring-status-prototype-main { max-width: 1240px; margin: 28px auto; padding: 0 24px; }
+    .authoring-status-prototype-nav { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 28px; }
+    .authoring-status-prototype-nav button { padding: 6px 12px; border: 1px solid #e1e4e1; border-radius: 7px; background: #fff; color: #57625a; font: inherit; font-size: 12px; cursor: pointer; }
+    .authoring-status-prototype-nav button[aria-pressed="true"] { border-color: #9cbeaa; background: #edf6ef; color: #17613a; }
+    .authoring-status-prototype-nav button:focus-visible { outline: 3px solid #4b9671; outline-offset: 3px; }
+    .authoring-status-prototype-footer { margin: 24px 4px; color: #777d79; font-size: 12px; line-height: 1.8; }
+    @media (max-width: 600px) { .authoring-status-prototype-main { margin: 18px auto; padding: 0 12px; } }
+  </style>
+</head>
+<body class="authoring-status-prototype">
+  <main class="authoring-status-prototype-main">
+    <nav class="authoring-status-prototype-nav" aria-label="切换合成状态">
+      <button type="button" data-state="queued">排队</button>
+      <button type="button" data-state="running">编制中</button>
+      <button type="button" data-state="pausing">正在暂停</button>
+      <button type="button" data-state="paused">已暂停</button>
+      <button type="button" data-state="recovering">自动恢复</button>
+      <button type="button" data-state="legacy-pause">旧任务暂停</button>
+      <button type="button" data-state="succeeded">已完成</button>
+      <button type="button" data-state="failed">交付失败</button>
+      <button type="button" data-state="cancelled">已停止</button>
+    </nav>
+    <section class="authoring-status-shell" id="prototype-progress" aria-label="募集书任务状态"></section>
+    <footer class="authoring-status-prototype-footer">交互原型 · 所有时间、步骤、记录、文件和积分均为合成示例。按钮仅切换演示状态，不会执行任务或扣费；正式页面应使用该任务的实际数据。</footer>
+  </main>
+  <script>
+    const baseRecords = [
+      {time: '09:35', text: '开始编制，核对六张主表和原稿章节'},
+      {time: '09:36', text: '已定位 PPN 十六章结构，逐页核对原稿、报告期和历史财务表格'},
+      {time: '09:36', text: '两期财务报表为扫描件，先整理原稿标题和表格，再识别报表数字'},
+      {time: '09:37', text: '扫描页可识别，正在识别并校验半年度六表和 2023 年度合并、母公司主表'}
+    ];
+    const errorRecord = {time: '09:41', kind: 'failed', text: '处理文档时出错'};
+    const pausedRecord = {time: '09:42', kind: 'paused', text: '任务已暂停，等待自动恢复'};
+    const states = {
+      queued: {
+        tone: 'neutral', badge: '排队中', title: '正在等待开始', phase: 0,
+        description: ['任务已提交，前方还有 2 个同类任务。开始后会自动更新进度。', '排队期间不处理文档。关闭页面不会取消任务。'],
+        actions: ['stop'], records: [{time: '09:32', text: '任务已提交，正在排队'}]
+      },
+      running: {
+        tone: 'running', badge: '编制中', title: '正在编制募集书', phase: 2,
+        description: ['已完成目录核对，正在更新财务章节。', '材料已锁定。关闭页面不会取消任务。'],
+        actions: ['pause', 'stop'], records: baseRecords
+      },
+      pausing: {
+        tone: 'paused', badge: '正在暂停', title: '正在保存工作进度', phase: 2,
+        description: ['已收到暂停请求，当前处理结束并保存后暂停。', '保存完成后可继续本次任务，请稍候。'],
+        actions: ['saving', 'stop'], records: [...baseRecords, {time: '09:40', kind: 'paused', text: '已收到暂停请求，正在保存工作进度'}]
+      },
+      paused: {
+        tone: 'paused', badge: '已暂停', title: '编制募集书时暂停', phase: 2,
+        description: ['09:41 处理文档时出错，系统正在自动恢复，恢复后会从第 3 步继续。', '已完成的内容会保留，无需补充材料。关闭页面不会取消任务。'],
+        actions: ['retry', 'stop'], records: [...baseRecords, errorRecord, pausedRecord]
+      },
+      recovering: {
+        tone: 'paused', badge: '恢复中', title: '正在恢复募集书编制', phase: 2,
+        description: ['系统正在核对已保存的工作进度，恢复后会从第 3 步继续。', '已完成的内容会保留，无需补充材料。关闭页面不会取消任务。'],
+        actions: ['retry', 'stop'], records: [...baseRecords, errorRecord, pausedRecord, {time: '09:43', text: '正在核对已保存的工作进度，准备继续编制'}]
+      },
+      'legacy-pause': {
+        tone: 'paused', badge: '已暂停', title: '旧任务等待重新处理', phase: 2,
+        description: ['本次原材料和要求已保留，但旧任务未保存可续跑的中间编辑。', '立即重试会使用锁定材料重新编制，需要重新完成上次未保存的工作。'],
+        actions: ['retry', 'stop'], records: [...baseRecords, errorRecord, {time: '09:42', kind: 'paused', text: '任务已暂停；材料与要求保留，中间编辑未保存'}]
+      },
+      succeeded: {
+        tone: 'success', badge: '已完成', title: '募集书已编制完成', phase: 4,
+        description: ['5 个步骤全部完成，文档已保存。'], actions: [],
+        records: [...baseRecords, {time: '09:58', kind: 'completed', text: '募集书编制完成'}, {time: '09:59', kind: 'completed', text: '文档已保存，可下载'}]
+      },
+      failed: {
+        tone: 'failed', badge: '未完成', title: '本轮未能交付文档', phase: 3,
+        description: ['保存文档时出错，本轮没有可下载成果。', '已保存的材料会保留，可立即重试本次任务。'],
+        actions: ['retry', 'stop'], records: [...baseRecords, {time: '09:58', text: '募集书内容编制结束，正在保存文档'}, {time: '09:59', kind: 'failed', text: '保存文档失败，本轮没有可下载成果'}]
+      },
+      cancelled: {
+        tone: 'neutral', badge: '已停止', title: '本轮任务已停止', phase: 2,
+        description: ['任务已停止，已保存材料与已有成果保留。', '本次处理不会自动恢复。'],
+        actions: [], records: [...baseRecords, {time: '09:42', text: '任务已停止'}]
+      }
+    };
+    const stepLabels = ['等待开始', '准备材料', '编制募集书', '保存文档', '可下载'];
+    const materialNames = ['示例历史募集说明书.docx', '示例年度财务报告.pdf', '示例半年度财务报表.pdf'];
+    const actionLabels = {retry: '立即重试', stop: '停止任务', pause: '暂停任务', saving: '正在保存'};
+    const kindLabels = {failed: '出错', paused: '暂停', completed: '完成'};
+    const aliases = {word_failed: 'failed', no_summary: 'running', stale: 'running', legacy_pause: 'legacy-pause'};
+    const escapeHtml = text => String(text).replace(/[&<>"']/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
+    let activeState = 'paused';
+
+    function statusIcon(tone) {
+      const shape = tone === 'paused'
+        ? '<rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>'
+        : tone === 'success'
+          ? '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>'
+          : tone === 'failed'
+            ? '<circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/>'
+            : '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>';
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + shape + '</svg>';
+    }
+
+    function render(requestedKey) {
+      const key = aliases[requestedKey] || requestedKey;
+      activeState = Object.hasOwn(states, key) ? key : 'running';
+      const state = states[activeState];
+      document.querySelectorAll('[data-state]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.state === activeState)));
+      document.querySelector('#prototype-progress').innerHTML = `
+        <h1 class="authoring-status-heading">募集书全文更新</h1>
+        <section class="authoring-status-card" data-tone="${state.tone}" aria-label="编制进度">
+          <div class="authoring-status-main">
+            <div class="authoring-status-header">
+              <div class="authoring-status-title-group">
+                <span class="authoring-status-badge">${statusIcon(state.tone)}${state.badge}</span>
+                <h2 class="authoring-status-title" role="status">${state.title}</h2>
+              </div>
+              ${state.actions.length ? `<div class="authoring-status-actions">${state.actions.map(action => `<button type="button" class="authoring-status-button" data-action="${action}"${action !== 'stop' ? ' data-primary="true"' : ''}${action === 'saving' ? ' disabled' : ''}>${actionLabels[action]}</button>`).join('')}</div>` : ''}
+            </div>
+            <div class="authoring-status-description">${state.description.map(line => `<p>${escapeHtml(line)}</p>`).join('')}</div>
+          </div>
+          <ol class="authoring-status-steps" aria-label="处理流程">${stepLabels.map((label, index) => {
+            const stepState = activeState === 'succeeded' || index < state.phase ? 'done' : index === state.phase ? 'current' : 'future';
+            return `<li class="authoring-status-step" data-step-state="${stepState}"${stepState === 'current' ? ' aria-current="step"' : ''}><div class="authoring-status-step-row"><span class="authoring-status-step-icon" aria-hidden="true">${index + 1}</span><span class="authoring-status-step-label">${label}</span></div></li>`;
+          }).join('')}</ol>
+        </section>
+        <div class="authoring-status-billing">
+          <span>${activeState === 'cancelled' ? '预留已释放' : '已预留'} <strong>34,570</strong> 积分</span>
+          <span class="authoring-status-billing-separator" aria-hidden="true">·</span>
+          <span>按确认范围交付结算，未交付部分释放</span>
+          <details class="authoring-status-billing-help"><summary>计费说明</summary><p class="authoring-status-billing-note">示例按确认范围交付结算，未交付部分释放；平台重试不按内部轮次加收。正式页面应按本次任务实际报价、计费模式和账务结果显示。</p></details>
+        </div>
+        <details class="authoring-status-details authoring-status-records" open>
+          <summary>处理记录（${state.records.length} 条）</summary>
+          <ol class="authoring-status-record-list">${state.records.map(record => `<li class="authoring-status-record"><time class="authoring-status-record-time">${record.time}</time><div class="authoring-status-record-content">${record.kind ? `<span class="authoring-status-record-badge" data-kind="${record.kind}">${kindLabels[record.kind]}</span>` : ''}<span class="authoring-status-record-text">${escapeHtml(record.text)}</span></div></li>`).join('')}</ol>
+        </details>
+        <details class="authoring-status-details authoring-status-materials">
+          <summary>本次使用的材料（${materialNames.length} 份，已锁定）</summary>
+          <ul class="authoring-status-material-list">${materialNames.map(name => `<li>${escapeHtml(name)}</li>`).join('')}</ul>
+        </details>`;
+    }
+
+    document.querySelectorAll('[data-state]').forEach(button => button.addEventListener('click', () => render(button.dataset.state)));
+    document.querySelector('#prototype-progress').addEventListener('click', event => {
+      const button = event.target.closest('button[data-action]');
+      if (!button || button.disabled) return;
+      if (button.dataset.action === 'retry') {
+        if (activeState === 'legacy-pause' && !window.confirm('演示确认：旧任务没有保存可续跑的中间编辑。立即重试将使用锁定材料重新编制，是否继续？')) return;
+        render('running');
+      } else if (button.dataset.action === 'pause') render('pausing');
+      else if (button.dataset.action === 'stop') render('cancelled');
+    });
+    render(new URLSearchParams(location.search).get('state') || 'paused');
+  </script>
+</body>
+</html>

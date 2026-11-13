@@ -15,8 +15,9 @@ import { referencePin, selectedReference, type ReferenceSnapshotResolver, type U
 import type { ProjectConversation } from './project-conversation';
 import { date, esc } from './ui';
 import './project-execution.css';
-import { authoringStatus, authoringEventLabel, authoringCreditReceipt, retainAuthoringEvents, authoringVisibleEvents } from './authoring-progress';
-import { taskProgress } from './task-progress';
+import { retainAuthoringEvents } from './authoring-progress';
+import {authoringStatusCard,authoringStatusRecords,authoringStatusReceipt,retryExplanation} from './authoring-status';
+import '../../../product-prototype/public/authoring-status.css';
 import { rechargeHref, withProjectContext } from './project-navigation';
 import { readContinuationBasis, renderContinuationSummary, type ContinuationBasis, type ContinuationChoice } from './authoring-continuation';
 import { syncFormatTemplateMode } from './source-format-template';
@@ -162,6 +163,16 @@ export class ProjectExecution {
   private selected = false;
   private preflight?: Dto<'PreflightResponse'>;
   private run?: Dto<'RunResponse'>;
+  private retryOffer?:Dto<'RunRetryResponse'>;
+  private retryReadKey?:string;
+  private retryFeedback='';
+  private retryDialog?:HTMLDialogElement;
+  private pendingRunRetry?:{runId:string;request:Dto<'RunRetryRequest'>};
+  private runMaterialsKey?:string;
+  private runMaterialPins?:Input['material_versions'];
+  private runMaterials:Material[]=[];
+  private runMaterialsError='';
+  private viewingProjectMaterials=false;
   private latestArtifact?: string;
   private reason?: string;
   private eventCursor = 0;
@@ -454,6 +465,7 @@ export class ProjectExecution {
     }
     const materialDetails = document.querySelector<HTMLElement>('#project-materials-details');
     if (materialDetails) {
+      materialDetails.hidden=!!this.run&&!this.nextRequested&&!this.viewingProjectMaterials;
       materialDetails.classList.toggle('materials-readonly', materialsLocked);
       materialDetails.querySelector<HTMLFieldSetElement>('#material-editing')!.disabled = !this.materialsEditable;
       materialDetails.querySelector('#materials-state-label')!.textContent = materialsLocked ? '材料已锁定，仅可查看' : this.nextRequested ? '为下一轮补充材料' : '开始更新前可补充';
@@ -462,6 +474,8 @@ export class ProjectExecution {
         ? activeRun ? '本次编制已开始，材料已锁定，无法新增、替换或删除。' : '本次编制材料已锁定。需要补充材料时，请点击“继续修改”，用于下一轮编制。'
         : this.nextRequested ? '补充材料将用于下一轮编制，已开始的任务和已有成果保持不变。' : '请在开始更新前补齐材料；开始后材料锁定，仅可查看。';
     }
+    const sourcePanel=document.querySelector<HTMLElement>('#prospectus-panel');
+    if(sourcePanel)sourcePanel.hidden=!!this.run&&!this.nextRequested&&!this.viewingProjectMaterials;
     this.conversation.setEditingVisible(!editsFrozen && !this.restoring && !activeRun && (!this.run || this.nextRequested));
     this.actions.closest('.authoring-actions')?.classList.toggle('is-preparing', !this.restoring && !activeRun && (!this.run || this.nextRequested));
     const block = this.startBlock(), blocked = block.reason;
@@ -549,30 +563,43 @@ export class ProjectExecution {
     }
     const executionProgressHost = this.host.querySelector<HTMLElement>('#execution-progress')!;
     const creditDetailsOpen = executionProgressHost.querySelector<HTMLDetailsElement>('.authoring-credit-meter details')?.open ?? false;
+    const recordsOpen=executionProgressHost.querySelector<HTMLDetailsElement>('#authoring-records')?.open??true;
+    const materialsOpen=executionProgressHost.querySelector<HTMLDetailsElement>('#authoring-locked-materials')?.open??false;
+    const focusedDisclosure=['authoring-records','authoring-locked-materials'].find(id=>document.activeElement===executionProgressHost.querySelector('#'+id+' > summary'));
     const focusedId = executionProgressHost.contains(document.activeElement) ? document.activeElement?.id : undefined;
     const creditSummaryFocused = document.activeElement === executionProgressHost.querySelector('.authoring-credit-meter summary');
-    executionProgressHost.innerHTML = `${run ? `<div class="run-status-card"><div class="eyebrow">募集书全文更新</div>${taskProgress(run,'update',authoringStatus(run,this.events,this.charge?.progress) ?? failedWordProgress)}${summary ? `<div class="execution-summary">${esc(summary)}</div>` : ''}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
-      ${this.events.length ? `<ol class="execution-events">${authoringVisibleEvents(run,this.events).map(event => `<li><time>${esc(date(event.occurred_at))}</time><span>${esc(authoringEventLabel(event) ?? stages[event.stage ?? ''] ?? states[event.state])}${event.payload.completed_items !== undefined ? ` · 已处理 ${event.payload.completed_items}${event.payload.total_items != null ? ` / ${event.payload.total_items}` : ''} 项` : ''}</span></li>`).join('')}</ol>` : ''}
-      ${needsRecharge ? `<div class="execution-summary" role="status"><strong>积分已用完，${run.state === 'paused' ? '任务已暂停' : '正在保存进度后暂停'}</strong><p>请到账号页查看积分与支付渠道状态；积分充足后自动继续本次任务，已完成的步骤不会重复执行。</p><a class="button primary" href="${esc(this.rechargeLink())}">查看积分与支付状态</a></div>` : ''}
-      ${authoringCreditReceipt(run,this.charge?.progress,this.charge?.quote&&this.charge.state?{...this.charge.quote,state:this.charge.state}:undefined,this.chargeError)}
-      <p class="muted">${activeRun ? '关闭页面不会取消任务。编制开始后材料已锁定，仅可查看。' : this.nextRequested ? '补充材料或修改要求将用于下一轮编制，旧成果仍会保留。' : '本次材料已锁定。点击“继续修改”后可为下一轮补充材料或修改要求，旧成果仍会保留。'}</p>
-      <div class="form-actions">${activeRun ? '<button class="button secondary" type="button" id="cancel-run">停止本次任务</button>' + (run.state === 'running' && this.charge?.progress?.pause_requested || run.stage === 'user_paused' || run.stage === 'credits_exhausted' ? '<button class="button secondary" type="button" id="resume-run">继续本次任务</button>' : ['queued','running'].includes(run.state) ? '<button class="button secondary" type="button" id="pause-run">暂停任务</button>' : '') : ''}${run.state === 'paused' && run.stage === 'capability_not_ready' && !repeatedPause
-        ? this.resumeVerified ? '<button class="button secondary" type="button" id="resume-run">继续更新</button>'
-          : '<button class="text-button" type="button" id="recheck-paused">重新检查处理条件</button>' : ''}${!activeRun && !this.nextRequested ? '<button class="button secondary" type="button" id="prepare-next-version">继续修改</button>' : ''}<button class="text-button" type="button" id="show-project-materials">查看材料</button></div></div>` : ''}
+    const primaryAction=!run?'':run.state==='paused'&&run.stage==='provider_reconcile'?`<button class="authoring-status-button primary" type="button" id="retry-run" ${this.busy||this.retryOffer?.mode==='blocked'&&!this.pendingRunRetry?'disabled':''}>${this.pendingRunRetry?'核对重试结果':this.busy?'正在处理…':'立即重试'}</button>${this.retryOffer?.mode==='blocked'?'<button class="authoring-status-button secondary" type="button" id="refresh-run-retry">刷新状态</button>':''}`
+      :run.state==='running'&&this.charge?.progress?.pause_requested||run.stage==='user_paused'||run.stage==='credits_exhausted'?'<button class="authoring-status-button primary" type="button" id="resume-run">继续本次任务</button>'
+      :['queued','running'].includes(run.state)?'<button class="authoring-status-button primary" type="button" id="pause-run">暂停任务</button>'
+      :run.state==='paused'&&run.stage==='capability_not_ready'&&!repeatedPause?this.resumeVerified?'<button class="authoring-status-button primary" type="button" id="resume-run">继续更新</button>':'<button class="authoring-status-button primary" type="button" id="recheck-paused">重新检查处理条件</button>':'';
+    const runActions=primaryAction+(activeRun?'<button class="authoring-status-button secondary" type="button" id="cancel-run" aria-label="停止本次任务">停止任务</button>':'');
+    this.node('#run-panel').classList.add('authoring-status-panel');
+    executionProgressHost.innerHTML = `${run ? `<div class="run-status-card authoring-status-shell"><h2 class="authoring-status-heading">募集书全文更新</h2>${authoringStatusCard(run,this.events,{progress:this.charge?.progress,summary,phase:failedWordProgress?.phase,actions:runActions,feedback:this.retryFeedback||this.message,retry:this.retryOffer})}${testCompleted ? '<p>仅供内部测试，仍有规则和内容待核，不可用于正式申报。</p>' : testRun && run.state === 'failed' ? '<p>这是内部测试任务；请先联系支持核对失败原因。正式更新需保存新输入版本后重新开始，不会自动重试此任务。</p>' : testRun ? '<p>这是内部测试任务，不代表正式更新。</p>' : ''}
+      ${authoringStatusReceipt(run,this.charge?.progress,this.charge?.quote&&this.charge.state?{...this.charge.quote,state:this.charge.state}:undefined,this.chargeError)}
+      ${needsRecharge ? `<p class="authoring-status-retry-note"><a class="text-button" href="${esc(this.rechargeLink())}">查看积分与支付状态</a>，积分充足后继续本次任务。</p>` : ''}
+      ${authoringStatusRecords(run,this.events)}
+      <details class="authoring-status-materials" id="authoring-locked-materials"><summary>本次使用的材料（${this.runMaterialPins?this.runMaterialPins.length+' 份':'正在读取'}，已锁定）</summary>${this.runMaterialsError?`<p role="status">${esc(this.runMaterialsError)} <button class="text-button" type="button" id="reload-run-materials">重新读取</button></p>`:''}${this.runMaterialPins?`<ul class="authoring-status-material-list">${this.runMaterialPins.map(pin=>{const material=this.runMaterials.find(m=>m.material_id===pin.material_id&&m.material_version===pin.material_version);return `<li><span>${esc(material?.filename??'材料名称暂未读取')}<small> · 版本 ${pin.material_version}</small></span></li>`;}).join('')}</ul>`:'<p>正在读取本次任务锁定的材料版本…</p>'}<p class="authoring-status-material-note">本次材料已锁定。<button class="text-button" type="button" id="show-project-materials">查看项目材料</button></p></details>
+      ${!activeRun&&!this.nextRequested?'<div class="authoring-status-followup"><button class="button secondary" type="button" id="prepare-next-version">继续修改</button><span>为下一轮补充材料或修改要求，旧成果仍会保留。</span></div>':''}</div>` : ''}
       ${this.latestArtifact && this.latestArtifact !== run?.artifact_id ? `<a class="text-button" href="#/artifacts/${encodeURIComponent(this.latestArtifact)}?${esc(withProjectContext(new URLSearchParams()).toString())}">查看此前成功成果</a>` : ''}`;
     const creditDetails = executionProgressHost.querySelector<HTMLDetailsElement>('.authoring-credit-meter details');
     if (creditDetails) creditDetails.open = creditDetailsOpen;
+    const records=executionProgressHost.querySelector<HTMLDetailsElement>('#authoring-records');if(records)records.open=recordsOpen;
+    const lockedMaterials=executionProgressHost.querySelector<HTMLDetailsElement>('#authoring-locked-materials');if(lockedMaterials)lockedMaterials.open=materialsOpen;
     if (creditSummaryFocused) executionProgressHost.querySelector<HTMLElement>('.authoring-credit-meter summary')?.focus({preventScroll:true});
+    else if(focusedDisclosure)executionProgressHost.querySelector<HTMLElement>('#'+focusedDisclosure+' > summary')?.focus({preventScroll:true});
     else if (focusedId) executionProgressHost.querySelector<HTMLElement>('#'+CSS.escape(focusedId))?.focus({preventScroll:true});
     for (const [id, action] of [['cancel-run','cancel'],['resume-run','resume'],['pause-run','pause']] as const) {
       const button = this.host.querySelector<HTMLButtonElement>(`#${id}`);
       if (button) { button.disabled = this.busy; button.addEventListener('click', () => { void this.changeRun(action); }); }
     }
+    this.host.querySelector('#retry-run')?.addEventListener('click',()=>{void this.requestRunRetry();});
+    this.host.querySelector('#refresh-run-retry')?.addEventListener('click',()=>{this.retryReadKey=undefined;void this.loadRetryOptions();void this.poll();});
+    this.host.querySelector('#reload-run-materials')?.addEventListener('click',()=>{this.runMaterialsKey=undefined;if(this.run)void this.loadRunMaterials(this.run);});
     const recheckPaused = this.host.querySelector<HTMLButtonElement>('#recheck-paused');
     if (recheckPaused) { recheckPaused.disabled = this.busy; recheckPaused.addEventListener('click', () => { void this.recheckPaused(); }); }
     const prepare=this.host.querySelector<HTMLButtonElement>('#prepare-next-version');
     if(prepare){prepare.disabled=editsFrozen||this.busy||this.starting;prepare.addEventListener('click',()=>{void this.prepareNextVersion();});}
-    this.host.querySelector('#show-project-materials')?.addEventListener('click', () => { const details=document.querySelector<HTMLDetailsElement>('#project-materials-details'); if(details)details.open=true; document.querySelector('#materials-title')?.scrollIntoView({block:'start'}); });
+    this.host.querySelector('#show-project-materials')?.addEventListener('click', () => { this.viewingProjectMaterials=true;this.render();const details=document.querySelector<HTMLDetailsElement>('#project-materials-details'); if(details)details.open=true; document.querySelector('#materials-title')?.scrollIntoView({block:'start'}); });
     const artifactId = (run?.state === 'succeeded' || testCompleted) ? run?.artifact_id : undefined;
     if (artifactId && artifactId !== this.deliveryId) {
       this.delivery?.dispose(); this.deliveryId = artifactId;
@@ -701,6 +728,119 @@ export class ProjectExecution {
       if (action === 'resume') this.resumedPause = pause;
       this.acceptRun(run); void this.poll();
     });
+  }
+
+  private async loadRunMaterials(run:Dto<'RunResponse'>) {
+    const key=`${run.run_id}:${run.input_hash}`;
+    if(this.runMaterialsKey===key)return;
+    this.runMaterialsKey=key;this.runMaterialPins=undefined;this.runMaterials=[];this.runMaterialsError='';
+    try{
+      const input=this.input?.input_hash===run.input_hash&&this.input.input_revision===run.input_revision?this.input:
+        await this.api.inputRevision(this.id,run.input_revision,this.controller.signal);
+      if(!this.active||this.runMaterialsKey!==key)return;
+      if(input.project_id!==this.id||input.input_hash!==run.input_hash||input.input_revision!==run.input_revision)throw new ApiError(0,'DATA_UNAVAILABLE');
+      this.runMaterialPins=input.material_versions;
+      const values:Material[]=[];let missing=false;
+      for(let offset=0;offset<input.material_versions.length;offset+=6){
+        const batch=await Promise.allSettled(input.material_versions.slice(offset,offset+6).map(async pin=>{
+          const value=await this.api.material(this.id,pin.material_id,this.controller.signal,pin.material_version);
+          if(value.material_id!==pin.material_id||value.material_version!==pin.material_version)throw new ApiError(0,'DATA_UNAVAILABLE');
+          return value;
+        }));
+        if(!this.active||this.runMaterialsKey!==key)return;
+        for(const result of batch)if(result.status==='fulfilled')values.push(result.value);else missing=true;
+      }
+      this.runMaterials=values;this.runMaterialsError=missing?'部分材料名称暂未读取，锁定的版本没有变化。':'';
+    }catch{if(this.active&&this.runMaterialsKey===key)this.runMaterialsError='本次材料清单暂未读取，请重新读取。';}
+    finally{if(this.active&&this.runMaterialsKey===key)this.render();}
+  }
+
+  private async loadRetryOptions() {
+    const run=this.run;
+    if(!run||run.state!=='paused'||run.stage!=='provider_reconcile'){
+      this.retryOffer=undefined;this.retryReadKey=undefined;return;
+    }
+    const key=`${run.run_id}:${run.event_cursor}`;
+    if(this.retryReadKey===key)return;
+    this.retryReadKey=key;
+    try{
+      const offer=await this.api.runRetryOptions(run.run_id,this.controller.signal);
+      if(!this.active||this.retryReadKey!==key||this.run?.state!=='paused'||this.run.stage!=='provider_reconcile')return;
+      if(offer.run_id!==run.run_id)throw new ApiError(0,'DATA_UNAVAILABLE');
+      this.retryOffer=offer;
+      if(this.retryFeedback==='重试条件暂未同步，可点击“立即重试”重新核对。')this.retryFeedback='';
+    }catch{
+      if(this.active&&this.retryReadKey===key){this.retryOffer=undefined;this.retryFeedback='重试条件暂未同步，可点击“立即重试”重新核对。';}
+    }finally{if(this.active&&this.retryReadKey===key)this.render();}
+  }
+
+  private async requestRunRetry() {
+    const run=this.run;if(!run||run.state!=='paused'||run.stage!=='provider_reconcile'||this.busy)return;
+    await this.action(async()=>{
+      this.retryFeedback='';
+      if(this.pendingRunRetry?.runId===run.run_id){await this.submitRunRetry();return;}
+      try{
+        const offer=await this.api.runRetryOptions(run.run_id,this.controller.signal);
+        if(!this.active||this.run?.run_id!==run.run_id||this.run.state!=='paused'||this.run.stage!=='provider_reconcile')return;
+        if(offer.run_id!==run.run_id)throw new ApiError(0,'DATA_UNAVAILABLE');
+        this.retryOffer=offer;
+        if(offer.mode==='restore_checkpoint'&&offer.attempt_id){
+          this.pendingRunRetry={runId:run.run_id,request:{request_id:crypto.randomUUID(),attempt_id:offer.attempt_id,mode:'restore_checkpoint'}};
+          await this.submitRunRetry();
+        }else if(offer.mode==='restart_materials'&&offer.attempt_id){
+          this.showRestartConfirmation(run.run_id,offer.attempt_id);
+        }else{this.retryFeedback=retryExplanation(offer);void this.poll();}
+      }catch(error){this.retryFeedback=`暂未取得重试条件，请稍后再试。${friendlyError(error,'read')}`;}
+    });
+  }
+
+  private showRestartConfirmation(runId:string,attemptId:string) {
+    this.retryDialog?.remove();
+    const dialog=document.createElement('dialog');dialog.className='authoring-retry-dialog';
+    dialog.setAttribute('aria-labelledby','authoring-retry-title');
+    dialog.innerHTML='<h2 id="authoring-retry-title">使用原材料重新处理？</h2><p>上次模型处理已结束，但没有可续跑的工作快照。未保存的中间进度无法恢复，本次会从锁定的原材料重新处理。</p><p>仍使用本次任务和原积分预留，不新增任务预留；已记录的历史用量及账务保留。</p><div class="form-actions"><button class="button secondary" type="button" data-dismiss>暂不重试</button><button class="button primary" type="button" id="confirm-run-restart">确认重新处理</button></div>';
+    dialog.querySelector('[data-dismiss]')!.addEventListener('click',()=>dialog.close());
+    dialog.querySelector('#confirm-run-restart')!.addEventListener('click',()=>{
+      if(this.busy||!this.active)return;
+      if(this.run?.run_id!==runId||this.run.state!=='paused'||this.run.stage!=='provider_reconcile'){dialog.close();return;}
+      this.pendingRunRetry={runId,request:{request_id:crypto.randomUUID(),attempt_id:attemptId,mode:'restart_materials',confirmed_restart:true}};
+      dialog.close();void this.action(()=>this.submitRunRetry());
+    });
+    document.body.append(dialog);this.retryDialog=dialog;dialog.showModal();
+    dialog.querySelector<HTMLButtonElement>('[data-dismiss]')!.focus();
+  }
+
+  private async submitRunRetry() {
+    const pending=this.pendingRunRetry;if(!pending)return;
+    const readVersion=this.runReadVersion;
+    try{
+      const run=await this.api.retryRun(pending.runId,pending.request,this.controller.signal);
+      if(!this.active||this.run?.run_id!==pending.runId)return;
+      if(run.run_id!==pending.runId||run.project_id!==this.id||run.input_hash!==this.run.input_hash)throw new ApiError(0,'DATA_UNAVAILABLE');
+      this.pendingRunRetry=undefined;this.retryOffer=undefined;this.retryReadKey=undefined;
+      // A newer poll may already have delivered this attempt while its POST receipt was in flight.
+      const currentCursor=this.run.event_cursor??-1,responseCursor=run.event_cursor??-1;
+      const stale=currentCursor>responseCursor||this.runReadVersion!==readVersion&&currentCursor>=responseCursor;
+      const latest=stale?this.run:run;
+      this.retryFeedback=latest.state==='paused'?'已核对原重试请求，任务当前处于暂停状态。请查看最新原因后重试。'
+        :stale?'':latest.state==='queued'||latest.state==='running'?(pending.request.mode==='restore_checkpoint'?'已安排从保存进度继续，仍是本次任务。':'已安排使用本次原材料重新处理，仍是本次任务。'):'重试请求已核对，任务已更新为最新状态。';
+      if(stale){void this.loadRetryOptions();void this.poll();return;}
+      this.acceptRun(run);void this.poll();
+    }catch(error){
+      if(!this.active)return;
+      if(this.run?.run_id!==pending.runId||this.pendingRunRetry!==pending)return;
+      if(!(error instanceof ApiError)||error.status===0){
+        this.retryFeedback='重试回执尚未确认，请核对重试结果；核对会沿用原请求，不重复创建任务。';
+      }else{
+        this.pendingRunRetry=undefined;this.retryReadKey=undefined;
+        this.retryFeedback=error.code==='INPUT_REVISION_CONFLICT'||error.code==='IDEMPOTENCY_CONFLICT'?'任务状态或处理尝试已变化，正在刷新，请核对后重试。'
+          :error.code==='BILLING_NOT_READY'?'积分账务正在核对，暂不能重试。'
+          :error.code==='CREDITS_INSUFFICIENT'?'积分不足，请查看余额与支付状态后继续本次任务。'
+          :error.code==='CAPABILITY_NOT_READY'?'当前重试条件尚未满足，正在刷新具体原因。':friendlyError(error,'action');
+        void this.loadRetryOptions();
+      }
+      void this.poll();
+    }
   }
 
   private async action(work: () => Promise<void>, operation: 'preflight' | 'execute' | 'other' = 'other', feedback: 'read'|'save'|'download'|'submit'|'action' = operation === 'other' ? 'action' : 'submit') {
@@ -952,6 +1092,8 @@ export class ProjectExecution {
     if (this.run?.run_id !== run.run_id) {
       this.eventCursor = 0; this.reason = undefined; this.events = [];
       this.lastPausedEvent = undefined; this.pauseBeforeResume = undefined; this.repeatedPauseEvent = undefined;
+      this.retryOffer=undefined;this.retryReadKey=undefined;this.retryFeedback='';this.pendingRunRetry=undefined;this.viewingProjectMaterials=false;
+      this.retryDialog?.remove();
     }
     if (this.run?.run_id !== run.run_id) this.resumedPause = undefined;
     if (this.run?.run_id !== run.run_id || this.run?.state !== run.state || this.run?.stage !== run.stage) this.resumeVerified = false;
@@ -959,6 +1101,7 @@ export class ProjectExecution {
     this.run = run; this.nextRequested = false;this.nextBasis=undefined;this.nextBasisError='';
     if(delivered)this.onDelivered?.();
     this.watchRun(run);
+    void this.loadRunMaterials(run);void this.loadRetryOptions();
     void this.loadCharge();
   }
   private watchRun(run:Dto<'RunResponse'>) {
@@ -1118,6 +1261,7 @@ export class ProjectExecution {
       if (this.run.state !== run.state || this.run.stage !== run.stage) this.reason = undefined;
       if (this.run.state !== run.state || this.run.stage !== run.stage) this.resumeVerified = false;
       this.run = run;this.watchRun(run);
+      if(run.state!=='paused'||run.stage!=='provider_reconcile'){this.retryOffer=undefined;this.retryReadKey=undefined;this.pendingRunRetry=undefined;this.retryDialog?.close();}
       if(delivered)this.onDelivered?.();
       // Billing may settle/release independently of the run state; refresh on every poll.
       void this.loadCharge();
@@ -1152,6 +1296,7 @@ export class ProjectExecution {
       const reason = executionEventReason(currentEvent?.payload);
       if (this.reason !== reason) this.resumeVerified = false;
       this.reason = reason;
+      void this.loadRetryOptions();
       this.progressMessage = '';
     } catch (error) {
       if (this.active && readVersion === this.runReadVersion) this.progressMessage = `任务状态暂未更新。${friendlyError(error,'read')}`;
@@ -1164,5 +1309,5 @@ export class ProjectExecution {
       }
     }
   }
-  dispose() { this.creditDialog?.remove(); clearTimeout(this.chargeRetryTimer); this.eventStream?.close(); this.controller.abort(); clearTimeout(this.timer); this.delivery?.dispose(); }
+  dispose() { this.retryDialog?.remove();this.creditDialog?.remove(); clearTimeout(this.chargeRetryTimer); this.eventStream?.close(); this.controller.abort(); clearTimeout(this.timer); this.delivery?.dispose(); }
 }

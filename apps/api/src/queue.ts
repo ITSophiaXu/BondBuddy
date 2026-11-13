@@ -1,3 +1,4 @@
+import type { RunRetryRequest, RunRetryResponse } from '@bondbuddy/contracts';
 import { Pool, type PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
@@ -1026,7 +1027,7 @@ export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:s
       [a.id,jobId,a.logical_call_id,a.attempt_no])).rows[0];
     if(evidence.has_result || !evidence.rejected || evidence.conflicting || evidence.newer)return false;
     const history=Object.values(j.checkpoint?.operator_reconciliations??{}) as {reason_code?:string;logical_call_id?:string}[];
-    const retries=history.filter(h=>h.reason_code==='file_authoring_payload_auto_retry');
+    const retries=history.filter(h=>h.reason_code==='file_authoring_payload_auto_retry'||h.reason_code==='file_authoring_manual_restart');
     const exhausted=retries.length>=6 || retries.filter(h=>h.logical_call_id===a.logical_call_id).length>=2;
     const ready=validFileAuthoringRecovery(j.checkpoint?.stages?.file_authoring_recovery,{owner,project:r.project_id,run:runId,
       inputHash:String(r.input_hash).trim(),attempt:a.id,logical:a.logical_call_id});
@@ -1054,6 +1055,114 @@ export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:s
       await event(client,r,'queued','queued','file_authoring_payload_retry_scheduled',undefined,'run.state_changed',audit);
     }
     return true;
+  });
+}
+
+/** Public retry decisions are computed from durable owner-scoped evidence, never
+ * from a browser error message. Every POST evaluates them again under run/job locks. */
+async function inspectFileAuthoringRetry(client:PoolClient,r:any,j:any):Promise<{view:RunRetryResponse;attempt?:any}> {
+  const view=(mode:RunRetryResponse['mode'],reason:RunRetryResponse['reason_code'],attempt?:any)=>
+    ({view:{run_id:r.id,mode,attempt_id:attempt?.id??null,reason_code:reason},...(attempt?{attempt}:{})});
+  if(r.task_kind!=='update')return view('blocked','unsupported_task');
+  if(r.state!=='paused'||j.state!=='paused')return view('blocked','not_paused');
+  if(j.billing_cancel_requested_at||await walletIsolated(client,r)||!await billingContractRecoverable(client,r,j))return view('blocked','billing_not_ready');
+  if(j.credit_pause_requested)return view('blocked','credits_exhausted');
+  if(r.stage==='user_paused'&&j.stage==='user_paused'&&!await providerCallNeedsReconciliation(client,j.id))return view('resume','user_paused');
+  if(r.stage!=='provider_reconcile'||j.stage!=='provider_reconcile')return view('blocked','provider_evidence_unresolved');
+  if(j.lease_token||j.lease_until)return view('blocked','active_attempt');
+  const unresolved=await client.query(`SELECT a.*,u.usage_status AS observed_usage,u.conflicting_measurements,
+    t.error_code,t.exit_code,t.exit_signal,t.adapter,t.adapter_version FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id
+    LEFT JOIN bb_call_usage u ON u.attempt_id=a.id LEFT JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
+    WHERE a.job_id=$1 AND a.owner_user_id=$2 AND ${needsProviderReconciliation}`,[j.id,r.owner_user_id]);
+  if(unresolved.rows.length!==1)return view('blocked','provider_evidence_unresolved');
+  const a=unresolved.rows[0];
+  if(a.status!=='pending_reconcile'||a.observed_usage!=='unknown'||a.conflicting_measurements>0||a.adapter!=='codex_exec'||a.adapter_version!=='codex-file-authoring-2'
+    ||!/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(a.logical_call_id)
+    ||!['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_TURN_FAILED'].includes(a.error_code))return view('blocked','provider_evidence_unresolved',a);
+  if(!(a.exit_code!==null||/^SIG[A-Z0-9]+$/.test(a.exit_signal??'')))return view('blocked','active_attempt',a);
+  const e=(await client.query(`SELECT
+    EXISTS(SELECT 1 FROM bb_provider_result_refs WHERE attempt_id=$1) AS has_attempt_result,
+    EXISTS(SELECT 1 FROM bb_provider_result_refs p JOIN bb_model_call_attempts x ON x.id=p.attempt_id WHERE x.job_id=$2) AS has_result,
+    EXISTS(SELECT 1 FROM bb_model_call_attempts WHERE job_id=$2 AND status='completed') AS has_completed,
+    EXISTS(SELECT 1 FROM bb_provider_call_observations WHERE attempt_id=$1 AND error_code=$3 AND usage_status='unknown'
+      AND result_id IS NULL AND (outcome='failed' OR $3='MODEL_TURN_FAILED' AND outcome='pending_reconcile')) AS rejected,
+    EXISTS(SELECT 1 FROM bb_provider_call_observations WHERE attempt_id=$1 AND (error_code IS DISTINCT FROM $3 OR usage_status<>'unknown'
+      OR result_id IS NOT NULL OR (outcome<>'failed' AND NOT($3='MODEL_TURN_FAILED' AND outcome='pending_reconcile')))) AS conflicting,
+    EXISTS(SELECT 1 FROM bb_model_call_attempts WHERE job_id=$2 AND logical_call_id=$4 AND attempt_no>$5) AS newer`,
+    [a.id,j.id,a.error_code,a.logical_call_id,a.attempt_no])).rows[0];
+  if(r.artifact_id||e.has_attempt_result||a.error_code==='MODEL_TURN_FAILED'&&(e.has_result||e.has_completed))return view('blocked','provider_result_present',a);
+  if(e.conflicting||e.newer)return view('blocked','provider_evidence_conflict',a);
+  if(!e.rejected)return view('blocked','provider_evidence_unresolved',a);
+  if(j.user_pause_requested)return view('blocked','user_pause_pending',a);
+  const history=Object.values(j.checkpoint?.operator_reconciliations??{}) as {reason_code?:string;logical_call_id?:string}[];
+  const retries=history.filter(h=>h.reason_code==='file_authoring_payload_auto_retry'||h.reason_code==='file_authoring_manual_restart');
+  if(retries.length>=6||retries.filter(h=>h.logical_call_id===a.logical_call_id).length>=2)return view('blocked','retry_limit_reached',a);
+  const saved=j.checkpoint?.stages?.file_authoring_recovery;
+  if(a.error_code==='MODEL_PROVIDER_PAYLOAD_TOO_LARGE'&&validFileAuthoringRecovery(saved,{owner:r.owner_user_id,project:r.project_id,run:r.id,
+    inputHash:String(r.input_hash).trim(),attempt:a.id,logical:a.logical_call_id}))return view('restore_checkpoint','checkpoint_available',a);
+  // Old first-pass failures have no retained working directory. Only an explicit
+  // owner confirmation can authorize fresh work from the immutable original input.
+  if(a.error_code==='MODEL_TURN_FAILED'&&a.logical_call_id==='file-authoring-v1'&&!saved)return view('restart_materials','restart_confirmation_required',a);
+  return view('blocked','checkpoint_unavailable',a);
+}
+
+export async function inspectRunRetry(pool:Pool,owner:string,runId:string):Promise<RunRetryResponse> {
+  return transaction(pool,async client=>{
+    const r=await run(client,owner,runId,true);
+    const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
+    if(!j)throw missing();
+    return (await inspectFileAuthoringRetry(client,r,j)).view;
+  });
+}
+
+export async function retryRun(pool:Pool,owner:string,runId:string,input:RunRetryRequest) {
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(input.request_id)||!/^[A-Za-z0-9_-]{1,128}$/.test(input.attempt_id)
+    ||!['restore_checkpoint','restart_materials'].includes(input.mode)||input.confirmed_restart!==undefined&&typeof input.confirmed_restart!=='boolean')
+    throw new Problem(422,'VALIDATION_FAILED','Invalid retry request');
+  return transaction(pool,async client=>{
+    const r=await run(client,owner,runId,true);
+    const j=(await client.query('SELECT * FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,runId])).rows[0];
+    if(!j)throw missing();
+    const request={request_id:input.request_id,attempt_id:input.attempt_id,mode:input.mode,confirmed_restart:input.confirmed_restart===true};
+    const requests=j.checkpoint?.user_retry_requests??{},previous=requests[input.request_id];
+    if(previous){
+      if(previous.attempt_id!==request.attempt_id||previous.mode!==request.mode||previous.confirmed_restart!==request.confirmed_restart)
+        throw new Problem(409,'IDEMPOTENCY_CONFLICT','Retry request already has different fields');
+      return runDto(r);
+    }
+    if(input.mode==='restart_materials'&&input.confirmed_restart!==true)
+      throw new Problem(422,'VALIDATION_FAILED','Confirm restarting from the original materials; unsaved progress cannot be retained');
+    const named=(await client.query('SELECT id,logical_call_id,attempt_no,created_at FROM bb_model_call_attempts WHERE id=$1 AND job_id=$2 AND owner_user_id=$3',
+      [input.attempt_id,j.id,owner])).rows[0];
+    if(!named)throw new Problem(409,'INPUT_REVISION_CONFLICT','This retry does not identify the current attempt');
+    const newer=(await client.query(`SELECT 1 FROM bb_model_call_attempts WHERE job_id=$1 AND id<>$4
+      AND (logical_call_id=$2 AND attempt_no>$3 OR created_at>(SELECT created_at FROM bb_model_call_attempts WHERE id=$4)) LIMIT 1`,
+      [j.id,named.logical_call_id,named.attempt_no,named.id])).rowCount;
+    if(newer)throw new Problem(409,'INPUT_REVISION_CONFLICT','The attempt changed; inspect the current retry options');
+    const prior=j.checkpoint?.operator_reconciliations?.[input.attempt_id];
+    // The automatic sweeper may win the same row lock immediately before this click.
+    if(input.mode==='restore_checkpoint'&&prior?.reason_code==='file_authoring_payload_auto_retry'&&prior.decision==='retry_unknown_usage'
+      &&['queued','running'].includes(r.state)){
+      await client.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{user_retry_requests}',$2::jsonb,true) WHERE id=$1",
+        [j.id,JSON.stringify({...requests,[input.request_id]:request})]);
+      return runDto(r);
+    }
+    const {view,attempt:a}=await inspectFileAuthoringRetry(client,r,j);
+    if(view.mode==='blocked'){
+      if(view.reason_code==='billing_not_ready')throw new Problem(409,'BILLING_NOT_READY','Original task billing requires verification before retry');
+      if(view.reason_code==='credits_exhausted')throw new Problem(402,'CREDITS_INSUFFICIENT','积分已用完，请充值后继续本次任务。');
+      throw new Problem(409,'CAPABILITY_NOT_READY',view.reason_code);
+    }
+    if(view.mode!==input.mode||a?.id!==input.attempt_id)throw new Problem(409,'INPUT_REVISION_CONFLICT','Retry options changed; inspect the current attempt');
+    const audit={actor:'owner:'+owner,reason_code:input.mode==='restore_checkpoint'?'file_authoring_payload_auto_retry':'file_authoring_manual_restart',
+      attempt_id:a.id,logical_call_id:a.logical_call_id,decision:'retry_unknown_usage',recovery_state:'queued',request_id:input.request_id,retry_mode:input.mode};
+    const checkpoint={...j.checkpoint,operator_reconciliations:{...j.checkpoint?.operator_reconciliations,[a.id]:audit},
+      user_retry_requests:{...requests,[input.request_id]:request}};
+    await client.query("UPDATE bb_model_call_attempts SET status='failed',updated_at=now() WHERE id=$1",[a.id]);
+    await client.query("UPDATE bb_jobs SET state='queued',stage='queued',lease_token=NULL,lease_until=NULL,checkpoint=$2::jsonb,updated_at=now() WHERE id=$1",
+      [j.id,JSON.stringify(checkpoint)]);
+    await event(client,r,'queued','queued',input.mode==='restore_checkpoint'?'file_authoring_payload_retry_scheduled':'file_authoring_manual_restart_scheduled',undefined,'run.state_changed',audit);
+    return runDto({...r,updated_at:new Date()});
   });
 }
 const operatorField = /^[A-Za-z0-9_.@-]{1,128}$/;
