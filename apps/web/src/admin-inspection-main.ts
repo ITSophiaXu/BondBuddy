@@ -4,6 +4,7 @@ import {ApiClient,ApiError} from './api.js';
 import {Inspection,emptyFilters,label,str,time} from './admin-inspection-model.js';
 import {esc,button,navs,filterHtml,overview,users,taskTable,batchList,errors,costs,coverage} from './admin-inspection-render.js';
 import {taskDetail} from './admin-inspection-detail.js';
+import {drillStatusFilter} from './admin-inspection-status.js';
 import './admin-inspection.css';
 const root=document.querySelector<HTMLDivElement>('#admin-root')!;
 let data:Inspection|undefined,view='overview',filters=emptyFilters(),page=0,detail='',tab='timeline',error='',loading=false;
@@ -46,6 +47,7 @@ async function logout(){
  finally{loggingOut=false;draw();}
 }
 function bind(){root.querySelector<HTMLFormElement>('[data-login]')?.addEventListener('submit',async e=>{e.preventDefault();const f=new FormData(e.currentTarget as HTMLFormElement);loading=true;error='';draw();try{await api.login({username:str(f.get('username')),password:str(f.get('password'))});await refresh();}catch{error='登录失败，请核对账号、密码和访问权限。';}finally{loading=false;draw();}});
+ root.querySelectorAll<HTMLButtonElement>('[data-status-drill]').forEach(b=>b.onclick=()=>{if(b.dataset.runState!==undefined)filters.state=drillStatusFilter(filters.state,b.dataset.runState);if(b.dataset.runKind!==undefined)filters.kind=b.dataset.runKind;draftFilters={...filters};view='tasks';page=0;draw();});
  root.querySelectorAll<HTMLElement>('[data-view]').forEach(b=>b.onclick=()=>{view=b.dataset.view!;page=0;draw();});root.querySelector('[data-refresh]')?.addEventListener('click',refresh);root.querySelector('[data-logout]')?.addEventListener('click',logout);
  const form=root.querySelector<HTMLFormElement>('[data-filters]');
  for(const name of ['kind','state','channel'] as const){
