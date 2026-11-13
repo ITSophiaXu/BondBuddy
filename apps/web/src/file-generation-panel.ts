@@ -15,6 +15,9 @@ import {uploadFileMaterial,type UploadFileMaterialState} from './file-workspace'
 import {WorkpaperImportReview} from './workpaper-import-review';
 import {UploadRecovery,UploadRecoveryNeedsFileError} from './upload-recovery';
 import './file-generation-panel.css';
+import './file-delivery-checklist.css';
+import {deliveryRows,deliveryChecklistHtml,type DeliveryFile} from './file-delivery-checklist';
+import {ArtifactDownloads} from './artifact-download';
 import {applyTemplateSuggestions} from './file-generation-template-matching';
 const label=(type:string)=>type==='workpaper'?'尽职调查底稿包':PROJECT_DOCUMENT_CATALOG.find(d=>d.id===type)?.name??type;
 const pin=(r:FileTemplateRecord):FileTemplatePin=>({set_id:r.set_id,record_id:r.record_id,sha256:r.sha256});
@@ -38,11 +41,13 @@ export class FileGenerationPanel {
  private modeController?:AbortController;private modeStatus='';private modeDrafts:Partial<Record<'builtin'|'custom'|'automatic',FileGenerationPreparation>>={};
  private saving?:Promise<void>;private refreshing?:Promise<boolean>;private autosaveTimer?:ReturnType<typeof setTimeout>;private preparationSave?:PreparationSave;private saveNeedsRead=false;private saveFailure='';private revisionConflict=false;
  private historyRevision=0;private historyRead=0;
+ private expandedDeliveries=new Set<string>();private deliveryWorkspace?:ProjectFileWorkspace;
+ private deliveryDownloads=new ArtifactDownloads();private deliveryPending=new Set<string>();private deliveryMessages=new Map<string,string>();
  constructor(private api:ApiClient,private host:HTMLElement,private project:string,private owner:string,private workspace:ProjectFileWorkspace,private current:()=>boolean,private stepChanged:(n:number)=>void=()=>{}){this.source=workspace.source;}
  private get key(){return `bb-file-generation-v2:${this.owner}:${this.project}`;}
  get hasUnconfirmed(){return this.busy||this.dirty||!!this.saving||!!this.preparationSave||!!this.pending||this.storageError||this.revisionConflict||!!this.modeController;}
  async beforeLeave(){if(this.busy||this.storageError||this.revisionConflict)return false;if(this.dirty||this.saving||this.preparationSave){try{await this.save();}catch{return false;}}return true;}
- dispose(){this.controller.abort();this.modeController?.abort();this.poller.dispose();clearTimeout(this.autosaveTimer);this.dialog?.remove();}
+ dispose(){this.controller.abort();this.deliveryDownloads.dispose();this.modeController?.abort();this.poller.dispose();clearTimeout(this.autosaveTimer);this.dialog?.remove();}
  private live(){return !this.controller.signal.aborted&&this.current()&&this.host.isConnected;}
  private request<T>(method:string,path='',body?:unknown,headers:Record<string,string>={},signal?:AbortSignal){if(body===this.pending&&this.pending)headers={...headers,[BILLING_WIRE_HEADER]:this.pendingWire};const bounded=method==='GET'||path==='/preparation'||path.startsWith('/template-preview');return this.api.request<T>(method,`/projects/${encodeURIComponent(this.project)}/file-generation${path}`,body,headers,signal??(bounded?AbortSignal.any([this.controller.signal,AbortSignal.timeout(30_000)]):this.controller.signal));}
  private wp<T>(method:string,path:string,body?:unknown){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.project)}/workpapers${path}`,body,{},this.controller.signal);}
@@ -51,6 +56,9 @@ export class FileGenerationPanel {
   this.host.innerHTML='<p role="status">正在读取目录与模板…</p>';
   try{
    this.data=await this.request<FileGenerationWorkspace>('GET');this.prep=structuredClone(this.data.preparation);
+    const selectedBatch=new URLSearchParams(location.hash.split('?')[1]).get('delivery_batch');
+    if(selectedBatch){if(!this.data.batches.some(b=>b.batch_id===selectedBatch)){const batch=await this.request<FileGenerationBatch>('GET','/batches/'+encodeURIComponent(selectedBatch));if(batch.batch_id!==selectedBatch)throw new UserFacingError('原批次无法核对，未切换到其他批次。');this.data.batches.push(batch);}this.expandedDeliveries.add(selectedBatch);}
+    await this.readDeliveryWorkspace();
    const cached=JSON.parse(localStorage.getItem(this.key)??'null');let cacheMatchesRevision=cached?.revision===this.data.revision,recoveredSave=false;
    if(cached?.pending){this.pendingWire=cached.pending_wire??LEGACY_BILLING_WIRE_VERSION;if(![BILLING_WIRE_VERSION,LEGACY_BILLING_WIRE_VERSION].includes(this.pendingWire)||!Value.Check(this.pendingWire===LEGACY_BILLING_WIRE_VERSION?LegacyFileGenerationSubmitSchema:FileGenerationSubmitSchema,cached.pending))throw new UserFacingError('原提交记录无法核实，请保留记录并联系支持。');this.pending=cached.pending;}
    if(cached?.receipts)this.receipts=cached.receipts;
@@ -222,7 +230,7 @@ export class FileGenerationPanel {
    <section class="panel"><details id="fg-supporting-details" ${(requirementsOpen??Boolean(p.requirements||p.materials.length))?'open':''}><summary>补充资料与编制要求（选填）</summary><label class="fg-requirements">编制要求<textarea id="fg-requirements" rows="3" maxlength="12000" placeholder="例如目标期间、需重点核查的事项">${esc(p.requirements)}</textarea></label><label class="bb-upload-picker bb-upload-picker--compact btn secondary">上传补充资料<input id="fg-support" type="file" multiple accept=".docx,.pdf,.xlsx" hidden></label>${p.materials.length?'<span> 已采用 '+p.materials.length+' 份补充资料</span>':''}<button class="btn secondary" id="fg-save">保存准备清单</button></details></section></div>
    <footer class="fg-footer"><div><strong>本批 ${count} 份文件</strong><small>${wp&&unmapped?unmapped+' 项底稿待选择模板':wp?esc(this.templateLabel()):'采用所选 Word 模板'} · 预计 <span id="fg-estimate">${formatPoints(this.estimate())}</span> 积分</small><p class="fg-save-status"><span id="fg-save-state" role="status" aria-live="polite"></span> <button class="text-button" id="fg-save-retry" hidden>重试保存</button><button class="text-button" id="fg-reload" hidden>重新载入服务端清单</button></p></div><button class="btn primary" id="fg-confirm" ${!count||!this.source||!!this.pending||this.storageError||this.revisionConflict||!!this.modeController?'disabled':''}>${unmapped?'处理模板后生成':this.data.pricing?.mode==='automatic'?'生成本批文件':'核对清单与费用'}</button></footer>
    <section class="panel fg-history">${this.historyContent()}</section></div>`;
-  this.bind();if(this.review)this.review.render(this.host.querySelector('#fg-import-review')!,this.busy);
+  this.bind();this.bindDeliveryHistory();if(this.review)this.review.render(this.host.querySelector('#fg-import-review')!,this.busy);
   this.paintCatalogueRecovery();this.paintSupportRecovery();
   const controls=this.host.querySelector<HTMLElement>('#fg-controls');if(controls)controls.inert=this.busy||!!this.pending||this.storageError||this.revisionConflict;
   if(this.busy)this.host.querySelectorAll<HTMLButtonElement>('button').forEach(b=>b.disabled=true);
@@ -386,17 +394,53 @@ export class FileGenerationPanel {
   d.querySelector<HTMLButtonElement>('#fg-submit')!.onclick=()=>void this.act(async()=>{this.pending=request;this.pendingWire=BILLING_WIRE_VERSION;this.persist();d.querySelector<HTMLButtonElement>('#fg-submit')!.disabled=true;try{await this.submit();d.close();}catch(e){d.querySelector('#fg-submit-status')!.textContent=friendlyError(e,'submit');throw e;}});
  }
  private async submit(){if(!this.pending)return;const batch=await this.request<FileGenerationBatch>('POST','/batches',this.pending);this.pending=undefined;this.persist();this.historyRevision++;this.data!.batches=[batch,...this.data!.batches.filter(b=>b.batch_id!==batch.batch_id)];this.status='本批文件已提交。关闭页面后任务仍会继续，成果保存在下方生成记录中。';this.activeStep=4;this.stepChanged(4);}
- private batchCard(b:FileGenerationBatch){const wp=b.workpapers,docs=b.documents;return `<article class="fg-batch"><div><strong>${date(b.created_at)} · ${formatPoints(b.points)} 积分</strong><small>${wp?'底稿 '+wp.items.filter(i=>i.state==='succeeded').length+'/'+wp.items.length+' · '+({queued:'等待生成',running:'正在生成',paused:'已暂停',complete:'已完成',partial:'部分完成',cancelled:'已结束排队'}[wp.state]):''}${wp?.template_mode?'<small>本批模板：'+({automatic:'光大模板',selected:'所选 Word 模板',mixed:'混合模板'}[wp.template_mode])+'</small>':''}${docs?'　其他文件 '+docs.items.filter(i=>i.state==='succeeded').length+'/'+docs.items.length:''}</small></div><div class="fg-actions">${wp?`<a class="btn secondary" href="#generate?project=${encodeURIComponent(this.project)}&step=workpapers&view=results&batch=${encodeURIComponent(wp.batch_id)}">底稿进度与下载</a>`:''}${docs?`<a class="btn secondary" href="#generate?project=${encodeURIComponent(this.project)}&step=results">其他文件进度与下载</a>`:''}</div></article>`;}
+ private async readDeliveryWorkspace(){
+  if(!this.data?.batches.some(b=>b.documents))return;
+  try{const workspace=await this.api.request<ProjectFileWorkspace>('GET',`/projects/${encodeURIComponent(this.project)}/project-files/workspace`,undefined,{},this.controller.signal);if(!this.live())return;if(workspace.project_id!==this.project)throw new UserFacingError('成果归属无法核对。');this.deliveryWorkspace=workspace;}
+  catch{if(this.live())this.deliveryWorkspace=undefined;}
+ }
+ private batchCard(b:FileGenerationBatch){
+  const rows=deliveryRows(b,this.project,this.deliveryWorkspace),wp=b.workpapers,docs=b.documents;
+  const lifecycle=[wp?'底稿批次 · '+({queued:'等待生成',running:'正在生成',paused:'已暂停',complete:'已完成',partial:'部分完成',cancelled:'已结束排队'}[wp.state]):'',docs?'其他文件批次 · '+({queued:'等待生成',running:'正在生成',paused:'需要处理',complete:'已完成',cancelled:'已停止后续生成'}[docs.state]):''].filter(Boolean).join('；');
+  return `<article class="fg-batch fg-delivery-container" data-delivery-parent-card="${esc(b.batch_id)}"><div class="fg-batch"><div><strong>${date(b.created_at)} · ${formatPoints(b.points)} 积分</strong><small>本批 ${rows.length} 项 · 底稿 ${wp?.items.length??0} 项 · 其他文件 ${docs?.items.length??0} 项</small><small data-delivery-lifecycle>${esc(lifecycle)}</small>${wp?.template_mode?`<small data-delivery-template>本批模板：${({automatic:'光大模板',selected:'所选 Word 模板',mixed:'混合模板'})[wp.template_mode]}</small>`:''}</div>${b.workpapers?`<a class="btn secondary" href="#generate?${esc(new URLSearchParams({project:this.project,step:'workpapers',view:'results',batch:b.workpapers.batch_id}).toString())}">底稿进度与下载</a>`:''}</div>${deliveryChecklistHtml(b,rows,this.expandedDeliveries.has(b.batch_id))}</article>`;
+ }
+ private bindDeliveryHistory(){
+  this.host.querySelectorAll<HTMLDetailsElement>('[data-delivery-batch]').forEach(details=>{
+   const id=details.dataset.deliveryBatch!;
+   details.ontoggle=()=>{if(!details.isConnected)return;if(details.open)this.expandedDeliveries.add(id);else this.expandedDeliveries.delete(id);
+    const [path,search='']=location.hash.split('?'),query=new URLSearchParams(search);if(details.open)query.set('delivery_batch',id);else if(query.get('delivery_batch')===id)query.delete('delivery_batch');history.replaceState(null,'',location.pathname+location.search+path+'?'+query);
+   };
+   details.querySelector('[data-delivery-status]')!.textContent=this.deliveryMessages.get(id)??'';
+  });
+  this.host.querySelectorAll<HTMLButtonElement>('[data-delivery-download]').forEach(button=>{
+   const parent=button.dataset.deliveryParent!,key=parent+':'+button.dataset.deliveryDownload+':'+button.dataset.deliveryFile;
+   button.disabled=this.deliveryPending.has(key);
+   button.onclick=()=>{const batch=this.data?.batches.find(b=>b.batch_id===parent);if(!batch||this.deliveryPending.has(key))return;
+    const row=deliveryRows(batch,this.project,this.deliveryWorkspace).find(r=>r.key===button.dataset.deliveryDownload),file=row?.files[Number(button.dataset.deliveryFile)];
+    if(file)void this.downloadDelivery(parent,key,file);
+   };
+  });
+ }
+ private async downloadDelivery(parent:string,key:string,file:DeliveryFile){
+  const signal=this.controller.signal;this.deliveryPending.add(key);this.deliveryMessages.set(parent,'正在读取并核验本批文件…');this.bindDeliveryHistory();
+  try{
+   let bytes:Blob;
+   if(file.explanation){const e=file.explanation;bytes=await this.api.workpaperExplanation(this.project,e.batchId,e.itemId,signal);const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',await bytes.arrayBuffer())),x=>x.toString(16).padStart(2,'0')).join('');if(hash!==e.sha256)throw new UserFacingError('情况说明版本无法核对，请刷新本批清单。');}
+   else{const pin=file.pin!,meta=await this.api.artifact(pin.artifact_id,signal);if(meta.artifact_id!==pin.artifact_id||meta.version!==pin.artifact_version||meta.sha256!==pin.sha256||meta.run_id!==file.runId||meta.quality_status!=='passed'||meta.delivery_status!=='available')throw new UserFacingError('本批文件版本无法核对，未下载其他版本。');bytes=await this.api.artifactBytes(meta,signal);}
+   if(!this.live())return;this.deliveryDownloads.save(bytes,file.filename);this.deliveryMessages.set(parent,'文件已交给浏览器下载，请在浏览器下载列表查看。');
+  }catch(error){if(this.live())this.deliveryMessages.set(parent,friendlyError(error,'download'));}
+  finally{this.deliveryPending.delete(key);if(this.live())this.bindDeliveryHistory();}
+ }
  private async refreshBatches(signal?:AbortSignal){
   const revision=this.historyRevision,read=++this.historyRead,fresh=()=>this.live()&&revision===this.historyRevision&&read===this.historyRead;
-  try{const data=await this.request<FileGenerationWorkspace>('GET','',undefined,{},signal);signal?.throwIfAborted();if(!fresh())return false;this.data!.batches=data.batches;this.data!.pricing=data.pricing;const estimate=this.host.querySelector<HTMLElement>('#fg-estimate');if(estimate)estimate.textContent=formatPoints(this.estimate());this.status='生成状态已刷新。';return true;}
+  try{const data=await this.request<FileGenerationWorkspace>('GET','',undefined,{},signal);signal?.throwIfAborted();if(!fresh())return false;for(const id of this.expandedDeliveries){if(data.batches.some(b=>b.batch_id===id))continue;const batch=await this.request<FileGenerationBatch>('GET','/batches/'+encodeURIComponent(id),undefined,{},signal);if(batch.batch_id!==id)throw new UserFacingError('原批次刷新结果不匹配。');data.batches.push(batch);}if(!fresh())return false;this.data!.batches=data.batches;await this.readDeliveryWorkspace();if(!fresh())return false;this.data!.pricing=data.pricing;const estimate=this.host.querySelector<HTMLElement>('#fg-estimate');if(estimate)estimate.textContent=formatPoints(this.estimate());this.status='生成状态已刷新。';return true;}
   catch(e){if(!fresh())return false;throw e;}
  }
  private historyContent(){return `<div class="fg-section-heading"><h2>生成记录</h2><button class="btn secondary" id="fg-refresh">刷新进度</button></div>${this.data!.batches.length?this.data!.batches.map(b=>this.batchCard(b)).join(''):'<p class="muted">确认生成后，进度和成果会保存在这里。</p>'}<div class="fg-actions"><a href="#generate?project=${encodeURIComponent(this.project)}&step=workpapers&view=results">全部底稿记录</a><a href="#generate?project=${encodeURIComponent(this.project)}&step=results">全部其他文件成果</a><a href="#generate?project=${encodeURIComponent(this.project)}&step=documents&legacy=1">原模板及上传恢复记录</a></div>`;}
  private async refreshHistory(){
   if(this.refreshing)return this.refreshing;
   const flight=this.refreshBatches();this.refreshing=flight;
-  try{const applied=await flight;if(!this.live()||!applied)return;const history=this.host.querySelector<HTMLElement>('.fg-history');if(history){history.innerHTML=this.historyContent();history.querySelector<HTMLButtonElement>('#fg-refresh')!.onclick=()=>void this.refreshHistory();}}
+  try{const applied=await flight;if(!this.live()||!applied)return;const history=this.host.querySelector<HTMLElement>('.fg-history');if(history){history.innerHTML=this.historyContent();history.querySelector<HTMLButtonElement>('#fg-refresh')!.onclick=()=>void this.refreshHistory();this.bindDeliveryHistory();}}
   catch(e){this.status=friendlyError(e,'read');}
   finally{this.refreshing=undefined;if(this.live()){const status=this.host.querySelector<HTMLElement>('.fg-status');if(status)status.textContent=this.status;}}
  }
@@ -406,6 +450,6 @@ export class FileGenerationPanel {
   if(!Value.Check(GenerationProgressSchema,progress))throw new ApiError(503,'DATA_UNAVAILABLE');
   if(!force&&progress.revision===this.progressRevision)return;
   const applied=await this.refreshBatches(signal);signal.throwIfAborted();if(!applied)return;this.progressRevision=progress.revision;
-  if(this.live()){const history=this.host.querySelector<HTMLElement>('.fg-history');if(history){history.innerHTML=this.historyContent();history.querySelector<HTMLButtonElement>('#fg-refresh')!.onclick=()=>void this.refreshHistory();}}
+  if(this.live()){const history=this.host.querySelector<HTMLElement>('.fg-history');if(history){history.innerHTML=this.historyContent();history.querySelector<HTMLButtonElement>('#fg-refresh')!.onclick=()=>void this.refreshHistory();this.bindDeliveryHistory();}}
  }
 }
