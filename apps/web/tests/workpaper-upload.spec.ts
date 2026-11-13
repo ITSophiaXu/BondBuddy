@@ -3,7 +3,7 @@ import {test,expect,type Page} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {fixture,href,ids,now,sha} from './generation-entry-fixtures';
-import type {WorkpaperCatalogue,WorkpaperWorkspace,WorkpaperCataloguePreview,WorkpaperImport} from '@bondbuddy/contracts';
+import {UPLOAD_BYTES_PENDING_FIELD_ERROR,type WorkpaperCatalogue,type WorkpaperWorkspace,type WorkpaperCataloguePreview,type WorkpaperImport} from '@bondbuddy/contracts';
 
 const file={name:'合成无表头目录.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('synthetic directory upload bytes')};
 const journalPrefix=`bondbuddy:upload-recovery:v1:${ids.owner}:${ids.api}:workpaper-catalogue:`;
@@ -115,12 +115,15 @@ test('same filename with changed content remains a separate upload',async({page}
   expect(state.uploads.puts).toBe(2);expect(state.imports[1].request_id).not.toBe(state.imports[0].request_id);
 });
 
-test('missing bytes after reload request the original file and preserve the original operation',async({page})=>{
+test('confirmed missing bytes after reload request the original file and preserve the original operation',async({page})=>{
   const state=await setup(page);let loseBytes=true;
-  await page.route('**/materials/uploads/*/bytes',async route=>{if(loseBytes){loseBytes=false;return route.abort('failed');}return route.fallback();});
+  // The byte request receives an acknowledgement, but completion explicitly
+  // reports that storage has no bytes. Unknown PUT acknowledgements have their
+  // own automatic reconciliation coverage and must not imply a missing file.
+  await page.route('**/materials/uploads/*/bytes',async route=>{if(loseBytes){loseBytes=false;return route.fulfill({status:204});}return route.fallback();});
   await page.route('**/materials/uploads/*/complete',async route=>{
     const id=new URL(route.request().url()).pathname.split('/').at(-2)!;
-    if(!state.uploads.sessions.get(id)?.received)return route.fulfill({status:422,json:{code:'MATERIAL_UNREADABLE'}});
+    if(!state.uploads.sessions.get(id)?.received)return route.fulfill({status:422,json:{code:'MATERIAL_UNREADABLE',field_errors:[UPLOAD_BYTES_PENDING_FIELD_ERROR]}});
     return route.fallback();
   });
   await page.locator('#wp-upload').setInputFiles(file);await expect(page.locator('[data-wp-upload]')).toHaveCount(1);

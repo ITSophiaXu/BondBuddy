@@ -16,7 +16,7 @@ for (const width of [1440, 390]) test(`upload progress survives repaint and keep
   });
   await page.locator('[data-review-upload-role=audit]').setInputFiles([file,secondFile]);
   const first=recovery(page), second=recovery(page,secondFile.name);
-  await expect(first.getByRole('progressbar')).toHaveAttribute('value',String(Math.floor(Math.floor(file.buffer.length*.4)/file.buffer.length*100)));
+  await expect(first.getByRole('progressbar')).toHaveAttribute('value',String(Math.floor(Math.floor(Math.floor(file.buffer.length*.4)/file.buffer.length*100)*.9)));
   await expect(second.getByRole('progressbar')).toHaveAttribute('value','0');
   await expect(first.locator('.material-file-actions')).toBeHidden();
   await expect(page.getByText('确认原上传并保存材料选择',{exact:true})).toHaveCount(0);
@@ -25,11 +25,12 @@ for (const width of [1440, 390]) test(`upload progress survives repaint and keep
   await page.screenshot({path:`test-evidence/upload-autosave/upload-${width}.png`});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.evaluate(()=>(window as any).continueBytes());
-  await expect(first.getByRole('progressbar')).not.toHaveAttribute('value');
-  await expect(first).toContainText('正在保存');
+  await expect(first.getByRole('progressbar')).toHaveAttribute('value','90');
+  await expect(first).toContainText('正在上传文件…');
+  await expect(first.locator('.file-upload-progress')).not.toContainText(/确认保存|正在保存|上传成功|100%/);
   await expect.poll(()=>typeof finish).toBe('function');state.completeGate=undefined;finish();
   await expect(first).toHaveCount(0);
-  await expect(second.getByRole('progressbar')).toHaveAttribute('value',String(Math.floor(Math.floor(secondFile.buffer.length*.4)/secondFile.buffer.length*100)));
+  await expect(second.getByRole('progressbar')).toHaveAttribute('value',String(Math.floor(Math.floor(Math.floor(secondFile.buffer.length*.4)/secondFile.buffer.length*100)*.9)));
   await page.evaluate(()=>(window as any).continueBytes());
   await expect(second).toHaveCount(0);expect(state.draft.material_versions).toHaveLength(4);noBusiness(state);
 });

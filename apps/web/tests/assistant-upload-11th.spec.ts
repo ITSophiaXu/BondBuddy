@@ -29,7 +29,7 @@ for (const entrypoint of ['attachment', 'business'] as const) for (const width o
   // Exercise post-refresh timers beyond that autosave delay; every HTTP write still counts.
   await page.clock.runFor(1_000); expect(writes(state)).toHaveLength(before); noBusiness(state);
   await capture(page, `${entrypoint}-pending-${width}`); await page.locator('[data-uploads] [data-a=retry-upload]').click();
-  await expect(page.locator('[data-uploads] [data-associated=true]')).toContainText('已保存并加入原对话'); expect(uploadCalls(state, 'create')).toHaveLength(1); expect(uploadCalls(state, 'put')).toHaveLength(1);
+  await expect(page.locator('[data-uploads] [data-associated=true]')).toContainText('上传成功'); expect(uploadCalls(state, 'create')).toHaveLength(1); expect(uploadCalls(state, 'put')).toHaveLength(1);
   expect(uploadCalls(state, 'complete').every(call => call.path.includes('/' + original + '/complete'))).toBe(true);
   expect(state.work.get(ids.topic)!.materials).toHaveLength(1); expect(state.work.get(ids.topic)!.materials[0].source_project_id).toBe(ids.project); expect(state.work.get(ids.otherTopic)!.materials).toHaveLength(0);
   expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.includes(':assistant-material:')))).toEqual([]); await capture(page, `${entrypoint}-saved-${width}`); noBusiness(state);

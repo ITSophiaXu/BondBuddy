@@ -32,7 +32,7 @@ async function failedUpload(page: Page, state = fixture(), file: FilePayload = p
 async function onlySaved(page: Page, filename: string) {
   // Assert count and success together so a transient pre-refresh single failed
   // row cannot satisfy the count assertion before the server list arrives.
-  await expect(auditRows(page)).toHaveText([/服务器已确认保存/]);
+  await expect(auditRows(page)).toHaveText([/上传成功/]);
   await expect(auditRows(page)).toContainText([filename]);
   await expect(auditRows(page).locator('[data-upload-action="retry"]')).toHaveCount(0);
   await expect(auditRows(page).locator('[data-upload-action="remove"]')).toHaveCount(0);

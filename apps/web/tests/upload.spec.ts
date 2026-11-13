@@ -173,7 +173,7 @@ test('unsupported local file offers replacement, not retry or passive waiting, a
   if(process.env.BB_UX_EVIDENCE){await row.scrollIntoViewIfNeeded();await page.screenshot({path:join(process.env.BB_UX_EVIDENCE,'upload-replacement.png')});}
   const choosing=page.waitForEvent('filechooser');await row.getByRole('button',{name:'选择其他文件'}).click();
   await (await choosing).setFiles({name:'valid.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic replacement')});
-  await expect(page.locator('.material-file-row').filter({hasText:'valid.pdf'})).toContainText('服务器已确认保存');
+  await expect(page.locator('.material-file-row').filter({hasText:'valid.pdf'})).toContainText('上传成功');
   await expect(row).toHaveCount(0);expect(s.uploads.size).toBe(1);expect(s.materials.size).toBe(1);
 });
 
@@ -268,7 +268,28 @@ for (const width of [1440,390]) test(`duplicate feedback: update keeps named not
   await expect(notices).toHaveCount(2);
 });
 
-test('three independent files, indeterminate saving after transfer, failed file retry, then owner-scoped relogin recovery', async ({ page }) => {
+test('waiting for an upload session never jumps to the final upload segment', async ({ page }) => {
+  const fixture = state(); await installApi(page, fixture); await login(page, 'owner_a');
+  let release: undefined | (() => void);
+  await page.route('**/materials/uploads', async route => {
+    await new Promise<void>(resolve => { release = resolve; });
+    return route.fallback();
+  });
+  await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: 'waiting-session.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic pending session') });
+  await expect.poll(() => typeof release).toBe('function');
+  const row = page.locator('.material-file-row').filter({ hasText: 'waiting-session.pdf' });
+  const progress = row.getByRole('progressbar');
+  await expect(progress).toBeVisible();
+  await expect(progress).not.toHaveAttribute('value', '90');
+  await expect(progress).not.toHaveAttribute('value', '100');
+  await expect(row).toContainText('正在上传文件…');
+  await expect(row).not.toContainText('上传成功');
+  release!();
+  await expect(row).toContainText('上传成功');
+  expect(fixture.materials.size).toBe(1);
+});
+
+test('three independent files keep one upload progress through completion, retry failures, then recover after owner-scoped relogin', async ({ page }) => {
   const fixture = state(); fixture.failNextComplete.add('failed-once.pdf'); await installApi(page, fixture);
   const pageErrors: string[] = []; page.on('pageerror', error => pageErrors.push(error.message));
   await login(page, 'owner_a');
@@ -287,17 +308,18 @@ test('three independent files, indeterminate saving after transfer, failed file 
   ]);
   const slowRow = page.locator('.material-file-row').filter({ hasText: 'slow-save.pdf' });
   await expect(slowRow).toHaveAttribute('data-upload-phase', 'saving');
-  await expect(slowRow.getByRole('progressbar')).not.toHaveAttribute('value');
-  await expect(slowRow).toContainText('正在保存');
+  await expect(slowRow.getByRole('progressbar')).toHaveAttribute('value','90');
+  await expect(slowRow).toContainText('正在上传文件…');
+  await expect(slowRow).not.toContainText(/确认保存|正在保存|上传成功|100%/);
   expect(fixture.releaseSlowComplete).toBeDefined();
   fixture.releaseSlowComplete!();
-  await expect(slowRow).toContainText('服务器已确认保存');
+  await expect(slowRow).toContainText('上传成功');
   const failedRow = page.locator('.material-file-row').filter({ hasText: 'failed-once.pdf' });
   await expect(failedRow).toContainText('文件检查服务暂时未能完成');
-  await expect(page.locator('.material-file-row').filter({ hasText: 'survives.pdf' })).toContainText('服务器已确认保存');
+  await expect(page.locator('.material-file-row').filter({ hasText: 'survives.pdf' })).toContainText('上传成功');
   expect(fixture.materials.size).toBe(2);
   await failedRow.getByRole('button', { name: '重试此文件' }).click();
-  await expect(failedRow).toContainText('服务器已确认保存');
+  await expect(failedRow).toContainText('上传成功');
   expect(fixture.materials.size).toBe(3);
 
   await page.reload();
@@ -340,11 +362,11 @@ test('an unsupported external workbook reference offers replacement without rese
       await page.screenshot({path:join(process.env.BB_361_ERROR_EVIDENCE_DIR,`upload-error-${device}.png`)});
     }
   }
-  await expect(page.locator('.material-file-row').filter({hasText:'saved.pdf'})).toContainText('服务器已确认保存');
+  await expect(page.locator('.material-file-row').filter({hasText:'saved.pdf'})).toContainText('上传成功');
   await expect(row.getByRole('button',{name:'重试此文件'})).toHaveCount(0);
   const chooser=page.waitForEvent('filechooser');await row.getByRole('button',{name:'选择其他文件'}).click();
   await (await chooser).setFiles({name:'repaired.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('synthetic repaired workbook')});
-  await expect(page.locator('.material-file-row').filter({hasText:'repaired.xlsx'})).toContainText('服务器已确认保存');
+  await expect(page.locator('.material-file-row').filter({hasText:'repaired.xlsx'})).toContainText('上传成功');
   expect(fixture.materials.size).toBe(2);
   expect(fixture.byteAttempts.filter(name=>name==='saved.pdf')).toHaveLength(1);
 });
@@ -356,7 +378,7 @@ test('uncertain completion automatically finishes saving without manual confirma
     name:'uncertain.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF synthetic uncertain'),
   });
   const row=page.locator('.material-file-row').filter({hasText:'uncertain.pdf'});
-  await expect(row).toContainText('服务器已确认保存');
+  await expect(row).toContainText('上传成功');
   expect(fixture.byteAttempts.filter(name=>name==='uncertain.pdf')).toHaveLength(1);
 });
 
@@ -365,7 +387,7 @@ test('lost completion response automatically reconciles the original upload with
   await login(page, 'owner_a');
   await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: 'lost.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic lost response') });
   const row = page.locator('.material-file-row').filter({ hasText: 'lost.pdf' });
-  await expect(row).toContainText('服务器已确认保存');
+  await expect(row).toContainText('上传成功');
   expect(fixture.uploads.size).toBe(1);
   expect(fixture.putNames).toEqual(['lost.pdf']);
   expect(fixture.materials.size).toBe(1);
@@ -382,7 +404,7 @@ test('lost byte acknowledgement automatically completes the received upload with
   });
   await login(page,'owner_a');
   await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'received.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7 synthetic')});
-  await expect(page.locator('.material-file-row').filter({hasText:'received.pdf'})).toContainText('服务器已确认保存');
+  await expect(page.locator('.material-file-row').filter({hasText:'received.pdf'})).toContainText('上传成功');
   expect(fixture.byteAttempts).toEqual(['received.pdf']);
   expect(fixture.uploads.size).toBe(1); expect(fixture.materials.size).toBe(1);
 });
@@ -422,7 +444,7 @@ test('server refresh reconciles a delayed receipt but never matches only a filen
   await page.getByRole('button',{name:'刷新已保存材料'}).click();
   await expect(row).toHaveCount(0);
   await expect(page.locator('.material-file-row')).toHaveCount(1);
-  await expect(page.locator('.material-file-row')).toContainText('服务器已确认保存');
+  await expect(page.locator('.material-file-row')).toContainText('上传成功');
   expect(fixture.putNames).toEqual(['delayed.pdf']); expect(fixture.uploads.size).toBe(1);
 });
 
@@ -452,7 +474,7 @@ test('cancel before byte transfer and retry only that selected file', async ({ p
   await expect(row).toContainText('已停止本页等待');
   expect(fixture.putNames).toHaveLength(0);
   await row.getByRole('button', { name: '重试此文件' }).click();
-  await expect(row).toContainText('服务器已确认保存');
+  await expect(row).toContainText('上传成功');
   expect(fixture.materials.size).toBe(1);
   expect(fixture.putNames).toEqual(['retry-after-cancel.pdf']);
 });
@@ -461,7 +483,7 @@ test('refreshes the existing cookie session after upload authorization expires',
   const fixture = state(); fixture.expireNextBytes = true; await installApi(page, fixture);
   await login(page, 'owner_a');
   await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: 'session-refresh.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic refresh') });
-  await expect(page.locator('.material-file-row').filter({ hasText: 'session-refresh.pdf' })).toContainText('服务器已确认保存');
+  await expect(page.locator('.material-file-row').filter({ hasText: 'session-refresh.pdf' })).toContainText('上传成功');
   expect(fixture.byteAttempts).toEqual(['session-refresh.pdf', 'session-refresh.pdf']);
   expect(fixture.putNames).toEqual(['session-refresh.pdf']);
   expect(fixture.materials.size).toBe(1);
@@ -537,7 +559,7 @@ test('upload processing stays compact with pending evidence, unchanged targets a
   await login(page, 'owner_a');
   await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: 'synthetic-history.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic recognition') });
   const row = page.locator('.material-file-row').filter({ hasText: 'synthetic-history.pdf' });
-  await expect(row).toContainText('服务器已确认保存'); await expect(row).toContainText('等待处理');
+  await expect(row).toContainText('上传成功'); await expect(row).toContainText('等待处理');
   await noReview(); await expect(row.getByRole('progressbar')).toHaveCount(0);
   stage = 'running'; await expect(row).toContainText('处理中', { timeout: 15000 }); await noReview();
   stage = 'succeeded'; await expect(row).toContainText('处理完成', { timeout: 15000 }); await noReview();
@@ -608,5 +630,5 @@ test('material recovery keeps the live file picker attached until its change eve
   await expect(page.locator('#material-recovery-status')).toContainText('尚未添加材料');
   expect(await picker!.evaluate(input => input.isConnected)).toBe(true);
   await picker!.setInputFiles({ name: 'picker-survives.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic selected before recovery') });
-  await expect(page.locator('.material-file-row')).toContainText('服务器已确认保存');
+  await expect(page.locator('.material-file-row')).toContainText('上传成功');
 });

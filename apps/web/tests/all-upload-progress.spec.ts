@@ -18,7 +18,7 @@ for(const width of [1440,390]){
  });
  test('QA supplementary upload at '+width,async({page})=>{
   await page.setViewportSize({width,height:960});const s=qaUploadFixture();s.lostPut=false;s.completeUnavailable=false;await installQaUpload11th(page,s);await page.goto(qaUploadUrl);await expect(page.locator('#qa-supplement')).toBeAttached();await hold(page);
-  await page.locator('#qa-supplement').setInputFiles(qaUploadFile());await expect(page.locator('[data-qa-upload-action=resume]')).toBeDisabled();await check(page,page.locator('[data-qa-upload-id] progress'),'qa',width);
+  await page.locator('#qa-supplement').setInputFiles(qaUploadFile());await expect(page.locator('[data-qa-upload-action=resume]')).toBeHidden();await check(page,page.locator('[data-qa-upload-id] progress'),'qa',width);
   await expect(page.locator('[data-qa-upload-id]')).toHaveCount(0);expect(s.qa.answers).toEqual([]);
  });
  test('material workspace upload at '+width,async({page})=>{
@@ -29,7 +29,7 @@ for(const width of [1440,390]){
  test('assistant attachment upload at '+width,async({page})=>{
   await page.setViewportSize({width,height:960});const s=await assistant.assistantFixture(page);await assistant.mountAssistant(page);await hold(page);
   await page.locator('.ba-composer [data-file]').setInputFiles(assistant.file);await check(page,page.locator('[data-assistant-upload] progress'),'assistant',width);
-  await expect(page.locator('[data-assistant-upload]')).toContainText('已保存');assistant.noBusiness(s);
+  await expect(page.locator('[data-assistant-upload]')).toContainText('上传成功');assistant.noBusiness(s);
  });
  test('assistant private template upload at '+width,async({page})=>{
   await page.setViewportSize({width,height:960});const s=await template.install(page);await template.mount(page);await hold(page);
@@ -54,8 +54,8 @@ test('binary template POST exposes real progress, preserves CSRF and auth retry 
 
 for(const width of [1440,390])test('shared upload prototype reference at '+width,async({page})=>{
  await page.setViewportSize({width,height:960});const {resolve}=await import('node:path');const path=resolve(process.cwd(),'../../product-prototype/public/upload-progress.html').replaceAll('\\','/');
- await page.goto('/@fs/'+path);await expect(page.getByRole('progressbar')).toHaveCount(3);await mkdir('test-evidence/all-upload-progress',{recursive:true});
- await page.screenshot({path:'test-evidence/all-upload-progress/prototype-'+width+'.png',fullPage:true});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await page.goto('/@fs/'+path);await expect(page.getByRole('progressbar')).toHaveCount(4);await expect(page.getByText('正在上传文件…',{exact:true})).toHaveCount(2);await expect(page.getByText('上传成功',{exact:true})).toBeVisible();await expect(page.locator('main')).not.toContainText(/确认保存|正在保存/);await mkdir('test-evidence/all-upload-progress',{recursive:true});
+ await page.screenshot({path:'test-evidence/all-upload-progress/prototype-'+width+'.png'});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
 });
 
 for(const failure of ['abort','server'] as const)test('binary template POST handles '+failure+' without replay',async({page})=>{

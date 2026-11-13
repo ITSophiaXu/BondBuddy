@@ -45,7 +45,7 @@ test('DFI form and actual PDF survive browser restart with conflict-safe edits',
   const fileInput = page.getByLabel('为审计报告（可含报表及附注）选择文件');
   await expect(fileInput).toBeEnabled();
   await fileInput.setInputFiles({ name: 'form-recovery.pdf', mimeType: PDF, buffer: pdfSample() });
-  await expect(page.locator('.material-file-row').filter({ hasText: 'form-recovery.pdf' })).toContainText('服务器已确认保存', { timeout: 30_000 });
+  await expect(page.locator('.material-file-row').filter({ hasText: 'form-recovery.pdf' })).toContainText('上传成功', { timeout: 30_000 });
   await page.context().close();
   const context = await browser.newContext({ baseURL: process.env.BB_E2E_BASE_URL, ignoreHTTPSErrors: true });
   try {

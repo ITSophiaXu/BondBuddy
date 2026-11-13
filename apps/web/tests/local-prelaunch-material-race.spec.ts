@@ -80,7 +80,7 @@ test('same-account two-tab simultaneous equal-byte uploads deduplicate and both 
       const materials = await savedMaterials(tab, project.project_id);
       expect(materials).toHaveLength(1); expect(pin(materials[0])).toEqual(pin(first));
       const row = tab.locator('.material-file-row').filter({ hasText: file.name });
-      await expect(row).toHaveCount(1); await expect(row).toContainText('服务器已确认保存');
+      await expect(row).toHaveCount(1); await expect(row).toContainText('上传成功');
       const downloaded = await downloadedHash(tab, project.project_id, first.material_id);
       expect(downloaded).toEqual({ status: 200, bytes: file.buffer.length, sha256: file.sha256 });
       audit.record(tab === page ? 'first-tab-recovered-exact-original' : 'second-tab-recovered-exact-original', { materials, downloaded });

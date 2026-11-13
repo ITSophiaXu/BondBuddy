@@ -49,6 +49,8 @@
   .prospectus-file-icon { width: 36px; height: 42px; }
   .prospectus-current-file { flex-wrap: wrap; }
   .prospectus-current-file .prospectus-file-info { flex-basis: calc(100% - 48px); }
+  .prospectus-selected-file { flex-wrap: wrap; align-items: flex-start; }
+  .prospectus-selected-file .prospectus-file-info { flex-basis: calc(100% - 50px); }
   .prospectus-version-actions { justify-content: flex-start; }
   .prospectus-panel .prospectus-version { flex-direction: column; align-items: stretch; gap: 8px; }
   .prospectus-panel .prospectus-upload { padding: 16px; }

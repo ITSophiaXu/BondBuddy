@@ -40,7 +40,7 @@ test('global issuer search beyond first page, filters, archive and saved materia
   await expect(fileInput).toBeEnabled();
   await fileInput.setInputFiles({name:'archive-recovery.pdf',mimeType:PDF,buffer:pdfSample()});
   expect((await persisted).status()).toBe(200);
-  await expect(page.locator('.material-file-row').filter({hasText:'archive-recovery.pdf'})).toContainText('服务器已确认保存');
+  await expect(page.locator('.material-file-row').filter({hasText:'archive-recovery.pdf'})).toContainText('上传成功');
   await page.getByRole('link',{name:'任务进度与结果',exact:true}).click();
   await page.getByLabel('搜索项目名称或发行人').fill('远页目标');
   await page.locator('[data-work]').click();await page.getByRole('menuitem',{name:'归档项目'}).click();

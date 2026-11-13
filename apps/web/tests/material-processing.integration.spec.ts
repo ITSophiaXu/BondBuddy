@@ -46,7 +46,7 @@ test('real upload/worker/Python profile, one durable job after reuse, reopen/rel
     projectId = decodeURIComponent(new URL(page.url()).hash.split('/').at(-1)!);
     const savedResponse = page.waitForResponse(r => r.url().endsWith('/complete') && r.request().method() === 'POST');
     await page.getByLabel('为本企业历史募集书选择文件').setInputFiles(filename);
-    await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-history.docx' })).toContainText('服务器已确认保存', { timeout: 15000 });
+    await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-history.docx' })).toContainText('上传成功', { timeout: 15000 });
     const saved = await savedResponse; expect(saved.status()).toBe(200); const material = await saved.json();
     await expect(page.locator('.material-processing')).toContainText('等待处理');
     await expect(page.locator('.source-profile')).toHaveCount(0);

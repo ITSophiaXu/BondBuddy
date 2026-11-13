@@ -155,7 +155,7 @@ for (const phase of ['before-bytes', 'after-bytes', 'after-complete'] as const) 
       audit.noTaskOrDebit('interrupted-unreceived-file-no-task-or-debit');
       await page.unroute(pattern); await row.getByRole('button', { name: '重试此文件' }).click();
     }
-    await expect(rowFor(page, fixtures.normalDocx.name)).toContainText('服务器已确认保存', { timeout: 30000 });
+    await expect(rowFor(page, fixtures.normalDocx.name)).toContainText('上传成功', { timeout: 30000 });
     await page.unroute(pattern); await page.reload();
     const items = await savedMaterials(page, project.project_id);
     expect(items).toHaveLength(1); expect(items[0].upload_id).toBe(serverUploadId);

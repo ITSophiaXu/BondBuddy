@@ -53,7 +53,7 @@ async function reloadPending(page: Page, state: State, operation: string) {
 }
 async function saved(page: Page, state: State, filename?: string) {
   await expect.poll(() => state.materials.size).toBe(1);
-  await expect(page.locator('.material-file-row')).toHaveText([/服务器已确认保存/]);
+  await expect(page.locator('.material-file-row')).toHaveText([/上传成功/]);
   if (filename) await expect(page.locator('.material-file-row')).toContainText([filename]);
 }
 async function reselect(page: Page, operation: string, file: FilePayload) {
@@ -128,7 +128,7 @@ for (const fault of ['role', 'media', 'size', 'hash', 'schema', 'state'] as Rece
       await expect(row(page, operation)).toHaveAttribute('data-upload-phase', 'failed');
       await expect(row(page, operation)).toContainText(/回执|不一致|未确认/);
     }
-    await expect(row(page, operation)).not.toContainText('服务器已确认保存');
+    await expect(row(page, operation)).not.toContainText('上传成功');
     expect(state.materials.size).toBe(0); unchangedTransport(state);
     state.receiptFault = undefined; await confirm(page, operation).click(); await saved(page, state); unchangedTransport(state);
   });
@@ -247,7 +247,7 @@ for (const fault of ['quota', 'write-readback'] as const) {
     await picker(page).setInputFiles(file); const operation = await selectedOperation(page, file);
     await expect(row(page, operation)).toHaveAttribute('data-upload-phase', 'failed');
     await expect(row(page, operation)).toContainText(/恢复记录|保留原文件|可靠保存/);
-    await expect(row(page, operation)).not.toContainText('服务器已确认保存');
+    await expect(row(page, operation)).not.toContainText('上传成功');
     expect(writes(state)).toEqual([]); expect(state.uploads.size).toBe(0); expect(state.materials.size).toBe(0);
   });
 }
@@ -300,7 +300,7 @@ test('three queued files keep every prepared original declaration across reload 
   for (let i = 0; i < files.length; i++) {
     const material = [...state.materials.values()].find(item => item.material.filename === files[i].name)!;
     expect(material).toMatchObject({ owner: ids.owner, project: ids.project, material: { role: roles[i], sha256: hash(files[i].buffer), byte_size: files[i].buffer.length } });
-    await expect(page.locator('.material-file-row').filter({ hasText: files[i].name })).toContainText('服务器已确认保存');
+    await expect(page.locator('.material-file-row').filter({ hasText: files[i].name })).toContainText('上传成功');
   }
 });
 

@@ -21,6 +21,7 @@ docs/testing/*
 docs/product-decisions/*
 !docs/product-decisions/2026-11-11-integrity-scope-pricing.md
 !docs/product-decisions/2026-11-11-reference-text-flexibility.md
+!docs/product-decisions/2026-11-13-unified-upload-progress.md
 !docs/product-decisions/2026-11-07-project-qa-direct-answer.md
 !docs/product-decisions/2026-11-05-latest-financial-window.md
 !docs/product-decisions/2026-10-11-authoring-dynamic-balance.md
