@@ -66,7 +66,7 @@ test('journal-settled invalid shared output pauses once, including scheduler bef
             await target.recordObservation(...args);observed++;
             const job=(await s.pool.query('SELECT state,lease_token FROM bb_jobs WHERE id=$1',[f.ctx.lease.jobId])).rows[0];
             assert.deepEqual(job,{state:'failed',lease_token:null},'real journal commits failure before model stage returns');
-            if(schedulerFirst)assert.equal(await advanceWorkpaperBatch(s.pool),true);
+            if(schedulerFirst)assert.deepEqual((await Promise.all([advanceWorkpaperBatch(s.pool),advanceWorkpaperBatch(s.pool)])).sort(),[false,true]);
           };
           const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
         }})});
@@ -81,6 +81,7 @@ test('journal-settled invalid shared output pauses once, including scheduler bef
       assert.deepEqual(attempt,[{status:'failed',usage_status:'measured'}]);
       assert.equal(await advanceWorkpaperBatch(s.pool),false);
       assert.equal(await pauseFailedSharedWorkpaperBatch(s.pool,f.ctx.lease,f.batch),false);
+      assert.equal((await s.pool.query("SELECT count(*)::int n FROM bb_outbox WHERE event_type='workpaper.batch_paused' AND payload->>'batch_id'=$1",[f.batch])).rows[0].n,1,'racing scheduler and worker emit only one pause event');
       await f.action('resume');assert.equal(await pauseFailedSharedWorkpaperBatch(s.pool,f.ctx.lease,f.batch),false,'late worker cannot pause acknowledged failure');
       assert.equal((await s.pool.query('SELECT state FROM bb_workpaper_items WHERE batch_id=$1 AND item_id=$2',[f.batch,'current'])).rows[0].state,'failed');
       await f.action('cancel');
