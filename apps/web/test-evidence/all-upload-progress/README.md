@@ -14,7 +14,7 @@
 
 ## 页面与原型
 
-原基线为 develop `4c2c1273`。本PR同时更新 `product-prototype/public/upload-progress.html`、`prospectus-panel.html` 和共用CSS；用户2026-11-13的请求为本次状态变化依据。仅统一上传反馈，不改业务版本采用或生成流程。
+原基线为 develop `4c2c1273`；原型与实现的受测代码均固定在 `c0d964e47991765013b637bb13a22832536b1dc8`，随后提交只补充证据登记。本PR同时更新 `product-prototype/public/upload-progress.html`、`prospectus-panel.html` 和共用CSS；用户2026-11-13的请求为本次状态变化依据。仅统一上传反馈，不改业务版本采用或生成流程。
 
 同尺寸证据（1440×960及390×960）：
 
