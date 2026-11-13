@@ -47,11 +47,11 @@
     },
     "m4-workpaper-progressive": {
       "path": "apps/worker/skills/m4-workpaper-progressive/SKILL.md",
-      "sha256": "d08a7119cb8fb7c7859a5de47c90a72cb2aaab37ed45ab94c72c4a8df693b7a4"
+      "sha256": "affddd5e7632974f6f515f2afa0f79264a3826e7bb6c892458df2db94a027702"
     },
     "m4-workpaper-progressive-group": {
       "path": "apps/worker/skills/m4-workpaper-progressive-group/SKILL.md",
-      "sha256": "876b24e5a48d12bf22ca7981552bcfc4ba41f4296be26df007a46c6cc63d6e1a"
+      "sha256": "308cd65824e49bd7e6a3313a4ed858fdb0beff5009cff7c728ff4459039ad004"
     }
   }
 }

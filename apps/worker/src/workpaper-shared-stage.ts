@@ -21,13 +21,14 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {setTimeout as delay} from 'node:timers/promises';
 import {prepareProgressiveGroup,progressiveItemPlanIdentity,progressivePlanGroup,WORKPAPER_PLAN_GROUP_SIZE} from './workpaper-progressive-groups.js';
+import {workpaperMethodHash} from './workpaper-method.js';
 
 const MAX_SNAPSHOT=64*1024*1024;
 export type SharedSource={version:'workpaper-source-v1';source:ProjectFileText;tables:unknown[];images:{id:string;name:string;sha256:string;data?:string;key?:string;page?:number}[]};
 const hash=(v:unknown)=>inputManifestHash(v);
-async function python(ctx:StageContext,args:string[]){
+async function python(ctx:StageContext,args:string[],helper:'bondbuddy_workpaper_batch.py'|'bondbuddy_workpaper_progressive_render.py'='bondbuddy_workpaper_batch.py'){
   try{return await promisify(execFile)(process.env.BONDBUDDY_WORD_PYTHON??process.env.BONDBUDDY_TEST_PYTHON??'python3',
-    ['-B',join(projectFilesRoot,'python/bondbuddy_workpaper_batch.py'),...args],
+    ['-B',join(projectFilesRoot,'python',helper),...args],
     {cwd:projectFilesRoot,env:{...process.env,PYTHONPATH:join(projectFilesRoot,'python'),PYTHONDONTWRITEBYTECODE:'1'},signal:ctx.signal,timeout:300000,maxBuffer:16384});
   }catch(error){
     const code=/^(?:BB_WORKPAPER_ERROR=|ValueError: )(WORKPAPER_[A-Z_]+)\s*$/m.exec(String((error as {stderr?:unknown}).stderr??''))?.[1];
@@ -105,8 +106,9 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
   const gate=await m4ModelGate(ctx,config);if(gate)return gate;
   const skill=loadM4RuntimeSkill(progressive?'m4-workpaper-progressive':'m4-workpaper-batch');
   const groupSkill=progressive?loadM4RuntimeSkill('m4-workpaper-progressive-group'):null;
-  const method=hash({version:progressive?'workpaper-progressive-method-v2':'workpaper-shared-method-v1',skill:skill.sha256,
-    ...(progressive?{groupSkill:groupSkill!.sha256,groupSize:WORKPAPER_PLAN_GROUP_SIZE,groupHelper:digest(await readFile(join(projectFilesRoot,'python/bondbuddy_workpaper_progressive.py')))}:{}),
+  const method=workpaperMethodHash({skill:skill.sha256,
+    ...(progressive?{progressive:{groupSkill:groupSkill!.sha256,groupSize:WORKPAPER_PLAN_GROUP_SIZE,groupHelper:digest(await readFile(join(projectFilesRoot,'python/bondbuddy_workpaper_progressive.py'))),
+      renderer:digest(await readFile(join(projectFilesRoot,'python/bondbuddy_workpaper_progressive_render.py')))}}:{}),
     helper:digest(await readFile(join(projectFilesRoot,'python/bondbuddy_workpaper_batch.py'))),
     sourceHelper:digest(await readFile(join(projectFilesRoot,'python/bondbuddy_workpaper_source.py'))),
     tools:await m4ToolHashes(),
@@ -251,7 +253,8 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
     const renderImages=await Promise.all(source.images.map(async image=>relevantImages.has(image.id)&&!image.page?{...image,data:(await imageBytes(image)).toString('base64')}:image));
     await jsonFile(dir,'source-data.json',{...source,images:renderImages});
     const out=join(dir,'output');
-    await python(ctx,['render-validated',join(dir,'source-data.json'),join(dir,'batch-input.json'),join(dir,'batch-plan.json'),task.entry.id,join(dir,'template.docx'),join(dir,'format.json'),out]);
+    await python(ctx,['render-validated',join(dir,'source-data.json'),join(dir,'batch-input.json'),join(dir,'batch-plan.json'),task.entry.id,join(dir,'template.docx'),join(dir,'format.json'),out],
+      progressive?'bondbuddy_workpaper_progressive_render.py':'bondbuddy_workpaper_batch.py');
     const note=await checkedM4File(out,'preparation-note.docx');
     const outputBytes=await checkedM4File(out,'document.docx');
     await projectFilePython(ctx,['inspect',join(out,'document.docx'),join(dir,'target.json')]);
