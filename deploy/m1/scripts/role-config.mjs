@@ -67,6 +67,17 @@ try {
     const c = JSON.parse(readFileSync(0, 'utf8')), s = c.services;
     if (!c.networks.backend.internal || c.name !== project) fail();
     if (role === 'execution' && (s.postgres || s.migrate || s.api || s.web || s['pg-tunnel'].ports?.length)) fail();
+    if (role === 'execution') {
+      // Inspect effective values after all private overlays, before binding adoption or
+      // any lifecycle command. Docker treats zero CPU/memory as an unlimited quota.
+      const review = s['worker-review'], limits = review?.deploy?.resources?.limits;
+      const concurrency = review?.environment?.BB_WORKER_CONCURRENCY;
+      const heap = review?.environment?.NODE_OPTIONS?.match(/^--max-old-space-size=([1-9][0-9]*)$/)?.[1];
+      if (typeof concurrency !== 'string' || !/^(?:[1-9]|1[0-6])$/.test(concurrency) ||
+          !heap || !Number.isSafeInteger(Number(heap)) ||
+          !Number.isFinite(Number(limits?.cpus)) || Number(limits.cpus) <= 0 ||
+          !Number.isSafeInteger(Number(limits?.memory)) || Number(limits.memory) <= 0) fail();
+    }
     if (role === 'main') {
       const pg = s.postgres, mount = pg.volumes.find(v => v.target === '/var/lib/postgresql/data');
       if (mount?.type !== 'volume' || mount.source !== 'pgdata' || pg.ports?.length !== 1 || pg.ports[0].host_ip !== '127.0.0.1' || Number(pg.ports[0].target) !== 5432 || !fixedPort(pg.ports[0].published) || pg.ports[0].published !== binding.pg_forward_port) fail();
@@ -145,6 +156,6 @@ try {
   } else fail();
   }
 } catch {
-  console.error('role configuration rejected: verify private env, override file/hash, parser placement and persisted environment/volume binding (details withheld)');
+  console.error('role configuration rejected: verify private env, override file/hash, review concurrency/resource limits, parser placement and persisted environment/volume binding (details withheld)');
   process.exitCode = 2;
 }

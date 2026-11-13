@@ -75,6 +75,11 @@ BB_ENV_FILE=<private-env> bash deploy/m1/scripts/deploy-role.sh main <exact-app-
 `BB_REVIEW_MEMORY_LIMIT`。默认仍为 `1`、`768`、`0.75`、`2G`；不改变编制、解析或
 confirmation 配置。最后加载的私有覆盖可能覆盖这些值，验收必须检查渲染配置和实际
 容器，不能只检查 env。旧整栈生产配置不使用新增的复核资源参数。
+角色入口在完整渲染后、停止或重建旧容器前预检复核配额：并发必须为 `1`–`16` 的
+整数，Node 参数必须仅含严格正整数 `--max-old-space-size`，CPU 和内存必须为正且
+有限的配额；零值（Docker 无限制语义）、负值和注入文本均拒绝。升级前还要核对私有
+env 中原 `BB_REVIEW_WORKER_CONCURRENCY`，旧硬编码可能曾掩盖非默认值；不能借升级
+配置入口意外提高并发。
 
 四项复核的待测配额为并发 `4`、Node 堆 `2048` MiB、CPU `1.0`、共享内存 `6G`。
 两核执行机器上保留编制现有一核配额；四槽共享六 GiB，而不是每槽六 GiB。

@@ -84,6 +84,19 @@ test('execution review capacity overrides are private-env controlled and leave o
  assert.equal(baseline.services['worker-review'].deploy.resources.limits.cpus,0.75);
  assert.equal(Number(baseline.services['worker-review'].deploy.resources.limits.memory),2*1024**3);
 });
+test('review capacity rejects zero, negative, fractional and injected private settings before adoption', () => {
+ const marker=join(dir,'review-capacity-injection');
+ for(const [key,invalid] of [
+  ['BB_REVIEW_WORKER_CONCURRENCY',['0','-1','17','1.5','1e0','bogus',`1; touch ${marker}`]],
+  ['BB_REVIEW_NODE_HEAP_MIB',['0','-1','0.5','1e3','bogus','2048 --require=/tmp/synthetic',`$(touch ${marker})`,`\`touch ${marker}\``]],
+  ['BB_REVIEW_CPU_LIMIT',['0','-0.5','bogus',`1; touch ${marker}`]],
+  ['BB_REVIEW_MEMORY_LIMIT',['0','-1','bogus',`6G; touch ${marker}`]],
+ ]) {
+  for(const value of invalid)assert.throws(()=>config('execution',{[key]:value}),`${key}: ${value}`);
+ }
+ assert.throws(()=>readFileSync(marker),'injected text must never execute');
+ assert.equal(config('execution',{BB_REVIEW_WORKER_CONCURRENCY:'16'}).services['worker-review'].environment.BB_WORKER_CONCURRENCY,'16');
+});
 test('execution lease setting does not change the legacy same-host environment', () => {
  const legacy=JSON.parse(execFileSync('docker',['compose','--project-directory',join(root,'deploy/m1'),'-f',join(root,'deploy/m1/compose.yaml'),
   '--env-file',envFile('legacy',{BB_WORKER_LEASE_SECONDS:'180'}),'config','--format','json'],
@@ -179,6 +192,31 @@ esac
   assert.equal(r.status,status,r.stderr);assert.equal(readFileSync(join(state,'current'),'utf8'),'aaaaaaaaaaaa\n');
   if(kind==='revision')assert.doesNotMatch(readFileSync(calls,'utf8'),/up -d|run --rm --no-deps -T migrate/);
  }
+});
+test('effective invalid review quotas fail before old-container stops, probes or rebuilds',()=>{
+ const fixture=join(dir,'execution-fixture'),area=join(dir,'review-capacity-lifecycle');mkdirSync(area);
+ const state=join(area,'state'),calls=join(area,'calls'),rendered=join(area,'config.json');mkdirSync(state);
+ const current=join(state,'current'),original='aaaaaaaaaaaa\n';writeFileSync(current,original);
+ const baseline=JSON.parse(readFileSync(join(fixture,'config.json'),'utf8'));
+ const marker=join(area,'injected');
+ for(const mutate of [
+  s=>{s.deploy.resources.limits.cpus=0;},s=>{s.deploy.resources.limits.cpus=-1;},s=>{delete s.deploy.resources.limits.cpus;},
+  s=>{s.deploy.resources.limits.memory='0';},s=>{s.deploy.resources.limits.memory='-1';},s=>{delete s.deploy.resources.limits.memory;},
+  s=>{s.environment.BB_WORKER_CONCURRENCY='0';},s=>{s.environment.BB_WORKER_CONCURRENCY='17';},s=>{s.environment.BB_WORKER_CONCURRENCY='4.0';},
+  s=>{s.environment.NODE_OPTIONS='--max-old-space-size=-1';},s=>{s.environment.NODE_OPTIONS='--max-old-space-size=1.5';},
+  s=>{s.environment.NODE_OPTIONS=`--max-old-space-size=2048; touch ${marker}`;},
+ ]) {
+  const c=structuredClone(baseline);mutate(c.services['worker-review']);writeFileSync(rendered,JSON.stringify(c));writeFileSync(calls,'');
+  const r=spawnSync('bash',[join(fixture,'deploy/m1/scripts/deploy-role.sh'),'execution','a'.repeat(40)],{
+   env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,BB_ENV_FILE:envFile('execution'),BB_STATE_DIR:state,
+    TEST_FIXTURE:fixture,TEST_CONFIG:rendered,TEST_CALLS:calls,TEST_GATE:'0'},encoding:'utf8'});
+  assert.equal(r.status,2,r.stderr);assert.match(r.stderr,/review concurrency\/resource limits/);
+  const commands=readFileSync(calls,'utf8');assert.match(commands,/config --format json/);
+  assert.doesNotMatch(commands,/\bstop\b|\bup\b|\brun\b/,'no old-container mutation or probe');
+  assert.equal(readFileSync(current,'utf8'),original);assert.throws(()=>readFileSync(join(state,'pending-release.json')));
+  assert.throws(()=>readFileSync(join(state,'environment-binding.json')));
+ }
+ assert.throws(()=>readFileSync(marker));
 });
 
 test('export mode chooses the same domestic tunnel image as role startup',()=>{
