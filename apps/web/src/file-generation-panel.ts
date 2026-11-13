@@ -16,6 +16,7 @@ import {WorkpaperImportReview} from './workpaper-import-review';
 import {UploadRecovery,UploadRecoveryNeedsFileError} from './upload-recovery';
 import './file-generation-panel.css';
 import {applyTemplateSuggestions} from './file-generation-template-matching';
+import {renderChapterSelection,selectedChapterOrder,restoreChapterFocus} from './workpaper-chapter-selection';
 const label=(type:string)=>type==='workpaper'?'尽职调查底稿包':PROJECT_DOCUMENT_CATALOG.find(d=>d.id===type)?.name??type;
 const pin=(r:FileTemplateRecord):FileTemplatePin=>({set_id:r.set_id,record_id:r.record_id,sha256:r.sha256});
 type UploadReceipt={request_id:string;sha256:string;filename:string;document_type:M4DocumentType;set_id?:string};
@@ -88,6 +89,7 @@ export class FileGenerationPanel {
  }
  private async save(){
   clearTimeout(this.autosaveTimer);
+  if(!this.pending)this.syncProgressive();
   if(this.storageError||this.revisionConflict)throw new UserFacingError('原准备清单与当前版本需要核对，请先重新载入。');
   try{this.dirty=!!this.preparationSave||!this.data!.revision||!samePreparation(this.prep,this.data!.preparation);this.persist();}catch(e){this.saveFailure=friendlyError(e,'save');this.paintSaveState();throw e;}
   if(this.saving)return this.saving;
@@ -127,7 +129,11 @@ export class FileGenerationPanel {
   const confirm=this.host.querySelector<HTMLButtonElement>('#fg-confirm');if(confirm&&(this.revisionConflict||this.storageError))confirm.disabled=true;
  }
  private async act(fn:()=>Promise<void>){if(this.busy)return;this.poller.pause();this.busy=true;this.paint();try{await fn();}catch(e){this.status=friendlyError(e,'save');}finally{this.busy=false;this.progressRevision='';this.poll();this.uploadProgress=undefined;if(this.live())this.paint();}}
- private change(fn:()=>void){if(this.busy||this.pending||this.storageError||this.revisionConflict)return;try{fn();this.dirty=true;this.persist();this.paint();this.queueSave();}catch(e){this.status=friendlyError(e,'save');this.paintSaveState();}}
+ private change(fn:()=>void){if(this.busy||this.pending||this.storageError||this.revisionConflict)return;try{fn();this.syncProgressive();this.dirty=true;this.persist();this.paint();this.queueSave();}catch(e){this.status=friendlyError(e,'save');this.paintSaveState();}}
+ private syncProgressive(){
+  if(this.cat&&this.prep.document_types.includes('workpaper')&&this.prep.item_ids.length)this.prep.progressive={chapter_order:selectedChapterOrder(this.cat.entries,this.prep.item_ids,this.prep.progressive?.chapter_order)};
+  else delete this.prep.progressive;
+ }
  private set(){return this.data?.sets.find(s=>s.set_id===this.prep.template_set_id);}
  private record(p:FileTemplatePin|undefined){return p?this.data?.sets.find(s=>s.set_id===p.set_id)?.records.find(r=>r.record_id===p.record_id):undefined;}
  private automatic(){return this.prep.workpaper_template_mode==='automatic';}
@@ -203,7 +209,7 @@ export class FileGenerationPanel {
  private paint(){
   if(!this.live()||!this.data)return;this.stepChanged(this.activeStep);
   const active=this.host.contains(document.activeElement)?document.activeElement as HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement:null;
-  const focusSelector=active?.id?'#'+CSS.escape(active.id):active?['data-fg-item','data-fg-type','data-fg-mapping','data-fg-general'].filter(attr=>active.hasAttribute(attr)).map(attr=>`[${attr}="${CSS.escape(active.getAttribute(attr)!)}"]`)[0]:undefined;
+  const focusSelector=active?.id?'#'+CSS.escape(active.id):active?['data-focus-key','data-fg-item','data-fg-type','data-fg-mapping','data-fg-general'].filter(attr=>active.hasAttribute(attr)).map(attr=>`[${attr}="${CSS.escape(active.getAttribute(attr)!)}"]`)[0]:undefined;
   const selection=active instanceof HTMLTextAreaElement||active instanceof HTMLInputElement&&['text','search'].includes(active.type)?[active.selectionStart,active.selectionEnd,active.selectionDirection] as const:undefined;
   const restoreFocus=!this.focused;
   const requirementsOpen=this.host.querySelector<HTMLDetailsElement>('#fg-supporting-details')?.open;
@@ -216,19 +222,22 @@ export class FileGenerationPanel {
    <section class="panel fg-template-panel" id="fg-template-setup" tabindex="-1" ${wp?'':'hidden'}><div class="fg-section-heading"><div><h2>底稿目录与文件模板</h2><p class="muted">默认采用光大模板，也可以更换为自己的模板。</p></div></div>
    ${this.modeStatus?`<div class="fg-load-status" role="status" aria-live="polite"><span>${this.modeController?'<span class="fg-spinner" aria-hidden="true"></span>':''}${esc(this.modeStatus)}</span>${this.modeController?'<button class="btn secondary" id="fg-cancel-builtin">取消加载</button>':''}</div>`:''}
    ${this.workpaperCards()}
+   ${this.cat?'<div id="fg-chapters" tabindex="-1"></div>':''}
    ${this.cat?`<div class="fg-combination"><div><strong class="fg-match-summary">${this.automatic()?`已选 ${p.item_ids.length} 项 · 采用光大模板`:`已匹配 ${p.item_ids.length-unmapped} / ${p.item_ids.length} 项${unmapped?'，还有 '+unmapped+' 项需要选择模板':'，可继续生成'}`}</strong><small>${this.automatic()?'按目录逐项编制，生成前可调整本批范围。':'唯一候选已自动匹配，请核对事项和角色；待处理项不会被悄悄略过。'}</small></div><div class="fg-actions">${!this.automatic()?`<button class="btn secondary" id="fg-auto-match" ${!set?'disabled':''}>自动匹配模板</button>`:''}<button class="btn ${unmapped?'primary':'secondary'}" id="fg-match-toggle" aria-expanded="${this.showMatches}">${this.showMatches?'收起清单':unmapped?'处理 '+unmapped+' 项模板':'查看本批清单'}</button></div></div><div id="fg-matches" tabindex="-1" ${this.showMatches?'':'hidden'}>${this.showMatches?this.matchTable():''}</div>`:''}
    ${set?.warnings.length?`<details class="fg-notice"><summary>模板导入提示（${set.warnings.length}）</summary>${set.warnings.map(w=>`<p>${esc(w)}</p>`).join('')}</details>`:''}<div id="fg-import-review"></div><div id="fg-upload-recovery"></div></section>
    ${p.document_types.filter(t=>t!=='workpaper').length?`<section class="panel"><h2>其他文件的模板</h2><p class="muted">光大证券是模板库来源；文件由对应发行人、承销商或律师事务所等主体出具。</p>${p.document_types.filter(t=>t!=='workpaper').map(t=>this.generalRow(t)).join('')}${p.document_types.includes('annual')?`<label class="fg-year">年度报告目标年度<input id="fg-year" type="number" min="2000" max="2099" placeholder="例如 2026" value="${esc(p.target_year)}"></label>`:''}<button class="btn secondary" id="fg-general-builtin" ${!this.data.builtin.available?'disabled':''}>添加光大证券内置模板</button></section>`:''}
    <section class="panel"><details id="fg-supporting-details" ${(requirementsOpen??Boolean(p.requirements||p.materials.length))?'open':''}><summary>补充资料与编制要求（选填）</summary><label class="fg-requirements">编制要求<textarea id="fg-requirements" rows="3" maxlength="12000" placeholder="例如目标期间、需重点核查的事项">${esc(p.requirements)}</textarea></label><label class="bb-upload-picker bb-upload-picker--compact btn secondary">上传补充资料<input id="fg-support" type="file" multiple accept=".docx,.pdf,.xlsx" hidden></label>${p.materials.length?'<span> 已采用 '+p.materials.length+' 份补充资料</span>':''}<button class="btn secondary" id="fg-save">保存准备清单</button></details></section></div>
-   <footer class="fg-footer"><div><strong>本批 ${count} 份文件</strong><small>${wp&&unmapped?unmapped+' 项底稿待选择模板':wp?esc(this.templateLabel()):'采用所选 Word 模板'} · 预计 <span id="fg-estimate">${formatPoints(this.estimate())}</span> 积分</small><p class="fg-save-status"><span id="fg-save-state" role="status" aria-live="polite"></span> <button class="text-button" id="fg-save-retry" hidden>重试保存</button><button class="text-button" id="fg-reload" hidden>重新载入服务端清单</button></p></div><button class="btn primary" id="fg-confirm" ${!count||!this.source||!!this.pending||this.storageError||this.revisionConflict||!!this.modeController?'disabled':''}>${unmapped?'处理模板后生成':this.data.pricing?.mode==='automatic'?'生成本批文件':'核对清单与费用'}</button></footer>
+   <footer class="fg-footer"><div><strong>本批 ${count} 份文件</strong><small>${wp&&unmapped?unmapped+' 项底稿待选择模板':wp?esc(this.templateLabel()):'采用所选 Word 模板'} · 预计 <span id="fg-estimate">${formatPoints(this.estimate())}</span> 积分</small><p class="fg-save-status"><span id="fg-save-state" role="status" aria-live="polite"></span> <button class="text-button" id="fg-save-retry" hidden>重试保存</button><button class="text-button" id="fg-reload" hidden>重新载入服务端清单</button></p></div><button class="btn primary" id="fg-confirm" ${!count||wp&&!p.item_ids.length||!this.source||!!this.pending||this.storageError||this.revisionConflict||!!this.modeController?'disabled':''}>${unmapped?'处理模板后生成':this.data.pricing?.mode==='automatic'?wp?'开始试生成':'生成本批文件':'核对清单与费用'}</button></footer>
    <section class="panel fg-history">${this.historyContent()}</section></div>`;
   this.bind();if(this.review)this.review.render(this.host.querySelector('#fg-import-review')!,this.busy);
+  const chapterHost=this.host.querySelector<HTMLElement>('#fg-chapters');if(chapterHost&&this.cat)renderChapterSelection(chapterHost,{entries:this.cat.entries,itemIds:p.item_ids,order:p.progressive?.chapter_order??[],disabled:this.busy||!!this.pending||this.storageError||this.revisionConflict,change:(ids,order)=>this.change(()=>{this.prep.item_ids=ids;this.prep.progressive={chapter_order:order};})});
   this.paintCatalogueRecovery();this.paintSupportRecovery();
   const controls=this.host.querySelector<HTMLElement>('#fg-controls');if(controls)controls.inert=this.busy||!!this.pending||this.storageError||this.revisionConflict;
   if(this.busy)this.host.querySelectorAll<HTMLButtonElement>('button').forEach(b=>b.disabled=true);
   else if(this.focused){const target=this.host.querySelector<HTMLElement>(this.focused);this.focused=undefined;target?.scrollIntoView({block:'center'});target?.focus({preventScroll:true});}
   if(this.modeController)this.host.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement|HTMLTextAreaElement>('#fg-controls button,#fg-controls input,#fg-controls select,#fg-controls textarea').forEach(n=>{if(!['fg-custom','fg-builtin-all','fg-automatic','fg-cancel-builtin'].includes(n.id))n.disabled=true;});
   if(restoreFocus&&!this.busy&&focusSelector){const target=this.host.querySelector<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>(focusSelector);target?.focus({preventScroll:true});if(selection&&target&&(target instanceof HTMLTextAreaElement||target instanceof HTMLInputElement)&&selection[0]!==null&&selection[1]!==null)target.setSelectionRange(selection[0],selection[1],selection[2]??undefined);}
+  if(restoreFocus&&!this.busy&&active?.dataset.focusKey)restoreChapterFocus(this.host,active.dataset.focusKey);
   this.paintSaveState();
  }
  private matchTable(){
@@ -248,7 +257,7 @@ export class FileGenerationPanel {
   click('fg-custom',()=>void this.selectMode('custom'));
   click('fg-automatic',()=>void this.selectMode('automatic'));
   click('fg-change-templates',()=>{this.showTemplateChoices=!this.showTemplateChoices;this.paint();});
-  click('fg-edit-scope',()=>{this.showMatches=true;this.onlyUnmapped=false;this.matchPage=0;this.focused='#fg-matches';this.paint();});
+  click('fg-edit-scope',()=>{this.focused='#fg-chapters';this.paint();});
   click('fg-builtin-all',()=>void this.selectMode('builtin'));click('fg-load-builtin',()=>void this.loadDefaultCatalogue());
   click('fg-cancel-builtin',()=>this.cancelModeLoad());
   click('fg-general-builtin',()=>void this.act(()=>this.builtinTemplates()));
@@ -363,6 +372,7 @@ export class FileGenerationPanel {
  private async confirm(){
   if(this.prep.document_types.includes('workpaper')){
    if(!this.cat||!this.automatic()&&!this.set()){this.focused='#fg-template-setup';throw new UserFacingError('请先选好底稿目录；使用 Word 模板时还需选择模板包。');}
+   if(!this.prep.item_ids.length){this.focused='#fg-chapters';throw new UserFacingError('请至少选择一份底稿，再开始试生成。');}
    const missing=this.missingTemplates().length;
    if(missing){this.reviewTemplates();throw new UserFacingError('还有 '+missing+' 项底稿需要选择 Word 模板。已展开待处理条目，可先点击“自动匹配模板”，再处理剩余条目；本次尚未提交生成。');}
   }
@@ -371,10 +381,11 @@ export class FileGenerationPanel {
   if(this.prep.document_types.includes('annual')&&!this.prep.target_year){this.focused='#fg-year';throw new UserFacingError('请选择年度报告的目标年度。');}
 
   if(this.review||['file-generation-catalogue','file-generation-support'].some(purpose=>new UploadRecovery(this.api,this.owner,this.project,purpose,()=>this.live()).list().length))throw new UserFacingError('还有目录或补充资料上传待确认，请先在相应卡片完成恢复，再确认生成。');
-  if(this.dirty||this.saving||this.preparationSave||!this.data!.revision)await this.save();
+  this.syncProgressive();
+  if(this.dirty||this.saving||this.preparationSave||!this.data!.revision||!samePreparation(this.prep,this.data!.preparation))await this.save();
   if(this.revisionConflict||this.storageError||!samePreparation(this.prep,this.data!.preparation))throw new UserFacingError('最新准备清单尚未保存，本次尚未提交生成。请先重试保存。');
   const count=(this.prep.document_types.includes('workpaper')?this.prep.item_ids.length:0)+this.prep.document_types.filter(t=>t!=='workpaper').length;
-  const request:FileGenerationSubmit={request_id:crypto.randomUUID(),expected_revision:this.data!.revision,source_version_id:this.source!.version_id,source_selection_revision:this.source!.selection_revision,expected_points:this.estimate(),price_version:this.data!.pricing?.price_version??M4_DOCUMENT_FIXED_PRICE.version};
+  const request:FileGenerationSubmit={request_id:crypto.randomUUID(),expected_revision:this.data!.revision,source_version_id:this.source!.version_id,source_selection_revision:this.source!.selection_revision,expected_points:this.estimate(),price_version:this.data!.pricing?.price_version??M4_DOCUMENT_FIXED_PRICE.version,...(this.prep.progressive?{progressive:structuredClone(this.prep.progressive)}:{})};
   const q=await this.request<FileGenerationQuote>('POST','/quote',request);
   request.expected_points=q.points;request.price_version=q.price_version;
   if(q.quote_id)request.quote_id=q.quote_id;
@@ -383,9 +394,10 @@ export class FileGenerationPanel {
   this.activeStep=3;this.stepChanged(3);
   const selected=this.cat?.entries.filter(e=>this.prep.item_ids.includes(e.id))??[],d=this.modal('确认本批文件',`<p>募集说明书：${esc(this.source!.filename)} · V${this.source!.sequence}</p><p><strong>${q.count} 份文件 · ${formatPoints(q.points)} 积分</strong></p>${this.prep.document_types.includes('workpaper')?`<p>本次底稿模板：${esc(this.templateLabel())}</p>`:''}<p>按现有规则逐份编制与计费，说明文件沿用不收费规则。目录、模板与资料版本将在确认时固定。</p>${this.prep.target_year&&this.prep.document_types.includes('annual')?`<p>年度报告：${esc(this.prep.target_year)} 年</p>`:''}<details><summary>本批文件与采用模板</summary><ul>${this.prep.document_types.includes('workpaper')?selected.map(e=>`<li>${esc(e.code+' '+e.title)} → ${esc(this.automatic()?'光大模板（自动匹配）':this.record(this.prep.mappings[e.id])?.name??'')}</li>`).join(''):''}${this.prep.document_types.filter(t=>t!=='workpaper').map(t=>`<li>${esc(label(t))}</li>`).join('')}</ul></details>${q.omitted.length?`<details open><summary>本次未纳入 ${q.omitted.length} 项</summary><ul>${q.omitted.map(e=>`<li>${esc(e.code+' '+e.title)}</li>`).join('')}</ul></details>`:''}${q.documents?.map(d=>scopeLinesHtml(d)+scopeLifecycleHtml(d)).join('')??''}<div class="fg-actions"><button class="btn primary" id="fg-submit" ${q.quote_status==='pending_scope'?'disabled':''}>确认生成 ${q.count} 份文件</button></div><p id="fg-submit-status" role="status"></p>`);
   d.addEventListener('close',()=>{if(this.activeStep===3){this.activeStep=2;this.stepChanged(2);}});
+  if(this.prep.progressive){const trial=Math.min(8,this.prep.progressive.chapter_order.length),remaining=this.prep.item_ids.length-trial;d.querySelector('.fg-actions')?.insertAdjacentHTML('beforebegin',`<p>先从前 ${trial} 个所选章节各试生成 1 份。${remaining?`查看成果并确认后，按章节顺序自动生成其余 ${remaining} 份底稿。`:'本次所选底稿均为试生成文件，完成后即可查看成果。'}</p>`);d.querySelector<HTMLButtonElement>('#fg-submit')!.textContent='确认本批并开始试生成';}
   d.querySelector<HTMLButtonElement>('#fg-submit')!.onclick=()=>void this.act(async()=>{this.pending=request;this.pendingWire=BILLING_WIRE_VERSION;this.persist();d.querySelector<HTMLButtonElement>('#fg-submit')!.disabled=true;try{await this.submit();d.close();}catch(e){d.querySelector('#fg-submit-status')!.textContent=friendlyError(e,'submit');throw e;}});
  }
- private async submit(){if(!this.pending)return;const batch=await this.request<FileGenerationBatch>('POST','/batches',this.pending);this.pending=undefined;this.persist();this.historyRevision++;this.data!.batches=[batch,...this.data!.batches.filter(b=>b.batch_id!==batch.batch_id)];this.status='本批文件已提交。关闭页面后任务仍会继续，成果保存在下方生成记录中。';this.activeStep=4;this.stepChanged(4);}
+ private async submit(){if(!this.pending)return;const batch=await this.request<FileGenerationBatch>('POST','/batches',this.pending);this.pending=undefined;this.persist();this.historyRevision++;this.data!.batches=[batch,...this.data!.batches.filter(b=>b.batch_id!==batch.batch_id)];this.status='本批文件已提交。关闭页面后任务仍会继续，成果保存在下方生成记录中。';this.activeStep=4;this.stepChanged(4);if(batch.workpapers?.progressive){const query=new URLSearchParams(location.hash.split('?')[1]);query.set('step','workpapers');query.set('view','results');query.set('batch',batch.workpapers.batch_id);query.delete('legacy');if(batch.documents)query.set('other_documents','1');location.hash='#generate?'+query;}}
  private batchCard(b:FileGenerationBatch){const wp=b.workpapers,docs=b.documents;return `<article class="fg-batch"><div><strong>${date(b.created_at)} · ${formatPoints(b.points)} 积分</strong><small>${wp?'底稿 '+wp.items.filter(i=>i.state==='succeeded').length+'/'+wp.items.length+' · '+({queued:'等待生成',running:'正在生成',paused:'已暂停',complete:'已完成',partial:'部分完成',cancelled:'已结束排队'}[wp.state]):''}${wp?.template_mode?'<small>本批模板：'+({automatic:'光大模板',selected:'所选 Word 模板',mixed:'混合模板'}[wp.template_mode])+'</small>':''}${docs?'　其他文件 '+docs.items.filter(i=>i.state==='succeeded').length+'/'+docs.items.length:''}</small></div><div class="fg-actions">${wp?`<a class="btn secondary" href="#generate?project=${encodeURIComponent(this.project)}&step=workpapers&view=results&batch=${encodeURIComponent(wp.batch_id)}">底稿进度与下载</a>`:''}${docs?`<a class="btn secondary" href="#generate?project=${encodeURIComponent(this.project)}&step=results">其他文件进度与下载</a>`:''}</div></article>`;}
  private async refreshBatches(signal?:AbortSignal){
   const revision=this.historyRevision,read=++this.historyRead,fresh=()=>this.live()&&revision===this.historyRevision&&read===this.historyRead;
