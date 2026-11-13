@@ -190,7 +190,6 @@ body:has(.bb-assistant.ba-open){overflow:hidden}
 @media(max-width:360px){.ba-identity{gap:7px}
 .ba-identity strong{font-size:13px}
 .ba-header .ba-mark{width:30px;height:30px}
-.ba-header .ba-icon-button{width:29px;height:30px}
 .ba-timeline{padding:14px}
 .bb-assistant .ba-shortcuts button{padding:10px;gap:9px}
 }
@@ -251,6 +250,12 @@ body:has(.bb-assistant.ba-open){overflow:hidden}
 .bb-assistant[hidden]{display:none!important}
 button.assistant-restore{width:100%;border:0;background:transparent;text-align:left;font:inherit;cursor:pointer}
 .assistant-restore .ba-icon{width:20px;height:20px;flex:none}
+
+@media(max-width:960px){
+  .bb-assistant .ba-toolbar{gap:4px}
+  .bb-assistant .ba-icon-button,.bb-assistant .ba-send{width:44px;height:44px;min-width:44px;min-height:44px}
+  .bb-assistant .ba-attach{min-height:44px;align-items:center;padding:8px 6px}
+}
 
 </style>
 <div class="prototype-app"><div class="shell"><header class="topbar"><span>工作空间 › 工作台</span><div class="top-actions"></div></header><main><h1>工作台</h1><p>BondBuddy · 右侧栏交互原型</p><p>演示内容不提交任务、不消耗积分。</p><nav aria-label="账号"><button type="button" class="nav-item assistant-restore" data-assistant-restore>BondBuddy</button></nav></main></div></div>

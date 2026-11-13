@@ -24,6 +24,7 @@ import { taskProgress } from './task-progress';
 import { taskHref,taskView } from './project-collection-model';
 import { esc } from './ui';
 import { assistantIcon as icon } from './assistant-icons';
+import {followAssistantActionBars} from './assistant-dock-position';
 import { AssistantUploadRecovery, AssistantUploadRecoveryError, type AssistantUploadEntry } from './assistant-upload-recovery';
 import { AssistantTemplateUploadRecovery, assistantTemplateUploadRecordMatches, type AssistantTemplateUploadEnvelope, type AssistantTemplateUploadResult } from './assistant-template-upload-recovery';
 import { AssistantProjectCopyRecovery, assistantProjectCopyRecordMatches, type AssistantProjectCopyEnvelope, type AssistantProjectCopyResult } from './assistant-project-copy-recovery';
@@ -77,6 +78,7 @@ export class ProjectAssistant {
   private storageChanged=(event:StorageEvent)=>{if(!this.live||!this.workspace)return;if(event.key===null||event.key.startsWith('bb-assistant-template-upload-v1:')||event.key.startsWith('bb-assistant-project-copy-v1:')||event.key.startsWith('bb-assistant-view-v1:')||event.key.startsWith('bondbuddy:upload-recovery:v1:')){this.scanCopies();this.scanTemplates();clearTimeout(this.saveTimer);this.paint();if(this.templateEnvelopes.length)void this.readTemplates();if(this.copyEnvelopes.length)void this.readCopies();}};
   private host=document.createElement('div');
   private dock=document.createElement('button');
+  private disposeDockPosition?:()=>void;
   private narrow=window.matchMedia('(max-width:960px)');
   private resize=()=>this.syncLayout();
   private open=false;
@@ -128,6 +130,7 @@ export class ProjectAssistant {
     this.dock.setAttribute('aria-controls','ba-panel');
     this.dock.innerHTML=icon('buddy')+'<i data-active-dot aria-hidden="true"></i>';
     this.dock.addEventListener('click',()=>void this.setOpen(true));document.body.append(this.dock);
+    this.disposeDockPosition=followAssistantActionBars(this.dock);
     this.narrow.addEventListener('change',this.resize);
     this.host.addEventListener('click',e=>void this.click(e));
     this.host.addEventListener('input',e=>this.input(e));
@@ -138,13 +141,14 @@ export class ProjectAssistant {
       if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&(e.target as HTMLElement).matches('[data-composer]')){e.preventDefault();void this.work(()=>this.send(),'submit');}});
     window.addEventListener('bondbuddy:assistant',this.event);window.addEventListener('storage',this.storageChanged);this.paint();
   }
-  dispose(){this.controller.abort();clearTimeout(this.timer);clearTimeout(this.saveTimer);window.removeEventListener('bondbuddy:assistant',this.event);window.removeEventListener('storage',this.storageChanged);this.narrow.removeEventListener('change',this.resize);this.open=false;this.syncLayout();this.host.remove();this.dock.remove();}
+  dispose(){this.controller.abort();clearTimeout(this.timer);clearTimeout(this.saveTimer);this.disposeDockPosition?.();this.disposeDockPosition=undefined;window.removeEventListener('bondbuddy:assistant',this.event);window.removeEventListener('storage',this.storageChanged);this.narrow.removeEventListener('change',this.resize);this.open=false;this.syncLayout();this.host.remove();this.dock.remove();}
   /** Detach the product UI while retaining complete input, journals and pending saves. */
-  suspend(){this.suspended=true;this.host.remove();this.dock.remove();this.syncLayout();}
+  suspend(){this.suspended=true;this.disposeDockPosition?.();this.disposeDockPosition=undefined;this.host.remove();this.dock.remove();this.syncLayout();}
   mount(){
     this.suspended=false;
     if(!this.host.isConnected)document.body.append(this.host);
     if(!this.dock.isConnected)document.body.append(this.dock);
+    this.disposeDockPosition??=followAssistantActionBars(this.dock);
     this.paintDock();this.syncLayout();
   }
   private async setOpen(open:boolean){

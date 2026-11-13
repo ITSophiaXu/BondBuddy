@@ -28,6 +28,7 @@ body:has(.bb-assistant.ba-wide){--ba-panel-width:min(600px,40vw)}
 
 .ba-dock{position:fixed;right:14px;bottom:max(20px,env(safe-area-inset-bottom));z-index:1200;display:grid;place-items:center;box-sizing:border-box;width:52px;height:52px;padding:0;border:1px solid #d6e1d7;border-radius:50%;background:#fff;color:#285d48;box-shadow:0 3px 14px #233c3417;cursor:pointer;transition:background .15s,box-shadow .15s}
 .ba-dock[hidden]{display:none!important}
+.ba-dock{bottom:calc(max(20px,env(safe-area-inset-bottom)) + var(--ba-dock-offset,0px))}
 .ba-dock:hover{background:#edf3ee;border-color:#a9bfae;box-shadow:0 4px 18px #233c3424}
 .ba-dock:focus-visible{outline:2px solid #428267;outline-offset:3px}
 .ba-dock .ba-icon{width:27px;height:27px;flex:none}
@@ -179,7 +180,7 @@ body:has(.bb-assistant.ba-open:not(.ba-embedded)){overflow:hidden}
 .ba-toolbar [data-a=wide]{display:none}
 }
 @media(max-width:700px){
-.ba-dock{right:16px;bottom:max(16px,env(safe-area-inset-bottom));width:48px;height:48px}
+.ba-dock{right:16px;bottom:calc(max(16px,env(safe-area-inset-bottom)) + var(--ba-dock-offset,0px));width:48px;height:48px}
 .ba-header{padding:12px 14px;gap:6px}
 .ba-toolbar{gap:0}
 .ba-timeline{padding:18px}
@@ -196,7 +197,6 @@ body:has(.bb-assistant.ba-open:not(.ba-embedded)){overflow:hidden}
 @media(max-width:360px){.ba-identity{gap:7px}
 .ba-identity strong{font-size:13px}
 .ba-header .ba-mark{width:30px;height:30px}
-.ba-header .ba-icon-button{width:29px;height:30px}
 .ba-timeline{padding:14px}
 .bb-assistant .ba-shortcuts button{padding:10px;gap:9px}
 }
@@ -281,3 +281,10 @@ body:has(.bb-assistant.ba-open:not(.ba-embedded)){overflow:hidden}
 .bb-assistant .ba-copy-actions button,.bb-assistant [data-assistant-copy-orphan-id]>button{min-height:44px;white-space:normal;text-align:left;line-height:1.5}
 .bb-assistant .ba-copy-recovery summary{min-height:44px;display:flex;align-items:center;cursor:pointer}
 .bb-assistant [data-assistant-copy-target-saved-status],.bb-assistant [data-assistant-copy-material-saved-status],.bb-assistant [data-assistant-copy-project-applied-status]{color:#315c3e}
+
+/* Touch actions keep their own targets when the assistant becomes a mobile sheet. */
+@media(max-width:960px){
+  .bb-assistant .ba-toolbar{gap:4px}
+  .bb-assistant .ba-icon-button,.bb-assistant .ba-send{width:44px;height:44px;min-width:44px;min-height:44px}
+  .bb-assistant .ba-attach{min-height:44px;align-items:center;padding:8px 6px}
+}

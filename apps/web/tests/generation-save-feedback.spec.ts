@@ -64,6 +64,9 @@ test('desktop selection stays immediate and editable while saves are serialized 
  await page.screenshot({path:info.outputPath('first-save-pending.png')});
  await expect(first(page)).not.toBeChecked();
  await expect(page.locator('.fg-footer')).toContainText('本批 0 份文件');
+ await expect(page.locator('#fg-confirm')).toBeDisabled();
+ await expect(page.locator('#fg-confirm')).toHaveAccessibleDescription('请至少选择一份文件。');
+ expect(state.quotes).toHaveLength(0);expect(state.submissions).toHaveLength(0);
  await expect(page.locator('#fg-controls')).toHaveJSProperty('inert',false);
  await first(page).click();await second(page).click();await first(page).click();
  await expect(first(page)).not.toBeChecked();await expect(second(page)).toBeChecked();
@@ -154,7 +157,7 @@ test('document type, year, template and requirements join the latest save snapsh
  const state=await setup(page);let release!:()=>void,calls=0;
  await page.route('**/file-generation/preparation',async route=>{if(++calls===1)await new Promise<void>(r=>release=r);return route.fallback();});
  await first(page).click();await expect.poll(()=>calls).toBe(1);
- await page.locator('#fg-more-types').click();await page.locator('[data-fg-type="annual"]').check();
+ await page.locator('[data-fg-type="annual"]').check();
  await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  await page.locator('[data-fg-general="annual"]').selectOption('private|template-annual');
  await page.locator('#fg-requirements').fill('保留合成年度要求');release();
