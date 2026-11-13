@@ -256,7 +256,7 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
   app.post(base+'/batches/:batch_id/actions',{schema:{body:WorkpaperActionSchema}},async r=>{
     const user=await owner(r),{project_id:id,batch_id:batch}=params(r),b=r.body as Static<typeof WorkpaperActionSchema>;
     await transaction(db(),async c=>{
-      await project(c,user,id,true);const row=await ownedBatch(c,user,id,batch,true);
+      const sourceProject=await project(c,user,id,true);const row=await ownedBatch(c,user,id,batch,true);
       const billing='billing_resume' in b?b:null;
       const hash=billing?inputManifestHash({project_id:id,batch_id:batch,...billing}):null;
       if(billing){
@@ -273,15 +273,17 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
         await withAutomaticBilling(c,true,()=>requireFileUpdateCredits(c,user,points,true),row.price_version);
       }
       if(['resume','retry_failed'].includes(b.action)&&(await c.query("SELECT 1 FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 AND id<>$3 AND state IN ('queued','running','paused')",[user,id,batch])).rowCount)
-        throw conflict('PROJECT_RUN_ACTIVE','本项目已有其他底稿文件包待完成，请先处理该文件包。');
+        throw Object.assign(conflict('PROJECT_RUN_ACTIVE','本项目已有其他底稿文件包待完成，请先处理该文件包。'),{workpaperConflict:'other_batch_active' as const});
       let state:string;
       if(b.action==='pause'&&['queued','running'].includes(row.state))state='paused';
       else if(b.action==='cancel'&&['queued','running','paused'].includes(row.state))state='cancelled';
       else if(b.action==='resume'&&row.state==='paused')state='queued';
       else if(b.action==='retry_failed'&&['partial','cancelled'].includes(row.state)){
         const active=(await c.query(`SELECT 1 FROM bb_workpaper_items i JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
-          WHERE i.batch_id=$1 AND NOT(r.state=ANY($2::text[]))`,[batch,terminal])).rowCount;
-        if(active)throw conflict('PROJECT_RUN_ACTIVE','请先等待当前文件完成。');
+          WHERE i.owner_user_id=$3 AND i.batch_id=$1 AND NOT(r.state=ANY($2::text[]))`,[batch,terminal,user])).rowCount;
+        if(active)throw Object.assign(conflict('PROJECT_RUN_ACTIVE','请先等待当前文件完成。'),{workpaperConflict:'current_item_active' as const});
+        try{await assertCanonicalBusinessRunIdle(c,user,sourceProject);}
+        catch(error){if(error instanceof Problem&&error.code==='PROJECT_RUN_ACTIVE')error.workpaperConflict='source_task_active';throw error;}
         await c.query(`UPDATE bb_workpaper_items i SET run_id=NULL,state='queued',attempt=attempt+1,error=NULL FROM bb_runs r
           WHERE i.batch_id=$1 AND r.id=i.run_id AND r.owner_user_id=i.owner_user_id AND r.state=ANY($2::text[])`,[batch,['failed','cancelled','rejected','test_completed']]);state='queued';
       }else throw conflict('INPUT_REVISION_CONFLICT','当前状态不支持该操作。');
