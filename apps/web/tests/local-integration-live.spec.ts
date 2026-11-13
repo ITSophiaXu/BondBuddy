@@ -38,7 +38,7 @@ test('real update: auto-name, source metadata, DOCX/PDF upload, requirements and
   await page.getByRole('radio',{name:'年末',exact:true}).check();
   await expect(page.getByLabel('原稿最新报告期年份',{exact:true})).toHaveValue('2025');
   await page.getByLabel('为审计报告（可含报表及附注）选择文件',{exact:true}).setInputFiles({name:'合成审计报告.pdf',mimeType:'application/pdf',buffer:pdfSample()});
-  await expect(page.getByText('服务器已确认保存',{exact:false})).toHaveCount(2);
+  await expect(page.getByText('上传成功',{exact:false})).toHaveCount(2);
   const note='仅供本地集成测试：合成材料；核对保存、刷新恢复和来源信息。';
   await page.getByLabel('补充募集书更新说明',{exact:true}).fill(note);
   await page.getByRole('button',{name:'保存补充说明',exact:true}).click();
@@ -51,7 +51,7 @@ test('real update: auto-name, source metadata, DOCX/PDF upload, requirements and
   await expect(page.getByLabel('原稿最新报告期年份',{exact:true})).toHaveValue('2025');
   await expect(page.getByLabel('原品种',{exact:true})).toHaveValue('private');
   await expect(page.getByText(note,{exact:true})).toBeVisible();
-  await expect(page.getByText('服务器已确认保存',{exact:false})).toHaveCount(2);
+  await expect(page.getByText('上传成功',{exact:false})).toHaveCount(2);
   await page.setViewportSize({width:1440,height:1050});
   await page.screenshot({path:join(evidence,'real-upload-desktop.png'),fullPage:true});
   await page.setViewportSize({width:390,height:844});

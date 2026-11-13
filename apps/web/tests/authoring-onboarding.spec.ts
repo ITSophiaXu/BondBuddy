@@ -396,7 +396,7 @@ test('finance-only uploads are saved but cannot start without the required refer
   expect(await chooser.element().getAttribute('data-upload-role')).toBe('audit');
   const bytes = Buffer.from('%PDF-1.7\nsynthetic finance upload boundary\n%%EOF');
   await page.locator('[data-upload-role=audit]').setInputFiles({ name: '合成财务材料.pdf', mimeType: 'application/pdf', buffer: bytes });
-  await expect(page.locator('[data-material-role=audit] .material-file-row')).toContainText('服务器已确认保存');
+  await expect(page.locator('[data-material-role=audit] .material-file-row')).toContainText('上传成功');
   await expect(page.locator('#execute-input')).toBeDisabled();
   await expect(page.locator('#start-disabled-reason')).toContainText('请先上传并采用一份历史／参考募集书');
   expect(state.materials).toHaveLength(1); expect(state.materials[0].sha256).toBe(sha256(bytes));

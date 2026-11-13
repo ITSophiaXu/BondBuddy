@@ -1,7 +1,7 @@
 import {uploadPicker,uploadPickerContent} from './upload-picker';
 import { documentDeliverable } from './document-deliverable';
 import './upload-progress.css';
-import {uploadActivity,uploadTransfer,uploadProgressHtml} from './upload-progress';
+import {uploadFinishing,uploadTransfer,uploadProgressHtml} from './upload-progress';
 import {int64} from '@bondbuddy/contracts';
 import {isAutomaticCharge} from './commerce';
 import { reviewSteps } from './review-steps';
@@ -1045,8 +1045,8 @@ export class ReviewWorkspace {
   }
   private uploadProgressHtml(key:string,row:UploadRow){
     const progress=this.uploadProgress.get(key)??{percent:row.material?100:0,phase:row.material?'saving':'queued'};
-    const label=row.error?'上传未完成':!this.uploading&&row.envelopeId?'上传已暂停':progress.phase==='saving'?'正在保存':progress.phase==='queued'?'等待上传':'正在上传';
-    return `<div class="review-file-progress">${uploadProgressHtml(progress.phase==='saving'?uploadActivity('文件传输完成，正在保存…'):{...uploadTransfer(progress.percent,100),message:label},row.name,{error:row.error?row.state:undefined,paused:!this.uploading&&!!row.envelopeId})}</div>`;
+    const label=row.error?'上传未完成':!this.uploading&&row.envelopeId?'上传已暂停':progress.phase==='queued'?'等待上传':'正在上传文件…';
+    return `<div class="review-file-progress">${uploadProgressHtml(progress.phase==='saving'?uploadFinishing(label):{...uploadTransfer(progress.percent,100),message:label},row.name,{error:row.error?row.state:undefined,paused:!this.uploading&&!!row.envelopeId})}</div>`;
   }
   private uploadRowHtml(key:string,row:UploadRow){
     const envelope=row.envelopeId?this.recoveryEnvelopes.find(e=>e.id===row.envelopeId):undefined,item=envelope?.items[row.itemIndex??0];

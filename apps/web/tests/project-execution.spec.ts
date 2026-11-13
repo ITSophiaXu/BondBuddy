@@ -298,7 +298,7 @@ test('all selected uploads must finish and be saved before starting an update', 
     await start.dispatchEvent('click');
     expect(state.inputs).toHaveLength(0);expect(state.executes).toHaveLength(0);
     completions.get(file.name)!();
-    await expect(page.locator('.material-file-row').filter({hasText:file.name})).toContainText('服务器已确认保存');
+    await expect(page.locator('.material-file-row').filter({hasText:file.name})).toContainText('上传成功');
     if(file!==files.at(-1))await expect(start).toBeDisabled();
   }
   await expect(start).toBeEnabled();
@@ -1480,7 +1480,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({name:'lost.pdf', mimeType:'application/pdf', buffer:Buffer.from('%PDF synthetic lost acknowledgement')});
     const row = page.locator('.material-file-row').filter({hasText:'lost.pdf'});
     await expect(row).toHaveCount(1);
-    await expect(row).toContainText('服务器已确认保存');
+    await expect(row).toContainText('上传成功');
     await expect(page.locator('[data-processing-key]')).toHaveCount(0);
     await expect(page.getByText('处理状态不可用', {exact:true})).toHaveCount(0);
     await expect(page.getByRole('button',{name:'开始更新',exact:true})).toBeEnabled();
@@ -1561,9 +1561,9 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     await page.getByLabel('为审计报告（可含报表及附注）选择文件').setInputFiles({ name: '合成财务材料.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF synthetic financial') });
     const financial = page.locator('.material-file-row').filter({ hasText: '合成财务材料.pdf' });
     await expect(financial.getByRole('button', { name: '重试此文件' })).toBeVisible();
-    await expect(history).toContainText('服务器已确认保存');
+    await expect(history).toContainText('上传成功');
     await financial.getByRole('button', { name: '重试此文件' }).click();
-    await expect(financial).toContainText('服务器已确认保存');
+    await expect(financial).toContainText('上传成功');
     completed = true;
     await page.getByRole('button', { name: '刷新已保存材料' }).click();
     await expect(page.locator('.processing-title')).toHaveText(['处理完成', '处理完成']);
@@ -1652,7 +1652,7 @@ for (const scenario of [
       upload_url: `/api/v1/projects/${id}/materials/uploads/synthetic-supplement-upload/bytes`, expires_at: '2099-01-01T00:00:00Z', max_bytes: 100_000_000 });
   });
   await picker.setInputFiles({ name: 'supplement.txt', mimeType: 'text/plain', buffer: Buffer.from('synthetic supplementary material') });
-  await expect(page.locator('.material-file-row').filter({ hasText: 'supplement.txt' })).toContainText('服务器已确认保存');
+  await expect(page.locator('.material-file-row').filter({ hasText: 'supplement.txt' })).toContainText('上传成功');
   await expect(page.locator('#workspace-material-count')).toHaveText('3 份已保存材料');
   await expect(page.locator('#material-recovery-status')).toContainText('已保存 3 份材料');
   await expect(page.locator('#execute-input')).toBeEnabled();
@@ -1776,7 +1776,7 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
   await expect.poll(()=>state.project.update_details!.source_prospectuses).toEqual([]);
   await restoreLegacySource('误传募集书.pdf');
   const wrong = page.locator('.material-file-row').filter({hasText:'误传募集书.pdf'});
-  await expect(wrong).toContainText('服务器已确认保存');
+  await expect(wrong).toContainText('上传成功');
   await wrong.locator('[data-source-field="relation"]').selectOption('parent');
   await expect.poll(()=>state.project.update_details!.source_prospectuses?.[0]?.relation).toBe('parent');
   if (reloadBeforeDelete) { await page.reload(); await continueAuthoring(page); }
@@ -1791,7 +1791,7 @@ for (const reloadBeforeDelete of [false, true]) test(`replace mistaken historica
   await expect.poll(()=>state.project.update_details!.source_prospectuses).toEqual([]);
   await restoreLegacySource('正确募集书.pdf');
   const correct = page.locator('.material-file-row').filter({hasText:'正确募集书.pdf'});
-  await expect(correct).toContainText('服务器已确认保存');
+  await expect(correct).toContainText('上传成功');
   await expect(correct.locator('[data-source-field="issuer_name"]')).toHaveCount(0);
   await expect(correct.locator('[data-source-field="relation"]')).toHaveValue('');
   await correct.locator('[data-source-field="relation"]').selectOption('same_issuer');

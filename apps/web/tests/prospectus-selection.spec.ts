@@ -144,7 +144,7 @@ async function chooseNew(page:Page){
   await page.locator(`[data-use-version="${newVersion.version_id}"]`).click();
   await expect(page.locator('dialog[open]')).toBeVisible();
 }
-const savedStatus=(page:Page)=>expect(page.locator('#prospectus-status')).toContainText(/已保存并自动采用/);
+const savedStatus=(page:Page)=>expect(page.locator('#prospectus-status')).toContainText(/上传成功，已自动采用/);
 
 test('upload acknowledges server adoption once, preserves the old version and refreshes its parent',async({page})=>{
   const f=await fixture(page);
@@ -188,14 +188,14 @@ test('a later adoption shows its target and effect, can be cancelled, and only s
 
 test('a temporary completion failure retries the saved upload session without retransmitting bytes',async({page})=>{
   const f=await fixture(page,{failCompleteOnce:true});
-  await upload(page);await expect(page.locator('#prospectus-status')).toContainText(/已保存并自动采用/,{timeout:15000});
+  await upload(page);await expect(page.locator('#prospectus-status')).toContainText(/上传成功，已自动采用/,{timeout:15000});
   expect(f.counts()).toMatchObject({puts:1,completions:2});
   expect(f.counts().puts).toBe(1);expect(f.declarations).toHaveLength(1);expect(f.selections).toHaveLength(0);
 });
 
 test('a lost completion receipt reconciles the same session without a second byte transfer',async({page})=>{
   const f=await fixture(page,{dropCompleteOnce:true});
-  await upload(page);await expect(page.locator('#prospectus-status')).toContainText(/已保存并自动采用/,{timeout:15000});
+  await upload(page);await expect(page.locator('#prospectus-status')).toContainText(/上传成功，已自动采用/,{timeout:15000});
   expect(f.state.versions.some(v=>v.version_id===newVersion.version_id)).toBe(true);
   expect(await f.unconfirmed()).toBe(false);
   expect(f.counts().puts).toBe(1);expect(f.counts().completions).toBe(2);expect(f.declarations).toHaveLength(1);

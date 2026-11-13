@@ -69,7 +69,7 @@ export class ProjectFiles {
   get hasUnconfirmed(){return !this.disposed&&(this.uploading||!!this.pendingImport?.uncertain||!!this.panel?.hasUnconfirmed);}
   async beforeLeave(){
     if(!this.hasUnconfirmed)return true;
-    const message=this.uploading||this.panel?.busy?'正在上传、保存或确认采用，请等待本次操作确认后再离开。':this.pendingImport?.uncertain?'关联文件保存结果尚未确认。请先重试保存，或关闭窗口后点击“继续确认关联文件”，确认后再离开。':'本次上传或采用结果尚未确认。请先在募集书版本中重试确认，再离开。';
+    const message=this.uploading||this.panel?.busy?'本次操作进行中，请等待完成后再离开。':this.pendingImport?.uncertain?'关联文件保存结果尚未确认。请先重试保存，或关闭窗口后点击“继续确认关联文件”，确认后再离开。':'本次上传或采用结果尚未确认。请先在募集书版本中重试确认，再离开。';
     this.status(message);
     for(const status of [this.dialog?.querySelector('[role=status]'),document.querySelector('#pw-prospectus [role=status]'),document.querySelector('dialog[open] [role=status]')])if(status)status.textContent=message;
     return false;
@@ -562,7 +562,7 @@ export class ProjectFiles {
     d.querySelector('form')!.addEventListener('submit',e=>{e.preventDefault();if(this.uploading||targetConflict)return;
       const select=d.querySelector<HTMLSelectElement>('[name=type]')!,selected=select.value;
       if(!PROJECT_DOCUMENT_CATALOG.some(c=>c.id===selected)){status('请选择有效的文件类型，再保存项目文件。所选文件仍保留。');select.focus();return;}
-      this.uploading=true;uploadFailed=false;controls();status('正在上传并保存文件…');let confirmed=false;
+      this.uploading=true;uploadFailed=false;controls();status('正在上传文件…');let confirmed=false;
       void(async()=>{const file=d.querySelector<HTMLInputElement>('[name=file]')!.files![0],type=selected as ProjectDocumentType;
         if(!file&&!this.pendingImport||file&&!/[.](docx|pdf)$/i.test(file.name))throw new UserFacingError('请选择 DOCX 或 PDF。');
         if(file&&(!file.size||file.size>M1_UPLOAD_LIMITS.fileBytes))throw new UserFacingError('请上传不超过 100 MB 的 DOCX 或 PDF 文件。');

@@ -81,7 +81,7 @@ for(const width of [1440,390])test(`prospectus recovery respects an unselected s
   await expect(page.locator('[data-resume-prospectus]')).toBeVisible();expect(s.puts).toBe(1);const count=s.calls.filter(c=>c.method!=='GET').length;
   await mount(page,'panel',true);expect(s.calls.filter(c=>c.method!=='GET')).toHaveLength(count);await capture(page,`panel-recovery-${width}`);await page.locator('[data-resume-prospectus]').click();
   // This fixture deliberately returns current_version_id=null after saving; recovery must not invent adoption.
-  await expect(page.locator('#prospectus-status')).toContainText('文件已保存，当前原稿随后已更新，请查看当前版本。');
+  await expect(page.locator('#prospectus-status')).toContainText('上传成功，当前原稿随后已更新，请查看当前版本。');
   await expect(page.locator('[data-prospectus-selection-state]')).toHaveText('未选用');
   expect(s.puts).toBe(1);expect(s.sessions.size).toBe(1);expect(s.versions).toHaveLength(1);noBusiness(s.calls);expect(s.unexpected).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

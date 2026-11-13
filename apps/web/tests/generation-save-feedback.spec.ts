@@ -1,8 +1,9 @@
 import {test,expect,type Page,type Route} from '@playwright/test';
-import {fixture,href,ids,sha,now} from './generation-entry-fixtures';
+import {fixture,href,ids,sha,now,file} from './generation-entry-fixtures';
 import {fixtureBody,fixtureRequest} from './billing-fixture-wire';
 import {AUTOMATIC_PRICE_VERSION,emptyFileGenerationPreparation,type FileGenerationWorkspace,type WorkpaperCatalogue} from '@bondbuddy/contracts';
 import {resolve} from 'node:path';
+import {hold} from './upload-progress-fixtures';
 
 // Real desktop controls and production component; identity, HTTP and catalogue
 // are synthetic. No model, payment provider or account ledger is exercised.
@@ -51,6 +52,34 @@ async function setup(page:Page,active=false){
 const first=(page:Page)=>page.locator('[data-fg-item="entry-1"]');
 const second=(page:Page)=>page.locator('[data-fg-item="entry-2"]');
 test.use({viewport:{width:1440,height:960}});
+
+for(const kind of ['support','catalogue'] as const)for(const fails of [false,true])test(`unified upload hides ${kind} recovery during progress and restores it only after failure=${fails}`,async({page})=>{
+ const state=await setup(page);let failing=fails;
+ await page.route('**/materials/uploads/*/complete',route=>failing?route.fulfill({status:422,json:{code:'MATERIAL_UNREADABLE',retryable:false}}):route.fallback());
+ await page.route('**/workpapers/catalogue-preview',route=>route.fulfill({json:{filename:'合成上传目录.xlsx',entries:catalogue.entries,warnings:[],needs_review:false,mapping:[{sheet:'尽职调查文件',first_row:2,last_row:3,title_column:1,code_column:0,folder_columns:[],instruction_columns:[],split_code:false}],sheets:[{name:'尽职调查文件',last_row:3,columns:[{index:0,label:'A',sample:'1 / 2'},{index:1,label:'B',sample:'基本情况核查记录 / 关联方情况说明'}],sample_rows:[{row:2,cells:['1','基本情况核查记录']},{row:3,cells:['2','关联方情况说明']}]}],unrecognized_rows:[],unrecognized_count:0}}));
+ await hold(page);
+ const selected=kind==='support'?file:{name:'合成上传目录.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from('synthetic catalogue bytes')};
+ await page.locator(kind==='support'?'#fg-support':'#fg-catalogue-upload').setInputFiles(selected);
+ const bar=page.locator('.fg-upload-progress progress');
+ await expect(bar).toHaveAttribute('value','36');
+ const noRecovery=async()=>{
+  await expect(page.locator('[data-resume],[data-fg-resume]')).toHaveCount(0);
+  expect(await page.locator('.fg-preparation').innerText()).not.toMatch(/上传待确认|确认保存|继续保存|上次目录上传/);
+ };
+ await noRecovery();await page.evaluate(()=>(window as any).releaseBytes());
+ await expect(bar).toHaveAttribute('value','90');await expect(bar).toHaveAttribute('aria-valuetext','正在上传文件… 90%');await noRecovery();
+ await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseSave)).toBe('function');await page.evaluate(()=>(window as any).releaseSave());
+ if(fails){
+  const retry=page.locator(kind==='support'?'[data-resume]':'[data-fg-resume]');await expect(retry).toBeVisible();await expect(retry).toBeEnabled();
+  await expect(page.locator('.fg-status')).not.toContainText('上传成功');
+  failing=false;await page.evaluate(()=>{delete (window as any).releaseSave;});await retry.click();
+  await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseSave)).toBe('function');await page.evaluate(()=>(window as any).releaseSave());
+ }
+ await expect(bar).toHaveCount(0);
+ if(kind==='support'){await expect(page.locator('.fg-status')).toContainText('上传成功');expect(state.data.preparation.materials).toHaveLength(1);}
+ else await expect(page.locator('#fg-import-review')).toContainText('基本情况核查记录');
+ expect(state.transport.puts).toBe(1);expect(state.quotes).toEqual([]);expect(state.submissions).toEqual([]);
+});
 
 test('desktop selection stays immediate and editable while saves are serialized and merged',async({page},info)=>{
  const state=await setup(page),held:{body:Save;release:()=>void}[]=[];

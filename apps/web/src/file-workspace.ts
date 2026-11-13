@@ -1,6 +1,6 @@
 import {uploadPicker} from './upload-picker';
 import './upload-progress.css';
-import {uploadActivity,uploadTransfer,uploadProgressHtml,type FileUploadProgress,type UploadStatus} from './upload-progress';
+import {uploadActivity,uploadFinishing,uploadTransfer,uploadProgressHtml,type FileUploadProgress,type UploadStatus} from './upload-progress';
 import {billingRecoveryHeaders} from './billing-recovery-wire.js';
 import {int64,formatPoints} from '@bondbuddy/contracts';
 import {isOutcomePriceVersion} from './billing-types.js';
@@ -62,11 +62,11 @@ type GenerationUploadContext={
 const uploadJson=(value:unknown):UploadRecoveryJson=>JSON.parse(JSON.stringify(value)) as UploadRecoveryJson;
 const canonical=(value:unknown):string=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
 export async function uploadFileMaterial(api:ApiClient,id:string,file:File|undefined,signal:AbortSignal,status:UploadStatus=()=>{},state:UploadFileMaterialState={},owner='',purpose='file-material',context?:UploadRecoveryJson,current:()=>boolean=()=>true):Promise<M4MaterialPin>{
-  const report=(p:FileUploadProgress)=>{state.progress=p;status(p.message,p);};
+  const report=(p:FileUploadProgress)=>{state.progress=p;status("正在上传文件…",p);};
   report(uploadActivity());
   const recovery=await prepareFileMaterial(api,id,file,signal,state,owner,purpose,context,current);
-  const m=state.material=await recovery.resume(state.operationId!,{file:state.file,signal,status:s=>report(uploadActivity(s)),progress:(loaded,total)=>report(uploadTransfer(loaded,total))});
-  report(uploadActivity("文件已保存，正在完成后续处理…"));
+  const m=state.material=await recovery.resume(state.operationId!,{file:state.file,signal,status:s=>report(uploadActivity(s,state.progress)),progress:(loaded,total)=>report(uploadTransfer(loaded,total))});
+  report(uploadFinishing());
   signal.throwIfAborted();
   return {source_project_id:id,material_id:m.material_id,material_version:m.material_version,sha256:m.sha256};
 }
@@ -453,7 +453,7 @@ export class FileWorkspace {
     const record=recovery.list().find(r=>r.id===id);if(!record)throw new UserFacingError('原上传记录已变化，请重新读取。');
     let context=this.generationContext(record);
     if(context.kind==='template'&&file&&!file.name.toLowerCase().endsWith('.docx'))throw new UserFacingError('历史文件 / 模板请选择原 DOCX。');
-    const report:UploadStatus=(s,p)=>{status(s);if(!this.live())return;const host=this.dialog?.open?this.dialog.querySelector('#pf-modal-status'):document.querySelector(purpose==='generation-template'?'#pf-status':'#pf-support-feedback')??document.querySelector('#pf-status');if(host)host.innerHTML='<strong>'+esc(record.declaration.filename)+'</strong>'+uploadProgressHtml(p??uploadActivity(s),record.declaration.filename,{announce:false});};
+    const report:UploadStatus=(s,p)=>{status("正在上传文件…");if(!this.live())return;const host=this.dialog?.open?this.dialog.querySelector('#pf-modal-status'):document.querySelector(purpose==='generation-template'?'#pf-status':'#pf-support-feedback')??document.querySelector('#pf-status');if(host)host.innerHTML='<strong>'+esc(record.declaration.filename)+'</strong>'+uploadProgressHtml(p??uploadActivity(s,state.progress),record.declaration.filename,{announce:false});};
     const pin=await uploadFileMaterial(this.api,this.id!,file,this.controller.signal,report,state,this.owner,purpose,undefined,()=>this.live()).catch(error=>{if(error instanceof UploadRecoveryNeedsFileError)this.reselectUploads.add(id);throw error;});this.reselectUploads.delete(id);
     this.state=await this.request<Workspace>('GET','/workspace');
     if(this.state.workspace.topic.topic_id!==context.topic)throw new UserFacingError('原资料所属工作区已变化，请保留原记录并核对。');

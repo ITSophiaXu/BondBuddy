@@ -108,7 +108,7 @@ test('real local API saves the selected material and cutoff, then recovers the s
     const uploadResponse = await uploadComplete;
     expect(uploadResponse.status()).toBe(200);
     const material = await uploadResponse.json() as { material_id: string; material_version: number };
-    await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-audit.pdf' })).toContainText('服务器已确认保存 · 材料版本 1');
+    await expect(page.locator('.material-file-row').filter({ hasText: 'synthetic-audit.pdf' })).toContainText('上传成功');
 
     const savingInput = page.waitForResponse(response => response.url().includes(`/projects/${projectId}/input-revisions`) &&
       response.request().method() === 'POST');
@@ -178,7 +178,7 @@ test('real local API saves the selected material and cutoff, then recovers the s
     await expect(reopened.getByRole('heading', { name: projectName, exact: true })).toBeVisible();
     await expect(reopened.locator('#execution-progress')).toContainText(`使用材料版本 ${input.input_revision}`);
     const recoveredMaterial = reopened.locator('.material-file-row').filter({ hasText: 'synthetic-audit.pdf' });
-    await expect(recoveredMaterial).toContainText('服务器已确认保存');
+    await expect(recoveredMaterial).toContainText('上传成功');
     await expect(recoveredMaterial).toContainText('版本 1');
     await expect(reopened.locator('#execution-progress')).toContainText('任务已暂停');
     await expect(reopened.locator('#execution-progress')).toContainText('所需处理能力尚未就绪');

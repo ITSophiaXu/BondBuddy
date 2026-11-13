@@ -35,8 +35,8 @@ test('expired lost-body recovery reselects once, keeps its old ID and survives r
   expect(calls(state, 'create')).toHaveLength(2); expect(calls(state, 'put')).toHaveLength(2);
   expect(latestUpload(state).id).not.toBe(original); expect(state.uploads.get(original)?.state).toBe('uploading');
   const savedId = [...state.materials.keys()][0]; await page.reload();
-  await expect(page.locator('.material-file-row')).toContainText(['服务器已确认保存']);
+  await expect(page.locator('.material-file-row')).toContainText(['上传成功']);
   await page.close(); const reopened = await context.newPage(); await reopened.clock.install({ time: new Date(state.clock) });
-  await setup(reopened, state); await expect(reopened.locator('.material-file-row')).toContainText(['服务器已确认保存']);
+  await setup(reopened, state); await expect(reopened.locator('.material-file-row')).toContainText(['上传成功']);
   expect([...state.materials.keys()]).toEqual([savedId]); expect(calls(state, 'create')).toHaveLength(2); expect(calls(state, 'put')).toHaveLength(2); assertFixture(reopened);
 });

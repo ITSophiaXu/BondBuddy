@@ -1,6 +1,6 @@
 import {uploadPickerContent} from './upload-picker';
 import './upload-progress.css';
-import {uploadActivity,uploadTransfer,uploadProgressHtml,type FileUploadProgress} from './upload-progress';
+import {uploadActivity,uploadFinishing,uploadTransfer,uploadProgressHtml,type FileUploadProgress} from './upload-progress';
 import { PROSPECTUS_DOCX_ONLY_MESSAGE, M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, requiresProspectusSelection, PROSPECTUS_SELECTION_REQUIRED_MESSAGE, type ProspectusVersions } from '@bondbuddy/contracts';
 import { ApiClient, friendlyError, ApiError } from './api';
 import { UserFacingError } from './user-facing-error';
@@ -218,7 +218,7 @@ export class ProspectusPanel {
     if(input.files?.[0]){
       const file=input.files[0],preview=document.createElement('div');
       preview.className='prospectus-selected-file';
-      preview.innerHTML=`<span class="prospectus-file-icon">${icon('file')}</span><div class="prospectus-file-info"><span class="prospectus-upload-label">正在准备上传</span><strong>${esc(file.name)}</strong><small>${this.fileSize(file.size)} · ${this.purpose==='qa'?'上传成功后自动用于本轮问答':'保存后可明确采用，已有版本保留'}</small></div><button type="button" class="bb-upload-action text-button" id="cancel-prospectus-version">取消</button><button type="button" class="text-button" id="replace-prospectus-version">重新选择</button>`;
+      preview.innerHTML=`<span class="prospectus-file-icon">${icon('file')}</span><div class="prospectus-file-info"><span class="prospectus-upload-label">正在准备上传</span><strong>${esc(file.name)}</strong><small>${this.fileSize(file.size)} · ${this.purpose==='qa'?'上传成功后自动用于本轮问答':this.purpose==='update'?'上传成功后自动采用为原稿，已有版本保留':'上传成功后可采用此版，已有版本保留'}</small></div><button type="button" class="bb-upload-action text-button" id="cancel-prospectus-version">取消</button><button type="button" class="text-button" id="replace-prospectus-version">重新选择</button>`;
       input.before(preview);
       preview.querySelector('#replace-prospectus-version')!.addEventListener('click',choose);
       preview.querySelector('#cancel-prospectus-version')!.addEventListener('click',()=>{if(this.busy||this.pendingUpload)return;input.value='';this.render();this.host.querySelector<HTMLElement>('#choose-prospectus-version')?.focus();});
@@ -324,7 +324,7 @@ export class ProspectusPanel {
   private status(s:string,error=false,progress?:FileUploadProgress){
     if(this.controller.signal.aborted)return;
     this.message=s;
-    if(this.uploadProgress){this.uploadProgress=progress??uploadActivity(s);this.uploadProgressError=error?s:undefined;this.paintUploadProgress();}
+    if(this.uploadProgress){this.uploadProgress=progress??uploadActivity(s,this.uploadProgress);this.uploadProgressError=error?s:undefined;this.paintUploadProgress();}
     const panelStatus=this.host.querySelector<HTMLElement>('#prospectus-status');if(panelStatus){panelStatus.textContent=s;panelStatus.dataset.tone=error?'error':'info';panelStatus.setAttribute('role',error?'alert':'status');}
     const dialogStatus=this.dialog?.querySelector('[role="status"]');if(dialogStatus)dialogStatus.textContent=s;
   }
@@ -496,7 +496,7 @@ export class ProspectusPanel {
         this.render();
         throw e;
       }
-      this.status('文件已保存，正在读取版本记录…');
+      this.status('正在上传文件…',false,uploadFinishing());
       try{
         const state=await this.api.prospectusVersions(this.id,this.controller.signal);
         this.controller.signal.throwIfAborted();
@@ -504,7 +504,7 @@ export class ProspectusPanel {
         if(!saved)throw new UserFacingError('募集书版本尚未确认。');
         await recovery.forget(id);
         this.state=state;uploadedVersionId=saved.version_id;this.savedVersionId=saved.version_id;this.ignoredSavedVersions.delete(saved.version_id);this.pendingUpload=undefined;this.generationNeedsFile=false;this.uploadProgress=undefined;this.uploadProgressError=undefined;this.render(false);
-        this.status(this.purpose==='qa'?'文件已保存，正在用于本轮问答…':this.purpose==='update'?(state.current_version_id===saved.version_id?`已保存并自动采用 V${saved.sequence} · ${saved.filename}，将在原文基础上修改。`:'文件已保存，当前原稿随后已更新，请查看当前版本。'):['generation','qa'].includes(this.purpose)&&state.current_version_id!==saved.version_id?'':state.current_version_id===saved.version_id?`文件已保存，与当前采用的 V${saved.sequence} 相同，当前选择保持不变。`:`已保存 V${saved.sequence} · ${saved.filename}，尚未采用。${['generation','qa'].includes(this.purpose)?'点击“使用此版继续”准备文件。':'请查看后选择“采用此版”；当前稿保持不变。'}`);
+        this.status(this.purpose==='qa'?'上传成功，正在用于本轮问答…':this.purpose==='update'?(state.current_version_id===saved.version_id?`上传成功，已自动采用 V${saved.sequence} · ${saved.filename}，将在原文基础上修改。`:'上传成功，当前原稿随后已更新，请查看当前版本。'):['generation','qa'].includes(this.purpose)&&state.current_version_id!==saved.version_id?'':state.current_version_id===saved.version_id?`上传成功，与当前采用的 V${saved.sequence} 相同，当前选择保持不变。`:`上传成功 V${saved.sequence} · ${saved.filename}，尚未采用。${['generation','qa'].includes(this.purpose)?'点击“使用此版继续”准备文件。':'请查看后选择“采用此版”；当前稿保持不变。'}`);
       }catch{
         pending.uncertain=true;
         this.controller.signal.throwIfAborted();

@@ -31,7 +31,7 @@ test('real model: browser upload, queued authoring, durable success and both Wor
  await page.getByLabel('原品种',{exact:true}).selectOption('private');
  await page.getByLabel('原稿最新报告期年份',{exact:true}).selectOption('2025');
  await page.getByRole('radio',{name:'年末',exact:true}).check();
- await expect(page.getByText('服务器已确认保存',{exact:false})).toHaveCount(1);
+ await expect(page.getByText('上传成功',{exact:false})).toHaveCount(1);
  const note='仅用于本地生成链路验收。本轮范围只对这份合成原稿做最小修订：将报告期由2025年度改为2026年6月末，保留原文的合成测试和资料缺失声明，不扩写完整募集书章节，不虚构财务数据或发行条款。请交付修订版和清洁版Word，各保留一段简短说明即可。';
  await page.getByLabel('补充募集书更新说明',{exact:true}).fill(note);
  await page.getByRole('button',{name:'保存补充说明',exact:true}).click();

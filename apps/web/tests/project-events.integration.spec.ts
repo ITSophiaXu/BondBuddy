@@ -38,7 +38,7 @@ test('real PostgreSQL/Azurite material survives browser close and same-account r
   const completion = await completed;
   expect(completion.status()).toBe(200);
   const materialId = (await completion.json()).material_id as string;
-  await expect(page.locator('.material-file-row').filter({ hasText: 'real-api-recovery.pdf' })).toContainText('服务器已确认保存');
+  await expect(page.locator('.material-file-row').filter({ hasText: 'real-api-recovery.pdf' })).toContainText('上传成功');
 
   const browser = page.context().browser();
   if (!browser) throw new Error('Playwright browser is unavailable');

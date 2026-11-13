@@ -7,6 +7,7 @@ import {Value} from '@sinclair/typebox/value';
 import type {Dto} from '../src/api';
 import {isDateTime} from '../src/schema-formats';
 import {FormatRegistry} from '@sinclair/typebox';
+import {hold} from './upload-progress-fixtures';
 test.beforeEach(() => { FormatRegistry.Set('date-time',isDateTime); });
 
 const prototypeRoot='/@fs/'+fileURLToPath(new URL('../../../product-prototype/public/',import.meta.url)).replaceAll('\\','/');
@@ -17,10 +18,10 @@ const version=(sequence:number):ProspectusVersion=>({version_id:'v'+sequence,seq
 function checked<K extends keyof typeof schemas>(name:K,value:unknown){expect([...Value.Errors(schemas[name],value)].map(e=>({path:e.path,message:e.message})),name).toEqual([]);}
 async function reply<K extends keyof typeof schemas>(route:Route,name:K,value:Dto<K>,status=200){checked(name,value);return route.fulfill({status,json:value});}
 // Real component and ApiClient; synthetic bytes, owners and receipts, without model/storage/billing.
-async function setup(page:Page,{versions=false,purpose='update',retry=false,docxOnly=false}={}){
+async function setup(page:Page,{versions=false,purpose='update',retry=false,dropAttempts=1,docxOnly=false}={}){
   const state:ProspectusVersions={project_id:project,upload_docx_only:docxOnly,selection_revision:versions?2:0,current_version_id:versions?'v2':null,versions:versions?[version(2),version(1)]:[],inactive_material_ids:[]};
   const calls:{method:string;path:string;body:any}[]=[],sessions=new Map<string,{input:Dto<'UploadCreateRequest'>;received:boolean;material?:Dto<'MaterialResponse'>}>();
-  let dropComplete=retry;
+  let droppedCompletions=retry?dropAttempts:0;
   await page.route('**/api/v1/**',async route=>{
     const request=route.request(),path=new URL(request.url()).pathname,method=request.method();
     const body=method==='POST'?request.postDataJSON():null;calls.push({method,path,body});
@@ -49,7 +50,7 @@ async function setup(page:Page,{versions=false,purpose='update',retry=false,docx
         checked('UploadCompleteRequest',body);expect(body).toEqual({sha256:session.input.sha256,byte_size:session.input.byte_size});expect(session.received).toBe(true);
         if(!session.material){session.material={material_id:'material-3',material_version:1,upload_id:transfer[1],role:'historical',filename:session.input.filename,media_type:session.input.media_type,byte_size:session.input.byte_size,sha256:session.input.sha256,state:'persisted',persisted_at:now,error:null};
           state.versions.unshift({...version(1),version_id:'v3',sequence:3,filename:session.input.filename,material_id:'material-3'});if(purpose==='update'){state.current_version_id='v3';state.selection_revision++;}}
-        if(dropComplete){dropComplete=false;return route.abort('connectionreset');}
+        if(droppedCompletions>0){droppedCompletions--;return route.abort('connectionreset');}
         return reply(route,'MaterialResponse',session.material);
       }
     }
@@ -169,6 +170,42 @@ test('reference drops reject invalid files and suppress a second upload while sa
 
 async function selectFile(page:Page,name='合成新稿.docx'){const chooser=page.waitForEvent('filechooser'),replace=page.locator('#replace-prospectus-version');await(await replace.isVisible()?replace:page.locator('#choose-prospectus-version')).click();await(await chooser).setFiles({name,mimeType:name.endsWith('.txt')?'text/plain':mime,buffer:bytes});}
 
+for(const width of [1440,390])test('reference upload keeps one progress until server completion and version readback at '+width,async({page})=>{
+  await page.setViewportSize({width,height:960});const f=await setup(page);await hold(page);
+  let releaseVersions:undefined|(()=>void);
+  await page.route('**/prospectus-versions',async route=>{
+    if(route.request().method()==='GET'&&f.state.versions.length)await new Promise<void>(resolve=>{releaseVersions=resolve;});
+    return route.fallback();
+  });
+  await selectFile(page,'合成统一上传进度.docx');
+  const bar=page.locator('[data-file-upload-progress] progress'),panel=page.locator('.prospectus-panel');
+  await expect(bar).toHaveCount(1);await expect(bar).toHaveAttribute('value','36');
+  await expect(bar).toHaveAttribute('aria-valuetext','正在上传文件… 36%');
+  await page.evaluate(()=>(window as any).releaseBytes());
+  await expect(bar).toHaveAttribute('value','90');
+  await expect(bar).toHaveAttribute('aria-valuetext','正在上传文件… 90%');
+  expect((await panel.locator('.prospectus-selected-file .prospectus-file-info').boundingBox())!.width).toBeGreaterThan(150);
+  expect(await panel.innerText()).not.toMatch(/确认材料保存|确认保存|正在保存|保存后可明确采用|100%/);
+  await expect(panel.locator('[role="status"]:visible')).not.toContainText('上传成功');
+  expect(f.state.versions).toEqual([]);expect(f.state.current_version_id).toBeNull();
+  await mkdir('test-evidence/all-upload-progress',{recursive:true});
+  await page.screenshot({path:`test-evidence/all-upload-progress/reference-pending-${width}.png`});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseSave)).toBe('function');
+  await page.evaluate(()=>(window as any).releaseSave());
+  await expect.poll(()=>typeof releaseVersions).toBe('function');
+  await expect(bar).toHaveCount(1);await expect(bar).toHaveAttribute('value','90');
+  expect(await panel.innerText()).not.toMatch(/确认保存|正在读取版本|100%/);
+  await expect(panel.locator('[role="status"]:visible')).not.toContainText('上传成功');
+  releaseVersions!();
+  await expect(page.locator('#prospectus-status')).toContainText('上传成功');
+  await expect(page.locator('.reference-file.is-selected')).toContainText('合成统一上传进度.docx');
+  await expect(bar).toHaveCount(0);
+  await page.screenshot({path:`test-evidence/all-upload-progress/reference-success-${width}.png`});
+  expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);
+  expect(f.calls.filter(c=>/runs|authoring|wallet/.test(c.path))).toEqual([]);
+});
+
 for(const purpose of ['update','project','generation','qa'])test(purpose+' enforces the owning update project Word-only policy',async({page})=>{
   const f=await setup(page,{purpose,docxOnly:true});
   await expect(page.locator('#prospectus-version-file')).toHaveAttribute('accept','.docx');
@@ -201,7 +238,7 @@ for(const purpose of ['update','consistency'])test(purpose+' uploads a corrected
   const f=await setup(page,{purpose});await selectFile(page,'错误.txt');await page.evaluate(()=>window.panelFixture.refresh());await expect(page.getByRole('alert')).toContainText(purpose==='update'?'仅支持 Word':'请上传不超过 100 MB');expect(f.calls.filter(c=>c.method!=='GET')).toEqual([]);
   await expect(page.getByRole('button',{name:'上传并保存',exact:true})).toHaveCount(0);
   const chooser=page.waitForEvent('filechooser');await page.getByRole('button',{name:'重新选择',exact:true}).click();await(await chooser).setFiles({name:'合成新稿.docx',mimeType:mime,buffer:bytes});
-  await expect(page.locator('#prospectus-status')).toContainText(purpose==='update'?/已保存并自动采用/:/已保存.*尚未采用/);await page.evaluate(()=>window.panelFixture.refresh());
+  await expect(page.locator('#prospectus-status')).toContainText(purpose==='update'?/上传成功，已自动采用/:/上传成功.*尚未采用/);await page.evaluate(()=>window.panelFixture.refresh());
   expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.state.current_version_id).toBe(purpose==='update'?'v3':null);await expect(page.locator('#save-prospectus-version')).toBeHidden();
   expect(await page.evaluate(()=>window.panelFixture.sourceSelectionMessage())).toBe('');
   if(process.env.BB_UPLOAD_EVIDENCE){await mkdir(process.env.BB_UPLOAD_EVIDENCE,{recursive:true});for(const width of [1440,390]){await page.setViewportSize({width,height:960});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.locator('.prospectus-panel').screenshot({path:`${process.env.BB_UPLOAD_EVIDENCE}/${purpose}-uploaded-${width}.png`});}}
@@ -210,13 +247,17 @@ for(const purpose of ['update','consistency'])test(purpose+' uploads a corrected
 for(const purpose of ['update','consistency'])test(purpose+' drops one file and ignores a second selection event while uploading',async({page})=>{
   const f=await setup(page,{purpose});
   await page.evaluate(bytes=>{const input=document.querySelector<HTMLInputElement>('#prospectus-version-file')!,data=new DataTransfer();data.items.add(new File([new Uint8Array(bytes)],'拖入募集书.docx',{type:'application/pdf'}));document.querySelector('.prospectus-upload-editor')!.dispatchEvent(new DragEvent('drop',{bubbles:true,dataTransfer:data}));input.dispatchEvent(new Event('change',{bubbles:true}));},[...bytes]);
-  await expect(page.locator('#prospectus-status')).toContainText(purpose==='update'?/已保存并自动采用/:/已保存.*尚未采用/);expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.calls.filter(c=>c.path.endsWith('/materials/uploads'))).toHaveLength(1);expect(f.state.current_version_id).toBe(purpose==='update'?'v3':null);
+  await expect(page.locator('#prospectus-status')).toContainText(purpose==='update'?/上传成功，已自动采用/:/上传成功.*尚未采用/);expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.calls.filter(c=>c.path.endsWith('/materials/uploads'))).toHaveLength(1);expect(f.state.current_version_id).toBe(purpose==='update'?'v3':null);
 });
 
 test('unknown upload receipt retries the original session and keeps the automatically adopted source',async({page})=>{
-  const f=await setup(page,{retry:true});await selectFile(page);await expect(page.locator('[data-resume-prospectus]')).toBeVisible();await expect(page.locator('.prospectus-selected-file')).toContainText('合成新稿.docx');
-  await page.getByRole('button',{name:'确认原上传',exact:true}).click();await expect(page.locator('#prospectus-status')).toContainText(/已保存并自动采用/);expect(f.state.current_version_id).toBe('v3');expect(f.state.selection_revision).toBe(1);expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(0);
-  expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.calls.filter(c=>c.path.endsWith('/materials/uploads'))).toHaveLength(1);const completions=f.calls.filter(c=>c.path.endsWith('/complete'));expect(completions).toHaveLength(2);expect(completions[0].body).toEqual(completions[1].body);
+  // Exhaust automatic confirmation retries before exercising the user's retry action.
+  const f=await setup(page,{retry:true,dropAttempts:4});await selectFile(page);await expect(page.locator('[data-resume-prospectus]')).toBeVisible({timeout:15000});await expect(page.locator('.prospectus-selected-file')).toContainText('合成新稿.docx');
+  await expect(page.locator('#prospectus-status')).not.toContainText('上传成功');
+  await expect(page.locator('[data-file-upload-progress] progress[value="100"]')).toHaveCount(0);
+  await expect(page.locator('[data-file-upload-progress] [data-upload-state="error"]')).toBeVisible();
+  await page.getByRole('button',{name:'确认原上传',exact:true}).click();await expect(page.locator('#prospectus-status')).toContainText(/上传成功，已自动采用/);expect(f.state.current_version_id).toBe('v3');expect(f.state.selection_revision).toBe(1);expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(0);
+  expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.calls.filter(c=>c.path.endsWith('/materials/uploads'))).toHaveLength(1);const completions=f.calls.filter(c=>c.path.endsWith('/complete'));expect(completions).toHaveLength(5);expect(completions.every(c=>JSON.stringify(c.body)===JSON.stringify(completions[0].body))).toBe(true);
   await expect(page.locator('.reference-file.is-selected')).toContainText('本次更新已选用');await expect(page.locator('[data-use-version="v3"]')).toHaveCount(0);
   expect(await page.evaluate(()=>window.panelFixture.sourceSelectionMessage())).toBe('');
 });
@@ -378,7 +419,7 @@ test('failed version read after automatic adoption blocks starting until the sam
   await expect(page.locator('#prospectus-status')).toContainText('版本记录暂未读取');
   expect(await page.evaluate(()=>window.panelFixture.hasUnconfirmed())).toBe(true);
   await page.locator('#save-prospectus-version').click();
-  await expect(page.locator('#prospectus-status')).toContainText('已保存并自动采用');
+  await expect(page.locator('#prospectus-status')).toContainText('上传成功，已自动采用');
   expect(await page.evaluate(()=>window.panelFixture.hasUnconfirmed())).toBe(false);
   expect(f.state.current_version_id).toBe('v3');expect(f.state.selection_revision).toBe(1);
   expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);
