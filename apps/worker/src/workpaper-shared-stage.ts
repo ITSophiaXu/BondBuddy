@@ -6,7 +6,7 @@ import {WorkpaperSharedPlanSchema,type WorkpaperSharedPlan,type M4DocumentManife
 import {digest} from '@bondbuddy/api/data';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {checkpointStage} from '@bondbuddy/api/queue';
-import {loadWorkpaperTemplate,publishWorkpaperItemResult,pauseSharedWorkpaperBatch} from '@bondbuddy/api/workpapers';
+import {loadWorkpaperTemplate,publishWorkpaperItemResult,pauseSharedWorkpaperBatch,pauseFailedSharedWorkpaperBatch} from '@bondbuddy/api/workpapers';
 import {projectFilesRoot,projectFilePython} from './project-file-tools.js';
 import {codexModelStage,type StageContext,type StageOutcome} from './run-pipeline.js';
 import {loadCodexAdapterConfig,CodexOutputValidationError,type CodexAdapterConfig} from './codex-adapter.js';
@@ -128,6 +128,12 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
         }).run(ctx);
         if(outcome.kind!=='done'){
           if(outcome.kind==='fail')await pauseSharedWorkpaperBatch(ctx.pool,owner,batch);
+          if(outcome.kind==='stopped'){
+            // This is eager reconciliation only. Keep stopped/lease-loss semantics
+            // if it fails; the scheduler enforces the same guard before next start.
+            try{await pauseFailedSharedWorkpaperBatch(ctx.pool,ctx.lease,batch);}
+            catch{process.stderr.write('workpaper_shared_failure_pause_deferred\n');}
+          }
           return outcome;
         }
         if(!checkedSharedPlan(outcome.value,source,manifests))throw Error('WORKPAPER_PLAN_INVALID');

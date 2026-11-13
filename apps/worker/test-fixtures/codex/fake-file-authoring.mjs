@@ -9,6 +9,11 @@ if(args.includes('sandbox')){
 let input='';for await(const chunk of process.stdin)input+=chunk;
 if(!args.includes('exec')||args.includes('--output-schema'))throw Error('one plain-text CLI execution required');
 const cwd=args[args.indexOf('--cd')+1];
+if(input.includes('SCENARIO:workpaper_invalid')){
+  writeFileSync(cwd+'/output/batch-plan.json','{}');
+  console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'Synthetic invalid shared plan.'}}));
+  console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:10,output_tokens:5}}));process.exit(0);
+}
 if(input.includes('SCENARIO:file_hang')){
   const child=spawn('sleep',['120'],{stdio:'ignore'});
   console.log(JSON.stringify({type:'item.started',item:{type:'command_execution',id:'synthetic-sleep'}}));

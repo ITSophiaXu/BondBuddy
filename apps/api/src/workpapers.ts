@@ -5,6 +5,7 @@ import {contentDisposition} from './material-download.js';
 import {loadWorkpaperTemplate} from './workpaper-templates.js';
 import {registerWorkpaperLibrary} from './workpaper-library.js';
 import type {Pool,PoolClient} from 'pg';
+import type {Lease} from './queue.js';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
@@ -61,6 +62,36 @@ export async function pauseSharedWorkpaperBatch(pool:Pool,owner:string,batch:str
     if(changed)await event(c,owner,changed.project_id,'workpaper.batch_paused',{batch_id:batch,reason:'shared_plan_incomplete'});
   });
 }
+/** Caller holds the batch lock. A shared preparation failure blocks siblings;
+ * a later rendering failure with an accepted plan remains an independent file. */
+async function pauseFailedSharedItem(c:PoolClient,b:any,item:any):Promise<boolean>{
+  if(item.run_state!=='failed'||item.manifest?.input?.workpaper?.execution!=='shared_batch_v1'||item.manifest.input.template)return false;
+  if((await c.query('SELECT 1 FROM bb_workpaper_shared_plans WHERE owner_user_id=$1 AND batch_id=$2',[b.owner_user_id,b.id])).rowCount)return false;
+  const error='本批共享材料或编制计划尚未完成，请核对失败原因后继续。';
+  // Consume this failure before pausing so an explicit resume can advance once.
+  await c.query("UPDATE bb_workpaper_items SET state='failed',error=$3 WHERE batch_id=$1 AND item_id=$2",[b.id,item.item_id,error]);
+  await c.query("UPDATE bb_workpaper_batches SET state='paused',revision=revision+1,error=$2,pause_reason=NULL,updated_at=now() WHERE id=$1",[b.id,error]);
+  // Do not acquire a project update lock after the scheduler's batch lock: public
+  // actions lock project -> batch. The batch timestamp and outbox change atomically.
+  await c.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,'workpaper.batch_paused',$4)",
+    [uid(),b.owner_user_id,b.project_id,{batch_id:b.id,reason:'shared_plan_incomplete'}]);
+  return true;
+}
+/** A journal-settled failure clears the lease and returns `stopped`. Only that
+ * exact current claim may eagerly reconcile the batch; scheduler also guards it. */
+export async function pauseFailedSharedWorkpaperBatch(pool:Pool,lease:Lease,batch:string){
+  return transaction(pool,async c=>{
+    const b=(await c.query("SELECT * FROM bb_workpaper_batches WHERE owner_user_id=$1 AND id=$2 AND state IN ('queued','running') FOR UPDATE",[lease.owner,batch])).rows[0];
+    if(!b)return false;
+    const item=(await c.query(`SELECT i.*,r.state run_state FROM bb_workpaper_items i
+      JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
+      JOIN bb_jobs j ON j.owner_user_id=r.owner_user_id AND j.run_id=r.id
+      WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.run_id=$3 AND i.state='running'
+        AND j.id=$4 AND j.attempts=$5 AND j.state='failed' AND r.state='failed'`,
+      [lease.owner,batch,lease.runId,lease.jobId,lease.attempts])).rows[0];
+    return item?pauseFailedSharedItem(c,b,item):false;
+  });
+}
 async function ownedBatch(db:Db,owner:string,id:string,batch:string,lock=false){
   await project(db,owner,id);const row=(await db.query(`SELECT * FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 ${lock?'FOR UPDATE':''}`,[owner,id,batch])).rows[0];
   if(!row)throw missing();return row;
@@ -111,6 +142,9 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
         await c.query("UPDATE bb_workpaper_batches SET state='paused',error='当前底稿任务已暂停，请先处理该任务，再继续文件包。',revision=revision+1 WHERE id=$1",[b.id]);return true;
       }
       if(!terminal.includes(item.run_state))return false;
+      // The durable journal can fail the run before the worker gets its `stopped`
+      // outcome. Check under this lock before quoting/starting any queued sibling.
+      if(await pauseFailedSharedItem(c,b,item))return true;
       await c.query('UPDATE bb_workpaper_items SET state=$3,error=$4 WHERE batch_id=$1 AND item_id=$2',[b.id,item.item_id,item.run_state==='succeeded'?'succeeded':'failed',item.run_state==='succeeded'?null:'该文件未完成，其他底稿继续处理；可在本批结束后重试。']);
     }
     const next=(await c.query("SELECT * FROM bb_workpaper_items WHERE batch_id=$1 AND state='queued' ORDER BY ordinal LIMIT 1",[b.id])).rows[0];
@@ -277,7 +311,16 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
       let state:string;
       if(b.action==='pause'&&['queued','running'].includes(row.state))state='paused';
       else if(b.action==='cancel'&&['queued','running','paused'].includes(row.state))state='cancelled';
-      else if(b.action==='resume'&&row.state==='paused')state='queued';
+      else if(b.action==='resume'&&row.state==='paused'){
+        // The fail/throw path can pause before the pipeline settles its current
+        // run. Acknowledge only failures already durable at explicit resume time.
+        await c.query(`UPDATE bb_workpaper_items i SET state='failed' FROM bb_runs r
+          WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.state='running' AND r.owner_user_id=i.owner_user_id
+            AND r.id=i.run_id AND r.state='failed' AND i.manifest->'input'->'workpaper'->>'execution'='shared_batch_v1'
+            AND (i.manifest->'input'->'template' IS NULL OR i.manifest->'input'->'template'='null'::jsonb)
+            AND NOT EXISTS(SELECT 1 FROM bb_workpaper_shared_plans p WHERE p.owner_user_id=i.owner_user_id AND p.batch_id=i.batch_id)`,[user,batch]);
+        state='queued';
+      }
       else if(b.action==='retry_failed'&&['partial','cancelled'].includes(row.state)){
         const active=(await c.query(`SELECT 1 FROM bb_workpaper_items i JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
           WHERE i.batch_id=$1 AND NOT(r.state=ANY($2::text[]))`,[batch,terminal])).rowCount;
