@@ -7,6 +7,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location('maintenance', Path(__file__).parents[1] / 'disk-maintenance.py')
 m = importlib.util.module_from_spec(spec)
@@ -234,6 +235,35 @@ class SafetyTests(unittest.TestCase):
         (guard_root / 'pending.json').write_text('new protected release')
         with self.assertRaises(m.Retain):
             m.Maintenance(policy).verify_guards()
+
+    def test_disable_succeeds_while_execution_lock_is_held(self):
+        spec = importlib.util.spec_from_file_location('installer', Path(__file__).parents[1] / 'install-maintenance.py')
+        installer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(installer)
+        lock = self.root / 'maintenance.lock'
+        lock.touch()
+        code = 'import fcntl,sys;f=open(sys.argv[1],"r+");fcntl.flock(f,fcntl.LOCK_EX);print("ready",flush=True);sys.stdin.read()'
+        p = subprocess.Popen([sys.executable, '-c', code, str(lock)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        real_locked = m.locked
+        try:
+            self.assertEqual('ready', p.stdout.readline().strip())
+            # Route any attempted execution-lock acquisition to the genuinely held
+            # fixture inode. Before this fix the call fails with lock_busy.
+            def execution_lock(*_, **__):
+                return real_locked(lock)
+            with mock.patch.object(installer.m, 'locked', side_effect=execution_lock), \
+                    mock.patch.object(installer.os, 'geteuid', return_value=0), \
+                    mock.patch.object(sys, 'argv', ['install-maintenance.py', '--disable']), \
+                    mock.patch.object(installer, 'command') as command, \
+                    mock.patch('builtins.print'):
+                installer.main()
+                command.assert_called_once_with('systemctl', 'disable', '--now', 'bondbuddy-disk-maintenance.timer')
+            self.assertIsNone(p.poll(), 'disable must not stop the running lock owner')
+            with self.assertRaisesRegex(m.Retain, 'lock_busy'):
+                with real_locked(lock):
+                    self.fail('execution owner must still hold its lock')
+        finally:
+            p.communicate('', timeout=2)
 
 
 if __name__ == '__main__':

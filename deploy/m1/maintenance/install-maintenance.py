@@ -60,12 +60,13 @@ def main():
     args = parser.parse_args()
     if os.geteuid() != 0:
         raise m.Retain('root_required')
+    if args.disable:
+        # Stop future scheduling even while the service holds its execution lock.
+        # Stopping the timer does not stop the already running service.
+        command('systemctl', 'disable', '--now', 'bondbuddy-disk-maintenance.timer')
+        print(json.dumps({'disabled': True, 'business_services_changed': False}))
+        return
     with m.locked('/run/lock/bondbuddy-disk-maintenance.lock', create=True):
-        if args.disable:
-            # Disable future invocations; an in-progress operation finishes its own bounds.
-            command('systemctl', 'disable', '--now', 'bondbuddy-disk-maintenance.timer')
-            print(json.dumps({'disabled': True, 'business_services_changed': False}))
-            return
         if not args.policy:
             parser.error('--policy is required to install')
         policy, s = m.read_file(args.policy)
