@@ -49,6 +49,11 @@ test('PPN worker receives every pinned method, clause, table and point comment u
           assert.equal(manifest.target.offering, 'ppn');
           assert.equal(manifest.baseline_kind, 'none');
           const task = await readFile(join(directory, 'task.md'), 'utf8');
+          const prompt = await options.buildPrompt(ctx);
+          assert.equal(prompt.split('----- BEGIN TRUSTED task.md -----\n')[1]!.split('\n----- END TRUSTED task.md -----')[0],task);
+          assert.equal(prompt.includes('----- BEGIN TRUSTED fixed-edit.md -----'),false);
+          assert.equal(prompt.includes(expected.markdown),false,'project knowledge remains data rather than trusted bootstrap instructions');
+          assert.ok(Buffer.byteLength(prompt,'utf8') <= 64 * 1024);
           assert.match(task, /ppn-writing-2026\.10\.13-v1/);
           assert.match(task, /旧任务快照未含该版本时继续按其原锁定知识执行/);
           return {kind: 'done', value: {synthetic: true}};

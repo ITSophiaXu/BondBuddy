@@ -10,7 +10,7 @@ export function authoringPhase(run:Run,events:RunEvent[],progress?:AuthoringProg
   if(['delivering','settlement_pending'].includes(run.state)||run.stage?.startsWith('word_delivery'))return 3;
   const observed=events.filter(e=>e.run_id===run.run_id&&e.seq<=(run.event_cursor??Infinity)).sort((a,b)=>a.seq-b.seq);
   const reason=observed.at(-1)?.payload.reason;
-  if(run.state==='queued'&&reason==='file_authoring_payload_retry_scheduled')return 2;
+  if(run.state==='queued'&&['file_authoring_payload_retry_scheduled','file_authoring_output_limit_retry_scheduled','file_authoring_manual_restart_scheduled'].includes(reason??''))return 2;
   if(['queued','preparing','rejected'].includes(run.state))return 0;
   const current=authoringStatus(run,events,progress)?.phase;
   if(current!==undefined)return current;
@@ -30,7 +30,7 @@ export function retryExplanation(offer:RunRetryResponse):string{
     restart_confirmation_required:'上次处理已结束，但没有可续跑的工作快照。重试将使用本次锁定的原材料重新处理，需先确认。',
     not_paused:'任务状态已经变化，正在刷新最新进度。',
     unsupported_task:'这类任务暂不支持从此处重试，请联系支持核对。',
-    provider_evidence_unresolved:'尚未确认上次模型调用是否结束，暂不能发起第二次处理。请稍后刷新状态。',
+    provider_evidence_unresolved:'上次调用记录尚需核对，暂不能再次处理。请稍后刷新，持续未恢复时请联系支持。',
     active_attempt:'上次模型处理仍在运行或退出状态尚未确认，请稍后刷新状态。',
     provider_result_present:'系统已收到处理结果，正在核对已有成果，暂不重复生成。',
     provider_evidence_conflict:'上次处理结果存在不一致记录，需要支持核对后才能继续。',
@@ -53,7 +53,8 @@ export function authoringStatusCard(run:Run,events:RunEvent[],options:{progress?
     :awaitingInput?'等待补充信息':paused?run.stage==='credits_exhausted'?'积分不足，任务已暂停':run.stage==='billing_reconcile'?'正在核对积分账务，任务已暂停':run.stage==='user_paused'?'任务已暂停':`${labels[phase]}时暂停`
     :observed?.title??labels[phase];
   const summary=options.summary??observed?.summary??(success?'5 个步骤全部完成，文档已保存。':missingArtifact?'暂未取得可下载文档，请重新读取任务状态。':failed?'本轮未完成，已保存材料会保留。':run.state==='cancelled'?'任务已停止，已保存材料与已有成果保留。':'正在核对任务状态。');
-  const note=success||missingArtifact?'':run.state==='cancelled'?'':paused&&run.stage==='provider_reconcile'?'已保存的材料会保留。关闭页面不会取消任务。':'关闭页面不会取消任务。';
+  const outputLimitEnded=failed&&['file_authoring_output_limit_recovery_unavailable','file_authoring_output_limit_retries_exhausted'].includes(authoringVisibleEvents(run,events).at(-1)?.payload.reason??'');
+  const note=success||missingArtifact?'':run.state==='cancelled'?'':outputLimitEnded?'已保存的材料会保留。':paused&&run.stage==='provider_reconcile'?'已保存的材料会保留。关闭页面不会取消任务。':'关闭页面不会取消任务。';
   const symbol=success?'✓':paused?'Ⅱ':failed?'!':run.state==='cancelled'?'—':'•';
   const extra=options.retry&&options.retry.mode!=='restore_checkpoint'?retryExplanation(options.retry):'';
   return `<section class="authoring-status-card task-progress" data-tone="${tone}" data-input-revision="${run.input_revision}" aria-label="编制进度"><div class="authoring-status-header task-progress-heading"><div class="authoring-status-title-group"><div class="authoring-status-title-line"><span class="authoring-status-badge"><span aria-hidden="true">${symbol}</span>${badge}</span><h3 role="status">${esc(title)}</h3></div><div class="authoring-status-description">${summary?`<p${options.summary?' class="execution-summary"':''}>${esc(summary)}</p>`:''}${note?`<p>${esc(note)}</p>`:''}${extra?`<p class="authoring-status-retry-note">${esc(extra)}</p>`:''}${options.feedback?`<p id="run-action-feedback" role="status">${esc(options.feedback)}</p>`:''}</div></div>${options.actions?`<div class="authoring-status-actions">${options.actions}</div>`:''}</div><ol class="authoring-status-steps task-progress-steps" aria-label="处理流程">${labels.map((label,i)=>{

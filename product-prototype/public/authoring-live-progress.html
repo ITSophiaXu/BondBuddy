@@ -25,6 +25,12 @@
       <button type="button" data-state="paused">已暂停</button>
       <button type="button" data-state="recovering">自动恢复</button>
       <button type="button" data-state="legacy-pause">旧任务暂停</button>
+      <button type="button" data-state="output-pending">输出超限待核对</button>
+      <button type="button" data-state="output-queued">输出超限已续排</button>
+      <button type="button" data-state="output-unavailable">恢复进度未通过</button>
+      <button type="button" data-state="output-exhausted">恢复次数用完</button>
+      <button type="button" data-state="output-legacy">超限旧任务重启</button>
+      <button type="button" data-state="output-user-paused">旧任务主动暂停</button>
       <button type="button" data-state="succeeded">已完成</button>
       <button type="button" data-state="failed">交付失败</button>
       <button type="button" data-state="cancelled">已停止</button>
@@ -72,6 +78,36 @@
         description: ['本次原材料和要求已保留，但旧任务未保存可续跑的中间编辑。', '立即重试会使用锁定材料重新编制，需要重新完成上次未保存的工作。'],
         actions: ['retry', 'stop'], records: [...baseRecords, errorRecord, {time: '09:42', kind: 'paused', text: '任务已暂停；材料与要求保留，中间编辑未保存'}]
       },
+      'output-pending': {
+        tone: 'paused', badge: '已暂停', title: '编制募集书时暂停', phase: 2,
+        description: ['处理输出超过安全上限，正在核对可恢复进度和调用记录；符合条件时自动继续本次任务。', '已保存的材料会保留。关闭页面不会取消任务。', '上次调用记录尚需核对，暂不能再次处理。请稍后刷新，持续未恢复时请联系支持。'],
+        actions: ['retry-blocked', 'refresh', 'stop'], records: [{time: '09:42', kind: 'paused', text: '处理输出超过安全上限，正在核对恢复条件'}]
+      },
+      'output-queued': {
+        tone: 'running', badge: '排队中', title: '正在安排自动续跑', phase: 2,
+        description: ['工作进度已保存，执行服务将接续已有工作，仍是本次任务。', '关闭页面不会取消任务。'],
+        actions: ['pause', 'stop'], records: [{time: '09:43', text: '进度已保存，已安排自动续跑'}]
+      },
+      'output-unavailable': {
+        tone: 'failed', badge: '未完成', title: '本轮未完成', phase: 2,
+        description: ['处理输出超过安全上限，恢复进度未通过核验，系统已停止自动重试。请联系支持核对。', '已保存的材料会保留。'],
+        actions: [], records: [{time: '09:44', kind: 'failed', text: '恢复进度未通过核验，已停止自动重试'}]
+      },
+      'output-exhausted': {
+        tone: 'failed', badge: '未完成', title: '本轮未完成', phase: 2,
+        description: ['系统已尝试恢复，但自动恢复次数已用完，本次未能完成。请联系支持处理。', '已保存的材料会保留。'],
+        actions: [], records: [{time: '09:45', kind: 'failed', text: '自动恢复次数已用完，本次未完成'}]
+      },
+      'output-legacy': {
+        tone: 'paused', badge: '已暂停', title: '编制募集书时暂停', phase: 2,
+        description: ['本次模型处理尚未确认结果，系统正在核对。已保存材料会保留；若持续未恢复，请联系支持。', '已保存的材料会保留。关闭页面不会取消任务。', '上次处理已结束，但没有可续跑的工作快照。重试将使用本次锁定的原材料重新处理，需先确认。'],
+        actions: ['retry', 'stop'], records: [{time: '09:42', kind: 'paused', text: '任务已暂停'}]
+      },
+      'output-user-paused': {
+        tone: 'paused', badge: '已暂停', title: '编制募集书时暂停', phase: 2,
+        description: ['本次模型处理尚未确认结果，系统正在核对。已保存材料会保留；若持续未恢复，请联系支持。', '已保存的材料会保留。关闭页面不会取消任务。', '任务由你暂停，可继续本次任务。'],
+        actions: ['resume', 'stop'], records: [{time: '09:42', kind: 'paused', text: '任务已暂停'}]
+      },
       succeeded: {
         tone: 'success', badge: '已完成', title: '募集书已编制完成', phase: 4,
         description: ['5 个步骤全部完成，文档已保存。'], actions: [],
@@ -90,7 +126,7 @@
     };
     const stepLabels = ['等待开始', '准备材料', '编制募集书', '保存文档', '可下载'];
     const materialNames = ['示例历史募集说明书.docx', '示例年度财务报告.pdf', '示例半年度财务报表.pdf'];
-    const actionLabels = {retry: '立即重试', stop: '停止任务', pause: '暂停任务', saving: '正在保存'};
+    const actionLabels = {retry: '立即重试', 'retry-blocked': '立即重试', refresh: '刷新状态', resume: '继续本次任务', stop: '停止任务', pause: '暂停任务', saving: '正在保存'};
     const kindLabels = {failed: '出错', paused: '暂停', completed: '完成'};
     const aliases = {word_failed: 'failed', no_summary: 'running', stale: 'running', legacy_pause: 'legacy-pause'};
     const escapeHtml = text => String(text).replace(/[&<>"']/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char]));
@@ -121,7 +157,7 @@
                 <span class="authoring-status-badge">${statusIcon(state.tone)}${state.badge}</span>
                 <h2 class="authoring-status-title" role="status">${state.title}</h2>
               </div>
-              ${state.actions.length ? `<div class="authoring-status-actions">${state.actions.map(action => `<button type="button" class="authoring-status-button" data-action="${action}"${action !== 'stop' ? ' data-primary="true"' : ''}${action === 'saving' ? ' disabled' : ''}>${actionLabels[action]}</button>`).join('')}</div>` : ''}
+              ${state.actions.length ? `<div class="authoring-status-actions">${state.actions.map(action => `<button type="button" class="authoring-status-button" data-action="${action}"${!['stop', 'refresh'].includes(action) ? ' data-primary="true"' : ''}${['saving', 'retry-blocked'].includes(action) ? ' disabled' : ''}>${actionLabels[action]}</button>`).join('')}</div>` : ''}
             </div>
             <div class="authoring-status-description">${state.description.map(line => `<p>${escapeHtml(line)}</p>`).join('')}</div>
           </div>
@@ -151,9 +187,10 @@
       const button = event.target.closest('button[data-action]');
       if (!button || button.disabled) return;
       if (button.dataset.action === 'retry') {
-        if (activeState === 'legacy-pause' && !window.confirm('演示确认：旧任务没有保存可续跑的中间编辑。立即重试将使用锁定材料重新编制，是否继续？')) return;
+        if (['legacy-pause', 'output-legacy'].includes(activeState) && !window.confirm('演示确认：上次模型处理已结束，但没有可续跑的工作快照。未保存的中间进度无法恢复，本次会从锁定的原材料重新处理。仍使用本次任务和原积分预留，不新增任务预留；已记录的历史用量及账务保留。是否确认重新处理？')) return;
         render('running');
-      } else if (button.dataset.action === 'pause') render('pausing');
+      } else if (button.dataset.action === 'resume') render('output-legacy');
+      else if (button.dataset.action === 'pause') render('pausing');
       else if (button.dataset.action === 'stop') render('cancelled');
     });
     render(new URLSearchParams(location.search).get('state') || 'paused');

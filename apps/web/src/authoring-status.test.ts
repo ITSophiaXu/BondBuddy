@@ -40,3 +40,31 @@ test('records isolate run and event cursor, with lifecycle badges and collapsed 
   assert.match(html,/处理记录（1 条）/);assert.match(html,/data-tone="paused"/);
   assert.doesNotMatch(html,/文档已保存/);assert.match(html,/datetime="2026-11-13/);
 });
+
+test('output limit continuation and confirmed material restart keep the authoring phase',()=>{
+  for(const reason of ['file_authoring_output_limit_retry_scheduled','file_authoring_manual_restart_scheduled']){
+    const queued={...run,state:'queued' as const,stage:'queued'};
+    const events=[event('queued','queued',reason)];
+    assert.equal(authoringPhase(queued,events),2);
+    const html=authoringStatusCard(queued,events,{actions:''});
+    assert.equal((html.match(/data-step-state="done"/g)??[]).length,2);
+    assert.match(html,/data-step-state="current"[^>]*aria-current="step"[^>]*>[\s\S]*编制募集书/);
+  }
+});
+
+test('unresolved provider evidence does not assert an active process or an unconfirmed exit',()=>{
+  const unresolved=retryExplanation({run_id:'r',attempt_id:'a',mode:'blocked',reason_code:'provider_evidence_unresolved'});
+  assert.match(unresolved,/调用记录尚需核对/);
+  assert.doesNotMatch(unresolved,/仍在运行|退出状态|终止|已结束|工作进度已保存|自动继续/);
+  assert.match(retryExplanation({run_id:'r',attempt_id:'a',mode:'blocked',reason_code:'active_attempt'}),/仍在运行或退出状态尚未确认/);
+});
+
+test('output limit unavailable and exhausted are failed terminal states with one material retention note',()=>{
+  for(const reason of ['file_authoring_output_limit_recovery_unavailable','file_authoring_output_limit_retries_exhausted']){
+    const html=authoringStatusCard({...run,state:'failed',stage:'failed'},[event('failed','failed',reason)],{actions:'',summary:'本次未能完成，请联系支持处理。'});
+    assert.match(html,/data-tone="failed"/);assert.match(html,/本轮未完成/);
+    assert.doesNotMatch(html,/已暂停|关闭页面不会取消任务|立即重试/);
+    assert.equal((html.match(/已保存的材料会保留/g)??[]).length,1);
+    assert.equal((html.match(/data-step-state="done"/g)??[]).length,2);
+  }
+});

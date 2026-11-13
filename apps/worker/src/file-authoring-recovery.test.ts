@@ -23,9 +23,9 @@ function fixture() {
     assert.equal(stage, FILE_AUTHORING_RECOVERY_STAGE); assert.equal(completed, false); writes++;
     lease.checkpoint = structuredClone({ ...lease.checkpoint, stages: { ...lease.checkpoint.stages as object, [stage]: value } });
   };
-  const authorize = (snapshot: FileAuthoringRecovery) => {
+  const authorize = (snapshot: FileAuthoringRecovery, reason = 'file_authoring_payload_auto_retry') => {
     ctx.lease.checkpoint.operator_reconciliations = { [snapshot.attempt_id]: { attempt_id: snapshot.attempt_id,
-      logical_call_id: snapshot.logical_call_id, reason_code: 'file_authoring_payload_auto_retry', decision: 'retry_unknown_usage' } };
+      logical_call_id: snapshot.logical_call_id, reason_code: reason, decision: 'retry_unknown_usage' } };
   };
   return { ctx, objects, checkpoint, authorize, writes: () => writes };
 }
@@ -83,6 +83,22 @@ test('changed inputs, corrupt objects, foreign task keys and injected helper pat
     }
     const ref = snapshot.files.find(f => f.path === 'input.json')!; f.objects.set(ref.key, Buffer.from('tampered'));
     await assert.rejects(recoverFileAuthoringInput(f.ctx, snapshot, input), /WORD_OUTPUT_BLOB_MISMATCH/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('output-limit restore requires its exact audited reason and current attempt identity', async () => {
+  const f = fixture(), root = await mkdtemp(join(tmpdir(), 'bb-file-recovery-output-'));
+  try {
+    await workspace(root); const snapshot = await saveFileAuthoringRecovery(f.ctx, root, intent, { checkpoint: f.checkpoint });
+    for (const reason of ['MODEL_OUTPUT_TOO_LARGE', 'retry_unknown_usage', 'file_authoring_manual_restart']) {
+      f.authorize(snapshot, reason); assert.equal(authorizedFileAuthoringRecovery(f.ctx, intent.logical_call_id), null);
+    }
+    f.authorize(snapshot, 'file_authoring_output_limit_auto_retry');
+    assert.deepEqual(authorizedFileAuthoringRecovery(f.ctx, intent.logical_call_id), snapshot);
+    assert.equal(authorizedFileAuthoringRecovery(f.ctx, 'file-authoring-size-repair-1'), null);
+    const audit = f.ctx.lease.checkpoint.operator_reconciliations as Record<string, Record<string, unknown>>;
+    audit[intent.call_id].attempt_id = 'other';
+    assert.equal(authorizedFileAuthoringRecovery(f.ctx, intent.logical_call_id), null);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -150,7 +166,7 @@ test('authoring failure checkpoints work and the next authorized stage prepares 
         assert.equal(await readFile(join(cwd, 'output/operations.json'), 'utf8'), '{"saved":true}');
         assert.equal(await readFile(join(cwd, 'scratch/工作记录.md'), 'utf8'), 'already extracted data');
         assert.deepEqual(await readFile(join(cwd, 'materials/m0.docx')), source);
-        assert.match(await options.buildPrompt(f.ctx), /自动续跑/);
+        assert.match(await options.buildPrompt(f.ctx), /已授权续跑/);
         assert.match(await readFile(join(cwd, 'task.md'), 'utf8'), /募集说明书/);
       }
       return { kind: 'stopped' };

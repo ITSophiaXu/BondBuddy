@@ -297,8 +297,8 @@ for (const credential of ['env', 'command'] as const) {
       assert.ok(args.includes('--ignore-user-config'));
       const overrides = args.filter((_, index) => args[index - 1] === '-c');
       assert.deepEqual(overrides.filter(v => v.startsWith('model_context_window=')), ['model_context_window=1000000']);
-      assert.deepEqual(overrides.filter(v => v.startsWith('model_auto_compact_token_limit=')), [mode === 'file' ? 'model_auto_compact_token_limit=32000' : 'model_auto_compact_token_limit=900000']);
-      for (const setting of ['model_context_window=1000000', mode === 'file' ? 'model_auto_compact_token_limit=32000' : 'model_auto_compact_token_limit=900000']) {
+      assert.deepEqual(overrides.filter(v => v.startsWith('model_auto_compact_token_limit=')), [mode === 'file' ? 'model_auto_compact_token_limit=128000' : 'model_auto_compact_token_limit=900000']);
+      for (const setting of ['model_context_window=1000000', mode === 'file' ? 'model_auto_compact_token_limit=128000' : 'model_auto_compact_token_limit=900000']) {
         const index = args.indexOf(setting);
         assert.ok(index > args.indexOf('--ignore-user-config'), `${setting} must be an exec override`);
         assert.equal(args[index - 1], '-c');
@@ -732,8 +732,8 @@ test('file retries use a fresh, smaller context and only the bounded image reade
   try {
     const args=buildCodexArgs(config,{cwd:'/synthetic',schemaFile:null,ephemeral:true,resumeThreadId:null,fileAuthoring:true,fileRecovery:true});
     assert.ok(args.includes('model_context_window=1000000'));
-    assert.ok(args.includes('model_auto_compact_token_limit=12000'));
-    assert.ok(args.includes('tool_output_token_limit=512'));
+    assert.ok(args.includes('model_auto_compact_token_limit=64000'));
+    assert.ok(args.includes('tool_output_token_limit=2048'));
     assert.ok(args.some(x=>x.startsWith('mcp_servers.bb_images.args=')));
     assert.ok(args.includes('--ephemeral'));assert.equal(args.includes('resume'),false);
     assert.ok(args.some((x,i)=>x==='view_image'&&args[i-1]==='--disable'));

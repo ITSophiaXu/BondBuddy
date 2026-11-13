@@ -160,7 +160,12 @@ test('normal model exit without operations preserves private evidence and report
   try{
     const stage=fileAuthoringStage({load:async()=>f.input,model:options=>({name:'model_generation',run:async()=>{
       calls++;assert.equal(options.fileWorkspace!.completionCheck,true);
+      const prompt=await options.buildPrompt(f.ctx);
       await options.fileWorkspace!.prepare(root);
+      for(const name of ['task.md','fixed-edit.md'])assert.equal(
+        prompt.split(`----- BEGIN TRUSTED ${name} -----\n`)[1]!.split(`\n----- END TRUSTED ${name} -----`)[0],
+        await readFile(join(root,name),'utf8'),'the complete trusted bootstrap matches the prepared instruction file');
+      assert.ok(Buffer.byteLength(prompt,'utf8')<=64*1024);
       await writeFile(join(root,'scratch/工作记录.md'),'Synthetic pending chapter; no completed edits.');
       const value=await options.fileWorkspace!.collect(root,{call_id:'call'} as any,{text:'Synthetic tool failure; no delivery.',diagnostics:{tools:[{exit_code:1,output:'WORD_EDIT_NODE_NOT_FOUND'}],omitted:0}});
       return {kind:'done',value};

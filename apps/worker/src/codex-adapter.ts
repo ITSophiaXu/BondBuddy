@@ -24,6 +24,9 @@ import {validateModelImage,type ModelImageInput} from './model-image-input.js';
 export const CODEX_ADAPTER_VERSION = 'codex-adapter-1';
 /** Bounded per-attempt stdout/stderr capture, including section markers. */
 export const DEFAULT_CODEX_EXEC_LOG_MAX_BYTES = CODEX_EXEC_LOG_MAX_BYTES;
+/** File turns may emit many small tool events; only live objects, not their
+ * lifetime sum, consume the parser/message budgets. JSONL delimiters are excluded. */
+export const DEFAULT_FILE_AUTHORING_OUTPUT_LIMITS = { event_bytes: 4 * 1024 * 1024, final_message_bytes: 1024 * 1024 } as const;
 const EXEC_LOG_STDOUT_MARKER = Buffer.from('[stdout]\n');
 const EXEC_LOG_STDERR_MARKER = Buffer.from('\n[stderr]\n');
 const EXEC_LOG_MARKER_BYTES = EXEC_LOG_STDOUT_MARKER.length + EXEC_LOG_STDERR_MARKER.length;
@@ -46,7 +49,11 @@ export type CodexAdapterConfig = {
   /** Separate wall-clock deadline for document authoring with material reads. */
   authoring_timeout_ms?: number;
   kill_grace_ms: number;
+  /** Cumulative stdout budget for non-file calls. */
   max_output_bytes: number;
+  /** File mode only. Bounds each JSONL event (including an unfinished line) and
+   * the retained final reply independently of cumulative stdout/log retention. */
+  file_output_limits?: { event_bytes: number; final_message_bytes: number };
   /** Bounded combined stdout/stderr capture for operator diagnostics. */
   exec_log_max_bytes?: number;
   max_schema_reasks: number;
@@ -207,6 +214,9 @@ export function assertCodexConfig(c: CodexAdapterConfig) {
     count(c.timeout_ms) && c.timeout_ms > 0 && c.timeout_ms <= 2147483647 &&
     (c.authoring_timeout_ms === undefined || (count(c.authoring_timeout_ms) && c.authoring_timeout_ms > 0 && c.authoring_timeout_ms <= 2147483647)) &&
     count(c.kill_grace_ms) && count(c.max_output_bytes) && c.max_output_bytes > 0 &&
+    (c.file_output_limits === undefined || (c.file_output_limits !== null && count(c.file_output_limits.event_bytes) && c.file_output_limits.event_bytes > 0 &&
+      c.file_output_limits.event_bytes <= 32 * 1024 * 1024 && count(c.file_output_limits.final_message_bytes) &&
+      c.file_output_limits.final_message_bytes > 0 && c.file_output_limits.final_message_bytes <= c.file_output_limits.event_bytes)) &&
     (c.exec_log_max_bytes === undefined || (count(c.exec_log_max_bytes) && c.exec_log_max_bytes >= EXEC_LOG_MARKER_BYTES && c.exec_log_max_bytes <= CODEX_EXEC_LOG_MAX_BYTES)) &&
     count(c.max_schema_reasks) && c.max_schema_reasks <= 3 && (c.retain_invalid_output === undefined || typeof c.retain_invalid_output === 'boolean') && c.disabled_features.every(f => /^[a-z0-9_]{1,64}$/.test(f)) && c.path_env.length > 0 &&
     Object.entries(c.proxy_env ?? {}).every(([k, v]) => (CODEX_PROXY_ENV_NAMES as readonly string[]).includes(k) && (/^https_proxy$/i.test(k) ? proxyUrl(v) : noProxyList(v)));
@@ -219,8 +229,8 @@ export function codexConfigOverrides(c: CodexAdapterConfig, files = false, recov
   const p = `model_providers.${c.model_provider}`;
   const kv: string[] = [
     `model=${q(c.model_id)}`, `model_provider=${q(c.model_provider)}`,
-    'model_context_window=1000000', `model_auto_compact_token_limit=${files ? (recovery ? 12000 : 32000) : 900000}`,
-    ...(files ? [`tool_output_token_limit=${recovery ? 512 : 1024}`] : []),
+    'model_context_window=1000000', `model_auto_compact_token_limit=${files ? (recovery ? 64000 : 128000) : 900000}`,
+    ...(files ? [`tool_output_token_limit=${recovery ? 2048 : 4096}`] : []),
     `${p}.name=${q(c.model_provider)}`, `${p}.base_url=${q(c.base_url)}`, `${p}.wire_api=${q(c.wire_api)}`,
     c.credential.kind === 'env' ? `${p}.env_key=${q(c.credential.name)}` : c.credential.kind === 'command'
       ? `${p}.auth.command=${q(c.credential.path)}` : `${p}.requires_openai_auth=true`,
@@ -389,7 +399,8 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
     let child: ReturnType<typeof spawn>;
     try { child = spawn(c.command[0], [...c.command.slice(1), ...args], { cwd: o.cwd, env, detached: true, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] }); }
     catch { r.stop = 'spawn_failed'; resolveResult(r); return; }
-    let bytes = 0, buffer = '', stderrPrefix = '', settled = false, graceTimer: NodeJS.Timeout | null = null;
+    let bytes = 0, buffer = '', bufferBytes = 0, stderrPrefix = '', settled = false, graceTimer: NodeJS.Timeout | null = null;
+    const fileLimits = o.fileAuthoring ? c.file_output_limits ?? DEFAULT_FILE_AUTHORING_OUTPUT_LIMITS : null;
     const capture = o.captureExecLog ? createCodexExecLogCapture(c.exec_log_max_bytes ?? DEFAULT_CODEX_EXEC_LOG_MAX_BYTES) : null;
     // Never persist a credential value that the child might echo. Only env credentials
     // have a readable value here; file/command credentials stay opaque.
@@ -452,7 +463,10 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
             if(!allowed){r.tool_attempts++; stop('tool', true); return;}
             if(ev.type==='item.started')r.tool_attempts++;
           }
-          if (ev.type === 'item.completed' && type === 'agent_message' && typeof item?.text === 'string') r.last_message = item.text;
+          if (ev.type === 'item.completed' && type === 'agent_message' && typeof item?.text === 'string') {
+            if (fileLimits && Buffer.byteLength(item.text, 'utf8') > fileLimits.final_message_bytes) { stop('too_large', true); return; }
+            r.last_message = item.text;
+          }
           if (o.fileAuthoring && ev.type === 'item.completed' && type === 'command_execution') {
             const evidence = r.file_diagnostics ??= { tools: [], omitted: 0 };
             // Bounded private diagnostic tail, never published as progress or logs.
@@ -471,11 +485,27 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
     child.stdout!.setEncoding('utf8');
     child.stdout!.on('data', (chunk: string) => {
       capture?.stdout(captured(chunk));
-      bytes += Buffer.byteLength(chunk);
-      if (bytes > c.max_output_bytes) { stop('too_large', true); return; }
-      buffer += chunk;
-      let nl: number;
-      while ((nl = buffer.indexOf('\n')) >= 0) { const line = buffer.slice(0, nl); buffer = buffer.slice(nl + 1); handle(line); }
+      if (r.stop) return;
+      // Preserve the cumulative budget for every non-file route. File mode can
+      // stream indefinitely within its existing wall-clock/cancellation bounds.
+      if (!fileLimits) {
+        bytes += Buffer.byteLength(chunk, 'utf8');
+        if (bytes > c.max_output_bytes) { stop('too_large', true); return; }
+      }
+      let offset = 0;
+      while (offset < chunk.length) {
+        const nl = chunk.indexOf('\n', offset), end = nl < 0 ? chunk.length : nl;
+        const part = chunk.slice(offset, end), partBytes = Buffer.byteLength(part, 'utf8');
+        if (fileLimits && bufferBytes + partBytes > fileLimits.event_bytes) {
+          buffer = ''; bufferBytes = 0; stop('too_large', true); return;
+        }
+        buffer += part; bufferBytes += partBytes;
+        if (nl < 0) break;
+        const line = buffer; buffer = ''; bufferBytes = 0;
+        handle(line);
+        if (r.stop) return;
+        offset = nl + 1;
+      }
     });
     child.stderr!.setEncoding('utf8');
     child.stderr!.on('data', (chunk: string) => {
@@ -753,7 +783,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
           } catch { return { ok: false }; }
         });
         if (cls.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID') await retainInvalidCodexOutput(c, input, intent, raw, invalidCategory, reviewTraceJson);
-        if (cls.error_code === 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE' && input.fileWorkspace?.onFailure &&
+        if (['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE'].includes(cls.error_code ?? '') && input.fileWorkspace?.onFailure &&
             !input.signal?.aborted && (raw.exit_code !== null || ['SIGTERM','SIGKILL'].includes(raw.exit_signal ?? ''))) {
           // Save actual work before recordObservation releases the lease and before
           // finally removes the ephemeral directory. Failure never authorizes retry.

@@ -435,6 +435,18 @@ Migration `0054_m1_rule_applicability_overall_reviews.sql` adds append-only aggr
 
 ### #16 contained Codex→DeepSeek adapter (2026-09-25)
 
+#### 文件编制输出上限与恢复补充（2026-11-13，#1323 / #1324）
+
+文件编制流使用独立边界：单个 JSONL 事件（包括尚未结束的行）最多 4 MiB，保留的最后一条模型回复最多 1 MiB，私有执行日志仍最多 20 MiB。累计小事件不再触发原 32 MiB 终止条件。非文件调用保留原累计输出限制；超时、取消及隔离策略不变。
+
+明确的 HTTP 413 与本地 `MODEL_OUTPUT_TOO_LARGE` 都在确认进程退出后、释放租约及清理目录前保存真实工作快照；两者分别保留原 `failed` 和 `pending_reconcile` observation，未知用量不改成零。API 在事务内核对 owner/run/job/input、唯一未决 attempt、终止证据、无结果或冲突、快照和账务后，才能授权同一任务续跑。两种自动恢复及用户重新处理共用每 logical call 两次、每任务六次的预算。用户暂停、取消和积分暂停保持优先。
+
+旧输出超限任务若没有快照，自动扫描保留暂停；既有 retry 契约提供 `restart_materials` 并要求明确确认。重新处理锁定原材料和原输入，保留旧失败与 prompt 快照，在新 stage 保存当前指令；后续只重放与该 stage 精确绑定的结果。没有将诊断备份当成恢复快照。页面分别呈现恢复条件核对、已保存后排队、恢复验证失败和预算耗尽，后两者使用真实 failed 终态。
+
+可信 `task.md` 及适用的 `fixed-edit.md` 完整注入首次提示，UTF-8 总量最多 64 KiB，超限报错且不截断。工作目录保留同字节副本；项目材料、知识和工作记录仍是待核对数据。正常/恢复的压缩阈值为 128,000/64,000，工具文本回显预算为 4096/2048；这些是防止反复初始化的调整，不构成“压缩已被证明是事故原因”的结论。要求维护具体工作记录、复用相同参数的已核对缓存，并保留全文、明细、格式和质量检查。
+
+无需数据库迁移或新增依赖。API、worker、web 应作为同批候选集成；开发 chat 不执行生产发布。验证边界见 [输出恢复补修记录](verification/file-authoring-output-recovery-20261113.md)。下文为原始适配器基线，文件编制恢复范围以本补充为准。
+
 `apps/worker/src/codex-adapter.ts` is the server-side model adapter for material-bearing calls. It is not installed in `runOnce` until the CTO live check on the authorized host passes. Server config comes from `BB_CODEX_*` env (`deepseek-flash` via Codex provider `deepseek`, `wire_api=responses`, config version `BB_CODEX_CONFIG_VERSION`). The credential is referenced by env var name (`BB_CODEX_CREDENTIAL_ENV`, passed to the child only under that name) or by `auth.json` path (`BB_CODEX_AUTH_FILE`, symlinked into the per-attempt `CODEX_HOME`). The adapter never reads, logs or returns the credential. Pricing stays `unknown`.
 
 - **Containment.** Each attempt spawns `codex exec --json --ephemeral --ignore-user-config --ignore-rules --sandbox read-only` with a new `CODEX_HOME`, an empty `--cd`, HOME/TMPDIR inside the attempt directory, a minimal env and the prompt on stdin. All config is passed as `-c` overrides (`approval_policy=never`, `sandbox_mode=read-only`, `web_search=disabled`, `shell_environment_policy.inherit=none`, `mcp_servers={}`, `project_doc_max_bytes=0`), and tool features (`shell_tool`, `unified_exec`, apps, plugins, browser, computer use, multi-agent and others) are passed as `--disable`. `danger-full-access`, `workspace-write` and bypass flags are rejected. Materials go through `composeContainedPrompt` as fenced, untrusted data with a random per-call boundary. Any item other than `agent_message`/`reasoning`/`todo_list`/`error` (for example `command_execution`, `file_change`, `mcp_tool_call`, `web_search`) is a breach. The adapter SIGKILLs the process group, records `MODEL_TOOL_ATTEMPT_BLOCKED`, discards the output and does not retry. The adapter does not enforce network egress. The deployment still needs a container or network policy that allows only the provider endpoint.

@@ -101,6 +101,10 @@ export function readinessMessage(reason: string, lastProcessingStage?: string): 
   if (reason === 'file_authoring_payload_retry_scheduled') return '工作进度已保存，系统已安排使用较小的请求自动续跑，仍是本次任务。';
   if (reason === 'file_authoring_payload_retries_exhausted') return '系统已自动调整并尝试恢复，但处理内容仍超过接口容量，本次未能完成。已保存材料和工作文件会保留，请联系支持继续处理。';
   if (reason === 'file_authoring_payload_recovery_unavailable') return '本次请求内容过大，且未能保存完整的续跑进度，系统已停止自动重试。已保存材料会保留，请联系支持核对。';
+  if (reason === 'file_authoring_output_limit_recovery_pending') return '处理输出超过安全上限，正在核对可恢复进度和调用记录；符合条件时自动继续本次任务。';
+  if (reason === 'file_authoring_output_limit_retry_scheduled') return '工作进度已保存，系统已安排接续已有工作，仍是本次任务。';
+  if (reason === 'file_authoring_output_limit_recovery_unavailable') return '处理输出超过安全上限，恢复进度未通过核验，系统已停止自动重试。请联系支持核对。';
+  if (reason === 'file_authoring_output_limit_retries_exhausted') return '系统已尝试恢复，但自动恢复次数已用完，本次未能完成。请联系支持处理。';
   if (reason === 'provider_timeout_retries_exhausted') return '编制服务多次响应超时，本次未能完成。已保存材料和已完成内容仍保留，请联系支持继续处理。';
   if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点继续修改，以新输入重新编制。';
   if (reason === 'authoring_source_information_required') return '旧任务保留原输入，请联系支持恢复；新一轮编制前需补齐上传原稿的信息。';
@@ -568,7 +572,9 @@ export class ProjectExecution {
     const focusedDisclosure=['authoring-records','authoring-locked-materials'].find(id=>document.activeElement===executionProgressHost.querySelector('#'+id+' > summary'));
     const focusedId = executionProgressHost.contains(document.activeElement) ? document.activeElement?.id : undefined;
     const creditSummaryFocused = document.activeElement === executionProgressHost.querySelector('.authoring-credit-meter summary');
-    const primaryAction=!run?'':run.state==='paused'&&run.stage==='provider_reconcile'?`<button class="authoring-status-button primary" type="button" id="retry-run" ${this.busy||this.retryOffer?.mode==='blocked'&&!this.pendingRunRetry?'disabled':''}>${this.pendingRunRetry?'核对重试结果':this.busy?'正在处理…':'立即重试'}</button>${this.retryOffer?.mode==='blocked'?'<button class="authoring-status-button secondary" type="button" id="refresh-run-retry">刷新状态</button>':''}`
+    const primaryAction=!run?'':run.state==='paused'&&run.stage==='provider_reconcile'?(this.retryOffer?.mode==='resume'&&!this.pendingRunRetry
+      ?'<button class="authoring-status-button primary" type="button" id="resume-run">继续本次任务</button>'
+      :`<button class="authoring-status-button primary" type="button" id="retry-run" ${this.busy||this.retryOffer?.mode==='blocked'&&!this.pendingRunRetry?'disabled':''}>${this.pendingRunRetry?'核对重试结果':this.busy?'正在处理…':'立即重试'}</button>${this.retryOffer?.mode==='blocked'?'<button class="authoring-status-button secondary" type="button" id="refresh-run-retry">刷新状态</button>':''}`)
       :run.state==='running'&&this.charge?.progress?.pause_requested||run.stage==='user_paused'||run.stage==='credits_exhausted'?'<button class="authoring-status-button primary" type="button" id="resume-run">继续本次任务</button>'
       :['queued','running'].includes(run.state)?'<button class="authoring-status-button primary" type="button" id="pause-run">暂停任务</button>'
       :run.state==='paused'&&run.stage==='capability_not_ready'&&!repeatedPause?this.resumeVerified?'<button class="authoring-status-button primary" type="button" id="resume-run">继续更新</button>':'<button class="authoring-status-button primary" type="button" id="recheck-paused">重新检查处理条件</button>':'';
@@ -717,7 +723,8 @@ export class ProjectExecution {
     if(this.active&&generation===this.generation){this.quote=quote;if(int64(quote.balance.available)===0n)this.awaitingCredits=true;this.render();}
   }
   private async changeRun(action: 'cancel' | 'resume' | 'pause') {
-    if (!this.run || action === 'resume' && !(this.run.state === 'running' && this.charge?.progress?.pause_requested) && this.run.stage !== 'user_paused' && this.run.stage !== 'credits_exhausted' && (!this.resumeVerified || this.run.stage !== 'capability_not_ready')) return;
+    const legacyUserPause=this.run?.state==='paused'&&this.run.stage==='provider_reconcile'&&this.retryOffer?.mode==='resume'&&this.retryOffer.reason_code==='user_paused'&&!this.pendingRunRetry;
+    if (!this.run || action === 'resume' && !legacyUserPause && !(this.run.state === 'running' && this.charge?.progress?.pause_requested) && this.run.stage !== 'user_paused' && this.run.stage !== 'credits_exhausted' && (!this.resumeVerified || this.run.stage !== 'capability_not_ready')) return;
     const runId = this.run.run_id;
     const pause = { runId, stage: this.run.stage, reason: this.reason };
     if (action === 'resume') this.resumeVerified = false;
@@ -726,7 +733,14 @@ export class ProjectExecution {
       if (!this.active) return;
       if (run.run_id !== runId || run.project_id !== this.id) throw new ApiError(0, 'DATA_UNAVAILABLE');
       if (action === 'resume') this.resumedPause = pause;
-      this.acceptRun(run); void this.poll();
+      this.acceptRun(run);
+      if(action==='resume'&&legacyUserPause){
+        // This only clears the owner's pause. A material restart still needs a
+        // fresh server offer and its separate explicit confirmation.
+        this.retryOffer=undefined;this.retryReadKey=undefined;this.retryFeedback='';
+        await this.loadRetryOptions();
+      }
+      void this.poll();
     });
   }
 

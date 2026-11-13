@@ -2,6 +2,8 @@
 
 状态：开发验证；代码完成，尚未部署，待统一发布。Refs #994。范围为 update 的文件编制及其篇幅修复调用，不代表整个 #994 已解决。
 
+后续本地真实回放发现独立的累计输出上限与旧任务恢复缺口。本文保留首轮历史验证值；当前输出预算、完整指令初始化和扩展恢复范围以[输出恢复补修记录](file-authoring-output-recovery-20261113.md)为准。
+
 ## 原因与诊断边界
 
 生产只读证据确认 DeepSeek `/responses` 返回 HTTP 413 Payload Too Large；CLI 重连五次后失败，旧适配器记为 MODEL_TURN_FAILED / usage unknown，停在 provider_reconcile，没有可自动恢复的快照。没有结果引用，用户没有请求暂停。本次没有修改生产任务、账务或服务。
