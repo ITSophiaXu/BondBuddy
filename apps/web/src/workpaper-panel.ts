@@ -24,6 +24,8 @@ import {runStateLabel} from './review-state';
 import './workpaper-panel.css';
 import {WorkpaperImportSchema,WorkpaperPreviewSchema,type WorkpaperImport,type WorkpaperCataloguePreview,type WorkpaperColumnMapping,type M4MaterialPin} from '@bondbuddy/contracts';
 import {WorkpaperImportReview} from './workpaper-import-review';
+import {renderChapterSelection,selectedChapterOrder} from './workpaper-chapter-selection';
+import {progressiveBatchHtml} from './workpaper-progressive-view';
 import type {UploadRecoveryJson} from './upload-recovery';
 type CatalogueUploadContext={draft?:{scope:'due_diligence'|'all';mapping?:WorkpaperColumnMapping[]};request?:WorkpaperImport};
 
@@ -31,16 +33,16 @@ const stateNames:Record<string,string>={queued:'等待生成',running:'正在生
 export class WorkpaperPanel {
   private controller=new AbortController();private downloads=new ArtifactDownloads();
   private progressRevision='';
-  private poller=new TaskPoller({active:()=>this.data.batches.some(generationBatchActive),live:()=>this.live(),blocked:()=>this.busy||this.downloading,
+  private poller=new TaskPoller({active:()=>this.data.batches.some(generationBatchActive),live:()=>this.live(),blocked:()=>this.busy,
     refresh:(signal,force)=>this.refreshProgress(signal,force),failed:stopped=>this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=stopped?'自动刷新已暂停，请刷新页面重试；后台任务继续。':'进度暂时无法读取，后台任务继续；稍后重试。')});
   private data:WorkpaperWorkspace={catalogues:[],batches:[],assessments:[]};private selected=new Set<string>();private catalogue?:WorkpaperCatalogue;
   private progressBatch?:string;private expandedBatches=new Map<string,boolean>();
   private downloadFeedback?:{node:HTMLElement;target:Record<string,string|undefined>};
   // Reading existing files must not activate the unsaved-work navigation guard.
-  private downloading=false;
+  private downloading=false;private downloadLabel='';private previewDialog?:HTMLDialogElement;
   private pending?:BillingRecoveryDto<'WorkpaperStart'>;private busy=false;private status='';private requirements='';private filter='';private upload:UploadFileMaterialState={};private storageError=false;
   private view:'prepare'|'confirm'|'results'='prepare';
-  private expandedFolders=new Set<string>();
+  private chapterOrder:string[]=[];
   private uploadNeedsFile=new Set<string>();
   private importReview?:WorkpaperImportReview;private uploadContextSnapshot?:UploadRecoveryJson;
   constructor(private api:ApiClient,private host:HTMLElement,private project:string,private owner:string,private source:ProjectFileSource|null,private current:()=>boolean,private stepChanged:(step:number)=>void=()=>{}){}
@@ -49,7 +51,7 @@ export class WorkpaperPanel {
   private get key(){return `bb-workpapers-v1:${this.owner}:${this.project}`;}
   get hasUnconfirmed(){return this.busy||!!this.pending||!!this.importReview||this.storageError;}
   async beforeLeave(){return !this.busy&&!this.storageError;}
-  dispose(){this.controller.abort();this.poller.dispose();this.downloads.dispose();}
+  dispose(){this.controller.abort();this.poller.dispose();this.downloads.dispose();this.previewDialog?.remove();}
   private live(){return !this.controller.signal.aborted&&this.current()&&this.host.isConnected;}
   private request<T>(method:string,path='',body?:unknown,headers:Record<string,string>={},signal:AbortSignal=this.controller.signal){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.project)}/workpapers${path}`,body,headers,signal);}
   private async readWorkspace(signal?:AbortSignal){
@@ -62,7 +64,7 @@ export class WorkpaperPanel {
     }
     return data;
   }
-  private save(){try{localStorage.setItem(this.key,JSON.stringify({catalogue:this.catalogue?.catalogue_id,selected:[...this.selected],requirements:this.requirements,pending:this.pending}));this.storageError=false;return true;}catch{this.storageError=true;this.status='本浏览器无法保存待提交请求，请恢复存储后重试；尚未提交生成任务。';return false;}}
+  private save(){try{this.chapterOrder=selectedChapterOrder(this.catalogue?.entries??[],[...this.selected],this.chapterOrder);localStorage.setItem(this.key,JSON.stringify({catalogue:this.catalogue?.catalogue_id,selected:[...this.selected],chapter_order:this.chapterOrder,requirements:this.requirements,pending:this.pending}));this.storageError=false;return true;}catch{this.storageError=true;this.status='本浏览器无法保存待提交请求，请恢复存储后重试；尚未提交生成任务。';return false;}}
   async render(){
     this.host.innerHTML='<p role="status">正在读取底稿目录与生成进度…</p>';
     try{
@@ -79,6 +81,7 @@ export class WorkpaperPanel {
       }
       this.catalogue=this.data.catalogues.find(c=>c.catalogue_id===(this.pending?.catalogue_id??saved?.catalogue))??this.data.catalogues[0];
       this.selected=new Set(this.pending?.item_ids??(saved&&this.catalogue&&saved.catalogue===this.catalogue.catalogue_id?saved.selected:undefined)??defaultWorkpaperIds(this.catalogue?.entries??[])??[]);
+      this.chapterOrder=selectedChapterOrder(this.catalogue?.entries??[],[...this.selected],this.pending?.progressive?.chapter_order??(Array.isArray(saved?.chapter_order)?saved.chapter_order:[]));
       const affectedId=new URLSearchParams(location.hash.split('?')[1]).get('workpaper_batch');
       if(affectedId&&!this.pending){
         const batch=this.data.batches.find(b=>b.batch_id===affectedId)??await this.request<WorkpaperBatch>('GET','/batches/'+encodeURIComponent(affectedId));
@@ -118,14 +121,10 @@ export class WorkpaperPanel {
     this.paintEntries();this.paintBatches();this.paintRecovery();if(this.view==='confirm')this.paintConfirmationPage();
   }
   private paintEntries(){
-    const node=this.host.querySelector('#wp-entries');if(!node||!this.catalogue)return;
-    node.querySelectorAll<HTMLDetailsElement>('[data-wp-folder]').forEach(d=>{if(d.open)this.expandedFolders.add(d.dataset.wpFolder!);else this.expandedFolders.delete(d.dataset.wpFolder!);});
-    const all=this.catalogue.entries.filter(e=>e.kind==='file'),entries=all.filter(e=>!this.filter||`${e.code} ${e.title} ${e.folder}`.includes(this.filter));
-    const folders=[...new Set(entries.map(e=>e.folder||'根目录'))];
-    node.innerHTML=entries.length?`<div class="wp-file-tree">${folders.map((folder,index)=>{const files=entries.filter(e=>(e.folder||'根目录')===folder),group=all.filter(e=>(e.folder||'根目录')===folder),selected=group.filter(e=>this.selected.has(e.id)).length;return `<details class="wp-file-group" data-wp-folder="${esc(folder)}" ${this.filter||this.expandedFolders.has(folder)||!this.expandedFolders.size&&index===0?'open':''}><summary><input type="checkbox" data-wp-group="${esc(folder)}" aria-label="选择目录 ${esc(folder)}" ${selected===group.length?'checked':''} data-partial="${selected>0&&selected<group.length}" ${this.pending||this.busy?'disabled':''}><span>${esc(folder)}</span><small>${selected} / ${group.length}</small></summary>${files.map(e=>`<div class="wp-file-row"><input id="wp-file-${esc(e.id)}" type="checkbox" aria-label="选择 ${esc(e.title)}" data-wp-item="${esc(e.id)}" ${this.selected.has(e.id)?'checked':''} ${this.pending||this.busy?'disabled':''}><label for="wp-file-${esc(e.id)}">${esc(e.code)} ${esc(e.title)}${e.instructions?`<small>${esc(e.instructions)}</small>`:''}</label></div>`).join('')}</details>`;}).join('')}</div>`:'<p class="muted">没有匹配的文件，请换一个编号或名称。</p>';
-    node.querySelectorAll<HTMLInputElement>('[data-partial=true]').forEach(c=>c.indeterminate=true);
-    node.querySelectorAll<HTMLInputElement>('[data-wp-group]').forEach(c=>{c.addEventListener('click',e=>e.stopPropagation());c.addEventListener('change',()=>{for(const entry of all.filter(e=>(e.folder||'根目录')===c.dataset.wpGroup))c.checked?this.selected.add(entry.id):this.selected.delete(entry.id);this.save();this.paintEntries();});});
-    node.querySelectorAll<HTMLInputElement>('[data-wp-item]').forEach(c=>c.addEventListener('change',()=>{c.checked?this.selected.add(c.dataset.wpItem!):this.selected.delete(c.dataset.wpItem!);this.save();const folder=c.closest<HTMLDetailsElement>('[data-wp-folder]')!,group=all.filter(e=>(e.folder||'根目录')===folder.dataset.wpFolder),selected=group.filter(e=>this.selected.has(e.id)).length,checkbox=folder.querySelector<HTMLInputElement>('[data-wp-group]')!;checkbox.checked=selected===group.length;checkbox.indeterminate=selected>0&&selected<group.length;folder.querySelector('summary small')!.textContent=`${selected} / ${group.length}`;this.paintConfirm();}));this.paintConfirm();
+    const node=this.host.querySelector<HTMLElement>('#wp-entries');if(!node||!this.catalogue)return;
+    renderChapterSelection(node,{entries:this.catalogue.entries,itemIds:[...this.selected],order:this.chapterOrder,disabled:!!this.pending||this.busy,filter:this.filter,
+      change:(ids,order)=>{this.selected=new Set(ids);this.chapterOrder=order;this.save();this.paintEntries();}});
+    this.paintConfirm();
   }
   private paintConfirm(){
     const node=this.host.querySelector('#wp-confirm');if(!node)return;
@@ -144,8 +143,8 @@ export class WorkpaperPanel {
       :this.automatic?'点击开始后自动预留积分，按所选条目逐份交付结算。':'先核对生成范围和费用，确认后开始逐份编制。';
     const focusId=node.contains(document.activeElement)?document.activeElement?.id:undefined;
     node.innerHTML=`<div class="wp-confirm-heading"><div><h3>批量生成底稿</h3><p>按所选目录逐份编制，资料不足或不适用的条目附具体说明。</p></div><span class="wp-selection-count">已选 <strong>${count}</strong> 份底稿</span></div>
-      <p class="wp-confirm-source">本批依据：${this.source?`${esc(this.source.filename)} · V${this.source.sequence}`:'请先选择募集说明书'}</p>
-      <div class="wp-confirm-actions"><div class="wp-fee-summary"><span>本批费用上限 <strong>${formatPoints(BigInt(count)*int64(this.price.points))}</strong> 积分</span><small>每份底稿 ${formatPoints(this.price.points)} 积分</small></div><div class="wp-action-area"><p id="wp-action-hint">${hint}</p><div class="wp-action-buttons">${active?'<a class="btn secondary" id="wp-view-progress" href="#wp-batches">查看生成进度</a>':''}<button class="btn primary" id="wp-start" aria-describedby="wp-action-hint wp-fee-note" ${disabled?'disabled':''}>${this.automatic?'开始生成底稿':'下一步：确认生成'}</button></div></div></div>
+      <p class="wp-confirm-source">本批依据：${this.source?`${esc(this.source.filename)} · V${this.source.sequence}`:'请先选择募集说明书'}</p><p>先从前 ${Math.min(8,selectedChapterOrder(this.catalogue?.entries??[],[...this.selected],this.chapterOrder).length)} 个所选章节各试生成 1 份；查看成果并确认后，按章节顺序自动生成其余文件。</p>
+      <div class="wp-confirm-actions"><div class="wp-fee-summary"><span>本批费用上限 <strong>${formatPoints(BigInt(count)*int64(this.price.points))}</strong> 积分</span><small>每份底稿 ${formatPoints(this.price.points)} 积分</small></div><div class="wp-action-area"><p id="wp-action-hint">${hint}</p><div class="wp-action-buttons">${active?'<a class="btn secondary" id="wp-view-progress" href="#wp-batches">查看生成进度</a>':''}<button class="btn primary" id="wp-start" aria-describedby="wp-action-hint wp-fee-note" ${disabled?'disabled':''}>${this.automatic?'开始试生成':'下一步：确认试生成'}</button></div></div></div>
       <p class="wp-fee-note" id="wp-fee-note">${this.automatic?'开始时核验本批总额度，按所选文件逐份预留积分，成功交付后扣费；仅形成说明或未交付的条目不收生成费。':'生成底稿按处理进度逐份计费；仅形成说明的条目不收取生成积分，已扣部分自动退回。'}</p>`;
     if(focusId)node.querySelector<HTMLElement>('#'+focusId)?.focus({preventScroll:true});
     node.querySelector('#wp-start')?.addEventListener('click',()=>{if(!disabled){if(this.automatic){void this.start();return;}this.view='confirm';this.paint();this.host.querySelector<HTMLElement>('#wp-confirm-start')?.focus();}});
@@ -157,6 +156,7 @@ export class WorkpaperPanel {
     const confirmedSource=this.pending&&this.source?.version_id!==this.pending.source_version_id?null:this.source;
     node.innerHTML=`<section class="panel pf-flow-confirm"><h2>确认本次生成</h2><p>核对募集说明书、生成范围及预计积分。</p><div class="pf-confirm-section"><h3>募集说明书</h3><p>${esc(confirmedSource?.filename??'原提交已固定的募集说明书（保留原版本）')} ${confirmedSource?'· V'+confirmedSource.sequence:''}</p></div><div class="pf-confirm-section"><h3>生成内容</h3><p>${esc(this.catalogue?.filename??'')} · ${count} 份文件</p><details><summary>查看所选文件</summary><ul>${this.catalogue?.entries.filter(e=>(this.pending?.item_ids??[...this.selected]).includes(e.id)).map(e=>`<li>${esc(e.code)} ${esc(e.title)}</li>`).join('')??''}</ul></details>${this.requirements?`<p>本批编制要求：${esc(this.requirements)}</p>`:''}</div><p>可编制的条目形成文件；业务不适用或资料不足的条目分别写明情况。成果按“可生成文件”和“不适用说明”两个文件夹打包。</p><div class="pf-confirm-total">本批费用上限 <strong>${total.toLocaleString()}</strong> 积分</div><p class="muted">仅形成说明的条目不收取生成积分，已扣部分自动退回。</p><p id="wp-confirm-status" role="status">${esc(this.status)}</p><footer class="pf-footer"><button class="btn secondary" id="wp-confirm-back" ${this.busy?'disabled':''}>上一步：调整范围</button><button class="btn primary" id="wp-confirm-start" ${this.busy||this.storageError?'disabled':''}>${this.pending?'继续确认上次提交':'确认并开始生成'}</button></footer></section>`;
     node.querySelector('#wp-confirm-back')!.addEventListener('click',()=>{this.view='prepare';this.paint();});
+    if(!this.pending||this.pending.progressive){const trial=Math.min(8,selectedChapterOrder(this.catalogue?.entries??[],[...this.selected],this.chapterOrder).length);node.querySelector('.pf-confirm-total')?.insertAdjacentHTML('beforebegin',`<p>先从前 ${trial} 个所选章节各试生成 1 份；查看成果并确认后，按已选章节顺序自动生成其余文件。</p>`);if(!this.pending)node.querySelector('#wp-confirm-start')!.textContent='确认并开始试生成';}
     node.querySelector('#wp-confirm-start')!.addEventListener('click',()=>void this.start());
   }
   private paintRecovery(){
@@ -183,9 +183,18 @@ export class WorkpaperPanel {
     // Import may replace the whole preparation view while busy. Update the new
     // controls too, without repainting user input or moving keyboard focus.
     const disabled=this.busy||!!this.pending;
-    this.host.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement|HTMLTextAreaElement>('#wp-change-directory,#wp-catalogue,#wp-upload,#wp-all,#wp-none,[data-wp-item],#wp-requirements').forEach(control=>control.disabled=disabled);
+    this.host.querySelectorAll<HTMLInputElement|HTMLButtonElement|HTMLSelectElement|HTMLTextAreaElement>('#wp-change-directory,#wp-catalogue,#wp-upload,#wp-all,#wp-none,[data-chapter-item],[data-chapter-select],#wp-requirements').forEach(control=>control.disabled=disabled);
+    if(disabled)this.host.querySelectorAll<HTMLButtonElement>('[data-chapter-move]').forEach(control=>control.disabled=true);
   }
-  private async act(fn:()=>Promise<void>){if(this.busy)return;this.poller.pause();this.busy=true;this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();try{await fn();}catch(e){this.status=friendlyError(e,'submit');}finally{this.busy=false;this.progressRevision='';this.poll();if(this.live()){this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=this.status);this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();}}}
+  private async act(fn:()=>Promise<void>){if(this.busy)return;this.poller.pause();this.busy=true;this.syncPreparationControls();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();this.paintBatches();try{await fn();}catch(e){this.status=friendlyError(e,'submit');}finally{this.busy=false;this.progressRevision='';this.poll();if(this.live()){this.host.querySelectorAll('#wp-status,#wp-results-status').forEach(node=>node.textContent=this.status);this.syncPreparationControls();this.paintEntries();this.paintBatches();this.paintConfirm();this.paintConfirmationPage();this.paintRecovery();}}}
+  private syncDownloadButtons(){
+    const target=this.downloadFeedback?.target;
+    this.host.querySelectorAll<HTMLButtonElement>('[data-wp-zip],[data-wp-explanation],[data-wp-art]').forEach(button=>{
+      button.disabled=this.downloading||this.busy;
+      if(this.downloading&&target&&Object.entries(target).every(([key,value])=>button.dataset[key]===value)){button.textContent=this.downloadLabel;button.setAttribute('aria-busy','true');}
+      else button.removeAttribute('aria-busy');
+    });
+  }
   private async download(button:HTMLButtonElement,read:(signal:AbortSignal,progress:(received:number,total?:number)=>void,preparation:(state:WorkpaperZipPreparation)=>void)=>Promise<{bytes:Blob;filename:string}>){
     if(this.busy||this.downloading)return;this.downloading=true;
     const feedback=this.downloadFeedback?.node??document.createElement('div');
@@ -193,17 +202,16 @@ export class WorkpaperPanel {
     this.downloadFeedback={node:feedback,target:{...button.dataset}};button.closest('.wp-actions')!.append(feedback);
     feedback.textContent='正在准备下载，请稍候…';
     const activity=button.hasAttribute('data-wp-zip')?new WorkpaperDownloadProgress(feedback,this.controller.signal):undefined;
-    const buttons=[...this.host.querySelectorAll<HTMLButtonElement>('#wp-batches button')].map(b=>({b,disabled:b.disabled}));
-    const text=button.textContent;buttons.forEach(({b})=>b.disabled=true);button.textContent='正在准备下载…';button.setAttribute('aria-busy','true');
+    this.downloadLabel='正在准备下载…';this.syncDownloadButtons();
     const progress=(received:number,total?:number)=>{if(this.live()){
-      button.textContent='正在下载…';
+      this.downloadLabel='正在下载…';this.syncDownloadButtons();
       if(activity){activity.transfer(received,total);return;}
       feedback.textContent=total?`正在下载文件包，${Math.min(100,Math.floor(received/total*100))}%（${(received/1024/1024).toFixed(2)} / ${(total/1024/1024).toFixed(2)} MB）`:`正在下载文件包，已接收 ${(received/1024/1024).toFixed(2)} MB…`;
     }};
     const preparation=(state:WorkpaperZipPreparation)=>{if(this.live())activity?.prepare(state);};
     try{const file=await boundedDownload(this.controller.signal,signal=>read(signal,progress,preparation),button.hasAttribute('data-wp-zip')?20*60_000:120_000);activity?.stop();if(this.live()){feedback.setAttribute('role','status');this.downloads.save(file.bytes,file.filename,feedback);}}
     catch(e){activity?.stop();if(this.live()){feedback.setAttribute('role','status');feedback.textContent=artifactError(e);}}
-    finally{activity?.stop();this.downloading=false;buttons.forEach(({b,disabled})=>b.disabled=disabled);button.textContent=text;button.removeAttribute('aria-busy');}
+    finally{activity?.stop();this.downloading=false;if(this.live())this.paintBatches();}
   }
   private async importFile(file?:File,operation?:string){
     if(this.pending||this.busy)return;
@@ -281,7 +289,7 @@ export class WorkpaperPanel {
   private async start(){await this.act(async()=>{
     if(!this.pending){if(!this.catalogue||!this.source||!this.selected.size)return;
       const price=this.price;if((!isAutomaticPriceVersion(price.version)&&price.version!==WORKPAPER_PRICE.version)||int64(price.points)<=0n)throw new ApiError(503,'BILLING_NOT_READY');
-      this.pending={start_mode:'direct',request_id:crypto.randomUUID(),catalogue_id:this.catalogue.catalogue_id,catalogue_sha256:this.catalogue.sha256,item_ids:[...this.selected],source_version_id:this.source.version_id,source_selection_revision:this.source.selection_revision,requirements:this.requirements,price_version:price.version,expected_points:serializeInt64(BigInt(this.selected.size)*int64(price.points))};
+      this.pending={start_mode:'direct',request_id:crypto.randomUUID(),catalogue_id:this.catalogue.catalogue_id,catalogue_sha256:this.catalogue.sha256,item_ids:[...this.selected],progressive:{chapter_order:selectedChapterOrder(this.catalogue.entries,[...this.selected],this.chapterOrder)},source_version_id:this.source.version_id,source_selection_revision:this.source.selection_revision,requirements:this.requirements,price_version:price.version,expected_points:serializeInt64(BigInt(this.selected.size)*int64(price.points))};
       if(!this.save())return;this.paint();}
     let batch:WorkpaperBatch;
     try{batch=await this.request<WorkpaperBatch>('POST','/batches',this.pending,billingRecoveryHeaders('WorkpaperStart',this.pending));}catch(e){
@@ -292,7 +300,7 @@ export class WorkpaperPanel {
   });}
   private async batchAction(batch:WorkpaperBatch,action:string){await this.act(async()=>{
     const billing=action==='resume'?batch.billing_resume:undefined;
-    const request={action,expected_revision:batch.revision,...(billing?{billing_resume:true,request_id:`wp-billing:${batch.batch_id}:${batch.revision}`,price_version:billing.price_version,expected_points:billing.required_points}:{})};
+    const request={action,expected_revision:batch.revision,...(action==='continue_remaining'?{request_id:`wp-continue:${batch.batch_id}:${batch.revision}`}:{}) ,...(billing?{billing_resume:true,request_id:`wp-billing:${batch.batch_id}:${batch.revision}`,price_version:billing.price_version,expected_points:billing.required_points}:{})};
     if(billing){
       // Pin the payment return to this batch, even when it was selected from a list.
       this.view='results';this.progressBatch=batch.batch_id;
@@ -300,12 +308,16 @@ export class WorkpaperPanel {
       history.replaceState(history.state,'','#generate?'+query);
     }
     const changed=await this.request<WorkpaperBatch>('POST',`/batches/${encodeURIComponent(batch.batch_id)}/actions`,request);
+    this.status=action==='continue_remaining'?'已确认继续，剩余文件将按章节顺序自动生成。':action==='pause'?'已暂停启动新文件，当前文件完成后会保留成果。':action==='cancel'?'已停止启动新文件，当前文件完成后会保留成果。':action==='retry_failed'?'正在重试失败文件，已完成成果保留。':'已继续原文件包。';
     this.data.batches=this.data.batches.map(b=>b.batch_id===changed.batch_id?changed:b);this.paintBatches();this.poll();
   });}
   private paintBatches(){
     const node=this.host.querySelector('#wp-batches');if(!node)return;
     node.querySelectorAll<HTMLDetailsElement>('details[data-batch]').forEach(e=>this.expandedBatches.set(e.dataset.batch!,e.open));
-    node.innerHTML=`<h2>底稿生成进度</h2><p id="wp-results-status" role="status">${esc(this.status)}</p>${!this.data.batches.length?'<p class="muted">尚未提交底稿文件包。</p>':''}${this.data.batches.map(b=>{
+    const focus=node.contains(document.activeElement)?document.activeElement as HTMLElement:undefined;
+    const focusData=focus?{...focus.dataset}:undefined;
+    node.innerHTML=`<h2>${this.data.batches.some(b=>b.progressive)?'尽职调查底稿包':'底稿生成进度'}</h2><p id="wp-results-status" role="status">${esc(this.status)}</p>${!this.data.batches.length?'<p class="muted">尚未提交底稿文件包。</p>':''}${this.data.batches.map(b=>{
+      if(b.progressive)return progressiveBatchHtml(b,this.busy);
       const done=b.items.filter(i=>i.state==='succeeded').length,failed=b.items.filter(i=>['failed','rejected','cancelled'].includes(i.state)&&i.run_id).length;
       return `<article class="panel wp-batch" data-wp-batch-id="${esc(b.batch_id)}"><div class="wp-batch-heading"><h3>底稿文件包 <span class="wp-batch-state" data-state="${esc(b.state)}">${esc(stateNames[b.state])}</span></h3><span class="wp-batch-count"><strong>${done}</strong> / ${b.items.length} 份完成${failed?` · ${failed} 份未完成`:''}</span></div><progress max="${b.items.length}" value="${done}" aria-label="底稿完成进度"></progress><dl class="wp-batch-meta"><div><dt>生成依据</dt><dd>${esc(b.source.filename)} · V${b.source.sequence}</dd></div>${b.template_mode?`<div><dt>本批模板</dt><dd>${({automatic:'光大模板',selected:'所选 Word 模板',mixed:'混合模板'})[b.template_mode]}</dd></div>`:''}<div><dt>提交时间</dt><dd>${date(b.created_at)}</dd></div><div><dt>已扣积分</dt><dd>${b.charged_points.toLocaleString()} 积分</dd></div></dl>${b.error?`<p role="status">${esc(b.error)}</p>`:''}
       ${b.billing_resume?`<p>本批剩余文件需要 ${formatPoints(b.billing_resume.required_points)} 积分，当前可用 ${formatPoints(b.billing_resume.available_points)} 积分${int64(b.billing_resume.shortage)>0n?`，还差 ${formatPoints(b.billing_resume.shortage)} 积分`:''}。已完成文件保留。</p>`:''}
@@ -313,6 +325,10 @@ export class WorkpaperPanel {
       <details data-batch="${esc(b.batch_id)}" ${(this.expandedBatches.get(b.batch_id)??b.batch_id===this.progressBatch)?'open':''}><summary>查看逐份状态与下载</summary><ul class="wp-items">${b.items.map(i=>`<li><div><strong>${esc(i.entry.code)} ${esc(i.entry.title)}</strong><small>${esc(runStateLabel[i.state as keyof typeof runStateLabel]??stateNames[i.state]??i.state)}${i.explanation?' · 已生成不适用说明':''}${i.error?' · '+esc(i.error):''}</small></div><div class="wp-actions">${i.explanation?'<button class="text-button" data-wp-explanation="'+esc(i.entry.id)+'" data-batch="'+esc(b.batch_id)+'">下载不适用说明</button>':''}${i.artifacts.filter(a=>a.kind==='document').map(a=>`<button class="text-button" data-wp-art="${esc(a.pin.artifact_id)}" data-wp-batch="${esc(b.batch_id)}">${a.kind==='document'?'下载底稿':'编制说明'}</button>`).join('')}</div></li>`).join('')}</ul></details></article>`;}).join('')}`;
     node.querySelectorAll<HTMLDetailsElement>('details[data-batch]').forEach(el=>el.addEventListener('toggle',()=>{if(el.isConnected)this.expandedBatches.set(el.dataset.batch!,el.open);}));
     node.querySelectorAll<HTMLElement>('[data-wp-action]').forEach(el=>el.onclick=()=>void this.batchAction(this.data.batches.find(b=>b.batch_id===el.dataset.batch)!,el.dataset.wpAction!));
+    node.querySelectorAll<HTMLButtonElement>('[data-wp-restart]').forEach(el=>el.onclick=()=>this.prepareAgain());
+    node.querySelectorAll<HTMLButtonElement>('[data-wp-reselect]').forEach(el=>el.onclick=()=>void(async()=>{const batch=this.data.batches.find(b=>b.batch_id===el.dataset.wpReselect)!;await this.batchAction(batch,'cancel');if(this.data.batches.find(b=>b.batch_id===batch.batch_id)?.state==='cancelled')this.prepareAgain();})());
+    node.querySelectorAll<HTMLButtonElement>('[data-wp-preview]').forEach(el=>el.onclick=()=>void this.previewItem(el.dataset.batch!,el.dataset.wpPreview!));
+    node.querySelectorAll<HTMLButtonElement>('[data-wp-show-results]').forEach(el=>el.onclick=()=>{const results=el.closest('[data-wp-batch-id]')?.querySelector<HTMLElement>('.wpg-results');if(results){results.tabIndex=-1;results.focus({preventScroll:true});results.scrollIntoView({block:'start',behavior:'smooth'});}});
     node.querySelectorAll<HTMLButtonElement>('[data-wp-zip]').forEach(el=>el.onclick=()=>void this.download(el,async (signal,progress,preparation)=>({bytes:await this.api.workpaperZip(this.project,el.dataset.wpZip!,signal,progress,preparation),filename:'底稿文件包.zip'})));
     node.querySelectorAll<HTMLButtonElement>('[data-wp-explanation]').forEach(el=>el.onclick=()=>void this.download(el,async signal=>{
       const batch=this.data.batches.find(b=>b.batch_id===el.dataset.batch)!,item=batch.items.find(i=>i.entry.id===el.dataset.wpExplanation)!;
@@ -321,14 +337,25 @@ export class WorkpaperPanel {
     node.querySelectorAll<HTMLButtonElement>('[data-wp-art]').forEach(el=>el.onclick=()=>void this.download(el,async signal=>{const batch=this.data.batches.find(b=>b.batch_id===el.dataset.wpBatch)!,artifact=batch.items.flatMap(i=>i.artifacts).find(a=>a.pin.artifact_id===el.dataset.wpArt)!;const metadata=await this.api.request<import('./api').Dto<'ArtifactResponse'>>('GET',`/artifacts/${encodeURIComponent(artifact.pin.artifact_id)}?version=${artifact.pin.artifact_version}`,undefined,{},signal);return {bytes:await this.api.artifactBytes(metadata,signal),filename:artifact.filename};}));
     const feedback=this.downloadFeedback;
     if(feedback){const button=[...node.querySelectorAll<HTMLButtonElement>('button')].find(b=>Object.entries(feedback.target).every(([key,value])=>b.dataset[key]===value));button?.closest('.wp-actions')?.append(feedback.node);}
+    this.syncDownloadButtons();
+    if(focusData&&Object.keys(focusData).length){const target=[...node.querySelectorAll<HTMLButtonElement>('button')].find(b=>Object.entries(focusData).every(([key,value])=>b.dataset[key]===value));target?.focus({preventScroll:true});}
   }
+  private async previewItem(batchId:string,itemId:string){
+    const item=this.data.batches.find(b=>b.batch_id===batchId)?.items.find(i=>i.entry.id===itemId);if(!item)return;
+    this.previewDialog?.remove();const dialog=document.createElement('dialog');this.previewDialog=dialog;dialog.className='wpg-preview';
+    dialog.innerHTML=`<header><h2>${esc(item.entry.code)} ${esc(item.entry.title)}</h2><button class="btn secondary" data-close>关闭</button></header><p>下方为文字预览；下载 Word 文件可查看完整排版。</p><p role="status">正在读取成果…</p>`;
+    document.body.append(dialog);dialog.showModal();dialog.querySelector('[data-close]')!.addEventListener('click',()=>dialog.close());dialog.addEventListener('close',()=>dialog.remove());
+    try{const result=await this.request<{text:string}>('GET',`/batches/${encodeURIComponent(batchId)}/items/${encodeURIComponent(itemId)}/preview`);if(dialog.isConnected&&this.live()){dialog.querySelector('[role=status]')?.remove();const content=document.createElement('pre');content.textContent=result.text;dialog.append(content);}}
+    catch(e){if(dialog.isConnected)dialog.querySelector('[role=status]')!.textContent=friendlyError(e,'read')+' 可关闭预览后下载原文件。';}
+  }
+  private prepareAgain(){const query=new URLSearchParams(location.hash.split('?')[1]);query.delete('view');query.delete('batch');query.delete('legacy');query.delete('workpaper_batch');query.delete('other_documents');query.set('step','prepare');location.hash='#generate?'+query;}
   private poll(){this.poller.start();}
   private async refreshProgress(signal:AbortSignal,force:boolean){
     const progress=await this.request<GenerationProgress>('GET','/progress'+(this.progressBatch?'?batch_id='+encodeURIComponent(this.progressBatch):''),undefined,{},signal);
     if(!Value.Check(GenerationProgressSchema,progress))throw new ApiError(503,'DATA_UNAVAILABLE');
     if(!force&&progress.revision===this.progressRevision)return;
     const data=await this.readWorkspace(signal);signal.throwIfAborted();
-    if(!this.live()||this.busy||this.downloading)return;
+    if(!this.live()||this.busy)return;
     const confirmationState=()=>this.data.batches.some(b=>['queued','running','paused'].includes(b.state));
     const previous=confirmationState();this.data=data;this.progressRevision=progress.revision;
     this.paintBatches();if(previous!==confirmationState())this.paintConfirm();

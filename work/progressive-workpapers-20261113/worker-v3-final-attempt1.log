@@ -1,0 +1,191 @@
+TAP version 13
+# Subtest: confirmed chapter groups share one call, isolate invalid items, retry only failures, fall back safely and serialize with lease renewal
+ok 1 - confirmed chapter groups share one call, isolate invalid items, retry only failures, fall back safely and serialize with lease renewal
+  ---
+  duration_ms: 152388.1325
+  type: 'test'
+  ...
+# {"boundary":"synthetic model; real API/PG/Python/private storage","files":5,"first_delivery_from_submission_ms":13711,"total_with_failed_item_retry_ms":47726,"source_extractions":1,"model_calls":3,"group_calls":1,"single_calls":2,"renewal_interleavings":1}
+# Subtest: bounded plans respect confirmation, immutable chapter boundaries and trial membership
+ok 2 - bounded plans respect confirmation, immutable chapter boundaries and trial membership
+  ---
+  duration_ms: 4.9076
+  type: 'test'
+  ...
+# Subtest: a group fallback is an explicit typed disposition with no accepted content
+ok 3 - a group fallback is an explicit typed disposition with no accepted content
+  ---
+  duration_ms: 1.5455
+  type: 'test'
+  ...
+# Subtest: headerless numbered due-diligence lists retain the first item and summary rows
+ok 4 - headerless numbered due-diligence lists retain the first item and summary rows
+  ---
+  duration_ms: 30.0972
+  type: 'test'
+  ...
+# Subtest: uncertain and competing layouts require review rather than guessing silently
+ok 5 - uncertain and competing layouts require review rather than guessing silently
+  ---
+  duration_ms: 5.9555
+  type: 'test'
+  ...
+# Subtest: Chinese XML decimal references preserve catalogue headers, cells and sheet names
+ok 6 - Chinese XML decimal references preserve catalogue headers, cells and sheet names
+  ---
+  duration_ms: 67.5355
+  type: 'test'
+  ...
+# Subtest: Chinese XML hex references preserve catalogue headers, cells and sheet names
+ok 7 - Chinese XML hex references preserve catalogue headers, cells and sheet names
+  ---
+  duration_ms: 44.47
+  type: 'test'
+  ...
+# Subtest: 500 real XLSX rows, shared strings and merged classification cells retain exact ordering
+ok 8 - 500 real XLSX rows, shared strings and merged classification cells retain exact ordering
+  ---
+  duration_ms: 119.1437
+  type: 'test'
+  ...
+# Subtest: directories, duplicate paths, unsafe characters and multiple worksheets
+ok 9 - directories, duplicate paths, unsafe characters and multiple worksheets
+  ---
+  duration_ms: 2.0178
+  type: 'test'
+  ...
+# Subtest: formula titles are never executed or treated as cached facts
+ok 10 - formula titles are never executed or treated as cached facts
+  ---
+  duration_ms: 21.4006
+  type: 'test'
+  ...
+# Subtest: unnumbered directory groups retain following files; duplicate row IDs are rejected
+ok 11 - unnumbered directory groups retain following files; duplicate row IDs are rejected
+  ---
+  duration_ms: 17.0989
+  type: 'test'
+  ...
+# Subtest: empty, oversized catalogues and malformed ZIP fail explicitly
+ok 12 - empty, oversized catalogues and malformed ZIP fail explicitly
+  ---
+  duration_ms: 25.2464
+  type: 'test'
+  ...
+# Subtest: audit checklist 项目 headers and numbered summary records are retained
+ok 13 - audit checklist 项目 headers and numbered summary records are retained
+  ---
+  duration_ms: 2.5876
+  type: 'test'
+  ...
+# Subtest: import keeps complete requirements but bounds download names and resolves annotation collisions
+ok 14 - import keeps complete requirements but bounds download names and resolves annotation collisions
+  ---
+  duration_ms: 1.1181
+  type: 'test'
+  ...
+# Subtest: progressive item plans deliver before a blocked sibling, share extraction, replay, isolate settled failures and preserve global blockers
+not ok 15 - progressive item plans deliver before a blocked sibling, share extraction, replay, isolate settled failures and preserve global blockers
+  ---
+  duration_ms: 70341.7903
+  type: 'test'
+  location: 'C:\\Users\\yingx\\OneDrive - Microsoft\\Documents\\ChatGPT\\BondDraftAI\\BondBuddy-workpaper-progressive-20261113\\apps\\worker\\dist\\workpaper-progressive-stage.pg.test.js:29:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    'idle' !== 'stopped'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'stopped'
+  actual: 'idle'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///C:/Users/yingx/OneDrive%20-%20Microsoft/Documents/ChatGPT/BondDraftAI/BondBuddy-workpaper-progressive-20261113/apps/worker/dist/workpaper-progressive-stage.pg.test.js:269:16)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1409:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+# {"boundary":"synthetic model; real API, queue, PostgreSQL, Python rendering and storage","first_delivery_from_submission_ms":16652,"total_with_injected_failures_and_retries_ms":53760,"source_extractions":1,"model_calls":4,"parallel_limit":2}
+# Subtest: headerless numbered due-diligence lists retain the first item and summary rows
+ok 16 - headerless numbered due-diligence lists retain the first item and summary rows
+  ---
+  duration_ms: 10.7903
+  type: 'test'
+  ...
+# Subtest: uncertain and competing layouts require review rather than guessing silently
+ok 17 - uncertain and competing layouts require review rather than guessing silently
+  ---
+  duration_ms: 3.9867
+  type: 'test'
+  ...
+# Subtest: Chinese XML decimal references preserve catalogue headers, cells and sheet names
+ok 18 - Chinese XML decimal references preserve catalogue headers, cells and sheet names
+  ---
+  duration_ms: 68.8085
+  type: 'test'
+  ...
+# Subtest: Chinese XML hex references preserve catalogue headers, cells and sheet names
+ok 19 - Chinese XML hex references preserve catalogue headers, cells and sheet names
+  ---
+  duration_ms: 16.9239
+  type: 'test'
+  ...
+# Subtest: 500 real XLSX rows, shared strings and merged classification cells retain exact ordering
+ok 20 - 500 real XLSX rows, shared strings and merged classification cells retain exact ordering
+  ---
+  duration_ms: 99.4097
+  type: 'test'
+  ...
+# Subtest: directories, duplicate paths, unsafe characters and multiple worksheets
+ok 21 - directories, duplicate paths, unsafe characters and multiple worksheets
+  ---
+  duration_ms: 2.0946
+  type: 'test'
+  ...
+# Subtest: formula titles are never executed or treated as cached facts
+ok 22 - formula titles are never executed or treated as cached facts
+  ---
+  duration_ms: 30.3508
+  type: 'test'
+  ...
+# Subtest: unnumbered directory groups retain following files; duplicate row IDs are rejected
+ok 23 - unnumbered directory groups retain following files; duplicate row IDs are rejected
+  ---
+  duration_ms: 9.3175
+  type: 'test'
+  ...
+# Subtest: empty, oversized catalogues and malformed ZIP fail explicitly
+ok 24 - empty, oversized catalogues and malformed ZIP fail explicitly
+  ---
+  duration_ms: 21.8805
+  type: 'test'
+  ...
+# Subtest: audit checklist 项目 headers and numbered summary records are retained
+ok 25 - audit checklist 项目 headers and numbered summary records are retained
+  ---
+  duration_ms: 1.912
+  type: 'test'
+  ...
+# Subtest: import keeps complete requirements but bounds download names and resolves annotation collisions
+ok 26 - import keeps complete requirements but bounds download names and resolves annotation collisions
+  ---
+  duration_ms: 1.4878
+  type: 'test'
+  ...
+# Subtest: one batch plan across deliveries, crash replay, failure/retry, pause, immutable owner cache, refund and source-free ZIP
+ok 27 - one batch plan across deliveries, crash replay, failure/retry, pause, immutable owner cache, refund and source-free ZIP
+  ---
+  duration_ms: 50657.9457
+  type: 'test'
+  ...
+1..27
+# tests 27
+# suites 0
+# pass 26
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 160858.1734

@@ -12,5 +12,5 @@ export const WorkpaperDecisionSchema=obj({item_id:id,status:Type.Union((['genera
 export type WorkpaperDecision=Static<typeof WorkpaperDecisionSchema>;
 export const WORKPAPER_DECISION_LABELS:Record<WorkpaperDecision['status'],string>={generate:'可生成底稿',not_applicable:'业务不适用',missing_information:'资料不足，暂无法生成',external_evidence:'需外部原始证据'};
 
-export const WorkpaperTaskSchema=obj({batch_id:id,catalogue_id:id,entry:WorkpaperEntrySchema,mode:Type.Optional(Type.Literal('direct')),execution:Type.Optional(Type.Literal('shared_batch_v1')),decision:Type.Optional(WorkpaperDecisionSchema)});
+export const WorkpaperTaskSchema=obj({batch_id:id,catalogue_id:id,entry:WorkpaperEntrySchema,mode:Type.Optional(Type.Literal('direct')),execution:Type.Optional(Type.Union([Type.Literal('shared_batch_v1'),Type.Literal('progressive_item_v1')])),decision:Type.Optional(WorkpaperDecisionSchema)});
 export type WorkpaperTask=Static<typeof WorkpaperTaskSchema>;

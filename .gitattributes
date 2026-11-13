@@ -51,6 +51,9 @@
 
 # Runtime M3 skills are loaded from and verified against exact repository bytes.
 /apps/worker/skills/** text eol=lf
+# Progressive method hashes must be identical across local and worker hosts.
+/python/bondbuddy_workpaper_progressive.py text eol=lf
+/python/bondbuddy_workpaper_progressive_render.py text eol=lf
 /knowledge/material-drafting/**/*.md text eol=lf linguist-generated=true
 /knowledge/material-drafting/**/catalog.json text eol=lf
 /knowledge/material-drafting/**/originals/* binary
