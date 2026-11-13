@@ -144,6 +144,15 @@ class Maintenance:
                                 s = os.stat(name, dir_fd=fd, follow_symlinks=False)
                                 if not stat.S_ISREG(s.st_mode) or s.st_nlink != 1:
                                     raise Retain('unsafe_archive')
+                                # A clock correction can make the last record older than an
+                                # earlier record. Query the retention interval before deleting.
+                                recent = self.run(['journalctl', '--file', str(Path(root) / machine / name),
+                                                   '--since=@' + str(cutoff // 1000000), '--lines=1',
+                                                   '--output=json', '--output-fields=__REALTIME_TIMESTAMP',
+                                                   '--no-pager'])
+                                if recent.strip():
+                                    self.event('journal_archive', 'retained_recent_or_empty')
+                                    continue
                                 txt = self.run(['journalctl', '--file', str(Path(root) / machine / name),
                                                 '--reverse', '--lines=1', '--output=json',
                                                 '--output-fields=__REALTIME_TIMESTAMP', '--no-pager'])

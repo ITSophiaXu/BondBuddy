@@ -176,6 +176,8 @@ class SafetyTests(unittest.TestCase):
         for f in [old, recent, active]:
             f.write_text('synthetic archive')
         def journal(cmd):
+            if cmd[2] == str(old) and any(x.startswith('--since=') for x in cmd):
+                return ''
             timestamp = time.time() - (31 if cmd[2] == str(old) else 1) * 86400
             return json.dumps({'__REALTIME_TIMESTAMP': str(int(timestamp * 1000000))})
         policy = {'archived_journal': True, 'journal_directory': str(root)}
@@ -190,9 +192,26 @@ class SafetyTests(unittest.TestCase):
         machine.mkdir(parents=True)
         archive = machine / 'system@aaaa-bbbb.journal'
         archive.write_text('archive')
-        events = m.Maintenance({'archived_journal': True, 'journal_directory': str(root)}, True, lambda _: 'invalid').execute()
+        def invalid(cmd):
+            return '' if any(x.startswith('--since=') for x in cmd) else 'invalid'
+        events = m.Maintenance({'archived_journal': True, 'journal_directory': str(root)}, True, invalid).execute()
         self.assertTrue(archive.exists())
         self.assertEqual('retained_unverified', events[-2]['result'])
+
+    def test_recent_record_survives_even_with_old_last_timestamp(self):
+        root = self.root / 'journal'
+        machine = root / ('a' * 32)
+        machine.mkdir(parents=True)
+        archive = machine / 'system@aaaa-bbbb.journal'
+        archive.write_text('clock correction fixture')
+        calls = []
+        def journal(cmd):
+            calls.append(cmd)
+            timestamp = time.time() - (1 if any(x.startswith('--since=') for x in cmd) else 31) * 86400
+            return json.dumps({'__REALTIME_TIMESTAMP': str(int(timestamp * 1000000))})
+        m.Maintenance({'archived_journal': True, 'journal_directory': str(root)}, True, journal).execute()
+        self.assertTrue(archive.exists())
+        self.assertEqual(1, len(calls))
 
     def test_deadline_escapes_resource_handlers(self):
         policy = self.image_policy()
