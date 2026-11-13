@@ -128,24 +128,26 @@ function providerErrorCode(eventError: unknown): ModelAdapterErrorCode | null {
       if (Number.isInteger(parsed.status)) inner = { ...inner, status: parsed.status };
     }
   } catch { /* Only bounded status markers in CLI diagnostics are used below. */ }
-  const status = [inner.status, inner.status_code, outer.status, outer.status_code].find(v => v === 402 || v === 401 || v === 429);
+  // An HTTP status is provider metadata. Numbers or "payload too large" inside
+  // echoed material are not proof that the provider rejected this request.
+  const metadataStatus = [inner.status, inner.status_code, outer.status, outer.status_code]
+    .find(v => Number.isInteger(v) && Number(v) >= 100 && Number(v) <= 599);
+  const message = typeof outer.message === 'string' ? outer.message.slice(0, 4096) : '';
+  const http = /(?:\bHTTP(?:\/\d(?:\.\d)?)?\s+|\bstatus(?:\s+code)?\s*[:=]?\s*)([1-5]\d{2})\b/i.exec(message)?.[1];
+  const status = metadataStatus ?? (http ? Number(http) : undefined);
   const type = inner.type ?? outer.type;
   const code = inner.code ?? outer.code;
-  if (status === 402 || code === 'insufficient_balance') return 'MODEL_PROVIDER_BALANCE_EXHAUSTED';
-  if (status === 401 || code === 'invalid_api_key') return 'MODEL_PROVIDER_AUTH_FAILED';
-  if (status === 429 || code === 'rate_limit_exceeded') return 'MODEL_PROVIDER_RATE_LIMITED';
+  if (status === 402) return 'MODEL_PROVIDER_BALANCE_EXHAUSTED';
+  if (status === 401) return 'MODEL_PROVIDER_AUTH_FAILED';
+  if (status === 429) return 'MODEL_PROVIDER_RATE_LIMITED';
+  if (status === 413) return 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE';
+  // A different explicit HTTP status wins over incidental error text or codes.
+  if (status !== undefined && status !== 400) return null;
+  if (code === 'insufficient_balance') return 'MODEL_PROVIDER_BALANCE_EXHAUSTED';
+  if (code === 'invalid_api_key') return 'MODEL_PROVIDER_AUTH_FAILED';
+  if (code === 'rate_limit_exceeded') return 'MODEL_PROVIDER_RATE_LIMITED';
   const providerMessage = typeof inner.message === 'string' ? inner.message.slice(0, 4096) : '';
   if (/^Insufficient Balance\.?$/i.test(providerMessage.trim())) return 'MODEL_PROVIDER_BALANCE_EXHAUSTED';
-  // Some CLI versions wrap an HTTP error as plain text. Match only an explicit status
-  // marker; never store the surrounding diagnostic, which can contain prompt text.
-  const message = typeof outer.message === 'string' ? outer.message.slice(0, 4096) : '';
-  const http = /(?:\bHTTP\s*|\bstatus(?:\s+code)?\s*[:=]?\s*)(402|401|429)\b/i.exec(message)?.[1];
-  if (http === '402') return 'MODEL_PROVIDER_BALANCE_EXHAUSTED';
-  if (http === '401') return 'MODEL_PROVIDER_AUTH_FAILED';
-  if (http === '429') return 'MODEL_PROVIDER_RATE_LIMITED';
-  const combined = `${typeof inner.message === 'string' ? inner.message : ''} ${typeof outer.message === 'string' ? outer.message : ''}`.slice(0, 4096);
-  if (/\b413\b|payload too large|length limit exceeded|request body.{0,80}too large/i.test(combined))
-    return 'MODEL_PROVIDER_REQUEST_REJECTED';
   return type === 'invalid_request_error' || code === 'invalid_request_body' || code === 'invalid_json_schema'
     ? 'MODEL_PROVIDER_REQUEST_REJECTED' : null;
 }
@@ -212,12 +214,13 @@ export function assertCodexConfig(c: CodexAdapterConfig) {
 }
 
 // -c overrides, applied with --ignore-user-config so no host or user config can widen them.
-export function codexConfigOverrides(c: CodexAdapterConfig, files = false): string[] {
+export function codexConfigOverrides(c: CodexAdapterConfig, files = false, recovery = false): string[] {
   const q = (v: string) => JSON.stringify(v);
   const p = `model_providers.${c.model_provider}`;
   const kv: string[] = [
     `model=${q(c.model_id)}`, `model_provider=${q(c.model_provider)}`,
-    'model_context_window=1000000', 'model_auto_compact_token_limit=900000',
+    'model_context_window=1000000', `model_auto_compact_token_limit=${files ? (recovery ? 12000 : 32000) : 900000}`,
+    ...(files ? [`tool_output_token_limit=${recovery ? 512 : 1024}`] : []),
     `${p}.name=${q(c.model_provider)}`, `${p}.base_url=${q(c.base_url)}`, `${p}.wire_api=${q(c.wire_api)}`,
     c.credential.kind === 'env' ? `${p}.env_key=${q(c.credential.name)}` : c.credential.kind === 'command'
       ? `${p}.auth.command=${q(c.credential.path)}` : `${p}.requires_openai_auth=true`,
@@ -236,17 +239,28 @@ export function codexConfigOverrides(c: CodexAdapterConfig, files = false): stri
   return kv.flatMap(v => ['-c', v]);
 }
 
-export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileCompletion?: boolean; imageFile?: string }): string[] {
+export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileRecovery?: boolean; fileCompletion?: boolean; imageFile?: string }): string[] {
   if(o.fileCompletion && !o.fileAuthoring)throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (o.materialDataFile && o.reviewDataFile || !!o.reviewDataFile !== !!o.reviewTraceFile) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (c.web_search==='live' && (o.materialDataFile || o.reviewDataFile)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (o.materialTraceFile && (!o.materialDataFile || resolve(o.materialTraceFile)!==resolve(o.cwd,'..','materials-trace.json') || c.web_search==='live')) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   const args = ['exec', '--json', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules', ...(o.fileAuthoring?[]:['--sandbox', 'read-only']), '--cd', o.cwd,
-    ...codexConfigOverrides(c,o.fileAuthoring), ...c.disabled_features.filter(f=>(!o.fileAuthoring || !['shell_tool','unified_exec','view_image'].includes(f)) && !(o.fileCompletion && f==='hooks')).flatMap(f => ['--disable', f])];
+    ...codexConfigOverrides(c,o.fileAuthoring,o.fileRecovery), ...c.disabled_features.filter(f=>(!o.fileAuthoring || !['shell_tool','unified_exec'].includes(f)) && !(o.fileCompletion && f==='hooks')).flatMap(f => ['--disable', f])];
   if(o.fileAuthoring){
     if(o.schemaFile || o.materialDataFile || o.reviewDataFile || o.reviewTraceFile || !o.ephemeral)throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
-    args.push(...filePermissionArgs(o.cwd),'--enable','shell_tool','--enable','unified_exec','--enable','view_image',
+    args.push(...filePermissionArgs(o.cwd),'--enable','shell_tool','--enable','unified_exec',
       '-c',`shell_environment_policy.set={PATH="/opt/venv/bin:/usr/local/bin:/usr/bin:/bin",HOME=${JSON.stringify(join(o.cwd,'scratch'))},TMPDIR=${JSON.stringify(join(o.cwd,'scratch'))},PYTHONPATH="/app/python",PYTHONDONTWRITEBYTECODE="1",LANG="C.UTF-8"}`);
+    // Native view_image can put multi-megabyte PNGs directly into history. Only
+    // this host-controlled reader may supply images; originals remain on disk.
+    args.push('--disable','view_image');
+    for (const setting of [
+      `mcp_servers.bb_images.command=${JSON.stringify(process.execPath)}`,
+      `mcp_servers.bb_images.args=${JSON.stringify([fileURLToPath(new URL('./authoring-image-tools.js',import.meta.url)),o.cwd])}`,
+      `mcp_servers.bb_images.env={BONDBUDDY_WORD_PYTHON=${JSON.stringify(process.env.BONDBUDDY_WORD_PYTHON ?? '/opt/venv/bin/python')}}`,
+      'mcp_servers.bb_images.enabled_tools=["view_image"]',
+      'mcp_servers.bb_images.tools.view_image.approval_mode="writes"',
+      'mcp_servers.bb_images.required=true',
+    ]) args.push('-c',setting);
     if(o.fileCompletion)args.push(...fileCompletionArgs());
     if(c.credential.kind==='command')args.push('-c','model_catalog_json="/opt/bondbuddy/codex-file-authoring-model-catalog.json"');
   }
@@ -324,7 +338,7 @@ export type CodexProcessResult = {
   started_at: string; duration_ms: number; exit_code: number | null; exit_signal: string | null;
   thread_id: string | null; turn_completed: boolean; usage: ProviderUsage; last_message: string | null;
   tool_attempts: number; turn_failed: boolean; saw_error: boolean; provider_error_code?: ModelAdapterErrorCode | null;
-  stop: null | 'tool' | 'timeout' | 'cancelled' | 'broken' | 'too_large' | 'spawn_failed';
+  stop: null | 'tool' | 'timeout' | 'cancelled' | 'broken' | 'too_large' | 'spawn_failed' | 'payload_rejected';
 };
 
 /** One bounded buffer shared by stdout and stderr. Sections keep raw JSONL intact. */
@@ -354,7 +368,7 @@ export function createCodexExecLogCapture(maxBytes: number) {
 // One codex process. Stdout is parsed incrementally; a bounded stderr prefix is inspected
 // for status markers. When captureExecLog is set the private caller may persist the full
 // bounded stdout/stderr evidence; it is never logged to the process output.
-export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileCompletion?: boolean; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean }): Promise<CodexProcessResult> {
+export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileRecovery?: boolean; fileCompletion?: boolean; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean }): Promise<CodexProcessResult> {
   const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
   if (c.credential.kind === 'env') {
     const value = process.env[c.credential.name];
@@ -407,6 +421,9 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
     const noteProviderError = (error: unknown) => {
       const code = providerErrorCode(error);
       if (code && (!r.provider_error_code || r.provider_error_code === 'MODEL_PROVIDER_REQUEST_REJECTED')) r.provider_error_code = code;
+      // A 413 cannot succeed by resending the identical body. Stop the CLI's
+      // reconnect loop; the durable recovery path will start a smaller context.
+      if (code === 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE' && !r.turn_completed) stop('payload_rejected', false);
     };
     o.signal?.addEventListener('abort', onAbort, { once: true });
     if (o.signal?.aborted) onAbort();
@@ -429,8 +446,8 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
             break;
           }
           if (!TEXT_ITEM_TYPES.has(type)) {
-            const allowed=(!!o.fileAuthoring && ['command_execution','file_change','image_view'].includes(type)) ||
-              (type==='mcp_tool_call' && (!!o.materialDataFile && item?.server==='bb_materials' && MATERIAL_TOOLS.includes(item?.tool as typeof MATERIAL_TOOLS[number])
+            const allowed=(!!o.fileAuthoring && ['command_execution','file_change'].includes(type)) ||
+              (type==='mcp_tool_call' && (!!o.fileAuthoring && item?.server==='bb_images' && item?.tool==='view_image' || !!o.materialDataFile && item?.server==='bb_materials' && MATERIAL_TOOLS.includes(item?.tool as typeof MATERIAL_TOOLS[number])
                 || !!o.reviewDataFile && item?.server==='bb_review' && REVIEW_TOOLS.includes(item?.tool as typeof REVIEW_TOOLS[number])));
             if(!allowed){r.tool_attempts++; stop('tool', true); return;}
             if(ev.type==='item.started')r.tool_attempts++;
@@ -464,6 +481,9 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
     child.stderr!.on('data', (chunk: string) => {
       capture?.stderr(captured(chunk));
       if (stderrPrefix.length < 4096) stderrPrefix += chunk.slice(0, 4096 - stderrPrefix.length);
+      // Some CLI versions report HTTP rejection only on stderr; do not wait for
+      // their reconnect loop to finish before preserving and restarting the work.
+      noteProviderError({message:stderrPrefix});
     });
     child.stdin!.on('error', () => { /* child may exit before reading */ });
     child.on('error', () => { if (!r.stop) r.stop = child.pid ? 'broken' : 'spawn_failed'; });
@@ -493,6 +513,7 @@ export function classifyCodexResult(r: CodexProcessResult, parse: (text: string)
   if (r.stop === 'spawn_failed') return { outcome: 'confirmed_not_sent', error_code: 'MODEL_SPAWN_FAILED', finish_reason: null, usage: unknown };
   if (r.stop === 'tool') return { outcome: 'failed', error_code: 'MODEL_TOOL_ATTEMPT_BLOCKED', finish_reason: 'tool_blocked', usage };
   if (r.stop === 'cancelled') return { outcome: 'pending_reconcile', error_code: 'MODEL_CANCELLED', finish_reason: 'interrupted', usage };
+  if (r.stop === 'payload_rejected') return { outcome: 'failed', error_code: 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE', finish_reason: 'request_rejected', usage };
   if (r.stop === 'timeout') return { outcome: 'pending_reconcile', error_code: 'MODEL_TIMEOUT', finish_reason: 'timeout', usage };
   if (r.stop === 'too_large') return { outcome: 'pending_reconcile', error_code: 'MODEL_OUTPUT_TOO_LARGE', finish_reason: null, usage };
   if (r.stop === 'broken') return { outcome: 'pending_reconcile', error_code: 'MODEL_STREAM_BROKEN', finish_reason: null, usage };
@@ -535,7 +556,9 @@ export type ContainedCallInput = {
   materialTools?: MaterialToolData;
   /** Persist host read receipts alongside the model result (never combined with live search). */
   materialToolsTrace?: true;
-  fileWorkspace?: { completionCheck?: boolean; prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent,response?:{text:string;diagnostics?:CodexProcessResult['file_diagnostics']})=>Promise<unknown> };
+  fileWorkspace?: { completionCheck?: boolean; recovery?: boolean; prepare: (cwd:string)=>Promise<void>; collect: (cwd:string,intent:ProviderCallIntent,response?:{text:string;diagnostics?:CodexProcessResult['file_diagnostics']})=>Promise<unknown>;
+    /** Host checkpoint while the lease/workspace still exists; never a model result. */
+    onFailure?: (cwd:string,intent:ProviderCallIntent)=>Promise<void> };
   /** Immutable evidence and pinned Markdown. Receipts come only from the host MCP trace. */
   reviewTools?: ReviewToolData;
 };
@@ -689,7 +712,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         // Lease loss and cancellation still abort the same process immediately.
         const executionConfig = (input.materialTools || input.fileWorkspace || input.reviewTools) && c.authoring_timeout_ms !== undefined
           ? { ...c, timeout_ms: c.authoring_timeout_ms } : c;
-        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileCompletion:input.fileWorkspace?.completionCheck===true, signal: input.signal, onEvent: input.onEvent, captureExecLog: true,
+        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileRecovery:input.fileWorkspace?.recovery===true, fileCompletion:input.fileWorkspace?.completionCheck===true, signal: input.signal, onEvent: input.onEvent, captureExecLog: true,
           onActivity:input.onActivity?event=>input.onActivity!(event,intent):undefined });
         // The execution log is private evidence only. A storage failure must never
         // change the provider outcome or block reconciliation.
@@ -730,6 +753,12 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
           } catch { return { ok: false }; }
         });
         if (cls.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID') await retainInvalidCodexOutput(c, input, intent, raw, invalidCategory, reviewTraceJson);
+        if (cls.error_code === 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE' && input.fileWorkspace?.onFailure &&
+            !input.signal?.aborted && (raw.exit_code !== null || ['SIGTERM','SIGKILL'].includes(raw.exit_signal ?? ''))) {
+          // Save actual work before recordObservation releases the lease and before
+          // finally removes the ephemeral directory. Failure never authorizes retry.
+          try { await input.fileWorkspace.onFailure(cwd,intent); } catch { /* no matching checkpoint => explicit recovery failure */ }
+        }
         let obs: ProviderCallObservation = { ...intent, provider_request_id: null, finish_reason: cls.finish_reason, outcome: cls.outcome, usage: cls.usage, error_code: cls.error_code, result_ref: null, result_sha256: null, result_schema_version: null, result_byte_size: null };
         if (cls.outcome === 'completed') {
           try {

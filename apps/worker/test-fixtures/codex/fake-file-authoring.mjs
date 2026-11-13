@@ -1,6 +1,6 @@
 // Synthetic provider only. Sandbox preflight is delegated to the real pinned Codex binary.
 import {spawnSync,spawn} from 'node:child_process';
-import {writeFileSync} from 'node:fs';
+import {writeFileSync,readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 const args=process.argv.slice(2);
 if(args.includes('sandbox')){
@@ -9,6 +9,18 @@ if(args.includes('sandbox')){
 let input='';for await(const chunk of process.stdin)input+=chunk;
 if(!args.includes('exec')||args.includes('--output-schema'))throw Error('one plain-text CLI execution required');
 const cwd=args[args.indexOf('--cd')+1];
+if(input.includes('SCENARIO:file_payload')){
+  writeFileSync(cwd+'/output/fixture.txt','synthetic partial work');
+  writeFileSync(cwd+'/scratch/ocr-state.json','{"completed_pages":[1,2]}');
+  console.log(JSON.stringify({type:'error',message:'Reconnecting... 1/5 (unexpected status 413 Payload Too Large)'}));
+  setTimeout(()=>writeFileSync(cwd+'/output/duplicate-send','should never happen'),1500);
+  await new Promise(()=>{});
+}
+if(input.includes('SCENARIO:file_resume')){
+  if(readFileSync(cwd+'/output/fixture.txt','utf8')!=='synthetic partial work'||readFileSync(cwd+'/scratch/ocr-state.json','utf8')!=='{"completed_pages":[1,2]}')throw Error('Missing prior work');
+  writeFileSync(cwd+'/output/fixture.txt','synthetic completed work');
+  console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:10,output_tokens:5}}));process.exit(0);
+}
 if(input.includes('SCENARIO:file_hang')){
   const child=spawn('sleep',['120'],{stdio:'ignore'});
   console.log(JSON.stringify({type:'item.started',item:{type:'command_execution',id:'synthetic-sleep'}}));

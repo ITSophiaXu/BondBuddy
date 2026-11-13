@@ -95,7 +95,11 @@ export function readinessMessage(reason: string, lastProcessingStage?: string): 
   if (reason === 'processor_failed') return lastProcessingStage === 'word_delivery'
     ? 'Word 文件生成或保存失败，本轮未能交付。已保存材料会保留，无需重新上传；请联系支持核对并恢复。'
     : '系统处理失败，本轮未能完成。已保存材料会保留；请联系支持核对原因，无需因本提示补充材料。';
-  if (reason === 'provider_result_pending' || reason === 'provider_reconciliation_required') return '编制服务暂未返回结果，正在核对并恢复；已完成内容会保留，无需补充材料。';
+  if (reason === 'provider_result_pending' || reason === 'provider_reconciliation_required') return '本次模型处理尚未确认结果，系统正在核对。已保存材料会保留；若持续未恢复，请联系支持。';
+  if (reason === 'file_authoring_payload_recovery_pending') return '本次处理内容超过模型接口的单次容量，正在核对已保存的工作进度，随后自动调整并继续；无需重新提交。';
+  if (reason === 'file_authoring_payload_retry_scheduled') return '工作进度已保存，系统已安排使用较小的请求自动续跑，仍是本次任务。';
+  if (reason === 'file_authoring_payload_retries_exhausted') return '系统已自动调整并尝试恢复，但处理内容仍超过接口容量，本次未能完成。已保存材料和工作文件会保留，请联系支持继续处理。';
+  if (reason === 'file_authoring_payload_recovery_unavailable') return '本次请求内容过大，且未能保存完整的续跑进度，系统已停止自动重试。已保存材料会保留，请联系支持核对。';
   if (reason === 'provider_timeout_retries_exhausted') return '编制服务多次响应超时，本次未能完成。已保存材料和已完成内容仍保留，请联系支持继续处理。';
   if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点继续修改，以新输入重新编制。';
   if (reason === 'authoring_source_information_required') return '旧任务保留原输入，请联系支持恢复；新一轮编制前需补齐上传原稿的信息。';

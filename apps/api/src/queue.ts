@@ -336,6 +336,17 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
         await client.query('UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1',[j.id]);
         return runDto(r);
       }
+      // The request may race the worker's HTTP-413 pause. Persist the user's
+      // intent even though the supplier blocker has already paused execution.
+      if(!j.user_pause_requested && r.state==='paused' && r.stage==='provider_reconcile' && r.task_kind==='update' &&
+        (await client.query(`SELECT 1 FROM bb_model_call_attempts a JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
+          WHERE a.job_id=$1 AND a.owner_user_id=$2 AND a.status='pending_reconcile'
+          AND t.error_code='MODEL_PROVIDER_PAYLOAD_TOO_LARGE'
+          AND a.logical_call_id ~ '^file-authoring-(v1|size-repair-[1-9][0-9]*)$' LIMIT 1`,[j.id,owner])).rowCount){
+        await client.query('UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1',[j.id]);
+        await event(client,r,'paused','provider_reconcile','user_pause_requested');
+        return runDto(r);
+      }
       if(j.user_pause_requested||r.state==='paused')return runDto(r);
       if(!['queued','running'].includes(r.state))throw new Problem(409,'INPUT_REVISION_CONFLICT','Task cannot pause at this stage');
       await client.query('UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1',[j.id]);
@@ -884,6 +895,21 @@ export async function pausedRuns(pool:Pool,stage:typeof RUN_PAUSE_STAGES[number]
   return q.rows as {job_id:string;run_id:string;owner_user_id:string}[];
 }
 
+/** A separate keyset scan keeps old unknown calls (and blocked 413 calls) from
+ * starving new recoverable work. Advancing a worker cursor never edits evidence. */
+export async function fileAuthoringPayloadRecoveryCandidates(pool:Pool,limit=20,runKinds?:readonly RunKind[],afterJobId?:string) {
+  if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw Error('Invalid recovery batch size');
+  const q=await pool.query(`SELECT j.id AS job_id,j.run_id,j.owner_user_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id
+    WHERE j.state='paused' AND j.stage='provider_reconcile' AND r.state='paused' AND r.stage='provider_reconcile'
+    AND r.task_kind='update' AND ($2::text[] IS NULL OR r.task_kind=ANY($2::text[])) AND ($3::text IS NULL OR j.id>$3)
+    AND EXISTS(SELECT 1 FROM bb_model_call_attempts a JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
+      WHERE a.job_id=j.id AND a.owner_user_id=j.owner_user_id AND a.status='pending_reconcile'
+      AND t.error_code='MODEL_PROVIDER_PAYLOAD_TOO_LARGE'
+      AND a.logical_call_id ~ '^file-authoring-(v1|size-repair-[1-9][0-9]*)$')
+    ORDER BY j.id LIMIT $1`,[limit,runKinds?checkedRunKinds(runKinds):null,afterJobId??null]);
+  return q.rows as {job_id:string;run_id:string;owner_user_id:string}[];
+}
+
 export type OperatorReconcileDecision = 'retry_unknown_usage' | 'fail_run';
 
 /** M1 authoring can retry a locally terminated timeout, never an unobserved/crashed call.
@@ -940,6 +966,92 @@ export async function recoverUnifiedTimeout(pool:Pool,owner:string,runId:string,
       await client.query("UPDATE bb_model_call_attempts SET status='failed',updated_at=now() WHERE id=$1",[a.id]);
       await client.query("UPDATE bb_jobs SET state='queued',stage='queued' WHERE id=$1",[jobId]);
       await event(client,r,'queued','queued','provider_timeout_retry_scheduled',undefined,'run.state_changed',audit);
+    }
+    return true;
+  });
+}
+/** Host-created metadata only. The worker verifies every blob/hash again before
+ * restoring files; no local path or supplier prose authorizes another call. */
+export function validFileAuthoringRecovery(value:unknown,scope:{owner:string;project:string;run:string;inputHash:string;attempt:string;logical:string}):boolean {
+  if(!value || typeof value!=='object' || Array.isArray(value))return false;
+  const v=value as Record<string,unknown>;
+  if(v.version!=='file-authoring-recovery-v1' || v.input_hash!==scope.inputHash ||
+    v.attempt_id!==scope.attempt || v.logical_call_id!==scope.logical || !Array.isArray(v.files) ||
+    !v.files.length || v.files.length>1024)return false;
+  const prefix=`owners/${scope.owner}/projects/${scope.project}/runs/${scope.run}/file-authoring/recovery/${scope.attempt}/`;
+  const paths=new Set<string>();let total=0;
+  for(const entry of v.files){
+    if(!entry || typeof entry!=='object' || Array.isArray(entry))return false;
+    const f=entry as Record<string,unknown>,path=f.path;
+    if(typeof path!=='string' || path.length>1024 || /[\\:\x00-\x1f\x7f]/.test(path) ||
+      path.split('/').some(part=>!part || part==='.' || part==='..' || /[. ]$/.test(part)) ||
+      !(path==='input.json' || /^(scratch|output)\/.+/.test(path)) || paths.has(path) ||
+      typeof f.sha256!=='string' || !/^[a-f0-9]{64}$/.test(f.sha256) ||
+      !Number.isSafeInteger(f.byte_size) || Number(f.byte_size)<(path==='input.json'?1:0) || Number(f.byte_size)>100*1024*1024 ||
+      f.key!==`${prefix}${f.sha256}/${path}`)return false;
+    paths.add(path);total+=Number(f.byte_size);if(total>256*1024*1024)return false;
+  }
+  for(const path of paths)for(let parent=path.substring(0,path.lastIndexOf('/'));parent.includes('/');parent=parent.substring(0,parent.lastIndexOf('/')))
+    if(paths.has(parent))return false;
+  return paths.has('input.json');
+}
+
+/** Only an observed, terminated HTTP 413 in the contained file-authoring worker
+ * authorizes a fresh context. Prior usage remains unknown; the original run and
+ * reservation are reused, and row locks bound retries across concurrent sweeps. */
+export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:string,jobId:string) {
+  return transaction(pool,async client=>{
+    const r=(await client.query('SELECT * FROM bb_runs WHERE id=$1 AND owner_user_id=$2 FOR UPDATE',[runId,owner])).rows[0];
+    if(!r || r.task_kind!=='update' || r.state!=='paused' || r.stage!=='provider_reconcile')return false;
+    const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND run_id=$2 AND owner_user_id=$3 FOR UPDATE',[jobId,runId,owner])).rows[0];
+    if(!j || j.state!=='paused' || j.stage!=='provider_reconcile' || j.lease_token || j.lease_until || j.billing_cancel_requested_at)return false;
+    if(await walletIsolated(client,r) || !await billingContractRecoverable(client,r,j))return false;
+    const unresolved=await client.query(`SELECT a.*,u.usage_status AS observed_usage,t.error_code,t.exit_code,t.exit_signal,t.adapter,t.adapter_version
+      FROM bb_model_call_attempts a JOIN bb_jobs j ON j.id=a.job_id
+      LEFT JOIN bb_call_usage u ON u.attempt_id=a.id LEFT JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
+      WHERE a.job_id=$1 AND a.owner_user_id=$2 AND ${needsProviderReconciliation}`,[jobId,owner]);
+    if(unresolved.rows.length!==1)return false;
+    const a=unresolved.rows[0];
+    if(a.status!=='pending_reconcile' || !/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(a.logical_call_id) ||
+      a.adapter!=='codex_exec' || a.adapter_version!=='codex-file-authoring-2' ||
+      a.observed_usage!=='unknown' || a.error_code!=='MODEL_PROVIDER_PAYLOAD_TOO_LARGE' ||
+      !(a.exit_code!==null || /^SIG[A-Z0-9]+$/.test(a.exit_signal??'')))return false;
+    const evidence=(await client.query(`SELECT
+      EXISTS(SELECT 1 FROM bb_provider_result_refs WHERE attempt_id=$1) AS has_result,
+      EXISTS(SELECT 1 FROM bb_provider_call_observations WHERE attempt_id=$1 AND outcome='failed'
+        AND error_code='MODEL_PROVIDER_PAYLOAD_TOO_LARGE' AND usage_status='unknown' AND result_id IS NULL) AS rejected,
+      EXISTS(SELECT 1 FROM bb_provider_call_observations WHERE attempt_id=$1 AND
+        (outcome<>'failed' OR error_code IS DISTINCT FROM 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE' OR usage_status<>'unknown' OR result_id IS NOT NULL)) AS conflicting,
+      EXISTS(SELECT 1 FROM bb_model_call_attempts WHERE job_id=$2 AND logical_call_id=$3 AND attempt_no>$4) AS newer`,
+      [a.id,jobId,a.logical_call_id,a.attempt_no])).rows[0];
+    if(evidence.has_result || !evidence.rejected || evidence.conflicting || evidence.newer)return false;
+    const history=Object.values(j.checkpoint?.operator_reconciliations??{}) as {reason_code?:string;logical_call_id?:string}[];
+    const retries=history.filter(h=>h.reason_code==='file_authoring_payload_auto_retry');
+    const exhausted=retries.length>=6 || retries.filter(h=>h.logical_call_id===a.logical_call_id).length>=2;
+    const ready=validFileAuthoringRecovery(j.checkpoint?.stages?.file_authoring_recovery,{owner,project:r.project_id,run:runId,
+      inputHash:String(r.input_hash).trim(),attempt:a.id,logical:a.logical_call_id});
+    const reason=exhausted?'file_authoring_payload_retries_exhausted':!ready?'file_authoring_payload_recovery_unavailable':'file_authoring_payload_auto_retry';
+    const recoveryState=exhausted||!ready?'failed':j.user_pause_requested?'user_paused':j.credit_pause_requested?'credits_exhausted':'queued';
+    const audit={actor:'worker_file_authoring_recovery',reason_code:reason,attempt_id:a.id,logical_call_id:a.logical_call_id,
+      decision:exhausted||!ready?'fail_run':'retry_unknown_usage',recovery_state:recoveryState};
+    // Unknown usage is an immutable historical fact. A durable disposition permits
+    // a later attempt without claiming this multi-turn invocation consumed zero.
+    await client.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{operator_reconciliations}',
+      COALESCE(checkpoint->'operator_reconciliations','{}'::jsonb)||jsonb_build_object($2::text,$3::jsonb),true),updated_at=now() WHERE id=$1`,
+      [jobId,a.id,JSON.stringify(audit)]);
+    await client.query("UPDATE bb_model_call_attempts SET status='failed',updated_at=now() WHERE id=$1",[a.id]);
+    if(exhausted||!ready){
+      await client.query("UPDATE bb_jobs SET state='failed',stage='failed',updated_at=now() WHERE id=$1",[jobId]);
+      await recordRunFailure(client,r,jobId,'MODEL_PROVIDER_PAYLOAD_TOO_LARGE','provider_reconcile');
+      await event(client,r,'failed','failed',reason,'MODEL_PROVIDER_PAYLOAD_TOO_LARGE','run.state_changed',audit);
+    }else if(recoveryState!=='queued'){
+      // Resolve the supplier blocker without overriding an independent user or
+      // credit pause. The normal resume/recharge paths can now reuse the work.
+      await client.query("UPDATE bb_jobs SET state='paused',stage=$2,updated_at=now() WHERE id=$1",[jobId,recoveryState]);
+      await event(client,r,'paused',recoveryState,recoveryState,recoveryState==='credits_exhausted'?'CREDITS_INSUFFICIENT':undefined,'run.state_changed',audit);
+    }else{
+      await client.query("UPDATE bb_jobs SET state='queued',stage='queued',updated_at=now() WHERE id=$1",[jobId]);
+      await event(client,r,'queued','queued','file_authoring_payload_retry_scheduled',undefined,'run.state_changed',audit);
     }
     return true;
   });

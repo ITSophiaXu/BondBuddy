@@ -104,3 +104,16 @@ test('later completed steps and public summaries advance current progress withou
   assert.deepEqual(authoringVisibleEvents({...providerRun,state:'failed',stage:'failed'},[failed,returned,reported,terminal]).map(e=>e.seq),[1,3,4]);
   assert.equal(authoringStatus({...providerRun,state:'failed',stage:'failed'},[failed,returned,reported,terminal],progress),undefined);
 });
+
+
+test('413 lifecycle shows actual automatic recovery without overriding user pause or unrelated unknown calls',()=>{
+  const pending=event(2,undefined,{state:'paused',stage:'provider_reconcile',payload:{reason:'file_authoring_payload_recovery_pending'}});
+  assert.match(authoringStatus({...run,state:'paused',stage:'provider_reconcile'},[pending])!.title,/自动恢复/);
+  assert.match(authoringEventLabel(pending)!,/请求内容过大/);
+  const queued={...pending,state:'queued' as const,stage:'queued',payload:{reason:'file_authoring_payload_retry_scheduled'}};
+  assert.match(authoringStatus({...run,state:'queued',stage:'queued'},[queued])!.summary,/继续本次任务/);
+  assert.doesNotMatch(authoringStatus({...run,state:'queued',stage:'queued'},[queued])!.title,/尚未开始/);
+  assert.equal(authoringStatus({...run,state:'paused',stage:'provider_reconcile'},[{...pending,payload:{reason:'provider_result_pending'}}]),undefined);
+  assert.match(authoringStatus({...run,state:'paused',stage:'user_paused'},[pending])!.title,/已暂停/);
+  assert.match(authoringEventLabel({...pending,payload:{reason:'file_authoring_payload_retries_exhausted'}})!,/本次未完成/);
+});

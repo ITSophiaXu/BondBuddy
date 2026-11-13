@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,readdir,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -57,4 +57,34 @@ test('known-invalid file output is a measured failure; storage errors still requ
    assert.equal(result.value,null);
   }
  }finally{await rm(s.root,{recursive:true,force:true});}
+});
+
+
+test('413 saves working files before lease disposition and cleanup, then an audited retry resumes them in a smaller context',{skip:process.platform!=='linux'},async()=>{
+  const s=await setup();try{
+    const journal=new MemoryCodexJournal(),saved=new Map<string,Buffer>();let snapshots=0;
+    const first=await runContainedModelCall({...s.input,prompt:'SCENARIO:file_payload',fileWorkspace:{...s.input.fileWorkspace!,completionCheck:true,
+      onFailure:async(cwd,intent)=>{snapshots++;assert.equal(journal.observations.length,0);assert.equal(intent.attempt_no,1);
+        for(const name of ['output/fixture.txt','scratch/ocr-state.json'])saved.set(name,await readFile(join(cwd,name)));}}},journal,s.config);
+    assert.equal(first.error_code,'MODEL_PROVIDER_PAYLOAD_TOO_LARGE');assert.equal(snapshots,1);
+    assert.equal(first.attempts[0].usage.status,'unknown');assert.equal(s.counts().collected,0);
+    assert.deepEqual(await readdir(s.root),[],'ephemeral directory cleaned only after snapshot');
+    journal.prior={call_id:first.attempts[0].call_id,attempt_no:1,status:'failed',observed:true,operator_retry:true};
+    const second=await runContainedModelCall({...s.input,prompt:'SCENARIO:file_resume',fileWorkspace:{...s.input.fileWorkspace!,recovery:true,
+      prepare:async cwd=>{await s.input.fileWorkspace!.prepare(cwd);for(const [name,bytes] of saved)await writeFile(join(cwd,name),bytes);}}},journal,s.config);
+    assert.equal(second.status,'completed');assert.deepEqual(second.value,{file:'synthetic completed work'});
+    assert.equal(second.attempts[0].attempt_no,2);assert.equal(journal.intents.length,2);
+    assert.equal(journal.observations[0].observation.usage.status,'unknown','earlier usage is not changed to zero');
+  }finally{await rm(s.root,{recursive:true,force:true});}
+});
+
+test('a failed 413 checkpoint still records the error and never resends itself',{skip:process.platform!=='linux'},async()=>{
+  const s=await setup();try{
+    const journal=new MemoryCodexJournal();
+    const result=await runContainedModelCall({...s.input,prompt:'SCENARIO:file_payload',fileWorkspace:{...s.input.fileWorkspace!,
+      onFailure:async()=>{throw Error('synthetic snapshot store failure');}}},journal,s.config);
+    assert.equal(result.error_code,'MODEL_PROVIDER_PAYLOAD_TOO_LARGE');assert.equal(journal.intents.length,1);
+    assert.equal(journal.observations.length,1);assert.equal(journal.results.size,0);
+    assert.deepEqual(await readdir(s.root),[]);
+  }finally{await rm(s.root,{recursive:true,force:true});}
 });

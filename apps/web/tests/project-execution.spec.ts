@@ -1178,7 +1178,7 @@ test('resumed source-input task shows compilation without a false blocker', asyn
 test('provider timeout explains service recovery and keeps the same task after automatic retry', async ({ page }) => {
   const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='provider_result_pending';
   await setup(page,state);await page.locator('#execute-input').click();
-  await expect(page.locator('.execution-summary')).toContainText('无需补充材料');
+  await expect(page.locator('.execution-summary')).toContainText('系统正在核对');
   await expect(page.locator('.execution-summary')).not.toContainText('待处理条件');
   await expect(page.locator('#project-conversation-root')).not.toBeVisible();
   const run=[...state.runs.values()][0];const hash=run.input_hash;
@@ -2092,4 +2092,37 @@ test('upload automatically adopts the original and submits it without a selectio
   expect(state.inputs[0].material_versions).toContainEqual({material_id:'synthetic-history',material_version:1});
   expect(state.inputs[0].prospectus_selection_revision).toBe(1);
   expect(state.selectionRequests).toEqual([]);
+});
+
+
+test('payload recovery explains automatic continuation and never submits a second task on reload',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='file_authoring_payload_recovery_pending';
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect.poll(()=>state.runs.size).toBe(1);
+  const run=[...state.runs.values()][0],originalHash=run.input_hash;
+  for(const reload of [false,true]){
+    if(reload)await page.reload();
+    await expect(page.locator('#execution-progress .task-progress')).toContainText('正在自动恢复');
+    await expect(page.locator('.execution-summary')).toContainText('单次容量');
+    await expect(page.locator('#resume-run')).toHaveCount(0);
+    expect(state.executes).toHaveLength(1);expect(state.runActions).toEqual([]);
+  }
+  const output=process.env.BB_PAYLOAD_UX_DIR;
+  if(output){
+    await mkdir(output,{recursive:true});
+    for(const [name,width,height] of [['desktop',1440,960],['mobile',390,844]] as const){
+      await page.setViewportSize({width,height});await page.locator('#execution-progress').scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`implementation-${name}.png`)});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+      const prototype=await page.context().newPage();await prototype.setViewportSize({width,height});
+      await prototype.setContent(await readFile(resolve('../../product-prototype/public/authoring-live-progress.html'),'utf8'));
+      await prototype.evaluate(()=>{(window as any).render('recovering');});
+      await prototype.screenshot({path:join(output,`prototype-${name}.png`)});await prototype.close();
+    }
+  }
+  run.state='queued';run.stage='queued';state.runReason='file_authoring_payload_retry_scheduled';state.eventSeq++;
+  await page.reload();await expect(page.locator('#execution-progress')).toContainText('正在安排自动续跑');
+  run.state='running';run.stage='provider_call';state.runReason='provider_call_may_be_sent';state.eventSeq++;
+  await page.reload();await expect(page.locator('#execution-progress')).toContainText('正在编制募集书');
+  expect(state.executes).toHaveLength(1);expect(state.runActions).toEqual([]);expect(run.input_hash).toBe(originalHash);
 });
