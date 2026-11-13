@@ -57,6 +57,33 @@ test('execution lease defaults and overrides reach all three groups without loca
   assert.ok(services.worker.depends_on['integrity-beijing-tunnel']);
  }
 });
+test('execution review capacity overrides are private-env controlled and leave other services unchanged', () => {
+ const baseline=config('execution');
+ const expanded=config('execution',{
+  BB_REVIEW_WORKER_CONCURRENCY:'4', BB_REVIEW_NODE_HEAP_MIB:'2048',
+  BB_REVIEW_CPU_LIMIT:'1.0', BB_REVIEW_MEMORY_LIMIT:'6G',
+ });
+ const review=expanded.services['worker-review'];
+ assert.equal(review.environment.BB_WORKER_CONCURRENCY,'4');
+ assert.equal(review.environment.NODE_OPTIONS,'--max-old-space-size=2048');
+ assert.equal(review.deploy.resources.limits.cpus,1);
+ assert.equal(Number(review.deploy.resources.limits.memory),6*1024**3);
+ assert.equal(review.environment.BB_WORKER_INTERACTIVE_SLOTS,'0');
+ assert.equal(review.environment.BB_WORKER_PARSE_SLOTS,'0');
+ assert.equal(review.environment.BB_WORKER_RUN_KINDS,'review');
+ for(const name of Object.keys(baseline.services)) {
+  if(name!=='worker-review')assert.deepEqual(expanded.services[name],baseline.services[name],name);
+ }
+ const empty=config('execution',{
+  BB_REVIEW_WORKER_CONCURRENCY:'', BB_REVIEW_NODE_HEAP_MIB:'',
+  BB_REVIEW_CPU_LIMIT:'', BB_REVIEW_MEMORY_LIMIT:'',
+ });
+ assert.deepEqual(empty.services,baseline.services);
+ assert.equal(baseline.services['worker-review'].environment.BB_WORKER_CONCURRENCY,'1');
+ assert.equal(baseline.services['worker-review'].environment.NODE_OPTIONS,'--max-old-space-size=768');
+ assert.equal(baseline.services['worker-review'].deploy.resources.limits.cpus,0.75);
+ assert.equal(Number(baseline.services['worker-review'].deploy.resources.limits.memory),2*1024**3);
+});
 test('execution lease setting does not change the legacy same-host environment', () => {
  const legacy=JSON.parse(execFileSync('docker',['compose','--project-directory',join(root,'deploy/m1'),'-f',join(root,'deploy/m1/compose.yaml'),
   '--env-file',envFile('legacy',{BB_WORKER_LEASE_SECONDS:'180'}),'config','--format','json'],
