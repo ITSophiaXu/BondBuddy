@@ -18,4 +18,3 @@ ProtectHome=read-only
 ProtectSystem=full
 StandardOutput=journal
 StandardError=journal
-
