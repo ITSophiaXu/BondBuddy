@@ -1,0 +1,20 @@
+[Unit]
+Description=BondBuddy safe disk maintenance
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/bondbuddy-maintenance/disk-maintenance.py --policy /etc/bondbuddy-maintenance/policy.json --apply
+TimeoutStartSec=120
+KillMode=control-group
+Nice=19
+IOSchedulingClass=idle
+CPUQuota=20%
+MemoryMax=256M
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=full
+StandardOutput=journal
+StandardError=journal
