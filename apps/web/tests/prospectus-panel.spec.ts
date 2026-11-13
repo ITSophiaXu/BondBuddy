@@ -221,9 +221,9 @@ test('unknown upload receipt retries the original session and keeps the automati
   expect(await page.evaluate(()=>window.panelFixture.sourceSelectionMessage())).toBe('');
 });
 
-test('current version downloads, history disclosure survives refresh, and adoption needs confirmation',async({page})=>{
+test('current version downloads, uploaded file list survives refresh, and adoption needs confirmation',async({page})=>{
   const f=await setup(page,{versions:true});const download=page.waitForEvent('download');await page.locator('.reference-file.is-selected').getByRole('button',{name:'下载清洁版'}).click();expect((await download).suggestedFilename()).toBe('募集说明书_V2_清洁版.docx');
-  await expect(history(page)).toBeHidden();const details=page.locator('[data-prospectus-version="v1"] [data-prospectus-ref]');await details.locator('summary').focus();await page.keyboard.press('Enter');await page.evaluate(()=>window.panelFixture.refresh());await expect(details).toHaveAttribute('open','');await expect(details.locator('summary')).toBeFocused();
+  await expect(history(page)).toBeHidden();await page.evaluate(()=>window.panelFixture.refresh());await expect(page.locator('[data-prospectus-version="v1"] .prospectus-version-info > strong')).toHaveText('合成历史募集书.docx');await expect(page.locator('.reference-file.is-selected')).toContainText('本次更新已选用');await expect(page.getByText('文件版本详情',{exact:true})).toHaveCount(0);
   await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await adopt(page,'v1');expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(0);await page.locator('#confirm-prospectus-selection').click();await expect(page.locator('.reference-file.is-selected')).toContainText('本次更新已选用');expect(f.calls.find(c=>c.path.endsWith('/prospectus-versions/current'))!.body).toMatchObject({version_id:'v1',expected_selection_revision:2});
 });
 
