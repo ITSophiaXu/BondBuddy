@@ -1,0 +1,477 @@
+{
+  "passed": 11,
+  "cases": [
+    "13 choices and four groups are present without expanding menus",
+    "group selection toggles counts and keeps other groups unchanged",
+    "clear preserves requirements and supporting materials",
+    "keyboard toggles focused choice without losing focus",
+    "all seven formerly hidden types remain selectable with template guidance",
+    "1440px choice layout, spacing and equal action targets",
+    "1024px choice layout, spacing and equal action targets",
+    "768px choice layout, spacing and equal action targets",
+    "520px choice layout, spacing and equal action targets",
+    "390px choice layout, spacing and equal action targets",
+    "320px choice layout, spacing and equal action targets"
+  ],
+  "measurements": [
+    {
+      "width": 1440,
+      "scrollWidth": 1440,
+      "upload": {
+        "x": 264,
+        "y": 1276.359375,
+        "width": 108,
+        "height": 44,
+        "right": 372,
+        "bottom": 1320.359375
+      },
+      "save": {
+        "x": 384,
+        "y": 1276.359375,
+        "width": 108,
+        "height": 44,
+        "right": 492,
+        "bottom": 1320.359375
+      },
+      "panelGap": 18,
+      "columns": 2,
+      "choices": [
+        {
+          "height": 52,
+          "right": 1382
+        },
+        {
+          "height": 52,
+          "right": 917
+        },
+        {
+          "height": 52,
+          "right": 1382
+        },
+        {
+          "height": 52,
+          "right": 917
+        },
+        {
+          "height": 52,
+          "right": 1382
+        },
+        {
+          "height": 52,
+          "right": 917
+        },
+        {
+          "height": 52,
+          "right": 1382
+        },
+        {
+          "height": 52,
+          "right": 917
+        },
+        {
+          "height": 52,
+          "right": 1382
+        },
+        {
+          "height": 52,
+          "right": 917
+        },
+        {
+          "height": 52,
+          "right": 1382
+        },
+        {
+          "height": 52,
+          "right": 917
+        },
+        {
+          "height": 52,
+          "right": 1382
+        }
+      ]
+    },
+    {
+      "width": 1024,
+      "scrollWidth": 1024,
+      "upload": {
+        "x": 224,
+        "y": 1416.359375,
+        "width": 108,
+        "height": 44,
+        "right": 332,
+        "bottom": 1460.359375
+      },
+      "save": {
+        "x": 344,
+        "y": 1416.359375,
+        "width": 108,
+        "height": 44,
+        "right": 452,
+        "bottom": 1460.359375
+      },
+      "panelGap": 18,
+      "columns": 2,
+      "choices": [
+        {
+          "height": 52,
+          "right": 976
+        },
+        {
+          "height": 52,
+          "right": 694
+        },
+        {
+          "height": 52,
+          "right": 976
+        },
+        {
+          "height": 52,
+          "right": 694
+        },
+        {
+          "height": 52,
+          "right": 976
+        },
+        {
+          "height": 52,
+          "right": 694
+        },
+        {
+          "height": 52,
+          "right": 976
+        },
+        {
+          "height": 52,
+          "right": 694
+        },
+        {
+          "height": 52,
+          "right": 976
+        },
+        {
+          "height": 52,
+          "right": 694
+        },
+        {
+          "height": 52,
+          "right": 976
+        },
+        {
+          "height": 52,
+          "right": 694
+        },
+        {
+          "height": 52,
+          "right": 976
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "scrollWidth": 768,
+      "upload": {
+        "x": 224,
+        "y": 1604.765625,
+        "width": 108,
+        "height": 44,
+        "right": 332,
+        "bottom": 1648.765625
+      },
+      "save": {
+        "x": 344,
+        "y": 1604.765625,
+        "width": 108,
+        "height": 44,
+        "right": 452,
+        "bottom": 1648.765625
+      },
+      "panelGap": 18,
+      "columns": 2,
+      "choices": [
+        {
+          "height": 52,
+          "right": 720
+        },
+        {
+          "height": 52,
+          "right": 466
+        },
+        {
+          "height": 52,
+          "right": 720
+        },
+        {
+          "height": 52,
+          "right": 466
+        },
+        {
+          "height": 52,
+          "right": 720
+        },
+        {
+          "height": 52,
+          "right": 466
+        },
+        {
+          "height": 52,
+          "right": 720
+        },
+        {
+          "height": 52,
+          "right": 466
+        },
+        {
+          "height": 52,
+          "right": 720
+        },
+        {
+          "height": 52,
+          "right": 466
+        },
+        {
+          "height": 52,
+          "right": 720
+        },
+        {
+          "height": 52,
+          "right": 466
+        },
+        {
+          "height": 52,
+          "right": 720
+        }
+      ]
+    },
+    {
+      "width": 520,
+      "scrollWidth": 520,
+      "upload": {
+        "x": 34,
+        "y": 1576.765625,
+        "width": 108,
+        "height": 44,
+        "right": 142,
+        "bottom": 1620.765625
+      },
+      "save": {
+        "x": 154,
+        "y": 1576.765625,
+        "width": 108,
+        "height": 44,
+        "right": 262,
+        "bottom": 1620.765625
+      },
+      "panelGap": 18,
+      "columns": 2,
+      "choices": [
+        {
+          "height": 52,
+          "right": 486
+        },
+        {
+          "height": 52,
+          "right": 254
+        },
+        {
+          "height": 52,
+          "right": 486
+        },
+        {
+          "height": 52,
+          "right": 254
+        },
+        {
+          "height": 52,
+          "right": 486
+        },
+        {
+          "height": 52,
+          "right": 254
+        },
+        {
+          "height": 52,
+          "right": 486
+        },
+        {
+          "height": 52,
+          "right": 254
+        },
+        {
+          "height": 52,
+          "right": 486
+        },
+        {
+          "height": 52,
+          "right": 254
+        },
+        {
+          "height": 52,
+          "right": 486
+        },
+        {
+          "height": 52,
+          "right": 254
+        },
+        {
+          "height": 52,
+          "right": 486
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "scrollWidth": 390,
+      "upload": {
+        "x": 34,
+        "y": 2023.953125,
+        "width": 322,
+        "height": 44,
+        "right": 356,
+        "bottom": 2067.953125
+      },
+      "save": {
+        "x": 34,
+        "y": 2079.953125,
+        "width": 322,
+        "height": 44,
+        "right": 356,
+        "bottom": 2123.953125
+      },
+      "panelGap": 18,
+      "columns": 1,
+      "choices": [
+        {
+          "height": 75.796875,
+          "right": 356
+        },
+        {
+          "height": 52,
+          "right": 356
+        },
+        {
+          "height": 52,
+          "right": 356
+        },
+        {
+          "height": 52,
+          "right": 356
+        },
+        {
+          "height": 52,
+          "right": 356
+        },
+        {
+          "height": 52,
+          "right": 356
+        },
+        {
+          "height": 52,
+          "right": 356
+        },
+        {
+          "height": 52,
+          "right": 356
+        },
+        {
+          "height": 52,
+          "right": 356
+        },
+        {
+          "height": 52,
+          "right": 356
+        },
+        {
+          "height": 52,
+          "right": 356
+        },
+        {
+          "height": 52,
+          "right": 356
+        },
+        {
+          "height": 52,
+          "right": 356
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "scrollWidth": 320,
+      "upload": {
+        "x": 34,
+        "y": 2058.140625,
+        "width": 252,
+        "height": 44,
+        "right": 286,
+        "bottom": 2102.140625
+      },
+      "save": {
+        "x": 34,
+        "y": 2114.140625,
+        "width": 252,
+        "height": 44,
+        "right": 286,
+        "bottom": 2158.140625
+      },
+      "panelGap": 18,
+      "columns": 1,
+      "choices": [
+        {
+          "height": 75.796875,
+          "right": 286
+        },
+        {
+          "height": 52,
+          "right": 286
+        },
+        {
+          "height": 52,
+          "right": 286
+        },
+        {
+          "height": 52,
+          "right": 286
+        },
+        {
+          "height": 52,
+          "right": 286
+        },
+        {
+          "height": 52,
+          "right": 286
+        },
+        {
+          "height": 52,
+          "right": 286
+        },
+        {
+          "height": 52,
+          "right": 286
+        },
+        {
+          "height": 52,
+          "right": 286
+        },
+        {
+          "height": 52,
+          "right": 286
+        },
+        {
+          "height": 52,
+          "right": 286
+        },
+        {
+          "height": 52,
+          "right": 286
+        },
+        {
+          "height": 52,
+          "right": 286
+        }
+      ]
+    }
+  ],
+  "pageErrors": [],
+  "mutationRequests": [],
+  "boundary": "Synthetic prototype only; no API, uploads, model, tasks or billing."
+}

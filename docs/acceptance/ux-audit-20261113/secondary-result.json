@@ -1,0 +1,19 @@
+{
+  "passed": 12,
+  "failed": 0,
+  "skipped": 0,
+  "source": "apps/web/tests/ux-audit-secondary.spec.ts",
+  "base": "92bbba8f",
+  "boundary": "Real local frontend with synthetic HTTP; no production, real account, merchant, model, task or billing writes",
+  "viewportWidths": [
+    1440,
+    390,
+    320
+  ],
+  "newConfirmedLayoutBugs": 0,
+  "existingRelatedIssues": [
+    1019,
+    1018,
+    1020
+  ]
+}

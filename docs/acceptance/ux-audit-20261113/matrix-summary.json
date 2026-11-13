@@ -1,0 +1,142 @@
+[
+  {
+    "scene": "assistant-1024",
+    "viewport": 1024,
+    "scrollWidth": 1009
+  },
+  {
+    "scene": "assistant-1440",
+    "viewport": 1440,
+    "scrollWidth": 1425
+  },
+  {
+    "scene": "assistant-320",
+    "viewport": 320,
+    "scrollWidth": 320
+  },
+  {
+    "scene": "assistant-390",
+    "viewport": 390,
+    "scrollWidth": 390
+  },
+  {
+    "scene": "authoring-1024",
+    "viewport": 1024,
+    "scrollWidth": 1009
+  },
+  {
+    "scene": "authoring-1440",
+    "viewport": 1440,
+    "scrollWidth": 1425
+  },
+  {
+    "scene": "authoring-320",
+    "viewport": 320,
+    "scrollWidth": 305
+  },
+  {
+    "scene": "authoring-390",
+    "viewport": 390,
+    "scrollWidth": 375
+  },
+  {
+    "scene": "files-1024",
+    "viewport": 1024,
+    "scrollWidth": 1009
+  },
+  {
+    "scene": "files-1440",
+    "viewport": 1440,
+    "scrollWidth": 1425
+  },
+  {
+    "scene": "files-320",
+    "viewport": 320,
+    "scrollWidth": 305
+  },
+  {
+    "scene": "files-390",
+    "viewport": 390,
+    "scrollWidth": 375
+  },
+  {
+    "scene": "integrity-1024",
+    "viewport": 1024,
+    "scrollWidth": 1009
+  },
+  {
+    "scene": "integrity-1440",
+    "viewport": 1440,
+    "scrollWidth": 1425
+  },
+  {
+    "scene": "integrity-320",
+    "viewport": 320,
+    "scrollWidth": 305
+  },
+  {
+    "scene": "integrity-390",
+    "viewport": 390,
+    "scrollWidth": 375
+  },
+  {
+    "scene": "qa-prepare-1024",
+    "viewport": 1024,
+    "scrollWidth": 1009
+  },
+  {
+    "scene": "qa-prepare-1440",
+    "viewport": 1440,
+    "scrollWidth": 1425
+  },
+  {
+    "scene": "qa-prepare-320",
+    "viewport": 320,
+    "scrollWidth": 305
+  },
+  {
+    "scene": "qa-prepare-390",
+    "viewport": 390,
+    "scrollWidth": 375
+  },
+  {
+    "scene": "qa-result-1024",
+    "viewport": 1024,
+    "scrollWidth": 1009
+  },
+  {
+    "scene": "qa-result-1440",
+    "viewport": 1440,
+    "scrollWidth": 1425
+  },
+  {
+    "scene": "qa-result-320",
+    "viewport": 320,
+    "scrollWidth": 305
+  },
+  {
+    "scene": "qa-result-390",
+    "viewport": 390,
+    "scrollWidth": 375
+  },
+  {
+    "scene": "review-1024",
+    "viewport": 1024,
+    "scrollWidth": 1009
+  },
+  {
+    "scene": "review-1440",
+    "viewport": 1440,
+    "scrollWidth": 1425
+  },
+  {
+    "scene": "review-320",
+    "viewport": 320,
+    "scrollWidth": 305
+  },
+  {
+    "scene": "review-390",
+    "viewport": 390,
+    "scrollWidth": 375
+  }
+]
