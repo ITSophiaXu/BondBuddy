@@ -44,6 +44,14 @@
     "m4-workpaper-batch": {
       "sha256": "08fafca4d5bad9b1dbff8d2332cbfcbee2ca26b19d806c223f1eda1f0d355d7f",
       "path": "apps/worker/skills/m4-workpaper-batch/SKILL.md"
+    },
+    "m4-workpaper-progressive": {
+      "path": "apps/worker/skills/m4-workpaper-progressive/SKILL.md",
+      "sha256": "d08a7119cb8fb7c7859a5de47c90a72cb2aaab37ed45ab94c72c4a8df693b7a4"
+    },
+    "m4-workpaper-progressive-group": {
+      "path": "apps/worker/skills/m4-workpaper-progressive-group/SKILL.md",
+      "sha256": "876b24e5a48d12bf22ca7981552bcfc4ba41f4296be26df007a46c6cc63d6e1a"
     }
   }
 }

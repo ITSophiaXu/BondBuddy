@@ -1,0 +1,76 @@
+✔ progressive API: immutable chapter order, two admitted items, confirmation fence, replay safety, owner isolation and failed-only retry (21278.5677ms)
+✔ progressive stop preserves active reconciliation and retry never includes untouched queued files; shared failures pause admission (9459.8861ms)
+✔ retrying failed trial files returns to confirmation and leaves the remaining chapter files untouched (7862.951ms)
+✖ shared trial failure retries only settled files, finishes all eight trial chapters and preserves the confirmation fence (5427.9585ms)
+✖ shared remainder failure continues queued files and a repeated retry preserves its unstarted retry members and completed outputs (4410.8569ms)
+✔ resuming a blocked progressive batch points to paused child recovery and does not retry or bypass it (4276.798ms)
+✔ unified file generation forwards a locked progressive selection and rejects a different order with the old quote (3745.7854ms)
+✔ progressive automatic billing admits only affordable files, retains full scope quote, and resumes one file without duplicating reservations (8960.5919ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 6
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 126780.8876
+
+✖ failing tests:
+
+test at apps\api\dist\workpaper-progressive.pg.test.js:216:1
+✖ shared trial failure retries only settled files, finishes all eight trial chapters and preserves the confirmation fence (5427.9585ms)
+  error: terminal run requires verified Word delivery in its channel
+      at C:\Users\yingx\OneDrive - Microsoft\Documents\ChatGPT\BondDraftAI\BondBuddy-local-regression-20261111\node_modules\pg\lib\client.js:694:17
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/yingx/OneDrive%20-%20Microsoft/Documents/ChatGPT/BondDraftAI/BondBuddy-workpaper-progressive-20261113/apps/api/dist/workpaper-progressive.pg.test.js:55:9
+      at async transaction (file:///C:/Users/yingx/OneDrive%20-%20Microsoft/Documents/ChatGPT/BondDraftAI/BondBuddy-workpaper-progressive-20261113/apps/api/dist/data.js:87:24)
+      at async TestContext.<anonymous> (file:///C:/Users/yingx/OneDrive%20-%20Microsoft/Documents/ChatGPT/BondDraftAI/BondBuddy-workpaper-progressive-20261113/apps/api/dist/workpaper-progressive.pg.test.js:225:9)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 200,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_require_word_delivery_for_run_success() line 27 at RAISE',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: 'pl_exec.c',
+    line: '3897',
+    routine: 'exec_stmt_raise'
+  }
+
+test at apps\api\dist\workpaper-progressive.pg.test.js:271:1
+✖ shared remainder failure continues queued files and a repeated retry preserves its unstarted retry members and completed outputs (4410.8569ms)
+  error: terminal run requires verified Word delivery in its channel
+      at C:\Users\yingx\OneDrive - Microsoft\Documents\ChatGPT\BondDraftAI\BondBuddy-local-regression-20261111\node_modules\pg\lib\client.js:694:17
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async file:///C:/Users/yingx/OneDrive%20-%20Microsoft/Documents/ChatGPT/BondDraftAI/BondBuddy-workpaper-progressive-20261113/apps/api/dist/workpaper-progressive.pg.test.js:55:9
+      at async transaction (file:///C:/Users/yingx/OneDrive%20-%20Microsoft/Documents/ChatGPT/BondDraftAI/BondBuddy-workpaper-progressive-20261113/apps/api/dist/data.js:87:24)
+      at async TestContext.<anonymous> (file:///C:/Users/yingx/OneDrive%20-%20Microsoft/Documents/ChatGPT/BondDraftAI/BondBuddy-workpaper-progressive-20261113/apps/api/dist/workpaper-progressive.pg.test.js:279:17)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    length: 200,
+    severity: 'ERROR',
+    code: '23514',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: 'PL/pgSQL function bb_require_word_delivery_for_run_success() line 27 at RAISE',
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: 'pl_exec.c',
+    line: '3897',
+    routine: 'exec_stmt_raise'
+  }

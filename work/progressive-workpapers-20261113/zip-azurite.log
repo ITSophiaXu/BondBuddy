@@ -1,0 +1,10 @@
+✔ 248-file ZIP on real PostgreSQL/Azurite: cold/warm HTTP, legacy-read benchmark, CRC and authorization (50917.9755ms)
+ℹ {"files":248,"zipBytes":10340162,"legacySerialMs":5330,"coldPrepareMs":16947,"coldTotalMs":17046,"coldPolls":8,"maxRequestMs":246,"warmPrepareMs":62,"warmTotalMs":140}
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 59845.9363

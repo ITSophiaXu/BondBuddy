@@ -57,6 +57,11 @@ test('248 items / 120 files / 25,997 links: small public responses, retained evi
   assert.notEqual((await get('/file-generation/progress')).json().revision,fg.revision);
   await pool.query("UPDATE bb_workpaper_batches SET state='paused' WHERE id=$1",[batch]);
   assert.equal((await get('/workpapers/progress')).json().active,true,'in-flight work must settle before polling stops');
+  await pool.query("UPDATE bb_runs SET state='settlement_pending',stage='settlement_pending' WHERE id=$1",[run]);
+  for(const path of ['/workpapers/progress','/file-generation/progress'])
+    assert.equal((await get(path)).json().active,true,'settlement can finish after the batch is paused');
+  await pool.query("UPDATE bb_workpaper_batches SET state='cancelled' WHERE id=$1",[batch]);
+  assert.equal((await get('/workpapers/progress')).json().active,true,'stopped batches retain in-flight settlement updates');
   await pool.query("UPDATE bb_runs SET state='failed' WHERE id=$1",[run]);
   assert.equal((await get('/workpapers/progress')).json().active,false);
   const before=(await get('/workpapers/progress')).json().revision;
