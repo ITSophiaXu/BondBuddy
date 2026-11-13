@@ -1,0 +1,69 @@
+✔ headerless numbered due-diligence lists retain the first item and summary rows (8.2535ms)
+✔ uncertain and competing layouts require review rather than guessing silently (4.4971ms)
+✔ Chinese XML decimal references preserve catalogue headers, cells and sheet names (70.6692ms)
+✔ Chinese XML hex references preserve catalogue headers, cells and sheet names (21.6463ms)
+✔ 500 real XLSX rows, shared strings and merged classification cells retain exact ordering (88.4954ms)
+✔ directories, duplicate paths, unsafe characters and multiple worksheets (2.1056ms)
+✔ formula titles are never executed or treated as cached facts (8.6351ms)
+✔ unnumbered directory groups retain following files; duplicate row IDs are rejected (8.9918ms)
+✔ empty, oversized catalogues and malformed ZIP fail explicitly (19.0363ms)
+✔ audit checklist 项目 headers and numbered summary records are retained (1.7039ms)
+✔ import keeps complete requirements but bounds download names and resolves annotation collisions (1.4571ms)
+✖ progressive item plans deliver before a blocked sibling, share extraction, replay, isolate settled failures and preserve global blockers (37728.4369ms)
+✔ headerless numbered due-diligence lists retain the first item and summary rows (8.6615ms)
+✔ uncertain and competing layouts require review rather than guessing silently (3.2965ms)
+✔ Chinese XML decimal references preserve catalogue headers, cells and sheet names (55.8941ms)
+✔ Chinese XML hex references preserve catalogue headers, cells and sheet names (23.8495ms)
+✔ 500 real XLSX rows, shared strings and merged classification cells retain exact ordering (83.5433ms)
+✔ directories, duplicate paths, unsafe characters and multiple worksheets (3.6359ms)
+✔ formula titles are never executed or treated as cached facts (7.3785ms)
+✔ unnumbered directory groups retain following files; duplicate row IDs are rejected (10.9965ms)
+✔ empty, oversized catalogues and malformed ZIP fail explicitly (18.6277ms)
+✔ audit checklist 项目 headers and numbered summary records are retained (1.5361ms)
+✔ import keeps complete requirements but bounds download names and resolves annotation collisions (1.9123ms)
+✔ one batch plan across deliveries, crash replay, failure/retry, pause, immutable owner cache, refund and source-free ZIP (35475.8148ms)
+✔ headerless numbered due-diligence lists retain the first item and summary rows (11.0426ms)
+✔ uncertain and competing layouts require review rather than guessing silently (3.1844ms)
+✔ Chinese XML decimal references preserve catalogue headers, cells and sheet names (78.8464ms)
+✔ Chinese XML hex references preserve catalogue headers, cells and sheet names (17.0029ms)
+✔ 500 real XLSX rows, shared strings and merged classification cells retain exact ordering (80.4552ms)
+✔ directories, duplicate paths, unsafe characters and multiple worksheets (1.8393ms)
+✔ formula titles are never executed or treated as cached facts (8.4765ms)
+✔ unnumbered directory groups retain following files; duplicate row IDs are rejected (11.4148ms)
+✔ empty, oversized catalogues and malformed ZIP fail explicitly (17.9595ms)
+✔ audit checklist 项目 headers and numbered summary records are retained (1.102ms)
+✔ import keeps complete requirements but bounds download names and resolves annotation collisions (1.3268ms)
+workpaper synthetic deliveries: 100
+workpaper synthetic deliveries: 200
+✔ 300 workpapers: real API, PostgreSQL queue, pinned inputs, failure isolation/retry, billing and 300 ZIP entries (synthetic content) (372659.6066ms)
+ℹ tests 36
+ℹ suites 0
+ℹ pass 35
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 380614.765
+
+✖ failing tests:
+
+test at apps\worker\dist\workpaper-progressive-stage.pg.test.js:29:1
+✖ progressive item plans deliver before a blocked sibling, share extraction, replay, isolate settled failures and preserve global blockers (37728.4369ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'paused'
+  - 'partial'
+       ^
+
+      at TestContext.<anonymous> (file:///C:/Users/yingx/OneDrive%20-%20Microsoft/Documents/ChatGPT/BondDraftAI/BondBuddy-workpaper-progressive-20261113/apps/worker/dist/workpaper-progressive-stage.pg.test.js:212:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'paused',
+    expected: 'partial',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

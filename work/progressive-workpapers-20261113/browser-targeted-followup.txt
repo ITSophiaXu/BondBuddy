@@ -1,0 +1,33 @@
+2026-11-13 targeted frontend follow-up
+
+Boundary: real UI/controllers; synthetic owner-scoped HTTP. No real model,
+backend pipeline or credit settlement. Local Vite at 127.0.0.1:5313.
+
+Refs #623: the new viewport regression reproduced the preparation footer
+overlap before the fix: footer top 791px, catalogue controls bottom 4682.1875px.
+The summary footer now follows the complete catalogue in normal document flow.
+Submit has 96px scroll margin; its viewport rectangle does not overlap the
+assistant launcher when scrolling to the action.
+
+Checks after fix:
+- mobile preparation + five progressive phases at 1440 and 390: 3 passed.
+- mobile preparation recapture after waiting for loaded catalogue: 1 passed.
+- shared blocked recovery + outcome classification: 2 passed.
+- shared blocked failed retry + all-blocked-tasks-recovered resume: 2 passed.
+- web TypeScript --noEmit: passed.
+
+Evidence:
+screenshots/prepare-390-viewport-top.png
+screenshots/prepare-390-viewport-submit.png
+screenshots/prepare-1440.png
+screenshots/prepare-390.png
+
+Recovery UI consumes pause_reason=shared_blocked and sends retry_failed.
+It is disabled while active or attention files remain and preserves task links.
+When blocked tasks recover successfully without failures or attention items,
+the UI offers resume, disabled until active files finish.
+The fixture returns the original trial phase and retains successful files;
+this browser test does not claim to verify backend recovery or settlement.
+
+Integration: retain both this batch and prior PR #1301 frontend fixes.
+Code and self-test only; not user acceptance or production deployment.
