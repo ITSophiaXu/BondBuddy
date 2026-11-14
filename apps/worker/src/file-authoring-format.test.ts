@@ -39,6 +39,32 @@ function fixture(controlled = true, text = '截至2024年净资产100万元。')
   return { source, input, objects, ctx, blobs, persisted, delivery };
 }
 
+for (const controlled of [true, false]) test(`host rendering handoff prompt is ${controlled ? 'included for controlled operations' : 'absent for direct authoring'}`, async () => {
+  const f = fixture(controlled);
+  let calls = 0;
+  const result = await fileAuthoringStage({ load: async () => f.input, model: options => ({ name: options.name, run: async ctx => {
+    calls++;
+    const prompt = await options.buildPrompt(ctx);
+    assert.equal(options.templateVersion, controlled ? 'single-cli-authoring-format-host-handoff-v5' : 'single-cli-authoring-host-handoff-v5');
+    assert.equal(prompt.includes('host_handoff.action=defer_page_rendering_to_host'), controlled);
+    if (controlled) {
+      assert.match(prompt, /operations_sha256 对应当前日志/);
+      assert.match(prompt, /保留失败报告/);
+      assert.match(prompt, /authoring_completion=not_verified/);
+      assert.match(prompt, /不得据此跳过原任务剩余材料阅读、章节和事实更新、来源回查或其他待办/);
+      assert.match(prompt, /按既定缺项工作稿政策完成本轮业务编制后，对最终操作日志重新回查和预检/);
+      assert.match(prompt, /不是新增人工确认或资料齐备门槛/);
+      assert.match(prompt, /中途日志继续更新后不能复用旧指引/);
+      assert.match(prompt, /worker 独立真实渲染验收/);
+      assert.match(prompt, /没有该指引、日志已变或有其他质量失败时仍按对应问题修复并重新预检/);
+      assert.match(prompt, /不表示编制、预检或成果已通过/);
+    }
+    return { kind: 'done', value: { synthetic: true } };
+  } }) }).run(f.ctx);
+  assert.equal(result.kind, 'done');
+  assert.equal(calls, 1);
+});
+
 test('explicit template choice is independent of random material ids; previous output remains the revision source', () => {
   const { input } = fixture();
   input.materials.unshift({ ...input.materials[0]!, pin: { ...input.materials[0]!.pin, material_id: 'aaa' } });
@@ -222,6 +248,8 @@ test('host size rejection hands the original log to a repair turn and rechecks t
       await options.fileWorkspace!.prepare(root);
       inputs.push(await readFile(join(root,'input.json')));
       const repairing=options.logicalCallId!=='file-authoring-v1';
+      assert.match(await options.buildPrompt(ctx), /host_handoff.action=defer_page_rendering_to_host/);
+      assert.equal(options.templateVersion, repairing ? 'single-cli-authoring-size-repair-host-handoff-v2' : 'single-cli-authoring-format-host-handoff-v5');
       if(repairing){
         assert.match(await options.buildPrompt(ctx),/quality-feedback.json/);
         assert.deepEqual(inputs[1],inputs[0],'input and revision timestamp remain locked');
