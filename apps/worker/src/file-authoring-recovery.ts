@@ -5,9 +5,11 @@ import { isDeepStrictEqual } from 'node:util';
 import { digest } from '@bondbuddy/api/data';
 import { checkpointStage } from '@bondbuddy/api/queue';
 import type { StageContext } from './run-pipeline.js';
+import { FILE_AUTHORING_RECOVERY_LIMITS } from '@bondbuddy/contracts';
+export { FILE_AUTHORING_RECOVERY_LIMITS } from '@bondbuddy/contracts';
 
 export const FILE_AUTHORING_RECOVERY_STAGE = 'file_authoring_recovery';
-export const FILE_AUTHORING_RECOVERY_LIMITS = { files: 1024, fileBytes: 100 * 1024 * 1024, totalBytes: 256 * 1024 * 1024 } as const;
+
 export type FileAuthoringRecovery = {
   version: 'file-authoring-recovery-v1'; input_hash: string; attempt_id: string; logical_call_id: string;
   files: { path: string; key: string; sha256: string; byte_size: number }[];

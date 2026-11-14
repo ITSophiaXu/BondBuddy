@@ -1,4 +1,4 @@
-import type { RunRetryRequest, RunRetryResponse } from '@bondbuddy/contracts';
+import { FILE_AUTHORING_RECOVERY_LIMITS, type RunRetryRequest, type RunRetryResponse } from '@bondbuddy/contracts';
 import { Pool, type PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
@@ -990,7 +990,7 @@ export function validFileAuthoringRecovery(value:unknown,scope:{owner:string;pro
   const v=value as Record<string,unknown>;
   if(v.version!=='file-authoring-recovery-v1' || v.input_hash!==scope.inputHash ||
     v.attempt_id!==scope.attempt || v.logical_call_id!==scope.logical || !Array.isArray(v.files) ||
-    !v.files.length || v.files.length>1024)return false;
+    !v.files.length || v.files.length>FILE_AUTHORING_RECOVERY_LIMITS.files)return false;
   const prefix=`owners/${scope.owner}/projects/${scope.project}/runs/${scope.run}/file-authoring/recovery/${scope.attempt}/`;
   const paths=new Set<string>();let total=0;
   for(const entry of v.files){
@@ -1000,9 +1000,9 @@ export function validFileAuthoringRecovery(value:unknown,scope:{owner:string;pro
       path.split('/').some(part=>!part || part==='.' || part==='..' || /[. ]$/.test(part)) ||
       !(path==='input.json' || /^(scratch|output)\/.+/.test(path)) || paths.has(path) ||
       typeof f.sha256!=='string' || !/^[a-f0-9]{64}$/.test(f.sha256) ||
-      !Number.isSafeInteger(f.byte_size) || Number(f.byte_size)<(path==='input.json'?1:0) || Number(f.byte_size)>100*1024*1024 ||
+      !Number.isSafeInteger(f.byte_size) || Number(f.byte_size)<(path==='input.json'?1:0) || Number(f.byte_size)>FILE_AUTHORING_RECOVERY_LIMITS.fileBytes ||
       f.key!==`${prefix}${f.sha256}/${path}`)return false;
-    paths.add(path);total+=Number(f.byte_size);if(total>256*1024*1024)return false;
+    paths.add(path);total+=Number(f.byte_size);if(total>FILE_AUTHORING_RECOVERY_LIMITS.totalBytes)return false;
   }
   for(const path of paths)for(let parent=path.substring(0,path.lastIndexOf('/'));parent.includes('/');parent=parent.substring(0,parent.lastIndexOf('/')))
     if(paths.has(parent))return false;

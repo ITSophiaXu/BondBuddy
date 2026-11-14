@@ -6,6 +6,8 @@ import { Type, type Static, type TSchema } from '@sinclair/typebox';
 // Run pipeline stages in execution order. A stage without an installed implementation pauses
 // the run at `capability_not_ready`; it never reports success.
 export const RUN_PIPELINE_SUBTYPE = 'update_pipeline_v1' as const;
+// Shared server limits for a complete, host-verified file-authoring recovery snapshot.
+export const FILE_AUTHORING_RECOVERY_LIMITS = { files: 4096, fileBytes: 100 * 1024 * 1024, totalBytes: 256 * 1024 * 1024 } as const;
 export const RUN_PIPELINE_STAGES = ['input_lock', 'materials_ready', 'model_generation', 'word_delivery'] as const;
 // Paused-run stages the runtime understands. `provider_reconcile` is shared with #16.
 export const RUN_PAUSE_STAGES = ['capability_not_ready', 'awaiting_materials', 'provider_reconcile', 'billing_reconcile', 'trial_limit', 'user_paused', 'credits_exhausted'] as const;

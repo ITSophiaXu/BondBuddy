@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, link } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, rm, symlink, link } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { digest } from '@bondbuddy/api/data';
+import { validFileAuthoringRecovery } from '@bondbuddy/api/queue';
 import { emptyUpdateDetails } from '@bondbuddy/contracts';
 import type { StageContext } from './run-pipeline.js';
 import type { UnifiedInput } from './unified-input.js';
 import { fileAuthoringStage } from './file-authoring-stage.js';
 import { authorizedFileAuthoringRecovery, recoverFileAuthoringInput, restoreFileAuthoringWork,
-  saveFileAuthoringRecovery, FILE_AUTHORING_RECOVERY_STAGE, type FileAuthoringRecovery } from './file-authoring-recovery.js';
+  saveFileAuthoringRecovery, FILE_AUTHORING_RECOVERY_STAGE, FILE_AUTHORING_RECOVERY_LIMITS, type FileAuthoringRecovery } from './file-authoring-recovery.js';
 
 const intent = { call_id: 'call-one', logical_call_id: 'file-authoring-v1' };
 function fixture() {
@@ -176,4 +177,52 @@ test('authoring failure checkpoints work and the next authorized stage prepares 
     f.authorize(snapshot); f.ctx.checkpoint = {};
     assert.equal((await stage().run(f.ctx)).kind, 'stopped'); assert.equal(turns, 2); assert.equal(f.writes(), 1);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+
+test('1271-file workspaces save and restore completely while 4097 files cannot publish a checkpoint', async () => {
+  const f=fixture(),root=await mkdtemp(join(tmpdir(),'bb-recovery-many-files-'));
+  try{
+    const source=join(root,'source'),target=join(root,'target');
+    await mkdir(join(source,'scratch'),{recursive:true});await mkdir(join(source,'output'));await mkdir(target);
+    const input=Buffer.from(JSON.stringify({version:'synthetic',input_hash:f.ctx.run.input_hash}));
+    await writeFile(join(source,'input.json'),input);
+    const add=async(from:number,to:number)=>{for(let start=from;start<to;start+=64)await Promise.all(Array.from({length:Math.min(64,to-start)},(_,offset)=>{
+      const i=start+offset;return writeFile(join(source,'scratch','file-'+i+'.bin'),Buffer.from([i%256,0,255]));
+    }));};
+    await add(0,1270);
+    const snapshot=await saveFileAuthoringRecovery(f.ctx,source,intent,{checkpoint:f.checkpoint});
+    assert.equal(snapshot.files.length,1271);assert.equal(f.writes(),1);
+    assert.equal(validFileAuthoringRecovery(snapshot,{owner:'owner',project:'project',run:'run',inputHash:f.ctx.run.input_hash,attempt:intent.call_id,logical:intent.logical_call_id}),true);
+    f.authorize(snapshot,'file_authoring_timeout_auto_retry');
+    const approved=authorizedFileAuthoringRecovery(f.ctx,intent.logical_call_id)!;
+    await writeFile(join(target,'input.json'),await recoverFileAuthoringInput(f.ctx,approved,input));
+    await restoreFileAuthoringWork(f.ctx,target,approved);
+    for(const file of snapshot.files)assert.deepEqual(await readFile(join(target,file.path)),await readFile(join(source,file.path)));
+    assert.equal(FILE_AUTHORING_RECOVERY_LIMITS.files,4096);
+    await add(1270,FILE_AUTHORING_RECOVERY_LIMITS.files-1);
+    const boundary=await saveFileAuthoringRecovery(f.ctx,source,intent,{checkpoint:f.checkpoint});
+    assert.equal(boundary.files.length,4096);assert.equal(f.writes(),2);
+    assert.equal(validFileAuthoringRecovery(boundary,{owner:'owner',project:'project',run:'run',inputHash:f.ctx.run.input_hash,attempt:intent.call_id,logical:intent.logical_call_id}),true);
+    const boundaryTarget=join(root,'boundary-target');await mkdir(boundaryTarget);
+    f.authorize(boundary,'file_authoring_timeout_auto_retry');
+    const boundaryApproved=authorizedFileAuthoringRecovery(f.ctx,intent.logical_call_id)!;
+    await writeFile(join(boundaryTarget,'input.json'),await recoverFileAuthoringInput(f.ctx,boundaryApproved,input));
+    await restoreFileAuthoringWork(f.ctx,boundaryTarget,boundaryApproved);
+    for(const file of boundary.files)assert.deepEqual(await readFile(join(boundaryTarget,file.path)),await readFile(join(source,file.path)));
+    const last=boundary.files.at(-1)!,extraPath='scratch/extra.bin';
+    const oversized={...boundary,files:[...boundary.files,{...last,path:extraPath,key:last.key.slice(0,-last.path.length)+extraPath}]};
+    const rejectedTarget=join(root,'rejected-target');await mkdir(rejectedTarget);
+    const read=f.ctx.blobs.getIfExistsBounded;let reads=0;
+    f.ctx.blobs.getIfExistsBounded=async(...args)=>{reads++;return read(...args);};
+    await assert.rejects(recoverFileAuthoringInput(f.ctx,oversized,input),/AUTHORING_RECOVERY_UNSAFE/);
+    await assert.rejects(restoreFileAuthoringWork(f.ctx,rejectedTarget,oversized),/AUTHORING_RECOVERY_UNSAFE/);
+    assert.equal(reads,0,'oversized metadata is rejected before reading recovery objects');
+    assert.deepEqual(await readdir(rejectedTarget),[]);
+    await add(FILE_AUTHORING_RECOVERY_LIMITS.files-1,FILE_AUTHORING_RECOVERY_LIMITS.files);
+    const objectsBefore=f.objects.size;
+    await assert.rejects(saveFileAuthoringRecovery(f.ctx,source,intent,{checkpoint:f.checkpoint}),/AUTHORING_RECOVERY_UNSAFE/);
+    assert.equal(f.writes(),2,'excess files must not publish a partial checkpoint');
+    assert.equal(f.objects.size,objectsBefore,'file count is rejected before any additional Blob writes');
+  }finally{await rm(root,{recursive:true,force:true});}
 });
