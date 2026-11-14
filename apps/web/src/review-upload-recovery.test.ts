@@ -57,6 +57,28 @@ function harness(input = base()) {
 const methods = (h: ReturnType<typeof harness>) => h.calls.map(call => call.method);
 const drafts = (h: ReturnType<typeof harness>) => h.calls.filter(call => call.method === 'draft');
 const cacheKey = 'bb-review-input:owner:project';
+
+test('parallel transport saves later files without changing the ordered review draft',async()=>{
+ const h=harness(),files=[file('first.pdf','first bytes'),file('second.pdf','second bytes')],e=await h.helper.prepare(files,'audit');
+ await Promise.all(files.map((f,index)=>h.helper.transfer(e.id,index,{file:f})));
+ assert.deepEqual(h.helper.list(),[e]);assert.equal(h.state.draftWrites,0);
+ assert.ok(h.helper.transportRecords().every(r=>r.stage==='saved'));
+ await assert.rejects(h.helper.resume(e.id,1));
+ const first=await h.helper.resume(e.id,0);h.apply(first.draft!);
+ const second=await h.helper.resume(e.id,1);h.apply(second.draft!);
+ assert.equal(second.state,'complete');assert.equal(h.state.draftWrites,2);assert.equal(methods(h).filter(m=>m==='put').length,2);
+ assert.deepEqual(h.state.server.material_versions.map(p=>p.material_id),[first.draft!.material_versions[0].material_id,second.draft!.material_versions[1].material_id]);
+});
+
+test('failed review adoption keeps a preuploaded later file recoverable and unadopted',async()=>{
+ const h=harness(),files=[file(),file('second.pdf','second bytes')],e=await h.helper.prepare(files,'audit');
+ await Promise.all(files.map((f,index)=>h.helper.transfer(e.id,index,{file:f})));
+ h.state.failDraftBefore=true;const first=await h.helper.resume(e.id,0);assert.equal(first.state,'retryable');
+ await assert.rejects(h.helper.resume(e.id,1));assert.equal(h.state.server.material_versions.length,0);
+ assert.equal(h.helper.list()[0].items[1].stage,'prepared');assert.equal(h.helper.transportRecords().find(r=>r.id===e.items[1].id)!.stage,'saved');
+ h.state.failDraftBefore=false;const recovered=await h.make().resume(e.id,0,{retryAdoption:true});h.apply(recovered.draft!);
+ const second=await h.make().resume(e.id,1);assert.equal(second.state,'complete');assert.equal(methods(h).filter(m=>m==='put').length,2);
+});
 test('explicit single-source upload replaces the selected source after refresh and a lost save response', async () => {
   const h=harness(), firstFile=file('旧稿.docx','old source');
   const first=await h.helper.prepare([firstFile],'historical');
