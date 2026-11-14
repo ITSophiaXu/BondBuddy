@@ -1,0 +1,93 @@
+{
+  "fixture": "synthetic HTTP boundary / real Chromium; no real model, API, database or Word acceptance",
+  "implementation_commit": "ae6dd0255ca38f7c2cff033b4bbd1c7da91786d1",
+  "prototype_commit": "02db1f3567718490d63ac7039678ed6c4ae03fc7",
+  "version_evidence": "Commit IDs are supplied by the runner; separately verify the serving build/source tree against those commits.",
+  "prototype_sources": [
+    {
+      "path": "product-prototype/public/authoring-live-progress.html",
+      "sha256": "0b890e2f0ae4188ef4beebbf8141c9506a1219e082e3cfa55fe5f1ebebfde206"
+    },
+    {
+      "path": "product-prototype/public/authoring-status.css",
+      "sha256": "34f1afe4e472822cb6e6a877ef7f24baff4ba7ee1797f73ab5a52c4e17950cf0"
+    }
+  ],
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "framing": "Native viewport screenshots after centering the status card; bounds assertions keep the card above fixed bottom controls. Measured card bounds are recorded per side; surrounding implementation/prototype shells may differ.",
+  "prototype_source": "product-prototype/public/authoring-live-progress.html",
+  "pairs": [
+    {
+      "scenario": "timeout-pending",
+      "implementation": "implementation-timeout-pending-1440.png",
+      "prototype": "prototype-timeout-pending-1440.png",
+      "implementation_card": {
+        "x": 214,
+        "y": 360.328125,
+        "width": 1101,
+        "height": 279.828125
+      },
+      "prototype_card": {
+        "x": 100,
+        "y": 182.09375,
+        "width": 1240,
+        "height": 291
+      }
+    },
+    {
+      "scenario": "timeout-queued",
+      "implementation": "implementation-timeout-queued-1440.png",
+      "prototype": "prototype-timeout-queued-1440.png",
+      "implementation_card": {
+        "x": 214,
+        "y": 367.328125,
+        "width": 1101,
+        "height": 249.4375
+      },
+      "prototype_card": {
+        "x": 100,
+        "y": 182.09375,
+        "width": 1240,
+        "height": 263
+      }
+    },
+    {
+      "scenario": "timeout-unavailable",
+      "implementation": "implementation-timeout-unavailable-1440.png",
+      "prototype": "prototype-timeout-unavailable-1440.png",
+      "implementation_card": {
+        "x": 214,
+        "y": 367.328125,
+        "width": 1101,
+        "height": 249.4375
+      },
+      "prototype_card": {
+        "x": 100,
+        "y": 182.09375,
+        "width": 1240,
+        "height": 253.4375
+      }
+    },
+    {
+      "scenario": "timeout-exhausted",
+      "implementation": "implementation-timeout-exhausted-1440.png",
+      "prototype": "prototype-timeout-exhausted-1440.png",
+      "implementation_card": {
+        "x": 214,
+        "y": 367.328125,
+        "width": 1101,
+        "height": 249.4375
+      },
+      "prototype_card": {
+        "x": 100,
+        "y": 182.09375,
+        "width": 1240,
+        "height": 253.4375
+      }
+    }
+  ],
+  "visual_review": "pending; screenshots and functional assertions do not imply user acceptance"
+}

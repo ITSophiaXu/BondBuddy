@@ -5,6 +5,21 @@ import {esc} from './ui.js';
 const ended=(r:Run)=>['succeeded','test_completed','failed','rejected','cancelled'].includes(r.state);
 export function elapsedLabel(ms:number){const s=Math.floor(ms/1000);return s<60?s+'秒':Math.floor(s/60)+'分'+String(s%60).padStart(2,'0')+'秒';}
 export function authoringEventLabel(event:RunEvent):string|null{
+  const recoveryLabels:Record<string,string>={
+    file_authoring_payload_recovery_pending:'请求内容过大，本轮处理已暂停',
+    file_authoring_payload_retry_scheduled:'进度已保存，已安排自动续跑',
+    file_authoring_payload_recovery_unavailable:'未能保存完整续跑进度，已停止自动重试',
+    file_authoring_payload_retries_exhausted:'自动恢复后仍超出接口容量，本次未完成',
+    file_authoring_output_limit_recovery_pending:'处理输出超过安全上限，正在核对恢复条件',
+    file_authoring_output_limit_retry_scheduled:'进度已保存，已安排自动续跑',
+    file_authoring_output_limit_recovery_unavailable:'恢复进度未通过核验，已停止自动重试',
+    file_authoring_output_limit_retries_exhausted:'自动恢复次数已用完，本次未完成',
+    file_authoring_timeout_recovery_pending:'本轮处理超时，正在核对恢复条件',
+    file_authoring_timeout_retry_scheduled:'进度已保存，已安排自动续跑',
+    file_authoring_timeout_recovery_unavailable:'恢复进度未通过核验，已停止自动重试',
+    file_authoring_timeout_retries_exhausted:'自动恢复次数已用完，本次未完成',
+  };
+  if(event.payload.reason&&recoveryLabels[event.payload.reason])return recoveryLabels[event.payload.reason];
   const a=event.payload.authoring_activity;
   if(!a)return null;
   const label=AUTHORING_ACTIVITY_LABELS[a.code];
@@ -37,6 +52,19 @@ export function authoringStatus(run:Run,events:RunEvent[],p?:AuthoringProgress){
   if(p?.credit_exhausted)return {title:run.state==='paused'?'积分已用完，任务已暂停':'积分已用完，正在保存进度后暂停',summary:'积分已停止扣减，已完成的工作会保留。充值到账后自动继续本次任务。',phase:2 as const};
   if(p?.pause_requested&&run.state==='running')return {title:'正在保存进度后暂停',summary:'积分已冻结。当前模型处理结果保存后暂停，继续时会复用已保存的结果。',phase:2 as const};
   if(run.state==='paused'&&run.stage==='user_paused')return {title:'任务已暂停',summary:'进度已保存，积分停止累计。可继续本次任务，或结束并结算已消耗积分。'};
+  const recovery=observedEvents(run,events).at(-1)?.payload.reason;
+  if(run.state==='paused'&&run.stage==='provider_reconcile'&&recovery==='file_authoring_payload_recovery_pending')
+    return {title:'正在自动恢复',summary:'请求内容超过接口容量，正在核对保存的工作进度并调整请求；无需重新提交。',phase:2 as const};
+  if(run.state==='queued'&&recovery==='file_authoring_payload_retry_scheduled')
+    return {title:'正在安排自动续跑',summary:'工作进度已保存，执行服务将使用较小的请求继续本次任务。',phase:2 as const};
+  if(run.state==='paused'&&run.stage==='provider_reconcile'&&recovery==='file_authoring_output_limit_recovery_pending')
+    return {title:'正在核对恢复条件',summary:'处理输出超过安全上限，正在核对可恢复进度和调用记录；符合条件时自动继续本次任务。',phase:2 as const};
+  if(run.state==='queued'&&recovery==='file_authoring_output_limit_retry_scheduled')
+    return {title:'正在安排自动续跑',summary:'工作进度已保存，执行服务将接续已有工作，仍是本次任务。',phase:2 as const};
+  if(run.state==='paused'&&run.stage==='provider_reconcile'&&recovery==='file_authoring_timeout_recovery_pending')
+    return {title:'正在核对恢复条件',summary:'本轮处理超时，正在核对可恢复进度和调用记录；符合条件时自动继续本次任务。',phase:2 as const};
+  if(run.state==='queued'&&recovery==='file_authoring_timeout_retry_scheduled')
+    return {title:'正在安排自动续跑',summary:'工作进度已保存，执行服务将接续已有工作，仍是本次任务。',phase:2 as const};
   if(run.state==='queued'){
     const waiting=p?Math.max(0,Date.parse(p.sampled_at)-Date.parse(p.queued_at)):0;
     return {title:waiting>=60000?'仍在排队，尚未开始处理':'正在安排编制任务',

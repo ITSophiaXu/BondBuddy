@@ -93,3 +93,11 @@ test('workpaper checks keep exact execution routes and never restore as prospect
   assert.deepEqual(await authoringTasks(async cursor=>{pages++;return {project_id:'project 1',items:cursor?[checks[0]]:[checks[1]],page:{has_more:!cursor,next_cursor:cursor?null:'older'}};},'project 1',()=>false,t=>observed.push(t)),[]);
   assert.equal(pages,2);assert.deepEqual(observed,[checks[1],checks[0]]);
 });
+
+
+test('supplier reconciliation is distinct from a user pause and does not promise a manual resume',()=>{
+  const automatic=taskView({...task('paused'),stage:'provider_reconcile'});
+  assert.equal(automatic.label,'异常处理中');assert.match(automatic.detail,/原因和恢复状态/);
+  assert.doesNotMatch(automatic.detail,/可进入任务恢复/);
+  assert.equal(taskView({...task('paused'),stage:'user_paused'}).label,'已暂停');
+});

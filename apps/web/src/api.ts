@@ -341,6 +341,14 @@ export class ApiClient {
   runAction(id: string, action: 'cancel' | 'resume' | 'pause', signal?: AbortSignal) {
     return this.request<Dto<'RunResponse'>>('POST', `/runs/${encodeURIComponent(id)}/${action}`, { reason: action === 'cancel' ? 'user_cancelled' : action === 'pause' ? 'user_paused' : 'user_resumed' }, {}, signal);
   }
+  async runRetryOptions(id:string,signal?:AbortSignal) {
+    const value=await this.request<Dto<'RunRetryResponse'>>('GET',`/runs/${encodeURIComponent(id)}/retry`,undefined,{},signal);
+    if(!Value.Check(uploadSchemas.RunRetryResponse,value))throw new ApiError(0,'DATA_UNAVAILABLE');
+    return value;
+  }
+  retryRun(id:string,input:Dto<'RunRetryRequest'>,signal?:AbortSignal) {
+    return this.request<Dto<'RunResponse'>>('POST',`/runs/${encodeURIComponent(id)}/retry`,input,{},signal);
+  }
   run(id: string, signal?: AbortSignal) { return this.request<Dto<'RunResponse'>>('GET', `/runs/${encodeURIComponent(id)}`, undefined, {}, signal); }
   inputRevision(id: string, revision: number, signal?: AbortSignal) {
     return this.request<Dto<'InputRevisionResponse'>>('GET', `/projects/${encodeURIComponent(id)}/input-revisions/${revision}`, undefined, {}, signal);

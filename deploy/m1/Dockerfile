@@ -24,6 +24,7 @@ COPY scripts/local-integration/config.mjs scripts/local-integration/config.d.mts
 # The web workspace imports these prototype stylesheets as its layout baseline (#361, M2).
 COPY product-prototype/public/styles.css product-prototype/public/project-workspace.css product-prototype/public/credits.css product-prototype/public/material-results.css product-prototype/public/source-prospectus.css product-prototype/public/duplicate-upload-feedback.css product-prototype/public/optional-materials.css product-prototype/public/prospectus-panel.css product-prototype/public/file-generation-ux.css product-prototype/public/workpaper-entry.css product-prototype/public/project-entry.css product-prototype/public/workspace-typography.css product-prototype/public/workpaper-task.css product-prototype/public/
 COPY product-prototype/public/navigation-responsive.css product-prototype/public/
+COPY product-prototype/public/authoring-status.css product-prototype/public/
 COPY product-prototype/public/desktop-workspace-polish.css product-prototype/public/document-workspace.css product-prototype/public/
 # Copy only the pinned public research assets, never source documents or test materials.
 COPY knowledge/exchange-bonds/drafts/sse-private/rule-pack.json knowledge/exchange-bonds/drafts/sse-private/chapter-template.json knowledge/exchange-bonds/drafts/sse-private/coverage.json knowledge/exchange-bonds/drafts/sse-private/

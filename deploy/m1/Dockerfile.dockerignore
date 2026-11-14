@@ -17,6 +17,7 @@ product-prototype
 # apps/web imports these prototype stylesheets directly (#361, M2).
 !product-prototype/public/styles.css
 !product-prototype/public/project-workspace.css
+!product-prototype/public/authoring-status.css
 !product-prototype/public/credits.css
 !product-prototype/public/subscription-billing.css
 !product-prototype/public/billing-price-admin.css

@@ -7,7 +7,7 @@ import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import type { Dto } from './billing-fixture-wire';
 import { join, resolve } from 'node:path';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
 // Synthetic HTTP boundary tests in real Chromium; no actual API/PG/model/Word acceptance.
@@ -53,6 +53,14 @@ function fixture() {
     executeError: undefined as { status: number; code: string; correlation_id: string; field_errors?: {field:string;code:string;message:string}[] } | undefined,
     preflightError: undefined as { status: number; code: string; correlation_id: string } | undefined,
     runActions: [] as string[],
+    retryMode:'restore_checkpoint' as Dto<'RunRetryResponse'>['mode'],
+    retryReason:'checkpoint_available' as Dto<'RunRetryResponse'>['reason_code'],
+    retryAttemptId:'synthetic-attempt-1',retryInspections:[] as string[],
+    retryRequests:[] as Dto<'RunRetryRequest'>[],retryError:false,dropRetry:false,holdRetry:false,
+    acceptedRetryRequests:new Map<string,Dto<'RunRetryRequest'>>(),holdRetryResponse:false,dropAcceptedRetry:false,
+    onRetryAccepted:undefined as ((run:Dto<'RunResponse'>)=>void)|undefined,
+    releaseRetryResponse:undefined as (()=>void)|undefined,
+    releaseRetry:undefined as (()=>void)|undefined,
     checkStatus: 'blocked' as Dto<'PreflightResponse'>['status'], reason: 'rule_pack:rule_applicability_overall_review_required',
     blockers: undefined as string[] | undefined };
 }
@@ -198,6 +206,31 @@ async function setup(page: Page, state = fixture(), canStart = true) {
     if (path.startsWith('/runs/')) {
       const run = [...state.runs.values()].find(run => path.startsWith(`/runs/${run.run_id}`));
       if (!run) return json(route, 404, { code: 'NOT_FOUND' });
+      if(path.endsWith('/retry')){
+        if(method==='GET'){
+          state.retryInspections.push(state.retryAttemptId);
+          return json(route,200,{run_id:run.run_id,attempt_id:state.retryAttemptId,mode:state.retryMode,reason_code:state.retryReason});
+        }
+        const request=fixtureRequest(route.request());expect(Value.Check(schemas.RunRetryRequest,request)).toBe(true);state.retryRequests.push(request);
+        const accepted=state.acceptedRetryRequests.get(request.request_id);
+        if(accepted){
+          expect(request).toEqual(accepted);
+          // A receipt replay returns the current run, including a later paused attempt.
+          return json(route,200,{...structuredClone(run),event_cursor:state.eventSeq});
+        }
+        if(state.holdRetry)await new Promise<void>(resolve=>{state.releaseRetry=resolve;});
+        if(state.retryError)return json(route,409,{code:'INPUT_REVISION_CONFLICT'});
+        if(state.dropRetry){state.dropRetry=false;return route.abort('connectionreset');}
+        run.state='queued';run.stage='queued';state.runReason=request.mode==='restart_materials'?'file_authoring_manual_restart_scheduled'
+          :state.runReason.startsWith('file_authoring_output_limit_')?'file_authoring_output_limit_retry_scheduled':'file_authoring_payload_retry_scheduled';state.eventSeq++;
+        state.acceptedRetryRequests.set(request.request_id,structuredClone(request));
+        // The server accepted this snapshot before the network response was delayed.
+        const receipt={...structuredClone(run),event_cursor:state.eventSeq};
+        state.onRetryAccepted?.(run);
+        if(state.holdRetryResponse)await new Promise<void>(resolve=>{state.releaseRetryResponse=resolve;});
+        if(state.dropAcceptedRetry){state.dropAcceptedRetry=false;return route.abort('connectionreset');}
+        return json(route,200,receipt);
+      }
       if(path.endsWith('/credit-charge'))return state.chargeFailure?json(route,503,{code:'DATA_UNAVAILABLE'}):json(route,200,{quote:{points:state.points},state:state.chargeState,...(state.liveProgress?{progress:state.liveProgress}:{})});
       if (path.endsWith('/stream'))return route.fulfill({status:200,contentType:'text/event-stream',body:': synthetic stream; polling exercises refresh\n\n'});
       if (method === 'POST' && ['/cancel','/resume','/pause'].some(a=>path.endsWith(a))) {
@@ -324,6 +357,12 @@ async function continueAuthoring(page: Page) {
   }
   await expect(page.locator('[data-next-authoring-summary] .continuation-summary')).toBeVisible();
 }
+async function showProjectMaterials(page:Page) {
+  const materials=page.locator('#authoring-locked-materials');
+  if(!await materials.evaluate(element=>(element as HTMLDetailsElement).open))await materials.locator(':scope > summary').click();
+  await page.locator('#show-project-materials').click();
+  await expect(page.locator('#project-materials-details')).toBeVisible();
+}
 async function openListedRun(page: Page, run: Dto<'RunResponse'>) {
   expect(run.project_id).toBe(id);
   await page.goto('/#tasks');
@@ -438,7 +477,7 @@ test('authoring materials stay read-only after starting until an explicit next v
   await capture('preparing');
   await page.locator('#execute-input').click();
   await expect(page.locator('#project-materials-details')).toHaveClass(/materials-readonly/);
-  await page.getByRole('button', { name: '查看材料', exact: true }).click();
+  await showProjectMaterials(page);
   await capture('running');
   await expect(referencePicker).toBeHidden();
   await expect(referenceInput).toBeDisabled();
@@ -478,7 +517,7 @@ test('authoring materials stay read-only after starting until an explicit next v
   await expect(page.locator('#material-partitions')).not.toContainText('late-audit.txt');
   await page.reload();
   await expect(page.locator('#project-materials-details')).toHaveClass(/materials-readonly/);
-  await page.getByRole('button', { name: '查看材料', exact: true }).click();
+  await showProjectMaterials(page);
   await expect(picker).toBeDisabled();
   await expect(referencePicker).toBeHidden();
   await expect(referenceInput).toBeDisabled();
@@ -1178,7 +1217,7 @@ test('resumed source-input task shows compilation without a false blocker', asyn
 test('provider timeout explains service recovery and keeps the same task after automatic retry', async ({ page }) => {
   const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='provider_result_pending';
   await setup(page,state);await page.locator('#execute-input').click();
-  await expect(page.locator('.execution-summary')).toContainText('无需补充材料');
+  await expect(page.locator('.execution-summary')).toContainText('系统正在核对');
   await expect(page.locator('.execution-summary')).not.toContainText('待处理条件');
   await expect(page.locator('#project-conversation-root')).not.toBeVisible();
   const run=[...state.runs.values()][0];const hash=run.input_hash;
@@ -1337,7 +1376,7 @@ test('continuing after completion creates a new input and retains the preceding 
   const first=[...state.runs.values()][0];
   const {primary,clean}=registerGeneratedPair(state,first,'first-successful-artifact');
   await page.getByRole('button',{name:'重新读取',exact:true}).click();
-  await expect(page.locator('#execution-progress')).toContainText('已生成');
+  await expect(page.locator('#execution-progress')).toContainText('募集书已编制完成');
   await continueAuthoring(page);
   await expect(page.locator('[data-next-authoring-summary]')).toContainText(clean.filename!);
   await page.locator('#execute-input').click();
@@ -1362,7 +1401,7 @@ for(const changeAfterPreparation of [false,true])test(`deduplicated first draft 
   const first=[...state.runs.values()][0],{primary,clean}=registerGeneratedPair(state,first,'deduplicated-first-draft',true);
   expect(primary.word_delivery?.source_sha256).toBeNull();
   await page.getByRole('button',{name:'重新读取',exact:true}).click();
-  await expect(page.locator('#execution-progress')).toContainText('已生成');
+  await expect(page.locator('#execution-progress')).toContainText('募集书已编制完成');
   await continueAuthoring(page);
   await expect(page.locator('[data-next-authoring-summary]')).toContainText(clean.filename!);
   if(changeAfterPreparation)clean.sha256=hash('changed-first-draft');
@@ -1394,7 +1433,8 @@ for (const [reason, message] of [
     await page.getByRole('button',{name:'重新读取',exact:true}).click();
     await expect(page.locator('.execution-summary')).toHaveText(message);
     await expect(page.getByRole('button', { name: '继续更新', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '查看材料', exact: true })).toBeVisible();
+    await page.locator('#authoring-locked-materials > summary').click();
+    await expect(page.locator('#show-project-materials')).toBeVisible();
     await expect(page.getByRole('link', { name: '查看此前成功成果' })).toBeVisible();
     await expect(page.getByRole('link', { name: '查看此前成功成果' })).toHaveAttribute('href',`#/artifacts/${priorArtifact.artifact_id}?return_project=${id}`);
     if (reason === 'model_tokens_per_user_per_day' && process.env.BB_TRIAL_UX_DIR) {
@@ -1592,7 +1632,7 @@ for (const [label, width, height] of [['desktop', 1440, 960], ['mobile', 390, 84
     await page.reload(); await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
     const url = page.url(); await page.close(); page = await context.newPage(); await page.goto(url);
     await expect(page.locator('#execution-progress')).toContainText('生成全文内容');
-    await page.getByRole('button', { name: '查看材料' }).click();
+    await showProjectMaterials(page);
     await expect(page.locator('.processing-title')).toHaveCount(0);
     await expect(page.locator('.material-file-row')).toHaveCount(2);
     expect(state.executes).toEqual([locked]); expect(unexpected).toEqual([]);
@@ -1665,7 +1705,7 @@ for (const scenario of [
   await page.locator('[data-next-leave]').click();
   expect(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).get('run')).toBe('synthetic-run-1');
   expect(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).has('prepare')).toBe(false);
-  await page.reload(); await page.getByRole('button', { name: '查看材料', exact: true }).click();
+  await page.reload(); await showProjectMaterials(page);
   await expect(page.locator('.material-file-row')).toHaveCount(3);
   await expect(picker).toBeDisabled();
   expect(byteUploads).toBe(1); expect(state.runActions).toEqual(['/runs/synthetic-run-1/cancel']);
@@ -1719,8 +1759,10 @@ test('credit visibility: an in-flight old receipt is refreshed after the run com
   });
   await page.locator('#execute-input').click();
   await expect.poll(()=>reads).toBe(1);
-  [...state.runs.values()][0].state='succeeded';
-  await expect(page.locator('#execution-progress')).toContainText('文档已生成，可下载',{timeout:12000});
+  const completed=[...state.runs.values()][0];registerGeneratedPair(state,completed,'stale-credit-receipt-success');
+  completed.stage='completed';state.runReason='completed';completed.event_cursor=++state.eventSeq;
+  await expect(page.locator('#execution-progress')).toContainText('募集书已编制完成',{timeout:12000});
+  await expect(page.locator('#artifact-downloads')).toBeVisible();
   release();await expect(page.locator('.task-credit-receipt')).toContainText('已扣费');expect(reads).toBeGreaterThan(1);
 });
 
@@ -2092,4 +2134,419 @@ test('upload automatically adopts the original and submits it without a selectio
   expect(state.inputs[0].material_versions).toContainEqual({material_id:'synthetic-history',material_version:1});
   expect(state.inputs[0].prospectus_selection_revision).toBe(1);
   expect(state.selectionRequests).toEqual([]);
+});
+
+
+test('payload recovery explains automatic continuation and never submits a second task on reload',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='file_authoring_payload_recovery_pending';
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect.poll(()=>state.runs.size).toBe(1);
+  const run=[...state.runs.values()][0],originalHash=run.input_hash;
+  for(const reload of [false,true]){
+    if(reload)await page.reload();
+    await expect(page.locator('#execution-progress .task-progress')).toContainText('编制募集书时暂停');
+    await expect(page.locator('.execution-summary')).toContainText('单次容量');
+    await expect(page.locator('#resume-run')).toHaveCount(0);
+    expect(state.executes).toHaveLength(1);expect(state.runActions).toEqual([]);
+  }
+  const output=process.env.BB_PAYLOAD_UX_DIR;
+  if(output){
+    await mkdir(output,{recursive:true});
+    for(const [name,width,height] of [['desktop',1440,960],['mobile',390,844]] as const){
+      await page.setViewportSize({width,height});await page.locator('#execution-progress').scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`implementation-${name}.png`)});
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+      const prototype=await page.context().newPage();await prototype.setViewportSize({width,height});
+      await prototype.setContent(await readFile(resolve('../../product-prototype/public/authoring-live-progress.html'),'utf8'));
+      await prototype.addStyleTag({content:await readFile(resolve('../../product-prototype/public/authoring-status.css'),'utf8')});
+      await prototype.evaluate(()=>{(window as any).render('recovering');});
+      await prototype.screenshot({path:join(output,`prototype-${name}.png`)});await prototype.close();
+    }
+  }
+  run.state='queued';run.stage='queued';state.runReason='file_authoring_payload_retry_scheduled';state.eventSeq++;
+  await page.reload();await expect(page.locator('#execution-progress')).toContainText('正在安排自动续跑');
+  run.state='running';run.stage='provider_call';state.runReason='provider_call_may_be_sent';state.eventSeq++;
+  await page.reload();await expect(page.locator('#execution-progress')).toContainText('正在编制募集书');
+  expect(state.executes).toHaveLength(1);expect(state.runActions).toEqual([]);expect(run.input_hash).toBe(originalHash);
+});
+
+test('paused status offers a real immediate retry and retains the original task',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='file_authoring_payload_recovery_pending';state.holdRetry=true;
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.locator('#retry-run')).toBeEnabled();await expect.poll(()=>state.runs.size).toBe(1);
+  const run=[...state.runs.values()][0],originalHash=run.input_hash;
+  await expect(page.locator('.authoring-status-card')).toHaveAttribute('data-tone','paused');
+  await expect(page.locator('.authoring-status-step[data-step-state="done"]')).toHaveCount(2);
+  await expect(page.locator('#authoring-locked-materials')).toHaveJSProperty('open',false);
+  await page.locator('#authoring-records > summary').click();
+  await expect(page.locator('#authoring-records')).toHaveJSProperty('open',false);
+  await page.locator('#retry-run').click();await expect.poll(()=>state.retryRequests.length).toBe(1);
+  await expect(page.locator('#retry-run')).toBeDisabled();
+  await expect(page.locator('#authoring-records')).toHaveJSProperty('open',false);
+  state.releaseRetry!();await expect(page.locator('#retry-run')).toHaveCount(0);
+  expect(state.retryRequests[0].mode).toBe('restore_checkpoint');expect(state.executes).toHaveLength(1);
+  expect(run.input_hash).toBe(originalHash);await page.reload();expect(state.executes).toHaveLength(1);
+  await expect(page.locator('.authoring-status-step[data-step-state="done"]')).toHaveCount(2);
+});
+
+test('legacy paused retry explicitly confirms restart and never promises saved intermediate work',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='provider_result_pending';
+  state.retryMode='restart_materials';state.retryReason='restart_confirmation_required';
+  await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#retry-run')).toBeEnabled();
+  await expect(page.locator('.authoring-status-card')).toContainText('没有可续跑的工作快照');
+  await expect(page.locator('.authoring-status-card')).not.toContainText('工作进度已保存');
+  await page.locator('#retry-run').click();await expect(page.getByRole('dialog',{name:'使用原材料重新处理？'})).toBeVisible();
+  expect(state.retryRequests).toHaveLength(0);await page.getByRole('button',{name:'暂不重试',exact:true}).click();
+  expect(state.retryRequests).toHaveLength(0);await page.locator('#retry-run').click();await page.locator('#confirm-run-restart').click();
+  await expect.poll(()=>state.retryRequests.length).toBe(1);expect(state.retryRequests[0].mode).toBe('restart_materials');
+  expect(state.retryRequests[0].confirmed_restart).toBe(true);expect(state.executes).toHaveLength(1);
+  await expect(page.locator('#execution-progress')).toContainText('原材料重新处理');
+});
+
+test('retry unavailable and stale confirmation give a clear reason without another generation request',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='provider_result_pending';
+  state.retryMode='blocked';state.retryReason='active_attempt';
+  await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#retry-run')).toBeDisabled();
+  await expect(page.locator('.authoring-status-card')).toContainText('退出状态尚未确认');expect(state.retryRequests).toHaveLength(0);
+  state.retryMode='restore_checkpoint';state.retryReason='checkpoint_available';state.retryError=true;
+  await page.locator('#refresh-run-retry').click();await expect(page.locator('#retry-run')).toBeEnabled();await page.locator('#retry-run').click();
+  await expect(page.locator('#run-action-feedback')).toContainText('任务状态或处理尝试已变化');
+  await expect(page.locator('#execution-progress')).not.toContainText('尚未开放全文更新');expect(state.retryRequests).toHaveLength(1);expect(state.executes).toHaveLength(1);
+});
+
+test('lost retry receipt repeats the exact request and does not create another task',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='file_authoring_payload_recovery_pending';state.dropRetry=true;
+  await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#retry-run')).toBeEnabled();await page.locator('#retry-run').click();
+  await expect(page.locator('#retry-run')).toHaveText('核对重试结果');await page.locator('#retry-run').click();
+  await expect.poll(()=>state.retryRequests.length).toBe(2);expect(state.retryRequests[0]).toEqual(state.retryRequests[1]);expect(state.executes).toHaveLength(1);
+});
+
+// #1341: synthetic HTTP/Chromium UX only; never point these cases at the real replay on port 5303.
+function assertSyntheticTimeoutUiTarget() {
+  const base = new URL(String(test.info().project.use.baseURL ?? 'http://127.0.0.1:5173'));
+  expect(['127.0.0.1','localhost','[::1]']).toContain(base.hostname);
+  expect(base.port, 'The real replay at localhost:5303 must not be used for synthetic UI acceptance').not.toBe('5303');
+}
+
+for(const width of [1440,390])test('file authoring timeout states preserve phase and distinguish recovery from checks '+width,async({page})=>{
+  assertSyntheticTimeoutUiTarget();
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='file_authoring_timeout_recovery_pending';
+  state.eventError='MODEL_TIMEOUT';state.retryMode='blocked';state.retryReason='provider_evidence_unresolved';
+  const height=width===1440?1000:844;await page.setViewportSize({width,height});
+  await setup(page,state);await page.locator('#execute-input').click();await expect.poll(()=>state.runs.size).toBe(1);
+  const run=[...state.runs.values()][0],original={runId:run.run_id,inputHash:run.input_hash,inputRevision:run.input_revision};
+  await page.route('**/credit-charge',route=>json(route,200,{quote:{...commerceMetadata(34570),points:34570,price_version:AUTOMATIC_PRICE_VERSION,quote_status:'ready'},state:'held'}));
+  const variants:[string,string,Dto<'RunResponse'>['state'],Dto<'RunRetryResponse'>['mode'],Dto<'RunRetryResponse'>['reason_code'],string][]=[
+    ['timeout-pending','file_authoring_timeout_recovery_pending','paused','blocked','provider_evidence_unresolved','本轮处理超时，正在核对可恢复进度和调用记录'],
+    ['timeout-queued','file_authoring_timeout_retry_scheduled','queued','restore_checkpoint','checkpoint_available','工作进度已保存'],
+    ['timeout-unavailable','file_authoring_timeout_recovery_unavailable','failed','blocked','checkpoint_unavailable','本轮处理超时，恢复进度未通过核验'],
+    ['timeout-exhausted','file_authoring_timeout_retries_exhausted','failed','blocked','retry_limit_reached','自动恢复次数已用完'],
+  ];
+  const output=process.env.BB_FILE_AUTHORING_TIMEOUT_UX_DIR;
+  const comparisonPairs:{scenario:string;implementation:string;prototype:string;implementation_card:unknown;prototype_card:unknown}[]=[];
+  if(output){
+    expect(process.env.BB_TIMEOUT_UI_IMPLEMENTATION_COMMIT,'Record the exact integrated implementation commit').toMatch(/^[a-f0-9]{40}$/);
+    expect(process.env.BB_TIMEOUT_UI_PROTOTYPE_COMMIT,'Record the exact prototype commit registered for #361').toMatch(/^[a-f0-9]{40}$/);
+    await mkdir(output,{recursive:true});
+  }
+  for(const [name,reason,runState,mode,retryReason,expected] of variants){
+    run.state=runState;run.stage=runState==='queued'?'queued':runState==='failed'?'failed':'provider_reconcile';
+    state.runReason=reason;state.retryMode=mode;state.retryReason=retryReason;state.eventSeq++;
+    await page.reload();const card=page.locator('.authoring-status-card');await expect(card).toContainText(expected);
+    await expect(card).not.toContainText('处理输出超过安全上限');
+    await expect(card).not.toContainText('MODEL_TIMEOUT');
+    await expect(card.locator('.authoring-status-step[data-step-state="done"]')).toHaveCount(2);
+    await expect(card.locator('.authoring-status-step[aria-current="step"]')).toContainText('编制募集书');
+    await expect(card.locator('.authoring-status-step[data-step-state="future"]')).toHaveCount(2);
+    await expect(page.locator('#resume-run')).toHaveCount(0);
+    if(name==='timeout-pending'){
+      await expect(card).toHaveAttribute('data-tone','paused');
+      await expect(card.locator('.authoring-status-badge')).toContainText('已暂停');
+      await expect(card).toContainText('符合条件时自动继续本次任务');
+      await expect(card).not.toContainText('工作进度已保存');
+      await expect(card).not.toContainText('退出状态尚未确认');
+      await expect(card).not.toContainText('仍在运行');
+      await expect(page.locator('#retry-run')).toBeDisabled();
+      await expect(page.locator('#refresh-run-retry')).toBeEnabled();
+      await expect(page.locator('#cancel-run')).toBeEnabled();
+      await expect(page.locator('#pause-run')).toHaveCount(0);
+    }else if(name==='timeout-queued'){
+      await expect(card).toHaveAttribute('data-tone','running');
+      await expect(card.locator('.authoring-status-badge')).toContainText('排队中');
+      await expect(card.locator('h3[role="status"]')).toHaveText('正在安排自动续跑');
+      await expect(card).toContainText('仍是本次任务');
+      await expect(page.locator('#retry-run,#refresh-run-retry')).toHaveCount(0);
+      await expect(page.locator('#pause-run')).toBeEnabled();await expect(page.locator('#cancel-run')).toBeEnabled();
+    }else{
+      await expect(card).toHaveAttribute('data-tone','failed');
+      await expect(card.locator('.authoring-status-badge')).toContainText('未完成');
+      await expect(card).toContainText('本轮未完成');
+      await expect(card).not.toContainText('已暂停');
+      await expect(card).not.toContainText('关闭页面不会取消任务');
+      await expect(card).not.toContainText('工作进度已保存');
+      await expect(page.locator('#retry-run,#refresh-run-retry,#pause-run,#cancel-run')).toHaveCount(0);
+      if(name==='timeout-unavailable')await expect(card).toContainText('已停止自动重试');
+    }
+    if(name!=='timeout-queued')expect((await card.innerText()).match(/已保存的?材料会保留/g)).toHaveLength(1);
+    expect(state.executes).toHaveLength(1);expect(state.retryRequests).toHaveLength(0);expect(state.runActions).toHaveLength(0);
+    expect(state.runs.size).toBe(1);expect({runId:run.run_id,inputHash:run.input_hash,inputRevision:run.input_revision}).toEqual(original);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    if(output){
+      await expect(page.locator('.authoring-status-billing')).toContainText('34,570 积分');
+      const implementation='implementation-'+name+'-'+width+'.png',reference='prototype-'+name+'-'+width+'.png';
+      await card.evaluate(element=>element.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'}));
+      const implementationCard=await card.boundingBox();
+      expect(implementationCard).not.toBeNull();
+      expect(implementationCard!.y).toBeGreaterThanOrEqual(64);
+      expect(implementationCard!.y+implementationCard!.height).toBeLessThanOrEqual(height-96);
+      await page.screenshot({path:join(output,implementation),animations:'disabled'});
+      const prototype=await page.context().newPage();await prototype.setViewportSize({width,height});
+      try{
+        await prototype.setContent(await readFile(resolve('../../product-prototype/public/authoring-live-progress.html'),'utf8'));
+        await prototype.addStyleTag({content:await readFile(resolve('../../product-prototype/public/authoring-status.css'),'utf8')});
+        await prototype.evaluate(key=>(window as any).render(key),name);
+        const referenceCard=prototype.locator('.authoring-status-card');
+        await expect(referenceCard).toContainText(expected);
+        await expect(referenceCard).toHaveAttribute('data-tone',runState==='paused'?'paused':runState==='failed'?'failed':'running');
+        await expect(referenceCard.locator('.authoring-status-step[data-step-state="done"]')).toHaveCount(2);
+        await expect(referenceCard.locator('.authoring-status-step[aria-current="step"]')).toContainText('编制募集书');
+        await expect(referenceCard.locator('.authoring-status-step[data-step-state="future"]')).toHaveCount(2);
+        if(name==='timeout-pending'){
+          await expect(referenceCard.locator('[data-action="retry-blocked"]')).toBeDisabled();
+          await expect(referenceCard.locator('[data-action="refresh"]')).toBeEnabled();
+        }else if(name==='timeout-queued'){
+          await expect(referenceCard.locator('[data-action="pause"]')).toBeEnabled();
+          await expect(referenceCard.locator('[data-action="stop"]')).toBeEnabled();
+        }else await expect(referenceCard.locator('button')).toHaveCount(0);
+        await referenceCard.evaluate(element=>element.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'}));
+        const prototypeCard=await referenceCard.boundingBox();
+        expect(prototypeCard).not.toBeNull();
+        expect(prototypeCard!.y).toBeGreaterThanOrEqual(0);
+        expect(prototypeCard!.y+prototypeCard!.height).toBeLessThanOrEqual(height-96);
+        expect(await prototype.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+        await prototype.screenshot({path:join(output,reference),animations:'disabled'});
+        comparisonPairs.push({scenario:name,implementation,prototype:reference,implementation_card:implementationCard,prototype_card:prototypeCard});
+      }finally{await prototype.close();}
+    }
+  }
+  if(output)await writeFile(join(output,'timeout-comparison-'+width+'.json'),JSON.stringify({
+    fixture:'synthetic HTTP boundary / real Chromium; no real model, API, database or Word acceptance',
+    implementation_commit:process.env.BB_TIMEOUT_UI_IMPLEMENTATION_COMMIT,prototype_commit:process.env.BB_TIMEOUT_UI_PROTOTYPE_COMMIT,
+    version_evidence:'Commit IDs are supplied by the runner; separately verify the serving build/source tree against those commits.',
+    prototype_sources:await Promise.all(['authoring-live-progress.html','authoring-status.css'].map(async name=>({
+      path:'product-prototype/public/'+name,sha256:createHash('sha256').update(await readFile(resolve('../../product-prototype/public',name))).digest('hex')
+    }))),
+    viewport:{width,height},framing:'Native viewport screenshots after centering the status card; bounds assertions keep the card above fixed bottom controls. Measured card bounds are recorded per side; surrounding implementation/prototype shells may differ.',
+    prototype_source:'product-prototype/public/authoring-live-progress.html',pairs:comparisonPairs,
+    visual_review:'pending; screenshots and functional assertions do not imply user acceptance'
+  },null,2)+'\n','utf8');
+});
+
+
+for(const width of [1440,390])test('output limit states preserve phase and distinguish saved recovery from checks '+width,async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='file_authoring_output_limit_recovery_pending';
+  state.retryMode='blocked';state.retryReason='provider_evidence_unresolved';
+  const height=width===1440?1000:844;await page.setViewportSize({width,height});
+  await setup(page,state);await page.locator('#execute-input').click();await expect.poll(()=>state.runs.size).toBe(1);
+  const run=[...state.runs.values()][0],original={runId:run.run_id,inputHash:run.input_hash,inputRevision:run.input_revision};
+  await page.route('**/credit-charge',route=>json(route,200,{quote:{...commerceMetadata(34570),points:34570,price_version:AUTOMATIC_PRICE_VERSION,quote_status:'ready'},state:'held'}));
+  const variants:[string,string,Dto<'RunResponse'>['state'],Dto<'RunRetryResponse'>['mode'],Dto<'RunRetryResponse'>['reason_code'],string][]=[
+    ['output-pending','file_authoring_output_limit_recovery_pending','paused','blocked','provider_evidence_unresolved','正在核对可恢复进度和调用记录'],
+    ['output-queued','file_authoring_output_limit_retry_scheduled','queued','restore_checkpoint','checkpoint_available','工作进度已保存'],
+    ['output-unavailable','file_authoring_output_limit_recovery_unavailable','failed','blocked','checkpoint_unavailable','恢复进度未通过核验'],
+    ['output-exhausted','file_authoring_output_limit_retries_exhausted','failed','blocked','retry_limit_reached','自动恢复次数已用完'],
+    ['output-user-paused','provider_result_pending','paused','resume','user_paused','任务由你暂停'],
+    ['output-legacy','provider_result_pending','paused','restart_materials','restart_confirmation_required','没有可续跑的工作快照'],
+  ];
+  for(const [name,reason,runState,mode,retryReason,expected] of variants){
+    run.state=runState;run.stage=runState==='queued'?'queued':runState==='failed'?'failed':'provider_reconcile';state.runReason=reason;
+    state.retryMode=mode;state.retryReason=retryReason;state.eventSeq++;
+    await page.reload();await expect(page.locator('.authoring-status-card')).toContainText(expected);
+    await expect(page.locator('.authoring-status-step[data-step-state="done"]')).toHaveCount(2);
+    await expect(page.locator('.authoring-status-step[aria-current="step"]')).toContainText('编制募集书');
+    await expect(page.locator('.authoring-status-step[data-step-state="future"]')).toHaveCount(2);
+    if(mode==='blocked'&&runState==='paused')await expect(page.locator('#retry-run')).toBeDisabled();
+    else if(mode==='resume'){await expect(page.locator('#resume-run')).toHaveText('继续本次任务');await expect(page.locator('#resume-run')).toBeEnabled();await expect(page.locator('#retry-run')).toHaveCount(0);}
+    else if(runState==='paused')await expect(page.locator('#retry-run')).toBeEnabled();
+    else await expect(page.locator('#retry-run')).toHaveCount(0);
+    if(name!=='output-queued')await expect(page.locator('.authoring-status-card')).not.toContainText('工作进度已保存');
+    if(name==='output-pending'){
+      await expect(page.locator('.authoring-status-card')).toContainText('符合条件时自动继续本次任务');
+      await expect(page.locator('.authoring-status-card')).not.toContainText('退出状态尚未确认');
+      await expect(page.locator('.authoring-status-card')).not.toContainText('仍在运行');
+    }
+    if(name==='output-unavailable')await expect(page.locator('.authoring-status-card')).toContainText('已停止自动重试');
+    if(runState==='failed'){
+      await expect(page.locator('.authoring-status-card')).toHaveAttribute('data-tone','failed');
+      await expect(page.locator('.authoring-status-card')).toContainText('本轮未完成');
+      await expect(page.locator('.authoring-status-card')).not.toContainText('已暂停');
+      await expect(page.locator('.authoring-status-card')).not.toContainText('关闭页面不会取消任务');
+      await expect(page.locator('#retry-run,#cancel-run')).toHaveCount(0);
+    }
+    if(['output-pending','output-unavailable','output-exhausted'].includes(name))
+      expect((await page.locator('.authoring-status-card').innerText()).match(/已保存的?材料会保留/g)).toHaveLength(1);
+    expect(state.executes).toHaveLength(1);expect(state.retryRequests).toHaveLength(0);expect(state.runs.size).toBe(1);
+    expect({runId:run.run_id,inputHash:run.input_hash,inputRevision:run.input_revision}).toEqual(original);
+    const output=process.env.BB_OUTPUT_LIMIT_UX_DIR;
+    if(output){
+      await mkdir(output,{recursive:true});await expect(page.locator('.authoring-status-billing')).toContainText('34,570 积分');
+      await page.locator('#execution-progress').scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(output,`implementation-${name}-${width}.png`)});
+      const prototype=await page.context().newPage();await prototype.setViewportSize({width,height});
+      await prototype.setContent(await readFile(resolve('../../product-prototype/public/authoring-live-progress.html'),'utf8'));
+      await prototype.addStyleTag({content:await readFile(resolve('../../product-prototype/public/authoring-status.css'),'utf8')});
+      await prototype.evaluate(key=>(window as any).render(key),name);
+      await expect(prototype.locator('.authoring-status-card')).toContainText(expected);
+      await expect(prototype.locator('.authoring-status-step[data-step-state="done"]')).toHaveCount(2);
+      await prototype.screenshot({path:join(output,`prototype-${name}-${width}.png`)});
+      expect(await prototype.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await prototype.close();
+    }
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  }
+});
+
+test('output limit legacy restart requires confirmation and dispatches once under repeated clicks',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='provider_result_pending';
+  state.retryMode='restart_materials';state.retryReason='restart_confirmation_required';state.holdRetry=true;
+  await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#retry-run')).toBeEnabled();
+  const run=[...state.runs.values()][0],originalHash=run.input_hash;
+  await page.locator('#retry-run').click();const dialog=page.getByRole('dialog',{name:'使用原材料重新处理？'});
+  await expect(dialog).toContainText('未保存的中间进度无法恢复');
+  await expect(dialog).toContainText('不新增任务预留');expect(state.retryRequests).toHaveLength(0);
+  await page.getByRole('button',{name:'暂不重试',exact:true}).click();expect(state.retryRequests).toHaveLength(0);
+  await page.locator('#retry-run').click();
+  await page.locator('#confirm-run-restart').evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click();});
+  await expect.poll(()=>state.retryRequests.length).toBe(1);await expect(page.locator('#retry-run')).toBeDisabled();
+  expect(state.retryRequests[0]).toMatchObject({attempt_id:'synthetic-attempt-1',mode:'restart_materials',confirmed_restart:true});
+  state.releaseRetry!();await expect(page.locator('#retry-run')).toHaveCount(0);
+  await expect(page.locator('#execution-progress')).toContainText('原材料重新处理');
+  await page.reload();await expect(page.locator('.authoring-status-step[aria-current="step"]')).toContainText('编制募集书');
+  expect(state.retryRequests).toHaveLength(1);expect(state.acceptedRetryRequests.size).toBe(1);expect(state.executes).toHaveLength(1);
+  expect(state.runs.size).toBe(1);expect(run.input_hash).toBe(originalHash);
+});
+
+test('output limit lost retry receipt reuses one request and one task',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='file_authoring_output_limit_recovery_pending';state.dropRetry=true;
+  await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#retry-run')).toBeEnabled();
+  const run=[...state.runs.values()][0],originalHash=run.input_hash;
+  await page.locator('#retry-run').click();await expect(page.locator('#retry-run')).toHaveText('核对重试结果');await page.locator('#retry-run').click();
+  await expect.poll(()=>state.retryRequests.length).toBe(2);expect(state.retryRequests[0]).toEqual(state.retryRequests[1]);
+  await expect(page.locator('#retry-run')).toHaveCount(0);await page.reload();
+  await expect(page.locator('#execution-progress')).toContainText('正在安排自动续跑');
+  await expect(page.locator('.authoring-status-step[aria-current="step"]')).toContainText('编制募集书');
+  expect(state.acceptedRetryRequests.size).toBe(1);expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);expect(run.input_hash).toBe(originalHash);
+});
+
+for(const scenario of [{name:'output limit',error:'MODEL_OUTPUT_TOO_LARGE'},{name:'file authoring timeout',error:'MODEL_TIMEOUT'}])test(scenario.name+' legacy resume only clears the user pause and still requires a separate restart confirmation',async({page})=>{
+  if(scenario.error==='MODEL_TIMEOUT')assertSyntheticTimeoutUiTarget();
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='provider_result_pending';state.eventError=scenario.error;
+  state.retryMode='resume';state.retryReason='user_paused';
+  await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.getByRole('button',{name:'继续本次任务',exact:true})).toBeEnabled();await expect(page.locator('#retry-run')).toHaveCount(0);
+  const run=[...state.runs.values()][0],original={runId:run.run_id,inputHash:run.input_hash,inputRevision:run.input_revision};let releaseResume:()=>void=()=>{};
+  await page.route('**/runs/*/resume',async route=>{
+    expect(route.request().method()).toBe('POST');state.runActions.push(new URL(route.request().url()).pathname);
+    await new Promise<void>(resolve=>{releaseResume=resolve;});
+    state.retryMode='restart_materials';state.retryReason='restart_confirmation_required';state.runReason='user_resumed';run.event_cursor=++state.eventSeq;
+    return json(route,200,run);
+  });
+  await page.locator('#resume-run').evaluate(button=>{(button as HTMLButtonElement).click();(button as HTMLButtonElement).click();});
+  await expect.poll(()=>state.runActions.length).toBe(1);await expect(page.locator('#resume-run')).toBeDisabled();
+  expect(state.retryRequests).toHaveLength(0);const inspectionsBefore=state.retryInspections.length;releaseResume();
+  await expect(page.locator('#retry-run')).toBeEnabled();await expect.poll(()=>state.retryInspections.length).toBeGreaterThan(inspectionsBefore);
+  await expect(page.locator('.authoring-status-card')).toContainText('没有可续跑的工作快照');
+  await expect(page.getByRole('dialog',{name:'使用原材料重新处理？'})).toHaveCount(0);
+  expect(run.state).toBe('paused');expect(run.stage).toBe('provider_reconcile');expect(state.retryRequests).toHaveLength(0);
+  await page.reload();await expect(page.locator('#retry-run')).toBeEnabled();expect(state.runActions).toHaveLength(1);expect(state.retryRequests).toHaveLength(0);
+  await page.locator('#retry-run').click();await expect(page.getByRole('dialog',{name:'使用原材料重新处理？'})).toBeVisible();
+  expect(state.retryRequests).toHaveLength(0);await page.locator('#confirm-run-restart').click();
+  await expect.poll(()=>state.retryRequests.length).toBe(1);expect(state.retryRequests[0]).toMatchObject({mode:'restart_materials',confirmed_restart:true});
+  expect(state.runActions).toHaveLength(1);expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);expect({runId:run.run_id,inputHash:run.input_hash,inputRevision:run.input_revision}).toEqual(original);
+});
+
+test('a delayed accepted retry receipt cannot replace newer success or detach its downloads',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='file_authoring_payload_recovery_pending';state.holdRetryResponse=true;
+  await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#retry-run')).toBeEnabled();
+  const retryResponse=page.waitForResponse(response=>response.request().method()==='POST'&&new URL(response.url()).pathname.endsWith('/retry'));
+  await page.locator('#retry-run').click();await expect.poll(()=>state.acceptedRetryRequests.size).toBe(1);
+  await expect.poll(()=>!!state.releaseRetryResponse).toBe(true);
+  const run=[...state.runs.values()][0],queuedCursor=state.eventSeq;
+  registerGeneratedPair(state,run,'delayed-retry-success');run.stage='completed';state.chargeState='settled';state.runReason='completed';
+  state.eventSeq=queuedCursor+2;run.event_cursor=state.eventSeq;
+  // The normal poll sees completion while the accepted queued receipt is still in flight.
+  await expect(page.locator('#execution-progress')).toContainText('募集书已编制完成',{timeout:12000});
+  await expect(page.locator('#artifact-downloads')).toBeVisible();
+  await expect(page.locator('#prepare-next-version')).toBeDisabled();
+  const downloads=await page.locator('#artifact-downloads').elementHandle();expect(downloads).not.toBeNull();
+  state.holdRetryResponse=false;state.releaseRetryResponse!();await retryResponse;
+  await expect(page.locator('#prepare-next-version')).toBeEnabled();
+  expect(await downloads!.evaluate(element=>element.isConnected),'The completed download panel must never be detached by the older queued receipt.').toBe(true);
+  await expect(page.locator('#execution-progress')).toContainText('募集书已编制完成');
+  await expect(page.locator('.authoring-status-step[data-step-state="done"]')).toHaveCount(5);
+  await expect(page.locator('#retry-run,#cancel-run')).toHaveCount(0);
+  await expect(page.locator('#artifact-downloads')).toBeVisible();
+  expect(state.retryRequests).toHaveLength(1);expect(state.acceptedRetryRequests.size).toBe(1);expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);
+});
+
+test('an accepted retry with a lost receipt reports a later pause honestly when the original request is checked',async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='file_authoring_payload_recovery_pending';
+  state.holdRetryResponse=true;state.dropAcceptedRetry=true;
+  state.onRetryAccepted=run=>{
+    // Advance before yielding the accepted request so no poll can observe the brief queued state.
+    state.retryAttemptId='synthetic-attempt-2';run.state='paused';run.stage='provider_reconcile';run.event_cursor=++state.eventSeq;
+    state.runReason='file_authoring_payload_recovery_pending';
+  };
+  await setup(page,state);await page.locator('#execute-input').click();await expect(page.locator('#retry-run')).toBeEnabled();
+  const lostResponse=page.waitForEvent('requestfailed',{predicate:request=>request.method()==='POST'&&new URL(request.url()).pathname.endsWith('/retry')});
+  await page.locator('#retry-run').click();await expect.poll(()=>state.acceptedRetryRequests.size).toBe(1);
+  await expect.poll(()=>!!state.releaseRetryResponse).toBe(true);
+  const original=structuredClone(state.retryRequests[0]),run=[...state.runs.values()][0];
+  // The accepted attempt has already run and paused again before the browser observes its receipt.
+  expect(state.retryAttemptId).toBe('synthetic-attempt-2');expect(run.state).toBe('paused');
+  state.holdRetryResponse=false;state.releaseRetryResponse!();await lostResponse;
+  await expect(page.locator('#retry-run')).toHaveText('核对重试结果');
+  await expect.poll(()=>state.retryInspections.includes('synthetic-attempt-2'),{timeout:12000}).toBe(true);
+  await page.locator('#retry-run').click();
+  await expect.poll(()=>state.retryRequests.length).toBe(2);
+  expect(state.retryRequests).toEqual([original,original]);expect(state.acceptedRetryRequests.size).toBe(1);
+  await expect(page.locator('#run-action-feedback')).toHaveText('已核对原重试请求，任务当前处于暂停状态。请查看最新原因后重试。');
+  await expect(page.locator('#execution-progress')).not.toContainText('已安排从保存进度继续');
+  await expect(page.locator('.authoring-status-card')).toHaveAttribute('data-tone','paused');
+  await expect(page.locator('#retry-run')).toHaveText('立即重试');
+  expect(run.state).toBe('paused');expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);
+});
+
+for(const width of [1440,390])test('status screenshot layout: paused and completed with locked materials '+width,async({page})=>{
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='file_authoring_payload_recovery_pending';
+  await page.setViewportSize({width,height:width===1440?1000:844});await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.locator('#retry-run')).toBeEnabled();const run=[...state.runs.values()][0];
+  const summaries=['开始编制，核对六张主表和原稿章节','已定位本次原稿结构，逐页核对原稿、报告期和历史财务表格','财务报表为扫描件，先整理原稿标题和表格，再识别报表数字','扫描页可识别，正在识别并校验财务报表'];
+  state.publicEvents=summaries.map((summary,i)=>({event_id:'status-history-'+i,schema_version:1,trace_id:'trace',run_id:run.run_id,seq:i+1,occurred_at:`2026-11-13T01:${35+i}:00Z`,type:'run.progress',state:'running',stage:'provider_call',payload:{authoring_activity:{activity_id:String(i).repeat(64),code:'process_document',state:'completed',summary}}}));
+  state.publicEvents.push({event_id:'status-error',schema_version:1,trace_id:'trace',run_id:run.run_id,seq:5,occurred_at:'2026-11-13T01:41:00Z',type:'run.progress',state:'running',stage:'provider_call',payload:{authoring_activity:{activity_id:'e'.repeat(64),code:'process_document',state:'failed'}}},
+    {event_id:'status-pause',schema_version:1,trace_id:'trace',run_id:run.run_id,seq:6,occurred_at:'2026-11-13T01:42:00Z',type:'run.state_changed',state:'paused',stage:'provider_reconcile',payload:{reason:state.runReason}});
+  state.eventSeq=6;
+  await page.route('**/credit-charge',route=>json(route,200,{quote:{...commerceMetadata(34570),points:34570,price_version:AUTOMATIC_PRICE_VERSION,quote_status:'ready'},state:state.chargeState}));
+  await page.reload();await expect(page.locator('#authoring-records > summary')).toHaveText('处理记录（6 条）');
+  await expect(page.locator('.authoring-status-billing')).toContainText('34,570 积分');
+  await expect(page.locator('#authoring-locked-materials > summary')).toContainText('2 份，已锁定');
+  await page.locator('#authoring-locked-materials > summary').click();await expect(page.locator('#authoring-locked-materials')).toContainText('history.docx');
+  await page.locator('#authoring-locked-materials > summary').click();
+  const capture=async(name:string)=>{
+    const output=process.env.BB_STATUS_UX_DIR;if(!output)return;await mkdir(output,{recursive:true});
+    await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));await page.screenshot({path:join(output,`implementation-${name}-${width}.png`),fullPage:true});
+    const prototype=await page.context().newPage();await prototype.setViewportSize({width,height:width===1440?1000:844});
+    await prototype.setContent(await readFile(resolve('../../product-prototype/public/authoring-live-progress.html'),'utf8'));
+    await prototype.addStyleTag({content:await readFile(resolve('../../product-prototype/public/authoring-status.css'),'utf8')});
+    await prototype.evaluate(key=>(window as any).render(key),name==='completed'?'succeeded':'paused');
+    await prototype.screenshot({path:join(output,`prototype-${name}-${width}.png`),fullPage:true});await prototype.close();
+  };
+  await capture('paused');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  registerGeneratedPair(state,run,'status-finished');run.stage='completed';state.chargeState='settled';state.runReason='completed';state.eventSeq=8;
+  state.publicEvents.push({event_id:'status-compiled',schema_version:1,trace_id:'trace',run_id:run.run_id,seq:7,occurred_at:'2026-11-13T01:58:00Z',type:'run.progress',state:'delivering',stage:'word_delivery',payload:{authoring_activity:{activity_id:'f'.repeat(64),code:'process_document',state:'completed',summary:'募集书编制完成，正在保存文档'}}},
+    {event_id:'status-delivered',schema_version:1,trace_id:'trace',run_id:run.run_id,seq:8,occurred_at:'2026-11-13T01:59:00Z',type:'run.state_changed',state:'succeeded',stage:'completed',payload:{}});
+  await page.reload();await expect(page.locator('.authoring-status-card')).toContainText('募集书已编制完成');
+  await expect(page.locator('.authoring-status-step[data-step-state="done"]')).toHaveCount(5);
+  await expect(page.locator('#retry-run')).toHaveCount(0);await expect(page.locator('#cancel-run')).toHaveCount(0);
+  await expect(page.locator('#artifact-downloads')).toBeVisible();await expect(page.locator('.authoring-status-billing')).toContainText('已结算');
+  await capture('completed');expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });

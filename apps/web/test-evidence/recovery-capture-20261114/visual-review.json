@@ -1,0 +1,54 @@
+{
+  "schema_version": "synthetic-ui-visual-review-v1",
+  "implementation_commit": "b1cb4528dc8cbe540befe82dc8dbc7b5f625d3e0",
+  "manifest_sha256": "da0b86376c6ae69d327da0bc22f842b816dbe30723ec8d016873190afa938121",
+  "review_date": "2026-11-14",
+  "reviewer": "root agent for this task",
+  "review_type": "actual image-by-image self-review",
+  "attestation_source": "The root agent explicitly reported reviewing all 18 final images in this task and instructed preservation of this review record.",
+  "result": "passed_root_self_review",
+  "reviewed_image_count": 18,
+  "reviewed_images": [
+    "synthetic-capacity-status-1440.png",
+    "synthetic-capacity-status-390.png",
+    "synthetic-capacity-confirm-1440.png",
+    "synthetic-capacity-confirm-390.png",
+    "synthetic-storage-status-1440.png",
+    "synthetic-storage-status-390.png",
+    "synthetic-storage-confirm-1440.png",
+    "synthetic-storage-confirm-390.png",
+    "synthetic-integrity-status-1440.png",
+    "synthetic-integrity-status-390.png",
+    "synthetic-integrity-confirm-1440.png",
+    "synthetic-integrity-confirm-390.png",
+    "synthetic-incomplete-status-1440.png",
+    "synthetic-incomplete-status-390.png",
+    "synthetic-incomplete-confirm-1440.png",
+    "synthetic-incomplete-confirm-390.png",
+    "prototype-02db1f35-output-legacy-1440.png",
+    "prototype-02db1f35-output-legacy-390.png"
+  ],
+  "findings": [
+    "状态卡、暂停标识、四类原因、按钮、五个步骤及确认弹窗完整，无观察到的遮挡。",
+    "手机状态卡已避开固定顶栏，顶部与底部完整入镜。",
+    "处理记录使用“请求内容过大，本轮处理已暂停”，与当前恢复失败卡片不再冲突。"
+  ],
+  "prototype_comparison": {
+    "commit": "02db1f3567718490d63ac7039678ed6c4ae03fc7",
+    "state": "output-legacy",
+    "purpose": "复用既有结构的布局对照",
+    "exact_four_reason_prototype": false,
+    "exact_dom_dialog_prototype": false,
+    "pixel_alignment_claimed": false
+  },
+  "unconfirmed_differences": [
+    "四种恢复保存失败原因及当前应用内 DOM 确认弹窗在固定原型中没有精确对应状态。",
+    "实现包含现有产品外壳；原型是独立状态页。",
+    "实现使用 synthetic 试用计费说明，原型使用合成积分示例。",
+    "实现为 2 份合成材料，原型为 3 份合成材料。",
+    "手机端按钮顺序及第三步“编制募集书”的文字换行存在差异。"
+  ],
+  "product_owner_confirmation": "not_obtained",
+  "user_acceptance": "not_performed",
+  "release_authorization": false
+}

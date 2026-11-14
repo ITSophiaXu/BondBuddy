@@ -1,0 +1,27 @@
+{
+  "reviewed_at_utc": "2026-11-14T06:32:56.8776726Z",
+  "reviewer": "Codex visual inspection",
+  "implementation_commit": "ae6dd0255ca38f7c2cff033b4bbd1c7da91786d1",
+  "prototype_commit": "02db1f3567718490d63ac7039678ed6c4ae03fc7",
+  "base_url": "http://127.0.0.1:5347",
+  "browser": "Microsoft Edge / Playwright",
+  "tests": 15,
+  "failed": 0,
+  "skipped": 0,
+  "screenshots_reviewed": 16,
+  "result": "All eight status pairs checked: status cards, buttons and five-step indicator remain fully visible at 1440x1000 and 390x844; no horizontal overflow or card overlap.",
+  "differences": [
+    "Implementation retains the product navigation and project shell; prototype has scenario selection controls.",
+    "Implementation has 2 synthetic material items and prototype has 3; these are fixture counts, not real replay materials.",
+    "At mobile width, implementation places actions below the description while prototype places them above; existing responsive DOM arrangement, not changed by timeout reasons.",
+    "Existing product icon glyphs differ from prototype SVG glyphs."
+  ],
+  "user_acceptance": "pending",
+  "prototype_deviation_confirmation": "not recorded; no merge/deployment approval inferred",
+  "boundary": "Synthetic HTTP responses in real Chromium. This does not prove a real model recovered or delivered Word files.",
+  "source_checks": {
+    "source_and_prototype_unchanged_since_vite_start": "",
+    "prototype_sha256": "0b890e2f0ae4188ef4beebbf8141c9506a1219e082e3cfa55fe5f1ebebfde206",
+    "css_sha256": "34f1afe4e472822cb6e6a877ef7f24baff4ba7ee1797f73ab5a52c4e17950cf0"
+  }
+}

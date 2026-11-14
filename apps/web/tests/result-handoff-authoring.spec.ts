@@ -11,7 +11,8 @@ async function expectOriginal(page:Page){
   await selected(page,2);await expect(context(page)).toBeVisible();await expect(context(page)).toContainText('本轮成果 · 第 2 版');
   await expect(context(page)).toContainText('任务记录时间');await expect(context(page).locator('time')).toHaveAttribute('datetime',oldTime);
   await expect(context(page)).not.toContainText('第 7 版');await expect(context(page)).not.toContainText('第 3 版');
-  await expect(page.locator('.prospectus-panel header')).toContainText('当前版本：V3');
+  const projectCurrent=page.locator('.prospectus-panel [data-prospectus-version="result-handoff-version-3"]');
+  await expect(projectCurrent).toHaveClass(/is-selected/);await expect(projectCurrent).toContainText('合成第3轮清洁版.docx');
   expect(await context(page).innerText()).not.toContain(ids.oldRun);
   expect(await page.locator('#execution-delivery .artifact-download-panel').innerText()).not.toContain('合成原项目_');
 }

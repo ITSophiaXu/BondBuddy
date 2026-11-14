@@ -1,3 +1,11 @@
+> 2026-11-14（#1345）：在 #1342 的 4096 文件边界上，文件编制受信恢复的总量适配为有限 512 MiB，仍由 contracts 唯一定义并供 API/worker 保存与恢复共用；单文件 100 MiB 及全部完整性、身份、授权和预算保护不变。逐文件完整往返与资源验证、累计存储限制见[恢复总字节容量验证](verification/file-authoring-recovery-byte-capacity-20261114.md)。无迁移或依赖，需 API 与 worker 同批集成，尚未部署。
+>
+> 2026-11-14（#1342，文件数量调整历史记录）：文件编制受信恢复的文件数量上限统一提升至4096，由 packages/contracts 的 FILE_AUTHORING_RECOVERY_LIMITS 唯一定义，API及worker保存/恢复共同使用；当时保持单文件100 MiB、总256 MiB和所有身份/路径/链接/hash/租约保护。规模与边界验证见[恢复容量验证](verification/file-authoring-recovery-capacity-20261114.md)。总字节上限后续由 #1345 调整。
+
+> 2026-11-14（#1341）：受控文件编制的本机 authoring timeout 在子进程已关闭、signal 未取消且有效租约下先保存完整受信工作快照。MODEL_TIMEOUT 与 HTTP 413/输出超限共用身份、输入、退出、结果、unknown 用量及原账务校验和有界自动/手动恢复预算；旧无快照首次编制只能经明确确认使用原输入重新处理。用户暂停、积分暂停、取消和账务隔离不被恢复覆盖。新增 file_authoring_timeout_* 公共事件原因，重试 DTO/run 状态及质量门禁不变，无迁移或依赖，见[验证与集成边界](verification/file-authoring-timeout-recovery-20261114.md)。
+
+> 2026-11-14（#1339）：受控 Word 模型预检继续调用同一 `quality.verify` 并保留失败状态。只有工具重新核对输入、底稿及当前完整操作日志后，确认 `snapshot_current=true` 且全部质量失败均为 `WORD_PAGE_COUNT_UNAVAILABLE`，才在简短 stdout 和失败报告中返回绑定操作 hash 的 `host_handoff.action=defer_page_rendering_to_host`。`authoring_completion=not_verified` 表示预检不判断业务编制完成度，不新增人工确认或资料齐备门槛；指引只延后页数渲染，不能跳过原任务剩余阅读、章节／事实更新、来源回查或其他待办。按既定缺项工作稿政策完成本轮业务编制后，必须对最终日志重新回查及预检，再交接 worker。旧报告、快照变化和混合／非渲染失败不得触发。worker 不消费该模型侧字段，仍从锁定原稿和最终持久化操作独立重建、真实渲染并执行全部检查；正文／页数70%门禁及已有有界基础设施重试不变。保持原 `bb_file` 沙箱和 `/proc` 屏蔽，无公共状态或数据库迁移。
+
 > 2026-11-11：按用户对篇幅门禁的补充要求（#995），`file-authoring-repair` 在同一任务内对可信篇幅拒绝最多执行两轮修复，使用固定逻辑调用ID、独立报告和格式计划保存恢复依据。原始基线和输入不变，修复后仍走完整交付检查；预算耗尽暂停待处理，渲染故障重试检查，delivery-only恢复不追加模型调用。无公共枚举、迁移或计费政策变化，见[同日决定](product-decisions/2026-11-11-reference-text-flexibility.md)。
 
 > 2026-11-08：新增[本地发布前基础流程脚本](../scripts/release-smoke/README.md)，从固定提交构建正式 Dockerfile 的 Web/API/worker，使用独立 PostgreSQL、Azurite、测试账号及已授权真实样本检查更新、复核、问答。启动层补充 Mac/Windows 本机 Docker 连接、路径、挂载和权限处理，Windows 使用 PowerShell 与 Docker Desktop Linux 容器；统一操作入口见根 README。本轮平台适配按用户要求未重跑测试，Windows 实机验收尚未记录。逐项记录镜像/样本/任务/下载证据，未运行和失败均不能放行；实际验收结果以每次私有运行报告为准。单机测试不替代双端部署拓扑、其他镜像架构或专业内容验收，不更改生产发布入口、公共契约或数据库迁移。
@@ -434,6 +442,18 @@ Migration `0054_m1_rule_applicability_overall_reviews.sql` adds append-only aggr
 这只提供合成数据下的持久化与判定边界。v1.1 对外锁定开关仍为关闭；开放须先由 #77 提供商业使用授权的真实参考稿、全量逐页证据、分母、第三名并列与分类审核签认，并完成对应生产样本验收。已有前三行和可比性 attestation 不代替该证明。
 
 ### #16 contained Codex→DeepSeek adapter (2026-09-25)
+
+#### 文件编制输出上限与恢复补充（2026-11-13，#1323 / #1324）
+
+文件编制流使用独立边界：单个 JSONL 事件（包括尚未结束的行）最多 4 MiB，保留的最后一条模型回复最多 1 MiB，私有执行日志仍最多 20 MiB。累计小事件不再触发原 32 MiB 终止条件。非文件调用保留原累计输出限制；超时、取消及隔离策略不变。
+
+明确的 HTTP 413 与本地 `MODEL_OUTPUT_TOO_LARGE` 都在确认进程退出后、释放租约及清理目录前保存真实工作快照；两者分别保留原 `failed` 和 `pending_reconcile` observation，未知用量不改成零。API 在事务内核对 owner/run/job/input、唯一未决 attempt、终止证据、无结果或冲突、快照和账务后，才能授权同一任务续跑。两种自动恢复及用户重新处理共用每 logical call 两次、每任务六次的预算。用户暂停、取消和积分暂停保持优先。
+
+旧输出超限任务若没有快照，自动扫描保留暂停；既有 retry 契约提供 `restart_materials` 并要求明确确认。重新处理锁定原材料和原输入，保留旧失败与 prompt 快照，在新 stage 保存当前指令；后续只重放与该 stage 精确绑定的结果。没有将诊断备份当成恢复快照。页面分别呈现恢复条件核对、已保存后排队、恢复验证失败和预算耗尽，后两者使用真实 failed 终态。
+
+可信 `task.md` 及适用的 `fixed-edit.md` 完整注入首次提示，UTF-8 总量最多 64 KiB，超限报错且不截断。工作目录保留同字节副本；项目材料、知识和工作记录仍是待核对数据。正常/恢复的压缩阈值为 128,000/64,000，工具文本回显预算为 4096/2048；这些是防止反复初始化的调整，不构成“压缩已被证明是事故原因”的结论。要求维护具体工作记录、复用相同参数的已核对缓存，并保留全文、明细、格式和质量检查。
+
+无需数据库迁移或新增依赖。API、worker、web 应作为同批候选集成；开发 chat 不执行生产发布。验证边界见 [输出恢复补修记录](verification/file-authoring-output-recovery-20261113.md)。下文为原始适配器基线，文件编制恢复范围以本补充为准。
 
 `apps/worker/src/codex-adapter.ts` is the server-side model adapter for material-bearing calls. It is not installed in `runOnce` until the CTO live check on the authorized host passes. Server config comes from `BB_CODEX_*` env (`deepseek-flash` via Codex provider `deepseek`, `wire_api=responses`, config version `BB_CODEX_CONFIG_VERSION`). The credential is referenced by env var name (`BB_CODEX_CREDENTIAL_ENV`, passed to the child only under that name) or by `auth.json` path (`BB_CODEX_AUTH_FILE`, symlinked into the per-attempt `CODEX_HOME`). The adapter never reads, logs or returns the credential. Pricing stays `unknown`.
 
@@ -942,3 +962,9 @@ API 将传输方式与不可变的 owner/project/upload/object key 一起保存�
 ### #943 upload confirmation placement
 
 The optional standalone `upload-confirmation-runtime.ts` consumes only the existing upload outbox event, using the API's unchanged confirmation lease/fence and full integrity receipts. It does not construct the general runtime or claim run/parse work. The explicit size-split placement keeps one small-only confirmation loop in the existing main parser and one large-only loop in the standalone service near Blob. Claim SQL filters before taking a lease: small includes 16 MiB, large starts at 16 MiB + 1 byte, using the API constant. Wrong-lane events consume neither attempts nor leases. Each process retains its own 128 MiB disk-backed spool; legacy general/optional small-slot configuration remains the default. Main shutdown separately awaits confirmation settlement without changing run/parse drain limits; its parser has a 10-minute stop grace. Project commit locks still serialize, so small-first completion is not guaranteed. A dedicated standalone spool and process lock protect its files. The main API continues its existing cached ETag/receipt response. Placement, immutable image identity and configuration remain under the existing role binding/pending release protections; mixed component releases require component-only changes. See [split deployment](runbooks/m1-split-deployment.md) for opt-in configuration, drain and rollback. No public contract, migration or model behavior changes.
+
+### 2026-11-14 文件编制恢复快照保存结果（#1343）
+
+支持恢复的文件编制在模型 intent 同一事务保存 `file_authoring_recovery_captures[attempt_id]`，绑定 owner/project/run/job/input/attempt，初态 `prepared`。完整私有快照经回读与检查点提交后记为 `saved`；保存失败独立记为 `failed` 及有限原因。模型原错误、unknown 用量、重试预算不因此改变；结果写入失败仍留 `prepared`，不降格为旧版无快照。保存前按 contracts 唯一上限完整 stat 检查：4096 文件、100 MiB 单文件，当前组合总量为 #1345 的 512 MiB（#1343 单独验证基点为 256 MiB）；已知超限不写 Blob；不删除工作缓存、不发布部分快照。
+
+完整快照仍是续跑依据，即使 `saved` 标记写入失败。现代首轮保存失败且不存在任何恢复快照、结果或完成调用时，公开 retry 原因说明容量、存储、完整性或未确认结果；复用已有 `restart_materials` 明确确认入口。后续修复阶段、错配证据及已有旧快照不因此获得重新编制授权。用户撤销暂停或积分到账只清除相应独立标记，保留 `provider_reconcile`；需要重新处理材料的调用仍须另行确认。公开 DTO 形状、任务状态和数据库表不变；同版构建 contracts/API/worker/web，无新增迁移或依赖。

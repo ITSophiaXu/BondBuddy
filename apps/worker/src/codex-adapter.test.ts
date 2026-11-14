@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -297,8 +297,8 @@ for (const credential of ['env', 'command'] as const) {
       assert.ok(args.includes('--ignore-user-config'));
       const overrides = args.filter((_, index) => args[index - 1] === '-c');
       assert.deepEqual(overrides.filter(v => v.startsWith('model_context_window=')), ['model_context_window=1000000']);
-      assert.deepEqual(overrides.filter(v => v.startsWith('model_auto_compact_token_limit=')), ['model_auto_compact_token_limit=900000']);
-      for (const setting of ['model_context_window=1000000', 'model_auto_compact_token_limit=900000']) {
+      assert.deepEqual(overrides.filter(v => v.startsWith('model_auto_compact_token_limit=')), [mode === 'file' ? 'model_auto_compact_token_limit=128000' : 'model_auto_compact_token_limit=900000']);
+      for (const setting of ['model_context_window=1000000', mode === 'file' ? 'model_auto_compact_token_limit=128000' : 'model_auto_compact_token_limit=900000']) {
         const index = args.indexOf(setting);
         assert.ok(index > args.indexOf('--ignore-user-config'), `${setting} must be an exec override`);
         assert.equal(args[index - 1], '-c');
@@ -523,7 +523,7 @@ test('timeout kills the process group, records the attempt, usage unknown, no re
 test('interrupted, non-zero exit, broken stream and turn.failed map to stable codes with unknown usage', async () => {
   const { config, cleanup } = await setup();
   try {
-    const cases: [string, string, string][] = [['interrupted', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['nonzero_exit', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['broken_stream', 'needs_reconcile', 'MODEL_STREAM_BROKEN'], ['turn_failed', 'failed', 'MODEL_TURN_FAILED'], ['payload_413', 'failed', 'MODEL_PROVIDER_REQUEST_REJECTED']];
+    const cases: [string, string, string][] = [['interrupted', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['nonzero_exit', 'needs_reconcile', 'MODEL_PROCESS_EXIT_NONZERO'], ['broken_stream', 'needs_reconcile', 'MODEL_STREAM_BROKEN'], ['turn_failed', 'failed', 'MODEL_TURN_FAILED'], ['payload_413', 'failed', 'MODEL_PROVIDER_PAYLOAD_TOO_LARGE']];
     for (const [scenario, status, code] of cases) {
       const r = await runContainedModelCall(call(`SCENARIO:${scenario}`), new MemoryCodexJournal(), config);
       assert.equal(r.status, status, scenario); assert.equal(r.error_code, code, scenario);
@@ -676,4 +676,85 @@ test('schema re-ask uses bounded host feedback, preserves usage and rejects a se
   }),new MemoryCodexJournal(),config);
   assert.equal(fallback.status,'completed');
  }finally{await cleanup();}
+});
+
+
+test('413 classification requires an explicit HTTP status and preserves other provider failures', async () => {
+  const {root,config,cleanup}=await setup();
+  try {
+    const script=join(root,'status-cli.mjs');
+    const cases:[Record<string,unknown>,string][]=[
+      [{status:413,message:'request body rejected'},'MODEL_PROVIDER_PAYLOAD_TOO_LARGE'],
+      [{message:'unexpected status 413 Payload Too Large: <html>openresty</html>'},'MODEL_PROVIDER_PAYLOAD_TOO_LARGE'],
+      [{message:'HTTP/1.1 413 Request Entity Too Large'},'MODEL_PROVIDER_PAYLOAD_TOO_LARGE'],
+      [{message:JSON.stringify({status:413,error:{message:'too large'}})},'MODEL_PROVIDER_PAYLOAD_TOO_LARGE'],
+      [{status:401,message:'payload too large 413'},'MODEL_PROVIDER_AUTH_FAILED'],
+      [{status:402,message:'status 413'},'MODEL_PROVIDER_BALANCE_EXHAUSTED'],
+      [{status:429,message:'request body too large'},'MODEL_PROVIDER_RATE_LIMITED'],
+      [{status:500,message:'payload too large 413'},'MODEL_TURN_FAILED'],
+      [{message:'document row 413; payload too large appears in a quotation'},'MODEL_TURN_FAILED'],
+      [{message:'length limit exceeded'},'MODEL_TURN_FAILED'],
+      [{status:400,type:'invalid_request_error',message:'bad schema'},'MODEL_PROVIDER_REQUEST_REJECTED'],
+      [{message:'unexpected status 502; previous text contained 413'},'MODEL_TURN_FAILED'],
+    ];
+    for (const [error,expected] of cases) {
+      await writeFile(script,`for await (const chunk of process.stdin) {}
+console.log(${JSON.stringify(JSON.stringify({type:'turn.failed',error}))});
+process.exitCode=1;`);
+      const journal=new MemoryCodexJournal();
+      const result=await runContainedModelCall(call('synthetic status'),journal,{...config,command:[process.execPath,script]});
+      assert.equal(result.error_code,expected,JSON.stringify(error));
+      assert.equal(result.attempts.length,1);assert.equal(result.attempts[0].usage.status,'unknown');
+      assert.equal(result.attempts[0].result_sha256,null);assert.ok(validateRecord(result.attempts[0]));
+    }
+  } finally {await cleanup();}
+});
+
+test('first explicit 413 stops identical CLI reconnects without inventing token usage', async()=>{
+  const {root,config,cleanup}=await setup();
+  try {
+    const script=join(root,'retrying-cli.mjs');
+    await writeFile(script,`for await (const chunk of process.stdin) {}
+console.log(JSON.stringify({type:'error',message:'Reconnecting... 1/5 (unexpected status 413 Payload Too Large)'}));
+setTimeout(()=>console.log(JSON.stringify({type:'fake.second_request'})),1500);
+setInterval(()=>{},1000);`);
+    const events:Record<string,unknown>[]=[],journal=new MemoryCodexJournal();
+    const result=await runContainedModelCall(call('synthetic rejection',{onEvent:e=>events.push(e)}),journal,{...config,command:[process.execPath,script]});
+    assert.equal(result.error_code,'MODEL_PROVIDER_PAYLOAD_TOO_LARGE');
+    assert.equal(events.some(e=>e.type==='fake.second_request'),false,'same-body reconnect was stopped');
+    assert.equal(result.attempts[0].usage.status,'unknown');assert.equal(journal.intents.length,1);
+    assert.equal(journal.observations[0].retryable,false,'retry requires the durable checkpoint gate');
+  } finally {await cleanup();}
+});
+
+test('file retries use a fresh, smaller context and only the bounded image reader',async()=>{
+  const {config,cleanup}=await setup();
+  try {
+    const args=buildCodexArgs(config,{cwd:'/synthetic',schemaFile:null,ephemeral:true,resumeThreadId:null,fileAuthoring:true,fileRecovery:true});
+    assert.ok(args.includes('model_context_window=1000000'));
+    assert.ok(args.includes('model_auto_compact_token_limit=64000'));
+    assert.ok(args.includes('tool_output_token_limit=2048'));
+    assert.ok(args.some(x=>x.startsWith('mcp_servers.bb_images.args=')));
+    assert.ok(args.includes('--ephemeral'));assert.equal(args.includes('resume'),false);
+    assert.ok(args.some((x,i)=>x==='view_image'&&args[i-1]==='--disable'));
+    assert.equal(args.some((x,i)=>x==='view_image'&&args[i-1]==='--enable'),false);
+  } finally {await cleanup();}
+});
+
+
+test('stderr-only HTTP 413 also stops the reconnect loop immediately',async()=>{
+  const {root,config,cleanup}=await setup();
+  try {
+    const script=join(root,'stderr-retrying-cli.mjs');
+    await writeFile(script,`for await (const chunk of process.stdin) {}
+process.stderr.write('unexpected status 41');
+setTimeout(()=>process.stderr.write('3 Payload Too Large'),25);
+setTimeout(()=>console.log(JSON.stringify({type:'fake.second_request'})),1500);
+setInterval(()=>{},1000);`);
+    const events:Record<string,unknown>[]=[],journal=new MemoryCodexJournal();
+    const result=await runContainedModelCall(call('synthetic stderr',{onEvent:e=>events.push(e)}),journal,{...config,command:[process.execPath,script]});
+    assert.equal(result.error_code,'MODEL_PROVIDER_PAYLOAD_TOO_LARGE');
+    assert.equal(events.some(e=>e.type==='fake.second_request'),false);assert.equal(journal.intents.length,1);
+    assert.equal(result.attempts[0].usage.status,'unknown');
+  }finally{await cleanup();}
 });

@@ -10,7 +10,7 @@ import { Pool } from 'pg';
 import { azureBlobs, type PrivateBlobs } from '@bondbuddy/api/data';
 import { forwardLogs, ndjsonFileSink, ndjsonSizeCapFromEnv, type LogSink } from '@bondbuddy/api/log-ops';
 import { releaseMaterialParse, requeueAwaitingOcrParseJobs, type MaterialParseLease } from '@bondbuddy/api/material-jobs';
-import { reconcilePausedCall, recoverUnifiedTimeout, releaseLease, pausedRuns, resumePausedRun, checkedRunKinds, type RunKind, type Lease } from '@bondbuddy/api/queue';
+import { reconcilePausedCall, recoverUnifiedTimeout, recoverFileAuthoringPayload, fileAuthoringPayloadRecoveryCandidates, releaseLease, pausedRuns, resumePausedRun, checkedRunKinds, type RunKind, type Lease } from '@bondbuddy/api/queue';
 import { assertModelCallAllowed, defaultWorkerId, recordWorkerHeartbeat, TrialLimitProblem, trialGuardConfig } from '@bondbuddy/api/trial-guard';
 import { reconcilePausedProviderCall, type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { runMaterialParseOnce, type MaterialParseJobDependencies } from './material-parse-job.js';
@@ -110,6 +110,7 @@ export class WorkerRuntime {
   private loops: Promise<void>[] = [];
   private confirmationLoops: Promise<void>[] = [];
   private stopTask?: Promise<void>;
+  private fileAuthoringRecoveryCursor?: string;
   readonly counters = { run: 0, parse: 0, probe: 0, assistant: 0, idle: 0, sweeps: 0, errors: 0 };
   private readonly o: Required<Omit<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'noHistoryGenerationAdapters' | 'factCandidateProducer' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>>
     & Pick<WorkerRuntimeOptions, 'parse' | 'logSink' | 'log' | 'platformProbe' | 'reviewAssistant' | 'reviewedContextLoader' | 'testRuleCapabilityLoader' | 'factEvidenceReviewGate' | 'stagingRoot' | 'loadGenerationIssuerBinding' | 'produceTargetPeriodCandidates'>;
@@ -281,6 +282,11 @@ export class WorkerRuntime {
     const { pool } = this.o;
     this.counters.sweeps++;
     if (this.o.kinds.includes('run')) {
+      // Known 413s have their own rotating batch. Old unknown provider calls and
+      // 20 persistently blocked recoveries cannot monopolize this recovery lane.
+      const payloads=await fileAuthoringPayloadRecoveryCandidates(pool,20,this.o.runKinds,this.fileAuthoringRecoveryCursor);
+      this.fileAuthoringRecoveryCursor=payloads.length===20?payloads.at(-1)!.job_id:undefined;
+      for(const r of payloads)await recoverFileAuthoringPayload(pool,r.owner_user_id,r.run_id,r.job_id);
       for (const r of await pausedRuns(pool, 'awaiting_materials', 20, this.o.runKinds)) {
         const run = (await pool.query(`SELECT owner_user_id,project_id,input_revision,input_hash,
           (SELECT payload->>'reason' FROM bb_run_events WHERE run_id=bb_runs.id AND state='paused' ORDER BY seq DESC LIMIT 1) AS pause_reason
@@ -325,7 +331,7 @@ export class WorkerRuntime {
       this.emit({ kind: 'reconcile', run_id: runId, logical_call_id: attempt.logical_call_id, attempt_no: attempt.attempt_no, reconciler: this.o.reconciler.name, outcome: answer.outcome });
       if (answer.outcome === 'confirmed_not_sent') await reconcilePausedCall(pool, owner, runId, attempt.logical_call_id, attempt.attempt_no, 'confirmed_not_sent');
       else if (answer.outcome === 'completed') await reconcilePausedProviderCall(pool, this.o.blobs, answer.observation, answer.validate);
-      else return recoverUnifiedTimeout(pool, owner, runId, jobId);
+      else return await recoverFileAuthoringPayload(pool, owner, runId, jobId) || recoverUnifiedTimeout(pool, owner, runId, jobId);
     }
     return resumePausedRun(pool, owner, runId, 'provider_reconciled');
   }
