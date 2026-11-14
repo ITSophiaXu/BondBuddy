@@ -13,7 +13,7 @@ export const qaUploadUrl=`/#qa?project=${projectId}`;
 export const qaUploadHash=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
 export const qaUploadFile=(name='合成原补充材料.pdf')=>({name,mimeType:name.endsWith('.doc')?'application/msword':'application/pdf',buffer:Buffer.from('synthetic original QA upload bytes, not real professional evidence')});
 type Upload={id:string;owner:string;declaration:Dto<'UploadCreateRequest'>;received:boolean;material?:Dto<'MaterialResponse'>};
-export function qaUploadFixture(){return {qa:fixture(),uploads:new Map<string,Upload>(),calls:[] as {owner:string;method:string;path:string;body?:unknown;search:string}[],unexpected:[] as string[],
+export function qaUploadFixture(){return {qa:fixture(),uploads:new Map<string,Upload>(),missingUploads:new Set<string>(),calls:[] as {owner:string;method:string;path:string;body?:unknown;search:string}[],unexpected:[] as string[],
  lostPut:true,completeUnavailable:true,dropBeforeReceive:false,deduplicate:false,parseEnrichment:false,completeGate:undefined as (()=>Promise<void>)|undefined,activeCompletes:0};}
 export type QaUploadState=ReturnType<typeof qaUploadFixture>;
 function checked<K extends keyof typeof schemas>(name:K,v:unknown):asserts v is Dto<K>{expect(Value.Check(schemas[name],v),`${name}: ${JSON.stringify([...Value.Errors(schemas[name],v)])}`).toBe(true);}
@@ -32,7 +32,7 @@ export async function installQaUpload11th(page:Page,state=qaUploadFixture()){
    return reply(route,'UploadSessionResponse',{upload_id:id,state:'uploading',upload_url:`/api/v1/projects/${projectId}/materials/uploads/${id}/bytes`,expires_at:new Date(Date.now()+3600000).toISOString(),max_bytes:104857600},201);
   }
   const transfer=path.match(/\/uploads\/([^/]+)\/(bytes|complete)$/);
-  if(transfer){const u=state.uploads.get(transfer[1]);if(!u||u.owner!==owner)return problem(route,404,'NOT_FOUND');
+  if(transfer){const u=state.uploads.get(transfer[1]);if(!u||u.owner!==owner||state.missingUploads.has(u.id))return problem(route,404,'NOT_FOUND');
    if(method==='PUT'&&transfer[2]==='bytes'){
     const bytes=req.postDataBuffer()!;expect(bytes.length).toBe(u.declaration.byte_size);expect(qaUploadHash(bytes)).toBe(u.declaration.sha256);
     if(state.dropBeforeReceive){state.dropBeforeReceive=false;return route.abort('failed');}u.received=true;

@@ -1,4 +1,5 @@
 import {uploadPicker,uploadPickerContent} from './upload-picker';
+import {orderedUploadPipeline,UploadPreparationError} from './upload-scheduler';
 import { documentDeliverable } from './document-deliverable';
 import './upload-progress.css';
 import {uploadActivity,uploadTransfer,uploadProgressHtml} from './upload-progress';
@@ -1186,17 +1187,20 @@ export class ReviewWorkspace {
           for(const {key} of remaining)this.uploadRows.delete(key);
           for(const item of envelope.items){this.uploadFiles.set(item.id,remaining[item.index].file);this.uploadProgress.set(item.id,{percent:0,phase:'queued'});}
           this.scanUploadRecovery();this.renderMaterials();
-          let finished=true;
-          for(const item of envelope.items){
+          const original=envelope;
+          const finished=await orderedUploadPipeline(original.items,
+            (item,_index,signal)=>this.reviewUploads.transfer(original.id,item.index,{file:this.uploadFiles.get(item.id),signal,...this.uploadCallbacks(item.id)}),
+            async (_material,item)=>{
             currentIndex=item.index;
-            const result=await this.reviewUploads.resume(envelope.id,item.index,{file:this.uploadFiles.get(item.id),...this.uploadCallbacks(item.id)});
-            if(!this.live())return;
+            const result=await this.reviewUploads.resume(original.id,item.index,{...this.uploadCallbacks(item.id)});
+            if(!this.live())return false;
             this.applyUploadResult(result,item.index);
-            if(!['adopted','complete'].includes(result.state)||!result.applyToPage){finished=false;break;}
-          }
+            return ['adopted','complete'].includes(result.state)&&result.applyToPage;
+          },this.controller.signal);
           batch.done(finished);if(!finished)break;
         }catch(error){
           if(!this.live())return;
+          if(error instanceof UploadPreparationError){currentIndex=error.index;error=error.original;}
           const text=this.uploadErrorText(error);
           if(envelope)this.recordUploadError(envelope.items[currentIndex].id,error);
           else{this.scanUploadRecovery();for(const {key} of remaining){const row=this.uploadRows.get(key);if(row){row.state=text;row.error=true;}}}

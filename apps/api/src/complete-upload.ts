@@ -171,7 +171,12 @@ export async function prepareStoredUpload(pool:Pool,blobs:PrivateBlobs,user:stri
     result.proofs[u.object_key]=proof;
     result.source={objectKey:u.object_key,mediaType:inspection.mediaType,signatureAssessment:inspection.signatureAssessment,excepted};
     const m=(await pool.query(`SELECT * FROM bb_material_versions WHERE owner_user_id=$1 AND project_id=$2 AND role=$3 AND sha256=$4 AND byte_size=$5 AND media_type=$6 AND deleted_at IS NULL ORDER BY persisted_at,id,version LIMIT 1`,[user,id,u.role,b.sha256,b.byte_size,inspection.mediaType])).rows[0];
-    if(m){await beforeMaterialRead?.(m);result.proofs[m.object_key]=await fullMaterialProof(blobs,m,observe);}
+    if(m){
+      await beforeMaterialRead?.(m);
+      // Reuse only a scoped, full-read receipt for this exact stored version.
+      // The final transaction still rechecks its ETag before accepting reuse.
+      result.proofs[m.object_key]=await cachedUploadVersion(pool,blobs,m)??await fullMaterialProof(blobs,m,observe);
+    }
     return result;
   }catch(error){
     const e=direct&&error instanceof Problem&&error.status===413?new Problem(422,'MATERIAL_CONTENT_MISMATCH','Stored bytes exceed the upload limit'):error;
