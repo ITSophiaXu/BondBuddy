@@ -4,11 +4,12 @@ import { test } from 'node:test';
 import { Pool } from 'pg';
 import { isolatedTestDatabase } from './test-database.js';
 import { createServer } from './server.js';
-import { checkpoint, claim, finish, jobSnapshot, pauseRun, promoteWordArtifact, reconcilePausedCall, recordPotentialCall } from './queue.js';
+import { checkpoint, checkpointStage, claim, finish, jobSnapshot, pauseRun, promoteWordArtifact, reconcilePausedCall, recordPotentialCall } from './queue.js';
 import { azureBlobs, type PrivateBlobs } from './data.js';
 import { makeSyntheticDocxFixture } from './docx-fixtures.js';
 import { Ajv } from 'ajv';
 import { schemas } from '@bondbuddy/contracts';
+import { lockSyntheticAuthoringInput, quoteSyntheticAuthoringRun, syntheticAuthoringBlobs } from './test-authoring-source.js';
 
 const connection=process.env.BB_TEST_DATABASE_URL;
 const isolatedConnection=await isolatedTestDatabase();
@@ -18,7 +19,9 @@ test('unchanged issuer source gate rejects repeated resumes without queue churn;
   const pool=new Pool({connectionString:database});
   let owner=`resume-owner-${randomUUID()}`;
   const origin='http://bondbuddy.test';
-  const app=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true});
+  // The original gate contract reuses one unreviewed input across uncharged paused attempts.
+  const app=createServer({pool,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,
+    historicalBillingFixture:true,enablePaidAuthoring:false});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
   try{
     const project=(await send('POST','/api/v1/projects',{name:'Synthetic resume gate',kind:'update',issuer_name:null,market:'sse',offering:'private'})).json().project_id;
@@ -83,7 +86,9 @@ test('synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation
   const pool=new Pool({connectionString:isolatedConnection});
   let owner='synthetic-queue-a';
   const blobs=azureBlobs(blobConnection!);
-  const settings={pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true};
+  // Preserve the original same-input retries and single-Word, uncharged delivery contract.
+  const settings={pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,
+    historicalBillingFixture:true,enablePaidAuthoring:false};
   const app=createServer(settings);
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
   try {
@@ -278,4 +283,62 @@ test('synthetic PostgreSQL queue: idempotency, rollback, restart, reconciliation
     await pool.query('DROP TRIGGER IF EXISTS bb_queue_fail_outbox ON bb_outbox');await pool.query('DROP FUNCTION IF EXISTS bb_queue_fail_outbox()');
     await app.close();await pool.end();
   }
+});
+
+test('current queue admission replays once and retries the same locked input with a fresh quote after cancellation',{skip:!connection},async()=>{
+  const database=await isolatedTestDatabase('BB_TEST_DATABASE_URL','queue-current-admission');
+  const pool=new Pool({connectionString:database}),originalOwner=`current-queue-${randomUUID()}`,origin='http://bondbuddy.test';
+  let owner=originalOwner;
+  const blobs=syntheticAuthoringBlobs();
+  const app=createServer({pool,blobs,allowedOrigin:origin,principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,paymentProviders:[]});
+  const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin},payload:payload as any});
+  try{
+    const created=await send('POST','/api/v1/projects',{name:'Synthetic current queue',kind:'update',issuer_name:'Synthetic queue issuer',market:'sse',offering:'private'});
+    assert.equal(created.statusCode,201,created.body);
+    const project=created.json().project_id,input=(await lockSyntheticAuthoringInput(app,project)).json();
+    const request={project_id:project,input_revision:input.input_revision,input_hash:input.input_hash,task_kind:'update',
+      input_manifest_ref:'synthetic',storage_origin:'cloud',workspace_id:'synthetic'};
+    const unquoted=await send('POST','/api/v1/runs/execute',{...request,execution_request_id:randomUUID()});
+    assert.equal(unquoted.statusCode,409,unquoted.body);assert.equal(unquoted.json().code,'QUOTE_REQUIRED');
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_runs WHERE project_id=$1',[project])).rows[0].n,0);
+    const firstQuote=await quoteSyntheticAuthoringRun(app,pool,owner,project,input);
+    const execution={...request,execution_request_id:randomUUID(),quote_id:firstQuote};
+    const concurrent=await Promise.all(Array.from({length:3},()=>send('POST','/api/v1/runs/execute',execution)));
+    assert.ok(concurrent.every(response=>response.statusCode===202),concurrent.map(response=>response.body).join('\n'));
+    const firstRun=concurrent[0].json().run_id;
+    assert.ok(concurrent.every(response=>response.json().run_id===firstRun));
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE run_id=$1',[firstRun])).rows[0].n,1);
+    const firstLease=await claim(pool,30);assert.ok(firstLease);assert.equal(firstLease.runId,firstRun);
+    const cancelled=await send('POST',`/api/v1/runs/${firstRun}/cancel`,{reason:'synthetic current retry'});
+    assert.equal(cancelled.statusCode,200,cancelled.body);assert.equal(cancelled.json().state,'cancelled');
+    assert.equal((await pool.query('SELECT state FROM bb_credit_reservations WHERE run_id=$1',[firstRun])).rows[0].state,'released');
+    const cancelledReplay=await send('POST','/api/v1/runs/execute',execution);
+    assert.equal(cancelledReplay.statusCode,202,cancelledReplay.body);assert.equal(cancelledReplay.json().run_id,firstRun);
+
+    // Cancellation releases the accepted scope; request its replacement without changing the input.
+    const retryQuote=await quoteSyntheticAuthoringRun(app,pool,owner,project,input);
+    assert.notEqual(retryQuote,firstQuote);
+    const retryRequest={...request,execution_request_id:randomUUID(),quote_id:retryQuote};
+    const retry=await send('POST','/api/v1/runs/execute',retryRequest);
+    assert.equal(retry.statusCode,202,retry.body);assert.notEqual(retry.json().run_id,firstRun);
+    const retryRun=retry.json().run_id;
+    assert.deepEqual((await pool.query('SELECT input_revision,input_hash FROM bb_runs WHERE project_id=$1 ORDER BY created_at',[project])).rows,
+      [firstRun,retryRun].map(()=>({input_revision:input.input_revision,input_hash:input.input_hash})));
+    const lease=await claim(pool,30);assert.ok(lease);assert.equal(lease.runId,retryRun);
+    const revision=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic current queue revision'}),blobs,'generated_pair_v1');
+    const clean=await promoteWordArtifact(pool,lease,makeSyntheticDocxFixture({text:'Synthetic current queue clean'}),blobs,'generated_pair_v1');
+    assert.equal(revision.status,'available');assert.equal(clean.status,'available');
+    await checkpointStage(pool,lease,'word_delivery_pair',{revision_artifact_id:revision.artifactId,clean_artifact_id:clean.artifactId});
+    const delivered=await finish(pool,lease,'succeeded',{artifactId:revision.artifactId,artifactVersion:revision.artifactVersion,blobs});
+    assert.equal(delivered.state,'succeeded');
+    assert.equal((await pool.query('SELECT state FROM bb_credit_reservations WHERE run_id=$1',[retryRun])).rows[0].state,'settled');
+    const replay=await send('POST','/api/v1/runs/execute',retryRequest);
+    assert.equal(replay.statusCode,202,replay.body);assert.equal(replay.json().run_id,retryRun);
+    assert.equal((await pool.query('SELECT count(*)::int n FROM bb_jobs WHERE run_id=$1',[retryRun])).rows[0].n,1);
+    const events=await send('GET',`/api/v1/runs/${retryRun}/events`);
+    assert.equal(events.statusCode,200,events.body);
+    assert.deepEqual(events.json().items.map((event:any)=>event.seq),events.json().items.map((_:unknown,index:number)=>index+1));
+    owner=`foreign-current-queue-${randomUUID()}`;
+    assert.equal((await send('GET',`/api/v1/runs/${retryRun}/events`)).statusCode,404);
+  }finally{await app.close();await pool.end();}
 });
