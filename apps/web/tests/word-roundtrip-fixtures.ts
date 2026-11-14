@@ -101,8 +101,10 @@ function collection(s:State):Dto<'ProjectFilesResponse'>{
     ...s.registry.map(v=>({file_id:v.asset.kind==='material'?v.asset.pin.material_id:v.asset.pin.artifact_id,file_key:'project-file:'+v.file_id,project_id:v.asset.pin.source_project_id,source:v.asset.kind,filename:v.filename,version:v.asset.kind==='material'?v.asset.pin.material_version:v.asset.pin.artifact_version,display_version:v.sequence,sha256:v.asset.pin.sha256,created_at:v.created_at,folder:v.document_type==='init'?'1' as const:'4.1' as const,run_id:v.run_id,current:false,latest:v.latest,version_count:v.version_count}))]};
 }
 export async function install(page:Page,s=fixture()){
-  page.on('pageerror',error=>s.errors.push(error.message));
-  await page.route('**/api/v1/**',async route=>{
+  const onPageError=(error:Error)=>s.errors.push(error.message);
+  const activeRoutes=new Set<Promise<void>>();
+  page.on('pageerror',onPageError);
+  const handleRoute=async(route:Route)=>{
     if(await serveDisabledBillingCatalog(route))return;
     const req=route.request(),url=new URL(req.url()),path=url.pathname.slice('/api/v1'.length),method=req.method(),owner=s.owner;
     const body=method!=='GET'&&method!=='PUT'||method==='PUT'&&!path.endsWith('/bytes')?req.postData()?fixtureRequest(req):null:null;
@@ -208,8 +210,20 @@ export async function install(page:Page,s=fixture()){
     if(artifact&&method==='GET'){const a=s.workspace.artifacts.find(a=>a.artifact_id===artifact[1]),bytes=s.artifactBytes.get(artifact[1]);if(!a||!bytes)return failure(route,404,'NOT_FOUND');return artifact[2]?route.fulfill({status:200,contentType:mime,body:bytes}):json(route,200,{artifact_id:a.artifact_id,run_id:a.run_id,version:a.artifact_version,filename:a.filename,media_type:mime,sha256:a.sha256,quality_status:'passed',delivery_status:'available',download_url:`/api/v1/artifacts/${a.artifact_id}/download?grant=synthetic`,expires_at:'2099-01-01T00:00:00Z'} satisfies Dto<'ArtifactResponse'>);}
     const readRun=path.match(/^\/runs\/([^/]+)$/);if(readRun&&method==='GET'){const task=s.workspace.tasks.find(t=>t.run.run_id===readRun[1]);if(task)return json(route,200,task.run);}
     s.unexpected.push(method+' '+path);return failure(route,500);
-  });
-  return s;
+  };
+  const routeHandler=(route:Route)=>{
+    const pending=handleRoute(route);activeRoutes.add(pending);
+    void pending.finally(()=>activeRoutes.delete(pending)).catch(()=>{});
+    return pending;
+  };
+  await page.route('**/api/v1/**',routeHandler);
+  // A reused document still gets a separate server state for each scenario.
+  // Remove only this fixture and finish its callbacks before the next install.
+  return Object.assign(s,{async uninstallFixture(){
+    await page.unroute('**/api/v1/**',routeHandler);
+    await Promise.all([...activeRoutes]);
+    page.off('pageerror',onPageError);
+  }});
 }
 export async function openFiles(page:Page,root=ids.root){
   // The file-list assertion is the application readiness gate; window.load is

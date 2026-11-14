@@ -96,10 +96,12 @@ test.describe('finite Word roundtrip contracts',()=>{
       finally{measurement.duration_ms=Date.now()-began;}
     };
     try{
+      // Load the real application once; every scenario still creates a fresh
+      // ProjectFiles instance through its native route and a new server fixture.
+      const page=await timed('shared-document','new-page',()=>context.newPage());
       for(const option of options){
         const scenario=option.mismatch??(option.registryFailure?'registry-unavailable':'workspace-unavailable');
         await test.step(scenario,async()=>{
-          const page=await timed(scenario,'new-page',()=>context.newPage());
           const s=await timed(scenario,'install-fixture',()=>install(page,fixture(option)));
           await timed(scenario,'open-files',()=>openFiles(page));
           await timed(scenario,'continuation-assertions',async()=>{
@@ -110,11 +112,24 @@ test.describe('finite Word roundtrip contracts',()=>{
             const material=page.locator('#file-list>.collection-file').filter({hasText:'发行人基本情况.docx'});
             await expect(material.getByRole('link',{name:'打开此稿继续修改',exact:true})).toHaveCount(0);
             expect(businessCalls(s)).toEqual([]);assertFixture(s);
+            for(const suffix of ['files','project-files','project-files/workspace']){
+              expect(s.calls.some(call=>call.method==='GET'&&call.path===`/projects/${ids.root}/${suffix}`)).toBe(true);
+            }
           });
-          // Keep failed pages open for Playwright's original error-context capture.
-          await timed(scenario,'close-page',()=>page.close());
+          // The native back link disposes the current component and aborts its
+          // reads. Do not stack routes or change the old fixture in place.
+          await timed(scenario,'leave-files',async()=>{
+            await page.locator('.project-workbench > a.back-link[href="#tasks"]').click();
+            await expect(page.locator('#file-list')).toHaveCount(0);
+            await expect(page.locator('#project-list')).toBeVisible();
+            await expect(page.locator('#project-list')).toHaveAttribute('aria-busy','false');
+          });
+          await timed(scenario,'uninstall-fixture',()=>s.uninstallFixture());
+          expect(businessCalls(s)).toEqual([]);assertFixture(s);
         });
       }
+      // Keep failed pages open for Playwright's original error-context capture.
+      await timed('shared-document','close-page',()=>page.close());
     }finally{
       await testInfo.attach('word-roundtrip-phase-timings',{contentType:'application/json',
         body:JSON.stringify({case_budget_ms:testInfo.timeout,elapsed_ms:Date.now()-started,scenarios:options,phases},null,2)});
