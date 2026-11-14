@@ -44,7 +44,9 @@ async function setup(page:Page,active=false){
  if(active)state.data.batches=[{batch_id:'active-poll-batch',created_at:now,points:0,workpapers:null,documents:{batch_id:'active-docs',state:'running',items:[]}}];
  await page.goto('/'+href({step:'prepare'}));
  await expect(page.locator('#fg-confirm')).toBeEnabled();
- await page.getByRole('button',{name:'调整生成范围',exact:true}).click();
+ // Advanced template/file mapping remains available; range adjustment now
+ // focuses the chapter selector instead of opening this separate editor.
+ await page.getByRole('button',{name:'查看本批清单',exact:true}).click();
  await page.getByText('补充资料与编制要求（选填）',{exact:true}).click();
  return state;
 }
@@ -100,7 +102,7 @@ test('failed save keeps the local range across refresh and retries without quoti
  await first(page).click();await expect(page.locator('#fg-save-retry')).toBeVisible();
  await expect(first(page)).not.toBeChecked();await page.locator('#fg-confirm').click();
  expect(state.quotes).toEqual([]);expect(state.submissions).toEqual([]);
- await page.reload();await page.getByRole('button',{name:'调整生成范围',exact:true}).click();await expect(first(page)).not.toBeChecked();await expect(second(page)).toBeChecked();
+ await page.reload();await page.getByRole('button',{name:'查看本批清单',exact:true}).click();await expect(first(page)).not.toBeChecked();await expect(second(page)).toBeChecked();
  failing=false;await page.locator('#fg-save-retry').click();await expect(page.locator('#fg-save-state')).toContainText('已保存');
  expect(state.data.preparation.item_ids).toEqual(['entry-2']);expect(state.quotes).toEqual([]);
 });
@@ -115,7 +117,7 @@ for(const refresh of [false,true])test(`unknown save result preserves its origin
  await second(page).click();await expect(second(page)).not.toBeChecked();
  if(refresh){
   await page.evaluate(key=>{const cached=JSON.parse(localStorage.getItem(key)!);cached.modeDrafts={custom:{...cached.preparation,requirements:'保留切换模式草稿'}};cached.custom=true;localStorage.setItem(key,JSON.stringify(cached));},`bb-file-generation-v2:${ids.owner}:${ids.api}`);
-  await page.reload();await page.reload();await page.getByRole('button',{name:'调整生成范围',exact:true}).click();await expect(first(page)).not.toBeChecked();await expect(second(page)).not.toBeChecked();
+  await page.reload();await page.reload();await page.getByRole('button',{name:'查看本批清单',exact:true}).click();await expect(first(page)).not.toBeChecked();await expect(second(page)).not.toBeChecked();
   const cached=await page.evaluate(key=>JSON.parse(localStorage.getItem(key)!),`bb-file-generation-v2:${ids.owner}:${ids.api}`);expect(cached.modeDrafts.custom.requirements).toBe('保留切换模式草稿');expect(cached.custom).toBe(true);
  }
  await page.locator('#fg-save-retry').click();await expect(page.locator('#fg-save-state')).toContainText('已保存');
@@ -154,7 +156,7 @@ test('document type, year, template and requirements join the latest save snapsh
  const state=await setup(page);let release!:()=>void,calls=0;
  await page.route('**/file-generation/preparation',async route=>{if(++calls===1)await new Promise<void>(r=>release=r);return route.fallback();});
  await first(page).click();await expect.poll(()=>calls).toBe(1);
- await page.locator('#fg-more-types').click();await page.locator('[data-fg-type="annual"]').check();
+ await page.locator('[data-fg-type="annual"]').check();
  await page.locator('#fg-year').fill('2026');await page.locator('#fg-year').blur();
  await page.locator('[data-fg-general="annual"]').selectOption('private|template-annual');
  await page.locator('#fg-requirements').fill('保留合成年度要求');release();
@@ -228,7 +230,7 @@ test('a later local-storage failure shows a locked recoverable draft before any 
  await page.evaluate(key=>{const original=Storage.prototype.setItem;let calls=0;Storage.prototype.setItem=function(k,v){if(k===key&&++calls===2)throw new DOMException('synthetic quota','QuotaExceededError');return original.call(this,k,v);};},`bb-file-generation-v2:${ids.owner}:${ids.api}`);
  await first(page).click();await expect(page.locator('#fg-save-state')).toContainText('无法保存');await expect(page.locator('#fg-reload')).toBeVisible();await expect(page.locator('#fg-controls')).toHaveJSProperty('inert',true);
  expect(state.saves).toEqual([]);expect(state.quotes).toEqual([]);
- await page.reload();await page.getByRole('button',{name:'调整生成范围',exact:true}).click();await expect(first(page)).not.toBeChecked();
+ await page.reload();await page.getByRole('button',{name:'查看本批清单',exact:true}).click();await expect(first(page)).not.toBeChecked();
  await page.locator('#fg-save-retry').click();await expect(page.locator('#fg-save-state')).toContainText('已保存');expect(state.data.preparation.item_ids).toEqual(['entry-2']);
 });
 
@@ -244,8 +246,10 @@ for(const width of [1440,1280])test(`save failure remains visible beside generat
  await page.route('**/file-generation/preparation',route=>route.fulfill({status:503,json:{code:'DATA_UNAVAILABLE',retryable:true}}));
  await first(page).click();await expect(page.locator('#fg-save-retry')).toBeVisible();
  const note=page.locator('#fg-requirements');await note.fill('合成桌面验收：失败后仍可继续编辑');await note.click();
- const footer=await page.locator('.fg-footer').boundingBox(),editor=await note.boundingBox();
- expect(footer!.y+footer!.height).toBeLessThanOrEqual(961);expect(footer!.height).toBeLessThan(180);expect(editor!.y+editor!.height/2).toBeLessThan(footer!.y);
+ const footer=await page.locator('.fg-footer').boundingBox(),editor=await note.boundingBox(),controls=await page.locator('#fg-controls').boundingBox();
+ expect(await page.locator('.fg-footer').evaluate(el=>getComputedStyle(el).position)).toBe('static');
+ expect(footer!.y).toBeGreaterThanOrEqual(controls!.y+controls!.height);expect(footer!.height).toBeLessThan(180);expect(editor!.y+editor!.height).toBeLessThan(footer!.y);
+ await page.locator('.fg-footer').scrollIntoViewIfNeeded();
  await expect(page.locator('.fg-footer #fg-save-state')).toContainText('保存尚未确认');await expect(page.locator('.fg-footer #fg-save-retry')).toBeInViewport();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await page.screenshot({path:info.outputPath(`save-failure-${width}x960.png`)});
