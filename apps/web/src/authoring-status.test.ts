@@ -42,7 +42,7 @@ test('records isolate run and event cursor, with lifecycle badges and collapsed 
 });
 
 test('output limit continuation and confirmed material restart keep the authoring phase',()=>{
-  for(const reason of ['file_authoring_output_limit_retry_scheduled','file_authoring_manual_restart_scheduled']){
+  for(const reason of ['file_authoring_output_limit_retry_scheduled','file_authoring_timeout_retry_scheduled','file_authoring_manual_restart_scheduled']){
     const queued={...run,state:'queued' as const,stage:'queued'};
     const events=[event('queued','queued',reason)];
     assert.equal(authoringPhase(queued,events),2);
@@ -60,7 +60,7 @@ test('unresolved provider evidence does not assert an active process or an uncon
 });
 
 test('output limit unavailable and exhausted are failed terminal states with one material retention note',()=>{
-  for(const reason of ['file_authoring_output_limit_recovery_unavailable','file_authoring_output_limit_retries_exhausted']){
+  for(const reason of ['file_authoring_output_limit_recovery_unavailable','file_authoring_output_limit_retries_exhausted','file_authoring_timeout_recovery_unavailable','file_authoring_timeout_retries_exhausted']){
     const html=authoringStatusCard({...run,state:'failed',stage:'failed'},[event('failed','failed',reason)],{actions:'',summary:'本次未能完成，请联系支持处理。'});
     assert.match(html,/data-tone="failed"/);assert.match(html,/本轮未完成/);
     assert.doesNotMatch(html,/已暂停|关闭页面不会取消任务|立即重试/);

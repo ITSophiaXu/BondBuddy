@@ -48,7 +48,7 @@ test('a process restart restores all work bytes and the original revision timest
     const snapshot = await saveFileAuthoringRecovery(f.ctx, source, intent, { checkpoint: f.checkpoint });
     assert.equal(f.writes(), 1); assert.equal(snapshot.files.length, 5);
     assert.equal(authorizedFileAuthoringRecovery(f.ctx, intent.logical_call_id), null, 'snapshot is not a retry authorization');
-    f.authorize(snapshot);
+    f.authorize(snapshot, 'file_authoring_timeout_auto_retry');
     const restarted: StageContext = { ...f.ctx, lease: { ...f.ctx.lease, checkpoint: structuredClone(f.ctx.lease.checkpoint) }, checkpoint: {}, values: new Map() };
     const approved = authorizedFileAuthoringRecovery(restarted, intent.logical_call_id)!;
     const current = Buffer.from(JSON.stringify({ ...JSON.parse(original.toString()), revision_date: '2026-11-14T01:00:00.000Z' }));

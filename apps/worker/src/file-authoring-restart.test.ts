@@ -44,7 +44,7 @@ test('restart authorization binds owner, task, input, confirmation and immutable
     (f:ReturnType<typeof fixture>)=>{f.prior.checkpoint.user_retry_requests.request.confirmed_restart=false;},
     (f:ReturnType<typeof fixture>)=>{f.prior.checkpoint.operator_reconciliations[attempt].request_id='different';},
     (f:ReturnType<typeof fixture>)=>{f.prior.exit_signal=null;},
-    (f:ReturnType<typeof fixture>)=>{f.prior.error_code='MODEL_TIMEOUT';},
+    (f:ReturnType<typeof fixture>)=>{f.prior.error_code='MODEL_CANCELLED';},
     (f:ReturnType<typeof fixture>)=>{f.prior.adapter_version='codex-file-authoring-1';},
     (f:ReturnType<typeof fixture>)=>{f.prior.usage_status='measured';},
     (f:ReturnType<typeof fixture>)=>{f.prior.conflicting_measurements=1;},
@@ -93,9 +93,9 @@ test('temporary database errors remain errors instead of becoming input conflict
 });
 
 test('a completed manual then automatic retry chain replays its exact resume prompt after a later repair checkpoint',async()=>{
-  for(const error of ['MODEL_OUTPUT_TOO_LARGE','MODEL_PROVIDER_PAYLOAD_TOO_LARGE'])for(const ownerConfirmation of [undefined,false,true]){
+  for(const error of ['MODEL_OUTPUT_TOO_LARGE','MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_TIMEOUT'])for(const ownerConfirmation of [undefined,false,true]){
     const f=fixture(),second='call-after-restart',resume=`${base}_resume_${digest(second).slice(0,12)}`;
-    const retry:Record<string,unknown>={actor:'worker_file_authoring_recovery',reason_code:error==='MODEL_OUTPUT_TOO_LARGE'?'file_authoring_output_limit_auto_retry':'file_authoring_payload_auto_retry',
+    const retry:Record<string,unknown>={actor:'worker_file_authoring_recovery',reason_code:error==='MODEL_TIMEOUT'?'file_authoring_timeout_auto_retry':error==='MODEL_OUTPUT_TOO_LARGE'?'file_authoring_output_limit_auto_retry':'file_authoring_payload_auto_retry',
       attempt_id:second,logical_call_id:logical,decision:'retry_unknown_usage',recovery_state:'queued'};
     if(ownerConfirmation!==undefined){
       Object.assign(retry,{actor:'owner:owner',retry_mode:'restore_checkpoint',owner_user_id:'owner',project_id:'project',run_id:'run',job_id:'job',

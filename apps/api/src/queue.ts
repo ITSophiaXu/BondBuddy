@@ -342,7 +342,7 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
       if(!j.user_pause_requested && r.state==='paused' && r.stage==='provider_reconcile' && r.task_kind==='update' &&
         (await client.query(`SELECT 1 FROM bb_model_call_attempts a JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
           WHERE a.job_id=$1 AND a.owner_user_id=$2 AND a.status='pending_reconcile'
-          AND t.error_code IN ('MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE')
+          AND t.error_code IN ('MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT')
           AND a.logical_call_id ~ '^file-authoring-(v1|size-repair-[1-9][0-9]*)$' LIMIT 1`,[j.id,owner])).rowCount){
         await client.query('UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1',[j.id]);
         await event(client,r,'paused','provider_reconcile','user_pause_requested');
@@ -374,7 +374,7 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
       if(r.state!=='paused')throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not paused');
       if(j.user_pause_requested&&r.stage==='provider_reconcile'&&j.stage==='provider_reconcile'){
         const eligibility=await inspectFileAuthoringRetry(client,r,j);
-        if(eligibility.view.mode==='resume'&&eligibility.attempt?.error_code==='MODEL_OUTPUT_TOO_LARGE'){
+        if(eligibility.view.mode==='resume'&&['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(eligibility.attempt?.error_code)){
           // A stopped legacy call has no workspace to save. Undo only the user
           // pause; restarting from materials still needs its separate confirmation.
           await client.query('UPDATE bb_jobs SET user_pause_requested=false,updated_at=now() WHERE id=$1',[j.id]);
@@ -917,7 +917,7 @@ export async function fileAuthoringPayloadRecoveryCandidates(pool:Pool,limit=20,
     AND r.task_kind='update' AND ($2::text[] IS NULL OR r.task_kind=ANY($2::text[])) AND ($3::text IS NULL OR j.id>$3)
     AND EXISTS(SELECT 1 FROM bb_model_call_attempts a JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
       WHERE a.job_id=j.id AND a.owner_user_id=j.owner_user_id AND a.status='pending_reconcile'
-      AND t.error_code IN ('MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE')
+      AND t.error_code IN ('MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT')
       AND a.logical_call_id ~ '^file-authoring-(v1|size-repair-[1-9][0-9]*)$')
     ORDER BY j.id LIMIT $1`,[limit,runKinds?checkedRunKinds(runKinds):null,afterJobId??null]);
   return q.rows as {job_id:string;run_id:string;owner_user_id:string}[];
@@ -1009,22 +1009,23 @@ export function validFileAuthoringRecovery(value:unknown,scope:{owner:string;pro
   return paths.has('input.json');
 }
 
-const fileAuthoringAutoRetryReasons=['file_authoring_payload_auto_retry','file_authoring_output_limit_auto_retry'];
+const fileAuthoringAutoRetryReasons=['file_authoring_payload_auto_retry','file_authoring_output_limit_auto_retry','file_authoring_timeout_auto_retry'];
 function fileAuthoringRetryLimitReached(checkpoint:any,logical:string):boolean {
   const history=Object.values(checkpoint?.operator_reconciliations??{}) as {reason_code?:string;logical_call_id?:string}[];
   const retries=history.filter(h=>fileAuthoringAutoRetryReasons.includes(h.reason_code??'')||h.reason_code==='file_authoring_manual_restart');
   return retries.length>=6||retries.filter(h=>h.logical_call_id===logical).length>=2;
 }
 function fileAuthoringRetryReason(error:string):string {
-  return error==='MODEL_OUTPUT_TOO_LARGE'?'file_authoring_output_limit_auto_retry':'file_authoring_payload_auto_retry';
+  return error==='MODEL_TIMEOUT'?'file_authoring_timeout_auto_retry':
+    error==='MODEL_OUTPUT_TOO_LARGE'?'file_authoring_output_limit_auto_retry':'file_authoring_payload_auto_retry';
 }
 function fileAuthoringRecoveryEvent(error:string,suffix:string):string {
-  return `${error==='MODEL_OUTPUT_TOO_LARGE'?'file_authoring_output_limit':'file_authoring_payload'}_${suffix}`;
+  return `${error==='MODEL_TIMEOUT'?'file_authoring_timeout':error==='MODEL_OUTPUT_TOO_LARGE'?'file_authoring_output_limit':'file_authoring_payload'}_${suffix}`;
 }
-/** Both recovery entry points use the same immutable evidence. An output cap is
+/** Both recovery entry points use the same immutable evidence. A local timeout or output cap is
  * reported as pending_reconcile, not the failed observation used for HTTP 413. */
 async function fileAuthoringRetryEvidence(client:PoolClient,r:any,j:any,a:any) {
-  const outcomes=a.error_code==='MODEL_OUTPUT_TOO_LARGE'?['pending_reconcile']:
+  const outcomes=['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(a.error_code)?['pending_reconcile']:
     a.error_code==='MODEL_TURN_FAILED'?['failed','pending_reconcile']:['failed'];
   return (await client.query(`SELECT
     EXISTS(SELECT 1 FROM bb_input_revisions WHERE owner_user_id=$7 AND project_id=$8 AND revision=$9 AND input_hash=$10) AS input_matches,
@@ -1047,7 +1048,7 @@ function fileAuthoringJobMatchesInput(r:any,j:any):boolean {
     (j.input_hash==null||String(j.input_hash).trim()===String(r.input_hash).trim());
 }
 
-/** Only an observed, terminated size-limit failure in the contained authoring
+/** Only an observed, terminated size-limit failure or local timeout in the contained authoring
  * worker authorizes a fresh context. Prior usage remains unknown; the original
  * run/reservation and one shared retry budget survive concurrent sweeps/clicks. */
 export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:string,jobId:string) {
@@ -1067,7 +1068,7 @@ export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:s
     if(a.status!=='pending_reconcile' || !/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(a.logical_call_id) ||
       a.adapter!=='codex_exec' || a.adapter_version!=='codex-file-authoring-2' ||
       a.observed_usage!=='unknown' || a.conflicting_measurements>0 ||
-      !['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE'].includes(a.error_code) ||
+      !['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(a.error_code) ||
       !(a.exit_code!==null || /^SIG[A-Z0-9]+$/.test(a.exit_signal??'')))return false;
     const evidence=await fileAuthoringRetryEvidence(client,r,j,a);
     if(!evidence.input_matches || r.artifact_id || evidence.has_attempt_result || !evidence.supported_observation || evidence.conflicting || evidence.newer)return false;
@@ -1075,9 +1076,9 @@ export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:s
     const saved=j.checkpoint?.stages?.file_authoring_recovery;
     const ready=validFileAuthoringRecovery(saved,{owner,project:r.project_id,run:runId,
       inputHash:String(r.input_hash).trim(),attempt:a.id,logical:a.logical_call_id});
-    // Historical output-capped calls had no workspace snapshot. Leave those
+    // Historical output-capped/timed-out calls had no workspace snapshot. Leave those
     // paused for an explicit restart confirmation; a sweep must not erase that option.
-    if(a.error_code==='MODEL_OUTPUT_TOO_LARGE'&&!Object.hasOwn(j.checkpoint?.stages??{},'file_authoring_recovery'))return false;
+    if(['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(a.error_code)&&!Object.hasOwn(j.checkpoint?.stages??{},'file_authoring_recovery'))return false;
     const reason=exhausted?fileAuthoringRecoveryEvent(a.error_code,'retries_exhausted'):
       !ready?fileAuthoringRecoveryEvent(a.error_code,'recovery_unavailable'):fileAuthoringRetryReason(a.error_code);
     const recoveryState=exhausted||!ready?'failed':j.user_pause_requested?'user_paused':j.credit_pause_requested?'credits_exhausted':'queued';
@@ -1127,20 +1128,20 @@ async function inspectFileAuthoringRetry(client:PoolClient,r:any,j:any):Promise<
   const a=unresolved.rows[0];
   if(a.status!=='pending_reconcile'||a.observed_usage!=='unknown'||a.conflicting_measurements>0||a.adapter!=='codex_exec'||a.adapter_version!=='codex-file-authoring-2'
     ||!/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(a.logical_call_id)
-    ||!['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TURN_FAILED'].includes(a.error_code))return view('blocked','provider_evidence_unresolved',a);
+    ||!['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT','MODEL_TURN_FAILED'].includes(a.error_code))return view('blocked','provider_evidence_unresolved',a);
   if(!(a.exit_code!==null||/^SIG[A-Z0-9]+$/.test(a.exit_signal??'')))return view('blocked','active_attempt',a);
   const e=await fileAuthoringRetryEvidence(client,r,j,a);
   if(r.artifact_id||e.has_attempt_result||a.error_code==='MODEL_TURN_FAILED'&&(e.has_result||e.has_completed))return view('blocked','provider_result_present',a);
   if(!e.input_matches||e.conflicting||e.newer)return view('blocked','provider_evidence_conflict',a);
   if(!e.supported_observation)return view('blocked','provider_evidence_unresolved',a);
   const saved=j.checkpoint?.stages?.file_authoring_recovery;
-  const legacyRestart=['MODEL_TURN_FAILED','MODEL_OUTPUT_TOO_LARGE'].includes(a.error_code)&&a.logical_call_id==='file-authoring-v1'&&
+  const legacyRestart=['MODEL_TURN_FAILED','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(a.error_code)&&a.logical_call_id==='file-authoring-v1'&&
     !Object.hasOwn(j.checkpoint?.stages??{},'file_authoring_recovery');
   if(legacyRestart&&(e.has_result||e.has_completed))return view('blocked','provider_result_present',a);
-  if(j.user_pause_requested)return legacyRestart&&a.error_code==='MODEL_OUTPUT_TOO_LARGE'?
+  if(j.user_pause_requested)return legacyRestart&&['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(a.error_code)?
     view('resume','user_paused',a):view('blocked','user_pause_pending',a);
   if(fileAuthoringRetryLimitReached(j.checkpoint,a.logical_call_id))return view('blocked','retry_limit_reached',a);
-  if(['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE'].includes(a.error_code)&&validFileAuthoringRecovery(saved,{owner:r.owner_user_id,project:r.project_id,run:r.id,
+  if(['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(a.error_code)&&validFileAuthoringRecovery(saved,{owner:r.owner_user_id,project:r.project_id,run:r.id,
     inputHash:String(r.input_hash).trim(),attempt:a.id,logical:a.logical_call_id}))return view('restore_checkpoint','checkpoint_available',a);
   // Old first-pass failures have no retained working directory. Only an explicit
   // owner confirmation can authorize fresh work from the immutable original input.

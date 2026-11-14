@@ -105,6 +105,10 @@ export function readinessMessage(reason: string, lastProcessingStage?: string): 
   if (reason === 'file_authoring_output_limit_retry_scheduled') return '工作进度已保存，系统已安排接续已有工作，仍是本次任务。';
   if (reason === 'file_authoring_output_limit_recovery_unavailable') return '处理输出超过安全上限，恢复进度未通过核验，系统已停止自动重试。请联系支持核对。';
   if (reason === 'file_authoring_output_limit_retries_exhausted') return '系统已尝试恢复，但自动恢复次数已用完，本次未能完成。请联系支持处理。';
+  if (reason === 'file_authoring_timeout_recovery_pending') return '本轮处理超时，正在核对可恢复进度和调用记录；符合条件时自动继续本次任务。';
+  if (reason === 'file_authoring_timeout_retry_scheduled') return '工作进度已保存，系统已安排接续已有工作，仍是本次任务。';
+  if (reason === 'file_authoring_timeout_recovery_unavailable') return '本轮处理超时，恢复进度未通过核验，系统已停止自动重试。请联系支持核对。';
+  if (reason === 'file_authoring_timeout_retries_exhausted') return '系统已尝试恢复，但自动恢复次数已用完，本次未能完成。请联系支持处理。';
   if (reason === 'provider_timeout_retries_exhausted') return '编制服务多次响应超时，本次未能完成。已保存材料和已完成内容仍保留，请联系支持继续处理。';
   if (reason === 'authoring_target_information_required') return '请补齐目标发行人、市场、品种和报告年度／一期。保存后停止本次任务，再点继续修改，以新输入重新编制。';
   if (reason === 'authoring_source_information_required') return '旧任务保留原输入，请联系支持恢复；新一轮编制前需补齐上传原稿的信息。';

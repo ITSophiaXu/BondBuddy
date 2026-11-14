@@ -41,7 +41,7 @@ export async function fileAuthoringRestartStageName(ctx:StageContext,base:string
     ||!request||request.request_id!==audit.request_id||request.attempt_id!==prior.id||request.mode!=='restart_materials'||request.confirmed_restart!==true
     ||prior.status!=='failed'||prior.usage_status!=='unknown'||prior.conflicting_measurements>0||prior.has_result
     ||prior.adapter!=='codex_exec'||prior.adapter_version!=='codex-file-authoring-2'
-    ||!['MODEL_TURN_FAILED','MODEL_OUTPUT_TOO_LARGE'].includes(prior.error_code??'')
+    ||!['MODEL_TURN_FAILED','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(prior.error_code??'')
     ||!(prior.exit_code!==null||/^SIG[A-Z0-9]+$/.test(prior.exit_signal??'')))throw unsafe();
   let stage=`${base}_restart_${digest(prior.id).slice(0,12)}`,authorized:RestartAttempt=prior;
   const hasRecovery=Object.hasOwn(prior.checkpoint?.stages??{},'file_authoring_recovery');
@@ -61,7 +61,8 @@ export async function fileAuthoringRestartStageName(ctx:StageContext,base:string
     if(typeof pinned!=='string'||next.prompt_snapshot_id!==pinned)throw unsafe();
     if(next.status==='completed'&&next.has_result&&!rows.some(a=>a.logical_call_id===logical&&a.attempt_no>next.attempt_no))return stage;
     const retry:Record<string,unknown>|undefined=audits?.[next.id],persisted=prior.checkpoint?.operator_reconciliations?.[next.id];
-    const reason:string|null=next.error_code==='MODEL_OUTPUT_TOO_LARGE'?'file_authoring_output_limit_auto_retry':
+    const reason:string|null=next.error_code==='MODEL_TIMEOUT'?'file_authoring_timeout_auto_retry':
+      next.error_code==='MODEL_OUTPUT_TOO_LARGE'?'file_authoring_output_limit_auto_retry':
       next.error_code==='MODEL_PROVIDER_PAYLOAD_TOO_LARGE'?'file_authoring_payload_auto_retry':null;
     if(reason&&retry?.reason_code===reason){
       const ownerRequest=prior.checkpoint?.user_retry_requests?.[String(retry.request_id)];

@@ -14,6 +14,10 @@ export function authoringEventLabel(event:RunEvent):string|null{
     file_authoring_output_limit_retry_scheduled:'进度已保存，已安排自动续跑',
     file_authoring_output_limit_recovery_unavailable:'恢复进度未通过核验，已停止自动重试',
     file_authoring_output_limit_retries_exhausted:'自动恢复次数已用完，本次未完成',
+    file_authoring_timeout_recovery_pending:'本轮处理超时，正在核对恢复条件',
+    file_authoring_timeout_retry_scheduled:'进度已保存，已安排自动续跑',
+    file_authoring_timeout_recovery_unavailable:'恢复进度未通过核验，已停止自动重试',
+    file_authoring_timeout_retries_exhausted:'自动恢复次数已用完，本次未完成',
   };
   if(event.payload.reason&&recoveryLabels[event.payload.reason])return recoveryLabels[event.payload.reason];
   const a=event.payload.authoring_activity;
@@ -56,6 +60,10 @@ export function authoringStatus(run:Run,events:RunEvent[],p?:AuthoringProgress){
   if(run.state==='paused'&&run.stage==='provider_reconcile'&&recovery==='file_authoring_output_limit_recovery_pending')
     return {title:'正在核对恢复条件',summary:'处理输出超过安全上限，正在核对可恢复进度和调用记录；符合条件时自动继续本次任务。',phase:2 as const};
   if(run.state==='queued'&&recovery==='file_authoring_output_limit_retry_scheduled')
+    return {title:'正在安排自动续跑',summary:'工作进度已保存，执行服务将接续已有工作，仍是本次任务。',phase:2 as const};
+  if(run.state==='paused'&&run.stage==='provider_reconcile'&&recovery==='file_authoring_timeout_recovery_pending')
+    return {title:'正在核对恢复条件',summary:'本轮处理超时，正在核对可恢复进度和调用记录；符合条件时自动继续本次任务。',phase:2 as const};
+  if(run.state==='queued'&&recovery==='file_authoring_timeout_retry_scheduled')
     return {title:'正在安排自动续跑',summary:'工作进度已保存，执行服务将接续已有工作，仍是本次任务。',phase:2 as const};
   if(run.state==='queued'){
     const waiting=p?Math.max(0,Date.parse(p.sampled_at)-Date.parse(p.queued_at)):0;

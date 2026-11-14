@@ -10,7 +10,7 @@ export function authoringPhase(run:Run,events:RunEvent[],progress?:AuthoringProg
   if(['delivering','settlement_pending'].includes(run.state)||run.stage?.startsWith('word_delivery'))return 3;
   const observed=events.filter(e=>e.run_id===run.run_id&&e.seq<=(run.event_cursor??Infinity)).sort((a,b)=>a.seq-b.seq);
   const reason=observed.at(-1)?.payload.reason;
-  if(run.state==='queued'&&['file_authoring_payload_retry_scheduled','file_authoring_output_limit_retry_scheduled','file_authoring_manual_restart_scheduled'].includes(reason??''))return 2;
+  if(run.state==='queued'&&['file_authoring_payload_retry_scheduled','file_authoring_output_limit_retry_scheduled','file_authoring_timeout_retry_scheduled','file_authoring_manual_restart_scheduled'].includes(reason??''))return 2;
   if(['queued','preparing','rejected'].includes(run.state))return 0;
   const current=authoringStatus(run,events,progress)?.phase;
   if(current!==undefined)return current;
@@ -53,7 +53,7 @@ export function authoringStatusCard(run:Run,events:RunEvent[],options:{progress?
     :awaitingInput?'等待补充信息':paused?run.stage==='credits_exhausted'?'积分不足，任务已暂停':run.stage==='billing_reconcile'?'正在核对积分账务，任务已暂停':run.stage==='user_paused'?'任务已暂停':`${labels[phase]}时暂停`
     :observed?.title??labels[phase];
   const summary=options.summary??observed?.summary??(success?'5 个步骤全部完成，文档已保存。':missingArtifact?'暂未取得可下载文档，请重新读取任务状态。':failed?'本轮未完成，已保存材料会保留。':run.state==='cancelled'?'任务已停止，已保存材料与已有成果保留。':'正在核对任务状态。');
-  const outputLimitEnded=failed&&['file_authoring_output_limit_recovery_unavailable','file_authoring_output_limit_retries_exhausted'].includes(authoringVisibleEvents(run,events).at(-1)?.payload.reason??'');
+  const outputLimitEnded=failed&&['file_authoring_output_limit_recovery_unavailable','file_authoring_output_limit_retries_exhausted','file_authoring_timeout_recovery_unavailable','file_authoring_timeout_retries_exhausted'].includes(authoringVisibleEvents(run,events).at(-1)?.payload.reason??'');
   const note=success||missingArtifact?'':run.state==='cancelled'?'':outputLimitEnded?'已保存的材料会保留。':paused&&run.stage==='provider_reconcile'?'已保存的材料会保留。关闭页面不会取消任务。':'关闭页面不会取消任务。';
   const symbol=success?'✓':paused?'Ⅱ':failed?'!':run.state==='cancelled'?'—':'•';
   const extra=options.retry&&options.retry.mode!=='restore_checkpoint'?retryExplanation(options.retry):'';

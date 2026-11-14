@@ -328,6 +328,9 @@ export async function recordProviderCallObservation(
     const outputLimitRecovery=observation.outcome==='pending_reconcile' && observation.error_code==='MODEL_OUTPUT_TOO_LARGE'
       && observation.usage.status==='unknown' && candidateCount===0 && r.task_kind==='update'
       && /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(observation.logical_call_id);
+    const timeoutRecovery=observation.outcome==='pending_reconcile' && observation.error_code==='MODEL_TIMEOUT'
+      && observation.usage.status==='unknown' && candidateCount===0 && r.task_kind==='update'
+      && /^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(observation.logical_call_id);
     const rejected=observation.error_code==='MODEL_PROVIDER_REQUEST_REJECTED' && observation.usage.status==='unknown' && candidateCount===0
       || payloadRejected&&!payloadRecovery;
     const providerBlocked = observation.outcome === 'failed' && observation.usage.status === 'unknown' && candidateCount === 0 &&
@@ -375,8 +378,8 @@ export async function recordProviderCallObservation(
     } else {
       await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[job.id]);
       await appendRunEvent(client,r,'paused','provider_reconcile',usageStatus==='conflict'?'provider_usage_conflict':resultConflict?'provider_result_conflict':
-        payloadRecovery?'file_authoring_payload_recovery_pending':outputLimitRecovery?'file_authoring_output_limit_recovery_pending':'provider_result_pending',
-        'run.state_changed',payloadRecovery?'MODEL_PROVIDER_PAYLOAD_TOO_LARGE':outputLimitRecovery?'MODEL_OUTPUT_TOO_LARGE':undefined);
+        payloadRecovery?'file_authoring_payload_recovery_pending':outputLimitRecovery?'file_authoring_output_limit_recovery_pending':timeoutRecovery?'file_authoring_timeout_recovery_pending':'provider_result_pending',
+        'run.state_changed',payloadRecovery?'MODEL_PROVIDER_PAYLOAD_TOO_LARGE':outputLimitRecovery?'MODEL_OUTPUT_TOO_LARGE':timeoutRecovery?'MODEL_TIMEOUT':undefined);
       await appendCallFinished(client,observation,'paused');
     }
     return {attempt_status:nextAttemptStatus,usage_status:usageStatus,idempotent:false};

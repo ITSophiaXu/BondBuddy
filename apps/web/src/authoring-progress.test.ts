@@ -146,3 +146,24 @@ test('output limit recovery reasons remain isolated and unavailable or exhausted
     assert.equal(authoringStatus({...run,state:'failed',stage:'failed'},[stopped]),undefined);
   }
 });
+
+
+test('timeout recovery is conditional until the same task is queued and never hides a user pause',()=>{
+  const pending=event(2,undefined,{state:'paused',stage:'provider_reconcile',payload:{reason:'file_authoring_timeout_recovery_pending'}});
+  const checking=authoringStatus({...run,state:'paused',stage:'provider_reconcile'},[pending])!;
+  assert.equal(checking.title,'正在核对恢复条件');assert.equal(checking.phase,2);
+  assert.match(checking.summary,/本轮处理超时.*符合条件时自动继续本次任务/);
+  assert.doesNotMatch(checking.summary,/工作进度已保存|已经恢复/);
+  assert.equal(authoringEventLabel(pending),'本轮处理超时，正在核对恢复条件');
+  const queued={...pending,state:'queued' as const,stage:'queued',payload:{reason:'file_authoring_timeout_retry_scheduled'}};
+  const continuing=authoringStatus({...run,state:'queued',stage:'queued'},[queued])!;
+  assert.equal(continuing.phase,2);assert.match(continuing.summary,/工作进度已保存.*仍是本次任务/);
+  assert.equal(authoringStatus({...run,state:'paused',stage:'user_paused'},[pending])!.title,'任务已暂停');
+  for(const other of [{...pending,run_id:'other'},{...pending,seq:1001}])
+    assert.equal(authoringStatus({...run,state:'paused',stage:'provider_reconcile'},[other]),undefined);
+  for(const reason of ['file_authoring_timeout_recovery_unavailable','file_authoring_timeout_retries_exhausted']){
+    const stopped={...pending,state:'failed' as const,stage:'failed',payload:{reason}};
+    assert.match(authoringEventLabel(stopped)!,/停止自动重试|本次未完成/);
+    assert.equal(authoringStatus({...run,state:'failed',stage:'failed'},[stopped]),undefined);
+  }
+});

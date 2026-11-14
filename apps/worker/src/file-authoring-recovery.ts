@@ -50,7 +50,7 @@ export function authorizedFileAuthoringRecovery(ctx: StageContext, logicalCallId
   if (!saved || saved.logical_call_id !== logicalCallId) return null;
   const dispositions = ctx.lease.checkpoint.operator_reconciliations as Record<string, Record<string, unknown>> | undefined;
   const audit = dispositions?.[saved.attempt_id];
-  if (!audit || (audit.reason_code !== 'file_authoring_payload_auto_retry' && audit.reason_code !== 'file_authoring_output_limit_auto_retry') || audit.decision !== 'retry_unknown_usage'
+  if (!audit || !['file_authoring_payload_auto_retry', 'file_authoring_output_limit_auto_retry', 'file_authoring_timeout_auto_retry'].includes(String(audit.reason_code)) || audit.decision !== 'retry_unknown_usage'
     || audit.attempt_id !== saved.attempt_id || audit.logical_call_id !== logicalCallId) return null;
   validate(ctx, saved, logicalCallId);
   return saved;

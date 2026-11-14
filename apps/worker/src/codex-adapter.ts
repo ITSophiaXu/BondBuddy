@@ -783,7 +783,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
           } catch { return { ok: false }; }
         });
         if (cls.error_code === 'MODEL_OUTPUT_SCHEMA_INVALID') await retainInvalidCodexOutput(c, input, intent, raw, invalidCategory, reviewTraceJson);
-        if (['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE'].includes(cls.error_code ?? '') && input.fileWorkspace?.onFailure &&
+        if (['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(cls.error_code ?? '') && input.fileWorkspace?.onFailure &&
             !input.signal?.aborted && (raw.exit_code !== null || ['SIGTERM','SIGKILL'].includes(raw.exit_signal ?? ''))) {
           // Save actual work before recordObservation releases the lease and before
           // finally removes the ephemeral directory. Failure never authorizes retry.

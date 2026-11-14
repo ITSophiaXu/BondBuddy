@@ -8,6 +8,8 @@ import { join } from 'node:path';
 import { runCodexProcess, runContainedModelCall, classifyCodexResult, loadCodexAdapterConfig,
   assertCodexConfig, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
+import { saveFileAuthoringRecovery, restoreFileAuthoringWork, type FileAuthoringRecovery } from './file-authoring-recovery.js';
+import type { StageContext } from './run-pipeline.js';
 
 const complete = { type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 5 } };
 const message = (text: string) => ({ type: 'item.completed', item: { type: 'agent_message', text } });
@@ -122,19 +124,31 @@ test('multiple complete events and a trailing complete line without newline are 
   } finally { await s.cleanup(); }
 });
 
-test('output limit snapshots terminated work before observation and cleanup, then only audited retry restores it', async () => {
-  const s = await setup({ file_output_limits: { event_bytes: 1024, final_message_bytes: 512 } });
+for (const failure of ['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'] as const)
+test(`${failure} snapshots terminated work before observation and cleanup, then only audited retry restores it`, async () => {
+  const s = await setup({ authoring_timeout_ms: failure==='MODEL_TIMEOUT'?3000:10000, file_output_limits: { event_bytes: 1024, final_message_bytes: 512 } });
   try {
     const journal = new MemoryCodexJournal(), saved = new Map<string, Buffer>(); let snapshots = 0, cwdSeen = '';
-    const input = s.input([{ path: 'output/partial.txt', text: 'synthetic partial' }, { path: 'scratch/state.json', text: '{"done":1}' }, { raw: 'x'.repeat(2048), hang: true }]);
+    let snapshot: FileAuthoringRecovery | undefined;
+    const recoveryCtx = { run: { id: 'run', owner_user_id: 'owner', project_id: 'project', input_hash: 'a'.repeat(64) },
+      lease: { checkpoint: {} }, checkpoint: {}, signal: new AbortController().signal,
+      blobs: { put: async (key: string, bytes: Buffer) => { saved.set(key, Buffer.from(bytes)); },
+        getIfExistsBounded: async (key: string, max: number) => { const bytes=saved.get(key); return bytes && bytes.length<=max ? bytes : null; } } } as unknown as StageContext;
+    const input = s.input([{ path: 'output/partial.txt', text: 'synthetic partial' }, { path: 'scratch/state.json', text: '{"done":1}' }, { raw: failure==='MODEL_TIMEOUT'?'':'x'.repeat(2048), hang: true }]);
     input.fileWorkspace!.onFailure = async (cwd, intent) => {
       snapshots++; cwdSeen = cwd; assert.equal(intent.attempt_no, 1); assert.equal(journal.observations.length, 0);
       const pid = Number(await readFile(join(cwd, 'synthetic-pid'), 'utf8'));
       assert.throws(() => process.kill(pid, 0), 'checkpoint must run only after the spawned process is gone');
-      for (const path of ['output/partial.txt', 'scratch/state.json']) saved.set(path, await readFile(join(cwd, path)));
+      snapshot = await saveFileAuthoringRecovery(recoveryCtx, cwd, intent, { checkpoint: async (_pool, lease, stage, value) => {
+        lease.checkpoint = { stages: { [stage]: value } };
+      } });
+      assert.ok(snapshot.files.some(file => file.path==='output/partial.txt'));
+      assert.ok(snapshot.files.some(file => file.path==='scratch/state.json'));
+      assert.ok(snapshot.files.some(file => file.path==='input.json'));
+      for (const file of snapshot.files) assert.deepEqual(saved.get(file.key), await readFile(join(cwd, file.path)));
     };
     const first = await runContainedModelCall(input, journal, s.config);
-    assert.equal(first.status, 'needs_reconcile'); assert.equal(first.error_code, 'MODEL_OUTPUT_TOO_LARGE');
+    assert.equal(first.status, 'needs_reconcile'); assert.equal(first.error_code, failure);
     assert.equal(first.attempts[0].usage.status, 'unknown'); assert.equal(snapshots, 1); assert.equal(journal.results.size, 0);
     await assert.rejects(readFile(join(cwdSeen, 'output/partial.txt')), { code: 'ENOENT' });
     assert.deepEqual(await readdir(s.config.work_root), []);
@@ -144,26 +158,27 @@ test('output limit snapshots terminated work before observation and cleanup, the
     journal.prior = { ...journal.prior, status: 'failed', operator_retry: true };
     const retry = s.input([{ event: message('done') }, { event: complete }]);
     const prepare = retry.fileWorkspace!.prepare;
-    retry.fileWorkspace!.prepare = async cwd => { await prepare(cwd); for (const [path, bytes] of saved) await writeFile(join(cwd, path), bytes); };
+    retry.fileWorkspace!.prepare = async cwd => { await prepare(cwd); await restoreFileAuthoringWork(recoveryCtx, cwd, snapshot!); };
     const second = await runContainedModelCall(retry, journal, s.config);
     assert.equal(second.status, 'completed'); assert.deepEqual(second.value, { text: 'synthetic partial' });
     assert.equal(second.attempts[0].attempt_no, 2); assert.equal(journal.observations[0].observation.usage.status, 'unknown');
   } finally { await s.cleanup(); }
 });
 
-test('cancellation, lease loss and unrelated unknown errors cannot authorize checkpoint recovery', async () => {
+for (const failure of ['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'] as const)
+test(`${failure} recovery excludes cancellation, lease loss and unrelated unknown errors`, async () => {
   for (const mode of ['cancel', 'abort_after_close', 'snapshot_failure', 'broken_stream'] as const) {
-    const s = await setup({ file_output_limits: { event_bytes: 1024, final_message_bytes: 512 } });
+    const s = await setup({ authoring_timeout_ms: failure==='MODEL_TIMEOUT'?3000:10000, file_output_limits: { event_bytes: 1024, final_message_bytes: 512 } });
     try {
       const journal = new MemoryCodexJournal(), controller = new AbortController(); let snapshots = 0;
       const input = s.input(mode === 'cancel' ? [{ event: { type: 'thread.started', thread_id: 'thread' }, hang: true }]
-        : mode === 'broken_stream' ? [{ raw: '{broken}\n', hang: true }] : [{ raw: 'x'.repeat(2048), hang: true }]);
+        : mode === 'broken_stream' ? [{ raw: '{broken}\n', hang: true }] : [{ raw: failure==='MODEL_TIMEOUT'?'':'x'.repeat(2048), hang: true }]);
       input.signal = controller.signal;
       if (mode === 'cancel') input.onEvent = () => controller.abort();
       if (mode === 'abort_after_close') journal.storeExecLog = async () => { controller.abort(); };
       input.fileWorkspace!.onFailure = async () => { snapshots++; throw Error('synthetic save failure'); };
       const result = await runContainedModelCall(input, journal, s.config);
-      assert.equal(result.error_code, mode === 'snapshot_failure' ? 'MODEL_OUTPUT_TOO_LARGE' : mode === 'broken_stream' ? 'MODEL_STREAM_BROKEN' : 'MODEL_CANCELLED');
+      assert.equal(result.error_code, mode === 'snapshot_failure' ? failure : mode === 'broken_stream' ? 'MODEL_STREAM_BROKEN' : 'MODEL_CANCELLED');
       assert.equal(snapshots, mode === 'snapshot_failure' ? 1 : 0); assert.equal(result.attempts[0].usage.status, 'unknown');
       assert.equal(journal.intents.length, 1); assert.equal(journal.observations.length, 1); assert.equal(journal.results.size, 0);
       assert.deepEqual(await readdir(s.config.work_root), []);
