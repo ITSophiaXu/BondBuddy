@@ -70,13 +70,30 @@ try {
     if (role === 'execution') {
       // Inspect effective values after all private overlays, before binding adoption or
       // any lifecycle command. Docker treats zero CPU/memory as an unlimited quota.
-      const review = s['worker-review'], limits = review?.deploy?.resources?.limits;
-      const concurrency = review?.environment?.BB_WORKER_CONCURRENCY;
-      const heap = review?.environment?.NODE_OPTIONS?.match(/^--max-old-space-size=([1-9][0-9]*)$/)?.[1];
-      if (typeof concurrency !== 'string' || !/^(?:[1-9]|1[0-6])$/.test(concurrency) ||
-          !heap || !Number.isSafeInteger(Number(heap)) ||
-          !Number.isFinite(Number(limits?.cpus)) || Number(limits.cpus) <= 0 ||
-          !Number.isSafeInteger(Number(limits?.memory)) || Number(limits.memory) <= 0) fail();
+      for (const name of ['worker', 'worker-review']) {
+        const service = s[name], limits = service?.deploy?.resources?.limits;
+        const concurrency = service?.environment?.BB_WORKER_CONCURRENCY;
+        const heap = service?.environment?.NODE_OPTIONS?.match(/^--max-old-space-size=([1-9][0-9]*)$/)?.[1];
+        const modelBudget = service?.environment?.BB_MODEL_CALL_CONCURRENCY;
+        if (typeof concurrency !== 'string' || !/^(?:[1-9]|1[0-6])$/.test(concurrency) ||
+            !heap || !Number.isSafeInteger(Number(heap)) ||
+            !Number.isFinite(Number(limits?.cpus)) || Number(limits.cpus) <= 0 ||
+            !Number.isSafeInteger(Number(limits?.memory)) || Number(limits.memory) <= 0 ||
+            modelBudget !== undefined && !/^[1-4]$/.test(modelBudget)) fail();
+      }
+      const interactive = s.worker.environment.BB_WORKER_INTERACTIVE_SLOTS;
+      const assistant = s['worker-review'].environment.BB_REVIEW_ASSISTANT_SLOTS;
+      if (!/^[0-4]$/.test(interactive) || assistant !== undefined && !/^[1-4]$/.test(assistant)) fail();
+      const executionHost=s.worker.environment.BB_MODEL_EXECUTION_HOST_ID;
+      const reviewHost=s['worker-review'].environment.BB_MODEL_EXECUTION_HOST_ID;
+      if (executionHost && (!/^[a-f0-9]{64}$/.test(executionHost) || executionHost!==reviewHost)) fail();
+      const authoringTotal = Number(s.worker.environment.BB_WORKER_CONCURRENCY) + Number(interactive);
+      // An expanded deployment must account for every added channel and use one
+      // shared model budget, rather than multiplying four tasks by four child calls.
+      if (Number(s.worker.environment.BB_WORKER_CONCURRENCY) >= 4 && authoringTotal > 4) fail();
+      if ((Number(s.worker.environment.BB_WORKER_CONCURRENCY) >= 4 || Number(assistant) > 1) &&
+          (s.worker.environment.BB_MODEL_CALL_CONCURRENCY !== '4' || s['worker-review'].environment.BB_MODEL_CALL_CONCURRENCY !== '4' || !/^[a-f0-9]{64}$/.test(executionHost??''))) fail();
+
     }
     if (role === 'main') {
       const pg = s.postgres, mount = pg.volumes.find(v => v.target === '/var/lib/postgresql/data');
@@ -156,6 +173,6 @@ try {
   } else fail();
   }
 } catch {
-  console.error('role configuration rejected: verify private env, override file/hash, review concurrency/resource limits, parser placement and persisted environment/volume binding (details withheld)');
+  console.error('role configuration rejected: verify private env, override file/hash, review concurrency/resource limits, authoring channels/model budget, parser placement and persisted environment/volume binding (details withheld)');
   process.exitCode = 2;
 }
