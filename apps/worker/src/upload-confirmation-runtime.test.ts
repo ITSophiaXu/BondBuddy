@@ -53,3 +53,10 @@ test('dedicated spool locks exclude a second process and only clean managed priv
     assert.equal(await readFile(foreign,'utf8'),'synthetic-foreign');
   }finally{await release?.();await rm(root,{recursive:true,force:true});}
 });
+
+test('four general confirmation lanes require the reserved small slot and exact 448 MiB shared budget',()=>{
+ const four={...env,BB_UPLOAD_CONFIRMATION_CONCURRENCY:'4',BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1',BB_UPLOAD_SPOOL_MAX_BYTES:String(448*1024*1024)};
+ const config=confirmationConfig(four);assert.equal(config.concurrency,4);assert.equal(config.budget,448*1024*1024);
+ for(const change of [{BB_UPLOAD_CONFIRMATION_CONCURRENCY:'5'},{BB_UPLOAD_CONFIRMATION_CONCURRENCY:'2'},{BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'0'},{BB_UPLOAD_CONFIRMATION_LANE:'large'},{BB_UPLOAD_SPOOL_MAX_BYTES:'134217728'},{BB_UPLOAD_SPOOL_MAX_BYTES:String(416*1024*1024)}])assert.throws(()=>confirmationConfig({...four,...change}));
+ assert.equal(confirmationConfig(env).concurrency,1);
+});

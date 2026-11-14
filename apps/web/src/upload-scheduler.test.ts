@@ -15,7 +15,7 @@ test('a synchronous transfer failure releases exactly one slot',async()=>{
 });
 
 test('two real transfer slots are FIFO and a cancelled waiter never sends',async()=>{
- const queue=new UploadTransferQueue(),gates=[gate(),gate(),gate()],started:number[]=[];
+ const queue=new UploadTransferQueue(2),gates=[gate(),gate(),gate()],started:number[]=[];
  const tasks=gates.map((g,i)=>queue.run(()=>{started.push(i);return g.promise;},live()));
  const cancelled=new AbortController();const fourth=queue.run(async()=>{started.push(3);},cancelled.signal);
  const rejected=assert.rejects(fourth,{name:'AbortError'});cancelled.abort();
@@ -30,7 +30,7 @@ test('slow confirmation does not hold PUT slots; the ordered window stays at fou
  const task=orderedUploadPipeline([0,1,2,3,4,5],async i=>{
   await queue.run(async()=>{puts++;maxPuts=Math.max(maxPuts,puts);started.push(i);await flush();puts--;},live());return confirm[i].promise;
  },async value=>{adopted.push(value);},live());
- await flush();await flush();await flush();assert.deepEqual(started,[0,1,2,3]);assert.equal(maxPuts,2);assert.deepEqual(adopted,[]);
+ await flush();await flush();await flush();assert.deepEqual(started,[0,1,2,3]);assert.equal(maxPuts,4);assert.deepEqual(adopted,[]);
  confirm[3].resolve(3);confirm[2].resolve(2);confirm[1].resolve(1);await flush();assert.deepEqual(adopted,[]);assert.equal(started.length,4);
  confirm[0].resolve(0);await flush();await flush();assert.deepEqual(adopted,[0,1,2,3]);assert.deepEqual(started,[0,1,2,3,4,5]);
  confirm[5].resolve(5);confirm[4].resolve(4);await task;assert.deepEqual(adopted,[0,1,2,3,4,5]);
@@ -57,4 +57,15 @@ test('business conflict stops the look-ahead batch without adopting another save
 test('an already cancelled batch starts no work',async()=>{
  const controller=new AbortController();controller.abort();let calls=0;
  await assert.rejects(orderedUploadPipeline([0],async()=>++calls,async()=>{},controller.signal),{name:'AbortError'});assert.equal(calls,0);
+});
+
+test('default capacity is four actual transfers; a fifth waits and cancelled waiters never send',async()=>{
+ const queue=new UploadTransferQueue(),gates=Array.from({length:6},()=>gate()),started:number[]=[];
+ let active=0,peak=0;
+ const tasks=gates.map((g,i)=>queue.run(async()=>{started.push(i);active++;peak=Math.max(peak,active);try{await g.promise;}finally{active--;}},live()));
+ assert.deepEqual(started,[0,1,2,3]);assert.equal(peak,4);
+ gates[1].resolve();await flush();assert.deepEqual(started,[0,1,2,3,4]);
+ gates[0].resolve();await flush();assert.deepEqual(started,[0,1,2,3,4,5]);
+ for(const g of gates)g.resolve();await Promise.all(tasks);assert.equal(peak,4);assert.equal(active,0);
+ assert.throws(()=>new UploadTransferQueue(5),RangeError);
 });

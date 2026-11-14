@@ -1,3 +1,4 @@
+import {uploadFileDigest} from './upload-file-digest.js';
 import {uploadPicker} from './upload-picker';
 import './upload-progress.css';
 import {GenerationProgressSchema,generationBatchActive,type GenerationProgress} from '@bondbuddy/contracts';
@@ -218,7 +219,7 @@ export class WorkpaperPanel {
     await this.act(async()=>{
       if(file&&(!/\.xlsx$/i.test(file.name)||file.size>WORKPAPER_LIMITS.fileBytes))throw new UserFacingError('请上传 10 MB 以内的 XLSX。');
       if(!operation&&file){
-        const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].map(x=>x.toString(16).padStart(2,'0')).join('');
+        const hash=[...new Uint8Array(await uploadFileDigest(file))].map(x=>x.toString(16).padStart(2,'0')).join('');
         if(!this.live())return;
         const records=new UploadRecovery(this.api,this.owner,this.project,'workpaper-catalogue',()=>this.live()).list();
         operation=records.find(r=>r.declaration.filename===file.name&&r.declaration.byte_size===file.size&&r.declaration.sha256===hash)?.id;

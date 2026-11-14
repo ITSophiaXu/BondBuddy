@@ -3,8 +3,8 @@ export const UPLOAD_WINDOW_SIZE = 4;
 export class UploadTransferQueue {
   private active = 0;
   private waiting: (() => void)[] = [];
-  constructor(private readonly limit = 2) {
-    if (!Number.isInteger(limit) || limit < 1) throw new RangeError('Invalid upload limit');
+  constructor(private readonly limit = UPLOAD_WINDOW_SIZE) {
+    if (!Number.isInteger(limit) || limit < 1 || limit > UPLOAD_WINDOW_SIZE) throw new RangeError('Invalid upload limit');
   }
   run<T>(action: () => Promise<T>, signal: AbortSignal): Promise<T> {
     return new Promise<T>((resolve, reject) => {
@@ -34,7 +34,7 @@ export class UploadTransferQueue {
   private pump() { while (this.active < this.limit && this.waiting.length) this.waiting.shift()!(); }
 }
 
-/** All ApiClient instances in this page share the same two actual PUT slots. */
+/** All ApiClient instances in this page share the same four actual PUT slots. */
 export const uploadTransfers = new UploadTransferQueue();
 
 type Settled<T> = { ok: true; value: T } | { ok: false; error: unknown };

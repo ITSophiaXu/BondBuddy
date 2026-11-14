@@ -1,3 +1,4 @@
+import {uploadFileDigest} from './upload-file-digest.js';
 import { M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, M4MaterialPinSchema, type M4MaterialPin, type M4Workspace } from './billing-types.js';
 import { UserFacingError } from './user-facing-error.js';
 import { Value } from '@sinclair/typebox/value';
@@ -61,7 +62,7 @@ export class AssistantUploadRecovery {
     const media: Record<string, typeof M1_UPLOAD_MIME_TYPES[number]> = { docx: M1_UPLOAD_MIME_TYPES[0], pdf: M1_UPLOAD_MIME_TYPES[1], xlsx: M1_UPLOAD_MIME_TYPES[2], csv: M1_UPLOAD_MIME_TYPES[3], txt: M1_UPLOAD_MIME_TYPES[4], png: M1_UPLOAD_MIME_TYPES[5], jpg: M1_UPLOAD_MIME_TYPES[6], jpeg: M1_UPLOAD_MIME_TYPES[6] };
     const mime = media[file.name.split('.').at(-1)?.toLowerCase() ?? ''];
     if (!mime || !file.size || file.size > M1_UPLOAD_LIMITS.fileBytes) throw new AssistantUploadRecoveryError('文件格式或大小不符合上传要求。');
-    const digest = this.dependencies.digest ? await this.dependencies.digest(file) : [...new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))].map(byte => byte.toString(16).padStart(2, '0')).join('');
+    const digest = this.dependencies.digest ? await this.dependencies.digest(file) : [...new Uint8Array(await uploadFileDigest(file))].map(byte => byte.toString(16).padStart(2, '0')).join('');
     this.live();
     // Queue this helper's short topic phases so concurrent picks and final member
     // checks cannot reject each other through the fail-fast cross-page lock.

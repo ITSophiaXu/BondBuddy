@@ -51,21 +51,20 @@ const flush = () => new Promise<void>(resolve => setImmediate(resolve));
 
 test('PUT slots span the HTTP receipt, are shared by clients, and exclude completion waiting',async t=>{
  const f=transport(t),other=new ApiClient(()=>{}),signal=new AbortController().signal;
- const first=f.api.uploadBytes(uploadUrl,file(),()=>{},signal),second=other.uploadBytes(uploadUrl,file(),()=>{},signal);
- const third=f.api.uploadBytes(uploadUrl,file(),()=>{},signal);
- assert.equal(f.requests.length,2);
- f.requests[0].progress(file().size,file().size);f.requests[0].transferred();await flush();assert.equal(f.requests.length,2);
- f.requests[0].finish();await first;await flush();assert.equal(f.requests.length,3);
- f.requests[1].finish();f.requests[2].finish();await Promise.all([second,third]);
+ const tasks=Array.from({length:5},(_,i)=>(i%2?other:f.api).uploadBytes(uploadUrl,file(),()=>{},signal));
+ assert.equal(f.requests.length,4);
+ f.requests[0].progress(file().size,file().size);f.requests[0].transferred();await flush();assert.equal(f.requests.length,4);
+ f.requests[0].finish();await tasks[0];await flush();assert.equal(f.requests.length,5);
+ for(const xhr of f.requests.slice(1))xhr.finish();await Promise.all(tasks);
 });
 
 test('resetting the authenticated client cancels active and queued PUTs before another identity can send',async t=>{
  const f=transport(t),signal=new AbortController().signal;
- const tasks=[0,1,2].map(()=>f.api.uploadBytes(uploadUrl,file(),()=>{},signal));
+ const tasks=[0,1,2,3,4].map(()=>f.api.uploadBytes(uploadUrl,file(),()=>{},signal));
  const rejected=tasks.map(task=>assert.rejects(task,{name:'AbortError'}));
- assert.equal(f.requests.length,2);f.api.reset();await Promise.all(rejected);await flush();
- assert.equal(f.requests.length,2);assert.ok(f.requests.every(xhr=>xhr.aborts===1));
- const next=f.api.uploadBytes(uploadUrl,file(),()=>{},signal);assert.equal(f.requests.length,3);f.requests[2].finish();await next;
+ assert.equal(f.requests.length,4);f.api.reset();await Promise.all(rejected);await flush();
+ assert.equal(f.requests.length,4);assert.ok(f.requests.every(xhr=>xhr.aborts===1));
+ const next=f.api.uploadBytes(uploadUrl,file(),()=>{},signal);assert.equal(f.requests.length,5);f.requests[4].finish();await next;
 });
 
 test('buffered PUT accepts 204 more than 120 seconds after browser upload.load', async t => {

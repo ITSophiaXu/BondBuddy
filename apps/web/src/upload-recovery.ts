@@ -1,3 +1,4 @@
+import {uploadFileDigest} from './upload-file-digest.js';
 import { M1_UPLOAD_LIMITS, M1_UPLOAD_MIME_TYPES, schemas } from './billing-types.js';
 import { Value } from '@sinclair/typebox/value';
 import { UserFacingError } from './user-facing-error.js';
@@ -99,7 +100,7 @@ const browserLock: UploadRecoveryLock = {
     });
   },
 };
-const defaultDigest = async (file: File) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))].map(byte => byte.toString(16).padStart(2, '0')).join('');
+const defaultDigest = async (file: File) => [...new Uint8Array(await uploadFileDigest(file))].map(byte => byte.toString(16).padStart(2, '0')).join('');
 
 /** Explicit upload recovery only: no discovery, association, draft adoption, task execution or billing. */
 export class UploadRecovery {
