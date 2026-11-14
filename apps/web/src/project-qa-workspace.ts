@@ -723,7 +723,7 @@ export class ProjectQaWorkspace {
    this.preparingUpload=files[0];this.paint();
    const base=this.snapshot(),declarations:Dto<'UploadCreateRequest'>[]=[];
    for(const file of files){const media=qaUploadMedia(file.name,kind);if(!media||!file.size||file.size>100*1024*1024)throw new UserFacingError('请上传不超过 100 MB 的'+(kind==='source'?' DOC/DOCX 或 PDF 问题清单。':' DOC/DOCX、PDF 或 Excel 材料。'));
-    const sha256=[...new Uint8Array(await uploadFileDigest(file))].map(v=>v.toString(16).padStart(2,'0')).join('');
+    const sha256=[...new Uint8Array(await uploadFileDigest(file,this.controller.signal))].map(v=>v.toString(16).padStart(2,'0')).join('');
     if(!this.live())return;declarations.push({filename:file.name,media_type:media,role:'other',sha256,byte_size:file.size});
    }
    if(!this.cacheMatches()||!qaUploadSame(base,this.snapshot()))throw new UserFacingError('准备内容已在文件核对期间改变，未开始上传。');

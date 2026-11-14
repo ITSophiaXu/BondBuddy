@@ -1132,7 +1132,7 @@ function addUpload(projectId: string, role: UploadRole, file: File) {
 function pumpUploads() {
   pumpUploadPreparation();
   for (const uploads of localUploads.values()) for (const upload of uploads) {
-    if (runningUploads >= 4) return; // Confirmation must not occupy the two shared PUT slots.
+    if (runningUploads >= 4) return; // Four in-flight operations and four shared PUT slots are distinct limits.
     if (upload.phase !== 'queued' || !upload.declaration || upload.controller || upload.owner !== identity) continue;
     runningUploads++; upload.phase = 'hashing';
     void performUpload(upload).finally(() => { runningUploads--; pumpUploads(); });

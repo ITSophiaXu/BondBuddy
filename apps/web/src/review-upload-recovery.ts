@@ -210,7 +210,7 @@ export class ReviewUploadRecovery {
       for (const [index, file] of files.entries()) {
         const media_type = media[file.name.split('.').at(-1)?.toLowerCase() ?? ''];
         check(media_type && file.size > 0 && file.size <= M1_UPLOAD_LIMITS.fileBytes && (!['historical', 'reference'].includes(role) || M1_UPLOAD_MIME_TYPES.slice(0, 2).includes(media_type as typeof M1_UPLOAD_MIME_TYPES[0])), '历史或参考募集书仅支持 DOCX/PDF；其他材料须为支持格式且不超过 100 MB。');
-        const sha256 = this.options.digest ? await this.options.digest(file) : [...new Uint8Array(await uploadFileDigest(file))].map(v => v.toString(16).padStart(2, '0')).join(''); this.live();
+        const sha256 = this.options.digest ? await this.options.digest(file) : [...new Uint8Array(await uploadFileDigest(file,this.options.signal))].map(v => v.toString(16).padStart(2, '0')).join(''); this.live();
         items.push({ id: this.nonce(), index, declaration: { filename: file.name, role, media_type, byte_size: file.size, sha256 }, stage: 'prepared', localCacheResult: 'pending', coreCleaned: false });
       }
       this.requireBase({ ...base, cacheRaw: raw });
