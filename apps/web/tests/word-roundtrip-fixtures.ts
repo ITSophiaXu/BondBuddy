@@ -211,6 +211,11 @@ export async function install(page:Page,s=fixture()){
   });
   return s;
 }
-export async function openFiles(page:Page,root=ids.root){await page.goto(`/#/projects/${root}/files`);await expect(page.locator('#file-list')).toBeVisible();}
+export async function openFiles(page:Page,root=ids.root){
+  // The file-list assertion is the application readiness gate; window.load is
+  // not required by the project-file route or its continuation controls.
+  await page.goto(`/#/projects/${root}/files`,{waitUntil:'domcontentloaded'});
+  await expect(page.locator('#file-list')).toBeVisible();
+}
 export async function downloadBytes(download:Download){expect(await download.failure()).toBeNull();const path=await download.path();expect(path).not.toBeNull();return readFile(path!);}
 export function assertFixture(s:State){expect(s.unexpected).toEqual([]);expect(s.errors).toEqual([]);}

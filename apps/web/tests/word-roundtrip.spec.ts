@@ -85,17 +85,39 @@ test.describe('finite Word roundtrip contracts',()=>{
     expect(s.executions).toHaveLength(1);expect(s.imports).toEqual([]);assertFixture(s);
   });
 
-  test('same-name mismatches, missing run, file patch, plain topic and unavailable registries never guess a continuation',async({context})=>{
+  test('same-name mismatches, missing run, file patch, plain topic and unavailable registries never guess a continuation',async({context},testInfo)=>{
     const options:NonNullable<Parameters<typeof fixture>[0]>[]=[{mismatch:'hash'},{mismatch:'version'},{mismatch:'project'},{mismatch:'missing-run'},
       {mismatch:'file-patch'},{mismatch:'plain-topic'},{registryFailure:true},{workspaceFailure:true}];
-    for(const option of options){const page=await context.newPage(),s=await install(page,fixture(option));await openFiles(page);
-      const original=page.locator('#file-list>.collection-file').filter({hasText:'立项报告原稿_V1.docx'});
-      await expect(original.getByRole('link',{name:'打开此稿继续修改',exact:true})).toHaveCount(0);
-      await expect(original).toContainText(option.registryFailure?'文件版本暂未核对':'此稿暂不能直接接续');
-      if(!option.registryFailure)await expect(original.getByRole('button',{name:'上传此文件修改稿',exact:true})).toBeVisible();
-      const material=page.locator('#file-list>.collection-file').filter({hasText:'发行人基本情况.docx'});
-      await expect(material.getByRole('link',{name:'打开此稿继续修改',exact:true})).toHaveCount(0);
-      expect(businessCalls(s)).toEqual([]);assertFixture(s);await page.close();
+    const started=Date.now(),phases:{scenario:string;phase:string;started_ms:number;duration_ms:number;outcome:'passed'|'failed'}[]=[];
+    const timed=async<T>(scenario:string,phase:string,action:()=>Promise<T>):Promise<T>=>{
+      const began=Date.now(),measurement:typeof phases[number]={scenario,phase,started_ms:began-started,duration_ms:0,outcome:'failed'};
+      phases.push(measurement);
+      try{const value=await test.step(phase,action);measurement.outcome='passed';return value;}
+      finally{measurement.duration_ms=Date.now()-began;}
+    };
+    try{
+      for(const option of options){
+        const scenario=option.mismatch??(option.registryFailure?'registry-unavailable':'workspace-unavailable');
+        await test.step(scenario,async()=>{
+          const page=await timed(scenario,'new-page',()=>context.newPage());
+          const s=await timed(scenario,'install-fixture',()=>install(page,fixture(option)));
+          await timed(scenario,'open-files',()=>openFiles(page));
+          await timed(scenario,'continuation-assertions',async()=>{
+            const original=page.locator('#file-list>.collection-file').filter({hasText:'立项报告原稿_V1.docx'});
+            await expect(original.getByRole('link',{name:'打开此稿继续修改',exact:true})).toHaveCount(0);
+            await expect(original).toContainText(option.registryFailure?'文件版本暂未核对':'此稿暂不能直接接续');
+            if(!option.registryFailure)await expect(original.getByRole('button',{name:'上传此文件修改稿',exact:true})).toBeVisible();
+            const material=page.locator('#file-list>.collection-file').filter({hasText:'发行人基本情况.docx'});
+            await expect(material.getByRole('link',{name:'打开此稿继续修改',exact:true})).toHaveCount(0);
+            expect(businessCalls(s)).toEqual([]);assertFixture(s);
+          });
+          // Keep failed pages open for Playwright's original error-context capture.
+          await timed(scenario,'close-page',()=>page.close());
+        });
+      }
+    }finally{
+      await testInfo.attach('word-roundtrip-phase-timings',{contentType:'application/json',
+        body:JSON.stringify({case_budget_ms:testInfo.timeout,elapsed_ms:Date.now()-started,scenarios:options,phases},null,2)});
     }
   });
 
