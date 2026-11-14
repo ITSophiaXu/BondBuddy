@@ -37,26 +37,40 @@ services:
     extends: {file: compose.yaml, service: worker}
     environment:
       DATABASE_URL: ${BB_EXECUTION_DATABASE_URL:?set a URL with host pg-tunnel and the sole business database}
-      NODE_OPTIONS: --max-old-space-size=768
+      NODE_OPTIONS: --max-old-space-size=${BB_AUTHORING_NODE_HEAP_MIB:-768}
       BB_WORKER_LEASE_SECONDS: ${BB_WORKER_LEASE_SECONDS:-120}
-      BB_WORKER_CONCURRENCY: '1'
+      BB_WORKER_CONCURRENCY: ${BB_AUTHORING_WORKER_CONCURRENCY:-1}
+      BB_WORKER_INTERACTIVE_SLOTS: ${BB_AUTHORING_INTERACTIVE_SLOTS:-1}
+      BB_MODEL_CALL_CONCURRENCY: ${BB_MODEL_CALL_CONCURRENCY:-4}
+      BB_MODEL_EXECUTION_HOST_ID: ${BB_MODEL_EXECUTION_HOST_ID:-}
       BB_UPLOAD_CONFIRMATION_ENABLED: '0'
     depends_on: !override
       pg-tunnel: {condition: service_healthy}
       egress: {condition: service_started}
-    deploy: {resources: {limits: {cpus: '0.75', memory: 2G}}}
+    deploy:
+      resources:
+        limits:
+          cpus: '${BB_AUTHORING_CPU_LIMIT:-0.75}'
+          memory: ${BB_AUTHORING_MEMORY_LIMIT:-2G}
   worker-review:
     extends: {file: compose.yaml, service: worker-review}
     environment:
       DATABASE_URL: ${BB_EXECUTION_DATABASE_URL:?set a URL with host pg-tunnel and the sole business database}
-      NODE_OPTIONS: --max-old-space-size=768
+      NODE_OPTIONS: --max-old-space-size=${BB_REVIEW_NODE_HEAP_MIB:-768}
       BB_WORKER_LEASE_SECONDS: ${BB_WORKER_LEASE_SECONDS:-120}
-      BB_WORKER_CONCURRENCY: '1'
+      BB_WORKER_CONCURRENCY: ${BB_REVIEW_WORKER_CONCURRENCY:-1}
+      BB_REVIEW_ASSISTANT_SLOTS: ${BB_REVIEW_ASSISTANT_SLOTS:-1}
+      BB_MODEL_CALL_CONCURRENCY: ${BB_MODEL_CALL_CONCURRENCY:-4}
+      BB_MODEL_EXECUTION_HOST_ID: ${BB_MODEL_EXECUTION_HOST_ID:-}
       BB_UPLOAD_CONFIRMATION_ENABLED: '0'
     depends_on: !override
       pg-tunnel: {condition: service_healthy}
       egress: {condition: service_started}
-    deploy: {resources: {limits: {cpus: '0.75', memory: 2G}}}
+    deploy:
+      resources:
+        limits:
+          cpus: '${BB_REVIEW_CPU_LIMIT:-0.75}'
+          memory: ${BB_REVIEW_MEMORY_LIMIT:-2G}
   # Separate confirmation consumer: no model environment or credential mounts.
   upload-confirmation:
     image: bondbuddy-m1-upload-confirmation:${BB_IMAGE_TAG:?fixed release version required}

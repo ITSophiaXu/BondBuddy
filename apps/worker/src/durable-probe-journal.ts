@@ -1,3 +1,4 @@
+import { modelCallBudgetFor } from './model-call-budget.js';
 import type { Pool } from 'pg';
 import { recordPotentialCall, type Lease } from '@bondbuddy/api/queue';
 import { latestProviderAttempt, persistProviderResultObject, readCheckpointedProviderResult, recordModelAttemptRuntime, recordProviderCallObservation, type ModelAttemptRuntime, type ProviderCallIntent, type ProviderCallObservation, type ProviderResultReference, type ProviderResultValidator } from '@bondbuddy/api/provider-results';
@@ -49,6 +50,8 @@ export class DurableProbeJournal implements ProbeJournal {
 // #16 Codex adapter journal: adds #79 runtime rows and restart lookups to the probe journal.
 export class CodexDurableJournal extends DurableProbeJournal implements CodexJournal {
   constructor(private readonly codexInput: ConstructorParameters<typeof DurableProbeJournal>[0]) { super(codexInput); }
+
+  acquireCallSlot(signal?: AbortSignal) { return modelCallBudgetFor(this.codexInput.pool).acquire(signal, `run:${this.codexInput.lease.runId}`); }
 
   async recordWebSearchEvents(intent: ProviderCallIntent, events: NonNullable<import('./codex-adapter.js').CodexProcessResult['web_search_events']>) {
     const { pool, lease } = this.codexInput;
