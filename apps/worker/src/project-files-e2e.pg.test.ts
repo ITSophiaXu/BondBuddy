@@ -29,9 +29,12 @@ const database=await isolatedTestDatabase(undefined,'project-files-e2e'),storage
 const DOCX='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 test('project files: template batch, provenance, real checks with synthetic model, whole-file paid updates, stale CAS, Word and isolation',
  {skip:!database||!storage||!process.env.BONDBUDDY_TEST_PYTHON,timeout:300000},async()=>{
-  const pool=new Pool({connectionString:database}),owner=randomUUID(),container='bb-files-'+randomUUID().replaceAll('-',''),dir=await mkdtemp(join(tmpdir(),'bb-files-e2e-'));let actor=owner;
+  const pool=new Pool({connectionString:database}),currentPool=new Pool({connectionString:database}),owner=randomUUID(),container='bb-files-'+randomUUID().replaceAll('-',''),dir=await mkdtemp(join(tmpdir(),'bb-files-e2e-'));let actor=owner;
   const blobs=azureBlobs(storage!,container),origin='http://bondbuddy.test';
-  const app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
+  // Preserve the original free-check/4500-point-per-file contract and all exact balance assertions.
+  const settings={blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})};
+  const app=createServer({...settings,pool,historicalBillingFixture:true});
+  const current=createServer({...settings,pool:currentPool});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
   const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,r.body);return r.body?r.json():null;};
   const oldText='Synthetic. 发行规模100万元。2025年总资产200万元。';
@@ -106,6 +109,10 @@ test('project files: template batch, provenance, real checks with synthetic mode
       const saved=await ok('PUT','/api/v1/m4/topics/'+w.workspace.topic.topic_id+'/drafts/'+type,{expected_version:version,input});w.workspace.drafts[type]=saved.draft;
     }
     batch.documents=['issuer','annual'].map(type=>({document_type:type,draft_version:w.workspace.drafts[type].version}));
+    const rejected=await current.inject({method:'POST',url:base+'/batches',headers:{origin},payload:batch});
+    assert.equal(rejected.statusCode,409,rejected.body);assert.equal(rejected.json().code,'QUOTE_CHANGED');
+    assert.equal((await currentPool.query('SELECT count(*)::int n FROM bb_project_file_batches WHERE owner_user_id=$1 AND project_id=$2',[owner,id])).rows[0].n,0);
+    assert.equal((await currentPool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1',[owner])).rows[0].n,0);
     const submitted=await ok('POST',base+'/batches',batch);assert.equal((await ok('POST',base+'/batches',batch)).batch_id,submitted.batch_id);
     assert.equal(await advanceProjectFileBatch(pool),true);assert.equal(await execute(false),'succeeded');
     assert.equal(await advanceProjectFileBatch(pool),true);assert.equal(await execute(false),'succeeded');await advanceProjectFileBatch(pool);
@@ -187,6 +194,6 @@ test('project files: template batch, provenance, real checks with synthetic mode
     const charges=(await ok('GET','/api/v1/credits/consumption-history')).items.filter((x:any)=>x.task_name==='更新关联文件');
     assert.equal(charges.filter((x:any)=>x.state==='settled'&&x.charged_points==='4500').length,3);
     assert.equal(charges.filter((x:any)=>x.state==='released'&&x.charged_points==='0'&&x.released_points==='4500').length,2);
-  }finally{await app.close();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();await pool.end();await rm(dir,{recursive:true,force:true});}
+  }finally{await current.close();await currentPool.end();await app.close();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();await pool.end();await rm(dir,{recursive:true,force:true});}
 });
 

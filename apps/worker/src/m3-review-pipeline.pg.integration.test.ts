@@ -42,12 +42,16 @@ const cliRevision=process.env.BB_TEST_M3_CLI_REVISION==='1';
 test('M3 real upload/parse → synthetic contained CLI with explicit tools → report/comments downloads → accepted plan revision pair → immutable history',
   {skip:!database||!connection||!python,timeout:cliRevision?240000:180000},async()=>{
     if(cliRevision)assert.equal(process.platform,'linux','BB_TEST_M3_CLI_REVISION requires the worker image and real native sandbox');
-    const pool=new Pool({connectionString:database});
+    const pool=new Pool({connectionString:database}),currentPool=new Pool({connectionString:database});
     const root=await mkdtemp(join(tmpdir(),'bb-m3-pipeline-')),marker=join(root,'synthetic-calls.jsonl');
     const container=`bb-m3-${randomUUID().replaceAll('-','')}`,blobs=azureBlobs(connection!,container);
     const owner=randomUUID();let active=owner;
-    const origin='http://bondbuddy.test',app=createServer({pool,blobs,allowedOrigin:origin,
-      principal:async()=>({userId:active,csrfVerified:true}),enableRunRuntime:true});
+    // Replay the original free review/revision contract, including the zero-accounting assertion below.
+    const origin='http://bondbuddy.test',settings={blobs,allowedOrigin:origin,
+      principal:async()=>({userId:active,csrfVerified:true}),enableRunRuntime:true};
+    const app=createServer({...settings,pool,historicalBillingFixture:true,enablePaidReview:false});
+    // Separate Pool keeps current HTTP policy from changing the historical worker's billing context.
+    const current=createServer({...settings,pool:currentPool});
     const beforeWord=process.env.BONDBUDDY_WORD_PYTHON,beforeSearch=process.env.BB_REVIEW_WEB_SEARCH_ENABLED;
     process.env.BONDBUDDY_WORD_PYTHON=python;process.env.BB_REVIEW_WEB_SEARCH_ENABLED='0';
     const config:CodexAdapterConfig={command:[process.execPath,fake,`--m3-marker=${marker}`],model_id:'deepseek-flash',model_provider:'deepseek',
@@ -115,6 +119,10 @@ d.save(sys.argv[3])`,sourcePath,auditPath,pendingPath]);
       const saved=await send('PUT',`/api/v1/projects/${project}/review-draft`,{kind:'input',expected_version:0,input});
       assert.equal(saved.statusCode,200,saved.body);assert.equal(saved.json().draft.version,1);
       const request={execution_request_id:randomUUID(),operation:'full_review',expected_input_version:1,source_report_id:null,expected_plan_version:null,finding_ids:[]};
+      const rejected=await current.inject({method:'POST',url:'/api/v1/projects/'+project+'/review-executions',headers:{origin},payload:request});
+      assert.equal(rejected.statusCode,409,rejected.body);assert.equal(rejected.json().code,'QUOTE_REQUIRED');
+      assert.equal((await currentPool.query('SELECT count(*)::int n FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2',[owner,project])).rows[0].n,0);
+      assert.equal((await currentPool.query('SELECT count(*)::int n FROM bb_credit_reservations WHERE owner_user_id=$1',[owner])).rows[0].n,0);
       const starts=await Promise.all([send('POST',`/api/v1/projects/${project}/review-executions`,request),send('POST',`/api/v1/projects/${project}/review-executions`,request)]);
       for(const response of starts)assert.equal(response.statusCode,200,response.body);
       const reviewRun=starts[0].json();assert.equal(reviewRun.run_id,starts[1].json().run_id);
@@ -285,7 +293,7 @@ d.save(sys.argv[3])`,sourcePath,auditPath,pendingPath]);
     } finally {
       if(beforeWord===undefined)delete process.env.BONDBUDDY_WORD_PYTHON;else process.env.BONDBUDDY_WORD_PYTHON=beforeWord;
       if(beforeSearch===undefined)delete process.env.BB_REVIEW_WEB_SEARCH_ENABLED;else process.env.BB_REVIEW_WEB_SEARCH_ENABLED=beforeSearch;
-      await app.close();await pool.end();await BlobServiceClient.fromConnectionString(connection!).getContainerClient(container).deleteIfExists();
+      await current.close();await currentPool.end();await app.close();await pool.end();await BlobServiceClient.fromConnectionString(connection!).getContainerClient(container).deleteIfExists();
       await rm(root,{recursive:true,force:true});
     }
   });
