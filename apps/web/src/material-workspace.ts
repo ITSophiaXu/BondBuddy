@@ -1,5 +1,6 @@
 import {uploadPickerContent} from './upload-picker';
 import './upload-progress.css';
+import {orderedUploadPipeline,UploadPreparationError} from './upload-scheduler';
 import {uploadActivity,uploadTransfer,uploadProgressHtml,type FileUploadProgress} from './upload-progress';
 import {int64} from '@bondbuddy/contracts';
 import {formatPoints} from '@bondbuddy/contracts';
@@ -775,8 +776,11 @@ export class MaterialWorkspace {
       envelope=await this.m4Uploads.prepare(declarations,purpose,type);if(!validPage())return;
       for(const [index,item] of envelope.items.entries()){this.uploadFiles.set(item.id,selectedFiles[index]);this.uploads.delete(rows[index].id);}
       this.uploadPreparing=false;this.uploading=true;this.scanUploadRecovery();this.paint();
-      for(const item of envelope.items){currentId=item.id;this.uploadErrors.delete(item.id);const result=await this.m4Uploads.resume(envelope.id,item.index,{file:this.uploadFiles.get(item.id),...this.uploadCallbacks(item.id)});if(!validPage())return;const applied=this.applyUploadResult(result,item.index);this.cache();await this.cacheQueue;if(!validPage()||this.cacheFailure||!['complete','content_confirmed'].includes(result.state)||!applied)break;}
-    }catch(error){if(validPage()){const text=this.uploadErrorText(error,currentId);if(currentId){this.uploadStatuses.delete(currentId);if(error instanceof UploadRecoveryNeedsFileError)this.uploadNeedsFile.add(currentId);this.uploadErrors.set(currentId,text);}else if(envelope){for(const item of envelope.items)this.uploadErrors.set(item.id,text);}else for(const {row} of rows)row.error=text;this.message(text,true);}}
+      const original=envelope;
+      await orderedUploadPipeline(original.items,
+        (item,_index,signal)=>this.m4Uploads!.transfer(original.id,item.index,{file:this.uploadFiles.get(item.id),signal,...this.uploadCallbacks(item.id)}),
+        async(_material,item)=>{currentId=item.id;this.uploadErrors.delete(item.id);const result=await this.m4Uploads!.resume(original.id,item.index,{...this.uploadCallbacks(item.id)});if(!validPage())return false;const applied=this.applyUploadResult(result,item.index);this.cache();await this.cacheQueue;return validPage()&&!this.cacheFailure&&['complete','content_confirmed'].includes(result.state)&&applied;},this.controller.signal);
+    }catch(error){if(error instanceof UploadPreparationError){currentId=envelope?.items[error.index]?.id;error=error.original;}if(validPage()){const text=this.uploadErrorText(error,currentId);if(currentId){this.uploadStatuses.delete(currentId);if(error instanceof UploadRecoveryNeedsFileError)this.uploadNeedsFile.add(currentId);this.uploadErrors.set(currentId,text);}else if(envelope){for(const item of envelope.items)this.uploadErrors.set(item.id,text);}else for(const {row} of rows)row.error=text;this.message(text,true);}}
     finally{this.uploadPreparing=false;this.uploading=false;if(validPage()){this.scanUploadRecovery();this.cache();this.paint();}}
   }
   private async upload(files:File[],purpose:Upload['purpose'],type:M4DocumentType|null){if(purpose==='template'){await this.uploadTemplateRecoverable(files,type);return;}if((purpose==='source'||purpose==='material')&&type){await this.uploadRecoverable(files,purpose,type);return;}if(this.uploadActionBlocked())return;if(this.deletingMaterial){this.message('正在删除材料，请稍候再上传。');return;}if(!files.length)return;if(!await this.ensureWorkspace(type?M4_DOCUMENT_LABELS[type]:'文件生成')||this.uploadActionBlocked())return;for(const file of files){const id=crypto.randomUUID();const row:Upload={file,purpose,documentType:type,state:'等待上传',requestId:crypto.randomUUID()};this.uploads.set(id,row);}for(const [id,row] of this.uploads)if(!row.error&&!row.material)await this.processUpload(id,row);}

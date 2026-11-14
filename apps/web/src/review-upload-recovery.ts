@@ -257,6 +257,18 @@ export class ReviewUploadRecovery {
     return this.locked(async () => { const e = this.read(id), item = e.items[index]; check(item); if (stages.indexOf(item.stage) >= 4) return this.result(e, index, 'adopted');
       if (!item.adoptionRequest) return this.result(e, index, 'pending'); return this.observe(e, index); });
   }
+  /** Transport may run ahead; the ordered envelope and draft are changed only by resume. */
+  async transfer(id: string, index: number, options: Omit<UploadRecoveryResumeOptions, 'previousRecord'> = {}) {
+    this.live(); const e = this.read(id), item = e.items[index]; check(item);
+    const record = this.core.list().find(record => record.id === item.id);
+    check(record && reviewUploadRecordMatches(e, index, record), '原上传记录已丢失或关联不一致，未新建上传或采用当前准备。');
+    const signal = AbortSignal.any([this.options.signal ?? new AbortController().signal, options.signal ?? new AbortController().signal]);
+    const material = await this.core.resume(item.id, { ...options, signal, requireDurableRecord: true });
+    this.live(); signal.throwIfAborted();
+    const fresh = this.read(id), saved = this.core.list().find(record => record.id === item.id);
+    check(saved && reviewUploadRecordMatches(fresh, index, saved));
+    return validateUploadMaterial(fresh.items[index].declaration, material);
+  }
   async resume(id: string, index: number, options: Omit<UploadRecoveryResumeOptions, 'signal' | 'previousRecord'> & { retryAdoption?: boolean } = {}): Promise<ReviewUploadResult> {
     return this.locked(async () => {
       let e = this.read(id), item = e.items[index]; check(item);
