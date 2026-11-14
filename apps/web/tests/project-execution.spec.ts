@@ -2294,8 +2294,11 @@ for(const width of [1440,390])test('file authoring timeout states preserve phase
     if(output){
       await expect(page.locator('.authoring-status-billing')).toContainText('34,570 积分');
       const implementation='implementation-'+name+'-'+width+'.png',reference='prototype-'+name+'-'+width+'.png';
-      await card.scrollIntoViewIfNeeded();
+      await card.evaluate(element=>element.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'}));
       const implementationCard=await card.boundingBox();
+      expect(implementationCard).not.toBeNull();
+      expect(implementationCard!.y).toBeGreaterThanOrEqual(64);
+      expect(implementationCard!.y+implementationCard!.height).toBeLessThanOrEqual(height-96);
       await page.screenshot({path:join(output,implementation),animations:'disabled'});
       const prototype=await page.context().newPage();await prototype.setViewportSize({width,height});
       try{
@@ -2315,8 +2318,11 @@ for(const width of [1440,390])test('file authoring timeout states preserve phase
           await expect(referenceCard.locator('[data-action="pause"]')).toBeEnabled();
           await expect(referenceCard.locator('[data-action="stop"]')).toBeEnabled();
         }else await expect(referenceCard.locator('button')).toHaveCount(0);
-        await referenceCard.scrollIntoViewIfNeeded();
+        await referenceCard.evaluate(element=>element.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'}));
         const prototypeCard=await referenceCard.boundingBox();
+        expect(prototypeCard).not.toBeNull();
+        expect(prototypeCard!.y).toBeGreaterThanOrEqual(0);
+        expect(prototypeCard!.y+prototypeCard!.height).toBeLessThanOrEqual(height-96);
         expect(await prototype.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
         await prototype.screenshot({path:join(output,reference),animations:'disabled'});
         comparisonPairs.push({scenario:name,implementation,prototype:reference,implementation_card:implementationCard,prototype_card:prototypeCard});
@@ -2330,7 +2336,7 @@ for(const width of [1440,390])test('file authoring timeout states preserve phase
     prototype_sources:await Promise.all(['authoring-live-progress.html','authoring-status.css'].map(async name=>({
       path:'product-prototype/public/'+name,sha256:createHash('sha256').update(await readFile(resolve('../../product-prototype/public',name))).digest('hex')
     }))),
-    viewport:{width,height},framing:'Native viewport screenshots after ensuring the status card is in view. Measured card bounds are recorded per side; surrounding implementation/prototype shells may differ.',
+    viewport:{width,height},framing:'Native viewport screenshots after centering the status card; bounds assertions keep the card above fixed bottom controls. Measured card bounds are recorded per side; surrounding implementation/prototype shells may differ.',
     prototype_source:'product-prototype/public/authoring-live-progress.html',pairs:comparisonPairs,
     visual_review:'pending; screenshots and functional assertions do not imply user acceptance'
   },null,2)+'\n','utf8');
