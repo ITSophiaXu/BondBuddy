@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHash } from 'node:crypto';
+import {uploadFileSha256} from './upload-file-digest.js';
 import { isReviewReport, type ReviewContext, type ReviewDraft, type ReviewDraftInput, type ReviewMaterialPin, type ReviewReport, type ReviewWorkspace } from '@bondbuddy/contracts';
 import { ApiError, type Dto } from './api.js';
 import { ReviewUploadRecovery, ReviewUploadRecoveryError, reviewUploadAdoptionInput, reviewUploadContext, reviewUploadRecordMatches, reviewUploadSame, reviewUploadValidInput } from './review-upload-recovery.js';
@@ -52,7 +53,7 @@ function harness(input = base()) {
   const helper = make(), apply = (draft: ReviewDraft) => { const { version, ...input } = draft; state.page = { version, input: structuredClone(input) }; };
   const envelopeKey = () => [...store.data.keys()].find(key => key.startsWith('bb-review-upload-v1:'))!;
   const coreKeys = () => [...store.data.keys()].filter(key => key.startsWith('bondbuddy:upload-recovery:v1:'));
-  return { helper, make, state, store, calls, materials, apply, envelopeKey, coreKeys };
+  return { helper, make, state, store, calls, materials, apply, envelopeKey, coreKeys, held };
 }
 const methods = (h: ReturnType<typeof harness>) => h.calls.map(call => call.method);
 const drafts = (h: ReturnType<typeof harness>) => h.calls.filter(call => call.method === 'draft');
@@ -289,4 +290,20 @@ for (const tamper of ['unknown-field', 'body', 'digest', 'target', 'stage-prefix
   const { h, e } = await unknownDraft(), key = h.envelopeKey(), value = JSON.parse(h.store.getItem(key)!);
   if (tamper === 'unknown-field') value.upload_url = '/private-bytes'; if (tamper === 'body') value.items[0].adoptionRequest.input.requirements = ['rewritten']; if (tamper === 'digest') value.digest = 'a'.repeat(64); if (tamper === 'target') value.targetContext = target(); if (tamper === 'stage-prefix') value.items[0].index = 1;
   h.store.setItem(key, JSON.stringify(value)); const before = h.calls.length; assert.throws(() => h.helper.list()); await assert.rejects(h.helper.resume(e.id, 0)); assert.equal(h.calls.length, before);
+});
+
+test('cancelled review preparation leaves its lock and original cache while queued for default SHA',async()=>{
+ let release!:()=>void,entered!:()=>void;
+ const wait=new Promise<void>(r=>release=r),started=new Promise<void>(r=>entered=r),blocker=new Blob(['unrelated original']);
+ const original=blocker.slice.bind(blocker);blocker.slice=(...args)=>{const part=original(...args),read=part.arrayBuffer.bind(part);part.arrayBuffer=async()=>{entered();await wait;return read();};return part;};
+ const heldHash=uploadFileSha256(blocker);await started;
+ const h=harness(),controller=new AbortController(),helper=h.make({digest:undefined,signal:controller.signal}),selected=file();let reads=0;
+ selected.slice=()=>{reads++;throw Error('cancelled review original read');};
+ const work=helper.prepare([selected],'other');
+ try{
+  await new Promise<void>(r=>setImmediate(r));assert.equal(h.held.size,1);controller.abort();
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  try{await Promise.race([assert.rejects(work,{name:'AbortError'}),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('review preparation retained its lock during cancelled SHA')),2000);})]);}finally{clearTimeout(timer);}
+  assert.equal(reads,0);assert.equal(h.held.size,0);assert.deepEqual(methods(h),['get-draft']);assert.equal(h.store.length,0);assert.equal(h.state.draftWrites,0);
+ }finally{release();await heldHash;}
 });

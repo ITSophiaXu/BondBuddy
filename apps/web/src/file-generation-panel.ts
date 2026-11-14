@@ -327,7 +327,7 @@ export class FileGenerationPanel {
   for(const [index,file] of words.entries()){
    if(file.size>64*1024*1024)throw new UserFacingError('单个模板文件或 ZIP 不可超过 64 MB。');
    this.uploadName=file.webkitRelativePath||file.name;this.reportUpload(`正在准备模板 ${index+1}/${words.length}：${this.uploadName}`);
-   const sha256=[...new Uint8Array(await uploadFileDigest(file))].map(x=>x.toString(16).padStart(2,'0')).join(''),filename=file.webkitRelativePath||file.name;
+   const sha256=[...new Uint8Array(await uploadFileDigest(file,this.controller.signal))].map(x=>x.toString(16).padStart(2,'0')).join(''),filename=file.webkitRelativePath||file.name;
    let receipt=this.receipts.find(r=>r.sha256===sha256&&r.filename===filename&&r.document_type===type);
    if(!receipt){receipt={request_id:crypto.randomUUID(),sha256,filename,document_type:type};this.receipts.push(receipt);this.persist();}
    let set=this.data!.sets.find(s=>s.set_id===receipt!.set_id);

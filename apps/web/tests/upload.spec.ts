@@ -49,8 +49,8 @@ async function installApi(page: Page, state: FixtureState) {
       ]);
       return json(route, 200, { user_id: state.owner, session_status: 'active', expires_at: now });
     }
-    if (path === '/api/v1/auth/refresh' && request.method() === 'POST') return json(route, 200, { user_id: state.owner, session_status: 'active', expires_at: now });
-    if (path === '/api/v1/auth/logout' && request.method() === 'POST') { state.owner = null; return route.fulfill({ status: 204 }); }
+    if (path === '/api/v1/auth/refresh' && request.method() === 'POST') return state.owner ? json(route, 200, { user_id: state.owner, session_status: 'active', expires_at: now }) : json(route,401,{code:'UNAUTHENTICATED'});
+    if (path === '/api/v1/auth/logout' && request.method() === 'POST') { state.owner = null; await page.context().clearCookies({name:/^bb_(session|csrf)$/}); return route.fulfill({ status: 204 }); }
     if (path === '/api/v1/projects' && request.method() === 'GET') return json(route, 200, { items: [], page: { next_cursor: null, has_more: false } });
     if (path === `/api/v1/projects/${projectId}` && request.method() === 'GET') {
       return state.owner === 'user-owner_a' ? json(route, 200, project) : json(route, 404, { code: 'NOT_FOUND' });
@@ -141,7 +141,7 @@ function state(): FixtureState {
   return { owner: null, uploads: new Map(), materials: new Map(), sequence: 0, failNextComplete: new Set(), unavailableNextComplete: new Map(), dropNextComplete: new Set(), holdNextCreate: false, expireNextBytes: false, inspectionFailures: new Map(), byteAttempts: [], putNames: [] };
 }
 
-test('upload pipeline uses two HTTP PUT slots while four files await confirmation', async ({page}) => {
+test('upload pipeline uses four HTTP PUT slots while four files await confirmation', async ({page}) => {
   const s = state(), putReplies = new Map<string, () => void>(), completeReplies = new Map<string, () => void>();
   let activePuts = 0, maximumPuts = 0, open = false;
   s.beforePutReply = async filename => {
@@ -157,17 +157,14 @@ test('upload pipeline uses two HTTP PUT slots while four files await confirmatio
     await page.locator('[data-upload-role="audit"]').setInputFiles(Array.from({length: 6}, (_, i) => ({
       name: `pipeline-${i + 1}.pdf`, mimeType: 'application/pdf', buffer: Buffer.from(`%PDF synthetic pipeline ${i + 1}`),
     })));
-    await expect.poll(() => putReplies.size).toBe(2);
+    await expect.poll(() => putReplies.size).toBe(4);
     await expect.poll(() => s.uploads.size).toBe(4);
     // The bytes have reached the route but its HTTP response is still pending.
     // Progress reaching 100% must not release a transport slot.
-    expect(s.putNames).toHaveLength(2); expect(maximumPuts).toBe(2);
-    for (const release of putReplies.values()) release();
-    await expect.poll(() => completeReplies.size).toBe(2);
-    await expect.poll(() => putReplies.size).toBe(4);
-    expect(s.materials.size).toBe(0); expect(maximumPuts).toBe(2);
+    expect(s.putNames).toHaveLength(4); expect(maximumPuts).toBe(4);
     for (const release of putReplies.values()) release();
     await expect.poll(() => completeReplies.size).toBe(4);
+    expect(s.materials.size).toBe(0); expect(maximumPuts).toBe(4);
     // Four slow confirmations fill the look-ahead window, leaving files 5/6 queued.
     expect(s.uploads.size).toBe(4); expect(s.putNames).toHaveLength(4);
     await expect(page.locator('.material-file-row').filter({hasText: '服务器已确认保存'})).toHaveCount(0);
@@ -175,7 +172,7 @@ test('upload pipeline uses two HTTP PUT slots while four files await confirmatio
     for (const release of completeReplies.values()) release();
     await expect.poll(() => s.materials.size).toBe(6);
     await expect(page.locator('.material-file-row').filter({hasText: '服务器已确认保存'})).toHaveCount(6);
-    expect(s.putNames).toHaveLength(6); expect(maximumPuts).toBeLessThanOrEqual(2);
+    expect(s.putNames).toHaveLength(6); expect(maximumPuts).toBeLessThanOrEqual(4);
   } finally {
     open = true;
     for (const release of putReplies.values()) release();

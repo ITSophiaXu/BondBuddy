@@ -100,7 +100,7 @@ const browserLock: UploadRecoveryLock = {
     });
   },
 };
-const defaultDigest = async (file: File) => [...new Uint8Array(await uploadFileDigest(file))].map(byte => byte.toString(16).padStart(2, '0')).join('');
+const defaultDigest = async (file: File, signal?: AbortSignal) => [...new Uint8Array(await uploadFileDigest(file,signal))].map(byte => byte.toString(16).padStart(2, '0')).join('');
 
 /** Explicit upload recovery only: no discovery, association, draft adoption, task execution or billing. */
 export class UploadRecovery {
@@ -257,7 +257,7 @@ export class UploadRecovery {
       const mediaByExtension: Record<string, typeof M1_UPLOAD_MIME_TYPES[number]> = { docx: M1_UPLOAD_MIME_TYPES[0], pdf: M1_UPLOAD_MIME_TYPES[1], xlsx: M1_UPLOAD_MIME_TYPES[2], csv: M1_UPLOAD_MIME_TYPES[3], txt: M1_UPLOAD_MIME_TYPES[4], png: M1_UPLOAD_MIME_TYPES[5], jpg: M1_UPLOAD_MIME_TYPES[6], jpeg: M1_UPLOAD_MIME_TYPES[6], doc: M1_UPLOAD_MIME_TYPES[7] };
       // Match the original declaration, even if File.type is empty or incorrect.
       if (file.size !== input.byte_size || mediaByExtension[ext ?? ''] !== input.media_type) throw new UploadRecoveryConflictError();
-      const digest = await (this.deps.digest ?? defaultDigest)(file); live(); if (digest !== input.sha256) throw new UploadRecoveryConflictError();
+      const digest = this.deps.digest ? await this.deps.digest(file) : await defaultDigest(file,signal); live(); if (digest !== input.sha256) throw new UploadRecoveryConflictError();
       return selectedFile = file;
     };
     try {

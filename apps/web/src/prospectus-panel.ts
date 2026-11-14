@@ -480,7 +480,7 @@ export class ProspectusPanel {
       const recovery=this.uploads();
       let id=operationId??this.pendingUpload?.id;
       if(!id){
-        const sha256=[...new Uint8Array(await uploadFileDigest(file!))].map(n=>n.toString(16).padStart(2,'0')).join('');
+        const sha256=[...new Uint8Array(await uploadFileDigest(file!,this.controller.signal))].map(n=>n.toString(16).padStart(2,'0')).join('');
         this.controller.signal.throwIfAborted();
         if(this.readOnly)return;
         id=recovery.begin({filename:file!.name,byte_size:file!.size,sha256,media_type:ext==='docx'?M1_UPLOAD_MIME_TYPES[0]:M1_UPLOAD_MIME_TYPES[1],role:'historical'},{purpose:this.purpose}).id;
