@@ -1,0 +1,200 @@
+# 合并前检查：默认使用 npm run pr-gate 在本机运行并提交回执摘要。
+#
+# - 测试按目录自动发现，新加的测试文件不用登记就会运行。
+# - 判定逻辑在 scripts/pr-gate/run.mjs；例外只能登记在 scripts/pr-gate/exclusions.json。
+# - 因 GitHub 计费限制，暂时只保留手动触发；本地命令复用以下矩阵和环境。
+# - 这里只用模拟模型，不调用真实模型，也不替代发布前的真实样本测试（npm run test:release）。
+name: PR gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      report_only:
+        description: 只出报告，不判失败
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-gate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # 一次性测试服务的凭据，只在本次运行的容器里有效；不是生产数据库，也不是模型密钥。
+  BB_TEST_DATABASE_URL: postgresql://bondbuddy:synthetic-ci-only@127.0.0.1:5432/bb_m4_core
+  BB_TEST_AZURITE_CONNECTION_STRING: UseDevelopmentStorage=true
+  # 不调用真实模型、平台探测或公网检索。
+  BB_TEST_LIVE_AUTHORING: '0'
+  BB_PLATFORM_PROBE_ENABLED: '0'
+  BB_REVIEW_WEB_SEARCH_ENABLED: '0'
+  # 仓库内已授权的样本；模型与供应商的响应仍是合成的。
+  BB_RUN_AUTHORIZED_LARGE_XLSX: '1'
+  BB_RUN_AUTHORIZED_SAMPLE_TESTS: '1'
+  BB_RUN_AUTHORIZED_RQ_ANNUAL_FACT_TESTS: '1'
+  BB_RUN_AUTHORIZED_RQ_ANNUAL_FACT_PG_TESTS: '1'
+  BB_TEST_INTEGRITY_BROWSER: '1'
+  PYTHONDONTWRITEBYTECODE: '1'
+  PIP_DISABLE_PIP_VERSION_CHECK: '1'
+
+jobs:
+  tests:
+    name: tests (${{ matrix.name }})
+    # 想用自己的机器省 GitHub 分钟数时，只需要改这一行和下面 pr-gate 任务的同一行。
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        # 某一组太慢时增加它的分片数（1/2、2/2 改成 1/3、2/3、3/3 并补一行）。
+        include:
+          - { name: api-1, groups: api, shard: 1/2 }
+          - { name: api-2, groups: api, shard: 2/2 }
+          - { name: worker-1, groups: worker, shard: 1/2, chromium: true }
+          - { name: worker-2, groups: worker, shard: 2/2, chromium: true }
+          - { name: misc, groups: 'packages,web-unit,scripts,python', shard: 1/1, render: true }
+          - { name: browser-1, groups: browser, shard: 1/3, chromium: true }
+          - { name: browser-2, groups: browser, shard: 2/3, chromium: true }
+          - { name: browser-3, groups: browser, shard: 3/3, chromium: true }
+    services:
+      postgres:
+        image: postgres:16.10
+        env:
+          POSTGRES_USER: bondbuddy
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: bb_m4_core
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U bondbuddy -d bb_m4_core"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - name: Check out the complete merge tree
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.11.11'
+
+      - name: Install JavaScript and Python dependencies
+        run: |
+          npm ci --no-audit --no-fund
+          python -m pip install -r python/requirements-dev.txt
+          python -m pip check
+          echo "BONDBUDDY_TEST_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
+          echo "BONDBUDDY_WORD_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
+          echo "BB_PYTHON=$(command -v python)" >> "$GITHUB_ENV"
+          echo "PYTHONPATH=$GITHUB_WORKSPACE/python:$GITHUB_WORKSPACE/python/tests" >> "$GITHUB_ENV"
+          command -v flock
+
+      - name: Build all workspaces and check public contracts
+        run: |
+          npm run build
+          npm run check:contracts
+
+      - name: Install Word rendering tools
+        if: matrix.render
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-writer fonts-noto-cjk ripgrep
+          echo "BONDBUDDY_RUN_AUTHORIZED_DOCX_REGRESSION=1" >> "$GITHUB_ENV"
+          echo "BB_REQUIRE_DOCUMENT_RENDER=1" >> "$GITHUB_ENV"
+
+      - name: Install Chromium
+        if: matrix.chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start disposable Blob storage and migrate the test database
+        run: |
+          docker run --detach --name bb-pr-gate-azurite --publish 127.0.0.1:10000:10000 \
+            mcr.microsoft.com/azure-storage/azurite:3.35.0 \
+            azurite-blob --blobHost 0.0.0.0 --skipApiVersionCheck --disableProductStyleUrl
+          node --input-type=module <<'JS'
+          import { BlobServiceClient } from '@azure/storage-blob';
+          const container = BlobServiceClient.fromConnectionString(process.env.BB_TEST_AZURITE_CONNECTION_STRING).getContainerClient('bb-pr-gate-readiness');
+          for (let attempt = 0; ; attempt++) {
+            try { await container.createIfNotExists(); await container.deleteIfExists(); break; }
+            catch (error) { if (attempt >= 29) throw error; await new Promise(resolve => setTimeout(resolve, 1000)); }
+          }
+          JS
+          DATABASE_URL="$BB_TEST_DATABASE_URL" node db/migrate.mjs
+
+      - name: Run every test in this shard
+        env:
+          BB_QA_TEST_OUTPUT_DIRECTORY: ${{ runner.temp }}/pr-gate-work/qa
+          BB_INTEGRITY_TEST_OUTPUT_DIRECTORY: ${{ runner.temp }}/pr-gate-work/integrity
+          BB_WORKPAPER_ASSESSMENT_TEST_OUTPUT_DIRECTORY: ${{ runner.temp }}/pr-gate-work/workpaper-assessment
+        run: >-
+          node scripts/pr-gate/run.mjs run
+          --group "${{ matrix.groups }}"
+          --shard "${{ matrix.shard }}"
+          --name "${{ matrix.name }}"
+          --jobs "${{ strategy.job-total }}"
+          --out "$RUNNER_TEMP/pr-gate-out"
+          ${{ github.event.inputs.report_only == 'true' && '--report' || '' }}
+
+      - name: Keep this shard's result and the logs of failing tests
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pr-gate-shard-${{ matrix.name }}
+          path: ${{ runner.temp }}/pr-gate-out/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 7
+
+      - name: Stop disposable Blob storage
+        if: always()
+        run: docker rm --force bb-pr-gate-azurite || true
+
+  # 唯一需要设为“必需检查”的任务。任何分片失败、被取消或没有交出结果，它都会失败。
+  pr-gate:
+    name: pr-gate
+    needs: tests
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the gate script
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.x'
+
+      - name: Collect the result of every shard
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pr-gate-shard-*
+          path: ${{ runner.temp }}/pr-gate-all
+
+      - name: Every shard must have reported and passed
+        run: >-
+          node scripts/pr-gate/run.mjs merge "$RUNNER_TEMP/pr-gate-all"
+          --out "$RUNNER_TEMP/pr-gate-final"
+          ${{ github.event.inputs.report_only == 'true' && '--report' || '' }}
+
+      - name: Keep the combined result and the suggested exclusion list
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pr-gate-result
+          path: ${{ runner.temp }}/pr-gate-final/
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 7
