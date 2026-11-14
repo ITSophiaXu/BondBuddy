@@ -25,6 +25,8 @@ type FixtureState = {
   inspectionFailures: Map<string, { reason: string; correlationId: string }>;
   byteAttempts: string[];
   putNames: string[];
+  beforePutReply?: (filename: string) => Promise<void>;
+  beforeCompleteReply?: (filename: string) => Promise<void>;
 };
 
 const json = (route: Route, status: number, value?: unknown) => route.fulfill({ status, contentType: 'application/json', body: value === undefined ? '' : JSON.stringify(value) });
@@ -105,6 +107,7 @@ async function installApi(page: Page, state: FixtureState) {
         });
       }
       state.putNames.push(upload.filename);
+      await state.beforePutReply?.(upload.filename);
       return route.fulfill({ status: 204 });
     }
     const completeMatch = path.match(new RegExp(`/api/v1/projects/${projectId}/materials/uploads/([^/]+)/complete$`));
@@ -122,6 +125,7 @@ async function installApi(page: Page, state: FixtureState) {
         return json(route, 422, { code: 'MATERIAL_UNREADABLE', field_errors:[{field:'material_upload',code:'inspection_timeout'}] });
       }
       if (upload.filename === 'slow-save.pdf' && state.releaseSlowComplete === undefined) await new Promise<void>(resolve => { state.releaseSlowComplete = resolve; });
+      await state.beforeCompleteReply?.(upload.filename);
       const body = request.postDataJSON() as { byte_size: number; sha256: string };
       const material: Material = [...state.materials.values()].find(item => item.role === upload.role && item.sha256 === body.sha256) ?? { material_id: randomUUID(), material_version: 1, upload_id: decodeURIComponent(completeMatch[1]), role: upload.role, filename: upload.filename, media_type: upload.media_type, byte_size: body.byte_size, sha256: body.sha256, state: 'persisted', persisted_at: now, error: null };
       state.materials.set(material.material_id, material);
@@ -136,6 +140,48 @@ async function installApi(page: Page, state: FixtureState) {
 function state(): FixtureState {
   return { owner: null, uploads: new Map(), materials: new Map(), sequence: 0, failNextComplete: new Set(), unavailableNextComplete: new Map(), dropNextComplete: new Set(), holdNextCreate: false, expireNextBytes: false, inspectionFailures: new Map(), byteAttempts: [], putNames: [] };
 }
+
+test('upload pipeline uses two HTTP PUT slots while four files await confirmation', async ({page}) => {
+  const s = state(), putReplies = new Map<string, () => void>(), completeReplies = new Map<string, () => void>();
+  let activePuts = 0, maximumPuts = 0, open = false;
+  s.beforePutReply = async filename => {
+    activePuts++; maximumPuts = Math.max(maximumPuts, activePuts);
+    try { if (!open) await new Promise<void>(resolve => putReplies.set(filename, resolve)); }
+    finally { activePuts--; }
+  };
+  s.beforeCompleteReply = async filename => {
+    if (!open) await new Promise<void>(resolve => completeReplies.set(filename, resolve));
+  };
+  await installApi(page, s); await login(page, 'owner_a');
+  try {
+    await page.locator('[data-upload-role="audit"]').setInputFiles(Array.from({length: 6}, (_, i) => ({
+      name: `pipeline-${i + 1}.pdf`, mimeType: 'application/pdf', buffer: Buffer.from(`%PDF synthetic pipeline ${i + 1}`),
+    })));
+    await expect.poll(() => putReplies.size).toBe(2);
+    await expect.poll(() => s.uploads.size).toBe(4);
+    // The bytes have reached the route but its HTTP response is still pending.
+    // Progress reaching 100% must not release a transport slot.
+    expect(s.putNames).toHaveLength(2); expect(maximumPuts).toBe(2);
+    for (const release of putReplies.values()) release();
+    await expect.poll(() => completeReplies.size).toBe(2);
+    await expect.poll(() => putReplies.size).toBe(4);
+    expect(s.materials.size).toBe(0); expect(maximumPuts).toBe(2);
+    for (const release of putReplies.values()) release();
+    await expect.poll(() => completeReplies.size).toBe(4);
+    // Four slow confirmations fill the look-ahead window, leaving files 5/6 queued.
+    expect(s.uploads.size).toBe(4); expect(s.putNames).toHaveLength(4);
+    await expect(page.locator('.material-file-row').filter({hasText: '服务器已确认保存'})).toHaveCount(0);
+    open = true;
+    for (const release of completeReplies.values()) release();
+    await expect.poll(() => s.materials.size).toBe(6);
+    await expect(page.locator('.material-file-row').filter({hasText: '服务器已确认保存'})).toHaveCount(6);
+    expect(s.putNames).toHaveLength(6); expect(maximumPuts).toBeLessThanOrEqual(2);
+  } finally {
+    open = true;
+    for (const release of putReplies.values()) release();
+    for (const release of completeReplies.values()) release();
+  }
+});
 
 test('reference and audit upload areas share styling and audit drops keep the correct role',async({page})=>{
   const s=state();await installApi(page,s);await login(page,'owner_a');
