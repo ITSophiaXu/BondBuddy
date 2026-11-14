@@ -109,7 +109,7 @@ const independentWorkpaperFailures=new Set(['MODEL_OUTPUT_SCHEMA_INVALID','VALID
  * The database trigger repeats this check at insertion and every state transition. */
 async function assertProgressiveWorkpaperAdmission(c:PoolClient,b:any,item:any,m:M4DocumentManifest){
   const scope=m.execution_scope_project_id;
-  if(!(await c.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL AND archived_at IS NULL FOR UPDATE NOWAIT',[b.owner_user_id,scope])).rowCount)
+  if(!(await c.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL AND archived_at IS NULL FOR NO KEY UPDATE NOWAIT',[b.owner_user_id,scope])).rowCount)
     throw conflict('INPUT_REVISION_CONFLICT','项目或来源已不可用。');
   const frozen=(await c.query(`SELECT 1 FROM bb_workpaper_items i JOIN bb_workpaper_batches b ON b.owner_user_id=i.owner_user_id AND b.id=i.batch_id
     WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3 AND i.manifest=$4 AND i.run_id IS NULL AND i.state='queued'`,[b.owner_user_id,b.id,item.item_id,m])).rowCount;
@@ -182,7 +182,7 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
     try{
       const m=next.manifest as M4DocumentManifest;
       const ids=[...new Set([b.project_id,m.execution_scope_project_id,m.input.source_material!.source_project_id])].sort();
-      const locked=(await c.query('SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL AND archived_at IS NULL ORDER BY id FOR UPDATE NOWAIT',[b.owner_user_id,ids])).rows;
+      const locked=(await c.query('SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL AND archived_at IS NULL ORDER BY id FOR NO KEY UPDATE NOWAIT',[b.owner_user_id,ids])).rows;
       if(locked.length!==ids.length)throw conflict('INPUT_REVISION_CONFLICT','项目或来源已不可用。');
       if(b.max_parallel||b.progressive_plan)await assertProgressiveWorkpaperAdmission(c,b,next,m);
       else await assertCanonicalBusinessRunIdle(c,b.owner_user_id,locked.find(p=>p.id===b.project_id));

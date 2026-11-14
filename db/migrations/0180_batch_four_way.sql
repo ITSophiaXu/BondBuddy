@@ -107,6 +107,9 @@ DO $$ DECLARE definition text; marker text; BEGIN
    IS NOT DISTINCT FROM ROW(OLD.owner_user_id,OLD.project_id,OLD.input_revision,OLD.id,OLD.execution_request_id,OLD.task_kind)
  THEN RETURN NEW; END IF;
  IF NEW.task_kind=$guard$);
+ marker:='PERFORM 1 FROM bb_projects WHERE owner_user_id=NEW.owner_user_id AND id=scope_id FOR UPDATE;';
+ IF strpos(definition,marker)=0 THEN RAISE EXCEPTION 'Unexpected batch scope lock'; END IF;
+ definition:=replace(definition,marker,replace(marker,'FOR UPDATE;','FOR NO KEY UPDATE;'));
  marker:='progressive:=bb_progressive_workpaper_identity(NEW.owner_user_id,NEW.project_id,NEW.input_revision,NEW.id);';
  IF strpos(definition,marker)=0 THEN RAISE EXCEPTION 'Unexpected batch mutex identity'; END IF;
  definition:=replace(definition,marker,'progressive:=bb_batch_child_identity(NEW.owner_user_id,NEW.project_id,NEW.input_revision,NEW.id,NEW.execution_request_id);');

@@ -29,6 +29,7 @@ const enabled=process.env.BB_TEST_BATCH_250==='1',real=process.env.BB_TEST_REAL_
 const database=enabled?await isolatedTestDatabase(undefined,'batch-four-250'):undefined,storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 test('same frozen 250-file catalogue: one versus four routes, coverage, unique authors, replay and accounting',
  {skip:!enabled||!database||!storage||!process.env.BONDBUDDY_TEST_PYTHON,timeout:7200000},async t=>{
+ if(real&&!process.env.BB_BATCH_FOUR_RECEIPT_DIR)throw Error('REAL_BATCH_EVIDENCE_DIRECTORY_REQUIRED');
  const pool=new Pool({connectionString:database,max:10}),owner=randomUUID(),container='bb-four-'+randomUUID().replaceAll('-','');
  const blobs=azureBlobs(storage!,container),origin='http://bondbuddy.test';
  const app=createServer({pool,blobs,historicalBillingFixture:true,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:owner,csrfVerified:true})});
@@ -123,6 +124,7 @@ test('same frozen 250-file catalogue: one versus four routes, coverage, unique a
    const zip=await send('GET',base+`/batches/${batch.batch_id}/download`);assert.equal(zip.statusCode,200);
    const zipPath=join(directory,'delivery-'+routes+'.zip');await writeFile(zipPath,zip.rawPayload);
    await python(['-c',"from zipfile import ZipFile; import sys; z=ZipFile(sys.argv[1]); names=z.namelist(); assert len(names)==250 and len(set(names))==250; assert all(n.endswith('.docx') for n in names); assert z.testzip() is None",zipPath]);
+   if(process.env.BB_BATCH_FOUR_RECEIPT_DIR){await mkdir(process.env.BB_BATCH_FOUR_RECEIPT_DIR,{recursive:true,mode:0o700});await writeFile(join(process.env.BB_BATCH_FOUR_RECEIPT_DIR,'delivery-'+routes+'.zip'),zip.rawPayload,{mode:0o600});}
    const charged=batch.charged_points;
    const intentsBefore=stats.length;
    for(let replay=0;replay<4;replay++)await execute();await advanceWorkpaperBatch(pool);
@@ -138,5 +140,47 @@ test('same frozen 250-file catalogue: one versus four routes, coverage, unique a
   const receipt={mode:real?'real-model':'synthetic-model',model_id:config.model_id,model_config_version:config.model_config_version,runtime_files,catalogue_sha256:cat.sha256,source_sha256:sourcePin.sha256,receipts,ratio:receipts[0].elapsed_ms/receipts[1].elapsed_ms,node_max_rss_kib:process.resourceUsage().maxRSS,sourceReads};
   t.diagnostic(JSON.stringify(receipt));
   if(process.env.BB_BATCH_FOUR_RECEIPT_DIR){await mkdir(process.env.BB_BATCH_FOUR_RECEIPT_DIR,{recursive:true});await writeFile(join(process.env.BB_BATCH_FOUR_RECEIPT_DIR,'batch-250-receipt.json'),JSON.stringify(receipt,null,2),{mode:0o600});}
- }finally{await app.close();await pool.end();await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();await rm(directory,{recursive:true,force:true});}
+ }finally{
+  // Preserve known/unknown attempts, costs and original supplier evidence before
+  // the test-only database/container cleanup, including when assertions fail.
+  // Logs stay private on the execution host; never print or transport credentials.
+  try{
+   if(process.env.BB_BATCH_FOUR_RECEIPT_DIR){
+    await archiveBatchEvidence(pool,blobs,owner,process.env.BB_BATCH_FOUR_RECEIPT_DIR,real);
+   }
+  }finally{await app.close();await pool.end();}
+  await BlobServiceClient.fromConnectionString(storage!).getContainerClient(container).deleteIfExists();await rm(directory,{recursive:true,force:true});
+ }
 });
+
+/** Test evidence only; original logs remain private on the execution host. */
+export async function archiveBatchEvidence(pool:Pool,blobs:ReturnType<typeof azureBlobs>,owner:string,root:string,real:boolean){
+ const archive=join(root,'fixture-evidence-'+owner);await mkdir(archive,{recursive:true,mode:0o700});
+ const jobs=(await pool.query(`SELECT id,run_id,state,stage,error_code,attempts,
+  lease_token IS NOT NULL AS has_lease,lease_until,user_pause_requested,credit_pause_requested
+  FROM bb_jobs WHERE owner_user_id=$1 ORDER BY created_at,id`,[owner])).rows;
+ const calls=(await pool.query(`SELECT a.*,row_to_json(u) AS usage,row_to_json(rt) AS runtime
+  FROM bb_model_call_attempts a LEFT JOIN bb_call_usage u ON u.attempt_id=a.id
+  LEFT JOIN bb_model_call_attempt_runtime rt ON rt.attempt_id=a.id WHERE a.owner_user_id=$1 ORDER BY a.created_at,a.id`,[owner])).rows;
+ const observations=(await pool.query('SELECT * FROM bb_provider_call_observations WHERE owner_user_id=$1 ORDER BY observed_at,id',[owner])).rows;
+ const reservations=(await pool.query('SELECT * FROM bb_credit_reservations WHERE owner_user_id=$1 ORDER BY id',[owner])).rows;
+ const events=(await pool.query('SELECT * FROM bb_credit_events WHERE owner_user_id=$1 ORDER BY created_at,id',[owner])).rows;
+ const results=(await pool.query('SELECT * FROM bb_provider_result_refs WHERE owner_user_id=$1 ORDER BY id',[owner])).rows;
+ const logs=(await pool.query('SELECT * FROM bb_codex_exec_logs WHERE owner_user_id=$1 ORDER BY attempt_id',[owner])).rows;
+ const prompts=(await pool.query("SELECT * FROM bb_snapshot_refs WHERE owner_user_id=$1 AND snapshot_kind='model_request' ORDER BY id",[owner])).rows;
+ await writeFile(join(archive,'ledger.json'),JSON.stringify({mode:real?'real-model':'synthetic-model',jobs,calls,observations,reservations,events,results,logs,prompts},null,2),{mode:0o600});
+ for(const ref of results){
+  const bytes=await blobs.getIfExistsBounded(ref.result_ref,64*1024*1024);
+  assert.ok(bytes&&bytes.length===Number(ref.byte_size)&&digest(bytes)===ref.result_sha256.trim());
+  await writeFile(join(archive,'result-'+ref.id+'.json'),bytes,{mode:0o600});
+ }
+ for(const ref of prompts){
+  const bytes=await blobs.getIfExistsBounded(ref.object_key,64*1024*1024);assert.ok(bytes&&digest(bytes)===ref.content_sha256.trim());
+  await writeFile(join(archive,'prompt-'+ref.id+'.txt'),bytes,{mode:0o600});
+ }
+ for(const ref of logs){
+  const bytes=await blobs.getIfExistsBounded(ref.object_key,20*1024*1024);
+  assert.ok(bytes&&bytes.length===Number(ref.byte_size)&&digest(bytes)===ref.sha256.trim());
+  await writeFile(join(archive,'exec-'+ref.attempt_id+'.log'),bytes,{mode:0o600});
+ }
+}
