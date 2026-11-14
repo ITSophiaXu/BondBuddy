@@ -511,6 +511,16 @@ esac
  assert.equal(bad.status,3);assert.match(bad.stderr,/matching source revision/);assert.doesNotMatch(readFileSync(calls,'utf8'),/build|save/);
 });
 
+test('four confirmation profile keeps reserved small capacity and refuses mismatched disk/memory/CPU',()=>{
+ const four={BB_UPLOAD_CONFIRMATION_ROLE:'execution',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir,BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1',BB_UPLOAD_CONFIRMATION_CONCURRENCY:'4',BB_UPLOAD_CONFIRMATION_SPOOL_MAX_BYTES:'469762048',BB_UPLOAD_CONFIRMATION_MEMORY_LIMIT:'1536M',BB_UPLOAD_CONFIRMATION_CPU_LIMIT:'1',BB_UPLOAD_CONFIRMATION_HEAP_MB:'384'};
+ const a=covered('execution','services: {}\n',four),c=config('execution',a.values,join(a.area,'state')),service=c.services['upload-confirmation'];
+ assert.equal(service.environment.BB_UPLOAD_CONFIRMATION_CONCURRENCY,'4');assert.equal(service.environment.BB_UPLOAD_CONFIRMATION_SMALL_SLOT,'1');
+ assert.equal(service.environment.BB_UPLOAD_SPOOL_MAX_BYTES,'469762048');assert.equal(service.deploy.resources.limits.memory,'1610612736');assert.equal(Number(service.deploy.resources.limits.cpus),1);
+ for(const change of [{BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'0'},{BB_UPLOAD_CONFIRMATION_CONCURRENCY:'5'},{BB_UPLOAD_CONFIRMATION_CONCURRENCY:'2'},{BB_UPLOAD_CONFIRMATION_SPOOL_MAX_BYTES:'134217728'},{BB_UPLOAD_CONFIRMATION_MEMORY_LIMIT:'512M'},{BB_UPLOAD_CONFIRMATION_CPU_LIMIT:'0.5'},{BB_UPLOAD_CONFIRMATION_HEAP_MB:'1024'},{BB_UPLOAD_CONFIRMATION_ROLE:'size-split'}]){
+  const b=covered('execution','services: {}\n',{...four,...change});assert.throws(()=>config('execution',b.values,join(b.area,'state')));
+ }
+});
+
 test('authoring four total slots and assistant channels share bounded model capacity without changing defaults',()=>{
  const baseline=config('execution',{BB_MODEL_EXECUTION_HOST_ID:'a'.repeat(64)});
  const expanded=config('execution',{

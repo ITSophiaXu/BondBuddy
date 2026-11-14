@@ -1,3 +1,4 @@
+import {uploadFileDigest} from './upload-file-digest.js';
 import {uploadPicker} from './upload-picker';
 import './upload-progress.css';
 import {uploadActivity,uploadTransfer,uploadProgressHtml,type FileUploadProgress,type UploadStatus} from './upload-progress';
@@ -44,7 +45,7 @@ async function prepareFileMaterial(api:ApiClient,id:string,file:File|undefined,s
   state.projectId=id;
   if(!state.operationId){
     if(!file)throw new UserFacingError('请重新选择原文件后继续。');
-    const mime=fileMaterialMime(file),sha256=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].map(x=>x.toString(16).padStart(2,'0')).join('');
+    const mime=fileMaterialMime(file),sha256=[...new Uint8Array(await uploadFileDigest(file,signal))].map(x=>x.toString(16).padStart(2,'0')).join('');
     signal.throwIfAborted();if(!current())throw new UserFacingError('页面已切换，请返回原项目继续。');
     state.operationId=recovery.begin({filename:file.name,media_type:mime,role:'other',sha256,byte_size:file.size},context).id;
   }

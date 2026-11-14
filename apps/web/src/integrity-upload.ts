@@ -1,3 +1,4 @@
+import {uploadFileDigest} from './upload-file-digest.js';
 import {UserFacingError} from './user-facing-error.js';
 import {INTEGRITY_SITES,M1_UPLOAD_LIMITS,M1_UPLOAD_MIME_TYPES} from '@bondbuddy/contracts';
 import type {IntegrityEvidenceDraft} from './integrity-recovery.js';
@@ -29,7 +30,7 @@ export async function beginIntegrityUpload(recovery:UploadRecovery,form:Integrit
   if(!mime||!file.size||file.size>M1_UPLOAD_LIMITS.fileBytes)throw new UserFacingError('请选择不超过 100 MB 的 PNG、JPG、PDF 或 DOCX。');
   const context:Context={kind:'integrity-evidence',roundId:form.roundId,subjectId:form.subjectId,siteId:form.siteId};
   if(![context.roundId,context.subjectId,context.siteId].every(validId)||!INTEGRITY_SITES.some(site=>site.id===context.siteId))throw new UploadRecoveryConflictError();
-  const sha256=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].map(value=>value.toString(16).padStart(2,'0')).join('');
+  const sha256=[...new Uint8Array(await uploadFileDigest(file,signal))].map(value=>value.toString(16).padStart(2,'0')).join('');
   signal.throwIfAborted();if(!current())throw new DOMException('原补证页面或本机准备已变化。','AbortError');
   return recovery.begin({filename:file.name,media_type:mime,role:'other',sha256,byte_size:file.size},context);
 }

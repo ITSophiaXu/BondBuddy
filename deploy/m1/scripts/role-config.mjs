@@ -141,18 +141,21 @@ try {
          (parser.environment.BB_UPLOAD_CONFIRMATION_LANE??'general')!=='general')) fail();
     if (role === 'execution') {
       const service=s['upload-confirmation'], active=confirmationRole!=='disabled', e=service.environment;
-      const environmentKeys=new Set(['DATABASE_URL','AZURE_STORAGE_CONNECTION_STRING','BB_UPLOAD_CONFIRMATION_ENABLED','BB_UPLOAD_CONFIRMATION_LANE','BB_UPLOAD_CONFIRMATION_SMALL_SLOT','BB_UPLOAD_CONFIRMATION_CONTAINER','BB_UPLOAD_SPOOL_DIR','BB_UPLOAD_SPOOL_MAX_BYTES','NODE_OPTIONS','HTTPS_PROXY','https_proxy','NO_PROXY','no_proxy']);
+      const concurrency=e.BB_UPLOAD_CONFIRMATION_CONCURRENCY??'1', four=concurrency==='4';
+      if(!['1','4'].includes(concurrency)||four&&(confirmationRole!=='execution'||e.BB_UPLOAD_CONFIRMATION_SMALL_SLOT!=='1')) fail();
+      const environmentKeys=new Set(['DATABASE_URL','AZURE_STORAGE_CONNECTION_STRING','BB_UPLOAD_CONFIRMATION_ENABLED','BB_UPLOAD_CONFIRMATION_LANE','BB_UPLOAD_CONFIRMATION_SMALL_SLOT','BB_UPLOAD_CONFIRMATION_CONCURRENCY','BB_UPLOAD_CONFIRMATION_CONTAINER','BB_UPLOAD_SPOOL_DIR','BB_UPLOAD_SPOOL_MAX_BYTES','NODE_OPTIONS','HTTPS_PROXY','https_proxy','NO_PROXY','no_proxy']);
       if (Number(service.deploy.replicas)!==(active?1:0) || !service.profiles.includes(active?'bb-confirmation-active':'bb-confirmation-inactive')) fail();
       if (JSON.stringify(service.command)!==JSON.stringify(['node','apps/worker/dist/upload-confirmation-runtime.js']) ||
           e.BB_UPLOAD_CONFIRMATION_ENABLED!=='1' || !['0','1'].includes(e.BB_UPLOAD_CONFIRMATION_SMALL_SLOT) ||
           e.BB_UPLOAD_CONFIRMATION_LANE!==(confirmationRole==='size-split'?'large':'general') ||
           (confirmationRole==='size-split' && e.BB_UPLOAD_CONFIRMATION_SMALL_SLOT!=='0') ||
-          e.BB_UPLOAD_SPOOL_DIR!=='/var/lib/bondbuddy/upload-confirmation' || e.BB_UPLOAD_SPOOL_MAX_BYTES!=='134217728' ||
+          e.BB_UPLOAD_SPOOL_DIR!=='/var/lib/bondbuddy/upload-confirmation' || e.BB_UPLOAD_SPOOL_MAX_BYTES!==(four?'469762048':'134217728') ||
           new URL(e.DATABASE_URL).hostname!=='pg-tunnel' || Object.keys(service.networks).join()!=='backend' ||
           Object.keys(e).some(k=>!environmentKeys.has(k)) || service.user!=='1000:1000' || service.entrypoint?.length || service.privileged ||
           service.volumes.length!==1 || service.volumes[0].target!==e.BB_UPLOAD_SPOOL_DIR || service.volumes[0].type!=='bind' ||
           (active && service.volumes[0].source!==spoolHost) ||
-          Number(service.deploy.resources.limits.cpus)!==0.5 || service.deploy.resources.limits.memory!=='536870912' ||
+          Number(service.deploy.resources.limits.cpus)!==(four?1:0.5) || service.deploy.resources.limits.memory!==(four?'1610612736':'536870912') ||
+          (four && e.NODE_OPTIONS!=='--max-old-space-size=384') ||
           service.read_only!==true || service.ports?.length || service.env_file?.length) fail();
       if (active) {
         // Compose versions omit different boolean values. An empty bind object
