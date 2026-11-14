@@ -7,7 +7,7 @@ import { Value } from '@sinclair/typebox/value';
 import { createHash } from 'node:crypto';
 import type { Dto } from './billing-fixture-wire';
 import { join, resolve } from 'node:path';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
 // Synthetic HTTP boundary tests in real Chromium; no actual API/PG/model/Word acceptance.
@@ -2221,6 +2221,122 @@ test('lost retry receipt repeats the exact request and does not create another t
   await expect.poll(()=>state.retryRequests.length).toBe(2);expect(state.retryRequests[0]).toEqual(state.retryRequests[1]);expect(state.executes).toHaveLength(1);
 });
 
+// #1341: synthetic HTTP/Chromium UX only; never point these cases at the real replay on port 5303.
+function assertSyntheticTimeoutUiTarget() {
+  const base = new URL(String(test.info().project.use.baseURL ?? 'http://127.0.0.1:5173'));
+  expect(['127.0.0.1','localhost','[::1]']).toContain(base.hostname);
+  expect(base.port, 'The real replay at localhost:5303 must not be used for synthetic UI acceptance').not.toBe('5303');
+}
+
+for(const width of [1440,390])test('file authoring timeout states preserve phase and distinguish recovery from checks '+width,async({page})=>{
+  assertSyntheticTimeoutUiTarget();
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='file_authoring_timeout_recovery_pending';
+  state.eventError='MODEL_TIMEOUT';state.retryMode='blocked';state.retryReason='provider_evidence_unresolved';
+  const height=width===1440?1000:844;await page.setViewportSize({width,height});
+  await setup(page,state);await page.locator('#execute-input').click();await expect.poll(()=>state.runs.size).toBe(1);
+  const run=[...state.runs.values()][0],original={runId:run.run_id,inputHash:run.input_hash,inputRevision:run.input_revision};
+  await page.route('**/credit-charge',route=>json(route,200,{quote:{...commerceMetadata(34570),points:34570,price_version:AUTOMATIC_PRICE_VERSION,quote_status:'ready'},state:'held'}));
+  const variants:[string,string,Dto<'RunResponse'>['state'],Dto<'RunRetryResponse'>['mode'],Dto<'RunRetryResponse'>['reason_code'],string][]=[
+    ['timeout-pending','file_authoring_timeout_recovery_pending','paused','blocked','provider_evidence_unresolved','本轮处理超时，正在核对可恢复进度和调用记录'],
+    ['timeout-queued','file_authoring_timeout_retry_scheduled','queued','restore_checkpoint','checkpoint_available','工作进度已保存'],
+    ['timeout-unavailable','file_authoring_timeout_recovery_unavailable','failed','blocked','checkpoint_unavailable','本轮处理超时，恢复进度未通过核验'],
+    ['timeout-exhausted','file_authoring_timeout_retries_exhausted','failed','blocked','retry_limit_reached','自动恢复次数已用完'],
+  ];
+  const output=process.env.BB_FILE_AUTHORING_TIMEOUT_UX_DIR;
+  const comparisonPairs:{scenario:string;implementation:string;prototype:string;implementation_card:unknown;prototype_card:unknown}[]=[];
+  if(output){
+    expect(process.env.BB_TIMEOUT_UI_IMPLEMENTATION_COMMIT,'Record the exact integrated implementation commit').toMatch(/^[a-f0-9]{40}$/);
+    expect(process.env.BB_TIMEOUT_UI_PROTOTYPE_COMMIT,'Record the exact prototype commit registered for #361').toMatch(/^[a-f0-9]{40}$/);
+    await mkdir(output,{recursive:true});
+  }
+  for(const [name,reason,runState,mode,retryReason,expected] of variants){
+    run.state=runState;run.stage=runState==='queued'?'queued':runState==='failed'?'failed':'provider_reconcile';
+    state.runReason=reason;state.retryMode=mode;state.retryReason=retryReason;state.eventSeq++;
+    await page.reload();const card=page.locator('.authoring-status-card');await expect(card).toContainText(expected);
+    await expect(card).not.toContainText('处理输出超过安全上限');
+    await expect(card).not.toContainText('MODEL_TIMEOUT');
+    await expect(card.locator('.authoring-status-step[data-step-state="done"]')).toHaveCount(2);
+    await expect(card.locator('.authoring-status-step[aria-current="step"]')).toContainText('编制募集书');
+    await expect(card.locator('.authoring-status-step[data-step-state="future"]')).toHaveCount(2);
+    await expect(page.locator('#resume-run')).toHaveCount(0);
+    if(name==='timeout-pending'){
+      await expect(card).toHaveAttribute('data-tone','paused');
+      await expect(card.locator('.authoring-status-badge')).toContainText('已暂停');
+      await expect(card).toContainText('符合条件时自动继续本次任务');
+      await expect(card).not.toContainText('工作进度已保存');
+      await expect(card).not.toContainText('退出状态尚未确认');
+      await expect(card).not.toContainText('仍在运行');
+      await expect(page.locator('#retry-run')).toBeDisabled();
+      await expect(page.locator('#refresh-run-retry')).toBeEnabled();
+      await expect(page.locator('#cancel-run')).toBeEnabled();
+      await expect(page.locator('#pause-run')).toHaveCount(0);
+    }else if(name==='timeout-queued'){
+      await expect(card).toHaveAttribute('data-tone','running');
+      await expect(card.locator('.authoring-status-badge')).toContainText('排队中');
+      await expect(card.locator('h3[role="status"]')).toHaveText('正在安排自动续跑');
+      await expect(card).toContainText('仍是本次任务');
+      await expect(page.locator('#retry-run,#refresh-run-retry')).toHaveCount(0);
+      await expect(page.locator('#pause-run')).toBeEnabled();await expect(page.locator('#cancel-run')).toBeEnabled();
+    }else{
+      await expect(card).toHaveAttribute('data-tone','failed');
+      await expect(card.locator('.authoring-status-badge')).toContainText('未完成');
+      await expect(card).toContainText('本轮未完成');
+      await expect(card).not.toContainText('已暂停');
+      await expect(card).not.toContainText('关闭页面不会取消任务');
+      await expect(card).not.toContainText('工作进度已保存');
+      await expect(page.locator('#retry-run,#refresh-run-retry,#pause-run,#cancel-run')).toHaveCount(0);
+      if(name==='timeout-unavailable')await expect(card).toContainText('已停止自动重试');
+    }
+    if(name!=='timeout-queued')expect((await card.innerText()).match(/已保存的?材料会保留/g)).toHaveLength(1);
+    expect(state.executes).toHaveLength(1);expect(state.retryRequests).toHaveLength(0);expect(state.runActions).toHaveLength(0);
+    expect(state.runs.size).toBe(1);expect({runId:run.run_id,inputHash:run.input_hash,inputRevision:run.input_revision}).toEqual(original);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    if(output){
+      await expect(page.locator('.authoring-status-billing')).toContainText('34,570 积分');
+      const implementation='implementation-'+name+'-'+width+'.png',reference='prototype-'+name+'-'+width+'.png';
+      await card.scrollIntoViewIfNeeded();
+      const implementationCard=await card.boundingBox();
+      await page.screenshot({path:join(output,implementation),animations:'disabled'});
+      const prototype=await page.context().newPage();await prototype.setViewportSize({width,height});
+      try{
+        await prototype.setContent(await readFile(resolve('../../product-prototype/public/authoring-live-progress.html'),'utf8'));
+        await prototype.addStyleTag({content:await readFile(resolve('../../product-prototype/public/authoring-status.css'),'utf8')});
+        await prototype.evaluate(key=>(window as any).render(key),name);
+        const referenceCard=prototype.locator('.authoring-status-card');
+        await expect(referenceCard).toContainText(expected);
+        await expect(referenceCard).toHaveAttribute('data-tone',runState==='paused'?'paused':runState==='failed'?'failed':'running');
+        await expect(referenceCard.locator('.authoring-status-step[data-step-state="done"]')).toHaveCount(2);
+        await expect(referenceCard.locator('.authoring-status-step[aria-current="step"]')).toContainText('编制募集书');
+        await expect(referenceCard.locator('.authoring-status-step[data-step-state="future"]')).toHaveCount(2);
+        if(name==='timeout-pending'){
+          await expect(referenceCard.locator('[data-action="retry-blocked"]')).toBeDisabled();
+          await expect(referenceCard.locator('[data-action="refresh"]')).toBeEnabled();
+        }else if(name==='timeout-queued'){
+          await expect(referenceCard.locator('[data-action="pause"]')).toBeEnabled();
+          await expect(referenceCard.locator('[data-action="stop"]')).toBeEnabled();
+        }else await expect(referenceCard.locator('button')).toHaveCount(0);
+        await referenceCard.scrollIntoViewIfNeeded();
+        const prototypeCard=await referenceCard.boundingBox();
+        expect(await prototype.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+        await prototype.screenshot({path:join(output,reference),animations:'disabled'});
+        comparisonPairs.push({scenario:name,implementation,prototype:reference,implementation_card:implementationCard,prototype_card:prototypeCard});
+      }finally{await prototype.close();}
+    }
+  }
+  if(output)await writeFile(join(output,'timeout-comparison-'+width+'.json'),JSON.stringify({
+    fixture:'synthetic HTTP boundary / real Chromium; no real model, API, database or Word acceptance',
+    implementation_commit:process.env.BB_TIMEOUT_UI_IMPLEMENTATION_COMMIT,prototype_commit:process.env.BB_TIMEOUT_UI_PROTOTYPE_COMMIT,
+    version_evidence:'Commit IDs are supplied by the runner; separately verify the serving build/source tree against those commits.',
+    prototype_sources:await Promise.all(['authoring-live-progress.html','authoring-status.css'].map(async name=>({
+      path:'product-prototype/public/'+name,sha256:createHash('sha256').update(await readFile(resolve('../../product-prototype/public',name))).digest('hex')
+    }))),
+    viewport:{width,height},framing:'Native viewport screenshots after ensuring the status card is in view. Measured card bounds are recorded per side; surrounding implementation/prototype shells may differ.',
+    prototype_source:'product-prototype/public/authoring-live-progress.html',pairs:comparisonPairs,
+    visual_review:'pending; screenshots and functional assertions do not imply user acceptance'
+  },null,2)+'\n','utf8');
+});
+
+
 for(const width of [1440,390])test('output limit states preserve phase and distinguish saved recovery from checks '+width,async({page})=>{
   const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='file_authoring_output_limit_recovery_pending';
   state.retryMode='blocked';state.retryReason='provider_evidence_unresolved';
@@ -2315,12 +2431,13 @@ test('output limit lost retry receipt reuses one request and one task',async({pa
   expect(state.acceptedRetryRequests.size).toBe(1);expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);expect(run.input_hash).toBe(originalHash);
 });
 
-test('output limit legacy resume only clears the user pause and still requires a separate restart confirmation',async({page})=>{
-  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='provider_result_pending';
+for(const scenario of [{name:'output limit',error:'MODEL_OUTPUT_TOO_LARGE'},{name:'file authoring timeout',error:'MODEL_TIMEOUT'}])test(scenario.name+' legacy resume only clears the user pause and still requires a separate restart confirmation',async({page})=>{
+  if(scenario.error==='MODEL_TIMEOUT')assertSyntheticTimeoutUiTarget();
+  const state=fixture();state.checkStatus='ready';state.runStage='provider_reconcile';state.runReason='provider_result_pending';state.eventError=scenario.error;
   state.retryMode='resume';state.retryReason='user_paused';
   await setup(page,state);await page.locator('#execute-input').click();
   await expect(page.getByRole('button',{name:'继续本次任务',exact:true})).toBeEnabled();await expect(page.locator('#retry-run')).toHaveCount(0);
-  const run=[...state.runs.values()][0],originalHash=run.input_hash;let releaseResume:()=>void=()=>{};
+  const run=[...state.runs.values()][0],original={runId:run.run_id,inputHash:run.input_hash,inputRevision:run.input_revision};let releaseResume:()=>void=()=>{};
   await page.route('**/runs/*/resume',async route=>{
     expect(route.request().method()).toBe('POST');state.runActions.push(new URL(route.request().url()).pathname);
     await new Promise<void>(resolve=>{releaseResume=resolve;});
@@ -2338,7 +2455,7 @@ test('output limit legacy resume only clears the user pause and still requires a
   await page.locator('#retry-run').click();await expect(page.getByRole('dialog',{name:'使用原材料重新处理？'})).toBeVisible();
   expect(state.retryRequests).toHaveLength(0);await page.locator('#confirm-run-restart').click();
   await expect.poll(()=>state.retryRequests.length).toBe(1);expect(state.retryRequests[0]).toMatchObject({mode:'restart_materials',confirmed_restart:true});
-  expect(state.runActions).toHaveLength(1);expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);expect(run.input_hash).toBe(originalHash);
+  expect(state.runActions).toHaveLength(1);expect(state.executes).toHaveLength(1);expect(state.runs.size).toBe(1);expect({runId:run.run_id,inputHash:run.input_hash,inputRevision:run.input_revision}).toEqual(original);
 });
 
 test('a delayed accepted retry receipt cannot replace newer success or detach its downloads',async({page})=>{

@@ -29,6 +29,10 @@
       <button type="button" data-state="output-queued">输出超限已续排</button>
       <button type="button" data-state="output-unavailable">恢复进度未通过</button>
       <button type="button" data-state="output-exhausted">恢复次数用完</button>
+      <button type="button" data-state="timeout-pending">超时待核对</button>
+      <button type="button" data-state="timeout-queued">超时已续排</button>
+      <button type="button" data-state="timeout-unavailable">超时恢复不可用</button>
+      <button type="button" data-state="timeout-exhausted">超时恢复次数用完</button>
       <button type="button" data-state="output-legacy">超限旧任务重启</button>
       <button type="button" data-state="output-user-paused">旧任务主动暂停</button>
       <button type="button" data-state="succeeded">已完成</button>
@@ -98,6 +102,27 @@
         description: ['系统已尝试恢复，但自动恢复次数已用完，本次未能完成。请联系支持处理。', '已保存的材料会保留。'],
         actions: [], records: [{time: '09:45', kind: 'failed', text: '自动恢复次数已用完，本次未完成'}]
       },
+      'timeout-pending': {
+        tone: 'paused', badge: '已暂停', title: '编制募集书时暂停', phase: 2,
+        description: ['本轮处理超时，正在核对可恢复进度和调用记录；符合条件时自动继续本次任务。', '已保存的材料会保留。关闭页面不会取消任务。', '上次调用记录尚需核对，暂不能再次处理。请稍后刷新，持续未恢复时请联系支持。'],
+        actions: ['retry-blocked', 'refresh', 'stop'], records: [{time: '09:42', kind: 'paused', text: '本轮处理超时，正在核对恢复条件'}]
+      },
+      'timeout-queued': {
+        tone: 'running', badge: '排队中', title: '正在安排自动续跑', phase: 2,
+        description: ['工作进度已保存，执行服务将接续已有工作，仍是本次任务。', '关闭页面不会取消任务。'],
+        actions: ['pause', 'stop'], records: [{time: '09:43', text: '进度已保存，已安排自动续跑'}]
+      },
+      'timeout-unavailable': {
+        tone: 'failed', badge: '未完成', title: '本轮未完成', phase: 2,
+        description: ['本轮处理超时，恢复进度未通过核验，系统已停止自动重试。请联系支持核对。', '已保存的材料会保留。'],
+        actions: [], records: [{time: '09:44', kind: 'failed', text: '恢复进度未通过核验，已停止自动重试'}]
+      },
+      'timeout-exhausted': {
+        tone: 'failed', badge: '未完成', title: '本轮未完成', phase: 2,
+        description: ['系统已尝试恢复，但自动恢复次数已用完，本次未能完成。请联系支持处理。', '已保存的材料会保留。'],
+        actions: [], records: [{time: '09:45', kind: 'failed', text: '自动恢复次数已用完，本次未完成'}]
+      },
+
       'output-legacy': {
         tone: 'paused', badge: '已暂停', title: '编制募集书时暂停', phase: 2,
         description: ['本次模型处理尚未确认结果，系统正在核对。已保存材料会保留；若持续未恢复，请联系支持。', '已保存的材料会保留。关闭页面不会取消任务。', '上次处理已结束，但没有可续跑的工作快照。重试将使用本次锁定的原材料重新处理，需先确认。'],
