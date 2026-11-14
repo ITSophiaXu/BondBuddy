@@ -13,11 +13,13 @@ import { ACCEPTANCE_POLICY,METRICS,SCOPES,REQUIRED_FINANCIAL_KEYS,REQUIRED_ROLE_
 
 const fileCatalogBytes=readFileSync(new URL('../deploy/m1/codex-file-authoring-model-catalog.json',import.meta.url));
 const fileModels=JSON.parse(fileCatalogBytes).models;
-test('file-authoring accepts only the deployed DeepSeek catalog and preserves official 0.167 capabilities',()=>{
-  // openai/codex@cb41599ccbe371272892f156286a236aa097bada (0.167.0):
+test('file-authoring accepts only the deployed DeepSeek catalog and preserves official 0.169 capabilities',()=>{
+  // openai/codex@a41fe5b443652cbdbee57717fbb9fd78d8d8b32a (0.169.0):
   // models-manager/src/model_info.rs::model_info_from_slug, models-manager/prompt.md,
   // and protocol/src/openai_models.rs::default_input_modalities. Only the existing
   // business 1M ceiling, compaction threshold and effective window override fallback.
+  // The new optional web_search_provider field defaults to None when omitted;
+  // the official prompt and all existing fallback capabilities are unchanged.
   assert.deepEqual(fileModels.map(m=>m.slug),['deepseek-flash']);
   assert.deepEqual(fileCatalogBytes,readFileSync(new URL('../deploy/m1/codex-deepseek-model-catalog.json',import.meta.url)),
     'acceptance and the selected runtime catalog must describe the same model');
@@ -42,6 +44,18 @@ test('file-authoring accepts only the deployed DeepSeek catalog and preserves of
   assert.equal(Buffer.byteLength(instructions_template,'utf8'),20903);
   assert.equal(createHash('sha256').update(instructions_template).digest('hex'),
     'ac8ae107a0d72fe3476b430afb161ea4e67da2e446d778aefc44828160559807');
+});
+test('business Codex build pins official 0.169 platform integrity and retains catalog installation',()=>{
+  const dockerfile=readFileSync(new URL('../deploy/m1/Dockerfile',import.meta.url),'utf8');
+  // npm registry @openai/codex dist-tags.latest and both 0.169.0 platform packages.
+  assert.match(dockerfile,/^ARG CODEX_VERSION=0\.169\.0$/m);
+  for(const [arch,integrity] of [
+    ['X64','sha512-o05NyAOCDygSPRo1yinzxvkRSdmsZyBD9E7mbpmjRanSfM8lypqWtQgEo4XfNkwhuCR2aFu8mlGOsQGFXVbVww=='],
+    ['ARM64','sha512-NZ/DaQUpcQmxmqee7Z9uC1rzw3GhSbooawcaTe1LN5Yk+WlinUKGdTXJgClRT/9ogQEEM9TWxYzvxPfj5G/xFg=='],
+  ])assert.equal(dockerfile.match(new RegExp(`^ARG CODEX_INTEGRITY_LINUX_${arch}=(.*)$`,'m'))?.[1],integrity);
+  assert.ok(dockerfile.includes('[ "$got" = "$want" ] ||'));
+  assert.match(dockerfile,/COPY .*codex-file-authoring-model-catalog.json \/opt\/bondbuddy\/codex-file-authoring-model-catalog.json/);
+  assert.match(dockerfile,/COPY .*codex-deepseek-model-catalog.json \/opt\/bondbuddy\/codex-deepseek-model-catalog.json/);
 });
 test('current catalog model passes identity checks while retired, unrelated and missing models are rejected',()=>{
   // In-memory validator branch exercises only; these flags are deliberately
