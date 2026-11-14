@@ -1,18 +1,19 @@
 import { Pool } from 'pg';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { hostname } from 'node:os';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir, readlink } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 
 export interface ModelCallPermit {
   signal: AbortSignal;
-  bindProcess(pid: number): Promise<void>;
+  bindProcess(pid: number, codexHome?: string): Promise<void>;
   renew(): Promise<void>;
   /** Only after the contained process has closed, including cancellation. */
   release(): Promise<void>;
 }
 export interface ModelCallBudget {
   acquire(signal?: AbortSignal, scope?: string): Promise<ModelCallPermit>;
+  reconcileOwnExitedProcesses?(): Promise<void>;
 }
 const namespace = 0x42424d43;
 const budgets = new WeakMap<Pool, ModelCallBudget>();
@@ -21,14 +22,34 @@ export function modelCallConcurrency(env: NodeJS.ProcessEnv = process.env) {
   if (!/^[1-4]$/.test(value)) throw new Error('Invalid BB_MODEL_CALL_CONCURRENCY');
   return Number(value);
 }
-async function processStart(pid: number): Promise<string | null> {
+async function processIdentity(pid: number): Promise<{start:string;group:number} | null> {
   try {
     const stat = await readFile(`/proc/${pid}/stat`, 'utf8');
-    return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19] ?? null;
+    const fields=stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+    return fields[19] ? {start:fields[19],group:Number(fields[2])} : null;
   } catch (error) {
     if (['ENOENT','ESRCH'].includes((error as NodeJS.ErrnoException).code ?? '')) return null;
     throw error; // unreadable is not evidence of absence
   }
+}
+
+const processStart = async (pid: number) => (await processIdentity(pid))?.start ?? null;
+async function groupOrHomeAlive(group: number | null, home: string | null) {
+  for (const name of await readdir('/proc')) {
+    if (!/^[0-9]+$/.test(name)) continue;
+    const identity = await processIdentity(Number(name));
+    if (!identity) continue;
+    if (group !== null && identity.group === group) return true;
+    if (home !== null) {
+      try {
+        const env=await readFile(`/proc/${name}/environ`);
+        if (env.includes(Buffer.from(`CODEX_HOME=${home}\0`))) return true;
+      } catch (error) {
+        if (!['ENOENT','ESRCH'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+      }
+    }
+  }
+  return false;
 }
 
 /** Global four-slot semaphore in the sole PG, shared by authoring/review/assistants.
@@ -39,13 +60,14 @@ async function processStart(pid: number): Promise<string | null> {
  * existing journal, independently of active capacity. */
 export class PgModelCallBudget implements ModelCallBudget {
   private active = 0;
+  private readonly exitedTokens = new Set<string>();
   private readonly waiters = new Map<string, (() => void)[]>();
   private readonly sessions: Pool;
   private readonly host = hostname();
   constructor(pool: Pool, private readonly limit: number = 4) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 4) throw new Error('Invalid model call concurrency');
     this.sessions = new Pool({ ...pool.options, max: limit, application_name: 'bondbuddy_model_budget',
-      connectionTimeoutMillis: 5000, idleTimeoutMillis: 1000, allowExitOnIdle: true });
+      connectionTimeoutMillis: 5000, query_timeout: pool.options.query_timeout ?? 5000, idleTimeoutMillis: 1000, allowExitOnIdle: true });
     this.sessions.on('error', () => { /* a failed operation is fail-closed */ });
   }
   private async enter(scope: string, signal?: AbortSignal) {
@@ -78,12 +100,21 @@ export class PgModelCallBudget implements ModelCallBudget {
    * Foreign/unreadable/possibly-live holders remain fenced for host reconciliation.
    * A restarted PID 1 namespace is direct evidence that its old child tree died. */
   async reconcileOwnExitedProcesses() {
-    const rows = (await this.sessions.query('SELECT * FROM bb_model_capacity_holders WHERE host_id=$1',[this.host])).rows;
+    const currentNamespace=await readlink('/proc/self/ns/pid');
+    const currentBoot=(await readFile('/proc/sys/kernel/random/boot_id','utf8')).trim();
+    const currentInit=await processStart(1);
+    const rows = (await this.sessions.query('SELECT * FROM bb_model_capacity_holders WHERE host_id=$1 AND pid_namespace=$2 AND host_boot_id=$3 AND namespace_init_start=$4',[this.host,currentNamespace,currentBoot,currentInit])).rows;
     for (const row of rows) {
+      if (this.exitedTokens.has(row.token)) {
+        await this.sessions.query('DELETE FROM bb_model_capacity_holders WHERE token=$1 AND host_id=$2',[row.token,this.host]);
+        this.exitedTokens.delete(row.token);continue;
+      }
       const parent = await processStart(row.parent_pid);
+      if (parent === row.parent_start) continue;
       const child = row.child_pid === null ? null : await processStart(row.child_pid);
       if (child === row.child_start && child !== null) continue;
-      if (row.child_pid === null && (parent === row.parent_start || row.parent_pid !== 1)) continue; // unbound spawn cannot be guessed dead
+      if (row.child_pid === null && row.parent_pid !== 1) continue; // unbound spawn cannot be guessed dead
+      if (await groupOrHomeAlive(row.child_group,row.codex_home)) continue;
       await this.sessions.query('DELETE FROM bb_model_capacity_holders WHERE token=$1 AND host_id=$2 AND parent_start=$3',[row.token,this.host,row.parent_start]);
     }
   }
@@ -99,16 +130,24 @@ export class PgModelCallBudget implements ModelCallBudget {
     const release = async () => {
       if (released) return;
       released = true;
+      this.exitedTokens.add(token);
       if (timer) clearInterval(timer);
       signal?.removeEventListener('abort', abort);
       try {
         await this.sessions.query('DELETE FROM bb_model_capacity_waiters WHERE token=$1',[token]);
         await this.sessions.query('DELETE FROM bb_model_capacity_holders WHERE token=$1 AND host_id=$2',[token,this.host]);
+        this.exitedTokens.delete(token);
       } finally { this.leave(); }
     };
     try {
       controller.signal.throwIfAborted();
       const parentStart = await processStart(process.pid);
+      const hostBootId=(await readFile('/proc/sys/kernel/random/boot_id','utf8')).trim();
+      const pidNamespace=await readlink('/proc/self/ns/pid');
+      const namespaceInitStart=await processStart(1);
+      if (!namespaceInitStart) throw new Error('Model capacity namespace identity unavailable');
+      const executionHost=process.env.BB_MODEL_EXECUTION_HOST_ID || createHash('sha256').update(await readFile('/etc/machine-id')).digest('hex');
+      if (!/^[a-f0-9]{64}$/.test(executionHost)) throw new Error('Invalid model execution host identity');
       if (!parentStart) throw new Error('Model capacity process identity unavailable');
       await this.reconcileOwnExitedProcesses();
       await this.sessions.query('INSERT INTO bb_model_capacity_scopes(scope) VALUES($1) ON CONFLICT DO NOTHING',[scope]);
@@ -127,8 +166,8 @@ export class PgModelCallBudget implements ModelCallBudget {
               const slot = (await client.query(`SELECT g.slot FROM generate_series(1,$1::integer) g(slot)
                 WHERE NOT EXISTS(SELECT 1 FROM bb_model_capacity_holders h WHERE h.slot=g.slot) LIMIT 1`,[this.limit])).rows[0]?.slot;
               if (slot !== undefined) {
-                await client.query(`INSERT INTO bb_model_capacity_holders(token,scope,slot,host_id,parent_pid,parent_start)
-                  VALUES($1,$2,$3,$4,$5,$6)`,[token,scope,slot,this.host,process.pid,parentStart]);
+                await client.query(`INSERT INTO bb_model_capacity_holders(token,scope,slot,host_id,parent_pid,parent_start,execution_host,host_boot_id,pid_namespace,namespace_init_start)
+                  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,[token,scope,slot,this.host,process.pid,parentStart,executionHost,hostBootId,pidNamespace,namespaceInitStart]);
                 await client.query("UPDATE bb_model_capacity_scopes SET last_granted=nextval('bb_model_capacity_order') WHERE scope=$1",[scope]);
                 await client.query('DELETE FROM bb_model_capacity_waiters WHERE token=$1',[token]);
                 granted = true;
@@ -154,10 +193,10 @@ export class PgModelCallBudget implements ModelCallBudget {
         void renew().catch(()=>{}).finally(()=>{renewing=false;});
       },5000);
       timer.unref();
-      const bindProcess = async (pid: number) => {
-        const start = await processStart(pid);
-        if (!start) throw new Error('Model capacity child identity unavailable');
-        const result = await this.sessions.query('UPDATE bb_model_capacity_holders SET child_pid=$3,child_start=$4 WHERE token=$1 AND host_id=$2',[token,this.host,pid,start]);
+      const bindProcess = async (pid: number, codexHome?: string) => {
+        const identity = await processIdentity(pid);
+        if (!identity) throw new Error('Model capacity child identity unavailable');
+        const result = await this.sessions.query('UPDATE bb_model_capacity_holders SET child_pid=$3,child_start=$4,child_group=$5,codex_home=$6 WHERE token=$1 AND host_id=$2',[token,this.host,pid,identity.start,identity.group,codexHome ?? null]);
         if (!result.rowCount) throw new Error('Model capacity holder lost');
       };
       controller.signal.throwIfAborted();
