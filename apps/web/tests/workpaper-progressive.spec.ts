@@ -56,6 +56,49 @@ async function setup(page:Page,chapterCount=10,filesPerChapter=2){
 async function capture(page:Page,name:string){const dir=resolve('../../work/generation-compact-ui-20261113/screenshots');await mkdir(dir,{recursive:true});await page.screenshot({path:resolve(dir,name+'.png'),fullPage:true});}
 const current=(page:Page)=>page.locator('[data-wp-batch-id="progressive-batch"]');
 
+test('live workpaper phases change before the first completed file without inflating counts',async({page})=>{
+ const s=await setup(page),b=s.createBatch();await page.setViewportSize({width:1440,height:960});
+ b.items[0].progress={phase:'preparing_materials',started_at:now,updated_at:now,interrupted:false};
+ b.items[1].state='queued';b.items[1].progress={phase:'queued',started_at:now,updated_at:now,interrupted:false};
+ await page.clock.install();await page.goto(s.results);
+ const live=current(page).getByRole('status',{name:'当前处理进度'});
+ await expect(live).toContainText('读取和准备募集说明书资料');await expect(live).toContainText('排队等待');
+ await expect(current(page).getByRole('progressbar',{name:'底稿完成进度',exact:true})).toHaveAttribute('value','0');
+ await expect(current(page)).toContainText('0 / 8 份已处理');
+ await expect(current(page).locator('.wpg-chapter-progress').nth(1)).toContainText('排队等待');
+ b.items[0].progress={...b.items[0].progress,phase:'generating',updated_at:new Date(Date.parse(now)+60000).toISOString()};
+ await page.clock.fastForward(11000);await expect(live).toContainText('模型正在编制');
+ await expect(live).not.toContainText('读取和准备募集说明书资料');await expect(current(page)).toContainText('0 / 8 份已处理');
+ b.items[0].progress.phase='writing_files';await page.clock.fastForward(11000);await expect(live).toContainText('正在生成 Word 文件');
+ expect(s.calls.filter(c=>c.method==='POST')).toHaveLength(0);
+ await capture(page,'live-progress-desktop');
+ await page.setViewportSize({width:390,height:960});await capture(page,'live-progress-mobile');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+});
+
+test('interrupted execution stays explicit until recovered and never resubmits a task',async({page})=>{
+ const s=await setup(page,2),b=s.createBatch();
+ b.items[0].progress={phase:'delivering',started_at:now,updated_at:now,interrupted:true};b.items[1].state='queued';
+ await page.clock.install();await page.goto(s.results);
+ await expect(current(page).locator('.wpg-phase')).toHaveText('执行待恢复');await expect(current(page).getByRole('heading',{name:'试生成等待恢复'})).toBeVisible();
+ await expect(current(page).getByRole('status',{name:'当前处理进度'})).toContainText('执行暂时中断，等待恢复');
+ await expect(current(page).locator('.wpg-chapter-progress').first()).toContainText('执行待恢复');
+ await capture(page,'live-progress-interrupted');
+ await page.reload();await expect(current(page)).toContainText('无需重复提交');
+ b.items[0].progress.interrupted=false;await page.clock.fastForward(11000);
+ await expect(current(page).getByRole('status',{name:'当前处理进度'})).toContainText('正在保存成果');
+ await expect(current(page).locator('.wpg-phase')).toHaveText('试生成中');
+ expect(s.calls.filter(c=>c.method==='POST')).toHaveLength(0);
+});
+
+test('queued trials and legacy responses avoid claiming that a model has started',async({page})=>{
+ const s=await setup(page,2),b=s.createBatch();b.items.filter(i=>!!i.run_id).forEach(i=>i.state='queued');
+ await page.goto(s.results);await expect(current(page)).toContainText('等待开始试生成 2 份文件');
+ await expect(current(page).getByRole('status',{name:'当前处理进度'})).toContainText('排队等待');
+ await expect(current(page)).not.toContainText('模型正在编制');
+ b.items[0].state='running';await page.reload();await expect(current(page)).toContainText('正在处理文件');
+});
+
 test('mobile preparation keeps the footer below the catalogue and clear of the assistant',async({page})=>{
  const s=await setup(page);await page.setViewportSize({width:390,height:960});await page.goto(s.prepare);
  await expect(page.locator('[data-chapter-select]')).toHaveCount(10);
@@ -83,7 +126,7 @@ for(const width of [1440,390])test(`five progressive phases use actual dynamic c
  await expect(current(page)).not.toContainText('逐份成果与状态');await capture(page,`trial-${width}`);
  for(const id of b.progressive!.trial_item_ids)s.finish(b,id);b.state='paused';b.progressive!.phase='awaiting_confirmation';await page.reload();
  await expect(current(page).getByRole('button',{name:'继续生成其余 12 份'})).toBeVisible();await expect(current(page).getByRole('button',{name:'查看',exact:true})).toHaveCount(8);await capture(page,`confirmation-${width}`);
- await current(page).getByRole('button',{name:'继续生成其余 12 份'}).click();await expect(current(page)).toContainText('正在生成其余文件');
+ await current(page).getByRole('button',{name:'继续生成其余 12 份'}).click();await expect(current(page)).toContainText('等待开始生成');
  const remaining=b.items.filter(i=>i.state==='queued');remaining[0].state='running';remaining[0].run_id='remaining-run';await page.reload();await expect(current(page)).toContainText('当前章节');await capture(page,`remaining-${width}`);
  for(const [index,item] of b.items.entries())s.finish(b,item.entry.id,index===b.items.length-1);b.state='partial';await page.reload();
  await expect(current(page)).toContainText('19 / 20 份完成');await expect(current(page).getByRole('button',{name:'仅重试失败的 1 份'})).toBeVisible();await capture(page,`partial-${width}`);
@@ -165,8 +208,8 @@ test('completed trial files are immediately viewable and downloadable, escaped p
 
 test('one continuation identity survives a failed request and refresh never creates a new batch',async({page})=>{
  const s=await setup(page,3),b=s.createBatch();for(const id of b.progressive!.trial_item_ids)s.finish(b,id);b.state='paused';b.progressive!.phase='awaiting_confirmation';s.controls.dropContinue=true;await page.goto(s.results);
- await current(page).getByRole('button',{name:'继续生成其余 3 份'}).click();await expect(page.locator('#wp-results-status')).not.toBeEmpty();await current(page).getByRole('button',{name:'继续生成其余 3 份'}).click();await expect(current(page)).toContainText('正在生成其余文件');
- const actions=s.calls.filter(c=>c.path.endsWith('/actions'));expect(actions).toHaveLength(2);expect(actions[0].body).toEqual(actions[1].body);await page.reload();await expect(current(page)).toContainText('正在生成其余文件');expect(s.calls.filter(c=>c.path.endsWith('/batches')&&c.method==='POST')).toHaveLength(0);
+ await current(page).getByRole('button',{name:'继续生成其余 3 份'}).click();await expect(page.locator('#wp-results-status')).not.toBeEmpty();await current(page).getByRole('button',{name:'继续生成其余 3 份'}).click();await expect(current(page)).toContainText('等待开始生成');
+ const actions=s.calls.filter(c=>c.path.endsWith('/actions'));expect(actions).toHaveLength(2);expect(actions[0].body).toEqual(actions[1].body);await page.reload();await expect(current(page)).toContainText('等待开始生成');expect(s.calls.filter(c=>c.path.endsWith('/batches')&&c.method==='POST')).toHaveLength(0);
 });
 
 test('UX #1308: ZIP preparation keeps progress polling and pause/stop available, paused active files settle',async({page})=>{
@@ -179,7 +222,7 @@ test('UX #1308: ZIP preparation keeps progress polling and pause/stop available,
 
 test('trial failures stay explicit and retry does not regenerate successes; restarting only opens preparation',async({page})=>{
  const s=await setup(page,3),b=s.createBatch();b.progressive!.trial_item_ids.forEach((id,index)=>s.finish(b,id,index===2));b.state='paused';b.progressive!.phase='awaiting_confirmation';await page.goto(s.results);
- await expect(current(page)).toContainText('2 份完成，1 份失败');await current(page).getByRole('button',{name:'仅重试失败的 1 份'}).click();await expect(current(page)).toContainText('正在重试失败文件');expect(b.items.filter(i=>i.state==='succeeded')).toHaveLength(2);
+ await expect(current(page)).toContainText('2 份完成，1 份失败');await current(page).getByRole('button',{name:'仅重试失败的 1 份'}).click();await expect(current(page)).toContainText('等待开始重试失败文件');expect(b.items.filter(i=>i.state==='succeeded')).toHaveLength(2);
  b.state='partial';await page.reload();const before=s.calls.filter(c=>c.method==='POST').length;await current(page).getByRole('button',{name:'重新开始'}).click();await expect(page).toHaveURL(/step=prepare/);expect(s.calls.filter(c=>c.method==='POST')).toHaveLength(before);
 });
 
@@ -203,7 +246,7 @@ test('shared blocked failures offer retry after active and attention files settl
  b.items[2].state='awaiting_input';await page.reload();await expect(retry).toBeDisabled();
  b.items[2].state='running';await page.reload();await expect(retry).toBeDisabled();
  s.finish(b,b.items[2].entry.id,true);await page.reload();await expect(retry).toBeEnabled();await retry.click();
- await expect(current(page)).toContainText('正在试生成 3 份文件');expect(b.items[0].state).toBe('succeeded');
+ await expect(current(page)).toContainText('等待开始试生成 3 份文件');expect(b.items[0].state).toBe('succeeded');
  expect(s.calls.filter(c=>c.path.endsWith('/actions')).map(c=>c.body.action)).toEqual(['retry_failed']);
 });
 
@@ -213,6 +256,6 @@ test('shared blocked batch can resume after all blocked tasks recover successful
  const resume=current(page).getByRole('button',{name:'继续本批',exact:true});
  await expect(resume).toBeDisabled();await expect(current(page).getByRole('button',{name:'重试受阻文件并继续'})).toHaveCount(0);
  s.finish(b,b.items[1].entry.id);await page.reload();await expect(resume).toBeEnabled();await expect(current(page)).toContainText('受阻文件已处理，可继续本批任务');
- await resume.click();await expect(current(page)).toContainText('正在试生成 3 份文件');
+ await resume.click();await expect(current(page)).toContainText('等待开始试生成 3 份文件');
  expect(b.items.filter(i=>i.state==='succeeded')).toHaveLength(2);expect(s.calls.filter(c=>c.path.endsWith('/actions')).map(c=>c.body.action)).toEqual(['resume']);
 });

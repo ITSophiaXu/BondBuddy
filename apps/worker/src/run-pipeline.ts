@@ -1,4 +1,5 @@
 import {isWorkpaperChange,workpaperChangeGate} from './workpaper-change-stage.js';
+import {startRunLeaseHeartbeat} from './run-lease-heartbeat.js';
 import {isWorkpaperAssessment,workpaperAssessmentGate,workpaperAssessmentStage,workpaperAssessmentDelivery} from './workpaper-assessment-stage.js';
 // #17 run execution path. One claimed run job executes its stages in order; each completed stage
 // is merged into checkpoint.stages under the lease, so a restarted worker skips it. Model stages
@@ -603,7 +604,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   const onOuterAbort = () => abort.abort();
   deps.signal?.addEventListener('abort', onOuterAbort, { once: true });
   // A lost lease (cancel won, or lease expired) stops in-flight work: codex kills its process group.
-  const heartbeat = setInterval(() => { void renew(pool, lease, leaseSeconds).catch(() => { clearInterval(heartbeat); abort.abort(); }); }, Math.max(1000, leaseSeconds * 400));
+  const heartbeat = startRunLeaseHeartbeat({renew:()=>renew(pool,lease,leaseSeconds),intervalMs:Math.max(1000,leaseSeconds*400),onLost:()=>abort.abort()});
   let currentStage: string | undefined;
   const failRun=async(options:{errorCode?:string;failedStage?:string}):Promise<RunPipelineOutcome>=>{
     const result=await finish(pool,lease,'failed',options);
@@ -799,7 +800,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       throw finishError;
     }
   } finally {
-    clearInterval(heartbeat);
+    heartbeat.stop();
     deps.signal?.removeEventListener('abort', onOuterAbort);
     deps.onLease?.(null);
   }
