@@ -20,3 +20,52 @@
 /* Keep the summary after the complete catalogue; a viewport-bottom summary
    covered files and placed the submit button under the assistant launcher. */
 .fg-preparation>.fg-footer{position:static;inset:auto;box-shadow:none}.fg-footer>#fg-confirm{scroll-margin-block:96px}
+
+/* File choices stay visible; grouping follows the generation task rather than template folders. */
+#fg-controls{display:grid;gap:20px}
+.prototype-app .fg-preparation .btn{min-height:44px}
+.fg-preparation .fg-general-row>select{min-height:44px}
+.fg-file-choices>.fg-section-heading{margin-bottom:24px;align-items:center}
+.fg-file-choices>.fg-section-heading h2{margin:0;min-width:0}
+.fg-file-choices>.fg-section-heading .btn{flex:none}
+.fg-preparation .fg-type{margin:0;min-width:0;align-items:center;padding:12px 16px;min-height:48px}
+.fg-preparation .fg-type input{margin:0}
+.fg-preparation .fg-type>span{min-width:0;overflow-wrap:anywhere}
+.fg-preparation .fg-type strong{font-weight:500;line-height:1.6}
+.fg-preparation .fg-workpaper-choice>span{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
+.fg-preparation .fg-workpaper-choice small{margin:0;font-size:14px}
+.fg-choice-groups{margin-top:24px}
+.fg-choice-group{display:grid;grid-template-columns:140px minmax(0,1fr);gap:16px;padding:16px 0}
+.fg-choice-group+.fg-choice-group{border-top:1px solid #e1e6df}
+.fg-choice-group:last-child{padding-bottom:0}
+.fg-choice-group-heading{display:grid;grid-template-columns:auto 1fr;align-content:start;align-items:baseline;gap:4px 10px}
+.fg-choice-group-heading h3{margin:0;font-size:15px;line-height:1.6}
+.fg-choice-count{color:#697565;white-space:nowrap;font-size:14px}
+.fg-preparation .fg-choice-group-heading .text-button{grid-column:1/-1;justify-self:start;min-height:44px;padding:8px 0;font-size:14px;line-height:1.5}
+.fg-choice-group .fg-types{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0;align-content:start}
+.fg-choice-description{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.fg-preparation .fg-type .fg-choice-description{margin:0}
+.fg-type:focus-within{outline:2px solid #526b45;outline-offset:3px}
+.fg-support-content{display:grid;gap:20px;padding-top:20px}
+.fg-support-content .fg-requirements{display:grid;gap:8px;margin:0;line-height:1.5}
+.fg-support-content .fg-requirements textarea{box-sizing:border-box;min-width:0;width:100%;margin:0;min-height:104px;padding:12px 14px;font:inherit;line-height:1.6;resize:vertical;border:1px solid #abbba5;border-radius:8px;background:#fff;color:inherit}
+.fg-support-actions{gap:12px;align-items:center}
+.prototype-app .fg-preparation .fg-support-actions>.btn{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-height:44px;max-width:100%;padding:10px 16px;margin:0;font-size:14px;line-height:21px;white-space:normal}
+.fg-support-count{font-size:14px;color:#697565;overflow-wrap:anywhere}
+.fg-source>div{min-width:0;overflow-wrap:anywhere}
+.fg-source>.btn{flex-shrink:0}
+@media(max-width:1100px){.fg-choice-group .fg-types{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:850px){
+ .fg-choice-group{grid-template-columns:1fr;gap:12px;padding:20px 0}
+ .fg-choice-group-heading{grid-template-columns:auto 1fr auto;align-items:center}
+ .fg-preparation .fg-choice-group-heading .text-button{grid-column:auto;justify-self:end;padding:8px 4px}
+ .fg-general-row>select{grid-column:1/-1}
+}
+@media(max-width:500px){
+ .fg-file-choices>.fg-section-heading{gap:12px;margin-bottom:20px}
+ .fg-choice-groups{margin-top:12px}
+ .fg-choice-group .fg-types{grid-template-columns:1fr;gap:10px}
+ .fg-preparation .fg-type{padding:10px 12px}
+ .fg-support-actions>.btn{flex:1 1 100%}
+ .fg-support-count{flex-basis:100%}
+}
