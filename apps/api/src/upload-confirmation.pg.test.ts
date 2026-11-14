@@ -266,12 +266,13 @@ test('retry appends canonical B after A is logically deleted and retains A pin u
  const f=await fixture();const started=gate(),blocked=gate();let work:Promise<string>|undefined;try{
   const a=await f.upload();const saved=await f.send('POST',a.path,a.declaration);assert.equal(saved.statusCode,200);
   const duplicate=await f.upload(a.bytes,'duplicate.docx');await f.send('POST',duplicate.path,duplicate.declaration,true);
-  const read=f.blobs.readToFile!;let once=true;f.blobs.readToFile=async(...args)=>{const proof=await read(...args);if(args[0]===a.key&&once){once=false;started.release();await blocked.wait;}return proof;};
+  const head=f.blobs.headVersion!;let once=true;f.blobs.headVersion=async key=>{const version=await head(key);if(key===a.key&&once){once=false;started.release();await blocked.wait;}return version;};
   work=runUploadConfirmationOnce(f.pool,f.blobs);await started.wait;
   assert.equal((await f.pool.query('SELECT bb_upload_confirmation_bytes_pinned($1,$2) pinned',[f.owner,a.key])).rows[0].pinned,true);
   assert.equal((await f.send('DELETE',`/api/v1/projects/${f.id}/materials/${saved.json().material_id}`)).statusCode,204);
   const b=await f.upload(a.bytes,'canonical-b.docx');const newer=await f.send('POST',b.path,b.declaration);assert.equal(newer.statusCode,200,newer.body);
   blocked.release();assert.equal(await work,'retry');assert.equal((await f.pool.query('SELECT bb_upload_confirmation_bytes_pinned($1,$2) pinned',[f.owner,a.key])).rows[0].pinned,true);
+  assert.equal((await f.pool.query('SELECT last_error FROM bb_upload_confirmations WHERE upload_id=$1',[duplicate.id])).rows[0].last_error.message,'UPLOAD_REVERIFY_REQUIRED','the changed canonical material, not a HEAD timeout, requires the retry');
   await f.pool.query('UPDATE bb_outbox SET next_attempt_at=NULL WHERE aggregate_id=$1',[duplicate.id]);assert.equal(await runUploadConfirmationOnce(f.pool,f.blobs),'completed');
   const pin=(await f.pool.query('SELECT canonical_object_keys FROM bb_upload_confirmations WHERE upload_id=$1',[duplicate.id])).rows[0];assert.deepEqual(pin.canonical_object_keys,[a.key,b.key]);
   const result=await f.send('POST',duplicate.path,duplicate.declaration,true);assert.equal(result.statusCode,200);assert.equal(result.json().material_id,newer.json().material_id);

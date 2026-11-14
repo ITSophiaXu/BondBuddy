@@ -10,6 +10,7 @@ export interface ExecutionTiming {
  startedAt:string|null;
  endedAt:string|null;
  open:boolean;
+ stages:{stage:string;ms:number}[];
 }
 
 /** Wall-clock durations for this exact run; updated_at is never a completion timestamp. */
@@ -28,7 +29,19 @@ export function executionTiming(run:Row,events:Row[],capturedAt:string):Executio
  const firstRunning=Number(changes[0]?.seq)===1?changes.find(e=>e.state==='running'):undefined;
  const startCandidate=validTime(firstRunning?.occurred_at);
  const started=startCandidate!==null&&(endpoint===null||startCandidate<=endpoint)?startCandidate:null;
- return {totalMs:difference(endpoint,created),initialWaitMs:difference(started,created),processingMs:difference(endpoint,started),startedAt:started===null?null:new Date(started).toISOString(),endedAt:ended===null?null:new Date(ended).toISOString(),open};
+ const stageStarts=new Map<string,number>(),stages:{stage:string;ms:number}[]=[];
+ for(const e of events.filter(e=>e.run_id===run.id&&e.type==='run.progress').sort((a,b)=>Number(a.seq)-Number(b.seq))){
+  const stage=String(e.stage??'');if(!stage)continue;
+  const reason=String((e.payload as {reason?:unknown}|undefined)?.reason??'');
+  const at=validTime(e.occurred_at);
+  if(reason==='stage_started'){if(at!==null)stageStarts.set(stage,at);continue;}
+  if(reason!=='stage_completed')continue;
+  const reported=Number((e.payload as {duration_ms?:unknown}|undefined)?.duration_ms);
+  const ms=Number.isFinite(reported)&&reported>=0?reported:(at!==null&&stageStarts.has(stage)?at-stageStarts.get(stage)!:null);
+  if(ms!==null&&ms>=0)stages.push({stage,ms});
+  stageStarts.delete(stage);
+ }
+ return {totalMs:difference(endpoint,created),initialWaitMs:difference(started,created),processingMs:difference(endpoint,started),startedAt:started===null?null:new Date(started).toISOString(),endedAt:ended===null?null:new Date(ended).toISOString(),open,stages};
 }
 
 export function duration(ms:number|null):string {

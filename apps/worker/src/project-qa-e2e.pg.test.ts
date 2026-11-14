@@ -21,13 +21,16 @@ import {loadCodexAdapterConfig} from './codex-adapter.js';
 const database=await isolatedTestDatabase(undefined,'project-qa-e2e'),storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 test('project Q&A: free extraction, confirmed count, grounded Word, knowledge review, versions, billing and ownership',{skip:!database||!storage||!process.env.BONDBUDDY_TEST_PYTHON,timeout:300000},async()=>{
  const pool=new Pool({connectionString:database}),owner=randomUUID(),other=randomUUID(),container='bb-qa-'+randomUUID().replaceAll('-','');let actor=owner,calls=0,fail=false,pauseOnce=true,failQuestion='';
- const blobs=azureBlobs(storage!,container),origin='http://bondbuddy.test',app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
+ const blobs=azureBlobs(storage!,container),origin='http://bondbuddy.test',app=createServer({pool,blobs,historicalBillingFixture:true,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
  const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
  const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,method+' '+url+' '+r.body);return r.body?r.json():null;};
  const model:typeof codexModelStage=o=>({name:o.name,replay:true,run:async ctx=>{
   const gate=await ctx.validateBeforeModelCall?.();if(gate)return gate;if(fail)return {kind:'fail',code:'SYNTHETIC_PROVIDER_FAILED'};
   if(o.logicalCallId===failQuestion)return {kind:'fail',code:'MODEL_OUTPUT_SCHEMA_INVALID'};
-  if(pauseOnce&&calls===1){pauseOnce=false;return {kind:'pause',stage:'capability_not_ready',reason:'synthetic_checkpoint_pause'};}
+  if(pauseOnce){
+   const frozen=(await pool.query('SELECT manifest FROM bb_project_qa_runs WHERE run_id=$1',[ctx.run.id])).rows[0].manifest as QaInput;
+   if(o.logicalCallId==='qa-'+frozen.questions[1]?.id){pauseOnce=false;return {kind:'pause',stage:'capability_not_ready',reason:'synthetic_checkpoint_pause'};}
+  }
   const journal=new CodexDurableJournal({pool,blobs,lease:ctx.lease,validateResult:o.validate}),old=await journal.latestAttempt(o.logicalCallId);
   if(old){const saved=await journal.readCompleted(o.logicalCallId,old.attempt_no);assert.ok(saved);return {kind:'done',value:saved.value};}
   // Exercise the real prompt snapshot/checkpoint path, stopping only at the provider gate.

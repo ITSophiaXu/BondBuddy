@@ -510,3 +510,38 @@ esac
  writeFileSync(calls,'');const bad=spawnSync('bash',[join(fixture,'deploy/m1/scripts/export-images-role.sh'),'execution',old,join(fixture,'bad.tar.gz'),'disabled'],{env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,TEST_CALLS:calls,TEST_CACHED_WRONG:'1'},encoding:'utf8'});
  assert.equal(bad.status,3);assert.match(bad.stderr,/matching source revision/);assert.doesNotMatch(readFileSync(calls,'utf8'),/build|save/);
 });
+
+test('four confirmation profile keeps reserved small capacity and refuses mismatched disk/memory/CPU',()=>{
+ const four={BB_UPLOAD_CONFIRMATION_ROLE:'execution',BB_UPLOAD_CONFIRMATION_SPOOL_HOST_DIR:dir,BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'1',BB_UPLOAD_CONFIRMATION_CONCURRENCY:'4',BB_UPLOAD_CONFIRMATION_SPOOL_MAX_BYTES:'469762048',BB_UPLOAD_CONFIRMATION_MEMORY_LIMIT:'1536M',BB_UPLOAD_CONFIRMATION_CPU_LIMIT:'1',BB_UPLOAD_CONFIRMATION_HEAP_MB:'384'};
+ const a=covered('execution','services: {}\n',four),c=config('execution',a.values,join(a.area,'state')),service=c.services['upload-confirmation'];
+ assert.equal(service.environment.BB_UPLOAD_CONFIRMATION_CONCURRENCY,'4');assert.equal(service.environment.BB_UPLOAD_CONFIRMATION_SMALL_SLOT,'1');
+ assert.equal(service.environment.BB_UPLOAD_SPOOL_MAX_BYTES,'469762048');assert.equal(service.deploy.resources.limits.memory,'1610612736');assert.equal(Number(service.deploy.resources.limits.cpus),1);
+ for(const change of [{BB_UPLOAD_CONFIRMATION_SMALL_SLOT:'0'},{BB_UPLOAD_CONFIRMATION_CONCURRENCY:'5'},{BB_UPLOAD_CONFIRMATION_CONCURRENCY:'2'},{BB_UPLOAD_CONFIRMATION_SPOOL_MAX_BYTES:'134217728'},{BB_UPLOAD_CONFIRMATION_MEMORY_LIMIT:'512M'},{BB_UPLOAD_CONFIRMATION_CPU_LIMIT:'0.5'},{BB_UPLOAD_CONFIRMATION_HEAP_MB:'1024'},{BB_UPLOAD_CONFIRMATION_ROLE:'size-split'}]){
+  const b=covered('execution','services: {}\n',{...four,...change});assert.throws(()=>config('execution',b.values,join(b.area,'state')));
+ }
+});
+
+test('authoring four total slots and assistant channels share bounded model capacity without changing defaults',()=>{
+ const baseline=config('execution',{BB_MODEL_EXECUTION_HOST_ID:'a'.repeat(64)});
+ const expanded=config('execution',{
+  BB_AUTHORING_WORKER_CONCURRENCY:'4',BB_AUTHORING_INTERACTIVE_SLOTS:'0',
+  BB_AUTHORING_NODE_HEAP_MIB:'1536',BB_AUTHORING_CPU_LIMIT:'1',BB_AUTHORING_MEMORY_LIMIT:'4G',
+  BB_REVIEW_ASSISTANT_SLOTS:'4',BB_MODEL_CALL_CONCURRENCY:'4',BB_MODEL_EXECUTION_HOST_ID:'a'.repeat(64),
+ });
+ assert.equal(expanded.services.worker.environment.BB_WORKER_CONCURRENCY,'4');
+ assert.equal(expanded.services.worker.environment.BB_WORKER_INTERACTIVE_SLOTS,'0');
+ assert.equal(expanded.services.worker.environment.NODE_OPTIONS,'--max-old-space-size=1536');
+ assert.equal(expanded.services.worker.deploy.resources.limits.cpus,1);
+ assert.equal(expanded.services.worker.deploy.resources.limits.memory,'4294967296');
+ assert.equal(expanded.services['worker-review'].environment.BB_REVIEW_ASSISTANT_SLOTS,'4');
+ assert.equal(baseline.services.worker.environment.BB_WORKER_CONCURRENCY,'1');
+ assert.equal(baseline.services.worker.environment.BB_WORKER_INTERACTIVE_SLOTS,'1');
+ for (const name of Object.keys(baseline.services)) if (!['worker','worker-review'].includes(name)) assert.deepEqual(expanded.services[name],baseline.services[name]);
+ for(const values of [
+  {BB_AUTHORING_WORKER_CONCURRENCY:'4'}, // hidden fifth interactive channel
+  {BB_AUTHORING_CPU_LIMIT:'0'}, {BB_AUTHORING_MEMORY_LIMIT:'0'},
+  {BB_AUTHORING_NODE_HEAP_MIB:'2048 --require=synthetic'},
+  {BB_AUTHORING_INTERACTIVE_SLOTS:'-1'}, {BB_REVIEW_ASSISTANT_SLOTS:'0'},
+  {BB_MODEL_CALL_CONCURRENCY:'5'},
+ ]) assert.throws(()=>config('execution',values));
+});

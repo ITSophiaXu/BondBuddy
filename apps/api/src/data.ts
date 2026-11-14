@@ -108,7 +108,10 @@ export const inputDto = (i: any) => {
 };
 export const runDto = (r: any) => ({ run_id: r.id, execution_request_id: executionKeyFromStorage(r.execution_request_id), project_id: r.project_id, input_revision: r.input_revision, input_hash: r.input_hash.trim(), channel: r.channel ?? 'production', test_grant_id: r.test_grant_id ?? null, uncovered_items: r.uncovered_items ?? [], state: r.state, stage: r.stage, event_cursor: r.event_cursor, billing_mode: r.channel==='non_production_test'?'non_billable_test':r.billing_mode ?? 'platform_trial', reservation_id: r.reservation_id ?? null, artifact_id: r.artifact_id, prompt_snapshot_ref: r.prompt_snapshot_ref, updated_at: date(r.updated_at) });
 export async function project(pool: Pool | PoolClient, owner: string, id: string, lock = false) {
-  const result = await pool.query(`SELECT p.*,i.input_hash,(SELECT w.source_project_id FROM bb_update_workspaces w WHERE w.owner_user_id=p.owner_user_id AND w.update_project_id=p.id) AS source_project_id FROM bb_projects p LEFT JOIN bb_input_revisions i ON i.project_id=p.id AND i.revision=p.latest_input_revision WHERE p.owner_user_id=$1 AND p.id=$2 AND p.deleted_at IS NULL ${lock ? 'FOR UPDATE OF p' : ''}`, [owner,id]);
+  // Project identity keys are immutable. Serialize state/input writers without
+  // blocking sibling metadata foreign-key KEY SHARE locks (or upgrading two
+  // already-held KEY SHARE locks into a delivery/admission deadlock).
+  const result = await pool.query(`SELECT p.*,i.input_hash,(SELECT w.source_project_id FROM bb_update_workspaces w WHERE w.owner_user_id=p.owner_user_id AND w.update_project_id=p.id) AS source_project_id FROM bb_projects p LEFT JOIN bb_input_revisions i ON i.project_id=p.id AND i.revision=p.latest_input_revision WHERE p.owner_user_id=$1 AND p.id=$2 AND p.deleted_at IS NULL ${lock ? 'FOR NO KEY UPDATE OF p' : ''}`, [owner,id]);
   if (!result.rows[0]) throw missing();
   return result.rows[0];
 }
@@ -116,7 +119,7 @@ export async function project(pool: Pool | PoolClient, owner: string, id: string
 export async function assertCanonicalBusinessRunIdle(client:PoolClient,owner:string,p:{id:string;kind:string;execution_scope_project_id?:string|null}){
   const scope=p.execution_scope_project_id||p.id;
   if(!p.execution_scope_project_id&&p.kind!=='review'&&!(await client.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND execution_scope_project_id=$2 LIMIT 1',[owner,scope])).rowCount)return;
-  try{const canonicalProject=(await client.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE NOWAIT',[owner,scope])).rows[0];if(!canonicalProject)throw missing();}
+  try{const canonicalProject=(await client.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL FOR NO KEY UPDATE NOWAIT',[owner,scope])).rows[0];if(!canonicalProject)throw missing();}
   catch(error){if((error as {code?:string}).code==='55P03')throw conflict('INPUT_REVISION_CONFLICT','同一来源项目正在提交任务，请稍后重试。');throw error;}
   if((await client.query(`SELECT 1 FROM bb_runs r JOIN bb_projects related ON related.owner_user_id=r.owner_user_id AND related.id=r.project_id
     WHERE r.owner_user_id=$1 AND COALESCE(related.execution_scope_project_id,related.id)=$2 AND r.task_kind<>'qa'

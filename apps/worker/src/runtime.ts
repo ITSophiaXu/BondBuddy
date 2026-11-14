@@ -1,3 +1,4 @@
+import { modelCallConcurrency } from './model-call-budget.js';
 // #17 worker runtime process: `node apps/worker/dist/runtime.js` (container entrypoint).
 // General slots claim run and parse jobs through PostgreSQL leases; dedicated parse slots
 // keep uploads moving while long runs occupy every general slot. A sweep loop re-queues paused work
@@ -82,7 +83,7 @@ export type WorkerRuntimeOptions = {
   /** #79/#16 operator-only platform probe loop (BB_PLATFORM_PROBE_ENABLED=1); absent = never claims probe jobs. */
   platformProbe?: { config: CodexAdapterConfig; pollMs?: number };
   /** M3 discussions use their own leases and never create document runs. */
-  reviewAssistant?: { config?: CodexAdapterConfig; pollMs?: number };
+  reviewAssistant?: { config?: CodexAdapterConfig; pollMs?: number; slots?: number };
   uploadConfirmationEnabled?: boolean;
   /** Internal upload-only claim filter. General preserves the legacy consumer. */
   uploadConfirmationLane?: UploadConfirmationLane;
@@ -121,6 +122,7 @@ export class WorkerRuntime {
         word_delivery: historicalWordDeliveryStage() }, options.factCandidateProducer),
       uploadConfirmationEnabled: false, uploadConfirmationLane: 'general', uploadConfirmationSmallSlot: false, ocrEnabled: false, ocrRetrySeconds: 300, reconciler: codexNoLookupReconciler, workerId: defaultWorkerId(), heartbeatMs: 10000, ...options };
     this.o.runKinds = checkedRunKinds(this.o.runKinds);
+    if (this.o.reviewAssistant && (!Number.isInteger(this.o.reviewAssistant.slots ?? 1) || (this.o.reviewAssistant.slots ?? 1) < 1 || (this.o.reviewAssistant.slots ?? 1) > 4)) throw new Error('Invalid assistant slots');
     // The environment factory supplies stages before the trusted producer can be installed.
     // Never replace a caller's explicit materials stage without its own integration decision.
     if (options.factCandidateProducer && options.runStages) {
@@ -162,7 +164,8 @@ export class WorkerRuntime {
     this.loops.push(this.heartbeatLoop());
     if (this.o.stagingRoot) this.loops.push(this.stagingLoop(this.o.stagingRoot));
     if (this.o.platformProbe) this.loops.push(this.probeLoop(this.o.platformProbe));
-    if (this.o.reviewAssistant && this.o.kinds.includes('run') && this.o.runKinds.includes('review')) this.loops.push(this.assistantLoop(this.o.reviewAssistant));
+    if (this.o.reviewAssistant && this.o.kinds.includes('run') && this.o.runKinds.includes('review'))
+      for (let slot = 0; slot < (this.o.reviewAssistant.slots ?? 1); slot++) this.loops.push(this.assistantLoop(this.o.reviewAssistant));
     return this;
   }
 
@@ -366,6 +369,7 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   ocr?: (pool: Pool, blobs: PrivateBlobs) => MaterialParseJobDependencies['ocr']): WorkerRuntimeOptions {
   if(env.BB_UPLOAD_CONFIRMATION_ENABLED==='1'&&(!env.BB_UPLOAD_SPOOL_DIR?.startsWith('/')||!Number.isSafeInteger(Number(env.BB_UPLOAD_SPOOL_MAX_BYTES))||Number(env.BB_UPLOAD_SPOOL_MAX_BYTES)<1))
     throw new Error('Upload confirmation requires an explicit absolute spool path and byte budget');
+  modelCallConcurrency(env);
   const kinds = (env.BB_WORKER_JOB_KINDS || 'run,parse').split(',').map(k => k.trim());
   if (!kinds.length || kinds.some(k => k !== 'run' && k !== 'parse')) throw new Error('Invalid BB_WORKER_JOB_KINDS');
   const smallSlot=env.BB_UPLOAD_CONFIRMATION_SMALL_SLOT==='1';
@@ -402,7 +406,7 @@ export function workerRuntimeOptionsFromEnv(pool: Pool, blobs: PrivateBlobs, env
   return {
     pool, blobs, kinds: kinds as ('run' | 'parse')[], runKinds, runStages,
     ...(group ? { workerId: `${group}_${defaultWorkerId()}` } : {}),
-    ...(kinds.includes('run') && runKinds.includes('review') ? { reviewAssistant: {} } : {}),
+    ...(kinds.includes('run') && runKinds.includes('review') ? { reviewAssistant: { slots: intEnv(env, 'BB_REVIEW_ASSISTANT_SLOTS', 1, 1, 4) } } : {}),
     reviewedContextLoader: loadReviewedRuleApplicabilityContext,
     loadGenerationIssuerBinding: scope => loadPinnedApprovedGenerationIssuerBinding(pool, scope),
     ...(targetPeriodCandidateProducer ? { produceTargetPeriodCandidates: async request =>
@@ -440,7 +444,7 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
   const options = workerRuntimeOptionsFromEnv(pool, blobs, process.env, (db, store) => input => processOcrMaterial(db, store, { ...input, purpose: 'source_preflight' }));
   if (options.stagingRoot) await sweepParseStaging(options.stagingRoot);
   const runtime = new WorkerRuntime({ ...options, log: event => process.stdout.write(`${JSON.stringify(event)}\n`) }).start();
-  process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, run_kinds: options.runKinds, worker_group: process.env.BB_WORKER_GROUP ?? null, concurrency: options.concurrency, interactive_slots: interactiveSlots, parse_slots: options.kinds?.includes('run') && options.kinds.includes('parse') ? options.parseSlots : 0, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe,upload_confirmation:!!options.uploadConfirmationEnabled })}\n`);
+  process.stdout.write(`${JSON.stringify({ kind: 'started', kinds: options.kinds, run_kinds: options.runKinds, worker_group: process.env.BB_WORKER_GROUP ?? null, concurrency: options.concurrency, assistant_slots: options.reviewAssistant?.slots ?? 0, model_call_concurrency: modelCallConcurrency(), interactive_slots: interactiveSlots, parse_slots: options.kinds?.includes('run') && options.kinds.includes('parse') ? options.parseSlots : 0, ocr_enabled: options.ocrEnabled, platform_probe: !!options.platformProbe,upload_confirmation:!!options.uploadConfirmationEnabled })}\n`);
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;

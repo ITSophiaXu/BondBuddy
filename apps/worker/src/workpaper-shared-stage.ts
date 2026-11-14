@@ -1,3 +1,4 @@
+import {workpaperChapters} from '@bondbuddy/contracts';
 import {mkdtemp,mkdir,readFile,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -82,7 +83,7 @@ export function checkedSharedPlan(value:unknown,source:SharedSource,manifests:M4
 export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInput,model=codexModelStage,providedConfig?:CodexAdapterConfig):Promise<StageOutcome>{
   if(input.manifest.kind!=='document')return {kind:'fail',code:'INPUT_REVISION_CONFLICT'};
   const task=input.manifest.input.workpaper!;
-  const progressive=task.execution==='progressive_item_v1';
+  const progressive=['progressive_item_v1','grouped_batch_v1'].includes(task.execution??'');
   const owner=ctx.run.owner_user_id,batch=task.batch_id;
   const imagePrefix=`owners/${owner}/projects/${ctx.run.project_id}/workpaper-batches/${batch}/source-images/`;
   const imageBytes=async(image:SharedSource['images'][number])=>{
@@ -126,7 +127,7 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
     const readSource=async()=>(await ctx.pool.query('SELECT * FROM bb_workpaper_shared_sources WHERE owner_user_id=$1 AND batch_id=$2',[owner,batch])).rows[0];
     let sourceRow=await readSource();
     const sourceAuthor=manifests[0]!.input.workpaper!.entry.id;
-    while(progressive&&!sourceRow&&task.entry.id!==sourceAuthor){
+    while(!sourceRow&&task.entry.id!==sourceAuthor){
       ctx.signal.throwIfAborted();
       const author=(await ctx.pool.query(`SELECT b.state AS batch_state,r.state AS run_state,
         (r.state IN ('failed','cancelled','rejected','succeeded','test_completed') AND j.state=r.state AND j.lease_token IS NULL AND j.lease_until IS NULL
@@ -196,7 +197,20 @@ export async function sharedWorkpaperDocument(ctx:StageContext,input:M4WorkerInp
     };
     phase='plan';
     let saved=(await ctx.pool.query(`SELECT * FROM ${planTable} WHERE ${planWhere}`,planParams)).rows[0];
-    const group=progressive?progressivePlanGroup(manifests,rows[0].progressive_plan?{...rows[0].progressive_plan,phase:rows[0].progressive_phase}:undefined,task.entry.id):null;
+    while(!progressive&&!saved&&task.entry.id!==sourceAuthor){
+      ctx.signal.throwIfAborted();
+      const author=(await ctx.pool.query(`SELECT b.state AS batch_state,r.state AS run_state FROM bb_workpaper_items i
+        JOIN bb_workpaper_batches b ON b.owner_user_id=i.owner_user_id AND b.id=i.batch_id
+        LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
+        WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3`,[owner,batch,sourceAuthor])).rows[0];
+      if(!author)throw Error('INPUT_REVISION_CONFLICT');
+      if(['paused','cancelled'].includes(author.batch_state)||['paused','failed','cancelled','rejected','succeeded','test_completed'].includes(author.run_state))
+        return {kind:'pause',stage:'capability_not_ready',reason:'workpaper_authoring_unavailable'};
+      await delay(100,undefined,{signal:ctx.signal});
+      saved=(await ctx.pool.query(`SELECT * FROM ${planTable} WHERE ${planWhere}`,planParams)).rows[0];
+    }
+    const grouping=task.execution==='grouped_batch_v1'?{phase:'remaining' as const,chapters:workpaperChapters(manifests.map(m=>m.input.workpaper!.entry)),trial_item_ids:[],max_parallel:4 as const}:rows[0].progressive_plan?{...rows[0].progressive_plan,phase:rows[0].progressive_phase}:undefined;
+    const group=progressive?progressivePlanGroup(manifests,grouping,task.entry.id):null;
     const itemAttempt=Number(rows.find(r=>r.manifest.input.workpaper.entry.id===task.entry.id)?.attempt??1);
     if(!saved&&group&&itemAttempt===1){
       const groupInput={...batchInput,entries:group.manifests.map(m=>m.input.workpaper!.entry),templates:group.manifests.map(m=>({item_id:m.input.workpaper!.entry.id,template_id:m.knowledge?.template?.id}))};

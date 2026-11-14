@@ -1,6 +1,6 @@
 import {Type,type Static} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
-import {WorkpaperSharedPlanSchema,type M4DocumentManifest,type WorkpaperProgressive} from '@bondbuddy/contracts';
+import {WorkpaperSharedPlanSchema,type M4DocumentManifest,type WorkpaperProgressive,workpaperPlanGroupIds,WORKPAPER_PLAN_GROUP_SIZE} from '@bondbuddy/contracts';
 import {inputManifestHash as hash} from '@bondbuddy/api/production-rule-pin';
 import {transaction} from '@bondbuddy/api/data';
 import {writeFile,readFile} from 'node:fs/promises';
@@ -15,7 +15,7 @@ import type {StageContext,StageOutcome,codexModelStage} from './run-pipeline.js'
 import type {CodexAdapterConfig} from './codex-adapter.js';
 import type {SharedSource} from './workpaper-shared-stage.js';
 
-export const WORKPAPER_PLAN_GROUP_SIZE=8;
+export {WORKPAPER_PLAN_GROUP_SIZE} from '@bondbuddy/contracts';
 const MAX_PLAN=64*1024*1024,version='workpaper-progressive-group-result-v1';
 const obj=<T extends Parameters<typeof Type.Object>[0]>(p:T)=>Type.Object(p,{additionalProperties:false});
 const id=Type.String({minLength:1,maxLength:128});
@@ -35,14 +35,11 @@ export function progressiveItemPlanIdentity(batchIdentity:string,manifest:M4Docu
 /** Trial files never wait for a group. Remaining membership is derived only
  * from the frozen chapter/catalogue order, not the current queue or retry order. */
 export function progressivePlanGroup(manifests:M4DocumentManifest[],plan:WorkpaperProgressive|undefined,itemId:string){
-  if(!plan||!['remaining','retry_failed'].includes(plan.phase)||plan.trial_item_ids.includes(itemId))return null;
-  const chapter=plan.chapters.find(c=>c.item_ids.includes(itemId));if(!chapter)throw Error('INPUT_REVISION_CONFLICT');
-  const remaining=chapter.item_ids.filter(id=>!plan.trial_item_ids.includes(id)),index=remaining.indexOf(itemId);
-  const ids=remaining.slice(Math.floor(index/WORKPAPER_PLAN_GROUP_SIZE)*WORKPAPER_PLAN_GROUP_SIZE,(Math.floor(index/WORKPAPER_PLAN_GROUP_SIZE)+1)*WORKPAPER_PLAN_GROUP_SIZE);
-  if(ids.length<2)return null;
+  const membership=workpaperPlanGroupIds(plan,itemId);if(!membership)return null;
+  const {ids,chapter}=membership;
   const group=ids.map(id=>manifests.find(m=>m.input.workpaper!.entry.id===id));
   if(group.some(m=>!m))throw Error('INPUT_REVISION_CONFLICT');
-  return {id:hash({version:'workpaper-chapter-group-v1',chapter:chapter.id,ids,size:WORKPAPER_PLAN_GROUP_SIZE}),manifests:group as M4DocumentManifest[]};
+  return {id:hash({version:'workpaper-chapter-group-v1',chapter,ids,size:WORKPAPER_PLAN_GROUP_SIZE}),manifests:group as M4DocumentManifest[]};
 }
 
 /** The durable result distinguishes fallback from accepted item plans. A

@@ -21,15 +21,10 @@ for(const width of [1440,390,320])test(`source first with PR787 radio choices, $
  await mode(page,'upload').check();await expect(page.locator('#pf-source-existing')).toBeHidden();await expect(page.locator('.pf-selected-source')).toContainText('募集说明书_V3.docx');expect(s.selections).toHaveLength(0);
  await expect(mode(page,'upload')).toBeFocused();await mode(page,'upload').press('ArrowRight');await expect(mode(page,'project')).toBeChecked();
  await page.locator('#pf-source-next').click();await expect(page).toHaveURL(/step=prepare/);await expect(page.locator('[data-flow-step="2"]')).toHaveAttribute('aria-current','step');
- await expect(page.locator('.fg-types')).toHaveCount(1);
- await expect(page.locator('.fg-types [data-fg-type]')).toHaveCount(1);
- await expect(page.locator('#fg-more-types')).toHaveAttribute('aria-expanded','false');
- await page.locator('#fg-more-types').click();
- await expect(page.locator('#fg-more-types')).toHaveAttribute('aria-expanded','true');
- await expect(page.locator('.fg-types [data-fg-type]')).toHaveCount(PROJECT_DOCUMENT_CATALOG.length+1);
+ await expect(page.locator('.fg-choice-group')).toHaveCount(4);
+ await expect(page.locator('#fg-more-types')).toHaveCount(0);
+ await expect(page.locator('[data-fg-type]')).toHaveCount(PROJECT_DOCUMENT_CATALOG.length+1);
  for(const type of ['workpaper',...PROJECT_DOCUMENT_CATALOG.map(t=>t.id)])await expect(page.locator(`[data-fg-type="${type}"]`)).toBeVisible();
- await page.locator('#fg-more-types').click();
- await expect(page.locator('.fg-types [data-fg-type]')).toHaveCount(1);
  await expect(page.locator('.fg-source-card')).toHaveCount(2);
  await capture(page,'file-options-'+width);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await expect(page.locator('#fg-change-templates')).toBeVisible();
@@ -62,14 +57,22 @@ test('source conflict retains prior source and asks user to choose again',async(
  expect(s.selections).toHaveLength(1);expect(batches(s.state)).toHaveLength(0);
 });
 
-for(const reload of [false,true])test(`upload in flight locks source mode and next, failed transfer can be retried, reload=${reload}`,async({page})=>{
+for(const reload of [false,true])test(`lost byte acknowledgement auto-recovers without retransmission, reload=${reload}`,async({page})=>{
  const s=await sourceFixture(page,true);let fail=true;let release!:()=>void;const gate=new Promise<void>(r=>release=r);
  await page.route('**/materials/uploads/*/bytes',async route=>{if(fail){await gate;fail=false;const id=new URL(route.request().url()).pathname.split('/').at(-2)!;s.state.sessions.get(id)!.received=true;s.state.puts++;return route.abort('failed');}return route.fallback();});
  await page.goto('/'+href({step:'source'}));await mode(page,'upload').check();await page.locator('#prospectus-version-file').setInputFiles(file);
  await expect(mode(page,'project')).toBeDisabled();await expect(page.locator('#pf-source-next')).toBeDisabled();await expect(page.locator('.pf-selected-source')).toContainText('募集说明书_V3.docx');release();
- await expect(page.locator('#save-prospectus-version')).toBeVisible();await expect(page.locator('#save-prospectus-version')).toBeEnabled();await expect(page.locator('#pf-source-next')).toBeDisabled();await capture(page,'source-upload-failed');
- if(reload){await page.reload();await expect(mode(page,'upload')).toBeChecked();await expect(page.locator('#pf-source-next')).toBeDisabled();await page.locator('[data-resume-prospectus]').click();}else await page.locator('#save-prospectus-version').click();
- await expect(page.locator('.pf-selected-source')).toContainText(file.name);await expect(page.locator('#pf-source-next')).toBeEnabled();expect(s.selections).toHaveLength(1);expect(s.state.puts).toBe(1);
+ // The server received the bytes above; only the acknowledgement was lost.
+ // Reconciliation should confirm that upload without another PUT or user retry.
+ await expect(page.locator('.pf-selected-source')).toContainText(file.name);await expect(page.locator('#pf-source-next')).toBeEnabled();
+ await expect(page.locator('#save-prospectus-version')).toBeHidden();await expect(page.locator('[data-resume-prospectus]')).toHaveCount(0);
+ expect(s.state.sessions.size).toBe(1);expect(s.state.puts).toBe(1);expect(s.selections).toHaveLength(1);expect(batches(s.state)).toHaveLength(0);
+ const session=[...s.state.sessions.values()][0];expect(session.material).toMatchObject({filename:file.name,sha256:session.declaration.sha256,state:'persisted'});
+ expect(s.versions.current_version_id).toBe('new-source');expect(s.state.workspaces.get(ids.api)!.source?.asset.pin.sha256).toBe(session.declaration.sha256);
+ await capture(page,'source-upload-auto-recovered');
+ if(reload){await page.reload();await expect(mode(page,'project')).toBeChecked();await expect(page.locator('#pf-project-source')).toHaveValue('new-source');}
+ await expect(page.locator('.pf-selected-source')).toContainText(file.name);await expect(page.locator('.pf-selected-source')).toContainText('V4');await expect(page.locator('#pf-source-next')).toBeEnabled();
+ expect(s.state.sessions.size).toBe(1);expect(s.state.puts).toBe(1);expect(s.selections).toHaveLength(1);expect(batches(s.state)).toHaveLength(0);
 });
 
 for(const width of [1440,390,320])test(`table retains add/remove, template reuse and full-page confirmation, ${width}px`,async({page})=>{
