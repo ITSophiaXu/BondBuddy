@@ -15,6 +15,8 @@
     "apps/web"
   ],
   "scripts": {
+    "pr-gate": "node scripts/pr-gate/local.mjs run",
+    "pr-gate:verify": "node scripts/pr-gate/local.mjs verify",
     "test:release": "node scripts/release-smoke/run.mjs",
     "test:release:unit": "node --test scripts/release-smoke/support.test.mjs",
     "billing:mock": "node scripts/billing-functional/start.mjs",
