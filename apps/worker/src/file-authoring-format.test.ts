@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { digest, type PrivateBlobs } from '@bondbuddy/api/data';
@@ -14,6 +14,8 @@ import { makeWorkerDocxFixture } from './docx-test-fixture.js';
 import type { UnifiedInput } from './unified-input.js';
 import { unifiedInputGate } from './unified-input.js';
 import type { StageContext } from './run-pipeline.js';
+import { FILE_AUTHORING_INSTRUCTIONS_MAX_BYTES } from './file-authoring-instructions.js';
+import { saveFileAuthoringRecovery } from './file-authoring-recovery.js';
 
 const python = !!(process.env.BONDBUDDY_TEST_PYTHON || process.env.BONDBUDDY_WORD_PYTHON);
 function fixture(controlled = true, text = '截至2024年净资产100万元。') {
@@ -38,6 +40,35 @@ function fixture(controlled = true, text = '截至2024年净资产100万元。')
   const delivery=(options:Parameters<typeof fileAuthoringDeliveryStage>[0]={})=>fileAuthoringDeliveryStage({...options,checkpoint});
   return { source, input, objects, ctx, blobs, persisted, delivery };
 }
+
+for (const controlled of [true, false]) test(`host rendering handoff preamble is ${controlled ? 'included for controlled operations' : 'absent for direct authoring'}`, async () => {
+  const f = fixture(controlled);
+  let calls = 0;
+  const result = await fileAuthoringStage({ load: async () => f.input, model: options => ({ name: options.name, run: async ctx => {
+    calls++;
+    const prompt = await options.buildPrompt(ctx);
+    assert.equal(options.templateVersion, controlled ? 'single-cli-authoring-format-host-handoff-v5' : 'single-cli-authoring-host-handoff-v5');
+    const fullTask = await readFile(new URL('../../../python/bondbuddy_file_authoring/task.md', import.meta.url), 'utf8');
+    assert.ok(prompt.includes(fullTask));
+    const preamble = prompt.slice(0, prompt.indexOf(fullTask));
+    assert.equal(preamble.includes('host_handoff.action=defer_page_rendering_to_host'), controlled);
+    if (controlled) {
+      assert.match(prompt, /operations_sha256 对应当前日志/);
+      assert.match(prompt, /保留失败报告/);
+      assert.match(prompt, /authoring_completion=not_verified/);
+      assert.match(prompt, /不得据此跳过原任务剩余材料阅读、章节和事实更新、来源回查或其他待办/);
+      assert.match(prompt, /按既定缺项工作稿政策完成本轮业务编制后，对最终操作日志重新回查和预检/);
+      assert.match(prompt, /不是新增人工确认或资料齐备门槛/);
+      assert.match(prompt, /中途日志继续更新后不能复用旧指引/);
+      assert.match(prompt, /worker 独立真实渲染验收/);
+      assert.match(prompt, /没有该指引、日志已变或有其他质量失败时仍按对应问题修复并重新预检/);
+      assert.match(prompt, /不表示编制、预检或成果已通过/);
+    }
+    return { kind: 'done', value: { synthetic: true } };
+  } }) }).run(f.ctx);
+  assert.equal(result.kind, 'done');
+  assert.equal(calls, 1);
+});
 
 test('explicit template choice is independent of random material ids; previous output remains the revision source', () => {
   const { input } = fixture();
@@ -227,6 +258,8 @@ test('host size rejection hands the original log to a repair turn and rechecks t
       await options.fileWorkspace!.prepare(root);
       inputs.push(await readFile(join(root,'input.json')));
       const repairing=options.logicalCallId!=='file-authoring-v1';
+      assert.match(await options.buildPrompt(ctx), /host_handoff.action=defer_page_rendering_to_host/);
+      assert.equal(options.templateVersion, repairing ? 'single-cli-authoring-size-repair-host-handoff-v2' : 'single-cli-authoring-format-host-handoff-v5');
       if(repairing){
         assert.match(await options.buildPrompt(ctx),/quality-feedback.json/);
         assert.deepEqual(inputs[1],inputs[0],'input and revision timestamp remain locked');
@@ -461,3 +494,62 @@ test('diagnostics reject foreign or oversized references before reading storage'
   row.diagnostic.files.baseline = { ...ref, byte_size: 101 * 1024 * 1024 };
   assert.equal(validFormatDiagnostic(row), false);
 });
+
+for (const recovering of [false, true]) for (const repairing of [false, true]) {
+  test(`controlled full bootstrap survives ${recovering ? 'recovery' : 'fresh context'} and ${repairing ? 'size repair' : 'first authoring'}`, async () => {
+    const f = fixture();
+    const root = await mkdtemp(join(tmpdir(), 'bb-prompt-integration-'));
+    const logicalCallId = repairing ? 'file-authoring-size-repair-1' : 'file-authoring-v1';
+    try {
+      if (recovering) {
+        await mkdir(join(root, 'scratch')); await mkdir(join(root, 'output'));
+        await writeFile(join(root, 'input.json'), JSON.stringify({ input_hash: f.ctx.run.input_hash, synthetic: true }));
+        await writeFile(join(root, 'output/operations.json'), '{"synthetic":true}');
+        const snapshot = await saveFileAuthoringRecovery(f.ctx, root,
+          { call_id: 'synthetic-closed-attempt', logical_call_id: logicalCallId },
+          { checkpoint: async (_pool, lease, stage, value) => {
+            lease.checkpoint = { ...lease.checkpoint, stages: { ...lease.checkpoint.stages as object, [stage]: value } };
+          } });
+        f.ctx.lease.checkpoint.operator_reconciliations = {
+          [snapshot.attempt_id]: { attempt_id: snapshot.attempt_id, logical_call_id: logicalCallId,
+            reason_code: 'file_authoring_timeout_auto_retry', decision: 'retry_unknown_usage' },
+        };
+      }
+      const repair: NonNullable<Parameters<typeof fileAuthoringStage>[0]>['repair'] = repairing ? {
+        round: 1,
+        previous: { version: 'codex-file-word-v1', input_hash: f.ctx.run.input_hash, files: {}, summary: { synthetic: true } },
+        report: { version: 'word-quality-v1', status: 'failed', issues: [{ code: 'WORD_DOCUMENT_SIZE_REDUCED' }], metrics: {}, limitations: ['Synthetic prompt-only fixture'] },
+        reportRef: { key: 'synthetic-prompt-only-report', sha256: 'b'.repeat(64), byte_size: 2 },
+      } : undefined;
+      const task = await readFile(new URL('../../../python/bondbuddy_file_authoring/task.md', import.meta.url), 'utf8');
+      const fixed = await readFile(new URL('../../../python/bondbuddy_file_authoring/fixed-edit.md', import.meta.url), 'utf8');
+      let calls = 0;
+      // Capture the actual stage prompt without a provider call or Word rendering.
+      // Workspace restoration and repair report consumption have separate tests.
+      const result = await fileAuthoringStage({ load: async () => f.input, repair, model: options => ({ name: options.name, run: async ctx => {
+        calls++;
+        const prompt = await options.buildPrompt(ctx);
+        for (const document of [task, fixed]) {
+          assert.ok(prompt.includes(document), 'every byte of each real trusted handbook is present');
+          assert.equal(prompt.indexOf(document), prompt.lastIndexOf(document), 'each complete handbook is injected once');
+        }
+        assert.ok(Buffer.byteLength(prompt, 'utf8') <= FILE_AUTHORING_INSTRUCTIONS_MAX_BYTES,
+          `actual combined prompt exceeds 64 KiB: ${Buffer.byteLength(prompt, 'utf8')}`);
+        assert.match(prompt, /host_handoff.action=defer_page_rendering_to_host/);
+        assert.match(prompt, /authoring_completion=not_verified/);
+        assert.match(prompt, /对最终操作日志重新回查和预检/);
+        assert.equal(prompt.includes('complete_operation_delivery'), false);
+        assert.equal(options.logicalCallId, logicalCallId);
+        assert.equal(options.fileWorkspace!.recovery, recovering);
+        assert.equal(typeof options.fileWorkspace!.onFailure, 'function');
+        assert.equal(options.templateVersion, repairing ? 'single-cli-authoring-size-repair-host-handoff-v2' : 'single-cli-authoring-format-host-handoff-v5');
+        const base = repairing ? 'file_authoring_size_repair_1' : 'file_authoring_v1';
+        assert.equal(options.name, recovering ? `${base}_resume_${digest('synthetic-closed-attempt').slice(0, 12)}` : base);
+        if (recovering) assert.match(prompt, /已授权续跑/);
+        if (repairing) assert.match(prompt, /quality-feedback.json/);
+        return { kind: 'done', value: { synthetic: true } };
+      } }) }).run(f.ctx);
+      assert.equal(result.kind, 'done'); assert.equal(calls, 1);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+}
