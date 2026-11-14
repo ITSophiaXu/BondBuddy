@@ -1,3 +1,4 @@
+import type { ModelCallPermit } from './model-call-budget.js';
 // Server-side Codex adapter with durable intent, usage, cancellation and result replay.
 // Ordinary calls disable tools; legacy authoring permits only fixed read-only material tools.
 // Native file authoring uses a verified named sandbox: immutable inputs, writable run-local
@@ -354,7 +355,7 @@ export function createCodexExecLogCapture(maxBytes: number) {
 // One codex process. Stdout is parsed incrementally; a bounded stderr prefix is inspected
 // for status markers. When captureExecLog is set the private caller may persist the full
 // bounded stdout/stderr evidence; it is never logged to the process output.
-export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileCompletion?: boolean; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean }): Promise<CodexProcessResult> {
+export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string; cwd: string; codexHome: string; home: string; schemaFile: string | null; ephemeral: boolean; resumeThreadId: string | null; materialDataFile?: string; materialTraceFile?: string; reviewDataFile?: string; reviewTraceFile?: string; fileAuthoring?: boolean; fileCompletion?: boolean; imageFile?: string; signal?: AbortSignal; onEvent?: (event: Record<string, unknown>) => void; onActivity?: (event:Record<string,unknown>)=>void; captureExecLog?: boolean; onSpawn?: (pid: number) => Promise<void> }): Promise<CodexProcessResult> {
   const env: Record<string, string> = { ...(c.proxy_env ?? {}), PATH: c.path_env, HOME: o.home, CODEX_HOME: o.codexHome, TMPDIR: o.home, LANG: 'C.UTF-8', NO_COLOR: '1' };
   if (c.credential.kind === 'env') {
     const value = process.env[c.credential.name];
@@ -481,7 +482,10 @@ export async function runCodexProcess(c: CodexAdapterConfig, o: { prompt: string
       if (capture) r.exec_log = capture.finish();
       resolveResult(r);
     });
-    child.stdin!.end(o.prompt);
+    void (async () => {
+      try { if (child.pid) await o.onSpawn?.(child.pid); if (!r.stop) child.stdin!.end(o.prompt); }
+      catch { stop('broken', true); }
+    })();
   });
 }
 
@@ -508,6 +512,8 @@ export function classifyCodexResult(r: CodexProcessResult, parse: (text: string)
 
 export type PriorAttempt = { call_id: string; attempt_no: number; status: 'pending_reconcile' | 'confirmed_not_sent' | 'completed' | 'failed'; observed: boolean; operator_retry?: boolean };
 export interface CodexJournal extends ProbeJournal {
+  /** Wait outside database transactions, before recording a potentially sent call. */
+  acquireCallSlot?(signal?: AbortSignal): Promise<ModelCallPermit>;
   recordWebSearchEvents?(intent: ProviderCallIntent, events: NonNullable<CodexProcessResult['web_search_events']>): Promise<void>;
   /** Persist the bounded private stdout/stderr evidence for this attempt. */
   storeExecLog?(intent: ProviderCallIntent, bytes: Buffer, meta: { truncated: boolean }): Promise<void>;
@@ -528,6 +534,7 @@ export type ContainedCallInput = {
     validationFeedback?: (value:unknown) => string | undefined } | { kind: 'text' };
   imageInput?: ModelImageInput;
   result_schema_version: string; session?: CodexSession; signal?: AbortSignal; newCallId?: () => string;
+  beforeIntent?: () => Promise<void>;
   onEvent?: (event: Record<string, unknown>) => void;
   /** Host activity observer after tool containment; separate from existing diagnostic/cancellation hooks. */
   onActivity?: (event: Record<string, unknown>, intent: ProviderCallIntent) => void;
@@ -654,8 +661,13 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
     for (; attemptNo <= maxAttempts; attemptNo++) {
       if (input.signal?.aborted) return cancelledResult();
       const intent: ProviderCallIntent = { ...base, call_id: newCallId(), attempt_no: attemptNo };
-      const attemptDir = await mkdtemp(join(c.work_root, 'attempt-'));
+      const permit = await journal.acquireCallSlot?.(input.signal);
+      const executionSignal = permit?.signal ?? input.signal;
+      let attemptDir: string | undefined;
       try {
+        if (executionSignal?.aborted) return cancelledResult();
+        await input.beforeIntent?.();
+        attemptDir = await mkdtemp(join(c.work_root, 'attempt-'));
         const cwd = join(attemptDir, 'cwd'), home = join(attemptDir, 'home');
         await mkdir(cwd, { mode: 0o700 }); await mkdir(home, { mode: 0o700 });
         const attemptHome = codexHome ?? join(attemptDir, 'codex-home');
@@ -683,13 +695,16 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         }
 
         if (input.signal?.aborted) return cancelledResult();
+        if (executionSignal?.aborted) return cancelledResult();
+        await input.beforeIntent?.();
+        if (executionSignal?.aborted) return cancelledResult();
         await journal.recordIntent(intent); // durable before spawn
         // A normal authoring turn can take 20-30 minutes. Its deadline is independent
         // of short model probes; silence while reasoning is not evidence of a hang.
         // Lease loss and cancellation still abort the same process immediately.
         const executionConfig = (input.materialTools || input.fileWorkspace || input.reviewTools) && c.authoring_timeout_ms !== undefined
           ? { ...c, timeout_ms: c.authoring_timeout_ms } : c;
-        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileCompletion:input.fileWorkspace?.completionCheck===true, signal: input.signal, onEvent: input.onEvent, captureExecLog: true,
+        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileCompletion:input.fileWorkspace?.completionCheck===true, signal: executionSignal, onSpawn: permit?.bindProcess, onEvent: input.onEvent, captureExecLog: true,
           onActivity:input.onActivity?event=>input.onActivity!(event,intent):undefined });
         // The execution log is private evidence only. A storage failure must never
         // change the provider outcome or block reconciliation.
@@ -762,7 +777,8 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         const status = obs.outcome === 'completed' ? 'completed' : obs.outcome === 'pending_reconcile' ? 'needs_reconcile' : 'failed';
         return { status, value: status === 'completed' ? cls.value : null, ...(status==='completed' && reviewToolTrace?{reviewToolTrace}:{}), error_code: obs.error_code as ModelAdapterErrorCode | null, attempts, thread_id: threadId, codex_home: persistent ? codexHome : null };
       } finally {
-        await rm(attemptDir, { recursive: true, force: true });
+        await permit?.release();
+        if (attemptDir) await rm(attemptDir, { recursive: true, force: true });
       }
     }
     return { status: 'failed', value: null, error_code: 'MODEL_OUTPUT_SCHEMA_INVALID', attempts, thread_id: threadId, codex_home: persistent ? codexHome : null };

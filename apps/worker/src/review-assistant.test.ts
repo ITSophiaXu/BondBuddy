@@ -402,6 +402,22 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
       assert.equal(await f.sends(),3);
     });
 
+    await t.test('four assistant claims use distinct conversations, preserving queued order and unknown fences',async ctx=>{
+      const fixtures=await Promise.all(Array.from({length:4},()=>fixture(ctx)));
+      const messages: ReturnType<typeof message>[][]=[];
+      for(const f of fixtures) messages.push([await f.queue({createdAt:'2026-11-14T00:00:00Z'}),await f.queue({createdAt:'2026-11-14T00:00:01Z'})]);
+      const leases=await Promise.all(Array.from({length:4},()=>claimReviewAssistant(pool)));
+      assert.equal(new Set(leases.map(l=>l?.project_id)).size,4);
+      assert.equal(leases.every(l=>messages.some(pair=>pair[0]!.id===l?.id)),true);
+      assert.equal(await claimReviewAssistant(pool),null,'second message cannot overlap its running predecessor');
+      const f=fixtures[0]!,pair=messages[0]!;
+      await pool.query("UPDATE bb_review_messages SET reply_status='unknown' WHERE id=$1",[pair[0]!.id]);
+      assert.equal(await claimReviewAssistant(pool),null,'unknown prior reply remains fenced for reconciliation');
+      await pool.query("UPDATE bb_review_messages SET reply_status='completed' WHERE id=$1",[pair[0]!.id]);
+      const next=await claimReviewAssistant(pool);assert.equal(next?.id,pair[1]!.id);
+      assert.deepEqual((await f.row(pair[1]!.id)).context_snapshot.prior_message_ids,[], 'send-time history is never retroactively extended');
+    });
+
     await t.test('foreign report, history, source material and altered report hash fail before model send',async ctx=>{
       const f=await fixture(ctx),foreign=await fixture(ctx,true),old=await foreign.queue({status:'completed'});
       const scenarios=[

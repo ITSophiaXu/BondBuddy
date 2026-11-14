@@ -510,3 +510,28 @@ esac
  writeFileSync(calls,'');const bad=spawnSync('bash',[join(fixture,'deploy/m1/scripts/export-images-role.sh'),'execution',old,join(fixture,'bad.tar.gz'),'disabled'],{env:{...process.env,PATH:join(fixture,'bin')+':'+process.env.PATH,TEST_CALLS:calls,TEST_CACHED_WRONG:'1'},encoding:'utf8'});
  assert.equal(bad.status,3);assert.match(bad.stderr,/matching source revision/);assert.doesNotMatch(readFileSync(calls,'utf8'),/build|save/);
 });
+
+test('authoring four total slots and assistant channels share bounded model capacity without changing defaults',()=>{
+ const baseline=config('execution');
+ const expanded=config('execution',{
+  BB_AUTHORING_WORKER_CONCURRENCY:'4',BB_AUTHORING_INTERACTIVE_SLOTS:'0',
+  BB_AUTHORING_NODE_HEAP_MIB:'1536',BB_AUTHORING_CPU_LIMIT:'1',BB_AUTHORING_MEMORY_LIMIT:'4G',
+  BB_REVIEW_ASSISTANT_SLOTS:'4',BB_MODEL_CALL_CONCURRENCY:'4',
+ });
+ assert.equal(expanded.services.worker.environment.BB_WORKER_CONCURRENCY,'4');
+ assert.equal(expanded.services.worker.environment.BB_WORKER_INTERACTIVE_SLOTS,'0');
+ assert.equal(expanded.services.worker.environment.NODE_OPTIONS,'--max-old-space-size=1536');
+ assert.equal(expanded.services.worker.deploy.resources.limits.cpus,1);
+ assert.equal(expanded.services.worker.deploy.resources.limits.memory,'4294967296');
+ assert.equal(expanded.services['worker-review'].environment.BB_REVIEW_ASSISTANT_SLOTS,'4');
+ assert.equal(baseline.services.worker.environment.BB_WORKER_CONCURRENCY,'1');
+ assert.equal(baseline.services.worker.environment.BB_WORKER_INTERACTIVE_SLOTS,'1');
+ for (const name of Object.keys(baseline.services)) if (!['worker','worker-review'].includes(name)) assert.deepEqual(expanded.services[name],baseline.services[name]);
+ for(const values of [
+  {BB_AUTHORING_WORKER_CONCURRENCY:'4'}, // hidden fifth interactive channel
+  {BB_AUTHORING_CPU_LIMIT:'0'}, {BB_AUTHORING_MEMORY_LIMIT:'0'},
+  {BB_AUTHORING_NODE_HEAP_MIB:'2048 --require=synthetic'},
+  {BB_AUTHORING_INTERACTIVE_SLOTS:'-1'}, {BB_REVIEW_ASSISTANT_SLOTS:'0'},
+  {BB_MODEL_CALL_CONCURRENCY:'5'},
+ ]) assert.throws(()=>config('execution',values));
+});
