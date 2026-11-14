@@ -1,0 +1,258 @@
+{
+  "schema_version": "synthetic-ui-evidence-v1",
+  "synthetic": true,
+  "implementation_commit": "b1cb4528dc8cbe540befe82dc8dbc7b5f625d3e0",
+  "prototype": {
+    "commit": "02db1f3567718490d63ac7039678ed6c4ae03fc7",
+    "html": "product-prototype/public/authoring-live-progress.html",
+    "html_sha256": "f349d7d23f7525518aca2c0741ff4687877613314046c244e774e614879bfc15",
+    "css": "product-prototype/public/authoring-status.css",
+    "css_sha256": "4ca9bb0cffb5bf632fefe3e4471997d4a90e751eb4dc235946503c5d2c15e059",
+    "state": "output-legacy",
+    "scope": "Existing card, actions and five-step structure only; exact four-reason and DOM-dialog prototypes do not exist."
+  },
+  "build": {
+    "dist_manifest_sha256": "a00f073943f0272a23c6e3e3b206ccc03184449b577117eab58c737bd0463afd",
+    "index_sha256": "e099a5127cce69ce04e4ad3d76ffdad59dea981baee64a32e13d8ef1d6eb6cb4",
+    "serving_mode": "Dedicated loopback static server serving frozen bytes from the pinned checkout build; no API proxy."
+  },
+  "validation": {
+    "tool": "Playwright + installed Microsoft Edge",
+    "fixture": "apps/web/tests/project-execution.spec.ts fixture()/setup()",
+    "fixture_sha256": "2a4e03d55d6c4d5db2ac93b0e68427a523f16c278b3d8be0c69fc75fd69c9295",
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0,
+    "flaky": 0,
+    "duration_seconds": 58.6,
+    "started_at": "2026-11-14T10:27:15.465Z",
+    "finished_at": "2026-11-14T10:28:14.190Z",
+    "business_api": "synthetic fixture responses only",
+    "retry_posts": 0,
+    "external_page_requests": 0,
+    "unmatched_or_blocked_page_requests": 0,
+    "page_errors": 0,
+    "websockets": 0,
+    "real_model_calls": 0,
+    "real_task_mutations": 0,
+    "cases": [
+      {
+        "reason": "checkpoint_capacity_exceeded",
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        },
+        "result": "passed"
+      },
+      {
+        "reason": "checkpoint_capacity_exceeded",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "result": "passed"
+      },
+      {
+        "reason": "checkpoint_storage_failed",
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        },
+        "result": "passed"
+      },
+      {
+        "reason": "checkpoint_storage_failed",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "result": "passed"
+      },
+      {
+        "reason": "checkpoint_integrity_failed",
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        },
+        "result": "passed"
+      },
+      {
+        "reason": "checkpoint_integrity_failed",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "result": "passed"
+      },
+      {
+        "reason": "checkpoint_capture_incomplete",
+        "viewport": {
+          "width": 1440,
+          "height": 1000
+        },
+        "result": "passed"
+      },
+      {
+        "reason": "checkpoint_capture_incomplete",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "result": "passed"
+      }
+    ]
+  },
+  "images": [
+    {
+      "file": "synthetic-capacity-status-1440.png",
+      "sha256": "3a5ce7207c39acd23766754fb99100897f1e6580ecf6abcec61bd09baf4a114d",
+      "byte_size": 86491,
+      "width": 1440,
+      "height": 1000,
+      "kind": "implementation"
+    },
+    {
+      "file": "synthetic-capacity-status-390.png",
+      "sha256": "c3b3d08201e89de8db2388b6e9ff7a83026e38257f62d4d6e8d78b364abcd6fc",
+      "byte_size": 46019,
+      "width": 390,
+      "height": 844,
+      "kind": "implementation"
+    },
+    {
+      "file": "synthetic-capacity-confirm-1440.png",
+      "sha256": "ddce8775d0c6f01200c3e87041b6e925bf63968537704865768787ed9c310964",
+      "byte_size": 171257,
+      "width": 1440,
+      "height": 1000,
+      "kind": "implementation"
+    },
+    {
+      "file": "synthetic-capacity-confirm-390.png",
+      "sha256": "5ebd2cd4fbd9ec0e612b7e3a57fff1aa81be497f6f43b837bd88823e6a758c83",
+      "byte_size": 83825,
+      "width": 390,
+      "height": 844,
+      "kind": "implementation"
+    },
+    {
+      "file": "synthetic-storage-status-1440.png",
+      "sha256": "140f9a066d5546f20ea397b61fa024345f8b26b445d48d653db5e045fa3fa146",
+      "byte_size": 86016,
+      "width": 1440,
+      "height": 1000,
+      "kind": "implementation"
+    },
+    {
+      "file": "synthetic-storage-status-390.png",
+      "sha256": "e291b2372040765f29205cb365f4ca5fa32bebde8df9f1737b69c1dfe38c4cc6",
+      "byte_size": 45661,
+      "width": 390,
+      "height": 844,
+      "kind": "implementation"
+    },
+    {
+      "file": "synthetic-storage-confirm-1440.png",
+      "sha256": "f943252a20d534b54c01c791ec846017c36b76ae136923e04c142d5497967ae8",
+      "byte_size": 170794,
+      "width": 1440,
+      "height": 1000,
+      "kind": "implementation"
+    },
+    {
+      "file": "synthetic-storage-confirm-390.png",
+      "sha256": "e2591eff8e042a9092de2341bbb82b3c8408d1ace7052c9886a02695f661564b",
+      "byte_size": 85397,
+      "width": 390,
+      "height": 844,
+      "kind": "implementation"
+    },
+    {
+      "file": "synthetic-integrity-status-1440.png",
+      "sha256": "3914c4e49b817b9efd69c7c305dfce26e1986d3be97123375d47b86a220d5959",
+      "byte_size": 85961,
+      "width": 1440,
+      "height": 1000,
+      "kind": "implementation"
+    },
+    {
+      "file": "synthetic-integrity-status-390.png",
+      "sha256": "4d3f20c909097a9ea657e8c084f86d3d35661a2ffa70729f0689ad2ac0c7da32",
+      "byte_size": 45845,
+      "width": 390,
+      "height": 844,
+      "kind": "implementation"
+    },
+    {
+      "file": "synthetic-integrity-confirm-1440.png",
+      "sha256": "6efc8c72ce2726aaa956f478da4c93cf539d872aec9b0f6ae655c56b59df4edb",
+      "byte_size": 170656,
+      "width": 1440,
+      "height": 1000,
+      "kind": "implementation"
+    },
+    {
+      "file": "synthetic-integrity-confirm-390.png",
+      "sha256": "a26223199b72d66f132d8ab522ad0daafeb781fa4463434f5e5b7b9473e2fa7c",
+      "byte_size": 85415,
+      "width": 390,
+      "height": 844,
+      "kind": "implementation"
+    },
+    {
+      "file": "synthetic-incomplete-status-1440.png",
+      "sha256": "024ed639269e6d193dfcaa739bc6e5436d3585bb7c31f157d8246e8ddfd361bd",
+      "byte_size": 86018,
+      "width": 1440,
+      "height": 1000,
+      "kind": "implementation"
+    },
+    {
+      "file": "synthetic-incomplete-status-390.png",
+      "sha256": "51360fb567c08ee2b47379bea5c2868eef9741902dfa089e5f6ce353e86c5fa0",
+      "byte_size": 45277,
+      "width": 390,
+      "height": 844,
+      "kind": "implementation"
+    },
+    {
+      "file": "synthetic-incomplete-confirm-1440.png",
+      "sha256": "8b83fd6626f59300749550f1edd85f7f1044a2c074c50a6d6bd6f0ff73c3477e",
+      "byte_size": 171014,
+      "width": 1440,
+      "height": 1000,
+      "kind": "implementation"
+    },
+    {
+      "file": "synthetic-incomplete-confirm-390.png",
+      "sha256": "b44c7b3d0b9116a781bcaa340bc874843ca4e47598bc529265aa2566974f6a8b",
+      "byte_size": 85453,
+      "width": 390,
+      "height": 844,
+      "kind": "implementation"
+    },
+    {
+      "file": "prototype-02db1f35-output-legacy-1440.png",
+      "sha256": "0f2831111c9e5ad24d68fa7b3f59dce51e45df1444f3c3c3e6f7eacde191d85f",
+      "byte_size": 75575,
+      "width": 1440,
+      "height": 1000,
+      "kind": "prototype"
+    },
+    {
+      "file": "prototype-02db1f35-output-legacy-390.png",
+      "sha256": "42d63b5da49bf1fe51e21c9a623a8daf56084a69de7cbbc91a7ca4ab0f0e7aa5",
+      "byte_size": 52642,
+      "width": 390,
+      "height": 844,
+      "kind": "prototype"
+    }
+  ],
+  "acceptance": {
+    "root_visual_self_review": "passed; see visual-review.json",
+    "user_acceptance": "not_performed",
+    "product_owner_confirmation_of_differences": "not_obtained",
+    "pixel_alignment": "not_claimed",
+    "production_deployment": "not_performed"
+  }
+}

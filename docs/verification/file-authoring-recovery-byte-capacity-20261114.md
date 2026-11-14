@@ -52,3 +52,17 @@ Blob 为磁盘持久化的 synthetic 接口，回读按生产 `getIfExistsBounde
 本地证据目录为本子工作区的未提交 `work/capacity-validation/`。关键 SHA-256：脚本 `f146a5880ccafcd2adef88edb262104fda4c3e34e656df1b57d1cac763bc72ac`；`result.json` 为 `3032dc4e886c4e8534dcf90b694c4245c5b581ab6dbfcd850fe7330cfefe820f`；`recovery-unit.log` 为 `7804ac66e814eb7f3555a099542c79bbe9df9db4884b3a45658ebbed5f26850b`。没有提交客户材料或大 fixture。
 
 512 MiB 在该隔离资源实验中通过，因此交付有限容量候选供组合验证；这不承诺任意工作规模、并发、网络或累计存储都可恢复。代码完成后由主代理整合；尚未部署，待统一发布。真实任务终态、真实恢复及用户验收仍分别跟踪。
+
+## 最终整合补充（#1343 + #1345）
+
+整合产品后端固定为 a63e4230812028ba84228a92d70685830ab70bf9；随后 b1cb4528dc8cbe540befe82dc8dbc7b5f625d3e0 仅同步容量测试 fixture、页面历史文案及说明，API/worker 产品逻辑与本次容量实验相同。六包编译通过，实验前后核心 dist 的 SHA 一致。实验期间唯一未提交变更为不参与 helper 的 codex-file-authoring 测试 fixture；其旧 3×90 MiB 在新上限下不再超额，现已改为共享 totalBytes+1、每文件不超过 fileBytes，避免组合测试继续依赖旧值。
+
+2026-11-14 10:15–10:18 UTC，在同一固定已有镜像中挂载整合产物，使用生产配置对应的 2 GiB、0.75 CPU、NODE_OPTIONS=--max-old-space-size=768、禁网及空白环境，重新验证两个完整规模。272,333,666 字节和精确 536,870,912 字节的 929 文件均完成保存、回读、授权恢复和逐文件 hash。精确上限组保存 31.7 秒、恢复 26.1 秒、独立 hash 14.4 秒；最大 Blob 并发为 1。总量 +1、单文件 +1 均为 **0 Blob put、0 新 checkpoint**；超额元数据在恢复前拒绝，0 Blob 读取、目标为空。因此已补足原独立分支的总量 +1 写入 928 个对象这一组合验证待项。
+
+2 GiB 组合 maxRSS 为 457,244 KiB，cgroup memory.peak 为 1,772,523,520 字节（约 1.651 GiB），memory.events 的 max/oom/oom_kill 全为 0。证据：未提交的 work/capacity-combined-94ac67c50d/result.json，SHA-256 575a6746699a913192213a42d36cf1bbf8fda9e59d4d1266a590a0fb38c234af。专用卷核对为空及标签后移除，cleanup.json 保留。
+
+基础 compose 的 768 MiB / 1 CPU 确有真实编制入口，因此另外使用该上限、不设置 NODE_OPTIONS，只重跑精确 512 MiB 组。929 文件完整往返及两类超额 0 put 验证均通过；保存 32.3 秒、恢复 23.8 秒、hash 15.7 秒。maxRSS 436,460 KiB；但 **cgroup 峰值正好达到 805,306,368 字节，memory.max 触达 11,247 次**，oom/oom_kill 为 0。这说明依靠强制页缓存回收完成，不能称较小配置余量充分，也不代表带常驻 worker、真实 SDK 与并发的全部资源验收。证据：work/capacity-768m-62136d23a4/result.json，SHA-256 2785cda7a07249c442900a964aebc1945005e16128dd1bc24a8edfcd12533a11。
+
+768 MiB 首次启动器路径拼接错误导致 MODULE_NOT_FOUND，未进入测试或生成 fixture；保留原失败日志，修正入口后使用新空卷按原内存上限重跑。失败轮空卷与成功轮 fixture 卷均核空、核标签后清理，没有提高配置掩盖失败。
+
+上述全部使用磁盘型 synthetic Blob 接口，不是 Azure SDK、网络或生产容器验收；未接触业务任务、模型或账务。真实 Copilot 回放仍固定使用 ae6dd025 镜像，本补修未热替换到正在运行的进程中。真实任务终态、内容质量、用户验收与统一发布继续分别记录。

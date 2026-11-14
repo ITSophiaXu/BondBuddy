@@ -48,3 +48,5 @@ Linux 使用固定 worker 镜像 `sha256:e1565d1d423a9216578950137434ced32652b67
 截图可复用 `apps/web/tests/project-execution.spec.ts` 的原 fixture：`runStage='provider_reconcile'`、`runReason='file_authoring_payload_recovery_pending'`、`retryMode='restart_materials'`，分别设置四种 `checkpoint_*` 原因。页面确认仍用现有“使用原材料重新处理？”弹窗；截图与原型对照由集成工作区统一补充。
 
 代码完成后仍需统一本地集成、截图对照及用户实际验收；尚未部署，待统一发布。synthetic 测试不代表真实模型生成成功或最终业务验收。
+
+后续最终组合 b1cb4528 已完成 Linux native/恢复14/14、页面状态20/20、浏览器8/8及18张逐图视觉自查。原native容量fixture已同步为共享上限加1；2GiB与768MiB资源实验及真实回放边界见[补修整合验证](../verification/file-authoring-recovery-followup-20261114.md)。用户验收与部署仍未完成。
