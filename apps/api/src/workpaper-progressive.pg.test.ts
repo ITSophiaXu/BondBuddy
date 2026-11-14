@@ -63,7 +63,7 @@ async function fixture(key:string,chapters=9,automatic=false,credits=3000000){
  return {pool,user,project,path,base,cat,request,start,read,action,fail,succeed,send,ok,close,setActor:(id:string)=>{actor=id;}};
 }
 
-test('progressive API: immutable chapter order, two admitted items, confirmation fence, replay safety, owner isolation and failed-only retry',{skip:!configured,timeout:180000},async()=>{
+test('progressive API: immutable chapter order, four admitted items, confirmation fence, replay safety, owner isolation and failed-only retry',{skip:!configured,timeout:180000},async()=>{
  const f=await fixture('trial');
  try{
   const plan=workpaperProgressiveSelection(f.cat.entries,f.request.item_ids,f.request.progressive.chapter_order);
@@ -71,8 +71,8 @@ test('progressive API: immutable chapter order, two admitted items, confirmation
   let batch=await f.start();assert.equal(batch.progressive?.phase,'trial');assert.deepEqual(batch.items.map(i=>i.entry.id),plan.ordered_item_ids);
   assert.equal(batch.progressive?.trial_item_ids.length,8);assert.equal((await f.start()).batch_id,batch.batch_id);
   await assert.rejects(f.pool.query("UPDATE bb_workpaper_batches SET progressive_plan=jsonb_set(progressive_plan,'{max_parallel}','3') WHERE id=$1",[batch.batch_id]),{code:'23514'});
-  await advanceWorkpaperBatch(f.pool);await advanceWorkpaperBatch(f.pool);assert.equal(await advanceWorkpaperBatch(f.pool),false);
-  batch=await f.read(batch.batch_id);assert.equal(batch.items.filter(i=>i.run_id).length,2);
+  for(let i=0;i<4;i++)assert.equal(await advanceWorkpaperBatch(f.pool),true);assert.equal(await advanceWorkpaperBatch(f.pool),false);
+  batch=await f.read(batch.batch_id);assert.equal(batch.items.filter(i=>i.run_id).length,4);
   const inserted=(await f.pool.query('SELECT i.manifest,t.project_id FROM bb_workpaper_items i JOIN bb_workpaper_batches b ON b.id=i.batch_id JOIN bb_m4_topics t ON t.id=b.topic_id WHERE i.batch_id=$1 AND i.item_id=$2',[batch.batch_id,plan.trial_item_ids[2]])).rows[0];
   // Direct database admission cannot bypass the bounded scheduler, even with an
   // otherwise authentic frozen third-item input and the same canonical project.

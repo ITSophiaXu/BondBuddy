@@ -942,3 +942,11 @@ API 将传输方式与不可变的 owner/project/upload/object key 一起保存�
 ### #943 upload confirmation placement
 
 The optional standalone `upload-confirmation-runtime.ts` consumes only the existing upload outbox event, using the API's unchanged confirmation lease/fence and full integrity receipts. It does not construct the general runtime or claim run/parse work. The explicit size-split placement keeps one small-only confirmation loop in the existing main parser and one large-only loop in the standalone service near Blob. Claim SQL filters before taking a lease: small includes 16 MiB, large starts at 16 MiB + 1 byte, using the API constant. Wrong-lane events consume neither attempts nor leases. Each process retains its own 128 MiB disk-backed spool; legacy general/optional small-slot configuration remains the default. Main shutdown separately awaits confirmation settlement without changing run/parse drain limits; its parser has a 10-minute stop grace. Project commit locks still serialize, so small-first completion is not guaranteed. A dedicated standalone spool and process lock protect its files. The main API continues its existing cached ETag/receipt response. Placement, immutable image identity and configuration remain under the existing role binding/pending release protections; mixed component releases require component-only changes. See [split deployment](runbooks/m1-split-deployment.md) for opt-in configuration, drain and rollback. No public contract, migration or model behavior changes.
+
+### 冻结批次的四路处理（#1349）
+
+新底稿、普通文件生成和文件更新批次默认最多准入四个独立子任务。历史批次保留原有一或二路策略；章节顺序、试生成确认、来源与模板版本及输入 hash 均不改变。项目互斥只对同一冻结批次中的不同目标放宽，同一文件和修订版本链仍串行，文件更新继续校验 `expected_current_version_id`。
+
+新普通底稿沿冻结目录按章节每八份形成计划组，优先准入不同组的唯一作者，其他条目复用已持久化的组结果；共享来源和历史整批计划只有唯一作者。不确定的模型调用保留对账记录并阻止重发。全部目录项各自交付 Word 或明确的不适用说明，呈现顺序仍为原目录顺序。
+
+多题答复最多同时调用四路，每题保存独立 prompt、调用意图、用量和结果。单题异常先停止新准入，等待已接受的兄弟调用持久化后才聚合任务终态；已有成功答案可复用。Word 合成始终只有一个写入者。批次和答复均复用公共模型调用预算，四路准入不等于每个任务各自拥有四个额外模型额度；单篇长文书仍按原业务路径处理。
