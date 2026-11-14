@@ -61,11 +61,11 @@ type GenerationUploadContext={
 };
 const uploadJson=(value:unknown):UploadRecoveryJson=>JSON.parse(JSON.stringify(value)) as UploadRecoveryJson;
 const canonical=(value:unknown):string=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
-export async function uploadFileMaterial(api:ApiClient,id:string,file:File|undefined,signal:AbortSignal,status:UploadStatus=()=>{},state:UploadFileMaterialState={},owner='',purpose='file-material',context?:UploadRecoveryJson,current:()=>boolean=()=>true):Promise<M4MaterialPin>{
+export async function uploadFileMaterial(api:ApiClient,id:string,file:File|undefined,signal:AbortSignal,status:UploadStatus=()=>{},state:UploadFileMaterialState={},owner='',purpose='file-material',context?:UploadRecoveryJson,current:()=>boolean=()=>true,options:{reselectExpiredSession?:boolean}={}):Promise<M4MaterialPin>{
   const report=(p:FileUploadProgress)=>{state.progress=p;status(p.message,p);};
   report(uploadActivity());
   const recovery=await prepareFileMaterial(api,id,file,signal,state,owner,purpose,context,current);
-  const m=state.material=await recovery.resume(state.operationId!,{file:state.file,signal,status:s=>report(uploadActivity(s)),progress:(loaded,total)=>report(uploadTransfer(loaded,total))});
+  const m=state.material=await recovery.resume(state.operationId!,{file:state.file,reselectExpiredSession:options.reselectExpiredSession===true,signal,status:s=>report(uploadActivity(s)),progress:(loaded,total)=>report(uploadTransfer(loaded,total))});
   report(uploadActivity("文件已保存，正在完成后续处理…"));
   signal.throwIfAborted();
   return {source_project_id:id,material_id:m.material_id,material_version:m.material_version,sha256:m.sha256};
