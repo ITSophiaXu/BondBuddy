@@ -13,6 +13,40 @@ const root=resolve(import.meta.dirname,'../../..');
 const docker=(...args)=>execFileSync('docker',args,{encoding:'utf8'}).trim();
 const until=async check=>{for(let i=0;i<200;i++){if(await check())return;await delay(50);}throw Error('Owned lifecycle fixture did not settle');};
 const image='mcr.microsoft.com/azure-storage/azurite:3.35.0';
+test('inspect and query timeouts retain holders and release both deployment locks',()=>{
+ const proof=execFileSync('python3',['-c',String.raw`
+import fcntl, importlib.util, json, os, pathlib, subprocess, sys, tempfile
+from unittest.mock import patch
+spec=importlib.util.spec_from_file_location('reconcile',sys.argv[1])
+module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+proof=[]
+for failure in ['inspect','exec']:
+    with tempfile.TemporaryDirectory() as folder:
+        state=pathlib.Path(folder)
+        for name in ['config.lock','deploy.lock']: (state/name).touch()
+        calls=[]
+        def checked(args,**kwargs):
+            calls.append((args,kwargs))
+            if args[1]=='inspect':
+                assert kwargs['timeout']==10
+                if failure=='inspect': raise subprocess.TimeoutExpired(args,10)
+                return json.dumps([{'Id':'owned-fixture','State':{'Running':True},'Config':{'Labels':{'com.docker.compose.project':'bb-execution','com.docker.compose.service':'worker'}}}]).encode()
+            assert args[1]=='exec' and kwargs['timeout']==20
+            assert all(item in args[-1] for item in ['connectionTimeoutMillis:5000','query_timeout:10000','statement_timeout:10000'])
+            assert json.loads(kwargs['input'])['sql'].startswith('SELECT ')
+            raise subprocess.TimeoutExpired(args,20)
+        with patch.object(sys,'argv',['reconcile','--apply','--query-container','fixture','--locked-state',folder]),patch.object(module.subprocess,'check_output',checked):
+            try: module.main()
+            except subprocess.TimeoutExpired: pass
+            else: raise AssertionError('timeout must fail, not report successful reclaim')
+        for name in ['config.lock','deploy.lock']:
+            with open(state/name,'w') as lock: fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        assert not any(b'DELETE ' in kwargs.get('input',b'') for _,kwargs in calls)
+        proof.append({'failure':failure,'delete_sent':False,'both_locks_released':True})
+print(json.dumps(proof))
+ `,resolve(root,'deploy/m1/scripts/model-capacity-reconcile.py')],{encoding:'utf8',timeout:10000});
+ assert.deepEqual(JSON.parse(proof),['inspect','exec'].map(failure=>({failure,delete_sent:false,both_locks_released:true})));
+});
 test('live namespace retains all four permits; SIGKILL/recreate proves exit and restores capacity',{skip:!enabled,timeout:60000},async t=>{
  const url=new URL(process.env.BB_TEST_DATABASE_URL);
  assert.equal(url.hostname,'127.0.0.1');assert.match(url.pathname,/^\/bb1348/);
