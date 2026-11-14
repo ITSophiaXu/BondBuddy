@@ -170,6 +170,18 @@ export class M4UploadRecovery {
     if (item.stage !== 'draft_unknown') e = this.update(e, index, { stage: 'draft_unknown' }); this.requireBase(e, item.adoptionBase, item.cacheTarget!); this.unchanged(e); this.live(); try { await this.m4.draft(this.topicId, clone(item.draftRequest)); } catch { this.live(); } this.live(); this.unchanged(e); return this.observe(e, index);
   }
   async reconcile(id: string, index: number): Promise<M4UploadResult> { return this.locked(async () => { let e = this.read(id); const item = e.items[index]; check(item); if (['draft_confirmed', 'cleanup_pending', 'complete'].includes(item.stage)) return this.cleanup(e, index); if (item.draftRequest) return this.observe(e, index); if (item.material) { const w = await this.workspace(e); if (w.materials.some(p => m4UploadSame(p, pin(e.projectId, item.material!))) && stages.indexOf(item.stage) < 3) e = this.update(e, index, { stage: 'library_registered' }); } return this.result(e, index, 'pending'); }); }
+  /** Save only the file ahead of ordered membership/draft adoption. */
+  async transfer(id: string, index: number, options: Omit<UploadRecoveryResumeOptions, 'previousRecord'> = {}) {
+    this.live(); const e = this.read(id), item = e.items[index]; check(item);
+    const record = this.core.list().find(record => record.id === item.id);
+    check(record && m4UploadRecordMatches(e, index, record), '原上传记录缺失或关联不一致，未重新建立上传。');
+    const signal = AbortSignal.any([this.options.signal ?? new AbortController().signal, options.signal ?? new AbortController().signal]);
+    const material = await this.core.resume(item.id, { ...options, signal, requireDurableRecord: true });
+    this.live(); signal.throwIfAborted();
+    const fresh = this.read(id), saved = this.core.list().find(record => record.id === item.id);
+    check(saved && m4UploadRecordMatches(fresh, index, saved));
+    return validateUploadMaterial(fresh.items[index].declaration, material);
+  }
   async resume(id: string, index: number, options: Omit<UploadRecoveryResumeOptions, 'signal' | 'previousRecord'> & { retryDraft?: boolean; retryMembership?: boolean } = {}): Promise<M4UploadResult> {
     return this.locked(async () => { let e = this.read(id), item = e.items[index]; check(item); if (index > 0) check(e.items[index - 1].stage === 'complete' && e.items[index - 1].localCacheResult === 'patched', '请先确认原有序批次前项。'); if (['draft_confirmed', 'cleanup_pending', 'complete'].includes(item.stage)) return this.cleanup(e, index);
       if (item.draftRequest) { const result = await this.observe(e, index); if (result.state !== 'retryable' || !options.retryDraft) return result; e = this.read(id); return this.submit(e, index); }

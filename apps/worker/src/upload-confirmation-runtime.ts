@@ -6,7 +6,8 @@ import {azureBlobs,type PrivateBlobs} from '@bondbuddy/api/data';
 import {runUploadConfirmationOnce,type UploadConfirmationLane} from '@bondbuddy/api/upload-confirmation';
 import {acquireConfirmationSpool} from './upload-confirmation-spool.js';
 
-const SPOOL_BYTES=128*1024*1024;
+const LEGACY_SPOOL_BYTES=128*1024*1024;
+export const FOUR_CONFIRMATION_SPOOL_BYTES=448*1024*1024;
 export function confirmationConfig(env:NodeJS.ProcessEnv){
   if(env.BB_UPLOAD_CONFIRMATION_ENABLED!=='1')throw new Error('Upload confirmation requires explicit enablement');
   for(const [key,value] of Object.entries(env))if(value&&/^(BB_(CODEX|MODEL|DEEPSEEK|WORKER_JOB_KINDS|WORKER_RUN_KINDS|PLATFORM_PROBE)|CODEX_|COPILOT_|OPENAI_|DEEPSEEK_|ANTHROPIC_)/.test(key))
@@ -15,32 +16,38 @@ export function confirmationConfig(env:NodeJS.ProcessEnv){
   const db=new URL(env.DATABASE_URL);
   if(!['postgres:','postgresql:'].includes(db.protocol))throw new Error('Invalid confirmation database');
   const root=env.BB_UPLOAD_SPOOL_DIR;
-  if(!root||!isAbsolute(root)||normalize(root)!==root||root==='/'||Number(env.BB_UPLOAD_SPOOL_MAX_BYTES)!==SPOOL_BYTES)
-    throw new Error('Upload confirmation requires a dedicated absolute spool and 128 MiB budget');
+  const rawConcurrency=env.BB_UPLOAD_CONFIRMATION_CONCURRENCY??'1';
+  if(!['1','4'].includes(rawConcurrency))throw new Error('Invalid confirmation concurrency');
+  const concurrency=Number(rawConcurrency),budget=concurrency===4?FOUR_CONFIRMATION_SPOOL_BYTES:LEGACY_SPOOL_BYTES;
+  if(!root||!isAbsolute(root)||normalize(root)!==root||root==='/'||Number(env.BB_UPLOAD_SPOOL_MAX_BYTES)!==budget)
+    throw new Error('Upload confirmation requires its exact dedicated spool budget');
   const small=env.BB_UPLOAD_CONFIRMATION_SMALL_SLOT??'0';
   if(!['0','1'].includes(small))throw new Error('Invalid small confirmation slot');
   const lane=env.BB_UPLOAD_CONFIRMATION_LANE??'general';
   if(!['general','large'].includes(lane)||lane==='large'&&small!=='0')throw new Error('Large-only confirmation requires one large loop');
+  if(concurrency===4&&(lane!=='general'||small!=='1'))throw new Error('Four confirmations require general lanes and a reserved small slot');
   const rawPoll=env.BB_UPLOAD_CONFIRMATION_POLL_MS??'1000',pollMs=Number(rawPoll);
   if(!/^\d+$/.test(rawPoll)||!Number.isSafeInteger(pollMs)||pollMs<100||pollMs>60000)throw new Error('Invalid confirmation poll interval');
   // This is the material container, independently selectable for isolated tests.
   // BB_LIBRARY_CONTAINER belongs to the reference library and is not consulted.
   const container=env.BB_UPLOAD_CONFIRMATION_CONTAINER??'bondbuddy-private';
   if(!/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/.test(container)||container.includes('--'))throw new Error('Invalid confirmation material container');
-  return {root,budget:SPOOL_BYTES,lane:lane as 'general'|'large',smallSlot:small==='1',pollMs,container};
+  return {root,budget,concurrency,lane:lane as 'general'|'large',smallSlot:small==='1',pollMs,container};
 }
 
 export class UploadConfirmationRuntime{
   private stopping=false;
   private loops:Promise<void>[]=[];
   private readonly wake=new AbortController();
-  constructor(private readonly options:{pool:Pool;blobs:PrivateBlobs;lane?:'general'|'large';smallSlot:boolean;pollMs:number;log?:(event:Record<string,unknown>)=>void}){
+  constructor(private readonly options:{pool:Pool;blobs:PrivateBlobs;lane?:'general'|'large';smallSlot:boolean;concurrency?:number;pollMs:number;log?:(event:Record<string,unknown>)=>void}){
     if(!['general','large'].includes(options.lane??'general')||options.lane==='large'&&options.smallSlot)throw new Error('Invalid standalone confirmation lane');
+    const n=options.concurrency??1;
+    if(![1,4].includes(n)||n===4&&((options.lane??'general')!=='general'||!options.smallSlot))throw new Error('Invalid standalone confirmation capacity');
   }
   private emit(event:Record<string,unknown>){try{this.options.log?.({at:new Date().toISOString(),...event});}catch{/* telemetry only */}}
   start(){
     if(this.stopping||this.loops.length)throw new Error('Confirmation runtime already started or stopped');
-    this.loops.push(this.loop(this.options.lane??'general'));
+    for(let index=0;index<(this.options.concurrency??1);index++)this.loops.push(this.loop(this.options.lane??'general'));
     if(this.options.smallSlot)this.loops.push(this.loop('small'));
     return this;
   }
@@ -70,11 +77,11 @@ export async function confirmationMain(){
   try{
     release=await acquireConfirmationSpool(config.root,config.budget);
     if(stopping)return;
-    pool=new Pool({connectionString:process.env.DATABASE_URL,max:6,connectionTimeoutMillis:10000});
+    pool=new Pool({connectionString:process.env.DATABASE_URL,max:config.concurrency===4?12:6,connectionTimeoutMillis:10000});
     await pool.query('SELECT 1');
     if(stopping)return;
-    runtime=new UploadConfirmationRuntime({pool,blobs:azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING!,config.container),lane:config.lane,smallSlot:config.smallSlot,pollMs:config.pollMs,log}).start();
-    log({kind:'started',service:'upload-confirmation',lane:config.lane,general_slots:config.lane==='general'?1:0,large_slots:config.lane==='large'?1:0,small_slots:config.smallSlot?1:0,spool_budget_bytes:config.budget});
+    runtime=new UploadConfirmationRuntime({pool,blobs:azureBlobs(process.env.AZURE_STORAGE_CONNECTION_STRING!,config.container),lane:config.lane,smallSlot:config.smallSlot,concurrency:config.concurrency,pollMs:config.pollMs,log}).start();
+    log({kind:'started',service:'upload-confirmation',lane:config.lane,general_slots:config.lane==='general'?config.concurrency:0,large_slots:config.lane==='large'?1:0,small_slots:config.smallSlot?1:0,spool_budget_bytes:config.budget});
     await new Promise<void>(resolve=>{
       if(stopping)return resolve();
       const done=()=>{process.removeListener('SIGTERM',done);process.removeListener('SIGINT',done);resolve();};

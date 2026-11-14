@@ -252,26 +252,24 @@ for (const fault of ['quota', 'write-readback'] as const) {
   });
 }
 
-test('three queued files keep every prepared original declaration across reload while both transfer slots are blocked', async ({ page }) => {
+test('five queued files keep every prepared original declaration across reload while all four transfer slots are blocked', async ({ page }) => {
   const state = fixture(); state.completeUnavailable = true;
-  const files = [pdf('批量一-审计原稿.pdf'), pdf('批量二-债务资料.pdf', 'second debt document'), pdf('批量三-其他资料.pdf', 'third pending original')];
-  // Financial documents now share the audit picker; use three current upload
-  // partitions to continue testing queued declaration/role identity.
-  const roles = ['audit', 'debt', 'other'] as const, releases: (() => void)[] = [];
+  const files = [pdf('批量一-审计原稿.pdf'), pdf('批量二-债务资料.pdf', 'second debt document'), pdf('批量三-其他资料.pdf', 'third pending original'),pdf('批量四-其他资料.pdf','fourth original'),pdf('批量五-待传资料.pdf','fifth original')];
+  const roles = ['audit', 'debt', 'other','other','other'] as const, releases: (() => void)[] = [];
   state.putGate = () => new Promise<void>(resolve => { releases.push(resolve); });
   await setup(page, state);
   for (let i = 0; i < files.length; i++) {
     const input = page.locator(`[data-upload-role="${roles[i]}"]`);
     await expect(input).toHaveCount(1); await input.setInputFiles(files[i]);
   }
-  await expect.poll(() => releases.length).toBe(2);
-  await expect.poll(async () => (await journal(page)).length).toBe(3);
+  await expect.poll(() => releases.length).toBe(4);
+  await expect.poll(async () => (await journal(page)).length).toBe(5);
   const records: { id: string; uploadId?: string; declaration: { filename: string; role: string; sha256: string; byte_size: number } }[] =
     (await journal(page)).map(item => JSON.parse(item.raw));
   for (let i = 0; i < files.length; i++) expect(records.find(record => record.declaration.filename === files[i].name)?.declaration)
     .toMatchObject({ role: roles[i], sha256: hash(files[i].buffer), byte_size: files[i].buffer.length });
-  const third = records.find(record => record.declaration.filename === files[2].name)!;
-  expect(third.uploadId).toBeUndefined(); unchangedTransport(state, 2, 2);
+  const fifth = records.find(record => record.declaration.filename === files[4].name)!;
+  expect(fifth.uploadId).toBeUndefined(); unchangedTransport(state, 4, 4);
   const previousWrites = writes(state).length;
   page.once('dialog', async dialog => {
     if (dialog.type() !== 'beforeunload') { state.errors.push(`Unexpected ${dialog.type()} dialog during explicit refresh`); await dialog.dismiss(); }
@@ -286,17 +284,17 @@ test('three queued files keep every prepared original declaration across reload 
   }
   expect(writes(state)).toHaveLength(previousWrites);
   state.putGate = undefined; for (const release of releases) release(); state.completeUnavailable = false;
-  await confirm(page, third.id).click();
-  await expect(row(page, third.id).locator('[data-upload-action="reselect"]')).toBeVisible();
+  await confirm(page, fifth.id).click();
+  await expect(row(page, fifth.id).locator('[data-upload-action="reselect"]')).toBeVisible();
   expect(writes(state), 'Confirming a prepared item without a session must first request the original bytes.').toHaveLength(previousWrites);
-  await reselect(page, third.id, files[2]); await expect.poll(() => state.materials.size).toBe(1);
+  await reselect(page, fifth.id, files[4]); await expect.poll(() => state.materials.size).toBe(1);
   for (const record of records.filter(record => record.uploadId)) {
     const target = row(page, record.id);
     await target.locator('xpath=ancestor::details').evaluateAll(details => details.forEach(detail => { (detail as HTMLDetailsElement).open = true; }));
     await confirm(page, record.id).click();
   }
-  await expect.poll(() => state.materials.size).toBe(3); unchangedTransport(state, 3, 3);
-  await expect(page.locator('.material-file-row')).toHaveCount(3);
+  await expect.poll(() => state.materials.size).toBe(5); unchangedTransport(state, 5, 5);
+  await expect(page.locator('.material-file-row')).toHaveCount(5);
   for (let i = 0; i < files.length; i++) {
     const material = [...state.materials.values()].find(item => item.material.filename === files[i].name)!;
     expect(material).toMatchObject({ owner: ids.owner, project: ids.project, material: { role: roles[i], sha256: hash(files[i].buffer), byte_size: files[i].buffer.length } });

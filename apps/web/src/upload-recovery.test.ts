@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHash } from 'node:crypto';
+import {uploadFileSha256} from './upload-file-digest.js';
 import { M1_UPLOAD_MIME_TYPES, UPLOAD_INSPECTION_PUBLIC_REASONS } from '@bondbuddy/contracts';
 import { ApiError, type Dto } from './api.js';
 import { UploadRecovery, UploadRecoveryConflictError, UploadRecoveryLockError, UploadRecoveryNeedsFileError,
@@ -558,4 +559,34 @@ test('direct reload with accepted bytes reuses complete without ticket or file',
 test('direct original identity is retained when the ticket endpoint is unavailable or foreign',async()=>{
  const h=harness(),r=h.make();seed(h,r,{uploadTransport:'azure_blob'});h.state.complete=async()=>{throw new ApiError(404,'NOT_FOUND');};
  await assert.rejects(h.make().resume('op-a',{file:file()}),ApiError);assert.deepEqual(methods(h),['complete']);assert.equal(r.list()[0].uploadId,'upload-a');
+});
+
+test('cancelling the default SHA waiter releases its recovery lock before an unrelated hash completes',async()=>{
+ const entered=deferred<void>(),release=deferred<void>(),blocker=new Blob(['unrelated original']);
+ const original=blocker.slice.bind(blocker);blocker.slice=(...args)=>{
+  const part=original(...args),read=part.arrayBuffer.bind(part);part.arrayBuffer=async()=>{entered.resolve();await release.promise;return read();};return part;
+ };
+ const heldHash=uploadFileSha256(blocker);await entered.promise;
+ const h=harness(),r=h.make(),selected=file(),controller=new AbortController();let reads=0;
+ selected.slice=()=>{reads++;throw Error('cancelled waiter read original bytes');};
+ r.begin(declaration(),undefined,'cancel-hash');
+ const work=r.resume('cancel-hash',{file:selected,signal:controller.signal});
+ try{
+  await new Promise<void>(resolve=>setImmediate(resolve));assert.equal(h.lock.active.size,1);
+  controller.abort();let timer:ReturnType<typeof setTimeout>|undefined;
+  try{await Promise.race([assert.rejects(work,{name:'AbortError'}),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('cancelled SHA waiter retained the recovery lock')),2000);})]);}finally{clearTimeout(timer);}
+  assert.equal(reads,0);assert.equal(h.lock.active.size,0);assert.deepEqual(methods(h),[]);
+  assert.equal(r.list()[0].stage,'pending');assert.equal(r.list()[0].material,undefined);
+ }finally{release.resolve();await heldHash;}
+ assert.equal(await uploadFileSha256(new Blob(['abc'])),createHash('sha256').update('abc').digest('hex'));
+});
+
+test('cancelling an active default SHA stops before the next chunk or any upload write',async()=>{
+ const h=harness(),r=h.make(),controller=new AbortController(),selected=new File([Buffer.alloc(2*1024*1024,120)],'cancel.docx',{type:mime});
+ const raw=selected.slice.bind(selected);let reads=0;
+ selected.slice=(...args)=>{reads++;const part=raw(...args),read=part.arrayBuffer.bind(part);part.arrayBuffer=async()=>{const bytes=await read();controller.abort();return bytes;};return part;};
+ r.begin({...declaration(),byte_size:selected.size,sha256:createHash('sha256').update(Buffer.alloc(selected.size,120)).digest('hex')},undefined,'cancel-active');
+ await assert.rejects(r.resume('cancel-active',{file:selected,signal:controller.signal}),{name:'AbortError'});
+ assert.equal(reads,1);assert.equal(h.lock.active.size,0);assert.deepEqual(methods(h),[]);
+ assert.equal(r.list()[0].stage,'pending');assert.equal(r.list()[0].material,undefined);
 });

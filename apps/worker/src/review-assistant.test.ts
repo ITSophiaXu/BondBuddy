@@ -13,6 +13,8 @@ import { isReviewProposalV2, type ReviewContext, type ReviewDraft, type ReviewRe
 import type { ProviderCallIntent } from '@bondbuddy/api/provider-results';
 import { assertModelCallAllowed, configureTrialGuard, tokensSince, trialGuardConfig } from '@bondbuddy/api/trial-guard';
 import { DEFAULT_DISABLED_FEATURES, runContainedModelCall, type CodexAdapterConfig } from './codex-adapter.js';
+import { PgModelCallBudget } from './model-call-budget.js';
+import { spawn } from 'node:child_process';
 import { claimReviewAssistant, ReviewAssistantJournal, reviewAssistantSnapshot, runReviewAssistantOnce, validReviewAssistantReply } from './review-assistant.js';
 import { persistParseSnapshot } from './parse-evidence-repository.js';
 import type { DocumentParseRecord, DocumentParseResponse } from './document-parser.js';
@@ -400,6 +402,25 @@ out({type:'turn.completed',...(usage==='missing'?{}:{usage:JSON.parse(usage)})})
         assert.equal(await runReviewAssistantOnce({pool,blobs:f.blobs,config:f.config()}),'idle');
       }
       assert.equal(await f.sends(),3);
+    });
+
+    await t.test('four assistant claims use distinct conversations, preserving order without blocking ended unknown replies',async ctx=>{
+      const fixtures=await Promise.all(Array.from({length:4},()=>fixture(ctx)));
+      const messages: ReturnType<typeof message>[][]=[];
+      for(const f of fixtures) messages.push([await f.queue({createdAt:'2026-11-14T00:00:00Z'}),await f.queue({createdAt:'2026-11-14T00:00:01Z'})]);
+      const leases=await Promise.all(Array.from({length:4},()=>claimReviewAssistant(pool)));
+      assert.equal(new Set(leases.map(l=>l?.project_id)).size,4);
+      assert.equal(leases.every(l=>messages.some(pair=>pair[0]!.id===l?.id)),true);
+      assert.equal(await claimReviewAssistant(pool),null,'second message cannot overlap its running predecessor');
+      const f=fixtures[0]!,pair=messages[0]!;
+      await pool.query("UPDATE bb_review_messages SET reply_status='unknown' WHERE id=$1",[pair[0]!.id]);
+      const permit=await new PgModelCallBudget(pool).acquire(undefined,`assistant:${f.project}`);
+      const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'});
+      const closed=new Promise<void>(resolve=>child.once('close',()=>resolve()));await permit.bindProcess(child.pid!);
+      assert.equal(await claimReviewAssistant(pool),null,'an unknown reply with an actual active child remains fenced');
+      child.kill('SIGTERM');await closed;await permit.release();
+      const next=await claimReviewAssistant(pool);assert.equal(next?.id,pair[1]!.id);
+      assert.deepEqual((await f.row(pair[1]!.id)).context_snapshot.prior_message_ids,[], 'send-time history is never retroactively extended');
     });
 
     await t.test('foreign report, history, source material and altered report hash fail before model send',async ctx=>{
