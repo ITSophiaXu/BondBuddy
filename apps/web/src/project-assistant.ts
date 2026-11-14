@@ -30,6 +30,9 @@ import { AssistantProjectCopyRecovery, assistantProjectCopyRecordMatches, type A
 import { AssistantViewCache, AssistantViewCacheError, assistantSame, assertAssistantTemplateClear, withAssistantTopicWrite, type AssistantViewSnapshot, type AssistantViewCacheRecord } from './assistant-view-cache';
 import { UploadRecoveryNeedsFileError, UploadRecoveryConflictError, UploadRecoveryStorageError, UploadRecoveryLockError, UploadRecoveryReceiptError, type UploadRecoveryRecord, type UploadRecoveryJson } from './upload-recovery';
 import './project-assistant.css';
+import { AssistantPageContext } from './assistant-page-context';
+import { assistantHandoffHtml, assistantSendContextHtml } from './assistant-page-context-view';
+import './assistant-page-context.css';
 
 type ProjectData={project:Dto<'ProjectResponse'>;materials:Dto<'MaterialResponse'>[];results:AssistantResult[]};
 type PreparationGuard={topic:string;project:string;snapshot:AssistantViewSnapshot;cache:AssistantViewCacheRecord;data:ProjectData|undefined};
@@ -51,6 +54,18 @@ const runLabel=(state:string)=>({queued:'排队等待处理',running:'正在处�
 export class ProjectAssistant {
   private controller=new AbortController();
   private m4:M4Api;
+  private pageContext:AssistantPageContext;
+  private pageChanged=()=>{if(this.live)void this.pageContext.refresh(location.hash);};
+  private paintPageContext(){
+    if(!this.live)return;
+    const project=this.data?.project;
+    const html=this.embeddedProject?'':assistantHandoffHtml(this.pageContext.state,location.hash,project,this.busy||!this.workspace);
+    const handoff=this.host.querySelector('[data-page-context]');if(handoff&&handoff.innerHTML!==html)handoff.innerHTML=html;
+    const base=this.viewSafe()?.unsent_context.reading_artifact;
+    const label=base?this.data?.results.find(r=>samePin(r.pin,base))?.label??'所选成果版本暂不可核实':project?'项目材料（未选成果）':'本对话材料（未选成果）';
+    const sender=assistantSendContextHtml(project?.name??(this.viewSafe()?.assistant?.project_id?'关联项目暂不可核实':'未关联项目'),label);
+    const host=this.host.querySelector('[data-send-context]');if(host&&host.innerHTML!==sender)host.innerHTML=sender;
+  }
   private materialUploads:AssistantUploadRecovery;
   private viewCache:AssistantViewCache;
   private assistantTemplateUploads?:AssistantTemplateUploadRecovery;
@@ -124,6 +139,8 @@ export class ProjectAssistant {
     this.open=true;this.formOpen=false;this.changed();},'submit');};
   constructor(private api:ApiClient,private owner:string){
     this.m4=new M4Api(api,this.controller.signal);this.materialUploads=new AssistantUploadRecovery(api,this.m4,owner,()=>this.live,{coordinatePrepare:topic=>{if(this.workspace?.topic.topic_id===topic&&(this.templatePreparing||this.copyPreparing||this.copyReading||this.copyProblem||this.viewConflict||this.cacheProblem||this.actionUncertain))throw new AssistantInputError('请先核对原模板、材料复用及完整会话草稿，再添加材料。');}});this.viewCache=new AssistantViewCache(api,owner,()=>this.live);this.host.className='bb-assistant';document.body.append(this.host);
+    this.pageContext=new AssistantPageContext({project:id=>this.api.project(id,this.controller.signal),topic:id=>this.m4.workspace(id)},()=>this.paintPageContext());
+    window.addEventListener('hashchange',this.pageChanged);this.pageChanged();
     this.dock.type='button';this.dock.className='ba-dock';this.dock.dataset.assistantDock='';
     this.dock.setAttribute('aria-controls','ba-panel');
     this.dock.innerHTML=icon('buddy')+'<i data-active-dot aria-hidden="true"></i>';
@@ -138,14 +155,14 @@ export class ProjectAssistant {
       if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&(e.target as HTMLElement).matches('[data-composer]')){e.preventDefault();void this.work(()=>this.send(),'submit');}});
     window.addEventListener('bondbuddy:assistant',this.event);window.addEventListener('storage',this.storageChanged);this.paint();
   }
-  dispose(){this.controller.abort();clearTimeout(this.timer);clearTimeout(this.saveTimer);window.removeEventListener('bondbuddy:assistant',this.event);window.removeEventListener('storage',this.storageChanged);this.narrow.removeEventListener('change',this.resize);this.open=false;this.syncLayout();this.host.remove();this.dock.remove();}
+  dispose(){this.pageContext.dispose();window.removeEventListener('hashchange',this.pageChanged);this.controller.abort();clearTimeout(this.timer);clearTimeout(this.saveTimer);window.removeEventListener('bondbuddy:assistant',this.event);window.removeEventListener('storage',this.storageChanged);this.narrow.removeEventListener('change',this.resize);this.open=false;this.syncLayout();this.host.remove();this.dock.remove();}
   /** Detach the product UI while retaining complete input, journals and pending saves. */
   suspend(){this.suspended=true;this.host.remove();this.dock.remove();this.syncLayout();}
   mount(){
     this.suspended=false;
     if(!this.host.isConnected)document.body.append(this.host);
     if(!this.dock.isConnected)document.body.append(this.dock);
-    this.paintDock();this.syncLayout();
+    this.paintDock();this.syncLayout();this.pageChanged();
   }
   private async setOpen(open:boolean){
     this.open=open;this.paint();
@@ -290,7 +307,7 @@ export class ProjectAssistant {
     try{await fn();}catch(e){if(this.live){this.error=assistantError(e,operation);if(e instanceof ApiError&&['QUOTE_CHANGED','QUOTE_REQUIRED'].includes(e.code)){this.qaQuote=undefined;this.invalidateTask();}}}
     finally{this.busy=false;if(this.live){this.paint();if(this.error==='请填写模板所属券商全称。')this.host.querySelector<HTMLInputElement>('[data-field="broker"]')?.focus();if(this.error==='请选择立项报告的发行市场。')this.host.querySelector<HTMLSelectElement>('[data-field="market"]')?.focus();if(this.embedPending&&this.embeddedProject&&this.host.parentElement){this.embedPending=false;void this.embedProject(this.host.parentElement,this.embeddedProject);}else void this.drainUploads();}}
   }
-  private invalidateTask(){if(!this.workspace)return;this.view.assistant!.draft_token=crypto.randomUUID();this.qaQuote=undefined;this.changed();this.paintTimeline();}
+  private invalidateTask(){if(!this.workspace)return;this.view.assistant!.draft_token=crypto.randomUUID();this.qaQuote=undefined;this.changed();this.paintTimeline();this.paintPageContext();}
   private currentUploads(){return this.uploads.filter(u=>u.topic===this.workspace?.topic.topic_id);}
   private restoreUploads(topic:string){
     this.uploadRecoveryBlocked=true;
@@ -308,8 +325,10 @@ export class ProjectAssistant {
     const selected=sessionStorage.getItem(`bb-assistant:${this.owner}`),last=this.topics.find(t=>t.topic_id===selected)??this.topics[0];
     if(last)await this.select(last.topic_id);else await this.newConversation();
   }
-  private async newConversation(projectId?:string){
-    await this.flush();const source=projectId?await this.api.project(projectId,this.controller.signal):null;
+  private async newConversation(projectId?:string,beforeCreate?:()=>void){
+    await this.flush();beforeCreate?.();const source=projectId?await this.api.project(projectId,this.controller.signal):null;
+    beforeCreate?.();
+    if(beforeCreate&&source?.project_id!==projectId)throw new AssistantInputError('页面项目读取结果不一致，未切换原对话。');
     if(!this.conversationRequest||this.conversationRequest.projectId!==projectId)this.conversationRequest={projectId,key:crypto.randomUUID()};
     const result=await this.m4.create({creation_request_id:this.conversationRequest.key,name:source?`${source.name} · BondBuddy`:'新对话',surface:'assistant',...(source?{source_project_id:source.project_id}:{})});
     this.conversationRequest=undefined;this.topics.unshift(result.topic);await this.select(result.topic.topic_id);
@@ -497,6 +516,7 @@ export class ProjectAssistant {
     if(a==='history'){this.history=!this.history;this.projectPicker=false;this.paint();return;}
     if(a==='close-project'||a==='project'&&this.projectPicker){this.projectPicker=false;this.paint();this.host.querySelector<HTMLElement>('[data-a="project"]')?.focus();return;}
     if(a==='hide-form'){this.formOpen=false;this.paint();return;}
+    if(a==='read-page-project'){await this.pageContext.refresh(location.hash,true);return;}
     const operation:ErrorOperation=a==='download'?'download':['send','execute','new','current-project','prepare'].includes(a??'')?'submit':['template-read','copy-read','project'].includes(a??'')?'read':['recover-view','keep-local-view','template-resume','template-remove','template-orphan-remove','copy-resume','copy-stop','copy-orphan-remove','action','shortcut','retry-upload','remove-upload','continue'].includes(a??'')?'save':'action';
     await this.work(async()=>{
       if(a==='recover-view')await this.resolveView(false);
@@ -523,7 +543,14 @@ export class ProjectAssistant {
           await this.poll();this.status='已停止本次回答，消息与材料保留。';
         }
       }
-      if(a==='current-project'){const id=location.hash.match(/#\/projects\/([^/?]+)/)?.[1];if(id)await this.newConversation(decodeURIComponent(id));}
+      if(a==='current-project'){
+        const page=this.pageContext.current(location.hash);
+        if(!page||page.project_id!==el.dataset.pageProject)throw new AssistantInputError('页面项目已变化或暂不可核实，请重新核对；原对话保持不变。');
+        await this.newConversation(page.project_id,()=>{
+          if(this.pageContext.current(location.hash)!==page)throw new AssistantInputError('页面项目已变化，请核对新的目标；原对话保持不变。');
+          if(this.viewDirty||this.templateBlocked(false))throw new AssistantInputError('原对话草稿尚未可靠保存，请先核对保存状态再开新对话。');
+        });
+      }
       if(a==='project'){let cursor:string|undefined;this.projects=[];do{const page=await this.api.projects(cursor,{limit:'100'},this.controller.signal);this.projects.push(...page.items.filter(p=>p.kind!=='qa'));cursor=page.page.next_cursor??undefined;}while(cursor);this.status='';this.history=false;this.projectPicker=true;}
       if(a==='action'){const message=this.workspace?.messages.find(m=>m.message_id===el.dataset.id);if(message?.reply?.assistant_action)await this.useAction(message.reply.assistant_action);}
       if(a==='shortcut')await this.useAction({business:el.dataset.kind as AssistantAction['business'],requirements:'',fields:{}});
@@ -636,7 +663,7 @@ export class ProjectAssistant {
       else host.innerHTML=`<button data-a="download" data-id="${esc(a.artifact_id)}">下载成果</button>`;
     }catch{/* project result remains available for a fresh authorized read */}
   }
-  private paintStatus(){const status=this.host.querySelector<HTMLElement>('[data-status]');if(status)status.textContent=this.error||this.status;
+  private paintStatus(){this.paintPageContext();const status=this.host.querySelector<HTMLElement>('[data-status]');if(status)status.textContent=this.error||this.status;
     this.host.querySelectorAll<HTMLElement>('[data-template-recovery]').forEach(el=>el.innerHTML=this.templateRecovery());
     this.host.querySelectorAll<HTMLElement>('[data-copy-recovery]').forEach(el=>el.innerHTML=this.copyRecovery());
     const uploads=this.host.querySelector<HTMLElement>('[data-uploads]');if(uploads)uploads.innerHTML=this.currentUploads().map(u=>{const reused=uploadReady(u)&&uploadReused(u),recoverable=u.kind==='material'&&!!u.recovery&&!uploadReady(u);return `<div role="status" data-assistant-upload="${esc(u.id)}" data-upload-kind="${u.kind}" data-associated="${u.associated===true}" class="bb-upload-file ${reused?'duplicate-upload-notice':''}">${reused?'':esc(u.filename)}${uploadProgressHtml(u.progress??uploadActivity(u.status),u.filename,{announce:false,error:u.error,complete:uploadReady(u),paused:!this.busy&&!uploadReady(u)})}${uploadReady(u)?esc(u.status):''}${recoverable?`<button class="bb-upload-action bb-upload-action--primary" data-a="retry-upload" data-id="${esc(u.id)}"${this.busy?' disabled':''}>确认保存并加入对话</button>${u.needsFile?`<label class="bb-upload-picker bb-upload-picker--compact ba-attach">重新选择原文件<input type="file" data-assistant-reselect="${esc(u.id)}"></label>`:''}<button class="bb-upload-action" data-a="remove-upload" data-id="${esc(u.id)}"${this.busy?' disabled':''}>移除此待办</button><small>将加入“${esc(this.workspace?.topic.name??'原对话')}”。确认不会发送消息或开始任务；移除待办会保留服务器已收到的文件。</small>`:u.error?`${u.kind==='template'?'<small>模板创建与采用尚不支持跨刷新恢复，请核对原模板；此处不能只重试上传后显示模板成功。</small>':`<button class="bb-upload-action bb-upload-action--primary" data-a="retry-upload" data-id="${esc(u.id)}">重试保存</button>`}<button class="bb-upload-action" data-a="remove-upload" data-id="${esc(u.id)}">移除本机项</button>`:''}</div>`;}).join('');
@@ -655,15 +682,15 @@ export class ProjectAssistant {
     this.host.classList.toggle('ba-wide',this.wide);this.host.classList.toggle('ba-open',this.open);
     if(this.embeddedProject&&this.workspace?.topic.source_project_id!==this.embeddedProject){this.host.innerHTML=`<section class="ba-panel" role="region" aria-label="BondBuddy 项目对话"><p role="status" style="padding:24px">${this.error?esc(this.error):'正在打开本项目的 BondBuddy 对话…'}</p>${!this.busy?'<button data-a="embed-retry">重新打开对话</button>':''}</section>`;this.syncLayout();return;}
     const project=this.data?.project,base=this.viewSafe()?.unsent_context.reading_artifact;
-    const currentProject=location.hash.match(/#\/projects\/([^/?]+)/)?.[1];
+
     this.host.innerHTML=this.open?`
       <section id="ba-panel" class="ba-panel" role="dialog" aria-label="BondBuddy"><header class="ba-header"><div class="ba-identity"><span class="ba-mark">${icon('buddy')}</span><div><strong>BondBuddy</strong><small>券商助手</small></div></div><div class="ba-toolbar"><button class="ba-icon-button" data-a="new" title="新对话" aria-label="新对话">${icon('new')}</button><button class="ba-icon-button" data-a="history" title="最近对话" aria-label="最近对话" aria-pressed="${this.history}">${icon('history')}</button><button class="ba-icon-button" data-a="wide" title="${this.wide?'还原宽度':'加宽侧栏'}" aria-label="${this.wide?'还原宽度':'加宽侧栏'}">${icon(this.wide?'contract':'expand')}</button><button class="ba-icon-button" data-a="toggle" title="收起助手，回到右下角图标" aria-label="收起助手">${icon('collapse')}</button></div></header>
-      <div class="ba-context"><div class="ba-context-row"><button class="ba-project-button" data-a="project" aria-expanded="${this.projectPicker}" title="${esc(project?.name??'关联项目以使用已有材料和成果')}">${icon('folder')}<span>${esc(project?.name??'关联项目')}</span>${icon('chevron')}</button>${currentProject&&currentProject!==project?.project_id?'<button class="ba-current-project" data-a="current-project">使用当前项目</button>':''}
+      <div class="ba-context"><div class="ba-context-row"><button class="ba-project-button" data-a="project" aria-expanded="${this.projectPicker}" title="${esc(project?.name??'关联项目以使用已有材料和成果')}">${icon('folder')}<span>${esc(project?.name??'关联项目')}</span>${icon('chevron')}</button>
       ${this.workspace?.material_details.length?`<details class="ba-context-files"><summary>${icon('paperclip')}${this.workspace.material_details.length} 份材料</summary><ul>${this.workspace.material_details.map(m=>`<li>${esc(m.filename)}</li>`).join('')}</ul></details>`:''}</div>
       ${this.projectPicker?`<div class="ba-project-picker"><div><strong>关联已有项目</strong><button class="ba-icon-button" data-a="close-project" aria-label="关闭项目选择" title="关闭项目选择">${icon('close')}</button></div>${this.projects.length?`<label class="ba-sr-only" for="ba-project-select">选择项目</label><select id="ba-project-select" data-project-select ${this.busy?'disabled':''}><option value="">选择项目</option>${this.projects.map(p=>option(p.project_id,p.name)).join('')}</select><p>选择后开启新对话，已有对话可在“最近对话”找回。</p>`:'<p>还没有项目，可直接在对话中开始一项任务。</p>'}</div>`:''}
-      ${this.data?.results.length?`<label class="ba-baseline">讨论／修改的成果<select data-baseline ${this.busy&&!this.localEditingAllowed()?'disabled':''}><option value="">仅使用项目材料</option>${this.data.results.map(r=>option(r.pin.artifact_id,r.label,base?.artifact_id)).join('')}</select></label>`:''}</div>
+      ${this.data?.results.length?`<label class="ba-baseline">讨论／修改的成果<select data-baseline ${this.busy&&!this.localEditingAllowed()?'disabled':''}><option value="">仅使用项目材料</option>${this.data.results.map(r=>option(r.pin.artifact_id,r.label,base?.artifact_id)).join('')}</select></label>`:''}<div data-page-context></div></div>
       ${this.history?`<div class="ba-history"><div class="ba-history-heading"><h3>最近对话</h3><button class="ba-icon-button" data-a="history" aria-label="返回当前对话" title="返回当前对话">${icon('close')}</button></div>${this.topics.filter(t=>!this.embeddedProject||t.source_project_id===this.embeddedProject).map(t=>`<button data-a="select" data-id="${esc(t.topic_id)}">${icon('history')}<span>${esc(t.name)}<small>${new Date(t.updated_at).toLocaleDateString()}</small></span>${icon('arrow')}</button>`).join('')}</div>`:`<div class="ba-body"><div data-timeline class="ba-timeline" aria-live="polite"></div>${this.formOpen?this.form():''}</div>`}
-      <footer class="ba-composer"><div data-uploads class="ba-uploads"></div>${this.history||!this.formOpen||this.action?.business!=='generation'||this.action.fields.document_type!=='init'?`<div data-template-recovery>${this.templateRecovery()}</div>`:''}${this.history||!this.formOpen||this.action?.business==='generation'?`<div data-copy-recovery>${this.copyRecovery()}</div>`:''}<p data-status role="status"></p>${this.viewComparison()}<small data-qa-price></small><div class="ba-input-shell"><textarea data-composer ${this.busy&&!this.localEditingAllowed()?'disabled':''} rows="2" maxlength="12000" placeholder="说说你的问题或任务要求…" aria-label="发送给 BondBuddy">${esc(this.text)}</textarea><div class="ba-send-row"><label class="bb-upload-picker bb-upload-picker--compact ba-attach" title="添加附件">${icon('paperclip')}<span>添加附件</span><input type="file" data-file="other" multiple></label><button class="ba-send" data-a="send" title="${this.busy?'正在处理':'发送消息'}" aria-label="${this.busy?'正在处理':'发送消息'}"${this.busy||!this.workspace||!this.text.trim()?' disabled':''}>${icon(this.busy?'loading':'send')}</button></div></div><div class="ba-composer-hint">Enter 发送<span> · </span>Shift + Enter 换行</div></footer></section>`:'';
+      <footer class="ba-composer"><div data-uploads class="ba-uploads"></div>${this.history||!this.formOpen||this.action?.business!=='generation'||this.action.fields.document_type!=='init'?`<div data-template-recovery>${this.templateRecovery()}</div>`:''}${this.history||!this.formOpen||this.action?.business==='generation'?`<div data-copy-recovery>${this.copyRecovery()}</div>`:''}<p data-status role="status"></p>${this.viewComparison()}<small data-qa-price></small><div class="ba-send-context" data-send-context aria-label="本次发送上下文"></div><div class="ba-input-shell"><textarea data-composer ${this.busy&&!this.localEditingAllowed()?'disabled':''} rows="2" maxlength="12000" placeholder="说说你的问题或任务要求…" aria-label="发送给 BondBuddy">${esc(this.text)}</textarea><div class="ba-send-row"><label class="bb-upload-picker bb-upload-picker--compact ba-attach" title="添加附件">${icon('paperclip')}<span>添加附件</span><input type="file" data-file="other" multiple></label><button class="ba-send" data-a="send" title="${this.busy?'正在处理':'发送消息'}" aria-label="${this.busy?'正在处理':'发送消息'}"${this.busy||!this.workspace||!this.text.trim()?' disabled':''}>${icon(this.busy?'loading':'send')}</button></div></div><div class="ba-composer-hint">Enter 发送<span> · </span>Shift + Enter 换行</div></footer></section>`:'';
     // Keep the selected native input alive while upload completion redraws the panel.
     // Only reuse it within the same conversation/project, never across contexts.
     for(const fresh of this.host.querySelectorAll<HTMLInputElement>('input[type="file"]')){
