@@ -45,3 +45,16 @@ test('duration summaries use known samples, distinguish empty from zero, and ret
  assert.equal(stats.count,20);assert.equal(stats.mean,14500);assert.equal(stats.p50,10000);assert.equal(stats.p95,19000);assert.equal(stats.max,100000);
  assert.deepEqual(durationStats([]),{count:0,mean:null,p50:null,p95:null,max:null});assert.equal(durationStats([0]).mean,0);
 });
+
+test('stage timings prefer reported duration and fall back to start/end timestamps',()=>{
+ const at=(seconds:number)=>new Date(Date.parse(created)+seconds*1000).toISOString();
+ const events=[
+  {run_id:'r',seq:1,type:'run.progress',stage:'input_lock',occurred_at:at(1),payload:{reason:'stage_started'}},
+  {run_id:'r',seq:2,type:'run.progress',stage:'input_lock',occurred_at:at(3),payload:{reason:'stage_completed'}},
+  {run_id:'r',seq:3,type:'run.progress',stage:'provider_call',occurred_at:at(10),payload:{reason:'stage_started'}},
+  {run_id:'r',seq:4,type:'run.progress',stage:'provider_call',occurred_at:at(12),payload:{reason:'stage_completed',duration_ms:7000}},
+  {run_id:'r',seq:5,type:'run.progress',stage:'word_delivery',occurred_at:at(20),payload:{reason:'stage_completed'}},
+ ] as unknown as Row[];
+ const t=executionTiming(run,events,captured);
+ assert.deepEqual(t.stages,[{stage:'input_lock',ms:2000},{stage:'provider_call',ms:7000}]);
+});
