@@ -2,7 +2,7 @@ import {Type,type Static} from '@sinclair/typebox';
 import {WORKPAPER_LIMITS,type WorkpaperEntry} from './workpaper-entry.js';
 
 export const WORKPAPER_TRIAL_CHAPTERS=8;
-export const WORKPAPER_MAX_PARALLEL=2;
+export const WORKPAPER_MAX_PARALLEL=4;
 export const WorkpaperProgressiveRequestSchema=Type.Object({
   chapter_order:Type.Array(Type.String({minLength:1,maxLength:128}),{minItems:1,maxItems:WORKPAPER_LIMITS.items,uniqueItems:true}),
 },{additionalProperties:false});
@@ -12,7 +12,7 @@ export type WorkpaperProgressive={
   phase:'trial'|'awaiting_confirmation'|'remaining'|'retry_failed';
   chapters:WorkpaperChapter[];
   trial_item_ids:string[];
-  max_parallel:typeof WORKPAPER_MAX_PARALLEL;
+  max_parallel:2|typeof WORKPAPER_MAX_PARALLEL;
 };
 
 const parts=(entry:WorkpaperEntry)=>entry.folder.split(/[\\/]+/).map(s=>s.trim()).filter(Boolean);
@@ -72,4 +72,20 @@ export function workpaperProgressiveSelection(entries:readonly WorkpaperEntry[],
   const trial=new Set(trial_item_ids);
   const ordered_item_ids=[...trial_item_ids,...chapters.flatMap(c=>c.item_ids).filter(id=>!trial.has(id))];
   return {chapters,trial_item_ids,ordered_item_ids};
+}
+
+/** Stable eight-file planning groups. Runtime admission never changes membership. */
+export const WORKPAPER_PLAN_GROUP_SIZE=8;
+export function workpaperPlanGroupIds(plan:WorkpaperProgressive|undefined,itemId:string):{chapter:string;ids:string[]}|null{
+  if(!plan||!['remaining','retry_failed'].includes(plan.phase)||plan.trial_item_ids.includes(itemId))return null;
+  const chapter=plan.chapters.find(c=>c.item_ids.includes(itemId));
+  if(!chapter)throw Error('INPUT_REVISION_CONFLICT');
+  const remaining=chapter.item_ids.filter(id=>!plan.trial_item_ids.includes(id)),index=remaining.indexOf(itemId);
+  const offset=Math.floor(index/WORKPAPER_PLAN_GROUP_SIZE)*WORKPAPER_PLAN_GROUP_SIZE;
+  const ids=remaining.slice(offset,offset+WORKPAPER_PLAN_GROUP_SIZE);
+  return ids.length<2?null:{chapter:chapter.id,ids};
+}
+/** Prefer independent plan authors over followers; publication retains catalogue order. */
+export function workpaperAdmissionOrder(ids:readonly string[],plan:WorkpaperProgressive|undefined):string[]{
+  return [...ids].sort((a,b)=>Number(!!workpaperPlanGroupIds(plan,b)&&workpaperPlanGroupIds(plan,b)!.ids[0]===b)-Number(!!workpaperPlanGroupIds(plan,a)&&workpaperPlanGroupIds(plan,a)!.ids[0]===a));
 }

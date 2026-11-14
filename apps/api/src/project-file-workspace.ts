@@ -1,3 +1,4 @@
+import {assertBatchAdmission} from './batch-admission.js';
 import type {Pool,PoolClient} from 'pg';
 import type {FastifyInstance,FastifyRequest} from 'fastify';
 import type {Static} from '@sinclair/typebox';
@@ -64,28 +65,26 @@ export async function advanceProjectFileBatch(pool:Pool):Promise<boolean>{
       WHERE b.state IN ('queued','running') AND p.deleted_at IS NULL AND p.archived_at IS NULL ORDER BY b.updated_at,b.id FOR UPDATE OF b SKIP LOCKED LIMIT 1`)).rows[0];
     if(!row)return false;
     const items=row.items as BatchItem[];
-    let next=-1;
+    let next=-1,active=0;
     for(const [i,item] of items.entries()){
-      if(!item.run_id){next=i;break;}
+      if(!item.run_id){if(next<0)next=i;continue;}
       const r=(await c.query('SELECT state FROM bb_runs WHERE owner_user_id=$1 AND id=$2',[row.owner_user_id,item.run_id])).rows[0];
-      if(!r||!terminal.includes(r.state)){await c.query('UPDATE bb_project_file_batches SET updated_at=now() WHERE id=$1',[row.id]);return false;}
+      if(!r)throw conflict('INPUT_REVISION_CONFLICT','批次任务记录不可用。');
+      if(!terminal.includes(r.state)){active++;continue;}
       if(r.state!=='succeeded'){
         item.error='该文件任务未完成，请核对任务状态后继续。';
         await c.query("UPDATE bb_project_file_batches SET state='paused',items=$2,updated_at=now() WHERE id=$1",[row.id,JSON.stringify(items)]);return true;
       }
     }
+    if(active>=(row.max_parallel??1)||next<0&&active){await c.query('UPDATE bb_project_file_batches SET updated_at=now() WHERE id=$1',[row.id]);return false;}
     if(next<0){await c.query("UPDATE bb_project_file_batches SET state='complete',updated_at=now() WHERE id=$1",[row.id]);return true;}
     const item=items[next],m=item.manifest,owner=row.owner_user_id;
-    const active=(await c.query(`SELECT 1 FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id
-      WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa'
-      AND NOT(r.state=ANY($3::text[])) LIMIT 1`,[owner,m.execution_scope_project_id,terminal])).rowCount;
-    if(active){await c.query('UPDATE bb_project_file_batches SET updated_at=now() WHERE id=$1',[row.id]);return false;}
     await c.query('SAVEPOINT start_file');
     try{
     const ids=[...new Set([m.execution_scope_project_id,m.input.source_material!.source_project_id])];
     const locked=(await c.query('SELECT id FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL AND archived_at IS NULL ORDER BY id FOR UPDATE NOWAIT',[owner,ids])).rows;
     if(locked.length!==ids.length)throw conflict('INPUT_REVISION_CONFLICT','项目已归档或来源不可用，请恢复后继续。');
-    if((await c.query(`SELECT 1 FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa' AND NOT(r.state=ANY($3::text[]))`,[owner,m.execution_scope_project_id,terminal])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','已有任务正在执行。');
+    await assertBatchAdmission(c,owner,m.execution_scope_project_id,'generation:'+row.id,m.input.document_type,row.max_parallel??1);
     const t=(await c.query('SELECT * FROM bb_m4_topics WHERE owner_user_id=$1 AND id=$2',[owner,row.topic_id])).rows[0];
     if(!t)throw missing();
     const quote=await quoteM4(c,owner,t.id,m.billing_task,inputManifestHash(m),m,item.pricing_mode===OUTCOME_MODE,item.scope_acceptance_id?{scope_quote_id:item.scope_quote_id!,scope_acceptance_id:item.scope_acceptance_id,points:item.points!}:undefined);

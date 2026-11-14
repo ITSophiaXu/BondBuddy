@@ -175,7 +175,7 @@ export function registerProjectQa(app:FastifyInstance,db:()=>Pool,owner:(r:Fasti
    const priceVersion=commercial?(scope?.price_version??includedVersion):PROJECT_QA_PRICE.version;
    if(points!==b.expected_points||b.price_version!==priceVersion||commercial&&!isOutcomePriceVersion(priceVersion))throw conflict('QUOTE_CHANGED','实际处理范围与费用已变化，请重新确认。');
    const cases:QaInput['cases']=[];if(d.use_knowledge)for(const q of d.questions){for(const item of await qaCaseSearch(c,q.question,3))if(!cases.some(x=>x.id===item.id)&&cases.length<40)cases.push(item);}
-   return createRun(c,user,p,key,hash,{...prepared.manifest,operation:'answer',prospectus:prospectus!,preparation_id:d.preparation_id,questions:d.questions,materials,requirements:d.requirements,cases,points,price_version:priceVersion!,...(scope?scopePriceMetadata(scope):commercial?{...outcomeMetadata(0,0,1,includedVersion!),quote_status:'ready' as const,scope_lines:[]}:{}),...(b.included_followup_of?{included_followup_of:b.included_followup_of}:{})});
+   return createRun(c,user,p,key,hash,{...prepared.manifest,operation:'answer',max_parallel:4,prospectus:prospectus!,preparation_id:d.preparation_id,questions:d.questions,materials,requirements:d.requirements,cases,points,price_version:priceVersion!,...(scope?scopePriceMetadata(scope):commercial?{...outcomeMetadata(0,0,1,includedVersion!),quote_status:'ready' as const,scope_lines:[]}:{}),...(b.included_followup_of?{included_followup_of:b.included_followup_of}:{})});
   });return {run_id};
  });
 }

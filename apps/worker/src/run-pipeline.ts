@@ -1,3 +1,4 @@
+import {DeferredQaJournal} from './deferred-qa-journal.js';
 import {isWorkpaperChange,workpaperChangeGate} from './workpaper-change-stage.js';
 import {isWorkpaperAssessment,workpaperAssessmentGate,workpaperAssessmentStage,workpaperAssessmentDelivery} from './workpaper-assessment-stage.js';
 // #17 run execution path. One claimed run job executes its stages in order; each completed stage
@@ -490,6 +491,7 @@ async function nextSnapshotVersion(pool: Pool, owner: string, projectId: string)
  * and checkpointed before any call; the text actually sent is always read back from that snapshot.
  */
 export function codexModelStage(options: {
+  deferRunOutcome?:boolean;
   name: string; logicalCallId: string; config: CodexAdapterConfig | (() => CodexAdapterConfig);
   buildPrompt: (ctx: StageContext) => Promise<string>; schema: Record<string, unknown>; validate: (value: unknown) => boolean;
   resultSchemaVersion: string; templateVersion?: string;
@@ -542,7 +544,7 @@ export function codexModelStage(options: {
         return !!envelope && options.validate(envelope.output);
       }
         : options.materialToolsTrace ? (value:unknown) => isMaterialModelEnvelope(value,options.materialTools!) && options.validate(value.model_output) : options.validate;
-      const durable = new CodexDurableJournal({ pool, blobs, lease, validateResult });
+      const durable = new (options.deferRunOutcome?DeferredQaJournal:CodexDurableJournal)({ pool, blobs, lease, validateResult });
       const journal = options.wrapJournal ? options.wrapJournal(durable) : durable;
       const callGate = await ctx.validateBeforeModelCall?.();
       if (callGate) return callGate;
@@ -553,12 +555,23 @@ export function codexModelStage(options: {
         persist:action=>recordReviewAction(pool,lease,action),onError:()=>{process.stderr.write('review_action_persist_failed\n');}}):undefined;
       const authoring=['update','generation'].includes(run.task_kind)&&(!options.logicalCallId.startsWith('m4-')||options.logicalCallId==='m4-document-v1')
         ?createAuthoringActivityObserver({signal:ctx.signal,persist:activity=>recordAuthoringActivity(pool,lease,activity)}):undefined;
+      let delayedGate:StageOutcome|undefined;
+      const beforeIntent=async()=>{
+        ctx.signal.throwIfAborted();
+        const gate=await ctx.validateBeforeModelCall?.();
+        if(gate){delayedGate=gate;throw Error('MODEL_ADMISSION_INPUT_CHANGED');}
+        const active=await pool.query(`SELECT 1 FROM bb_jobs j JOIN bb_runs r ON r.owner_user_id=j.owner_user_id AND r.id=j.run_id
+          WHERE j.id=$1 AND j.owner_user_id=$2 AND j.run_id=$3 AND j.lease_token=$4 AND j.state='running'
+          AND j.lease_until>now() AND r.state='running' AND NOT j.user_pause_requested AND NOT j.credit_pause_requested`,
+          [lease.jobId,lease.owner,lease.runId,lease.token]);
+        if(!active.rowCount){delayedGate={kind:'stopped'};throw Error('MODEL_ADMISSION_LEASE_CHANGED');}
+      };
       let result:ContainedCallResult;
       try { result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
-        logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
+        ...{beforeIntent},logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
         imageInput, output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate, normalize: options.normalize, ...options.outputForPrompt?.(bytes.toString('utf8')) }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal,
         ...((progress || authoring || options.onActivity)?{onActivity:(event,intent)=>{progress?.onEvent(event,intent);authoring?.onEvent(event,intent);options.onActivity?.(event,intent);}}:{}) }, journal, config);
-      } finally { await progress?.drain(); await authoring?.drain(); }
+      } catch(error){if(delayedGate)return delayedGate;throw error;} finally { await progress?.drain(); await authoring?.drain(); }
       if (result.status === 'completed' || result.status === 'reused')
         return { kind: 'done', value: options.reviewTools ? { output:result.value,tool_trace:result.reviewToolTrace } : result.value, checkpoint: { logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId } };
       if(result.status==='needs_reconcile'&&(run.covered_zero_outcome===true||['fixed_credits','metered_credits'].includes(run.billing_mode??''))&&!options.reviewTools){

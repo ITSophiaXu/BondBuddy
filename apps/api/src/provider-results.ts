@@ -256,7 +256,7 @@ export async function recordProviderCallObservation(
   blobs: PrivateBlobs,
   observation: ProviderCallObservation,
   validateResult: ProviderResultValidator,
-  options: { lease?: Lease; source?: 'provider'|'reconciliation'; retryable?: boolean } = {}
+  options: { lease?: Lease; source?: 'provider'|'reconciliation'; retryable?: boolean; deferRunOutcome?:boolean } = {}
 ): Promise<ProviderObservationResult> {
   assertObservation(observation);
   const eventErrorCode = MODEL_ADAPTER_ERROR_CODES.find(code => code === observation.error_code);
@@ -265,6 +265,11 @@ export async function recordProviderCallObservation(
   const hash=observationHash(observation);
   return transaction(pool,async client=>{
     const {r,job}=await lockIdentity(client,observation,options.lease);
+    if(options.deferRunOutcome){
+      const frozen=(await client.query("SELECT 1 FROM bb_project_qa_runs WHERE owner_user_id=$1 AND run_id=$2 AND operation='answer' AND manifest->>'max_parallel'='4'",[r.owner_user_id,r.id])).rowCount;
+      if(!options.lease||job.subtype!=='project_qa_v1'||!observation.logical_call_id.startsWith('qa-')||!frozen)
+        throw new Problem(409,'CAPABILITY_NOT_READY','Deferred provider outcome requires a frozen parallel question run');
+    }
     const a=(await client.query('SELECT * FROM bb_model_call_attempts WHERE owner_user_id=$1 AND job_id=$2 AND logical_call_id=$3 AND attempt_no=$4 FOR UPDATE',[observation.owner_user_id,observation.job_id,observation.logical_call_id,observation.attempt_no])).rows[0];
     if (!a || a.id!==observation.call_id || a.model_id!==observation.model_id || a.prompt_snapshot_id!==observation.prompt_snapshot_ref || observation.trace_id!==r.id) throw missing();
     if (a.provider_request_id && observation.provider_request_id && a.provider_request_id!==observation.provider_request_id) throw new Problem(409,'IDEMPOTENCY_CONFLICT','Provider request identity conflicts with the recorded attempt');
@@ -331,6 +336,15 @@ export async function recordProviderCallObservation(
       await client.query('UPDATE bb_jobs SET checkpoint=$2,updated_at=now() WHERE id=$1',[job.id,checkpoint]);
       await appendRunEvent(client,r,r.state,r.stage??'provider_call','provider_result_reconciled');
       await appendCallFinished(client,observation,'succeeded');
+    } else if (options.deferRunOutcome) {
+      // Keep the lease for accepted siblings. Attempt, cost and unknown evidence
+      // above are durable; the question stage closes admission and drains before
+      // returning the aggregate outcome. Crash recovery reuses those attempts.
+      await client.query(`UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{deferred_provider_calls}',
+        COALESCE(checkpoint->'deferred_provider_calls','{}'::jsonb)||jsonb_build_object($2::text,$3::jsonb)),updated_at=now() WHERE id=$1`,
+        [job.id,a.id,JSON.stringify({logical_call_id:observation.logical_call_id,attempt_no:observation.attempt_no,status:nextAttemptStatus,error_code:observation.error_code,usage_status:usageStatus})]);
+      await appendRunEvent(client,r,r.state,r.stage??'provider_call','provider_call_deferred','run.progress',eventErrorCode);
+      await appendCallFinished(client,observation,failed?'failed':'paused');
     } else if (providerBlocked) {
       const reason = observation.error_code === 'MODEL_PROVIDER_BALANCE_EXHAUSTED' ? 'provider_balance_exhausted' :
         observation.error_code === 'MODEL_PROVIDER_AUTH_FAILED' ? 'provider_auth_failed' : 'provider_rate_limited';
