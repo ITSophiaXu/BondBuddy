@@ -691,6 +691,8 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         if(input.fileWorkspace){
           if(input.output.kind!=='text' || input.materialTools || persistent)throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
           await input.fileWorkspace.prepare(cwd);
+          await input.beforeIntent?.();
+          if (executionSignal?.aborted) return cancelledResult();
           await verifyFilePermissions(c,cwd,home);
         }
 
@@ -704,7 +706,7 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
         // Lease loss and cancellation still abort the same process immediately.
         const executionConfig = (input.materialTools || input.fileWorkspace || input.reviewTools) && c.authoring_timeout_ms !== undefined
           ? { ...c, timeout_ms: c.authoring_timeout_ms } : c;
-        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileCompletion:input.fileWorkspace?.completionCheck===true, signal: executionSignal, onSpawn: permit?.bindProcess, onEvent: input.onEvent, captureExecLog: true,
+        const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileCompletion:input.fileWorkspace?.completionCheck===true, signal: executionSignal, onSpawn: permit ? pid=>permit.bindProcess(pid,attemptHome) : undefined, onEvent: input.onEvent, captureExecLog: true,
           onActivity:input.onActivity?event=>input.onActivity!(event,intent):undefined });
         // The execution log is private evidence only. A storage failure must never
         // change the provider outcome or block reconciliation.

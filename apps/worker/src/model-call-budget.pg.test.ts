@@ -37,11 +37,11 @@ test('a 250-item batch yields to fresh authoring/assistant scopes before taking 
   let assistantGranted=false;
   const assistant = other.acquire(undefined,'assistant:new').then(p=>{assistantGranted=true;return p;});
   await until(async()=>(await pool.query("SELECT 1 FROM bb_model_capacity_waiters WHERE scope='assistant:new'")).rowCount===1);
-  await held[0]!.release();
+  await held[0]!.release();await held[1]!.release();
   const fresh = await assistant;
   assert.equal(assistantGranted,true); assert.ok(batchGrants<=1,'fresh scope is not behind 250 batch requests');
   cancellations.forEach(cancelled=>cancelled.abort());
-  await fresh.release(); await Promise.all(held.slice(1).map(p=>p.release()));
+  await fresh.release(); await Promise.all(held.slice(2).map(p=>p.release()));
   const granted=await Promise.all(backlog);await Promise.all(granted.filter(p=>p!==null).map(p=>p!.release()));
   await pool.end();
 });
@@ -49,7 +49,7 @@ test('stale renewal never frees an actual live process; dead local process ident
   const pool = new Pool({connectionString:connection});
   const budget=new PgModelCallBudget(pool);
   const held=await Promise.all(Array.from({length:4},(_,i)=>budget.acquire(undefined,`holder:${i}`)));
-  const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});
+  const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true});
   const exited=new Promise<void>(resolve=>child.once('close',()=>resolve()));
   assert.ok(child.pid);await held[0]!.bindProcess(child.pid!);
   await pool.query("UPDATE bb_model_capacity_holders SET renewed_at=now()-interval '100 days'");
@@ -67,4 +67,36 @@ test('stale renewal never frees an actual live process; dead local process ident
   await Promise.all(held.map(p=>p.release()));
   assert.equal((await pool.query('SELECT count(*)::integer n FROM bb_model_capacity_holders WHERE host_id=$1',[hostname()])).rows[0].n,0);
   await pool.end();
+});
+
+test('continually new child run scopes cannot starve an already waiting assistant',{skip:!connection,timeout:20000},async()=>{
+ const pool=new Pool({connectionString:connection}),owner=new PgModelCallBudget(pool),children=new PgModelCallBudget(pool),assistant=new PgModelCallBudget(pool);
+ const prior=await assistant.acquire(undefined,'assistant:established');await prior.release();
+ const held=await Promise.all(Array.from({length:4},(_,i)=>owner.acquire(undefined,`running:${i}`)));
+ const cancellations=Array.from({length:250},()=>new AbortController());let grantedBeforeAssistant=0,assistantReady=false;
+ const childTasks=cancellations.map((c,i)=>children.acquire(c.signal,`run:child_${i}`).then(async permit=>{if(!assistantReady)grantedBeforeAssistant++;await permit.release();},()=>{}));
+ await until(async()=>(await pool.query("SELECT count(*)::integer n FROM bb_model_capacity_waiters WHERE scope LIKE 'run:child_%'")).rows[0].n===4);
+ const waiting=assistant.acquire(undefined,'assistant:established').then(p=>{assistantReady=true;return p;});
+ await until(async()=>(await pool.query("SELECT 1 FROM bb_model_capacity_waiters WHERE scope='assistant:established'")).rowCount===1);
+ await held[0]!.release();const next=await waiting;
+ assert.ok(grantedBeforeAssistant<=4,`assistant waited behind ${grantedBeforeAssistant} new child scopes`);
+ cancellations.forEach(c=>c.abort());await next.release();await Promise.all(held.slice(1).map(p=>p.release()));await Promise.all(childTasks);await pool.end();
+});
+
+test('renewal connection failure aborts the actual child but does not release capacity before exit',{skip:!connection,timeout:20000},async()=>{
+ const pool=new Pool({connectionString:connection}),budget=new PgModelCallBudget(pool),other=new PgModelCallBudget(pool);
+ const held=await Promise.all(Array.from({length:4},(_,i)=>budget.acquire(undefined,`renew:${i}`)));
+ const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore',detached:true});
+ const closed=new Promise<void>(resolve=>child.once('close',()=>resolve()));assert.ok(child.pid);await held[0]!.bindProcess(child.pid!);
+ await pool.query(`CREATE FUNCTION bb1348_fail_renew() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+   IF NEW.renewed_at<>OLD.renewed_at THEN RAISE EXCEPTION 'synthetic renewal connection failure' USING ERRCODE='08006'; END IF;
+   RETURN NEW; END $$; CREATE TRIGGER bb1348_fail_renew BEFORE UPDATE ON bb_model_capacity_holders FOR EACH ROW EXECUTE FUNCTION bb1348_fail_renew()`);
+ held[0]!.signal.addEventListener('abort',()=>child.kill('SIGTERM'),{once:true});
+ await assert.rejects(held[0]!.renew(),/Model capacity holder lost/);assert.equal(held[0]!.signal.aborted,true);
+ assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_capacity_holders')).rows[0].n,4,'renewal loss does not free a durable slot');
+ let admitted=false;const waiting=other.acquire(undefined,'renew:new').then(p=>{admitted=true;return p;});
+ await delay(100);assert.equal(admitted,false);
+ await closed;await held[0]!.release();const next=await waiting;await next.release();
+ await Promise.all(held.slice(1).map(p=>p.release()));
+ await pool.query('DROP TRIGGER bb1348_fail_renew ON bb_model_capacity_holders;DROP FUNCTION bb1348_fail_renew()');await pool.end();
 });

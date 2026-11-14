@@ -704,3 +704,14 @@ test('every schema reask re-enters capacity and releases even when persistence f
   assert.equal(grants,3);assert.equal(releases,3);
  }finally{await cleanup();}
 });
+
+test('a gate closing during workspace preparation prevents intent and spawn after the second fresh check',async()=>{
+ const {config,cleanup}=await setup();let gates=0,prepared=0,released=0;
+ const journal=new MemoryCodexJournal() as MemoryCodexJournal & Pick<import('./codex-adapter.js').CodexJournal,'acquireCallSlot'>;
+ journal.acquireCallSlot=async()=>({signal:new AbortController().signal,bindProcess:async()=>{},renew:async()=>{},release:async()=>{released++;}});
+ try {
+  await assert.rejects(runContainedModelCall(call('synthetic',{output:{kind:'text'},beforeIntent:async()=>{gates++;if(prepared)throw new Error('INPUT_GATE_CHANGED');},fileWorkspace:{prepare:async()=>{prepared++;},collect:async()=>null}}),journal,config),/INPUT_GATE_CHANGED/);
+  assert.equal(gates,2);assert.equal(prepared,1);assert.equal(journal.intents.length,0);assert.equal(released,1);
+  assert.deepEqual(await readdir(config.work_root),[]);
+ }finally{await cleanup();}
+});

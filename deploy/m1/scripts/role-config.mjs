@@ -84,12 +84,15 @@ try {
       const interactive = s.worker.environment.BB_WORKER_INTERACTIVE_SLOTS;
       const assistant = s['worker-review'].environment.BB_REVIEW_ASSISTANT_SLOTS;
       if (!/^[0-4]$/.test(interactive) || assistant !== undefined && !/^[1-4]$/.test(assistant)) fail();
+      const executionHost=s.worker.environment.BB_MODEL_EXECUTION_HOST_ID;
+      const reviewHost=s['worker-review'].environment.BB_MODEL_EXECUTION_HOST_ID;
+      if (executionHost && (!/^[a-f0-9]{64}$/.test(executionHost) || executionHost!==reviewHost)) fail();
       const authoringTotal = Number(s.worker.environment.BB_WORKER_CONCURRENCY) + Number(interactive);
       // An expanded deployment must account for every added channel and use one
       // shared model budget, rather than multiplying four tasks by four child calls.
       if (Number(s.worker.environment.BB_WORKER_CONCURRENCY) >= 4 && authoringTotal > 4) fail();
       if ((Number(s.worker.environment.BB_WORKER_CONCURRENCY) >= 4 || Number(assistant) > 1) &&
-          (s.worker.environment.BB_MODEL_CALL_CONCURRENCY !== '4' || s['worker-review'].environment.BB_MODEL_CALL_CONCURRENCY !== '4')) fail();
+          (s.worker.environment.BB_MODEL_CALL_CONCURRENCY !== '4' || s['worker-review'].environment.BB_MODEL_CALL_CONCURRENCY !== '4' || !/^[a-f0-9]{64}$/.test(executionHost??''))) fail();
 
     }
     if (role === 'main') {
