@@ -259,6 +259,10 @@ export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:
     // check uses the locked database checkpoint, never a caller's stale lease copy.
     if(j.checkpoint?.review_assembly_recovery)
       throw new Problem(409,'CAPABILITY_NOT_READY','Review reassembly is reuse-only; new provider calls are forbidden');
+    // Admission may wait on the shared model budget. Check again while holding
+    // the lease/job locks, before the durable intent can authorize a new call.
+    if(j.user_pause_requested||j.credit_pause_requested)
+      throw new Problem(409,'CAPABILITY_NOT_READY','Run paused before provider admission');
     if(r.channel==='non_production_test')await assertTestGrant(client,{grantId:r.test_grant_id,userId:r.owner_user_id,projectId:r.project_id,inputRevision:r.input_revision,inputHash:r.input_hash});
     // Re-check the kill switch and deny override before every new call; daily usage is uncapped.
     await assertModelCallAllowed(client,trialGuardConfig(),lease.owner);

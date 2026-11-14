@@ -266,7 +266,7 @@ export async function recordProviderCallObservation(
   return transaction(pool,async client=>{
     const {r,job}=await lockIdentity(client,observation,options.lease);
     if(options.deferRunOutcome){
-      const frozen=(await client.query("SELECT 1 FROM bb_project_qa_runs WHERE owner_user_id=$1 AND run_id=$2 AND operation='answer' AND manifest->>'max_parallel'='4'",[r.owner_user_id,r.id])).rowCount;
+      const frozen=(await client.query("SELECT 1 FROM bb_project_qa_runs WHERE owner_user_id=$1 AND run_id=$2 AND operation='answer' AND max_parallel=4",[r.owner_user_id,r.id])).rowCount;
       if(!options.lease||job.subtype!=='project_qa_v1'||!observation.logical_call_id.startsWith('qa-')||!frozen)
         throw new Problem(409,'CAPABILITY_NOT_READY','Deferred provider outcome requires a frozen parallel question run');
     }
