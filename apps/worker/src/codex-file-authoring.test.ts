@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runContainedModelCall,loadCodexAdapterConfig,CodexOutputValidationError,type ContainedCallInput} from './codex-adapter.js';
 import {MemoryCodexJournal} from './codex-memory-journal.js';
-import {emptyUpdateDetails} from '@bondbuddy/contracts';
+import {emptyUpdateDetails,FILE_AUTHORING_RECOVERY_LIMITS} from '@bondbuddy/contracts';
 import {digest} from '@bondbuddy/api/data';
 import {fileAuthoringStage} from './file-authoring-stage.js';
 import type {UnifiedInput} from './unified-input.js';
@@ -119,7 +119,15 @@ test('native timeout retains its unknown usage while the actual authoring captur
           const workspace=options.fileWorkspace!;
           result=await runContainedModelCall({...s.input,prompt:'SCENARIO:file_hang',fileWorkspace:{...workspace,prepare:async cwd=>{
             await workspace.prepare(cwd);
-            if(mode==='capacity')for(let n=0;n<3;n++){const file=await open(join(cwd,`scratch/large-${n}.bin`),'wx');try{await file.truncate(90*1024*1024);}finally{await file.close();}}
+            if(mode==='capacity'){
+              let remaining=FILE_AUTHORING_RECOVERY_LIMITS.totalBytes+1;
+              for(let n=0;remaining>0;n++){
+                const bytes=Math.min(FILE_AUTHORING_RECOVERY_LIMITS.fileBytes,remaining);
+                const file=await open(join(cwd,`scratch/large-${n}.bin`),'wx');
+                try{await file.truncate(bytes);}finally{await file.close();}
+                remaining-=bytes;
+              }
+            }
           }}},journal,{...s.config,authoring_timeout_ms:1000,kill_grace_ms:100});
           return {kind:'stopped'};
         }})});

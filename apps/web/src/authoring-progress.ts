@@ -6,7 +6,7 @@ const ended=(r:Run)=>['succeeded','test_completed','failed','rejected','cancelle
 export function elapsedLabel(ms:number){const s=Math.floor(ms/1000);return s<60?s+'秒':Math.floor(s/60)+'分'+String(s%60).padStart(2,'0')+'秒';}
 export function authoringEventLabel(event:RunEvent):string|null{
   const recoveryLabels:Record<string,string>={
-    file_authoring_payload_recovery_pending:'请求内容过大，正在准备自动恢复',
+    file_authoring_payload_recovery_pending:'请求内容过大，本轮处理已暂停',
     file_authoring_payload_retry_scheduled:'进度已保存，已安排自动续跑',
     file_authoring_payload_recovery_unavailable:'未能保存完整续跑进度，已停止自动重试',
     file_authoring_payload_retries_exhausted:'自动恢复后仍超出接口容量，本次未完成',

@@ -965,6 +965,6 @@ The optional standalone `upload-confirmation-runtime.ts` consumes only the exist
 
 ### 2026-11-14 文件编制恢复快照保存结果（#1343）
 
-支持恢复的文件编制在模型 intent 同一事务保存 `file_authoring_recovery_captures[attempt_id]`，绑定 owner/project/run/job/input/attempt，初态 `prepared`。完整私有快照经回读与检查点提交后记为 `saved`；保存失败独立记为 `failed` 及有限原因。模型原错误、unknown 用量、重试预算不因此改变；结果写入失败仍留 `prepared`，不降格为旧版无快照。保存前完整 stat 检查 4096 文件、100 MiB 单文件、256 MiB 总量，已知超限不写 Blob；不删除工作缓存、不发布部分快照。
+支持恢复的文件编制在模型 intent 同一事务保存 `file_authoring_recovery_captures[attempt_id]`，绑定 owner/project/run/job/input/attempt，初态 `prepared`。完整私有快照经回读与检查点提交后记为 `saved`；保存失败独立记为 `failed` 及有限原因。模型原错误、unknown 用量、重试预算不因此改变；结果写入失败仍留 `prepared`，不降格为旧版无快照。保存前按 contracts 唯一上限完整 stat 检查：4096 文件、100 MiB 单文件，当前组合总量为 #1345 的 512 MiB（#1343 单独验证基点为 256 MiB）；已知超限不写 Blob；不删除工作缓存、不发布部分快照。
 
 完整快照仍是续跑依据，即使 `saved` 标记写入失败。现代首轮保存失败且不存在任何恢复快照、结果或完成调用时，公开 retry 原因说明容量、存储、完整性或未确认结果；复用已有 `restart_materials` 明确确认入口。后续修复阶段、错配证据及已有旧快照不因此获得重新编制授权。用户撤销暂停或积分到账只清除相应独立标记，保留 `provider_reconcile`；需要重新处理材料的调用仍须另行确认。公开 DTO 形状、任务状态和数据库表不变；同版构建 contracts/API/worker/web，无新增迁移或依赖。

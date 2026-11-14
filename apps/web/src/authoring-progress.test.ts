@@ -110,6 +110,7 @@ test('413 lifecycle shows actual automatic recovery without overriding user paus
   const pending=event(2,undefined,{state:'paused',stage:'provider_reconcile',payload:{reason:'file_authoring_payload_recovery_pending'}});
   assert.match(authoringStatus({...run,state:'paused',stage:'provider_reconcile'},[pending])!.title,/自动恢复/);
   assert.match(authoringEventLabel(pending)!,/请求内容过大/);
+  assert.doesNotMatch(authoringEventLabel(pending)!,/正在准备自动恢复/);
   const queued={...pending,state:'queued' as const,stage:'queued',payload:{reason:'file_authoring_payload_retry_scheduled'}};
   assert.match(authoringStatus({...run,state:'queued',stage:'queued'},[queued])!.summary,/继续本次任务/);
   assert.doesNotMatch(authoringStatus({...run,state:'queued',stage:'queued'},[queued])!.title,/尚未开始/);
