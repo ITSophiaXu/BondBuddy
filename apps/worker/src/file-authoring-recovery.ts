@@ -3,9 +3,9 @@ import { lstat, mkdir, open, readdir, realpath, writeFile } from 'node:fs/promis
 import { join, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { digest } from '@bondbuddy/api/data';
-import { checkpointStage } from '@bondbuddy/api/queue';
+import { checkpointStage, recordFileAuthoringCaptureOutcome } from '@bondbuddy/api/queue';
 import type { StageContext } from './run-pipeline.js';
-import { FILE_AUTHORING_RECOVERY_LIMITS } from '@bondbuddy/contracts';
+import { FILE_AUTHORING_RECOVERY_LIMITS, type FileAuthoringCaptureFailure, type FileAuthoringCaptureOutcome } from '@bondbuddy/contracts';
 export { FILE_AUTHORING_RECOVERY_LIMITS } from '@bondbuddy/contracts';
 
 export const FILE_AUTHORING_RECOVERY_STAGE = 'file_authoring_recovery';
@@ -18,7 +18,22 @@ type Limits = { files: number; fileBytes: number; totalBytes: number };
 const id = /^[A-Za-z0-9_-]{1,128}$/;
 const hash = /^[a-f0-9]{64}$/;
 const logical = /^file-authoring-(?:v1|size-repair-[1-9][0-9]*)$/;
-const unsafe = () => Error('AUTHORING_RECOVERY_UNSAFE');
+class CaptureError extends Error {
+  constructor(readonly captureFailure:FileAuthoringCaptureFailure,message:string){super(message);}
+}
+const unsafe = () => new CaptureError('unsafe_workspace','AUTHORING_RECOVERY_UNSAFE');
+const capacity = () => new CaptureError('capacity_exceeded','AUTHORING_RECOVERY_UNSAFE');
+type CaptureWriter=typeof recordFileAuthoringCaptureOutcome;
+export async function recordFileAuthoringCapture(ctx:StageContext,intent:{call_id:string;logical_call_id:string},outcome:FileAuthoringCaptureOutcome,capture:CaptureWriter=recordFileAuthoringCaptureOutcome){
+  // Legacy fixtures/callers never gain modern evidence after the model send.
+  if(!Object.hasOwn((ctx.lease.checkpoint.file_authoring_recovery_captures??{}) as object,intent.call_id))return;
+  await capture(ctx.pool,ctx.lease,intent.call_id,intent.logical_call_id,outcome);
+}
+export async function recordFileAuthoringCaptureFailure(ctx:StageContext,intent:{call_id:string;logical_call_id:string},error:unknown,capture?:CaptureWriter){
+  const failure=error instanceof CaptureError?error.captureFailure:error instanceof Error&&error.message==='INPUT_REVISION_CONFLICT'?'input_conflict':
+    error instanceof Error&&error.message==='WORD_OUTPUT_UNSAFE'?'unsafe_workspace':'capture_failed';
+  await recordFileAuthoringCapture(ctx,intent,{state:'failed',failure_code:failure},capture);
+}
 const prefix = (ctx: StageContext) => `owners/${ctx.run.owner_user_id}/projects/${ctx.run.project_id}/runs/${ctx.run.id}/file-authoring/recovery/`;
 const keyFor = (ctx: StageContext, attempt: string, sha256: string, path: string) => `${prefix(ctx)}${attempt}/${sha256}/${path}`;
 
@@ -88,7 +103,7 @@ async function regularBytes(root: string, path: string, max: number, signal: Abo
 /** Snapshot all mutable work, then publish the checkpoint only after Blob readback.
  * A failed or oversized snapshot cannot silently authorize a partial continuation. */
 export async function saveFileAuthoringRecovery(ctx: StageContext, cwd: string, intent: { call_id: string; logical_call_id: string }, options: {
-  checkpoint?: typeof checkpointStage; limits?: Limits;
+  checkpoint?: typeof checkpointStage; limits?: Limits; capture?:CaptureWriter;
 } = {}): Promise<FileAuthoringRecovery> {
   if (!id.test(intent.call_id) || !logical.test(intent.logical_call_id)) throw unsafe();
   const limits = options.limits ?? FILE_AUTHORING_RECOVERY_LIMITS;
@@ -96,35 +111,46 @@ export async function saveFileAuthoringRecovery(ctx: StageContext, cwd: string, 
     || !Number.isSafeInteger(limits.fileBytes) || limits.fileBytes < 1 || limits.fileBytes > FILE_AUTHORING_RECOVERY_LIMITS.fileBytes
     || !Number.isSafeInteger(limits.totalBytes) || limits.totalBytes < 1 || limits.totalBytes > FILE_AUTHORING_RECOVERY_LIMITS.totalBytes) throw unsafe();
   const root = resolve(cwd); if (await realpath(root) !== root || !(await lstat(root)).isDirectory()) throw unsafe();
-  const paths = ['input.json']; let entries = 0;
+  const paths:string[] = []; let entries = 0,totalBytes=0;
   const walk = async (path: string): Promise<void> => {
     ctx.signal.throwIfAborted();
-    if (++entries > limits.files * 4 + 8) throw unsafe();
+    if (++entries > limits.files * 4 + 8) throw capacity();
     const absolute = join(root, path), stat = await lstat(absolute);
     if (stat.isSymbolicLink() || await realpath(absolute) !== resolve(absolute)) throw unsafe();
     if (stat.isDirectory()) {
       for (const name of (await readdir(absolute)).sort()) { const child = `${path}/${name}`; if (!safePath(child)) throw unsafe(); await walk(child); }
     } else {
-      if (!stat.isFile() || stat.nlink !== 1 || stat.size > limits.fileBytes) throw unsafe();
-      paths.push(path); if (paths.length > limits.files) throw unsafe();
+      if (!stat.isFile() || stat.nlink !== 1 || path==='input.json'&&stat.size===0) throw unsafe();
+      if(stat.size>limits.fileBytes)throw capacity();
+      paths.push(path);totalBytes+=stat.size;
+      if(paths.length>limits.files||totalBytes>limits.totalBytes)throw capacity();
     }
   };
-  for (const path of ['scratch', 'output']) await walk(path);
+  // The complete metadata pass runs before the first Blob write. Per-file reads
+  // below still independently verify identity, size, links and unchanged bytes.
+  for (const path of ['input.json','scratch', 'output']) await walk(path);
   const snapshot: FileAuthoringRecovery = { version: 'file-authoring-recovery-v1', input_hash: ctx.run.input_hash.trim(),
     attempt_id: intent.call_id, logical_call_id: intent.logical_call_id, files: [] };
   let total = 0;
   for (const path of paths) {
     const bytes = await regularBytes(root, path, limits.fileBytes, ctx.signal); total += bytes.length;
-    if (total > limits.totalBytes || path === 'input.json' && !bytes.length) throw unsafe();
+    if(total>limits.totalBytes)throw capacity();
+    if(path==='input.json'&&!bytes.length)throw unsafe();
     const sha256 = digest(bytes), key = keyFor(ctx, intent.call_id, sha256, path);
-    await ctx.blobs.put(key, bytes, 'application/octet-stream');
-    const stored = await ctx.blobs.getIfExistsBounded(key, limits.fileBytes);
-    if (!stored || stored.length !== bytes.length || digest(stored) !== sha256) throw Error('AUTHORING_OUTPUT_STORE_FAILED');
+    try{
+      await ctx.blobs.put(key, bytes, 'application/octet-stream');
+      const stored = await ctx.blobs.getIfExistsBounded(key, limits.fileBytes);
+      if (!stored || stored.length !== bytes.length || digest(stored) !== sha256) throw Error('readback_failed');
+    }catch{
+      ctx.signal.throwIfAborted();
+      throw new CaptureError('storage_failed','AUTHORING_OUTPUT_STORE_FAILED');
+    }
     snapshot.files.push({ path, key, sha256, byte_size: bytes.length });
   }
   validate(ctx, snapshot, intent.logical_call_id); ctx.signal.throwIfAborted();
   await (options.checkpoint ?? checkpointStage)(ctx.pool, ctx.lease, FILE_AUTHORING_RECOVERY_STAGE, { ...snapshot }, false);
   ctx.checkpoint[FILE_AUTHORING_RECOVERY_STAGE] = { ...snapshot };
+  await recordFileAuthoringCapture(ctx,intent,{state:'saved',failure_code:null},options.capture);
   return snapshot;
 }
 

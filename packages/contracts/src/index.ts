@@ -1,5 +1,6 @@
 import { RunRetryResponseSchema, RunRetryRequestSchema } from './run-retry.js';
 export * from './run-retry.js';
+export * from './recovery-capture.js';
 import { FirstDraftConfirmationRequestSchema, FirstDraftExclusionsResponseSchema } from './none-baseline.js';
 export * from './none-baseline.js';
 import {fileGenerationOpenApiPaths} from './file-generation.js';

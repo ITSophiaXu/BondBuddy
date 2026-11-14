@@ -39,7 +39,13 @@ export function retryExplanation(offer:RunRetryResponse):string{
     retry_limit_reached:'本次任务已达到重试上限，请联系支持处理。',
     checkpoint_unavailable:'恢复进度暂不可用，请联系支持核对；已保存材料会保留。',
     user_pause_pending:'已收到你的暂停请求，保存完成后可继续本次任务。',
+    checkpoint_capacity_exceeded:'本次工作进度超过恢复文件的保存上限，未能保存可续跑快照。',
+    checkpoint_storage_failed:'本次恢复文件未能保存到存储，尚无已确认的可续跑快照。',
+    checkpoint_integrity_failed:'本次工作文件未通过完整性检查，未能保存可续跑快照。',
+    checkpoint_capture_incomplete:'本次恢复文件的保存结果尚未确认，暂不能从中间进度续跑。',
   };
+  if(['checkpoint_capacity_exceeded','checkpoint_storage_failed','checkpoint_integrity_failed','checkpoint_capture_incomplete'].includes(offer.reason_code))
+    return reasons[offer.reason_code]+(offer.mode==='restart_materials'?'可点击重试，确认后从本次锁定的原材料重新处理；未保存的中间进度无法恢复。':'请联系支持核对，已上传材料与已有成果会保留。');
   return reasons[offer.reason_code];
 }
 export function authoringStatusCard(run:Run,events:RunEvent[],options:{progress?:AuthoringProgress;summary?:string;phase?:Phase;actions:string;feedback?:string;retry?:RunRetryResponse}){
@@ -47,16 +53,17 @@ export function authoringStatusCard(run:Run,events:RunEvent[],options:{progress?
   const success=['succeeded','test_completed'].includes(run.state)&&!!run.artifact_id;
   const missingArtifact=['succeeded','test_completed'].includes(run.state)&&!run.artifact_id;
   const failed=['failed','rejected'].includes(run.state),paused=run.state==='paused',awaitingInput=run.state==='awaiting_input';
+  const captureUnavailable=paused&&run.stage==='provider_reconcile'&&options.retry&&['checkpoint_capacity_exceeded','checkpoint_storage_failed','checkpoint_integrity_failed','checkpoint_capture_incomplete'].includes(options.retry.reason_code);
   const tone=success?'success':paused||awaitingInput?'paused':failed?'failed':run.state==='cancelled'||missingArtifact?'neutral':'running';
   const badge=success?'已完成':missingArtifact?'待核对':awaitingInput?'待补信息':paused?'已暂停':failed?'未完成':run.state==='cancelled'?'已停止':run.state==='queued'?'排队中':'处理中';
   const title=success?(run.state==='test_completed'?'内部测试稿已生成':'募集书已编制完成'):missingArtifact?'任务已结束，文档尚未同步':failed?'本轮未完成':run.state==='cancelled'?'本轮已停止'
-    :awaitingInput?'等待补充信息':paused?run.stage==='credits_exhausted'?'积分不足，任务已暂停':run.stage==='billing_reconcile'?'正在核对积分账务，任务已暂停':run.stage==='user_paused'?'任务已暂停':`${labels[phase]}时暂停`
+    :awaitingInput?'等待补充信息':captureUnavailable?'恢复进度未能保存':paused?run.stage==='credits_exhausted'?'积分不足，任务已暂停':run.stage==='billing_reconcile'?'正在核对积分账务，任务已暂停':run.stage==='user_paused'?'任务已暂停':`${labels[phase]}时暂停`
     :observed?.title??labels[phase];
-  const summary=options.summary??observed?.summary??(success?'5 个步骤全部完成，文档已保存。':missingArtifact?'暂未取得可下载文档，请重新读取任务状态。':failed?'本轮未完成，已保存材料会保留。':run.state==='cancelled'?'任务已停止，已保存材料与已有成果保留。':'正在核对任务状态。');
+  const summary=captureUnavailable?retryExplanation(options.retry!):options.summary??observed?.summary??(success?'5 个步骤全部完成，文档已保存。':missingArtifact?'暂未取得可下载文档，请重新读取任务状态。':failed?'本轮未完成，已保存材料会保留。':run.state==='cancelled'?'任务已停止，已保存材料与已有成果保留。':'正在核对任务状态。');
   const outputLimitEnded=failed&&['file_authoring_output_limit_recovery_unavailable','file_authoring_output_limit_retries_exhausted','file_authoring_timeout_recovery_unavailable','file_authoring_timeout_retries_exhausted'].includes(authoringVisibleEvents(run,events).at(-1)?.payload.reason??'');
   const note=success||missingArtifact?'':run.state==='cancelled'?'':outputLimitEnded?'已保存的材料会保留。':paused&&run.stage==='provider_reconcile'?'已保存的材料会保留。关闭页面不会取消任务。':'关闭页面不会取消任务。';
   const symbol=success?'✓':paused?'Ⅱ':failed?'!':run.state==='cancelled'?'—':'•';
-  const extra=options.retry&&options.retry.mode!=='restore_checkpoint'?retryExplanation(options.retry):'';
+  const extra=!captureUnavailable&&options.retry&&options.retry.mode!=='restore_checkpoint'?retryExplanation(options.retry):'';
   return `<section class="authoring-status-card task-progress" data-tone="${tone}" data-input-revision="${run.input_revision}" aria-label="编制进度"><div class="authoring-status-header task-progress-heading"><div class="authoring-status-title-group"><div class="authoring-status-title-line"><span class="authoring-status-badge"><span aria-hidden="true">${symbol}</span>${badge}</span><h3 role="status">${esc(title)}</h3></div><div class="authoring-status-description">${summary?`<p${options.summary?' class="execution-summary"':''}>${esc(summary)}</p>`:''}${note?`<p>${esc(note)}</p>`:''}${extra?`<p class="authoring-status-retry-note">${esc(extra)}</p>`:''}${options.feedback?`<p id="run-action-feedback" role="status">${esc(options.feedback)}</p>`:''}</div></div>${options.actions?`<div class="authoring-status-actions">${options.actions}</div>`:''}</div><ol class="authoring-status-steps task-progress-steps" aria-label="处理流程">${labels.map((label,i)=>{
     const state=success||i<phase?'done':i===phase?'current':'future';
     return `<li class="authoring-status-step" data-step-state="${state}" ${i===phase?'aria-current="step"':''}><div class="authoring-status-step-row"><span class="authoring-status-step-icon" aria-hidden="true">${state==='done'?'':i+1}</span><span class="authoring-status-step-label">${label}</span></div></li>`;

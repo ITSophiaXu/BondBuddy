@@ -24,6 +24,18 @@ test('unknown pause never invents saved work or automatic recovery, and text is 
   assert.match(retryExplanation({run_id:'r',attempt_id:'a',mode:'blocked',reason_code:'active_attempt'}),/暂|尚未确认/);
 });
 
+test('capture failure replaces pending auto-recovery wording and explains the explicit fresh-start boundary',()=>{
+  for(const reason of ['checkpoint_capacity_exceeded','checkpoint_storage_failed','checkpoint_integrity_failed','checkpoint_capture_incomplete'] as const){
+    const retry={run_id:'r',attempt_id:'a',mode:'restart_materials' as const,reason_code:reason};
+    const html=authoringStatusCard(run,[event('paused','provider_reconcile','file_authoring_payload_recovery_pending')],{actions:'<button>立即重试</button>',retry});
+    assert.match(html,/恢复进度未能保存/);assert.match(html,/确认后从本次锁定的原材料重新处理/);
+    assert.doesNotMatch(html,/正在核对保存的工作进度|无需重新提交|工作进度已保存/);
+    assert.equal((html.match(/data-step-state="done"/g)??[]).length,2);
+    assert.match(retryExplanation({...retry,mode:'blocked'}),/请联系支持核对/);
+    assert.doesNotMatch(retryExplanation({...retry,mode:'blocked'}),/可点击重试/);
+  }
+});
+
 test('waiting for input and billing checks preserve the actual unfinished stage',()=>{
   const waiting=authoringStatusCard({...run,state:'awaiting_input',stage:'awaiting_materials'},[],{actions:''});
   assert.match(waiting,/等待补充信息/);assert.doesNotMatch(waiting,/编制募集书时暂停/);

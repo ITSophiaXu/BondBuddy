@@ -113,6 +113,7 @@ test('failed readback, file count and byte limits do not publish partial recover
       const limits = { files: mode === 'count' ? 2 : 10, fileBytes: mode === 'file' ? 3 : 4096, totalBytes: mode === 'total' ? 3 : 8192 };
       await assert.rejects(saveFileAuthoringRecovery(f.ctx, root, intent, { checkpoint: f.checkpoint, limits }));
       assert.equal(f.writes(), 0); assert.equal(f.ctx.lease.checkpoint.stages, undefined);
+      if(['file','count','total'].includes(mode))assert.equal(f.objects.size,0,'known capacity failures do not upload orphan fragments');
     } finally { await rm(root, { recursive: true, force: true }); }
   }
 });

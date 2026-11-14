@@ -1,4 +1,5 @@
-import { FILE_AUTHORING_RECOVERY_LIMITS, type RunRetryRequest, type RunRetryResponse } from '@bondbuddy/contracts';
+import { FILE_AUTHORING_RECOVERY_LIMITS, FILE_AUTHORING_CAPTURE_VERSION, FILE_AUTHORING_CAPTURE_FAILURES,
+  type FileAuthoringCapture, type FileAuthoringCaptureOutcome, type RunRetryRequest, type RunRetryResponse } from '@bondbuddy/contracts';
 import { Pool, type PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
@@ -247,12 +248,15 @@ export async function checkpoint(pool:Pool, lease:Lease, stage:string, value:Rec
 }
 
 // Persist intent before any supplier request. An unknown attempt is never silently resent.
-export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:string, attemptNo:number, metadata:{callId?:string;modelId?:string;promptSnapshotId?:string}={}) {
+export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:string, attemptNo:number, metadata:{callId?:string;modelId?:string;promptSnapshotId?:string;fileAuthoringRecoveryCapture?:boolean}={}) {
   if(!/^[A-Za-z0-9_-]{1,128}$/.test(logicalCallId)||!Number.isSafeInteger(attemptNo)||attemptNo<1)throw new Problem(422,'VALIDATION_FAILED','Invalid provider call identity');
   const attemptId=metadata.callId??uid();
+  if(metadata.fileAuthoringRecoveryCapture===true&&!/^file-authoring-(?:v1|size-repair-[1-9]\d*)$/.test(logicalCallId))
+    throw new Problem(422,'VALIDATION_FAILED','Invalid file recovery capture identity');
   if(!/^[A-Za-z0-9_-]{1,128}$/.test(attemptId))throw new Problem(422,'VALIDATION_FAILED','Invalid provider call identity');
   // #79: no durable intent, no call. An evidence outage pauses every NEW external call.
   await ensureExternalCallsAllowed(pool);
+  let recordedCheckpoint:Record<string,unknown>|undefined;
   await guardEvidenceWrite(pool,'call_intent_not_persisted',()=>transaction(pool,async client=>{
     await assertGateOpen(client);
     const {r,j}=await lockedLease(client,lease);
@@ -270,10 +274,52 @@ export async function recordPotentialCall(pool:Pool, lease:Lease, logicalCallId:
     const sequence=await client.query('SELECT COALESCE(max(attempt_no),0)::int AS last_attempt FROM bb_model_call_attempts WHERE job_id=$1 AND logical_call_id=$2',[lease.jobId,logicalCallId]);
     if(attemptNo!==Number(sequence.rows[0].last_attempt)+1)throw new Problem(409,'IDEMPOTENCY_CONFLICT','Provider attempt numbers must increase monotonically');
     await client.query("INSERT INTO bb_model_call_attempts(id,owner_user_id,job_id,logical_call_id,attempt_no,status,model_id,prompt_snapshot_id,channel) VALUES($1,$2,$3,$4,$5,'pending_reconcile',$6,$7,$8)",[attemptId,lease.owner,lease.jobId,logicalCallId,attemptNo,metadata.modelId??null,metadata.promptSnapshotId??null,r.channel]);
+    if(metadata.fileAuthoringRecoveryCapture===true){
+      const capture:FileAuthoringCapture={version:FILE_AUTHORING_CAPTURE_VERSION,owner_user_id:lease.owner,project_id:r.project_id,run_id:r.id,job_id:j.id,
+        input_revision:Number(r.input_revision),input_hash:String(r.input_hash).trim(),attempt_id:attemptId,logical_call_id:logicalCallId,
+        prepared_at:new Date().toISOString(),state:'prepared',failure_code:null};
+      recordedCheckpoint={...j.checkpoint,file_authoring_recovery_captures:{...j.checkpoint?.file_authoring_recovery_captures,[attemptId]:capture}};
+      await client.query('UPDATE bb_jobs SET checkpoint=$2::jsonb,updated_at=now() WHERE id=$1',[j.id,JSON.stringify(recordedCheckpoint)]);
+    }
     await emitInternal(client,internalEvent({kind:'model.call_started',owner:lease.owner,projectId:r.project_id,runId:r.id,jobId:lease.jobId,traceId:r.id,logicalCallId,attemptNo,promptSnapshotRef:metadata.promptSnapshotId}));
     await event(client,r,'running','provider_call','provider_call_may_be_sent');
   })).catch(async error=>{await reportTrialRejection(pool,error,lease.owner);throw error;});
+  if(recordedCheckpoint)lease.checkpoint=recordedCheckpoint;
   return attemptId;
+}
+
+function fileAuthoringCapture(r:any,j:any,a:{id:string;logical_call_id:string}):FileAuthoringCapture|null {
+  const value=j.checkpoint?.file_authoring_recovery_captures?.[a.id];
+  if(!value||value.version!==FILE_AUTHORING_CAPTURE_VERSION||value.owner_user_id!==r.owner_user_id||value.project_id!==r.project_id||value.run_id!==r.id||value.job_id!==j.id
+    ||value.input_revision!==Number(r.input_revision)||value.input_hash!==String(r.input_hash).trim()||value.attempt_id!==a.id||value.logical_call_id!==a.logical_call_id
+    ||typeof value.prepared_at!=='string'||!Number.isFinite(Date.parse(value.prepared_at)))return null;
+  if(!['prepared','saved','failed'].includes(value.state)||(value.state==='failed'?!FILE_AUTHORING_CAPTURE_FAILURES.includes(value.failure_code):value.failure_code!==null))return null;
+  return value;
+}
+
+/** A failed result write leaves the intent's prepared marker intact; it cannot turn a modern call into a legacy one. */
+export async function recordFileAuthoringCaptureOutcome(pool:Pool,lease:Lease,attemptId:string,logicalCallId:string,outcome:FileAuthoringCaptureOutcome) {
+  if(!outcome||!['saved','failed'].includes(outcome.state)||(outcome.state==='failed'?!FILE_AUTHORING_CAPTURE_FAILURES.includes(outcome.failure_code):outcome.failure_code!==null))
+    throw new Problem(422,'VALIDATION_FAILED','Invalid file recovery capture outcome');
+  let checkpoint:Record<string,unknown>|undefined;
+  await transaction(pool,async client=>{
+    const {r,j}=await lockedLease(client,lease),capture=fileAuthoringCapture(r,j,{id:attemptId,logical_call_id:logicalCallId});
+    const current=(await client.query('SELECT id FROM bb_model_call_attempts WHERE job_id=$1 AND owner_user_id=$2 ORDER BY created_at DESC,attempt_no DESC LIMIT 1',[j.id,lease.owner])).rows[0];
+    if(!capture||current?.id!==attemptId)throw new Problem(409,'INPUT_REVISION_CONFLICT','File recovery capture attempt changed');
+    if(outcome.state==='saved'&&!validFileAuthoringRecovery(j.checkpoint?.stages?.file_authoring_recovery,{owner:lease.owner,project:r.project_id,run:r.id,
+      inputHash:String(r.input_hash).trim(),attempt:attemptId,logical:logicalCallId}))
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','A complete matching recovery checkpoint is required');
+    if(capture.state!=='prepared'&&(capture.state!==outcome.state||capture.failure_code!==outcome.failure_code))
+      throw new Problem(409,'IDEMPOTENCY_CONFLICT','File recovery capture outcome is already recorded');
+    checkpoint={...j.checkpoint,file_authoring_recovery_captures:{...j.checkpoint.file_authoring_recovery_captures,[attemptId]:{...capture,state:outcome.state,failure_code:outcome.failure_code}}};
+    await client.query('UPDATE bb_jobs SET checkpoint=$2::jsonb,updated_at=now() WHERE id=$1',[j.id,JSON.stringify(checkpoint)]);
+  });
+  lease.checkpoint=checkpoint!;
+}
+
+function captureRetryReason(capture:FileAuthoringCapture):RunRetryResponse['reason_code'] {
+  return capture.failure_code==='capacity_exceeded'?'checkpoint_capacity_exceeded':capture.failure_code==='storage_failed'?'checkpoint_storage_failed':
+    ['unsafe_workspace','input_conflict'].includes(capture.failure_code??'')?'checkpoint_integrity_failed':'checkpoint_capture_incomplete';
 }
 
 export async function resolvePotentialCall(pool:Pool, lease:Lease, logicalCallId:string, attemptNo:number, status:'confirmed_not_sent'|'completed'|'failed', providerRequestId?:string) {
@@ -341,8 +387,10 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
       // intent even though the supplier blocker has already paused execution.
       if(!j.user_pause_requested && r.state==='paused' && r.stage==='provider_reconcile' && r.task_kind==='update' &&
         (await client.query(`SELECT 1 FROM bb_model_call_attempts a JOIN bb_model_call_attempt_runtime t ON t.attempt_id=a.id
+          JOIN bb_jobs j ON j.id=a.job_id
           WHERE a.job_id=$1 AND a.owner_user_id=$2 AND a.status='pending_reconcile'
-          AND t.error_code IN ('MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT')
+          AND (t.error_code IN ('MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT')
+            OR t.error_code='MODEL_TURN_FAILED' AND j.checkpoint->'file_authoring_recovery_captures' ? a.id)
           AND a.logical_call_id ~ '^file-authoring-(v1|size-repair-[1-9][0-9]*)$' LIMIT 1`,[j.id,owner])).rowCount){
         await client.query('UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1',[j.id]);
         await event(client,r,'paused','provider_reconcile','user_pause_requested');
@@ -357,12 +405,14 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
       }else await event(client,r,r.state,r.stage,'user_pause_requested');
       return runDto({...r,updated_at:new Date()});
     }
+    let creditPauseCleared=false;
     if(kind==='resume'&&j.credit_pause_requested){
       await lockCreditAccount(client,owner);
       if((await creditBalanceExact(client,owner)).available<1n)throw new Problem(402,'CREDITS_INSUFFICIENT','积分已用完，请充值后继续本次任务。');
       if(r.state==='running')throw new Problem(409,'INPUT_REVISION_CONFLICT','正在保存当前进度，保存后自动继续。');
       await client.query('UPDATE bb_jobs SET credit_pause_requested=false WHERE id=$1',[j.id]);
       j.credit_pause_requested=false;
+      creditPauseCleared=true;
     }
     // A user may undo a pending pause while the model is saving its current result.
     if(kind==='resume'&&r.state==='running'&&j.user_pause_requested){
@@ -374,14 +424,21 @@ export async function action(pool:Pool,owner:string,runId:string,kind:'cancel'|'
       if(r.state!=='paused')throw new Problem(409,'INPUT_REVISION_CONFLICT','Run is not paused');
       if(j.user_pause_requested&&r.stage==='provider_reconcile'&&j.stage==='provider_reconcile'){
         const eligibility=await inspectFileAuthoringRetry(client,r,j);
-        if(eligibility.view.mode==='resume'&&['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(eligibility.attempt?.error_code)){
-          // A stopped legacy call has no workspace to save. Undo only the user
+        if(eligibility.view.mode==='resume'&&eligibility.attempt){
+          // A stopped call has no complete workspace to restore. Undo only the user
           // pause; restarting from materials still needs its separate confirmation.
           await client.query('UPDATE bb_jobs SET user_pause_requested=false,updated_at=now() WHERE id=$1',[j.id]);
           await event(client,r,'paused','provider_reconcile','user_resumed');
           if(requestId)await recordOperation(client,{owner,projectId:r.project_id,runId,jobId:j.id,requestId,traceId:runId,kind:'run_resume',status:'submitted'});
           return runDto({...r,updated_at:new Date()});
         }
+      }
+      if(creditPauseCleared&&r.task_kind==='update'&&r.stage==='provider_reconcile'&&j.stage==='provider_reconcile'){
+        // Recharge clears only its independent blocker. Unknown calls still need
+        // reconciliation or a separately confirmed restart from locked materials.
+        await event(client,r,'paused','provider_reconcile','credits_recharged');
+        if(requestId)await recordOperation(client,{owner,projectId:r.project_id,runId,jobId:j.id,requestId,traceId:runId,kind:'run_resume',status:'submitted'});
+        return runDto({...r,updated_at:new Date()});
       }
       if(await providerCallNeedsReconciliation(client,j.id))throw new Problem(409,'CAPABILITY_NOT_READY','Provider call needs a durable result and verified usage before resume');
       if(j.stage==='trial_limit')await assertModelCallAllowed(client,trialGuardConfig(),owner);
@@ -875,9 +932,16 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
       }
     }else if(j.stage==='billing_reconcile')return false;
     if(reason==='credits_recharged'){
-      if(r.stage!=='credits_exhausted'||!j.credit_pause_requested||j.user_pause_requested)return false;
+      const providerPaused=r.task_kind==='update'&&r.stage==='provider_reconcile'&&j.stage==='provider_reconcile';
+      if(!j.credit_pause_requested||(!providerPaused&&(r.stage!=='credits_exhausted'||j.user_pause_requested)))return false;
       await lockCreditAccount(client,owner);
       if((await creditBalanceExact(client,owner)).available<1n)return false;
+      if(providerPaused){
+        if(j.billing_cancel_requested_at||await walletIsolated(client,r)||!await billingContractRecoverable(client,r,j))return false;
+        await client.query('UPDATE bb_jobs SET credit_pause_requested=false,updated_at=now() WHERE id=$1',[j.id]);
+        await event(client,r,'paused','provider_reconcile','credits_recharged');
+        return true;
+      }
     }else if(j.user_pause_requested)return false;
     if(await providerCallNeedsReconciliation(client,j.id))return false;
     // Another blocker may have won while the in-flight result was being saved.
@@ -904,7 +968,16 @@ export async function resumePausedRun(pool:Pool,owner:string,runId:string,reason
 
 /** Paused runs at a stage, oldest first; the runtime sweeps them after their blocker may have cleared. */
 export async function pausedRuns(pool:Pool,stage:typeof RUN_PAUSE_STAGES[number],limit=20,runKinds?:readonly RunKind[]) {
-  const q=await pool.query("SELECT j.id AS job_id,j.run_id,j.owner_user_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id WHERE j.job_type<>'parse' AND j.state='paused' AND j.stage=$1 AND (r.state='paused' OR r.state='settlement_pending' AND j.subtype IN ('m4_document_v1','m4_qa_v1')) AND ($3::text[] IS NULL OR j.job_type=ANY($3::text[])) AND ($1<>'credits_exhausted' OR (NOT j.user_pause_requested AND EXISTS(SELECT 1 FROM bb_credit_lots l WHERE l.owner_user_id=r.owner_user_id AND l.remaining>l.frozen AND (l.expires_at IS NULL OR l.expires_at>now())))) ORDER BY j.updated_at,j.id LIMIT $2",[stage,limit,runKinds ? checkedRunKinds(runKinds) : null]);
+  const q=await pool.query(`SELECT j.id AS job_id,j.run_id,j.owner_user_id FROM bb_jobs j JOIN bb_runs r ON r.id=j.run_id
+    WHERE j.job_type<>'parse' AND j.state='paused'
+    AND (j.stage=$1 OR ($1='credits_exhausted' AND r.task_kind='update' AND r.stage='provider_reconcile'
+      AND j.stage='provider_reconcile' AND j.credit_pause_requested))
+    AND (r.state='paused' OR r.state='settlement_pending' AND j.subtype IN ('m4_document_v1','m4_qa_v1'))
+    AND ($3::text[] IS NULL OR j.job_type=ANY($3::text[]))
+    AND ($1<>'credits_exhausted' OR ((NOT j.user_pause_requested OR j.stage='provider_reconcile')
+      AND EXISTS(SELECT 1 FROM bb_credit_lots l WHERE l.owner_user_id=r.owner_user_id AND l.remaining>l.frozen
+        AND (l.expires_at IS NULL OR l.expires_at>now())))) ORDER BY j.updated_at,j.id LIMIT $2`,
+    [stage,limit,runKinds ? checkedRunKinds(runKinds) : null]);
   return q.rows as {job_id:string;run_id:string;owner_user_id:string}[];
 }
 
@@ -1076,9 +1149,13 @@ export async function recoverFileAuthoringPayload(pool:Pool,owner:string,runId:s
     const saved=j.checkpoint?.stages?.file_authoring_recovery;
     const ready=validFileAuthoringRecovery(saved,{owner,project:r.project_id,run:runId,
       inputHash:String(r.input_hash).trim(),attempt:a.id,logical:a.logical_call_id});
-    // Historical output-capped/timed-out calls had no workspace snapshot. Leave those
-    // paused for an explicit restart confirmation; a sweep must not erase that option.
-    if(['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(a.error_code)&&!Object.hasOwn(j.checkpoint?.stages??{},'file_authoring_recovery'))return false;
+    const capture=fileAuthoringCapture(r,j,a),hasCapture=Object.hasOwn(j.checkpoint?.file_authoring_recovery_captures??{},a.id);
+    const noSnapshot=!Object.hasOwn(j.checkpoint?.stages??{},'file_authoring_recovery');
+    // Modern failed/incomplete captures need an explicit fresh-start decision, not
+    // an automatic loss of work. Their persisted reason is exposed by inspectRunRetry.
+    if(!ready&&noSnapshot&&a.logical_call_id==='file-authoring-v1'&&capture&&capture.state!=='saved')return false;
+    // Only an attempt without the modern protocol marker is historical.
+    if(!hasCapture&&['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(a.error_code)&&noSnapshot)return false;
     const reason=exhausted?fileAuthoringRecoveryEvent(a.error_code,'retries_exhausted'):
       !ready?fileAuthoringRecoveryEvent(a.error_code,'recovery_unavailable'):fileAuthoringRetryReason(a.error_code);
     const recoveryState=exhausted||!ready?'failed':j.user_pause_requested?'user_paused':j.credit_pause_requested?'credits_exhausted':'queued';
@@ -1135,10 +1212,13 @@ async function inspectFileAuthoringRetry(client:PoolClient,r:any,j:any):Promise<
   if(!e.input_matches||e.conflicting||e.newer)return view('blocked','provider_evidence_conflict',a);
   if(!e.supported_observation)return view('blocked','provider_evidence_unresolved',a);
   const saved=j.checkpoint?.stages?.file_authoring_recovery;
+  const capture=fileAuthoringCapture(r,j,a),hasCapture=Object.hasOwn(j.checkpoint?.file_authoring_recovery_captures??{},a.id);
+  const noSnapshot=!Object.hasOwn(j.checkpoint?.stages??{},'file_authoring_recovery');
   const legacyRestart=['MODEL_TURN_FAILED','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(a.error_code)&&a.logical_call_id==='file-authoring-v1'&&
-    !Object.hasOwn(j.checkpoint?.stages??{},'file_authoring_recovery');
-  if(legacyRestart&&(e.has_result||e.has_completed))return view('blocked','provider_result_present',a);
-  if(j.user_pause_requested)return legacyRestart&&['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(a.error_code)?
+    noSnapshot&&!hasCapture;
+  const modernRestart=!!capture&&capture.state!=='saved'&&noSnapshot&&a.logical_call_id==='file-authoring-v1';
+  if((legacyRestart||modernRestart)&&(e.has_result||e.has_completed))return view('blocked','provider_result_present',a);
+  if(j.user_pause_requested)return modernRestart||legacyRestart&&['MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(a.error_code)?
     view('resume','user_paused',a):view('blocked','user_pause_pending',a);
   if(fileAuthoringRetryLimitReached(j.checkpoint,a.logical_call_id))return view('blocked','retry_limit_reached',a);
   if(['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_OUTPUT_TOO_LARGE','MODEL_TIMEOUT'].includes(a.error_code)&&validFileAuthoringRecovery(saved,{owner:r.owner_user_id,project:r.project_id,run:r.id,
@@ -1146,6 +1226,9 @@ async function inspectFileAuthoringRetry(client:PoolClient,r:any,j:any):Promise<
   // Old first-pass failures have no retained working directory. Only an explicit
   // owner confirmation can authorize fresh work from the immutable original input.
   if(legacyRestart)return view('restart_materials','restart_confirmation_required',a);
+  if(modernRestart)return view('restart_materials',captureRetryReason(capture!),a);
+  if(capture&&capture.state!=='saved')return view('blocked',captureRetryReason(capture),a);
+  if(hasCapture&&!capture)return view('blocked','provider_evidence_conflict',a);
   return view('blocked','checkpoint_unavailable',a);
 }
 

@@ -1,11 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,mkdir,writeFile,readFile,readdir,rm} from 'node:fs/promises';
+import {mkdtemp,mkdir,writeFile,readFile,readdir,rm,open} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runContainedModelCall,loadCodexAdapterConfig,CodexOutputValidationError,type ContainedCallInput} from './codex-adapter.js';
 import {MemoryCodexJournal} from './codex-memory-journal.js';
+import {emptyUpdateDetails} from '@bondbuddy/contracts';
+import {digest} from '@bondbuddy/api/data';
+import {fileAuthoringStage} from './file-authoring-stage.js';
+import type {UnifiedInput} from './unified-input.js';
+import type {StageContext} from './run-pipeline.js';
 
 async function setup(){
   const root=await mkdtemp(join(tmpdir(),'bb-native-files-test-'));
@@ -87,4 +92,46 @@ test('a failed 413 checkpoint still records the error and never resends itself',
     assert.equal(journal.observations.length,1);assert.equal(journal.results.size,0);
     assert.deepEqual(await readdir(s.root),[]);
   }finally{await rm(s.root,{recursive:true,force:true});}
+});
+
+test('native timeout retains its unknown usage while the actual authoring capture hook records bounded failures',{skip:process.platform!=='linux',timeout:60000},async()=>{
+  for(const mode of ['capacity','storage','outcome_write','saved'] as const){
+    const s=await setup();
+    try{
+      const original=Buffer.from('synthetic pinned source'),objects=new Map<string,Buffer>([['source',original]]);
+      let puts=0,captureWrites=0;
+      const ctx={run:{id:s.input.run_id,owner_user_id:s.input.owner_user_id,project_id:s.input.project_id,input_revision:1,input_hash:'a'.repeat(64)},
+        lease:{jobId:s.input.job_id,checkpoint:{}},checkpoint:{},values:new Map(),signal:new AbortController().signal,
+        blobs:{put:async(key:string,bytes:Buffer)=>{puts++;if(mode==='storage')throw Error('private storage diagnostic must not escape');objects.set(key,Buffer.from(bytes));},
+          getIfExistsBounded:async(key:string)=>objects.get(key)??null}} as unknown as StageContext;
+      const pin={material_id:'source',material_version:1,sha256:digest(original),role:'historical' as const};
+      const input:UnifiedInput={requirements:[],materials:[{pin,filename:'source.docx',mediaType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',objectKey:'source',records:[],pending:[]}],
+        manifest:{issuer_name:'Synthetic issuer',market:'sse',offering:'private',materials:[pin],update_details:{...emptyUpdateDetails(),authoring_mode:'unified_v1'},
+          authoring:{version:'unified_v1',requirements:[],source_prospectuses:[],knowledge:[],knowledge_status:'authoring_reference_not_compliance_approval'}}};
+      const journal=new MemoryCodexJournal(),recordIntent=journal.recordIntent.bind(journal);
+      journal.recordIntent=async intent=>{await recordIntent(intent);ctx.lease.checkpoint.file_authoring_recovery_captures={[intent.call_id]:{state:'prepared',failure_code:null}};};
+      let result:Awaited<ReturnType<typeof runContainedModelCall>>|undefined;
+      const stage=fileAuthoringStage({load:async()=>input,config:s.config,
+        checkpoint:async(_pool,lease,key,value)=>{lease.checkpoint={...lease.checkpoint,stages:{...(lease.checkpoint.stages as object),[key]:value}};},
+        capture:async(_pool,lease,attempt,_logical,outcome)=>{captureWrites++;assert.equal(journal.observations.length,0);if(mode==='outcome_write')throw Error('synthetic outcome write failed');
+          const captures=lease.checkpoint.file_authoring_recovery_captures as Record<string,unknown>;captures[attempt]=outcome;},
+        model:options=>({name:'model_generation',run:async()=>{
+          const workspace=options.fileWorkspace!;
+          result=await runContainedModelCall({...s.input,prompt:'SCENARIO:file_hang',fileWorkspace:{...workspace,prepare:async cwd=>{
+            await workspace.prepare(cwd);
+            if(mode==='capacity')for(let n=0;n<3;n++){const file=await open(join(cwd,`scratch/large-${n}.bin`),'wx');try{await file.truncate(90*1024*1024);}finally{await file.close();}}
+          }}},journal,{...s.config,authoring_timeout_ms:1000,kill_grace_ms:100});
+          return {kind:'stopped'};
+        }})});
+      await stage.run(ctx);assert.ok(result);assert.equal(result.error_code,'MODEL_TIMEOUT');assert.equal(result.status,'needs_reconcile');
+      assert.equal(result.attempts.length,1);assert.equal(result.attempts[0].usage.status,'unknown');assert.ok(['SIGTERM','SIGKILL'].includes(result.attempts[0].exit_signal??''));
+      assert.equal(journal.intents.length,1);assert.equal(journal.observations.length,1);assert.equal(journal.results.size,0);
+      const capture=(ctx.lease.checkpoint.file_authoring_recovery_captures as any)[journal.intents[0].call_id];
+      assert.equal(capture.state,mode==='outcome_write'?'prepared':mode==='saved'?'saved':'failed');
+      assert.equal(capture.failure_code,mode==='capacity'?'capacity_exceeded':mode==='storage'?'storage_failed':null);
+      assert.equal(captureWrites,1);assert.equal(!!(ctx.lease.checkpoint.stages as any)?.file_authoring_recovery,['outcome_write','saved'].includes(mode));
+      if(mode==='capacity')assert.equal(puts,0);
+      assert.deepEqual(await readdir(s.root),[]);
+    }finally{await rm(s.root,{recursive:true,force:true});}
+  }
 });

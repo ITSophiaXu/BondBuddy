@@ -3,7 +3,7 @@ import { mkdir,writeFile,readFile,copyFile,lstat,realpath } from 'node:fs/promis
 import { join,resolve,extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { digest } from '@bondbuddy/api/data';
-import { checkpointStage } from '@bondbuddy/api/queue';
+import { checkpointStage,recordFileAuthoringCaptureOutcome } from '@bondbuddy/api/queue';
 import { readCheckpointedProviderResult } from '@bondbuddy/api/provider-results';
 import { isDeepStrictEqual } from 'node:util';
 import { loadCodexAdapterConfig } from './codex-adapter.js';
@@ -15,7 +15,7 @@ import { buildFileAuthoringInstructions } from './file-authoring-instructions.js
 import { fileAuthoringRestartStageName } from './file-authoring-restart.js';
 import { deliverWithSizeRepair, readAuthoringFile, type SizeRepair } from './file-authoring-repair.js';
 import { authorizedFileAuthoringRecovery, recoverFileAuthoringInput, restoreFileAuthoringWork,
-  saveFileAuthoringRecovery, FILE_AUTHORING_RECOVERY_PROMPT } from './file-authoring-recovery.js';
+  saveFileAuthoringRecovery, recordFileAuthoringCaptureFailure, FILE_AUTHORING_RECOVERY_PROMPT } from './file-authoring-recovery.js';
 
 const repo=resolve(fileURLToPath(import.meta.url),'../../../..');
 const helpers=join(repo,'python/bondbuddy_file_authoring');
@@ -74,7 +74,7 @@ async function checkedFile(root:string,name:string,max=MAX){
   return readFile(path);
 }
 
-export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:typeof loadUnifiedInput;config?:ReturnType<typeof loadCodexAdapterConfig>;repair?:SizeRepair;checkpoint?:typeof checkpointStage}={}):RunStage{
+export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:typeof loadUnifiedInput;config?:ReturnType<typeof loadCodexAdapterConfig>;repair?:SizeRepair;checkpoint?:typeof checkpointStage;capture?:typeof recordFileAuthoringCaptureOutcome}={}):RunStage{
   return {name:'model_generation',replay:true,run:async ctx=>{
     const recovery=ctx.lease.checkpoint.word_pair_delivery_recovery as {attempt_no?:number}|undefined;
     if(recovery){
@@ -241,8 +241,16 @@ export function fileAuthoringStage(options:{model?:typeof codexModelStage;load?:
       }),
       schema:{},validate:value=>validFileResult(value,ctx),resultSchemaVersion:'codex-file-word-v1',templateVersion:options.repair?'single-cli-authoring-size-repair-host-handoff-v2':controlled?'single-cli-authoring-format-host-handoff-v5':'single-cli-authoring-host-handoff-v5',fileWorkspace:{completionCheck:true,recovery:!!savedRecovery,prepare,collect,
         onFailure:async(cwd,intent)=>{
-          for(const [path,hash] of originals)if(digest(await checkedFile(cwd,path))!==hash)throw Error('INPUT_REVISION_CONFLICT');
-          await saveFileAuthoringRecovery(ctx,cwd,intent,{checkpoint:options.checkpoint});
+          try{
+            for(const [path,hash] of originals)if(digest(await checkedFile(cwd,path))!==hash)throw Error('INPUT_REVISION_CONFLICT');
+            await saveFileAuthoringRecovery(ctx,cwd,intent,{checkpoint:options.checkpoint,capture:options.capture});
+          }catch(error){
+            // A complete snapshot is authoritative even if only the outcome write
+            // failed. Never replace that evidence with a false capture failure.
+            const saved=ctx.checkpoint.file_authoring_recovery as {attempt_id?:string}|undefined;
+            if(!ctx.signal.aborted&&saved?.attempt_id!==intent.call_id)await recordFileAuthoringCaptureFailure(ctx,intent,error,options.capture);
+            throw error;
+          }
         }}}).run(ctx);
     } catch (error) {
       if (!ctx.signal.aborted && error instanceof AuthoringSourceUnreadable) return {kind:'fail',code:'MATERIAL_UNREADABLE'};

@@ -7,8 +7,8 @@ import { digest,uid,transaction,type PrivateBlobs } from '@bondbuddy/api/data';
 import { grantCredits,publishPrices,creditBalanceExact } from '../../api/dist/billing.js';
 import { saveSnapshotRef } from '@bondbuddy/api/observability';
 import { uploadSyntheticReference } from '@bondbuddy/api/test-authoring-source';
-import { emptyUpdateDetails,INITIAL_FIXED_PRICES } from '@bondbuddy/contracts';
-import { action,claim,checkpointStage,recordPotentialCall,recoverFileAuthoringPayload,fileAuthoringPayloadRecoveryCandidates,resumePausedRun } from '@bondbuddy/api/queue';
+import { emptyUpdateDetails,INITIAL_FIXED_PRICES, type FileAuthoringCaptureFailure } from '@bondbuddy/contracts';
+import { action,claim,checkpointStage,recordPotentialCall,recordFileAuthoringCaptureOutcome,recoverFileAuthoringPayload,fileAuthoringPayloadRecoveryCandidates,resumePausedRun,pausedRuns } from '@bondbuddy/api/queue';
 import { recordModelAttemptRuntime,recordProviderCallObservation,latestProviderAttempt,providerResultObjectKey,type ProviderCallObservation } from '@bondbuddy/api/provider-results';
 import { WorkerRuntime } from './runtime.js';
 import { isolatedTestDatabase } from './test-database.js';
@@ -18,7 +18,7 @@ import type { StageContext } from './run-pipeline.js';
 const configured=!!process.env.BB_TEST_DATABASE_URL;
 for(const [localFailure,localPrefix] of [['MODEL_OUTPUT_TOO_LARGE','file_authoring_output_limit'],['MODEL_TIMEOUT','file_authoring_timeout']] as const)
 test(`${localFailure} recovery preserves work, unknown usage and the original reservation while bounding retries`,
-  {skip:!configured,timeout:300000},async()=>{
+  {skip:!configured,timeout:600000},async()=>{
   const connection=await isolatedTestDatabase(undefined,`file-authoring-${localFailure}`);
   const pool=new Pool({connectionString:connection}),owner=`payload-${uid()}`,objects=new Map<string,Buffer>();
   const blobs:PrivateBlobs={put:async(k,b)=>{objects.set(k,b);},get:async k=>objects.get(k)!,getIfExists:async k=>objects.get(k)??null,
@@ -27,7 +27,8 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
   const paidApp=createServer({pool,blobs,allowedOrigin:'http://bondbuddy.test',principal:async()=>({userId:owner,csrfVerified:true}),enableSyntheticQueue:true,historicalBillingFixture:true,enablePaidAuthoring:true});
   const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,headers:{origin:'http://bondbuddy.test'},payload:payload as any});
   type Options={paid?:boolean;runtime?:boolean;snapshot?:'none'|'bad';error?:string;observationError?:string;
-    observationOutcome?:'failed'|'pending_reconcile';exit?:boolean;logical?:string;adapter?:string;conflict?:boolean;result?:boolean};
+    observationOutcome?:'failed'|'pending_reconcile';exit?:boolean;logical?:string;adapter?:string;conflict?:boolean;result?:boolean;
+    capture?:'prepared'|'saved'|'write_failed'|FileAuthoringCaptureFailure};
   type Lease=NonNullable<Awaited<ReturnType<typeof claim>>>;
   async function observe(lease:Lease,project:string,inputHash:string,n:number,options:Options={}){
     const logical=options.logical??'file-authoring-v1',content=Buffer.from('synthetic file authoring prompt');
@@ -36,7 +37,17 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
     const prompt=await saveSnapshotRef(pool,{owner,projectId:project,runId:lease.runId,kind:'model_request',version:n,objectKey,sha256:digest(content),redactionVersion:'synthetic_v1',blobs});
     if(options.snapshot==='none'&&logical==='file-authoring-v1'&&n===1)
       await checkpointStage(pool,lease,'file_authoring_v1_prompt',{snapshot_id:prompt},false);
-    const attempt=await recordPotentialCall(pool,lease,logical,n,{modelId:'synthetic',promptSnapshotId:prompt});
+    const attempt=await recordPotentialCall(pool,lease,logical,n,{modelId:'synthetic',promptSnapshotId:prompt,fileAuthoringRecoveryCapture:!!options.capture});
+    if(options.capture){
+      const marker=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[lease.jobId])).rows[0].checkpoint.file_authoring_recovery_captures[attempt];
+      assert.equal(marker.state,'prepared');assert.equal(marker.attempt_id,attempt);assert.equal(marker.input_hash,inputHash);
+      assert.equal(marker.owner_user_id,owner);assert.equal(marker.run_id,lease.runId);assert.equal(marker.project_id,project);assert.equal(marker.input_revision,1);
+      assert.deepEqual((lease.checkpoint.file_authoring_recovery_captures as any)[attempt],marker);
+      await assert.rejects(recordFileAuthoringCaptureOutcome(pool,{...lease,owner:'foreign'},attempt,logical,{state:'failed',failure_code:'storage_failed'}));
+      await assert.rejects(recordFileAuthoringCaptureOutcome(pool,{...lease,token:'stale'},attempt,logical,{state:'failed',failure_code:'storage_failed'}));
+      await assert.rejects(recordFileAuthoringCaptureOutcome(pool,lease,'foreign-attempt',logical,{state:'failed',failure_code:'storage_failed'}));
+      await assert.rejects(recordFileAuthoringCaptureOutcome(pool,lease,attempt,logical,{state:'saved',failure_code:null}),/complete matching recovery checkpoint/);
+    }
     const intent={owner_user_id:owner,project_id:project,run_id:lease.runId,trace_id:lease.runId,job_id:lease.jobId,
       logical_call_id:logical,attempt_no:n,call_id:attempt,model_id:'synthetic',model_config_version:'synthetic-v1',prompt_snapshot_ref:prompt};
     if(options.runtime!==false)await recordModelAttemptRuntime(pool,lease,intent,{adapter:'codex_exec',adapter_version:options.adapter??'codex-file-authoring-2',
@@ -50,6 +61,13 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
       await blobs.put(key,bytes,'application/json');
       await checkpointStage(pool,lease,'file_authoring_recovery',{version:'file-authoring-recovery-v1',input_hash:options.snapshot==='bad'?'bad':inputHash,
         attempt_id:attempt,logical_call_id:logical,files:[{path,key,sha256,byte_size:bytes.length}]},false);
+    }
+    if(options.capture&&options.capture!=='prepared'){
+      if(options.capture==='write_failed'){
+        await pool.query(`ALTER TABLE bb_jobs ADD CONSTRAINT capture_outcome_failure CHECK (id <> '${lease.jobId}' OR checkpoint->'file_authoring_recovery_captures'->'${attempt}'->>'state' <> 'failed') NOT VALID`);
+        try{await assert.rejects(recordFileAuthoringCaptureOutcome(pool,lease,attempt,logical,{state:'failed',failure_code:'storage_failed'}),/capture_outcome_failure/);}
+        finally{await pool.query('ALTER TABLE bb_jobs DROP CONSTRAINT capture_outcome_failure');}
+      }else await recordFileAuthoringCaptureOutcome(pool,lease,attempt,logical,options.capture==='saved'?{state:'saved',failure_code:null}:{state:'failed',failure_code:options.capture});
     }
     const observation:ProviderCallObservation={...intent,provider_request_id:null,finish_reason:error==='MODEL_TIMEOUT'?'timeout':'turn_failed',
       outcome:options.observationOutcome??(outputLimit?'pending_reconcile':'failed'),
@@ -134,7 +152,18 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
         assert.equal((await claim(pool,30))?.runId,paused.lease.runId);
       }else{
         assert.equal(await resumePausedRun(pool,owner,paused.lease.runId,'credits_recharged'),false,'no credits yet');
+        const captureCredit=await fixture({error:'MODEL_PROVIDER_PAYLOAD_TOO_LARGE',snapshot:'none',capture:'storage_failed'});
+        await pool.query('UPDATE bb_jobs SET credit_pause_requested=true WHERE id=$1',[captureCredit.lease.jobId]);
+        assert.equal(await resumePausedRun(pool,owner,captureCredit.lease.runId,'credits_recharged'),false);
+        await assert.rejects(action(pool,owner,captureCredit.lease.runId,'resume'),error=>(error as {code:string}).code==='CREDITS_INSUFFICIENT');
+        assert.equal((await pausedRuns(pool,'credits_exhausted',100)).some(x=>x.job_id===captureCredit.lease.jobId),false);
         await transaction(pool,c=>grantCredits(c,{owner,source:'existing_grant',key:uid(),points:1,expiresAt:null,actor:'synthetic',reason:'Synthetic recharge'}));
+        assert.equal((await pausedRuns(pool,'credits_exhausted',100)).some(x=>x.job_id===captureCredit.lease.jobId),true);
+        assert.equal(await resumePausedRun(pool,owner,captureCredit.lease.runId,'credits_recharged'),true);
+        assert.deepEqual(await row(captureCredit.lease.runId),{state:'paused',stage:'provider_reconcile'});
+        assert.equal((await send('GET',`/api/v1/runs/${captureCredit.lease.runId}/retry`)).json().reason_code,'checkpoint_storage_failed');
+        assert.equal(await claim(pool,30),null,'recharge does not authorize restarting after capture failure');
+        await end(captureCredit.lease.runId);
         assert.equal(await resumePausedRun(pool,owner,paused.lease.runId,'credits_recharged'),true);
         assert.equal((await claim(pool,30))?.runId,paused.lease.runId);
       }
@@ -204,6 +233,78 @@ test(`${localFailure} recovery preserves work, unknown usage and the original re
     assert.equal(raceResponse.statusCode,200,raceResponse.body);
     assert.equal((await pool.query("SELECT count(*)::int n FROM bb_run_events WHERE run_id=$1 AND payload->>'reason'=$2",[racing.lease.runId,`${localPrefix}_retry_scheduled`])).rows[0].n,1);
     assert.equal((await postRetry(racing,raceRequest)).statusCode,200);await end(racing.lease.runId);
+    for(const [capture,reason] of [['capacity_exceeded','checkpoint_capacity_exceeded'],['storage_failed','checkpoint_storage_failed'],
+      ['unsafe_workspace','checkpoint_integrity_failed'],['input_conflict','checkpoint_integrity_failed'],['capture_failed','checkpoint_capture_incomplete'],
+      ['prepared','checkpoint_capture_incomplete'],['write_failed','checkpoint_capture_incomplete']] as const){
+      const modern=await fixture({error:localFailure,snapshot:'none',capture,paid:true});
+      const before=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[modern.lease.jobId])).rows[0].checkpoint;
+      const usage=(await pool.query('SELECT usage_status,input_tokens,output_tokens,cached_input_tokens,reasoning_tokens,conflicting_measurements FROM bb_call_usage WHERE attempt_id=$1',[modern.attempt])).rows;
+      const reservation=(await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[modern.lease.runId])).rows;
+      assert.equal(await modern.recover(),false,'capture failure must never automatically resend the original materials');
+      assert.deepEqual((await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[modern.lease.jobId])).rows[0].checkpoint,before);
+      assert.deepEqual((await inspect(modern)).json(),{run_id:modern.lease.runId,attempt_id:modern.attempt,mode:'restart_materials',reason_code:reason});
+      if(capture==='capacity_exceeded'){
+        await action(pool,owner,modern.lease.runId,'pause');assert.equal((await inspect(modern)).json().mode,'resume');
+        assert.equal((await action(pool,owner,modern.lease.runId,'resume')).state,'paused');
+        assert.equal(await claim(pool,30),null,'clearing a user pause does not authorize loss of work');
+      }
+      const request=manualRequest(modern,'restart_materials');
+      assert.equal((await postRetry(modern,{...request,confirmed_restart:false})).statusCode,422);
+      const [,first,second]=await Promise.all([modern.recover(),postRetry(modern,request),postRetry(modern,request)]);
+      assert.equal(first.statusCode,200,first.body);assert.equal(second.statusCode,200,second.body);
+      const checkpoint=(await pool.query('SELECT checkpoint FROM bb_jobs WHERE id=$1',[modern.lease.jobId])).rows[0].checkpoint;
+      assert.deepEqual(checkpoint.file_authoring_recovery_captures,before.file_authoring_recovery_captures,'capture history survives the explicit restart');
+      assert.equal(checkpoint.operator_reconciliations[modern.attempt].reason_code,'file_authoring_manual_restart');
+      assert.equal(checkpoint.stages.file_authoring_recovery,undefined);
+      assert.deepEqual((await pool.query('SELECT usage_status,input_tokens,output_tokens,cached_input_tokens,reasoning_tokens,conflicting_measurements FROM bb_call_usage WHERE attempt_id=$1',[modern.attempt])).rows,usage);
+      assert.deepEqual((await pool.query('SELECT * FROM bb_credit_reservations WHERE run_id=$1',[modern.lease.runId])).rows,reservation);
+      await end(modern.lease.runId);
+    }
+    for(const capture of ['saved','prepared'] as const){
+      const modernSaved=await fixture({error:localFailure,capture});
+      assert.equal((await inspect(modernSaved)).json().mode,'restore_checkpoint');
+      assert.equal(await modernSaved.recover(),true,'the complete snapshot remains authoritative if the saved outcome could not be written');
+      await end(modernSaved.lease.runId);
+    }
+    for(const error of ['MODEL_PROVIDER_PAYLOAD_TOO_LARGE','MODEL_TURN_FAILED',localFailure]){
+      for(const flags of ['user','credit','both','credit_manual'] as const){
+        const pausedCapture=await fixture({error,snapshot:'none',capture:error==='MODEL_TURN_FAILED'?'prepared':'storage_failed'});
+        const usage=(await pool.query('SELECT usage_status,input_tokens,output_tokens FROM bb_call_usage WHERE attempt_id=$1',[pausedCapture.attempt])).rows;
+        if(flags==='user'||flags==='both')await action(pool,owner,pausedCapture.lease.runId,'pause');
+        if(flags!=='user')await pool.query('UPDATE bb_jobs SET credit_pause_requested=true WHERE id=$1',[pausedCapture.lease.jobId]);
+        assert.equal(await pausedCapture.recover(),false);
+        assert.equal((await inspect(pausedCapture)).json().reason_code,flags==='user'?'user_paused':'credits_exhausted');
+        if(flags==='credit_manual')assert.equal((await action(pool,owner,pausedCapture.lease.runId,'resume')).state,'paused');
+        else if(flags!=='user'){
+          assert.equal((await pausedRuns(pool,'credits_exhausted',100)).some(x=>x.job_id===pausedCapture.lease.jobId),true);
+          await new WorkerRuntime({pool,blobs,runKinds:['update']}).sweep();
+          assert.equal((await pool.query('SELECT credit_pause_requested FROM bb_jobs WHERE id=$1',[pausedCapture.lease.jobId])).rows[0].credit_pause_requested,false);
+        }
+        if(flags==='user'||flags==='both'){
+          assert.equal((await inspect(pausedCapture)).json().mode,'resume','recharge preserves the independent user pause');
+          assert.equal((await action(pool,owner,pausedCapture.lease.runId,'resume')).state,'paused');
+        }
+        assert.deepEqual(await row(pausedCapture.lease.runId),{state:'paused',stage:'provider_reconcile'});
+        assert.deepEqual((await pool.query('SELECT user_pause_requested,credit_pause_requested FROM bb_jobs WHERE id=$1',[pausedCapture.lease.jobId])).rows[0],
+          {user_pause_requested:false,credit_pause_requested:false});
+        assert.equal((await inspect(pausedCapture)).json().mode,'restart_materials');
+        const confirmation=manualRequest(pausedCapture,'restart_materials');
+        assert.equal((await postRetry(pausedCapture,{...confirmation,confirmed_restart:false})).statusCode,422);
+        assert.equal(await claim(pool,30),null,'clearing either pause leaves the separate restart confirmation outstanding');
+        assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[pausedCapture.lease.jobId])).rows[0].n,1);
+        assert.deepEqual((await pool.query('SELECT usage_status,input_tokens,output_tokens FROM bb_call_usage WHERE attempt_id=$1',[pausedCapture.attempt])).rows,usage);
+        assert.equal((await postRetry(pausedCapture,confirmation)).statusCode,200);
+        await end(pausedCapture.lease.runId);
+      }
+    }
+    const modernForeign=await fixture({error:localFailure,snapshot:'none',capture:'storage_failed'});
+    await pool.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,ARRAY['file_authoring_recovery_captures',$2,'input_hash'],'\"wrong\"'::jsonb) WHERE id=$1",[modernForeign.lease.jobId,modernForeign.attempt]);
+    assert.equal((await inspect(modernForeign)).json().reason_code,'provider_evidence_conflict');
+    assert.equal((await postRetry(modernForeign,manualRequest(modernForeign,'restart_materials'))).statusCode,409);await end(modernForeign.lease.runId);
+    const modernExhausted=await fixture({error:localFailure,snapshot:'none',capture:'capacity_exceeded'});
+    await pool.query("UPDATE bb_jobs SET checkpoint=jsonb_set(checkpoint,'{operator_reconciliations}',$2::jsonb) WHERE id=$1",[modernExhausted.lease.jobId,JSON.stringify({one:{reason_code:'file_authoring_manual_restart',logical_call_id:modernExhausted.logical},two:{reason_code:'file_authoring_timeout_auto_retry',logical_call_id:modernExhausted.logical}})]);
+    assert.equal((await inspect(modernExhausted)).json().reason_code,'retry_limit_reached');
+    assert.equal((await postRetry(modernExhausted,manualRequest(modernExhausted,'restart_materials'))).statusCode,409);await end(modernExhausted.lease.runId);
     for(const error of ['MODEL_TURN_FAILED',localFailure]){
     const legacy=await fixture({error,snapshot:'none',paid:true}),restartRequest=manualRequest(legacy,'restart_materials');
     assert.equal((await inspect(legacy)).json().mode,'restart_materials');
