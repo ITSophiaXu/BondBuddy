@@ -91,15 +91,22 @@ export async function recordLogicalJob(client:PoolClient,input:{owner:string;pro
 export async function rejectOperation(pool:Pool,input:Parameters<typeof recordOperation>[1]) {
   await transaction(pool,client=>recordOperation(client,{...input,status:'rejected'}));
 }
-export async function saveSnapshotRef(pool:Pool,input:{owner:string;projectId:string;runId?:string;kind:'user_prompt'|'model_request'|'structured_input';version:number;objectKey:string;sha256:string;redactionVersion:string;inputRevision?:number;inputHash?:string;templateVersion?:string;rulePackVersion?:string;modelParametersVersion?:string;blobs:PrivateBlobs}, lockedClient?:PoolClient) {
+export async function saveSnapshotRef(pool:Pool,input:{owner:string;projectId:string;runId?:string;kind:'user_prompt'|'model_request'|'structured_input';version?:number;objectKey:string;sha256:string;redactionVersion:string;inputRevision?:number;inputHash?:string;templateVersion?:string;rulePackVersion?:string;modelParametersVersion?:string;blobs:PrivateBlobs}, lockedClient?:PoolClient) {
   if(!input.objectKey.startsWith(`users/${input.owner}/projects/${input.projectId}/snapshots/`)||!/^[A-Za-z0-9_-]{1,128}$/.test(input.objectKey.slice(`users/${input.owner}/projects/${input.projectId}/snapshots/`.length))||!/^[a-f0-9]{64}$/.test(input.sha256)||!safeCode.test(input.redactionVersion))throw new Error('Invalid private snapshot metadata');
   const bytes=await input.blobs.get(input.objectKey);
   if(digest(bytes)!==input.sha256)throw new Error('Snapshot hash mismatch');
   const persist=async (client:PoolClient)=>{
+    // The trusted Blob read/hash above is always performed before version
+    // serialization. There is no caller-supplied "verified" shortcut.
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+      [JSON.stringify(['prompt-snapshot-version',input.owner,input.projectId,input.kind])]);
+    const version=input.version??Number((await client.query(`SELECT COALESCE(max(version),0)::int+1 AS version
+      FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2 AND snapshot_kind=$3`,
+      [input.owner,input.projectId,input.kind])).rows[0].version);
     if(input.inputRevision){const rev=await client.query('SELECT 1 FROM bb_input_revisions WHERE owner_user_id=$1 AND project_id=$2 AND revision=$3 AND input_hash=$4',[input.owner,input.projectId,input.inputRevision,input.inputHash]);if(!rev.rowCount)throw missing();}
     if(input.runId){const run=await client.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND project_id=$2 AND id=$3 AND ($4::integer IS NULL OR input_revision=$4)',[input.owner,input.projectId,input.runId,input.inputRevision??null]);if(!run.rowCount)throw missing();}
     const id=uid();
-    await client.query('INSERT INTO bb_snapshot_refs(id,owner_user_id,project_id,run_id,snapshot_kind,version,object_key,content_sha256,redaction_version,input_revision,input_hash,template_version,rule_pack_version,model_parameters_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',[id,input.owner,input.projectId,input.runId??null,input.kind,input.version,input.objectKey,input.sha256,input.redactionVersion,input.inputRevision??null,input.inputHash??null,input.templateVersion??null,input.rulePackVersion??null,input.modelParametersVersion??null]);
+    await client.query('INSERT INTO bb_snapshot_refs(id,owner_user_id,project_id,run_id,snapshot_kind,version,object_key,content_sha256,redaction_version,input_revision,input_hash,template_version,rule_pack_version,model_parameters_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)',[id,input.owner,input.projectId,input.runId??null,input.kind,version,input.objectKey,input.sha256,input.redactionVersion,input.inputRevision??null,input.inputHash??null,input.templateVersion??null,input.rulePackVersion??null,input.modelParametersVersion??null]);
     await emitInternal(client,internalEvent({kind:'prompt.snapshot_saved',owner:input.owner,projectId:input.projectId,runId:input.runId,traceId:input.runId??id,promptSnapshotRef:id}));
     return id;
   };

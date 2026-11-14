@@ -42,7 +42,7 @@ export function m4DocumentStage(options: {model?: typeof codexModelStage; load?:
   return {name: 'model_generation', replay: true, run: async ctx => {
     const input = await (options.load ?? loadM4WorkerInput)(ctx);
     if (input.manifest.kind !== 'document') return {kind: 'fail', code: 'INPUT_REVISION_CONFLICT'};
-    if(['shared_batch_v1','progressive_item_v1'].includes(input.manifest.input.workpaper?.execution??'')&&!input.manifest.input.template)
+    if(['shared_batch_v1','progressive_item_v1','grouped_batch_v1'].includes(input.manifest.input.workpaper?.execution??'')&&!input.manifest.input.template)
       return sharedWorkpaperDocument(ctx,input,options.model,options.config);
     const skill = loadM4RuntimeSkill(input.manifest.input.project_file?'m4-project-file':({init:'m4-init-report',underwriter:'m4-underwriter',legal:'m4-legal',private_summary:'m4-private-summary',application:'m4-application',recommendation:'m4-recommendation',annual:'m4-project-file',semiannual:'m4-project-file',issuer:'m4-project-file',financial:'m4-project-file',credit:'m4-project-file',proceeds:'m4-project-file',workpaper:'m4-workpaper'} as const)[input.manifest.input.document_type]);
     const config = options.config ?? loadCodexAdapterConfig();
