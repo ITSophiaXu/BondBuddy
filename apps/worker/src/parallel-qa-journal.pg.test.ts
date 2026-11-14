@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import {randomUUID as uid} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {Pool} from 'pg';
-import {QaAnswerSchema,PROJECT_QA_PRICE,type QaInput} from '@bondbuddy/contracts';
-import {transaction,type PrivateBlobs} from '@bondbuddy/api/data';
+import {QaAnswerSchema,QaInputSchema,PROJECT_QA_PRICE,type QaInput} from '@bondbuddy/contracts';
+import {transaction,digest,type PrivateBlobs} from '@bondbuddy/api/data';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import {savePromptSnapshot} from '@bondbuddy/api/log-ops';
-import {reserveQaCredits} from '@bondbuddy/api/project-qa';
+import {reserveQaCredits,readQa} from '@bondbuddy/api/project-qa';
 import {enqueue,claim,finish,pauseRun} from '@bondbuddy/api/queue';
 import {grantCredits,creditBalance} from '../../api/dist/billing.js';
 import {Value} from '@sinclair/typebox/value';
@@ -22,7 +22,7 @@ for(const unknown of [false,true])test(`four question journals drain three succe
   await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'q4_'+owner.slice(0,8)]);
   await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic four questions','generation')",[project,owner]);
   await transaction(pool,c=>grantCredits(c,{owner,points:1000,key:uid(),source:'purchase',expiresAt:null,actor:'synthetic',reason:'Isolated four question regression'}));
-  const input:QaInput={version:'project-qa-v1',operation:'answer',max_parallel:4,project_name:'Synthetic four questions',source:{filename:'synthetic.docx',asset:{kind:'material',pin:{source_project_id:project,material_id:'synthetic-material',material_version:1,sha256:'a'.repeat(64)}}},preparation_id:null,questions:Array.from({length:4},(_,i)=>({id:'q'+i,start:i,end:i,question:'Synthetic question '+i})),materials:[],requirements:'Synthetic evidence only',cases:[],price_version:PROJECT_QA_PRICE.version,points:240};
+  const input:QaInput={version:'project-qa-v1',operation:'answer',project_name:'Synthetic four questions',source:{filename:'synthetic.docx',asset:{kind:'material',pin:{source_project_id:project,material_id:'synthetic-material',material_version:1,sha256:'a'.repeat(64)}}},preparation_id:null,questions:Array.from({length:4},(_,i)=>({id:'q'+i,start:i,end:i,question:'Synthetic question '+i})),materials:[],requirements:'Synthetic evidence only',cases:[],price_version:PROJECT_QA_PRICE.version,points:240};
   const hash=inputManifestHash(input);
   await transaction(pool,async c=>{
    await c.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,1,$2,1,$3,$4,'[]','[]')",[project,owner,hash,input]);
@@ -30,13 +30,25 @@ for(const unknown of [false,true])test(`four question journals drain three succe
    await c.query("INSERT INTO bb_project_qa_runs(run_id,owner_user_id,project_id,sequence,operation,manifest,input_hash) VALUES($1,$2,$3,1,'answer',$4,$5)",[runId,owner,project,input,hash]);
    await reserveQaCredits(c,owner,run,input);await enqueue(c,run,'project_qa_v1');
   });
+  const publicRun=(await readQa(pool,owner,project)).runs[0];
+  assert.ok(Value.Check(QaInputSchema,publicRun.manifest));
+  assert.equal(Object.hasOwn(publicRun.manifest,'max_parallel'),false,'old strict response schema sees no execution metadata');
+  assert.equal(inputManifestHash(publicRun.manifest),hash,'public exact manifest keeps its original hash');
+  const execution=(await pool.query('SELECT max_parallel FROM bb_project_qa_runs WHERE run_id=$1',[runId])).rows[0];assert.equal(execution.max_parallel,4);
+  await assert.rejects(pool.query('UPDATE bb_project_qa_runs SET max_parallel=NULL WHERE run_id=$1',[runId]),{code:'23514'});
   const lease=await claim(pool,120,{runKinds:['generation']});assert.ok(lease);assert.equal(lease.runId,runId);
   const journal=new DeferredQaJournal({pool,blobs,lease,validateResult:v=>Value.Check(QaAnswerSchema,v)});
-  const intents=[];
-  for(let i=0;i<4;i++){
-   const snapshot=await savePromptSnapshot(pool,blobs,{owner,projectId:project,runId,kind:'model_request',version:i+1,body:'Synthetic question '+i,inputRevision:1,inputHash:hash,templateVersion:'synthetic-parallel-v1'});
-   const intent={owner_user_id:owner,project_id:project,job_id:lease.jobId,run_id:runId,trace_id:runId,logical_call_id:'qa-q'+i,call_id:uid(),attempt_no:1,model_id:'synthetic',model_config_version:'synthetic-v1',prompt_snapshot_ref:snapshot};await journal.recordIntent(intent);intents.push(intent);
-  }
+  const snapshots=await Promise.all(Array.from({length:4},(_,i)=>savePromptSnapshot(pool,blobs,
+   {owner,projectId:project,runId,kind:'model_request',body:'Synthetic question '+i,inputRevision:1,inputHash:hash,templateVersion:'synthetic-parallel-v1'})));
+  const refs=(await pool.query('SELECT version,content_sha256,object_key FROM bb_snapshot_refs WHERE id=ANY($1::text[]) ORDER BY version',[snapshots])).rows;
+  assert.deepEqual(refs.map(r=>r.version),[1,2,3,4]);assert.equal(new Set(refs.map(r=>r.content_sha256)).size,4);
+  for(const ref of refs)assert.equal(digest(await blobs.get(ref.object_key)),ref.content_sha256);
+  const intents=snapshots.map((snapshot,i)=>({owner_user_id:owner,project_id:project,job_id:lease.jobId,run_id:runId,trace_id:runId,logical_call_id:'qa-q'+i,call_id:uid(),attempt_no:1,model_id:'synthetic',model_config_version:'synthetic-v1',prompt_snapshot_ref:snapshot}));
+  await pool.query('UPDATE bb_jobs SET user_pause_requested=true WHERE id=$1',[lease.jobId]);
+  await assert.rejects(journal.recordIntent(intents[0]),{code:'CAPABILITY_NOT_READY'});
+  assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[lease.jobId])).rows[0].n,0);
+  await pool.query('UPDATE bb_jobs SET user_pause_requested=false WHERE id=$1',[lease.jobId]);
+  for(const intent of intents)await journal.recordIntent(intent);
   let peak=0,active=0;
   const outcomes=await boundedItems(intents,4,new AbortController().signal,async(intent,index)=>{
    peak=Math.max(peak,++active);await delay(index===0?5:40);

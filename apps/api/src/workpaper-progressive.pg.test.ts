@@ -15,11 +15,24 @@ import {claim,promoteWordArtifact,finish} from './queue.js';
 import {registerM4Artifacts} from './m4-workspace.js';
 
 const configured=!!process.env.BB_TEST_DATABASE_URL;
-async function fixture(key:string,chapters=9,automatic=false,credits=3000000){
+async function fixture(key:string,chapters=9,automatic=false,credits=3000000,legacy=false){
  const pool=new Pool({connectionString:await isolatedTestDatabase(undefined,'progressive-'+key)}),user=randomUUID();let actor:string=user;
  const objects=new Map<string,Buffer>();const blobs:PrivateBlobs={put:async(k,b)=>{objects.set(k,Buffer.from(b));},get:async k=>objects.get(k)!,getIfExists:async k=>objects.get(k)??null,
   getIfExistsBounded:async(k,max)=>{const b=objects.get(k);return b&&b.length<=max?b:null;},exists:async k=>objects.has(k),delete:async k=>{objects.delete(k);}};
- const origin='http://bondbuddy.test',app=createServer({pool,blobs,historicalBillingFixture:!automatic,enableSubscriptionBilling:automatic,enableRunRuntime:true,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});
+ const apiPool=legacy?new Proxy(pool,{get(target,key){
+  if(key==='connect')return async()=>{const client=await target.connect();return new Proxy(client,{get(c,k){
+   if(k==='query')return async(sql:any,values?:any[])=>{
+    if(typeof sql==='string'&&sql.startsWith('INSERT INTO bb_workpaper_batches')){
+     values![13].max_parallel=2;
+     sql=sql.replace('progressive_phase) VALUES','progressive_phase,max_parallel) VALUES').replace('$14,$15)','$14,$15,NULL)');
+    }
+    return c.query(sql,values);
+   };
+   const value=Reflect.get(c,k);return typeof value==='function'?value.bind(c):value;
+  }});};
+  const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
+ }}):pool;
+ const origin='http://bondbuddy.test',app=createServer({pool:apiPool,blobs,historicalBillingFixture:!automatic,enableSubscriptionBilling:automatic,enableRunRuntime:true,allowedOrigin:origin,principal:async()=>({userId:actor,csrfVerified:true})});
  const errors:string[]=[];app.addHook('onError',async(_req,_reply,e)=>{errors.push(e.message);});
  const send=(method:string,path:string,body?:unknown)=>{const family=billingWireRoute(method,path);return app.inject({method:method as any,url:path,payload:(family?.request&&body!==undefined?encodeBillingDto(family.request,body):body) as any,headers:{origin,...(Buffer.isBuffer(body)?{'content-type':'application/octet-stream'}:{})}});};
  const ok=async(method:string,path:string,body?:unknown)=>{const r=await send(method,path,body);assert.ok(r.statusCode<300,`${r.statusCode}: ${r.body}; ${errors.join(' | ')}`);return r.json();};
@@ -290,5 +303,19 @@ test('progressive automatic billing admits only affordable files, retains full s
   assert.equal(Number((await f.pool.query('SELECT count(*) n FROM bb_credit_reservations r JOIN bb_workpaper_attempts a ON a.run_id=r.run_id WHERE a.batch_id=$1',[batch.batch_id])).rows[0].n),2);
   batch=await f.action(batch,{action:'cancel'});for(const item of batch.items.filter(i=>i.run_id))await f.fail(item.run_id!);
   await advanceWorkpaperBatch(f.pool);
+ }finally{await f.close();}
+});
+
+
+test('historical frozen two-way plan keeps its exact policy and confirmation fence',{skip:!configured,timeout:60000},async()=>{
+ const f=await fixture('legacy-two',9,false,3000000,true);
+ try{
+  let batch=await f.start();assert.equal(batch.progressive?.max_parallel,2);
+  assert.equal((await f.pool.query('SELECT max_parallel FROM bb_workpaper_batches WHERE id=$1',[batch.batch_id])).rows[0].max_parallel,null);
+  await advanceWorkpaperBatch(f.pool);await advanceWorkpaperBatch(f.pool);
+  assert.equal(await advanceWorkpaperBatch(f.pool),false);
+  batch=await f.read(batch.batch_id);assert.equal(batch.items.filter(i=>i.run_id).length,2);
+  assert.equal(batch.progressive?.phase,'trial');
+  await f.action(batch,{action:'pause'});assert.equal(await advanceWorkpaperBatch(f.pool),false);
  }finally{await f.close();}
 });

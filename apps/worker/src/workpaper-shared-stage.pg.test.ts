@@ -32,7 +32,19 @@ test('one batch plan across deliveries, crash replay, failure/retry, pause, immu
   const directory=await mkdtemp(join(tmpdir(),'bb-shared-test-'));
   const storage=new Map<string,Buffer>();const blobs:PrivateBlobs={put:async(k,b)=>{storage.set(k,Buffer.from(b));},get:async k=>Buffer.from(storage.get(k)!),getIfExists:async k=>storage.get(k)??null,
     getIfExistsBounded:async(k,max)=>{const b=storage.get(k);if(b&&b.length>max)throw Error('too large');return b??null;},exists:async k=>storage.has(k),delete:async k=>{storage.delete(k);}};
-  const origin='http://bondbuddy.test',app=createServer({pool,blobs,historicalBillingFixture:true,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
+  // Seed the historical manifest/policy before INSERT; never rewrite a frozen input.
+  const legacyPool=new Proxy(pool,{get(target,key){
+    if(key==='connect')return async()=>{const client=await target.connect();return new Proxy(client,{get(c,k){
+      if(k==='query')return async(sql:any,values?:any[])=>{
+        if(typeof sql==='string'&&sql.startsWith('INSERT INTO bb_workpaper_items'))values![4].input.workpaper.execution='shared_batch_v1';
+        if(typeof sql==='string'&&sql.startsWith('INSERT INTO bb_workpaper_batches'))sql=sql.replace('progressive_phase) VALUES','progressive_phase,max_parallel) VALUES').replace('$14,$15)','$14,$15,NULL)');
+        return c.query(sql,values);
+      };
+      const value=Reflect.get(c,k);return typeof value==='function'?value.bind(c):value;
+    }});};
+    const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
+  }});
+  const origin='http://bondbuddy.test',app=createServer({pool:legacyPool,blobs,historicalBillingFixture:true,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
   const ok=async(method:string,url:string,payload?:any)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,`${r.statusCode}: ${r.body}`);return r.json();};
   const upload=async(id:string,name:string,bytes:Buffer,media_type:string,role='other')=>{

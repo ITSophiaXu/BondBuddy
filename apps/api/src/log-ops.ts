@@ -684,7 +684,7 @@ export function scrubSecrets(text: string) {
 }
 
 /** Scrub, store the body in private Blob only, then register the reference row. */
-export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input: { owner: string; projectId: string; runId?: string; kind: 'user_prompt' | 'model_request' | 'structured_input'; version: number; body: string; inputRevision?: number; inputHash?: string; templateVersion?: string; rulePackVersion?: string; modelParametersVersion?: string; redactionVersion?: string }) {
+export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input: { owner: string; projectId: string; runId?: string; kind: 'user_prompt' | 'model_request' | 'structured_input'; version?: number; body: string; inputRevision?: number; inputHash?: string; templateVersion?: string; rulePackVersion?: string; modelParametersVersion?: string; redactionVersion?: string }) {
   const scrubbed = scrubSecrets(input.body);
   const objectKey = `users/${input.owner}/projects/${input.projectId}/snapshots/${uid()}`;
   const intentId = uid();
@@ -696,7 +696,16 @@ export async function savePromptSnapshot(pool: Pool, blobs: PrivateBlobs, input:
       // cannot delete an in-flight write even when it passes its grace period.
       await client.query('SELECT id FROM bb_prompt_blob_intents WHERE id=$1 FOR UPDATE', [intentId]);
       await blobs.put(objectKey, Buffer.from(scrubbed, 'utf8'), 'text/plain; charset=utf-8');
-      const id = await saveSnapshotRef(pool, { ...input, objectKey, sha256: digest(scrubbed), redactionVersion: input.redactionVersion ?? SCRUB_VERSION, blobs }, client);
+      // Independent calls share this numbering scope. Allocate only after the
+      // Blob write, under a short reference transaction; no project/run lock or
+      // model permit is held while waiting. Explicit historical versions remain
+      // exact, but participate in the same serialization.
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+        [JSON.stringify(['prompt-snapshot-version',input.owner,input.projectId,input.kind])]);
+      const version=input.version??Number((await client.query(`SELECT COALESCE(max(version),0)::int+1 AS version
+        FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2 AND snapshot_kind=$3`,
+        [input.owner,input.projectId,input.kind])).rows[0].version);
+      const id = await saveSnapshotRef(pool, { ...input, version, objectKey, sha256: digest(scrubbed), redactionVersion: input.redactionVersion ?? SCRUB_VERSION, blobs }, client);
       await client.query('UPDATE bb_prompt_blob_intents SET registered_at=now() WHERE id=$1', [intentId]);
       return id;
     });

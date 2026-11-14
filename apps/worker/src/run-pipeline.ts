@@ -481,11 +481,6 @@ export function createMaterialsReadyStage(producer?: ParsedFactProducer): RunSta
 }
 export const materialsReadyStage = createMaterialsReadyStage();
 
-async function nextSnapshotVersion(pool: Pool, owner: string, projectId: string) {
-  const q = await pool.query("SELECT COALESCE(max(version),0)::int+1 AS v FROM bb_snapshot_refs WHERE owner_user_id=$1 AND project_id=$2 AND snapshot_kind='model_request'", [owner, projectId]);
-  return Number(q.rows[0].v);
-}
-
 /**
  * A model stage on the contained Codex adapter. The prompt is saved (scrubbed) as a #79 snapshot
  * and checkpointed before any call; the text actually sent is always read back from that snapshot.
@@ -520,12 +515,8 @@ export function codexModelStage(options: {
       if (!snapshotId) {
         imageRef=options.imageInput?await saveModelImage(blobs,run,options.imageInput):undefined;
         const body = await options.buildPrompt(ctx)+(imageRef?'\nAttached PNG SHA-256: '+imageRef.sha256:'');
-        for (let tries = 0; !snapshotId; tries++) {
-          try {
-            snapshotId = await savePromptSnapshot(pool, blobs, { owner: run.owner_user_id, projectId: run.project_id, runId: run.id, kind: 'model_request',
-              version: await nextSnapshotVersion(pool, run.owner_user_id, run.project_id), body, inputRevision: run.input_revision, inputHash: run.input_hash.trim(), templateVersion: options.templateVersion });
-          } catch (error) { if ((error as { code?: string }).code !== '23505' || tries >= 3) throw error; }
-        }
+        snapshotId = await savePromptSnapshot(pool, blobs, { owner: run.owner_user_id, projectId: run.project_id, runId: run.id, kind: 'model_request',
+          body, inputRevision: run.input_revision, inputHash: run.input_hash.trim(), templateVersion: options.templateVersion });
         const pinned={snapshot_id:snapshotId,...(imageRef?{image_input:imageRef}:{})};
         await checkpointStage(pool, lease, promptStage, pinned);
         ctx.checkpoint[promptStage] = pinned;
@@ -560,18 +551,36 @@ export function codexModelStage(options: {
         ctx.signal.throwIfAborted();
         const gate=await ctx.validateBeforeModelCall?.();
         if(gate){delayedGate=gate;throw Error('MODEL_ADMISSION_INPUT_CHANGED');}
-        const active=await pool.query(`SELECT 1 FROM bb_jobs j JOIN bb_runs r ON r.owner_user_id=j.owner_user_id AND r.id=j.run_id
+        const active=await pool.query(`SELECT j.user_pause_requested,j.credit_pause_requested FROM bb_jobs j JOIN bb_runs r ON r.owner_user_id=j.owner_user_id AND r.id=j.run_id
           WHERE j.id=$1 AND j.owner_user_id=$2 AND j.run_id=$3 AND j.lease_token=$4 AND j.state='running'
-          AND j.lease_until>now() AND r.state='running' AND NOT j.user_pause_requested AND NOT j.credit_pause_requested`,
+          AND j.lease_until>now() AND r.state='running'`,
           [lease.jobId,lease.owner,lease.runId,lease.token]);
         if(!active.rowCount){delayedGate={kind:'stopped'};throw Error('MODEL_ADMISSION_LEASE_CHANGED');}
+        const flags=active.rows[0];
+        if(flags.user_pause_requested||flags.credit_pause_requested){
+          const stage=flags.credit_pause_requested?'credits_exhausted':'user_paused';
+          delayedGate={kind:'pause',stage,reason:stage};throw Error('MODEL_ADMISSION_PAUSED');
+        }
       };
       let result:ContainedCallResult;
       try { result = await runContainedModelCall({ owner_user_id: run.owner_user_id, project_id: run.project_id, job_id: lease.jobId, run_id: run.id, trace_id: run.id,
         ...{beforeIntent},logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId, prompt: bytes.toString('utf8'), result_schema_version: options.resultSchemaVersion,
         imageInput, output: options.fileWorkspace ? {kind:'text'} : { kind: 'json', schema: options.schema, validate: options.validate, normalize: options.normalize, ...options.outputForPrompt?.(bytes.toString('utf8')) }, fileWorkspace: options.fileWorkspace, materialTools: options.materialTools, materialToolsTrace: options.materialToolsTrace, reviewTools: options.reviewTools, signal: ctx.signal,
         ...((progress || authoring || options.onActivity)?{onActivity:(event,intent)=>{progress?.onEvent(event,intent);authoring?.onEvent(event,intent);options.onActivity?.(event,intent);}}:{}) }, journal, config);
-      } catch(error){if(delayedGate)return delayedGate;throw error;} finally { await progress?.drain(); await authoring?.drain(); }
+      } catch(error){
+        if(delayedGate)return delayedGate;
+        // A pause can also win between the last read-only check and the locked
+        // intent write. No model was sent; park after draining accepted siblings.
+        if(error instanceof Problem&&error.code==='CAPABILITY_NOT_READY'){
+          const flags=(await pool.query(`SELECT user_pause_requested,credit_pause_requested FROM bb_jobs
+            WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 AND state='running' AND lease_token=$4 AND lease_until>now()`,
+            [lease.jobId,lease.owner,lease.runId,lease.token])).rows[0];
+          if(flags?.user_pause_requested||flags?.credit_pause_requested){
+            const stage=flags.credit_pause_requested?'credits_exhausted':'user_paused';return {kind:'pause',stage,reason:stage};
+          }
+        }
+        throw error;
+      } finally { await progress?.drain(); await authoring?.drain(); }
       if (result.status === 'completed' || result.status === 'reused')
         return { kind: 'done', value: options.reviewTools ? { output:result.value,tool_trace:result.reviewToolTrace } : result.value, checkpoint: { logical_call_id: options.logicalCallId, prompt_snapshot_ref: snapshotId } };
       if(result.status==='needs_reconcile'&&(run.covered_zero_outcome===true||['fixed_credits','metered_credits'].includes(run.billing_mode??''))&&!options.reviewTools){
