@@ -1,0 +1,11 @@
+{
+  "_说明": "合并前检查的例外清单。每一条都必须有 pattern 和 reason。pattern 是测试的源码路径，* 匹配一层目录内的任意字符，** 可以跨目录。清单越短越好：能修的测试不要长期留在这里。",
+  "notInCi": [
+    {
+      "pattern": "apps/web/tests/local-*.spec.ts",
+      "reason": "需要本机常驻的预发布或集成环境，部分还需要真实模型时段，不适合在每个 PR 上运行；发布前按 scripts/local-prelaunch 和 scripts/local-integration 的说明单独执行"
+    }
+  ],
+  "knownFailing": [],
+  "allowSkip": []
+}
