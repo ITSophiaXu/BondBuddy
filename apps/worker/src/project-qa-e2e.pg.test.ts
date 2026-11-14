@@ -1,5 +1,7 @@
 // Synthetic model replies; actual API, wallet, queue, private blobs, Python Word and download authorization.
 // HTTP monetary amounts use the current int64 string protocol; database balances remain numbers.
+// Replay the historical 60-point-per-question contract through the full pipeline.
+// Current scope, automatic and covered pricing are tested in project-qa-pricing.pg.test.ts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -21,7 +23,7 @@ import {loadCodexAdapterConfig} from './codex-adapter.js';
 const database=await isolatedTestDatabase(undefined,'project-qa-e2e'),storage=process.env.BB_TEST_AZURITE_CONNECTION_STRING;
 test('project Q&A: free extraction, confirmed count, grounded Word, knowledge review, versions, billing and ownership',{skip:!database||!storage||!process.env.BONDBUDDY_TEST_PYTHON,timeout:300000},async()=>{
  const pool=new Pool({connectionString:database}),owner=randomUUID(),other=randomUUID(),container='bb-qa-'+randomUUID().replaceAll('-','');let actor=owner,calls=0,fail=false,pauseOnce=true,failQuestion='';
- const blobs=azureBlobs(storage!,container),origin='http://bondbuddy.test',app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
+ const blobs=azureBlobs(storage!,container),origin='http://bondbuddy.test',app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,historicalBillingFixture:true,principal:async()=>({userId:actor,csrfVerified:true})});
  const send=(method:string,url:string,payload?:unknown)=>app.inject({method:method as any,url,payload:payload as any,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
  const ok=async(method:string,url:string,payload?:unknown)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,method+' '+url+' '+r.body);return r.body?r.json():null;};
  const model:typeof codexModelStage=o=>({name:o.name,replay:true,run:async ctx=>{
@@ -83,6 +85,8 @@ test('project Q&A: free extraction, confirmed count, grounded Word, knowledge re
   actor=other;assert.equal((await ok('GET','/api/v1/qa/cases')).cases.length,0);assert.equal((await send('GET',base)).statusCode,404);assert.equal((await send('POST',base+'/prepare',request)).statusCode,404);actor=owner;
   await pool.query("INSERT INTO bb_qa_case_reviewers(user_id,actor,reason) VALUES($1,'synthetic','synthetic test reviewer')",[owner]);
   cases=await ok('POST',`/api/v1/qa/cases/${caseId}/review`,{expected_revision:1,status:'approved',review_note:'核对合成来源与用途问题。仅测试用途。'});assert.equal(cases.cases[0].status,'approved');
+   const quote=await ok('POST',base+'/quote',{expected_revision:w.revision});
+   assert.equal(quote.points,'120');assert.equal(quote.price_version,PROJECT_QA_PRICE.version);
   const submit={request_id:randomUUID(),expected_revision:w.revision,expected_points:'120',price_version:PROJECT_QA_PRICE.version};
   assert.equal((await send('POST',base+'/runs',{...submit,expected_points:'60'})).statusCode,409);
   const run=await ok('POST',base+'/runs',submit);assert.equal((await ok('POST',base+'/runs',submit)).run_id,run.run_id);assert.deepEqual(await creditBalance(pool,owner),{available:880,frozen:120});
