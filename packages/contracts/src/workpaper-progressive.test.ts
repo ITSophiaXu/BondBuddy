@@ -53,3 +53,15 @@ test('opt-in progressive schemas preserve old requests and require revision plus
   assert.equal(Value.Check(WorkpaperActionSchema,{action:'continue_remaining',expected_revision:1}),false);
   assert.equal(Value.Check(WorkpaperTaskSchema,{batch_id:'b',catalogue_id:'c',entry:file('a'),mode:'direct',execution:'progressive_item_v1'}),true);
 });
+
+test('four leaders are admitted before waiters without changing eight-file membership or publication order',async()=>{
+ const {workpaperPlanGroupIds,workpaperAdmissionOrder}=await import('./workpapers.js');
+ const ids=Array.from({length:250},(_,i)=>'file-'+i);
+ const plan={phase:'remaining' as const,chapters:[{id:'chapter',title:'Chapter',item_ids:ids}],trial_item_ids:[],max_parallel:4 as const};
+ const order=workpaperAdmissionOrder(ids,plan);
+ assert.deepEqual(order.slice(0,4),['file-0','file-8','file-16','file-24']);
+ assert.deepEqual(ids.slice(0,3),['file-0','file-1','file-2']);
+ assert.equal(new Set(order).size,250);
+ assert.deepEqual(workpaperPlanGroupIds(plan,'file-9')?.ids,ids.slice(8,16));
+ assert.deepEqual(workpaperPlanGroupIds(plan,'file-249')?.ids,ids.slice(248));
+});
