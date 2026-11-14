@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { browserTestEnvironment, browserStorageArguments, browserStorageHostPort,
-  browserStoragePort, ownedBrowserStorage } from './prospectus-input-browser.mjs';
+  browserStoragePort, ownedBrowserStorage, browserStorageNetworkName, browserStorageNetworkArguments,
+  ownedBrowserStorageNetwork, emptyBrowserStorageNetwork } from './prospectus-input-browser.mjs';
 
 const database = 'postgresql://synthetic:synthetic-only@127.0.0.1:55321/bb_prospectus_quality';
 test('browser runner strips provider, production, child injection and authenticated-home environment', () => {
@@ -26,8 +27,10 @@ const name = 'bb-prospectus-browser-' + 'b'.repeat(32), id = 'a'.repeat(64);
 const storage = () => ({ Id: id, Name: `/${name}`,
   Config: { Image: 'mcr.microsoft.com/azure-storage/azurite:3.35.0', Labels: { 'com.bondbuddy.browser-input': name } },
   State: { Running: true, OOMKilled: false },
-  HostConfig: { Memory: 512 * 1024 * 1024, MemorySwap: 512 * 1024 * 1024, NanoCpus: 500_000_000 },
-  NetworkSettings: { Ports: { '10000/tcp': [{ HostIp: '127.0.0.1', HostPort: '55588' }], '10001/tcp': null } } });
+  HostConfig: { Memory: 512 * 1024 * 1024, MemorySwap: 512 * 1024 * 1024, NanoCpus: 500_000_000,
+    NetworkMode: browserStorageNetworkName(name) },
+  NetworkSettings: { Networks: { [browserStorageNetworkName(name)]: { NetworkID: 'd'.repeat(64) } },
+    Ports: { '10000/tcp': [{ HostIp: '127.0.0.1', HostPort: '55588' }], '10001/tcp': null } } });
 
 test('browser storage keeps random loopback publishing by default and bounds only its Azurite fixture', () => {
   assert.equal(browserStorageHostPort(undefined), undefined);
@@ -36,6 +39,34 @@ test('browser storage keeps random loopback publishing by default and bounds onl
     for (const [flag, expected] of [['-p', binding], ['--memory', '512m'], ['--memory-swap', '512m'], ['--cpus', '0.5']])
       assert.equal(args[args.indexOf(flag) + 1], expected);
     assert.equal(args.filter(value => value === '-p').length, 1);
+    assert.equal(args[args.indexOf('--network') + 1], browserStorageNetworkName(name));
+  }
+});
+
+const network = () => ({ Id: 'd'.repeat(64), Name: browserStorageNetworkName(name),
+  Labels: { 'com.bondbuddy.browser-input': name }, Driver: 'bridge', Scope: 'local', Internal: false, Containers: {} });
+test('the fixture owns a unique bridge and retains unknown or attached networks', () => {
+  const value = network();
+  assert.equal(emptyBrowserStorageNetwork(value, name, value.Id), value.Id);
+  const args = browserStorageNetworkArguments(name);
+  assert.equal(args.at(-1), value.Name);
+  for (const bad of ['bridge', 'host', `${name} --internal`]) assert.throws(() => browserStorageNetworkName(bad));
+  for (const mutate of [n => { n.Id = 'e'.repeat(64); }, n => { n.Name = 'unrelated'; },
+    n => { n.Labels = {}; }, n => { n.Driver = 'host'; }, n => { n.Scope = 'swarm'; },
+    n => { n.Internal = true; }, n => { n.Containers = undefined; }]) {
+    const n = network(); mutate(n); assert.throws(() => ownedBrowserStorageNetwork(n, name, value.Id), /ownership/);
+  }
+  const attached = network(); attached.Containers = { unrelated: {} };
+  assert.throws(() => emptyBrowserStorageNetwork(attached, name, value.Id), /attached/);
+  assert.equal(ownedBrowserStorageNetwork(attached, name, value.Id), value.Id);
+});
+test('storage rejects a default, extra, or replaced network despite matching ports', () => {
+  for (const mutate of [c => { c.HostConfig.NetworkMode = 'bridge'; },
+    c => { c.NetworkSettings.Networks = {}; },
+    c => { c.NetworkSettings.Networks.extra = { NetworkID: 'e'.repeat(64) }; },
+    c => { c.NetworkSettings.Networks[browserStorageNetworkName(name)].NetworkID = 'e'.repeat(64); }]) {
+    const c = storage(); mutate(c);
+    assert.throws(() => browserStoragePort(c, name, id, undefined, 'd'.repeat(64)), /network|ownership/);
   }
 });
 
