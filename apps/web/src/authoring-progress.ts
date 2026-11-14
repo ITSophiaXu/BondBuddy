@@ -60,7 +60,13 @@ export function authoringStatus(run:Run,events:RunEvent[],p?:AuthoringProgress){
   return {title,summary,phase:(run.stage==='claimed'||run.stage==='input_lock'||run.stage==='materials_ready'?1:run.stage?.includes('word_delivery')?3:2) as 1|2|3};
 }
 export function authoringCreditReceipt(run:Run,p?:AuthoringProgress,legacy?:{points:string;state:string}&CommercePriceMetadata,error=false):string{
-  if(isCnyPrice(legacy))return `<section class="authoring-credit-meter" aria-label="${isAutomaticPriceVersion(legacy?.price_version)?'任务积分费用':'人民币任务费用'}"><div><span>${legacy!.state==='settled'?'本次已结算':legacy!.state==='released'?'预留已释放':'本次已预留'}</span><strong role="status">${displayPrice(legacy)}</strong></div><p>按确认范围交付结算；未交付部分释放。原范围修正与平台重试包含，不按内部轮次加收。</p></section>`;
+  if(isCnyPrice(legacy)){
+    const automatic=isAutomaticPriceVersion(legacy?.price_version);
+    const note=automatic&&legacy!.state==='released'
+      ?'只为已交付的内容扣积分，其余已退回。已确认范围内的修正和系统重试均不额外收费。'
+      :'按确认范围交付结算；未交付部分释放。原范围修正与平台重试包含，不按内部轮次加收。';
+    return `<section class="authoring-credit-meter" aria-label="${automatic?'任务积分费用':'人民币任务费用'}"><div><span>${legacy!.state==='settled'?'本次已结算':legacy!.state==='released'?'预留已释放':'本次已预留'}</span><strong role="status">${displayPrice(legacy)}</strong></div><p>${note}</p></section>`;
+  }
   if(run.billing_mode!=='fixed_credits')return '<p class="task-credit-receipt">本次任务按提交时的试用规则执行，不扣积分。</p>';
   if(!p){
     if(legacy&&legacy.state!=='held')return '<p class="task-credit-receipt">'+(legacy.state==='settled'?'已扣费 '+formatPoints(legacy.points)+' 积分':'已返还，本次不扣费')+'</p>';
