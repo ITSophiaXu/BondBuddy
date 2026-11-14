@@ -24,14 +24,14 @@ test('recovery metadata rejects traversal, duplicate files, bad hashes and resou
   reject([file('input.json'),file('scratch/a'),file('scratch/a/b')]);
   reject([{...file('input.json'),sha256:'not-a-hash'}]);reject([{...file('input.json'),key:'foreign'}]);
   for(const size of [-1,0.5,NaN,Infinity,100*1024*1024+1])reject([file('input.json'),file('output/a',size)]);
-  reject([file('input.json'),...Array.from({length:3},(_,n)=>file(`output/${n}`,100*1024*1024))]);
+  reject([file('input.json'),...Array.from({length:6},(_,n)=>file(`output/${n}`,100*1024*1024))]);
   const full=[file('input.json'),...Array.from({length:FILE_AUTHORING_RECOVERY_LIMITS.files-1},(_,n)=>file(`scratch/${n}`,0))];
   assert.equal(FILE_AUTHORING_RECOVERY_LIMITS.files,4096);
   assert.equal(validFileAuthoringRecovery({...snapshot(),files:full},scope),true);
   reject([...full,file('scratch/one-too-many',0)]);
-  assert.deepEqual(FILE_AUTHORING_RECOVERY_LIMITS,{files:4096,fileBytes:100*1024*1024,totalBytes:256*1024*1024});
-  const exactBytes=[file('input.json',1),file('output/a',100*1024*1024),file('output/b',100*1024*1024),file('output/c',56*1024*1024-1)];
+  assert.deepEqual(FILE_AUTHORING_RECOVERY_LIMITS,{files:4096,fileBytes:100*1024*1024,totalBytes:512*1024*1024});
+  const exactBytes=[file('input.json',1),...Array.from({length:5},(_,n)=>file(`output/${n}`,100*1024*1024)),file('output/last',12*1024*1024-1)];
   assert.equal(validFileAuthoringRecovery({...snapshot(),files:exactBytes},scope),true,'exact per-file and total byte caps remain accepted');
-  reject([...exactBytes.slice(0,-1),file('output/c',56*1024*1024)]);
+  reject([...exactBytes.slice(0,-1),file('output/last',12*1024*1024)]);
   assert.equal(validFileAuthoringRecovery({...snapshot(),files:[file('input.json'),file('output/empty',0)]},scope),true);
 });

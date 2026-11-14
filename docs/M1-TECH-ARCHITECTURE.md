@@ -1,4 +1,6 @@
-> 2026-11-14（#1342）：文件编制受信恢复的文件数量上限统一提升至4096，由 packages/contracts 的 FILE_AUTHORING_RECOVERY_LIMITS 唯一定义，API及worker保存/恢复共同使用；单文件100 MiB、总256 MiB和所有身份/路径/链接/hash/租约保护保持。规模与边界验证见[恢复容量验证](verification/file-authoring-recovery-capacity-20261114.md)。无迁移或依赖，需API与worker同批集成，尚未部署。
+> 2026-11-14（#1345）：在 #1342 的 4096 文件边界上，文件编制受信恢复的总量适配为有限 512 MiB，仍由 contracts 唯一定义并供 API/worker 保存与恢复共用；单文件 100 MiB 及全部完整性、身份、授权和预算保护不变。逐文件完整往返与资源验证、累计存储限制见[恢复总字节容量验证](verification/file-authoring-recovery-byte-capacity-20261114.md)。无迁移或依赖，需 API 与 worker 同批集成，尚未部署。
+>
+> 2026-11-14（#1342，文件数量调整历史记录）：文件编制受信恢复的文件数量上限统一提升至4096，由 packages/contracts 的 FILE_AUTHORING_RECOVERY_LIMITS 唯一定义，API及worker保存/恢复共同使用；当时保持单文件100 MiB、总256 MiB和所有身份/路径/链接/hash/租约保护。规模与边界验证见[恢复容量验证](verification/file-authoring-recovery-capacity-20261114.md)。总字节上限后续由 #1345 调整。
 
 > 2026-11-14（#1341）：受控文件编制的本机 authoring timeout 在子进程已关闭、signal 未取消且有效租约下先保存完整受信工作快照。MODEL_TIMEOUT 与 HTTP 413/输出超限共用身份、输入、退出、结果、unknown 用量及原账务校验和有界自动/手动恢复预算；旧无快照首次编制只能经明确确认使用原输入重新处理。用户暂停、积分暂停、取消和账务隔离不被恢复覆盖。新增 file_authoring_timeout_* 公共事件原因，重试 DTO/run 状态及质量门禁不变，无迁移或依赖，见[验证与集成边界](verification/file-authoring-timeout-recovery-20261114.md)。
 
