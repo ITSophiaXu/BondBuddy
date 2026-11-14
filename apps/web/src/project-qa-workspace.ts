@@ -1,3 +1,4 @@
+import {canReselectExpiredUpload} from './upload-reselection';
 import './upload-ux.css';
 import './upload-progress.css';
 import {uploadActivity,uploadTransfer,uploadProgressHtml,type FileUploadProgress} from './upload-progress';
@@ -681,6 +682,7 @@ export class ProjectQaWorkspace {
     const records=this.uploadCore.get(kind)?.list();if(!records){this.uploadProblem='尚未核实当前账号，不能开始或恢复问答上传。';return;}
     for(const record of records){const e=saved.value.find(e=>e.kind===kind&&e.items.some(i=>i.id===record.id));
      if(!e||!qaUploadRecordMatches(e,e.items.findIndex(i=>i.id===record.id),record)){this.uploadProblem='上传原文件与问答准备的关联无法核实。材料尚未加入任何新一轮，请保留记录并联系支持。';return;}
+     if(canReselectExpiredUpload(record))this.uploadNeedsFile.add(record.id);
     }
    }
   }catch(error){this.uploadProblem=this.error(error,'read');}
@@ -705,7 +707,7 @@ export class ProjectQaWorkspace {
    if(this.live()){this.scanUploads();this.paint();}
   },button.dataset.qaUploadAction==='prepare'?'submit':'save')));
   document.querySelectorAll<HTMLInputElement>('[data-qa-upload-reselect]').forEach(input=>input.addEventListener('change',()=>{const file=input.files?.[0],id=input.dataset.qaUploadReselect!,e=this.uploadEnvelopes.find(e=>e.items.some(i=>i.id===id));if(!file||!e)return;this.uploadFiles.set(id,file);void this.act(async()=>{
-   try{await this.resumeUpload(e.id,e.items.findIndex(i=>i.id===id),file);}catch(error){if(this.live()){this.uploadErrors.set(id,this.error(error,this.pending&&this.pending.kind!=='draft'?'submit':'save'));this.message=this.error(error,this.pending&&this.pending.kind!=='draft'?'submit':'save');}}
+   try{await this.resumeUpload(e.id,e.items.findIndex(i=>i.id===id),file,true);}catch(error){if(this.live()){this.uploadErrors.set(id,this.error(error,this.pending&&this.pending.kind!=='draft'?'submit':'save'));this.message=this.error(error,this.pending&&this.pending.kind!=='draft'?'submit':'save');}}
    if(this.live()){this.scanUploads();this.paint();}
   },'save');}));
   document.querySelectorAll<HTMLElement>('[data-qa-upload-stop]').forEach(button=>button.addEventListener('click',()=>void this.act(async()=>{await this.stopUploads(button.dataset.qaUploadStop!);if(this.live())this.paint();})));
@@ -743,7 +745,7 @@ export class ProjectQaWorkspace {
   }}
   if(this.live()){this.scanUploads();this.paint();}
  }
- private async resumeUpload(envelopeId:string,index:number,file?:File){
+ private async resumeUpload(envelopeId:string,index:number,file?:File,reselectExpiredSession=false){
   if(this.pending)throw new UserFacingError('原问答请求尚未核实，请先通过原请求恢复入口继续。');
   let e=this.originalEnvelope(envelopeId),item=e.items[index];if(!item)throw new UserFacingError('无法核实原上传文件。');
   if(item.applied||e.handedOff){await this.cleanUploads(e);return;}
@@ -753,7 +755,7 @@ export class ProjectQaWorkspace {
   let material:Dto<'MaterialResponse'>;
   this.uploadErrors.delete(item.id);
   const report=(p:FileUploadProgress)=>{if(!this.live())return;this.fileProgress.set(item.id,p);this.scanUploads();this.paint();};
-  try{material=await core.resume(item.id,{file:file??this.uploadFiles.get(item.id),signal:this.controller.signal,status:message=>report(uploadActivity(message)),progress:(loaded,total)=>report(uploadTransfer(loaded,total))});}
+  try{material=await core.resume(item.id,{file:file??this.uploadFiles.get(item.id),reselectExpiredSession,signal:this.controller.signal,status:message=>report(uploadActivity(message)),progress:(loaded,total)=>report(uploadTransfer(loaded,total))});}
   catch(error){if(error instanceof UploadRecoveryNeedsFileError)this.uploadNeedsFile.add(item.id);throw error;}
   if(!this.live())return;
   e=this.originalEnvelope(envelopeId);item=e.items[index];
