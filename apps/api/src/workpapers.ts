@@ -11,7 +11,7 @@ import type {Static} from '@sinclair/typebox';
 import {Value} from '@sinclair/typebox/value';
 import {WorkpaperZipCache} from './workpaper-zip.js';
 import {readWorkpaperZipFiles} from './workpaper-zip-files.js';
-import {WorkpaperImportSchema,WorkpaperPreviewSchema,WorkpaperStartSchema,WorkpaperActionSchema,WorkpaperDecisionSchema,WORKPAPER_LIMITS,WORKPAPER_PRICE,workpaperDownloadFilename,workpaperZipPath,
+import {WorkpaperImportSchema,WorkpaperPreviewSchema,WorkpaperStartSchema,WorkpaperActionSchema,WorkpaperDecisionSchema,WORKPAPER_LIMITS,WORKPAPER_PRICE,workpaperDownloadFilename,workpaperZipPath,workpaperProgressiveSelection,
   type WorkpaperDecision,type WorkpaperCatalogue,type WorkpaperWorkspace,type WorkpaperBatch,type WorkpaperEntry,type M4DocumentManifest,type Market,type Offering} from '@bondbuddy/contracts';
 import {project,transaction,uid,conflict,missing,Problem,date,digest,assertCanonicalBusinessRunIdle,type PrivateBlobs} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
@@ -54,18 +54,23 @@ async function event(c:PoolClient,owner:string,id:string,name:string,payload:unk
   await c.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,$4,$5)",[uid(),owner,id,name,payload]);
   await c.query('UPDATE bb_projects SET updated_at=now() WHERE owner_user_id=$1 AND id=$2',[owner,id]);
 }
-export async function pauseSharedWorkpaperBatch(pool:Pool,owner:string,batch:string){
+export async function pauseSharedWorkpaperBatch(pool:Pool,owner:string,batch:string,scope?:{itemId:string;runId:string;jobId:string;leaseToken?:string}){
   return transaction(pool,async c=>{
     const changed=(await c.query(`UPDATE bb_workpaper_batches SET state='paused',revision=revision+1,
-      error='本批共享材料或编制计划尚未完成，请核对失败原因后继续。',updated_at=now()
-      WHERE owner_user_id=$1 AND id=$2 AND state IN ('queued','running') RETURNING project_id`,[owner,batch])).rows[0];
+      error='本批共享材料或编制计划尚未完成，请核对失败原因后继续。',pause_reason='shared_blocked',updated_at=now()
+      WHERE owner_user_id=$1 AND id=$2 AND state IN ('queued','running') AND ($3::text IS NULL OR EXISTS(
+        SELECT 1 FROM bb_workpaper_items i JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
+        JOIN bb_jobs j ON j.owner_user_id=r.owner_user_id AND j.run_id=r.id
+        WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3 AND i.run_id=$4 AND j.id=$5
+        AND (($6::text IS NOT NULL AND j.state='running' AND r.state='running' AND j.lease_token::text=$6 AND j.lease_until>now())
+          OR ($6::text IS NULL AND j.state='failed' AND r.state='failed' AND j.lease_token IS NULL AND j.lease_until IS NULL)))) RETURNING project_id`,[owner,batch,scope?.itemId??null,scope?.runId??null,scope?.jobId??null,scope?.leaseToken??null])).rows[0];
     if(changed)await event(c,owner,changed.project_id,'workpaper.batch_paused',{batch_id:batch,reason:'shared_plan_incomplete'});
   });
 }
 /** Caller holds the batch lock. A shared preparation failure blocks siblings;
  * a later rendering failure with an accepted plan remains an independent file. */
 async function pauseFailedSharedItem(c:PoolClient,b:any,item:any):Promise<boolean>{
-  if(item.run_state!=='failed'||item.manifest?.input?.workpaper?.execution!=='shared_batch_v1'||item.manifest.input.template)return false;
+  if(b.progressive_plan||item.run_state!=='failed'||item.manifest?.input?.workpaper?.execution!=='shared_batch_v1'||item.manifest.input.template)return false;
   if((await c.query('SELECT 1 FROM bb_workpaper_shared_plans WHERE owner_user_id=$1 AND batch_id=$2',[b.owner_user_id,b.id])).rowCount)return false;
   const error='本批共享材料或编制计划尚未完成，请核对失败原因后继续。';
   // Consume this failure before pausing so an explicit resume can advance once.
@@ -87,7 +92,8 @@ export async function pauseFailedSharedWorkpaperBatch(pool:Pool,lease:Lease,batc
       JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
       JOIN bb_jobs j ON j.owner_user_id=r.owner_user_id AND j.run_id=r.id
       WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.run_id=$3 AND i.state='running'
-        AND j.id=$4 AND j.attempts=$5 AND j.state='failed' AND r.state='failed'`,
+        AND j.id=$4 AND j.attempts=$5 AND j.state='failed' AND r.state='failed'
+        AND j.lease_token IS NULL AND j.lease_until IS NULL`,
       [lease.owner,batch,lease.runId,lease.jobId,lease.attempts])).rows[0];
     return item?pauseFailedSharedItem(c,b,item):false;
   });
@@ -110,10 +116,11 @@ export async function readWorkpaperBatch(db:Db,owner:string,id:string,batch:stri
   const charged=(await db.query(`SELECT coalesce(sum(CASE WHEN c.state='released' THEN 0 ELSE coalesce(c.charged_points,CASE WHEN c.state='settled' THEN c.points ELSE 0 END) END),0) amount
     FROM bb_workpaper_attempts a JOIN bb_credit_reservations c ON c.owner_user_id=a.owner_user_id AND c.run_id=a.run_id WHERE a.owner_user_id=$1 AND a.batch_id=$2`,[owner,batch])).rows[0];
   const remaining=items.filter(i=>i.state==='queued').length;
-  const required=b.state==='paused'&&b.pause_reason==='credits_insufficient'&&isAutomaticPriceVersion(b.price_version)&&remaining?remaining*(await loadAutomaticTaskTariff(db,b.price_version)).workpaper.points:0;
+  const required=b.state==='paused'&&b.pause_reason==='credits_insufficient'&&isAutomaticPriceVersion(b.price_version)&&remaining?(b.progressive_plan?1:remaining)*(await loadAutomaticTaskTariff(db,b.price_version)).workpaper.points:0;
   const balance=required?await creditBalanceExact(db,owner):null;
   const files=versionSummaries??await workpaperFileVersions(db,owner,id,false);
   return {batch_id:b.id,topic_id:b.topic_id,catalogue_id:b.catalogue_id,state:b.state,revision:b.revision,source:b.source,total_points:serializeInt64(b.total_points),charged_points:serializeInt64(charged.amount),created_at:date(b.created_at),error:b.error,start_mode:b.start_mode,
+    ...(b.progressive_plan?{progressive:{...b.progressive_plan,phase:b.progressive_phase},pause_reason:b.pause_reason}:{}),
     ...(items.length?{template_mode:items.every(i=>i.has_template)?'selected' as const:items.every(i=>!i.has_template)?'automatic' as const:'mixed' as const}:{}),
     ...(balance?{billing_resume:{price_version:b.price_version,required_points:serializeInt64(required),available_points:serializeInt64(balance.available),shortage:serializeInt64(shortageInt64(required,balance.available))}}:{}),
     items:items.map(i=>{const file=files.get(batch+':'+i.item_id),current=file?.current;return {entry:i.entry,decision:i.output_decision??i.input_decision??undefined,...(i.delivered_explanation?{explanation:{filename:workpaperDownloadFilename(i.entry,{explanation:true}),sha256:i.delivered_explanation.sha256}}:{}),...(file?{file}:{}),run_id:i.run_id,state:i.run_state??(i.state==='succeeded'?'succeeded':b.state==='cancelled'?'cancelled':i.state),stage:i.stage??null,attempt:i.attempt,error:i.error,
@@ -128,27 +135,77 @@ export async function readWorkpapers(db:Db,owner:string,id:string):Promise<Billi
   return encodeBillingDto('workpaperWorkspace',{price:version?{version,points:(await loadAutomaticTaskTariff(db,version)).workpaper.points,auto_charge:true}:WORKPAPER_PRICE,assessments:await readWorkpaperAssessments(db,owner,id),catalogues:cats.map(catalogueDto),batches:await Promise.all(batches.map(b=>readWorkpaperBatch(db,owner,id,b.id,files)))});
 }
 
+const independentWorkpaperFailures=new Set(['MODEL_OUTPUT_SCHEMA_INVALID','VALIDATION_FAILED','WORD_QUALITY_REJECTED','WORD_DELIVERY_UNAVAILABLE']);
+/** Locks the canonical project and admits only a second, different immutable item.
+ * The database trigger repeats this check at insertion and every state transition. */
+async function assertProgressiveWorkpaperAdmission(c:PoolClient,b:any,item:any,m:M4DocumentManifest){
+  const scope=m.execution_scope_project_id;
+  if(!(await c.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL AND archived_at IS NULL FOR UPDATE NOWAIT',[b.owner_user_id,scope])).rowCount)
+    throw conflict('INPUT_REVISION_CONFLICT','项目或来源已不可用。');
+  const frozen=(await c.query(`SELECT 1 FROM bb_workpaper_items i JOIN bb_workpaper_batches b ON b.owner_user_id=i.owner_user_id AND b.id=i.batch_id
+    WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3 AND i.manifest=$4 AND i.run_id IS NULL AND i.state='queued' AND b.progressive_plan IS NOT NULL`,[b.owner_user_id,b.id,item.item_id,m])).rowCount;
+  if(!frozen)throw conflict('INPUT_REVISION_CONFLICT','底稿输入已变化。');
+  const active=(await c.query(`SELECT r.id,bb_progressive_workpaper_identity(r.owner_user_id,r.project_id,r.input_revision,r.id) AS membership
+    FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id
+    WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa'
+    AND NOT(r.state=ANY($3::text[])) AND NOT bb_is_workpaper_assessment(r.owner_user_id,r.project_id,r.input_revision)`,[b.owner_user_id,scope,terminal])).rows;
+  if(active.length>=2||active.some(r=>r.membership?.[0]!==b.id||r.membership?.[1]===item.item_id))
+    throw conflict('PROJECT_RUN_ACTIVE','同一来源项目已有业务任务执行中，请等待当前文件完成。');
+}
+
 /** A batch is an ordered queue of independent, immutable M4 runs. A failed file does not discard siblings. */
 export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
   return transaction(pool,async c=>{
     const b=(await c.query(`SELECT b.* FROM bb_workpaper_batches b JOIN bb_projects p ON p.id=b.project_id AND p.owner_user_id=b.owner_user_id
-      WHERE b.state IN ('queued','running') AND p.deleted_at IS NULL AND p.archived_at IS NULL ORDER BY b.updated_at,b.id FOR UPDATE OF b SKIP LOCKED LIMIT 1`)).rows[0];
+      WHERE (b.state IN ('queued','running') OR b.progressive_plan IS NOT NULL AND b.state IN ('paused','cancelled') AND EXISTS(
+        SELECT 1 FROM bb_workpaper_items i JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
+        WHERE i.batch_id=b.id AND i.state='running' AND r.state IN ('succeeded','failed','cancelled','rejected','test_completed')))
+      AND p.deleted_at IS NULL AND p.archived_at IS NULL ORDER BY b.updated_at,b.id FOR UPDATE OF b SKIP LOCKED LIMIT 1`)).rows[0];
     if(!b)return false;
     await c.query('UPDATE bb_workpaper_batches SET updated_at=now() WHERE id=$1',[b.id]);
-    const running=(await c.query(`SELECT i.*,r.state run_state FROM bb_workpaper_items i LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
+    const running=(await c.query(`SELECT i.*,r.state run_state,r.stage run_stage,coalesce((SELECT e.payload->>'error_code' FROM bb_run_events e
+      WHERE e.owner_user_id=r.owner_user_id AND e.run_id=r.id AND e.seq=r.event_cursor AND e.state=r.state),j.error_code) AS failure_code
+      FROM bb_workpaper_items i LEFT JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
+      LEFT JOIN bb_jobs j ON j.owner_user_id=i.owner_user_id AND j.run_id=i.run_id
       WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.state='running'`,[b.owner_user_id,b.id])).rows;
+    let active=0,blocked=false;
     for(const item of running){
-      if(item.run_state==='paused'){
-        await c.query("UPDATE bb_workpaper_batches SET state='paused',error='当前底稿任务已暂停，请先处理该任务，再继续文件包。',revision=revision+1 WHERE id=$1",[b.id]);return true;
-      }
-      if(!terminal.includes(item.run_state))return false;
-      // The durable journal can fail the run before the worker gets its `stopped`
-      // outcome. Check under this lock before quoting/starting any queued sibling.
-      if(await pauseFailedSharedItem(c,b,item))return true;
-      await c.query('UPDATE bb_workpaper_items SET state=$3,error=$4 WHERE batch_id=$1 AND item_id=$2',[b.id,item.item_id,item.run_state==='succeeded'?'succeeded':'failed',item.run_state==='succeeded'?null:'该文件未完成，其他底稿继续处理；可在本批结束后重试。']);
+      if(!terminal.includes(item.run_state)){active++;if(['paused','awaiting_input'].includes(item.run_state))blocked=true;continue;}
+      // A legacy shared failure can settle before its worker returns. Consume it
+      // under this lock before quoting a sibling; progressive plans are per item.
+      if(!b.progressive_plan&&await pauseFailedSharedItem(c,b,item))return true;
+      const sharedFailure=b.progressive_plan&&['failed','rejected'].includes(item.run_state)&&!independentWorkpaperFailures.has(item.failure_code);
+      await c.query('UPDATE bb_workpaper_items SET state=$3,error=$4 WHERE batch_id=$1 AND item_id=$2',[b.id,item.item_id,item.run_state==='succeeded'?'succeeded':'failed',item.run_state==='succeeded'?null:sharedFailure?'该文件因共享材料、模型服务或结算问题未完成；条件恢复后可重试受阻文件并继续。':'该文件未完成，其他底稿继续处理；可在本批结束后重试。']);
+      if(sharedFailure)blocked=true;
     }
-    const next=(await c.query("SELECT * FROM bb_workpaper_items WHERE batch_id=$1 AND state='queued' ORDER BY ordinal LIMIT 1",[b.id])).rows[0];
+    // Pausing/stopping only prevents new admission; accepted runs may still publish.
+    if(['paused','cancelled'].includes(b.state)){
+      await c.query('UPDATE bb_workpaper_batches SET revision=revision+1 WHERE id=$1',[b.id]);return true;
+    }
+    if(blocked){
+      await c.query("UPDATE bb_workpaper_batches SET state='paused',error='当前底稿任务遇到共享材料、模型服务或结算问题，请先处理该任务，再继续文件包。',pause_reason='shared_blocked',revision=revision+1 WHERE id=$1",[b.id]);return true;
+    }
+    if(active>=(b.progressive_plan?2:1))return false;
+    const eligible=b.progressive_phase==='trial'?b.progressive_plan.trial_item_ids:b.progressive_phase==='retry_failed'?b.progressive_retry_items:null;
+    const next=(await c.query("SELECT * FROM bb_workpaper_items WHERE batch_id=$1 AND state='queued' AND ($2::jsonb IS NULL OR $2::jsonb ? item_id) ORDER BY ordinal LIMIT 1",[b.id,eligible?JSON.stringify(eligible):null])).rows[0];
     if(!next){
+      if(active)return false;
+      const unfinished=Number((await c.query("SELECT count(*) n FROM bb_workpaper_items WHERE batch_id=$1 AND state='queued'",[b.id])).rows[0].n);
+      if(b.progressive_phase==='retry_failed'&&unfinished){
+        const pendingTrial=b.progressive_retry_return_phase==='awaiting_confirmation'&&(await c.query("SELECT 1 FROM bb_workpaper_items WHERE batch_id=$1 AND state='queued' AND $2::jsonb ? item_id LIMIT 1",[b.id,JSON.stringify(b.progressive_plan.trial_item_ids)])).rowCount;
+        // A shared failure may interrupt the trial or remainder before every file
+        // was admitted. Finish that original phase after the explicit retry.
+        if(pendingTrial||b.progressive_retry_return_phase==='remaining'){
+          await c.query("UPDATE bb_workpaper_batches SET state='queued',progressive_phase=$2,progressive_retry_items=NULL,progressive_retry_return_phase=NULL,revision=revision+1,error=NULL,pause_reason=NULL WHERE id=$1",[b.id,pendingTrial?'trial':'remaining']);return true;
+        }
+      }
+      if(b.progressive_plan&&unfinished&&(b.progressive_phase==='trial'||b.progressive_phase==='retry_failed'&&b.progressive_retry_return_phase==='awaiting_confirmation')){
+        await c.query("UPDATE bb_workpaper_batches SET state='paused',progressive_phase='awaiting_confirmation',progressive_retry_items=NULL,progressive_retry_return_phase=NULL,revision=revision+1,error=NULL,pause_reason=NULL WHERE id=$1",[b.id]);
+        await event(c,b.owner_user_id,b.project_id,'workpaper.trial_ready',{batch_id:b.id});return true;
+      }
+      if(b.progressive_phase==='retry_failed'&&unfinished){
+        await c.query("UPDATE bb_workpaper_batches SET state='cancelled',revision=revision+1,error=NULL,progressive_retry_items=NULL,progressive_retry_return_phase=NULL WHERE id=$1",[b.id]);return true;
+      }
       await c.query("UPDATE bb_workpaper_batches SET state=CASE WHEN EXISTS(SELECT 1 FROM bb_workpaper_items WHERE batch_id=$1 AND state='failed') THEN 'partial' ELSE 'complete' END,revision=revision+1,error=NULL WHERE id=$1",[b.id]);return true;
     }
     await c.query('SAVEPOINT workpaper_start');
@@ -157,7 +214,8 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
       const ids=[...new Set([b.project_id,m.execution_scope_project_id,m.input.source_material!.source_project_id])].sort();
       const locked=(await c.query('SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL AND archived_at IS NULL ORDER BY id FOR UPDATE NOWAIT',[b.owner_user_id,ids])).rows;
       if(locked.length!==ids.length)throw conflict('INPUT_REVISION_CONFLICT','项目或来源已不可用。');
-      await assertCanonicalBusinessRunIdle(c,b.owner_user_id,locked.find(p=>p.id===b.project_id));
+      if(b.progressive_plan)await assertProgressiveWorkpaperAdmission(c,b,next,m);
+      else await assertCanonicalBusinessRunIdle(c,b.owner_user_id,locked.find(p=>p.id===b.project_id));
       for(const pin of [m.input.source_material!,...m.input.materials])await readM4MaterialPin(c,b.owner_user_id,pin);
       const topic=(await c.query('SELECT * FROM bb_m4_topics WHERE owner_user_id=$1 AND id=$2',[b.owner_user_id,b.topic_id])).rows[0];if(!topic)throw missing();
       const auto=isAutomaticPriceVersion(b.price_version);
@@ -185,14 +243,20 @@ export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,u
       if(p.archived_at)throw conflict('INPUT_REVISION_CONFLICT','请先恢复项目。');
       const cat=(await c.query('SELECT * FROM bb_workpaper_catalogues WHERE owner_user_id=$1 AND project_id=$2 AND id=$3',[user,id,b.catalogue_id])).rows[0];
       if(!cat)throw missing();if(cat.sha256.trim()!==b.catalogue_sha256)throw conflict('INPUT_REVISION_CONFLICT','目录已变化，请重新核对。');
-      const selected=(cat.entries as WorkpaperEntry[]).filter(e=>b.item_ids.includes(e.id)&&e.kind==='file');
+      let selected=(cat.entries as WorkpaperEntry[]).filter(e=>b.item_ids.includes(e.id)&&e.kind==='file');
       if(selected.length!==b.item_ids.length)throw new Problem(422,'VALIDATION_FAILED','文件选择中包含目录或无效行。');
+      let progressive:ReturnType<typeof workpaperProgressiveSelection>|undefined;
+      if(b.progressive){
+        try{progressive=workpaperProgressiveSelection(cat.entries,b.item_ids,b.progressive.chapter_order);}
+        catch{throw new Problem(422,'VALIDATION_FAILED','章节选择或顺序与当前目录不一致，请刷新后重新选择。');}
+        const byId=new Map(selected.map(e=>[e.id,e]));selected=progressive.ordered_item_ids.map(item=>byId.get(item)!);
+      }
       const direct=b.start_mode==='direct';let decisions:WorkpaperDecision[]=[];
       if(!direct){
       const assessment=(await c.query("SELECT a.* FROM bb_workpaper_assessments a JOIN bb_runs r ON r.owner_user_id=a.owner_user_id AND r.id=a.run_id AND r.state='succeeded' WHERE a.owner_user_id=$1 AND a.project_id=$2 AND a.run_id=$3",[user,id,b.assessment_id])).rows[0];
       if(!assessment?.result||assessment.result_hash.trim()!==b.assessment_hash||inputManifestHash(assessment.result)!==b.assessment_hash)throw conflict('INPUT_REVISION_CONFLICT','请先完成判断并确认全部不生成项。');
       const {request_id:_request,...assessed}=assessment.manifest.request;
-      const {request_id:_start,start_mode:_mode,assessment_id:_id,assessment_hash:_hash,expected_points:_points,price_version:_price,...requested}=b;
+      const {request_id:_start,start_mode:_mode,assessment_id:_id,assessment_hash:_hash,expected_points:_points,price_version:_price,progressive:_progressive,...requested}=b;
       if(inputManifestHash({...assessed,item_ids:[...assessed.item_ids].sort()})!==inputManifestHash({...requested,item_ids:[...requested.item_ids].sort()}))throw conflict('INPUT_REVISION_CONFLICT','目录、选择、要求或募集书已变化，请重新判断。');
       decisions=assessment.result.decisions as WorkpaperDecision[];
       if(decisions.length!==selected.length||new Set(decisions.map(d=>d.item_id)).size!==selected.length||selected.some(e=>!decisions.some(d=>d.item_id===e.id)))throw conflict('INPUT_REVISION_CONFLICT','判断清单不完整，请重新判断。');
@@ -200,7 +264,7 @@ export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,u
       const generatable=direct?selected.length:decisions.filter(d=>d.status==='generate').length;
       const auto=automaticBillingEnabled(c),version=auto?await resolveAutomaticTaskPriceVersion(c,user):null,unit=version?(await loadAutomaticTaskTariff(c,version)).workpaper.points:WORKPAPER_PRICE.points;
       if(b.price_version!==(version??WORKPAPER_PRICE.version)||b.expected_points!==generatable*unit)throw conflict('QUOTE_CHANGED','文件数量或任务版本已变化，请刷新当前目录。');
-      if(auto)await requireFileUpdateCredits(c,user,b.expected_points,true);
+      if(auto)await requireFileUpdateCredits(c,user,progressive&&generatable?unit:b.expected_points,true);
       if((await c.query("SELECT 1 FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 AND state IN ('queued','running','paused')",[user,id])).rowCount)throw conflict('PROJECT_RUN_ACTIVE','本项目已有底稿文件包待完成，请先继续或结束原文件包。');
       const source=await projectFileSource(c,user,id);
       if(source&&(source.selection_revision>b.source_selection_revision||source.selection_revision===b.source_selection_revision&&source.version_id!==b.source_version_id))
@@ -214,14 +278,14 @@ export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,u
       const batchId=uid(),topicId=uid(),child=uid(),scope=p.execution_scope_project_id||id;
       await c.query("INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,execution_scope_project_id) VALUES($1,$2,$3,'generation',$4,$5,$6,$7)",[child,user,'底稿 · '+p.name,p.issuer_name,p.market,p.offering,scope]);
       await c.query("INSERT INTO bb_m4_topics(id,owner_user_id,project_id,source_project_id,name,creation_request_id,request_hash,surface) VALUES($1,$2,$3,$4,$5,$6,$7,'materials')",[topicId,user,child,id,'底稿 · '+p.name,'workpaper:'+batchId,hash]);
-      await c.query("INSERT INTO bb_workpaper_batches(id,owner_user_id,project_id,topic_id,catalogue_id,request_id,request_hash,source,state,total_points,price_version,assessment_id,assessment_hash,start_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',$9,$10,$11,$12,$13)",[batchId,user,id,topicId,cat.id,b.request_id,hash,source,b.expected_points,b.price_version,b.assessment_id??null,b.assessment_hash??null,direct?'direct':'assessed']);
+      await c.query("INSERT INTO bb_workpaper_batches(id,owner_user_id,project_id,topic_id,catalogue_id,request_id,request_hash,source,state,total_points,price_version,assessment_id,assessment_hash,start_mode,progressive_plan,progressive_phase) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',$9,$10,$11,$12,$13,$14,$15)",[batchId,user,id,topicId,cat.id,b.request_id,hash,source,b.expected_points,b.price_version,b.assessment_id??null,b.assessment_hash??null,direct?'direct':'assessed',progressive?{chapters:progressive.chapters,trial_item_ids:progressive.trial_item_ids,max_parallel:2}:null,progressive?'trial':null]);
       // Shared extraction currently reads only the prospectus. System-template
       // batches with supplements use the existing material-aware per-file path.
       for(const [ordinal,entry] of selected.entries()){
         const decision=decisions.find(d=>d.item_id===entry.id);
         const manifest:M4DocumentManifest={version:'m4-document-input-v1',kind:'document',topic_id:topicId,execution_scope_project_id:scope,project_name:p.name,draft_version:1,
           market:p.market,offering:p.offering,billing_task:'m4_workpaper',template_material:templateInputs?.templates[entry.id]?.material??null,knowledge:loadWorkpaperKnowledge(p.market as Market,p.offering as Offering,entry,!!templateInputs),
-          input:{document_type:'workpaper',workpaper:{batch_id:batchId,catalogue_id:cat.id,entry,...(direct?{mode:'direct' as const,...(templateInputs||additionalMaterials.length?{}:{execution:'shared_batch_v1' as const})}:{decision})},source_material:sourcePin,materials:[cat.material,...(templateInputs?.materials??[]),...additionalMaterials],template:templateInputs?.templates[entry.id]?.template??null,edit_base:null,scope:'whole',
+          input:{document_type:'workpaper',workpaper:{batch_id:batchId,catalogue_id:cat.id,entry,...(direct?{mode:'direct' as const,...(templateInputs||additionalMaterials.length?{}:{execution:progressive?'progressive_item_v1' as const:'shared_batch_v1' as const})}:{decision})},source_material:sourcePin,materials:[cat.material,...(templateInputs?.materials??[]),...additionalMaterials],template:templateInputs?.templates[entry.id]?.template??null,edit_base:null,scope:'whole',
             fields:{market:p.market,offering:p.offering,issuer_name:p.issuer_name??'',source_filename:source.filename,source_version:String(source.sequence)},requirements:[],supplemental_requirements:b.requirements}};
         let explanation=null;
         if(decision&&decision.status!=='generate'){
@@ -293,6 +357,13 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
       await project(c,user,id,true);const row=await ownedBatch(c,user,id,batch,true);
       const billing='billing_resume' in b?b:null;
       const hash=billing?inputManifestHash({project_id:id,batch_id:batch,...billing}):null;
+      const continuation=b.action==='continue_remaining'?b:null;
+      const continuationHash=continuation?inputManifestHash({project_id:id,batch_id:batch,...continuation}):null;
+      if(continuation){
+        await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[user+':workpaper-continuation:'+continuation.request_id]);
+        const previous=(await c.query('SELECT batch_id,request_hash FROM bb_workpaper_continuations WHERE owner_user_id=$1 AND request_id=$2',[user,continuation.request_id])).rows[0];
+        if(previous){if(previous.batch_id!==batch||previous.request_hash.trim()!==continuationHash)throw conflict('IDEMPOTENCY_CONFLICT','此确认请求已用于其他底稿范围。');return;}
+      }
       if(billing){
         await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[user+':workpaper-billing-resume:'+billing.request_id]);
         const previous=(await c.query('SELECT batch_id,request_hash FROM bb_workpaper_billing_resumes WHERE owner_user_id=$1 AND request_id=$2',[user,billing.request_id])).rows[0];
@@ -302,34 +373,56 @@ export function registerWorkpapers(app:FastifyInstance,db:()=>Pool,owner:(r:Fast
       if(billing){
         if(row.state!=='paused'||row.pause_reason!=='credits_insufficient'||!isAutomaticPriceVersion(row.price_version)||billing.price_version!==row.price_version)throw conflict('INPUT_REVISION_CONFLICT','本批次已不处于原余额不足状态，请查看当前进度。');
         const remaining=Number((await c.query("SELECT count(*) n FROM bb_workpaper_items WHERE owner_user_id=$1 AND batch_id=$2 AND state='queued'",[user,batch])).rows[0].n);
-        const points=remaining*(await loadAutomaticTaskTariff(c,row.price_version)).workpaper.points;
+        const points=(row.progressive_plan?Math.min(1,remaining):remaining)*(await loadAutomaticTaskTariff(c,row.price_version)).workpaper.points;
         if(points<=0||billing.expected_points!==points)throw conflict('QUOTE_CHANGED','本批剩余底稿范围已变化，请刷新进度。');
         await withAutomaticBilling(c,true,()=>requireFileUpdateCredits(c,user,points,true),row.price_version);
       }
-      if(['resume','retry_failed'].includes(b.action)&&(await c.query("SELECT 1 FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 AND id<>$3 AND state IN ('queued','running','paused')",[user,id,batch])).rowCount)
+      if(['resume','retry_failed','continue_remaining'].includes(b.action)&&(await c.query("SELECT 1 FROM bb_workpaper_batches WHERE owner_user_id=$1 AND project_id=$2 AND id<>$3 AND state IN ('queued','running','paused')",[user,id,batch])).rowCount)
         throw conflict('PROJECT_RUN_ACTIVE','本项目已有其他底稿文件包待完成，请先处理该文件包。');
       let state:string;
       if(b.action==='pause'&&['queued','running'].includes(row.state))state='paused';
       else if(b.action==='cancel'&&['queued','running','paused'].includes(row.state))state='cancelled';
-      else if(b.action==='resume'&&row.state==='paused'){
-        // The fail/throw path can pause before the pipeline settles its current
-        // run. Acknowledge only failures already durable at explicit resume time.
-        await c.query(`UPDATE bb_workpaper_items i SET state='failed' FROM bb_runs r
-          WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.state='running' AND r.owner_user_id=i.owner_user_id
-            AND r.id=i.run_id AND r.state='failed' AND i.manifest->'input'->'workpaper'->>'execution'='shared_batch_v1'
-            AND (i.manifest->'input'->'template' IS NULL OR i.manifest->'input'->'template'='null'::jsonb)
-            AND NOT EXISTS(SELECT 1 FROM bb_workpaper_shared_plans p WHERE p.owner_user_id=i.owner_user_id AND p.batch_id=i.batch_id)`,[user,batch]);
+      else if(b.action==='resume'&&row.state==='paused'&&row.progressive_phase!=='awaiting_confirmation'){
+        if(row.progressive_plan){
+          if((await c.query("SELECT 1 FROM bb_workpaper_items i JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id WHERE i.batch_id=$1 AND r.state IN ('paused','awaiting_input') LIMIT 1",[batch])).rowCount)
+            throw conflict('PROJECT_RUN_ACTIVE','仍有文件等待处理条件恢复或补充信息，请先点击该文件的“查看任务”完成处理，再继续本批。');
+          if(row.pause_reason==='shared_blocked'&&(await c.query("SELECT 1 FROM bb_workpaper_items i JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id WHERE i.batch_id=$1 AND r.state IN ('failed','cancelled','rejected','test_completed') LIMIT 1",[batch])).rowCount)
+            throw conflict('INPUT_REVISION_CONFLICT','受阻文件已失败，请在当前文件收尾后点击“重试受阻文件并继续”。已完成文件会保留。');
+        }else{
+          // Legacy resume acknowledges only failures already durable now; it
+          // does not retry that item or acknowledge an active run's future failure.
+          await c.query(`UPDATE bb_workpaper_items i SET state='failed' FROM bb_runs r
+            WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.state='running' AND r.owner_user_id=i.owner_user_id
+              AND r.id=i.run_id AND r.state='failed' AND i.manifest->'input'->'workpaper'->>'execution'='shared_batch_v1'
+              AND (i.manifest->'input'->'template' IS NULL OR i.manifest->'input'->'template'='null'::jsonb)
+              AND NOT EXISTS(SELECT 1 FROM bb_workpaper_shared_plans p WHERE p.owner_user_id=i.owner_user_id AND p.batch_id=i.batch_id)`,[user,batch]);
+        }
         state='queued';
       }
-      else if(b.action==='retry_failed'&&['partial','cancelled'].includes(row.state)){
+      else if(continuation&&row.state==='paused'&&row.progressive_phase==='awaiting_confirmation'){
+        state='queued';
+        await c.query("UPDATE bb_workpaper_batches SET progressive_phase='remaining',progressive_retry_items=NULL,progressive_retry_return_phase=NULL WHERE id=$1",[batch]);
+      }
+      else if(b.action==='retry_failed'&&(['partial','cancelled'].includes(row.state)||row.progressive_plan&&row.state==='paused'&&(row.progressive_phase==='awaiting_confirmation'||row.pause_reason==='shared_blocked'))){
         const active=(await c.query(`SELECT 1 FROM bb_workpaper_items i JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
-          WHERE i.batch_id=$1 AND NOT(r.state=ANY($2::text[]))`,[batch,terminal])).rowCount;
-        if(active)throw conflict('PROJECT_RUN_ACTIVE','请先等待当前文件完成。');
-        await c.query(`UPDATE bb_workpaper_items i SET run_id=NULL,state='queued',attempt=attempt+1,error=NULL FROM bb_runs r
-          WHERE i.batch_id=$1 AND r.id=i.run_id AND r.owner_user_id=i.owner_user_id AND r.state=ANY($2::text[])`,[batch,['failed','cancelled','rejected','test_completed']]);state='queued';
+          LEFT JOIN bb_jobs j ON j.owner_user_id=i.owner_user_id AND j.run_id=i.run_id
+          WHERE i.batch_id=$1 AND (NOT(r.state=ANY($2::text[])) OR $3 AND (NOT(j.state=ANY($2::text[])) OR j.lease_token IS NOT NULL OR j.lease_until IS NOT NULL))`,[batch,terminal,!!row.progressive_plan])).rowCount;
+        if(active)throw conflict('PROJECT_RUN_ACTIVE','请先等待当前文件完成；等待处理的文件请点击“查看任务”完成处理。');
+        if(row.progressive_plan&&(await c.query(`SELECT 1 FROM bb_workpaper_attempts a JOIN bb_jobs j ON j.owner_user_id=a.owner_user_id AND j.run_id=a.run_id
+          JOIN bb_model_call_attempts m ON m.owner_user_id=j.owner_user_id AND m.job_id=j.id
+          WHERE a.batch_id=$1 AND m.status='pending_reconcile' LIMIT 1`,[batch])).rowCount)
+          throw conflict('PROJECT_RUN_ACTIVE','本批模型调用仍在核对用量，请等待对账完成后重试，避免重复调用。');
+        const failed=(await c.query(`SELECT i.item_id FROM bb_workpaper_items i LEFT JOIN bb_runs r ON r.id=i.run_id AND r.owner_user_id=i.owner_user_id
+          WHERE i.batch_id=$1 AND (i.state='failed' OR r.state=ANY($2::text[]))`,[batch,['failed','cancelled','rejected','test_completed']])).rows.map(r=>r.item_id);
+        if(!failed.length&&row.progressive_plan)throw conflict('INPUT_REVISION_CONFLICT','本批没有需要重试的失败文件。');
+        const pendingRetry=row.progressive_plan&&row.state!=='cancelled'&&row.progressive_phase==='retry_failed'?(await c.query("SELECT item_id FROM bb_workpaper_items WHERE batch_id=$1 AND state='queued' AND item_id=ANY($2::text[])",[batch,row.progressive_retry_items??[]])).rows.map(r=>r.item_id):[];
+        await c.query("UPDATE bb_workpaper_items SET run_id=NULL,state='queued',attempt=attempt+1,error=NULL WHERE batch_id=$1 AND item_id=ANY($2::text[])",[batch,failed]);state='queued';
+        const returnPhase=row.state==='cancelled'?'cancelled':row.progressive_phase==='retry_failed'?row.progressive_retry_return_phase??'remaining':['trial','awaiting_confirmation'].includes(row.progressive_phase)?'awaiting_confirmation':'remaining';
+        if(row.progressive_plan)await c.query("UPDATE bb_workpaper_batches SET progressive_phase='retry_failed',progressive_retry_items=$2,progressive_retry_return_phase=$3 WHERE id=$1",[batch,JSON.stringify([...new Set([...failed,...pendingRetry])]),returnPhase]);
       }else throw conflict('INPUT_REVISION_CONFLICT','当前状态不支持该操作。');
       await c.query('UPDATE bb_workpaper_batches SET state=$2,revision=revision+1,error=NULL,pause_reason=NULL,updated_at=now() WHERE id=$1',[batch,state]);
       if(billing)await c.query('INSERT INTO bb_workpaper_billing_resumes(owner_user_id,request_id,batch_id,request_hash) VALUES($1,$2,$3,$4)',[user,billing.request_id,batch,hash]);
+      if(continuation)await c.query('INSERT INTO bb_workpaper_continuations(owner_user_id,request_id,batch_id,request_hash) VALUES($1,$2,$3,$4)',[user,continuation.request_id,batch,continuationHash]);
       await event(c,user,id,'workpaper.batch_'+b.action,{batch_id:batch});
     });return readWorkpaperBatch(db(),user,id,batch);
   });

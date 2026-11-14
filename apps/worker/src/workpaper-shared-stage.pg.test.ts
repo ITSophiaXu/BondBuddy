@@ -32,7 +32,7 @@ test('one batch plan across deliveries, crash replay, failure/retry, pause, immu
   const directory=await mkdtemp(join(tmpdir(),'bb-shared-test-'));
   const storage=new Map<string,Buffer>();const blobs:PrivateBlobs={put:async(k,b)=>{storage.set(k,Buffer.from(b));},get:async k=>Buffer.from(storage.get(k)!),getIfExists:async k=>storage.get(k)??null,
     getIfExistsBounded:async(k,max)=>{const b=storage.get(k);if(b&&b.length>max)throw Error('too large');return b??null;},exists:async k=>storage.has(k),delete:async k=>{storage.delete(k);}};
-  const origin='http://bondbuddy.test',app=createServer({pool,blobs,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
+  const origin='http://bondbuddy.test',app=createServer({pool,blobs,historicalBillingFixture:true,allowedOrigin:origin,enableRunRuntime:true,principal:async()=>({userId:actor,csrfVerified:true})});
   const send=(method:string,url:string,payload?:any)=>app.inject({method:method as any,url,payload,headers:{origin,...(Buffer.isBuffer(payload)?{'content-type':'application/octet-stream'}:{})}});
   const ok=async(method:string,url:string,payload?:any)=>{const r=await send(method,url,payload);assert.ok(r.statusCode<300,`${r.statusCode}: ${r.body}`);return r.json();};
   const upload=async(id:string,name:string,bytes:Buffer,media_type:string,role='other')=>{

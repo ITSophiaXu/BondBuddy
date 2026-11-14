@@ -55,8 +55,40 @@ async function setup(){
 test('journal-settled invalid shared output pauses once, including scheduler before worker return',{skip:!database||process.platform!=='linux',timeout:60000},async t=>{
   const s=await setup(),root=await mkdtemp(join(tmpdir(),'bb-shared-failure-'));
   try{
-    for(const schedulerFirst of [false,true])await t.test(schedulerFirst?'scheduler wins after journal commit':'worker observes journal-cleared lease',async()=>{
-      const f=await s.fixture({siblings:true});let observed=0,stopped=0;
+    const scenarios=['worker observes journal-cleared lease','scheduler wins after journal commit','resume after durable failure read','durable failure query unavailable','batch reconciliation query unavailable'] as const;
+    for(const scenario of scenarios)await t.test(scenario,async()=>{
+      const schedulerFirst=scenario==='scheduler wins after journal commit',resumedBeforeReconcile=scenario==='resume after durable failure read';
+      const queryFailure=scenario==='durable failure query unavailable',reconciliationFailure=scenario==='batch reconciliation query unavailable';
+      const f=await s.fixture({siblings:true});let observed=0,stopped=0,injected=0,reconciliations=0;
+      const durableReads:unknown[]=[];let racingSchedulers:boolean[]|undefined,racePaused:{state:string;revision:number}|undefined,raceResumed:{state:string;revision:number}|undefined;
+      const pool=new Proxy(s.pool,{get(target,key){
+        if(key==='query')return async(...args:any[])=>{
+          const result=await (target.query as any)(...args);
+          if(typeof args[0]==='string'&&args[0].startsWith('SELECT o.error_code FROM bb_workpaper_items')){
+            durableReads.push(result.rows);
+            // Hold the real durable query result before its caller can pause.
+            // The scheduler and public resume run through the unwrapped pool.
+            if(resumedBeforeReconcile){
+              racingSchedulers=(await Promise.all([advanceWorkpaperBatch(s.pool),advanceWorkpaperBatch(s.pool)])).sort();
+              racePaused=await f.read();await f.action('resume');raceResumed=await f.read();
+            }
+            if(queryFailure){injected++;throw Error('SYNTHETIC_DURABLE_FAILURE_QUERY_UNAVAILABLE');}
+          }
+          return result;
+        };
+        if(key==='connect')return async()=>{
+          const client=await target.connect();return new Proxy(client,{get(c,k){
+            if(k==='query')return async(...args:any[])=>{
+              if(typeof args[0]==='string'&&args[0].startsWith('SELECT * FROM bb_workpaper_batches WHERE owner_user_id=')){
+                reconciliations++;if(reconciliationFailure){injected++;throw Error('SYNTHETIC_RECONCILIATION_UNAVAILABLE');}
+              }
+              return (c.query as any)(...args);
+            };
+            const value=Reflect.get(c,k);return typeof value==='function'?value.bind(c):value;
+          }});
+        };
+        const value=Reflect.get(target,key);return typeof value==='function'?value.bind(target):value;
+      }});
       const config={...loadCodexAdapterConfig({BB_CODEX_PATH:process.env.BB_CODEX_PATH}),
         command:[process.execPath,fileURLToPath(new URL('../test-fixtures/codex/fake-file-authoring.mjs',import.meta.url))],
         work_root:join(root,randomUUID()),authoring_timeout_ms:5000};
@@ -72,17 +104,32 @@ test('journal-settled invalid shared output pauses once, including scheduler bef
         }})});
         return {...stage,run:async ctx=>{const outcome=await stage.run(ctx);assert.equal(outcome.kind,'stopped');stopped++;return outcome;}};
       };
-      assert.deepEqual(await sharedWorkpaperDocument(f.ctx,{manifest:f.manifests[0],materials:[],artifacts:[]},model,config),{kind:'stopped'});
+      assert.deepEqual(await sharedWorkpaperDocument({...f.ctx,pool},{manifest:f.manifests[0],materials:[],artifacts:[]},model,config),{kind:'stopped'});
       assert.equal(observed,1);assert.equal(stopped,1);
-      const b=await f.read();assert.equal(b.state,'paused');assert.match(b.error,/共享材料或编制计划尚未完成/);assert.equal(b.revision,2);
+      assert.deepEqual(durableReads,[[{error_code:'MODEL_OUTPUT_SCHEMA_INVALID'}]],'worker reads a real settled provider failure');
+      assert.equal(injected,queryFailure||reconciliationFailure?1:0);
+      assert.equal(reconciliations,queryFailure?0:1);
+      if(queryFailure||reconciliationFailure){
+        const beforeFallback=await f.read();assert.equal(beforeFallback.state,'running');assert.equal(beforeFallback.revision,1);
+        assert.equal((await s.pool.query('SELECT state FROM bb_workpaper_items WHERE batch_id=$1 AND item_id=$2',[f.batch,'current'])).rows[0].state,'running');
+        assert.equal((await s.pool.query("SELECT count(*)::int n FROM bb_outbox WHERE event_type='workpaper.batch_paused' AND payload->>'batch_id'=$1",[f.batch])).rows[0].n,0,'failed eager reconciliation must not fall back to an unscoped pause');
+        assert.equal(await advanceWorkpaperBatch(s.pool),true,'scheduler consumes the durable failure after worker returns stopped');
+      }
+      const b=await f.read();
+      if(resumedBeforeReconcile){
+        assert.deepEqual(racingSchedulers,[false,true]);assert.equal(racePaused?.state,'paused');assert.equal(racePaused?.revision,2);
+        assert.equal(raceResumed?.state,'queued');assert.equal(raceResumed?.revision,3);
+        assert.equal(b.state,'queued');assert.equal(b.revision,3);assert.equal(b.error,null,'late worker keeps the acknowledged batch resumed');
+      }else{assert.equal(b.state,'paused');assert.match(b.error,/共享材料或编制计划尚未完成/);assert.equal(b.revision,2);}
       assert.deepEqual(b.items.map((i:any)=>[i.state,i.run_id]),[['failed',f.ctx.run.id],['queued',null]]);
       assert.equal((await s.pool.query('SELECT count(*)::int n FROM bb_workpaper_attempts WHERE batch_id=$1',[f.batch])).rows[0].n,1);
       const attempt=(await s.pool.query('SELECT status,usage_status FROM bb_model_call_attempts WHERE job_id=$1',[f.ctx.lease.jobId])).rows;
       assert.deepEqual(attempt,[{status:'failed',usage_status:'measured'}]);
-      assert.equal(await advanceWorkpaperBatch(s.pool),false);
+      if(!resumedBeforeReconcile)assert.equal(await advanceWorkpaperBatch(s.pool),false);
       assert.equal(await pauseFailedSharedWorkpaperBatch(s.pool,f.ctx.lease,f.batch),false);
       assert.equal((await s.pool.query("SELECT count(*)::int n FROM bb_outbox WHERE event_type='workpaper.batch_paused' AND payload->>'batch_id'=$1",[f.batch])).rows[0].n,1,'racing scheduler and worker emit only one pause event');
-      await f.action('resume');assert.equal(await pauseFailedSharedWorkpaperBatch(s.pool,f.ctx.lease,f.batch),false,'late worker cannot pause acknowledged failure');
+      if(!resumedBeforeReconcile)await f.action('resume');
+      assert.equal(await pauseFailedSharedWorkpaperBatch(s.pool,f.ctx.lease,f.batch),false,'late worker cannot pause acknowledged failure');
       assert.equal((await s.pool.query('SELECT state FROM bb_workpaper_items WHERE batch_id=$1 AND item_id=$2',[f.batch,'current'])).rows[0].state,'failed');
       await f.action('cancel');
     });
@@ -92,7 +139,7 @@ test('journal-settled invalid shared output pauses once, including scheduler bef
 test('shared pause guards retain cancellation, lease identity, cache and explicit-resume behavior',{skip:!database},async t=>{
   const s=await setup();
   try{
-    await t.test('stopped reconciliation error cannot fall through to an unscoped pause',async()=>{
+    await t.test('stopped without durable failure does not reconcile or pause',async()=>{
       const f=await s.fixture();let injected=0;
       const pool=new Proxy(s.pool,{get(target,key){
         if(key==='connect')return async()=>{
@@ -105,7 +152,9 @@ test('shared pause guards retain cancellation, lease identity, cache and explici
       }});
       const stopped:typeof codexModelStage=options=>({name:options.name,run:async()=>({kind:'stopped'})});
       assert.deepEqual(await sharedWorkpaperDocument({...f.ctx,pool},{manifest:f.manifests[0],materials:[],artifacts:[]},stopped,loadCodexAdapterConfig({})),{kind:'stopped'});
-      assert.equal(injected,1);assert.equal((await f.read()).state,'running');await f.action('cancel');
+      assert.equal(injected,0,'a mock stopped outcome without durable failure must not call the pause helper');
+      assert.equal((await s.pool.query('SELECT count(*)::int n FROM bb_model_call_attempts WHERE job_id=$1',[f.ctx.lease.jobId])).rows[0].n,0);
+      assert.equal((await f.read()).state,'running');await f.action('cancel');
     });
     await t.test('stopped does not imply failure; no cross-owner, job or claim effects',async()=>{
       const f=await s.fixture();
