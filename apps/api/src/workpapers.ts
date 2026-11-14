@@ -1,3 +1,4 @@
+import {workpaperChapters,workpaperAdmissionOrder,WORKPAPER_MAX_PARALLEL} from '@bondbuddy/contracts';
 import {int64,serializeInt64,shortageInt64,encodeBillingDto,type BillingWireDto} from '@bondbuddy/contracts';
 import {registerGenerationProgress} from './generation-progress.js';
 import {workpaperPreview} from './workpaper-preview.js';
@@ -111,13 +112,13 @@ async function assertProgressiveWorkpaperAdmission(c:PoolClient,b:any,item:any,m
   if(!(await c.query('SELECT 1 FROM bb_projects WHERE owner_user_id=$1 AND id=$2 AND deleted_at IS NULL AND archived_at IS NULL FOR UPDATE NOWAIT',[b.owner_user_id,scope])).rowCount)
     throw conflict('INPUT_REVISION_CONFLICT','项目或来源已不可用。');
   const frozen=(await c.query(`SELECT 1 FROM bb_workpaper_items i JOIN bb_workpaper_batches b ON b.owner_user_id=i.owner_user_id AND b.id=i.batch_id
-    WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3 AND i.manifest=$4 AND i.run_id IS NULL AND i.state='queued' AND b.progressive_plan IS NOT NULL`,[b.owner_user_id,b.id,item.item_id,m])).rowCount;
+    WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3 AND i.manifest=$4 AND i.run_id IS NULL AND i.state='queued'`,[b.owner_user_id,b.id,item.item_id,m])).rowCount;
   if(!frozen)throw conflict('INPUT_REVISION_CONFLICT','底稿输入已变化。');
-  const active=(await c.query(`SELECT r.id,bb_progressive_workpaper_identity(r.owner_user_id,r.project_id,r.input_revision,r.id) AS membership
+  const active=(await c.query(`SELECT r.id,bb_batch_child_identity(r.owner_user_id,r.project_id,r.input_revision,r.id,r.execution_request_id) AS membership
     FROM bb_runs r JOIN bb_projects p ON p.owner_user_id=r.owner_user_id AND p.id=r.project_id
     WHERE r.owner_user_id=$1 AND COALESCE(p.execution_scope_project_id,p.id)=$2 AND r.task_kind<>'qa'
     AND NOT(r.state=ANY($3::text[])) AND NOT bb_is_workpaper_assessment(r.owner_user_id,r.project_id,r.input_revision)`,[b.owner_user_id,scope,terminal])).rows;
-  if(active.length>=2||active.some(r=>r.membership?.[0]!==b.id||r.membership?.[1]===item.item_id))
+  if(active.length>=(b.progressive_plan?.max_parallel??b.max_parallel??1)||active.some(r=>r.membership?.[0]!=='workpaper:'+b.id||r.membership?.[1]===item.item_id))
     throw conflict('PROJECT_RUN_ACTIVE','同一来源项目已有业务任务执行中，请等待当前文件完成。');
 }
 
@@ -139,7 +140,7 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
     let active=0,blocked=false;
     for(const item of running){
       if(!terminal.includes(item.run_state)){active++;if(['paused','awaiting_input'].includes(item.run_state))blocked=true;continue;}
-      const sharedFailure=b.progressive_plan&&['failed','rejected'].includes(item.run_state)&&!independentWorkpaperFailures.has(item.failure_code);
+      const sharedFailure=(b.progressive_plan||b.max_parallel)&&['failed','rejected'].includes(item.run_state)&&!independentWorkpaperFailures.has(item.failure_code);
       await c.query('UPDATE bb_workpaper_items SET state=$3,error=$4 WHERE batch_id=$1 AND item_id=$2',[b.id,item.item_id,item.run_state==='succeeded'?'succeeded':'failed',item.run_state==='succeeded'?null:sharedFailure?'该文件因共享材料、模型服务或结算问题未完成；条件恢复后可重试受阻文件并继续。':'该文件未完成，其他底稿继续处理；可在本批结束后重试。']);
       if(sharedFailure)blocked=true;
     }
@@ -150,9 +151,13 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
     if(blocked){
       await c.query("UPDATE bb_workpaper_batches SET state='paused',error='当前底稿任务遇到共享材料、模型服务或结算问题，请先处理该任务，再继续文件包。',pause_reason='shared_blocked',revision=revision+1 WHERE id=$1",[b.id]);return true;
     }
-    if(active>=(b.progressive_plan?2:1))return false;
+    if(active>=(b.progressive_plan?.max_parallel??b.max_parallel??1))return false;
     const eligible=b.progressive_phase==='trial'?b.progressive_plan.trial_item_ids:b.progressive_phase==='retry_failed'?b.progressive_retry_items:null;
-    const next=(await c.query("SELECT * FROM bb_workpaper_items WHERE batch_id=$1 AND state='queued' AND ($2::jsonb IS NULL OR $2::jsonb ? item_id) ORDER BY ordinal LIMIT 1",[b.id,eligible?JSON.stringify(eligible):null])).rows[0];
+    const queued=(await c.query("SELECT * FROM bb_workpaper_items WHERE batch_id=$1 AND state='queued' AND ($2::jsonb IS NULL OR $2::jsonb ? item_id) ORDER BY ordinal",[b.id,eligible?JSON.stringify(eligible):null])).rows;
+    const grouped=queued.some(i=>i.manifest.input.workpaper?.execution==='grouped_batch_v1');
+    const plan=b.progressive_plan?{...b.progressive_plan,phase:b.progressive_phase}:grouped?{phase:'remaining' as const,chapters:workpaperChapters((await c.query('SELECT manifest FROM bb_workpaper_items WHERE batch_id=$1 ORDER BY ordinal',[b.id])).rows.map(i=>i.manifest.input.workpaper.entry)),trial_item_ids:[],max_parallel:4 as const}:undefined;
+    const nextId=workpaperAdmissionOrder(queued.map(i=>i.item_id),plan)[0];
+    const next=queued.find(i=>i.item_id===nextId);
     if(!next){
       if(active)return false;
       const unfinished=Number((await c.query("SELECT count(*) n FROM bb_workpaper_items WHERE batch_id=$1 AND state='queued'",[b.id])).rows[0].n);
@@ -179,7 +184,7 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
       const ids=[...new Set([b.project_id,m.execution_scope_project_id,m.input.source_material!.source_project_id])].sort();
       const locked=(await c.query('SELECT * FROM bb_projects WHERE owner_user_id=$1 AND id=ANY($2::text[]) AND deleted_at IS NULL AND archived_at IS NULL ORDER BY id FOR UPDATE NOWAIT',[b.owner_user_id,ids])).rows;
       if(locked.length!==ids.length)throw conflict('INPUT_REVISION_CONFLICT','项目或来源已不可用。');
-      if(b.progressive_plan)await assertProgressiveWorkpaperAdmission(c,b,next,m);
+      if(b.max_parallel||b.progressive_plan)await assertProgressiveWorkpaperAdmission(c,b,next,m);
       else await assertCanonicalBusinessRunIdle(c,b.owner_user_id,locked.find(p=>p.id===b.project_id));
       for(const pin of [m.input.source_material!,...m.input.materials])await readM4MaterialPin(c,b.owner_user_id,pin);
       const topic=(await c.query('SELECT * FROM bb_m4_topics WHERE owner_user_id=$1 AND id=$2',[b.owner_user_id,b.topic_id])).rows[0];if(!topic)throw missing();
@@ -243,14 +248,14 @@ export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,u
       const batchId=uid(),topicId=uid(),child=uid(),scope=p.execution_scope_project_id||id;
       await c.query("INSERT INTO bb_projects(id,owner_user_id,name,kind,issuer_name,market,offering,execution_scope_project_id) VALUES($1,$2,$3,'generation',$4,$5,$6,$7)",[child,user,'底稿 · '+p.name,p.issuer_name,p.market,p.offering,scope]);
       await c.query("INSERT INTO bb_m4_topics(id,owner_user_id,project_id,source_project_id,name,creation_request_id,request_hash,surface) VALUES($1,$2,$3,$4,$5,$6,$7,'materials')",[topicId,user,child,id,'底稿 · '+p.name,'workpaper:'+batchId,hash]);
-      await c.query("INSERT INTO bb_workpaper_batches(id,owner_user_id,project_id,topic_id,catalogue_id,request_id,request_hash,source,state,total_points,price_version,assessment_id,assessment_hash,start_mode,progressive_plan,progressive_phase) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',$9,$10,$11,$12,$13,$14,$15)",[batchId,user,id,topicId,cat.id,b.request_id,hash,source,b.expected_points,b.price_version,b.assessment_id??null,b.assessment_hash??null,direct?'direct':'assessed',progressive?{chapters:progressive.chapters,trial_item_ids:progressive.trial_item_ids,max_parallel:2}:null,progressive?'trial':null]);
+      await c.query("INSERT INTO bb_workpaper_batches(id,owner_user_id,project_id,topic_id,catalogue_id,request_id,request_hash,source,state,total_points,price_version,assessment_id,assessment_hash,start_mode,progressive_plan,progressive_phase) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'queued',$9,$10,$11,$12,$13,$14,$15)",[batchId,user,id,topicId,cat.id,b.request_id,hash,source,b.expected_points,b.price_version,b.assessment_id??null,b.assessment_hash??null,direct?'direct':'assessed',progressive?{chapters:progressive.chapters,trial_item_ids:progressive.trial_item_ids,max_parallel:WORKPAPER_MAX_PARALLEL}:null,progressive?'trial':null]);
       // Shared extraction currently reads only the prospectus. System-template
       // batches with supplements use the existing material-aware per-file path.
       for(const [ordinal,entry] of selected.entries()){
         const decision=decisions.find(d=>d.item_id===entry.id);
         const manifest:M4DocumentManifest={version:'m4-document-input-v1',kind:'document',topic_id:topicId,execution_scope_project_id:scope,project_name:p.name,draft_version:1,
           market:p.market,offering:p.offering,billing_task:'m4_workpaper',template_material:templateInputs?.templates[entry.id]?.material??null,knowledge:loadWorkpaperKnowledge(p.market as Market,p.offering as Offering,entry,!!templateInputs),
-          input:{document_type:'workpaper',workpaper:{batch_id:batchId,catalogue_id:cat.id,entry,...(direct?{mode:'direct' as const,...(templateInputs||additionalMaterials.length?{}:{execution:progressive?'progressive_item_v1' as const:'shared_batch_v1' as const})}:{decision})},source_material:sourcePin,materials:[cat.material,...(templateInputs?.materials??[]),...additionalMaterials],template:templateInputs?.templates[entry.id]?.template??null,edit_base:null,scope:'whole',
+          input:{document_type:'workpaper',workpaper:{batch_id:batchId,catalogue_id:cat.id,entry,...(direct?{mode:'direct' as const,...(templateInputs||additionalMaterials.length?{}:{execution:progressive?'progressive_item_v1' as const:'grouped_batch_v1' as const})}:{decision})},source_material:sourcePin,materials:[cat.material,...(templateInputs?.materials??[]),...additionalMaterials],template:templateInputs?.templates[entry.id]?.template??null,edit_base:null,scope:'whole',
             fields:{market:p.market,offering:p.offering,issuer_name:p.issuer_name??'',source_filename:source.filename,source_version:String(source.sequence)},requirements:[],supplemental_requirements:b.requirements}};
         let explanation=null;
         if(decision&&decision.status!=='generate'){
