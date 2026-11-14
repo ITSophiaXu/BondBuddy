@@ -36,7 +36,7 @@ type Upload = { declaration: Dto<'UploadCreateRequest'>; project: string; receiv
 export type Call = { method: string; path: string; body?: unknown };
 export async function assistantFixture(page: Page) {
   const state = { owner: ids.owner as string, calls: [] as Call[], unexpected: [] as string[], errors: [] as string[], cards: [] as AssistantCard[], uploads: new Map<string, Upload>(), materials: new Map<string, { project: string; material: Dto<'MaterialResponse'> }>(),
-    work: new Map([[ids.topic, workspace(ids.topic, ids.project)], [ids.otherTopic, workspace(ids.otherTopic, null)], ['assistant-upload-11th-owner-b-topic', workspace('assistant-upload-11th-owner-b-topic', null)]]), dropPut: false, dropComplete: false, dropAssociation: false, templateFailure: false, gate: undefined as (() => Promise<void>) | undefined };
+    work: new Map([[ids.topic, workspace(ids.topic, ids.project)], [ids.otherTopic, workspace(ids.otherTopic, null)], ['assistant-upload-11th-owner-b-topic', workspace('assistant-upload-11th-owner-b-topic', null)]]), confirmationFaults: new Map<string, number>(), rejectViewSaves: false, dropPut: false, dropComplete: false, dropAssociation: false, templateFailure: false, gate: undefined as (() => Promise<void>) | undefined };
   page.on('pageerror', error => state.errors.push(error.message)); await page.clock.install({ time: new Date(now) });
   const reply = (route: Route, status: number, body: unknown) => route.fulfill({ status, json: fixtureBody(route,body) });
   const problem = (route: Route, status: number, code: Dto<'Error'>['code']) => { const body: Dto<'Error'> = { code, message: 'Synthetic error', retryable: status >= 500, correlation_id: 'assistant-upload-11th-trace', field_errors: [] }; check(schemas.Error, body); return reply(route, status, body); };
@@ -50,7 +50,7 @@ export async function assistantFixture(page: Page) {
     if (topic) {
       const work = state.work.get(topic[1]); if (!work || !visibleTopic(topic[1])) return problem(route, 404, 'NOT_FOUND');
       if (method === 'GET' && topic[2] === 'workspace') return reply(route, 200, checkedWorkspace(work));
-      if (method === 'PUT' && topic[2] === 'view') { check(M4ViewRequestSchema, body); expect(body.expected_version).toBe(work.view.version); work.view = { ...body.view, version: work.view.version + 1 }; return reply(route, 200, { view: work.view }); }
+      if (method === 'PUT' && topic[2] === 'view') { check(M4ViewRequestSchema, body); expect(body.expected_version).toBe(work.view.version); if(state.rejectViewSaves)return problem(route,503,'DATA_UNAVAILABLE'); work.view = { ...body.view, version: work.view.version + 1 }; return reply(route, 200, { view: work.view }); }
       if (method === 'POST' && topic[2] === 'materials') {
         expect(Object.keys(body)).toEqual(['material']); check(M4MaterialPinSchema, body.material); const pin = body.material as M4MaterialPin, saved = state.materials.get(pin.material_id);
         expect(saved?.project).toBe(pin.source_project_id); expect(saved?.material.material_version).toBe(pin.material_version); expect(saved?.material.sha256).toBe(pin.sha256);
@@ -69,12 +69,13 @@ export async function assistantFixture(page: Page) {
     const transfer = path.match(/^\/projects\/([^/]+)\/materials\/uploads\/([^/]+)\/(bytes|complete)$/);
     if (transfer) {
       const upload = state.uploads.get(transfer[2]); if (!upload || upload.project !== transfer[1]) return problem(route, 404, 'NOT_FOUND');
-      if (method === 'PUT' && transfer[3] === 'bytes') { const bytes = request.postDataBuffer()!; expect(bytes.length).toBe(upload.declaration.byte_size); expect(hash(bytes)).toBe(upload.declaration.sha256); upload.received = true; if (state.dropPut) { state.dropPut = false; return route.abort('connectionreset'); } return route.fulfill({ status: 204 }); }
+      if (method === 'PUT' && transfer[3] === 'bytes') { const bytes = request.postDataBuffer()!; expect(bytes.length).toBe(upload.declaration.byte_size); expect(hash(bytes)).toBe(upload.declaration.sha256); upload.received = true; if (state.dropPut) { state.dropPut = false; state.confirmationFaults.set(transfer[2],4); return route.abort('connectionreset'); } return route.fulfill({ status: 204 }); }
       if (method === 'POST' && transfer[3] === 'complete') {
         check(schemas.UploadCompleteRequest, body); expect(body).toEqual({ byte_size: upload.declaration.byte_size, sha256: upload.declaration.sha256 }); if (!upload.received) return problem(route, 422, 'MATERIAL_UNREADABLE');
+        const remaining=state.confirmationFaults.get(transfer[2])??0;if(remaining){state.confirmationFaults.set(transfer[2],remaining-1);return problem(route,503,'DATA_UNAVAILABLE');}
         if (!upload.material) { const existing = [...state.materials.values()].find(item => item.project === upload.project && ['role', 'sha256', 'byte_size', 'media_type'].every(key => item.material[key as keyof Dto<'MaterialResponse'>] === upload.declaration[key as keyof Dto<'UploadCreateRequest'>])); upload.material = existing?.material ?? { ...upload.declaration, material_id: 'material-' + transfer[2], material_version: 1, upload_id: transfer[2], state: 'persisted', persisted_at: now, error: null }; state.materials.set(upload.material.material_id, { project: upload.project, material: upload.material }); }
         check(schemas.MaterialResponse, upload.material); if (state.gate) await state.gate();
-        if (state.dropComplete) { state.dropComplete = false; return route.abort('connectionreset'); } return reply(route, 200, upload.material);
+        if (state.dropComplete) { state.dropComplete = false; state.confirmationFaults.set(transfer[2],3); return route.abort('connectionreset'); } return reply(route, 200, upload.material);
       }
     }
     const material = path.match(/^\/projects\/([^/]+)\/materials\/([^/]+)$/);

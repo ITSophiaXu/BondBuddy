@@ -1,3 +1,4 @@
+import {UPLOAD_BYTES_PENDING_FIELD_ERROR} from '@bondbuddy/contracts';
 import {serveDisabledBillingCatalog} from './billing-fixture-wire';
 import {fixtureBody} from './billing-fixture-wire';
 import {fixtureRequest} from './billing-fixture-wire';
@@ -44,7 +45,7 @@ export function fixture() {
     messages: [], tasks: [], pending_requirements: [], artifacts: [artifact], view: { selected_document_type: 'private_summary', open_tabs: [], active_tab: null, unsent_content: '', unsent_context: { document_type: 'private_summary', draft_version: 3, source_material: oldSource, citations: [], reading_artifact: null }, workspace_tab: 'input', tab_scroll: {}, version: 0 }, active_run: null };
   const materials = new Map([[pinKey(oldSource), source], [pinKey(support), supporting]]);
   return { owner: ids.owner as string, workspace, materials, materialBytes: new Map<string, Buffer>([[pinKey(oldSource), Buffer.from('Synthetic old prospectus')], [pinKey(support), Buffer.from('Synthetic old supporting note')]]), uploads: new Map<string, Upload>(), calls: [] as Call[], errors: [] as string[], unexpected: [] as string[], workspaceReads: 0,
-    dropPut: undefined as 'before' | 'after' | undefined, dropCompleteAt: 0, dropLibrary: undefined as 'before' | 'after' | undefined, dropDraft: undefined as 'before' | 'after' | undefined,
+    sessionLifetimeMs: undefined as number|undefined, confirmationFaults: new Map<string, number>(), dropPut: undefined as 'before' | 'after' | undefined, dropCompleteAt: 0, dropLibrary: undefined as 'before' | 'after' | undefined, dropDraft: undefined as 'before' | 'after' | undefined,
     failWorkspaceReads: false, failMaterialReads: false, unavailableTopic: false,
     beforeDraft: undefined as ((request: M4DraftRequest) => void) | undefined, afterDraft: undefined as ((request: M4DraftRequest) => void) | undefined,
     workspaceObservation: undefined as ((workspace: M4Workspace, read: number) => M4Workspace) | undefined,
@@ -99,16 +100,17 @@ export async function install(page: Page, state = fixture()) {
     }
     if (method === 'POST' && path === `/projects/${ids.project}/materials/uploads`) {
       check(schemas.UploadCreateRequest, body); const id = `m4-thirteenth-U-${state.uploads.size + 1}`; state.uploads.set(id, { declaration: structuredClone(body), received: false });
-      const value: Dto<'UploadSessionResponse'> = { upload_id: id, state: 'uploading', upload_url: `/api/v1/projects/${ids.project}/materials/uploads/${id}/bytes`, expires_at: '2099-01-01T00:00:00Z', max_bytes: 104857600 }; check(schemas.UploadSessionResponse, value); return json(route, value, 201);
+      const value: Dto<'UploadSessionResponse'> = { upload_id: id, state: 'uploading', upload_url: `/api/v1/projects/${ids.project}/materials/uploads/${id}/bytes`, expires_at: state.sessionLifetimeMs===undefined?'2099-01-01T00:00:00Z':new Date(await page.evaluate(()=>Date.now())+state.sessionLifetimeMs).toISOString(), max_bytes: 104857600 }; check(schemas.UploadSessionResponse, value); return json(route, value, 201);
     }
     const transfer = path.match(new RegExp(`^/projects/${ids.project}/materials/uploads/([^/]+)/(bytes|complete)$`));
     if (transfer) {
       const saved = state.uploads.get(transfer[1]); if (!saved) return problem(route, 404, 'NOT_FOUND');
-      if (method === 'PUT' && transfer[2] === 'bytes') { const bytes = request.postDataBuffer()!; expect(bytes.length).toBe(saved.declaration.byte_size); expect(hash(bytes)).toBe(saved.declaration.sha256); const drop = state.dropPut; state.dropPut = undefined; if (drop === 'before') return route.abort('connectionreset'); saved.received = true; saved.bytes = bytes; if (drop === 'after') return route.abort('connectionreset'); return route.fulfill({ status: 204 }); }
+      if (method === 'PUT' && transfer[2] === 'bytes') { const bytes = request.postDataBuffer()!; expect(bytes.length).toBe(saved.declaration.byte_size); expect(hash(bytes)).toBe(saved.declaration.sha256); const drop = state.dropPut; state.dropPut = undefined; if (drop === 'before') return route.abort('connectionreset'); saved.received = true; saved.bytes = bytes; if (drop === 'after') {state.confirmationFaults.set(transfer[1],4);return route.abort('connectionreset');} return route.fulfill({ status: 204 }); }
       if (method === 'POST' && transfer[2] === 'complete') {
-        check(schemas.UploadCompleteRequest, body); expect(body).toEqual({ byte_size: saved.declaration.byte_size, sha256: saved.declaration.sha256 }); if (!saved.received) return problem(route, 422, 'MATERIAL_UNREADABLE');
+        check(schemas.UploadCompleteRequest, body); expect(body).toEqual({ byte_size: saved.declaration.byte_size, sha256: saved.declaration.sha256 }); if (!saved.received) return json(route,{code:'MATERIAL_UNREADABLE',message:'Synthetic original bytes have not arrived',retryable:false,correlation_id:'missing-original-bytes',field_errors:[{...UPLOAD_BYTES_PENDING_FIELD_ERROR,message:'Upload bytes not received'}]},422);
+        const remaining=state.confirmationFaults.get(transfer[1])??0;if(remaining){state.confirmationFaults.set(transfer[1],remaining-1);return problem(route,503,'DATA_UNAVAILABLE');}
         if (!saved.material) { saved.material = state.dedupMaterial ?? { ...saved.declaration, material_id: 'material-' + transfer[1], material_version: 1, upload_id: transfer[1], state: 'persisted', persisted_at: now, error: null }; const selected = addMaterial(state, saved.material); if (saved.bytes) state.materialBytes.set(pinKey(selected), saved.bytes); }
-        if (state.completeGate) await state.completeGate(); if (state.dropCompleteAt === Number(transfer[1].split('-').at(-1))) { state.dropCompleteAt = 0; return route.abort('connectionreset'); } check(schemas.MaterialResponse, saved.material); return json(route, saved.material);
+        if (state.completeGate) await state.completeGate(); if (state.dropCompleteAt === Number(transfer[1].split('-').at(-1))) { state.dropCompleteAt = 0; state.confirmationFaults.set(transfer[1],3); return route.abort('connectionreset'); } check(schemas.MaterialResponse, saved.material); return json(route, saved.material);
       }
     }
     if (method === 'POST' && path === `/m4/topics/${ids.topic}/materials`) {

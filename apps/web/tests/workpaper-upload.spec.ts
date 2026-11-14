@@ -1,3 +1,4 @@
+import {UPLOAD_BYTES_PENDING_FIELD_ERROR} from '@bondbuddy/contracts';
 import {hold,check} from './upload-progress-fixtures';
 import {test,expect,type Page} from '@playwright/test';
 import {mkdir} from 'node:fs/promises';
@@ -116,19 +117,18 @@ test('same filename with changed content remains a separate upload',async({page}
 });
 
 test('missing bytes after reload request the original file and preserve the original operation',async({page})=>{
-  const state=await setup(page);let loseBytes=true;
+  await page.clock.install();const state=await setup(page);state.uploads.sessionLifetimeMs=10_000;let loseBytes=true;
   await page.route('**/materials/uploads/*/bytes',async route=>{if(loseBytes){loseBytes=false;return route.abort('failed');}return route.fallback();});
   await page.route('**/materials/uploads/*/complete',async route=>{
     const id=new URL(route.request().url()).pathname.split('/').at(-2)!;
-    if(!state.uploads.sessions.get(id)?.received)return route.fulfill({status:422,json:{code:'MATERIAL_UNREADABLE'}});
+    if(!state.uploads.sessions.get(id)?.received)return route.fulfill({status:422,json:{code:'MATERIAL_UNREADABLE',message:'Synthetic original bytes have not arrived',retryable:false,correlation_id:'workpaper-bytes-pending',field_errors:[{...UPLOAD_BYTES_PENDING_FIELD_ERROR,message:'Upload bytes not received'}]}});
     return route.fallback();
   });
-  await page.locator('#wp-upload').setInputFiles(file);await expect(page.locator('[data-wp-upload]')).toHaveCount(1);
+  const missingReply=page.waitForResponse(r=>r.url().endsWith('/complete')&&r.status()===422);await page.locator('#wp-upload').setInputFiles(file);await missingReply;await page.clock.fastForward(600_001);await expect(page.locator('[data-wp-upload]')).toBeEnabled();await expect(page.locator('[data-wp-upload]')).toHaveCount(1);
   const original=(await records(page))[0].record.id;
-  await page.reload();await page.getByRole('button',{name:'确认上传状态',exact:true}).click();
-  await expect(page.locator('[data-wp-reselect]')).toBeVisible();
+  await page.reload();await expect(page.locator('[data-wp-reselect]')).toBeVisible();const beforeReselect=state.uploads.calls.filter(c=>c.method!=='GET').length;
   await page.locator('[data-wp-reselect]').setInputFiles({...file,buffer:Buffer.alloc(file.buffer.length,88)});
-  await expect(page.locator('#wp-status')).toContainText('冲突');expect(state.imports).toHaveLength(0);
+  await expect(page.locator('#wp-status')).toContainText('冲突');expect(state.imports).toHaveLength(0);expect(state.uploads.calls.filter(c=>c.method!=='GET')).toHaveLength(beforeReselect);
   await page.locator('[data-wp-reselect]').setInputFiles(file);await expect(page.locator('#wp-start')).toBeEnabled();
   expect(state.imports[0].request_id).toBe(original);expect(state.uploads.puts).toBe(1);expect(await records(page)).toEqual([]);
 });
