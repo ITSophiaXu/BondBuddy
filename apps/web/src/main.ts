@@ -1,3 +1,4 @@
+import {uploadFileSha256} from './upload-file-digest.js';
 import {paymentLoginReturn} from './payment-return-route';
 import {uploadPickerContent} from './upload-picker';
 import './upload-progress.css';
@@ -1119,7 +1120,7 @@ function addUpload(projectId: string, role: UploadRole, file: File) {
 function pumpUploads() {
   pumpUploadPreparation();
   for (const uploads of localUploads.values()) for (const upload of uploads) {
-    if (runningUploads >= 2) return;
+    if (runningUploads >= 4) return; // Four in-flight operations and four shared PUT slots are distinct limits.
     if (upload.phase !== 'queued' || !upload.declaration || upload.controller || upload.owner !== identity) continue;
     runningUploads++; upload.phase = 'hashing';
     void performUpload(upload).finally(() => { runningUploads--; pumpUploads(); });
@@ -1134,7 +1135,7 @@ function pumpUploadPreparation(){
       try{
         const file=upload.file;if(!file)throw new UserFacingError('请重新选择原文件。');const media_type=declaredMediaType(file,upload.role);
         if(!file.size)throw new InvalidUploadFileError('空文件不能上传。请选择有内容的文件，或移除此未保存行。');if(file.size>M1_UPLOAD_LIMITS.fileBytes)throw new InvalidUploadFileError('单份文件不能超过 100 MB，请拆分后选择新文件，或移除此未保存行。');
-        updateMaterialWorkspace(upload.projectId);const hash=await sha256(await file.arrayBuffer());controller.signal.throwIfAborted();
+        updateMaterialWorkspace(upload.projectId);const hash=await uploadFileSha256(file,controller.signal);controller.signal.throwIfAborted();
         if(identity!==upload.owner||!(localUploads.get(upload.projectId)??[]).includes(upload))return;
         const declaration={filename:file.name,media_type,byte_size:file.size,sha256:hash,role:upload.role};
         upload.recoveryRecord=uploadRecovery(upload.projectId,upload.owner).begin(declaration,undefined,upload.key);upload.declaration=declaration;upload.hash=hash;upload.phase='queued';
@@ -1174,7 +1175,7 @@ async function performUpload(upload: LocalUpload) {
     if(!upload.declaration){
       const file=upload.file;if(!file)throw new UserFacingError('请重新选择原文件。');
       const media_type=declaredMediaType(file,upload.role);if(!file.size)throw new InvalidUploadFileError('空文件不能上传。请选择有内容的文件，或移除此未保存行。');if(file.size>M1_UPLOAD_LIMITS.fileBytes)throw new InvalidUploadFileError('单份文件不能超过 100 MB，请拆分后选择新文件，或移除此未保存行。');
-      const hash=upload.hash??await sha256(await file.arrayBuffer());controller.signal.throwIfAborted();if(!isCurrentOwner())return;
+      const hash=upload.hash??await uploadFileSha256(file,controller.signal);controller.signal.throwIfAborted();if(!isCurrentOwner())return;
       upload.hash=hash;upload.declaration={filename:file.name,media_type,byte_size:file.size,sha256:hash,role:upload.role};
     }
     // An existing page keeps its original identity after another tab clears a

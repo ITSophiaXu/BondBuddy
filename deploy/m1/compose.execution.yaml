@@ -70,10 +70,11 @@ services:
       BB_UPLOAD_CONFIRMATION_ENABLED: '1'
       BB_UPLOAD_CONFIRMATION_LANE: ${BB_ROLE_CONFIRMATION_LANE:-general}
       BB_UPLOAD_CONFIRMATION_SMALL_SLOT: ${BB_UPLOAD_CONFIRMATION_SMALL_SLOT:-0}
+      BB_UPLOAD_CONFIRMATION_CONCURRENCY: ${BB_UPLOAD_CONFIRMATION_CONCURRENCY:-1}
       BB_UPLOAD_CONFIRMATION_CONTAINER: ${BB_UPLOAD_CONFIRMATION_CONTAINER:-bondbuddy-private}
       BB_UPLOAD_SPOOL_DIR: /var/lib/bondbuddy/upload-confirmation
-      BB_UPLOAD_SPOOL_MAX_BYTES: '134217728'
-      NODE_OPTIONS: --max-old-space-size=320
+      BB_UPLOAD_SPOOL_MAX_BYTES: ${BB_UPLOAD_CONFIRMATION_SPOOL_MAX_BYTES:-134217728}
+      NODE_OPTIONS: --max-old-space-size=${BB_UPLOAD_CONFIRMATION_HEAP_MB:-320}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
       NO_PROXY: pg-tunnel,localhost,127.0.0.1
@@ -94,7 +95,7 @@ services:
     stop_grace_period: 10m
     deploy:
       replicas: ${BB_ROLE_CONFIRMATION_REPLICAS:-0}
-      resources: {limits: {cpus: '0.5', memory: 512M}}
+      resources: {limits: {cpus: '${BB_UPLOAD_CONFIRMATION_CPU_LIMIT:-0.5}', memory: '${BB_UPLOAD_CONFIRMATION_MEMORY_LIMIT:-512M}'}}
   worker-parse:
     extends: {file: compose.yaml, service: worker-parse}
     profiles: ['${BB_ROLE_PARSE_PROFILE:-bb-parse-active}']

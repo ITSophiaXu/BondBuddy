@@ -1,4 +1,5 @@
 import {runRecoverableBillingRequest,observeAutomaticQuotes} from './billing-task-recovery.js';
+import {uploadTransfers} from './upload-scheduler.js';
 import {readDownloadBytes,type DownloadProgress} from './download-progress.js';
 import {schemas as uploadSchemas,WorkpaperZipPreparationSchema,type WorkpaperZipPreparation} from '@bondbuddy/contracts';
 import {boundedDownload} from './download-timeout.js';
@@ -498,6 +499,7 @@ export class ApiClient {
     });
   }
   uploadBytes(uploadUrl: string, file: File, onProgress: (loaded: number, total: number) => void, signal: AbortSignal, transport?: UploadTransport) {
+    signal = AbortSignal.any([signal, this.controller.signal]);
     const direct=(transport??this.uploadTransports.get(uploadUrl))===DIRECT_UPLOAD_TRANSPORT;
     const target = new URL(uploadUrl, window.location.href);
     if (!['http:', 'https:'].includes(target.protocol)) return Promise.reject(new ApiError(0, 'DATA_UNAVAILABLE'));
@@ -531,7 +533,7 @@ export class ApiClient {
       if (signal.aborted) { signal.removeEventListener('abort', abort); reject(new DOMException('Upload aborted', 'AbortError')); return; }
       xhr.send(file);
     });
-    return (async () => {
+    return uploadTransfers.run(async () => {
       let refreshed = false;
       for (;;) {
         const xhr = await send();
@@ -549,7 +551,7 @@ export class ApiClient {
       try { problem = JSON.parse(xhr.responseText); } catch { /* response may be empty */ }
       throw parseApiError(xhr.status, problem);
       }
-    })();
+    }, signal);
   }
   create(input: Dto<'ProjectCreateRequest'>) { return this.request<Dto<'ProjectResponse'>>('POST', '/projects', input); }
   patch(id: string, revision: number, input: Dto<'ProjectPatchRequest'>) {
