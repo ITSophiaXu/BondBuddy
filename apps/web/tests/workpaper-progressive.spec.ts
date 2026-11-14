@@ -53,13 +53,13 @@ async function setup(page:Page,chapterCount=10,filesPerChapter=2){
  });
  return {original,work,fg,entries,calls,controls,createBatch,finish,prepare:`/#generate?project=${ids.api}&step=prepare`,results:`/#generate?project=${ids.api}&step=workpapers&view=results&batch=progressive-batch`};
 }
-async function capture(page:Page,name:string){const dir=resolve('../../work/progressive-workpapers-20261113/screenshots');await mkdir(dir,{recursive:true});await page.screenshot({path:resolve(dir,name+'.png'),fullPage:true});}
+async function capture(page:Page,name:string){const dir=resolve('../../work/generation-compact-ui-20261113/screenshots');await mkdir(dir,{recursive:true});await page.screenshot({path:resolve(dir,name+'.png'),fullPage:true});}
 const current=(page:Page)=>page.locator('[data-wp-batch-id="progressive-batch"]');
 
 test('mobile preparation keeps the footer below the catalogue and clear of the assistant',async({page})=>{
  const s=await setup(page);await page.setViewportSize({width:390,height:960});await page.goto(s.prepare);
  await expect(page.locator('[data-chapter-select]')).toHaveCount(10);
- const dir=resolve('../../work/progressive-workpapers-20261113/screenshots');await mkdir(dir,{recursive:true});
+ const dir=resolve('../../work/generation-compact-ui-20261113/screenshots');await mkdir(dir,{recursive:true});
  await page.screenshot({path:resolve(dir,'prepare-390-viewport-top.png')});
  const footer=page.locator('.fg-footer');
  const layout=await footer.evaluate(el=>({position:getComputedStyle(el).position,top:el.getBoundingClientRect().top,controlsBottom:document.querySelector('#fg-controls')!.getBoundingClientRect().bottom}));
@@ -76,28 +76,68 @@ test('mobile preparation keeps the footer below the catalogue and clear of the a
 for(const width of [1440,390])test(`five progressive phases use actual dynamic counts and responsive UI ${width}`,async({page})=>{
  const s=await setup(page);await page.setViewportSize({width,height:960});await page.goto(s.prepare);
  await expect(page.locator('[data-chapter-select]')).toHaveCount(10);await expect(page.locator('#fg-chapters')).toContainText('先试生成前 8 个');
+ await expect(page.locator('[data-chapter-item],[data-chapter-files]')).toHaveCount(0);
  await capture(page,`prepare-${width}`);await page.locator('#fg-confirm').click();await expect(page).toHaveURL(/batch=progressive-batch/);
- const b=s.work.batches[0];await expect(current(page)).toContainText('正在试生成 8 份文件');await capture(page,`trial-${width}`);
+ const b=s.work.batches[0];await expect(current(page)).toContainText('正在试生成 8 份文件');
+ await expect(current(page).locator('[data-result-item],.wpg-item-state')).toHaveCount(0);
+ await expect(current(page)).not.toContainText('逐份成果与状态');await capture(page,`trial-${width}`);
  for(const id of b.progressive!.trial_item_ids)s.finish(b,id);b.state='paused';b.progressive!.phase='awaiting_confirmation';await page.reload();
  await expect(current(page).getByRole('button',{name:'继续生成其余 12 份'})).toBeVisible();await expect(current(page).getByRole('button',{name:'查看',exact:true})).toHaveCount(8);await capture(page,`confirmation-${width}`);
  await current(page).getByRole('button',{name:'继续生成其余 12 份'}).click();await expect(current(page)).toContainText('正在生成其余文件');
  const remaining=b.items.filter(i=>i.state==='queued');remaining[0].state='running';remaining[0].run_id='remaining-run';await page.reload();await expect(current(page)).toContainText('当前章节');await capture(page,`remaining-${width}`);
  for(const [index,item] of b.items.entries())s.finish(b,item.entry.id,index===b.items.length-1);b.state='partial';await page.reload();
  await expect(current(page)).toContainText('19 / 20 份完成');await expect(current(page).getByRole('button',{name:'仅重试失败的 1 份'})).toBeVisible();await capture(page,`partial-${width}`);
+ await expect(current(page).locator('[data-result-item]')).toHaveCount(8);
+ expect(await current(page).locator('[data-result-item]').evaluateAll(rows=>rows.map(row=>row.getAttribute('data-result-item')))).toEqual(b.progressive!.trial_item_ids);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);expect(s.original.errors).toEqual([]);
 });
 
-test('chapter and file choices, keyboard order, empty scope and persisted reload stay aligned with request',async({page})=>{
- const s=await setup(page,4);await page.goto(s.prepare);const chapters=page.locator('[data-chapter-id]');
+test('chapter choices and keyboard order preserve partial saved file scope through reload and submission',async({page})=>{
+ const s=await setup(page,4);
+ s.fg.preparation.item_ids=s.fg.preparation.item_ids.filter(id=>id!=='item-1-1');
+ await page.goto(s.prepare);
+ await expect(page.locator('[data-chapter-select="chapter-1"]')).toHaveJSProperty('indeterminate',true);
+ await expect(page.locator('[data-chapter-item],[data-chapter-files]')).toHaveCount(0);
  await page.locator('[data-chapter-select="chapter-4"]').uncheck();
  const move=page.locator('[data-chapter-move="chapter-3"][data-direction="-1"]');await move.focus();await page.keyboard.press('Enter');await expect(move).toBeFocused();
- await expect(page.locator('[data-chapter-item="item-1-1"]')).toBeVisible();await page.locator('[data-chapter-item="item-1-1"]').uncheck();
  await expect(page.locator('[data-chapter-select="chapter-1"]')).toHaveJSProperty('indeterminate',true);
  await expect.poll(()=>s.fg.preparation.progressive?.chapter_order).toEqual(['chapter-1','chapter-3','chapter-2']);await page.reload();
+ expect(s.fg.preparation.item_ids).not.toContain('item-1-1');
+ await expect(page.locator('[data-chapter-select="chapter-1"]')).toHaveJSProperty('indeterminate',true);
  await expect(page.locator('[data-chapter-id]').first()).toHaveAttribute('data-chapter-id','chapter-1');await expect(page.locator('[data-chapter-id]').nth(1)).toHaveAttribute('data-chapter-id','chapter-3');
  await page.locator('#fg-confirm').click();await expect(page).toHaveURL(/batch=progressive-batch/);
  expect(s.work.batches[0].progressive!.trial_item_ids).toEqual(['item-1-2','item-3-1','item-2-1']);
  const request=s.calls.find(c=>c.path.endsWith('/file-generation/batches'))!.body;expect(request.progressive.chapter_order).toEqual(['chapter-1','chapter-3','chapter-2']);
+ expect(s.work.batches[0].items.map(item=>item.entry.id).sort()).toEqual(['item-1-2','item-2-1','item-2-2','item-3-1','item-3-2']);
+});
+
+for(const width of [1440,390])test(`large catalogue stays at chapter granularity through selection and progress ${width}`,async({page})=>{
+ const s=await setup(page,10,25);await page.setViewportSize({width,height:960});await page.goto(s.prepare);
+ const chapters=page.locator('#fg-chapters');
+ await expect(chapters.locator('[data-chapter-select]')).toHaveCount(10);
+ await expect(chapters.locator('input[type="checkbox"]')).toHaveCount(10);
+ await expect(chapters.locator('[data-chapter-item],[data-chapter-files]')).toHaveCount(0);
+ await expect(chapters).toContainText('250 份文件');
+ await expect(chapters).not.toContainText(s.entries[0].title);
+ const bounds=await chapters.boundingBox();expect(bounds!.height).toBeLessThan(width>=1200?1200:1800);
+ await page.locator('[data-chapter-select="chapter-2"]').uncheck();
+ await expect.poll(()=>s.fg.preparation.item_ids.length).toBe(225);
+ expect(s.fg.preparation.item_ids.some(id=>id.startsWith('item-2-'))).toBe(false);
+ await page.locator('[data-chapter-select="chapter-2"]').check();
+ await expect.poll(()=>s.fg.preparation.item_ids.length).toBe(250);
+ await page.locator('#fg-confirm').click();await expect(page).toHaveURL(/batch=progressive-batch/);
+ const b=s.work.batches[0],panel=current(page);
+ await expect(panel.locator('[data-progress-chapter]')).toHaveCount(10);
+ await expect(panel.locator('[data-result-item],.wpg-item-state')).toHaveCount(0);
+ await expect(panel).not.toContainText('尚未开始');await expect(panel).not.toContainText('逐份成果与状态');
+ for(const item of b.items)s.finish(b,item.entry.id);
+ b.state='complete';b.progressive!.phase='remaining';await page.reload();
+ await expect(panel).toContainText('250 / 250 份完成');
+ await expect(panel.locator('[data-result-item]')).toHaveCount(8);
+ expect(await panel.locator('[data-result-item]').evaluateAll(rows=>rows.map(row=>row.getAttribute('data-result-item')))).toEqual(b.progressive!.trial_item_ids);
+ await expect(panel.locator('[data-wp-zip]')).toBeEnabled();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+ await capture(page,`large-complete-${width}`);expect(s.original.errors).toEqual([]);
 });
 
 for(const width of [768,320])test(`small selection and empty selection remain usable ${width}`,async({page})=>{
@@ -117,7 +157,7 @@ test('legacy prepare starts progressive with the selected chapter order',async({
 test('completed trial files are immediately viewable and downloadable, escaped preview failure leaves download available',async({page})=>{
  const s=await setup(page,3),b=s.createBatch();s.finish(b,b.progressive!.trial_item_ids[0]);await page.goto(s.results);
  const row=current(page).locator('[data-result-item]').first();await expect(row.getByRole('button',{name:'查看',exact:true})).toBeVisible();
- await current(page).getByRole('button',{name:'查看已完成的 1 份'}).click();await expect(current(page).locator('.wpg-results')).toBeFocused();
+ await current(page).getByRole('button',{name:'查看试生成成果'}).click();await expect(current(page).locator('.wpg-results')).toBeFocused();
  await row.getByRole('button',{name:'查看',exact:true}).click();await expect(page.locator('dialog pre')).toContainText('<script>');expect(await page.evaluate(()=>(window as any).previewUnsafe)).toBeUndefined();await page.getByRole('button',{name:'关闭',exact:true}).click();
  const download=page.waitForEvent('download');await row.getByRole('button',{name:'下载说明'}).click();expect((await download).suggestedFilename()).toContain('核查记录');
  s.controls.previewError=true;await row.getByRole('button',{name:'查看',exact:true}).click();await expect(page.locator('dialog')).toContainText('下载原文件');await page.getByRole('button',{name:'关闭',exact:true}).click();await expect(row.getByRole('button',{name:'下载说明'})).toBeEnabled();
