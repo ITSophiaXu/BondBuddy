@@ -1,7 +1,7 @@
 import {createHmac} from 'node:crypto';
 import {canonical, sha256, requireThat, validateConfig} from './policy.mjs';
 import {bootstrapUserData} from './bootstrap.mjs';
-import {executionInstanceLaunchBinding,executionRunAcceptanceMatches,executionSlotReadTag} from '@bondbuddy/contracts';
+import {executionInstanceLaunchBinding,executionRunAcceptanceMatches,executionSlotReadTag,executionStopAuthorizationMatches} from '@bondbuddy/contracts';
 
 const apiVersion = {cvm: '2017-03-12', sts: '2018-08-13', ssm: '2019-09-23', lighthouse: '2020-03-24'};
 const allowedActions = {cvm: new Set(['RunInstances', 'StartInstances', 'StopInstances', 'DescribeInstances','DescribeInstancesStatus']),
@@ -161,6 +161,8 @@ export class TencentCvm {
     return {...safe,evidence_ref:evidence.ref,evidence_sha256:evidence.sha256};
   }
   async execute(operation, {userData, slot} = {}) {
+    requireThat(operation.action!=='destroy','EXECUTION_DESTROY_UNSUPPORTED');
+    if(operation.action==='stop')requireThat(executionStopAuthorizationMatches(operation,v=>sha256(canonical(v))),'STOP_PROOF_REQUIRED');
     validateConfig(this.config, {apply: true, expenditure: operation.action !== 'stop'});
     await this.assertAccount();
     if (operation.action === 'run') {
@@ -199,7 +201,7 @@ export class TencentCvm {
       requireThat(sha256(canonical(oldParams))===operation.request.launch_manifest_sha256,'WARM_START_CLOUD_MANIFEST_DRIFT');
       return this.transport.call('cvm', 'StartInstances', {InstanceIds: [i.instance_id]});
     }
-    requireThat(operation.action === 'stop' && operation.proof_sha256, 'STOP_PROOF_REQUIRED');
+    requireThat(operation.action === 'stop' && executionStopAuthorizationMatches(operation,v=>sha256(canonical(v))), 'STOP_PROOF_REQUIRED');
     requireThat(i.instance_state === 'RUNNING', 'STOP_REQUIRES_RUNNING');
     return this.transport.call('cvm', 'StopInstances', {InstanceIds: [i.instance_id], StopType: 'SOFT', StoppedMode: 'STOP_CHARGING'});
   }

@@ -2,7 +2,7 @@ import {Pool,type PoolClient} from 'pg';
 import {finalizeExecutionRunDenial,resumeExecutionRunAuthorization,type ExecutionDenialScope} from './execution-run-denial.js';
 import {Value} from '@sinclair/typebox/value';
 import {createHash,randomUUID} from 'node:crypto';
-import {executionCloudCompletionMatches,executionRunAcceptanceMatches,ExecutionNodeContextSchema,ExecutionLaunchRequestSchema,ExecutionCloudObservationSchema,ExecutionCloudRejectionSchema,type ExecutionCloudExpenseLedger,type ExecutionCapacityPolicy,type ExecutionNodeContext,type ExecutionNodeIdentity,type ExecutionNode,type ExecutionCloudOperation,type ExecutionCloudResult,type ExecutionLaunchRequest,type ExecutionCapacityControl,type ExecutionCapacitySnapshot,type ExecutionDrainProof} from '@bondbuddy/contracts';
+import {executionCloudCompletionMatches,executionRunAcceptanceMatches,executionStopAuthorizationMatches,ExecutionNodeContextSchema,ExecutionLaunchRequestSchema,ExecutionCloudObservationSchema,ExecutionCloudRejectionSchema,type ExecutionCloudExpenseLedger,type ExecutionCapacityPolicy,type ExecutionNodeContext,type ExecutionNodeIdentity,type ExecutionNode,type ExecutionCloudOperation,type ExecutionCloudResult,type ExecutionLaunchRequest,type ExecutionCapacityControl,type ExecutionCapacitySnapshot,type ExecutionDrainProof} from '@bondbuddy/contracts';
 import {transaction} from './data.js';
 import {inputManifestHash} from './production-rule-pin.js';
 import {fenceStoppedExecutionEpoch,providerCallNeedsReconciliation} from './queue.js';
@@ -31,8 +31,32 @@ async function dto(client:PoolClient|Pool,row:any):Promise<ExecutionNode>{
  const allReady=row.expected_services.length>0&&row.expected_services.every((service:any)=>sessions.some(s=>s.service_id===service.service_id&&s.state==='active'&&s.ready&&new Date(s.heartbeat_at).getTime()>Date.now()-30000));
  return {identity:identity(row),state:row.state,revision:Number(row.revision),source_sha256:row.source_sha256.trim(),image_sha256:row.image_sha256.trim(),capabilities:row.capabilities,launch_manifest_sha256:row.launch_manifest_sha256.trim(),expected_services:row.expected_services,drain_operation_id:row.drain_operation_id,cloud_start_operation_id:row.cloud_start_operation_id,ready_slots:row.state==='ready'&&allReady?Math.max(0,4-Number(active.leases)):0,active_leases:Number(active.leases),active_model_calls:Number(active.calls),last_heartbeat_at:row.last_heartbeat_at?.toISOString()??null,idle_since:row.idle_since?.toISOString()??null,stop_operation_id:row.stop_operation_id};
 }
-function opDto(row:any):ExecutionCloudOperation{return {operation_id:row.operation_id,identity:row.instance_id?identity(row):null,action:row.action,state:row.state,revision:Number(row.revision),provider_request_id:row.provider_request_id,proof_sha256:row.proof_sha256?.trim()??null,request:row.request,client_token:row.client_token,retry_after:row.retry_after?.toISOString()??null,run_acceptance:row.run_acceptance??null,dispatched_at:row.dispatched_at?.toISOString()??null,cloud_observation:row.cloud_observation??null,authorization_denial:row.authorization_denial??null};}
-async function operation(client:PoolClient|Pool,id:string,lock=false){return (await client.query(`SELECT * FROM bb_execution_cloud_operations WHERE operation_id=$1 ${lock?'FOR UPDATE':''}`,[id])).rows[0];}
+function opDto(row:any):ExecutionCloudOperation{return {operation_id:row.operation_id,identity:row.instance_id?identity(row):null,action:row.action,state:row.state,revision:Number(row.revision),provider_request_id:row.provider_request_id,proof_sha256:row.proof_sha256?.trim()??null,request:['run','start'].includes(row.action)?row.request:null,client_token:row.client_token,retry_after:row.retry_after?.toISOString()??null,...(row.action==='stop'?{stop_authorization:row.request??(row.legacy_drain_proof?{kind:'graceful-drain',proof:row.legacy_drain_proof}:null)}:{}),run_acceptance:row.run_acceptance??null,dispatched_at:row.dispatched_at?.toISOString()??null,cloud_observation:row.cloud_observation??null,authorization_denial:row.authorization_denial??null};}
+async function operation(client:PoolClient|Pool,id:string,lock=false){
+ const op=(await client.query(`SELECT * FROM bb_execution_cloud_operations WHERE operation_id=$1 ${lock?'FOR UPDATE':''}`,[id])).rows[0];
+ // Legacy graceful intent already owns a persisted session-bound proof. Never
+ // reinterpret missing request bytes as an operator fence.
+ if(op?.action==='stop'&&!op.request){
+  const n=(await client.query('SELECT drain_proof FROM bb_execution_nodes WHERE account_id=$1 AND region=$2 AND instance_id=$3 AND epoch=$4 AND stop_operation_id=$5 AND drain_operation_id=$5',[op.account_id,op.region,op.instance_id,op.epoch,id])).rows[0];
+  if(n?.drain_proof?.proof_sha256===op.proof_sha256?.trim()&&sha(n.drain_proof)===op.request_sha256.trim())op.legacy_drain_proof=n.drain_proof;
+ }
+ return op;
+}
+async function validatePersistedStop(client:PoolClient,n:any,op:any){
+ const view=opDto(op),a=view.stop_authorization;
+ if(!executionStopAuthorizationMatches(view,sha)||!a||n.state!=='stop_submitted'||n.stop_operation_id!==op.operation_id||Number(n.revision)!==a.proof.node_revision+1)throw Error('EXECUTION_STOP_AUTHORIZATION_INVALID');
+ if(a.kind==='graceful-drain'){
+  if(n.drain_operation_id!==op.operation_id||sha(n.drain_proof)!==sha(a.proof)||op.request_sha256.trim()!==sha(a.proof))throw Error('EXECUTION_STOP_AUTHORIZATION_INVALID');
+ }else{
+  const p=a.proof,pre=op.node_preimage;
+  if(op.request_sha256.trim()!==sha(a)||pre?.version!=='execution-operator-fence-preimage-v1'||!pre.node||!Array.isArray(pre.holders)||sha(pre.node)!==p.node_preimage_sha256||sha(pre.holders)!==p.holder_preimage_sha256||
+   pre.node.state!=='lost'||Number(pre.node.revision)!==p.node_revision||!sameIdentity(identity(pre.node),identity(n))||p.cloud_start_operation_id!==n.cloud_start_operation_id||
+   p.source_sha256!==n.source_sha256.trim()||p.image_sha256!==n.image_sha256.trim()||p.launch_manifest_sha256!==n.launch_manifest_sha256.trim())throw Error('EXECUTION_STOP_AUTHORIZATION_INVALID');
+  const start=await operation(client,n.cloud_start_operation_id);
+  if(!start||start.state!=='completed'||!['run','start'].includes(start.action)||!sameIdentity(identity(start),identity(n))||start.provider_request_id!==p.cloud_start_provider_request_id||
+   start.request?.source_sha256!==p.source_sha256||start.request?.image_sha256!==p.image_sha256||start.request?.launch_manifest_sha256!==p.launch_manifest_sha256)throw Error('EXECUTION_STOP_AUTHORIZATION_INVALID');
+ }
+}
 
 /** Called inside every model-job/assistant/probe claim transaction, before job locks. */
 export async function executionClaimGate(client:PoolClient,pool:Pool){
@@ -119,7 +143,10 @@ export function executionCapacityControl(pool:Pool,denialScope?:ExecutionDenialS
    return opDto(await operation(client,operationId));
   }),
   loadOperation:async id=>{const row=await operation(pool,id);return row?opDto(row):null;},
-  listPendingOperations:async()=> (await pool.query("SELECT * FROM bb_execution_cloud_operations WHERE state IN ('intent','submitted','unknown') ORDER BY created_at,operation_id")).rows.map(opDto),
+  listPendingOperations:async()=>{
+   const rows=(await pool.query("SELECT * FROM bb_execution_cloud_operations WHERE state IN ('intent','submitted','unknown') ORDER BY created_at,operation_id")).rows;
+   return Promise.all(rows.map(async row=>opDto(row.action==='stop'&&!row.request?await operation(pool,row.operation_id):row)));
+  },
   reauthorizeCloudIntent:async(id,revision,policyRevision)=>transaction(pool,async client=>{
    const p=(await client.query('SELECT * FROM bb_execution_capacity_policy WHERE singleton FOR UPDATE')).rows[0];
    if(Number(p.revision)!==policyRevision||!p.managed_nodes||!p.budget_available||p.launch_blocked_by_operation_id||p.cooldown_until&&new Date(p.cooldown_until).getTime()>Date.now())cas();
@@ -159,7 +186,11 @@ export function executionCapacityControl(pool:Pool,denialScope?:ExecutionDenialS
   }),
   claimCloudDispatch:async(id,revision)=>transaction(pool,async client=>{
    const policy=(await client.query('SELECT * FROM bb_execution_capacity_policy WHERE singleton FOR SHARE')).rows[0];
+   const peek=await operation(client,id);if(peek?.action==='destroy')throw Error('EXECUTION_DESTROY_UNSUPPORTED');
+   // Match completion's policy -> node -> operation lock order.
+   const stoppedNode=peek?.action==='stop'?await node(client,identity(peek),true):null;
    const op=await operation(client,id,true);if(!op||op.state!=='intent'||Number(op.revision)!==revision)cas();
+   if(op.action==='stop')await validatePersistedStop(client,stoppedNode,op);
    if(['run','start'].includes(op.action)){if(!policy.managed_nodes||!policy.budget_available||policy.launch_blocked_by_operation_id||policy.revision!==op.policy_revision||policy.cooldown_until&&new Date(policy.cooldown_until).getTime()>Date.now())cas();}
    await client.query("UPDATE bb_execution_cloud_operations SET state='unknown',revision=revision+1,dispatched_at=clock_timestamp() WHERE operation_id=$1",[id]);return opDto(await operation(client,id));
   }),
@@ -180,11 +211,12 @@ export function executionCapacityControl(pool:Pool,denialScope?:ExecutionDenialS
    await client.query("UPDATE bb_execution_nodes SET state='drained',revision=revision+1,drain_proof=$2 WHERE id=$1",[n.id,proof]);return proof;
   }),
   submitStop:async(proof,action)=>transaction(pool,async client=>{
+   if(action!=='stop')throw Error('EXECUTION_DESTROY_UNSUPPORTED');
    const n=await node(client,proof.identity,true);const prior=await operation(client,proof.operation_id,true);if(prior){if(prior.proof_sha256?.trim()!==proof.proof_sha256||prior.action!==action)cas();return opDto(prior);}
    if(n.state!=='drained'||Number(n.revision)!==proof.node_revision||n.drain_proof?.proof_sha256!==proof.proof_sha256||n.drain_operation_id!==proof.operation_id)cas();
    // Re-check under the node lock. A registration/claim cannot race this fence.
    const fresh=await dto(client,n);if(fresh.active_leases||fresh.active_model_calls)throw Error('EXECUTION_DRAIN_PROOF_STALE');
-   await client.query("INSERT INTO bb_execution_cloud_operations(operation_id,account_id,region,instance_id,epoch,action,state,request_sha256,client_token,proof_sha256) VALUES($1,$2,$3,$4,$5,$6,'intent',$7,$8,$9)",[proof.operation_id,n.account_id,n.region,n.instance_id,n.epoch,action,sha(proof),executionCloudClientToken(proof.operation_id),proof.proof_sha256]);
+   await client.query("INSERT INTO bb_execution_cloud_operations(operation_id,account_id,region,instance_id,epoch,action,state,request_sha256,client_token,proof_sha256,request) VALUES($1,$2,$3,$4,$5,$6,'intent',$7,$8,$9,$10)",[proof.operation_id,n.account_id,n.region,n.instance_id,n.epoch,action,sha(proof),executionCloudClientToken(proof.operation_id),proof.proof_sha256,{kind:'graceful-drain',proof}]);
    await client.query("UPDATE bb_execution_nodes SET state='stop_submitted',stop_operation_id=$2,revision=revision+1 WHERE id=$1",[n.id,proof.operation_id]);return opDto(await operation(client,proof.operation_id));
   }),
   recordCloudResult:async(id,revision,result)=>recordExecutionCloudResult(pool,id,revision,result),
@@ -248,12 +280,29 @@ async function recordExecutionCloudResult(pool:Pool,id:string,revision:number,re
 
 /** An explicit operator may fence a lost node for replacement. This is not a
  * graceful proof: no capacity/unknown call is released until Describe proves
- * the exact stop/destroy request completed on that instance and epoch. */
+ * the exact StopInstances request completed on that instance and epoch. */
 export async function submitFencedExecutionStop(pool:Pool,i:ExecutionNodeIdentity,id:string,revision:number,action:'stop'|'destroy'){
+ if(action!=='stop')throw Error('EXECUTION_DESTROY_UNSUPPORTED');
  return transaction(pool,async client=>{
-  const n=await node(client,i,true);if(n.state!=='lost'||Number(n.revision)!==revision)cas();
+  const n=await node(client,i,true),prior=await operation(client,id,true);
+  if(prior){
+   const a=opDto(prior).stop_authorization;
+   if(!executionStopAuthorizationMatches(opDto(prior),sha)||a?.kind!=='operator-fence'||a.proof.node_revision!==revision||!sameIdentity(identity(prior),i)||n.stop_operation_id!==id)cas();
+   return opDto(prior); // Same durable token, including unknown; never another intent.
+  }
+  if(n.state!=='lost'||Number(n.revision)!==revision)cas();
+  const start=await operation(client,n.cloud_start_operation_id);
+  if(!start||start.state!=='completed'||!['run','start'].includes(start.action)||!start.provider_request_id||!sameIdentity(identity(start),i)||
+   start.request?.source_sha256!==n.source_sha256.trim()||start.request?.image_sha256!==n.image_sha256.trim()||start.request?.launch_manifest_sha256!==n.launch_manifest_sha256.trim())throw Error('EXECUTION_FENCE_START_BINDING_INVALID');
   const holders=(await client.query('SELECT row_to_json(h) AS row FROM bb_model_capacity_holders h WHERE execution_node_id=$1 ORDER BY token FOR UPDATE',[n.id])).rows.map(r=>r.row);
-  await client.query("INSERT INTO bb_execution_cloud_operations(operation_id,account_id,region,instance_id,epoch,action,state,request_sha256,client_token,holder_preimage) VALUES($1,$2,$3,$4,$5,$6,'intent',$7,$8,$9)",[id,n.account_id,n.region,n.instance_id,n.epoch,action,sha({identity:i,revision,action}),executionCloudClientToken(id),JSON.stringify(holders)]);
+  // Hash the same JSON representation that pg persists. Its Date values become
+  // ISO strings; changing the shared token/drain canonicalizer would break pins.
+  const nodePreimage=JSON.parse(JSON.stringify(n));
+  const body={version:'execution-operator-fence-v1' as const,identity:i,operation_id:id,action:'stop' as const,node_state:'lost' as const,node_revision:revision,cloud_start_operation_id:n.cloud_start_operation_id,
+   cloud_start_provider_request_id:start.provider_request_id,source_sha256:n.source_sha256.trim(),image_sha256:n.image_sha256.trim(),launch_manifest_sha256:n.launch_manifest_sha256.trim(),node_preimage_sha256:sha(nodePreimage),holder_preimage_sha256:sha(holders)};
+  const authorization={kind:'operator-fence' as const,proof:{...body,proof_sha256:sha(body)}};
+  if(!executionStopAuthorizationMatches({operation_id:id,identity:i,action:'stop',proof_sha256:authorization.proof.proof_sha256,stop_authorization:authorization} as ExecutionCloudOperation,sha))throw Error('EXECUTION_STOP_AUTHORIZATION_INVALID');
+  await client.query("INSERT INTO bb_execution_cloud_operations(operation_id,account_id,region,instance_id,epoch,action,state,request_sha256,client_token,holder_preimage,proof_sha256,request,node_preimage) VALUES($1,$2,$3,$4,$5,$6,'intent',$7,$8,$9,$10,$11,$12)",[id,n.account_id,n.region,n.instance_id,n.epoch,action,sha(authorization),executionCloudClientToken(id),JSON.stringify(holders),authorization.proof.proof_sha256,authorization,{version:'execution-operator-fence-preimage-v1',node:nodePreimage,holders}]);
   await client.query("UPDATE bb_execution_nodes SET state='stop_submitted',stop_operation_id=$2,revision=revision+1 WHERE id=$1",[n.id,id]);return opDto(await operation(client,id));
  });
 }
