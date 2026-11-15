@@ -207,11 +207,15 @@ test('private envelope refuses symlinks and mode drift; source token never in pu
   } finally {await rm(dir, {recursive: true});}
 });
 test('existing ops tick with no business events advances pending recovery and disabled makes zero calls', async () => {
-  let describes = 0;
-  const op = {...operation(), state: 'unknown', provider_request_id: null};
-  const control = {listPendingOperations: async () => [op], loadOperation: async () => op};
+  let describes = 0, completed = 0;
+  const op = {...operation(), state: 'unknown', provider_request_id: 'cloud1'};
+  const control = {listPendingOperations: async () => [op], loadOperation: async () => op,
+    recordCloudResult: async (_id, _revision, result) => {assert.equal(result.state, 'completed'); completed++; return result;}};
   const handler = createExecutionPoolOpsHandler({control, configPath: 'synthetic', dependencies: {readConfig: async () => config, cloud: {describe: async () => {describes++; return observation();}}}});
-  await handler.tick(); await handler.tick(); assert.equal(describes, 2);
+  await handler.tick(); await handler.tick(); assert.equal(describes, 2); assert.equal(completed, 2);
+  const noAck = createExecutionPoolOpsHandler({control: {...control, loadOperation: async () => ({...op, provider_request_id: null})},
+    configPath: 'synthetic', dependencies: {readConfig: async () => config, cloud: {describe: async () => {describes++; return observation();}}}});
+  await noAck.tick(); assert.equal(describes, 2); assert.equal(completed, 2);
   const disabled = createExecutionPoolOpsHandler({control: {listPendingOperations: async () => []}, configPath: 'synthetic', dependencies: {readConfig: async () => ({...config, enabled: false}), cloud: {describe: async () => {describes++;}}}});
   await disabled.tick(); assert.equal(describes, 2);
 });
