@@ -12,6 +12,8 @@ export * from './workpaper-library.js';
 export * from './workpaper-assessment.js';
 export * from './workpaper-shared-plan.js';
 export * from './workpaper-progressive.js';
+export * from './workpaper-item-progress.js';
+import type {WorkpaperItemProgress} from './workpaper-item-progress.js';
 import {WorkpaperProgressiveRequestSchema,type WorkpaperProgressive} from './workpaper-progressive.js';
 import {WorkpaperAssessSchema,type WorkpaperAssessment} from './workpaper-assessment.js';
 import type {WorkpaperDecision} from './workpaper-entry.js';
@@ -42,6 +44,7 @@ export const WorkpaperActionSchema=Type.Union([
 export const WORKPAPER_PRICE=M4_DOCUMENT_FIXED_PRICE;
 export type WorkpaperCatalogue={catalogue_id:string;sha256:string;filename:string;entries:WorkpaperEntry[];warnings:string[];created_at:string};
 export type WorkpaperItem={entry:WorkpaperEntry;decision?:WorkpaperDecision;explanation?:{filename:string;sha256:string};run_id:string|null;state:string;stage:string|null;attempt:number;error:string|null;
+  progress?:WorkpaperItemProgress;
   artifacts:{kind:'document'|'preparation_note';filename:string;pin:M4ArtifactPin}[];
   file?:{original:ProjectFileVersionSummary;current:ProjectFileVersionSummary}};
 export type WorkpaperBatch={batch_id:string;topic_id:string;catalogue_id:string;state:'queued'|'running'|'paused'|'complete'|'partial'|'cancelled';revision:number;

@@ -150,17 +150,36 @@ export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:
   });
 }
 
-async function lockedLease(client:PoolClient, lease:Lease) {
+async function lockedLease(client:PoolClient, lease:Lease, renewing=false) {
   const r=await run(client,lease.owner,lease.runId,true);
-  const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[lease.jobId,lease.owner,lease.runId])).rows[0];
-  if(!j || j.lease_token!==lease.token || j.state!=='running' || new Date(j.lease_until).getTime()<=Date.now() || terminal.has(r.state)) throw new Problem(409,'ALREADY_TERMINAL','Lease is no longer active');
+  const j=(await client.query(renewing
+    ? `SELECT *,transaction_timestamp()<lease_until AS renewal_started_in_time FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE`
+    : 'SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[lease.jobId,lease.owner,lease.runId])).rows[0];
+  // Only a renewal already waiting before expiry may survive a long delivery
+  // transaction's run/job locks. A new request after expiry, a different token,
+  // or any terminal/control transition still loses. Other writes remain strict.
+  const expired=j && new Date(j.lease_until).getTime()<=Date.now();
+  if(!j || j.lease_token!==lease.token || j.state!=='running' || expired&&!(renewing&&j.renewal_started_in_time===true) || terminal.has(r.state)) throw new Problem(409,'ALREADY_TERMINAL','Lease is no longer active');
   return {r,j};
 }
 
 export async function renew(pool:Pool, lease:Lease, leaseSeconds=30) {
-  const parked=await transaction(pool,async client=>{const {r,j}=await lockedLease(client,lease);
+  const parked=await transaction(pool,async client=>{const {r,j}=await lockedLease(client,lease,true);
     if(await walletIsolated(client,r)){await parkBilling(client,r,j,'wallet_isolated',false,true);return true;}
-    await client.query("UPDATE bb_jobs SET lease_until=now()+($2::integer * interval '1 second'),updated_at=now() WHERE id=$1",[lease.jobId,leaseSeconds]);await syncAuthoringProgress(client,r);return false;});
+    await syncAuthoringProgress(client,r);
+    // now() is the transaction start, which can be minutes before these locks
+    // become available. Publish the next lease at the end using wall-clock time.
+    // The running meter inherits the same deadline; a paused meter stays frozen.
+    // A bookkeeping lock can also outlive the old lease after its clock sample.
+    // Shift only that unconfirmed gap out of the cursor, preserving the pending
+    // valid delta for the next dynamic debit instead of advancing active_ms here.
+    await client.query(`WITH renewed AS (
+      UPDATE bb_jobs SET lease_until=clock_timestamp()+($2::integer * interval '1 second'),updated_at=clock_timestamp()
+      WHERE id=$1 RETURNING run_id,owner_user_id,lease_until,updated_at AS renewed_at
+    ) UPDATE bb_authoring_progress progress SET
+      clock_at=progress.clock_at+GREATEST(interval '0 seconds',renewed.renewed_at-GREATEST(progress.clock_at,progress.lease_until)),
+      lease_until=renewed.lease_until FROM renewed
+      WHERE progress.run_id=renewed.run_id AND progress.owner_user_id=renewed.owner_user_id AND progress.lease_until IS NOT NULL`,[lease.jobId,leaseSeconds]);return false;});
   // Commit the control pause before revoking the caller's lease. Heartbeats
   // abort in-flight work immediately instead of waiting for another renewal.
   if(parked)throw new Problem(409,'ALREADY_TERMINAL','Lease paused for billing reconciliation');
