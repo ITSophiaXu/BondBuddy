@@ -93,7 +93,8 @@ test.describe('prospectus saved reentry native desktop journeys',()=>{
     const s=await open(page,fixture({candidate:true})),fixed=fixedSnapshot(s),before=projection(s);await page.locator('.pw-actions').getByRole('link',{name:'生成文件',exact:true}).click();
     await expect(page.locator('#pf-prospectus .pf-source-picker')).toBeVisible();await expect(page.locator('.pf-workspace-heading h1')).toHaveText('生成文件');await expect(page.locator('#pf-source-next')).toBeVisible();
     await expect(page.locator('#pf-project-source option')).toContainText(['请选择募集说明书版本',s.candidate.filename,s.old.filename]);expect(writes(s)).toEqual([]);expect(projection(s)).toEqual(before);fixedUnchanged(s,fixed);
-    await page.getByRole('link',{name:'项目文件',exact:true}).click();await ready(page);await expect(notice(page)).toBeVisible();expect(writes(s)).toEqual([]);fixedUnchanged(s,fixed);
+    const back=page.getByRole('region',{name:'当前项目',exact:true}).getByRole('link',{name:'返回本项目文件',exact:true});
+    await expect(back).toHaveAttribute('href','#/projects/'+ids.project+'/files');await back.click();await ready(page);await expect(notice(page)).toBeVisible();expect(writes(s)).toEqual([]);fixedUnchanged(s,fixed);
   });
 
   test('saved prospectus reentry: unchanged native scheduled refresh retains open history and its keyboard focus',async({page})=>{
