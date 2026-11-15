@@ -44,7 +44,7 @@ const stageLabel=(stage:string)=>(({
 } as Record<string,string>)[stage]??stage);
 
 export function timingSummary(data:Inspection,runs:Row[]){
-const rows=[...new Set(runs.map(r=>data.kind(r)))].map(kind=>{const succeeded=runs.filter(r=>data.kind(r)===kind&&r.state==='succeeded'),values=succeeded.map(r=>data.timing(r).totalMs).filter((n):n is number=>n!==null),stats=durationStats(values);return {kind:kind==='workpaper'?'底稿条目执行':label(kind),samples:`${stats.count} / ${succeeded.length}`,mean:duration(stats.mean),p50:duration(stats.p50),p95:duration(stats.p95),max:duration(stats.max)};});
+ const rows=[...new Set(runs.map(r=>data.kind(r)))].map(kind=>{const succeeded=runs.filter(r=>data.kind(r)===kind&&r.state==='succeeded'),values=succeeded.map(r=>data.timing(r).totalMs).filter((n):n is number=>n!==null),stats=durationStats(values);return {kind:kind==='workpaper'?'底稿条目执行':label(kind),samples:`${stats.count} / ${succeeded.length}`,mean:duration(stats.mean),p50:duration(stats.p50),p95:duration(stats.p95),max:duration(stats.max)};});
  const stages=new Map<string,number[]>();
  for(const r of runs.filter(r=>r.state==='succeeded')) for(const s of data.timing(r).stages){
   const values=stages.get(s.stage)??[];values.push(s.ms);stages.set(s.stage,values);
