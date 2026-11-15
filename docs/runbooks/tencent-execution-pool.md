@@ -28,7 +28,7 @@
 5. `submitStop` 先冻结 epoch，随后唯一 dispatch。停止未决期间不得 ready、Start 或登记新 epoch。仅准确 Stop 完成、`STOPPED` 和 `StopChargingMode=STOP_CHARGING` 的证据才允许回收旧 epoch 容量；完整 holder 前像 CAS 与账务未知保留由 PG 适配器处理。
 6. 验证阶段常驻实例明确固定，保留常驻节点；零底线自动阶段可按后文正向排空规则停最后一台。需要保留能力时，另一台必须已 ready 并覆盖相同能力；启动中或失联节点不能作为替代。连续空闲起点来自 PG 正向零活动回执，不用 TTL。
 
-0182 仅新增 `run_acceptance` 列，旧操作不补造受理证明。控制端需按准确库存范围授予只读 `DescribeInstancesStatus`；节点角色仅有专用 slot 的实例读取及独占 Secret 的 Get/List。签发、登记和证书刷新共用 contracts 的分 action 完成校验，Run 的原证明随独占登记信封及本地 transport 状态传播。目标数据库迁移、实际业务节点启动和完整镜像验收分别执行。
+0183 仅新增 `run_acceptance` 列，旧操作不补造受理证明；0182 保留已合入的模型等待计费迁移。控制端需按准确库存范围授予只读 `DescribeInstancesStatus`；节点角色仅有专用 slot 的实例读取及独占 Secret 的 Get/List。签发、登记和证书刷新共用 contracts 的分 action 完成校验，Run 的原证明随独占登记信封及本地 transport 状态传播。目标数据库迁移、实际业务节点启动和完整镜像验收分别执行。
 
 ## 自然日费用准入
 

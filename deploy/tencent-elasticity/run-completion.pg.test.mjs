@@ -11,7 +11,7 @@ const connection=await isolatedTestDatabase(undefined,'execution-run-acceptance'
 // exclusively in the test clone; all cloud responses and prices are synthetic.
 test('real PG retains accepted singleton ACK and allows null-latest creation, while absent acceptance stays unknown',{skip:!connection},async t=>{
   const pool=new Pool({connectionString:connection,max:2});t.after(()=>pool.end());
-  if(!(await pool.query("SELECT 1 FROM information_schema.columns WHERE table_name='bb_execution_cloud_operations' AND column_name='run_acceptance'")).rowCount)await pool.query(await readFile(new URL('../../db/migrations/0182_execution_run_acceptance.sql',import.meta.url),'utf8'));
+  if(!(await pool.query("SELECT 1 FROM information_schema.columns WHERE table_name='bb_execution_cloud_operations' AND column_name='run_acceptance'")).rowCount)await pool.query(await readFile(new URL('../../db/migrations/0183_execution_run_acceptance.sql',import.meta.url),'utf8'));
   const h='a'.repeat(64),services=[{service_id:'authoring',capabilities:['authoring']}];
   const revision=Number((await pool.query('SELECT revision FROM bb_execution_capacity_policy WHERE singleton')).rows[0].revision);
   await configureExecutionCapacity(pool,revision,{managed_nodes:true,global_model_limit:4,max_nodes:2,budget_available:true,expense_policy_sha256:h});
