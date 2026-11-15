@@ -11,9 +11,13 @@ Refs #1361。此入口只生成基础设施 overlay，不执行生产迁移、�
 ```sh
 node deploy/tencent-elasticity/managed-overlay.mjs authoring "$AUTHORING_OUTPUT" --build
 node deploy/tencent-elasticity/managed-overlay.mjs review "$REVIEW_OUTPUT" --build
+gzip -n -c "$AUTHORING_OUTPUT/managed-overlay.tar" > "$AUTHORING_PACKAGE"
+gzip -n -c "$REVIEW_OUTPUT/managed-overlay.tar" > "$REVIEW_PACKAGE"
 ```
 
 每个输出包含完整源码、逐文件 source/patch 摘要、未变业务文件清单与汇总摘要、编译文件清单及 `managed-overlay.tar`。tar 只携带明确列出的固定模块和基础设施增量，不携带认证、私有运行配置或完整新业务版本；固定时间、排序、权限及所有者使其可重复生成。应用前必须绑定 manifest 中相应父镜像，不能把它用于任意旧镜像。
+
+本次公共包在 `managed-overlay-artifacts/authoring.tar.gz` 和 `review.tar.gz`；同目录 `manifest.json` 提供每个 payload 文件的路径、字节数和 SHA256。解压后的相对路径对应应用根目录，构建可使用 `COPY overlay/ /app/`，仅以 manifest 中准确 post-1414 父镜像为基础。没有新增 npm 依赖；Linux、Node.js 22、原业务原生工具和既有登记/transport 初始化依赖保持。issuer 使用已有 OpenSSL，bootstrap 使用既有 systemd/Docker 路径。两份公开 queue/journal patch 为零上下文机械 diff，独立应用时使用 `git apply --unidiff-zero`；生成器已经按固定前像和准确锚点实施同一增量。
 
 隔离 PostgreSQL 模板先使用现有迁移到 0177，再安装已经正式存在的 0179，以及候选硬依赖 0181、0183、0184。不安装 0180 或 0182。随后运行：
 

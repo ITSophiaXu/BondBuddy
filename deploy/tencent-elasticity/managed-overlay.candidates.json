@@ -5,8 +5,8 @@
   "generator_sha256": "0810cb68847f420ad5639a32ffa5bd52d05f00903b7d079dd8721294d47802e4",
   "lock_sha256": "47c74f06f2d3f5387363dbcd5162272dde0c97acb8faee955ac936ec455dff97",
   "seam_patches": {
-    "managed-overlay-queue.patch": "43e9fff920b419d6f1ccdb767760537a4fc5f4821972121b88fbcfa999228e12",
-    "managed-overlay-durable-probe-journal.patch": "0dc20fdc34f29ae1b1f77b4d467f4e8aca9ae028981b395c5a81159b0ee369d6"
+    "managed-overlay-queue.patch": "a686136929205eda1f86fe2c250da8629a4d436949115ebd31c901b2b30199ec",
+    "managed-overlay-durable-probe-journal.patch": "5004f473f322d9ec83d2143739c4921f59b1d4596a858bf515377efd89847686"
   },
   "components": {
     "authoring": {
@@ -151,6 +151,12 @@
         "apps/worker/src/workpaper-method.ts": "4090c6e1e645a489f105f43cd582369a39a7660e091288935a8492b8f407ce5a",
         "apps/worker/src/workpaper-progressive-groups.ts": "56fcb36d21c39c09a2917c51aec0876420a3d1254aacc40965507fa6300daa5c",
         "apps/worker/src/workpaper-shared-stage.ts": "9bd3f5766617e810ff784eb5255b843af2c2b275d94427951df45e591953a55b"
+      },
+      "public_archive": {
+        "path": "deploy/tencent-elasticity/managed-overlay-artifacts/authoring.tar.gz",
+        "bytes": 390210,
+        "sha256": "183ecd01da08c1080b27ee480df66cdd75687e85df35f9d03a8f5c5a4b7afdbf",
+        "uncompressed_tar_sha256": "d16b8043007f4e3da0fe176a0980f4ad2f7ccd74ae023ea64e7638a611412375"
       }
     },
     "review": {
@@ -294,6 +300,12 @@
         "apps/worker/src/workpaper-direct-output.ts": "bc22a8c0fe27628e438c682d7ed00b41c6fe95a339db8da892204a4d66617a33",
         "apps/worker/src/workpaper-grounding.ts": "33cdfff76c62612442b2cdc17c967a3b4c17dcce4614eb887143ff0a36422b2b",
         "apps/worker/src/workpaper-shared-stage.ts": "c69d22cec31dffb47b98e25baf744e2ce1d8969cca15fb87c8e8b5456c48666e"
+      },
+      "public_archive": {
+        "path": "deploy/tencent-elasticity/managed-overlay-artifacts/review.tar.gz",
+        "bytes": 392179,
+        "sha256": "5fd94171c859f3a0f38d8767602f89eea7529b567affaf98ec00b0075b41d768",
+        "uncompressed_tar_sha256": "0d000ea9a322949016b454becf80b9eeab007a0fb819c90c1fde9b6c49a62569"
       }
     }
   },
@@ -342,5 +354,19 @@
   },
   "production_activation": false,
   "production_acceptance": "pending",
-  "composite_source_sha256": "d3340d98c2188cabadf39f99717ac1a41042c584a5d2506761b95562f8c6dea1"
+  "composite_source_sha256": "d3340d98c2188cabadf39f99717ac1a41042c584a5d2506761b95562f8c6dea1",
+  "pending_activation_inputs": {
+    "global_model_limit": 8,
+    "provider_concurrency_limit": 8,
+    "node_model_limit": 4,
+    "min_nodes": 0,
+    "max_nodes": 2,
+    "physical_nodes": 2,
+    "provider_endpoint": "https://api.deepseek.com",
+    "provider_model": "deepseek-flash",
+    "provider_and_budget_review_sha256": "7782bea64191467b70712aa1c49537cf92fe138c9e533e99dc9e2060ef1679d0",
+    "expense_policy_sha256": "fde89a4ec1c9313037654191fe5bae96b5419e26d3dc0d03d1e2156e1a654884",
+    "expense_revision": 1,
+    "applied": false
+  }
 }
