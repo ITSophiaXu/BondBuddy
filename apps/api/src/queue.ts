@@ -1,3 +1,4 @@
+import {executionClaimGate} from './execution-capacity.js';
 import { Pool, type PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
@@ -103,7 +104,7 @@ const needsProviderReconciliation = `(
   ))
 )`;
 
-async function providerCallNeedsReconciliation(client:PoolClient, jobId:string) {
+export async function providerCallNeedsReconciliation(client:PoolClient, jobId:string) {
   const q=await client.query(`SELECT 1
     FROM bb_model_call_attempts a
     JOIN bb_jobs j ON j.id=a.job_id
@@ -122,6 +123,7 @@ export async function enqueue(client:PoolClient, r:any, subtype='default') {
 export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:boolean; runKinds?:readonly RunKind[]; interactiveOnly?:boolean}={}):Promise<Lease|null> {
   const runKinds = checkedRunKinds(options.runKinds);
   return transaction(pool,async client=>{
+    await executionClaimGate(client,pool);
     // Lock order is run then job in every transition, including cancellation.
     const q=await client.query("SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE (j.state='queued' OR (j.state='running' AND j.lease_until<now())) AND r.state NOT IN ('cancelled','failed','succeeded','test_completed','rejected') AND (j.job_type='platform_probe')=$1 AND ($1 OR j.job_type=ANY($2::text[])) AND (NOT $3 OR j.subtype IN ('m4_qa_v1','project_qa_v1','project_file_v1')) ORDER BY j.created_at FOR UPDATE OF r SKIP LOCKED LIMIT 1",[options.platformProbe===true,runKinds,options.interactiveOnly===true]);
     const r=q.rows[0];if(!r)return null;
@@ -1238,4 +1240,18 @@ export async function releaseLease(pool:Pool,lease:Lease,reason='lease_released'
     await client.query("UPDATE bb_jobs SET lease_until=now()-interval '1 millisecond',updated_at=now() WHERE id=$1",[lease.jobId]);
     await event(client,locked.r,'running',locked.j.stage,reason,undefined,'run.progress');
   });
+}
+
+/** Cloud death is a capacity fence, never authority to replay a supplier call.
+ * Preserve the existing journal and publish the recovery pause atomically. */
+export async function fenceStoppedExecutionEpoch(client:PoolClient,nodeId:string,epoch:string){
+ const runs=(await client.query(`SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE j.execution_node_id=$1 AND j.execution_node_epoch=$2 AND j.lease_token IS NOT NULL ORDER BY r.id FOR UPDATE OF r`,[nodeId,epoch])).rows;
+ for(const r of runs){const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 FOR UPDATE',[r.id])).rows[0];
+  await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
+  await event(client,r,'paused','provider_reconcile','execution_epoch_stopped');
+ }
+ const messages=(await client.query('SELECT * FROM bb_review_messages WHERE execution_node_id=$1 AND execution_node_epoch=$2 AND lease_token IS NOT NULL ORDER BY id FOR UPDATE',[nodeId,epoch])).rows;
+ for(const m of messages){await client.query("UPDATE bb_review_messages SET reply_status='unknown',error='EXECUTION_EPOCH_STOPPED',lease_token=NULL,lease_until=NULL WHERE id=$1",[m.id]);
+  await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,'review.assistant_replied',$4)",[uid(),m.owner_user_id,m.project_id,{message_id:m.id,status:'unknown',error:'EXECUTION_EPOCH_STOPPED'}]);
+ }
 }

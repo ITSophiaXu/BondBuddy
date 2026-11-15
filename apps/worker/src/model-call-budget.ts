@@ -3,6 +3,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { hostname } from 'node:os';
 import { readFile, readdir, readlink } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
+import {executionNodeForPool} from '@bondbuddy/api/execution-capacity';
 
 export interface ModelCallPermit {
   signal: AbortSignal;
@@ -12,9 +13,10 @@ export interface ModelCallPermit {
   release(): Promise<void>;
 }
 export interface ModelCallBudget {
-  acquire(signal?: AbortSignal, scope?: string): Promise<ModelCallPermit>;
+  acquire(signal?: AbortSignal, scope?: string, admission?:ModelCallAdmission): Promise<ModelCallPermit>;
   reconcileOwnExitedProcesses?(): Promise<void>;
 }
+export type ModelCallAdmission={kind:'job'|'assistant';id:string;token:string};
 const namespace = 0x42424d43;
 const budgets = new WeakMap<Pool, ModelCallBudget>();
 export function modelCallConcurrency(env: NodeJS.ProcessEnv = process.env) {
@@ -64,7 +66,7 @@ export class PgModelCallBudget implements ModelCallBudget {
   private readonly waiters = new Map<string, (() => void)[]>();
   private readonly sessions: Pool;
   private readonly host = hostname();
-  constructor(pool: Pool, private readonly limit: number = 4) {
+  constructor(private readonly pool: Pool, private readonly limit: number = 4) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 4) throw new Error('Invalid model call concurrency');
     this.sessions = new Pool({ ...pool.options, max: limit, application_name: 'bondbuddy_model_budget',
       connectionTimeoutMillis: 5000, query_timeout: pool.options.query_timeout ?? 5000, idleTimeoutMillis: 1000, allowExitOnIdle: true });
@@ -103,7 +105,9 @@ export class PgModelCallBudget implements ModelCallBudget {
     const currentNamespace=await readlink('/proc/self/ns/pid');
     const currentBoot=(await readFile('/proc/sys/kernel/random/boot_id','utf8')).trim();
     const currentInit=await processStart(1);
-    const rows = (await this.sessions.query('SELECT * FROM bb_model_capacity_holders WHERE host_id=$1 AND pid_namespace=$2 AND host_boot_id=$3 AND namespace_init_start=$4',[this.host,currentNamespace,currentBoot,currentInit])).rows;
+    const context=executionNodeForPool(this.pool);
+    const rows = (await this.sessions.query(`SELECT * FROM bb_model_capacity_holders WHERE host_id=$1 AND pid_namespace=$2 AND host_boot_id=$3 AND namespace_init_start=$4
+      AND ($5::uuid IS NULL AND execution_node_id IS NULL OR execution_node_epoch=$5 AND execution_session_id=$6)`,[this.host,currentNamespace,currentBoot,currentInit,context?.identity.epoch??null,context?.session_id??null])).rows;
     for (const row of rows) {
       if (this.exitedTokens.has(row.token)) {
         await this.sessions.query('DELETE FROM bb_model_capacity_holders WHERE token=$1 AND host_id=$2',[row.token,this.host]);
@@ -118,7 +122,7 @@ export class PgModelCallBudget implements ModelCallBudget {
       await this.sessions.query('DELETE FROM bb_model_capacity_holders WHERE token=$1 AND host_id=$2 AND parent_start=$3',[row.token,this.host,row.parent_start]);
     }
   }
-  async acquire(signal?: AbortSignal, scope = 'unscoped'): Promise<ModelCallPermit> {
+  async acquire(signal?: AbortSignal, scope = 'unscoped',admission?:ModelCallAdmission): Promise<ModelCallPermit> {
     if (!/^[A-Za-z0-9:_-]{1,180}$/.test(scope)) throw new Error('Invalid model capacity scope');
     await this.enter(scope, signal);
     const token = randomUUID(), controller = new AbortController();
@@ -146,12 +150,16 @@ export class PgModelCallBudget implements ModelCallBudget {
       const pidNamespace=await readlink('/proc/self/ns/pid');
       const namespaceInitStart=await processStart(1);
       if (!namespaceInitStart) throw new Error('Model capacity namespace identity unavailable');
-      const executionHost=process.env.BB_MODEL_EXECUTION_HOST_ID || createHash('sha256').update(await readFile('/etc/machine-id')).digest('hex');
+      const context=executionNodeForPool(this.pool);
+      if((await this.sessions.query('SELECT managed_nodes FROM bb_execution_capacity_policy WHERE singleton')).rows[0].managed_nodes&&!context)throw Error('Managed execution node identity required');
+      const executionHost=context?createHash('sha256').update(JSON.stringify(context.identity)).digest('hex'):process.env.BB_MODEL_EXECUTION_HOST_ID || createHash('sha256').update(await readFile('/etc/machine-id')).digest('hex');
       if (!/^[a-f0-9]{64}$/.test(executionHost)) throw new Error('Invalid model execution host identity');
       if (!parentStart) throw new Error('Model capacity process identity unavailable');
       await this.reconcileOwnExitedProcesses();
       await this.sessions.query('INSERT INTO bb_model_capacity_scopes(scope) VALUES($1) ON CONFLICT DO NOTHING',[scope]);
-      await this.sessions.query("INSERT INTO bb_model_capacity_waiters(token,scope,wait_until) VALUES($1,$2,now()+interval '30 seconds')",[token,scope]);
+      const waiterNode=context?(await this.sessions.query('SELECT id FROM bb_execution_nodes WHERE account_id=$1 AND region=$2 AND instance_id=$3 AND epoch=$4',[context.identity.account_id,context.identity.region,context.identity.instance_id,context.identity.epoch])).rows[0]:null;
+      if(context&&!waiterNode)throw Error('Execution node capacity fenced');
+      await this.sessions.query("INSERT INTO bb_model_capacity_waiters(token,scope,wait_until,execution_node_id,execution_node_epoch,execution_session_id,admission_job_id,admission_message_id,admission_lease_token) VALUES($1,$2,now()+interval '30 seconds',$3,$4,$5,$6,$7,$8)",[token,scope,waiterNode?.id??null,context?.identity.epoch??null,context?.session_id??null,admission?.kind==='job'?admission.id:null,admission?.kind==='assistant'?admission.id:null,admission?.token??null]);
       while (!granted) {
         controller.signal.throwIfAborted();
         const client = await this.sessions.connect();
@@ -159,15 +167,34 @@ export class PgModelCallBudget implements ModelCallBudget {
           await client.query('BEGIN');
           const lock = (await client.query('SELECT pg_try_advisory_xact_lock($1::integer,0) AS locked',[namespace])).rows[0];
           if (lock.locked) {
+            if(context){
+              const valid=(await client.query(`SELECT 1 FROM bb_execution_nodes n WHERE n.id=$1 AND n.epoch=$2 AND n.state IN ('ready','draining') AND (
+               EXISTS(SELECT 1 FROM bb_jobs j WHERE j.id=$3 AND j.execution_node_id=n.id AND j.execution_node_epoch=n.epoch AND j.execution_session_id=$4 AND j.state='running' AND j.lease_token=$5 AND j.lease_until>clock_timestamp()) OR
+               EXISTS(SELECT 1 FROM bb_review_messages m WHERE m.id=$6 AND m.execution_node_id=n.id AND m.execution_node_epoch=n.epoch AND m.execution_session_id=$4 AND m.reply_status='running' AND m.lease_token=$5 AND m.lease_until>clock_timestamp()))`,[waiterNode.id,context.identity.epoch,admission?.kind==='job'?admission.id:null,context.session_id,admission?.token??null,admission?.kind==='assistant'?admission.id:null])).rowCount;
+              if(!valid)throw Error('Execution model admission lease lost');
+            }
             await client.query("UPDATE bb_model_capacity_waiters SET wait_until=now()+interval '30 seconds' WHERE token=$1",[token]);
             const head = (await client.query(`SELECT w.token FROM bb_model_capacity_waiters w JOIN bb_model_capacity_scopes s USING(scope)
-              WHERE w.wait_until>now() ORDER BY s.last_granted,w.ticket LIMIT 1`)).rows[0];
+              LEFT JOIN bb_execution_nodes n ON n.id=w.execution_node_id AND n.epoch=w.execution_node_epoch
+              JOIN bb_execution_capacity_policy p ON p.singleton
+              WHERE w.wait_until>now() AND (w.execution_node_id IS NULL AND NOT p.managed_nodes OR n.state IN ('ready','draining')
+               AND (SELECT count(*) FROM bb_model_capacity_holders h WHERE h.execution_node_id=n.id)<4 AND (
+                EXISTS(SELECT 1 FROM bb_jobs j WHERE j.id=w.admission_job_id AND j.execution_node_id=n.id AND j.execution_node_epoch=n.epoch AND j.execution_session_id=w.execution_session_id AND j.state='running' AND j.lease_token=w.admission_lease_token AND j.lease_until>clock_timestamp()) OR
+                EXISTS(SELECT 1 FROM bb_review_messages m WHERE m.id=w.admission_message_id AND m.execution_node_id=n.id AND m.execution_node_epoch=n.epoch AND m.execution_session_id=w.execution_session_id AND m.reply_status='running' AND m.lease_token=w.admission_lease_token AND m.lease_until>clock_timestamp())))
+              ORDER BY s.last_granted,w.ticket LIMIT 1`)).rows[0];
             if (head?.token === token) {
-              const slot = (await client.query(`SELECT g.slot FROM generate_series(1,$1::integer) g(slot)
-                WHERE NOT EXISTS(SELECT 1 FROM bb_model_capacity_holders h WHERE h.slot=g.slot) LIMIT 1`,[this.limit])).rows[0]?.slot;
-              if (slot !== undefined) {
-                await client.query(`INSERT INTO bb_model_capacity_holders(token,scope,slot,host_id,parent_pid,parent_start,execution_host,host_boot_id,pid_namespace,namespace_init_start)
-                  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,[token,scope,slot,this.host,process.pid,parentStart,executionHost,hostBootId,pidNamespace,namespaceInitStart]);
+              const policy=(await client.query('SELECT * FROM bb_execution_capacity_policy WHERE singleton FOR SHARE')).rows[0];
+              if(policy.managed_nodes&&!context)throw Error('Managed execution node identity required');
+              const node=context?(await client.query('SELECT id,state,epoch FROM bb_execution_nodes WHERE account_id=$1 AND region=$2 AND instance_id=$3 FOR UPDATE',[context.identity.account_id,context.identity.region,context.identity.instance_id])).rows[0]:null;
+              if(context&&(!node||node.epoch!==context.identity.epoch||!['ready','draining'].includes(node.state)||!admission))throw Error('Execution node capacity fenced');
+              const slot = policy.budget_available&&(await client.query(`SELECT g.slot FROM generate_series(1,$1::integer) g(slot)
+                WHERE (SELECT count(*) FROM bb_model_capacity_holders)<$1 AND NOT EXISTS(SELECT 1 FROM bb_model_capacity_holders h WHERE h.slot=g.slot) LIMIT 1`,[policy.global_model_limit])).rows[0]?.slot;
+              const nodeSlot=node?(await client.query('SELECT g.slot FROM generate_series(1,4) g(slot) WHERE NOT EXISTS(SELECT 1 FROM bb_model_capacity_holders WHERE execution_node_id=$1 AND node_slot=g.slot) LIMIT 1',[node.id])).rows[0]?.slot:null;
+              if (slot !== undefined && slot!==false && (!node||nodeSlot!==undefined)) {
+                if(admission)await client.query("SELECT set_config('bb.execution_lease_token',$1,true)",[admission.token]);
+                await client.query(`INSERT INTO bb_model_capacity_holders(token,scope,slot,host_id,parent_pid,parent_start,execution_host,host_boot_id,pid_namespace,namespace_init_start,
+                  execution_node_id,execution_node_epoch,execution_session_id,node_slot,admission_job_id,admission_message_id)
+                  VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,[token,scope,slot,this.host,process.pid,parentStart,executionHost,hostBootId,pidNamespace,namespaceInitStart,node?.id??null,context?.identity.epoch??null,context?.session_id??null,nodeSlot??null,admission?.kind==='job'?admission.id:null,admission?.kind==='assistant'?admission.id:null]);
                 await client.query("UPDATE bb_model_capacity_scopes SET last_granted=nextval('bb_model_capacity_order') WHERE scope=$1",[scope]);
                 await client.query('DELETE FROM bb_model_capacity_waiters WHERE token=$1',[token]);
                 granted = true;
