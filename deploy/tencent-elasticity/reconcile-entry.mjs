@@ -1,7 +1,8 @@
+import {readExpenseHistory} from './expense-history.mjs';
 import {readPrivateJson, observationArchive} from './private-files.mjs';
 import {ExecutionPoolController} from './controller.mjs';
 import {TencentCvm, TencentTransport} from './tencent-cvm.mjs';
-import {validateConfig, requireThat} from './policy.mjs';
+import {validateConfig, requireThat,canonical,sha256} from './policy.mjs';
 import {produceExpenseSnapshot, costAdmission} from './costcap.mjs';
 import {createSocketCredentialProvider} from './control-socket.mjs';
 import {acquireControlTick} from './control-tick-bound.mjs';
@@ -11,21 +12,24 @@ import {refreshCloudQuote} from './cloud-quote-refresh.mjs';
 const [action, configPath, requestPath, opId] = process.argv.slice(2);
 let pool,releaseTick;
 try {
-  requireThat(['plan', 'start', 'drain', 'recover'].includes(action), 'ACTION_REQUIRED');
+  requireThat(['plan', 'start', 'drain', 'recover','finalize-denial','resume-authorization'].includes(action), 'ACTION_REQUIRED');
   const baseConfig = validateConfig(await readPrivateJson(configPath), {apply: action !== 'plan',expenditure:action==='start'});
   let config=structuredClone(baseConfig);
   releaseTick=await acquireControlTick(config.registration_directory);requireThat(releaseTick,'CONTROL_TICK_BUSY');
   const {Pool} = await import('pg');
   const {executionCapacityControl,executionCloudExpenseLedger} = await import('@bondbuddy/api/execution-capacity');
   pool = new Pool({connectionString: process.env.DATABASE_URL, max: 2, connectionTimeoutMillis: 5000, query_timeout: 10000});
-  const control = executionCapacityControl(pool);
+  const control = executionCapacityControl(pool,{directory:config.observation_directory,accountId:config.account_id,region:config.region,
+    roleId:config.control_credential_provider?.roleId,configurationSha256:sha256(canonical({...baseConfig,denial_recovery:undefined})),
+    paymentAuditSha256:config.denial_recovery?.payment_audit_sha256,paymentContractSha256:config.denial_recovery?.official_contract_html_sha256,
+    recoveryReviewSha256:config.denial_recovery?.authorization_recovery_review_sha256,correctionEvidenceSha256:config.denial_recovery?.payment_correction_sha256});
   const credentialsProvider=createSocketCredentialProvider(config.control_credential_provider);
   const transport = new TencentTransport({region: config.region,credentials: () => credentialsProvider.get()});
-  const cloud = new TencentCvm({transport, config, archive: observationArchive(config.observation_directory)});
+  const cloud = new TencentCvm({transport, config, control, archive: observationArchive(config.observation_directory)});
   const costSnapshot=async inventory=>{
     const ledger=await executionCloudExpenseLedger(pool),fresh=await refreshCloudQuote({configPath,config:baseConfig,transport,capturedAt:ledger.captured_at});
     config=fresh.config;controller.config=config;cloud.config=config;
-    return produceExpenseSnapshot({ledger,inventory,quote:fresh.quote,config});
+    return produceExpenseSnapshot({ledger,inventory,quote:fresh.quote,config,history:await readExpenseHistory(config)});
   };
   const controller = new ExecutionPoolController({control, cloud, config, costSnapshot});
   const syncBudget=async()=>{
@@ -37,12 +41,14 @@ try {
       await control.setAdmissionBudget(snapshot.policy.revision,admission.allowed,config.expense_policy_sha256);
   };
   if(['plan','start'].includes(action))await syncBudget();
-  else try{await syncBudget();}catch{} // Budget/quote outages cannot suppress positive drain or recovery.
+  else if(['drain','recover'].includes(action))try{await syncBudget();}catch{} // No cloud/quote read is required for explicit denial reconciliation.
   let result;
   if (action === 'plan') result = await controller.plan(await cloud.inventory());
   if (action === 'start') result = await controller.start(await readPrivateJson(requestPath), opId);
   if (action === 'drain') { const r = await readPrivateJson(requestPath); result = await controller.drain(r.identity, opId, r.revision); }
   if (action === 'recover') result = await controller.recover(opId);
+  if (action === 'finalize-denial') {const r=await readPrivateJson(requestPath);result=await controller.resolveRunAuthorizationDenial(opId,r.revision,r.evidence,r.payment_audit);}
+  if (action === 'resume-authorization') {const r=await readPrivateJson(requestPath);result=await control.resumeRunAuthorization(opId,r.policy_revision,r.review);}
   // Operation output contains no tokens or full launch request. Detailed safe
   // observations are archived separately for exact cloud completion evidence.
   process.stdout.write(JSON.stringify({action, kind: result.kind, reason: result.reason,

@@ -42,9 +42,12 @@ export async function readRoleCredentials(roleName, {fetchImpl = fetch, now = Da
 /** The broker hook uses the node-specific role to read only that node's short
  * enrollment secret. That secret is pre-bound in PG after an exact Describe.
  * Metadata is merely an extra consistency check; never sufficient admission. */
-export async function bootstrapNode({publicManifest, metadata, broker, runtime, writeEnvelope, now = Date.now}) {
+export async function bootstrapNode({publicManifest, metadata, broker, runtime, writeEnvelope, now = Date.now, diagnostics}) {
+  diagnostics?.stage('binding');
   requireThat(publicManifest.version === 'execution-bootstrap-v1', 'BOOTSTRAP_VERSION');
+  diagnostics?.stage('enrollment');
   const enrollment = await broker.enroll(metadata);
+  diagnostics?.stage('binding');
   requireThat(enrollment.verified === true && enrollment.expires_at > now() + 60000 &&
     /^\d{1,20}$/.test(enrollment.identity.account_id) && enrollment.identity.account_id === metadata.account_id &&
     /^[a-f0-9-]{36}$/.test(enrollment.identity.epoch) && /^[a-f0-9]{64}$/.test(enrollment.launch_manifest_sha256) &&
@@ -53,19 +56,25 @@ export async function bootstrapNode({publicManifest, metadata, broker, runtime, 
     canonical(enrollment.services) === canonical(publicManifest.services), 'ENROLLMENT_BINDING');
   requireThat(publicManifest.account_id===enrollment.identity.account_id && publicManifest.region===enrollment.identity.region,'PUBLIC_NODE_SCOPE');
   requireThat(enrollment.registration_token && enrollment.operation_completed === true, 'ENROLLMENT_UNPROVEN');
+  diagnostics?.stage('artifact_verification');
   await runtime.verifyArtifacts(enrollment); // immutable image/source/sandbox/PG/Blob before any claim
   const contexts = [];
   try {
     for (const service of enrollment.services) {
+      diagnostics?.stage('service_envelope',service.service_id);
       const context = {identity: enrollment.identity, session_id: randomUUID()};
       const path = await writeEnvelope(service.service_id, {context, service_id: service.service_id,
         source_sha256: enrollment.source_sha256, image_sha256: enrollment.image_sha256,
         launch_manifest_sha256: enrollment.launch_manifest_sha256, registration_token: enrollment.registration_token});
+      diagnostics?.stage('service_start',service.service_id);
       contexts.push(await runtime.startService(service, path));
     }
+    diagnostics?.stage('ready_verification');
     await runtime.verifyAllReady(contexts); // PG expected-services gate, not a local claimed ready flag
     return {identity: enrollment.identity, services: enrollment.services.map(s => s.service_id)};
   } catch (error) {
+    await diagnostics?.capture(error,runtime.failureContainers);
+    diagnostics?.stage('failure_cleanup');
     await runtime.disableClaims(contexts); // preserve leases/results and uncertainty; no TTL cleanup
     throw new Error('BOOTSTRAP_NOT_READY', {cause: error});
   }

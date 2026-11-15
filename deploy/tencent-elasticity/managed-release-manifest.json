@@ -1,0 +1,571 @@
+{
+  "version": "managed_infrastructure_component_release_v1",
+  "refs": [
+    1361,
+    1412,
+    1416,
+    1419,
+    1423
+  ],
+  "stable_base_commit": "c23abe58cdb960261b988eec32be6b42c2a19bce",
+  "source_develop_commit": "696393edd435b770012e62da2f425fc2a24ef406",
+  "component_only_release": true,
+  "public_app_and_business_source_delta": [],
+  "source_records": [
+    {
+      "path": "deploy/tencent-elasticity/authorization-denial.pg.test.mjs",
+      "bytes": 17053,
+      "sha256": "7a53bfb892f21ab3dd06340d628510f51b528aa477f405e25acecf2163c3ae81",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/bootstrap-entry.mjs",
+      "bytes": 5211,
+      "sha256": "1cfd19875630bc7a2fe6906f0be5850285569360b21b5975a71fb27a1edaa4c3",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/bootstrap-failure.mjs",
+      "bytes": 4653,
+      "sha256": "e40b0cff60fa83701eea48d17f44c0459135db6d153a2f634673ecee0a5f1068",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/bootstrap-failure.test.mjs",
+      "bytes": 9219,
+      "sha256": "0233da2f6ea5ef935019b3991053c1194574cae430c5d6f739d3a925e18f0658",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/bootstrap.mjs",
+      "bytes": 6263,
+      "sha256": "e3b57728a08abc7ac941feef3b35d29de312cd20a37148f8ba04762cee1ae5f3",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/cloud-quote-refresh.mjs",
+      "bytes": 13919,
+      "sha256": "290f9dd96d58766643a9569045e9811f7623ce05e35e6a43f76bdf30f04f64f2",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/compose.yaml",
+      "bytes": 3388,
+      "sha256": "3e383c3bc57b784acb6a9761e1b4fc53d6e4666f7b7221f4c6d761dd899da489",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/control-authority.mjs",
+      "bytes": 12461,
+      "sha256": "868cf6dac78f4248c25939b8145692609445ecc3bce25661acea635fef2888e3",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/control-authority.test.mjs",
+      "bytes": 14059,
+      "sha256": "d2c429c26e62d6960fd19d4d32bf43a164a54f05bee4d9dc727dba4b593776fe",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/controller.mjs",
+      "bytes": 10824,
+      "sha256": "2e0c22713351dd86c0db0256fb3b96c4e914e42186b869b35e64a8ef70a4341c",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/controller.test.mjs",
+      "bytes": 32421,
+      "sha256": "1746487e35b8104e43a8730b6a6c517783f0f2d29dc51a74cd40bc94d8025060",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/costcap.mjs",
+      "bytes": 16713,
+      "sha256": "de55f45df23577ef8acd87f02b2d9c90f3cafd867439944b5be5545d0f8c4ada",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/expense-history.manifest.json",
+      "bytes": 2065,
+      "sha256": "4e691fd37cad483a21d949f5cbdccb1c8c42f91f83863298db256ee7ddac73c3",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/expense-history.md",
+      "bytes": 7340,
+      "sha256": "4ce970f124d9177cc48686b4278f3426de2149c78cab285707823f5736c5b4eb",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/expense-history.mjs",
+      "bytes": 7286,
+      "sha256": "7c2cf5246676efeda67d99755e46c500ef27bd0e158b25204e224fbb62f798af",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/expense-history.test.mjs",
+      "bytes": 9864,
+      "sha256": "04199f8e87da1934203ff2bef364ddfb5c2d8f8ad9c4bcff926ffb3f17c6dd96",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/fenced-stop.pg.test.mjs",
+      "bytes": 21729,
+      "sha256": "b26c194af9661a8429beb80afe8ad4e5d795b92c2961810df7e7ba911d147932",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/managed-overlay-artifacts/authoring.tar.gz",
+      "bytes": 390210,
+      "sha256": "183ecd01da08c1080b27ee480df66cdd75687e85df35f9d03a8f5c5a4b7afdbf",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/managed-overlay-artifacts/manifest.json",
+      "bytes": 27247,
+      "sha256": "8ea1808de072efef84b2b69a107e84def1d4bef56d7ba4a8d1e27d5f00b4f670",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/managed-overlay-artifacts/review.tar.gz",
+      "bytes": 392179,
+      "sha256": "5fd94171c859f3a0f38d8767602f89eea7529b567affaf98ec00b0075b41d768",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/managed-overlay-check.mjs",
+      "bytes": 5942,
+      "sha256": "88c107b44ecdaeaec1217002256e37d8e223502c0d5eb3d7ff5090407b97edae",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/managed-overlay-durable-probe-journal.patch",
+      "bytes": 482,
+      "sha256": "5004f473f322d9ec83d2143739c4921f59b1d4596a858bf515377efd89847686",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/managed-overlay-queue.patch",
+      "bytes": 3115,
+      "sha256": "a686136929205eda1f86fe2c250da8629a4d436949115ebd31c901b2b30199ec",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/managed-overlay-sql-index.json",
+      "bytes": 3853,
+      "sha256": "7b54e30e5ac55ab905b108bfc92d09b03ac201a55f03a74059224ed89af982e2",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/managed-overlay.candidates.json",
+      "bytes": 34406,
+      "sha256": "4ca4ad1ed06f43ee228a4da346ae5298afd38cb9fa0d5e8b260c370f5346fd3d",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/managed-overlay.lock.json",
+      "bytes": 21006,
+      "sha256": "47c74f06f2d3f5387363dbcd5162272dde0c97acb8faee955ac936ec455dff97",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/managed-overlay.md",
+      "bytes": 4565,
+      "sha256": "17c1cdd60c1591d85da65e0f9430be125417ef449636a10a069afe4fa8650f9a",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/managed-overlay.mjs",
+      "bytes": 13481,
+      "sha256": "0810cb68847f420ad5639a32ffa5bd52d05f00903b7d079dd8721294d47802e4",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/managed-overlay.pg.test.mjs",
+      "bytes": 11018,
+      "sha256": "701b2b8753d794ead7dab73ffe7c895c0585c5dd0aaf80225e5d402735685248",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/node-adapter.mjs",
+      "bytes": 19787,
+      "sha256": "a09b07af13014a9b45bfa35209a5ad7262b4985590df087c985d6bce3e5e1c65",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/ops-handler.mjs",
+      "bytes": 11610,
+      "sha256": "41dec157e6b64e90b5b41733fbaf7f80c4ddf45993308c78ceb591e981d3863f",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/period-cap.test.mjs",
+      "bytes": 9153,
+      "sha256": "0b9c53a037d9fef4a1d2ea523b42d6d71b18e2623071eb462fa86fc7711cef34",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/policy.mjs",
+      "bytes": 8791,
+      "sha256": "7ff2353ac0585ed73177d4033390223ea190c28f7727c274b5bfe5ad2bd41a06",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/pool.example.json",
+      "bytes": 2237,
+      "sha256": "ae226425e1e1808e0157d9abf651e7dbaff91f4a71c06b598ed6c478824e85da",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/reconcile-entry.mjs",
+      "bytes": 4953,
+      "sha256": "28dd173565fab360c7fab1f8ed8f3552f9b55bb7dbe6290e3ad770150d6e5a1c",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/run-completion.test.mjs",
+      "bytes": 30662,
+      "sha256": "19f50d6a4f1c68887987df1acb149848cf32c9053f1aeacc8181c40ffc480fa1",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "deploy/tencent-elasticity/tencent-cvm.mjs",
+      "bytes": 21182,
+      "sha256": "9e4febe8306eb1927eb259afbe6b75fd94b588ab3d057c164ea1e50a30128530",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    },
+    {
+      "path": "db/migrations/0184_execution_run_authorization_denial.sql",
+      "bytes": 946,
+      "sha256": "ee48ce37381fef24541c7ca2f0296081487c8a19c7dcfd013029644a0db4f6ad",
+      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+    }
+  ],
+  "source_prs": [
+    {
+      "number": 1416,
+      "head": "917ea83be3a08c7af16b1a81d241787c0187b1b2",
+      "merge": "fa2f90fc871a45663de74b8a86f55a958e0a674b",
+      "tree": "c359bb516e109418b4d6f50f7e5bff8ea110986c"
+    },
+    {
+      "number": 1419,
+      "head": "f3ae953da3b6ef5a9c47aac71422a7546173c2b7",
+      "merge": "b111ff2281acb7f5f671cab0ba1c8831bf15ab5b",
+      "tree": "6ba6b1fd7987fec4734dab58628835fc93e4bad9"
+    },
+    {
+      "number": 1423,
+      "head": "d7514ec9d3c82e14a1400b0225cbd596542eb481",
+      "merge": "696393edd435b770012e62da2f425fc2a24ef406",
+      "tree": "7d47bba75b34fa4c8e63c452b7db5cc21d558adb"
+    }
+  ],
+  "runtime_payload": {
+    "manifest_path": "deploy/tencent-elasticity/managed-overlay-artifacts/manifest.json",
+    "bytes": 27247,
+    "sha256": "8ea1808de072efef84b2b69a107e84def1d4bef56d7ba4a8d1e27d5f00b4f670",
+    "bases": {
+      "authoring": "a0a051111dc583db9b39459a5f215e63a8c522e5",
+      "review": "9c6ab2c2d995774af48a537cdf0a087959165d10"
+    },
+    "head": "917ea83be3a08c7af16b1a81d241787c0187b1b2",
+    "source_sha256": "d3340d98c2188cabadf39f99717ac1a41042c584a5d2506761b95562f8c6dea1",
+    "images": {
+      "authoring": "sha256:861a93b76a21edd03764a02d22cf4f3ad66579b9d1d6e79fcc21616c9b1c3576",
+      "review": "sha256:ea4f4de5d307485ecda4c22c6d105132bc51549b4b6bbe477e6d7db6f2a684a2"
+    },
+    "image_sha256": "87690ba276e9b98b7eeb9c8d10b6dd52d265e1ee5b697e8209b4b15b948fb85b",
+    "entry": "apps/worker/dist/runtime.js",
+    "authoring_runKinds": [
+      "update",
+      "generation",
+      "qa"
+    ],
+    "review_runKinds": [
+      "review",
+      "assistant"
+    ],
+    "payload_files": {
+      "authoring": 65,
+      "review": 67
+    },
+    "rebuild_required": false
+  },
+  "effective_control_payload": [
+    {
+      "path": "apps/api/dist/execution-capacity.js",
+      "bytes": 52831,
+      "sha256": "1ff8c4715e9456fbef342ac548508db1ee816b8fb2c9abdcd41e1b9ccd923f34"
+    },
+    {
+      "path": "apps/api/dist/execution-demand.js",
+      "bytes": 2366,
+      "sha256": "50a3261e621f708966da3b6fd7af3ad32bf99031cdce12068b4523b0cf6a8169"
+    },
+    {
+      "path": "apps/api/dist/execution-run-denial.js",
+      "bytes": 10345,
+      "sha256": "e74dc9ffedb9d227c92a171c6a39d35cb0d132741f2ff3c6859f5d584d5a6243"
+    },
+    {
+      "path": "apps/api/dist/queue.js",
+      "bytes": 110526,
+      "sha256": "d9c8718ca52e126925e671e91f930933ace8d6998c9856c69f1af841dda0bc3e"
+    },
+    {
+      "path": "apps/worker/dist/ops-scheduler.js",
+      "bytes": 18535,
+      "sha256": "9ffff709f0c1722d5d847ffc6f2562d1363ce59219a5a9cf33ceb7638fbb2c3f"
+    },
+    {
+      "path": "deploy/tencent-elasticity/bootstrap-entry.mjs",
+      "bytes": 5211,
+      "sha256": "1cfd19875630bc7a2fe6906f0be5850285569360b21b5975a71fb27a1edaa4c3"
+    },
+    {
+      "path": "deploy/tencent-elasticity/bootstrap-failure.mjs",
+      "bytes": 4653,
+      "sha256": "e40b0cff60fa83701eea48d17f44c0459135db6d153a2f634673ecee0a5f1068"
+    },
+    {
+      "path": "deploy/tencent-elasticity/bootstrap.mjs",
+      "bytes": 6263,
+      "sha256": "e3b57728a08abc7ac941feef3b35d29de312cd20a37148f8ba04762cee1ae5f3"
+    },
+    {
+      "path": "deploy/tencent-elasticity/cloud-quote-refresh.mjs",
+      "bytes": 13919,
+      "sha256": "290f9dd96d58766643a9569045e9811f7623ce05e35e6a43f76bdf30f04f64f2"
+    },
+    {
+      "path": "deploy/tencent-elasticity/control-authority.mjs",
+      "bytes": 12461,
+      "sha256": "868cf6dac78f4248c25939b8145692609445ecc3bce25661acea635fef2888e3"
+    },
+    {
+      "path": "deploy/tencent-elasticity/control-credentials.mjs",
+      "bytes": 8162,
+      "sha256": "e7e4034c67ddecfda2e612bc074d483c1535bd07beef0ab32957883ec12892db"
+    },
+    {
+      "path": "deploy/tencent-elasticity/control-socket.mjs",
+      "bytes": 2148,
+      "sha256": "becdbd83d14dc0a520394e24e2bef561ebd097f37f26410aee75ba02a06bfb98"
+    },
+    {
+      "path": "deploy/tencent-elasticity/control-tick-bound.mjs",
+      "bytes": 1836,
+      "sha256": "e7a23959ec60d667dc8998555decad919cddbff4777bcb9ad6dfb716b87bed43"
+    },
+    {
+      "path": "deploy/tencent-elasticity/controller.mjs",
+      "bytes": 10824,
+      "sha256": "2e0c22713351dd86c0db0256fb3b96c4e914e42186b869b35e64a8ef70a4341c"
+    },
+    {
+      "path": "deploy/tencent-elasticity/costcap.mjs",
+      "bytes": 16713,
+      "sha256": "de55f45df23577ef8acd87f02b2d9c90f3cafd867439944b5be5545d0f8c4ada"
+    },
+    {
+      "path": "deploy/tencent-elasticity/enrollment.mjs",
+      "bytes": 14496,
+      "sha256": "2eaab77c9d0e33b7fa4bce1180a5a4272aa11d7203790fdfdf838c06af6b01e1"
+    },
+    {
+      "path": "deploy/tencent-elasticity/node-adapter.mjs",
+      "bytes": 19787,
+      "sha256": "a09b07af13014a9b45bfa35209a5ad7262b4985590df087c985d6bce3e5e1c65"
+    },
+    {
+      "path": "deploy/tencent-elasticity/ops-handler.mjs",
+      "bytes": 11610,
+      "sha256": "41dec157e6b64e90b5b41733fbaf7f80c4ddf45993308c78ceb591e981d3863f"
+    },
+    {
+      "path": "deploy/tencent-elasticity/policy.mjs",
+      "bytes": 8791,
+      "sha256": "7ff2353ac0585ed73177d4033390223ea190c28f7727c274b5bfe5ad2bd41a06"
+    },
+    {
+      "path": "deploy/tencent-elasticity/private-egress.mjs",
+      "bytes": 1370,
+      "sha256": "84397844bf60c424be352321d2ca87c7977cc9370d01e81fd669d45884f91563"
+    },
+    {
+      "path": "deploy/tencent-elasticity/private-files.mjs",
+      "bytes": 1391,
+      "sha256": "7b7b7a1409efd1398d21fda659d3182644923cc64a9573d8ca85c8280fc8f29e"
+    },
+    {
+      "path": "deploy/tencent-elasticity/private-transport.mjs",
+      "bytes": 5635,
+      "sha256": "e3cf3527c0d9b23bff9f75b585a224aee50965035229a64122afab8ddeff1e6d"
+    },
+    {
+      "path": "deploy/tencent-elasticity/reconcile-entry.mjs",
+      "bytes": 4953,
+      "sha256": "28dd173565fab360c7fab1f8ed8f3552f9b55bb7dbe6290e3ad770150d6e5a1c"
+    },
+    {
+      "path": "deploy/tencent-elasticity/stunnel-reload.mjs",
+      "bytes": 1760,
+      "sha256": "bb6789a3bf9a2f7de227bd9eda404f42d171c227b0d2ead96c050443a5194be4"
+    },
+    {
+      "path": "deploy/tencent-elasticity/tencent-cvm.mjs",
+      "bytes": 21182,
+      "sha256": "9e4febe8306eb1927eb259afbe6b75fd94b588ab3d057c164ea1e50a30128530"
+    },
+    {
+      "path": "deploy/tencent-elasticity/transport-issuer.mjs",
+      "bytes": 4803,
+      "sha256": "e6611f6c2e9e414e66626473fa5d045faad45079db81d1f3c1e5608b50600c9e"
+    },
+    {
+      "path": "deploy/tencent-elasticity/transport-refresher.mjs",
+      "bytes": 5967,
+      "sha256": "db8c26c58c1fcce568305092047027a2adbd43dd4ec3698e8d2fbda579b6ce77"
+    },
+    {
+      "path": "deploy/tencent-elasticity/transport-renewal.mjs",
+      "bytes": 13497,
+      "sha256": "6ebabf4c44937703138fc7ab2bca9a0aedf613d952aeb9223378894d1aa3073f"
+    },
+    {
+      "path": "deploy/tencent-elasticity/transport-service.mjs",
+      "bytes": 7311,
+      "sha256": "ed69f95a60acf7c6da230ba59017c92be50ccef246e3b8cff3136f66c35db07a"
+    },
+    {
+      "path": "packages/contracts/dist/execution-capacity.js",
+      "bytes": 17572,
+      "sha256": "e1fcdff85e94818ec0afd9488a2764faa1c6ff37b6159f078cadc18704472ca3"
+    },
+    {
+      "path": "packages/contracts/dist/index.js",
+      "bytes": 98540,
+      "sha256": "2fb47693049a9530996b341ab582dd9a90fe0eaf20c21e5582f97406ffc47afc"
+    },
+    {
+      "path": "packages/contracts/dist/workpaper-progressive.js",
+      "bytes": 5440,
+      "sha256": "da383c4e17e6c2dbda3536937c910a60aa27a775ccca7939793f5aedbe604bc6"
+    },
+    {
+      "path": "deploy/tencent-elasticity/expense-history.mjs",
+      "bytes": 7286,
+      "sha256": "7c2cf5246676efeda67d99755e46c500ef27bd0e158b25204e224fbb62f798af"
+    }
+  ],
+  "control_installation": "Exact component files plus execution-capacity package export on the existing ops image/package tree; reuse existing ops Pool for stop completion and operation persistence. Independent issuer and runtime identities.",
+  "schema": {
+    "formal_before_count": 182,
+    "after_count": 185,
+    "already_present": "0179",
+    "selected_migrations": [
+      {
+        "path": "db/migrations/0181_execution_node_capacity.sql",
+        "bytes": 16729,
+        "sha256": "d102fc7b1a1c620d28610c608aafbc134c9fc3336d7834baea62272746f8e838"
+      },
+      {
+        "path": "db/migrations/0183_execution_run_acceptance.sql",
+        "bytes": 232,
+        "sha256": "c53ee445d16969f6e4db3ea840df33c289ee67a6c6db73260ec17f41d383ea71"
+      },
+      {
+        "path": "db/migrations/0184_execution_run_authorization_denial.sql",
+        "bytes": 946,
+        "sha256": "ee48ce37381fef24541c7ca2f0296081487c8a19c7dcfd013029644a0db4f6ad"
+      }
+    ],
+    "excluded": [
+      "0180",
+      "0182"
+    ],
+    "entry": "Unchanged db/migrate.mjs, cwd containing only selected db/migrations; inherit existing protected ops DATABASE_URL."
+  },
+  "closed_candidate_config": {
+    "enabled": false,
+    "phase": "automatic",
+    "min_running": 0,
+    "max_owned": 2,
+    "global_model_limit": 8,
+    "node_model_limit": 4,
+    "provider_concurrency_limit": 8,
+    "provider_policy_sha256": "7782bea64191467b70712aa1c49537cf92fe138c9e533e99dc9e2060ef1679d0",
+    "provider_budget_review_sha256": "7782bea64191467b70712aa1c49537cf92fe138c9e533e99dc9e2060ef1679d0",
+    "expense_policy_sha256": "fde89a4ec1c9313037654191fe5bae96b5419e26d3dc0d03d1e2156e1a654884",
+    "expense_policy_revision": 1,
+    "total_cap_cny_per_hour": 4,
+    "period_cap_cny": 48,
+    "retained_nodes": [],
+    "source_sha256": "d3340d98c2188cabadf39f99717ac1a41042c584a5d2506761b95562f8c6dea1",
+    "image_sha256": "87690ba276e9b98b7eeb9c8d10b6dd52d265e1ee5b697e8209b4b15b948fb85b",
+    "image_id": "img-quo1uh41",
+    "private_pg_verified": false,
+    "service_credentials_verified": false
+  },
+  "system_image": {
+    "image_id": "img-quo1uh41",
+    "snapshot_id": "snap-jguuvymo",
+    "ImageState": "NORMAL",
+    "IsSupportCloudinit": true,
+    "ImageType": "PRIVATE_IMAGE",
+    "system_disk_GiB": 40,
+    "original_capture_sha256": "19c33801b3c9b53996af65d956449d3db0f1d3b4fc465c01c388a34d1f9b2c01",
+    "current_identity_clean_sha256": "729a87be42fd175d822b3d4275c298844ebbf4c06c708f403ef5e28450a60e91",
+    "installation_receipt_sha256": "d872744a2d8de0e4de809655959b3fa87ddf9b1675eaf4b488bc17f23f3bfc7e",
+    "builder_retirement_verified": true,
+    "transport_same_scope_verified": false,
+    "builder_retirement_original_sha256": "3efa58898ddf37f2b4f94268543cee5c4e7ca9983ed7b544de0b34726e6912e6",
+    "builder_exact_disks_absent": true,
+    "snapshot_retained": true
+  },
+  "evidence_reused": {
+    "capacity_cases_passed": 14,
+    "global8_recheck_cases_passed": 12,
+    "authoring_synthetic_passed": 1,
+    "review_synthetic_passed": 1,
+    "history_suite_passed": 1,
+    "period_cap_cases_passed": 4,
+    "provider_public_limit_document_sha256": "c89146deebebc2f1ebb61f1486b2c7703bf01da55cdb98e4ea8cbc9e321c8a",
+    "provider_endpoint": "https://api.deepseek.com",
+    "provider_model": "deepseek-flash",
+    "provider_review_sha256": "7782bea64191467b70712aa1c49537cf92fe138c9e533e99dc9e2060ef1679d0",
+    "new_tests_or_model_runs_for_release_metadata": false,
+    "CI_not_started_is_not_pass": true
+  },
+  "publication_evidence_index": {
+    "files": 147,
+    "sha256": "bfb30a5c235d5b8b41caac020abbbd601476b20555cdb257c4db0ceb5e858c05"
+  },
+  "backup": {
+    "schema_count": 182,
+    "bytes": 418541585,
+    "sha256": "11c797bbcd6c8e5f7a6963d99fa12d8cd2df7451fc577267b033d891bf22c60b"
+  },
+  "rollback": {
+    "fixed_four_post1414_preimage_sha256": "8dc4ecb254bfed5122ac92f1c4e9561d480a7f15c8b24354245f5f070fa3ab39",
+    "authoring_image": "sha256:e1ce3a98ca971cebe08adb8b07eed633878fa32451582be5242e0ec4f82e00d4",
+    "review_image": "sha256:05d9c63d459736c44d3ebd1983e65baa1e097fd9efe78a2264583ebdb88e80b7",
+    "compose_sha256": "f47b74667ad30d98953ed72f86e7c940d0d43c17490bbbdb5e2fe0dd6da60002",
+    "managed_nodes": false,
+    "global_model_limit": 4,
+    "budget_available": false,
+    "sequence": "Close managed tasks and same-ACK positive stop before restoring the exact current fixed-four components/config using locks and CAS; retain additive schema and audits."
+  },
+  "release_gates": {
+    "full_c23_gold_quality_passed": false,
+    "full_stack_automatic_deploy_paused": true,
+    "fixed_four_exception_covers_managed": false,
+    "exact_infrastructure_exception_granted": false,
+    "native_model_overlap_gt4_lte8_verified": false,
+    "formal_ops_automatic_same_ACK_stop_verified": false,
+    "complete_closed_history_review_ready": false,
+    "formal_schema_ACL_activation_executed": false,
+    "note": "Release preparation does not grant activation. Preserve all known failures and historical/unknown expenses; scoped final authorization follows the exact artifacts and required real acceptance."
+  }
+}

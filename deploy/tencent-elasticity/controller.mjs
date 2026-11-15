@@ -1,8 +1,8 @@
-import {canonical, planCapacity, requireThat, sha256, validateConfig} from './policy.mjs';
+import {canonical, planCapacity, requireThat, sha256, validateConfig, requireRetainedRequest} from './policy.mjs';
 import {bootstrapUserData} from './bootstrap.mjs';
 import {requireCostAdmission, costAdmission} from './costcap.mjs';
 import {runParameters} from './tencent-cvm.mjs';
-import {executionCloudCompletionMatches,executionRunAcceptanceMatches} from '@bondbuddy/contracts';
+import {executionCloudCompletionMatches,executionRunAcceptanceMatches,executionStopAuthorizationMatches} from '@bondbuddy/contracts';
 
 /** @typedef {import('@bondbuddy/contracts').ExecutionCapacityControl} ExecutionCapacityControl */
 /** One existing ops invocation. No polling service, timer or independent task store. */
@@ -12,6 +12,7 @@ export class ExecutionPoolController {
   async plan(inventory) { return planCapacity(await this.control.snapshot(), inventory, this.config); }
   async start(request, opId, material) {
     validateConfig(this.config, {apply: true});
+    requireRetainedRequest(this.config,request.instance_id,request);
     const snapshot = await this.control.snapshot();
     const inventory = await this.cloud.inventory();
     requireCostAdmission(await this.costSnapshot(inventory), inventory, this.config);
@@ -27,6 +28,7 @@ export class ExecutionPoolController {
   async resumeIntent(operation) {
     validateConfig(this.config, {apply: true, expenditure: false});
     if (operation.action === 'stop') return this.dispatch(operation);
+    requireRetainedRequest(this.config,operation.request.instance_id,operation.request);
     const inventory = await this.cloud.inventory();
     let admission={allowed:false};
     try{admission=costAdmission(await this.costSnapshot(inventory),inventory,this.config);}catch{}
@@ -70,7 +72,9 @@ export class ExecutionPoolController {
     return this.dispatch(operation);
   }
   async dispatch(operation, material) {
+    requireThat(operation.action !== 'destroy', 'EXECUTION_DESTROY_UNSUPPORTED');
     if (operation.state !== 'intent') return operation;
+    if(operation.action==='stop')requireThat(executionStopAuthorizationMatches(operation,v=>sha256(canonical(v))),'STOP_PROOF_REQUIRED');
     // Unique CAS winner marks uncertainty BEFORE the request. Crashes and client
     // timeouts never imply no cloud effect. Losing dispatchers cannot call SDK.
     const claimed = await this.control.claimCloudDispatch(operation.operation_id, operation.revision);
@@ -99,6 +103,16 @@ export class ExecutionPoolController {
     }
     return this.control.recordCloudResult(claimed.operation_id, claimed.revision, result);
   }
+  /** Explicit reconciliation of an existing durable denial, never another Run. */
+  async resolveRunAuthorizationDenial(opId,revision,evidence,paymentAudit) {
+    const op=await this.control.loadOperation(opId);
+    requireThat(op?.action==='run'&&op.request&&op.identity===null,'RUN_DENIAL_SCOPE');
+    const slot=this.config.role_names.findIndex((_,i)=>sha256(canonical(runParameters(this.config,op.request,op.client_token,
+      bootstrapUserData(this.config,op.request,i),i,opId)))===op.request.launch_manifest_sha256);
+    requireThat(slot>=0,'RUN_DENIAL_MANIFEST_DRIFT');
+    return this.control.finalizeRunAuthorizationDenial(opId,revision,{evidence,payment_audit:paymentAudit,launch_parameters:runParameters(this.config,op.request,
+      op.client_token,bootstrapUserData(this.config,op.request,slot),slot,opId)});
+  }
   async recover(opId) {
     const op = await this.control.loadOperation(opId);
     requireThat(op, 'OPERATION_NOT_FOUND');
@@ -118,6 +132,7 @@ export class ExecutionPoolController {
         identity:{account_id:op.request.account_id,region:op.request.region,instance_id:i.instance_id,epoch:op.request.epoch},observation:null});
     }
     if(!op.provider_request_id)return op;
+    if(op.action!=='stop')requireRetainedRequest(this.config,op.identity.instance_id,op.request);
     const observation=op.action==='run'?await this.cloud.describeRun(op):await this.cloud.describe(op.identity.instance_id);
     if(!executionCloudCompletionMatches(op,observation))return op;
     return this.control.recordCloudResult(opId, op.revision, {state: 'completed', provider_request_id: op.provider_request_id,

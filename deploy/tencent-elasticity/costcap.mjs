@@ -1,3 +1,4 @@
+import {mergeExpenseHistory} from './expense-history.mjs';
 import {canonical, sha256, requireThat} from './policy.mjs';
 
 const HOUR = 3600000;
@@ -5,6 +6,13 @@ const finite = v => Number.isFinite(v) && v >= 0;
 const digest = v => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
 const ms = value => {const n = Date.parse(value); requireThat(Number.isFinite(n), 'EXPENSE_TIME_REQUIRED'); return n;};
 const money = value => Math.ceil(value * 1000000) / 1000000;
+
+/** Only the protected configuration selects the cap; snapshots cannot raise it. */
+export function expensePeriodCap(config) {
+  const cap=config.period_cap_cny===undefined?48:config.period_cap_cny;
+  requireThat(Number.isFinite(cap)&&cap>0&&Number.isSafeInteger(cap*1000000),'EXPENSE_PERIOD_CAP');
+  return cap;
+}
 
 const sameResource = (a, b) => a?.account_id === b.account_id && a?.region === b.region && a?.instance_id === b.instance_id;
 const pending = o => ['intent','submitted','unknown'].includes(o.state);
@@ -66,9 +74,11 @@ export function expensePeriod(capturedAt, timeZone) {
 
 /** All rates are reviewed worst-case bounds including enforced network limits.
  * Price-only traffic quotes cannot bound usage. Missing bills never mean zero. */
-export function produceExpenseSnapshot({ledger, inventory, quote, config}) {
+export function produceExpenseSnapshot({ledger, inventory, quote, config, history}) {
   requireThat(ledger?.captured_at && Array.isArray(ledger.nodes) && Array.isArray(ledger.operations) && Array.isArray(inventory), 'EXPENSE_LEDGER_REQUIRED');
+  const periodCap=expensePeriodCap(config);
   const now=ms(ledger.captured_at), period=expensePeriod(ledger.captured_at,config.time_zone);
+  ledger = mergeExpenseHistory(ledger, history, config, period, expensePeriod);
   const start=ms(period.period_start), end=ms(period.period_end);
   requireThat(quote?.version==='execution-cloud-price-bounds-v1' && quote.currency==='CNY' &&
     quote.account_id===config.account_id && quote.region===config.region && quote.policy_revision===config.expense_policy_revision &&
@@ -89,7 +99,7 @@ export function produceExpenseSnapshot({ledger, inventory, quote, config}) {
   requireThat(compute.running_cny_per_node_hour===.8 && compute.stopped_cny_per_node_hour===0, 'EXPENSE_COMPUTE_RATE');
   const running=quote.components.reduce((a,c)=>a+c.running_cny_per_node_hour,0), stopped=quote.components.reduce((a,c)=>a+c.stopped_cny_per_node_hour,0);
   requireThat(running*2<=config.total_cap_cny_per_hour+1e-9 && running*2<=4+1e-9 && stopped<=running &&
-    config.total_cap_cny_per_hour<=4 && config.period_cap_cny===48 && config.reservation_hours>=1 && config.drain_reserve_hours>=1, 'EXPENSE_RATE_CAP');
+    config.total_cap_cny_per_hour<=4 && config.reservation_hours>=1 && config.drain_reserve_hours>=1, 'EXPENSE_RATE_CAP');
   const ops=new Map(ledger.operations.map(o=>[o.operation_id,o]));
   requireThat(ops.size===ledger.operations.length && inventory.length<=2 && new Set(inventory.map(i=>i.instance_id)).size===inventory.length, 'EXPENSE_INVENTORY_DRIFT');
   const live=ledger.nodes.filter(n=>n.destroyed_at===null);
@@ -148,10 +158,12 @@ export function produceExpenseSnapshot({ledger, inventory, quote, config}) {
   const resident=automaticZero?0:money(Math.max(0,end-now)/HOUR*running), drain=money(2*running*config.drain_reserve_hours);
   const result={version:'execution-cloud-expense-v2',currency:'CNY',account_id:config.account_id,region:config.region,
     quote_sha256:config.quote_sha256,expense_policy_sha256:config.expense_policy_sha256,policy_revision:config.expense_policy_revision,
-    observed_at:ledger.captured_at,...period,period_cap_cny:config.period_cap_cny,total_hourly_cap_cny:config.total_cap_cny_per_hour,
+    observed_at:ledger.captured_at,...period,period_cap_cny:periodCap,total_hourly_cap_cny:config.total_cap_cny_per_hour,
     resource_ids:live.map(n=>n.identity.instance_id).sort(),ledger_sha256:sha256(canonical(ledger)),inventory_sha256:sha256(canonical(inventory)),
     quote_component_evidence:quote.components.map(c=>({kind:c.kind,evidence_ref:c.evidence_ref,evidence_sha256:c.evidence_sha256,enforced_bound_sha256:c.enforced_bound_sha256})),
     fixed_commitment_evidence:quote.fixed_commitments,fixed_commitments_upper_bound_cny:fixedCommitments,
+    external_history_sha256:config.external_expense_history?.sha256??null,
+    external_liability_upper_bound_cny:ledger.external_liability_upper_bound_cny??0,
     reconciliation:'conservative_rate_bound_without_zero_bill_assumption',rows,spent_upper_bound_cny:money(spent),
     reserved_upper_bound_cny:money(reservations),unknown_liability_cny:money(carry),drain_reserve_cny:drain,
     resident_remaining_period_cny:resident,prospective_slot_cny:money(running*config.reservation_hours)};
@@ -165,13 +177,17 @@ export function costAdmission(input, inventory, config) {
   if(!Number.isFinite(observed)||observed>now+30000||now-observed>300000)return fail('expense_snapshot_stale');
   let period;try{period=expensePeriod(input.observed_at,config.time_zone);}catch{return fail('expense_period_invalid');}
   if(Object.entries(period).some(([k,v])=>input[k]!==v)||now>=Date.parse(period.period_end))return fail('expense_period_mismatch');
+  if((input.external_history_sha256??null)!==(config.external_expense_history?.sha256??null))return fail('expense_history_mismatch');
+  let periodCap;try{periodCap=expensePeriodCap(config);}catch{return fail('expense_source_mismatch');}
   if(input.currency!=='CNY'||input.account_id!==config.account_id||input.region!==config.region||input.quote_sha256!==config.quote_sha256||
     input.expense_policy_sha256!==config.expense_policy_sha256||input.policy_revision!==config.expense_policy_revision||
-    input.period_cap_cny!==48||input.total_hourly_cap_cny>4||input.inventory_sha256!==sha256(canonical(inventory))||
+    input.period_cap_cny!==periodCap||input.total_hourly_cap_cny>4||input.inventory_sha256!==sha256(canonical(inventory))||
     !digest(input.ledger_sha256)||input.quote_component_evidence?.length!==6)return fail('expense_source_mismatch');
   const keys=['spent_upper_bound_cny','reserved_upper_bound_cny','unknown_liability_cny','drain_reserve_cny','resident_remaining_period_cny','prospective_slot_cny','fixed_commitments_upper_bound_cny'];
   if(keys.some(k=>!finite(input[k]))||input.drain_reserve_cny<1.6)return fail('expense_bound_missing');
-  const used=keys.reduce((n,k)=>n+Math.ceil(input[k]*1000000),0);
-  return used<=48000000?{allowed:true,headroom_cny:(48000000-used)/1000000}:{allowed:false,reason:'period_cap'};
+  if(!finite(input.external_liability_upper_bound_cny??(config.external_expense_history?undefined:0)))return fail('expense_bound_missing');
+  const used=keys.reduce((n,k)=>n+Math.ceil(input[k]*1000000),0)+Math.ceil((input.external_liability_upper_bound_cny??0)*1000000);
+  const cap=periodCap*1000000;
+  return used<=cap?{allowed:true,headroom_cny:(cap-used)/1000000}:{allowed:false,reason:'period_cap'};
 }
 export function requireCostAdmission(input,inventory,config){const result=costAdmission(input,inventory,config);requireThat(result.allowed,'CLOUD_COSTCAP_REJECTED');return result;}
