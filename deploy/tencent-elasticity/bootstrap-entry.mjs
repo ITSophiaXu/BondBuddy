@@ -51,6 +51,7 @@ export async function acquireBootstrapAdmission(directory = '/etc/bondbuddy/boot
 export async function runBootstrapEntry({
   readConfig = () => readPrivateJson('/etc/bondbuddy/elastic-bootstrap.json'),
   readManifest = () => readPrivateJson('/etc/bondbuddy/elastic-public.json'),
+  readAdapter = readFile,
   importAdapter = path => import(pathToFileURL(path).href),
   enableBootstrap = () => exec('/usr/bin/systemctl', ['enable', 'bondbuddy-execution-bootstrap.service'],
     {timeout: 5000, maxBuffer: 4096}),
@@ -61,7 +62,7 @@ export async function runBootstrapEntry({
   const publicManifest = await readManifest();
   requireThat(config.enabled === true && config.adapter_path.startsWith('/opt/bondbuddy/') &&
     /^[a-f0-9]{64}$/.test(config.adapter_sha256), 'BOOTSTRAP_ADAPTER_REQUIRED');
-  requireThat(sha256(await readFile(config.adapter_path)) === config.adapter_sha256, 'BOOTSTRAP_ADAPTER_CHANGED');
+  requireThat(sha256(await readAdapter(config.adapter_path)) === config.adapter_sha256, 'BOOTSTRAP_ADAPTER_CHANGED');
   const module = await importAdapter(config.adapter_path);
   const adapter = await module.createConfiguredNodeAdapter({publicManifest});
   await enableBootstrap();
