@@ -19,6 +19,19 @@ async function metadataValue(path) {
   requireThat(r.ok && Number(r.headers.get('content-length') ?? 0) <= 1024, 'NODE_METADATA_BOUND');
   const text = await r.text(); requireThat(text.length <= 1024, 'NODE_METADATA_BOUND'); return text.trim();
 }
+export async function verifyInstalledExecutionImage(image, runDocker=docker) {
+  const localId=typeof image==='string'&&/^sha256:[a-f0-9]{64}$/.test(image);
+  requireThat(localId || (typeof image==='string'&&/^[-A-Za-z0-9._/:]+@sha256:[a-f0-9]{64}$/.test(image)), 'NODE_IMAGE_DIGEST_REQUIRED');
+  // Image capture can preserve a local content ID without a registry digest.
+  // Both modes inspect existing content only; neither resolves tags or pulls.
+  if(localId){
+    const inspected=await runDocker(['image','inspect','--format','{{.Id}}',image]);
+    requireThat(inspected===image,'NODE_IMAGE_NOT_INSTALLED');
+  }else{
+    const inspected=JSON.parse(await runDocker(['image','inspect','--format','{{json .RepoDigests}}',image]));
+    requireThat(Array.isArray(inspected)&&inspected.includes(image),'NODE_IMAGE_NOT_INSTALLED');
+  }
+}
 /** Public selection is initialization only. The existing broker still verifies
  * STS, the exact instance/role/operation and that role's exclusive secret. */
 export function selectExecutionNodeConfig(config, publicManifest) {
@@ -78,10 +91,7 @@ const runtime = {
       sha256(canonical(config.images)) === e.image_sha256, 'NODE_IMAGE_BUNDLE');
     requireThat(sha256(await import('node:fs/promises').then(fs => fs.readFile(config.compose_file))) === config.compose_sha256, 'NODE_COMPOSE_CHANGED');
     for (const service of e.services) {
-      const image = config.images[service.service_id];
-      requireThat(/^[-A-Za-z0-9._/:]+@sha256:[a-f0-9]{64}$/.test(image), 'NODE_IMAGE_DIGEST_REQUIRED');
-      const inspected = await runDocker(['image', 'inspect', '--format', '{{json .RepoDigests}}', image]);
-      requireThat(JSON.parse(inspected).includes(image), 'NODE_IMAGE_NOT_INSTALLED'); // no implicit pull
+      await verifyInstalledExecutionImage(config.images[service.service_id],runDocker);
     }
     await mkdir('/run/bondbuddy',{recursive:true,mode:0o755});
     const runtimeParent=await lstat('/run/bondbuddy');
