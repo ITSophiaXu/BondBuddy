@@ -109,7 +109,7 @@ export function friendlyError(error: unknown, operation: ErrorOperation = 'actio
     case 'QUOTE_UNAVAILABLE': return '当前范围暂无法承接，本次未开始、未扣费。请查看报价原因或调整准备内容。';
     case 'QUOTE_DECLINED': return '本报价已拒绝，本次未开始、未扣费。准备内容保留，可重新申请范围报价。';
     case 'BILLING_NOT_READY': return '积分价格尚未配置，请联系支持；本次未扣费。';
-    case 'PAYMENT_UNAVAILABLE': return '充值渠道暂不可用，请稍后重试。项目材料已保留。';
+    case 'PAYMENT_UNAVAILABLE': return '支付渠道暂不可用，请稍后重试。如已付款，请刷新原订单核对结果。';
     case 'PAYMENT_INVALID': return '支付结果尚未核实，请刷新订单状态；无需重复付款。';
     case 'SUBSCRIPTION_CHANGE_QUOTE_STALE': return '可抵扣积分已变化或付款摘要已过期，请刷新付款摘要。';
     case 'SUBSCRIPTION_CHANGE_MANDATE_PENDING': return '原自动续费仍在解除核对中，请稍后继续同一付款请求；尚未生成新订单。';
