@@ -7,6 +7,34 @@ import {TencentTransport,TencentCvm} from './tencent-cvm.mjs';
 import {issueTransportCredentials,validateTransportIssuer} from './transport-issuer.mjs';
 import {executionCloudCompletionMatches} from '@bondbuddy/contracts';
 
+const isolatedDatabaseBinding={version:'execution-authority-database-v1',database_name:'bb1361_owned_isolated',system_identifier:'7705237779724353574',
+  host:'127.0.0.1',port:15432,credentials_file:'/var/lib/bondbuddy/elastic-pg-mtls/issuer/pg-credentials.json'};
+
+/** Deployment-owned authority.json selects the target, never an issue request. */
+export function validateAuthorityDatabaseBinding(config,pg) {
+  const binding=Object.hasOwn(config,'database_binding')?config.database_binding:isolatedDatabaseBinding;
+  const keys=Object.keys(isolatedDatabaseBinding);
+  requireThat(binding&&Object.keys(binding).length===keys.length&&Object.keys(binding).every(k=>keys.includes(k))&&
+    binding.version===isolatedDatabaseBinding.version&&['bb1361_owned_isolated','bondbuddy'].includes(binding.database_name)&&
+    /^[1-9][0-9]{0,19}$/.test(binding.system_identifier??'')&&binding.host===isolatedDatabaseBinding.host&&binding.port===isolatedDatabaseBinding.port&&
+    binding.credentials_file===isolatedDatabaseBinding.credentials_file,'AUTHORITY_DATABASE_BINDING');
+  requireThat(pg?.credential_ready===true&&pg.database_name===binding.database_name&&pg.system_identifier===binding.system_identifier&&
+    pg.credentials_file===binding.credentials_file,'AUTHORITY_DATABASE_NOT_READY');
+  return {...binding};
+}
+
+export function validateAuthorityDatabaseConnection(databaseUrl,binding) {
+  try {
+    const url=new URL(databaseUrl);
+    requireThat(['postgres:','postgresql:'].includes(url.protocol)&&url.hostname===binding.host&&url.port===String(binding.port)&&
+      !url.searchParams.has('host')&&!url.searchParams.has('port')&&decodeURIComponent(url.pathname.slice(1))===binding.database_name,'AUTHORITY_DATABASE_SCOPE');
+  } catch { throw Error('AUTHORITY_DATABASE_SCOPE'); }
+}
+
+export function verifyAuthorityDatabaseIdentity(actual,binding) {
+  requireThat(actual?.system_identifier===binding.system_identifier&&actual.name===binding.database_name,'AUTHORITY_DATABASE_DRIFT');
+}
+
 /** Exact registration read within the issuer's existing node SELECT scope. */
 export async function readAuthorityRegisteredNodes(pool,identity) {
   requireThat(/^\d{1,20}$/.test(identity?.account_id??'')&&identity.region==='ap-beijing'&&/^ins-[a-z0-9]+$/.test(identity.instance_id??''),'AUTHORITY_REGISTRATION_SCOPE');
@@ -104,15 +132,14 @@ async function main(){
     !config.issuer.authority_socket&&config.issuer.ca_file==='/var/lib/bondbuddy/elastic-pg-mtls/issuer/ca.pem'&&
     config.issuer.signing_key_file==='/var/lib/bondbuddy/elastic-pg-mtls/issuer/ca.key','AUTHORITY_CONFIG_SCOPE');
   const pg=await readPrivateJson('/var/lib/bondbuddy/elastic-pg-mtls/issuer/pg-identity.json');
-  requireThat(pg.credential_ready===true&&pg.database_name==='bb1361_owned_isolated'&&pg.system_identifier==='7705237779724353574'&&
-    pg.credentials_file==='/var/lib/bondbuddy/elastic-pg-mtls/issuer/pg-credentials.json','AUTHORITY_DATABASE_NOT_READY');
-  const db=await readPrivateJson(pg.credentials_file),url=new URL(db.database_url);
-  requireThat(url.hostname==='127.0.0.1'&&url.port==='15432'&&decodeURIComponent(url.pathname.slice(1))===pg.database_name,'AUTHORITY_DATABASE_SCOPE');
+  const databaseBinding=validateAuthorityDatabaseBinding(config,pg);
+  const db=await readPrivateJson(databaseBinding.credentials_file);
+  validateAuthorityDatabaseConnection(db.database_url,databaseBinding);
   const {Pool}=await import('pg'),{executionCapacityControl,executionCloudExpenseLedger}=await import('@bondbuddy/api/execution-capacity');
   const {createControlCredentialProvider}=await import('./control-credentials.mjs');
   const pool=new Pool({connectionString:db.database_url,max:2,connectionTimeoutMillis:5000,query_timeout:10000});
   const verifyDatabase=async()=>{const r=(await pool.query('SELECT system_identifier::text,current_database() AS name FROM pg_control_system()')).rows[0];
-    requireThat(r.system_identifier===pg.system_identifier&&r.name===pg.database_name,'AUTHORITY_DATABASE_DRIFT');};
+    verifyAuthorityDatabaseIdentity(r,databaseBinding);};
   const credentialsProvider=createControlCredentialProvider(config.credentials);
   const control=executionCapacityControl(pool);
   const cloud=new TencentCvm({config:config.pool,control,readRegisteredNodes:identity=>readAuthorityRegisteredNodes(pool,identity),

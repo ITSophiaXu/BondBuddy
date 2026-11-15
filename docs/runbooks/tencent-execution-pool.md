@@ -35,6 +35,8 @@
 
 签发身份只需已有的节点与操作读取权限，不需要容量策略／需求快照权限。独立签发入口向 `TencentCvm` 注入可信 `readRegisteredNodes`，按账户／地域／具体实例只读节点归属、状态、销毁时间、源码／运行包／创建清单 hash 及预期服务；原 Run 仍通过 `control.loadOperation` 完整核验。普通控制路径继续使用 `control.snapshot`；签发请求和节点不能传入读取回调或自报登记。不得为此给签发身份增加策略读取或写权限。
 
+签发进程的受保护 `authority.json` 可明确设置 `database_binding`：`version=execution-authority-database-v1`、`database_name=bondbuddy`、准确 `system_identifier`、`host=127.0.0.1`、`port=15432`、`credentials_file=/var/lib/bondbuddy/elastic-pg-mtls/issuer/pg-credentials.json`。只有原隔离库及正式业务库可选；不设置时继续使用原隔离默认。绑定必须与受保护 `pg-identity.json` 的就绪标志／数据库／系统标识／凭据路径一致，私有连接 URL 必须命中同一主机／端口／库。连接后及每次签发边界继续核对实际数据库名与系统标识；错配、缺少正式绑定或漂移拒绝，不打印 URL。请求端不能指定数据库，既有私有文件权限和 SQL 身份保持；修改绑定不代表权限或正式发布已验收。
+
 旧实例只覆写具名 pin 的 ImageId、源码和运行包 hash。其他启动参数使用当前可信配置，并重算**原** Run 参数与创建清单 hash，同时核对云端完整 launch binding；角色、网络、磁盘、public slot binding 或服务配置漂移均拒绝。暖启动沿用原创建 hash 和原业务 pins；签发服务使用同一规则。新实例始终使用默认配置，不能借旧 pin 创建。配置须同时提供给运维控制和独立签发服务，不能只更新一侧。
 
 此兼容不更改登记、退役或销毁接口，不放宽最多两台、费用、排空、版本发布或实际冷／暖启动验收要求。回退时恢复原控制／签发配置及对应代码；现有节点记录、原 Run 和所有 Start／Stop 证据保留。
