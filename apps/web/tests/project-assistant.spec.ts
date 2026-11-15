@@ -36,8 +36,8 @@ async function setup(page:Page,{paid=false,fixed=false}={}){
   else if(path==='/m4/topics/topic/materials'){const pin=fixtureRequest(req).material,index=Number(pin.material_id.split('-').at(-1));w.materials.push(pin);w.material_details.push({...pin,...uploads[index],state:'persisted'});body={materials:w.materials};}
   else if(path==='/artifacts/result')body={filename:'合成项目_复核报告_V2_20261009.txt',artifact_id:'result',media_type:'text/plain',sha256:deliveredHash,download_url:'/api/v1/artifacts/result/download'};
   else if(path==='/artifacts/result/download'){await route.fulfill({contentType:'text/plain',body:delivered});return;}
-  else if(path.endsWith('/messages')){const b=fixtureRequest(req);messages.push(b);w.messages.push({message_id:'message',role:'user',content:b.content,created_at:now,reply_status:'completed',context:b.context},
-    {message_id:'answer',role:'assistant',content:'可先说明需要调整的内容，确认后再生成新版本。',created_at:now,reply_status:'completed',context:b.context});body={message:w.messages[0],run:{run_id:'qa'}};}
+  else if(path.endsWith('/messages')){const b=fixtureRequest(req);messages.push(b);const message={message_id:'message-'+messages.length,role:'user',content:b.content,created_at:now,reply_status:'completed',context:b.context};w.messages.push(message,
+    {message_id:'answer-'+messages.length,role:'assistant',content:'可先说明需要调整的内容，确认后再生成新版本。',created_at:now,reply_status:'completed',context:b.context});body={message,run:{run_id:'qa-'+messages.length}};}
   else if(path==='/runs/execute'){executions.push(fixtureRequest(req));body={};}
   else {status=404;body={code:'NOT_FOUND'};}
   await route.fulfill({status,contentType:'application/json',body:fixtureJson(route,body)});
@@ -288,4 +288,132 @@ for(const state of ['queued','paused'])test(`ordinary QA ${state} exposes status
 test('automatic assistant answer is submitted once on the first send',async({page})=>{
  const s=await setup(page);await page.route('**/m4/topics/topic/quote',route=>route.fulfill({contentType:'application/json',body:fixtureJson(route,{quote:{...commerceMetadata(1218),quote_id:'automatic-qa',topic_id:'topic',input_hash:hash,points:1218,price_version:AUTOMATIC_PRICE_VERSION,auto_charge:true,quote_status:'ready',scope_quote_id:'scope-automatic',scope_lines:[],expires_at:'2099-01-01T00:00:00Z',task_type:'m4_Q01',billing_method:'fixed',amount_semantics:'fixed_price'},balance:{available:100000,frozen:0},shortage:0})}));
  await page.getByRole('button',{name:'打开 BondBuddy'}).click();await page.locator('[data-composer]').fill('解释担保条款');await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(1);expect(s.messages[0]).toMatchObject({content:'解释担保条款',quote_id:'automatic-qa'});expect(s.executions).toHaveLength(0);await expect(page.locator('[data-commerce-confirm]')).toHaveCount(0);
+});
+
+function pendingQa(s:Awaited<ReturnType<typeof setup>>,state='paused'){
+ const created=new Date(Date.now()-10*60000).toISOString();
+ const message={message_id:'pending-qa',role:'user',version:1,content:'上一轮募集资金问题',created_at:created,reply_status:'queued',run_id:'pending-run',reply:null,error:null};
+ const task={run:{run_id:'pending-run',project_id:'scope',state,stage:state==='paused'?'provider_reconcile':'queued'},manifest:{kind:'qa',topic_id:'topic'},created_at:created,events:[],artifacts:[]};
+ s.w.messages=[message];s.w.tasks=[task];return {message,task};
+}
+
+test('ordinary QA stop then send ignores late reads and preserves the new round across reload',async({page})=>{
+ await page.clock.install();const s=await setup(page),old=pendingQa(s);let cancellations=0;
+ await page.route('**/api/v1/runs/pending-run/cancel',async route=>{cancellations++;old.task.run.state='cancelled';old.message.reply_status='failed';await route.fulfill({json:old.task.run});});
+ await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await expect(page.locator('.ba-reply-progress')).toContainText('核对本次调用状态');
+ let release:(()=>void)|undefined,lateReadFinished=false;
+ await page.route('**/m4/topics/topic/workspace',async route=>{
+  if(!release){const snapshot=structuredClone(s.w);await new Promise<void>(resolve=>{release=resolve;});await route.fulfill({contentType:'application/json',body:fixtureJson(route,snapshot)});lateReadFinished=true;}
+  else await route.fulfill({contentType:'application/json',body:fixtureJson(route,s.w)});
+ });
+ await page.clock.fastForward(4000);await expect.poll(()=>!!release).toBe(true);
+ await page.locator('[data-composer]').fill('2025年末总资产');await page.getByRole('button',{name:'停止本次回答',exact:true}).click();
+ await expect(page.locator('[data-status]')).toContainText('已停止本次回答');await expect(page.locator('[data-composer]')).toHaveValue('2025年末总资产');
+ await page.route('**/m4/topics/topic/messages',async route=>{
+  const b=fixtureRequest(route.request());s.messages.push(b);
+  const message={...old.message,message_id:'new-question',content:b.content,created_at:new Date().toISOString(),reply_status:'queued',run_id:'new-run'};
+  const task={...old.task,run:{run_id:'new-run',project_id:'scope',state:'queued',stage:'queued'},created_at:message.created_at};s.w.messages.push(message);s.w.tasks.push(task);
+  await route.fulfill({contentType:'application/json',body:fixtureJson(route,{message,run:task.run})});
+ });
+ await page.locator('[data-a=send]').evaluate(el=>{el.dispatchEvent(new MouseEvent('click',{bubbles:true}));el.dispatchEvent(new MouseEvent('click',{bubbles:true}));});
+ await expect(page.locator('.ba-message').filter({hasText:'2025年末总资产'})).toContainText('排队等待处理');
+ await expect(page.locator('[data-status]')).toHaveText('');await expect(page.locator('.ba-message').filter({hasText:'上一轮募集资金问题'})).toContainText('本次回答已停止');
+ release!();await expect.poll(()=>lateReadFinished).toBe(true);await expect(page.locator('.ba-message').filter({hasText:'2025年末总资产'})).toContainText('排队等待处理');
+ expect(cancellations).toBe(1);expect(s.messages).toHaveLength(1);expect(s.messages[0].submission_request_id).toBeTruthy();
+ await page.locator('[data-composer]').fill('下一条尚未发送的问题');await page.clock.fastForward(500);await expect.poll(()=>s.w.view.unsent_content).toBe('下一条尚未发送的问题');
+ if(process.env.BB_REPLY_EVIDENCE_DIR){
+  await mkdir(process.env.BB_REPLY_EVIDENCE_DIR,{recursive:true});const prototype=await page.context().newPage();
+  await prototype.setContent(await readFile(new URL('../../../product-prototype/public/project-assistant-refined.html',import.meta.url),'utf8'));await prototype.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();
+  await prototype.getByRole('textbox',{name:'发送给 BondBuddy'}).fill('下一条尚未发送的问题');
+  for(const width of [1440,390]){await page.setViewportSize({width,height:960});await prototype.setViewportSize({width,height:960});await page.screenshot({path:resolve(process.env.BB_REPLY_EVIDENCE_DIR,`stopped-and-next-question-${width}.png`)});await prototype.screenshot({path:resolve(process.env.BB_REPLY_EVIDENCE_DIR,`prototype-${width}.png`)});}
+  await prototype.close();
+ }
+ await page.reload();await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await expect(page.locator('[data-composer]')).toHaveValue('下一条尚未发送的问题');
+ await expect(page.locator('.ba-message').filter({hasText:'2025年末总资产'})).toContainText('排队等待处理');await expect(page.locator('[data-status]')).not.toContainText('已停止');
+ await page.locator('[data-a=send]').click();await expect(page.locator('[data-status]')).toContainText('上一轮回复尚未结束');expect(s.messages).toHaveLength(1);
+});
+
+test('ordinary QA cancellation acknowledgement waits for terminal state before permitting the next send',async({page})=>{
+ const s=await setup(page),old=pendingQa(s);let cancellations=0;
+ await page.route('**/api/v1/runs/pending-run/cancel',async route=>{cancellations++;await route.fulfill({json:old.task.run});});
+ await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await page.locator('[data-composer]').fill('发行市场交易所');
+ await page.getByRole('button',{name:'停止本次回答',exact:true}).click();await expect(page.locator('[data-status]')).toContainText('正在停止');
+ await expect(page.locator('.ba-message')).not.toContainText('本次回答已停止');await expect(page.getByRole('button',{name:'停止本次回答',exact:true})).toHaveCount(0);
+ if(process.env.BB_REPLY_EVIDENCE_DIR){await page.setViewportSize({width:390,height:960});await page.screenshot({path:resolve(process.env.BB_REPLY_EVIDENCE_DIR,'cancellation-pending-390.png')});}
+ await page.locator('[data-a=send]').click();await expect(page.locator('[data-status]')).toContainText('等待确认任务结束');expect(s.messages).toHaveLength(0);expect(cancellations).toBe(1);
+ old.task.run.state='cancelled';old.message.reply_status='failed';await page.locator('[data-a=refresh-reply]').click();
+ await expect(page.locator('[data-status]')).toContainText('已停止本次回答');await expect(page.locator('[data-composer]')).toHaveValue('发行市场交易所');
+ await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(1);await expect(page.locator('[data-status]')).toHaveText('');
+ await page.locator('[data-composer]').fill('继续问发行期限');await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(2);
+ expect(new Set(s.messages.map(m=>m.submission_request_id)).size).toBe(2);await expect(page.locator('.ba-message.user')).toHaveCount(3);
+});
+
+test('ordinary QA failed cancellation keeps its outcome unknown and retains the next question',async({page})=>{
+ const s=await setup(page),old=pendingQa(s);
+ await page.route('**/api/v1/runs/pending-run/cancel',route=>route.fulfill({status:503,json:{code:'SERVICE_UNAVAILABLE'}}));
+ await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await page.locator('[data-composer]').fill('未发送的下一问');
+ await page.getByRole('button',{name:'停止本次回答',exact:true}).click();await expect(page.locator('[data-status]')).toContainText('停止结果尚未确认');
+ await expect(page.locator('.ba-message')).not.toContainText('本次回答已停止');await page.locator('[data-a=send]').click();expect(s.messages).toHaveLength(0);await expect(page.locator('[data-composer]')).toHaveValue('未发送的下一问');
+ // The request may have reached the server despite a lost response. A fresh terminal read resolves it.
+ old.task.run.state='cancelled';old.message.reply_status='failed';await page.locator('[data-a=refresh-reply]').click();await expect(page.locator('[data-status]')).toContainText('已停止本次回答');
+ await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(1);await expect(page.locator('[data-status]')).toHaveText('');
+});
+
+test('ordinary QA successful reread clears interruption and unblocks a completed reply without resending it',async({page})=>{
+ await page.clock.install();const s=await setup(page),old=pendingQa(s);
+ await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await expect(page.locator('.ba-reply-progress')).toContainText('核对本次调用状态');
+ let unavailable=true;await page.route('**/m4/topics/topic/workspace',route=>unavailable?route.fulfill({status:503,json:{code:'SERVICE_UNAVAILABLE'}}):route.fulfill({contentType:'application/json',body:fixtureJson(route,s.w)}));
+ await page.clock.fastForward(4000);await expect(page.locator('[data-status]')).toContainText('暂无法确认回复状态');await expect(page.locator('[data-status]')).not.toContainText('继续运行');
+ await page.locator('[data-composer]').fill('恢复后的下一问');await page.locator('[data-a=send]').click();expect(s.messages).toHaveLength(0);await expect(page.locator('[data-composer]')).toHaveValue('恢复后的下一问');
+ unavailable=false;old.task.run.state='succeeded';old.message.reply_status='completed';
+ await page.locator('[data-a=refresh-reply]').click();await expect(page.locator('[data-status]')).toHaveText('');
+ await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(1);expect(s.messages[0].content).toBe('恢复后的下一问');
+});
+
+test('ordinary QA a recovered terminal task does not remain blocked by its stale message projection',async({page})=>{
+ const s=await setup(page),old=pendingQa(s);await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();
+ await page.locator('[data-composer]').fill('终态后的下一问');await page.locator('[data-a=send]').click();await expect(page.locator('[data-status]')).toContainText('仍在核对调用状态');expect(s.messages).toHaveLength(0);
+ old.task.run.state='cancelled';// Exercise the run as authority even if the message projection has not caught up.
+ await page.locator('[data-a=refresh-reply]').click();await expect(page.locator('[data-status]')).toHaveText('');
+ await page.locator('[data-a=send]').click();await expect.poll(()=>s.messages.length).toBe(1);await expect(page.locator('.ba-message').filter({hasText:'上一轮募集资金问题'})).toContainText('本次回答已停止');
+});
+
+test('ordinary QA accepted receipt remains visible when its follow-up poll fails',async({page})=>{
+ const s=await setup(page);await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();
+ await page.route('**/m4/topics/topic/messages',async route=>{
+  const b=fixtureRequest(route.request());s.messages.push(b);const message={message_id:'accepted',role:'user',content:b.content,created_at:now,reply_status:'queued',run_id:'accepted-run'};s.w.messages.push(message);
+  await page.route('**/m4/topics/topic/workspace',r=>r.fulfill({status:503,json:{code:'SERVICE_UNAVAILABLE'}}));
+  await route.fulfill({contentType:'application/json',body:fixtureJson(route,{message,run:{run_id:'accepted-run'}})});
+ });
+ await page.locator('[data-composer]').fill('已收到但暂时无法刷新');await page.locator('[data-a=send]').click();
+ await expect(page.locator('.ba-message')).toContainText('已收到但暂时无法刷新');await expect(page.locator('[data-status]')).toContainText('暂无法确认回复状态');
+ await page.locator('[data-composer]').fill('保留下一问');await page.locator('[data-a=send]').click();expect(s.messages).toHaveLength(1);await expect(page.locator('[data-composer]')).toHaveValue('保留下一问');
+});
+
+test('ordinary QA late failed read from an old conversation cannot set a new conversation notice',async({page})=>{
+ await page.clock.install();const s=await setup(page);pendingQa(s);await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await expect(page.locator('.ba-reply-progress')).toBeVisible();
+ let release:(()=>void)|undefined,finished=false;
+ await page.route('**/m4/topics/topic/workspace',async route=>{await new Promise<void>(resolve=>{release=resolve;});await route.fulfill({status:503,json:{code:'SERVICE_UNAVAILABLE'}});finished=true;});
+ await page.clock.fastForward(4000);await expect.poll(()=>!!release).toBe(true);
+ const next:any=fixture();next.topic={...next.topic,topic_id:'next-topic',project_id:'next-project',name:'新对话'};next.project={...next.project,project_id:'next-project'};
+ await page.route('**/m4/topics',async route=>route.request().method()==='POST'?route.fulfill({json:{topic:next.topic}}):route.fallback());
+ await page.route('**/m4/topics/next-topic/workspace',route=>route.fulfill({contentType:'application/json',body:fixtureJson(route,next)}));
+ await page.route('**/assistant/topics/next-topic/cards',route=>route.fulfill({json:{cards:[]}}));
+ await page.route('**/m4/topics/next-topic/view',route=>{const b=fixtureRequest(route.request());next.view={...b.view,version:next.view.version+1};return route.fulfill({contentType:'application/json',body:fixtureJson(route,{view:next.view})});});
+ await page.getByRole('button',{name:'新对话',exact:true}).click();await expect(page.locator('.ba-message')).toHaveCount(0);await page.locator('[data-composer]').fill('新对话的草稿');
+ release!();await expect.poll(()=>finished).toBe(true);await expect(page.locator('[data-status]')).toHaveText('');await expect(page.locator('[data-composer]')).toHaveValue('新对话的草稿');expect(s.messages).toHaveLength(0);
+});
+
+test('ordinary QA accepted message keeps polling when saving the cleared composer fails',async({page})=>{
+ await page.clock.install();const s=await setup(page);let accepted=false,reads=0,failedSaves=0;
+ await page.route('**/m4/topics/topic/workspace',route=>{if(accepted)reads++;return route.fulfill({contentType:'application/json',body:fixtureJson(route,s.w)});});
+ await page.route('**/m4/topics/topic/view',route=>{if(!accepted)return route.fallback();failedSaves++;return route.fulfill({status:503,json:{code:'SERVICE_UNAVAILABLE'}});});
+ await page.route('**/m4/topics/topic/messages',async route=>{
+  const b=fixtureRequest(route.request());s.messages.push(b);accepted=true;
+  const message={message_id:'accepted-before-view-failure',role:'user',content:b.content,created_at:now,reply_status:'queued',run_id:'accepted-run'};s.w.messages.push(message);
+  await route.fulfill({contentType:'application/json',body:fixtureJson(route,{message,run:{run_id:'accepted-run'}})});
+ });
+ await page.getByRole('button',{name:'打开 BondBuddy',exact:true}).click();await page.locator('[data-composer]').fill('保存失败也继续查询已接受的回答');await page.locator('[data-a=send]').click();
+ await expect(page.locator('.ba-message')).toContainText('保存失败也继续查询已接受的回答');await expect(page.locator('[data-status]')).not.toHaveText('');await expect.poll(()=>reads).toBeGreaterThan(0);expect(failedSaves).toBe(1);
+ const before=reads;await page.clock.fastForward(4000);await expect.poll(()=>reads).toBeGreaterThan(before);expect(s.messages).toHaveLength(1);
 });
