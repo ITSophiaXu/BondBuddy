@@ -1,0 +1,16 @@
+# Render only from the approved private network and per-node mTLS manifest.
+# All placeholders are mandatory; this file is not a runnable configuration.
+foreground = yes
+pid =
+debug = notice
+output = /dev/null
+[execution-pg]
+client = yes
+accept = REQUIRED_PRIVATE_BRIDGE_ADDRESS:15433
+connect = REQUIRED_PRIVATE_PG_ENDPOINT:15432
+verifyChain = yes
+checkHost = pg-execution.internal
+sni = pg-execution.internal
+CAfile = /etc/bondbuddy/transport/ca.pem
+cert = /etc/bondbuddy/transport/client.pem
+key = /etc/bondbuddy/transport/client.key
