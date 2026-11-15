@@ -32,11 +32,13 @@ export function executionTiming(run:Row,events:Row[],capturedAt:string):Executio
  const stageStarts=new Map<string,number>(),stages:{stage:string;ms:number}[]=[];
  for(const e of events.filter(e=>e.run_id===run.id&&e.type==='run.progress').sort((a,b)=>Number(a.seq)-Number(b.seq))){
   const stage=String(e.stage??'');if(!stage)continue;
-  const reason=String((e.payload as {reason?:unknown}|undefined)?.reason??'');
+  const payload=e.payload as {reason?:unknown;duration_ms?:unknown}|undefined;
+  const reason=String(e.reason??payload?.reason??'');
   const at=validTime(e.occurred_at);
   if(reason==='stage_started'){if(at!==null)stageStarts.set(stage,at);continue;}
   if(reason!=='stage_completed')continue;
-  const reported=Number((e.payload as {duration_ms?:unknown}|undefined)?.duration_ms);
+  const value=e.duration_ms??payload?.duration_ms;
+  const reported=typeof value==='number'||typeof value==='string'&&value.trim()!==''?Number(value):NaN;
   const ms=Number.isFinite(reported)&&reported>=0?reported:(at!==null&&stageStarts.has(stage)?at-stageStarts.get(stage)!:null);
   if(ms!==null&&ms>=0)stages.push({stage,ms});
   stageStarts.delete(stage);
