@@ -28,6 +28,7 @@
   "compose_file": "/opt/bondbuddy/deploy/tencent-elasticity/compose.yaml",
   "compose_sha256": null,
   "execution_network": "REQUIRED_PRIVATE_NETWORK",
+  "execution_network_subnet": "172.28.61.0/24",
   "seccomp_file": "/opt/bondbuddy/deploy/m1/security/codex-seccomp.json",
   "seccomp_sha256": null,
   "apparmor_file": "/etc/apparmor.d/bondbuddy-codex-v1",
@@ -36,14 +37,17 @@
     "unit_name": "bondbuddy-execution-pg.service",
     "config_file": "/etc/bondbuddy/pg-client.conf",
     "config_sha256": null,
+    "unit_sha256": null,
+    "credential_directory": "/etc/bondbuddy/transport",
+    "ca_sha256": null,
     "local_host": "REQUIRED_PRIVATE_BRIDGE_ADDRESS",
     "local_port": 15433,
     "remote_host": "REQUIRED_PRIVATE_PG_ENDPOINT",
     "remote_port": 15432,
     "sni": "pg-execution.internal",
     "system_identifier": "REQUIRED_SQL_SYSTEM_IDENTIFIER",
-    "ca_file": "/etc/bondbuddy/pg-ca.pem",
-    "cert_file": "/etc/bondbuddy/pg-client.pem",
-    "key_file": "/etc/bondbuddy/pg-client.key"
+    "ca_file": "/etc/bondbuddy/transport/ca.pem",
+    "cert_file": "/etc/bondbuddy/transport/client.pem",
+    "key_file": "/etc/bondbuddy/transport/client.key"
   }
 }

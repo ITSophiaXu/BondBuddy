@@ -44,6 +44,12 @@
 
 `bootstrap.service` 是一次性启动入口。审核镜像须预装 Node、Docker、本模块及已核 hash 的节点专属 broker/runtime adapter；配置缺失即启动失败，不执行默认个人 provider。公开 UserData 仅写服务 manifest；短凭据在控制端准确云绑定之后发行。具体 `enrollment.mjs`、`node-adapter.mjs` 已提供受限 SSM/STS broker 与 Docker/PG 接线。控制端先 PG 绑定，再精确 Get/Put/readback 同一 SecretName/VersionId（Put 受理丢失不换 token/版本）；节点必须匹配当前 Start/Run RequestId，暖启动不能读取旧 epoch 的 tag。开机握手最多等待 120 秒，不新建调度循环。真实云和 Secret 发行为延期验收项，函数单测不能证明实机可启动。
 
+节点专属角色与同名 secret 使用 `bondbuddy-execution-node-1`、`bondbuddy-execution-node-2`。每个角色只能读取准确 creatorUin/SecretName 资源与自身实例，不授予云修改或 secret 写权限。控制角色独立发行新服务凭据，不使用个人登录状态。Secret 版本为当前已完成启动操作的固定版本，必须通过当前云 RequestId 与 PG 节点身份绑定。
+
+`private-transport.mjs` 将 broker 返回的 `transport_credentials` 接到实际节点启动：版本 `execution-pg-mtls-v1`，必须含 account_id、region、instance_id、epoch、ca_pem、cert_pem、key_pem。客户端证书 CN 为 `<instance_id>:<epoch>`，须含 clientAuth、由已 pin 的 CA 签发、私钥匹配且有效期不超过一天。安装至 root 独占的 `/etc/bondbuddy/transport`（目录 0700、文件 0600），整个目录已被模型文件权限规则拒读。镜像、UserData 和公开证据不含这些字节；构建和镜像快照必须在发行前完成，清理时撤销证书并删除发行文件。服务登记与环境目录由 root 持有，group 1000 仅能遍历，文件按运行用户 UID 1000 安装 0600，禁止替换目录条目。
+
+启动还核对 stunnel 配置、unit hash、远端 endpoint/SNI/CA 和受控 Docker bridge 的完整配置；不存在时创建专属 internal bridge，已有配置漂移或观察失败则拒绝。凭据安装后才启动 transport，每个服务从该网络执行真实 SQL system_identifier 预检，再启动消费者。已活跃 transport 的凭据不一致时不重启、不覆盖，保留既有持有者。私网路由与 cloud API/供应商/Blob 的受限代理出口必须另有实际连接和费用上界证据；internal bridge 不提供默认互联网出口。准确角色、网络、凭据、报价或不可变镜像缺失仍拒绝 apply。
+
 独立 `compose.yaml` 只含编制和复核。`BB_EXECUTION_ENROLLMENT_FILE` 分服务绑定准确登记文件；必须在 runtime 的 managed-node 断言和 session gate 已接通后使用。运行 UID/GID 固定 `1000:1000`；登记与服务私有目录 `0700`、文件 `0600`，按实际 UID 安装，不改世界可读。子工具 explicit deny 登记、服务凭据和宿主配置目录；Compose 保留受限 seccomp/AppArmor、cap-drop ALL 和 no-new-privileges，不允许 privileged/unconfined。编制能力仅 authoring，复核为 review/assistant，probe 显式关闭；launch capabilities 从 services 并集派生。任务种类限定 `run`、parse slots 为零、确认服务关闭；纯解析/确认等未纳入排空统计的入口不得启动。两进程共享 PG 单节点 4 槽，不能分别占 4 槽。总硬内存上限 9 GiB，两个临时目录共 1 GiB，余量留给系统与实际子进程；真实双节点混合峰值仍需核验。
 
 PG 通道使用 `pg-client.conf.example`/`pg-client.service`，仅绑定获审私有 bridge 地址，TLS 对端 SNI/CA/独立客户证书全部校验。节点启动核准确 stunnel 配置 hash、活动 unit 和每个 credential 权限，再以独立服务环境做真实 SQL system identifier 检查后才启动消费者；全服务 ready 再核同一数据库/epoch/pins。网络路由或其他任务的临时测试规则不是本池 ready 证明。

@@ -5,6 +5,7 @@ import {randomUUID} from 'node:crypto';
 import {readPrivateJson} from './private-files.mjs';
 import {createSsmEnrollmentBroker} from './enrollment.mjs';
 import {requireThat, canonical, sha256} from './policy.mjs';
+import {installPrivateTransport, ensurePrivateExecutionNetwork, validateTransportCredentials} from './private-transport.mjs';
 
 const exec = promisify(execFile);
 async function docker(args) {
@@ -16,7 +17,7 @@ async function metadataValue(path) {
   requireThat(r.ok && Number(r.headers.get('content-length') ?? 0) <= 1024, 'NODE_METADATA_BOUND');
   const text = await r.text(); requireThat(text.length <= 1024, 'NODE_METADATA_BOUND'); return text.trim();
 }
-export function createNodeAdapter(config, {runDocker=docker, readMetadata=metadataValue, enrollmentBroker, checkUnit, wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)), now=Date.now}={}) {
+export function createNodeAdapter(config, {runDocker=docker, readMetadata=metadataValue, enrollmentBroker, checkUnit, startUnit, wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)), now=Date.now}={}) {
 requireThat(config.runtime_uid === 1000 && /^[a-f0-9]{64}$/.test(config.image_sha256) && config.compose_file.startsWith('/opt/bondbuddy/'), 'NODE_ADAPTER_CONFIG');
 const launched=new Map();
 async function metadata() {
@@ -42,27 +43,55 @@ const runtime = {
       const inspected = await runDocker(['image', 'inspect', '--format', '{{json .RepoDigests}}', image]);
       requireThat(JSON.parse(inspected).includes(image), 'NODE_IMAGE_NOT_INSTALLED'); // no implicit pull
     }
-    await mkdir('/run/bondbuddy/enrollment', {recursive: true, mode: 0o700});
+    await mkdir('/run/bondbuddy',{recursive:true,mode:0o755});
+    const runtimeParent=await lstat('/run/bondbuddy');
+    requireThat(process.getuid()===0&&runtimeParent.isDirectory()&&!runtimeParent.isSymbolicLink()&&runtimeParent.uid===0&&(runtimeParent.mode&0o022)===0,'NODE_PRIVATE_PARENT');
+    await mkdir('/run/bondbuddy/enrollment', {recursive: true, mode: 0o750});
     requireThat((await lstat('/run/bondbuddy/enrollment')).isDirectory() && !(await lstat('/run/bondbuddy/enrollment')).isSymbolicLink(),'NODE_PRIVATE_DIRECTORY');
-    await chown('/run/bondbuddy/enrollment', 1000, 1000);await chmod('/run/bondbuddy/enrollment',0o700);
-    await mkdir('/run/bondbuddy/service', {recursive: true, mode: 0o700});
+    await chown('/run/bondbuddy/enrollment', 0, 1000);await chmod('/run/bondbuddy/enrollment',0o750);
+    await mkdir('/run/bondbuddy/service', {recursive: true, mode: 0o750});
     requireThat((await lstat('/run/bondbuddy/service')).isDirectory() && !(await lstat('/run/bondbuddy/service')).isSymbolicLink(),'NODE_PRIVATE_DIRECTORY');
-    await chown('/run/bondbuddy/service',1000,1000);await chmod('/run/bondbuddy/service',0o700);
+    await chown('/run/bondbuddy/service',0,1000);await chmod('/run/bondbuddy/service',0o750);
     requireThat(config.seccomp_sha256===sha256(await readFile(config.seccomp_file)) && config.apparmor_sha256===sha256(await readFile(config.apparmor_file)),'NODE_SECURITY_PROFILE_DRIFT');
     const profiles=await readFile('/sys/kernel/security/apparmor/profiles','utf8');
     requireThat(profiles.split('\n').includes('bondbuddy-codex-v1 (enforce)'),'NODE_SECURITY_PROFILE_NOT_LOADED');
     const pg=config.private_pg;
     requireThat(pg?.config_file?.startsWith('/etc/bondbuddy/') && sha256(await readFile(pg.config_file))===pg.config_sha256 &&
       pg.unit_name==='bondbuddy-execution-pg.service' && /^[A-Za-z0-9.-]+$/.test(pg.sni) && /^\d+$/.test(pg.system_identifier),'NODE_PRIVATE_PG_REQUIRED');
-    const active=checkUnit?await checkUnit(pg.unit_name):(await exec('/usr/bin/systemctl',['is-active',pg.unit_name],{timeout:5000})).stdout.trim();
-    requireThat(active==='active','NODE_PRIVATE_PG_TRANSPORT_NOT_ACTIVE');
     // The reviewed stunnel client config binds endpoint/SNI/CA/mTLS identity;
     // a route or CCN attachment on its own is never a readiness receipt.
     const transportText=await readFile(pg.config_file,'utf8');
     for(const line of ['client = yes','verifyChain = yes',`checkHost = ${pg.sni}`,`sni = ${pg.sni}`,`CAfile = ${pg.ca_file}`,`cert = ${pg.cert_file}`,`key = ${pg.key_file}`,
       `connect = ${pg.remote_host}:${pg.remote_port}`,`accept = ${pg.local_host}:${pg.local_port}`])
       requireThat(transportText.split('\n').map(x=>x.trim()).includes(line),'NODE_PRIVATE_PG_CONFIG_DRIFT');
-    for(const file of [pg.ca_file,pg.cert_file,pg.key_file]){const st=await lstat(file);requireThat(st.isFile()&&!st.isSymbolicLink()&&(st.mode&0o777)===0o600,'NODE_PRIVATE_PG_CREDENTIAL_MODE');}
+    requireThat(process.getuid()===0 && pg.credential_directory==='/etc/bondbuddy/transport' &&
+      pg.ca_file===`${pg.credential_directory}/ca.pem` && pg.cert_file===`${pg.credential_directory}/client.pem` &&
+      pg.key_file===`${pg.credential_directory}/client.key` &&
+      pg.unit_sha256===sha256(await readFile('/etc/systemd/system/bondbuddy-execution-pg.service')),'NODE_PRIVATE_PG_INSTALL_SCOPE');
+    const parent=await lstat('/etc/bondbuddy');
+    requireThat(parent.isDirectory()&&!parent.isSymbolicLink()&&parent.uid===0&&(parent.mode&0o022)===0,'NODE_PRIVATE_PG_PARENT');
+    validateTransportCredentials(enrollment.transport_credentials,{...e.identity,ca_sha256:pg.ca_sha256},{now});
+    await ensurePrivateExecutionNetwork(config,runDocker);
+    const unitState=async()=>{
+      if(checkUnit)return checkUnit(pg.unit_name);
+      try{return (await exec('/usr/bin/systemctl',['is-active',pg.unit_name],{timeout:5000})).stdout.trim();}
+      catch(error){requireThat(['inactive','failed'].includes(error.stdout?.trim()),'NODE_PRIVATE_PG_UNIT_UNKNOWN');return error.stdout.trim();}
+    };
+    const active=await unitState();
+    requireThat(['active','inactive','failed'].includes(active),'NODE_PRIVATE_PG_UNIT_UNKNOWN');
+    if(active==='active'){
+      // Never replace credentials or restart a transport which may serve holders.
+      requireThat(enrollment.transport_credentials &&
+        sha256(await readFile(pg.ca_file))===sha256(enrollment.transport_credentials.ca_pem) &&
+        sha256(await readFile(pg.cert_file))===sha256(enrollment.transport_credentials.cert_pem) &&
+        sha256(await readFile(pg.key_file))===sha256(enrollment.transport_credentials.key_pem),'NODE_PRIVATE_PG_ACTIVE_DRIFT');
+    }else{
+      await installPrivateTransport(pg.credential_directory,enrollment.transport_credentials,{...e.identity,ca_sha256:pg.ca_sha256},{now});
+      if(startUnit)await startUnit(pg.unit_name);
+      else await exec('/usr/bin/systemctl',['start',pg.unit_name],{timeout:10000,maxBuffer:4096});
+    }
+    requireThat(await unitState()==='active','NODE_PRIVATE_PG_TRANSPORT_NOT_ACTIVE');
+    for(const file of [pg.ca_file,pg.cert_file,pg.key_file]){const st=await lstat(file);requireThat(st.isFile()&&!st.isSymbolicLink()&&st.uid===0&&(st.mode&0o777)===0o600,'NODE_PRIVATE_PG_CREDENTIAL_MODE');}
 
   },
   async startService(service, envelopePath) {

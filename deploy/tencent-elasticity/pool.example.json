@@ -24,7 +24,7 @@
   "vpc_id": null,
   "subnet_id": null,
   "security_group_id": null,
-  "role_names": [],
+  "role_names": ["bondbuddy-execution-node-1", "bondbuddy-execution-node-2"],
   "private_pg_verified": false,
   "service_credentials_verified": false,
   "stop_charging_verified": false,
@@ -44,7 +44,10 @@
   "registration_directory": null,
   "time_zone": "Asia/Shanghai",
   "cloud_quote_file": null,
-  "node_secrets": [],
+  "node_secrets": [
+    {"role_name":"bondbuddy-execution-node-1","role_id":null,"secret_name":"bondbuddy-execution-node-1","service_template_file":null},
+    {"role_name":"bondbuddy-execution-node-2","role_id":null,"secret_name":"bondbuddy-execution-node-2","service_template_file":null}
+  ],
   "scale_up_wait_seconds": 60,
   "idle_seconds": 300,
   "failure_cooldown_seconds": 300
