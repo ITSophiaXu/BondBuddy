@@ -101,3 +101,26 @@ PG 通道使用 `pg-client.conf.example`/`pg-client.service`，仅绑定获审�
 ## 受限私网出口
 
 节点仅连主站私网的数据库、初始化代理与 mTLS 代理。初始化代理仅允许精确域名的 443 CONNECT；运行阶段通过同代际客户端证书连接 `proxy-execution.internal`，继续校验目标站点自身 TLS。Node 22 使用官方 `NODE_USE_ENV_PROXY`，link-local metadata、本机与私网数据库走 NO_PROXY。受控 stunnel 配置由单一 renderer 生成并逐字验证，禁止夹带额外监听段。主站共享 5Mbps 物理出口，不附加单节点 1Mbps 限流。独立构建源的临时额外域名只允许准确 builder 私网 IP，验通后使用、退役时移除，不扩大业务节点出口。
+# 跨日报价刷新（#1389）
+
+自动 tick 和手动入口共用既有控制锁及一分钟调用边界，在预算同步前读取受限控制角色的 Lighthouse 实例与流量包。只接受约定账户、地域、实例、套餐和 5 Mbps 整机出口上界。流量余量按字节核验，必须覆盖观测至北京时间当天结束的**全部主站出站**最坏流量；不只计算执行池，不跨流量包结束时间借用下一期额度。新周期必须由真实 API 返回，并与上一周期边界一致。
+
+原 `cloud_quote_file` 和 `quote_sha256` 保持为已审价格模板；配置可增加 `cloud_quote_refresh`：
+
+```json
+{
+  "version": "lighthouse-quote-refresh-v1",
+  "instance_id": "REVIEWED_LIGHTHOUSE_INSTANCE",
+  "bundle_id": "REVIEWED_CURRENT_BUNDLE",
+  "bandwidth_mbps": 5,
+  "traffic_package_total_bytes": 536870912000,
+  "pricing_valid_until": "REVIEWED_TARIFF_EVIDENCE_EXPIRY",
+  "snapshot_file": "REGISTRATION_DIRECTORY/cloud-quote-snapshot.json"
+}
+```
+
+`pricing_valid_until` 是单价材料独立复核后的有效期，不能照抄下一天日期来延长旧报价。缺少完整价格证据时保留关闭状态。快照保留原六项费率证据、SSM 月费及两张快照完整负债，并核一分钟共享调用边界对应的 `354*N+528` 次 SSM 调用费用上界：两节点续期每分钟最多 68 次、版本扫描最多 22 次，每次启动最多 24 轮、每轮 List 1 次及 Get 最多 10 次，启动最多 N+2 次。旧 `94*N+48` 的预留不能代替新扫描分支。换日不清零固定承诺，也不以缺少账单为零费用。小时上限 4 元、自然日上限 48 元继续由 PostgreSQL 费用门禁核验。
+
+发布只替换一个私有 JSON 快照，内含有效配置、报价及观测证据。消费者校验源配置哈希和报价哈希；不分别改写两个文件。模板或配置漂移、时间回拨、套餐到期/不足、API 错误、发布中断及超时均关闭新增准入；原任务、结果持久化、未知调用恢复和正向排空继续。超时工作不能迟到发布，也不能在未决查询结束前重复请求。同一分钟内重复费用检查仅复用刚发布且已覆盖整机余量的快照。
+
+控制角色仅需 `lighthouse:DescribeInstances` 与 `lighthouse:DescribeInstancesTrafficPackages`。前者官方 CAM 支持的实例查询范围为地域内 `instance/*`；后者绑定约定实例资源。客户端额外固定账户、地域和准确实例，不能把 API 支持的地域级权限说成 IAM 的单实例隔离。新私网代理仅增加 `lighthouse.tencentcloudapi.com` 的 CONNECT/443 出口，保留原代理与其它服务。

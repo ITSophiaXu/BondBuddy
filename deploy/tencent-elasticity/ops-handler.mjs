@@ -11,6 +11,7 @@ import {renewNodeTransport} from './transport-renewal.mjs';
 import {validateTransportLifecycleProof} from './transport-refresher.mjs';
 import {createSocketCredentialProvider} from './control-socket.mjs';
 import {acquireControlTick} from './control-tick-bound.mjs';
+import {refreshCloudQuote} from './cloud-quote-refresh.mjs';
 
 /** Called by the already-existing ops scheduler tick, also on startup/restart.
  * No new timer. Cloud dependencies can be injected for isolated fault tests. */
@@ -26,10 +27,11 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
     busy = true;
     let releaseTick;
     try {
-      const config = validateConfig(await readConfig(configPath));
+      const baseConfig = validateConfig(await readConfig(configPath));
+      let config=structuredClone(baseConfig);
       const pending = await control.listPendingOperations();
       if (!config.enabled && !pending.length) return;
-      if(!dependencies.cloud){releaseTick=await acquireControlTick(config.registration_directory,{now:dependencies.now??Date.now});if(!releaseTick)return;}
+      if(!dependencies.cloud||config.cloud_quote_refresh){releaseTick=await acquireControlTick(config.registration_directory,{now:dependencies.now??Date.now});if(!releaseTick)return;}
       let credentialsProvider=dependencies.credentialsProvider;
       if(!credentialsProvider&&!dependencies.cloud){
         const key=canonical(config.control_credential_provider);
@@ -42,8 +44,11 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         archive: observationArchive(config.observation_directory)});
       const costSnapshot = dependencies.costSnapshot ?? (async inventory => {
         if(!expenseLedger)throw Error('PG_EXPENSE_LEDGER_REQUIRED');
-        return produceExpenseSnapshot({ledger:await expenseLedger(),inventory,
-          quote:await readConfig(config.cloud_quote_file),config});
+        const ledger=await expenseLedger();
+        const fresh=await refreshCloudQuote({configPath,config:baseConfig,transport:cloud.transport,
+          capturedAt:ledger.captured_at,readConfig,now:dependencies.now??Date.now});
+        config=fresh.config;controller.config=config;cloud.config=config;
+        return produceExpenseSnapshot({ledger,inventory,quote:fresh.quote,config});
       });
       const controller = new ExecutionPoolController({control, cloud, config,costSnapshot});
       const enroll = async op => {
@@ -81,7 +86,10 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
       };
       if (pending.length) {
         const op = pending[0];
-        if (op.state === 'intent') {if(op.action!=='stop')await syncBudget();await controller.resumeIntent(op);}
+        if (op.state === 'intent') {
+          if(op.action==='stop'){try{await syncBudget();}catch{}}else await syncBudget();
+          await controller.resumeIntent(op);
+        }
         else {try{await syncBudget();}catch{}await enroll(await controller.recover(op.operation_id));}
         return;
       }
@@ -154,6 +162,10 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         await controller.start(request, operationId);
       }
     } catch {
+      // A broken config/lock/publication must not leave yesterday's budget
+      // admission enabled. This never changes leases or authorizes expenditure.
+      try{const s=await control.snapshot();if(s.policy.managed_nodes&&s.policy.budget_available)
+        await control.setAdmissionBudget(s.policy.revision,false,s.policy.expense_policy_sha256);}catch{}
       log({event: 'execution_pool_reconcile_failed_closed'}); // no vendor messages, inputs or credentials
     } finally { try{await releaseTick?.();}finally{busy = false;} }
   }};

@@ -3,9 +3,10 @@ import {canonical, sha256, requireThat, validateConfig} from './policy.mjs';
 import {bootstrapUserData} from './bootstrap.mjs';
 import {executionInstanceLaunchBinding,executionRunAcceptanceMatches} from '@bondbuddy/contracts';
 
-const apiVersion = {cvm: '2017-03-12', sts: '2018-08-13', ssm: '2019-09-23', tag: '2018-08-13'};
+const apiVersion = {cvm: '2017-03-12', sts: '2018-08-13', ssm: '2019-09-23', tag: '2018-08-13', lighthouse: '2020-03-24'};
 const allowedActions = {cvm: new Set(['RunInstances', 'StartInstances', 'StopInstances', 'DescribeInstances','DescribeInstancesStatus']),
-  sts: new Set(['GetCallerIdentity']), ssm: new Set(['GetSecretValue', 'PutSecretValue','ListSecretVersionIds','DeleteSecretVersion']), tag: new Set(['ModifyResourceTags'])};
+  sts: new Set(['GetCallerIdentity']), ssm: new Set(['GetSecretValue', 'PutSecretValue','ListSecretVersionIds','DeleteSecretVersion']), tag: new Set(['ModifyResourceTags']),
+  lighthouse: new Set(['DescribeInstances','DescribeInstancesTrafficPackages'])};
 const hmac = (key, value, encoding) => createHmac('sha256', key).update(value).digest(encoding);
 
 /** Official TC3 signature; credentials are refreshed in memory by the existing ops/role source. */
@@ -16,13 +17,15 @@ export class TencentTransport {
       /^qcs::cam::uin\/\d{1,20}:roleName\/bondbuddy-execution-control$/.test(assumeRoleArn??'')), 'SOURCE_ROLE_SCOPE');
     Object.assign(this, {credentials, region, fetchImpl, now, timeoutMs, purpose, assumeRoleArn});
   }
-  async call(service, action, payload) {
+  async call(service, action, payload, {signal} = {}) {
     const source=this.purpose==='control-source';
     requireThat(source ? service==='sts' && action==='AssumeRole' && payload?.RoleArn===this.assumeRoleArn &&
       Object.keys(payload).every(k=>['RoleArn','RoleSessionName','DurationSeconds'].includes(k)) &&
       /^[A-Za-z0-9+=,.@_-]{2,128}$/.test(payload.RoleSessionName??'') &&
       Number.isInteger(payload.DurationSeconds) && payload.DurationSeconds>=900 && payload.DurationSeconds<=7200 :
       allowedActions[service]?.has(action), 'ACTION_NOT_ALLOWED');
+    if(service==='lighthouse')requireThat(payload?.InstanceIds?.length===1&&payload.InstanceIds[0]==='lhins-4i18xeto'&&
+      payload.Offset===0&&payload.Limit===1&&Object.keys(payload).every(k=>['InstanceIds','Offset','Limit'].includes(k)), 'LIGHTHOUSE_EXACT_SCOPE');
     const c = await this.credentials();
     requireThat(typeof c.secretId==='string' && c.secretId && typeof c.secretKey==='string' && c.secretKey &&
       (source ? !c.token : c.token && Number(c.expiresAt) > this.now() + 60000), 'SHORT_CREDENTIAL_REQUIRED');
@@ -33,7 +36,8 @@ export class TencentTransport {
     const scope = `${date}/${service}/tc3_request`;
     const key = hmac(hmac(hmac(`TC3${c.secretKey}`, date), service), 'tc3_request');
     const signature = hmac(key, `TC3-HMAC-SHA256\n${timestamp}\n${scope}\n${sha256(request)}`, 'hex');
-    const response = await this.fetchImpl(`https://${host}/`, {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(this.timeoutMs), body,
+    const response = await this.fetchImpl(`https://${host}/`, {method: 'POST', redirect: 'error', signal: signal?
+      AbortSignal.any([signal,AbortSignal.timeout(this.timeoutMs)]):AbortSignal.timeout(this.timeoutMs), body,
       headers: {'Content-Type': 'application/json; charset=utf-8', 'X-TC-Action': action, 'X-TC-Version': apiVersion[service],
         'X-TC-Region': this.region, 'X-TC-Timestamp': String(timestamp), ...(source?{}:{'X-TC-Token': c.token}),
         Authorization: `TC3-HMAC-SHA256 Credential=${c.secretId}/${scope}, SignedHeaders=content-type;host, Signature=${signature}`}});
