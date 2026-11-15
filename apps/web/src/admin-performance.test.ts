@@ -128,3 +128,18 @@ test('in-flight reads cannot repopulate performance data after logout resets the
   controller.reset(); resolve(page([span('private_step', 0, 1000)])); await reading;
   assert.doesNotMatch(controller.renderRun('run'), /private_step/);
 });
+
+for (const [scenario, attributes] of Object.entries({
+  completed_only: {tool_timing_complete: false, tool_missing_start_count: 1, tool_omitted_count: 0},
+  omitted: {tool_timing_complete: false, tool_missing_start_count: 0, tool_omitted_count: 2},
+})) test(`tool ${scenario} keeps measured exec duration but cannot claim complete coverage`, () => {
+  // Every recorded span is final; the missing tool has no fabricated placeholder span.
+  const data = mergePerformancePage(undefined, page([span('exec', 0, 10000, null, {step_key: 'model.exec', attributes})]));
+  const metrics = runPerformanceMetrics(data), exec = metrics.row(data.items[0]);
+  assert.equal(metrics.complete, false); assert.equal(metrics.missing, 1);
+  assert.equal(exec.ms, 10000); assert.equal(exec.elapsedMs, 10000); assert.equal(metrics.coveredMs, 10000);
+  assert.equal(exec.unexplainedMs, null); assert.equal(metrics.unexplainedMs, null);
+  const html = performanceRunPanel('run', {data, loading: false, error: ''}, new Set(), new Set());
+  assert.match(html, /工具计时缺测/); assert.match(html, /1 个步骤未结束或计时缺测/);
+  assert.doesNotMatch(html, /当前范围采集完整/); assert.match(html, /10 秒/);
+});

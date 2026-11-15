@@ -62,7 +62,7 @@ export function runPerformanceMetrics(data: RunPerformanceData) {
   }
   const completePages = data.next_cursor === null && data.items.length === data.total;
   const hasOrphans = data.items.some(span => span.parent_span_id !== null && !spans.has(span.parent_span_id));
-  const allMeasured = data.items.every(span => knownDuration(span) !== null);
+  const allMeasured = data.items.every(span => knownDuration(span) !== null && span.attributes.tool_timing_complete !== false);
   const complete = completePages && data.coverage.complete && !hasOrphans && allMeasured;
   const intervals = new Map(data.items.map(span => [span.span_id, spanInterval(span, data.observedAt[span.span_id] ?? data.captured_at, closed.get(span.session_id) ?? true)]));
   const terminal = ['succeeded', 'failed', 'cancelled', 'rejected', 'test_completed'].includes(data.run.state);
@@ -89,7 +89,7 @@ export function runPerformanceMetrics(data: RunPerformanceData) {
   const chartEnd = Math.max(chartStart + 1, runBounds?.[1] ?? allRanges.reduce((max, range) => Math.max(max, range[1]), chartStart + 1));
   return {children, row, completePages, complete, hasOrphans, totalMs, coveredMs, unexplainedMs, open: !terminal,
     chartStart, chartEnd, failed: data.items.filter(span => span.status === 'failed').length,
-    missing: data.items.filter(span => knownDuration(span) === null).length};
+    missing: data.items.filter(span => knownDuration(span) === null || span.attributes.tool_timing_complete === false).length};
 }
 
 /** Parents may arrive on a later page. Cycles and orphans remain visible rather than dropping records. */
