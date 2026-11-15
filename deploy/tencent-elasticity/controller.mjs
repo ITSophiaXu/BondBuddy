@@ -1,4 +1,4 @@
-import {canonical, planCapacity, requireThat, sha256, validateConfig} from './policy.mjs';
+import {canonical, planCapacity, requireThat, sha256, validateConfig, requireRetainedRequest} from './policy.mjs';
 import {bootstrapUserData} from './bootstrap.mjs';
 import {requireCostAdmission, costAdmission} from './costcap.mjs';
 import {runParameters} from './tencent-cvm.mjs';
@@ -12,6 +12,7 @@ export class ExecutionPoolController {
   async plan(inventory) { return planCapacity(await this.control.snapshot(), inventory, this.config); }
   async start(request, opId, material) {
     validateConfig(this.config, {apply: true});
+    requireRetainedRequest(this.config,request.instance_id,request);
     const snapshot = await this.control.snapshot();
     const inventory = await this.cloud.inventory();
     requireCostAdmission(await this.costSnapshot(inventory), inventory, this.config);
@@ -27,6 +28,7 @@ export class ExecutionPoolController {
   async resumeIntent(operation) {
     validateConfig(this.config, {apply: true, expenditure: false});
     if (operation.action === 'stop') return this.dispatch(operation);
+    requireRetainedRequest(this.config,operation.request.instance_id,operation.request);
     const inventory = await this.cloud.inventory();
     let admission={allowed:false};
     try{admission=costAdmission(await this.costSnapshot(inventory),inventory,this.config);}catch{}
@@ -130,6 +132,7 @@ export class ExecutionPoolController {
         identity:{account_id:op.request.account_id,region:op.request.region,instance_id:i.instance_id,epoch:op.request.epoch},observation:null});
     }
     if(!op.provider_request_id)return op;
+    if(op.action!=='stop')requireRetainedRequest(this.config,op.identity.instance_id,op.request);
     const observation=op.action==='run'?await this.cloud.describeRun(op):await this.cloud.describe(op.identity.instance_id);
     if(!executionCloudCompletionMatches(op,observation))return op;
     return this.control.recordCloudResult(opId, op.revision, {state: 'completed', provider_request_id: op.provider_request_id,

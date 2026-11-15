@@ -24,7 +24,7 @@ try {
     recoveryReviewSha256:config.denial_recovery?.authorization_recovery_review_sha256,correctionEvidenceSha256:config.denial_recovery?.payment_correction_sha256});
   const credentialsProvider=createSocketCredentialProvider(config.control_credential_provider);
   const transport = new TencentTransport({region: config.region,credentials: () => credentialsProvider.get()});
-  const cloud = new TencentCvm({transport, config, archive: observationArchive(config.observation_directory)});
+  const cloud = new TencentCvm({transport, config, control, archive: observationArchive(config.observation_directory)});
   const costSnapshot=async inventory=>{
     const ledger=await executionCloudExpenseLedger(pool),fresh=await refreshCloudQuote({configPath,config:baseConfig,transport,capturedAt:ledger.captured_at});
     config=fresh.config;controller.config=config;cloud.config=config;

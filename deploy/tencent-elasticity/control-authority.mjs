@@ -1,7 +1,7 @@
 import net from 'node:net';
 import {lstat,chown,chmod,unlink,readdir} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
-import {canonical,requireThat} from './policy.mjs';
+import {canonical,requireThat,nodeLaunchConfig,requireRetainedRequest} from './policy.mjs';
 import {readPrivateJson,observationArchive} from './private-files.mjs';
 import {TencentTransport,TencentCvm} from './tencent-cvm.mjs';
 import {issueTransportCredentials,validateTransportIssuer} from './transport-issuer.mjs';
@@ -31,9 +31,11 @@ export function createControlAuthority({config,control,expenseLedger,cloud,crede
     const verifyPgBinding=async()=>{
     const current=await checked(()=>control.loadOperation(request.operation_id)),snapshot=await checked(()=>expenseLedger());
     requireThat(canonical(current)===canonical(operation),'AUTHORITY_OPERATION_CHANGED');
+    const launchConfig=nodeLaunchConfig(config.pool,operation?.identity?.instance_id);
+    requireRetainedRequest(config.pool,operation?.identity?.instance_id,operation?.request);
     requireThat(operation?.state==='completed'&&['run','start'].includes(operation.action)&&operation.provider_request_id&&
       canonical(operation.identity)===canonical(request.identity)&&operation.identity.account_id===config.account_id&&operation.identity.region===config.region&&
-      operation.request.source_sha256===config.pool.source_sha256&&operation.request.image_sha256===config.pool.image_sha256,'AUTHORITY_OPERATION_SCOPE');
+      operation.request.source_sha256===launchConfig.source_sha256&&operation.request.image_sha256===launchConfig.image_sha256,'AUTHORITY_OPERATION_SCOPE');
     const node=snapshot.nodes.find(n=>canonical(n.identity)===canonical(operation.identity));
     requireThat(node&&['starting','ready','draining'].includes(node.state)&&node.cloud_start_operation_id===operation.operation_id&&
       node.launch_manifest_sha256===operation.request.launch_manifest_sha256&&snapshot.nodes.filter(n=>n.state!=='destroyed').length<=2,'AUTHORITY_NODE_SCOPE');
@@ -103,8 +105,9 @@ async function main(){
   const verifyDatabase=async()=>{const r=(await pool.query('SELECT system_identifier::text,current_database() AS name FROM pg_control_system()')).rows[0];
     requireThat(r.system_identifier===pg.system_identifier&&r.name===pg.database_name,'AUTHORITY_DATABASE_DRIFT');};
   const credentialsProvider=createControlCredentialProvider(config.credentials);
-  const cloud=new TencentCvm({config:config.pool,transport:new TencentTransport({region:config.region,credentials:()=>credentialsProvider.get()}),archive:observationArchive(config.observation_directory)});
-  await verifyDatabase();const server=await serveControlAuthority(createControlAuthority({config,control:executionCapacityControl(pool),expenseLedger:()=>executionCloudExpenseLedger(pool),cloud,credentialsProvider,verifyDatabase}));
+  const control=executionCapacityControl(pool);
+  const cloud=new TencentCvm({config:config.pool,control,transport:new TencentTransport({region:config.region,credentials:()=>credentialsProvider.get()}),archive:observationArchive(config.observation_directory)});
+  await verifyDatabase();const server=await serveControlAuthority(createControlAuthority({config,control,expenseLedger:()=>executionCloudExpenseLedger(pool),cloud,credentialsProvider,verifyDatabase}));
   const shutdown=()=>{server.close(()=>pool.end());};process.once('SIGTERM',shutdown);process.once('SIGINT',shutdown);
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)try{await main();}catch{process.stderr.write('Control authority failed closed.\n');process.exitCode=1;}

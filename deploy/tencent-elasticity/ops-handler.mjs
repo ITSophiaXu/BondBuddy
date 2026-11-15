@@ -3,7 +3,7 @@ import {ExecutionPoolController} from './controller.mjs';
 import {TencentCvm, TencentTransport, runParameters} from './tencent-cvm.mjs';
 import {readPrivateJson, observationArchive} from './private-files.mjs';
 import {bootstrapUserData} from './bootstrap.mjs';
-import {canonical, sha256, validateConfig} from './policy.mjs';
+import {canonical, sha256, validateConfig, nodeLaunchConfig, requireRetainedRequest} from './policy.mjs';
 import {issueNodeEnrollment} from './enrollment.mjs';
 import {produceExpenseSnapshot, costAdmission} from './costcap.mjs';
 import {validateTransportIssuer} from './transport-issuer.mjs';
@@ -38,7 +38,7 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         if(!providers.has(key))providers.set(key,createSocketCredentialProvider(config.control_credential_provider));
         credentialsProvider=providers.get(key);
       }
-      const cloud = dependencies.cloud ?? new TencentCvm({config,
+      const cloud = dependencies.cloud ?? new TencentCvm({config,control,
         transport: new TencentTransport({region: config.region, credentials: () => credentialsProvider.get(),
           ...(dependencies.transportOptions??{})}),
         archive: observationArchive(config.observation_directory)});
@@ -155,11 +155,15 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
           request.launch_manifest_sha256 = sha256(canonical(runParameters(config, request, await clientToken(operationId), bootstrapUserData(config, request, slot), slot, operationId)));
         } else {
           const node = snapshot.nodes.find(n => n.state === 'stopped' && n.identity.instance_id === plan.instance_id);
-          if (!node || node.source_sha256 !== config.source_sha256 || node.image_sha256 !== config.image_sha256 ||
+          const launchConfig=nodeLaunchConfig(config,plan.instance_id);
+          if (!node || node.source_sha256 !== launchConfig.source_sha256 || node.image_sha256 !== launchConfig.image_sha256 ||
             canonical(node.expected_services) !== canonical(config.services)) throw Error('WARM_START_SOURCE_DRIFT');
+          request.source_sha256=node.source_sha256;
+          request.image_sha256=node.image_sha256;
           request.launch_manifest_sha256 = node.launch_manifest_sha256;
           request.capabilities = node.capabilities;
           request.services = node.expected_services;
+          requireRetainedRequest(config,plan.instance_id,request);
         }
         await controller.start(request, operationId);
       }
