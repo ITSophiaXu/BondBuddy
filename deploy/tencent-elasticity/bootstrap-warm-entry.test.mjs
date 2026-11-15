@@ -7,7 +7,8 @@ import {sha256} from './policy.mjs';
 
 // Enrollment and runtime IO are synthetic. Configuration selection and the
 // bootstrap binding/admission checks use the production implementations.
-const adapterPath = new URL('./node-adapter.mjs', import.meta.url).pathname;
+const adapterSource = new URL('./node-adapter.mjs', import.meta.url);
+const adapterPath = '/opt/bondbuddy/deploy/tencent-elasticity/node-adapter.mjs';
 const binding = {role_name: 'synthetic-node-one', role_id: '101', secret_name: 'synthetic-one'};
 const services = [{service_id: 'authoring', capabilities: ['authoring']}];
 const template = {pool_tag: 'synthetic', account_id: '100', region: 'ap-beijing', image_sha256: 'b'.repeat(64), services,
@@ -17,11 +18,12 @@ const manifest = {version: 'execution-bootstrap-v1', pool_tag: 'synthetic', acco
 const identity = {account_id: '100', region: 'ap-beijing', instance_id: 'ins-synthetic', epoch: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'};
 
 async function fixture({publicManifest = manifest, enabled = true, adapterHash, failEnable = false,
-  failEnrollment = false, operationCompleted = true, rateLimited = false} = {}) {
+  failEnrollment = false, operationCompleted = true, rateLimited = false, configuredPath = adapterPath} = {}) {
   const events = [];
-  const config = {enabled, adapter_path: adapterPath, adapter_sha256: adapterHash ?? sha256(await readFile(adapterPath))};
+  const config = {enabled, adapter_path: configuredPath, adapter_sha256: adapterHash ?? sha256(await readFile(adapterSource))};
   const entry = () => runBootstrapEntry({
     readConfig: async () => config, readManifest: async () => publicManifest,
+    readAdapter: path => {assert.equal(path, adapterPath); return readFile(adapterSource);},
     importAdapter: async () => ({createConfiguredNodeAdapter: async ({publicManifest: supplied}) => {
       selectExecutionNodeConfig(template, supplied); events.push('binding');
       return {
@@ -63,7 +65,7 @@ test('invalid manifest or disabled/changed image adapter never enables or reache
     {publicManifest: {...manifest, slot_binding: {...binding, secret_name: 'synthetic-two'}}},
     {publicManifest: {...manifest, version: 'unknown'}},
     {publicManifest: {...manifest, account_id: '999'}},
-    {enabled: false}, {adapterHash: 'd'.repeat(64)},
+    {enabled: false}, {adapterHash: 'd'.repeat(64)}, {configuredPath: '/untrusted/node-adapter.mjs'},
   ]) {
     const {entry, events} = await fixture(options);
     await assert.rejects(entry()); assert.deepEqual(events, []);
