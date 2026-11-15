@@ -84,7 +84,7 @@ test('operation-aware issuer signs a new warm epoch and preserves exact vault ce
   const config={account_id:identity.account_id,region:identity.region,registration_directory:join(dir,'vault'),role_names:['role-a','role-b'],node_secrets:[{role_name:'role-a',role_id:'7',secret_name:'node-a',pg_issuer}]};
   const op={operation_id:'run1',state:'completed',action:'run',provider_request_id:'ack1',identity,request:{services:[{service_id:'authoring',capabilities:['authoring']}],source_sha256:'a'.repeat(64),image_sha256:'a'.repeat(64),launch_manifest_sha256:'a'.repeat(64)}};
   const stored=new Map();let puts=0;
-  const transport={call:async(_,action,p)=>{if(action==='GetSecretValue'){if(!stored.has(p.VersionId)){const e=Error();e.code='ResourceNotFound';throw e;}return {SecretName:p.SecretName,VersionId:p.VersionId,SecretString:stored.get(p.VersionId)};}if(action==='PutSecretValue'){puts++;stored.set(p.VersionId,p.SecretString);throw Error('lost ACK');}if(action==='ModifyResourceTags')return {RequestId:'synthetic'};throw Error('unexpected');}};
+  const transport={call:async(_,action,p)=>{if(action==='ListSecretVersionIds')return {SecretName:p.SecretName,Versions:[...stored.keys()].map(VersionId=>({VersionId}))};if(action==='GetSecretValue'){if(!stored.has(p.VersionId)){const e=Error();e.code='ResourceNotFound';throw e;}return {SecretName:p.SecretName,VersionId:p.VersionId,SecretString:stored.get(p.VersionId)};}if(action==='PutSecretValue'){puts++;stored.set(p.VersionId,p.SecretString);throw Error('lost ACK');}if(action==='ModifyResourceTags')return {RequestId:'synthetic'};throw Error('unexpected');}};
   const options={operation:op,slot:0,config,transport,bind:async()=>{},serviceTemplate:{service_environments:{authoring:{DATABASE_URL:'synthetic-only'}}}};
   await issueNodeEnrollment(options);const first=stored.get('run1');await issueNodeEnrollment(options);assert.equal(stored.get('run1'),first);assert.equal(puts,1);
   const warm={...op,operation_id:'start1',action:'start',provider_request_id:'ack2',identity:{...identity,epoch:'b3432123-84b5-4f11-8b51-94a29eac1234'}};
@@ -132,7 +132,7 @@ test('SSM cleanup retains current versions and unproven old epochs; deletes only
   const deleted=[];const transport={call:async(_,action,p)=>{if(action==='ListSecretVersionIds')return {SecretName:p.SecretName,Versions:[...values.keys()].map(VersionId=>({VersionId}))};
     if(action==='DeleteSecretVersion'){deleted.push(p.VersionId);values.delete(p.VersionId);return {RequestId:'synthetic'};}
     if(!values.has(p.VersionId)){const e=Error();e.code='ResourceNotFound';throw e;}return {SecretName:p.SecretName,VersionId:p.VersionId,SecretString:JSON.stringify(values.get(p.VersionId))};}};
-  await pruneExpiredTransportVersions({secretName:'own-node',keep:['keep-current'],scope:identity,stoppedIdentities:[oldIdentity],transport,now:()=>Date.now()+3601000});
+  await pruneExpiredTransportVersions({secretName:'own-node',keep:['keep-current'],scope:identity,stoppedIdentities:[oldIdentity],transport,registrationDirectory:join(dir,'vault'),now:()=>Date.now()+3601000});
   assert.deepEqual(deleted,['tls-expired','old-stopped']);assert.ok(values.has('unknown-old'));assert.ok(values.has('keep-current'));
 });
 test('same-epoch native stunnel reload preserves existing PG session and authenticates new sessions with the renewed leaf',

@@ -12,7 +12,7 @@ const operation={operation_id:'op1',action:'start',state:'completed',provider_re
 test('exact SSM version resolves lost Put ACK with the same PG token; repeat never rewrites version',async()=>{
  const dir=await mkdtemp(join(tmpdir(),'bb-enrollment-'));let stored,puts=0,tags=0;const tokens=[];
  const config={account_id:identity.account_id,region:identity.region,registration_directory:dir,role_names:['role-a','role-b'],node_secrets:[{role_name:'role-a',role_id:'7',secret_name:'node-a'}]};
- const transport={call:async(_,action,p)=>{if(action==='GetSecretValue'){if(!stored){const e=Error();e.code='ResourceNotFound';throw e;}return {SecretName:p.SecretName,VersionId:p.VersionId,SecretString:stored};}
+ const transport={call:async(_,action,p)=>{if(action==='ListSecretVersionIds')return {SecretName:p.SecretName,Versions:[]};if(action==='GetSecretValue'){if(!stored){const e=Error();e.code='ResourceNotFound';throw e;}return {SecretName:p.SecretName,VersionId:p.VersionId,SecretString:stored};}
  if(action==='PutSecretValue'){puts++;stored=p.SecretString;throw Error('lost ACK');}if(action==='ModifyResourceTags'){tags++;return {RequestId:'tag'};}}};
  const options={operation,slot:0,config,transport,serviceTemplate:{service_environments:{authoring:{DATABASE_URL:'synthetic'},review:{DATABASE_URL:'synthetic-review'}}},bind:async(_,__,token)=>tokens.push(sha256(token))};
  try{await issueNodeEnrollment(options);await issueNodeEnrollment(options);assert.equal(puts,1);assert.equal(tags,0);assert.equal(tokens[0],tokens[1]);
@@ -52,7 +52,7 @@ test('unknown initial secret publish cannot be reissued by a later tick',async()
  const dir=await mkdtemp(join(tmpdir(),'bb-enrollment-unknown-'));let puts=0;
  const config={account_id:identity.account_id,region:identity.region,registration_directory:dir,role_names:['role-a','role-b'],node_secrets:[{role_name:'role-a',role_id:'7',secret_name:'node-a'}]};
  const options={config,operation,slot:0,serviceTemplate:{},bind:async()=>{},transport:{call:async(_,action)=>{
-   if(action==='PutSecretValue'){puts++;throw Error('lost unobserved ACK');}const error=Error();error.code='ResourceNotFound';throw error;
+   if(action==='ListSecretVersionIds')return {SecretName:'node-a',Versions:[]};if(action==='PutSecretValue'){puts++;throw Error('lost unobserved ACK');}const error=Error();error.code='ResourceNotFound';throw error;
  }}};
  try{await assert.rejects(issueNodeEnrollment(options));await assert.rejects(issueNodeEnrollment(options));assert.equal(puts,1);}finally{await rm(dir,{recursive:true});}
 });

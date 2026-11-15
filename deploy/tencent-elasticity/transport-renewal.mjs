@@ -5,6 +5,8 @@ import {spawn} from 'node:child_process';
 import {canonical,sha256,requireThat} from './policy.mjs';
 import {readPrivateJson} from './private-files.mjs';
 import {issueTransportCredentials} from './transport-issuer.mjs';
+import {executionCloudCompletionMatches} from '@bondbuddy/contracts';
+import {validateTransportCredentials} from './private-transport.mjs';
 
 export const TRANSPORT_REFRESH_VERSION='execution-transport-refresh-v1';
 export const TRANSPORT_RENEW_BEFORE_MS=6*60*60*1000;
@@ -28,9 +30,74 @@ export async function replacePrivateJson(path,value){
   finally{if(f)await f.close();await unlink(tmp).catch(e=>{if(e.code!=='ENOENT')throw e;});}
 }
 
+// Reuse the issuer's private vault. A lost Delete acknowledgement authorizes
+// only readback of this exact immutable version, never a second Delete.
+async function deleteExactVersion({secretName,versionId,value,transport,registrationDirectory}){
+  requireThat(registrationDirectory?.startsWith('/'),'SECRET_DELETE_VAULT_REQUIRED');
+  await mkdir(registrationDirectory,{recursive:true,mode:0o700});
+  const marker={secret_name:secretName,version_id:versionId,value_sha256:sha256(value)};
+  const path=`${registrationDirectory}/ssm-delete-${sha256(canonical({secretName,versionId}))}.json`;
+  let dispatched=false;
+  try{const f=await open(path,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);
+    try{await f.writeFile(canonical(marker));await f.sync();dispatched=true;}finally{await f.close();}
+  }catch(error){if(error.code!=='EEXIST')throw error;
+    requireThat(canonical(await readPrivateJson(path))===canonical(marker),'SECRET_DELETE_VAULT_DRIFT');}
+  if(dispatched)try{await transport.call('ssm','DeleteSecretVersion',{SecretName:secretName,VersionId:versionId});}catch{}
+  let absent=false;
+  try{const r=await transport.call('ssm','GetSecretValue',{SecretName:secretName,VersionId:versionId});
+    requireThat(r.SecretName===secretName&&r.VersionId===versionId&&r.SecretString===value,'SECRET_DELETE_READBACK_DRIFT');
+  }catch(error){if(error.code==='ResourceNotFound'||error.code?.startsWith('ResourceNotFound.'))absent=true;else throw error;}
+  requireThat(absent,'TLS_VERSION_DELETE_UNCONFIRMED');
+}
+
+/** New enrollment can retire a still-valid leaf only after an authoritative
+ * old-epoch Stop, with no live/unknown reference. TTL alone is never authority.
+ * One List + <=10*(Get, Delete, confirmation Get) stays within 31 SSM calls. */
+export async function pruneRetiredNodeVersions({secretName,keep,scope,operations=[],nodes=[],transport,registrationDirectory,caSha256,now=Date.now}){
+  const list=await transport.call('ssm','ListSecretVersionIds',{SecretName:secretName});
+  requireThat(list.SecretName===secretName&&Array.isArray(list.Versions)&&list.Versions.length<=10&&
+    list.Versions.every(v=>/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(v.VersionId??''))&&
+    new Set(list.Versions.map(v=>v.VersionId)).size===list.Versions.length,'TLS_VERSION_INVENTORY');
+  let remaining=list.Versions.length;
+  for(const {VersionId:versionId} of list.Versions){
+    if(keep.includes(versionId))continue;
+    const r=await transport.call('ssm','GetSecretValue',{SecretName:secretName,VersionId:versionId});
+    requireThat(r.SecretName===secretName&&r.VersionId===versionId&&typeof r.SecretString==='string'&&!r.SecretBinary,'TLS_VERSION_READBACK');
+    let value;try{value=JSON.parse(r.SecretString);}catch{continue;}
+    const identity=value?.identity;
+    if(!identity||identity.account_id!==scope.account_id||identity.region!==scope.region||
+      canonical(identity)===canonical(scope)||!identity.epoch)continue;
+    // Recognize only versions bound to a recorded completed creation/start.
+    // Unparseable, foreign and otherwise opaque secret values remain intact.
+    const issued=operations.find(op=>['run','start'].includes(op.action)&&op.state==='completed'&&
+      op.operation_id===value.operation_id&&canonical(op.identity)===canonical(identity)&&
+      op.provider_request_id&&op.provider_request_id===value.provider_request_id&&
+      op.request?.source_sha256===value.source_sha256&&op.request?.image_sha256===value.image_sha256&&
+      op.request?.launch_manifest_sha256===value.launch_manifest_sha256);
+    if(!issued||!(value.version==='execution-transport-envelope-v1'&&value.transport_credentials||
+      value.version!=='execution-transport-envelope-v1'&&value.operation_completed===true&&value.operation_action===issued.action&&
+      versionId===value.operation_id&&typeof value.registration_token==='string'&&
+      Number.isFinite(value.expires_at)&&canonical(value.services)===canonical(issued.request.services)))continue;
+    if(value.transport_credentials)try{validateTransportCredentials(value.transport_credentials,
+      {...identity,operation_id:issued.operation_id,provider_request_id:issued.provider_request_id,ca_sha256:caSha256},
+      {now,allowExpired:true});}catch{continue;}
+    if(nodes.some(n=>n.state!=='stopped'&&canonical(n.identity)===canonical(identity))||
+      operations.some(op=>['intent','submitted','unknown'].includes(op.state)&&
+        op.identity?.account_id===identity.account_id&&op.identity?.region===identity.region&&
+        op.identity?.instance_id===identity.instance_id))continue;
+    const stopped=operations.some(op=>op.action==='stop'&&op.state==='completed'&&
+      canonical(op.identity)===canonical(identity)&&op.provider_request_id&&
+      executionCloudCompletionMatches(op,op.cloud_observation));
+    if(!stopped)continue;
+    await deleteExactVersion({secretName,versionId,value:r.SecretString,transport,registrationDirectory});
+    remaining--;
+  }
+  requireThat(remaining<10,'SECRET_VERSION_CAPACITY');
+}
+
 /** Called by the existing ops tick. This is a credential vault, not a queue.
  * A published renewal is immutable and remains bound to the same cloud epoch. */
-export async function pruneExpiredTransportVersions({secretName,keep,scope,stoppedIdentities=[],transport,now=Date.now}){
+export async function pruneExpiredTransportVersions({secretName,keep,scope,stoppedIdentities=[],transport,registrationDirectory,now=Date.now}){
   const list=await transport.call('ssm','ListSecretVersionIds',{SecretName:secretName});
   requireThat(list.SecretName===secretName&&Array.isArray(list.Versions)&&list.Versions.length<=10,'TLS_VERSION_INVENTORY');
   for(const v of list.Versions){
@@ -45,11 +112,7 @@ export async function pruneExpiredTransportVersions({secretName,keep,scope,stopp
     // secrets additionally require the authoritative exact old-epoch Stop.
     if(value.version!=='execution-transport-envelope-v1'&&
       !(value.expires_at<now()&&stoppedIdentities.some(i=>canonical(i)===canonical(value.identity))))continue;
-    try{await transport.call('ssm','DeleteSecretVersion',{SecretName:secretName,VersionId:v.VersionId});}catch{}
-    let absent=false;try{await transport.call('ssm','GetSecretValue',{SecretName:secretName,VersionId:v.VersionId});}catch(e){
-      if(e.code==='ResourceNotFound'||e.code?.startsWith('ResourceNotFound.'))absent=true;else throw e;
-    }
-    requireThat(absent,'TLS_VERSION_DELETE_UNCONFIRMED');
+    await deleteExactVersion({secretName,versionId:v.VersionId,value:r.SecretString,transport,registrationDirectory});
   }
 }
 export async function renewNodeTransport({node,operation,slot,config,transport,stoppedIdentities=[],now=Date.now}){
@@ -96,7 +159,7 @@ async function renewUnlocked({node,operation,slot,config,transport,stoppedIdenti
   const matches=r=>r.SecretName===descriptor.secret_name&&r.VersionId===state.version&&r.SecretString&&sha256(r.SecretString)===sha256(canonical(state.envelope));
   let found;try{found=await get();}catch(e){if(e.code!=='ResourceNotFound'&&!e.code?.startsWith('ResourceNotFound.'))throw e;}
   if(!found&&!state.dispatched){
-    await pruneExpiredTransportVersions({secretName:descriptor.secret_name,keep:[operation.operation_id,state.version],scope:node.identity,stoppedIdentities,transport,now});
+    await pruneExpiredTransportVersions({secretName:descriptor.secret_name,keep:[operation.operation_id,state.version],scope:node.identity,stoppedIdentities,transport,registrationDirectory:config.registration_directory,now});
     state.dispatched=true;await replacePrivateJson(statePath,state); // fence before the uncertain publish
     try{await transport.call('ssm','PutSecretValue',{SecretName:descriptor.secret_name,VersionId:state.version,SecretString:canonical(state.envelope)});}catch{}
     found=await get();

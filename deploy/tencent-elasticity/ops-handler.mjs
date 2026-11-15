@@ -57,6 +57,8 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         const observed = await cloud.describe(op.identity.instance_id);
         const slot = config.role_names.indexOf(observed.role_name);
         await issueNodeEnrollment({operation: op, slot, config, transport: cloud.transport, bind: enrollmentBinder,
+          retirement:async()=>{if(!expenseLedger)throw Error('PG_EXPENSE_LEDGER_REQUIRED');
+            return {operations:(await expenseLedger()).operations,nodes:(await control.snapshot()).nodes};},
           serviceTemplate: await readPrivateJson(config.node_secrets[slot].service_template_file)});
       };
       // A missing or exhausted bound closes PG admission, while recovery and

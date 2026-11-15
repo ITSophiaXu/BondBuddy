@@ -6,6 +6,7 @@ import {readRoleCredentials} from './bootstrap.mjs';
 import {canonical, requireThat, sha256} from './policy.mjs';
 import {readPrivateJson} from './private-files.mjs';
 import {issueTransportCredentials} from './transport-issuer.mjs';
+import {pruneRetiredNodeVersions} from './transport-renewal.mjs';
 import {executionCloudCompletionMatches,executionInstanceLaunchBinding,executionSlotReadTag} from '@bondbuddy/contracts';
 
 /** CAM isolates a slot, not a dynamic self ARN. Refuse duplicate slot inventory
@@ -122,7 +123,7 @@ export function createSsmEnrollmentBroker({config, transport, now = Date.now, wa
 
 /** Runs only after exact cloud start completion. The private service template
  * holds newly issued service credentials, never copied personal login state. */
-export async function issueNodeEnrollment({operation, slot, config, transport, bind, serviceTemplate, now = Date.now}) {
+export async function issueNodeEnrollment({operation, slot, config, transport, bind, serviceTemplate, retirement = async()=>({operations:[],nodes:[]}), now = Date.now}) {
   requireThat(operation.state === 'completed' && ['run', 'start'].includes(operation.action) && operation.identity,
     'START_COMPLETION_REQUIRED');
   requireThat(executionCloudCompletionMatches(operation,operation.cloud_observation),'START_COMPLETION_REQUIRED');
@@ -161,6 +162,19 @@ export async function issueNodeEnrollment({operation, slot, config, transport, b
   if (existing) requireThat(matches(existing), 'SECRET_VERSION_CONFLICT');
   else {
     let dispatched=false;
+    // A previously dispatched Put only reads its original immutable version.
+    // Prune and capacity checks run before the first dispatch, in the same
+    // persisted control tick. Initial Get + prune<=31 + Put/Get totals <=34.
+    try{const marker=await readPrivateJson(`${vaultPath}.dispatched`);
+      requireThat(marker.operation_id===operation.operation_id&&marker.payload_sha256===sha256(canonical(payload)),'ENROLLMENT_DISPATCH_DRIFT');
+      requireThat(matches(await get()),'SECRET_PUBLISH_UNCONFIRMED');
+      return {instance_id:operation.identity.instance_id,epoch:operation.identity.epoch,expires_at:payload.expires_at};
+    }catch(error){if(error.code!=='ENOENT')throw error;}
+    const history=await retirement();
+    requireThat(Array.isArray(history?.operations)&&Array.isArray(history.nodes),'SECRET_RETIREMENT_PROOF_REQUIRED');
+    await pruneRetiredNodeVersions({secretName:descriptor.secret_name,keep:[operation.operation_id],scope:operation.identity,
+      operations:history.operations,nodes:history.nodes,transport,registrationDirectory:config.registration_directory,
+      caSha256:descriptor.pg_issuer?.ca_sha256,now});
     try{const f=await open(`${vaultPath}.dispatched`,constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);
       try{await f.writeFile(canonical({operation_id:operation.operation_id,payload_sha256:sha256(canonical(payload))}));await f.sync();dispatched=true;}finally{await f.close();}
     }catch(error){if(error.code!=='EEXIST')throw error;const marker=await readPrivateJson(`${vaultPath}.dispatched`);

@@ -106,6 +106,10 @@ PG 通道使用 `pg-client.conf.example`/`pg-client.service`，仅绑定获审�
 
 标签授权语法依据：[CAM 标签授权](https://cloud.tencent.com/document/product/598/80788)。策略附件不是实际节点凭据验收；须验证本 slot 正例、另一 slot／非池负例、独占 Secret Get/List 及节点无云修改权限。
 
+新登记首次发行前，按完整持久操作历史回收准确旧 epoch 的凭据版本。只有原创建／Start ACK、identity 和 pins 匹配，且旧 epoch 已有非空原 ACK、StopInstances／SUCCESS／STOPPED／STOP_CHARGING 的完成证明，才可回收仍有效的旧登记或 TLS 版本；当前、未决、未知和不透明版本保留。十版本硬界不扩大，清理后仍无空位则关闭新发行。删除先在既有私有签发 vault 留下准确 Secret／VersionId／内容 hash 的派发标记；未知 Delete 只精确回读，未知 Put 不再次清理或重发。首次 Get 加单次最多 31 调用清理、Put 与最终 Get，合计每节点每控制 tick 最多 34 次；同 tick 的另一节点续证由原 68 次预留覆盖。
+
+六轮 SSM 扫描受 180 秒总期限约束；默认 IMDS 取证未接外层 signal，末次最多另需 5 秒，之后不再发 TC3。十分钟登记 vault 过期后的恢复仍关闭新增，不能通过换 token／版本／epoch 或重发未知 Put 恢复；该恢复出口仍待实现。
+
 ## 受限私网出口
 
 节点仅连主站私网的数据库、初始化代理与 mTLS 代理。初始化代理仅允许精确域名的 443 CONNECT；运行阶段通过同代际客户端证书连接 `proxy-execution.internal`，继续校验目标站点自身 TLS。Node 22 使用官方 `NODE_USE_ENV_PROXY`，link-local metadata、本机与私网数据库走 NO_PROXY。受控 stunnel 配置由单一 renderer 生成并逐字验证，禁止夹带额外监听段。主站共享 5Mbps 物理出口，不附加单节点 1Mbps 限流。独立构建源的临时额外域名只允许准确 builder 私网 IP，验通后使用、退役时移除，不扩大业务节点出口。
