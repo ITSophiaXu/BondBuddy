@@ -19,6 +19,21 @@ export interface ModelCallBudget {
 export type ModelCallAdmission={kind:'job'|'assistant';id:string;token:string};
 const namespace = 0x42424d43;
 const budgets = new WeakMap<Pool, ModelCallBudget>();
+/** Private operational evidence: never serialize an exception/message or request bytes. */
+export function modelCancellationDiagnostic(reason: unknown, source: 'capacity_renewal' | 'task_signal' | 'capacity_signal', phase: 'renewal' | 'before_spawn' | 'native', scope?: string) {
+  const error = reason as { code?: unknown; message?: unknown; cancellation?: { original_error_code: string | null; error_class: string } } | null;
+  const safeCode = (value: unknown) => typeof value === 'string' && (/^[0-9A-Z]{5}$/.test(value) || ['ECONNRESET','ECONNREFUSED','ETIMEDOUT','EPIPE','ENOTFOUND'].includes(value)) ? value : null;
+  const code = safeCode(error?.cancellation?.original_error_code) ?? safeCode(error?.code);
+  const errorClass = error?.message === 'Query read timeout' ? 'pg_query_timeout' : error?.message === 'Model capacity holder lost' ? 'holder_missing' : reason instanceof DOMException && reason.name === 'AbortError' ? 'abort' : reason instanceof Error ? 'error' : 'unavailable';
+  const preservedClass = error?.cancellation?.error_class;
+  return { kind: 'model_cancellation', source, phase,
+    original_error_code: code,
+    error_class: preservedClass && ['pg_query_timeout','holder_missing','abort','error','unavailable'].includes(preservedClass) ? preservedClass : errorClass,
+    ...(scope && /^[A-Za-z0-9:_-]{1,180}$/.test(scope) ? { scope } : {}) };
+}
+export function reportModelCancellation(diagnostic: ReturnType<typeof modelCancellationDiagnostic>) {
+  try { process.stderr.write(JSON.stringify(diagnostic) + '\n'); } catch { /* evidence cannot alter cancellation */ }
+}
 export function modelCallConcurrency(env: NodeJS.ProcessEnv = process.env) {
   const value = env.BB_MODEL_CALL_CONCURRENCY ?? '4';
   if (!/^[1-4]$/.test(value)) throw new Error('Invalid BB_MODEL_CALL_CONCURRENCY');
@@ -211,7 +226,12 @@ export class PgModelCallBudget implements ModelCallBudget {
         try {
           const result = await this.sessions.query('UPDATE bb_model_capacity_holders SET renewed_at=now() WHERE token=$1 AND host_id=$2',[token,this.host]);
           if (!result.rowCount) throw new Error('Model capacity holder lost');
-        } catch { controller.abort(new Error('Model capacity holder lost')); throw new Error('Model capacity holder lost'); }
+        } catch (error) {
+          const diagnostic = modelCancellationDiagnostic(error, 'capacity_renewal', 'renewal', scope);
+          reportModelCancellation(diagnostic);
+          const lost = Object.assign(new Error('Model capacity holder lost'), { cancellation: diagnostic });
+          controller.abort(lost); throw lost;
+        }
       };
       let renewing = false;
       timer = setInterval(() => {

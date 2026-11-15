@@ -1,4 +1,5 @@
 import type { ModelCallPermit } from './model-call-budget.js';
+import { modelCancellationDiagnostic, reportModelCancellation } from './model-call-budget.js';
 // Server-side Codex adapter with durable intent, usage, cancellation and result replay.
 // Ordinary calls disable tools; legacy authoring permits only fixed read-only material tools.
 // Native file authoring uses a verified named sandbox: immutable inputs, writable run-local
@@ -717,6 +718,8 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
           ? { ...c, timeout_ms: c.authoring_timeout_ms } : c;
         const raw = await runCodexProcess(executionConfig, { prompt, cwd, codexHome: attemptHome, home, schemaFile, ephemeral: !persistent, resumeThreadId: persistent ? threadId : null, imageFile, materialDataFile, materialTraceFile, reviewDataFile, reviewTraceFile, fileAuthoring:!!input.fileWorkspace, fileCompletion:input.fileWorkspace?.completionCheck===true, signal: executionSignal, onSpawn: permit ? pid=>permit.bindProcess(pid,attemptHome) : undefined, onEvent: input.onEvent, captureExecLog: true,
           onActivity:input.onActivity?event=>input.onActivity!(event,intent):undefined });
+        if (raw.stop === 'cancelled') reportModelCancellation(modelCancellationDiagnostic(executionSignal?.reason,
+          input.signal?.aborted ? 'task_signal' : 'capacity_signal', raw.duration_ms === 0 && raw.exit_code === null ? 'before_spawn' : 'native', intent.call_id));
         // The execution log is private evidence only. A storage failure must never
         // change the provider outcome or block reconciliation.
         if (raw.exec_log) try { await journal.storeExecLog?.(intent, raw.exec_log.bytes, { truncated: raw.exec_log.truncated }); } catch { /* retained failure stays visible through the observation */ }
