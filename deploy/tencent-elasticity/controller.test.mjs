@@ -264,12 +264,17 @@ test('cost producer failure closes authoritative admission, yet progresses alrea
   await handler.tick();assert.equal(budget,false);assert.equal(closed,1);assert.equal(drains,1);
 });
 
-test('unknown Run recovery first describes scoped inventory and binds ownership without manufacturing ACK', async () => {
-  const r=request();r.launch_manifest_sha256=sha256(canonical(runParameters(config,r,sha256('op1'),bootstrapUserData(config,r),0,'op1')));
-  const op={...operation(),action:'run',state:'unknown',identity:null,request:r},i={...safeInventory()[0],create_operation_id:'op1'};
-  let reads=0,result;
-  const c=new ExecutionPoolController({config,control:{loadOperation:async()=>op,recordCloudResult:async(_,__,v)=>{result=v;return v;}},cloud:{inventory:async()=>{reads++;return [i];}}});
-  await c.recover('op1');assert.equal(reads,1);assert.equal(result.state,'unknown');assert.equal(result.provider_request_id,null);assert.equal(result.identity.instance_id,'ins-a1');
+test('unknown Run recovery binds each exact role slot without redispatch or manufacturing ACK', async () => {
+  for(const slot of [0,1]){
+    const r=request();r.launch_manifest_sha256=sha256(canonical(runParameters(config,r,sha256('op1'),bootstrapUserData(config,r,slot),slot,'op1')));
+    const op={...operation(),action:'run',state:'unknown',identity:null,request:r},i={...safeInventory()[0],role_name:config.role_names[slot],create_operation_id:'op1'};
+    let reads=0,records=0,mutations=0,result;
+    const c=new ExecutionPoolController({config,control:{loadOperation:async()=>op,recordCloudResult:async(_,__,v)=>{records++;result=v;return v;}},
+      cloud:{inventory:async()=>{reads++;return [i];},execute:async()=>{mutations++;throw Error('unexpected dispatch');}}});
+    await c.recover('op1');assert.equal(reads,1);assert.equal(records,1);assert.equal(mutations,0);
+    assert.equal(result.state,'unknown');assert.equal(result.provider_request_id,null);assert.equal(result.identity.instance_id,'ins-a1');
+    assert.equal(result.identity.epoch,r.epoch);assert.equal(op.client_token,sha256('op1'));
+  }
 });
 
 test('only archived definitive single-Run inventory rejection enters persistent cooldown', async () => {

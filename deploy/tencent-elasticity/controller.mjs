@@ -106,7 +106,7 @@ export class ExecutionPoolController {
       if (!candidates.length) return op; // absence is not proof of rejected Run
       const i=candidates[0], slot=this.config.role_names.indexOf(i.role_name);
       requireThat(slot>=0 && sha256(canonical(runParameters(this.config,op.request,op.client_token,
-        bootstrapUserData(this.config,op.request),slot,op.operation_id)))===op.request.launch_manifest_sha256, 'UNKNOWN_RUN_MANIFEST_DRIFT');
+        bootstrapUserData(this.config,op.request,slot),slot,op.operation_id)))===op.request.launch_manifest_sha256, 'UNKNOWN_RUN_MANIFEST_DRIFT');
       // Bind capacity/cost ownership, but an absent ACK still cannot authorize
       // completion or a second launch. The original operation/token is retained.
       return this.control.recordCloudResult(opId,op.revision,{state:'unknown',provider_request_id:null,
