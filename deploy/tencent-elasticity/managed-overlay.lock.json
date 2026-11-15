@@ -1,0 +1,481 @@
+{
+  "version": "managed-overlay-lock-v1",
+  "trusted_remote": "https://github.com/ITSophiaXu/BondBuddy.git",
+  "infrastructure_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+  "components": {
+    "authoring": {
+      "base_sha": "a0a051111dc583db9b39459a5f215e63a8c522e5",
+      "base_tree": "1955f0a2747a9c58d61633baa0fbdd67f354d6d4",
+      "fixed_manifest_sha256": "03a5b0e4ad84bae64ade875982db66ea91ddcb3eb5016625c1a486a1d5af3bc9",
+      "fixed_image_id": "sha256:e1ce3a98ca971cebe08adb8b07eed633878fa32451582be5242e0ec4f82e00d4",
+      "fixed_overlay": [
+        {
+          "path": "apps/worker/src/codex-adapter.ts",
+          "source_sha": "35951828ea268086a267f33274df57f4185cdd19",
+          "sha256": "ca460cf14762d96cc502cb2b04425b7eb7bd65c0992b3da661b2f88d321d8639"
+        },
+        {
+          "path": "apps/worker/src/durable-probe-journal.ts",
+          "source_sha": "35951828ea268086a267f33274df57f4185cdd19",
+          "sha256": "c41b43046b98297d56e2186f031340e08385dd206036b90dc2af8a289138bb15"
+        },
+        {
+          "path": "apps/worker/src/review-assistant.ts",
+          "source_sha": "35951828ea268086a267f33274df57f4185cdd19",
+          "sha256": "1833c0686e8b924adbc3630925f6ef43968eb77b1ea311b9a8dd9cc20d9349fd"
+        },
+        {
+          "path": "apps/worker/src/runtime.ts",
+          "source_sha": "35951828ea268086a267f33274df57f4185cdd19",
+          "sha256": "ccb247506f8c32d1ccd02f7fe1c541a477029c5ba721107f11d37edea54565e1"
+        },
+        {
+          "path": "apps/worker/src/model-call-budget.ts",
+          "source_sha": "35951828ea268086a267f33274df57f4185cdd19",
+          "sha256": "10290c04bb629d34534510a5f30a9eac45020197a5ec7fc80413c995878543bf"
+        },
+        {
+          "path": "apps/api/src/queue.ts",
+          "source_sha": "0fd5ccc7573dd6eb849cbb1cc47ba9fec1da5fa8",
+          "sha256": "6b633c41b1bd905c64894c8a7840555cfa81f129ae5f56958f7046758b2e86ca"
+        }
+      ]
+    },
+    "review": {
+      "base_sha": "9c6ab2c2d995774af48a537cdf0a087959165d10",
+      "base_tree": "852885c9ea57ac276b3bcc99558b3835f5d50fda",
+      "fixed_manifest_sha256": "03a5b0e4ad84bae64ade875982db66ea91ddcb3eb5016625c1a486a1d5af3bc9",
+      "fixed_image_id": "sha256:05d9c63d459736c44d3ebd1983e65baa1e097fd9efe78a2264583ebdb88e80b7",
+      "fixed_overlay": [
+        {
+          "path": "apps/worker/src/codex-adapter.ts",
+          "source_sha": "35951828ea268086a267f33274df57f4185cdd19",
+          "sha256": "ca460cf14762d96cc502cb2b04425b7eb7bd65c0992b3da661b2f88d321d8639"
+        },
+        {
+          "path": "apps/worker/src/durable-probe-journal.ts",
+          "source_sha": "35951828ea268086a267f33274df57f4185cdd19",
+          "sha256": "c41b43046b98297d56e2186f031340e08385dd206036b90dc2af8a289138bb15"
+        },
+        {
+          "path": "apps/worker/src/review-assistant.ts",
+          "source_sha": "35951828ea268086a267f33274df57f4185cdd19",
+          "sha256": "1833c0686e8b924adbc3630925f6ef43968eb77b1ea311b9a8dd9cc20d9349fd"
+        },
+        {
+          "path": "apps/worker/src/runtime.ts",
+          "source_sha": "35951828ea268086a267f33274df57f4185cdd19",
+          "sha256": "ccb247506f8c32d1ccd02f7fe1c541a477029c5ba721107f11d37edea54565e1"
+        },
+        {
+          "path": "apps/worker/src/model-call-budget.ts",
+          "source_sha": "35951828ea268086a267f33274df57f4185cdd19",
+          "sha256": "10290c04bb629d34534510a5f30a9eac45020197a5ec7fc80413c995878543bf"
+        },
+        {
+          "path": "apps/api/src/queue.ts",
+          "source_sha": "0fd5ccc7573dd6eb849cbb1cc47ba9fec1da5fa8",
+          "sha256": "6b633c41b1bd905c64894c8a7840555cfa81f129ae5f56958f7046758b2e86ca"
+        }
+      ]
+    }
+  },
+  "copy_paths": [
+    "apps/api/src/execution-capacity.ts",
+    "apps/api/src/execution-demand.ts",
+    "apps/api/src/execution-run-denial.ts",
+    "apps/worker/src/execution-node-runtime.ts",
+    "apps/worker/src/execution-node-transport.ts",
+    "apps/worker/src/model-call-budget.ts",
+    "apps/worker/src/ops-scheduler.ts",
+    "apps/worker/src/review-assistant.ts",
+    "apps/worker/src/runtime.ts",
+    "db/migrations/0179_model_call_capacity.sql",
+    "db/migrations/0181_execution_node_capacity.sql",
+    "db/migrations/0183_execution_run_acceptance.sql",
+    "db/migrations/0184_execution_run_authorization_denial.sql",
+    "deploy/tencent-elasticity/bootstrap-entry.mjs",
+    "deploy/tencent-elasticity/bootstrap-failure.mjs",
+    "deploy/tencent-elasticity/bootstrap.mjs",
+    "deploy/tencent-elasticity/bootstrap.service",
+    "deploy/tencent-elasticity/cloud-quote-refresh.mjs",
+    "deploy/tencent-elasticity/compose.yaml",
+    "deploy/tencent-elasticity/control-authority.mjs",
+    "deploy/tencent-elasticity/control-authority.service",
+    "deploy/tencent-elasticity/control-credentials.mjs",
+    "deploy/tencent-elasticity/control-socket.mjs",
+    "deploy/tencent-elasticity/control-tick-bound.mjs",
+    "deploy/tencent-elasticity/controller.mjs",
+    "deploy/tencent-elasticity/costcap.mjs",
+    "deploy/tencent-elasticity/enrollment.mjs",
+    "deploy/tencent-elasticity/node-adapter.mjs",
+    "deploy/tencent-elasticity/node.example.json",
+    "deploy/tencent-elasticity/ops-handler.mjs",
+    "deploy/tencent-elasticity/pg-client.conf.example",
+    "deploy/tencent-elasticity/pg-client.service",
+    "deploy/tencent-elasticity/policy.mjs",
+    "deploy/tencent-elasticity/pool.example.json",
+    "deploy/tencent-elasticity/price-bounds.example.json",
+    "deploy/tencent-elasticity/private-egress.mjs",
+    "deploy/tencent-elasticity/private-files.mjs",
+    "deploy/tencent-elasticity/private-proxy-server.conf",
+    "deploy/tencent-elasticity/private-proxy-server.service",
+    "deploy/tencent-elasticity/private-proxy.compose.yaml",
+    "deploy/tencent-elasticity/private-proxy.squid.conf",
+    "deploy/tencent-elasticity/private-transport.mjs",
+    "deploy/tencent-elasticity/reconcile-entry.mjs",
+    "deploy/tencent-elasticity/stunnel-reload.mjs",
+    "deploy/tencent-elasticity/tencent-cvm.mjs",
+    "deploy/tencent-elasticity/transport-issuer.mjs",
+    "deploy/tencent-elasticity/transport-refresher.mjs",
+    "deploy/tencent-elasticity/transport-renewal.mjs",
+    "deploy/tencent-elasticity/transport-service.mjs",
+    "packages/contracts/src/execution-capacity.ts"
+  ],
+  "sources": [
+    {
+      "path": "apps/api/package.json",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "38a4d34cf053548c322b2f68f55bb0bb17470c3a62855dc6de13a87aba96a97d"
+    },
+    {
+      "path": "apps/api/src/execution-capacity.ts",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "1e2e6776707b5c2fec0aeda70d8e9270f15dae3a8fcb91bb5faf742161765e3d"
+    },
+    {
+      "path": "apps/api/src/execution-demand.ts",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "ccc1cf9d47b400bc6b15f7e0ac0ed23765bc7ed8c45d4a97b886ca6c033b47d2"
+    },
+    {
+      "path": "apps/api/src/execution-run-denial.ts",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "15e0f97e55eaeacec584f25ed9a4785302d6b24c4780092cece654232fafdc85"
+    },
+    {
+      "path": "apps/api/src/queue.ts",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "74fc90d4afbde00907485cb06a6ea1b0d80507f14ea47c4608b9e7de4cb7a422"
+    },
+    {
+      "path": "apps/worker/src/durable-probe-journal.ts",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "646b5b822b73a7f4c3dcd3de9aa7279f21d17fbf6c44c2b1304490ddb2abae74"
+    },
+    {
+      "path": "apps/worker/src/execution-node-runtime.ts",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "50307440f9ea0c55b8c470539a32f2483a4c029dd3f2dd9715ed6d77cb5876c6"
+    },
+    {
+      "path": "apps/worker/src/execution-node-transport.ts",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "9f3a428d4b39d265bf956be53f4917fcdb96882a0d9a2bc52365f54bfefc9a6d"
+    },
+    {
+      "path": "apps/worker/src/model-call-budget.ts",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "bbdb5c98c277fa9e2a28af5daf956b4fa6b70bfe91d7963220220d8ab4bf944e"
+    },
+    {
+      "path": "apps/worker/src/ops-scheduler.ts",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "49f86ab41985380760d6e9e125577884f8aa658a630efd4c11f5ae1a2bc61578"
+    },
+    {
+      "path": "apps/worker/src/review-assistant.ts",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "a2a064974ce97a35b19ff7383ae6b12703b3c997824a878614ce47e852e32657"
+    },
+    {
+      "path": "apps/worker/src/runtime.ts",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "16c7be559938346f718424993764b518de695ba6accb63944e7c387a77e89204"
+    },
+    {
+      "path": "db/migrations/0179_model_call_capacity.sql",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "2caace8d064b8893bfb14663748baef49fc96604c48ce049f797de3cef895c6d"
+    },
+    {
+      "path": "db/migrations/0181_execution_node_capacity.sql",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "d102fc7b1a1c620d28610c608aafbc134c9fc3336d7834baea62272746f8e838"
+    },
+    {
+      "path": "db/migrations/0183_execution_run_acceptance.sql",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "c53ee445d16969f6e4db3ea840df33c289ee67a6c6db73260ec17f41d383ea71"
+    },
+    {
+      "path": "db/migrations/0184_execution_run_authorization_denial.sql",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "ee48ce37381fef24541c7ca2f0296081487c8a19c7dcfd013029644a0db4f6ad"
+    },
+    {
+      "path": "deploy/tencent-elasticity/bootstrap-entry.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "1cfd19875630bc7a2fe6906f0be5850285569360b21b5975a71fb27a1edaa4c3"
+    },
+    {
+      "path": "deploy/tencent-elasticity/bootstrap-failure.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "e40b0cff60fa83701eea48d17f44c0459135db6d153a2f634673ecee0a5f1068"
+    },
+    {
+      "path": "deploy/tencent-elasticity/bootstrap.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "e3b57728a08abc7ac941feef3b35d29de312cd20a37148f8ba04762cee1ae5f3"
+    },
+    {
+      "path": "deploy/tencent-elasticity/bootstrap.service",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "2627120fa2241c7551296c35882383569480f919bcd5e2b06af6dcbf464ef41c"
+    },
+    {
+      "path": "deploy/tencent-elasticity/cloud-quote-refresh.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "b17bccbe6e961b13b114d4c8bec9de41788e9778f6aa41446f992f282db5b155"
+    },
+    {
+      "path": "deploy/tencent-elasticity/compose.yaml",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "3e383c3bc57b784acb6a9761e1b4fc53d6e4666f7b7221f4c6d761dd899da489"
+    },
+    {
+      "path": "deploy/tencent-elasticity/control-authority.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "868cf6dac78f4248c25939b8145692609445ecc3bce25661acea635fef2888e3"
+    },
+    {
+      "path": "deploy/tencent-elasticity/control-authority.service",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "fd827997b64406f0c6ba60c718064652ada35c246a142bf2a06c05b16be5292c"
+    },
+    {
+      "path": "deploy/tencent-elasticity/control-credentials.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "e7e4034c67ddecfda2e612bc074d483c1535bd07beef0ab32957883ec12892db"
+    },
+    {
+      "path": "deploy/tencent-elasticity/control-socket.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "becdbd83d14dc0a520394e24e2bef561ebd097f37f26410aee75ba02a06bfb98"
+    },
+    {
+      "path": "deploy/tencent-elasticity/control-tick-bound.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "e7a23959ec60d667dc8998555decad919cddbff4777bcb9ad6dfb716b87bed43"
+    },
+    {
+      "path": "deploy/tencent-elasticity/controller.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "2e0c22713351dd86c0db0256fb3b96c4e914e42186b869b35e64a8ef70a4341c"
+    },
+    {
+      "path": "deploy/tencent-elasticity/costcap.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "ca71ff2988fb7bb5e2a7e7ca70e11c19e92cafa738dc79320e800c394d06e47a"
+    },
+    {
+      "path": "deploy/tencent-elasticity/enrollment.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "2eaab77c9d0e33b7fa4bce1180a5a4272aa11d7203790fdfdf838c06af6b01e1"
+    },
+    {
+      "path": "deploy/tencent-elasticity/node-adapter.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "a09b07af13014a9b45bfa35209a5ad7262b4985590df087c985d6bce3e5e1c65"
+    },
+    {
+      "path": "deploy/tencent-elasticity/node.example.json",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "cb5ebb4842d255907fe3dcd15a8fa9c13c1ed6c0bb8ed159a200a409c34e8fd8"
+    },
+    {
+      "path": "deploy/tencent-elasticity/ops-handler.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "f8df7695e7feb576e7148757a8adc53aa9b17f1f0bad3f03568ea7025003f0d0"
+    },
+    {
+      "path": "deploy/tencent-elasticity/pg-client.conf.example",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "dd35cad5cf4962e957a57c4500f49be6f1b690cfefcce04ffd0c2553dd5d5ebf"
+    },
+    {
+      "path": "deploy/tencent-elasticity/pg-client.service",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "ceccbffb3a2d3ca370e12245582c60a82078f5fbe368ba2be07130f2e5769b06"
+    },
+    {
+      "path": "deploy/tencent-elasticity/policy.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "7ff2353ac0585ed73177d4033390223ea190c28f7727c274b5bfe5ad2bd41a06"
+    },
+    {
+      "path": "deploy/tencent-elasticity/pool.example.json",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "ae226425e1e1808e0157d9abf651e7dbaff91f4a71c06b598ed6c478824e85da"
+    },
+    {
+      "path": "deploy/tencent-elasticity/price-bounds.example.json",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "9f7c25675683f8309569f98098d421190b8203077bdb90455f7eb0081d6bb8ae"
+    },
+    {
+      "path": "deploy/tencent-elasticity/private-egress.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "84397844bf60c424be352321d2ca87c7977cc9370d01e81fd669d45884f91563"
+    },
+    {
+      "path": "deploy/tencent-elasticity/private-files.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "7b7b7a1409efd1398d21fda659d3182644923cc64a9573d8ca85c8280fc8f29e"
+    },
+    {
+      "path": "deploy/tencent-elasticity/private-proxy-server.conf",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "fc1b6164d15f7e6458609ce8c5d056a15509018d9d705f30355617c028aa5571"
+    },
+    {
+      "path": "deploy/tencent-elasticity/private-proxy-server.service",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "bc3b2421a1fa6f83333e04353f54b785985b4268d9f2e9ef58d03c07cb006d35"
+    },
+    {
+      "path": "deploy/tencent-elasticity/private-proxy.compose.yaml",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "8ffeb0d331d7fa1654c6ca9bb2211ca9e61d827c713935c7a3aa0ff4f6fdd483"
+    },
+    {
+      "path": "deploy/tencent-elasticity/private-proxy.squid.conf",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "8fbf7325d801896c5719290b929472b162150cfe842243c5ce1cc21bc71629b7"
+    },
+    {
+      "path": "deploy/tencent-elasticity/private-transport.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "e3cf3527c0d9b23bff9f75b585a224aee50965035229a64122afab8ddeff1e6d"
+    },
+    {
+      "path": "deploy/tencent-elasticity/reconcile-entry.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "33a9bea2e14149de8860403c9726b726e23b069f933e983035a801c31187a31c"
+    },
+    {
+      "path": "deploy/tencent-elasticity/stunnel-reload.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "bb6789a3bf9a2f7de227bd9eda404f42d171c227b0d2ead96c050443a5194be4"
+    },
+    {
+      "path": "deploy/tencent-elasticity/tencent-cvm.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "9e4febe8306eb1927eb259afbe6b75fd94b588ab3d057c164ea1e50a30128530"
+    },
+    {
+      "path": "deploy/tencent-elasticity/transport-issuer.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "e6611f6c2e9e414e66626473fa5d045faad45079db81d1f3c1e5608b50600c9e"
+    },
+    {
+      "path": "deploy/tencent-elasticity/transport-refresher.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "db8c26c58c1fcce568305092047027a2adbd43dd4ec3698e8d2fbda579b6ce77"
+    },
+    {
+      "path": "deploy/tencent-elasticity/transport-renewal.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "6ebabf4c44937703138fc7ab2bca9a0aedf613d952aeb9223378894d1aa3073f"
+    },
+    {
+      "path": "deploy/tencent-elasticity/transport-service.mjs",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "ed69f95a60acf7c6da230ba59017c92be50ccef246e3b8cff3136f66c35db07a"
+    },
+    {
+      "path": "packages/contracts/src/execution-capacity.ts",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "40a324c48709ac6340dc31aa94bea0dea63eae254307d2dee85755c0501b79e9"
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "49833d4664e49f063d6ac9c63bd9ebb08ae7cd10b26138325e49b56f90690855"
+    },
+    {
+      "path": "packages/contracts/src/workpaper-progressive.ts",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "a36fa86390070b7c76c88e82152b070b6364a3dc1049424b63bd45d234956145"
+    },
+    {
+      "path": "packages/contracts/src/workpapers.ts",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "524bf4915a8ee8a68f842b15bd1ac77911947dfc317d2dc1fd626c83ed3fe4a8"
+    }
+  ],
+  "progressive_fallback": {
+    "path": "packages/contracts/src/workpaper-progressive.ts",
+    "source_sha": "a0a051111dc583db9b39459a5f215e63a8c522e5",
+    "sha256": "26436d6b92b2acb0d07e9513c8333c966730bcee8eb4ade63a635fc87510a8c7"
+  },
+  "fixed_derivations": [
+    {
+      "commit": "66defd2225ac76c73ee686881cb1ed4b7c845a0c",
+      "paths": [
+        "apps/worker/src/model-call-budget.ts",
+        "apps/worker/src/codex-adapter.ts"
+      ],
+      "patch_sha256": "0364dc3b672c7026e4cf49eb427cc2be054db249369e1b6b99fe8130793640bc",
+      "results": [
+        {
+          "path": "apps/worker/src/codex-adapter.ts",
+          "sha256": "31ce5359cf09a185e3c4a65431b7da4495c52e0a62faf395d362ea32bf700872"
+        }
+      ]
+    },
+    {
+      "commit": "d6729776ceeb36a1a6c7bcad8179f1ac986f1eb9",
+      "paths": [
+        "apps/worker/src/model-call-budget.ts"
+      ],
+      "patch_sha256": "eedb92286360692fb7b43329fd4c8715b09fe49fd07a2c48eb83f8caa706cde0",
+      "results": [
+        {
+          "path": "apps/worker/src/model-call-budget.ts",
+          "sha256": "1b7a515d21c5bfd210c509fadab9e74a71abdae8eae550e621a08bb1cdf402d7"
+        }
+      ]
+    }
+  ],
+  "migrations": [
+    {
+      "path": "db/migrations/0179_model_call_capacity.sql",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "2caace8d064b8893bfb14663748baef49fc96604c48ce049f797de3cef895c6d",
+      "status": "already_applied"
+    },
+    {
+      "path": "db/migrations/0181_execution_node_capacity.sql",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "d102fc7b1a1c620d28610c608aafbc134c9fc3336d7834baea62272746f8e838",
+      "status": "candidate_required"
+    },
+    {
+      "path": "db/migrations/0183_execution_run_acceptance.sql",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "c53ee445d16969f6e4db3ea840df33c289ee67a6c6db73260ec17f41d383ea71",
+      "status": "candidate_required"
+    },
+    {
+      "path": "db/migrations/0184_execution_run_authorization_denial.sql",
+      "source_sha": "e277c27a1102d4d78a0f635343a8eb96278ecfbb",
+      "sha256": "ee48ce37381fef24541c7ca2f0296081487c8a19c7dcfd013029644a0db4f6ad",
+      "status": "candidate_required"
+    }
+  ],
+  "excluded_migrations": [
+    "0180_batch_four_way.sql",
+    "0182_model_wait_billing.sql"
+  ]
+}

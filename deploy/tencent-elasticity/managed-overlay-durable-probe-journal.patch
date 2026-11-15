@@ -1,0 +1,11 @@
+--- a/apps/worker/src/durable-probe-journal.ts
++++ b/apps/worker/src/durable-probe-journal.ts
+@@ -51,7 +51,7 @@
+ export class CodexDurableJournal extends DurableProbeJournal implements CodexJournal {
+   constructor(private readonly codexInput: ConstructorParameters<typeof DurableProbeJournal>[0]) { super(codexInput); }
+ 
+-  acquireCallSlot(signal?: AbortSignal) { return modelCallBudgetFor(this.codexInput.pool).acquire(signal, `run:${this.codexInput.lease.runId}`); }
++  acquireCallSlot(signal?: AbortSignal) { return modelCallBudgetFor(this.codexInput.pool).acquire(signal, `run:${this.codexInput.lease.runId}`,{kind:'job',id:this.codexInput.lease.jobId,token:this.codexInput.lease.token}); }
+ 
+   async recordWebSearchEvents(intent: ProviderCallIntent, events: NonNullable<import('./codex-adapter.js').CodexProcessResult['web_search_events']>) {
+     const { pool, lease } = this.codexInput;
