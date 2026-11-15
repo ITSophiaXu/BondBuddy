@@ -5,10 +5,11 @@
     1412,
     1416,
     1419,
-    1423
+    1423,
+    1425
   ],
   "stable_base_commit": "c23abe58cdb960261b988eec32be6b42c2a19bce",
-  "source_develop_commit": "696393edd435b770012e62da2f425fc2a24ef406",
+  "source_develop_commit": "6aaa9d9d622219100ea6c6a04b708a799249355a",
   "component_only_release": true,
   "public_app_and_business_source_delta": [],
   "source_records": [
@@ -56,15 +57,15 @@
     },
     {
       "path": "deploy/tencent-elasticity/control-authority.mjs",
-      "bytes": 12461,
-      "sha256": "868cf6dac78f4248c25939b8145692609445ecc3bce25661acea635fef2888e3",
-      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+      "bytes": 12505,
+      "sha256": "64090e30f189eb19d26e030562dd79cb89c48feeb4c1706fdb0cc01c1944246a",
+      "source_commit": "4ece63a3efd9bd61141579251aa589f4589ec4f9"
     },
     {
       "path": "deploy/tencent-elasticity/control-authority.test.mjs",
-      "bytes": 14059,
-      "sha256": "d2c429c26e62d6960fd19d4d32bf43a164a54f05bee4d9dc727dba4b593776fe",
-      "source_commit": "696393edd435b770012e62da2f425fc2a24ef406"
+      "bytes": 14809,
+      "sha256": "5efa01e9337c1c439ed66d3810a05f5304e8dd50e46f47e0d67c3a6ea04589f4",
+      "source_commit": "4ece63a3efd9bd61141579251aa589f4589ec4f9"
     },
     {
       "path": "deploy/tencent-elasticity/controller.mjs",
@@ -259,6 +260,13 @@
       "head": "d7514ec9d3c82e14a1400b0225cbd596542eb481",
       "merge": "696393edd435b770012e62da2f425fc2a24ef406",
       "tree": "7d47bba75b34fa4c8e63c452b7db5cc21d558adb"
+    },
+    {
+      "number": 1425,
+      "head": "4ece63a3efd9bd61141579251aa589f4589ec4f9",
+      "merge": "6aaa9d9d622219100ea6c6a04b708a799249355a",
+      "tree": "86111f7b33ea56b1d91fd7737e4f663ec1b0a7c2",
+      "merge_tree": "86111f7b33ea56b1d91fd7737e4f663ec1b0a7c2"
     }
   ],
   "runtime_payload": {
@@ -340,8 +348,8 @@
     },
     {
       "path": "deploy/tencent-elasticity/control-authority.mjs",
-      "bytes": 12461,
-      "sha256": "868cf6dac78f4248c25939b8145692609445ecc3bce25661acea635fef2888e3"
+      "bytes": 12505,
+      "sha256": "64090e30f189eb19d26e030562dd79cb89c48feeb4c1706fdb0cc01c1944246a"
     },
     {
       "path": "deploy/tencent-elasticity/control-credentials.mjs",
@@ -459,7 +467,7 @@
       "sha256": "7c2cf5246676efeda67d99755e46c500ef27bd0e158b25204e224fbb62f798af"
     }
   ],
-  "control_installation": "Exact component files plus execution-capacity package export on the existing ops image/package tree; reuse existing ops Pool for stop completion and operation persistence. Independent issuer and runtime identities.",
+  "control_installation": "Exact effective_control_payload on the existing ops image/package tree, with final control-authority.mjs from #1425; reuse existing ops Pool for stop completion and operation persistence. Independent issuer and runtime identities.",
   "schema": {
     "formal_before_count": 182,
     "after_count": 185,
@@ -536,7 +544,8 @@
     "provider_model": "deepseek-flash",
     "provider_review_sha256": "7782bea64191467b70712aa1c49537cf92fe138c9e533e99dc9e2060ef1679d0",
     "new_tests_or_model_runs_for_release_metadata": false,
-    "CI_not_started_is_not_pass": true
+    "CI_not_started_is_not_pass": true,
+    "retired_issuer_targeted_test_passed": 1
   },
   "publication_evidence_index": {
     "files": 147,
@@ -567,5 +576,32 @@
     "complete_closed_history_review_ready": false,
     "formal_schema_ACL_activation_executed": false,
     "note": "Release preparation does not grant activation. Preserve all known failures and historical/unknown expenses; scoped final authorization follows the exact artifacts and required real acceptance."
+  },
+  "control_composition_order": [
+    "1416 exact component payload",
+    "1419 final expense history/ops entries",
+    "1423 final costcap/cloud-quote-refresh",
+    "1425 final control-authority retirement exclusion and retired-target rejection"
+  ],
+  "retired_issuer_delta": {
+    "source_pr": 1425,
+    "only_source_files": [
+      {
+        "path": "deploy/tencent-elasticity/control-authority.mjs",
+        "bytes": 12505,
+        "sha256": "64090e30f189eb19d26e030562dd79cb89c48feeb4c1706fdb0cc01c1944246a",
+        "source_commit": "4ece63a3efd9bd61141579251aa589f4589ec4f9"
+      },
+      {
+        "path": "deploy/tencent-elasticity/control-authority.test.mjs",
+        "bytes": 14809,
+        "sha256": "5efa01e9337c1c439ed66d3810a05f5304e8dd50e46f47e0d67c3a6ea04589f4",
+        "source_commit": "4ece63a3efd9bd61141579251aa589f4589ec4f9"
+      }
+    ],
+    "retained_behavior": "Third live node rejected; retired target rejected; real destroyed_at rows retain history and consume no live physical slot.",
+    "prior_release_head": "95d253d21728b0e12e5554f55abf4612eb0b28e9",
+    "runtime_OCI_rebuild_required": false,
+    "new_test_run_for_release_metadata": false
   }
 }
