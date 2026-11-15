@@ -1,3 +1,4 @@
+import {recordCommittedPerformanceDispatch,type CommittedPerformanceDispatch} from './performance-dispatch.js';
 import {workpaperChapters,workpaperAdmissionOrder,WORKPAPER_MAX_PARALLEL} from '@bondbuddy/contracts';
 import {int64,serializeInt64,shortageInt64,encodeBillingDto,type BillingWireDto} from '@bondbuddy/contracts';
 import {registerGenerationProgress} from './generation-progress.js';
@@ -138,7 +139,8 @@ async function assertProgressiveWorkpaperAdmission(c:PoolClient,b:any,item:any,m
 
 /** A batch is an ordered queue of independent, immutable M4 runs. A failed file does not discard siblings. */
 export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
-  return transaction(pool,async c=>{
+  const startedAt=new Date(),dispatch:{value:CommittedPerformanceDispatch|null}={value:null};
+  const result=await transaction(pool,async c=>{
     const b=(await c.query(`SELECT b.* FROM bb_workpaper_batches b JOIN bb_projects p ON p.id=b.project_id AND p.owner_user_id=b.owner_user_id
       WHERE (b.state IN ('queued','running') OR b.progressive_plan IS NOT NULL AND b.state IN ('paused','cancelled') AND EXISTS(
         SELECT 1 FROM bb_workpaper_items i JOIN bb_runs r ON r.owner_user_id=i.owner_user_id AND r.id=i.run_id
@@ -209,13 +211,16 @@ export async function advanceWorkpaperBatch(pool:Pool):Promise<boolean>{
       await c.query("UPDATE bb_workpaper_items SET run_id=$3,state='running',error=NULL WHERE batch_id=$1 AND item_id=$2",[b.id,next.item_id,run.id]);
       await c.query('INSERT INTO bb_workpaper_attempts(owner_user_id,batch_id,item_id,attempt,run_id) VALUES($1,$2,$3,$4,$5)',[b.owner_user_id,b.id,next.item_id,next.attempt,run.id]);
       await c.query("UPDATE bb_workpaper_batches SET state='running',revision=revision+1,error=NULL WHERE id=$1",[b.id]);
-      await event(c,b.owner_user_id,b.project_id,'workpaper.item_started',{batch_id:b.id,item_id:next.item_id,run_id:run.id});return true;
+      await event(c,b.owner_user_id,b.project_id,'workpaper.item_started',{batch_id:b.id,item_id:next.item_id,run_id:run.id});
+      dispatch.value={scope:{ownerUserId:b.owner_user_id,projectId:run.project_id,runId:run.id,batchId:b.id,workItemId:next.item_id,itemAttempt:next.attempt},batchCreatedAt:b.created_at,operation:'workpaper'};return true;
     }catch(error){
       await c.query('ROLLBACK TO SAVEPOINT workpaper_start');
       if(error instanceof Problem&&error.code==='PROJECT_RUN_ACTIVE'||['55P03','40P01'].includes((error as {code?:string}).code??''))return false;
       await c.query("UPDATE bb_workpaper_batches SET state='paused',revision=revision+1,error=$2,pause_reason=$3 WHERE id=$1",[b.id,error instanceof Problem?error.message:'底稿任务暂未启动，请刷新后继续。',error instanceof Problem&&error.code==='CREDITS_INSUFFICIENT'?'credits_insufficient':null]);return true;
     }
   });
+  recordCommittedPerformanceDispatch(pool,dispatch.value,startedAt,new Date());
+  return result;
 }
 
 export async function createWorkpaperBatch(c:PoolClient,blobs:()=>PrivateBlobs,user:string,id:string,b:Static<typeof WorkpaperStartSchema>,templateInputs?:{templates:Record<string,{template:import('@bondbuddy/contracts').M4TemplateRef;material:import('@bondbuddy/contracts').M4MaterialPin}>;materials:import('@bondbuddy/contracts').M4MaterialPin[]},additionalMaterials:import('@bondbuddy/contracts').M4MaterialPin[]=[]){

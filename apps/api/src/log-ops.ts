@@ -947,7 +947,9 @@ export async function purgeLogContent(pool: Pool, blobs: PrivateBlobs, policy: L
   let browserPurged = 0;
   for (const owner of policy.ownerScope ?? [undefined])
     browserPurged += await purgeBrowserErrorContent(pool, policy.contentRetentionDays, now, owner);
-  return { due: due.length, purged, failed, orphanDue: orphanIds.length, orphanPurged, orphanFailed, browserPurged };
+  const { purgePerformanceSpans } = await import('./performance-lifecycle.js');
+  const performance = await purgePerformanceSpans(pool, policy);
+  return { due: due.length, purged, failed, orphanDue: orphanIds.length, orphanPurged, orphanFailed, browserPurged, performance };
 }
 
 // ---------------------------------------------------------------- operator access

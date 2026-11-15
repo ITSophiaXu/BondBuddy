@@ -1,3 +1,5 @@
+import {withPerformanceTrace,withPerformanceSpan,recordPerformanceInterval} from '@bondbuddy/api/performance-trace';
+import {performanceBlobs,withArtifactPromotionPerformance} from './performance-io.js';
 import {DeferredQaJournal} from './deferred-qa-journal.js';
 import {isWorkpaperChange,workpaperChangeGate} from './workpaper-change-stage.js';
 import {startRunLeaseHeartbeat} from './run-lease-heartbeat.js';
@@ -95,6 +97,7 @@ export type RunPipelineDependencies = {
   loadGenerationIssuerBinding?: LoadGenerationIssuerBinding;
   /** #76 target-period candidate producer call point; absent = unchanged. */
   produceTargetPeriodCandidates?: TargetPeriodCandidateProducer;
+  workerInstanceId?:string;
   onLease?: (lease: Lease | null) => void;
   /** Test seam only: runs after each durable stage checkpoint, e.g. to simulate a process crash. */
   afterStage?: (stage: string, lease: Lease) => Promise<void>;
@@ -515,9 +518,9 @@ export function codexModelStage(options: {
       let imageRef=ctx.checkpoint[promptStage]?.image_input as ModelImageRef|undefined;
       if (!snapshotId) {
         imageRef=options.imageInput?await saveModelImage(blobs,run,options.imageInput):undefined;
-        const body = await options.buildPrompt(ctx)+(imageRef?'\nAttached PNG SHA-256: '+imageRef.sha256:'');
-        snapshotId = await savePromptSnapshot(pool, blobs, { owner: run.owner_user_id, projectId: run.project_id, runId: run.id, kind: 'model_request',
-          body, inputRevision: run.input_revision, inputHash: run.input_hash.trim(), templateVersion: options.templateVersion });
+        const body = await withPerformanceSpan('prompt.compose',{logical_call_id:options.logicalCallId},()=>options.buildPrompt(ctx))+(imageRef?'\nAttached PNG SHA-256: '+imageRef.sha256:'');
+        snapshotId = await withPerformanceSpan('prompt.snapshot_save',{logical_call_id:options.logicalCallId},()=>savePromptSnapshot(pool, blobs, { owner: run.owner_user_id, projectId: run.project_id, runId: run.id, kind: 'model_request',
+          body, inputRevision: run.input_revision, inputHash: run.input_hash.trim(), templateVersion: options.templateVersion }));
         const pinned={snapshot_id:snapshotId,...(imageRef?{image_input:imageRef}:{})};
         await checkpointStage(pool, lease, promptStage, pinned);
         ctx.checkpoint[promptStage] = pinned;
@@ -617,9 +620,12 @@ export function defaultRunStages(installed: Partial<Record<'model_generation' | 
 
 /** Claims one run job and executes its remaining stages. Returns what happened to the durable job. */
 export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<RunPipelineOutcome> {
-  const { pool, blobs } = deps;
+  const { pool } = deps;
+  const blobs=performanceBlobs(deps.blobs);
   const leaseSeconds = deps.leaseSeconds ?? 30, maxAttempts = deps.maxAttempts ?? 3;
+  const claimStartedAt=new Date();
   const lease = await claim(pool, leaseSeconds, { runKinds: deps.runKinds, interactiveOnly: deps.interactiveOnly });
+  const claimEndedAt=new Date();
   deps.onLease?.(lease);
   if (!lease) return 'idle';
   const abort = new AbortController();
@@ -628,24 +634,66 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
   // A lost lease (cancel won, or lease expired) stops in-flight work: codex kills its process group.
   const heartbeat = startRunLeaseHeartbeat({renew:()=>renew(pool,lease,leaseSeconds),intervalMs:Math.max(1000,leaseSeconds*400),onLost:()=>abort.abort()});
   let currentStage: string | undefined;
+  let traceEntered=false;
   const failRun=async(options:{errorCode?:string;failedStage?:string}):Promise<RunPipelineOutcome>=>{
-    const result=await finish(pool,lease,'failed',options);
+    const result=await withPerformanceSpan('run.finish',{outcome:'failed'},()=>finish(pool,lease,'failed',options));
     return result.state==='paused'?'paused':'failed';
   };
+  const handleError=async(error:unknown):Promise<RunPipelineOutcome>=>{
+    if (error instanceof Error && error.message === 'SYNTHETIC_CRASH') throw error;
+    if (lost(error)) return 'lost';
+    if(isBillingBlocked(error)){
+      await pauseRun(pool,lease,'billing_reconcile','wallet_isolated','BILLING_NOT_READY');
+      return 'paused';
+    }
+    if (error instanceof TrialLimitProblem) {
+      if (error.limit === 'operator_deny') {
+        return await failRun({ errorCode: error.code, failedStage: currentStage });
+      }
+      await pauseRun(pool, lease, 'trial_limit', error.limit, error.code);
+      return 'paused';
+    }
+    if (error instanceof Problem && (error.code.startsWith('TEST_GRANT_') || error.code==='TEST_CHANNEL_DISABLED')) {
+      await pauseRun(pool,lease,'capability_not_ready',error.code.toLowerCase());
+      return 'paused';
+    }
+    deps.onUnexpectedError?.(safeRunError(error, currentStage));
+    try {
+      // Infrastructure errors retry from the checkpoint; the last allowed attempt fails and keeps the checkpoint.
+      if (lease.attempts < maxAttempts) {
+        await releaseLease(pool, lease, currentStage === 'materials_ready' ? 'material_fact_stage_failed' : 'lease_released');
+        return 'retry';
+      }
+      return await failRun({ errorCode: 'DATA_UNAVAILABLE', failedStage: currentStage });
+    } catch (finishError) {
+      if (lost(finishError)) return 'lost';
+      if(isBillingBlocked(finishError)){await pauseRun(pool,lease,'billing_reconcile','wallet_isolated','BILLING_NOT_READY');return 'paused';}
+      throw finishError;
+    }
+  };
   try {
-    const run = (await pool.query(`SELECT r.id,r.owner_user_id,r.project_id,r.input_revision,r.input_hash,r.task_kind,r.channel,r.test_grant_id,r.billing_mode,
+    const run = (await pool.query(`SELECT r.id,r.owner_user_id,r.project_id,r.input_revision,r.input_hash,r.task_kind,r.channel,r.test_grant_id,r.billing_mode,r.created_at,
       EXISTS(SELECT 1 FROM bb_commerce_scope_runs coverage JOIN bb_scope_quotations scope ON scope.owner_user_id=coverage.owner_user_id AND scope.id=coverage.scope_quote_id
         WHERE coverage.owner_user_id=r.owner_user_id AND coverage.run_id=r.id AND scope.amount_fen=0) AS covered_zero_outcome
       FROM bb_runs r WHERE r.id=$1 AND r.owner_user_id=$2`, [lease.runId, lease.owner])).rows[0] as RunRow;
+    return await withPerformanceTrace(pool,{ownerUserId:run.owner_user_id,projectId:run.project_id,runId:run.id,
+      jobId:lease.jobId,traceId:run.id,taskKind:run.task_kind,serviceRole:'worker',workerInstanceId:deps.workerInstanceId},async rootSpan=>{
+    traceEntered=true;
+    rootSpan.annotate({attempt_no:lease.attempts});
+    recordPerformanceInterval('worker.claim',{startedAt:claimStartedAt,endedAt:claimEndedAt,clockSource:'wall_clock_observation'},{measurement_source:'client_observed_interval'});
+    if(lease.attempts===1)recordPerformanceInterval('job.queue_wait',
+      {startedAt:(run as RunRow & {created_at:string|Date}).created_at,endedAt:claimStartedAt,clockSource:'wall_clock_observation'},
+      {wait_reason:'total_elapsed_before_first_claim',measurement_source:'run_created_to_claim_observation'});
+    const execute=async():Promise<RunPipelineOutcome>=>{
     // Delivery already passed readback when billing paused. Revalidate and settle
     // that exact artifact; do not invoke the model or generate a replacement.
     const pending=lease.checkpoint.billing_terminal as {outcome:'failed'|'succeeded'|'test_completed';artifactId?:string;artifactVersion?:number;errorCode?:string;failedStage?:string}|undefined;
     if(pending){
-      const completed=await finish(pool,lease,pending.outcome,{...pending,blobs});
+      const completed=await withPerformanceSpan('billing.resume_settlement',{},()=>finish(pool,lease,pending.outcome,{...pending,blobs}));
       return completed.state==='paused'?'paused':completed.state as RunPipelineOutcome;
     }
     const qaReply=lease.checkpoint.billing_qa_reply as M4AssistantReply|undefined;
-    if(qaReply){const completed=await finishM4Qa(pool,lease,qaReply);return completed.state==='paused'?'paused':completed.state as RunPipelineOutcome;}
+    if(qaReply){const completed=await withPerformanceSpan('billing.resume_settlement',{},()=>finishM4Qa(pool,lease,qaReply));return completed.state==='paused'?'paused':completed.state as RunPipelineOutcome;}
     const checkpoint = { ...((lease.checkpoint.stages ?? {}) as Record<string, Record<string, unknown>>) };
     const ctx: StageContext = { pool, blobs, lease, run, signal: abort.signal, checkpoint, values: new Map(), reviewedContextLoader: deps.reviewedContextLoader, testRuleCapabilityLoader: deps.testRuleCapabilityLoader,
       loadGenerationIssuerBinding: deps.loadGenerationIssuerBinding, produceTargetPeriodCandidates: deps.produceTargetPeriodCandidates,
@@ -653,7 +701,7 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
       // Synthetic mechanics tests install their own input-lock stage. The production stage
       // always rechecks every binding before a provider intent, including checkpoint replay.
       if (!deps.stages.includes(inputLockStage)) return null;
-      const input = await currentRunInput(pool, run);
+      const input = await withPerformanceSpan('input.verify',{},()=>currentRunInput(pool, run));
       if (!input || input.input_hash.trim() !== run.input_hash.trim()) return { kind: 'fail', code: 'INPUT_REVISION_CONFLICT' };
       if(isWorkpaperChange(input.manifest))return workpaperChangeGate(pool,run,input);
       if(isWorkpaperAssessment(input.manifest))return workpaperAssessmentGate(pool,run,input);
@@ -683,13 +731,18 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         if(gate?.kind==='fail')return await failRun({errorCode:gate.code,failedStage:stage.name});
       }
       const saved = checkpoint[stage.name];
-      if (saved && !stage.replay) { ctx.values.set(stage.name, saved); continue; }
+      if (saved && !stage.replay) { await withPerformanceSpan('stage.reuse',{stage:stage.name},span=>{span.end('reused');}); ctx.values.set(stage.name, saved); continue; }
       if(await pauseAtCheckpoint(pool,lease))return 'paused';
       await beginRunStage(pool,lease,stage.name);
-      const outcome = await stage.run(ctx);
+      const outcome = await withPerformanceSpan('stage.execute',{stage:stage.name},async span=>{
+        const value=await stage.run(ctx);
+        span.end(value.kind==='fail'?'failed':value.kind==='pause'?'paused':value.kind==='stopped'?'cancelled':'succeeded',
+          {outcome:value.kind,...(value.kind==='fail'?{error_code:value.code}:{})});
+        return value;
+      });
       if (outcome.kind === 'done') {
         if (!saved) {
-          await checkpointStage(pool, lease, stage.name, outcome.checkpoint ?? {});
+          await withPerformanceSpan('stage.checkpoint',{stage:stage.name},()=>checkpointStage(pool, lease, stage.name, outcome.checkpoint ?? {}));
           checkpoint[stage.name] = outcome.checkpoint ?? {};
         } else if (outcome.upgradeCheckpoint) {
           await upgradeStageCheckpoint(pool, lease, stage.name, outcome.checkpoint ?? {});
@@ -726,7 +779,8 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         : [];
       const wordBytes=(bytes:Buffer)=>run.channel==='non_production_test'?markTestWord(bytes,uncovered):Promise.resolve(bytes);
       if (outcome.baselineBytes && outcome.deliveryPolicy !== 'generated_pair_v1') {
-        const baseline = await promoteWordArtifact(pool, lease, await wordBytes(outcome.baselineBytes), blobs);
+        const baselineBytes=await wordBytes(outcome.baselineBytes);
+        const baseline = await withArtifactPromotionPerformance({artifact_kind:'baseline',input_bytes:baselineBytes.length},()=>promoteWordArtifact(pool, lease, baselineBytes, blobs));
         if (baseline.status !== 'available') {
           return await failRun({ errorCode: baseline.failureCode, failedStage: stage.name });
         }
@@ -734,7 +788,8 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         reviewArtifacts.push({ id: baseline.artifactId, version: baseline.artifactVersion, kind: 'baseline' });
       }
       if (outcome.cleanBytes) {
-        const clean = await promoteWordArtifact(pool, lease, await wordBytes(outcome.cleanBytes), blobs, outcome.deliveryPolicy);
+        const cleanBytes=await wordBytes(outcome.cleanBytes);
+        const clean = await withArtifactPromotionPerformance({artifact_kind:'clean',input_bytes:cleanBytes.length},()=>promoteWordArtifact(pool, lease, cleanBytes, blobs, outcome.deliveryPolicy));
         if (clean.status !== 'available') {
           return await failRun({ errorCode: clean.failureCode, failedStage: stage.name });
         }
@@ -742,33 +797,35 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         reviewArtifacts.push({ id: clean.artifactId, version: clean.artifactVersion, kind: 'clean' });
       }
       for (const attachment of outcome.attachments ?? []) {
-        const extra = attachment.mediaType === 'application/pdf'
-          ? await promoteReviewPdfArtifact(pool, lease, attachment.bytes, blobs)
-          : await promoteWordArtifact(pool, lease, await wordBytes(attachment.bytes), blobs, outcome.deliveryPolicy);
+        const extra = await withArtifactPromotionPerformance({artifact_kind:attachment.kind,input_bytes:attachment.bytes.length},async()=>attachment.mediaType === 'application/pdf'
+          ? promoteReviewPdfArtifact(pool, lease, attachment.bytes, blobs)
+          : promoteWordArtifact(pool, lease, await wordBytes(attachment.bytes), blobs, outcome.deliveryPolicy));
         if (extra.status !== 'available') return await failRun({ errorCode: extra.failureCode, failedStage: stage.name });
         reviewArtifacts.push({ id: extra.artifactId, version: extra.artifactVersion, kind: attachment.kind });
       }
       for (const extra of outcome.namedArtifacts??[]) {
-        const promoted=await promoteWordArtifact(pool,lease,await wordBytes(extra.bytes),blobs,outcome.deliveryPolicy);
+        const extraBytes=await wordBytes(extra.bytes);
+        const promoted=await withArtifactPromotionPerformance({artifact_kind:extra.kind,input_bytes:extraBytes.length},()=>promoteWordArtifact(pool,lease,extraBytes,blobs,outcome.deliveryPolicy));
         if (promoted.status!=='available') return await failRun({errorCode:promoted.failureCode,failedStage:stage.name});
         m4Artifacts.push({kind:extra.kind,artifact_id:promoted.artifactId,artifact_version:promoted.artifactVersion,filename:extra.filename,byte_size:extra.bytes.length,
           ...(extra.previewContent?{preview_content:extra.previewContent}:{})});
       }
-      const delivered = await promoteWordArtifact(pool, lease, await wordBytes(outcome.bytes), blobs, outcome.deliveryPolicy);
+      const deliveredBytes=await wordBytes(outcome.bytes);
+      const delivered = await withArtifactPromotionPerformance({artifact_kind:'document',input_bytes:deliveredBytes.length},()=>promoteWordArtifact(pool, lease, deliveredBytes, blobs, outcome.deliveryPolicy));
       await deps.afterStage?.('word_promoted', lease);
       if (delivered.status !== 'available') return await failRun({ errorCode: delivered.failureCode, failedStage: stage.name });
       if ((ctx.values.get('input_lock') as {m4_mode?:string})?.m4_mode==='document') {
         m4Artifacts.push({kind:'document',artifact_id:delivered.artifactId,artifact_version:delivered.artifactVersion,filename:'document.docx',byte_size:outcome.bytes.length,
           ...(typeof outcome.wordSummary?.preview_content==='string'?{preview_content:outcome.wordSummary.preview_content}:{})});
         if(m4Artifacts.length!==2 || !m4Artifacts.some(a=>a.kind==='preparation_note')) return await failRun({errorCode:'WORD_DELIVERY_UNAVAILABLE',failedStage:stage.name});
-        const settled=await transaction(pool,async client=>{
+        const settled=await withPerformanceSpan('billing.settle',{},async span=>{const result=await transaction(pool,async client=>{
           const activeRun=(await client.query(`SELECT 1 FROM bb_runs WHERE id=$1 AND owner_user_id=$2 AND state='running' FOR UPDATE`,[run.id,run.owner_user_id])).rowCount;
           const current=activeRun && (await client.query(`SELECT 1 FROM bb_jobs WHERE run_id=$1 AND owner_user_id=$2 AND id=$3 AND state='running'
             AND lease_token=$4 AND lease_until>now() FOR UPDATE`,[run.id,run.owner_user_id,lease.jobId,lease.token])).rowCount;
           if(!current)throw new Problem(409,'ALREADY_TERMINAL','Worker lease expired');
-          await registerM4Artifacts(client,run.owner_user_id,run.id,m4Artifacts);
+          await withPerformanceSpan('artifact.register',{file_count:m4Artifacts.length},()=>registerM4Artifacts(client,run.owner_user_id,run.id,m4Artifacts));
           return settleM4Metering(client,run.owner_user_id,run.id);
-        });
+        });span.end(result.ready?'succeeded':'paused',{outcome:result.ready?'settled':'pending'});return result;});
         if(!settled.ready){await pauseRun(pool,lease,'provider_reconcile','m4_usage_pending');return 'paused';}
       }
       if (reviewExecution) {
@@ -784,43 +841,20 @@ export async function runPipelineOnce(deps: RunPipelineDependencies): Promise<Ru
         ctx.checkpoint.word_delivery_pair = pair;
       }
       if(await pauseAtCheckpoint(pool,lease))return 'paused';
-      const finished=await finish(pool, lease, run.channel==='non_production_test'?'test_completed':'succeeded', { artifactId: delivered.artifactId, artifactVersion: delivered.artifactVersion, blobs });
+      const finished=await withPerformanceSpan('run.finish',{},()=>finish(pool, lease, run.channel==='non_production_test'?'test_completed':'succeeded', { artifactId: delivered.artifactId, artifactVersion: delivered.artifactVersion, blobs }));
       return finished.state==='paused'?'paused':run.channel==='non_production_test'?'test_completed':'succeeded';
     }
     // Every production pipeline ends in delivery; running out of stages is never success.
     await pauseRun(pool, lease, 'capability_not_ready', 'stage_not_implemented');
     return 'paused';
+    };
+    const result=await execute().catch(handleError);
+    rootSpan.end(result==='failed'?'failed':result==='paused'?'paused':result==='stopped'?'cancelled':result==='lost'||result==='retry'?'interrupted':'succeeded',{outcome:result});
+    return result;
+    });
   } catch (error) {
-    if (error instanceof Error && error.message === 'SYNTHETIC_CRASH') throw error;
-    if (lost(error)) return 'lost';
-    if(isBillingBlocked(error)){
-      await pauseRun(pool,lease,'billing_reconcile','wallet_isolated','BILLING_NOT_READY');
-      return 'paused';
-    }
-    if (error instanceof TrialLimitProblem) {
-      if (error.limit === 'operator_deny') {
-        return await failRun({ errorCode: error.code, failedStage: currentStage });
-      }
-      await pauseRun(pool, lease, 'trial_limit', error.limit, error.code);
-      return 'paused';
-    }
-    if (error instanceof Problem && (error.code.startsWith('TEST_GRANT_') || error.code==='TEST_CHANNEL_DISABLED')) {
-      await pauseRun(pool,lease,'capability_not_ready',error.code.toLowerCase());
-      return 'paused';
-    }
-    deps.onUnexpectedError?.(safeRunError(error, currentStage));
-    try {
-      // Infrastructure errors retry from the checkpoint; the last allowed attempt fails and keeps the checkpoint.
-      if (lease.attempts < maxAttempts) {
-        await releaseLease(pool, lease, currentStage === 'materials_ready' ? 'material_fact_stage_failed' : 'lease_released');
-        return 'retry';
-      }
-      return await failRun({ errorCode: 'DATA_UNAVAILABLE', failedStage: currentStage });
-    } catch (finishError) {
-      if (lost(finishError)) return 'lost';
-      if(isBillingBlocked(finishError)){await pauseRun(pool,lease,'billing_reconcile','wallet_isolated','BILLING_NOT_READY');return 'paused';}
-      throw finishError;
-    }
+    if(traceEntered)throw error;
+    return handleError(error);
   } finally {
     heartbeat.stop();
     deps.signal?.removeEventListener('abort', onOuterAbort);
