@@ -1,0 +1,508 @@
+{
+  "issue": 1114,
+  "date": "2026-11-12",
+  "base": {
+    "commit": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+    "tree": "02b61cf05346af1bdea3578dc27d37cb90c01a48",
+    "code": 1
+  },
+  "productCommit": "98f63d2d",
+  "locatorCommit": "8037981b",
+  "testedCode": {
+    "commit": "8037981ba107d38a5d5c26627d83c5ae018fbef4",
+    "tree": "3d95550d75af2588d47ccf6bfa422e1745c650d3",
+    "code": 0
+  },
+  "scope": "result-handoff-download.spec.ts complete original 3 cases",
+  "staticAudit": {
+    "base": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+    "files": [
+      "apps/web/src/project-files.ts",
+      "apps/web/tests/result-handoff-download.spec.ts"
+    ],
+    "scope": "static comparison with line endings normalized; runtime uses separate raw Git audits",
+    "onlyProductChange": "prefer provided frozen filename; preserve original nullish fallback and validation",
+    "onlyTestChange": "scope original-upload download to existing history region",
+    "testTitles": [
+      "result handoff: the current file-operation pair keeps canonical names and bytes across consistency and project files",
+      "result handoff: an old task and file history retain their frozen pair after project rename and a later download date",
+      "result handoff: generated prospectus variants share canonical downloads with project files and uploads keep their original name"
+    ],
+    "allOriginalAssertionsRetained": true,
+    "skipAndTimeoutUnchanged": true,
+    "typescriptSyntax": "passed"
+  },
+  "staticAuditSHA256": "f844c7543e3c6d496b9c3bbc08d22c9c1e337e782bbe2c72ab311da648d855ef",
+  "originalGate": {
+    "run": "1794418350450-38278111",
+    "commit": "d3028cb2f5e98e5b9a9ad36deb68e461de4a6df2",
+    "file": "result-handoff-download.spec.ts",
+    "cases": [
+      {
+        "file": "result-handoff-download.spec.ts",
+        "line": 32,
+        "title": "result handoff: the current file-operation pair keeps canonical names and bytes across consistency and project files",
+        "status": "unexpected",
+        "expectedStatus": "passed",
+        "annotations": [],
+        "resultStatuses": [
+          "failed"
+        ],
+        "errors": [
+          "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m\"合成发行人基本情况_V\u001b[7m2\u001b[27m_修订版_V\u001b[7m10\u001b[27m_20261025.docx\"\u001b[39m\nReceived: \u001b[31m\"合成发行人基本情况_V\u001b[7m3\u001b[27m_修订版_V\u001b[7m3\u001b[27m_20261025.docx\"\u001b[39m\n\n  13 | async function receive(page:Page,button:Locator,filename:string,bytes:Buffer){\n  14 |   const event=page.waitForEvent('download');await button.click();const download=await event;\n> 15 |   expect(download.suggestedFilename()).toBe(filename);\n     |                                        ^\n  16 |   const received=await downloadBytes(download);expect(received).toEqual(bytes);\n  17 |   return {filename:download.suggestedFilename(),bytes:received};\n  18 | }\n    at receive (/workspace/apps/web/tests/result-handoff-download.spec.ts:15:40)\n    at artifact (/workspace/apps/web/tests/result-handoff-download.spec.ts:23:20)\n    at /workspace/apps/web/tests/result-handoff-download.spec.ts:44:21"
+        ]
+      },
+      {
+        "file": "result-handoff-download.spec.ts",
+        "line": 54,
+        "title": "result handoff: an old task and file history retain their frozen pair after project rename and a later download date",
+        "status": "unexpected",
+        "expectedStatus": "passed",
+        "annotations": [],
+        "resultStatuses": [
+          "failed"
+        ],
+        "errors": [
+          "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m\"合成发行人基本情况_V\u001b[7m1\u001b[27m_修订版_V\u001b[7m8\u001b[27m_20261025.docx\"\u001b[39m\nReceived: \u001b[31m\"合成发行人基本情况_V\u001b[7m2\u001b[27m_修订版_V\u001b[7m2\u001b[27m_20261025.docx\"\u001b[39m\n\n  13 | async function receive(page:Page,button:Locator,filename:string,bytes:Buffer){\n  14 |   const event=page.waitForEvent('download');await button.click();const download=await event;\n> 15 |   expect(download.suggestedFilename()).toBe(filename);\n     |                                        ^\n  16 |   const received=await downloadBytes(download);expect(received).toEqual(bytes);\n  17 |   return {filename:download.suggestedFilename(),bytes:received};\n  18 | }\n    at receive (/workspace/apps/web/tests/result-handoff-download.spec.ts:15:40)\n    at artifact (/workspace/apps/web/tests/result-handoff-download.spec.ts:23:20)\n    at /workspace/apps/web/tests/result-handoff-download.spec.ts:69:12"
+        ]
+      },
+      {
+        "file": "result-handoff-download.spec.ts",
+        "line": 85,
+        "title": "result handoff: generated prospectus variants share canonical downloads with project files and uploads keep their original name",
+        "status": "unexpected",
+        "expectedStatus": "passed",
+        "annotations": [],
+        "resultStatuses": [
+          "failed"
+        ],
+        "errors": [
+          "Error: locator.click: Error: strict mode violation: locator('[data-download-version=\"consistency-task-source-v3\"]') resolved to 2 elements:\n    1) <button type=\"button\" class=\"text-button\" data-download-version=\"consistency-task-source-v3\">…</button> aka getByRole('button', { name: '下载原文件' }).first()\n    2) <button type=\"button\" class=\"text-button\" data-download-version=\"consistency-task-source-v3\">下载原文件</button> aka getByRole('button', { name: '下载原文件' }).nth(1)\n\nCall log:\n\u001b[2m  - waiting for locator('[data-download-version=\"consistency-task-source-v3\"]')\u001b[22m\n\n\n  12 |\n  13 | async function receive(page:Page,button:Locator,filename:string,bytes:Buffer){\n> 14 |   const event=page.waitForEvent('download');await button.click();const download=await event;\n     |                                                          ^\n  15 |   expect(download.suggestedFilename()).toBe(filename);\n  16 |   const received=await downloadBytes(download);expect(received).toEqual(bytes);\n  17 |   return {filename:download.suggestedFilename(),bytes:received};\n    at receive (/workspace/apps/web/tests/result-handoff-download.spec.ts:14:58)\n    at /workspace/apps/web/tests/result-handoff-download.spec.ts:100:24",
+          "Error: page.waitForEvent: Test ended.\n=========================== logs ===========================\nwaiting for event \"download\"\n============================================================\n\n  12 |\n  13 | async function receive(page:Page,button:Locator,filename:string,bytes:Buffer){\n> 14 |   const event=page.waitForEvent('download');await button.click();const download=await event;\n     |                    ^\n  15 |   expect(download.suggestedFilename()).toBe(filename);\n  16 |   const received=await downloadBytes(download);expect(received).toEqual(bytes);\n  17 |   return {filename:download.suggestedFilename(),bytes:received};\n    at receive (/workspace/apps/web/tests/result-handoff-download.spec.ts:14:20)\n    at /workspace/apps/web/tests/result-handoff-download.spec.ts:100:24"
+        ]
+      }
+    ],
+    "status": "failed",
+    "sha256": "eaa1703f30cbe95adc562fccb2eb20eb77a491195e3c9ba401a1be46e4a4c46b"
+  },
+  "rounds": [
+    {
+      "round": "red1",
+      "summary": {
+        "round": "red1",
+        "result": {
+          "commit": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+          "tree": "02b61cf05346af1bdea3578dc27d37cb90c01a48",
+          "code": 1
+        },
+        "stats": {
+          "startTime": "2026-11-12T05:48:32.108Z",
+          "duration": 43597.775,
+          "expected": 0,
+          "skipped": 0,
+          "unexpected": 3,
+          "flaky": 0
+        },
+        "caseCount": 3,
+        "files": [
+          {
+            "file": "result-handoff-download.spec.ts",
+            "cases": 3,
+            "statuses": {
+              "unexpected": 3
+            }
+          }
+        ],
+        "failures": [
+          {
+            "file": "result-handoff-download.spec.ts",
+            "title": "result handoff: the current file-operation pair keeps canonical names and bytes across consistency and project files",
+            "status": "unexpected",
+            "results": [
+              {
+                "status": "failed",
+                "duration": 11288,
+                "errors": [
+                  {
+                    "location": {
+                      "file": "/workspace/apps/web/tests/result-handoff-download.spec.ts",
+                      "column": 40,
+                      "line": 15
+                    },
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m\"合成发行人基本情况_V\u001b[7m2\u001b[27m_修订版_V\u001b[7m10\u001b[27m_20261025.docx\"\u001b[39m\nReceived: \u001b[31m\"合成发行人基本情况_V\u001b[7m3\u001b[27m_修订版_V\u001b[7m3\u001b[27m_20261025.docx\"\u001b[39m\n\n  13 | async function receive(page:Page,button:Locator,filename:string,bytes:Buffer){\n  14 |   const event=page.waitForEvent('download');await button.click();const download=await event;\n> 15 |   expect(download.suggestedFilename()).toBe(filename);\n     |                                        ^\n  16 |   const received=await downloadBytes(download);expect(received).toEqual(bytes);\n  17 |   return {filename:download.suggestedFilename(),bytes:received};\n  18 | }\n    at receive (/workspace/apps/web/tests/result-handoff-download.spec.ts:15:40)\n    at artifact (/workspace/apps/web/tests/result-handoff-download.spec.ts:23:20)\n    at /workspace/apps/web/tests/result-handoff-download.spec.ts:44:21"
+                  }
+                ],
+                "attachments": [
+                  {
+                    "name": "error-context",
+                    "contentType": "text/markdown",
+                    "path": "/tmp/workpaper-retest/artifacts/result-handoff-download-re-9412f-nsistency-and-project-files/error-context.md"
+                  },
+                  {
+                    "name": "trace",
+                    "contentType": "application/zip",
+                    "path": "/tmp/workpaper-retest/artifacts/result-handoff-download-re-9412f-nsistency-and-project-files/trace.zip"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "file": "result-handoff-download.spec.ts",
+            "title": "result handoff: an old task and file history retain their frozen pair after project rename and a later download date",
+            "status": "unexpected",
+            "results": [
+              {
+                "status": "failed",
+                "duration": 11987,
+                "errors": [
+                  {
+                    "location": {
+                      "file": "/workspace/apps/web/tests/result-handoff-download.spec.ts",
+                      "column": 40,
+                      "line": 15
+                    },
+                    "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m\"合成发行人基本情况_V\u001b[7m1\u001b[27m_修订版_V\u001b[7m8\u001b[27m_20261025.docx\"\u001b[39m\nReceived: \u001b[31m\"合成发行人基本情况_V\u001b[7m2\u001b[27m_修订版_V\u001b[7m2\u001b[27m_20261025.docx\"\u001b[39m\n\n  13 | async function receive(page:Page,button:Locator,filename:string,bytes:Buffer){\n  14 |   const event=page.waitForEvent('download');await button.click();const download=await event;\n> 15 |   expect(download.suggestedFilename()).toBe(filename);\n     |                                        ^\n  16 |   const received=await downloadBytes(download);expect(received).toEqual(bytes);\n  17 |   return {filename:download.suggestedFilename(),bytes:received};\n  18 | }\n    at receive (/workspace/apps/web/tests/result-handoff-download.spec.ts:15:40)\n    at artifact (/workspace/apps/web/tests/result-handoff-download.spec.ts:23:20)\n    at /workspace/apps/web/tests/result-handoff-download.spec.ts:69:12"
+                  }
+                ],
+                "attachments": [
+                  {
+                    "name": "error-context",
+                    "contentType": "text/markdown",
+                    "path": "/tmp/workpaper-retest/artifacts/result-handoff-download-re-e5341-e-and-a-later-download-date/error-context.md"
+                  },
+                  {
+                    "name": "trace",
+                    "contentType": "application/zip",
+                    "path": "/tmp/workpaper-retest/artifacts/result-handoff-download-re-e5341-e-and-a-later-download-date/trace.zip"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "file": "result-handoff-download.spec.ts",
+            "title": "result handoff: generated prospectus variants share canonical downloads with project files and uploads keep their original name",
+            "status": "unexpected",
+            "results": [
+              {
+                "status": "failed",
+                "duration": 9904,
+                "errors": [
+                  {
+                    "location": {
+                      "file": "/workspace/apps/web/tests/result-handoff-download.spec.ts",
+                      "column": 58,
+                      "line": 14
+                    },
+                    "message": "Error: locator.click: Error: strict mode violation: locator('[data-download-version=\"consistency-task-source-v3\"]') resolved to 2 elements:\n    1) <button type=\"button\" class=\"text-button\" data-download-version=\"consistency-task-source-v3\">…</button> aka getByRole('button', { name: '下载原文件' }).first()\n    2) <button type=\"button\" class=\"text-button\" data-download-version=\"consistency-task-source-v3\">下载原文件</button> aka getByRole('button', { name: '下载原文件' }).nth(1)\n\nCall log:\n\u001b[2m  - waiting for locator('[data-download-version=\"consistency-task-source-v3\"]')\u001b[22m\n\n\n  12 |\n  13 | async function receive(page:Page,button:Locator,filename:string,bytes:Buffer){\n> 14 |   const event=page.waitForEvent('download');await button.click();const download=await event;\n     |                                                          ^\n  15 |   expect(download.suggestedFilename()).toBe(filename);\n  16 |   const received=await downloadBytes(download);expect(received).toEqual(bytes);\n  17 |   return {filename:download.suggestedFilename(),bytes:received};\n    at receive (/workspace/apps/web/tests/result-handoff-download.spec.ts:14:58)\n    at /workspace/apps/web/tests/result-handoff-download.spec.ts:100:24"
+                  },
+                  {
+                    "location": {
+                      "file": "/workspace/apps/web/tests/result-handoff-download.spec.ts",
+                      "column": 20,
+                      "line": 14
+                    },
+                    "message": "Error: page.waitForEvent: Test ended.\n=========================== logs ===========================\nwaiting for event \"download\"\n============================================================\n\n  12 |\n  13 | async function receive(page:Page,button:Locator,filename:string,bytes:Buffer){\n> 14 |   const event=page.waitForEvent('download');await button.click();const download=await event;\n     |                    ^\n  15 |   expect(download.suggestedFilename()).toBe(filename);\n  16 |   const received=await downloadBytes(download);expect(received).toEqual(bytes);\n  17 |   return {filename:download.suggestedFilename(),bytes:received};\n    at receive (/workspace/apps/web/tests/result-handoff-download.spec.ts:14:20)\n    at /workspace/apps/web/tests/result-handoff-download.spec.ts:100:24"
+                  }
+                ],
+                "attachments": [
+                  {
+                    "name": "error-context",
+                    "contentType": "text/markdown",
+                    "path": "/tmp/workpaper-retest/artifacts/result-handoff-download-re-afa6b-ds-keep-their-original-name/error-context.md"
+                  },
+                  {
+                    "name": "trace",
+                    "contentType": "application/zip",
+                    "path": "/tmp/workpaper-retest/artifacts/result-handoff-download-re-afa6b-ds-keep-their-original-name/trace.zip"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "source": {
+          "beforeFiles": 3627,
+          "afterFiles": 3627,
+          "beforeMismatches": [],
+          "afterMismatches": []
+        },
+        "runtime": {
+          "lockMatch": true,
+          "node": "v22.23.3",
+          "playwright": "1.63.0"
+        },
+        "isolation": {
+          "id": "b1aaf0098d27b44ad600e4339c33deb84984a7a7464205a6d84972cc47efd089",
+          "imageId": "sha256:e081d9ca27e8ef07e6a658183b50b15a568a8126a67d70a3065ff630dfb7fdb9",
+          "network": "none",
+          "cpus": 1000000000,
+          "memory": 2147483648,
+          "mounts": [],
+          "ports": {}
+        },
+        "cleanup": {
+          "container": "bb-frozen-result-downloads-red1",
+          "containerId": "b1aaf0098d27b44ad600e4339c33deb84984a7a7464205a6d84972cc47efd089",
+          "remaining": "",
+          "removed": true
+        },
+        "timing": {
+          "commit": "867dbb22988a450cda05a004cdc2589ff68a7f9c",
+          "tree": "02b61cf05346af1bdea3578dc27d37cb90c01a48",
+          "startedAt": "2026-11-12T05:47:36.653Z",
+          "finishedAt": "2026-11-12T05:49:22.328Z",
+          "elapsedMs": 105671.84779999999,
+          "exitCode": 1
+        }
+      },
+      "cases": [
+        {
+          "file": "result-handoff-download.spec.ts",
+          "title": "result handoff: the current file-operation pair keeps canonical names and bytes across consistency and project files",
+          "status": "unexpected",
+          "runs": [
+            {
+              "status": "failed",
+              "retry": 0,
+              "durationMs": 11288,
+              "errors": [
+                {
+                  "location": {
+                    "file": "/workspace/apps/web/tests/result-handoff-download.spec.ts",
+                    "column": 40,
+                    "line": 15
+                  },
+                  "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m\"合成发行人基本情况_V\u001b[7m2\u001b[27m_修订版_V\u001b[7m10\u001b[27m_20261025.docx\"\u001b[39m\nReceived: \u001b[31m\"合成发行人基本情况_V\u001b[7m3\u001b[27m_修订版_V\u001b[7m3\u001b[27m_20261025.docx\"\u001b[39m\n\n  13 | async function receive(page:Page,button:Locator,filename:string,bytes:Buffer){\n  14 |   const event=page.waitForEvent('download');await button.click();const download=await event;\n> 15 |   expect(download.suggestedFilename()).toBe(filename);\n     |                                        ^\n  16 |   const received=await downloadBytes(download);expect(received).toEqual(bytes);\n  17 |   return {filename:download.suggestedFilename(),bytes:received};\n  18 | }\n    at receive (/workspace/apps/web/tests/result-handoff-download.spec.ts:15:40)\n    at artifact (/workspace/apps/web/tests/result-handoff-download.spec.ts:23:20)\n    at /workspace/apps/web/tests/result-handoff-download.spec.ts:44:21"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "file": "result-handoff-download.spec.ts",
+          "title": "result handoff: an old task and file history retain their frozen pair after project rename and a later download date",
+          "status": "unexpected",
+          "runs": [
+            {
+              "status": "failed",
+              "retry": 0,
+              "durationMs": 11987,
+              "errors": [
+                {
+                  "location": {
+                    "file": "/workspace/apps/web/tests/result-handoff-download.spec.ts",
+                    "column": 40,
+                    "line": 15
+                  },
+                  "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mreceived\u001b[39m\u001b[2m).\u001b[22mtoBe\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m) // Object.is equality\u001b[22m\n\nExpected: \u001b[32m\"合成发行人基本情况_V\u001b[7m1\u001b[27m_修订版_V\u001b[7m8\u001b[27m_20261025.docx\"\u001b[39m\nReceived: \u001b[31m\"合成发行人基本情况_V\u001b[7m2\u001b[27m_修订版_V\u001b[7m2\u001b[27m_20261025.docx\"\u001b[39m\n\n  13 | async function receive(page:Page,button:Locator,filename:string,bytes:Buffer){\n  14 |   const event=page.waitForEvent('download');await button.click();const download=await event;\n> 15 |   expect(download.suggestedFilename()).toBe(filename);\n     |                                        ^\n  16 |   const received=await downloadBytes(download);expect(received).toEqual(bytes);\n  17 |   return {filename:download.suggestedFilename(),bytes:received};\n  18 | }\n    at receive (/workspace/apps/web/tests/result-handoff-download.spec.ts:15:40)\n    at artifact (/workspace/apps/web/tests/result-handoff-download.spec.ts:23:20)\n    at /workspace/apps/web/tests/result-handoff-download.spec.ts:69:12"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "file": "result-handoff-download.spec.ts",
+          "title": "result handoff: generated prospectus variants share canonical downloads with project files and uploads keep their original name",
+          "status": "unexpected",
+          "runs": [
+            {
+              "status": "failed",
+              "retry": 0,
+              "durationMs": 9904,
+              "errors": [
+                {
+                  "location": {
+                    "file": "/workspace/apps/web/tests/result-handoff-download.spec.ts",
+                    "column": 58,
+                    "line": 14
+                  },
+                  "message": "Error: locator.click: Error: strict mode violation: locator('[data-download-version=\"consistency-task-source-v3\"]') resolved to 2 elements:\n    1) <button type=\"button\" class=\"text-button\" data-download-version=\"consistency-task-source-v3\">…</button> aka getByRole('button', { name: '下载原文件' }).first()\n    2) <button type=\"button\" class=\"text-button\" data-download-version=\"consistency-task-source-v3\">下载原文件</button> aka getByRole('button', { name: '下载原文件' }).nth(1)\n\nCall log:\n\u001b[2m  - waiting for locator('[data-download-version=\"consistency-task-source-v3\"]')\u001b[22m\n\n\n  12 |\n  13 | async function receive(page:Page,button:Locator,filename:string,bytes:Buffer){\n> 14 |   const event=page.waitForEvent('download');await button.click();const download=await event;\n     |                                                          ^\n  15 |   expect(download.suggestedFilename()).toBe(filename);\n  16 |   const received=await downloadBytes(download);expect(received).toEqual(bytes);\n  17 |   return {filename:download.suggestedFilename(),bytes:received};\n    at receive (/workspace/apps/web/tests/result-handoff-download.spec.ts:14:58)\n    at /workspace/apps/web/tests/result-handoff-download.spec.ts:100:24"
+                },
+                {
+                  "location": {
+                    "file": "/workspace/apps/web/tests/result-handoff-download.spec.ts",
+                    "column": 20,
+                    "line": 14
+                  },
+                  "message": "Error: page.waitForEvent: Test ended.\n=========================== logs ===========================\nwaiting for event \"download\"\n============================================================\n\n  12 |\n  13 | async function receive(page:Page,button:Locator,filename:string,bytes:Buffer){\n> 14 |   const event=page.waitForEvent('download');await button.click();const download=await event;\n     |                    ^\n  15 |   expect(download.suggestedFilename()).toBe(filename);\n  16 |   const received=await downloadBytes(download);expect(received).toEqual(bytes);\n  17 |   return {filename:download.suggestedFilename(),bytes:received};\n    at receive (/workspace/apps/web/tests/result-handoff-download.spec.ts:14:20)\n    at /workspace/apps/web/tests/result-handoff-download.spec.ts:100:24"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "locale": {
+        "mode": "utf8",
+        "inherited": "LANG=\nLANGUAGE=\nLC_CTYPE=\"POSIX\"\nLC_NUMERIC=\"POSIX\"\nLC_TIME=\"POSIX\"\nLC_COLLATE=\"POSIX\"\nLC_MONETARY=\"POSIX\"\nLC_MESSAGES=\"POSIX\"\nLC_PAPER=\"POSIX\"\nLC_NAME=\"POSIX\"\nLC_ADDRESS=\"POSIX\"\nLC_TELEPHONE=\"POSIX\"\nLC_MEASUREMENT=\"POSIX\"\nLC_IDENTIFICATION=\"POSIX\"\nLC_ALL=\n",
+        "selected": "LANG=C.UTF-8\nLANGUAGE=\nLC_CTYPE=\"C.UTF-8\"\nLC_NUMERIC=\"C.UTF-8\"\nLC_TIME=\"C.UTF-8\"\nLC_COLLATE=\"C.UTF-8\"\nLC_MONETARY=\"C.UTF-8\"\nLC_MESSAGES=\"C.UTF-8\"\nLC_PAPER=\"C.UTF-8\"\nLC_NAME=\"C.UTF-8\"\nLC_ADDRESS=\"C.UTF-8\"\nLC_TELEPHONE=\"C.UTF-8\"\nLC_MEASUREMENT=\"C.UTF-8\"\nLC_IDENTIFICATION=\"C.UTF-8\"\nLC_ALL=C.UTF-8\n",
+        "charmap": "UTF-8\n"
+      },
+      "archiveSHA256": "48a3659067cde53b09c35e3d5a361eaef9de52c1f8721285d46d32dac255069f",
+      "harnessSHA256": "c9215dc28f85f5e297a6445ac7bb8a2be58d984b70c593715ddce8cab47cc634",
+      "sha256": {
+        "summary.json": "77dc732fce5a9580dcf5dc94c5143ce766ea9531bb8b6026f346defa224570b4",
+        "manifest.json": "44e11c8d19bbf7948c12d65bcf1f7884f55cf8183fa1c7a95dceec2322ad4bcb",
+        "isolation.json": "099c50c112577cad686aa08c9e750235c159cd73746d284eb16327ac749964f0",
+        "locale.json": "eb61fabc6e0d7d6966273124e12685c16451c311a79e6559e9b993e3c9bc2f8e",
+        "cleanup.json": "0c974b2cacb6342c40c1aa339b7be69345b295f73c40b77c26727b9679aae549",
+        "host-timing.json": "033290a8da3b9e277d9a1f10ed9ec4746d850ae9017c722c5ef8bfbd75c8faed",
+        "results/browser.json": "465eb12ea8f4a53db1565bbb00e1439ffcdd1509e9591bf74a6e715f961e304a",
+        "results/browser.log": "f4ce542ddf8dda75ae51f56f7bb59d12e8f7f19c59a4576bb0119007bbcdb18b",
+        "results/source-before.json": "b67e9e93f3df5fbda45f2ef0890ebf2152a6fa03913f5b6f581554452acc6c50",
+        "results/source-after.json": "b67e9e93f3df5fbda45f2ef0890ebf2152a6fa03913f5b6f581554452acc6c50",
+        "results/runtime.json": "b4f8020737a8e4fe9d9fcd82efc92cded37139f637fbab4c4226fca917a17d8e",
+        "results/result.json": "aced5cf473ecbe6b43bf871e82666d79cee0070d8ff178e4c8cd375a566d1182"
+      }
+    },
+    {
+      "round": "green1",
+      "summary": {
+        "round": "green1",
+        "result": {
+          "commit": "8037981ba107d38a5d5c26627d83c5ae018fbef4",
+          "tree": "3d95550d75af2588d47ccf6bfa422e1745c650d3",
+          "code": 0
+        },
+        "stats": {
+          "startTime": "2026-11-12T05:54:00.152Z",
+          "duration": 52115.066,
+          "expected": 3,
+          "skipped": 0,
+          "unexpected": 0,
+          "flaky": 0
+        },
+        "caseCount": 3,
+        "files": [
+          {
+            "file": "result-handoff-download.spec.ts",
+            "cases": 3,
+            "statuses": {
+              "expected": 3
+            }
+          }
+        ],
+        "failures": [],
+        "source": {
+          "beforeFiles": 3627,
+          "afterFiles": 3627,
+          "beforeMismatches": [],
+          "afterMismatches": []
+        },
+        "runtime": {
+          "lockMatch": true,
+          "node": "v22.23.3",
+          "playwright": "1.63.0"
+        },
+        "isolation": {
+          "id": "d049aabf238b3252a9daaa34e21da90415f932dabe70d37b8c33f54e0345d83a",
+          "imageId": "sha256:e081d9ca27e8ef07e6a658183b50b15a568a8126a67d70a3065ff630dfb7fdb9",
+          "network": "none",
+          "cpus": 1000000000,
+          "memory": 2147483648,
+          "mounts": [],
+          "ports": {}
+        },
+        "cleanup": {
+          "container": "bb-frozen-result-downloads-green1",
+          "containerId": "d049aabf238b3252a9daaa34e21da90415f932dabe70d37b8c33f54e0345d83a",
+          "remaining": "",
+          "removed": true
+        },
+        "timing": {
+          "commit": "8037981ba107d38a5d5c26627d83c5ae018fbef4",
+          "tree": "3d95550d75af2588d47ccf6bfa422e1745c650d3",
+          "startedAt": "2026-11-12T05:53:09.569Z",
+          "finishedAt": "2026-11-12T05:54:58.824Z",
+          "elapsedMs": 109251.886,
+          "exitCode": 0
+        }
+      },
+      "cases": [
+        {
+          "file": "result-handoff-download.spec.ts",
+          "title": "result handoff: the current file-operation pair keeps canonical names and bytes across consistency and project files",
+          "status": "expected",
+          "runs": [
+            {
+              "status": "passed",
+              "retry": 0,
+              "durationMs": 10763,
+              "errors": []
+            }
+          ]
+        },
+        {
+          "file": "result-handoff-download.spec.ts",
+          "title": "result handoff: an old task and file history retain their frozen pair after project rename and a later download date",
+          "status": "expected",
+          "runs": [
+            {
+              "status": "passed",
+              "retry": 0,
+              "durationMs": 17706,
+              "errors": []
+            }
+          ]
+        },
+        {
+          "file": "result-handoff-download.spec.ts",
+          "title": "result handoff: generated prospectus variants share canonical downloads with project files and uploads keep their original name",
+          "status": "expected",
+          "runs": [
+            {
+              "status": "passed",
+              "retry": 0,
+              "durationMs": 17394,
+              "errors": []
+            }
+          ]
+        }
+      ],
+      "locale": {
+        "mode": "utf8",
+        "inherited": "LANG=\nLANGUAGE=\nLC_CTYPE=\"POSIX\"\nLC_NUMERIC=\"POSIX\"\nLC_TIME=\"POSIX\"\nLC_COLLATE=\"POSIX\"\nLC_MONETARY=\"POSIX\"\nLC_MESSAGES=\"POSIX\"\nLC_PAPER=\"POSIX\"\nLC_NAME=\"POSIX\"\nLC_ADDRESS=\"POSIX\"\nLC_TELEPHONE=\"POSIX\"\nLC_MEASUREMENT=\"POSIX\"\nLC_IDENTIFICATION=\"POSIX\"\nLC_ALL=\n",
+        "selected": "LANG=C.UTF-8\nLANGUAGE=\nLC_CTYPE=\"C.UTF-8\"\nLC_NUMERIC=\"C.UTF-8\"\nLC_TIME=\"C.UTF-8\"\nLC_COLLATE=\"C.UTF-8\"\nLC_MONETARY=\"C.UTF-8\"\nLC_MESSAGES=\"C.UTF-8\"\nLC_PAPER=\"C.UTF-8\"\nLC_NAME=\"C.UTF-8\"\nLC_ADDRESS=\"C.UTF-8\"\nLC_TELEPHONE=\"C.UTF-8\"\nLC_MEASUREMENT=\"C.UTF-8\"\nLC_IDENTIFICATION=\"C.UTF-8\"\nLC_ALL=C.UTF-8\n",
+        "charmap": "UTF-8\n"
+      },
+      "archiveSHA256": "9c13c734c3c6e0594ae6a07932d67b6a770a5379be446be21624300ab9636895",
+      "harnessSHA256": "c9215dc28f85f5e297a6445ac7bb8a2be58d984b70c593715ddce8cab47cc634",
+      "sha256": {
+        "summary.json": "fcd5811b13ffd57e5f5673f7f4a5a5aba893fb6e2e77a2a4fcafae2daee6b5a7",
+        "manifest.json": "25a46dae18dfe43471ee4104f849d046d9e56e6abf2a55ca65f13c0b7566045e",
+        "isolation.json": "3b79620d8520ae1e477591d9cea09f20590a10d65d064e1aba38f3dfcd25ac36",
+        "locale.json": "eb61fabc6e0d7d6966273124e12685c16451c311a79e6559e9b993e3c9bc2f8e",
+        "cleanup.json": "6b0088fbf101ef65843bc22a686f5709e9a1e5ee7ddcac8fbb42c1b2ada06366",
+        "host-timing.json": "54d2eefedc7d8c829206e316f1384db100b2d1d403b70ab98a04b5573a3f4165",
+        "results/browser.json": "6accf03b646a7999eb30526b83c71005f9c7261861df26e335e5f94630b4f75f",
+        "results/browser.log": "ced542d1e509f5d850512af14811c88ffe16beeef4b1a5f1d7dc93571b64b7f5",
+        "results/source-before.json": "1da2a33f0e8d9d4cc1de83f01d18cd449e7705cea2b424063feeac947ce2f60c",
+        "results/source-after.json": "1da2a33f0e8d9d4cc1de83f01d18cd449e7705cea2b424063feeac947ce2f60c",
+        "results/runtime.json": "b4f8020737a8e4fe9d9fcd82efc92cded37139f637fbab4c4226fca917a17d8e",
+        "results/result.json": "8c51ae7618e36d54810adc8d2bdc194f83f908eb38a9cd30c2c32d5229bc4d04"
+      }
+    }
+  ],
+  "peerReview": {
+    "reviewer": "fix_generation_stop",
+    "range": "867dbb22..8037981b",
+    "mode": "read-only",
+    "result": "no blockers; optional filename fallback, ownership/run/version/hash/success checks and all original assertions retained"
+  },
+  "environment": {
+    "browser": "real Chromium",
+    "http": "synthetic fixtures",
+    "backend": false,
+    "database": false,
+    "model": false,
+    "payment": false
+  },
+  "limitations": [
+    "This receipt does not change the original failed gate or claim unified acceptance.",
+    "No product defect is inferred from the independent third-case locator ambiguity.",
+    "Missing optional filename fallback is statically preserved; the original three-case file is not a new dedicated missing-field test.",
+    "Future commits containing only this receipt do not replace the tested code identity."
+  ],
+  "deployed": false
+}

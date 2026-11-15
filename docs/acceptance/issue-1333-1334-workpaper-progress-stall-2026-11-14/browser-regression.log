@@ -1,0 +1,27 @@
+
+Running 19 tests using 1 worker
+
+
+
+(node:78688) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[1/19] tests\workpaper-progressive.spec.ts:59:1 › live workpaper phases change before the first completed file without inflating counts
+[2/19] tests\workpaper-progressive.spec.ts:79:1 › interrupted execution stays explicit until recovered and never resubmits a task
+[3/19] tests\workpaper-progressive.spec.ts:94:1 › queued trials and legacy responses avoid claiming that a model has started
+[4/19] tests\workpaper-progressive.spec.ts:102:1 › mobile preparation keeps the footer below the catalogue and clear of the assistant
+[5/19] tests\workpaper-progressive.spec.ts:119:31 › five progressive phases use actual dynamic counts and responsive UI 1440
+[6/19] tests\workpaper-progressive.spec.ts:119:31 › five progressive phases use actual dynamic counts and responsive UI 390
+[7/19] tests\workpaper-progressive.spec.ts:138:1 › chapter choices and keyboard order preserve partial saved file scope through reload and submission
+[8/19] tests\workpaper-progressive.spec.ts:157:31 › large catalogue stays at chapter granularity through selection and progress 1440
+[9/19] tests\workpaper-progressive.spec.ts:157:31 › large catalogue stays at chapter granularity through selection and progress 390
+[10/19] tests\workpaper-progressive.spec.ts:186:30 › small selection and empty selection remain usable 768
+[11/19] tests\workpaper-progressive.spec.ts:186:30 › small selection and empty selection remain usable 320
+[12/19] tests\workpaper-progressive.spec.ts:194:1 › legacy prepare starts progressive with the selected chapter order
+[13/19] tests\workpaper-progressive.spec.ts:200:1 › completed trial files are immediately viewable and downloadable, escaped preview failure leaves download available
+[14/19] tests\workpaper-progressive.spec.ts:209:1 › one continuation identity survives a failed request and refresh never creates a new batch
+[15/19] tests\workpaper-progressive.spec.ts:215:1 › UX #1308: ZIP preparation keeps progress polling and pause/stop available, paused active files settle
+[16/19] tests\workpaper-progressive.spec.ts:223:1 › trial failures stay explicit and retry does not regenerate successes; restarting only opens preparation
+[17/19] tests\workpaper-progressive.spec.ts:229:1 › outcomes distinguish documents and explanation reasons, stopped tasks finish before retry
+[18/19] tests\workpaper-progressive.spec.ts:239:1 › shared blocked failures offer retry after active and attention files settle
+[19/19] tests\workpaper-progressive.spec.ts:253:1 › shared blocked batch can resume after all blocked tasks recover successfully
+  19 passed (2.5m)

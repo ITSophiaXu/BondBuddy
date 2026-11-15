@@ -68,6 +68,43 @@ BB_ENV_FILE=<private-env> bash deploy/m1/scripts/deploy-role.sh main <exact-app-
 
 若确需改变网络/解析放置/数据库身份等绑定，在维护状态下先核实无在途调用，保存原私有 env、覆盖、状态绑定及其 hash，独立审查目标配置和恢复路径；再明确更新受保护绑定并用普通入口重新验证。脚本不会自行删除或降级绑定。脚本 pin 或应用版本更新不需更改拓扑绑定。本 #911 负责后续统一入口的采纳与验收，不复开已完成的 #908；CI/自动整栈发布暂停策略不变。
 
+## 复核容量配置（#1303）
+
+执行角色的复核并发、Node 堆及容器配额可以在受保护私有 env 中分别设置
+`BB_REVIEW_WORKER_CONCURRENCY`、`BB_REVIEW_NODE_HEAP_MIB`、`BB_REVIEW_CPU_LIMIT`、
+`BB_REVIEW_MEMORY_LIMIT`。默认仍为 `1`、`768`、`0.75`、`2G`；不改变编制、解析或
+confirmation 配置。最后加载的私有覆盖可能覆盖这些值，验收必须检查渲染配置和实际
+容器，不能只检查 env。旧整栈生产配置不使用新增的复核资源参数。
+角色入口在完整渲染后、停止或重建旧容器前预检复核配额：并发必须为 `1`–`16` 的
+整数，Node 参数必须仅含严格正整数 `--max-old-space-size`，CPU 和内存必须为正且
+有限的配额；零值（Docker 无限制语义）、负值和注入文本均拒绝。升级前还要核对私有
+env 中原 `BB_REVIEW_WORKER_CONCURRENCY`，旧硬编码可能曾掩盖非默认值；不能借升级
+配置入口意外提高并发。
+
+四项复核的待测配额为并发 `4`、Node 堆 `2048` MiB、CPU `1.0`、共享内存 `6G`。
+两核执行机器上保留编制现有一核配额；四槽共享六 GiB，而不是每槽六 GiB。
+Node 堆之外还要计入 CLI、Python、Buffer 和 tmpfs。隔离验收和最终私有覆盖应将
+`/tmp` 显式限为 1536 MiB；材料暂存仍使用磁盘卷。这些数值是候选配置，须通过下述
+同机真实容量验收后才能应用。
+
+1. 先保存真实镜像 ID、完整源码标签、各服务容器 ID、运行配置与私有文件字节 hash，
+   核对磁盘/内存增量预算以及现有部署锁、`current`、`pending-release.json` 和绑定。
+   存在未解决的部署 pending 或未知漂移时拒绝切换；不删除绑定另起部署入口。
+2. 使用同一运行镜像，在独立测试数据库、队列、端口、暂存卷及 cgroup 中提交四个
+   独立项目的完整复核。合成输入明确标注，至少一项包含代表性大文件；使用真实业务
+   模型和既有认证，不向生产队列写测试，也不复用其他验收容器。
+3. 保留四项租约同时领取、真实 CLI 进程重叠及独立 attempt/CODEX_HOME 的证据；
+   核四项终态、各项目成果归属、下载及 SHA-256。记录模型真实 usage、实际 1M 窗口、
+   900K 压缩参数、总耗时，以及共享 cgroup 内存峰值、CPU、tmpfs 和磁盘峰值。
+   模型失败、限流及 unknown 结果如实记录，不能冒充通过或自动重投。
+4. 配置差异及准确版本容量证据经独立审查后，在同一受保护部署锁内备份完整前像，
+   核目标复核 run/message 租约和实际模型进程已排空。运行时 drain 超时可能 abort，
+   不能以等待固定时长代替排空检查。只以 `--no-deps` 重建复核执行服务。
+5. 验证并发和全部配额实际生效，编制、confirmation、隧道及主站健康/容器 ID 保持。
+   失败时在同一锁内恢复私有 env、覆盖及绑定的原字节，只重建复核到同一镜像、
+   并发 1 / 0.75 CPU / 2 GiB / Node 堆 768 MiB，并复核租约与健康；保留 pending
+   和失败证据，不将未完成调用自动重投。清理本次测试容器、数据和对象。
+
 ## 专用 SSH 转发契约
 
 主站 PG 只发布 `127.0.0.1:${BB_PG_FORWARD_PORT:-15432}:5432`，不开放公网 5432 或 15432。仅允许专用 SSH 账号从执行端既有出口连接 SSH 端口。目标账号只允许本地转发至 `127.0.0.1:15432`，禁止 shell、PTY、远端转发、其他目标及认证代理转发；示例（按实际端口调整）：
@@ -168,9 +205,11 @@ Codex仅构建目标 `codex` 后，以断网容器运行 `deploy/m1/scripts/code
 
 `node apps/worker/dist/upload-confirmation-runtime.js` 只消费已有 `upload.complete_requested`，没有 run/parse 领取、扫描或模型调用。复用原 PG 租约、续期、最终 fence、归属、幂等、失败清理和全文件 SHA/大小/ETag 凭据；API 仍使用原异步接口，缓存命中仍检查当前 ETag。兼容 `1fee1d38797044dd13b6bfee57c16f99e7160ab4` API 与 PG 178 个迁移，不新增迁移、DTO 或计费行为。解析继续在主站。
 
-执行端 `upload-confirmation` 服务默认 `BB_UPLOAD_CONFIRMATION_ROLE=disabled`，inactive profile 且 replicas=0，普通入口禁止显式启动。本次采用两端同为 `size-split`、`BB_PARSE_ROLE=main`：主站原解析进程 `BB_UPLOAD_CONFIRMATION_ENABLED=1`、`BB_UPLOAD_CONFIRMATION_LANE=small`、`BB_UPLOAD_CONFIRMATION_SMALL_SLOT=0`，仅一个确认循环；执行端由受保护角色注入 `large`、small-slot=0，仅一个独立确认循环。阈值单源为 API 的 `UPLOAD_CONFIRMATION_SMALL_MAX_BYTES`：small 包含 16MiB，large 为 >16MiB。领取 SQL 在加租约/attempts 前过滤，互不领取另一尺寸。旧 `execution` 模式仍要求主站 enabled/small-slot 都为 0、lane 为 general；默认 disabled 保留旧 general 行为。原编制、复核及旧解析的确认开关保持 0，旧解析仍 inactive。独立镜像 target `upload-confirmation` 仅安装 Node、CA 与 flock，不安装模型 CLI、浏览器、OCR 或认证 helper，不继承其环境、挂载或 AppArmor 配置。现有 egress/PG 转发保留。
+执行端 `upload-confirmation` 服务默认 `BB_UPLOAD_CONFIRMATION_ROLE=disabled`，inactive profile 且 replicas=0，普通入口禁止显式启动。**11 月 14 日起采用现有 `execution` 放置**：两端 `BB_UPLOAD_CONFIRMATION_ROLE=execution`、`BB_PARSE_ROLE=main`；主站解析进程确认 enabled=0、lane=general、small-slot=0；Azure 独立确认 enabled=1、lane=general、small-slot=1，一个通用槽加一个保留的小件槽，共享 128MiB。解析、编制和复核的其他配置保持原值。此次只调整放置，复用原确认镜像，不发布新业务代码或镜像。
 
-入口最小配置：显式 `BB_UPLOAD_CONFIRMATION_ENABLED=1`、原 `DATABASE_URL`/`AZURE_STORAGE_CONNECTION_STRING`、绝对 `BB_UPLOAD_SPOOL_DIR`、严格 `BB_UPLOAD_SPOOL_MAX_BYTES=134217728`。`BB_UPLOAD_CONFIRMATION_LANE` 默认 general，独立入口可选 large；large 必须 small-slot=0。旧 general 模式的 `BB_UPLOAD_CONFIRMATION_SMALL_SLOT=1` 增加一个不超过 16MiB 的槽，与通用槽同进程共享 128MiB；size-split 两节点各保持 128MiB，不能扩大预算。默认 small-slot=0，非法值拒绝。`BB_UPLOAD_CONFIRMATION_CONTAINER` 默认 `bondbuddy-private`，独立入口隔离测试必须设专属 container；主站现有 CLI 仍使用默认材料容器，class/factory 隔离测试须显式注入专属存储，不能冒称真实 CLI。不会用 `BB_LIBRARY_CONTAINER` 选择材料容器。`BB_UPLOAD_CONFIRMATION_POLL_MS` 默认 1000ms，允许 100–60000 的整数。模型环境或执行 kind 配置导致启动拒绝。
+此前的 `size-split` 仍是受支持的备选放置：两端同为 size-split，主站 small/slot0，执行端 large/slot0。阈值单源为 API 的 `UPLOAD_CONFIRMATION_SMALL_MAX_BYTES`：small 包含 16MiB，large 为 >16MiB，领取 SQL 在加租约/attempts 前过滤。独立镜像 target `upload-confirmation` 仅安装 Node、CA 与 flock，不安装模型 CLI、浏览器、OCR 或认证 helper，不继承其环境、挂载或 AppArmor 配置。只有独立入口持专用 spool 的 CLI flock，主站解析入口没有独立 CLI flock。现有 egress/PG 转发保留。
+
+入口最小配置：显式 `BB_UPLOAD_CONFIRMATION_ENABLED=1`、原 `DATABASE_URL`/`AZURE_STORAGE_CONNECTION_STRING`、绝对 `BB_UPLOAD_SPOOL_DIR`、严格 `BB_UPLOAD_SPOOL_MAX_BYTES=134217728`。`BB_UPLOAD_CONFIRMATION_LANE` 默认 general，独立入口可选 large；large 必须 small-slot=0。general 模式的 `BB_UPLOAD_CONFIRMATION_SMALL_SLOT=1` 增加一个不超过 16MiB 的槽，与通用槽同进程共享 128MiB；size-split 两节点各保持 128MiB，不能扩大预算。默认 small-slot=0，非法值拒绝。`BB_UPLOAD_CONFIRMATION_CONTAINER` 默认 `bondbuddy-private`，独立入口隔离测试必须设专属 container；主站现有 CLI 仍使用默认材料容器，class/factory 隔离测试须显式注入专属存储，不能冒称真实 CLI。不会用 `BB_LIBRARY_CONTAINER` 选择材料容器。`BB_UPLOAD_CONFIRMATION_POLL_MS` 默认 1000ms，允许 100–60000 的整数。模型环境或执行 kind 配置导致启动拒绝。
 
 四路源码候选增加独立的显式 profile，合入代码不自动改变上述在线配置：只在 execution/general/small-slot1 下允许 `BB_UPLOAD_CONFIRMATION_CONCURRENCY=4`。Compose 输入需同时设 `BB_UPLOAD_CONFIRMATION_SPOOL_MAX_BYTES=469762048`、`BB_UPLOAD_CONFIRMATION_HEAP_MB=384`、`BB_UPLOAD_CONFIRMATION_CPU_LIMIT=1` 和 `BB_UPLOAD_CONFIRMATION_MEMORY_LIMIT=1536M`；容器实际 `BB_UPLOAD_SPOOL_MAX_BYTES` 为 448MiB，启动磁盘至少 464MiB。四个通用槽加一个小件槽最多预约四个 100MiB 和一个 16MiB 原件，共 416MiB；错误 lane、缺小件槽或不匹配的磁盘/内存/CPU/heap 配置均拒绝。旧 concurrency1 保持 128MiB/512MiB/0.5CPU。受保护 overlay 如已有显式 limits，须精准更新目标块并按原 binding/CAS 规则更新摘要，不能以环境输入冒称已覆盖实际 limits。
 
@@ -182,7 +221,7 @@ Codex仅构建目标 `codex` 后，以断网容器运行 `deploy/m1/scripts/code
 
 执行端镜像导出根据**传入提交**的 Dockerfile 是否提供 `upload-confirmation` target 选择新镜像；旧 `1fee`/`5e` 等提交不构建、不导出不存在的 target，包含该 target 的新提交才导出。旧调用格式、可信来源与准确 revision 校验保留，旧镜像未缓存也可按原路径重建。
 
-**现有组件混版环境不能运行整角色 deploy/rollback 完成本次切换。** 新源码通过现行发布门禁后，发布者先记录主站 API/解析/Web 与执行端编制/复核各自准确镜像、源码、配置摘要和挂载，保留整角色 current，不将组件升级记成整角色升级。取得既有配置/部署锁并检查 pending；停止旧确认新领取、排空所有确认租约及暂存，仅将主站解析升级为 small 单循环并新增执行端 large 单循环确认容器，使用 `--no-deps`。不得重建 PG 转发、编制、复核、旧解析或其他在途组件。实际执行前仍须核磁盘增量、镜像 UID/文件权限、来源与独立组件收据。回滚先停止新增确认领取并排空，保存新收据后恢复旧主站确认配置/镜像及原 binding/overlay，禁用新增服务；不降库、不删除 Blob、不重启编制/复核。
+**现有组件混版环境不能运行整角色 deploy/rollback 完成本次切换。** 新源码通过现行发布门禁后，发布者先记录主站 API/解析/Web 与执行端编制/复核各自准确镜像、源码、配置摘要和挂载，保留整角色 current，不将组件升级记成整角色升级。取得既有配置/部署锁并检查 pending；停止旧确认新领取、排空所有确认租约及暂存，纯放置调整只用原不可变镜像重建主站解析与执行端独立确认两个目标，使用 `--no-deps`；不得借此对齐其他组件版本。不得重建 PG 转发、编制、复核、执行端 inactive 解析或其他在途组件。实际执行前仍须核磁盘增量、镜像 UID/文件权限、来源与独立组件收据。回滚先停止新增确认领取并排空，保存新收据后恢复两端原确认配置、镜像及原 binding/overlay；不降库、不删除 Blob、不重启编制/复核。
 
 主站解析的 `stop_grace_period=10m` 与独立入口一致，确认循环单独等待 read/commit settled 后才关闭 PG/退出；其他解析/编制 drain 语义不变。项目锁仍串行，跨 PG 的 commit 往返仍存在，不承诺所有小件始终先完成。
 
@@ -190,4 +229,6 @@ SIGTERM/SIGINT 停止新领取，持续续租并等待现有读取/提交结束�
 
 分段日志 `upload_confirmation_phase` 含 upload ID、lane、phase 与实测 `elapsed_ms`：`read` 包括完整读取、hash 和可选落盘，canonical 另读另记，缓存命中不伪造 read；`inspection` 是原声明/落盘文件检查（例外路径照实计时）；`commit` 包括事务、ETag复查和提交。失败阶段也计时，必须结合最终 outcome 与持久凭据判定成功。总 `upload_confirmation.elapsed_ms` 还含领取和准备查询，不能称为 reader 时间，也不能相加并行 lane 耗时。不记录连接、SAS、文件名或内容。
 
-功能回归覆盖新入口不领取 run/parse、16MiB 精确边界、wrong-lane 零领取、受控大件 full-read gate 下 small 完成、主站 SIGTERM 超过原 drain 限制仍等待确认、共享暂存、202→200/同一材料重放及 owner/fence/完整性。性能验收须 Azure 确认经现有 PG 隧道连接腾讯**独立 synthetic 测试库/队列**，原认证仅在内存切换 dbname，不接业务队列、不复制客户数据、不新开公网 PG、不改业务迁移或权限；由一次创建/清理协调避免重建。Azure 本地 PG 只能证明功能。本次 size-split 复用已封存的大文件全量读取/完整性证据，不重建或重传已清理的大对象；新验收只创建 synthetic 小件，验证主站确认与执行端 large 零领取/零读取。性能记录区分 PUT、整段确认、分段计时、服务端完成、浏览器 200 与 ESA 等待；与 372.895 秒比较须统一整段确认口径，不预先承诺秒数，旧全迁移数据不证明新分流全面提速。#960 的 429 单列。机械回归不代表准确版本真实模型金样、独立业务复核或生产性能已通过，新源码不继承旧热修例外。
+功能回归覆盖独立入口不领取 run/parse、16MiB 精确边界、wrong-lane 零领取、主站 SIGTERM 仍等待确认完成、受控大件 full-read gate 下 small 完成、共享暂存、202→200/同一材料重放及 owner/fence/完整性。放置调整复用未变代码的有效回归，只补新增组合验证：100MiB 最大文件加 16MiB 小件槽共 116MiB，不超过 128MiB spool；启动磁盘至少 144MiB；在实际 512MiB/0.5CPU 容器核并行预约、无 OOM、完整性、幂等与释放。生成文本流的预算验证不代表扫描 PDF 的最坏内存。隔离本地 PG 只证明功能与预算，生产延迟须以正式 HTTPS 的自有文件直传、确认、刷新唯一性及实际确认日志验收；不为调整位置重传历史大件或操作客户已完成记录。
+
+分开记录 PUT、created→queued、queued→首个 read、read/inspection/commit 与最终 HTTP 200。created→queued 混合客户端、PUT 和请求时间，不能称为 PUT 实测；queued→首个 read 也包含领取与准备查询。PG `now()` 是事务起点，确认行 `updated_at` 可能早于 commit 结束，不能据此缩短总耗时。历史网络路径、时间段和 reader 落盘方式不同，不直接计算全链路提速倍数。位置优化只减少确认读取及排队，不承诺国内大件直传速度；当前 DNS/连接事实与历史 ESA 429/TCP 长尾分别记录。机械回归不代表准确版本真实模型金样、独立业务复核或生产性能已通过，新源码不继承旧热修例外。

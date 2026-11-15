@@ -445,8 +445,7 @@ test('authoring materials stay read-only after starting until an explicit next v
   await expect(page.locator('#reference-upload-hint')).toBeHidden();
   await expect(page.locator('.reference-readonly-note')).toBeVisible();
   await expect(page.locator('[data-download-version]').first()).toBeEnabled();
-  await page.locator('[data-prospectus-ref] summary').first().click();
-  await expect(page.locator('[data-prospectus-ref]').first()).toHaveJSProperty('open', true);
+  await expect(page.locator('.reference-file').first()).toBeVisible();
   await expect(page.locator('#materials-state-label')).toHaveText('材料已锁定，仅可查看');
   await expect(page.locator('#materials-title')).toHaveText('查看项目材料');
   await expect(picker).toBeDisabled();
@@ -1956,6 +1955,53 @@ for(const width of [1440,390])test('model progress summaries survive tool bursts
   await expect(page.locator('.task-progress-heading img')).toHaveCount(0);
   expect(state.executes).toHaveLength(1);expect(errors).toEqual([]);
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+for(const width of [1440,390])test('model capacity wait keeps exact credits, survives reload and yields to control '+width,async({page})=>{
+  const state=fixture();state.paid=true;state.checkStatus='ready';state.available=100000;state.points=48900;state.runState='running';state.runStage='file_authoring';state.runReason='';
+  state.liveProgress={policy:'authoring_balance_v2',accrued_points:1830,charged_points:1830,released_points:0,available_points:98170,active_ms:90000,pause_requested:false,credit_exhausted:false,queued_at:now,sampled_at:now,last_activity_at:now,queue_ahead:null,clock_running:false,model_waiting:true};
+  state.liveActivity={activity_id:'d'.repeat(64),code:'write_document',state:'started',summary:'已完成目录核对，正在更新财务章节。'};
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  const viewport={width,height:width===1440?960:844};
+  await page.setViewportSize(viewport);await setup(page,state);await page.locator('#execute-input').click();
+  await expect(page.locator('.task-progress-heading')).toContainText('正在等待模型处理名额');
+  await expect(page.locator('.task-progress-heading')).toContainText('等待期间积分不增加，无需重复提交');
+  await expect(page.locator('.task-progress-heading')).not.toContainText(/执行连接正在恢复|前方有/);
+  await expect(page.locator('.authoring-credit-meter')).toContainText('等待模型处理名额，积分不会增加');
+  await expect(page.locator('.authoring-credit-meter strong')).toHaveText('1,830 积分');
+  const run=[...state.runs.values()][0];expect(run.state).toBe('running');expect(run.stage).toBe('file_authoring');
+  await page.reload();
+  await expect(page.locator('.task-progress-heading')).toContainText('正在等待模型处理名额');
+  await expect(page.locator('.authoring-credit-meter strong')).toHaveText('1,830 积分');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  const evidence=process.env.BB_UX_EVIDENCE_DIR;
+  if(evidence){
+    await mkdir(evidence,{recursive:true});
+    await page.locator('.task-progress-heading').scrollIntoViewIfNeeded();
+    await page.screenshot({path:join(evidence,`model-wait-implementation-viewport-${width}.png`)});
+    await page.locator('#execution-progress').screenshot({path:join(evidence,`model-wait-implementation-panel-${width}.png`)});
+    const prototype=await page.context().newPage();await prototype.setViewportSize(viewport);
+    await prototype.setContent(await readFile(resolve('../../product-prototype/public/authoring-live-progress.html'),'utf8'));
+    await prototype.getByRole('button',{name:'等待模型名额',exact:true}).click();
+    await expect(prototype.locator('.status')).toContainText('当前没有可用的模型处理名额，可用后会自动继续');
+    await expect(prototype.locator('.meter')).toContainText('等待模型处理名额，积分不会增加');
+    await prototype.locator('.status').scrollIntoViewIfNeeded();
+    await prototype.screenshot({path:join(evidence,`model-wait-prototype-viewport-${width}.png`)});
+    await prototype.locator('#prototype-progress').screenshot({path:join(evidence,`model-wait-prototype-panel-${width}.png`)});
+    expect(await prototype.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await prototype.close();
+  }
+  state.liveProgress.model_waiting=false;state.liveProgress.clock_running=true;state.eventSeq++;
+  await expect(page.locator('.task-progress-heading')).toContainText('最近一次模型进度：已完成目录核对');
+  await expect(page.locator('.authoring-credit-meter')).not.toContainText('等待模型处理名额');
+  state.liveProgress.model_waiting=true;state.liveProgress.clock_running=false;state.liveProgress.pause_requested=true;state.eventSeq++;
+  await expect(page.locator('.task-progress-heading')).toContainText('正在保存进度后暂停');
+  await expect(page.locator('.task-progress-heading')).not.toContainText('正在等待模型处理名额');
+  await expect(page.locator('.authoring-credit-meter')).toContainText('积分已冻结');
+  run.state='cancelled';run.stage='cancelled';state.chargeState='settled';state.eventSeq++;
+  await expect(page.locator('.task-progress-heading')).toContainText('本轮已停止');
+  await expect(page.locator('.authoring-credit-meter')).toContainText('本次已扣费');
+  await expect(page.locator('.authoring-credit-meter strong')).toHaveText('1,830 积分');
+  expect(state.executes).toHaveLength(1);expect(state.runActions).toEqual([]);expect(errors).toEqual([]);
 });
 
 for(const width of [1440,390])test('live authoring: queue, model activity, growing credits, pause and partial settlement '+width,async({page})=>{

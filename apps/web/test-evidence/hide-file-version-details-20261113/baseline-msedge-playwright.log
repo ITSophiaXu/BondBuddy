@@ -1,0 +1,185 @@
+
+Running 5 tests using 1 worker
+
+(node:93956) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:93956) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  1 tests\project-execution.spec.ts:1357:50 › deduplicated first draft continues from the exact shared clean artifact (6.8s)
+(node:80292) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:80292) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  2 tests\project-execution.spec.ts:1357:50 › deduplicated first draft is revalidated before another input is submitted (8.0s)
+(node:92168) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:92168) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  3 tests\project-execution.spec.ts:1458:3 › lost upload acknowledgement restores start without resending desktop (7.1s)
+(node:89268) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:89268) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  4 tests\project-execution.spec.ts:1458:3 › lost upload acknowledgement restores start without resending mobile (6.8s)
+(node:34120) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:34120) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  x  5 tests\prospectus-panel.spec.ts:216:1 › unknown upload receipt retries the original session and keeps the automatically adopted source (6.6s)
+
+
+  1) tests\project-execution.spec.ts:1357:50 › deduplicated first draft continues from the exact shared clean artifact 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('#execution-progress')
+    Timeout: 5000ms
+    - Expected substring  - 1
+    + Received string     + 2
+
+    - 任务已暂停
+    +
+    +       
+
+    Call log:
+      - Expect "toContainText" locator('#execution-progress') with timeout 5000ms
+      - waiting for locator('#execution-progress')
+        13 × locator resolved to <div aria-live="polite" id="execution-progress">↵      </div>
+           - unexpected value "
+          "
+
+
+      1359 |   state.project.update_details!.has_historical=false;state.project.update_details!.source_prospectuses=[];state.sourceSelected=false;
+      1360 |   await setup(page,state);await page.locator('#execute-input').click();
+    > 1361 |   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+           |                                                     ^
+      1362 |   const first=[...state.runs.values()][0],{primary,clean}=registerGeneratedPair(state,first,'deduplicated-first-draft',true);
+      1363 |   expect(primary.word_delivery?.source_sha256).toBeNull();
+      1364 |   await page.getByRole('button',{name:'重新读取',exact:true}).click();
+        at C:\Users\yingx\OneDrive - Microsoft\Documents\ChatGPT\BondDraftAI\BondBuddy-hide-file-version-details-20261113\work\version-details-baseline-92bbba8f\apps\web\tests\project-execution.spec.ts:1361:53
+
+    Error Context: ..\..\baseline-msedge-test-results\project-execution-deduplic-2d16c-exact-shared-clean-artifact\error-context.md
+
+  2) tests\project-execution.spec.ts:1357:50 › deduplicated first draft is revalidated before another input is submitted 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('#execution-progress')
+    Timeout: 5000ms
+    - Expected substring  - 1
+    + Received string     + 2
+
+    - 任务已暂停
+    +
+    +       
+
+    Call log:
+      - Expect "toContainText" locator('#execution-progress') with timeout 5000ms
+      - waiting for locator('#execution-progress')
+        13 × locator resolved to <div aria-live="polite" id="execution-progress">↵      </div>
+           - unexpected value "
+          "
+
+
+      1359 |   state.project.update_details!.has_historical=false;state.project.update_details!.source_prospectuses=[];state.sourceSelected=false;
+      1360 |   await setup(page,state);await page.locator('#execute-input').click();
+    > 1361 |   await expect(page.locator('#execution-progress')).toContainText('任务已暂停');
+           |                                                     ^
+      1362 |   const first=[...state.runs.values()][0],{primary,clean}=registerGeneratedPair(state,first,'deduplicated-first-draft',true);
+      1363 |   expect(primary.word_delivery?.source_sha256).toBeNull();
+      1364 |   await page.getByRole('button',{name:'重新读取',exact:true}).click();
+        at C:\Users\yingx\OneDrive - Microsoft\Documents\ChatGPT\BondDraftAI\BondBuddy-hide-file-version-details-20261113\work\version-details-baseline-92bbba8f\apps\web\tests\project-execution.spec.ts:1361:53
+
+    Error Context: ..\..\baseline-msedge-test-results\project-execution-deduplic-e7097--another-input-is-submitted\error-context.md
+
+  3) tests\project-execution.spec.ts:1458:3 › lost upload acknowledgement restores start without resending desktop 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('.material-file-row').filter({ hasText: 'lost.pdf' })
+    Expected substring: "服务器已确认保存"
+    Received string:    "lost.pdf审计报告（可含报表及附注） · 35 B已发送 100%，正在保存…停止等待"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toContainText" locator('.material-file-row').filter({ hasText: 'lost.pdf' }) with timeout 5000ms
+      - waiting for locator('.material-file-row').filter({ hasText: 'lost.pdf' })
+        - locator resolved to <li data-upload-phase="checking" class="material-file-row bb-upload-file" data-upload-id="90721bab-06df-46e4-9576-a223e73c59a8">…</li>
+        - unexpected value "lost.pdf审计报告（可含报表及附注） · 35 B正在确认保存结果…取消此文件"
+        - locator resolved to <li data-upload-phase="uploading" class="material-file-row bb-upload-file" data-upload-id="90721bab-06df-46e4-9576-a223e73c59a8">…</li>
+        - unexpected value "lost.pdf审计报告（可含报表及附注） · 35 B0%正在传输 0%（0 B / 35 B）取消此文件"
+        12 × locator resolved to <li data-upload-phase="saving" class="material-file-row bb-upload-file" data-upload-id="90721bab-06df-46e4-9576-a223e73c59a8">…</li>
+           - unexpected value "lost.pdf审计报告（可含报表及附注） · 35 B已发送 100%，正在保存…停止等待"
+
+
+      1481 |     const row = page.locator('.material-file-row').filter({hasText:'lost.pdf'});
+      1482 |     await expect(row).toHaveCount(1);
+    > 1483 |     await expect(row).toContainText('服务器已确认保存');
+           |                       ^
+      1484 |     await expect(page.locator('[data-processing-key]')).toHaveCount(0);
+      1485 |     await expect(page.getByText('处理状态不可用', {exact:true})).toHaveCount(0);
+      1486 |     await expect(page.getByRole('button',{name:'开始更新',exact:true})).toBeEnabled();
+        at C:\Users\yingx\OneDrive - Microsoft\Documents\ChatGPT\BondDraftAI\BondBuddy-hide-file-version-details-20261113\work\version-details-baseline-92bbba8f\apps\web\tests\project-execution.spec.ts:1483:23
+
+    Error Context: ..\..\baseline-msedge-test-results\project-execution-lost-upl-77c5d-t-without-resending-desktop\error-context.md
+
+  4) tests\project-execution.spec.ts:1458:3 › lost upload acknowledgement restores start without resending mobile 
+
+    Error: expect(locator).toContainText(expected) failed
+
+    Locator: locator('.material-file-row').filter({ hasText: 'lost.pdf' })
+    Expected substring: "服务器已确认保存"
+    Received string:    "lost.pdf审计报告（可含报表及附注） · 35 B已发送 100%，正在保存…停止等待"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toContainText" locator('.material-file-row').filter({ hasText: 'lost.pdf' }) with timeout 5000ms
+      - waiting for locator('.material-file-row').filter({ hasText: 'lost.pdf' })
+        2 × locator resolved to <li data-upload-phase="checking" class="material-file-row bb-upload-file" data-upload-id="d966f874-670c-46f1-ac1f-32f3ae519e5c">…</li>
+          - unexpected value "lost.pdf审计报告（可含报表及附注） · 35 B正在确认保存结果…取消此文件"
+        12 × locator resolved to <li data-upload-phase="saving" class="material-file-row bb-upload-file" data-upload-id="d966f874-670c-46f1-ac1f-32f3ae519e5c">…</li>
+           - unexpected value "lost.pdf审计报告（可含报表及附注） · 35 B已发送 100%，正在保存…停止等待"
+
+
+      1481 |     const row = page.locator('.material-file-row').filter({hasText:'lost.pdf'});
+      1482 |     await expect(row).toHaveCount(1);
+    > 1483 |     await expect(row).toContainText('服务器已确认保存');
+           |                       ^
+      1484 |     await expect(page.locator('[data-processing-key]')).toHaveCount(0);
+      1485 |     await expect(page.getByText('处理状态不可用', {exact:true})).toHaveCount(0);
+      1486 |     await expect(page.getByRole('button',{name:'开始更新',exact:true})).toBeEnabled();
+        at C:\Users\yingx\OneDrive - Microsoft\Documents\ChatGPT\BondDraftAI\BondBuddy-hide-file-version-details-20261113\work\version-details-baseline-92bbba8f\apps\web\tests\project-execution.spec.ts:1483:23
+
+    Error Context: ..\..\baseline-msedge-test-results\project-execution-lost-upl-43ce9-rt-without-resending-mobile\error-context.md
+
+  5) tests\prospectus-panel.spec.ts:216:1 › unknown upload receipt retries the original session and keeps the automatically adopted source 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: locator('[data-resume-prospectus]')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" locator('[data-resume-prospectus]') with timeout 5000ms
+      - waiting for locator('[data-resume-prospectus]')
+
+
+      215 |
+      216 | test('unknown upload receipt retries the original session and keeps the automatically adopted source',async({page})=>{
+    > 217 |   const f=await setup(page,{retry:true});await selectFile(page);await expect(page.locator('[data-resume-prospectus]')).toBeVisible();await expect(page.locator('.prospectus-selected-file')).toContainText('合成新稿.docx');
+          |                                                                                                                        ^
+      218 |   await page.getByRole('button',{name:'确认原上传',exact:true}).click();await expect(page.locator('#prospectus-status')).toContainText(/已保存并自动采用/);expect(f.state.current_version_id).toBe('v3');expect(f.state.selection_revision).toBe(1);expect(f.calls.filter(c=>c.path.endsWith('/prospectus-versions/current'))).toHaveLength(0);
+      219 |   expect(f.calls.filter(c=>c.method==='PUT')).toHaveLength(1);expect(f.calls.filter(c=>c.path.endsWith('/materials/uploads'))).toHaveLength(1);const completions=f.calls.filter(c=>c.path.endsWith('/complete'));expect(completions).toHaveLength(2);expect(completions[0].body).toEqual(completions[1].body);
+      220 |   await expect(page.locator('.reference-file.is-selected')).toContainText('本次更新已选用');await expect(page.locator('[data-use-version="v3"]')).toHaveCount(0);
+        at C:\Users\yingx\OneDrive - Microsoft\Documents\ChatGPT\BondDraftAI\BondBuddy-hide-file-version-details-20261113\work\version-details-baseline-92bbba8f\apps\web\tests\prospectus-panel.spec.ts:217:120
+
+    Error Context: ..\..\baseline-msedge-test-results\prospectus-panel-unknown-u-0a4f0-utomatically-adopted-source\error-context.md
+
+  5 failed
+    tests\project-execution.spec.ts:1357:50 › deduplicated first draft continues from the exact shared clean artifact 
+    tests\project-execution.spec.ts:1357:50 › deduplicated first draft is revalidated before another input is submitted 
+    tests\project-execution.spec.ts:1458:3 › lost upload acknowledgement restores start without resending desktop 
+    tests\project-execution.spec.ts:1458:3 › lost upload acknowledgement restores start without resending mobile 
+    tests\prospectus-panel.spec.ts:216:1 › unknown upload receipt retries the original session and keeps the automatically adopted source 

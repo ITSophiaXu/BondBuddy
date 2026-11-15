@@ -1,3 +1,4 @@
+import {executionClaimGate} from './execution-capacity.js';
 import { Pool, type PoolClient } from 'pg';
 import { Value } from '@sinclair/typebox/value';
 import { date, missing, Problem, run, runDto, transaction, uid, type PrivateBlobs, digest } from './data.js';
@@ -64,6 +65,7 @@ export function checkedRunKinds(kinds: readonly RunKind[] = TASK_KINDS): RunKind
 
 async function event(client:PoolClient, r:any, state:string, stage:string|null, reason:string, errorCode?:string, type='run.state_changed', audit:Record<string,string|number>={}) {
   await syncAuthoringProgress(client,r,{state,stage,reason});
+  if(terminal.has(state))await client.query('DELETE FROM bb_run_model_activity WHERE run_id=$1 AND owner_user_id=$2',[r.id,r.owner_user_id]);
   const seq=r.event_cursor+1, id=uid(), trace=r.id;
   const payload={reason,channel:r.channel ?? 'production',...(errorCode?{error_code:errorCode}:{}),...audit};
   await client.query('UPDATE bb_runs SET state=$2,stage=$3,event_cursor=$4,updated_at=now() WHERE id=$1',[r.id,state,stage,seq]);
@@ -103,7 +105,7 @@ const needsProviderReconciliation = `(
   ))
 )`;
 
-async function providerCallNeedsReconciliation(client:PoolClient, jobId:string) {
+export async function providerCallNeedsReconciliation(client:PoolClient, jobId:string) {
   const q=await client.query(`SELECT 1
     FROM bb_model_call_attempts a
     JOIN bb_jobs j ON j.id=a.job_id
@@ -122,8 +124,9 @@ export async function enqueue(client:PoolClient, r:any, subtype='default') {
 export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:boolean; runKinds?:readonly RunKind[]; interactiveOnly?:boolean}={}):Promise<Lease|null> {
   const runKinds = checkedRunKinds(options.runKinds);
   return transaction(pool,async client=>{
+    await executionClaimGate(client,pool);
     // Lock order is run then job in every transition, including cancellation.
-    const q=await client.query("SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE (j.state='queued' OR (j.state='running' AND j.lease_until<now())) AND r.state NOT IN ('cancelled','failed','succeeded','test_completed','rejected') AND (j.job_type='platform_probe')=$1 AND ($1 OR j.job_type=ANY($2::text[])) AND (NOT $3 OR j.subtype IN ('m4_qa_v1','project_qa_v1','project_file_v1')) ORDER BY j.created_at FOR UPDATE OF r SKIP LOCKED LIMIT 1",[options.platformProbe===true,runKinds,options.interactiveOnly===true]);
+    const q=await client.query("SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id WHERE (j.state='queued' OR (j.state='running' AND j.lease_until<now())) AND NOT (j.execution_node_id IS NOT NULL AND j.lease_token IS NOT NULL) AND r.state NOT IN ('cancelled','failed','succeeded','test_completed','rejected') AND (j.job_type='platform_probe')=$1 AND ($1 OR j.job_type=ANY($2::text[])) AND (NOT $3 OR j.subtype IN ('m4_qa_v1','project_qa_v1','project_file_v1')) ORDER BY j.created_at FOR UPDATE OF r SKIP LOCKED LIMIT 1",[options.platformProbe===true,runKinds,options.interactiveOnly===true]);
     const r=q.rows[0];if(!r)return null;
     const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 FOR UPDATE',[r.id])).rows[0];
     if(j.state==='running' && new Date(j.lease_until).getTime()>=Date.now())return null;
@@ -144,23 +147,85 @@ export async function claim(pool:Pool, leaseSeconds=30, options:{platformProbe?:
       return null;
     }
     const token=uid();
+    await client.query('DELETE FROM bb_run_model_activity WHERE job_id=$1',[j.id]);
     await client.query("UPDATE bb_jobs SET state='running',stage=CASE WHEN stage='queued' THEN 'claimed' ELSE COALESCE(stage,'claimed') END,lease_token=$2,lease_until=now()+($3::integer * interval '1 second'),attempts=attempts+1,updated_at=now() WHERE id=$1",[j.id,token,leaseSeconds]);
     await event(client,r,'running',j.stage==='queued'?'claimed':j.stage ?? 'claimed',j.state==='running'?'lease_recovered':'claimed');
     return {jobId:j.id,runId:r.id,owner:r.owner_user_id,token,checkpoint:j.checkpoint,attempts:j.attempts+1};
   });
 }
 
-async function lockedLease(client:PoolClient, lease:Lease) {
+async function lockedLease(client:PoolClient, lease:Lease, renewing=false) {
   const r=await run(client,lease.owner,lease.runId,true);
-  const j=(await client.query('SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[lease.jobId,lease.owner,lease.runId])).rows[0];
-  if(!j || j.lease_token!==lease.token || j.state!=='running' || new Date(j.lease_until).getTime()<=Date.now() || terminal.has(r.state)) throw new Problem(409,'ALREADY_TERMINAL','Lease is no longer active');
+  const j=(await client.query(renewing
+    ? `SELECT *,transaction_timestamp()<lease_until AS renewal_started_in_time FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE`
+    : 'SELECT * FROM bb_jobs WHERE id=$1 AND owner_user_id=$2 AND run_id=$3 FOR UPDATE',[lease.jobId,lease.owner,lease.runId])).rows[0];
+  // Only a renewal already waiting before expiry may survive a long delivery
+  // transaction's run/job locks. A new request after expiry, a different token,
+  // or any terminal/control transition still loses. Other writes remain strict.
+  const expired=j && new Date(j.lease_until).getTime()<=Date.now();
+  if(!j || j.lease_token!==lease.token || j.state!=='running' || expired&&!(renewing&&j.renewal_started_in_time===true) || terminal.has(r.state)) throw new Problem(409,'ALREADY_TERMINAL','Lease is no longer active');
   return {r,j};
 }
 
+/** A request is registered before either the local or shared model-capacity queue.
+ * Do not change run state/stage: an executing job waiting for a model still owns
+ * its lease. Only this lease's complete set of requests controls its meter. */
+export async function setRunModelActivity(pool:Pool,lease:Lease,requestId:string,state:'waiting'|'active'|'finished'|'abandoned'):Promise<boolean>{
+  if(!/^[a-f0-9-]{36}$/.test(requestId))throw new Problem(422,'VALIDATION_FAILED','Invalid model activity request');
+  return transaction(pool,async client=>{
+    let locked;
+    try{locked=await lockedLease(client,lease);}
+    catch(error){
+      if((state==='finished'||state==='abandoned')&&error instanceof Problem&&['ALREADY_TERMINAL','NOT_FOUND'].includes(error.code))return false;
+      throw error;
+    }
+    const {r}=locked;
+    const prior=(await client.query('SELECT * FROM bb_run_model_activity WHERE request_id=$1',[requestId])).rows[0];
+    if(prior&&(prior.owner_user_id!==lease.owner||prior.run_id!==lease.runId||prior.job_id!==lease.jobId||prior.lease_token!==lease.token))
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','Model activity request belongs to another lease');
+    if(prior?.state===state)return true;
+    if(state==='waiting'&&prior||state==='active'&&prior?.state!=='waiting')
+      throw new Problem(409,'INPUT_REVISION_CONFLICT','Model activity cannot be reopened');
+    if((state==='finished'||state==='abandoned')&&!prior)return false;
+    if(state==='finished'&&prior.state!=='active')return false;
+    // Settle the old interval before the transition, then start/freeze the new
+    // interval at the database clock. Renewals and cancellation use these locks.
+    await syncAuthoringProgress(client,r);
+    if(state==='waiting'){
+      await client.query(`INSERT INTO bb_run_model_activity(request_id,owner_user_id,run_id,job_id,lease_token,state)
+        VALUES($1,$2,$3,$4,$5,'waiting')`,[requestId,lease.owner,lease.runId,lease.jobId,lease.token]);
+    }else if(state==='finished'){
+      await client.query('DELETE FROM bb_run_model_activity WHERE request_id=$1',[requestId]);
+    }else{
+      await client.query('UPDATE bb_run_model_activity SET state=$2,updated_at=clock_timestamp() WHERE request_id=$1',[requestId,state]);
+
+    }
+    // An abandoned wait remains a frozen marker until work explicitly resumes.
+    // Deleting the last failed waiter here would start charging before the
+    // caller has persisted its pause/failure (possibly behind a blocked DB lock).
+    await syncAuthoringProgress(client,r);
+    return true;
+  });
+}
+
+
 export async function renew(pool:Pool, lease:Lease, leaseSeconds=30) {
-  const parked=await transaction(pool,async client=>{const {r,j}=await lockedLease(client,lease);
+  const parked=await transaction(pool,async client=>{const {r,j}=await lockedLease(client,lease,true);
     if(await walletIsolated(client,r)){await parkBilling(client,r,j,'wallet_isolated',false,true);return true;}
-    await client.query("UPDATE bb_jobs SET lease_until=now()+($2::integer * interval '1 second'),updated_at=now() WHERE id=$1",[lease.jobId,leaseSeconds]);await syncAuthoringProgress(client,r);return false;});
+    await syncAuthoringProgress(client,r);
+    // now() is the transaction start, which can be minutes before these locks
+    // become available. Publish the next lease at the end using wall-clock time.
+    // The running meter inherits the same deadline; a paused meter stays frozen.
+    // A bookkeeping lock can also outlive the old lease after its clock sample.
+    // Shift only that unconfirmed gap out of the cursor, preserving the pending
+    // valid delta for the next dynamic debit instead of advancing active_ms here.
+    await client.query(`WITH renewed AS (
+      UPDATE bb_jobs SET lease_until=clock_timestamp()+($2::integer * interval '1 second'),updated_at=clock_timestamp()
+      WHERE id=$1 RETURNING run_id,owner_user_id,lease_until,updated_at AS renewed_at
+    ) UPDATE bb_authoring_progress progress SET
+      clock_at=progress.clock_at+GREATEST(interval '0 seconds',renewed.renewed_at-GREATEST(progress.clock_at,progress.lease_until)),
+      lease_until=renewed.lease_until FROM renewed
+      WHERE progress.run_id=renewed.run_id AND progress.owner_user_id=renewed.owner_user_id AND progress.lease_until IS NOT NULL`,[lease.jobId,leaseSeconds]);return false;});
   // Commit the control pause before revoking the caller's lease. Heartbeats
   // abort in-flight work immediately instead of waiting for another renewal.
   if(parked)throw new Problem(409,'ALREADY_TERMINAL','Lease paused for billing reconciliation');
@@ -215,6 +280,8 @@ export async function beginRunStage(pool:Pool,lease:Lease,stage:string){
   await transaction(pool,async client=>{
     const {r,j}=await lockedLease(client,lease);
     if(!['update','generation'].includes(r.task_kind)||(String(j.subtype).startsWith('m4_')&&j.subtype!=='m4_document_v1'))return;
+    await syncAuthoringProgress(client,r);
+    await client.query("DELETE FROM bb_run_model_activity WHERE job_id=$1 AND lease_token=$2 AND state='abandoned'",[j.id,lease.token]);
     await client.query('UPDATE bb_jobs SET stage=$2,updated_at=now() WHERE id=$1',[j.id,stage]);
     await event(client,r,'running',stage,'stage_started',undefined,'run.progress');
   });
@@ -1219,4 +1286,18 @@ export async function releaseLease(pool:Pool,lease:Lease,reason='lease_released'
     await client.query("UPDATE bb_jobs SET lease_until=now()-interval '1 millisecond',updated_at=now() WHERE id=$1",[lease.jobId]);
     await event(client,locked.r,'running',locked.j.stage,reason,undefined,'run.progress');
   });
+}
+
+/** Cloud death is a capacity fence, never authority to replay a supplier call.
+ * Preserve the existing journal and publish the recovery pause atomically. */
+export async function fenceStoppedExecutionEpoch(client:PoolClient,nodeId:string,epoch:string){
+ const runs=(await client.query(`SELECT r.* FROM bb_runs r JOIN bb_jobs j ON j.run_id=r.id AND j.owner_user_id=r.owner_user_id WHERE j.execution_node_id=$1 AND j.execution_node_epoch=$2 AND j.lease_token IS NOT NULL ORDER BY r.id FOR UPDATE OF r`,[nodeId,epoch])).rows;
+ for(const r of runs){const j=(await client.query('SELECT * FROM bb_jobs WHERE run_id=$1 FOR UPDATE',[r.id])).rows[0];
+  await client.query("UPDATE bb_jobs SET state='paused',stage='provider_reconcile',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE id=$1",[j.id]);
+  await event(client,r,'paused','provider_reconcile','execution_epoch_stopped');
+ }
+ const messages=(await client.query('SELECT * FROM bb_review_messages WHERE execution_node_id=$1 AND execution_node_epoch=$2 AND lease_token IS NOT NULL ORDER BY id FOR UPDATE',[nodeId,epoch])).rows;
+ for(const m of messages){await client.query("UPDATE bb_review_messages SET reply_status='unknown',error='EXECUTION_EPOCH_STOPPED',lease_token=NULL,lease_until=NULL WHERE id=$1",[m.id]);
+  await client.query("INSERT INTO bb_outbox(id,owner_user_id,aggregate_type,aggregate_id,event_type,payload) VALUES($1,$2,'project',$3,'review.assistant_replied',$4)",[uid(),m.owner_user_id,m.project_id,{message_id:m.id,status:'unknown',error:'EXECUTION_EPOCH_STOPPED'}]);
+ }
 }

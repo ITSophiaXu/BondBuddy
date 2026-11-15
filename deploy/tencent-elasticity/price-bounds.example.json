@@ -1,0 +1,63 @@
+{
+  "version": "execution-cloud-price-bounds-v1",
+  "currency": "CNY",
+  "account_id": "REQUIRED_OWNER_ACCOUNT",
+  "region": "ap-beijing",
+  "policy_revision": null,
+  "valid_from": null,
+  "valid_until": null,
+  "fixed_commitments": [
+    {"kind":"secret","upper_bound_cny":null,"evidence_ref":null,"evidence_sha256":null,"enforced_bound_sha256":null},
+    {"kind":"snapshot","upper_bound_cny":null,"evidence_ref":null,"evidence_sha256":null,"enforced_bound_sha256":null}
+  ],
+  "components": [
+    {
+      "kind": "compute",
+      "running_cny_per_node_hour": 0.8,
+      "stopped_cny_per_node_hour": 0,
+      "evidence_ref": null,
+      "evidence_sha256": null,
+      "enforced_bound_sha256": null
+    },
+    {
+      "kind": "disk",
+      "running_cny_per_node_hour": null,
+      "stopped_cny_per_node_hour": null,
+      "evidence_ref": null,
+      "evidence_sha256": null,
+      "enforced_bound_sha256": null
+    },
+    {
+      "kind": "ip",
+      "running_cny_per_node_hour": null,
+      "stopped_cny_per_node_hour": null,
+      "evidence_ref": null,
+      "evidence_sha256": null,
+      "enforced_bound_sha256": null
+    },
+    {
+      "kind": "egress",
+      "running_cny_per_node_hour": null,
+      "stopped_cny_per_node_hour": null,
+      "evidence_ref": null,
+      "evidence_sha256": null,
+      "enforced_bound_sha256": null
+    },
+    {
+      "kind": "network",
+      "running_cny_per_node_hour": null,
+      "stopped_cny_per_node_hour": null,
+      "evidence_ref": null,
+      "evidence_sha256": null,
+      "enforced_bound_sha256": null
+    },
+    {
+      "kind": "secret",
+      "running_cny_per_node_hour": null,
+      "stopped_cny_per_node_hour": null,
+      "evidence_ref": null,
+      "evidence_sha256": null,
+      "enforced_bound_sha256": null
+    }
+  ]
+}

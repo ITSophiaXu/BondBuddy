@@ -76,7 +76,7 @@ test('scalar inspection rows render stage details and summary while preserving t
  const detail=timingPanel(data,run),summary=timingSummary(data,[run]);
  assert.match(detail,/各阶段耗时/);assert.match(detail,/锁定输入/);assert.match(detail,/模型调用/);assert.match(detail,/7 秒/);
  assert.match(summary,/data-stage-duration-summary/);assert.match(summary,/平均总耗时/);
- assert.doesNotMatch(summary,/平均排队|平均处理/);
+ assert.match(summary,/平均排队/);assert.match(summary,/平均处理/);
 });
 
 test('missing and malformed scalar durations fall back to timestamps without becoming zero',()=>{

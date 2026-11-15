@@ -338,6 +338,15 @@ function mountAccountIdentity() {
     .finally(() => { state.request = undefined; });
 }
 
+function syncProjectName(project: Dto<'ProjectResponse'>) {
+  projectNames.set(project.project_id, project.name);
+  // A confirmed project read/save supersedes any older navigation-only read.
+  projectNameRequests.delete(project.project_id);
+  if (navigationProjectContext(location.hash)?.projectId !== project.project_id) return;
+  const name = document.querySelector('[data-project-context-name]');
+  if (name) name.textContent = project.name;
+}
+
 function shell(content: string, section: string) {
   const context=navigationProjectContext(location.hash);
   const nav = (route: string, ico: string, label: string, active: boolean, pending = false) => `<a href="#${route}" class="nav-item ${active ? 'active' : ''}" ${active ? 'aria-current="page"' : ''}>${prototypeIcon(ico)}<span>${label}</span>${pending ? '<small class="nav-pending">未开放</small>' : ''}</a>`;
@@ -351,8 +360,7 @@ function shell(content: string, section: string) {
     const owner=identity,expectedProject=context.projectId;
     const request=api.project(expectedProject).then(project=>{
       if(owner!==identity||projectNameRequests.get(expectedProject)!==request)return;
-      projectNames.set(expectedProject,project.name);
-      if(navigationProjectContext(location.hash)?.projectId===expectedProject){const name=document.querySelector('[data-project-context-name]');if(name)name.textContent=project.name;}
+      syncProjectName(project);
     }).catch(()=>{/* Project content reports its own errors; navigation stays available. */}).finally(()=>{if(projectNameRequests.get(expectedProject)===request)projectNameRequests.delete(expectedProject);});
     projectNameRequests.set(expectedProject,request);
   }
@@ -532,6 +540,7 @@ async function renderRoute() {
   try {
     const project = await api.project(decodeURIComponent(match[1]));
     if (token !== epoch) return;
+    syncProjectName(project);
     const projectQuery = new URLSearchParams(match[2]);
     if (project.kind === 'review') {
       if (projectQuery.get('step') === 'details') { renderReviewProjectDetails(project, projectQuery); return; }
@@ -753,7 +762,10 @@ function updateSaveState() {
   error.hidden = !draft.error && (!draft.dirty || draft.valid);
   error.textContent = draft.error ? friendlyError(draft.error,'save') : draft.dirty ? draft.validationErrors.join(' ') : '';
   if (draft.state === 'saved') {
-    document.querySelector('#project-heading')!.textContent = draft.project.name;
+    syncProjectName(draft.project);
+    const heading = document.querySelector<HTMLElement>('#project-heading')!;
+    heading.textContent = draft.project.name;
+    heading.title = draft.project.name;
     document.querySelector('#saved-time')!.textContent = `${date(draft.project.updated_at)} 保存`;
   }
 }

@@ -43,6 +43,7 @@ export function authoringStatus(run:Run,events:RunEvent[],p?:AuthoringProgress){
       summary:(p?.queue_ahead?('前方有 '+p.queue_ahead+' 个同类任务。'):'正在等待执行服务接单。')+(p?'已排队 '+elapsedLabel(waiting)+'。':'')+'排队期间不消耗积分。',phase:0 as const};
   }
   if(run.state!=='running')return undefined;
+  if(p?.model_waiting)return {title:'正在等待模型处理名额',summary:'当前没有可用的模型处理名额，可用后会自动继续。等待期间积分不增加，无需重复提交。',phase:2 as const};
   const observed=observedEvents(run,events);
   const boundary=observed.map(e=>e.stage!==run.stage||e.state!=='running'||e.payload.reason==='user_resumed'||e.payload.reason==='credits_recharged').lastIndexOf(true);
   const current=observed.slice(boundary+1).reverse();
@@ -60,7 +61,13 @@ export function authoringStatus(run:Run,events:RunEvent[],p?:AuthoringProgress){
   return {title,summary,phase:(run.stage==='claimed'||run.stage==='input_lock'||run.stage==='materials_ready'?1:run.stage?.includes('word_delivery')?3:2) as 1|2|3};
 }
 export function authoringCreditReceipt(run:Run,p?:AuthoringProgress,legacy?:{points:string;state:string}&CommercePriceMetadata,error=false):string{
-  if(isCnyPrice(legacy))return `<section class="authoring-credit-meter" aria-label="${isAutomaticPriceVersion(legacy?.price_version)?'任务积分费用':'人民币任务费用'}"><div><span>${legacy!.state==='settled'?'本次已结算':legacy!.state==='released'?'预留已释放':'本次已预留'}</span><strong role="status">${displayPrice(legacy)}</strong></div><p>按确认范围交付结算；未交付部分释放。原范围修正与平台重试包含，不按内部轮次加收。</p></section>`;
+  if(isCnyPrice(legacy)){
+    const automatic=isAutomaticPriceVersion(legacy?.price_version);
+    const note=automatic&&legacy!.state==='released'
+      ?'只为已交付的内容扣积分，其余已退回。已确认范围内的修正和系统重试均不额外收费。'
+      :'按确认范围交付结算；未交付部分释放。原范围修正与平台重试包含，不按内部轮次加收。';
+    return `<section class="authoring-credit-meter" aria-label="${automatic?'任务积分费用':'人民币任务费用'}"><div><span>${legacy!.state==='settled'?'本次已结算':legacy!.state==='released'?'预留已释放':'本次已预留'}</span><strong role="status">${displayPrice(legacy)}</strong></div><p>${note}</p></section>`;
+  }
   if(run.billing_mode!=='fixed_credits')return '<p class="task-credit-receipt">本次任务按提交时的试用规则执行，不扣积分。</p>';
   if(!p){
     if(legacy&&legacy.state!=='held')return '<p class="task-credit-receipt">'+(legacy.state==='settled'?'已扣费 '+formatPoints(legacy.points)+' 积分':'已返还，本次不扣费')+'</p>';
@@ -70,7 +77,7 @@ export function authoringCreditReceipt(run:Run,p?:AuthoringProgress,legacy?:{poi
   const caption=terminal?'本次已扣费':'当前已消耗';
   const dynamic=p.policy==='authoring_balance_v2';
   const note=terminal?(int64(p.released_points)>0n?'未消耗的 '+formatPoints(p.released_points)+' 积分已释放。':'结算已完成。'):
-    p.pause_requested||p.credit_exhausted||run.state==='paused'?'积分已冻结，继续处理后再累计。':run.state==='queued'?'尚未开始处理，积分不会增加。':dynamic?'已按实际进度扣减；余额归零时暂停，积分充足后继续。':'按有效处理时间和已完成工作累计，完成后结算。';
+    p.pause_requested||p.credit_exhausted||run.state==='paused'?'积分已冻结，继续处理后再累计。':run.state==='queued'?'尚未开始处理，积分不会增加。':run.state==='running'&&p.model_waiting?'等待模型处理名额，积分不会增加。':dynamic?'已按实际进度扣减；余额归零时暂停，积分充足后继续。':'按有效处理时间和已完成工作累计，完成后结算。';
   return '<section class="authoring-credit-meter" aria-label="积分消耗"><div><span>'+caption+'</span><strong role="status">'+formatPoints(n)+' <small>积分</small></strong></div><div class="authoring-credit-meta">'+(dynamic?'<span>可用余额 '+formatPoints(p.available_points??'0')+' 积分</span>':'')+'<span>有效处理 '+esc(elapsedLabel(p.active_ms))+'</span><span>'+note+'</span></div><details><summary>计费说明</summary><p>'+(dynamic?'有积分即可开始，按服务端有效处理时间和已完成工作扣减；排队和暂停不扣。余额归零保存后暂停，到账后续跑。主动结束保留已扣部分，平台失败退回已扣积分，全程不超过原任务价格。':p.policy==='authoring_progress_v1'?'排队、暂停、执行连接中断时不累计。暂停冻结累计金额；结束任务按已消耗积分结算，其余释放。平台失败不收费。任务完成时按原任务价格结算，全程不超过该价格。':'本次任务保留提交时的规则：成功交付后结算，取消或失败不扣费。')+'</p></details></section>';
 }
 import type {CommercePriceMetadata} from './billing-types.js';

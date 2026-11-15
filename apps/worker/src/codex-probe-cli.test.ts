@@ -9,6 +9,18 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const fake = fileURLToPath(new URL('../test-fixtures/codex/fake-codex.mjs', import.meta.url));
 const cli = fileURLToPath(new URL('./codex-probe-cli.js', import.meta.url));
 
+test('in-memory probe refuses managed or production execution before reading files or adapter config', () => {
+  for (const restriction of [{ BB_EXECUTION_ENROLLMENT_FILE: '/missing/private-context.json' }, { NODE_ENV: 'production' }]) {
+    const child = spawnSync(process.execPath, [cli, '--prompt-file', '/missing/private-prompt.txt'], {
+      encoding: 'utf8', timeout: 10000,
+      env: { PATH: process.env.PATH, BB_CODEX_BIN: '/missing/command', ...restriction },
+    });
+    assert.equal(child.status, 2);
+    assert.equal(child.stdout, '');
+    assert.equal(child.stderr, 'CODEX_PROBE_REQUIRES_DURABLE_LEASE\n');
+  }
+});
+
 // Windows cannot execute the fixture's POSIX shebang. Redirect only this synthetic
 // command to Node; the CLI, adapter arguments, validator and process stream stay real.
 async function fixtureLauncher(dir: string): Promise<string[]> {

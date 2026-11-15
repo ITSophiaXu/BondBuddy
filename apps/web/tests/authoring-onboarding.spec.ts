@@ -30,7 +30,8 @@ function fixture() {
     materials: [] as Dto<'MaterialResponse'>[], uploads: new Map<string, { request: Dto<'UploadCreateRequest'>; bytes?: Buffer }>(),
     locked: [] as LockedInput[], preflights: [] as Dto<'PreflightRequest'>[], quotes: [] as Dto<'FixedQuoteRequest'>[],
     executes: [] as Dto<'ExecuteRequest'>[], runs: new Map<string, Dto<'RunResponse'>>(), quote: null as Dto<'FixedQuoteResponse'>['quote'],
-    calls: [] as Call[], unexpected: [] as string[], errors: [] as string[], failNextPatch: false
+    calls: [] as Call[], unexpected: [] as string[], errors: [] as string[], failNextPatch: false,
+    holdNextProjectGet: null as { started: () => void; release: Promise<void> } | null
   };
 }
 type State = ReturnType<typeof fixture>;
@@ -86,7 +87,12 @@ async function install(page: Page, state = fixture()) {
       state.project = { ...state.project, ...structuredClone(body), draft_revision: state.project.draft_revision + 1, updated_at: now };
       return reply(route, 'ProjectResponse', state.project);
     }
-    if (path === `/projects/${projectId}` && method === 'GET') return reply(route, 'ProjectResponse', state.project);
+    if (path === `/projects/${projectId}` && method === 'GET') {
+      const project = structuredClone(state.project), held = state.holdNextProjectGet;
+      state.holdNextProjectGet = null;
+      if (held) { held.started(); await held.release; }
+      return reply(route, 'ProjectResponse', project);
+    }
     if (path === `/projects/${projectId}/tasks` && method === 'GET') return reply(route, 'ProjectTasksResponse', taskPage(projectId, [...state.runs.values()], state.project.kind));
     if (path === `/projects/${projectId}/events` && method === 'GET') {
       const after = Number(url.searchParams.get('after') ?? 0);
@@ -222,6 +228,11 @@ async function existingDetails(page: Page, state = fixture()) {
   await expect(page.locator('#draft-form')).toBeVisible(); await expect(page.locator('#save-state')).toHaveText('已保存');
   return state;
 }
+async function expectProjectName(page: Page, name: string, contextName = name) {
+  await expect(page.locator('[data-project-context-name]')).toHaveText(contextName);
+  await expect(page.locator('#project-heading')).toHaveText(name);
+  await expect(page.locator('#project-heading')).toHaveAttribute('title', name);
+}
 async function fillOptionalGroups(page: Page) {
   for (const group of await groups(page).all()) await setOpen(group, true);
   await page.locator('#registration_amount').fill('2.5');
@@ -323,6 +334,116 @@ test('basic edits preserve custom name, source metadata, unusual reporting perio
   await setOpen(groupFor(page, '#registration_amount'), true); await expect(page.locator('#registration_amount')).toHaveValue('20');
   await setOpen(groupFor(page, '#funding-rows'), true); await expect(page.locator('#use_amount_0')).toHaveValue('5000');
   expect(state.project.update_details?.source_prospectuses).toEqual(retained.source_prospectuses); expectNoExecution(state);
+});
+
+test('project rename after creating and going back keeps the context and heading current across reentry', async ({ page }) => {
+  const state = await install(page); await page.goto('/#/new');
+  await page.locator('#issuer').fill('合成沧州测试发行人有限公司');
+  await page.locator('#create-form button[type=submit]').click();
+  await expect(page.locator('#materials-title')).toBeVisible();
+  const originalName = state.project.name;
+  await expectProjectName(page, originalName);
+  await page.locator('#previous-details').click();
+  await expect(page.locator('#draft-form')).toBeVisible();
+  const newName = '合成中捷农场测试发行人有限公司-交易商协会-MTN · 中期票据-募集书更新';
+  await page.locator('#issuer').fill('合成中捷农场测试发行人有限公司');
+  await page.locator('#name').fill(newName);
+  await page.locator('#continue-materials').click();
+  await expect(page.locator('#materials-title')).toBeVisible();
+  await expectProjectName(page, newName);
+  await screenshot(page, 'project-rename-saved.png');
+  expect(state.created).toHaveLength(1);
+  expect(state.patches.at(-1)?.body.name).toBe(newName);
+  expect(state.project.name).toBe(newName);
+  await page.evaluate(() => { location.hash = '/new'; });
+  await expect(page.locator('#create-form')).toBeVisible();
+  await page.evaluate(id => { location.hash = `/projects/${id}?step=materials`; }, projectId);
+  await expect(page.locator('#materials-title')).toBeVisible();
+  await expectProjectName(page, newName);
+  await page.reload();
+  await expect(page.locator('#materials-title')).toBeVisible();
+  await expectProjectName(page, newName);
+  expectNoExecution(state);
+});
+
+test('project rename autosave updates context and title without leaving the details step', async ({ page }) => {
+  const state = await existingDetails(page);
+  await expectProjectName(page, state.project.name);
+  const newName = '自动保存后的项目名称';
+  await page.locator('#name').fill(newName);
+  await expect(page.locator('#save-state')).toHaveText('已保存');
+  await expectProjectName(page, newName);
+  await expect(page.locator('#draft-form')).toBeVisible();
+  expect(state.project.name).toBe(newName); expectNoExecution(state);
+});
+
+test('project rename failure keeps confirmed names until an explicit retry succeeds', async ({ page }) => {
+  const state = await existingDetails(page), originalName = state.project.name;
+  await expectProjectName(page, originalName);
+  state.failNextPatch = true;
+  const newName = '网络恢复后确认的项目名称';
+  await page.locator('#name').fill(newName); await page.locator('#continue-materials').click();
+  await expect(page.locator('#save-state')).toHaveText('保存未确认');
+  await expectProjectName(page, originalName);
+  await expect(page.locator('#name')).toHaveValue(newName);
+  expect(state.project.name).toBe(originalName);
+  await page.locator('#continue-materials').click();
+  await expect(page.locator('#materials-title')).toBeVisible();
+  await expectProjectName(page, newName);
+  expect(state.patches.map(patch => patch.ifMatch)).toEqual(['1', '1']); expectNoExecution(state);
+});
+
+test('project rename conflict retains confirmed names and reload updates them to the server name', async ({ page }) => {
+  const state = await existingDetails(page), originalName = state.project.name;
+  await expectProjectName(page, originalName);
+  const serverName = '另一页面已经保存的项目名称';
+  state.project = { ...structuredClone(state.project), name: serverName, draft_revision: 2 };
+  await page.locator('#name').fill('本页未保存的项目名称'); await page.locator('#continue-materials').click();
+  await expect(page.locator('#save-state')).toHaveText('有版本冲突');
+  await expectProjectName(page, originalName);
+  expect(state.project.name).toBe(serverName);
+  page.once('dialog', dialog => dialog.accept()); await page.locator('#reload-draft').click();
+  await expect(page.locator('#save-state')).toHaveText('已保存');
+  await expect(page.locator('#name')).toHaveValue(serverName);
+  await expectProjectName(page, serverName);
+  expect(state.patches).toHaveLength(1); expectNoExecution(state);
+});
+
+test('project rename preserves a different return project in the navigation context', async ({ page }) => {
+  const state = await install(page), parentId = 'synthetic-parent-project';
+  const parent = { ...structuredClone(state.project), project_id: parentId, name: '原项目名称应当保留' };
+  state.project.source_project_id = parentId;
+  await page.route(`**/api/v1/projects/${parentId}`, route => reply(route, 'ProjectResponse', parent));
+  await page.goto(`/#/projects/${projectId}?step=details&return_project=${parentId}`);
+  await expectProjectName(page, state.project.name, parent.name);
+  const newName = '续改项目的新名称';
+  await page.locator('#name').fill(newName); await page.locator('#continue-materials').click();
+  await expect(page.locator('#materials-title')).toBeVisible();
+  await expectProjectName(page, newName, parent.name);
+  await expect(page.locator('.project-context a')).toHaveAttribute('href', `#/projects/${parentId}/files`);
+  expect(state.project.name).toBe(newName); expectNoExecution(state);
+});
+
+test('project rename is not reverted by a delayed context request for the old name', async ({ page }) => {
+  const state = fixture(), originalName = state.project.name;
+  let release!: () => void, markStarted!: () => void;
+  const started = new Promise<void>(resolve => { markStarted = resolve; });
+  state.holdNextProjectGet = { started: markStarted, release: new Promise<void>(resolve => { release = resolve; }) };
+  await install(page, state);
+  try {
+    await page.goto(`/#/projects/${projectId}?step=details`); await started;
+    await expect(page.locator('#draft-form')).toBeVisible();
+    const newName = '旧读取请求返回后仍保留的新名称';
+    await page.locator('#name').fill(newName); await page.locator('#continue-materials').click();
+    await expect(page.locator('#materials-title')).toBeVisible();
+    await expectProjectName(page, newName);
+    const oldResponse = page.waitForResponse(async response => response.request().method() === 'GET'
+      && new URL(response.url()).pathname === `/api/v1/projects/${projectId}` && (await response.json()).name === originalName);
+    release(); await (await oldResponse).finished();
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expectProjectName(page, newName);
+    expect(state.project.name).toBe(newName); expectNoExecution(state);
+  } finally { release(); }
 });
 
 test('submitting a hidden malformed amount opens its group and focuses the precise error before create', async ({ page }) => {

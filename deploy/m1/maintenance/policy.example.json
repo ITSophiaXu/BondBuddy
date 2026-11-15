@@ -1,0 +1,12 @@
+{
+  "maintenance_lock": "/run/lock/bondbuddy-disk-maintenance.lock",
+  "apt_downloads": true,
+  "archived_journal": true,
+  "journal_retention_days": 30,
+  "image_candidates": [],
+  "protected_images": [],
+  "deployment_locks": [],
+  "guards": [],
+  "protection_inventory_complete": false,
+  "space_paths": ["/"]
+}

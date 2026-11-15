@@ -187,7 +187,7 @@ export class FileWorkspace {
     return true;
   }
   dispose(){this.workpapers?.dispose();this.entry?.dispose();this.controller.abort();this.downloads.dispose();clearTimeout(this.timer);this.panel?.dispose();this.dialog?.remove();}
-  private request<T>(method:'GET'|'POST',suffix:string,body?:unknown,headers:Record<string,string>={}){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id!)}/project-files${suffix}`,body,headers,this.controller.signal);}
+  private request<T>(method:'GET'|'POST',suffix:string,body?:unknown,headers:Record<string,string>={},signal=this.controller.signal){return this.api.request<T>(method,`/projects/${encodeURIComponent(this.id!)}/project-files${suffix}`,body,headers,signal);}
   async render(){
     this.shell('<p role="status">正在读取文件生成…</p>','generate');
     if(!this.id){await this.chooseProject();return;}
@@ -216,11 +216,19 @@ export class FileWorkspace {
   }
   private sourceDestination():string{const mode=new URLSearchParams(location.hash.split('?')[1]).get('mode');return this.entryHasOriginalOperation()||this.entryIntent||this.entryAdopted?'documents':mode==='documents'?'documents':'prepare';}
   private async continueFromSource(){
-    this.state=await this.request<Workspace>('GET','/workspace');
-    const source=this.state.source;if(!source)return;
+    this.status('正在核对募集说明书…');
+    const deadline=AbortSignal.timeout(15_000);
+    try{this.state=await this.request<Workspace>('GET','/workspace',undefined,{},AbortSignal.any([this.controller.signal,deadline]));}
+    catch(error){if(deadline.aborted&&!this.controller.signal.aborted)throw new UserFacingError('募集说明书状态读取超时，请重试。已保存的文件不受影响。');throw error;}
+    const source=this.state.source;if(!source)throw new UserFacingError('项目当前募集说明书已变化，请刷新页面后重新选择。');
     if(source.version_id!==this.panel?.selectedVersionId)throw new UserFacingError('项目募集说明书已变化，请刷新页面，核对本次生成依据后继续。');
     const destination=this.sourceDestination();
-    this.state=await this.request<Workspace>('POST','/source',{source_version_id:source.version_id,expected_selection_revision:source.selection_revision});
+    // Unified preparation pins the source when quoting/submitting selected files.
+    // The legacy endpoint imports the whole document and saves every M4 draft.
+    if(destination==='documents'){
+      this.status('正在准备文件清单…');
+      this.state=await this.request<Workspace>('POST','/source',{source_version_id:source.version_id,expected_selection_revision:source.selection_revision});
+    }
     if(this.live())location.hash=this.href({step:destination});
   }
   private lockPreparation(){this.syncSourceAction();this.paintSupportUpload();document.querySelectorAll<HTMLElement>('.pf-generation-grid,.pf-optional-grid,.pf-original-operations').forEach(n=>n.inert=this.busy);const b=document.querySelector<HTMLButtonElement>('#pf-generate');if(b&&this.busy)b.disabled=true;document.querySelectorAll<HTMLButtonElement>('[data-batch-retry],[data-batch-cancel],[data-pf-download]').forEach(button=>button.disabled=this.busy);const refresh=document.querySelector<HTMLButtonElement>('#pf-refresh-results');if(refresh){refresh.disabled=this.busy||this.resultsReading!==undefined;refresh.textContent=this.resultsReading!==undefined?'正在刷新…':'刷新生成状态';}}
