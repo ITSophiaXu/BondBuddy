@@ -122,15 +122,23 @@ test('self-consistent hashes cannot legitimize a modified tariff, fixed commitme
   }
 });
 
-test('bounded version scanning includes all 24 boot attempts; the former 94N+48 fee reserve is insufficient',async t=>{
-  assert.equal(quoteSsmRequestBound(1440),510288);
-  assert.equal(quoteSsmRequestBound(0),528);
+test('both nodes include persistent-gated fault boots and six scans; low reserves fail and conservative reserves remain valid',async t=>{
+  assert.equal(quoteSsmRequestBound(1440),319944);
+  assert.equal(quoteSsmRequestBound(0),264);
   const f=await quoteFixture(t,{at:Date.parse('2026-11-15T16:00:00Z')});
-  f.quote.components.find(c=>c.kind==='secret').running_cny_per_node_hour=.2;
-  f.config.quote_sha256=sha256(canonical(f.quote));await f.save();
-  const oldApi=Math.ceil((94*1440+48)/10000)*.4;
-  assert.ok(8.4+2*.2*24>=6+oldApi,'the earlier quote would cover the old branch');
-  await assert.rejects(f.refresh(),/QUOTE_SECRET_CALL_BOUND/);
+  const refreshed=await f.refresh();
+  assert.equal(refreshed.quote.refresh_bounds.remaining_window_minutes,1440);
+  assert.equal(refreshed.quote.refresh_bounds.ssm_calls_upper_bound,319944);
+  assert.equal(refreshed.quote.refresh_bounds.ssm_api_upper_bound_cny,12.8);
+  for(const [coefficient,constant,rate] of [[94,48,.2],[354,528,.4],[618,1056,.8]])await t.test(`checks ${coefficient}N+${constant} reserve`,async st=>{
+    const previous=await quoteFixture(st,{at:Date.parse('2026-11-15T16:00:00Z')});
+    previous.quote.components.find(c=>c.kind==='secret').running_cny_per_node_hour=rate;
+    previous.config.quote_sha256=sha256(canonical(previous.quote));await previous.save();
+    const oldApi=Math.ceil((coefficient*1440+constant)/10000)*.4;
+    assert.ok(8.4+2*rate*24>=6+oldApi,'the earlier quote would cover its old branch');
+    if(coefficient===94)await assert.rejects(previous.refresh(),/QUOTE_SECRET_CALL_BOUND/);
+    else assert.equal((await previous.refresh()).quote.refresh_bounds.ssm_calls_upper_bound,319944);
+  });
 });
 
 test('the shared automatic/manual tick lock serializes publication across independent callers',async t=>{

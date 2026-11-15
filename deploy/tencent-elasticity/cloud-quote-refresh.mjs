@@ -15,9 +15,11 @@ const finite=v=>Number.isFinite(v)&&v>=0;
 const flights=new Map();
 export function quoteSsmRequestBound(minutes) {
   requireThat(integer(minutes),'QUOTE_SECRET_TIME_BOUND');
-  // 68 renewal calls + 22 (List + <=10 Get) broker calls each minute,
-  // plus <=24 attempts * <=11 calls for each of at most N+2 starts.
-  return 354*minutes+528;
+  // N covers the whole quote window, including fault/manual reboots.
+  // Requires the persistent 60s entry gate to hold through all boot attempts:
+  // 68 renewal + 22 heartbeat calls/minute, plus EACH of two nodes making
+  // <=N+2 boots * <=6 attempts * (1 List + <=10 Get).
+  return 222*minutes+264;
 }
 
 function refreshPolicy(config, at) {
@@ -56,7 +58,7 @@ function priceTemplate(template, config, at, end) {
   const rate=template.components.reduce((s,c)=>s+c.running_cny_per_node_hour,0);
   requireThat(compute.running_cny_per_node_hour===.8&&compute.stopped_cny_per_node_hour===0&&
     rate*2<=config.total_cap_cny_per_hour+1e-9&&config.total_cap_cny_per_hour<=4&&config.period_cap_cny===48,'QUOTE_RATE_CAP');
-  return {remaining_control_minutes:minutes,ssm_calls_upper_bound:calls,ssm_api_upper_bound_cny:api};
+  return {remaining_window_minutes:minutes,ssm_calls_upper_bound:calls,ssm_api_upper_bound_cny:api};
 }
 
 /** Official Lighthouse v20200324: all Traffic* quantities below are bytes.
