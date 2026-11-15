@@ -13,6 +13,31 @@ const storageOwnerLabel = 'com.bondbuddy.browser-input';
 const storageMemory = 512 * 1024 * 1024;
 const storageNanoCpus = 500_000_000;
 
+export function browserStorageNetworkName(name) {
+  if (!/^bb-prospectus-browser-[a-f0-9]{32}$/.test(name)) throw Error('Invalid browser fixture identity');
+  return `${name}-net`;
+}
+
+export function browserStorageNetworkArguments(name) {
+  return ['network', 'create', '--driver', 'bridge', '--label', `${storageOwnerLabel}=${name}`,
+    browserStorageNetworkName(name)];
+}
+
+export function ownedBrowserStorageNetwork(network, name, expectedId) {
+  if (!/^[a-f0-9]{64}$/.test(network?.Id ?? '') || (expectedId !== undefined && network.Id !== expectedId) ||
+      network.Name !== browserStorageNetworkName(name) || network.Labels?.[storageOwnerLabel] !== name ||
+      network.Driver !== 'bridge' || network.Scope !== 'local' || network.Internal !== false ||
+      !network.Containers || typeof network.Containers !== 'object' || Array.isArray(network.Containers))
+    throw Error('Browser network ownership mismatch');
+  return network.Id;
+}
+
+export function emptyBrowserStorageNetwork(network, name, expectedId) {
+  const id = ownedBrowserStorageNetwork(network, name, expectedId);
+  if (Object.keys(network.Containers).length) throw Error('Browser network still has attached containers');
+  return id;
+}
+
 export function browserStorageHostPort(value) {
   if (value === undefined) return undefined;
   if (typeof value !== 'string' || !/^[1-9][0-9]{0,4}$/.test(value) || Number(value) > 65535)
@@ -23,6 +48,7 @@ export function browserStorageHostPort(value) {
 export function browserStorageArguments(name, requestedPort) {
   const port = requestedPort === undefined ? '' : browserStorageHostPort(String(requestedPort));
   return ['run', '-d', '--name', name, '--label', `${storageOwnerLabel}=${name}`,
+    '--network', browserStorageNetworkName(name),
     '--memory', '512m', '--memory-swap', '512m', '--cpus', '0.5',
     '-p', `127.0.0.1:${port}:10000`, storageImage,
     'azurite-blob', '--blobHost', '0.0.0.0', '--skipApiVersionCheck', '--silent'];
@@ -31,13 +57,19 @@ export function browserStorageArguments(name, requestedPort) {
 export function ownedBrowserStorage(container, name, expectedId) {
   if (!/^[a-f0-9]{64}$/.test(container?.Id ?? '') || (expectedId !== undefined && container.Id !== expectedId) ||
       container.Name !== `/${name}` || container.Config?.Image !== storageImage ||
-      container.Config?.Labels?.[storageOwnerLabel] !== name)
+      container.Config?.Labels?.[storageOwnerLabel] !== name ||
+      container.HostConfig?.NetworkMode !== browserStorageNetworkName(name))
     throw Error('Browser storage ownership mismatch');
   return container.Id;
 }
 
-export function browserStoragePort(container, name, expectedId, requestedPort) {
+export function browserStoragePort(container, name, expectedId, requestedPort, expectedNetworkId) {
   ownedBrowserStorage(container, name, expectedId);
+  const networks = container.NetworkSettings?.Networks;
+  const network = networks?.[browserStorageNetworkName(name)];
+  if (!networks || Object.keys(networks).length !== 1 || !/^[a-f0-9]{64}$/.test(network?.NetworkID ?? '') ||
+      (expectedNetworkId !== undefined && network.NetworkID !== expectedNetworkId))
+    throw Error('Browser storage network differs from the owned fixture');
   const bindings = container.NetworkSettings?.Ports?.['10000/tcp'];
   if (bindings?.length !== 1 || bindings[0].HostIp !== '127.0.0.1')
     throw Error('Browser storage must bind only to IPv4 loopback');
@@ -77,7 +109,7 @@ async function main() {
   const databaseName = `bb_prospectus_quality_browser_${id}`;
   const storageName = `bb-prospectus-browser-${id}`;
   const maintenance = new URL(template); maintenance.pathname = '/postgres';
-  let mayHaveDatabase = false, mayHaveStorage = false, storageId, failure;
+  let mayHaveDatabase = false, mayHaveStorage = false, mayHaveNetwork = false, storageId, networkId, failure;
   const docker = args => {
     const result = spawnSync('docker', args, { env, encoding: 'utf8', timeout: 60_000 });
     if (result.error || result.status !== 0) throw Object.assign(Error(`Docker test fixture failed (${args[0]})`), { cause: result });
@@ -89,6 +121,13 @@ async function main() {
     try { return await work(client); } finally { await client.end(); }
   };
   try {
+    // The fixture owns a private bridge; it never depends on the daemon's
+    // default bridge or accepts a caller-selected existing network.
+    mayHaveNetwork = true;
+    const startedNetworkId = docker(browserStorageNetworkArguments(storageName));
+    if (!/^[a-f0-9]{64}$/.test(startedNetworkId)) throw Error('Invalid browser network identity');
+    networkId = startedNetworkId;
+    emptyBrowserStorageNetwork(JSON.parse(docker(['network', 'inspect', networkId]))[0], storageName, networkId);
     // The parent owns exact resource names, including cleanup after a timed-out child.
     await withDatabase(async client => {
       if ((await client.query('SELECT 1 FROM pg_database WHERE datname=$1', [databaseName])).rowCount)
@@ -101,7 +140,7 @@ async function main() {
     if (!/^[a-f0-9]{64}$/.test(startedId)) throw Error('Invalid browser storage container identity');
     storageId = startedId;
     const storagePort = browserStoragePort(JSON.parse(docker(['inspect', storageId]))[0],
-      storageName, storageId, requestedStoragePort);
+      storageName, storageId, requestedStoragePort, networkId);
     const database = new URL(template); database.pathname = `/${databaseName}`;
     const result = spawnSync(process.execPath, ['--test', '--test-reporter=tap',
       'scripts/prospectus-input-browser.integration.mjs'], {
@@ -121,8 +160,20 @@ async function main() {
         if (inspected.error) throw inspected.error;
         if (inspected.status === 0) {
           const ownedId = ownedBrowserStorage(JSON.parse(inspected.stdout)[0], storageName, storageId);
-          docker(['rm', '--force', ownedId]);
+          if (JSON.parse(inspected.stdout)[0].State?.Running) docker(['stop', '--time', '15', ownedId]);
+          docker(['rm', ownedId]);
         } else if (!/No such (object|container)/i.test(inspected.stderr)) throw Error('Cannot verify browser storage cleanup');
+      } catch (error) { cleanupErrors.push(error); }
+    }
+    if (mayHaveNetwork) {
+      try {
+        const inspected = spawnSync('docker', ['network', 'inspect', networkId ?? browserStorageNetworkName(storageName)],
+          { env, encoding: 'utf8', timeout: 30_000 });
+        if (inspected.error) throw inspected.error;
+        if (inspected.status === 0) {
+          const ownedId = emptyBrowserStorageNetwork(JSON.parse(inspected.stdout)[0], storageName, networkId);
+          docker(['network', 'rm', ownedId]);
+        } else if (!/No such (object|network)/i.test(inspected.stderr)) throw Error('Cannot verify browser network cleanup');
       } catch (error) { cleanupErrors.push(error); }
     }
     if (mayHaveDatabase) {
