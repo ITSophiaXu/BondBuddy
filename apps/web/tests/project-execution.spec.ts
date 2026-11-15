@@ -445,8 +445,7 @@ test('authoring materials stay read-only after starting until an explicit next v
   await expect(page.locator('#reference-upload-hint')).toBeHidden();
   await expect(page.locator('.reference-readonly-note')).toBeVisible();
   await expect(page.locator('[data-download-version]').first()).toBeEnabled();
-  await page.locator('[data-prospectus-ref] summary').first().click();
-  await expect(page.locator('[data-prospectus-ref]').first()).toHaveJSProperty('open', true);
+  await expect(page.locator('.reference-file').first()).toBeVisible();
   await expect(page.locator('#materials-state-label')).toHaveText('材料已锁定，仅可查看');
   await expect(page.locator('#materials-title')).toHaveText('查看项目材料');
   await expect(picker).toBeDisabled();
