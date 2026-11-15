@@ -62,7 +62,7 @@ export function checkedRunKinds(kinds: readonly RunKind[] = TASK_KINDS): RunKind
   return [...kinds];
 }
 
-async function event(client:PoolClient, r:any, state:string, stage:string|null, reason:string, errorCode?:string, type='run.state_changed', audit:Record<string,string>={}) {
+async function event(client:PoolClient, r:any, state:string, stage:string|null, reason:string, errorCode?:string, type='run.state_changed', audit:Record<string,string|number>={}) {
   await syncAuthoringProgress(client,r,{state,stage,reason});
   const seq=r.event_cursor+1, id=uid(), trace=r.id;
   const payload={reason,channel:r.channel ?? 'production',...(errorCode?{error_code:errorCode}:{}),...audit};
@@ -799,7 +799,12 @@ export async function checkpointStage(pool:Pool,lease:Lease,stage:string,value:R
       checkpoint=checkpoint || jsonb_build_object('stages', COALESCE(checkpoint->'stages','{}'::jsonb) || jsonb_build_object($2::text,$3::jsonb))
       WHERE id=$1 RETURNING checkpoint`,[lease.jobId,stage,JSON.stringify(value)]);
     lease.checkpoint=q.rows[0].checkpoint;
-    if(completed)await event(client,r,'running',stage,'stage_completed',undefined,'run.progress');
+    if(completed){
+      const started=(await client.query(`SELECT GREATEST(0,EXTRACT(EPOCH FROM (now()-occurred_at))*1000)::bigint AS ms
+        FROM bb_run_events WHERE owner_user_id=$1 AND run_id=$2 AND stage=$3 AND payload->>'reason'='stage_started'
+        ORDER BY seq DESC LIMIT 1`,[lease.owner,lease.runId,stage])).rows[0];
+      await event(client,r,'running',stage,'stage_completed',undefined,'run.progress',started?{duration_ms:Number(started.ms)}:{});
+    }
   });
 }
 
