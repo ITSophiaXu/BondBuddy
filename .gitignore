@@ -107,6 +107,7 @@ outputs/*
 docs/acceptance/reporting-period-hints-20261105/*
 !docs/acceptance/reporting-period-hints-20261105/*.png
 !docs/FILE-TEMPLATE-IMPLEMENTATION.md
+!docs/execution-payment-denial-recovery.md
 /.alipay-sandbox.json
 
 # Split-deployment documentation and synthetic configuration examples.

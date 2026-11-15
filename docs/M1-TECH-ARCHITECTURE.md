@@ -964,6 +964,8 @@ The explicit standalone four-lane profile sets `BB_UPLOAD_CONFIRMATION_CONCURREN
 
 执行池继续使用唯一 PostgreSQL 的既有任务租约与模型调用账本。新增迁移 `0181_execution_node_capacity.sql` 保存可信云实例身份、启动代际、预期服务清单与持久云操作；公共控制类型由 `packages/contracts/src/execution-capacity.ts` 定义，不增加公开业务 DTO 或第二任务队列。
 
+付款前置拒绝的恢复由 `0184_execution_run_authorization_denial.sql` 保存独立 terminal denial 与持久扩容阻断。可信原字节归档、同一 RequestId 的受控云审计派生证明、PG 不可变请求/token/manifest 共同验证后才允许幂等 CAS 结案；裸错误或空库存不释放责任。报价不能解除阻断，显式纠正政策读回及独立审核 CAS 只允许之后的新操作，不重发原调用。详见[付款拒绝恢复规程](execution-payment-denial-recovery.md)。原节点租约、注册与正向排空不变。
+
 默认仍为全群四个模型调用；经供应商和费用策略明确授权后才可提高总额。每节点四槽由数据库统一约束，跨多个执行进程共享。托管模式在领取事务及模型额度写入时校验节点与服务代际；切换前必须排空旧消费者。排空停止新领取，但当前有效租约可继续模型阶段、续租和成果提交。预期服务缺席、心跳过期或未知调用均不能充当进程已经结束的证据。
 
 云停止调用前持久化不可逆操作意图，响应丢失保持未知且禁止重新启动。准确云实例、启动代际及最新操作请求编号匹配的完成证据才授权回收旧容量；未知用量、费用与成果回执仍由原账本处理。积压只统计已经准入并具有可执行依赖的任务，共享来源与计划等待项不计需求。现有运维定时入口推进异步操作和空闲检查，未配置控制器时不调用云 API。
