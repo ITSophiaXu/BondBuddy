@@ -148,6 +148,16 @@ test('the shared automatic/manual tick lock serializes publication across indepe
   const next=await acquireControlTick(f.config.registration_directory,{now:()=>f.state.at});assert.equal(typeof next,'function');await next();
 });
 
+test('a rollback below the persisted tick clock closes admission before any quote or cloud request',async t=>{
+  const f=await quoteFixture(t);let budget=true;
+  const release=await acquireControlTick(f.config.registration_directory,{now:()=>f.state.at});await release();f.state.at-=1;
+  const control={listPendingOperations:async()=>[],snapshot:async()=>({policy:{managed_nodes:true,budget_available:budget,revision:1,expense_policy_sha256:h},nodes:[]}),
+    setAdmissionBudget:async(_,v)=>{budget=v;}};
+  const handler=createExecutionPoolOpsHandler({control,configPath:f.configPath,expenseLedger:async()=>{throw Error('must not read ledger');},
+    dependencies:{now:()=>f.state.at,cloud:{inventory:async()=>{throw Error('must not query cloud');},transport:f.transport}}});
+  await handler.tick();assert.equal(budget,false);assert.equal(f.state.calls,0);
+});
+
 test('TC3 exposes only the two exact Lighthouse reads and preserves the Run status action',async()=>{
   const actions=[];const transport=new TencentTransport({region:'ap-beijing',credentials:async()=>({secretId:'synthetic',secretKey:'synthetic',token:'synthetic',expiresAt:Date.now()+600000}),
     fetchImpl:async(url,o)=>{actions.push(o.headers['X-TC-Action']);if(url.includes('lighthouse'))assert.equal(o.headers['X-TC-Version'],'2020-03-24');return new Response(JSON.stringify({Response:{RequestId:'synthetic'}}));}});

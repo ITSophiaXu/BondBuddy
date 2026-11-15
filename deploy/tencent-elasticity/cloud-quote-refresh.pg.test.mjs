@@ -26,6 +26,11 @@ test('real isolated PG closes/reopens admission across midnight and API outage w
     await handler.tick();assert.equal((await control.snapshot()).policy.budget_available,false);
     f.state.at+=61000;t.mock.timers.setTime(f.state.at);cloud.transport=f.transport;
     await handler.tick();assert.equal((await control.snapshot()).policy.budget_available,true);
+    const calls=f.state.calls;
+    f.state.at-=1;t.mock.timers.setTime(f.state.at);await handler.tick();
+    assert.equal((await control.snapshot()).policy.budget_available,false);assert.equal(f.state.calls,calls);
+    f.state.at+=60001;t.mock.timers.setTime(f.state.at);await handler.tick();
+    assert.equal((await control.snapshot()).policy.budget_available,true);
     const ledger=await executionCloudExpenseLedger(pool);assert.equal(ledger.nodes.length,0);assert.equal(ledger.operations.length,0);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM bb_model_capacity_holders')).rows[0].n,0);
   });

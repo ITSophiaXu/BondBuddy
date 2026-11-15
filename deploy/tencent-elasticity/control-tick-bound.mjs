@@ -19,6 +19,7 @@ export async function acquireControlTick(directory,{now=Date.now}={}){
     try{previous=await readPrivateJson(path);}catch(error){if(error.code!=='ENOENT')throw error;}
     const at=now();requireThat(Number.isSafeInteger(at)&&at>=0,'CONTROL_RATE_CLOCK');
     if(previous){requireThat(Number.isSafeInteger(previous.last_started_at),'CONTROL_RATE_STATE');
+      requireThat(at>=previous.last_started_at,'CONTROL_RATE_CLOCK_ROLLBACK');
       if(at<previous.last_started_at+60000){await file.close();return null;}}
     await replacePrivateJson(path,{last_started_at:at});
     return ()=>file.close();
