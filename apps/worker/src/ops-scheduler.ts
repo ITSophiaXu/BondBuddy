@@ -1,3 +1,6 @@
+import {bindExecutionRegistration,executionCloudExpenseLedger,executionCapacityControl} from '@bondbuddy/api/execution-capacity';
+import {fileURLToPath} from 'node:url';
+import {resolve,dirname} from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { hostname } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -25,7 +28,7 @@ import { OPERATOR_IMPORT_SOURCE, OperatorImportAdapter, SSE_BOND_SOURCE, SseBond
 
 export type TaskOutcome = { ok: boolean; errorCode?: string; detail?: Record<string, string | number> };
 export type ScheduledTask = { name: OpsScheduledTask; intervalMs: number; leaseMs: number; run: () => Promise<TaskOutcome> };
-export type SchedulerOptions = { pool: Pool; tasks: ScheduledTask[]; owner?: string; tickMs?: number; jitter?: number; log?: (line: Record<string, unknown>) => void };
+export type SchedulerOptions = { pool: Pool; tasks: ScheduledTask[]; owner?: string; tickMs?: number; jitter?: number; log?: (line: Record<string, unknown>) => void; executionPoolTick?:()=>Promise<void> };
 
 const safeCode = /^[a-z][a-z0-9_]{0,63}$/;
 const token = () => randomBytes(12).toString('base64url');
@@ -66,6 +69,7 @@ export class OpsScheduler {
   /** One pass over all tasks; runs each task this instance wins, one at a time to keep memory flat. */
   async tick() {
     const { pool, tasks, jitter = 0.1, log = () => {} } = this.options;
+    if(!this.stopped&&this.options.executionPoolTick){try{await this.options.executionPoolTick();}catch{log({scheduler:'execution_pool_tick_failed'});}}
     for (const task of tasks) {
       if (this.stopped) return;
       let lease: string | null;
@@ -239,7 +243,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   let scheduler: OpsScheduler;
   try {
     const tasks = tasksFromEnv(pool);
-    scheduler = new OpsScheduler({ pool, tasks, tickMs: intEnv(process.env, 'BB_OPS_TICK_SECONDS', 5, 1, 300) * 1000, log }).start();
+    let executionPoolTick:(()=>Promise<void>)|undefined;
+    if(process.env.BB_EXECUTION_POOL_CONFIG){
+      const module=await import(pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)),'../../../deploy/tencent-elasticity/ops-handler.mjs')).href);
+      const handler=await module.createExecutionPoolOpsHandler({control:executionCapacityControl(pool),expenseLedger:()=>executionCloudExpenseLedger(pool),enrollmentBinder:(identity:Parameters<typeof bindExecutionRegistration>[1],opId:string,token:string)=>bindExecutionRegistration(pool,identity,opId,token),configPath:process.env.BB_EXECUTION_POOL_CONFIG,log});
+      executionPoolTick=()=>handler.tick();
+    }
+    scheduler = new OpsScheduler({ pool, tasks,executionPoolTick, tickMs: intEnv(process.env, 'BB_OPS_TICK_SECONDS', 5, 1, 300) * 1000, log }).start();
     log({ scheduler: 'started', owner: scheduler.owner, tasks: tasks.map(t => t.name).join(',') });
   } catch (error) {
     process.stderr.write(`ops-scheduler: ${error instanceof Error ? error.message : 'configuration failed'}\n`);
