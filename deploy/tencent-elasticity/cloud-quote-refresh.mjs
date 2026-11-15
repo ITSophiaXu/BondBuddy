@@ -4,7 +4,7 @@ import {dirname, join} from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {canonical, sha256, requireThat} from './policy.mjs';
 import {readPrivateJson} from './private-files.mjs';
-import {expensePeriod} from './costcap.mjs';
+import {expensePeriod, expensePeriodCap} from './costcap.mjs';
 
 export const QUOTE_REFRESH_VERSION='lighthouse-quote-refresh-v1';
 const OWNER='100006372392', REGION='ap-beijing', INSTANCE='lhins-4i18xeto';
@@ -37,6 +37,7 @@ function refreshPolicy(config, at) {
 }
 
 function priceTemplate(template, config, at, end) {
+  expensePeriodCap(config);
   requireThat(template?.version==='execution-cloud-price-bounds-v1'&&template.currency==='CNY'&&
     template.account_id===OWNER&&template.region===REGION&&template.policy_revision===config.expense_policy_revision&&
     sha256(canonical(template))===config.quote_sha256&&hash(config.expense_policy_sha256)&&
@@ -57,7 +58,7 @@ function priceTemplate(template, config, at, end) {
   requireThat(fixedSecret+2*secret.running_cny_per_node_hour*hours>=6+api,'QUOTE_SECRET_CALL_BOUND');
   const rate=template.components.reduce((s,c)=>s+c.running_cny_per_node_hour,0);
   requireThat(compute.running_cny_per_node_hour===.8&&compute.stopped_cny_per_node_hour===0&&
-    rate*2<=config.total_cap_cny_per_hour+1e-9&&config.total_cap_cny_per_hour<=4&&config.period_cap_cny===48,'QUOTE_RATE_CAP');
+    rate*2<=config.total_cap_cny_per_hour+1e-9&&config.total_cap_cny_per_hour<=4,'QUOTE_RATE_CAP');
   return {remaining_window_minutes:minutes,ssm_calls_upper_bound:calls,ssm_api_upper_bound_cny:api};
 }
 
