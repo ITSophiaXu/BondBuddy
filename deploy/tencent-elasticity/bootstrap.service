@@ -11,10 +11,12 @@ Environment=NODE_USE_ENV_PROXY=1
 Environment=HTTPS_PROXY=http://10.2.0.5:3128
 Environment=HTTP_PROXY=http://10.2.0.5:3128
 Environment=NO_PROXY=localhost,127.0.0.1,169.254.0.23,metadata.tencentyun.com,172.28.61.1,10.2.0.5
-# The entrypoint is installed and hashed in the reviewed image. Role enrollment
-# and the runtime adapter must be provisioned before enabling this unit.
+# The image leaves this unit disabled. The installed, hashed adapter and a
+# validated public slot binding establish persistent boot activation.
 ExecStart=/usr/bin/node /opt/bondbuddy/deploy/tencent-elasticity/bootstrap-entry.mjs
-TimeoutStartSec=300
+# One persisted admission cooldown (<=60s), bounded enrollment (<=180s),
+# then artifact and readiness checks. This does not restart a failed entry.
+TimeoutStartSec=600
 RemainAfterExit=yes
 StandardOutput=null
 StandardError=journal
