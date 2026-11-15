@@ -13,7 +13,7 @@ import {ExecutionPoolController} from './controller.mjs';
 import {bootstrapUserData} from './bootstrap.mjs';
 import {observationArchive} from './private-files.mjs';
 import {issueNodeEnrollment,createSsmEnrollmentBroker,nodeCloudCompletionMatches} from './enrollment.mjs';
-import {createControlAuthority} from './control-authority.mjs';
+import {createControlAuthority,readAuthorityRegisteredNodes} from './control-authority.mjs';
 import {canonical,sha256,validateConfig,retainedNodePin} from './policy.mjs';
 import {executionCloudClientToken} from '@bondbuddy/api/execution-capacity';
 import {createExecutionPoolOpsHandler} from './ops-handler.mjs';
@@ -186,6 +186,49 @@ test('existing controller entry creates warm requests from retained PG pins and 
   assert.equal(reserved.source_sha256,f.pin.source_sha256);assert.equal(reserved.image_sha256,f.pin.image_sha256);assert.equal(writes,1);
   const bad={...reserved,launch_manifest_sha256:'d'.repeat(64)};reserved=undefined;
   await assert.rejects(f.controller.start(bad,'synthetic-drift'),/RETAINED_NODE_REQUEST_DRIFT/);assert.equal(reserved,undefined);
+});
+
+test('restricted signing registration read avoids forbidden policy snapshots and preserves all retained Run guards',async t=>{
+  const f=await retainedFixture(t);let snapshots=0,queries=0;
+  const denied=()=>Object.assign(new Error('permission denied for table bb_execution_capacity_policy'),{code:'42501'});
+  f.control.snapshot=async()=>{snapshots++;throw denied();};
+  const registration={account_id:f.config.account_id,region:f.config.region,instance_id:f.pin.instance_id,state:'ready',destroyed_at:null,
+    source_sha256:f.pin.source_sha256,image_sha256:f.pin.image_sha256,launch_manifest_sha256:f.pin.launch_manifest_sha256,expected_services:services};
+  let rows=[registration];
+  const issuerPool={query:async(sql,parameters)=>{
+    queries++;
+    if(sql.includes('bb_execution_capacity_policy'))throw denied();
+    assert.equal(sql.replace(/\s+/g,' ').trim(),
+      'SELECT account_id,region,instance_id,state,destroyed_at,source_sha256,image_sha256,launch_manifest_sha256,expected_services FROM bb_execution_nodes WHERE account_id=$1 AND region=$2 AND instance_id=$3');
+    assert.deepEqual(parameters,[f.config.account_id,f.config.region,f.pin.instance_id]);return {rows};
+  }};
+  // This is the prior failing wiring. No extra privileges are granted to make
+  // the full snapshot work; only the authority's exact read is substituted.
+  await assert.rejects(f.cloud.verifyRetainedNode(f.pin.instance_id),{code:'42501'});assert.equal(snapshots,1);snapshots=0;
+  f.cloud.readRegisteredNodes=identity=>readAuthorityRegisteredNodes(issuerPool,identity);
+  const warm={...f.warm,state:'completed',provider_request_id:'synthetic-warm-ack'};
+  Object.assign(f.node,{identity:warm.identity,state:'ready',cloud_start_operation_id:warm.operation_id});
+  f.control.loadOperation=async id=>id===f.pin.create_operation_id?f.original:id===warm.operation_id?warm:null;
+  Object.assign(f.instance,{InstanceState:'RUNNING',LatestOperation:'StartInstances',LatestOperationState:'SUCCESS',LatestOperationRequestId:warm.provider_request_id});
+  await exec('openssl',['req','-x509','-newkey','ec','-pkeyopt','ec_paramgen_curve:P-256','-nodes','-days','2','-subj','/CN=synthetic-restricted-ca',
+    '-keyout',join(f.directory,'ca.key'),'-out',join(f.directory,'ca.pem')]);await chmod(join(f.directory,'ca.pem'),0o600);
+  const issuer={ca_file:join(f.directory,'ca.pem'),signing_key_file:join(f.directory,'ca.key'),ca_sha256:sha256(await readFile(join(f.directory,'ca.pem')))};
+  const authority=createControlAuthority({config:{account_id:f.config.account_id,region:f.config.region,pool:f.config,issuer},control:f.control,
+    expenseLedger:async()=>({nodes:[f.node]}),cloud:f.cloud,verifyDatabase:async()=>{}});
+  const request={version:'execution-pg-issuer-v1',action:'issue',operation_id:warm.operation_id,identity:warm.identity};
+  const result=await authority.handle(request);assert.equal(result.operation_id,warm.operation_id);assert.equal(queries,2);assert.equal(snapshots,0);
+  const original=structuredClone(f.original),initial=structuredClone(registration);
+  const faults=[()=>{rows=[];},()=>{rows=[registration,registration];},()=>{registration.account_id='654321';},
+    ()=>{registration.region='other';},()=>{registration.instance_id='ins-other';},()=>{registration.state='destroyed';},
+    ()=>{registration.destroyed_at=new Date();},()=>{registration.source_sha256='d'.repeat(64);},()=>{registration.image_sha256='d'.repeat(64);},
+    ()=>{registration.launch_manifest_sha256='d'.repeat(64);},()=>{registration.expected_services=[];},()=>{f.original.state='unknown';},
+    ()=>{f.original.run_acceptance=null;},()=>{f.original.run_acceptance.launch_binding_sha256='d'.repeat(64);},
+    ()=>{f.original.request.source_sha256='d'.repeat(64);},()=>{f.original.client_token='d'.repeat(64);}];
+  for(const fault of faults){Object.assign(registration,structuredClone(initial));Object.assign(f.original,structuredClone(original));rows=[registration];fault();
+    await assert.rejects(authority.handle(request),/RETAINED_NODE_/);assert.equal(snapshots,0);}
+  Object.assign(registration,initial);Object.assign(f.original,original);rows=[registration];
+  issuerPool.query=async()=>{throw Object.assign(new Error('synthetic unavailable registration read'),{code:'42501'});};
+  await assert.rejects(authority.handle(request),{code:'42501'});assert.equal(snapshots,0);assert.equal(f.writes.length,0);
 });
 
 test('actual TC3 Run singleton is durably accepted then completes with three null latest fields and enrolls each slot',async t=>{

@@ -103,15 +103,19 @@ export function runParameters(config, request, clientToken, userData, slot, opId
 }
 
 export class TencentCvm {
-  constructor({transport, config, archive, control, now = Date.now}) { Object.assign(this, {transport, config, archive, control, now}); }
+  constructor({transport, config, archive, control, readRegisteredNodes, now = Date.now}) { Object.assign(this, {transport, config, archive, control, readRegisteredNodes, now}); }
   async verifyRetainedNode(instanceId) {
     const p=retainedNodePin(this.config,instanceId);
     if(!p)return;
-    requireThat(this.control?.snapshot&&this.control?.loadOperation,'RETAINED_NODE_REGISTRY_REQUIRED');
-    const snapshot=await this.control.snapshot();
-    const matches=snapshot.nodes.filter(n=>n.identity.account_id===this.config.account_id&&n.identity.region===this.config.region&&n.identity.instance_id===instanceId);
+    requireThat((this.readRegisteredNodes||this.control?.snapshot)&&this.control?.loadOperation,'RETAINED_NODE_REGISTRY_REQUIRED');
+    // The signing identity can read exact registrations and original Runs,
+    // but cannot take a policy/demand snapshot. Its trusted reader is installed
+    // by the authority, never supplied by a node or an issuance request.
+    const nodes=this.readRegisteredNodes?await this.readRegisteredNodes({account_id:this.config.account_id,region:this.config.region,instance_id:instanceId}):
+      (await this.control.snapshot()).nodes;
+    const matches=nodes.filter(n=>n.identity.account_id===this.config.account_id&&n.identity.region===this.config.region&&n.identity.instance_id===instanceId);
     const n=matches[0];
-    requireThat(matches.length===1&&n.state!=='destroyed'&&!n.destroyed_at&&n.source_sha256===p.source_sha256&&
+    requireThat(matches.length===1&&(!this.readRegisteredNodes||nodes.length===1)&&n.state!=='destroyed'&&!n.destroyed_at&&n.source_sha256===p.source_sha256&&
       n.image_sha256===p.image_sha256&&n.launch_manifest_sha256===p.launch_manifest_sha256&&
       canonical(n.expected_services)===canonical(this.config.services),'RETAINED_NODE_REGISTRY_DRIFT');
     // A warm epoch changes cloud_start_operation_id. Load the original Run by
