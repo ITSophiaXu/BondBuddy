@@ -1,0 +1,19 @@
+[Unit]
+Description=Initialize the execution pool node
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+UMask=0077
+# The entrypoint is installed and hashed in the reviewed image. Role enrollment
+# and the runtime adapter must be provisioned before enabling this unit.
+ExecStart=/usr/bin/node /opt/bondbuddy/deploy/tencent-elasticity/bootstrap-entry.mjs
+TimeoutStartSec=300
+RemainAfterExit=yes
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
