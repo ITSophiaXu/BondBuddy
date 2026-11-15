@@ -66,6 +66,7 @@ export function planCapacity(snapshot, inventory, config, now = Date.now()) {
       Number.isFinite(Date.parse(n.idle_since)) && now - Date.parse(n.idle_since) >= config.idle_seconds * 1000)));
     if (spare) return {kind: 'drain', identity: spare.identity, revision: spare.revision};
   }
+  if (snapshot.policy.launch_blocked_by_operation_id) return hold('authorization_denial');
   if (!snapshot.policy.budget_available) return hold('budget');
   if (snapshot.policy.cooldown_until && now < Date.parse(snapshot.policy.cooldown_until)) return hold('policy_cooldown');
   const demand = snapshot.groups.filter(g => g.effective_queued_work > 0 &&

@@ -9,6 +9,25 @@ const allowedActions = {cvm: new Set(['RunInstances', 'StartInstances', 'StopIns
   lighthouse: new Set(['DescribeInstances','DescribeInstancesTrafficPackages'])};
 const hmac = (key, value, encoding) => createHmac('sha256', key).update(value).digest(encoding);
 
+/** Extract only identifiers already present in the request and fixed wildcard
+ * resource classes. Free vendor text and arbitrary identifier-shaped secrets
+ * are never retained. This projection cannot authorize a terminal transition. */
+export function safeDenialDiagnostic(service,action,payload,message,{accountId,region}={}) {
+  const actions=[`name/${service}:${action}`];
+  const allowed=new Set([payload?.ImageId,...(payload?.SecurityGroupIds??[]),payload?.VirtualPrivateCloud?.VpcId,payload?.VirtualPrivateCloud?.SubnetId]);
+  const resources=[];
+  if(/^[0-9]{1,20}$/.test(accountId??'')&&region==='ap-beijing'&&typeof message==='string'&&message.length<=8192) {
+    for(const match of message.matchAll(/qcs:([a-z]+\/[0-9]+)?:([a-z]+):([a-z0-9-]+):uin\/([0-9]+):(instance|systemdisk|datadisk|image|sg|vpc|subnet)\/([A-Za-z0-9_*.-]+)/g)) {
+      const [,project,resourceService,resourceRegion,resourceAccount,kind,resourceId]=match;
+      if(![undefined,'id/0'].includes(project)||resourceRegion!==region||resourceAccount!==accountId)continue;
+      const value=`qcs:${project??''}:${resourceService}:${region}:uin/${accountId}:${kind}/${resourceId}`;
+      if(value.length<=512&&['cvm','vpc'].includes(resourceService)&&(allowed.has(resourceId)||['instance','systemdisk','datadisk'].includes(kind)&&resourceId==='*')&&!resources.includes(value))resources.push(value);
+      if(resources.length===8)break;
+    }
+  }
+  return {actions,resources};
+}
+
 /** Official TC3 signature; credentials are refreshed in memory by the existing ops/role source. */
 export class TencentTransport {
   constructor({credentials, region, fetchImpl = fetch, now = Date.now, timeoutMs = 15000, purpose = 'role', assumeRoleArn}) {
@@ -54,11 +73,14 @@ export class TencentTransport {
     const data = JSON.parse(Buffer.concat(chunks).toString()).Response;
     requireThat(data && typeof data.RequestId === 'string', 'CLOUD_RESPONSE_UNCERTAIN');
     if (data.Error) {
+      requireThat(!Object.hasOwn(data,'InstanceIdSet'),'CLOUD_RESPONSE_UNCERTAIN'); // Contradictory ACK cannot prove no creation.
       const error = new Error('CLOUD_API_ERROR');
       error.code = /^[A-Za-z0-9.]{1,100}$/.test(data.Error.Code) ? data.Error.Code : 'Unknown';
       error.requestId = data.RequestId;
+      if(service==='cvm'&&action==='RunInstances')error.denialDiagnostic=safeDenialDiagnostic(service,action,payload,data.Error.Message,{accountId:this.diagnosticAccountId,region:this.region});
       throw error; // Never include vendor messages or credentials in logs.
     }
+    if(service==='sts'&&action==='GetCallerIdentity'&&/^[0-9]{1,20}$/.test(String(data.AccountId)))this.diagnosticAccountId=String(data.AccountId);
     return data;
   }
 }
@@ -154,8 +176,10 @@ export class TencentCvm {
         return {...result,run_acceptance:{...accepted,evidence_ref:evidence.ref,evidence_sha256:evidence.sha256}};
       } catch(error) {
         if(error.code && typeof error.requestId==='string') {
-          const bytes=canonical({service:'cvm',action:'RunInstances',instance_count:1,operation_id:operation.operation_id,
-            client_token_sha256:sha256(operation.client_token),code:error.code,request_id:error.requestId});
+          const bytes=canonical({version:'execution-run-denial-v1',service:'cvm',action:'RunInstances',instance_count:1,operation_id:operation.operation_id,
+            account_id:operation.request.account_id,region:operation.request.region,launch_manifest_sha256:operation.request.launch_manifest_sha256,
+            client_token_sha256:sha256(operation.client_token),code:error.code,request_id:error.requestId,
+            ...(error.denialDiagnostic?{diagnostic:{actions:['name/cvm:RunInstances'],resources:error.denialDiagnostic.resources.filter(v=>v.length<=512&&v.includes(`:ap-beijing:uin/${this.config.account_id}:`)&&/^(qcs::|qcs:id\/0:)/.test(v))}}:{})});
           const evidence=await this.archive(bytes);
           requireThat(evidence.sha256===sha256(bytes)&&evidence.ref,'REJECTION_EVIDENCE_REQUIRED');
           error.capacityEvidence={code:error.code,request_id:error.requestId,evidence_ref:evidence.ref,evidence_sha256:evidence.sha256};

@@ -14,13 +14,31 @@ export const EXECUTION_DEMAND_EXCLUSIONS=['shared_plan_waiter','paused','payment
 export const EXECUTION_RUN_CAPACITY_REJECTIONS=['ResourceInsufficient.AvailabilityZoneSoldOut','ResourceInsufficient.CloudDiskSoldOut','ResourceInsufficient.InsufficientOfferingMinimum','ResourceInsufficient.SpecifiedInstanceType'] as const;
 export const EXECUTION_CAPABILITIES=['authoring','review','assistant','probe'] as const;
 const literals=<T extends readonly string[]>(v:T)=>Type.Union(v.map(x=>Type.Literal(x)));
+// This exact synchronous authorization denial has no accepted creation result.
+// Do not generalize to arbitrary AuthFailure, transport errors or missing ACKs.
+export const EXECUTION_RUN_AUTHORIZATION_REJECTIONS=['UnauthorizedOperation'] as const;
+export const ExecutionEvidenceReferenceSchema=obj({evidence_ref:Type.String({minLength:1,maxLength:4096}),evidence_sha256:hash});
+export type ExecutionEvidenceReference=Static<typeof ExecutionEvidenceReferenceSchema>;
+export const ExecutionRunDenialArchiveSchema=obj({service:Type.Literal('cvm'),action:Type.Literal('RunInstances'),instance_count:Type.Literal(1),operation_id:id,client_token_sha256:hash,code:literals(EXECUTION_RUN_AUTHORIZATION_REJECTIONS),request_id:id});
+export const ExecutionRunBoundDenialArchiveSchema=obj({...ExecutionRunDenialArchiveSchema.properties,version:Type.Literal('execution-run-denial-v1'),account_id:id,region:id,launch_manifest_sha256:hash,diagnostic:Type.Optional(obj({actions:Type.Array(Type.String({pattern:'^name/(cvm|vpc|cam|finance):[A-Za-z][A-Za-z0-9]{0,79}$'}),{maxItems:8,uniqueItems:true}),resources:Type.Array(Type.String({pattern:'^qcs:([a-z]+/[0-9]+)?:[a-z]+:[a-z0-9-]+:uin/[0-9]+:(instance|systemdisk|datadisk|image|sg|vpc|subnet|roleName)/[A-Za-z0-9_*.-]+$'}),{maxItems:8,uniqueItems:true})}))});
+export const ExecutionRunAuthorizationRecoverySchema=obj({version:Type.Literal('execution-run-authorization-recovery-v1'),operation_id:id,account_id:id,region:id,denial_evidence_sha256:hash,correction_evidence:ExecutionEvidenceReferenceSchema,decision:Type.Literal('allow_new_operations')});
+export type ExecutionRunAuthorizationRecovery=Static<typeof ExecutionRunAuthorizationRecoverySchema>;
+/** Source observation and locally derived linkage are explicitly separate. */
+export const ExecutionRunPaymentDenialAuditSchema=obj({version:Type.Literal('payment-prerequisite-audit-attestation-v1'),account_id:id,region:id,action:Type.Literal('run'),cloud_action:Type.Literal('RunInstances'),operation_id:id,provider_request_id:id,client_token_sha256:hash,launch_manifest_sha256:hash,original_rejection_archive_sha256:hash,classification:Type.Literal('payment_rights_prerequisite_rejected'),
+ cloud_audit:obj({lookup_api:Type.Literal('cloudaudit.LookUpEvents'),lookup_request_id:id,original_response_sha256:hash,event_time_utc:Type.String(),actor_type:Type.Literal('AssumedRole'),actor_role_id:id,actor_assumer_uin:id,error_message_sha256:hash,instance_ids_returned:Type.Literal(false)}),
+ source_notes:obj({token_in_audit:Type.String({maxLength:512}),request_scalar_types:Type.String({maxLength:512}),remaining_request_values:Type.String({maxLength:512})}),
+ official_prerequisite:obj({url:Type.Literal('https://cloud.tencent.com/document/product/555/61542'),source_html_sha256:hash,claim:Type.String({maxLength:512})}),derived_at_utc:Type.String()});
+/** Normalized product policy readback, not a claim that an actual Run succeeded. */
+export const ExecutionRunAuthorizationCorrectionSchema=obj({version:Type.Literal('execution-run-authorization-correction-v1'),account_id:id,region:id,role_id:id,configuration_sha256:hash,
+ policy_id:Type.Integer({minimum:1}),policy_document:obj({version:Type.Literal('2.0'),statement:Type.Array(obj({effect:literals(['allow','deny'] as const),action:Type.Array(Type.String({pattern:'^(name/)?(cvm|vpc|cam|finance):[A-Za-z][A-Za-z0-9]{0,79}$'}),{minItems:1,maxItems:64}),resource:Type.Array(Type.String({pattern:'^qcs:[A-Za-z0-9_:/.*-]+$',maxLength:512}),{minItems:1,maxItems:64})}),{minItems:1,maxItems:32})}),policy_document_sha256:hash,policy_readback_request_id:id,attachment_readback_request_id:id,previous_policy_ids:Type.Array(Type.Integer({minimum:1}),{minItems:1,maxItems:100,uniqueItems:true}),attached_policy_ids:Type.Array(Type.Integer({minimum:1}),{minItems:1,maxItems:100,uniqueItems:true})});
+
 
 /** Trusted cloud registration, never derived from a cloned machine-id. */
 export const ExecutionNodeIdentitySchema=obj({account_id:id,region:id,instance_id:id,epoch});
 export type ExecutionNodeIdentity=Static<typeof ExecutionNodeIdentitySchema>;
 export const ExecutionNodeContextSchema=obj({identity:ExecutionNodeIdentitySchema,session_id:epoch});
 export type ExecutionNodeContext=Static<typeof ExecutionNodeContextSchema>;
-export const ExecutionCapacityPolicySchema=obj({revision:count,managed_nodes:Type.Boolean(),global_model_limit:Type.Integer({minimum:4,maximum:8,multipleOf:4}),node_model_limit:Type.Literal(4),max_nodes:Type.Integer({minimum:1,maximum:2}),budget_available:Type.Boolean(),provider_concurrency_limit:Type.Integer({minimum:1,maximum:64}),provider_policy_sha256:nullable(hash),expense_policy_sha256:nullable(hash),cooldown_until:nullable(Type.String())});
+export const ExecutionCapacityPolicySchema=obj({revision:count,managed_nodes:Type.Boolean(),global_model_limit:Type.Integer({minimum:4,maximum:8,multipleOf:4}),node_model_limit:Type.Literal(4),max_nodes:Type.Integer({minimum:1,maximum:2}),budget_available:Type.Boolean(),provider_concurrency_limit:Type.Integer({minimum:1,maximum:64}),provider_policy_sha256:nullable(hash),expense_policy_sha256:nullable(hash),cooldown_until:nullable(Type.String()),launch_blocked_by_operation_id:Type.Optional(nullable(id))});
 export type ExecutionCapacityPolicy=Static<typeof ExecutionCapacityPolicySchema>;
 export const ExecutionNodeSchema=obj({identity:ExecutionNodeIdentitySchema,state:literals(EXECUTION_NODE_STATES),revision:count,source_sha256:hash,image_sha256:hash,capabilities:Type.Array(literals(EXECUTION_CAPABILITIES),{uniqueItems:true}),launch_manifest_sha256:hash,expected_services:Type.Array(obj({service_id:id,capabilities:Type.Array(literals(EXECUTION_CAPABILITIES),{uniqueItems:true,minItems:1})})),drain_operation_id:nullable(id),cloud_start_operation_id:id,ready_slots:count,active_leases:count,active_model_calls:count,last_heartbeat_at:nullable(Type.String()),idle_since:nullable(Type.String()),stop_operation_id:nullable(id)});
 export type ExecutionNode=Static<typeof ExecutionNodeSchema>;
@@ -37,7 +55,7 @@ export type ExecutionCloudObservation=Static<typeof ExecutionCloudObservationSch
 export const ExecutionExpectedServiceSchema=obj({service_id:id,capabilities:Type.Array(literals(EXECUTION_CAPABILITIES),{uniqueItems:true,minItems:1})});
 export const ExecutionLaunchRequestSchema=obj({account_id:id,region:id,instance_id:nullable(id),instance_count:Type.Literal(1),epoch,source_sha256:hash,image_sha256:hash,launch_manifest_sha256:hash,capabilities:Type.Array(literals(EXECUTION_CAPABILITIES),{uniqueItems:true,minItems:1}),services:Type.Array(ExecutionExpectedServiceSchema,{minItems:1,maxItems:16})});
 export type ExecutionLaunchRequest=Static<typeof ExecutionLaunchRequestSchema>;
-export const ExecutionCloudOperationSchema=obj({operation_id:id,identity:nullable(ExecutionNodeIdentitySchema),action:literals(EXECUTION_CLOUD_ACTIONS),state:literals(EXECUTION_OPERATION_STATES),revision:count,provider_request_id:nullable(id),proof_sha256:nullable(hash),request:nullable(ExecutionLaunchRequestSchema),client_token:id,retry_after:nullable(Type.String()),run_acceptance:Type.Optional(nullable(ExecutionRunAcceptanceSchema)),dispatched_at:Type.Optional(nullable(Type.String())),cloud_observation:Type.Optional(nullable(ExecutionCloudObservationSchema))});
+export const ExecutionCloudOperationSchema=obj({operation_id:id,identity:nullable(ExecutionNodeIdentitySchema),action:literals(EXECUTION_CLOUD_ACTIONS),state:literals(EXECUTION_OPERATION_STATES),revision:count,provider_request_id:nullable(id),proof_sha256:nullable(hash),request:nullable(ExecutionLaunchRequestSchema),client_token:id,retry_after:nullable(Type.String()),run_acceptance:Type.Optional(nullable(ExecutionRunAcceptanceSchema)),dispatched_at:Type.Optional(nullable(Type.String())),cloud_observation:Type.Optional(nullable(ExecutionCloudObservationSchema)),authorization_denial:Type.Optional(nullable(Type.Object({evidence_ref:Type.String(),evidence_sha256:hash,code:Type.Literal('UnauthorizedOperation'),provider_request_id:id,operation_id:id,account_id:id,region:id,client_token_sha256:hash,launch_manifest_sha256:hash,archive_binding:literals(['legacy_operation_token','bound_v1'] as const),payment_audit:ExecutionEvidenceReferenceSchema},{additionalProperties:false})))});
 export type ExecutionCloudOperation=Static<typeof ExecutionCloudOperationSchema>;
 export const ExecutionCloudRejectionSchema=obj({code:literals(EXECUTION_RUN_CAPACITY_REJECTIONS),evidence_ref:Type.String({minLength:1,maxLength:4096}),evidence_sha256:hash,retry_after:Type.String()});
 export type ExecutionCloudRejection=Static<typeof ExecutionCloudRejectionSchema>;
@@ -94,6 +112,8 @@ export type ExecutionCloudExpenseLedger=Static<typeof ExecutionCloudExpenseLedge
  * cloud acknowledgement is submitted, not proof of stop. */
 export interface ExecutionCapacityControl {
   snapshot():Promise<ExecutionCapacitySnapshot>;
+  finalizeRunAuthorizationDenial(operationId:string,expectedRevision:number,input:{evidence:ExecutionEvidenceReference;payment_audit:ExecutionEvidenceReference;launch_parameters:Record<string,any>}):Promise<ExecutionCloudOperation>;
+  resumeRunAuthorization(operationId:string,expectedPolicyRevision:number,review:ExecutionEvidenceReference):Promise<ExecutionCapacityPolicy>;
   setAdmissionBudget(expectedPolicyRevision:number,available:boolean,expensePolicySha256:string):Promise<ExecutionCapacityPolicy>;
   reserveStart(request:ExecutionLaunchRequest,operationId:string,expectedPolicyRevision:number):Promise<ExecutionCloudOperation>;
   loadOperation(operationId:string):Promise<ExecutionCloudOperation|null>;

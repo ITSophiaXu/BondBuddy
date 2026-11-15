@@ -99,6 +99,16 @@ export class ExecutionPoolController {
     }
     return this.control.recordCloudResult(claimed.operation_id, claimed.revision, result);
   }
+  /** Explicit reconciliation of an existing durable denial, never another Run. */
+  async resolveRunAuthorizationDenial(opId,revision,evidence,paymentAudit) {
+    const op=await this.control.loadOperation(opId);
+    requireThat(op?.action==='run'&&op.request&&op.identity===null,'RUN_DENIAL_SCOPE');
+    const slot=this.config.role_names.findIndex((_,i)=>sha256(canonical(runParameters(this.config,op.request,op.client_token,
+      bootstrapUserData(this.config,op.request,i),i,opId)))===op.request.launch_manifest_sha256);
+    requireThat(slot>=0,'RUN_DENIAL_MANIFEST_DRIFT');
+    return this.control.finalizeRunAuthorizationDenial(opId,revision,{evidence,payment_audit:paymentAudit,launch_parameters:runParameters(this.config,op.request,
+      op.client_token,bootstrapUserData(this.config,op.request,slot),slot,opId)});
+  }
   async recover(opId) {
     const op = await this.control.loadOperation(opId);
     requireThat(op, 'OPERATION_NOT_FOUND');

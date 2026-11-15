@@ -1,4 +1,5 @@
 import {Pool,type PoolClient} from 'pg';
+import {finalizeExecutionRunDenial,resumeExecutionRunAuthorization,type ExecutionDenialScope} from './execution-run-denial.js';
 import {Value} from '@sinclair/typebox/value';
 import {createHash,randomUUID} from 'node:crypto';
 import {executionCloudCompletionMatches,executionRunAcceptanceMatches,ExecutionNodeContextSchema,ExecutionLaunchRequestSchema,ExecutionCloudObservationSchema,ExecutionCloudRejectionSchema,type ExecutionCloudExpenseLedger,type ExecutionCapacityPolicy,type ExecutionNodeContext,type ExecutionNodeIdentity,type ExecutionNode,type ExecutionCloudOperation,type ExecutionCloudResult,type ExecutionLaunchRequest,type ExecutionCapacityControl,type ExecutionCapacitySnapshot,type ExecutionDrainProof} from '@bondbuddy/contracts';
@@ -18,7 +19,7 @@ const cas=()=>{throw new Error('EXECUTION_CAPACITY_CAS_CONFLICT');};
 export function executionNodeForPool(pool:Pool){return contexts.get(pool);}
 /** Set only after trusted registration succeeded. No runtime env controls global capacity. */
 function bind(pool:Pool,context:ExecutionNodeContext){if(!Value.Check(ExecutionNodeContextSchema,context))throw Error('EXECUTION_NODE_IDENTITY_INVALID');contexts.set(pool,context);}
-function policyDto(p:any):ExecutionCapacityPolicy{return {revision:Number(p.revision),managed_nodes:p.managed_nodes,global_model_limit:p.global_model_limit,node_model_limit:4,max_nodes:p.max_nodes,budget_available:p.budget_available,provider_concurrency_limit:p.provider_concurrency_limit,provider_policy_sha256:p.provider_policy_sha256?.trim()??null,expense_policy_sha256:p.expense_policy_sha256?.trim()??null,cooldown_until:p.cooldown_until?.toISOString()??null};}
+function policyDto(p:any):ExecutionCapacityPolicy{return {revision:Number(p.revision),managed_nodes:p.managed_nodes,global_model_limit:p.global_model_limit,node_model_limit:4,max_nodes:p.max_nodes,budget_available:p.budget_available,provider_concurrency_limit:p.provider_concurrency_limit,provider_policy_sha256:p.provider_policy_sha256?.trim()??null,expense_policy_sha256:p.expense_policy_sha256?.trim()??null,cooldown_until:p.cooldown_until?.toISOString()??null,launch_blocked_by_operation_id:p.launch_blocked_by_operation_id??null};}
 async function node(client:PoolClient|Pool,i:ExecutionNodeIdentity,lock=false){
  const row=(await client.query(`SELECT * FROM bb_execution_nodes WHERE account_id=$1 AND region=$2 AND instance_id=$3 ${lock?'FOR UPDATE':''}`,[i.account_id,i.region,i.instance_id])).rows[0];
  if(!row||row.epoch!==i.epoch)throw Error('EXECUTION_NODE_EPOCH_MISMATCH');return row;
@@ -30,7 +31,7 @@ async function dto(client:PoolClient|Pool,row:any):Promise<ExecutionNode>{
  const allReady=row.expected_services.length>0&&row.expected_services.every((service:any)=>sessions.some(s=>s.service_id===service.service_id&&s.state==='active'&&s.ready&&new Date(s.heartbeat_at).getTime()>Date.now()-30000));
  return {identity:identity(row),state:row.state,revision:Number(row.revision),source_sha256:row.source_sha256.trim(),image_sha256:row.image_sha256.trim(),capabilities:row.capabilities,launch_manifest_sha256:row.launch_manifest_sha256.trim(),expected_services:row.expected_services,drain_operation_id:row.drain_operation_id,cloud_start_operation_id:row.cloud_start_operation_id,ready_slots:row.state==='ready'&&allReady?Math.max(0,4-Number(active.leases)):0,active_leases:Number(active.leases),active_model_calls:Number(active.calls),last_heartbeat_at:row.last_heartbeat_at?.toISOString()??null,idle_since:row.idle_since?.toISOString()??null,stop_operation_id:row.stop_operation_id};
 }
-function opDto(row:any):ExecutionCloudOperation{return {operation_id:row.operation_id,identity:row.instance_id?identity(row):null,action:row.action,state:row.state,revision:Number(row.revision),provider_request_id:row.provider_request_id,proof_sha256:row.proof_sha256?.trim()??null,request:row.request,client_token:row.client_token,retry_after:row.retry_after?.toISOString()??null,run_acceptance:row.run_acceptance??null,dispatched_at:row.dispatched_at?.toISOString()??null,cloud_observation:row.cloud_observation??null};}
+function opDto(row:any):ExecutionCloudOperation{return {operation_id:row.operation_id,identity:row.instance_id?identity(row):null,action:row.action,state:row.state,revision:Number(row.revision),provider_request_id:row.provider_request_id,proof_sha256:row.proof_sha256?.trim()??null,request:row.request,client_token:row.client_token,retry_after:row.retry_after?.toISOString()??null,run_acceptance:row.run_acceptance??null,dispatched_at:row.dispatched_at?.toISOString()??null,cloud_observation:row.cloud_observation??null,authorization_denial:row.authorization_denial??null};}
 async function operation(client:PoolClient|Pool,id:string,lock=false){return (await client.query(`SELECT * FROM bb_execution_cloud_operations WHERE operation_id=$1 ${lock?'FOR UPDATE':''}`,[id])).rows[0];}
 
 /** Called inside every model-job/assistant/probe claim transaction, before job locks. */
@@ -83,9 +84,11 @@ export async function heartbeatExecutionRuntime(pool:Pool,input:{native_processe
  });
 }
 
-export function executionCapacityControl(pool:Pool):ExecutionCapacityControl {
+export function executionCapacityControl(pool:Pool,denialScope?:ExecutionDenialScope):ExecutionCapacityControl {
  return {
   snapshot:()=>executionCapacitySnapshot(pool),
+  finalizeRunAuthorizationDenial:async(id,revision,input)=>opDto(await finalizeExecutionRunDenial(pool,denialScope,id,revision,input)),
+  resumeRunAuthorization:async(id,revision,review)=>policyDto(await resumeExecutionRunAuthorization(pool,denialScope,id,revision,review)),
   setAdmissionBudget:async(revision,available,expenseHash)=>transaction(pool,async client=>{
    const p=(await client.query('SELECT * FROM bb_execution_capacity_policy WHERE singleton FOR UPDATE')).rows[0];
    if(Number(p.revision)!==revision||!p.managed_nodes||!/^[a-f0-9]{64}$/.test(expenseHash)||available&&p.expense_policy_sha256?.trim()!==expenseHash)cas();
@@ -97,7 +100,7 @@ export function executionCapacityControl(pool:Pool):ExecutionCapacityControl {
    if(new Set(request.services.map(s=>s.service_id)).size!==request.services.length||new Set(request.services.flatMap(s=>s.capabilities)).size!==request.capabilities.length||request.services.flatMap(s=>s.capabilities).some(c=>!request.capabilities.includes(c)))throw Error('EXECUTION_SERVICE_MANIFEST_INVALID');
    const policy=(await client.query('SELECT * FROM bb_execution_capacity_policy WHERE singleton FOR UPDATE')).rows[0];
    const prior=await operation(client,operationId,true);if(prior){if(prior.request_sha256.trim()!==sha(request))cas();return opDto(prior);}
-   if(Number(policy.revision)!==expectedPolicyRevision||!policy.managed_nodes||!policy.budget_available||policy.cooldown_until&&new Date(policy.cooldown_until).getTime()>Date.now())cas();
+   if(Number(policy.revision)!==expectedPolicyRevision||!policy.managed_nodes||!policy.budget_available||policy.launch_blocked_by_operation_id||policy.cooldown_until&&new Date(policy.cooldown_until).getTime()>Date.now())cas();
    let existing:any;
    if(request.instance_id)existing=(await client.query('SELECT * FROM bb_execution_nodes WHERE account_id=$1 AND region=$2 AND instance_id=$3 FOR UPDATE',[request.account_id,request.region,request.instance_id])).rows[0];
    if(request.instance_id&&(!existing||existing.state!=='stopped'||existing.stop_operation_id&&(await operation(client,existing.stop_operation_id)).state!=='completed'))cas();
@@ -119,7 +122,7 @@ export function executionCapacityControl(pool:Pool):ExecutionCapacityControl {
   listPendingOperations:async()=> (await pool.query("SELECT * FROM bb_execution_cloud_operations WHERE state IN ('intent','submitted','unknown') ORDER BY created_at,operation_id")).rows.map(opDto),
   reauthorizeCloudIntent:async(id,revision,policyRevision)=>transaction(pool,async client=>{
    const p=(await client.query('SELECT * FROM bb_execution_capacity_policy WHERE singleton FOR UPDATE')).rows[0];
-   if(Number(p.revision)!==policyRevision||!p.managed_nodes||!p.budget_available||p.cooldown_until&&new Date(p.cooldown_until).getTime()>Date.now())cas();
+   if(Number(p.revision)!==policyRevision||!p.managed_nodes||!p.budget_available||p.launch_blocked_by_operation_id||p.cooldown_until&&new Date(p.cooldown_until).getTime()>Date.now())cas();
    const peek=await operation(client,id);if(!peek||!['run','start'].includes(peek.action))cas();
    const existing=peek.instance_id?await node(client,identity(peek),true):null;
    const op=await operation(client,id,true);
@@ -157,7 +160,7 @@ export function executionCapacityControl(pool:Pool):ExecutionCapacityControl {
   claimCloudDispatch:async(id,revision)=>transaction(pool,async client=>{
    const policy=(await client.query('SELECT * FROM bb_execution_capacity_policy WHERE singleton FOR SHARE')).rows[0];
    const op=await operation(client,id,true);if(!op||op.state!=='intent'||Number(op.revision)!==revision)cas();
-   if(['run','start'].includes(op.action)){if(!policy.managed_nodes||!policy.budget_available||policy.revision!==op.policy_revision||policy.cooldown_until&&new Date(policy.cooldown_until).getTime()>Date.now())cas();}
+   if(['run','start'].includes(op.action)){if(!policy.managed_nodes||!policy.budget_available||policy.launch_blocked_by_operation_id||policy.revision!==op.policy_revision||policy.cooldown_until&&new Date(policy.cooldown_until).getTime()>Date.now())cas();}
    await client.query("UPDATE bb_execution_cloud_operations SET state='unknown',revision=revision+1,dispatched_at=clock_timestamp() WHERE operation_id=$1",[id]);return opDto(await operation(client,id));
   }),
   beginDrain:async(i,id,revision)=>transaction(pool,async client=>{
