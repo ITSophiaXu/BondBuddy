@@ -6,12 +6,38 @@ import {tmpdir} from 'node:os';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {X509Certificate} from 'node:crypto';
-import {createControlAuthority} from './control-authority.mjs';
+import {createControlAuthority,validateAuthorityDatabaseBinding,validateAuthorityDatabaseConnection,verifyAuthorityDatabaseIdentity} from './control-authority.mjs';
 import {installPrivateTransport,transportOperationSan} from './private-transport.mjs';
 import {TencentTransport} from './tencent-cvm.mjs';
 import {sha256} from './policy.mjs';
 import {issueTransportCredentials} from './transport-issuer.mjs';
 const exec=promisify(execFile);
+
+test('authority database deployment binding preserves isolated defaults and rejects missing, crossed and drifted production targets',()=>{
+  const legacy={credential_ready:true,database_name:'bb1361_owned_isolated',system_identifier:'7705237779724353574',
+    credentials_file:'/var/lib/bondbuddy/elastic-pg-mtls/issuer/pg-credentials.json'};
+  const isolated=validateAuthorityDatabaseBinding({},legacy);
+  validateAuthorityDatabaseConnection('postgresql://synthetic:synthetic@127.0.0.1:15432/bb1361_owned_isolated',isolated);
+  verifyAuthorityDatabaseIdentity({name:legacy.database_name,system_identifier:legacy.system_identifier},isolated);
+  const binding={...isolated,database_name:'bondbuddy'},pg={...legacy,database_name:'bondbuddy'};
+  assert.throws(()=>validateAuthorityDatabaseBinding({},pg),/AUTHORITY_DATABASE_NOT_READY/);
+  const checked=validateAuthorityDatabaseBinding({database_binding:binding},pg);
+  validateAuthorityDatabaseConnection('postgresql://synthetic:synthetic@127.0.0.1:15432/bondbuddy',checked);
+  validateAuthorityDatabaseConnection('postgresql://synthetic:synthetic@127.0.0.1:15432/bondbuddy?sslmode=disable',checked);
+  verifyAuthorityDatabaseIdentity({name:'bondbuddy',system_identifier:pg.system_identifier},checked);
+  for(const bad of [null,{}, {...binding,version:undefined},{...binding,database_name:'other'},{...binding,system_identifier:null},
+    {...binding,host:'other'},{...binding,port:5432},{...binding,credentials_file:'/tmp/credentials.json'},{...binding,extra:'ignored'}])
+    assert.throws(()=>validateAuthorityDatabaseBinding({database_binding:bad},pg),/AUTHORITY_DATABASE_BINDING/);
+  for(const bad of [{...pg,credential_ready:false},{...pg,database_name:'bb1361_owned_isolated'},
+    {...pg,system_identifier:'7705237779724353575'},{...pg,credentials_file:'/tmp/credentials.json'}])
+    assert.throws(()=>validateAuthorityDatabaseBinding({database_binding:binding},bad),/AUTHORITY_DATABASE_NOT_READY/);
+  for(const url of ['postgresql://synthetic:synthetic@127.0.0.1:15432/bb1361_owned_isolated','postgresql://synthetic:synthetic@other:15432/bondbuddy',
+    'postgresql://synthetic:synthetic@127.0.0.1:5432/bondbuddy','postgresql://synthetic:synthetic@127.0.0.1:15432/bondbuddy?host=other',
+    'postgresql://synthetic:synthetic@127.0.0.1:15432/bondbuddy?port=5432','http://127.0.0.1:15432/bondbuddy','invalid-sensitive-input'])
+    assert.throws(()=>validateAuthorityDatabaseConnection(url,checked),/^Error: AUTHORITY_DATABASE_SCOPE$/);
+  for(const actual of [null,{name:'bb1361_owned_isolated',system_identifier:pg.system_identifier},{name:'bondbuddy',system_identifier:'7705237779724353575'}])
+    assert.throws(()=>verifyAuthorityDatabaseIdentity(actual,checked),/AUTHORITY_DATABASE_DRIFT/);
+});
 
 async function raceAuthority(t,{sign,describe,now}={}){
   const dir=await mkdtemp(join(tmpdir(),'bb-authority-race-'));t.after(()=>rm(dir,{recursive:true}));
