@@ -40,14 +40,21 @@
     "unit_sha256": null,
     "credential_directory": "/etc/bondbuddy/transport",
     "ca_sha256": null,
-    "local_host": "REQUIRED_PRIVATE_BRIDGE_ADDRESS",
+    "local_host": "172.28.61.1",
     "local_port": 15433,
-    "remote_host": "REQUIRED_PRIVATE_PG_ENDPOINT",
+    "remote_host": "10.2.0.5",
     "remote_port": 15432,
     "sni": "pg-execution.internal",
     "system_identifier": "REQUIRED_SQL_SYSTEM_IDENTIFIER",
     "ca_file": "/etc/bondbuddy/transport/ca.pem",
     "cert_file": "/etc/bondbuddy/transport/client.pem",
     "key_file": "/etc/bondbuddy/transport/client.key"
+  },
+  "private_proxy": {
+    "local_host": "172.28.61.1",
+    "local_port": 15434,
+    "remote_host": "10.2.0.5",
+    "remote_port": 15434,
+    "sni": "proxy-execution.internal"
   }
 }

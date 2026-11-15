@@ -11,6 +11,13 @@ services:
       BB_WORKER_JOB_KINDS: run
       BB_EXECUTION_ENROLLMENT_FILE: /run/bondbuddy/enrollment/authoring.json
       BB_EXECUTION_TRANSPORT_SOCKET: /run/bondbuddy/service/transport.sock
+      NODE_USE_ENV_PROXY: '1'
+      HTTPS_PROXY: http://172.28.61.1:15434
+      HTTP_PROXY: http://172.28.61.1:15434
+      NO_PROXY: localhost,127.0.0.1,169.254.0.23,metadata.tencentyun.com,172.28.61.1,10.2.0.5
+      https_proxy: http://172.28.61.1:15434
+      http_proxy: http://172.28.61.1:15434
+      no_proxy: localhost,127.0.0.1,169.254.0.23,metadata.tencentyun.com,172.28.61.1,10.2.0.5
       BB_WORKER_RUN_KINDS: update,generation,qa
       BB_WORKER_PARSE_SLOTS: '0'
       BB_UPLOAD_CONFIRMATION_ENABLED: '0'
@@ -40,6 +47,13 @@ services:
       BB_WORKER_JOB_KINDS: run
       BB_EXECUTION_ENROLLMENT_FILE: /run/bondbuddy/enrollment/review.json
       BB_EXECUTION_TRANSPORT_SOCKET: /run/bondbuddy/service/transport.sock
+      NODE_USE_ENV_PROXY: '1'
+      HTTPS_PROXY: http://172.28.61.1:15434
+      HTTP_PROXY: http://172.28.61.1:15434
+      NO_PROXY: localhost,127.0.0.1,169.254.0.23,metadata.tencentyun.com,172.28.61.1,10.2.0.5
+      https_proxy: http://172.28.61.1:15434
+      http_proxy: http://172.28.61.1:15434
+      no_proxy: localhost,127.0.0.1,169.254.0.23,metadata.tencentyun.com,172.28.61.1,10.2.0.5
       BB_WORKER_RUN_KINDS: review
       BB_WORKER_PARSE_SLOTS: '0'
       BB_UPLOAD_CONFIRMATION_ENABLED: '0'

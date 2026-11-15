@@ -7,6 +7,7 @@ import {createSsmEnrollmentBroker} from './enrollment.mjs';
 import {requireThat, canonical, sha256} from './policy.mjs';
 import {installPrivateTransport, ensurePrivateExecutionNetwork, validateTransportCredentials} from './private-transport.mjs';
 import {replacePrivateJson} from './transport-renewal.mjs';
+import {renderPrivateTransportConfig} from './private-egress.mjs';
 
 const exec = promisify(execFile);
 async function docker(args) {
@@ -66,9 +67,7 @@ const runtime = {
     // The reviewed stunnel client config binds endpoint/SNI/CA/mTLS identity;
     // a route or CCN attachment on its own is never a readiness receipt.
     const transportText=await readFile(pg.config_file,'utf8');
-    for(const line of ['foreground = yes','debug = notice','output = /dev/null','client = yes','verifyChain = yes',`checkHost = ${pg.sni}`,`sni = ${pg.sni}`,`CAfile = ${pg.ca_file}`,`cert = ${pg.cert_file}`,`key = ${pg.key_file}`,
-      `connect = ${pg.remote_host}:${pg.remote_port}`,`accept = ${pg.local_host}:${pg.local_port}`])
-      requireThat(transportText.split('\n').map(x=>x.trim()).includes(line),'NODE_PRIVATE_PG_CONFIG_DRIFT');
+    requireThat(transportText===renderPrivateTransportConfig(config),'NODE_PRIVATE_PG_CONFIG_DRIFT');
     requireThat(process.getuid()===0 && pg.credential_directory==='/etc/bondbuddy/transport' &&
       pg.ca_file===`${pg.credential_directory}/ca.pem` && pg.cert_file===`${pg.credential_directory}/client.pem` &&
       pg.key_file===`${pg.credential_directory}/client.key` &&

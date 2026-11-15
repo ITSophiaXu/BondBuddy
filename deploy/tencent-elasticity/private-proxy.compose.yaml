@@ -1,0 +1,16 @@
+services:
+  execution-egress:
+    image: sha256:2a36340e170919d7656023a10b9f950d8cf229b736f3aa9e2a6a1a6d41aa43da
+    pull_policy: never
+    network_mode: host
+    user: squid
+    volumes:
+      - ${BB_EXECUTION_PROXY_CONFIG:?approved squid config required}:/etc/squid/squid.conf:ro
+    read_only: true
+    tmpfs: [/tmp:size=8m, /var/run/squid:size=8m, /var/cache/squid:size=8m, /var/log/squid:size=8m]
+    mem_limit: 96m
+    cpus: 0.25
+    pids_limit: 64
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
