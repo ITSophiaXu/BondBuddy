@@ -40,6 +40,14 @@
 
 节点和云操作不是新作业队列；业务作业仍在原有表中领取。控制入口每次事件只做有限状态推进，重复事件使用原 operation ID；处理者崩溃后依靠持久意图恢复，不能更换 ID 创建第二份云操作。
 
+### 自动处理的实际接线
+
+复用已有 `apps/worker/src/ops-scheduler.ts` 的 `OpsScheduler.start()`、`tick()` 和既有定时器；对应现有 Compose `ops` 服务的命令为 `node apps/worker/dist/ops-scheduler.js`。数据与运行时模块唯一修改此文件：增加可选 `executionPoolTick`，在配置 `BB_EXECUTION_POOL_CONFIG` 后加载腾讯适配模块的 `deploy/tencent-elasticity/ops-handler.mjs` 导出 `createExecutionPoolOpsHandler({control: executionCapacityControl(pool), configPath, log})`，调用返回的 `tick()`。
+
+启动立即进行首轮处理，之后每个既有周期都处理；业务入队、任务完成和排空回执由下一周期读取权威 PG 状态，不要求再出现新的业务事件。因此空闲阈值到期、云 API 异步完成及失败冷却到期都能推进。进程重启再次启动时，handler 优先查询持久 pending/unknown 操作及准确 Describe，再考虑新的需求；不会从内存重新创建请求。每周期最多一个云变更，最终仍由 PG 的操作 CAS 控制唯一提交者；运维任务租约超时不能回收业务任务或模型 holder。
+
+这是正在开发的具体接缝，尚未通过启动、无业务事件时的空闲推进、受理后重启恢复等行为验证。未配置、未正确加载适配器、缺少完整云/费用/凭据材料或入口未接通时保持 disabled、云变更调用为零。一次 CLI/函数测试不等于自动化完成；不另建 timer、daemon、监督 cron 或作业队列。
+
 ## 全群预算与单节点容量
 
 新增迁移扩展 0179 的全库四槽约束，**不修改已部署迁移**。PG `global_model_limit` 默认 4，`node_model_limit` 固定 4；同节点编制、复核、助手和探测进程合计共享四槽，不能各自获得四槽。先保持旧行为，再显式启用 managed mode；managed mode 必须拒绝未登记的 legacy 领取与 holder，旧进程不能绕过新限额。
@@ -49,6 +57,10 @@
 两节点八路只有在显式配置 `global_model_limit=8` 且供应商账户、费用上限与已验负载允许时生效。不同节点凭据若属于同一供应商账户，仍共享同一预算。默认全群四路时，加机器不承诺模型吞吐翻倍。
 
 `budget_available` 是权威预算检查结果，不是全部预算模型；必须关联 policy revision 和实际费用/供应商上限。腾讯控制配置至少固定每小时计算费上限、预算周期/币种、周期限额、已花费、已预留及未决操作成本；模型费用沿用现有 journal/账务预留，不另造账本。unknown 不按零费用处理。预算不足时禁止新增资源与新调用，正在安全排空但尚未结束的节点不能为强行满足账单上限而被杀；因此区分“严格新增支出准入上限”和无法瞬间截断的已有负债。
+
+首版采用以下可配置的云新增支出准入工程默认：最多保有 2 台，报价计算单价 0.8 CNY/小时，池总计算费上限 1.6 CNY/小时，含盘/网络等整池小时费用估算上限 2.4 CNY，日周期上限 48 CNY。后两项是待最新组件报价与账单验证的工程默认，不能称为新增用户预算承诺或官方套餐价格。预算日界按显式配置时区（默认北京时间）；跨日不释放未决操作预留或既有排空余量。准入时用已结算费用、尚未出账的保守估算、未决 reservation 和必要排空余量去重合计，再判断是否允许新增支出。
+
+账单不是实时控制面：`DescribeBillSummaryByTag` 返回同月汇总，`DescribeBillDetail` 的时间条件也不能直接变成实时日额度。控制器按准确实例/云盘等资源归属与费用期间核实际账单，加上账单滞后估算和云操作预留；不把未出现账单当零费用。模型保持既有费用账本及默认全群四路，不新增用户每日任务、token 或测试次数限制。[8]
 
 ## 真实需求与扩缩容决策
 
@@ -80,7 +92,9 @@
 
 ## 私网、无认证镜像与 bootstrap
 
-Lighthouse 与 CVM 默认内网隔离。选择与唯一 PG 同账号同地域的 CVM VPC，经已有或经审查建立的云联网互通；先核 Lighthouse VPC 已有关联，不能为新池解绑现有网络。网段不冲突、路由和双方防火墙准确后，用受限私网传输验证原 PG 身份及真实 SQL；不公开明文 PG，不回绕跨云公网作为“私网已通”。Lighthouse 同账号同地域共用 VPC，且只能关联一个云联网；同地域 5 Gbps 及以下带宽免费条款不代表所有连接及其他组件免费。[5][6]
+Lighthouse 与 CVM 默认内网隔离。选择与唯一 PG 同账号同地域的 CVM VPC，经已有或经审查建立的云联网互通；先核 Lighthouse VPC 已有关联，不能为新池解绑现有网络。**PG 当前发布在回环，CCN 路由通不等于存在可访问数据库入口。** 首选单独受限的私网 mTLS TCP 入口，绑定经审查的主站私网地址，后端仍为原回环 PG；或者使用已经实际验证的受限私网隧道。不能直接把 CVM 的 PG 地址改成主站私网 IP 后宣称就绪。
+
+节点的 `pg_endpoint`、TLS 服务名/SAN、CA 与客户端身份、独立 PG 业务角色、预期 PG 系统身份和有界真实 SQL 检查必须同时入审查清单。mTLS 入口只允许目标节点/子网，未认证请求不能到达 PG；不公开明文 PG，不回绕跨云公网作为“私网已通”。云网络参数与主站私网监听变更分别留前像和回滚，通过原有生产入口变更流程实施。旧公网诊断临时端口或证书不属于本池可复用的正式网络配置。Lighthouse 同账号同地域共用 VPC，且只能关联一个云联网；同地域 5 Gbps 及以下带宽免费条款不代表所有连接及其他组件免费。[5][6]
 
 镜像仅含干净 OS、已验应用和依赖、固定应用/模型目录版本及启动校验逻辑，不含业务凭据、个人登录状态或可克隆节点身份。节点不现场 build、不追 latest。凭据在各自节点建立或由专属受限服务发放，禁止复制控制端 CAM 长期密钥或个人开发认证。
 
@@ -89,6 +103,8 @@ Lighthouse 与 CVM 默认内网隔离。选择与唯一 PG 同账号同地域的
 可信注册由控制面先将 Describe 证实的云 tuple、当前操作、immutable manifest、预期角色及一次性 epoch 绑定到 PG；bootstrap 使用该节点独有的业务注册凭据向受认证入口完成挑战与版本/PG 检查。注册凭据的服务端记录必须预先绑定该 tuple，不能信任请求体自报 account/instance。若一个共享 CAM role 可以读取两节点的所有 secret，则它不满足此隔离方案；需先收紧每节点角色/secret 权限。metadata 可辅助发现自身信息，不能替代控制面归属核验，也不能单独授权提升为 ready。
 
 停止备用再次开机沿用该实例的业务身份但获受控新 epoch；只有前一次停止已查明完成，且没有旧操作在途，才允许新 epoch。旧会话、旧节点令牌与旧代次 lease 均不能领取或提交新任务。供应商凭据可属于共享计费账户，但节点授权、吊销和使用归属必须独立可追踪。
+
+网络、IAM、secret 发行和首次创建的可审物料见 [参数与物料清单](tencent-execution-pool-materials.md)。它只包含公开技术字段和占位符；实际私有值由获授权的控制入口安全渲染，不进入仓库。仅在必需参数、发行流程与清理方案齐备后执行具体云创建。
 
 ## 验收与交付顺序
 
@@ -109,3 +125,4 @@ Lighthouse 与 CVM 默认内网隔离。选择与唯一 PG 同账号同地域的
 5. [Lighthouse 地域与网络连通性](https://cloud.tencent.com/document/product/1207/50103)。
 6. [Lighthouse 内网互联](https://cloud.tencent.com/document/product/1207/56847)。
 7. [CVM 实例角色](https://cloud.tencent.com/document/product/213/47668)：实施前据当前实例角色与临时凭据接口核精确权限；本设计未接触云账户凭据。
+8. [腾讯官方 Billing SDK 请求契约](https://github.com/TencentCloud/tencentcloud-sdk-python/blob/master/tencentcloud/billing/v20180709/models.py)：`DescribeBillSummaryByTag`、`DescribeBillDetail` 的月份/分页与筛选语义。
