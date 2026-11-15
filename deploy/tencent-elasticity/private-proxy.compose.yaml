@@ -2,6 +2,8 @@ services:
   execution-egress:
     image: sha256:2a36340e170919d7656023a10b9f950d8cf229b736f3aa9e2a6a1a6d41aa43da
     pull_policy: never
+    entrypoint: /usr/sbin/squid
+    command: [-N, -f, /etc/squid/squid.conf]
     network_mode: host
     user: squid
     volumes:
