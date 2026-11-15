@@ -8,7 +8,7 @@ import {join} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {Pool} from 'pg';
 import {configureExecutionCapacity,executionCapacityControl,bindExecutionRegistration,registerExecutionRuntime} from '@bondbuddy/api/execution-capacity';
-import {claim,releaseLease,type Lease} from '@bondbuddy/api/queue';
+import {claim,releaseLease,pauseRun,type Lease} from '@bondbuddy/api/queue';
 import {inputManifestHash} from '@bondbuddy/api/production-rule-pin';
 import type {PrivateBlobs} from '@bondbuddy/api/data';
 import type {ExecutionNodeContext} from '@bondbuddy/contracts';
@@ -38,7 +38,9 @@ async function serverFixture(){
     });
   });
   await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(path,resolve);});
-  return {path,requests,setResponse(fn:typeof respond){respond=fn;},async close(){
+  return {path,requests,setResponse(fn:typeof respond){respond=fn;},replyPending(response:unknown){
+    const count=connections.size;for(const socket of connections)socket.end(JSON.stringify(response)+'\n');return count;
+  },async close(){
     for(const socket of connections)socket.destroy();await new Promise<void>(resolve=>server.close(()=>resolve()));await rm(directory,{recursive:true});
   }};
 }
@@ -84,6 +86,34 @@ test('transport entry preserves legacy and requires the exact managed socket',as
 });
 
 const admissionConnection=await isolatedTestDatabase(undefined,'transport-admission');
+test('expired receipt cannot resurrect after clock rollback, refresh failure, timeout or late success',{skip:!admissionConnection,timeout:5000},async t=>{
+  const protocol=await loadProtocol(),server=await serverFixture(),base=Date.now();let wall=base,mono=0;
+  const context:ExecutionNodeContext={identity:{account_id:'synthetic',region:'synthetic',instance_id:'clock',epoch:randomUUID()},session_id:randomUUID()};
+  const healthy=()=>({...responseFor(context,protocol,true),not_after:new Date(wall+12*60*60*1000).toISOString()});
+  const transport=createExecutionTransportClient({socketPath:server.path,context,serviceId:'one',protocol,timeoutMs:20000,now:()=>wall,monotonicNow:()=>mono});
+  t.after(async()=>{transport.close();await server.close();});
+  server.setResponse(healthy);await transport.refresh();assert.equal(transport.ready(),true);
+  mono=20000;wall=base+20000;assert.equal(transport.ready(),true);
+  server.setResponse(()=>null);const pending=transport.refresh();await until(async()=>server.requests.length===2);
+  mono=29999;wall=base+29999;assert.equal(transport.ready(),true,'normal refresh reuses the original unexpired receipt');
+  mono=30000;wall=base+30000;assert.equal(transport.ready(),false,'refresh did not extend the original deadline');
+  wall=base;mono=31000;assert.equal(transport.ready(),false,'wall rollback cannot revive a discarded receipt');
+  mono=40000;assert.ok(server.replyPending(healthy())>0);
+  await assert.rejects(pending,/REFRESH_FAILED/);assert.equal(transport.ready(),false);
+  server.setResponse(healthy);await transport.refresh();assert.equal(transport.ready(),true);
+  wall=base+10;assert.equal(transport.ready(),true);wall=base;assert.equal(transport.ready(),false,'rollback before expiry also discards the receipt');
+  wall=base+10;assert.equal(transport.ready(),false);
+  server.setResponse(healthy);await transport.refresh();assert.equal(transport.ready(),true);
+  server.setResponse(()=>'{synthetic failure}\n');await assert.rejects(transport.refresh(),/REFRESH_FAILED/);
+  wall=base;assert.equal(transport.ready(),false);
+  server.setResponse(healthy);await transport.refresh();assert.equal(transport.ready(),true);
+  const count=server.requests.length;server.setResponse(()=>null);const late=transport.refresh();await until(async()=>server.requests.length>count);
+  mono+=20001;assert.ok(server.replyPending(healthy())>0,'a real socket delivered a response past the monotonic request deadline');
+  await assert.rejects(late,/REFRESH_FAILED/);wall=base-1;assert.equal(transport.ready(),false);
+  server.setResponse(healthy);await transport.refresh();assert.equal(transport.ready(),true);
+  const deadline=mono+30000;mono=deadline;assert.equal(transport.ready(),false,'elapsed time expires admission even when the wall clock is frozen');
+  mono=deadline+1;wall=base-2;assert.equal(transport.ready(),false);
+});
 test('actual UDS client shares one bounded refresh and never publishes malformed or late replies',{skip:!admissionConnection,timeout:5000},async t=>{
   const protocol=await loadProtocol(),server=await serverFixture();let now=Date.now();
   const context:ExecutionNodeContext={identity:{account_id:'synthetic',region:'synthetic',instance_id:'one',epoch:randomUUID()},session_id:randomUUID()};
@@ -135,6 +165,54 @@ test('actual UDS response gates PG claims and the existing idle heartbeat restor
 });
 
 const continuationConnection=await isolatedTestDatabase(undefined,'transport-continuation');
+const clockConnection=await isolatedTestDatabase(undefined,'transport-clock-rollback');
+test('actual runtime PG admission stays revoked after safety-line rollback until a fresh UDS receipt, while its lease drains',{skip:!clockConnection,timeout:20000},async t=>{
+  const protocol=await loadProtocol(),fixture=await enroll(clockConnection!),server=await serverFixture(),base=Date.now();let wall=base,mono=0;
+  const {pool,context,ready}=fixture;
+  const healthy=()=>({...responseFor(context,protocol,true),not_after:new Date(wall+12*60*60*1000).toISOString()});
+  server.setResponse(healthy);
+  const transport=createExecutionTransportClient({socketPath:server.path,context,serviceId:'one',protocol,timeoutMs:500,now:()=>wall,monotonicNow:()=>mono});
+  const budget=new PgModelCallBudget(pool);let permit:ModelCallPermit|undefined,ctx:StageContext|undefined,extraLease:Lease|null=null;
+  let finishStage!:()=>void;const stageLatch=new Promise<void>(resolve=>{finishStage=resolve;});
+  const first=await addJob(pool);await delay(5);const queued=await addJob(pool);
+  const runtime=new WorkerRuntime({pool,blobs,kinds:['run'],runKinds:['generation'],concurrency:1,interactiveSlots:0,parseSlots:0,
+    heartbeatMs:40,pollMs:40,sweepMs:100,leaseSeconds:5,drainMs:20,executionTransport:transport,
+    runStages:[{name:'synthetic_clock_stage',run:async stage=>{
+      permit=await budget.acquire(stage.signal,'synthetic:clock:first',{kind:'job',id:stage.lease.jobId,token:stage.lease.token});
+      ctx=stage;await stageLatch;await permit.release();return {kind:'done',checkpoint:{synthetic:true,rollback_did_not_cancel_lease:true}};
+    }},{name:'synthetic_no_delivery',run:async()=>({kind:'pause',stage:'capability_not_ready',reason:'synthetic_no_word_or_model'})}]}).start();
+  t.after(async()=>{if(extraLease)await pauseRun(pool,extraLease,'capability_not_ready','synthetic_clock_admission_verified');finishStage();await permit?.release();await runtime.stop();transport.close();await server.close();await pool.end();});
+  await until(async()=>!!ctx);assert.equal(ctx!.lease.jobId,first);assert.equal(await ready(),true);
+  const leaseBefore=(await pool.query('SELECT lease_until FROM bb_jobs WHERE id=$1',[first])).rows[0].lease_until.getTime();
+  let count=server.requests.length;server.setResponse(()=>null);await until(async()=>server.requests.length>count);
+  assert.equal(transport.ready(),true,'a normal pending refresh does not immediately stop admission');
+  wall=base+12*60*60*1000-protocol.TRANSPORT_ADMISSION_MARGIN_MS+1;
+  assert.equal(transport.ready(),false);await until(async()=>!await ready());
+  wall=base;mono=100;assert.equal(transport.ready(),false);
+  await delay(150);assert.equal(await ready(),false);await assert.rejects(claim(pool,5,{runKinds:['generation']}),/not ready/);
+  await delay(2200);
+  const renewed=(await pool.query('SELECT lease_token,lease_until FROM bb_jobs WHERE id=$1',[first])).rows[0];
+  assert.equal(renewed.lease_token,ctx!.lease.token);assert.ok(renewed.lease_until.getTime()>leaseBefore);
+  assert.equal(ctx!.signal.aborted,false);assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_capacity_holders')).rows[0].n,1);
+  server.setResponse(healthy);await until(ready);
+  extraLease=await claim(pool,5,{runKinds:['generation']});assert.equal(extraLease?.jobId,queued);
+  await pauseRun(pool,extraLease!,'capability_not_ready','synthetic_clock_admission_verified');extraLease=null;
+  // A late success must not reinstall a revoked decision even if the timeout
+  // callback has not run yet. This response is sent over the actual UDS.
+  count=server.requests.length;server.setResponse(()=>null);await until(async()=>server.requests.length>count);
+  mono+=501;assert.ok(server.replyPending(healthy())>0);await until(async()=>!await ready());
+  wall=base-1;await delay(100);assert.equal(transport.ready(),false);assert.equal(await ready(),false);
+  await assert.rejects(claim(pool,5,{runKinds:['generation']}),/not ready/);
+  await permit!.release();permit=await budget.acquire(ctx!.signal,'synthetic:clock:followup',{kind:'job',id:first,token:ctx!.lease.token});
+  const drain=await fixture.beginDrain();let stopped=false;const stopping=runtime.stop().then(()=>{stopped=true;});
+  await delay(100);assert.equal(stopped,false);assert.equal(ctx!.signal.aborted,false);
+  finishStage();await stopping;
+  assert.ok(await fixture.control.drainProof(context.identity,drain.drain_operation_id!));
+  const completed=(await pool.query('SELECT state,lease_token,checkpoint FROM bb_jobs WHERE id=$1',[first])).rows[0];
+  assert.equal(completed.state,'paused');assert.equal(completed.lease_token,null);assert.equal(completed.checkpoint.stages.synthetic_clock_stage.rollback_did_not_cancel_lease,true);
+  assert.equal((await pool.query('SELECT state FROM bb_jobs WHERE id=$1',[queued])).rows[0].state,'paused');
+  assert.equal((await pool.query('SELECT count(*)::int n FROM bb_model_call_attempts')).rows[0].n,0);
+});
 test('a hanging refresh leaves real lease renewal, exact model continuation and positive drain intact',{skip:!continuationConnection,timeout:20000},async t=>{
   const protocol=await loadProtocol(),fixture=await enroll(continuationConnection!),server=await serverFixture();
   const {pool,context,ready}=fixture;
