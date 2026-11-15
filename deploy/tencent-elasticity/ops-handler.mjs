@@ -6,6 +6,7 @@ import {bootstrapUserData} from './bootstrap.mjs';
 import {canonical, sha256, validateConfig} from './policy.mjs';
 import {issueNodeEnrollment} from './enrollment.mjs';
 import {produceExpenseSnapshot, costAdmission} from './costcap.mjs';
+import {validateTransportIssuer} from './transport-issuer.mjs';
 
 /** Called by the already-existing ops scheduler tick, also on startup/restart.
  * No new timer. Cloud dependencies can be injected for isolated fault tests. */
@@ -45,7 +46,13 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
       const syncBudget=async()=>{
         snapshot=await control.snapshot();
         let admission={allowed:false,reason:'expense_producer_unavailable'};
-        try{inventory=await cloud.inventory();admission=costAdmission(await costSnapshot(inventory),inventory,config);}catch{}
+        try{
+          inventory=await cloud.inventory();admission=costAdmission(await costSnapshot(inventory),inventory,config);
+          if(admission.allowed&&!dependencies.cloud){
+            if(config.node_secrets?.length!==2)throw Error('PG_DYNAMIC_ISSUER_REQUIRED');
+            for(const descriptor of config.node_secrets)await validateTransportIssuer(descriptor.pg_issuer);
+          }
+        }catch{admission={allowed:false,reason:'expense_or_issuer_unavailable'};}
         if(snapshot.policy.managed_nodes && admission.allowed!==snapshot.policy.budget_available) {
           const approved=config.expense_policy_sha256;
           // Enabling requires the same reviewed PG expense policy. Tightening
@@ -80,6 +87,11 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         await controller.drain(plan.identity, randomUUID(), plan.revision);
       } else if (['run', 'start'].includes(plan.kind)) {
         validateConfig(config, {apply: true});
+        // The real automatic entry must have a usable operation-aware issuer
+        // before reserving or spending on a node. Synthetic cloud fixtures do
+        // not claim to provide production certificates.
+        if(!dependencies.cloud)for(const descriptor of config.node_secrets??[])await validateTransportIssuer(descriptor.pg_issuer);
+        if(!dependencies.cloud&&config.node_secrets?.length!==2)throw Error('PG_DYNAMIC_ISSUER_REQUIRED');
         const operationId = randomUUID();
         const request = {account_id: config.account_id, region: config.region, instance_id: plan.instance_id,
           instance_count: 1, epoch: randomUUID(), source_sha256: config.source_sha256, image_sha256: config.image_sha256,

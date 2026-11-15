@@ -70,6 +70,10 @@ const runtime = {
       pg.unit_sha256===sha256(await readFile('/etc/systemd/system/bondbuddy-execution-pg.service')),'NODE_PRIVATE_PG_INSTALL_SCOPE');
     const parent=await lstat('/etc/bondbuddy');
     requireThat(parent.isDirectory()&&!parent.isSymbolicLink()&&parent.uid===0&&(parent.mode&0o022)===0,'NODE_PRIVATE_PG_PARENT');
+    let enabled;
+    try{enabled=(await exec('/usr/bin/systemctl',['is-enabled',pg.unit_name],{timeout:5000,maxBuffer:4096})).stdout.trim();}
+    catch(error){enabled=error.stdout?.trim();}
+    requireThat(['static','disabled'].includes(enabled),'NODE_PRIVATE_PG_BOOT_ORDER');
     validateTransportCredentials(enrollment.transport_credentials,{...e.identity,ca_sha256:pg.ca_sha256},{now});
     await ensurePrivateExecutionNetwork(config,runDocker);
     const unitState=async()=>{

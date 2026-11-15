@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {execFile,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
-import {mkdtemp,readFile,writeFile,lstat,symlink,rm} from 'node:fs/promises';
+import {mkdtemp,readFile,writeFile,lstat,symlink,rm,chmod} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import net from 'node:net';
@@ -10,11 +10,14 @@ import tls from 'node:tls';
 import {once} from 'node:events';
 import {installPrivateTransport,ensurePrivateExecutionNetwork} from './private-transport.mjs';
 import {sha256} from './policy.mjs';
+import {issueTransportCredentials} from './transport-issuer.mjs';
+import {issueNodeEnrollment} from './enrollment.mjs';
 const exec=promisify(execFile);
 const identity={account_id:'123456',region:'ap-beijing',instance_id:'ins-a1',epoch:'a3432123-84b5-4f11-8b51-94a29eac1234'};
 async function fixture(t) {
   const dir=await mkdtemp(join(tmpdir(),'bb-mtls-'));t.after(()=>rm(dir,{recursive:true}));
   await exec('openssl',['req','-x509','-newkey','ec','-pkeyopt','ec_paramgen_curve:P-256','-nodes','-days','2','-subj','/CN=synthetic-pg-ca','-keyout',join(dir,'ca.key'),'-out',join(dir,'ca.pem')]);
+  await chmod(join(dir,'ca.pem'),0o600);
   for(const [name,cn,usage] of [['client',`${identity.instance_id}:${identity.epoch}`,'clientAuth'],['server','localhost','serverAuth']]) {
     await exec('openssl',['req','-newkey','ec','-pkeyopt','ec_paramgen_curve:P-256','-nodes','-subj',`/CN=${cn}`,'-keyout',join(dir,`${name}.key`),'-out',join(dir,`${name}.csr`)]);
     await writeFile(join(dir,`${name}.ext`),`extendedKeyUsage=${usage}\n${name==='server'?'subjectAltName=DNS:localhost\n':''}`);
@@ -43,11 +46,27 @@ test('private execution network is idempotent and refuses existing unreviewed br
   await assert.rejects(ensurePrivateExecutionNetwork(config,async()=>JSON.stringify([{...row,Internal:false}])),/NODE_NETWORK_DRIFT/);
   await assert.rejects(ensurePrivateExecutionNetwork(config,async a=>{if(a[1]==='inspect')throw Error();return config.execution_network;}),/NODE_NETWORK_OBSERVATION_UNKNOWN/);
 });
+test('operation-aware issuer signs a new warm epoch and preserves exact vault certificate/token after lost publish ACK',async t=>{
+  const {dir,credentials}=await fixture(t),pg_issuer={ca_file:join(dir,'ca.pem'),ca_sha256:sha256(credentials.ca_pem),signing_key_file:join(dir,'ca.key')};
+  const config={account_id:identity.account_id,region:identity.region,registration_directory:join(dir,'vault'),role_names:['role-a','role-b'],node_secrets:[{role_name:'role-a',role_id:'7',secret_name:'node-a',pg_issuer}]};
+  const op={operation_id:'run1',state:'completed',action:'run',provider_request_id:'ack1',identity,request:{services:[{service_id:'authoring',capabilities:['authoring']}],source_sha256:'a'.repeat(64),image_sha256:'a'.repeat(64),launch_manifest_sha256:'a'.repeat(64)}};
+  const stored=new Map();let puts=0;
+  const transport={call:async(_,action,p)=>{if(action==='GetSecretValue'){if(!stored.has(p.VersionId)){const e=Error();e.code='ResourceNotFound';throw e;}return {SecretName:p.SecretName,VersionId:p.VersionId,SecretString:stored.get(p.VersionId)};}if(action==='PutSecretValue'){puts++;stored.set(p.VersionId,p.SecretString);throw Error('lost ACK');}if(action==='ModifyResourceTags')return {RequestId:'synthetic'};throw Error('unexpected');}};
+  const options={operation:op,slot:0,config,transport,bind:async()=>{},serviceTemplate:{service_environments:{authoring:{DATABASE_URL:'synthetic-only'}}}};
+  await issueNodeEnrollment(options);const first=stored.get('run1');await issueNodeEnrollment(options);assert.equal(stored.get('run1'),first);assert.equal(puts,1);
+  const warm={...op,operation_id:'start1',action:'start',provider_request_id:'ack2',identity:{...identity,epoch:'b3432123-84b5-4f11-8b51-94a29eac1234'}};
+  await issueNodeEnrollment({...options,operation:warm});const fresh=JSON.parse(stored.get('start1')).transport_credentials;
+  assert.notEqual(sha256(fresh.cert_pem),sha256(JSON.parse(first).transport_credentials.cert_pem));
+  await installPrivateTransport(join(dir,'warm'),fresh,{...warm.identity,ca_sha256:pg_issuer.ca_sha256});
+  await assert.rejects(issueTransportCredentials(identity,{...pg_issuer,ca_sha256:'0'.repeat(64)}),/PG_ISSUER_CA_PIN/);
+});
 test('issued private files drive actual stunnel mTLS and a real isolated PostgreSQL identity query',
  {skip:!process.env.BB_TEST_DATABASE_URL||!process.env.BB_TEST_STUNNEL_BINARY,timeout:20000},async t=>{
   const {isolatedTestDatabase}=await import('../../apps/api/dist/test-database.js');
   const {Pool}=await import('pg');const connection=await isolatedTestDatabase(undefined,'private-mtls');
-  const {dir,credentials,expected}=await fixture(t),files=await installPrivateTransport(join(dir,'private'),credentials,expected);
+  const fixtureData=await fixture(t),{dir,expected}=fixtureData;
+  const credentials=await issueTransportCredentials(identity,{ca_file:join(dir,'ca.pem'),ca_sha256:expected.ca_sha256,signing_key_file:join(dir,'ca.key')});
+  const files=await installPrivateTransport(join(dir,'private'),credentials,expected);
   const url=new URL(connection),upstreamHost=url.hostname,upstreamPort=Number(url.port),sockets=new Set();
   const server=tls.createServer({key:await readFile(join(dir,'server.key')),cert:await readFile(join(dir,'server.pem')),
     ca:credentials.ca_pem,requestCert:true,rejectUnauthorized:true},s=>{

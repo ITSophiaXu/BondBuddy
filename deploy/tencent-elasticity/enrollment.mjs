@@ -5,6 +5,7 @@ import {TencentTransport} from './tencent-cvm.mjs';
 import {readRoleCredentials} from './bootstrap.mjs';
 import {canonical, requireThat, sha256} from './policy.mjs';
 import {readPrivateJson} from './private-files.mjs';
+import {issueTransportCredentials} from './transport-issuer.mjs';
 
 /** Node-exclusive role/secret. The image contains only the public name/version;
  * CAM enforces a different secret resource for each inventory slot. */
@@ -55,7 +56,8 @@ export async function issueNodeEnrollment({operation, slot, config, transport, b
     operation.provider_request_id && operation.identity.account_id === config.account_id && operation.identity.region === config.region,
     'ISSUER_SCOPE');
   requireThat(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(operation.operation_id), 'SECRET_VERSION_BOUND');
-  const proposed = {...serviceTemplate, identity: operation.identity, role_id: descriptor.role_id,
+  const transportCredentials=descriptor.pg_issuer?await issueTransportCredentials(operation.identity,descriptor.pg_issuer,{now}):serviceTemplate.transport_credentials;
+  const proposed = {...serviceTemplate,...(transportCredentials?{transport_credentials:transportCredentials}:{}), identity: operation.identity, role_id: descriptor.role_id,
     services: operation.request.services, source_sha256: operation.request.source_sha256,
     image_sha256: operation.request.image_sha256, launch_manifest_sha256: operation.request.launch_manifest_sha256,
     registration_token: randomBytes(32).toString('base64url'), expires_at: now() + 600000,

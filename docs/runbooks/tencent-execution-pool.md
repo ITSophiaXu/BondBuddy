@@ -50,9 +50,13 @@
 
 启动还核对 stunnel 配置、unit hash、远端 endpoint/SNI/CA 和受控 Docker bridge 的完整配置；不存在时创建专属 internal bridge，已有配置漂移或观察失败则拒绝。凭据安装后才启动 transport，每个服务从该网络执行真实 SQL system_identifier 预检，再启动消费者。已活跃 transport 的凭据不一致时不重启、不覆盖，保留既有持有者。私网路由与 cloud API/供应商/Blob 的受限代理出口必须另有实际连接和费用上界证据；internal bridge 不提供默认互联网出口。准确角色、网络、凭据、报价或不可变镜像缺失仍拒绝 apply。
 
-独立 `compose.yaml` 只含编制和复核。`BB_EXECUTION_ENROLLMENT_FILE` 分服务绑定准确登记文件；必须在 runtime 的 managed-node 断言和 session gate 已接通后使用。运行 UID/GID 固定 `1000:1000`；登记与服务私有目录 `0700`、文件 `0600`，按实际 UID 安装，不改世界可读。子工具 explicit deny 登记、服务凭据和宿主配置目录；Compose 保留受限 seccomp/AppArmor、cap-drop ALL 和 no-new-privileges，不允许 privileged/unconfined。编制能力仅 authoring，复核为 review/assistant，probe 显式关闭；launch capabilities 从 services 并集派生。任务种类限定 `run`、parse slots 为零、确认服务关闭；纯解析/确认等未纳入排空统计的入口不得启动。两进程共享 PG 单节点 4 槽，不能分别占 4 槽。总硬内存上限 9 GiB，两个临时目录共 1 GiB，余量留给系统与实际子进程；真实双节点混合峰值仍需核验。
+独立 `compose.yaml` 只含编制和复核。`BB_EXECUTION_ENROLLMENT_FILE` 分服务绑定准确登记文件；必须在 runtime 的 managed-node 断言和 session gate 已接通后使用。运行 UID/GID 固定 `1000:1000`；登记与服务私有目录 `root:1000/0750`、文件 `1000:1000/0600`，按实际 UID 安装，不改世界可读。子工具 explicit deny 登记、服务凭据和宿主配置目录；Compose 保留受限 seccomp/AppArmor、cap-drop ALL 和 no-new-privileges，不允许 privileged/unconfined。编制能力仅 authoring，复核为 review/assistant，probe 显式关闭；launch capabilities 从 services 并集派生。任务种类限定 `run`、parse slots 为零、确认服务关闭；纯解析/确认等未纳入排空统计的入口不得启动。两进程共享 PG 单节点 4 槽，不能分别占 4 槽。总硬内存上限 9 GiB，两个临时目录共 1 GiB，余量留给系统与实际子进程；真实双节点混合峰值仍需核验。
 
 PG 通道使用 `pg-client.conf.example`/`pg-client.service`，仅绑定获审私有 bridge 地址，TLS 对端 SNI/CA/独立客户证书全部校验。节点启动核准确 stunnel 配置 hash、活动 unit 和每个 credential 权限，再以独立服务环境做真实 SQL system identifier 检查后才启动消费者；全服务 ready 再核同一数据库/epoch/pins。网络路由或其他任务的临时测试规则不是本池 ready 证明。
+
+控制端 `node_secrets[].pg_issuer` 指定新 CA 的私有文件、hash 与新签名私钥文件。`transport-issuer.mjs` 从准确已完成操作的 instance/epoch 动态签发 clientAuth 证书，`issueNodeEnrollment` 在持久 vault 写入前注入；同操作重试仍发布同一 vault token/证书/SecretVersion，warm Start 新 epoch 必须使用新证书。真实 ops 入口在预算开启、未派发意图恢复或新增云支出之前检查 issuer；缺失/失效只关闭新增支出和领取，不妨碍既有排空。签名权只留控制服务，节点 secret 不含 CA 私钥。
+
+数据库客户端 unit 刻意没有 Install 段，禁止 enable。安装时清除该专属 unit 的旧开机链接；warm 开机先等待当前操作的 broker envelope，再安装当前 epoch leaf 并显式 start。启动检查 unit 为 static/disabled，启用开机自启则拒绝。已有 active transport 的身份/凭据漂移仍拒绝覆盖或重启，不能以重启掩盖旧流量。
 
 ## 阶段、验收与撤销
 

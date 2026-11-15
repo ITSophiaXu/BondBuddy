@@ -45,8 +45,8 @@
   "time_zone": "Asia/Shanghai",
   "cloud_quote_file": null,
   "node_secrets": [
-    {"role_name":"bondbuddy-execution-node-1","role_id":null,"secret_name":"bondbuddy-execution-node-1","service_template_file":null},
-    {"role_name":"bondbuddy-execution-node-2","role_id":null,"secret_name":"bondbuddy-execution-node-2","service_template_file":null}
+    {"role_name":"bondbuddy-execution-node-1","role_id":null,"secret_name":"bondbuddy-execution-node-1","service_template_file":null,"pg_issuer":{"ca_file":null,"ca_sha256":null,"signing_key_file":null}},
+    {"role_name":"bondbuddy-execution-node-2","role_id":null,"secret_name":"bondbuddy-execution-node-2","service_template_file":null,"pg_issuer":{"ca_file":null,"ca_sha256":null,"signing_key_file":null}}
   ],
   "scale_up_wait_seconds": 60,
   "idle_seconds": 300,

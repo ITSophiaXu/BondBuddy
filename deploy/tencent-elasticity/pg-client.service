@@ -15,5 +15,5 @@ RestrictAddressFamilies=AF_INET AF_INET6
 StandardOutput=null
 StandardError=journal
 
-[Install]
-WantedBy=multi-user.target
+# Intentionally static: only the bounded bootstrap starts this transport after
+# installing the current epoch's certificate. Never enable it at machine boot.
