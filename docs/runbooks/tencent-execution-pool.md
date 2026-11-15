@@ -44,6 +44,8 @@
 
 自动路径为现有 `apps/worker/src/ops-scheduler.ts` 的 tick → `createExecutionPoolOpsHandler({control,configPath,expenseLedger,enrollmentBinder})`。未配置不发云请求；每 tick 先恢复 pending，最多一项云变更，费用失效仍推进安全排空。Dockerfile 明确 COPY 本目录依赖模块，须做实际镜像布局 import smoke。
 
+节点初始化失败会在原清理之前向既有标准错误日志输出一条 `bootstrap-failure-v1` JSON，随后仍按原规则禁止就绪并退出。记录仅含白名单阶段、服务、错误码、子命令退出码/信号、标准错误类别及已跟踪/当前服务的有限容器状态；`containers: null` 表示观测不可用，不表示零容器。类别是有限文本签名，不是根因认定。禁止写入原异常、命令参数、环境、凭据、模型输入、标准输出或原始标准错误。初始化产物须包含 `bootstrap-entry.mjs`、`bootstrap.mjs`、`node-adapter.mjs` 和新增 `bootstrap-failure.mjs` 的准确字节/hash；控制端更新不能替代节点上的初始化闭包更新，也不能给旧镜像重新标注新版本。
+
 按需人工管理入口可调用 `node deploy/tencent-elasticity/reconcile-entry.mjs <plan|start|drain|recover> <private-config> <private-request> <operation-id>`。仅按需调用；该入口不运行循环。配置、短控制凭据和登记文件须为当前 UID 的普通 `0600` 文件，拒绝 symlink。凭据只读入内存，不打印或存入云观察原件。
 
 `bootstrap.service` 是一次性启动入口。审核镜像须预装 Node、Docker、本模块及已核 hash 的节点专属 broker/runtime adapter；配置缺失即启动失败，不执行默认个人 provider。公开 UserData 仅写服务 manifest；短凭据在控制端准确云绑定之后发行。控制端先 PG 绑定，再精确 Get/Put/readback 同一 SecretName/VersionId（Put 受理丢失不换 token/版本）；节点对独占 Secret 的完整库存执行最多十个精确 Get，不依赖运行后 tag 指针。握手最多六次扫描，间隔三十秒，全部网络读取共用一百八十秒 abort deadline，逾期失败不启消费者。真实云和 Secret 发行为延期验收项，函数单测不能证明实机可启动。
