@@ -1,3 +1,4 @@
+import {readExpenseHistory} from './expense-history.mjs';
 import {readPrivateJson, observationArchive} from './private-files.mjs';
 import {ExecutionPoolController} from './controller.mjs';
 import {TencentCvm, TencentTransport} from './tencent-cvm.mjs';
@@ -28,7 +29,7 @@ try {
   const costSnapshot=async inventory=>{
     const ledger=await executionCloudExpenseLedger(pool),fresh=await refreshCloudQuote({configPath,config:baseConfig,transport,capturedAt:ledger.captured_at});
     config=fresh.config;controller.config=config;cloud.config=config;
-    return produceExpenseSnapshot({ledger,inventory,quote:fresh.quote,config});
+    return produceExpenseSnapshot({ledger,inventory,quote:fresh.quote,config,history:await readExpenseHistory(config)});
   };
   const controller = new ExecutionPoolController({control, cloud, config, costSnapshot});
   const syncBudget=async()=>{
