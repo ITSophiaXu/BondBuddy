@@ -12,6 +12,9 @@ import {produceExpenseSnapshot, costAdmission} from './costcap.mjs';
 export function createExecutionPoolOpsHandler({control, configPath, log = () => {}, enrollmentBinder, expenseLedger, dependencies = {}}) {
   let busy = false;
   const readConfig = dependencies.readConfig ?? readPrivateJson;
+  const clientToken=dependencies.clientToken ?? (async id=>{
+    const {executionCloudClientToken}=await import('@bondbuddy/api/execution-capacity');return executionCloudClientToken(id);
+  });
   return {async tick() {
     if (busy || !configPath) return;
     busy = true;
@@ -83,7 +86,7 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
           capabilities: [...new Set(config.services.flatMap(s => s.capabilities))], services: config.services};
         if (plan.kind === 'run') {
           const slot = config.role_names.findIndex(role => !inventory.some(i => i.role_name === role));
-          request.launch_manifest_sha256 = sha256(canonical(runParameters(config, request, sha256(operationId), bootstrapUserData(config, request), slot, operationId)));
+          request.launch_manifest_sha256 = sha256(canonical(runParameters(config, request, await clientToken(operationId), bootstrapUserData(config, request), slot, operationId)));
         } else {
           const node = snapshot.nodes.find(n => n.state === 'stopped' && n.identity.instance_id === plan.instance_id);
           if (!node || node.source_sha256 !== config.source_sha256 || node.image_sha256 !== config.image_sha256 ||

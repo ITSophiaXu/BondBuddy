@@ -126,7 +126,8 @@ export class TencentCvm {
       requireThat(i.instance_state === 'STOPPED', 'START_REQUIRES_STOPPED');
       requireThat(i.create_operation_id,'WARM_START_CREATION_UNPROVEN');
       const oldRequest={...operation.request,instance_id:null};
-      const oldParams=runParameters(this.config,oldRequest,sha256(i.create_operation_id),bootstrapUserData(this.config,oldRequest),
+      const {executionCloudClientToken}=await import('@bondbuddy/api/execution-capacity');
+      const oldParams=runParameters(this.config,oldRequest,executionCloudClientToken(i.create_operation_id),bootstrapUserData(this.config,oldRequest),
         this.config.role_names.indexOf(i.role_name),i.create_operation_id);
       requireThat(sha256(canonical(oldParams))===operation.request.launch_manifest_sha256,'WARM_START_CLOUD_MANIFEST_DRIFT');
       return this.transport.call('cvm', 'StartInstances', {InstanceIds: [i.instance_id]});

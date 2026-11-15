@@ -211,3 +211,10 @@ test('unneeded never-dispatched intent is cancelled rather than blocking drain o
  const c=new ExecutionPoolController({config,control:{snapshot:async()=>({...snapshot(),pending_cloud_reservations:1,policy:{...snapshot().policy,budget_available:false}}),cancelUndispatchedCloudIntent:async(id,rev,policy)=>{assert.equal(id,op.operation_id);assert.equal(rev,op.revision);assert.equal(policy,1);cancels++;return {...op,state:'cancelled'};}},costSnapshot:async()=>{throw Error('budget exhausted');},cloud:{inventory:async()=>[],execute:async()=>{calls++;}}});
  assert.equal((await c.resumeIntent(op)).state,'cancelled');assert.equal(cancels,1);assert.equal(calls,0);
 });
+
+test('completed Run boot time before PG node insertion remains charged from original dispatch',()=>{
+ const inventory=safeInventory(),ledger=ledgerFor(inventory);const captured=Date.parse(ledger.captured_at);
+ ledger.nodes[0].created_at=new Date(captured-1000).toISOString();ledger.operations[0].dispatched_at=new Date(captured-1800000).toISOString();
+ const bound=produceExpenseSnapshot({ledger,inventory,quote,config});const today=Date.parse(bound.period_start);
+ assert.ok(bound.spent_upper_bound_cny>=Math.max(0,captured-Math.max(today,captured-1800000))/3600000*1.2-0.000001);
+});

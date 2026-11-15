@@ -52,7 +52,12 @@ export function produceExpenseSnapshot({ledger, inventory, quote, config}) {
   let spent=0, carry=0, reservations=0;
   for(const n of ledger.nodes) {
     requireThat(n.identity.account_id===config.account_id && n.identity.region===config.region && digest(n.launch_manifest_sha256) && ops.has(n.cloud_start_operation_id), 'EXPENSE_NODE_BINDING');
-    const created=ms(n.created_at), until=n.destroyed_at===null?now:ms(n.destroyed_at);
+    const launches=ledger.operations.filter(o=>o.action==='run' && o.identity?.instance_id===n.identity.instance_id &&
+      o.identity.account_id===n.identity.account_id && o.identity.region===n.identity.region);
+    requireThat(launches.length===1 && launches[0].dispatched_at,'EXPENSE_ORIGINAL_RUN_REQUIRED');
+    // PG creates the node row only after cloud completion. Charge the complete
+    // boot interval starting at dispatch, including a midnight boundary.
+    const created=Math.min(ms(n.created_at),ms(launches[0].dispatched_at)), until=n.destroyed_at===null?now:ms(n.destroyed_at);
     requireThat(created<=until && until<=now+30000, 'EXPENSE_NODE_TIME');
     const cloud=inventory.find(i=>i.instance_id===n.identity.instance_id), stop=ops.get(n.stop_operation_id);
     // Only exact ACK-bound completion authorizes compute savings. A stopped
