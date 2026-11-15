@@ -6,6 +6,49 @@ const digest = v => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
 const ms = value => {const n = Date.parse(value); requireThat(Number.isFinite(n), 'EXPENSE_TIME_REQUIRED'); return n;};
 const money = value => Math.ceil(value * 1000000) / 1000000;
 
+const sameResource = (a, b) => a?.account_id === b.account_id && a?.region === b.region && a?.instance_id === b.instance_id;
+const pending = o => ['intent','submitted','unknown'].includes(o.state);
+
+/** A node row changes epoch on a warm reservation. Only immutable operation
+ * history can retain the stopped predecessor and all earlier savings. */
+function chargingHistory(operations, created, until) {
+  for(const o of operations.filter(o=>['run','start'].includes(o.action)))
+    requireThat(o.dispatched_at||['intent','cancelled','rejected'].includes(o.state)&&!o.provider_request_id,'EXPENSE_DISPATCH_REQUIRED');
+  const starts=operations.filter(o=>['run','start'].includes(o.action)&&o.dispatched_at);
+  const events=starts.map(o=>({at:ms(o.dispatched_at),running:true,epoch:o.identity.epoch,id:o.operation_id}));
+  for(const o of operations.filter(o=>o.action==='stop')) {
+    const observed=o.cloud_observation, dispatched=Date.parse(o.dispatched_at), completed=Date.parse(o.completed_at), at=Date.parse(observed?.observed_at);
+    // A null ACK must never equal another null and authorize savings. The
+    // evidence belongs to this operation's historical epoch, not today's row.
+    if(o.state!=='completed'||!o.provider_request_id||!o.dispatched_at||!o.completed_at||
+      observed?.latest_operation_request_id!==o.provider_request_id||observed?.latest_operation!=='StopInstances'||
+      observed?.latest_operation_state!=='SUCCESS'||observed?.instance_state!=='STOPPED'||observed?.stop_charging_mode!=='STOP_CHARGING'||
+      !digest(observed?.evidence_sha256)||!observed?.evidence_ref||
+      !Number.isFinite(dispatched)||!Number.isFinite(completed)||!Number.isFinite(at)||completed<dispatched||at<dispatched||at>completed+30000)continue;
+    events.push({at:Math.max(completed,at),running:false,epoch:o.identity.epoch,id:o.operation_id});
+  }
+  // At equal timestamps a Start supersedes the stopped predecessor. A late
+  // Stop from a different epoch cannot close the newly dispatched interval.
+  events.sort((a,b)=>a.at-b.at||Number(a.running)-Number(b.running)||a.id.localeCompare(b.id));
+  const run=starts.find(o=>o.action==='run');
+  requireThat(run&&new Set(starts.map(o=>o.identity.epoch)).size===starts.length,'EXPENSE_START_HISTORY_DRIFT');
+  let cursor=created,running=true,epoch=run.identity.epoch;
+  const intervals=[];
+  for(const e of events) {
+    requireThat(e.at>=created&&e.at<=until+30000,'EXPENSE_OPERATION_TIME');
+    if(e.at>until)continue;
+    if(!e.running&&e.epoch!==epoch)continue;
+    if(e.at>cursor)intervals.push({from:cursor,to:e.at,running});
+    cursor=e.at;running=e.running;epoch=e.epoch;
+  }
+  if(cursor<until)intervals.push({from:cursor,to:until,running});
+  return {intervals,running};
+}
+
+function intervalCost(intervals, from, to, runningRate, stoppedRate) {
+  return intervals.reduce((sum,i)=>sum+Math.max(0,Math.min(i.to,to)-Math.max(i.from,from))/HOUR*(i.running?runningRate:stoppedRate),0);
+}
+
 /** Fixed civil-day boundaries, never a rolling 24-hour interval or caller clock. */
 export function expensePeriod(capturedAt, timeZone) {
   const timestamp = ms(capturedAt);
@@ -57,38 +100,37 @@ export function produceExpenseSnapshot({ledger, inventory, quote, config}) {
   const rows=[];
   let spent=0, carry=0, reservations=0;
   for(const n of ledger.nodes) {
-    requireThat(n.identity.account_id===config.account_id && n.identity.region===config.region && digest(n.launch_manifest_sha256) && ops.has(n.cloud_start_operation_id), 'EXPENSE_NODE_BINDING');
-    const launches=ledger.operations.filter(o=>o.action==='run' && o.identity?.instance_id===n.identity.instance_id &&
-      o.identity.account_id===n.identity.account_id && o.identity.region===n.identity.region);
+    const currentStart=ops.get(n.cloud_start_operation_id);
+    requireThat(n.identity.account_id===config.account_id && n.identity.region===config.region && digest(n.launch_manifest_sha256) &&
+      sameResource(currentStart?.identity,n.identity)&&currentStart.identity.epoch===n.identity.epoch&&['run','start'].includes(currentStart.action), 'EXPENSE_NODE_BINDING');
+    const history=ledger.operations.filter(o=>sameResource(o.identity,n.identity));
+    const launches=history.filter(o=>o.action==='run');
     requireThat(launches.length===1 && launches[0].dispatched_at,'EXPENSE_ORIGINAL_RUN_REQUIRED');
     // PG creates the node row only after cloud completion. Charge the complete
     // boot interval starting at dispatch, including a midnight boundary.
     const created=Math.min(ms(n.created_at),ms(launches[0].dispatched_at)), until=n.destroyed_at===null?now:ms(n.destroyed_at);
     requireThat(created<=until && until<=now+30000, 'EXPENSE_NODE_TIME');
-    const cloud=inventory.find(i=>i.instance_id===n.identity.instance_id), stop=ops.get(n.stop_operation_id);
-    // Only exact ACK-bound completion authorizes compute savings. A stopped
-    // Describe on its own cannot erase an unknown Stop/Start liability.
-    const provenStopped=n.state==='stopped' && cloud?.instance_state==='STOPPED' && stop?.state==='completed' &&
-      stop.action==='stop' && stop.identity?.epoch===n.identity.epoch && stop.cloud_observation?.latest_operation_request_id===stop.provider_request_id &&
-      stop.cloud_observation?.stop_charging_mode==='STOP_CHARGING' && stop.completed_at;
-    const stopAt=provenStopped?ms(stop.completed_at):until;
-    const activeHours=Math.max(0,Math.min(until,stopAt)-Math.max(created,start))/HOUR;
-    const stoppedHours=Math.max(0,until-Math.max(created,start,stopAt))/HOUR;
-    const upper=money(activeHours*running+stoppedHours*stopped);
-    const unresolved=ledger.operations.filter(o=>o.identity?.instance_id===n.identity.instance_id && ['intent','submitted','unknown'].includes(o.state));
-    const prior=unresolved.length?money(Math.max(0,Math.min(start,until)-created)/HOUR*running):0;
-    const reserve=n.destroyed_at===null?money(config.reservation_hours*(provenStopped?stopped:running)):0;
+    const cloud=inventory.find(i=>i.instance_id===n.identity.instance_id);
+    const charging=chargingHistory(history,created,until);
+    const upper=money(intervalCost(charging.intervals,start,until,running,stopped));
+    const unresolved=history.filter(pending),dispatchedUnknown=unresolved.some(o=>o.dispatched_at);
+    const prior=dispatchedUnknown?money(intervalCost(charging.intervals,created,Math.min(start,until),running,stopped)):0;
+    // Reserving a new epoch does not start billing. Keep its prospective cost,
+    // while the historical stopped interval remains stopped until dispatch.
+    const prospective=unresolved.some(o=>['run','start'].includes(o.action)&&!o.dispatched_at);
+    const reserve=n.destroyed_at===null?money(config.reservation_hours*(charging.running||prospective?running:stopped)):0;
     spent+=upper;carry+=prior;reservations+=reserve;
     rows.push({resource_id:n.identity.instance_id,launch_manifest_sha256:n.launch_manifest_sha256,operation_ids:unresolved.map(o=>o.operation_id),
       upper_bound_cny:upper,carry_liability_cny:prior,reservation_cny:reserve,cloud_evidence_sha256:cloud?.evidence_sha256??null});
   }
-  const unbound=ledger.operations.filter(o=>o.action==='run' && o.identity===null && ['intent','submitted','unknown'].includes(o.state));
+  const unbound=ledger.operations.filter(o=>o.action==='run' && o.identity===null && pending(o));
   requireThat(live.length+unbound.length<=2, 'EXPENSE_RESERVED_POOL_BOUND');
   for(const o of unbound) {
     requireThat(o.request?.account_id===config.account_id && o.request.region===config.region && o.request.instance_count===1 && digest(o.request.launch_manifest_sha256), 'EXPENSE_UNBOUND_REQUEST');
-    const began=ms(o.dispatched_at??o.created_at);requireThat(began<=now+30000,'EXPENSE_OPERATION_TIME');
-    const upper=money(Math.max(0,now-Math.max(start,began))/HOUR*running);
-    const prior=money(Math.max(0,start-began)/HOUR*running), reserve=money(config.reservation_hours*running);
+    requireThat(o.dispatched_at||o.state==='intent'&&!o.provider_request_id,'EXPENSE_DISPATCH_REQUIRED');
+    const began=ms(o.dispatched_at??ledger.captured_at);requireThat(began<=now+30000,'EXPENSE_OPERATION_TIME');
+    const upper=o.dispatched_at?money(Math.max(0,now-Math.max(start,began))/HOUR*running):0;
+    const prior=o.dispatched_at?money(Math.max(0,start-began)/HOUR*running):0, reserve=money(config.reservation_hours*running);
     spent+=upper;carry+=prior;reservations+=reserve;
     rows.push({resource_id:null,operation_ids:[o.operation_id],launch_manifest_sha256:o.request.launch_manifest_sha256,
       upper_bound_cny:upper,carry_liability_cny:prior,reservation_cny:reserve});
