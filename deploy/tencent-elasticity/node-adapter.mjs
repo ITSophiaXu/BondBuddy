@@ -16,7 +16,7 @@ async function metadataValue(path) {
   requireThat(r.ok && Number(r.headers.get('content-length') ?? 0) <= 1024, 'NODE_METADATA_BOUND');
   const text = await r.text(); requireThat(text.length <= 1024, 'NODE_METADATA_BOUND'); return text.trim();
 }
-export function createNodeAdapter(config, {runDocker=docker, readMetadata=metadataValue, enrollmentBroker, checkUnit}={}) {
+export function createNodeAdapter(config, {runDocker=docker, readMetadata=metadataValue, enrollmentBroker, checkUnit, wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)), now=Date.now}={}) {
 requireThat(config.runtime_uid === 1000 && /^[a-f0-9]{64}$/.test(config.image_sha256) && config.compose_file.startsWith('/opt/bondbuddy/'), 'NODE_ADAPTER_CONFIG');
 const launched=new Map();
 async function metadata() {
@@ -113,11 +113,18 @@ const runtime = {
     // No supplier probe. The runtime's own preflight and PG expected-session
     // registration must prove every service ready under the exact epoch.
     const i = enrollment.identity;
-    const sql = 'SELECT n.state,n.epoch,n.source_sha256,n.image_sha256,(pg_control_system()).system_identifier::text AS system_identifier FROM bb_execution_nodes n WHERE n.account_id=$1 AND n.region=$2 AND n.instance_id=$3';
+    const sql = `SELECT n.state,n.epoch,n.source_sha256,n.image_sha256,n.launch_manifest_sha256,(pg_control_system()).system_identifier::text AS system_identifier,NOT EXISTS(SELECT 1 FROM jsonb_array_elements(n.expected_services) e WHERE NOT EXISTS(SELECT 1 FROM bb_execution_node_sessions s WHERE s.node_id=n.id AND s.epoch=n.epoch AND s.service_id=e->>'service_id' AND s.state='active' AND s.ready AND s.heartbeat_at>clock_timestamp()-interval '30 seconds')) AS expected_sessions_ready FROM bb_execution_nodes n WHERE n.account_id=$1 AND n.region=$2 AND n.instance_id=$3`;
     const program = `const {Pool}=await import('pg');const p=new Pool({connectionString:process.env.DATABASE_URL,max:1,connectionTimeoutMillis:5000,query_timeout:10000});try{const r=(await p.query(${JSON.stringify(sql)},${JSON.stringify([i.account_id,i.region,i.instance_id])})).rows[0];console.log(JSON.stringify(r));}finally{await p.end()}`;
-    const result = JSON.parse(await runDocker(['exec', contexts[0].id, 'node', '--input-type=module', '-e', program]));
-    requireThat(result?.state === 'ready' && result.epoch === i.epoch && result.source_sha256 === enrollment.source_sha256 &&
-      result.image_sha256 === enrollment.image_sha256 && result.system_identifier===config.private_pg.system_identifier, 'NODE_PG_READY_NOT_PROVEN');
+    const deadline=now()+60000;
+    for(let attempt=0;attempt<60 && now()<=deadline;attempt++){
+      const result=JSON.parse(await runDocker(['exec',contexts[0].id,'node','--input-type=module','-e',program]));
+      requireThat(result?.epoch===i.epoch && result.source_sha256===enrollment.source_sha256 && result.image_sha256===enrollment.image_sha256 &&
+        result.launch_manifest_sha256===enrollment.launch_manifest_sha256 && result.system_identifier===config.private_pg.system_identifier,'NODE_PG_IDENTITY_DRIFT');
+      if(result.state==='ready' && result.expected_sessions_ready===true)return;
+      requireThat(['starting','ready'].includes(result.state),'NODE_PG_READY_STATE_REJECTED');
+      await wait(1000); // bounded same-epoch startup handshake; never a drain proof
+    }
+    throw Error('NODE_PG_READY_NOT_PROVEN');
   },
   async disableClaims(contexts) {
     for (const c of new Map([...contexts,...launched.values()].map(c=>[c.id,c])).values()){
