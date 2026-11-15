@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { withPerformanceSpan } from '@bondbuddy/api/performance-trace';
 import { randomUUID, createHash } from 'node:crypto';
 import { hostname } from 'node:os';
 import { readFile, readdir, readlink } from 'node:fs/promises';
@@ -124,7 +125,9 @@ export class PgModelCallBudget implements ModelCallBudget {
   }
   async acquire(signal?: AbortSignal, scope = 'unscoped',admission?:ModelCallAdmission): Promise<ModelCallPermit> {
     if (!/^[A-Za-z0-9:_-]{1,180}$/.test(scope)) throw new Error('Invalid model capacity scope');
-    await this.enter(scope, signal);
+    await withPerformanceSpan('model.capacity.local_wait', { wait_reason: 'local_capacity' }, async span => {
+      try { await this.enter(scope, signal); } catch (error) { if (signal?.aborted) span.end('cancelled'); throw error; }
+    });
     const token = randomUUID(), controller = new AbortController();
     const abort = () => controller.abort(signal?.reason);
     signal?.addEventListener('abort', abort, { once: true });
@@ -144,6 +147,8 @@ export class PgModelCallBudget implements ModelCallBudget {
       } finally { this.leave(); }
     };
     try {
+      await withPerformanceSpan('model.capacity.global_wait', { wait_reason: 'global_capacity' }, async span => {
+      try {
       controller.signal.throwIfAborted();
       const parentStart = await processStart(process.pid);
       const hostBootId=(await readFile('/proc/sys/kernel/random/boot_id','utf8')).trim();
@@ -206,6 +211,8 @@ export class PgModelCallBudget implements ModelCallBudget {
         finally { client.release(); }
         if (!granted) await delay(100, undefined, { signal: controller.signal });
       }
+      } catch (error) { if (controller.signal.aborted) span.end('cancelled'); throw error; }
+      });
       const renew = async () => {
         if (released || controller.signal.aborted) throw new Error('Model capacity holder lost');
         try {

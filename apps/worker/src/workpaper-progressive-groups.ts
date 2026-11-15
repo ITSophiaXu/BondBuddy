@@ -3,6 +3,8 @@ import {Value} from '@sinclair/typebox/value';
 import {WorkpaperSharedPlanSchema,type M4DocumentManifest,type WorkpaperProgressive,workpaperPlanGroupIds,WORKPAPER_PLAN_GROUP_SIZE} from '@bondbuddy/contracts';
 import {inputManifestHash as hash} from '@bondbuddy/api/production-rule-pin';
 import {transaction} from '@bondbuddy/api/data';
+import {startPerformanceSpan,withPerformanceSpan} from '@bondbuddy/api/performance-trace';
+import {withModelStagePerformance} from './model-performance.js';
 import {writeFile,readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {execFile} from 'node:child_process';
@@ -56,6 +58,7 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
   const {batch,itemId,group,source,method,dir}=options,owner=ctx.run.owner_user_id;
   const identity=hash({version:'workpaper-progressive-group-v1',batch_identity:options.batchIdentity,group_id:group.id,manifests:group.manifests});
   const logicalCallId='workpaper-group-'+group.id.slice(0,40),key=`workpaper-plan-group:${owner}:${batch}:${group.id}`;
+  const performanceAttributes={batch_id:batch,group_id:group.id,work_item_id:itemId,logical_call_id:logicalCallId};
   const validResult=(value:unknown):value is GroupResult=>{
     if(!Value.Check(WorkpaperProgressiveGroupResultSchema,value))return false;
     if(value.status==='fallback')return true;
@@ -69,11 +72,15 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
   const read=async()=> (await ctx.pool.query('SELECT * FROM bb_workpaper_progressive_groups WHERE owner_user_id=$1 AND batch_id=$2 AND group_id=$3',[owner,batch,group.id])).rows[0];
   {
     let saved:any;
+    let groupWait:ReturnType<typeof startPerformanceSpan>|undefined,authorRunId:string|undefined;
+    let waitStatus:Parameters<ReturnType<typeof startPerformanceSpan>['end']>[0]='succeeded';
+    try {
     for(;;){
       ctx.signal.throwIfAborted();
       saved=await read();
       const authorItem=group.manifests[0]!.input.workpaper!.entry.id;
       if(saved||itemId===authorItem)break;
+      groupWait??=startPerformanceSpan('group.wait',{...performanceAttributes,wait_reason:'group_producer',owns_worker_slot:true});
       // Only the first immutable member authors this group. If it crashes after
       // durable acceptance, another in-flight item must not create a second
       // provider call under a different run. Wait without occupying a pooled
@@ -87,8 +94,9 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
         LEFT JOIN bb_jobs j ON j.owner_user_id=r.owner_user_id AND j.run_id=r.id
         WHERE i.owner_user_id=$1 AND i.batch_id=$2 AND i.item_id=$3`,[owner,batch,authorItem])).rows[0];
       if(!author)throw Error('INPUT_REVISION_CONFLICT');
+      authorRunId=author.run_id;
       if(!['paused','cancelled'].includes(author.batch_state)&&['failed','cancelled','succeeded'].includes(author.run_state)){
-        const disposition=await transaction(ctx.pool,async db=>{
+        const disposition=await withPerformanceSpan('group.plan.persist',{...performanceAttributes,author_run_id:author.run_id,fallback_reason:'author_settled'},()=>transaction(ctx.pool,async db=>{
           await db.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[owner,author.run_id]);
           await db.query('SELECT 1 FROM bb_jobs WHERE owner_user_id=$1 AND run_id=$2 FOR UPDATE',[owner,author.run_id]);
           await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[key]);
@@ -110,18 +118,22 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
           await db.query(`INSERT INTO bb_workpaper_progressive_groups(owner_user_id,batch_id,group_id,input_hash,method_hash,source_hash,receipt,receipt_hash,author_run_id)
             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[owner,batch,group.id,identity,method,hash(source),receipt,hash(receipt),settled.id]);
           return true;
-        });
+        }));
         if(disposition){saved=await read();break;}
       }
-      if(author.settled_terminal)return {kind:'outcome',logicalCallId,outcome:{kind:'fail',code:'WORKPAPER_GROUP_BLOCKED'}};
-      if(['paused','cancelled'].includes(author.batch_state)||['paused','failed','cancelled','rejected','succeeded','test_completed'].includes(author.run_state))
-        return {kind:'outcome',logicalCallId,outcome:{kind:'pause',stage:'capability_not_ready',reason:'workpaper_group_plan_pending'}};
+      if(author.settled_terminal){waitStatus='failed';return {kind:'outcome',logicalCallId,outcome:{kind:'fail',code:'WORKPAPER_GROUP_BLOCKED'}};}
+      if(['paused','cancelled'].includes(author.batch_state)||['paused','failed','cancelled','rejected','succeeded','test_completed'].includes(author.run_state)){
+        waitStatus='paused';return {kind:'outcome',logicalCallId,outcome:{kind:'pause',stage:'capability_not_ready',reason:'workpaper_group_plan_pending'}};
+      }
       await delay(100,undefined,{signal:ctx.signal});
     }
+    } catch(error){waitStatus=ctx.signal.aborted?'cancelled':'failed';throw error;}
+    finally{groupWait?.end(waitStatus,{...(saved?.author_run_id||authorRunId?{author_run_id:saved?.author_run_id??authorRunId}:{})});}
+    const reused=!!saved;
     if(!saved){
       const observer=m4ActionObserver(ctx,'document');
       let outcome:StageOutcome;
-      try{outcome=await options.model({name:'workpaper_progressive_group_v1',logicalCallId,config:{...options.config,max_schema_reasks:0,max_output_bytes:MAX_PLAN},
+      try{outcome=await withModelStagePerformance('group.plan_prepare',{...performanceAttributes,author_run_id:ctx.run.id},()=>options.model({name:'workpaper_progressive_group_v1',logicalCallId,config:{...options.config,max_schema_reasks:0,max_output_bytes:MAX_PLAN},
         schema:WorkpaperProgressiveGroupResultSchema,validate:validResult,resultSchemaVersion:version,templateVersion:method,buildPrompt:async()=>options.skill.content,onActivity:e=>observer.onEvent(e),
         fileWorkspace:{prepare:cwd=>options.prepare(cwd,options.input),collect:async cwd=>{
           let plan:unknown;
@@ -137,14 +149,14 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
           if(!validResult(result))throw Error('WORKPAPER_GROUP_VALIDATION_UNSAFE');
           return result;
         }}
-      }).run(ctx);}finally{await observer.drain();}
+      }).run(ctx));}finally{await observer.drain();}
       if(outcome.kind!=='done')return {kind:'outcome',outcome,logicalCallId};
       if(!validResult(outcome.value))throw Error('WORKPAPER_GROUP_VALIDATION_UNSAFE');
       const result=outcome.value;
       const receipt:Receipt={version,status:result.status,items:result.status==='fallback'?[]:result.items.map(i=>'plan'in i?{item_id:i.item_id,plan_hash:hash(i.plan)}:{item_id:i.item_id,error:i.error})};
       // Commit the receipt and every accepted item atomically. The receipt only
       // stores hashes/errors, so it does not duplicate each item's coverage IDs.
-      await transaction(ctx.pool,async db=>{
+      await withPerformanceSpan('group.plan.persist',{...performanceAttributes,author_run_id:ctx.run.id},()=>transaction(ctx.pool,async db=>{
         // Match renewal/cancellation/evidence writers: run first, then job.
         // The plan foreign key later takes a run key-share lock as well.
         await db.query('SELECT 1 FROM bb_runs WHERE owner_user_id=$1 AND id=$2 FOR UPDATE',[owner,ctx.run.id]);
@@ -162,9 +174,10 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
         }
         await db.query(`INSERT INTO bb_workpaper_progressive_groups(owner_user_id,batch_id,group_id,input_hash,method_hash,source_hash,receipt,receipt_hash,author_run_id)
           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[owner,batch,group.id,identity,method,hash(source),receipt,hash(receipt),ctx.run.id]);
-      });
+      }));
       saved=await read();
     }
+    const resolveSaved=():GroupOutcome=>{
     if(saved.input_hash.trim()!==identity||saved.method_hash.trim()!==method||saved.source_hash.trim()!==hash(source)||saved.receipt_hash.trim()!==hash(saved.receipt))throw Error('INPUT_REVISION_CONFLICT');
     const receipt=saved.receipt as Receipt;
     if(receipt.version!==version)throw Error('INPUT_REVISION_CONFLICT');
@@ -174,5 +187,10 @@ export async function prepareProgressiveGroup(ctx:StageContext,options:{
     if('error'in item){if(!options.itemError(item.error))throw Error('INPUT_REVISION_CONFLICT');return {kind:'item_failed',error:item.error};}
     if(!/^[a-f0-9]{64}$/.test(item.plan_hash))throw Error('INPUT_REVISION_CONFLICT');
     return {kind:'ready',planHash:item.plan_hash};
+    };
+    if(!reused)return resolveSaved();
+    return withPerformanceSpan('group.reuse',{...performanceAttributes,author_run_id:saved.author_run_id,cache_hit:true},span=>{
+      const result=resolveSaved();span.end(result.kind==='item_failed'?'failed':'reused',{result_status:result.kind});return result;
+    });
   }
 }

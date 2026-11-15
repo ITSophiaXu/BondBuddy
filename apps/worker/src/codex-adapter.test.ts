@@ -13,11 +13,68 @@ import { createReviewActionObserver } from './review-action-progress.js';
 import { buildCodexArgs, composeContainedPrompt, CodexAdapterError, DEFAULT_DISABLED_FEATURES, disposeCodexSession, loadCodexAdapterConfig, normalizeCodexOutputSchema, normalizeCodexUsage, runContainedModelCall, type CodexAdapterConfig, type ContainedCallInput } from './codex-adapter.js';
 import { historicalGenerationSchema } from './historical-generation-schema.js';
 import { MemoryCodexJournal } from './codex-memory-journal.js';
+import { PerformanceTraceRuntime, type PerformanceSpanRecord } from '@bondbuddy/api/performance-trace';
 
 const fake = fileURLToPath(new URL('../test-fixtures/codex/fake-codex.mjs', import.meta.url));
 const validateRecord = new Ajv({ strict: true }).compile(schemas.ModelAdapterAttemptRecord);
 const answerSchema = { type: 'object', properties: { answer: { type: 'string' }, n: { type: 'integer' } }, required: ['answer', 'n'], additionalProperties: false };
 const isAnswer = (v: unknown) => typeof v === 'object' && v !== null && typeof (v as { answer?: unknown }).answer === 'string' && Number.isInteger((v as { n?: unknown }).n);
+
+test('fine model spans preserve schema reask usage, hierarchy, private text and completed replay', async () => {
+  const { config, cleanup } = await setup();
+  const rows = new Map<string, PerformanceSpanRecord>();
+  const telemetry = new PerformanceTraceRuntime(async (_sessions, batch) => { for (const row of batch) rows.set(row.span_id, row); });
+  const scope = { ownerUserId: 'user-synthetic', projectId: 'project-synthetic', runId: 'run-synthetic', jobId: 'job-synthetic' };
+  const journal = new MemoryCodexJournal();
+  const input = call('SCENARIO:invalid_json REASK_SCENARIO:structured PRIVATE_PROMPT_TEXT');
+  try {
+    const result = await telemetry.trace(scope, () => runContainedModelCall(input, journal, config));
+    assert.equal(result.status, 'completed'); assert.equal(result.attempts.length, 2);
+    assert.ok(result.attempts.every(attempt => attempt.usage.status === 'measured'));
+    assert.equal(journal.observations.length, 2); assert.equal(journal.observations[0].retryable, true);
+    await telemetry.drain();
+    const attempts = [...rows.values()].filter(row => row.step_key === 'model.attempt');
+    assert.deepEqual(attempts.map(row => (row.attributes as Record<string, unknown>).attempt_no), [1, 2]);
+    assert.deepEqual(attempts.map(row => row.status), ['failed', 'succeeded']);
+    const execs = [...rows.values()].filter(row => row.step_key === 'model.exec');
+    assert.equal(execs.length, 2);
+    for (const row of execs) {
+      const attributes = row.attributes as Record<string, unknown>;
+      assert.ok(attempts.some(attempt => attempt.span_id === row.parent_span_id));
+      assert.equal(attributes.logical_call_id, input.logical_call_id);
+      assert.equal(attributes.ttft_ms, null);
+      assert.equal(attributes.ttft_availability, 'not_exposed');
+      assert.equal(typeof attributes.first_stdout_ms, 'number');
+      assert.equal(typeof attributes.first_event_ms, 'number');
+    }
+    assert.equal(JSON.stringify([...rows.values()]).includes('PRIVATE_PROMPT_TEXT'), false);
+    const prior = result.attempts[1];
+    journal.prior = { call_id: prior.call_id, attempt_no: prior.attempt_no, status: 'completed', observed: true };
+    journal.readCompleted = async () => ({ value: result.value, result_sha256: prior.result_sha256! });
+    const replay = await telemetry.trace(scope, () => runContainedModelCall(input, journal, config));
+    assert.equal(replay.status, 'reused'); assert.equal(journal.intents.length, 2);
+    await telemetry.drain();
+    assert.equal([...rows.values()].filter(row => row.step_key === 'model.exec').length, 2, 'replay never fabricates model execution');
+    assert.ok([...rows.values()].some(row => row.step_key === 'model.call' && row.status === 'reused'));
+  } finally { await cleanup(); }
+});
+
+test('telemetry storage failure cannot resend unknown calls or alter settled provider usage', async () => {
+  const { config, cleanup } = await setup();
+  const telemetry = new PerformanceTraceRuntime(async () => { throw Error('SYNTHETIC_TELEMETRY_FAILURE'); });
+  const scope = { ownerUserId: 'user-synthetic', projectId: 'project-synthetic', runId: 'run-synthetic' };
+  try {
+    const journal = new MemoryCodexJournal();
+    const result = await telemetry.trace(scope, () => runContainedModelCall(call('SCENARIO:structured'), journal, config));
+    assert.equal(result.status, 'completed'); assert.equal(journal.intents.length, 1);
+    assert.equal(result.attempts[0].usage.status, 'measured');
+    const pending = new MemoryCodexJournal();
+    pending.prior = { call_id: 'call-unknown', attempt_no: 1, status: 'pending_reconcile', observed: true };
+    const unresolved = await telemetry.trace(scope, () => runContainedModelCall(call('SCENARIO:structured'), pending, config));
+    assert.equal(unresolved.status, 'needs_reconcile'); assert.equal(pending.intents.length, 0);
+    await telemetry.drain();
+  } finally { await cleanup(); }
+});
 
 test('M3 search requires durable tool evidence and retains the ordinary read-only containment', async () => {
   const { config, cleanup } = await setup({ web_search: 'live' });
