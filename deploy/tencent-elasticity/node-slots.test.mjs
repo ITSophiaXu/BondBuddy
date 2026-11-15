@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {createConfiguredNodeAdapter,selectExecutionNodeConfig} from './node-adapter.mjs';
 import {canonical,sha256} from './policy.mjs';
+import {bootstrapUserData,bootstrapNode} from './bootstrap.mjs';
 
 // Actual configured adapter, default IMDS credential reader, STS/CVM signer and
 // SSM broker. Only their lowest HTTP/metadata/Docker IO is synthetic. No live
@@ -10,8 +11,8 @@ import {canonical,sha256} from './policy.mjs';
 const source='a'.repeat(64),services=[{service_id:'authoring',capabilities:['authoring']},{service_id:'review',capabilities:['review','assistant']}];
 const images={authoring:'synthetic/image@sha256:'+'b'.repeat(64),review:'synthetic/image@sha256:'+'c'.repeat(64)};
 const slots=[
-  {role_name:'synthetic-node-one',role_id:'100000000011',secret_name:'synthetic/enrollment-one'},
-  {role_name:'synthetic-node-two',role_id:'100000000012',secret_name:'synthetic/enrollment-two'},
+  {role_name:'synthetic-node-one',role_id:'100000000011',secret_name:'synthetic-enrollment-one'},
+  {role_name:'synthetic-node-two',role_id:'100000000012',secret_name:'synthetic-enrollment-two'},
 ];
 const common={runtime_uid:1000,account_id:'100000000001',region:'ap-beijing',image_sha256:sha256(canonical(images)),images,services,
   compose_file:'/opt/bondbuddy/compose.yaml',private_pg:{system_identifier:'12345'},private_proxy:{sni:'synthetic-proxy.internal'}};
@@ -70,6 +71,18 @@ test('one shared image selects each exact role/secret through the actual configu
   });
 });
 
+test('the actual bootstrap producer passes each bound slot to the configured adapter and default broker',async()=>{
+  for(let slot=0;slot<2;slot++){
+    const userData=bootstrapUserData({pool_tag:'synthetic',role_names:slots.map(s=>s.role_name),node_secrets:slots},
+      {account_id:common.account_id,region:common.region,source_sha256:source,image_sha256:common.image_sha256,services},slot);
+    const match=userData.match(/printf '%s' '([^']+)' >/);assert.ok(match);
+    const manifest=JSON.parse(match[1]);assert.deepEqual(manifest.slot_binding,slots[slot]);
+    await withAdapter(slot,async({adapter})=>{
+      const verified=await adapter.broker.enroll(await adapter.metadata());assert.equal(verified.role_id,slots[slot].role_id);
+    },{manifest});
+  }
+});
+
 test('missing, unknown, multi-valued and crossed public bindings never fall back to the first slot',async()=>{
   const bad=[
     {...manifestFor(1),slot_binding:undefined},
@@ -96,9 +109,17 @@ test('duplicate role names, role IDs or secrets and mixed single/shared template
   assert.throws(()=>selectExecutionNodeConfig({...configFor(),...slots[0]},manifestFor(0)),/CONFIG_CONFLICT/);
 });
 
-test('slot selection requires the same owner, region, image/source pins and services',()=>{
+test('slot selection rejects mismatched common scope and malformed source pins',()=>{
   for(const change of [{version:'other'},{account_id:'100000000002'},{region:'other'},{image_sha256:'d'.repeat(64)},{source_sha256:null},{services:[services[0]]}])
     assert.throws(()=>selectExecutionNodeConfig(configFor(),{...manifestFor(0),...change}),/PUBLIC_CONFIG_MISMATCH/);
+});
+
+test('a selected role cannot bypass the bootstrap source pin before any envelope is written',async()=>{
+  const manifest={...manifestFor(1),source_sha256:'d'.repeat(64)};
+  await withAdapter(1,async({adapter})=>{
+    await assert.rejects(bootstrapNode({publicManifest:manifest,metadata:await adapter.metadata(),broker:adapter.broker,
+      runtime:adapter.runtime,writeEnvelope:async()=>assert.fail('a mismatched source wrote an envelope')}),/ENROLLMENT_BINDING/);
+  },{manifest});
 });
 
 test('selection does not replace STS, exact instance/role or own secret proof',async()=>{

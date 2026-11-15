@@ -27,7 +27,7 @@ export function selectExecutionNodeConfig(config, publicManifest) {
     Object.keys(value).length===3&&Object.keys(value).every(k=>['role_name','role_id','secret_name'].includes(k))&&
     ['role_name','role_id','secret_name'].every(k=>typeof value[k]==='string')&&
     /^[A-Za-z0-9_-]{1,60}$/.test(value.role_name??'')&&/^\d{1,20}$/.test(value.role_id??'')&&
-    /^[A-Za-z0-9][A-Za-z0-9/_+=.@-]{0,127}$/.test(value.secret_name??'');
+    /^[A-Za-z0-9_-]{1,128}$/.test(value.secret_name??'');
   const shared=Object.hasOwn(config,'node_slots');
   const hasBinding=publicManifest&&Object.hasOwn(publicManifest,'slot_binding');
   let slots;
