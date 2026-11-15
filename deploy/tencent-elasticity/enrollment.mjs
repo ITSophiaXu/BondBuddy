@@ -6,11 +6,47 @@ import {readRoleCredentials} from './bootstrap.mjs';
 import {canonical, requireThat, sha256} from './policy.mjs';
 import {readPrivateJson} from './private-files.mjs';
 import {issueTransportCredentials} from './transport-issuer.mjs';
-import {executionCloudCompletionMatches,executionInstanceLaunchBinding} from '@bondbuddy/contracts';
+import {executionCloudCompletionMatches,executionInstanceLaunchBinding,executionSlotReadTag} from '@bondbuddy/contracts';
+
+/** CAM isolates a slot, not a dynamic self ARN. Refuse duplicate slot inventory
+ * before enrollment or refresh, then verify the exact local instance again. */
+export async function readNodeSlotInstance(config,instanceId,read) {
+  const tag=executionSlotReadTag(config.pool_tag,config.role_name);
+  const peers=await read('cvm','DescribeInstances',{Filters:[{Name:`tag:${tag.Key}`,Values:[tag.Value]}],Limit:3});
+  requireThat(peers.TotalCount===1&&peers.InstanceSet?.length===1&&peers.InstanceSet[0].InstanceId===instanceId,'NODE_SLOT_NOT_UNIQUE');
+  const description=await read('cvm','DescribeInstances',{InstanceIds:[instanceId]});
+  const i=description.InstanceSet?.[0];
+  requireThat(description.InstanceSet?.length===1&&i.InstanceId===instanceId&&i.CamRoleName===config.role_name&&
+    i.Tags?.filter(t=>t.Key==='bondbuddy-pool').length===1&&i.Tags.find(t=>t.Key==='bondbuddy-pool').Value===config.pool_tag&&
+    i.Tags.filter(t=>t.Key===tag.Key).length===1&&i.Tags.find(t=>t.Key===tag.Key).Value===tag.Value,'NODE_INSTANCE_SCOPE');
+  return i;
+}
+
+export const NODE_SECRET_VERSION_LIMIT=10;
+export const NODE_SECRET_SCAN_CALL_BOUND=11;
+export const NODE_ENROLLMENT_ATTEMPT_BOUND=6;
+export const NODE_ENROLLMENT_DEADLINE_MS=180000;
+/** No mutable tag pointer: enumerate only the role's exclusive Secret. */
+export async function readNodeSecretVersions(config,read) {
+  const list=await read('ssm','ListSecretVersionIds',{SecretName:config.secret_name});
+  requireThat(list.SecretName===config.secret_name&&Array.isArray(list.Versions)&&list.Versions.length<=NODE_SECRET_VERSION_LIMIT&&
+    list.Versions.every(v=>/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(v.VersionId??''))&&
+    new Set(list.Versions.map(v=>v.VersionId)).size===list.Versions.length,'NODE_SECRET_VERSION_INVENTORY');
+  const values=[];
+  for(const v of list.Versions){
+    const r=await read('ssm','GetSecretValue',{SecretName:config.secret_name,VersionId:v.VersionId});
+    requireThat(r.SecretName===config.secret_name&&r.VersionId===v.VersionId&&typeof r.SecretString==='string'&&!r.SecretBinary,'NODE_SECRET_VERSION_MISMATCH');
+    try{values.push({version_id:v.VersionId,value:JSON.parse(r.SecretString)});}catch{} // bootstrap-pending is not an enrollment
+  }
+  return values;
+}
 
 /** The exclusive secret carries the original durable acceptance and action.
  * Fresh own-instance readback must still match that immutable launch binding. */
 export function nodeCloudCompletionMatches(envelope,instance) {
+  if(envelope.operation_action==='run'&&
+    !(instance.LatestOperation==null&&instance.LatestOperationState==null&&instance.LatestOperationRequestId==null||
+      instance.LatestOperation==='RunInstances'&&instance.LatestOperationState==='SUCCESS'&&instance.LatestOperationRequestId===envelope.provider_request_id))return false;
   const op={operation_id:envelope.operation_id,action:envelope.operation_action,identity:envelope.identity,
     provider_request_id:envelope.provider_request_id,client_token:sha256(canonical(envelope.operation_id)),
     request:{launch_manifest_sha256:envelope.launch_manifest_sha256},run_acceptance:envelope.run_acceptance};
@@ -27,48 +63,60 @@ export function nodeCloudCompletionMatches(envelope,instance) {
 
 /** Node-exclusive role/secret. The image contains only the public name/version;
  * CAM enforces a different secret resource for each inventory slot. */
-export function createSsmEnrollmentBroker({config, transport, now = Date.now, wait = ms => new Promise(resolve=>setTimeout(resolve,ms)), attempts=24}) {
+export function createSsmEnrollmentBroker({config, transport, now = Date.now, wait = ms => new Promise(resolve=>setTimeout(resolve,ms)), attempts=NODE_ENROLLMENT_ATTEMPT_BOUND}) {
   transport ??= new TencentTransport({region: config.region, credentials: () => readRoleCredentials(config.role_name)});
+  let deadline,signal,enrolling=false;
   const read=async(service,action,payload)=>{
-    try{return await transport.call(service,action,payload);}catch(error){
-      // First-boot exact-instance CAM attachment may still be propagating.
+    requireThat(now()<deadline&&!signal.aborted,'NODE_ENROLLMENT_DEADLINE');
+    try{const result=await transport.call(service,action,payload,{signal});
+      requireThat(now()<deadline&&!signal.aborted,'NODE_ENROLLMENT_DEADLINE');return result;}catch(error){
+      // The preinstalled slot read policy may still be propagating.
       // Only explicit denial on these read-only calls can wait within the boot
       // bound; identity errors, unknown transport failures and mutations cannot.
-      if(['DescribeInstances','GetSecretValue'].includes(action)&&error.code==='UnauthorizedOperation'&&
+      if(['DescribeInstances','GetSecretValue','ListSecretVersionIds'].includes(action)&&error.code==='UnauthorizedOperation'&&
         typeof error.requestId==='string'&&error.requestId.length>0)throw Error('NODE_ENROLLMENT_PENDING');
       throw error;
     }
   };
   const once=async metadata => {
-    const caller = await transport.call('sts', 'GetCallerIdentity', {});
+    const caller = await read('sts', 'GetCallerIdentity', {});
     requireThat(String(caller.AccountId) === config.account_id && String(caller.UserId).startsWith(`${config.role_id}:`), 'NODE_ROLE_MISMATCH');
-    // A controlled public tag selects the explicit immutable secret version on
-    // warm boots. StartInstances does not update old UserData. The node role can
-    // Describe only its own instance; it cannot modify this tag or any secret.
-    const description = await read('cvm', 'DescribeInstances', {InstanceIds: [metadata.instance_id]});
-    requireThat(description.InstanceSet?.length === 1 && description.InstanceSet[0].InstanceId === metadata.instance_id &&
-      description.InstanceSet[0].CamRoleName === config.role_name, 'NODE_INSTANCE_SCOPE');
-    const version = description.InstanceSet[0].Tags?.find(t => t.Key === 'bondbuddy-enrollment-version')?.Value;
-    requireThat(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(version??''), 'NODE_ENROLLMENT_PENDING');
-    const result = await read('ssm', 'GetSecretValue', {SecretName: config.secret_name, VersionId: version});
-    requireThat(result.SecretName === config.secret_name && result.VersionId === version &&
-      typeof result.SecretString === 'string' && !result.SecretBinary, 'NODE_SECRET_VERSION_MISMATCH');
-    const envelope = JSON.parse(result.SecretString);
-    requireThat(nodeCloudCompletionMatches(envelope,description.InstanceSet[0]),'NODE_ENROLLMENT_PENDING');
-    requireThat(envelope.identity?.account_id === config.account_id && envelope.identity.region === config.region &&
-      envelope.identity.instance_id === metadata.instance_id && envelope.role_id === config.role_id &&
-      envelope.expires_at > now() + 60000 && envelope.expires_at <= now() + 900000 &&
-      envelope.operation_completed === true && envelope.operation_id === version, 'NODE_SECRET_BINDING');
+    // Creation tags stay fixed. The role cannot mutate tags or secrets, and
+    // warm boots select only the version proven by the current cloud action.
+    const instance=await readNodeSlotInstance(config,metadata.instance_id,read);
+    const candidates=[];
+    for(const {version_id,value:envelope} of await readNodeSecretVersions(config,read)){
+      if(!envelope||!['run','start'].includes(envelope.operation_action)||!envelope.identity||
+        !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(envelope.operation_id??'')||!envelope.provider_request_id||
+        envelope.version==='execution-transport-envelope-v1'||
+        !nodeCloudCompletionMatches(envelope,instance)||envelope.expires_at<=now()+60000)continue;
+      requireThat(envelope.identity?.account_id===config.account_id&&envelope.identity.region===config.region&&
+        envelope.identity.instance_id===metadata.instance_id&&envelope.role_id===config.role_id&&
+        /^[a-f0-9-]{36}$/.test(envelope.identity.epoch??'')&&envelope.expires_at<=now()+900000&&
+        envelope.operation_completed===true&&envelope.operation_id===version_id&&
+        envelope.source_sha256===config.source_sha256&&envelope.image_sha256===config.image_sha256&&
+        canonical(envelope.services)===canonical(config.services),'NODE_SECRET_BINDING');
+      candidates.push(envelope);
+    }
+    requireThat(candidates.length<=1,'NODE_SECRET_AMBIGUOUS');
+    requireThat(candidates.length===1,'NODE_ENROLLMENT_PENDING');
+    const envelope=candidates[0];
+    requireThat(nodeCloudCompletionMatches(envelope,await readNodeSlotInstance(config,metadata.instance_id,read)),'NODE_ENROLLMENT_PENDING');
     // This assertion is supported by exclusive SSM authorization and a PG-bound
     // unpredictable token. Metadata alone cannot manufacture a valid envelope.
     return {...envelope, verified: true};
   };
   return {async enroll(metadata){
-    requireThat(Number.isInteger(attempts)&&attempts>0&&attempts<=24,'ENROLLMENT_WAIT_BOUND');
-    for(let i=0;i<attempts;i++)try{return await once(metadata);}catch(error){
-      if(error.message!=='NODE_ENROLLMENT_PENDING'||i===attempts-1)throw error;
-      await wait(5000); // bounded boot handshake, not an independent scheduler
-    }
+    requireThat(Number.isInteger(attempts)&&attempts>0&&attempts<=NODE_ENROLLMENT_ATTEMPT_BOUND,'ENROLLMENT_WAIT_BOUND');
+    requireThat(!enrolling,'NODE_ENROLLMENT_BUSY');enrolling=true;
+    try{
+      deadline=now()+NODE_ENROLLMENT_DEADLINE_MS;signal=AbortSignal.timeout(NODE_ENROLLMENT_DEADLINE_MS);
+      for(let i=0;i<attempts;i++)try{return await once(metadata);}catch(error){
+        if(error.message!=='NODE_ENROLLMENT_PENDING'||i===attempts-1)throw error;
+        requireThat(now()+30000<deadline&&!signal.aborted,'NODE_ENROLLMENT_DEADLINE');
+        await wait(30000); // six scans include windows after the next control tick
+      }
+    }finally{enrolling=false;}
   }};
 }
 
@@ -121,7 +169,5 @@ export async function issueNodeEnrollment({operation, slot, config, transport, b
       VersionId: operation.operation_id, SecretString: canonical(payload)});} catch { /* exact readback resolves unknown */ }
     requireThat(matches(await get()), 'SECRET_PUBLISH_UNCONFIRMED');
   }
-  await transport.call('tag', 'ModifyResourceTags', {Resource: `qcs::cvm:${config.region}:uin/${config.account_id}:instance/${operation.identity.instance_id}`,
-    ReplaceTags: [{TagKey: 'bondbuddy-enrollment-version', TagValue: operation.operation_id}]});
   return {instance_id: operation.identity.instance_id, epoch: operation.identity.epoch, expires_at: payload.expires_at};
 }

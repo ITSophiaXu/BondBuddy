@@ -39,11 +39,13 @@ export async function runFixture(t,slot=0){
     const action=options.headers['X-TC-Action'],payload=JSON.parse(options.body);calls.push(action);let result;
     if(action==='GetCallerIdentity')result={AccountId:config.account_id,UserId:config.node_secrets[slot].role_id+':synthetic'};
     else if(action==='RunInstances'){assert.equal(payload.CamRoleName,config.role_names[slot]);result={RequestId:'synthetic-accepted',InstanceIdSet:[instance.InstanceId]};}
-    else if(action==='DescribeInstances'){assert.deepEqual(payload,{InstanceIds:[instance.InstanceId]});result={InstanceSet:[structuredClone(instance)]};}
+    else if(action==='DescribeInstances'){
+      if(payload.Filters)assert.deepEqual(payload,{Filters:[{Name:'tag:bondbuddy-execution-slot',Values:[config.role_names[slot]]}],Limit:3});
+      else assert.deepEqual(payload,{InstanceIds:[instance.InstanceId]});result={TotalCount:1,InstanceSet:[structuredClone(instance)]};}
     else if(action==='DescribeInstancesStatus'){assert.deepEqual(payload,{InstanceIds:[instance.InstanceId]});result={InstanceStatusSet:[{InstanceId:instance.InstanceId,InstanceState:instance.InstanceState}]};}
+    else if(action==='ListSecretVersionIds')result={SecretName:payload.SecretName,Versions:[...secrets.keys()].map(VersionId=>({VersionId}))};
     else if(action==='GetSecretValue'){const value=secrets.get(payload.VersionId);result=value?{SecretName:payload.SecretName,VersionId:payload.VersionId,SecretString:value}:{Error:{Code:'ResourceNotFound'}};}
     else if(action==='PutSecretValue'){secrets.set(payload.VersionId,payload.SecretString);result={};}
-    else if(action==='ModifyResourceTags'){instance.Tags.push({Key:'bondbuddy-enrollment-version',Value:operation_id});result={};}
     else throw Error('unexpected synthetic action');
     if(mutation)result=mutation(action,result);
     return new Response(JSON.stringify({Response:{RequestId:'synthetic-read-'+action,...result}}));
@@ -52,7 +54,7 @@ export async function runFixture(t,slot=0){
   const control={claimCloudDispatch:async()=>operation={...operation,state:'unknown',revision:1,dispatched_at:new Date(now).toISOString()},loadOperation:async()=>operation,
     recordCloudResult:async(_id,revision,result)=>{assert.equal(revision,operation.revision);operation={...operation,...result,cloud_observation:result.observation,revision:revision+1};return operation;}};
   const controller=new ExecutionPoolController({config,cloud,control});
-  return {config,cloud,controller,control,transport,instance,calls,directory,slot,get operation(){return operation;},set operation(value){operation=value;},set mutation(value){mutation=value;}};
+  return {config,cloud,controller,control,transport,instance,calls,secrets,directory,slot,get operation(){return operation;},set operation(value){operation=value;},set mutation(value){mutation=value;}};
 }
 
 test('actual TC3 Run singleton is durably accepted then completes with three null latest fields and enrolls each slot',async t=>{

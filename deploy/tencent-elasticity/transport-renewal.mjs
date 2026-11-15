@@ -102,7 +102,5 @@ async function renewUnlocked({node,operation,slot,config,transport,stoppedIdenti
     found=await get();
   }
   requireThat(found&&matches(found),'TLS_RENEWAL_PUBLISH_UNKNOWN'); // no repeat Put after dispatch uncertainty
-  await transport.call('tag','ModifyResourceTags',{Resource:`qcs::cvm:${config.region}:uin/${config.account_id}:instance/${node.identity.instance_id}`,
-    ReplaceTags:[{TagKey:'bondbuddy-transport-version',TagValue:state.version}]});
   state.published=true;await replacePrivateJson(statePath,state);return true;
 }

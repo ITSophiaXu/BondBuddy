@@ -15,10 +15,10 @@ const slots=[
   {role_name:'synthetic-node-one',role_id:'100000000011',secret_name:'synthetic-enrollment-one'},
   {role_name:'synthetic-node-two',role_id:'100000000012',secret_name:'synthetic-enrollment-two'},
 ];
-const common={runtime_uid:1000,account_id:'100000000001',region:'ap-beijing',image_sha256:sha256(canonical(images)),images,services,
+const common={runtime_uid:1000,pool_tag:'synthetic',account_id:'100000000001',region:'ap-beijing',image_sha256:sha256(canonical(images)),images,services,
   compose_file:'/opt/bondbuddy/compose.yaml',private_pg:{system_identifier:'12345'},private_proxy:{sni:'synthetic-proxy.internal'}};
 const configFor=()=>({...common,node_slots:structuredClone(slots)});
-const manifestFor=slot=>({version:'execution-bootstrap-v1',account_id:common.account_id,region:common.region,
+const manifestFor=slot=>({version:'execution-bootstrap-v1',pool_tag:common.pool_tag,account_id:common.account_id,region:common.region,
   source_sha256:source,image_sha256:common.image_sha256,services,slot_binding:structuredClone(slots[slot])});
 
 async function withAdapter(slot,run,{manifest=manifestFor(slot),config=configFor(),fault,observedEpoch}={}){
@@ -28,7 +28,8 @@ async function withAdapter(slot,run,{manifest=manifestFor(slot),config=configFor
     expires_at:Date.now()+600000,operation_completed:true,operation_id:operation,provider_request_id:ack,
     registration_token:randomUUID(),services,source_sha256:source,image_sha256:common.image_sha256,launch_manifest_sha256:source};
   const cloudInstance={InstanceId:instance,InstanceState:'RUNNING',CamRoleName:slots[slot].role_name,LatestOperationRequestId:null,LatestOperationState:null,LatestOperation:null,
-    CreatedTime:new Date().toISOString(),Tags:[{Key:'bondbuddy-enrollment-version',Value:operation},{Key:'bondbuddy-create-op',Value:operation},{Key:'bondbuddy-pool',Value:'synthetic'}]};
+    CreatedTime:new Date().toISOString(),Tags:[{Key:'bondbuddy-enrollment-version',Value:operation},{Key:'bondbuddy-create-op',Value:operation},{Key:'bondbuddy-pool',Value:'synthetic'},
+      {Key:'bondbuddy-execution-slot',Value:slots[slot].role_name}]};
   const launchBinding=sha256(canonical(executionInstanceLaunchBinding(cloudInstance)));
   envelope.operation_action='run';
   envelope.run_acceptance={operation_id:operation,identity:envelope.identity,provider_request_id:ack,instance_ids:[instance],client_token:sha256(canonical(operation)),
@@ -48,8 +49,11 @@ async function withAdapter(slot,run,{manifest=manifestFor(slot),config=configFor
     let response;
     if(service==='sts'&&action==='GetCallerIdentity')response={AccountId:common.account_id,UserId:slots[slot].role_id+':synthetic-session',Type:'CAMRole'};
     else if(service==='cvm'&&action==='DescribeInstances'){
-      assert.deepEqual(payload,{InstanceIds:[instance]});
-      response={InstanceSet:[structuredClone(cloudInstance)]};
+      if(payload.Filters)assert.deepEqual(payload,{Filters:[{Name:'tag:bondbuddy-execution-slot',Values:[slots[slot].role_name]}],Limit:3});
+      else assert.deepEqual(payload,{InstanceIds:[instance]});
+      response={TotalCount:1,InstanceSet:[structuredClone(cloudInstance)]};
+    }else if(service==='ssm'&&action==='ListSecretVersionIds'){
+      assert.deepEqual(payload,{SecretName:slots[slot].secret_name});response={SecretName:slots[slot].secret_name,Versions:[{VersionId:operation}]};
     }else if(service==='ssm'&&action==='GetSecretValue'){
       assert.deepEqual(payload,{SecretName:slots[slot].secret_name,VersionId:operation});
       response={SecretName:slots[slot].secret_name,VersionId:operation,SecretString:JSON.stringify(envelope)};
@@ -70,9 +74,9 @@ test('one shared image selects each exact role/secret through the actual configu
     const metadata=await adapter.metadata(),verified=await adapter.broker.enroll(metadata);
     assert.equal(verified.verified,true);assert.deepEqual(verified.identity,envelope.identity);assert.equal(verified.role_id,slots[slot].role_id);
     await adapter.runtime.verifyAllReady([{id:'a'.repeat(64)},{id:'b'.repeat(64)}]);
-    assert.deepEqual(metadataReads,[slots[slot].role_name,slots[slot].role_name,slots[slot].role_name]);
-    assert.deepEqual(calls.map(c=>c.action),['GetCallerIdentity','DescribeInstances','GetSecretValue']);
-    assert.equal(calls.at(-1).payload.SecretName,slots[slot].secret_name);
+    assert.deepEqual(metadataReads,Array(7).fill(slots[slot].role_name));
+    assert.deepEqual(calls.map(c=>c.action),['GetCallerIdentity','DescribeInstances','DescribeInstances','ListSecretVersionIds','GetSecretValue','DescribeInstances','DescribeInstances']);
+    assert.equal(calls.find(c=>c.action==='GetSecretValue').payload.SecretName,slots[slot].secret_name);
     const selected=selectExecutionNodeConfig(configFor(),manifestFor(slot));
     assert.deepEqual(selected.images,images);assert.equal(selected.image_sha256,common.image_sha256);
     assert.deepEqual(selected.private_pg,common.private_pg);assert.deepEqual(selected.private_proxy,common.private_proxy);assert.equal(selected.node_slots,undefined);
@@ -126,19 +130,19 @@ test('a selected role cannot bypass the bootstrap source pin before any envelope
   const manifest={...manifestFor(1),source_sha256:'d'.repeat(64)};
   await withAdapter(1,async({adapter})=>{
     await assert.rejects(bootstrapNode({publicManifest:manifest,metadata:await adapter.metadata(),broker:adapter.broker,
-      runtime:adapter.runtime,writeEnvelope:async()=>assert.fail('a mismatched source wrote an envelope')}),/ENROLLMENT_BINDING/);
+      runtime:adapter.runtime,writeEnvelope:async()=>assert.fail('a mismatched source wrote an envelope')}),/NODE_SECRET_BINDING/);
   },{manifest});
 });
 
 test('selection does not replace STS, exact instance/role or own secret proof',async()=>{
   const cases=[
     {code:/NODE_ROLE_MISMATCH/,fault:x=>x.service==='sts'?{...x.response,UserId:slots[0].role_id+':other'}:x.response},
-    {code:/NODE_INSTANCE_SCOPE/,fault:x=>x.service==='cvm'?{InstanceSet:[{...x.response.InstanceSet[0],CamRoleName:slots[0].role_name}]}:x.response},
-    {code:/NODE_INSTANCE_SCOPE/,fault:x=>x.service==='cvm'?{InstanceSet:[{...x.response.InstanceSet[0],CamRoleName:'unknown-role'}]}:x.response},
-    {code:/NODE_INSTANCE_SCOPE/,fault:x=>x.service==='cvm'?{InstanceSet:[{...x.response.InstanceSet[0],CamRoleName:slots.map(s=>s.role_name)}]}:x.response},
-    {code:/NODE_INSTANCE_SCOPE/,fault:x=>x.service==='cvm'?{InstanceSet:[x.response.InstanceSet[0],x.response.InstanceSet[0]]}:x.response},
-    {code:/NODE_SECRET_VERSION_MISMATCH/,fault:x=>x.service==='ssm'?{...x.response,SecretName:slots[0].secret_name}:x.response},
-    {code:/NODE_SECRET_BINDING/,fault:x=>x.service==='ssm'?{...x.response,SecretString:JSON.stringify({...x.envelope,role_id:slots[0].role_id})}:x.response},
+    {code:/NODE_INSTANCE_SCOPE/,fault:x=>x.service==='cvm'?{...x.response,InstanceSet:[{...x.response.InstanceSet[0],CamRoleName:slots[0].role_name}]}:x.response},
+    {code:/NODE_INSTANCE_SCOPE/,fault:x=>x.service==='cvm'?{...x.response,InstanceSet:[{...x.response.InstanceSet[0],CamRoleName:'unknown-role'}]}:x.response},
+    {code:/NODE_INSTANCE_SCOPE/,fault:x=>x.service==='cvm'?{...x.response,InstanceSet:[{...x.response.InstanceSet[0],CamRoleName:slots.map(s=>s.role_name)}]}:x.response},
+    {code:/NODE_SLOT_NOT_UNIQUE/,fault:x=>x.service==='cvm'?{...x.response,InstanceSet:[x.response.InstanceSet[0],x.response.InstanceSet[0]]}:x.response},
+    {code:/NODE_SECRET_VERSION_INVENTORY/,fault:x=>x.action==='ListSecretVersionIds'?{...x.response,SecretName:slots[0].secret_name}:x.response},
+    {code:/NODE_SECRET_BINDING/,fault:x=>x.action==='GetSecretValue'?{...x.response,SecretString:JSON.stringify({...x.envelope,role_id:slots[0].role_id})}:x.response},
   ];
   for(const entry of cases)await withAdapter(1,async({adapter})=>{
     await assert.rejects(adapter.broker.enroll(await adapter.metadata()),entry.code);
@@ -154,7 +158,7 @@ test('selected slot cannot mark a different observed database epoch ready',async
 
 test('single-config compatibility still requires an exact supplied binding',()=>{
   const single={...common,...slots[0]};assert.deepEqual(selectExecutionNodeConfig(single),single);
-  assert.deepEqual(selectExecutionNodeConfig(single,manifestFor(0)),single);
+  assert.deepEqual(selectExecutionNodeConfig(single,manifestFor(0)),{...single,source_sha256:source});
   assert.throws(()=>selectExecutionNodeConfig(single,manifestFor(1)),/NOT_UNIQUE/);
   assert.throws(()=>selectExecutionNodeConfig(single,{...manifestFor(0),slot_binding:null}),/BINDING_INVALID/);
 });

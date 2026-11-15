@@ -9,6 +9,26 @@ export function validateTransportLifecycleProof(proof,config){
     checks.every(k=>/^[a-f0-9]{64}$/.test(proof.checks?.[k]??'')),'TRANSPORT_RENEWAL_PROOF_REQUIRED');
 }
 
+/** Valid overlapping renewals use the unique greatest signed expiry. Array
+ * order and SSM CreateTime are not authority; equal winners fail closed. */
+export function selectTransportRenewalVersion(versions,state,config,active,{now=Date.now}={}) {
+  const expected={...state.identity,operation_id:state.operation_id,provider_request_id:state.provider_request_id,ca_sha256:config.private_pg.ca_sha256};
+  validateTransportCredentials(active,expected,{now,allowExpired:true});
+  const expiry=transportExpiry(active),candidates=[];
+  for(const {value:next} of versions){
+    if(next?.version!=='execution-transport-envelope-v1'||canonical(next.identity)!==canonical(state.identity)||
+      next.operation_id!==state.operation_id||next.provider_request_id!==state.provider_request_id||
+      next.source_sha256!==state.source_sha256||next.image_sha256!==state.image_sha256||next.launch_manifest_sha256!==state.launch_manifest_sha256)continue;
+    try{validateTransportCredentials(next.transport_credentials,expected,{now,allowExpired:true});}catch{continue;}
+    const notAfter=transportExpiry(next.transport_credentials);
+    if(notAfter>expiry&&notAfter>now()+60000)candidates.push({next,notAfter});
+  }
+  requireThat(candidates.length>0,'TRANSPORT_RENEWAL_PENDING');
+  const greatest=Math.max(...candidates.map(c=>c.notAfter)),winners=candidates.filter(c=>c.notAfter===greatest);
+  requireThat(winners.length===1,'TRANSPORT_RENEWAL_AMBIGUOUS');
+  return winners[0].next;
+}
+
 /** Driven only by the runtime's existing heartbeat. No renewal timer or queue.
  * reload must preserve established streams; probe verifies fresh PG sessions. */
 export function createTransportRefresher({config,state,readActive,broker,install,reload,probe,reserveBroker=async()=>()=>{},now=Date.now}) {
@@ -52,7 +72,7 @@ export function createTransportRefresher({config,state,readActive,broker,install
       validateTransportCredentials(c,expected,{now});requireThat(transportExpiry(c)>expiry,'TRANSPORT_RENEWAL_NOT_NEWER');
       await install(c);const nextHash=sha256(c.cert_pem),receipt=await reload(nextHash);
       requireThat(receipt?.cert_sha256===nextHash,'TRANSPORT_RELOAD_UNCONFIRMED');await probe();
-      lastFailed=false;verifiedHash=nextHash;return answer('refreshed',transportExpiry(c),true,verifiedHash);
+      lastFailed=false;verifiedHash=nextHash;return answer('refreshed',transportExpiry(c),transportExpiry(c)-now()>TRANSPORT_ADMISSION_MARGIN_MS,verifiedHash);
     }catch{
       lastFailed=true;return answer('blocked',expiry,false); // never kill holders or restart consumers
     }finally{busy=false;}

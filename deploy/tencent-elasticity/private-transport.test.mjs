@@ -8,11 +8,11 @@ import {join} from 'node:path';
 import net from 'node:net';
 import tls from 'node:tls';
 import {once} from 'node:events';
-import {installPrivateTransport,ensurePrivateExecutionNetwork} from './private-transport.mjs';
+import {installPrivateTransport,ensurePrivateExecutionNetwork,transportOperationSan} from './private-transport.mjs';
 import {sha256} from './policy.mjs';
 import {issueTransportCredentials} from './transport-issuer.mjs';
 import {issueNodeEnrollment} from './enrollment.mjs';
-import {createTransportRefresher,validateTransportLifecycleProof} from './transport-refresher.mjs';
+import {createTransportRefresher,validateTransportLifecycleProof,selectTransportRenewalVersion} from './transport-refresher.mjs';
 import {TRANSPORT_REFRESH_VERSION,renewNodeTransport,pruneExpiredTransportVersions} from './transport-renewal.mjs';
 import {X509Certificate} from 'node:crypto';
 import {createStunnelReloadController} from './stunnel-reload.mjs';
@@ -30,13 +30,25 @@ async function fixture(t) {
   const credentials={version:'execution-pg-mtls-v1',...identity,ca_pem:await readFile(join(dir,'ca.pem'),'utf8'),cert_pem:await readFile(join(dir,'client.pem'),'utf8'),key_pem:await readFile(join(dir,'client.key'),'utf8')};
   return {dir,credentials,expected:{...identity,ca_sha256:sha256(credentials.ca_pem)}};
 }
-async function shortLeaf(dir,credentials){
+async function shortLeaf(dir,credentials,{hours=1,operationId,requestId}={}){
   await writeFile(join(dir,'index'),'');await writeFile(join(dir,'serial'),'01\n');
-  const cfg=join(dir,'sign.conf');await writeFile(cfg,`[ca]\ndefault_ca=x\n[x]\ndatabase=${dir}/index\nnew_certs_dir=${dir}\ncertificate=${dir}/ca.pem\nprivate_key=${dir}/ca.key\nserial=${dir}/serial\ndefault_md=sha256\npolicy=p\nunique_subject=no\nx509_extensions=e\n[p]\ncommonName=supplied\n[e]\nextendedKeyUsage=clientAuth\nbasicConstraints=critical,CA:FALSE\n`);
+  const cfg=join(dir,'sign.conf');await writeFile(cfg,`[ca]\ndefault_ca=x\n[x]\ndatabase=${dir}/index\nnew_certs_dir=${dir}\ncertificate=${dir}/ca.pem\nprivate_key=${dir}/ca.key\nserial=${dir}/serial\ndefault_md=sha256\npolicy=p\nunique_subject=no\nx509_extensions=e\n[p]\ncommonName=supplied\n[e]\nextendedKeyUsage=clientAuth\nbasicConstraints=critical,CA:FALSE\n`+(operationId?`subjectAltName=URI:${transportOperationSan(credentials,operationId,requestId)}\n`:''));
   const stamp=n=>new Date(n).toISOString().replace(/[-:TZ.]/g,'').slice(2,14)+'Z';
-  await exec('openssl',['ca','-batch','-notext','-config',cfg,'-in',join(dir,'client.csr'),'-out',join(dir,'short.pem'),'-startdate',stamp(Date.now()-60000),'-enddate',stamp(Date.now()+3600000)]);
+  await exec('openssl',['ca','-batch','-notext','-config',cfg,'-in',join(dir,'client.csr'),'-out',join(dir,'short.pem'),'-startdate',stamp(Date.now()-60000),'-enddate',stamp(Date.now()+hours*3600000)]);
   return {...credentials,cert_pem:await readFile(join(dir,'short.pem'),'utf8')};
 }
+test('overlapping renewal versions select the unique greatest signed expiry and reject tied winners',async t=>{
+ const {dir,credentials,expected}=await fixture(t),state={identity,operation_id:'op1',provider_request_id:'ack1',source_sha256:'a'.repeat(64),image_sha256:'b'.repeat(64),launch_manifest_sha256:'c'.repeat(64)};
+ const config={private_pg:{ca_sha256:expected.ca_sha256}},options={operationId:state.operation_id,requestId:state.provider_request_id};
+ const active=await shortLeaf(dir,credentials,options),middle=await shortLeaf(dir,credentials,{...options,hours:4}),latest=await shortLeaf(dir,credentials,{...options,hours:8});
+ const value=c=>({version:'execution-transport-envelope-v1',...state,transport_credentials:c}),versions=[active,middle,latest].map(c=>({value:value(c)}));
+ for(const list of [versions,[...versions].reverse()])assert.equal(selectTransportRenewalVersion(list,state,config,active).transport_credentials,latest);
+ const wrong={value:{...value(latest),image_sha256:'d'.repeat(64)}},badSignature={value:value({...latest,ca_pem:middle.cert_pem})};
+ assert.equal(selectTransportRenewalVersion([wrong,badSignature,...versions],state,config,active).transport_credentials,latest);
+ assert.throws(()=>selectTransportRenewalVersion([...versions,{value:value(latest)}],state,config,active),/TRANSPORT_RENEWAL_AMBIGUOUS/);
+ assert.throws(()=>selectTransportRenewalVersion([{value:value(active)}],state,config,active),/TRANSPORT_RENEWAL_PENDING/);
+ assert.equal(selectTransportRenewalVersion(versions,state,config,active,{now:()=>Date.now()+2*3600000}).transport_credentials,latest);
+});
 test('newly issued node/epoch mTLS credentials are private; different identity, CA and symlink fail closed',async t=>{
   const {dir,credentials,expected}=await fixture(t),target=join(dir,'private');
   const files=await installPrivateTransport(target,credentials,expected);

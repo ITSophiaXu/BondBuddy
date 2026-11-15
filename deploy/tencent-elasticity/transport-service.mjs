@@ -7,11 +7,12 @@ import {readPrivateJson} from './private-files.mjs';
 import {readRoleCredentials} from './bootstrap.mjs';
 import {TencentTransport} from './tencent-cvm.mjs';
 import {installPrivateTransport} from './private-transport.mjs';
-import {createTransportRefresher} from './transport-refresher.mjs';
+import {createTransportRefresher,selectTransportRenewalVersion} from './transport-refresher.mjs';
 import {createStunnelReloadController} from './stunnel-reload.mjs';
 import {acquireControlTick} from './control-tick-bound.mjs';
 import {requireThat,sha256} from './policy.mjs';
-import {nodeCloudCompletionMatches} from './enrollment.mjs';
+import {nodeCloudCompletionMatches,readNodeSlotInstance,readNodeSecretVersions} from './enrollment.mjs';
+import {selectExecutionNodeConfig} from './node-adapter.mjs';
 const exec=promisify(execFile);
 
 /** The existing transport service supervises stunnel and the root-only refresh
@@ -39,13 +40,11 @@ export async function serveTransport(config){
     reserveBroker:()=>acquireControlTick(`${pg.credential_directory}/ssm-broker`),
     broker:async()=>{
       const caller=await cloud.call('sts','GetCallerIdentity',{});requireThat(String(caller.AccountId)===config.account_id&&String(caller.UserId).startsWith(`${config.role_id}:`),'TRANSPORT_ROLE_DRIFT');
-      const d=await cloud.call('cvm','DescribeInstances',{InstanceIds:[state.identity.instance_id]}),i=d.InstanceSet?.[0];
-      requireThat(d.InstanceSet?.length===1&&i.InstanceId===state.identity.instance_id&&i.CamRoleName===config.role_name&&nodeCloudCompletionMatches(state,i),'TRANSPORT_CLOUD_DRIFT');
-      const version=i.Tags?.find(t=>t.Key==='bondbuddy-transport-version')?.Value;
-      requireThat(/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(version??''),'TRANSPORT_RENEWAL_PENDING');
-      const secret=await cloud.call('ssm','GetSecretValue',{SecretName:config.secret_name,VersionId:version});
-      requireThat(secret.SecretName===config.secret_name&&secret.VersionId===version&&typeof secret.SecretString==='string'&&!secret.SecretBinary,'TRANSPORT_SECRET_DRIFT');
-      return JSON.parse(secret.SecretString);
+      const i=await readNodeSlotInstance(config,state.identity.instance_id,(...args)=>cloud.call(...args));
+      requireThat(nodeCloudCompletionMatches(state,i),'TRANSPORT_CLOUD_DRIFT');
+      const values=await readNodeSecretVersions(config,(...args)=>cloud.call(...args));
+      requireThat(nodeCloudCompletionMatches(state,await readNodeSlotInstance(config,state.identity.instance_id,(...args)=>cloud.call(...args))),'TRANSPORT_CLOUD_DRIFT');
+      return selectTransportRenewalVersion(values,state,config,await readActive());
     },
     install:c=>installPrivateTransport(pg.credential_directory,c,{...state.identity,operation_id:state.operation_id,provider_request_id:state.provider_request_id,ca_sha256:pg.ca_sha256}),
     reload:nativeReload.reload,
@@ -75,4 +74,6 @@ export async function serveTransport(config){
   const shutdown=()=>{shuttingDown=true;server.close();child.kill('SIGTERM');};process.once('SIGTERM',shutdown);process.once('SIGINT',shutdown);
   return {server,child};
 }
-if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)try{await serveTransport(await readPrivateJson('/etc/bondbuddy/elastic-node.json'));}catch{process.stderr.write('Private transport failed closed.\n');process.exitCode=1;}
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href)try{
+  await serveTransport(selectExecutionNodeConfig(await readPrivateJson('/etc/bondbuddy/elastic-node.json'),await readPrivateJson('/etc/bondbuddy/elastic-public.json')));
+}catch{process.stderr.write('Private transport failed closed.\n');process.exitCode=1;}

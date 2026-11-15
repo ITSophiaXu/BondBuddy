@@ -44,6 +44,11 @@ export type ExecutionCloudRejection=Static<typeof ExecutionCloudRejectionSchema>
 export type ExecutionCloudResult={run_acceptance?:ExecutionRunAcceptance;rejection_evidence?:ExecutionCloudRejection;state:'submitted'|'unknown'|'completed'|'rejected';provider_request_id:string|null;identity:ExecutionNodeIdentity|null;observation:ExecutionCloudObservation|null};
 
 const exactIdentity=(a:ExecutionNodeIdentity,b:ExecutionNodeIdentity)=>a.account_id===b.account_id&&a.region===b.region&&a.instance_id===b.instance_id&&a.epoch===b.epoch;
+/** Each dedicated role has exactly one tag value; pool is verified separately. */
+export function executionSlotReadTag(poolTag:string,roleName:string) {
+ if(!/^[a-z0-9-]{1,40}$/.test(poolTag)||!/^[-A-Za-z0-9_]{1,60}$/.test(roleName))throw Error('EXECUTION_SLOT_TAG_SCOPE');
+ return {Key:'bondbuddy-execution-slot',Value:roleName};
+}
 /** Safe projection shared by the launch adapter and node readback. Values come
  * from Run parameters or official DescribeInstances; no latest fields invented. */
 export function executionInstanceLaunchBinding(i:Record<string,any>) {
@@ -52,7 +57,7 @@ export function executionInstanceLaunchBinding(i:Record<string,any>) {
   vpc_id:i.VirtualPrivateCloud?.VpcId,subnet_id:i.VirtualPrivateCloud?.SubnetId,security_group_ids:[...(i.SecurityGroupIds??[])].sort(),
   system_disk:{type:i.SystemDisk?.DiskType,size:i.SystemDisk?.DiskSize},data_disks:(i.DataDisks??[]).map((d:any)=>({type:d.DiskType,size:d.DiskSize})),
   public_ip_addresses:[...(i.PublicIpAddresses??[])].sort(),pool_tag:tags.find(t=>t.Key==='bondbuddy-pool')?.Value,
-  create_operation_id:tags.find(t=>t.Key==='bondbuddy-create-op')?.Value};
+  create_operation_id:tags.find(t=>t.Key==='bondbuddy-create-op')?.Value,read_slot_tag:tags.find(t=>t.Key==='bondbuddy-execution-slot')?.Value};
 }
 export function executionRunAcceptanceMatches(op:ExecutionCloudOperation,acceptance:unknown):acceptance is ExecutionRunAcceptance {
  if(op.action!=='run'||!op.identity||!op.provider_request_id||!op.request||!Value.Check(ExecutionRunAcceptanceSchema,acceptance))return false;

@@ -1,5 +1,6 @@
 {
   "runtime_uid": 1000,
+  "pool_tag": "bondbuddy-execution",
   "account_id": "REQUIRED_OWNER_ACCOUNT",
   "region": "ap-beijing",
   "services": [

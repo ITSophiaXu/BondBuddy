@@ -58,7 +58,7 @@ export function selectExecutionNodeConfig(config, publicManifest) {
   }
   if(publicManifest){
     requireThat(publicManifest.version==='execution-bootstrap-v1'&&publicManifest.account_id===config.account_id&&
-      publicManifest.region===config.region&&publicManifest.image_sha256===config.image_sha256&&
+      publicManifest.region===config.region&&publicManifest.pool_tag===config.pool_tag&&publicManifest.image_sha256===config.image_sha256&&
       /^[a-f0-9]{64}$/.test(publicManifest.source_sha256??'')&&
       canonical(publicManifest.services)===canonical(config.services), 'NODE_PUBLIC_CONFIG_MISMATCH');
   }
@@ -67,7 +67,7 @@ export function selectExecutionNodeConfig(config, publicManifest) {
   const matches=slots.filter(slot=>canonical(slot)===canonical(binding));
   requireThat(matches.length===1,'NODE_SLOT_NOT_UNIQUE');
   const {node_slots,...common}=config;
-  return {...common,...matches[0]};
+  return {...common,...matches[0],...(publicManifest?{source_sha256:publicManifest.source_sha256}:{})};
 }
 
 export function createNodeAdapter(config, {runDocker=docker, readMetadata=metadataValue, enrollmentBroker, checkUnit, startUnit, wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)), now=Date.now}={}) {

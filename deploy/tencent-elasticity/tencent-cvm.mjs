@@ -1,11 +1,11 @@
 import {createHmac} from 'node:crypto';
 import {canonical, sha256, requireThat, validateConfig} from './policy.mjs';
 import {bootstrapUserData} from './bootstrap.mjs';
-import {executionInstanceLaunchBinding,executionRunAcceptanceMatches} from '@bondbuddy/contracts';
+import {executionInstanceLaunchBinding,executionRunAcceptanceMatches,executionSlotReadTag} from '@bondbuddy/contracts';
 
-const apiVersion = {cvm: '2017-03-12', sts: '2018-08-13', ssm: '2019-09-23', tag: '2018-08-13'};
+const apiVersion = {cvm: '2017-03-12', sts: '2018-08-13', ssm: '2019-09-23'};
 const allowedActions = {cvm: new Set(['RunInstances', 'StartInstances', 'StopInstances', 'DescribeInstances','DescribeInstancesStatus']),
-  sts: new Set(['GetCallerIdentity']), ssm: new Set(['GetSecretValue', 'PutSecretValue','ListSecretVersionIds','DeleteSecretVersion']), tag: new Set(['ModifyResourceTags'])};
+  sts: new Set(['GetCallerIdentity']), ssm: new Set(['GetSecretValue', 'PutSecretValue','ListSecretVersionIds','DeleteSecretVersion'])};
 const hmac = (key, value, encoding) => createHmac('sha256', key).update(value).digest(encoding);
 
 /** Official TC3 signature; credentials are refreshed in memory by the existing ops/role source. */
@@ -16,7 +16,8 @@ export class TencentTransport {
       /^qcs::cam::uin\/\d{1,20}:roleName\/bondbuddy-execution-control$/.test(assumeRoleArn??'')), 'SOURCE_ROLE_SCOPE');
     Object.assign(this, {credentials, region, fetchImpl, now, timeoutMs, purpose, assumeRoleArn});
   }
-  async call(service, action, payload) {
+  async call(service, action, payload, {signal}={}) {
+    signal?.throwIfAborted();
     const source=this.purpose==='control-source';
     requireThat(source ? service==='sts' && action==='AssumeRole' && payload?.RoleArn===this.assumeRoleArn &&
       Object.keys(payload).every(k=>['RoleArn','RoleSessionName','DurationSeconds'].includes(k)) &&
@@ -24,6 +25,7 @@ export class TencentTransport {
       Number.isInteger(payload.DurationSeconds) && payload.DurationSeconds>=900 && payload.DurationSeconds<=7200 :
       allowedActions[service]?.has(action), 'ACTION_NOT_ALLOWED');
     const c = await this.credentials();
+    signal?.throwIfAborted();
     requireThat(typeof c.secretId==='string' && c.secretId && typeof c.secretKey==='string' && c.secretKey &&
       (source ? !c.token : c.token && Number(c.expiresAt) > this.now() + 60000), 'SHORT_CREDENTIAL_REQUIRED');
     const body = canonical(payload), host = `${service}.tencentcloudapi.com`;
@@ -33,7 +35,8 @@ export class TencentTransport {
     const scope = `${date}/${service}/tc3_request`;
     const key = hmac(hmac(hmac(`TC3${c.secretKey}`, date), service), 'tc3_request');
     const signature = hmac(key, `TC3-HMAC-SHA256\n${timestamp}\n${scope}\n${sha256(request)}`, 'hex');
-    const response = await this.fetchImpl(`https://${host}/`, {method: 'POST', redirect: 'error', signal: AbortSignal.timeout(this.timeoutMs), body,
+    const timeout=AbortSignal.timeout(this.timeoutMs);
+    const response = await this.fetchImpl(`https://${host}/`, {method: 'POST', redirect: 'error', signal: signal?AbortSignal.any([timeout,signal]):timeout, body,
       headers: {'Content-Type': 'application/json; charset=utf-8', 'X-TC-Action': action, 'X-TC-Version': apiVersion[service],
         'X-TC-Region': this.region, 'X-TC-Timestamp': String(timestamp), ...(source?{}:{'X-TC-Token': c.token}),
         Authorization: `TC3-HMAC-SHA256 Credential=${c.secretId}/${scope}, SignedHeaders=content-type;host, Signature=${signature}`}});
@@ -71,7 +74,7 @@ export function runParameters(config, request, clientToken, userData, slot, opId
     VirtualPrivateCloud: {VpcId: config.vpc_id, SubnetId: config.subnet_id}, SecurityGroupIds: [config.security_group_id],
     InternetAccessible: {PublicIpAssigned: false, InternetMaxBandwidthOut: 0}, CamRoleName: config.role_names[slot],
     UserData: Buffer.from(userData).toString('base64'),
-    TagSpecification: [{ResourceType: 'instance', Tags: [{Key: 'bondbuddy-pool', Value: config.pool_tag}, {Key: 'bondbuddy-create-op', Value: opId}]}]};
+    TagSpecification: [{ResourceType: 'instance', Tags: [{Key: 'bondbuddy-pool', Value: config.pool_tag}, {Key: 'bondbuddy-create-op', Value: opId},executionSlotReadTag(config.pool_tag,config.role_names[slot])]}]};
 }
 
 export class TencentCvm {
@@ -104,6 +107,10 @@ export class TencentCvm {
       i.SystemDisk?.DiskSize === 40 && i.SystemDisk.DiskType === 'CLOUD_PREMIUM' &&
       i.DataDisks?.length === 1 && i.DataDisks[0].DiskSize === 80 && i.DataDisks[0].DiskType === 'CLOUD_PREMIUM' &&
       !i.PublicIpAddresses?.length, 'CLOUD_LAUNCH_DRIFT');
+    const slot=this.config.role_names.indexOf(i.CamRoleName),tag=executionSlotReadTag(this.config.pool_tag,this.config.role_names[slot]);
+    requireThat(i.Tags?.filter(t=>t.Key===tag.Key).length===1&&tags.get(tag.Key)===tag.Value,'CLOUD_SLOT_TAG_DRIFT');
+    const peers=await this.transport.call('cvm','DescribeInstances',{Filters:[{Name:`tag:${tag.Key}`,Values:[tag.Value]}],Limit:3});
+    requireThat(peers.TotalCount===1&&peers.InstanceSet?.length===1&&peers.InstanceSet[0].InstanceId===instanceId,'CLOUD_SLOT_NOT_UNIQUE');
     const safe = {account_id: this.config.account_id, region: this.config.region, instance_id: instanceId, role_name: i.CamRoleName,
       instance_state: i.InstanceState, latest_operation: i.LatestOperation??null, latest_operation_state: i.LatestOperationState??null,
       latest_operation_request_id: i.LatestOperationRequestId ?? null, create_operation_id: tags.get('bondbuddy-create-op') ?? null,

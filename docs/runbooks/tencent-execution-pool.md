@@ -28,7 +28,7 @@
 5. `submitStop` 先冻结 epoch，随后唯一 dispatch。停止未决期间不得 ready、Start 或登记新 epoch。仅准确 Stop 完成、`STOPPED` 和 `StopChargingMode=STOP_CHARGING` 的证据才允许回收旧 epoch 容量；完整 holder 前像 CAS 与账务未知保留由 PG 适配器处理。
 6. 验证阶段常驻实例明确固定，保留常驻节点；零底线自动阶段可按后文正向排空规则停最后一台。需要保留能力时，另一台必须已 ready 并覆盖相同能力；启动中或失联节点不能作为替代。连续空闲起点来自 PG 正向零活动回执，不用 TTL。
 
-0182 仅新增 `run_acceptance` 列，旧操作不补造受理证明。控制端需按准确库存范围授予只读 `DescribeInstancesStatus`；节点角色仍仅读取自己的实例与独占 Secret。签发、登记和证书刷新共用 contracts 的分 action 完成校验，Run 的原证明随独占登记信封及本地 transport 状态传播。目标数据库迁移、实际业务节点启动和完整镜像验收分别执行。
+0182 仅新增 `run_acceptance` 列，旧操作不补造受理证明。控制端需按准确库存范围授予只读 `DescribeInstancesStatus`；节点角色仅有专用 slot 的实例读取及独占 Secret 的 Get/List。签发、登记和证书刷新共用 contracts 的分 action 完成校验，Run 的原证明随独占登记信封及本地 transport 状态传播。目标数据库迁移、实际业务节点启动和完整镜像验收分别执行。
 
 ## 自然日费用准入
 
@@ -46,7 +46,7 @@
 
 按需人工管理入口可调用 `node deploy/tencent-elasticity/reconcile-entry.mjs <plan|start|drain|recover> <private-config> <private-request> <operation-id>`。仅按需调用；该入口不运行循环。配置、短控制凭据和登记文件须为当前 UID 的普通 `0600` 文件，拒绝 symlink。凭据只读入内存，不打印或存入云观察原件。
 
-`bootstrap.service` 是一次性启动入口。审核镜像须预装 Node、Docker、本模块及已核 hash 的节点专属 broker/runtime adapter；配置缺失即启动失败，不执行默认个人 provider。公开 UserData 仅写服务 manifest；短凭据在控制端准确云绑定之后发行。具体 `enrollment.mjs`、`node-adapter.mjs` 已提供受限 SSM/STS broker 与 Docker/PG 接线。控制端先 PG 绑定，再精确 Get/Put/readback 同一 SecretName/VersionId（Put 受理丢失不换 token/版本）；节点必须匹配当前 Start/Run RequestId，暖启动不能读取旧 epoch 的 tag。开机握手最多等待 120 秒，不新建调度循环。真实云和 Secret 发行为延期验收项，函数单测不能证明实机可启动。
+`bootstrap.service` 是一次性启动入口。审核镜像须预装 Node、Docker、本模块及已核 hash 的节点专属 broker/runtime adapter；配置缺失即启动失败，不执行默认个人 provider。公开 UserData 仅写服务 manifest；短凭据在控制端准确云绑定之后发行。控制端先 PG 绑定，再精确 Get/Put/readback 同一 SecretName/VersionId（Put 受理丢失不换 token/版本）；节点对独占 Secret 的完整库存执行最多十个精确 Get，不依赖运行后 tag 指针。握手最多六次扫描，间隔三十秒，全部网络读取共用一百八十秒 abort deadline，逾期失败不启消费者。真实云和 Secret 发行为延期验收项，函数单测不能证明实机可启动。
 
 节点专属角色与同名 secret 使用 `bondbuddy-execution-node-1`、`bondbuddy-execution-node-2`。每个角色只能读取准确 creatorUin/SecretName 资源与自身实例，不授予云修改或 secret 写权限。控制角色独立发行新服务凭据，不使用个人登录状态。Secret 版本为当前已完成启动操作的固定版本，必须通过当前云 RequestId 与 PG 节点身份绑定。
 
@@ -97,6 +97,14 @@ PG 通道使用 `pg-client.conf.example`/`pg-client.service`，仅绑定获审�
 ## 同一镜像的两套节点身份
 
 镜像只含公共共享配置和两套非敏感 `node_slots` 模板。公开启动 manifest 的 `slot_binding` 固定 role 名称、role ID 和 Secret 名称，并与 CamRoleName 一同进入完整 launch hash。入口把同一个 manifest 交给配置选择器，必须唯一逐字匹配预装模板；配置选择不代替 STS、准确 Describe 角色／原 ACK、独占 Secret、PG operation／epoch 和准入校验。未知、多匹配和交叉 Secret 不回退。
+
+创建时固定 `bondbuddy-execution-slot` 标签，值与对应 `CamRoleName` 逐字一致。每个节点角色的 Describe 策略只含其自己这一对完整键值；pool 标签另由代码逐字校验。slot 值进入公共 launch projection 及不可变 hash。控制端与节点在准确实例读取之外核对同 slot 完整库存为唯一实例；重复、缺失、角色错配或未知响应拒绝新增和登记。这是 slot 隔离：异常情况下同 slot 的其它实例元数据仍属于该角色的云读取范围，不能声称是动态严格 self-instance 授权。节点和控制调用白名单均不包含标签修改，初始创建标签之后不通过运行时补标签扩大权限。
+
+节点在扫描后再次读取准确云前像。当前 StartInstances 只接受非空原 ACK/SUCCESS 的新 Start 信封，旧 Run 即使仍在十分钟有效期内也不参与；初次 Run 允许三个 latest 字段为空且必须有原持久受理、创建 tag 和 immutable proof。唯一登记信封必须匹配实例、epoch、operation、role、pins、服务和有效期；零匹配待确认，多匹配拒绝。TLS 版本只在同一 epoch/operation/ACK/pins 且 CA 签名正确的集合内选唯一最大证书有效期，顺序无关；并列最大值拒绝，旧证书不降级，距过期不足两小时仍禁新领。
+
+未知 Put 始终只回读原版本，不换 token、epoch 或重新派发。十分钟登记 vault 过期后仍安全拒绝，恢复或排空出口需单独完成，版本发现不声称解决该情形。完整 Secret 超过十版或清理权限缺失会关闭新登记／发行；原租约和正向排空路径保持。
+
+标签授权语法依据：[CAM 标签授权](https://cloud.tencent.com/document/product/598/80788)。策略附件不是实际节点凭据验收；须验证本 slot 正例、另一 slot／非池负例、独占 Secret Get/List 及节点无云修改权限。
 
 ## 受限私网出口
 
