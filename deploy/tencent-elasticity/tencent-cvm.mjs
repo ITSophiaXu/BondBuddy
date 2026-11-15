@@ -1,8 +1,10 @@
 import {createHmac} from 'node:crypto';
 import {canonical, sha256, requireThat, validateConfig} from './policy.mjs';
+import {bootstrapUserData} from './bootstrap.mjs';
 
-const apiVersion = {cvm: '2017-03-12', sts: '2018-08-13'};
-const allowedActions = {cvm: new Set(['RunInstances', 'StartInstances', 'StopInstances', 'DescribeInstances']), sts: new Set(['GetCallerIdentity'])};
+const apiVersion = {cvm: '2017-03-12', sts: '2018-08-13', ssm: '2019-09-23', tag: '2018-08-13'};
+const allowedActions = {cvm: new Set(['RunInstances', 'StartInstances', 'StopInstances', 'DescribeInstances']),
+  sts: new Set(['GetCallerIdentity']), ssm: new Set(['GetSecretValue', 'PutSecretValue']), tag: new Set(['ModifyResourceTags'])};
 const hmac = (key, value, encoding) => createHmac('sha256', key).update(value).digest(encoding);
 
 /** Official TC3 signature; credentials are refreshed in memory by the existing ops/role source. */
@@ -47,10 +49,10 @@ export class TencentTransport {
 }
 
 export function runParameters(config, request, clientToken, userData, slot, opId) {
-  validateConfig(config, {apply: true});
+  validateConfig(config, {apply: true,expenditure:false});
   requireThat(/^[a-f0-9]{64}$/.test(clientToken), 'CLIENT_TOKEN_BOUND');
   requireThat(request.account_id === config.account_id && request.region === config.region && request.instance_id === null &&
-    request.source_sha256 === config.source_sha256 && request.image_sha256 === config.image_sha256, 'LAUNCH_BINDING');
+    request.instance_count === 1 && request.source_sha256 === config.source_sha256 && request.image_sha256 === config.image_sha256, 'LAUNCH_BINDING');
   requireThat(Number.isInteger(slot) && slot >= 0 && slot < 2, 'INVENTORY_SLOT');
   requireThat(Buffer.byteLength(userData) <= 16384, 'USER_DATA_BOUND');
   return {InstanceChargeType: 'POSTPAID_BY_HOUR', InstanceCount: 1, ClientToken: clientToken,
@@ -102,21 +104,41 @@ export class TencentCvm {
     return {...safe, evidence_ref: evidence.ref, evidence_sha256: evidence.sha256};
   }
   async execute(operation, {userData, slot} = {}) {
-    validateConfig(this.config, {apply: true});
+    validateConfig(this.config, {apply: true, expenditure: operation.action !== 'stop'});
     await this.assertAccount();
     if (operation.action === 'run') {
       const params = runParameters(this.config, operation.request, operation.client_token, userData, slot, operation.operation_id);
       requireThat(sha256(canonical(params)) === operation.request.launch_manifest_sha256, 'LAUNCH_MANIFEST_MISMATCH');
-      return this.transport.call('cvm', 'RunInstances', params);
+      try {return await this.transport.call('cvm', 'RunInstances', params);} catch(error) {
+        if(error.code && typeof error.requestId==='string') {
+          const bytes=canonical({service:'cvm',action:'RunInstances',instance_count:1,operation_id:operation.operation_id,
+            client_token_sha256:sha256(operation.client_token),code:error.code,request_id:error.requestId});
+          const evidence=await this.archive(bytes);
+          requireThat(evidence.sha256===sha256(bytes)&&evidence.ref,'REJECTION_EVIDENCE_REQUIRED');
+          error.capacityEvidence={code:error.code,request_id:error.requestId,evidence_ref:evidence.ref,evidence_sha256:evidence.sha256};
+        }
+        throw error;
+      }
     }
     requireThat(operation.identity?.account_id === this.config.account_id && operation.identity.region === this.config.region, 'OPERATION_SCOPE');
     const i = await this.describe(operation.identity.instance_id);
     if (operation.action === 'start') {
       requireThat(i.instance_state === 'STOPPED', 'START_REQUIRES_STOPPED');
+      requireThat(i.create_operation_id,'WARM_START_CREATION_UNPROVEN');
+      const oldRequest={...operation.request,instance_id:null};
+      const oldParams=runParameters(this.config,oldRequest,sha256(i.create_operation_id),bootstrapUserData(this.config,oldRequest),
+        this.config.role_names.indexOf(i.role_name),i.create_operation_id);
+      requireThat(sha256(canonical(oldParams))===operation.request.launch_manifest_sha256,'WARM_START_CLOUD_MANIFEST_DRIFT');
       return this.transport.call('cvm', 'StartInstances', {InstanceIds: [i.instance_id]});
     }
     requireThat(operation.action === 'stop' && operation.proof_sha256, 'STOP_PROOF_REQUIRED');
     requireThat(i.instance_state === 'RUNNING', 'STOP_REQUIRES_RUNNING');
     return this.transport.call('cvm', 'StopInstances', {InstanceIds: [i.instance_id], StopType: 'SOFT', StoppedMode: 'STOP_CHARGING'});
+  }
+  async capacityRejection(error) {
+    const evidence=error.capacityEvidence;
+    if(!evidence)return null;
+    const {EXECUTION_RUN_CAPACITY_REJECTIONS}=await import('@bondbuddy/contracts');
+    return EXECUTION_RUN_CAPACITY_REJECTIONS.includes(evidence.code)?evidence:null;
   }
 }

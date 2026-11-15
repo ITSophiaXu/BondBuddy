@@ -6,6 +6,7 @@ import {canonical, requireThat} from './policy.mjs';
 /** Public cloud-init only. All credentials are issued later to a role-bound node. */
 export function bootstrapUserData(config, request) {
   const manifest = {version: 'execution-bootstrap-v1', pool_tag: config.pool_tag,
+    account_id:request.account_id,region:request.region,
     source_sha256: request.source_sha256, image_sha256: request.image_sha256,
     services: request.services};
   requireThat(request.services?.length >= 1 && request.services.length <= 2 &&
@@ -45,6 +46,7 @@ export async function bootstrapNode({publicManifest, metadata, broker, runtime, 
     enrollment.identity.instance_id === metadata.instance_id && enrollment.identity.region === metadata.region &&
     enrollment.source_sha256 === publicManifest.source_sha256 && enrollment.image_sha256 === publicManifest.image_sha256 &&
     canonical(enrollment.services) === canonical(publicManifest.services), 'ENROLLMENT_BINDING');
+  requireThat(publicManifest.account_id===enrollment.identity.account_id && publicManifest.region===enrollment.identity.region,'PUBLIC_NODE_SCOPE');
   requireThat(enrollment.registration_token && enrollment.operation_completed === true, 'ENROLLMENT_UNPROVEN');
   await runtime.verifyArtifacts(enrollment); // immutable image/source/sandbox/PG/Blob before any claim
   const contexts = [];

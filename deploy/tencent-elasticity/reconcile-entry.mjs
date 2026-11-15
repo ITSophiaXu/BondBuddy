@@ -2,21 +2,23 @@ import {readPrivateJson, observationArchive} from './private-files.mjs';
 import {ExecutionPoolController} from './controller.mjs';
 import {TencentCvm, TencentTransport} from './tencent-cvm.mjs';
 import {validateConfig, requireThat} from './policy.mjs';
+import {produceExpenseSnapshot} from './costcap.mjs';
 
 // Explicit invocation inside the existing ops service. No background scheduling.
 const [action, configPath, requestPath, opId] = process.argv.slice(2);
 let pool;
 try {
   requireThat(['plan', 'start', 'drain', 'recover'].includes(action), 'ACTION_REQUIRED');
-  const config = validateConfig(await readPrivateJson(configPath), {apply: action !== 'plan'});
+  const config = validateConfig(await readPrivateJson(configPath), {apply: action !== 'plan',expenditure:action==='start'});
   const {Pool} = await import('pg');
-  const {executionCapacityControl} = await import('@bondbuddy/api/execution-capacity');
+  const {executionCapacityControl,executionCloudExpenseLedger} = await import('@bondbuddy/api/execution-capacity');
   pool = new Pool({connectionString: process.env.DATABASE_URL, max: 2, connectionTimeoutMillis: 5000, query_timeout: 10000});
   const control = executionCapacityControl(pool);
   const transport = new TencentTransport({region: config.region,
     credentials: () => readPrivateJson(config.control_credentials_file)});
   const cloud = new TencentCvm({transport, config, archive: observationArchive(config.observation_directory)});
-  const controller = new ExecutionPoolController({control, cloud, config, costSnapshot: () => readPrivateJson(config.expense_snapshot_file)});
+  const controller = new ExecutionPoolController({control, cloud, config, costSnapshot:async inventory=>produceExpenseSnapshot({
+    ledger:await executionCloudExpenseLedger(pool),inventory,quote:await readPrivateJson(config.cloud_quote_file),config})});
   let result;
   if (action === 'plan') result = await controller.plan(await cloud.inventory());
   if (action === 'start') result = await controller.start(await readPrivateJson(requestPath), opId);

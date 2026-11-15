@@ -1,6 +1,6 @@
 import {canonical, planCapacity, requireThat, sha256, validateConfig} from './policy.mjs';
 import {bootstrapUserData} from './bootstrap.mjs';
-import {requireCostAdmission} from './costcap.mjs';
+import {requireCostAdmission, costAdmission} from './costcap.mjs';
 import {runParameters} from './tencent-cvm.mjs';
 
 /** @typedef {import('@bondbuddy/contracts').ExecutionCapacityControl} ExecutionCapacityControl */
@@ -13,7 +13,7 @@ export class ExecutionPoolController {
     validateConfig(this.config, {apply: true});
     const snapshot = await this.control.snapshot();
     const inventory = await this.cloud.inventory();
-    requireCostAdmission(await this.costSnapshot(), inventory, this.config);
+    requireCostAdmission(await this.costSnapshot(inventory), inventory, this.config);
     const plan = planCapacity(snapshot, inventory, this.config);
     requireThat(['start', 'run'].includes(plan.kind) && plan.instance_id === request.instance_id &&
       plan.capabilities.every(cap => request.capabilities.includes(cap)), 'FRESH_EXPANSION_GATE');
@@ -24,20 +24,36 @@ export class ExecutionPoolController {
     return this.dispatch(operation, {slot});
   }
   async resumeIntent(operation) {
-    validateConfig(this.config, {apply: true});
+    validateConfig(this.config, {apply: true, expenditure: false});
     if (operation.action === 'stop') return this.dispatch(operation);
     const inventory = await this.cloud.inventory();
-    requireCostAdmission(await this.costSnapshot(), inventory, this.config);
+    let admission={allowed:false};
+    try{admission=costAdmission(await this.costSnapshot(inventory),inventory,this.config);}catch{}
+    const snapshot=await this.control.snapshot();
+    requireThat(snapshot.pending_cloud_reservations===1,'INTENT_PENDING_SCOPE');
+    // The sole never-dispatched intent is its own reservation, not additional
+    // demand. PG reauthorizes the SAME operation only after these fresh checks.
+    const plan=planCapacity({...snapshot,pending_cloud_reservations:0},inventory,this.config);
+    if(!admission.allowed || plan.kind!==operation.action || plan.instance_id!==operation.request.instance_id ||
+      !plan.capabilities.every(c=>operation.request.capabilities.includes(c))) {
+      // PG accepts cancellation only before ANY dispatch/ACK. Warm cancellation
+      // restores the exact prior stopped-node image, retaining audit and token.
+      return this.control.cancelUndispatchedCloudIntent(operation.operation_id,operation.revision,snapshot.policy.revision);
+    }
+    validateConfig(this.config,{apply:true});
     let slot = 0;
     if (operation.action === 'run') {
       slot = this.config.role_names.findIndex((_, index) => sha256(canonical(runParameters(this.config, operation.request,
         operation.client_token, bootstrapUserData(this.config, operation.request), index, operation.operation_id))) === operation.request.launch_manifest_sha256);
       requireThat(slot >= 0 && !inventory.some(i => i.role_name === this.config.role_names[slot]), 'PERSISTED_LAUNCH_SLOT_CHANGED');
     }
-    return this.dispatch(operation, {slot});
+    const current=await this.control.reauthorizeCloudIntent(operation.operation_id,operation.revision,snapshot.policy.revision);
+    requireThat(current.operation_id===operation.operation_id && current.client_token===operation.client_token &&
+      canonical(current.request)===canonical(operation.request),'INTENT_REAUTHORIZATION_DRIFT');
+    return this.dispatch(current, {slot});
   }
   async drain(identity, opId, revision) {
-    validateConfig(this.config, {apply: true});
+    validateConfig(this.config, {apply: true, expenditure: false});
     const snapshot = await this.control.snapshot();
     const current = snapshot.nodes.find(n => canonical(n.identity) === canonical(identity));
     if (!['draining', 'drained'].includes(current?.state)) {
@@ -68,17 +84,34 @@ export class ExecutionPoolController {
         identity = {account_id: identity.account_id, region: identity.region, instance_id: identity.instance_id, epoch: identity.epoch};
       }
       result = {state: 'submitted', provider_request_id: response.RequestId, identity, observation: null};
-    } catch {
-      // Definitive errors may be classified by a separately reviewed recovery;
-      // initial controller retains the inventory reservation/fence on ALL failures.
-      result = {state: 'unknown', provider_request_id: null, identity: claimed.identity, observation: null};
+    } catch (error) {
+      const rejection = claimed.action === 'run' && claimed.identity === null && claimed.request?.instance_count === 1
+        ? await this.cloud.capacityRejection?.(error) : null;
+      result = rejection ? {state:'rejected',provider_request_id:rejection.request_id,identity:null,observation:null,
+        rejection_evidence:{code:rejection.code,evidence_ref:rejection.evidence_ref,evidence_sha256:rejection.evidence_sha256,
+          retry_after:new Date(Date.now()+this.config.failure_cooldown_seconds*1000).toISOString()}}
+        : {state: 'unknown', provider_request_id: null, identity: claimed.identity, observation: null};
     }
     return this.control.recordCloudResult(claimed.operation_id, claimed.revision, result);
   }
   async recover(opId) {
     const op = await this.control.loadOperation(opId);
     requireThat(op, 'OPERATION_NOT_FOUND');
-    if (!['submitted', 'unknown'].includes(op.state) || !op.identity) return op;
+    if (!['submitted', 'unknown'].includes(op.state)) return op;
+    if (!op.identity) {
+      requireThat(op.action === 'run', 'UNBOUND_OPERATION');
+      const inventory = await this.cloud.inventory();
+      const candidates = inventory.filter(i => i.create_operation_id === op.operation_id);
+      requireThat(candidates.length <= 1, 'UNKNOWN_RUN_INVENTORY_AMBIGUOUS');
+      if (!candidates.length) return op; // absence is not proof of rejected Run
+      const i=candidates[0], slot=this.config.role_names.indexOf(i.role_name);
+      requireThat(slot>=0 && sha256(canonical(runParameters(this.config,op.request,op.client_token,
+        bootstrapUserData(this.config,op.request),slot,op.operation_id)))===op.request.launch_manifest_sha256, 'UNKNOWN_RUN_MANIFEST_DRIFT');
+      // Bind capacity/cost ownership, but an absent ACK still cannot authorize
+      // completion or a second launch. The original operation/token is retained.
+      return this.control.recordCloudResult(opId,op.revision,{state:'unknown',provider_request_id:null,
+        identity:{account_id:op.request.account_id,region:op.request.region,instance_id:i.instance_id,epoch:op.request.epoch},observation:null});
+    }
     const observation = await this.cloud.describe(op.identity.instance_id);
     const action = {run: 'RunInstances', start: 'StartInstances', stop: 'StopInstances'}[op.action];
     const state = op.action === 'stop' ? 'STOPPED' : 'RUNNING';

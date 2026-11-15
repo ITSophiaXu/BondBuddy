@@ -12,7 +12,8 @@ try {
   requireThat(config.enabled === true && config.adapter_path.startsWith('/opt/bondbuddy/') &&
     /^[a-f0-9]{64}$/.test(config.adapter_sha256), 'BOOTSTRAP_ADAPTER_REQUIRED');
   requireThat(sha256(await readFile(config.adapter_path)) === config.adapter_sha256, 'BOOTSTRAP_ADAPTER_CHANGED');
-  const adapter = await import(pathToFileURL(config.adapter_path).href);
+  const module = await import(pathToFileURL(config.adapter_path).href);
+  const adapter = await module.createConfiguredNodeAdapter();
   await bootstrapNode({publicManifest, metadata: await adapter.metadata(), broker: adapter.broker, runtime: adapter.runtime,
     writeEnvelope: (service, data) => writePrivateEnvelope('/run/bondbuddy/enrollment', service, data)});
 } catch {

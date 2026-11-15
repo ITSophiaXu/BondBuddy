@@ -3,13 +3,17 @@ services:
   authoring:
     image: ${BB_ELASTIC_IMAGE:?immutable image digest required}
     command: [node, apps/worker/dist/runtime.js]
-    env_file: ${BB_ELASTIC_SERVICE_ENV:?role-issued private environment required}
+    user: '1000:1000'
+    env_file:
+      - path: ${BB_ELASTIC_SERVICE_ENV:?role-issued private environment required}
+        format: raw
     environment:
       BB_WORKER_JOB_KINDS: run
       BB_EXECUTION_ENROLLMENT_FILE: /run/bondbuddy/enrollment/authoring.json
       BB_WORKER_RUN_KINDS: update,generation,qa
       BB_WORKER_PARSE_SLOTS: '0'
       BB_UPLOAD_CONFIRMATION_ENABLED: '0'
+      BB_PLATFORM_PROBE_ENABLED: '0'
       BB_WORKER_CONCURRENCY: '4'
       BB_MODEL_CALL_CONCURRENCY: '4'
       NODE_OPTIONS: --max-old-space-size=1024
@@ -19,18 +23,25 @@ services:
     cpus: 1.5
     pids_limit: 256
     read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true, 'seccomp=../m1/security/codex-seccomp.json', 'apparmor=bondbuddy-codex-v1']
     tmpfs: [/tmp:size=512m,mode=1777]
     restart: 'no'
   review:
     image: ${BB_ELASTIC_REVIEW_IMAGE:?immutable review image digest required}
     command: [node, apps/worker/dist/runtime.js]
-    env_file: ${BB_ELASTIC_SERVICE_ENV:?role-issued private environment required}
+    user: '1000:1000'
+    env_file:
+      - path: ${BB_ELASTIC_SERVICE_ENV:?role-issued private environment required}
+        format: raw
     environment:
       BB_WORKER_JOB_KINDS: run
       BB_EXECUTION_ENROLLMENT_FILE: /run/bondbuddy/enrollment/review.json
       BB_WORKER_RUN_KINDS: review
       BB_WORKER_PARSE_SLOTS: '0'
       BB_UPLOAD_CONFIRMATION_ENABLED: '0'
+      BB_PLATFORM_PROBE_ENABLED: '0'
+      BB_REVIEW_ASSISTANT_SLOTS: '4'
       BB_WORKER_CONCURRENCY: '4'
       BB_MODEL_CALL_CONCURRENCY: '4'
       NODE_OPTIONS: --max-old-space-size=2048
@@ -40,5 +51,11 @@ services:
     cpus: 1.5
     pids_limit: 256
     read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true, 'seccomp=../m1/security/codex-seccomp.json', 'apparmor=bondbuddy-codex-v1']
     tmpfs: [/tmp:size=512m,mode=1777]
     restart: 'no'
+networks:
+  default:
+    external: true
+    name: ${BB_ELASTIC_NETWORK:?reviewed private execution network required}

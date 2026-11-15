@@ -1,0 +1,19 @@
+[Unit]
+Description=Private authenticated database transport
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/stunnel /etc/bondbuddy/pg-client.conf
+UMask=0077
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6
+StandardOutput=null
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

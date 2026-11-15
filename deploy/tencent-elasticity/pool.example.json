@@ -31,13 +31,20 @@
   "stop_charging_evidence_sha256": null,
   "provider_budget_review_sha256": null,
   "expense_policy_revision": null,
-  "expense_snapshot_file": null,
+  "expense_policy_sha256": null,
+  "period_cap_cny": 48,
+  "reservation_hours": 1,
+  "drain_reserve_hours": 1,
   "control_credentials_file": null,
   "observation_directory": null,
   "services": [
-    {"service_id": "authoring", "capabilities": ["authoring", "assistant", "probe"]},
+    {"service_id": "authoring", "capabilities": ["authoring"]},
     {"service_id": "review", "capabilities": ["review", "assistant"]}
   ],
+  "registration_directory": null,
+  "time_zone": "Asia/Shanghai",
+  "cloud_quote_file": null,
+  "node_secrets": [],
   "scale_up_wait_seconds": 60,
   "idle_seconds": 300,
   "failure_cooldown_seconds": 300
