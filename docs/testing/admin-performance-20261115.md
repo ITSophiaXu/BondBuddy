@@ -66,7 +66,7 @@ Set-Location apps/web
 node ../../node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5175
 ```
 
-在对应启动终端按 `Ctrl+C` 停止 API 或 Vite。若启动终端不可用，先用 `Get-NetTCPConnection -LocalPort 5175,4315 -State Listen` 核对监听 PID，再检查其命令行，只停止本批进程。本次核验 Vite PID 为 `98252`，API PID 为 `50108`；PID 会随重启改变，不应长期直接复用，也不要批量结束所有 Node 进程。停止网页/API不会删除本地测试数据库。
+在对应启动终端按 `Ctrl+C` 停止 API 或 Vite。若启动终端不可用，先用 `Get-NetTCPConnection -LocalPort 5175,4315 -State Listen` 核对监听 PID，再检查其命令行，只停止本批进程。本次核验 Vite PID 为 `98252`，API PID 为 `58920`（最终修复后重启，exec session `62636`）；PID 会随重启改变，不应长期直接复用，也不要批量结束所有 Node 进程。停止网页/API不会删除本地测试数据库。
 
 复验真实链路与补拍：
 
@@ -79,3 +79,13 @@ node apps/web/tests/admin-performance-live.mjs verify
 合成浏览器回归设置 `BB_E2E_BASE_URL=http://127.0.0.1:5175` 后运行 `admin-performance.spec.ts`、`admin-inspection.spec.ts` 和 `admin-inspection-status.spec.ts`。实际 API 验证脚本对主机、端口、数据库名做强制校验，无法误接生产数据库。
 
 本文件只登记后台性能 UI 的开发与自测；总体验证由 `docs/testing/issue-1415-performance.md` 汇总。原型一致与自动化通过均不等于用户已验收或已获本批生产发布授权。
+
+## #1422 工具边界缺测补修（最终版本）
+
+工具只有结束事件或超过采集限额而省略时，`model.exec` 的 `tool_timing_complete=false` 现在会使 API 与界面覆盖度保持不完整。界面展示“工具计时缺测”，不再输出确定的未解释时间；真实已测的 CLI 总耗时保留，仍参与该步骤的服务端分位数。对应原型已用最终渲染器重新生成，新增“工具计时缺测”合成状态。
+
+本次前端单测 19/19，两个缺测浏览器用例 2/2，最终 web 类型检查及 Vite 构建均 exit 0。两个浏览器用例使用固定 1440×1000 viewport 截图，并验证整条模型步骤在可视范围内；不使用受父抽屉裁剪的长元素截图。定向 PostgreSQL 回归 1/1（两种场景，未选中用例未计入 TAP），随后主验证复跑全部性能 unit + PostgreSQL 12/12、无失败或跳过，记录见 `work/performance-final-1422.log`。
+
+新增证据：[结束事件缺开始](evidence/issue-1422/browser-completed-only.png)、[工具省略](evidence/issue-1422/browser-omitted.png)、[同状态原型](evidence/issue-1422/prototype-tool-missing.png)、[验证记录](evidence/issue-1422/verification.json)。此前完整分页与手机截图仍说明原有状态，这三张是最终缺测状态补充。
+
+最终确认 `http://127.0.0.1:5175/admin/` 使用本次源代码，`http://127.0.0.1:4315` 已加载最终 API 编译结果；本地合成账号登录及真实本地汇总请求返回 200，仍为 1002 条合成任务。没有重建 seed、启动 worker 或调用真实模型；本次仅开发与自测完成，尚未部署，也不代表用户验收完成。

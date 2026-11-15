@@ -8,6 +8,10 @@ export function createPerformanceBatchWriter(source:Pool):PerformanceBatchWriter
   statement_timeout:1000,query_timeout:1500,lock_timeout:250,application_name:'bondbuddy-performance'});
  // Idle connection failures are advisory too; pg otherwise emits an unhandled error.
  pool.on('error',()=>{});
+ // pg emits socket errors on a checked-out Client, not the Pool's idle listener.
+ // Keep this listener for the entire connection lifetime, including release races;
+ // the rejected query still reaches the batch catch and runtime failure counters.
+ pool.on('connect',client=>client.on('error',()=>{}));
  return async(sessions,spans)=>{
   const c=await pool.connect();try{
    await c.query('BEGIN');

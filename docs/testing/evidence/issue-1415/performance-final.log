@@ -1,0 +1,20 @@
+✔ real PG telemetry persists independently, owner-bound, paginated, audited and aggregated beyond snapshot limits (3767.3237ms)
+✔ checked-out performance connection loss is contained and the independent writer recovers (470.7005ms)
+✔ missing or omitted tool boundaries make coverage incomplete without discarding measured exec percentiles (1333.6532ms)
+✔ nested and concurrent spans retain exact identities and monotonic durations; business result is unchanged (39.9869ms)
+✔ explicit reused/paused outcomes survive wrappers; errors propagate by identity; missing end stays incomplete (2.9898ms)
+✔ database and claim observation intervals are root siblings with true historical duration (3.6549ms)
+✔ no-context instrumentation is a no-op and private text/URLs/commands are rejected (0.5814ms)
+✔ bounded overflow is counted and a failed sink never changes a business result or exception (5.4706ms)
+✔ strict performance filter and cursor validation rejects extra keys and cross-run cursors (2.1081ms)
+✔ performance routes require log_reader before reading/auditing any operational data (739.99ms)
+✔ closed missing-end sessions do not exhaust bounded tracing and a late end can finish the receipt (2.2438ms)
+✔ completed dispatch observations have no synthetic execution root, retain batch identity and fractional milliseconds (1.1716ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12476.9972

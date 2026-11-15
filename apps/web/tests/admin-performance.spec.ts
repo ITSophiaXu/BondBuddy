@@ -24,7 +24,7 @@ function snapshot(): AdminInspectionSnapshot {
     ...['bb_jobs', 'bb_run_events', 'bb_model_call_attempts', 'bb_workpaper_batches'].map(name => ({name, available: true, total: 0, truncated: false, rows: []})),
   ]};
 }
-async function setup(page: Page, options: {firstRunFails?: boolean; holdRun?: boolean} = {}) {
+async function setup(page: Page, options: {firstRunFails?: boolean; holdRun?: boolean; toolIncomplete?: 'completed_only' | 'omitted'} = {}) {
   const urls: URL[] = [], unexpected: string[] = [], errors: string[] = [];
   let runReads = 0, release!: () => void, requested!: () => void;
   const released = new Promise<void>(resolve => { release = resolve; });
@@ -38,7 +38,13 @@ async function setup(page: Page, options: {firstRunFails?: boolean; holdRun?: bo
     else if (url.pathname === '/api/v1/admin/performance/runs/run') {
       runReads++; requested(); if (options.holdRun) await released;
       if (options.firstRunFails && runReads === 1) { status = 503; body = {code: 'DATA_UNAVAILABLE'}; }
-      else body = runPage(url.searchParams.has('cursor'));
+      else if (options.toolIncomplete) {
+        const data = runPage(); data.items = [span('exec', 0, 10000)]; data.items[0].step_key = 'model.exec';
+        data.items[0].attributes = {tool_timing_complete: false, tool_missing_start_count: options.toolIncomplete === 'completed_only' ? 1 : 0, tool_omitted_count: options.toolIncomplete === 'omitted' ? 1 : 0};
+        data.total = 1; data.next_cursor = null;
+        data.coverage = {...data.coverage, span_count: 1, unfinished_span_count: 1, complete: false};
+        data.sessions[0] = {...data.sessions[0], generated: 1, acknowledged: 1}; body = data;
+      } else body = runPage(url.searchParams.has('cursor'));
     } else if (url.pathname === '/api/v1/auth/logout') { await route.fulfill({status: 204}); return; }
     else { unexpected.push(url.pathname); status = 501; body = {code: 'DATA_UNAVAILABLE'}; }
     try { await route.fulfill({status, contentType: 'application/json', body: JSON.stringify(body)}); }
@@ -117,5 +123,20 @@ test('narrow admin layout contains horizontal waterfall scrolling within the dra
   const width = await page.evaluate(() => ({page: document.documentElement.scrollWidth, viewport: innerWidth, chart: document.querySelector('.perf-waterfall-scroll')!.scrollWidth, frame: document.querySelector('.perf-waterfall-scroll')!.clientWidth}));
   expect(width.page).toBeLessThanOrEqual(width.viewport); expect(width.chart).toBeGreaterThan(width.frame);
   await page.screenshot({path: info.outputPath('performance-mobile-synthetic.png')});
+  expect(fixture.errors).toEqual([]); expect(fixture.unexpected).toEqual([]);
+});
+
+for (const scenario of ['completed_only', 'omitted'] as const) test(`missing tool timing ${scenario} retains exec duration without claiming complete coverage`, async ({page}, info) => {
+  await page.setViewportSize({width: 1440, height: 1000});
+  const fixture = await setup(page, {toolIncomplete: scenario}); await openRun(page);
+  const panel = page.locator('[data-performance-run]'), row = page.locator('[data-perf-span="exec"]');
+  await expect(row).toContainText('10 秒'); await expect(row).toContainText('工具计时缺测');
+  await expect(panel.locator('[data-perf-coverage]')).toContainText('1 个步骤未结束或计时缺测');
+  await expect(panel.locator('[data-perf-coverage]')).not.toContainText('当前范围采集完整');
+  await expect(panel.locator('.perf-metric').filter({hasText: '未解释时间'}).locator('strong')).toHaveText('未知');
+  await expect(panel.locator('.perf-metric').filter({hasText: '失败 / 耗时缺测'}).locator('strong')).toHaveText('0 / 1');
+  await page.locator('.detail-body').evaluate(element => { element.scrollTop = 0; });
+  const rowBounds = await row.boundingBox(); expect(rowBounds).not.toBeNull(); expect(rowBounds!.y).toBeGreaterThanOrEqual(0); expect(rowBounds!.y + rowBounds!.height).toBeLessThanOrEqual(1000);
+  await page.screenshot({path: info.outputPath(`missing-tool-${scenario}.png`)});
   expect(fixture.errors).toEqual([]); expect(fixture.unexpected).toEqual([]);
 });

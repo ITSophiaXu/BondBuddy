@@ -4,7 +4,8 @@ import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import Fastify,{type LightMyRequestResponse} from 'fastify';
 import {withPerformanceTrace,withPerformanceSpan,flushPerformanceTraces,recordPerformanceInterval,PerformanceTraceRuntime,type PerformanceSessionRecord,type PerformanceSpanRecord} from './performance-trace.js';
-import {persistPerformanceBatch} from './performance-store.js';
+import {persistPerformanceBatch,createPerformanceBatchWriter} from './performance-store.js';
+import {setTimeout as delay} from 'node:timers/promises';
 import {installPerformanceRoutes} from './performance-routes.js';
 import {isolatedTestDatabase} from './test-database.js';
 import {grantOperator} from './log-ops.js';
@@ -129,4 +130,61 @@ test('real PG telemetry persists independently, owner-bound, paginated, audited 
    assert.equal(Number((await pool.query('SELECT count(*) n FROM bb_performance_spans WHERE run_id=$1',[runId])).rows[0].n),0);
   }finally{await app.close();}
  }finally{await flushPerformanceTraces(pool,1000);await pool.end();}
+});
+
+test('checked-out performance connection loss is contained and the independent writer recovers',{skip:!connection,timeout:20000},async()=>{
+ const pool=new Pool({connectionString:connection,max:3}),blocker=await pool.connect(),writer=createPerformanceBatchWriter(pool);
+ try{
+  await blocker.query('BEGIN');await blocker.query('LOCK TABLE bb_performance_sessions IN ACCESS EXCLUSIVE MODE');
+  const pending=writer([],[]).then(()=>null,error=>error);
+  let pid:number|undefined;
+  for(let i=0;i<40&&!pid;i++){
+   pid=(await pool.query("SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND application_name='bondbuddy-performance' AND state='active' AND wait_event_type='Lock' LIMIT 1")).rows[0]?.pid;
+   if(!pid)await delay(5);
+  }
+  assert.ok(pid,'the test must interrupt a checked-out writer, not an unrelated idle connection');
+  assert.equal((await pool.query('SELECT pg_terminate_backend($1) terminated',[pid])).rows[0].terminated,true);
+  assert.ok(await pending instanceof Error,'the advisory write reports a failure');
+  await delay(200); // Includes the socket-error/release race; an unhandled event fails this test.
+  assert.equal((await pool.query('SELECT 42 value')).rows[0].value,42,'the business pool remains usable');
+  await blocker.query('ROLLBACK');
+  await writer([],[]); // Replaces the lost independent connection and accepts the next batch.
+ }finally{await blocker.query('ROLLBACK').catch(()=>{});blocker.release();await pool.end();}
+});
+
+test('missing or omitted tool boundaries make coverage incomplete without discarding measured exec percentiles',{skip:!connection,timeout:30000},async()=>{
+ const pool=new Pool({connectionString:connection}),owner='perf-'+randomUUID(),project=randomUUID(),hash='a'.repeat(64);
+ const app=Fastify();app.setErrorHandler((e:any,_r,reply)=>reply.code(e.status??500).send({code:e.code,message:e.message}));
+ installPerformanceRoutes(app,{db:()=>pool,owner:async()=>owner});
+ try{
+  await pool.query('INSERT INTO bb_users(id,username) VALUES($1,$2)',[owner,'perf_'+randomUUID().replaceAll('-','').slice(0,16)]);
+  await pool.query("INSERT INTO bb_projects(id,owner_user_id,name,kind) VALUES($1,$2,'Synthetic missing tool timing','update')",[project,owner]);
+  await pool.query("INSERT INTO bb_input_revisions(project_id,revision,owner_user_id,draft_revision,input_hash,manifest,material_versions,requirement_message_ids) VALUES($1,1,$2,1,$3,'{}','[]','[]')",[project,owner,hash]);
+  await grantOperator(pool,{userId:owner,role:'log_reader',grantedBy:owner,reasonCode:'synthetic_performance'});
+  for(const [scenario,attributes] of Object.entries({
+   completed_only:{tool_timing_complete:false,tool_missing_start_count:1,tool_omitted_count:0},
+   omitted:{tool_timing_complete:false,tool_missing_start_count:0,tool_omitted_count:2},
+  })){
+   const runId=randomUUID();
+   await pool.query("INSERT INTO bb_runs(id,owner_user_id,project_id,input_revision,input_hash,execution_request_id,task_kind,request_hash,state) VALUES($1,$2,$3,1,$4,$1,'update',$4,'queued')",[runId,owner,project,hash]);
+   await withPerformanceTrace(pool,{ownerUserId:owner,projectId:project,runId,serviceRole:'synthetic'},async()=>{
+    await withPerformanceSpan('model.exec',{...attributes,model_id:scenario},async()=>{
+     if(scenario==='omitted')for(let i=0;i<128;i++)await withPerformanceSpan('model.tool',{timing_complete:true},()=>i);
+    });
+   });
+   await flushPerformanceTraces(pool,5000);
+   const response=await app.inject('/api/v1/admin/performance/runs/'+runId+'?limit=500');
+   assert.equal(response.statusCode,200,response.body);const data=response.json();
+   assert(data.items.every((p:any)=>p.ended_at!==null));assert(data.sessions.every((s:any)=>s.complete));
+   assert.equal(data.coverage.unfinished_span_count,1);assert.equal(data.coverage.complete,false);
+   const exec=data.items.find((p:any)=>p.step_key==='model.exec');assert.equal(exec.attributes.tool_timing_complete,false);
+   assert.equal(data.items.filter((p:any)=>p.step_key==='model.tool').length,scenario==='omitted'?128:0);
+   const summary=await app.inject('/api/v1/admin/performance/summary?owner_user_id='+owner+'&step_key=model.exec&model_id='+scenario);
+   assert.equal(summary.statusCode,200,summary.body);const grouped=summary.json();
+   assert.equal(grouped.coverage.unfinished_span_count,1);assert.equal(grouped.coverage.complete,false);
+   assert.equal(grouped.items.length,1);const sample=grouped.items[0];
+   assert.equal(sample.timed_count,1);assert.equal(sample.missing_duration_count,0);
+   assert.equal(sample.p50_ms,exec.duration_ms);assert.equal(sample.p95_ms,exec.duration_ms);
+  }
+ }finally{await app.close();await flushPerformanceTraces(pool,1000);await pool.end();}
 });

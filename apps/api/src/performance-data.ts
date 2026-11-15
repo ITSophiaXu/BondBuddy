@@ -61,7 +61,7 @@ async function coverage(c:PoolClient,runWhere:string,spanWhere:string,args:unkno
  SELECT (SELECT count(*) FROM cohort) run_count,(SELECT count(DISTINCT run_id) FROM sessions) instrumented_run_count,
  (SELECT count(*) FROM sessions) session_count,(SELECT count(*) FROM sessions WHERE purged_at IS NOT NULL) purged_session_count,
  (SELECT coalesce(sum(purged_span_count),0) FROM sessions) purged_span_count,(SELECT count(*) FROM sessions WHERE complete) complete_session_count,
- (SELECT count(*) FROM spans) span_count,(SELECT count(*) FROM spans WHERE ended_at IS NULL OR attributes->>'timing_complete'='false') unfinished_span_count,
+ (SELECT count(*) FROM spans) span_count,(SELECT count(*) FROM spans WHERE ended_at IS NULL OR attributes->>'timing_complete'='false' OR attributes->>'tool_timing_complete'='false') unfinished_span_count,
  (SELECT coalesce(sum(dropped),0) FROM sessions) dropped_spans,(SELECT coalesce(sum(invalid_attributes),0) FROM sessions) invalid_attributes,
  (SELECT coalesce(sum(flush_errors),0) FROM sessions) flush_errors`,args)).rows[0];
  const value=Object.fromEntries(Object.entries(raw).map(([k,v])=>[k,n(v)])) as unknown as PerformanceCoverage;

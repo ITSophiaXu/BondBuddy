@@ -13,7 +13,7 @@ export function performanceCoverage(coverage: PerformanceCoverage): string {
   return `<p class="perf-coverage ${coverage.complete ? '' : 'perf-incomplete'}" data-perf-coverage>
     <strong>${coverage.complete ? '当前范围采集完整' : '当前范围存在运行中或缺测记录'}</strong>
     · ${coverage.instrumented_run_count} / ${coverage.run_count} 次任务有步骤记录 · ${coverage.uninstrumented_run_count} 次未埋点
-    · ${coverage.complete_session_count} / ${coverage.session_count} 个会话完整 · ${coverage.unfinished_span_count} 个步骤未结束
+    · ${coverage.complete_session_count} / ${coverage.session_count} 个会话完整 · ${coverage.unfinished_span_count} 个步骤未结束或计时缺测
     · 丢弃 ${coverage.dropped_spans} · 无效属性 ${coverage.invalid_attributes} · 写入错误 ${coverage.flush_errors}
     · 保留期已清理 ${coverage.purged_span_count} 个步骤 / ${coverage.purged_session_count} 个会话
   </p>`;
@@ -84,9 +84,9 @@ export function performanceRunPanel(runId: string, state: PerformanceReadState<R
       ${metric(metrics.open ? '任务已历时' : '任务总历时', duration(metrics.totalMs), metrics.open ? '提交至本次查询，含排队与暂停' : '提交至可信终态；缺终态则未知')}
       ${metric('细步骤解释覆盖', duration(metrics.coveredMs), metrics.complete ? '真实边界区间并集，排除整段容器' : '仅已载入完整计时，覆盖尚不完整')}
       ${metric('未解释时间', duration(metrics.unexplainedMs), '仅完整采集且完整分页时计算')}
-      ${metric('失败 / 耗时缺测', `${metrics.failed} / ${metrics.missing}`, '已载入步骤；缺测含尚未结束')}
+      ${metric('失败 / 耗时缺测', `${metrics.failed} / ${metrics.missing}`, '已载入步骤；含未结束或工具边界缺测')}
     </div>
-    ${performanceCoverage(data.coverage)}
+    ${performanceCoverage({...data.coverage, complete: data.coverage.complete && metrics.missing === 0, unfinished_span_count: Math.max(data.coverage.unfinished_span_count, metrics.missing)})}
     <p class="perf-query-receipt">查询于 ${esc(time(data.captured_at))} · 已读取 ${data.pages.length} 页 · ${metrics.completePages ? '分页已全部载入' : '分页尚未全部载入'} · 审计 ID <span class="mono">${esc(data.audit_id)}</span></p>
     <p class="muted">顶部解释覆盖排除任务、阶段、模型调用等整段容器，只统计实际工作边界；CLI 执行包含模型和工具，不代表纯模型耗时。父行显示直接子步骤的区间并集。“未解释”不等于空闲或 CPU 耗时。运行中已历时截至所在页查询时间；继续分页不会自动更新旧页。缺测及未载入部分保持未知。</p>
     ${metrics.hasOrphans ? '<p class="notice">部分父步骤尚未载入或未采集，相关步骤暂列在顶层；不会推测其父子关系。</p>' : ''}
@@ -103,7 +103,7 @@ export function performanceRunPanel(runId: string, state: PerformanceReadState<R
               <button class="link perf-span-title" data-perf-inspect="${esc(span.span_id)}" aria-expanded="${expanded.has(span.span_id)}" aria-controls="perf-context-${esc(span.span_id)}"><strong>${esc(span.step_key)}</strong><small>${esc(span.stage ?? '跨阶段')} · <span class="perf-status" data-status="${span.status}">${missingEnd ? '会话已关闭 / 结束缺测' : performanceStatus(span.status)}</span>${row.missingParent ? ' · 父步骤未载入' : ''}</small></button>
             </div>
             <div class="perf-track" aria-label="${esc(span.step_key)}：${esc(duration(row.elapsedMs))}">${row.range ? `<i style="left:${left.toFixed(3)}%;width:${extent.toFixed(3)}%" data-status="${span.status}" class="${row.ms === null ? 'perf-provisional' : ''}"></i>` : '<span>时间区间缺测</span>'}</div>
-            <span class="perf-number">${esc(duration(row.elapsedMs))}${row.open ? '<small>运行中已历时</small>' : row.ms === null ? '<small>耗时缺测</small>' : ''}</span>
+            <span class="perf-number">${esc(duration(row.elapsedMs))}${row.open ? '<small>运行中已历时</small>' : row.ms === null ? '<small>耗时缺测</small>' : span.attributes.tool_timing_complete === false ? '<small>工具计时缺测</small>' : ''}</span>
             <span class="perf-number">${esc(duration(row.childUnionMs))}<small>${row.complete ? `${children.length} 个直接子步骤` : '已载入覆盖'}</small></span>
             <span class="perf-number">${esc(duration(row.unexplainedMs))}<small>${row.complete ? '' : '待完整记录'}</small></span>
           </div>
