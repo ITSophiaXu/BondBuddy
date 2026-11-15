@@ -114,11 +114,11 @@ export function createExecutionPoolOpsHandler({control, configPath, log = () => 
         if (ongoing.drain_operation_id) await controller.drain(ongoing.identity, ongoing.drain_operation_id, ongoing.revision);
         return;
       }
-      if(renewalBlocked||renewalIssued)return;
       const plan = await controller.plan(inventory);
       if (plan.kind === 'drain') {
         await controller.drain(plan.identity, randomUUID(), plan.revision);
       } else if (['run', 'start'].includes(plan.kind)) {
+        if(renewalBlocked||renewalIssued)return;
         validateConfig(config, {apply: true});
         // The real automatic entry must have a usable operation-aware issuer
         // before reserving or spending on a node. Synthetic cloud fixtures do
