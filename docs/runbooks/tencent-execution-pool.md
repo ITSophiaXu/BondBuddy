@@ -19,6 +19,24 @@
 
 停止请求使用 `StopType=SOFT`、`StoppedMode=STOP_CHARGING`。单节点受控验收允许先验证实际停机免计算费模式；自动阶段必须已有对应原件。磁盘、IP 和网络费用均不因此归零。
 
+### 更换默认镜像并保留已登记节点
+
+`image_id` 只决定新 `RunInstances` 的镜像。保留旧节点时，在可信控制配置的可选 `retained_nodes` 中逐实例登记以下八项；最多两项，实例、角色和原创建操作不能重复，禁止通配和额外字段：
+
+| 字段 | 可信来源 |
+| --- | --- |
+| `instance_id`、`role_name`、`image_id` | 已核验的准确旧实例、角色和原 ImageId |
+| `source_sha256`、`image_sha256` | 原不可变启动请求的源码闭包和运行镜像包 hash；不能把 ImageId 当作这两项 |
+| `create_operation_id` | 原始已完成的 Run 操作；后续 Start 不替换此 pin |
+| `launch_manifest_sha256` | 原 Run 请求及当前登记节点共同保存的创建清单 hash |
+| `launch_binding_sha256` | 原 Run 的持久 `run_acceptance` 中完整云启动范围 hash |
+
+`TencentCvm` 必须传入已有可信 `control`（`snapshot` 和 `loadOperation`）；只有上述准确旧实例才需要旧镜像兼容。缺登记、已销毁、原 Run 未完成或受理证据缺失一律拒绝。云 tag 和 metadata 仅核一致性，不能代替登记。当前节点 epoch 和 `cloud_start_operation_id` 可以随正常暖启动改变；原 Run 的 identity／受理仍按原 epoch 校验。
+
+旧实例只覆写具名 pin 的 ImageId、源码和运行包 hash。其他启动参数使用当前可信配置，并重算**原** Run 参数与创建清单 hash，同时核对云端完整 launch binding；角色、网络、磁盘、public slot binding 或服务配置漂移均拒绝。暖启动沿用原创建 hash 和原业务 pins；签发服务使用同一规则。新实例始终使用默认配置，不能借旧 pin 创建。配置须同时提供给运维控制和独立签发服务，不能只更新一侧。
+
+此兼容不更改登记、退役或销毁接口，不放宽最多两台、费用、排空、版本发布或实际冷／暖启动验收要求。回退时恢复原控制／签发配置及对应代码；现有节点记录、原 Run 和所有 Start／Stop 证据保留。
+
 ## 生命周期与恢复
 
 1. 从 PG 取得有效独立工作或组 leader、有限批内窗口和最老等待；共享等待、材料/业务/付款阻塞及未知调用不计扩容需求。再次查询准确云库存；未 ready、启动中和未决操作保留库存与费用预约，不计可用处理容量。

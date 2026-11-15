@@ -1,5 +1,5 @@
 import {createHmac} from 'node:crypto';
-import {canonical, sha256, requireThat, validateConfig} from './policy.mjs';
+import {canonical, sha256, requireThat, validateConfig, retainedNodePin, nodeLaunchConfig, requireRetainedRequest} from './policy.mjs';
 import {bootstrapUserData} from './bootstrap.mjs';
 import {executionInstanceLaunchBinding,executionRunAcceptanceMatches,executionSlotReadTag,executionStopAuthorizationMatches} from '@bondbuddy/contracts';
 
@@ -103,7 +103,28 @@ export function runParameters(config, request, clientToken, userData, slot, opId
 }
 
 export class TencentCvm {
-  constructor({transport, config, archive, now = Date.now}) { Object.assign(this, {transport, config, archive, now}); }
+  constructor({transport, config, archive, control, now = Date.now}) { Object.assign(this, {transport, config, archive, control, now}); }
+  async verifyRetainedNode(instanceId) {
+    const p=retainedNodePin(this.config,instanceId);
+    if(!p)return;
+    requireThat(this.control?.snapshot&&this.control?.loadOperation,'RETAINED_NODE_REGISTRY_REQUIRED');
+    const snapshot=await this.control.snapshot();
+    const matches=snapshot.nodes.filter(n=>n.identity.account_id===this.config.account_id&&n.identity.region===this.config.region&&n.identity.instance_id===instanceId);
+    const n=matches[0];
+    requireThat(matches.length===1&&n.state!=='destroyed'&&!n.destroyed_at&&n.source_sha256===p.source_sha256&&
+      n.image_sha256===p.image_sha256&&n.launch_manifest_sha256===p.launch_manifest_sha256&&
+      canonical(n.expected_services)===canonical(this.config.services),'RETAINED_NODE_REGISTRY_DRIFT');
+    // A warm epoch changes cloud_start_operation_id. Load the original Run by
+    // its trusted pin, preserving both original acceptance and current node.
+    const original=await this.control.loadOperation(p.create_operation_id);
+    requireThat(original?.operation_id===p.create_operation_id&&original.state==='completed'&&original.identity?.account_id===this.config.account_id&&
+      original.identity.region===this.config.region&&original.identity.instance_id===instanceId&&executionRunAcceptanceMatches(original,original.run_acceptance)&&
+      original.run_acceptance.launch_binding_sha256===p.launch_binding_sha256,'RETAINED_NODE_CREATION_DRIFT');
+    requireRetainedRequest(this.config,instanceId,original.request);
+    const c=nodeLaunchConfig(this.config,instanceId),slot=c.role_names.indexOf(p.role_name);
+    requireThat(sha256(canonical(runParameters(c,original.request,original.client_token,bootstrapUserData(c,original.request,slot),slot,original.operation_id)))===p.launch_manifest_sha256,
+      'RETAINED_NODE_MANIFEST_DRIFT');
+  }
   async assertAccount() {
     const data = await this.transport.call('sts', 'GetCallerIdentity', {});
     requireThat(String(data.AccountId) === this.config.account_id, 'CLOUD_ACCOUNT_MISMATCH');
@@ -119,6 +140,8 @@ export class TencentCvm {
   }
   async describe(instanceId) {
     requireThat(/^ins-[a-z0-9]+$/.test(instanceId), 'INSTANCE_ID');
+    await this.verifyRetainedNode(instanceId);
+    const pin=retainedNodePin(this.config,instanceId),config=nodeLaunchConfig(this.config,instanceId);
     await this.assertAccount();
     const data = await this.transport.call('cvm', 'DescribeInstances', {InstanceIds: [instanceId]});
     const instances = data.InstanceSet;
@@ -128,10 +151,12 @@ export class TencentCvm {
       i.InstanceType === this.config.instance_type && i.InstanceChargeType === 'POSTPAID_BY_HOUR' &&
       i.VirtualPrivateCloud?.VpcId === this.config.vpc_id && i.VirtualPrivateCloud?.SubnetId === this.config.subnet_id &&
       this.config.role_names.includes(i.CamRoleName), 'CLOUD_OWNERSHIP_DRIFT');
-    requireThat(i.ImageId === this.config.image_id && i.SecurityGroupIds?.length === 1 && i.SecurityGroupIds[0] === this.config.security_group_id &&
+    requireThat(i.ImageId === config.image_id && i.SecurityGroupIds?.length === 1 && i.SecurityGroupIds[0] === this.config.security_group_id &&
       i.SystemDisk?.DiskSize === 40 && i.SystemDisk.DiskType === 'CLOUD_PREMIUM' &&
       i.DataDisks?.length === 1 && i.DataDisks[0].DiskSize === 80 && i.DataDisks[0].DiskType === 'CLOUD_PREMIUM' &&
       !i.PublicIpAddresses?.length, 'CLOUD_LAUNCH_DRIFT');
+    if(pin)requireThat(i.CamRoleName===pin.role_name&&i.Tags?.filter(t=>t.Key==='bondbuddy-create-op').length===1&&
+      tags.get('bondbuddy-create-op')===pin.create_operation_id&&sha256(canonical(executionInstanceLaunchBinding(i)))===pin.launch_binding_sha256,'RETAINED_NODE_CLOUD_DRIFT');
     const slot=this.config.role_names.indexOf(i.CamRoleName),tag=executionSlotReadTag(this.config.pool_tag,this.config.role_names[slot]);
     requireThat(i.Tags?.filter(t=>t.Key===tag.Key).length===1&&tags.get(tag.Key)===tag.Value,'CLOUD_SLOT_TAG_DRIFT');
     const peers=await this.transport.call('cvm','DescribeInstances',{Filters:[{Name:`tag:${tag.Key}`,Values:[tag.Value]}],Limit:3});
@@ -149,8 +174,10 @@ export class TencentCvm {
   async describeRun(operation) {
     requireThat(executionRunAcceptanceMatches(operation,operation.run_acceptance),'RUN_ACCEPTANCE_UNPROVEN');
     const i=await this.describe(operation.identity.instance_id),slot=this.config.role_names.indexOf(i.role_name);
+    requireRetainedRequest(this.config,i.instance_id,operation.request);
+    const config=nodeLaunchConfig(this.config,i.instance_id);
     requireThat(slot>=0&&i.create_operation_id===operation.operation_id&&i.launch_binding_sha256===operation.run_acceptance.launch_binding_sha256&&
-      sha256(canonical(runParameters(this.config,operation.request,operation.client_token,bootstrapUserData(this.config,operation.request,slot),slot,operation.operation_id)))===operation.request.launch_manifest_sha256,'RUN_CREATION_SCOPE');
+      sha256(canonical(runParameters(config,operation.request,operation.client_token,bootstrapUserData(config,operation.request,slot),slot,operation.operation_id)))===operation.request.launch_manifest_sha256,'RUN_CREATION_SCOPE');
     const status=await this.transport.call('cvm','DescribeInstancesStatus',{InstanceIds:[operation.identity.instance_id]});
     requireThat(status.InstanceStatusSet?.length===1&&status.InstanceStatusSet[0].InstanceId===operation.identity.instance_id,'RUN_STATUS_SCOPE');
     const safe={instance_state:i.instance_state,latest_operation:i.latest_operation,latest_operation_state:i.latest_operation_state,
@@ -195,8 +222,10 @@ export class TencentCvm {
       requireThat(i.instance_state === 'STOPPED', 'START_REQUIRES_STOPPED');
       requireThat(i.create_operation_id,'WARM_START_CREATION_UNPROVEN');
       const oldRequest={...operation.request,instance_id:null};
+      requireRetainedRequest(this.config,i.instance_id,operation.request);
+      const config=nodeLaunchConfig(this.config,i.instance_id);
       const {executionCloudClientToken}=await import('@bondbuddy/api/execution-capacity');
-      const oldParams=runParameters(this.config,oldRequest,executionCloudClientToken(i.create_operation_id),bootstrapUserData(this.config,oldRequest,this.config.role_names.indexOf(i.role_name)),
+      const oldParams=runParameters(config,oldRequest,executionCloudClientToken(i.create_operation_id),bootstrapUserData(config,oldRequest,this.config.role_names.indexOf(i.role_name)),
         this.config.role_names.indexOf(i.role_name),i.create_operation_id);
       requireThat(sha256(canonical(oldParams))===operation.request.launch_manifest_sha256,'WARM_START_CLOUD_MANIFEST_DRIFT');
       return this.transport.call('cvm', 'StartInstances', {InstanceIds: [i.instance_id]});
