@@ -1,3 +1,4 @@
+> 2026-11-15：#1385 为当前任务租约新增模型等待/活动计费投影；纯等待冻结有效时长和动态积分，任一并行活动仍按原规则计费，恢复不追补等待时间。追加0182，公共进度新增可选model_waiting，不改变共享许可、run状态或固定报价。实现及验证见[模型等待计费修复](acceptance/issue-1385-model-wait-billing.md)。
 > 2026-11-11：按用户对篇幅门禁的补充要求（#995），`file-authoring-repair` 在同一任务内对可信篇幅拒绝最多执行两轮修复，使用固定逻辑调用ID、独立报告和格式计划保存恢复依据。原始基线和输入不变，修复后仍走完整交付检查；预算耗尽暂停待处理，渲染故障重试检查，delivery-only恢复不追加模型调用。无公共枚举、迁移或计费政策变化，见[同日决定](product-decisions/2026-11-11-reference-text-flexibility.md)。
 
 > 2026-11-08：新增[本地发布前基础流程脚本](../scripts/release-smoke/README.md)，从固定提交构建正式 Dockerfile 的 Web/API/worker，使用独立 PostgreSQL、Azurite、测试账号及已授权真实样本检查更新、复核、问答。启动层补充 Mac/Windows 本机 Docker 连接、路径、挂载和权限处理，Windows 使用 PowerShell 与 Docker Desktop Linux 容器；统一操作入口见根 README。本轮平台适配按用户要求未重跑测试，Windows 实机验收尚未记录。逐项记录镜像/样本/任务/下载证据，未运行和失败均不能放行；实际验收结果以每次私有运行报告为准。单机测试不替代双端部署拓扑、其他镜像架构或专业内容验收，不更改生产发布入口、公共契约或数据库迁移。
