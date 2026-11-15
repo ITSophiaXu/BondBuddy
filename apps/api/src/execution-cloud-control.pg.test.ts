@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import {Pool} from 'pg';
 import {Value} from '@sinclair/typebox/value';
 import {ExecutionCapacitySnapshotSchema,ExecutionCloudExpenseLedgerSchema,type ExecutionLaunchRequest} from '@bondbuddy/contracts';
-import {configureExecutionCapacity,executionCapacityControl,executionCloudExpenseLedger,bindExecutionRegistration,registerExecutionRuntime,heartbeatExecutionRuntime} from './execution-capacity.js';
+import {configureExecutionCapacity,executionCapacityControl,executionCloudExpenseLedger,bindExecutionRegistration,registerExecutionRuntime,heartbeatExecutionRuntime,executionCloudClientToken} from './execution-capacity.js';
 import {isolatedTestDatabase} from './test-database.js';
 const connection=await isolatedTestDatabase(undefined,'execution-cloud-control'),hash='a'.repeat(64);
 test('cloud dispatch has a single durable winner and proven inventory rejection cools future starts',{skip:!connection,timeout:10000},async t=>{
@@ -14,6 +14,9 @@ test('cloud dispatch has a single durable winner and proven inventory rejection 
  const request:ExecutionLaunchRequest={account_id:'synthetic',region:'synthetic',instance_id:null,instance_count:1,epoch:randomUUID(),source_sha256:hash,image_sha256:hash,launch_manifest_sha256:hash,capabilities:['authoring'],services:[{service_id:'one',capabilities:['authoring']}]};
  const reserved=await Promise.allSettled([a.reserveStart(request,'synthetic-one',1),b.reserveStart({...request,epoch:randomUUID()},'synthetic-two',1)]);
  assert.equal(reserved.filter(r=>r.status==='fulfilled').length,1);const op=reserved.find(r=>r.status==='fulfilled')!.value;
+ assert.equal(op.client_token,executionCloudClientToken(op.operation_id));
+ assert.equal(op.client_token,createHash('sha256').update(JSON.stringify(op.operation_id)).digest('hex'));
+ assert.notEqual(op.client_token,createHash('sha256').update(op.operation_id).digest('hex'),'raw string SHA is not the persisted client token');
  const dispatched=await Promise.allSettled([a.claimCloudDispatch(op.operation_id,0),b.claimCloudDispatch(op.operation_id,0)]);
  assert.equal(dispatched.filter(r=>r.status==='fulfilled').length,1);const sent=dispatched.find(r=>r.status==='fulfilled')!.value;assert.equal(sent.state,'unknown');
  const result={state:'rejected' as const,provider_request_id:'synthetic-api-error',identity:null,observation:null};

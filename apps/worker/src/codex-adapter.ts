@@ -59,6 +59,8 @@ export type CodexAdapterConfig = {
   web_search?: 'disabled' | 'live';
   /** Egress proxy variables handed to the child (HTTPS_PROXY/NO_PROXY and lower-case forms). No userinfo allowed. */
   proxy_env?: Record<string, string>;
+  /** Trusted managed-runtime configuration; never derived from model input. */
+  protected_runtime_files?: boolean;
 };
 
 // codex honours HTTPS_PROXY for its supplier requests; the worker only reaches the internet
@@ -190,6 +192,7 @@ export function loadCodexAdapterConfig(env: NodeJS.ProcessEnv = process.env): Co
     disabled_features: DEFAULT_DISABLED_FEATURES,
     path_env: env.BB_CODEX_PATH ?? '/usr/local/bin:/usr/bin:/bin',
     proxy_env: codexProxyEnv(env),
+    protected_runtime_files: !!env.BB_EXECUTION_ENROLLMENT_FILE,
   };
   if (commandMode && (!env.BB_CODEX_CONFIG_VERSION || config.model_provider !== 'copilot_enterprise' || config.model_id !== 'gpt-6-sol' || config.base_url !== 'https://api.enterprise.githubcopilot.com' || config.reasoning_effort !== 'max')) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   assertCodexConfig(config);
@@ -207,7 +210,7 @@ export function assertCodexConfig(c: CodexAdapterConfig) {
     (c.authoring_timeout_ms === undefined || (count(c.authoring_timeout_ms) && c.authoring_timeout_ms > 0 && c.authoring_timeout_ms <= 2147483647)) &&
     count(c.kill_grace_ms) && count(c.max_output_bytes) && c.max_output_bytes > 0 &&
     (c.exec_log_max_bytes === undefined || (count(c.exec_log_max_bytes) && c.exec_log_max_bytes >= EXEC_LOG_MARKER_BYTES && c.exec_log_max_bytes <= CODEX_EXEC_LOG_MAX_BYTES)) &&
-    count(c.max_schema_reasks) && c.max_schema_reasks <= 3 && (c.retain_invalid_output === undefined || typeof c.retain_invalid_output === 'boolean') && c.disabled_features.every(f => /^[a-z0-9_]{1,64}$/.test(f)) && c.path_env.length > 0 &&
+    count(c.max_schema_reasks) && c.max_schema_reasks <= 3 && (c.retain_invalid_output === undefined || typeof c.retain_invalid_output === 'boolean') && (c.protected_runtime_files === undefined || typeof c.protected_runtime_files === 'boolean') && c.disabled_features.every(f => /^[a-z0-9_]{1,64}$/.test(f)) && c.path_env.length > 0 &&
     Object.entries(c.proxy_env ?? {}).every(([k, v]) => (CODEX_PROXY_ENV_NAMES as readonly string[]).includes(k) && (/^https_proxy$/i.test(k) ? proxyUrl(v) : noProxyList(v)));
   if (!ok) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
 }
@@ -222,7 +225,7 @@ export function codexConfigOverrides(c: CodexAdapterConfig, files = false): stri
     `${p}.name=${q(c.model_provider)}`, `${p}.base_url=${q(c.base_url)}`, `${p}.wire_api=${q(c.wire_api)}`,
     c.credential.kind === 'env' ? `${p}.env_key=${q(c.credential.name)}` : c.credential.kind === 'command'
       ? `${p}.auth.command=${q(c.credential.path)}` : `${p}.requires_openai_auth=true`,
-    `approval_policy="never"`, ...(files ? [] : [`sandbox_mode="read-only"`]), `web_search=${q(!files && c.web_search === 'live' ? 'live' : 'disabled')}`,
+    `approval_policy="never"`, ...(files || c.protected_runtime_files ? [] : [`sandbox_mode="read-only"`]), `web_search=${q(!files && c.web_search === 'live' ? 'live' : 'disabled')}`,
     `shell_environment_policy.inherit="none"`, `project_doc_max_bytes=0`, `history.persistence="none"`, `mcp_servers={}`,
   ];
   if (c.reasoning_effort) kv.push(`model_reasoning_effort=${q(c.reasoning_effort)}`);
@@ -242,8 +245,9 @@ export function buildCodexArgs(c: CodexAdapterConfig, o: { cwd: string; schemaFi
   if (o.materialDataFile && o.reviewDataFile || !!o.reviewDataFile !== !!o.reviewTraceFile) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (c.web_search==='live' && (o.materialDataFile || o.reviewDataFile)) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
   if (o.materialTraceFile && (!o.materialDataFile || resolve(o.materialTraceFile)!==resolve(o.cwd,'..','materials-trace.json') || c.web_search==='live')) throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
-  const args = ['exec', '--json', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules', ...(o.fileAuthoring?[]:['--sandbox', 'read-only']), '--cd', o.cwd,
+  const args = ['exec', '--json', '--skip-git-repo-check', '--ignore-user-config', '--ignore-rules', ...(o.fileAuthoring||c.protected_runtime_files?[]:['--sandbox', 'read-only']), '--cd', o.cwd,
     ...codexConfigOverrides(c,o.fileAuthoring), ...c.disabled_features.filter(f=>(!o.fileAuthoring || !['shell_tool','unified_exec','view_image'].includes(f)) && !(o.fileCompletion && f==='hooks')).flatMap(f => ['--disable', f])];
+  if(c.protected_runtime_files&&!o.fileAuthoring)args.push(...filePermissionArgs(o.cwd,true));
   if(o.fileAuthoring){
     if(o.schemaFile || o.materialDataFile || o.reviewDataFile || o.reviewTraceFile || !o.ephemeral)throw new CodexAdapterError('MODEL_ADAPTER_CONFIG_INVALID');
     args.push(...filePermissionArgs(o.cwd),'--enable','shell_tool','--enable','unified_exec','--enable','view_image',
@@ -694,6 +698,11 @@ export async function runContainedModelCall(input: ContainedCallInput, journal: 
           await input.beforeIntent?.();
           if (executionSignal?.aborted) return cancelledResult();
           await verifyFilePermissions(c,cwd,home);
+        }
+        else if(c.protected_runtime_files){
+          // Read-only calls retain their disabled tools and fixed MCP methods,
+          // but must also deny the managed runtime's same-UID credentials.
+          await verifyFilePermissions(c,cwd,home,true);
         }
 
         if (input.signal?.aborted) return cancelledResult();

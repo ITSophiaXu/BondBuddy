@@ -10,6 +10,8 @@ import {workpaperDemandKey,type ExecutionBatchDemand} from './execution-demand.j
 const contexts=new WeakMap<Pool,ExecutionNodeContext>();
 const canonical=(v:any):any=>Array.isArray(v)?v.map(canonical):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])])):v;
 const sha=(v:unknown)=>createHash('sha256').update(JSON.stringify(canonical(v))).digest('hex');
+/** Preserve the original durable token algorithm for all existing operations. */
+export function executionCloudClientToken(operationId:string):string{return sha(operationId);}
 const identity=(row:any):ExecutionNodeIdentity=>({account_id:row.account_id,region:row.region,instance_id:row.instance_id,epoch:row.epoch});
 const sameIdentity=(a:ExecutionNodeIdentity,b:ExecutionNodeIdentity)=>JSON.stringify(a)===JSON.stringify(b);
 const cas=()=>{throw new Error('EXECUTION_CAPACITY_CAS_CONFLICT');};
@@ -105,7 +107,7 @@ export function executionCapacityControl(pool:Pool):ExecutionCapacityControl {
    if((await client.query("SELECT 1 FROM bb_execution_cloud_operations WHERE state IN ('intent','submitted','unknown') LIMIT 1")).rowCount)throw Error('EXECUTION_CLOUD_MUTATION_PENDING');
    if(!existing&&inventory+pending>=Number(policy.max_nodes))throw Error('EXECUTION_MAX_NODES_REACHED');
    if(existing&&(await client.query('SELECT 1 FROM bb_model_capacity_holders WHERE execution_node_id=$1',[existing.id])).rowCount)throw Error('EXECUTION_PRIOR_PROCESS_NOT_STOPPED');
-   await client.query("INSERT INTO bb_execution_cloud_operations(operation_id,account_id,region,instance_id,epoch,action,state,request,request_sha256,client_token,policy_revision) VALUES($1,$2,$3,$4,$5,$6,'intent',$7,$8,$9,$10)",[operationId,request.account_id,request.region,request.instance_id,request.epoch,existing?'start':'run',request,sha(request),sha(operationId),policy.revision]);
+   await client.query("INSERT INTO bb_execution_cloud_operations(operation_id,account_id,region,instance_id,epoch,action,state,request,request_sha256,client_token,policy_revision) VALUES($1,$2,$3,$4,$5,$6,'intent',$7,$8,$9,$10)",[operationId,request.account_id,request.region,request.instance_id,request.epoch,existing?'start':'run',request,sha(request),executionCloudClientToken(operationId),policy.revision]);
    if(existing){
     const before=(await client.query('SELECT to_jsonb(n) AS image FROM bb_execution_nodes n WHERE id=$1',[existing.id])).rows[0].image;
     await client.query("UPDATE bb_execution_nodes SET epoch=$2,state='starting',revision=revision+1,source_sha256=$3,image_sha256=$4,capabilities=$5,cloud_start_operation_id=$6,expected_services=$7,launch_manifest_sha256=$8,stop_operation_id=NULL,drain_operation_id=NULL,drain_proof=NULL,registration_token_sha256=NULL WHERE id=$1",[existing.id,request.epoch,request.source_sha256,request.image_sha256,request.capabilities,operationId,JSON.stringify(request.services),request.launch_manifest_sha256]);
@@ -179,7 +181,7 @@ export function executionCapacityControl(pool:Pool):ExecutionCapacityControl {
    if(n.state!=='drained'||Number(n.revision)!==proof.node_revision||n.drain_proof?.proof_sha256!==proof.proof_sha256||n.drain_operation_id!==proof.operation_id)cas();
    // Re-check under the node lock. A registration/claim cannot race this fence.
    const fresh=await dto(client,n);if(fresh.active_leases||fresh.active_model_calls)throw Error('EXECUTION_DRAIN_PROOF_STALE');
-   await client.query("INSERT INTO bb_execution_cloud_operations(operation_id,account_id,region,instance_id,epoch,action,state,request_sha256,client_token,proof_sha256) VALUES($1,$2,$3,$4,$5,$6,'intent',$7,$8,$9)",[proof.operation_id,n.account_id,n.region,n.instance_id,n.epoch,action,sha(proof),sha(proof.operation_id),proof.proof_sha256]);
+   await client.query("INSERT INTO bb_execution_cloud_operations(operation_id,account_id,region,instance_id,epoch,action,state,request_sha256,client_token,proof_sha256) VALUES($1,$2,$3,$4,$5,$6,'intent',$7,$8,$9)",[proof.operation_id,n.account_id,n.region,n.instance_id,n.epoch,action,sha(proof),executionCloudClientToken(proof.operation_id),proof.proof_sha256]);
    await client.query("UPDATE bb_execution_nodes SET state='stop_submitted',stop_operation_id=$2,revision=revision+1 WHERE id=$1",[n.id,proof.operation_id]);return opDto(await operation(client,proof.operation_id));
   }),
   recordCloudResult:async(id,revision,result)=>recordExecutionCloudResult(pool,id,revision,result),
@@ -245,7 +247,7 @@ export async function submitFencedExecutionStop(pool:Pool,i:ExecutionNodeIdentit
  return transaction(pool,async client=>{
   const n=await node(client,i,true);if(n.state!=='lost'||Number(n.revision)!==revision)cas();
   const holders=(await client.query('SELECT row_to_json(h) AS row FROM bb_model_capacity_holders h WHERE execution_node_id=$1 ORDER BY token FOR UPDATE',[n.id])).rows.map(r=>r.row);
-  await client.query("INSERT INTO bb_execution_cloud_operations(operation_id,account_id,region,instance_id,epoch,action,state,request_sha256,client_token,holder_preimage) VALUES($1,$2,$3,$4,$5,$6,'intent',$7,$8,$9)",[id,n.account_id,n.region,n.instance_id,n.epoch,action,sha({identity:i,revision,action}),sha(id),JSON.stringify(holders)]);
+  await client.query("INSERT INTO bb_execution_cloud_operations(operation_id,account_id,region,instance_id,epoch,action,state,request_sha256,client_token,holder_preimage) VALUES($1,$2,$3,$4,$5,$6,'intent',$7,$8,$9)",[id,n.account_id,n.region,n.instance_id,n.epoch,action,sha({identity:i,revision,action}),executionCloudClientToken(id),JSON.stringify(holders)]);
   await client.query("UPDATE bb_execution_nodes SET state='stop_submitted',stop_operation_id=$2,revision=revision+1 WHERE id=$1",[n.id,id]);return opDto(await operation(client,id));
  });
 }

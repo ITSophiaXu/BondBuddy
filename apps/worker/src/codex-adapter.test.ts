@@ -398,6 +398,22 @@ test('invocation is contained: read-only, tools disabled, no danger-full-access,
   } finally { await cleanup(); }
 });
 
+test('managed read-only invocations carry named credential denies without enabling tools or writes', async () => {
+  const { config, cleanup } = await setup();
+  try {
+    const loaded=loadCodexAdapterConfig({BB_EXECUTION_ENROLLMENT_FILE:'/run/bondbuddy/enrollment/review.json'});
+    assert.equal(loaded.protected_runtime_files,true);
+    const args=buildCodexArgs({...config,protected_runtime_files:true},{cwd:'/x/cwd',schemaFile:null,ephemeral:true,resumeThreadId:null});
+    for(const path of ['/run/bondbuddy/enrollment','/run/bondbuddy/service','/etc/bondbuddy'])assert.ok(args.some(a=>a.includes(`${JSON.stringify(path)}="deny"`)));
+    assert.ok(args.includes('default_permissions="bb_file"'));
+    assert.ok(!args.some(a=>a.includes('="write"')));
+    assert.ok(!args.includes('--enable'));assert.ok(!args.includes('--sandbox'));
+    for(const f of ['shell_tool','unified_exec','view_image'])assert.ok(args.join(' ').includes(`--disable ${f}`));
+    assert.ok(args.includes('model_context_window=1000000'));
+    assert.equal(args.at(-1),'-');
+  } finally { await cleanup(); }
+});
+
 test('structured success: intent before spawn, isolated cwd/home/env, #79 record with thread id and unknown request id', async () => {
   const { config, cleanup } = await setup();
   process.env.BB_SYNTHETIC_DEEPSEEK_KEY = 'synthetic-key-value';
