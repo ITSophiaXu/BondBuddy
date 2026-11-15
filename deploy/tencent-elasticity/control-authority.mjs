@@ -7,6 +7,15 @@ import {TencentTransport,TencentCvm} from './tencent-cvm.mjs';
 import {issueTransportCredentials,validateTransportIssuer} from './transport-issuer.mjs';
 import {executionCloudCompletionMatches} from '@bondbuddy/contracts';
 
+/** Exact registration read within the issuer's existing node SELECT scope. */
+export async function readAuthorityRegisteredNodes(pool,identity) {
+  requireThat(/^\d{1,20}$/.test(identity?.account_id??'')&&identity.region==='ap-beijing'&&/^ins-[a-z0-9]+$/.test(identity.instance_id??''),'AUTHORITY_REGISTRATION_SCOPE');
+  const result=await pool.query(`SELECT account_id,region,instance_id,state,destroyed_at,source_sha256,image_sha256,launch_manifest_sha256,expected_services
+    FROM bb_execution_nodes WHERE account_id=$1 AND region=$2 AND instance_id=$3`,[identity.account_id,identity.region,identity.instance_id]);
+  return result.rows.map(r=>({identity:{account_id:r.account_id,region:r.region,instance_id:r.instance_id},state:r.state,destroyed_at:r.destroyed_at,
+    source_sha256:r.source_sha256.trim(),image_sha256:r.image_sha256.trim(),launch_manifest_sha256:r.launch_manifest_sha256.trim(),expected_services:r.expected_services}));
+}
+
 /** The local root authority owns source credentials and the CA. Callers send
  * IDs only; PG and exact cloud readback supply all signing authorization. */
 export function createControlAuthority({config,control,expenseLedger,cloud,credentialsProvider,verifyDatabase,now=Date.now,sign=issueTransportCredentials}){
@@ -106,7 +115,8 @@ async function main(){
     requireThat(r.system_identifier===pg.system_identifier&&r.name===pg.database_name,'AUTHORITY_DATABASE_DRIFT');};
   const credentialsProvider=createControlCredentialProvider(config.credentials);
   const control=executionCapacityControl(pool);
-  const cloud=new TencentCvm({config:config.pool,control,transport:new TencentTransport({region:config.region,credentials:()=>credentialsProvider.get()}),archive:observationArchive(config.observation_directory)});
+  const cloud=new TencentCvm({config:config.pool,control,readRegisteredNodes:identity=>readAuthorityRegisteredNodes(pool,identity),
+    transport:new TencentTransport({region:config.region,credentials:()=>credentialsProvider.get()}),archive:observationArchive(config.observation_directory)});
   await verifyDatabase();const server=await serveControlAuthority(createControlAuthority({config,control,expenseLedger:()=>executionCloudExpenseLedger(pool),cloud,credentialsProvider,verifyDatabase}));
   const shutdown=()=>{server.close(()=>pool.end());};process.once('SIGTERM',shutdown);process.once('SIGINT',shutdown);
 }
