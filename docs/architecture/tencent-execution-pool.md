@@ -22,9 +22,9 @@
 
 - 编制、复核、助手、探测以及该节点承载的其他领取入口，在 **同一领取事务** 锁定节点/会话，检查 ready、准确 epoch、角色/能力、无停机 tombstone，再写原有 lease。不能先在内存检查 ready 再独立领取。drain 和 claim 必须遵守同一锁顺序，避免检查与提交之间的竞态。
 - `draining` 禁止新领取，但保留租约和会话心跳；现 epoch 已领取任务可以凭有效 lease 继续完成必要后续模型调用和成果提交。不能简单以 ready-only 模型容量门将进行中任务卡死。新任务和无既有 lease 的探测不可借此继续启动。
-- `drained` 要求该代次所有登记的服务会话都给出正向 finished 回执；实际 lease、模型 holder、原生进程、未持久化成果均为零。缺失会话、过期心跳、20 秒 shutdown 超时、CPU 空闲和等待 TTL 都不是零活动证据。唯一结果仍留在本地时不能停止或销毁。
+- ready 和 drained 都以可信启动 manifest 中的预期服务/能力集合为准，不能只检查恰好已登记的会话。`drained` 要求该代次全部预期服务的会话给出正向 finished 回执，或有明确受控撤销/退出证明；实际 lease、模型 holder、原生进程、未持久化成果均为零。缺失会话、过期心跳、20 秒 shutdown 超时、CPU 空闲和等待 TTL 都不是零活动证据。唯一结果仍留在本地时不能停止或销毁。
 - `submitStop` 在调用云 SDK **之前** 原子写不可逆停机意图，冻结 identity/epoch、operation ID、revision 和 proof hash。受理、超时、响应丢失均不得自动重新 ready、开启新 epoch 或重复提交未查明的停止。跨数据库和云 API 没有原子事务，不能以本地事务回滚假装外部停止未发生。
-- 停机完成需可信 Describe 证明准确实例为 STOPPED，最新操作为对应停止且成功；单独 RequestId 或 STOPPING 都不够。若 API 没有将 request ID 与最新操作精确关联，只能在独占操作记录、前像、时间及无并发操作得到验证后归档，发生漂移则保持 unknown。
+- 停机完成需可信 Describe 证明准确实例为 STOPPED、`LatestOperation=StopInstances`、`LatestOperationState=SUCCESS`，且 `LatestOperationRequestId` 与本次受理的 RequestId 一致。单独 RequestId 或 STOPPING 都不够。`LatestOperationRequestId` 可能为 null；若受理响应丢失或不能精确关联，不自动完成，不用 Describe 查询自身的 RequestId 代替实例最新操作 ID。发生漂移保持 unknown。
 - foreign holder 仅在准确旧 epoch 的停止/销毁完成证据之后，按 holder 的完整前像 CAS 回收。失联不是死亡；容量释放不删除 billing unknown、不自动重发外部调用。云查询“查无此实例”也不能单独当销毁完成，须有准确销毁操作证据与身份范围。
 
 共享契约以 `packages/contracts/src/execution-capacity.ts` 为单一来源：
@@ -69,7 +69,7 @@
 | CVM `RunInstances` | `InstanceChargeType=POSTPAID_BY_HOUR`、`InstanceCount=1`、固定 `Placement.Zone`、机型/镜像/VPC/子网/安全组；`ClientToken` 为同一操作持久化的 ≤64 ASCII 字符。同参数重试沿用原 token，未知结果先查询，不换 token。创建成功自动开机；返回 ID 仅受理，PENDING 不等于业务 ready |
 | CVM `StartInstances` | `InstanceIds=[准确实例]`，仅 STOPPED 可启动；**没有 ClientToken 参数**。PG 先记意图，再单次调用，Describe 查 STARTING/RUNNING 与最新操作结果 |
 | CVM `StopInstances` | `InstanceIds=[准确实例]`、`StopType=SOFT`、`StoppedMode=STOP_CHARGING`；**没有 ClientToken 参数**。不同时传旧 ForceStop，不用 HARD/SOFT_FIRST。仅在 drain proof 和 tombstone 后调用；返回 RequestId 不是完成 |
-| CVM `DescribeInstances` | 核账户/地域/实例、归属、配置及 `InstanceState`、`LatestOperation`、`LatestOperationState`、观察时间；安全原件 hash 留作完成证据。HTTP 200 或任意一个 SUCCESS 不替代对应操作完成 |
+| CVM `DescribeInstances` | 核账户/地域/实例、归属、配置及 `InstanceState`、`LatestOperation`、`LatestOperationState`、`LatestOperationRequestId`、观察时间；安全原件 hash 留作完成证据。完成停止并回读 `StopChargingMode=STOP_CHARGING` 才确认选定停费模式；HTTP 200 或任意一个 SUCCESS 不替代对应操作完成 |
 | AS Start/Stop | `StartAutoScalingInstances` / `StopAutoScalingInstances` 均无 ClientToken；Stop 默认 KEEP_CHARGING，且采用 SOFT_FIRST。首版不采用其停止路径 |
 
 已核可规划规格为北京七区 `SA9.LARGE16`（4 核 16 GiB），按量计算费报价 0.8 元/小时；两台同时运行的计算费估算 1.6 元/小时。实施前报价与库存需有效；这不是整机全部费用，也不是固定月费。云盘、镜像、选定公网计费模式、网络及模型费用单列。按量全云盘实例通过 API 显式 STOP_CHARGING 才适用停计算费；操作系统内 shutdown 不等价，停止不保留 CPU 库存。[4]
